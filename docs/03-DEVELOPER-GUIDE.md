@@ -2369,8 +2369,23 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   client warns below 56). The client sends the pointer in window coordinates (rdpd adds the window's place,
   raises it when clicked), keysyms (`user/bin/remotekeys.h`, shared with vncd: specials,
   modifiers, letters / digits as held keys only) and the characters typed (the PC's layout).
-  The protocol is described at the top of `user/bin/rdpd.c`. Host test (mock kapi, a Python
-  client): `sh tools/tests/run_rdpd_test.sh`.
+  The protocol is described at the top of `user/bin/rdpd.c`. **Loss tolerance** (Wi-Fi): a
+  round is sent only when something changed, and only while the server has **credit** (each
+  READY gives one); a client setting hello option bit 2 gets `CAPS` (9) and 3 rounds in flight
+  (an older client: lock-step, its READYs alone); a round unanswered for 250 ms makes rdpd send
+  small `PING`s (10) -- the PC's dup ACKs make Circle resend its lost tail segment at once
+  instead of after its 1 s minimum RTO, and the client's `PONG`s (client 8) do the same for a
+  READY the PC lost; a pipelined client also gets a PING every 2 s when idle and is dropped
+  after 12 s of silence. Onyx Remote (`Connection.cs`) sends from its own thread, coalesces the
+  pointer's moves (one per 16 ms, the latest; buttons, wheel and keys at once, in order),
+  applies a round to its model only at its END, validates every message (a damaged one is
+  skipped, a damaged stream reconnects) and reconnects by itself (0.5 .. 8 s back-off, the
+  windows kept). Host tests: `sh tools/tests/run_rdpd_test.sh` (a mock kapi, a Python client),
+  `sh tools/tests/run_rdpd_pipeline_test.sh` (rdpd against the real `kapi.h` with fake windows
+  -- `tools/tests/rdpd/rdpdhost.c` --, the current and an older rdpd, a Python client both
+  ways, and Onyx Remote's own `Connection.cs` when the .NET SDK is there), and
+  `unshare -rn python3 tools/tests/rdpd/loss_bench.py` (rounds a second over a loopback that
+  drops 20 % of the packets).
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial
   cable.

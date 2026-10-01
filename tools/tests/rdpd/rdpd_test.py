@@ -1,5 +1,6 @@
 # rdpd_test.py -- a client of rdpd (the host build with mock_rdpd.h): the hello, the windows,
-# their pixels (LZ4 decoded, compared with the mock's), only the changed tile the next rounds,
+# their pixels (LZ4 decoded, compared with the mock's), only the changed tile the next round,
+# nothing sent while nothing changes,
 # the pointer / keys / focus / close sent back and what rdpd injected on the "Pi".
 import socket, struct, sys, time
 port, log = int(sys.argv[1]), sys.argv[2]
@@ -74,12 +75,17 @@ check(bad == 0, "the pixels decoded == the windows' (%d rectangles, %d LZ4)" % (
 check(sum(1 for k in covered if k[0] == 7 and k[1] == 0) == 100 * 70 and sum(1 for k in covered if k[0] == 7 and k[1] == 1) == 114 * 109
       and sum(1 for k in covered if k[0] == 9) == 50 * 20, "every pixel of the contents and the frames sent")
 s.sendall(b"\x01")
-r2 = round_()
-check([t for t, p in r2] == [5], "no change: an empty round")
-s.sendall(b"\x01")
-r3 = round_()
+r3 = round_()		# (the 2nd look changes nothing: no empty round is sent; the 3rd has the change)
 px = [struct.unpack("<IBBBHHHH", p[:15]) for t, p in r3 if t == 4]
 check(len(px) == 1 and px[0][0] == 7 and px[0][1] == 0 and px[0][4:6] == (64, 0) and px[0][6] == 36, "a pixel changed: only its tile row run is sent %s" % (px,))
+s.sendall(b"\x01")
+s.settimeout(0.6)
+try:
+    recv(5); quiet = False
+except socket.timeout:
+    quiet = True
+s.settimeout(5)
+check(quiet, "no change: no round sent (no empty rounds)")
 # input back: the pointer in window coordinates, a key, a character, focus, close
 s.sendall(struct.pack("<BIhhBb", 2, 7, 10, 20, 1, 0) + struct.pack("<BIhhBb", 2, 7, 11, 20, 0, 0)
           + struct.pack("<BBI", 3, 1, 0xFF51) + struct.pack("<BBI", 3, 3, ord('x')) + struct.pack("<BI", 6, ord('A'))

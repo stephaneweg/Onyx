@@ -692,8 +692,9 @@ the Onyx menu bar at the top, the Onyx windows pixel for pixel where they are on
 screen the size of the PC's (e.g. both 1920 × 1080) fills it exactly (a smaller one sits in the
 middle, black around it; a bigger one scrolls). The pointer on the screen's **top edge** shows a
 bar there, as Windows' Remote Desktop: the Pi's name, **Pin** (the bar stays), **Minimise**,
-**Leave full screen**, **Disconnect**. F11 again (or a lost connection) gives the window back;
-the choice is kept and applied at the next connection.
+**Leave full screen**, **Disconnect**. F11 again (or **Disconnect**) gives the window back;
+the choice is kept and applied at the next connection. While the connection is being made
+again (see below) the bar stays shown, the Pi's name followed by *(reconnecting...)*.
 
 - At the top of the Pi's screen, the **Onyx menu bar**.
 - Each Onyx window is a **child window** of the Pi's screen in Onyx Remote, where it is on the Pi: a
@@ -714,8 +715,31 @@ the choice is kept and applied at the next connection.
 - Faster than VNC: only the windows that change are sent, only their changed parts,
   compressed with LZ4; moving or overlapping windows costs nothing. **16-bit colours**
   halves the data (a game in a big window; the see-through windows and the frames stay in 32
-  bits). The tool bar shows the updates a second; it says when the Pi's kernel is too old for
-  rdpd (copy the new `kernel8-rpi4.img`).
+  bits). The tool bar's **status** shows, every second: the windows, the **updates a second**
+  (the rounds of changes shown), **how the rounds flow** — *3 rounds in flight* (the current
+  rdpd) or *lock-step (an older rdpd)* —, the **pings** answered (the Pi's probes after a lost
+  packet, and its "still there?" every 2 s when nothing changes), the **damaged messages
+  skipped** (if any) and how many times it **reconnected**. It says when the Pi's kernel is too
+  old for rdpd (copy the new `kernel8-rpi4.img`). Nothing changing on the Pi, nothing is sent
+  (0 updates a second is normal then).
+- **Over Wi-Fi (lost packets)**: TCP resends a lost packet, but everything behind it waits until
+  it is resent — after up to a second or more when nothing else follows it. Onyx Remote and rdpd
+  are built to keep the screen moving anyway: up to **3 rounds of changes in flight** (one lost
+  answer no longer freezes the screen); the **pointer's moves** sent at most every 16 ms (the
+  latest position; a click, a release, the wheel and every key at once, never dropped) — far
+  fewer packets to lose; and when a round goes unanswered for 250 ms, rdpd sends a few small
+  **probes** that Onyx Remote answers at once, so that a lost packet on either side is resent
+  within a fraction of a second instead of after a timeout. A slow or lossy link still costs
+  updates, but no longer stops the screen for seconds.
+- **The connection lost** (the Wi-Fi dropped, the Pi restarted, nothing heard from it for 12 s,
+  a damaged stream), Onyx Remote **reconnects by itself** with the same options (16-bit colours,
+  Desktop, Onyx frames): the status (and the window's title) says *Connection lost (why):
+  reconnecting in 2 s (attempt 3)...*, waiting 0.5 s, 1 s, 2 s, 4 s, then 8 s between attempts,
+  for as long as it takes; the windows stay on the PC meanwhile and are brought up to date as
+  soon as the Pi answers. **Disconnect** stops trying. Input made while disconnected is not
+  replayed later; keys and buttons left held on the Pi are released when the old session ends.
+  An older rdpd (the SD card not updated) still works, lock-step; an older Onyx Remote with the
+  new rdpd too.
 - **Console** opens a **telnet console** on the Pi in a window of its own (the Onyx shell served
   by `telnetd`, port 23 — type `address:port` in the address box for another port; it works
   without Connect): the output in a text box you can **scroll, select and copy** (right click:
@@ -728,9 +752,15 @@ the choice is kept and applied at the next connection.
   queue full blocks a send) and the longest send, the time reading / comparing the windows and
   compressing (LZ4), the rectangles and pixels sent, the **client's answer** time (from a round's
   end to the PC asking for the next: the network's round trip + the PC's drawing) and the input
-  events; and at once a send over 0.5 s, a round over 1 s or a client answer over 2 s. Slow
-  sends point to the network (Wi-Fi), a slow read / compress to the Pi's CPU (another app
-  using core 0), a slow answer with quick sends to the PC or the network's latency.
+  events; then the **credit** (the rounds the client lets it send ahead: 3 for Onyx Remote now,
+  1 for an older one), the most **in flight** at once, the time spent with **no credit**
+  (waiting on the PC), the looks that found **nothing changed** (no round sent), the
+  **probes** sent after a quiet round and the **ping** round trip (retransmissions included).
+  At once: a send over 0.5 s, a round over 1 s, a client answer over 2 s, a send that stopped
+  part-way (the session ends: the client reconnects), a client silent 12 s (the session ends:
+  a PC gone without a word). Slow sends point to the network (Wi-Fi), a slow read / compress
+  to the Pi's CPU (another app using core 0), a slow answer with quick sends to the PC or the
+  network's latency, long pings to lost packets being resent.
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 
