@@ -4012,9 +4012,9 @@ input, the document, an event. Each check fails on the build before.
 
 **Not done.** An absolute box escaping a scroller does not stay put when the scroller is scrolled
 (it moves with the scroller's content); the `form` attribute (`<input form="id">`); a form with
-two text fields and no submit button is still submitted by Enter (HTML: only a lone field); the
-Codex menu's list keeps its own scroll bar when its ten rows are taller than the window (as in
-Chrome).
+two text fields and no submit button is still submitted by Enter (HTML: only a lone field). The
+footer fix was checked on the local page only: by then Wikimedia's API answered the bench with 429
+(rate limited) -- the list's opacity and Enter were checked on the live site, Mobile and Desktop.
 
 ## 8. Known gaps
 
