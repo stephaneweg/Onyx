@@ -70,7 +70,8 @@ NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
          -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
          -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF) \
          -I$(PNG) -I$(ZLIB) -I$(JPEG) -I$(WEBP)/src \
-         -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source
+         -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source \
+         -DXML_STATIC -I$(TP)/expat-2.7.1/lib
 
 # ---- sources (as host.mk) -------------------------------------------------------------
 WAP_SRC := $(shell find $(WAP)/src -name '*.c')
@@ -89,7 +90,7 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
             plot/32bpp-xrgb8888.c plot/32bpp-xbgr8888.c) $(ZUSER)/nsfb/onyx_surface.c
 
 QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c
 W3_SRC := $(wildcard $(W3)/src/*.c)
 
 CORE_SRC := \
@@ -130,12 +131,15 @@ I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
         '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -I$(UN)/freetype -I$(FT)/include $(I_BRO) -I$(ZLIB)
 PVG_SRC := $(wildcard $(PVG)/source/plutovg-*.c)
 PSVG_SRC := $(PSVG)/source/plutosvg.c
+# Onyx: expat, the XML parser (XML documents, DOMParser's XML: docs/06 section 43)
+EXPAT := $(TP)/expat-2.7.1
+EXPAT_SRC := $(EXPAT)/lib/xmlparse.c $(EXPAT)/lib/xmlrole.c $(EXPAT)/lib/xmltok.c
 GPC_SRC := $(ZUSER)/gpucomp/gpucomp.c
 MBED_SRC := $(wildcard $(MBED)/library/*.c)
 ZSTD_SRC := $(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c)
 NGH_SRC := $(wildcard $(NGH)/lib/*.c)
 
-LIB_ALL := $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
+LIB_ALL := $(EXPAT_SRC) $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
            $(PNG_SRC) $(ZLIB_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) \
            $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(IMG_C)
@@ -207,6 +211,7 @@ $(call obj,$(1)): $(1)
 	@$$(CC) $$(CF) $(2) -c $$< -o $$@
 endef
 $(foreach s,$(QJS_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(QJS))))
+$(foreach s,$(EXPAT_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu99 -DXML_STATIC -I$(EXPAT)/lib)))
 $(foreach s,$(GPC_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -ffp-contract=off -I$(ZUSER) -I$(ZKINC))))
 $(foreach s,$(MBED_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(MBED)/include -I$(MBED)/library)))
 $(foreach s,$(ZSTD_SRC),$(eval $(call LIB_RULE,$(s),-DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DDEBUGLEVEL=0 -DZSTD_NO_TRACE -I$(ZSTD)/lib -I$(ZSTD)/lib/common)))
@@ -263,6 +268,13 @@ $(call obj,$(JSQ)/qjs_crypto.c): $(OUT)/qjsgen/qjs_crypto_js.h
 $(call obj,$(JSQ)/qjs_crypto.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBED)/include
 $(call obj,$(JSQ)/qjs_codecache.c): NS_INC += -I$(QJS) -I$(MBED)/include
 $(call obj,$(JSQ)/qjs_frames.c): NS_INC += -I$(QJS)
+# Onyx: XPath / XSLT (docs/06 section 43) -- xslt.js as a C string for qjs_xml.c (loaded on demand)
+$(OUT)/qjsgen/qjs_xslt_js.h: $(JSQ)/xslt.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from xslt.js by jet.mk */'; echo 'static const char qjs_xslt_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs_xml.c): $(OUT)/qjsgen/qjs_xslt_js.h
+$(call obj,$(JSQ)/qjs_xml.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
 
 # C++: wtk, the window (onyx_chrome.cpp), the kapi's table, the Pi's TLS glue (onyx_nstls.cpp)
 CXXF = -std=gnu++17 -O2 -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -D_WIN32_WINNT=0x0A00 -D_POSIX_THREAD_SAFE_FUNCTIONS \

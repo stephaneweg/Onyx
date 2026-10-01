@@ -2,7 +2,7 @@
 // gbemu -- the Onyx Game Boy / Game Boy Color emulator (the core: user/gb).
 //
 //   gbemu <rom.gb | rom.gbc> [--fullscreen]   (without a ROM: opens the Game Library)
-//                               (runners.ini: opening a .gb / .gbc file starts it; the Game
+//                               (its app.txt "games": opening a .gb / .gbc file starts it; the Game
 //                               Library app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, Enter = Start, Backspace = Select (held keys,
 //     kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A, bottom /

@@ -126,36 +126,36 @@ static const char *grid_name (int g)
 {
 	switch (g)
 	{
-	case 0: return "Operations subject to a special scheme";
-	case 1: return "Operations subject to 6 % VAT";
-	case 2: return "Operations subject to 12 % VAT";
-	case 3: return "Operations subject to 21 % VAT";
-	case 44: return "Intra-EU services (the customer's VAT)";
-	case 45: return "Operations with VAT due by the co-contractor";
-	case 46: return "Exempt intra-EU supplies and ABC sales";
-	case 47: return "Other exempt operations, operations abroad";
-	case 48: return "Credit notes issued: grids 44 and 46";
-	case 49: return "Credit notes issued: other operations";
-	case 81: return "Goods, raw and auxiliary materials";
-	case 82: return "Services and miscellaneous goods";
-	case 83: return "Investment goods";
-	case 84: return "Credit notes received: grids 86 and 88";
-	case 85: return "Credit notes received: other operations";
-	case 86: return "Intra-EU acquisitions and ABC sales";
-	case 87: return "Other incoming operations, VAT due by you";
-	case 88: return "Intra-EU services with reverse charge";
-	case 54: return "VAT on grids 01, 02 and 03";
-	case 55: return "VAT on grids 86 and 88";
-	case 56: return "VAT on grid 87 (except deferred imports)";
-	case 57: return "VAT on imports with deferral";
-	case 61: return "Regularisations in favour of the State";
-	case 63: return "VAT to pay back on credit notes received";
-	case 59: return "Deductible VAT";
-	case 62: return "Regularisations in favour of the declarant";
-	case 64: return "VAT to recover on credit notes issued";
-	case 71: return "VAT due to the State";
-	case 72: return "VAT due by the State";
-	case 91: return "Advance paid for December (monthly filers)";
+	case 0: return TR ("Operations subject to a special scheme");
+	case 1: return TR ("Operations subject to 6 % VAT");
+	case 2: return TR ("Operations subject to 12 % VAT");
+	case 3: return TR ("Operations subject to 21 % VAT");
+	case 44: return TR ("Intra-EU services (the customer's VAT)");
+	case 45: return TR ("Operations with VAT due by the co-contractor");
+	case 46: return TR ("Exempt intra-EU supplies and ABC sales");
+	case 47: return TR ("Other exempt operations, operations abroad");
+	case 48: return TR ("Credit notes issued: grids 44 and 46");
+	case 49: return TR ("Credit notes issued: other operations");
+	case 81: return TR ("Goods, raw and auxiliary materials");
+	case 82: return TR ("Services and miscellaneous goods");
+	case 83: return TR ("Investment goods");
+	case 84: return TR ("Credit notes received: grids 86 and 88");
+	case 85: return TR ("Credit notes received: other operations");
+	case 86: return TR ("Intra-EU acquisitions and ABC sales");
+	case 87: return TR ("Other incoming operations, VAT due by you");
+	case 88: return TR ("Intra-EU services with reverse charge");
+	case 54: return TR ("VAT on grids 01, 02 and 03");
+	case 55: return TR ("VAT on grids 86 and 88");
+	case 56: return TR ("VAT on grid 87 (except deferred imports)");
+	case 57: return TR ("VAT on imports with deferral");
+	case 61: return TR ("Regularisations in favour of the State");
+	case 63: return TR ("VAT to pay back on credit notes received");
+	case 59: return TR ("Deductible VAT");
+	case 62: return TR ("Regularisations in favour of the declarant");
+	case 64: return TR ("VAT to recover on credit notes issued");
+	case 71: return TR ("VAT due to the State");
+	case 72: return TR ("VAT due by the State");
+	case 91: return TR ("Advance paid for December (monthly filers)");
 	}
 	return "";
 }
@@ -164,14 +164,14 @@ static const char *grid_short (int g)
 {
 	switch (g)
 	{
-	case 0: return "Special scheme"; case 1: return "Sales at 6 %"; case 2: return "Sales at 12 %"; case 3: return "Sales at 21 %";
-	case 44: return "EU services"; case 45: return "Co-contractor"; case 46: return "EU supplies"; case 47: return "Exempt, abroad";
-	case 48: return "Credit notes 44/46"; case 49: return "Other credit notes";
-	case 81: return "Goods, materials"; case 82: return "Services"; case 83: return "Investments"; case 84: return "Credit notes 86/88";
-	case 85: return "Other credit notes"; case 86: return "EU acquisitions"; case 87: return "VAT due by you"; case 88: return "EU services";
-	case 54: return "VAT on 01-03"; case 55: return "VAT on 86, 88"; case 56: return "VAT on 87"; case 57: return "Import VAT";
-	case 61: return "For the State"; case 63: return "On credit notes"; case 59: return "Deductible VAT"; case 62: return "For you";
-	case 64: return "On credit notes"; case 71: return "Due to State"; case 72: return "Due by State"; case 91: return "December advance";
+	case 0: return TR ("Special scheme"); case 1: return TR ("Sales at 6 %"); case 2: return TR ("Sales at 12 %"); case 3: return TR ("Sales at 21 %");
+	case 44: return TR ("EU services"); case 45: return TR ("Co-contractor"); case 46: return TR ("EU supplies"); case 47: return TR ("Exempt, abroad");
+	case 48: return TR ("Credit notes 44/46"); case 49: return TR ("Other credit notes");
+	case 81: return TR ("Goods, materials"); case 82: return TR ("Services"); case 83: return TR ("Investments"); case 84: return TR ("Credit notes 86/88");
+	case 85: return TR ("Other credit notes"); case 86: return TR ("EU acquisitions"); case 87: return TR ("VAT due by you"); case 88: return TR ("EU services");
+	case 54: return TR ("VAT on 01-03"); case 55: return TR ("VAT on 86, 88"); case 56: return TR ("VAT on 87"); case 57: return TR ("Import VAT");
+	case 61: return TR ("For the State"); case 63: return TR ("On credit notes"); case 59: return TR ("Deductible VAT"); case 62: return TR ("For you");
+	case 64: return TR ("On credit notes"); case 71: return TR ("Due to State"); case 72: return TR ("Due by State"); case 91: return TR ("December advance");
 	}
 	return grid_name (g);
 }
@@ -236,16 +236,16 @@ static int vat_checks (const money *g, char out[][96], int cap)
 	auto add = [&] (const char *s) { if (n < cap) scpy (out[n++], s, 96); };
 	for (int i = 0; i < NGRIDS; i++) if (g[GRIDS[i]] < 0)
 	{
-		char t[96] = "Grid "; char l[4]; grid_label (GRIDS[i], l); scat (t, l, 96);
-		scat (t, " is negative: Intervat takes no negative amount -- check its credit notes.", 96); add (t);
+		char t[96]; scpy (t, TR ("Grid "), 96); char l[4]; grid_label (GRIDS[i], l); scat (t, l, 96);
+		scat (t, TR (" is negative: Intervat takes no negative amount -- check its credit notes."), 96); add (t);
 	}
 	money due = tax_of (g[1], 600) + tax_of (g[2], 1200) + tax_of (g[3], 2100);
-	if (labs_ (g[54] - due) > 100 + due / 100) add ("Grid 54 differs from the VAT on grids 01, 02 and 03 (their rates).");
-	if ((g[86] || g[88]) && !g[55]) add ("Grids 86 / 88 hold acquisitions but grid 55 holds no VAT due.");
-	if (g[55] && !g[86] && !g[88]) add ("Grid 55 holds VAT but grids 86 and 88 are empty.");
-	if ((g[56] || g[57]) && !g[87]) add ("Grids 56 / 57 hold VAT but grid 87 is empty.");
-	if (g[63] > tax_of (g[85] + g[84], 2100) + 100) add ("Grid 63 is more than 21 % of grids 84 and 85.");
-	if (g[64] > tax_of (g[49], 2100) + 100) add ("Grid 64 is more than 21 % of grid 49.");
+	if (labs_ (g[54] - due) > 100 + due / 100) add (TR ("Grid 54 differs from the VAT on grids 01, 02 and 03 (their rates)."));
+	if ((g[86] || g[88]) && !g[55]) add (TR ("Grids 86 / 88 hold acquisitions but grid 55 holds no VAT due."));
+	if (g[55] && !g[86] && !g[88]) add (TR ("Grid 55 holds VAT but grids 86 and 88 are empty."));
+	if ((g[56] || g[57]) && !g[87]) add (TR ("Grids 56 / 57 hold VAT but grid 87 is empty."));
+	if (g[63] > tax_of (g[85] + g[84], 2100) + 100) add (TR ("Grid 63 is more than 21 % of grids 84 and 85."));
+	if (g[64] > tax_of (g[49], 2100) + 100) add (TR ("Grid 64 is more than 21 % of grid 49."));
 	return n;
 }
 
@@ -254,8 +254,8 @@ static int vat_checks (const money *g, char out[][96], int cap)
 static void period_name (int year, int period, bool monthly, char *out, int cap)
 {
 	out[0] = '\0';
-	if (monthly) scpy (out, MONTH_NAME[(period - 1) % 12], cap);
-	else { scpy (out, "Q", cap); scat_num (out, period, cap); }
+	if (monthly) scpy (out, TR (MONTH_NAME[(period - 1) % 12]), cap);
+	else { scpy (out, TRC ("quarter", "Q"), cap); scat_num (out, period, cap); }
 	scat (out, " ", cap); scat_num (out, year, cap);
 }
 static void period_range (int year, int period, bool monthly, int *from, int *to)
@@ -380,7 +380,7 @@ static bool vat_settlement (const Book &b, int year, int period, bool monthly, E
 	int j = 0; while (j < b.njr && b.jr[j].type != JT_MISC) j++;
 	e.journal = j < b.njr ? j : 0; e.date = to; e.due = to; e.flags = EF_SETTLE;
 	char pn[32]; period_name (year, period, monthly, pn, sizeof pn);
-	char t[64] = "VAT settlement "; scat (t, pn, sizeof t); sset (e.text, t);
+	char t[64]; scpy (t, TR ("VAT settlement "), sizeof t); scat (t, pn, sizeof t); sset (e.text, t);
 	if (due) { Line &l = entry_add_line (e); scpy (l.account, b.accVatDue, CODE_MAX); l.amount = -due; sset (l.text, t); }
 	if (ded) { Line &l = entry_add_line (e); scpy (l.account, b.accVatDeduct, CODE_MAX); l.amount = -ded; sset (l.text, t); }
 	money bal = due + ded;					// (negative: the State is owed it)

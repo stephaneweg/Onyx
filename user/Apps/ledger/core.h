@@ -16,6 +16,7 @@
 #define _ledger_core_h
 
 #include "Apps/cardfile/model.h"
+#include "wtk/lang.h"		// TR (): the words in the language chosen
 
 namespace lg {
 

@@ -52,6 +52,24 @@ build () {
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
+	if [ "$1" = media ]; then			# (newlib-like: FreeType, the decoders, Koton's MeltySynth)
+		mkdir -p "$OUT/media"
+		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/media/codecs.o" || return 1
+		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/media/vorbis.o" || return 1
+		for f in user/Apps/koton/synth/*.cpp; do $CXX -c "$f" -o "$OUT/media/$(basename "$f" .cpp).o" || return 1; done
+		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
+			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+	fi
+	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
+		if [ ! -f "$OUT/libmb.a" ]; then
+			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
+			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
+		fi
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o" || return 1; done
+		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
+			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
@@ -67,7 +85,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot setup
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -111,8 +129,9 @@ P=SIM_POS=100,100
 WINS="100,80,500,400,0,1;560,200,400,300,0,0;150,120,600,450,1,0;50,60,300,200,2,0"
 # applet APP DUMP "SCRIPT": APP as a Control Panel applet, shown in the Control Panel's window
 applet () {
-	sim $1 ${2}_ap "$3" SIM_APPLET=1
-	sim control $2 "$W" $P SIM_ARGS=$1 SIM_MAIL=40:7 SIM_SURFACE="$OUT/${2}_ap.elsm"
+	a=$1; d=$2; sc=$3; shift 3
+	sim $a ${d}_ap "$sc" SIM_APPLET=1 "$@"
+	sim control $d "$W" $P SIM_ARGS=$a SIM_MAIL=40:7 SIM_SURFACE="$OUT/${d}_ap.elsm"
 }
 
 # ---- the apps, a window each -------------------------------------------------------------------
@@ -332,11 +351,40 @@ PY
 	ss screenshot-edit "$E" $SP $G; png screenshot-edit
 	ss screenshot-pen "$E;down 573 25;up 573 25;move 600 95;wait;wait" $SP $G; png screenshot-pen
 fi
+if want media; then			# (Media Player over a sample library made by tools/tests/media/make_library.py -- ffmpeg,
+					#  mutagen --: the home, the albums, an album playing, the songs' menu, now playing, a MIDI
+					#  file's notes, the folders, the mini player; each run over a fresh copy of the library)
+	[ -d "$OUT/mlib/Music" ] || python3 tools/tests/media/make_library.py "$OUT/mlib" >/dev/null
+	mm () { rm -rf "$OUT/writes/Music" "$OUT/writes/etc/media"; mkdir -p "$OUT/writes/etc"; cp -r "$OUT/mlib/Music" "$OUT/writes/"; cp -r "$OUT/mlib/etc/media" "$OUT/writes/etc/";
+		n=$1; shift; s=$1; shift
+		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_POS=12,30 "$@" SIM="$s;dump $OUT/$n.elsm;exit" "$OUT/media.bin" >>"$OUT/log.txt" 2>&1 || { echo "shots: media failed"; exit 1; }; }
+	W10="$W;$W;$W;$W"; S0="$W10;$W10;$W10;$W10;$W10"	# (the scan, the covers)
+	ALB="down 100 112;up 100 112;$W10;$W10"				# (Albums)
+	PLAY="move 520 230;$W;down 470 300;up 470 300;$W10;$W10"	# (the 1st album's page; its Play)
+	mm media-home "$S0;move 900 120;$W10" ; png media-home
+	mm media-albums "$S0;$ALB;move 540 230;$W10;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$ALB;move 760 420;$W10"; png media-albums
+	mm media-album "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$W10;move 400 360;$W"; png media-album
+	mm media-songs "$S0;down 100 142;up 100 142;$W10;down 300 333;up 300 333;mods 2;down 300 397;up 300 397;mods 0;$W;rdown 300 365;rup 300 365;$W;move 380 400;$W;$W"; png media-songs
+	mm media-nowplaying "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 40 585;up 40 585;$W10;$W10"; png media-nowplaying
+	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
+	mm media-welcome "$S0;menu 1;$W10"; png media-welcome
+	mm media-mini "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 841 581;up 841 581;$W10;$W10"; png media-mini
+fi
 if want clipboard; then			# (the shared clipboard's widget over the desktop: clipd's ring seeded,
 					#  the cursor on the image; the pointer over a row -- its x)
 	[ -f "$OUT/d_term.elsm" ] || { echo "shots: clipboard needs desktop's dumps (shots.sh desktop clipboard)"; exit 1; }
 	sim clipboard clipboard "wait;wait;wait;move 200 260;$W" SIM_IPC=1
 	scene clipboard "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm" "$OUT/clipboard.elsm"
+fi
+if want pkgman; then			# (the Package Manager: a card of its own -- pkg_sample.py: a repository with 4 updates,
+					#  a few apps not installed; what it installs written apart, $OUT/pkgw)
+	python3 $D/pkg_sample.py "$OUT/pkgsim" >/dev/null
+	PK="SIM_SD=$OUT/pkgsim/card SIM_SLEEP=1"
+	for t in "pkgman:" "pkgman-installed:down 165 25;up 165 25;wait;wait" "pkgman-available:down 300 25;up 300 25;wait;wait" \
+		 "pkgman-restart:down 600 447;up 600 447;$(printf 'wait;%.0s' $(seq 250))"; do
+		rm -rf "$OUT/pkgw"; mkdir -p "$OUT/pkgw"
+		n=${t%%:*}; applet pkgman $n "wait;wait;wait;wait;wait;${t#*:};$W" $PK SIM_WRITES="$OUT/pkgw"; png $n
+	done
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)
 	M=SIM_OVERLAY=$D/milk:$D/sd

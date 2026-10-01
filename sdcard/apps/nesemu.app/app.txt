@@ -1,3 +1,7 @@
 # Onyx application metadata -- read by the category launcher (key=value, no section).
+#   games: the systems it plays and their files' extensions (the Game Library's sections; a file
+#   of one opens with it, launch.h); order: the sections' order (small first)
 name = NES
 category = Emulators
+games = NES: nes
+order = 60

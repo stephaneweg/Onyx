@@ -53,7 +53,7 @@ ARCHIVES := $(foreach l,$(LIBS),$(NS)/$(l)/$(l).a) $(NS)/freetype-2.14.3/libfree
             $(NS)/brotli-1.1.0/libbrotlidec.a $(NS)/quickjs-ng-0.17.0/libquickjs.a \
             $(NS)/plutovg-1.3.3/libplutovg.a $(NS)/plutosvg-0.0.8/libplutosvg.a \
             $(NS)/zstd-1.5.7/libzstddec.a $(NS)/nghttp2-1.70.0/libnghttp2.a \
-            $(NS)/wasm3-0.9.2/libm3.a
+            $(NS)/wasm3-0.9.2/libm3.a $(NS)/expat-2.7.1/libexpat.a
 
 .PHONY: all clean
 all: $(ARCHIVES)
@@ -190,8 +190,16 @@ W3_OBJ := $(patsubst %.c,%.o,$(wildcard $(W3)/src/*.c))
 $(W3_OBJ): CINC := -std=gnu11 -O3 -I$(W3)/src
 $(W3)/libm3.a: $(W3_OBJ); $(AR) rcs $@ $^
 
+# ---- expat (Onyx: the XML parser -- XML documents, DOMParser, XSLT: docs/06 section 43) --
+# Expat 2.7.1 (MIT), lib/ alone; its expat_config.h written by hand (no entropy source on
+# the Pi: the caller sets the hash salt). third_party/expat-2.7.1/README.onyx.
+EXPAT := $(NS)/expat-2.7.1
+EXPAT_OBJ := $(patsubst %.c,%.o,$(EXPAT)/lib/xmlparse.c $(EXPAT)/lib/xmlrole.c $(EXPAT)/lib/xmltok.c)
+$(EXPAT_OBJ): CINC := -std=gnu99 -DXML_STATIC -I$(EXPAT)/lib
+$(EXPAT)/libexpat.a: $(EXPAT_OBJ); $(AR) rcs $@ $^
+
 clean:
-	rm -f $(ZSTD_OBJ) $(NGH_OBJ)
+	rm -f $(ZSTD_OBJ) $(NGH_OBJ) $(EXPAT_OBJ)
 	rm -f $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ)
 	rm -f $(QJS_OBJ) $(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ) $(ARCHIVES)
 	rm -f $(ALL_DEPS)
@@ -199,6 +207,6 @@ clean:
 	rm -f $(NS)/libparserutils/src/charset/aliases.inc
 
 # the headers each object was built from (-MMD): a changed header rebuilds its users
-ALL_DEPS := $(patsubst %.o,%.o.d,$(ZSTD_OBJ) $(NGH_OBJ) $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ) $(QJS_OBJ) \
+ALL_DEPS := $(patsubst %.o,%.o.d,$(EXPAT_OBJ) $(ZSTD_OBJ) $(NGH_OBJ) $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ) $(QJS_OBJ) \
 	$(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ))
 -include $(wildcard $(ALL_DEPS))

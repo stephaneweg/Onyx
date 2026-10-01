@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Gamepad
+icon   = SD:/apps/padconf.app/icon.bmp
+target = padconf
+text   = The USB gamepads: what they send, their buttons mapped

@@ -71,11 +71,14 @@ Two weaknesses, worth fixing:
 | zlib, libpng | `third_party/` | zlib / libpng licence | — |
 | libjpeg 9f | `third_party/jpeg-9f` | IJG | Docs: "This software is based in part on the work of the Independent JPEG Group" |
 | libwebp, zstd, brotli | `third_party/` | BSD-3 / BSD-3 (or GPLv2) / MIT | Keep the notices |
-| nghttp2, quickjs-ng, wasm3, plutovg, plutosvg, webref-css | `third_party/` | MIT | Keep the notices |
+| nghttp2, quickjs-ng, wasm3, plutovg, plutosvg, webref-css, expat (Jet Browser's XML parser: `third_party/expat-2.7.1`, its `COPYING`) | `third_party/` | MIT | Keep the notices |
 | CLDR 48 | `third_party/cldr-48` | Unicode License v3 | Keep the notice |
 | stb_image | `user/img` | Public domain / MIT | — |
 | simplewebp | `user/img` | BSD | Keep the notice |
-| MeltySynth (C++ port) | `user/Apps/koton/synth` | MIT | Keep the notice |
+| MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
+| minimp3 | `third_party/minimp3`, Media Player | CC0 (public domain) | — |
+| stb_vorbis | `third_party/stb_vorbis`, Media Player | Public domain / MIT | — |
+| dr_flac, dr_wav | `third_party/dr_libs`, Media Player | Public domain / MIT-0 | — |
 | ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
 | Mesa (V3D / QPU headers) | `tools/qpu/mesa` | MIT | Keep the notices |
 | newlib (libc of the C/C++ apps) | the toolchain | BSD-like (several) | Ship newlib's `COPYING.NEWLIB` notices with the binaries |

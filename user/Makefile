@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -145,6 +145,19 @@ clipboard.elf: Apps/clipboard/main.cpp clipboard.h clipproto.h ft/libft.a ft/wtk
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 
+# The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
+# update daemon (no window) -- on pkg/pkglib.h as bin/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
+PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
+PKG_DEPS = pkg/pkglib.h http.hpp tls/onyx_tls.hpp $(wildcard Apps/archiver/*.h) zlib/libz.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) bmp.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a
+	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
+	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< wtk/libwtk.a ft/libft.a zlib/libz.a \
+	       -L$(PKG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
+	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
+	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< zlib/libz.a \
+	       -L$(PKG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+
 # Screenshot, the screen capture tool (Apps/screenshot: docs/screenshot/README.md): a newlib app (FreeType's text
 # through wtk), the PNG / JPEG / BMP writers of img/pngsave.hpp, the clipboard (clipd) and notifyd.
 screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h ft/libft.a ft/wtkface.h wtk/libwtk.a \
@@ -165,6 +178,19 @@ koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) ft/lib
 	   libc/crt0libc.o libc/onyx_syscalls.o user.ld $(KOTON_HDR)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       $(KOTON_OBJ) wtk/libwtk.a ft/libft.a -lm -o $@
+
+# Media Player, the music library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through wtk),
+# its decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built with
+# the FPU) and Koton's MeltySynth for the MIDI files (Koton's objects, shared).
+MEDIA_OBJ = Apps/media/obj/codecs.o Apps/media/obj/vorbis.o
+Apps/media/obj/%.o: Apps/media/%.c Apps/media/codecs.h
+	@mkdir -p $(dir $@)
+	$(CC) $(NL_CFLAGS) -w -I../third_party -c $< -o $@
+MEDIA_SYNTH = $(filter Apps/koton/obj/synth/%,$(KOTON_OBJ))
+media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_OBJ) $(MEDIA_SYNTH) img/imgload.hpp fileassoc.h notify.h \
+	   ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       $(MEDIA_OBJ) $(MEDIA_SYNTH) wtk/libwtk.a ft/libft.a -lm -o $@
 
 # Koton's plugins (user/kplug.h, the protocol user/kplug_proto.h; the host: Apps/koton/plug): each
 # Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to

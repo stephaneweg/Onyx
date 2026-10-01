@@ -65,7 +65,7 @@ public:
 	CellEditor *ed;
 	const char *addText;
 	EditGrid (int l, int t, int w, int h, EGModel *model)
-		: Widget (l, t, w, h), m (model), ncol (0), flex (-1), cur (-1), curCol (0), first (0), headH (28), rowH (ROW_H + 2), addText ("Add a line"),
+		: Widget (l, t, w, h), m (model), ncol (0), flex (-1), cur (-1), curCol (0), first (0), headH (28), rowH (ROW_H + 2), addText (TR ("Add a line")),
 		  m_hotRow (-1), m_hotX (false), m_hotAdd (false), m_lost (false), m_thumb (false)
 	{
 		canFocus = true;

@@ -48,28 +48,28 @@ public:
 		buttons (s_save, 0, s_cancel, s_del);
 		// Print and Next at the left of the others
 		int x = bDelete->left - 8;
-		bNext = new FlatButton ("Next step", s_next, FB_SECONDARY, NI_NEXT); x -= bNext->width; bNext->left = x; bNext->top = bSave->top; bNext->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		bNext->tip = "An order from a quote, a delivery note from an order, the invoice"; addChild (bNext); x -= 8;
-		bPrint = new FlatButton ("Print", s_print, FB_SECONDARY, NI_PRINT); x -= bPrint->width; bPrint->left = x; bPrint->top = bSave->top; bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		bPrint->tip = "The document made by Writer from its template"; addChild (bPrint);
+		bNext = new FlatButton (TR ("Next step"), s_next, FB_SECONDARY, NI_NEXT); x -= bNext->width; bNext->left = x; bNext->top = bSave->top; bNext->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		bNext->tip = TR ("An order from a quote, a delivery note from an order, the invoice"); addChild (bNext); x -= 8;
+		bPrint = new FlatButton (TR ("Print"), s_print, FB_SECONDARY, NI_PRINT); x -= bPrint->width; bPrint->left = x; bPrint->top = bSave->top; bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		bPrint->tip = TR ("The document made by Writer from its template"); addChild (bPrint);
 		int W = width, rx = W - 330;
 		party = new PickEdit (130, 72, rx - 130 - 60, SK_PARTY, PK_CUSTOMER); party->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		party->onPick = on_party; party->onChange = mark_dirty; addChild (party);
 		bParty = new FlatButton ("", s_newParty, FB_SECONDARY, NI_PLUS); bParty->left = rx - 52; bParty->top = 70; bParty->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		bParty->resizeTo (34, 30); bParty->tip = "A new party (its card)"; addChild (bParty);
+		bParty->resizeTo (34, 30); bParty->tip = TR ("A new party (its card)"); addChild (bParty);
 		date = new DateEdit (rx + 110, 72, 150); date->anchor = ANCHOR_RIGHT | ANCHOR_TOP; date->onChange = mark_dirty; addChild (date);
 		until = new DateEdit (rx + 110, 104, 150); until->anchor = ANCHOR_RIGHT | ANCHOR_TOP; until->onChange = mark_dirty; addChild (until);
 		text = new LineEdit (130, 136, rx - 130 - 18); text->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT; text->onChange = mark_dirty;
-		text->placeholder = "What it is about, its conditions"; addChild (text);
-		state = new ChoiceBox (rx + 110, 136, 150); state->anchor = ANCHOR_RIGHT | ANCHOR_TOP; state->setOptions (CS_NAME, CS_COUNT); state->onChange = mark_dirty; addChild (state);
-		ref = new LineEdit (130, 168, 230); ref->onChange = mark_dirty; ref->placeholder = "Their reference, an order number"; addChild (ref);
+		text->placeholder = TR ("What it is about, its conditions"); addChild (text);
+		state = new ChoiceBox (rx + 110, 136, 150); state->anchor = ANCHOR_RIGHT | ANCHOR_TOP; { const char *csn[CS_COUNT]; for (int i = 0; i < CS_COUNT; i++) csn[i] = TR (CS_NAME[i]); state->setOptions (csn, CS_COUNT); } state->onChange = mark_dirty; addChild (state);
+		ref = new LineEdit (130, 168, 230); ref->onChange = mark_dirty; ref->placeholder = TR ("Their reference, an order number"); addChild (ref);
 		g = new EditGrid (16, 210, W - 32, height - 210 - 120, this);
 		g->anchor = ANCHOR_FILL;
-		g->addCol ("Description", 250, EK_TEXT);
-		g->addCol ("Quantity", 86, EK_MONEY, true);
-		g->addCol ("Unit price", 110, EK_MONEY, true);
-		g->addCol ("VAT code", 84, EK_VAT, false, VS_SALES);
-		g->addCol ("Total", 110, EK_READ, true);
+		g->addCol (TR ("Description"), 250, EK_TEXT);
+		g->addCol (TR ("Quantity"), 86, EK_MONEY, true);
+		g->addCol (TR ("Unit price"), 110, EK_MONEY, true);
+		g->addCol (TR ("VAT code"), 84, EK_VAT, false, VS_SALES);
+		g->addCol (TR ("Total"), 110, EK_READ, true);
 		g->flex = 0;
 		addChild (g);
 	}
@@ -81,7 +81,7 @@ public:
 	void setup ()
 	{
 		party->sug.arg = sale () ? PK_CUSTOMER : PK_SUPPLIER;
-		party->placeholder = sale () ? "The customer: a name, a code, a VAT number" : "The supplier: a name, a code, a VAT number";
+		party->placeholder = sale () ? TR ("The customer: a name, a code, a VAT number") : TR ("The supplier: a name, a code, a VAT number");
 		g->col[3].sugArg = sale () ? VS_SALES : VS_PURCH;
 		g->reset ();
 	}
@@ -96,8 +96,8 @@ public:
 	}
 	void titleFor ()
 	{
-		if (d.id) { char n[32]; cdoc_number (d, n, sizeof n); scpy (head, CD_NAME[d.kind], sizeof head); scat (head, " ", sizeof head); scat (head, n, sizeof head); }
-		else { scpy (head, "New ", sizeof head); char k[32]; scpy (k, CD_NAME[d.kind], sizeof k); k[0] = (char) (k[0] + 32); scat (head, k, sizeof head); }
+		if (d.id) { char n[32]; cdoc_number (d, n, sizeof n); scpy (head, TR (CD_NAME[d.kind]), sizeof head); scat (head, " ", sizeof head); scat (head, n, sizeof head); }
+		else { static const char *const NEWK[CD_COUNT] = { "New quote", "New order", "New delivery note", "New purchase order" }; scpy (head, TR (NEWK[d.kind]), sizeof head); }
 		bDelete->hidden = !d.id;
 		// Next and Print at the left of the buttons shown
 		int x = (bDelete->hidden ? bCancel->left - 10 : bDelete->left) - 8;
@@ -129,9 +129,9 @@ public:
 	void subtitle (char *out, int cap) override
 	{
 		out[0] = '\0';
-		if (d.from) { int i = cdoc_index (g_b, d.from); if (i >= 0) { char n[32]; cdoc_number (g_b.cd[i], n, sizeof n); scpy (out, "From ", cap); scat (out, CD_NAME[g_b.cd[i].kind], cap); scat (out, " ", cap); scat (out, n, cap); } }
-		if (cdoc_invoiced (d)) { int i = entry_index (g_b, d.invoice); if (i >= 0) { char r[40]; entry_ref (g_b, g_b.e[i], r, sizeof r); if (out[0]) scat (out, "  \xB7  ", cap); scat (out, "Invoiced: ", cap); scat (out, r, cap); } }
-		if (!out[0]) scpy (out, "Not posted (its invoice will be)", cap);
+		if (d.from) { int i = cdoc_index (g_b, d.from); if (i >= 0) { char n[32]; cdoc_number (g_b.cd[i], n, sizeof n); scpy (out, TRC ("origin", "From "), cap); scat (out, TR (CD_NAME[g_b.cd[i].kind]), cap); scat (out, " ", cap); scat (out, n, cap); } }
+		if (cdoc_invoiced (d)) { int i = entry_index (g_b, d.invoice); if (i >= 0) { char r[40]; entry_ref (g_b, g_b.e[i], r, sizeof r); if (out[0]) scat (out, "  \xB7  ", cap); scat (out, TR ("Invoiced: "), cap); scat (out, r, cap); } }
+		if (!out[0]) scpy (out, TR ("Not posted (its invoice will be)"), cap);
 	}
 	// ---- the lines (EGModel) ----
 	int rows () override { return d.nl; }
@@ -155,7 +155,7 @@ public:
 		switch (c)
 		{
 		case 0: sset (l.text, t); break;
-		case 1: { long long q; if (!qty_parse (t, &q)) return "Type a quantity, as 2,5."; l.qty = q; break; }
+		case 1: { long long q; if (!qty_parse (t, &q)) return TR ("Type a quantity, as 2,5."); l.qty = q; break; }
 		case 2: { money m; const char *w = put_money (t, &m); if (w[0]) return w; l.price = m; break; }
 		case 3: { int x; const char *w = resolve_vat (t, sale () ? VS_SALES : VS_PURCH, &x); if (w[0]) return w; l.vat = (signed char) x; break; }
 		}
@@ -177,16 +177,16 @@ public:
 	bool save () override
 	{
 		if (!g->commit ()) return false;
-		if (!party->resolve () || party->value ()[0] != 'P') { warn ("Save", sale () ? "Choose the customer." : "Choose the supplier."); party->setFocus (); return false; }
+		if (!party->resolve () || party->value ()[0] != 'P') { warn (TR ("Save"), sale () ? TR ("Choose the customer.") : TR ("Choose the supplier.")); party->setFocus (); return false; }
 		d.party = cell_int (party->value () + 1);
 		int dt = date_parse (date->text ());
-		if (!dt) { date->setError (true); warn ("Save", "Type the date, as 29/09/2026."); return false; }
+		if (!dt) { date->setError (true); warn (TR ("Save"), TR ("Type the date, as 29/09/2026.")); return false; }
 		d.date = dt;
 		d.until = until->text ()[0] ? date_parse (until->text ()) : 0;
 		sset (d.text, text->text ()); scpy (d.ref, ref->text (), sizeof d.ref);
 		d.status = iclamp (state->sel, 0, CS_COUNT - 1);
 		for (int i = d.nl - 1; i >= 0; i--) if (blank (i)) cdoc_remove_line (d, i);
-		if (!d.nl) { cdoc_add_line (d); warn ("Save", "The document has no line."); return false; }
+		if (!d.nl) { cdoc_add_line (d); warn (TR ("Save"), TR ("The document has no line.")); return false; }
 		bool wasNew = !d.id;
 		CDoc x; cdoc_copy (x, d);
 		int i = cdoc_save (g_b, x);
@@ -197,7 +197,7 @@ public:
 			if (k >= 0 && g_b.cd[k].status != CS_REFUSED) g_b.cd[k].status = CS_DONE;
 		}
 		char n[32], m[96]; cdoc_number (d, n, sizeof n);
-		scpy (m, CD_NAME[d.kind], sizeof m); scat (m, " ", sizeof m); scat (m, n, sizeof m); scat (m, wasNew ? " made" : " saved", sizeof m);
+		scpy (m, TR (CD_NAME[d.kind]), sizeof m); scat (m, " ", sizeof m); scat (m, n, sizeof m); scat (m, wasNew ? TR (" made") : TRC ("cdoc", " saved"), sizeof m);
 		dirty = false;
 		changed ();
 		status (m);
@@ -208,10 +208,10 @@ public:
 	{
 		int i = cdoc_index (g_b, d.id);
 		if (i < 0) return;
-		if (ask ("Delete", "Delete this document for good?", MB_YESNO, 2) != 1) return;
+		if (ask (TR ("Delete"), TR ("Delete this document for good?"), MB_YESNO, 2) != 1) return;
 		cdoc_delete (g_b, i);
 		changed ();
-		status ("Document deleted");
+		status (TR ("Document deleted"));
 		close ();
 	}
 	void print ()
@@ -224,10 +224,10 @@ public:
 		if ((dirty || !d.id) && !save ()) return;
 		int x, y; abs_pos (bNext, &x, &y);
 		PopupMenu m (x, y + bNext->height + 2);
-		if (d.kind == CD_QUOTE) m.add ("Make the order", 1);
-		if (d.kind == CD_ORDER || d.kind == CD_QUOTE) m.add ("Make a delivery note", 2);
-		m.add (sale () ? "Make the invoice" : "Make the purchase invoice", 3, !cdoc_invoiced (d));
-		if (d.kind == CD_QUOTE) { m.separator (); m.add ("Accepted", 4, d.status != CS_ACCEPTED); m.add ("Refused", 5, d.status != CS_REFUSED); }
+		if (d.kind == CD_QUOTE) m.add (TR ("Make the order"), 1);
+		if (d.kind == CD_ORDER || d.kind == CD_QUOTE) m.add (TR ("Make a delivery note"), 2);
+		m.add (sale () ? TR ("Make the invoice") : TR ("Make the purchase invoice"), 3, !cdoc_invoiced (d));
+		if (d.kind == CD_QUOTE) { m.separator (); m.add (TR ("Accepted"), 4, d.status != CS_ACCEPTED); m.add (TR ("Refused"), 5, d.status != CS_REFUSED); }
 		int r = m.run ();
 		int i = cdoc_index (g_b, d.id);
 		if (i < 0) return;
@@ -241,7 +241,7 @@ public:
 		else if (r == 3)
 		{
 			int j = jrn_first (g_b, sale () ? JT_SALES : JT_PURCH);
-			if (j < 0) { warn ("Invoice", "No journal for it (Settings > Journals)."); return; }
+			if (j < 0) { warn (TR ("Invoice"), TR ("No journal for it (Settings > Journals).")); return; }
 			int back = this->back, id = d.id;
 			CDoc src; cdoc_copy (src, g_b.cd[i]);
 			new_document (j, false, back);
@@ -265,9 +265,9 @@ public:
 	{
 		drawHead ();
 		int W = width, rx = W - 330;
-		lab (20, 72, sale () ? "Customer" : "Supplier");
-		lab (rx, 72, "Date"); lab (rx, 104, d.kind == CD_QUOTE ? "Valid until" : "Delivery"); lab (20, 136, "Description"); lab (rx, 136, "State");
-		lab (20, 168, "Reference");
+		lab (20, 72, sale () ? TR ("Customer") : TR ("Supplier"));
+		lab (rx, 72, TR ("Date")); lab (rx, 104, d.kind == CD_QUOTE ? TR ("Valid until") : TR ("Delivery")); lab (20, 136, TR ("Description")); lab (rx, 136, TR ("State"));
+		lab (20, 168, TR ("Reference"));
 		const Party *p = pty ();
 		if (p)
 		{
@@ -280,16 +280,16 @@ public:
 		wk_rbox (canvas, tx, fy, 284, fh, 8, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 122));
 		wk_rline (canvas, tx, fy, 284, fh, 8, wk_mix (C_BG, 0, 60), 100);
 		char a[32];
-		wk_text_l (canvas, tx + 14, fy + 8, 20, "Total excl. VAT", field_dim ()); text_r (canvas, tx + 270, fy + 8, 20, money_s (tNet, a), C_FIELD_TEXT);
-		wk_text_l (canvas, tx + 14, fy + 30, 20, "VAT", field_dim ()); text_r (canvas, tx + 270, fy + 30, 20, money_s (tTax, a), C_FIELD_TEXT);
+		wk_text_l (canvas, tx + 14, fy + 8, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 8, 20, money_s (tNet, a), C_FIELD_TEXT);
+		wk_text_l (canvas, tx + 14, fy + 30, 20, TR ("VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 30, 20, money_s (tTax, a), C_FIELD_TEXT);
 		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, wk_tone (C_FIELD, 100));
-		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, "Total", C_FIELD_TEXT, 2);
+		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, TR ("Total"), C_FIELD_TEXT, 2);
 		text_r (canvas, tx + 270, fy + fh - 36, 28, money_s (tTot, a), C_FIELD_TEXT, 2);
-		wk_text_l (canvas, 20, fy, 20, "Printing", dim_ink (C_BG), 2);
+		wk_text_l (canvas, 20, fy, 20, TR ("Printing"), dim_ink (C_BG), 2);
 		int k = pk_of (d.kind);
-		char t[160] = "Its template: "; scat (t, PK_FILE[k], sizeof t); scat (t, ".rtf (Settings > Printing)", sizeof t);
+		char t[160]; scpy (t, TR ("Its template: "), sizeof t); scat (t, PK_FILE[k], sizeof t); scat (t, ".rtf", sizeof t); scat (t, TR (" (Settings > Printing)"), sizeof t);
 		text_fit_l (canvas, 20, fy + 22, tx - 40, 18, t, dim_ink (C_BG));
-		scpy (t, "Made by Writer in SD:/docs/", sizeof t); scat (t, PK_FOLDER[k], sizeof t);
+		scpy (t, TR ("Made by Writer in "), sizeof t); scat (t, "SD:/docs/", sizeof t); scat (t, PK_FOLDER[k], sizeof t);
 		text_fit_l (canvas, 20, fy + 40, tx - 40, 18, t, dim_ink (C_BG));
 	}
 	static void on_party (Widget &)
@@ -330,28 +330,29 @@ public:
 	{
 		resizeTo (800, 660);
 		HeadRow h (this);
-		h.add ("Other...", s_other, FB_SECONDARY, NI_PLUS, "An order, a delivery note, a purchase order");
-		h.add ("New quote", s_quote, FB_PRIMARY, NI_PLUS, "A new quote (Ctrl+N)");
+		h.add (TR ("Other..."), s_other, FB_SECONDARY, NI_PLUS, TR ("An order, a delivery note, a purchase order"));
+		h.add (TR ("New quote"), s_quote, FB_PRIMARY, NI_PLUS, TR ("A new quote (Ctrl+N)"));
 		static const char *const F[5] = { "All", "Quotes", "Orders", "Delivery notes", "Purchase orders" };
-		filter = new Segmented (16, 70, F, 5, on_filter); addChild (filter);
+		const char *FT[5]; for (int i = 0; i < 5; i++) FT[i] = TR (F[i]);
+		filter = new Segmented (16, 70, FT, 5, on_filter); addChild (filter);
 		search = new SearchBox (180); search->left = width - 16 - 180; search->top = 70; search->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		search->placeholder = "Search"; search->onChange = on_search; search->onEnter = on_search_done; addChild (search);
+		search->placeholder = TR ("Search"); search->onChange = on_search; search->onEnter = on_search_done; addChild (search);
 		g = new_grid (this, 16, 108, width - 32, height - 108 - 12, this);
 		g->setColumns (6);
-		g->setColumn (0, "Document", 122); g->setColumn (1, "Date", 102); g->setColumn (2, "Party", 160);
-		g->setColumn (3, "Description", 150); g->setColumn (4, "Total", 100, GRID_RIGHT); g->setColumn (5, "State", 100);
+		g->setColumn (0, TR ("Document"), 122); g->setColumn (1, TR ("Date"), 102); g->setColumn (2, TR ("Party"), 160);
+		g->setColumn (3, TR ("Description"), 150); g->setColumn (4, TR ("Total"), 100, GRID_RIGHT); g->setColumn (5, TR ("State"), 100);
 		g->cellText = c_text; g->cellDraw = c_draw; g->onActivate = on_open; g->onContext = on_context; g->sortable = false;
-		g->emptyText = "No quote or order yet: New quote makes the first one.";
+		g->emptyText = TR ("No quote or order yet: New quote makes the first one.");
 		fit_columns (g, 2, 90, 3, 5, 4);
 	}
 	~DocsPage () { delete [] rows; }
 	void resizeTo (int w, int h) override { Page::resizeTo (w, h); if (g) fit_columns (g, 2, 90, 3, 5, 4); }
-	const char *title () override { return "Quotes and orders"; }
+	const char *title () override { return TR ("Quotes and orders"); }
 	void subtitle (char *out, int cap_) override
 	{
 		int open = 0; for (int i = 0; i < nrows; i++) { int s = g_b.cd[rows[i].i].status; if (s == CS_DRAFT || s == CS_SENT || s == CS_ACCEPTED) open++; }
-		out[0] = '\0'; scat_num (out, nrows, cap_); scat (out, nrows == 1 ? " document" : " documents", cap_);
-		scat (out, "  \xB7  ", cap_); scat_num (out, open, cap_); scat (out, " to follow up", cap_);
+		out[0] = '\0'; scat_num (out, nrows, cap_); scat (out, nrows == 1 ? TR (" document") : TR (" documents"), cap_);
+		scat (out, "  \xB7  ", cap_); scat_num (out, open, cap_); scat (out, TR (" to follow up"), cap_);
 	}
 	void refresh () override
 	{
@@ -368,7 +369,7 @@ public:
 			if (words[0])
 			{
 				char hay[400], n[32]; cdoc_number (d, n, sizeof n);
-				scpy (hay, n, sizeof hay); scat (hay, " ", sizeof hay); scat (hay, CD_NAME[d.kind], sizeof hay); scat (hay, " ", sizeof hay);
+				scpy (hay, n, sizeof hay); scat (hay, " ", sizeof hay); scat (hay, TR (CD_NAME[d.kind]), sizeof hay); scat (hay, " ", sizeof hay);
 				scat (hay, party_name (g_b, d.party), sizeof hay); scat (hay, " ", sizeof hay); scat (hay, d.text, sizeof hay); scat (hay, " ", sizeof hay); scat (hay, d.ref, sizeof hay);
 				if (!words_in (hay, words)) continue;
 			}
@@ -395,7 +396,7 @@ public:
 		const CDoc &d = g_b.cd[p->rows[row].i];
 		switch (col)
 		{
-		case 0: { char n[32]; cdoc_number (d, n, sizeof n); scpy (buf, CD_SHORT[d.kind], cap_); scat (buf, " ", cap_); scat (buf, n + 5, cap_); return buf; }
+		case 0: { char n[32]; cdoc_number (d, n, sizeof n); scpy (buf, TR (CD_SHORT[d.kind]), cap_); scat (buf, " ", cap_); scat (buf, n + 5, cap_); return buf; }
 		case 1: date_show (d.date, buf); return buf;
 		case 2: return party_name (g_b, d.party);
 		case 3: if (d.text[0]) return d.text; return d.nl ? d.l[0].text : "";
@@ -410,15 +411,15 @@ public:
 		if (col == 4) { cell_money (cv, x, y, w, h, p->rows[row].total, ink, sel, false, 2); return true; }
 		if (col == 5)
 		{
-			const char *s = CS_NAME[d.status]; unsigned c = field_dim ();
+			const char *s = TR (CS_NAME[d.status]); unsigned c = field_dim ();
 			switch (d.status)
 			{
 			case CS_SENT: c = C_BLUE; break;
 			case CS_ACCEPTED: c = C_GOOD; break;
 			case CS_REFUSED: c = C_BAD; break;
-			case CS_DONE: c = C_PURPLE; s = cdoc_done_word (d); break;
+			case CS_DONE: c = C_PURPLE; s = TR (cdoc_done_word (d)); break;
 			}
-			if (d.kind == CD_QUOTE && (d.status == CS_DRAFT || d.status == CS_SENT) && d.until && d.until < today_ymd ()) { s = "Expired"; c = C_WARN; }
+			if (d.kind == CD_QUOTE && (d.status == CS_DRAFT || d.status == CS_SENT) && d.until && d.until < today_ymd ()) { s = TR ("Expired"); c = C_WARN; }
 			draw_pill (cv, x + 6, y + (h - 18) / 2, 18, s, c, sel);
 			return true;
 		}
@@ -430,7 +431,7 @@ public:
 	void cmdDelete () override
 	{
 		int id = selId (); if (!id) return;
-		if (ask ("Delete", "Delete this document for good?", MB_YESNO, 2) != 1) return;
+		if (ask (TR ("Delete"), TR ("Delete this document for good?"), MB_YESNO, 2) != 1) return;
 		cdoc_delete (g_b, cdoc_index (g_b, id));
 		changed ();
 	}
@@ -451,7 +452,7 @@ public:
 		if (!g_dp || d.ctxRow < 0) return;
 		int x, y; abs_pos (&d, &x, &y);
 		PopupMenu m (x + d.ctxX, y + d.ctxY);
-		m.add ("Open", 1); m.add ("Print", 2); m.separator (); m.add ("Delete...", 3);
+		m.add (TRC ("verb", "Open"), 1); m.add (TR ("Print"), 2); m.separator (); m.add (TR ("Delete..."), 3);
 		int r = m.run ();
 		int id = g_dp->selId (); if (!id) return;
 		if (r == 1) open_cdoc (id);
@@ -463,7 +464,7 @@ public:
 	{
 		PopupMenu m (0, 0);
 		if (g_dp) { FlatButton *b = 0; for (Widget *c = g_dp->firstChild; c; c = c->nextSib) if (c->top < HEAD_H && c->left > g_dp->width / 2) { b = (FlatButton *) c; break; } if (b) { int x, y; abs_pos (b, &x, &y); m.left = x; m.top = y + b->height + 2; } }
-		m.add ("Order", 1); m.add ("Delivery note", 2); m.add ("Purchase order", 3);
+		m.add (TR ("Order"), 1); m.add (TR ("Delivery note"), 2); m.add (TR ("Purchase order"), 3);
 		int r = m.run ();
 		if (r >= 1) new_cdoc (r == 1 ? CD_ORDER : r == 2 ? CD_DELIVERY : CD_PORDER);
 	}

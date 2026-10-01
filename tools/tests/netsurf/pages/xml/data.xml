@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- a catalog -->
+<catalog xmlns:x="urn:x">
+  <book id="b1" x:lang="en">
+    <title>XML Developer's Guide</title>
+    <price>44.95</price>
+    <empty/>
+  </book>
+  <book id="b2"><title>Midnight Rain</title><price>5.95</price></book>
+  <?pi some data?>
+  <note><![CDATA[a <cdata> section]]></note>
+</catalog>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>			<string>Ledger</string>
+	<key>CFBundleDisplayName</key>		<string>Ledger</string>
+	<key>CFBundleExecutable</key>		<string>Ledger</string>
+	<key>CFBundleIdentifier</key>		<string>io.github.stephaneweg.onyx.ledger</string>
+	<key>CFBundleIconFile</key>		<string>Ledger</string>
+	<key>CFBundlePackageType</key>		<string>APPL</string>
+	<key>CFBundleSignature</key>		<string>????</string>
+	<key>CFBundleInfoDictionaryVersion</key>	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>		<string>@BUILD@</string>
+	<key>CFBundleDevelopmentRegion</key>	<string>en</string>
+	<key>LSMinimumSystemVersion</key>	<string>@MINOS@</string>
+	<key>LSApplicationCategoryType</key>	<string>public.app-category.finance</string>
+	<key>NSHighResolutionCapable</key>	<true/>
+	<key>NSPrincipalClass</key>		<string>NSApplication</string>
+	<key>NSHumanReadableCopyright</key>	<string>Onyx Ledger -- the accounting of Onyx, the Raspberry Pi 4 operating system</string>
+	<key>NSDocumentsFolderUsageDescription</key>	<string>Ledger keeps your books, invoices and reports in Documents/Onyx Ledger.</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>	<string>Ledger Books</string>
+			<key>CFBundleTypeRole</key>	<string>Editor</string>
+			<key>LSHandlerRank</key>	<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>	<string>Ledger</string>
+			<key>LSItemContentTypes</key>	<array><string>io.github.stephaneweg.onyx.ledger-books</string></array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>	<string>io.github.stephaneweg.onyx.ledger-books</string>
+			<key>UTTypeDescription</key>	<string>Ledger Books</string>
+			<key>UTTypeIconFile</key>	<string>Ledger</string>
+			<key>UTTypeConformsTo</key>	<array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>ledger</string></array></dict>
+		</dict>
+	</array>
+</dict>
+</plist>

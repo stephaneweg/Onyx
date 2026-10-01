@@ -469,10 +469,10 @@ public:
 		Root *r = Root::current ();
 		if (r) { left = (r->width - width) / 2; top = imax (0, (r->height - height) / 2); }
 		int by = height - 42;
-		if (buttons == MB_YESNOCANCEL) { button (width - 282, by, "Yes", 1); button (width - 192, by, "No", 2); button (width - 102, by, "Cancel", 0); }
-		else if (buttons == MB_YESNO) { button (width - 192, by, "Yes", 1); button (width - 102, by, "No", 0); }
-		else if (buttons == MB_OKCANCEL) { button (width - 192, by, "OK", 1); button (width - 102, by, "Cancel", 0); }
-		else { button (width - 102, by, "OK", 1); m_cancel = 1; }
+		if (buttons == MB_YESNOCANCEL) { button (width - 282, by, TR ("Yes"), 1); button (width - 192, by, TR ("No"), 2); button (width - 102, by, TR ("Cancel"), 0); }
+		else if (buttons == MB_YESNO) { button (width - 192, by, TR ("Yes"), 1); button (width - 102, by, TR ("No"), 0); }
+		else if (buttons == MB_OKCANCEL) { button (width - 192, by, TR ("OK"), 1); button (width - 102, by, TR ("Cancel"), 0); }
+		else { button (width - 102, by, TR ("OK"), 1); m_cancel = 1; }
 	}
 	void button (int x, int y, const char *s, int tag) { Button *b = new Button (x, y, 88, 30, s, act); b->tag = tag; addChild (b); }
 	static void act (Widget &w) { ((Modal *) w.parent)->onButton (w.tag); }
@@ -527,10 +527,10 @@ public:
 		LineEdit *e = new LineEdit (x < 0 ? fieldX : x, y, w); e->setText (val); addChild (e);
 		return e;
 	}
-	void buttons (const char *ok = "OK")
+	void buttons (const char *ok = 0)
 	{
-		Button *b = new Button (width - 196, height - 44, 88, 30, ok, act); b->tag = 1; addChild (b);
-		b = new Button (width - 102, height - 44, 88, 30, "Cancel", act); b->tag = 0; addChild (b);
+		Button *b = new Button (width - 196, height - 44, 88, 30, ok ? ok : TR ("OK"), act); b->tag = 1; addChild (b);
+		b = new Button (width - 102, height - 44, 88, 30, TR ("Cancel"), act); b->tag = 0; addChild (b);
 	}
 	static void act (Widget &w) { Widget *p = w.parent; while (p && !p->modal) p = p->parent; if (p) ((Modal *) p)->onButton (w.tag); }
 	void onButton (int tag) override { if (tag == 0 || validate ()) close (tag); }

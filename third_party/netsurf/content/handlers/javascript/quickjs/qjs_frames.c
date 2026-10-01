@@ -104,21 +104,32 @@ static JSContext *qf_realm(struct browser_window *bw)
 
 /** a document's origin: key (compared: "null" is opaque, never the same) and shown (the
  *  serialization: event.origin) */
+static void qf_origin_url(struct browser_window *bw, nsurl *url, char *key, char *shown,
+		size_t n, int depth);
+
 static void qf_origin(struct browser_window *bw, html_content *doc, char *key, char *shown,
 		size_t n, int depth)
 {
-	nsurl *url;
+	snprintf(key, n, "null");
+	snprintf(shown, n, "null");
+	if (doc == NULL || depth > 12)
+		return;
+	qf_origin_url(bw, content_get_url(&doc->base), key, shown, n, depth);
+}
+
+/** ... the origin of a window's resource at that URL (Onyx: also a frame showing an image
+ *  or a text, no document of its own) */
+static void qf_origin_url(struct browser_window *bw, nsurl *url, char *key, char *shown,
+		size_t n, int depth)
+{
 	lwc_string *scheme;
 	const char *sc;
 
 	snprintf(key, n, "null");
 	snprintf(shown, n, "null");
-	if (doc == NULL || depth > 12)
-		return;
 	if (bw != NULL && (bw->onyx_sandbox & (ONYX_SANDBOX | ONYX_SANDBOX_ORIGIN)) == ONYX_SANDBOX)
 		return;
-	url = content_get_url(&doc->base);
-	if (url == NULL)
+	if (url == NULL || depth > 12)
 		return;
 	scheme = nsurl_get_component(url, NSURL_SCHEME);
 	sc = scheme != NULL ? lwc_string_data(scheme) : "";
@@ -512,6 +523,23 @@ static JSValue n_frame_access(JSContext *ctx, JSValueConst this_val, int argc, J
 	return JS_GetGlobalObject(tctx);
 }
 
+/** frameShown(id) -> whether the window shows a resource that is not a document (an image,
+ *  a text) of the caller's origin: its contentDocument is then an empty document (Onyx,
+ *  docs/06 §43; the other browsers make an image or a text document) */
+static JSValue n_frame_shown(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	struct browser_window *bw = onyx_frame_by_id(qf_int(ctx, argc, argv, 0)), *self;
+	char k1[QF_ORIGIN], s1[QF_ORIGIN], k2[QF_ORIGIN], s2[QF_ORIGIN];
+	struct hlcache_handle *h;
+
+	(void) this_val;
+	if (bw == NULL || (h = bw->current_content) == NULL || content_get_type(h) == CONTENT_HTML)
+		return JS_FALSE;
+	qf_caller(ctx, &self, k1, s1);
+	qf_origin_url(bw, hlcache_handle_get_url(h), k2, s2, QF_ORIGIN, 0);
+	return JS_NewBool(ctx, strcmp(k1, "null") != 0 && strcmp(k1, k2) == 0);
+}
+
 /** frameAlive(id) -> whether the window is still there (closed) */
 static JSValue n_frame_alive(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -829,6 +857,7 @@ static const JSCFunctionListEntry qf_natives[] = {
 	JS_CFUNC_DEF("frameChild", 2, n_frame_child),
 	JS_CFUNC_DEF("frameNamed", 2, n_frame_named),
 	JS_CFUNC_DEF("frameAccess", 1, n_frame_access),
+	JS_CFUNC_DEF("frameShown", 1, n_frame_shown),
 	JS_CFUNC_DEF("frameAlive", 1, n_frame_alive),
 	JS_CFUNC_DEF("frameOf", 1, n_frame_of),
 	JS_CFUNC_DEF("frameElement", 0, n_frame_element),

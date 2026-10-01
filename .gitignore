@@ -37,9 +37,9 @@ __pycache__/
 
 # The complete SD card image is committed (binaries included): the kernel .img, every
 # app .elf, the NetSurf/GPL resources, skins, keymaps AND the Pi/WLAN firmware blobs, so
-# the repo is a ready-to-flash card. NOTE: sdcard/etc/wpa_supplicant.conf stays tracked
-# with its psk REDACTED by the tools/git-hooks/pre-commit hook (+ skip-worktree) -- the
-# working copy keeps the real key for the card; the committed copy never does.
+# the repo is a ready-to-flash card. EXCEPT sdcard/etc/wpa_supplicant.conf (the user's Wi-Fi
+# network and key): never tracked (ignored below), never packaged (tools/pkg/mkrepo.py) -- the
+# Wi-Fi settings (wpaconf) or the menu bar's Wi-Fi menu write it on the card.
 !/sdcard/
 !/sdcard/**
 
@@ -102,3 +102,7 @@ sdcard/etc/clock
 
 # Koton for Windows: what the app writes into its folder when tried from the repository
 pc/dist/Koton/koton/settings.json
+
+# The user's Wi-Fi network and key: on the card only, never in git (see the note above)
+/sdcard/etc/wpa_supplicant.conf
+/sdcard_lite/etc/wpa_supplicant.conf

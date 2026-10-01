@@ -3475,6 +3475,9 @@ serves `pages/acid3/` that way (anything else: 404).
 
 ### The subtests still failing (94 / 100)
 
+**All six pass since §43 (XML documents, the SVG DOM): Acid3 100 / 100.** The table is kept as
+it was found:
+
 | Test | What | Why |
 |---|---|---|
 | 69 | the support files loaded (seven frames' `load` events), then the SVG frame's DOM | `svg.xml` (`image/svg+xml`), `empty.xml` and the `xhtml.N` (`text/xml`) are not documents in Jet's frames: no XML parser builds a DOM for a frame, so not all the loads come and the SVG document has no elements (times out) |
@@ -4016,6 +4019,242 @@ two text fields and no submit button is still submitted by Enter (HTML: only a l
 menu's list shows a scroll bar of its own when its ten rows are taller than it (Chrome's overlay
 scroll bars take no room). Checked on the live site: the list opaque (Mobile and Desktop), Enter
 (both), the footer shown and a row clicked opening its article (Mobile).
+
+## 43. XML documents: XHTML, XML with CSS or XSLT, SVG documents, XPath (2026-10-01)
+
+### Frames on a resource Jet does not show: an empty document, their load event
+
+Acid3's test 65 makes seven frames (`svg.xml` in an `<iframe>` and an `<object>`, `empty.xml`,
+`empty.html`, `xhtml.1-3`) and test 69 waits -- up to 5 s, retried every 10 ms -- for their seven
+`load` events. Before, the `<object>` on `svg.xml` fired `error` (PlutoSVG refused the file: a
+`<?xml-stylesheet?>` before its root), so Acid3 sat on test 69 for its whole timeout (on the Pi the
+score stayed at 69 for seconds). Now:
+
+- **A frame whose resource has a type no handler takes** ("UnacceptableType": an unknown binary,
+  before §43's XML handler `text/xml`...) is loaded with **about:blank** instead of the fetch error
+  page (`onyx_frame_error_blank`, `desktop/browser_window.c`): its `contentDocument` is an empty HTML
+  document of its parent's origin, its element's `load` event comes once that is loaded (a handler
+  reading `contentDocument` finds it) -- as in the other browsers, where the frame stays empty (or
+  the file is downloaded) and `load` fires. The status bar no longer shows the frame's error.
+- **A frame showing an image or a text** (no document of its own in Jet; Chrome makes an image or a
+  text document) gives a same-origin script an empty document as its `contentDocument`
+  (`N.frameShown`, `qjs_frames.c`; kept per element while the frame shows that resource).
+- **PlutoSVG skips any processing instruction** before the root, not only `<?xml ...?>`.
+- `getElementById` on a document other than the window's (`createHTMLDocument`, `DOMParser`,
+  a frame's) searches that document (it searched the window's).
+
+Acid3's own time (its log's "Total elapsed time", first run on the PC bench): **5.56 s -> 0.52 s**
+(`acidtest.sh` prints it). `xmltest.sh`'s `frameload.html`: the six frames' `load` events (an SVG
+in an `<object>` and an `<iframe>`, an unknown type, a 404, a malformed XML, XHTML as `text/xml`).
+
+### XML documents: expat into libdom (`html/onyx_xml.c`)
+
+**Expat 2.7.1** (MIT, `third_party/expat-2.7.1`: `lib/` only, unchanged, its `expat_config.h`
+written by hand -- no entropy source on the Pi: the caller sets the hash salt; built by the three
+builds, `libexpat.a` on the Pi) parses the XML documents into **libdom**, as the HTML parser's
+binding does for HTML: an element is made with its attributes, then appended to its parent (the
+mutation events NetSurf listens to see a `<link>`, a `<style>`, an `<img>` as in HTML), the text
+gathered and appended once a markup event comes. Expat runs in namespace mode; the namespace
+declarations become the xmlns attributes of the element that declares them, as in the browsers'
+DOM; CDATA sections, comments, processing instructions and the doctype are nodes. The entities:
+the five, the internal subset's (expat, with its billion-laughs protection), and -- in a
+document with an external DTD it does not read (XHTML's doctypes) -- **HTML's named character
+references** (`&nbsp;` `&copy;`: libhubbub's table, as Chrome reads them). An encoding expat does
+not know (windows-1252, ISO-8859-x...) is read through libparserutils' single-byte codecs. The
+parse is **incremental** (the bytes as they arrive) and **suspended while a script is fetched**
+(`XML_StopParser` resumable: the bytes that come meanwhile are queued, `onyx_xml_parser_resume`
+from `script.c` when the script ran).
+
+The document is an **HTML document underneath** (`dom_html_document`: NetSurf lays it out as one)
+**of an XML kind** -- libdom's `dom_html_document_set_xml_kind` (1 XML, 2 XHTML, 3 SVG; a new
+field, libdom's header changed): the names keep their case (an XHTML element is still of its
+HTML type -- `<p>`'s tagName is `p`), an element in no namespace is none of HTML's types (an XML
+document's `<title>` is not HTML's), an XHTML document's `createElement` is in the HTML
+namespace. Elements of the XHTML namespace are HTML elements: layout, CSS, forms, scripts work
+as in HTML.
+
+**The types** (`html.c`'s handler): `application/xhtml+xml` (parsed as HTML before), `text/xml`,
+`application/xml`; for a window (the top one or a frame: `HLCACHE_RETRIEVE_ONYX_DOCUMENT`, set by
+`browser_window.c`) `image/svg+xml` becomes `application/x-onyx-svg-document` (an XML document;
+an `<img>`, a CSS image or an `<object>` still get the SVG image of §12) and an `+xml` type no
+handler takes (`application/rss+xml`, `application/atom+xml`...) or `text/xsl` an XML document.
+
+### What an XML document becomes (`html_onyx_xml_complete`)
+
+Once parsed, by its root element's namespace and its prolog's `<?xml-stylesheet?>`:
+
+- **XHTML** (the root in `http://www.w3.org/1999/xhtml`) and **SVG** (in
+  `http://www.w3.org/2000/svg`): the document itself, laid out; their `<script>`s ran at their end
+  tag (XHTML's and SVG's: Acid3's `xhtml.1` notifies its parent; `xhtml.2`, malformed, stops
+  before its script; `xhtml.3`, in another namespace, runs none). A standalone SVG is its root's
+  replaced box (§12's inline SVG, drawn at its own size from 0,0: the root's "fill the viewport"
+  stretch is not for a replaced root).
+- **An XSLT style sheet** (`type="text/xsl"`, `application/xslt+xml`, `text/xml`,
+  `application/xml`; same origin or `data:`): fetched (llcache), the transform run (xslt.js, below,
+  in the document's realm, which goes after it), and **its result becomes the document**: parsed by
+  the HTML parser (output method `html`, or text in a `<pre>`) or by expat again (`xml`: an XHTML
+  result is XHTML, its scripts run). The page's address stays the XML file's.
+- **CSS style sheets** (`type="text/css"` or none): fetched as a `<link>`'s (`html_css_process_pi`,
+  the processing instruction as its node) and the XML elements laid out **with them only** -- HTML's
+  UA sheet left out (`html_css_onyx_xml_mode`: elements are inline unless the sheet says
+  otherwise; the root is a block), and the root's children's backgrounds are their own (the
+  `<body>` propagation of the root background is for a `<body>` only: `redraw.c`).
+- **Otherwise: the tree view**, as Chrome's -- "This XML file does not appear to have any style
+  information associated with it. The document tree is shown below." and the document as indented
+  coloured markup (elements, attributes with their prefixes, namespace declarations, text, CDATA,
+  comments, processing instructions; an element with one short text on one line), made as an HTML
+  page (`onyx_xml_tree_view`, iterative: no recursion on a deep document) and parsed in place of
+  the XML document.
+- **A well-formedness error**: the parse stops there and **Chrome's error box** comes first --
+  "This page contains the following errors: error on line 6 at column 18: mismatched tag /
+  Below is a rendering of the page up to the first error." (`onyx_xml_error_banner`, a
+  `<parsererror>` in the XHTML namespace with Chrome's style) -- above XHTML's page so far, above
+  the tree view of the rest; DOMParser's malformed document is the DOM Parsing standard's (as Firefox): emptied, its root a `<parsererror>` with the message, line and column.
+
+A frame's `contentDocument` is the document shown: the XHTML / SVG / XML + CSS document itself,
+the XSLT's result, the tree view's page (Chrome gives the XML document there: a script reading a
+frame's XML through the tree view sees its HTML).
+
+### Scripts and XML (`quickjs/qjs_xml.c`, html5.js)
+
+- **DOMParser** with `text/xml`, `application/xml`, `application/xhtml+xml`, `image/svg+xml`:
+  expat's parse (`N.parseXML`; the small JavaScript parser of before is gone);
+  **XMLHttpRequest's `responseXML`** through it.
+- **XMLSerializer**: the XML serialization of the DOM Parsing standard -- namespaces declared
+  where they are needed (an SVG made by script gets its `xmlns`), `<br />` for HTML's void
+  elements, `<e/>` for XML's empty ones, CDATA, processing instructions, doctypes.
+- **`document.implementation.createDocument`**: an XML document of its root's kind
+  (`contentType` `application/xml`, `application/xhtml+xml` for XHTML, `image/svg+xml` for SVG);
+  `document.contentType` by the kind; `createElement` keeps the name's case in an XML document;
+  `createCDATASection`; `write` / `writeln` / `open` / `close` throw `InvalidStateError` there.
+- `getElementsByTagNameNS`; an attribute keeps its prefix (libdom: `Attr.name` is `x:a`,
+  `getAttribute('xlink:href')` finds it); `lookupNamespaceURI`.
+- **`<object>` / `<embed>`'s `contentDocument` and `getSVGDocument()`**: the object is drawn as
+  an image (§12); its document is its resource parsed (same origin), kept while the resource is
+  the same; an `<iframe>`'s `getSVGDocument()` is its SVG document.
+- **The SVG DOM** (html5.js): `SVGGraphicsElement`, `SVGGeometryElement`, `SVGRectElement`,
+  `SVGCircleElement`, `SVGEllipseElement`, `SVGLineElement`, `SVGPathElement`, `SVGPolylineElement`,
+  `SVGPolygonElement`, `SVGGElement`, `SVGUseElement`, `SVGImageElement`, `SVGTextElement` /
+  `SVGTSpanElement` (`SVGTextContentElement`: `getNumberOfChars`, `getComputedTextLength`,
+  `getSubStringLength`, `get{Start,End}PositionOfChar`, `getExtentOfChar` from the element's box),
+  the gradients, `<stop>`, `<clipPath>`, `<mask>`, `<pattern>`, `<marker>`, `<symbol>`...; their
+  geometry attributes as **`SVGAnimatedLength`** (`rect.width.baseVal.value`, the units:
+  number, %, em, ex, cm, mm, in, pt, pc; `newValueSpecifiedUnits`, `convertToSpecifiedUnits`);
+  `SVGSVGElement`'s factories (`createSVGPoint`, `createSVGMatrix`, `createSVGLength`...) and its
+  animations' clock (`getCurrentTime`, `setCurrentTime`, `pauseAnimations`). An element in no
+  namespace of an XML document is an `Element` (`TAGS['*xml']`).
+
+### XPath 1.0 and XSLT 1.0 (`quickjs/xslt.js`)
+
+A library of its own, in JavaScript, **loaded on demand** (`N.loadXslt`: the first
+`document.evaluate`, `XSLTProcessor` or `<?xml-stylesheet type="text/xsl"?>` -- not in every
+realm's prelude; its bytecode in the code cache as the preludes'):
+
+- **The data model**: the tree built **in one call** from the DOM (`N.xmlFlat`: the subtree in
+  document order, 7 slots a node, attributes after their element) -- each node its document order
+  as a number, every tree a range of its own (the source, the style sheet, the result tree
+  fragments sort together); the namespace declarations apart from the attributes. In an HTML
+  document the HTML elements' names match in any case (`//DIV` finds the `<div>`s).
+- **XPath**: the tokenizer with the 1.0 disambiguation rules (`*` and `and` / `or` / `div` /
+  `mod` as operators or names), a recursive-descent parser, the 13 axes (the namespace axis
+  empty), name / node-type / processing-instruction tests, positional and boolean predicates (a
+  number literal taken at once), unions; node-sets unique in document order (a single context
+  node's step needs no sort; `//x` is one descendant step, not descendant-or-self then child); the
+  27 core functions; numbers printed without exponent -- document.evaluate's as Blink's (the
+  shortest that reads back), XSLT's as libxslt's (15 significant digits: `sum` of 10.90 + 9.90 +
+  9.90 is `30.7`).
+- **`document.evaluate`, `createExpression`, `createNSResolver`, `XPathEvaluator`,
+  `XPathExpression`, `XPathResult`** (the ten result types; iterators invalidated by a change of
+  the document; `SyntaxError` / `NamespaceError` / `TypeError` as the browsers); attribute results
+  are their `Attr`.
+- **XSLT**: templates and their match patterns (default priorities, modes, import precedence,
+  the last of equal ones; the templates indexed by the name their pattern's last step tests),
+  the built-in rules; `apply-templates` / `call-template` / `apply-imports` with `with-param`,
+  `for-each`, `if`, `choose`, `sort` (text / number, order, case-order, several keys, stable),
+  `variable` / `param` (global ones lazily, cycles caught; result tree fragments usable as
+  node-sets, `exsl:node-set` / `msxsl:node-set`), `value-of`, `text` and
+  `disable-output-escaping`, `copy`, `copy-of`, `element`, `attribute`, `attribute-set` /
+  `use-attribute-sets`, `comment`, `processing-instruction`, `number` (single / multiple / any,
+  `count`, `from`, `value`, the formats 1 01 a A i I, grouping), `message` (`terminate`),
+  `fallback`; `key()`, `format-number()` with `decimal-format`, `generate-id()`, `current()`,
+  `document('')`, `system-property()`, `element-available()`, `function-available()`;
+  `strip-space` / `preserve-space`; `output` (methods `xml`, `html`, `text` -- `html` by default
+  for an `<html>` result --, the doctype, `omit-xml-declaration`); literal result elements with
+  their attribute value templates and namespaces (`exclude-result-prefixes`); a literal result
+  element as the whole style sheet. The result serialized (XML with its namespaces declared,
+  HTML with its void elements) or built into DOM nodes.
+- **`XSLTProcessor`**: `importStylesheet`, `transformToFragment` (nodes made by the owner
+  document: HTML elements in an HTML document), `transformToDocument` (an HTML document for the
+  `html` method, an XML one for `xml`), `setParameter` / `getParameter` / `removeParameter` /
+  `clearParameters` / `reset`; an error of the transform is reported (console) and gives `null`,
+  as Chrome.
+
+### Acid3: 100 / 100
+
+The six subtests of §37 pass: 69 (the seven frames' loads; the SVG frame's `<text>` removed),
+74 (`getSVGDocument()` of the `<iframe>` and the `<object>`), 75 (`SVGRectElement`'s `width`),
+77 (`getNumberOfChars`), 79 (the `<object>`'s document emptied and given an `svg:svg`), 80
+(`xhtml.1`'s script ran, not `xhtml.2`'s nor `xhtml.3`'s). (The 2011 Acid3 commented SVG fonts,
+SMIL and `textPath` out of 75-79: only those DOM parts are tested.) `acidtest.sh`'s `ACID3_MIN`
+is 100; Acid2 is still identical to its reference.
+
+### The tests: `xmltest.sh`
+
+`OUT=/tmp/nsbench PORT=8170 sh tools/tests/netsurf/xmltest.sh` -- the pages of `pages/xml/` over
+**`xmlsrv.py`** (the Content-Type of the extension, or `?type=`): `frameload.html` (the frames'
+load events, above), `xmlframes.html` (23 checks through the frames' documents: the tree view, an
+`+xml` type, the error box's line and column, XML + CSS -- its computed colour, its elements no
+`HTMLElement` --, an SVG document and its DOM, an XSLT's result, XHTML, an `<object>`'s SVG
+document), `jsxml.html` (39 checks: DOMParser, XMLSerializer, createDocument, document.evaluate
+with every result type, namespaces, errors, XSLTProcessor -- sort, AVT, format-number,
+call-template, parameters, keys, number, element / attribute, copy-of, priorities), and the pages
+at the top, by their scripts' lines and their colours in the screenshot: `page.xhtml`,
+`bad.xhtml`, `data.xml`, `styled.xml`, `pic.svg`, `catalog.xml` (XSLT, html output), `list.xml`
+(XSLT, an XHTML result with its script).
+
+### The cost (PC bench, `NS_PERF`)
+
+A 2.2 MB XML file (20 000 records, ~200 000 nodes): expat's parse is not what counts; its tree
+view takes 1.1 s to make and parse (`xml:tree view`) and 1.3 s to lay out (NetSurf's layout of
+~100 000 lines); its XSLT (a `count(//book[price > 50])`, a sorted `for-each` of 2000 rows) 0.93 s
+(`xml:xslt`: the data model 0.47 s -- `N.xmlFlat` wraps no DOM node, a result's nodes are
+wrapped in one more walk, `N.xmlWrap` --, the transform 0.44 s), its page laid out in 14 ms; a
+`document.evaluate("count(//td)")` on the 4000-cell result 28 ms. Count 5-10x on the Pi. No
+step is quadratic: a node-set from one context node needs no sort, `//x[...]` (a predicate that
+is no number and asks no `position()`) is one descendant step, the templates are indexed by
+name, `key()` by value once a tree.
+
+### The Pi (not built here)
+
+Expat is a new library: `make -C user/netsurf` builds `third_party/expat-2.7.1/libexpat.a`
+(`netsurf-app.mk` links `-lexpat`, compiles `qjs_xml.c` and makes `qjsgen/qjs_xslt_js.h` from
+`xslt.js`). **libdom changed** (`struct dom_html_document`'s new field in
+`src/html/html_document.h`, two functions in `include/dom/html/html_document.h`, `element.c`'s
+attribute prefix): rebuild `libdom.a` clean (delete its `.o`). PlutoSVG changed (the processing
+instructions): rebuild `libplutosvg.a`. Then `netsurf-app.mk link stage`. Windows
+(`pc/Jet/jet.mk`) compiles expat with the rest.
+
+### Not done
+
+- `xsl:include` / `xsl:import` (no synchronous fetch for `XSLTProcessor`; the top-level transform
+  does not fetch them either: they are skipped), `document()` of another URI (empty),
+  `xsl:namespace-alias`, `xsl:output`'s `indent` and `cdata-section-elements`, the namespace axis
+  (empty); EXSLT beyond `node-set` / `object-type`.
+- The tree view is static (no collapsing arrows) and is what a script sees of that frame.
+- An SVG document without `width` / `height` is drawn at 300 x 150 (Chrome: the window's size);
+  the SVG DOM's geometry is the attributes' (no `getBBox` beyond the box, no transforms in
+  `getCTM`, no SMIL, no SVG fonts); an `<object>`'s SVG document is a copy (a script's change to
+  it is not drawn).
+- No DTD validation, no external entities (by design: as the browsers).
+
+**Windows: the certificates valid past 2038 (2026-10-01).** Jet for Windows said Wikipedia's
+root, ISRG Root X2 (valid until 2040), had expired -- and so loaded none of upload.wikimedia.org's
+images (the same chain). The certificates' dates are checked by `onyx_tls.hpp`'s own callback in
+seconds since 1970 (`x509_secs`, `clock_secs`), in a `long`: 64 bits on the Pi, **32 on Windows**
+(LLP64) -- a date past January 2038 wrapped negative, "in the past". They are `long long` now
+(checked with MinGW under Wine: 2040-09-17 was -2063514496, now 2231452800). The Pi's checks were
+right (its `long` is 64-bit): replayed there with the Pi's own mbedTLS libraries under
+qemu-aarch64 -- E6 -> ISRG Root X2, the bundle's root chosen, not the expired X1-signed copy.
 
 ## 8. Known gaps
 

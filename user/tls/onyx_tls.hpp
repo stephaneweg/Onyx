@@ -91,7 +91,8 @@ namespace onyx_tls
 		unsigned char             rxbuf[16384];
 		int                       rxlen, rxpos;
 		Verify                   *vr;		// (Onyx) the check's record, or 0
-		long                      now;		// (Onyx) the clock in seconds since 1970, 0 unset
+		long long                 now;		// (Onyx) the clock in seconds since 1970, 0 unset (64 bits:
+		                          		// Windows' long is 32 -- the dates past 2038 wrapped)
 		volatile int             *cancel;	// (Onyx) set by another thread: stop waiting, fail
 		int                       vrfy_calls;	// (Onyx) certificates the check looked at
 		bool                      resumed;	// (Onyx) the handshake resumed a cached session
@@ -156,25 +157,25 @@ namespace onyx_tls
 	}
 
 	// Days since 1970-01-01 of a civil date (proleptic Gregorian).
-	inline long days_from_civil (long y, int m, int d)
+	inline long long days_from_civil (long long y, int m, int d)
 	{
 		y -= m <= 2;
-		long era = (y >= 0 ? y : y - 399) / 400;
-		long yoe = y - era * 400;
-		long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-		long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+		long long era = (y >= 0 ? y : y - 399) / 400;
+		long long yoe = y - era * 400;
+		long long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+		long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
 		return era * 146097 + doe - 719468;
 	}
-	inline long x509_secs (const mbedtls_x509_time &t)
+	inline long long x509_secs (const mbedtls_x509_time &t)
 	{
-		return days_from_civil (t.year, t.mon, t.day) * 86400L + t.hour * 3600L + t.min * 60L + t.sec;
+		return days_from_civil (t.year, t.mon, t.day) * 86400LL + t.hour * 3600LL + t.min * 60LL + t.sec;
 	}
 	// The clock (kapi_get_datetime: the local time the Setup app set) -> seconds, 0 when unset.
-	inline long clock_secs (void)
+	inline long long clock_secs (void)
 	{
 		int y, mo, d, h, mi, se;
 		if (kapi_get_datetime (&y, &mo, &d, &h, &mi, &se) == 0 || y < 2025) return 0;
-		return days_from_civil (y, mo, d) * 86400L + h * 3600L + mi * 60L + se;
+		return days_from_civil (y, mo, d) * 86400LL + h * 3600LL + mi * 60LL + se;
 	}
 	// mbedTLS's callback for each certificate of the chain (the root first): the dates -- a day
 	// of slack both ways: the clock is the local time, the certificates' UTC --, and the record.
@@ -183,8 +184,8 @@ namespace onyx_tls
 		Session *s = (Session *) ctx;
 		s->vrfy_calls++;
 		if (s->now != 0) {
-			if (s->now - 86400L > x509_secs (crt->valid_to)) *flags |= MBEDTLS_X509_BADCERT_EXPIRED;
-			if (s->now + 86400L < x509_secs (crt->valid_from)) *flags |= MBEDTLS_X509_BADCERT_FUTURE;
+			if (s->now - 86400LL > x509_secs (crt->valid_to)) *flags |= MBEDTLS_X509_BADCERT_EXPIRED;
+			if (s->now + 86400LL < x509_secs (crt->valid_from)) *flags |= MBEDTLS_X509_BADCERT_FUTURE;
 		}
 		if (s->vr != 0 && depth >= 0 && depth < CHAIN_MAX) {
 			Verify *v = s->vr;

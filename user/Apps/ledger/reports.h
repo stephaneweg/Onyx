@@ -81,7 +81,7 @@ static void rpt_date (RRow &r, int c, int d) { char t[16]; date_show (d, t); rpt
 static void period_text (int from, int to, char *out, int cap)
 {
 	char a[16], b[16]; date_show (from, a); date_show (to, b);
-	scpy (out, "From ", cap); scat (out, a, cap); scat (out, " to ", cap); scat (out, b, cap);
+	scpy (out, TR ("From "), cap); scat (out, a, cap); scat (out, TR (" to "), cap); scat (out, b, cap);
 }
 
 // ---- the entries in order -------------------------------------------------------------------------------------------
@@ -121,17 +121,17 @@ static void entry_ref (const Book &b, const Entry &e, char *out, int cap)
 static void rpt_journal (const Book &b, Report &p, int journal, int from, int to)
 {
 	rpt_free (p);
-	scpy (p.title, journal >= 0 ? b.jr[journal].name : "Journals", sizeof p.title);
+	scpy (p.title, journal >= 0 ? b.jr[journal].name : TR ("Journals"), sizeof p.title);
 	period_text (from, to, p.sub, sizeof p.sub);
-	rpt_col (p, "Date", 11); rpt_col (p, "Document", 14); rpt_col (p, "Account", 8); rpt_col (p, "Name", 24);
-	rpt_col (p, "Description", 30); rpt_col (p, "Debit", 13, 1, true); rpt_col (p, "Credit", 13, 1, true);
+	rpt_col (p, TR ("Date"), 11); rpt_col (p, TRC ("col", "Document"), 14); rpt_col (p, TR ("Account"), 8); rpt_col (p, TR ("Name"), 24);
+	rpt_col (p, TR ("Description"), 30); rpt_col (p, TR ("Debit"), 13, 1, true); rpt_col (p, TR ("Credit"), 13, 1, true);
 	int *idx, n = entries_sorted (b, journal, from, to, true, &idx);
 	money td = 0, tc = 0, jd = 0, jc = 0; int cj = -1;
 	auto jtotal = [&] ()
 	{
 		if (cj < 0) return;
 		RRow &r = rpt_row (p, RS_SUB);
-		char t[64] = "Total "; scat (t, b.jr[cj].name, sizeof t); rpt_set (r, 4, t); rpt_money (r, 5, jd, false); rpt_money (r, 6, jc, false);
+		char t[64]; scpy (t, TR ("Total "), sizeof t); scat (t, b.jr[cj].name, sizeof t); rpt_set (r, 4, t); rpt_money (r, 5, jd, false); rpt_money (r, 6, jc, false);
 		rpt_row (p, RS_BLANK);
 	};
 	for (int i = 0; i < n; i++)
@@ -152,7 +152,7 @@ static void rpt_journal (const Book &b, Report &p, int journal, int from, int to
 		}
 	}
 	jtotal ();
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 4, "Total"); rpt_money (t, 5, td, false); rpt_money (t, 6, tc, false);
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 4, TR ("Total")); rpt_money (t, 5, td, false); rpt_money (t, 6, tc, false);
 	delete [] idx;
 }
 
@@ -196,10 +196,10 @@ static int accounts_used (const Book &b, const char *lo, const char *hi, int *ou
 static void rpt_ledger (const Book &b, Report &p, const char *lo, const char *hi, int from, int to, bool zeros)
 {
 	rpt_free (p);
-	scpy (p.title, "General ledger", sizeof p.title);
+	scpy (p.title, TR ("General ledger"), sizeof p.title);
 	period_text (from, to, p.sub, sizeof p.sub);
-	rpt_col (p, "Date", 11); rpt_col (p, "Document", 14); rpt_col (p, "Description", 44);
-	rpt_col (p, "Debit", 13, 1, true); rpt_col (p, "Credit", 13, 1, true); rpt_col (p, "Balance", 15, 1, true, true);
+	rpt_col (p, TR ("Date"), 11); rpt_col (p, TRC ("col", "Document"), 14); rpt_col (p, TR ("Description"), 44);
+	rpt_col (p, TR ("Debit"), 13, 1, true); rpt_col (p, TR ("Credit"), 13, 1, true); rpt_col (p, TR ("Balance"), 15, 1, true, true);
 	int *acc = new int[b.nacc + 1], na = accounts_used (b, lo, hi, acc, b.nacc);
 	int *idx, n = entries_sorted (b, -1, from, to, false, &idx);
 	money gd = 0, gc = 0;
@@ -213,7 +213,7 @@ static void rpt_ledger (const Book &b, Report &p, const char *lo, const char *hi
 		RRow &h = rpt_row (p, RS_HEAD, RR_ACCOUNT, acc[a]);
 		char t[96]; scpy (t, ac.code, sizeof t); scat (t, "  ", sizeof t); scat (t, ac.name, sizeof t); rpt_set (h, 0, t);
 		money bal = open, d = 0, c = 0;
-		if (open) { RRow &o = rpt_row (p, RS_DIM); rpt_set (o, 2, "Balance brought forward"); rpt_money (o, 5, bal, false); }
+		if (open) { RRow &o = rpt_row (p, RS_DIM); rpt_set (o, 2, TR ("Balance brought forward")); rpt_money (o, 5, bal, false); }
 		for (int i = 0; i < n; i++)
 		{
 			const Entry &e = b.e[idx[i]];
@@ -230,11 +230,11 @@ static void rpt_ledger (const Book &b, Report &p, const char *lo, const char *hi
 			}
 		}
 		RRow &s = rpt_row (p, RS_SUB, RR_ACCOUNT, acc[a]);
-		char tt[48] = "Total "; scat (tt, ac.code, sizeof tt); rpt_set (s, 2, tt); rpt_money (s, 3, d, false); rpt_money (s, 4, c, false); rpt_money (s, 5, bal, false);
+		char tt[48]; scpy (tt, TR ("Total "), sizeof tt); scat (tt, ac.code, sizeof tt); rpt_set (s, 2, tt); rpt_money (s, 3, d, false); rpt_money (s, 4, c, false); rpt_money (s, 5, bal, false);
 		rpt_row (p, RS_BLANK);
 		gd += d; gc += c;
 	}
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 2, "Total"); rpt_money (t, 3, gd, false); rpt_money (t, 4, gc, false);
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 2, TR ("Total")); rpt_money (t, 3, gd, false); rpt_money (t, 4, gc, false);
 	delete [] idx; delete [] acc;
 }
 
@@ -249,11 +249,11 @@ static const char *const CLASS_NAME[10] = { "Off-balance sheet rights and commit
 static void rpt_trial (const Book &b, Report &p, int to, bool zeros)
 {
 	rpt_free (p);
-	scpy (p.title, "Trial balance", sizeof p.title);
+	scpy (p.title, TR ("Trial balance"), sizeof p.title);
 	int ys = year_start (b, to);
 	period_text (ys, to, p.sub, sizeof p.sub);
-	rpt_col (p, "Account", 9); rpt_col (p, "Name", 34); rpt_col (p, "Debit", 14, 1, true); rpt_col (p, "Credit", 14, 1, true);
-	rpt_col (p, "Debit balance", 14, 1, true); rpt_col (p, "Credit balance", 14, 1, true);
+	rpt_col (p, TR ("Account"), 9); rpt_col (p, TR ("Name"), 34); rpt_col (p, TR ("Debit"), 14, 1, true); rpt_col (p, TR ("Credit"), 14, 1, true);
+	rpt_col (p, TR ("Debit balance"), 14, 1, true); rpt_col (p, TR ("Credit balance"), 14, 1, true);
 	money *dr = new money[b.nacc + 1], *cr = new money[b.nacc + 1], *fw = new money[b.nacc + 1];
 	for (int i = 0; i < b.nacc; i++) dr[i] = cr[i] = fw[i] = 0;
 	money prev = 0;
@@ -276,7 +276,7 @@ static void rpt_trial (const Book &b, Report &p, int to, bool zeros)
 	{
 		if (cls < 0) return;
 		RRow &r = rpt_row (p, RS_SUB);
-		char t[64] = "Total class "; char k[2] = { (char) ('0' + cls), 0 }; scat (t, k, sizeof t); rpt_set (r, 1, t);
+		char t[64]; scpy (t, TR ("Total class "), sizeof t); char k[2] = { (char) ('0' + cls), 0 }; scat (t, k, sizeof t); rpt_set (r, 1, t);
 		rpt_money (r, 2, cd, false); rpt_money (r, 3, cc, false); rpt_money (r, 4, cbd); rpt_money (r, 5, cbc);
 		rpt_row (p, RS_BLANK);
 	};
@@ -290,8 +290,8 @@ static void rpt_trial (const Book &b, Report &p, int to, bool zeros)
 		{
 			ctotal (); cls = k; cd = cc = cbd = cbc = 0;
 			RRow &h = rpt_row (p, RS_HEAD);
-			char t[96] = "Class "; char kk[2] = { a.code[0], 0 }; scat (t, kk, sizeof t); scat (t, "  ", sizeof t);
-			if (k >= 0 && k <= 9) scat (t, CLASS_NAME[k], sizeof t);
+			char t[96]; scpy (t, TR ("Class "), sizeof t); char kk[2] = { a.code[0], 0 }; scat (t, kk, sizeof t); scat (t, "  ", sizeof t);
+			if (k >= 0 && k <= 9) scat (t, TR (CLASS_NAME[k]), sizeof t);
 			rpt_set (h, 0, t);
 		}
 		RRow &r = rpt_row (p, RS_LINE, RR_ACCOUNT, i);
@@ -306,12 +306,12 @@ static void rpt_trial (const Book &b, Report &p, int to, bool zeros)
 	if (prev)
 	{
 		RRow &r = rpt_row (p, RS_DIM);
-		rpt_set (r, 1, prev < 0 ? "Profit of the years before, not appropriated" : "Loss of the years before, not appropriated");
+		rpt_set (r, 1, prev < 0 ? TR ("Profit of the years before, not appropriated") : TR ("Loss of the years before, not appropriated"));
 		if (prev > 0) { rpt_money (r, 2, prev); rpt_money (r, 4, prev); td += prev; tbd += prev; }
 		else { rpt_money (r, 3, -prev); rpt_money (r, 5, -prev); tc -= prev; tbc -= prev; }
 		rpt_row (p, RS_BLANK);
 	}
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 1, "Total"); rpt_money (t, 2, td, false); rpt_money (t, 3, tc, false); rpt_money (t, 4, tbd, false); rpt_money (t, 5, tbc, false);
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 1, TR ("Total")); rpt_money (t, 2, td, false); rpt_money (t, 3, tc, false); rpt_money (t, 4, tbd, false); rpt_money (t, 5, tbc, false);
 	delete [] dr; delete [] cr; delete [] fw;
 }
 
@@ -347,10 +347,10 @@ static void party_ages (const Book &b, int party, int at, money *age, const int 
 static void rpt_party_balance (const Book &b, Report &p, int kind, int at)
 {
 	rpt_free (p);
-	scpy (p.title, kind == PK_CUSTOMER ? "Customers' balance" : "Suppliers' balance", sizeof p.title);
-	char d[16]; date_show (at, d); scpy (p.sub, "At ", sizeof p.sub); scat (p.sub, d, sizeof p.sub);
-	rpt_col (p, "Code", 10); rpt_col (p, "Name", 28); rpt_col (p, "VAT number", 16); rpt_col (p, "Debit", 13, 1, true);
-	rpt_col (p, "Credit", 13, 1, true); rpt_col (p, "Balance", 14, 1, true); rpt_col (p, "Overdue", 13, 1, true);
+	scpy (p.title, kind == PK_CUSTOMER ? TR ("Customers' balance") : TR ("Suppliers' balance"), sizeof p.title);
+	char d[16]; date_show (at, d); scpy (p.sub, TR ("At "), sizeof p.sub); scat (p.sub, d, sizeof p.sub);
+	rpt_col (p, TR ("Code"), 10); rpt_col (p, TR ("Name"), 28); rpt_col (p, TR ("VAT number"), 16); rpt_col (p, TR ("Debit"), 13, 1, true);
+	rpt_col (p, TR ("Credit"), 13, 1, true); rpt_col (p, TR ("Balance"), 14, 1, true); rpt_col (p, TR ("Overdue"), 13, 1, true);
 	money td = 0, tc = 0, to = 0;
 	int *ml = match_last_dates (b);
 	for (int i = 0; i < b.npty; i++)
@@ -372,16 +372,16 @@ static void rpt_party_balance (const Book &b, Report &p, int kind, int at)
 		money ov = kind == PK_CUSTOMER ? over : -over; if (ov > 0) rpt_money (r, 6, ov);
 		td += d; tc += c; if (ov > 0) to += ov;
 	}
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 1, "Total"); rpt_money (t, 3, td, false); rpt_money (t, 4, tc, false); rpt_money (t, 5, td - tc, false); rpt_money (t, 6, to);
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 1, TR ("Total")); rpt_money (t, 3, td, false); rpt_money (t, 4, tc, false); rpt_money (t, 5, td - tc, false); rpt_money (t, 6, to);
 	delete [] ml;
 }
 static void rpt_aged (const Book &b, Report &p, int kind, int at)
 {
 	rpt_free (p);
-	scpy (p.title, kind == PK_CUSTOMER ? "Customers' open items by age" : "Suppliers' open items by age", sizeof p.title);
-	char d[16]; date_show (at, d); scpy (p.sub, "At ", sizeof p.sub); scat (p.sub, d, sizeof p.sub);
-	rpt_col (p, "Name", 28); rpt_col (p, "Not due", 13, 1, true); rpt_col (p, "1-30 days", 13, 1, true); rpt_col (p, "31-60 days", 13, 1, true);
-	rpt_col (p, "61-90 days", 13, 1, true); rpt_col (p, "Over 90", 13, 1, true); rpt_col (p, "Total", 14, 1, true);
+	scpy (p.title, kind == PK_CUSTOMER ? TR ("Customers' open items by age") : TR ("Suppliers' open items by age"), sizeof p.title);
+	char d[16]; date_show (at, d); scpy (p.sub, TR ("At "), sizeof p.sub); scat (p.sub, d, sizeof p.sub);
+	rpt_col (p, TR ("Name"), 28); rpt_col (p, TR ("Not due"), 13, 1, true); rpt_col (p, TR ("1-30 days"), 13, 1, true); rpt_col (p, TR ("31-60 days"), 13, 1, true);
+	rpt_col (p, TR ("61-90 days"), 13, 1, true); rpt_col (p, TR ("Over 90"), 13, 1, true); rpt_col (p, TR ("Total"), 14, 1, true);
 	money tot[6] = { 0, 0, 0, 0, 0, 0 };
 	int sg = kind == PK_CUSTOMER ? 1 : -1;
 	int *ml = match_last_dates (b);
@@ -397,7 +397,7 @@ static void rpt_aged (const Book &b, Report &p, int kind, int at)
 		for (int k = 0; k < 5; k++) { rpt_money (r, 1 + k, sg * age[k]); tot[k] += sg * age[k]; }
 		rpt_money (r, 6, sg * s, false); tot[5] += sg * s;
 	}
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 0, "Total");
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 0, TR ("Total"));
 	for (int k = 0; k < 6; k++) rpt_money (t, 1 + k, tot[k], false);
 	delete [] ml;
 }
@@ -408,10 +408,10 @@ static void rpt_party_ledger (const Book &b, Report &p, int party, int from, int
 	const Party *pt = party_of (b, party);
 	scpy (p.title, pt ? pt->name : "", sizeof p.title);
 	period_text (from, to, p.sub, sizeof p.sub);
-	rpt_col (p, "Date", 11); rpt_col (p, "Document", 14); rpt_col (p, "Description", 30); rpt_col (p, "Due", 11);
-	rpt_col (p, "Debit", 13, 1, true); rpt_col (p, "Credit", 13, 1, true); rpt_col (p, "Balance", 15, 1, true, true); rpt_col (p, "Matched", 8);
+	rpt_col (p, TR ("Date"), 11); rpt_col (p, TRC ("col", "Document"), 14); rpt_col (p, TR ("Description"), 30); rpt_col (p, TRC ("col", "Due"), 11);
+	rpt_col (p, TR ("Debit"), 13, 1, true); rpt_col (p, TR ("Credit"), 13, 1, true); rpt_col (p, TR ("Balance"), 15, 1, true, true); rpt_col (p, TR ("Matched"), 8);
 	money bal = party_balance (b, party, date_add (from, -1));
-	if (bal) { RRow &o = rpt_row (p, RS_DIM); rpt_set (o, 2, "Balance brought forward"); rpt_money (o, 6, bal, false); }
+	if (bal) { RRow &o = rpt_row (p, RS_DIM); rpt_set (o, 2, TR ("Balance brought forward")); rpt_money (o, 6, bal, false); }
 	int *idx, n = entries_sorted (b, -1, from, to, false, &idx);
 	money d = 0, c = 0;
 	for (int i = 0; i < n; i++)
@@ -426,10 +426,10 @@ static void rpt_party_ledger (const Book &b, Report &p, int party, int from, int
 			rpt_set (r, 2, l.text[0] ? l.text : e.text); rpt_date (r, 3, l.due);
 			if (l.amount > 0) { rpt_money (r, 4, l.amount); d += l.amount; } else { rpt_money (r, 5, -l.amount); c -= l.amount; }
 			bal += l.amount; rpt_money (r, 6, bal, false);
-			rpt_set (r, 7, l.match ? "yes" : "");
+			rpt_set (r, 7, l.match ? TR ("yes") : "");
 		}
 	}
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 2, "Total"); rpt_money (t, 4, d, false); rpt_money (t, 5, c, false); rpt_money (t, 6, bal, false);
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 2, TR ("Total")); rpt_money (t, 4, d, false); rpt_money (t, 5, c, false); rpt_money (t, 6, bal, false);
 	delete [] idx;
 }
 
@@ -522,14 +522,14 @@ static void rpt_rubrics (const Book &b, Report &p, const Rubric *R, int n, int f
 		{
 			money s = 0;
 			for (int j = i + 1; j < n && R[j].indent > 0; j++) s += sign * rubric_sum (b, R[j].prefixes, from, to);
-			RRow &r = rpt_row (p, RS_SUB); rpt_set (r, 0, u.name); rpt_money (r, 2, s, false);
+			RRow &r = rpt_row (p, RS_SUB); rpt_set (r, 0, TR (u.name)); rpt_money (r, 2, s, false);
 			t += s;
 			continue;
 		}
 		money s = sign * rubric_sum (b, u.prefixes, from, to);
 		RRow &r = rpt_row (p, u.indent ? RS_LINE : RS_SUB);
 		r.indent = u.indent;
-		rpt_set (r, 0, u.name); rpt_set (r, 1, u.prefixes); rpt_money (r, 2, s, !u.indent ? false : true);
+		rpt_set (r, 0, TR (u.name)); rpt_set (r, 1, u.prefixes); rpt_money (r, 2, s, !u.indent ? false : true);
 		if (u.total == 1) t += s;
 	}
 	*total = t;
@@ -537,26 +537,26 @@ static void rpt_rubrics (const Book &b, Report &p, const Rubric *R, int n, int f
 static void rpt_balance_sheet (const Book &b, Report &p, int at)
 {
 	rpt_free (p);
-	scpy (p.title, "Balance sheet (abbreviated scheme)", sizeof p.title);
-	char d[16]; date_show (at, d); scpy (p.sub, "At ", sizeof p.sub); scat (p.sub, d, sizeof p.sub);
-	rpt_col (p, "Rubric", 46); rpt_col (p, "Accounts", 20); rpt_col (p, "Amount", 16, 1, true);
+	scpy (p.title, TR ("Balance sheet (abbreviated scheme)"), sizeof p.title);
+	char d[16]; date_show (at, d); scpy (p.sub, TR ("At "), sizeof p.sub); scat (p.sub, d, sizeof p.sub);
+	rpt_col (p, TR ("Rubric"), 46); rpt_col (p, TR ("Accounts"), 20); rpt_col (p, TR ("Amount"), 16, 1, true);
 	int from = year_start (b, at);
-	RRow &h1 = rpt_row (p, RS_HEAD); rpt_set (h1, 0, "ASSETS");
+	RRow &h1 = rpt_row (p, RS_HEAD); rpt_set (h1, 0, TR ("ASSETS"));
 	money ta; rpt_rubrics (b, p, ASSETS, sizeof ASSETS / sizeof ASSETS[0], from, at, 1, &ta);
-	RRow &t1 = rpt_row (p, RS_TOTAL); rpt_set (t1, 0, "TOTAL ASSETS"); rpt_money (t1, 2, ta, false);
+	RRow &t1 = rpt_row (p, RS_TOTAL); rpt_set (t1, 0, TR ("TOTAL ASSETS")); rpt_money (t1, 2, ta, false);
 	rpt_row (p, RS_BLANK);
-	RRow &h2 = rpt_row (p, RS_HEAD); rpt_set (h2, 0, "EQUITY AND LIABILITIES");
+	RRow &h2 = rpt_row (p, RS_HEAD); rpt_set (h2, 0, TR ("EQUITY AND LIABILITIES"));
 	money tl; rpt_rubrics (b, p, LIABS, sizeof LIABS / sizeof LIABS[0], from, at, -1, &tl);
-	RRow &t2 = rpt_row (p, RS_TOTAL); rpt_set (t2, 0, "TOTAL EQUITY AND LIABILITIES"); rpt_money (t2, 2, tl, false);
-	if (ta != tl) { rpt_row (p, RS_BLANK); RRow &w = rpt_row (p, RS_DIM); char t[32]; fmt_money (ta - tl, t); char m[96] = "Difference (entries not balanced?): "; scat (m, t, sizeof m); rpt_set (w, 0, m); }
+	RRow &t2 = rpt_row (p, RS_TOTAL); rpt_set (t2, 0, TR ("TOTAL EQUITY AND LIABILITIES")); rpt_money (t2, 2, tl, false);
+	if (ta != tl) { rpt_row (p, RS_BLANK); RRow &w = rpt_row (p, RS_DIM); char t[32]; fmt_money (ta - tl, t); char m[128]; scpy (m, TR ("Difference (entries not balanced?): "), sizeof m); scat (m, t, sizeof m); rpt_set (w, 0, m); }
 }
 static money income_result (const Book &b, int from, int to) { return -rubric_sum (b, "6 7", from, to); }
 static void rpt_income (const Book &b, Report &p, int from, int to)
 {
 	rpt_free (p);
-	scpy (p.title, "Income statement (abbreviated scheme)", sizeof p.title);
+	scpy (p.title, TR ("Income statement (abbreviated scheme)"), sizeof p.title);
 	period_text (from, to, p.sub, sizeof p.sub);
-	rpt_col (p, "Rubric", 46); rpt_col (p, "Accounts", 20); rpt_col (p, "Amount", 16, 1, true);
+	rpt_col (p, TR ("Rubric"), 46); rpt_col (p, TR ("Accounts"), 20); rpt_col (p, TR ("Amount"), 16, 1, true);
 	money inc = -rubric_sum (b, "70 71 72 74 76", from, to), chg = rubric_sum (b, "60 61 62 63 64 66", from, to);
 	money fin = -rubric_sum (b, "75", from, to), finc = rubric_sum (b, "65", from, to), tax = rubric_sum (b, "67 77", from, to), def = rubric_sum (b, "68 78", from, to);
 	for (unsigned i = 0; i < sizeof INCOME / sizeof INCOME[0]; i++)
@@ -566,21 +566,21 @@ static void rpt_income (const Book &b, Report &p, int from, int to)
 		money s = rubric_sum (b, u.prefixes, from, to);
 		if (credit) s = -s;
 		RRow &r = rpt_row (p, u.indent ? RS_LINE : RS_SUB);
-		r.indent = u.indent; rpt_set (r, 0, u.name); rpt_set (r, 1, u.prefixes); rpt_money (r, 2, s, u.indent != 0);
-		if (i == 12) { RRow &o = rpt_row (p, RS_SUB); rpt_set (o, 0, "OPERATING PROFIT (LOSS)"); rpt_money (o, 2, inc - chg, false); }
-		if (i == 14) { RRow &o = rpt_row (p, RS_SUB); rpt_set (o, 0, "PROFIT (LOSS) BEFORE TAXES"); rpt_money (o, 2, inc - chg + fin - finc, false); }
+		r.indent = u.indent; rpt_set (r, 0, TR (u.name)); rpt_set (r, 1, u.prefixes); rpt_money (r, 2, s, u.indent != 0);
+		if (i == 12) { RRow &o = rpt_row (p, RS_SUB); rpt_set (o, 0, TR ("OPERATING PROFIT (LOSS)")); rpt_money (o, 2, inc - chg, false); }
+		if (i == 14) { RRow &o = rpt_row (p, RS_SUB); rpt_set (o, 0, TR ("PROFIT (LOSS) BEFORE TAXES")); rpt_money (o, 2, inc - chg + fin - finc, false); }
 	}
-	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 0, "PROFIT (LOSS) OF THE PERIOD"); rpt_money (t, 2, inc - chg + fin - finc - tax - def, false);
+	RRow &t = rpt_row (p, RS_TOTAL); rpt_set (t, 0, TR ("PROFIT (LOSS) OF THE PERIOD")); rpt_money (t, 2, inc - chg + fin - finc - tax - def, false);
 }
 
 // ---- the VAT detail --------------------------------------------------------------------------------------------------------------
 static void rpt_vat_detail (const Book &b, Report &p, int from, int to)
 {
 	rpt_free (p);
-	scpy (p.title, "VAT detail by grid", sizeof p.title);
+	scpy (p.title, TR ("VAT detail by grid"), sizeof p.title);
 	period_text (from, to, p.sub, sizeof p.sub);
-	rpt_col (p, "Grid", 6); rpt_col (p, "Date", 11); rpt_col (p, "Document", 14); rpt_col (p, "Party", 22); rpt_col (p, "Account", 8);
-	rpt_col (p, "Code", 7); rpt_col (p, "Amount", 14, 1, true);
+	rpt_col (p, TR ("Grid"), 6); rpt_col (p, TR ("Date"), 11); rpt_col (p, TRC ("col", "Document"), 14); rpt_col (p, TR ("Party"), 22); rpt_col (p, TR ("Account"), 8);
+	rpt_col (p, TR ("Code"), 7); rpt_col (p, TR ("Amount"), 14, 1, true);
 	money grid[100]; vat_grids (b, from, to, grid);
 	int *idx, n = entries_sorted (b, -1, from, to, false, &idx);
 	for (int gi = 0; gi < NGRIDS; gi++)
@@ -605,7 +605,7 @@ static void rpt_vat_detail (const Book &b, Report &p, int from, int to)
 				}
 			}
 		}
-		if (any) { RRow &s = rpt_row (p, RS_SUB); char t[32] = "Grid "; char gl[4]; grid_label (g, gl); scat (t, gl, sizeof t); rpt_set (s, 3, t); rpt_money (s, 6, grid[g], false); rpt_row (p, RS_BLANK); }
+		if (any) { RRow &s = rpt_row (p, RS_SUB); char t[32]; scpy (t, TR ("Grid "), sizeof t); char gl[4]; grid_label (g, gl); scat (t, gl, sizeof t); rpt_set (s, 3, t); rpt_money (s, 6, grid[g], false); rpt_row (p, RS_BLANK); }
 	}
 	delete [] idx;
 }

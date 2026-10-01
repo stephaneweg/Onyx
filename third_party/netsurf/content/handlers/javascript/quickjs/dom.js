@@ -3843,7 +3843,7 @@ class Document extends Node {
 			createDocumentType: () => null };
 	}
 	hasFocus() { return true; }
-	getElementById(id) { return N.byId(String(id)); }
+	getElementById(id) { return N.byId(String(id), this); }
 	getElementsByName(name) { return nodeList(N.descendants(this).filter(e => N.attr(e, 'name') === name)); }
 	createElement(tag) { return N.create(lower(tag)); }
 	createElementNS(ns, tag) {

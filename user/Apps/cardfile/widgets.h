@@ -777,7 +777,7 @@ public:
 	enum { MAXO = MAXCH + 2 };
 	const char *opt[MAXO]; int nopt, sel; bool withNone;
 	Action onChange;
-	ChoiceBox (int l, int t_, int w) : Widget (l, t_, w, ED_H), nopt (1), sel (0), withNone (true), onChange (0), m_hot (false) { canFocus = true; opt[0] = "(none)"; m_extra[0] = '\0'; }
+	ChoiceBox (int l, int t_, int w) : Widget (l, t_, w, ED_H), nopt (1), sel (0), withNone (true), onChange (0), m_hot (false) { canFocus = true; opt[0] = TR ("(none)"); m_extra[0] = '\0'; }
 	void setField (const Field &f)
 	{
 		withNone = true; nopt = 1;
@@ -818,7 +818,7 @@ public:
 		unsigned ink = disabled ? wk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT;
 		Canvas c; c.adopt (canvas.px + 9, imax (1, width - 34), height, canvas.stride);
 		if (sel > 0 || !withNone) wk_text_l (c, 0, 0, height, opt[sel], ink);
-		else wk_text_l (c, 0, 0, height, "(none)", wk_mix (C_BUTTON, C_BUTTON_TEXT, 150), 1);
+		else wk_text_l (c, 0, 0, height, TR ("(none)"), wk_mix (C_BUTTON, C_BUTTON_TEXT, 150), 1);
 		wk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 9, ink);
 	}
 	void drop ()
@@ -895,8 +895,8 @@ public:
 		}
 		cal = new Calendar (6, 6, yy, mm, dd, picked);
 		addChild (cal);
-		Button *b = new Button (6, CAL_H + 12, 80, 28, "Today", button); b->tag = 3; addChild (b);
-		b = new Button (width - 86, CAL_H + 12, 80, 28, "Clear", button); b->tag = 2; addChild (b);
+		Button *b = new Button (6, CAL_H + 12, 80, 28, TR ("Today"), button); b->tag = 3; addChild (b);
+		b = new Button (width - 86, CAL_H + 12, 80, 28, TR ("Clear"), button); b->tag = 2; addChild (b);
 		cal->setFocus ();
 	}
 	static void picked (Widget &w) { ((Modal *) w.parent)->close (1); }
@@ -920,7 +920,7 @@ public:
 class DateEdit : public LineEdit
 {
 public:
-	DateEdit (int l, int t_, int w) : LineEdit (l, t_, w), m_btnHot (false) { padR = 24; accept = accept_date; placeholder = "DD/MM/YYYY"; }
+	DateEdit (int l, int t_, int w) : LineEdit (l, t_, w), m_btnHot (false) { padR = 24; accept = accept_date; placeholder = TR ("DD/MM/YYYY"); }
 	void drawExtra () override
 	{
 		int bw = 20, bx = width - bw - 3, bh = height - 6;
@@ -994,7 +994,7 @@ public:
 	{
 		int r = run ();
 		if (r == 2) return 2;
-		if (r == 3) { unsigned c = color; if (wk_color_dialog (&c, "Colour")) { color = c; return 1; } return 0; }
+		if (r == 3) { unsigned c = color; if (wk_color_dialog (&c, TR ("Colour"))) { color = c; return 1; } return 0; }
 		if (r >= 10) { color = PALETTE[r - 10]; return 1; }
 		return 0;
 	}
@@ -1006,7 +1006,7 @@ public:
 		if (m_hot == -1) wk_hilite (canvas, PAD - 3, PAD, w + 6, ROWH, 5, true);
 		canvas.frameRect (PAD + 2, PAD + 5, 16, 16, wk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		for (int k = 0; k < 12; k++) canvas.pixel (PAD + 4 + k, PAD + 18 - k, 0xC0392B);
-		wk_text_l (canvas, PAD + 26, PAD, ROWH, "No colour", m_hot == -1 ? C_SEL_TEXT : C_FIELD_TEXT);
+		wk_text_l (canvas, PAD + 26, PAD, ROWH, TR ("No colour"), m_hot == -1 ? C_SEL_TEXT : C_FIELD_TEXT);
 		int y0 = PAD + ROWH + 6;
 		for (int i = 0; i < 40; i++)
 		{
@@ -1020,7 +1020,7 @@ public:
 		if (m_hot == -2) wk_hilite (canvas, PAD - 3, yb, w + 6, ROWH, 5, true);
 		static const unsigned rb[4] = { 0xE74C3C, 0xF1C40F, 0x2ECC71, 0x3498DB };
 		for (int k = 0; k < 4; k++) canvas.fillRect (PAD + 2 + (k & 1) * 8, yb + 5 + (k >> 1) * 8, 8, 8, rb[k]);
-		wk_text_l (canvas, PAD + 26, yb, ROWH, "More Colours...", m_hot == -2 ? C_SEL_TEXT : C_FIELD_TEXT);
+		wk_text_l (canvas, PAD + 26, yb, ROWH, TR ("More Colours..."), m_hot == -2 ? C_SEL_TEXT : C_FIELD_TEXT);
 	}
 	int hitAt (int mx, int my)
 	{
@@ -1072,7 +1072,7 @@ public:
 		{
 			wk_rline (canvas, 5, 5, sw, sh, 3, wk_mix (C_FIELD, C_FIELD_TEXT, 110), 200);
 			for (int k = 0; k < sh - 4; k++) canvas.pixel (7 + k * (sw - 4) / (sh - 4), 7 + (sh - 5) - k, 0xC0392B);
-			wk_text_l (canvas, sw + 12, 0, height, "None", wk_mix (C_FIELD, C_FIELD_TEXT, 130), 1);
+			wk_text_l (canvas, sw + 12, 0, height, TR ("None"), wk_mix (C_FIELD, C_FIELD_TEXT, 130), 1);
 		}
 		else
 		{
@@ -1121,7 +1121,7 @@ private:
 class SearchBox : public LineEdit
 {
 public:
-	SearchBox (int w) : LineEdit (0, 0, w, BTN), m_xHot (false) { padL = 22; padR = 22; placeholder = "Search"; tip = "Search the records (Ctrl+F)"; }
+	SearchBox (int w) : LineEdit (0, 0, w, BTN), m_xHot (false) { padL = 22; padR = 22; placeholder = TR ("Search"); tip = TR ("Search the records (Ctrl+F)"); }
 	void drawExtra () override
 	{
 		draw_icon (canvas, IC_SEARCH, 6, (height - 20) / 2 + 2, wk_mix (C_FIELD, C_FIELD_TEXT, 150));

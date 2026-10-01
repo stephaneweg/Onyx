@@ -1,0 +1,5 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+#   name     = friendly display name shown under the icon
+#   category = grouping bucket (Games, Graphics, Productivity, Internet, Demos; Settings: the Control Panel's applets; Emulators: the Game Library's; Shell: the desktop's parts)
+name = Wi-Fi Menu
+category = Shell

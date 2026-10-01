@@ -9,9 +9,11 @@
 //   * above, the path bar ("Game Library > Super Nintendo", the number of games; a click on
 //     "Game Library" shows them all); below, the status bar (the game chosen; the picture being
 //     made);
-//   * the cards, one section per system. A click selects one, a double-click (or Enter) plays it:
-//     the ROM opens with its emulator (SD:/etc/runners.ini: gbemu, gbaemu, nesemu, snesemu,
-//     n64emu, gcemu), in a window or, with View > Play Full Screen, on the whole display. A right
+//   * the cards, one section per system -- the systems of the installed emulators, each from its
+//     app.txt (`games = Super Nintendo: sfc smc`, `order =`): an emulator's package installed, its
+//     games show. A click selects one, a double-click (or Enter) plays it: the ROM opens with its
+//     emulator (launch.h finds it by the same app.txt), in a window or, with View > Play Full
+//     Screen, on the whole display. A right
 //     click: Play, Play Full Screen, Show in File Viewer. Keys: the arrows, Enter, PgUp / PgDn,
 //     Tab (the next system). A USB gamepad: the d-pad moves, Start (or A) plays, L / R the
 //     previous / next system, L2 / R2 turn a page.
@@ -25,6 +27,8 @@
 //   * The emulators are in no menu of the desktop: they are reached from here (one started
 //     without a ROM opens the Game Library).
 //
+#include <stdlib.h>
+#include <string.h>
 #include "kapi.h"
 #include "applib.h"
 #include "launch.h"
@@ -55,10 +59,77 @@ using namespace wtk;
 #define MAXG	256
 #define THUMB_FRAMES	420		// ~7 s of game time: past the logos, on the title screen
 
-enum { SYS_GC, SYS_N64, SYS_SNES, SYS_GBA, SYS_GBC, SYS_GB, SYS_NES, NSYS };		// the sections, in this order
-static const char *const SYS_NAME[NSYS] = { "GameCube", "Nintendo 64", "Super Nintendo", "Game Boy Advance", "Game Boy Color", "Game Boy", "NES" };
-static const char *const SYS_EXT[NSYS] = { ".iso / .gcm", ".z64 / .n64 / .v64", ".sfc / .smc", ".gba", ".gbc", ".gb", ".nes" };
-static const char *const SYS_EMU[NSYS] = { "gcemu", "n64emu", "snesemu", "gbaemu", "gbemu", "gbemu", "nesemu" };
+// The systems: those the installed emulators play, each from its app.txt (`games = Game Boy Color: gbc;
+// Game Boy: gb`, `order = 50`: the sections' order) -- an emulator's package installed, its games show.
+// The pictures of the games: the cores carried here (GB, GBA, NES, SNES), an N64 label, a GameCube
+// banner; another emulator's games: its icon.
+#define MAXSYS	12
+enum { CORE_NONE, CORE_GB, CORE_GBA, CORE_SNES, CORE_NES, CORE_N64, CORE_GC };
+struct Sys { char name[40]; char ext[64]; char extText[64]; char emu[24]; int order, core; };
+static Sys g_sys[MAXSYS]; static int NSYS = 0;
+#define SYS_NAME(k)	g_sys[k].name
+static void load_systems (void)
+{
+	NSYS = 0;
+	void *d = kapi_opendir ("SD:/apps");
+	if (!d) return;
+	struct kapi_dirent e;
+	while (kapi_readdir (d, &e) && NSYS < MAXSYS)
+	{
+		int nl = 0; while (e.name[nl]) nl++;
+		if (!e.is_dir || nl < 5 || e.name[nl - 4] != '.') continue;
+		char emu[24]; int k = 0; for (; k < nl - 4 && k < 23; k++) emu[k] = e.name[k]; emu[k] = 0;
+		char p[96]; int n = 0; lx_cat (p, sizeof p, &n, "SD:/apps/"); lx_cat (p, sizeof p, &n, e.name); lx_cat (p, sizeof p, &n, "/app.txt");
+		if (app_ini_load_path (p) < 0) continue;
+		const char *games = app_ini_get (0, "games", 0), *ord = app_ini_get (0, "order", "100");
+		// (an emulator of before the `games` key: its systems as they were)
+		static const char *const older[][3] = { { "gcemu", "GameCube: iso gcm", "10" }, { "n64emu", "Nintendo 64: z64 n64 v64", "20" },
+			{ "snesemu", "Super Nintendo: sfc smc", "30" }, { "gbaemu", "Game Boy Advance: gba", "40" },
+			{ "gbemu", "Game Boy Color: gbc; Game Boy: gb", "50" }, { "nesemu", "NES: nes", "60" } };
+		for (unsigned o = 0; !games && o < sizeof older / sizeof older[0]; o++) if (!strcmp (emu, older[o][0])) { games = older[o][1]; ord = older[o][2]; }
+		if (!games) continue;
+		int order = atoi (ord), idx = 0;
+		int core = !strcmp (emu, "gbemu") ? CORE_GB : !strcmp (emu, "gbaemu") ? CORE_GBA : !strcmp (emu, "snesemu") ? CORE_SNES :
+			   !strcmp (emu, "nesemu") ? CORE_NES : !strcmp (emu, "n64emu") ? CORE_N64 : !strcmp (emu, "gcemu") ? CORE_GC : CORE_NONE;
+		for (const char *g = games; *g && NSYS < MAXSYS; idx++)	// "Name: ext ext; Name: ext"
+		{
+			while (*g == ' ' || *g == ';') g++;
+			if (!*g) break;
+			Sys &y = g_sys[NSYS];
+			int m = 0; while (*g && *g != ':' && *g != ';' && m < 39) y.name[m++] = *g++;
+			while (m > 0 && y.name[m - 1] == ' ') m--;
+			y.name[m] = 0;
+			if (*g != ':') { while (*g && *g != ';') g++; continue; }
+			g++;
+			int x = 0, t = 0; y.ext[x++] = ' ';
+			while (*g && *g != ';')
+			{
+				while (*g == ' ' || *g == ',' || *g == '.') g++;
+				if (!*g || *g == ';') break;
+				if (t && t < 60) { y.extText[t++] = ' '; y.extText[t++] = '/'; y.extText[t++] = ' '; }
+				if (t < 62) y.extText[t++] = '.';
+				while (*g && *g != ' ' && *g != ',' && *g != ';') { char c = lx_low (*g++); if (x < 62) y.ext[x++] = c; if (t < 62) y.extText[t++] = c; }
+				if (x < 63) y.ext[x++] = ' ';
+			}
+			y.ext[x] = 0; y.extText[t] = 0;
+			lx_cat (y.emu, sizeof y.emu, (m = 0, &m), emu);
+			y.order = order * 16 + idx; y.core = core;
+			if (y.name[0] && x > 1) NSYS++;
+		}
+	}
+	kapi_closedir (d);
+	for (int i = 1; i < NSYS; i++) for (int j = i; j > 0 && g_sys[j - 1].order > g_sys[j].order; j--) { Sys t = g_sys[j]; g_sys[j] = g_sys[j - 1]; g_sys[j - 1] = t; }
+}
+// the system of a file, by its extension -> its index, -1: none
+static int sys_of (const char *file)
+{
+	int n = 0; while (file[n]) n++;
+	int d = n; while (d > 0 && file[d - 1] != '.' && file[d - 1] != '/') d--;
+	if (d <= 0 || file[d - 1] != '.' || n - d > 8) return -1;
+	char x[12]; int k = 0; x[k++] = ' '; for (int i = d; i < n; i++) x[k++] = lx_low (file[i]); x[k++] = ' '; x[k] = 0;
+	for (int i = 0; i < NSYS; i++) if (strstr (g_sys[i].ext, x)) return i;
+	return -1;
+}
 struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
 static Game g_games[MAXG]; static int g_ng = 0;
 enum { MAXF = 8 };
@@ -105,16 +176,13 @@ static void scan (const char *dir, int depth)
 		if (e.name[0] == '.') continue;
 		char p[200]; int n = 0; lx_cat (p, sizeof p, &n, dir); if (n && p[n - 1] != '/') lx_cat (p, sizeof p, &n, "/"); lx_cat (p, sizeof p, &n, e.name);
 		if (e.is_dir) { scan (p, depth + 1); continue; }
-		bool gbc = ends (e.name, ".gbc"), gbf = ends (e.name, ".gb"), agb = ends (e.name, ".gba"), nes = ends (e.name, ".nes");
-		bool sfc = ends (e.name, ".sfc") || ends (e.name, ".smc");
-		bool n64 = ends (e.name, ".z64") || ends (e.name, ".n64") || ends (e.name, ".v64");
-		bool gcn = ends (e.name, ".iso") || ends (e.name, ".gcm");
-		if (!gbc && !gbf && !agb && !nes && !sfc && !n64 && !gcn) continue;
+		int sys = sys_of (e.name);
+		if (sys < 0) continue;
 		Game &g = g_games[g_ng++];
 		scpy (g.path, p, sizeof g.path);
 		nice_name (e.name, g.name, sizeof g.name);
 		scpy (g.key, e.name, sizeof g.key);
-		g.sys = gcn ? SYS_GC : n64 ? SYS_N64 : sfc ? SYS_SNES : agb ? SYS_GBA : gbc ? SYS_GBC : nes ? SYS_NES : SYS_GB; g.thumb = 0; g.tried = false;
+		g.sys = sys; g.thumb = 0; g.tried = false;
 	}
 	kapi_closedir (d);
 }
@@ -293,8 +361,10 @@ static void thumb_work (void)
 			{
 				g_games[i].tried = true;
 				if (thumb_load (g_games[i])) { g_root->invalidate (true); return; }
-				if (g_games[i].sys == SYS_N64) { n64_thumb (g_games[i]); g_root->invalidate (true); return; }
-				if (g_games[i].sys == SYS_GC) { gc_thumb (g_games[i]); g_root->invalidate (true); return; }
+				int core = g_sys[g_games[i].sys].core;
+				if (core == CORE_N64) { n64_thumb (g_games[i]); g_root->invalidate (true); return; }
+				if (core == CORE_GC) { gc_thumb (g_games[i]); g_root->invalidate (true); return; }
+				if (core == CORE_NONE) continue;			// (its emulator's icon instead)
 				g_tfile = kapi_open (g_games[i].path); if (!g_tfile) return;
 				g_tsize = kapi_fsize (g_tfile);
 				if (g_tsize > 0x2000000) g_tsize = 0x2000000;
@@ -316,27 +386,27 @@ static void thumb_work (void)
 		if (got > 0 && g_tread < g_tsize) return;
 		kapi_close (g_tfile); g_tfile = 0;
 		bool ok;
-		if (g.sys == SYS_GBA) { if (!g_tma) { g_tma = new gba::Machine; g_tma->setAudioRate (8000); } ok = g_tma->load (g_trom, (int) g_tread); }
-		else if (g.sys == SYS_SNES) { if (!g_tms) { g_tms = new snes::Machine; g_tms->setAudioRate (8000); } ok = g_tms->load (g_trom, (int) g_tread); }
-		else if (g.sys == SYS_NES) { if (!g_tmn) { g_tmn = new nes::Machine; g_tmn->setAudioRate (8000); } ok = g_tmn->load (g_trom, (int) g_tread); }
+		if (g_sys[g.sys].core == CORE_GBA) { if (!g_tma) { g_tma = new gba::Machine; g_tma->setAudioRate (8000); } ok = g_tma->load (g_trom, (int) g_tread); }
+		else if (g_sys[g.sys].core == CORE_SNES) { if (!g_tms) { g_tms = new snes::Machine; g_tms->setAudioRate (8000); } ok = g_tms->load (g_trom, (int) g_tread); }
+		else if (g_sys[g.sys].core == CORE_NES) { if (!g_tmn) { g_tmn = new nes::Machine; g_tmn->setAudioRate (8000); } ok = g_tmn->load (g_trom, (int) g_tread); }
 		else { if (!g_tm) { g_tm = new gb::Machine; g_tm->setAudioRate (8000); } ok = g_tm->load (g_trom, (int) g_tread); }
 		if (!ok) { g_tgame = -1; return; }
 		g_tloaded = true;
 		return;
 	}
 	static short pcm[4096];
-	int per = g.sys == SYS_GBA ? 4 : g.sys == SYS_SNES ? 3 : g.sys == SYS_NES ? 6 : 12;
+	int per = g_sys[g.sys].core == CORE_GBA ? 4 : g_sys[g.sys].core == CORE_SNES ? 3 : g_sys[g.sys].core == CORE_NES ? 6 : 12;
 	for (int k = 0; k < per && g_tframe < THUMB_FRAMES; k++, g_tframe++)
 	{
-		if (g.sys == SYS_GBA) { g_tma->runFrame (); g_tma->audioRead (pcm, 2048); }
-		else if (g.sys == SYS_SNES) { g_tms->runFrame (); g_tms->audioRead (pcm, 2048); }
-		else if (g.sys == SYS_NES) { g_tmn->runFrame (); g_tmn->audioRead (pcm, 2048); }
+		if (g_sys[g.sys].core == CORE_GBA) { g_tma->runFrame (); g_tma->audioRead (pcm, 2048); }
+		else if (g_sys[g.sys].core == CORE_SNES) { g_tms->runFrame (); g_tms->audioRead (pcm, 2048); }
+		else if (g_sys[g.sys].core == CORE_NES) { g_tmn->runFrame (); g_tmn->audioRead (pcm, 2048); }
 		else { g_tm->runFrame (); g_tm->audioRead (pcm, 2048); }
 	}
 	if (g_tframe >= THUMB_FRAMES)
 	{
 		g.thumb = new unsigned[TW * TH];
-		if (g.sys == SYS_GBA)
+		if (g_sys[g.sys].core == CORE_GBA)
 		{
 			// 240 x 160 -> 160 x 107, centred in the 160 x 144 picture on black
 			int oy = (TH - 107) / 2;
@@ -344,7 +414,7 @@ static void thumb_work (void)
 			for (int y = 0; y < 107; y++)
 				for (int x = 0; x < TW; x++) g.thumb[(oy + y) * TW + x] = g_tma->fb[(y * 160 / 107) * gba::W + x * 3 / 2];
 		}
-		else if (g.sys == SYS_SNES)
+		else if (g_sys[g.sys].core == CORE_SNES)
 		{
 			// 256 x 224 -> 160 x 140, centred on black
 			int oy = (TH - 140) / 2;
@@ -352,7 +422,7 @@ static void thumb_work (void)
 			for (int y = 0; y < 140; y++)
 				for (int x = 0; x < TW; x++) g.thumb[(oy + y) * TW + x] = g_tms->fb[(y * 224 / 140) * snes::W + x * 256 / TW];
 		}
-		else if (g.sys == SYS_NES)
+		else if (g_sys[g.sys].core == CORE_NES)
 		{
 			// 256 x 240 -> 154 x 144, centred on black
 			int ox = (TW - 154) / 2;
@@ -369,9 +439,9 @@ static void thumb_work (void)
 }
 
 // ---- what is shown: all the games, a system's, a folder's ----------------------------------------------
-enum { F_ALL = 0, F_SYS = 1, F_FOLDER = 1 + NSYS };	// g_filter: F_ALL, F_SYS + a system, F_FOLDER + a folder
+enum { F_ALL = 0, F_SYS = 1, F_FOLDER = 1 + MAXSYS };	// g_filter: F_ALL, F_SYS + a system, F_FOLDER + a folder
 static int g_filter = F_ALL;
-static int g_nsys[NSYS], g_nfold[MAXF];			// the games of each system, of each folder
+static int g_nsys[MAXSYS], g_nfold[MAXF];			// the games of each system, of each folder
 
 static bool in_folder (const Game &g, const char *f)
 {
@@ -411,7 +481,7 @@ static void set_filter (int f)
 static const char *filter_name (void)
 {
 	if (g_filter >= F_FOLDER) return g_folder[g_filter - F_FOLDER];
-	if (g_filter >= F_SYS) return SYS_NAME[g_filter - F_SYS];
+	if (g_filter >= F_SYS) return SYS_NAME(g_filter - F_SYS);
 	return "All Games";
 }
 // Tab, a gamepad's shoulders: the next / previous system that has games (All Games between)
@@ -420,7 +490,7 @@ static void next_filter (int dir)
 	int f = g_filter >= F_FOLDER ? F_ALL : g_filter;
 	for (int k = 0; k <= NSYS; k++)
 	{
-		f = (f + dir + NSYS + 1) % (NSYS + 1);			// F_ALL, F_SYS + 0 .. F_SYS + NSYS - 1
+		f = (f + dir + NSYS + 1) % (NSYS + 1);			// F_ALL, F_SYS + 0 .. F_SYS + NSYS - 1 (F_SYS == 1)
 		if (f == F_ALL || g_nsys[f - F_SYS] > 0) break;
 	}
 	set_filter (f);
@@ -482,7 +552,7 @@ static const char *const GROUP_NAME[NGROUPS] = { "Library", "Systems", "Folders"
 static bool g_folded[NGROUPS];
 enum { SR_GROUP, SR_ALL, SR_SYS, SR_FOLDER, SR_ADD };
 struct SideRow { int kind, index; };
-static SideRow g_srow[NGROUPS + 2 + NSYS + MAXF + 1]; static int g_nsrow;
+static SideRow g_srow[NGROUPS + 2 + MAXSYS + MAXF + 1]; static int g_nsrow;
 static int g_sideHot = -1, g_crumbHot = -1, g_crumbX = 0;
 static void side_rows (void)
 {
@@ -509,13 +579,27 @@ static int row_filter (const SideRow &r)
 
 // A system's icon: its emulator's (SD:/apps/<emulator>.app/icon.bmp), small; its top byte the
 // transparency (the icon's magenta: see-through).
-static unsigned *g_sysIcon[NSYS]; static bool g_sysTried[NSYS];
+static unsigned *g_sysIcon[MAXSYS]; static bool g_sysTried[MAXSYS];
+static unsigned *g_sysBig[MAXSYS]; static int g_sysBigW[MAXSYS], g_sysBigH[MAXSYS]; static bool g_sysBigTried[MAXSYS];
+static const unsigned *sys_big (int k, int *w, int *h)		// its emulator's icon, as it is
+{
+	if (!g_sysBigTried[k])
+	{
+		g_sysBigTried[k] = true;
+		char q[96]; int n = 0;
+		lx_cat (q, sizeof q, &n, "SD:/apps/"); lx_cat (q, sizeof q, &n, g_sys[k].emu); lx_cat (q, sizeof q, &n, ".app/icon.bmp");
+		g_sysBig[k] = ui::bmp_decode (q, &g_sysBigW[k], &g_sysBigH[k]);
+		if (g_sysBig[k] && (g_sysBigW[k] > 64 || g_sysBigH[k] > 64)) { delete [] g_sysBig[k]; g_sysBig[k] = 0; }
+	}
+	*w = g_sysBigW[k]; *h = g_sysBigH[k];
+	return g_sysBig[k];
+}
 static const unsigned *sys_icon (int k)
 {
 	if (g_sysTried[k]) return g_sysIcon[k];
 	g_sysTried[k] = true;
 	char q[96]; int n = 0;
-	lx_cat (q, sizeof q, &n, "SD:/apps/"); lx_cat (q, sizeof q, &n, SYS_EMU[k]); lx_cat (q, sizeof q, &n, ".app/icon.bmp");
+	lx_cat (q, sizeof q, &n, "SD:/apps/"); lx_cat (q, sizeof q, &n, g_sys[k].emu); lx_cat (q, sizeof q, &n, ".app/icon.bmp");
 	int sw = 0, sh = 0;
 	unsigned *src = ui::bmp_decode (q, &sw, &sh);
 	if (!src || sw <= 0 || sh <= 0) { delete [] src; return 0; }
@@ -626,15 +710,18 @@ public:
 				canvas.text (gx + 24, y, "No game found in", ink);
 				for (int f = 0; f < g_nf; f++) wk_text (canvas, gx + 24, y + 22 + f * 20, g_folder[f], ink, 2);
 				y += 34 + g_nf * 20;
-				canvas.text (gx + 24, y, "Put .gb / .gbc / .gba / .nes / .sfc / .z64 / .iso files there", dim);
+				char h[200]; int hn = 0; lx_cat (h, sizeof h, &hn, "Put ");
+				for (int k = 0; k < NSYS && hn < 150; k++) { if (k) lx_cat (h, sizeof h, &hn, " / "); lx_cat (h, sizeof h, &hn, g_sys[k].extText); }
+				lx_cat (h, sizeof h, &hn, NSYS ? " files there" : "an emulator first (Control Panel > Packages)");
+				canvas.text (gx + 24, y, h, dim);
 				canvas.text (gx + 24, y + 20, "(sub-folders too), or Folders > Add Folder...", dim);
 			}
 			else if (g_filter >= F_SYS && g_filter < F_FOLDER)
 			{
 				int k = g_filter - F_SYS;
-				char t[64]; int n = 0; lx_cat (t, sizeof t, &n, "No "); lx_cat (t, sizeof t, &n, SYS_NAME[k]); lx_cat (t, sizeof t, &n, " game yet.");
+				char t[64]; int n = 0; lx_cat (t, sizeof t, &n, "No "); lx_cat (t, sizeof t, &n, SYS_NAME(k)); lx_cat (t, sizeof t, &n, " game yet.");
 				wk_text (canvas, gx + 24, y, t, ink, 2);
-				char h[96]; n = 0; lx_cat (h, sizeof h, &n, "Put "); lx_cat (h, sizeof h, &n, SYS_EXT[k]); lx_cat (h, sizeof h, &n, " files in a watched folder");
+				char h[96]; n = 0; lx_cat (h, sizeof h, &n, "Put "); lx_cat (h, sizeof h, &n, g_sys[k].extText); lx_cat (h, sizeof h, &n, " files in a watched folder");
 				canvas.text (gx + 24, y + 26, h, dim);
 				canvas.text (gx + 24, y + 46, "(sub-folders too), then Library > Refresh.", dim);
 			}
@@ -649,9 +736,9 @@ public:
 			if (!n) continue;
 			if (yy + HEAD_H > BAR_H && yy < gb)
 			{
-				wk_text (canvas, gx + 12, yy + 6, SYS_NAME[sec], ink, 2);
+				wk_text (canvas, gx + 12, yy + 6, SYS_NAME(sec), ink, 2);
 				char num[12]; int m = ax_itoa (n, num); num[m] = 0;
-				canvas.text (gx + 12 + wk_text_w (SYS_NAME[sec], 2) + 10, yy + 6, num, dim);
+				canvas.text (gx + 12 + wk_text_w (SYS_NAME(sec), 2) + 10, yy + 6, num, dim);
 				wk_etch_h (canvas, gx + 10, yy + 26, gw - 20, C_FIELD);
 			}
 			yy += HEAD_H + ((n + c - 1) / c) * CELLH + 10;
@@ -682,6 +769,17 @@ public:
 			{
 				wk_sunken (canvas, px, py, TW, TH, 4, wk_tone (C_FACE, 112));
 				canvas.text (px + 44, py + TH / 2 - 8, g_tgame == g_vis[i] ? "(loading)" : "", C_TEXT);
+				int bw = 0, bh = 0; const unsigned *ic = g_sys[g.sys].core == CORE_NONE ? sys_big (g.sys, &bw, &bh) : 0;
+				for (int r = 0; ic && r < bh * 2; r++)		// (no picture made: its emulator's icon, twice its size)
+				{
+					int yy2 = py + (TH - bh * 2) / 2 + r; if (yy2 < BAR_H || yy2 >= gb) continue;
+					for (int q = 0; q < bw * 2; q++)
+					{
+						unsigned c = ic[(r / 2) * bw + q / 2] & 0xFFFFFF;
+						int xx = px + (TW - bw * 2) / 2 + q;
+						if (c != 0xFF00FF && xx < width) canvas.px[(long) yy2 * canvas.stride + xx] = c;
+					}
+				}
 			}
 			char nm[80]; wk_text_fit (g.name, TW, nm, sizeof nm);	// (the picture's width; cut at a character)
 			canvas.text (px, py + TH + 7, nm, sel ? wk_hilite_ink (true) : C_TEXT);
@@ -726,7 +824,7 @@ public:
 			}
 			else wk_glyph (canvas, WKG_PLUS, ix + SICON / 2, y + SIDE_RH / 2, 10, ink);
 			char lab[48];
-			scpy (lab, sr.kind == SR_ALL ? "All Games" : sr.kind == SR_SYS ? SYS_NAME[sr.index] : sr.kind == SR_FOLDER ? g_folder[sr.index] : "Add Folder...", sizeof lab);
+			scpy (lab, sr.kind == SR_ALL ? "All Games" : sr.kind == SR_SYS ? SYS_NAME(sr.index) : sr.kind == SR_FOLDER ? g_folder[sr.index] : "Add Folder...", sizeof lab);
 			char num[12] = ""; int nw = 0;
 			if (n >= 0) { int m = ax_itoa (n, num); num[m] = 0; nw = wk_text_w (num) + 8; }
 			char fit[48]; wk_text_fit (lab, SIDE_W - 20 - 44 - nw - 6, fit, sizeof fit);	// (cut at a character, "...")
@@ -777,7 +875,7 @@ public:
 		else if (g_nvis > 0)
 		{
 			const Game &g = g_games[g_vis[g_sel]];
-			lx_cat (s, sizeof s, &n, g.name); lx_cat (s, sizeof s, &n, "   -   "); lx_cat (s, sizeof s, &n, SYS_NAME[g.sys]);
+			lx_cat (s, sizeof s, &n, g.name); lx_cat (s, sizeof s, &n, "   -   "); lx_cat (s, sizeof s, &n, SYS_NAME(g.sys));
 			lx_cat (s, sizeof s, &n, g_full ? "   (Enter: play full screen)" : "   (Enter or a double-click: play)");
 		}
 		canvas.text (10, y + (ST_H - wk_fh ()) / 2 + 1, s, C_TEXT);
@@ -908,8 +1006,10 @@ static void on_all () { set_filter (F_ALL); }
 static void on_s0 () { set_filter (F_SYS + 0); } static void on_s1 () { set_filter (F_SYS + 1); }
 static void on_s2 () { set_filter (F_SYS + 2); } static void on_s3 () { set_filter (F_SYS + 3); }
 static void on_s4 () { set_filter (F_SYS + 4); } static void on_s5 () { set_filter (F_SYS + 5); }
-static void on_s6 () { set_filter (F_SYS + 6); }
-static const MenuAction ON_SYS[NSYS] = { on_s0, on_s1, on_s2, on_s3, on_s4, on_s5, on_s6 };
+static void on_s6 () { set_filter (F_SYS + 6); } static void on_s7 () { set_filter (F_SYS + 7); }
+static void on_s8 () { set_filter (F_SYS + 8); } static void on_s9 () { set_filter (F_SYS + 9); }
+static void on_s10 () { set_filter (F_SYS + 10); } static void on_s11 () { set_filter (F_SYS + 11); }
+static const MenuAction ON_SYS[MAXSYS] = { on_s0, on_s1, on_s2, on_s3, on_s4, on_s5, on_s6, on_s7, on_s8, on_s9, on_s10, on_s11 };
 
 static Menu g_menu;
 static void build_menu ()
@@ -930,7 +1030,7 @@ static void build_menu ()
 	}
 	g_menu.menu ("View");
 	g_menu.item ("All Games",         "Tab", 0, on_all);
-	for (int k = 0; k < NSYS; k++) g_menu.item (SYS_NAME[k], "", 0, ON_SYS[k]);
+	for (int k = 0; k < NSYS; k++) g_menu.item (SYS_NAME(k), "", 0, ON_SYS[k]);
 	g_menu.separator ();
 	g_menu.item ("Play Full Screen On / Off", "", 0, on_full);
 	g_menu.publish ();
@@ -952,6 +1052,7 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	build_menu ();
+	load_systems ();				// (the installed emulators: their app.txt)
 	rescan ();
 	side_rows ();
 	root.setResizable (true);			// (the grid lays itself out from the width)

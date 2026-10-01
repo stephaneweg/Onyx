@@ -42,6 +42,7 @@
 
 #include "html/html.h"
 #include "html/private.h"
+#include "html/onyx_xml.h"
 
 typedef bool (script_handler_t)(struct jsthread *jsthread, const uint8_t *data, size_t size, const char *name);
 
@@ -356,6 +357,8 @@ convert_script_sync_cb(hlcache_handle *script,
 				NSLOG(netsurf, INFO, "unpause returned 0x%x", err);
 			}
 		}
+		if (parent->xml_parser != NULL && active_sync_scripts == 0)	/* (Onyx) */
+			onyx_xml_parser_resume(parent->xml_parser);
 
 		break;
 
@@ -380,6 +383,8 @@ convert_script_sync_cb(hlcache_handle *script,
 				NSLOG(netsurf, INFO, "unpause returned 0x%x", err);
 			}
 		}
+		if (parent->xml_parser != NULL && active_sync_scripts == 0)	/* (Onyx) */
+			onyx_xml_parser_resume(parent->xml_parser);
 
 		break;
 
@@ -665,7 +670,7 @@ html_process_script(void *ctx, dom_node *node)
 		/* Onyx: a parser-inserted inline script waits for the style sheets before it
 		 * (as a browser: it may read the styles, the geometry) -- the parser paused
 		 * until they are in (html_script_sheets_arrived) */
-		if (!c->dom_inserted_script && c->parser != NULL &&
+		if (!c->dom_inserted_script && (c->parser != NULL || c->xml_parser != NULL) &&
 		    c->blocked_script == NULL && html_sheets_pending(c)) {
 			c->blocked_script = dom_node_ref(node);
 			dom_string_unref(mimetype);
@@ -726,6 +731,8 @@ void html_script_sheets_arrived(html_content *c)
 	dom_node_unref(node);
 	if (c->parser != NULL)
 		dom_hubbub_parser_pause(c->parser, false);
+	if (c->xml_parser != NULL)	/* (Onyx) */
+		onyx_xml_parser_resume(c->xml_parser);
 }
 
 /* exported internal interface documented in html/html_internal.h */

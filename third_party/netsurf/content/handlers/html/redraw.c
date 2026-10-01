@@ -120,6 +120,20 @@ static bool html_redraw_box_has_background(struct box *box)
  * \param box  Box to find background box for
  * \return Pointer to background box, or NULL if there is none
  */
+/** Onyx (docs/06 §43): whether a box is the <body>'s (an XML document's root's children are
+ *  not: their backgrounds are their own) */
+static bool html_redraw_is_body(struct box *box)
+{
+	dom_html_element_type type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
+	dom_node_type nt;
+
+	if (box->node == NULL || dom_node_get_node_type(box->node, &nt) != DOM_NO_ERR ||
+	    nt != DOM_ELEMENT_NODE)
+		return true;	/* (an anonymous box: as before) */
+	return dom_html_element_get_tag_type(box->node, &type) == DOM_NO_ERR &&
+			type == DOM_HTML_ELEMENT_TYPE_BODY;
+}
+
 static struct box *html_redraw_find_bg_box(struct box *box)
 {
 	/* Thanks to backwards compatibility, CSS defines the following:
@@ -138,11 +152,12 @@ static struct box *html_redraw_find_bg_box(struct box *box)
 			return box;
 
 		/* No background on root box: consider body box, if any */
-		if (box->children != NULL) {
+		if (box->children != NULL && html_redraw_is_body(box->children)) {
 			if (html_redraw_box_has_background(box->children))
 				return box->children;
 		}
-	} else if (box->parent != NULL && box->parent->parent == NULL) {
+	} else if (box->parent != NULL && box->parent->parent == NULL &&
+		   html_redraw_is_body(box)) {
 		/* Body box: only render background if root has its own */
 		if (html_redraw_box_has_background(box) &&
 				html_redraw_box_has_background(box->parent))
