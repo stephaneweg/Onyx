@@ -23,7 +23,7 @@ The folder
                                              they are in RAM:, lost at a restart; here kept until deleted)
                      jet.log                 the log of the last launch (below)
                    Delete data\ to start afresh (keep jet.ini if you edited it).
-  fonts\, etc\, skins\   the toolkit's font, theme and pictures
+  fonts\, etc\          the toolkit's font and theme
 
 Using it
   Type an address in the bar (or Ctrl+L / F6 to go there) and Enter. Back / Forward: the buttons or

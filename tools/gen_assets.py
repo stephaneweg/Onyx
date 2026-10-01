@@ -826,7 +826,7 @@ def main():
             write_bmp(os.path.join(APPS, name + ".app", "icon.bmp"), SZ, SZ, ICONS[name]())
         return
     print("Generating desktop assets under sdcard/apps/ ...")
-    gen_menubar_skin(os.path.join(ROOT, "sdcard", "skins", "menubar.bmp"))
+    # (No skins any more: the menu bar is drawn by the window manager -- gen_menubar_skin unused.)
     # (The wallpaper is now generated at runtime by the kernel -- see
     #  CWindowManager::GenerateWallpaper / kapi_wallpaper_generate.)
     gen_apps_glyph(os.path.join(APPS, "panel.app", "apps.bmp"))

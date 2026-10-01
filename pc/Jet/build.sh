@@ -2,7 +2,7 @@
 # pc/Jet/build.sh -- Jet Browser for Windows x64, built on Linux with MinGW-w64 from the Onyx sources (pc/Jet/jet.mk:
 # the libraries, NetSurf's core, the framebuffer frontend, the Onyx glue, wtk -- over pc/Jet/winkapi.cpp, the
 # Onyx kernel's table on Win32). Result: pc/dist/Jet/ -- Jet.exe and what it reads (res\: Choices, Messages,
-# the style sheets, ca-bundle, the fonts; data\jet.ini; wtk's font, theme and skins) -- and pc/dist/Jet.zip.
+# the style sheets, ca-bundle, the fonts; data\jet.ini; wtk's font and theme) -- and pc/dist/Jet.zip.
 #   sh pc/Jet/build.sh            (JET_WIN_OUT: the objects' folder, default /home/user/jetwin-build; JOBS)
 # Needs x86_64-w64-mingw32-gcc / g++ (the posix threads variant: apt-get install g++-mingw-w64-x86-64-posix
 # gcc-mingw-w64-x86-64-posix), gcc + libpng (the host tools), perl, python3 + Pillow (the icon), zip.
@@ -18,7 +18,7 @@ SD="$ROOT/sdcard"
 make -C "$ROOT" -f pc/Jet/jet.mk OUT="$OUT" -j"$JOBS"
 
 rm -rf "$DIST"
-mkdir -p "$DIST/res" "$DIST/data" "$DIST/fonts" "$DIST/etc" "$DIST/skins"
+mkdir -p "$DIST/res" "$DIST/data" "$DIST/fonts" "$DIST/etc"
 cp "$OUT/Jet.exe" "$DIST/Jet.exe"		# (the one with its symbols stays in $OUT: addr2line -e)
 "$STRIP" "$DIST/Jet.exe"
 # res\: the card's (sdcard/res, as netsurf-app.mk stages it: Choices, Messages, the UA style sheets, the
@@ -27,10 +27,9 @@ cp "$OUT/Jet.exe" "$DIST/Jet.exe"		# (the one with its symbols stays in $OUT: ad
 	mkdir -p "$DIST/res/$(dirname "$f")"; cp "$f" "$DIST/res/$f"; done)
 # data\: the browser's own folder (on the Pi SD:/apps/jet.app/): the User-Agent file; the rest is made there
 cp "$SD/apps/jet.app/jet.ini" "$DIST/data/"
-# wtk's: its bitmap font, the theme, the skins
+# wtk's: its bitmap font, the theme
 cp "$SD"/fonts/*.fnt "$DIST/fonts/"
 cp "$SD/etc/theme.txt" "$DIST/etc/"
-cp "$SD"/skins/*.bmp "$DIST/skins/"
 cp "$HERE/README.txt" "$DIST/"
 # pc/dist/Jet.zip: the folder, for a download
 rm -f "$ROOT/pc/dist/Jet.zip"

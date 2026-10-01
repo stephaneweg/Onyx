@@ -390,6 +390,11 @@ L=$OUT/css-mqresize.log
 RUN_SCREEN=1400x900 run css-mqresize.html "$(waits 80)winctl 2;$(waits 160)" "$L"
 for s in "mqresize load width 1262 bg rgb(255, 0, 0) matches false" "mqresize change true" "mqresize resized width 1374 bg rgb(0, 128, 0) matches true"; do expect "$L" "$s"; done
 
+echo "js-accents.html (keys typed in a field: capitals, Latin-1 letters, the euro, - = 0 -- the keys are characters)"
+L=$OUT/js-accents.log
+run js-accents.html "$(waits 60)$(click 100 63)key a;wait;key A;wait;key 0xE9;wait;key 0xC7;wait;key 0x80;wait;key -;wait;key =;wait;key 0;wait;key b;$(waits 20)key 13;$(waits 20)" "$L"
+expect "$L" "accents final aAéÇ€-=0b codes 61,41,e9,c7,20ac,2d,3d,30,62"
+
 echo "js-insertrule.html (2000 rules inserted one by one: written back once a turn, fast)"
 L=$OUT/js-insertrule.log
 run js-insertrule.html "$(waits 200)" "$L"

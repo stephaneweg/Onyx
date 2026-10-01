@@ -1947,6 +1947,18 @@ them in place of a `%s` in it, else at its end. Tested by `uatest.sh` (a `%s` en
 appended one with `c++ & co` → `c%2B%2B+%26+co`, and `127.0.0.1:port/ua?addr` opened, not
 searched).
 
+**The keys typed are characters.** Onyx's keys (kapi.h) come with the keyboard layout already
+applied: `A` with Shift, an accented letter as its Latin-1 code (0xA0-0xFF), the euro as 0x80,
+Ctrl+letter its control code -- no Shift / Ctrl events. fbtk's keymaps knew only unshifted ASCII
+(capitals, `é`, `€` were dropped, and `-`, `=`, `0` were taken for the zoom's Ctrl keys):
+`onyx_key_to_ucs4` (`frontends/framebuffer/gui.c`) turns them into the characters (Ctrl+A/C/V/X/Y/Z/U
+the editing keys). The address field (`onyx_chrome.cpp`, `UrlField`) holds Latin-1 (the bitmap
+font's), turned into UTF-8 for the address opened and the clipboard (`latin1_to_utf8`,
+`utf8_to_latin1` for a paste). On Windows (`pc/Jet/winkapi.cpp`) `WM_CHAR` is brought to the same
+codes (the euro U+20AC as 0x80; other characters past Latin-1 dropped -- 0x100.. are the arrows and
+F-keys). Tests: `jstest.sh` js-accents (`aAéÇ€-=0b` in a field), `uatest.sh` (`café €` searched as
+`caf%C3%A9+%E2%82%AC`).
+
 **Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
 comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
 1.5.7's decompressor vendored in `third_party/zstd-1.5.7`, `libzstddec.a`, ~70 KB).

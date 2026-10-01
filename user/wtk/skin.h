@@ -38,9 +38,6 @@ public:
 		     unsigned tint = 0xFFFFFF);
 };
 
-// The shared button skin (SD:/skins/button.bmp), loaded once; flat fallback if absent.
-Skin &wk_button_skin ();
-
 // Draw the window's frame (the modernised CDE: kapi v64 -- a gradient from the theme's frame
 // colour, rounded corners, the theme's outline, the title buttons: the window menu, minimise,
 // maximise, close; the title in bold) into both chrome copies of this window. No-op for a

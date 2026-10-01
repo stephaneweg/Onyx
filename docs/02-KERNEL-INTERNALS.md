@@ -38,7 +38,7 @@ constants) come from the code; the layout constants live in
 | `VBAR_EL1` vectors, trap frame (`arch/aarch64/`) | `InterruptHandler` (GIC + EOI), `FIQStub` |
 | ELF loader (`proc/elf.cpp`) | EMMC + FatFs, USB HID |
 | ABI table + kapi impl. (`sys/`) | `C2DGraphics` (framebuffer), `CTimer` |
-| GUI: rendering, compositor, widgets, skins, dialogs (`gui/`) | `CCharGenerator` (bitmap font) |
+| GUI: rendering, compositor, widgets, dialogs (`gui/`) | `CCharGenerator` (bitmap font) |
 
 The kernel is linked against Circle's static libraries. **Two Circle files
 are replaced** (`lib/sched/scheduler.cpp` and `task.cpp`): because our `.o` files appear in
@@ -78,8 +78,9 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
 5. **ABI table**: `KApiTableInit()` fills the `kapi` pointer table (see [§8](#8-the-kapi-abi-table)).
 6. **Graphics + SD**: `m_2DGraphics.Initialize()` (32 bpp framebuffer); `m_EMMC` +
    `f_mount()` (FatFs) of `SD:` (partition 1, the boot FAT32 one), then of **`SD1:` … `SD3:`**
-   (partitions 2–4) when they hold a FAT or **exFAT** file system (see *Volumes* in §8). Loading the skins from `SD:skins/` (`wings.bmp`, the cursor
-   `mousecur.bin`, `theme.txt`).
+   (partitions 2–4) when they hold a FAT or **exFAT** file system (see *Volumes* in §8). The theme from `SD:/etc/theme.txt`; the mouse cursor is built in
+   (`BuiltinCursor`, the 12×19 arrow that was `SD:skins/mousecur.bin` — the card has no `skins/`
+   folder any more: the window chrome is drawn user-side).
 7. **RAM:**: `RamFsInit()` — the RAM volume, its size from `system.ini`'s `ramfs=` (§16).
 8. **USB**: `m_USB.Initialize()` (mouse + HID keyboard, hot-plug).
 

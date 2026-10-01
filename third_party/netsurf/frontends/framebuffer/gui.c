@@ -1032,6 +1032,27 @@ fb_browser_window_move(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 }
 
 
+/* Onyx: the keys are characters already (kapi.h: the layout applied by the kernel -- 'A' with
+ * Shift, an accented letter as its Latin-1 code, 0x80 the euro; Ctrl+letter its control code) --
+ * no Shift / Ctrl events come for fbtk's keymaps, which knew only unshifted ASCII. -1: not one
+ * of them (the keymap's). */
+static int onyx_key_to_ucs4(int k)
+{
+	if ((k >= 32 && k < 127) || (k >= 0xA0 && k <= 0xFF))
+		return k;
+	switch (k) {
+	case 0x80: return 0x20AC;			/* the euro */
+	case 1:  return NS_KEY_SELECT_ALL;		/* Ctrl+A */
+	case 3:  return NS_KEY_COPY_SELECTION;		/* Ctrl+C */
+	case 21: return NS_KEY_DELETE_LINE;		/* Ctrl+U */
+	case 22: return NS_KEY_PASTE;			/* Ctrl+V */
+	case 24: return NS_KEY_CUT_SELECTION;		/* Ctrl+X */
+	case 25: return NS_KEY_REDO;			/* Ctrl+Y */
+	case 26: return NS_KEY_UNDO;			/* Ctrl+Z */
+	}
+	return -1;
+}
+
 static int
 fb_browser_window_input(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 {
@@ -1127,21 +1148,27 @@ fb_browser_window_input(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 			if (modifier & FBTK_MOD_RCTRL ||
 					modifier & FBTK_MOD_LCTRL) {
 				browser_window_set_scale(gw->bw, -0.1, false);
-			}
+			} else	/* (Onyx: the character typed) */
+				browser_window_key_press(gw->bw,
+						cbi->event->value.keycode);
 			break;
 
 		case NSFB_KEY_EQUALS: /* PLUS */
 			if (modifier & FBTK_MOD_RCTRL ||
 					modifier & FBTK_MOD_LCTRL) {
 				browser_window_set_scale(gw->bw, 0.1, false);
-			}
+			} else	/* (Onyx: the character typed) */
+				browser_window_key_press(gw->bw,
+						cbi->event->value.keycode);
 			break;
 
 		case NSFB_KEY_0:
 			if (modifier & FBTK_MOD_RCTRL ||
 					modifier & FBTK_MOD_LCTRL) {
 				browser_window_set_scale(gw->bw, 1.0, true);
-			}
+			} else	/* (Onyx: the character typed) */
+				browser_window_key_press(gw->bw,
+						cbi->event->value.keycode);
 			break;
 
 		case NSFB_KEY_RSHIFT:
@@ -1189,8 +1216,10 @@ fb_browser_window_input(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 			fallthrough;
 
 		default:
-			ucs4 = fbtk_keycode_to_ucs4(cbi->event->value.keycode,
-						    modifier);
+			ucs4 = onyx_key_to_ucs4(cbi->event->value.keycode);
+			if (ucs4 == -1)
+				ucs4 = fbtk_keycode_to_ucs4(cbi->event->value.keycode,
+							    modifier);
 			if (ucs4 != -1)
 				browser_window_key_press(gw->bw, ucs4);
 			break;

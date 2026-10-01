@@ -71,7 +71,16 @@ class Canvas:
 # ---- 9-slice skin (port of kernel/gui/skin.cpp) ------------------------------------
 class Skin:
     def __init__(self, path, count, l, r, t, b):
-        im = Image.open(path).convert("RGB")
+        if os.path.exists(path):
+            im = Image.open(path).convert("RGB")
+        else:   # (the skins folder is gone from the card: a flat grey frame in its place)
+            fw, fh = l + r + 4, t + b + 4
+            im = Image.new("RGB", (fw, fh * count), (192, 192, 192))
+            for k in range(count):
+                for xx in range(fw):
+                    im.putpixel((xx, k * fh), (128, 128, 128)); im.putpixel((xx, k * fh + fh - 1), (128, 128, 128))
+                for yy in range(fh):
+                    im.putpixel((0, k * fh + yy), (128, 128, 128)); im.putpixel((fw - 1, k * fh + yy), (128, 128, 128))
         self.im = im; self.p = im.load()
         self.iw, self.ih = im.size
         self.count = count

@@ -596,7 +596,7 @@ void ScreenTakeDamage (TScreenDamage *pOut)
 	s_DamageLock.Release ();
 }
 
-// Title-bar text colour (overridable at boot from SD:skins/theme.txt).
+// Title-bar text colour (overridable at boot from SD:/etc/theme.txt).
 u32 g_WinTitleTextColor = 0x00FFFFFF;
 
 CWindowManager::CWindowManager (void)
@@ -1092,8 +1092,8 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 		pScreen->DrawText (bx + 6, by + 3, DndLabel, 0x00FFFFFF);
 	}
 
-	// Cursor, drawn last so it floats above everything. Prefer the loaded cursor
-	// bitmap (mousecur.bin); its hot-spot is the top-left corner. Without it, fall
+	// Cursor, drawn last so it floats above everything. Prefer the cursor
+	// image (the kernel's built-in arrow); its hot-spot is the top-left corner. Without it, fall
 	// back to a drawn black-bordered white arrow whose tip is at (cx,cy).
 	if (m_bCursorShown)
 	{

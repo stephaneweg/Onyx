@@ -113,5 +113,8 @@ run i "${W}$(typed 'c++ & co')$(typed "127.0.0.1:$PORT/ua?addr")$Q"
 check "words: appended to the engine, escaped" "grep -q -F '/ua?q=c%2B%2B+%26+co ' '$OUT/ua/i.srv'"
 check "an address (host:port/path, no scheme): its site in https (the server here speaks http), not a search" \
 	"grep -q -F 'https://127.0.0.1:$PORT/ua?addr' '$OUT/ua/i.log' && ! grep -q -F 'addr' '$OUT/ua/i.srv'"
+printf '[search]\nengine = http://127.0.0.1:%s/ua?q=\n' $PORT > "$DATA/jet.ini"
+run j "${W}$(typed 'caf' | sed 's/wait;key 13;.*//')key 0xE9;key 0x20;key 0x80;wait;key 13;$(waits 100)$Q"
+check "accented words (Latin-1 keys): UTF-8, escaped" "grep -q -F '/ua?q=caf%C3%A9+%E2%82%AC ' '$OUT/ua/j.srv'"
 echo "  (screenshots: $OUT/ua/ua-standard.png ua-menu.png ua-mobile.png ua-desktop.png ua-custom-menu.png)"
 [ $fail = 0 ] && echo "all passed" || exit 1
