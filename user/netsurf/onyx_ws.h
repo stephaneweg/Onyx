@@ -81,6 +81,13 @@ int onyx_fetch_connect(const char *host, unsigned port);
 /* Onyx: the app ends -- every connection told to stop -> the threads still running */
 int onyx_ws_shutdown(void);
 
+/* Onyx (docs/06 §41, the perf log's net:minute; UI thread): the WebSockets and EventSources
+ * open, the bytes they moved, their connections made and throttled since the last call; in
+ * list each open one ("ws host in/out KB") */
+void onyx_ws_tally(unsigned *ws_open, unsigned *sse_open, unsigned long long *in,
+		unsigned long long *out, unsigned *opens, unsigned *throttled, char *list,
+		size_t cap);
+
 /* onyx_fetch.c (Onyx): whether the user accepted this host's bad certificate (any thread) */
 int onyx_fetch_insecure_host(const char *host);
 

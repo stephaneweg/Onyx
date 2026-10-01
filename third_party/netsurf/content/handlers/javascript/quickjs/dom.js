@@ -2786,9 +2786,10 @@ class Element extends Node {
 	getClientRects() { const r = this.getBoundingClientRect(); return r.width || r.height ? [r] : []; }
 	get offsetWidth() { return N.rect(this)[2]; }
 	get offsetHeight() { return N.rect(this)[3]; }
-	get offsetTop() { return N.rect(this)[1] + (G.scrollY || 0); }
-	get offsetLeft() { return N.rect(this)[0] + (G.scrollX || 0); }
-	get offsetParent() { return N.boxed(this) ? G.document.body : null; }
+	/* (Onyx: CSSOM View's -- N.offset; the body's and the root's none, 0) */
+	get offsetTop() { const o = elementOffset(this); return o ? o[2] : 0; }
+	get offsetLeft() { const o = elementOffset(this); return o ? o[1] : 0; }
+	get offsetParent() { const o = elementOffset(this); return o ? o[0] : null; }
 	get clientWidth() {
 		if (this === G.document.documentElement) return G.innerWidth;
 		return N.rect(this)[2];
@@ -5186,6 +5187,14 @@ function checkMedia() {
 			if (typeof m.onchange === 'function') try { m.onchange(ev); } catch (e) { report(e); }
 		}
 	}
+}
+
+/* (Onyx) an element's [offsetParent, offsetLeft, offsetTop] (N.offset), null for the body,
+ * the root and an element without a box */
+function elementOffset(e) {
+	const d = G.document;
+	if (e === d.body || e === d.documentElement) return null;
+	return N.offset(e, d.body);
 }
 
 /* getComputedStyle: the box's own values for a few properties, else the style attribute */
