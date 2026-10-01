@@ -8,7 +8,9 @@
 // windows' content, the buttons, the text fields and lists, the selection, the menu bar, the dock,
 // the desktop. The buttons, the fields and the menu bar may follow the window's colour
 // (Automatic). The scheme: the named colours of the window in front (Peach, Steel, Sage, Brick,
-// Slate); the frames' outline. Below, the DESKTOP: its wallpaper (wallpaper.h) -- Voronoi cells, a
+// Slate -- CDE's framed title buttons -- or Milk: soft greys and OS X's coloured beads, a style
+// of its own: choosing it, or a CDE scheme again, also takes that style's colours for the window,
+// the selection, the frames behind and the dock); the frames' outline. Below, the DESKTOP: its wallpaper (wallpaper.h) -- Voronoi cells, a
 // gradient, bubbles, a colour, a picture, or a pattern (one of SD:/wallpapers' grey pictures,
 // coloured by the two colours: multiplied) -- its colours, the gradient's direction, the cells'
 // number, the picture's file and how it fills the screen, the pattern.
@@ -33,6 +35,7 @@ using namespace wtk;
 #define H	470
 #define PVW	320			// the preview (a 1024 x 768 desktop, small)
 #define PVH	240
+#define NTHEMES	6			// (wk_themes: Peach .. Slate, Milk)
 
 enum { IT_ACTIVE, IT_INACTIVE, IT_WINDOW, IT_BUTTON, IT_FIELD, IT_ACCENT, IT_MENUBAR, IT_DOCK, IT_DESKTOP, IT_N };
 static const char *const ITEM_NAME[IT_N] = { "Window in front: frame", "Windows behind: frame", "Windows: content",
@@ -242,6 +245,8 @@ public:
 		add_hot (0, 0, PVW, PVH, IT_DESKTOP);
 		WkTheme keep; wk_theme_get (keep);
 		wk_theme_set (g_t);					// (the edited colours, for this drawing)
+		int flags = wk_window_flags ();				// (its windows: every title button)
+		wk_window_state (WK_WIN_MENU | WK_WIN_RESIZABLE);
 		int fh = wk_fh ();
 		// the menu bar
 		int bh = fh + 4;
@@ -294,6 +299,7 @@ public:
 		}
 		wk_rbox (canvas, 1 + dx + dw - 26, 1 + dy + 6, 12, 15, 2, wk_tone (C_DOCK, 76), wk_tone (C_DOCK, 60));
 		add_hot (dx, dy, dw, dh, IT_DOCK);
+		wk_window_state (flags);
 		wk_theme_set (keep);
 		// the part chosen: outlined
 		for (int i = g_nhot - 1; i >= 0; i--)
@@ -315,15 +321,22 @@ class Swatch : public Widget
 {
 public:
 	int idx;
-	Swatch (int l, int t, int i) : Widget (l, t, 62, 48), idx (i) { canFocus = true; }
+	Swatch (int l, int t, int i) : Widget (l, t, 56, 48), idx (i) { canFocus = true; }
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
 		unsigned c = wk_themes[idx].frame;
-		bool on = g_t.theme == idx;
-		if (on) { wk_rline (canvas, 7, 0, 48, 32, 9, C_ACCENT, 255); wk_rline (canvas, 8, 1, 46, 30, 8, C_ACCENT, 160); }
-		wk_rbox (canvas, 10, 3, 42, 26, 6, wk_tone (c, 166), wk_tone (c, 112));
-		wk_rline (canvas, 10, 3, 42, 26, 6, wk_tone (c, 64), 190);
+		bool on = g_t.theme == idx, milk = wk_themes[idx].style == WK_STYLE_MILK;
+		int x = (width - 42) / 2;
+		if (on) { wk_rline (canvas, x - 3, 0, 48, 32, 9, C_ACCENT, 255); wk_rline (canvas, x - 2, 1, 46, 30, 8, C_ACCENT, 160); }
+		wk_rbox (canvas, x, 3, 42, 26, 6, wk_tone (c, milk ? 230 : 166),	// (Milk's: down to its windows' grey)
+			 milk ? wk_style_palette (WK_STYLE_MILK).face : wk_tone (c, 112));
+		wk_rline (canvas, x, 3, 42, 26, 6, wk_tone (c, 64), 190);
+		if (milk)						// (its beads)
+		{
+			static const unsigned bead[3] = { 0x00F0B43A, 0x004CB653, 0x00E8564E };
+			for (int k = 0; k < 3; k++) wk_bead (canvas, x + 9 + k * 9, 12, 7, bead[k]);
+		}
 		wk_text_c (canvas, 0, 31, width, 17, wk_themes[idx].name, C_TEXT, on ? 2 : 0);
 	}
 	bool onMouse (int mx, int, int bl, int, int, int) override;
@@ -365,7 +378,7 @@ public:
 };
 
 static Preview   *g_preview;
-static Swatch    *g_sw[5];
+static Swatch    *g_sw[NTHEMES];
 static Palette   *g_pal;
 static Current   *g_curbox;
 static Dropdown  *g_ddItem, *g_ddOutline, *g_ddMode, *g_ddDir, *g_ddStyle;
@@ -382,7 +395,7 @@ static void refresh (bool wall = false)
 {
 	if (wall) g_wallOk = false;
 	g_preview->invalidate (true);
-	for (int i = 0; i < 5; i++) g_sw[i]->invalidate (true);
+	for (int i = 0; i < NTHEMES; i++) g_sw[i]->invalidate (true);
 	g_pal->invalidate (true);
 	g_curbox->invalidate (true);
 	bool a = can_auto (g_item);
@@ -398,8 +411,8 @@ static void set_item_colour (unsigned c)
 	switch (g_item)
 	{
 	case IT_ACTIVE:
-		g_t.active = c; g_t.theme = -1;
-		for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].frame == c) g_t.theme = i;
+		g_t.active = c; g_t.theme = -1;			// (a scheme of the same style)
+		for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].frame == c && wk_themes[i].style == g_t.style) g_t.theme = i;
 		break;
 	case IT_INACTIVE: g_t.inactive = c; break;
 	case IT_WINDOW:   g_t.window = c; break;
@@ -442,6 +455,7 @@ bool Swatch::onMouse (int mx, int, int bl, int, int, int)
 	{
 		pressed = true;
 		g_t.theme = idx; g_t.active = wk_themes[idx].frame;
+		wk_theme_take_style (g_t, wk_themes[idx].style);	// (Milk / CDE: that style's colours)
 		pick_item (IT_ACTIVE);
 	}
 	else if (!bl) pressed = false;
@@ -584,7 +598,7 @@ int main (void)
 
 	int rx = X + 346;
 	root.addChild (new Label (rx, 8, 120, 20, "Scheme", C_TEXT, root.bg));
-	for (int i = 0; i < 5; i++) { g_sw[i] = new Swatch (rx - 6 + i * 68, 28, i); root.addChild (g_sw[i]); }
+	for (int i = 0; i < NTHEMES; i++) { g_sw[i] = new Swatch (rx - 6 + i * 58, 28, i); root.addChild (g_sw[i]); }
 	root.addChild (new Label (rx, 86, 60, 24, "Item", C_TEXT, root.bg));
 	root.addChild (new Label (rx, 124, 60, 24, "Colour", C_TEXT, root.bg));
 	g_curbox = new Current (rx + 64, 122); root.addChild (g_curbox);

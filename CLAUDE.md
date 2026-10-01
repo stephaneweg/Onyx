@@ -49,6 +49,13 @@ documentation in the same session**, without being asked again:
 - After editing the `.md` (or the screenshots), **regenerate the exports**:
   `python docs/build_docs.py`. Keep the English wording and the "Onyx" name.
 
+## RULE — git workflow: always on top of `main`, commit into `main`
+
+Before **every new development** and before **every commit**: `git fetch origin main` and
+merge the latest `origin/main` into the working branch (`git merge origin/main`, resolve any
+conflict). Then commit and **push into `main`** (`git push origin HEAD:main`; also push the
+working branch). Delete the working branch (local and `origin`) **only when the user says so**.
+
 ## Build (reminder)
 
 From `kernel/`: `make` (→ `kernel8-rpi4.img` then the apps), `make stage` (copies image +

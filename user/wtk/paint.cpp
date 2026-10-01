@@ -402,12 +402,53 @@ void wk_hilite (Canvas &cv, int x, int y, int w, int h, int r, bool strong)
 
 unsigned wk_hilite_ink (bool strong) { return strong ? C_SEL_TEXT : C_FIELD_TEXT; }
 
+// The bead: each pixel's coverage of the disc (and of the disc 1 px smaller: the rim between
+// them) counted on 4 x 4 samples; in half-pixel units, its centre at (d, d), its radius d.
+void wk_bead (Canvas &cv, int x, int y, int d, unsigned c)
+{
+	if (d < 4) return;
+	const int R2o = (4 * d) * (4 * d), R2i = (4 * d - 8) * (4 * d - 8);	// (eighth-pixel units)
+	const int hy0 = d / 10, hy1 = d * 11 / 20;			// the gloss: these rows, an ellipse
+	const int ax = d * 4 * 34 / 100, ay = (hy1 - hy0) * 4;		// its half-axes (eighths)
+	const int hcx = 4 * d, hcy = (hy0 + hy1) * 4;			// its centre (eighths)
+	unsigned top = wk_tone (c, 82), bottom = wk_tone (c, 158), rim = wk_tone (c, 52);
+	for (int j = 0; j < d; j++)
+	{
+		unsigned body = wk_mix (top, bottom, j * 256 / (d - 1));
+		for (int i = 0; i < d; i++)
+		{
+			int co = 0, ci = 0, ch = 0;
+			for (int sy = 0; sy < 4; sy++)
+				for (int sx = 0; sx < 4; sx++)
+				{
+					int X = 8 * i + 2 * sx + 1 - 4 * d, Y = 8 * j + 2 * sy + 1 - 4 * d;
+					int r2 = X * X + Y * Y;
+					if (r2 <= R2o) co++;
+					if (r2 <= R2i) ci++;
+					int ex = 8 * i + 2 * sx + 1 - hcx, ey = 8 * j + 2 * sy + 1 - hcy;
+					if ((long) ex * ex * ay * ay + (long) ey * ey * ax * ax <= (long) ax * ax * ay * ay) ch++;
+				}
+			if (co == 0) continue;
+			unsigned px = body;
+			if (ch)						// the gloss: white, fading downward
+			{
+				int a = 230 - (j - hy0) * 200 / (hy1 - hy0 + 1);
+				if (a > 0) px = wk_over (px, 0x00FFFFFF, a * ch / 16);
+			}
+			if (co > ci) px = wk_mix (px, rim, (co - ci) * 256 / co);	// the rim
+			blend_px (cv, x + i, y + j, px, co * 255 / 16);
+		}
+	}
+}
+
 void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int r)
 {
-	unsigned f = C_FRAME_ACTIVE;
-	wk_rbox (cv, x, y, w, h, r, wk_tone (f, 164), wk_tone (f, 115), 255, WK_TL | WK_TR);
+	unsigned f = C_FRAME_ACTIVE, top = wk_tone (f, 164), bot = wk_tone (f, 115), mid = wk_tone (f, 140);
+	if (WK_STYLE == WK_STYLE_MILK)					// (as the frames' title bars: Milk's
+	{ top = wk_tone (f, 230); bot = C_FACE; mid = wk_mix (top, bot, 128); }	//  melts into the box's face)
+	wk_rbox (cv, x, y, w, h, r, top, bot, 255, WK_TL | WK_TR);
 	for (int i = x + (r > 1 ? r : 1); i < x + w - (r > 1 ? r : 1); i++) blend_px (cv, i, y + 1, 0x00FFFFFF, 110);
-	if (s) wk_text_c (cv, x, y, w, h, s, wk_ink_on (wk_tone (f, 140)), 2);
+	if (s) wk_text_c (cv, x, y, w, h, s, wk_ink_on (mid), 2);
 }
 
 // ---- glyphs -------------------------------------------------------------------------------------------

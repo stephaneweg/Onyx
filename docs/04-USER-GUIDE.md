@@ -246,7 +246,8 @@ at the bottom; everything can be changed later in the Control Panel.
    screen's. **Try it** changes the resolution at once and asks **Keep this resolution?** —
    **Keep** writes it to `SD:/cmdline.txt` (Onyx starts at that size from then on), **Revert** or
    15 seconds without an answer goes back (a picture that does not come back fixes itself).
-5. **Appearance.** The colour of the window in front (Peach, Steel, Sage, Brick, Slate), the
+5. **Appearance.** The colour of the window in front (Peach, Steel, Sage, Brick, Slate — or Milk,
+   soft greys and coloured beads for the title buttons, §11), the
    wallpaper (generated Voronoi cells or one of the patterns of `SD:/wallpapers`) and its **tint**
    (32: sixteen colours and the same lighter); the preview shows the desktop you will get, and the
    real one — the wallpaper, Setup's own frame — follows a moment after each click
@@ -1143,8 +1144,16 @@ check, the dock — drawn in the colours being edited.
   **selection** (focus, checks, the open menu), the **menu bar**, the **dock**, the **desktop**.
   The buttons, the fields and the menu bar may follow the window's colour (**Automatic**).
 - **Scheme**: the named colours of the window in front — **Peach** (the default), **Steel**,
-  **Sage**, **Brick**, **Slate**; every shade of a frame (its gradient, its buttons, its edge)
-  is computed from its one colour, and the title's ink (dark or white) from its brightness.
+  **Sage**, **Brick**, **Slate**, or **Milk**; every shade of a frame (its gradient, its buttons,
+  its edge) is computed from its one colour, and the title's ink (dark or white) from its
+  brightness. **Milk** (after Xfce's Milk theme, itself in the spirit of Mac OS X) is a style of
+  its own: soft greys, a frame that **melts into the window** (the title bar's gradient ends on
+  the colour of the window's content, its edges are that colour: no line between the frame and
+  what the window shows), and the title buttons as **glossy coloured beads** — **red** close,
+  **amber** minimise, **green** maximise (grey on the windows behind, and the green one grey on a
+  window that cannot be maximised; the window menu's bead, at the left, keeps its bar). Choosing
+  Milk also takes its colours for the windows (light grey), the selection (Aqua blue), the
+  frames behind and the dock (silver) — and choosing a CDE scheme again, theirs.
 - **Outline**: the frames' 1-px outline — **None**, **Dark** (the default) or **Black**.
 - **Desktop**: the **wallpaper** — **Voronoi cells** (their colour and number), a **Gradient**
   (two colours, top to bottom or left to right), **Bubbles** (a gradient with soft bubbles),
@@ -1164,13 +1173,18 @@ what is saved.
 *The Theme applet: the preview (click a part to pick it), its colour from the palette, the scheme
 and the outline, the wallpaper (here the Hexagons pattern in two blues).*
 
+![The Milk theme](../screenshots/milk.png)
+*The Milk scheme: soft greys, each frame melting into its window, the title buttons as coloured
+beads (the window behind: grey), the Aqua blue selection, the silver dock.*
+
 ### Manual theme editing
 
 `SD:/etc/theme.txt`, read by every app when it starts (`0xRRGGBB` colours):
 
 ```
-theme    = Peach       # the frame in front: Peach, Steel, Sage, Brick, Slate
+theme    = Peach       # the frame in front: Peach, Steel, Sage, Brick, Slate, Milk
 active   = 0xF0B07A    # ... or any colour instead (overrides theme)
+style    = cde         # the frames' look, if not the theme's: cde, or milk (the beads)
 inactive = 0xACACB0    # the frames behind
 window   = 0xD0C2BA    # the windows' content: the apps' face ("face" is still read)
 button   = 0xD0C2BA    # the buttons (default: the window's)
@@ -1182,7 +1196,9 @@ dock     = 0xA4BACE    # the dock's face
 wheelspeed=2           # lines a wheel notch (read by the kernel at boot)
 ```
 
-Nothing is a bitmap: the frames, buttons and controls are drawn by code from these colours.
+Nothing is a bitmap: the frames, buttons and controls are drawn by code from these colours. A
+colour left out takes the style's own (CDE's beige, teal, grey and blue; Milk's greys, blue and
+silver).
 
 ### Startup and pinned apps
 
@@ -1278,7 +1294,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
 | **taskman** | Task manager. Arrows to select; Enter brings the window to the foreground; `k`/Delete kills the app (except kernel tasks); `r` refreshes. |
 | **memmon** | Memory monitor. Shows total / used / free RAM, the memory owned by apps, a usage bar, and the processes ranked by 64 KB pages owned. Refreshes ~1×/s. |
-| **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the scheme, the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
+| **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the scheme (Peach … Slate, or Milk: soft greys and coloured beads for the title buttons), the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
 | **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the master volume, mute, a test sound (see §11). Writes `SD:/etc/sound.ini`. |

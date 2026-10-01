@@ -10,15 +10,21 @@ namespace wtk {
 // The modernised CDE's defaults: CDE's beige face, a teal accent, the Peach frame in front.
 unsigned C_BG, C_FACE, C_FACE_HI, C_FACE_DN, C_BORDER, C_TEXT, C_ACCENT = 0x004992A7, C_DIS,
 	 C_FIELD, C_FIELD_TEXT, C_SEL_TEXT, C_FRAME_ACTIVE = 0x00F0B07A, C_FRAME_INACTIVE = WK_GREY;
-int	 WK_OUTLINE = 1;
+int	 WK_OUTLINE = 1, WK_STYLE = WK_STYLE_CDE;
 unsigned C_DOCK = 0x00A4BACE, C_BUTTON, C_BUTTON_TEXT, C_MENUBAR;
 
 const WkNamedTheme wk_themes[] = {
-	{ "Peach", 0x00F0B07A }, { "Steel", 0x007A98C0 }, { "Sage", 0x0080AA76 },
-	{ "Brick", 0x00C45450 }, { "Slate", 0x003A4458 }, { 0, 0 }
+	{ "Peach", 0x00F0B07A, WK_STYLE_CDE }, { "Steel", 0x007A98C0, WK_STYLE_CDE },
+	{ "Sage", 0x0080AA76, WK_STYLE_CDE }, { "Brick", 0x00C45450, WK_STYLE_CDE },
+	{ "Slate", 0x003A4458, WK_STYLE_CDE }, { "Milk", 0x00D4D4D6, WK_STYLE_MILK }, { 0, 0, 0 }
 };
 
-static const unsigned DEF_WINDOW = 0x00D0C2BA, DEF_ACCENT = 0x004992A7, DEF_DOCK = 0x00A4BACE;
+// Each style's own colours: the window's (the apps' face), the accent, the frames behind, the dock.
+static const WkPalette s_palettes[2] = {
+	{ 0x00D0C2BA, 0x004992A7, WK_GREY, 0x00A4BACE },	// CDE's beige, a teal, grey frames behind, a blue dock
+	{ 0x00E4E4E4, 0x003D86DA, 0x00E2E2E4, 0x00D9DDE3 },	// Milk: light greys, Aqua's blue, a silver dock
+};
+const WkPalette &wk_style_palette (int style) { return s_palettes[style == WK_STYLE_MILK ? 1 : 0]; }
 
 // The shades of the window's colour (the face: the apps' background), and what is written on it.
 void wk_theme_face (unsigned face)
@@ -38,9 +44,19 @@ void wk_theme_face (unsigned face)
 
 void wk_theme_defaults (WkTheme &t)
 {
-	t.theme = 0; t.active = wk_themes[0].frame; t.inactive = WK_GREY;
-	t.window = DEF_WINDOW; t.button = WK_AUTO; t.field = WK_AUTO; t.accent = DEF_ACCENT;
-	t.menubar = WK_AUTO; t.dock = DEF_DOCK; t.outline = 1;
+	const WkPalette &p = s_palettes[0];
+	t.theme = 0; t.active = wk_themes[0].frame; t.inactive = p.inactive;
+	t.window = p.face; t.button = WK_AUTO; t.field = WK_AUTO; t.accent = p.accent;
+	t.menubar = WK_AUTO; t.dock = p.dock; t.outline = 1; t.style = WK_STYLE_CDE;
+}
+
+void wk_theme_take_style (WkTheme &t, int style)
+{
+	if (style == t.style) return;
+	const WkPalette &p = wk_style_palette (style);
+	t.style = style;
+	t.window = p.face; t.accent = p.accent; t.inactive = p.inactive; t.dock = p.dock;
+	t.button = t.field = t.menubar = WK_AUTO;
 }
 
 void wk_theme_set (const WkTheme &t)
@@ -49,6 +65,7 @@ void wk_theme_set (const WkTheme &t)
 	C_FRAME_INACTIVE = t.inactive & 0x00FFFFFFu;
 	C_ACCENT = t.accent & 0x00FFFFFFu;
 	WK_OUTLINE = t.outline;
+	WK_STYLE = t.style;
 	C_DOCK = t.dock & 0x00FFFFFFu;
 	wk_theme_face (t.window);
 	if (t.button != WK_AUTO) { C_BUTTON = t.button & 0x00FFFFFFu; C_BUTTON_TEXT = wk_ink_on (C_BUTTON); }
@@ -100,6 +117,9 @@ void wk_theme_parse (const char *text, WkTheme &t)
 	while (text[n] && n < (int) sizeof buf - 1) { buf[n] = text[n]; n++; }
 	buf[n] = 0;
 	bool haveActive = false;
+	// (a style other than t's: the colours the text leaves out are that style's -- wk_theme_take_style)
+	WkTheme was = t; int style = -1, named = -1;
+	bool have[8] = {};					// inactive window button field accent menubar dock
 	for (char *p = buf; *p; )
 	{
 		char *line = p;
@@ -119,21 +139,39 @@ void wk_theme_parse (const char *text, WkTheme &t)
 		if (eq (k, "theme"))
 		{
 			for (int i = 0; wk_themes[i].name; i++)
-				if (eq (v, wk_themes[i].name) && !haveActive) { t.active = wk_themes[i].frame; t.theme = i; }
+				if (eq (v, wk_themes[i].name))
+				{
+					named = wk_themes[i].style;
+					if (!haveActive) { t.active = wk_themes[i].frame; t.theme = i; }
+				}
 		}
+		else if (eq (k, "style")) style = eq (v, "milk") ? WK_STYLE_MILK : WK_STYLE_CDE;
 		else if (eq (k, "active") && colour (v, &c) && c != WK_AUTO)
 		{
 			t.active = c; haveActive = true; t.theme = -1;
 			for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].frame == c) t.theme = i;
 		}
-		else if (eq (k, "inactive") && colour (v, &c) && c != WK_AUTO) t.inactive = c;
-		else if ((eq (k, "window") || eq (k, "face")) && colour (v, &c) && c != WK_AUTO) t.window = c;
-		else if (eq (k, "button") && colour (v, &c)) t.button = c;
-		else if (eq (k, "field") && colour (v, &c)) t.field = c;
-		else if (eq (k, "accent") && colour (v, &c) && c != WK_AUTO) t.accent = c;
+		else if (eq (k, "inactive") && colour (v, &c) && c != WK_AUTO) { t.inactive = c; have[0] = true; }
+		else if ((eq (k, "window") || eq (k, "face")) && colour (v, &c) && c != WK_AUTO) { t.window = c; have[1] = true; }
+		else if (eq (k, "button") && colour (v, &c)) { t.button = c; have[2] = true; }
+		else if (eq (k, "field") && colour (v, &c)) { t.field = c; have[3] = true; }
+		else if (eq (k, "accent") && colour (v, &c) && c != WK_AUTO) { t.accent = c; have[4] = true; }
 		else if (eq (k, "outline")) t.outline = eq (v, "none") ? 0 : eq (v, "black") ? 2 : 1;
-		else if (eq (k, "menubar") && colour (v, &c)) t.menubar = c;
-		else if (eq (k, "dock") && colour (v, &c) && c != WK_AUTO) t.dock = c;
+		else if (eq (k, "menubar") && colour (v, &c)) { t.menubar = c; have[5] = true; }
+		else if (eq (k, "dock") && colour (v, &c) && c != WK_AUTO) { t.dock = c; have[6] = true; }
+	}
+	int s = style >= 0 ? style : named >= 0 ? named : was.style;	// (the key, else the theme's)
+	if (s != was.style)
+	{
+		WkTheme got = t;
+		wk_theme_take_style (t, s);
+		if (have[0]) t.inactive = got.inactive;
+		if (have[1]) t.window = got.window;
+		if (have[2]) t.button = got.button;
+		if (have[3]) t.field = got.field;
+		if (have[4]) t.accent = got.accent;
+		if (have[5]) t.menubar = got.menubar;
+		if (have[6]) t.dock = got.dock;
 	}
 }
 
@@ -154,12 +192,14 @@ int wk_theme_write (const WkTheme &t, char *o, int cap)
 	o[0] = 0;
 	p = put (o, p, cap,
 		"# The desktop's look (the modernised CDE), read by every app when it starts (wtk/theme.h);\n"
-		"# written by the Control Panel's Theme applet. theme: Peach, Steel, Sage, Brick, Slate (the\n"
-		"# window in front's frame; active = a colour instead); inactive: the frames behind; window: the\n"
-		"# windows' content; button, field (text boxes, lists), menubar: auto = from the window's;\n"
-		"# accent: focus and selection; outline: none, dark or black; dock: the dock's face.\n");
+		"# written by the Control Panel's Theme applet. theme: Peach, Steel, Sage, Brick, Slate, Milk\n"
+		"# (the window in front's frame; active = a colour instead); style: cde or milk (the title\n"
+		"# buttons framed, or OS X's beads); inactive: the frames behind; window: the windows' content;\n"
+		"# button, field (text boxes, lists), menubar: auto = from the window's; accent: focus and\n"
+		"# selection; outline: none, dark or black; dock: the dock's face.\n");
 	if (t.theme >= 0) { p = put (o, p, cap, "theme    = "); p = put (o, p, cap, wk_themes[t.theme].name); }
 	else { p = put (o, p, cap, "active   = "); p = put_colour (o, p, cap, t.active); }
+	p = put (o, p, cap, t.style == WK_STYLE_MILK ? "\nstyle    = milk" : "\nstyle    = cde");
 	struct { const char *k; unsigned c; } kv[] = {
 		{ "\ninactive = ", t.inactive }, { "\nwindow   = ", t.window }, { "\nbutton   = ", t.button },
 		{ "\nfield    = ", t.field }, { "\naccent   = ", t.accent }, { "\nmenubar  = ", t.menubar },

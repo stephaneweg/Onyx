@@ -1,0 +1,4 @@
+# The Milk theme (shots.sh's milk.png): what the Theme app writes for it
+theme    = Milk
+style    = milk
+outline  = dark
