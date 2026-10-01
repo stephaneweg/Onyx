@@ -1532,6 +1532,27 @@ then `/bin/zip` and `/bin/unzip` built for the PC, driven by `cli_test.py`.
 The screenshots: `sh tools/tests/desktop_sim/shots.sh archiver` (a sample archive made by
 `arc_sample.py`).
 
+### The packages: `pkg`, `user/pkg/pkglib.h`, `tools/pkg`
+
+The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
+
+| Part | What |
+|---|---|
+| `tools/pkg/packages.ini` | Which files of `sdcard/` make each package: `[onyx]` (the kernel, `bin/`, `etc/` as settings, the fonts, the Shell and Settings apps, the terminal, the File Viewer, the Task Manager; `required`, `restart`), `[pi-firmware]`, `[demos]`, `[basic-examples]`, `[samples]`, then `[*apps]`: every other app its own package (`[app.<name>]`: its files outside its bundle, its `needs`, its `config`). |
+| `tools/pkg/versions.ini` | Each package's version, raised by `mkrepo.py --bump` (a package whose files changed at the same version is refused). |
+| `tools/pkg/mkrepo.py` | `--out <onyx-packages checkout> --key <private key>`: the `.opk` of each package (a deterministic ZIP: the card's tree + `PKG/manifest.ini`), the icons, `index.txt` (version, size, SHA-256, needs — `kapi >= KAPI_ABI_VERSION` added —, the content's hash) signed into `index.sig` (ECDSA P-256 / SHA-256). `--db`: `sdcard/var/pkg/db/*.ini`, the card made "installed". `--lite sdcard_lite`: the card of the required packages only. |
+| `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
+| `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`. |
+| `user/bin/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/bin/Makefile` (newlib + mbedTLS + zlib). |
+| `user/bin/init.c` | The `wait <command>` builtin (`kapi_spawn` + `kapi_wait`): `wait pkg commit`, the autostart's first line. |
+
+**Host test**: `sh tools/tests/run_pkg_test.sh` — mbedTLS and `pkg` built for the PC over the
+simulator's kapi (`SIM_SD` an empty card, the repository a folder of it), driven by
+`tools/tests/pkg/test.py`: a repository made by `mkrepo.py` with a key made for the test; install with
+the needs, already installed, update (a changed setting kept, `.new`, a dropped file removed), the
+modes and `upgrade`, removals refused (needed, running, the system), the system staged then committed
+(and the reboot), a changed index and a changed archive refused.
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app

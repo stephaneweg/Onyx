@@ -1,15 +1,18 @@
-# Packages and updates — the package manager (study, first mock-ups)
+# Packages and updates — the package manager
 
-> **Status (2026-10-01): study and mock-ups**, nothing built yet. What was decided with the user earlier
-> (IDEAS.md, *Paquets d'apps + gestionnaire de paquets + mises à jour*): **one package format** for
-> the apps *and* the system (the kernel included): an archive that **mirrors the card's root**,
-> installed by extracting it there, with a **manifest**; a **public repository** with an **index**;
-> the package manager is an **applet of the Control Panel** (new apps, the updates, a **manual /
-> automatic** choice for each installed app); a **`pkg` command** (`add`, `delete`, `update [-a]`,
-> `upgrade`, `list [-a]`), the same library as the applet; an **update daemon** (the automatic ones
-> updated in the background, the others a notification; run once from the applet, a checklist);
-> the kernel written beside the old one and **switched at the restart**, the old one kept to come back
-> to. The open questions are at the end.
+> **Status (2026-10-01)**: **`pkg` done** (the library `user/pkg/pkglib.h`, the command `user/bin/pkg.cpp`,
+> the PC side `tools/pkg/`, tested on the PC: `tools/tests/run_pkg_test.sh`; not yet tried on the Pi);
+> the card's database made (`sdcard/var/pkg/db`); **`sdcard_lite`** (the system and the firmware only,
+> to try the installs). Still to do: publishing the repository (below), the applet **pkgman**, the
+> daemon **pkgd**, the firmware's *tryboot*, the Game Library finding its emulators (below). Its use:
+> docs/04 §8 *Packages*; its code: docs/03 *The packages*.
+>
+> **Decided with the user**: the repository **`stephaneweg/onyx-packages`** (GitHub Pages); the applet
+> **Onyx Package Manager (`pkgman`)**; the daemon **`pkgd`**; an app installed is **manual**; the
+> split: **the system** in one package (`onyx`: the kernel, `/bin`, the settings it needs — plus the
+> desktop's own apps, the terminal, the File Viewer and the Task Manager), **the firmware** in another
+> (`pi-firmware`), **every app its own package**, the **demos** in one (`demos`), the **BASIC
+> examples** in one (`basic-examples`).
 
 The mock-ups: `python3 tools/screenshot/mockup_pkg.py` → `docs/pkg/mockups/*.png` (1024 × 768, the
 apps' real icons).
@@ -118,14 +121,40 @@ each package of the index whose files are all there is recorded as installed (it
 3. `pkgd` (daily) — later a task of the **task scheduler** (IDEAS.md) when it exists.
 4. The system package: the stage, the commit at boot, tryboot.
 
-## Open questions (for the user)
+## Publishing the repository
 
-1. **The repository**: a separate GitHub repository `stephaneweg/onyx-packages` on GitHub Pages (the
-   proposal), or the packages as *Releases* of `onyx` (larger files), or a server of yours?
-2. **The applet's name**: *Software* (the mock-ups), *Updates*, *Store*…?
-3. **The daemon without a scheduler**: `pkgd` checks once a day itself for now (the proposal), or the
-   task scheduler first?
-4. **The default mode** of an app just installed: Automatic or Manual? And the system: always Manual
-   (the proposal: it needs a restart)?
-5. **The split**: the system as one package `onyx` (+ `pi-firmware`), every app its own package (the
-   proposal) — or the demos / the BASIC samples / the emulators grouped?
+On the PC, in a checkout of `stephaneweg/onyx-packages` beside `onyx` (GitHub Pages on, from `main`):
+
+```
+python3 tools/pkg/mkrepo.py --out ../onyx-packages --key ~/.onyx/pkg-key.pem --db --lite sdcard_lite
+cd ../onyx-packages && git add -A && git commit -m "Onyx packages" && git push
+```
+
+`--bump` when an app changed (its version raised in `tools/pkg/versions.ini`, to commit in `onyx`).
+The private key `~/.onyx/pkg-key.pem` signs the index: keep it off the repositories (its public half,
+`sdcard/etc/pkg/onyx.pub`, is on every card).
+
+## The emulators (a question of the user)
+
+Today the Game Library knows its systems by heart (`SYS_EMU[]`: gcemu, n64emu, snesemu, gbaemu,
+gbemu, nesemu; their extensions in `scan ()`), and opens a game through `SD:/etc/runners.ini`. To
+**offer other emulators later**, the proposal: each emulator its **own package**, which says what it
+plays in its `app.txt`:
+
+```ini
+name       = Super Nintendo
+category   = Emulators
+system     = Super Nintendo          ; the Game Library's section
+extensions = sfc smc                 ; the games it opens
+```
+
+The Game Library then makes its sections from the installed apps of category *Emulators* (no list in
+its code: a new emulator package shows its games at once), and `launch.h` finds the program for a
+file in these `extensions` too (no line to add to `runners.ini`, which is the user's setting). The
+pictures of the games: the cores the Game Library carries today (GB, GBA, NES, SNES), the emulator's
+icon for the others (or, later, an emulator's `--thumbnail` mode run by the Game Library).
+
+## Still open
+
+1. **pkgd's timing**: it checks once a day itself until the task scheduler exists (the proposal).
+2. **The emulators**: one package each, found by the Game Library from their `app.txt` (above)?

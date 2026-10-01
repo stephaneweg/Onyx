@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = App Settings
+icon   = SD:/apps/config.app/icon.bmp
+target = config
+text   = An app's own settings (its config.ini), key by key

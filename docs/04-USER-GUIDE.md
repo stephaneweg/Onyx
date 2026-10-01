@@ -216,6 +216,8 @@ On power-on:
 3. The kernel launches the **init program** (`SD:bin/init` by default, or whatever
    `init=` in `cmdline.txt` points at), which runs each line of `SD:/etc/autostart` as
    a shell command. By default:
+   - **`wait pkg commit`** moves in a system update staged for this boot (and restarts once
+     when the kernel or the firmware changed: §8 *Packages*);
    - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
    - **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below);
    - **`run menubar`** starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`**
@@ -644,6 +646,27 @@ the terminal's **current working directory**.
 
 Exit codes (for scripts and packages): `0` all right, `1` a warning (files skipped, nothing to do),
 `2` an error (a damaged archive, a file that cannot be written), `3` a bad command line.
+
+**Packages** (the system and the apps installed, updated and removed from the repository: docs/pkg/README.md)
+
+| Tool | Usage | Description |
+|---|---|---|
+| `pkg list` | `pkg list [-a] [filter]` | The packages installed: version, updates mode (`manual`, `auto`, `never`), an update available, *staged: restart to finish*. `-a`: every package of the repository (`-` not installed, `installed`, `update`). |
+| `pkg info` | `pkg info <name>` | A package: its summary, category, versions (the repository's, the installed one), size, needs, mode. |
+| `pkg add` | `pkg add <name…>` / `pkg add <file.opk>` | Installs (the packages it needs first). Already installed: says so, does nothing. A `.opk` file installs a package that is not in the repository. |
+| `pkg delete` | `pkg delete [-p] <name…>` | Removes its files and its empty folders; a setting you changed is kept (`-p`: removed too). Not installed: says so. Refused for the system (`onyx`, `pi-firmware`), for a package another one needs, for an app that is running. |
+| `pkg update` | `pkg update <name…>` / `pkg update -a` | Updates those packages; `-a` every package with an update (not those set `never`). |
+| `pkg upgrade` | `pkg upgrade` | One round of the update daemon: the packages set `auto` updated, the others listed. |
+| `pkg check` | `pkg check` | Reads the index again: the updates available. |
+| `pkg mode` | `pkg mode <name> manual\|auto\|never` | How the package is updated: asked (`manual`, the default), in the background (`auto`), never. |
+| `pkg commit` | `pkg commit` | Moves in the packages staged for the next boot (run by `etc/autostart`, before the desktop); restarts when the kernel or the firmware changed. |
+
+`-r <repository>` before the command uses another repository for once (a URL or a folder: `pkg -r
+SD:/myrepo add tetris`). The repository and its key: `SD:/etc/pkg/pkg.ini` (`repo =`, `key =`). Each
+package's **SHA-256** is checked against the repository's **signed index** before anything is written;
+the system and the firmware are **staged** and moved in at the next boot. A setting file you changed
+(`etc/*`, an app's `config.ini`) is never overwritten: the new one is written beside it as `<name>.new`.
+Exit codes: `0` done, `1` nothing to do, `2` an error, `3` a bad command line.
 
 All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls RAM:`, `cd RAM:/jet`,
 `cp SD:/doc.txt RAM:/doc.txt`, `rm RAM:/doc.txt`, `cat RAM:/log`, `echo hi > RAM:/log`.
@@ -1206,7 +1229,8 @@ silver).
   exactly as if typed in the terminal — the first word is a `/bin` tool
   (`/bin/<word>`) and the rest are its arguments; blank lines and `#` comments are
   ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
-  to stagger the startup. Launch a **desktop app** with the `run` tool (`run <name>` →
+  to stagger the startup, and **`wait <command>`** runs the command and waits for its end
+  (`wait pkg commit`, the first line: the packages staged for this boot moved in). Launch a **desktop app** with the `run` tool (`run <name>` →
   `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run dock`, `run agenda`, `keyb FR` (sets the
   keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
