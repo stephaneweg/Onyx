@@ -365,7 +365,7 @@ Applications with menus: **tinypad** (File), **Writer** (File, Edit, View, Inser
 
 The **dock** — CDE's Front Panel, modernised — stands at the bottom of the screen, centred
 (started by `autostart`); it stays above the windows, on every workspace, and a maximised window
-ends above it. In its middle, the workspaces and the lock / gear / power buttons; its other
+ends above it. In its middle, the workspaces between the lock / gear (left) and power / clipboard (right) buttons; its other
 buttons — the drawers, the launchers, the Trash, in this order — are shared **evenly on the two
 sides** (the odd one out at the left): with the five drawers, the Terminal, the File Viewer and
 the Trash, four on each side.
@@ -386,8 +386,9 @@ the Trash, four on each side.
   when it holds something.
 - **The workspaces** (in the middle): a small square each (4 by default), the current one lit,
   its windows drawn small in it. Click one to show that workspace (see *Workspaces* below).
-  Beside them: the **lock** (the screen is locked: `lock` below), the **gear** (the **Control
-  Panel**, §11) and the red **power** button (**Shut Down…**).
+  Beside them: at the left the **lock** (the screen is locked: `lock` below) over the **gear** (the
+  **Control Panel**, §11); at the right the red **power** button (**Shut Down…**) over the
+  **clipboard** (its history, a widget at the bottom right of the screen — coming: `docs/clipboard/README.md`).
 
 Rest the pointer on a launcher to see its name. **Right-click the dock**: **Panel Settings…** —
 the Control Panel's **Panel** applet, where the drawers (their group and main app: add, remove,
@@ -395,8 +396,8 @@ reorder), the launchers after them and the workspaces (how many, their names) ar
 `SD:/etc/dock.ini`. The dock's colour is the theme's.
 
 ![Dock](../screenshots/dock.png)
-*The dock: four drawers, the middle (the four workspaces with their windows drawn small, the lock,
-the gear, the power button), the Demos drawer, the Terminal, the File Viewer, the Trash — and the
+*The dock: four drawers, the middle (the four workspaces with their windows drawn small, the lock and
+the gear at the left, the power button and the clipboard at the right), the Demos drawer, the Terminal, the File Viewer, the Trash — and the
 Games drawer open (a dot: an app of it runs).*
 
 ### Workspaces (virtual desktops)

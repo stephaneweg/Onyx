@@ -75,6 +75,8 @@ used — or answer for clipd when it is not running (a fallback, one text). Noth
   moves or the screen changes): a dock as wide as the screen never hides it, it never covers the dock.
 - **No preview of the images**: an icon and their size.
 - A click on an item: the **cursor** goes there (Ctrl+V pastes it); its ×: deleted; the bin: all cleared.
+- **Shown by the dock's clipboard button** (at the right of its middle, under the power button — the
+  user's choice; done: it launches `clipboard`), a click elsewhere hides it.
 - It is a client of clipd (`CLIP_LIST`, `CLIP_SUBSCRIBE`), not clipd itself: clipd has no window.
 
 ## Questions for the user
