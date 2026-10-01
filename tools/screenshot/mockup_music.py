@@ -132,6 +132,9 @@ def ic_star (c, x, y, s, col):
 def ic_film (c, x, y, s, col):
 	c.rect (x + 1, y + s * 0.18, s - 2, s * 0.64, None, r = 2, outline = col, width = 1.6)
 	for k in range (4): c.rect (x + 3 + k * s * 0.24, y + s * 0.24, 2, 2, col); c.rect (x + 3 + k * s * 0.24, y + s * 0.7, 2, 2, col)
+def ic_home (c, x, y, s, col):
+	c.poly ([(x + s * 0.5, y + s * 0.08), (x + s * 0.95, y + s * 0.48), (x + s * 0.05, y + s * 0.48)], col)
+	c.rect (x + s * 0.18, y + s * 0.46, s * 0.64, s * 0.46, col); c.rect (x + s * 0.42, y + s * 0.62, s * 0.16, s * 0.3, SIDE)
 def ic_plus (c, x, y, s, col): c.rect (x + s / 2 - 1, y + 2, 2, s - 4, col); c.rect (x + 2, y + s / 2 - 1, s - 4, 2, col)
 def ic_search (c, x, y, s, col): c.ellipse (x + s * 0.42, y + s * 0.42, s * 0.3, None, col, 1.8); c.line ([(x + s * 0.64, y + s * 0.64), (x + s * 0.92, y + s * 0.92)], col, 2)
 def ic_play (c, x, y, s, col): c.poly ([(x + s * 0.28, y + s * 0.18), (x + s * 0.28, y + s * 0.82), (x + s * 0.84, y + s * 0.5)], col)
@@ -193,26 +196,26 @@ def topbar (c, cx, cy, cw, title_path = None, search = "", view = "grid"):
 	for k in range (3): c.rect (vx + 30, cy + 18 + k * 5, 13, 2, WHITE if view == "list" else DIM)
 	c.hline (cx, cx + cw, cy + TOP_H, M.shade (FACE, 0.85))
 
-SIDE_ITEMS = [("LIBRARY", None), ("Artists", ic_person), ("Albums", ic_disc), ("Songs", ic_note), ("Genres", ic_tag), ("Folders", ic_folder),
-	      ("VIDEOS", None), ("Films and clips", ic_film),
-	      ("PLAYLISTS", None), ("Favourites", ic_heart), ("Recently added", ic_clock), ("Most played", ic_star),
-	      ("Sunday morning", ic_list), ("Workout", ic_list), ("Piano evenings", ic_list)]
+SIDE_ITEMS = [("Home", ic_home), ("LIBRARY", None), ("Artists", ic_person), ("Albums", ic_disc), ("Songs", ic_note), ("Genres", ic_tag), ("Folders", ic_folder),
+	      ("VIDEOS", None), ("Films", ic_film), ("Clips and series", ic_film),
+	      ("PLAYLISTS", None), ("Favourites", ic_heart), ("Recently added", ic_clock),
+	      ("Sunday morning", ic_list), ("Workout", ic_list)]
 def sidebar (c, x, y, h, sel):
 	c.rect (x, y, SIDE_W, h, SIDE)
 	c.vline (x + SIDE_W, y, y + h, M.shade (FACE, 0.82))
-	yy = y + 10
+	yy = y + 8
 	for label, icon in SIDE_ITEMS:
 		if icon is None:
-			yy += 6; c.text (x + 16, yy + 4, label, "smallb", DIM); yy += 22; continue
+			yy += 4; c.text (x + 16, yy + 4, label, "smallb", DIM); yy += 20; continue
 		on = label == sel
-		if on: c.rect (x + 8, yy, SIDE_W - 16, 28, SEL, r = 6)
+		if on: c.rect (x + 8, yy, SIDE_W - 16, 26, SEL, r = 6)
 		col = WHITE if on else TEXT
-		dim = label == "Films and clips"
-		icon (c, x + 18, yy + 6, 16, col if not dim else FAINT)
-		c.text_l (x + 44, yy, 28, label, "uib" if on else "ui", col if not dim else FAINT)
+		dim = False
+		icon (c, x + 18, yy + 5, 16, col if not dim else FAINT)
+		c.text_l (x + 44, yy, 26, label, "uib" if on else "ui", col if not dim else FAINT)
 		if dim: M.badge (c, x + 150, yy + 7, "soon", (200, 190, 182), WHITE)
-		yy += 30
-	c.text_l (x + 18, y + h - 36, 30, "+  New playlist", "ui", M.LINK)
+		yy += 28
+	c.text_l (x + 18, y + h - 34, 30, "+  New playlist", "ui", M.LINK)
 
 def nowbar (c, x, y, w, i = 0, title = "Northern Lights", artist = "Lumen Drift  ·  Northern Lights", t = 0.38, elapsed = "2:01", total = "5:18",
 	    playing = True, shuffle = False, repeat = 1):
@@ -399,9 +402,44 @@ def shot_nowplaying ():
 	c.text (qx + 18, qy + 450 - 18, "From the album, then shuffled: 24 more", "small", (170, 190, 200))
 	c.save ("media-nowplaying.png")
 
-# ---- 5. a MIDI file playing: the SoundFont, the 16 channels ------------------------------------------------------
-GM = ["Acoustic Grand Piano", "String Ensemble 1", "French Horn", "Flute", "Pizzicato Strings", "Contrabass", "Timpani", "Harp",
-      "Oboe", "Standard Drum Kit", "Clarinet", "—", "—", "—", "—", "—"]
+# ---- 5. a MIDI file playing: its notes, a colour an instrument, scrolling under the playhead --------------------
+TRACK_COLOURS = [(240, 110, 90), (250, 190, 70), (120, 210, 110), (80, 190, 230), (170, 130, 250), (250, 120, 200), (90, 220, 200)]
+TRACK_NAMES = ["Piano", "Strings", "Horn", "Flute", "Pizzicato", "Bass", "Harp"]
+def piano_roll (c, x, y, w, h, seed = 5, playhead = 0.32, keys = True):
+	c.rect (x, y, w, h, (24, 22, 34), r = 10)
+	kx = x + (46 if keys else 0)
+	if keys:					# the keyboard at the left
+		rows = 36; kh = (h - 16) / rows
+		for k in range (rows):
+			black = (k % 12) in (1, 3, 6, 8, 10)
+			c.rect (x + 8, y + 8 + k * kh, 30 if not black else 20, kh - 0.6, (60, 58, 70) if black else (230, 228, 236), r = 1)
+	r = random.Random (seed)
+	# the bars
+	for b in range (9):
+		bx = kx + 8 + b * (w - (kx - x) - 16) / 8
+		c.vline (bx, y + 8, y + h - 8, M.A (WHITE, 26))
+		c.text (bx + 4, y + 10, str (17 + b), "small", (130, 128, 150))
+	rows = 36; kh = (h - 16) / rows
+	for t, col in enumerate (TRACK_COLOURS):
+		base = [24, 18, 14, 8, 20, 30, 4][t]
+		px = kx + 10 + r.random () * 20
+		while px < x + w - 20:
+			ln = (8 + r.random () * 44) * (2 if t in (1, 5) else 1)
+			row = base + r.randint (-3, 3)
+			ln = min (ln, x + w - 10 - px)
+			if ln < 6: break
+			if 0 <= row < rows:
+				ny = y + 8 + row * kh
+				past = px + ln < x + w * playhead
+				cc = col if not past else tuple (int (v * 0.55 + 24 * 0.45) for v in col)
+				c.rect (px, ny + 0.6, ln - 2, kh - 1.4, cc, r = 2)
+				if px < x + w * playhead < px + ln:	# sounding: lit
+					c.rect (px - 1, ny - 0.6, ln, kh + 1.2, None, r = 3, outline = WHITE, width = 1.4)
+			px += ln + r.random () * 26
+	ph = x + w * playhead
+	c.rect (ph - 1, y + 4, 2, h - 8, WHITE)
+	c.poly ([(ph - 6, y + 4), (ph + 6, y + 4), (ph, y + 11)], WHITE)
+
 def shot_midi ():
 	c = screen ()
 	cx, cy, cw, ch = app_window (c)
@@ -409,60 +447,46 @@ def shot_midi ():
 	body_h = ch - TOP_H - NOW_H
 	sidebar (c, cx, cy + TOP_H + 1, body_h - 1, "Albums")
 	ax, ay, aw = cx + SIDE_W + 24, cy + TOP_H + 18, cw - SIDE_W - 48
-	cover (c, ax, ay, 120, 6)
-	c.text (ax + 140, ay + 4, "MIDI  ·  NOW PLAYING", "smallb", (120, 96, 196))
-	c.text (ax + 140, ay + 22, "Aria (Goldberg Variations, BWV 988)", "h2")
-	c.text (ax + 140, ay + 52, "J. S. Bach  ·  arranged for strings  ·  type 1, 11 tracks, 96 ppq  ·  ♩ = 64", "small", DIM)
-	c.text (ax + 140, ay + 80, "Played by", "small", DIM)
-	M.dropdown (c, ax + 200, ay + 74, 260, 28, "GeneralUser GS  (30 MB)")
-	M.checkbox (c, ax + 480, ay + 80, "Reverb and chorus", True)
-	# the 16 channels: the instrument, the level, the notes
-	gy = ay + 140
-	c.text (ax, gy, "CHANNELS", "smallb", DIM); c.text_r (ax + aw, gy + 6, 0, "Click a channel to mute it, Shift+click: solo", "small", FAINT)
-	gy += 22
-	r = random.Random (5)
-	for k in range (16):
-		col, row = k // 8, k % 8
-		x = ax + col * (aw / 2 + 6); y = gy + row * 31; w = aw / 2 - 6
-		used = GM[k] != "—"
-		c.rect (x, y, w, 28, WHITE if used else (243, 240, 238), r = 6, outline = LINE2)
-		M.badge (c, x + 8, y + 6, "%2d" % (k + 1), (120, 96, 196) if k == 9 - 0 and False else (150, 140, 132) if used else (200, 192, 186), WHITE)
-		c.text_l (x + 40, y, 28, GM[k], "ui" if used else "small", TEXT if used else FAINT)
-		if used:
-			lv = r.random () * 0.9 + 0.1 if k != 4 else 0
-			lx = x + w - 120
-			for b in range (14):
-				on = b / 14 < lv
-				c.rect (lx + b * 7, y + 9, 5, 10, ((80, 170, 100) if b < 9 else (230, 180, 60) if b < 12 else (220, 80, 60)) if on else (226, 220, 214), r = 1)
-			if k == 4: c.text_r (lx - 8, y + 15, 0, "muted", "smallb", (200, 80, 60))
-	# a piano roll of the next bars, small
-	py = gy + 8 * 31 + 8
-	c.rect (ax, py, aw, 38, (34, 30, 44), r = 8)
-	for n in range (90):
-		px = ax + 8 + r.random () * (aw - 40); pw = 8 + r.random () * 30; pr = r.randint (0, 13)
-		c.rect (px, py + 5 + pr * 2.0, pw, 2.4, (150 + pr * 6, 120, 220 - pr * 6), r = 1)
-	c.vline (ax + aw * 0.31, py + 3, py + 35, WHITE)
+	cover (c, ax, ay, 104, 6)
+	c.text (ax + 124, ay + 2, "MIDI  ·  NOW PLAYING", "smallb", (120, 96, 196))
+	c.text (ax + 124, ay + 20, "Aria (Goldberg Variations, BWV 988)", "h2")
+	c.text (ax + 124, ay + 50, "J. S. Bach  ·  arranged for strings  ·  7 instruments  ·  ♩ = 64", "small", DIM)
+	c.text (ax + 124, ay + 78, "Played by", "small", DIM)
+	M.dropdown (c, ax + 184, ay + 72, 250, 28, "GeneralUser GS  (30 MB)")
+	piano_roll (c, ax, ay + 122, aw, 300)
+	# the instruments: a dot of their colour each
+	lx = ax
+	for col, n in zip (TRACK_COLOURS, TRACK_NAMES):
+		c.ellipse (lx + 6, ay + 440, 5, col); c.text_l (lx + 16, ay + 430, 20, n, "small", DIM); lx += 30 + c.tw (n, "small")
 	nowbar (c, cx, cy + ch - NOW_H, cw, i = 6, title = "Aria", artist = "J. S. Bach (MIDI)  ·  Goldberg Variations", t = 0.31, elapsed = "1:22", total = "4:25")
 	c.save ("media-midi.png")
 
-# ---- 6. the mini player, over the desktop -------------------------------------------------------------------
+# ---- 6. the mini player: the window reduced to a card at the bottom right of the screen -------------------------
 def shot_mini ():
 	c = screen ()
-	x, y, w, h = 590, 60, 400, 150
-	cx, cy, cw, ch = M.window (c, x, y, w, h, "Media Player")
-	bg = cover_img (3, 60).resize ((int (cw * K), int (ch * K))).filter (ImageFilter.GaussianBlur (30 * K))
-	bg = Image.blend (bg, Image.new ("RGB", bg.size, (20, 18, 24)), 0.5)
-	c.img.paste (bg, (int (cx * K), int (cy * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
-	cover (c, cx + 12, cy + 12, 94, 3, r = 6)
-	c.text (cx + 120, cy + 14, "Owls at Noon", "big", WHITE)
-	c.text (cx + 120, cy + 36, "Mira & the Owls", "small", (220, 220, 225))
-	bx = cx + 120; bw = cw - 136
-	c.rect (bx, cy + 60, bw, 4, M.A (WHITE, 70), r = 2); c.rect (bx, cy + 60, bw * 0.62, 4, WHITE, r = 2)
-	c.text (bx, cy + 68, "2:10", "small", (210, 210, 215)); c.text_r (bx + bw, cy + 76, 0, "3:31", "small", (210, 210, 215))
-	mx = bx + bw / 2
-	ic_prev (c, mx - 56, cy + 86, 20, WHITE); c.ellipse (mx, cy + 96, 15, WHITE); ic_pause (c, mx - 8, cy + 88, 16, (30, 30, 40)); ic_next (c, mx + 36, cy + 86, 20, WHITE)
-	ic_mini (c, cx + cw - 30, cy + 88, 18, (230, 230, 235))
-	M.cursor (c, mx + 4, cy + 100)
+	w, h = 300, 92
+	x, y = M.W - w - 12, 676 - h - 10
+	c.rect (x + 2, y + 4, w, h, M.A ((0, 0, 0), 60), r = 12)
+	bg = cover_img (3, 60).resize ((int (w * K), int (h * K))).filter (ImageFilter.GaussianBlur (26 * K))
+	bg = Image.blend (bg, Image.new ("RGB", bg.size, (22, 20, 28)), 0.5)
+	m = Image.new ("L", bg.size, 0); ImageDraw.Draw (m).rounded_rectangle ([0, 0, bg.size[0] - 1, bg.size[1] - 1], 12 * K, fill = 255)
+	c.img.paste (bg, (int (x * K), int (y * K)), m); c.d = ImageDraw.Draw (c.img, "RGBA")
+	c.rect (x, y, w, h, None, r = 12, outline = M.A (WHITE, 60))
+	cover (c, x + 10, y + 10, 72, 3, r = 6, shadow = False)
+	c.text (x + 94, y + 12, "Owls at Noon", "uib", WHITE)
+	c.text (x + 94, y + 31, "Mira & the Owls", "small", (220, 220, 225))
+	bx, bw = x + 94, w - 110
+	c.rect (bx, y + 52, bw, 3, M.A (WHITE, 70), r = 2); c.rect (bx, y + 52, bw * 0.62, 3, WHITE, r = 2)
+	mx = bx + 46
+	ic_prev (c, mx - 46, y + 62, 18, WHITE); c.ellipse (mx, y + 71, 12, WHITE); ic_pause (c, mx - 7, y + 64, 14, (30, 30, 40)); ic_next (c, mx + 28, y + 62, 18, WHITE)
+	c.text_r (x + w - 12, y + 72, 0, "2:10 / 3:31", "small", (210, 210, 215))
+	# its two small buttons, top right: the window back, close
+	for k, glyph in enumerate (("max", "close")):
+		gx = x + w - 44 + k * 20; gy = y + 8
+		c.ellipse (gx + 7, gy + 7, 8, M.A (WHITE, 50))
+		if glyph == "close": c.line ([(gx + 4, gy + 4), (gx + 10, gy + 10)], WHITE, 1.4); c.line ([(gx + 10, gy + 4), (gx + 4, gy + 10)], WHITE, 1.4)
+		else: c.rect (gx + 3, gy + 3, 8, 8, None, outline = WHITE, width = 1.3)
+	M.cursor (c, mx + 4, y + 76)
 	c.save ("media-mini.png")
 
 # ---- 7. the first start: the library is empty ------------------------------------------------------------------
@@ -494,5 +518,101 @@ def shot_welcome ():
 	M.cursor (c, mx + 70, fy + 156)
 	c.save ("media-welcome.png")
 
+# ---- 8. the home: the music and the videos, what to go on with ---------------------------------------------------
+def frame_img (i, w, h):
+	"""A video's frame (made up): a landscape, a city at night, the sea at sunset, a cartoon, a concert."""
+	W2, H2 = w * 4, h * 4
+	im = Image.new ("RGB", (W2, H2)); d = ImageDraw.Draw (im, "RGBA")
+	sk = [((90, 150, 220), (210, 230, 250)), ((10, 14, 40), (60, 40, 90)), ((250, 140, 80), (120, 60, 120)), ((120, 210, 250), (200, 240, 255)),
+	      ((20, 10, 30), (90, 20, 60)), ((40, 80, 60), (150, 190, 140))][i % 6]
+	for yy in range (H2):
+		t = yy / H2; d.line ([(0, yy), (W2, yy)], fill = tuple (int (a + (b - a) * t) for a, b in zip (*sk)))
+	r = random.Random (i)
+	if i % 6 == 0:
+		for k, col in enumerate (((70, 100, 140), (50, 80, 110), (40, 70, 60))):
+			pts = [(0, H2)] + [(x, H2 * (0.45 + 0.12 * k) + math.sin (x / W2 * 7 + k) * H2 * 0.08) for x in range (0, W2 + 10, 10)] + [(W2, H2)]
+			d.polygon (pts, fill = col)
+	elif i % 6 == 1:
+		for k in range (24):
+			bw = W2 / 24; bh = H2 * (0.25 + r.random () * 0.5)
+			d.rectangle ([k * bw, H2 - bh, (k + 1) * bw - 2, H2], fill = (18, 20, 36))
+			for _ in range (6): wx = k * bw + r.random () * (bw - 6); wy = H2 - bh + r.random () * bh; d.rectangle ([wx, wy, wx + 4, wy + 5], fill = (250, 210, 120))
+	elif i % 6 == 2:
+		d.ellipse ([W2 * 0.4, H2 * 0.35, W2 * 0.6, H2 * 0.35 + W2 * 0.2], fill = (255, 220, 140))
+		d.rectangle ([0, H2 * 0.6, W2, H2], fill = (60, 40, 90))
+		for k in range (8): d.line ([(W2 * 0.35 + k * 6, H2 * (0.62 + k * 0.04)), (W2 * 0.65 - k * 6, H2 * (0.62 + k * 0.04))], fill = (255, 200, 120, 160), width = 4)
+	elif i % 6 == 3:
+		d.rectangle ([0, H2 * 0.7, W2, H2], fill = (110, 190, 90))
+		d.ellipse ([W2 * 0.35, H2 * 0.3, W2 * 0.6, H2 * 0.75], fill = (250, 170, 60))
+		d.ellipse ([W2 * 0.42, H2 * 0.42, W2 * 0.47, H2 * 0.5], fill = WHITE); d.ellipse ([W2 * 0.5, H2 * 0.42, W2 * 0.55, H2 * 0.5], fill = WHITE)
+		d.ellipse ([W2 * 0.435, H2 * 0.445, W2 * 0.46, H2 * 0.48], fill = (20, 20, 20)); d.ellipse ([W2 * 0.515, H2 * 0.445, W2 * 0.54, H2 * 0.48], fill = (20, 20, 20))
+	elif i % 6 == 4:
+		for k in range (6): d.polygon ([(W2 * (0.1 + k * 0.16), 0), (W2 * (0.05 + k * 0.16), H2 * 0.7), (W2 * (0.2 + k * 0.16), H2 * 0.7)], fill = (250, 100 + k * 25, 200, 70))
+		for k in range (40): px = r.random () * W2; d.ellipse ([px, H2 * 0.8 + r.random () * H2 * 0.15, px + 14, H2 + 20], fill = (10, 6, 16))
+	else:
+		for k in range (5): d.ellipse ([r.random () * W2, H2 * 0.5 + r.random () * H2 * 0.3, r.random () * W2 + 60, H2], fill = (60, 110, 70))
+	return im.resize ((w * K, h * K), Image.LANCZOS)
+
+def thumb (c, x, y, w, h, i, dur, watched = 0.0):
+	c.rect (x + 2, y + 3, w, h, M.A ((0, 0, 0), 45), r = 6)
+	im = frame_img (i, w, h)
+	m = Image.new ("L", im.size, 0); ImageDraw.Draw (m).rounded_rectangle ([0, 0, im.size[0] - 1, im.size[1] - 1], 6 * K, fill = 255)
+	c.img.paste (im, (int (x * K), int (y * K)), m); c.d = ImageDraw.Draw (c.img, "RGBA")
+	dw = c.tw (dur, "smallb") + 10
+	c.rect (x + w - dw - 6, y + h - 22, dw, 16, M.A ((0, 0, 0), 170), r = 4); c.text_c (x + w - dw - 6, y + h - 22, dw, 16, dur, "smallb", WHITE)
+	if watched:
+		c.rect (x + 6, y + h - 5, w - 12, 3, M.A (WHITE, 90), r = 1); c.rect (x + 6, y + h - 5, (w - 12) * watched, 3, (230, 70, 60), r = 1)
+
+def row_head (c, x, y, w, title, more = "See all"):
+	c.text (x, y, title, "big"); c.text_r (x + w, y + 9, 0, more + "  ›", "ui", M.LINK)
+
+def shot_home ():
+	c = screen ()
+	cx, cy, cw, ch = app_window (c)
+	topbar (c, cx, cy, cw, ["Home"])
+	body_h = ch - TOP_H - NOW_H
+	sidebar (c, cx, cy + TOP_H + 1, body_h - 1, "Home")
+	ax, ay, aw = cx + SIDE_W + 24, cy + TOP_H + 14, cw - SIDE_W - 48
+	c.text (ax, ay, "Good evening", "huge")
+	c.text (ax + c.tw ("Good evening", "huge") + 14, ay + 10, "128 songs  ·  23 videos  ·  5 playlists", "ui", DIM)
+	# go on: the film left half way, the album playing
+	y = ay + 46
+	c.rect (ax, y, aw / 2 - 8, 76, WHITE, r = 8, outline = LINE2)
+	thumb (c, ax + 8, y + 8, 107, 60, 2, "1:42:10", 0.45)
+	c.text (ax + 126, y + 12, "Sunset Harbour", "uib"); c.text (ax + 126, y + 31, "Film  ·  56 min left", "small", DIM)
+	M.button (c, ax + 126, y + 46, 96, 24, "", accent = True); ic_play (c, ax + 132, y + 49, 16, WHITE); c.text_l (ax + 150, y + 46, 24, "Resume", "smallb", WHITE)
+	x2 = ax + aw / 2 + 8
+	c.rect (x2, y, aw / 2 - 8, 76, WHITE, r = 8, outline = LINE2)
+	cover (c, x2 + 8, y + 8, 60, 0, r = 5, shadow = False)
+	c.text (x2 + 80, y + 12, "Northern Lights", "uib"); c.text (x2 + 80, y + 31, "Lumen Drift  ·  song 3 of 11", "small", DIM)
+	ic_eq (c, x2 + 80, y + 50, 14, SEL); c.text (x2 + 100, y + 50, "Playing", "smallb", SEL)
+	# the music played lately
+	y += 92
+	row_head (c, ax, y, aw, "Recently played")
+	S, G = 100, 16
+	for k, i in enumerate ((0, 3, 6, 1, 7, 5)):
+		x = ax + k * (S + G)
+		if x + S > ax + aw: break
+		cover (c, x, y + 30, S, i)
+		t, a = ALBUMS[i][0], ALBUMS[i][1]
+		c.text (x, y + 30 + S + 6, t if c.tw (t, "smallb") < S else t[:12] + "…", "smallb"); c.text (x, y + 30 + S + 21, a if c.tw (a, "small") < S else a[:14] + "…", "small", DIM)
+	# the videos
+	y += 30 + S + 44
+	row_head (c, ax, y, aw, "Videos")
+	VW, VH = 165, 93
+	vids = [("Sunset Harbour", "Film", "1:42:10", 2, 0.45), ("Mountain Trails", "Clip", "12:31", 0, 0), ("City Nights", "Series  ·  S1 E3", "24:05", 1, 1.0),
+		("Foxy & Friends", "Cartoon", "7:48", 3, 0.2), ("Live at the Arena", "Concert", "58:12", 4, 0)]
+	for k, (t, kind, dur, i, wt) in enumerate (vids):
+		x = ax + k * (VW + 14)
+		if x + VW > ax + aw: break
+		thumb (c, x, y + 30, VW, VH, i, dur, wt)
+		if k == 1:
+			c.rect (x, y + 30, VW, VH, M.A ((0, 0, 0), 60), r = 6)
+			c.ellipse (x + VW / 2, y + 30 + VH / 2, 20, M.A (WHITE, 230)); ic_play (c, x + VW / 2 - 9, y + 30 + VH / 2 - 11, 22, TEXT)
+			M.cursor (c, x + VW / 2 + 6, y + 30 + VH / 2 + 8)
+		c.text (x, y + 30 + VH + 6, t, "smallb"); c.text (x, y + 30 + VH + 21, kind, "small", DIM)
+	nowbar (c, cx, cy + ch - NOW_H, cw)
+	c.save ("media-home.png")
+
 if __name__ == "__main__":
-	shot_albums (); shot_album (); shot_songs (); shot_nowplaying (); shot_midi (); shot_mini (); shot_welcome ()
+	shot_home (); shot_albums (); shot_album (); shot_songs (); shot_nowplaying (); shot_midi (); shot_mini (); shot_welcome ()
