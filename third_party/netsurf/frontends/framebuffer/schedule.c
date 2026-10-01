@@ -22,7 +22,7 @@
  * first: each schedule searched the whole list (its "one per callback and context" rule),
  * each run walked it again from its head after every callback fired -- n pending timers of
  * a page, n^2 (8000 setTimeout, 0.7 s on the PC) -- and callbacks due together ran newest
- * first (setTimeout(a, 0); setTimeout(b, 0) ran b, then a). Docs: docs/06-JET-BROWSER.md §35.
+ * first (setTimeout(a, 0); setTimeout(b, 0) ran b, then a). Docs: docs/06-JET-BROWSER.md §36.
  */
 
 #include <time.h>

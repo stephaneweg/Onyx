@@ -36,7 +36,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog, the About box), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -3122,6 +3122,135 @@ signed chain, as it should, then accepted with its root appended to a test copy'
 ~10–15 ms a frame), the process idle; the window shrunk and grown (the page laid out again), typing
 an address, Alt+Left, Alt+F4 (a clean exit: History, Cookies, TLSSessions written). Not tried on a
 real Windows machine.
+
+## 36. The quadratic audit (2026-10-01)
+
+**The question**: what in Jet Browser costs O(n²) or worse in the size of a page — its DOM, its style
+sheets, what its scripts do by the thousand (google.com, facebook, github, bbc, the Vue / React
+apps)? On the Pi, 5–10x slower than the PC, a quadratic step that takes 0.3 s on the PC bench takes
+2–3 s. The earlier finds of this kind: `insertRule` writing the whole `<style>` back each time (§28's
+follow-up: coalesced once a turn), the rebox's object lookup (a hash), `:nth-child` counts in libcss
+(cached), libcss's style sharing search (capped), `new URL()` (a parse cache), the flex measurement
+(memoised), QuickJS's Map / Set hash of objects (§28).
+
+**The method**: the code read (dom.js, html5.js, qjs.c, libdom, libhubbub's tree builder, NetSurf's
+html content, fetchers, llcache, scheduler, libcss's selection), then each suspect measured by a
+micro-benchmark at n = 1000, 2000, 4000, 8000 — a linear step doubles, a quadratic one multiplies by
+4. **`sh tools/tests/netsurf/quadtest.sh [case,case...]`** runs `pages/perf-quadratic.html`
+(65 cases, each in its own script turn; a case whose work ends later — a sheet's conversion — is
+polled) and prints the table with the growth from 1000 to 8000 (linear ≈ 8x, quadratic ≈ 64x); the
+fixed cases must stay under 20x, else it fails. `pages/js-quadratic.html` (in `jstest.sh`, 39
+checks) checks the behaviour the fixes must keep.
+
+### The findings (PC bench, ms; n = the case's size)
+
+| What | Complexity before → after | Before | After | |
+|---|---|---|---|---|
+| `el.childNodes[i]` / `el.children[i]` / `.length` read in a loop (each read built the list: `N.children`, one wrapper per child) | O(n²) → O(n) | 4000 children: 6182 / 10144 | 4 / 3 | fixed |
+| `childElementCount` in a loop | O(n²) → O(n) | 8000: 11656 | 6 | fixed |
+| `getElementsByTagName(t)[i]` asked in the loop, `document.forms` / `images` / `scripts` | O(n·N) → O(N) | 4000: 15501 | 6 | fixed |
+| `select.options[i]`, `select.length`, `option.index` in a loop (`getElementsByTagName('option')` at each read; `index` spread and searched the options) | O(n²) → O(n) | 2000: 4510; 4000: 7673; 4000: 9503 | 5; 4; 20 | fixed |
+| `form.elements[i]` in a loop (a query of the form and one of the document per read) | O(n·N) → O(N) | 800 inputs: 1827 | 2 | fixed |
+| `getElementById` (libdom walked the tree from the root at each call; `querySelector('#x')` uses it) | O(N) a call → O(1) | 8000 lookups of 8000 ids: 2745; with a write each: 2741; 1000 misses: 707; `querySelector('#id')`: 2973 | 75; 84; 1; 79 | fixed |
+| `getElementById` of an element just appended | O(N) → O(1) | 8000: 2495 | 221 | fixed |
+| `compareDocumentPosition` (it listed the whole document, a wrapper per node, at each call: jQuery's `uniqueSort`, `.add()`, multi-selectors) | O(N) a call → O(depth) | sorting 1000 elements: 6098 | 23 (8000: 259) | fixed |
+| `:nth-child()`, `:nth-last-child()`, `:*-of-type` in `querySelectorAll` / `matches` (each element's position searched among its siblings, the of-type ones filtered for each) | O(n²) → O(n) | (read) | 8000: 47 / 60 | fixed |
+| `addEventListener` of n functions on one target (the duplicate check searched the list) | O(n²) → O(n) | 8000: 4406 | 15 | fixed |
+| `removeEventListener` (a search and a splice per call) | O(n²) → O(n) | 8000: 1249 | 9 | fixed |
+| n `MutationObserver`s: each change walked the ancestors once per observer and target | O(changes × observers × depth) → O(changes × depth) | 8000 appends, 800 observers: 5178 | 66 | fixed |
+| `setTimeout` / `clearTimeout` of n timers (NetSurf's scheduler: a linked list searched at each `schedule`, walked again from its head after each callback; qjs.c's timer list searched by id and to unlink) | O(n²) → O(n log n) | 8000: 781 | 21 | fixed |
+| **Timers due together ran newest first** (`setTimeout(a, 0); setTimeout(b, 0)` ran b, then a) | — | c,b,a | a,b,c | fixed (a bug) |
+| `document.styleSheets[i]` in a loop (a walk of the whole document at each read; emotion looks for its `<style>`'s sheet in it at each rule) | O(S·N) a read → O(1) within a run | 2000 reads, 200 sheets: 5510 | 3 | fixed |
+| **Inline `<style>`s converted one per 10 ms** (the `x-ns-css:` fetcher's poll — and the `javascript:` one's — ended after its first fetch: freeing the ring's head moved the ring, which the loop took for its end) | 10 ms a sheet → all in one poll | 100 `<style>`s: 1014; 400: 4069 | 18; 61 | fixed (a bug) |
+| A selection context made for each sheet change: each sheet's media `"screen"` parsed by a new CSS parser; `onyx_restyle_sheets_changed` compared the old and new sheet lists element by element | O(S²) a change → O(S log S) | (in the line above) | 800 `<style>`s: 312 | fixed |
+| libcss's selector hash: 64 slots for ever, an insertion walked its chain (a sheet's n rules ending in the same element, `... a:hover`: n²/2 steps); an element's class lookup walked chains of (classes in the sheet) / 64 | O(n²) a sheet → O(n); lookups O(C/64) → O(1) | 16000 `.rN > a:hover` rules: 3684 | 77 | fixed |
+| A sheet's rules appended as text over many turns (re-parsed whole each turn) | O(R²/k) | 2000 rules: 462 | 53 | (the fetcher fix) |
+| A leaf element removed: every sheet's node walked up to the root (`html_css_node_removed`) | O(S·depth) a removal → O(S) pointer tests | 8000 removals, 100 sheets: 44 | 42 | fixed (small) |
+| libdom's live `NodeList.item(i)` (NetSurf's C code: iframes, image maps) walked from the start at each index | O(n²) a loop → O(n) | — | — | fixed (a cursor) |
+| llcache's search for a cached object: the whole list of cached objects at each request | O(objects) a request → O(1) | — | — | fixed (a hash) |
+| `style.setProperty` of k properties on one element (each set parsed the whole attribute in JS, then wrote it back) | O(k²) parse → O(k²) copy | 800 custom properties: 1626 | 148 | parse fixed; the write-back stays (below) |
+
+The fixes, by where they are:
+
+- **Change counters (libdom)**: `dom_onyx_tree_generation()` moves on at each node inserted or
+  removed in any tree (`_dom_node_attach_range`, `_dom_node_detach_range`, `_dom_node_replace`, both
+  ends), `dom_onyx_attr_generation()` at each attribute set, changed or removed
+  (`_dom_attr_set_value`, the attribute list's insertions and removals: `_dom_element_onyx_attrs_
+  changed`). They see every change, the parser's and the C code's too. dom.js reads them as
+  `N.treeGen()` / `N.attrGen()` (qjs.c).
+- **dom.js**: `kidsOf(node)` keeps a node's child list (and its elements, their index maps, the
+  lists by local name) while the tree counter is unchanged; `childNodes`, `children`,
+  `childElementCount`, `elementSiblings` (the structural pseudo-classes) use it, and the lists given to
+  the scripts are the **same object** until the tree changes (`el.childNodes === el.childNodes`, as
+  with live lists; still a snapshot after a change, as before). `getElementsByTagName` keeps its lists
+  per root and name the same way; `select.options` is one collection per tree state — its **writes**
+  are now the HTML options collection's (`options.length = 0` empties the select, `options[i] =
+  new Option(...)` adds or replaces: they did nothing before); `option.index` uses an index map.
+  `compareDocumentPosition` compares the two ancestor chains and the children's indexes where they
+  part (the same answers: 20 / 10 / 4 / 2, 1 for a node out of the document). The listener lists keep
+  their records by function (`byFn`), a removed record is marked and the list compacted once half of
+  it is removed (the dispatch skipped removed records already). Mutation observers are indexed by the
+  node they observe (`observedBy`): a record walks up its target's ancestors once. The inline style's
+  parsed declarations are kept with the attribute's text (`_kept`). `document.styleSheets` is kept
+  while neither counter moves, within one script run (a `<link>`'s sheet arrives between runs).
+- **html5.js**: `form.elements` kept while neither counter moves.
+- **getElementById (libdom, `core/document.c`)**: an index made at the first lookup (a walk), then
+  kept by the insertions (an inserted subtree's ids, before its mutation events: a script they run
+  finds them) and by the attribute changes (`_dom_onyx_id_set`); each element has at most one entry
+  (`dom_element.onyx_id`), taken out when it is destroyed or adopted by another document. An entry is
+  checked at the lookup (that id still, in this document), so a removal or an id changed needs no
+  work; two elements with the id (a duplicate) fall back to the walk, for the first in tree order.
+  `_dom_document_set_id_name` drops the index.
+- **The scheduler (`frontends/framebuffer/schedule.c`)**: a binary heap by due time then by the
+  order of scheduling, and a hash by (callback, context) for the "one per callback and context" rule;
+  the callbacks due when a run starts run soonest first (same budget, same input check). **qjs.c**'s
+  timers are a doubly linked list with 256 buckets by id.
+- **The fetchers (`html/css_fetcher.c`, `javascript/fetcher.c`)**: the poll takes each pending fetch
+  (as many as were there when it began) from the ring's head until it is empty — every inline sheet in
+  one poll. A page's parsed `<style>`s go this way too: google's ~50 inline sheets were half a second
+  of waiting.
+- **libcss**: `css_select_ctx_insert_sheet` makes `"screen"` / `"all"` without the parser;
+  `select/hash.c`'s tables grow (x8 when they hold 4 selectors a slot; a new chain takes the entries of
+  one old chain, in order, so stays sorted) and keep each chain's tail (a selector going last — the
+  rule order: most do — is appended at once).
+- **NetSurf**: `onyx_restyle_sheets_changed` / `osr_probe_alive` compare sorted copies of the sheet
+  lists (`bsearch`); `html_css_node_removed` tests a removed leaf against the sheets' nodes only;
+  `llcache` keeps its cached objects in 1024 buckets by URL hash (`nsurl_hash`: the components
+  `NSURL_COMPLETE` compares, without the fragment); libdom's `NodeList` keeps a cursor (its last
+  `item()`, good while the tree counter is unchanged).
+
+### Not fixed (the risks left, with an estimate)
+
+- **`style.setProperty` on one element**: each set serialises the element's declarations and
+  writes the attribute back (NetSurf parses it again): O(k) a set. 800 custom properties on `<html>`:
+  148 ms on the PC (~1 s on the Pi); 200 (a theme): ~10 ms (~70 ms). A per-turn write-back (as the
+  CSSOM's) would need every reader of the `style` attribute to flush first.
+- **`Array.prototype.shift`** in QuickJS moves the whole array: a queue drained with `shift()` is
+  quadratic (32000 items: 167 ms). The engine's; our own queues (`html5.js`: ports, streams) are
+  short.
+- **The selection context for each sheet change**: O(S log S) a change (the context made again from
+  all the sheets); S sheets arriving one by one: 800 `<style>`s, ~0.3 s on the PC.
+- **`llcache_catch_up_all_users`**: every "not caught up" event walks all the cache's objects
+  (O(objects) an event: each network chunk). Thousands of objects × hundreds of chunks: tens of ms on
+  the PC.
+- **libcss's universal chain**: a selector whose last compound has no id, class or element name
+  (`[data-x]`, `:hover`, `*`, `::before` alone) is tested against every element: O(N × U). And a
+  descendant combinator walks the ancestors (the bloom filter skips most).
+- **The parser's text**: a text node growing across C network chunks is copied whole at each
+  (`dom_characterdata_append_data`): O(L × C) bytes — a 2 MB inline script in 16 KB chunks, ~128 MB
+  copied (tens of ms on the Pi). From a file (one chunk): linear (8 MB of text, 74 ms).
+- **Removing a subtree** (not a leaf) still walks each sheet's node to the root: O(S × depth).
+- **`querySelectorAll` / `getElementsByClassName`** are O(N) a call (a wrapper per element);
+  asked once per element, O(N²) — as in browsers, with a larger constant. The radio group check and
+  `input.labels` query the document at each call.
+- **`getElementById` of a duplicated id** walks the tree (rare); `NodeList.length` (C) walks the list.
+- **`innerHTML +=` in a loop**: quadratic in every browser.
+- The wrapper table never shrinks (memory, not time).
+
+**To try on the Pi**: a page with many inline `<style>`s (google's results) styled at once instead
+of over a second; css3test.com / browserscore.dev (jQuery-free, many `getElementById` and child-list
+loops); a long `<select>`; the NS_PERF lines `js:forced-layout` and the scripts' time. Not tried on
+the Pi yet (the bench only); the Pi's `libdom.a`, `libcss.a` and the app need a rebuild.
 
 ## 8. Known gaps
 

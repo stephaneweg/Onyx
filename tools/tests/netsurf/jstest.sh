@@ -385,6 +385,16 @@ sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
 html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"
 sed -n 's/^console: crypto timing /  timing (mbedTLS): /p' "$OUT/js-crypto.log"
 
+echo "js-quadratic.html (what the quadratic audit's fixes keep: kept lists, getElementById's index, options, listeners, observers, timers' order)"
+L=$OUT/js-quadratic.log
+run js-quadratic.html "$(waits 60)" "$L"
+grep "^console: FAIL quad \|^JS " "$L" | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL quad \|^JS " "$L" || ! grep -q "^console: quad done 39" "$L"; then
+	echo "  FAIL  ($(grep -c '^console: OK quad ' "$L") of 39 checks)"; fail=1
+else
+	echo "  ok: $(grep -c '^console: OK quad ' "$L") checks"
+fi
+
 echo "js-insertrule.html (2000 rules inserted one by one: written back once a turn, fast)"
 L=$OUT/js-insertrule.log
 run js-insertrule.html "$(waits 200)" "$L"

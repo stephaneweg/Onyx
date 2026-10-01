@@ -1277,19 +1277,29 @@ if (G.HTMLOutputElement) def(G.HTMLOutputElement.prototype, {
 if (G.HTMLFormElement) {
 	const formProto = G.HTMLFormElement.prototype;
 	const elementsGet = Object.getOwnPropertyDescriptor(formProto, 'elements').get;
+	/* Onyx: kept while no tree and no attribute changed (a loop over form.elements[i] made
+	 * it again at each step: a query of the form, one of the document) */
+	function formElements() {
+		const own = elementsGet.call(this);
+		const id = N.attr(this, 'id');
+		if (!id) return own;
+		const extra = [...G.document.querySelectorAll('[form]')].filter(e =>
+			N.attr(e, 'form') === id && LISTED.includes(e.constructor.name));
+		if (!extra.length) return own;
+		const all = [...own, ...extra.filter(e => ![...own].includes(e))];
+		all.sort((a, b) => a.compareDocumentPosition(b) & 4 ? -1 : 1);
+		return G.HTMLCollection && own instanceof G.HTMLCollection ? Object.setPrototypeOf(
+			Object.assign(all, { item: i => all[i] || null, namedItem: n => all.find(e => N.attr(e, 'name') === n || N.attr(e, 'id') === n) || null }),
+			Object.getPrototypeOf(own)) : all;
+	}
+	const FORM_ELS = Symbol('elements');
 	def(formProto, {
 		get elements() {
-			const own = elementsGet.call(this);
-			const id = N.attr(this, 'id');
-			if (!id) return own;
-			const extra = [...G.document.querySelectorAll('[form]')].filter(e =>
-				N.attr(e, 'form') === id && LISTED.includes(e.constructor.name));
-			if (!extra.length) return own;
-			const all = [...own, ...extra.filter(e => ![...own].includes(e))];
-			all.sort((a, b) => a.compareDocumentPosition(b) & 4 ? -1 : 1);
-			return G.HTMLCollection && own instanceof G.HTMLCollection ? Object.setPrototypeOf(
-				Object.assign(all, { item: i => all[i] || null, namedItem: n => all.find(e => N.attr(e, 'name') === n || N.attr(e, 'id') === n) || null }),
-				Object.getPrototypeOf(own)) : all;
+			const g = N.treeGen(), a = N.attrGen(), k = this[FORM_ELS];
+			if (k !== undefined && k.g === g && k.a === a) return k.v;
+			const v = formElements.call(this);
+			try { this[FORM_ELS] = { g, a, v }; } catch (e) { /* (not kept) */ }
+			return v;
 		},
 		checkValidity() {
 			let ok = true;

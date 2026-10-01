@@ -1,6 +1,6 @@
 <!doctype html><html><head><title>quadratic audit</title>
 <style>#c div.k { color: blue } .q1 .q2 { margin: 0 }</style></head><body>
-<!-- Onyx: the quadratic audit's micro-benchmarks (docs/06-JET-BROWSER.md §35). Each case runs
+<!-- Onyx: the quadratic audit's micro-benchmarks (docs/06-JET-BROWSER.md §36). Each case runs
      at n = 1000, 2000, 4000, 8000 in its own script turn and logs
        "quad <case> <n> <ms>"
      a linear case doubles its time with n, a quadratic one multiplies it by 4. The cases run
@@ -28,6 +28,9 @@ var CASES = {
 	appendObserved: { setup: function () { var mo = new MutationObserver(function () {}); mo.observe(document.body, { childList: true, subtree: true }); return mo; },
 		run: function (n) { for (var i = 0; i < n; i++) C.appendChild(document.createElement('div')); },
 		done: function (mo) { mo.disconnect(); } },
+	appendManyObservers: { setup: function (n) { var l = []; for (var i = 0; i < n / 10; i++) { var d = document.createElement('div'); C.appendChild(d); var mo = new MutationObserver(function () {}); mo.observe(d, { childList: true, subtree: true, attributes: true }); l.push(mo); } var box = document.createElement('div'); C.appendChild(box); return [l, box]; },
+		run: function (n, st) { for (var i = 0; i < n; i++) st[1].appendChild(document.createElement('p')); },
+		done: function (st) { st[0].forEach(function (mo) { mo.disconnect(); }); } },
 	prepend: { run: function (n) { for (var i = 0; i < n; i++) C.insertBefore(document.createElement('div'), C.firstChild); } },
 	removeAll: { setup: function (n) { divs(n); }, run: function () { while (C.firstChild) C.removeChild(C.firstChild); } },
 	innerHTMLSet: { setup: function (n) { var s = ''; for (var i = 0; i < n; i++) s += '<div class="k">x' + i + '</div>'; return s; },

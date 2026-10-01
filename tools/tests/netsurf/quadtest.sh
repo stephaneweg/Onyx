@@ -1,8 +1,9 @@
 #!/bin/sh
 # tools/tests/netsurf/quadtest.sh -- the quadratic audit's micro-benchmarks (docs/06-JET-BROWSER.md
-# §35) on the PC bench: pages/perf-quadratic.html runs each case at n = 1000, 2000, 4000, 8000 and
+# §36) on the PC bench: pages/perf-quadratic.html runs each case at n = 1000, 2000, 4000, 8000 and
 # logs its time; printed here as a table with the growth from 1000 to 8000 (linear: ~8x,
-# quadratic: ~64x). The cases fixed by the audit must stay under 20x (exit status 1 otherwise).
+# quadratic: ~64x). The cases fixed by the audit must stay under 20x (exit status 1 otherwise; the
+# 1000 case's time taken as 5 ms at least, nothing under 50 ms at 8000 fails: the noise).
 # Builds as shot.sh (OUT, default /tmp/nsbench).
 #
 #   sh tools/tests/netsurf/quadtest.sh [case,case,...]
@@ -27,7 +28,7 @@ while kill -0 "$pid" 2>/dev/null && ! grep -q -a "^console: quad done" "$L"; do 
 pkill -P "$pid" 2>/dev/null
 wait "$pid" 2>/dev/null
 # the cases the audit fixed: they must stay (about) linear
-FIXED=" childNodes children childElementCount byTagNameLoop selectOptions selectLength optionIndex getById querySelectorId compareSort addListener removeListener stylePropsOne "
+FIXED=" appendManyObservers formElements styleElements bigSheet queryNthChild setTimeouts childNodes children childElementCount byTagNameLoop selectOptions selectLength optionIndex getById querySelectorId compareSort addListener removeListener "
 awk -v fixed="$FIXED" '
 /^console: quad [A-Za-z]+ [0-9]+ / {
 	k = $3; n = $4; t[k, n] = $5
@@ -41,7 +42,10 @@ END {
 		a = t[k, 1000]; d = t[k, 8000]
 		g = (a + 0 > 0.5 && d != "" && d != "skipped") ? sprintf("%.0f", d / a) : "-"
 		flag = ""
-		if (index(fixed, " " k " ") && g != "-" && g + 0 > 20 && d + 0 > 20) { flag = "  FAIL (quadratic)"; bad = 1 }
+		# (a fixed case fails past 20x the 1000 case's time -- taken as 5 ms at least: the
+		# small times are noise -- and past 50 ms at 8000)
+		if (index(fixed, " " k " ") && d != "" && d != "skipped" && d + 0 > 50 &&
+		    d / (a + 0 > 5 ? a : 5) > 20) { flag = "  FAIL (quadratic)"; bad = 1 }
 		printf "  %-20s %9s %9s %9s %9s %7s%s\n", k, a, t[k, 2000], t[k, 4000], d, g, flag
 	}
 	exit bad

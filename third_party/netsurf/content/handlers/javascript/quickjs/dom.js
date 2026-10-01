@@ -580,23 +580,25 @@ G.HTMLCollection = HTMLCollection;
 /* ---- mutation observers ---------------------------------------------------------------- */
 
 const observers = new Set();
+/* Onyx: the observers by the node they observe -- a record walks up its target's ancestors
+ * once, asking each of them (each observer walked them for each of its targets: m observers,
+ * n changes, n x m walks) */
+const observedBy = new Map();
 let mutationQueued = false;
 
 function queueMutation(rec) {
 	if (observers.size === 0)
 		return;
-	for (const mo of observers) {
-		for (const [target, opts] of mo._targets) {
-			let n = rec.target, direct = true, hit = false;
-			while (n) {
-				if (n === target && (direct || opts.subtree)) {
-					hit = true;
-					break;
-				}
-				direct = false;
-				n = N.parent(n);
-			}
-			if (!hit)
+	let given = null;	/* (the observers given it: once each) */
+	for (let n = rec.target, direct = true; n; n = N.parent(n), direct = false) {
+		const mos = observedBy.get(n);
+		if (mos === undefined)
+			continue;
+		for (const mo of mos) {
+			if (given !== null && given.has(mo))
+				continue;
+			const opts = mo._targets.get(n);
+			if (!opts || !(direct || opts.subtree))
 				continue;
 			if (rec.type === 'attributes' && !opts.attributes)
 				continue;
@@ -608,7 +610,7 @@ function queueMutation(rec) {
 			if (rec.type === 'characterData' && !opts.characterData)
 				continue;
 			mo._records.push(rec);
-			break;
+			(given || (given = new Set())).add(mo);
 		}
 	}
 	if (!mutationQueued) {
@@ -636,8 +638,17 @@ class MutationObserver {
 			o.characterData = true;
 		this._targets.set(target, o);
 		observers.add(this);
+		let mos = observedBy.get(target);
+		if (!mos) observedBy.set(target, mos = new Set());
+		mos.add(this);
 	}
-	disconnect() { this._targets.clear(); this._records = []; observers.delete(this); }
+	disconnect() {
+		for (const t of this._targets.keys()) {
+			const mos = observedBy.get(t);
+			if (mos) { mos.delete(this); if (mos.size === 0) observedBy.delete(t); }
+		}
+		this._targets.clear(); this._records = []; observers.delete(this);
+	}
 	takeRecords() { const r = this._records; this._records = []; return r; }
 }
 G.MutationObserver = MutationObserver;

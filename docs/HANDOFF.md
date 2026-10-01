@@ -49,6 +49,20 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Jet Browser: the quadratic audit (2026-10-01, PC bench only)
+
+- What grew faster than a page (docs/06 §36, its table): child lists / `getElementsByTagName` /
+  `select.options` / `form.elements` read in loops, `getElementById` (libdom walked the tree: now an
+  index), `compareDocumentPosition`, listeners, mutation observers, `document.styleSheets`, NetSurf's
+  scheduler (a heap now; **timers due together ran newest first** — fixed), the inline-sheet fetcher
+  (**one `<style>` converted per 10 ms** — fixed), libcss's selector hash (fixed 64 slots, chain
+  walks), the sheet-list comparisons, llcache's cached-object search. libdom has change counters
+  (`dom_onyx_tree_generation` / `dom_onyx_attr_generation`, `N.treeGen` / `N.attrGen` in dom.js).
+- Bench: `sh tools/tests/netsurf/quadtest.sh [cases]` (`pages/perf-quadratic.html`), behaviour:
+  `pages/js-quadratic.html` in `jstest.sh`. **The Pi's `libdom.a`, `libcss.a` and the Jet app need a
+  rebuild** (not done here). Left: §36's "Not fixed" list (a per-turn inline-style write-back,
+  llcache's catch-up walk, QuickJS's `shift`).
+
 ## Jet Browser for Windows (2026-10-01, tried under Wine only)
 
 - **`pc/dist/Jet/Jet.exe`** (+ `pc/dist/Jet.zip`): the browser's Onyx sources built with MinGW-w64

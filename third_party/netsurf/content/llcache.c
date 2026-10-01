@@ -175,6 +175,8 @@ typedef enum {
 struct llcache_object {
 	llcache_object *prev;	     /**< Previous in list */
 	llcache_object *next;	     /**< Next in list */
+	llcache_object *hnext;	     /**< Onyx: in its URL's bucket (cached) */
+	llcache_object **hpprev;     /**< Onyx: what points at it there */
 
 	nsurl *url;		     /**< Post-redirect URL for object */
 
@@ -1174,6 +1176,12 @@ static nserror llcache_object_destroy(llcache_object *object)
  * \param list	  List to add to
  * \return NSERROR_OK
  */
+/* Onyx: the cached objects by their URL's hash -- a request searched the whole list of
+ * cached objects (every image, script, sheet, inline <style> of the session: thousands), and
+ * a page's n requests made n such searches */
+#define LLCACHE_BUCKETS 1024
+static llcache_object *llcache_bucket[LLCACHE_BUCKETS];
+
 static nserror llcache_object_add_to_list(llcache_object *object,
 		llcache_object **list)
 {
@@ -1183,6 +1191,17 @@ static nserror llcache_object_add_to_list(llcache_object *object,
 	if (*list != NULL)
 		(*list)->prev = object;
 	*list = object;
+
+	object->hpprev = NULL;
+	if (list == &llcache->cached_objects) {
+		llcache_object **b = &llcache_bucket[nsurl_hash(object->url) %
+				LLCACHE_BUCKETS];
+		object->hnext = *b;
+		if (*b != NULL)
+			(*b)->hpprev = &object->hnext;
+		object->hpprev = b;
+		*b = object;
+	}
 
 	return NSERROR_OK;
 }
@@ -1340,6 +1359,14 @@ llcache_object_remove_from_list(llcache_object *object, llcache_object **list)
 
 	if (object->next != NULL)
 		object->next->prev = object->prev;
+
+	if (object->hpprev != NULL) {	/* (Onyx: out of its bucket) */
+		*object->hpprev = object->hnext;
+		if (object->hnext != NULL)
+			object->hnext->hpprev = object->hpprev;
+		object->hpprev = NULL;
+		object->hnext = NULL;
+	}
 
 	return NSERROR_OK;
 }
@@ -1995,8 +2022,10 @@ llcache_object_retrieve_from_cache(nsurl *url,
 	      referer==NULL?"":nsurl_access(referer),
 	      post);
 
-	/* Search for the most recently fetched matching object */
-	for (obj = llcache->cached_objects; obj != NULL; obj = obj->next) {
+	/* Search for the most recently fetched matching object (Onyx: in the
+	 * URL's bucket) */
+	for (obj = llcache_bucket[nsurl_hash(url) % LLCACHE_BUCKETS]; obj != NULL;
+			obj = obj->hnext) {
 
 		if ((newest == NULL ||
 		     obj->cache.req_time > newest->cache.req_time) &&
