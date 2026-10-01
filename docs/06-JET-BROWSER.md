@@ -3350,6 +3350,9 @@ The fixes, by where they are:
 - **`getElementById` of a duplicated id** walks the tree (rare); `NodeList.length` (C) walks the list.
 - **`innerHTML +=` in a loop**: quadratic in every browser.
 - The wrapper table never shrinks (memory, not time).
+- The layout cases (8000 blocks, inline spans, flex items, a 2000-row table, a 1000-deep nesting)
+  are linear run alone; late in the full run their 8000 step grows ~5x (the heap then: the GC), a
+  thing to watch, not a quadratic step found.
 
 **To try on the Pi**: a page with many inline `<style>`s (google's results) styled at once instead
 of over a second; css3test.com / browserscore.dev (jQuery-free, many `getElementById` and child-list

@@ -42,7 +42,7 @@ END {
 		a = t[k, 1000]; d = t[k, 8000]
 		g = (a + 0 > 0.5 && d != "" && d != "skipped") ? sprintf("%.0f", d / a) : "-"
 		flag = ""
-		# (a fixed case fails past 20x the 1000 case's time -- taken as 5 ms at least: the
+		# (a fixed case fails past 20x its time at 1000 -- taken as 5 ms at least: the
 		# small times are noise -- and past 50 ms at 8000)
 		if (index(fixed, " " k " ") && d != "" && d != "skipped" && d + 0 > 50 &&
 		    d / (a + 0 > 5 ? a : 5) > 20) { flag = "  FAIL (quadratic)"; bad = 1 }
