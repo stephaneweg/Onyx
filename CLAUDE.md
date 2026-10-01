@@ -19,6 +19,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
 - `docs/06-JET-BROWSER.md` (Jet Browser, the Onyx web browser based on NetSurf: the Onyx changes to NetSurf, libcss, FreeType; the fonts)
 - `docs/07-BROWSER-GAPS.md` (what the browser lacks next to Ladybird / Chromium / WebKit, the plan)
+- `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by
 **`docs/build_docs.py`** (`python docs/build_docs.py` → `.docx` via pandoc using the themed

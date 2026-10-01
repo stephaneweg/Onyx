@@ -45,12 +45,14 @@ the beige faces, the white lists, the teal selection, the global menu bar at the
 - **Associations**: `.zip .7z .rar .tar .tgz .gz …` → the Archiver in `fileassoc.ini`; *Compress…*
   and *Extract Here* in the File Viewer's right-click menu (later).
 
-## Questions for the user
+## Decided with the user (2026-10-01)
 
-1. The name: **Archiver**? (or another: *Crate*, *Coffer*…)
-2. A drop on the list: open *Add to the Archive* every time, or add at once into the folder under
-   the cursor (and the dialog only from the menu)?
-3. Opening a file inside the archive (double-click): extract it to `RAM:` and open it with its app —
-   and, when it is saved, offer to update the archive (as 7-Zip / Ark do)?
-4. RAR: read only through libarchive's readers (BSD) — agreed?
-5. Formats to start with: ZIP, then 7z + tar.gz, then RAR?
+1. The name: **Archiver** (app folder `archiver`).
+2. Files dropped on the list are **added at once** into the folder targeted — the current folder,
+   or the folder row under the cursor — with the last options; *Add to the Archive* comes only from
+   the menu / toolbar.
+3. A file opened from the archive (double-click) is extracted to `RAM:` and opened with its app;
+   when it is saved, the Archiver offers to update the archive.
+4. RAR: **read only, through libarchive's readers (BSD-2)** — unRAR's licence is not compatible
+   with the GPL (see [`docs/LICENSING.md`](../LICENSING.md) §4). No encrypted RAR.
+5. The order (not answered yet, the default): ZIP, then 7z + tar.gz, then RAR.
