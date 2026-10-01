@@ -47,11 +47,11 @@ static const char *sepa_check (const Book &b, const Pay &p)
 {
 	const Line &x = b.e[p.entry].l[p.line];
 	const Party *pt = party_of (b, x.party);
-	if (!pt) return "Its supplier is unknown.";
-	if (!pt->iban[0]) return "Its supplier has no IBAN (its card).";
+	if (!pt) return TR ("Its supplier is unknown.");
+	if (!pt->iban[0]) return TR ("Its supplier has no IBAN (its card).");
 	char ib[40]; iban_normalize (pt->iban, ib, sizeof ib);
-	if (!iban_ok (ib)) return "Its supplier's IBAN is not a valid one (its card).";
-	if (p.amount <= 0) return "Nothing to pay.";
+	if (!iban_ok (ib)) return TR ("Its supplier's IBAN is not a valid one (its card).");
+	if (p.amount <= 0) return TR ("Nothing to pay.");
 	return "";
 }
 // A text in the EPC's Latin set (a-z A-Z 0-9 / - ? : ( ) . , ' + space), max characters.

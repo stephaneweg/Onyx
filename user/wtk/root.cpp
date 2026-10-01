@@ -1,6 +1,7 @@
 #include "wtk/root.h"
 #include "wtk/menu.h"		// Menu::shortcut (keys go through the menu first)
 #include "wtk/skin.h"		// wk_decorate_window
+#include "wtk/lang.h"		// TR (the window menu's words)
 #include "wtk/font.h"		// wtk::init (load the global font family at startup)
 #include "wtk/dialog.h"		// PopupMenu (the window menu)
 #include "applib.h"		// should_exit, msleep, pump_events
@@ -387,9 +388,9 @@ void Root::windowMenu ()
 	enum { WM_RESTORE = 1, WM_MAXIMISE, WM_MINIMISE, WM_CLOSE, WM_ALLDESKS, WM_ONEDESK, WM_DESK0 = 20 };
 	tooltipHide ();
 	PopupMenu m (2, 0);
-	if (m_maxed) m.add ("Restore", WM_RESTORE);
-	else m.add ("Maximise", WM_MAXIMISE, m_resizable);
-	m.add ("Minimise", WM_MINIMISE);
+	if (m_maxed) m.add (TR ("Restore"), WM_RESTORE);
+	else m.add (TR ("Maximise"), WM_MAXIMISE, m_resizable);
+	m.add (TR ("Minimise"), WM_MINIMISE);
 	// (v65) the workspaces: this window to another one, or on every one
 	int info = kapi_desk (-1, 0), count = KAPI_DESK_COUNT (info), cur = KAPI_DESK_CUR (info);
 	int mine = kapi_win_desk (0, -2);
@@ -403,22 +404,22 @@ void Root::windowMenu ()
 		{
 			if (d == (mine >= 0 ? mine : cur)) continue;
 			int p = 0;
-			const char *t = "Move to ";
-			for (int i = 0; t[i]; i++) label[d][p++] = t[i];
+			const char *t = TR ("Move to ");
+			for (int i = 0; t[i] && p < 24; i++) label[d][p++] = t[i];
 			if (d < named && names[d][0]) for (int i = 0; names[d][i] && p < 38; i++) label[d][p++] = names[d][i];
 			else
 			{
-				const char *w = "Workspace "; for (int i = 0; w[i]; i++) label[d][p++] = w[i];
+				const char *w = TR ("Workspace "); for (int i = 0; w[i] && p < 36; i++) label[d][p++] = w[i];
 				label[d][p++] = (char) ('1' + d);
 			}
 			label[d][p] = 0;
 			m.add (label[d], WM_DESK0 + d);
 		}
-		if (mine >= 0) m.add ("On All Workspaces", WM_ALLDESKS);
-		else m.add ("On This Workspace Only", WM_ONEDESK);
+		if (mine >= 0) m.add (TR ("On All Workspaces"), WM_ALLDESKS);
+		else m.add (TR ("On This Workspace Only"), WM_ONEDESK);
 	}
 	m.separator ();
-	m.add ("Close", WM_CLOSE, true, "Ctrl+Q");
+	m.add (TR ("Close"), WM_CLOSE, true, "Ctrl+Q");
 	int r = m.run ();
 	switch (r)
 	{

@@ -40,6 +40,9 @@ def kapi_version ():
 	t = open (os.path.join (ROOT, "kernel", "include", "kern", "kapi_abi.h")).read ()
 	return int (re.search (r"#define\s+KAPI_ABI_VERSION\s+(\d+)", t).group (1))
 
+# the user's own files a card may hold, never packaged (the Wi-Fi network and its key)
+PRIVATE = { "etc/wpa_supplicant.conf" }
+
 def card_files (sd):
 	"""Every file of the card, '/'-separated, relative (var/ left out: the card's own state)."""
 	out = []
@@ -49,7 +52,9 @@ def card_files (sd):
 		if rel == ".": rel = ""
 		if rel == "var" or rel.startswith ("var/"): dns[:] = []; continue
 		for f in sorted (fns):
-			out.append ((rel + "/" if rel else "") + f)
+			f = (rel + "/" if rel else "") + f
+			if f in PRIVATE: continue
+			out.append (f)
 	return out
 
 def matches (path, pat):

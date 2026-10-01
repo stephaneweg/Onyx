@@ -262,9 +262,9 @@ static bool template_find (int kind, int lang, char *path, int cap, bool own = f
 static bool template_of (int kind, int lang, char *path, int cap)
 {
 	if (template_find (kind, lang, path, cap)) return true;
-	char m[200] = "No template for this kind of document ("; scat (m, TEMPLATES, sizeof m); scat (m, "/", sizeof m); scat (m, PK_FILE[kind], sizeof m);
-	scat (m, ".rtf). Choose a Writer document to use?", sizeof m);
-	if (ask ("Print", m, MB_YESNO, 1) != 1) return false;
+	char m[200]; scpy (m, TR ("No template for this kind of document ("), sizeof m); scat (m, TEMPLATES, sizeof m); scat (m, "/", sizeof m); scat (m, PK_FILE[kind], sizeof m);
+	scat (m, TR (".rtf). Choose a Writer document to use?"), sizeof m);
+	if (ask (TR ("Print"), m, MB_YESNO, 1) != 1) return false;
 	return wk_file_open (path, (unsigned) cap, TEMPLATES);
 }
 // The data written, Writer asked to make the document.
@@ -283,8 +283,8 @@ static void ms_print (MergeSet &m, int kind, int lang, const char *fileName)
 	j.puts ("\nrecords = 1\noutput = files\nfolder = "); j.puts (folder); j.puts ("\nname = FileName\n");
 	if (ok) ok = kapi_save_file (MERGE_JOB, j.b, (unsigned) j.n) >= 0;
 	char args[240] = "--merge "; scat (args, MERGE_JOB, sizeof args);
-	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) { warn ("Print", "Writer could not be started."); return; }
-	char s[200] = "Writer makes the document in "; scat (s, folder, sizeof s); status (s);
+	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) { warn (TR ("Print"), TR ("Writer could not be started.")); return; }
+	char s[200]; scpy (s, TR ("Writer makes the document in "), sizeof s); scat (s, folder, sizeof s); status (s);
 }
 // A commercial document's title in a language: "Devis 2026/0003".
 static void cdoc_title (const CDoc &d, int lang, char *out, int cap)
@@ -331,7 +331,7 @@ static void print_cdoc (const CDoc &d)
 static void print_invoice (const Entry &e)
 {
 	Invoice v; inv_init (v);
-	if (!inv_from_entry (g_b, e, v)) { warn ("Print", "This entry is not an invoice Ledger made."); return; }
+	if (!inv_from_entry (g_b, e, v)) { warn (TR ("Print"), TR ("This entry is not an invoice Ledger made.")); return; }
 	int lang = doc_lang (e.party);
 	static MergeSet m; ms_init (m);
 	char n[32], t[64];
