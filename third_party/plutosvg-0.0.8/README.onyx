@@ -32,6 +32,8 @@ The Onyx patches (each marked "Onyx:" in the source):
   white space collapsed, the XML entities and &#...; decoded.
 - plutosvg_document_set_size(): the root viewport's size (an <img> sized by CSS: a viewBox
   fitted in the drawn box); plutosvg_document_has_view_box().
+- Any processing instruction before the root skipped, not only the XML declaration
+  (<?xml-stylesheet ...?>: Acid3's svg.xml failed to load).
 
 Not supported (upstream or Onyx): <textPath>, per-character x / y lists, <mask>,
 <pattern>, <marker>, filters, the root's own overflow clip, XML entities in attribute

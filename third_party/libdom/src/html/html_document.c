@@ -134,6 +134,7 @@ dom_exception _dom_html_document_initialise(dom_html_document *doc,
 	doc->url = NULL;
 	doc->cookie = NULL;
 	doc->body = NULL;
+	doc->onyx_xml = 0;	/* (Onyx: an HTML document until told otherwise) */
 
 	doc->memoised = calloc(hds_COUNT, sizeof(dom_string *));
 	if (doc->memoised == NULL) {
@@ -578,6 +579,14 @@ _dom_html_document_create_element_internal(
 			params.type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
 		dom_string_unref(params.name);
 		params.name = dom_string_ref(in_tag_name);
+	} else if (html->onyx_xml != 0) {
+		/* Onyx (docs/06 §43): in an XML document a name keeps its case -- an XHTML
+		 * element is still of its HTML type ("p", its tagName "p"), an element in no
+		 * namespace is none of HTML's (an XML document's <title>, <p>...) */
+		if (namespace == NULL)
+			params.type = DOM_HTML_ELEMENT_TYPE__UNKNOWN;
+		dom_string_unref(params.name);
+		params.name = dom_string_ref(in_tag_name);
 	}
 
 	switch(params.type) {
@@ -897,8 +906,10 @@ dom_exception _dom_html_document_create_element(dom_document *doc,
 {
 	dom_html_document *html = (dom_html_document *) doc;
 
+	/* (Onyx, docs/06 §43: an XHTML document's createElement is in the HTML namespace) */
 	return _dom_html_document_create_element_internal(html,
-			tag_name, NULL, NULL,
+			tag_name, html->onyx_xml == 2 ?
+			dom_namespaces[DOM_NAMESPACE_HTML] : NULL, NULL,
 			(dom_html_element **)result);
 }
 
@@ -1484,3 +1495,14 @@ dom_exception _dom_html_document_get_elements_by_name(dom_html_document *doc,
 	return DOM_NOT_SUPPORTED_ERR;
 }
 
+
+/* Onyx (docs/06 §43): an XML document's kind -- documented in html_document.h */
+void dom_html_document_set_xml_kind(dom_html_document *doc, int kind)
+{
+	doc->onyx_xml = kind;
+}
+
+int dom_html_document_get_xml_kind(dom_html_document *doc)
+{
+	return doc->onyx_xml;
+}

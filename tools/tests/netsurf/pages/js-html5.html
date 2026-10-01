@@ -93,7 +93,8 @@ try {
     x.documentElement.firstChild.getAttribute('c') === '1');
   const bad = new DOMParser().parseFromString('<a><b></a>', 'text/xml');
   check('DOMParser xml error', bad.documentElement.localName === 'parsererror');
-  check('XMLSerializer', new XMLSerializer().serializeToString(document.createElement('br')) === '<br>');
+  check('XMLSerializer', new XMLSerializer().serializeToString(document.createElement('br')) ===
+    '<br xmlns="http://www.w3.org/1999/xhtml" />');	/* (the XML serialization, as Chrome: docs/06 section 43) */
   const hd = document.implementation.createHTMLDocument('X');
   check('createHTMLDocument', hd.title === 'X' && hd.body !== null);
   /* structuredClone */

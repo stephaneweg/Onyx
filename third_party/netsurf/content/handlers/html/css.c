@@ -743,6 +743,66 @@ no_memory:
 }
 
 
+/* exported function documented in html/css.h (Onyx, docs/06 §43) */
+bool html_css_process_pi(struct html_content *htmlc, dom_node *pi, const char *href,
+		const char *media)
+{
+	struct html_stylesheet *stylesheets;
+	hlcache_child_context child;
+	nsurl *joined;
+	nserror ns_error;
+
+	if (nsoption_bool(author_level_css) == false || href == NULL)
+		return true;
+	if (media != NULL && strcasestr(media, "screen") == NULL &&
+	    strcasestr(media, "all") == NULL)
+		return true;
+	if (nsurl_join(htmlc->base_url, href, &joined) != NSERROR_OK)
+		return false;
+	stylesheets = realloc(htmlc->stylesheets, sizeof(struct html_stylesheet) *
+			(htmlc->stylesheet_count + 1));
+	if (stylesheets == NULL) {
+		nsurl_unref(joined);
+		return false;
+	}
+	htmlc->stylesheets = stylesheets;
+	/* (the processing instruction as its node: its load / error events) */
+	htmlc->stylesheets[htmlc->stylesheet_count].node = dom_node_ref(pi);
+	htmlc->stylesheets[htmlc->stylesheet_count].modified = false;
+	htmlc->stylesheets[htmlc->stylesheet_count].removed = false;
+	htmlc->stylesheets[htmlc->stylesheet_count].unused = false;
+	htmlc->stylesheets[htmlc->stylesheet_count].load_pending = false;
+	child.charset = htmlc->encoding;
+	child.quirks = htmlc->base.quirks;
+	ns_error = hlcache_handle_retrieve(joined, 0, content_get_url(&htmlc->base), NULL,
+			html_convert_css_callback, htmlc, &child, CONTENT_CSS,
+			&htmlc->stylesheets[htmlc->stylesheet_count].sheet);
+	nsurl_unref(joined);
+	if (ns_error != NSERROR_OK) {
+		dom_node_unref(htmlc->stylesheets[htmlc->stylesheet_count].node);
+		return false;
+	}
+	htmlc->stylesheet_count++;
+	htmlc->base.active++;
+	return true;
+}
+
+/* exported function documented in html/css.h (Onyx, docs/06 §43) */
+void html_css_onyx_xml_mode(struct html_content *htmlc)
+{
+	/* an XML document with its own style sheets: not HTML's (the browsers' UA sheet is
+	 * for the HTML namespace; NetSurf's selects by name only) */
+	if (htmlc->stylesheet_count > STYLESHEET_BASE)
+		htmlc->stylesheets[STYLESHEET_BASE].unused = true;
+	if (htmlc->stylesheet_count > STYLESHEET_QUIRKS)
+		htmlc->stylesheets[STYLESHEET_QUIRKS].unused = true;
+	if (htmlc->select_ctx != NULL) {
+		css_select_ctx_destroy(htmlc->select_ctx);
+		htmlc->select_ctx = NULL;
+	}
+}
+
+
 /* exported interface documented in html/html.h */
 struct html_stylesheet *html_get_stylesheets(hlcache_handle *h, unsigned int *n)
 {

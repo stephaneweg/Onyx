@@ -138,6 +138,24 @@ answer in French. The docs stay in English.
   **To try on the Pi**: Ctrl+F on bbc.co.uk (typing speed, the count), a copied image pasted into
   Paint, text copied into the Text Editor and back into a page's field.
 
+## Jet Browser: XML documents, XPath, XSLT -- Acid3 100 / 100 (2026-10-01, PC bench only)
+
+- docs/06 §43. A frame on a type Jet does not show gets an empty document and its `load`
+  (Acid3's own time 5.56 -> 0.52 s); **expat 2.7.1** vendored (`third_party/expat-2.7.1`, MIT)
+  parses XML into libdom (`html/onyx_xml.c`): XHTML as XML, XML + CSS, the tree view, Chrome's
+  error box, SVG documents at the top and in frames, `<object>`'s SVG document; DOMParser /
+  XMLSerializer / createDocument as XML; a basic SVG DOM; **xslt.js** (XPath 1.0:
+  `document.evaluate`; XSLT 1.0: `<?xml-stylesheet type="text/xsl"?>`, `XSLTProcessor`), loaded
+  on demand. **Acid3 94 -> 100 / 100** (`ACID3_MIN`=100). Test: `sh tools/tests/netsurf/xmltest.sh`.
+- **The Pi (not built here)**: new `libexpat.a` (`make -C user/netsurf`: the new
+  `third_party/expat-2.7.1/libexpat.a` target), **`libdom.a` rebuilt clean** (`struct
+  dom_html_document` got a field, `include/dom/html/html_document.h` new functions, `element.c`),
+  `libplutosvg.a` rebuilt (a PlutoSVG fix), then Jet linked again (`netsurf-app.mk link stage`:
+  `-lexpat`, `qjs_xml.c`, `xslt.js` as `qjsgen/qjs_xslt_js.h`). Windows: `pc/Jet/jet.mk` compiles
+  expat itself.
+- Left: `xsl:include` / `xsl:import`, `document()` of other URIs, SVG fonts / SMIL, the SVG DOM's
+  geometry from the drawing, an SVG document without a size at the window's size.
+
 ## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
 
 - **Acid2 identical** to its reference (the face pixel by pixel, composited, CPU-painted and after

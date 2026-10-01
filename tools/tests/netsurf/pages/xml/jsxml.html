@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head><title>XML in scripts</title></head>
+<body>
+<div id="list"><p class="a">one</p><p class="b">two</p><p class="a">three</p><span title="t1">four</span></div>
+<div id="out"></div>
+<script>
+// xmltest.sh: DOMParser / XMLSerializer, document.evaluate (XPath 1.0), XSLTProcessor (XSLT 1.0),
+// createDocument (docs/06 section 43). Each check: "XMLT ok <name>" or "XMLT FAIL <name>: <why>".
+var fails = 0;
+function check(name, got, want) {
+	if (got === want) console.log("XMLT ok " + name);
+	else { fails++; console.log("XMLT FAIL " + name + ": got [" + got + "] want [" + want + "]"); }
+}
+function run(name, f) {
+	try { f(); } catch (e) { fails++; console.log("XMLT FAIL " + name + ": threw " + e + (e && e.stack ? " " + e.stack : "")); }
+}
+
+run("domparser", function () {
+	var d = new DOMParser().parseFromString('<?xml version="1.0"?><r xmlns:x="urn:x" a="1"><x:i k="v">t&amp;u</x:i><!--c--><![CDATA[<z>]]><e/></r>', "application/xml");
+	check("domparser root", d.documentElement.nodeName, "r");
+	check("domparser contentType", d.contentType, "application/xml");
+	var i = d.documentElement.firstChild;
+	check("domparser prefix", i.prefix + "|" + i.localName + "|" + i.namespaceURI, "x|i|urn:x");
+	check("domparser tagName case", d.createElement("Foo").tagName, "Foo");
+	check("domparser text", i.textContent, "t&u");
+	check("domparser no title class", d.createElement("title") instanceof HTMLElement, false);
+	var bad = new DOMParser().parseFromString("<a><b></a>", "text/xml");
+	check("domparser error", bad.getElementsByTagName("parsererror").length, 1);
+	var s = new XMLSerializer().serializeToString(d);
+	check("xmlserializer", s, '<r xmlns:x="urn:x" a="1"><x:i k="v">t&amp;u</x:i><!--c--><![CDATA[<z>]]><e/></r>');
+	var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "rect"));
+	check("xmlserializer svg", new XMLSerializer().serializeToString(svg), '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
+	var br = document.createElement("br");
+	check("xmlserializer html", new XMLSerializer().serializeToString(br), '<br xmlns="http://www.w3.org/1999/xhtml" />');
+	var x = new DOMParser().parseFromString('<html xmlns="http://www.w3.org/1999/xhtml"><body><p>p</p></body></html>', "application/xhtml+xml");
+	check("domparser xhtml", x.body ? x.body.firstChild.tagName : "no body", "p");
+});
+
+run("createDocument", function () {
+	var d = document.implementation.createDocument("urn:test", "t:root", null);
+	check("createDocument root", d.documentElement.tagName + "|" + d.documentElement.namespaceURI, "t:root|urn:test");
+	check("createDocument contentType", d.contentType, "application/xml");
+	var s = document.implementation.createDocument("http://www.w3.org/2000/svg", "svg", null);
+	check("createDocument svg", s.contentType, "image/svg+xml");
+});
+
+run("evaluate", function () {
+	var r = document.evaluate("count(//p)", document, null, XPathResult.NUMBER_TYPE, null);
+	check("evaluate count", r.numberValue, 3);
+	r = document.evaluate("//p[@class='a']", document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+	check("evaluate snapshot", r.snapshotLength + ":" + r.snapshotItem(1).textContent, "2:three");
+	r = document.evaluate("//div[@id='list']/p[last()]/text()", document, null, XPathResult.STRING_TYPE, null);
+	check("evaluate string", r.stringValue, "three");
+	r = document.evaluate("//SPAN/@title", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+	check("evaluate attr", r.singleNodeValue && r.singleNodeValue.value, "t1");
+	r = document.evaluate("//p", document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+	var t = [], n;
+	while ((n = r.iterateNext())) t.push(n.textContent);
+	check("evaluate iterator", t.join(","), "one,two,three");
+	r = document.evaluate("p[position() > 1 and contains(., 'o')]", document.getElementById("list"), null, 7, null);
+	check("evaluate relative", r.snapshotLength + ":" + r.snapshotItem(0).textContent, "1:two");
+	r = document.evaluate("sum(//nothing) + string-length('abc') * 2 - 1 div 2", document, null, 0, null);
+	check("evaluate arithmetic", r.numberValue, 5.5);
+	r = document.evaluate("concat(substring('12345', 2, 3), translate('abc', 'ab', 'AB'), normalize-space('  x  y '))", document, null, 2, null);
+	check("evaluate strings", r.stringValue, "234ABcx y");
+	r = document.evaluate("//p[1]/following-sibling::*[1]/preceding::p", document, null, 7, null);
+	check("evaluate axes", r.snapshotLength, 1);
+	r = document.evaluate("boolean(//span) and not(//table)", document, null, 3, null);
+	check("evaluate boolean", r.booleanValue, true);
+	var x = new DOMParser().parseFromString('<a xmlns="urn:a"><b>1</b><b>2</b></a>', "text/xml");
+	r = x.evaluate("//n:b[2]", x, function (p) { return p == "n" ? "urn:a" : null; }, 9, null);
+	check("evaluate namespaces", r.singleNodeValue && r.singleNodeValue.textContent, "2");
+	var e = document.createExpression("count(*)", null);
+	check("createExpression", e.evaluate(document.getElementById("list"), 1, null).numberValue, 4);
+	var threw = "no";
+	try { document.evaluate("//p[", document, null, 0, null); } catch (err) { threw = err.name; }
+	check("evaluate syntax error", threw, "SyntaxError");
+	check("evaluate number format", document.evaluate("string(1 div 3 * 3)", document, null, 2, null).stringValue, "1");
+	check("evaluate number format 2", document.evaluate("string(0.1 + 0.2)", document, null, 2, null).stringValue, "0.30000000000000004");
+});
+
+run("xslt", function () {
+	var xml = new DOMParser().parseFromString('<catalog><cd><title>Empire Burlesque</title><artist>Bob Dylan</artist><price>10.90</price></cd><cd><title>Hide your heart</title><artist>Bonnie Tyler</artist><price>9.90</price></cd><cd><title>Greatest Hits</title><artist>Dolly Parton</artist><price>9.90</price></cd></catalog>', "text/xml");
+	var xsl = new DOMParser().parseFromString(
+		'<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">' +
+		'<xsl:param name="min" select="0"/>' +
+		'<xsl:output method="html"/>' +
+		'<xsl:template match="/"><table id="t"><xsl:for-each select="catalog/cd[price &gt;= $min]"><xsl:sort select="artist" order="descending"/>' +
+		'<tr class="r{position()}"><td><xsl:value-of select="title"/></td><td><xsl:value-of select="format-number(price, \'#,##0.00\')"/></td>' +
+		'<xsl:if test="price &gt; 10"><td>dear</td></xsl:if></tr></xsl:for-each></table>' +
+		'<p><xsl:call-template name="total"><xsl:with-param name="v" select="sum(//price)"/></xsl:call-template></p></xsl:template>' +
+		'<xsl:template name="total"><xsl:param name="v"/>total <xsl:value-of select="$v"/></xsl:template>' +
+		'</xsl:stylesheet>', "text/xml");
+	var p = new XSLTProcessor();
+	p.importStylesheet(xsl);
+	var frag = p.transformToFragment(xml, document);
+	document.getElementById("out").appendChild(frag);
+	var rows = document.querySelectorAll("#t tr");
+	check("xslt rows", rows.length, 3);
+	check("xslt sort", rows[0].firstChild.textContent, "Greatest Hits");
+	check("xslt avt", rows[2].className, "r3");
+	check("xslt format-number", rows[2].childNodes[1].textContent, "10.90");
+	check("xslt if", rows[2].childNodes.length, 3);
+	check("xslt call-template", document.querySelector("#out p").textContent, "total 30.7");
+	check("xslt html elements", rows[0] instanceof HTMLTableRowElement, true);
+	p.setParameter(null, "min", 10);
+	var doc = p.transformToDocument(xml);
+	check("xslt parameter", doc.querySelectorAll("tr").length, 1);
+	check("xslt getParameter", p.getParameter(null, "min"), 10);
+
+	var xsl2 = new DOMParser().parseFromString(
+		'<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">' +
+		'<xsl:output method="xml" omit-xml-declaration="yes"/>' +
+		'<xsl:key name="by-price" match="cd" use="price"/>' +
+		'<xsl:template match="/"><out><xsl:apply-templates select="//cd"/><n><xsl:number value="3" format="i"/></n>' +
+		'<k><xsl:value-of select="count(key(\'by-price\', \'9.90\'))"/></k>' +
+		'<xsl:element name="made"><xsl:attribute name="at">x<xsl:value-of select="1+1"/></xsl:attribute></xsl:element>' +
+		'<xsl:copy-of select="//cd[1]/title"/><xsl:comment>c</xsl:comment></out></xsl:template>' +
+		'<xsl:template match="cd"><c><xsl:number/>:<xsl:value-of select="substring(artist, 1, 3)"/></c></xsl:template>' +
+		'<xsl:template match="cd[artist=\'Bob Dylan\']" priority="2"><bob/></xsl:template>' +
+		'</xsl:stylesheet>', "text/xml");
+	var p2 = new XSLTProcessor();
+	p2.importStylesheet(xsl2);
+	var d2 = p2.transformToDocument(xml);
+	check("xslt xml output", new XMLSerializer().serializeToString(d2),
+		'<out><bob/><c>2:Bon</c><c>3:Dol</c><n>iii</n><k>2</k><made at="x2"/><title>Empire Burlesque</title><!--c--></out>');
+});
+
+console.log("XMLT jsxml done fails=" + fails);
+</script>
+</body>
+</html>
