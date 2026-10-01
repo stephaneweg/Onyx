@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>retries in a loop</title></head>
+<body>
+<p>A WebSocket refused and a fetch to a closed port, each tried again at once, for 6 s (docs/06
+§41): Jet Browser holds the reconnections back (1, 2, 4 ... s after the third failure in a row),
+not the page.</p>
+<script>
+/* a chat client without a back-off: its socket refused (404), opened again at once */
+var ws = 0, wsDone = false;
+function openWs() {
+	if (wsDone) return;
+	ws++;
+	var s = new WebSocket('ws://' + location.host + '/ws/nope');
+	s.onclose = function () { openWs(); };
+}
+openWs();
+/* a poll retried at once on its error: a port nothing listens on */
+var fe = 0, feDone = false;
+function poll() {
+	if (feDone) return;
+	fe++;
+	fetch('http://127.0.0.1:9/poll').then(function () { setTimeout(poll, 0); }, function () { setTimeout(poll, 0); });
+}
+poll();
+setTimeout(function () {
+	wsDone = feDone = true;
+	console.log('websocket attempts ' + (ws <= 10 ? 'held back' : 'not held back') + ' (' + ws + ' in 6 s)');
+	console.log('fetch attempts ' + fe + ' in 6 s');
+}, 6000);
+</script>
+</body></html>

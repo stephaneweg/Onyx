@@ -2038,6 +2038,10 @@ docs/06 §31). **It runs on Onyx** — the window opens and real web pages rende
 through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
 `-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
 tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
+The NetSurf code Jet does not use was removed from the tree and the builds in 2026-10
+(docs/06 §39, [`JET-DEAD-CODE.md`](JET-DEAD-CODE.md)): only the framebuffer frontend is left, the
+three makefiles no longer generate the internal bitmap font, and a NetSurf file dropped from the
+tree drops out of the builds' `$(wildcard ...)` lists by itself.
 NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
 metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
 CSS3 painting, the native window: [`06-JET-BROWSER.md`](06-JET-BROWSER.md) lists the

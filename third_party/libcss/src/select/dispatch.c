@@ -767,4 +767,9 @@ struct prop_table prop_dispatch[CSS_N_PROPERTIES] = {
 		PROPERTY_FUNCS(animation_play_state),
 		0,
 	},
+	/* Onyx */
+	{
+		PROPERTY_FUNCS(pointer_events),
+		1,
+	},
 };

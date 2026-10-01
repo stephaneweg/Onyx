@@ -249,7 +249,7 @@ static void edit_copy_text(const char *s)
 {
 	if (s == NULL)
 		return;
-	kapi_clipboard_set(CLIP_TEXT, s, (unsigned) strlen(s));
+	onyx_clip_set_text(s, (unsigned) strlen(s));
 	printf("ONYX-CLIPBOARD text %u bytes\n", (unsigned) strlen(s));
 	fflush(stdout);
 }
@@ -295,6 +295,14 @@ static void edit_copy_image(struct hlcache_handle *obj)
 		return;
 	}
 #endif
+	/* the shared clipboard's image item (Paint, the clipboard's history) */
+	if (onyx_clip_set_image(px, w, h)) {
+		printf("ONYX-CLIPBOARD image %dx%d (clipd)\n", w, h);
+		fflush(stdout);
+		free(px);
+		return;
+	}
+	/* (no clipd -- an older card, the PC's simulator: a PNG file, its path copied) */
 	turn = turn % 2 + 1;
 	snprintf(path, sizeof path, "RAM:/jet/clip/image-%d.png", turn);
 	kapi_mkdir("RAM:/jet");

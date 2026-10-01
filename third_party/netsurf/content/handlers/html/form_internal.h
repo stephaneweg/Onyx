@@ -137,6 +137,7 @@ struct form {
 	struct form_control *last_control;	/**< Last control in list. */
 
 	struct form *prev;		/**< Previous form in doc. */
+	bool node_ref;			/**< Onyx: node referenced (a script's form) */
 };
 
 /**

@@ -263,6 +263,7 @@ css_error css__compose_##pname(const css_computed_style *parent,		\
 }
 
 SVG_KEYWORD(fill_rule, CSS_FILL_RULE_NONZERO)
+SVG_KEYWORD(pointer_events, CSS_POINTER_EVENTS_AUTO)	/* (Onyx) */
 SVG_KEYWORD(stroke_linecap, CSS_STROKE_LINECAP_BUTT)
 SVG_KEYWORD(stroke_linejoin, CSS_STROKE_LINEJOIN_MITER)
 

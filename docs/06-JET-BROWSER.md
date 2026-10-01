@@ -36,7 +36,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38; the find bar, the context menu: §40), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40); `typeaheadtest.sh` (+ `pages/stack-typeahead.html`, `pages/form-scripted.html`): Wikipedia's search box -- the stacking order, a menu's footer out of its scroller, `pointer-events`, Enter in a form a script made (§42) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -519,7 +519,8 @@ optional chaining...) with the DOM written in JavaScript:
   scripts' errors and `console.log` on stderr.
 - **libdom**: a changed `class` attribute updates the element's classes (`element.c`: they
   were cached when the attribute was made, so a `classList` change did not restyle).
-- The Duktape backend (`javascript/duktape`, `user/netsurf/gen/duktape`) is no longer built.
+- The Duktape backend (`javascript/duktape`, `user/netsurf/gen/duktape`) is no longer built (and,
+  since §39, no longer in the repository).
 
 ## 9. Performance
 
@@ -3657,6 +3658,37 @@ address fields differ). Screenshots: `shots.sh jet` (`jet.png`, `jet-menu.png`, 
 from the menu; a per-page (not per-site) zoom; the status bar's text in the page's font (the
 toolbar's bitmap font: Latin-1, a link's other characters as `?`); Ctrl+Shift+= (US `+`).
 
+## 39. NetSurf's dead code removed (2026-10-01)
+
+**Why**: after the licence audit, the user kept Jet on NetSurf (GPL-2.0) but decided that the
+NetSurf code Jet does not use goes — out of the build, then out of the repository — with no
+behaviour change. The task and its method are in [`JET-DEAD-CODE.md`](JET-DEAD-CODE.md): the dead
+code was found by the linker (`-ffunction-sections`, then `--gc-sections --print-gc-sections`) on
+the Pi build and on the PC bench's, every finding then checked on the three builds (Pi,
+PC bench, Windows) by building without it.
+
+**What went** (three commits, one per step):
+
+| Step | What | Size |
+|---|---|---|
+| §4: never compiled | the other frontends (amiga, atari, beos, gtk, monkey, qt, riscos, windows); the Duktape backend, WebIDL, its generated bindings (`user/netsurf/gen/duktape`, `gen-duktape.sh`) and `third_party/nsgenbind`; `javascript/none`; the image handlers not built (jpegxl, nssprite, rsvg, svg — libsvgtiny —, video); `fetchers/curl.c`; the framebuffer's `fb_search.c` (empty stubs) and `font_internal.c` (the bitmap font: every build uses FreeType); NetSurf's tests, docs, own build (every `Makefile*`, `tools/` but `convert_font.c` / `convert_image.c`); the resources no build stages (other languages' pages, other frontends' icons, the framebuffer `res/` copies) | 1 893 files, 600 500 lines, 22 MB; the Pi's `netsurf.elf` byte-identical |
+| §1: compiled, entirely dead | `content/fs_backing_store.c` (`onyx_cache.c` is the store), `desktop/save_complete.c`, printing and save as PDF (`print.c`, `printer.h`, `save_pdf.c`, `font_haru.c`), `desktop/mouse.c`, `utils/hashmap.c`, the HTTP auth header parsers (`utils/http/challenge.c`, `www-authenticate.c`); generated: the internal bitmap font (`font-ns-sans.c`, 49 KB of data only `font_internal.c` read) and two toolbar bitmaps nothing draws (`reload_g`, `history_image_g`) | 6 200 lines; Pi binary −129 KB |
+| §2: alive only through calls that fed nothing | `desktop/global_history.c`, `hotlist.c`, `cookie_manager.c`, `page-info.c` and `treeview.c` — NetSurf's tree view windows, never shown (Jet's History dialog, `onyx_chrome.cpp`, reads `urldb`); the calls left (`global_history_add`, `hotlist_update_url`, `cookie_manager_add / _remove`, `page_info_init / _fini`) are `static inline` no-ops in their headers, so the call sites keep their upstream shape | 10 900 lines; Pi binary −82 KB |
+
+The Pi's `netsurf.elf`: 9 439 232 → 9 228 400 bytes; Windows' `Jet.exe` (unstripped) 10 526 291 →
+10 374 888. The upstream NetSurf files Jet compiles: 149 files / 123 200 lines (112 000 identical
+to upstream) → 135 / 107 600 (96 400 identical). The bench tests (`jstest`, `layouttest`,
+`html5test`, `css3test`, `httptest`, `uatest`, `gputest`) and the `jet` screenshots are
+unchanged.
+
+**Kept**: `desktop/search.c` and `content/textsearch.c` (find in page — pending the user's
+decision on Ctrl+F); everything about downloads; `tools/convert_image.c` (the toolbar bitmaps);
+`tools/convert_font.c` and `res/fonts/glyph_data` (no build runs `convert_font` any more, but
+`tools/fonts/gen_nssans.py` reads `glyph_data` for wtk's `ns-sans.fnt`); `COPYING` and the
+licence / credits pages. **Left for later** (JET-DEAD-CODE.md §3): the dead functions inside
+live files (talloc, `browser_window.c`, `urldb.c`, `content.c`...), once the sessions editing
+those files are done.
+
 ## 40. Find in page, copy and paste, the context menu (2026-10-01)
 
 The user: "a Ctrl+F; and a Ctrl+C to copy the selected text or a selected image (to paste it into
@@ -3784,6 +3816,206 @@ not set to the current match on Esc; double / triple click to select a word / a 
 neither); a drag past the end of a shrink-to-fit block's line selects nothing more (NetSurf's
 `box_pick_text_box` looks only inside the line's container); Copy Image of an SVG; Ctrl+C on a
 clicked image (Chrome does not either).
+
+## 41. facebook.com on the desktop: the frozen login screen, fixed dialogs, the network (2026-10-01)
+
+**The reports** (the Pi, www.facebook.com with the toolbar's pill on "Desktop": Chrome on Windows'
+User-Agent): the cookie dialog ("Autoriser l'utilisation des cookies de Facebook sur ce
+navigateur ?") showed but the wheel scrolled nothing; its Accept button worked, late; "a script
+makes the window lag" on the login screen; after logging in, "Jet eats the Pi's network" (the
+remote desktop and telnet lag).
+
+**Reproduced on the PC bench** (real network, `SIM_REALNET=1`, `facebook.com desktop` in the
+build's `data/site-modes`, 1024 x 768): the bench's network leaves from the US -- Facebook shows no
+cookie dialog there (the page's `InitialCookieConsent` config: `shouldShowCookieBanner` false) --,
+so the dialog was rebuilt from Facebook's own code (its modules read on the bench: Comet's
+`BaseCometModal`, `BaseDocumentScrollView`, `BaseDialog`, `FDSDialogPage`, `BaseScrollableArea`)
+as test pages; the login screen itself was measured live.
+
+### The frozen login screen: `offsetParent` (the cause of the three first reports)
+
+The log showed `JS timer: InternalError: interrupted at get offsetParent` and `ONYX-PERF js:call
+timer 60001363 us`: one of Facebook's timers (its "visual completion" tracker,
+`VisualCompletionUtil`) climbs the offset chain -- `for (r = e; r && r.offsetParent; ) { n +=
+r.offsetTop; r = r.offsetParent; }` -- and `offsetParent` was **always the body, the body's own
+included**: the loop never ended, and ran until the script time limit (60 s). Meanwhile the
+window's events are kept for after the script (§30, "a responsive window"): the wheel scrolled
+nothing, a click (Accept) was handled a minute later, the window lagged. It runs after the load
+and after an interaction, so the dialog met it on the Pi.
+
+`offsetParent`, `offsetTop`, `offsetLeft` are now CSSOM View's (`N.offset`, qjs.c `n_offset`,
+from the boxes): the nearest positioned ancestor, else the body (a `td` / `th` / `table` for a
+static element); **null** for the body, the root, a `position: fixed` element and one without a
+box; the offsets the border box's from that parent's padding box (from the document's origin
+when it is the body or none), the scrolls between them left out. Same answers as Chromium on
+`pages/js-modal-doc.html`. **Measured** (the login page, PC): its longest timer 60 s (interrupted)
+-> 87 ms; an idle login page 20 s after the load: 1.5 % of a core (0.9 % for an empty page).
+
+### Fixed dialogs over a scrolled page (the wheel, the clicks, the rectangles)
+
+§37 lays `position: fixed` boxes out at the scroll offset 0 and paints them moved by the scroll;
+everything else still used where they are laid out: once the page was scrolled, the **hit test**
+missed a fixed dialog (the wheel scrolled the page under it, clicks and fields went through it),
+the **redraws** of a scroller or a text field in it went to the wrong place (an inner scroller
+scrolled but was not painted again), `getBoundingClientRect` / `elementFromPoint` were off by the
+scroll. Now (`html_box_fixed_shift`, html.c: the viewport's scroll for a box in a fixed one): the
+hit test (`onyx_hit_box`) finds fixed boxes where they are painted, the pointer's boxes
+(`get_mouse_action_node`), the scrollbar and text-field drags, the caret, `html__redraw_a_box`
+(a scroller's scroll, a control's change), the text fields' redraws, the wheel into an iframe /
+object, and the scripts' rectangles (`n_rect`) add it. The wheel then takes the innermost
+scroller under the pointer that can still scroll, in a fixed dialog too, composited or not (§5's
+order, unchanged).
+
+**Facebook's desktop dialog** (`pages/js-modal-doc.html`): when a Comet modal opens, the page under
+it is "detached" -- a fixed, viewport-sized `overflow: auto` view, its scroll bar hidden
+(`scrollbar-width: none`), scrolled to where the document was -- and the modal's content becomes
+the document (a flex column, `min-height: 100vh`, the dialog centred by an anchor with
+`pointer-events: none`): a dialog taller than the window scrolls **the document**. That works in
+Jet Browser (the wheel over the dialog scrolls the document, the page under it keeps its place).
+Jet Browser draws the detached view's scroll bar (`scrollbar-width` is not computed by libcss:
+§14's grammars keep it without effect) -- the "scroll bar on it" seen on the Pi.
+
+### The network: what a page does, held back when it loops
+
+What Facebook does once logged in could not be watched here (no account on the bench; no
+credentials used). What was added, for every page:
+
+- **`ONYX-PERF net:minute`** (the perf log: the file `SD:/apps/jet.app/perf`, or `NS_PERF=1`; on
+  the Pi it goes to the kernel log, `kmsg`): a line a minute while anything happened, and one when
+  Jet Browser closes -- the requests ended (by scripts, failed, retried), KB in (and KB/s) and
+  out, the connects (failed, held back), the sockets open now (downloads, kept alive, HTTP/2 --
+  each with its host and streams), the WebSockets and EventSources open (each with its host and
+  KB in / out), their connects and throttled ones, and the five hosts most requests went to.
+  Facebook's login page, PC: `56 requests (4 by scripts), 2563 KB in` the first minute, `2
+  requests` the second, nothing after (no line).
+- **Reconnections held back** (`onyx_ws.c`, as Chrome delays an endpoint that keeps failing): a
+  WebSocket or EventSource that failed, or ended within 10 s without a message, counts against
+  its host; from the third in a row each new connection waits 1, 2, 4 ... 60 s
+  (`net:ws-throttle` in the log); one that lasted or brought something clears the count. A page
+  re-opening a refused socket at once made a DNS + TCP + TLS handshake a turn for ever.
+- **Failing hosts held back** (`onyx_connect`, every download and socket): from the third failed
+  connect in a row to a host, its connects within 1, 2, 4, 8 s of the last failure fail at once,
+  without the network (`net:tcp ... held back`); a connect that works clears it.
+- **A hidden window's scripts**: the window minimised or covered (§32: its timers already slowed
+  to a second), the scripts' requests (fetch, XHR) start **one a second** (polls, prefetches,
+  beacons; `navigator.sendBeacon` sends nothing anyway).
+- **Idle kept-alive connections closed after 10 s** (a 10 s timer): they were closed only when the
+  next request came -- a page gone quiet held its sockets, of the kernel's 16 for every app (the
+  remote desktop's and telnet's included).
+
+To see what a page does on the Pi: create `SD:/apps/jet.app/perf`, browse, read `kmsg`'s
+`net:minute` lines (`ONYX-PERF js:call` lines show the scripts' long turns).
+
+**Tests**: `jstest.sh`'s `js-fixed-scrolled.html` (a fixed dialog over a page scrolled 500 px:
+its rectangle, `elementFromPoint`, a click into its field and typing, the wheel scrolling its
+panel and not the page, its button) and `js-modal-doc.html` (the detached page and the
+document-scrolling dialog, the wheel, Accept after the scroll, the `offsetParent` chain ending,
+`offsetTop`'s sum = the page position, null for the body / a fixed element: Chromium's answers);
+before the fix the first failed all but its offsetTop, the second looped. `nettest.sh`'s
+`net-retry.html` (a refused WebSocket re-opened at once: 6 connections in 6 s, not hundreds; a
+fetch to a closed port retried at once: 6 connects, ~170 held back; the `net:minute` line) and
+`net-hidden.html` (a poll: paced when the window is hidden, ~16 a second shown).
+
+**Not done**: `scrollbar-width` / `::-webkit-scrollbar { display: none }` (a libcss property);
+`pointer-events: none` (not computed then: the hit test took such overlays; Comet's anchors
+and scroll thumbs are inside what they cover, so it did not matter here -- computed since, §42); images loaded lazily
+(`loading="lazy"`, off-screen images: Jet Browser fetches every image of the page -- a feed's
+pictures are probably what loads the network once logged in); a bandwidth cap.
+
+## 42. Wikipedia's search box: the stacking order, forms a script made, pointer-events (2026-10-01)
+
+The user, on `fr.wikipedia.org`'s main page in the Mobile version (Minerva) -- and the same on the
+Desktop one (Vector 2022): the suggestions list under the search field "has no background" (the
+page's text through it), and Enter in the field does nothing. Both skins' search is Codex's
+**TypeaheadSearch**, a Vue 3 app: its form, field and menu are made by the script. Reproduced on the
+PC bench with the real site (`site-modes`: `wikipedia.org mobile` / `desktop`; the suggestions come
+from `/w/rest.php/v1/search/title`, which answered 429 now and then -- Wikimedia's rate limit for
+the bench's address, not Jet's doing). Four causes:
+
+**1. The stacking order (CSS 2.1 appendix E): a z-index inside a z-index auto box.** The menu
+(`.cdx-menu`, `position: absolute; z-index: 50`, its background white) is in a relative wrapper
+with `z-index: auto` (`.cdx-search-input__input-wrapper`), in the page's stacking context (Minerva's
+`position: relative; z-index: 0` page box); the page's content after it is in relative boxes with
+`z-index: auto`. Jet's layers (§21, `redraw.c`'s `onyx_layer_*`) treated **every positioned box as
+a stacking context**: the wrapper's put-off boxes were sorted and painted with the wrapper, in the
+tree's order among the z-index 0 boxes -- so the later relative content was painted over the menu
+(its transparent background over the menu's white, its text over the rows). Now
+`html_redraw_layer_context(box)` says whether a put-off box is a stacking context (a z-index set,
+`position: fixed` / `sticky`, a compositing group: opacity, transform, filter...); a positioned
+box with z-index auto is not: `onyx_layer_paint_in` paints its put-off boxes with z-index 0 /
+auto right after it (the tree's order), and **gives those above 0 to its stacking context**
+(`onyx_hoist_*`), which sorts them in with the boxes it still has to paint. The tree's order among
+equal z-indexes is kept as nested intervals (`struct onyx_layer_key`: a box put off inside another
+gets a sub-interval of it, between it and the next one). The hit test (`interaction.c`'s
+`onyx_hit_layer`) does the same, so the clicks go to the menu's rows, not to the page under them.
+No cost for a page without such boxes (the hoist list stays empty; an insertion is a short move).
+
+**2. Enter in a field of a form a script made.** NetSurf's forms (`html->forms`) are the parser's,
+read once when the document is made, and libdom's form owner of a control (`dom_html_input_element
+_get_form`, the form's `elements` collection) was only the parser's association: a form and a field
+created by `createElement` (Vue, React) had no `struct form`, the field's control was an orphan,
+and Enter (`box_textarea.c`) had no form to submit. Now:
+- **libdom** (`src/html/html_form_element.c` `_dom_html_form_owner`): a control without the
+  parser's association has its **nearest ancestor form** as its owner -- for `get_form` (input,
+  button, select, textarea) and the form's `elements` (so `form_dom_to_data` sends the script's
+  hidden fields too, `title=Spécial:Recherche`). (Not done: the `form="id"` attribute.)
+- **NetSurf** (`html/forms.c`, `html_forms_control_for_node`): a control in a form the parser did
+  not see gets one made then (`onyx_form_for`: its action made absolute, the document's encoding,
+  added to `html->forms`, the node referenced: `struct form`'s new `node_ref`, unreferenced by
+  `form_free`); an orphan control put in a form since it was made joins it at the next rebox.
+- **The implicit submission** (`box_textarea.c`, HTML 4.10.21.2): Enter in a text field clicks
+  the form's **default button** (its first submit button: a `click` event the page may prevent,
+  then the button's `name=value` sent with the form), else sends the form; the `submit` event
+  first, as before. On Wikipedia: `/w/index.php?title=Spécial:Recherche&search=paris`, which
+  redirects to the article.
+
+**3. `Object.prototype.toString` of the DOM's objects.** Each interface's prototype now has its
+`Symbol.toStringTag` (`dom.js`' `tagInterfaces`, `html5.js` for its own: every constructor the two
+files add to the global object): `[object HTMLInputElement]`, `[object Event]`... It was `[object
+Object]`, so **Vue 3's `reactive()` wrapped the elements** it keeps in its state in Proxies (it
+leaves alone what `toRawType` does not call Object / Array / Map / Set): the menu's code then
+handed a Proxy to the natives -- `TypeError: not a node` (its `scrollHeight`, `getComputedStyle`)
+at each keystroke.
+
+**4. `pointer-events`** (Desktop): MediaWiki's notification area
+(`.mw-notification-area-overlay`: absolute, the whole page, `z-index: 9999`,
+`pointer-events: none`) took every click on the page's top -- the search field could not be
+focused. libcss now computes **`pointer-events`** (inherited; `auto` | `none`, SVG's values read as
+`auto`: `parse/properties/onyx_svg.c`, `select/properties/onyx_svg.c`, `select_config.py` and the
+autogenerated headers made again, `onyx_propbits.py`: a paint-only change; `CSS_PROP_POINTER_EVENTS`,
+`css_computed_pointer_events()` in `computed.h`, `enum css_pointer_events_e` in `properties.h`).
+The hit test passes over a box with `pointer-events: none` (`onyx_hit_visible`, as `visibility:
+hidden`): its descendants with `auto` still take the clicks. `getComputedStyle` answers it.
+
+**And the menu's footer** ("Rechercher les pages contenant ...": absolute in the menu, under the
+menu's list, a static box with `overflow-y: auto`) was cut away by the list's overflow, and gave the
+list a scroll bar. An absolute box is clipped by the overflow of its containing block and of the
+containing block's ancestors, not by a static scroller between them: the redraw keeps the clipping
+boxes being painted with the clip they were given (`onyx_oclip`), and an absolute box put off takes
+the clip from outside those between it and its containing block (`onyx_oclip_escape`); the hit test
+looks, under a static clipping box the point is outside of, for its absolute boxes only
+(`onyx_hit_escapes`); the layout marks the boxes between an absolute box and its containing block
+(`HAS_ABS_OUT`, box.h) so their scroll extent leaves it out (`layout_update_scroll_extent`) and
+their descendant bounds take it in.
+
+**GPU compositing.** The same with `NS_GPU=0` and `NS_GPU=1` (the compositor composites what the
+redraw painted: the order was the redraw's).
+
+**Tests.** `tools/tests/netsurf/typeaheadtest.sh` (new; local pages, no network):
+`pages/stack-typeahead.html` -- the menu's pixels over the later content, the footer's, no scroll
+bar, the content beside, a z-index 999 box inside a z-index 1 context under a later z-index 2 one,
+the clicks (the menu's, the footer's, through a `pointer-events: none` overlay, on its `auto` part),
+`getComputedStyle(...).pointerEvents`, with and without the GPU compositor; `pages/form-scripted.html`
+-- a form and its field made by the script: Enter fires `submit` and sends the GET with the hidden
+field; with a default button, Enter clicks it and sends its value; `Object.prototype.toString` of an
+input, the document, an event. Each check fails on the build before.
+
+**Not done.** An absolute box escaping a scroller does not stay put when the scroller is scrolled
+(it moves with the scroller's content); the `form` attribute (`<input form="id">`); a form with
+two text fields and no submit button is still submitted by Enter (HTML: only a lone field); the
+menu's list shows a scroll bar of its own when its ten rows are taller than it (Chrome's overlay
+scroll bars take no room). Checked on the live site: the list opaque (Mobile and Desktop), Enter
+(both), the footer shown and a row clicked opening its article (Mobile).
 
 ## 8. Known gaps
 

@@ -128,6 +128,7 @@ void css__make_style_important(css_style *style)
 					offset++;
 				continue;
 			case CSS_PROP_FILL_RULE:
+			case CSS_PROP_POINTER_EVENTS:	/* (Onyx) */
 			case CSS_PROP_STROKE_LINECAP:
 			case CSS_PROP_STROKE_LINEJOIN:
 				continue;

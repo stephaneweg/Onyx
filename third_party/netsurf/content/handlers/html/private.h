@@ -493,6 +493,25 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
  */
 bool html_redraw_layer_z(const struct box *box, int32_t *z);
 
+/**
+ * Onyx: whether a box put off as a layer (html_redraw_layer_z) is a stacking context --
+ * a z-index set, position fixed / sticky, a compositing group (opacity, transform...).
+ * A positioned box with z-index auto is not: the boxes with a z-index above 0 inside it
+ * are sorted with its stacking context's (a menu at z-index 50 in a relative box over
+ * the relative boxes after it).
+ */
+bool html_redraw_layer_context(const struct box *box);
+
+/**
+ * Onyx: the boxes a layer puts off, in their order (tree order kept as nested
+ * intervals: a box put off inside another lands between it and the next one)
+ */
+struct onyx_layer_key {
+	int32_t z;
+	double lo, span;
+};
+int onyx_layer_key_cmp(const struct onyx_layer_key *a, const struct onyx_layer_key *b);
+
 
 /* in html/redraw_border.c */
 bool html_redraw_borders(struct box *box, int x_parent, int y_parent,
