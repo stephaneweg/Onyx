@@ -58,7 +58,7 @@ struct TScreenDamage
 };
 void ScreenTakeDamage (TScreenDamage *pOut);	// (the compositor) the damage so far, and forget it
 
-// Window-chrome theme, applied at boot (SD:skins/theme.txt). The two tints are baked
+// Window-chrome theme, applied at boot (SD:/etc/theme.txt). The two tints are baked
 // into the window skin (active/inactive); the text colour is the title text.
 extern u32 g_WinTitleTextColor;
 

@@ -86,14 +86,6 @@ void Skin::drawOn (unsigned *fb, int W, int H, int state, int x, int y, int w, i
 	if (mr > 0 && mb > 0) blit (fb, W, H, sw - mr, sy + sh - mb, mr, mb, x + w - mr, y + h - mb, tint);
 }
 
-// ---- shared skins ------------------------------------------------------------
-Skin &wk_button_skin ()
-{
-	static Skin s; static bool tried = false;
-	if (!tried) { tried = true; s.load ("SD:/skins/button.bmp", 3, 6, 6, 6, 6); }
-	return s;
-}
-
 // ---- the window frame (the modernised CDE, kapi v64) ------------------------------------------
 static int s_winFlags;				// WK_WIN_* (Root: the window menu, resizable, maximised)
 void wk_window_state (int flags) { s_winFlags = flags; }

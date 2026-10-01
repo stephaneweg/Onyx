@@ -1,0 +1,8 @@
+<!doctype html><title>accents</title>
+<body style="margin:0">
+<input id=t style="position:absolute;left:20px;top:20px;width:300px;height:30px;font-size:20px">
+<script>
+var t = document.getElementById('t');
+t.addEventListener('input', function () { console.log('accents value ' + t.value); });
+t.addEventListener('keydown', function (e) { if (e.key === 'Enter') console.log('accents final ' + t.value + ' codes ' + Array.from(t.value).map(function (c) { return c.codePointAt(0).toString(16); }).join(',')); });
+</script>

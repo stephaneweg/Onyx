@@ -1849,7 +1849,7 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PR
   `ax_itoa(v, buf)`, `ax_fmt2(d, v)` (2-digit decimal).
 - **Console**: `ax_puts(s)`, `ax_putln(s)` (to stdout).
 - A minimal **`.ini` reader**: `app_ini_load("config.ini")` (from the app's folder via
-  `kapi_app_dir`) or `app_ini_load_path("SD:skins/theme.txt")`; then
+  `kapi_app_dir`) or `app_ini_load_path("SD:/etc/theme.txt")`; then
   `app_ini_get(section, key, default)` and `app_ini_get_int(...)`. Sections `[xxx]`, lines
   `key=value`, comments `;`/`#`.
 - **App-drawn widgets** (not kernel widgets): `ax_dropdown` (drop-down list)

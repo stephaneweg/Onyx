@@ -90,7 +90,7 @@ sources.
 │   • arch/    VBAR_EL1 exception vectors, trap frame              │
 │   • proc/    ELF64 loader                                        │
 │   • sys/     kapi impl., stream/stdio, debug console             │
-│   • gui/     GImage (software renderer), compositor+WM, skins,   │
+│   • gui/     GImage (software renderer), compositor+WM, cursor,  │
 │              modal dialogs                                       │
 ├──────────────────────────────────────────────────────────────────┤
 │  CIRCLE  (HAL + drivers, reused as-is)                           │

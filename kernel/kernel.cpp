@@ -1369,30 +1369,45 @@ static int ParseWheelSpeed (const u8 *p, unsigned n)
 	return 0;
 }
 
-// Load a mouse-cursor bitmap (SimpleOS mousecur.bin): w*h raw bytes, one per pixel,
-// 1 = white, 2 = black, anything else = transparent. Returns a GImage (with the
-// magenta transparency key) the compositor blits, or 0 if unavailable.
-static GImage *LoadCursor (const char *pPath, int nW, int nH)
-{
-	unsigned nSize = 0;
-	u8 *pData = LoadFileFromSD (pPath, &nSize);
-	if (pData == 0)
-	{
-		return 0;
-	}
-	GImage *pImg = new GImage;
-	if (pImg == 0) { delete [] pData; return 0; }
-	pImg->SetSize (nW, nH);
-	if (!pImg->IsValid ()) { delete [] pData; delete pImg; return 0; }
+// The mouse cursor, built in (it was SD:skins/mousecur.bin, SimpleOS's 12x19 arrow; the skins folder
+// is gone -- window chrome is drawn user-side): W white, B black, . transparent.
+static const char s_Cursor[19][13] = {
+	"W...........",
+	"WW..........",
+	"WBW.........",
+	"WBBW........",
+	"WBBBW.......",
+	"WBBBBW......",
+	"WBBBBBW.....",
+	"WBBBBBBW....",
+	"WBBBBBBBW...",
+	"WBBBBBBBBW..",
+	"WBBBBBBBBBW.",
+	"WBBBBBBBBBBW",
+	"WBBBBBBWWWWW",
+	"WBBBWBBW....",
+	"WBBW.WBBW...",
+	"WBW..WBBW...",
+	"WW....WBBW..",
+	"......WBBW..",
+	".......WW..."
+};
 
-	for (int i = 0; i < nW * nH; i++)
+static GImage *BuiltinCursor (void)
+{
+	const int nW = 12, nH = 19;
+	GImage *pImg = new GImage;
+	if (pImg == 0) return 0;
+	pImg->SetSize (nW, nH);
+	if (!pImg->IsValid ()) { delete pImg; return 0; }
+	for (int y = 0; y < nH; y++)
 	{
-		u8 code = ((unsigned) i < nSize) ? pData[i] : 0;
-		u32 col = (code == 1) ? 0x00FFFFFF
-			: (code == 2) ? 0x00000000 : GIMAGE_TRANSPARENT;
-		pImg->SetPixel (i % nW, i / nW, col);
+		for (int x = 0; x < nW; x++)
+		{
+			char c = s_Cursor[y][x];
+			pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
+		}
 	}
-	delete [] pData;
 	return pImg;
 }
 
@@ -1849,10 +1864,8 @@ boolean CKernel::Initialize (void)
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 
-			// Mouse cursor: SimpleOS mousecur.bin -- 12x19 bytes, 1=white 2=black
-			// else transparent. Built into a GImage the compositor blits. (Window
-			// chrome is drawn user-side now, so the kernel loads no skins.)
-			m_WindowManager.SetCursor (LoadCursor ("SD:skins/mousecur.bin", 12, 19));
+			// Mouse cursor: built in (BuiltinCursor), a GImage the compositor blits.
+			m_WindowManager.SetCursor (BuiltinCursor ());
 		}
 		else
 		{

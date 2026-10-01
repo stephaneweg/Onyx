@@ -61,7 +61,46 @@ public:
 };
 
 // ---- the address field: a one-line editor (wtk's Textbox holds 63 characters) ----------------
-void clip_copy (const char *s, int n) { kapi_clipboard_set (CLIP_TEXT, s, (unsigned) n); }
+// It holds Latin-1 (the bitmap font's; 0x80 is the euro, as the keyboard's keys: kapi.h) -- one
+// byte a character, one cell; UTF-8 out (the address opened, the clipboard) and in (pasted).
+int latin1_to_utf8 (const char *s, int n, char *out, int cap)
+{
+	int j = 0;
+	for (int i = 0; i < n; i++)
+	{
+		unsigned c = (unsigned char) s[i];
+		if (c == 0x80) c = 0x20AC;
+		if (c < 0x80) { if (j + 1 >= cap) break; out[j++] = (char) c; }
+		else if (c < 0x800) { if (j + 2 >= cap) break; out[j++] = (char) (0xC0 | c >> 6); out[j++] = (char) (0x80 | (c & 0x3F)); }
+		else { if (j + 3 >= cap) break; out[j++] = (char) (0xE0 | c >> 12); out[j++] = (char) (0x80 | ((c >> 6) & 0x3F)); out[j++] = (char) (0x80 | (c & 0x3F)); }
+	}
+	out[j] = '\0';
+	return j;
+}
+// The next character of UTF-8 s (n bytes) at *i, as the field's byte (Latin-1, the euro 0x80);
+// -1: none in Latin-1 (dropped). A stray byte is taken as Latin-1.
+int utf8_to_latin1 (const char *s, int n, int *i)
+{
+	unsigned c = (unsigned char) s[*i];
+	int k = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+	if (k == 0 || *i + k >= n) { (*i)++; return (int) c; }	// (ASCII, or cut short)
+	unsigned u = c & (0x3F >> k);
+	for (int m = 1; m <= k; m++)
+	{
+		unsigned b = (unsigned char) s[*i + m];
+		if ((b & 0xC0) != 0x80) { (*i)++; return (int) c; }
+		u = u << 6 | (b & 0x3F);
+	}
+	*i += k + 1;
+	if (u == 0x20AC) return 0x80;
+	return u <= 0xFF ? (int) u : -1;
+}
+void clip_copy (const char *s, int n)
+{
+	static char u[URL_MAX * 3];
+	int m = latin1_to_utf8 (s, n, u, sizeof u);
+	kapi_clipboard_set (CLIP_TEXT, u, (unsigned) m);
+}
 
 class UrlField : public Widget
 {
@@ -130,7 +169,12 @@ public:
 	void erase () { len = caret = start = 0; text[0] = '\0'; all = false; }
 	bool onKey (long k) override
 	{
-		if (k == KEY_ENTER) { onyx_browser_go (text); focusOut (); return true; }
+		if (k == KEY_ENTER)
+		{
+			static char u[URL_MAX * 3];
+			latin1_to_utf8 (text, len, u, sizeof u);
+			onyx_browser_go (u); focusOut (); return true;
+		}
 		if (k == 27) { focusOut (); return true; }
 		if (k == 1) { all = true; invalidate (true); return true; }			// ^A
 		if (k == 3) { clip_copy (text, len); return true; }				// ^C
@@ -143,11 +187,12 @@ public:
 			if (n > 0 && type == CLIP_TEXT)
 			{
 				if (all) erase ();
-				for (int i = 0; i < n && len < URL_MAX - 1; i++)
+				for (int i = 0; i < n && len < URL_MAX - 1; )
 				{
-					char ch = clip[i];
-					if (ch == '\r' || ch == '\n' || ch == '\t') ch = ' ';
-					if ((unsigned char) ch < 32) continue;
+					int c = utf8_to_latin1 (clip, n, &i);
+					if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+					if (c < 32 || (c >= 0x7F && c < 0xA0 && c != 0x80)) continue;
+					char ch = (char) c;
 					for (int m = len; m > caret; m--) text[m] = text[m - 1];
 					text[caret++] = ch; len++;
 				}
@@ -171,7 +216,7 @@ public:
 			else if (caret < len) { for (int m = caret; m < len; m++) text[m] = text[m + 1]; len--; }
 			break;
 		default:
-			if (k < 32 || k > 126) return false;
+			if (k < 32 || (k > 126 && k != 0x80 && k < 0xA0) || k > 0xFF) return false;	// (Latin-1, the euro)
 			if (all) erase ();
 			if (len >= URL_MAX - 1) return true;
 			for (int m = len; m > caret; m--) text[m] = text[m - 1];

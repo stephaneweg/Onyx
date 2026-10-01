@@ -652,7 +652,10 @@ static LRESULT CALLBACK wndproc (HWND h, UINT m, WPARAM w, LPARAM l)
 	case WM_SYSCHAR:
 		return 0;				// (Alt+letter: no menu beep)
 	case WM_CHAR:
-		if (w >= 0xD800 && w <= 0xDFFF) return 0;		// (no characters beyond the BMP)
+		// The keys as Onyx's (kapi.h): ASCII, Latin-1 (0xA0..0xFF: é, ç, à...), the euro as 0x80 -- the
+		// codes above are the arrows and F-keys (0x100..), so no other characters
+		if (w == 0x20AC) w = 0x80;
+		else if ((w >= 0x80 && w < 0xA0) || w > 0xFF) return 0;
 		push (1, GUI_EVENT_KEY, (long long) w);
 		return 0;
 	case WM_COMMAND:
