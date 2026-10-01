@@ -477,11 +477,17 @@ parserutils_error parserutils_inputstream_refill_buffer(
 	if (error != PARSERUTILS_OK && error != PARSERUTILS_NOMEM)
 		return error;
 
-	/* Remove the raw data we've processed from the raw buffer */
-	error = parserutils_buffer_discard(stream->raw, 0, 
-			stream->raw->length - raw_length);
-	if (error != PARSERUTILS_OK)
-		return error;
+	/* Remove the raw data we've processed from the raw buffer
+	 * (Onyx: if any -- the refill at the end that only writes what the filter
+	 * held has none, and a discard from an empty buffer is BADPARM: an HTML
+	 * document 4097 to ~4160 bytes long, its last characters left in the filter's
+	 * pivot, failed to load: "BadParameter") */
+	if (stream->raw->length > raw_length) {
+		error = parserutils_buffer_discard(stream->raw, 0,
+				stream->raw->length - raw_length);
+		if (error != PARSERUTILS_OK)
+			return error;
+	}
 
 	/* Fix up the utf8 buffer information */
 	stream->public.utf8->length = 
