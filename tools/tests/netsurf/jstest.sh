@@ -351,5 +351,14 @@ run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(
 expect "$L" "panel scrolled down"
 expect "$L" "accepted"
 
+echo "js-scripttime.html (the time limit spares a working script; console, getElementsByClassName)"
+L=$OUT/js-scripttime.log
+NS_SCRIPT_TIMEOUT=1 run js-scripttime.html "$(waits 700)" "$L"
+for s in "classes ab 2,3" "classes b 4" "classes c 2" "classes none 0" "classes miss 0" \
+	 "custom inline 4px" '{"a":1,"b":"two","c":[1,2,3],"d":null,"f":{"g":true}}' \
+	 "console big fast" "long 300 yyyyyyyyyy" "busy done" "after stuck false" "after runaway stopped"; do
+	expect "$L" "$s"
+done
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"

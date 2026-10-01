@@ -1690,14 +1690,15 @@ Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with
 `libcss.a` and run under qemu gives the PC's answers.
 
 - **The time limit** 10 -> **60 s** (`desktop/options.h`; `script_timeout` in `SD:/res/Choices`,
-  0 = none). Browsers do not stop a script at all; the limit only ends a loop that never does.
+  0 = none). Browsers do not stop a script at all; the limit only ends a loop that never does
+  (§26: past it, a script still changing the page now runs on).
 - **Faster** (the PC; the Pi in proportion): css3test's run 2834 -> 1390 ms, browserscore's
   render job 9.6 -> 6.6 s.
   - `console.*` formats its arguments only when the log is read (`N.logOn`: `NS_JSDEBUG` /
     `jsdebug`, or NetSurf's verbose log), and as bounded JSON (2000 values; no `toJSON()` but
     a `Date`'s): Vue's development build passes whole component trees to `console.warn`
     (browserscore.dev: 1500 warnings, each its features' `toJSON()` of a whole subtree -- 64 %
-    of its time, a minute with the log on).
+    of its time, a minute with the log on) -- bounded harder since (§26).
   - `querySelector('#id')` from libdom's `getElementById`; `querySelector` walks with
     `N.nextElement` and stops at the first match (it wrapped every element of the tree first:
     bliss's `$('#x')` thousands of times on css3test).
@@ -2051,6 +2052,88 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
   and re-upload are not used); `will-change` (not parsed); fixed boxes that stay in view (above);
   `GPC_F_ASYNC` (the composite waits); a translation animated as a composite (it moves the box as
   the layout does: its rectangles are redrawn).
+
+## 26. Vue's first render on the Pi (browserscore.dev "0 of 0 features"); the time limit
+
+**What the Pi showed** (after §23): browserscore.dev still at "0 of 0 features, 0 %". Its kmsg:
+1646 `[Vue warn]` lines (the site's own: Vue's development build warns the same in Chrome), then
+`JS job: InternalError: interrupted at refreshComputed` and `ONYX-PERF js:job 60030626 us` --
+Vue's first render, one promise job, cut off by the 60 s `script_timeout`. On the PC bench the
+job took 8.5 s with the log on (`NS_JSDEBUG`; the Pi had its `jsdebug` file), 6.6-7 s without;
+the Pi is 5-7 times slower.
+
+**The profile** (`NS_JSPROF` + `jsprof.py`, `NS_PROF` + `prof.sh`): 85 % of the job is QuickJS
+interpreting the site's code and Vue's (the component mounts, the reactivity's proxies and
+`track()`, Score.js's recalculation of every ancestor at each feature -- quadratic, the site's
+own); DOM-in-JS work (insertBefore, setAttribute, createElement, textContent) is 2-3 %. What was
+ours and slow:
+
+- **The console with the log on**: each warning's arguments (Vue's component trace: reactive
+  proxies of the features, every value read a tracked `get`) formatted up to 2000 values --
+  ~2 s of the job. Now (`dom.js` `fmt`, `fmtJSON`) an object is JSON's text but 40 values,
+  4 levels and 160 characters at most (a long string cut with `…`), and once the line passes
+  256 characters the further objects are only named (`[Object ...]`): the kmsg line is cut at
+  ~128 characters anyway, and a string argument (Vue's message) costs nothing. A function shows
+  as `function name()`, `undefined` as `undefined` (it printed nothing).
+- **Map / Set / WeakMap keyed by objects** (`quickjs.c` `map_hash_key`, marked Onyx): the hash of
+  an object key was `pointer * 3163` -- the low bits of an 8- or 16-byte aligned pointer stay
+  zero, and the bucket is the low bits: one bucket in 8 to 16 used, chains as long
+  (`js_map_get` spent its time in `js_same_value_zero`). The pointer is now mixed (murmur3's
+  finalizer). Vue's `targetMap` / `reactiveMap` (WeakMaps of every reactive object) and its
+  dependency maps are looked up at each property read: a WeakMap / Map lookup 1.4-1.7x faster.
+  The Pi's `libquickjs.a` rebuilt.
+- **`new URL(link, base).href`** (`dom.js`): the parse cache held 1024 URLs and was cleared when
+  full -- browserscore.dev makes 3000 links a render (its features' spec and draft links), so
+  every URL was parsed again; now 8192. A URL keeps the cached parse itself (`_c`, shared, never
+  changed) and copies it only when something reads its record to change it (`_u`, a getter;
+  the getters read `_r`), and its `href` is serialized once per cached parse (a WeakMap). The
+  lone surrogates' replacement (`toUSV`) is the native `String.prototype.toWellFormed` (a
+  regexp with a look-behind before). 3000 `new URL(..).href` 126 -> 36 ms, again 93 -> 13 ms.
+- **`getComputedStyle(el).getPropertyValue('--color')`** after a render (the site's favicon):
+  `N.cstyle` laid the page out first (a whole rebox of 10000 elements: 0.4-0.5 s on the PC,
+  seconds on the Pi) to answer a property it does not compute (dom.js answers a custom property
+  from the style attribute). `qjs_cstyle_known` lists what `n_cstyle` answers; for the others it
+  returns at once, no layout. (Also: `fill` / `stroke` / `stroke-width` read the style found,
+  not `box->style`: an element without a box crashed there.)
+- **`getElementsByClassName`** (carbon ads asks it of the whole document after the render): it
+  wrapped every element of the tree and split its classes in JS; `N.descendants(root, names)`
+  matches the class attribute natively (`qjs_has_classes`; ASCII white space, as the spec).
+- `CSS.supports` / `element.style`'s value check runs its string-stripping regexp only when the
+  value holds one of `;{}!`.
+- **`NS_PERF`** logs a layout a script's read forced when it is over 50 ms, with the script's
+  stack (`js:forced-layout at cstyle (native)|at get (dom.js...)|...`).
+
+**The timings** (the PC bench, the job's CPU time; the machine shared, ±0.5 s):
+
+| browserscore.dev's render job | before | after |
+|---|---|---|
+| log on (`NS_JSDEBUG`) | 8.3-9.4 s | 6.4 s |
+| log off | 7.0-7.1 s | 6.5-6.6 s |
+| the next job (favicon's `getComputedStyle`) | 0.8-1.4 s | 0.07 s |
+
+The score is unchanged (86 %, 1283 / 1489). The goal of ~3 s on the PC is not reached: what is
+left is the interpreter itself running the site's code (the JIT / bytecode work on QuickJS is
+separate). On the Pi the job is some 35-45 s -- under the limit with the log on or off, and the
+limit no longer stops a render that works:
+
+**The time limit spares a working script** (`qjs.c` `qjs_interrupt`, `QJS_TIMEOUT_MAX`):
+browsers do not stop a script at all (Chrome asks after a while: "Page unresponsive"); NetSurf
+has no such dialog, and its limit only has to end a script that is stuck. The scripts' DOM
+changes are counted (`QJS_DIRTY`, where a change marks the page to lay out again:
+`qjs_dom_writes`); past `script_timeout` a script (a call or one promise job) runs on while it
+still changes the page -- its last change less than a quarter of the limit ago (15 s for 60) --
+up to 4 times the limit (240 s). A loop that never ends changes nothing and stops at the limit
+as before; one that changes the page for ever stops at 4 times the limit. The first time a script
+runs past the limit the log says `JS: a script past 60 s still changing the page: let run`. The
+default stays 60 s (`script_timeout` in `SD:/res/Choices`, 0 = none); `NS_SCRIPT_TIMEOUT=<s>`
+overrides it on the PC bench.
+
+**Tests**: `jstest.sh`'s `js-scripttime.html` (run with `NS_SCRIPT_TIMEOUT=1`): a script changing
+the page for 2.5 s finishes, a stuck one is stopped at 1 s, a runaway that changes the page for
+ever at ~4 s; `getElementsByClassName` (several names, white space, none, a miss), a custom
+property through `getComputedStyle`, the console's JSON for a small object, a 5000-key object
+named fast, a long string whole. `urltest.sh` (WPT's URL data) as before: 896 / 896, 278 / 278,
+72 / 87. `jstest.sh`, `nettest.sh`, `fxtest.sh` pass; `sitesweep.sh`: no crash.
 
 ## 8. Known gaps
 

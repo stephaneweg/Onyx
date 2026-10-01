@@ -684,6 +684,14 @@ against Chromium). PC bench: css3test 83 %, browserscore 86 % (Chromium 71 %, 75
 Popover API (`:popover-open` / `:modal` in libcss), matchMedia by libcss (aspect-ratio,
 orientation, hover...), `NS_JSPROF` + `jsprof.py` (a sampling profiler of the scripts). The
 Pi's `libcss.a` rebuilt; the NetSurf binary for the card NOT restaged by this work.
+**Then (2026-10-01, docs/06 §26)**: browserscore.dev still "0 of 0" on the Pi -- Vue's first
+render job hit the 60 s limit with the `jsdebug` log on. The console's formatting bounded hard,
+Map / WeakMap object keys hashed properly in QuickJS (Pi `libquickjs.a` rebuilt), `new URL`'s
+cache, no rebox for `getComputedStyle('--x')`, a native `getElementsByClassName`: the job 8.5 ->
+6.4 s (log on), 7.0 -> 6.5 s (off) on the PC; the rest is the interpreter. And the time limit now
+spares a script still changing the page (up to 4x the limit). To try on the Pi: browserscore.dev
+with `jsdebug` on (kmsg: `JS: a script past 60 s still changing the page` if it runs that long).
+Not restaged either.
 
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more

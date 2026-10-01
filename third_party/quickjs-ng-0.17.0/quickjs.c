@@ -53399,7 +53399,17 @@ static uint32_t map_hash_key(JSContext *ctx, JSValueConst key)
         break;
     case JS_TAG_OBJECT:
     case JS_TAG_SYMBOL:
-        h = (uintptr_t)JS_VALUE_GET_PTR(key) * 3163;
+        /* Onyx: the pointer's bits mixed (murmur3's finalizer) -- ptr * 3163 kept the low
+           bits of an 8- or 16-byte aligned pointer zero, and the table's index is the low
+           bits: one bucket in 8 or 16 used, chains as long (Vue's reactivity maps, WeakMaps
+           keyed by objects: js_map_get spent its time in js_same_value_zero) */
+        {
+            uint64_t p = (uintptr_t)JS_VALUE_GET_PTR(key);
+            p ^= p >> 33;
+            p *= 0xff51afd7ed558ccdULL;
+            p ^= p >> 33;
+            h = (uint32_t)p;
+        }
         break;
     case JS_TAG_INT:
         d = JS_VALUE_GET_INT(key);

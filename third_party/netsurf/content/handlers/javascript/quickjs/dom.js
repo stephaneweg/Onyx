@@ -795,11 +795,10 @@ const ParentNode = {
 		return htmlCollection(N.descendants(this).filter(e => t === '*' || e.localName === t));
 	},
 	getElementsByClassName(names) {
-		const want = String(names).split(/\s+/).filter(Boolean);
-		return htmlCollection(N.descendants(this).filter(e => {
-			const cls = (N.attr(e, 'class') || '').split(/\s+/);
-			return want.every(w => cls.includes(w));
-		}));
+		/* Onyx: the classes matched by the native walk (qjs.c n_descendants) */
+		names = String(names);
+		if (!/[^\t\n\f\r ]/.test(names)) return htmlCollection([]);
+		return htmlCollection(N.descendants(this, names));
 	},
 };
 
@@ -988,7 +987,7 @@ function cssValid(k, v) {
 		return true;
 	v = String(v);
 	/* (Onyx: nor "!important" -- a value, not a declaration: CSS.supports("color", "red !important") is false) */
-	if (/[;{}!]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))
+	if (/[;{}!]/.test(v) && /[;{}!]/.test(v.replace(/"[^"]*"|'[^']*'|\([^)]*\)/g, '')))	/* (Onyx: the strings cut only when one is there) */
 		return false;
 	const r = N.cssKept(k + ': ' + v, true);
 	return r !== null && r[1] > 0;
@@ -4412,25 +4411,31 @@ function storageProxy(origin) {
 G.Storage = Storage;
 
 /* console (Onyx: its arguments made text only when the log is read -- N.logOn -- and an
- * object's text bounded: JSON's, but 2000 values at most and no toJSON() but a Date's --
- * Vue's development build hands console.warn whole component trees, browserscore.dev's
- * features' toJSON() each made its whole subtree: a minute) */
+ * object's text bounded hard: JSON's, but 40 values, 4 levels and 160 characters at most, and
+ * no toJSON() but a Date's. Vue's development build hands console.warn whole component trees
+ * (reactive proxies: each value read is a tracked get): browserscore.dev's 1600 warnings cost
+ * seconds with the log on at 2000 values each (and a minute before any bound); the kmsg line
+ * is cut at ~128 characters anyway. A string argument is kept whole: nothing to format.) */
 const FMT_CUT = {};
-function fmtJSON(a) {
-	let n = 0;
+const FMT_VALUES = 40, FMT_DEPTH = 4, FMT_CHARS = 160, FMT_LINE = 256;
+function fmtJSON(a, chars) {
+	let n = 0, left = chars;
 	const stack = [];
+	const room = s => { if ((left -= s.length) < 0) throw FMT_CUT; return s; };
 	const val = (v, inArray) => {
-		if (++n > 2000) throw FMT_CUT;
+		if (++n > FMT_VALUES) throw FMT_CUT;
 		if (v instanceof Date) v = v.toJSON();
 		switch (typeof v) {
-		case 'string': return JSON.stringify(v);
-		case 'number': return isFinite(v) ? String(v) : 'null';
-		case 'boolean': return String(v);
+		case 'string': return room(JSON.stringify(v.length > left - 2 ? v.slice(0, Math.max(0, left - 6)) + '\u2026' : v));
+		case 'number': return room(isFinite(v) ? String(v) : 'null');
+		case 'boolean': return room(String(v));
 		case 'bigint': throw new TypeError('BigInt');
-		case 'undefined': case 'function': case 'symbol': return inArray ? 'null' : undefined;
+		case 'undefined': case 'function': case 'symbol': return inArray ? room('null') : undefined;
 		}
-		if (v === null) return 'null';
+		if (v === null) return room('null');
 		if (stack.includes(v)) throw new TypeError('cyclic');
+		if (stack.length >= FMT_DEPTH) throw FMT_CUT;
+		room('{}');
 		stack.push(v);
 		let out;
 		if (Array.isArray(v)) {
@@ -4441,7 +4446,7 @@ function fmtJSON(a) {
 			const items = [];
 			for (const k of Object.keys(v)) {
 				const s = val(v[k], false);
-				if (s !== undefined) items.push(JSON.stringify(k) + ':' + s);
+				if (s !== undefined) items.push(room(JSON.stringify(k) + ':') + s);
 			}
 			out = '{' + items.join(',') + '}';
 		}
@@ -4450,18 +4455,32 @@ function fmtJSON(a) {
 	};
 	return val(a, false);
 }
+function fmtName(a) {
+	let c;
+	try { c = a && a.constructor && a.constructor.name; } catch (e) {}
+	return '[' + (typeof c === 'string' && c ? c : 'object') + ' ...]';
+}
+/* (a line's objects formatted while it is under FMT_LINE characters, the others named: Vue's
+ * warning text alone is longer than what kmsg shows) */
 function fmt(args) {
+	let len = 0;
 	return args.map(a => {
-		if (typeof a === 'string') return a;
-		if (a instanceof Error) return a + (a.stack ? '\n' + a.stack : '');
-		if (a instanceof Node) return '<' + (a.nodeName || 'node') + '>';
-		try {
-			return fmtJSON(a);
-		} catch (e) {
-			if (e === FMT_CUT)
-				return '[' + ((a && a.constructor && a.constructor.name) || 'object') + ' ...]';
-			return String(a);
+		let s;
+		if (typeof a === 'string') s = a;
+		else if (a instanceof Error) s = a + (a.stack ? '\n' + a.stack : '');
+		else if (a instanceof Node) s = '<' + (a.nodeName || 'node') + '>';
+		else if (len >= FMT_LINE && a !== null && (typeof a === 'object' || typeof a === 'function')) s = fmtName(a);
+		else {
+			try {
+				s = fmtJSON(a, Math.max(16, Math.min(FMT_CHARS, FMT_LINE - len)));
+			} catch (e) {
+				if (e === FMT_CUT) s = fmtName(a);
+				else try { s = String(a); } catch (e2) { s = fmtName(a); }
+			}
 		}
+		if (s === undefined) s = typeof a === 'function' ? 'function ' + (a.name || '') + '()' : String(a);
+		len += s.length + 1;
+		return s;
 	}).join(' ');
 }
 const counts = new Map(), times = new Map();
@@ -4555,8 +4574,9 @@ function pctEncodeStr(str, set, spaceAsPlus) {
 	for (const ch of toUSV(str)) out += pctEncodeCp(ch.codePointAt(0), set, spaceAsPlus);
 	return out;
 }
-function toUSV(s) {	/* lone surrogates to U+FFFD */
-	return String(s).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
+function toUSV(s) {	/* lone surrogates to U+FFFD (Onyx: the native toWellFormed -- a regexp with a
+			 * look-behind made each new URL slow) */
+	return String(s).toWellFormed();
 }
 function pctDecodeBytes(s) {	/* the bytes of a string, its %XX decoded */
 	const bytes = [];
@@ -5204,22 +5224,38 @@ function urlParseCached(url, base) {
 			u = { ...b, path: Array.isArray(b.path) ? b.path.slice() : b.path, fragment: url.slice(1) };
 		else
 			u = basicParse(url, b);
-		if (URL_PARSED.size >= 1024)
+		/* Onyx: 8192 kept (1024 before: browserscore.dev's 3000 links each render cleared
+		 * the table again and again -- each URL parsed anew) */
+		if (URL_PARSED.size >= 8192)
 			URL_PARSED.clear();
 		URL_PARSED.set(key, u);
 	}
 	if (!u) throw new TypeError("Failed to construct 'URL': Invalid URL");
-	return { ...u, path: Array.isArray(u.path) ? u.path.slice() : u.path };
+	return u;
 }
+function urlCopy(u) { return { ...u, path: Array.isArray(u.path) ? u.path.slice() : u.path }; }
 
+/* Onyx: a URL holds the kept parse (_c, shared, never changed) until something reads or
+ * changes its record (_u: a copy made then, its own); its href made once per kept parse --
+ * new URL(link, base).href is what pages do (browserscore.dev: 3000 of them a render) */
+const URL_HREF = new WeakMap();
 class URL {
 	constructor(url, base) {
-		this._u = urlParseCached(toUSV(url), base === undefined ? undefined : toUSV(base));
+		this._c = urlParseCached(toUSV(url), base === undefined ? undefined : toUSV(base));
+		this._m = null;
 		this._q = null;
 	}
+	get _u() { return this._m || (this._m = urlCopy(this._c)); }
+	set _u(u) { this._m = u; }
+	get _r() { return this._m || this._c; }	/* (to read) */
 	static parse(url, base) { try { return new URL(url, base); } catch (e) { return null; } }
 	static canParse(url, base) { try { new URL(url, base); return true; } catch (e) { return false; } }
-	get href() { return serializeURL(this._u); }
+	get href() {
+		if (this._m) return serializeURL(this._m);
+		let h = URL_HREF.get(this._c);
+		if (h === undefined) URL_HREF.set(this._c, h = serializeURL(this._c));
+		return h;
+	}
 	set href(v) {
 		const u = basicParse(toUSV(v), null);
 		if (!u) throw new TypeError("Failed to set the 'href' property on 'URL': Invalid URL");
@@ -5227,7 +5263,7 @@ class URL {
 		if (this._q) this._q._e = formParse(u.query || '');
 	}
 	get origin() {
-		const u = this._u;
+		const u = this._r;
 		if (u.scheme === 'blob') {
 			try { const p = new URL(serializePath(u)); if (p.protocol === 'http:' || p.protocol === 'https:') return p.origin; } catch (e) {}
 			return 'null';
@@ -5235,29 +5271,29 @@ class URL {
 		if (u.scheme === 'file' || !isSpecial(u.scheme)) return 'null';
 		return u.scheme + '://' + u.host + (u.port !== null ? ':' + u.port : '');
 	}
-	get protocol() { return this._u.scheme + ':'; }
+	get protocol() { return this._r.scheme + ':'; }
 	set protocol(v) { basicParse(toUSV(v) + ':', null, this._u, 'scheme start'); }
-	get username() { return this._u.username; }
+	get username() { return this._r.username; }
 	set username(v) {
 		const u = this._u;
 		if (u.host === null || u.host === '' || u.scheme === 'file') return;
 		u.username = pctEncodeStr(v, PE_USER);
 	}
-	get password() { return this._u.password; }
+	get password() { return this._r.password; }
 	set password(v) {
 		const u = this._u;
 		if (u.host === null || u.host === '' || u.scheme === 'file') return;
 		u.password = pctEncodeStr(v, PE_USER);
 	}
 	get host() {
-		const u = this._u;
+		const u = this._r;
 		if (u.host === null) return '';
 		return u.port === null ? u.host : u.host + ':' + u.port;
 	}
 	set host(v) { if (!this._u.opaque) basicParse(toUSV(v), null, this._u, 'host'); }
-	get hostname() { return this._u.host === null ? '' : this._u.host; }
+	get hostname() { return this._r.host === null ? '' : this._r.host; }
 	set hostname(v) { if (!this._u.opaque) basicParse(toUSV(v), null, this._u, 'hostname'); }
-	get port() { return this._u.port === null ? '' : String(this._u.port); }
+	get port() { return this._r.port === null ? '' : String(this._r.port); }
 	set port(v) {
 		const u = this._u;
 		if (u.host === null || u.host === '' || u.scheme === 'file') return;
@@ -5265,7 +5301,7 @@ class URL {
 		if (v === '') u.port = null;
 		else basicParse(v, null, this._u, 'port');
 	}
-	get pathname() { return serializePath(this._u); }
+	get pathname() { return serializePath(this._r); }
 	set pathname(v) {
 		const u = this._u;
 		if (u.opaque) return;
@@ -5273,7 +5309,7 @@ class URL {
 		u.path = [];
 		if (basicParse(toUSV(v), null, u, 'path start') === null) u.path = save;
 	}
-	get search() { const q = this._u.query; return q === null || q === '' ? '' : '?' + q; }
+	get search() { const q = this._r.query; return q === null || q === '' ? '' : '?' + q; }
 	set search(v) {
 		const u = this._u;
 		v = toUSV(v);
@@ -5284,10 +5320,10 @@ class URL {
 		if (this._q) this._q._e = formParse(v);
 	}
 	get searchParams() {
-		if (!this._q) { this._q = new URLSearchParams(this._u.query || ''); this._q._url = this; }
+		if (!this._q) { this._q = new URLSearchParams(this._r.query || ''); this._q._url = this; }
 		return this._q;
 	}
-	get hash() { const f = this._u.fragment; return f === null || f === '' ? '' : '#' + f; }
+	get hash() { const f = this._r.fragment; return f === null || f === '' ? '' : '#' + f; }
 	set hash(v) {
 		const u = this._u;
 		v = toUSV(v);

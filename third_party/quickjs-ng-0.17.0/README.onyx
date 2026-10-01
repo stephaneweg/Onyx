@@ -8,6 +8,10 @@ Onyx patches (marked Onyx):
 - quickjs.c: __ONYX__'s clock (gettimeofday) is the local time: js_onyx_utc_offset_min (set by
   the embedder: NetSurf's qjs_intl.h, from SD:/etc/system.ini's timezone=) is taken off Date.now
   and is getTimezoneOffset's answer, so Date's time values are UTC.
+- quickjs.c: map_hash_key mixes an object / symbol key's pointer (murmur3's finalizer): the
+  upstream pointer * 3163 left the bucket index's low bits zero (aligned pointers), one bucket
+  in 8-16 used -- Map / Set / WeakMap lookups by object (Vue's reactivity) walked long chains
+  (docs/06-NETSURF-CHANGES.md §26).
 
 Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
 libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.
