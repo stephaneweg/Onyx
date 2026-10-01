@@ -1726,6 +1726,12 @@ static void EnumerateApps (CLogger *pLogger)
 // rebuilding the kernel.
 void CKernel::StartAutostart (void)
 {
+	// cmdline netlog=1: the network's start written to SD:/netlog.txt (bin/netlog) -- for a Pi
+	// without a screen; started first, so that it has the kernel log from the bring-up on
+	if (m_Options.GetAppOptionDecimal ("netlog", 0) != 0 && !ExecPath ("SD:bin/netlog", ""))
+	{
+		m_Logger.Write (FromKernel, LogWarning, "netlog=1: cannot start SD:bin/netlog");
+	}
 	const char *pInit = m_Options.GetAppOptionString ("init", "SD:bin/init");
 	if (!ExecPath (pInit, ""))
 	{

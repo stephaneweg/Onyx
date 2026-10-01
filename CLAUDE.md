@@ -67,6 +67,13 @@ index pushed to `stephaneweg/onyx-packages`, and `tools/pkg/versions.ini`, `sdca
 `sdcard_lite` committed in onyx. The signing key comes from the environment (`ONYX_PKG_KEY`); without
 it, say so to the user and do not publish. Never generate another key.
 
+## RULE — licences: our own software under MIT
+
+Everything of ours that can be is under the **MIT licence** (the user, 2026-10-01): new code carries the MIT
+notice; a programme that links a copyleft library keeps its files MIT but is distributed under that licence (the
+kernel GPL-3.0 with Circle, Jet GPL-2.0 with NetSurf, the PDF Viewer AGPL-3.0 with MuPDF, Doom GPL). Never pull a
+library that would force another licence on an app without asking the user. Details: `docs/LICENSING.md`.
+
 ## Build (reminder)
 
 From `kernel/`: `make` (→ `kernel8-rpi4.img` then the apps), `make stage` (copies image +

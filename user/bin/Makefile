@@ -72,7 +72,7 @@ endif
 
 PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  rm.elf mkdir.elf touch.elf cp.elf mv.elf ps.elf kill.elf \
-	  run.elf keyb.elf cmd.elf kmsg.elf verbose.elf net.elf wget.elf heaptest.elf \
+	  run.elf keyb.elf cmd.elf kmsg.elf netlog.elf verbose.elf net.elf wget.elf heaptest.elf \
 	  fptest.elf init.elf telnetd.elf notifytest.elf \
 	  ping.elf nslookup.elf netstat.elf whois.elf ftpd.elf ftp.elf wifiscan.elf tone.elf \
 	  coretest.elf fsbench.elf shutdown.elf reboot.elf volume.elf hangtest.elf \

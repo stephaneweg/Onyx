@@ -81,6 +81,15 @@ void onyx_comp_page_changed(void);
 bool onyx_comp_redraw(const struct onyx_comp_view *v, bool prepaint);
 
 /**
+ * The period of a scale in device px: the fewest device px that are a whole number of CSS px
+ * (1.5: 3 = 2 CSS px; 1.1: 11; 1.25: 5; 1: 1; none found: 1). The core takes a redraw's origin
+ * in CSS px (browser_window_redraw: device px / scale), so a page painted at an origin that
+ * is not a multiple of it is up to a device px off: the CPU painting (gui.c) and the band
+ * place theirs on a multiple of it (docs/06 §38).
+ */
+int onyx_scale_period(float scale);
+
+/**
  * A retained layer's properties changed, nothing else (its transform or its opacity: an
  * animation, a hover): the frame is composited again, nothing painted. key: the layer's
  * (netsurf/onyx_paint.h, struct onyx_layer's key); m: its matrix about its own origin, as

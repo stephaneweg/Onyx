@@ -2848,8 +2848,11 @@ static bool html_redraw_box_body(const html_content *html, struct box *box,
 		border_right = box->border[RIGHT].width;
 		border_bottom = box->border[BOTTOM].width;
 	} else {
-		x = (x_parent + box->x) * scale;
-		y = (y_parent + box->y) * scale;
+		/* (Onyx: floored, not truncated -- a box above the view, at a negative
+		 * y, lands where it does at a positive one: the CPU painting and the
+		 * compositor's band, whose origins differ, agree: docs/06 §38) */
+		x = floorf((x_parent + box->x) * scale);
+		y = floorf((y_parent + box->y) * scale);
 		width = box->width * scale;
 		height = box->height * scale;
 		/* left and top padding values are normally zero,
@@ -3347,8 +3350,8 @@ static bool html_redraw_box_body(const html_content *html, struct box *box,
 				ib_b_left = ib->border[LEFT].width;
 				ib_b_right = ib->border[RIGHT].width;
 			} else {
-				ib_x = (x_parent + ib->x) * scale;
-				ib_y = (y_parent + ib->y) * scale;
+				ib_x = floorf((x_parent + ib->x) * scale);	/* (Onyx: */
+				ib_y = floorf((y_parent + ib->y) * scale);	/* above) */
 				ib_p_width = (ib->padding[LEFT] + ib->width +
 						ib->padding[RIGHT]) * scale;
 				ib_b_left = ib->border[LEFT].width * scale;
