@@ -66,3 +66,11 @@ Keys     As on Onyx (Help > Controls...): arrows, X / Z = A / B, Enter = Start, 
 Saves    <game>.sav beside the game: the same files as on Onyx.
 3D       Nintendo 64 and GameCube pictures are drawn in software (Options > 3D Resolution).
          The GameCube is slow (its CPU is interpreted) and silent, as on Onyx for now.
+
+Jet Browser
+===========
+
+Jet\Jet.exe (the whole Jet folder; Jet.zip is the same folder zipped): Jet Browser, the web browser of
+Onyx, on the PC -- the same engine as on the Pi, to try sites and compare. Double-click Jet.exe; its data
+(cookies, history, caches) and its log (data\jet.log) stay in the folder. The timings and the scripts'
+messages: Jet.exe --perf --jsdebug --console <address>. Jet\README.txt says the rest.

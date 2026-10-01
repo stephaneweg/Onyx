@@ -49,6 +49,20 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Jet Browser for Windows (2026-10-01, tried under Wine only)
+
+- **`pc/dist/Jet/Jet.exe`** (+ `pc/dist/Jet.zip`): the browser's Onyx sources built with MinGW-w64
+  (`sh pc/Jet/build.sh`, `pc/Jet/jet.mk`, also run by `pc/build.sh`) over `pc/Jet/winkapi.cpp` (the
+  kapi on Win32, grown from Koton's). The same engine, network code, TLS (mbedTLS + `res\ca-bundle`)
+  and caches as the Pi; no JIT, no GPU. Data in `data\` beside the exe (`RAM:` = `data\ram`), the log
+  in `data\jet.log` (`--console`: a console), `--perf` / `--jsdebug` / `--netdebug` (or empty files
+  beside the exe). docs/06 §34, docs/03, `pc/Jet/README.txt`.
+- **Tested under Wine** (Xvfb + xdotool): pages, a local file, HTTPS (h2, TLS 1.3, brotli), css3test.com
+  83 % and responsive after its run, resize, typing, Alt+Left, Alt+F4. **To try on a real Windows 10 /
+  11**: the same, plus a scaled display (`--sharp`), the menus, drag and drop of an .html file.
+- **Next ideas**: the css3test.com hang on the Pi compared with this build's `--perf` log; Windows'
+  certificate store as an option; a proxy setting.
+
 ## RAM:, a volume in memory; Jet Browser's caches there (2026-10-01, kernel v71, not yet tried on the Pi)
 
 - **Kernel `RAM:`** (`kernel/sys/ramfs.cpp`, `kern/ramfs.h`; docs/02 §16): a file system in memory,

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><title>Onyx JS test</title></head>
+<body>
+<h1 id="h">JavaScript: NOT run</h1>
+<p>If the Duktape engine works, the heading above becomes "WORKS" and the line
+below shows a computed result.</p>
+<div id="out">no result yet</div>
+<ul id="list"></ul>
+<script>
+  document.getElementById('h').textContent = 'JavaScript: WORKS';
+  document.getElementById('out').textContent = 'computed: 6 * 7 = ' + (6 * 7);
+  var ul = document.getElementById('list');
+  for (var i = 1; i <= 3; i++) {
+    var li = document.createElement('li');
+    li.textContent = 'item ' + i;
+    ul.appendChild(li);
+  }
+</script>
+</body>
+</html>

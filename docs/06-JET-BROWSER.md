@@ -35,6 +35,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog, the About box), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
+| `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
 | `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
@@ -3066,6 +3067,52 @@ side: `sh tools/tests/run_ramfs_test.sh` (docs/02 §16); on the Pi, `/bin/ramtes
 site again (it loads from `RAM:`: `ls RAM:/jet/cache`, `NS_PERF`'s `cache:read` lines when
 `SD:/apps/jet.app/perf` exists); no `stall: jet:cache` line in `kmsg` while browsing; after a
 restart `RAM:` is empty; `cache_on_card:1` in `SD:/res/Choices` brings the card's folders back.
+
+## 34. Jet Browser for Windows (2026-10-01)
+
+A **Windows x64 build** of Jet Browser, to try sites on a PC and compare what it does with the
+Pi (css3test.com's run, a site's scripts, the timings): `pc/dist/Jet/Jet.exe` and what it reads
+(`pc/dist/Jet.zip`: the folder, for a download). The same sources as the Pi's — the library stack,
+NetSurf's core, the framebuffer frontend, the Onyx glue (`onyx_fetch.c`, `onyx_cache.c`,
+`onyx_ws.c`, `onyx_chrome.cpp`: the wtk toolbar, URL bar, menus), mbedTLS through `onyx_nstls.cpp`
+— over **`pc/Jet/winkapi.cpp`**, the Onyx kernel's table (`KAPI_TABLE_VA`) on Win32, grown from
+Koton's (`pc/Koton/winkapi.cpp`). Built on Linux by **`sh pc/Jet/build.sh`** (`pc/build.sh` calls
+it): MinGW-w64 (the posix-threads variant), `pc/Jet/jet.mk` compiling every library from its source
+as `tools/tests/netsurf/host.mk` does, statically linked (`-static`; ~8 MB `Jet.exe`, the folder
+~17 MB, the zip ~8 MB); the objects outside the repository (`JET_WIN_OUT`, default
+`/home/user/jetwin-build`). User guide: `pc/Jet/README.txt` (copied into the folder).
+
+| | On the Pi | On Windows |
+|---|---|---|
+| The C library | newlib + `crt0libc`, `compat/onyx_compat.c` | MinGW's; `pc/Jet/compat`: `regex.h`, `iconv.h` (the Pi's stubs: no regex, an iconv passthrough) |
+| Files | `/res/...`, `/apps/jet.app/...`, `RAM:/...` through newlib to the kapi | the same paths: `fopen`, `open`, `stat`, `access`, `mkdir`, `rmdir`, `unlink`, `remove`, `rename`, `opendir` / `readdir` / `closedir` are **wrapped at the link** (`-Wl,--wrap=`, `jet.mk`'s `WRAP`): `__wrap_*` in `winkapi.cpp` map `/x` and `SD:/x` to the exe's folder, `RAM:/x` to `data\ram\x`, `C:/x` and `/C:/x` (a `file:` URL's) to themselves, UTF-8 to the wide calls, always binary. The kapi's file calls the same |
+| The data folder (`ONYX_NS_DATAPATH`) | `SD:/apps/jet.app/` | `/data/` = `data\` (Cookies, History, `jet.ini`, TLSSessions...); `RAM:` (the caches) is `data\ram\`, kept across launches; `vol_info` says 1 GB |
+| The window | a wtk `Root` with its frame | a Windows window, its client area the canvas (no Onyx frame); a resize is told as the frame's maximise button (`GUI_EVENT_WINCTL KAPI_FRAME_MAXIMISE`, twice once maximised: wtk's `Root::maximise` fills the work area = the client area); the menu bar a Windows menu; Alt released after Alt+Left / Alt+Right does not enter the menu bar's modal keyboard mode |
+| Network | the kernel's TCP / DNS | Winsock (`tcp_*`, `net_resolve`: IPv4 first, as the Pi has no IPv6), a lock around the socket table |
+| Threads | kernel v67 threads, mutexes, events, barriers, `wait_word`, `kapi_post` + `pump_wait` | Win32 threads, objects, `WaitOnAddress`; `pump_wait` = `MsgWaitForMultipleObjectsEx`, a post wakes it (`PostMessage`) |
+| TLS | mbedTLS, `SD:/res/ca-bundle` | the same mbedTLS and the same bundle (`res\ca-bundle`, not Windows' store): a certificate the Pi refuses is refused; the PSA RNG from `BCryptGenRandom` |
+| JavaScript | QuickJS + the AArch64 JIT (`js_jit`) | QuickJS's interpreter (the JIT is AArch64's); `Date` in Windows' time zone (`quickjs.c` without `__ONYX__`) |
+| Compositing | the GPU (V3D), else the CPU | `gpu_info` answers 0: Choices' `gpu_compositing` takes the CPU path (`compositing on: CPU`) |
+| The log | the kernel log (`kmsg`) | `data\jet.log` (a new one each launch), or a console window (`--console`) |
+| `NS_PERF` / `NS_JSDEBUG` | the files `perf` / `jsdebug` in `SD:/apps/jet.app/` | `--perf`, `--jsdebug`, `--netdebug` (`NS_NETDEBUG`), or an empty file `perf` / `jsdebug` / `netdebug` / `console` beside `Jet.exe` (or `perf` / `jsdebug` in `data\`); any `NS_xxx=value` argument |
+
+**The source changes** for it (none in the Pi's behaviour): the page's event value is `long long` in
+`onyx_chrome.h` (`onyx_chrome_handler`) and `user/nsfb/onyx_surface.c`, `gui_value` in
+`onyx_chrome.cpp`'s handlers (a pointer event packs its wheel and buttons above bit 32: `long` has
+32 bits on Windows; the same 64 bits on the Pi). The rest is in the build (`jet.mk`): libcss in
+`-std=c99` (MinGW's `math.h` defines `OVERFLOW` otherwise), NetSurf's `inet_pton` renamed out of
+ws2_32's way, wasm3's default `m3_Yield` renamed (its weak attribute is empty on Windows:
+`qjs_wasm.c`'s is the one), `-Wl,--stack,16777216` (QuickJS's 4 MB recursion limit on the main
+thread: the Pi app's stack is 8 MB), `-D_POSIX_THREAD_SAFE_FUNCTIONS` (`gmtime_r`).
+
+**Tested** (on Linux, under Wine 9 in a virtual X display, `xdotool` for the input): the welcome
+page; a local file (`Jet.exe C:\test.html`: a script, `console.log` in the log, `fetch` of a file);
+`https://example.com/` (TLS 1.3, HTTP/2, brotli; the sandbox's re-signing proxy refused as a self-
+signed chain, as it should, then accepted with its root appended to a test copy's bundle);
+**css3test.com: 83 %** (5263 of 6419), the window responsive after the run (the wheel scrolls,
+~10–15 ms a frame), the process idle; the window shrunk and grown (the page laid out again), typing
+an address, Alt+Left, Alt+F4 (a clean exit: History, Cookies, TLSSessions written). Not tried on a
+real Windows machine.
 
 ## 8. Known gaps
 

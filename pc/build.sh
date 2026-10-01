@@ -2,7 +2,7 @@
 # build.sh -- the Onyx tools for Windows, built on Linux: obcore.dll (mingw-w64: the compiler, VM
 # and screen of user/basic), OnyxBasic.exe (the .NET Framework 4.8 editor + runtime) and OnyxRemote.exe
 # (the client of rdpd; the .NET SDK with EnableWindowsTargeting), NintendoEMU.exe + nemucore.dll (the
-# emulators of Onyx), and Koton (pc/Koton/build.sh: pc/dist/Koton/). Result: pc/dist/ -- copy it to the PC.
+# emulators of Onyx), Koton (pc/Koton/build.sh: pc/dist/Koton/) and Jet Browser (pc/Jet/build.sh: pc/dist/Jet/). Result: pc/dist/ -- copy it to the PC.
 #   sh pc/build.sh
 # On Windows (Git Bash / MSYS2): a MinGW-w64 g++ (e.g. WinLibs) and the .NET SDK on the PATH.
 set -e
@@ -32,4 +32,6 @@ DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/NintendoEMU
 cp "$HERE/NintendoEMU/bin/out/NintendoEMU.exe" "$HERE/NintendoEMU/bin/out/NintendoEMU.exe.config" "$DIST/"
 # Koton, the studio of Onyx, for Windows: pc/dist/Koton (its own script: the Onyx sources over a Win32 kapi)
 sh "$HERE/Koton/build.sh"
+# Jet Browser for Windows: pc/dist/Jet + pc/dist/Jet.zip (its own script: NetSurf and its libraries over a Win32 kapi)
+sh "$HERE/Jet/build.sh"
 echo "built: $DIST"

@@ -29,8 +29,10 @@ unsigned *onyx_chrome_open(int w, int h, int *stride);
 unsigned *onyx_chrome_page(int *stride, int *w, int *h);
 
 /* The page's events: the surface's handlers (the kapi pointer / key handler signature),
- * given the page's coordinates (the band's height taken off). */
-typedef void (*onyx_chrome_handler)(unsigned long sender, int event, long value);
+ * given the page's coordinates (the band's height taken off). The value has 64 bits (a
+ * pointer event packs its wheel, buttons, x, y): long long, as long has 32 on Windows
+ * (pc/Jet: Jet Browser's Windows build). */
+typedef void (*onyx_chrome_handler)(unsigned long sender, int event, long long value);
 void onyx_chrome_set_page_handlers(onyx_chrome_handler ptr, onyx_chrome_handler key);
 
 /* Pump the window's events (the band's go to wtk, the page's to the handlers) and redraw

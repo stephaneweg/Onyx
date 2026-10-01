@@ -94,7 +94,7 @@ static enum nsfb_key_code_e map_key(long k)
 }
 
 /* kapi pointer handler: value packs (changed<<40)|(buttons<<32)|(x<<16)|y. */
-static void onyx_pointer(unsigned long sender, int event, long value)
+static void onyx_pointer(unsigned long sender, int event, long long value)
 {
 	nsfb_event_t e;
 	UNUSED(sender);
@@ -155,7 +155,7 @@ static void onyx_pointer(unsigned long sender, int event, long value)
 }
 
 /* kapi key handler: value = ASCII char or KEY_* code. Onyx delivers presses only. */
-static void onyx_key(unsigned long sender, int event, long value)
+static void onyx_key(unsigned long sender, int event, long long value)
 {
 	nsfb_event_t e;
 	UNUSED(sender);

@@ -2257,6 +2257,17 @@ barwidth = 40
   `xdotool`): the demo song, playback, the editors, the plugins (a generator, an effect, an instrument:
   processes, editors, their sound), Compose with AI (`llm.exe` over HTTPS), the file dialog, closing.
   `pc/Koton/README.txt` is the user's page (copied into the folder).
+- **Jet Browser for Windows** (`pc/Jet`, built on Linux by `sh pc/Jet/build.sh` into `pc/dist/Jet/` and
+  `pc/dist/Jet.zip`, committed; `pc/build.sh` runs it too): the browser's Onyx sources (NetSurf, its
+  libraries, `user/netsurf`, wtk) built with MinGW-w64 by `pc/Jet/jet.mk` (every library from its source,
+  as `tools/tests/netsurf/host.mk`; static) over [`pc/Jet/winkapi.cpp`](../pc/Jet/winkapi.cpp), Koton's
+  Win32 table grown for it: Winsock `tcp_*` / `net_resolve` (thread-safe), mutexes / events / barriers,
+  `vol_info` (`RAM:` = `data\ram`), no GPU (`gpu_info` 0: the CPU compositor), a window resize told as the
+  frame's maximise button (Jet's loop is not `Root::run`), the log in `data\jet.log` or a console, the
+  switches `--perf` / `--jsdebug` / `--netdebug` (or empty files beside the exe). The C library's file
+  calls are wrapped at the link (`-Wl,--wrap=fopen`...) to take the Pi's paths (`/res/...`, `/data/...`,
+  `RAM:/...`). The details, what was changed for it and how it was tested: docs/06 §34;
+  `pc/Jet/README.txt` is the user's page.
 - **Volume and Wi-Fi from the menu bar** (ABI v60): `user/volume.h` (`volume_save` /
   `volume_restore`: `SD:/etc/sound.ini`) for the menu bar's volume box and `/bin/volume`
   (`kapi_sound_volume (vol, mute)`, −1 keeps). The Wi-Fi menu is its own app,

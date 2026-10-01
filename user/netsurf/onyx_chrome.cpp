@@ -611,23 +611,23 @@ bool has_modal (void)
 }
 
 // The pointer value with y moved up by the band (clamped to the page's top).
-long page_value (long v)
+gui_value page_value (gui_value v)
 {
-	long y = GUI_PTR_Y (v) - TB;
+	gui_value y = GUI_PTR_Y (v) - TB;
 	if (y < 0) y = 0;
-	return (v & ~0xFFFFL) | (y & 0xFFFF);
+	return (v & ~(gui_value) 0xFFFF) | (y & 0xFFFF);
 }
 
 unsigned g_inputs;	// the clicks, wheel turns and keys so far (onyx_chrome_input_pending)
 
 // Events taken while a script runs (onyx_chrome_pump_deferred): kept, handled after it.
-struct DeferredEvent { unsigned long sender; int ev; long v; bool key; };
+struct DeferredEvent { unsigned long sender; int ev; gui_value v; bool key; };
 enum { DEFER_MAX = 256 };
 DeferredEvent g_deferred[DEFER_MAX];
 int g_ndeferred;
 bool g_defer, g_pumping;
 
-bool defer_event (unsigned long sender, int ev, long v, bool key)
+bool defer_event (unsigned long sender, int ev, gui_value v, bool key)
 {
 	if (!g_defer) return false;
 	bool move = !key && ev == GUI_EVENT_PTR_MOVE;
@@ -639,8 +639,8 @@ bool defer_event (unsigned long sender, int ev, long v, bool key)
 	return true;
 }
 
-void ptr_event (unsigned long sender, int ev, long v);
-void key_event (unsigned long sender, int ev, long k);
+void ptr_event (unsigned long sender, int ev, gui_value v);
+void key_event (unsigned long sender, int ev, gui_value k);
 
 void replay_deferred ()
 {
@@ -653,7 +653,7 @@ void replay_deferred ()
 	g_ndeferred = 0;
 }
 
-void ptr_event (unsigned long sender, int ev, long v)
+void ptr_event (unsigned long sender, int ev, gui_value v)
 {
 	static int bl, br, bm;
 	if (g_win == 0) return;
@@ -707,7 +707,7 @@ void ptr_event (unsigned long sender, int ev, long v)
 	if (ev == GUI_EVENT_PTR_UP && !bl && !br && !bm) g_grab = 0;
 }
 
-void key_event (unsigned long sender, int ev, long k)
+void key_event (unsigned long sender, int ev, gui_value k)
 {
 	if (g_win == 0 || ev != GUI_EVENT_KEY) return;
 	if (defer_event (sender, ev, k, true)) return;
