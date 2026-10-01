@@ -1907,6 +1907,15 @@ Chromium's brand list with its GREASE brand drawn from the major version as Chro
 origins that asked for them by `Accept-CH` (kept per origin for the app's life), as Chrome.
 Bump `ONYX_CHROME_MAJOR` / `ONYX_CHROME_FULL` now and then: an old Chrome stands out.
 
+**NetSurf's own User-Agent by default** (2026-10-01, the user's choice; `utils/useragent.c`):
+claiming Chrome (on Android by default) got Google's and DuckDuckGo's bot checks -- a "Chrome"
+whose TLS handshake and scripts are not Chrome's -- while their full script applications are
+too heavy for the Pi anyway. Jet Browser now says `Mozilla/5.0 (X11; Linux aarch64)
+NetSurf/3.12`: no client hints (`sec-ch-ua...` only with a Chrome User-Agent),
+`navigator.vendor` empty, `navigator.platform` `Linux aarch64`. DuckDuckGo serves its full
+results to it (the PC bench). "Desktop site" still sends a desktop Chrome's to the sites the
+user picks, and Choices' `user_agent:` any other (the Android Chrome's is given there).
+
 **Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
 comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
 1.5.7's decompressor vendored in `third_party/zstd-1.5.7`, `libzstddec.a`, ~70 KB).

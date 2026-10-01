@@ -3731,9 +3731,9 @@ const navigator = {
 	get appVersion() { return N.userAgent().replace(/^Mozilla\//, ''); },
 	product: 'Gecko',
 	productSub: '20030107',
-	vendor: 'Google Inc.',
+	get vendor() { return /Chrome\//.test(N.userAgent()) ? 'Google Inc.' : ''; },	/* (Onyx: NetSurf's UA: none) */
 	vendorSub: '',
-	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux armv8l'; },	/* (Onyx: "Desktop site") */
+	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux aarch64'; },	/* (Onyx: "Desktop site") */
 	language: 'fr-FR',
 	languages: ['fr-FR', 'fr', 'en-US', 'en'],
 	cookieEnabled: true,

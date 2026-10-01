@@ -94,11 +94,19 @@ user_agent_string(void)
 	 * SD:/res/Choices); the HTTP requests (user/netsurf/onyx_fetch.c) and
 	 * navigator.userAgent alike */
 	const char *choice = nsoption_charp(user_agent);
+	static char netsurf_ua[64];
 
 	if (choice != NULL && choice[0] != '\0')
 		return choice;
-	return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
-		"(KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Mobile Safari/537.36";
+	/* Onyx (Jet Browser, the user's choice 2026-10-01): NetSurf's own, honest User-Agent by
+	 * default -- claiming Chrome got Google and DuckDuckGo's bot checks (a Chrome whose TLS
+	 * and scripts are not Chrome's), and their full script applications are too heavy for
+	 * the Pi anyway; as NetSurf they serve their light HTML pages. "Desktop site" still
+	 * sends a desktop Chrome's to the sites the user picks (below). */
+	if (netsurf_ua[0] == '\0')
+		snprintf(netsurf_ua, sizeof netsurf_ua, "Mozilla/5.0 (X11; Linux aarch64) NetSurf/%d.%d",
+				netsurf_version_major, netsurf_version_minor);
+	return netsurf_ua;
 	(void) user_agent_build_string;
 }
 
