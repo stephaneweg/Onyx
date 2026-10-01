@@ -56,6 +56,17 @@ merge the latest `origin/main` into the working branch (`git merge origin/main`,
 conflict). Then commit and **push into `main`** (`git push origin HEAD:main`; also push the
 working branch). Delete the working branch (local and `origin`) **only when the user says so**.
 
+## RULE — publish the packages automatically
+
+When the work **changes what is on the card** (a new app, an app or a `/bin` tool rebuilt and staged,
+the kernel, `sdcard/etc`, fonts, resources, samples), you **package and publish it in the same
+session**, without being asked, following the skill **`.claude/skills/onyx-packages/SKILL.md`**: a new
+app's package declared in `tools/pkg/packages.ini` (its extra files, its needs, its user files, its
+samples; an emulator's `games =`), then `sh tools/pkg/publish.sh` → the new versions, the signed
+index pushed to `stephaneweg/onyx-packages`, and `tools/pkg/versions.ini`, `sdcard/var/pkg/db`,
+`sdcard_lite` committed in onyx. The signing key comes from the environment (`ONYX_PKG_KEY`); without
+it, say so to the user and do not publish. Never generate another key.
+
 ## Build (reminder)
 
 From `kernel/`: `make` (→ `kernel8-rpi4.img` then the apps), `make stage` (copies image +

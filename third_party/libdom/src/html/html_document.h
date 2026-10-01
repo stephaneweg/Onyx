@@ -30,6 +30,8 @@ struct dom_html_document {
 	dom_string **memoised;
 	/** Cached strings for HTML element names */
 	dom_string **elements;
+	/** Onyx: an XML document (dom_html_document_xml_kind: 0 HTML) -- docs/06 §43 */
+	int onyx_xml;
 };
 
 #include "html_document_strings.h"

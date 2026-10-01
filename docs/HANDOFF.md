@@ -20,8 +20,8 @@ answer in French. The docs stay in English.
 - The user never compiles for the Pi: they test the staged `sdcard/` on the Pi and `pc/dist` on
   Windows. `pc/dist` and `sdcard/` binaries are committed.
 - Never commit: ROMs / ISOs / saves (`.z64 .n64 .v64 .sfc .smc .nes .gb* .sav .iso .gcm .wav`),
-  `sdcard/etc/wpa_supplicant.conf` (psk REDACTED, pre-commit hook + skip-worktree — never defeat
-  it), `sdcard/etc/ftpfs.ini`, `shelf.ini`, `SD:/apps/lisa.app/config.ini` (Groq key),
+  `sdcard/etc/wpa_supplicant.conf` (the user's Wi-Fi: untracked, ignored, never packaged, the
+  pre-commit hook refuses it — never defeat it), `sdcard/etc/ftpfs.ini`, `shelf.ini`, `SD:/apps/lisa.app/config.ini` (Groq key),
   `sdcard/etc/clock`. Check before each commit:
   `git diff --cached --name-only | grep -i -E "\.sfc$|\.smc$|\.nes$|\.gb|\.sav$|\.z64$|\.n64$|\.v64$|\.wav$|\.iso$|\.gcm$|wpa_supplicant|ftpfs.ini|shelf.ini|lisa.app/config"`
   must print nothing. Do not download commercial ROMs; the user's own ISO/ROMs stay local.
@@ -137,6 +137,24 @@ answer in French. The docs stay in English.
 - **Needs a rebuild for the Pi** (Jet, `sdcard/apps/jet.app/main`) and Windows (`sh pc/Jet/build.sh`).
   **To try on the Pi**: Ctrl+F on bbc.co.uk (typing speed, the count), a copied image pasted into
   Paint, text copied into the Text Editor and back into a page's field.
+
+## Jet Browser: XML documents, XPath, XSLT -- Acid3 100 / 100 (2026-10-01, PC bench only)
+
+- docs/06 §43. A frame on a type Jet does not show gets an empty document and its `load`
+  (Acid3's own time 5.56 -> 0.52 s); **expat 2.7.1** vendored (`third_party/expat-2.7.1`, MIT)
+  parses XML into libdom (`html/onyx_xml.c`): XHTML as XML, XML + CSS, the tree view, Chrome's
+  error box, SVG documents at the top and in frames, `<object>`'s SVG document; DOMParser /
+  XMLSerializer / createDocument as XML; a basic SVG DOM; **xslt.js** (XPath 1.0:
+  `document.evaluate`; XSLT 1.0: `<?xml-stylesheet type="text/xsl"?>`, `XSLTProcessor`), loaded
+  on demand. **Acid3 94 -> 100 / 100** (`ACID3_MIN`=100). Test: `sh tools/tests/netsurf/xmltest.sh`.
+- **The Pi (not built here)**: new `libexpat.a` (`make -C user/netsurf`: the new
+  `third_party/expat-2.7.1/libexpat.a` target), **`libdom.a` rebuilt clean** (`struct
+  dom_html_document` got a field, `include/dom/html/html_document.h` new functions, `element.c`),
+  `libplutosvg.a` rebuilt (a PlutoSVG fix), then Jet linked again (`netsurf-app.mk link stage`:
+  `-lexpat`, `qjs_xml.c`, `xslt.js` as `qjsgen/qjs_xslt_js.h`). Windows: `pc/Jet/jet.mk` compiles
+  expat itself.
+- Left: `xsl:include` / `xsl:import`, `document()` of other URIs, SVG fonts / SMIL, the SVG DOM's
+  geometry from the drawing, an SVG document without a size at the window's size.
 
 ## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
 

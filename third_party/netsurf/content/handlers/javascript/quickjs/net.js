@@ -1433,6 +1433,7 @@ if (!isWorker && typeof N.frameSelf === 'function' && N.frameSelf()) {
 	}
 
 	/* an iframe's window and (same origin) its document */
+	const shownDocs = new WeakMap();
 	if (G.HTMLIFrameElement) {
 		Object.defineProperty(G.HTMLIFrameElement.prototype, 'contentWindow', { configurable: true, enumerable: true,
 			get() { const id = N.frameOf(this); return id ? winFor(id) : null; } });
@@ -1440,7 +1441,19 @@ if (!isWorker && typeof N.frameSelf === 'function' && N.frameSelf()) {
 			get() {
 				const id = N.frameOf(this);
 				const g = id ? N.frameAccess(id) : null;
-				return g && typeof g === 'object' ? g.document : null;
+				if (g && typeof g === 'object')
+					return g.document;
+				/* (Onyx, docs/06 §43: a frame showing an image or a text of this origin -- no
+				 * document of its own: an empty one, kept while it shows that) */
+				if (g === null && id && N.frameShown(id)) {
+					let e = shownDocs.get(this);
+					if (!e || e.id !== id) {
+						e = { id, doc: document.implementation.createHTMLDocument('') };
+						shownDocs.set(this, e);
+					}
+					return e.doc;
+				}
+				return null;
 			} });
 	}
 }

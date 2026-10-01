@@ -46,6 +46,8 @@ FT   := $(LIBROOT)/freetype-2.14.3
 # Onyx: PlutoVG + PlutoSVG (SVG images, inline <svg>, <canvas>; user/netsurf/Makefile)
 PVG  := $(LIBROOT)/plutovg-1.3.3
 PSVG := $(LIBROOT)/plutosvg-0.0.8
+# Onyx: expat, the XML parser (XML documents: docs/06 section 43; user/netsurf/Makefile)
+EXPAT := $(LIBROOT)/expat-2.7.1
 FONTS := $(LIBROOT)/dejavu-fonts-ttf-2.37
 # mbedTLS for the https:// transport (user/tls/onyx_tls.hpp)
 MBEDTLS ?= $(LIBROOT)/mbedtls-3.6.3
@@ -63,7 +65,8 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
       -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
       -I$(DOM)/bindings -I$(DOM)/src -I$(PNG) -I$(JPEG) -I$(ZLIB) -I$(WEBP)/src \
       -I$(FT)/include -I$(HERE)freetype $(NS_FT_CF) \
-      -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source
+      -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source \
+      -DXML_STATIC -I$(EXPAT)/lib
 
 # --- JavaScript: QuickJS (libquickjs.a, user/netsurf/Makefile) and the DOM on it ----------
 # javascript/quickjs/qjs.c: NetSurf's js.h on QuickJS, the natives (libdom's tree, the
@@ -71,7 +74,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). (NetSurf's Duktape backend and its generated bindings are removed.)
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c
 # Onyx: WebAssembly on wasm3 (libm3.a, user/netsurf/Makefile)
 W3     := $(LIBROOT)/wasm3-0.9.2
 
@@ -192,6 +195,14 @@ $(QCC_OBJ_NS): INC += -I$(QJS) -I$(MBEDTLS)/include
 # Onyx: the frames' windows, postMessage between them, MessagePort across realms
 QFR_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_frames.c))
 $(QFR_OBJ_NS): INC += -I$(QJS)
+# Onyx: XPath / XSLT (docs/06 section 43) -- xslt.js as a C string for qjs_xml.c (loaded on demand)
+$(OUT)/qjsgen/qjs_xslt_js.h: $(JSQ)/xslt.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from xslt.js by netsurf-app.mk */'; echo 'static const char qjs_xslt_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+QXML_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_xml.c))
+$(QXML_OBJ_NS): $(OUT)/qjsgen/qjs_xslt_js.h
+$(QXML_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen
 
 # the frontend's main becomes netsurf_main; onyx_main.c provides the real main() (Onyx args).
 $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(FB)/gui.c)): CF += -Dmain=netsurf_main
@@ -232,10 +243,10 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
           -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) -L$(QJS) \
-          -L$(PSVG) -L$(PVG) -L$(ZSTD) -L$(NGH) -L$(W3) \
+          -L$(PSVG) -L$(PVG) -L$(ZSTD) -L$(NGH) -L$(W3) -L$(EXPAT) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
           -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg \
-          -lm3 -lzstddec -lnghttp2 -lz -lm
+          -lm3 -lzstddec -lnghttp2 -lexpat -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by

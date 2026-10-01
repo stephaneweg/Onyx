@@ -72,7 +72,10 @@ enum hlcache_retrieve_flag {
 	/** It's permitted to convert this request into a download */
 	HLCACHE_RETRIEVE_MAY_DOWNLOAD = (1 << 31),
 	/* Permit content-type sniffing */
-	HLCACHE_RETRIEVE_SNIFF_TYPE   = (1 << 30)
+	HLCACHE_RETRIEVE_SNIFF_TYPE   = (1 << 30),
+	/** Onyx (docs/06 §43): a window's document -- an SVG is a document there (an XML
+	 * document, its DOM), not an image; another XML type (+xml) an XML document */
+	HLCACHE_RETRIEVE_ONYX_DOCUMENT = (1 << 29)
 };
 
 /**
