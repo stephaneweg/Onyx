@@ -161,9 +161,19 @@ static void app_icon (Canvas &cv, int cx, int y, App *a)
 	if (a->icon) blit_icon (cv, cx - ICON / 2, y, a->icon, a->iw < ICON ? a->iw : ICON, a->ih < ICON ? a->ih : ICON);
 }
 
+// (each click said in the kernel log, kmsg: a launcher that starts nothing can be told apart --
+//  no click, its window raised, its main not found)
+static void dock_log (const char *a, const char *b)
+{
+	char t[160]; int n = 0;
+	lx_cat (t, sizeof t, &n, "dock: "); lx_cat (t, sizeof t, &n, a); lx_cat (t, sizeof t, &n, b); lx_cat (t, sizeof t, &n, "\n");
+	kapi_stdout_write (t, (unsigned) n);
+}
 static void launch_or_raise (const char *name)
 {
-	if (!kapi_raise_app (name)) lx_launch (name, 0);
+	if (kapi_raise_app (name)) { dock_log (name, ": its window raised"); return; }
+	if (lx_launch (name, 0)) dock_log (name, ": started");
+	else dock_log (name, ": NOT started (no SD:/apps/<name>.app/main, nor a main.<ext>)");
 }
 
 // ---- the drawers, the launchers, the workspaces (dock.ini) ----------------------------------------

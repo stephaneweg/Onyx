@@ -54,6 +54,27 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## PDF Viewer and the PDF export (2026-10-01, not yet tried on the Pi)
+
+- **What**: `user/Apps/pdf` (docs/03 *PDF Viewer*; docs/04 §12; the mock-ups and the user's decisions:
+  `docs/pdf/README.md`) on **MuPDF 1.28.5** (`third_party/mupdf-1.28.5`, its fitz + pdf parts, built by
+  `user/Apps/pdf/mupdf.mk`; **the app is AGPL-3.0**): a tab a document, thumbnails / contents / search in the
+  side panel, the zoom, one page / continuous / two pages, rotation, full screen, selection and copy, links
+  (the web: Jet), passwords, Properties (facts, fonts, security), the home's recent documents (reopened at
+  their page: `SD:/etc/pdf/recent.tsv`), `pdf = pdf` in `fileassoc.ini`. A worker thread draws the display
+  lists and searches; the files go through the kapi (`KStream`).
+- **The export**: `user/pdf/pdfwrite.h` (**MIT**, ours): PDF 1.7, TrueType fonts embedded as subsets (Identity-H,
+  ToUnicode), images, links, bookmarks. Writer's *File ▸ Export as PDF* (its pages drawn again into it:
+  `PageView::paintPage`, `g_pdf`; the headings as bookmarks) and the Spreadsheet's (the used cells cut into
+  A4 pages, fitted to the width, the charts as images).
+- **Tests**: `sh tools/tests/run_pdf_test.sh`; the screenshots: `shots.sh pdf writer sheet`.
+- **Licences**: the user, 2026-10-01: **all our own software under MIT** wherever possible (CLAUDE.md,
+  docs/LICENSING.md).
+- **To try on the Pi**: a page's drawing time (the A72, at fit width and 400 %), the memory with a big PDF
+  (the bitmaps: 18 M pixels at most; MuPDF's store: 96 MB), the search on a long document, full screen.
+- **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Writer's
+  hyperlinks (the export would make them links).
+
 ## Media Player, the music library (2026-10-01, not yet tried on the Pi)
 
 - **What**: `user/Apps/media` (docs/03 *Media Player*; docs/04 §12; the mock-ups and the user's decisions:
@@ -1404,7 +1425,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   (well-known providers pre-filled), threads, attachments, drafts. **Contacts** = a Cardfile
   form: the mail client creates the `.card` structure, reads / writes it (address completion,
   "add sender"), and the file opens in Cardfile too.
-- **PDF viewer** (MuPDF-like, FreeType) + **PDF export** in Writer and the Spreadsheet.
+- **PDF viewer** + **PDF export** in Writer and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
 - **Screenshot** tool (screen / window / area; Print Screen key). **Done** (2026-10-01: its section above).
 - **Clock**: alarms, timer, stopwatch, world clocks (notifications through notifyd).
 

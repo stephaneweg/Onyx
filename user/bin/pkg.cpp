@@ -216,6 +216,8 @@ static int cmd_check (void)
 	return k ? 0 : 1;
 }
 
+static int run (const char *c, char **rest, int nr);
+
 int main (void)
 {
 	static char buf[2048]; char *av[64];
@@ -231,6 +233,14 @@ int main (void)
 		return 3;
 	}
 	const char *c = av[a0]; char **rest = av + a0 + 1; int nr = ac - a0 - 1;
+	int rc = run (c, rest, nr);
+	M->refresh_desktop ();					// (an app installed, updated or removed: the dock again)
+	return rc;
+}
+
+static int run (const char *c, char **rest, int nr)
+{
+	Manager &m = *M;
 	if (eq (c, "list")) return cmd_list (nr, rest);
 	if (eq (c, "info") && nr == 1) return cmd_info (rest[0]);
 	if (eq (c, "add") && nr) return cmd_add (nr, rest);

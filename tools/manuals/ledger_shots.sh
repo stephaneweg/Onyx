@@ -68,7 +68,7 @@ S_YEARS=$(c 365 84); S_JOURNALS=$(c 472 84); S_ACCOUNTS=$(c 562 84); S_PRINTING=
 report () { printf "%s;wait;%s" "$(c 328 82)" "$(c 300 $((113 + 24 * $1)))"; }	# 0 Journals, 1 General ledger, 2 Trial balance,
 									# 3 Balance sheet, 4 Income statement, 7 Receivables by age
 # Writer's window made the screen's, the page's width shown (its menu's item 16; 17: the whole page)
-WRITER="wait;wait;winctl 2;wait;wait;menu 16;wait;wait"
+WRITER="wait;wait;winctl 2;wait;wait;menu 17;wait;wait"
 
 # ---- getting started (no books open: the welcome, a new company) -------------------------------------------
 if want welcome; then rm -f "$OUT/writes/apps/ledger.app/last.txt"; sim ledger welcome "wait"; fi
