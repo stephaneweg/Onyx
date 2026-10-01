@@ -36,7 +36,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog, the About box), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -3380,6 +3380,119 @@ applied no style at all (not even its own pages'), while the PC bench (built fro
 right. The objects now carry their header lists (`-MMD -MP -MF <obj>.o.d`, included by the
 Makefile; ignored by git): a header changed rebuilds its users. libdom and libcss were rebuilt
 from scratch.
+
+## 37. Acid2 and Acid3 (2026-10-01)
+
+**The tests**, kept as published (with their support files) in `tools/tests/netsurf/pages/acid2/`
+(acid2.acidtests.org: `index.html`, `reference.png`, `reference.html`) and `pages/acid3/`
+(acid3.acidtests.org: `index.html`, `empty.*`, `support-*.png`, `svg.xml`, `xhtml.1-3`,
+`font.ttf`/`.svg`, `reference.*`). Acid3 needs its original server's statuses and content types
+(`empty.css` served as `text/html`, `support-a.png` a 404, `support-b.png` as `text/html`, the
+`xhtml.N` as `text/xml`, `svg.xml` as `image/svg+xml`): **`tools/tests/netsurf/acidsrv.py`**
+serves `pages/acid3/` that way (anything else: 404).
+
+**Run them**: `OUT=/tmp/nsbench PORT=8160 sh tools/tests/netsurf/acidtest.sh [acid2|acid3]`
+(both when no argument; the bench is built in `$OUT/build`, the pictures and logs go to
+`$OUT/acid/`).
+
+- **Acid2**: the test opened at `#top`, as a browser shows it, in three modes: composited
+  (the default), painted by the CPU (`NS_GPU=0`), and scrolled down twice and back (the fixed
+  boxes and backgrounds painted again where the scroll moved them). The face (168 x 168 px
+  below "Hello World!") is found in the view and compared with `reference.png` pixel by
+  pixel, no tolerance; the whole view is compared with `reference.html`'s render (the
+  reference image in a page). **Result: identical in the three modes (0 pixels differ).**
+- **Acid3**: the page over `acidsrv.py` (`SIM_REALNET=1`), `NS_INJECT` adds a report that
+  prints `ACID3-SCORE n (index run)` and one `ACID3-FAIL nn: message` line per failed
+  subtest (from the test's own log, `NS_JSDEBUG=1`); F5 reloads it five times and the last
+  report counts. It fails when the score is below **`ACID3_MIN` (94)** or when fewer than 100
+  subtests ran. **Score: 51 -> 94 / 100.**
+
+### What Acid2 found (all fixed)
+
+- `position: fixed` painted where the viewport is: the fixed boxes are laid out at scroll 0
+  and moved by the scroll offset when painted (`html_box_viewport_fixed`, `redraw.c`); a scroll
+  repaints them where they were and where they are now (`html_fixed_scrolled`, called from
+  `browser_window_scrolled`), composited or not. `background-attachment: fixed` is positioned
+  in the viewport.
+- The painting order of CSS 2.1 Appendix E inside each block formatting context: the
+  in-flow blocks' backgrounds, then the floats, then the lines (`redraw.c`'s phases:
+  `onyx_phase_*`, `html_redraw_box_body`). Acid2's eyes and nose overlap that way. A layered
+  float's inline container is no longer culled (`HAS_FLOATS` in the descendant bounds).
+- `<object>` fallback content when its resource fails: a fetch error, an HTTP error status
+  (llcache's code >= 400) or a type it cannot show; the element's children are boxed instead
+  (`html_object_fallback`, `box_object`).
+- A float after a block takes the collapsed margins before it only (the following blocks'
+  margins put it too high: `layout.c`'s margin walk).
+- Relative offsets in `em` from the bottom / right (libcss returned the offset's type without
+  its unit: 1px); auto heights never negative.
+- A fragment (`#top`) scrolled to again once the page is shown -- the new content's scroll
+  reset undid it -- unless the user has scrolled away meanwhile.
+- A 1x1 opaque PNG used as a tiled background painted nothing (the fill colour's
+  transparency byte, `image.c`).
+- `medium` / `thick` borders are 3 / 5 px (as Chrome; also outlines and column rules).
+- The alpha blend (`libnsfb_plot_util.h`) is now exactly `floor((s*a + d*(255-a)) / 255)`:
+  the reference's semi-transparent pixels were off by one.
+
+### What Acid3 found (fixed)
+
+- **Selectors (libcss, NetSurf's `css/select.c`)**: `:enabled`, `:disabled`, `:checked`
+  (an input's checkedness, an option's selectedness), `:lang()` (the `lang` attributes up the
+  tree), `:empty` ignoring empty text nodes; attribute values compared case-sensitively except
+  for HTML's list of case-insensitive attributes; `~=` splitting on any whitespace; a
+  descendant or `~` combinator backtracked when the rest of the selector has another
+  combinator (it took the first match only; bounded to depth 32).
+- **Media queries (libcss)**: an invalid query drops itself, not the whole list (recovery at
+  the next top-level comma); `not` negates the whole query.
+- **The CSS3 `cursor` keywords** (15 of them; the computed style's cursor field is now 6 bits).
+- **Style sheets and scripts in the same turn**: a script that changed a `<style>` and reads a
+  geometry or `getComputedStyle` sees the new rules (`html_css_flush_sync`: the modified
+  inline sheets converted now, their `x-ns-css` fetches polled, their contents caught up --
+  also when the scheduled conversion already started them); a `<style>` inside an inserted
+  subtree (`innerHTML`, `document.write` into a frame) gets its sheet
+  (`html_css_style_inserted`, from `DOMNodeInsertedIntoDocument`); images with a `data:` URL
+  are converted before a script's read (`html_object_flush_sync`), so a pending image's box is
+  the image's, not its alt text's. More forced layouts a turn when they are cheap (16, or
+  100 ms).
+- **DOM (dom.js, html5.js, qjs.c, libdom)**: a full `Range` with live boundary updates on
+  insertions, removals, `splitText` and data changes; `NodeIterator`'s pre-removal steps;
+  the pre-insertion validity checks (`HierarchyRequestError`); `replaceData` with offsets
+  (all the CharacterData edits through it); real `DocumentType` nodes
+  (`createDocumentType`, `createDocument` with a doctype, `publicId` / `systemId`); the XML
+  Name / QName checks (`InvalidCharacterError`, `NamespaceError`); `localName` without the
+  prefix; `document.open` / `write` / `close` on a frame's document after it was parsed; the
+  table API (`caption`, `tHead`, `tBodies`, `rows`, `insertRow`, `cells`, `rowIndex`...);
+  `initUIEvent`; `defaultSelected`; `<object>`'s `data` / `type` reflected; `document.forms`
+  / `images` named collections; a node seen from another frame keeps its identity (the
+  wrapper of the realm whose document owns it); `getComputedStyle` answers the keyword
+  properties.
+- **libdom**: class names split on ASCII whitespace; `nodeValue` on a text node fires its
+  mutation events; an input's checkedness and dirty value are state, not the attribute
+  (`checked` set by script no longer changes `defaultChecked`); a detached text node's data
+  change no longer crashes.
+- **NetSurf**: an image map's `coords` no longer corrupted by `strtok` on the DOM's string;
+  the user's checkbox / radio toggles restyle (`:checked`).
+
+### The subtests still failing (94 / 100)
+
+| Test | What | Why |
+|---|---|---|
+| 69 | the support files loaded (seven frames' `load` events), then the SVG frame's DOM | `svg.xml` (`image/svg+xml`), `empty.xml` and the `xhtml.N` (`text/xml`) are not documents in Jet's frames: no XML parser builds a DOM for a frame, so not all the loads come and the SVG document has no elements (times out) |
+| 74 | `getSVGDocument()` on an `<iframe>` / `<object>` | no SVG documents (above) |
+| 75 | SVG DOM interfaces (`SVGRectElement`...) | no SVG DOM: SVG is drawn by PlutoSVG from its source, not from DOM nodes (§12) |
+| 77 | `SVGTextContentElement.getNumberOfChars()` | no SVG DOM |
+| 79 | an SVG font in a frame's document | no SVG documents in frames |
+| 80 | scripts in an XHTML frame (`xhtml.1`) | XHTML served as `text/xml` is not parsed as a document |
+
+All six need **XML documents in frames** (an XML parser into libdom -- libdom has an expat
+binding -- and a content handler for `text/xml`, `application/xhtml+xml`, `image/svg+xml` in a
+frame) and then an **SVG DOM** over those nodes. Not done: weeks of work for the SVG DOM, rare
+on the web (docs/07 §3).
+
+**The Pi**: not built here. Rebuild `libcss.a` (the computed style's layout changed: the
+cursor bits), `libdom.a` (`struct dom_html_input_element` changed), `libhubbub.a`, libnsfb
+(`libnsfb_plot_util.h`), then link Jet again (`make -C user/netsurf`, then
+`make -f user/netsurf/netsurf-app.mk link stage`); the Makefile now tracks headers, but a clean
+build of libcss and libdom is the safe choice after the generated headers changed.
 
 ## 8. Known gaps
 

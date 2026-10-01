@@ -49,6 +49,17 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
+
+- **Acid2 identical** to its reference (the face pixel by pixel, composited, CPU-painted and after
+  a scroll); **Acid3 51 -> 94 / 100** (docs/06 §37: what was fixed -- `position: fixed`, the
+  Appendix E paint order, `<object>` fallback, selectors, media query lists, DOM Range /
+  NodeIterator, `document.open`, the table API, sheets and `data:` images in the script's turn).
+- Bench: `OUT=/tmp/nsbench PORT=8160 sh tools/tests/netsurf/acidtest.sh [acid2|acid3]` (Acid3 over
+  `acidsrv.py`, fails below `ACID3_MIN`=94). Left: tests 69, 74, 75, 77, 79, 80 = XML / SVG
+  documents in frames and the SVG DOM (docs/07 §3). **The Pi's `libcss.a`, `libdom.a`,
+  `libhubbub.a`, libnsfb and the Jet app need a rebuild** (not done here).
+
 ## Jet Browser: the quadratic audit (2026-10-01, PC bench only)
 
 - What grew faster than a page (docs/06 §36, its table): child lists / `getElementsByTagName` /
