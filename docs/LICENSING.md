@@ -23,6 +23,19 @@ Circle), with **Jet Browser under GPL-2.0** as a documented exception, and licen
 (GPLv3) and Jet (GPLv2) — without anyone having to ask you. A purely permissive licence (MIT) for
 the whole is **not possible**: the kernel is GPLv3 because of Circle.
 
+### Distributing the whole: an aggregate, as Linux distributions do
+
+Nothing forbids shipping everything **together**, on one card or in one download: GPLv2 §2 and
+GPLv3 §5 call it an *aggregate* ("mere aggregation" of separate programs on a storage medium) and
+let each program keep its licence. What is impossible is to **relicense** others' code: one licence
+can only cover the parts one owns. Linux distributions work that way: the kernel is GPL-2.0-only
+(with its syscall note: user programs are not covered), the userland is GPL, LGPL, MIT, BSD,
+Apache, MPL… and even proprietary, the firmware has its own licences (`linux-firmware`'s `WHENCE`);
+each package lists its own (Debian's `/usr/share/doc/<package>/copyright`, Fedora's SPDX `License:`
+tag). Only what is **combined into one program** must have compatible licences — for Onyx, the
+kernel with Circle, Jet with NetSurf. So: *"Onyx is distributed under GPL-3.0-or-later; the
+components listed in LICENSING.md keep their own licences"* is the usual, correct statement.
+
 ## 2. The grey zone: apps and the kernel
 
 GPLv3 (Circle) and GPLv2-only (NetSurf) cannot be combined into **one** work. Onyx keeps them in
