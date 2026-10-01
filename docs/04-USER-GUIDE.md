@@ -219,6 +219,7 @@ On power-on:
    - **`wait pkg commit`** moves in a system update staged for this boot (and restarts once
      when the kernel or the firmware changed: §8 *Packages*);
    - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
+   - **`run pkgd`** starts the **update daemon** (§11 *The Package Manager*);
    - **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below);
    - **`run menubar`** starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`**
      the **agenda widget**, **`run notifyd`** the notifications;
@@ -1126,6 +1127,7 @@ Panel at a time (started again, it brings the open one to the front).
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
+| **Packages** (`pkgman`) | The **Onyx Package Manager**: the updates, the packages installed, more to install (below). |
 
 Each applet also runs **alone**, in a window of its own (`run theme`, `run keyconf`…). The list
 is made of **link files** in `SD:/apps/control.app/applets/` (sorted by their names:
@@ -1152,6 +1154,47 @@ the Game Library and Setup do.
 
 ![The Wi-Fi applet](../screenshots/wpaconf.png)
 *Wi-Fi: the network's name (scanned), its password, the country.*
+
+### The Package Manager (`pkgman`)
+
+The **Packages** applet installs, updates and removes the system and the apps from the **package
+repository** (`stephaneweg/onyx-packages`; the same as the `pkg` command, §8 *Packages*). When it
+opens it shows what it knew, then reads the repository again (**Check Now** does it again): the
+repository's index is **signed**, and checked before it is used. Three tabs, and a **search** field
+on the right that filters them (a name, a category, a word of the summary):
+
+- **Updates** — the packages with a newer version: a box each, ticked (untick those to keep),
+  **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
+  is marked **restart**. While it works, each row says *Waiting*, its progress, *Installed*, or
+  *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*).
+- **Installed** — every package: its version, its category, its **updates mode** — **Manual** (the
+  default: you are asked), **Auto** (the update daemon installs its updates by itself), **Never**
+  (this version kept) — and **Remove** (not for the system; asked first; a setting you changed is
+  kept). A package another one needs is not removed (said in the footer).
+- **Available** — the repository's packages not installed (and those with an update): **Install**
+  (with what it needs: an emulator brings the Game Library, Writer brings Cardfile).
+
+A **system update** (`onyx`, `pi-firmware`) is **staged**: a banner offers to **Restart**; at the next
+boot it is moved in before the desktop starts (the previous kernel kept as `kernel8-rpi4.img.old`),
+and the Pi restarts once more when the kernel or the firmware changed. Alone: `run pkgman`.
+
+![The Package Manager: the updates](../screenshots/pkgman.png)
+*Updates: the system, Archiver, Jet Browser and Koton have a newer version.*
+
+![The Package Manager: installed](../screenshots/pkgman-installed.png)
+*Installed: each package's updates mode, Remove.*
+
+![The Package Manager: available](../screenshots/pkgman-available.png)
+*Available: the updates, and the packages to install.*
+
+![The Package Manager: after the updates](../screenshots/pkgman-restart.png)
+*After Install 4 Updates: the apps installed, the system waiting for the restart.*
+
+**The update daemon** (`pkgd`, started by `etc/autostart`): once the network and the time are
+there, then **once a day**, it reads the repository's index, installs the updates of the packages
+set **Auto** (an app running waits for the next day), and shows a **notification** — *3 updates
+available* (the Manual ones), *Updated: …* — a **click on it opens the Package Manager**. `check =
+never` in `SD:/etc/pkg/pkg.ini` stops it; `run pkgd --once` (or `pkg upgrade`) does a round at once.
 
 ### The Theme applet (`theme`)
 

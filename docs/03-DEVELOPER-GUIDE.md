@@ -339,7 +339,8 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
-> launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
+> launched on demand); `notify_action (title, text, "app args")`: a click on it runs that app with those
+> arguments (`pkgd`: `"control pkgman"`), and it stays longer. `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
 > `clip_set_files (paths, cut)`, `clip_get_file`, `clip_clear`, `clip_set_image (px, w, h)`,
 > `clip_get_image (&w, &h)`, and for several formats of one copy `clip_put (fmts, datas, lens, n)` /
 > `clip_get (fmts, nf, got, cap, &data, &len)` (formats: `text`, `rtf`, `image`, `files`, `files-cut`,
@@ -1544,7 +1545,14 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 | `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
 | `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`. |
 | `user/bin/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/bin/Makefile` (newlib + mbedTLS + zlib). |
+| `user/Apps/pkgman` | The **Package Manager**, the Control Panel's applet (`70-pkgman.lnk`; FreeType): a snapshot of the index and the database (`Row`s, rebuilt after each job) drawn by its own widgets (`Tabs`, `PkgList`: the rows, the boxes, the mode pills, the buttons, the restart banner); a job (check, install, remove, mode) in a thread (`kapi_thread_create`), its progress read each frame (`onTick`: the package being done, its percentage — `http.hpp`'s new `progress ()` callback and the extraction —, the packages finished). Built by `pkgman.elf` in `user/Makefile` (newlib + FreeType + mbedTLS + zlib, `-DPKG_NET -DONYX_HTTP_TLS`). |
+| `user/Apps/pkgd` | The **update daemon** (no window; `run pkgd` in `etc/autostart`): waits for the network and the time, then once a day (`SD:/var/pkg/lastcheck`) `refresh`, the "auto" packages installed (their new needs first; the system staged), `notify_action` for the others; `--once`: one round; `check = never` in `pkg.ini`: it ends. |
 | `user/bin/init.c` | The `wait <command>` builtin (`kapi_spawn` + `kapi_wait`): `wait pkg commit`, the autostart's first line. |
+
+**Screenshots**: `sh tools/tests/desktop_sim/shots.sh pkgman` — `tools/tests/desktop_sim/pkg_sample.py`
+makes a card of its own (the real one through symbolic links, its own `etc/pkg` and `var/pkg/db`: a
+few apps not installed) and a repository with four newer versions (a key made for it); the applet's
+four pictures (`pkgman`, `-installed`, `-available`, `-restart`: Install 4 Updates run to its end).
 
 **Host test**: `sh tools/tests/run_pkg_test.sh` — mbedTLS and `pkg` built for the PC over the
 simulator's kapi (`SIM_SD` an empty card, the repository a folder of it), driven by

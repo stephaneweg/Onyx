@@ -387,6 +387,9 @@ public:
 			char *buf = (char *) malloc ((size_t) cap);
 			if (!buf) return 0;
 			HttpClient http; http.user_agent ("Onyx-pkg/1.0").timeout_ms (30000);
+			struct P { Report *r; const char *rel; u64 want; } pc = { &r, rel, want };
+			http.progress ([] (void *c, long got) -> bool
+				{ P *p = (P *) c; p->r->step (p->rel, (u64) got, p->want); return !p->r->cancelled (); }, &pc);
 			r.step (rel, 0, want);
 			HttpResponse res = http.get (url, buf, cap);
 			if (!res.ok () || res.truncated)

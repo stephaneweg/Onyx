@@ -111,7 +111,8 @@ def plan (sd, ini):
 		icon = sec.get ("icon", "")
 		if not icon:
 			own = [a for a in apps if any (pt == "apps/%s.app/" % a for pt in pats)]
-			icon = "apps/%s.app/icon.bmp" % (own[0] if own else "control")
+			need = [n.split ()[0] for n in sec.get ("needs", "").split (",") if n.strip () and n.split ()[0] in apps]
+			icon = "apps/%s.app/icon.bmp" % (own[0] if own else need[0] if need else "control")	# (a sample: its app's)
 		d = dict (sec); d["icon"] = icon
 		make (s, d, pats)
 	left = [f for f in files if f not in taken]
@@ -224,6 +225,9 @@ def main ():
 			"installed = %d" % p["bytes"], "sha256 = " + sha256_file (path), "file = " + fn,
 			"icon = icons/%s.bmp" % p["name"], "needs = " + ", ".join (needs), "required = " + p["required"],
 			"restart = " + p["restart"], "content = " + p["content"], ""]
+	keep = set ("%s-%s.opk" % (p["name"], p["version"]) for p in pkgs)	# the old versions' archives dropped
+	for f in os.listdir (os.path.join (a.out, "pkgs")):
+		if f.endswith (".opk") and f not in keep: os.remove (os.path.join (a.out, "pkgs", f))
 	data = ("\n".join (idx)).encode ()
 	open (os.path.join (a.out, "index.txt"), "wb").write (data)
 	if not a.no_sign:

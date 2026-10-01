@@ -778,7 +778,30 @@ def icon_clipboard():		# the shared clipboard: a board with its clip and lines o
     for i, w in enumerate((15, 12, 15, 9)):
         prect(px, 13, 14 + i * 5, 13 + w, 15 + i * 5, ink)
     return px
+def icon_pkgman():		# the packages: a cardboard box (front, side), its flaps open, a green arrow going in
+    px = blank()
+    front, side, inside, flap, tape, edge = (214, 164, 106), (178, 128, 78), (120, 84, 50), (232, 194, 140), (244, 226, 190), (104, 70, 40)
+    prect(px, 4, 18, 25, 37, front)
+    for x in range(26, 36):			# the side, going back
+        d = (x - 25) // 2
+        prect(px, x, 18 - d, x, 37 - d, side)
+        pset(px, x, 37 - d, edge); pset(px, x, 18 - d, edge)
+    for x in range(4, 26): pset(px, x, 37, edge); pset(px, x, 18, edge)
+    for y in range(18, 38): pset(px, 4, y, edge); pset(px, 25, y, edge)
+    for y in range(13, 33): pset(px, 35, y, edge)
+    prect(px, 6, 15, 33, 17, inside)		# the opening
+    for i in range(7):				# the flaps, open outwards
+        prect(px, 1 + i // 2, 17 - i, 10 - i // 3, 17 - i, flap)
+        prect(px, 20 + i // 3, 17 - i, 28 - i // 2, 17 - i, flap)
+    prect(px, 12, 24, 17, 25, tape)
+    g, gd = (76, 174, 96), (36, 108, 58)	# the arrow, down into the box
+    prect(px, 13, 1, 17, 11, g)
+    for i in range(7): prect(px, 9 + i, 11 + i, 21 - i, 11 + i, g)
+    for y in range(1, 11): pset(px, 12, y, gd); pset(px, 18, y, gd)
+    for i in range(7): pset(px, 8 + i, 11 + i, gd); pset(px, 22 - i, 11 + i, gd)
+    return px
 ICONS = {
+    "pkgman": icon_pkgman, "pkgd": icon_pkgman,
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
     "terminal": icon_terminal,

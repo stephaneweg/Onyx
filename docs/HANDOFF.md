@@ -1274,7 +1274,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 - **Quick notes** with a desktop widget that can be shown or hidden.
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
-**Priority 3–4**: **video player**; the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg` done and tested on the PC, `sdcard_lite`; next: publish `onyx-packages` (the user, with the key), the applet `pkgman`, the daemon `pkgd`, tryboot, the Game Library finding its emulators).
+**Priority 3–4**: **video player**; the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; next: try it on the Pi, tryboot, the Game Library finding its emulators).
 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).

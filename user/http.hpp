@@ -310,7 +310,7 @@ struct HttpResponse
 class HttpClient
 {
 public:
-	HttpClient (void) : m_hdrs_len (0), m_timeout (15000), m_ua ("Onyx/1.0")
+	HttpClient (void) : m_hdrs_len (0), m_timeout (15000), m_ua ("Onyx/1.0"), m_prog (0), m_progCtx (0)
 	{
 		m_hdrs[0] = '\0';
 	}
@@ -318,6 +318,9 @@ public:
 	// --- configuration (chainable) ------------------------------------------
 	HttpClient &user_agent (const char *ua) { m_ua = ua ? ua : "Onyx/1.0"; return *this; }
 	HttpClient &timeout_ms (unsigned ms)    { m_timeout = ms; return *this; }
+	// Told the bytes received so far (headers included) while a response comes in: a download's
+	// progress. fn returns false to stop (the response then ends there, truncated).
+	HttpClient &progress (bool (*fn) (void *ctx, long got), void *ctx) { m_prog = fn; m_progCtx = ctx; return *this; }
 	void        reset_headers (void)        { m_hdrs_len = 0; m_hdrs[0] = '\0'; }
 
 	// Add a default header line ("Name: Value") sent with every request.
@@ -449,7 +452,11 @@ public:
 		{
 			if (total >= cap - 1) { r.truncated = true; break; }
 			int n = tp_recv (tp, buf + total, cap - 1 - total);
-			if (n > 0) { total += n; start = kapi_get_ticks (); }
+			if (n > 0)
+			{
+				total += n; start = kapi_get_ticks ();
+				if (m_prog && !m_prog (m_progCtx, total)) { r.truncated = true; break; }
+			}
 			else if (n == 0)
 			{
 				if ((kapi_get_ticks () - start) * 10 > m_timeout)		// (ticks: HZ = 100)
@@ -505,6 +512,8 @@ private:
 	int      m_hdrs_len;
 	unsigned m_timeout;	// idle timeout in ms
 	const char *m_ua;
+	bool (*m_prog) (void *, long);	// the progress (0: none)
+	void *m_progCtx;
 };
 
 #endif // ONYX_HTTP_HPP

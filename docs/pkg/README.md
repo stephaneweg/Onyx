@@ -1,11 +1,12 @@
 # Packages and updates — the package manager
 
-> **Status (2026-10-01)**: **`pkg` done** (the library `user/pkg/pkglib.h`, the command `user/bin/pkg.cpp`,
-> the PC side `tools/pkg/`, tested on the PC: `tools/tests/run_pkg_test.sh`; not yet tried on the Pi);
-> the card's database made (`sdcard/var/pkg/db`); **`sdcard_lite`** (the system and the firmware only,
-> to try the installs). Still to do: publishing the repository (below), the applet **pkgman**, the
-> daemon **pkgd**, the firmware's *tryboot*, the Game Library finding its emulators (below). Its use:
-> docs/04 §8 *Packages*; its code: docs/03 *The packages*.
+> **Status (2026-10-01)**: **done** — `pkg` (the command), the **Package Manager** `pkgman` (the Control
+> Panel's applet, docs/04 §11), the update daemon **`pkgd`**, the library `user/pkg/pkglib.h`, the PC side
+> `tools/pkg/`, the repository **published** (https://github.com/stephaneweg/onyx-packages), the card's
+> database (`sdcard/var/pkg/db`), **`sdcard_lite`**; tested on the PC (`tools/tests/run_pkg_test.sh`,
+> the screenshots), **not yet tried on the Pi**. Still to do: the firmware's *tryboot* (a new kernel
+> that does not start: back to the old one by itself), the Game Library finding its emulators (below).
+> Its use: docs/04 §8 *Packages*, §11 *The Package Manager*; its code: docs/03 *The packages*.
 >
 > **Decided with the user**: the repository **`stephaneweg/onyx-packages`** (GitHub Pages); the applet
 > **Onyx Package Manager (`pkgman`)**; the daemon **`pkgd`**; an app installed is **manual**; the
@@ -165,5 +166,5 @@ icon for the others (or, later, an emulator's `--thumbnail` mode run by the Game
 
 ## Still open
 
-1. **pkgd's timing**: it checks once a day itself until the task scheduler exists (the proposal).
+1. **pkgd's timing**: it checks once a day itself until the task scheduler exists (done so).
 2. ~~The emulators~~: decided — one package each, found by the Game Library (to do).
