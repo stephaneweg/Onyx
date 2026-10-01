@@ -53,6 +53,7 @@
 #include "wtk/vumeter.h"
 #include "wtk/segmented.h"
 #include "wtk/lcd.h"
+#include "wtk/lang.h"		// TR (): the words in the language chosen
 // (wtk/toolbar.h -- ToolBar, ToolButton, the WKT_* icons -- is included by the app itself: Writer,
 //  the Spreadsheet and Cardfile have their own ToolBar / ToolButton next to `using namespace wtk`.)
 

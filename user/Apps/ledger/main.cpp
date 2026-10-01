@@ -58,15 +58,22 @@ static const NavItem NAV[] = {
 	{ -1, "" }, { P_SETTINGS, "Settings" } };
 enum { NNAV = sizeof NAV / sizeof NAV[0], ITEM_H = 30, CAP_H = 24, NAV_Y = 104 };
 
+// The languages of Ledger's words (SD:/apps/ledger.app/lang/<code>.txt; English: the sources'), chosen at the
+// side bar's foot or in the File menu: Ledger starts again in that language, on the same books.
+struct LangItem { const char *code, *tag, *name; };
+static const LangItem LANGS[] = { { "en", "EN", "English" }, { "fr", "FR", "Fran\xC3\xA7" "ais" } };
+enum { NLANG = sizeof LANGS / sizeof LANGS[0] };
+static void choose_lang (const char *code);
+
 class SideBar : public Widget
 {
 public:
-	ChoiceBox *years; const char *ynames[MAXYEARS]; char ybuf[MAXYEARS][24];
-	int cur, hot; int badge[P_COUNT]; unsigned badgeCol[P_COUNT];
-	SideBar () : Widget (0, 0, SIDE_W, H), cur (P_OVERVIEW), hot (-1)
+	ChoiceBox *years; const char *ynames[MAXYEARS]; char ybuf[MAXYEARS][48];
+	int cur, hot, langHot; int badge[P_COUNT]; unsigned badgeCol[P_COUNT];
+	SideBar () : Widget (0, 0, SIDE_W, H), cur (P_OVERVIEW), hot (-1), langHot (-1)
 	{
 		anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_BOTTOM;
-		years = new ChoiceBox (12, 62, SIDE_W - 24); years->onChange = on_year; years->tip = "The fiscal year the pages show";
+		years = new ChoiceBox (12, 62, SIDE_W - 24); years->onChange = on_year; years->tip = TR ("The fiscal year the pages show");
 		addChild (years);
 		for (int i = 0; i < P_COUNT; i++) { badge[i] = 0; badgeCol[i] = 0; }
 	}
@@ -83,7 +90,7 @@ public:
 		for (int i = 0; i < g_b.nyr && i < MAXYEARS; i++)
 		{
 			year_label (g_b.yr[i], ybuf[i], sizeof ybuf[i]);
-			char t[24] = "Fiscal year "; scat (t, ybuf[i], sizeof t); if (g_b.yr[i].closed) scat (t, " (closed)", sizeof t);
+			char t[48]; scpy (t, TR ("Fiscal year "), sizeof t); scat (t, ybuf[i], sizeof t); if (g_b.yr[i].closed) scat (t, TR (" (closed)"), sizeof t);
 			scpy (ybuf[i], t, sizeof ybuf[i]); ynames[i] = ybuf[i];
 		}
 		years->setOptions (ynames, g_b.nyr);
@@ -128,9 +135,9 @@ public:
 		canvas.fillRect (width - 1, 0, 1, height, wk_tone (C_BG, 92));
 		bool open = g_b.nacc != 0;
 		// the company
-		text_fit_l (canvas, 14, 10, width - 28, 24, open ? (g_b.name[0] ? g_b.name : "(the company)") : "Ledger", ink, 2);
+		text_fit_l (canvas, 14, 10, width - 28, 24, open ? (g_b.name[0] ? g_b.name : TR ("(the company)")) : "Ledger", ink, 2);
 		char v[40] = ""; if (open && g_b.vat[0]) vat_show (g_b.vat, v, sizeof v); else if (open) scpy (v, g_b.vatRegime == VR_NORMAL ? "(no VAT number)" : "Not subject to VAT", sizeof v);
-		else scpy (v, "Belgian accounting", sizeof v);
+		else scpy (v, TR ("Belgian accounting"), sizeof v);
 		text_fit_l (canvas, 14, 32, width - 28, 20, v, dim);
 		for (int i = 0; i < NNAV; i++)
 		{
@@ -138,7 +145,7 @@ public:
 			const NavItem &n = NAV[i];
 			if (n.page < 0)
 			{
-				if (n.label[0]) wk_text_l (canvas, 16, y + 4, CAP_H - 4, n.label, wk_mix (bg, ink, 110));
+				if (n.label[0]) wk_text_l (canvas, 16, y + 4, CAP_H - 4, TR (n.label), wk_mix (bg, ink, 110));
 				else wk_etch_h (canvas, 12, y + CAP_H / 2, width - 24, bg);
 				continue;
 			}
@@ -147,7 +154,7 @@ public:
 			else if (h) wk_rbox (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, wk_tone (bg, 150), wk_tone (bg, 140));
 			unsigned in = on ? wk_hilite_ink (true) : open || n.page == P_OVERVIEW ? ink : wk_mix (bg, ink, 90);
 			draw_ni (canvas, PAGE_ICON[n.page], 18, y + (ITEM_H - 20) / 2, in, on ? in : C_ACCENT);
-			wk_text_l (canvas, 48, y, ITEM_H, n.label, in, on ? 2 : 0);
+			wk_text_l (canvas, 48, y, ITEM_H, TR (n.label), in, on ? 2 : 0);
 			if (open && badge[n.page])
 			{
 				char b[8]; itoa10 (badge[n.page], b);
@@ -155,24 +162,45 @@ public:
 				draw_pill (canvas, width - 16 - pw, y + (ITEM_H - 18) / 2, 18, b, badgeCol[n.page], true);
 			}
 		}
-		// the file, at the foot
+		// the file, at the foot; the language at its right (EN | FR)
+		int fy = height - 30;
+		wk_etch_h (canvas, 12, fy - 8, width - 24, bg);
 		if (g_path[0])
 		{
 			const char *f = g_path; for (const char *q = g_path; *q; q++) if (*q == '/' || *q == ':') f = q + 1;
-			int y = height - 30;
-			wk_etch_h (canvas, 12, y - 8, width - 24, bg);
 			unsigned c = g_saveFailed ? C_BAD : C_GOOD;
-			wk_rbox (canvas, 16, y + 7, 8, 8, 4, c, c);
-			text_fit_l (canvas, 30, y, width - 44, 22, f, dim);
+			wk_rbox (canvas, 16, fy + 7, 8, 8, 4, c, c);
+			text_fit_l (canvas, 30, fy, langX (0) - 36, 22, f, dim);
 		}
+		for (int k = 0; k < NLANG; k++)
+		{
+			bool on = ci_eq (wk_lang (), LANGS[k].code), h = k == langHot;
+			int x = langX (k);
+			if (on) wk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, C_ACCENT, C_ACCENT);
+			else wk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, h ? wk_tone (bg, 150) : bg, wk_tone (bg, 92));
+			wk_text_c (canvas, x, fy + 1, LANG_W, 20, LANGS[k].tag, on ? wk_ink_for (C_ACCENT) : dim, on ? 2 : 0);
+		}
+	}
+	enum { LANG_W = 30 };
+	int langX (int k) const { return width - 14 - (NLANG - k) * (LANG_W + 4) + 4; }
+	int langAt (int mx, int my) const
+	{
+		if (my < height - 30 || my >= height - 8) return -1;
+		for (int k = 0; k < NLANG; k++) if (mx >= langX (k) && mx < langX (k) + LANG_W) return k;
+		return -1;
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		if (wheel) return false;
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
-		int h = in ? itemAt (my) : -1;
-		if (h != hot) { hot = h; invalidate (true); }
-		if (bl && !pressed) { pressed = true; if (h >= 0 && (g_b.nacc || NAV[h].page == P_OVERVIEW)) go (NAV[h].page); }
+		int h = in ? itemAt (my) : -1, lh = in ? langAt (mx, my) : -1;
+		if (h != hot || lh != langHot) { hot = h; langHot = lh; invalidate (true); }
+		if (bl && !pressed)
+		{
+			pressed = true;
+			if (lh >= 0) choose_lang (LANGS[lh].code);
+			else if (h >= 0 && (g_b.nacc || NAV[h].page == P_OVERVIEW)) go (NAV[h].page);
+		}
 		else if (!bl) pressed = false;
 		return in;
 	}
@@ -283,7 +311,7 @@ static void new_document (int journal, bool credit, int backTo)
 	if (journal < 0 || journal >= g_b.njr) return;
 	if (g_cur >= 0 && !g_page[g_cur]->leave ()) return;
 	int t = g_b.jr[journal].type, back = backTo >= 0 ? backTo : back_page (journal);
-	if (g_year >= 0 && g_b.yr[g_year].closed) { warn ("New document", "The fiscal year shown is closed: choose another one (at the top of the side bar)."); return; }
+	if (g_year >= 0 && g_b.yr[g_year].closed) { warn (TR ("New document"), TR ("The fiscal year shown is closed: choose another one (at the top of the side bar).")); return; }
 	DocPage *d;
 	if (t == JT_SALES || t == JT_PURCH) { ((InvoicePage *) page (E_INVOICE))->startNew (journal, credit); d = g_inv; }
 	else if (jt_fin (t)) { ((StatementPage *) page (E_STATEMENT))->startNew (journal); d = g_st; }
@@ -349,7 +377,7 @@ static void changed ()
 	if (g_path[0])
 	{
 		bool ok = book_save (g_b, g_path);
-		if (!ok && !g_saveFailed) warn ("Save", "The books could not be written to their file (the card full, write-protected?). They are kept in memory: try File > Save a Copy As.");
+		if (!ok && !g_saveFailed) warn (TR ("Save"), TR ("The books could not be written to their file (the card full, write-protected?). They are kept in memory: try File > Save a Copy As."));
 		g_saveFailed = !ok;
 	}
 	if (g_cur >= 0) g_page[g_cur]->sync ();
@@ -379,13 +407,13 @@ static void books_opened ()
 static bool load_path (const char *path, bool quiet = false, bool toast = true)
 {
 	char *b; int n;
-	if (!file_read (path, &b, &n)) { if (!quiet) warn ("Open", "The file could not be read."); return false; }
+	if (!file_read (path, &b, &n)) { if (!quiet) warn (TRC ("verb", "Open"), TR ("The file could not be read.")); return false; }
 	static Book tmp; static bool init = false;
 	if (!init) { book_init (tmp); init = true; }
 	const char *why = "";
 	bool ok = book_read (tmp, b, n, &why);
 	delete [] b;
-	if (!ok) { if (!quiet) warn ("Open", why); return false; }
+	if (!ok) { if (!quiet) warn (TRC ("verb", "Open"), why); return false; }
 	book_clear (g_b);
 	g_b = tmp;
 	unsigned ch = tmp.changes;
@@ -393,7 +421,7 @@ static bool load_path (const char *path, bool quiet = false, bool toast = true)
 	scpy (g_path, path, sizeof g_path);
 	remember (path);
 	books_opened ();
-	if (!quiet && toast) { char m[240] = "Opened: "; scat (m, path, sizeof m); status (m); }
+	if (!quiet && toast) { char m[240]; scpy (m, TR ("Opened: "), sizeof m); scat (m, path, sizeof m); status (m); }
 	return true;
 }
 static bool leave_current () { return g_cur < 0 || g_page[g_cur]->leave (); }
@@ -421,9 +449,9 @@ static void cmd_new_company ()
 	int n = slen (path); if (n < 7 || !ci_eq (path + n - 7, ".ledger")) scat (path, ".ledger", sizeof path);
 	Out o; book_write (nb, o);
 	book_clear (nb);
-	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("New company", "The file could not be written."); return; }
+	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("New company"), TR ("The file could not be written.")); return; }
 	load_path (path);
-	status ("The company's books are ready: its chart, its journals, its first fiscal year");
+	status (TR ("The company's books are ready: its chart, its journals, its first fiscal year"));
 }
 static void cmd_save_copy ()
 {
@@ -431,24 +459,24 @@ static void cmd_save_copy ()
 	char path[200];
 	if (!wk_file_save (path, sizeof path, "SD:/docs", "copy.ledger")) return;
 	Out o; book_write (g_b, o);
-	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) warn ("Save a Copy", "The file could not be written.");
-	else { char m[240] = "Copy written: "; scat (m, path, sizeof m); status (m); }
+	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) warn (TR ("Save a Copy"), TR ("The file could not be written."));
+	else { char m[240]; scpy (m, TR ("Copy written: "), sizeof m); scat (m, path, sizeof m); status (m); }
 }
 void OverviewPage::s_newCompany () { cmd_new_company (); }
 void OverviewPage::s_open () { cmd_open (); }
 void OverviewPage::s_demo ()
 {
-	if (!load_path (DEMO)) warn ("Demo", "The demo company's file (SD:/docs/demo-company.ledger) is not on the card.");
+	if (!load_path (DEMO)) warn (TR ("Demo"), TR ("The demo company's file (SD:/docs/demo-company.ledger) is not on the card."));
 }
 
 // ---- the commands -----------------------------------------------------------------------------------------------------------------
-static bool books () { if (g_b.nacc) return true; status ("Open a company's books first (File > Open, or New Company)"); return false; }
+static bool books () { if (g_b.nacc) return true; status (TR ("Open a company's books first (File > Open, or New Company)")); return false; }
 static Page *cur_page () { return g_cur >= 0 ? g_page[g_cur] : 0; }
 static void cmd_new () { if (books () && cur_page ()) cur_page ()->cmdNew (); }
 static void cmd_save () { if (g_doc && g_cur >= E_INVOICE && g_doc->save ()) g_doc->close (); }
 static void cmd_find () { if (books () && cur_page ()) cur_page ()->cmdFind (); }
 static void cmd_delete () { if (books () && cur_page ()) { if (g_cur >= E_INVOICE) g_doc->del (); else cur_page ()->cmdDelete (); } }
-static void doc_of (int type, bool credit) { if (!books ()) return; int j = jrn_first (g_b, type); if (j < 0) { warn ("New document", "No journal of that kind (Settings > Journals)."); return; } new_document (j, credit); }
+static void doc_of (int type, bool credit) { if (!books ()) return; int j = jrn_first (g_b, type); if (j < 0) { warn (TR ("New document"), TR ("No journal of that kind (Settings > Journals).")); return; } new_document (j, credit); }
 static void cmd_sale () { doc_of (JT_SALES, false); }
 static void cmd_sale_cn () { doc_of (JT_SALES, true); }
 static void cmd_purch () { doc_of (JT_PURCH, false); }
@@ -494,19 +522,19 @@ static bool coda_next ()
 	coda_stop ();
 	return false;
 }
-static bool coda_saved () { if (coda_next ()) return true; status ("The CODA file's statements are in the books"); return false; }
+static bool coda_saved () { if (coda_next ()) return true; status (TR ("The CODA file's statements are in the books")); return false; }
 static void cmd_import_coda ()
 {
 	if (!books () || !leave_current ()) return;
 	char path[200];
 	if (!wk_file_open (path, sizeof path, "SD:/docs")) return;
 	char *b; int n;
-	if (!file_read (path, &b, &n)) { warn ("Import CODA", "The file could not be read."); return; }
+	if (!file_read (path, &b, &n)) { warn (TR ("Import CODA"), TR ("The file could not be read.")); return; }
 	coda_stop ();
 	const char *why = "";
 	int ns = coda_read (b, n, g_coda, &why);
 	delete [] b;
-	if (!ns) { warn ("Import CODA", why); return; }
+	if (!ns) { warn (TR ("Import CODA"), why); return; }
 	g_codaN = ns;
 	int fresh = 0;
 	for (int i = 0; i < ns; i++)
@@ -515,25 +543,37 @@ static void cmd_import_coda ()
 		if (j < 0)
 		{
 			char ib[48], m[240]; iban_show (g_coda[i].iban, ib, sizeof ib);
-			scpy (m, "No bank journal has the account ", sizeof m); scat (m, ib, sizeof m);
-			scat (m, ": type its IBAN in its journal (Settings > Journals), then import the file again.", sizeof m);
-			warn ("Import CODA", m); coda_stop (); return;
+			scpy (m, TR ("No bank journal has the account "), sizeof m); scat (m, ib, sizeof m);
+			scat (m, TR (": type its IBAN in its journal (Settings > Journals), then import the file again."), sizeof m);
+			warn (TR ("Import CODA"), m); coda_stop (); return;
 		}
 		g_codaJr[i] = j;
 		if (year_of (g_b, g_coda[i].newDate) < 0)
 		{
 			char d[16], m[200]; date_show (g_coda[i].newDate, d);
-			scpy (m, "A statement is dated ", sizeof m); scat (m, d, sizeof m); scat (m, ": in no fiscal year of the books (Settings > Fiscal years).", sizeof m);
-			warn ("Import CODA", m); coda_stop (); return;
+			scpy (m, TR ("A statement is dated "), sizeof m); scat (m, d, sizeof m); scat (m, TR (": in no fiscal year of the books (Settings > Fiscal years)."), sizeof m);
+			warn (TR ("Import CODA"), m); coda_stop (); return;
 		}
 		if (!coda_known (g_b, g_coda[i], j)) fresh++;
 	}
-	if (!fresh) { warn ("Import CODA", ns == 1 ? "This statement is in the books already." : "These statements are in the books already."); coda_stop (); return; }
+	if (!fresh) { warn (TR ("Import CODA"), ns == 1 ? TR ("This statement is in the books already.") : TR ("These statements are in the books already.")); coda_stop (); return; }
 	coda_next ();
 }
 static void cmd_pay () { if (books ()) pay_suppliers (); }
 static void cmd_close_year () { if (!books ()) return; go (P_SETTINGS); if (g_sp) { g_sp->show (1); g_sp->years->setSel (g_year); g_sp->closeYear (); } }
 static void cmd_listings () { if (!books ()) return; go (P_VAT); if (g_vp) g_vp->lists (); }
+
+// ---- the language ----------------------------------------------------------------------------------------------------------------
+static void choose_lang (const char *code)
+{
+	if (ci_eq (wk_lang (), code)) return;
+	if (!leave_current ()) return;				// (the document open: saved or given up first)
+	if (!wk_lang_choose (code)) { warn (TR ("Language"), TR ("The choice of language could not be written.")); return; }
+	if (!kapi_exec ("SD:/apps/ledger.app/main", g_path)) { status (TR ("The language changes when Ledger starts again")); return; }
+	kapi_exit (0);						// (the books are written already: the new Ledger opens them)
+}
+static void cmd_lang_en () { choose_lang ("en"); }
+static void cmd_lang_fr () { choose_lang ("fr"); }
 
 // ---- the window --------------------------------------------------------------------------------------------------------------------
 class LedgerRoot : public Root
@@ -567,6 +607,7 @@ using namespace lg;
 
 int main (void)
 {
+	wk_lang_init ();			// the words in the language chosen (before the window and its pages)
 	LedgerRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.attach ();				// (a question asked before run (): its clicks and keys)
@@ -580,52 +621,55 @@ int main (void)
 	root.setResizable (true);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New Company...", "", 0, cmd_new_company);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmd_open);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New Company..."), "", 0, cmd_new_company);
+	menu.item (TR ("Open..."), "^O", WK_CTRL ('O'), cmd_open);
 	menu.separator ();
-	menu.item ("Save a Copy As...", "", 0, cmd_save_copy);
-	menu.menu ("Edit");
-	menu.item ("New", "^N", WK_CTRL ('N'), cmd_new);
-	menu.item ("Save the Document", "^S", WK_CTRL ('S'), cmd_save);
-	menu.item ("Delete...", "", 0, cmd_delete);
+	menu.item (TR ("Save a Copy As..."), "", 0, cmd_save_copy);
 	menu.separator ();
-	menu.item ("Search", "^F", WK_CTRL ('F'), cmd_find);
-	menu.menu ("Documents");
-	menu.item ("Sales Invoice", "", 0, cmd_sale);
-	menu.item ("Sales Credit Note", "", 0, cmd_sale_cn);
-	menu.item ("Purchase Invoice", "", 0, cmd_purch);
-	menu.item ("Purchase Credit Note", "", 0, cmd_purch_cn);
+	menu.item ("English", "", 0, cmd_lang_en);			// (each in its own language)
+	menu.item (LANGS[1].name, "", 0, cmd_lang_fr);
+	menu.menu (TRC ("menu", "Edit"));
+	menu.item (TR ("New"), "^N", WK_CTRL ('N'), cmd_new);
+	menu.item (TR ("Save the Document"), "^S", WK_CTRL ('S'), cmd_save);
+	menu.item (TR ("Delete..."), "", 0, cmd_delete);
 	menu.separator ();
-	menu.item ("Bank Statement", "", 0, cmd_bank);
-	menu.item ("Cash Statement", "", 0, cmd_cash);
-	menu.item ("Miscellaneous Operation", "", 0, cmd_misc);
+	menu.item (TR ("Search"), "^F", WK_CTRL ('F'), cmd_find);
+	menu.menu (TR ("Documents"));
+	menu.item (TR ("Sales Invoice"), "", 0, cmd_sale);
+	menu.item (TR ("Sales Credit Note"), "", 0, cmd_sale_cn);
+	menu.item (TR ("Purchase Invoice"), "", 0, cmd_purch);
+	menu.item (TR ("Purchase Credit Note"), "", 0, cmd_purch_cn);
 	menu.separator ();
-	menu.item ("Quote", "", 0, cmd_quote);
-	menu.item ("Order", "", 0, cmd_order);
-	menu.item ("Delivery Note", "", 0, cmd_delivery);
-	menu.item ("Purchase Order", "", 0, cmd_porder);
-	menu.menu ("Go");
-	menu.item ("Overview", "", 0, cmd_go_overview);
-	menu.item ("Sales", "", 0, cmd_go_sales);
-	menu.item ("Purchases", "", 0, cmd_go_purch);
-	menu.item ("Bank and Cash", "", 0, cmd_go_fin);
-	menu.item ("Miscellaneous Operations", "", 0, cmd_go_misc);
-	menu.item ("Quotes and Orders", "", 0, cmd_go_docs);
+	menu.item (TR ("Bank Statement"), "", 0, cmd_bank);
+	menu.item (TR ("Cash Statement"), "", 0, cmd_cash);
+	menu.item (TR ("Miscellaneous Operation"), "", 0, cmd_misc);
 	menu.separator ();
-	menu.item ("Customers", "", 0, cmd_go_cust);
-	menu.item ("Suppliers", "", 0, cmd_go_supp);
+	menu.item (TR ("Quote"), "", 0, cmd_quote);
+	menu.item (TR ("Order"), "", 0, cmd_order);
+	menu.item (TR ("Delivery Note"), "", 0, cmd_delivery);
+	menu.item (TR ("Purchase Order"), "", 0, cmd_porder);
+	menu.menu (TR ("Go"));
+	menu.item (TR ("Overview"), "", 0, cmd_go_overview);
+	menu.item (TR ("Sales"), "", 0, cmd_go_sales);
+	menu.item (TR ("Purchases"), "", 0, cmd_go_purch);
+	menu.item (TR ("Bank and Cash"), "", 0, cmd_go_fin);
+	menu.item (TR ("Miscellaneous Operations"), "", 0, cmd_go_misc);
+	menu.item (TR ("Quotes and Orders"), "", 0, cmd_go_docs);
 	menu.separator ();
-	menu.item ("Chart of Accounts", "", 0, cmd_go_accounts);
-	menu.item ("Reports", "", 0, cmd_go_reports);
-	menu.item ("VAT", "", 0, cmd_go_vat);
-	menu.item ("Settings", "", 0, cmd_go_settings);
-	menu.menu ("Tools");
-	menu.item ("Import CODA...", "", 0, cmd_import_coda);
-	menu.item ("Pay Suppliers (SEPA)...", "", 0, cmd_pay);
+	menu.item (TR ("Customers"), "", 0, cmd_go_cust);
+	menu.item (TR ("Suppliers"), "", 0, cmd_go_supp);
 	menu.separator ();
-	menu.item ("VAT Listings...", "", 0, cmd_listings);
-	menu.item ("Close the Fiscal Year...", "", 0, cmd_close_year);
+	menu.item (TR ("Chart of Accounts"), "", 0, cmd_go_accounts);
+	menu.item (TR ("Reports"), "", 0, cmd_go_reports);
+	menu.item (TR ("VAT"), "", 0, cmd_go_vat);
+	menu.item (TR ("Settings"), "", 0, cmd_go_settings);
+	menu.menu (TR ("Tools"));
+	menu.item (TR ("Import CODA..."), "", 0, cmd_import_coda);
+	menu.item (TR ("Pay Suppliers (SEPA)..."), "", 0, cmd_pay);
+	menu.separator ();
+	menu.item (TR ("VAT Listings..."), "", 0, cmd_listings);
+	menu.item (TR ("Close the Fiscal Year..."), "", 0, cmd_close_year);
 	menu.publish ();
 
 	// A file named on the command line; else the books opened last; else the welcome.

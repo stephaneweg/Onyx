@@ -86,7 +86,7 @@ static int sug_parties (const Book &b, const char *typed, int kind, Sug *out, in
 		}
 		char sub[128]; scpy (sub, p.code, sizeof sub);
 		if (p.city[0]) { scat (sub, " \xB7 ", sizeof sub); scat (sub, p.city, sizeof sub); }
-		if (kind < 0) scat (sub, p.kind == PK_CUSTOMER ? "  (customer)" : "  (supplier)", sizeof sub);
+		if (kind < 0) scat (sub, p.kind == PK_CUSTOMER ? TR ("  (customer)") : TR ("  (supplier)"), sizeof sub);
 		char v[24]; scpy (v, prefix, sizeof v); scat_num (v, p.id, sizeof v);
 		sug_set (out[n++], p.name, sub, v);
 	}
@@ -97,18 +97,18 @@ static int sug_parties (const Book &b, const char *typed, int kind, Sug *out, in
 static int sug_vat (const char *typed, int side, Sug *out, int cap)
 {
 	int n = 0;
-	if (!typed[0] && n < cap) sug_set (out[n++], "(none)", "No VAT on this line", "-");
+	if (!typed[0] && n < cap) sug_set (out[n++], TR ("(none)"), TR ("No VAT on this line"), "-");
 	for (int i = 0; i < NVAT && n < cap; i++)
 	{
 		const VatDef &d = VAT_DEFS[i];
 		if (side >= 0 && d.side != side && d.side != VS_OTHER) continue;
-		if (typed[0] && !starts_with (d.code, typed) && !ci_eq (d.code, typed) && !words_in (d.name, typed))
+		if (typed[0] && !starts_with (d.code, typed) && !ci_eq (d.code, typed) && !words_in (d.name, typed) && !words_in (TR (d.name), typed))
 		{
 			char up_[16]; int k = 0; for (const char *q = typed; *q && k < 15; q++) up_[k++] = up (*q);
 			up_[k] = '\0';
 			if (!starts_with (d.code, up_)) continue;
 		}
-		sug_set (out[n++], d.code, d.name, d.code);
+		sug_set (out[n++], d.code, TR (d.name), d.code);
 	}
 	return n;
 }

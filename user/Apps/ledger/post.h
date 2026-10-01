@@ -73,31 +73,31 @@ static void inv_make_comm (const Book &b, const Invoice &v, char *d12)
 // What forbids posting it ("": nothing).
 static const char *inv_check (const Book &b, const Invoice &v)
 {
-	if (v.journal < 0 || v.journal >= b.njr || (b.jr[v.journal].type != JT_SALES && b.jr[v.journal].type != JT_PURCH)) return "Choose a sales or purchases journal.";
+	if (v.journal < 0 || v.journal >= b.njr || (b.jr[v.journal].type != JT_SALES && b.jr[v.journal].type != JT_PURCH)) return TR ("Choose a sales or purchases journal.");
 	bool sale = inv_sale (b, v);
 	const Party *p = party_of (b, v.party);
-	if (!p) return sale ? "Choose the customer." : "Choose the supplier.";
-	if (!date_ok (v.date)) return "Type the invoice's date.";
+	if (!p) return sale ? TR ("Choose the customer.") : TR ("Choose the supplier.");
+	if (!date_ok (v.date)) return TR ("Type the invoice's date.");
 	int y = year_of (b, v.date);
-	if (y < 0) return "The date is in no fiscal year (Settings > Fiscal years).";
-	if (b.yr[y].closed) return "The fiscal year of that date is closed.";
-	if (v.due && v.due < v.date) return "The due date is before the invoice's date.";
+	if (y < 0) return TR ("The date is in no fiscal year (Settings > Fiscal years).");
+	if (b.yr[y].closed) return TR ("The fiscal year of that date is closed.");
+	if (v.due && v.due < v.date) return TR ("The due date is before the invoice's date.");
 	int nz = 0;
 	for (int i = 0; i < v.nl; i++)
 	{
 		const InvLine &l = v.l[i];
 		if (!l.net && !l.account[0]) continue;
-		if (!l.account[0]) return "A line has no account.";
-		if (!acc_postable (b, l.account)) return "A line's account is not in the chart (or is a heading).";
-		if (acc_party (b, l.account)) return "A line posts to a customers' or suppliers' account: choose a revenue or expense account.";
-		if (l.vat >= 0 && VAT_DEFS[l.vat].side != (sale ? VS_SALES : VS_PURCH)) return sale ? "A line has a purchases' VAT code." : "A line has a sales' VAT code.";
-		if (b.vatRegime == VR_NORMAL && l.vat < 0 && l.net) return "A line has no VAT code.";
+		if (!l.account[0]) return TR ("A line has no account.");
+		if (!acc_postable (b, l.account)) return TR ("A line's account is not in the chart (or is a heading).");
+		if (acc_party (b, l.account)) return TR ("A line posts to a customers' or suppliers' account: choose a revenue or expense account.");
+		if (l.vat >= 0 && VAT_DEFS[l.vat].side != (sale ? VS_SALES : VS_PURCH)) return sale ? TR ("A line has a purchases' VAT code.") : TR ("A line has a sales' VAT code.");
+		if (b.vatRegime == VR_NORMAL && l.vat < 0 && l.net) return TR ("A line has no VAT code.");
 		if (l.net) nz++;
 	}
-	if (!nz) return "The invoice has no amount.";
+	if (!nz) return TR ("The invoice has no amount.");
 	money n, t, tot; inv_totals (v, &n, &t, &tot);
-	if (!tot && !n) return "The invoice's total is zero.";
-	for (int i = 0; i < v.nl; i++) if (v.l[i].vat >= 0 && return_of (b, v.date) >= 0) return "The VAT return of that period has been filed (VAT > the period: reopen it).";
+	if (!tot && !n) return TR ("The invoice's total is zero.");
+	for (int i = 0; i < v.nl; i++) if (v.l[i].vat >= 0 && return_of (b, v.date) >= 0) return TR ("The VAT return of that period has been filed (VAT > the period: reopen it).");
 	return "";
 }
 // The entry an invoice makes.
@@ -132,7 +132,7 @@ static void inv_to_entry (const Book &b, const Invoice &v, Entry &e)
 			{
 				Line &n2 = entry_add_line (e);
 				scpy (n2.account, il.account, CODE_MAX); n2.amount = s * nd; n2.vat = (signed char) il.vat; n2.role = LR_ND;
-				sset (n2.text, "VAT not deductible");
+				sset (n2.text, TR ("VAT not deductible"));
 			}
 		}
 	}
@@ -153,13 +153,13 @@ static void inv_to_entry (const Book &b, const Invoice &v, Entry &e)
 		{
 			Line &l = entry_add_line (e);
 			scpy (l.account, sale ? b.accVatDue : b.accVatDeduct, CODE_MAX); l.amount = s * ded; l.vat = (signed char) c; l.role = LR_TAX; l.aux = s * base;
-			char t[80] = "VAT "; scat (t, VAT_DEFS[c].code, sizeof t); sset (l.text, t);
+			char t[80]; scpy (t, TR ("VAT "), sizeof t); scat (t, VAT_DEFS[c].code, sizeof t); sset (l.text, t);
 		}
 		if (due)
 		{
 			Line &l = entry_add_line (e);
 			scpy (l.account, b.accVatDue, CODE_MAX); l.amount = -s * due; l.vat = (signed char) c; l.role = LR_DUE; l.aux = s * base;
-			char t[80] = "VAT due "; scat (t, VAT_DEFS[c].code, sizeof t); sset (l.text, t);
+			char t[80]; scpy (t, TR ("VAT due "), sizeof t); scat (t, VAT_DEFS[c].code, sizeof t); sset (l.text, t);
 		}
 	}
 }
@@ -235,27 +235,27 @@ static money fin_balance_before (const Book &b, int journal, int date, int excep
 }
 static const char *st_check (const Book &b, const Statement &s)
 {
-	if (s.journal < 0 || s.journal >= b.njr || !jt_fin (b.jr[s.journal].type)) return "Choose a bank or cash journal.";
-	if (!acc_postable (b, b.jr[s.journal].account)) return "The journal's account is not in the chart (Settings > Journals).";
-	if (!date_ok (s.date)) return "Type the statement's date.";
+	if (s.journal < 0 || s.journal >= b.njr || !jt_fin (b.jr[s.journal].type)) return TR ("Choose a bank or cash journal.");
+	if (!acc_postable (b, b.jr[s.journal].account)) return TR ("The journal's account is not in the chart (Settings > Journals).");
+	if (!date_ok (s.date)) return TR ("Type the statement's date.");
 	int y = year_of (b, s.date);
-	if (y < 0) return "The date is in no fiscal year (Settings > Fiscal years).";
-	if (b.yr[y].closed) return "The fiscal year of that date is closed.";
+	if (y < 0) return TR ("The date is in no fiscal year (Settings > Fiscal years).");
+	if (b.yr[y].closed) return TR ("The fiscal year of that date is closed.");
 	int n = 0;
 	for (int i = 0; i < s.nl; i++)
 	{
 		const StLine &l = s.l[i];
 		if (!l.amount && !l.party && !l.account[0]) continue;
-		if (!l.amount) return "A movement has no amount.";
-		if (!l.party && !l.account[0]) return "A movement has neither a party nor an account.";
-		if (l.party && !party_of (b, l.party)) return "A movement's party is unknown.";
-		if (!l.party && !acc_postable (b, l.account)) return "A movement's account is not in the chart (or is a heading).";
-		if (!l.party && acc_party (b, l.account)) return "A movement on a customers' or suppliers' account needs its party.";
-		if (!l.party && seq (l.account, b.jr[s.journal].account)) return "A movement posts to the journal's own account.";
+		if (!l.amount) return TR ("A movement has no amount.");
+		if (!l.party && !l.account[0]) return TR ("A movement has neither a party nor an account.");
+		if (l.party && !party_of (b, l.party)) return TR ("A movement's party is unknown.");
+		if (!l.party && !acc_postable (b, l.account)) return TR ("A movement's account is not in the chart (or is a heading).");
+		if (!l.party && acc_party (b, l.account)) return TR ("A movement on a customers' or suppliers' account needs its party.");
+		if (!l.party && seq (l.account, b.jr[s.journal].account)) return TR ("A movement posts to the journal's own account.");
 		n++;
 	}
-	if (!n) return "The statement has no movement.";
-	if (s.old + st_sum (s) != s.now) return "The new balance is not the old one plus the movements.";
+	if (!n) return TR ("The statement has no movement.");
+	if (s.old + st_sum (s) != s.now) return TR ("The new balance is not the old one plus the movements.");
 	return "";
 }
 static void st_to_entry (const Book &b, const Statement &s, Entry &e)
@@ -301,23 +301,23 @@ static bool st_from_entry (const Book &b, const Entry &e, Statement &s)
 // ---- miscellaneous operations ---------------------------------------------------------------------------------------------
 static const char *misc_check (const Book &b, const Entry &e)
 {
-	if (e.journal < 0 || e.journal >= b.njr) return "Choose a journal.";
-	if (!date_ok (e.date)) return "Type the entry's date.";
+	if (e.journal < 0 || e.journal >= b.njr) return TR ("Choose a journal.");
+	if (!date_ok (e.date)) return TR ("Type the entry's date.");
 	int y = year_of (b, e.date);
-	if (y < 0) return "The date is in no fiscal year (Settings > Fiscal years).";
-	if (b.yr[y].closed) return "The fiscal year of that date is closed.";
+	if (y < 0) return TR ("The date is in no fiscal year (Settings > Fiscal years).");
+	if (b.yr[y].closed) return TR ("The fiscal year of that date is closed.");
 	int n = 0;
 	for (int k = 0; k < e.nl; k++)
 	{
 		const Line &l = e.l[k];
 		if (!l.amount) continue;
-		if (!acc_postable (b, l.account)) return "A line's account is not in the chart (or is a heading).";
-		if (acc_party (b, l.account) && !party_of (b, l.party)) return "A line on a customers' or suppliers' account needs its party.";
+		if (!acc_postable (b, l.account)) return TR ("A line's account is not in the chart (or is a heading).");
+		if (acc_party (b, l.account) && !party_of (b, l.party)) return TR ("A line on a customers' or suppliers' account needs its party.");
 		n++;
 	}
-	if (n < 2) return "An entry needs two lines at least.";
-	if (entry_sum (e)) return "The entry does not balance: its debits and credits differ.";
-	if (entry_has_vat (e) && return_of (b, e.date) >= 0) return "The VAT return of that period has been filed (VAT > the period: reopen it).";
+	if (n < 2) return TR ("An entry needs two lines at least.");
+	if (entry_sum (e)) return TR ("The entry does not balance: its debits and credits differ.");
+	if (entry_has_vat (e) && return_of (b, e.date) >= 0) return TR ("The VAT return of that period has been filed (VAT > the period: reopen it).");
 	return "";
 }
 // The lines without an amount dropped; a VAT code's role set by the account (451 / 411: its tax).
@@ -400,7 +400,7 @@ static const char *entry_can_delete (const Book &b, int i)
 	if (b.jr[e.journal].type == JT_SALES)
 	{
 		int y = year_of (b, e.date);
-		if (next_number (b, e.journal, y) != e.no + 1) return "Only the journal's last sales document can be deleted: make a credit note instead.";
+		if (next_number (b, e.journal, y) != e.no + 1) return TR ("Only the journal's last sales document can be deleted: make a credit note instead.");
 	}
 	return "";
 }

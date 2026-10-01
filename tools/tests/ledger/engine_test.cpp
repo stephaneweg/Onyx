@@ -15,6 +15,10 @@
 #include "Apps/ledger/commerce.h"
 #include "Apps/ledger/coda.h"
 #include "Apps/ledger/sepa.h"
+
+// (Ledger's words: English here -- wtk/lang.cpp is the apps')
+const char *wk_tr (const char *s) { return s; }
+const char *wk_trc (const char *, const char *s) { return s; }
 using namespace lg;
 
 static int g_fail, g_checks;

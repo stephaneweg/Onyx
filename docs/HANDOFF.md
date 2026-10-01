@@ -1328,6 +1328,13 @@ Linux by `sh pc/macOS/check.sh` (the POSIX half under a screen-less window: open
 folders). To try on a real Mac: the first build (Apple clang's warnings), the window, Retina drawing, the
 keys (Cmd, dead keys), resizing / full screen, the trackpad's scrolling, drop / Finder open, printing.
 
+**Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (wtk's new `lang.h`, docs/03 *An app
+in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + wtk's own
+`sdcard/res/lang/fr.txt` (in the `onyx` package); EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
+Pi binary rebuilt (`sdcard/apps/ledger.app/main`, Arm GNU 13.3); the other apps not restaged (their old
+wtk has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
+To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Writer's own words.
+
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
 (`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by
 `sh tools/manuals/koton_shots.sh` (clicks at fixed places on the demo song: move them if the layout

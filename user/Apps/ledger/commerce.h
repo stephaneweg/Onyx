@@ -150,7 +150,7 @@ static void cdoc_to_invoice (const Book &b, const CDoc &d, int journal, int date
 	v.journal = journal; v.party = d.party; v.date = date; v.due = inv_due_of (b, d.party, date);
 	scpy (v.ref, d.ref, sizeof v.ref);
 	char n[32]; cdoc_number (d, n, sizeof n);
-	scpy (v.text, CD_NAME[d.kind], sizeof v.text); scat (v.text, " ", sizeof v.text); scat (v.text, n, sizeof v.text);
+	scpy (v.text, TR (CD_NAME[d.kind]), sizeof v.text); scat (v.text, " ", sizeof v.text); scat (v.text, n, sizeof v.text);
 	const Party *p = party_of (b, d.party);
 	bool sale = cd_sale (d.kind);
 	for (int i = 0; i < d.nl; i++)

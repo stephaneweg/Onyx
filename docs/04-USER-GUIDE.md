@@ -2003,7 +2003,15 @@ overdue.*
 > `MAC:` (the whole Mac). The manual's **Ctrl+key is Cmd+key** (Cmd+S, Cmd+N, Cmd+F, Cmd+C/V), Option is
 > Alt; the menus are in the Mac's menu bar; a `.ledger` opens by a double click in the Finder or dropped
 > on the window. A printed document (an `.rtf`) is put on paper or made a PDF from Pages, TextEdit or
-> Word; a report for the Spreadsheet (`.xlsx`) opens in Numbers or Excel. Its `README.txt` says the rest.
+> Word; a report for the Spreadsheet (`.xlsx`) opens in Numbers or Excel. In French: the side bar's **FR**
+> (the Mac's language at the first start). Its `README.txt` says the rest.
+
+> **In French.** Ledger speaks **English or French**: click **EN** or **FR** at the foot of the side
+> bar (or **File ▸ English / Français**). Ledger starts again at once in that language, on the same
+> books (a document being typed is saved or given up first). Its menus, pages, dialogs, messages and
+> reports change; the chart of accounts and the printed documents keep their own language (the
+> company's, the customer's). On the Mac, Ledger starts in French the first time when the Mac's
+> language is French.
 
 Ledger keeps the **double-entry books** of a Belgian company or self-employed person: its chart of
 accounts (the **PCMN**, in French or in Dutch), its customers and suppliers, its **journals** (sales,

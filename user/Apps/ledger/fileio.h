@@ -325,7 +325,7 @@ static bool book_read (Book &b, const char *text, int len, const char **why)
 	entry_free (cur);
 	if (inDoc) cdoc_save (b, cdc);
 	cdoc_free (cdc);
-	if (!company) { book_clear (b); *why = "This file is not a Ledger company's books."; return false; }
+	if (!company) { book_clear (b); *why = TR ("This file is not a Ledger company's books."); return false; }
 	b.nextMatch = maxMatch + 1;
 	years_sort (b);
 	matches_check (b);
