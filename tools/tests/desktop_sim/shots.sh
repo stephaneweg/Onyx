@@ -53,14 +53,14 @@ build () {
 			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
-		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/zlib"
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
 		if [ ! -f "$OUT/libmb.a" ]; then
 			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
 			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
 		fi
-		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/pk_$f.o" || return 1; done
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o" || return 1; done
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/zlib/pk_*.o "$OUT/libmb.a" -lpthread; return
+			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \

@@ -2126,13 +2126,18 @@ SD:apps/<nom>.app/
 
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
-**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
-`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `nes = SD:/apps/nesemu.app/main`, `sfc` / `smc = SD:/apps/snesemu.app/main`, `wad = SD:/apps/doom.app/main`):
+**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`), then from the
+**apps' own `app.txt`** (`lx_app_for`: an emulator's `games = Game Boy Color: gbc; Game Boy: gb` —
+the extensions after each system's name —, any app's `opens = wad`; the app's `main` must be there),
+then a built-in list (those that exist):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,
-`run`, `fileassoc.h` (File Viewer, the dock), the dock, the Game Library. A new format = one line in
-`runners.ini`. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
+`run`, `fileassoc.h` (File Viewer, the dock), the dock, the Game Library. A new format = a `games =` / `opens =` line in the app's `app.txt`
+(installed with its package: nothing to change elsewhere), or one line in `runners.ini`. **The Game
+Library's systems** come from the same keys (`load_systems`: every app with `games =`, its sections
+sorted by `order =`); a system whose emulator is not one of the cores it carries (GB, GBA, NES, SNES;
+the N64's label, the GameCube's banner) shows its emulator's icon on the cards. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
 `kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
 compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
 

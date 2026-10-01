@@ -158,13 +158,21 @@ system     = Super Nintendo          ; the Game Library's section
 extensions = sfc smc                 ; the games it opens
 ```
 
-The Game Library then makes its sections from the installed apps of category *Emulators* (no list in
-its code: a new emulator package shows its games at once), and `launch.h` finds the program for a
-file in these `extensions` too (no line to add to `runners.ini`, which is the user's setting). The
-pictures of the games: the cores the Game Library carries today (GB, GBA, NES, SNES), the emulator's
-icon for the others (or, later, an emulator's `--thumbnail` mode run by the Game Library).
+**Done** (2026-10-01), the key being `games` (systems and extensions in one line) and `order`:
+
+```ini
+games = Game Boy Color: gbc; Game Boy: gb    ; the systems it plays, their files' extensions
+order = 50                                   ; the place of its sections
+opens = dol                                  ; (files it opens that are not games: not listed)
+```
+
+The Game Library makes its sections from the installed apps that have `games` (no list in its code: a
+new emulator package shows its games at once), and `launch.h` finds the program for a file in these
+`games` / `opens` too: the emulators' lines are gone from `runners.ini` (Doom's `wad` too: its
+`opens = wad`). The pictures of the games: the cores the Game Library carries (GB, GBA, NES, SNES), the
+N64's label, the GameCube's banner; another emulator's games show its icon.
 
 ## Still open
 
 1. **pkgd's timing**: it checks once a day itself until the task scheduler exists (done so).
-2. ~~The emulators~~: decided — one package each, found by the Game Library (to do).
+2. ~~The emulators~~: one package each, found by the Game Library (done).

@@ -2,7 +2,7 @@
 // gbaemu -- the Onyx Game Boy Advance emulator (the core: user/gba).
 //
 //   gbaemu <rom.gba> [--fullscreen]   (without a ROM: opens the Game Library)
-//                               (runners.ini: opening a .gba file starts it; the Game Library
+//                               (its app.txt "games": opening a .gba file starts it; the Game Library
 //                               app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, A = L, S = R, Enter = Start, Backspace = Select
 //     (held keys, kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A,
