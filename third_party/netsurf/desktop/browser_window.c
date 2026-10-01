@@ -915,10 +915,19 @@ static nserror browser_window_content_ready(struct browser_window *bw)
 	browser_window_remove_caret(bw, false);
 
 	if (bw->window != NULL) {
+		int fsx, fsy;
+		/* Onyx: the view still where the fragment's scroll put it (the user did not
+		 * scroll away while the page loaded) */
+		bool at_frag = !bw->onyx_frag_done ||
+			(onyx_bw_get_scroll(bw, &fsx, &fsy) &&
+			 fsx == bw->onyx_frag_x && fsy == bw->onyx_frag_y);
+
 		guit->window->event(bw->window, GW_EVENT_NEW_CONTENT);
 		/* Onyx: the view is back at the top: the fragment is scrolled to again (a
-		 * scroll to it while the page still loaded is undone by this) */
-		bw->onyx_frag_done = false;
+		 * scroll to it while the page still loaded is undone by this) -- unless the
+		 * user scrolled away from it meanwhile: the view stays at the top */
+		if (at_frag)
+			bw->onyx_frag_done = false;
 		bw->onyx_fixed_sx = bw->onyx_fixed_sy = 0;
 
 		browser_window_refresh_url_bar(bw);

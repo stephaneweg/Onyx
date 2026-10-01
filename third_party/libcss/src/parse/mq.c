@@ -1050,6 +1050,11 @@ static css_error mq_parse_media_query(lwc_string **strings,
 
 	consumeWhitespace(vector, ctx);
 
+	/* Onyx: the query ends at the list's next comma ("all, (bogus)") */
+	token = parserutils_vector_peek(vector, *ctx);
+	if (token != NULL && tokenIsChar(token, ','))
+		goto finished;
+
 	token = parserutils_vector_iterate(vector, ctx);
 	if (token != NULL) {
 		if (token->type != CSS_TOKEN_IDENT ||
@@ -1123,9 +1128,41 @@ css_error css__mq_parse_media_list(lwc_string **strings,
 	token = parserutils_vector_peek(vector, *ctx);
 	while (token != NULL) {
 		css_mq_query *query = NULL;
+		int32_t start = *ctx;
 
 		error = mq_parse_media_query(strings, vector, ctx, &query);
+		if (error == CSS_OK) {
+			/* Onyx: a query must end at a comma or the list's end */
+			consumeWhitespace(vector, ctx);
+			token = parserutils_vector_peek(vector, *ctx);
+			if (token != NULL && tokenIsChar(token, ',') == false) {
+				css__mq_query_destroy(query);
+				query = NULL;
+				error = CSS_INVALID;
+			}
+		}
 		if (error == CSS_INVALID) {
+			/* Onyx: this query only is "not all": the rest of the
+			 * list is read from the next comma outside brackets
+			 * (Media Queries 4, 3.2: "all, (bogus)" matches) */
+			int depth = 0;
+
+			*ctx = start;
+			while ((token = parserutils_vector_peek(vector,
+					*ctx)) != NULL) {
+				if (depth == 0 && tokenIsChar(token, ','))
+					break;
+				if (token->type == CSS_TOKEN_FUNCTION ||
+				    tokenIsChar(token, '(') ||
+				    tokenIsChar(token, '[') ||
+				    tokenIsChar(token, '{'))
+					depth++;
+				else if ((tokenIsChar(token, ')') ||
+					  tokenIsChar(token, ']') ||
+					  tokenIsChar(token, '}')) && depth > 0)
+					depth--;
+				parserutils_vector_iterate(vector, ctx);
+			}
 			error = css__mq_parse__create_not_all(&query);
 		}
 

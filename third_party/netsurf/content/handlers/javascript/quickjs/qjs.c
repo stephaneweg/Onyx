@@ -57,6 +57,7 @@
 #include "content/urldb.h"
 #include "desktop/gui_internal.h"
 #include "desktop/browser_private.h"
+#include "content/hlcache.h"	/* Onyx: hlcache_handle_get_content (a frame's parent) */
 #include "desktop/browser_history.h"	/* browser_window_history_back / _forward */
 #include <nsutils/time.h>		/* nsu_getmonotonic_ms */
 #include "desktop/textarea.h"
@@ -65,6 +66,7 @@
 #include "html/html.h"		/* Onyx: struct html_stylesheet (n_sheet_text) */
 #include "netsurf/content.h"	/* Onyx: content_get_source_data, hlcache_handle_get_url */
 #include "html/box.h"
+#include "html/object.h"	/* Onyx: html_object_flush_sync */
 #include "html/box_inspect.h"
 #include "html/form_internal.h"
 #include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
@@ -579,6 +581,31 @@ static JSValue qjs_wrap(jsthread *t, dom_node *n)
 		     h = (h + 1) & (t->capwraps - 1)) {
 			if (t->wraps[h].node == n && !JS_IsUndefined(t->wraps[h].obj))
 				return JS_DupValue(t->ctx, t->wraps[h].obj);
+		}
+	}
+	/* Onyx: a node of another window's document (a same-origin frame's, its realm in
+	 * this heap) is that window's object -- one object a node, whichever realm reads it
+	 * (Acid3: a TreeWalker of this window over a frame's nodes gave other objects than
+	 * the frame's own: never equal) */
+	if (t->heap != NULL && t->heap->shared) {
+		dom_document *od = NULL;
+		dom_node_type nt = DOM_ELEMENT_NODE;
+
+		if (dom_node_get_node_type(n, &nt) == DOM_NO_ERR &&
+		    nt == DOM_DOCUMENT_NODE)
+			od = (dom_document *) dom_node_ref(n);
+		else if (dom_node_get_owner_document(n, &od) != DOM_NO_ERR)
+			od = NULL;
+		if (od != NULL) {
+			dom_node_unref(od);
+			if (od != t->doc) {
+				jsthread *o;
+
+				for (o = t->heap->live; o != NULL; o = o->hnext)
+					if (o != t && o->doc == od && !o->closed &&
+					    !o->zombie)
+						return qjs_wrap(o, n);
+			}
 		}
 	}
 	if ((t->nwraps + 1) * 2 > t->capwraps && !qjs_wraps_grow(t))
@@ -1916,6 +1943,21 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
  * first (they used to wait for the turn's end: offsetHeight after details.open = true) */
 static void qjs_layout_now(jsthread *t)
 {
+	/* Onyx: a frame's viewport is its element's box: its parent's changes (the
+	 * element resized: Acid3's media queries) laid out first, the frame's new size
+	 * (a media change: html_reformat) then lays it out again */
+	if (t->bw != NULL && t->bw->parent != NULL &&
+	    t->bw->parent->current_content != NULL &&
+	    content_get_type(t->bw->parent->current_content) == CONTENT_HTML) {
+		html_content *ph = (html_content *)
+				hlcache_handle_get_content(t->bw->parent->current_content);
+
+		if (ph != NULL && ph->jsthread != NULL && ph->jsthread != t &&
+		    ph->jsthread->dirty)
+			qjs_layout_now(ph->jsthread);
+		if (t->htmlc != NULL && t->htmlc->rebox_pending)
+			t->dirty = true;
+	}
 	/* (at most 16 a turn, or 100 ms of them: a script alternating writes and reads would
 	 * rebuild the whole layout at each read -- past that, the reads see the layout before
 	 * the turn; a small document's are cheap: Acid3's selector tests read a style after
@@ -1951,6 +1993,10 @@ static void qjs_layout_now(jsthread *t)
 		}
 	}
 	html_script_layout_now(t->htmlc);
+	/* Onyx: the data: URL images in (a pending image's box is its alt text's: Acid3's
+	 * test 72 reads the height a style gives one) */
+	if (t->htmlc != NULL)
+		html_object_flush_sync(t->htmlc);
 	onyx_anim_flush(t->htmlc);	/* (Onyx: an animation a script changed) */
 }
 
@@ -2437,6 +2483,78 @@ static void qjs_list_text(uint8_t type, lwc_string *text, const char *dflt, char
 	buf[n] = '\0';
 }
 
+/* Onyx: getComputedStyle's keyword properties (their computed values' names, by the
+ * libcss enum's value) -- '' when not one of these */
+static const char *qjs_cstyle_keyword(const css_computed_style *style, const char *prop)
+{
+	static const char *const ws[] = { NULL, "normal", "pre", "nowrap", "pre-wrap",
+		"pre-line" };
+	static const char *const tt[] = { NULL, "capitalize", "uppercase", "lowercase", "none" };
+	static const char *const cur[] = { NULL, "auto", "crosshair", "default", "pointer",
+		"move", "e-resize", "ne-resize", "nw-resize", "n-resize", "se-resize",
+		"sw-resize", "s-resize", "w-resize", "text", "wait", "help", "progress",
+		"none", "context-menu", "cell", "vertical-text", "alias", "copy", "no-drop",
+		"not-allowed", "ew-resize", "ns-resize", "nesw-resize", "nwse-resize",
+		"col-resize", "row-resize", "all-scroll" };
+	static const char *const fl[] = { NULL, "left", "right", "none" };
+	static const char *const cl[] = { NULL, "none", "left", "right", "both" };
+	static const char *const ta[] = { NULL, "start", "left", "right", "center", "justify",
+		"start", "-webkit-left", "-webkit-center", "-webkit-right" };
+	static const char *const fs[] = { NULL, "normal", "italic", "oblique" };
+	static const char *const fv[] = { NULL, "normal", "small-caps" };
+	static const char *const fw[] = { NULL, "400", "700", "700", "100", "100", "200", "300",
+		"400", "500", "600", "700", "800", "900" };
+	static const char *const dir[] = { NULL, "ltr", "rtl" };
+	static const char *const ub[] = { NULL, "normal", "embed", "bidi-override" };
+	static const char *const bs[] = { NULL, "content-box", "border-box" };
+	static const char *const tl[] = { NULL, "auto", "fixed" };
+	static const char *const bc[] = { NULL, "separate", "collapse" };
+	static const char *const ec[] = { NULL, "show", "hide" };
+	static const char *const cs[] = { NULL, "top", "bottom" };
+	static const char *const lp[] = { NULL, "inside", "outside" };
+	static const char *const bst[] = { NULL, "none", "hidden", "dotted", "dashed", "solid",
+		"double", "groove", "ridge", "inset", "outset" };
+	static const char *const va[] = { NULL, "baseline", "sub", "super", "top", "text-top",
+		"middle", "bottom", "text-bottom" };
+#define KW(name, tab, val) \
+	if (strcmp(prop, name) == 0) { \
+		unsigned v_ = (val); \
+		return v_ < sizeof(tab) / sizeof(tab[0]) && tab[v_] != NULL ? tab[v_] : ""; \
+	}
+	lwc_string **urls = NULL;
+	css_fixed len = 0;
+	css_unit unit = CSS_UNIT_PX;
+
+	KW("white-space", ws, css_computed_white_space(style));
+	KW("text-transform", tt, css_computed_text_transform(style));
+	KW("cursor", cur, css_computed_cursor(style, &urls));
+	KW("float", fl, css_computed_float(style));
+	KW("clear", cl, css_computed_clear(style));
+	KW("text-align", ta, css_computed_text_align(style));
+	KW("font-style", fs, css_computed_font_style(style));
+	KW("font-variant", fv, css_computed_font_variant(style));
+	KW("font-weight", fw, css_computed_font_weight(style));
+	KW("direction", dir, css_computed_direction(style));
+	KW("unicode-bidi", ub, css_computed_unicode_bidi(style));
+	KW("box-sizing", bs, css_computed_box_sizing(style));
+	KW("table-layout", tl, css_computed_table_layout(style));
+	KW("border-collapse", bc, css_computed_border_collapse(style));
+	KW("empty-cells", ec, css_computed_empty_cells(style));
+	KW("caption-side", cs, css_computed_caption_side(style));
+	KW("list-style-position", lp, css_computed_list_style_position(style));
+	KW("border-top-style", bst, css_computed_border_top_style(style));
+	KW("border-right-style", bst, css_computed_border_right_style(style));
+	KW("border-bottom-style", bst, css_computed_border_bottom_style(style));
+	KW("border-left-style", bst, css_computed_border_left_style(style));
+	KW("outline-style", bst, css_computed_outline_style(style));
+	if (strcmp(prop, "vertical-align") == 0) {
+		uint8_t v = css_computed_vertical_align(style, &len, &unit);
+		return v < sizeof(va) / sizeof(va[0]) && va[v] != NULL ? va[v] : "";
+	}
+#undef KW
+	return NULL;
+}
+
 /* Onyx: getComputedStyle's other properties (html/onyx_anim.c animates them) */
 static void qjs_cstyle_more(jsthread *t, const css_computed_style *style, struct box *box,
 		const char *prop, char *buf, size_t size)
@@ -2446,8 +2564,14 @@ static void qjs_cstyle_more(jsthread *t, const css_computed_style *style, struct
 	css_color c = 0;
 	lwc_string *text = NULL;
 	uint8_t ty;
+	const char *kw = qjs_cstyle_keyword(style, prop);
 
-	if (strcmp(prop, "transform") == 0) {
+	if (kw != NULL && kw[0] != '\0') {
+		snprintf(buf, size, "%s", kw);
+	} else if (strcmp(prop, "vertical-align") == 0) {
+		ty = css_computed_vertical_align(style, &len, &unit);
+		qjs_len_text(ty, CSS_VERTICAL_ALIGN_SET, len, unit, buf, size);
+	} else if (strcmp(prop, "transform") == 0) {
 		float w = 0, h = 0;
 		if (box != NULL) {
 			w = box->padding[LEFT] + box->width + box->padding[RIGHT] +
@@ -2597,7 +2721,12 @@ static bool qjs_cstyle_known(const char *p)
 		"font-size", "transform", "translate", "scale", "rotate", "filter",
 		"backdrop-filter", "left", "top", "right", "bottom", "outline-color",
 		"letter-spacing", "z-index", "box-shadow",
-		"overflow", "overflow-x", "overflow-y" };	/* (Onyx: overflow, google search) */
+		"overflow", "overflow-x", "overflow-y",	/* (Onyx: overflow, google search) */
+		/* (Onyx: the keyword properties: qjs_cstyle_keyword) */
+		"white-space", "text-transform", "cursor", "float", "clear", "text-align",
+		"font-style", "font-variant", "font-weight", "direction", "unicode-bidi",
+		"box-sizing", "table-layout", "border-collapse", "empty-cells", "caption-side",
+		"list-style-position", "outline-style", "vertical-align" };
 	size_t i;
 
 	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
@@ -2607,7 +2736,8 @@ static bool qjs_cstyle_known(const char *p)
 	    strncmp(p, "transition-", 11) == 0 || strncmp(p, "animation-", 10) == 0)
 		return true;
 	return strncmp(p, "border-", 7) == 0 &&
-		(strstr(p, "-color") != NULL || strstr(p, "-width") != NULL);
+		(strstr(p, "-color") != NULL || strstr(p, "-width") != NULL ||
+		 strstr(p, "-style") != NULL);
 }
 
 static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -2988,6 +3118,16 @@ static JSValue n_form_value(JSContext *ctx, JSValueConst this_val, int argc, JSV
 	QJS_NODE_ARG(n, 0);
 
 	ctl = qjs_control(QJS_T(ctx), n);
+	if (ctl == NULL && qjs_is_tag(n, "input")) {
+		/* Onyx: no control (not boxed): the DOM's value (libdom keeps the value
+		 * a script set apart from the value attribute) */
+		dom_string *v = NULL;
+
+		if (dom_html_input_element_get_value((dom_html_input_element *) n, &v) ==
+				DOM_NO_ERR && v != NULL)
+			return qjs_str(ctx, v);
+		return JS_NULL;
+	}
 	if (ctl == NULL || !qjs_texty(ctl) || ctl->value == NULL)
 		return JS_NULL;
 	return JS_NewString(ctx, ctl->value);
@@ -3050,6 +3190,14 @@ static JSValue n_form_checked(JSContext *ctx, JSValueConst this_val, int argc, J
 	o = qjs_option(t, n, &ctl);
 	if (o != NULL)
 		return JS_NewBool(ctx, o->selected);
+	/* Onyx: no control (not boxed): the DOM's checkedness, which the control
+	 * starts from */
+	if (qjs_is_tag(n, "input")) {
+		bool c = false;
+		if (dom_html_input_element_get_checked((dom_html_input_element *) n,
+				&c) == DOM_NO_ERR)
+			return JS_NewBool(ctx, c);
+	}
 	return JS_NULL;
 }
 
@@ -3094,6 +3242,16 @@ static void qjs_select_option(jsthread *t, struct form_control *sel,
 	(void) t;
 }
 
+/* Onyx: an element's checkedness / selectedness changed: its :checked restyles (an
+ * attribute change's marks) */
+static void qjs_state_restyle(jsthread *t, dom_node *n)
+{
+	if (t->htmlc != NULL && !t->closed) {
+		onyx_restyle_attr_changed(t->htmlc, n);
+		html_script_mutation(t->htmlc, n, true);
+	}
+}
+
 /** setFormChecked(el, on): a checkbox, a radio, an option set; shown */
 static JSValue n_set_form_checked(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -3111,6 +3269,7 @@ static JSValue n_set_form_checked(JSContext *ctx, JSValueConst this_val, int arg
 					(dom_html_input_element *) n, on);
 			if (ctl->box != NULL && t->htmlc != NULL)
 				html__redraw_a_box(t->htmlc, ctl->box);
+			qjs_state_restyle(t, n);
 			QJS_DIRTY(t);	/* (:checked) */
 		}
 		return JS_UNDEFINED;
@@ -3118,6 +3277,7 @@ static JSValue n_set_form_checked(JSContext *ctx, JSValueConst this_val, int arg
 	o = qjs_option(t, n, &ctl);
 	if (o != NULL) {
 		qjs_select_option(t, ctl, o, on);
+		qjs_state_restyle(t, n);
 		return JS_UNDEFINED;
 	}
 	/* no control yet: the DOM's state, which the control will start from */
@@ -3125,6 +3285,7 @@ static JSValue n_set_form_checked(JSContext *ctx, JSValueConst this_val, int arg
 		dom_html_option_element_set_selected((dom_html_option_element *) n, on);
 	else
 		dom_html_input_element_set_checked((dom_html_input_element *) n, on);
+	qjs_state_restyle(t, n);
 	QJS_DIRTY(t);
 	return JS_UNDEFINED;
 }
@@ -3218,6 +3379,15 @@ static JSValue n_write(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 		dom_hubbub_parser_insert_chunk(t->htmlc->parser, (const uint8_t *) s, len);
 	JS_FreeCString(ctx, s);
 	return JS_UNDEFINED;
+}
+
+/* Onyx: parsing(): whether this window's document is still parsed (document.write
+ * inserts into the parser; after it, document.open() starts a new document) */
+static JSValue n_parsing(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return JS_NewBool(ctx, t->htmlc != NULL && t->htmlc->parser != NULL);
 }
 
 static JSValue n_history(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -4264,13 +4434,56 @@ static JSValue n_parse_document(JSContext *ctx, JSValueConst this_val, int argc,
 static JSValue n_create_document(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	dom_document *doc = NULL;
+	/* Onyx: createDocument's doctype (createDoctype's: no parent yet), its first child */
+	dom_node *dt = argc > 0 ? qjs_node(argv[0]) : NULL;
+	dom_node_type t = DOM_ELEMENT_NODE;
 	JSValue v;
-	if (dom_implementation_create_document(DOM_IMPLEMENTATION_HTML, NULL, NULL, NULL,
-			NULL, NULL, &doc) != DOM_NO_ERR || doc == NULL)
+
+	if (dt != NULL && (dom_node_get_node_type(dt, &t) != DOM_NO_ERR ||
+			t != DOM_DOCUMENT_TYPE_NODE))
+		dt = NULL;
+	if (dom_implementation_create_document(DOM_IMPLEMENTATION_HTML, NULL, NULL,
+			(struct dom_document_type *) dt, NULL, NULL, &doc) != DOM_NO_ERR ||
+	    doc == NULL)
 		return JS_NULL;
 	v = qjs_wrap(QJS_T(ctx), (dom_node *) doc);
 	dom_node_unref(doc);
 	return v;
+}
+
+/* Onyx: createDoctype(name, publicId, systemId): a DocumentType node (no document yet) */
+static JSValue n_create_doctype(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	const char *name = JS_ToCString(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
+	const char *pub = JS_ToCString(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	const char *sys = JS_ToCString(ctx, argc > 2 ? argv[2] : JS_UNDEFINED);
+	struct dom_document_type *dt = NULL;
+	JSValue v = JS_NULL;
+
+	if (name != NULL && pub != NULL && sys != NULL &&
+	    dom_implementation_create_document_type(name, pub, sys, &dt) == DOM_NO_ERR &&
+	    dt != NULL) {
+		v = qjs_wrap(QJS_T(ctx), (dom_node *) dt);
+		dom_node_unref(dt);
+	}
+	JS_FreeCString(ctx, name);
+	JS_FreeCString(ctx, pub);
+	JS_FreeCString(ctx, sys);
+	return v;
+}
+
+/* Onyx: doctypeIds(dt): [publicId, systemId] */
+static JSValue n_doctype_ids(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	JSValue arr = JS_NewArray(ctx);
+	dom_string *p = NULL, *s = NULL;
+	QJS_NODE_ARG(n, 0);
+
+	dom_document_type_get_public_id((dom_document_type *) n, &p);
+	dom_document_type_get_system_id((dom_document_type *) n, &s);
+	JS_SetPropertyUint32(ctx, arr, 0, p != NULL ? qjs_str(ctx, p) : JS_NewString(ctx, ""));
+	JS_SetPropertyUint32(ctx, arr, 1, s != NULL ? qjs_str(ctx, s) : JS_NewString(ctx, ""));
+	return arr;
 }
 
 /* createIn(doc, kind, a, b): a node of another document -- kind "element" (name a),
@@ -4571,6 +4784,9 @@ static const JSCFunctionListEntry qjs_natives_html5[] = {
 	JS_CFUNC_DEF("setURL", 1, n_set_url),
 	JS_CFUNC_DEF("createDocument", 0, n_create_document),
 	JS_CFUNC_DEF("createIn", 4, n_create_in),
+	JS_CFUNC_DEF("createDoctype", 3, n_create_doctype),	/* (Onyx) */
+	JS_CFUNC_DEF("parsing", 0, n_parsing),
+	JS_CFUNC_DEF("doctypeIds", 1, n_doctype_ids),
 	JS_CFUNC_DEF("importTo", 3, n_import_to),
 	JS_CFUNC_DEF("adopt", 2, n_adopt),
 	JS_CFUNC_DEF("ownerDoc", 1, n_owner_doc),

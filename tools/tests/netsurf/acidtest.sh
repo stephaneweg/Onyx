@@ -17,7 +17,7 @@ cd "$(dirname "$0")/../../.."
 T=tools/tests/netsurf
 OUT=${OUT:-/tmp/nsbench}
 PORT=${PORT:-8160}
-ACID3_MIN=${ACID3_MIN:-51}
+ACID3_MIN=${ACID3_MIN:-94}
 A=$OUT/acid
 mkdir -p "$A"
 make -f $T/host.mk OUT="$OUT/build" -j"$(nproc)" >"$A/build.log" 2>&1 || { echo "build failed: $A/build.log"; exit 1; }

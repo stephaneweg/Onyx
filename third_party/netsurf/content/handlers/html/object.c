@@ -38,6 +38,7 @@
 #include "content/hlcache.h"
 #include "content/content_protected.h"
 #include "content/llcache.h"
+#include "content/fetch.h"	/* Onyx: fetch_poll_scheme (html_object_flush_sync) */
 #include "css/utils.h"
 #include "desktop/scrollbar.h"
 #include "desktop/gui_internal.h"
@@ -934,8 +935,74 @@ html_fetch_object_ex(html_content *c,
 		c->base.active++;
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 	}
+	/* Onyx: its data in the page itself: there when a script asks (html_object_flush_sync) */
+	if (box != NULL && !background && !mask) {
+		lwc_string *scheme = nsurl_get_component(url, NSURL_SCHEME);
+		bool match = false;
+
+		if (scheme != NULL) {
+			if (lwc_string_isequal(scheme, corestring_lwc_data,
+					&match) == lwc_error_ok && match)
+				c->objects_data_pending = true;
+			lwc_string_unref(scheme);
+		}
+	}
 
 	return true;
+}
+
+
+/** Onyx: whether an object's content is still fetched with a data: URL */
+static bool html_object_data_pending(struct content_html_object *o)
+{
+	lwc_string *scheme;
+	content_status st;
+	bool match = false;
+
+	if (o->content == NULL || o->background || o->box == NULL)
+		return false;
+	if (hlcache_handle_get_content(o->content) != NULL) {
+		st = content_get_status(o->content);
+		if (st == CONTENT_STATUS_READY || st == CONTENT_STATUS_DONE ||
+		    st == CONTENT_STATUS_ERROR)
+			return false;
+	}
+	scheme = nsurl_get_component(hlcache_handle_get_url(o->content), NSURL_SCHEME);
+	if (scheme == NULL)
+		return false;
+	if (lwc_string_isequal(scheme, corestring_lwc_data, &match) != lwc_error_ok)
+		match = false;
+	lwc_string_unref(scheme);
+	return match;
+}
+
+/* exported interface documented in html/object.h (Onyx) */
+void html_object_flush_sync(html_content *c)
+{
+	struct content_html_object *o;
+	unsigned int round;
+	bool pending = true;
+
+	/* (the flag: no walk of the objects at each geometry a script reads) */
+	if (!c->objects_data_pending || c->aborted)
+		return;
+	c->objects_data_pending = false;
+	/* (a few rounds: the data fetcher's, then each content's conversion -- its READY
+	 * reformats the page; an error's fallback reboxes later: the list stays) */
+	for (round = 0; round < 4 && pending; round++) {
+		fetch_poll_scheme(corestring_lwc_data);
+		pending = false;
+		for (o = c->object_list; o != NULL; o = o->next) {
+			if (!html_object_data_pending(o))
+				continue;
+			hlcache_handle_catch_up(o->content);
+			if (html_object_data_pending(o))
+				pending = true;
+		}
+	}
+	/* (what is left: one more try at the next read) */
+	if (pending)
+		c->objects_data_pending = true;
 }
 
 

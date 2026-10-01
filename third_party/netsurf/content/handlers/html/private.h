@@ -262,6 +262,8 @@ typedef struct html_content {
 	/** Onyx: inline style sheets converted while a script waits (html_css_flush_sync):
 	 * their load events and the scripts waiting for sheets come after it */
 	bool css_sync;
+	/** Onyx: an image with a data: URL fetched since the last html_object_flush_sync */
+	bool objects_data_pending;
 
 	/** Onyx: the pointer's last position in the page (the keys scroll the scroller
 	 * under it) */
@@ -413,6 +415,12 @@ void html_script_dom_changed_by_script(html_content *htmlc);
 
 /** Onyx: a DOM change (dom_event.c): counted for html_script_dom_changed_by_script */
 void html_script_mutation(html_content *htmlc, struct dom_node *node, bool attr);
+
+/**
+ * Onyx: an element's state that selectors see changed (a checkbox or radio button the user
+ * toggled: :checked) -- restyled as an attribute change is.
+ */
+void html_state_restyle(html_content *htmlc, struct dom_node *node);
 
 /**
  * Onyx: a subtree taken out of the document forgets its boxes (they are freed at the next

@@ -105,6 +105,12 @@ bool html_css_process_style(struct html_content *htmlc, dom_node *node);
 bool html_css_update_style(struct html_content *htmlc, dom_node *node);
 
 /**
+ * Onyx: a <style> element now in the document (perhaps inside an inserted subtree):
+ * its inline sheet created and parsed if it has none yet.
+ */
+void html_css_style_inserted(struct html_content *htmlc, dom_node *node);
+
+/**
  * Onyx: the <style> elements a script changed converted now, while it waits for a
  * style (getComputedStyle, a rectangle): their rules apply to what it reads next, as
  * in browsers -- they were converted at the next turns.

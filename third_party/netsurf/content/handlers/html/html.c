@@ -726,6 +726,16 @@ static void html_restyle_attr_clear(html_content *c, bool only)
 }
 
 /* exported interface documented in html/private.h */
+void html_state_restyle(html_content *c, struct dom_node *node)
+{
+	if (c == NULL || node == NULL || c->layout == NULL)
+		return;
+	onyx_restyle_attr_changed(c, node);
+	html_script_mutation(c, node, true);
+	html_script_dom_changed(c);
+}
+
+/* exported interface documented in html/private.h */
 void html_script_mutation(html_content *c, struct dom_node *node, bool attr)
 {
 	bool hidden;
@@ -2029,7 +2039,10 @@ static void html_reformat(struct content *c, int width, int height)
 		union content_msg_data md = { .getdims = { .viewport_width = &vw,
 				.viewport_height = &vh } };
 		content_broadcast(&htmlc->base, CONTENT_MSG_GETDIMS, &md);
-		if (vw != 0 && vh != 0) {
+		/* (Onyx: a frame's may be 0 x 0 -- its element's box: Acid3's
+		 * media queries; a window's 0 is one not sized yet) */
+		if ((vw != 0 && vh != 0) ||
+		    (htmlc->bw != NULL && htmlc->bw->parent != NULL)) {
 			css_fixed mw = css_unit_device2css_px(INTTOFIX(vw), nscss_screen_dpi);
 			css_fixed mh = css_unit_device2css_px(INTTOFIX(vh), nscss_screen_dpi);
 			if (mw != htmlc->media.width || mh != htmlc->media.height) {

@@ -67,6 +67,7 @@
 #include "html/font.h"
 #include "html/form_internal.h"
 #include "html/private.h"
+#include "html/html.h"	/* Onyx: html_box_viewport_fixed */
 #include "html/layout.h"
 
 

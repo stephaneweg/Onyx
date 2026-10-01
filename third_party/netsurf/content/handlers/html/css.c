@@ -308,6 +308,7 @@ html_create_style_element(html_content *c, dom_node *style)
 	c->stylesheets[c->stylesheet_count].modified = false;
 	c->stylesheets[c->stylesheet_count].removed = false;
 	c->stylesheets[c->stylesheet_count].unused = false;
+	c->stylesheets[c->stylesheet_count].load_pending = false;	/* (Onyx) */
 	c->stylesheet_count++;
 
 	return c->stylesheets + (c->stylesheet_count - 1);
@@ -412,13 +413,37 @@ void html_css_flush_sync(html_content *c)
 	unsigned int i, round;
 	bool modified = false, pending = true;
 
-	for (i = 0; i != c->stylesheet_count; i++)
-		if (c->stylesheets[i].modified)
-			modified = true;
-	if (!modified || c->css_sync)
+	if (c->css_sync)
 		return;
 	if (lwc_intern_string("x-ns-css", 8, &scheme) != lwc_error_ok)
 		return;
+	for (i = 0; i != c->stylesheet_count && !modified; i++) {
+		struct html_stylesheet *s = &c->stylesheets[i];
+
+		if (s->modified) {
+			modified = true;
+		} else if (s->sheet != NULL && !s->removed &&
+			   (hlcache_handle_get_content(s->sheet) == NULL ||
+			    content_get_status(s->sheet) == CONTENT_STATUS_LOADING)) {
+			/* (an inline sheet processed by the scheduled task, its fetch
+			 * not delivered yet: a script reads a geometry the turn after
+			 * it changed the <style>) */
+			lwc_string *sc = nsurl_get_component(
+					hlcache_handle_get_url(s->sheet), NSURL_SCHEME);
+			bool match = false;
+
+			if (sc != NULL) {
+				if (lwc_string_isequal(sc, scheme, &match) ==
+						lwc_error_ok && match)
+					modified = true;
+				lwc_string_unref(sc);
+			}
+		}
+	}
+	if (!modified) {
+		lwc_string_unref(scheme);
+		return;
+	}
 	c->css_sync = true;
 	guit->misc->schedule(-1, html_css_process_modified_styles, c);
 	html_css_process_modified_styles(c);
@@ -480,6 +505,20 @@ bool html_css_update_style(html_content *c, dom_node *style)
 	guit->misc->schedule(0, html_css_process_modified_styles, c);
 
 	return true;
+}
+
+
+/* exported function documented in html/css.h (Onyx) */
+void html_css_style_inserted(html_content *c, dom_node *node)
+{
+	unsigned int i;
+
+	for (i = 0; i != c->stylesheet_count; i++) {
+		if (c->stylesheets[i].node == node)
+			return;
+	}
+	if (html_css_update_style(c, node))
+		html_css_process_style(c, node);
 }
 
 
@@ -672,6 +711,7 @@ bool html_css_process_link(html_content *htmlc, dom_node *node)
 	htmlc->stylesheets[htmlc->stylesheet_count].modified = false;
 	htmlc->stylesheets[htmlc->stylesheet_count].removed = false;
 	htmlc->stylesheets[htmlc->stylesheet_count].unused = false;
+	htmlc->stylesheets[htmlc->stylesheet_count].load_pending = false;	/* (Onyx) */
 
 	/* start fetch */
 	child.charset = htmlc->encoding;
