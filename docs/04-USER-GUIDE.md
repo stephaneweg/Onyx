@@ -185,7 +185,8 @@ Onyx connects over the Pi's on-board Wi-Fi. Two files must be on the SD card:
   `brcmfmac43455-sdio.bin`, `.txt` and `.clm_blob` (fetch them with
   `circle/addon/wlan/firmware/Makefile`, or copy them from a Raspberry Pi OS install).
 - **`SD:/etc/wpa_supplicant.conf`** — your network credentials (⚠️ stored in **clear
-  text** — keep it on the card, do not publish it):
+  text** — keep it on the card, do not publish it; Onyx ships none, the Wi-Fi settings or the
+  menu bar's Wi-Fi menu write it):
 
   ```
   #country=BE

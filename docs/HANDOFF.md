@@ -20,8 +20,8 @@ answer in French. The docs stay in English.
 - The user never compiles for the Pi: they test the staged `sdcard/` on the Pi and `pc/dist` on
   Windows. `pc/dist` and `sdcard/` binaries are committed.
 - Never commit: ROMs / ISOs / saves (`.z64 .n64 .v64 .sfc .smc .nes .gb* .sav .iso .gcm .wav`),
-  `sdcard/etc/wpa_supplicant.conf` (psk REDACTED, pre-commit hook + skip-worktree — never defeat
-  it), `sdcard/etc/ftpfs.ini`, `shelf.ini`, `SD:/apps/lisa.app/config.ini` (Groq key),
+  `sdcard/etc/wpa_supplicant.conf` (the user's Wi-Fi: untracked, ignored, never packaged, the
+  pre-commit hook refuses it — never defeat it), `sdcard/etc/ftpfs.ini`, `shelf.ini`, `SD:/apps/lisa.app/config.ini` (Groq key),
   `sdcard/etc/clock`. Check before each commit:
   `git diff --cached --name-only | grep -i -E "\.sfc$|\.smc$|\.nes$|\.gb|\.sav$|\.z64$|\.n64$|\.v64$|\.wav$|\.iso$|\.gcm$|wpa_supplicant|ftpfs.ini|shelf.ini|lisa.app/config"`
   must print nothing. Do not download commercial ROMs; the user's own ISO/ROMs stay local.
