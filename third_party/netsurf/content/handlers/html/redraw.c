@@ -72,6 +72,12 @@
 
 bool html_redraw_debug = false;
 
+/* Onyx: the printing flags (desktop/print.h), defined in print.c upstream -- removed with it:
+ * Jet does not print, they stay off */
+bool html_redraw_printing = false;
+int html_redraw_printing_border = 0;
+int html_redraw_printing_top_cropped = 0;
+
 /**
  * Onyx: background-clip: text -- the paint of the box being drawn whose background paints
  * its text (its descendants'), or NULL; set by html_redraw_box_inner, restored by
