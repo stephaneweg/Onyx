@@ -495,7 +495,7 @@ sidebar's places), the dock's launchers (their app opens the files), the Trash, 
 apps (tinypad, Writer, paint, Cardfile open the dropped file; dropped text goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
-per line (`txt = tinypad`, `png = imageview`, `docx = writer`, `card = cardfile`, …): opening the file runs
+per line (`txt = tinypad`, `png = imageview`, `docx = writer`, `card = cardfile`, `mp3` / `ogg` / `flac` / `wav` / `mid` / `m3u = media`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock (files
 dropped on a launcher). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
 a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
@@ -1263,8 +1263,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
 | ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
-| ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | |
-| *archiver — archive manager* | *screenshot — screen capture* | |
+| ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | ![media](../screenshots/media-albums.png) |
+| *archiver — archive manager* | *screenshot — screen capture* | *media — the music library* |
 
 ### Productivity and tools
 
@@ -1633,6 +1633,92 @@ The menus: **File** (New Capture, New Rectangle / Window / Full Screen, Save As.
 
 **Files:** writes `SD:/etc/screenshot.ini` (the mode, the delay, the pen's and the marker's colour and
 size, the last folder) and the pictures saved with Save As.
+
+### Media Player, the music library (`media`)
+
+![Media Player](../screenshots/media-home.png)
+*Media Player's home: what was played last, the albums played lately, those added lately.*
+
+Media Player keeps **your music** in one place, in the way of Windows Media Player or iTunes: the songs of
+the folders it watches — **`SD:/Music`** at first —, **MP3, OGG, FLAC, WAV and MIDI** files, by
+**artists, albums, songs, genres and folders**, and your **playlists**. It finds the songs by itself:
+at each start it looks again at the folders (the sidebar says *Looking for songs...*) and shows what it
+knew at once. Start it from the dock or the app list (*Multimedia*), or open a music file in the File
+Viewer.
+
+**The window**: the **sidebar** at the left (Home, the library, the playlists; *+ New playlist*; at its
+bottom the songs counted — a click shows the folders watched), the **bar on top** (back, forward, where
+you are, the **search** — titles, artists and albums at once —, the albums' grid or list), the page,
+and at the bottom, always, **the bar of what plays**: the cover (a click: *Now playing*), the song and
+its ♥ (a favourite), **shuffle**, **previous**, **play / pause**, **next**, **repeat** (all, one, off),
+the position (drag it), the queue, the **mini player**, the volume (drag it, or the wheel; a click on
+the speaker mutes).
+
+| | |
+|:---:|:---:|
+| ![Albums](../screenshots/media-albums.png) | ![An album](../screenshots/media-album.png) |
+| *The albums (sorted by name, artist, year or the latest added)* | *An album: Play, Shuffle, its songs* |
+
+**The pages**:
+
+- **Home**: what was played last (*Play* / *Resume*), the albums played lately, those added lately.
+- **Artists** (their albums' covers in circles), an **artist**: their albums, their songs.
+- **Albums**: a grid of covers (under the pointer: ▶ plays the album) or a list; an **album**: its
+  facts on a band of its cover's colours, **Play**, **Shuffle**, **⋯** (play next, add to the queue,
+  to a playlist, to the favourites, show in the File Viewer), its songs (the one playing marked).
+- **Songs**: every song, by artist; a click on a column's head sorts by it (again: the other way).
+- **Genres** (tiles), **Folders** (the folders that hold songs), and their songs.
+- **Favourites** (the songs with a ♥), **Recently added** (the last 100), **your playlists**.
+
+| | |
+|:---:|:---:|
+| ![Songs and their menu](../screenshots/media-songs.png) | ![Now playing](../screenshots/media-nowplaying.png) |
+| *Songs selected, their menu* | *Now playing, and what comes next* |
+
+**Songs**: a **double click** plays a song (and those after it in the list); **Ctrl** / **Shift** + click
+selects several; **Enter** plays the selection; **Ctrl+A** selects all. A **right click**: *Play*, *Play
+next*, *Add to the queue*, *Add to a playlist...* (a new one, or one of yours), *Add to / Remove from
+Favourites*, *Go to the album / artist*, *Properties...* (the song's tags, its file, how often it was
+played — read only: Media Player never changes your files), *Show in the File Viewer*; in a playlist
+also *Remove from this playlist*. A playlist's **⋯** renames or deletes it.
+
+**Now playing** (the cover at the bottom left, the queue button, or ^L): the cover large over its own
+colours, the song, its format (MP3 at so many kbit/s, FLAC 44.1 kHz 16 bit...), and **Up next** — a
+click plays one of them. **A MIDI file** shows **its notes as coloured lines** instead of a cover — a
+colour an instrument, the keyboard at the left, the notes sounding outlined, scrolling under the
+playhead —, its instruments under it, and the SoundFont that plays it.
+
+| | |
+|:---:|:---:|
+| ![A MIDI file](../screenshots/media-midi.png) | ![The mini player](../screenshots/media-mini.png) |
+| *A MIDI file playing: its notes* | *The mini player, at the bottom right of the screen* |
+
+**The mini player** (its button in the bar, or ^K): the window becomes a small card at the **bottom
+right of the screen** — the cover, the song, previous / play / next, the position; its square button
+brings the window back. **Closing the window stops the music.**
+
+**The folders** (*File > Folders to Watch...*, or the songs' count at the sidebar's bottom): the
+folders Media Player looks in (`SD:/Music` at first; another partition, a USB drive...), how many songs
+each has; *Add a folder...*, × to stop watching one. The library is updated at each start, or with
+*File > Look for New Songs*.
+
+![The folders](../screenshots/media-welcome.png)
+
+**What it reads**: the tags of the files — ID3 (MP3), Vorbis comments (FLAC, OGG), RIFF INFO (WAV), the
+first track's name (MIDI) —; what is missing comes from the path (`<artist>/<album>/<nn> - <title>.mp3`).
+The covers: the picture inside the file, else the folder's `cover.jpg` / `folder.jpg` / `front.jpg`
+(PNG and BMP too); an album without one gets a picture drawn from its name. **Nothing is downloaded.**
+MIDI files are played by **MeltySynth** (Koton's synthesizer) through a **SoundFont**: the first `.sf2`
+of `SD:/koton/soundfonts` (GeneralUser GS), or `soundfont = <path>` in the settings.
+
+**Keys**: Space or ^P play / pause, ^F next, ^B previous, ^S shuffle, ^T repeat,
+^E search, ^L now playing, ^M the mini player, Esc (now playing: back; the search: cleared), ^O open a file.
+
+**Files**: reads the music folders; writes `SD:/etc/media/settings.ini` (the folders, the volume,
+shuffle, repeat, the SoundFont, the albums' order and view), `SD:/etc/media/library.tsv` (what the
+scan found: the next start is at once), `SD:/etc/media/stats.tsv` (plays, the last time, favourites),
+and the playlists, **`SD:/Music/Playlists/*.m3u`** (other players read them; a `.m3u` opened from the
+File Viewer plays). *(The videos will come in a later version of the same app.)*
 
 ### Cardfile, a small database (`cardfile`)
 

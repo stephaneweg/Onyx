@@ -461,6 +461,34 @@ static int h_thread_join (int tid, unsigned ms, int *code)
 	if (code) *code = t->code;
 	return 0;
 }
+// events (kapi v67): manual or auto reset, on a mutex and a condition (the apps' worker threads)
+struct SimEvent { pthread_mutex_t m; pthread_cond_t c; bool manual, set; };
+static std::vector<SimEvent *> g_events;
+static int h_event_create (int manual, int initial)
+{
+	SimEvent *e = new SimEvent; pthread_mutex_init (&e->m, 0); pthread_cond_init (&e->c, 0); e->manual = manual != 0; e->set = initial != 0;
+	pthread_mutex_lock (&g_thrLock); g_events.push_back (e); int h = (int) g_events.size (); pthread_mutex_unlock (&g_thrLock);
+	return h;
+}
+static SimEvent *ev_of (int h) { pthread_mutex_lock (&g_thrLock); SimEvent *e = h > 0 && h <= (int) g_events.size () ? g_events[h - 1] : 0; pthread_mutex_unlock (&g_thrLock); return e; }
+static int h_event_set (int h) { SimEvent *e = ev_of (h); if (!e) return -2; pthread_mutex_lock (&e->m); e->set = true; pthread_cond_broadcast (&e->c); pthread_mutex_unlock (&e->m); return 0; }
+static int h_event_reset (int h) { SimEvent *e = ev_of (h); if (!e) return -2; pthread_mutex_lock (&e->m); e->set = false; pthread_mutex_unlock (&e->m); return 0; }
+static int h_event_wait (int h, unsigned ms)
+{
+	SimEvent *e = ev_of (h); if (!e) return -2;
+	pthread_mutex_lock (&e->m);
+	if (!e->set && ms)
+	{
+		struct timespec ts; clock_gettime (CLOCK_REALTIME, &ts);
+		unsigned w = ms == 0xFFFFFFFFu ? 3600000u : ms;
+		ts.tv_sec += w / 1000; ts.tv_nsec += (long) (w % 1000) * 1000000; if (ts.tv_nsec >= 1000000000) { ts.tv_sec++; ts.tv_nsec -= 1000000000; }
+		while (!e->set) if (pthread_cond_timedwait (&e->c, &e->m, &ts) != 0) break;
+	}
+	int r = e->set ? 0 : -1;
+	if (e->set && !e->manual) e->set = false;
+	pthread_mutex_unlock (&e->m);
+	return r;
+}
 static int h_thread_self (void)
 {
 	if (on_main ()) return 1;
@@ -1134,6 +1162,7 @@ static void setup (void)
 	T->midi_read = midi_read; T->midi_devices = midi_devices;
 	T->screen_native = screen_native; T->set_timezone = set_timezone;
 	T->thread_create = h_thread_create; T->thread_exit = h_thread_exit; T->thread_join = h_thread_join; T->thread_self = h_thread_self;
+	T->event_create = h_event_create; T->event_set = h_event_set; T->event_reset = h_event_reset; T->event_wait = h_event_wait;
 	T->post = h_post; T->pump_wait = h_pump_wait;
 	g_mainThread = pthread_self (); g_mainSet = true;
 	load_font ();

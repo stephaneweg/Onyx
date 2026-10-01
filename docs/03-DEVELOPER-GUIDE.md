@@ -1567,6 +1567,31 @@ screenshot` — the simulator's `SIM_GRAB=<file>.elsm` is what `kapi_screen_grab
 desktop.png` made an `.elsm` there), a full-screen app is dumped as its whole buffer, and `SIM_WINS`'
 windows may end with `,title`.
 
+### Media Player, the music library (`user/Apps/media`)
+
+The music library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
+**newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers.
+
+| File | What |
+|---|---|
+| `codecs.h`, `codecs.c`, `vorbis.c` | The decoders from `third_party`: **minimp3** (`minimp3_ex.h`: an index for exact seeks), **dr_flac**, **dr_wav** (in `codecs.c`), **stb_vorbis** (alone in `vorbis.c`: its static names clash with minimp3's). C, built with the FPU into `Apps/media/obj/`; no stdio (`*_NO_STDIO`). |
+| `decode.h` | `Src` (a file through the kapi: `kapi_open` / `kapi_read` / `kapi_seek` / `kapi_fsize64`, any size), `Decoder` (s16 stereo frames at the file's rate; mono doubled, more than two channels: the first two), one per format (an Ogg file read whole: stb_vorbis decodes from memory), `Stream` (a linear resampler to `SOUND_RATE`), `decoder_open` (by extension, then the first bytes). |
+| `midi.h` | `MidiSong` (a Standard MIDI File, formats 0 / 1, RMID too: the tempo map, running status, the events in time order in frames, the notes for the view, the channels' General MIDI instruments), the SoundFont loaded once (`soundfont ()`), `MidiDecoder` (the events fired between `render`s of MeltySynth — Koton's `Apps/koton/synth`, linked from Koton's objects —; a seek replays the programs and controllers, no notes). |
+| `player.h` | `Player`: a thread (`kapi_thread_create`) that opens the song asked for, decodes ahead and feeds `kapi_sound_write` (`kapi_sound_config (1024, 3)`: ~0.1 s queued, so a pause is heard at once), at the volume (a square law); the window asks (play, pause, resume, seek, stop) and reads `state`, `posMs` (what is heard: the frames sent less those queued), `lenMs`, `endedGen`, `errGen` under a `kapi_lock`. No output (the simulator): the song is decoded and timed silently. |
+| `tags.h` | `read_tags`: ID3v2.2–2.4 (Latin-1, UTF-16, UTF-8; `APIC`: the cover's offset and length in the file) then ID3v1, the MP3's length (the Xing / Info / VBRI header, else the bit rate), FLAC's `STREAMINFO`, `VORBIS_COMMENT`, `PICTURE`, Ogg's comment header and the last page's granule, WAV's `fmt`, `data`, `LIST INFO`, MIDI's track name; the path fills the rest (`<artist>/<album>/<nn> - <title>`). |
+| `lib.h` | `Library`: the songs (strings `strdup`'d), grouped by `build ()` into albums (album artist — else artist — and album), artists, genres, folders; `sort_idx` (a merge sort with a context: the scan's thread sorts too); `library.tsv` / `stats.tsv`; the scan (`scan_dir`, `scan_thread`): the folders walked, a known file (same path, same size) copied, the others read; a folder's `cover.jpg` noted. |
+| `covers.h` | `Covers`: a thread decodes the pictures (`img_load_mem` / `img_load`), cropped square at 320 px; each size drawn is made once (box filter, bilinear up) and cached (the oldest dropped); an album without a picture gets one drawn from its name; `round_corners` (polygons over the corners); `tone ()` (a cover's colour: the bands, now playing). |
+| `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`wtk/vpaint.h`), `IntList`. |
+| `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu), `NowBar`, `MiniView` —, the mini player (`kapi_resize_window2` + `kapi_move_window` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name). |
+
+**Tests on the PC**: `sh tools/tests/run_media_test.sh` — sample files made by ffmpeg (MP3, Ogg, FLAC, WAV at
+48 kHz, a 22 kHz mono WAV) and `tools/tests/media/make_midi.py`, decoded by `tools/tests/media/dectest.cpp`
+through the simulator's kapi: the length, the level, a seek, each. **The screenshots**: `sh
+tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tests/media/make_library.py`
+(the mock-ups' albums and covers in every format, two MIDI albums, playlists, play counts; needs ffmpeg and
+`pip install mutagen`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
+`python3 tools/icons/media_icon.py`.
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app

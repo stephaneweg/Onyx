@@ -54,6 +54,22 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Media Player, the music library (2026-10-01, not yet tried on the Pi)
+
+- **What**: `user/Apps/media` (docs/03 *Media Player*; docs/04 §12; the mock-ups and the user's decisions:
+  `docs/media/README.md`): MP3, OGG, FLAC, WAV (minimp3, stb_vorbis, dr_flac, dr_wav in `third_party/`) and
+  MIDI (Koton's MeltySynth + GeneralUser GS), a library scanned from the folders watched (`SD:/Music`), by
+  artists / albums / songs / genres / folders, favourites, recently added, `.m3u` playlists; home, album
+  pages, search, a songs' table with its menu, now playing (a MIDI file: its notes as coloured lines),
+  the mini player (the window reduced at the screen's bottom right). Tags read only; covers from the
+  files and folders; closing stops the music.
+- **To try on the Pi**: the sound (`kapi_sound_write` from the player's thread: a song heard whole,
+  pause / seek at once), the scan of a big `SD:/Music` (its time; the next start from `library.tsv`), a
+  MIDI file (the SoundFont's load: 30 MB, a second or two), the covers' loading, the mini player's place.
+- **Next**: **the videos** -- first push into `main` and merge `main`: another session makes a reusable
+  video playback library for NetSurf, to use here (the user). Media keys; ReplayGain; gapless; the
+  covers cached on the card; a playlist reordered by dragging.
+
 ## Screenshot, the screen capture tool (2026-10-01, not yet tried on the Pi)
 
 - **What**: `user/Apps/screenshot` (docs/03 *Screenshot, the capture tool*; docs/04 §12; the study and the
@@ -1283,7 +1299,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 `shots.sh` scenario. In the user's priority order:
 
 **Priority 1**
-- **Music library** -- mock-ups proposed (2026-10-01, `docs/media/README.md`: *Media Player*, its questions to the user) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
+- **Music library** -- **done** (2026-10-01: *Media Player*, its section above; the videos next) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
   MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
   is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
   tags and cover art, a now-playing view, file associations.
