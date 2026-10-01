@@ -1254,6 +1254,10 @@ when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel
 
 ## End-user apps roadmap (decided with the user, 2026-09-30; none started)
 
+**How (the user, 2026-10-01)**: Screenshot first (laid out as Windows' Snipping Tool:
+docs/screenshot/README.md), then the **Priority 1** apps **in their order**; for each, **mock-ups first**
+for the user to validate, then the app -- polished, **worthy of a commercial product**.
+
 Every new app: FreeType text through wtk's face, polished, its catalog entry in docs/04 and a
 `shots.sh` scenario. In the user's priority order:
 
