@@ -55,10 +55,6 @@ __pycache__/
 third_party/**/*.o
 # (their header lists, user/netsurf/Makefile's -MMD: named <obj>.o.d -- no source is)
 third_party/**/*.o.d
-# nsgenbind's host build output (the x86 binary + objects) -- artifact, not committed; its
-# source IS vendored so it can be rebuilt (flex/bison) to regenerate the duktape bindings.
-third_party/nsgenbind/build-*/
-
 # Remembered FTP logins (ftpfs "Remember password"): never commit them
 sdcard/etc/ftpfs.ini
 

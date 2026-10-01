@@ -91,7 +91,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -160,3 +160,12 @@ clean:
 
 # the remote desktops share the keyboard translation
 vncd.elf rdpd.elf: remotekeys.h
+
+# zip / unzip (C++ on newlib, the Archiver's engine: ../Apps/archiver/ops.h) with the vendored zlib
+ARC_PROGS = zip.elf unzip.elf
+$(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../Apps/archiver/*.h) $(LIBC_DEP)
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+	$(CXX) $(CXXFLAGS_LIBC) -I$(ZLIB_DIR) -Wno-maybe-uninitialized -ffunction-sections -fdata-sections -Wl,--gc-sections \
+	       $(LDFLAGS) $*.crt0.o $*.sys.o $< -L$(ZLIB_DIR) -lz -lm -o $@
+	@rm -f $*.crt0.o $*.sys.o

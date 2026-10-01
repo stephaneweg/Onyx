@@ -1912,6 +1912,28 @@ bool html_box_viewport_fixed(const struct box *box)
 	return true;
 }
 
+/* exported interface documented in html/html.h */
+bool html_box_fixed_shift(const struct html_content *html, const struct box *box,
+		int *dx, int *dy)
+{
+	const struct box *b;
+
+	*dx = *dy = 0;
+	if (html == NULL || html->bw == NULL)
+		return false;
+	for (b = box; b != NULL; b = b->parent) {
+		if (b->style != NULL &&
+		    css_computed_position(b->style) == CSS_POSITION_FIXED &&
+		    html_box_viewport_fixed(b)) {
+			int w, h;
+
+			browser_window_onyx_viewport(html->bw, dx, dy, &w, &h);
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool onyx_fixed_background(const struct box *box)
 {
 	lwc_string *url = NULL;
@@ -2110,9 +2132,14 @@ static void html_reformat(struct content *c, int width, int height)
 
 void html_redraw_a_box(hlcache_handle *h, struct box *box)
 {
-	int x, y;
+	int x, y, dx, dy;
 
 	box_coords(box, &x, &y);
+	/* Onyx: in a fixed box, where it is painted */
+	html_box_fixed_shift((html_content *) hlcache_handle_get_content(h), box,
+			&dx, &dy);
+	x += dx;
+	y += dy;
 
 	content_request_redraw(h, x, y,
 			box->padding[LEFT] + box->width + box->padding[RIGHT],
@@ -2131,9 +2158,14 @@ void html__redraw_a_box(struct html_content *html, struct box *box)
 {
 	int x, y;
 
+	int dx, dy;
+
 	if (box == NULL)
 		return;	/* Onyx: a control no longer shown (boxes built again) */
 	box_coords(box, &x, &y);
+	html_box_fixed_shift(html, box, &dx, &dy);	/* (Onyx: in a fixed box) */
+	x += dx;
+	y += dy;
 
 	content__request_redraw((struct content *)html, x, y,
 			box->padding[LEFT] + box->width + box->padding[RIGHT],
@@ -2600,6 +2632,7 @@ html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry)
 
 			for (i = n - 1; i >= 0 && !done; i--) {
 				struct box *b = path[i];
+				int fdx, fdy;
 
 				if (b->style && css_computed_visibility(b->style) ==
 						CSS_VISIBILITY_HIDDEN)
@@ -2608,6 +2641,9 @@ html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry)
 					float scale = browser_window_get_scale(
 							b->iframe);
 					box_coords(b, &box_x, &box_y);
+					html_box_fixed_shift(html, b, &fdx, &fdy);
+					box_x += fdx;
+					box_y += fdy;
 					done = browser_window_scroll_at_point(
 							b->iframe,
 							(x - box_x) * scale,
@@ -2622,6 +2658,9 @@ html_scroll_boxes_at_point(struct content *c, int x, int y, int scrx, int scry)
 							scrx, scry);
 				} else if (b->object != NULL) {
 					box_coords(b, &box_x, &box_y);
+					html_box_fixed_shift(html, b, &fdx, &fdy);
+					box_x += fdx;
+					box_y += fdy;
 					done = content_scroll_at_point(b->object,
 							x - box_x, y - box_y,
 							scrx, scry);

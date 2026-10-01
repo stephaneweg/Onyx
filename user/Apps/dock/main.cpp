@@ -13,8 +13,8 @@
 //     go there; a click opens it in the File Viewer);
 //   * in the middle, the WORKSPACES (virtual desktops, kernel v65): a small square each, the
 //     current one lit, its windows drawn small in it; a click shows it (Ctrl+Alt+Left / Right
-//     too). Beside them the lock (apps/lock), the gear (the Control Panel: apps/control) and the
-//     power (apps/shutdown).
+//     too). Beside them, at the left the lock (apps/lock) over the gear (the Control Panel:
+//     apps/control), at the right the power (apps/shutdown) over the clipboard (apps/clipboard).
 // A click outside an open drawer closes it; the pointer on a launcher names it. A right click on
 // the dock: Panel Settings... (the Control Panel's Panel applet).
 //
@@ -309,7 +309,7 @@ static void desk_box (int i, int *x, int *y)
 }
 
 // What the pointer is on (screen coordinates).
-enum { H_NONE, H_SLOT, H_STRIP, H_DESK, H_LOCK, H_GEAR, H_POWER, H_DOCK, H_ITEM, H_DRAWER };
+enum { H_NONE, H_SLOT, H_STRIP, H_DESK, H_LOCK, H_GEAR, H_POWER, H_DOCK, H_ITEM, H_DRAWER, H_CLIP };
 struct Hit { int what, index; };
 
 // The open drawer, its box (screen).
@@ -357,8 +357,18 @@ static Hit hit_test (int sx, int sy)
 		if (x >= bx - 2 && x < bx + SQW + 2 && y >= by - 2 && y < by + SQH + 2) { h.what = H_DESK; h.index = i; return h; }
 	}
 	if (x >= g_pgX && x < g_pgX + 28) { h.what = y < DH / 2 ? H_LOCK : H_GEAR; return h; }
-	if (x >= g_pgX + g_pgW - 30 && x < g_pgX + g_pgW) { h.what = H_POWER; return h; }
+	if (x >= g_pgX + g_pgW - 30 && x < g_pgX + g_pgW) { h.what = y < DH / 2 ? H_POWER : H_CLIP; return h; }
 	return h;
+}
+
+// The clipboard's glyph (a board with its clip), centred at (cx, cy), about 16 px
+static void clip_glyph (Canvas &cv, int cx, int cy, unsigned ink)
+{
+	int x0 = V (cx - 6), y0 = V (cy - 6), x1 = V (cx + 6), y1 = V (cy + 8);
+	int board[] = { x0, y0, x1, y0, x1, y1, x0, y1 };
+	VPath o; o.polyline (board, 4, 28, true); o.fill (cv, ink);
+	VPath c; c.rrect (V (cx - 3), V (cy - 8), V (6), V (4), V (1)); c.fill (cv, ink);
+	VPath l; l.rect (V (cx - 3), V (cy), V (6), 24); l.rect (V (cx - 3), V (cy + 3), V (6), 24); l.fill (cv, ink);
 }
 
 static char g_tipBuf[64];
@@ -397,6 +407,7 @@ static const char *hit_tip (const Hit &h)
 	case H_LOCK:  return "Lock the screen";
 	case H_GEAR:  return "Control Panel";
 	case H_POWER: return "Shut down";
+	case H_CLIP:  return "Clipboard";
 	}
 	return 0;
 }
@@ -531,13 +542,16 @@ public:
 			wk_rline (canvas, bx, by, SQW, SQH, 4, on ? C_ACCENT : wk_tone (d, 70), on ? 255 : 170);
 			if (on) wk_rline (canvas, bx - 1, by - 1, SQW + 2, SQH + 2, 5, C_ACCENT, 110);
 		}
-		bool hl = hot.what == H_LOCK, hg = hot.what == H_GEAR, hp = hot.what == H_POWER;
+		// the left column: the lock, the gear (the Control Panel); the right one: the power, the clipboard
+		bool hl = hot.what == H_LOCK, hg = hot.what == H_GEAR, hp = hot.what == H_POWER, hc = hot.what == H_CLIP;
 		if (hl) wk_rbox (canvas, sx + 3, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
 		if (hg) wk_rbox (canvas, sx + 3, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hp) wk_rbox (canvas, sx + g_pgW - 29, oy + 27, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hp) wk_rbox (canvas, sx + g_pgW - 29, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hc) wk_rbox (canvas, sx + g_pgW - 29, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
 		wk_glyph (canvas, WKG_LOCK, sx + 15, oy + 27, 15, ink);
 		wk_glyph (canvas, WKG_GEAR, sx + 15, oy + 53, 17, ink);
-		wk_glyph (canvas, WKG_POWER, sx + g_pgW - 17, oy + 40, 16, 0x00BE322C);
+		wk_glyph (canvas, WKG_POWER, sx + g_pgW - 17, oy + 27, 16, 0x00BE322C);
+		clip_glyph (canvas, sx + g_pgW - 17, oy + 53, ink);
 	}
 
 	void drawDock (int ox, int oy)
@@ -623,7 +637,7 @@ public:
 		if (hot.what == H_SLOT || hot.what == H_STRIP) cx = ox + g_slot[hot.index].x + CW / 2;
 		else if (hot.what == H_DESK) { int bx, by; desk_box (hot.index, &bx, &by); cx = ox + bx + SQW / 2; }
 		else if (hot.what == H_LOCK || hot.what == H_GEAR) cx = ox + g_pgX + 15;
-		else if (hot.what == H_POWER) cx = ox + g_pgX + g_pgW - 17;
+		else if (hot.what == H_POWER || hot.what == H_CLIP) cx = ox + g_pgX + g_pgW - 17;
 		int x = cx - tw / 2;
 		if (x < 0) x = 0;
 		if (x + tw > width) x = width - tw;
@@ -694,6 +708,7 @@ public:
 		case H_LOCK:  closeDrawer (); kapi_launch ("lock"); break;
 		case H_GEAR:  closeDrawer (); launch_or_raise ("control"); break;
 		case H_POWER: closeDrawer (); kapi_launch ("shutdown"); break;
+		case H_CLIP:  closeDrawer (); launch_or_raise ("clipboard"); break;
 		case H_ITEM:
 		{
 			App *a = g_dr[g_open].apps[h.index];

@@ -64,6 +64,9 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <set>
+#include <map>
+#include <deque>
 #include "kapi.h"
 
 // The kernel's frame metrics (kernel/include/kern/gui/window.h: WIN_TITLEBAR_H, WIN_BORDER).
@@ -85,6 +88,7 @@ static gui_handler g_ptr, g_key, g_click, g_menuFn; static int g_btn;	// (the bu
 static unsigned g_ticks = 1000;
 static std::vector<std::string> g_script; static size_t g_step;
 static unsigned g_mods;					// (the script's "mods")
+static std::string g_dragData;				// (the script's last "drop")
 static bool g_quit;					// (the script's "quit": the window closed)
 
 // The card is only READ: what an app writes (a saved file, a folder) goes to SIM_WRITES (default
@@ -353,6 +357,8 @@ static void dump (const char *file)
 	if (!(g_flags & (1u << 5)))					// (not a see-through window: its client opaque)
 		for (int j = 0; j < g_lh; j++)
 			for (int i = 0; i < g_lw; i++) px[(size_t) (j + (g_act ? SIM_TITLE_H : 0)) * g_ow + i + (g_act ? SIM_BORDER : 0)] &= 0x00FFFFFFu;
+	if (g_flags & (1u << 3))					// (WIN_FLAG_TRANSPARENT: magenta = see-through)
+		for (size_t i = 0; i < px.size (); i++) if ((px[i] & 0x00FFFFFFu) == 0x00FF00FFu) px[i] = 0xFF000000u;
 	fwrite (px.data (), 4, px.size (), f);
 	fclose (f);
 	fprintf (stderr, "sim: dumped %dx%d at %d,%d -> %s\n", g_ow, g_oh, g_x, g_y, file);
@@ -447,6 +453,19 @@ static void step (void)
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
+	// drag & drop (ABI v42) from another app: "dragover X Y [FLAGS]" (FLAGS 1 = Ctrl, 4 = left),
+	// "drop X Y PATH|PATH... [FLAGS]" (the paths a DND_FILES payload, '|' for the newlines)
+	else if (!strcmp (cmd, "dragover"))
+	{
+		c = 0; sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c);
+		if (g_ptr) g_ptr (0, GUI_EVENT_DRAG_OVER, ((long) c << 32) | ((long) a << 16) | (long) b);
+	}
+	else if (!strcmp (cmd, "drop"))
+	{
+		c = 0; sscanf (st.c_str (), "%*s %d %d %255s %d", &a, &b, arg, &c);
+		g_dragData = arg; for (char &ch : g_dragData) if (ch == '|') ch = '\n';
+		if (g_ptr) g_ptr (0, GUI_EVENT_DROP, ((long) c << 32) | ((long) a << 16) | (long) b);
+	}
 	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
@@ -536,7 +555,8 @@ static void wallpaper_commit (void)
 	fclose (fp);
 	fprintf (stderr, "sim: the wallpaper -> %s\n", f);
 }
-static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
+static int sipc_recv (int *, int *, void *, unsigned, int);
+static int mailbox_recv (int *f, int *t, void *b, unsigned c, int bl) { return getenv ("SIM_IPC") ? sipc_recv (f, t, b, c, bl) : -1; }
 // (the BASIC runtime: started as an app -- no stdout --, its folder the current one, no GPU)
 static int h_chdir (const char *) { return 0; }
 static void *h_stdout_stream (void) { return 0; }
@@ -552,17 +572,24 @@ static int app_dir (char *b, unsigned n)				// SD:apps/<the program's name>.app/
 	return b ? (int) strlen (b) : 0;
 }
 static int f_mkdir (const char *p) { return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
-// (the card is only read: a file is removed / renamed on RAM: only)
-// (RAM:, or a file an app wrote -- in SIM_WRITES: the card itself is never touched)
+// (the card is only read: a file is removed / renamed on RAM:, or among what the apps wrote --
+//  SIM_WRITES --, never on the card)
+static bool written (const char *p) { std::string f = sdpath (p), w = writes () + "/"; return f.compare (0, w.size (), w) == 0; }
 static int f_remove (const char *p)
 {
-	std::string f = sdpath (p), w = writes () + "/";
-	if (!is_ram (p) && f.compare (0, w.size (), w) != 0) return -1;
-	return remove (f.c_str ()) == 0 ? 0 : -1;
+	if (!is_ram (p) && !written (p)) return -1;
+	std::string f = sdpath (p); return (remove (f.c_str ()) == 0 || rmdir (f.c_str ()) == 0) ? 0 : -1;
 }
 static int f_rename (const char *a, const char *b)
 {
-	if (!is_ram (a) || !is_ram (b)) return -1;
+	if (!(is_ram (a) && is_ram (b)) && !(written (a) && !is_ram (b)))
+		return -1;
+	if (!is_ram (b))						// (into the writes: its own path there)
+	{
+		struct stat st; std::string to = wpath (b);
+		if (stat (to.c_str (), &st) == 0) return -1;
+		return rename (sdpath (a).c_str (), to.c_str ()) == 0 ? 0 : -1;
+	}
 	struct stat st; std::string to = sdpath (b);
 	if (stat (to.c_str (), &st) == 0) return -1;			// (there already: as the kernel's)
 	return rename (sdpath (a).c_str (), to.c_str ()) == 0 ? 0 : -1;
@@ -761,14 +788,35 @@ static int win_list (struct kapi_win_info *o, int max)
 }
 // the kernel's text straight into the window (mandelbrot's status line)
 static void draw_text (int x, int y, const char *s, unsigned c) { draw_text_buf (g_canvas, g_stride, g_lh, x, y, s, c); }
-static int stream_read (void *h, void *b, unsigned n) { return pipe_read (h, b, n); }
-static int stream_read_nb (void *h, void *b, unsigned n) { return pipe_read (h, b, n); }
-// kapi_file_out: a file written in pieces (SIM_WRITES, as save_file); its handle told from the pipes by a tag
-struct SimOut { unsigned tag; FILE *f; };
-enum { SIM_OUT_TAG = 0x4F555446 };
-static SimOut *sim_out (void *h) { return (unsigned long) h > 0x10000 && ((SimOut *) h)->tag == SIM_OUT_TAG ? (SimOut *) h : 0; }
-static void *file_out (const char *p, int append) { FILE *f = fopen (wpath (p).c_str (), append ? "ab" : "wb"); if (!f) return 0; SimOut *o = new SimOut; o->tag = SIM_OUT_TAG; o->f = f; return o; }
-static int stream_write (void *h, const void *b, unsigned n) { SimOut *o = sim_out (h); if (o) return (int) fwrite (b, 1, n, o->f); return (int) n; }
+// file streams (kapi_file_in / kapi_file_out): a FILE * behind a tagged handle, told apart from the
+// canned pipes (small numbers) by a set of the handles made
+struct FStream { FILE *f; };
+static std::set<void *> g_fstreams;
+static pthread_mutex_t g_fsLock = PTHREAD_MUTEX_INITIALIZER;
+static bool is_fstream (void *h) { pthread_mutex_lock (&g_fsLock); bool r = g_fstreams.count (h) != 0; pthread_mutex_unlock (&g_fsLock); return r; }
+static void *fstream_make (FILE *f)
+{
+	if (!f) return 0;
+	FStream *s = new FStream; s->f = f;
+	pthread_mutex_lock (&g_fsLock); g_fstreams.insert (s); pthread_mutex_unlock (&g_fsLock);
+	return s;
+}
+static void *file_in (const char *p) { return fstream_make (fopen (sdpath (p).c_str (), "rb")); }
+static void *file_out (const char *p, int append)
+{
+	std::string w = wpath (p);
+	if (append)						// (appending to a card file: from its copy)
+	{
+		struct stat st; std::string src = sdpath (p);
+		if (stat (w.c_str (), &st) != 0 && src != w) { FILE *a = fopen (src.c_str (), "rb"), *b = fopen (w.c_str (), "wb");
+			char buf[65536]; size_t n; while (a && b && (n = fread (buf, 1, sizeof buf, a)) > 0) fwrite (buf, 1, n, b);
+			if (a) fclose (a); if (b) fclose (b); }
+	}
+	return fstream_make (fopen (w.c_str (), append ? "ab" : "wb"));
+}
+static int stream_read (void *h, void *b, unsigned n) { if (is_fstream (h)) return (int) fread (b, 1, n, ((FStream *) h)->f); return pipe_read (h, b, n); }
+static int stream_read_nb (void *h, void *b, unsigned n) { return stream_read (h, b, n); }
+static int stream_write (void *h, const void *b, unsigned n) { if (is_fstream (h)) return (int) fwrite (b, 1, n, ((FStream *) h)->f); return (int) n; }
 static void stream_eof (void *) {}
 static int stdin_read (void *, unsigned) { return 0; }
 static int f_seek (void *h, unsigned long long pos) { return fseek ((FILE *) h, (long) pos, SEEK_SET) == 0 ? 0 : -1; }
@@ -783,8 +831,16 @@ static void set_wheel (int v) { s_wheel = v; }
 static int get_wheel (void) { return s_wheel; }
 static int h_kill (const char *n) { fprintf (stderr, "sim: kill %s\n", n); return 1; }
 static int set_keymap_data (const char *, const void *, unsigned) { return 1; }
-static int mailbox_send (int, int, const void *, unsigned) { return 0; }
+static int sipc_send (int, int, const void *, unsigned);
+static int mailbox_send (int to, int type, const void *d, unsigned n) { return getenv ("SIM_IPC") ? sipc_send (to, type, d, n) : 0; }
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
+static int drag_data (int *type, void *buf, unsigned cap)
+{
+	if (type) *type = DND_FILES;
+	unsigned n = (unsigned) g_dragData.size ();
+	if (buf && cap) memcpy (buf, g_dragData.c_str (), n < cap ? n : cap);
+	return (int) n;
+}
 static void *spawn (const char *p, const char *a, void *, void *)
 {
 	fprintf (stderr, "sim: spawn %s %s\n", p, a ? a : "");
@@ -792,53 +848,20 @@ static void *spawn (const char *p, const char *a, void *, void *)
 }
 static unsigned long g_pipes;
 static void *h_pipe (void) { return getenv ("SIM_PIPE") && g_pipes < 64 ? (void *) ++g_pipes : 0; }
-static void stream_close (void *h) { SimOut *o = sim_out (h); if (o) { fclose (o->f); o->tag = 0; delete o; } }
+static void stream_close (void *h)
+{
+	if (!is_fstream (h)) return;
+	pthread_mutex_lock (&g_fsLock); g_fstreams.erase (h); pthread_mutex_unlock (&g_fsLock);
+	fclose (((FStream *) h)->f); delete (FStream *) h;
+}
 static int get_args (char *b, unsigned n)
 {
 	const char *a = getenv ("SIM_APPLET") ? "--applet 1 99" : getenv ("SIM_ARGS");
 	snprintf (b, n, "%s", a ? a : "");
 	return (int) strlen (b);
 }
-// The clipboard: one typed blob, 64 KB at most, as the kernel's (kapi.cpp). SIM_CLIP: what it
-// holds at the start ("text", or "files:PATH" -- CLIP_FILES); SIM_CLIPFILE: each set written
-// there (its bytes exactly; its type on stdout: "SIM-CLIPBOARD type=T len=N").
-static std::string g_clip;
-static int g_clipType = -1;		// (-1: SIM_CLIP not read yet)
-static unsigned g_clipSerial;
-static void clip_init (void)
-{
-	if (g_clipType >= 0) return;
-	g_clipType = 0;
-	const char *c = getenv ("SIM_CLIP");
-	if (!c || !*c) return;
-	if (!strncmp (c, "files:", 6)) { g_clip = c + 6; g_clipType = 2; }
-	else { g_clip = c; g_clipType = 1; }
-}
-static int clipboard_set (int type, const void *d, unsigned n)
-{
-	clip_init ();
-	if (n > 64 * 1024) n = 64 * 1024;
-	if (!d) n = 0;
-	g_clip.assign ((const char *) (d ? d : ""), n);
-	g_clipType = n ? type : 0;
-	g_clipSerial++;
-	printf ("SIM-CLIPBOARD type=%d len=%u\n", g_clipType, n); fflush (stdout);
-	if (getenv ("SIM_CLIPFILE"))
-	{
-		FILE *f = fopen (getenv ("SIM_CLIPFILE"), "wb");
-		if (f) { fwrite (g_clip.data (), 1, g_clip.size (), f); fclose (f); }
-	}
-	return (int) n;
-}
-static int clipboard_get (int *t, void *b, unsigned cap, unsigned *serial)
-{
-	clip_init ();
-	if (t) *t = g_clipType;
-	if (serial) *serial = g_clipSerial;
-	unsigned n = (unsigned) g_clip.size () < cap ? (unsigned) g_clip.size () : cap;
-	if (b && n) memcpy (b, g_clip.data (), n);
-	return (int) g_clip.size ();
-}
+static int clipboard_set (int, const void *, unsigned) { return 1; }
+static int clipboard_get (int *t, void *, unsigned, unsigned *serial) { if (t) *t = 0; if (serial) *serial = 0; return 0; }
 static void set_click (gui_handler h) { g_click = h; }
 static int key_held (int) { return 0; }
 // SIM_CURSOR="x,y": the pointer, relative to the client area (the eyes look at it); none: away
@@ -849,9 +872,59 @@ static void cursor_pos (int *x, int *y)
 	if (x) *x = cx; if (y) *y = cy;
 }
 static void set_alpha (int) {}
-static int ipc_register (const char *n) { return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
+// SIM_IPC=1: services and mailboxes inside this process -- each thread that registers a service is a
+// "process" of its own (its pid), the others are pid 1 (a client and its services as threads: the
+// shared clipboard's test)
+struct SimMsg { int from, type; std::string bytes; };
+static std::map<std::string, int> g_ipcNames;
+static std::map<pthread_t, int> g_ipcThread;
+static std::map<int, std::deque<SimMsg> > g_ipcBox;
+static pthread_mutex_t g_ipcLock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_ipcCond = PTHREAD_COND_INITIALIZER;
+static int g_ipcNext = 100;
+static bool sim_ipc (void) { return getenv ("SIM_IPC") != 0; }
+static int ipc_self (void) { auto it = g_ipcThread.find (pthread_self ()); return it == g_ipcThread.end () ? 1 : it->second; }
+static int sipc_register (const char *n)
+{
+	pthread_mutex_lock (&g_ipcLock);
+	int r = 0;
+	if (!g_ipcNames.count (n)) { int pid = g_ipcNext++; g_ipcNames[n] = pid; g_ipcThread[pthread_self ()] = pid; r = 1; }
+	pthread_mutex_unlock (&g_ipcLock);
+	return r;
+}
+static int sipc_lookup (const char *n)
+{
+	pthread_mutex_lock (&g_ipcLock);
+	auto it = g_ipcNames.find (n); int r = it == g_ipcNames.end () ? 0 : it->second;
+	pthread_mutex_unlock (&g_ipcLock);
+	return r;
+}
+static int sipc_send (int to, int type, const void *d, unsigned n)
+{
+	if (n > 512) return -1;
+	pthread_mutex_lock (&g_ipcLock);
+	g_ipcBox[to].push_back ({ ipc_self (), type, std::string ((const char *) d, n) });
+	pthread_cond_broadcast (&g_ipcCond);
+	pthread_mutex_unlock (&g_ipcLock);
+	return 0;
+}
+static int sipc_recv (int *from, int *type, void *buf, unsigned cap, int blocking)
+{
+	pthread_mutex_lock (&g_ipcLock);
+	int me = ipc_self ();
+	while (blocking && g_ipcBox[me].empty ()) pthread_cond_wait (&g_ipcCond, &g_ipcLock);
+	if (g_ipcBox[me].empty ()) { pthread_mutex_unlock (&g_ipcLock); return -1; }
+	SimMsg m = g_ipcBox[me].front (); g_ipcBox[me].pop_front ();
+	pthread_mutex_unlock (&g_ipcLock);
+	if (from) *from = m.from; if (type) *type = m.type;
+	unsigned k = (unsigned) m.bytes.size () < cap ? (unsigned) m.bytes.size () : cap;
+	memcpy (buf, m.bytes.data (), k);
+	return (int) k;
+}
+static int ipc_register (const char *n) { if (sim_ipc ()) return sipc_register (n); return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
 static int ipc_lookup (const char *n)
 {
+	if (sim_ipc ()) return sipc_lookup (n);
 	if (getenv ("SIM_APPLET") && !strcmp (n, "control")) return 99;	// (the applet's host: there)
 	if (getenv ("SIM_MAIL") && !strcmp (n, "control")) return 5;		// (the Control Panel: us)
 	if (getenv ("SIM_MBOX")) return 7;					// (SIM_MBOX's sender: any service)
@@ -890,8 +963,9 @@ static int list_procs (char *b, unsigned n)
 { if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n12 a R 64 memmon\n"); return 6; }
 static int meminfo (unsigned long *t, unsigned long *f, unsigned long *a, unsigned *pk)
 { if (t) *t = 3145728; if (f) *f = 2097152; if (a) *a = 409600; if (pk) *pk = 64; return 1; }
-static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int)
+static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int blocking)
 {
+	if (getenv ("SIM_IPC")) return sipc_recv (from, type, buf, cap, blocking);
 	static bool mailed = false;
 	const char *mail = getenv ("SIM_MAIL");
 	if (mail && !mailed)						// one message (an applet's hello)
@@ -981,7 +1055,7 @@ static void setup (void)
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
 	T->shell_request = shell_request;
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
-	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
+	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin; T->drag_data = drag_data;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
 	T->wallpaper_buffer = wallpaper_buffer; T->wallpaper_commit = wallpaper_commit;
 	T->chdir = h_chdir; T->stdout_stream = h_stdout_stream; T->kbd_ready = h_kbd_ready; T->gpu_info = h_gpu_info;
@@ -990,8 +1064,8 @@ static void setup (void)
 	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_start = sound_start;
 	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
-	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->stream_read_nb = stream_read_nb;
-	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read; T->file_out = file_out;
+	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
+	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
 	T->vol_info = vol_info;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;

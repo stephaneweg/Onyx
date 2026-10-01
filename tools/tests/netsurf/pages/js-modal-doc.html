@@ -1,0 +1,68 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>modal over a detached page</title>
+<style>
+/* Facebook's desktop cookie dialog (Comet's BaseCometModal + BaseDocumentScrollView, docs/06
+   §41): when a modal opens, the page under it is "detached" -- a fixed, viewport-sized
+   overflow: auto view with its scroll bar hidden, scrolled to where the document was -- and
+   the modal's own content becomes the document (a flex column, min-height: 100vh): a
+   dialog taller than the viewport scrolls the document. A fixed mask between the two; the
+   dialog's centring anchor has pointer-events: none, the dialog pointer-events: all. */
+html, body { margin: 0; font: 15px sans-serif; }
+#page { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: auto;
+	scrollbar-width: none; }
+#page .login { height: 2400px; background: linear-gradient(#eef, #fee); padding: 40px; }
+#layer { position: relative; z-index: 1; }
+#mask { position: fixed; top: 0; bottom: 0; left: 0; right: 0; background: rgba(244, 244, 244, .8); }
+#content { display: flex; flex-direction: column; min-height: 100vh; position: relative; }
+#root { display: flex; flex-direction: column; flex-grow: 1; align-items: stretch; justify-content: center; }
+#anchor { display: flex; align-items: stretch; justify-content: center; min-height: 0;
+	pointer-events: none; padding: 40px 8px; box-sizing: border-box; }
+#dialog { pointer-events: all; display: flex; flex-direction: column; overflow: hidden;
+	background: #fff; border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,.2); max-width: 100%; }
+#card { max-width: 500px; width: 100vw; padding: 20px; box-sizing: border-box; }
+#card p { height: 220px; margin: 0 0 12px; background: #f4f4f4; }
+#card button { display: block; width: 100%; height: 40px; margin-top: 8px; }
+/* a thumb Comet's way: absolutely over the dialog's right edge, never under the pointer */
+#thumb { position: absolute; top: 0; right: 0; width: 12px; height: 100%; pointer-events: none; }
+</style></head>
+<body>
+<div id="page" aria-hidden="true"><div class="login">The login page, under the dialog</div></div>
+<div id="layer">
+ <div id="mask"></div>
+ <div id="content"><div id="root"><div id="anchor">
+  <div id="dialog" role="dialog" aria-label="Cookies">
+   <div id="card">
+    <h2>Autoriser l'utilisation des cookies de Facebook sur ce navigateur ?</h2>
+    <p>Nous utilisons des cookies...</p><p>Cookies essentiels</p><p>Cookies facultatifs</p>
+    <button id="accept" type="button">Autoriser tous les cookies</button>
+    <button id="deny" type="button">Refuser les cookies optionnels</button>
+   </div>
+  </div>
+ </div></div></div>
+</div>
+<div id="thumb"></div>
+<script>
+var page = document.getElementById('page'), accept = document.getElementById('accept');
+var y0 = -1;
+addEventListener('scroll', function () {
+	if (scrollY > 0 && y0 < 0) { y0 = scrollY; console.log('document scrolled, ' + (page.scrollTop === 300 ? 'page kept' : 'page moved ' + page.scrollTop)); }
+});
+page.addEventListener('scroll', function () { if (page.scrollTop !== 300) console.log('detached page scrolled ' + page.scrollTop); });
+accept.addEventListener('click', function () {
+	var r = document.getElementById('mask').getBoundingClientRect();
+	console.log('accepted, mask top ' + Math.round(r.top));
+});
+addEventListener('load', function () {
+	page.scrollTop = 300;	/* (where the page was when the dialog opened) */
+	console.log('doc ' + (document.documentElement.scrollHeight > innerHeight ? 'taller' : 'not taller') + ' than the view');
+	/* (Facebook's VisualCompletion: up the offsetParent chain to an element without one) */
+	var n = 0, top = 0, r;
+	for (r = accept; r && r.offsetParent && typeof r.offsetTop == 'number' && n < 1000; n++) { top += r.offsetTop; r = r.offsetParent; }
+	console.log('offsetParent chain ' + (n < 1000 ? 'ends at ' + r.tagName + ' after ' + n : 'loops'));
+	console.log('offsetTop sum ' + (top + r.offsetTop === Math.round(accept.getBoundingClientRect().top + scrollY) ? 'is' : 'is not') + ' the page position');
+	var root = document.getElementById('root'), card = document.getElementById('card');
+	console.log('offsetParent: body ' + document.body.offsetParent + ', fixed ' + page.offsetParent +
+		', in relative ' + root.offsetParent.id + ' at ' + root.offsetTop + ', card ' + card.offsetParent.id);
+});
+</script>
+</body></html>

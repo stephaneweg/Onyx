@@ -251,4 +251,14 @@ void html_fixed_scrolled(struct hlcache_handle *h, int osx, int osy, int sx, int
 struct box;
 bool html_box_viewport_fixed(const struct box *box);
 
+/**
+ * Onyx (docs/06 §41): where a box in such a fixed box is painted, from where it is laid out
+ * (box_coords: at the scroll offset 0) -- the viewport's scroll offset in *dx, *dy (CSS px),
+ * 0 for the other boxes (the return value: whether it is in one). The pointer's hit test,
+ * its drags, the redraws of a box and the scripts' rectangles add it.
+ */
+struct html_content;
+bool html_box_fixed_shift(const struct html_content *html, const struct box *box,
+		int *dx, int *dy);
+
 #endif

@@ -15,6 +15,7 @@
 // directory, so it finds its files by relative names.
 //
 #include "kapi.h"
+#include "clipboard.h"
 #include "applib.h"
 #include "notify.h"
 #include "gamepad.h"
@@ -381,16 +382,8 @@ public:
 		dirty (); present (true);
 		return r;
 	}
-	int clipboard (char *buf, int cap) override
-	{
-		int type = 0; unsigned serial = 0;
-		int n = kapi_clipboard_get (&type, buf, (unsigned) cap - 1, &serial);
-		if (n < 0 || type != CLIP_TEXT) n = 0;
-		if (n > cap - 1) n = cap - 1;
-		buf[n] = 0;
-		return n;
-	}
-	void setClipboard (const char *s) override { kapi_clipboard_set (CLIP_TEXT, s, (unsigned) slen (s)); }
+	int clipboard (char *buf, int cap) override { return clip_get_text (buf, cap); }	// (the shared clipboard: clipboard.h)
+	void setClipboard (const char *s) override { clip_set_text (s); }
 	bool fileDialog (bool save, const char *dir, char *o, int cap) override
 	{
 		if (!ensureWindow ()) return false;

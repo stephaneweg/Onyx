@@ -764,6 +764,20 @@ def icon_courier():		# Courier (the HTTP client): a paper plane on a teal tile, 
     for y in (31, 33):                      # the lines of a message on its way
         prect(px, 7, y, 7 + (12 if y == 31 else 7), y, (170, 214, 226))
     return px
+# (Archiver's icon: drawn by the app's own vector code -- sh tools/icons/archiver_icon.sh)
+def icon_clipboard():		# the shared clipboard: a board with its clip and lines of text
+    px = blank()
+    board, clip, paper, ink = (150, 112, 76), (120, 128, 140), (250, 248, 244), (110, 120, 136)
+    for y in range(6, 37):
+        for x in range(7, 33):
+            cx = min(x - 7, 32 - x); cy = min(y - 6, 36 - y)
+            if cx < 3 and cy < 3 and (3 - cx) ** 2 + (3 - cy) ** 2 > 9: continue
+            pset(px, x, y, board)
+    prect(px, 10, 10, 29, 33, paper)
+    prect(px, 14, 3, 25, 9, clip); prect(px, 17, 5, 22, 6, (200, 206, 214))
+    for i, w in enumerate((15, 12, 15, 9)):
+        prect(px, 13, 14 + i * 5, 13 + w, 15 + i * 5, ink)
+    return px
 ICONS = {
     "tinypad": icon_tinypad, "tinycalc": icon_tinycalc, "inidemo": icon_inidemo,
     "tetris": icon_tetris, "snake": icon_snake, "same": icon_same,
@@ -781,7 +795,7 @@ ICONS = {
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
     "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
-    "cardfile": icon_cardfile, "ledger": icon_ledger, "courier": icon_courier,
+    "cardfile": icon_cardfile, "ledger": icon_ledger, "courier": icon_courier, "clipboard": icon_clipboard, "clipd": icon_clipboard,
 }
 
 
