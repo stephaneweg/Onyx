@@ -1,6 +1,9 @@
 # PDF Viewer for Onyx — study, first mock-ups
 
-> **Status (2026-10-01): mock-ups, to validate.** Priority 1 of the end-user apps roadmap
+> **Status (2026-10-01): done** — the PDF Viewer (`user/Apps/pdf`, on MuPDF; docs/03 *PDF Viewer*, its use: docs/04
+> §12, the real app: `screenshots/pdf*.png`) and *File ▸ Export as PDF* in Writer and the Spreadsheet
+> (`user/pdf/pdfwrite.h`, MIT; `screenshots/writer-pdf.png`, `sheet-pdf.png`); **not yet tried on the Pi**.
+> The mock-ups below were validated. Priority 1 of the end-user apps roadmap
 > (docs/HANDOFF.md): a **PDF viewer** as a polished app, in the way of Acrobat Reader / Edge / Evince /
 > Preview, and the **PDF export** in Writer and the Spreadsheet. Proposed name: **PDF Viewer** (app folder
 > `pdf`).
@@ -32,13 +35,26 @@ search hits are placed from the words' real positions (`pdftotext -bbox-layout`)
 | File association | `SD:/etc/fileassoc.ini` | `pdf = pdf` |
 | Printing | Onyx does not print | — (no Print button) |
 
-## To decide with the user
+## Decided with the user (2026-10-01)
 
-1. The name: **PDF Viewer** (folder `pdf`)? (Or a *Document Viewer* that would also read the Markdown manuals
-   — `sdcard/manuals/*/*.md` —, the "manual reader" HANDOFF mentions; proposed: the PDF Viewer alone, the
-   manuals already have their PDF.)
-2. The engine: **MuPDF** (AGPL-3.0 for this app) — proposed — or pdfium (BSD, much heavier to port).
-3. **Tabs** (several documents in one window, as in the mock-ups) or one window a document?
-4. The first version **reads** (with selection, copy, find, links, outline, passwords); **annotations**
-   (highlight, notes) and **filling forms**: later?
-5. The export: our own PDF writer for Writer and the Spreadsheet (proposed), started after the viewer.
+1. The name: **PDF Viewer** (folder `pdf`).
+2. The engine: **MuPDF** (the app AGPL-3.0).
+3. **Tabs**: several documents in one window.
+4. The first version **reads** (selection, copy, find, links, outline, passwords); annotations and filling forms
+   later.
+5. The export: **our own PDF writer, under MIT** (and every piece of Onyx's own software that can be: MIT —
+   docs/LICENSING.md).
+
+## What differs from the mock-ups
+
+- No *Links clickable* in Writer's export: Writer has no hyperlinks yet (`pdfwrite.h` writes links: the
+  Spreadsheet and Writer can use them when they have some). The fonts are always embedded (as subsets).
+- The Spreadsheet's export: this sheet or all, portrait / landscape, fitted to the width, the grid's lines.
+
+## Next
+
+- Try it on the Pi (the speed of a page drawn on the A72; the memory of large documents).
+- Annotations (highlight, notes) and forms filled — MuPDF has both (`pdf-annot`, `pdf-form`), saved with
+  `pdf_save_document` (incremental).
+- Colour management (lcms2, left out), the CJK fonts (`TOFU_CJK` left out: an embedded font still shows).
+- A *Document Viewer* for the Markdown manuals? (they have their PDF.)

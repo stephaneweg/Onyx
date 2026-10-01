@@ -205,13 +205,15 @@ if want writer; then			# (the sample document, a word of its contents chosen: th
 	sim writer writer-table "wait;wheel 500 400 -10;wait;wheel 500 400 -10;wait;wheel 500 400 -9;wait;down 479 481;up 479 481;$W" $P \
 		SIM_ARGS=SD:/docs/writer-tour.rtf
 	png writer-table
-	sim writer writer-merge "wait;menu 59;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png writer-merge
+	sim writer writer-merge "wait;menu 60;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png writer-merge
+	sim writer writer-pdf "wait;menu 6;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf; png writer-pdf	# (File > Export as PDF)
 fi
 if want sheet; then			# (the sample workbook: the Total column chosen -- its sum below --; a filter's drop-down; the loan's names)
 	sim sheet sheet "wait;down 450 405;move 450 300;move 450 218;up 450 218;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet
 	sim sheet sheet-filter "wait;down 60 197;move 300 300;move 520 405;up 520 405;wait;down 372 17;up 372 17;wait;down 127 198;up 127 198;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx
 	png sheet-filter
 	sim sheet sheet-loan "wait;down 262 661;up 262 661;wait;down 200 228;up 200 228;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet-loan
+	sim sheet sheet-pdf "wait;menu 5;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet-pdf		# (File > Export as PDF)
 fi
 if want courier; then			# (the demo collection and environments of sd/courier, its tabs open; a POST sent: its
 					#  answer canned (SIM_NET); the tests' results; the environments)

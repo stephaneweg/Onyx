@@ -1641,6 +1641,39 @@ tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tes
 `pip install mutagen`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
 `python3 tools/icons/media_icon.py`.
 
+### PDF Viewer, and the PDF export (`user/Apps/pdf`, `user/pdf/pdfwrite.h`)
+
+The reader of PDF documents (the mock-ups and the user's decisions: `docs/pdf/README.md`; its use: docs/04 §12)
+is a **newlib** wtk app on **MuPDF 1.28.5** (`third_party/mupdf-1.28.5`: only its `fitz` and `pdf` parts, the
+14 standard fonts, jbig2dec and openjpeg — the tarball's other formats, JavaScript, HarfBuzz, lcms2, the Noto /
+CJK fonts left out). **The app is AGPL-3.0**, MuPDF's licence (docs/LICENSING.md).
+
+| File | What |
+|---|---|
+| `mupdf.mk` | MuPDF as one static library, `libmupdf.a`, for the Pi (`user/Makefile`: `MU_ONYX=1`, newlib's gaps in `mu/onyx_mucompat.{h,c}` — `quad`, `timegm`, `stat`, `ftruncate`, `getentropy`, no folder "archives") or the PC (`make -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_OUT=...`). The `FZ_ENABLE_*` switches turn the other formats off; `TOFU` drops the Noto fonts. It holds **its own FreeType** (Onyx's 2.14.3 with the Type 1 / CFF / CID drivers PDF needs, `mu/onyx_muftmodule.h`, plus the apps' TrueType + autofit): the app links it instead of `ft/libft.a`. Onyx's zlib and libjpeg (jpeg-9f, its names hidden: `FZ_HIDE_INTERNAL_JPEG`). |
+| `engine.h` | MuPDF's side: the contexts (one a thread, `fz_clone_context`; MuPDF's locks on `kapi_lock`), the files through the kapi (`KStream`: an `fz_stream` on `kapi_open` / `kapi_read` / `kapi_seek` — any volume, and the simulator), `Doc` (a document, its lock: a page becomes a **display list** under it, the slow drawing happens outside), the pages' sizes, the outline flattened, the links (read with the lists), `render_page` (a part of a page at a scale, turned, into 0x00RRGGBB), `page_text` (the structured text: the selection, the search), the facts and the fonts (Properties), and the **`Worker`**: a thread that draws what the window wants now (`set_wants`: the view's pages first, then the neighbours, the thumbnails, the recent documents' first pages) and searches page after page (`fz_match_stext_page`, a regular expression for *Whole words*), each result handed over with `kapi_post`. |
+| `ui.h` | The faces, text cut to fit, the hit lists, the icons (`wtk/vpaint.h`). |
+| `main.cpp` | The tabs (`Tab`: a document and how it is shown — layout, zoom, rotation, scroll, the selection, the search's hits), the bitmaps kept (`Bmp`: a page or, past 2600 × 2600 px, the part seen on a 256-px grid; another scale's shown, scaled, until the right one comes; 18 M pixels at most, the least used dropped), the layout (`lay_out`: continuous, one page, two pages with the first alone), the widgets — `TabBar`, `ToolBar` (`SearchBox`, the page's field), `SidePanel` (Pages, Contents, Find), `View` (the pages, the hits and the selection over them, the links, the scroll bars), `Home` (the recent documents, the folders) —, the dialogs (the password, `PropsBox`), full screen (`kapi_fullscreen_begin`: the next page drawn ahead), the settings and `recent.tsv`. |
+
+**The PDF writer** — `user/pdf/pdfwrite.h`, header-only, **MIT** (Onyx's own code: docs/LICENSING.md), used by
+Writer's and the Spreadsheet's *File ▸ Export as PDF*: `pdfw::Writer` writes PDF 1.7 — pages of rectangles, text
+as **glyphs** of TrueType fonts (Type 0 / CIDFontType2, `Identity-H`: the codes are the glyphs' numbers; a
+**subset** of each font embedded — the glyphs used, and those their composites take, keep their numbers, the
+others are left empty, `loca` rewritten long —; a **ToUnicode** map so the text can be selected and found; a
+made bold as fill + stroke, a made italic slanted), images (Flate with a soft mask for their transparency, or
+JPEG through `img/pngsave.hpp`), links (the web, a page), bookmarks (by level), the document's facts. Its
+streams are deflated with `pngsave::deflate`. The apps **draw their pages again into it**: Writer's
+`PageView::paintPage` (the screen's drawing, its three primitives — `fillClip`, `glyph`, `drawImage` — sent to
+`g_pdf` when it is set; 100 %: a px is 0.75 point), the Spreadsheet's `paint_pane` (`out_rect`, `out_glyph`,
+the lines' runs; the used cells cut into page bands, the charts drawn twice as large into images).
+
+**Tests on the PC**: `sh tools/tests/run_pdf_test.sh` — MuPDF built with gcc and checked on the manuals
+(`tools/tests/pdf/mutest.c`: the pages, a page drawn, its text, a word found, the outline, the links), then a
+PDF written by `pdfwrite.h` (`tools/tests/pdf/writetest.cpp`: two fonts, an image with transparency, links,
+bookmarks, a landscape page) and read back. **The screenshots**: `sh tools/tests/desktop_sim/shots.sh pdf`
+(the manuals of `sdcard/manuals`; `writer` and `sheet` take their export's dialog). The icon: `python3
+tools/icons/pdf_icon.py`.
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app

@@ -1349,11 +1349,83 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | ![media](../screenshots/media-albums.png) |
 | *archiver — archive manager* | *screenshot — screen capture* | *media — the music library* |
 
+### PDF Viewer, the reader of PDF documents (`pdf`)
+
+![PDF Viewer](../screenshots/pdf.png)
+*A manual open in the PDF Viewer: its pages' thumbnails at the left, the page fitted to the window's width.*
+
+The PDF Viewer shows **PDF documents** in the way of Acrobat Reader or Edge: Onyx's own manuals
+(`SD:/manuals`), what you download, what Writer and the Spreadsheet export. Start it from the dock or the
+app list (*Productivity*), double click a `.pdf` in the File Viewer, or drop PDF files on its window.
+**Each document opens in its own tab** (the `+` tab: the home; a middle click or × closes a tab;
+Ctrl+Tab goes to the next one).
+
+**The window**: the **tabs** on top, the **toolbar** — the side panel (F9), Open, the previous / next
+page, **the page's number** (type one and Enter to go there) and the count, the **zoom** (− / the
+drop-down / +), the **layout** (one page at a time, continuous — the default —, two pages side by
+side), **rotate**, **full screen** —, at its right the **search** and ⋯ (Properties, Save a Copy..., Show
+in the File Viewer, close the tab). A pill tells the page while you scroll.
+
+| | |
+|:---:|:---:|
+| ![Contents and a selection](../screenshots/pdf-contents.png) | ![A search](../screenshots/pdf-find.png) |
+| *The contents; text selected, its menu* | *A search: the hits on the page, by page in the side panel* |
+
+**The side panel** (its button or F9): **Pages** (the thumbnails, the current one framed; a click goes
+to it), **Contents** (the document's outline, folded / unfolded with its arrows, the section being read
+lit; a click goes there), **Find** (the search's field, *Match case*, *Whole words*, the count, the hits
+**by page with their line**, the word in bold; a click goes to one).
+
+**Reading**: the wheel, the arrows, Page Up / Down, Space (Shift+Space back), Home / End (the first /
+last page); Shift+wheel or the arrows sideways when the page is wider than the window; the middle
+button drags the page. **Zoom**: *Fit page* (Ctrl+0), *Fit width*, *Actual size*, 50 to 400 %; Ctrl+wheel
+and Ctrl + / − zoom around the pointer. The zoom and the layout chosen are kept for the next
+documents.
+
+**Text**: drag over it to **select** (a double click: a word; a triple: a line; Shift+click extends),
+**Ctrl+C** copies it (unless the document forbids it), Ctrl+A selects the page's. A **right click**:
+Copy, Select All, *Find "..."* (the selection searched), *Look Up in Jet Browser*. **Links** work: one
+inside the document goes to its page, one to the web opens **Jet Browser**.
+
+**Find** (Ctrl+F, or type in the toolbar's field): the hits are lit on the pages as you type, the
+current one in orange; Enter or F3 the next, Shift+Enter or Shift+F3 the previous; *n / total* in the
+field; Esc clears it.
+
+| | |
+|:---:|:---:|
+| ![Two pages, the zoom](../screenshots/pdf-zoom.png) | ![Properties](../screenshots/pdf-props.png) |
+| *Two pages side by side, the zoom's menu* | *The document's Properties* |
+
+**Properties** (⋯ or Ctrl+D): **Description** (the file, its place and size, the title, author,
+subject, keywords, when it was made and changed, the application and the PDF producer, the PDF
+version, the pages and their size), **Fonts** (the fonts used, embedded or not), **Security**
+(encrypted or not, what is allowed: printing, copying, changing, comments). A document protected by a
+**password** asks for it when it is opened.
+
+**Full screen** (F11 or its button): the pages alone on black, as a presentation — the arrows, Page
+Up / Down, Space, a click (the right button: back) turn them; Esc comes back.
+
+![The home](../screenshots/pdf-home.png)
+
+**The home** (when no document is open, or the `+` tab): the **recent documents** — their first page,
+where you were (a bar under it), when —; a click reopens one **at the page you left** (⋯ or a right
+click: open in a new tab, remove from the list); *Open a file...*; the **folders** holding PDFs
+(Manuals, Documents, Downloads, the card's second partition) with their count.
+
+**Files**: `SD:/etc/pdf/settings.ini` (the side panel shown, the layout, the zoom), `SD:/etc/pdf/recent.tsv`
+(the recent documents: their place, the page read, when). PDF 1.0 to 2.0 is read (encrypted ones too:
+RC4, AES), with their fonts (Type 1, TrueType, CFF, Type 3; the 14 standard ones built in), images
+(JPEG, JPEG 2000, JBIG2, CCITT); the colours are not managed (no ICC profiles), forms are shown but not
+filled, annotations are shown but not made. Keys: ^O open, ^W close the tab, ^D Properties, ^C copy,
+^A select all, ^F find, F3 / Shift+F3, F9 the side panel, Ctrl+0 / + / − the zoom, ^R rotate, F11 full
+screen, ^G the page's field, Ctrl+Tab the next tab.
+
 ### Productivity and tools
 
 | App | Description and controls |
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
+| **PDF Viewer** (`pdf`) | The **reader of PDF documents** (MuPDF): a tab a document, the pages' thumbnails, the contents, a search with its hits by page, the zoom (fit the page / the width, 50 to 400 %), one page / continuous / two pages, rotation, full screen; text selected and copied, links followed, passwords, Properties; the home's recent documents reopened at their page. See *PDF Viewer* above. |
 | **Writer** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Writer, the word processor* below. |
 | **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
@@ -1483,7 +1555,7 @@ All · **Ctrl+F** Find and Replace · **Ctrl+B / I / U** bold, italic, underline
 / J** left, centred, right, justified · **Ctrl+D** Font....
 
 **The menus**: **File** (New, Open..., Save, Save As..., Export as HTML..., Export as Text...,
-Page Setup...), **Edit** (Undo, Redo, Cut, Copy, Paste, Paste Unformatted, Select All, Find and
+**Export as PDF...**, Page Setup...), **Edit** (Undo, Redo, Cut, Copy, Paste, Paste Unformatted, Select All, Find and
 Replace...), **View** (Actual Size, Page Width, Whole Page, **Header and Footer**, Formatting
 Marks, the ruler's unit), **Insert** (Page Break, **Table...**, Image..., Special Character...,
 **Page Numbers...**, Date and Time..., **Field...**, **Table of Contents**), **Format** (Font...,
@@ -1522,6 +1594,14 @@ across pages between its rows — a row, and the rows its merged cells span, kep
 - **Insert ▸ Page Numbers...**: at the top (the header) or the bottom (the footer), left, centred
   or right, as "1", "Page 1", "Page 1 of 3" or "1 / 3", and whether the first page shows it (else
   the first page gets a header and footer of its own).
+- **File ▸ Export as PDF...**: the document as a **PDF**, as its pages are laid out — all of them,
+  the current one or a range (`2-5`) —; the fonts **embedded** (only the letters used: the PDF looks the
+  same everywhere, its text can still be selected and searched), the **headings as bookmarks**, the
+  photos kept as they are or as JPEG (a smaller file), its title and author; the PDF opens in the PDF
+  Viewer afterwards. What is only for the screen (the fields' shading, the crop marks, a table's grid
+  without lines, the formatting marks) is left out.
+
+  ![Export as PDF](../screenshots/writer-pdf.png)
 - **File ▸ Page Setup...**: the paper (A4, A5, A3, Letter, Legal), portrait or landscape, the four
   margins, the header's distance from the page's top and the footer's from its foot, **Different
   first page** (a title page with its own header and footer), the **first page's number**; a
@@ -2617,7 +2697,15 @@ LibreOffice, Google Sheets…), LibreOffice's **`.ods`** (with its styles, numbe
 charts, conditional formats, AutoFilter and names; saved again as `.xlsx`) and **CSV** / `.tsv` /
 `.txt` (the separator — comma, semicolon or tab — guessed; UTF-8 or Latin-1; each field read as if
 typed). **File ▸ Export as CSV** (or Save As `name.csv`) writes the sheet shown, its values as
-shown. A double click on an `.xlsx`, `.ods` or `.csv` file in the File Viewer opens it here
+shown. **File ▸ Export as PDF...** writes the sheet shown (or all the sheets, each a bookmark) as a PDF:
+its used cells cut into A4 pages — portrait or landscape (proposed from the sheet's shape), **fitted to
+the page's width** or at their size, the grid's lines printed or not —, their fills, borders and
+conditional colours, the **charts** with them, the sheet's name and the page's number at each page's
+foot; the PDF opens in the PDF Viewer afterwards.
+
+![Export as PDF](../screenshots/sheet-pdf.png)
+
+A double click on an `.xlsx`, `.ods` or `.csv` file in the File Viewer opens it here
 (`fileassoc.ini`); a file dropped on the window too. New, Open and a drop first ask to save unsaved
 changes; **closed with unsaved changes**, the workbook is kept in
 `SD:/apps/sheet.app/recovered.xlsx` and offered back the next time the Spreadsheet starts. Not

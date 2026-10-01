@@ -13,15 +13,23 @@
 | **The kernel image** (`kernel8-rpi4.img`) | **GPL-3.0-or-later** | Circle (our fork, statically linked) is GPL-3.0-or-later. |
 | **Jet Browser** (`jet.app`, `pc/dist/Jet`) | **GPL-2.0** (only) | NetSurf is **GPL-2.0-only** ("version 2 of the License", no "or later") — incompatible with GPLv3. Its Onyx code must stay GPLv2-compatible (GPL-2.0-or-later or permissive), mbedTLS taken under its GPL-2.0-or-later option (not Apache-2.0), FreeType under its GPLv2 option. |
 | **Doom** (`doom.app`) | GPL-2.0-or-later (→ GPLv3 fine) | doomgeneric: "version 2 … or any later version". |
+| **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Every other app, the tools** | Your choice | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |
 
 **Recommendation:** distribute Onyx under **GPL-3.0-or-later** (forced anyway for the kernel by
-Circle), with **Jet Browser under GPL-2.0** as a documented exception, and license *your own* code
-**GPL-2.0-or-later** (or dual GPL-2.0-or-later / MIT) so that it can go into both — the kernel
-(GPLv3) and Jet (GPLv2) — without anyone having to ask you. A purely permissive licence (MIT) for
-the whole is **not possible**: the kernel is GPLv3 because of Circle.
+Circle), with **Jet Browser under GPL-2.0** and the **PDF Viewer under AGPL-3.0** as documented
+exceptions. A purely permissive licence (MIT) for the whole is **not possible**: the kernel is GPLv3
+because of Circle.
+
+**Decided by the user (2026-10-01): every piece of Onyx's own software that can be is under the MIT
+licence.** That is every app and tool that links only permissive libraries (the table's *Every other
+app*), and our own code everywhere — MIT is compatible with the GPL and the AGPL, so the kernel's,
+Jet's, Doom's and the PDF Viewer's Onyx files stay MIT as files, while the program built from them
+is distributed under its GPL / AGPL. New code is written MIT (e.g. `user/pdf/pdfwrite.h`, the PDF
+export of Writer and the Spreadsheet, carries the MIT notice); a library that would force another
+licence on an app is chosen only with the user (as MuPDF was).
 
 ### Distributing the whole: an aggregate, as Linux distributions do
 
@@ -75,6 +83,10 @@ Two weaknesses, worth fixing:
 | CLDR 48 | `third_party/cldr-48` | Unicode License v3 | Keep the notice |
 | stb_image | `user/img` | Public domain / MIT | — |
 | simplewebp | `user/img` | BSD | Keep the notice |
+| MuPDF 1.28.5 (fitz, pdf; the URW base-14 fonts) | `third_party/mupdf-1.28.5`, the PDF Viewer | **AGPL-3.0** (Artifex) | The PDF Viewer under AGPL-3.0, its source available (the repository); keep `COPYING` |
+| jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
+| OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
+| pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Writer, the Spreadsheet | **MIT** (ours) | — |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
 | minimp3 | `third_party/minimp3`, Media Player | CC0 (public domain) | — |
 | stb_vorbis | `third_party/stb_vorbis`, Media Player | Public domain / MIT | — |
@@ -169,6 +181,6 @@ Onyx), Servo / Blitz (Rust) — would lose much of what Jet does today.
 3. A **`CREDITS`** / *About Onyx* listing every third-party component with its notice (FreeType's and
    IJG's credit lines are required).
 4. The firmware licences on the card (`LICENCE.broadcom`, the Wi-Fi's).
-5. SPDX headers in our own files (`// SPDX-License-Identifier: GPL-2.0-or-later`), `user/kapi.h`
-   and the app runtime under MIT.
+5. SPDX headers in our own files (`// SPDX-License-Identifier: MIT`: the user's decision above),
+   `user/kapi.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
 6. The FM Song covers out of the public distribution.
