@@ -194,7 +194,9 @@ def main ():
 		hashes = [(f, sha256_file (os.path.join (a.sd, f))) for f in p["files"]]
 		p["hashes"] = hashes
 		p["bytes"] = sum (os.path.getsize (os.path.join (a.sd, f)) for f in p["files"])
-		p["content"] = hashlib.sha256 ("".join ("%s %s\n" % h for h in hashes).encode ()).hexdigest ()
+		# the content: the files and what the manifest says of them (a new need is a new version)
+		desc = "needs %s\nconfig %s\nrequired %s\nrestart %s\n" % (p["needs"], p["config_pats"], p["required"], p["restart"])
+		p["content"] = hashlib.sha256 ((desc + "".join ("%s %s\n" % h for h in hashes)).encode ()).hexdigest ()
 		ver = V.get (p["name"], "2026.10.0" if p["name"] == "onyx" else "1.0.0")
 		if old.has_section (p["name"]) and old[p["name"]].get ("content") != p["content"] and vkey (ver) <= vkey (old[p["name"]].get ("version", "0")):
 			if a.bump: ver = bump (old[p["name"]]["version"]); changed.append ("%s -> %s" % (p["name"], ver))

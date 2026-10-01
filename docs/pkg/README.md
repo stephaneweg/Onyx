@@ -10,9 +10,18 @@
 > **Decided with the user**: the repository **`stephaneweg/onyx-packages`** (GitHub Pages); the applet
 > **Onyx Package Manager (`pkgman`)**; the daemon **`pkgd`**; an app installed is **manual**; the
 > split: **the system** in one package (`onyx`: the kernel, `/bin`, the settings it needs — plus the
-> desktop's own apps, the terminal, the File Viewer and the Task Manager), **the firmware** in another
-> (`pi-firmware`), **every app its own package**, the **demos** in one (`demos`), the **BASIC
-> examples** in one (`basic-examples`).
+> desktop's own apps, the terminal, the File Viewer, the Task Manager, the text editor Tinypad, and
+> the wallpaper's painters voronoy and imageview), **the firmware** in another (`pi-firmware`), **every
+> app its own package**, the **demos** in one (`demos`); the **samples each with their app**
+> (`basic-samples`, `writer-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
+> `koton-samples`, `fmtracker-samples`, each needing its app); **each emulator its own package**,
+> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Writer, the
+> Spreadsheet and Ledger need `cardfile` (installed first; not removable while they are there). A
+> mere link to another app ("Open in Writer", Cardfile's mail merge, the agenda reading the
+> Calendar's file) is not a need.
+>
+> **Published** (2026-10-01): https://github.com/stephaneweg/onyx-packages — 52 packages
+> (GitHub Pages to switch on: Settings ▸ Pages ▸ `main`, root).
 
 The mock-ups: `python3 tools/screenshot/mockup_pkg.py` → `docs/pkg/mockups/*.png` (1024 × 768, the
 apps' real icons).
@@ -157,4 +166,4 @@ icon for the others (or, later, an emulator's `--thumbnail` mode run by the Game
 ## Still open
 
 1. **pkgd's timing**: it checks once a day itself until the task scheduler exists (the proposal).
-2. **The emulators**: one package each, found by the Game Library from their `app.txt` (above)?
+2. ~~The emulators~~: decided — one package each, found by the Game Library (to do).
