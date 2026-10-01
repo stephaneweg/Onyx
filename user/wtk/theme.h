@@ -6,8 +6,9 @@
 // SD:/etc/theme.txt:
 //
 //     theme    = Peach        a named theme: Peach, Steel, Sage, Brick, Slate (the frame of the
-//                             window in front; the ones behind: Grey) -- or Milk (soft greys and
-//                             OS X's coloured beads for the title buttons, a lighter gradient)
+//                             window in front; the ones behind: Grey) -- or Milk (soft greys,
+//                             OS X's coloured beads for the title buttons, the frame melting
+//                             into the window: no line between them)
 //     style    = cde          the frames' look, if not the theme's: cde or milk
 //     active   = 0xF0B07A     or the colours themselves (they override the theme's)
 //     inactive = 0xACACB0
@@ -50,7 +51,8 @@ extern unsigned C_BUTTON_TEXT;		// ... its text
 extern unsigned C_MENUBAR;		// the menu bar's face (the window's by default)
 
 // The frames' look: CDE's (framed title buttons) or Milk's (Xfce's Milk theme, as OS X: the title
-// buttons coloured beads -- close red, minimise amber, maximise green --, a lighter gradient).
+// buttons coloured beads -- close red, minimise amber, maximise green --, the title's gradient
+// down to the window's colour, C_BG, the borders that colour: the frame melts into the window).
 enum { WK_STYLE_CDE = 0, WK_STYLE_MILK = 1 };
 extern int	WK_STYLE;
 // A style's own colours: what a theme of it takes when theme.txt does not say.

@@ -443,11 +443,12 @@ void wk_bead (Canvas &cv, int x, int y, int d, unsigned c)
 
 void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int r)
 {
-	unsigned f = C_FRAME_ACTIVE;
-	bool milk = WK_STYLE == WK_STYLE_MILK;				// (as the frames' title bars)
-	wk_rbox (cv, x, y, w, h, r, wk_tone (f, milk ? 204 : 164), wk_tone (f, milk ? 122 : 115), 255, WK_TL | WK_TR);
+	unsigned f = C_FRAME_ACTIVE, top = wk_tone (f, 164), bot = wk_tone (f, 115), mid = wk_tone (f, 140);
+	if (WK_STYLE == WK_STYLE_MILK)					// (as the frames' title bars: Milk's
+	{ top = wk_tone (f, 230); bot = C_FACE; mid = wk_mix (top, bot, 128); }	//  melts into the box's face)
+	wk_rbox (cv, x, y, w, h, r, top, bot, 255, WK_TL | WK_TR);
 	for (int i = x + (r > 1 ? r : 1); i < x + w - (r > 1 ? r : 1); i++) blend_px (cv, i, y + 1, 0x00FFFFFF, 110);
-	if (s) wk_text_c (cv, x, y, w, h, s, wk_ink_on (wk_tone (f, 140)), 2);
+	if (s) wk_text_c (cv, x, y, w, h, s, wk_ink_on (mid), 2);
 }
 
 // ---- glyphs -------------------------------------------------------------------------------------------

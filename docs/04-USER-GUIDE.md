@@ -1147,11 +1147,13 @@ check, the dock — drawn in the colours being edited.
   **Sage**, **Brick**, **Slate**, or **Milk**; every shade of a frame (its gradient, its buttons,
   its edge) is computed from its one colour, and the title's ink (dark or white) from its
   brightness. **Milk** (after Xfce's Milk theme, itself in the spirit of Mac OS X) is a style of
-  its own: soft greys, a lighter title bar, and the title buttons as **glossy coloured beads** —
-  **red** close, **amber** minimise, **green** maximise (grey on the windows behind, and the green
-  one grey on a window that cannot be maximised; the window menu's bead, at the left, keeps its
-  bar). Choosing Milk also takes its colours for the windows (light grey), the selection (Aqua
-  blue), the frames behind and the dock (silver) — and choosing a CDE scheme again, theirs.
+  its own: soft greys, a frame that **melts into the window** (the title bar's gradient ends on
+  the colour of the window's content, its edges are that colour: no line between the frame and
+  what the window shows), and the title buttons as **glossy coloured beads** — **red** close,
+  **amber** minimise, **green** maximise (grey on the windows behind, and the green one grey on a
+  window that cannot be maximised; the window menu's bead, at the left, keeps its bar). Choosing
+  Milk also takes its colours for the windows (light grey), the selection (Aqua blue), the
+  frames behind and the dock (silver) — and choosing a CDE scheme again, theirs.
 - **Outline**: the frames' 1-px outline — **None**, **Dark** (the default) or **Black**.
 - **Desktop**: the **wallpaper** — **Voronoi cells** (their colour and number), a **Gradient**
   (two colours, top to bottom or left to right), **Bubbles** (a gradient with soft bubbles),
@@ -1172,8 +1174,8 @@ what is saved.
 and the outline, the wallpaper (here the Hexagons pattern in two blues).*
 
 ![The Milk theme](../screenshots/milk.png)
-*The Milk scheme: soft greys, the title buttons as coloured beads (the window behind: grey), the
-Aqua blue selection, the silver dock.*
+*The Milk scheme: soft greys, each frame melting into its window, the title buttons as coloured
+beads (the window behind: grey), the Aqua blue selection, the silver dock.*
 
 ### Manual theme editing
 

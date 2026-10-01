@@ -92,9 +92,10 @@ void wk_window_state (int flags) { s_winFlags = flags; }
 int  wk_window_flags () { return s_winFlags; }
 
 // One copy of the frame (W x H, the client's insets l, t, r, b), from the frame's colour fc:
-// a gradient (the title bar lighter), the edge and the theme's outline on the rounded shape, a
-// light line along the top, the title buttons (the window menu; minimise, maximise, close), the
-// title in bold; then the corners' outside made see-through (the top byte: kapi_abi.h).
+// a gradient (the title bar lighter; Milk's ends on the window's colour), the edge and the
+// theme's outline on the rounded shape, a light line along the top, the title buttons (the
+// window menu; minimise, maximise, close), the title in bold; then the corners' outside made
+// see-through (the top byte: kapi_abi.h).
 // The frame keeps the desktop's bitmap font whatever face the app installed (wtk/text.h): every
 // window's title looks the same.
 struct BitmapText { TextFace *keep; BitmapText () : keep (wk_face_) { wk_face_ = 0; } ~BitmapText () { wk_face_ = keep; } };
@@ -106,10 +107,16 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 	Canvas cv; cv.adopt (fb, W, H);
 	// one continuous gradient: the title bar lighter, the borders going on from it (no line
 	// between them)
-	if (WK_STYLE == WK_STYLE_MILK)					// (Milk: a brighter top, flat borders)
+	// (Milk: the frame melts into the window -- the title bar from a light tone of the frame's
+	// colour down to the content's own, C_BG, the borders that colour: nothing between the frame
+	// and what the window shows)
+	unsigned tbg = wk_tone (fc, 140);						// (under the title)
+	if (WK_STYLE == WK_STYLE_MILK)
 	{
-		wk_rbox (cv, 0, 0, W, T, 0, wk_tone (fc, 204), wk_tone (fc, 122));
-		wk_rbox (cv, 0, T, W, H - T, 0, wk_tone (fc, 121), wk_tone (fc, 114));
+		unsigned top = wk_tone (fc, 230);
+		wk_rbox (cv, 0, 0, W, T, 0, top, C_BG);
+		cv.fillRect (0, T, W, H - T, C_BG);
+		tbg = wk_mix (top, C_BG, 128);
 	}
 	else
 	{
@@ -120,8 +127,7 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 	if (WK_OUTLINE) wk_rline (cv, 0, 0, W, H, R, WK_OUTLINE == 2 ? 0 : wk_tone (fc, 28), 255);
 	for (int i = R; i < W - R; i++) { unsigned *p = fb + W + i; *p = wk_over (*p, 0x00FFFFFF, 110); }	// the top light
 
-	unsigned tbg = wk_tone (fc, 140);						// the title's ink
-	unsigned ink = wk_ink_on (tbg);
+	unsigned ink = wk_ink_on (tbg);							// the title's ink
 	if (!active) ink = wk_mix (ink, tbg, 70);
 	// the title buttons: the window menu at the left, close / maximise / minimise from the right
 	int by = KAPI_FRAME_BTN_Y, bw = KAPI_FRAME_BTN_W, bh = KAPI_FRAME_BTN_H;
@@ -205,7 +211,7 @@ void wk_decorate_window ()
 	struct kapi_chrome c;
 	if (!kapi_get_chrome (&c) || c.active == 0) return;	// no window / borderless
 	unsigned sig = C_FRAME_ACTIVE * 31u + C_FRAME_INACTIVE * 7u + (unsigned) WK_OUTLINE * 3u + (unsigned) s_winFlags
-		       + (unsigned) WK_STYLE * 101u;
+		       + (WK_STYLE == WK_STYLE_MILK ? 101u + C_BG * 13u : 0u);	// (Milk's: the window's colour too)
 	for (int i = 0; c.title[i]; i++) sig = sig * 33u + (unsigned char) c.title[i];
 	if (c.chrome_w == s_w && c.chrome_h == s_h && sig == s_sig) return;
 	s_w = c.chrome_w; s_h = c.chrome_h; s_sig = sig;

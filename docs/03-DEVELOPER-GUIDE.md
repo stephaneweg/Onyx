@@ -1304,8 +1304,11 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 >   frame; `active` = any colour instead), `style` = cde / milk (**the style**, `WK_STYLE`: CDE's
 >   framed title buttons, or Milk's — Xfce's Milk theme, as OS X — the title buttons coloured
 >   beads, `wk_bead`, close red, minimise amber, maximise green, grey behind or for a button the
->   window cannot use, a lighter title gradient; a colour the file leaves out is the style's own,
->   `wk_style_palette`; a scheme of another style chosen: `wk_theme_take_style (t, style)`),
+>   window cannot use, and the frame melting into the window: the title's gradient from a light
+>   tone of the frame's colour down to the content's own, `C_BG`, the borders that colour,
+>   nothing between them — `wk_title_strip` likewise, down to `C_FACE`; a colour the file leaves
+>   out is the style's own, `wk_style_palette`; a scheme of another style chosen:
+>   `wk_theme_take_style (t, style)`),
 >   `inactive`, `window` (the content: the face; `face` still
 >   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
 >   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes

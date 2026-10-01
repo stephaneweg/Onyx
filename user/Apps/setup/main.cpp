@@ -753,18 +753,26 @@ class DesktopPreview : public Widget
 public:
 	unsigned *wall; int shown, shownTint;
 	DesktopPreview (int l, int t, int w, int h) : Widget (l, t, w, h), wall (0), shown (-1), shownTint (-1) {}
-	void win (int x, int y, int w, int h, unsigned frame, const char *t, bool front)
+	void win (int x, int y, int w, int h, unsigned frame, unsigned face, const char *t, bool front)
 	{
 		bool milk = SCHEMES[g_scheme].style == WK_STYLE_MILK;
-		wk_rbox (canvas, x, y, w, h, 6, wk_tone (frame, milk ? 204 : 164), wk_tone (frame, 118));
+		unsigned tbg = frame;
+		if (milk)					// (Milk: the title bar melts into the window)
+		{
+			unsigned top = wk_tone (frame, 230);
+			wk_rbox (canvas, x, y, w, h, 6, face, face);
+			wk_rbox (canvas, x, y, w, 20, 6, top, face, 255, WK_TL | WK_TR);
+			tbg = wk_mix (top, face, 128);
+		}
+		else wk_rbox (canvas, x, y, w, h, 6, wk_tone (frame, 164), wk_tone (frame, 118));
 		wk_rline (canvas, x, y, w, h, 6, wk_tone (frame, 70), 170);
-		canvas.fillRect (x + 3, y + 20, w - 6, h - 23, C_BG);
+		canvas.fillRect (x + 3, y + 20, w - 6, h - 23, face);
 		static const unsigned bead[3] = { 0x00E8564E, 0x004CB653, 0x00F0B43A };	// (Milk: close, maximise, minimise)
 		for (int k = 0; k < 3; k++)
 			if (milk) wk_bead (canvas, x + w - 20 - k * 17, y + 4, 13, front ? bead[k] : 0x00C2C3C8);
 			else wk_rbox (canvas, x + w - 20 - k * 17, y + 4, 14, 12, 3, wk_tone (frame, 175), wk_tone (frame, 125));
-		WkFaceScope sc (g_small); wk_text_c (canvas, x, y, w, 20, t, wk_ink_on (frame), 2);
-		if (front) wk_text_l (canvas, x + 12, y + 28, 18, "Hello, Onyx.", C_TEXT);
+		WkFaceScope sc (g_small); wk_text_c (canvas, x, y, w, 20, t, wk_ink_on (tbg), 2);
+		if (front) wk_text_l (canvas, x + 12, y + 28, 18, "Hello, Onyx.", wk_ink_on (face));
 	}
 	void onDraw () override
 	{
@@ -773,10 +781,14 @@ public:
 		blit_round (canvas, wall, 0, 0, width, height, 8);
 		for (int y = 1; y < 19; y++) canvas.fillRect (1, y, width - 2, 1, wk_mix (0x00F6F2EE, 0x00DCD4CE, y * 256 / 19));
 		{ WkFaceScope sc (g_small); wk_text_l (canvas, 10, 1, 18, "Onyx   File   Edit   View", C_TEXT); wk_text_l (canvas, width - 44, 1, 18, "12:34", C_TEXT, 2); }
-		win (40, 28, 200, 84, wk_style_palette (SCHEMES[g_scheme].style).inactive, "Calendar", false);
-		win (180, 40, 250, 86, SCHEMES[g_scheme].c, "Text Editor", true);
+		// (the chosen scheme's colours at once -- apply_look comes a moment later: another style's own)
+		int st = SCHEMES[g_scheme].style;
+		const WkPalette &pal = wk_style_palette (st);
+		unsigned face = st == WK_STYLE ? C_BG : pal.face, dock = st == WK_STYLE ? C_DOCK : pal.dock;
+		win (40, 28, 200, 84, pal.inactive, face, "Calendar", false);
+		win (180, 40, 250, 86, SCHEMES[g_scheme].c, face, "Text Editor", true);
 		int dw = 240, dx = (width - dw) / 2, dy = height - 30;
-		wk_rbox (canvas, dx, dy, dw, 24, 7, wk_tone (C_DOCK, 175), C_DOCK); wk_rline (canvas, dx, dy, dw, 24, 7, wk_tone (C_DOCK, 60), 140);
+		wk_rbox (canvas, dx, dy, dw, 24, 7, wk_tone (dock, 175), dock); wk_rline (canvas, dx, dy, dw, 24, 7, wk_tone (dock, 60), 140);
 		static Pic di[6]; static const char *const DI[] = { "tinypad", "jet", "paint", "tetris", "terminal", "fileviewer" };
 		for (int k = 0; k < 6; k++) { if (!di[k].px) di[k] = icon (DI[k]); draw_pic (canvas, di[k], dx + 12 + k * 38, dy + 2, 20); }
 	}
@@ -795,7 +807,8 @@ public:
 			int x = 4 + i * 86, y = 4; bool s = i == g_scheme; unsigned c = SCHEMES[i].c;
 			bool milk = SCHEMES[i].style == WK_STYLE_MILK;
 			if (s) { wk_rline (canvas, x - 3, y - 3, 82, 42, 10, C_ACCENT); wk_rline (canvas, x - 4, y - 4, 84, 44, 11, C_ACCENT); }
-			wk_rbox (canvas, x, y, 76, 36, 8, wk_tone (c, milk ? 204 : 164), wk_tone (c, 118));
+			wk_rbox (canvas, x, y, 76, 36, 8, wk_tone (c, milk ? 230 : 164),	// (Milk's: down to its windows' grey)
+				 milk ? wk_style_palette (WK_STYLE_MILK).face : wk_tone (c, 118));
 			wk_rline (canvas, x, y, 76, 36, 8, wk_tone (c, 70), 170);
 			if (milk)					// (its beads)
 			{

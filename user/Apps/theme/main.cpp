@@ -329,7 +329,8 @@ public:
 		bool on = g_t.theme == idx, milk = wk_themes[idx].style == WK_STYLE_MILK;
 		int x = (width - 42) / 2;
 		if (on) { wk_rline (canvas, x - 3, 0, 48, 32, 9, C_ACCENT, 255); wk_rline (canvas, x - 2, 1, 46, 30, 8, C_ACCENT, 160); }
-		wk_rbox (canvas, x, 3, 42, 26, 6, wk_tone (c, milk ? 204 : 166), wk_tone (c, milk ? 118 : 112));
+		wk_rbox (canvas, x, 3, 42, 26, 6, wk_tone (c, milk ? 230 : 166),	// (Milk's: down to its windows' grey)
+			 milk ? wk_style_palette (WK_STYLE_MILK).face : wk_tone (c, 112));
 		wk_rline (canvas, x, 3, 42, 26, 6, wk_tone (c, 64), 190);
 		if (milk)						// (its beads)
 		{
