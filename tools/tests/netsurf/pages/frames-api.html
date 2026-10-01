@@ -185,6 +185,12 @@ function step6() {
 }
 
 function step7() {
+	/* (a javascript: src, checked by step8) */
+	jsf = document.createElement('iframe');
+	jsf.src = 'javascript:false';
+	jsf.width = 40; jsf.height = 20;
+	jsf.onload = function () { jsLoaded = true; };
+	document.body.appendChild(jsf);
 	/* the parent's DOM changed (its boxes made again): the frame keeps its document */
 	var w = a.contentWindow, loads = 0;
 	a.addEventListener('load', function () { loads++; });
@@ -198,7 +204,11 @@ function step7() {
 	}, 300);
 }
 
+var jsf, jsLoaded = false;
 function step8() {
+	/* a javascript: src: an empty, same-origin document */
+	ok('javascript: src', jsLoaded && jsf.contentDocument !== null);
+	jsf.remove();
 	/* about:blank: same origin, written by the parent */
 	var doc = c.contentDocument;
 	ok('about:blank document', doc !== null && doc.body !== null);

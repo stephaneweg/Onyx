@@ -502,6 +502,10 @@ static void onyx_frame_update(struct browser_window *bw, html_content *htmlc,
 			while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\n' ||
 					e[-1] == '\r' || e[-1] == '\f'))
 				*--e = '\0';
+			/* (a javascript: src -- "javascript:false", an old way to an empty
+			 * frame: about:blank, as its document is in Chrome) */
+			if (strncasecmp(p, "javascript:", 11) == 0)
+				*p = '\0';
 			if (*p != '\0' && htmlc->base_url != NULL &&
 			    nsurl_join(htmlc->base_url, p, &url) != NSERROR_OK)
 				url = NULL;

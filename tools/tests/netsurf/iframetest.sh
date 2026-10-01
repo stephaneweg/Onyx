@@ -44,7 +44,7 @@ L=$OUT/frames-api.log
 run "file://$(realpath $T/pages/frames-api.html)" "$(waits 400)" "$L"
 grep -a "^console: FAIL frames \|^JS " "$L" | sed 's/^console: /  /'
 n_ok=$(grep -a -c "^console: OK frames " "$L")
-if grep -a -q "^console: FAIL frames \|^JS " "$L" || ! grep -a -q "^console: frames done" "$L" || [ "$n_ok" -lt 54 ]; then
+if grep -a -q "^console: FAIL frames \|^JS " "$L" || ! grep -a -q "^console: frames done" "$L" || [ "$n_ok" -lt 55 ]; then
 	echo "  FAIL  ($n_ok checks passed: $L)"; fail=1
 else
 	echo "  ok: $n_ok checks"

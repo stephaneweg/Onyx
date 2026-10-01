@@ -2080,7 +2080,7 @@ document's frames are its `<iframe>` elements -- all of them, shown or not, with
   `D:<srcdoc>`): a script's `iframe.src = ...` loads it again; the window's own navigations
   (its links, `location`) do not touch it. `srcdoc` is loaded as a `data:text/html` URL whose
   document takes the parent's base URL (`onyx_frames_srcdoc_base`, read by `html.c` where the
-  base URL is set); no src: `about:blank`. A frame showing one of its ancestors' URLs (or 10
+  base URL is set); no src (or a `javascript:` one): `about:blank`. A frame showing one of its ancestors' URLs (or 10
   frames deep) stays blank, as in Chrome.
 - `sandbox`: read when the frame is navigated (`ONYX_SANDBOX*`); without `allow-scripts` the
   document gets no JavaScript thread (`CONTENT_MSG_GETTHREAD` refused), without
@@ -2168,7 +2168,7 @@ challenge frames talk so). **BroadcastChannel** reaches the same-origin document
 their workers (`qjs_net.c`: `n_broadcast` looked at a page's own workers only).
 
 **The tests** (`tools/tests/netsurf/iframetest.sh`, checked against Chromium headless for the
-same pages): `pages/frames-api.html` (52 checks: the parser's and a script's frames, srcdoc,
+same pages): `pages/frames-api.html` (55 checks: the parser's and a script's frames, srcdoc,
 about:blank written by its parent, a `src` changed, a frame removed (`closed`), the parent's DOM
 changed (the frame kept with its state), a frame in a frame talking to the top window, sibling
 frames, sandbox, the structured clone each way, the targetOrigin checks, ports in the transfer
