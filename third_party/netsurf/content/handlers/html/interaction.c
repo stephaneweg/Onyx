@@ -692,6 +692,17 @@ struct onyx_hit {
 static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy);
 static void onyx_hit_layer(struct onyx_hit *h, int start);
 
+/** whether a box is visible -- an anonymous box (no style: an inline container...)
+ * as its parent (visibility: hidden made the boxes of a hidden fixed panel's text
+ * take the clicks: google.com's search overlay) */
+static bool onyx_hit_visible(const struct box *box)
+{
+	while (box != NULL && box->style == NULL)
+		box = box->parent;
+	return box == NULL ||
+		css_computed_visibility(box->style) != CSS_VISIBILITY_HIDDEN;
+}
+
 /** a box, its parent's origin at (ox, oy) (html_redraw_box) */
 static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 {
@@ -712,8 +723,7 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 		h->py = by + (int) floorf(inv[1] * lx + inv[3] * ly + inv[5]);
 		if (box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
 				h->py - by, &physically)) {
-			if (physically && (box->style == NULL || css_computed_visibility(
-					box->style) != CSS_VISIBILITY_HIDDEN))
+			if (physically && onyx_hit_visible(box))
 				h->box = box;
 			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
 					by - scrollbar_get_offset(box->scroll_y));
@@ -728,8 +738,7 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 	if (!box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
 			h->py - by, &physically))
 		return;
-	if (physically && (box->style == NULL || css_computed_visibility(
-			box->style) != CSS_VISIBILITY_HIDDEN))
+	if (physically && onyx_hit_visible(box))	/* (Onyx) */
 		h->box = box;
 	onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
 			by - scrollbar_get_offset(box->scroll_y));
@@ -1381,7 +1390,11 @@ link_mouse_action(html_content *html,
 static nserror
 default_mouse_action_focus(html_content *html, browser_mouse_state mouse)
 {
-	if (mouse && mouse < BROWSER_MOUSE_MOD_1) {
+	/* Onyx: only a press moves the focus, as in the browsers (the focus is
+	 * mousedown's default action): a release, a drag or a hold elsewhere keeps it --
+	 * a script that moves the focused field away on mousedown (google.com's search
+	 * overlay) had the release land beside it and the caret taken out */
+	if (mouse & (BROWSER_MOUSE_PRESS_1 | BROWSER_MOUSE_PRESS_2)) {
 		/* ensure key presses still act on the browser window */
 		union html_focus_owner fo;
 		fo.self = true;
@@ -1420,7 +1433,8 @@ default_mouse_action(html_content *html,
 			 BROWSER_MOUSE_CLICK_1 | BROWSER_MOUSE_CLICK_2 |
 			 BROWSER_MOUSE_DRAG_1 | BROWSER_MOUSE_DRAG_2);
 
-	if (click && html->focus_type != HTML_FOCUS_SELF) {
+	if ((mouse & (BROWSER_MOUSE_PRESS_1 | BROWSER_MOUSE_PRESS_2)) &&
+	    html->focus_type != HTML_FOCUS_SELF) {	/* (Onyx: a press only, above) */
 		union html_focus_owner fo;
 		fo.self = true;
 		html_set_focus(html, HTML_FOCUS_SELF, fo, true, 0, 0, 0, NULL);

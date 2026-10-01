@@ -160,6 +160,20 @@ static dom_attr_list * _dom_element_attr_list_next(const dom_attr_list *n)
 	return (dom_attr_list *)(n->list.next);
 }
 
+/* Onyx: an element's attributes made doc's (dom_document_onyx_adopt) */
+void _dom_element_onyx_set_owner(struct dom_element *e, struct dom_document *doc)
+{
+	dom_attr_list *a = e->attributes;
+
+	if (a == NULL)
+		return;
+	do {
+		if (a->attr != NULL)
+			((dom_node_internal *) a->attr)->owner = doc;
+		a = _dom_element_attr_list_next(a);
+	} while (a != NULL && a != e->attributes);
+}
+
 /**
  * Unlink an attribute list node from its linked list
  *

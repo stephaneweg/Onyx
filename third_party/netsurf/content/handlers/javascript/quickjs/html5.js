@@ -189,7 +189,8 @@ def(G.Document.prototype, {
 		const p = N.parent(n);
 		if (p) p.removeChild(n);
 		if (N.ownerDoc(n) === this) return n;
-		return N.importTo(this, n, true);
+		if (N.type(n) === DOCUMENT_NODE) throw domError('adoptNode: a document', 'NotSupportedError');
+		return N.adopt(this, n);	/* (Onyx: the same node, now this document's) */
 	},
 });
 getter(Node.prototype, 'ownerDocument', function () {

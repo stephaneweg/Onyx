@@ -839,7 +839,7 @@ bool box_vscrollbar_present(const struct box * const box)
 	return box->padding[TOP] +
 		box->height +
 		box->padding[BOTTOM] +
-		box->border[BOTTOM].width < box->descendant_y1;
+		box->border[BOTTOM].width < box->scroll_ext_y1;	/* (Onyx) */
 }
 
 
@@ -849,7 +849,7 @@ bool box_hscrollbar_present(const struct box * const box)
 	return box->padding[LEFT] +
 		box->width +
 		box->padding[RIGHT] +
-		box->border[RIGHT].width < box->descendant_x1;
+		box->border[RIGHT].width < box->scroll_ext_x1;	/* (Onyx) */
 }
 
 

@@ -3380,6 +3380,13 @@ class Document extends Node {
 	importNode(n, deep) { return N.clone(n, !!deep); }
 	adoptNode(n) { const p = N.parent(n); if (p) p.removeChild(n); return n; }
 	elementFromPoint(x, y) {
+		/* (Onyx: the browser's hit test -- as painted, the hidden ones passed over) */
+		if (this === G.document && N.hitNode) {
+			x = +x; y = +y;
+			if (!(x >= 0 && y >= 0 && x < G.innerWidth && y < G.innerHeight)) return null;
+			const e = N.hitNode(Math.floor(x), Math.floor(y));
+			if (e) return e;
+		}
 		let best = null;
 		for (const e of N.descendants(this)) {
 			const r = N.rect(e, true);
@@ -6205,12 +6212,17 @@ function browserDispatch(target, type, init) {
 		animEvent(target, init);
 		return true;
 	}
-	if (type === 'mousedown' && t instanceof HTMLElement) {
-		const f = t.closest('a,button,input,select,textarea,[tabindex]');
-		if (f && f !== activeElement) f.focus();
-	}
 	const ev = browserEvent(target, type, init || {});
 	const ok = dispatch(t, ev);
+	/* Onyx: the focus is mousedown's default action, after it as in Chrome (a script
+	 * that prevents it keeps the focus where it is: an autocomplete list's items): to
+	 * the focusable element pressed, else away from the focused one */
+	if (type === 'mousedown' && ok && t instanceof Element) {
+		const f = t.closest('a[href],area[href],button,input,select,textarea,iframe,summary,[tabindex],[contenteditable]');
+		if (f && f !== activeElement) f.focus();
+		else if (!f && activeElement && activeElement !== G.document.body)
+			activeElement.blur();
+	}
 	if (type === 'scroll' || type === 'resize' || type === 'load') {
 		if (type === 'resize') checkMedia();
 		scheduleObservers();

@@ -1173,11 +1173,63 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   first context of the process, their bytecode kept and read back in the next ones
   (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms
   (a page's iframes, each navigation). Timed as `js:prelude` (NS_PERF).
+- **google.com's mobile search** (the page the Android User-Agent gets): a tap in the search
+  box opens a full-screen overlay (the URL's `#sbfbu=1&pi=`: the field's container made
+  `position: fixed; inset: 0; overflow: auto`, `html` / `body` fixed). NetSurf showed the
+  back arrow, the mic and the lens over a blank panel with a scroll bar of its own: typing
+  went nowhere, no suggestions, and the back arrow opened the page's menu under the
+  overlay. Four causes, each general:
+  - **The focus moved on the release** (`interaction.c`, `default_mouse_action` and
+    `default_mouse_action_focus`): any mouse action outside a text field -- the button's
+    release (`CLICK_1`), a drag, a hold -- took the caret out of the field. The field takes
+    the focus at the press; Google's focus handler moves it to the top of the overlay, so
+    the release landed on the overlay's blank area and the keys went to the page. Only a
+    press moves the focus now, as in the browsers (the focus is mousedown's default
+    action). In `dom.js` the focus moves after the mousedown handlers, not before, and not
+    when one prevents it (an autocomplete list's items keep the field focused), and a press
+    on nothing focusable blurs the focused element (Chrome's default action).
+  - **Nodes moved between documents** (`libdom` `dom_document_onyx_adopt`, `qjs.c`
+    `n_insert` / `N.adopt`, `html5.js` `adoptNode`): Closure's HTML sanitizer builds the
+    suggestions' markup with the page's document, appends it to a document of its own
+    (`createHTMLDocument`) and serializes that; libdom refused a node of another document
+    (`WRONG_DOCUMENT_ERR`, "cannot insert that node here (4)"): every suggestion's text came
+    out empty. An insertion into another document's tree adopts the node first, as the DOM
+    says -- in place: the node, its subtree and their attributes change owner, the
+    document's list of nodes pending deletion follows (libdom's own adopt_node makes copies:
+    a script would have kept the old node). `document.adoptNode` does the same (it copied).
+  - **The scroll extent left the fixed boxes in** (`box.h` `scroll_ext_x1` / `_y1`,
+    `layout.c` `layout_calculate_scroll_extent`): a box's scroll bars, its
+    `scrollWidth` / `scrollHeight` and the page's size came from its descendants' bounds,
+    `position: fixed` ones included -- hidden fixed panels Google keeps below the viewport
+    gave the overlay a scroll bar. The descendants' bounds less the fixed subtrees, computed
+    only for the boxes that hold a fixed box (`HAS_FIXED`; the others' are their bounds).
+  - **The hit test missed a fixed box in an `overflow: hidden` ancestor** (`layout.c`
+    `layout_calculate_descendant_bboxes`): the overlay sits in `form#tsf { overflow: hidden
+    }`, whose descendants' bounds left out its children -- the fixed overlay too, so the hit
+    test (which follows those bounds to the fixed boxes) never reached it and the click went
+    to the header beneath. A fixed child, or one holding one, is kept in the bounds. An
+    anonymous box (an inline container) of a `visibility: hidden` element no longer takes
+    the click (`onyx_hit_visible`), and `document.elementFromPoint` asks the same hit test
+    (`N.hitNode`; it took the last element in document order whose box held the point,
+    hidden or covered).
+  Also `getComputedStyle`'s `z-index` (it gave libcss's fixed-point value: 989 read 1012736)
+  and `overflow` / `overflow-x` / `overflow-y` (always `visible`). With them the field takes
+  the typing, `/complete/s` is asked at each key and its suggestions listed (with their
+  pictures), the arrow closes the overlay and Enter runs the search (`/search?q=`; this
+  container's IP gets Google's captcha). Test: `pages/js-searchoverlay.html` (jstest).
+- **A document a few bytes past 4 KB failed to load: "BadParameter"** (libparserutils
+  `inputstream.c`, `parserutils_inputstream_refill_buffer`): the input filter decodes the raw
+  bytes 64 characters at a time into its pivot and writes them to the 4096-byte UTF-8
+  buffer; a document of 4097 to ~4160 bytes left its last characters in the pivot with no raw
+  bytes left. The refill at the end (the earlier "filter still holds data" fix) wrote them,
+  then discarded zero bytes from the empty raw buffer -- which libparserutils answers with
+  BADPARM: the parse failed, the page was an error page (a style sheet of that size too).
+  Nothing is discarded when nothing was read. Test: `pages/js-size4k.html` (4142 bytes).
 - Smaller: `DOMStringMap`; `addEventListener` & co called unbound are the window's;
   `localStorage`'s Proxy keeps the Proxy invariants (`Object.keys(localStorage)` threw);
   inline scripts are named by their first characters in errors and timings.
 - Tests: `jstest.sh` gained js-microloop, js-rawtext, js-loadevents, js-url, js-dynimport,
-  js-svgns, js-fontface.
+  js-svgns, js-fontface, js-searchoverlay, js-size4k.
 
 ## 19. The scripts' real-time and background APIs (WebSocket, EventSource, streams, Workers)
 

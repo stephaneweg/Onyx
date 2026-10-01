@@ -1894,10 +1894,11 @@ static void html_reformat(struct content *c, int width, int height)
 		layout->margin[BOTTOM];
 
 	/* if boxes overflow right or bottom edge, expand to contain it */
-	if (c->width < layout->x + layout->descendant_x1)
-		c->width = layout->x + layout->descendant_x1;
-	if (c->height < layout->y + layout->descendant_y1)
-		c->height = layout->y + layout->descendant_y1;
+	/* (Onyx: not the fixed boxes: they do not scroll with the page) */
+	if (c->width < layout->x + layout->scroll_ext_x1)
+		c->width = layout->x + layout->scroll_ext_x1;
+	if (c->height < layout->y + layout->scroll_ext_y1)
+		c->height = layout->y + layout->scroll_ext_y1;
 
 	selection_reinit(htmlc->sel);
 

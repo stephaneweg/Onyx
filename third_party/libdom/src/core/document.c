@@ -1567,3 +1567,51 @@ uint32_t dom_document_onyx_mutation_guard(dom_document *doc, uint32_t depth)
 	doc->dispatching_mutation = depth;
 	return old;
 }
+
+/* Onyx: the subtree's nodes (and their attributes) made doc's */
+static void onyx_adopt_tree(dom_node_internal *n, dom_document *doc)
+{
+	dom_node_internal *c;
+
+	n->owner = doc;
+	if (n->type == DOM_ELEMENT_NODE)
+		_dom_element_onyx_set_owner((struct dom_element *) n, doc);
+	for (c = n->first_child; c != NULL; c = c->next)
+		onyx_adopt_tree(c, doc);
+}
+
+/* Onyx: the DOM's "adopt" in place -- node, out of its tree (taken out of its parent
+ * first), and its subtree become doc's: the same nodes (a script keeps them), where
+ * libdom's adopt_node made copies. An insertion into another document's tree adopts
+ * first (google.com's HTML sanitizer appends the nodes it built into a document of
+ * its own: WRONG_DOCUMENT_ERR, the suggestions were empty). */
+dom_exception dom_document_onyx_adopt(dom_document *doc, dom_node *node)
+{
+	dom_node_internal *n = (dom_node_internal *) node;
+	dom_document *old = n->owner;
+	dom_exception err;
+
+	if (n->type == DOM_DOCUMENT_NODE || n->type == DOM_DOCUMENT_TYPE_NODE ||
+	    n->type == DOM_ATTRIBUTE_NODE)
+		return DOM_NOT_SUPPORTED_ERR;
+	if (old == doc)
+		return DOM_NO_ERR;
+	if (n->parent != NULL) {
+		dom_node_internal *res = NULL;
+		err = dom_node_remove_child(n->parent, n, (void *) &res);
+		if (err != DOM_NO_ERR)
+			return err;
+		if (res != NULL)
+			dom_node_unref(res);
+	}
+	/* (out of the old document's nodes pending deletion, into the new one's) */
+	dom_node_ref(n);
+	if (n->pending_list.prev != &n->pending_list)
+		list_del(&n->pending_list);
+	onyx_adopt_tree(n, doc);
+	list_append(&doc->pending_nodes, &n->pending_list);
+	dom_node_unref(n);
+	if (old != NULL)
+		_dom_document_try_destroy(old);
+	return DOM_NO_ERR;
+}

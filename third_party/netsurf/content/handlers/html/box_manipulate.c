@@ -116,6 +116,7 @@ box_create(css_select_results *styles,
 	box->height = 0;
 	box->descendant_x0 = box->descendant_y0 = 0;
 	box->descendant_x1 = box->descendant_y1 = 0;
+	box->scroll_ext_x1 = box->scroll_ext_y1 = 0;	/* (Onyx) */
 	for (i = 0; i != 4; i++)
 		box->margin[i] = box->padding[i] = box->border[i].width = 0;
 	box->scroll_x = box->scroll_y = NULL;
@@ -281,13 +282,14 @@ box_handle_scrollbars(struct content *c,
 	visible_width = box->width + box->padding[RIGHT] + box->padding[LEFT];
 	visible_height = box->height + box->padding[TOP] + box->padding[BOTTOM];
 
-	full_width = ((box->descendant_x1 - box->border[RIGHT].width) >
+	/* (Onyx: the descendants it scrolls over: not its fixed ones) */
+	full_width = ((box->scroll_ext_x1 - box->border[RIGHT].width) >
 			visible_width) ?
-			box->descendant_x1 + box->padding[RIGHT] :
+			box->scroll_ext_x1 + box->padding[RIGHT] :
 			visible_width;
-	full_height = ((box->descendant_y1 - box->border[BOTTOM].width) >
+	full_height = ((box->scroll_ext_y1 - box->border[BOTTOM].width) >
 			visible_height) ?
-			box->descendant_y1 + box->padding[BOTTOM] :
+			box->scroll_ext_y1 + box->padding[BOTTOM] :
 			visible_height;
 
 	if (right) {

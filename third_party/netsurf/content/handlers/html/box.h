@@ -324,6 +324,15 @@ struct box {
 	int descendant_y1;  /**< bottom edge of descendants */
 
 	/**
+	 * Onyx: the right and bottom edges of the descendants the box scrolls
+	 * over -- as descendant_x1 / _y1 less its position: fixed descendants
+	 * (their containing block is the viewport: they do not scroll with it):
+	 * its scroll bars' extent, the page's size (layout.c)
+	 */
+	int scroll_ext_x1;
+	int scroll_ext_y1;
+
+	/**
 	 * Margin: TOP, RIGHT, BOTTOM, LEFT.
 	 */
 	int margin[4];

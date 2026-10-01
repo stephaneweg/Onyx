@@ -471,4 +471,7 @@ static inline dom_exception dom_document_set_quirks_mode(
 /* Onyx: set the mutation-event guard (see document.c), the old value returned */
 uint32_t dom_document_onyx_mutation_guard(dom_document *doc, uint32_t depth);
 
+/* Onyx: node (out of its tree) and its subtree made doc's in place (see document.c) */
+dom_exception dom_document_onyx_adopt(dom_document *doc, struct dom_node *node);
+
 #endif

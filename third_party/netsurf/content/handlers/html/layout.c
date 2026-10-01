@@ -6390,6 +6390,96 @@ layout_update_descendant_bbox(
  */
 static void layout_calculate_descendant_bboxes(
 		const css_unit_ctx *unit_len_ctx,
+		struct box *box);
+
+/**
+ * Onyx: a child's part in its box's scroll extent (scroll_ext_x1 / _y1): as
+ * layout_update_descendant_bbox's, a position: fixed child left out
+ */
+static void layout_update_scroll_extent(const css_unit_ctx *unit_len_ctx,
+		struct box *box, struct box *child, int off_x, int off_y)
+{
+	int x0, y0, x1, y1;
+	bool html_object = (child->object &&
+			content_get_type(child->object) == CONTENT_HTML);
+
+	if (child->style != NULL &&
+	    css_computed_position(child->style) == CSS_POSITION_FIXED)
+		return;
+	layout_get_box_bbox(unit_len_ctx, child, &x0, &y0, &x1, &y1);
+	if (!html_object && (child->style == NULL ||
+			css_computed_overflow_x(child->style) == CSS_OVERFLOW_VISIBLE ||
+			(child->flags & HAS_FIXED)))
+		x1 = child->scroll_ext_x1;
+	if (!html_object && (child->style == NULL ||
+			css_computed_overflow_y(child->style) == CSS_OVERFLOW_VISIBLE ||
+			(child->flags & HAS_FIXED)))
+		y1 = child->scroll_ext_y1;
+	x1 += child->x - off_x;
+	y1 += child->y - off_y;
+	if (box->scroll_ext_x1 < x1)
+		box->scroll_ext_x1 = x1;
+	if (box->scroll_ext_y1 < y1)
+		box->scroll_ext_y1 = y1;
+}
+
+/**
+ * Onyx: the scroll extent of a box holding a position: fixed box -- its
+ * descendant bbox less the fixed boxes (an inner scroller showed a scroll bar
+ * for a hidden fixed panel below the viewport: google.com's search overlay)
+ */
+static void layout_calculate_scroll_extent(const css_unit_ctx *unit_len_ctx,
+		struct box *box)
+{
+	struct box *child;
+	int x0, y0;
+
+	box->scroll_ext_x1 = box->descendant_x1;
+	box->scroll_ext_y1 = box->descendant_y1;
+	if (!(box->flags & HAS_FIXED) || box->type == BOX_INLINE ||
+	    box->type == BOX_TEXT || box->type == BOX_INLINE_END ||
+	    (box->flags & REPLACE_DIM))
+		return;
+	layout_get_box_bbox(unit_len_ctx, box, &x0, &y0,
+			&box->scroll_ext_x1, &box->scroll_ext_y1);
+	if (box->object && content_get_type(box->object) == CONTENT_HTML) {
+		if (box->scroll_ext_x1 < content_get_width(box->object))
+			box->scroll_ext_x1 = content_get_width(box->object);
+		if (box->scroll_ext_y1 < content_get_height(box->object))
+			box->scroll_ext_y1 = content_get_height(box->object);
+	}
+	if (!(box->style && css_computed_overflow_x(box->style) ==
+			CSS_OVERFLOW_HIDDEN &&
+			css_computed_overflow_y(box->style) ==
+			CSS_OVERFLOW_HIDDEN))
+		for (child = box->children; child; child = child->next)
+			if (child->type != BOX_FLOAT_LEFT &&
+			    child->type != BOX_FLOAT_RIGHT)
+				layout_update_scroll_extent(unit_len_ctx, box,
+						child, 0, 0);
+	for (child = box->float_children; child; child = child->next_float)
+		layout_update_scroll_extent(unit_len_ctx, box, child, 0, 0);
+	if (box->list_marker)
+		layout_update_scroll_extent(unit_len_ctx, box, box->list_marker,
+				0, 0);
+}
+
+static void layout_calculate_descendant_bboxes_1(
+		const css_unit_ctx *unit_len_ctx,
+		struct box *box);
+
+static void layout_calculate_descendant_bboxes(
+		const css_unit_ctx *unit_len_ctx,
+		struct box *box)
+{
+	layout_calculate_descendant_bboxes_1(unit_len_ctx, box);
+	layout_calculate_scroll_extent(unit_len_ctx, box);
+	if (box->type == BOX_INLINE_END && box->inline_end != NULL)
+		layout_calculate_scroll_extent(unit_len_ctx, box->inline_end);
+}
+
+static void layout_calculate_descendant_bboxes_1(
+		const css_unit_ctx *unit_len_ctx,
 		struct box *box)
 {
 	struct box *child;
@@ -6453,10 +6543,18 @@ static void layout_calculate_descendant_bboxes(
 
 		layout_calculate_descendant_bboxes(unit_len_ctx, child);
 
+		/* (Onyx: but a fixed box, or one holding one, is not hidden
+		 * by the overflow: its bounds kept for the hit test -- a click
+		 * on google.com's search overlay, in an overflow: hidden form,
+		 * went to the page under it) */
 		if (box->style && css_computed_overflow_x(box->style) ==
 				CSS_OVERFLOW_HIDDEN &&
 				css_computed_overflow_y(box->style) ==
-				CSS_OVERFLOW_HIDDEN)
+				CSS_OVERFLOW_HIDDEN &&
+				!(child->flags & HAS_FIXED) &&
+				!(child->style != NULL &&
+				  css_computed_position(child->style) ==
+						CSS_POSITION_FIXED))
 			continue;
 
 		layout_update_descendant_bbox(unit_len_ctx, box, child, 0, 0);

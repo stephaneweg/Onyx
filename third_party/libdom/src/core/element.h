@@ -59,6 +59,9 @@ dom_exception _dom_element_get_tag_name(struct dom_element *element,
 		dom_string **name);
 dom_exception _dom_element_get_attribute(struct dom_element *element,
 		dom_string *name, dom_string **value);
+/* Onyx: an element's attributes made doc's (dom_document_onyx_adopt) */
+void _dom_element_onyx_set_owner(struct dom_element *e, struct dom_document *doc);
+
 /* Onyx: the HTML parser adds attributes (no XML name check) */
 extern bool _dom_element_parser_attrs;
 

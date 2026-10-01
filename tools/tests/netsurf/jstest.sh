@@ -333,6 +333,21 @@ L=$OUT/js-focus.log
 run js-focus.html "$(waits 60)$(click 60 155)key a;wait;key b;$(waits 30)" "$L"
 for s in "active ta" "overlay full" "typed ab"; do expect "$L" "$s"; done
 
+echo "js-searchoverlay.html (google.com's mobile search: a fixed overlay opened on focus, its suggestions)"
+L=$OUT/js-searchoverlay.log
+run js-searchoverlay.html "$(waits 30)$(click 200 158)key a;wait;key b;$(waits 30)key 13;$(waits 10)$(click 30 60)" "$L"
+for s in "adopt true true true" "overlay open" "overlay scroll none" "point back" "computed 9 auto fixed" "typed ab" \
+	 "suggestions ab|abercrombie|abraham" "search ab" "back clicked"; do
+	expect "$L" "$s"
+done
+refuse "$L" "sanitize error"
+refuse "$L" "under clicked"
+
+echo "js-size4k.html (a document a few bytes past 4 KB: its end left in the input filter)"
+L=$OUT/js-size4k.log
+run js-size4k.html "$(waits 20)" "$L"
+expect "$L" "size4k ok"
+
 echo "js-scrollers.html (a consent screen: the wheel, PageDown, a scrollbar drag reach its inner scroller)"
 L=$OUT/js-scrollers.log
 run js-scrollers.html "$(waits 60)move 300 300;key 0x107;$(waits 30)$(click 120 700)" "$L"

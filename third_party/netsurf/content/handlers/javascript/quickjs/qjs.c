@@ -861,6 +861,33 @@ static JSValue n_create_fragment(JSContext *ctx, JSValueConst this_val, int argc
 }
 
 /** insert(parent, child, before): before null appends; the child (thrown on error) */
+/* Onyx: the document a node belongs to -- a document's is itself (a new reference) */
+static dom_document *qjs_doc_of(dom_node *n)
+{
+	dom_node_type t;
+	dom_document *d = NULL;
+
+	if (dom_node_get_node_type(n, &t) == DOM_NO_ERR && t == DOM_DOCUMENT_NODE)
+		return (dom_document *) dom_node_ref(n);
+	if (dom_node_get_owner_document(n, &d) != DOM_NO_ERR)
+		return NULL;
+	return d;
+}
+
+/* Onyx: a node inserted into another document's tree is adopted by that document first,
+ * in place (the DOM's insertion steps: libdom refused it, WRONG_DOCUMENT_ERR) */
+static void qjs_adopt_for(dom_node *parent, dom_node *child)
+{
+	dom_document *pd = qjs_doc_of(parent), *cd = qjs_doc_of(child);
+	dom_node_type t;
+
+	if (pd != NULL && cd != NULL && pd != cd &&
+	    dom_node_get_node_type(child, &t) == DOM_NO_ERR && t != DOM_DOCUMENT_NODE)
+		dom_document_onyx_adopt(pd, child);
+	if (pd != NULL) dom_node_unref(pd);
+	if (cd != NULL) dom_node_unref(cd);
+}
+
 static JSValue n_insert(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	dom_node *ref = argc > 2 ? qjs_node(argv[2]) : NULL;
@@ -869,6 +896,7 @@ static JSValue n_insert(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	QJS_NODE_ARG(p, 0);
 	QJS_NODE_ARG(c, 1);
 
+	qjs_adopt_for(p, c);	/* (Onyx: a node of another document adopted first) */
 	if (ref != NULL)
 		e = dom_node_insert_before(p, c, ref, &res);
 	else
@@ -1485,8 +1513,9 @@ static JSValue n_box_scroll(JSContext *ctx, JSValueConst this_val, int argc, JSV
 
 		v[0] = scrollbar_get_offset(box->scroll_x);
 		v[1] = scrollbar_get_offset(box->scroll_y);
-		v[2] = box->descendant_x1 > w ? box->descendant_x1 : w;
-		v[3] = box->descendant_y1 > h ? box->descendant_y1 : h;
+		/* (Onyx: the extent it scrolls over: not its fixed descendants) */
+		v[2] = box->scroll_ext_x1 > w ? box->scroll_ext_x1 : w;
+		v[3] = box->scroll_ext_y1 > h ? box->scroll_ext_y1 : h;
 		if (box->style != NULL &&
 		    css_computed_overflow_x(box->style) == CSS_OVERFLOW_VISIBLE)
 			v[2] = w;	/* (not a scroller: its own size) */
@@ -1543,6 +1572,42 @@ static JSValue n_focus_control(JSContext *ctx, JSValueConst this_val, int argc,
 		html_script_dom_changed(t->htmlc);
 	}
 	return JS_NewBool(ctx, html_script_focus_control(t->htmlc, n));
+}
+
+/* Onyx: hitNode(x, y): the element under a point of the viewport as a click finds it
+ * (html_hit_path: the box painted last there, visibility: hidden ones passed over) --
+ * document.elementFromPoint; null outside the page */
+static JSValue n_hit_node(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	int32_t x = 0, y = 0;
+	int sx = 0, sy = 0, n = 0, i;
+	struct box **path;
+	dom_node *node = NULL;
+	JSValue v = JS_NULL;
+
+	if (t->htmlc == NULL || argc < 2 || JS_ToInt32(ctx, &x, argv[0]) ||
+	    JS_ToInt32(ctx, &y, argv[1]))
+		return JS_NULL;
+	qjs_layout_now(t);
+	if (t->htmlc->layout == NULL)
+		return JS_NULL;
+	qjs_scroll(t, &sx, &sy);
+	path = html_hit_path(t->htmlc, x + sx, y + sy, &n);
+	if (path == NULL)
+		return JS_NULL;
+	for (i = n - 1; i >= 0 && node == NULL; i--) {
+		dom_node_type type;
+		if (path[i]->node == NULL ||
+		    dom_node_get_node_type(path[i]->node, &type) != DOM_NO_ERR ||
+		    type != DOM_ELEMENT_NODE)
+			continue;
+		node = path[i]->node;
+	}
+	if (node != NULL)
+		v = qjs_wrap(t, node);
+	free(path);
+	return v;
 }
 
 static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -1988,8 +2053,8 @@ static void qjs_cstyle_more(jsthread *t, const css_computed_style *style, struct
 			snprintf(buf, size, "normal");
 	} else if (strcmp(prop, "z-index") == 0) {
 		int32_t z = 0;
-		if (css_computed_z_index(style, &z) == CSS_Z_INDEX_SET)
-			snprintf(buf, size, "%d", (int) z);
+		if (css_computed_z_index(style, &z) == CSS_Z_INDEX_SET)	/* (a css_fixed) */
+			snprintf(buf, size, "%d", (int) FIXTOINT(z));
 		else
 			snprintf(buf, size, "auto");
 	} else if (strcmp(prop, "box-shadow") == 0) {
@@ -2101,6 +2166,18 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		snprintf(buf, sizeof(buf), "%s", css_computed_visibility(
 				style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
 				"visible");
+	} else if (strcmp(prop, "overflow") == 0 || strcmp(prop, "overflow-x") == 0 ||
+		   strcmp(prop, "overflow-y") == 0) {
+		/* Onyx: the scrollers' (a script looking for its scrolling ancestor) */
+		static const char *o[] = { "visible", "visible", "hidden", "scroll", "auto" };
+		uint8_t x = css_computed_overflow_x(style), y = css_computed_overflow_y(style);
+		const char *xs = x < 5 ? o[x] : "visible", *ys = y < 5 ? o[y] : "visible";
+		if (prop[8] == '-')
+			snprintf(buf, sizeof(buf), "%s", prop[9] == 'x' ? xs : ys);
+		else if (x == y)
+			snprintf(buf, sizeof(buf), "%s", xs);
+		else
+			snprintf(buf, sizeof(buf), "%s %s", xs, ys);
 	} else if (strcmp(prop, "position") == 0) {
 		static const char *p[] = { "static", "static", "relative",
 			"absolute", "fixed", "sticky" };
@@ -3707,6 +3784,17 @@ static JSValue n_create_in(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	return v;
 }
 
+/* adopt(doc, node): node (out of its tree) and its subtree made doc's, in place (Onyx) */
+static JSValue n_adopt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	QJS_NODE_ARG(d, 0);
+	QJS_NODE_ARG(n, 1);
+	if (dom_document_onyx_adopt((dom_document *) d, n) != DOM_NO_ERR)
+		return JS_ThrowTypeError(ctx, "NotSupportedError");
+	QJS_T(ctx)->dirty = true;
+	return JS_DupValue(ctx, argv[1]);
+}
+
 /* importTo(doc, node, deep): a copy of node owned by doc */
 static JSValue n_import_to(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -3934,6 +4022,7 @@ static const JSCFunctionListEntry qjs_natives_html5[] = {
 	JS_CFUNC_DEF("createDocument", 0, n_create_document),
 	JS_CFUNC_DEF("createIn", 4, n_create_in),
 	JS_CFUNC_DEF("importTo", 3, n_import_to),
+	JS_CFUNC_DEF("adopt", 2, n_adopt),
 	JS_CFUNC_DEF("ownerDoc", 1, n_owner_doc),
 	JS_CFUNC_DEF("nsURI", 1, n_ns_uri),
 	JS_CFUNC_DEF("lname", 1, n_lname),
@@ -3989,6 +4078,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("setFormChecked", 2, n_set_form_checked),
 	JS_CFUNC_DEF("submit", 2, n_submit),
 	JS_CFUNC_DEF("rect", 1, n_rect),
+	JS_CFUNC_DEF("hitNode", 2, n_hit_node),
 	JS_CFUNC_DEF("focusControl", 1, n_focus_control),
 	JS_CFUNC_DEF("boxScroll", 1, n_box_scroll),
 	JS_CFUNC_DEF("boxScrollTo", 3, n_box_scroll_to),
