@@ -162,7 +162,23 @@ onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
 	if (rec.failed)
 		goto fail;
 	s->rec = NULL;
-	onyx_nstls_chain_free(&rec);
+	if (chain != NULL && rec.depth == 0) {
+		/* (Onyx) a resumed session: the server's certificate it kept */
+		X509 *c = SSL_get1_peer_certificate(s->ssl);
+		unsigned char *d = NULL;
+		int n = c != NULL ? i2d_X509(c, &d) : 0;
+		if (n > 0 && (rec.cert[0].der = malloc((size_t) n)) != NULL) {
+			memcpy(rec.cert[0].der, d, (size_t) n);
+			rec.cert[0].len = (unsigned long) n;
+			rec.depth = 1;
+		}
+		if (d != NULL) OPENSSL_free(d);
+		if (c != NULL) X509_free(c);
+	}
+	if (chain != NULL)
+		*chain = rec;		/* (Onyx: connected, the chain checked -- the caller's) */
+	else
+		onyx_nstls_chain_free(&rec);
 	return s;
 fail:
 	if (chain != NULL && rec.failed)

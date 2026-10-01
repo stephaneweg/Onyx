@@ -53,7 +53,10 @@ void onyx_nstls_ca_bundle(const char *path);
 
 /* The handshake over a socket already connected (the socket is the session's from then on,
  * closed with it or here on a failure) -- flags ONYX_TLS_*. NULL on a failure: then
- * chain->failed says whether the certificate was refused (chain may be NULL). */
+ * chain->failed says whether the certificate was refused (chain may be NULL). Onyx: connected,
+ * *chain holds the chain checked too (each certificate's fault: an accepted one's faults; a
+ * resumed session: the server's certificate alone, or none) -- the caller frees it
+ * (onyx_nstls_chain_free) either way. */
 onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigned flags,
 		struct onyx_tls_chain *chain);
 

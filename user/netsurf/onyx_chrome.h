@@ -75,13 +75,24 @@ void onyx_chrome_theme(unsigned *face, unsigned *shade);
 void onyx_chrome_set_url(const char *url);
 void onyx_chrome_set_busy(int busy);			/* loading: reload becomes stop */
 void onyx_chrome_set_nav(int can_back, int can_forward);
+/* The page's security and its site's version: the padlock left of the address field, the
+ * pill right of it (both hidden for a page that is not http / https). sec: ONYX_SEC_*;
+ * mode: -1 none, else utils/useragent.h's USER_AGENT_STANDARD / MOBILE / DESKTOP / CUSTOM. */
+enum { ONYX_SEC_NONE = 0,	/* not a web page (file:, about:): no padlock */
+       ONYX_SEC_INSECURE,	/* http: a grey, struck padlock ("Not secure") */
+       ONYX_SEC_SECURE,		/* https, the certificate verified: green */
+       ONYX_SEC_MIXED,		/* ... some of the page's parts over http: green, said so */
+       ONYX_SEC_BROKEN };	/* https past a certificate warning ("Proceed"): red */
+void onyx_chrome_set_site(int sec, int mode);
 
 /* --- the commands the toolbar / the menu run (implemented in gui.c) ------------------ */
 void onyx_browser_back(void);
 void onyx_browser_forward(void);
 void onyx_browser_reload(void);
 void onyx_browser_stop(void);
-void onyx_browser_toggle_desktop(void);		/* the site's desktop / mobile version */
+void onyx_browser_set_site_mode(int mode);	/* the site's version (USER_AGENT_*), reloaded */
+const char *onyx_browser_site(void);		/* the page's site ("bbc.co.uk"), or "" */
+int  onyx_browser_show_certificate(void);	/* the page's certificates in the viewer: 0 none */
 void onyx_browser_home(void);
 void onyx_browser_go(const char *text);		/* an address typed (a URL, or a host) */
 void onyx_browser_redraw(void);			/* the page covered by a pop-up: redraw it */

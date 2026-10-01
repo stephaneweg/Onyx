@@ -84,7 +84,7 @@ user_agent_build_string(void)
 #define ONYX_CHROME_FULL "142.0.7444.176"
 
 /* Onyx: jet.ini (below) */
-enum { UA_INI_DEFAULT, UA_INI_DESKTOP, UA_INI_SITE };
+enum { UA_INI_DEFAULT, UA_INI_DESKTOP, UA_INI_MOBILE, UA_INI_SITE };
 static const char *onyx_ini_ua(int what, const char *host);
 
 /* This is a function so that later we can override it trivially */
@@ -110,7 +110,8 @@ user_agent_string(void)
 	 * default -- claiming Chrome got Google and DuckDuckGo's bot checks (a Chrome whose TLS
 	 * and scripts are not Chrome's), and their full script applications are too heavy for
 	 * the Pi anyway; as NetSurf they serve their light HTML pages. "Desktop site" still
-	 * sends a desktop Chrome's to the sites the user picks (below). */
+	 * sends a desktop Chrome's, "Mobile" an Android Chrome's, to the sites the user
+	 * picks (below: the toolbar's pill). */
 	if (netsurf_ua[0] == '\0')
 		snprintf(netsurf_ua, sizeof netsurf_ua, "Mozilla/5.0 (X11; Linux aarch64) NetSurf/%d.%d",
 				netsurf_version_major, netsurf_version_minor);
@@ -136,7 +137,12 @@ free_user_agent_string(void)
 }
 
 
-/* ---- Onyx: the desktop version for chosen sites ("Desktop site") -------------------- */
+/* ---- Onyx: a version per site: Standard, Mobile, Desktop (the toolbar's pill) ---------
+ *
+ * SD:/apps/jet.app/site-modes: one "site mode" line per site the user switched (the site: its
+ * registrable domain, ua_site_of; the mode: standard, mobile or desktop). The older
+ * desktop-sites file (one site per line, each the desktop version) is read when site-modes does
+ * not exist yet; the first change writes site-modes with its sites in it. */
 
 #include <stdio.h>
 #include <strings.h>
@@ -144,21 +150,28 @@ free_user_agent_string(void)
 #ifndef ONYX_NS_DATAPATH
 #define ONYX_NS_DATAPATH ""
 #endif
-#define UA_SITES_FILE ONYX_NS_DATAPATH "desktop-sites"	/* one site per line */
+#define UA_MODES_FILE ONYX_NS_DATAPATH "site-modes"	/* "site mode" lines */
+#define UA_SITES_FILE ONYX_NS_DATAPATH "desktop-sites"	/* (before: one site per line) */
 #define UA_SITES_MAX 256
 
 static const char ua_desktop[] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
 	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Safari/537.36";
-static char *ua_sites[UA_SITES_MAX];
+static const char ua_mobile[] = "Mozilla/5.0 (Linux; Android 10; K) "
+	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" ONYX_CHROME_MAJOR ".0.0.0 Mobile Safari/537.36";
+static struct { char *site; int mode; } ua_sites[UA_SITES_MAX];
 static int ua_nsites = -1;		/* (-1: the file not read yet) */
+static const char *const ua_mode_name[] = { "standard", "mobile", "desktop" };
 
 /* a host's site: its registrable domain, approximated -- the last two labels, or three
- * under a short second level of a country code (bbc.co.uk, x.com.au) */
+ * under a short second level of a country code (bbc.co.uk, x.com.au); an IP address is its
+ * own site */
 static const char *ua_site_of(const char *host)
 {
 	const char *p = host + strlen(host), *dots[3] = { NULL, NULL, NULL };
 	int n = 0;
 
+	if (strchr(host, ':') != NULL || strspn(host, "0123456789.") == strlen(host))
+		return host;
 	while (p > host && n < 3) {
 		p--;
 		if (*p == '.')
@@ -175,88 +188,162 @@ static const char *ua_site_of(const char *host)
 	return host;
 }
 
+static void ua_sites_add(const char *site, int mode)
+{
+	if (ua_nsites >= UA_SITES_MAX)
+		return;
+	ua_sites[ua_nsites].site = strdup(site);
+	ua_sites[ua_nsites].mode = mode;
+	if (ua_sites[ua_nsites].site != NULL)
+		ua_nsites++;
+}
+
 static void ua_sites_load(void)
 {
 	FILE *f;
 	char line[256];
+	bool modes = true;
 
 	ua_nsites = 0;
-	f = fopen(UA_SITES_FILE, "r");
+	f = fopen(UA_MODES_FILE, "r");
+	if (f == NULL) {
+		modes = false;
+		f = fopen(UA_SITES_FILE, "r");	/* (the older list: desktop sites) */
+	}
 	if (f == NULL)
 		return;
 	while (ua_nsites < UA_SITES_MAX && fgets(line, sizeof line, f) != NULL) {
-		size_t l = strcspn(line, " \t\r\n");
-		line[l] = '\0';
-		if (l > 0)
-			ua_sites[ua_nsites++] = strdup(line);
+		char *p = line, *m;
+		size_t l;
+		int mode = USER_AGENT_DESKTOP, i;
+
+		p += strspn(p, " \t");
+		if (*p == '#' || *p == ';')
+			continue;
+		l = strcspn(p, " \t\r\n");
+		if (l == 0)
+			continue;
+		m = p + l;
+		if (*m != '\0')
+			*m++ = '\0';
+		if (modes) {
+			m += strspn(m, " \t");
+			m[strcspn(m, " \t\r\n")] = '\0';
+			mode = -1;
+			for (i = 0; i < 3; i++)
+				if (strcasecmp(m, ua_mode_name[i]) == 0)
+					mode = i;
+			if (mode < 0)
+				continue;
+		}
+		ua_sites_add(p, mode);
 	}
 	fclose(f);
 }
 
 static void ua_sites_save(void)
 {
-	FILE *f = fopen(UA_SITES_FILE, "w");
+	FILE *f = fopen(UA_MODES_FILE, "w");
 	int i;
 
 	if (f == NULL)
 		return;
+	fprintf(f, "# Jet Browser: the version of each site the user chose (site standard|mobile|desktop)\n");
 	for (i = 0; i < ua_nsites; i++)
-		if (ua_sites[i] != NULL)
-			fprintf(f, "%s\n", ua_sites[i]);
+		if (ua_sites[i].site != NULL && ua_sites[i].mode != USER_AGENT_STANDARD)
+			fprintf(f, "%s %s\n", ua_sites[i].site, ua_mode_name[ua_sites[i].mode]);
 	fclose(f);
 }
 
-/* Public API documented in useragent.h */
-bool user_agent_is_desktop(const char *host)
+/* the entry of a host's site, or -1 */
+static int ua_sites_find(const char *host)
 {
 	const char *site;
 	int i;
 
 	if (host == NULL || host[0] == '\0')
-		return false;
+		return -1;
 	if (ua_nsites < 0)
 		ua_sites_load();
 	site = ua_site_of(host);
 	for (i = 0; i < ua_nsites; i++)
-		if (ua_sites[i] != NULL && strcasecmp(ua_sites[i], site) == 0)
-			return true;
-	return false;
+		if (ua_sites[i].site != NULL && strcasecmp(ua_sites[i].site, site) == 0)
+			return i;
+	return -1;
 }
 
 /* Public API documented in useragent.h */
-void user_agent_set_desktop(const char *host, bool desktop)
+int user_agent_site_mode(const char *host)
 {
-	const char *site;
 	int i;
 
-	if (host == NULL || host[0] == '\0' || user_agent_is_desktop(host) == desktop)
+	if (host == NULL || host[0] == '\0')
+		return USER_AGENT_STANDARD;
+	if (onyx_ini_ua(UA_INI_SITE, host) != NULL)
+		return USER_AGENT_CUSTOM;	/* (jet.ini's [sites]: its own line) */
+	i = ua_sites_find(host);
+	return i < 0 ? USER_AGENT_STANDARD : ua_sites[i].mode;
+}
+
+/* Public API documented in useragent.h */
+void user_agent_set_site_mode(const char *host, int mode)
+{
+	int i;
+
+	if (host == NULL || host[0] == '\0' || mode < USER_AGENT_STANDARD ||
+	    mode > USER_AGENT_DESKTOP)
 		return;
-	site = ua_site_of(host);
-	if (desktop) {
-		if (ua_nsites >= UA_SITES_MAX)
-			return;
-		ua_sites[ua_nsites++] = strdup(site);
+	i = ua_sites_find(host);
+	if (i < 0 ? mode == USER_AGENT_STANDARD : ua_sites[i].mode == mode)
+		return;
+	if (mode == USER_AGENT_STANDARD) {
+		free(ua_sites[i].site);
+		ua_sites[i] = ua_sites[--ua_nsites];
+	} else if (i >= 0) {
+		ua_sites[i].mode = mode;
 	} else {
-		for (i = 0; i < ua_nsites; i++)
-			if (ua_sites[i] != NULL && strcasecmp(ua_sites[i], site) == 0) {
-				free(ua_sites[i]);
-				ua_sites[i] = ua_sites[--ua_nsites];
-				i--;
-			}
+		ua_sites_add(ua_site_of(host), mode);
 	}
 	ua_sites_save();
 }
 
 /* Public API documented in useragent.h */
+const char *user_agent_site_of(const char *host)
+{
+	return host != NULL ? ua_site_of(host) : "";
+}
+
+/* Public API documented in useragent.h */
+bool user_agent_is_desktop(const char *host)
+{
+	int i = ua_sites_find(host);
+
+	return i >= 0 && ua_sites[i].mode == USER_AGENT_DESKTOP;
+}
+
+/* Public API documented in useragent.h */
+void user_agent_set_desktop(const char *host, bool desktop)
+{
+	if (user_agent_is_desktop(host) != desktop)
+		user_agent_set_site_mode(host, desktop ? USER_AGENT_DESKTOP : USER_AGENT_STANDARD);
+}
+
+/* Public API documented in useragent.h */
 const char *user_agent_for_host(const char *host)
 {
-	const char *site = onyx_ini_ua(UA_INI_SITE, host), *desk;
+	const char *site = onyx_ini_ua(UA_INI_SITE, host), *ua;
+	int i;
 
 	if (site != NULL)
 		return site;		/* (jet.ini's [sites]: this site's own) */
-	if (user_agent_is_desktop(host)) {
-		desk = onyx_ini_ua(UA_INI_DESKTOP, NULL);
-		return desk != NULL ? desk : ua_desktop;
+	i = ua_sites_find(host);
+	if (i >= 0 && ua_sites[i].mode == USER_AGENT_DESKTOP) {
+		ua = onyx_ini_ua(UA_INI_DESKTOP, NULL);
+		return ua != NULL ? ua : ua_desktop;
+	}
+	if (i >= 0 && ua_sites[i].mode == USER_AGENT_MOBILE) {
+		ua = onyx_ini_ua(UA_INI_MOBILE, NULL);
+		return ua != NULL ? ua : ua_mobile;
 	}
 	return user_agent_string();
 }
@@ -265,7 +352,8 @@ const char *user_agent_for_host(const char *host)
  *
  *   [user_agent]
  *   default = Mozilla/5.0 (X11; Linux aarch64) NetSurf/3.12     ; every site
- *   desktop = Mozilla/5.0 (Windows NT 10.0; ...) Chrome/...     ; "Desktop site"'s
+ *   desktop = Mozilla/5.0 (Windows NT 10.0; ...) Chrome/...     ; the Desktop sites'
+ *   mobile = Mozilla/5.0 (Linux; Android 10; K) ... Chrome/...  ; the Mobile sites'
  *   [sites]
  *   example.com = Mozilla/5.0 ...                                ; one site's (and its
  *                                                                ;  subdomains')
@@ -276,7 +364,8 @@ const char *user_agent_for_host(const char *host)
 #define UA_INI_SITES 64
 
 static bool ua_ini_read;
-static char *ua_ini_default, *ua_ini_desktop;
+static char *ua_ini_default, *ua_ini_desktop, *ua_ini_mobile;
+static char *ua_ini_search;	/* ([search] engine: jet_search_engine) */
 static struct { char *host, *ua; } ua_ini_site[UA_INI_SITES];
 static int ua_ini_nsites;
 
@@ -327,6 +416,11 @@ static void ua_ini_load(void)
 				ua_ini_default = strdup(v);
 			else if (strcasecmp(k, "desktop") == 0 && ua_ini_desktop == NULL)
 				ua_ini_desktop = strdup(v);
+			else if (strcasecmp(k, "mobile") == 0 && ua_ini_mobile == NULL)
+				ua_ini_mobile = strdup(v);
+		} else if (strcasecmp(section, "search") == 0) {
+			if (strcasecmp(k, "engine") == 0 && ua_ini_search == NULL)
+				ua_ini_search = strdup(v);
 		} else if (strcasecmp(section, "sites") == 0 && ua_ini_nsites < UA_INI_SITES) {
 			ua_ini_site[ua_ini_nsites].host = strdup(k);
 			ua_ini_site[ua_ini_nsites].ua = strdup(v);
@@ -360,10 +454,20 @@ static const char *onyx_ini_ua(int what, const char *host)
 		return ua_ini_default;
 	if (what == UA_INI_DESKTOP)
 		return ua_ini_desktop;
+	if (what == UA_INI_MOBILE)
+		return ua_ini_mobile;
 	if (host == NULL || host[0] == '\0')
 		return NULL;
 	for (i = 0; i < ua_ini_nsites; i++)
 		if (ua_host_in(host, ua_ini_site[i].host))
 			return ua_ini_site[i].ua;
 	return NULL;
+}
+
+/* Public API documented in useragent.h */
+const char *jet_search_engine(void)
+{
+	if (!ua_ini_read)
+		ua_ini_load();
+	return ua_ini_search != NULL ? ua_ini_search : "https://duckduckgo.com/?q=";
 }

@@ -1,6 +1,7 @@
 //
 // onyx_chrome.cpp -- NetSurf's window on Onyx (see onyx_chrome.h): a wtk window whose top band
-// is a native toolbar -- back, forward, reload / stop, home, the address field -- above the page
+// is a native toolbar -- back, forward, reload / stop, home, the history, the padlock, the address
+// field, the site's version (the blue pill: Standard / Mobile / Desktop) -- above the page
 // NetSurf draws (the "onyx" libnsfb surface gets the rest of the window's canvas). The window's
 // frame is wtk's: its close box and its window menu close NetSurf, maximise resizes the page.
 //
@@ -27,6 +28,7 @@ namespace {
 const int TB = ONYX_TOOLBAR_H;
 const int BTN_W = 34, BTN_H = 30, BTN_Y = (TB - BTN_H) / 2 - 1, GAP = 4, PAD = 6;
 const int URL_MAX = 2048;
+const int LOCK_W = 32;		// the padlock's half pill, left of the address field
 
 // ---- a toolbar button: the theme's framed button with a glyph --------------------------------
 class ToolButton : public Widget
@@ -68,7 +70,9 @@ public:
 	char page[URL_MAX];	// the page's address (Esc goes back to it)
 	int  len, caret, start;
 	bool all;		// the whole text selected (a click into the field, Ctrl+A)
-	UrlField (int l, int t, int w, int h) : Widget (l, t, w, h), len (0), caret (0), start (0), all (false)
+	bool joinL, joinR;	// the padlock / the pill against its left / right side (square there)
+	UrlField (int l, int t, int w, int h) : Widget (l, t, w, h), len (0), caret (0), start (0), all (false),
+		joinL (false), joinR (false)
 	{ canFocus = true; text[0] = page[0] = '\0'; }
 
 	void setPage (const char *s)
@@ -83,15 +87,19 @@ public:
 		for (len = 0; page[len]; len++) text[len] = page[len];
 		text[len] = '\0'; caret = len; start = 0; all = false;
 	}
-	void focusIn () { setFocus (); all = true; caret = len; invalidate (true); }
-	void focusOut () { if (hasFocus) { hasFocus = false; revert (); invalidate (true); } }	// (back to the page)
+	void focusIn () { setFocus (); all = true; caret = len; invalidate (true); joined (); }
+	void focusOut () { if (hasFocus) { hasFocus = false; revert (); invalidate (true); joined (); } }	// (back to the page)
+	void joined ();		// the padlock and the pill redrawn (they show the field's focus)
 
 	int visible () const { int n = (width - 2 * PAD) / wk_fw (); return n < 1 ? 1 : n; }
 	void onDraw () override
 	{
 		int fw = wk_fw (), fh = wk_fh ();
 		canvas.clear (bgColor ());
-		wk_sunken (canvas, 0, 0, width, height, 4, C_FIELD, hasFocus);
+		// (a side joined to the padlock or the pill: the field's rounded end drawn past the
+		// canvas -- cut off: the field and its neighbours read as one control)
+		int xl = joinL ? -6 : 0, xr = joinR ? 6 : 0;
+		wk_sunken (canvas, xl, 0, width - xl + xr, height, 4, C_FIELD, hasFocus);
 		int vis = visible ();
 		if (caret < start) start = caret;
 		if (caret > start + vis - 1) start = caret - (vis - 1);
@@ -172,6 +180,247 @@ public:
 		}
 		invalidate (true);
 		return true;
+	}
+};
+
+// ---- the padlock and the site's version: half pills against the address field -------------
+// The modes of utils/useragent.h (USER_AGENT_*: the C header is NetSurf's).
+enum { MODE_NONE = -1, MODE_STANDARD = 0, MODE_MOBILE = 1, MODE_DESKTOP = 2, MODE_CUSTOM = 3 };
+const char *const MODE_LABEL[] = { "Standard", "Mobile", "Desktop", "Custom" };
+const char *const MODE_WHAT[] = { "Jet Browser's own User-Agent", "Chrome on Android",
+				  "Chrome on Windows", "set in jet.ini" };
+
+const unsigned SEC_GREEN = 0x1E8E3E, SEC_RED = 0xD93025;
+
+UrlField *g_url;	// (the padlock and the pill show its focus: one control)
+
+// The top shadow a sunken field has (wk_sunken), across [x0, x1)
+void field_shadow (Canvas &cv, int x0, int x1)
+{
+	for (int i = x0; i < x1; i++) { wk_blend_px (cv, i, 1, 0, 34); wk_blend_px (cv, i, 2, 0, 14); }
+}
+
+// The padlock: a half pill on the field's left (rounded on its left end), the field's own
+// face tinted -- green for a verified https page, red for one past a certificate warning,
+// grey and struck for http; hidden for the rest. A click (Enter, Space) shows the page's
+// certificates (the viewer, about:certificate).
+class LockSeg : public Widget
+{
+public:
+	int sec;
+	char tipText[160];
+	LockSeg (int l, int t, int w, int h) : Widget (l, t, w, h), sec (ONYX_SEC_NONE)
+	{ canFocus = true; hidden = true; tipText[0] = '\0'; tip = tipText; }
+	unsigned ink () const
+	{
+		return sec == ONYX_SEC_BROKEN ? SEC_RED : sec == ONYX_SEC_INSECURE ?
+			wk_mix (C_FIELD_TEXT, C_FIELD, 110) : SEC_GREEN;
+	}
+	void set (int s)
+	{
+		if (s == sec) return;
+		sec = s;
+		const char *t = s == ONYX_SEC_SECURE ? "Secure connection: the certificate is valid. Click: the certificate" :
+			s == ONYX_SEC_MIXED ? "Secure connection, but parts of the page came over http. Click: the certificate" :
+			s == ONYX_SEC_BROKEN ? "Not secure: the certificate has a problem (accepted with Proceed). Click: the certificate" :
+			"Not secure: the page came over http (not encrypted)";
+		int i = 0;
+		for (; t[i] && i < (int) sizeof tipText - 1; i++) tipText[i] = t[i];
+		tipText[i] = '\0';
+		invalidate (true);
+	}
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		int r = height / 2, st = pressed ? 2 : hover ? 1 : 0;
+		bool tint = sec != ONYX_SEC_INSECURE;
+		unsigned face = tint ? wk_mix (C_FIELD, ink (), 30 + 18 * st) : st ? wk_tone (C_FIELD, 128 - 10 * st) : C_FIELD;
+		bool focus = hasFocus || (g_url && g_url->hasFocus);
+		wk_rbox (canvas, 0, 0, width + 6, height, r, face, face, 255, WK_TL | WK_BL);
+		field_shadow (canvas, r, width);
+		wk_rline (canvas, 0, 0, width + 6, height, r, focus ? C_ACCENT : wk_tone (C_FACE, 72),
+			  focus ? 255 : 210, WK_TL | WK_BL);
+		if (hasFocus) wk_rline (canvas, 1, 1, width + 4, height - 2, r - 1, C_ACCENT, 110, WK_TL | WK_BL);
+		canvas.fillRect (width - 1, 6, 1, height - 12, wk_mix (C_FIELD, C_FIELD_TEXT, 48));	// (the join)
+		int cx = width / 2 + 1, cy = height / 2;
+		wk_glyph (canvas, WKG_LOCK, cx, cy, 14, ink ());
+		if (sec == ONYX_SEC_INSECURE)		// (struck through: not secure)
+			for (int k = -7; k <= 7; k++)
+			{
+				wk_blend_px (canvas, cx + k, cy + k, face, 255);
+				wk_blend_px (canvas, cx + k + 1, cy + k, face, 255);
+				wk_blend_px (canvas, cx + k, cy + k - 1, SEC_RED, 220);
+			}
+	}
+	void click ();
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		if (mx < 0) { if (hover || pressed) { hover = pressed = false; invalidate (true); } return false; }
+		bool wh = hover, wp = pressed;
+		hover = mx < width && my >= 0 && my < height;
+		if (bl && !pressed) pressed = true;
+		else if (!bl && pressed) { pressed = false; if (hover) { invalidate (true); click (); return true; } }
+		if (hover != wh || pressed != wp) invalidate (true);
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_ENTER || k == ' ') { click (); return true; }
+		return false;
+	}
+};
+
+// The pill's menu: the site's name, then the three versions -- the current one checked, each
+// with what it sends; for a site jet.ini names ("Custom"), the versions greyed and why.
+class ModeMenu : public Modal
+{
+public:
+	enum { PADY = 4 };
+	int cur, hot, col;	// col: where the versions' descriptions start
+	char head[160];
+	ModeMenu (int right, int y, int mode, const char *site) : Modal (100, 40), cur (mode), hot (-1)
+	{
+		const char *a = "Version of ";
+		int n = 0;
+		for (; *a; a++) head[n++] = *a;
+		for (; site && *site && n < (int) sizeof head - 1; site++) head[n++] = *site;
+		head[n] = '\0';
+		int w = wk_text_w (head, 2) + 28;
+		col = 0;
+		for (int i = 0; i < 3; i++) { int t = wk_text_w (MODE_LABEL[i], 2); if (t > col) col = t; }
+		col += 34 + 16;
+		for (int i = 0; i < 3; i++)
+		{
+			int iw = col + wk_text_w (MODE_WHAT[i]) + 14;
+			if (iw > w) w = iw;
+		}
+		if (cur == MODE_CUSTOM)
+		{
+			int iw = 28 + wk_text_w ("Set by jet.ini's [sites]: edit it there") ;
+			if (iw > w) w = iw;
+		}
+		int h = 2 * PADY + rowH () * (cur == MODE_CUSTOM ? 5 : 4) + 9;
+		resizeTo (w, h);
+		left = right - w; top = y;
+		if (left < 2) left = 2;
+		if (cur >= 0 && cur < 3) hot = cur;
+	}
+	static int rowH () { return wk_fh () + 10; }
+	int rowY (int i) const { return PADY + rowH () + 9 + i * rowH (); }	// version i (0..2)
+	bool enabled () const { return cur != MODE_CUSTOM; }
+	int rowAt (int mx, int my) const
+	{
+		if (!enabled () || mx < 0 || mx >= width) return -1;
+		for (int i = 0; i < 3; i++) if (my >= rowY (i) && my < rowY (i) + rowH ()) return i;
+		return -1;
+	}
+	void onDraw () override
+	{
+		int fh = wk_fh (), rh = rowH ();
+		canvas.clear (WK_TRANSPARENT_KEY);
+		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		wk_text_l (canvas, 14, PADY, rh, head, wk_mix (C_FIELD, C_FIELD_TEXT, 170), 2);
+		wk_etch_h (canvas, 8, PADY + rh + 3, width - 16, C_FIELD);
+		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 110);
+		for (int i = 0; i < 3; i++)
+		{
+			int y = rowY (i);
+			bool h = i == hot && enabled ();
+			if (h) wk_hilite (canvas, PADY, y, width - 2 * PADY, rh, 5, true);
+			unsigned ink = !enabled () ? dim : h ? C_SEL_TEXT : C_FIELD_TEXT;
+			if (i == cur) wk_glyph (canvas, WKG_CHECK, 19, y + rh / 2, 11, h ? C_SEL_TEXT : C_ACCENT);
+			wk_text_l (canvas, 34, y, rh, MODE_LABEL[i], ink, 2);
+			wk_text_l (canvas, col, y, rh, MODE_WHAT[i], h ? C_SEL_TEXT : dim);
+		}
+		if (cur == MODE_CUSTOM)
+			wk_text_l (canvas, 14, rowY (3), rh, "Set by jet.ini's [sites]: edit it there", C_FIELD_TEXT);
+		(void) fh;
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		int h = in ? rowAt (mx, my) : -1;
+		if (h >= 0 && h != hot) { hot = h; invalidate (true); }
+		if (bl && !pressed) { pressed = true; if (!in) close (0); }
+		else if (!bl && pressed) { pressed = false; if (in && h >= 0) close (h + 1); }
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27 || k == 9) { close (0); return true; }
+		if (!enabled ()) { if (k == KEY_ENTER || k == ' ') close (0); return true; }
+		if (k == KEY_DOWN) { hot = hot < 0 ? 0 : (hot + 1) % 3; invalidate (true); }
+		else if (k == KEY_UP) { hot = hot <= 0 ? 2 : hot - 1; invalidate (true); }
+		else if ((k == KEY_ENTER || k == ' ') && hot >= 0) close (hot + 1);
+		return true;
+	}
+};
+
+// The site's version: a blue half pill on the field's right (rounded on its right end) -- the
+// version's name and a small arrow; a click (Enter, Space, Down) opens its menu.
+class ModePill : public Widget
+{
+public:
+	int mode;
+	bool menuOpen;		// (drawn pressed while its menu is shown)
+	char tipText[200];
+	ModePill (int l, int t, int w, int h) : Widget (l, t, w, h), mode (MODE_NONE), menuOpen (false)
+	{ canFocus = true; hidden = true; tipText[0] = '\0'; tip = tipText; }
+	static int needW ()
+	{
+		int w = 0;
+		for (int i = 0; i < 4; i++) { int t = wk_text_w (MODE_LABEL[i], 2); if (t > w) w = t; }
+		return 12 + w + 8 + 10 + BTN_H / 2 - 2;
+	}
+	void set (int m, const char *site)
+	{
+		if (m == mode) return;
+		mode = m;
+		if (m >= 0)
+		{
+			const char *parts[] = { "This site's version: ", MODE_LABEL[m], " (", MODE_WHAT[m],
+				m == MODE_CUSTOM ? ": not changed here)" : "). Click to change it", 0 };
+			int n = 0;
+			for (int i = 0; parts[i]; i++)
+				for (const char *q = parts[i]; *q && n < (int) sizeof tipText - 1; q++) tipText[n++] = *q;
+			tipText[n] = '\0';
+		}
+		(void) site;
+		invalidate (true);
+	}
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		if (mode < 0) return;
+		int r = height / 2, st = pressed || menuOpen ? 2 : hover ? 1 : 0;
+		bool custom = mode == MODE_CUSTOM;
+		unsigned top = custom ? 0x7C8899 : st == 2 ? 0x2459B8 : st == 1 ? 0x5C9BF5 : 0x4C8DF0;
+		unsigned bot = custom ? 0x5E6B7D : st == 2 ? 0x2D68CF : st == 1 ? 0x2F6FDD : 0x2563D6;
+		unsigned edge = custom ? 0x4E5A6A : 0x1C4FA8;
+		wk_rbox (canvas, -6, 0, width + 6, height, r, top, bot, 255, WK_TR | WK_BR);
+		for (int i = 1; i < width - r; i++) wk_blend_px (canvas, i, 1, 0xFFFFFF, st == 2 ? 20 : 70);	// (a light top)
+		wk_rline (canvas, -6, 0, width + 6, height, r, edge, 255, WK_TR | WK_BR);
+		canvas.fillRect (0, 0, 1, height, edge);				// (the join)
+		if (hasFocus) wk_rline (canvas, 1, 2, width - 3, height - 4, r - 2, 0xFFFFFF, 170, WK_ALL);
+		int off = st == 2 ? 1 : 0;
+		wk_text_l (canvas, 11 + off, off, height, MODE_LABEL[mode], 0xFFFFFF, 2);
+		if (!custom) wk_glyph (canvas, WKG_CHEV_DOWN, width - r + 1 + off, height / 2 + 1 + off, 9, 0xFFFFFF);
+	}
+	void openMenu ();
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		if (mx < 0) { if (hover || pressed) { hover = pressed = false; invalidate (true); } return false; }
+		bool wh = hover, wp = pressed;
+		hover = mx < width && my >= 0 && my < height;
+		if (bl && !pressed) { pressed = true; invalidate (true); openMenu (); return true; }	// (opens on the press, as a menu)
+		else if (!bl && pressed) pressed = false;
+		if (hover != wh || pressed != wp) invalidate (true);
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_ENTER || k == ' ' || k == KEY_DOWN) { openMenu (); return true; }
+		return false;
 	}
 };
 
@@ -567,6 +816,9 @@ class NsWindow : public Root
 public:
 	ToolButton *back, *fwd, *reload, *home, *hist;
 	UrlField   *url;
+	LockSeg    *lock;
+	ModePill   *mode;
+	int         urlX;		// where the band's right part starts (the padlock, the field)
 	bool        busy;
 	NsWindow (int w, int h) : Root (w, h + TB, "Jet"), busy (false)
 	{
@@ -576,14 +828,57 @@ public:
 		reload = new ToolButton (x, BTN_Y, WKG_RELOAD, reload_or_stop);           x += BTN_W + GAP;
 		home   = new ToolButton (x, BTN_Y, WKG_HOME, onyx_browser_home);          x += BTN_W + GAP;
 		hist   = new ToolButton (x, BTN_Y, WKG_HISTORY, open_history);             x += BTN_W + GAP + 2;
+		urlX   = x;
 		url    = new UrlField (x, BTN_Y, width - x - PAD, BTN_H);
 		url->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_TOP;
+		g_url  = url;
+		lock   = new LockSeg (x, BTN_Y, LOCK_W, BTN_H);
+		mode   = new ModePill (width - PAD - ModePill::needW (), BTN_Y, ModePill::needW (), BTN_H);
+		mode->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 		back->setDisabled (true);
 		fwd->setDisabled (true);
 		back->tip = "Back (Alt+Left)"; fwd->tip = "Forward (Alt+Right)"; reload->tip = "Reload (F5)";
 		home->tip = "Home"; hist->tip = "History (Ctrl+H)";
 		addChild (back); addChild (fwd); addChild (reload); addChild (home); addChild (hist); addChild (url);
+		addChild (lock); addChild (mode);
 		setResizable (true);
+	}
+	// The field between the padlock and the pill (each there or not): its place and its ends.
+	void layoutBand ()
+	{
+		int x0 = urlX + (lock->hidden ? 0 : LOCK_W);
+		int x1 = width - PAD - (mode->hidden ? 0 : mode->width);
+		mode->left = width - PAD - mode->width;
+		if (url->left != x0 || url->width != x1 - x0 || url->joinL != !lock->hidden || url->joinR != !mode->hidden)
+		{
+			url->left = x0;
+			url->joinL = !lock->hidden; url->joinR = !mode->hidden;
+			url->resizeTo (x1 - x0, url->height);
+			url->invalidate (true);
+			invalidate (false);
+		}
+	}
+	// The band's keyboard: the field (F6), Tab to the pill, Shift+Tab to the padlock.
+	bool bandFocus () const { return url->hasFocus || lock->hasFocus || mode->hasFocus; }
+	void blurBand ()
+	{
+		if (url->hasFocus) url->focusOut ();
+		if (lock->hasFocus || mode->hasFocus) { clearFocusTree (); lock->invalidate (true); mode->invalidate (true); url->invalidate (true); }
+	}
+	void tab (bool back)
+	{
+		Widget *order[3] = { lock, url, mode };
+		int at = lock->hasFocus ? 0 : url->hasFocus ? 1 : 2;
+		for (int n = 0; n < 3; n++)
+		{
+			at += back ? -1 : 1;
+			if (at < 0 || at > 2) { blurBand (); return; }		// (out of the band: the page)
+			if (!order[at]->hidden) break;
+		}
+		if (url->hasFocus) url->focusOut ();
+		if (order[at] == url) { url->focusIn (); return; }
+		order[at]->setFocus ();
+		url->invalidate (true); lock->invalidate (true); mode->invalidate (true);
 	}
 	// Only the band is the window's own: the rest is the page's (NetSurf draws it).
 	void onDraw () override
@@ -591,9 +886,9 @@ public:
 		canvas.fillRect (0, 0, width, TB, C_BG);
 		wk_etch_h (canvas, 0, TB - 2, width, C_BG);
 	}
-	void onResized () override { g_resized = true; }
+	void onResized () override { g_resized = true; layoutBand (); }
 	static void reload_or_stop ();
-	bool pageFocus () const { return !url->hasFocus; }
+	bool pageFocus () const { return !bandFocus (); }
 };
 
 NsWindow *g_win;
@@ -601,7 +896,55 @@ onyx_chrome_handler g_pagePtr, g_pageKey;
 int g_grab;		// 0 none, 1 the band, 2 the page: where the pressed buttons went
 bool g_shown;		// the band drawn at least once
 
+bool has_modal (void);
+
 void NsWindow::reload_or_stop () { if (g_win && g_win->busy) onyx_browser_stop (); else onyx_browser_reload (); }
+
+void UrlField::joined ()
+{
+	if (g_win == 0) return;
+	if (!g_win->lock->hidden) g_win->lock->invalidate (true);
+	if (!g_win->mode->hidden) g_win->mode->invalidate (true);
+}
+
+// The padlock: the page's certificates in the viewer (or, none known, what the padlock says).
+void LockSeg::click ()
+{
+	if (g_win == 0 || hidden) return;
+	g_win->blurBand ();
+	if (sec == ONYX_SEC_INSECURE)
+	{
+		wk_messagebox ("Not secure", "This page came over http:\nnot encrypted, no certificate.", MB_OK);
+		onyx_browser_redraw ();
+		return;
+	}
+	if (!onyx_browser_show_certificate ())
+	{
+		wk_messagebox (sec == ONYX_SEC_BROKEN ? "Not secure" : "Secure connection",
+			       sec == ONYX_SEC_BROKEN ? "The certificate has a problem:\naccepted with Proceed." :
+			       "The certificate was verified;\nits details were not kept.", MB_OK);
+		onyx_browser_redraw ();
+	}
+}
+
+// The pill's menu, under it (its right edge on the pill's): the version chosen -> the page
+// loaded again with it.
+void ModePill::openMenu ()
+{
+	if (g_win == 0 || hidden || mode < 0 || has_modal ()) return;
+	if (g_url && g_url->hasFocus) g_url->focusOut ();
+	bool kb = hasFocus;
+	ModeMenu *m = new ModeMenu (left + width, top + height + 2, mode, onyx_browser_site ());
+	menuOpen = true;
+	invalidate (true);
+	int r = m->run ();
+	delete m;
+	menuOpen = pressed = hover = false;
+	if (kb) setFocus ();
+	invalidate (true);
+	onyx_browser_redraw ();			// (the page under the menu)
+	if (r > 0 && r - 1 != mode) onyx_browser_set_site_mode (r - 1);
+}
 
 bool has_modal (void)
 {
@@ -700,7 +1043,7 @@ void ptr_event (unsigned long sender, int ev, gui_value v)
 	}
 	else
 	{
-		if (ev == GUI_EVENT_PTR_DOWN && !g_win->pageFocus ()) g_win->url->focusOut ();
+		if (ev == GUI_EVENT_PTR_DOWN && !g_win->pageFocus ()) g_win->blurBand ();
 		g_win->handleMouse (-1, -1, 0, 0, 0, 0);		// (the band: the pointer left it)
 		if (g_pagePtr) g_pagePtr (sender, ev, page_value (v));
 	}
@@ -720,8 +1063,14 @@ void key_event (unsigned long sender, int ev, gui_value k)
 	if ((mods & MOD_ALT) && k == KEY_LEFT)  { onyx_browser_back (); return; }
 	if ((mods & MOD_ALT) && k == KEY_RIGHT) { onyx_browser_forward (); return; }
 	if (k == KEY_F1 + 4) { onyx_browser_reload (); return; }		// F5
-	if (k == KEY_F1 + 5) { g_win->url->focusIn (); return; }		// F6
-	if (!g_win->pageFocus ()) { g_win->handleKey (k); return; }
+	if (k == KEY_F1 + 5) { if (g_win->url->hasFocus) g_win->blurBand (); else g_win->url->focusIn (); return; }	// F6
+	if (!g_win->pageFocus ())
+	{
+		if (k == 9) { g_win->tab ((mods & MOD_SHIFT) != 0); return; }	// Tab, Shift+Tab: the band's parts
+		if (k == 27 && !g_win->url->hasFocus) { g_win->blurBand (); return; }
+		g_win->handleKey (k);
+		return;
+	}
 	if (k == 27 && g_win->busy) { onyx_browser_stop (); return; }
 	if (g_pageKey) g_pageKey (sender, ev, k);
 }
@@ -733,7 +1082,8 @@ void m_forward ()  { onyx_browser_forward (); }
 void m_reload ()   { onyx_browser_reload (); }
 void m_stop ()     { onyx_browser_stop (); }
 void m_home ()     { onyx_browser_home (); }
-void m_desktop ()  { onyx_browser_toggle_desktop (); }	// the site's desktop / mobile version
+void m_site ()     { if (g_win) g_win->mode->openMenu (); }	// the site's version: the pill's menu
+void m_cert ()     { if (g_win) g_win->lock->click (); }	// the padlock's: the certificate
 
 // The History dialog: shown over the page (NetSurf waits meanwhile); a page chosen is opened.
 void open_history ()
@@ -828,7 +1178,8 @@ unsigned *onyx_chrome_open (int w, int h, int *stride)
 	g_menu.item ("Reload", "^R", WK_CTRL ('R'), m_reload);
 	g_menu.item ("Stop", "Esc", 0, m_stop);
 	g_menu.separator ();
-	g_menu.item ("Desktop Site / Mobile Site", "", 0, m_desktop);
+	g_menu.item ("Site Version (Standard / Mobile / Desktop)...", "", 0, m_site);
+	g_menu.item ("Page Security / Certificate...", "", 0, m_cert);
 	g_menu.separator ();
 	g_menu.item ("Home", "", 0, m_home);
 	g_menu.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
@@ -1022,6 +1373,24 @@ void onyx_chrome_set_busy (int busy)
 	if (g_win == 0) return;
 	g_win->busy = busy != 0;
 	g_win->reload->setGlyph (busy ? WKG_CLOSE : WKG_RELOAD);
+}
+
+void onyx_chrome_set_site (int sec, int mode)
+{
+	if (g_win == 0) return;
+	bool lh = sec == ONYX_SEC_NONE, mh = mode < 0;
+	if (!lh) g_win->lock->set (sec);
+	if (!mh) g_win->mode->set (mode, 0);
+	if (lh != g_win->lock->hidden || mh != g_win->mode->hidden)
+	{
+		if (lh && g_win->lock->hasFocus) g_win->blurBand ();
+		if (mh && g_win->mode->hasFocus) g_win->blurBand ();
+		g_win->lock->hidden = lh;
+		g_win->mode->hidden = mh;
+		g_win->lock->hover = g_win->lock->pressed = false;
+		g_win->layoutBand ();
+		g_win->invalidate (true);	// (the band behind what appeared / went: repainted)
+	}
 }
 
 void onyx_chrome_set_nav (int can_back, int can_forward)

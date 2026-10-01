@@ -122,10 +122,11 @@ extern "C" onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigne
 	opts |= (flags & ONYX_TLS_H2) ? onyx_tls::START_ALPN_H2 : onyx_tls::START_ALPN_H1;
 
 	r = onyx_tls::start(h->s, sock, host, opts, v);
-	if (r == -2 && chain != 0 && v != 0) {
-		/* the chain the check built, for the certificate error page */
+	if ((r == -2 || r == 0) && chain != 0 && v != 0) {
+		/* the chain the check built, for the certificate error page -- or, connected,
+		 * for the toolbar's padlock (its certificate viewer) */
 		int i, n = v->depth < ONYX_TLS_CHAIN_MAX ? v->depth : ONYX_TLS_CHAIN_MAX;
-		chain->failed = 1;
+		chain->failed = r == -2;
 		chain->depth = (unsigned) n;
 		for (i = 0; i < n; i++) {
 			chain->cert[i].err = onyx_cert_err(v->cert[i].flags, i,
@@ -137,6 +138,22 @@ extern "C" onyx_tls_sess *onyx_nstls_connect(int sock, const char *host, unsigne
 	} else if (r == -2 && chain != 0) {
 		chain->failed = 1;
 	}
+#if defined(MBEDTLS_SSL_KEEP_PEER_CERTIFICATE)
+	if (r == 0 && chain != 0 && chain->depth == 0) {
+		/* (Onyx) a resumed session: no chain exchanged -- the server's certificate the
+		 * session kept */
+		const mbedtls_x509_crt *crt = mbedtls_ssl_get_peer_cert(&h->s.ssl);
+		if (crt != 0 && crt->raw.len > 0) {
+			chain->cert[0].der = (unsigned char *) malloc(crt->raw.len);
+			if (chain->cert[0].der != 0) {
+				memcpy(chain->cert[0].der, crt->raw.p, crt->raw.len);
+				chain->cert[0].len = crt->raw.len;
+				chain->cert[0].err = h->s.trusted ? ONYX_CERT_OK : ONYX_CERT_UNKNOWN;
+				chain->depth = 1;
+			}
+		}
+	}
+#endif
 	if (v != 0) {
 		onyx_tls::verify_free(v);
 		free(v);

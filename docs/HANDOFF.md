@@ -63,6 +63,26 @@ answer in French. The docs stay in English.
   rebuild** (not done here). Left: §36's "Not fixed" list (a per-turn inline-style write-back,
   llcache's catch-up walk, QuickJS's `shift`).
 
+## Jet Browser: the padlock and the site's version in the toolbar (2026-10-01, not yet tried on the Pi)
+
+- **The padlock** (left of the address field, a half pill joined to it): green for a verified https
+  page, red past a certificate warning ("Proceed": NetSurf's `PAGE_STATE_SECURE_OVERRIDE`), grey and
+  struck for http, none for `file:` / `about:`; a click opens the certificate viewer with the page's
+  host's chain -- the fetcher now keeps every checked connection's chain (`onyx_chain_keep`,
+  `onyx_fetch_cert_url`; `onyx_nstls_connect` fills `*chain` on success too: callers free it).
+- **The site's version** (right of the field, a blue half pill): Standard / Mobile / Desktop per
+  site (registrable domain), its menu on a press (Navigate > Site Version...), the page reloaded; kept
+  in `SD:/apps/jet.app/site-modes` ("site mode" lines; the old `desktop-sites` read until the first
+  change); jet.ini's `[sites]` wins ("Custom"), jet.ini has a new `[user_agent] mobile`. The disk
+  cache keys `D|` / `M|` / `C|` and stores an object under the version it was fetched as
+  (`onyx_cache_fetched_as`). Tab / Shift+Tab from the field reach the pill / the padlock.
+- docs/06 §35, docs/04 (Jet), `screenshots/jet.png`, `jet-menu.png` (`shots.sh jet`: a local https
+  page). Tests: `tools/tests/netsurf/uatest.sh` (new: the User-Agent per version, the cache keys,
+  `desktop-sites`, jet.ini Custom), `tlstest.sh` (the padlock's colours and its viewer).
+- **To try on the Pi**: the pill on bbc.co.uk / google.com (Mobile vs Standard pages), the padlock
+  on a site past "Proceed" (self-signed.badssl.com), the viewer from a resumed TLS session (the
+  server's certificate only).
+
 ## Jet Browser for Windows (2026-10-01, tried under Wine only)
 
 - **`pc/dist/Jet/Jet.exe`** (+ `pc/dist/Jet.zip`): the browser's Onyx sources built with MinGW-w64
