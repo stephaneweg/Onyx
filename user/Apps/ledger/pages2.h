@@ -45,27 +45,28 @@ public:
 		rpt_init (p);
 		resizeTo (800, 660);
 		HeadRow h (this);
-		bExport = h.add ("Save as...", s_export, FB_SECONDARY, NI_EXPORT, "The report written in a file: a Writer document, a workbook, CSV");
-		bSheet = h.add ("Spreadsheet", s_sheet, FB_SECONDARY, NI_REPORT, "The report opened in the Spreadsheet (a workbook)");
-		bWriter = h.add ("Writer", s_writer, FB_PRIMARY, NI_DOC, "The report opened in Writer (a document to print)");
-		which = new ChoiceBox (16, 70, 210); which->setOptions (R_NAME, R_COUNT); which->sel = kind; which->onChange = on_param; addChild (which);
+		bExport = h.add (TR ("Save as..."), s_export, FB_SECONDARY, NI_EXPORT, TR ("The report written in a file: a Writer document, a workbook, CSV"));
+		bSheet = h.add (TR ("Spreadsheet"), s_sheet, FB_SECONDARY, NI_REPORT, TR ("The report opened in the Spreadsheet (a workbook)"));
+		bWriter = h.add ("Writer", s_writer, FB_PRIMARY, NI_DOC, TR ("The report opened in Writer (a document to print)"));
+		which = new ChoiceBox (16, 70, 210); { const char *rn[R_COUNT]; for (int i = 0; i < R_COUNT; i++) rn[i] = TR (R_NAME[i]); which->setOptions (rn, R_COUNT); } which->sel = kind; which->onChange = on_param; addChild (which);
 		from = new DateEdit (290, 70, 130); from->onChange = on_date; addChild (from);
 		to = new DateEdit (452, 70, 130); to->onChange = on_date; addChild (to);
 		static const char *const Q[6] = { "Year", "Q1", "Q2", "Q3", "Q4", "Month" };
-		quick = new Segmented (16, 106, Q, 6, on_quick); addChild (quick);
+		const char *qt[6] = { TRC ("fy", Q[0]), TR (Q[1]), TR (Q[2]), TR (Q[3]), TR (Q[4]), TR (Q[5]) };
+		quick = new Segmented (16, 106, qt, 6, on_quick); addChild (quick);
 		int x2 = 16 + quick->width + 16;
 		jbox = new ChoiceBox (x2 + 70, 106, 220); jbox->onChange = on_param; addChild (jbox);
-		accFrom = new PickEdit (x2 + 70, 106, 150, SK_ACCOUNT, AF_HEADINGS); accFrom->onPick = on_param; accFrom->placeholder = "First"; addChild (accFrom);
-		accTo = new PickEdit (x2 + 250, 106, 150, SK_ACCOUNT, AF_HEADINGS); accTo->onPick = on_param; accTo->placeholder = "Last"; addChild (accTo);
-		party = new PickEdit (x2 + 70, 106, 280, SK_PARTY, -1); party->onPick = on_param; party->placeholder = "A customer or a supplier"; addChild (party);
-		zeros = new Checkbox (600, 71, 180, 24, "Zero balances too", false, on_param, C_BG); zeros->tip = "The accounts without a balance or a movement listed too"; addChild (zeros);
+		accFrom = new PickEdit (x2 + 70, 106, 150, SK_ACCOUNT, AF_HEADINGS); accFrom->onPick = on_param; accFrom->placeholder = TR ("First"); addChild (accFrom);
+		accTo = new PickEdit (x2 + 250, 106, 150, SK_ACCOUNT, AF_HEADINGS); accTo->onPick = on_param; accTo->placeholder = TR ("Last"); addChild (accTo);
+		party = new PickEdit (x2 + 70, 106, 280, SK_PARTY, -1); party->onPick = on_param; party->placeholder = TR ("A customer or a supplier"); addChild (party);
+		zeros = new Checkbox (600, 71, 180, 24, TR ("Zero balances too"), false, on_param, C_BG); zeros->tip = TR ("The accounts without a balance or a movement listed too"); addChild (zeros);
 		g = new_grid (this, 16, 146, width - 32, height - 146 - 12, this); g->sortable = false; g->stripes = false;
 		g->cellText = c_text; g->cellDraw = c_draw; g->onActivate = on_open;
-		g->emptyText = "Nothing in this period.";
+		g->emptyText = TR ("Nothing in this period.");
 		quick->set (0);
 	}
 	~ReportsPage () { rpt_free (p); }
-	const char *title () override { return "Reports"; }
+	const char *title () override { return TR ("Reports"); }
 	void subtitle (char *out, int cap) override { scpy (out, p.sub[0] ? p.sub : p.title, cap); }	// (its name: in the choice below)
 	bool usesFrom () const { return kind == R_JOURNAL || kind == R_LEDGER || kind == R_INCOME || kind == R_PARTY || kind == R_VAT; }
 	void layoutParams ()
@@ -96,7 +97,7 @@ public:
 	void refresh () override
 	{
 		jc.fill (0, 0, true);
-		jnames[0] = "All the journals"; for (int i = 0; i < jc.n; i++) jnames[i + 1] = jc.names[i];
+		jnames[0] = TR ("All the journals"); for (int i = 0; i < jc.n; i++) jnames[i + 1] = jc.names[i];
 		int keep = jbox->sel; jbox->setOptions (jnames, jc.n + 1); jbox->sel = iclamp (keep, 0, jc.n);
 		if (seenYear != 0 && !from->text ()[0]) quickPick (quick->cur);
 		if (!from->text ()[0] || m_year != g_yearVer) { m_year = g_yearVer; quickPick (quick->cur); }
@@ -133,7 +134,7 @@ public:
 			party->resolve ();
 			int id = party->value ()[0] == 'P' ? cell_int (party->value () + 1) : 0;
 			if (id) rpt_party_ledger (g_b, p, id, f, t);
-			else { rpt_free (p); scpy (p.title, "A party's account", sizeof p.title); p.sub[0] = '\0'; }
+			else { rpt_free (p); scpy (p.title, TR ("A party's account"), sizeof p.title); p.sub[0] = '\0'; }
 			break;
 		}
 		case R_VAT: rpt_vat_detail (g_b, p, f, t); break;
@@ -239,12 +240,12 @@ public:
 	void onDraw () override
 	{
 		drawHead ();
-		if (usesFrom ()) { wk_text_l (canvas, 244, 70, ED_H, "From", C_TEXT); wk_text_l (canvas, 428, 70, ED_H, "to", C_TEXT); }
-		else wk_text_l (canvas, 428 - 20, 70, ED_H, "At", C_TEXT);
+		if (usesFrom ()) { wk_text_l (canvas, 244, 70, ED_H, TR ("From"), C_TEXT); wk_text_l (canvas, 428, 70, ED_H, TR ("to"), C_TEXT); }
+		else wk_text_l (canvas, 428 - 20, 70, ED_H, TR ("At"), C_TEXT);
 		int x2 = 16 + quick->width + 16;
-		if (kind == R_JOURNAL) wk_text_l (canvas, x2, 106, ED_H, "Journal", C_TEXT);
-		else if (kind == R_LEDGER) { wk_text_l (canvas, x2, 106, ED_H, "Accounts", C_TEXT); wk_text_l (canvas, x2 + 226, 106, ED_H, "to", C_TEXT); }
-		else if (kind == R_PARTY) wk_text_l (canvas, x2, 106, ED_H, "Party", C_TEXT);
+		if (kind == R_JOURNAL) wk_text_l (canvas, x2, 106, ED_H, TR ("Journal"), C_TEXT);
+		else if (kind == R_LEDGER) { wk_text_l (canvas, x2, 106, ED_H, TR ("Accounts"), C_TEXT); wk_text_l (canvas, x2 + 226, 106, ED_H, TR ("to"), C_TEXT); }
+		else if (kind == R_PARTY) wk_text_l (canvas, x2, 106, ED_H, TR ("Party"), C_TEXT);
 	}
 	static void on_param (Widget &) { if (g_rp) g_rp->build (); }
 	static void on_date (Widget &w) { if (g_rp && date_parse (((LineEdit &) w).text ())) g_rp->build (); }
@@ -257,9 +258,9 @@ public:
 		if (!g_rp || !g_rp->p.nr) return;
 		int x, y; abs_pos (g_rp->bExport, &x, &y);
 		PopupMenu m (x, y + g_rp->bExport->height + 2);
-		m.add ("Writer document (.rtf)...", 1);
-		m.add ("Spreadsheet workbook (.xlsx)...", 2);
-		m.add ("CSV file (;)...", 3);
+		m.add (TR ("Writer document (.rtf)..."), 1);
+		m.add (TR ("Spreadsheet workbook (.xlsx)..."), 2);
+		m.add (TR ("CSV file (;)..."), 3);
 		int r = m.run ();
 		if (r >= 1) save_report (g_rp->p, r == 1 ? XF_RTF : r == 2 ? XF_XLSX : XF_CSV);
 	}
@@ -291,25 +292,25 @@ public:
 	{
 		resizeTo (800, 660);
 		HeadRow h (this);
-		bLists = h.add ("Listings", s_lists, FB_SECONDARY, NI_CUST, "The annual customer listing, the intra-community listing (XML)");
-		bDetail = h.add ("Detail", s_detail, FB_SECONDARY, NI_REPORT, "The lines behind each grid");
-		bFile = h.add ("Mark as filed", s_file, FB_SECONDARY, NI_LOCK, "The period marked filed: its VAT entries locked");
-		bXml = h.add ("Intervat XML", s_xml, FB_PRIMARY, NI_EXPORT, "The return's file for Intervat (the SPF Finances' site)");
+		bLists = h.add (TR ("Listings"), s_lists, FB_SECONDARY, NI_CUST, TR ("The annual customer listing, the intra-community listing (XML)"));
+		bDetail = h.add (TR ("Detail"), s_detail, FB_SECONDARY, NI_REPORT, TR ("The lines behind each grid"));
+		bFile = h.add (TR ("Mark as filed"), s_file, FB_SECONDARY, NI_LOCK, TR ("The period marked filed: its VAT entries locked"));
+		bXml = h.add ("Intervat XML", s_xml, FB_PRIMARY, NI_EXPORT, TR ("The return's file for Intervat (the SPF Finances' site)"));
 		ybox = new ChoiceBox (16, 70, 100); ybox->onChange = on_year; addChild (ybox);
-		refund = new Checkbox (16, 0, 220, 24, "Ask for the refund", false, 0, C_BG); refund->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (refund);
-		payForms = new Checkbox (250, 0, 220, 24, "Ask for payment forms", false, 0, C_BG); payForms->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (payForms);
+		refund = new Checkbox (16, 0, 220, 24, TR ("Ask for the refund"), false, 0, C_BG); refund->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (refund);
+		payForms = new Checkbox (250, 0, 220, 24, TR ("Ask for payment forms"), false, 0, C_BG); payForms->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (payForms);
 		g91 = new LineEdit (0, 0, 120); g91->accept = accept_dec; g91->rightAlign = true; g91->hidden = true; g91->onChange = on_g91; addChild (g91);
 		for (int i = 0; i < 100; i++) grid[i] = 0;
 		placeBottom ();
 	}
 	void placeBottom () { refund->top = height - 36; payForms->top = height - 36; }
 	void resizeTo (int w, int h) override { Page::resizeTo (w, h); if (refund) placeBottom (); }
-	const char *title () override { return "VAT returns"; }
+	const char *title () override { return TR ("VAT returns"); }
 	void subtitle (char *out, int cap) override
 	{
-		if (g_b.vatRegime == VR_FRANCHISE) { scpy (out, "The small business franchise: no VAT return to file (the customer listing still is)", cap); return; }
-		if (g_b.vatRegime == VR_NONE) { scpy (out, "Not subject to VAT: no return", cap); return; }
-		scpy (out, monthly ? "Monthly returns" : "Quarterly returns", cap);	// (the VAT number: at the top of the side bar)
+		if (g_b.vatRegime == VR_FRANCHISE) { scpy (out, TR ("The small business franchise: no VAT return to file (the customer listing still is)"), cap); return; }
+		if (g_b.vatRegime == VR_NONE) { scpy (out, TR ("Not subject to VAT: no return"), cap); return; }
+		scpy (out, monthly ? TR ("Monthly returns") : TR ("Quarterly returns"), cap);	// (the VAT number: at the top of the side bar)
 	}
 	int periods () const { return monthly ? 12 : 4; }
 	void refresh () override
@@ -352,8 +353,8 @@ public:
 		nw = vat_checks (grid, warns, 16);
 		g91->hidden = !(monthly && sel == 12);
 		if (!g91->hidden) { char a[32]; edit_money (grid[91], a); if (!g91->hasFocus) g91->setText (a); }
-		bFile->setText (filed >= 0 ? "Reopen" : "Mark as filed");
-		bFile->tip = filed >= 0 ? "The period reopened: its entries can be changed again" : "The period marked filed: its VAT entries locked";
+		bFile->setText (filed >= 0 ? TR ("Reopen") : TR ("Mark as filed"));
+		bFile->tip = filed >= 0 ? TR ("The period reopened: its entries can be changed again") : TR ("The period marked filed: its VAT entries locked");
 		refund->disabled = !grid[72]; if (!grid[72]) refund->checked = false;
 		refund->invalidate (true);
 		bool vat = g_b.vatRegime == VR_NORMAL;
@@ -377,7 +378,7 @@ public:
 	void onDraw () override
 	{
 		drawHead ();
-		if (g_b.vatRegime != VR_NORMAL) { wk_text_l (canvas, 20, 110, 24, "This company files no periodic VAT return (Settings > Company: its VAT situation).", C_TEXT); }
+		if (g_b.vatRegime != VR_NORMAL) { wk_text_l (canvas, 20, 110, 24, TR ("This company files no periodic VAT return (Settings > Company: its VAT situation)."), C_TEXT); }
 		int t = today_ymd ();
 		char a[32], s[64];
 		for (int p = 1; p <= periods (); p++)
@@ -391,20 +392,20 @@ public:
 			wk_rbox (canvas, x, y, w, h, 8, face, face);
 			wk_rline (canvas, x, y, w, h, 8, on ? C_ACCENT : wk_mix (C_BG, 0, 60), on ? 255 : 110);
 			char nm[32];
-			if (monthly) scpy (nm, MONTH_SHORT[p - 1], sizeof nm); else { scpy (nm, "Q", sizeof nm); scat_num (nm, p, sizeof nm); }
+			if (monthly) scpy (nm, TR (MONTH_SHORT[p - 1]), sizeof nm); else { scpy (nm, TR ("Q"), sizeof nm); scat_num (nm, p, sizeof nm); }
 			wk_text_l (canvas, x + 10, y + 4, 18, nm, C_FIELD_TEXT, 2);
 			unsigned c; const char *st;
-			if (fi >= 0) { st = "Filed"; c = C_GOOD; }
-			else if (f > t) { st = "To come"; c = field_dim (); }
-			else if (e >= t) { st = "Running"; c = C_BLUE; }
-			else if (due < t) { st = "Late"; c = C_BAD; }
-			else { st = "To file"; c = C_WARN; }
+			if (fi >= 0) { st = TR ("Filed"); c = C_GOOD; }
+			else if (f > t) { st = TR ("To come"); c = field_dim (); }
+			else if (e >= t) { st = TR ("Running"); c = C_BLUE; }
+			else if (due < t) { st = TR ("Late"); c = C_BAD; }
+			else { st = TR ("To file"); c = C_WARN; }
 			int pw = pill_w (st);
 			draw_pill (canvas, x + w - pw - 8, y + 5, 16, st, c);
 			if (!monthly)
 			{
 				char d[16]; date_show (fi >= 0 ? g_b.ret[fi].filed : due, d);
-				scpy (s, fi >= 0 ? "on " : "due ", sizeof s); scat (s, d, sizeof s);
+				scpy (s, fi >= 0 ? TR ("on ") : TR ("due "), sizeof s); scat (s, d, sizeof s);
 				wk_text_l (canvas, x + 10, y + 30, 18, s, field_dim ());
 			}
 		}
@@ -418,7 +419,7 @@ public:
 			scpy (s, pn, sizeof s);
 			wk_text_l (canvas, 20, y0 - 2, 22, s, C_TEXT, 2);
 			char r[120]; scpy (r, d1, sizeof r); scat (r, " - ", sizeof r); scat (r, d2, sizeof r);
-			if (filed >= 0) { char fd[16]; date_show (g_b.ret[filed].filed, fd); scat (r, "  \xB7  filed on ", sizeof r); scat (r, fd, sizeof r); scat (r, " (the grids as filed)", sizeof r); }
+			if (filed >= 0) { char fd[16]; date_show (g_b.ret[filed].filed, fd); scat (r, "  \xB7  ", sizeof r); scat (r, TR ("filed on "), sizeof r); scat (r, fd, sizeof r); scat (r, TR (" (the grids as filed)"), sizeof r); }
 			wk_text_l (canvas, 20 + wk_text_w (pn, 2) + 14, y0 - 2, 22, r, dim_ink (C_BG));
 		}
 		int fy = y0 + 24;
@@ -427,7 +428,7 @@ public:
 		{
 			int col = sct < 2 ? sct : 2;
 			int x = 16 + col * (cw + 12), y = colY[col];
-			wk_text_l (canvas, x + 4, y, rh, VAT_FORM[sct].title, C_TEXT, 2);
+			wk_text_l (canvas, x + 4, y, rh, TR (VAT_FORM[sct].title), C_TEXT, 2);
 			y += rh + 2;
 			for (int k = 0; VAT_FORM[sct].grids[k] >= 0; k++)
 			{
@@ -461,7 +462,7 @@ public:
 		}
 		// the checks
 		int wy = imax (colY[0], colY[1]) + 6, wx = 20;
-		if (!nw) { wk_glyph (canvas, WKG_CHECK, wx + 8, wy + 11, 12, C_GOOD); wk_text_l (canvas, wx + 20, wy, 22, "The checks Intervat makes find nothing wrong.", C_GOOD); }
+		if (!nw) { wk_glyph (canvas, WKG_CHECK, wx + 8, wy + 11, 12, C_GOOD); wk_text_l (canvas, wx + 20, wy, 22, TR ("The checks Intervat makes find nothing wrong."), C_GOOD); }
 		for (int i = 0; i < nw && wy < height - 64; i++)
 		{
 			wk_text_c (canvas, wx, wy, 16, 22, "!", C_WARN, 2);
@@ -518,7 +519,7 @@ public:
 	void xml ()
 	{
 		if (grid[91] && !(monthly && sel == 12)) grid[91] = 0;
-		if (nw && ask ("Intervat", "The checks found something to look at (below the form). Make the file anyway?", MB_YESNO, 2) != 1) return;
+		if (nw && ask ("Intervat", TR ("The checks found something to look at (below the form). Make the file anyway?"), MB_YESNO, 2) != 1) return;
 		bool last = sel == periods ();
 		bool nihil = false;
 		if (last)
@@ -531,19 +532,19 @@ public:
 		kapi_mkdir ("SD:/docs"); kapi_mkdir ("SD:/docs/VAT");
 		char path[220];
 		if (!wk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
-		if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("Intervat", "The file could not be written."); return; }
-		char m[240] = "Written: "; scat (m, path, sizeof m); status (m);
-		if (filed < 0 && ask ("Intervat", "The file is written: send it on Intervat (intervat.minfin.fgov.be). Mark the period as filed now (its VAT entries then locked)?", MB_YESNO, 1) == 1) fileIt ();
+		if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("Intervat", TR ("The file could not be written.")); return; }
+		char m[240]; scpy (m, TR ("Written: "), sizeof m); scat (m, path, sizeof m); status (m);
+		if (filed < 0 && ask ("Intervat", TR ("The file is written: send it on Intervat (intervat.minfin.fgov.be). Mark the period as filed now (its VAT entries then locked)?"), MB_YESNO, 1) == 1) fileIt ();
 	}
 	void fileIt ()
 	{
 		if (filed >= 0)
 		{
-			if (ask ("VAT", "Reopen this period? Its entries can then be changed again (a return filed again must then be corrected on Intervat).", MB_YESNO, 2) != 1) return;
+			if (ask (TR ("VAT"), TR ("Reopen this period? Its entries can then be changed again (a return filed again must then be corrected on Intervat)."), MB_YESNO, 2) != 1) return;
 			for (int k = filed + 1; k < g_b.nret; k++) g_b.ret[k - 1] = g_b.ret[k];
 			g_b.nret--;
 			changed ();
-			status ("Period reopened");
+			status (TR ("Period reopened"));
 			return;
 		}
 		VatReturn &r = return_add (g_b);
@@ -553,49 +554,49 @@ public:
 		Entry e; bool settled = false;
 		if (vat_settlement (g_b, year, sel, monthly, e))
 		{
-			if (ask ("VAT", "Post the period's settlement too? Its VAT due (451000) and deductible (411000) moved to the VAT current account "
-				 "-- 451200 what is paid to the State, 411200 what it refunds -- by a miscellaneous operation on the period's last day.", MB_YESNO, 1) == 1)
+			if (ask (TR ("VAT"), TR ("Post the period's settlement too? Its VAT due (451000) and deductible (411000) moved to the VAT current account "
+				 "-- 451200 what is paid to the State, 411200 what it refunds -- by a miscellaneous operation on the period's last day."), MB_YESNO, 1) == 1)
 			{ entry_save (g_b, e); settled = true; }
 			else entry_free (e);
 		}
 		changed ();
-		status (settled ? "Period marked filed, its settlement posted: its VAT entries are locked" : "Period marked filed: its VAT entries are locked");
+		status (settled ? TR ("Period marked filed, its settlement posted: its VAT entries are locked") : TR ("Period marked filed: its VAT entries are locked"));
 	}
 	void lists ()
 	{
 		int x, y; abs_pos (bLists, &x, &y);
 		PopupMenu m (x, y + bLists->height + 2);
-		char a[64] = "Customer listing "; scat_num (a, year, sizeof a); scat (a, " (XML)...", sizeof a);
+		char a[64]; scpy (a, TR ("Customer listing "), sizeof a); scat_num (a, year, sizeof a); scat (a, " (XML)...", sizeof a);
 		char pn[40]; period_name (year, sel, monthly, pn, sizeof pn);
-		char b[80] = "Intra-community listing "; scat (b, pn, sizeof b); scat (b, " (XML)...", sizeof b);
+		char b[80]; scpy (b, TR ("Intra-community listing "), sizeof b); scat (b, pn, sizeof b); scat (b, " (XML)...", sizeof b);
 		m.add (a, 1); m.add (b, 2);
 		int r = m.run ();
 		if (r == 1)
 		{
 			ListRow rows[512]; int n = client_listing (g_b, year, rows, 512);
-			if (!n) { warn ("Customer listing", "No Belgian VAT-registered customer reached 250 EUR this year: the listing is nil (say so in the year's last return: its file does it)."); return; }
+			if (!n) { warn (TR ("Customer listing"), TR ("No Belgian VAT-registered customer reached 250 EUR this year: the listing is nil (say so in the year's last return: its file does it).")); return; }
 			Out o; client_listing_xml (g_b, year, rows, n, o);
 			char name[64] = "Customer listing "; scat_num (name, year, sizeof name); scat (name, ".xml", sizeof name);
 			kapi_mkdir ("SD:/docs/VAT");
 			char path[220];
 			if (!wk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
-			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("Customer listing", "The file could not be written."); return; }
-			char m2[240] = "Written: "; scat (m2, path, sizeof m2); scat (m2, " (", sizeof m2); scat_num (m2, n, sizeof m2); scat (m2, n == 1 ? " customer)" : " customers)", sizeof m2); status (m2);
+			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("Customer listing"), TR ("The file could not be written.")); return; }
+			char m2[240]; scpy (m2, TR ("Written: "), sizeof m2); scat (m2, path, sizeof m2); scat (m2, " (", sizeof m2); scat_num (m2, n, sizeof m2); scat (m2, n == 1 ? TR (" customer)") : TR (" customers)"), sizeof m2); status (m2);
 		}
 		else if (r == 2)
 		{
 			int f, t; period_range (year, sel, monthly, &f, &t);
 			ListRow rows[512]; int bad = 0, n = intra_listing (g_b, f, t, rows, 512, &bad);
-			if (!n) { warn ("Intra-community listing", bad ? "Intra-community sales, but their customers' VAT numbers are not valid EU ones: correct their cards." : "No intra-community supply in this period: no listing to file."); return; }
-			if (bad && ask ("Intra-community listing", "Some customers have no valid EU VAT number: they are left out. Make the file anyway?", MB_YESNO, 2) != 1) return;
+			if (!n) { warn (TR ("Intra-community listing"), bad ? TR ("Intra-community sales, but their customers' VAT numbers are not valid EU ones: correct their cards.") : TR ("No intra-community supply in this period: no listing to file.")); return; }
+			if (bad && ask (TR ("Intra-community listing"), TR ("Some customers have no valid EU VAT number: they are left out. Make the file anyway?"), MB_YESNO, 2) != 1) return;
 			Out o; intra_listing_xml (g_b, year, sel, monthly, rows, n, o);
 			char ref[16]; period_ref (year, sel, monthly, ref);
 			char name[64] = "Intra-community listing "; scat (name, ref, sizeof name); scat (name, ".xml", sizeof name);
 			kapi_mkdir ("SD:/docs/VAT");
 			char path[220];
 			if (!wk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
-			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("Intra-community listing", "The file could not be written."); return; }
-			char m2[240] = "Written: "; scat (m2, path, sizeof m2); status (m2);
+			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("Intra-community listing"), TR ("The file could not be written.")); return; }
+			char m2[240]; scpy (m2, TR ("Written: "), sizeof m2); scat (m2, path, sizeof m2); status (m2);
 		}
 	}
 	void detail ()
@@ -619,40 +620,40 @@ class JournalDialog : public FormBox
 {
 public:
 	LineEdit *code, *name, *iban; ChoiceBox *type; PickEdit *acc; Checkbox *hide; int ji;
-	JournalDialog (int j) : FormBox (j < 0 ? "New journal" : "Journal", 560, 0, 110), ji (j)
+	JournalDialog (int j) : FormBox (j < 0 ? TR ("New journal") : TR ("Journal"), 560, 0, 110), ji (j)
 	{
 		const Journal *src = j >= 0 ? &g_b.jr[j] : 0;
 		int y = y0;
-		code = edit (y, "Code", 80, src ? src->code : ""); code->placeholder = "BNK2"; y += 34;
-		name = edit (y, "Name", 330, src ? src->name : ""); y += 34;
-		label (y, "Kind"); type = new ChoiceBox (fieldX, y, 200); type->setOptions (JT_NAME, JT_COUNT); type->sel = src ? (int) src->type : (int) JT_BANK; addChild (type);
+		code = edit (y, TR ("Code"), 80, src ? src->code : ""); code->placeholder = "BNK2"; y += 34;
+		name = edit (y, TR ("Name"), 330, src ? src->name : ""); y += 34;
+		label (y, TR ("Kind")); type = new ChoiceBox (fieldX, y, 200); { const char *jt[JT_COUNT]; for (int i = 0; i < JT_COUNT; i++) jt[i] = TR (JT_NAME[i]); type->setOptions (jt, JT_COUNT); } type->sel = src ? (int) src->type : (int) JT_BANK; addChild (type);
 		if (src) { bool used = false; for (int i = 0; i < g_b.ne && !used; i++) used = g_b.e[i].journal == j; type->disabled = used; }
 		y += 34;
-		label (y, "Account"); acc = new PickEdit (fieldX, y, 330, SK_ACCOUNT, AF_FIN, "55"); acc->setValue (src ? src->account : "");
-		acc->placeholder = "(a bank or cash journal) 550000..."; addChild (acc); y += 34;
-		iban = edit (y, "IBAN", 260, ""); if (src) { char ib[48]; iban_show (src->iban, ib, sizeof ib); iban->setText (ib); } y += 34;
-		hide = new Checkbox (fieldX, y, 300, 26, "Hidden (no longer offered)", src && src->hidden, 0, C_FACE); addChild (hide); y += 44;
+		label (y, TR ("Account")); acc = new PickEdit (fieldX, y, 330, SK_ACCOUNT, AF_FIN, "55"); acc->setValue (src ? src->account : "");
+		acc->placeholder = TR ("(a bank or cash journal) 550000..."); addChild (acc); y += 34;
+		iban = edit (y, TR ("IBAN"), 260, ""); if (src) { char ib[48]; iban_show (src->iban, ib, sizeof ib); iban->setText (ib); } y += 34;
+		hide = new Checkbox (fieldX, y, 300, 26, TR ("Hidden (no longer offered)"), src && src->hidden, 0, C_FACE); addChild (hide); y += 44;
 		resizeTo (width, y + 50);
 		Root *r = Root::current ();
 		if (r) { left = (r->width - width) / 2; top = imax (0, (r->height - height) / 2); }
-		buttons (j < 0 ? "Add" : "OK");
+		buttons (j < 0 ? TR ("Add") : "OK");
 		code->setFocus ();
 	}
 	bool validate () override
 	{
 		char c[8]; trim_copy (c, code->text (), sizeof c);
 		for (char *q = c; *q; q++) *q = up (*q);
-		if (!c[0] || slen (c) > 5) { warn ("Journal", "A code of 1 to 5 letters or digits."); code->setFocus (); return false; }
+		if (!c[0] || slen (c) > 5) { warn (TR ("Journal"), TR ("A code of 1 to 5 letters or digits.")); code->setFocus (); return false; }
 		int o = jrn_find (g_b, c);
-		if (o >= 0 && o != ji) { warn ("Journal", "Another journal has this code."); code->setFocus (); return false; }
+		if (o >= 0 && o != ji) { warn (TR ("Journal"), TR ("Another journal has this code.")); code->setFocus (); return false; }
 		char n[40]; trim_copy (n, name->text (), sizeof n);
-		if (!n[0]) { warn ("Journal", "Type its name."); name->setFocus (); return false; }
+		if (!n[0]) { warn (TR ("Journal"), TR ("Type its name.")); name->setFocus (); return false; }
 		if (jt_fin (type->sel))
 		{
 			acc->resolve ();
-			if (!acc_postable (g_b, acc->value ())) { warn ("Journal", "A bank or cash journal needs its account (55..., 57...)."); acc->setFocus (); return false; }
+			if (!acc_postable (g_b, acc->value ())) { warn (TR ("Journal"), TR ("A bank or cash journal needs its account (55..., 57...).")); acc->setFocus (); return false; }
 		}
-		if (ji < 0 && g_b.njr >= MAXJOURNALS) { warn ("Journal", "No more journals can be added."); return false; }
+		if (ji < 0 && g_b.njr >= MAXJOURNALS) { warn (TR ("Journal"), TR ("No more journals can be added.")); return false; }
 		return true;
 	}
 };
@@ -661,44 +662,46 @@ class NewCompanyDialog : public FormBox
 {
 public:
 	LineEdit *name, *vat, *street, *zip, *city, *email, *phone, *iban; DateEdit *start, *end_; ChoiceBox *lang, *regime, *period;
-	NewCompanyDialog () : FormBox ("New company", 640, 0, 140)
+	NewCompanyDialog () : FormBox (TR ("New company"), 640, 0, 140)
 	{
 		int y = y0;
-		name = edit (y, "Company", 440, ""); name->placeholder = "Its name, its legal form (SRL, SA...)"; y += 34;
-		vat = edit (y, "VAT number", 180, ""); vat->placeholder = "BE 0123.456.789"; y += 34;
-		street = edit (y, "Street", 440, ""); y += 34;
-		zip = edit (y, "Postcode", 80, ""); label (y, "City", 250); city = new LineEdit (300, y, 280); addChild (city); y += 34;
-		email = edit (y, "E-mail", 230, ""); label (y, "Phone", 402); phone = new LineEdit (450, y, 130); addChild (phone); y += 34;
-		iban = edit (y, "Bank account", 260, ""); iban->placeholder = "BE68 5390 0754 7034"; y += 42;
+		name = edit (y, TR ("Company"), 440, ""); name->placeholder = TR ("Its name, its legal form (SRL, SA...)"); y += 34;
+		vat = edit (y, TR ("VAT number"), 180, ""); vat->placeholder = "BE 0123.456.789"; y += 34;
+		street = edit (y, TR ("Street"), 440, ""); y += 34;
+		zip = edit (y, TR ("Postcode"), 80, ""); label (y, TR ("City"), 250); city = new LineEdit (300, y, 280); addChild (city); y += 34;
+		email = edit (y, TR ("E-mail"), 230, ""); label (y, TR ("Phone"), 402); phone = new LineEdit (450, y, 130); addChild (phone); y += 34;
+		iban = edit (y, TR ("Bank account"), 260, ""); iban->placeholder = "BE68 5390 0754 7034"; y += 42;
 		static const char *const LANG[2] = { "Fran\xE7" "ais (PCMN)", "Nederlands (MAR)" };
-		label (y, "Chart of accounts"); lang = new ChoiceBox (fieldX, y, 200); lang->setOptions (LANG, 2); addChild (lang); y += 34;
+		label (y, TR ("Chart of accounts")); lang = new ChoiceBox (fieldX, y, 200); lang->setOptions (LANG, 2); addChild (lang); y += 34;
 		static const char *const REG[3] = { "Files VAT returns", "Small business franchise", "Not subject to VAT" };
-		label (y, "VAT"); regime = new ChoiceBox (fieldX, y, 220); regime->setOptions (REG, 3); addChild (regime);
+		const char *regt[3] = { TR (REG[0]), TR (REG[1]), TR (REG[2]) };
+		label (y, TR ("VAT")); regime = new ChoiceBox (fieldX, y, 220); regime->setOptions (regt, 3); addChild (regime);
 		static const char *const PER[2] = { "Quarterly", "Monthly" };
-		period = new ChoiceBox (fieldX + 230, y, 130); period->setOptions (PER, 2); addChild (period); y += 34;
+		const char *pert[2] = { TR (PER[0]), TR (PER[1]) };
+		period = new ChoiceBox (fieldX + 230, y, 130); period->setOptions (pert, 2); addChild (period); y += 34;
 		int yy = y_of (today_ymd ());
-		label (y, "First fiscal year"); start = new DateEdit (fieldX, y, 140); addChild (start);
-		label (y, "to", fieldX + 150); end_ = new DateEdit (fieldX + 176, y, 140); addChild (end_);
+		label (y, TR ("First fiscal year")); start = new DateEdit (fieldX, y, 140); addChild (start);
+		label (y, TR ("to"), fieldX + 150); end_ = new DateEdit (fieldX + 176, y, 140); addChild (end_);
 		char d[16]; date_show (ymd (yy, 1, 1), d); start->setText (d); date_show (ymd (yy, 12, 31), d); end_->setText (d);
 		y += 44;
-		label (y, "The chart (PCMN) and the journals (sales, purchases, bank, cash,", -1, true);
-		label (y + 20, "miscellaneous operations) are made: all can be changed afterwards.", -1, true);
+		label (y, TR ("The chart (PCMN) and the journals (sales, purchases, bank, cash,"), -1, true);
+		label (y + 20, TR ("miscellaneous operations) are made: all can be changed afterwards."), -1, true);
 		y += 56;
 		resizeTo (width, y + 50);
 		Root *r = Root::current ();
 		if (r) { left = (r->width - width) / 2; top = imax (0, (r->height - height) / 2); }
-		buttons ("Create");
+		buttons (TR ("Create"));
 		name->setFocus ();
 	}
 	bool validate () override
 	{
 		char n[NAME_MAX]; trim_copy (n, name->text (), sizeof n);
-		if (!n[0]) { warn ("New company", "Type the company's name."); name->setFocus (); return false; }
+		if (!n[0]) { warn (TR ("New company"), TR ("Type the company's name.")); name->setFocus (); return false; }
 		char v[24]; vat_normalize (vat->text (), v, sizeof v);
-		if (v[0] && vat_check (v) && ask ("New company", "The VAT number is not a valid one. Keep it anyway?", MB_YESNO, 2) != 1) { vat->setFocus (); return false; }
+		if (v[0] && vat_check (v) && ask (TR ("New company"), TR ("The VAT number is not a valid one. Keep it anyway?"), MB_YESNO, 2) != 1) { vat->setFocus (); return false; }
 		int s = date_parse (start->text ()), e = date_parse (end_->text ());
-		if (!s || !e || e <= s) { warn ("New company", "Type the first fiscal year's first and last days."); start->setFocus (); return false; }
-		if (days_between (s, e) > 730) { warn ("New company", "A fiscal year lasts 24 months at most."); end_->setFocus (); return false; }
+		if (!s || !e || e <= s) { warn (TR ("New company"), TR ("Type the first fiscal year's first and last days.")); start->setFocus (); return false; }
+		if (days_between (s, e) > 730) { warn (TR ("New company"), TR ("A fiscal year lasts 24 months at most.")); end_->setFocus (); return false; }
 		return true;
 	}
 	// The books made from the answers.
@@ -748,7 +751,8 @@ public:
 		vatMsg[0] = '\0';
 		resizeTo (800, 660);
 		static const char *const PARTS[5] = { "Company", "Fiscal years", "Journals", "Accounts", "Printing" };
-		part = new Segmented (16, 70, PARTS, 5, on_part); addChild (part);
+		const char *partt[5]; for (int i = 0; i < 5; i++) partt[i] = TR (PARTS[i]);
+		part = new Segmented (16, 70, partt, 5, on_part); addChild (part);
 		static void (*const PAINT[5]) (Pane &) = { paint_company, paint_years, 0, paint_roles, paint_printing };
 		for (int i = 0; i < 5; i++) { pan[i] = new Pane (0, 108, width, height - 108, PAINT[i]); pan[i]->anchor = ANCHOR_FILL; pan[i]->hidden = i != 0; addChild (pan[i]); }
 		// the company
@@ -762,49 +766,52 @@ public:
 		iban = ed (x1, y, 260); bic = ed (x2, y, 120); y += 34;
 		reg = ed (x1, y, 260); reg->placeholder = "RPM Bruxelles, RPR Gent..."; web = ed (x2, y, 236); web->placeholder = "www.example.be"; y += 46;
 		static const char *const REG[3] = { "Files VAT returns", "Small business franchise", "Not subject to VAT (art. 44)" };
-		regime = new ChoiceBox (x1, y, 260); regime->setOptions (REG, 3); c->addChild (regime);
+		const char *regt[3] = { TR (REG[0]), TR (REG[1]), TR (REG[2]) };
+		regime = new ChoiceBox (x1, y, 260); regime->setOptions (regt, 3); c->addChild (regime);
 		static const char *const PER[2] = { "Quarterly", "Monthly" };
-		period = new ChoiceBox (x2, y, 150); period->setOptions (PER, 2); c->addChild (period); y += 50;
-		FlatButton *b = new FlatButton ("Save the changes", s_saveCompany, FB_PRIMARY, NI_CHECK); b->left = x1; b->top = y; c->addChild (b);
+		const char *pert[2] = { TR (PER[0]), TR (PER[1]) };
+		period = new ChoiceBox (x2, y, 150); period->setOptions (pert, 2); c->addChild (period); y += 50;
+		FlatButton *b = new FlatButton (TR ("Save the changes"), s_saveCompany, FB_PRIMARY, NI_CHECK); b->left = x1; b->top = y; c->addChild (b);
 		// the fiscal years
 		Widget *yp = pan[1];
 		years = new DataGrid (16, 12, 560, 240); years->sortable = false; yp->addChild (years);
 		years->setColumns (5);
-		years->setColumn (0, "Year", 110); years->setColumn (1, "From", 100); years->setColumn (2, "To", 100); years->setColumn (3, "State", 100); years->setColumn (4, "Result", 130, GRID_RIGHT);
+		years->setColumn (0, TRC ("fy", "Year"), 110); years->setColumn (1, TR ("From"), 100); years->setColumn (2, TR ("To"), 100); years->setColumn (3, TR ("State"), 100); years->setColumn (4, TR ("Result"), 130, GRID_RIGHT);
 		years->cellText = y_text; years->cellDraw = y_draw;
 		int by = 12;
 		auto yb = [&] (const char *s, void (*cb) (), int kind, int icon) { FlatButton *f = new FlatButton (s, cb, kind, icon); f->left = 592; f->top = by; by += 40; yp->addChild (f); return f; };
-		yb ("Add the next year", s_addYear, FB_PRIMARY, NI_PLUS);
-		yb ("Close the year...", s_closeYear, FB_SECONDARY, NI_LOCK);
-		yb ("Reopen the year", s_reopenYear, FB_QUIET, -1);
+		yb (TR ("Add the next year"), s_addYear, FB_PRIMARY, NI_PLUS);
+		yb (TR ("Close the year..."), s_closeYear, FB_SECONDARY, NI_LOCK);
+		yb (TR ("Reopen the year"), s_reopenYear, FB_QUIET, -1);
 		// the journals
 		Widget *jp = pan[2];
 		journals = new DataGrid (16, 12, 760, 260); journals->sortable = false; jp->addChild (journals);
 		journals->setColumns (5);
-		journals->setColumn (0, "Code", 70); journals->setColumn (1, "Name", 230); journals->setColumn (2, "Kind", 140); journals->setColumn (3, "Account", 90); journals->setColumn (4, "IBAN", 200);
+		journals->setColumn (0, TR ("Code"), 70); journals->setColumn (1, TR ("Name"), 230); journals->setColumn (2, TR ("Kind"), 140); journals->setColumn (3, TR ("Account"), 90); journals->setColumn (4, TR ("IBAN"), 200);
 		journals->cellText = j_text; journals->onActivate = on_jedit;
 		{	// (the buttons below the list: its columns the room they need)
-			FlatButton *f = new FlatButton ("New journal...", s_newJournal, FB_PRIMARY, NI_PLUS); f->left = 16; f->top = 12 + 260 + 12; jp->addChild (f);
-			FlatButton *e = new FlatButton ("Edit...", s_editJournal, FB_SECONDARY, NI_EDIT); e->left = f->left + f->width + 8; e->top = f->top; jp->addChild (e);
+			FlatButton *f = new FlatButton (TR ("New journal..."), s_newJournal, FB_PRIMARY, NI_PLUS); f->left = 16; f->top = 12 + 260 + 12; jp->addChild (f);
+			FlatButton *e = new FlatButton (TR ("Edit..."), s_editJournal, FB_SECONDARY, NI_EDIT); e->left = f->left + f->width + 8; e->top = f->top; jp->addChild (e);
 		}
 		// the accounts by role
 		Widget *ap = pan[3];
 		for (int i = 0; i < 7; i++) { role[i] = new PickEdit (250, 12 + i * 34, 330, SK_ACCOUNT, AF_ALL); ap->addChild (role[i]); }
-		FlatButton *sb = new FlatButton ("Save the changes", s_saveRoles, FB_PRIMARY, NI_CHECK); sb->left = 250; sb->top = 12 + 7 * 34 + 14; ap->addChild (sb);
+		FlatButton *sb = new FlatButton (TR ("Save the changes"), s_saveRoles, FB_PRIMARY, NI_CHECK); sb->left = 250; sb->top = 12 + 7 * 34 + 14; ap->addChild (sb);
 		// the printing's templates: a language's, a kind a row
 		Widget *pp = pan[4];
 		static const char *const LANGS[3] = { "French", "Dutch", "English" };
-		tplLang = new Segmented (16, 12, LANGS, 3, on_tplLang); pp->addChild (tplLang);
+		const char *langt[3] = { TR (LANGS[0]), TR (LANGS[1]), TR (LANGS[2]) };
+		tplLang = new Segmented (16, 12, langt, 3, on_tplLang); pp->addChild (tplLang);
 		tpl = new DataGrid (16, 52, 560, 7 * 26 + 30); tpl->sortable = false; pp->addChild (tpl);
 		tpl->setColumns (3);
-		tpl->setColumn (0, "Document", 140); tpl->setColumn (1, "Its template", 290); tpl->setColumn (2, "", 110);
+		tpl->setColumn (0, TR ("Document"), 140); tpl->setColumn (1, TR ("Its template"), 290); tpl->setColumn (2, "", 110);
 		tpl->cellText = t_text; tpl->cellDraw = t_draw; tpl->onActivate = on_tplEdit; tpl->setRows (PK_KINDS); tpl->setSel (0);
 		by = 52;
-		{ FlatButton *f = new FlatButton ("Edit in Writer", s_tplEdit, FB_PRIMARY, NI_EDIT); f->left = 592; f->top = by; pp->addChild (f); by += 40; }
-		{ FlatButton *f = new FlatButton ("Open the folder", s_tplFolder, FB_SECONDARY, -1); f->left = 592; f->top = by; pp->addChild (f); }
+		{ FlatButton *f = new FlatButton (TR ("Edit in Writer"), s_tplEdit, FB_PRIMARY, NI_EDIT); f->left = 592; f->top = by; pp->addChild (f); by += 40; }
+		{ FlatButton *f = new FlatButton (TR ("Open the folder"), s_tplFolder, FB_SECONDARY, -1); f->left = 592; f->top = by; pp->addChild (f); }
 	}
-	const char *title () override { return "Settings"; }
-	void subtitle (char *out, int cap) override { scpy (out, g_path[0] ? g_path : "(no file)", cap); }
+	const char *title () override { return TR ("Settings"); }
+	void subtitle (char *out, int cap) override { scpy (out, g_path[0] ? g_path : TR ("(no file)"), cap); }
 	void fillCompany ()
 	{
 		name->setText (g_b.name); legal->setText (g_b.legal); street->setText (g_b.street); zip->setText (g_b.zip); city->setText (g_b.city);
@@ -833,17 +840,17 @@ public:
 	{
 		char v[24]; vat_normalize (vat->text (), v, sizeof v);
 		vatMsg[0] = '\0';
-		if (v[0]) { int c = vat_check (v); scpy (vatMsg, !c ? "Valid" : c == 2 ? "Wrong check digits" : "Not a VAT number", sizeof vatMsg); vatCol = !c ? C_GOOD : C_BAD; }
+		if (v[0]) { int c = vat_check (v); scpy (vatMsg, !c ? TR ("Valid") : c == 2 ? TR ("Wrong check digits") : TR ("Not a VAT number"), sizeof vatMsg); vatCol = !c ? C_GOOD : C_BAD; }
 		pan[0]->invalidate (true);
 	}
 	void saveCompany ()
 	{
 		char n[NAME_MAX]; trim_copy (n, name->text (), sizeof n);
-		if (!n[0]) { warn ("Settings", "Type the company's name."); name->setFocus (); return; }
+		if (!n[0]) { warn (TR ("Settings"), TR ("Type the company's name.")); name->setFocus (); return; }
 		char v[24]; vat_normalize (vat->text (), v, sizeof v);
-		if (v[0] && vat_check (v) && ask ("Settings", "The VAT number is not a valid one. Keep it anyway?", MB_YESNO, 2) != 1) return;
+		if (v[0] && vat_check (v) && ask (TR ("Settings"), TR ("The VAT number is not a valid one. Keep it anyway?"), MB_YESNO, 2) != 1) return;
 		char ib[40]; iban_normalize (iban->text (), ib, sizeof ib);
-		if (ib[0] && !iban_ok (ib) && ask ("Settings", "The IBAN is not a valid one. Keep it anyway?", MB_YESNO, 2) != 1) return;
+		if (ib[0] && !iban_ok (ib) && ask (TR ("Settings"), TR ("The IBAN is not a valid one. Keep it anyway?"), MB_YESNO, 2) != 1) return;
 		scpy (g_b.name, n, NAME_MAX); scpy (g_b.legal, legal->text (), sizeof g_b.legal); scpy (g_b.street, street->text (), NAME_MAX);
 		scpy (g_b.zip, zip->text (), sizeof g_b.zip); scpy (g_b.city, city->text (), sizeof g_b.city);
 		char cc[4]; trim_copy (cc, country->text (), sizeof cc); for (char *q = cc; *q; q++) *q = up (*q); scpy (g_b.country, cc[0] ? cc : "BE", sizeof g_b.country);
@@ -854,7 +861,7 @@ public:
 		g_b.vatRegime = (unsigned char) (regime->sel == 1 ? VR_FRANCHISE : regime->sel == 2 ? VR_NONE : VR_NORMAL);
 		g_b.vatPeriod = (unsigned char) (period->sel == 1 ? VP_MONTH : VP_QUARTER);
 		changed ();
-		status ("The company's details saved");
+		status (TR ("The company's details saved"));
 	}
 	void saveRoles ()
 	{
@@ -862,11 +869,11 @@ public:
 		for (int i = 0; i < 7; i++)
 		{
 			role[i]->resolve ();
-			if (!acc_postable (g_b, role[i]->value ())) { warn ("Settings", "Each role needs an account of the chart."); role[i]->setFocus (); return; }
+			if (!acc_postable (g_b, role[i]->value ())) { warn (TR ("Settings"), TR ("Each role needs an account of the chart.")); role[i]->setFocus (); return; }
 		}
 		for (int i = 0; i < 7; i++) scpy (d[i], role[i]->value (), CODE_MAX);
 		changed ();
-		status ("The accounts by role saved");
+		status (TR ("The accounts by role saved"));
 	}
 	static const char *y_text (DataGrid &, int row, int col, char *buf, int cap)
 	{
@@ -877,14 +884,14 @@ public:
 		case 0: year_label (y, buf, cap); return buf;
 		case 1: date_show (y.start, buf); return buf;
 		case 2: date_show (y.end, buf); return buf;
-		case 3: return y.closed ? "Closed" : "Open";
+		case 3: return y.closed ? TR ("Closed") : TRC ("year", "Open");
 		}
 		return "";
 	}
 	static bool y_draw (DataGrid &, Canvas &cv, int row, int col, int x, int y, int w, int h, unsigned ink, bool sel)
 	{
 		if (row >= g_b.nyr) return false;
-		if (col == 3) { draw_pill (cv, x + 6, y + (h - 18) / 2, 18, g_b.yr[row].closed ? "Closed" : "Open", g_b.yr[row].closed ? field_dim () : C_GOOD, sel); return true; }
+		if (col == 3) { draw_pill (cv, x + 6, y + (h - 18) / 2, 18, g_b.yr[row].closed ? TR ("Closed") : TRC ("year", "Open"), g_b.yr[row].closed ? field_dim () : C_GOOD, sel); return true; }
 		if (col == 4) { cell_money (cv, x, y, w, h, year_result (g_b, row), ink, sel, false); return true; }
 		return false;
 	}
@@ -895,8 +902,8 @@ public:
 		switch (col)
 		{
 		case 0: return j.code;
-		case 1: if (j.hidden) { scpy (buf, j.name, cap); scat (buf, " (hidden)", cap); return buf; } return j.name;
-		case 2: return JT_NAME[j.type < JT_COUNT ? (int) j.type : (int) JT_MISC];
+		case 1: if (j.hidden) { scpy (buf, j.name, cap); scat (buf, TR (" (hidden)"), cap); return buf; } return j.name;
+		case 2: return TR (JT_NAME[j.type < JT_COUNT ? (int) j.type : (int) JT_MISC]);
 		case 3: return j.account;
 		case 4: iban_show (j.iban, buf, cap); return buf;
 		}
@@ -914,88 +921,96 @@ public:
 		if (j < 0) { Journal &x = jrn_add (g_b, c, n, t, acc, ib); x.hidden = d.hide->checked; }
 		else { Journal &x = g_b.jr[j]; scpy (x.code, c, 6); scpy (x.name, n, 40); x.type = (unsigned char) t; scpy (x.account, acc, CODE_MAX); scpy (x.iban, ib, 36); x.hidden = d.hide->checked; }
 		changed ();
-		status (j < 0 ? "Journal added" : "Journal saved");
+		status (j < 0 ? TR ("Journal added") : TR ("Journal saved"));
 	}
 	void addYear ()
 	{
 		int y = year_add_next (g_b);
-		if (y < 0) { warn ("Fiscal years", "No year can be added."); return; }
-		char l[16], m[80] = "Fiscal year "; year_label (g_b.yr[y], l, sizeof l); scat (m, l, sizeof m); scat (m, " added", sizeof m);
+		if (y < 0) { warn (TR ("Fiscal years"), TR ("No year can be added.")); return; }
+		char l[16], m[80]; scpy (m, TR ("Fiscal year "), sizeof m); year_label (g_b.yr[y], l, sizeof l); scat (m, l, sizeof m); scat (m, TR (" added"), sizeof m);
 		changed (); status (m);
 	}
 	void closeYear ()
 	{
 		int y = years->sel;
 		if (y < 0 || y >= g_b.nyr) return;
-		if (g_b.yr[y].closed) { status ("That year is closed already"); return; }
+		if (g_b.yr[y].closed) { status (TR ("That year is closed already")); return; }
 		money r = year_result (g_b, y) - year_appropriated (g_b, y);
 		char a[32], l[16], m[400];
 		year_label (g_b.yr[y], l, sizeof l);
-		scpy (m, "Close the fiscal year ", sizeof m); scat (m, l, sizeof m); scat (m, "?\n", sizeof m);
-		if (r > 0) { scat (m, "Its profit of ", sizeof m); scat (m, money_s (r, a), sizeof m); scat (m, " is carried forward (693000 / ", sizeof m); scat (m, g_b.accProfit, sizeof m); scat (m, ") by an entry on its last day.", sizeof m); }
-		else if (r < 0) { scat (m, "Its loss of ", sizeof m); scat (m, money_s (-r, a), sizeof m); scat (m, " is carried forward (", sizeof m); scat (m, g_b.accLoss, sizeof m); scat (m, " / 793000) by an entry on its last day.", sizeof m); }
-		else scat (m, "Its result is appropriated already.", sizeof m);
-		scat (m, " Its entries are then locked (a year can be reopened).", sizeof m);
-		if (y + 1 >= g_b.nyr) scat (m, " The next year is added.", sizeof m);
-		if (ask ("Close the year", m, MB_YESNO, 1) != 1) return;
+		scpy (m, TR ("Close the fiscal year "), sizeof m); scat (m, l, sizeof m); scat (m, TR ("?\n"), sizeof m);
+		if (r > 0) { scat (m, TR ("Its profit of "), sizeof m); scat (m, money_s (r, a), sizeof m); scat (m, TR (" is carried forward (693000 / "), sizeof m); scat (m, g_b.accProfit, sizeof m); scat (m, TR (") by an entry on its last day."), sizeof m); }
+		else if (r < 0) { scat (m, TR ("Its loss of "), sizeof m); scat (m, money_s (-r, a), sizeof m); scat (m, TR (" is carried forward ("), sizeof m); scat (m, g_b.accLoss, sizeof m); scat (m, TR (" / 793000) by an entry on its last day."), sizeof m); }
+		else scat (m, TR ("Its result is appropriated already."), sizeof m);
+		scat (m, TR (" Its entries are then locked (a year can be reopened)."), sizeof m);
+		if (y + 1 >= g_b.nyr) scat (m, TR (" The next year is added."), sizeof m);
+		if (ask (TR ("Close the year"), m, MB_YESNO, 1) != 1) return;
 		if (y + 1 >= g_b.nyr) year_add_next (g_b);
 		year_appropriate (g_b, y);
 		g_b.yr[y].closed = true;
 		changed ();
-		status ("Year closed");
+		status (TR ("Year closed"));
 	}
 	void reopenYear ()
 	{
 		int y = years->sel;
 		if (y < 0 || y >= g_b.nyr || !g_b.yr[y].closed) return;
-		if (ask ("Reopen the year", "Reopen this fiscal year? Its entries can then be changed (its appropriation entry stays: delete it if the result changes).", MB_YESNO, 2) != 1) return;
+		if (ask (TR ("Reopen the year"), TR ("Reopen this fiscal year? Its entries can then be changed (its appropriation entry stays: delete it if the result changes)."), MB_YESNO, 2) != 1) return;
 		g_b.yr[y].closed = false;
 		changed ();
-		status ("Year reopened");
+		status (TR ("Year reopened"));
 	}
 	static void paint_company (Pane &p)
 	{
 		int x1 = 20, x2 = 430, y = 12;
 		const char *L[6][2] = { { "Name", "Legal form" }, { "Street", "VAT number" }, { "City", "E-mail" }, { "Country", "Phone" }, { "IBAN", "BIC" },
 					{ "Register", "Web site" } };
-		for (int i = 0; i < 6; i++) { wk_text_l (p.canvas, x1, y + i * 34, ED_H, L[i][0], C_TEXT); wk_text_l (p.canvas, x2, y + i * 34, ED_H, L[i][1], C_TEXT); }
+		// ("Register": the company register -- not an account's)
+		for (int i = 0; i < 6; i++) { wk_text_l (p.canvas, x1, y + i * 34, ED_H, i == 5 ? TRC ("company", L[i][0]) : TR (L[i][0]), C_TEXT); wk_text_l (p.canvas, x2, y + i * 34, ED_H, TR (L[i][1]), C_TEXT); }
 		if (g_sp && g_sp->vatMsg[0]) wk_text_l (p.canvas, 540 + 170, y + 34, ED_H, g_sp->vatMsg, g_sp->vatCol);
 		int yv = y + 6 * 34 + 12;
-		wk_text_l (p.canvas, x1, yv, ED_H, "VAT situation", C_TEXT); wk_text_l (p.canvas, x2, yv, ED_H, "Returns", C_TEXT);
+		wk_text_l (p.canvas, x1, yv, ED_H, TR ("VAT situation"), C_TEXT); wk_text_l (p.canvas, x2, yv, ED_H, TR ("Returns"), C_TEXT);
 	}
 	static void paint_years (Pane &p)
 	{
 		int y = 12 + 250;
-		wk_text_l (p.canvas, 20, y, 20, "Closing a year carries its result forward (a profit: 693000 / 140000; a loss: 141000 / 793000)", dim_ink (C_BG));
-		wk_text_l (p.canvas, 20, y + 20, 20, "by an entry in the miscellaneous journal on its last day, and locks its entries.", dim_ink (C_BG));
-		wk_text_l (p.canvas, 20, y + 40, 20, "The balance sheet's accounts go on from year to year: no opening entry is needed.", dim_ink (C_BG));
+		wk_text_l (p.canvas, 20, y, 20, TR ("Closing a year carries its result forward (a profit: 693000 / 140000; a loss: 141000 / 793000)"), dim_ink (C_BG));
+		wk_text_l (p.canvas, 20, y + 20, 20, TR ("by an entry in the miscellaneous journal on its last day, and locks its entries."), dim_ink (C_BG));
+		wk_text_l (p.canvas, 20, y + 40, 20, TR ("The balance sheet's accounts go on from year to year: no opening entry is needed."), dim_ink (C_BG));
 	}
 	static void paint_printing (Pane &p)
 	{
 		int y = 52 + 7 * 26 + 30 + 14;
-		static const char *const L[] = {
-			"A document is printed by Writer from its template, a Writer document (.rtf, .docx, .odt)",
-			"whose merge fields Ledger fills: \xAB" "Number\xBB, \xAB" "Date\xBB, \xAB" "PartyName\xBB, \xAB" "PartyAddress\xBB, \xAB" "Total\xBB...",
-			"A table's row holding \xAB" "LineText\xBB, \xAB" "LineQty\xBB, \xAB" "LinePrice\xBB, \xAB" "LineTotal\xBB is repeated for each line.",
-			"In Writer, Tools > Mail Merge lists all the fields (their sample: templates/fields.card).",
-			"A party's documents take its language (its card), else the company's (its chart's).",
-			"The documents made go to SD:/docs/Quotes, Orders, Delivery notes, Invoices..." };
+		// (the merge fields' names -- \xAB...\xBB -- as they are; the words around them translated)
+		char l2[200], l3[200];
+		scpy (l2, TR ("whose merge fields Ledger fills: "), sizeof l2);
+		scat (l2, "\xAB" "Number\xBB, \xAB" "Date\xBB, \xAB" "PartyName\xBB, \xAB" "PartyAddress\xBB, \xAB" "Total\xBB...", sizeof l2);
+		scpy (l3, TR ("A table's row holding "), sizeof l3);
+		scat (l3, "\xAB" "LineText\xBB, \xAB" "LineQty\xBB, \xAB" "LinePrice\xBB, \xAB" "LineTotal\xBB", sizeof l3);
+		scat (l3, TR (" is repeated for each line."), sizeof l3);
+		const char *L[] = {
+			TR ("A document is printed by Writer from its template, a Writer document (.rtf, .docx, .odt)"),
+			l2,
+			l3,
+			TR ("In Writer, Tools > Mail Merge lists all the fields (their sample: templates/fields.card)."),
+			TR ("A party's documents take its language (its card), else the company's (its chart's)."),
+			TR ("The documents made go to SD:/docs/Quotes, Orders, Delivery notes, Invoices...") };
 		for (unsigned i = 0; i < sizeof L / sizeof L[0]; i++) wk_text_l (p.canvas, 20, y + (int) i * 20, 20, L[i], dim_ink (C_BG));
 	}
 	static void paint_roles (Pane &p)
 	{
 		static const char *const R[7] = { "Customers", "Suppliers", "VAT due", "VAT deductible", "Profit carried forward", "Loss carried forward", "Suspense account" };
-		for (int i = 0; i < 7; i++) wk_text_l (p.canvas, 20, 12 + i * 34, ED_H, R[i], C_TEXT);
+		for (int i = 0; i < 7; i++) wk_text_l (p.canvas, 20, 12 + i * 34, ED_H, TR (R[i]), C_TEXT);
 	}
 	void show (int i) { part->set (i); for (int k = 0; k < 5; k++) pan[k]->hidden = k != i; if (i == 4) tpl->invalidate (true); invalidate (true); }
 	// ---- the templates ----
 	static const char *t_text (DataGrid &, int row, int col, char *buf, int cap)
 	{
 		if (row < 0 || row >= PK_KINDS || !g_sp) return "";
-		if (col == 0) return PK_TITLE[row];
+		if (col == 0) return TR (PK_TITLE[row]);
 		if (col == 1)
 		{
-			char p[200]; if (!template_find (row, g_sp->tplLang->cur, p, sizeof p)) return "(none)";
+			char p[200]; if (!template_find (row, g_sp->tplLang->cur, p, sizeof p)) return TR ("(none)");
 			int n = slen (TEMPLATES); scpy (buf, "templates", cap); scat (buf, p + n, cap); return buf;
 		}
 		return "";
@@ -1005,7 +1020,7 @@ public:
 		if (col != 2 || row < 0 || row >= PK_KINDS || !g_sp) return false;
 		int lang = g_sp->tplLang->cur; char p[200];
 		bool own = template_find (row, lang, p, sizeof p, true), any = own || template_find (row, lang, p, sizeof p);
-		draw_pill (cv, x + 6, y + (h - 18) / 2, 18, !any ? "Missing" : own ? "Its own" : "French one", !any ? C_BAD : own ? C_GOOD : C_WARN, sel);
+		draw_pill (cv, x + 6, y + (h - 18) / 2, 18, !any ? TR ("Missing") : own ? TR ("Its own") : TR ("French one"), !any ? C_BAD : own ? C_GOOD : C_WARN, sel);
 		(void) w;
 		return true;
 	}
@@ -1017,26 +1032,26 @@ public:
 		if (!template_find (k, lang, p, sizeof p, true))
 		{
 			char fr[200];
-			if (!template_find (k, 0, fr, sizeof fr)) { warn ("Printing", "There is no template for this document: put one (a Writer document) in SD:/apps/ledger.app/templates."); return; }
+			if (!template_find (k, 0, fr, sizeof fr)) { warn (TR ("Printing"), TR ("There is no template for this document: put one (a Writer document) in SD:/apps/ledger.app/templates.")); return; }
 			if (lang == 0) scpy (p, fr, sizeof p);
 			else
 			{
-				char m[200] = "This document has no "; scat (m, tplLang->seg[lang], sizeof m); scat (m, " template: make one from the French one?", sizeof m);
-				if (ask ("Printing", m, MB_YESNO, 1) != 1) return;
+				char m[200]; scpy (m, TR ("This document has no "), sizeof m); scat (m, tplLang->seg[lang], sizeof m); scat (m, TR (" template: make one from the French one?"), sizeof m);
+				if (ask (TR ("Printing"), m, MB_YESNO, 1) != 1) return;
 				char *b; int n;
-				if (!file_read (fr, &b, &n)) { warn ("Printing", "The French template could not be read."); return; }
+				if (!file_read (fr, &b, &n)) { warn (TR ("Printing"), TR ("The French template could not be read.")); return; }
 				char dir[160]; scpy (dir, TEMPLATES, sizeof dir); scat (dir, "/", sizeof dir); scat (dir, LANG_KEY[lang], sizeof dir);
 				kapi_mkdir (dir);
 				const char *ext = fr + slen (fr); while (ext > fr && *ext != '.') ext--;
 				scpy (p, dir, sizeof p); scat (p, "/", sizeof p); scat (p, PK_FILE[k], sizeof p); scat (p, ext, sizeof p);
 				bool ok = kapi_save_file (p, b, (unsigned) n) >= 0;
 				delete [] b;
-				if (!ok) { warn ("Printing", "The template could not be written."); return; }
+				if (!ok) { warn (TR ("Printing"), TR ("The template could not be written.")); return; }
 				tpl->invalidate (true);
 			}
 		}
-		if (!kapi_exec ("SD:/apps/writer.app/main", p)) warn ("Printing", "Writer could not be started.");
-		else { char m[240] = "Writer opens "; scat (m, p, sizeof m); status (m); }
+		if (!kapi_exec ("SD:/apps/writer.app/main", p)) warn (TR ("Printing"), TR ("Writer could not be started."));
+		else { char m[240]; scpy (m, TR ("Writer opens "), sizeof m); scat (m, p, sizeof m); status (m); }
 	}
 	static void on_tplLang (int) { if (g_sp) g_sp->tpl->invalidate (true); }
 	static void on_tplEdit (Widget &) { if (g_sp) g_sp->tplEdit (); }
@@ -1046,7 +1061,7 @@ public:
 		if (!g_sp) return;
 		char d[160]; scpy (d, TEMPLATES, sizeof d); if (g_sp->tplLang->cur) { scat (d, "/", sizeof d); scat (d, LANG_KEY[g_sp->tplLang->cur], sizeof d); }
 		kapi_mkdir (TEMPLATES); kapi_mkdir (d);
-		if (!kapi_exec ("SD:/apps/fileviewer.app/main", d)) warn ("Printing", "The File Viewer could not be started.");
+		if (!kapi_exec ("SD:/apps/fileviewer.app/main", d)) warn (TR ("Printing"), TR ("The File Viewer could not be started."));
 	}
 	static void on_part (int i) { if (g_sp) g_sp->show (i); }
 	static void on_vat (Widget &) { if (g_sp) g_sp->checkVat (); }

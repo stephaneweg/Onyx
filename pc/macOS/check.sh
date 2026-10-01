@@ -2,7 +2,7 @@
 # pc/macOS/check.sh -- the macOS port's POSIX half (hostkapi.cpp: the card's two folders, the programs
 # started, their arguments) checked on Linux: Ledger and Writer built over it with a screen-less window
 # (headless.cpp), Ledger opens the demo company, prints a quote (Writer started as on the Mac, its
-# document written on the user's card), the window's pictures in $OUT. Needs g++ (and Pillow for the PNGs).
+# document written on the user's card), switches to French and back, the window's pictures in $OUT. Needs g++ (and Pillow for the PNGs).
 #   sh pc/macOS/check.sh
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -53,10 +53,18 @@ cmp -s "$OUT/base/docs/demo-company.ledger" "$ROOT/sdcard/docs/demo-company.ledg
 cp "$OUT/base/docs/demo-company.ledger" "$OUT/copy.ledger"
 HEADLESS_DUMP="$OUT/hostpath.ppm" "$OUT/ledger" "$OUT/copy.ledger"
 grep -q "MAC:$OUT/copy.ledger" "$OUT/user/apps/ledger.app/last.txt" || fail "a host path not opened as MAC:/..."
+# 6. the language: FR clicked at the side bar's foot -> lang.txt "fr", Ledger started again by itself (on the same
+#    books, ONYX_ARGS), in French; EN back
+rm -f "$OUT/user/apps/ledger.app/lang.txt"
+HEADLESS_SCRIPT="wait;down 178 680;up 178 680;wait" "$OUT/ledger" SD:/docs/demo-company.ledger
+[ "$(cat "$OUT/user/apps/ledger.app/lang.txt" 2>/dev/null)" = fr ] || fail "FR clicked: lang.txt not written"
+HEADLESS_DUMP="$OUT/french.ppm" "$OUT/ledger" SD:/docs/demo-company.ledger
+HEADLESS_SCRIPT="wait;down 144 680;up 144 680;wait" "$OUT/ledger" SD:/docs/demo-company.ledger
+[ "$(cat "$OUT/user/apps/ledger.app/lang.txt" 2>/dev/null)" = en ] || fail "EN clicked: lang.txt not written"
 python3 - "$OUT" <<'PY' 2>/dev/null || true
 import sys, glob
 from PIL import Image
 for p in glob.glob (sys.argv[1] + "/*.ppm"): Image.open (p).save (p[:-4] + ".png")
 PY
-echo "check.sh: OK ($OUT: overview.png, quote.png, docs/Quotes)"
+echo "check.sh: OK ($OUT: overview.png, quote.png, french.png, docs/Quotes)"
 ls "$OUT/docs/Quotes"; ls "$OUT/user/apps/ledger.app/templates" | head -3

@@ -798,7 +798,11 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > `writer --merge JOB` — Writer's `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
-> **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; integer only — money in
+> **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; **in English or French**: its words
+> `TR (...)`, `sdcard/apps/ledger.app/lang/fr.txt` — wtk's `lang.h` above —, the language chosen at the
+> side bar's foot or in the File menu, Ledger then started again by itself on the same books; the books'
+> own words — the chart, the printed documents — follow the company's and the party's language as before;
+> integer only — money in
 > **cents** (`money`, a `long long`), VAT rates in hundredths of a percent, quantities in thousandths,
 > dates `yyyymmdd` —; Cardfile's `model.h` and `widgets.h` are reused: strings, `Out`, the editors).
 > **The engine** (plain C++, the same on the PC, no wtk): `core.h` (money and dates typed and shown
@@ -1228,6 +1232,21 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > open, then 1 / 0. `ask_text_begin (title, msg, ok, cancel, text)` asks for a line of text
 > the same way (for an app that never has the keyboard: the dock); `ask_text_poll (out, cap)`
 > returns -1, then 1 (the text in `out`) / 0.
+
+> **An app in another language** (`wtk/lang.h`). The sources keep their English words, wrapped:
+> **`TR ("Save")`** is the word in the language the user chose, else the English itself (a `const char *`
+> valid for the app's life: it may be kept); **`TRC ("status", "Open")`** looks up `status|Open` first, for
+> a word whose translation depends on where it stands. The catalogues are UTF-8 text, a line a word —
+> `English<TAB>translation` (`\t \n \\` escaped, `#` a comment) —: **`SD:/res/lang/<code>.txt`** for
+> wtk's own words (the dialogs' buttons, the file dialog, the months and days of `Calendar`, the window
+> menu, Cardfile's editors), **`SD:/apps/<app>.app/lang/<code>.txt`** for the app's. The language chosen
+> is `SD:/apps/<app>.app/lang.txt` (`"fr"`; none: English): **`wk_lang_init ()`** first thing in `main`
+> (after a text face is installed, if any), **`wk_lang_choose (code)`** writes it (taken at the next start —
+> the widgets are made with their words). An app drawing with the bitmap fonts gets the words converted to
+> Latin-1 at load (as its text is drawn: one byte a glyph; the euro `0x80`), one with a face keeps UTF-8.
+> A word missing from a catalogue stays English. Ledger is the first app translated (French: its
+> side bar's EN | FR, File menu); wrap only what is shown — never a file's keys, paths, XML or a string
+> the code compares.
 
 > **Text faces — anti-aliased, proportional text in every widget** (`wtk/text.h`). By default wtk
 > draws with its bitmap fonts (8 × 16 cells); an app may install a **`TextFace`** instead and every

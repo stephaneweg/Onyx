@@ -31,6 +31,10 @@ Your files
   The file dialogs show three volumes: SD: (the above), HOME: (your home folder) and MAC: (the whole
   Mac: MAC:/Volumes/... for a USB key).
 
+In French
+  Click FR at the foot of the side bar (or File > Français): Ledger starts again in French, on the
+  same books. The first time, it starts in French when the Mac's language is French.
+
 On the Mac
   - The window is a Mac window: resize it, full screen (Ctrl+Cmd+F); macOS remembers its place.
     The menus (File, Edit, Documents, Go, Tools) are in the menu bar.

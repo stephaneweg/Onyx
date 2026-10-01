@@ -20,7 +20,7 @@ public:
 	Pay p[MAXP]; bool tick[MAXP]; int np;
 	TickGrid *g; DateEdit *date; ChoiceBox *acct;
 	int jr[MAXJOURNALS]; const char *jn[MAXJOURNALS]; char jbuf[MAXJOURNALS][64]; int nj;
-	PayDialog () : FormBox ("Pay suppliers", 880, 560, 130), np (0), g (0), date (0), acct (0), nj (0)
+	PayDialog () : FormBox (TR ("Pay suppliers"), 880, 560, 130), np (0), g (0), date (0), acct (0), nj (0)
 	{
 		int y = y0;
 		// the accounts: the bank journals that have an IBAN
@@ -32,21 +32,21 @@ public:
 				jn[nj] = jbuf[nj]; jr[nj] = j; nj++;
 			}
 		if (!nj && g_b.iban[0]) { char ib[48]; iban_show (g_b.iban, ib, sizeof ib); scpy (jbuf[0], ib, 64); jn[0] = jbuf[0]; jr[0] = -1; nj = 1; }
-		label (y, "From the account"); acct = new ChoiceBox (fieldX, y, 300); acct->setOptions (jn, nj); addChild (acct);
-		label (y, "Paid on", 480); date = new DateEdit (560, y, 150); char d[16]; date_show (default_pay_day (), d); date->setText (d); date->onChange = on_date; addChild (date);
+		label (y, TR ("From the account")); acct = new ChoiceBox (fieldX, y, 300); acct->setOptions (jn, nj); addChild (acct);
+		label (y, TR ("Paid on"), 480); date = new DateEdit (560, y, 150); char d[16]; date_show (default_pay_day (), d); date->setText (d); date->onChange = on_date; addChild (date);
 		y += 42;
 		g = new TickGrid (20, y, width - 40, height - y - 100);
 		g->setColumns (7);
-		g->setColumn (0, "", 30); g->setColumn (1, "Supplier", 170); g->setColumn (2, "Document", 132); g->setColumn (3, "Their number", 112);
-		g->setColumn (4, "Due", 100); g->setColumn (5, "Amount", 108, GRID_RIGHT); g->setColumn (6, "", 90);
+		g->setColumn (0, "", 30); g->setColumn (1, TR ("Supplier"), 170); g->setColumn (2, TR ("Document"), 132); g->setColumn (3, TR ("Their number"), 112);
+		g->setColumn (4, TR ("Due"), 100); g->setColumn (5, TR ("Amount"), 108, GRID_RIGHT); g->setColumn (6, "", 90);
 		fit_columns (g, 1, 120);
 		g->cellText = c_text; g->cellDraw = c_draw; g->onTickRow = on_tick; g->onActivate = on_act; g->user = this; g->sortable = false;
-		g->emptyText = "No supplier's invoice to pay.";
+		g->emptyText = TR ("No supplier's invoice to pay.");
 		addChild (g);
 		np = sepa_open (g_b, p, MAXP);
 		g->setRows (np);
 		pick ();
-		buttons ("Make the file");
+		buttons (TR ("Make the file"));
 		// (the OK button's width: its text)
 		for (Widget *c = firstChild; c; c = c->nextSib) if (c->tag == 1 && c->top > height - 60) { c->left -= 40; c->resizeTo (128, c->height); }
 		g->setFocus ();
@@ -70,9 +70,9 @@ public:
 	void drawMore () override
 	{
 		int n; money s; totals (&n, &s);
-		char t[120], a[32]; itoa10 (n, t); scat (t, n == 1 ? " transfer  \xB7  " : " transfers  \xB7  ", sizeof t); scat (t, money_s (s, a), sizeof t);
+		char t[120], a[32]; itoa10 (n, t); scat (t, n == 1 ? TR (" transfer") : TR (" transfers"), sizeof t); scat (t, "  \xB7  ", sizeof t); scat (t, money_s (s, a), sizeof t);
 		wk_text_l (canvas, 20, height - 90, 24, t, C_TEXT, 2);
-		wk_text_l (canvas, 20, height - 64, 20, "The file goes to SD:/docs/Payments: upload it to your bank's site.", dim_ink (C_FACE));
+		wk_text_l (canvas, 20, height - 64, 20, TR ("The file goes to SD:/docs/Payments: upload it to your bank's site."), dim_ink (C_FACE));
 	}
 	static const char *c_text (DataGrid &gr, int row, int col, char *buf, int cap)
 	{
@@ -104,8 +104,8 @@ public:
 		}
 		if (col == 6)
 		{
-			if (why[0]) draw_pill (cv, x + 6, y + (h - 18) / 2, 18, "No IBAN", C_BAD, sel);
-			else if (g_b.e[d->p[row].entry].flags & EF_PAYING) draw_pill (cv, x + 6, y + (h - 18) / 2, 18, "In a file", C_WARN, sel);
+			if (why[0]) draw_pill (cv, x + 6, y + (h - 18) / 2, 18, TR ("No IBAN"), C_BAD, sel);
+			else if (g_b.e[d->p[row].entry].flags & EF_PAYING) draw_pill (cv, x + 6, y + (h - 18) / 2, 18, TR ("In a file"), C_WARN, sel);
 			return true;
 		}
 		return false;
@@ -114,7 +114,7 @@ public:
 	{
 		if (row < 0 || row >= np) return;
 		const char *why = sepa_check (g_b, p[row]);
-		if (why[0]) { warn ("Pay suppliers", why); return; }
+		if (why[0]) { warn (TR ("Pay suppliers"), why); return; }
 		tick[row] = !tick[row];
 		g->invalidate (true); invalidate (true);
 	}
@@ -129,10 +129,10 @@ public:
 	bool validate () override
 	{
 		int n; money s; totals (&n, &s);
-		if (!n) { warn ("Pay suppliers", "Tick the invoices to pay."); return false; }
-		if (!nj) { warn ("Pay suppliers", "No account to pay from: type the IBAN of a bank journal (Settings > Journals)."); return false; }
+		if (!n) { warn (TR ("Pay suppliers"), TR ("Tick the invoices to pay.")); return false; }
+		if (!nj) { warn (TR ("Pay suppliers"), TR ("No account to pay from: type the IBAN of a bank journal (Settings > Journals).")); return false; }
 		int d = date_parse (date->text ());
-		if (!d) { warn ("Pay suppliers", "Type the day the bank pays, as 29/09/2026."); date->setFocus (); return false; }
+		if (!d) { warn (TR ("Pay suppliers"), TR ("Type the day the bank pays, as 29/09/2026.")); date->setFocus (); return false; }
 		return true;
 	}
 	// The file written (its path in out) -> false: it could not be.
@@ -161,9 +161,9 @@ static void pay_suppliers ()
 	PayDialog d;
 	if (d.run () != 1) return;
 	char path[200];
-	if (!d.make (path, sizeof path)) { warn ("Pay suppliers", "The file could not be written (the card full, write-protected?)."); return; }
+	if (!d.make (path, sizeof path)) { warn (TR ("Pay suppliers"), TR ("The file could not be written (the card full, write-protected?).")); return; }
 	changed ();
-	char m[240] = "Written: "; scat (m, path, sizeof m); scat (m, " -- upload it to your bank", sizeof m);
+	char m[240]; scpy (m, TR ("Written: "), sizeof m); scat (m, path, sizeof m); scat (m, TR (" -- upload it to your bank"), sizeof m);
 	status (m);
 }
 

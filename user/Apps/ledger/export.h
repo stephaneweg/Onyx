@@ -57,7 +57,7 @@ static void rpt_rtf (const Book &b, const Report &p, Out &o)
 	char cl[160]; company_line (b, cl, sizeof cl);
 	o.puts ("{\\header\\pard\\plain\\f0\\fs16\\cf5 "); rtf_text (o, cl); o.puts ("\\par}\n");
 	char d[16]; date_show (today_ymd (), d);
-	o.puts ("{\\footer\\pard\\plain\\qc\\f0\\fs16\\cf5 "); rtf_text (o, p.title); o.puts (" - "); rtf_text (o, d); o.puts (" - page \\chpgn\\par}\n");
+	o.puts ("{\\footer\\pard\\plain\\qc\\f0\\fs16\\cf5 "); rtf_text (o, p.title); o.puts (" - "); rtf_text (o, d); o.puts (" - "); rtf_text (o, TR ("page")); o.puts (" \\chpgn\\par}\n");
 	o.puts ("\\pard\\plain\\f0\\sa60\\b\\fs32 "); rtf_text (o, p.title); o.puts ("\\par\n");
 	o.puts ("\\pard\\plain\\f0\\sa240\\fs19\\cf5 "); rtf_text (o, cl); if (p.sub[0]) { o.puts ("  -  "); rtf_text (o, p.sub); } o.puts ("\\par\n");
 	// the rows: the title row first (repeated on every page)
@@ -196,7 +196,7 @@ static unsigned char *rpt_xlsx (const Book &b, const Report &p, unsigned *len)
 	s.puts ("</sheetData><pageSetup paperSize=\"9\" orientation=\""); s.puts (p.ncol >= 6 ? "landscape" : "portrait"); s.puts ("\"/></worksheet>\n");
 	char sheetName[32]; int k = 0;
 	for (const char *q = p.title; *q && k < 28; q++) if (*q != '/' && *q != '\\' && *q != '?' && *q != '*' && *q != '[' && *q != ']' && *q != ':' && *q != '\'') sheetName[k++] = *q;
-	sheetName[k] = '\0'; if (!k) scpy (sheetName, "Report", sizeof sheetName);
+	sheetName[k] = '\0'; if (!k) scpy (sheetName, TR ("Report"), sizeof sheetName);
 	Out wb;
 	wb.puts ("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
 		 "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"");
@@ -260,10 +260,10 @@ static void open_report (const Report &p, int fmt)
 	char name[120], path[220];
 	export_name (p, fmt, name, sizeof name);
 	scpy (path, "SD:/docs/Reports/", sizeof path); scat (path, name, sizeof path);
-	if (!write_report (p, fmt, path)) { warn ("Export", "The file could not be written."); return; }
+	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }
 	const char *app = fmt == XF_RTF ? "SD:/apps/writer.app/main" : "SD:/apps/sheet.app/main";
-	if (!kapi_exec (app, path)) { warn ("Export", fmt == XF_RTF ? "Writer could not be started." : "The Spreadsheet could not be started."); return; }
-	char m[200] = "Opened: "; scat (m, path, sizeof m); status (m);
+	if (!kapi_exec (app, path)) { warn (TR ("Export"), fmt == XF_RTF ? TR ("Writer could not be started.") : TR ("The Spreadsheet could not be started.")); return; }
+	char m[240]; scpy (m, TR ("Opened: "), sizeof m); scat (m, path, sizeof m); status (m);
 }
 static void save_report (const Report &p, int fmt)
 {
@@ -273,8 +273,8 @@ static void save_report (const Report &p, int fmt)
 	if (!wk_file_save (path, sizeof path, "SD:/docs/Reports", name)) return;
 	int n = slen (path), k = slen (XF_EXT[fmt]);
 	if (n < k || !ci_eq (path + n - k, XF_EXT[fmt])) scat (path, XF_EXT[fmt], sizeof path);
-	if (!write_report (p, fmt, path)) { warn ("Export", "The file could not be written."); return; }
-	char m[200] = "Written: "; scat (m, path, sizeof m); status (m);
+	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }
+	char m[240]; scpy (m, TR ("Written: "), sizeof m); scat (m, path, sizeof m); status (m);
 }
 
 } // namespace lg

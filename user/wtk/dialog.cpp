@@ -9,6 +9,7 @@
 #include "wtk/root.h"
 #include "wtk/button.h"
 #include "wtk/slider.h"
+#include "wtk/lang.h"
 #include "kapi.h"		// MB_*, KEY_*, kapi_present, kapi_opendir/readdir
 #include "applib.h"		// should_exit, pump_events, msleep
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
@@ -67,23 +68,23 @@ MessageBox::MessageBox (const char *title, const char *text, int buttons)
 	Button *b;
 	if (buttons == MB_YESNOCANCEL)
 	{
-		b = new Button (width - 268, by, 82, 28, "Yes",    dlg_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 180, by, 82, 28, "No",     dlg_btn); b->tag = 2; addChild (b);
-		b = new Button (width - 92,  by, 82, 28, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 268, by, 82, 28, TR ("Yes"),    dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 180, by, 82, 28, TR ("No"),     dlg_btn); b->tag = 2; addChild (b);
+		b = new Button (width - 92,  by, 82, 28, TR ("Cancel"), dlg_btn); b->tag = 0; addChild (b);
 	}
 	else if (buttons == MB_YESNO)
 	{
-		b = new Button (width - 180, by, 82, 28, "Yes", dlg_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 92,  by, 82, 28, "No",  dlg_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 180, by, 82, 28, TR ("Yes"), dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 92,  by, 82, 28, TR ("No"),  dlg_btn); b->tag = 0; addChild (b);
 	}
 	else if (buttons == MB_OKCANCEL)
 	{
-		b = new Button (width - 180, by, 82, 28, "OK",     dlg_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 92,  by, 82, 28, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 180, by, 82, 28, TR ("OK"),     dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 92,  by, 82, 28, TR ("Cancel"), dlg_btn); b->tag = 0; addChild (b);
 	}
 	else
 	{
-		b = new Button (width - 92, by, 82, 28, "OK", dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 92, by, 82, 28, TR ("OK"), dlg_btn); b->tag = 1; addChild (b);
 	}
 }
 
@@ -147,8 +148,8 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 	if (m_nameBox && save) m_nameBox->hasFocus = true;	// (a save: the name typed at once; run () focuses the box)
 	int by = height - 36;
 	Button *b;
-	b = new Button (width - 180, by, 82, 28, folder ? "Choose" : save ? "Save" : "Open", dlg_btn); b->tag = 1; addChild (b);
-	b = new Button (width - 92,  by, 82, 28, "Cancel", dlg_btn);               b->tag = 0; addChild (b);
+	b = new Button (width - 180, by, 82, 28, TR (folder ? "Choose" : save ? "Save" : "Open"), dlg_btn); b->tag = 1; addChild (b);
+	b = new Button (width - 92,  by, 82, 28, TR ("Cancel"), dlg_btn);               b->tag = 0; addChild (b);
 	read ();
 }
 
@@ -257,8 +258,8 @@ bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)
 void FileDialog::onDraw ()
 {
 	int fh = wk_fh ();
-	drawBox (m_folder ? "Choose folder" : m_save ? "Save file" : "Open file");
-	canvas.text (12, titleH () + 6, m_dir[0] ? m_dir : "Volumes", C_DIS);
+	drawBox (TR (m_folder ? "Choose folder" : m_save ? "Save file" : "Open file"));
+	canvas.text (12, titleH () + 6, m_dir[0] ? m_dir : TR ("Volumes"), C_DIS);
 
 	wk_sunken (canvas, m_lx, m_ly, m_lw, m_lh, 4, C_FIELD, false);
 	for (int r = 0; r < m_rows; r++)
@@ -440,8 +441,8 @@ ColorDialog::ColorDialog (unsigned initial, const char *title)
 	g = new Slider (CD_SX, CD_Y0 + fh + 12, CD_SW, fh + 6, 0, 255, (color >> 8) & 255,  cd_slide, C_FACE); addChild (g);
 	b = new Slider (CD_SX, CD_Y0 + 2 * (fh + 12), CD_SW, fh + 6, 0, 255, color & 255,  cd_slide, C_FACE); addChild (b);
 	Button *bt;
-	bt = new Button (width - 180, height - 38, 82, 28, "OK",     dlg_btn); bt->tag = 1; addChild (bt);
-	bt = new Button (width - 92,  height - 38, 82, 28, "Cancel", dlg_btn); bt->tag = 0; addChild (bt);
+	bt = new Button (width - 180, height - 38, 82, 28, TR ("OK"),     dlg_btn); bt->tag = 1; addChild (bt);
+	bt = new Button (width - 92,  height - 38, 82, 28, TR ("Cancel"), dlg_btn); bt->tag = 0; addChild (bt);
 }
 
 void ColorDialog::syncSliders ()
