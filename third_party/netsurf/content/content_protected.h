@@ -291,6 +291,9 @@ struct content {
 	struct {
 		char *string;
 		struct textsearch_context *context;
+		/** Onyx (docs/06 §40): bumped at each layout (the
+		 * matches' boxes and text offsets are then stale) */
+		unsigned layout_gen;
 	} textsearch;
 };
 

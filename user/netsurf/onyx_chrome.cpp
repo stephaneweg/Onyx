@@ -25,6 +25,7 @@
 #include "wtk/wtk.h"
 #include "onyx_chrome.h"
 #include "onyx_io.h"
+#include "img/pngsave.hpp"	// (docs/06 §40: a copied image, as a PNG file)
 #ifdef ONYX_HOST_SIM
 #include <stdio.h>		// (the PC bench: the bar's text and the band's places logged)
 #endif
@@ -47,6 +48,7 @@ public:
 	int glyph;
 	void (*cmd) (void);
 	ToolButton (int l, int t, int g, void (*c) (void)) : Widget (l, t, BTN_W, BTN_H), glyph (g), cmd (c) {}
+	ToolButton (int l, int t, int w, int h, int g, void (*c) (void)) : Widget (l, t, w, h), glyph (g), cmd (c) {}
 	void setGlyph (int g) { if (g != glyph) { glyph = g; invalidate (true); } }
 	void setDisabled (bool d) { if (d != disabled) { disabled = d; if (d) hover = pressed = false; invalidate (true); } }
 	void onDraw () override
@@ -112,44 +114,26 @@ void clip_copy (const char *s, int n)
 	kapi_clipboard_set (CLIP_TEXT, u, (unsigned) m);
 }
 
-class UrlField : public Widget
+// A one-line editor of Latin-1 text (the address field, the find bar's field): the caret, the
+// whole text selected (a click into it, Ctrl+A), Ctrl+C / X / V with the system's clipboard
+// (UTF-8 there), the arrows, Home / End, Backspace / Del, the characters typed.
+class LineEdit : public Widget
 {
 public:
 	char text[URL_MAX];	// what is shown / edited
-	char page[URL_MAX];	// the page's address (Esc goes back to it)
 	int  len, caret, start;
 	bool all;		// the whole text selected (a click into the field, Ctrl+A)
-	bool joinL, joinR;	// the padlock / the pill against its left / right side (square there)
-	UrlField (int l, int t, int w, int h) : Widget (l, t, w, h), len (0), caret (0), start (0), all (false),
-		joinL (false), joinR (false)
-	{ canFocus = true; text[0] = page[0] = '\0'; }
+	LineEdit (int l, int t, int w, int h) : Widget (l, t, w, h), len (0), caret (0), start (0), all (false)
+	{ canFocus = true; text[0] = '\0'; }
 
-	void setPage (const char *s)
-	{
-		int n = 0;
-		for (; s && s[n] && n < URL_MAX - 1; n++) page[n] = s[n];
-		page[n] = '\0';
-		if (!hasFocus) { revert (); invalidate (true); }	// (not while it is being edited)
-	}
-	void revert ()
-	{
-		for (len = 0; page[len]; len++) text[len] = page[len];
-		text[len] = '\0'; caret = len; start = 0; all = false;
-	}
-	void focusIn () { setFocus (); all = true; caret = len; invalidate (true); joined (); }
-	void focusOut () { if (hasFocus) { hasFocus = false; revert (); invalidate (true); joined (); } }	// (back to the page)
-	void joined ();		// the padlock and the pill redrawn (they show the field's focus)
-
-	int visible () const { int n = (width - 2 * PAD) / wk_fw (); return n < 1 ? 1 : n; }
-	void onDraw () override
+	int visible (int w) const { int n = (w - 2 * PAD) / wk_fw (); return n < 1 ? 1 : n; }
+	// The field's face from x0 to x1 (its rounded ends past the canvas when joined), the
+	// text in [PAD, tw) of it
+	void drawField (int xl, int xr, unsigned face, int tw)
 	{
 		int fw = wk_fw (), fh = wk_fh ();
-		canvas.clear (bgColor ());
-		// (a side joined to the padlock or the pill: the field's rounded end drawn past the
-		// canvas -- cut off: the field and its neighbours read as one control)
-		int xl = joinL ? -6 : 0, xr = joinR ? 6 : 0;
-		wk_sunken (canvas, xl, 0, width - xl + xr, height, 4, C_FIELD, hasFocus);
-		int vis = visible ();
+		wk_sunken (canvas, xl, 0, width - xl + xr, height, 4, face, hasFocus);
+		int vis = visible (tw);
 		if (caret < start) start = caret;
 		if (caret > start + vis - 1) start = caret - (vis - 1);
 		if (start < 0) start = 0;
@@ -166,34 +150,32 @@ public:
 		if (hasFocus && !all)
 			canvas.fillRect (PAD + (caret - start) * fw, ty, 1, fh, C_ACCENT);
 	}
-	bool onMouse (int mx, int, int bl, int, int, int) override
+	void clickAt (int mx)
 	{
-		if (mx < 0 || !bl) return mx >= 0;
-		if (!hasFocus) { focusIn (); return true; }
 		int c = start + (mx - PAD + wk_fw () / 2) / wk_fw ();
 		caret = c < 0 ? 0 : c > len ? len : c;
 		all = false;
 		invalidate (true);
-		return true;
 	}
 	void erase () { len = caret = start = 0; text[0] = '\0'; all = false; }
-	bool onKey (long k) override
+	void setText (const char *s)
 	{
-		if (k == KEY_ENTER)
-		{
-			static char u[URL_MAX * 3];
-			latin1_to_utf8 (text, len, u, sizeof u);
-			onyx_browser_go (u); focusOut (); return true;
-		}
-		if (k == 27) { focusOut (); return true; }
-		if (k == 1) { all = true; invalidate (true); return true; }			// ^A
-		if (k == 3) { clip_copy (text, len); return true; }				// ^C
-		if (k == 24) { clip_copy (text, len); erase (); invalidate (true); return true; }	// ^X
-		if (k == 22)									// ^V
+		for (len = 0; s && s[len] && len < URL_MAX - 1; len++) text[len] = s[len];
+		text[len] = '\0'; caret = len; start = 0; all = false;
+	}
+	// The editing keys; true: taken (*changed: the text changed)
+	bool editKey (long k, bool *changed)
+	{
+		*changed = false;
+		if (k == 1) { all = true; invalidate (true); return true; }				// ^A
+		if (k == 3) { clip_copy (text, len); return true; }					// ^C
+		if (k == 24) { clip_copy (text, len); erase (); *changed = true; invalidate (true); return true; }	// ^X
+		if (k == 22)										// ^V
 		{
 			static char clip[URL_MAX];
 			int type = 0; unsigned serial = 0;
 			int n = kapi_clipboard_get (&type, clip, sizeof clip - 1, &serial);
+			if (n > (int) sizeof clip - 1) n = (int) sizeof clip - 1;
 			if (n > 0 && type == CLIP_TEXT)
 			{
 				if (all) erase ();
@@ -207,6 +189,7 @@ public:
 					text[caret++] = ch; len++;
 				}
 				text[len] = '\0';
+				*changed = true;
 				invalidate (true);
 			}
 			return true;
@@ -220,10 +203,14 @@ public:
 		case KEY_BACKSPACE:
 			if (all) erase ();
 			else if (caret > 0) { for (int m = caret - 1; m < len; m++) text[m] = text[m + 1]; caret--; len--; }
+			else break;
+			*changed = true;
 			break;
 		case KEY_DEL:
 			if (all) erase ();
 			else if (caret < len) { for (int m = caret; m < len; m++) text[m] = text[m + 1]; len--; }
+			else break;
+			*changed = true;
 			break;
 		default:
 			if (k < 32 || (k > 126 && k != 0x80 && k < 0xA0) || k > 0xFF) return false;	// (Latin-1, the euro)
@@ -231,10 +218,59 @@ public:
 			if (len >= URL_MAX - 1) return true;
 			for (int m = len; m > caret; m--) text[m] = text[m - 1];
 			text[caret++] = (char) k; len++; text[len] = '\0';
+			*changed = true;
 			break;
 		}
 		invalidate (true);
 		return true;
+	}
+};
+
+class UrlField : public LineEdit
+{
+public:
+	char page[URL_MAX];	// the page's address (Esc goes back to it)
+	bool joinL, joinR;	// the padlock / the pill against its left / right side (square there)
+	UrlField (int l, int t, int w, int h) : LineEdit (l, t, w, h), joinL (false), joinR (false)
+	{ page[0] = '\0'; }
+
+	void setPage (const char *s)
+	{
+		int n = 0;
+		for (; s && s[n] && n < URL_MAX - 1; n++) page[n] = s[n];
+		page[n] = '\0';
+		if (!hasFocus) { revert (); invalidate (true); }	// (not while it is being edited)
+	}
+	void revert () { setText (page); }
+	void focusIn () { setFocus (); all = true; caret = len; invalidate (true); joined (); }
+	void focusOut () { if (hasFocus) { hasFocus = false; revert (); invalidate (true); joined (); } }	// (back to the page)
+	void joined ();		// the padlock and the pill redrawn (they show the field's focus)
+
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		// (a side joined to the padlock or the pill: the field's rounded end drawn past the
+		// canvas -- cut off: the field and its neighbours read as one control)
+		drawField (joinL ? -6 : 0, joinR ? 6 : 0, C_FIELD, width);
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override
+	{
+		if (mx < 0 || !bl) return mx >= 0;
+		if (!hasFocus) { focusIn (); return true; }
+		clickAt (mx);
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_ENTER)
+		{
+			static char u[URL_MAX * 3];
+			latin1_to_utf8 (text, len, u, sizeof u);
+			onyx_browser_go (u); focusOut (); return true;
+		}
+		if (k == 27) { focusOut (); return true; }
+		bool ch;
+		return editKey (k, &ch);
 	}
 };
 
@@ -796,6 +832,121 @@ public:
 	}
 };
 
+// ---- the find bar (docs/06 §40) -------------------------------------------------------------
+// Above the status bar while shown (Ctrl+F, Edit > Find in Page...; the page that much shorter):
+// the words to find (Latin-1, as the address field; searched as UTF-8), "3 of 17" in the field's
+// right end -- the field tinted red when nothing matches --, the previous / next match (Shift+
+// Enter / Enter, Shift+F3 / F3), Match case, and x (Esc) that closes it and clears the
+// highlights. Typing searches as it goes (gui.c waits for a pause on a page slow to search).
+const int FB = 30;			// its height
+const int FIND_W = 300;			// the field's width
+void find_typed ();
+void find_step (int dir);
+void find_close ();
+
+class FindField : public LineEdit
+{
+public:
+	int idx, cnt;		// the current match (0-based, -1 none), how many (-1: not searched)
+	FindField (int l, int t, int w, int h) : LineEdit (l, t, w, h), idx (-1), cnt (-1) {}
+	void count (char *out) const
+	{
+		if (cnt < 0 || len == 0) { out[0] = '\0'; return; }
+		if (cnt == 0) { const char *t = "No matches"; int i = 0; for (; t[i]; i++) out[i] = t[i]; out[i] = '\0'; return; }
+		char a[12], b[12]; int na = 0, nb = 0, v = idx + 1, o = 0;
+		do { a[na++] = (char) ('0' + v % 10); v /= 10; } while (v && na < 11);
+		v = cnt;
+		do { b[nb++] = (char) ('0' + v % 10); v /= 10; } while (v && nb < 11);
+		while (na) out[o++] = a[--na];
+		out[o++] = ' '; out[o++] = 'o'; out[o++] = 'f'; out[o++] = ' ';
+		while (nb) out[o++] = b[--nb];
+		out[o] = '\0';
+	}
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		char c[32]; count (c);
+		int cw = c[0] ? wk_text_w (c) + 10 : 0;
+		bool none = cnt == 0 && len > 0;
+		drawField (0, 0, none ? wk_mix (C_FIELD, 0xF28B82, 96) : C_FIELD, width - cw);
+		if (cw)
+			wk_text_l (canvas, width - cw, 0, height, c,
+				   none ? 0xC5221F : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override
+	{
+		if (mx < 0 || !bl) return mx >= 0;
+		if (!hasFocus) { setFocus (); all = true; caret = len; invalidate (true); return true; }
+		clickAt (mx);
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_ENTER) { find_step ((kapi_get_modifiers () & MOD_SHIFT) ? -1 : 1); return true; }
+		if (k == 27) { find_close (); return true; }
+		bool ch;
+		bool took = editKey (k, &ch);
+		if (ch) { cnt = -1; idx = -1; invalidate (true); find_typed (); }
+		return took;
+	}
+};
+
+// Match case: a check box and its words
+class CaseToggle : public Widget
+{
+public:
+	bool on;
+	CaseToggle (int l, int t) : Widget (l, t, 24 + wk_text_w ("Match case"), 24), on (false)
+	{ tip = "Upper and lower case, and accents, as typed"; }
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		wk_check_mark (canvas, 2, (height - 14) / 2, 14, on, pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL);
+		wk_text_l (canvas, 22, 0, height, "Match case", C_TEXT);
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override
+	{
+		if (mx < 0) { if (hover || pressed) { hover = pressed = false; invalidate (true); } return false; }
+		bool wh = hover, wp = pressed;
+		hover = true;
+		if (bl && !pressed) pressed = true;
+		else if (!bl && pressed) { pressed = false; on = !on; invalidate (true); find_typed (); }
+		if (hover != wh || pressed != wp) invalidate (true);
+		return true;
+	}
+};
+
+void find_prev () { find_step (-1); }
+void find_next () { find_step (1); }
+
+class FindBar : public Widget
+{
+public:
+	FindField  *field;
+	ToolButton *prev, *next, *close;
+	CaseToggle *mcase;
+	FindBar (int l, int t, int w) : Widget (l, t, w, FB)
+	{
+		anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
+		int y = 3, h = FB - 6, x = 8;
+		field = new FindField (x, y, FIND_W, h);		x += FIND_W + 6;
+		prev  = new ToolButton (x, y, 28, h, WKG_CHEV_UP, find_prev);	x += 28 + 2;
+		next  = new ToolButton (x, y, 28, h, WKG_CHEV_DOWN, find_next);	x += 28 + 12;
+		mcase = new CaseToggle (x, y);
+		close = new ToolButton (w - 8 - 28, y, 28, h, WKG_CLOSE, find_close);
+		close->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		prev->tip = "Previous match (Shift+Enter, Shift+F3)";
+		next->tip = "Next match (Enter, F3)";
+		close->tip = "Close the find bar (Esc)";
+		addChild (field); addChild (prev); addChild (next); addChild (mcase); addChild (close);
+	}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		wk_etch_h (canvas, 0, 0, width, C_BG);
+	}
+};
+
 // ---- the history dialog --------------------------------------------------------------------
 // A page visited: its address, its title and its time, as the dialog shows them (the wtk font
 // is Latin-1: the UTF-8 title converted).
@@ -1194,6 +1345,7 @@ public:
 	ZoomCtl    *zoom;		// (docs/06 §38) the zoom control, right of the field
 	DlButton   *dl;		// ... the downloads' button, at the right end (while there are some)
 	StatusBar  *status;		// ... the status bar, at the bottom (View > Status Bar)
+	FindBar    *find;		// (docs/06 §40) the find bar, above the status bar (Ctrl+F)
 	int         urlX;		// where the band's right part starts (the padlock, the field)
 	bool        busy;
 	NsWindow (int w, int h) : Root (w, h + TB + (g_sbOn ? SB : 0), "Jet"), busy (false)
@@ -1217,18 +1369,20 @@ public:
 		dl->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 		status = new StatusBar (0, height - SB, width);
 		status->hidden = !g_sbOn;
+		find   = new FindBar (0, height - SB - FB, width);
+		find->hidden = true;
 		status->setState ("Ready", false);
 		back->setDisabled (true);
 		fwd->setDisabled (true);
 		back->tip = "Back (Alt+Left)"; fwd->tip = "Forward (Alt+Right)"; reload->tip = "Reload (F5)";
 		home->tip = "Home"; hist->tip = "History (Ctrl+H)";
 		addChild (back); addChild (fwd); addChild (reload); addChild (home); addChild (hist); addChild (url);
-		addChild (lock); addChild (mode); addChild (zoom); addChild (dl); addChild (status);
+		addChild (lock); addChild (mode); addChild (zoom); addChild (dl); addChild (status); addChild (find);
 		setResizable (true);
 		layoutBand ();
 	}
-	// The page's height in the window: less the band and the status bar (when shown).
-	int pageH () const { return height - TB - (status->hidden ? 0 : SB); }
+	// The page's height in the window: less the band, the status bar and the find bar (when shown).
+	int pageH () const { return height - TB - (status->hidden ? 0 : SB) - (find->hidden ? 0 : FB); }
 	// The field between the padlock and the pill (each there or not): its place and its ends;
 	// right of them the zoom control, then the downloads' button (when there are downloads).
 	void layoutBand ()
@@ -1255,11 +1409,19 @@ public:
 			status->top = height - SB;
 			status->resizeTo (width, SB);
 		}
+		int ft = height - (status->hidden ? 0 : SB) - FB;
+		if (find->top != ft || find->width != width)
+		{
+			find->top = ft;
+			find->resizeTo (width, FB);
+			find->invalidate (true);
+		}
 	}
 	// The band's keyboard: the field (F6), Tab to the pill, Shift+Tab to the padlock.
-	bool bandFocus () const { return url->hasFocus || lock->hasFocus || mode->hasFocus; }
+	bool bandFocus () const { return url->hasFocus || lock->hasFocus || mode->hasFocus || find->field->hasFocus; }
 	void blurBand ()
 	{
+		if (find->field->hasFocus) { clearFocusTree (); find->field->invalidate (true); }
 		if (url->hasFocus) url->focusOut ();
 		if (lock->hasFocus || mode->hasFocus) { clearFocusTree (); lock->invalidate (true); mode->invalidate (true); url->invalidate (true); }
 	}
@@ -1386,6 +1548,7 @@ gui_value page_value (gui_value v)
 }
 
 unsigned g_inputs;	// the clicks, wheel turns and keys so far (onyx_chrome_input_pending)
+bool g_ctxUp;		// a right press opened the context menu: its release is not the page's
 
 // Events taken while a script runs (onyx_chrome_pump_deferred): kept, handled after it.
 struct DeferredEvent { unsigned long sender; int ev; gui_value v; bool key; };
@@ -1453,7 +1616,16 @@ void ptr_event (unsigned long sender, int ev, gui_value v)
 	if (ev == GUI_EVENT_PTR_DOWN) { if (c & 1) bl = 1; if (c & 2) br = 1; if (c & 4) bm = 1; }
 	if (ev == GUI_EVENT_PTR_UP)   { if (c & 1) bl = 0; if (c & 2) br = 0; if (c & 4) bm = 0; }
 	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v);
+	if (ev == GUI_EVENT_PTR_UP && (c & 2) && g_ctxUp) { g_ctxUp = false; return; }	// (its menu's)
 	bool band = has_modal () || (g_grab ? g_grab == 1 : y < TB || y >= TB + g_win->pageH ());
+	if (ev == GUI_EVENT_PTR_DOWN && (c & 2) && !band && !g_grab && !bl && !bm)
+	{	// (docs/06 §40) a right press on the page: its context menu (the page does not get it)
+		if (!g_win->pageFocus ()) g_win->blurBand ();
+		g_win->handleMouse (-1, -1, 0, 0, 0, 0);
+		g_ctxUp = true;
+		onyx_browser_context_menu (x, y - TB);
+		return;
+	}
 	if (ev == GUI_EVENT_PTR_WHEEL && !band && (kapi_get_modifiers () & MOD_CTRL))
 	{	// Ctrl+wheel: the page's zoom (docs/06 §38), not a scroll
 		int n = GUI_PTR_WHEEL (v);
@@ -1496,6 +1668,8 @@ void key_event (unsigned long sender, int ev, gui_value k)
 		if (k == '0') { onyx_browser_zoom (0); return; }
 	}
 	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
+	if (k == KEY_F1 + 2 || (k == 7 && (mods & MOD_CTRL)))		// F3, Ctrl+G (Shift: back)
+	{ find_step ((mods & MOD_SHIFT) ? -1 : 1); return; }
 	if (Menu::current () && Menu::current ()->shortcut (k)) return;
 	if ((mods & MOD_ALT) && k == KEY_LEFT)  { onyx_browser_back (); return; }
 	if ((mods & MOD_ALT) && k == KEY_RIGHT) { onyx_browser_forward (); return; }
@@ -1503,8 +1677,9 @@ void key_event (unsigned long sender, int ev, gui_value k)
 	if (k == KEY_F1 + 5) { if (g_win->url->hasFocus) g_win->blurBand (); else g_win->url->focusIn (); return; }	// F6
 	if (!g_win->pageFocus ())
 	{
-		if (k == 9) { g_win->tab ((mods & MOD_SHIFT) != 0); return; }	// Tab, Shift+Tab: the band's parts
-		if (k == 27 && !g_win->url->hasFocus) { g_win->blurBand (); return; }
+		bool infind = g_win->find->field->hasFocus;
+		if (k == 9) { if (!infind) g_win->tab ((mods & MOD_SHIFT) != 0); return; }	// Tab, Shift+Tab: the band's parts
+		if (k == 27 && !g_win->url->hasFocus && !infind) { g_win->blurBand (); return; }
 		g_win->handleKey (k);
 		return;
 	}
@@ -1525,6 +1700,79 @@ void m_zoom_in ()  { onyx_browser_zoom (1); }
 void m_zoom_out () { onyx_browser_zoom (-1); }
 void m_zoom_100 () { onyx_browser_zoom (0); }
 void m_status ()   { onyx_browser_set_status_bar (!g_sbOn); }
+
+// ---- find in page (docs/06 §40) --------------------------------------------------------------
+// The field's words (UTF-8) searched by gui.c: dir 0 a new search (typed: the first match), 1 the
+// next match, -1 the one before, 2 again without moving the view (a new page loaded).
+void find_search (int dir)
+{
+	if (g_win == 0) return;
+	FindField *f = g_win->find->field;
+	static char u[URL_MAX * 3];
+	latin1_to_utf8 (f->text, f->len, u, sizeof u);
+	onyx_browser_find (u, dir, g_win->find->mcase->on ? 1 : 0);
+}
+void find_typed () { find_search (0); }
+
+// Ctrl+F, Edit > Find in Page...: the bar shown (the page shorter), its field focused with its
+// words selected (typing replaces them; Enter finds them again)
+void find_open ()
+{
+	if (g_win == 0 || has_modal ()) return;
+	FindBar *b = g_win->find;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	if (b->hidden)
+	{
+		b->hidden = false;
+		g_win->layoutBand ();
+		g_win->invalidate (true);
+		g_resized = true;		// (the page's area changed: the surface asks again)
+		if (b->field->len > 0) find_search (0);	// (the words of the last time: found again)
+	}
+	b->field->setFocus ();
+	b->field->all = true;
+	b->field->caret = b->field->len;
+	b->field->invalidate (true);
+}
+
+// Enter / F3 (1), Shift+Enter / Shift+F3 (-1): the next / previous match, around at the ends
+void find_step (int dir)
+{
+	if (g_win == 0 || has_modal ()) return;
+	if (g_win->find->hidden || g_win->find->field->len == 0) { find_open (); return; }
+	find_search (dir);
+}
+
+// x, Esc in the field: the bar hidden, the highlights cleared (its words kept for the next time)
+void find_close ()
+{
+	if (g_win == 0 || g_win->find->hidden) return;
+	FindBar *b = g_win->find;
+	if (b->field->hasFocus) g_win->clearFocusTree ();
+	b->hidden = true;
+	b->field->cnt = b->field->idx = -1;
+	g_win->layoutBand ();
+	g_win->invalidate (true);
+	g_resized = true;
+	onyx_browser_find_close ();
+}
+
+void m_find ()      { find_open (); }
+void m_find_next () { find_step (1); }
+void m_find_prev () { find_step (-1); }
+
+// Edit's Cut / Copy / Paste / Select All: the key's, where the keys go (the address field, the
+// find bar's field, else the page: its selection, its form field)
+void route_key (long k)
+{
+	if (g_win == 0) return;
+	if (!g_win->pageFocus ()) { g_win->handleKey (k); return; }
+	if (g_pageKey) g_pageKey (0, GUI_EVENT_KEY, k);
+}
+void m_cut ()    { route_key (24); }
+void m_copy ()   { route_key (3); }
+void m_paste ()  { route_key (22); }
+void m_selall () { route_key (1); }
 
 // The History dialog: shown over the page (NetSurf waits meanwhile); a page chosen is opened.
 void open_history ()
@@ -1609,6 +1857,15 @@ void build_menu (Menu &m, bool sbOn)
 	m.item ("Open Location...", "^L", WK_CTRL ('L'), m_location);
 	m.separator ();
 	m.item ("Downloads...", "", 0, open_downloads);
+	m.menu ("Edit");				// (docs/06 §40; key_event: the keys)
+	m.item ("Cut", "^X", 0, m_cut);
+	m.item ("Copy", "^C", 0, m_copy);
+	m.item ("Paste", "^V", 0, m_paste);
+	m.item ("Select All", "^A", 0, m_selall);
+	m.separator ();
+	m.item ("Find in Page...", "^F", WK_CTRL ('F'), m_find);
+	m.item ("Find Next", "F3", 0, m_find_next);
+	m.item ("Find Previous", "Shift+F3", 0, m_find_prev);
 	m.menu ("View");
 	m.item ("Zoom In", "Ctrl++", 0, m_zoom_in);		// (key_event: the keys)
 	m.item ("Zoom Out", "Ctrl+-", 0, m_zoom_out);
@@ -1978,6 +2235,101 @@ int onyx_chrome_save_dialog (const char *dir, const char *name, char *path, int 
 	delete d;
 	onyx_browser_redraw ();			// (the page under the dialog)
 	return r == 1;
+}
+
+// ---- Onyx (docs/06 §40): find in page, the context menu, a copied image ---------------------
+
+void onyx_chrome_find_result (int index, int count)
+{
+	if (g_win == 0) return;
+	FindField *f = g_win->find->field;
+	if (f->idx == index && f->cnt == count) return;
+	f->idx = index; f->cnt = count;
+	f->invalidate (true);
+#ifdef ONYX_HOST_SIM
+	char c[32]; f->count (c);
+	printf ("ONYX-FINDBAR %s\n", c[0] ? c : "(none)");
+	fflush (stdout);
+#endif
+}
+
+int onyx_chrome_find_shown (void)
+{
+	return g_win && !g_win->find->hidden;
+}
+
+void onyx_chrome_find_open (void)
+{
+	find_open ();
+}
+
+void onyx_chrome_find_again (void)
+{
+	if (g_win && !g_win->find->hidden && g_win->find->field->len > 0) find_search (2);
+}
+
+int onyx_chrome_context_menu (int x, int y, int flags)
+{
+	if (g_win == 0 || has_modal ()) return 0;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	int type = 0;
+	bool paste = kapi_clipboard_get (&type, 0, 0, 0) > 0 && type == CLIP_TEXT;
+	bool sel = (flags & ONYX_CTXF_SELECTION) != 0;
+	PopupMenu *m = new PopupMenu (x, y + TB);
+	if (flags & ONYX_CTXF_LINK)
+	{
+		m->add ("Open Link", ONYX_CMD_OPEN_LINK);
+		m->add ("Save Link As...", ONYX_CMD_SAVE_LINK);
+		m->add ("Copy Link Address", ONYX_CMD_COPY_LINK);
+		m->separator ();
+	}
+	if (flags & ONYX_CTXF_IMAGE)
+	{
+		m->add ("Open Image", ONYX_CMD_OPEN_IMAGE);
+		m->add ("Save Image As...", ONYX_CMD_SAVE_IMAGE);
+		m->add ("Copy Image", ONYX_CMD_COPY_IMAGE, (flags & ONYX_CTXF_IMAGE_PIXELS) != 0);
+		m->add ("Copy Image Address", ONYX_CMD_COPY_IMAGE_URL);
+		m->separator ();
+	}
+	if (flags & ONYX_CTXF_EDITABLE)
+	{
+		m->add ("Cut", ONYX_CMD_CUT, sel && (flags & ONYX_CTXF_CAN_CUT), "Ctrl+X");
+		m->add ("Copy", ONYX_CMD_COPY, sel, "Ctrl+C");
+		m->add ("Paste", ONYX_CMD_PASTE, paste, "Ctrl+V");
+		m->add ("Select All", ONYX_CMD_SELECT_ALL, true, "Ctrl+A");
+		m->separator ();
+	}
+	else if (sel)
+	{
+		m->add ("Copy", ONYX_CMD_COPY, true, "Ctrl+C");
+		m->separator ();
+	}
+	if (!(flags & (ONYX_CTXF_LINK | ONYX_CTXF_IMAGE | ONYX_CTXF_EDITABLE)) && !sel)
+	{
+		m->add ("Back", ONYX_CMD_BACK, (flags & ONYX_CTXF_BACK) != 0, "Alt+Left");
+		m->add ("Forward", ONYX_CMD_FORWARD, (flags & ONYX_CTXF_FORWARD) != 0, "Alt+Right");
+		m->add ("Reload", ONYX_CMD_RELOAD, true, "F5");
+		m->separator ();
+	}
+	if (!(flags & ONYX_CTXF_EDITABLE)) m->add ("Select All", ONYX_CMD_SELECT_ALL, true, "Ctrl+A");
+	m->add ("Find in Page...", ONYX_CMD_FIND, true, "Ctrl+F");
+	int r = m->run ();
+	delete m;
+	onyx_browser_redraw ();			// (the page under the menu)
+	return r < 0 ? 0 : r;
+}
+
+int onyx_chrome_save_png (const char *path, const unsigned *px, int w, int h)
+{
+	if (px == 0 || w <= 0 || h <= 0) return 0;
+	bool alpha = false;
+	for (long i = 0, n = (long) w * h; i < n && !alpha; i++) alpha = (px[i] >> 24) != 255;
+	unsigned len = 0;
+	unsigned char *png = pngsave::png_encode (px, w, h, alpha, &len);
+	if (png == 0) return 0;
+	int ok = kapi_save_file (path, png, len) == (int) len;
+	delete [] png;
+	return ok;
 }
 
 void onyx_chrome_message (const char *title, const char *text)

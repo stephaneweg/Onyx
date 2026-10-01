@@ -2100,6 +2100,7 @@ static void html_reformat(struct content *c, int width, int height)
 		c->height = layout->y + layout->scroll_ext_y1;
 
 	selection_reinit(htmlc->sel);
+	c->textsearch.layout_gen++;	/* Onyx: a find's boxes are stale (§40) */
 
 	htmlc->reflowing = false;
 	htmlc->had_initial_layout = true;

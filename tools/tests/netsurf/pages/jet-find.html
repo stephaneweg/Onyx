@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- findtest.sh (docs/06 §40): find in page, copying text / a link / an image, pasting into a
+     field. Fixed places (the page's y): the line to select 0..40, the link 40..80, the image
+     80..120 (64 x 40, jet-find.png), the field 140..170; the words to find from 200; "zebra"
+     far down (3000) -->
+<meta charset=utf-8>
+<title>Find</title>
+<style>
+body { margin: 0; font: 16px sans-serif; }
+#sel { position: absolute; left: 10px; top: 0; width: 900px; height: 40px; line-height: 40px; margin: 0;
+	font: 20px monospace; white-space: pre; }
+#lnk { position: absolute; left: 10px; top: 40px; height: 40px; line-height: 40px; }
+#img { position: absolute; left: 10px; top: 80px; width: 64px; height: 40px; }
+#field { position: absolute; left: 10px; top: 140px; width: 300px; height: 30px; font: 16px sans-serif; }
+#words { position: absolute; left: 10px; top: 200px; width: 900px; margin: 0; line-height: 24px; }
+#far { position: absolute; left: 10px; top: 3000px; margin: 0; }
+</style>
+<p id=sel>Select me: déjà vu 42</p>
+<a id=lnk href="/jet-plain.txt?from=find">a link to copy</a>
+<img id=img src="jet-find.png" alt="">
+<input id=field type=text value="">
+<p id=words>Café, cafe, CAFE, café and the cafeteria. C# and a*b, the literal ones.
+Typographic l’été and l'été.</p>
+<p id=far>A zebra at the bottom.</p>
+<script>
+let last = '', lastv = '';
+setInterval(() => {
+	const s = 'scrolly ' + scrollY;
+	if (s !== last) { last = s; console.log(s); }
+	const v = document.getElementById('field').value;
+	if (v !== lastv) { lastv = v; console.log('field [' + v + ']'); }
+}, 50);
+</script>

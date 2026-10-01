@@ -70,6 +70,29 @@ answer in French. The docs stay in English.
   same without these changes); layouttest's `dialogs` page (layoutdiff.sh gives Chromium a 790 px
   viewport, NetSurf's is 770 since the status bar).
 
+## Jet Browser: find in page, copy and paste, the context menu (2026-10-01, PC bench only)
+
+- **Find** (docs/06 §40): Ctrl+F / Edit ▸ Find in Page... -- a find bar above the status bar ("3 of 17",
+  ^ v, Match case, x); typed words searched as they come (after a 300 ms pause once a search took
+  over 30 ms), every match yellow, the current orange, scrolled into the middle when out of view;
+  Enter / Shift+Enter, F3 / Shift+F3, Ctrl+G; Esc clears. content/textsearch.c rewritten: an array
+  of matches, a binary search a painted text (was O(boxes x matches) a search and a paint), literal,
+  case and accents folded, wraps, found again after a layout (`layout_gen`).
+- **Clipboard**: frontends/framebuffer/clipboard.c on the kernel's clipboard (UTF-8, 64 KB) both ways:
+  Ctrl+C of a selection, Ctrl+V / X / A in fields; Edit ▸ Cut / Copy / Paste / Select All.
+- **Context menu** (right click; frontends/framebuffer/onyx_edit.c + wtk's PopupMenu): link (Open,
+  Save As, Copy Address), image (Open, Save As, **Copy Image** -> `RAM:/jet/clip/image-1|2.png` +
+  CLIP_FILES: Paint's Ctrl+V pastes it; Windows: CF_DIB), field (Cut, Copy, Paste, Select All),
+  selection (Copy), Back / Forward / Reload, Select All, Find.
+- Fixed: the horizontal scroll bar's arrows left unpainted when the page got shorter (status bar /
+  find bar shown: the compositor's stale hole). Menus: Edit inserted after File (View's items moved:
+  `menu 12` is Hide Status Bar now).
+- Tests: **`tools/tests/netsurf/findtest.sh`** (new; Paint pasting in the simulator), fakekapi's clipboard
+  is real (`SIM_CLIP`, `SIM_CLIPFILE`). Screenshots: `shots.sh jet` (jet-find.png, jet-context.png).
+- **Needs a rebuild for the Pi** (Jet, `sdcard/apps/jet.app/main`) and Windows (`sh pc/Jet/build.sh`).
+  **To try on the Pi**: Ctrl+F on bbc.co.uk (typing speed, the count), a copied image pasted into
+  Paint, text copied into the Text Editor and back into a page's field.
+
 ## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
 
 - **Acid2 identical** to its reference (the face pixel by pixel, composited, CPU-painted and after

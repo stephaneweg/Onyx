@@ -1987,6 +1987,15 @@ zoom of a new page's site, a fetch's error, a script's bytes to save), the downl
 stand-in kernel implements `kapi_file_out` (a file written in pieces, in `SIM_WRITES`) and lets
 `kapi_remove` delete what an app wrote there (never the card). wtk's `FileDialog` takes Enter
 (Open / Save) and Esc (Cancel), its name box focused in save mode; `fileName ()` reads the box.
+Find in page, copy and paste and the page's context menu (docs/06 §40) are checked by
+`sh tools/tests/netsurf/findtest.sh`; the frontend's side is `frontends/framebuffer/onyx_edit.c`
+(the search, the context menu's commands, Copy Image as a PNG in `RAM:/jet/clip/` + `CLIP_FILES`)
+and `clipboard.c` (the kernel's clipboard, UTF-8); the core's search is
+`content/textsearch.c` (an array of matches, binary-searched when painting). The stand-in
+kernel's clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or `files:PATH` for
+`CLIP_FILES`), **`SIM_CLIPFILE`** receives each copy's bytes, and every set logs
+`SIM-CLIPBOARD type=T len=N`. An app that pastes a copied picture reads it as Paint does
+(`clip_get_file` + `img_load`).
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:

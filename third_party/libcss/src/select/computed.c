@@ -1512,6 +1512,30 @@ css_error css__compute_absolute_values(const css_computed_style *parent,
 	if (error != CSS_OK)
 		return error;
 
+	/* Onyx: bolder / lighter resolved against the parent's weight (CSS Fonts' table) --
+	 * left as they were, the font code took them for normal */
+	{
+		uint8_t w = get_font_weight(style);
+
+		if (w == CSS_FONT_WEIGHT_BOLDER || w == CSS_FONT_WEIGHT_LIGHTER) {
+			uint8_t pw = parent != NULL ? get_font_weight(parent) :
+					CSS_FONT_WEIGHT_NORMAL;
+			int n;
+
+			n = pw == CSS_FONT_WEIGHT_BOLD ? 700 :
+				(pw >= CSS_FONT_WEIGHT_100 && pw <= CSS_FONT_WEIGHT_900) ?
+				100 * (pw - CSS_FONT_WEIGHT_100 + 1) : 400;
+			if (w == CSS_FONT_WEIGHT_BOLDER)
+				n = n < 400 ? 400 : n < 600 ? 700 : 900;
+			else
+				n = n < 600 ? 100 : n < 800 ? 400 : 700;
+			error = set_font_weight(style,
+					CSS_FONT_WEIGHT_100 + n / 100 - 1);
+			if (error != CSS_OK)
+				return error;
+		}
+	}
+
 	/* Compute the size of an ex unit */
 	ex_size.status = CSS_FONT_SIZE_DIMENSION;
 	ex_size.data.length.value = INTTOFIX(1);

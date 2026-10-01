@@ -83,8 +83,8 @@ run s2 jet-dl.html "${W}$(link 9 60)$(link 10 80)"
 check "a 500 page: '500 Internal Server Error'" "has s2 'state=500 Internal Server Error (error)'"
 run s3 jet-dl.html "${W}$(link 10 80)"
 check "a port with no server: 'Error: Connection failed'" "has s3 'state=Error: Connection failed (error)'"
-run s4 jet-zoom.html "${W}menu 5;$(waits 30)dump $D/status-hidden.elsm;quit;$(waits 40)"
-run s5 jet-zoom.html "${W}menu 5;$(waits 30)quit;$(waits 40)"
+run s4 jet-zoom.html "${W}menu 12;$(waits 30)dump $D/status-hidden.elsm;quit;$(waits 40)"
+run s5 jet-zoom.html "${W}menu 12;$(waits 30)quit;$(waits 40)"
 png status-hidden
 check "View > Hide Status Bar: the page 22 px taller (innerHeight 470 -> 492)" \
 	"first s4 zoominfo | grep -q ' h 470 ' && has s4 ' h 492 '"
