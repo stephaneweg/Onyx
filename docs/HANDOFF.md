@@ -242,7 +242,7 @@ answer in French. The docs stay in English.
 - **The rule now**: every new or redesigned app draws its text with **FreeType** (DejaVu Sans
   through wtk's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
   list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
-  its 8 applets and the Game Library (text measured in pixels, `drawFont` gone).
+  its 8 applets, the Game Library and (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone).
 - **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a

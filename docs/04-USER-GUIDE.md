@@ -299,7 +299,7 @@ the **Control Panel** (§11).
 ### The menu bar (`menubar`)
 
 A system **menu bar** runs across the top of the screen (started by `autostart`), light, in
-the theme's face: it shows the **active application's name** (in bold) and **its menus**,
+the theme's face, its text drawn with FreeType (DejaVu Sans, anti-aliased): it shows the **active application's name** (in bold) and **its menus**,
 and the time on the right — **click the time** for a **calendar** of the month (the arrows or
 the wheel change the month; **Open Calendar** starts the Calendar app) — with the **Wi-Fi
 state** just left of it: the usual arcs when

@@ -34,11 +34,11 @@ APPS = tinycalc tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        mandelbrot minesweeper paint \
-       eyes taskman voronoy irc memmon spin wtkdemo shell fileviewer menubar notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile ledger
+       eyes taskman voronoy irc memmon spin wtkdemo shell fileviewer notifyd shutdown plasma shelf ask agenda imageview widgets qbasic fmtracker lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile ledger
 
 # The apps whose text is FreeType's (DejaVu Sans through wtk's face, ft/wtkface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup
+FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
