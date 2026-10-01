@@ -38,6 +38,7 @@
 #include "html/box_textarea.h"
 #include "html/font.h"
 #include "html/form_internal.h"
+#include "html/html.h"	/* Onyx: html_box_fixed_shift */
 
 
 nserror box_textarea_keypress(html_content *html, struct box *box, uint32_t key)
@@ -187,7 +188,7 @@ static void box_textarea_callback(void *data, struct textarea_msg *msg)
 	case TEXTAREA_MSG_REDRAW_REQUEST:
 	{
 		/* Request redraw of the required textarea rectangle */
-		int x, y;
+		int x, y, dx, dy;
 
 		if (html->reflowing == true) {
 			/* Can't redraw during layout, and it will
@@ -196,6 +197,9 @@ static void box_textarea_callback(void *data, struct textarea_msg *msg)
 		}
 
 		box_coords(box, &x, &y);
+		html_box_fixed_shift(html, box, &dx, &dy);	/* (Onyx: in a fixed box) */
+		x += dx;
+		y += dy;
 
 		content__request_redraw((struct content *)html,
 				x + msg->data.redraw.x0,

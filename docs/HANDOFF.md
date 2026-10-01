@@ -49,6 +49,27 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Jet Browser: facebook.com's frozen login screen, fixed dialogs, the network (2026-10-01, PC bench only)
+
+- **The lag, the late Accept, the wheel doing nothing** on www.facebook.com (Desktop): `offsetParent`
+  was always the body (the body's own too) -- Facebook's visual-completion timer climbed the chain
+  for ever, 60 s until the script limit, the window's events held meanwhile. Now CSSOM View's
+  (`N.offset`, docs/06 §41). The login page's longest timer: 60 s -> 87 ms (PC).
+- **Fixed dialogs over a scrolled page**: hit test, drags, caret, redraws, wheel into frames and
+  `getBoundingClientRect` now use where fixed boxes are painted (`html_box_fixed_shift`).
+- **The network** (the user's "Jet eats the Pi's network" once logged in -- not reproducible here,
+  no account): `ONYX-PERF net:minute` (the perf file -> kmsg: requests, KB/s, sockets per host,
+  WebSockets), WebSocket / EventSource reconnections and failing hosts held back, a hidden
+  window's script requests one a second, idle kept-alive sockets closed after 10 s.
+  **To try on the Pi**: the cookie dialog (scroll, Accept at once), the login screen smooth; then
+  logged in, `SD:/apps/jet.app/perf` created, read the `net:minute` lines in `kmsg` to see what
+  loads the network (likely the feed's images: Jet Browser has no lazy image loading yet).
+- Tests: jstest (`js-fixed-scrolled`, `js-modal-doc`), nettest (`net-retry`, `net-hidden`). Only
+  Jet changes (no libcss / libdom header change): rebuild `sdcard/apps/jet.app/main`.
+- Pre-existing, not fixed: gputest 3a (gpu-scroll at 150 %: the fixed bar 1 px off composited,
+  same without these changes); layouttest's `dialogs` page (layoutdiff.sh gives Chromium a 790 px
+  viewport, NetSurf's is 770 since the status bar).
+
 ## Jet Browser: find in page, copy and paste, the context menu (2026-10-01, PC bench only)
 
 - **Find** (docs/06 §40): Ctrl+F / Edit ▸ Find in Page... -- a find bar above the status bar ("3 of 17",

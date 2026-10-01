@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>a poll in a hidden window</title></head>
+<body>
+<p>A poll that asks again as soon as it is answered (docs/06 §41): the window hidden, Jet
+Browser starts the scripts' requests one a second.</p>
+<!-- (paced: at most 4 a second -- the simulator's clock runs fast, kapi_get_ticks) -->
+<script>
+var n = 0, done = false, t0 = 0;
+function poll() {
+	if (done) return;
+	fetch('net-hidden.html?n=' + n).then(function (r) { return r.text(); }).then(function () {
+		n++;
+		poll();
+	}, function () { n++; poll(); });
+}
+/* (started a moment after the load: the window hidden by then) */
+setTimeout(function () {
+	t0 = Date.now();
+	poll();
+	setTimeout(function () {
+		done = true;
+		var rate = n / ((Date.now() - t0) / 1000);
+		console.log('hidden poll ' + (rate <= 4 ? 'paced' : 'not paced') + ' (' + n + ' requests, ' + rate.toFixed(1) + '/s)');
+	}, 5000);
+}, 1000);
+</script>
+</body></html>

@@ -68,10 +68,13 @@
 #include "content/fetchers.h"
 #include "content/urldb.h"
 #include "netsurf/ssl_certs.h"
+#include "netsurf/misc.h"		/* Onyx: the net:minute timer (guit->misc->schedule) */
+#include "desktop/gui_internal.h"
 
 #include "kapi.h"		/* Onyx TCP transport */
 #include "onyx_nstls.h"		/* C-callable TLS transport (https) */
 #include "onyx_ws.h"		/* Onyx: onyx_ws_shutdown (the app's end) */
+#include "onyx_chrome.h"	/* Onyx: onyx_chrome_view_state (the window hidden) */
 #include "netsurf/onyx_perf.h"	/* Onyx: NS_PERF timings (net:connect, net:done) */
 
 void onyx_cache_fetched_as(nsurl *url);	/* Onyx: onyx_cache.c (the disk cache's key) */
@@ -129,6 +132,115 @@ struct fetch_onyx_context {
 };
 
 static struct fetch_onyx_context *ring = NULL;
+
+/* ---- Onyx (docs/06 §41): what the page does on the network, a minute at a time -----------
+ * With the perf log on (SD:/apps/jet.app/perf, NS_PERF), a line a minute while anything
+ * happened: "ONYX-PERF net:minute ..." -- the requests ended (the page's, the scripts'; failed,
+ * retried), the bytes in and out, the connections made and failed, the sockets open now (the
+ * downloads', kept alive, HTTP/2), the WebSockets and EventSources (their bytes, connections,
+ * throttled ones) and the hosts the most requests went to. The UI thread's (the threads add
+ * their connects with atomics). */
+#define ONYX_NT_HOSTS	12
+static struct {
+	unsigned req, script, fail, retry;
+	unsigned long long in, out;
+	unsigned t0;				/* kapi_get_ticks at the period's start */
+	struct { char host[64]; unsigned req; unsigned long long in; } host[ONYX_NT_HOSTS];
+} onyx_nt;
+static unsigned onyx_nt_conn, onyx_nt_conn_fail, onyx_nt_backoff;	/* (atomics) */
+
+static void onyx_nt_request(const char *host, bool script, bool failed, bool retried,
+		unsigned long long in, unsigned long long out)
+{
+	int i, low = 0;
+
+	if (!onyx_perf_on())
+		return;
+	onyx_nt.req++;
+	onyx_nt.script += script;
+	onyx_nt.fail += failed;
+	onyx_nt.retry += retried;
+	onyx_nt.in += in;
+	onyx_nt.out += out;
+	if (host == NULL)
+		return;
+	for (i = 0; i < ONYX_NT_HOSTS; i++) {
+		if (strcasecmp(onyx_nt.host[i].host, host) == 0)
+			break;
+		if (onyx_nt.host[i].req < onyx_nt.host[low].req)
+			low = i;
+	}
+	if (i == ONYX_NT_HOSTS) {	/* (a new host takes the least used place) */
+		i = low;
+		snprintf(onyx_nt.host[i].host, sizeof onyx_nt.host[i].host, "%s", host);
+		onyx_nt.host[i].req = 0;
+		onyx_nt.host[i].in = 0;
+	}
+	onyx_nt.host[i].req++;
+	onyx_nt.host[i].in += in;
+}
+
+static void onyx_nt_sockets(int *workers, int *pool, int *h2, char *list, size_t cap);
+
+/* the minute's line, when a minute went by (called from the poll and the timer below) */
+static void onyx_nt_tick(bool force)
+{
+	unsigned now = kapi_get_ticks(), secs, ws_open, sse_open, ws_opens, ws_thr;
+	unsigned long long ws_in, ws_out;
+	unsigned conn, conn_fail, backoff;
+	int workers = 0, pool = 0, h2 = 0, i, k, order[ONYX_NT_HOSTS], n = 0;
+	char hosts[512], socks[512], wss[512];
+	size_t hl = 0;
+
+	if (!onyx_perf_on())
+		return;
+	if (onyx_nt.t0 == 0)
+		onyx_nt.t0 = now;
+	if (!force && now - onyx_nt.t0 < 6000)
+		return;
+	secs = (now - onyx_nt.t0) / 100;
+	if (secs == 0)
+		secs = 1;
+	onyx_ws_tally(&ws_open, &sse_open, &ws_in, &ws_out, &ws_opens, &ws_thr, wss, sizeof wss);
+	conn = __atomic_exchange_n(&onyx_nt_conn, 0, __ATOMIC_RELAXED);
+	conn_fail = __atomic_exchange_n(&onyx_nt_conn_fail, 0, __ATOMIC_RELAXED);
+	backoff = __atomic_exchange_n(&onyx_nt_backoff, 0, __ATOMIC_RELAXED);
+	onyx_nt_sockets(&workers, &pool, &h2, socks, sizeof socks);
+	/* the busiest hosts first (at most 5) */
+	for (i = 0; i < ONYX_NT_HOSTS; i++)
+		if (onyx_nt.host[i].req > 0)
+			order[n++] = i;
+	for (i = 1; i < n; i++)
+		for (k = i; k > 0 && onyx_nt.host[order[k]].req > onyx_nt.host[order[k - 1]].req; k--) {
+			int t = order[k];
+			order[k] = order[k - 1];
+			order[k - 1] = t;
+		}
+	hosts[0] = '\0';
+	for (i = 0; i < n && i < 5 && hl < sizeof hosts - 100; i++)
+		hl += (size_t) snprintf(hosts + hl, sizeof hosts - hl, "%s%s %u req %llu KB",
+				i ? ", " : "", onyx_nt.host[order[i]].host,
+				onyx_nt.host[order[i]].req, onyx_nt.host[order[i]].in / 1024);
+	if (onyx_nt.req == 0 && conn == 0 && ws_in + ws_out == 0 && ws_opens == 0 &&
+	    ws_open + sse_open == 0 && workers == 0 && h2 == 0 && pool == 0) {
+		onyx_nt.t0 = now;	/* (a quiet minute: no line) */
+		return;
+	}
+	fprintf(stderr, "ONYX-PERF net:minute %u s: %u requests (%u by scripts, %u failed, %u retried), "
+			"%llu KB in (%llu KB/s), %llu KB out; %u connects (%u failed, %u held back); "
+			"sockets: %d downloads, %d kept alive, %d HTTP/2 [%s]; %u WebSockets + %u "
+			"EventSources open [%s] (%llu KB in, %llu KB out, %u connects, %u throttled); "
+			"requests by host: %s\n",
+			secs, onyx_nt.req, onyx_nt.script, onyx_nt.fail, onyx_nt.retry,
+			onyx_nt.in / 1024, onyx_nt.in / 1024 / secs, onyx_nt.out / 1024,
+			conn, conn_fail, backoff, workers, pool, h2, socks[0] ? socks : "-",
+			ws_open, sse_open, wss[0] ? wss : "-", ws_in / 1024, ws_out / 1024, ws_opens,
+			ws_thr, hl ? hosts : "-");
+	memset(&onyx_nt, 0, sizeof onyx_nt);
+	onyx_nt.t0 = now;
+}
+
+static void onyx_nt_timer(void *p);	/* (below) */
 
 /* Onyx: the bench's NS_NETDEBUG=1 -- each response's head and each HTTP/2 frame on stderr */
 static bool onyx_netdebug(void)
@@ -534,6 +646,8 @@ static bool fetch_onyx_initialise(lwc_string *scheme)
 		onyx_nstls_ca_bundle(path);
 		onyx_nstls_cancel_flag(&onyx_quit);	/* (the app's end: onyx_fetch_shutdown) */
 		onyx_state_load();
+		/* (Onyx, docs/06 §41: the kept connections' sweep, net:minute) */
+		guit->misc->schedule(10000, onyx_nt_timer, NULL);
 	}
 	return true;
 }
@@ -1590,12 +1704,80 @@ struct onyx_ctime {
 	uint64_t wait;		/* waiting for a free socket (the kernel's table full) */
 };
 
+/* Onyx (docs/06 §41): a host whose connects keep failing (down, refused, no DNS, the Wi-Fi
+ * gone) is not asked again at once -- a page retrying in a loop (a script's fetch on an
+ * error, a poll) made a connect, its retry 200 ms later and their DNS a turn, for ever, on
+ * the network the remote desktop and telnet share. From the third failure in a row, the
+ * connects to it within 1, 2, 4, 8 s (at most) of the last failure fail at once, without
+ * the network; a connect that works clears it. */
+#define ONYX_CF_HOSTS	8
+static struct { char host[64]; unsigned port, fails, last; } onyx_cf[ONYX_CF_HOSTS];
+static volatile int onyx_cf_lk;
+
+static bool onyx_cf_held_back(const char *host, unsigned port)
+{
+	bool held = false;
+	unsigned now = kapi_get_ticks();
+	int i;
+
+	kapi_lock(&onyx_cf_lk);
+	for (i = 0; i < ONYX_CF_HOSTS; i++)
+		if (onyx_cf[i].port == port && strcasecmp(onyx_cf[i].host, host) == 0) {
+			unsigned n = onyx_cf[i].fails;
+			if (n >= 3) {
+				unsigned ticks = n - 3 >= 3 ? 800 : 100u << (n - 3);
+				held = now - onyx_cf[i].last < ticks;
+			}
+			break;
+		}
+	kapi_unlock(&onyx_cf_lk);
+	return held;
+}
+
+static void onyx_cf_note(const char *host, unsigned port, bool ok)
+{
+	unsigned now = kapi_get_ticks();
+	int i, slot = 0;
+
+	kapi_lock(&onyx_cf_lk);
+	for (i = 0; i < ONYX_CF_HOSTS; i++) {
+		if (onyx_cf[i].port == port && strcasecmp(onyx_cf[i].host, host) == 0)
+			break;
+		if (now - onyx_cf[i].last > now - onyx_cf[slot].last)
+			slot = i;
+	}
+	if (i == ONYX_CF_HOSTS) {
+		if (ok) {
+			kapi_unlock(&onyx_cf_lk);
+			return;		/* (nothing to clear) */
+		}
+		i = slot;
+		snprintf(onyx_cf[i].host, sizeof onyx_cf[i].host, "%s", host);
+		onyx_cf[i].port = port;
+		onyx_cf[i].fails = 0;
+	}
+	if (ok)
+		onyx_cf[i].fails = 0;
+	else
+		onyx_cf[i].fails++;
+	onyx_cf[i].last = now;
+	kapi_unlock(&onyx_cf_lk);
+}
+
 static int onyx_connect(const char *host, unsigned port, struct onyx_ctime *ct)
 {
 	int sock = -1, tries;
 	unsigned waited = 0;
 	uint64_t t0 = onyx_perf_now(), t1;
 
+	if (onyx_cf_held_back(host, port)) {
+		__atomic_add_fetch(&onyx_nt_backoff, 1, __ATOMIC_RELAXED);
+		if (onyx_perf_on())
+			fprintf(stderr, "ONYX-PERF net:tcp %s:%u held back (its connects keep "
+					"failing)\n", host, port);
+		return -1;
+	}
+	__atomic_add_fetch(&onyx_nt_conn, 1, __ATOMIC_RELAXED);
 	for (tries = 0; tries < 2 && !onyx_quit; tries++) {
 		/* (a connect takes 100 ms and more: the others wait asleep -- kapi_lock spun,
 		 * seven workers burning the cores the page needs) */
@@ -1639,6 +1821,10 @@ static int onyx_connect(const char *host, unsigned port, struct onyx_ctime *ct)
 	}
 	if (ct != NULL)
 		ct->wait = (uint64_t) waited * 1000;
+	if (sock != -2 && !onyx_quit)	/* (Onyx: no socket free is not the host's fault) */
+		onyx_cf_note(host, port, sock >= 0);
+	if (sock < 0)
+		__atomic_add_fetch(&onyx_nt_conn_fail, 1, __ATOMIC_RELAXED);
 	if (onyx_perf_on() && (sock < 0 || waited)) {
 		fprintf(stderr, "ONYX-PERF net:tcp %s:%u %s %lu us%s\n", host, port,
 				sock >= 0 ? "ok" : sock == -2 ? "no socket free" : sock == -3 ? "no DNS" : "failed",
@@ -2828,6 +3014,17 @@ static int onyx_job_start(struct fetch_onyx_context *c)
 	unsigned port = 0;
 	bool https = strncasecmp(nsurl_access(c->url), "https:", 6) == 0;
 
+	/* Onyx (docs/06 §41): the window hidden (minimised, covered: its timers already slowed
+	 * to a second), the scripts' requests start one a second -- a page's polls, beacons and
+	 * prefetches do not keep the network busy in the background */
+	if (c->script && c->retries == 0 && onyx_chrome_view_state() == 2) {
+		static unsigned last_bg;
+		unsigned now = kapi_get_ticks();
+		if (now - last_bg < 100)
+			return 0;		/* (a later poll) */
+		last_bg = now;
+	}
+
 	/* Onyx: HTTP/2 -- the origin's connection, if it has one (onyx_h2_lk held while it
 	 * is used: it stays in the table) */
 	if (https && onyx_h2_enabled() &&
@@ -2919,6 +3116,49 @@ static int onyx_job_start(struct fetch_onyx_context *c)
 	c->job = j;
 	onyx_workers++;
 	return 1;
+}
+
+/* Onyx (docs/06 §41): the sockets the downloads hold now, for net:minute */
+static void onyx_nt_sockets(int *workers, int *pool, int *h2, char *list, size_t cap)
+{
+	size_t n = 0;
+	int i;
+
+	list[0] = '\0';
+	*workers = onyx_workers;
+	kapi_lock(&onyx_pool_lk);
+	*pool = onyx_pool_n;
+	for (i = 0; i < onyx_pool_n && n + 80 < cap; i++)
+		n += (size_t) snprintf(list + n, cap - n, "%s%.60s (kept)", n ? ", " : "",
+				onyx_pool[i].host);
+	kapi_unlock(&onyx_pool_lk);
+	*h2 = 0;
+	kapi_lock(&onyx_h2_lk);
+	for (i = 0; i < ONYX_H2_MAX; i++)
+		if (onyx_h2s[i] != NULL && !onyx_h2s[i]->dead) {
+			(*h2)++;
+			if (n + 80 < cap)
+				n += (size_t) snprintf(list + n, cap - n, "%s%.60s (h2, %d streams)",
+						n ? ", " : "", onyx_h2s[i]->host,
+						onyx_h2s[i]->nstreams);
+		}
+	kapi_unlock(&onyx_h2_lk);
+}
+
+/* Onyx (docs/06 §41): every 10 s -- the connections kept alive and idle for 10 s closed (they
+ * were closed only when the next request came: a page gone quiet kept its sockets, of the
+ * kernel's 16 for every app, the remote desktop's and telnet's too), and, the perf log on, a
+ * minute gone by printed (net:minute) even when nothing is fetched */
+static void onyx_nt_timer(void *p)
+{
+	struct onyx_conn none;
+
+	(void) p;
+	if (onyx_quit)
+		return;
+	(void) pool_take("", 0, false, false, &none);	/* (no such host: the stale ones closed) */
+	onyx_nt_tick(false);
+	guit->misc->schedule(10000, onyx_nt_timer, NULL);
 }
 
 /* ---- Onyx: <link rel=preconnect> / <link rel=dns-prefetch> ------------------------------
@@ -3129,6 +3369,25 @@ static void onyx_data(struct fetch_onyx_context *c, const uint8_t *b, size_t n, 
 	}
 }
 
+/* Onyx (docs/06 §41): a request ended, in net:minute's tally */
+static void onyx_nt_done(struct fetch_onyx_context *c, struct onyx_job *j, bool failed)
+{
+	lwc_string *h;
+	unsigned long long out;
+
+	if (!onyx_perf_on())
+		return;
+	h = nsurl_get_component(c->url, NSURL_HOST);
+	out = failed ? 0 : strlen(nsurl_access(c->url)) +	/* (~ the request) */
+			(c->hdrs != NULL ? strlen(c->hdrs) : 0) +
+			(c->body != NULL ? strlen(c->body) : 0) + 200;
+	onyx_nt_request(h != NULL ? lwc_string_data(h) : NULL, c->script, failed, c->retries > 0,
+			j->total, out);
+	if (h != NULL)
+		lwc_string_unref(h);
+	onyx_nt_tick(false);
+}
+
 /* The UI thread, every poll: a threaded fetch's progress to the core. True: finished. */
 static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 {
@@ -3170,6 +3429,7 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 		free(head);
 	}
 	if (c->redirected || c->aborted) {
+		onyx_nt_done(c, j, false);
 		if (c->not_modified && onyx_perf_on())	/* (Onyx: the perf log) */
 			fprintf(stderr, "ONYX-PERF net:done %s %lu us ttfb %lu us %s%s 0 bytes "
 					"revalidated (304)\n", nsurl_access(c->url),
@@ -3196,6 +3456,7 @@ static bool fetch_onyx_step_threaded(struct fetch_onyx_context *c)
 		onyx_job_drop(c);
 		return false;
 	}
+	onyx_nt_done(c, j, !c->head_done);
 	if (onyx_perf_on()) {
 		unsigned long us = (unsigned long) (onyx_perf_now() - j->t0);
 		fprintf(stderr, "ONYX-PERF net:done %s %lu us ttfb %lu us %s%s %lu bytes%s\n",
@@ -3282,6 +3543,7 @@ static void onyx_fetch_shutdown(void)
 
 	if (onyx_quit)
 		return;
+	onyx_nt_tick(true);	/* (Onyx: the last net:minute, docs/06 §41) */
 	onyx_quit = 1;
 	for (c = ring; c != NULL; c = c->r_next) {
 		if (c->job != NULL) {
