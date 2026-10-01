@@ -45,6 +45,7 @@
 #include "html/form_internal.h"
 #include "html/dom_event.h"
 #include "html/onyx_restyle.h"	/* Onyx */
+#include "css/select.h"
 
 
 /**
@@ -607,6 +608,7 @@ dom_default_action_DOMNodeInserted_cb(struct dom_event *evt, void *pw)
 
 	onyx_restyle_child_changed(htmlc, (dom_node *) node, true);	/* (Onyx) */
 	html_script_mutation(htmlc, (dom_node *) node);
+	nscss_dom_changed();	/* (Onyx: :nth-child()'s counts) */
 
 	exc = dom_node_get_node_type(node, &type);
 	if ((exc == DOM_NO_ERR) && (type == DOM_ELEMENT_NODE)) {
@@ -778,6 +780,7 @@ dom_default_action_DOMNodeRemoved_cb(struct dom_event *evt, void *pw)
 		return;
 	onyx_restyle_child_changed(htmlc, (dom_node *) node, false);
 	html_script_mutation(htmlc, (dom_node *) node);
+	nscss_dom_changed();	/* (Onyx: :nth-child()'s counts) */
 	if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
 	    type == DOM_ELEMENT_NODE) {
 		html_css_node_removed(htmlc, (dom_node *) node);
@@ -799,6 +802,7 @@ dom_default_action_DOMAttrModified_cb(struct dom_event *evt, void *pw)
 		return;
 	onyx_restyle_attr_changed(htmlc, (dom_node *) node);
 	html_script_mutation(htmlc, (dom_node *) node);
+	nscss_dom_changed();	/* (Onyx: :nth-child()'s counts) */
 	dom_node_unref(node);
 }
 
@@ -813,6 +817,7 @@ dom_default_action_DOMCharacterDataModified_cb(struct dom_event *evt, void *pw)
 		return;
 	onyx_restyle_text_changed(htmlc, (dom_node *) node);
 	html_script_mutation(htmlc, (dom_node *) node);
+	nscss_dom_changed();	/* (Onyx: :nth-child()'s counts) */
 	dom_node_unref(node);
 }
 

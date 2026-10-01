@@ -27,12 +27,15 @@
  *
  *  - an element's attribute changed, a node inserted: it and its whole subtree (its
  *    classes and attributes match its descendants' descendant and child combinators);
- *  - a child of P inserted, removed, its attributes, its children or text changed:
- *    P's "children" mark -- the children whose selection looked at their siblings
- *    (NSCSS_STRUCT_SELF: sibling combinators, :nth-child, :first-child..., :empty) are
- *    selected again, and every descendant whose selection looked at the structure
- *    around another node (NSCSS_STRUCT_ANC: an ancestor's :nth-child...) when any
- *    ancestor has such a mark (the latest mark along its ancestors, "chain").
+ *  - a child of P inserted, removed, its children or text changed: P's "children" mark
+ *    -- the children whose selection looked at their position (NSCSS_STRUCT_SELF:
+ *    :nth-child, :first-child..., :empty) or their previous siblings (NSCSS_STRUCT_SIB:
+ *    sibling combinators) are selected again; a child's attributes changed: P's
+ *    "children's attributes" mark -- those of NSCSS_STRUCT_SIB only (a class toggled in
+ *    a list striped by :nth-child restyles one row, not the list); and every descendant
+ *    whose selection looked at the structure around another node (NSCSS_STRUCT_ANC: an
+ *    ancestor's :nth-child...) when any ancestor has such a mark (the latest mark along
+ *    its ancestors, "chain").
  *
  * An element selected again for a mark gives its subtree the mark ("subtree": its
  * descendants' older selections are stale). Kept selections are also checked against
@@ -49,7 +52,10 @@
  * a kept selection of an epoch since stays when no selector of those sheets matches the
  * element (css_select_style_onyx_probe on a context of those sheets only; a probe that
  * looks at :hover on another node or at the structure counts as a match); the sheets
- * taken out are kept alive meanwhile. Never kept: the elements in a shadow tree, shadow hosts
+ * taken out are kept alive meanwhile. A link's visited state is kept with it and asked
+ * again (the history changes without the DOM; a :visited asked of another link: not
+ * kept); a state only the scripts know (:popover-open, :modal: qjs n_set_state) marks
+ * the element as an attribute change does. Never kept: the elements in a shadow tree, shadow hosts
  * and their light children (the scoping has more inputs). :has() never matches in
  * libcss, and the other state pseudo-classes answer no.
  *
@@ -87,14 +93,16 @@ struct osr_memo {
 	unsigned int epoch;
 	unsigned int self_mark;	/* a change of its own: it and its subtree */
 	unsigned int kids_mark;	/* its children's list or one of them changed */
+	unsigned int kids_attr_mark;	/* a child's attributes changed */
 	unsigned int subtree;	/* selected again for a mark: older descendants stale */
-	unsigned int chain;	/* the latest kids_mark along its ancestors */
+	unsigned int chain;	/* the latest kids mark along its ancestors */
 	unsigned int structural;	/* NSCSS_STRUCT_* */
 	/* the nodes its selection tried :hover on (itself, ancestors) and whether each
 	 * was hovered: kept while they are the same */
 	dom_node *tested[OSR_TESTED];
 	uint8_t ntested, hovered;
 	bool none;		/* display: none in the box tree of its serial */
+	uint8_t visited;	/* nscss_visited_seen: a link's visited state */
 	css_select_results *res;	/* the cascade's (NULL: not kept) */
 	css_computed_style *parent, *root;
 	const void *pvars;	/* its parent's custom properties (libcss, a reference) */
@@ -302,15 +310,24 @@ static inline unsigned int osr_pending(const html_content *c)
 	return c->restyle_serial + 1;
 }
 
-static void osr_mark_kids(html_content *c, dom_node *p)
+static void osr_mark_kids(html_content *c, dom_node *p, bool attr)
 {
 	struct osr_memo *m;
 
 	if (p == NULL)
 		return;
 	m = osr_make(p);
-	if (m != NULL)
+	if (m == NULL)
+		return;
+	if (attr)
+		m->kids_attr_mark = osr_pending(c);
+	else
 		m->kids_mark = osr_pending(c);
+}
+
+static inline unsigned int osr_max(unsigned int a, unsigned int b)
+{
+	return a > b ? a : b;
 }
 
 /* exported function documented in html/onyx_restyle.h */
@@ -618,7 +635,7 @@ css_select_results *onyx_restyle_lookup(html_content *c, dom_node *n,
 	p = osr_parent(n);
 	pm = osr_get(p);
 	if (pm != NULL)
-		chain = pm->chain > pm->kids_mark ? pm->chain : pm->kids_mark;
+		chain = osr_max(pm->chain, osr_max(pm->kids_mark, pm->kids_attr_mark));
 	m->chain = chain;
 
 	forced = m->self_mark > m->serial || (pm != NULL && pm->subtree > m->serial);
@@ -628,8 +645,13 @@ css_select_results *onyx_restyle_lookup(html_content *c, dom_node *n,
 			m->parent == parent_style && m->root == root_style &&
 			!((m->structural & NSCSS_STRUCT_SELF) && pm != NULL &&
 			  pm->kids_mark > m->serial) &&
+			!((m->structural & NSCSS_STRUCT_SIB) && pm != NULL &&
+			  osr_max(pm->kids_mark, pm->kids_attr_mark) > m->serial) &&
 			!((m->structural & NSCSS_STRUCT_ANC) && chain > m->serial) &&
 			!osr_shadowish(c, n, p);
+	if (valid && m->visited != 0 && (m->visited == 3 ||
+	    nscss_node_visited(n, c->base_url) != (m->visited == 2)))
+		valid = false;	/* (the link visited since) */
 	if (valid && m->ntested > 0) {
 		for (i = 0; i < m->ntested && valid; i++) {
 			if (osr_hovered(c, m->tested[i]) != ((m->hovered >> i) & 1))
@@ -685,7 +707,7 @@ css_select_results *onyx_restyle_lookup(html_content *c, dom_node *n,
 void onyx_restyle_store(html_content *c, dom_node *n, const css_select_results *res,
 		const css_computed_style *parent_style,
 		const css_computed_style *root_style,
-		bool cacheable, unsigned int structural)
+		bool cacheable, unsigned int structural, int visited)
 {
 	struct osr_memo *m = osr_make(n);
 	int i;
@@ -696,6 +718,7 @@ void onyx_restyle_store(html_content *c, dom_node *n, const css_select_results *
 	m->serial = c->restyle_serial;
 	m->epoch = c->restyle_epoch;
 	m->structural = structural;
+	m->visited = visited;
 	m->ntested = m->hovered = 0;
 	m->none = res != NULL && res->styles[CSS_PSEUDO_ELEMENT_NONE] != NULL &&
 			css_computed_display(res->styles[CSS_PSEUDO_ELEMENT_NONE], false) ==
@@ -744,7 +767,7 @@ void onyx_restyle_attr_changed(html_content *c, dom_node *el)
 		m->self_mark = osr_pending(c);
 	p = osr_parent(el);
 	if (p != NULL) {
-		osr_mark_kids(c, p);	/* (its siblings' sibling combinators) */
+		osr_mark_kids(c, p, true);	/* (its siblings' sibling combinators) */
 		dom_node_unref(p);
 	}
 }
@@ -776,10 +799,10 @@ void onyx_restyle_child_changed(html_content *c, dom_node *child, bool inserted)
 		}
 		return;
 	}
-	osr_mark_kids(c, p);		/* its siblings: :nth-child, :last-child... */
+	osr_mark_kids(c, p, false);	/* its siblings: :nth-child, :last-child... */
 	pp = osr_parent(p);		/* its parent: :empty, and :empty + X */
 	if (pp != NULL) {
-		osr_mark_kids(c, pp);
+		osr_mark_kids(c, pp, false);
 		dom_node_unref(pp);
 	}
 	dom_node_unref(p);
@@ -798,7 +821,7 @@ void onyx_restyle_text_changed(html_content *c, dom_node *text)
 		return;
 	pp = osr_parent(p);	/* (its :empty: its parent's children mark) */
 	if (pp != NULL) {
-		osr_mark_kids(c, pp);
+		osr_mark_kids(c, pp, false);
 		dom_node_unref(pp);
 	}
 	dom_node_unref(p);

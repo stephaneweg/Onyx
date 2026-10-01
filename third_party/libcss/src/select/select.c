@@ -991,7 +991,10 @@ printf("      \t%s\tno share: inline style\n");
 	if (state->node_data->flags & CSS_NODE_FLAGS_ONYX_NO_SHARE)
 		return CSS_OK;		/* Onyx: shadow DOM */
 
-	while (true) {
+	/* Onyx: a few candidates at most -- the search walked back over every previous
+	 * sibling of the same name that could not share (a list of 2500 rows striped by
+	 * :nth-child: 2500 x 2500 steps a box tree) */
+	for (int tries = 0; tries < 8; tries++) {
 		void *share_candidate_node;
 
 		/* Get previous sibling with same element name */

@@ -49,13 +49,14 @@ css_select_results *onyx_restyle_lookup(struct html_content *c, dom_node *n,
  * An element's new selection (the cascade's, before transitions and animations) kept.
  * \a cacheable false: never reused (a shadow tree's...); kept with the :hover state of
  * the nodes it tried :hover on; \a structural: NSCSS_STRUCT_* bits (css/select.h), how
- * it depends on the tree's structure.
+ * it depends on the tree's structure; \a visited: nscss_visited_seen (a link's visited
+ * state, kept with it).
  */
 void onyx_restyle_store(struct html_content *c, dom_node *n,
 		const css_select_results *res,
 		const css_computed_style *parent_style,
 		const css_computed_style *root_style,
-		bool cacheable, unsigned int structural);
+		bool cacheable, unsigned int structural, int visited);
 
 /** A selection starts (box_get_style): onyx_restyle_hover_note, the selection's
  * nscss_hover_note, records the nodes it tries :hover on (and tells onyx_hover.c) */

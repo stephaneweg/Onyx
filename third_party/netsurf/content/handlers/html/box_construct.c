@@ -382,6 +382,7 @@ box_get_style(html_content *c,
 	nscss_hover_node = c->hover_node;
 	nscss_hover_used = false;
 	nscss_struct_used = 0;	/* (Onyx: onyx_restyle.c) */
+	nscss_visited_seen = 0;
 	nscss_hover_note = memo ? onyx_restyle_hover_note : onyx_hover_note;
 			/* (the nodes :hover is tried on) */
 	onyx_restyle_select_begin();
@@ -401,7 +402,7 @@ box_get_style(html_content *c,
 	/* Onyx: the selection kept for the next box tree (not one that tried :hover) */
 	if (memo && styles != NULL)
 		onyx_restyle_store(c, n, styles, parent_style, root_style,
-				true, nscss_struct_used);
+				true, nscss_struct_used, nscss_visited_seen);
 
 	/* Onyx: transitions and animations (their styles in place of the cascade's) */
 	if (styles != NULL && !box_style_raw)

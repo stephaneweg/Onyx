@@ -69,6 +69,7 @@
 #include "html/form_internal.h"
 #include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
 #include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
+#include "html/onyx_restyle.h"	/* Onyx: the kept selections (a state set) */
 #include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
 #include "html/onyx_shadow.h"	/* Onyx: shadow DOM (adopted sheets) */
 #include "html/onyx_anim.h"	/* Onyx: animations, requestAnimationFrame */
@@ -2760,6 +2761,11 @@ static JSValue n_set_state(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	if (argc < 3 || JS_ToUint32(ctx, &state, argv[1]) != 0)
 		return JS_UNDEFINED;
 	nscss_node_state_set(n, state, JS_ToBool(ctx, argv[2]));
+	if (t->htmlc != NULL) {
+		/* (Onyx: its kept style selection made again, as for an attribute) */
+		onyx_restyle_attr_changed(t->htmlc, n);
+		html_script_mutation(t->htmlc, n);
+	}
 	t->dirty = true;
 	return JS_UNDEFINED;
 }
