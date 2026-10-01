@@ -39,6 +39,9 @@
 // SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows), any
 // service looked up is pid 7; SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
+// SIM_GRAB=FILE.elsm: what kapi_screen_grab gives (the screen, e.g. screenshots/desktop.png made an .elsm:
+// Screenshot's captures); a full-screen app (kapi_fullscreen_begin) is dumped as its whole buffer. SIM_WINS'
+// windows may end with ",title" (kapi_win_list's).
 // SIM_RAM: the folder that stands for the RAM: volume (the kernel's RAM file system: until the Pi
 // restarts) -- the same folder for several runs is several launches within one boot; unset, each
 // run has its own (a fresh temporary folder, deleted at its end: a boot of its own).
@@ -333,8 +336,49 @@ static int get_chrome (struct kapi_chrome *out)
 }
 
 static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets)
+static unsigned *g_fs; static int g_fsW, g_fsH;			// (a full-screen app's buffer, while it is)
+static unsigned *fs_begin (int *w, int *h)
+{
+	screen_size (&g_fsW, &g_fsH);
+	if (!g_fs) g_fs = (unsigned *) calloc ((size_t) g_fsW * g_fsH, 4);
+	if (w) *w = g_fsW; if (h) *h = g_fsH;
+	return g_fs;
+}
+static void fs_present (void) {}
+static void fs_end (void) { g_fs = 0; }
+static int screen_grab (unsigned *dst, int w, int h)
+{
+	int sw, sh; screen_size (&sw, &sh);
+	if (!dst || w != sw || h != sh) return 0;
+	for (long i = 0; i < (long) w * h; i++) dst[i] = 0x3A4A5E;
+	const char *e = getenv ("SIM_GRAB");
+	FILE *f = e ? fopen (e, "rb") : 0;
+	if (!f) return 1;
+	int hdr[5] = { 0 };
+	if (fread (hdr, 4, 5, f) == 5 && hdr[1] > 0 && hdr[2] > 0)
+	{
+		std::vector<unsigned> px ((size_t) hdr[1] * hdr[2]);
+		if (fread (px.data (), 4, px.size (), f) == px.size ())
+			for (int y = 0; y < h && y < hdr[2]; y++)
+				for (int x = 0; x < w && x < hdr[1]; x++) dst[(long) y * w + x] = px[(size_t) y * hdr[1] + x] & 0x00FFFFFFu;
+	}
+	fclose (f);
+	return 1;
+}
 static void dump (const char *file)
 {
+	if (g_fs)							// a full-screen app: the screen it shows
+	{
+		FILE *f = fopen (file, "wb");
+		int hdr[5] = { 0x4D534C45, g_fsW, g_fsH, 0, 0 };
+		fwrite (hdr, 4, 5, f);
+		std::vector<unsigned> px ((size_t) g_fsW * g_fsH);
+		for (size_t i = 0; i < px.size (); i++) px[i] = g_fs[i] & 0x00FFFFFFu;
+		fwrite (px.data (), 4, px.size (), f);
+		fclose (f);
+		fprintf (stderr, "sim: dumped the full screen %dx%d -> %s\n", g_fsW, g_fsH, file);
+		return;
+	}
 	if (g_canvas == 0 && g_surf)					// an applet: its surface
 	{
 		FILE *f = fopen (file, "wb");
@@ -508,7 +552,14 @@ static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1,
 static void *h_sbrk (long n) { static char *arena = (char *) malloc (512u << 20), *top = arena; char *p = top; top += n; return p; }
 static int pad_state (int, struct kapi_pad *) { return 0; }
 static unsigned get_mods (void) { return g_mods; }
-static int launch (const char *n) { fprintf (stderr, "sim: launch %s\n", n); return 1; }
+static int launch (const char *n)
+{
+	fprintf (stderr, "sim: launch %s\n", n);
+	// (no services without SIM_IPC: clipd cannot come -- clipboard.h falls back at once to the
+	// kernel's clipboard instead of waiting a second for it)
+	if (!getenv ("SIM_IPC") && n && !strcmp (n, "clipd")) return 0;
+	return 1;
+}
 static int raise_app (const char *n) { fprintf (stderr, "sim: raise_app %s\n", n); return 0; }
 static int exec (const char *p, const char *a) { fprintf (stderr, "sim: exec %s %s\n", p, a); return 1; }
 static int exec_as (const char *p, const char *a, const char *n) { fprintf (stderr, "sim: exec_as %s %s (%s)\n", p, a, n); return 1; }
@@ -787,6 +838,8 @@ static int win_list (struct kapi_win_info *o, int max)
 		o[n].ow = w; o[n].oh = h; o[n].il = 4; o[n].it = 28; o[n].alpha = 255;
 		o[n].state = (k ? KAPI_WIN_KEYS : 0) | (unsigned) ((d + 1) & 0xFF) << 8;
 		n++;
+		for (int commas = 0; *p && *p != ';' && commas < 6; p++) if (*p == ',') commas++;	// (",title": its title)
+		if (p[-1] == ',' ) { int t = 0; while (*p && *p != ';' && t < 47) o[n - 1].title[t++] = *p++; o[n - 1].title[t] = 0; }
 		while (*p && *p != ';') p++;
 		if (*p == ';') p++;
 	}
@@ -867,8 +920,46 @@ static int get_args (char *b, unsigned n)
 	snprintf (b, n, "%s", a ? a : "");
 	return (int) strlen (b);
 }
-static int clipboard_set (int, const void *, unsigned) { return 1; }
-static int clipboard_get (int *t, void *, unsigned, unsigned *serial) { if (t) *t = 0; if (serial) *serial = 0; return 0; }
+// The clipboard: one typed blob, 64 KB at most, as the kernel's (kapi.cpp). SIM_CLIP: what it
+// holds at the start ("text", or "files:PATH" -- CLIP_FILES); SIM_CLIPFILE: each set written
+// there (its bytes exactly; its type on stdout: "SIM-CLIPBOARD type=T len=N").
+static std::string g_clip;
+static int g_clipType = -1;		// (-1: SIM_CLIP not read yet)
+static unsigned g_clipSerial;
+static void clip_init (void)
+{
+	if (g_clipType >= 0) return;
+	g_clipType = 0;
+	const char *c = getenv ("SIM_CLIP");
+	if (!c || !*c) return;
+	if (!strncmp (c, "files:", 6)) { g_clip = c + 6; g_clipType = 2; }
+	else { g_clip = c; g_clipType = 1; }
+}
+static int clipboard_set (int type, const void *d, unsigned n)
+{
+	clip_init ();
+	if (n > 64 * 1024) n = 64 * 1024;
+	if (!d) n = 0;
+	g_clip.assign ((const char *) (d ? d : ""), n);
+	g_clipType = n ? type : 0;
+	g_clipSerial++;
+	printf ("SIM-CLIPBOARD type=%d len=%u\n", g_clipType, n); fflush (stdout);
+	if (getenv ("SIM_CLIPFILE"))
+	{
+		FILE *f = fopen (getenv ("SIM_CLIPFILE"), "wb");
+		if (f) { fwrite (g_clip.data (), 1, g_clip.size (), f); fclose (f); }
+	}
+	return (int) n;
+}
+static int clipboard_get (int *t, void *b, unsigned cap, unsigned *serial)
+{
+	clip_init ();
+	if (t) *t = g_clipType;
+	if (serial) *serial = g_clipSerial;
+	unsigned n = (unsigned) g_clip.size () < cap ? (unsigned) g_clip.size () : cap;
+	if (b && n) memcpy (b, g_clip.data (), n);
+	return (int) g_clip.size ();
+}
 static void set_click (gui_handler h) { g_click = h; }
 static int key_held (int) { return 0; }
 // SIM_CURSOR="x,y": the pointer, relative to the client area (the eyes look at it); none: away
@@ -1048,6 +1139,7 @@ static void setup (void)
 	T->create_window = create; T->create_window_ex = create_ex; T->resize_window = resize; T->move_window = move_window;
 	T->set_pointer_handler = set_ptr; T->set_key_handler = set_key; T->screen_size = screen_size;
 	T->font_width = font_w; T->font_height = font_h; T->present = h_present; T->pump_events = pump;
+	T->screen_grab = screen_grab; T->fullscreen_begin = fs_begin; T->present_fb = fs_present; T->fullscreen_end = fs_end;
 	T->msleep = h_msleep; T->get_ticks = h_get_ticks; T->should_exit = h_should_exit; T->yield = yield;
 	T->open = f_open; T->read = f_read; T->write = f_write; T->fsize = f_fsize; T->close = f_close; T->save_file = save_file;
 	T->opendir = f_opendir; T->readdir = f_readdir; T->closedir = f_closedir; T->list_apps = list_apps;

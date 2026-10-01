@@ -197,7 +197,7 @@ Onyx connects over the Pi's on-board Wi-Fi. Two files must be on the SD card:
   }
   ```
 
-The link comes up a few seconds after boot (watch the log, or run `net`). It is fully
+The link comes up a few seconds after boot (watch the log, or run `net`). **2.4 GHz or 5 GHz**: both work; `wifiscan` shows each network's channel (1–13: 2.4 GHz, 36 and up: 5 GHz). The `country=` line must be set (no `#`): without it the driver does not join, and it decides the channels allowed (12 and 13 in Europe). A router with one name for both bands: the strongest is taken (often 5 GHz) — `freq_list=2412 2417 2422 2427 2432 2437 2442 2447 2452 2457 2462 2467 2472` in the `network={…}` block keeps the Pi on 2.4 GHz (or `bssid=` the 2.4 GHz radio's address). A router in WPA/WPA2 mixed mode (TKIP for the group key) works since 2026-10-01 (before: connected, but no address — the link stayed down); a WPA3-only network does not (set the router to WPA2/WPA3 mixed). It is fully
 optional: if the firmware/credentials are missing, the desktop still works — only the
 networked apps stay offline.
 
@@ -1103,6 +1103,9 @@ folder would leave it unmapped. **Adding a layout never needs a kernel rebuild**
 `tools/keymaps/genkeymaps.py`) and use `keyb <NAME>` — it also shows up in the Keyboard & Mouse
 applet.
 
+**Print Screen** is the system's: it starts a capture with **Screenshot** (its last mode and delay);
+**Alt+Print Screen** takes the window in front at once (§12, *Screenshot*).
+
 Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
 text field and editor. The **euro sign** is **AltGr+E** (`FR`, `BE`, `DE`, `ES`, `IT`), AltGr+4
 (`UK`), AltGr+5 (`US`); it is a key of its own (Windows' code 0x80, not Latin-1): the Spreadsheet
@@ -1329,8 +1332,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
 | ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
-| ![archiver](../screenshots/archiver.png) | | |
-| *archiver — archive manager* | | |
+| ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | |
+| *archiver — archive manager* | *screenshot — screen capture* | |
 
 ### Productivity and tools
 
@@ -1352,7 +1355,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
 | **paint** (Paint) | Drawing, in the way of Windows 11's Paint, on **transparent layers**: pencil, brush, eraser, fill, colour picker, magnifier, fifteen shapes (outline and fill), a rectangular selection moved, rotated, flipped, cut and pasted, colour 1 / colour 2, a palette and your own colours, a pixel grid, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX); saves its layers as OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
-| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. |
+| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
@@ -1638,6 +1641,67 @@ line (`paint <file>`: the Image Viewer's File ▸ Edit in Paint), dropped on the
 double-clicked (a `.ora`: `fileassoc.ini`) opens; New, Open and a drop first ask to save unsaved
 changes. **Closed with unsaved changes**, the picture is kept in `SD:/apps/paint.app/recovered.ora`
 and offered back the next time Paint starts. **Undo** keeps the last 60 changes (a stroke is one).
+
+### Screenshot, the screen capture tool (`screenshot`)
+
+![Screenshot](../screenshots/screenshot.png)
+*Screenshot's window: New, the mode, the delay.*
+
+Screenshot takes a picture of the screen, laid out as Windows' Snipping Tool: **one toolbar**, the
+capture shown below it. Start it from the dock or the app list (*Graphics*), or press **Print Screen**
+anywhere.
+
+**The toolbar**, from the left:
+
+- **New** (^N): starts a capture, in the mode and after the delay chosen.
+- **The mode** (its arrow: a menu, the one chosen ticked, kept for the next time): **Rectangle** (the
+  default), **Window**, **Full screen**.
+- **The delay**: none, **3**, **5** or **10 seconds** (shown on the button: *3 s*). A ring counts the
+  seconds down in the window — time to open a menu in another app; **Esc** stops it.
+- Once a capture is made: **Copy** (^C) and **Save As...** (^S), then, at the right, the drawing tools
+  — **Pen** (P) and **Marker** (M), their arrow opening the colours (8 for the pen, 6 for the marker)
+  and the four sizes; **Eraser** (E): a click (or a drag) takes away a whole stroke, the one under it
+  lit first; **Crop** (R): drag the part to keep; **Undo** (^Z), **Redo** (^Y).
+
+| | |
+|:---:|:---:|
+| ![Choosing a rectangle](../screenshots/screenshot-select.png) | ![Choosing a window](../screenshots/screenshot-window.png) |
+| *A rectangle being dragged: its size, the magnifier* | *A window chosen: its name and size* |
+
+**A capture.** The window hides itself and the screen is **frozen** and darkened. The bar at the top
+switches the mode (the screen icon takes the whole screen at once) or cancels (×).
+
+- **Rectangle**: drag it — it is bright, its size under it, a **magnifier** shows the pixels around
+  the pointer and their coordinates; the capture is made when the button is released. **Enter**: the
+  whole screen.
+- **Window**: the window under the pointer is lit, with its name and size; a **click** takes it (its
+  frame too), **Tab** goes to the next one, **Enter** takes the one lit.
+- **Full screen**: taken at once.
+- **Esc** (or a right click) cancels.
+
+| | |
+|:---:|:---:|
+| ![Drawn on](../screenshots/screenshot-edit.png) | ![The pen's palette](../screenshots/screenshot-pen.png) |
+| *The capture drawn on: the pen, the marker* | *The pen's colours and sizes* |
+
+**After the capture** the window comes back, as large as the picture wants (the picture is never
+enlarged: its zoom is at the right of the status bar). The picture is **copied to the clipboard at
+once** (an *image* item of the shared clipboard: Ctrl+V pastes it in Paint, Writer...) and a
+notification says so. Draw on it: hold **Shift** for a straight line; the strokes are smoothed. Copy
+again to copy it with the drawing. It is **saved only with Save As**: in `SD:/Pictures/Screenshots` at
+first (then the folder used last), named `Screenshot <date> <time>.png`; the extension chooses the
+format — **.png**, **.jpg** (quality 92) or **.bmp**. The status bar: what was taken (*Rectangle*,
+*Window 'terminal'*, *Full screen*), its size, whether it is copied / saved (the dot: green, or amber
+when there is something not kept).
+
+**Print Screen**, from any app: a capture with the last mode and delay (Screenshot is started if it is
+not running). **Alt+Print Screen**: the window in front, at once.
+
+The menus: **File** (New Capture, New Rectangle / Window / Full Screen, Save As..., Copy), **Edit**
+(Undo, Redo, Clear the Drawing), **Tools** (Pen, Marker, Eraser, Crop).
+
+**Files:** writes `SD:/etc/screenshot.ini` (the mode, the delay, the pen's and the marker's colour and
+size, the last folder) and the pictures saved with Save As.
 
 ### Cardfile, a small database (`cardfile`)
 

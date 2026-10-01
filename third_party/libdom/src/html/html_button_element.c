@@ -11,6 +11,7 @@
 #include <dom/html/html_button_element.h>
 
 #include "html/html_document.h"
+#include "html/html_form_element.h"
 #include "html/html_button_element.h"
 
 #include "core/node.h"
@@ -243,7 +244,9 @@ dom_exception dom_html_button_element_set_tab_index(
 dom_exception dom_html_button_element_get_form(
 	dom_html_button_element *button, dom_html_form_element **form)
 {
-	*form = button->form;
+	/* (Onyx: else its nearest ancestor form -- a control a script made) */
+	*form = _dom_html_form_owner((struct dom_node_internal *) button,
+			button->form);
 	
 	if (*form != NULL)
 		dom_node_ref(*form);

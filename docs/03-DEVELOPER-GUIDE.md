@@ -1561,6 +1561,41 @@ the needs, already installed, update (a changed setting kept, `.new`, a dropped 
 modes and `upgrade`, removals refused (needed, running, the system), the system staged then committed
 (and the reboot), a changed index and a changed archive refused.
 
+### Screenshot, the capture tool (`user/Apps/screenshot`)
+
+The screen capture tool (the study, the mock-ups and the user's decisions: `docs/screenshot/README.md`;
+its use: docs/04 §12) is a **newlib** wtk app with FreeType text (`screenshot.elf` in `user/Makefile`),
+one file, `main.cpp`:
+
+- **The capture.** New (or Print Screen) → after the delay (counted in the window's view), the window
+  is minimised (`kapi_win_minimise (0)`), ~0.35 s later the screen is grabbed (`kapi_screen_grab`,
+  what the display shows); a rectangle or a window is chosen on the frozen screen shown **full screen**
+  (`kapi_fullscreen_begin`: every pointer and key event goes to the app, in screen coordinates; the
+  app's own `kapi_set_pointer_handler` / `kapi_set_key_handler`, `Root::attach ()` after
+  `kapi_fullscreen_end` gives the window its streams back; no cursor is drawn by the kernel in full
+  screen: the app draws a crosshair, an arrow). The windows: `kapi_win_list` (their frames:
+  `ow` / `oh`, `il` / `it`), the backmost, system, minimised and other desks' left out. Then
+  `kapi_raise_app ("screenshot")`.
+- **The picture** (`g_base`), the **crop** (a rectangle of it), the **strokes** (in the base's 1/16 px:
+  `wtk/vpaint.h`'s units; a pen's opaque, a marker's at opacity 118 — the stroke filled once, so it
+  does not darken where it crosses itself —; smoothed 1-2-1 twice when drawn), the **operations**
+  (`OP_ADD`, `OP_ERASE` — a stroke taken away by the eraser —, `OP_CROP` with the rectangles before /
+  after: undo / redo). `doc_render` makes `g_doc` (the crop with the strokes over it): what is copied
+  and saved. The view shows it fitted, never enlarged (a box filter), the stroke being drawn over it.
+- **Out**: `clip_set_image` (clipd's ring, an image item: `clipboard.h`), done at the tick after the
+  window is drawn (clipd may have to start), and `notify ()` (notifyd's bubble); **Save As** only
+  (`wk_file_save` in `SD:/Pictures/Screenshots`, the last folder kept): `img/pngsave.hpp`'s
+  `png_encode` / `jpeg_encode` (quality 92) / `bmp_encode` by the name's extension (none: `.png`).
+- **The service** `screenshot` (`kapi_ipc_register`): the kernel's Print Screen (type 1, `"now"` / `"window
+  <id>"`), read in `onTick`; started by the kernel: `--now` / `--window <id>`. The settings:
+  `SD:/etc/screenshot.ini` (`mode`, `delay`, `pen_colour`, `pen_size`, `marker_colour`, `marker_size`,
+  `folder`).
+
+The icon: `python3 tools/icons/screenshot_icon.py`. The screenshots: `sh tools/tests/desktop_sim/shots.sh
+screenshot` — the simulator's `SIM_GRAB=<file>.elsm` is what `kapi_screen_grab` gives (`screenshots/
+desktop.png` made an `.elsm` there), a full-screen app is dumped as its whole buffer, and `SIM_WINS`'
+windows may end with `,title`.
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app
@@ -2032,6 +2067,10 @@ docs/06 §31). **It runs on Onyx** — the window opens and real web pages rende
 through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
 `-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
 tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
+The NetSurf code Jet does not use was removed from the tree and the builds in 2026-10
+(docs/06 §39, [`JET-DEAD-CODE.md`](JET-DEAD-CODE.md)): only the framebuffer frontend is left, the
+three makefiles no longer generate the internal bitmap font, and a NetSurf file dropped from the
+tree drops out of the builds' `$(wildcard ...)` lists by itself.
 NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
 metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
 CSS3 painting, the native window: [`06-JET-BROWSER.md`](06-JET-BROWSER.md) lists the

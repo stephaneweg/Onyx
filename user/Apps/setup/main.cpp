@@ -1264,10 +1264,11 @@ public:
 				bool up = kapi_net_status (0, 0) != 0;
 				if (!up) g_sawDown = true;
 				if (up && (g_sawDown || now - g_joinT > 600) && now - g_joinT > 200) { g_joinT = 0; show_net (NET_CONNECTED); }
-				else if (now - g_joinT > 3000)
+				else if (now - g_joinT > 6000)	// (60 s: a 2.4 GHz network's association and DHCP can take long)
 				{
 					g_joinT = 0;
-					scpy (g_netlist->err, sizeof g_netlist->err, "Could not connect: check the password");
+					// (the network is saved already: it is joined at the next start -- say so)
+					scpy (g_netlist->err, sizeof g_netlist->err, "Not connected yet (saved: joined at the next start). Check the password");
 					show_net (NET_PASSWORD);
 				}
 			}

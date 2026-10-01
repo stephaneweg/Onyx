@@ -50,6 +50,11 @@ dom_exception _dom_html_form_element_copy(dom_node_internal *old,
 	_dom_virtual_html_form_element_destroy, \
 	_dom_html_form_element_copy
 
+/* Onyx: a control's form owner: the form the parser associated it with (assoc), else
+ * its nearest ancestor form (a control a script made); NULL: none. No reference taken. */
+dom_html_form_element *_dom_html_form_owner(struct dom_node_internal *node,
+		dom_html_form_element *assoc);
+
 /* Helper functions*/
 dom_exception _dom_html_form_element_copy_internal(
 		dom_html_form_element *old,

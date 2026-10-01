@@ -285,7 +285,8 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_animation_fill_mode,
 	css__parse_animation_play_state,
 	css__parse_transition,
-	css__parse_animation
+	css__parse_animation,
+	css__parse_pointer_events	/* Onyx (onyx_svg.c) */
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */

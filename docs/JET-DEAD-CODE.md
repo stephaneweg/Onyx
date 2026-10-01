@@ -1,6 +1,12 @@
 # Jet Browser — removing NetSurf's dead code (task for a Jet session)
 
-> **Status (2026-10-01): to do.** Decided by the user after the licence audit
+> **Status (2026-10-01): §4, §1 and §2 done** (three commits; [`06-JET-BROWSER.md`](06-JET-BROWSER.md)
+> §39 has what went and the measures). **Left**: §3 (the dead functions inside live files —
+> after the sessions editing `browser_window.c`, `gui.c`, `download.c` and the desktop code are
+> done) and `desktop/search.c` + `content/textsearch.c` (find in page), kept pending the user's
+> decision on Ctrl+F.
+>
+> Decided by the user after the licence audit
 > ([`LICENSING.md`](LICENSING.md) §5): Jet stays on NetSurf (GPL-2.0), but **the NetSurf code Jet
 > does not use goes** — out of the build first, then out of the repository. No behaviour change:
 > every page must render and behave exactly as before. Rewriting the live NetSurf code is *not*
@@ -30,6 +36,14 @@ file all three builds share (`netsurf-src.mk` lists the frontend files for both)
 
 ## 1. Files compiled and entirely dead — drop them from the build
 
+> **Done** (2026-10-01), except `desktop/search.c` (kept: find in page). Also found dead and
+> removed: the generated internal bitmap font (`font-ns-sans.c`, 49 KB of data: only
+> `font_internal.c` read it) and two toolbar bitmaps nothing draws (`reload_g`,
+> `history_image_g`). `print.c` defined the three printing flags `html/redraw.c` reads (always
+> off): they are defined in `redraw.c` now. The PE linker (Windows) does not drop `.text$`
+> sections, so its report finds little: the Windows build was checked by linking without the
+> files.
+
 `netsurf-app.mk`, `host.mk` and `pc/Jet/jet.mk` compile `$(wildcard $(NS)/desktop/*.c)`,
 `utils/*.c`, `content/*.c`…: add these to a `filter-out` (or list the live files explicitly),
 then delete them.
@@ -48,6 +62,11 @@ then delete them.
 
 ## 2. Files kept alive only by a call that feeds nothing — cut the call, drop the file
 
+> **Done** (2026-10-01): the calls are `static inline` no-ops in `global_history.h`,
+> `hotlist.h`, `cookie_manager.h`, `page-info.h`; `treeview.h` went with `treeview.c` (no other
+> user). `gui_factory.c` needs none of them. Jet's History reads `urldb` (`urldb_iterate_entries`,
+> `gui.c`). No treeview resource file existed to drop (its triangles are drawn in code).
+
 Jet's chrome is Onyx's own (`onyx_chrome.cpp`): NetSurf's tree views (hotlist = bookmarks,
 global history, cookie manager, page info) are never shown, but the core still feeds them.
 
@@ -65,6 +84,10 @@ upstream-shaped), check the frontend tables (`gui_factory.c`) do not require the
 do not read `global_history` / `hotlist` — the grep finds none today; they use `urldb`.
 
 ## 3. Dead functions inside live files — remove them
+
+> **To do**, after the sessions editing `browser_window.c`, `gui.c`, `download.c` and the
+> desktop code are done. Regenerate the list: §1 and §2 changed it (e.g. `print.c`'s and
+> `treeview.c`'s users are gone).
 
 From the same linker report (functions never reached). Remove them with their declarations;
 leave a file's structure otherwise alone (later merges from upstream stay readable).
@@ -87,6 +110,12 @@ The full list (function by function, with sizes) is what the linker prints; rege
 than trusting this table after other changes.
 
 ## 4. In the repository, never compiled — delete
+
+> **Done** (2026-10-01): 1 893 files, 600 500 lines, 22 MB; the Pi's linked `netsurf.elf`
+> byte-identical before and after. Also: the framebuffer's `fb_search.c` (empty stubs) and
+> `font_internal.c/.h`, NetSurf's `tools/` (but `convert_font.c`, `convert_image.c`), every
+> NetSurf `Makefile*` (not only the root's). Note: no build runs `convert_font` any more (§1);
+> it stays, with `glyph_data` (which `tools/fonts/gen_nssans.py` reads).
 
 | Path | Size | Note |
 |---|---|---|

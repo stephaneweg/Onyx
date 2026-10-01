@@ -69,7 +69,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar " in
+	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
 	esac
@@ -77,7 +77,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard setup pkgman
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -318,6 +318,30 @@ if want desktop; then
 	sim dock d_dock "wait;wait;$W" SIM_RUNNING=terminal,tinycalc SIM_WINS="52,250,316,412,0,0;388,128,568,408,0,1;150,120,600,450,1,0"
 	sim menubar d_bar "$W" SIM_MENU='terminal|'
 	scene desktop "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm"
+fi
+if want screenshot; then			# (Screenshot: its window; a rectangle being dragged on the frozen screen -- the
+					#  screen is screenshots/desktop.png, SIM_GRAB --; a window chosen; the capture
+					#  drawn on: the pen's ring, the marker, an arrow; the pen's palette)
+	python3 - "$OUT/desk.elsm" <<'PY'
+import struct, sys
+import numpy as np
+from PIL import Image
+im = Image.open ("screenshots/desktop.png").convert ("RGB"); a = np.asarray (im).astype (np.uint32)
+px = (a[..., 0] << 16) | (a[..., 1] << 8) | a[..., 2]
+open (sys.argv[1], "wb").write (struct.pack ("<5i", 0x4D534C45, im.width, im.height, 0, 0) + px.astype ("<u4").tobytes ())
+PY
+	G="SIM_GRAB=$OUT/desk.elsm"; SP=SIM_POS=300,200
+	ss () { rm -f "$OUT/writes/etc/screenshot.ini"; sim screenshot "$@"; }	# (each from the default settings)
+	W10="$W;$W;$W;$W"
+	CAP="wait;wait;down 50 25;up 50 25;$W10;$W10;move 300 200;wait;down 389 128;move 500 250;move 1016 558;wait"
+	ss screenshot "$W" $SP $G; png screenshot
+	ss screenshot-select "$CAP;move 566 366;wait;wait" $SP $G; png screenshot-select
+	ss screenshot-window "wait;wait;down 152 25;up 152 25;move 170 94;wait;down 170 94;up 170 94;wait;down 50 25;up 50 25;$W10;$W10;move 150 400;wait;wait" \
+		$SP $G SIM_WINS="389,128,627,430,0,1,terminal;53,251,286,325,0,0,tinycalc"; png screenshot-window
+	E="$CAP;up 1016 558;$W10;$W10;$W10;$W10;$W10;$(ring 107 322 13);wait;down 598 25;up 598 25;wait;$(stroke 102 306 272 306);wait;down 546 25;up 546 25"
+	E="$E;$(stroke 286 392 230 372 180 352 128 332);move 420 25;$W"
+	ss screenshot-edit "$E" $SP $G; png screenshot-edit
+	ss screenshot-pen "$E;down 573 25;up 573 25;move 600 95;wait;wait" $SP $G; png screenshot-pen
 fi
 if want clipboard; then			# (the shared clipboard's widget over the desktop: clipd's ring seeded,
 					#  the cursor on the image; the pointer over a row -- its x)

@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -157,6 +157,13 @@ pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
 	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< zlib/libz.a \
 	       -L$(PKG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+
+# Screenshot, the screen capture tool (Apps/screenshot: docs/screenshot/README.md): a newlib app (FreeType's text
+# through wtk), the PNG / JPEG / BMP writers of img/pngsave.hpp, the clipboard (clipd) and notifyd.
+screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h ft/libft.a ft/wtkface.h wtk/libwtk.a \
+		libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a ft/libft.a -lm -o $@
 
 # Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Writer (FreeType text through wtk's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
