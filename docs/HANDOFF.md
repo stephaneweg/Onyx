@@ -201,7 +201,7 @@ answer in French. The docs stay in English.
   straight into the folder under the pointer; rows dragged out are extracted to `RAM:` and handed
   over; a file opened (extracted to `RAM:`) and saved is put back. Jobs on a **thread**. A newlib
   app (FreeType) with zlib (`user/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
-- **Tested on the PC**: `sh tools/tests/run_archiver_test.sh` (the engine, 52 checks against
+- **Tested on the PC**: `sh tools/tests/run_archiver_test.sh` (the engine, 51 checks against
   `zipfile` and `unzip -t`) and the app in the desktop simulator (which now has `kapi_file_in /
   file_out` streams, remove / rename of the files an app wrote, and the script's `dragover` / `drop`).
 - **To try on the Pi**: a big archive (hundreds of MB: the reads go through `kapi_seek`, the
