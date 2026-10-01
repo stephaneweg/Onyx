@@ -597,6 +597,11 @@ struct onyx_anim {
 	struct oa_event *ev;
 	int nev, capev;
 	unsigned int frames;
+	/* Onyx (docs/06 §32): the frames' pace -- the last frames' change was small (a few
+	 * px painted: fewer frames); parked while the window is hidden (no frames until it
+	 * shows again: onyx_anim_set_view_state); every timeline, for that */
+	bool tiny, parked;
+	struct onyx_anim *gnext, **gprev;
 	/* NS_PERF: the frames' work (us), printed every 120 frames */
 	unsigned int stat_n, stat_layouts, stat_reboxes;
 	uint64_t stat_sum, stat_max;
@@ -618,6 +623,9 @@ static unsigned int oa_slot(const void *p, unsigned int cap)
 	return (unsigned int) (x >> 32) & (cap - 1);
 }
 
+/* Onyx: every timeline (a window shown again wakes the parked ones) */
+static struct onyx_anim *oa_all;
+
 static struct onyx_anim *oa_get(html_content *c, bool make)
 {
 	struct onyx_anim *a = c->onyx_anim;
@@ -638,6 +646,11 @@ static struct onyx_anim *oa_get(html_content *c, bool make)
 	a->last_tick = -1000;
 	oa_make_index();
 	c->onyx_anim = a;
+	a->gnext = oa_all;	/* (Onyx: the timelines, for a window shown again) */
+	if (oa_all != NULL)
+		oa_all->gprev = &a->gnext;
+	a->gprev = &oa_all;
+	oa_all = a;
 	return a;
 }
 
@@ -1241,15 +1254,34 @@ static bool oa_any_running(struct onyx_anim *a, double now)
 	return false;
 }
 
-/* the next frame: ~60 Hz, less when frames take long (the Pi: never more than 2/3 of the
- * time on them, the events and timers keep the rest) */
+/* Onyx (docs/06 §32): the window's state, as the frontend sees it (onyx_anim_set_view_state) */
+int onyx_view_state = ONYX_VIEW_FOCUSED;
+
+/* the frames' pace (ms between two): 30 a second, 15 when the last frames changed only a few
+ * px; half that in a window without the keyboard */
+#define OA_FRAME_MS			33
+#define OA_FRAME_TINY_MS		66
+#define OA_FRAME_UNFOCUSED_MS		66
+#define OA_FRAME_UNFOCUSED_TINY_MS	125
+/* a frame's change is "tiny" when what it paints again is at most this many px */
+#define OA_TINY_PX			(48 * 48)
+
+/* the next frame: ~30 Hz (Onyx: was ~60 -- on the Pi every app shares core 0 with the
+ * browser), fewer when the change is tiny or the window not focused, less when frames take
+ * long (the Pi: never more than 2/3 of the time on them, the events and timers keep the
+ * rest) */
 static void oa_schedule(struct onyx_anim *a)
 {
-	double now = oa_clock(), interval = 16, wait;
+	double now = oa_clock(), interval, wait;
+	bool unfocused = onyx_view_state == ONYX_VIEW_UNFOCUSED;
 
 	if (a->tick_scheduled)
 		return;
-	if (a->last_work > 10)
+	if (a->tiny && !a->raf)
+		interval = unfocused ? OA_FRAME_UNFOCUSED_TINY_MS : OA_FRAME_TINY_MS;
+	else
+		interval = unfocused ? OA_FRAME_UNFOCUSED_MS : OA_FRAME_MS;
+	if (a->last_work * 1.5 > interval)
 		interval = a->last_work * 1.5;
 	if (a->slow && !a->raf && a->nev == 0 && !a->dirty)
 		interval = 250;
@@ -1258,6 +1290,29 @@ static void oa_schedule(struct onyx_anim *a)
 		wait = 1;
 	a->tick_scheduled = true;
 	guit->misc->schedule((int) wait, oa_tick, a->c);
+}
+
+/* exported function documented in html/onyx_anim.h */
+void onyx_anim_set_view_state(int state)
+{
+	bool was_hidden = onyx_view_state == ONYX_VIEW_HIDDEN;
+
+	if (state == onyx_view_state)
+		return;
+	onyx_view_state = state;
+	if (was_hidden != (state == ONYX_VIEW_HIDDEN))
+		js_view_visibility_changed();	/* (document.hidden, visibilitychange) */
+	if (!was_hidden)
+		return;
+	/* shown again: the parked timelines' frames go on */
+	for (struct onyx_anim *a = oa_all; a != NULL; a = a->gnext) {
+		if (!a->parked)
+			continue;
+		a->parked = false;
+		guit->misc->schedule(-1, oa_tick, a->c);
+		a->tick_scheduled = false;
+		oa_schedule(a);
+	}
 }
 
 /* ---- transitions ------------------------------------------------------------------------------ */
@@ -1817,6 +1872,26 @@ static void oa_update(html_content *c, struct onyx_anim *a, double now)
 			}
 		}
 		a->applying = false;
+		/* Onyx (docs/06 §32): the change's size -- painting only, over a few px (a
+		 * pulsing dot's shadow): the next frames come at half the pace */
+		if (a->in_tick && !a->flushing) {
+			long long px = 0;
+			bool tiny = ok && !relayout && !rebox;
+			for (int k = 0; k < n && tiny; k++) {
+				struct box *b = box_for_node(recs[k]->node);
+				int w, h;
+				if (b == NULL)
+					continue;
+				w = (b->descendant_x1 > b->width ? b->descendant_x1 : b->width) -
+					(b->descendant_x0 < 0 ? b->descendant_x0 : 0) + 16;
+				h = (b->descendant_y1 > b->height ? b->descendant_y1 : b->height) -
+					(b->descendant_y0 < 0 ? b->descendant_y0 : 0) + 16;
+				px += (long long) w * h;
+				if (px > OA_TINY_PX)
+					tiny = false;
+			}
+			a->tiny = tiny;
+		}
 		onyx_perf_log(relayout ? "anim:restyle+layout" : "anim:restyle", t0);
 		if (rebox && now - a->last_rebox >= 200) {
 			/* (the selection gives the boxes their animated styles) */
@@ -1849,6 +1924,13 @@ static void oa_tick(void *p)
 	if (a == NULL)
 		return;
 	a->tick_scheduled = false;
+	if (onyx_view_state == ONYX_VIEW_HIDDEN && !c->aborted) {
+		/* Onyx: the window is not seen (minimised, on another workspace, covered):
+		 * no frame -- no style made, nothing painted, no requestAnimationFrame
+		 * callback -- until it shows again (onyx_anim_set_view_state) */
+		a->parked = true;
+		return;
+	}
 	if (c->onyx_closed && !c->aborted) {
 		/* closed (another page shows in its window, this one kept for the history): no
 		 * frames, its boxes' layers not touched; looked at again in a second */
@@ -1941,6 +2023,9 @@ void onyx_anim_fini(struct html_content *c)
 	if (a == NULL)
 		return;
 	guit->misc->schedule(-1, oa_tick, c);
+	*a->gprev = a->gnext;
+	if (a->gnext != NULL)
+		a->gnext->gprev = a->gprev;
 	for (unsigned int k = 0; k < a->cap; k++)
 		while (a->tab[k] != NULL)
 			oa_rec_drop(a, a->tab[k], 0, false);

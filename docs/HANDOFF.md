@@ -684,6 +684,21 @@ and the kernel log's `netsurf:` lines keep NetSurf's name. On the Pi: copy
 `SD:/apps/netsurf.app/` can be deleted after a first start of `jet`. In the history below,
 `netsurf.app` and `run netsurf` are the names of the time.
 
+**Done (2026-10-01): an idle Jet Browser no longer slows the Pi (docs/06 §32).** The user's
+"when Jet is running, the whole system gets slow": (1) kotonstudio.com's pulsing dot (a
+`box-shadow` animation: paint, never composite-only) ran ~60 frames a second, each walking the
+box tree twice and compositing the whole view -- now ~30 Hz (15 for a change of a few px, half
+unfocused), none while the window is hidden (minimised / other workspace / covered, from
+`kapi_win_geometry` + `kapi_win_list`: `visibilitychange`, timers >= 1 s, GIFs stopped, nothing
+painted), the restyle walks only the animated subtrees, only the changed rectangle is
+composited; idle 6.5 / 13.7 % -> ~1.8 % of a PC core (floor 0.8 %), `tools/tests/netsurf/
+idlecpu.py`. (2) the SD write stalls: the disk cache and the code cache store on second sight,
+no body over 512 KB, 16 KB pieces with a sleep (`user/netsurf/onyx_io.h`), waiting while the user
+acts / a page loads; the disk cache was **write-only on the Pi** (`kapi_save_file` answers the
+bytes written, it checked `== 0`) -- fixed. google.com: 10.4 MB written at the first visit ->
+5 KB. Kernel side left for another session: the EMMC driver's busy wait (`TimeoutWait`) should
+yield; `kapi_present` has no rectangle. Pi app staged.
+
 **Feature tests on the Pi (2026-09-30 late, docs/06 §23):** the Pi's css3test.com "100 %" /
 browserscore.dev "0 %" were the script time limit (10 s) cutting both test runs off on the
 slower CPU (css3test's 100 % is its CSS 2.2 / 2007 / 2010 filter, kept in localStorage) -- now

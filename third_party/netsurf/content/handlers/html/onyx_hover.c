@@ -778,12 +778,57 @@ static const css_computed_style *hv_parent_style(struct dom_node *n)
 	return pb != NULL ? pb->style : NULL;
 }
 
-/** The walk (check, then apply) and the jobs: the boxes' results swapped. */
-static bool hv_finish(html_content *c, struct hv *hp, const char *what)
+/* Onyx (docs/06 §32): an element's box that holds all its boxes (a block-level box: its
+ * content are its children), the topmost with its node -- else NULL (an inline's pieces are
+ * its line's siblings: the whole tree is walked) */
+static struct box *hv_scope_box(html_content *c, struct dom_node *n)
+{
+	struct box *b = hv_box_of(n);
+
+	if (b == NULL || b == c->layout || (b->flags & STYLE_OWNED) || b->node != n)
+		return NULL;
+	switch (b->type) {
+	case BOX_INLINE:
+	case BOX_INLINE_END:
+	case BOX_INLINE_CONTAINER:
+	case BOX_TEXT:
+	case BOX_BR:
+		return NULL;
+	default:
+		break;
+	}
+	while (b->parent != NULL && b->parent->node == n)
+		b = b->parent;
+	return b == c->layout ? NULL : b;
+}
+
+/** One element's boxes: its box (and its list marker), all they hold. */
+static void hv_walk_scope(struct hv *h, struct box *b, bool apply)
+{
+	bool ch = hv_box(h, b, b->node, false, apply);
+
+	if (b->list_marker != NULL)
+		hv_box(h, b->list_marker, b->node, ch, apply);
+	if (b->children != NULL && !h->fail)
+		hv_walk(h, b->children, b->node, ch, apply, 1);
+}
+
+#define HV_SCOPES 32
+
+/** The walk (check, then apply) and the jobs: the boxes' results swapped. Onyx: with
+ * scope (nscope > 0), only those boxes' subtrees -- an animation's frame of a few elements
+ * does not walk the whole tree twice. */
+static bool hv_finish_scoped(html_content *c, struct hv *hp, const char *what,
+		struct box *const *scope, int nscope)
 {
 	struct hv h = *hp;
 
-	if (!h.fail && h.nmap > 0) {
+	if (!h.fail && h.nmap > 0 && nscope > 0) {
+		for (int k = 0; k < nscope && !h.fail; k++)
+			hv_walk_scope(&h, scope[k], false);		/* check */
+		for (int k = 0; k < nscope && !h.fail; k++)
+			hv_walk_scope(&h, scope[k], true);		/* apply */
+	} else if (!h.fail && h.nmap > 0) {
 		hv_walk(&h, c->layout, NULL, false, false, 0);		/* check */
 		if (!h.fail)
 			hv_walk(&h, c->layout, NULL, false, true, 0);	/* apply */
@@ -807,6 +852,11 @@ static bool hv_finish(html_content *c, struct hv *hp, const char *what)
 	if (h.fail && what != NULL && onyx_perf_on())
 		fprintf(stderr, "ONYX-PERF %s:rebox (%s)\n", what, h.why ? h.why : "memory");
 	return !h.fail;
+}
+
+static bool hv_finish(html_content *c, struct hv *hp, const char *what)
+{
+	return hv_finish_scoped(c, hp, what, NULL, 0);
 }
 
 /* exported function documented in html/onyx_hover.h */
@@ -875,6 +925,8 @@ bool onyx_hover_restyle_elements(struct html_content *c,
 		const struct onyx_restyle_item *items, int n, bool layout)
 {
 	struct hv h;
+	struct box *scope[HV_SCOPES];
+	int nscope = 0;
 
 	if (c->layout == NULL || c->box_conversion_context != NULL || c->base.locked ||
 	    c->rebox_pending || c->aborted)
@@ -897,8 +949,23 @@ bool onyx_hover_restyle_elements(struct html_content *c,
 			break;
 		}
 		hv_restyle(&h, items[k].node, ps, false, 0);
+		/* Onyx (docs/06 §32): the boxes to walk -- the elements' own subtrees when
+		 * each has one box holding them all, and none lies in another's (else the
+		 * whole tree) */
+		if (nscope >= 0) {
+			struct box *sb = hv_scope_box(c, items[k].node);
+			if (sb == NULL || nscope == HV_SCOPES)
+				nscope = -1;
+			else
+				scope[nscope++] = sb;
+		}
 	}
-	return hv_finish(c, &h, NULL);	/* (onyx_anim.c tells) */
+	for (int i = 0; i < nscope; i++)
+		for (struct box *p = scope[i]->parent; p != NULL && nscope > 0; p = p->parent)
+			for (int j = 0; j < nscope; j++)
+				if (j != i && scope[j] == p)
+					nscope = -1;
+	return hv_finish_scoped(c, &h, NULL, scope, nscope);	/* (onyx_anim.c tells) */
 }
 
 /* exported function documented in html/onyx_hover.h */

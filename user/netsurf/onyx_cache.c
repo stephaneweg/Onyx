@@ -15,10 +15,22 @@
  *
  * The files are written by a thread of its own (kernel v67): llcache's store call only
  * queues the object (the UI thread does not wait for the card); reads are made at once (the
- * page waits for them anyway). The file calls are the kapi's (whole files: kapi_save_file,
- * kapi_open / kapi_read), not newlib's (its descriptor table is not the threads').
- * Memory: the object's bytes are shared with llcache (the store takes a reference; llcache's
- * release drops it), as the upstream fs_backing_store does.
+ * page waits for them anyway). The file calls are the kapi's (kapi_save_file, kapi_file_out /
+ * kapi_stream_write, kapi_open / kapi_read), not newlib's (its descriptor table is not the
+ * threads'). Memory: the object's bytes are shared with llcache (the store takes a reference;
+ * llcache's release drops it), as the upstream fs_backing_store does.
+ *
+ * Onyx (docs/06 §32): on the Pi the SD driver busy-waits while the card writes (core 0, which
+ * every app shares, frozen 100-200 ms at a time), so this writes less and gently:
+ *  - an object is stored only the second time it is seen (its URL's hash met in an earlier
+ *    launch -- the hashes seen are kept in the index, "- <hash>" lines): most of what a page
+ *    fetches is never asked for again (a Google page's scripts change at every visit);
+ *  - nor a body over OC_MAX_OBJECT (512 KB);
+ *  - the files are written paced (onyx_io_save: 16 KB pieces, a sleep between them), waiting
+ *    while the user acts or a page loads (onyx_io_wait_quiet);
+ *  - the index is written once a minute at most, and at the end (files a lost index left are
+ *    removed at the next launch, OC_SWEEP).
+ * Also implemented here: the pacing (onyx_io.h), the JS code cache's too.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -34,6 +46,7 @@
 #include "netsurf/onyx_perf.h"
 
 #include "kapi.h"
+#include "onyx_io.h"
 
 #define OC_ELEM_DATA	0
 #define OC_ELEM_META	1
@@ -58,6 +71,10 @@ struct oc_entry {
 
 #define OC_HASH 1024
 #define OC_QUEUE 1024
+#define OC_MAX_OBJECT	(512 * 1024)	/* Onyx: a larger body is not stored */
+#define OC_SEEN_MAX	4096		/* Onyx: the URLs' hashes remembered (seen once) */
+#define OC_INDEX_TICKS	6000		/* Onyx: the index written once a minute at most */
+#define OC_SWEEP_TICKS	3000		/* Onyx: 30 s after the start, the orphans removed */
 
 static struct {
 	bool up;
@@ -74,7 +91,123 @@ static struct {
 	bool threads;
 	bool index_dirty;
 	unsigned hits, misses, written;
+	/* Onyx: the URLs seen (their keys' hashes), a ring: those loaded from the index
+	 * (seen in an earlier launch: stored now) and this launch's (stored the next time) */
+	uint32_t seen[OC_SEEN_MAX];
+	uint8_t seen_old[OC_SEEN_MAX];
+	unsigned nseen, seen_at;
+	unsigned first_new_id;	/* (ids below it: the index's -- the sweep's) */
+	unsigned declined, too_big;
 } oc;
+
+/* ---- Onyx (docs/06 §32): the writes paced (onyx_io.h) --------------------------------------- */
+
+static volatile unsigned io_input_at;	/* ticks of the user's last input */
+static volatile int io_loading;		/* a page loading */
+static volatile int io_stopping;	/* Jet Browser closing: no more waiting */
+static volatile unsigned io_loading_at;	/* since (ticks) */
+static unsigned long long io_written;
+
+void onyx_io_activity(void)
+{
+	io_input_at = kapi_get_ticks();
+}
+
+void onyx_io_loading(int on)
+{
+	io_loading = on;
+	io_loading_at = kapi_get_ticks();
+}
+
+void onyx_io_wait_quiet(unsigned max_ms)
+{
+#ifndef ONYX_HOST_SIM
+	unsigned waited = 0;
+
+	for (;;) {
+		unsigned now = kapi_get_ticks();
+		/* (a load that never ends -- a page streaming: 60 s at most) */
+		bool loading = io_loading && now - io_loading_at < 6000;
+		if ((!loading && now - io_input_at >= 100) || waited >= max_ms || io_stopping)
+			return;
+		kapi_msleep(100);
+		waited += 100;
+	}
+#else
+	(void) max_ms;		/* (the bench writes at once) */
+#endif
+}
+
+unsigned long long onyx_io_written(void)
+{
+	return io_written;
+}
+
+int onyx_io_save(const char *path, const void *p, unsigned n)
+{
+	const uint8_t *b = p;
+	int ok;
+
+#ifdef ONYX_HOST_SIM
+	ok = kapi_save_file(path, p, n) >= 0;	/* (the bench's save_file answers 0) */
+#else
+	if (n <= ONYX_IO_PIECE) {
+		/* (kapi_save_file: the bytes written, -1) */
+		ok = kapi_save_file(path, p, n) == (int) n;
+	} else {
+		void *h = kapi_file_out(path, 0);
+		unsigned off = 0;
+		ok = h != NULL;
+		while (ok && off < n) {
+			unsigned k = n - off > ONYX_IO_PIECE ? ONYX_IO_PIECE : n - off;
+			ok = kapi_stream_write(h, b + off, k) == (int) k;
+			off += k;
+			if (ok && off < n) {
+				/* (the card's other users, the desktop, the input: their turn) */
+				kapi_msleep(ONYX_IO_NAP);
+				onyx_io_wait_quiet(2000);
+			}
+		}
+		if (h != NULL)
+			kapi_stream_close(h);
+	}
+#endif
+	if (!ok) {
+		kapi_remove(path);
+		return -1;
+	}
+	io_written += n;
+	if (onyx_perf_on())
+		fprintf(stderr, "ONYX-PERF io:write %s %u\n", path, n);
+	return 0;
+}
+
+/* ---- the URLs seen ---------------------------------------------------------------------------- */
+
+static uint32_t oc_key_hash(const char *s)
+{
+	uint32_t h = 2166136261u;
+	for (; *s; s++)
+		h = (h ^ (uint8_t) *s) * 16777619u;
+	return h != 0 ? h : 1;
+}
+
+/* (oc.lk held) -1 not seen, 0 seen in this launch, 1 seen in an earlier one */
+static int oc_seen(uint32_t h)
+{
+	for (unsigned i = 0; i < oc.nseen; i++)
+		if (oc.seen[i] == h)
+			return oc.seen_old[i];
+	return -1;
+}
+
+/* (oc.lk held) */
+static void oc_seen_add(uint32_t h, bool old)
+{
+	unsigned i = oc.nseen < OC_SEEN_MAX ? oc.nseen++ : oc.seen_at++ % OC_SEEN_MAX;
+	oc.seen[i] = h;
+	oc.seen_old[i] = old;
+}
 
 static void oc_path(char *buf, size_t cap, unsigned id, int elem)
 {
@@ -220,6 +353,16 @@ static void oc_write_index(void)
 
 	kapi_lock(&oc.lk);
 	oc.index_dirty = false;
+	/* Onyx: the URLs seen (stored when seen again in a later launch) */
+	for (unsigned k = 0; k < oc.nseen; k++) {
+		if (len + 16 > cap) {
+			char *nb = realloc(buf, cap = cap * 2 + 4096);
+			if (nb == NULL)
+				break;
+			buf = nb;
+		}
+		len += (size_t) snprintf(buf + len, cap - len, "- %08x\n", (unsigned) oc.seen[k]);
+	}
 	for (i = 0; i < OC_HASH; i++)
 		for (e = oc.hash[i]; e != NULL; e = e->next) {
 			size_t need;
@@ -238,7 +381,7 @@ static void oc_write_index(void)
 		}
 	kapi_unlock(&oc.lk);
 	snprintf(path, sizeof path, "%s/index", oc.dir);
-	kapi_save_file(path, buf != NULL ? buf : "", (unsigned) len);
+	onyx_io_save(path, buf != NULL ? buf : "", (unsigned) len);
 	free(buf);
 }
 
@@ -271,8 +414,12 @@ static void oc_write_some(void)
 		}
 		/* (the element's bytes are held: its reference taken at the queueing) */
 		oc_path(path, sizeof path, en->id, elem);
+		onyx_io_wait_quiet(30000);	/* (Onyx: not while the user acts, a page loads) */
 		{
-			bool ok = kapi_save_file(path, en->e[elem].data, (unsigned) en->e[elem].len) == 0;
+			/* (Onyx: paced -- and kapi_save_file answers the bytes written: the
+			 * old "== 0" took every write for a failure, nothing was ever read
+			 * back from the card in a later launch) */
+			bool ok = onyx_io_save(path, en->e[elem].data, (unsigned) en->e[elem].len) == 0;
 			kapi_lock(&oc.lk);
 			en->e[elem].queued = false;
 			en->e[elem].on_card = ok;
@@ -288,20 +435,67 @@ static void oc_write_some(void)
 	}
 }
 
+/* Onyx: the files of the cache folder no entry of the index has (written after the last index
+ * a launch wrote: the Pi switched off), removed -- once, a while after the start */
+static void oc_sweep(void)
+{
+	void *d = kapi_opendir(oc.dir);
+	struct kapi_dirent de;
+	unsigned removed = 0;
+
+	if (d == NULL)
+		return;
+	while (kapi_readdir(d, &de) > 0 && !oc.stop) {
+		unsigned id;
+		char kind, path[300];
+		bool known = false;
+		int i;
+		struct oc_entry *e;
+
+		if (sscanf(de.name, "%8x.%c", &id, &kind) != 2 || (kind != 'd' && kind != 'm') ||
+		    id >= oc.first_new_id)
+			continue;
+		kapi_lock(&oc.lk);
+		for (i = 0; i < OC_HASH && !known; i++)
+			for (e = oc.hash[i]; e != NULL; e = e->next)
+				if (e->id == id) {
+					known = true;
+					break;
+				}
+		kapi_unlock(&oc.lk);
+		if (known)
+			continue;
+		onyx_io_wait_quiet(30000);
+		snprintf(path, sizeof path, "%s/%s", oc.dir, de.name);
+		kapi_remove(path);
+		removed++;
+	}
+	kapi_closedir(d);
+	if (removed > 0 && onyx_perf_on())
+		fprintf(stderr, "ONYX-PERF cache:sweep %u orphan files removed\n", removed);
+}
+
 static int oc_thread(void *arg)
 {
-	unsigned last_index = kapi_get_ticks();
+	unsigned start = kapi_get_ticks(), last_index = start;
+	bool swept = false;
 
 	(void) arg;
 	while (!oc.stop) {
 		unsigned seen = oc.wake;
 		oc_write_some();
-		/* the index: a few seconds after the last writes (not after each one) */
-		if (oc.index_dirty && kapi_get_ticks() - last_index > 300) {
+		/* the index: a minute after the last time at most (Onyx: was 3 s -- a
+		 * Google page's visit wrote it again and again) */
+		if (oc.index_dirty && kapi_get_ticks() - last_index > OC_INDEX_TICKS) {
+			onyx_io_wait_quiet(30000);
 			oc_write_index();
 			last_index = kapi_get_ticks();
 		}
-		if (kapi_wait_word(&oc.wake, seen, 200) < 0)
+		if (!swept && kapi_get_ticks() - start > OC_SWEEP_TICKS) {
+			swept = true;
+			oc_sweep();
+		}
+		if (kapi_wait_word(&oc.wake, seen, 1000) < 0)
 			kapi_msleep(50);
 	}
 	oc_write_some();
@@ -331,6 +525,13 @@ static void oc_load_index(void)
 		if (nl == NULL)
 			break;
 		*nl = '\0';
+		if (p[0] == '-' && p[1] == ' ') {	/* (Onyx: a URL seen) */
+			unsigned h;
+			if (sscanf(p + 2, "%x", &h) == 1)
+				oc_seen_add(h, true);
+			p = nl + 1;
+			continue;
+		}
 		if (sscanf(p, "%x %lu %lu %u %n", &id, &dl, &ml, &used, &off) == 4 && off > 0 &&
 		    nsurl_create(p + off + (strncmp(p + off, "D|", 2) == 0 ? 2 : 0), &u) ==
 				NSERROR_OK) {
@@ -383,6 +584,7 @@ static nserror oc_initialise(const struct llcache_store_parameters *params)
 		oc.hysteresis = oc.limit / 5;
 	oc.next_id = 1;
 	oc_load_index();
+	oc.first_new_id = oc.next_id;
 	kapi_lock(&oc.lk);
 	oc_evict();
 	kapi_unlock(&oc.lk);
@@ -409,6 +611,7 @@ static nserror oc_finalise(void)
 	if (!oc.up)
 		return NSERROR_OK;
 	oc.up = false;		/* (no store from now on) */
+	io_stopping = 1;	/* (Onyx: the writes left, at once) */
 	if (oc.threads) {
 		oc.stop = 1;
 		oc.wake++;
@@ -422,8 +625,10 @@ static nserror oc_finalise(void)
 	oc_write_index();
 	if (onyx_perf_on())
 		fprintf(stderr, "ONYX-PERF cache:close %u objects, %lu KB; %u hits, %u misses, "
-				"%u KB written\n", oc.count, (unsigned long) (oc.total / 1024),
-				oc.hits, oc.misses, oc.written / 1024);
+				"%u KB written; %u not stored (seen once), %u too big; the card: "
+				"%llu KB written\n", oc.count, (unsigned long) (oc.total / 1024),
+				oc.hits, oc.misses, oc.written / 1024, oc.declined, oc.too_big,
+				onyx_io_written() / 1024);
 	return NSERROR_OK;
 }
 
@@ -438,6 +643,26 @@ static nserror oc_store(nsurl *url, enum backing_store_flags flags, uint8_t *dat
 		return NSERROR_INIT_FAILED;
 	kapi_lock(&oc.lk);
 	e = oc_find(url);
+	if (e == NULL && elem == OC_ELEM_DATA) {
+		/* Onyx (docs/06 §32): a new object stored only when it is worth it -- not a
+		 * large body, and only an URL seen in an earlier launch (most of what a page
+		 * fetches is never asked for again) */
+		char kb[4096];
+		uint32_t h = oc_key_hash(oc_key(url, kb, sizeof kb));
+		int sn = oc_seen(h);
+		if (datalen > OC_MAX_OBJECT || sn != 1) {
+			if (sn < 0) {
+				oc_seen_add(h, false);
+				oc.index_dirty = true;
+			}
+			if (datalen > OC_MAX_OBJECT)
+				oc.too_big++;
+			else
+				oc.declined++;
+			kapi_unlock(&oc.lk);
+			return NSERROR_NOSPACE;	/* (llcache keeps it in memory) */
+		}
+	}
 	if (e == NULL) {
 		e = calloc(1, sizeof *e);
 		char kb[4096];

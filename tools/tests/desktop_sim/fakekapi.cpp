@@ -246,12 +246,14 @@ static unsigned *resize (int w, int h)
 static void move_window (int x, int y) { g_x = x; g_y = y; }
 // (v64) the work area: the screen less the menu bar (30) and the dock (84)
 static void screen_size (int *w, int *h);
+// the window's state (KAPI_WIN_*): the SIM step "winstate <n>" (4 minimised, 8 on another desk, 0 unfocused)
+static unsigned g_winstate = KAPI_WIN_KEYS;
 static int win_geometry (struct kapi_win_geom *o)
 {
 	memset (o, 0, sizeof *o);
 	int sw, sh; screen_size (&sw, &sh);
 	o->x = g_x; o->y = g_y; o->w = g_ow; o->h = g_oh; o->cw = g_lw; o->ch = g_lh;
-	o->ax = 0; o->ay = 30; o->aw = sw; o->ah = sh - 30 - 84; o->state = KAPI_WIN_KEYS;
+	o->ax = 0; o->ay = 30; o->aw = sw; o->ah = sh - 30 - 84; o->state = g_winstate;
 	return 0;
 }
 static int win_minimise (unsigned id) { fprintf (stderr, "sim: win_minimise %u\n", id); return 0; }
@@ -418,6 +420,7 @@ static void step (void)
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
 	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
+	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "quit")) g_quit = true;

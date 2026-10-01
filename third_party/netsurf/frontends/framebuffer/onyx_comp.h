@@ -65,6 +65,10 @@ void onyx_comp_damage(int x0, int y0, int x1, int y1);
 /** The whole document to paint again (the view first, the rest of the band later). */
 void onyx_comp_damage_all(void);
 
+/** Onyx (docs/06 §32): the next frame composites the whole view again (a dialog drawn over
+ * the page closed: the canvas holds it) -- else only what changed since the last frame. */
+void onyx_comp_present_all(void);
+
 /** A new page in the window: the retained layers (the page before's) dropped, all painted
  * again. */
 void onyx_comp_page_changed(void);

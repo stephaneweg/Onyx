@@ -55,6 +55,7 @@
 
 #include "image/image.h"
 #include "image/gif.h"
+#include "html/onyx_anim.h"	/* Onyx: onyx_view_state */
 
 typedef struct gif_content {
 	struct content base;
@@ -211,6 +212,12 @@ static void gif_animate_cb(void *p)
 {
 	gif_content *gif = p;
 
+	if (onyx_view_state == ONYX_VIEW_HIDDEN) {
+		/* Onyx (docs/06 §32): the window is not seen -- no frame decoded nor
+		 * painted; looked at again in half a second */
+		guit->misc->schedule(500, gif_animate_cb, gif);
+		return;
+	}
 	gif__animate(gif, true);
 }
 

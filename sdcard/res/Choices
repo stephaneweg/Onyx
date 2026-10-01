@@ -35,8 +35,11 @@ max_fetchers:8
 max_fetchers_per_host:6
 
 # --- Identity ---------------------------------------------------------------
-# The User-Agent sent (and navigator.userAgent); unset = Chrome on Android: the big sites
-# (Google, Facebook, Yahoo) then send their light mobile pages. Their full desktop pages:
+# The User-Agent sent (and navigator.userAgent); unset = NetSurf's own ("Mozilla/5.0 (X11;
+# Linux aarch64) NetSurf/3.12"): the search engines then serve their light pages and no bot
+# check. Chrome on an Android phone (the light mobile pages of Google, Facebook, Yahoo):
+# user_agent:Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+# A desktop Chrome's (the full desktop pages):
 # user_agent:Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36
 # The languages asked for; unset = French, then English.
 # accept_language:fr-FR,fr;q=0.9,en;q=0.8

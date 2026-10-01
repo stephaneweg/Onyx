@@ -60,6 +60,11 @@ for s in "framein load 1 va" "framein a checkbox true" "framein a focus" "framei
 done
 refuse "$L" "framein outer click f"
 
+echo "frames-rebox-float.html (a frame in a float, the page's boxes made again: no crash)"
+L=$OUT/frames-rebox-float.log
+run "file://$(realpath $T/pages/frames-rebox-float.html)" "$(waits 200)" "$L"
+expect "$L" "rebox float frame done"
+
 echo "recaptcha-outer.html (a reCAPTCHA v2 mimic: two origins, the anchor and challenge frames)"
 python3 $T/wssrv.py $T/pages $PORT > "$OUT/ifsrv.log" 2>&1 &
 SRV=$!

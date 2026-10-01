@@ -655,6 +655,8 @@ static void onyx_add_client_hints(char **hdrs, const char *host, const char *ua)
 	unsigned hints = host != NULL ? onyx_ch_hints(host) : 0;
 	int k;
 
+	if (cv == NULL)
+		return;		/* (Onyx: not a Chrome -- NetSurf's own User-Agent: no client hints) */
 	if (cv != NULL) {
 		for (k = 0, cv += 7; k < 15 && cv[k] >= '0' && cv[k] <= '9'; k++)
 			v[k] = cv[k];
@@ -2494,6 +2496,10 @@ static bool h2_session_new(struct onyx_h2 *e)
 static void h2_run(struct onyx_h2 *e)
 {
 	static const unsigned nap_max = 10;
+	/* Onyx (docs/06 §32): an idle connection (no stream: kept for the next request, up to
+	 * ONYX_H2_IDLE_TICKS) looks at its socket 10 times a second, not 100 -- a new job
+	 * wakes it at once (e->wake) */
+	static const unsigned nap_idle_max = 100;
 	uint8_t *buf = malloc(16384);
 	unsigned idle_since = kapi_get_ticks(), nap = 1;
 	struct h2_stream *s, *sn;
@@ -2576,6 +2582,10 @@ static void h2_run(struct onyx_h2 *e)
 			kapi_msleep(nap);
 		if (nap < nap_max)
 			nap *= 2;
+		else if (e->nstreams == 0 && e->pending == NULL && nap < nap_idle_max)
+			nap += 10;	/* (Onyx: no stream -- a server's ping or goaway can wait) */
+		else if (e->nstreams > 0 && nap > nap_max)
+			nap = nap_max;
 	}
 	/* the end */
 	h2_retire(e);

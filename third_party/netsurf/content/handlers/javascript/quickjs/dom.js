@@ -3374,8 +3374,8 @@ class Document extends Node {
 	get inputEncoding() { return 'UTF-8'; }
 	get contentType() { return 'text/html'; }
 	get compatMode() { return 'CSS1Compat'; }
-	get hidden() { return false; }
-	get visibilityState() { return 'visible'; }
+	get hidden() { return N.viewHidden(); }	/* (Onyx: the window minimised, elsewhere, covered) */
+	get visibilityState() { return N.viewHidden() ? 'hidden' : 'visible'; }
 	get scrollingElement() { return this.documentElement; }
 	get forms() { return this.getElementsByTagName('form'); }
 	get images() { return this.getElementsByTagName('img'); }
@@ -3731,9 +3731,9 @@ const navigator = {
 	get appVersion() { return N.userAgent().replace(/^Mozilla\//, ''); },
 	product: 'Gecko',
 	productSub: '20030107',
-	vendor: 'Google Inc.',
+	get vendor() { return /Chrome\//.test(N.userAgent()) ? 'Google Inc.' : ''; },	/* (Onyx: NetSurf's UA: none) */
 	vendorSub: '',
-	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux armv8l'; },	/* (Onyx: "Desktop site") */
+	get platform() { return /Windows/.test(N.userAgent()) ? 'Win32' : 'Linux aarch64'; },	/* (Onyx: "Desktop site") */
 	language: 'fr-FR',
 	languages: ['fr-FR', 'fr', 'en-US', 'en'],
 	cookieEnabled: true,
@@ -6290,6 +6290,10 @@ function browserDispatch(target, type, init) {
 	}
 	if (type === 'onyx:frame') {		/* (Onyx: requestAnimationFrame) */
 		runFrames(init.time);
+		return true;
+	}
+	if (type === 'onyx:visibility') {	/* (Onyx: the window hidden / shown again) */
+		dispatch(G.document, browserEvent(G.document, 'visibilitychange', {}));
 		return true;
 	}
 	if (type === 'onyx:anim') {		/* (Onyx: transitions, animations) */

@@ -22,7 +22,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | ~~Compositing: `opacity` on a subtree, stacking of translucent groups~~ | all | **done (docs/06 §21)**: a group, a stacking context, blended in place (exact, one pass); nested, positioned, inline, the hover's partial redraws. Left: a layer kept between redraws | cache the layer until its subtree changes | S | P3 |
 | ~~`transform` (rotate / scale / skew / matrix, 3D flattened)~~ | all | **done (§21)**: painted apart (black and white passes, one when opaque), drawn through the matrix, bilinear; `transform-origin`, the individual properties, 3D flattened; hit test and `getBoundingClientRect` through it; translations still the layout's. Left: a real `perspective` | a projective composite (the layer mapped through a 3x3 homography) | S | P3 |
 | ~~`filter` / `backdrop-filter` (blur, brightness, drop-shadow...)~~ | all | **done (§21)**: every filter function but `url()`, `backdrop-filter`, the separable `mix-blend-mode`s; a large blur on a reduced layer. Left: `filter: url()`, the non-separable blend modes, `isolation` | SVG filter primitives on the layer | M | P3 |
-| ~~Transitions and animations (`transition`, `@keyframes`, Web Animations API)~~ | all | **done (docs/06 §22)**: a timeline per content interpolates the computed values each frame (colours, lengths, opacity, transforms, shadows), redraws the animated boxes' rectangles when paint-only, lays out otherwise; the events; `element.animate()` / `Animation` / `getAnimations()` on the same engine; `requestAnimationFrame` paced by the frames (~60 Hz, slower when frames are long, none when idle) | left: pseudo-elements' animations, reversing shortening, keyframes recomputed on a base change, `composite` | S | P2 |
+| ~~Transitions and animations (`transition`, `@keyframes`, Web Animations API)~~ | all | **done (docs/06 §22)**: a timeline per content interpolates the computed values each frame (colours, lengths, opacity, transforms, shadows), redraws the animated boxes' rectangles when paint-only, lays out otherwise; the events; `element.animate()` / `Animation` / `getAnimations()` on the same engine; `requestAnimationFrame` paced by the frames (~30 Hz, 15 for a change of a few px or an unfocused window, none when idle or the window hidden: docs/06 §32) | left: pseudo-elements' animations, reversing shortening, keyframes recomputed on a base change, `composite` | S | P2 |
 | **Incremental restyle and relayout** | all (dirty bits per node) | **restyle done (docs/06 §26)**: the style selections kept from one box tree to the next (marks from the mutation events, sheets added or taken out probed, a check mode), attribute-only changes restyled in the boxes (redrawn, or laid out without a rebox), reboxes coalesced / throttled, none for changes in `display: none` subtrees; the flex layout memo (nested flex: once per inputs instead of 2^depth). Left: a rebox still builds every box (~3 µs an element on the PC), a layout still lays out the whole tree | incremental box construction (the changed subtrees' boxes re-attached: anonymous boxes and inline containers make it delicate); relayout from the nearest box whose size cannot change (a formatting-context root with a fixed size), the dirty boxes and their ancestors only | M | P1 |
 | `position: fixed` / `sticky` in every case | all | fixed and sticky exist (z-layers), some cases wrong | layoutdiff pages per case | S | P2 |
 | **Text shaping (ligatures, kerning, Arabic, Indic, Thai...)** | HarfBuzz (Chromium, WebKit, Ladybird) | FreeType glyph by glyph | vendor HarfBuzz (C++, ~1 MB, no exceptions needed) in `font_freetype.c`: shape each run, cache shaped words | M | P2 |
@@ -91,6 +91,17 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | Password manager, autofill, sync, extensions, devtools | all (Ladybird: devtools starting) | none | a JS console / DOM inspector window would help debugging on the Pi (the bench has NS_JSDEBUG) | M each | P3-P4 |
 
 ## 6. Performance on the Pi
+
+- **An idle Jet Browser** -- done (docs/06 §32): the frames at ~30 Hz (15 for a tiny change or
+  an unfocused window), none while the window is hidden (minimised, another workspace,
+  covered: `visibilitychange`, timers slowed to a second, nothing painted), the animation
+  frame's restyle walking only the animated subtrees, only the changed rectangle composited;
+  kotonstudio.com idle 6.5 / 13.7 % -> ~1.8 % of a PC core (the bench's floor 0.8 %). The
+  caches' writes: an object / a script's bytecode stored the second time it is seen, no body
+  over 512 KB, 16 KB pieces with a sleep between them, waiting while the user acts or a page
+  loads; a write-only disk cache on the Pi fixed (`kapi_save_file`'s answer). Left, kernel
+  side: the EMMC driver busy-waits while the card writes (a yielding wait would remove the
+  stalls), and `kapi_present` has no rectangle (the desktop composites the whole window).
 
 - **Where the time goes** (bbc.com on the PC, `NS_PROF`): after the fetcher fix, JS execution
   (QuickJS) and the full rebox after each script turn dominated. Since docs/06 §26 (the kept
