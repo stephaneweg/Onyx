@@ -143,6 +143,14 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin
   (A/B testing).
+- **`netlog`**: `netlog=1` writes the network's start to **`SD:/netlog.txt`** — for a Pi without a
+  screen whose Wi-Fi does not come up. The kernel starts `/bin/netlog` before anything else; it checks
+  `etc/wpa_supplicant.conf` (a UTF-8 BOM, the `country=` line, the `ssid` / `psk` lines — the
+  passphrase is never written, only its length) and the Wi-Fi firmware, then keeps the kernel log
+  (the `net:` lines, wpa_supplicant's, DHCP), the file rewritten every 2 s. It stops 15 s after the
+  link is up, or after 5 minutes, listing then the access points around. Put the card in the PC
+  and read the file. Meanwhile `kmsg` shows nothing (netlog takes the log's events). Remove it
+  (or `netlog=0`) once the network works.
 - **`netcore`**: `netcore=1` runs the whole **network** (Wi-Fi, wpa_supplicant, TCP/IP, DNS,
   NTP) on **core 3**: the desktop and the network no longer slow each other down, and core 0
   can rest when nothing happens. Core 3 is then no longer an app core: one emulator (or Doom)
@@ -726,6 +734,7 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `rdpd` | `rdpd [port]` | **Remote windows** (port **3390**): the Onyx windows shown one by one on a Windows PC by `OnyxRemote.exe` (pc/dist). Started at boot by `SD:/etc/autostart`. **No password, no encryption.** See *Remote windows on a PC* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
 | `notifytest` | `notifytest [-t <title>] <message>` | Sends a **notification** (bubble under the menu bar) — handy to test `notifyd` from the terminal or telnet, e.g. `notifytest -t Build "Kernel staged"`. The title defaults to "Test". |
+| `netlog` | `netlog` | The network's start into `SD:/netlog.txt` (the Wi-Fi settings checked, the kernel log, the link's result, the access points if it failed): started at boot by `netlog=1` in `cmdline.txt` (§3), for a Pi without a screen. |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
