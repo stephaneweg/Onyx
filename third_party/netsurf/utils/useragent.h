@@ -47,6 +47,23 @@ const char *user_agent_for_host(const char *host);
  * high-entropy client hints, navigator.userAgentData) */
 const char *user_agent_chrome_full(void);
 
+/** Onyx: the versions of a site (the toolbar's pill): Standard -- the default User-Agent
+ * (NetSurf's, or jet.ini's [user_agent] default) --, Mobile (Chrome on Android, or jet.ini's
+ * mobile), Desktop (Chrome on Windows, or jet.ini's desktop); Custom: jet.ini's [sites] has
+ * the site's own line (not changed from the toolbar) */
+enum { USER_AGENT_STANDARD = 0, USER_AGENT_MOBILE = 1, USER_AGENT_DESKTOP = 2,
+       USER_AGENT_CUSTOM = 3 };
+
+/** Onyx: the version a host's site gets (USER_AGENT_*) */
+int user_agent_site_mode(const char *host);
+
+/** Onyx: the version for a host's site (STANDARD, MOBILE or DESKTOP; kept on the card:
+ * SD:/apps/jet.app/site-modes) */
+void user_agent_set_site_mode(const char *host, int mode);
+
+/** Onyx: a host's site (its registrable domain, approximated: bbc.co.uk for www.bbc.co.uk) */
+const char *user_agent_site_of(const char *host);
+
 /** Onyx: whether a host's site gets the desktop version */
 bool user_agent_is_desktop(const char *host);
 

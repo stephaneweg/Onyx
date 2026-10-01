@@ -1165,6 +1165,7 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   registrable domain a line: m.facebook.com and www.facebook.com are one site;
   `user_agent_for_host`, utils/useragent.c). The disk cache keys a desktop site's objects apart
   (`D|<url>`, `onyx_cache.c`): a site switched back to mobile found its desktop copies.
+  (Since §35: the toolbar's pill, three versions, `site-modes`.)
 - **Media queries' range syntax** (libcss `src/parse/mq.c`, an upstream bug): with the name
   first (`(width >= 1012px)`) the stored value was the name itself and the operator was negated
   instead of having its sides swapped -- the query never matched: GitHub's Primer showed its
@@ -1916,7 +1917,8 @@ too heavy for the Pi anyway. Jet Browser now says `Mozilla/5.0 (X11; Linux aarch
 NetSurf/3.12`: no client hints (`sec-ch-ua...` only with a Chrome User-Agent),
 `navigator.vendor` empty, `navigator.platform` `Linux aarch64`. DuckDuckGo serves its full
 results to it (the PC bench). "Desktop site" still sends a desktop Chrome's to the sites the
-user picks, and Choices' `user_agent:` any other (the Android Chrome's is given there).
+user picks, and Choices' `user_agent:` any other (the Android Chrome's is given there). (Since
+§35: the toolbar's pill -- Standard, Mobile, Desktop per site -- and jet.ini's `mobile`.)
 **`SD:/apps/jet.app/jet.ini`** (`utils/useragent.c`, `onyx_ini_ua`) makes them editable: an
 `[user_agent]` section (`default`, `desktop`) and a `[sites]` section (`host = User-Agent`, the
 host or its subdomains); read at the first request; the order: the site's line, "Desktop site",
@@ -3122,6 +3124,86 @@ signed chain, as it should, then accepted with its root appended to a test copy'
 ~10–15 ms a frame), the process idle; the window shrunk and grown (the page laid out again), typing
 an address, Alt+Left, Alt+F4 (a clean exit: History, Cookies, TLSSessions written). Not tried on a
 real Windows machine.
+
+## 35. The toolbar's padlock and the site's version (2026-10-01)
+
+Two half pills joined to the address field, as in Chrome (`user/netsurf/onyx_chrome.cpp`):
+
+![The toolbar: the padlock, the field, the pill](../screenshots/jet.png)
+
+**The site's version: the pill, right of the field.** A blue half pill (flat against the field,
+rounded at its right end: `wk_rbox` with `WK_TR | WK_BR`, the field drawn with its right end past
+its canvas so the two read as one control) shows the version the page's site gets -- **Standard**
+(the default User-Agent: NetSurf's own, or jet.ini's `[user_agent] default`), **Mobile** (Chrome on
+Android: `Mozilla/5.0 (Linux; Android 10; K) ... Chrome/142.0.0.0 Mobile Safari/537.36`, the one
+Jet Browser sent by default before §24, or jet.ini's new `mobile`), **Desktop** (Chrome on Windows,
+or jet.ini's `desktop`) -- and **Custom** (grey) when jet.ini's `[sites]` has the site's own line,
+which wins and is not changed from the toolbar (the tooltip and the menu say so). A press opens its
+menu (`ModeMenu`, a `wtk::Modal` like `PopupMenu`, its right edge on the pill's): the site's name
+(`user_agent_site_of`: the registrable domain, `ua_site_of`; an IP address is its own site now --
+it was cut to its last two numbers), the three versions with what each sends, the current one
+checked; a choice calls `onyx_browser_set_site_mode` (gui.c): `user_agent_set_site_mode`, then the
+page reloaded (`browser_window_reload(bw, true)`, as the old toggle). Navigate ▸ Site Version...
+opens the same menu. The pill is hidden for a page that is not http / https (`file:`, `about:`).
+
+![The pill's menu](../screenshots/jet-menu.png)
+
+**Kept per site** (`utils/useragent.c`): `SD:/apps/jet.app/site-modes`, one `site mode` line per
+site switched (`standard` lines are not written: no line is Standard); the older `desktop-sites`
+(one site a line, each the desktop version) is read while `site-modes` does not exist, and the
+first change writes its sites into `site-modes`. `user_agent_site_mode(host)` (USER_AGENT_STANDARD /
+MOBILE / DESKTOP / CUSTOM), `user_agent_set_site_mode`, `user_agent_for_host`'s order: jet.ini's
+`[sites]`, the site's version (Desktop: jet.ini `desktop` or the built-in Chrome on Windows; Mobile:
+jet.ini `mobile` or the built-in Chrome on Android), then `user_agent_string()` (jet.ini `default`,
+Choices' `user_agent:`, NetSurf's). `user_agent_is_desktop` / `set_desktop` stay (wrappers). The
+client hints and `navigator.userAgent` follow, as before.
+
+**The disk cache keeps the versions apart** (`onyx_cache.c`, `oc_key_as`): the key is the URL with
+`D|` (Desktop), `M|` (Mobile) or `C|` (jet.ini's own) before it, nothing for Standard. An object is
+**stored under the version it was fetched as**, not the site's version when llcache writes it: the
+fetcher notes each URL's version when its fetch starts (`onyx_cache_fetched_as`, a 2048-slot table
+of URL hashes; a cache hit notes it too), `oc_store` and `oc_release` use it -- llcache writes an
+object out only once no page uses it, which after a switch is when the page of the other version
+replaced it (the old key, computed at the write, filed the Standard page under `D|`). The look-ups
+use the site's version now.
+
+**The padlock: left of the field.** A half pill rounded on its left (`LockSeg`), the field's face
+tinted: **green** (`0x1E8E3E`) for an https page whose certificate was verified, **red**
+(`0xD93025`) for an https page loaded past a certificate warning, **grey, struck in red** for an
+http page ("Not secure"), hidden for the rest. The state is NetSurf's
+`browser_window_get_page_info_state` (gui.c `onyx_site_state` -> `onyx_chrome_set_site`):
+`PAGE_STATE_SECURE` green; `SECURE_ISSUES` (parts over http) green, the tooltip says so;
+`SECURE_OVERRIDE` (urldb's certificate permission: the user's "Proceed") red; `INSECURE` grey;
+`INTERNAL` / `LOCAL` / `UNKNOWN` none. It is recomputed when the address is set, at a new content
+and when a load stops; the widgets repaint only when their state changes (the field moves only when
+the padlock or the pill appears or goes). A click (Navigate ▸ Page Security / Certificate...)
+opens the **certificate viewer** (`about:certificate`, §24) with the page's host's chain: the
+fetcher now keeps **the chain of every checked connection** (`onyx_chain_keep`, the 24 hosts used
+last, under a lock: the download threads write it), not only a refused one -- `onyx_nstls_connect`
+fills `*chain` when it connects too (mbedTLS: the chain the verify callback recorded, each
+certificate's fault -- an accepted one's are kept; a resumed session, which exchanges no
+certificate: the server's certificate the session kept, `mbedtls_ssl_get_peer_cert`; the PC bench's
+OpenSSL the same, `SSL_get1_peer_certificate`), and a resumed session's lone certificate does not
+replace a whole chain. `onyx_fetch_cert_url(host)` makes the viewer's address
+(`cert_chain_to_query`), `onyx_browser_show_certificate` navigates to it (NetSurf's own
+`browser_window_show_certificates` opens a new window, which this frontend has not); none known: a
+message box says what the padlock says.
+
+**Keyboard.** F6 / Ctrl+L focus the field; from there **Tab** goes to the pill and **Shift+Tab**
+to the padlock (a hidden one skipped; past either end: back to the page), Enter / Space (and Down
+on the pill) open them, Esc goes back to the page. While the field has the focus the padlock's
+outline takes the accent too (one control).
+
+**Tests.** `tools/tests/netsurf/uatest.sh` (a local server: `httpsrv.py`'s new `/ua` shows, logs
+and lets the page's script print the User-Agent; fresh for an hour): Standard sends NetSurf's;
+the pill's menu clicked -- Mobile then Desktop, each sent and seen by the page's script, the choice
+in `site-modes`; launched again (the same `RAM:`): Desktop from the disk cache, Mobile and Standard
+each their own copy (never the other version's), Standard again from the cache; `desktop-sites`
+still read; jet.ini's `[sites]` wins (Custom, the menu changes nothing); no green padlock on
+http. `tlstest.sh` (live badssl.com, both TLS stacks): the trusted sites' padlock green, red after
+"Proceed", and a click on each opens the viewer (the red one shows "The certificate is self
+signed"). The screenshots: `shots.sh jet` (a local https page from
+`tools/tests/desktop_sim/sd/jet/` over `h2srv.py`, its certificate made and trusted for the run).
 
 ## 8. Known gaps
 

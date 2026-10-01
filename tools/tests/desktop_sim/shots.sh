@@ -291,4 +291,27 @@ if want setup; then			# (Setup, the first-run wizard: its pages over the wallpap
 		scene setup-$d "$OUT/fb_$d.elsm"
 	done
 fi
+if want jet; then			# (Jet Browser: the bench's build, tools/tests/netsurf/host.mk -- a local https page,
+					#  sd/jet/index.html over h2srv.py with a certificate made here and trusted:
+					#  the green padlock, the Standard pill; then the pill's menu open)
+	NS=${NSBENCH:-/tmp/nsbench}
+	make -f tools/tests/netsurf/host.mk OUT="$NS/build" -j"$(nproc)" >"$OUT/jet-build.log" 2>&1 ||
+		{ echo "shots: jet's build failed ($OUT/jet-build.log)"; exit 1; }
+	mkdir -p "$OUT/jet"
+	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 30 \
+		-subj /CN=localhost -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
+		-keyout "$OUT/jet/key.pem" -out "$OUT/jet/cert.pem" >/dev/null 2>&1
+	cat "$NS/build/res/ca-bundle" "$OUT/jet/cert.pem" > "$OUT/jet/ca.pem"
+	sed -i '/^ca_bundle:/d' "$NS/build/res/Choices"; echo "ca_bundle:$OUT/jet/ca.pem" >> "$NS/build/res/Choices"
+	rm -f "$NS/build/data/site-modes" "$NS/build/data/desktop-sites" "$NS/build/data/jet.ini"
+	python3 tools/tests/netsurf/h2srv.py $D/sd/jet 8447 "$OUT/jet/cert.pem" "$OUT/jet/key.pem" >"$OUT/jet/srv.log" 2>&1 &
+	JSRV=$!; sleep 1
+	JW=$(i=0; while [ $i -lt 120 ]; do printf 'wait;'; i=$((i + 1)); done)
+	env SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" SIM_ARGS=https://localhost:8447/index.html \
+		SIM="${JW}dump $OUT/jet.elsm;move 940 19;wait;down 940 19;wait;wait;wait;move 860 114;wait;wait;dump $OUT/jet-menu.elsm;key 27;wait;exit" \
+		"$NS/build/netsurf" >>"$OUT/log.txt" 2>&1 || true
+	kill $JSRV 2>/dev/null
+	sed -i '/^ca_bundle:/d' "$NS/build/res/Choices"
+	png jet; png jet-menu
+fi
 echo "shots: done"

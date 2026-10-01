@@ -17,7 +17,7 @@ The folder
   data\            the browser's own folder (on the Pi SD:/apps/jet.app/), made and written by it:
                      Cookies, History        your cookies (logins) and the pages visited
                      jet.ini                 the User-Agent sent (the whole browser, or site by site)
-                     desktop-sites           the sites switched to their desktop version
+                     site-modes              each site's version chosen with the blue pill (below)
                      TLSSessions, HTTP1Hosts the TLS sessions and servers remembered between launches
                      ram\jet\cache, ram\jet\jscache   the disk cache and the scripts' code cache (on the Pi
                                              they are in RAM:, lost at a restart; here kept until deleted)
@@ -28,6 +28,11 @@ The folder
 Using it
   Type an address in the bar (or Ctrl+L / F6 to go there) and Enter. Back / Forward: the buttons or
   Alt+Left / Alt+Right; Reload F5 (or Ctrl+R); Stop Esc; History Ctrl+H; the menus File, Navigate, Help.
+  Left of the address, the padlock: green for a secure (https) page, red for one opened past a certificate
+  warning ("Proceed"), grey for http; click it to see the certificate. Right of it, the blue pill: the
+  version of the site -- Standard (Jet Browser's own User-Agent), Mobile (Chrome on Android), Desktop
+  (Chrome on Windows); click it to choose (the page reloads; remembered per site). From the address bar,
+  Tab goes to the pill, Shift+Tab to the padlock.
   The window resizes and maximises as any; the mouse wheel scrolls. Drop an .html file on the window, or
   "Open with" Jet.exe, or give an address on the command line:
       Jet.exe https://css3test.com/

@@ -68,8 +68,11 @@
 /* Onyx: the window, its native toolbar (user/netsurf/onyx_chrome.cpp) */
 #include "desktop/searchweb.h"
 #include "netsurf/onyx_chrome.h"
+#include "netsurf/ssl_certs.h"	/* Onyx: the padlock's certificate viewer */
 #include "netsurf/onyx_io.h"	/* Onyx: the card's writers wait while a page loads */
 #include "kapi.h"		/* Onyx: kapi_vol_info (the RAM: volume, docs/06 §33) */
+
+static void onyx_site_state(void);	/* Onyx: the toolbar's padlock and pill (below) */
 
 
 #define NSFB_TOOLBAR_DEFAULT_LAYOUT "blfsrutc"
@@ -2191,6 +2194,7 @@ static nserror
 gui_window_set_url(struct gui_window *g, nsurl *url)
 {
 	onyx_chrome_set_url(nsurl_access(url));		/* Onyx: the native address field */
+	onyx_site_state();				/* (its padlock and pill) */
 	if (g->url != NULL)
 		fbtk_set_text(g->url, nsurl_access(url));
 	return NSERROR_OK;
@@ -2295,6 +2299,7 @@ gui_window_stop_throbber(struct gui_window *gw)
 		onyx_load_t0 = 0;
 	}
 	onyx_chrome_set_busy(0);
+	onyx_site_state();		/* Onyx: the padlock (insecure parts seen while loading) */
 	onyx_io_loading(0);
 	{
 		/* Onyx: 3 s after the load -- once a minute at most (docs/06 §32: each
@@ -2382,6 +2387,7 @@ gui_window_event(struct gui_window *gw, enum gui_window_event event)
 		fbtk_set_scroll_position(gw->vscroll, 0);
 		fbtk_set_scroll_position(gw->hscroll, 0);
 		onyx_comp_page_changed();	/* (the page before's layers: gone) */
+		onyx_site_state();		/* (the toolbar's padlock: the new page's) */
 		fb_queue_redraw(gw->browser, 0, 0, fbtk_get_width(gw->browser),
 				fbtk_get_height(gw->browser));
 		break;
@@ -2694,10 +2700,50 @@ void onyx_browser_reload(void)
 		browser_window_reload(window_list->bw, true);
 }
 
-/* Onyx: the page's site in its desktop version or back to the mobile one (the menu's
- * "Desktop Site / Mobile Site"; the list is kept on the card: utils/useragent.c), then the
- * page loaded again with the other User-Agent */
-void onyx_browser_toggle_desktop(void)
+/* Onyx: the toolbar's padlock and its pill (onyx_chrome.h: onyx_chrome_set_site) -- the
+ * page's security from NetSurf's page info state (an https page whose host the user accepted
+ * past the certificate warning: SECURE_OVERRIDE, the red padlock), the version of its site
+ * (utils/useragent.c); for an http(s) page only. Called when the address, the content or the
+ * load's state changes; the toolbar repaints only what changed. */
+static void onyx_site_state(void)
+{
+	struct browser_window *bw;
+	nsurl *url;
+	lwc_string *scheme, *host;
+	int sec = ONYX_SEC_NONE, mode = -1;
+	bool web = false;
+
+	if (window_list == NULL)
+		return;
+	bw = window_list->bw;
+	url = browser_window_access_url(bw);
+	scheme = url != NULL ? nsurl_get_component(url, NSURL_SCHEME) : NULL;
+	if (scheme != NULL) {
+		web = strcasecmp(lwc_string_data(scheme), "http") == 0 ||
+		      strcasecmp(lwc_string_data(scheme), "https") == 0;
+		lwc_string_unref(scheme);
+	}
+	if (web) {
+		host = nsurl_get_component(url, NSURL_HOST);
+		if (host != NULL) {
+			mode = user_agent_site_mode(lwc_string_data(host));
+			lwc_string_unref(host);
+		}
+		switch (browser_window_get_page_info_state(bw)) {
+		case PAGE_STATE_INSECURE: sec = ONYX_SEC_INSECURE; break;
+		case PAGE_STATE_SECURE_OVERRIDE: sec = ONYX_SEC_BROKEN; break;
+		case PAGE_STATE_SECURE_ISSUES: sec = ONYX_SEC_MIXED; break;
+		case PAGE_STATE_SECURE: sec = ONYX_SEC_SECURE; break;
+		default: sec = ONYX_SEC_NONE; break;	/* (no content yet) */
+		}
+	}
+	onyx_chrome_set_site(sec, mode);
+}
+
+/* Onyx: the page's site in one of its versions -- Standard, Mobile, Desktop (the toolbar's
+ * pill, Navigate > Site Version; kept on the card: utils/useragent.c), then the page loaded
+ * again with the other User-Agent */
+void onyx_browser_set_site_mode(int mode)
 {
 	struct browser_window *bw;
 	nsurl *url;
@@ -2712,10 +2758,66 @@ void onyx_browser_toggle_desktop(void)
 	host = nsurl_get_component(url, NSURL_HOST);
 	if (host == NULL)
 		return;
-	user_agent_set_desktop(lwc_string_data(host),
-			!user_agent_is_desktop(lwc_string_data(host)));
+	if (user_agent_site_mode(lwc_string_data(host)) == USER_AGENT_CUSTOM ||
+	    user_agent_site_mode(lwc_string_data(host)) == mode) {
+		lwc_string_unref(host);
+		return;
+	}
+	user_agent_set_site_mode(lwc_string_data(host), mode);
+	NSLOG(netsurf, INFO, "site %s: mode %d", user_agent_site_of(lwc_string_data(host)), mode);
 	lwc_string_unref(host);
+	onyx_site_state();
 	browser_window_reload(bw, true);
+}
+
+/* Onyx: the page's site, for the pill's menu ("" when none) */
+const char *onyx_browser_site(void)
+{
+	static char site[128];
+	nsurl *url;
+	lwc_string *host;
+
+	site[0] = '\0';
+	if (window_list == NULL || (url = browser_window_access_url(window_list->bw)) == NULL)
+		return site;
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host != NULL) {
+		snprintf(site, sizeof site, "%s", user_agent_site_of(lwc_string_data(host)));
+		lwc_string_unref(host);
+	}
+	return site;
+}
+
+/* Onyx: the padlock clicked -- the page's certificate chain in the viewer (about:certificate),
+ * the one the fetcher kept for the page's host (onyx_fetch_cert_url) or the one NetSurf kept
+ * for the page; 0 when none is known (a page on another host's connection...) */
+extern nserror onyx_fetch_cert_url(const char *host, nsurl **url);	/* onyx_fetch.c */
+
+int onyx_browser_show_certificate(void)
+{
+	struct browser_window *bw;
+	nsurl *url, *view = NULL;
+	lwc_string *host;
+	struct cert_chain *chain;
+
+	if (window_list == NULL)
+		return 0;
+	bw = window_list->bw;
+	url = browser_window_access_url(bw);
+	if (url == NULL)
+		return 0;
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host != NULL) {
+		onyx_fetch_cert_url(lwc_string_data(host), &view);
+		lwc_string_unref(host);
+	}
+	if (view == NULL && browser_window_get_ssl_chain(bw, &chain) == NSERROR_OK)
+		cert_chain_to_query(chain, &view);
+	if (view == NULL)
+		return 0;
+	onyx_navigate(bw, view);
+	nsurl_unref(view);
+	return 1;
 }
 
 void onyx_browser_stop(void)

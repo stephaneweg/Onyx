@@ -74,6 +74,8 @@
 #include "onyx_ws.h"		/* Onyx: onyx_ws_shutdown (the app's end) */
 #include "netsurf/onyx_perf.h"	/* Onyx: NS_PERF timings (net:connect, net:done) */
 
+void onyx_cache_fetched_as(nsurl *url);	/* Onyx: onyx_cache.c (the disk cache's key) */
+
 /* Per-fetch state machine phases (the path without threads). */
 enum onyx_phase {
 	PH_INIT = 0,	/* parse URL, connect, send request (one-shot, blocking) */
@@ -750,7 +752,7 @@ static void onyx_add_fetch_metadata(char **hdrs, nsurl *url, nsurl *ref, const c
 		hdrs_add(hdrs, "Upgrade-Insecure-Requests", "1", 1);
 	if (us != NULL && strcasecmp(lwc_string_data(us), "https") == 0) {
 		/* the client hints a Chrome sends on https (Onyx: for the site's User-Agent --
-		 * desktop or mobile: the toolbar's "Desktop site") */
+		 * the version the toolbar's pill chose for the site) */
 		lwc_string *hh = nsurl_get_component(url, NSURL_HOST);
 		const char *h = hh != NULL ? lwc_string_data(hh) : NULL;
 		onyx_add_client_hints(hdrs, h, user_agent_for_host(h));
@@ -815,6 +817,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		return NULL;
 	ctx->parent_fetch = parent_fetch;
 	ctx->url = nsurl_ref(url);
+	onyx_cache_fetched_as(url);	/* (Onyx: the disk cache's key -- the site's version now) */
 
 	/* the request: its method, its headers (Onyx: the conditional ones too -- llcache's
 	 * revalidation of a stale object, a 304 answered with FETCH_NOTMODIFIED), its body */
@@ -929,6 +932,90 @@ static void fetch_onyx_error(struct fetch_onyx_context *c, const char *err)
 	msg.type = FETCH_ERROR;
 	msg.data.error = err;
 	fetch_onyx_send(&msg, c);
+}
+
+/* Onyx: the certificates of the hosts connected to -- the chain each one's last checked
+ * connection showed (its faults: a host the user accepted keeps them), for the toolbar's
+ * padlock: a click shows the page's host's in the certificate viewer (about:certificate). Kept
+ * for the app's life, the 24 hosts used last; a resumed session's lone certificate does not
+ * replace a whole chain. The download threads write it, the UI reads it: a lock. */
+#define ONYX_CHAINS 24
+static struct onyx_kept_chain {
+	char host[128];
+	unsigned depth, used;
+	struct { int err; unsigned char *der; unsigned long len; } cert[ONYX_TLS_CHAIN_MAX];
+} onyx_chains[ONYX_CHAINS];
+static unsigned onyx_chains_clock;
+static volatile int onyx_chains_lk;
+
+/* a connection's chain kept (then freed: the caller's) */
+static void onyx_chain_keep(const char *host, struct onyx_tls_chain *ch)
+{
+	struct onyx_kept_chain *k = NULL;
+	unsigned i, n = ch->depth < ONYX_TLS_CHAIN_MAX ? ch->depth : ONYX_TLS_CHAIN_MAX;
+
+	if (n > 0 && ch->cert[0].der != NULL) {
+		while (kapi__xchg(&onyx_chains_lk, 1) != 0)
+			kapi_msleep(1);
+		for (i = 0; i < ONYX_CHAINS && k == NULL; i++)
+			if (strcasecmp(onyx_chains[i].host, host) == 0)
+				k = &onyx_chains[i];
+		if (k != NULL && n < k->depth) {
+			k->used = ++onyx_chains_clock;		/* (a resumed session: kept as is) */
+			k = NULL;
+		} else if (k == NULL) {
+			k = &onyx_chains[0];
+			for (i = 1; i < ONYX_CHAINS; i++)		/* (the least recently used) */
+				if (onyx_chains[i].used < k->used)
+					k = &onyx_chains[i];
+		}
+		if (k != NULL) {
+			for (i = 0; i < k->depth; i++)
+				free(k->cert[i].der);
+			snprintf(k->host, sizeof k->host, "%s", host);
+			k->depth = n;
+			k->used = ++onyx_chains_clock;
+			for (i = 0; i < n; i++) {
+				k->cert[i].err = ch->cert[i].err;
+				k->cert[i].der = ch->cert[i].der;	/* (taken) */
+				k->cert[i].len = ch->cert[i].len;
+				ch->cert[i].der = NULL;
+			}
+		}
+		kapi_unlock(&onyx_chains_lk);
+	}
+	onyx_nstls_chain_free(ch);
+}
+
+/* Onyx (the toolbar's padlock): the certificate viewer's address for a host's chain, or
+ * NSERROR_NOT_FOUND when no checked connection to it is known */
+nserror onyx_fetch_cert_url(const char *host, nsurl **url)
+{
+	struct cert_chain chain;
+	nserror err = NSERROR_NOT_FOUND;
+	unsigned i, j;
+
+	if (host == NULL)
+		return err;
+	while (kapi__xchg(&onyx_chains_lk, 1) != 0)
+		kapi_msleep(1);
+	for (i = 0; i < ONYX_CHAINS; i++)
+		if (onyx_chains[i].depth > 0 && strcasecmp(onyx_chains[i].host, host) == 0) {
+			struct onyx_kept_chain *k = &onyx_chains[i];
+			memset(&chain, 0, sizeof chain);
+			chain.depth = k->depth < MAX_CERT_DEPTH ? k->depth : MAX_CERT_DEPTH;
+			for (j = 0; j < chain.depth; j++) {
+				int e = k->cert[j].err;
+				chain.certs[j].err = e >= ONYX_CERT_OK && e <= ONYX_CERT_HOSTNAME_MISMATCH ?
+					(ssl_cert_err) e : SSL_CERT_ERR_UNKNOWN;
+				chain.certs[j].der = k->cert[j].der;
+				chain.certs[j].der_length = k->cert[j].len;
+			}
+			err = cert_chain_to_query(&chain, url);
+			break;
+		}
+	kapi_unlock(&onyx_chains_lk);
+	return err;
 }
 
 /* Onyx: the server's certificate refused -- the chain the check built to the core
@@ -1154,6 +1241,7 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 			onyx_nstls_chain_free(&ch);
 			return false;
 		}
+		onyx_chain_keep(host, &ch);	/* (Onyx: the padlock's viewer) */
 	} else {
 		c->sock = kapi_tcp_connect(host, port);
 		if (c->sock < 0) { fetch_onyx_error(c, "Connection failed"); return false; }
@@ -1584,6 +1672,7 @@ static bool conn_open(struct onyx_conn *k, const char *host, unsigned port, bool
 			onyx_nstls_chain_free(&ch);
 			return false;
 		}
+		onyx_chain_keep(host, &ch);	/* (Onyx: the padlock's viewer) */
 	}
 	/* Onyx: the perf log -- where a new connection's time went */
 	if (onyx_perf_on()) {
@@ -2744,7 +2833,7 @@ static int onyx_job_start(struct fetch_onyx_context *c)
 	j->method = strdup(c->method);
 	j->hdrs = c->hdrs != NULL ? strdup(c->hdrs) : NULL;
 	j->body = c->body != NULL ? strdup(c->body) : NULL;
-	{	/* (Onyx: the host's -- "Desktop site") */
+	{	/* (Onyx: the host's -- the site's version, the toolbar's pill) */
 		lwc_string *hh = nsurl_get_component(c->url, NSURL_HOST);
 		j->ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
 		if (hh != NULL)

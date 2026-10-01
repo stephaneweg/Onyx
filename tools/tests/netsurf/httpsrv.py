@@ -1,7 +1,7 @@
 # httpsrv.py <root> <port> -- the HTTP/1.1 server of httptest.sh: keep-alive, some answers chunked,
 # encoded (the pages gzip, the style sheets br, the PNG images zstd), a redirect (/redir) with a
 # Set-Cookie, a Set-Cookie on each page; logs each connection (CONN n), request (REQ n path
-# cookie= referer=) and coding (ENC n path coding); the cache: the style sheets no-cache with an
+# cookie= referer=) and coding (ENC n path coding); /ua shows and logs the User-Agent (UA n ...); the cache: the style sheets no-cache with an
 # ETag (a 304 to a matching If-None-Match: NOTMOD n path), the PNG images max-age=3600.
 import gzip, http.server, os, socketserver, sys, threading, zlib
 try:
@@ -45,6 +45,21 @@ class H(http.server.BaseHTTPRequestHandler):
             f = os.path.join(f, 'index.html')
         log('REQ', self.cid, self.path, 'cookie=%s' % self.headers.get('Cookie'),
             'referer=%s' % self.headers.get('Referer'))
+        if path == '/ua':	# (the site's version: uatest.sh) -- the User-Agent sent, shown and logged
+            ua = self.headers.get('User-Agent') or ''
+            log('UA', self.cid, ua)
+            body = ('<!doctype html><title>User-Agent</title><body style="font:20px sans-serif;'
+                    'margin:24px"><h1>Your User-Agent</h1><p id=ua>%s</p><script>console.log("page-ua " + '
+                    'document.getElementById("ua").textContent + " | nav " + navigator.userAgent)'
+                    '</script></body>' %
+                    ua.replace('&', '&amp;').replace('<', '&lt;')).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'max-age=3600')	# (fresh: the disk cache's key)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == '/redir':
             self.send_response(302)
             self.send_header('Location', '/kotonviolins.com/index.html')

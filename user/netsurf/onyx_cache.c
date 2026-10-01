@@ -48,7 +48,7 @@
 #include "utils/errors.h"
 #include "utils/log.h"
 #include "utils/nsurl.h"
-#include "utils/useragent.h"	/* (the "Desktop Site" key) */
+#include "utils/useragent.h"	/* (the site's version in the key) */
 #include "content/backing_store.h"
 #include "netsurf/onyx_perf.h"
 
@@ -262,33 +262,76 @@ static uint8_t *oc_read(const char *path, size_t *len)
 	return b;
 }
 
-/* Onyx: the entry's key -- its URL, "D|" before it when the URL's site is shown in its
- * desktop version ("Desktop Site", utils/useragent.c): the two versions of a page are
- * different responses (a Vary: User-Agent), a site switched back found the other's copy */
-static const char *oc_key(nsurl *url, char *buf, size_t cap)
+/* Onyx: the version of its site each URL was fetched as (the fetcher notes it: onyx_cache_
+ * fetched_as; a cache hit too): an object is stored and released under the version it came
+ * with, not the one the site has when llcache writes it out -- the page's objects are written
+ * once no page uses them, often after the pill switched the site (UI thread only) */
+#define OC_AS 2048
+static struct { uint32_t h; signed char mode; } oc_as[OC_AS];
+
+static int oc_mode_now(nsurl *url)
 {
 	lwc_string *h = nsurl_get_component(url, NSURL_HOST);
-	bool d = h != NULL && user_agent_is_desktop(lwc_string_data(h));
+	int mode = h != NULL ? user_agent_site_mode(lwc_string_data(h)) : USER_AGENT_STANDARD;
 
 	if (h != NULL)
 		lwc_string_unref(h);
-	if (!d)
+	return mode;
+}
+
+static uint32_t oc_key_hash(const char *s);
+
+static void oc_note_mode(nsurl *url, int mode)
+{
+	uint32_t h = oc_key_hash(nsurl_access(url));
+
+	oc_as[h % OC_AS].h = h;
+	oc_as[h % OC_AS].mode = (signed char) mode;
+}
+
+void onyx_cache_fetched_as(nsurl *url)
+{
+	oc_note_mode(url, oc_mode_now(url));
+}
+
+/* the version a URL was fetched as (else the site's now) */
+static int oc_mode_as_fetched(nsurl *url)
+{
+	uint32_t h = oc_key_hash(nsurl_access(url));
+
+	return oc_as[h % OC_AS].h == h ? oc_as[h % OC_AS].mode : oc_mode_now(url);
+}
+
+/* Onyx: the entry's key -- its URL, with the version of its site before it ("D|" Desktop, "M|"
+ * Mobile, "C|" jet.ini's own User-Agent for the site; nothing for Standard: the toolbar's pill,
+ * utils/useragent.c): the versions of a page are different responses (a Vary: User-Agent), a
+ * site switched back finds its own copy, not the other version's. mode: the version (looked
+ * up: the site's now; stored: oc_mode_as_fetched). */
+static const char *oc_key_as(nsurl *url, int mode, char *buf, size_t cap)
+{
+	if (mode == USER_AGENT_STANDARD)
 		return nsurl_access(url);
-	snprintf(buf, cap, "D|%s", nsurl_access(url));
+	snprintf(buf, cap, "%c|%s", mode == USER_AGENT_DESKTOP ? 'D' : mode == USER_AGENT_MOBILE ?
+			'M' : 'C', nsurl_access(url));
 	return buf;
 }
 
-static struct oc_entry *oc_find(nsurl *url)
+static struct oc_entry *oc_find_as(nsurl *url, int mode)
 {
 	uint32_t h = nsurl_hash(url);
 	struct oc_entry *e;
 	char kb[4096];
-	const char *s = oc_key(url, kb, sizeof kb);
+	const char *s = oc_key_as(url, mode, kb, sizeof kb);
 
 	for (e = oc.hash[h % OC_HASH]; e != NULL; e = e->next)
 		if (e->hash == h && !e->dead && strcmp(e->url, s) == 0)
 			return e;
 	return NULL;
+}
+
+static struct oc_entry *oc_find(nsurl *url)
+{
+	return oc_find_as(url, oc_mode_now(url));
 }
 
 /* (oc.lk held) an element's reference dropped: its bytes freed with the last one */
@@ -557,10 +600,10 @@ static void oc_load_index(void)
 			continue;
 		}
 		if (sscanf(p, "%x %lu %lu %u %n", &id, &dl, &ml, &used, &off) == 4 && off > 0 &&
-		    nsurl_create(p + off + (strncmp(p + off, "D|", 2) == 0 ? 2 : 0), &u) ==
-				NSERROR_OK) {
+		    nsurl_create(p + off + ((p[off] == 'D' || p[off] == 'M' || p[off] == 'C') &&
+				p[off + 1] == '|' ? 2 : 0), &u) == NSERROR_OK) {
 			struct oc_entry *e = calloc(1, sizeof *e);
-			url = strdup(p + off);	/* (its key: "D|" kept -- oc_key) */
+			url = strdup(p + off);	/* (its key: "D|" / "M|" / "C|" kept -- oc_key_as) */
 			if (e != NULL && url != NULL) {
 				e->url = url;
 				e->hash = nsurl_hash(u);
@@ -682,14 +725,16 @@ static nserror oc_store(nsurl *url, enum backing_store_flags flags, uint8_t *dat
 
 	if (!oc.up)
 		return NSERROR_INIT_FAILED;
+	int mode = oc_mode_as_fetched(url);	/* (Onyx: the version it came as) */
+
 	kapi_lock(&oc.lk);
-	e = oc_find(url);
+	e = oc_find_as(url, mode);
 	if (e == NULL && elem == OC_ELEM_DATA) {
 		/* Onyx (docs/06 §32): a new object stored only when it is worth it -- not a
 		 * large body, and only an URL seen in an earlier launch (most of what a page
 		 * fetches is never asked for again) */
 		char kb[4096];
-		uint32_t h = oc_key_hash(oc_key(url, kb, sizeof kb));
+		uint32_t h = oc_key_hash(oc_key_as(url, mode, kb, sizeof kb));
 		int sn = oc_seen(h);
 		if (oc.ram && datalen <= OC_MAX_OBJECT_RAM) {
 			/* (RAM: the first time -- no card to spare) */
@@ -709,7 +754,7 @@ static nserror oc_store(nsurl *url, enum backing_store_flags flags, uint8_t *dat
 	if (e == NULL) {
 		e = calloc(1, sizeof *e);
 		char kb[4096];
-		if (e == NULL || (e->url = strdup(oc_key(url, kb, sizeof kb))) == NULL) {
+		if (e == NULL || (e->url = strdup(oc_key_as(url, mode, kb, sizeof kb))) == NULL) {
 			free(e);
 			kapi_unlock(&oc.lk);
 			return NSERROR_NOMEM;
@@ -773,6 +818,7 @@ static nserror oc_fetch(nsurl *url, enum backing_store_flags flags, uint8_t **da
 	}
 	el = &e->e[elem];
 	e->used = ++oc.clock;
+	oc_note_mode(url, oc_mode_now(url));	/* (released as the version it was read as) */
 	if (el->data != NULL) {
 		el->ref++;
 		*data = el->data;
@@ -823,7 +869,7 @@ static nserror oc_release(nsurl *url, enum backing_store_flags flags)
 {
 	int elem = (flags & BACKING_STORE_META) ? OC_ELEM_META : OC_ELEM_DATA;
 	char kb[4096];
-	const char *s = oc_key(url, kb, sizeof kb);
+	const char *s = oc_key_as(url, oc_mode_as_fetched(url), kb, sizeof kb);
 	uint32_t h = nsurl_hash(url);
 	struct oc_entry *e;
 
