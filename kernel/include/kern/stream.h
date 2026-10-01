@@ -71,6 +71,20 @@ private:
 	boolean m_bOpen;
 };
 
+// A file of the RAM volume (kern/ramfs.h) as a stream. nMode as CFileStream's.
+class CRamStream : public CStream
+{
+public:
+	CRamStream (const char *pPath, int nMode);
+	~CRamStream (void);
+	boolean IsValid (void) const { return m_pFile != 0; }
+	int Read (void *pBuf, unsigned nLen) override;
+	int Write (const void *pBuf, unsigned nLen) override;
+
+private:
+	void *m_pFile;
+};
+
 // Spawned-process handle: the child sets bDone/nStatus on exit; the waiter polls it.
 // Outlives the task (the waiter frees it), so it never dangles on the reaped CTask.
 struct CProcess

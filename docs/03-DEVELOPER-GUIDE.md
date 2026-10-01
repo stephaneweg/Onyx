@@ -305,6 +305,36 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
   cannot freeze the system. For an audio pump, a plugin's render loop. `-1` asks → the previous
   priority; −2 no such thread. Test: [`user/bin/futextest.c`](../user/bin/futextest.c).
 
+### 5.3. Files in memory: the `RAM:` volume (kernel v71)
+
+`RAM:` is a volume in the kernel's memory (docs/02 §16): **every file call works there as on the
+card** — `kapi_open` / `kapi_read` / `kapi_fsize` / `kapi_seek` / `kapi_close`, `kapi_save_file`,
+`kapi_file_in` / `kapi_file_out` (append too), `kapi_opendir` / `kapi_readdir`, `kapi_mkdir`,
+`kapi_remove`, `kapi_rename`, `kapi_chdir` — so newlib's `fopen` / `fwrite` / `remove` do too. Use it
+for what may be lost and should not wear or wait on the card: caches, temporary files, a
+download being unpacked. Jet Browser keeps its disk cache and its JS code cache there
+(`RAM:/jet/cache`, `RAM:/jet/jscache`; docs/06 §33).
+
+- **Until the Pi restarts.** Not tied to your app: what it leaves there is still there when it runs
+  again (the same boot), gone after a restart — check for a file before trusting it, rebuild it if
+  it is missing. Choose a folder of your own (`RAM:/<app>/`) and create it (`kapi_mkdir` each
+  level: it does not create parents; −1 when it exists).
+- **Fast**: a `save_file` / `read` is a copy into the kernel's pages — no pacing, no SD stall
+  (§*Pitfalls*: the card's writes freeze core 0). Big transfers yield every 1 MB.
+- **Bounded**: 128 MB by default (`system.ini` `ramfs=`; less on a 1 GB Pi), and a reserve of free
+  memory is always left to the apps, so a write can fail when memory is short: `kapi_save_file`
+  returns −1 (and leaves no half file), a stream write a short count. **`kapi_vol_info ("RAM:",
+  &vi)`** (v71) says the size / used / free (and `-1`: no `RAM:` — an older kernel or
+  `ramfs=0`: fall back to the card). The memory of a removed file comes back at once.
+- Names: up to 127 characters, **case-insensitive** (case kept), as on the FAT card. `rename`
+  works within `RAM:` only (across volumes: copy then remove). Programs cannot be run from it.
+- The shell: `ls RAM:`, `cd RAM:/x`, `cp`, `mv`, `rm`, `mkdir`, `cat`, redirections (`> RAM:/log`,
+  `>>`) and **`df`** (the volumes' room). `/bin/ramtest` exercises it on the Pi.
+- **On the PC** (the desktop simulator, `tools/tests/desktop_sim/fakekapi.cpp`): `RAM:` is the
+  folder **`SIM_RAM`** — the same folder for several runs is several launches within one boot
+  (`tools/tests/netsurf/httptest.sh` does that); unset, each run gets a fresh temporary folder,
+  deleted at its end (a boot of its own). `vol_info` answers 128 MB.
+
 ## 6. Writing a graphical application
 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
@@ -2407,6 +2437,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
   check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,
   the File Viewer and `ftpd`).
+- **`RAM:` is lost at a restart** (docs/02 §16, §5.3): keep only what can be rebuilt there, and
+  expect a file there to be missing. `kapi_vol_info` returns −1 when there is no `RAM:` (an older
+  kernel, `ramfs=0`): fall back to the card.
 - **`kapi_save_file` returns the bytes written** (≥ 0; 0 for an empty file) or -1 — test `< 0`
   for a failure, or `== n` (a full card writes less). A `!= 0` test reported every save failed
   on the Pi (Koton's `Doc::save`), and `fsutil.h`'s copy treated an empty file as a failure; the
@@ -2416,7 +2449,10 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   2026-10-01 the count was wrong after a timeout part-way (Circle's `CSocket::Send` answered
   the error, its earlier chunks already queued: `docs/05` §22), and resending "the rest" put
   bytes twice in the stream.
-- **Host tests** (`tools/tests/`): `run_circlenet_test.sh` (the Circle fork's TCP: duplicate
+- **Host tests** (`tools/tests/`): `run_ramfs_test.sh` (the kernel's RAM file system,
+  `kernel/sys/ramfs.cpp`, built for the PC under AddressSanitizer: random operations against a
+  model, a full volume, files removed while open, the memory given back — run it after touching
+  `sys/ramfs.cpp`), `run_circlenet_test.sh` (the Circle fork's TCP: duplicate
   ACKs, the RTO, `CSocket::Send`'s count -- run it after touching `circle/lib/net`), `run_fs_test.sh` (the Circle fork's FatFs + `diskio.cpp`
   sector cache on a RAM disk: 4000 random file operations checked against a model, cache on
   and off, same disk image — run it after touching `circle/addon/fatfs`), `run_trash_test.sh` (trash.h + fsutil.h against a mock

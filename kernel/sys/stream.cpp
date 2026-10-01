@@ -2,6 +2,7 @@
 // stream.cpp -- pipe + file stream implementations (see stream.h).
 //
 #include <kern/stream.h>
+#include <kern/ramfs.h>
 #include <circle/sched/scheduler.h>
 
 static void StreamYield (void)
@@ -112,4 +113,26 @@ int CFileStream::Write (const void *pBuf, unsigned nLen)
 	UINT nWritten = 0;
 	if (f_write (&m_File, pBuf, nLen, &nWritten) != FR_OK) return -1;
 	return (int) nWritten;
+}
+
+// ---- CRamStream (RAM:, kern/ramfs.h) ---------------------------------------------
+
+CRamStream::CRamStream (const char *pPath, int nMode)
+:	m_pFile (RamFsStreamOpen (pPath, nMode))
+{
+}
+
+CRamStream::~CRamStream (void)
+{
+	RamFsStreamClose (m_pFile);			// (a written file's last chunk fitted)
+}
+
+int CRamStream::Read (void *pBuf, unsigned nLen)
+{
+	return m_pFile != 0 ? RamFsStreamRead (m_pFile, pBuf, nLen) : 0;
+}
+
+int CRamStream::Write (const void *pBuf, unsigned nLen)
+{
+	return m_pFile != 0 ? RamFsStreamWrite (m_pFile, pBuf, nLen) : -1;
 }

@@ -29,6 +29,7 @@
 #include <kern/net.h>
 #include <kern/ipc.h>		// IpcNotify ("Network up")
 #include <kern/sound.h>		// SoundCoreMain (core 1)
+#include <kern/ramfs.h>		// RAM:, the RAM volume (system.ini ramfs=)
 #ifdef ARM_ALLOW_MULTI_CORE
 #include <circle/multicore.h>
 #endif
@@ -55,6 +56,9 @@ static int  g_nTimeZoneMin = 60;
 static unsigned g_nHeartbeatSec = 5;	// cmdline.txt heartbeat= (0 = off): watchdog summary period
 static char g_szNtpServer[64] = "pool.ntp.org";
 static char g_szHostname[64] = "";
+// The RAM volume's size (system.ini "ramfs=": MB, "N%" of the free page memory, 0 = none;
+// empty: 128 MB, at most a quarter of that memory). kern/ramfs.h.
+static char g_szRamFs[16] = "";
 
 // Defined in arch/aarch64/exception.cpp: route kernel panics to this displayed
 // framebuffer so an exception is visible after the compositor takes the screen.
@@ -1441,6 +1445,16 @@ static void ReadSystemConfig (void)
 			if ((i == 3 && KeyEq (g_szNtpServer, g_szNtpServer + 3, "off")) || (i == 4 && KeyEq (g_szNtpServer, g_szNtpServer + 4, "none")))
 				g_szNtpServer[0] = '\0';		// (no clock sync)
 		}
+		else if (KeyEq (ls, ke, "ramfs"))
+		{
+			unsigned i = 0;
+			for (const char *q = vs; q < le && i < sizeof (g_szRamFs) - 1; q++)
+			{
+				if (*q == ' ' || *q == '\t') break;
+				g_szRamFs[i++] = *q;
+			}
+			g_szRamFs[i] = '\0';
+		}
 		else if (KeyEq (ls, ke, "hostname"))
 		{
 			unsigned i = 0;					// (letters, digits, '-': a DNS label)
@@ -1845,6 +1859,12 @@ boolean CKernel::Initialize (void)
 			m_Logger.Write (FromKernel, LogWarning,
 					"no SD card; using embedded apps");
 		}
+	}
+
+	// RAM:, the RAM volume (after system.ini: its size)
+	if (bOK)
+	{
+		RamFsInit (g_szRamFs);
 	}
 
 	// USB host (mouse + keyboard). Optional: if it fails, the GUI still runs, just

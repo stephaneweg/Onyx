@@ -29,6 +29,7 @@ OBJS = \
 	sys/kapitable.o \
 	sys/ipc.o \
 	sys/vfs.o \
+	sys/ramfs.o \
 	sys/net.o \
 	sys/sound.o \
 	sys/stream.o \

@@ -369,6 +369,10 @@ static inline int kapi_seek (void *h, unsigned long long pos) { return KT->versi
 static inline void *kapi_code_alloc (unsigned long size) { return KT->version >= 58 ? KT->code_alloc (size) : 0; }
 // A file's whole size (v59: over 4 GB on exFAT; an older kernel: fsize).
 static inline unsigned long long kapi_fsize64 (void *h) { return KT->version >= 59 ? KT->fsize64 (h) : KT->fsize (h); }
+// (v71) vol_info: a volume's room -- "SD:", "SD1:", "RAM:" (the RAM volume: files in memory until
+// the Pi restarts), a path on it -> 0 and *out (total / free / used bytes, its type, KAPI_VOL_RAM),
+// -1 no such volume / an older kernel. (RAM: paths work with every file call above from v71.)
+static inline int kapi_vol_info (const char *path, struct kapi_vol_info *out) { return KT->version >= 71 && KT->vol_info ? KT->vol_info (path, out) : -1; }
 // the master volume 0..10 and mute (-1: keep) -> volume | 0x100 if muted (older kernel: 10, not muted)
 static inline int kapi_sound_volume (int volume, int mute) { return KT->version >= 60 ? KT->sound_volume (volume, mute) : 10; }
 // wpa_supplicant.conf read again + DHCP again, no reboot (-1: none / older kernel)

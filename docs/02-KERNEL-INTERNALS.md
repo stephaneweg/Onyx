@@ -24,6 +24,8 @@ constants) come from the code; the layout constants live in
 12. [Sound and the second core](#12-sound-and-the-second-core)
 13. [Post-mortem debug console](#13-post-mortem-debug-console)
 14. [App cores (cores 2 and 3)](#14-app-cores-cores-2-and-3)
+15. [The GPU (V3D)](#15-the-gpu-v3d)
+16. [The RAM: volume](#16-the-ram-volume)
 
 ---
 
@@ -78,7 +80,8 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    `f_mount()` (FatFs) of `SD:` (partition 1, the boot FAT32 one), then of **`SD1:` … `SD3:`**
    (partitions 2–4) when they hold a FAT or **exFAT** file system (see *Volumes* in §8). Loading the skins from `SD:skins/` (`wings.bmp`, the cursor
    `mousecur.bin`, `theme.txt`).
-7. **USB**: `m_USB.Initialize()` (mouse + HID keyboard, hot-plug).
+7. **RAM:**: `RamFsInit()` — the RAM volume, its size from `system.ini`'s `ramfs=` (§16).
+8. **USB**: `m_USB.Initialize()` (mouse + HID keyboard, hot-plug).
 
 ### `CKernel::Run()` — the service loop
 
@@ -653,7 +656,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 69`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 71`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -680,7 +683,10 @@ while running, and the window flag `WIN_FLAG_FIXED` (§10.2) — for Setup, the 
 v70 = `gpu_texture_rect` — a rectangle of a GPU texture replaced (no whole re-upload), the frame
 flag `KAPI_GPU_F_ALPHA` (a target that keeps its alpha), the GPU's handles shared fairly by the
 programs using it at once (`KAPI_GPU_MAX_TEXTURES` 1024 in all, `KAPI_GPU_MAX_TEXTURES_AS` 512 a
-program; `gpu_vbuf` 32 in all, 8 a program) — for the GPU compositing service (`user/gpucomp`, §15).
+program; `gpu_vbuf` 32 in all, 8 a program) — for the GPU compositing service (`user/gpucomp`, §15),
+v71 = `vol_info` — a volume's size, used and free bytes, type (`struct kapi_vol_info`, `KAPI_VOL_RAM`);
+and the **RAM: volume** (§16): the file calls (`open` … `rename`, `save_file`, `file_in` / `file_out`,
+`chdir`, `seek`, `fsize64`) reach a file system in memory on `RAM:` paths — no new call for that.
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -700,8 +706,8 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
 | App-drawn text | `draw_text`, `font_width`, `font_height` |
-| Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). |
-| Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), `USB:`…, `FD:`, `NVME:` (declared, not mounted yet). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
+| Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; a handle is told apart by its address (the RAM volume's handle tables, then the provider's, else a FatFs `FIL` / `DIR`). |
+| Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), `USB:`…, `FD:`, `NVME:` (declared, not mounted yet). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
 | Streams/processes | `pipe`, `file_in/out`, `stream_read(_nb)/write/close/eof`, `stdin_read`, `stdout_write`, `spawn`, `wait`, `proc_done`, `get_args` |
 | Modal dialogs | `message_box`, `file_open`, `file_save` |
 | Desktop | `screen_size`, `set_wallpaper`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
@@ -720,7 +726,8 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Full-screen apps (v41) | `fullscreen_begin(&w, &h)` maps a kernel-owned, screen-sized back buffer (`CWindowManager::EnsureFullscreenBuffer`, 64 KB-aligned) at `USER_FULLSCREEN_CANVAS` (15 GB) and makes the caller's window (created if missing, moved to 0,0) the **full-screen window**: the compositor task skips its frames, `OnMouse`/`OnMouseWheel` send the whole pointer stream to it in screen coordinates and it is the key target. `present_fb()` copies the buffer into the displayed `C2DGraphics` buffer + `UpdateDisplay()`, then yields. `fullscreen_end()` — or the window's removal when the app exits — gives the desktop back. The buffer is made at the first `fullscreen_begin` and made again, bigger, when the screen has grown since (`screen_set`, v66; the old one is left allocated, as the wallpaper's: it may still be mapped) — before, it kept its first size and a full-screen app after a change to a larger resolution wrote past its end, over the kernel heap. `screen_grab` (VNC) returns the full-screen buffer meanwhile. **v55** `fullscreen_direct(&w, &h, &stride)` (after `fullscreen_begin`): maps the framebuffer the display scans out (`CBcmFrameBuffer`, the `C2DGraphics` display, 32 bpp) at `USER_FULLSCREEN_SCREEN` (15.5 GB), normal **uncached** (`KPAGE_ATTR_APP_SCREEN`); `present_fb` then copies nothing (it only yields); `screen_grab` (VNC) reads the screen through the same uncached mapping in the grabber's address space (the kernel's own map of the framebuffer is Device memory, slow to read). What is drawn there shows at once (no double buffering: tearing is possible); the GPU renders there directly (below 1 GB, contiguous), so a full-screen GPU frame costs no copy at all. Returns 0 when not possible (keep the back buffer). |
 | Drag & drop (v42) | `drag_begin(type, data, len, label)` — only while the left button is held — copies the payload (≤ 4 KB: 1 text, 2 `\n`-separated paths) into a kapi-side buffer and calls `CWindowManager::DragBegin(src, label)`. While the session lasts, `OnMouse` sends `GUI_EVENT_DRAG_OVER` (16) to the window under the cursor (`DND_F_LEAVE` when it leaves), and `Composite` draws a label badge next to the cursor (a **+** when Ctrl is held). At the left-button release, `DndFinishLocked` sends `GUI_EVENT_DROP` (15) to the window under the cursor — `(flags << 32) \| (x << 16) \| y`, client coords, `DND_F_COPY` if Ctrl — and `GUI_EVENT_DRAG_DONE` (17) to the source: `(flags << 32) \| target pid` (`CWindow::OwnerPid`, set by `CreateWindow`), flags `DND_F_COPY` / `DND_F_CANCEL` (Esc, via `OnKey`) / `DND_F_DESKTOP` (no window or a backmost one). All three go to the pointer handler; the normal pointer stream still reaches the source (its capture), so its widgets see the button go up. The target reads the payload with `drag_data(&type, buf, cap)`. A window removed mid-drag ends it. **Modifiers**: `get_modifiers()` = `MOD_CTRL` 1 / `MOD_SHIFT` 2 / `MOD_ALT` 4 — from the USB keyboard's raw report (`RegisterKeyStatusHandlerRaw` in **mixed mode**, so the cooked key path is unchanged) or `inject_modifiers()` (vncd, from the RFB Control/Shift/Alt keysyms). **Per key event**: `OnKey` stores the modifiers in each `GUIEvent` (`nMods` = the global state OR the xterm parameter of `ESC[1;<m>X` / `ESC[n;<m>~`, m − 1 = Shift 1 + Alt 2 + Ctrl 4, which Circle's keymap and vncd send for navigation keys); `kapi_pump_events` sets `CWindow::m_nKeyEventMods` around the app's key handler, and `get_modifiers()` returns it while the handler runs — so Shift+arrow selects even when the live state is late or clobbered (VNC, a second keyboard). |
 | Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
-| User-space file systems (v44) | `sys/vfs.cpp`, `kern/vfs.h` — FUSE-like. A **provider** app calls `vfs_register(prefix)` (`/bin/ftpfs`: `FTP:`, `FTPS:`). `kapi_open`/`read`/`fsize`/`close`, `save_file`, `opendir`/`readdir`/`closedir`, `mkdir`/`remove`/`rename` on a path with a registered prefix (`VfsHandles`) become **requests** (`VfsCall`): the calling task fills a slot (op, path, path2, a0–a2, a **kernel copy** of the payload), sets the provider's `CSynchronizationEvent` and waits on the slot's own event (200 ms re-checks: provider alive via `IpcPidAlive`, 120 s timeout). The provider takes it with `vfs_next` (blocking = up to 0.5 s, so it can also poll its mailbox), reads the payload with `vfs_req_data`, answers with `vfs_reply(id, status, data, len)` (copied into a kernel buffer, then into the caller's). Ops: `OPEN` (→ fid + size), `READ` (fid, offset, ≤ 64 KB), `CLOSE`, `LIST` (packed `u32 size, u8 is_dir, name\0` entries), `SAVE`, `MKDIR`, `REMOVE`, `RENAME`. Provider-backed handles live in static tables (`s_File`, `s_Dir`), so the file kapis tell them from FatFs `FIL`/`DIR` by address. `FTP:`/`FTPS:` are **auto-started**: the first use execs `SD:/bin/ftpfs` and waits up to 5 s for it to register. A dying provider is dropped and its pending requests fail (`VfsOnProcessGone`, from `IpcOnProcessGone`). Streams (`kapi_file_in`: `cat`, redirections) still go to FatFs only. |
+| User-space file systems (v44) | `sys/vfs.cpp`, `kern/vfs.h` — FUSE-like. A **provider** app calls `vfs_register(prefix)` (`/bin/ftpfs`: `FTP:`, `FTPS:`). `kapi_open`/`read`/`fsize`/`close`, `save_file`, `opendir`/`readdir`/`closedir`, `mkdir`/`remove`/`rename` on a path with a registered prefix (`VfsHandles`) become **requests** (`VfsCall`): the calling task fills a slot (op, path, path2, a0–a2, a **kernel copy** of the payload), sets the provider's `CSynchronizationEvent` and waits on the slot's own event (200 ms re-checks: provider alive via `IpcPidAlive`, 120 s timeout). The provider takes it with `vfs_next` (blocking = up to 0.5 s, so it can also poll its mailbox), reads the payload with `vfs_req_data`, answers with `vfs_reply(id, status, data, len)` (copied into a kernel buffer, then into the caller's). Ops: `OPEN` (→ fid + size), `READ` (fid, offset, ≤ 64 KB), `CLOSE`, `LIST` (packed `u32 size, u8 is_dir, name\0` entries), `SAVE`, `MKDIR`, `REMOVE`, `RENAME`. Provider-backed handles live in static tables (`s_File`, `s_Dir`), so the file kapis tell them from FatFs `FIL`/`DIR` by address. `FTP:`/`FTPS:` are **auto-started**: the first use execs `SD:/bin/ftpfs` and waits up to 5 s for it to register. A dying provider is dropped and its pending requests fail (`VfsOnProcessGone`, from `IpcOnProcessGone`). Streams (`kapi_file_in`: `cat`, redirections) go to FatFs (and to the RAM volume on `RAM:`, §16), not to a provider. |
+| Volumes' room, RAM: (v71) | `vol_info(path, out)` → 0 and `struct kapi_vol_info { total, free, used; files, dirs; flags; type[12] }` for the volume of `path` (`"SD:"`, `"SD1:/roms"`, `"RAM:"`, a relative path: the current folder's), −1 no such volume. A FatFs volume: `f_getfree` (its free clusters — FSINFO on FAT32, else counted once by FatFs: the first call on a big card can take a moment), `type` `FAT12`/`FAT16`/`FAT32`/`exFAT`. **`RAM:`** (§16): its size, the pages its files take, what can still be written (also bounded by the free page memory less the reserve), its files and folders, `flags` `KAPI_VOL_RAM` (lost at a restart), `type` `RAM`. `/bin/df` prints it; `/bin/ramtest` uses it to check that the memory comes back. |
 | Wi-Fi scan (v45) | `wlan_scan(out, max)` → `struct kapi_wlan_ap` (ssid, bssid, security `WLAN_SEC_OPEN`/`WEP`/`WPA`/`WPA2`, channel, freq, level dBm, connected), strongest first, one per BSSID. `NetWlanScan` in `sys/net.cpp` — **no Circle patch**: it drives the BCM4343 firmware's *escan* through `CBcm4343Device::Control ("escan 5")`, collects `ReceiveScanResult` messages for ~3.5 s (the firmware's `brcmf_escan_result_le` layout, as in hostap's `driver_circle.cpp`), then `escan 0`. Security from the capability privacy bit + the RSN (48) / WPA vendor (221) IEs; `connected` = the BSSID `GetBSSID()` reports while `CWPASupplicant::IsConnected()`. wpa_supplicant reads the same result queue for its own scans: while it is still looking for its network, a scan here may take its results (it scans again). Used by `/bin/wifiscan` and `wpaconf`. |
 | Master volume (v60) | `sound_volume(volume 0..10, mute 0/1)` (−1 keeps a value) → the volume `| 0x100` if muted. Applied in `COnyxSoundDevice::GetChunk` to everything played (voices + stream), on a squared curve (`s_Gain`, the ear hears the steps evenly). Not kept by the kernel: the menu bar applies `SD:/etc/sound.ini` at start (`user/volume.h`). |
 | Wi-Fi join (v60) | `wlan_reconnect()` — `NetWlanReconnect` (a core-3 request with `netcore=1`): wpa_supplicant's SIGHUP handler, caught at link time (`--wrap=eloop_register_signal_reconfig`, `kernel/Makefile`; docs/05 §14) and run from its own event loop (a 0 s eloop timeout) — deauthenticate, read `SD:/etc/wpa_supplicant.conf` again, rescan, join the highest priority network in range — then `CDHCPClient::Restart ()` (a new lease: another network). 0 asked, −1 no Wi-Fi running. Used by the Wi-Fi menu (`wifimenu`). |
@@ -1512,6 +1519,87 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 
 ---
 
+## 16. The RAM: volume
+
+Source: [`kernel/sys/ramfs.cpp`](../kernel/sys/ramfs.cpp),
+[`kern/ramfs.h`](../kernel/include/kern/ramfs.h); the stream: `CRamStream`
+([`sys/stream.cpp`](../kernel/sys/stream.cpp)); the kapi side: [`sys/kapi.cpp`](../kernel/sys/kapi.cpp);
+host test [`tools/tests/run_ramfs_test.sh`](../tools/tests/run_ramfs_test.sh); Pi test
+[`user/bin/ramtest.c`](../user/bin/ramtest.c).
+
+**`RAM:`** is a volume in memory, reached by the **same file calls** as the card: `open` / `read` /
+`fsize` / `fsize64` / `seek` / `close`, `save_file`, `file_in` / `file_out` (streams, appending
+too: `cp`, `cat`, the shell's redirections), `opendir` / `readdir` / `closedir`, `mkdir`, `remove`,
+`rename` (within `RAM:`; across volumes −1, the caller copies then removes, as between `SD:` and
+`SD1:`), `chdir` (`cd RAM:/x`, relative paths there), and `vol_info` (v71). newlib's `fopen` /
+`fread` / `fwrite` / `remove` and NetSurf's `opendir` sit on these, so a program needs nothing new
+to use it. Its files live **until the Pi restarts**: never written anywhere, not tied to any app (an
+app that ends leaves its files; its open handles are closed, `RamFsOnProcessGone` from
+`IpcOnProcessGone`). Programs cannot be started from it (`exec`, `spawn`: the card only). Jet
+Browser keeps its disk cache and its JS code cache there (`RAM:/jet/cache`, `RAM:/jet/jscache`,
+docs/06 §33): no browsing data on the card, and no SD write freezing core 0.
+
+**The tree.** Folders and files are `TNode` records on the kernel heap — one size, so a freed one is
+reused as is (Circle's heap keeps freed blocks by size, it never merges them): a name of up to
+127 characters (**case-insensitive, case kept**, as on the card's FAT), the parent, the children (a
+list in creation order: `readdir`'s order), the open count (`nRefs`). A file removed while open
+leaves its folder at once and is freed at its last close (it can still be read to its end); a
+folder must be empty to be removed; a folder cannot be moved into itself; `rename` onto an existing
+name fails (as FatFs). Lookups walk the path's names (a folder's children one by one: fine for the
+few thousand files of a cache).
+
+**The bytes** are in **64 KB pages of the page allocator** (`palloc_high`: the apps' pool, the high
+zone; without one — a 1 GB Pi — the low pager), never in the kernel's BSS (the 2 MB image limit) nor
+in the heap. A file is a list of **extents**: a whole page, or a **chunk** of 256 B … 32 KB (8 sizes,
+powers of two) of a page cut into chunks of one size (`TSlab`: the page, a bitmap of its chunks;
+each size keeps the pages that have a free chunk). Every extent but the last is full. A file
+written whole (`save_file`) is cut exactly: whole pages, then the rest in falling powers of two
+(40 KB + 100 B → 32 KB, 8 KB, 256 B: under 256 B lost a file). A stream writes whole pages; at its
+close its **tail** (the chunks after its last whole page, and that page) is cut again exactly
+(`Trim`) — a log appended a line at a time stays compact. The extent list itself is in a chunk (a
+page holds ~2700 extents: 170 MB; a file is limited to `RAMFS_FILE_MAX`, 128 MB, and to the
+volume). A chunk freed gives its page back as soon as nothing else in it is used: removing a file
+returns its memory (`vol_info` shows it, `ramtest` checks it).
+
+**Limits** (`kern/ramfs.h`):
+
+| | |
+|---|---|
+| The volume's size | `SD:/etc/system.ini` **`ramfs=`**: megabytes (`ramfs=64`) or a share of the page memory free at boot (`ramfs=10%`, at most 90 %); `ramfs=0` (or under 1 MB): no `RAM:` volume (`vol_info` −1, its paths fail). **Default** (no line): **128 MB, at most a quarter** of the free page memory (a 1 GB Pi: ~60 MB). Never more than the free memory less the reserve. Read at boot (a restart applies a change). |
+| The reserve | `RAMFS_RESERVE` = 32 MB of page memory always left to the apps: a write that would go below it fails (the volume is then "full" before its size). |
+| Files and folders | `RAMFS_MAX_NODES` = 16384 (their records: ~250 bytes of heap each); a new record also needs 8 MB of heap never handed out (Circle panics when its heap runs out). |
+| A file | `RAMFS_FILE_MAX` = 128 MB (and the volume's room). |
+| Open handles | 256 files, 64 folder listings (on the heap); streams are not counted. |
+
+A full volume: `save_file` fails (−1) and **leaves no half file** (a file that cannot fit is
+removed — the old content was already replaced); a stream's `write` answers the bytes it could
+store (−1 for none). The boot log says the size: `ramfs: RAM: volume, up to 128 MB (2900 MB of
+page memory free)`.
+
+**Locking.** One re-entrant **sleeping lock** for the volume (an atomic owner, its waiters `Yield`
+— as the FatFs volume lock, §5); nothing yields while holding it. A big read or write is cut into
+**1 MB slices** (`RAMFS_SLICE`) with a `Yield` between them, the lock free meanwhile — a 16 MB copy
+does not hold the other tasks (the kernel is not preempted, §5). A `save_file` in progress is in a
+**no-kill** section (`EnterNoKill`): killed between two slices, the task ends once the file is
+complete or removed. The file calls run on core 0's tasks (and core 3's with `netcore=1`); an app
+core never calls the kernel (§14). Opening a file / listing a folder walks the tree under the lock.
+
+**Speed** (no card): a `save_file` or a `read` is a `memcpy` into / from the pages (GBs a second),
+plus the yields between the slices; `ramtest` prints the time of a 16 MB file on the Pi.
+
+**Tests.** On the PC: `sh tools/tests/run_ramfs_test.sh` — `sys/ramfs.cpp` built with
+`RAMFS_HOST_TEST` (the pages from the PC's allocator, no scheduler: its few platform calls are at
+the top of the file) under AddressSanitizer: thousands of random operations (saves, streams written /
+appended / truncated, reads whole / in pieces / after a seek, listings, mkdir, remove, rename across
+folders) checked against a model, for 5 seeds; then the edges: the names (case, 127 / 128
+characters), a folder not empty, a folder into itself, a file removed while open, a dead process's
+handles, small files taking their size rounded to 256 B, a streamed file's tail fitted, a log
+appended 300 times, the volume filled (a save that does not fit leaves no half file, the room back
+after the removes), and every page given back at the end. On the Pi: `/bin/ramtest` (`ramtest
+full` also fills the volume).
+
+---
+
 ## Annex — useful constants
 
 | Constant | Value | File |
@@ -1524,7 +1612,8 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
 | `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
 | `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 70 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 71 | kapi_abi.h |
+| `RAM:` volume | 128 MB by default (≤ ¼ of the free page memory; `system.ini` `ramfs=`), 32 MB reserve, 16384 files + folders, 128 MB a file | ramfs.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | `MAX_TASKS` | 40 | sysconfig.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |

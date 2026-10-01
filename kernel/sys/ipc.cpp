@@ -5,6 +5,7 @@
 //
 #include <kern/sound.h>
 #include <kern/vfs.h>
+#include <kern/ramfs.h>
 #include <kern/ipc.h>
 #include <kern/addrspace.h>
 #include <circle/sched/scheduler.h>
@@ -114,6 +115,7 @@ boolean IpcPidAlive (unsigned nPid) { return FindASByPid (nPid) != 0; }
 void IpcOnProcessGone (unsigned nPid)
 {
 	VfsOnProcessGone (nPid);		// a file-system provider that died (kern/vfs.h)
+	RamFsOnProcessGone (nPid);		// its RAM: files / folders left open (kern/ramfs.h)
 	SoundOnProcessGone (nPid);		// it owned the audio output: silence + free it
 	if (nPid != 0 && nPid == g_nShellPid)
 	{

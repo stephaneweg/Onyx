@@ -107,7 +107,11 @@
 //      alpha (premultiplied ARGB: loaded, blended, stored, cleared to clear's top byte). The
 //      texture handles are shared by the programs using the GPU at once: 1024 in all (was 256),
 //      512 at most a program; the gpu_vbuf blocks 32 in all, 8 a program (was 8 in all).
-#define KAPI_ABI_VERSION	70
+// v71: + vol_info -- a volume's size, free space, type (struct kapi_vol_info). Also the RAM:
+//      volume (kern/ramfs.h): a file system in memory, until the Pi restarts, reached by the same
+//      file calls as the card (open / read / fsize / seek / close, save_file, file_in / file_out,
+//      opendir / readdir / closedir, mkdir / remove / rename, chdir).
+#define KAPI_ABI_VERSION	71
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -195,6 +199,19 @@ struct kapi_vfs_req
 	char     path2[300];	// RENAME: the new path
 	long     a0, a1, a2;	// READ: fid, offset, length; CLOSE: fid
 	unsigned in_len;	// SAVE: payload size (fetch it with vfs_req_data)
+};
+
+// A volume's room (ABI v71, kapi_vol_info): "SD:", "SD1:"... (FatFs: total and free from its
+// FAT, f_getfree), "RAM:" (the RAM volume: its size, what its files take, files / folders).
+#define KAPI_VOL_RAM		(1u << 0)	// flags: in memory, lost at a restart
+struct kapi_vol_info
+{
+	unsigned long long total;	// bytes
+	unsigned long long free;	// bytes that can still be written
+	unsigned long long used;	// bytes taken
+	unsigned files, dirs;		// RAM: only (0 elsewhere)
+	unsigned flags;			// KAPI_VOL_*
+	char     type[12];		// "RAM", "FAT12", "FAT16", "FAT32", "exFAT"
 };
 
 // A directory entry from kapi_readdir.
@@ -1075,6 +1092,10 @@ struct TKApiTable
 	// texture `handle` (the caller's) replaced -- the rest kept, nothing re-uploaded -> 0, -1 no
 	// GPU, -2 bad arguments (not the caller's handle, the rectangle not inside the texture).
 	int (*gpu_texture_rect) (int handle, int x, int y, int w, int h, const unsigned *pixels, int stride);
+	// --- v71 ---
+	// vol_info: the volume of `path` ("SD:", "SD1:/x", "RAM:", a relative path: the current
+	// folder's) -> 0 and *out filled, -1 no such volume (not mounted).
+	int (*vol_info) (const char *path, struct kapi_vol_info *out);
 };
 
 #ifdef __cplusplus

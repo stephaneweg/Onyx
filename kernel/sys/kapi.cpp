@@ -12,6 +12,7 @@
 //
 #include <kern/crashlog.h>
 #include <kern/vfs.h>
+#include <kern/ramfs.h>		// RAM:, the RAM volume
 #include <kern/sound.h>
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
@@ -1305,8 +1306,9 @@ int kapi_write (int /*fd*/, const void *pBuf, unsigned nLen)
 
 void *kapi_open (const char *pPath)
 {
-	if (VfsHandles (pPath)) return VfsOpen (pPath);		// a provider path (FTP:...)
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs)) return RamFsOpen (abs);		// RAM: (kern/ramfs.h)
+	if (VfsHandles (pPath)) return VfsOpen (pPath);		// a provider path (FTP:...)
 	FIL *pFile = new FIL;
 	if (pFile == 0)
 	{
@@ -1391,6 +1393,7 @@ int kapi_read (void *pHandle, void *pBuf, unsigned nLen)
 	{
 		return -1;
 	}
+	if (RamFsIsFile (pHandle)) return RamFsRead (pHandle, pBuf, nLen);
 	if (VfsIsFile (pHandle)) return VfsRead (pHandle, pBuf, nLen);
 	UINT nRead = 0;
 	if (ChunkedRead ((FIL *) pHandle, pBuf, nLen, &nRead) != FR_OK)
@@ -1406,6 +1409,7 @@ unsigned kapi_fsize (void *pHandle)
 	{
 		return 0;
 	}
+	if (RamFsIsFile (pHandle)) { u64 n = RamFsSize (pHandle); return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (unsigned) n; }
 	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
 	FSIZE_t n = f_size ((FIL *) pHandle);
 	return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (unsigned) n;	// (an exFAT file over 4 GB: fsize64)
@@ -1415,6 +1419,7 @@ unsigned kapi_fsize (void *pHandle)
 unsigned long long kapi_fsize64 (void *pHandle)
 {
 	if (pHandle == 0) return 0;
+	if (RamFsIsFile (pHandle)) return RamFsSize (pHandle);
 	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
 	return (unsigned long long) f_size ((FIL *) pHandle);
 }
@@ -1422,6 +1427,7 @@ unsigned long long kapi_fsize64 (void *pHandle)
 // v57: the read position (FatFs fast seek: a big file's cluster map made at its first seek)
 int kapi_seek (void *pHandle, unsigned long long ullPos)
 {
+	if (RamFsIsFile (pHandle)) return RamFsSeek (pHandle, ullPos);
 	if (pHandle == 0 || VfsIsFile (pHandle)) return -1;
 	FIL *pFile = (FIL *) pHandle;
 	if (pFile->cltbl == 0 && f_size (pFile) > 4 * 1024 * 1024)
@@ -1454,6 +1460,7 @@ void *kapi_code_alloc (unsigned long ulSize)
 
 void kapi_close (void *pHandle)
 {
+	if (RamFsIsFile (pHandle)) { RamFsClose (pHandle); return; }
 	if (VfsIsFile (pHandle)) { VfsClose (pHandle); return; }
 	if (pHandle != 0)
 	{
@@ -1473,6 +1480,12 @@ void *kapi_pipe (void)
 void *kapi_file_in (const char *pPath)
 {
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs))
+	{
+		CRamStream *pRam = new CRamStream (abs, 0);
+		if (pRam != 0 && !pRam->IsValid ()) { delete pRam; pRam = 0; }
+		return pRam;
+	}
 	CFileStream *pFile = new CFileStream (abs, 0);
 	if (pFile == 0) return 0;
 	if (!pFile->IsValid ()) { delete pFile; return 0; }
@@ -1482,6 +1495,12 @@ void *kapi_file_in (const char *pPath)
 void *kapi_file_out (const char *pPath, int bAppend)
 {
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs))
+	{
+		CRamStream *pRam = new CRamStream (abs, bAppend ? 2 : 1);
+		if (pRam != 0 && !pRam->IsValid ()) { delete pRam; pRam = 0; }
+		return pRam;
+	}
 	CFileStream *pFile = new CFileStream (abs, bAppend ? 2 : 1);
 	if (pFile == 0) return 0;
 	if (!pFile->IsValid ()) { delete pFile; return 0; }
@@ -1599,6 +1618,12 @@ int kapi_chdir (const char *pPath)
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS == 0 || pPath == 0) return 0;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs))
+	{
+		if (!RamFsIsDirPath (abs)) return 0;
+		pAS->SetCwd (abs);
+		return 1;
+	}
 	DIR Dir;
 	if (f_opendir (&Dir, abs) != FR_OK) return 0;	// not a directory
 	f_closedir (&Dir);
@@ -1664,8 +1689,9 @@ void *kapi_opendir (const char *pPath)
 	{
 		return 0;
 	}
-	if (VfsHandles (pPath)) return VfsOpenDir (pPath);
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs)) return RamFsOpenDir (abs);
+	if (VfsHandles (pPath)) return VfsOpenDir (pPath);
 	DIR *pDir = new DIR;
 	if (pDir == 0)
 	{
@@ -1685,6 +1711,7 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 	{
 		return 0;
 	}
+	if (RamFsIsDir (pHandle)) return RamFsReadDir (pHandle, pEnt);
 	if (VfsIsDir (pHandle)) return VfsReadDir (pHandle, pEnt);
 	FILINFO Info;
 	if (f_readdir ((DIR *) pHandle, &Info) != FR_OK || Info.fname[0] == '\0')
@@ -1704,6 +1731,7 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 
 void kapi_closedir (void *pHandle)
 {
+	if (RamFsIsDir (pHandle)) { RamFsCloseDir (pHandle); return; }
 	if (VfsIsDir (pHandle)) { VfsCloseDir (pHandle); return; }
 	if (pHandle != 0)
 	{
@@ -1717,22 +1745,31 @@ void kapi_closedir (void *pHandle)
 int kapi_mkdir (const char *pPath)
 {
 	if (pPath == 0) return -1;
-	if (VfsHandles (pPath)) return VfsCall (VFS_OP_MKDIR, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs)) return RamFsMkdir (abs);
+	if (VfsHandles (pPath)) return VfsCall (VFS_OP_MKDIR, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
 	return (f_mkdir (abs) == FR_OK) ? 0 : -1;
 }
 
 int kapi_remove (const char *pPath)		// file or empty directory
 {
 	if (pPath == 0) return -1;
-	if (VfsHandles (pPath)) return VfsCall (VFS_OP_REMOVE, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	if (RamFsHandles (abs)) return RamFsRemove (abs);
+	if (VfsHandles (pPath)) return VfsCall (VFS_OP_REMOVE, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
 	return (f_unlink (abs) == FR_OK) ? 0 : -1;
 }
 
 int kapi_rename (const char *pFrom, const char *pTo)
 {
 	if (pFrom == 0 || pTo == 0) return -1;
+	{
+		char ramF[300], ramT[300];				// RAM: -> RAM: only
+		ResolvePath (pFrom, ramF, sizeof ramF);
+		ResolvePath (pTo, ramT, sizeof ramT);
+		if (RamFsHandles (ramF) || RamFsHandles (ramT))
+			return RamFsHandles (ramF) && RamFsHandles (ramT) ? RamFsRename (ramF, ramT) : -1;
+	}
 	if (VfsHandles (pFrom) || VfsHandles (pTo))		// both on the same provider only
 		return (VfsHandles (pFrom) && VfsHandles (pTo)
 			&& VfsCall (VFS_OP_RENAME, pFrom, pTo, 0, 0, 0, 0, 0, 0, 0, 0) == 0) ? 0 : -1;
@@ -1776,6 +1813,10 @@ int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 	if (pPath == 0)
 	{
 		return -1;
+	}
+	{
+		char ram[300]; ResolvePath (pPath, ram, sizeof ram);
+		if (RamFsHandles (ram)) return RamFsSave (ram, pBuf, nLen);	// RAM:
 	}
 	if (VfsHandles (pPath))
 	{
@@ -2464,6 +2505,39 @@ unsigned *kapi_resize_window2 (int w, int h, int *pStride)
 	pWin->SetLogicalSize (w, h);
 	if (pStride != 0) *pStride = pWin->Canvas ()->Width ();
 	return (unsigned *) USER_WINDOW_CANVAS;
+}
+
+// (v71) A volume's room: RAM: (kern/ramfs.h) or a FatFs volume ("SD:", "SD1:"...: f_getfree,
+// from the FAT's free-cluster count -- FSINFO on FAT32, kept by FatFs once known).
+int kapi_vol_info (const char *pPath, struct kapi_vol_info *pOut)
+{
+	if (pPath == 0 || pOut == 0) return -1;
+	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	memset (pOut, 0, sizeof *pOut);
+	if (RamFsHandles (abs))
+	{
+		if (!RamFsMounted ()) return -1;
+		u64 nTotal, nUsed, nFree; unsigned nFiles, nDirs;
+		RamFsInfo (&nTotal, &nUsed, &nFree, &nFiles, &nDirs);
+		pOut->total = nTotal; pOut->used = nUsed; pOut->free = nFree;
+		pOut->files = nFiles; pOut->dirs = nDirs; pOut->flags = KAPI_VOL_RAM;
+		strcpy (pOut->type, "RAM");
+		return 0;
+	}
+	unsigned nVol = VolumePrefix (abs);
+	if (nVol == 0) return -1;
+	char Vol[16];
+	if (nVol >= sizeof Vol - 1) return -1;
+	memcpy (Vol, abs, nVol); Vol[nVol] = '\0';
+	DWORD nFreeClust = 0; FATFS *pFs = 0;
+	if (f_getfree (Vol, &nFreeClust, &pFs) != FR_OK || pFs == 0) return -1;
+	u64 nClust = (u64) pFs->csize * FF_MAX_SS;
+	pOut->total = (u64) (pFs->n_fatent - 2) * nClust;
+	pOut->free = (u64) nFreeClust * nClust;
+	pOut->used = pOut->total - pOut->free;
+	strcpy (pOut->type, pFs->fs_type == FS_FAT12 ? "FAT12" : pFs->fs_type == FS_FAT16 ? "FAT16"
+			  : pFs->fs_type == FS_FAT32 ? "FAT32" : "exFAT");
+	return 0;
 }
 
 }  // extern "C"
