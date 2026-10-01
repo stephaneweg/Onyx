@@ -723,6 +723,14 @@ the choice is kept and applied at the next connection.
   it, **Up / Down** recall the previous ones, **Esc** clears the line, **Ctrl+C** (nothing
   selected) or the **Ctrl+C** button interrupts the running command; `clear` clears the text.
   **Reconnect** after the Pi restarted.
+- **Why is it slow?** During a session `rdpd` writes to the kernel log (`kmsg`, `app: rdpd`
+  lines) every 5 s: the rounds sent and their bytes (KB/s), the time spent sending (the network
+  queue full blocks a send) and the longest send, the time reading / comparing the windows and
+  compressing (LZ4), the rectangles and pixels sent, the **client's answer** time (from a round's
+  end to the PC asking for the next: the network's round trip + the PC's drawing) and the input
+  events; and at once a send over 0.5 s, a round over 1 s or a client answer over 2 s. Slow
+  sends point to the network (Wi-Fi), a slow read / compress to the Pi's CPU (another app
+  using core 0), a slow answer with quick sends to the PC or the network's latency.
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 

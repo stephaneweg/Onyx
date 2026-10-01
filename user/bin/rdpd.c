@@ -54,8 +54,49 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include "kapi.h"
 #include "remotekeys.h"
+
+// ---- diagnostics (kmsg, "app: rdpd ..." lines) ----------------------------------------------
+// Every 5 s of a session: the rounds sent, the bytes, where the time went (reading and
+// comparing the windows, compressing, sending -- kapi_tcp_send blocks while the network
+// queue is full), the client's answer time (an END sent -> its READY back: the network's
+// round trip + the PC's drawing), the input events; and at once a send, a round or a client
+// answer much slower than it should be. To see why a session slows down.
+static struct {
+	unsigned t0, rounds, bytes, sends, partial, input;
+	unsigned send_us, send_max, round_us, round_max, read_us, lz_us;
+	unsigned ans_us, ans_max, ans_n, rect, px;
+	unsigned end_at;			// (kapi_clock_us when the last END went: 0 none pending)
+} g_st;
+static void rdlog (const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+static void rdlog (const char *fmt, ...)
+{
+	char b[128];
+	va_list a; va_start (a, fmt);
+	int n = vsnprintf (b, sizeof b, fmt, a);
+	va_end (a);
+	if (n > 0) kapi_write (2, b, (unsigned) (n < (int) sizeof b ? n : (int) sizeof b - 1));
+}
+static void stats_tick (int force)
+{
+	unsigned now = kapi_clock_us (), el = now - g_st.t0;
+	if (!force && el < 5000000u) return;
+	if (g_st.rounds || g_st.input || force)
+	{
+		unsigned ms = el / 1000 ? el / 1000 : 1;
+		rdlog ("rdpd %us: %u rounds %uKB (%uKB/s) send %ums max %ums, %u partial; round %ums max %ums",
+			ms / 1000, g_st.rounds, g_st.bytes / 1024, (unsigned) ((unsigned long) g_st.bytes * 1000 / ms / 1024),
+			g_st.send_us / 1000, g_st.send_max / 1000, g_st.partial, g_st.round_us / 1000, g_st.round_max / 1000);
+		rdlog ("rdpd   read+cmp %ums lz4 %ums, %u rects %uKpx; client answer avg %ums max %ums; %u input",
+			g_st.read_us / 1000, g_st.lz_us / 1000, g_st.rect, g_st.px / 1000,
+			g_st.ans_n ? g_st.ans_us / g_st.ans_n / 1000 : 0, g_st.ans_max / 1000, g_st.input);
+	}
+	unsigned end_at = g_st.end_at;
+	memset (&g_st, 0, sizeof g_st);
+	g_st.t0 = now; g_st.end_at = end_at;
+}
 
 #define TILE		64
 #define MAXWIN		20		// (the window manager's 16 + the desktop)
@@ -74,8 +115,14 @@ static void flush_out (void)
 	int off = 0;
 	while (!g_dead && off < g_outlen)
 	{
+		unsigned t = kapi_clock_us ();
 		int n = kapi_tcp_send (g_sock, g_out + off, (unsigned) (g_outlen - off));
-		if (n <= 0) { g_dead = 1; break; }
+		t = kapi_clock_us () - t;
+		g_st.sends++; g_st.send_us += t; if (t > g_st.send_max) g_st.send_max = t;
+		if (t > 500000u) rdlog ("rdpd: a send of %d bytes took %u ms (-> %d)", g_outlen - off, t / 1000, n);
+		if (n <= 0) { rdlog ("rdpd: send failed (%d): the session ends", n); g_dead = 1; break; }
+		if (n < g_outlen - off) g_st.partial++;
+		g_st.bytes += (unsigned) n;
 		off += n;
 	}
 	g_outlen = 0;
@@ -197,7 +244,9 @@ static void send_rect (unsigned id, int part, const unsigned *src, int stride, i
 			*d++ = (unsigned char) v; *d++ = (unsigned char) (v >> 8);
 		}
 	}
+	unsigned tz = kapi_clock_us ();
 	int z = lz4_compress (g_pack, n, g_lz);
+	g_st.lz_us += kapi_clock_us () - tz; g_st.rect++; g_st.px += (unsigned) (w * h);
 	int useLz = z < n;
 	msg (4, 4 + 3 + 8 + (unsigned) (useLz ? z : n));
 	put32 (id); put8 ((unsigned) part); put8 (b16 ? 16 : 32); put8 ((unsigned) useLz);
@@ -228,7 +277,9 @@ static void send_content (struct Win *w, int full)
 		w->bw = W; w->bh = H; full = 1;
 		if (!w->prev || !w->cur) { free (w->prev); free (w->cur); w->prev = w->cur = 0; return; }
 	}
+	unsigned tr = kapi_clock_us ();
 	if (kapi_win_read (w->id, 0, 0, 0, W, H, w->cur, W) != 0) return;
+	g_st.read_us += kapi_clock_us () - tr;
 	for (int ty = 0; ty < H; ty += TILE)
 	{
 		int th = H - ty < TILE ? H - ty : TILE, run = -1;
@@ -314,6 +365,8 @@ static void round_send (void)
 	}
 	msg (5, 0);
 	flush_out ();
+	g_st.end_at = kapi_clock_us ();
+	if (!g_st.end_at) g_st.end_at = 1;
 }
 
 // ---- input: the pointer back on the Pi's screen -------------------------------------------
@@ -341,6 +394,8 @@ static void session (void)
 	if (!need (9) || memcmp (g_in, "ONYXRDP1", 8) != 0) return;
 	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0;
 	consume (9);
+	memset (&g_st, 0, sizeof g_st); g_st.t0 = kapi_clock_us ();
+	rdlog ("rdpd: session start (%d bits a pixel%s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "");
 	int ready = 0;
 	unsigned last = kapi_get_ticks () - 100, wait = MIN_ROUND_TICKS;
 	while (!g_dead)
@@ -358,7 +413,18 @@ static void session (void)
 			else { g_dead = 1; break; }
 			if (g_inlen < len) break;
 			const unsigned char *m = g_in + 1;
-			if (t == 1) ready = 1;
+			if (t != 1) g_st.input++;
+			if (t == 1)
+			{
+				ready = 1;
+				if (g_st.end_at)
+				{
+					unsigned a = kapi_clock_us () - g_st.end_at;
+					g_st.ans_us += a; g_st.ans_n++; if (a > g_st.ans_max) g_st.ans_max = a;
+					if (a > 2000000u) rdlog ("rdpd: the client answered after %u ms", a / 1000);
+					g_st.end_at = 0;
+				}
+			}
 			else if (t == 2) pointer (get32 (m), (short) get16 (m + 4), (short) get16 (m + 6), m[8], (signed char) m[9]);
 			else if (t == 3 && (m[0] & 2)) { int hc = held_code (get32 (m + 1)); if (hc) kapi_inject_key_held (hc, m[0] & 1); }
 			else if (t == 3) key_event (m[0] & 1, get32 (m + 1));
@@ -373,13 +439,19 @@ static void session (void)
 		if (ready && (int) (now - last) >= (int) wait)
 		{
 			ready = 0;
+			unsigned tr = kapi_clock_us ();
 			round_send ();
+			tr = kapi_clock_us () - tr;
+			g_st.rounds++; g_st.round_us += tr; if (tr > g_st.round_max) g_st.round_max = tr;
+			if (tr > 1000000u) rdlog ("rdpd: a round took %u ms", tr / 1000);
 			unsigned took = kapi_get_ticks () - now;
 			wait = took * BUSY_FACTOR > MIN_ROUND_TICKS ? took * BUSY_FACTOR : MIN_ROUND_TICKS;
 			last = now;
 		}
+		stats_tick (0);
 		kapi_msleep (5);
 	}
+	stats_tick (1);
 	if (g_btn) kapi_inject_pointer (0, 0, 0, 0);		// (no button left held)
 }
 
@@ -421,7 +493,9 @@ int main (void)
 		char peer[32];
 		g_sock = kapi_tcp_accept (lsock, peer, sizeof peer);
 		if (g_sock < 0) { kapi_msleep (500); continue; }
+		rdlog ("rdpd: client %s", peer);
 		session ();
+		rdlog ("rdpd: session end");
 		kapi_tcp_close (g_sock);
 	}
 }
