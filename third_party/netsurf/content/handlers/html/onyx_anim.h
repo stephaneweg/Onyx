@@ -55,6 +55,17 @@ void onyx_anim_flush(struct html_content *c);
 /** The scripts asked for an animation frame (requestAnimationFrame). */
 void onyx_anim_request_frame(struct html_content *c);
 
+/**
+ * Onyx (docs/06 §32): the browser window's state, as the frontend sees it -- focused (the
+ * frames at ~30 Hz), visible without the keyboard (half the pace), hidden (minimised, on
+ * another workspace, covered by other windows: no animation frames, no
+ * requestAnimationFrame callbacks, the scripts' repeating timers once a second at most --
+ * until it shows again).
+ */
+enum { ONYX_VIEW_FOCUSED = 0, ONYX_VIEW_UNFOCUSED = 1, ONYX_VIEW_HIDDEN = 2 };
+extern int onyx_view_state;
+void onyx_anim_set_view_state(int state);
+
 /** Whether the element (or, n NULL, the document) has animations running. */
 bool onyx_anim_running(struct html_content *c);
 

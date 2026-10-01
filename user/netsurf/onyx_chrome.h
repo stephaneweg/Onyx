@@ -57,6 +57,9 @@ void onyx_chrome_present(void);
 /* the page redrawn: presented by onyx_chrome_flush(), once a main-loop iteration */
 void onyx_chrome_present_later(void);
 void onyx_chrome_flush(void);
+/* Onyx (docs/06 §32): whether the window is seen -- 0 focused, 1 shown without the keyboard,
+ * 2 hidden (minimised, on another workspace, covered whole by opaque windows). */
+int onyx_chrome_view_state(void);
 
 /* A page size for a new window that fits the screen (the band, the frame, the menu bar
  * and the dock left out). */

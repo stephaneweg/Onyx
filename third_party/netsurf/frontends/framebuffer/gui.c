@@ -63,10 +63,12 @@
 #include "framebuffer/local_history.h"
 #include "framebuffer/corewindow.h"
 #include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing */
+#include "html/onyx_anim.h"		/* Onyx: the window's state (onyx_anim_set_view_state) */
 
 /* Onyx: the window, its native toolbar (user/netsurf/onyx_chrome.cpp) */
 #include "desktop/searchweb.h"
 #include "netsurf/onyx_chrome.h"
+#include "netsurf/onyx_io.h"	/* Onyx: the card's writers wait while a page loads */
 
 
 #define NSFB_TOOLBAR_DEFAULT_LAYOUT "blfsrutc"
@@ -766,21 +768,41 @@ static bool nslog_stream_configure(FILE *fptr)
 	return true;
 }
 
+/* Onyx (docs/06 §32): the window's state (focused, shown, hidden), looked at 4 times a
+ * second -- hidden, the pages' animations and frames stop, their repeating timers slow to a
+ * second, and nothing is painted until it shows again (the redraws wait) */
+static int fb_view_state;
+
+static void fb_view_poll(void *p)
+{
+	int s = onyx_chrome_view_state();
+
+	if (s != fb_view_state) {
+		NSLOG(netsurf, INFO, "window state %d -> %d", fb_view_state, s);
+		fb_view_state = s;
+		onyx_anim_set_view_state(s);
+	}
+	framebuffer_schedule(250, fb_view_poll, NULL);
+}
+
 static void framebuffer_run(void)
 {
 	nsfb_event_t event;
 	int timeout; /* timeout in miliseconds */
 
+	fb_view_poll(NULL);	/* (Onyx) */
 	while (fb_complete != true) {
+		bool hidden = fb_view_state == ONYX_VIEW_HIDDEN;	/* (Onyx) */
+
 		/* run the scheduler and discover how long to wait for
 		 * the next event.
 		 */
 		timeout = schedule_run();
 
 		/* if redraws are pending do not wait for event,
-		 * return immediately
+		 * return immediately (Onyx: unless the window is hidden -- they wait)
 		 */
-		if (fbtk_get_redraw_pending(fbtk))
+		if (fbtk_get_redraw_pending(fbtk) && !hidden)
 			timeout = 0;
 
 		if (fbtk_event(fbtk, &event, timeout)) {
@@ -789,7 +811,8 @@ static void framebuffer_run(void)
 				fb_complete = true;
 		}
 
-		fbtk_redraw(fbtk);
+		if (!hidden)
+			fbtk_redraw(fbtk);
 		onyx_chrome_flush();	/* Onyx: one present, after the redraws */
 	}
 }
@@ -2239,6 +2262,7 @@ gui_window_start_throbber(struct gui_window *g)
 	onyx_load_t0 = onyx_perf_now();
 	g->throbber_index = 0;
 	onyx_chrome_set_busy(1);	/* Onyx: the native toolbar's reload becomes stop */
+	onyx_io_loading(1);		/* Onyx: the caches' writes wait (docs/06 §32) */
 	if (g->throbber != NULL)
 		framebuffer_schedule(100, throbber_advance, g);
 }
@@ -2248,9 +2272,12 @@ gui_window_start_throbber(struct gui_window *g)
 void onyx_fetch_save_state(void);	/* user/netsurf/onyx_fetch.c */
 extern struct gui_llcache_table *onyx_llcache_table;	/* user/netsurf/onyx_cache.c */
 
+static uint64_t onyx_saved_at;	/* (Onyx: ms of the last save) */
+
 static void onyx_save_user_data(void *p)
 {
 	(void) p;
+	nsu_getmonotonic_ms(&onyx_saved_at);
 	urldb_save(nsoption_charp(url_file));
 	urldb_save_cookies(nsoption_charp(cookie_jar));
 	onyx_fetch_save_state();	/* (the TLS sessions, the HTTP/1.1-only origins) */
@@ -2265,7 +2292,18 @@ gui_window_stop_throbber(struct gui_window *gw)
 		onyx_load_t0 = 0;
 	}
 	onyx_chrome_set_busy(0);
-	framebuffer_schedule(3000, onyx_save_user_data, NULL);	/* Onyx */
+	onyx_io_loading(0);
+	{
+		/* Onyx: 3 s after the load -- once a minute at most (docs/06 §32: each
+		 * save writes the history and the cookies whole, on the UI thread) */
+		uint64_t now = 0;
+		int wait = 3000;
+		nsu_getmonotonic_ms(&now);
+		if (onyx_saved_at != 0 && now - onyx_saved_at < 60000 &&
+		    (int) (60000 - (now - onyx_saved_at)) > wait)
+			wait = (int) (60000 - (now - onyx_saved_at));
+		framebuffer_schedule(wait, onyx_save_user_data, NULL);
+	}
 	if (gw->throbber != NULL)
 		fbtk_set_bitmap(gw->throbber, &throbber0);
 
@@ -2713,6 +2751,7 @@ void onyx_browser_go(const char *text)
 /* The page was covered (a pop-up of the window): draw it again. */
 void onyx_browser_redraw(void)
 {
+	onyx_comp_present_all();	/* (a dialog over the page: all of it again) */
 	if (fbtk != NULL)
 		fbtk_request_redraw(fbtk);
 }

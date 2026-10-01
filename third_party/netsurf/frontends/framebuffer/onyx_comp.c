@@ -144,6 +144,7 @@ struct clayer {
 					 * rotation): free of what is painted after it, unless
 					 * efp_blocked -- then only fp is */
 	bool efp_blocked;
+	struct crect shown;		/* Onyx: where it shows now (fp, or moved by an update) */
 	uint32_t *px;			/* premultiplied 0xAARRGGBB, its rectangle's size */
 	gpc_tex *tex;
 	struct crect dmg;		/* its pixels to paint again (document px, untransformed) */
@@ -195,12 +196,26 @@ static struct {
 	 * would resample it; painted into the band it costs nothing more) */
 	const void *animated[ANIMATED_MAX];
 	int nanimated;
+	/* Onyx (docs/06 §32): what changed in the view since the last present (document px):
+	 * only that part composited again -- the rest of the canvas holds it already */
+	struct crect pd;
+	bool pfull;			/* all of it (a scroll, a new band, the GPU lost...) */
+	struct onyx_comp_view pview;	/* the view presented last */
+	bool have_pview;
 	/* NS_PERF: the frames (painted / composite only), their time */
-	unsigned st_frames, st_painted, st_ahead;
+	unsigned st_frames, st_painted, st_ahead, st_partial;
+	long long st_present_px;
 	uint64_t st_paint_us, st_present_us, st_ahead_us;
 } C;
 
 bool onyx_comp_noting;
+
+/* Onyx (docs/06 §32): a rectangle of the view changed (presented at the next frame) */
+static void pd_add(const struct crect *r)
+{
+	if (!cr_empty(r))
+		cr_add(&C.pd, r);
+}
 
 static void *comp_alloc(unsigned long n)
 {
@@ -482,6 +497,10 @@ static bool band_make(int w, int h)
 
 static void layer_drop_pixels(struct clayer *l)
 {
+	if (l->tex != NULL || l->px != NULL) {
+		pd_add(&l->fp);		/* (it showed there) */
+		pd_add(&l->shown);
+	}
 	if (l->tex != NULL)
 		gpc_tex_destroy(C.g, l->tex);
 	l->tex = NULL;
@@ -583,6 +602,7 @@ static void layer_footprint(struct clayer *l)
 
 	l->fp = cr_and(f, &l->clip);
 	l->efp = l->fp;
+	l->shown = l->fp;
 	if (l->transformed) {
 		/* its rectangle turned about its centre, at its scale: a square */
 		float cx, cy, w = l->b.x1 - l->b.x0, h = l->b.y1 - l->b.y0;
@@ -673,6 +693,12 @@ void onyx_comp_damage(int x0, int y0, int x1, int y1)
 		return;
 	damage_layers(&r);
 	damage_add(r);
+}
+
+/* exported interface documented in framebuffer/onyx_comp.h */
+void onyx_comp_present_all(void)
+{
+	C.pfull = true;
 }
 
 /* exported interface documented in framebuffer/onyx_comp.h */
@@ -798,6 +824,7 @@ static void paint_piece(const struct onyx_comp_view *v, struct crect r)
 			C.piece.y1 - C.piece.y0,
 			C.px + (size_t) C.piece.y0 * C.bw + C.piece.x0, C.bw);
 	painted_add(&r);
+	pd_add(&r);
 
 	/* a layer something was painted over: in place from now on */
 	for (int i = 0; i < C.nlayers; i++) {
@@ -874,6 +901,7 @@ static void doc_extent(const struct onyx_comp_view *v, int *top, int *bottom)
 
 static void reupload_all(void)
 {
+	C.pfull = true;
 	/* the GPU was lost: everything again (the CPU path now) */
 	if (C.tex != NULL)
 		gpc_tex_update(C.g, C.tex, 0, 0, C.bw, C.bh, C.px, C.bw);
@@ -896,8 +924,29 @@ static void present(const struct onyx_comp_view *v)
 	struct crect view = { v->sx, v->sy, v->sx + v->w, v->sy + v->h };
 	uint64_t t0 = onyx_perf_now();
 
+	struct crect part = view;
+
 	if (canvas == NULL || v->x < 0 || v->y < 0 || v->x + v->w > cw || v->y + v->h > ch)
 		return;
+	/* Onyx (docs/06 §32): only what changed since the last present, when the view is the
+	 * same (its place, size, scroll) -- an animated dot's frame composites its few px, not
+	 * the whole view (nothing known changed: all of it, as before) */
+	if (!C.pfull && C.have_pview && C.pview.x == v->x && C.pview.y == v->y &&
+	    C.pview.w == v->w && C.pview.h == v->h && C.pview.sx == v->sx &&
+	    C.pview.sy == v->sy && C.pview.bw == v->bw) {
+		struct crect d = cr_and(C.pd, &view);
+		if (!cr_empty(&d)) {
+			part = d;
+		} else if (!cr_empty(&C.pd)) {
+			/* (painted out of view only: the rows ahead) */
+			C.pd.x0 = C.pd.y0 = C.pd.x1 = C.pd.y1 = 0;
+			return;
+		}
+	}
+	C.pfull = false;
+	C.pd.x0 = C.pd.y0 = C.pd.x1 = C.pd.y1 = 0;
+	C.pview = *v;
+	C.have_pview = true;
 	t.pixels = canvas + (size_t) v->y * stride + v->x;
 	t.w = v->w;
 	t.h = v->h;
@@ -973,6 +1022,26 @@ static void present(const struct onyx_comp_view *v)
 		}
 		was = now;
 	}
+	if (part.x0 != view.x0 || part.y0 != view.y0 || part.x1 != view.x1 ||
+	    part.y1 != view.y1) {
+		/* (a part: its target, the layers moved by its corner -- gpucomp.h) */
+		int px = part.x0 - view.x0, py = part.y0 - view.y0;
+		t.pixels += (size_t) py * stride + px;
+		t.w = part.x1 - part.x0;
+		t.h = part.y1 - part.y0;
+		for (int i = 0; i < n; i++) {
+			L[i].m.e -= (float) px;
+			L[i].m.f -= (float) py;
+			if (L[i].clip[2] > 0) {
+				L[i].clip[0] -= px;
+				L[i].clip[1] -= py;
+			}
+		}
+		if (t0 != 0)
+			C.st_partial++;
+	}
+	if (t0 != 0)
+		C.st_present_px += (long long) t.w * t.h;
 	/* (the band covers the view, opaque: the GPU need not load the canvas first --
 	 * a clear is cheaper; the CPU path copies over it anyway) */
 	r = gpc_composite(C.g, &t, L, n, 0, gpc_backend(C.g) == GPC_BACKEND_GPU ?
@@ -986,7 +1055,7 @@ static void present(const struct onyx_comp_view *v)
 	onyx_chrome_present_later();
 	if (t0 != 0) {
 		char what[64];
-		snprintf(what, sizeof what, "present %dx%d %s %d layers", v->w, v->h,
+		snprintf(what, sizeof what, "present %dx%d %s %d layers", t.w, t.h,
 				gpc_backend(C.g) == GPC_BACKEND_GPU ? "gpu" : "cpu", n);
 		onyx_perf_log(what, t0);
 	}
@@ -1142,11 +1211,13 @@ bool onyx_comp_redraw(const struct onyx_comp_view *v, bool prepaint)
 			if (C.st_frames % 50 == 0)
 				fprintf(stderr, "ONYX-COMP %u frames: %u painted (%lu us "
 						"painting), %u composite only; present %lu us "
-						"a frame; %u pieces ahead (%lu us)\n",
+						"a frame, %u partial, %lld px a frame; %u pieces "
+						"ahead (%lu us)\n",
 						C.st_frames, C.st_painted,
 						(unsigned long) C.st_paint_us,
 						C.st_frames - C.st_painted,
 						(unsigned long) (C.st_present_us / C.st_frames),
+						C.st_partial, C.st_present_px / C.st_frames,
 						C.st_ahead, (unsigned long) C.st_ahead_us);
 		}
 	}
@@ -1355,7 +1426,10 @@ bool onyx_comp_offer(struct onyx_layer *l)
 	if (fresh || clip.y0 != -OPEN) e->clip.y0 = clip.y0;
 	if (fresh || clip.x1 != OPEN) e->clip.x1 = clip.x1;
 	if (fresh || clip.y1 != OPEN) e->clip.y1 = clip.y1;
+	if (!fresh)
+		pd_add(&e->shown);	/* (Onyx: where it showed, where it shows) */
 	layer_footprint(e);
+	pd_add(&e->fp);
 	e->seen = C.gen;
 	e->in_piece = true;
 	e->fresh = e->fresh || fresh;
@@ -1411,6 +1485,7 @@ void onyx_comp_store(const struct onyx_layer *l, const uint32_t *argb, int x0, i
 		memcpy(e->px + (size_t) (ly + y) * lw + lx, argb + (size_t) y * w,
 				(size_t) w * 4);
 	gpc_tex_update(C.g, e->tex, lx, ly, w, h, e->px + (size_t) ly * lw + lx, lw);
+	pd_add(&e->fp);		/* (Onyx: its pixels changed) */
 }
 
 /* exported interface documented in framebuffer/onyx_comp.h */
@@ -1443,6 +1518,7 @@ bool onyx_comp_layer_update(const void *key, const float *lm, float opacity)
 	e = C.layers[i];
 	if (e->demoted || e->px == NULL || (lm != NULL) != e->transformed)
 		return false;
+	pd_add(&e->shown);	/* (Onyx: where it showed, presented again with where it shows) */
 	if (lm != NULL) {
 		const struct crect *free = e->efp_blocked ? &e->fp : &e->efp;
 		mat_about(lm, e->ox, e->oy, m);
@@ -1453,6 +1529,8 @@ bool onyx_comp_layer_update(const void *key, const float *lm, float opacity)
 			return false;
 		memcpy(e->lm, lm, sizeof(e->lm));
 		memcpy(e->m, m, sizeof(e->m));
+		e->shown = fp;
+		pd_add(&fp);
 	}
 	e->opacity = opacity;
 	/* (the frame at the next redraw: one composite for all the layers changed) */

@@ -1665,7 +1665,8 @@ CSS transitions, CSS animations (`@keyframes`), the Web Animations API and a pac
 - **The frames**: a frame is scheduled only while an effect runs or a script asked for one
   (`requestAnimationFrame`), 16 ms after the last (~60 Hz), longer when a frame's work took
   more than 10 ms (1.5 times it: the events and timers keep a third of the time); nothing runs
-  on a page whose animations are over. A frame makes each record's animated style again (a copy
+  on a page whose animations are over. (Since §32: ~30 Hz, 15 when the change is a few px or
+  the window is not focused, none while the window is hidden.) A frame makes each record's animated style again (a copy
   of the base, each animated property blended, interned) and, when it changed, gives it to the
   element's boxes through the `:hover` restyle's machinery (`onyx_hover_restyle_elements`,
   `onyx_hover.c`): all the animated elements at once, their pseudo-elements' styles kept, their
@@ -1950,7 +1951,8 @@ delayed connect.
 replacing the upstream `fs_backing_store.c`). The objects and their metadata go to
 `SD:/apps/jet.app/cache/<id>.d|.m` with an `index` (id, sizes, last use, URL), written by a
 thread of their own (the UI never waits for the card); 64 MB (Choices' `disc_cache_size`),
-the least recently used out beyond it. In `llcache.c`: an object is written to the card when
+the least recently used out beyond it. (Since §32: an object is stored the second time it is
+seen, not over 512 KB, the writes paced, the index written once a minute at most.) In `llcache.c`: an object is written to the card when
 it is complete and not `no-store`, and it is either fresh for a while or has a **validator**
 (`ETag`, `Last-Modified`) -- such an object stale or `no-cache` is kept (on the card, and in
 memory until it is written) and **revalidated** on its next use (`If-None-Match` /
@@ -2083,7 +2085,8 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
   redrawn as before. `pages/anim-layers.html` (a spin and a pulse): 133 frames of 150 a
   composite, 17 painted.
 - **The frame.** The band's pieces in view, then the layers that reach the view, **one
-  `gpc_composite` straight into the window's canvas** (its page area; `GPC_C_CLEAR` on the GPU:
+  `gpc_composite` straight into the window's canvas** (its page area -- since §32 only the part
+  that changed since the last frame; `GPC_C_CLEAR` on the GPU:
   the band covers it, the canvas need not be loaded); the back buffer's copies leave that part
   alone (`onyx_surface_hole`); the caret is drawn into the band.
 - **Safety.** At start, a **self-test** composes a small scene by the GPU and by gpucomp's CPU path
@@ -2685,7 +2688,8 @@ qemu logs one instruction a block -- slow, small workloads).
 A browser does not parse a script it has seen: V8 keeps its compiled code. Here the scripts'
 QuickJS bytecode is kept on the card, `SD:/apps/jet.app/jscache/<16 hex digits>.bc`:
 
-- **What**: every classic script of 8 KB or more (external or inline), and the preludes
+- **What**: every classic script of 8 KB or more (external or inline) -- since §32 the second
+  time its source is seen (written paced, the index once a burst is over) --, and the preludes
   (`dom.js`, `html5.js`, `canvas.js`, `net.js`, `wasm.js`, `crypto.js`, `intl.js` -- their
   bytecode was already kept in memory for a process's next contexts; the first context now
   reads it from the card too). `js_exec` compiles (`JS_EVAL_FLAG_COMPILE_ONLY`) or reads the
@@ -2820,6 +2824,150 @@ Decided by the user on 2026-09-30: the browser is **Jet Browser**. What changed:
   the pages visited and the sites shown in their desktop version survive the rename. The
   caches are not copied (they rebuild themselves); nothing is deleted, the old folder can be
   removed by hand. Not on the PC bench (`host.mk` sets its own `ONYX_NS_DATAPATH`).
+
+## 32. An idle Jet Browser, a quiet card: the system stays fast (2026-10-01)
+
+**What the Pi showed**: "when Jet is running, the whole system gets slow" -- even a simple app
+such as the theme settings. On the Pi every app runs on core 0, so what Jet burns is taken from
+the other apps, the compositor, the input and the remote desktop. Two causes were measured:
+
+1. **CPU while a page is shown and nothing happens.** kotonstudio.com (its copy, a 1920 x 1080
+   screen, the page loaded, then 10 s idle) took 6.5 % of a PC core with `NS_GPU=0` and 13.7 %
+   with `NS_GPU=1` -- most of a Pi core (5-8x slower). The Pi's log: `ONYX-COMP 100 frames: 100
+   painted, 0 composite only`, `frame painted 21-29 ms` each frame. The cause: the page's
+   `.pill-dot` runs `animation: pulse 2s infinite` on its **`box-shadow`** -- a paint property,
+   not a transform or an opacity, so no frame of it can be composite-only (§25: the transform /
+   opacity animations are, `pages/anim-layers.html`: 40 composite-only frames of 50). Each of
+   the ~60 frames a second restyled the dot (walking the whole box tree twice), painted its 23 x
+   23 px into the band, then **composited the whole view** into the canvas (1.4-1.7 ms on the
+   PC's CPU path) and presented the window.
+2. **The SD card's write stalls.** The Pi's log: `stall: jet:cache ran 103-213 ms without
+   yielding` (in Circle's `CEMMCDevice::TimeoutWait`: the SD driver busy-waits while the card
+   writes, core 0 frozen for everyone). The disk cache (`user/netsurf/onyx_cache.c`) and the JS
+   code cache (`quickjs/qjs_codecache.c`) wrote a lot: every cacheable object, every script's
+   bytecode (~3x its source), at every visit when Google's scripts change.
+
+### The frames: fewer, smaller, none unseen
+
+- **Their pace** (`html/onyx_anim.c`, `oa_schedule`): ~**30** frames a second (was ~60), **15**
+  when the last frames changed only a few pixels -- painting only, the changed elements' boxes
+  (their descendants' bounds, 8 px around) at most 48 x 48 px in all (`OA_TINY_PX`: a pulsing
+  dot, a small spinner) -- and half that (15 / 8) when the window does not have the keyboard.
+  A frame whose work is long still waits 1.5x its work. `requestAnimationFrame` follows the
+  same pace (30 a second focused, 15 unfocused).
+- **The window's state** (`frontends/framebuffer/gui.c` `fb_view_poll`, 4 times a second;
+  `user/netsurf/onyx_chrome.cpp` `onyx_chrome_view_state`): from the window manager --
+  `kapi_win_geometry`'s state (`KAPI_WIN_MINIMISED`, `KAPI_WIN_OFFDESK`, `KAPI_WIN_KEYS`) and
+  `kapi_win_list` for what lies above the window (the opaque windows above it -- not
+  minimised, not on another desk, alpha 255, not see-through -- subtracted from its client
+  area: nothing left = covered). Three states (`onyx_view_state`, `html/onyx_anim.h`):
+  focused, shown without the keyboard, **hidden** (minimised, on another workspace, covered).
+- **Hidden** (as a background tab in Chrome): no animation frame at all -- the timelines park
+  (`onyx_anim_set_view_state` wakes them when the window shows again; the animations' clocks
+  went on: they jump to where they are), no `requestAnimationFrame` callback, the scripts'
+  repeating timers -- and the timers a timer sets -- wait a second at least
+  (`qjs_timer_delay`), animated GIFs stop (`image/gif.c`), and **nothing is painted** (the main
+  loop keeps the redraws pending until the window shows again). `document.hidden` /
+  `document.visibilityState` answer, `visibilitychange` is dispatched to every document
+  (`js_view_visibility_changed`: a page can pause its own work). On the PC bench a hidden
+  kotonstudio.com costs what an empty page does.
+- **The restyle of a frame walks only the animated elements' boxes**
+  (`html/onyx_hover.c`, `onyx_hover_restyle_elements`, `hv_scope_box`): an element whose box
+  holds all its boxes (a block-level box: not an inline's pieces, which are their line's
+  siblings) has its subtree walked (check, then apply) instead of the whole tree twice; else
+  as before. kotonstudio.com's frames: 45.8 -> 18.0 M instructions in `oa_tick` over the same
+  run (`valgrind --tool=callgrind --toggle-collect=oa_tick`).
+- **Only what changed is composited** (`frontends/framebuffer/onyx_comp.c`, `present`): the
+  frame's changed rectangle -- the band's pieces painted, a retained layer where it showed and
+  where it shows (`clayer.shown`), its pixels painted, it dropped or demoted -- is composited
+  into the canvas (a target of that rectangle, the layers moved by its corner, as `gpucomp.h`
+  allows); a scroll, a new view, a new band, the GPU lost, a dialog closed over the page
+  (`onyx_comp_present_all` from `onyx_browser_redraw`) or nothing known composite the whole
+  view as before; rows painted ahead out of view present nothing. The dot's frame: 1.4-1.7 ms
+  -> ~0.05 ms of present on the PC. (The window is still handed to the kernel whole:
+  `kapi_present` has no rectangle -- a kernel matter.)
+- **The other steady costs looked at**: an idle HTTP/2 connection (kept up to 30 s for the
+  next request) looked at its socket 100 times a second -- now 10 when it has no stream
+  (`onyx_fetch.c`, `h2_run`: a new job still wakes it at once); the caret is drawn into the
+  band only when its rectangle is painted, there is no caret blink nor throbber animation (the
+  toolbar's reload button turns into stop); the WebSocket / EventSource threads poll their
+  socket every 50 / 100 ms only while a page holds one (a socket's `recv` does not block on
+  Onyx).
+
+**Measured** (PC bench, `tools/tests/netsurf/idlecpu.py`: the process's CPU over 10 s, the page
+loaded 15 s before, a 1920 x 1080 screen; the bench's own floor -- `pages/basic.html`, the
+simulator's main loop turning every 16 ms where the Pi's sleeps until an event -- is 0.7-0.9 %):
+
+| page | mode | before | after (focused) | unfocused | hidden |
+|---|---|---|---|---|---|
+| kotonstudio.com | `NS_GPU=0` | 6.5 % | 1.7-1.9 % | 1.3 % | 0.8 % |
+| kotonstudio.com | `NS_GPU=1` | 13.7 % | 1.8-1.9 % | 1.4 % | 0.9 % |
+| kotonviolins.com | `NS_GPU=0` | 0.7 % | 0.8-0.9 % | | |
+| kotonviolins.com | `NS_GPU=1` | 0.9 % | 0.7-0.9 % | | |
+
+Over the floor, kotonstudio.com's idle cost went from ~6 / ~13 % to ~1 % of a PC core (on
+the Pi: from most of core 0 to ~5-8 %), none when the window is not seen.
+
+### The card: write less, write gently
+
+- **The disk cache stores an object the second time it is seen** (`onyx_cache.c`,
+  `oc_store`): its URL's hash met in an earlier launch (the hashes seen are kept in the index,
+  `- <hash>` lines, 4096 of them). Most of what a page fetches is never asked for again; a
+  site visited again gets its objects stored then, and read from the card from the visit after.
+  **Nor a body over 512 KB** (`OC_MAX_OBJECT`). A declined object stays in memory (llcache's
+  RAM copy) for this launch.
+- **A bug that made the disk cache write-only on the Pi**: the writer took
+  `kapi_save_file(...) == 0` for success, but the kernel answers the bytes written -- every
+  write was taken for a failure, so no object was ever listed in the index nor read back in a
+  later launch, and each was written again at every visit. (The bench's `save_file` answers 0:
+  the PC never showed it.)
+- **The JS code cache writes a script's bytecode the second time its source is seen**
+  (`qjs_codecache.c`, as V8 does): the first time its hash goes into the index (an entry of
+  size 0, no file), the next time -- this launch or a later one -- the file is written. A script
+  that changes at every visit is never written.
+- **Paced writes** (`user/netsurf/onyx_io.h`, implemented in `onyx_cache.c`: `onyx_io_save`):
+  a file over 16 KB is written in 16 KB pieces (`kapi_file_out` + `kapi_stream_write`) with
+  an 8 ms sleep between them (the stall each write can cause is a piece's, not a whole
+  file's 64 KB chunks back to back); a smaller one by `kapi_save_file`. The writers wait
+  before each file -- and between pieces -- while the user acts (a click, the wheel, a key:
+  `onyx_io_activity`, the last second) or a page loads (`onyx_io_loading`, from the
+  throbber's start / stop; 60 s at most) -- up to 30 s, then write anyway.
+- **The indexes are written rarely**: the disk cache's once a minute at most and at the end
+  (was 3 s after the last writes, again and again on a Google visit); files a lost index left
+  (the Pi switched off) are removed 30 s after the next start (`oc_sweep`). The code cache's
+  once its writer is done, 3 s after the last store (was after each file).
+- **The history, cookies and connection state** (`gui.c`, `onyx_save_user_data`, written whole
+  on the UI thread 3 s after a page's load): once a minute at most (and at the end).
+
+**Measured** (PC bench, google.com with the real network, three launches from an empty data
+folder, `strace` of the writes under the data folder; `NS_PERF=1` also prints each paced write
+as `ONYX-PERF io:write <path> <bytes>` and the disk cache's tally at the end):
+
+| visit | before | after |
+|---|---|---|
+| 1st | 10.4 MB (disk cache 2.2 MB in 27 files, code cache 8.2 MB in 17 files) | 5 KB (indexes, cookies, history) |
+| 2nd | 1.5 MB (code cache 1.2 MB: the scripts that changed) | 5.7 MB (what was seen twice: disk cache 1.2 MB, code cache 4.5 MB) |
+| 3rd | 365 KB (code cache 315 KB) | 13 KB |
+
+From then on, a visit whose scripts changed writes nothing for them (before: their bytecode
+each time, 0.3-1.2 MB a visit here, more on the Pi's Google), and the writes that remain are
+paced and wait for a quiet moment.
+
+**The kernel side** (not changed here): the stall is Circle's `CEMMCDevice` busy-waiting for
+the card (`TimeoutWait`) while it programs a block -- a write of 16 KB can still hold core 0
+for the card's own latency (tens of ms, more during its garbage collection). The right fix is
+in the EMMC driver: wait for the transfer-complete / not-busy state by yielding to the
+scheduler (or an interrupt) instead of spinning, so that a writer thread blocks and the others
+run. Also: `kapi_present` presents the whole window -- a present with a rectangle would let the
+desktop's compositor copy only what changed.
+
+**Tests**: `jstest.sh` (`pages/view-hidden.html`: the window minimised then shown again --
+`visibilitychange`, `document.hidden`, no `requestAnimationFrame` callback while hidden, a
+50 ms interval slowed to a second, the frames going on after), `fxtest.sh`, `gputest.sh`
+(composited = CPU painting, with the partial presents), `nettest.sh`, `iframetest.sh`; the
+desktop simulator has a `winstate <n>` step (the window's `KAPI_WIN_*` state);
+`idlecpu.py --floor <pages>` (`--state unfocused|hidden`, `--max <pct>` to fail above a
+budget).
 
 ## 8. Known gaps
 

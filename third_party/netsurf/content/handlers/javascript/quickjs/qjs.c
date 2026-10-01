@@ -191,7 +191,12 @@ struct jsthread {
 	bool zombie;			/* Onyx: freed, its record kept: a realm of a shared heap
 					 * whose functions another frame may still call (each
 					 * native finds it closed) */
+	struct jsthread *vnext;		/* Onyx: every live thread (visibilitychange) */
 };
+
+/* Onyx: the live threads (js_view_visibility_changed) */
+static struct jsthread *qjs_all;
+static void qjs_visibility_later(void *p);
 
 static JSClassID qjs_node_class;
 static bool qjs_debug;
@@ -3333,6 +3338,13 @@ static JSValue n_user_agent(JSContext *ctx, JSValueConst this_val, int argc, JSV
 }
 
 
+/* Onyx (docs/06 §32): document.hidden / visibilityState -- the window minimised, on another
+ * workspace, covered */
+static JSValue n_view_hidden(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	return JS_NewBool(ctx, onyx_view_state == ONYX_VIEW_HIDDEN);
+}
+
 /* ---- natives: timers -------------------------------------------------------------------- */
 
 static void qjs_timer_unlink(jsthread *t, struct qjs_timer *tm)
@@ -3347,6 +3359,20 @@ static void qjs_timer_unlink(jsthread *t, struct qjs_timer *tm)
 	}
 }
 
+/* Onyx (docs/06 §32): a timer's delay -- while the window is hidden (minimised, on another
+ * workspace, covered), a repeating timer, or one a timer's callback sets, waits a second at
+ * least (as a background tab's in Chrome): a page's polling costs nothing unseen */
+static int qjs_in_timer;
+#define QJS_HIDDEN_TIMER_MS 1000
+
+static int qjs_timer_delay(int ms, bool repeat)
+{
+	if (onyx_view_state == ONYX_VIEW_HIDDEN && (repeat || qjs_in_timer > 0) &&
+	    ms < QJS_HIDDEN_TIMER_MS)
+		return QJS_HIDDEN_TIMER_MS;
+	return ms;
+}
+
 static void qjs_timer_fire(void *p)
 {
 	struct qjs_timer *tm = p;
@@ -3357,13 +3383,15 @@ static void qjs_timer_fire(void *p)
 		return;
 	fn = JS_DupValue(t->ctx, tm->fn);
 	if (tm->repeat) {
-		guit->misc->schedule(tm->ms, qjs_timer_fire, tm);
+		guit->misc->schedule(qjs_timer_delay(tm->ms, true), qjs_timer_fire, tm);
 	} else {
 		qjs_timer_unlink(t, tm);
 		JS_FreeValue(t->ctx, tm->fn);
 		free(tm);
 	}
+	qjs_in_timer++;
 	r = qjs_call(t, fn, JS_UNDEFINED, 0, NULL, "timer");
+	qjs_in_timer--;
 	JS_FreeValue(t->ctx, r);
 	JS_FreeValue(t->ctx, fn);
 }
@@ -3391,7 +3419,7 @@ static JSValue n_timer(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	tm->fn = JS_DupValue(ctx, argv[0]);
 	tm->next = t->timers;
 	t->timers = tm;
-	guit->misc->schedule(tm->ms, qjs_timer_fire, tm);
+	guit->misc->schedule(qjs_timer_delay(tm->ms, tm->repeat), qjs_timer_fire, tm);
 	return JS_NewInt32(ctx, tm->id);
 }
 
@@ -4580,6 +4608,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("mediaMatch", 3, n_media_match),
 	JS_CFUNC_DEF("now", 0, n_now),
 	JS_CFUNC_DEF("userAgent", 0, n_user_agent),
+	JS_CFUNC_DEF("viewHidden", 0, n_view_hidden),	/* Onyx: document.hidden */
 	JS_CFUNC_DEF("timer", 3, n_timer),
 	JS_CFUNC_DEF("clearTimer", 1, n_clear_timer),
 	JS_CFUNC_DEF("request", 6, n_request),
@@ -4770,6 +4799,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	heap->threads++;
 	t->hnext = heap->live;		/* (Onyx: the heap's threads) */
 	heap->live = t;
+	t->vnext = qjs_all;		/* (Onyx: every thread) */
+	qjs_all = t;
 
 	/* the prelude: a function of the natives, run once */
 	natives = JS_NewObject(t->ctx);
@@ -4877,7 +4908,13 @@ static void qjs_thread_free(jsthread *t)
 				*pp = t->hnext;
 				break;
 			}
+		for (pp = &qjs_all; *pp != NULL; pp = &(*pp)->vnext)
+			if (*pp == t) {
+				*pp = t->vnext;
+				break;
+			}
 	}
+	guit->misc->schedule(-1, qjs_visibility_later, t);
 	if (heap->shared) {
 		/* Onyx: another frame may hold this realm's objects (its context lives on
 		 * while they do) and call its functions: their natives find a closed thread
@@ -5078,6 +5115,30 @@ void js_animation_frame(jsthread *thread, double now)
 	JS_FreeValue(ctx, r);
 	JS_FreeValue(ctx, args[1]);
 	JS_FreeValue(ctx, args[2]);
+}
+
+/* Onyx (docs/06 §32): visibilitychange */
+static void qjs_visibility_later(void *p)
+{
+	jsthread *t = p;
+	JSValue args[3], r;
+
+	if (t->closed || t->worker || t->doc == NULL || !JS_IsFunction(t->ctx, t->dispatch))
+		return;
+	args[0] = JS_NULL;
+	args[1] = JS_NewString(t->ctx, "onyx:visibility");
+	args[2] = JS_UNDEFINED;
+	r = qjs_call(t, t->dispatch, JS_UNDEFINED, 3, (JSValueConst *) args, "visibilitychange");
+	JS_FreeValue(t->ctx, r);
+	JS_FreeValue(t->ctx, args[1]);
+}
+
+/* exported interface documented in js.h */
+void js_view_visibility_changed(void)
+{
+	for (jsthread *t = qjs_all; t != NULL; t = t->vnext)
+		if (!t->closed && !t->worker)
+			guit->misc->schedule(0, qjs_visibility_later, t);
 }
 
 /**

@@ -235,4 +235,10 @@ void js_dispatch_anim_event(jsthread *thread, const char *type, struct dom_node 
  */
 void js_animation_frame(jsthread *thread, double now);
 
+/**
+ * Onyx (docs/06 §32): the browser window was hidden or shown again (html/onyx_anim.h
+ * onyx_view_state) -- every document's visibilitychange, a turn later.
+ */
+void js_view_visibility_changed(void);
+
 #endif /* NETSURF_JAVASCRIPT_JS_H_ */

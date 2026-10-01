@@ -18,6 +18,7 @@
 #include <time.h>
 #include "wtk/wtk.h"
 #include "onyx_chrome.h"
+#include "onyx_io.h"
 
 using namespace wtk;
 
@@ -657,7 +658,11 @@ void ptr_event (unsigned long sender, int ev, long v)
 	static int bl, br, bm;
 	if (g_win == 0) return;
 	if (defer_event (sender, ev, v, false)) return;
-	if (ev == GUI_EVENT_PTR_DOWN || ev == GUI_EVENT_PTR_UP || ev == GUI_EVENT_PTR_WHEEL) g_inputs++;
+	if (ev == GUI_EVENT_PTR_DOWN || ev == GUI_EVENT_PTR_UP || ev == GUI_EVENT_PTR_WHEEL)
+	{
+		g_inputs++;
+		onyx_io_activity ();		// (the card's writers wait: docs/06 §32)
+	}
 	if (ev == GUI_EVENT_WINCTL)			// a title button (v64)
 	{
 		if (v == KAPI_FRAME_MENU) { g_win->windowMenu (); onyx_browser_redraw (); }
@@ -707,6 +712,7 @@ void key_event (unsigned long sender, int ev, long k)
 	if (g_win == 0 || ev != GUI_EVENT_KEY) return;
 	if (defer_event (sender, ev, k, true)) return;
 	g_inputs++;
+	onyx_io_activity ();
 	if (has_modal ()) { g_win->handleKey (k); return; }
 	unsigned mods = kapi_get_modifiers ();
 	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
@@ -942,6 +948,68 @@ void onyx_chrome_flush (void)
 	if (!g_present_due) return;
 	g_present_due = false;
 	onyx_chrome_present ();
+}
+
+// Onyx (docs/06 §32): whether the window is seen -- 2 hidden (minimised, on another workspace,
+// covered whole by opaque windows above it), 1 shown without the keyboard, 0 focused. The
+// window manager's own view (kapi_win_geometry; kapi_win_list for what lies above).
+namespace {
+struct VRect { int x0, y0, x1, y1; };
+
+// r less the rectangle c, into out (at most 4 pieces) -> how many
+int vr_cut (const VRect &r, const VRect &c, VRect *out)
+{
+	if (c.x1 <= r.x0 || c.x0 >= r.x1 || c.y1 <= r.y0 || c.y0 >= r.y1) { out[0] = r; return 1; }
+	int n = 0;
+	int my0 = c.y0 > r.y0 ? c.y0 : r.y0, my1 = c.y1 < r.y1 ? c.y1 : r.y1;
+	if (c.y0 > r.y0) out[n++] = { r.x0, r.y0, r.x1, c.y0 };
+	if (c.y1 < r.y1) out[n++] = { r.x0, c.y1, r.x1, r.y1 };
+	if (c.x0 > r.x0) out[n++] = { r.x0, my0, c.x0, my1 };
+	if (c.x1 < r.x1) out[n++] = { c.x1, my0, r.x1, my1 };
+	return n;
+}
+
+bool covered (const struct kapi_win_geom &g)
+{
+	static struct kapi_win_info w[64];
+	int n = kapi_win_list (w, 64), me = -1;
+	for (int i = 0; i < n; i++)		// (mine: where my frame and client area are)
+		if (w[i].id != KAPI_WIN_DESKTOP && w[i].ow == g.w && w[i].oh == g.h &&
+		    w[i].x - w[i].il == g.x && w[i].y - w[i].it == g.y && w[i].w == g.cw && w[i].h == g.ch)
+			me = i;
+	if (me < 0) return false;
+	enum { MAXR = 32 };
+	VRect vis[MAXR], next[MAXR];
+	int nv = 1;
+	vis[0] = { w[me].x, w[me].y, w[me].x + w[me].w, w[me].y + w[me].h };
+	for (int i = me + 1; i < n && nv > 0; i++)	// (the list: bottom to top)
+	{
+		const struct kapi_win_info &o = w[i];
+		if (o.state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)) continue;
+		if (o.alpha < 255 || (o.flags & (WIN_FLAG_TRANSPARENT | WIN_FLAG_ALPHA))) continue;
+		VRect c = { o.x, o.y, o.x + o.w, o.y + o.h };	// (its client area: the frame may be shaped)
+		int nn = 0;
+		for (int k = 0; k < nv; k++)
+		{
+			VRect piece[4];
+			int np = vr_cut (vis[k], c, piece);
+			if (nn + np > MAXR) return false;	// (too broken up: say seen)
+			for (int j = 0; j < np; j++) next[nn++] = piece[j];
+		}
+		for (int k = 0; k < nn; k++) vis[k] = next[k];
+		nv = nn;
+	}
+	return nv == 0;
+}
+}
+
+int onyx_chrome_view_state (void)
+{
+	struct kapi_win_geom g;
+	if (g_win == 0 || kapi_win_geometry (&g) != 0) return 0;	// (an older kernel: focused)
+	if (g.state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)) return 2;
+	if (covered (g)) return 2;
+	return (g.state & KAPI_WIN_KEYS) ? 0 : 1;
 }
 
 void onyx_chrome_set_url (const char *url)

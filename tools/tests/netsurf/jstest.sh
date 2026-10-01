@@ -304,6 +304,14 @@ animpage css-animation.html anim "$(waits 150)" \
 animpage js-animate.html waapi "$(waits 120)" \
 	"the Web Animations API (element.animate, Animation) and requestAnimationFrame"
 
+echo "view-hidden.html (the window minimised then shown: visibilitychange, no frames, slow timers)"
+L=$OUT/view-hidden.log
+run view-hidden.html "$(waits 60)winstate 4;$(waits 150)winstate 1;$(waits 90)" "$L"
+for s in "start hidden=false visible" "visibility hidden hidden=true" "visibility visible hidden=false" \
+	 "frames while hidden none" "interval while hidden slowed" "frames again yes"; do
+	expect "$L" "$s"
+done
+
 echo "js-intl.html (Intl and the locale built-ins, against Chrome's answers: intl/mkpage.js)"
 L=$OUT/js-intl.log
 run js-intl.html "$(waits 40)" "$L"
