@@ -22,10 +22,12 @@
 // Save dialog of a download (frontends/framebuffer/onyx_download.c asks for it).
 //
 #include <time.h>
+#include <stdlib.h>		// (malloc: the clipboard's text handed to NetSurf's C side)
 #include "wtk/wtk.h"
 #include "onyx_chrome.h"
 #include "onyx_io.h"
 #include "img/pngsave.hpp"	// (docs/06 §40: a copied image, as a PNG file)
+#include "clipboard.h"		// (the shared clipboard: clipd, its history -- else the kernel's)
 #ifdef ONYX_HOST_SIM
 #include <stdio.h>		// (the PC bench: the bar's text and the band's places logged)
 #endif
@@ -111,7 +113,39 @@ void clip_copy (const char *s, int n)
 {
 	static char u[URL_MAX * 3];
 	int m = latin1_to_utf8 (s, n, u, sizeof u);
-	kapi_clipboard_set (CLIP_TEXT, u, (unsigned) m);
+	clip_set_text_n (u, m);
+}
+
+// ---- the shared clipboard for NetSurf's C side (frontends/framebuffer/clipboard.c, onyx_edit.c):
+// clipboard.h is C++ (clipd over IPC, the kernel's clipboard when clipd cannot be reached)
+extern "C" void onyx_clip_set_text (const char *s, unsigned n) { clip_set_text_n (s, (int) n); }
+// The clipboard's text (malloc'd, NUL-terminated; 0: none), at most cap bytes
+extern "C" char *onyx_clip_get_text (unsigned cap, unsigned *len)
+{
+	char *b = (char *) malloc (cap + 1);
+	if (!b) return 0;
+	int n = clip_get_text (b, (int) cap + 1);
+	if (n <= 0) { free (b); return 0; }
+	if (len) *len = (unsigned) n;
+	return b;
+}
+// w x h pixels 0xAARRGGBB as an image item (alpha over white: the clipboard's are opaque);
+// false: clipd could not be reached (the caller falls back to a file)
+extern "C" int onyx_clip_set_image (const unsigned *px, int w, int h)
+{
+	if (!px || w <= 0 || h <= 0) return 0;
+	unsigned *o = new unsigned[(unsigned) w * (unsigned) h];
+	if (!o) return 0;
+	for (unsigned i = 0; i < (unsigned) w * (unsigned) h; i++)
+	{
+		unsigned c = px[i], a = c >> 24, v = 0;
+		for (int k = 0; k < 24; k += 8)
+			v |= ((((c >> k) & 255) * a + 255 * (255 - a)) / 255) << k;
+		o[i] = v;
+	}
+	bool ok = clip_set_image (o, w, h);
+	delete[] o;
+	return ok ? 1 : 0;
 }
 
 // A one-line editor of Latin-1 text (the address field, the find bar's field): the caret, the
@@ -173,10 +207,8 @@ public:
 		if (k == 22)										// ^V
 		{
 			static char clip[URL_MAX];
-			int type = 0; unsigned serial = 0;
-			int n = kapi_clipboard_get (&type, clip, sizeof clip - 1, &serial);
-			if (n > (int) sizeof clip - 1) n = (int) sizeof clip - 1;
-			if (n > 0 && type == CLIP_TEXT)
+			int n = clip_get_text (clip, sizeof clip);
+			if (n > 0)
 			{
 				if (all) erase ();
 				for (int i = 0; i < n && len < URL_MAX - 1; )

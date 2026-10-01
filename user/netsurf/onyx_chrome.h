@@ -144,6 +144,10 @@ int  onyx_chrome_context_menu(int x, int y, int flags);
 
 /* w x h pixels 0xAARRGGBB written as a PNG file (img/pngsave.hpp): 1 done, 0 failed. */
 int  onyx_chrome_save_png(const char *path, const unsigned *px, int w, int h);
+/* the shared clipboard (user/clipboard.h: clipd, its history; else the kernel's clipboard) */
+void onyx_clip_set_text(const char *s, unsigned n);
+char *onyx_clip_get_text(unsigned cap, unsigned *len);	/* malloc'd text or NULL */
+int  onyx_clip_set_image(const unsigned *px, int w, int h);	/* 0xAARRGGBB; 0: no clipd */
 
 /* gui.c / onyx_edit.c: the words (UTF-8) searched in the page -- dir 0 a new search (the
  * first match; typed: after a pause on a page slow to search), 1 the next match, -1 the one
