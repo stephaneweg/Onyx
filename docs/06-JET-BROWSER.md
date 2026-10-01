@@ -4247,6 +4247,15 @@ instructions): rebuild `libplutosvg.a`. Then `netsurf-app.mk link stage`. Window
   it is not drawn).
 - No DTD validation, no external entities (by design: as the browsers).
 
+**Windows: the certificates valid past 2038 (2026-10-01).** Jet for Windows said Wikipedia's
+root, ISRG Root X2 (valid until 2040), had expired -- and so loaded none of upload.wikimedia.org's
+images (the same chain). The certificates' dates are checked by `onyx_tls.hpp`'s own callback in
+seconds since 1970 (`x509_secs`, `clock_secs`), in a `long`: 64 bits on the Pi, **32 on Windows**
+(LLP64) -- a date past January 2038 wrapped negative, "in the past". They are `long long` now
+(checked with MinGW under Wine: 2040-09-17 was -2063514496, now 2231452800). The Pi's checks were
+right (its `long` is 64-bit): replayed there with the Pi's own mbedTLS libraries under
+qemu-aarch64 -- E6 -> ISRG Root X2, the bundle's root chosen, not the expired X1-signed copy.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
