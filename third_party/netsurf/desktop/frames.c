@@ -599,9 +599,17 @@ static void onyx_frames_link(struct browser_window *bw, html_content *htmlc)
 			f->border_colour = cur->border_colour;
 			f->margin_width = cur->margin_width;
 			f->margin_height = cur->margin_height;
-			box_bounds(cur->box, &rect);
-			browser_window_set_position(f, rect.x0, rect.y0);
-			browser_window_set_dimensions(f, rect.x1 - rect.x0, rect.y1 - rect.y0);
+			/* (Onyx: placed now only in a laid-out tree -- after a rebox the new boxes
+			 * are not laid out yet: no float containers, no scroll bars, and box_coords
+			 * walked garbage (the Pi crashed on kotonstudio -> google); the layout places
+			 * the frame anyway, layout.c) */
+			if (htmlc->layout != NULL && htmlc->layout->width != UNKNOWN_WIDTH &&
+			    cur->box->width != UNKNOWN_WIDTH) {
+				box_bounds(cur->box, &rect);
+				browser_window_set_position(f, rect.x0, rect.y0);
+				browser_window_set_dimensions(f, rect.x1 - rect.x0,
+						rect.y1 - rect.y0);
+			}
 			break;
 		}
 	}

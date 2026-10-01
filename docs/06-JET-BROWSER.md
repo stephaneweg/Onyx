@@ -2610,6 +2610,12 @@ its prototypes -- so `el` appended into a frame's body is the frame's node (`el.
 === frame.contentDocument`), and a frame's node appended here is this document's
 (`node.parentNode === document.body`).
 
+**A frame placed only in a laid-out tree** (`desktop/frames.c` `onyx_frames_link`): the rebox
+syncs the frames before its new boxes are laid out; placing a frame then walked `box_coords`
+over boxes with no float container and no scroll bars yet -- a crash (on the Pi: kotonstudio.com,
+then google.com; a frame in a float on the PC). The frame is placed by the layout anyway
+(`layout.c`). Test: `iframetest.sh`'s `frames-rebox-float.html`.
+
 **Not done**: a frame's initial about:blank is not there synchronously (a script that writes
 into `contentDocument` right after inserting the iframe finds null until it has loaded, a few ms
 -- the built-ins above aside); `document.domain`; a node adopted from another document is a
