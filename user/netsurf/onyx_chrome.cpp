@@ -16,19 +16,29 @@
 // The app is Jet Browser ("Jet" in the window's title): Onyx's web browser, based on NetSurf;
 // Help > About Jet Browser... credits NetSurf and the libraries (their licences).
 //
+// docs/06 §38: right of the pill the zoom control ("-  100%  +"; Ctrl+- / Ctrl++ / Ctrl+0,
+// Ctrl+wheel), then the downloads' button (its menu: progress, cancel); the status bar at the
+// window's bottom (the page's state, the link under the pointer: View > Hide Status Bar); the
+// Save dialog of a download (frontends/framebuffer/onyx_download.c asks for it).
+//
 #include <time.h>
 #include "wtk/wtk.h"
 #include "onyx_chrome.h"
 #include "onyx_io.h"
+#ifdef ONYX_HOST_SIM
+#include <stdio.h>		// (the PC bench: the bar's text and the band's places logged)
+#endif
 
 using namespace wtk;
 
 namespace {
 
 const int TB = ONYX_TOOLBAR_H;
+const int SB = ONYX_STATUSBAR_H;	// the status bar, at the window's bottom (when shown)
 const int BTN_W = 34, BTN_H = 30, BTN_Y = (TB - BTN_H) / 2 - 1, GAP = 4, PAD = 6;
 const int URL_MAX = 2048;
 const int LOCK_W = 32;		// the padlock's half pill, left of the address field
+bool g_sbOn = true;		// the status bar shown (View > Status Bar; gui.c keeps the choice)
 
 // ---- a toolbar button: the theme's framed button with a glyph --------------------------------
 class ToolButton : public Widget
@@ -469,6 +479,323 @@ public:
 	}
 };
 
+void to_latin1 (const char *s, char *out, int cap);	// (below: UTF-8 -> the bitmap font's Latin-1)
+
+// ---- the zoom control (docs/06 §38): "-  100%  +" -----------------------------------------
+// Two small framed buttons and the zoom between them: - zooms out, + in (Chrome's steps), a
+// click on the percentage goes back to 100 %. Ctrl+- / Ctrl++ / Ctrl+0 and Ctrl+wheel do the same.
+class ZoomCtl : public Widget
+{
+public:
+	enum { SEG = 26 };
+	int pct, hot, down;		// the zoom; the part under the pointer, pressed (0 -, 1 %, 2 +)
+	char label[8];
+	ZoomCtl (int l, int t) : Widget (l, t, needW (), BTN_H), pct (100), hot (-1), down (-1)
+	{ label[0] = '\0'; set (100); tip = "Zoom: - out (Ctrl+-), + in (Ctrl++), the % back to 100 % (Ctrl+0)"; }
+	static int needW () { return 2 * SEG + wk_text_w ("500%", 2) + 12; }
+	void set (int p)
+	{
+		pct = p;
+		int n = 0, v = p;
+		char t[6]; int k = 0;
+		do { t[k++] = (char) ('0' + v % 10); v /= 10; } while (v && k < 5);
+		while (k) label[n++] = t[--k];
+		label[n++] = '%'; label[n] = '\0';
+		invalidate (true);
+	}
+	int partAt (int mx) const { return mx < SEG ? 0 : mx >= width - SEG ? 2 : 1; }
+	bool can (int part) const { return part == 0 ? pct > 25 : part == 2 ? pct < 500 : pct != 100; }
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		for (int part = 0; part <= 2; part += 2)
+		{
+			int x = part == 0 ? 0 : width - SEG;
+			int st = !can (part) ? WK_DISABLED : down == part ? WK_PRESSED : hot == part ? WK_HOT : WK_NORMAL;
+			int bx, by, bw, bh;
+			wk_framed (canvas, x, 0, SEG, height, C_FACE, st, &bx, &by, &bw, &bh);
+			wk_glyph (canvas, part == 0 ? WKG_MINUS : WKG_PLUS, bx + bw / 2, by + bh / 2, 11,
+				  st == WK_DISABLED ? C_DIS : C_TEXT);
+		}
+		int lx = SEG + 2, lw = width - 2 * SEG - 4;
+		if (hot == 1 && can (1)) wk_rbox (canvas, lx, 3, lw, height - 6, 5,
+			wk_tone (C_BG, down == 1 ? 112 : 140), wk_tone (C_BG, down == 1 ? 104 : 132));
+		wk_text_c (canvas, lx, 0, lw, height, label, pct == 100 ? C_TEXT : C_ACCENT, 2);
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		if (mx < 0) { if (hot >= 0 || down >= 0) { hot = down = -1; invalidate (true); } return false; }
+		int h = my >= 0 && my < height && mx < width ? partAt (mx) : -1, wh = hot, wd = down;
+		hot = h;
+		if (bl && down < 0) down = h;
+		else if (!bl && down >= 0)
+		{
+			int was = down; down = -1;
+			if (was == h && can (h)) onyx_browser_zoom (h == 0 ? -1 : h == 2 ? 1 : 0);
+		}
+		if (hot != wh || down != wd) invalidate (true);
+		return true;
+	}
+};
+
+// ---- the downloads (docs/06 §38): the toolbar's button and its menu -------------------------
+// The list gui.c's onyx_download.c publishes (onyx_chrome_downloads), copied.
+struct DlRow
+{
+	int id, state;
+	char name[64], path[512], error[160];
+	unsigned long long got, total;
+};
+enum { DL_ROWS = 16 };
+DlRow g_dl[DL_ROWS];
+int g_ndl;
+
+// "1.2 MB", "340 KB", "87 bytes"
+void tell_size (unsigned long long n, char *out, int cap)
+{
+	const char *u = n >= 1048576 ? "MB" : n >= 1024 ? "KB" : "bytes";
+	unsigned long long whole = n >= 1048576 ? n / 1048576 : n >= 1024 ? n / 1024 : n;
+	unsigned tenth = n >= 1048576 ? (unsigned) (n % 1048576 * 10 / 1048576) : 0;
+	char t[24]; int k = 0, o = 0;
+	do { t[k++] = (char) ('0' + whole % 10); whole /= 10; } while (whole && k < 20);
+	while (k && o < cap - 12) out[o++] = t[--k];
+	if (n >= 1048576 && whole < 100) { out[o++] = '.'; out[o++] = (char) ('0' + tenth); }
+	out[o++] = ' ';
+	for (; *u && o < cap - 1; u++) out[o++] = *u;
+	out[o] = '\0';
+}
+
+// A download's state in words: "1.2 MB of 2.6 MB (45%)", "Done: 2.6 MB", "Failed: ...", "Cancelled"
+void tell_dl (const DlRow &d, char *out, int cap)
+{
+	char a[24], b[24];
+	int o = 0;
+	auto put = [&] (const char *s) { for (; *s && o < cap - 1; s++) out[o++] = *s; out[o] = '\0'; };
+	out[0] = '\0';
+	tell_size (d.got, a, sizeof a);
+	switch (d.state)
+	{
+	case ONYX_DL_ASK: put ("Waiting for a place to save it..."); break;
+	case ONYX_DL_RUNNING:
+		put (a);
+		if (d.total > 0)
+		{
+			tell_size (d.total, b, sizeof b);
+			put (" of "); put (b);
+			char pc[8]; int p = (int) (d.got * 100 / d.total), k = 0;
+			if (p > 100) p = 100;
+			pc[k++] = ' '; pc[k++] = '(';
+			if (p >= 100) pc[k++] = '1';
+			if (p >= 10) pc[k++] = (char) ('0' + p / 10 % 10);
+			pc[k++] = (char) ('0' + p % 10); pc[k++] = '%'; pc[k++] = ')'; pc[k] = '\0';
+			put (pc);
+		}
+		break;
+	case ONYX_DL_DONE: put ("Done: "); put (a); put (" in "); put (d.path); break;
+	case ONYX_DL_FAILED: put ("Failed: "); put (d.error[0] ? d.error : "an error"); break;
+	default: put ("Cancelled"); break;
+	}
+}
+
+bool dl_active (const DlRow &d) { return d.state == ONYX_DL_ASK || d.state == ONYX_DL_RUNNING; }
+
+// The button: an arrow down; while a download runs, its progress along the button's foot.
+class DlButton : public ToolButton
+{
+public:
+	DlButton (int l, int t, void (*c) (void)) : ToolButton (l, t, WKG_DOWN, c)
+	{ hidden = true; tip = "Downloads"; }
+	void onDraw () override
+	{
+		ToolButton::onDraw ();
+		unsigned long long got = 0, total = 0;
+		bool run = false, fail = false;
+		for (int i = 0; i < g_ndl; i++)
+		{
+			if (dl_active (g_dl[i])) { run = true; got += g_dl[i].got; total += g_dl[i].total ? g_dl[i].total : g_dl[i].got + 1; }
+			if (i == 0 && g_dl[i].state == ONYX_DL_FAILED) fail = true;
+		}
+		if (run)
+		{
+			int w = width - 12, fill = total ? (int) (got * (unsigned long long) w / total) : 0;
+			canvas.fillRect (6, height - 7, w, 3, wk_tone (C_FACE, 96));
+			canvas.fillRect (6, height - 7, fill, 3, C_ACCENT);
+		}
+		else if (g_ndl > 0)		// (the last one's end: a dot, green or red)
+			canvas.fillRect (width - 10, 5, 4, 4, fail ? SEC_RED : SEC_GREEN);
+	}
+};
+
+// Its menu: the downloads, the newest first -- a name, its state under it; a click on one that
+// runs (or Del) cancels it, after a question; "Clear the list" takes the finished ones out.
+class DlMenu : public Modal
+{
+public:
+	enum { PADY = 4 };
+	int hot;
+	DlMenu (int right, int y) : Modal (380, 40), hot (-1)
+	{
+		int w = 380;
+		for (int i = 0; i < g_ndl; i++)
+		{
+			char t[700]; tell_dl (g_dl[i], t, sizeof t);
+			int iw = wk_text_w (t) + 28, nw = wk_text_w (g_dl[i].name, 2) + 28;
+			if (iw > w) w = iw;
+			if (nw > w) w = nw;
+		}
+		if (w > 640) w = 640;
+		resizeTo (w, 2 * PADY + rowH () * (g_ndl > 0 ? g_ndl : 1) + clearH ());
+		left = right - w; top = y;
+		if (left < 2) left = 2;
+	}
+	static int rowH () { return 2 * wk_fh () + 12; }
+	static bool anyEnded () { for (int i = 0; i < g_ndl; i++) if (!dl_active (g_dl[i])) return true; return false; }
+	int clearH () const { return anyEnded () ? wk_fh () + 18 : 0; }	// ("Clear the list": the ended ones)
+	int rowAt (int my) const
+	{
+		if (my < PADY) return -1;
+		int r = (my - PADY) / rowH ();
+		if (r < g_ndl) return r;
+		return clearH () > 0 && my >= height - clearH () ? DL_ROWS : -1;	// (Clear the list)
+	}
+	void onDraw () override
+	{
+		int fh = wk_fh (), rh = rowH ();
+		canvas.clear (WK_TRANSPARENT_KEY);
+		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 110);
+		if (g_ndl == 0) wk_text_l (canvas, 14, PADY, rh, "No downloads.", dim);
+		for (int i = 0; i < g_ndl; i++)
+		{
+			int y = PADY + i * rh;
+			bool h = i == hot && dl_active (g_dl[i]);
+			if (h) wk_hilite (canvas, PADY, y, width - 2 * PADY, rh, 5, true);
+			char t[700]; tell_dl (g_dl[i], t, sizeof t);
+			char line[200]; fit (line, t, (width - 28) / wk_fw ());
+			wk_text_l (canvas, 14, y + 4, fh, g_dl[i].name, h ? C_SEL_TEXT : C_FIELD_TEXT, 2);
+			wk_text_l (canvas, 14, y + 6 + fh, fh, line, h ? C_SEL_TEXT :
+				   g_dl[i].state == ONYX_DL_FAILED ? SEC_RED : dim);
+			if (h) wk_text_l (canvas, width - 20 - wk_text_w ("Cancel"), y + 4, fh, "Cancel", C_SEL_TEXT);
+			if (i + 1 < g_ndl) canvas.fillRect (10, y + rh - 1, width - 20, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 28));
+		}
+		if (clearH () > 0)
+		{
+			int y = height - clearH ();
+			wk_etch_h (canvas, 8, y, width - 16, C_FIELD);
+			if (hot == DL_ROWS) wk_hilite (canvas, PADY, y + 3, width - 2 * PADY, clearH () - 6, 5, true);
+			wk_text_l (canvas, 14, y + 3, clearH () - 6, "Clear the list", hot == DL_ROWS ? C_SEL_TEXT : C_FIELD_TEXT);
+		}
+	}
+	void fit (char *out, const char *s, int max)
+	{
+		int n = wk_len (s);
+		if (max < 4) max = 4;
+		if (n <= max) { for (int i = 0; i <= n; i++) out[i] = s[i]; return; }
+		int k = 0;
+		for (; k < max - 3 && k < 196; k++) out[k] = s[k];
+		out[k++] = '.'; out[k++] = '.'; out[k++] = '.'; out[k] = '\0';
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		int h = in ? rowAt (my) : -1;
+		if (h != hot) { hot = h; invalidate (true); }
+		if (bl && !pressed) { pressed = true; if (!in) close (0); }
+		else if (!bl && pressed)
+		{
+			pressed = false;
+			if (in && h == DL_ROWS) close (DL_ROWS + 1);
+			else if (in && h >= 0 && dl_active (g_dl[h])) close (h + 1);
+		}
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27 || k == 9 || k == KEY_ENTER) close (0);
+		return true;
+	}
+};
+
+// ---- the status bar (docs/06 §38) ------------------------------------------------------------
+// The window's bottom band: the page's state on the left ("Loading... 12 of 30", "Ready", "404
+// Not Found" in red) -- or, while the pointer is on a link, its address (cut in its middle when
+// too long); on the right a download's progress. Repainted alone, when its text changes.
+class StatusBar : public Widget
+{
+public:
+	char state[160], link[URL_MAX], right[200];
+	bool error;
+	StatusBar (int l, int t, int w) : Widget (l, t, w, SB), error (false)
+	{ state[0] = link[0] = right[0] = '\0'; anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM; }
+	static bool same (const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
+	static void copy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
+	void setState (const char *t, bool err)
+	{
+		char b[160]; to_latin1 (t ? t : "", b, sizeof b);
+		if (same (b, state) && err == error) return;
+		copy (state, b, sizeof state); error = err;
+		if (!link[0]) invalidate (true);
+	}
+	void setLink (const char *t)
+	{
+		static char b[URL_MAX];
+		to_latin1 (t ? t : "", b, sizeof b);
+		if (same (b, link)) return;
+		copy (link, b, sizeof link);
+		invalidate (true);
+	}
+	void setRight (const char *t)
+	{
+		if (same (t, right)) return;
+		copy (right, t, sizeof right);
+		invalidate (true);
+	}
+	// s in at most max columns: its middle replaced by "..." when too long
+	static void middle (char *out, const char *s, int max)
+	{
+		int n = wk_len (s);
+		if (max < 7) max = 7;
+		if (n <= max) { copy (out, s, URL_MAX); return; }
+		int head = (max - 3) * 3 / 5, tail = max - 3 - head, o = 0;
+		for (int i = 0; i < head; i++) out[o++] = s[i];
+		out[o++] = '.'; out[o++] = '.'; out[o++] = '.';
+		for (int i = n - tail; i < n; i++) out[o++] = s[i];
+		out[o] = '\0';
+	}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		wk_etch_h (canvas, 0, 0, width, C_BG);
+		int fh = wk_fh (), ty = 2, th = height - 2;
+		int rw = right[0] ? wk_text_w (right) + 16 : 0;
+		if (rw > width / 2) rw = width / 2;
+		int avail = width - 16 - rw;
+		static char line[URL_MAX];
+		if (link[0])
+		{
+			middle (line, link, avail / wk_fw ());
+			wk_text_l (canvas, 8, ty, th, line, C_TEXT);
+		}
+		else
+		{
+			middle (line, state, avail / wk_fw ());
+			wk_text_l (canvas, 8, ty, th, line, error ? 0xC5221F : wk_mix (C_BG, C_TEXT, 200));
+		}
+		if (rw)
+		{
+			canvas.fillRect (width - rw, 5, 1, height - 8, wk_tone (C_BG, 100));
+			char r[200]; middle (r, right, (rw - 16) / wk_fw ());
+			wk_text_l (canvas, width - rw + 8, ty, th, r, wk_mix (C_BG, C_TEXT, 200));
+		}
+		(void) fh;
+#ifdef ONYX_HOST_SIM
+		printf ("ONYX-STATUSBAR %s=%s%s%s%s\n", link[0] ? "link" : "state", link[0] ? link : state,
+			!link[0] && error ? " (error)" : "", right[0] ? " | " : "", right);
+		fflush (stdout);
+#endif
+	}
+};
+
 // ---- the history dialog --------------------------------------------------------------------
 // A page visited: its address, its title and its time, as the dialog shows them (the wtk font
 // is Latin-1: the UTF-8 title converted).
@@ -852,6 +1179,7 @@ bool FilterBox::onKey (long k)
 }
 
 void open_history ();
+void open_downloads ();		// (the downloads' button, File > Downloads...)
 
 // ---- the window ----------------------------------------------------------------------------
 bool g_resized;
@@ -863,9 +1191,12 @@ public:
 	UrlField   *url;
 	LockSeg    *lock;
 	ModePill   *mode;
+	ZoomCtl    *zoom;		// (docs/06 §38) the zoom control, right of the field
+	DlButton   *dl;		// ... the downloads' button, at the right end (while there are some)
+	StatusBar  *status;		// ... the status bar, at the bottom (View > Status Bar)
 	int         urlX;		// where the band's right part starts (the padlock, the field)
 	bool        busy;
-	NsWindow (int w, int h) : Root (w, h + TB, "Jet"), busy (false)
+	NsWindow (int w, int h) : Root (w, h + TB + (g_sbOn ? SB : 0), "Jet"), busy (false)
 	{
 		int x = PAD;
 		back   = new ToolButton (x, BTN_Y, WKG_CHEV_LEFT, onyx_browser_back);     x += BTN_W + GAP;
@@ -880,20 +1211,37 @@ public:
 		lock   = new LockSeg (x, BTN_Y, LOCK_W, BTN_H);
 		mode   = new ModePill (width - PAD - ModePill::needW (), BTN_Y, ModePill::needW (), BTN_H);
 		mode->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		zoom   = new ZoomCtl (width - PAD - ZoomCtl::needW (), BTN_Y);
+		zoom->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		dl     = new DlButton (width - PAD - BTN_W, BTN_Y, open_downloads);
+		dl->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		status = new StatusBar (0, height - SB, width);
+		status->hidden = !g_sbOn;
+		status->setState ("Ready", false);
 		back->setDisabled (true);
 		fwd->setDisabled (true);
 		back->tip = "Back (Alt+Left)"; fwd->tip = "Forward (Alt+Right)"; reload->tip = "Reload (F5)";
 		home->tip = "Home"; hist->tip = "History (Ctrl+H)";
 		addChild (back); addChild (fwd); addChild (reload); addChild (home); addChild (hist); addChild (url);
-		addChild (lock); addChild (mode);
+		addChild (lock); addChild (mode); addChild (zoom); addChild (dl); addChild (status);
 		setResizable (true);
+		layoutBand ();
 	}
-	// The field between the padlock and the pill (each there or not): its place and its ends.
+	// The page's height in the window: less the band and the status bar (when shown).
+	int pageH () const { return height - TB - (status->hidden ? 0 : SB); }
+	// The field between the padlock and the pill (each there or not): its place and its ends;
+	// right of them the zoom control, then the downloads' button (when there are downloads).
 	void layoutBand ()
 	{
+		int dlw = dl->hidden ? 0 : BTN_W + GAP;
+		int right = width - PAD - dlw - zoom->width - GAP - 2;	// (the field's group ends there)
+		int zl = zoom->left, ml = mode->left;
+		dl->left = width - PAD - BTN_W;
+		zoom->left = width - PAD - dlw - zoom->width;
+		mode->left = right - mode->width;
+		if (zl != zoom->left || ml != mode->left) invalidate (true);	// (the band behind them)
 		int x0 = urlX + (lock->hidden ? 0 : LOCK_W);
-		int x1 = width - PAD - (mode->hidden ? 0 : mode->width);
-		mode->left = width - PAD - mode->width;
+		int x1 = right - (mode->hidden ? 0 : mode->width);
 		if (url->left != x0 || url->width != x1 - x0 || url->joinL != !lock->hidden || url->joinR != !mode->hidden)
 		{
 			url->left = x0;
@@ -901,6 +1249,11 @@ public:
 			url->resizeTo (x1 - x0, url->height);
 			url->invalidate (true);
 			invalidate (false);
+		}
+		if (status->top != height - SB || status->width != width)
+		{
+			status->top = height - SB;
+			status->resizeTo (width, SB);
 		}
 	}
 	// The band's keyboard: the field (F6), Tab to the pill, Shift+Tab to the padlock.
@@ -991,6 +1344,32 @@ void ModePill::openMenu ()
 	if (r > 0 && r - 1 != mode) onyx_browser_set_site_mode (r - 1);
 }
 
+// The downloads' menu, under its button: a running one clicked -> stopped (after a question);
+// "Clear the list" -> the finished ones out.
+void open_downloads ()
+{
+	if (g_win == 0 || has_modal ()) return;
+	if (g_url && g_url->hasFocus) g_url->focusOut ();
+	DlButton *b = g_win->dl;
+	int right = b->hidden ? g_win->width - PAD : b->left + b->width;
+	DlMenu *m = new DlMenu (right, BTN_Y + BTN_H + 2);
+	int r = m->run ();
+	delete m;
+	onyx_browser_redraw ();			// (the page under the menu)
+	if (r == DL_ROWS + 1) { onyx_browser_downloads_clear (); return; }
+	if (r > 0 && r <= g_ndl && dl_active (g_dl[r - 1]))
+	{
+		static char q[200];
+		int id = g_dl[r - 1].id, n = 0;
+		const char *a = "Stop downloading ";
+		for (; *a; a++) q[n++] = *a;
+		for (const char *c = g_dl[r - 1].name; *c && n < 190; c++) q[n++] = *c;
+		q[n++] = '?'; q[n] = '\0';
+		if (wk_messagebox ("Cancel the download", q, MB_YESNO) == 1) onyx_browser_download_cancel (id);
+		onyx_browser_redraw ();
+	}
+}
+
 bool has_modal (void)
 {
 	for (Widget *c = g_win ? g_win->firstChild : 0; c; c = c->nextSib)
@@ -1074,7 +1453,13 @@ void ptr_event (unsigned long sender, int ev, gui_value v)
 	if (ev == GUI_EVENT_PTR_DOWN) { if (c & 1) bl = 1; if (c & 2) br = 1; if (c & 4) bm = 1; }
 	if (ev == GUI_EVENT_PTR_UP)   { if (c & 1) bl = 0; if (c & 2) br = 0; if (c & 4) bm = 0; }
 	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v);
-	bool band = has_modal () || (g_grab ? g_grab == 1 : y < TB);
+	bool band = has_modal () || (g_grab ? g_grab == 1 : y < TB || y >= TB + g_win->pageH ());
+	if (ev == GUI_EVENT_PTR_WHEEL && !band && (kapi_get_modifiers () & MOD_CTRL))
+	{	// Ctrl+wheel: the page's zoom (docs/06 §38), not a scroll
+		int n = GUI_PTR_WHEEL (v);
+		if (n != 0) onyx_browser_zoom (n > 0 ? 1 : -1);
+		return;
+	}
 	if (ev == GUI_EVENT_PTR_DOWN && !g_grab) g_grab = band ? 1 : 2;
 	if (ev == GUI_EVENT_PTR_LEAVE)
 	{
@@ -1103,6 +1488,13 @@ void key_event (unsigned long sender, int ev, gui_value k)
 	onyx_io_activity ();
 	if (has_modal ()) { g_win->handleKey (k); return; }
 	unsigned mods = kapi_get_modifiers ();
+	if ((mods & MOD_CTRL) && !(mods & MOD_ALT))
+	{	// the zoom (docs/06 §38): Ctrl++ (or Ctrl+=, the keypad's +), Ctrl+-, Ctrl+0 -- the
+		// kernel sends these keys with Ctrl held as their characters (kernel.cpp's keymap)
+		if (k == '+' || k == '=') { onyx_browser_zoom (1); return; }
+		if (k == '-' || k == '_') { onyx_browser_zoom (-1); return; }
+		if (k == '0') { onyx_browser_zoom (0); return; }
+	}
 	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
 	if (Menu::current () && Menu::current ()->shortcut (k)) return;
 	if ((mods & MOD_ALT) && k == KEY_LEFT)  { onyx_browser_back (); return; }
@@ -1129,6 +1521,10 @@ void m_stop ()     { onyx_browser_stop (); }
 void m_home ()     { onyx_browser_home (); }
 void m_site ()     { if (g_win) g_win->mode->openMenu (); }	// the site's version: the pill's menu
 void m_cert ()     { if (g_win) g_win->lock->click (); }	// the padlock's: the certificate
+void m_zoom_in ()  { onyx_browser_zoom (1); }
+void m_zoom_out () { onyx_browser_zoom (-1); }
+void m_zoom_100 () { onyx_browser_zoom (0); }
+void m_status ()   { onyx_browser_set_status_bar (!g_sbOn); }
 
 // The History dialog: shown over the page (NetSurf waits meanwhile); a page chosen is opened.
 void open_history ()
@@ -1203,7 +1599,37 @@ void open_about ()
 	onyx_browser_redraw ();			// (the page under the dialog)
 }
 
-Menu g_menu;
+// The menus, twice: View's last item reads "Hide Status Bar" or "Show Status Bar" (wtk's
+// menus have no check mark): the one that fits is published.
+Menu g_menus[2];
+
+void build_menu (Menu &m, bool sbOn)
+{
+	m.menu ("File");
+	m.item ("Open Location...", "^L", WK_CTRL ('L'), m_location);
+	m.separator ();
+	m.item ("Downloads...", "", 0, open_downloads);
+	m.menu ("View");
+	m.item ("Zoom In", "Ctrl++", 0, m_zoom_in);		// (key_event: the keys)
+	m.item ("Zoom Out", "Ctrl+-", 0, m_zoom_out);
+	m.item ("Actual Size", "Ctrl+0", 0, m_zoom_100);
+	m.separator ();
+	m.item (sbOn ? "Hide Status Bar" : "Show Status Bar", "", 0, m_status);
+	m.menu ("Navigate");
+	m.item ("Back", "Alt+Left", 0, m_back);
+	m.item ("Forward", "Alt+Right", 0, m_forward);
+	m.separator ();
+	m.item ("Reload", "^R", WK_CTRL ('R'), m_reload);
+	m.item ("Stop", "Esc", 0, m_stop);
+	m.separator ();
+	m.item ("Site Version (Standard / Mobile / Desktop)...", "", 0, m_site);
+	m.item ("Page Security / Certificate...", "", 0, m_cert);
+	m.separator ();
+	m.item ("Home", "", 0, m_home);
+	m.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
+	m.menu ("Help");
+	m.item ("About Jet Browser...", "", 0, open_about);
+}
 
 } // namespace
 
@@ -1214,23 +1640,14 @@ unsigned *onyx_chrome_open (int w, int h, int *stride)
 {
 	if (g_win) return onyx_chrome_page (stride, 0, 0);
 	g_win = new NsWindow (w, h);
-	g_menu.menu ("File");
-	g_menu.item ("Open Location...", "^L", WK_CTRL ('L'), m_location);
-	g_menu.menu ("Navigate");
-	g_menu.item ("Back", "Alt+Left", 0, m_back);
-	g_menu.item ("Forward", "Alt+Right", 0, m_forward);
-	g_menu.separator ();
-	g_menu.item ("Reload", "^R", WK_CTRL ('R'), m_reload);
-	g_menu.item ("Stop", "Esc", 0, m_stop);
-	g_menu.separator ();
-	g_menu.item ("Site Version (Standard / Mobile / Desktop)...", "", 0, m_site);
-	g_menu.item ("Page Security / Certificate...", "", 0, m_cert);
-	g_menu.separator ();
-	g_menu.item ("Home", "", 0, m_home);
-	g_menu.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
-	g_menu.menu ("Help");
-	g_menu.item ("About Jet Browser...", "", 0, open_about);
-	g_menu.publish ();
+	build_menu (g_menus[0], false);
+	build_menu (g_menus[1], true);
+	g_menus[g_sbOn ? 1 : 0].publish ();
+#ifdef ONYX_HOST_SIM
+	printf ("ONYX-CHROME w=%d h=%d zoom=%d,%d,%d dl=%d status=%d\n", g_win->width, g_win->height,
+		g_win->zoom->left, g_win->zoom->width, ZoomCtl::SEG, g_win->width - PAD - BTN_W, g_win->status->top);
+	fflush (stdout);
+#endif
 	kapi_set_pointer_handler (ptr_event);
 	kapi_set_key_handler (key_event);
 	return onyx_chrome_page (stride, 0, 0);
@@ -1242,7 +1659,7 @@ unsigned *onyx_chrome_page (int *stride, int *w, int *h)
 	Canvas &c = g_win->canvas;
 	if (stride) *stride = c.stride;
 	if (w) *w = c.w;
-	if (h) *h = c.h - TB;
+	if (h) *h = g_win->pageH ();	// (the band above, the status bar below)
 	return c.px + (long) TB * c.stride;
 }
 
@@ -1250,7 +1667,7 @@ void onyx_chrome_default_size (int *w, int *h)
 {
 	int sw = 1024, sh = 768;
 	kapi_screen_size (&sw, &sh);
-	int pw = sw - 64, ph = sh - TB - 28 - 8 - 24 - 90;	// the band, the title + border, the menu bar, the dock
+	int pw = sw - 64, ph = sh - TB - (g_sbOn ? SB : 0) - 28 - 8 - 24 - 90;	// the band, the status bar, the title + border, the menu bar, the dock
 	if (pw > 1280) pw = 1280;
 	if (ph > 960) ph = 960;
 	if (pw < 480) pw = 480;
@@ -1443,6 +1860,149 @@ void onyx_chrome_set_nav (int can_back, int can_forward)
 	if (g_win == 0) return;
 	g_win->back->setDisabled (!can_back);
 	g_win->fwd->setDisabled (!can_forward);
+}
+
+// ---- Onyx (docs/06 §38): the zoom, the status bar, the downloads --------------------------------
+
+void onyx_chrome_set_zoom (int percent)
+{
+	if (g_win && g_win->zoom->pct != percent) g_win->zoom->set (percent);
+}
+
+void onyx_chrome_set_state (const char *text, int error)
+{
+	if (g_win) g_win->status->setState (text, error != 0);
+}
+
+void onyx_chrome_set_link (const char *text)
+{
+	if (g_win) g_win->status->setLink (text);
+}
+
+int onyx_chrome_status_bar_shown (void)
+{
+	return g_sbOn;
+}
+
+void onyx_chrome_show_status_bar (int shown)
+{
+	bool on = shown != 0;
+	if (g_win == 0) { g_sbOn = on; return; }	// (before the window: its first size)
+	if (on == g_sbOn) return;
+	g_sbOn = on;
+	g_win->status->hidden = !on;
+	g_win->layoutBand ();
+	g_win->invalidate (true);
+	g_menus[on ? 1 : 0].publish ();
+	g_resized = true;		// (the page's area changed: the surface asks again)
+}
+
+void onyx_chrome_downloads (const struct onyx_dl_info *list, int n)
+{
+	if (n > DL_ROWS) n = DL_ROWS;
+	g_ndl = n;
+	const struct onyx_dl_info *run = 0, *last = n > 0 ? &list[0] : 0;
+	for (int i = 0; i < n; i++)
+	{
+		DlRow &d = g_dl[i];
+		d.id = list[i].id; d.state = list[i].state; d.got = list[i].got; d.total = list[i].total;
+		StatusBar::copy (d.name, list[i].name, sizeof d.name);
+		StatusBar::copy (d.path, list[i].path, sizeof d.path);
+		StatusBar::copy (d.error, list[i].error, sizeof d.error);
+		if (run == 0 && list[i].state == ONYX_DL_RUNNING) run = &list[i];
+	}
+	if (g_win == 0) return;
+	bool hide = n == 0;
+	if (hide != g_win->dl->hidden)
+	{
+		g_win->dl->hidden = hide;
+		g_win->dl->hover = g_win->dl->pressed = false;
+		g_win->layoutBand ();
+		g_win->invalidate (true);
+	}
+	g_win->dl->invalidate (true);
+	// the status bar's right part: the download that runs, else the last one's end
+	char t[200]; int o = 0;
+	auto put = [&] (const char *x) { for (; *x && o < (int) sizeof t - 1; x++) t[o++] = *x; t[o] = '\0'; };
+	t[0] = '\0';
+	const struct onyx_dl_info *d = run ? run : last;
+	if (d && d->state != ONYX_DL_ASK)
+	{
+		DlRow r; r.state = d->state; r.got = d->got; r.total = d->total;
+		StatusBar::copy (r.path, d->path, sizeof r.path); StatusBar::copy (r.error, d->error, sizeof r.error);
+		char st[700]; tell_dl (r, st, sizeof st);
+		if (d->state == ONYX_DL_RUNNING) { put ("Downloading "); put (d->name); put (": "); put (st); }
+		else if (d->state == ONYX_DL_DONE)
+		{
+			char sz[24]; tell_size (d->got, sz, sizeof sz);
+			put ("Downloaded "); put (d->name); put (" ("); put (sz); put (")");
+		}
+		else { put (d->state == ONYX_DL_FAILED ? "Download failed: " : "Download cancelled: "); put (d->name); }
+	}
+	g_win->status->setRight (t);
+}
+
+// The Save dialog: wtk's FileDialog, asking before a file is replaced.
+namespace {
+class SaveDialog : public FileDialog
+{
+public:
+	SaveDialog (const char *dir, const char *name) : FileDialog (dir, name, true, false) {}
+	void onButton (int tag) override
+	{
+		if (tag == 1 && fileName ()[0] != '\0')
+		{
+			char p[512];
+			getResult (p, sizeof p);
+			void *h = kapi_open (p);
+			if (h != 0)
+			{
+				kapi_close (h);
+				if (wk_messagebox ("Replace the file", "A file of that name is already there.\nReplace it?",
+						   MB_YESNO) != 1)
+					return;
+			}
+		}
+		FileDialog::onButton (tag);
+	}
+};
+}
+
+int onyx_chrome_save_dialog (const char *dir, const char *name, char *path, int cap)
+{
+	if (g_win == 0 || cap < 2) return 0;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	SaveDialog *d = new SaveDialog (dir, name);
+	int r = d->run ();
+	if (r == 1) d->getResult (path, (unsigned) cap);
+	delete d;
+	onyx_browser_redraw ();			// (the page under the dialog)
+	return r == 1;
+}
+
+void onyx_chrome_message (const char *title, const char *text)
+{
+	if (g_win == 0) return;
+	wk_messagebox (title, text, MB_OK);
+	onyx_browser_redraw ();
+}
+
+// A notification by notifyd (notify.h's message), when it runs: not launched here (that waits).
+void onyx_chrome_notify (const char *title, const char *text)
+{
+#if !defined(_WIN32) && !defined(ONYX_HOST_SIM)
+	int pid = kapi_ipc_lookup ("notify");
+	if (pid == 0) return;
+	static char msg[500];
+	int n = 0;
+	for (int i = 0; title && title[i] && n < 80; i++) msg[n++] = title[i];
+	msg[n++] = '\0';
+	for (int i = 0; text && text[i] && n < 498; i++) msg[n++] = text[i];
+	msg[n++] = '\0';
+	kapi_mailbox_send (pid, 1, msg, (unsigned) n);	// (NOTIFY_MSG_SHOW)
+#else
+	(void) title; (void) text;
+#endif
 }
 
 } // extern "C"

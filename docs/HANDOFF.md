@@ -49,6 +49,34 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Jet Browser: the page zoom, the status bar, downloads (2026-10-01, PC bench only)
+
+- **The zoom** (docs/06 §38): the toolbar's **"-  100%  +"** (right of the pill), **Ctrl+- / Ctrl++
+  (Ctrl+=, keypad +) / Ctrl+0**, Ctrl+wheel, View ▸ Zoom In / Out / Actual Size -- Chrome's steps
+  (25..500 %), `browser_window_set_scale`; kept per host in **`SD:/apps/jet.app/view`** (`zoom <site>
+  <pct>`), applied before a new page's first layout (core hook `onyx_zoom_hook`,
+  `netsurf/onyx_jet.h`); the scripts see CSS px (`devicePixelRatio`, `innerWidth`, `clientX`...).
+  **Kernel change** (kernel.cpp `SetKeyMapData`): Ctrl + the `-` / `=` `+` / `0` keys now reach the
+  apps (the empty Ctrl column filled with the keypad's keys) -- docs/02.
+- **The status bar** (bottom, 22 px; View ▸ Hide / Show Status Bar, kept in `view`): Loading... (n of
+  m fetches), Ready, "404 Not Found" / "500 ..." / "Error: Connection failed" in red, the link under
+  the pointer; a download's progress on the right.
+- **Downloads**: unknown types, `Content-Disposition: attachment` (any type), `<a download[="name"]>`
+  (also `blob:` / `data:`, a script's `a.click()`): the Save dialog in **`SD:/Downloads`** (made if
+  missing), the name pre-filled (filename*, filename, the link's, the URL's; ASCII-safe for FAT),
+  written by a writer thread as it arrives (`frontends/framebuffer/onyx_download.c`), the toolbar's
+  downloads button + menu (progress, cancel, clear), File ▸ Downloads..., a notification at the end.
+  Windows: `SD:/Downloads` = `%USERPROFILE%\Downloads`.
+- Tests: **`tools/tests/netsurf/dltest.sh`** (new), jstest / uatest / httptest / gputest adjusted
+  (the page 22 px shorter; the pill moved left) and green. Screenshots: `shots.sh jet` (jet.png,
+  jet-menu.png, new jet-save.png, jet-downloads.png).
+- **Needs a rebuild for the Pi**: the kernel (the Ctrl keys), wtk (FileDialog's Enter / Esc) and Jet
+  (`sdcard/apps/jet.app/main`); Windows: `sh pc/Jet/build.sh` (built and checked here, `pc/dist` not
+  committed). **To try on the Pi**: Ctrl+- / Ctrl+= / Ctrl+0 on a US and a French keyboard, the
+  zoom on bbc.co.uk (text sharp, clicks where expected, scrolling), a download of a big file (a
+  Linux ISO's checksum file, a ZIP) -- the desktop must stay smooth while it writes --, cancel one,
+  the status bar's 404 on a missing page.
+
 ## Jet Browser: the quadratic audit (2026-10-01, PC bench only)
 
 - What grew faster than a page (docs/06 §36, its table): child lists / `getElementsByTagName` /

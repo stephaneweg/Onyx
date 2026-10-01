@@ -803,6 +803,16 @@ int onyx_fetch_insecure_host(const char *host)
 	return r;
 }
 
+/* Onyx (docs/06 §38): the fetches made and ended so far (the status bar's "Loading... 12 of
+ * 30": the UI thread's counts) */
+static unsigned onyx_fetches_made, onyx_fetches_ended;
+
+void onyx_fetch_counts(unsigned *made, unsigned *ended)
+{
+	*made = onyx_fetches_made;
+	*ended = onyx_fetches_ended;
+}
+
 static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		bool only_2xx, bool downgrade_tls, const char *post_urlenc,
 		const struct fetch_multipart_data *post_multipart,
@@ -815,6 +825,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 	(void)only_2xx; (void)downgrade_tls; (void)post_multipart;	/* (multipart: not yet) */
 	if (ctx == NULL)
 		return NULL;
+	onyx_fetches_made++;
 	ctx->parent_fetch = parent_fetch;
 	ctx->url = nsurl_ref(url);
 	onyx_cache_fetched_as(url);	/* (Onyx: the disk cache's key -- the site's version now) */
@@ -902,6 +913,7 @@ static void onyx_job_drop(struct fetch_onyx_context *c);
 static void fetch_onyx_free(void *ctx)
 {
 	struct fetch_onyx_context *c = ctx;
+	onyx_fetches_ended++;
 	onyx_job_drop(c);		/* a download still in its thread: orphaned */
 	onyx_conn_close(c);
 	onyx_decoder_end(c);
@@ -1110,7 +1122,7 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 		"Keep-Alive", NULL };
 	const char *p = head, *end = head + headlen;
 	int code = head_status(head, headlen);
-	bool first = true;
+	bool first = true, plain;
 	fetch_msg msg;
 
 	c->status = code;		/* (Onyx: the perf log) */
@@ -1170,6 +1182,7 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 
 	cenc[0] = '\0';
 	header_value(head, headlen, "Content-Encoding", cenc, cenccap);
+	plain = cenc[0] == '\0' || strcasecmp(cenc, "identity") == 0;
 	fetch_set_http_code(c->parent_fetch, code);
 	if (code == 304 && c->body == NULL)
 		c->not_modified = true;		/* (Onyx: sent after the headers, below) */
@@ -1185,7 +1198,10 @@ static bool onyx_head(struct fetch_onyx_context *c, const char *head, size_t hea
 		bool keep = ll > 0;
 		if (ll > 0 && p[ll - 1] == '\r') ll--;
 		for (k = 0; keep && !first && skip[k] != NULL; k++)
-			if (ll > strlen(skip[k]) && hdr_is(p, skip[k])) keep = false;
+			if (ll > strlen(skip[k]) && hdr_is(p, skip[k]) &&
+			    !(k == 1 && plain && code == 200 && !c->script))
+				keep = false;	/* (Onyx: a plain body's length kept: a
+						 * download's progress, docs/06 §38) */
 		if (keep && ll > 0 && ll < 8000) {
 			char line[8001];		/* NUL-terminated: the core splits with strchr */
 			memcpy(line, p, ll);
@@ -1750,6 +1766,9 @@ static int in_line(struct onyx_in *in, char *line, size_t cap)
 	}
 }
 
+/* (Onyx: a job's bytes not taken yet past which its HTTP/1.1 thread stops reading) */
+#define ONYX_JOB_BACKLOG (8u << 20)
+
 /* Body bytes to the job (the UI thread takes them): false out of memory. */
 static bool job_append(struct onyx_job *j, const uint8_t *b, size_t n, size_t *since_post)
 {
@@ -1799,6 +1818,10 @@ static bool in_body(struct onyx_in *in, size_t n, size_t *since_post)
 			continue;
 		}
 		take = to_close || have < n ? have : n;
+		/* Onyx (docs/06 §38): a big body the UI thread does not take for now (a dialog is
+		 * open over the page: the download's Save as) waits in the socket, not in memory */
+		while (in->j->len >= ONYX_JOB_BACKLOG && !in->j->cancel)
+			kapi_msleep(20);
 		if (!job_append(in->j, in->b + in->pos, take, since_post))
 			return false;
 		in->pos += take;

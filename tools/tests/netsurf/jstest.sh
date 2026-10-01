@@ -356,9 +356,9 @@ L=$OUT/js-size4k.log
 run js-size4k.html "$(waits 20)" "$L"
 expect "$L" "size4k ok"
 
-echo "js-scrollers.html (a consent screen: the wheel, PageDown, a scrollbar drag reach its inner scroller)"
+echo "js-scrollers.html (a consent screen: the wheel, PageDown, a scrollbar drag reach its inner scroller)"	# (678: the panel's foot, 20 px above the view's -- 22 px higher since the status bar, docs/06 §38)
 L=$OUT/js-scrollers.log
-run js-scrollers.html "$(waits 60)move 300 300;key 0x107;$(waits 30)$(click 120 700)" "$L"
+run js-scrollers.html "$(waits 60)move 300 300;key 0x107;$(waits 30)$(click 120 678)" "$L"
 expect "$L" "panel scrolled down"
 expect "$L" "accepted"
 L=$OUT/js-scrollers-drag.log
@@ -377,7 +377,7 @@ L=$OUT/js-wheel.log
 run js-wheel.html "$(waits 60)move 300 300;wheel 300 300 -30;$(waits 30)$(click 100 690)" "$L"
 for s in "wheel down true" "pointerdown" "allowed"; do expect "$L" "$s"; done
 L=$OUT/js-scrollframe.log
-run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 700)" "$L"
+run js-scrollframe.html "$(waits 90)move 300 300;wheel 300 300 -30;$(waits 30)$(click 120 678)" "$L"
 expect "$L" "panel scrolled down"
 expect "$L" "accepted"
 html5page js-wasm.html wasm "WebAssembly on wasm3: modules, memory, imports, traps, tables, i64, globals, a compiled C program, a worker"

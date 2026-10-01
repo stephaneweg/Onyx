@@ -114,7 +114,15 @@ static std::wstring winpath (const char *p)
 	{
 		std::string r = s.substr (c + 1);
 		while (!r.empty () && (r[0] == '/' || r[0] == '\\')) r.erase (0, 1);
-		out = g_root + (r.empty () ? L"" : L"\\" + wide (r.c_str ()));
+		// (Jet's downloads, docs/06 §38: "SD:/Downloads" is the user's own Downloads folder,
+		// %USERPROFILE%\Downloads, when it is there -- else Downloads\ beside Jet.exe)
+		const wchar_t *home = _wgetenv (L"USERPROFILE");
+		DWORD at = home ? GetFileAttributesW ((std::wstring (home) + L"\\Downloads").c_str ()) : INVALID_FILE_ATTRIBUTES;
+		if (prefix_ci (r, "Downloads") && (r.size () == 9 || r[9] == '/' || r[9] == '\\') &&
+		    at != INVALID_FILE_ATTRIBUTES && (at & FILE_ATTRIBUTE_DIRECTORY))
+			out = std::wstring (home) + L"\\Downloads" + wide (r.substr (9).c_str ());
+		else
+			out = g_root + (r.empty () ? L"" : L"\\" + wide (r.c_str ()));
 	}
 	else if (!s.empty () && (s[0] == '/' || s[0] == '\\')) out = g_root + wide (s.c_str ());
 	else if (s.empty ()) out = g_root;
@@ -641,6 +649,14 @@ static LRESULT CALLBACK wndproc (HWND h, UINT m, WPARAM w, LPARAM l)
 		else if (w != VK_MENU && (GetKeyState (VK_MENU) & 0x8000)) g_altUsed = true;
 		long k = key_code (w);
 		if (k) { push (1, GUI_EVENT_KEY, k); return 0; }
+		// Ctrl with + = - 0 (the zoom, docs/06 §38): Windows gives no character (or a control one)
+		// -- the key's own, as the Pi's kernel sends it, Ctrl read by get_modifiers
+		if ((GetKeyState (VK_CONTROL) & 0x8000) && !(GetKeyState (VK_MENU) & 0x8000))
+		{
+			long z = w == VK_OEM_PLUS || w == VK_ADD ? '+' : w == VK_OEM_MINUS || w == VK_SUBTRACT ? '-' :
+				 w == '0' || w == VK_NUMPAD0 ? '0' : 0;
+			if (z) { push (1, GUI_EVENT_KEY, z); return 0; }
+		}
 		break;
 	}
 	case WM_SYSCOMMAND:
@@ -656,6 +672,9 @@ static LRESULT CALLBACK wndproc (HWND h, UINT m, WPARAM w, LPARAM l)
 		// codes above are the arrows and F-keys (0x100..), so no other characters
 		if (w == 0x20AC) w = 0x80;
 		else if ((w >= 0x80 && w < 0xA0) || w > 0xFF) return 0;
+		if ((GetKeyState (VK_CONTROL) & 0x8000) && !(GetKeyState (VK_MENU) & 0x8000) &&
+		    (w == 0x1F || w == '+' || w == '-' || w == '0' || w == '='))
+			return 0;	// (Ctrl+- and the like: sent from WM_KEYDOWN, above)
 		push (1, GUI_EVENT_KEY, (long long) w);
 		return 0;
 	case WM_COMMAND:

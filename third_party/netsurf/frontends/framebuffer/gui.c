@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 #include <limits.h>
+#include <math.h>	/* Onyx: fabsf (the zoom) */
 #include <getopt.h>
 #include <assert.h>
 #include <string.h>
@@ -64,6 +65,8 @@
 #include "framebuffer/local_history.h"
 #include "framebuffer/corewindow.h"
 #include "framebuffer/onyx_comp.h"	/* Onyx: GPU compositing */
+#include "framebuffer/onyx_download.h"	/* Onyx: the downloads (docs/06 §38) */
+#include "netsurf/onyx_jet.h"		/* Onyx: the zoom per site, the status bar */
 #include "html/onyx_anim.h"		/* Onyx: the window's state (onyx_anim_set_view_state) */
 
 /* Onyx: the window, its native toolbar (user/netsurf/onyx_chrome.cpp) */
@@ -74,6 +77,13 @@
 #include "kapi.h"		/* Onyx: kapi_vol_info (the RAM: volume, docs/06 §33) */
 
 static void onyx_site_state(void);	/* Onyx: the toolbar's padlock and pill (below) */
+static void onyx_status_start(void);	/* Onyx: the status bar's state (below) */
+static void onyx_status_stop(struct browser_window *bw);
+static void onyx_status_text(const char *text);
+static void onyx_view_load(void);	/* Onyx: the zoom per site, the status bar (below) */
+static float onyx_zoom_for(struct nsurl *url, float scale);
+static bool onyx_status_bar_on;
+static void onyx_status_fetch_error(const char *url, const char *reason);
 
 
 #define NSFB_TOOLBAR_DEFAULT_LAYOUT "blfsrutc"
@@ -2187,7 +2197,8 @@ gui_window_update_extent(struct gui_window *gw)
 static void
 gui_window_set_status(struct gui_window *g, const char *text)
 {
-	fbtk_set_text(g->status, text);
+	(void) g;
+	onyx_status_text(text);	/* Onyx: the window's status bar (no fbtk one) */
 }
 
 static void
@@ -2298,6 +2309,7 @@ gui_window_start_throbber(struct gui_window *g)
 	g->throbber_index = 0;
 	onyx_chrome_set_busy(1);	/* Onyx: the native toolbar's reload becomes stop */
 	onyx_io_loading(1);		/* Onyx: the caches' writes wait (docs/06 §32) */
+	onyx_status_start();		/* Onyx: "Loading..." */
 	if (g->throbber != NULL)
 		framebuffer_schedule(100, throbber_advance, g);
 }
@@ -2331,6 +2343,7 @@ gui_window_stop_throbber(struct gui_window *gw)
 	onyx_chrome_set_busy(0);
 	onyx_site_state();		/* Onyx: the padlock (insecure parts seen while loading) */
 	onyx_io_loading(0);
+	onyx_status_stop(gw->bw);	/* Onyx: "Ready", or the HTTP error, the fetch's */
 	{
 		/* Onyx: 3 s after the load -- once a minute at most (docs/06 §32: each
 		 * save writes the history and the cookies whole, on the UI thread) */
@@ -2527,6 +2540,7 @@ main(int argc, char** argv)
 		.bitmap = framebuffer_bitmap_table,
 		.layout = framebuffer_layout_table,
 		.llcache = onyx_llcache_table,	/* Onyx: the disc cache on the card */
+		.download = onyx_download_table,	/* Onyx: docs/06 §38 */
 	};
 
         ret = netsurf_register(&framebuffer_table);
@@ -2564,6 +2578,9 @@ main(int argc, char** argv)
 	 * toolbar -- and so no NetSurf close button, the window's close box closes it
 	 * ("q" = none: an empty option string reads as unset, the default layout) */
 	nsoption_set_charp(fb_toolbar_layout, strdup("q"));
+	/* Onyx (docs/06 §38): the status bar is the window's own too (onyx_chrome.cpp, at its
+	 * bottom): no fbtk status text left of the horizontal scroll bar */
+	nsoption_set_int(toolbar_status_size, 0);
 
 	/* message init */
 	messages = filepath_find(respaths, "Messages");
@@ -2600,6 +2617,11 @@ main(int argc, char** argv)
 	/* Override, since we have no support for non-core SELECT menu */
 	nsoption_set_bool(core_select_menu, true);
 
+	/* Onyx: the zoom per site, the status bar (docs/06 §38) -- before the window's size is
+	 * chosen (process_cmdline: the page's size, the bar's height left out when shown) */
+	onyx_view_load();
+	onyx_chrome_show_status_bar(onyx_status_bar_on);
+
 	if (process_cmdline(argc,argv) != true)
 		die("unable to process command line.\n");
 
@@ -2628,6 +2650,10 @@ main(int argc, char** argv)
 
 	fbtk_enable_oskb(fbtk);
 
+	onyx_zoom_hook = onyx_zoom_for;
+	onyx_fetch_error_hook = onyx_status_fetch_error;
+	onyx_download_init();
+
 	urldb_load(nsoption_charp(url_file));	/* Onyx: the global history */
 	urldb_load_cookies(nsoption_charp(cookie_file));
 
@@ -2652,6 +2678,7 @@ main(int argc, char** argv)
 		browser_window_destroy(bw);
 	}
 
+	onyx_download_finalise();	/* Onyx: a download not finished: stopped, removed */
 	netsurf_exit();
 
 	if (fb_font_finalise() == false)
@@ -2986,6 +3013,312 @@ void onyx_browser_redraw(void)
 	onyx_comp_present_all();	/* (a dialog over the page: all of it again) */
 	if (fbtk != NULL)
 		fbtk_request_redraw(fbtk);
+}
+
+
+/* ---- Onyx (docs/06 §38): the page zoom, per site ---- */
+
+/* Chrome's steps (percent) */
+static const int onyx_zoom_steps[] = { 25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175,
+	200, 250, 300, 400, 500 };
+#define ONYX_ZOOM_N ((int) (sizeof onyx_zoom_steps / sizeof onyx_zoom_steps[0]))
+
+/* The sites zoomed (not 100 %), kept in SD:/apps/jet.app/view ("zoom <site> <percent>"
+ * lines) with the status bar's choice ("status_bar 0"): read at the start, written at each
+ * change. A site is the page's host ("file" / "about" for those pages). */
+#define ONYX_VIEW_FILE ONYX_NS_DATAPATH "view"
+struct onyx_zoom_site {
+	char site[128];
+	int pct;
+};
+static struct onyx_zoom_site *onyx_zooms;
+static int onyx_nzooms, onyx_zooms_cap;
+static int onyx_zoom_pct = 100;		/* the page's now */
+static bool onyx_status_bar_on = true;	/* (declared above) */
+
+static void onyx_zoom_put(const char *site, int pct)
+{
+	int i;
+
+	for (i = 0; i < onyx_nzooms; i++)
+		if (strcmp(onyx_zooms[i].site, site) == 0)
+			break;
+	if (pct == 100) {		/* (the default: not kept) */
+		if (i < onyx_nzooms)
+			onyx_zooms[i] = onyx_zooms[--onyx_nzooms];
+		return;
+	}
+	if (i == onyx_nzooms) {
+		if (onyx_nzooms == onyx_zooms_cap) {
+			int cap = onyx_zooms_cap ? onyx_zooms_cap * 2 : 16;
+			struct onyx_zoom_site *z = realloc(onyx_zooms, cap * sizeof *z);
+			if (z == NULL)
+				return;
+			onyx_zooms = z;
+			onyx_zooms_cap = cap;
+		}
+		snprintf(onyx_zooms[i].site, sizeof onyx_zooms[i].site, "%s", site);
+		onyx_nzooms++;
+	}
+	onyx_zooms[i].pct = pct;
+}
+
+static int onyx_zoom_get(const char *site)
+{
+	int i;
+
+	for (i = 0; i < onyx_nzooms; i++)
+		if (strcmp(onyx_zooms[i].site, site) == 0)
+			return onyx_zooms[i].pct;
+	return 100;
+}
+
+static void onyx_view_load(void)
+{
+	FILE *f = fopen(ONYX_VIEW_FILE, "r");
+	char line[256], site[128];
+	int v;
+
+	if (f == NULL)
+		return;
+	while (fgets(line, sizeof line, f) != NULL) {
+		if (sscanf(line, "status_bar %d", &v) == 1)
+			onyx_status_bar_on = v != 0;
+		else if (sscanf(line, "zoom %127s %d", site, &v) == 2 && v >= 25 && v <= 500)
+			onyx_zoom_put(site, v);
+	}
+	fclose(f);
+}
+
+static void onyx_view_save(void)
+{
+	FILE *f = fopen(ONYX_VIEW_FILE, "w");
+	int i;
+
+	if (f == NULL)
+		return;
+	fprintf(f, "status_bar %d\n", onyx_status_bar_on ? 1 : 0);
+	for (i = 0; i < onyx_nzooms; i++)
+		fprintf(f, "zoom %s %d\n", onyx_zooms[i].site, onyx_zooms[i].pct);
+	fclose(f);
+}
+
+/* The page's site: its host, else its scheme ("file", "about") */
+static void onyx_zoom_site(struct nsurl *url, char *out, size_t cap)
+{
+	lwc_string *host = url != NULL ? nsurl_get_component(url, NSURL_HOST) : NULL;
+
+	out[0] = '\0';
+	if (host == NULL && url != NULL)
+		host = nsurl_get_component(url, NSURL_SCHEME);
+	if (host != NULL) {
+		snprintf(out, cap, "%s", lwc_string_data(host));
+		lwc_string_unref(host);
+	}
+}
+
+/* the scale of NetSurf's for a zoom (Choices' scale, 100 by default, is 100 %) */
+static float onyx_zoom_scale(int pct)
+{
+	int base = nsoption_int(scale);
+
+	if (base <= 0)
+		base = 100;
+	return (float) base * (float) pct / 10000.0f;
+}
+
+/* The core's hook (netsurf/onyx_jet.h): a new page's scale, its site's zoom */
+static float onyx_zoom_for(struct nsurl *url, float scale)
+{
+	char site[128];
+
+	(void) scale;
+	onyx_zoom_site(url, site, sizeof site);
+	onyx_zoom_pct = onyx_zoom_get(site);
+	onyx_chrome_set_zoom(onyx_zoom_pct);
+	return onyx_zoom_scale(onyx_zoom_pct);
+}
+
+/* Ctrl+ / Ctrl- / Ctrl+0, the toolbar's control, View's items: the next step in or out, or
+ * 100 % -- for the page's site, kept; the page laid out again at the new scale, the view kept
+ * where it was (the same part of the page at its top) */
+void onyx_browser_zoom(int step)
+{
+	struct browser_window *bw;
+	struct browser_widget_s *bwidget;
+	char site[128];
+	int i, pct = 100, sy;
+	float old;
+
+	if (window_list == NULL)
+		return;
+	bw = window_list->bw;
+	if (step != 0) {
+		/* (the step after / before the zoom now, which may lie between two) */
+		for (i = 0; i < ONYX_ZOOM_N; i++)
+			if (onyx_zoom_steps[i] >= onyx_zoom_pct)
+				break;
+		if (step > 0)
+			i = (i < ONYX_ZOOM_N && onyx_zoom_steps[i] == onyx_zoom_pct) ? i + 1 : i;
+		else
+			i = i - 1;
+		if (i < 0)
+			i = 0;
+		if (i >= ONYX_ZOOM_N)
+			i = ONYX_ZOOM_N - 1;
+		pct = onyx_zoom_steps[i];
+	}
+	if (pct == onyx_zoom_pct &&
+	    fabsf(browser_window_get_scale(bw) - onyx_zoom_scale(pct)) < 0.0001f)
+		return;
+	onyx_zoom_site(browser_window_access_url(bw), site, sizeof site);
+	onyx_zoom_put(site, pct);
+	onyx_view_save();
+	old = browser_window_get_scale(bw);
+	onyx_zoom_pct = pct;
+	onyx_chrome_set_zoom(pct);
+	bwidget = fbtk_get_userpw(window_list->browser);
+	sy = bwidget->scrolly + bwidget->pany;
+	browser_window_set_scale(bw, onyx_zoom_scale(pct), true);
+	if (old > 0 && sy > 0)
+		widget_scroll_y(window_list, (int) (sy * onyx_zoom_scale(pct) / old), true);
+	printf("ONYX-ZOOM site=%s zoom=%d scale=%.3f\n", site, pct, onyx_zoom_scale(pct));
+	fflush(stdout);
+}
+
+/* View > Status Bar: shown or hidden, kept */
+void onyx_browser_set_status_bar(int shown)
+{
+	onyx_status_bar_on = shown != 0;
+	onyx_chrome_show_status_bar(shown);
+	onyx_view_save();
+}
+
+/* ---- Onyx (docs/06 §38): the status bar's state ---- */
+
+static bool onyx_loading;		/* a page loads (the throbber's) */
+static unsigned onyx_made0, onyx_ended0;	/* the fetcher's counts at its start */
+static char onyx_fail[200];		/* a fetch error of this load (about:query/fetcherror) */
+void onyx_fetch_counts(unsigned *made, unsigned *ended);	/* user/netsurf/onyx_fetch.c */
+
+/* The reason phrase of an HTTP status (the RFC's; the response's own is not kept) */
+static const char *onyx_http_reason(long code)
+{
+	static const struct { short code; const char *text; } r[] = {
+		{ 400, "Bad Request" }, { 401, "Unauthorized" }, { 402, "Payment Required" },
+		{ 403, "Forbidden" }, { 404, "Not Found" }, { 405, "Method Not Allowed" },
+		{ 406, "Not Acceptable" }, { 407, "Proxy Authentication Required" },
+		{ 408, "Request Timeout" }, { 409, "Conflict" }, { 410, "Gone" },
+		{ 411, "Length Required" }, { 412, "Precondition Failed" },
+		{ 413, "Content Too Large" }, { 414, "URI Too Long" },
+		{ 415, "Unsupported Media Type" }, { 416, "Range Not Satisfiable" },
+		{ 417, "Expectation Failed" }, { 418, "I'm a teapot" },
+		{ 421, "Misdirected Request" }, { 422, "Unprocessable Content" }, { 423, "Locked" },
+		{ 424, "Failed Dependency" }, { 425, "Too Early" }, { 426, "Upgrade Required" },
+		{ 428, "Precondition Required" }, { 429, "Too Many Requests" },
+		{ 431, "Request Header Fields Too Large" },
+		{ 451, "Unavailable For Legal Reasons" }, { 500, "Internal Server Error" },
+		{ 501, "Not Implemented" }, { 502, "Bad Gateway" }, { 503, "Service Unavailable" },
+		{ 504, "Gateway Timeout" }, { 505, "HTTP Version Not Supported" },
+		{ 506, "Variant Also Negotiates" }, { 507, "Insufficient Storage" },
+		{ 508, "Loop Detected" }, { 510, "Not Extended" },
+		{ 511, "Network Authentication Required" },
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof r / sizeof r[0]; i++)
+		if (r[i].code == code)
+			return r[i].text;
+	return code >= 500 ? "Server Error" : "Client Error";
+}
+
+/* "Loading... 12 of 30": the fetches of this load (the page, its sheets, scripts, images),
+ * four times a second while it loads */
+static void onyx_status_progress(void *p)
+{
+	unsigned made, ended, total, done;
+	char text[64];
+
+	(void) p;
+	if (!onyx_loading)
+		return;
+	onyx_fetch_counts(&made, &ended);
+	total = made - onyx_made0;
+	done = ended - onyx_ended0;
+	if (done > total)
+		done = total;
+	if (total > 1)
+		snprintf(text, sizeof text, "Loading... %u of %u", done, total);
+	else
+		snprintf(text, sizeof text, "Loading...");
+	onyx_chrome_set_state(text, 0);
+	framebuffer_schedule(250, onyx_status_progress, NULL);
+}
+
+static void onyx_status_start(void)
+{
+	onyx_loading = true;
+	onyx_fail[0] = '\0';
+	onyx_fetch_counts(&onyx_made0, &onyx_ended0);
+	framebuffer_schedule(-1, onyx_status_progress, NULL);
+	onyx_status_progress(NULL);
+}
+
+/* The load ended: "Ready" -- or why not: the fetch's error, the page's HTTP status (4xx,
+ * 5xx: the server's page is shown, the bar says what it is) */
+static void onyx_status_stop(struct browser_window *bw)
+{
+	long code = onyx_browser_window_http_code(bw);
+	char text[256];
+
+	onyx_loading = false;
+	framebuffer_schedule(-1, onyx_status_progress, NULL);
+	if (onyx_fail[0] != '\0') {
+		snprintf(text, sizeof text, "Error: %s", onyx_fail);
+		onyx_chrome_set_state(text, 1);
+	} else if (code >= 400 && code < 600) {
+		snprintf(text, sizeof text, "%ld %s", code, onyx_http_reason(code));
+		onyx_chrome_set_state(text, 1);
+	} else {
+		onyx_chrome_set_state("Ready", 0);
+	}
+#ifdef ONYX_HOST_SIM	/* (the PC bench's log; not the Pi's kernel log at each page) */
+	printf("ONYX-STATUS %s\n", onyx_fail[0] ? onyx_fail : code >= 400 && code < 600 ?
+	       onyx_http_reason(code) : "Ready");
+	fflush(stdout);
+#endif
+}
+
+/* (the core's hook: about:query/fetcherror shows why a page did not load) */
+static void onyx_status_fetch_error(const char *url, const char *reason)
+{
+	(void) url;
+	snprintf(onyx_fail, sizeof onyx_fail, "%s", reason != NULL && reason[0] ? reason :
+		 "the page could not be loaded");
+}
+
+/* NetSurf's status text: the link under the pointer (its address), a form field's hint --
+ * or the content's state ("Loading", "Fetching...", "Done (0.3s)", "Processing"): the bar
+ * then shows its own state again */
+static void onyx_status_text(const char *text)
+{
+	static const char *const states[] = { "Loading", "Fetching", "Done", "Processing",
+		"Redirecting", "Converting" };
+	size_t i;
+
+	if (text == NULL || text[0] == '\0') {
+		onyx_chrome_set_link(NULL);
+		return;
+	}
+	for (i = 0; i < sizeof states / sizeof states[0]; i++) {
+		const char *m = messages_get(states[i]);
+		if (strncmp(text, m, strlen(m)) == 0 ||
+		    strncmp(text, states[i], strlen(states[i])) == 0) {
+			onyx_chrome_set_link(NULL);
+			return;
+		}
+	}
+	onyx_chrome_set_link(text);
 }
 
 /* ---- Onyx: the History dialog's pages (netsurf/onyx_chrome.h) ---- */
