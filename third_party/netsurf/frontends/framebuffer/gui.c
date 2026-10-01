@@ -69,6 +69,7 @@
 #include "desktop/searchweb.h"
 #include "netsurf/onyx_chrome.h"
 #include "netsurf/onyx_io.h"	/* Onyx: the card's writers wait while a page loads */
+#include "kapi.h"		/* Onyx: kapi_vol_info (the RAM: volume, docs/06 §33) */
 
 
 #define NSFB_TOOLBAR_DEFAULT_LAYOUT "blfsrutc"
@@ -2271,6 +2272,8 @@ gui_window_start_throbber(struct gui_window *g)
  * seconds after a page is loaded (not only at the end: a Pi is often switched off rather than quit) */
 void onyx_fetch_save_state(void);	/* user/netsurf/onyx_fetch.c */
 extern struct gui_llcache_table *onyx_llcache_table;	/* user/netsurf/onyx_cache.c */
+/* Onyx: the JS code cache's folder (quickjs/qjs_codecache.c, docs/06 §33) */
+extern void qjs_cc_set_dir(const char *dir, size_t budget);
 
 static uint64_t onyx_saved_at;	/* (Onyx: ms of the last save) */
 
@@ -2532,6 +2535,24 @@ main(int argc, char** argv)
 	free(messages);
 	if (ret != NSERROR_OK) {
 		fprintf(stderr, "Message translations failed to load\n");
+	}
+
+	/* Onyx (docs/06 §33): the disc cache and the JS code cache in the kernel's RAM volume
+	 * (RAM:/jet/...: no write of the pages visited to the card, lost at a restart) unless
+	 * Choices' cache_on_card:1, or the kernel has no RAM: (older, ramfs=0): then on the
+	 * card beside the app, as before. A disc_cache_path in Choices wins. */
+	{
+		struct kapi_vol_info vi;
+		bool card = nsoption_bool(cache_on_card) || kapi_vol_info("RAM:", &vi) != 0;
+		size_t budget = 0;
+
+		if (!card && vi.total / 4 < (32u << 20))
+			budget = (size_t) (vi.total / 4);
+		if (nsoption_charp(disc_cache_path) == NULL)
+			nsoption_set_charp(disc_cache_path, strdup(card ?
+					ONYX_NS_DATAPATH "cache" : "RAM:/jet/cache"));
+		qjs_cc_set_dir(card ? ONYX_NS_DATAPATH "jscache/" : "RAM:/jet/jscache/", budget);
+		NSLOG(netsurf, INFO, "caches: %s", card ? "on the card" : "in RAM:");
 	}
 
 	/* common initialisation */

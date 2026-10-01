@@ -30,6 +30,10 @@ uint8_t *qjs_cc_load(const char *src, size_t len, size_t *bclen);
 /** Keep this source's bytecode in the cache (written by a thread of its own on the Pi). */
 void qjs_cc_store(const char *src, size_t len, const uint8_t *bc, size_t bclen);
 
+/** Onyx (docs/06 §33): the cache's folder ("RAM:/jet/jscache/", the default; or the card's,
+ * Choices' cache_on_card) and its size (0: 32 MB) -- before the first script. */
+void qjs_cc_set_dir(const char *dir, size_t budget);
+
 /** the smallest source worth caching (parsing less is quick) */
 #define QJS_CC_MIN 8192
 

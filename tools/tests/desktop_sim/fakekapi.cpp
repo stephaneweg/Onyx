@@ -39,6 +39,9 @@
 // SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows), any
 // service looked up is pid 7; SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
+// SIM_RAM: the folder that stands for the RAM: volume (the kernel's RAM file system: until the Pi
+// restarts) -- the same folder for several runs is several launches within one boot; unset, each
+// run has its own (a fresh temporary folder, deleted at its end: a boot of its own).
 // SIM_REALNET=1: the TCP sockets are the PC's (a real connection: an HTTP client against a local
 // server); with SIM_SLEEP=1 the script's steps take real time, for the answers to come.
 // Threads (kapi v67) are the PC's too (pthreads); kapi_post runs at the next pump_events; a
@@ -55,6 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <ftw.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <algorithm>
@@ -85,6 +89,11 @@ static bool g_quit;					// (the script's "quit": the window closed)
 
 // The card is only READ: what an app writes (a saved file, a folder) goes to SIM_WRITES (default
 // /tmp/onyx_sim_writes), read back from there first -- never into sdcard/ nor the samples.
+static std::string ramdir (void);
+static bool is_ram (const char *p)					// "RAM:..." (the RAM volume)
+{
+	return p && (p[0] == 'R' || p[0] == 'r') && (p[1] == 'A' || p[1] == 'a') && (p[2] == 'M' || p[2] == 'm') && p[3] == ':';
+}
 static std::string relpath (const char *p)
 {
 	std::string s (p ? p : "");
@@ -96,6 +105,7 @@ static std::string relpath (const char *p)
 static std::string writes (void) { return getenv ("SIM_WRITES") ? getenv ("SIM_WRITES") : "/tmp/onyx_sim_writes"; }
 static std::string sdpath (const char *p)
 {
+	if (is_ram (p)) return ramdir () + "/" + relpath (p);
 	std::string s = relpath (p), card = std::string (getenv ("SIM_SD") ? getenv ("SIM_SD") : "sdcard") + "/" + s;
 	struct stat st, cs;
 	bool onCard = stat (card.c_str (), &cs) == 0;
@@ -107,11 +117,28 @@ static std::string sdpath (const char *p)
 }
 static std::string wpath (const char *p)				// where a write goes (its folders made)
 {
-	std::string full = writes () + "/" + relpath (p);
-	mkdir (writes ().c_str (), 0755);
-	for (size_t i = writes ().size () + 1; i < full.size (); i++)
+	std::string base = is_ram (p) ? ramdir () : writes ();
+	std::string full = base + "/" + relpath (p);
+	mkdir (base.c_str (), 0755);
+	if (is_ram (p)) return full;					// (RAM: as the kernel's: no folder made)
+	for (size_t i = base.size () + 1; i < full.size (); i++)
 		if (full[i] == '/') mkdir (full.substr (0, i).c_str (), 0755);
 	return full;
+}
+
+// RAM: -- SIM_RAM, or this run's own temporary folder (removed at the end: the next run, a new boot)
+static std::string g_ramdir;
+static int rm_one (const char *f, const struct stat *, int, struct FTW *) { return remove (f); }
+static void ram_cleanup (void) { if (!g_ramdir.empty () && !getenv ("SIM_RAM")) nftw (g_ramdir.c_str (), rm_one, 16, FTW_DEPTH | FTW_PHYS); }
+static std::string ramdir (void)
+{
+	if (!g_ramdir.empty ()) return g_ramdir;
+	if (getenv ("SIM_RAM") && getenv ("SIM_RAM")[0]) { g_ramdir = getenv ("SIM_RAM"); mkdir (g_ramdir.c_str (), 0755); return g_ramdir; }
+	char t[] = "/tmp/onyx_sim_ram.XXXXXX";
+	g_ramdir = mkdtemp (t) ? t : "/tmp/onyx_sim_ram";
+	mkdir (g_ramdir.c_str (), 0755);
+	atexit (ram_cleanup);
+	return g_ramdir;
 }
 
 // ---- the kernel's 8 x 16 font (circle/lib/font8x16.cpp: 16 bytes a glyph from 0x21) --------------
@@ -525,8 +552,33 @@ static int app_dir (char *b, unsigned n)				// SD:apps/<the program's name>.app/
 	return b ? (int) strlen (b) : 0;
 }
 static int f_mkdir (const char *p) { return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
-static int f_remove (const char *) { return -1; }
-static int f_rename (const char *, const char *) { return -1; }
+// (the card is only read: a file is removed / renamed on RAM: only)
+static int f_remove (const char *p) { if (!is_ram (p)) return -1; std::string f = sdpath (p); return remove (f.c_str ()) == 0 ? 0 : -1; }
+static int f_rename (const char *a, const char *b)
+{
+	if (!is_ram (a) || !is_ram (b)) return -1;
+	struct stat st; std::string to = sdpath (b);
+	if (stat (to.c_str (), &st) == 0) return -1;			// (there already: as the kernel's)
+	return rename (sdpath (a).c_str (), to.c_str ()) == 0 ? 0 : -1;
+}
+// (v71) a volume's room: RAM: (128 MB, what its folder holds), the card (its folder's file system)
+static unsigned long long g_ramUsed;
+static int sum_one (const char *, const struct stat *st, int kind, struct FTW *) { if (kind == FTW_F) g_ramUsed += (unsigned long long) st->st_size; return 0; }
+static int vol_info (const char *p, struct kapi_vol_info *o)
+{
+	if (!p || !o) return -1;
+	memset (o, 0, sizeof *o);
+	if (is_ram (p))
+	{
+		g_ramUsed = 0; nftw (ramdir ().c_str (), sum_one, 16, FTW_PHYS);
+		o->total = 128ull << 20; o->used = g_ramUsed; o->free = o->used < o->total ? o->total - o->used : 0;
+		o->flags = KAPI_VOL_RAM; snprintf (o->type, sizeof o->type, "RAM");
+		return 0;
+	}
+	if (!volume_there (p)) return -1;
+	o->total = 8ull << 30; o->free = 4ull << 30; o->used = o->total - o->free; snprintf (o->type, sizeof o->type, "FAT32");
+	return 0;
+}
 static int list_tasks (char *b, unsigned n)
 {
 	if (b && n) snprintf (b, n, "Rk idle\nSk compositor\nSk usb\nSk net\nSa voronoy\nRa menubar\nRa dock\nSa agenda\n"
@@ -891,6 +943,7 @@ static void setup (void)
 	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
 	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->stream_read_nb = stream_read_nb;
 	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
+	T->vol_info = vol_info;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
 	T->list_procs = list_procs; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;

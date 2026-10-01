@@ -18,6 +18,10 @@ extern "C" {
 #define ONYX_IO_PIECE	(16 * 1024)
 #define ONYX_IO_NAP	8
 
+/** Onyx (docs/06 §33): a path on the kernel's RAM volume ("RAM:...")? Its writes are not paced
+ * (onyx_io_save writes it at once) and its writers need not wait for a quiet moment. */
+int onyx_io_is_ram(const char *path);
+
 /** The UI thread: the user acted (a click, the wheel, a key). */
 void onyx_io_activity(void);
 

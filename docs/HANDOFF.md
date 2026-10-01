@@ -49,6 +49,34 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## RAM:, a volume in memory; Jet Browser's caches there (2026-10-01, kernel v71, not yet tried on the Pi)
+
+- **Kernel `RAM:`** (`kernel/sys/ramfs.cpp`, `kern/ramfs.h`; docs/02 §16): a file system in memory,
+  reached by the same file kapis as the card (open/read/fsize/seek/close, save_file, file_in/file_out
+  with append, opendir/readdir, mkdir/remove/rename, chdir) -- `kapi.cpp` resolves the path first,
+  `RAM:` goes to ramfs, `FTP:` to vfs, the rest to FatFs; handles told apart by address. Folders and
+  files are heap records of one size; the bytes are in 64 KB pages of `palloc_high` cut into 256 B ..
+  32 KB chunks (a small file takes its size rounded to 256 B), given back when nothing in a page is
+  used. One re-entrant sleeping lock; 1 MB slices with a Yield between them; a save is no-kill.
+  Size: `system.ini` **`ramfs=`** (MB or `N%`; 0 = none; default 128 MB, at most a quarter of the
+  free page memory), 32 MB of pages always left to the apps, 16384 nodes. Lost at a restart.
+- **Kapi v71 `vol_info`** (`struct kapi_vol_info`): total / free / used / type of `SD:`, `SD1:`..,
+  `RAM:`. New `/bin/df` and `/bin/ramtest`.
+- **Jet Browser**: the disk cache in `RAM:/jet/cache`, the code cache in `RAM:/jet/jscache/` by
+  default (stored at first sight, not paced, 2 MB objects, half / a quarter of `RAM:` at most);
+  Choices' **`cache_on_card:1`** puts them back on the card with §32's rules. History and Cookies
+  stay on the card. docs/06 §33. The code cache now does its file I/O through the kapi.
+- **Tests**: `sh tools/tests/run_ramfs_test.sh` (ramfs.cpp on the PC under ASan, against a model);
+  `httptest.sh` (RAM: one `SIM_RAM` = one boot; a restart; `cache_on_card:1` over three launches),
+  jstest / nettest / fxtest / iframetest / gputest pass. The desktop simulator maps `RAM:` to
+  `SIM_RAM` (else a temporary folder per run).
+- **To try on the Pi**: `ramtest` (ALL PASS; its 16 MB times) and `ramtest full`; `df`; `ls RAM:`,
+  `cp`, `rm`, `cd RAM:`; Jet Browser: a site, Jet closed and opened, the site again (from `RAM:`:
+  `ls RAM:/jet/cache`), no `stall: jet:cache` in `kmsg`; after a restart `RAM:` empty; the boot log's
+  `ramfs: RAM: volume, up to ... MB`. A 1 GB Pi: the size (~60 MB) and the apps still fine.
+- **Next ideas**: `RAM:` in the File Viewer's Computer places and wtk's file dialog volume list;
+  `mv` across volumes (copy + remove); a `ramfs` line in the Control Panel.
+
 ## TCP, SD and save fixes (2026-10-01, not yet tried on the Pi)
 
 - **Circle's TCP** (docs/05 §20–22, docs/02 §11; host test `sh tools/tests/run_circlenet_test.sh`,
@@ -68,9 +96,8 @@ answer in French. The docs stay in English.
   second should not drop; `rdpd` lines in `kmsg`: `partial`, the send times); a big file copied
   or saved (File Viewer copy of a 20 MB file, Jet's cache) with no `stall: ... TimeoutWait` lines
   in `kmsg`; Koton: save a song (no error); `fsbench` (the read speed should be about as before).
-- The NetSurf bench `httptest.sh` fails its two "launched again" disc-cache checks, before and
-  after these changes (only 3 entries reach the cache folder; perhaps the "written on second
-  sight" rule of 8b0cca3b) -- not looked into.
+- The NetSurf bench `httptest.sh`'s two "launched again" disc-cache checks: fixed by the caches
+  in `RAM:` (below; the card's "second sight" rule needed a third launch).
 
 ## The screen's resolution, changed while running (2026-09-29, not yet tried on the Pi)
 

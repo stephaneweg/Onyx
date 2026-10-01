@@ -1963,7 +1963,8 @@ delayed connect.
 
 **A disk cache** (`user/netsurf/onyx_cache.c`: NetSurf's `gui_llcache_table` backing store,
 replacing the upstream `fs_backing_store.c`). The objects and their metadata go to
-`SD:/apps/jet.app/cache/<id>.d|.m` with an `index` (id, sizes, last use, URL), written by a
+`SD:/apps/jet.app/cache/<id>.d|.m` (since §33: `RAM:/jet/cache/` by default, the kernel's RAM
+volume) with an `index` (id, sizes, last use, URL), written by a
 thread of their own (the UI never waits for the card); 64 MB (Choices' `disc_cache_size`),
 the least recently used out beyond it. (Since §32: an object is stored the second time it is
 seen, not over 512 KB, the writes paced, the index written once a minute at most.) In `llcache.c`: an object is written to the card when
@@ -2700,7 +2701,8 @@ qemu logs one instruction a block -- slow, small workloads).
 ### The code cache (`quickjs/qjs_codecache.c`)
 
 A browser does not parse a script it has seen: V8 keeps its compiled code. Here the scripts'
-QuickJS bytecode is kept on the card, `SD:/apps/jet.app/jscache/<16 hex digits>.bc`:
+QuickJS bytecode is kept on the card, `SD:/apps/jet.app/jscache/<16 hex digits>.bc` (since §33:
+in RAM, `RAM:/jet/jscache/`, by default):
 
 - **What**: every classic script of 8 KB or more (external or inline) -- since §32 the second
   time its source is seen (written paced, the index once a burst is over) --, and the preludes
@@ -2931,6 +2933,9 @@ the idle page: 363 `poll`s in 10 s for 4 connections).
 
 ### The card: write less, write gently
 
+(Since §33 the two caches are in `RAM:` by default; the rules below are the card's — Choices'
+`cache_on_card:1`; the History and the Cookies, on the card always, keep theirs.)
+
 - **The disk cache stores an object the second time it is seen** (`onyx_cache.c`,
   `oc_store`): its URL's hash met in an earlier launch (the hashes seen are kept in the index,
   `- <hash>` lines, 4096 of them). Most of what a page fetches is never asked for again; a
@@ -2989,6 +2994,78 @@ desktop's compositor copy only what changed.
 desktop simulator has a `winstate <n>` step (the window's `KAPI_WIN_*` state);
 `idlecpu.py --floor <pages>` (`--state unfocused|hidden`, `--max <pct>` to fail above a
 budget).
+
+## 33. The caches in RAM: (2026-10-01)
+
+**The decision**: Jet Browser's disk cache and JS code cache live in **`RAM:`**, the kernel's RAM
+volume (docs/02 §16, kernel v71), by default — **no browsing data is written to the SD card**:
+
+- **Speed**: the card's writes freeze core 0, which every app shares (§32: `stall: jet:cache ran
+  213 ms`); §32 made them rarer and gentler, this removes them. A store into `RAM:` is a copy into
+  the kernel's pages.
+- **Privacy**: the content of the pages visited (their images, scripts, styles, the scripts'
+  bytecode) never reaches the card.
+- **The cost, accepted**: both are **lost when the Pi restarts** — the first visit of a site after a
+  restart fetches everything again. Within a boot they survive Jet Browser closed and opened again
+  (`RAM:` is not tied to the app). The **History** and the **Cookies** stay on the card
+  (`SD:/apps/jet.app/`), as the TLS session tickets and the HTTP/1-only hosts.
+
+**Where** (`frontends/framebuffer/gui.c`, before `netsurf_init`; Onyx patch): `RAM:/jet/cache`
+(the disk cache: Choices' `disc_cache_path` when it is not set) and `RAM:/jet/jscache/` (the code
+cache: `qjs_cc_set_dir`, new in `quickjs/qjs_codecache.c`). **Choices' `cache_on_card:1`**
+(`frontends/framebuffer/options.h`, new, default 0) puts both back under `SD:/apps/jet.app/`
+(`cache`, `jscache/`) as before §33; so does a kernel without `RAM:` (`kapi_vol_info ("RAM:")` −1:
+an older kernel, `system.ini` `ramfs=0`). A `disc_cache_path` in Choices still wins for the disk
+cache. The kernel log says `caches: in RAM:` or `on the card`; `NS_PERF`'s `cache:open` line says
+`(RAM)`.
+
+**What changes in RAM** (the card's rules of §32 are kept for `cache_on_card:1`):
+
+| | in `RAM:` | on the card (`cache_on_card:1`) |
+|---|---|---|
+| A disk-cache object stored | the **first** time it is seen (llcache's rules: fresh or revalidatable, not `no-store`) | the second launch it is seen in |
+| Its size | ≤ 2 MB (`OC_MAX_OBJECT_RAM`) | ≤ 512 KB |
+| The disk cache's size | Choices' `disc_cache_size` (64 MB), at most **half of `RAM:`** (`vol_info`) | `disc_cache_size` |
+| Its index | written 2 s after a change (`OC_INDEX_TICKS_RAM`), and at the end | once a minute at most, and at the end |
+| A script's bytecode | written the **first** time it is compiled | the second time its source is seen |
+| The code cache's size | 32 MB, at most **a quarter of `RAM:`** | 32 MB |
+| Its index | as soon as the writer is done | 3 s after the last store |
+| The writes | at once, whole (`kapi_save_file`), no wait | 16 KB pieces, 8 ms naps, waiting while the user acts or a page loads (`onyx_io.h`) |
+
+`onyx_io_is_ram (path)` (`user/netsurf/onyx_io.h`, in `onyx_cache.c`) tells a `RAM:` path:
+`onyx_io_save` writes it whole at once, and the writers (`oc_write_some`, `oc_sweep`, the index;
+`cc_write_job`, the code cache's writer) skip `onyx_io_wait_quiet` for it. The sweep of the files a
+lost index left (30 s after the start) runs in `RAM:` too (Jet Browser killed before its index was
+written). The folders are made with their parents (`RAM:/jet` first: the kernel's `mkdir` does not
+make parents).
+
+**The code cache's files through the kapi**: `qjs_codecache.c` read its files with newlib's `fopen`
+(on the Pi, `kapi_open` underneath) and, on the PC bench, the host's; it now reads and writes them
+with the kapi (`kapi_open` / `kapi_read`, `kapi_save_file`, `kapi_remove`, `kapi_mkdir`: `cc_read`),
+on the Pi and on the PC alike — so the bench's stand-in kernel maps `RAM:` for it too.
+
+**On the PC bench** (`tools/tests/desktop_sim/fakekapi.cpp`): `RAM:` is the folder **`SIM_RAM`**;
+unset, a fresh temporary folder per run (deleted at its end: each run a boot of its own). The
+stand-in now removes and renames files on `RAM:` (the card stays read-only) and answers
+`vol_info` (`RAM:`: 128 MB). In `cache_on_card:1` mode, and for the code cache always, the files
+now go through the stand-in (`SIM_WRITES/<the data folder>`) instead of the bench's real
+`$(OUT)/data/jscache` — so a run no longer inherits an earlier run's code cache.
+
+**Tests** (`tools/tests/netsurf/httptest.sh`): its two "launched again" disk-cache checks failed
+since §32 (an object was stored only when seen in an earlier launch, so the second launch could not
+find it). They now run as Onyx does by default: the two launches share one `SIM_RAM` (one boot), the
+second finds the images in `RAM:` (no request) and revalidates the style sheet (a 304); the disk
+cache and the code cache are in `SIM_RAM`, nothing in the card's folder; a launch with a new
+`SIM_RAM` (a restart) asks for the images again. Then `cache_on_card:1` (appended to the bench's
+Choices): three launches — the first sees, the second stores (still asks for the images), the third
+reads the images from the card (no request) and revalidates the style sheet, drawn the same; the
+1.9 MB image is asked for each time (over the card's 512 KB cap; `RAM:`'s 2 MB keeps it). The kernel
+side: `sh tools/tests/run_ramfs_test.sh` (docs/02 §16); on the Pi, `/bin/ramtest`.
+
+**To try on the Pi**: `df` (the `RAM:` line); a site visited, Jet Browser closed and opened, the
+site again (it loads from `RAM:`: `ls RAM:/jet/cache`, `NS_PERF`'s `cache:read` lines when
+`SD:/apps/jet.app/perf` exists); no `stall: jet:cache` line in `kmsg` while browsing; after a
+restart `RAM:` is empty; `cache_on_card:1` in `SD:/res/Choices` brings the card's folders back.
 
 ## 8. Known gaps
 

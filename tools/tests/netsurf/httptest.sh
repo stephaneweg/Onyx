@@ -5,7 +5,11 @@
 # /redir, then again (F5). Checks: the connections kept (fewer connections than requests), the
 # redirect's cookie and the page's sent back, the Referer, the codings, the page drawn as the
 # file:// copy is, and launched again, the disc cache (docs/06 section 22: the images fresh, no
-# request; the style sheet revalidated, a 304). Then HTTP/2 (docs/06 section 22; needs Python's h2: pip install h2): an HTTPS
+# request; the style sheet revalidated, a 304) -- in RAM: (docs/06 section 33: the kernel's RAM
+# volume, here the folder SIM_RAM, the same for the launches of one "boot"; an object stored the
+# first time it is seen), nothing written to the card, all of it gone after a restart (a new
+# SIM_RAM); and with Choices' cache_on_card:1, on the card (an object stored the second launch
+# it is seen, docs/06 section 32: read from the card at the third). Then HTTP/2 (docs/06 section 22; needs Python's h2: pip install h2): an HTTPS
 # server with ALPN h2 (h2srv.py, a certificate made here for 127.0.0.1 and added to the bench's
 # trusted roots) serves the same copy -- one connection, the requests multiplexed, drawn the
 # same, with the bench's OpenSSL and with the Pi's mbedTLS code (NS_MBEDTLS=1); the scripts'
@@ -37,6 +41,10 @@ W=$(i=0; while [ $i -lt 150 ]; do printf 'wait;'; i=$((i + 1)); done)
 export SIM_WRITES="$OUT/httptest-writes"
 rm -rf "$SIM_WRITES"
 Q="quit;$W"	# (the app ends as when its window is closed: the disc cache written)
+# (RAM:, the kernel's RAM volume: this folder for the launches below -- one boot)
+export SIM_RAM="$OUT/httptest-ram"
+rm -rf "$SIM_RAM" "$OUT/httptest-ram2"
+CARD="$SIM_WRITES$(realpath "$OUT")/build/data"	# (the card's copy of the app's data folder)
 run() {
 	SIM_REALNET=1 SIM_SCREEN=1024x768 SIM_SLEEP=1 SIM_POS=0,0 SIM_ARGS="$1" SIM="$2" \
 		timeout 300 "$OUT/build/netsurf" >"$OUT/httptest-$3.log" 2>&1
@@ -82,6 +90,31 @@ tail -n +$((n1 + 1)) "$L" > "$OUT/httpsrv-3.log"
 check "launched again: the style sheet revalidated (a 304)" "grep -q '^NOTMOD .*style.css' $OUT/httpsrv-3.log"
 check "launched again: the images from the card (no request)" "! grep -q '^REQ .*\.png' $OUT/httpsrv-3.log"
 check "launched again: drawn the same" "drawn http3.elsm"
+check "the disc cache in RAM: (RAM:/jet/cache), the code cache too, nothing on the card" \
+	"[ -f $SIM_RAM/jet/cache/index ] && [ -d $SIM_RAM/jet/jscache ] && [ ! -e $CARD/cache ] && [ ! -e $CARD/jscache ]"
+# a restart: RAM: empty again (a new SIM_RAM) -- the images asked for again
+n3=$(wc -l < "$L")
+export SIM_RAM="$OUT/httptest-ram2"
+run "http://127.0.0.1:$PORT/kotonviolins.com/index.html" "${W}dump $OUT/http4.elsm;${Q}exit" http4
+export SIM_RAM="$OUT/httptest-ram"
+tail -n +$((n3 + 1)) "$L" > "$OUT/httpsrv-4.log"
+check "after a restart (RAM: empty): the images asked for again" "grep -q '^REQ .*\.png' $OUT/httpsrv-4.log"
+# Choices' cache_on_card:1 -- the card: seen at the 1st launch, stored at the 2nd, read at the 3rd
+echo "cache_on_card:1" >> "$OUT/build/res/Choices"	# (make rewrites it)
+rm -rf "$SIM_RAM"
+for k in 5 6 7; do
+	n0=$(wc -l < "$L")
+	run "http://127.0.0.1:$PORT/kotonviolins.com/index.html" "${W}dump $OUT/http$k.elsm;${Q}exit" http$k
+	tail -n +$((n0 + 1)) "$L" > "$OUT/httpsrv-$k.log"
+done
+sed -i '/^cache_on_card:/d' "$OUT/build/res/Choices"
+check "cache_on_card:1: the disc cache and the code cache on the card, nothing in RAM:" \
+	"[ -f $CARD/cache/index ] && [ -d $CARD/jscache ] && [ ! -e $SIM_RAM/jet ]"
+check "cache_on_card:1: the 2nd launch still asks for the images (stored then)" "grep -q '^REQ .*\.png' $OUT/httpsrv-6.log"
+check "cache_on_card:1: the 3rd launch: the images from the card (no request)" "! grep -q '^REQ .*images/koton' $OUT/httpsrv-7.log"
+check "cache_on_card:1: the 1.9 MB image not kept (the card's 512 KB cap; RAM:'s is 2 MB)" "grep -q '^REQ .*wood-contrast-real\.png' $OUT/httpsrv-7.log"
+check "cache_on_card:1: the 3rd launch: the style sheet revalidated (a 304)" "grep -q '^NOTMOD .*style.css' $OUT/httpsrv-7.log"
+check "cache_on_card:1: drawn the same" "drawn http7.elsm"
 
 # ---- HTTP/2 ----------------------------------------------------------------------------------
 if python3 -c 'import h2' 2>/dev/null; then

@@ -72,6 +72,11 @@ NSOPTION_STRING(url_file, NULL)
  * as before (the PC bench: NS_GPU=0 / 1 / cpu) */
 NSOPTION_BOOL(gpu_compositing, true)
 
+/* Onyx (docs/06 §33): the disc cache and the JS code cache on the card (<data>/cache,
+ * <data>/jscache) instead of the kernel's RAM volume (RAM:/jet/cache, RAM:/jet/jscache: the
+ * default -- nothing of the pages visited written to the card, lost at a restart) */
+NSOPTION_BOOL(cache_on_card, false)
+
 /*
  * Local Variables:
  * c-basic-offset:8

@@ -26,6 +26,14 @@
  * every visit, are never written. The writer paces its writes (user/netsurf/onyx_io.h: 16 KB
  * pieces, a sleep between them, a wait while the user acts or a page loads) and writes the
  * index once, a few seconds after the last store, not after each file.
+ *
+ * Onyx (docs/06 §33): the cache is in RAM by default -- RAM:/jet/jscache/, the kernel's RAM
+ * volume, lost at a restart; Choices' cache_on_card:1 puts it back on the card (<data>/jscache/,
+ * as above). In RAM a source's bytecode is written the first time it is compiled, at once (no
+ * pacing, no quiet wait: no card), the index as soon as the writer is done; the budget is
+ * 32 MB or a quarter of the RAM volume. The files are read and written through the kapi (the
+ * kernel's open / read / save_file, which reach RAM: and the card alike; the PC bench's stand-in
+ * maps RAM: to a folder).
  */
 
 #include <stdio.h>
@@ -38,10 +46,8 @@
 #include "javascript/quickjs/qjs_codecache.h"
 
 #include "netsurf/onyx_perf.h"
-#ifdef ONYX_HOST_SIM
-#include <sys/stat.h>
-#else
 #include "kapi.h"
+#ifndef ONYX_HOST_SIM
 #include "netsurf/onyx_io.h"
 #endif
 
@@ -50,6 +56,10 @@
 #endif
 #define QJS_CC_DIR ONYX_NS_DATAPATH "jscache/"
 #define QJS_CC_BUDGET (32 * 1024 * 1024)
+/* Onyx: the folder (qjs_cc_set_dir: RAM:/jet/jscache/ by default, gui.c), its budget, in RAM? */
+static char cc_dir[256] = QJS_CC_DIR;
+static size_t cc_budget = QJS_CC_BUDGET;
+static bool cc_ram;
 #define QJS_CC_MAX_FILE (8 * 1024 * 1024)
 #define QJS_CC_ENTRIES 512
 #define QJS_CC_QUEUED (16 * 1024 * 1024)
@@ -122,7 +132,50 @@ static uint64_t cc_key(const uint8_t sha[32])
 
 static void cc_path(char *path, size_t cap, const char *leaf)
 {
-	snprintf(path, cap, "%s%s", QJS_CC_DIR, leaf);
+	snprintf(path, cap, "%s%s", cc_dir, leaf);
+}
+
+/* exported interface documented in qjs_codecache.h */
+void qjs_cc_set_dir(const char *dir, size_t budget)
+{
+	size_t n;
+
+	if (dir == NULL || dir[0] == '\0')
+		return;
+	snprintf(cc_dir, sizeof cc_dir, "%s", dir);
+	n = strlen(cc_dir);
+	if (n > 0 && cc_dir[n - 1] != '/' && n + 1 < sizeof cc_dir) {
+		cc_dir[n] = '/';
+		cc_dir[n + 1] = '\0';
+	}
+	cc_ram = strncmp(cc_dir, "RAM:", 4) == 0 || strncmp(cc_dir, "ram:", 4) == 0;
+	cc_budget = budget > 0 ? budget : QJS_CC_BUDGET;
+}
+
+/* a whole file (kapi: RAM: or the card) -> malloc'd bytes, or NULL */
+static uint8_t *cc_read(const char *path, size_t *len)
+{
+	void *f = kapi_open(path);
+	unsigned n, got = 0;
+	uint8_t *b;
+
+	if (f == NULL)
+		return NULL;
+	n = kapi_fsize(f);
+	b = malloc(n > 0 ? n : 1);
+	while (b != NULL && got < n) {
+		int r = kapi_read(f, b + got, n - got);
+		if (r <= 0)
+			break;
+		got += (unsigned) r;
+	}
+	kapi_close(f);
+	if (b != NULL && got != n) {
+		free(b);
+		b = NULL;
+	}
+	*len = n;
+	return b;
 }
 
 static void cc_file(char *path, size_t cap, uint64_t key)
@@ -136,7 +189,8 @@ static void cc_file(char *path, size_t cap, uint64_t key)
 static void cc_load_index(void)
 {
 	char path[256];
-	FILE *f;
+	uint8_t *b;
+	size_t len = 0;
 	int i;
 
 	if (cc.loaded)
@@ -150,11 +204,14 @@ static void cc_load_index(void)
 	}
 #endif
 	cc_path(path, sizeof path, "index");
-	f = fopen(path, "rb");
-	if (f == NULL)
+	b = cc_read(path, &len);
+	if (b == NULL)
 		return;
-	cc.n = (int) fread(cc.e, sizeof cc.e[0], QJS_CC_ENTRIES, f);
-	fclose(f);
+	cc.n = (int) (len / sizeof cc.e[0]);
+	if (cc.n > QJS_CC_ENTRIES)
+		cc.n = QJS_CC_ENTRIES;
+	memcpy(cc.e, b, (size_t) cc.n * sizeof cc.e[0]);
+	free(b);
 	for (i = 0; i < cc.n; i++)
 		if (cc.e[i].stamp >= cc.clock)
 			cc.clock = cc.e[i].stamp + 1;
@@ -186,8 +243,8 @@ uint8_t *qjs_cc_load(const char *src, size_t len, size_t *bclen)
 	struct cc_head h;
 	uint8_t sha[32];
 	char path[256], build[56];
-	uint8_t *bc;
-	FILE *f;
+	uint8_t *bc, *file;
+	size_t flen = 0;
 	int i;
 
 	cc_load_index();
@@ -198,23 +255,23 @@ uint8_t *qjs_cc_load(const char *src, size_t len, size_t *bclen)
 	if (i < 0 || cc.e[i].size == 0)
 		return NULL;		/* (Onyx: size 0 -- seen once, no file) */
 	cc_file(path, sizeof path, cc_key(sha));
-	f = fopen(path, "rb");
-	if (f == NULL)
+	file = cc_read(path, &flen);	/* (Onyx: the kapi's -- RAM: or the card) */
+	if (file == NULL)
 		return NULL;
 	cc_build_id(build);
 	bc = NULL;
-	if (fread(&h, sizeof h, 1, f) == 1 && memcmp(h.magic, "ONYXJSC1", 8) == 0 &&
-	    memcmp(h.build, build, sizeof build) == 0 &&
-	    memcmp(h.src_sha, sha, 32) == 0 && h.src_len == len &&
-	    h.bc_len > 0 && h.bc_len <= QJS_CC_MAX_FILE &&
-	    (bc = malloc((size_t) h.bc_len)) != NULL) {
-		if (fread(bc, 1, (size_t) h.bc_len, f) != h.bc_len ||
-		    cc_checksum(bc, (size_t) h.bc_len) != h.bc_sum) {
-			free(bc);
-			bc = NULL;
-		}
+	if (flen >= sizeof h) {
+		memcpy(&h, file, sizeof h);
+		if (memcmp(h.magic, "ONYXJSC1", 8) == 0 &&
+		    memcmp(h.build, build, sizeof build) == 0 &&
+		    memcmp(h.src_sha, sha, 32) == 0 && h.src_len == len &&
+		    h.bc_len > 0 && h.bc_len <= QJS_CC_MAX_FILE &&
+		    h.bc_len == flen - sizeof h &&
+		    cc_checksum(file + sizeof h, (size_t) h.bc_len) == h.bc_sum &&
+		    (bc = malloc((size_t) h.bc_len)) != NULL)
+			memcpy(bc, file + sizeof h, (size_t) h.bc_len);
 	}
-	fclose(f);
+	free(file);
 	if (bc == NULL)
 		return NULL;
 	cc.e[i].stamp = cc.clock++;	/* (written with the next store) */
@@ -237,22 +294,17 @@ struct cc_job {
 static void cc_write_file(const char *path, const void *p, size_t n)
 {
 #ifdef ONYX_HOST_SIM
-	FILE *f = fopen(path, "wb");
-	bool ok;
-
-	if (f == NULL)
-		return;
-	ok = fwrite(p, 1, n, f) == n;
-	ok = fclose(f) == 0 && ok;
-	if (!ok) {
-		remove(path);
+	/* (the bench: the kapi stand-in's save_file -- RAM: a folder of its own, SIM_RAM) */
+	if (kapi_save_file(path, p, (unsigned) n) != (int) n) {
+		kapi_remove(path);
 		return;
 	}
 	cc_written += n;
 	if (onyx_perf_on())
 		fprintf(stderr, "ONYX-PERF io:write %s %lu\n", path, (unsigned long) n);
 #else
-	/* Onyx: paced, in pieces (the SD driver busy-waits while the card writes) */
+	/* Onyx: paced, in pieces (the SD driver busy-waits while the card writes); RAM: at
+	 * once (onyx_io_save knows) */
 	if (onyx_io_save(path, p, (unsigned) n) == 0)
 		cc_written += n;
 #endif
@@ -272,11 +324,12 @@ static void cc_write_job(struct cc_job *j)
 
 	for (i = 0; i < j->n_evict; i++) {
 		cc_file(path, sizeof path, j->evict[i]);
-		remove(path);
+		kapi_remove(path);
 	}
 	if (j->file != NULL) {
 #ifndef ONYX_HOST_SIM
-		onyx_io_wait_quiet(30000);	/* (not while the user acts, a page loads) */
+		if (!cc_ram)	/* (the card: not while the user acts, a page loads) */
+			onyx_io_wait_quiet(30000);
 #endif
 		cc_write_file(j->path, j->file, j->file_len);
 	}
@@ -323,7 +376,8 @@ static int cc_writer(void *arg)
 		if (j == NULL) {
 			bool dirty = cc_index_dirty;
 			uint64_t since = cc_now_ms() - cc_index_changed;
-			if (dirty && since < 3000) {
+			/* (Onyx: RAM: the index at once) */
+			if (dirty && since < 3000 && !cc_ram) {
 				cc_unlock();
 #ifndef ONYX_HOST_SIM
 				kapi_msleep(250);
@@ -333,7 +387,8 @@ static int cc_writer(void *arg)
 			if (dirty) {
 				cc_unlock();
 #ifndef ONYX_HOST_SIM
-				onyx_io_wait_quiet(30000);
+				if (!cc_ram)
+					onyx_io_wait_quiet(30000);
 #endif
 				cc_write_index();
 				continue;
@@ -357,17 +412,19 @@ static void cc_make_dir(void)
 	if (cc.dir_made)
 		return;
 	cc.dir_made = true;
-#ifdef ONYX_HOST_SIM
-	mkdir(QJS_CC_DIR, 0755);
-#else
 	{
+		/* the folder and its parents ("RAM:/jet/jscache/": RAM:/jet first; -1 when one is
+		 * there already) */
 		char dir[256];
-		size_t n = strlen(QJS_CC_DIR);
-		memcpy(dir, QJS_CC_DIR, n - 1);		/* (without the last '/') */
-		dir[n - 1] = '\0';
-		kapi_mkdir(dir);			/* (-1 when it is there already) */
+		size_t n = strlen(cc_dir), i;
+		memcpy(dir, cc_dir, n + 1);
+		for (i = 1; i < n; i++)
+			if (dir[i] == '/' && dir[i - 1] != ':' && dir[i - 1] != '/') {
+				dir[i] = '\0';
+				kapi_mkdir(dir);
+				dir[i] = '/';
+			}
 	}
-#endif
 }
 
 /* a job to the writer (a file, files evicted; or nothing: the index alone) -- the index
@@ -445,7 +502,7 @@ void qjs_cc_store(const char *src, size_t len, const uint8_t *bc, size_t bclen)
 		return;
 	cc_sha(src, len, sha);
 	key = cc_key(sha);
-	if (cc_find(key) < 0) {
+	if (cc_find(key) < 0 && !cc_ram) {
 		/* Onyx (docs/06 §32): seen for the first time -- only noted (an entry of
 		 * size 0, in the index); its bytecode is written when it is seen again */
 		cc_seen(key);
@@ -500,7 +557,7 @@ void qjs_cc_store(const char *src, size_t len, const uint8_t *bc, size_t bclen)
 			if (k != i && (old < 0 || cc.e[k].stamp < cc.e[old].stamp))
 				old = k;
 		}
-		if (total <= QJS_CC_BUDGET || old < 0)
+		if (total <= cc_budget || old < 0)
 			break;
 		if (cc.e[old].size > 0)
 			j->evict[j->n_evict++] = cc.e[old].key;

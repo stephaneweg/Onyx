@@ -31,6 +31,13 @@
  *  - the index is written once a minute at most, and at the end (files a lost index left are
  *    removed at the next launch, OC_SWEEP).
  * Also implemented here: the pacing (onyx_io.h), the JS code cache's too.
+ *
+ * Onyx (docs/06 §33): the cache is in RAM by default -- RAM:/jet/cache, the kernel's RAM volume
+ * (kern/ramfs.h): nothing of the pages visited reaches the card, nothing freezes core 0, and it
+ * is all gone when the Pi restarts. Choices' cache_on_card:1 (gui.c) puts it back on the card.
+ * In RAM: an object is stored the first time it is seen (up to OC_MAX_OBJECT_RAM), written at
+ * once (no pacing, no waiting for a quiet moment), the index a few seconds after a change; the
+ * size is Choices' disc_cache_size but at most half the RAM volume.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -72,6 +79,8 @@ struct oc_entry {
 #define OC_HASH 1024
 #define OC_QUEUE 1024
 #define OC_MAX_OBJECT	(512 * 1024)	/* Onyx: a larger body is not stored */
+#define OC_MAX_OBJECT_RAM (2 * 1024 * 1024)	/* Onyx: in RAM: */
+#define OC_INDEX_TICKS_RAM 200		/* Onyx: in RAM:, 2 s after a change */
 #define OC_SEEN_MAX	4096		/* Onyx: the URLs' hashes remembered (seen once) */
 #define OC_INDEX_TICKS	6000		/* Onyx: the index written once a minute at most */
 #define OC_SWEEP_TICKS	3000		/* Onyx: 30 s after the start, the orphans removed */
@@ -89,6 +98,7 @@ static struct {
 	volatile unsigned wake;
 	volatile int stop, running;
 	bool threads;
+	bool ram;		/* Onyx: in RAM: (docs/06 §33) */
 	bool index_dirty;
 	unsigned hits, misses, written;
 	/* Onyx: the URLs seen (their keys' hashes), a ring: those loaded from the index
@@ -117,6 +127,13 @@ void onyx_io_loading(int on)
 {
 	io_loading = on;
 	io_loading_at = kapi_get_ticks();
+}
+
+int onyx_io_is_ram(const char *path)
+{
+	return path != NULL && (path[0] == 'R' || path[0] == 'r') &&
+		(path[1] == 'A' || path[1] == 'a') && (path[2] == 'M' || path[2] == 'm') &&
+		path[3] == ':';
 }
 
 void onyx_io_wait_quiet(unsigned max_ms)
@@ -153,7 +170,8 @@ int onyx_io_save(const char *path, const void *p, unsigned n)
 	   kernel's, the bytes written or -1) */
 	ok = kapi_save_file(path, p, n) == (int) n;
 #else
-	if (n <= ONYX_IO_PIECE) {
+	if (n <= ONYX_IO_PIECE || onyx_io_is_ram(path)) {
+		/* (RAM: at once -- no card, a copy into the kernel's pages) */
 		/* (kapi_save_file: the bytes written, -1) */
 		ok = kapi_save_file(path, p, n) == (int) n;
 	} else {
@@ -416,7 +434,8 @@ static void oc_write_some(void)
 		}
 		/* (the element's bytes are held: its reference taken at the queueing) */
 		oc_path(path, sizeof path, en->id, elem);
-		onyx_io_wait_quiet(30000);	/* (Onyx: not while the user acts, a page loads) */
+		if (!oc.ram)	/* (Onyx: the card -- not while the user acts, a page loads) */
+			onyx_io_wait_quiet(30000);
 		{
 			/* (Onyx: paced -- and kapi_save_file answers the bytes written: the
 			 * old "== 0" took every write for a failure, nothing was ever read
@@ -467,7 +486,8 @@ static void oc_sweep(void)
 		kapi_unlock(&oc.lk);
 		if (known)
 			continue;
-		onyx_io_wait_quiet(30000);
+		if (!oc.ram)
+			onyx_io_wait_quiet(30000);
 		snprintf(path, sizeof path, "%s/%s", oc.dir, de.name);
 		kapi_remove(path);
 		removed++;
@@ -488,8 +508,10 @@ static int oc_thread(void *arg)
 		oc_write_some();
 		/* the index: a minute after the last time at most (Onyx: was 3 s -- a
 		 * Google page's visit wrote it again and again) */
-		if (oc.index_dirty && kapi_get_ticks() - last_index > OC_INDEX_TICKS) {
-			onyx_io_wait_quiet(30000);
+		if (oc.index_dirty && kapi_get_ticks() - last_index >
+				(oc.ram ? OC_INDEX_TICKS_RAM : OC_INDEX_TICKS)) {
+			if (!oc.ram)
+				onyx_io_wait_quiet(30000);
 			oc_write_index();
 			last_index = kapi_get_ticks();
 		}
@@ -579,8 +601,25 @@ static nserror oc_initialise(const struct llcache_store_parameters *params)
 	n = strlen(oc.dir);
 	while (n > 1 && oc.dir[n - 1] == '/')
 		oc.dir[--n] = '\0';
+	oc.ram = onyx_io_is_ram(oc.dir);
+	{
+		/* (the folder and its parents: "RAM:/jet/cache" -- RAM:/jet first) */
+		size_t i;
+		for (i = 1; i < n; i++)
+			if (oc.dir[i] == '/' && oc.dir[i - 1] != ':' && oc.dir[i - 1] != '/') {
+				oc.dir[i] = '\0';
+				kapi_mkdir(oc.dir);
+				oc.dir[i] = '/';
+			}
+	}
 	kapi_mkdir(oc.dir);
 	oc.limit = params != NULL && params->limit != 0 ? params->limit : 64u << 20;
+	if (oc.ram) {
+		/* (Onyx: at most half the RAM volume -- the code cache, the others, share it) */
+		struct kapi_vol_info vi;
+		if (kapi_vol_info(oc.dir, &vi) == 0 && vi.total > 0 && oc.limit > vi.total / 2)
+			oc.limit = (size_t) (vi.total / 2);
+	}
 	oc.hysteresis = params != NULL ? params->hysteresis : oc.limit / 5;
 	if (oc.hysteresis >= oc.limit)
 		oc.hysteresis = oc.limit / 5;
@@ -600,8 +639,8 @@ static nserror oc_initialise(const struct llcache_store_parameters *params)
 	}
 	oc.up = true;
 	if (onyx_perf_on())
-		fprintf(stderr, "ONYX-PERF cache:open %s: %u objects, %lu KB (limit %lu KB)\n",
-				oc.dir, oc.count, (unsigned long) (oc.total / 1024),
+		fprintf(stderr, "ONYX-PERF cache:open %s%s: %u objects, %lu KB (limit %lu KB)\n",
+				oc.dir, oc.ram ? " (RAM)" : "", oc.count, (unsigned long) (oc.total / 1024),
 				(unsigned long) (oc.limit / 1024));
 	return NSERROR_OK;
 }
@@ -652,8 +691,10 @@ static nserror oc_store(nsurl *url, enum backing_store_flags flags, uint8_t *dat
 		char kb[4096];
 		uint32_t h = oc_key_hash(oc_key(url, kb, sizeof kb));
 		int sn = oc_seen(h);
-		if (datalen > OC_MAX_OBJECT || sn != 1) {
-			if (sn < 0) {
+		if (oc.ram && datalen <= OC_MAX_OBJECT_RAM) {
+			/* (RAM: the first time -- no card to spare) */
+		} else if (datalen > (oc.ram ? OC_MAX_OBJECT_RAM : OC_MAX_OBJECT) || sn != 1) {
+			if (sn < 0 && !oc.ram) {
 				oc_seen_add(h, false);
 				oc.index_dirty = true;
 			}
