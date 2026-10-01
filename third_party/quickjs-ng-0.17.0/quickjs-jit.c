@@ -169,7 +169,8 @@ static JSValue *jh_step(JitFrame *jf, JSValue *sp, uint32_t pos)
     rt->jit_steps = &st;
     sf->cur_sp = sp;
     sf->cur_pc = st.copy;
-    r = JS_CallInternal(jf->caller_ctx, JS_UNDEFINED, jf->this_obj, jf->new_target,
+    /* (the function too: OP_init_ctor reads it) */
+    r = JS_CallInternal(jf->caller_ctx, sf->cur_func, jf->this_obj, jf->new_target,
                         jf->argc, jf->argv, JS_CALL_FLAG_JIT_STEP);
     rt->jit_steps = st.prev;
     if (likely(JS_VALUE_GET_TAG(r) == JS_TAG_CATCH_OFFSET)) {
