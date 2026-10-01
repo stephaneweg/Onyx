@@ -33,103 +33,22 @@ struct redraw_context;
 struct cookie_data;
 struct rect;
 
-/**
- * Initialise the cookie manager.
- *
- * This iterates through the URL database, enumerating the cookies and
- * creates a treeview.
- *
- * This must be called before any other cookie_manager_* function.
- *
- * \param core_window_handle The core_window in which the cookie view is shown
- * \return NSERROR_OK on success, appropriate error otherwise
+/*
+ * Onyx: cookie_manager.c (NetSurf's cookie manager tree view) is removed. It was never
+ * initialised, so these always returned at once: they stay no-ops so urldb.c's call sites
+ * keep their upstream shape. The cookies themselves are urldb's.
  */
-nserror cookie_manager_init(void *core_window_handle);
+struct cookie_data;
 
-/**
- * Finalise the cookie manager.
- *
- * This destroys the cookie manager treeview and the cookie manager module's
- * internal data.  After calling this if the cookie manager is required again,
- * cookie_manager_init must be called.
- *
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror cookie_manager_fini(void);
+static inline bool cookie_manager_add(const struct cookie_data *data)
+{
+	(void)data;
+	return true;
+}
 
-/**
- * Add/update a cookie to the viewer. (Called by urldb.)
- *
- * \param data		Data of cookie being added/updated.
- * \return true (for urldb_iterate_entries)
- */
-bool cookie_manager_add(const struct cookie_data *data);
-
-/**
- * Remove a cookie from viewer. (Called by urldb.)
- *
- * \param data Data of cookie being removed.
- */
-void cookie_manager_remove(const struct cookie_data *data);
-
-/**
- * Set the cookie manager search string.
- *
- * \param string  Sering to set as search string.
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror cookie_manager_set_search_string(
-		const char *string);
-
-/**
- * Redraw the cookies manager.
- *
- * \param x	X coordinate to render treeview at
- * \param y     Y coordinate to render treeview at
- * \param clip  Current clip rectangle (wrt tree origin)
- * \param ctx	Current redraw context
- */
-void cookie_manager_redraw(int x, int y, struct rect *clip,
-		const struct redraw_context *ctx);
-
-/**
- * Handles all kinds of mouse action
- *
- * \param mouse		The current mouse state
- * \param x		X coordinate
- * \param y		Y coordinate
- */
-void cookie_manager_mouse_action(enum browser_mouse_state mouse, int x, int y);
-
-/**
- * Key press handling.
- *
- * \param key		The ucs4 character codepoint
- * \return true if the keypress is dealt with, false otherwise.
- */
-bool cookie_manager_keypress(uint32_t key);
-
-/**
- * Determine whether there is a selection
- *
- * \return true iff there is a selection
- */
-bool cookie_manager_has_selection(void);
-
-/**
- * Expand the treeview's nodes
- *
- * \param only_folders	Iff true, only folders are expanded.
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror cookie_manager_expand(bool only_folders);
-
-/**
- * Contract the treeview's nodes
- *
- * \param all		Iff false, only entries are contracted.
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror cookie_manager_contract(bool all);
+static inline void cookie_manager_remove(const struct cookie_data *data)
+{
+	(void)data;
+}
 
 #endif

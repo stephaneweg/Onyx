@@ -95,7 +95,7 @@ W3_SRC := $(wildcard $(W3)/src/*.c)
 CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) $(wildcard $(NS)/utils/nsurl/*.c) \
   $(wildcard $(NS)/content/*.c) \
-  $(filter-out %/curl.c,$(wildcard $(NS)/content/fetchers/*.c)) \
+  $(wildcard $(NS)/content/fetchers/*.c) \
   $(wildcard $(NS)/content/fetchers/about/*.c) $(wildcard $(NS)/content/fetchers/file/*.c) \
   $(wildcard $(NS)/desktop/*.c) \
   $(wildcard $(NS)/content/handlers/css/*.c) $(wildcard $(NS)/content/handlers/html/*.c) \
@@ -107,7 +107,6 @@ include $(UN)/netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 ONYX_SRC := $(UN)/onyx_fetch.c $(UN)/onyx_cache.c $(UN)/onyx_ws.c $(UN)/onyx_main.c
 
-GENFONT := $(OUT)/font-ns-sans.c
 FB_IMG := $(NS_FB_IMAGES)
 IMG_C  := $(foreach p,$(FB_IMG),$(OUT)/image-$(word 1,$(subst :, ,$(p))).c)
 
@@ -139,7 +138,7 @@ NGH_SRC := $(wildcard $(NGH)/lib/*.c)
 LIB_ALL := $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
            $(PNG_SRC) $(ZLIB_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) \
            $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
-NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
+NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst $(ROOT)/%,%,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1)))))
 LIB_OBJ  := $(foreach s,$(LIB_ALL),$(call obj,$(s)))
@@ -156,12 +155,6 @@ RES_OBJ  := $(OUT)/o/jet_res.o
 all: $(OUT)/Jet.exe
 
 # ---- code generation (host tools, the build machine's compiler) ------------------------------
-$(OUT)/tools/convert_font: $(NS)/tools/convert_font.c
-	@mkdir -p $(dir $@)
-	$(BUILD_CC) -O2 -o $@ $<
-$(GENFONT) $(OUT)/font-ns-sans.h: $(OUT)/tools/convert_font $(FB)/res/fonts/glyph_data
-	@mkdir -p $(OUT)
-	$(OUT)/tools/convert_font -H $(OUT)/font-ns-sans.h $(FB)/res/fonts/glyph_data $(GENFONT)
 $(OUT)/tools/convert_image: $(NS)/tools/convert_image.c
 	@mkdir -p $(dir $@)
 	$(BUILD_CC) -O2 -I$(FB) -o $@ $< -lpng
@@ -247,7 +240,7 @@ endef
 $(foreach s,$(NSFB_SRC),$(eval $(call NSFB_RULE,$(s))))
 
 define NS_RULE
-$(call obj,$(1)): $(1) $(OUT)/font-ns-sans.h $(OUT)/hostinc/curl/curl.h
+$(call obj,$(1)): $(1) $(OUT)/hostinc/curl/curl.h
 	@mkdir -p $(OUT)/o
 	@echo "  CC $(notdir $(1))"
 	@$$(CC) $$(NS_CF) $$(NS_INC) -c $$< -o $$@
