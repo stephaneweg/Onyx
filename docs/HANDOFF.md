@@ -1330,7 +1330,7 @@ keys (Cmd, dead keys), resizing / full screen, the trackpad's scrolling, drop / 
 
 **Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (wtk's new `lang.h`, docs/03 *An app
 in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + wtk's own
-`sdcard/res/lang/fr.txt`; EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
+`sdcard/res/lang/fr.txt` (in the `onyx` package); EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
 Pi binary rebuilt (`sdcard/apps/ledger.app/main`, Arm GNU 13.3); the other apps not restaged (their old
 wtk has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
 To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Writer's own words.
