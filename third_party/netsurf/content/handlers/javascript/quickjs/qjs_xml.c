@@ -198,6 +198,10 @@ static JSValue dstr_js(JSContext *ctx, dom_string *s)
 static JSValue n_xml_flat(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
 	dom_node *root = argc > 0 ? qjs_node_of(argv[0]) : NULL;
+	/* (the nodes' wrappers: all of them, or only find's -- xmlWrap makes the others a
+	 * result needs: a transform of a big document wraps none) */
+	bool wrap_all = argc > 1 && JS_ToBool(ctx, argv[1]);
+	dom_node *find = argc > 2 ? qjs_node_of(argv[2]) : NULL;
 	JSValue arr;
 	uint32_t k = 0;
 	struct flat_level { dom_node *n; int32_t rec; } *stack = NULL;
@@ -217,7 +221,8 @@ static JSValue n_xml_flat(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 
 		dom_node_get_node_type(n, &t);
 		JS_SetPropertyUint32(ctx, arr, k++, JS_NewInt32(ctx, t));
-		JS_SetPropertyUint32(ctx, arr, k++, qjs_wrap_node(ctx, n));
+		JS_SetPropertyUint32(ctx, arr, k++, wrap_all || n == find ? qjs_wrap_node(ctx, n) :
+				JS_NULL);
 		JS_SetPropertyUint32(ctx, arr, k++, JS_NewInt32(ctx, parent));
 		if (t == DOM_ELEMENT_NODE) {
 			dom_string *ln = NULL, *ns = NULL, *px = NULL;
@@ -319,8 +324,109 @@ static JSValue n_xml_flat(JSContext *ctx, JSValueConst this_val, int argc, JSVal
 	return arr;
 }
 
+/**
+ * xmlWrap(root, indices) -> the nodes of those records of xmlFlat(root) (indices ascending;
+ * an attribute's record: null) -- the walk xmlFlat makes, counting the attributes
+ */
+static JSValue n_xml_wrap(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_node *root = argc > 0 ? qjs_node_of(argv[0]) : NULL;
+	JSValue out, len_v;
+	uint32_t want_n = 0, wi = 0, rec = 0;
+	int64_t want;
+	dom_node **stack = NULL;
+	int depth = 0, cap = 0;
+	dom_node *n;
+
+	(void) this_val;
+	if (root == NULL || argc < 2)
+		return JS_NULL;
+	len_v = JS_GetPropertyStr(ctx, argv[1], "length");
+	JS_ToUint32(ctx, &want_n, len_v);
+	JS_FreeValue(ctx, len_v);
+	out = JS_NewArray(ctx);
+	if (want_n == 0)
+		return out;
+#define NEXT_WANT() do { JSValue v_ = JS_GetPropertyUint32(ctx, argv[1], wi); \
+		if (JS_ToInt64(ctx, &want, v_) != 0) want = -1; JS_FreeValue(ctx, v_); } while (0)
+	NEXT_WANT();
+	n = dom_node_ref(root);
+	while (n != NULL && wi < want_n) {
+		dom_node_type t = 0;
+		dom_node *next = NULL;
+
+		dom_node_get_node_type(n, &t);
+		while (wi < want_n && want == (int64_t) rec) {
+			JS_SetPropertyUint32(ctx, out, wi++, qjs_wrap_node(ctx, n));
+			if (wi < want_n)
+				NEXT_WANT();
+		}
+		rec++;
+		if (t == DOM_ELEMENT_NODE) {
+			dom_namednodemap *attrs = NULL;
+			uint32_t na = 0;
+			if (dom_node_get_attributes(n, &attrs) == DOM_NO_ERR && attrs != NULL) {
+				dom_namednodemap_get_length(attrs, &na);
+				dom_namednodemap_unref(attrs);
+			}
+			while (wi < want_n && want >= (int64_t) rec && want < (int64_t) (rec + na)) {
+				JS_SetPropertyUint32(ctx, out, wi++, JS_NULL);
+				if (wi < want_n)
+					NEXT_WANT();
+			}
+			rec += na;
+		}
+		if (t == DOM_ELEMENT_NODE || t == DOM_DOCUMENT_NODE ||
+		    t == DOM_DOCUMENT_FRAGMENT_NODE)
+			dom_node_get_first_child(n, &next);
+		if (next != NULL) {
+			if (depth == cap) {
+				int nc = cap ? cap * 2 : 32;
+				dom_node **s2 = realloc(stack, nc * sizeof(*stack));
+				if (s2 == NULL) {
+					dom_node_unref(next);
+					dom_node_unref(n);
+					n = NULL;
+					break;
+				}
+				stack = s2;
+				cap = nc;
+			}
+			stack[depth++] = n;
+			n = next;
+			continue;
+		}
+		for (;;) {
+			if (n == root) {
+				dom_node_unref(n);
+				n = NULL;
+				break;
+			}
+			dom_node_get_next_sibling(n, &next);
+			dom_node_unref(n);
+			if (next != NULL) {
+				n = next;
+				break;
+			}
+			if (depth == 0) {
+				n = NULL;
+				break;
+			}
+			n = stack[--depth];
+		}
+	}
+#undef NEXT_WANT
+	if (n != NULL)
+		dom_node_unref(n);
+	while (depth > 0)
+		dom_node_unref(stack[--depth]);
+	free(stack);
+	return out;
+}
+
 static const JSCFunctionListEntry qjs_xml_fns[] = {
-	JS_CFUNC_DEF("xmlFlat", 1, n_xml_flat),
+	JS_CFUNC_DEF("xmlFlat", 3, n_xml_flat),
+	JS_CFUNC_DEF("xmlWrap", 2, n_xml_wrap),
 	JS_CFUNC_DEF("parseXML", 2, n_parse_xml),
 	JS_CFUNC_DEF("docKind", 1, n_doc_kind),
 	JS_CFUNC_DEF("setDocKind", 2, n_set_doc_kind),

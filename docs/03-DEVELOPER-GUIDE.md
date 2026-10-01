@@ -2013,7 +2013,7 @@ CSS3 painting, the native window: [`06-JET-BROWSER.md`](06-JET-BROWSER.md) lists
 changes. The network (docs/06 §24) links two more vendored libraries, built by
 `make -C user/netsurf` like the others: `third_party/zstd-1.5.7` (the decompressor only,
 `libzstddec.a`) and `third_party/nghttp2-1.70.0` (`libnghttp2.a`, its `config.h` written by
-hand for newlib); the disk cache is `user/netsurf/onyx_cache.c`. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
+hand for newlib); expat (`third_party/expat-2.7.1`, `libexpat.a`: the XML documents, docs/06 §43); the disk cache is `user/netsurf/onyx_cache.c`. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
 <out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
 `sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium. The
 scripts' engine is QuickJS (`third_party/quickjs-ng-0.17.0`, `libquickjs.a`), with

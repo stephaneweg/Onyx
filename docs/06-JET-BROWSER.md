@@ -4014,7 +4014,7 @@ Once parsed, by its root element's namespace and its prolog's `<?xml-stylesheet?
   "This page contains the following errors: error on line 6 at column 18: mismatched tag /
   Below is a rendering of the page up to the first error." (`onyx_xml_error_banner`, a
   `<parsererror>` in the XHTML namespace with Chrome's style) -- above XHTML's page so far, above
-  the tree view of the rest; DOMParser's documents get the same `<parsererror>`.
+  the tree view of the rest; DOMParser's malformed document is the DOM Parsing standard's (as Firefox): emptied, its root a `<parsererror>` with the message, line and column.
 
 A frame's `contentDocument` is the document shown: the XHTML / SVG / XML + CSS document itself,
 the XSLT's result, the tree view's page (Chrome gives the XML document there: a script reading a
@@ -4116,6 +4116,28 @@ call-template, parameters, keys, number, element / attribute, copy-of, prioritie
 at the top, by their scripts' lines and their colours in the screenshot: `page.xhtml`,
 `bad.xhtml`, `data.xml`, `styled.xml`, `pic.svg`, `catalog.xml` (XSLT, html output), `list.xml`
 (XSLT, an XHTML result with its script).
+
+### The cost (PC bench, `NS_PERF`)
+
+A 2.2 MB XML file (20 000 records, ~200 000 nodes): expat's parse is not what counts; its tree
+view takes 1.1 s to make and parse (`xml:tree view`) and 1.3 s to lay out (NetSurf's layout of
+~100 000 lines); its XSLT (a `count(//book[price > 50])`, a sorted `for-each` of 2000 rows) 0.93 s
+(`xml:xslt`: the data model 0.47 s -- `N.xmlFlat` wraps no DOM node, a result's nodes are
+wrapped in one more walk, `N.xmlWrap` --, the transform 0.44 s), its page laid out in 14 ms; a
+`document.evaluate("count(//td)")` on the 4000-cell result 28 ms. Count 5-10x on the Pi. No
+step is quadratic: a node-set from one context node needs no sort, `//x[...]` (a predicate that
+is no number and asks no `position()`) is one descendant step, the templates are indexed by
+name, `key()` by value once a tree.
+
+### The Pi (not built here)
+
+Expat is a new library: `make -C user/netsurf` builds `third_party/expat-2.7.1/libexpat.a`
+(`netsurf-app.mk` links `-lexpat`, compiles `qjs_xml.c` and makes `qjsgen/qjs_xslt_js.h` from
+`xslt.js`). **libdom changed** (`struct dom_html_document`'s new field in
+`src/html/html_document.h`, two functions in `include/dom/html/html_document.h`, `element.c`'s
+attribute prefix): rebuild `libdom.a` clean (delete its `.o`). PlutoSVG changed (the processing
+instructions): rebuild `libplutosvg.a`. Then `netsurf-app.mk link stage`. Windows
+(`pc/Jet/jet.mk`) compiles expat with the rest.
 
 ### Not done
 

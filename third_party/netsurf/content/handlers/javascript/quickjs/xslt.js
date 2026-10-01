@@ -69,16 +69,17 @@ class XNode {
 function newTree() { ORD += TREE_GAP; }
 
 /** the tree of a DOM node (its whole tree: the document, or a detached subtree's top) */
-function snapshot(dom, wantMap) {
+/* (the DOM nodes are not wrapped here -- a transform of a big document needs none: only the
+ * node looked for, find, and later a result's: domOf) */
+function snapshot(dom, find) {
 	let top = dom;
 	for (let p; (p = N.parent(top));) top = p;
 	newTree();
-	const f = N.xmlFlat(top);
+	const f = N.xmlFlat(top, false, find || null);
 	const odoc = N.type(top) === 9 ? top : N.ownerDoc(top);
 	const htmlDoc = !!odoc && N.docKind(odoc) === 0;
 	const recs = new Array(f.length / 7);
-	const map = wantMap ? new Map() : null;
-	let root = null;
+	let root = null, found = null;
 	for (let i = 0, r = 0; i < f.length; i += 7, r++) {
 		let t = f[i];
 		const pi = f[i + 2];
@@ -87,7 +88,7 @@ function snapshot(dom, wantMap) {
 		if (t === 4) t = TEXT;
 		if (t === 11) t = ROOT;
 		const n = new XNode(t, parent);
-		n.d = f[i + 1]; n.ln = f[i + 3]; n.ns = f[i + 4]; n.px = f[i + 5]; n.v = f[i + 6];
+		n.d = f[i + 1]; n.ri = r; n.ln = f[i + 3]; n.ns = f[i + 4]; n.px = f[i + 5]; n.v = f[i + 6];
 		if (htmlDoc && t === ELEMENT && (n.ns === null || n.ns === NS_HTML)) {
 			/* (an HTML document's element: libdom names it in upper case) */
 			n.ln = n.ln.toLowerCase();
@@ -105,7 +106,7 @@ function snapshot(dom, wantMap) {
 		} else if (parent) {
 			(parent.c || (parent.c = [])).push(n);
 		}
-		if (map && n.d) map.set(n.d, n);
+		if (n.d) found = n;
 	}
 	if (root && root.t !== ROOT) {
 		/* (a detached subtree: under a root of its own, as XPath sees it) */
@@ -119,7 +120,7 @@ function snapshot(dom, wantMap) {
 		root.html = htmlDoc;
 		root.dom = top;
 	}
-	return { root, map };
+	return { root, found };
 }
 
 function rootOf(n) { while (n.p) n = n.p; return n; }
@@ -383,8 +384,9 @@ class Parser {
 			first = false;
 			const st = this.step();
 			if (desc) {
-				/* "//x" (no predicate): descendant::x; else descendant-or-self::node()/x */
-				if (st.axis === 'child' && !st.preds.length) st.axis = 'descendant';
+				/* "//x" (no positional predicate): descendant::x; else
+				 * descendant-or-self::node()/x */
+				if (st.axis === 'child' && st.preds.every(notPositional)) st.axis = 'descendant';
 				else if (st.axis === 'attribute' && !st.preds.length) {
 					steps.push({ axis: 'descendant-or-self', test: { type: 'node' }, preds: [] });
 				} else steps.push({ axis: 'descendant-or-self', test: { type: 'node' }, preds: [] });
@@ -422,6 +424,24 @@ class Parser {
 		}
 		return { axis, test, preds: this.predicates() };
 	}
+}
+
+/** a predicate whose value is no number and that asks no position: the same for a node
+ *  whichever list it is in ("//x[@a='1']" is "descendant::x[@a='1']") */
+const BOOL_FNS = new Set(['not', 'boolean', 'true', 'false', 'contains', 'starts-with', 'lang']);
+function usesPosition(e) {
+	if (!e || typeof e !== 'object') return false;
+	if (e.k === 'fn' && !e.q.ns && (e.name === 'position' || e.name === 'last')) return true;
+	if (e.k === 'path' || e.k === 'filter') return usesPosition(e.e);	/* (a path's own steps: their context) */
+	for (const k of ['a', 'b']) if (e[k] && usesPosition(e[k])) return true;
+	if (e.args) for (const a of e.args) if (usesPosition(a)) return true;
+	if (e.list) for (const a of e.list) if (usesPosition(a)) return true;
+	return false;
+}
+function notPositional(e) {
+	const boolish = ['=', '!=', '<', '>', '<=', '>=', 'and', 'or', 'path', 'union', 'lit'].includes(e.k) ||
+		(e.k === 'fn' && !e.q.ns && BOOL_FNS.has(e.name));
+	return boolish && !usesPosition(e);
 }
 
 function compile(src, resolve) { return new Parser(String(src), resolve).parse(); }
@@ -831,6 +851,30 @@ function resolverOf(r) {
 	return null;
 }
 
+/** the DOM nodes of these XNodes (one walk: N.xmlWrap) */
+function domOf(list) {
+	const byRoot = new Map();
+	for (const n of list) {
+		const x = n.t === ATTRIBUTE ? n.p : n;
+		if (!x || x.d || x.ri === undefined) continue;
+		const r = rootOf(x);
+		if (!r.dom) continue;
+		let l = byRoot.get(r);
+		if (!l) byRoot.set(r, l = []);
+		l.push(x);
+	}
+	for (const [r, l] of byRoot) {
+		l.sort((a, b) => a.ri - b.ri);
+		const idx = [];
+		for (const x of l) if (!idx.length || idx[idx.length - 1] !== x.ri) idx.push(x.ri);
+		const w = N.xmlWrap(r.dom, idx);
+		const m = new Map();
+		idx.forEach((k, i) => m.set(k, w[i]));
+		for (const x of l) x.d = m.get(x.ri) || null;
+	}
+	return list.map(toDom);
+}
+
 /** an XNode back to the DOM (an attribute: its Attr) */
 function toDom(n) {
 	if (n.d) return n.d;
@@ -857,8 +901,8 @@ function evaluate(expr, context, resolver, type) {
 		attrName = context.name;
 		if (!dom) throw new TypeError('evaluate: a detached attribute as the context');
 	}
-	const snap = snapshot(dom, true);
-	let node = snap.map.get(dom);
+	const snap = snapshot(dom, dom);
+	let node = snap.found;
 	if (!node) throw new TypeError('evaluate: the context is not in a tree');
 	if (attrName !== null && node.a) node = node.a.find(a => a.qn === attrName) || node;
 	const v = evalExpr(ast, { node, pos: 1, size: 1, vars: null, fns: null });
@@ -873,7 +917,7 @@ function evaluate(expr, context, resolver, type) {
 	default:
 		if (t < 0 || t > 9) throw new TypeError('evaluate: unknown result type ' + type);
 		if (!isSet(v)) throw new TypeError('evaluate: the result is not a node-set');
-		return { type: t, value: v.map(toDom).filter(x => x) };
+		return { type: t, value: domOf(v).filter(x => x) };
 	}
 }
 
@@ -1079,7 +1123,7 @@ function decimalFormatOf(n) {
  */
 function compileStylesheet(dom, resolve, base) {
 	const ss = new Stylesheet();
-	const snap = snapshot(dom, false);
+	const snap = snapshot(dom, null);
 	ss.root = snap.root;
 	loadSheet(ss, snap.root, resolve, base, 0, []);
 	/* precedence: import order (the imports below the importing sheet) */
@@ -1121,7 +1165,7 @@ function loadSheet(ss, root, resolve, base, depth, seen) {
 			const href = attr(k, 'href');
 			const d = resolve ? resolve(href, base) : null;
 			if (d) {
-				const s2 = snapshot(d, false);
+				const s2 = snapshot(d, null);
 				loadSheet(ss, s2.root, resolve, href, depth + 1, seen);
 				ss.prec++;
 			}
@@ -1137,7 +1181,7 @@ function loadSheet(ss, root, resolve, base, depth, seen) {
 			const href = attr(k, 'href');
 			const d = resolve ? resolve(href, base) : null;
 			if (d) {
-				const s2 = snapshot(d, false);
+				const s2 = snapshot(d, null);
 				stripStyleWhitespace(s2.root, false);
 				const t2 = (s2.root.c || []).find(c => c.t === ELEMENT);
 				if (t2 && t2.c) {
@@ -2136,14 +2180,13 @@ function paramKey(ns, local) { return (ns ? '{' + ns + '}' : '') + local; }
 function paramValue(v) {
 	if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') return v;
 	if (v && N.type(v)) {
-		const s = snapshot(v, true);
-		const n = s.map.get(v);
+		const n = snapshot(v, v).found;
 		return n ? [n] : [];
 	}
 	if (v && typeof v.length === 'number') {
 		const out = [];
 		for (const x of Array.from(v)) {
-			if (x && N.type(x)) { const s = snapshot(x, true); const n = s.map.get(x); if (n) out.push(n); }
+			if (x && N.type(x)) { const n = snapshot(x, x).found; if (n) out.push(n); }
 		}
 		return docOrder(out);
 	}
@@ -2154,8 +2197,8 @@ function paramValue(v) {
  * transform(stylesheet, sourceDomNode, params) -> {method, out (the result tree), ss}
  */
 function transform(ss, source, params) {
-	const snap = snapshot(source, true);
-	const node = snap.map.get(source) || snap.root;
+	const snap = snapshot(source, source);
+	const node = snap.found || snap.root;
 	stripSource(ss, snap.root);
 	const p = new Map();
 	if (params) for (const [k, v] of params) p.set(k, paramValue(v));

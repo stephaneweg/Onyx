@@ -1343,10 +1343,12 @@ static nserror html_onyx_tree_view(html_content *c, const char *message)
 		line = -1;
 	else if (!onyx_xml_parser_error(c->xml_parser, &line, &col, &msg))
 		line = 0;
+	uint64_t t0 = onyx_perf_now();
 	src = onyx_xml_tree_view(c->document, &len, line, col, msg != NULL ? msg : "");
 	if (src == NULL)
 		return NSERROR_NOMEM;
 	e = html_onyx_reparse(c, src, len, false);
+	onyx_perf_log("xml:tree view", t0);
 	free(src);
 	c->xml_mode = 2;
 	return e;
@@ -1365,9 +1367,12 @@ static void html_onyx_xslt_apply(html_content *c)
 		msg_data.jsthread = &c->jsthread;
 		content_broadcast(&c->base, CONTENT_MSG_GETTHREAD, &msg_data);
 	}
-	if (c->jsthread != NULL)
+	if (c->jsthread != NULL) {
+		uint64_t t0 = onyx_perf_now();
 		e = js_xslt_transform(c->jsthread, c->document, c->xslt_text, c->xslt_len,
 				nsurl_access(c->xslt_url), &out, &out_len, method, sizeof(method));
+		onyx_perf_log("xml:xslt", t0);
+	}
 	/* (the realm made for the transform goes: the result is another document) */
 	if (c->jsthread != NULL) {
 		js_destroythread(c->jsthread);
