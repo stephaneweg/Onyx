@@ -26,7 +26,7 @@
 //   exit                 the process ends here (what follows the app's loop never runs)
 // SIM_POS="x,y": the window's outer top-left (else centred); SIM_ARGS: the app's arguments;
 // SIM_SD: the SD card's directory (default sdcard), only read; SIM_WRITES: where what the apps
-// save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: a directory whose files are read
+// save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: directories ("a:b") whose files are read
 // instead of the card's (sample data: tools/tests/desktop_sim/sd); SIM_PIPE: what a spawned
 // program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
@@ -115,8 +115,14 @@ static std::string sdpath (const char *p)
 	bool onCard = stat (card.c_str (), &cs) == 0;
 	if (stat ((writes () + "/" + s).c_str (), &st) == 0 && (S_ISREG (st.st_mode) || !onCard))	// (a folder of
 		return writes () + "/" + s;						// the card's: the card's)
-	const char *ov = getenv ("SIM_OVERLAY");			// (sample files, not folders: looked for there next)
-	if (ov && stat ((std::string (ov) + "/" + s).c_str (), &st) == 0 && S_ISREG (st.st_mode)) return std::string (ov) + "/" + s;
+	const char *ov = getenv ("SIM_OVERLAY");			// (sample files, not folders: looked for there next;
+	for (std::string dirs = ov ? ov : ""; !dirs.empty (); )	// "a:b": in a, then in b)
+	{
+		size_t colon = dirs.find (':');
+		std::string dir = dirs.substr (0, colon), f = dir + "/" + s;
+		if (!dir.empty () && stat (f.c_str (), &st) == 0 && S_ISREG (st.st_mode)) return f;
+		dirs = colon == std::string::npos ? "" : dirs.substr (colon + 1);
+	}
 	return card;
 }
 static std::string wpath (const char *p)				// where a write goes (its folders made)

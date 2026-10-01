@@ -106,8 +106,16 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 	Canvas cv; cv.adopt (fb, W, H);
 	// one continuous gradient: the title bar lighter, the borders going on from it (no line
 	// between them)
-	wk_rbox (cv, 0, 0, W, T, 0, wk_tone (fc, 166), wk_tone (fc, 134));		// the title bar
-	wk_rbox (cv, 0, T, W, H - T, 0, wk_tone (fc, 133), wk_tone (fc, 112));	// the borders
+	if (WK_STYLE == WK_STYLE_MILK)					// (Milk: a brighter top, flat borders)
+	{
+		wk_rbox (cv, 0, 0, W, T, 0, wk_tone (fc, 204), wk_tone (fc, 122));
+		wk_rbox (cv, 0, T, W, H - T, 0, wk_tone (fc, 121), wk_tone (fc, 114));
+	}
+	else
+	{
+		wk_rbox (cv, 0, 0, W, T, 0, wk_tone (fc, 166), wk_tone (fc, 134));	// the title bar
+		wk_rbox (cv, 0, T, W, H - T, 0, wk_tone (fc, 133), wk_tone (fc, 112));	// the borders
+	}
 	wk_rline (cv, 0, 0, W, H, R, wk_tone (fc, 70), 170);				// the edge
 	if (WK_OUTLINE) wk_rline (cv, 0, 0, W, H, R, WK_OUTLINE == 2 ? 0 : wk_tone (fc, 28), 255);
 	for (int i = R; i < W - R; i++) { unsigned *p = fb + W + i; *p = wk_over (*p, 0x00FFFFFF, 110); }	// the top light
@@ -122,6 +130,19 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 		int bx = b == KAPI_FRAME_MENU ? KAPI_FRAME_BTN_EDGE
 		       : W - KAPI_FRAME_BTN_EDGE - bw - (b == KAPI_FRAME_CLOSE ? 0 : b == KAPI_FRAME_MAXIMISE ? 1 : 2) * KAPI_FRAME_BTN_STEP;
 		if (bx < 0) continue;
+		if (WK_STYLE == WK_STYLE_MILK)				// Milk: OS X's beads (greyed: behind, or
+		{							// a button the window cannot use)
+			const int d = 14;
+			int cx = bx + bw / 2, cy = T / 2;
+			bool off = !active || (b == KAPI_FRAME_MAXIMISE && !(s_winFlags & WK_WIN_RESIZABLE))
+				   || (b == KAPI_FRAME_MENU && !(s_winFlags & WK_WIN_MENU));
+			unsigned c = off ? 0x00C2C3C8
+				   : b == KAPI_FRAME_CLOSE ? 0x00E8564E : b == KAPI_FRAME_MINIMISE ? 0x00F0B43A
+				   : b == KAPI_FRAME_MAXIMISE ? 0x004CB653 : 0x009AA8BA;
+			wk_bead (cv, cx - d / 2, cy - d / 2, d, c);
+			if (b == KAPI_FRAME_MENU) wk_glyph (cv, WKG_MENU, cx, cy, 8, wk_tone (c, 34));	// (its bar)
+			continue;
+		}
 		wk_rbox (cv, bx, by, bw, bh, 5, wk_tone (fc, 176), wk_tone (fc, 120), 235);
 		wk_rline (cv, bx, by, bw, bh, 5, wk_tone (fc, 64), 150);
 		for (int i = bx + 4; i < bx + bw - 4; i++) { unsigned *p = fb + (by + 1) * W + i; *p = wk_over (*p, 0x00FFFFFF, 80); }
@@ -183,7 +204,8 @@ void wk_decorate_window ()
 							// this; Root apps init () too -- idempotent)
 	struct kapi_chrome c;
 	if (!kapi_get_chrome (&c) || c.active == 0) return;	// no window / borderless
-	unsigned sig = C_FRAME_ACTIVE * 31u + C_FRAME_INACTIVE * 7u + (unsigned) WK_OUTLINE * 3u + (unsigned) s_winFlags;
+	unsigned sig = C_FRAME_ACTIVE * 31u + C_FRAME_INACTIVE * 7u + (unsigned) WK_OUTLINE * 3u + (unsigned) s_winFlags
+		       + (unsigned) WK_STYLE * 101u;
 	for (int i = 0; c.title[i]; i++) sig = sig * 33u + (unsigned char) c.title[i];
 	if (c.chrome_w == s_w && c.chrome_h == s_h && sig == s_sig) return;
 	s_w = c.chrome_w; s_h = c.chrome_h; s_sig = sig;

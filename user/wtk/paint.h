@@ -104,6 +104,10 @@ unsigned wk_hilite_ink (bool strong = true);
 // A small window-like title strip (a dialog's): the active frame's colour, a gradient, its text
 // bold and centred.
 void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int r = 0);
+// A glossy bead d x d at (x, y) in colour c (the Milk theme's title buttons, as OS X's): a sphere
+// of gel -- darker at the top, lit at the bottom, a white gloss over its upper half, a dark rim;
+// anti-aliased over what the canvas holds.
+void wk_bead (Canvas &cv, int x, int y, int d, unsigned c);
 
 // ---- glyphs -----------------------------------------------------------------------------------------
 enum { WKG_CHECK, WKG_UP, WKG_DOWN, WKG_LEFT, WKG_RIGHT, WKG_CLOSE, WKG_MIN, WKG_MAX, WKG_MENU,

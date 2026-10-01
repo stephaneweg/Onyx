@@ -390,7 +390,9 @@ answer in French. The docs stay in English.
   (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
   Terminal, File Viewer, Trash) instead of the Shelf and the panel, the see-through agenda, the
   menu bar restyled (its time opens a calendar), the **lock** screen, the **Theme** app
-  rewritten, every app's hard-coded dark colours converted.
+  rewritten, every app's hard-coded dark colours converted. Then (2026-10-01) a sixth theme,
+  **Milk** (Xfce's Milk / Mac OS X: soft greys, the title buttons as coloured beads, `WK_STYLE`,
+  `wk_bead`), chosen in the Theme app like the others.
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,

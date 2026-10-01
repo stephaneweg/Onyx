@@ -314,6 +314,15 @@ if want clipboard; then			# (the shared clipboard's widget over the desktop: cli
 	sim clipboard clipboard "wait;wait;wait;move 200 260;$W" SIM_IPC=1
 	scene clipboard "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm" "$OUT/clipboard.elsm"
 fi
+if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)
+	M=SIM_OVERLAY=$D/milk:$D/sd
+	sim agenda m_agenda "$W" $M
+	sim calendar m_cal "wait;down 196 199;up 196 199;$W" $M SIM_POS=30,236 SIM_INACTIVE=1
+	sim widgets m_widgets "$W" $M SIM_POS=336,172
+	sim dock m_dock "wait;wait;$W" $M SIM_RUNNING=calendar,widgets SIM_WINS="30,236,400,352,0,0;336,172,668,472,0,1"
+	sim menubar m_bar "$W" $M SIM_MENU='widgets|'
+	scene milk "$OUT/m_agenda.elsm" "$OUT/m_cal.elsm" "$OUT/m_widgets.elsm" "$OUT/m_dock.elsm" "$OUT/m_bar.elsm"
+fi
 if want setup; then			# (Setup, the first-run wizard: its pages over the wallpaper -- "--demo <page>[b|c]"
 					#  opens a page in a given state, writing nothing; a Full HD monitor, SIM_NATIVE)
 	for d in 0 1 2 2b 2c 3 3b 4 5 6; do
