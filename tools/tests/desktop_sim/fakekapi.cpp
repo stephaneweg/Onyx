@@ -508,7 +508,14 @@ static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1,
 static void *h_sbrk (long n) { static char *arena = (char *) malloc (512u << 20), *top = arena; char *p = top; top += n; return p; }
 static int pad_state (int, struct kapi_pad *) { return 0; }
 static unsigned get_mods (void) { return g_mods; }
-static int launch (const char *n) { fprintf (stderr, "sim: launch %s\n", n); return 1; }
+static int launch (const char *n)
+{
+	fprintf (stderr, "sim: launch %s\n", n);
+	// (no services without SIM_IPC: clipd cannot come -- clipboard.h falls back at once to the
+	// kernel's clipboard instead of waiting a second for it)
+	if (!getenv ("SIM_IPC") && n && !strcmp (n, "clipd")) return 0;
+	return 1;
+}
 static int raise_app (const char *n) { fprintf (stderr, "sim: raise_app %s\n", n); return 0; }
 static int exec (const char *p, const char *a) { fprintf (stderr, "sim: exec %s %s\n", p, a); return 1; }
 static int exec_as (const char *p, const char *a, const char *n) { fprintf (stderr, "sim: exec_as %s %s (%s)\n", p, a, n); return 1; }
