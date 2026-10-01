@@ -120,6 +120,8 @@ static int fd_h () { Root *r = Root::current (); int H = r ? r->height : 300; in
 // The volumes the list shows above a volume root ("..": the SD card's FAT/exFAT partitions).
 #ifdef _WIN32		// (the Windows build of the apps, pc/Koton: SD: is the program's folder, then the PC's drives)
 static const char *const FD_VOLS[] = { "SD:", "C:", "D:", "E:", "F:", "G:", "H:", "I:", "J:", "K:" };
+#elif defined(__APPLE__)	// (the macOS build, pc/macOS: SD: is ~/Documents/Onyx Ledger, HOME: the user's folder, MAC: the Mac's /)
+static const char *const FD_VOLS[] = { "SD:", "HOME:", "MAC:" };
 #else
 static const char *const FD_VOLS[] = { "SD:", "SD1:", "SD2:", "SD3:", "USB:", "USB2:", "USB3:" };
 #endif
