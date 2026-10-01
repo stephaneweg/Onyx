@@ -321,6 +321,9 @@ struct Db
 		for (int i = 1; i < n; i++) for (int j = i; j > 0 && strcmp (v[j - 1]->name, v[j]->name) > 0; j--) { Inst *t = v[j]; v[j] = v[j - 1]; v[j - 1] = t; }
 	}
 	Inst *find (const char *name) const { for (int i = 0; i < n; i++) if (eq (v[i]->name, name)) return v[i]; return 0; }
+	// a file another installed package has (one moved from a package into another: kept when the old one drops it)
+	bool owned_elsewhere (const char *file, const char *self) const
+	{ for (int i = 0; i < n; i++) if (!eq (v[i]->name, self) && v[i]->ini.get ("files", file, 0)) return true; return false; }
 };
 
 // ---- what a job tells its caller ---------------------------------------------------------------------------------
@@ -493,7 +496,9 @@ public:
 	int install (const Pkg &p, Report &r, bool force = false)
 	{
 		Inst *old = db.find (p.name);
-		if (!p.restart && old && !force)
+		// (the package manager updating itself: its programs are loaded whole into memory -- pkgman, pkgd
+		//  running go on with the old ones, the new ones start the next time)
+		if (!p.restart && old && !force && !eq (p.name, "pkgman"))
 		{
 			char app[40];
 			if (running (old->ini, "files", app, sizeof app))
@@ -590,6 +595,7 @@ public:
 			for (int i = 0; i < old->ini.n; i++)
 			{
 				if (!eq (old->ini.kv[i].sec, "files") || now.get ("files", old->ini.kv[i].key, 0)) continue;
+				if (db.owned_elsewhere (old->ini.kv[i].key, name)) continue;
 				char card[300]; snprintf (card, sizeof card, "SD:/%s", old->ini.kv[i].key);
 				char hh[65];
 				if (old->is_config (old->ini.kv[i].key) && sha_file (card, hh) && !eq (hh, old->ini.kv[i].val)) continue;
@@ -695,7 +701,7 @@ public:
 					}
 					if (move (from, to)) moved++;
 				}
-				else if (eq (st.kv[i].sec, "remove")) { char c[300]; snprintf (c, sizeof c, "SD:/%s", f); kapi_remove (c); prune (c); }
+				else if (eq (st.kv[i].sec, "remove") && !db.owned_elsewhere (f, names[k])) { char c[300]; snprintf (c, sizeof c, "SD:/%s", f); kapi_remove (c); prune (c); }
 			}
 			char dbp[200]; snprintf (dbp, sizeof dbp, PKG_DB "/%s.ini", names[k]);
 			move (ip, dbp);
