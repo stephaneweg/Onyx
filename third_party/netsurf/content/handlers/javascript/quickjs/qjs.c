@@ -88,7 +88,8 @@
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 #include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
 #include "javascript/quickjs/qjs_codecache.h"	/* Onyx: the scripts' bytecode on the card */
-#include "javascript/quickjs/qjs_frames.h"	/* Onyx: the frames' windows (qjs_frames.c) */
+#include "javascript/quickjs/qjs_frames.h"
+#include "javascript/quickjs/qjs_xml.h"	/* Onyx: the frames' windows (qjs_frames.c) */
 #include "desktop/frames.h"		/* Onyx: an iframe's load (onyx_frame_loaded) */
 #include "netsurf/onyx_jet.h"		/* Onyx: <a download> (n_download) */
 
@@ -516,6 +517,22 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 			else if (dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_MATHML]))
 				pfx = "math:";
 			dom_string_unref(ns);
+		} else {
+			/* Onyx (docs/06 §43): an XML document's element in no namespace is an
+			 * Element, none of HTML's classes (its <title> is not HTML's) */
+			dom_document *od = NULL;
+			int kind = 0;
+			if (dom_node_get_owner_document(n, &od) == DOM_NO_ERR && od != NULL) {
+				kind = dom_html_document_get_xml_kind((dom_html_document *) od);
+				dom_node_unref(od);
+			}
+			if (kind != 0) {
+				JSValue x = JS_GetPropertyStr(t->ctx, t->tag_protos, "*xml");
+				if (JS_IsObject(x))
+					return x;
+				JS_FreeValue(t->ctx, x);
+				return JS_DupValue(t->ctx, t->protos[QP_ELEMENT]);
+			}
 		}
 		if (dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
 			char tag[48];
@@ -4277,6 +4294,22 @@ static JSValue n_setup(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
  * templateContent(n): a template's contents; parseDocument(html): a new document
  * (DOMParser), parsed by the same parser. */
 
+/** Onyx (docs/06 §43): the XML kind of a node's document (0: HTML) */
+static int qjs_doc_kind(dom_node *n)
+{
+	dom_document *od = NULL;
+	dom_node_type t = DOM_ELEMENT_NODE;
+	int kind = 0;
+
+	if (dom_node_get_node_type(n, &t) == DOM_NO_ERR && t == DOM_DOCUMENT_NODE)
+		return dom_html_document_get_xml_kind((dom_html_document *) n);
+	if (dom_node_get_owner_document(n, &od) == DOM_NO_ERR && od != NULL) {
+		kind = dom_html_document_get_xml_kind((dom_html_document *) od);
+		dom_node_unref(od);
+	}
+	return kind;
+}
+
 static bool qjs_is_html_ns(dom_node *n)
 {
 	dom_string *ns = NULL;
@@ -4285,6 +4318,8 @@ static bool qjs_is_html_ns(dom_node *n)
 	r = ns == NULL || dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_HTML]);
 	if (ns != NULL)
 		dom_string_unref(ns);
+	else if (qjs_doc_kind(n) != 0)
+		r = false;	/* (Onyx: an XML document's element in no namespace) */
 	return r;
 }
 
@@ -4298,7 +4333,8 @@ static JSValue n_ns_uri(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		return JS_NULL;
 	dom_node_get_namespace(n, &ns);
 	if (ns == NULL)	/* createElement in an HTML document: the HTML namespace */
-		return JS_NewString(ctx, "http://www.w3.org/1999/xhtml");
+		return qjs_doc_kind(n) != 0 ? JS_NULL :	/* (Onyx: XML's none) */
+			JS_NewString(ctx, "http://www.w3.org/1999/xhtml");
 	return qjs_str(ctx, ns);
 }
 
@@ -4314,6 +4350,15 @@ static JSValue qjs_name_case(JSContext *ctx, dom_node *n, bool upper)
 	if (s == NULL)
 		return JS_NewString(ctx, "");
 	len = dom_string_byte_length(s);
+	if (html && upper) {
+		/* (Onyx, docs/06 §43: an XHTML element of an XML document keeps its case) */
+		dom_document *od = NULL;
+		if (dom_node_get_owner_document(n, &od) == DOM_NO_ERR && od != NULL) {
+			if (dom_html_document_get_xml_kind((dom_html_document *) od) != 0)
+				html = false;
+			dom_node_unref(od);
+		}
+	}
 	if (!html) {
 		v = JS_NewStringLen(ctx, dom_string_data(s), len);
 		dom_string_unref(s);
@@ -5167,6 +5212,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_shadow,	/* Onyx: shadow DOM */
 			sizeof(qjs_natives_shadow) / sizeof(qjs_natives_shadow[0]));
 	qjs_frames_natives(t->ctx, natives);	/* Onyx: the frames' windows (qjs_frames.c) */
+	qjs_xml_natives(t->ctx, natives);	/* Onyx: XML, XPath, XSLT (qjs_xml.c) */
 	qjs_enter(t);
 	uint64_t t_prelude = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
@@ -5649,6 +5695,69 @@ JSValue qjs_wrap_node(JSContext *ctx, struct dom_node *n)
 	if (t == NULL || t->closed)
 		return JS_NULL;
 	return qjs_wrap(t, n);
+}
+
+/* exported interface documented in js.h (Onyx, docs/06 §43) */
+nserror js_xslt_transform(jsthread *t, struct dom_document *doc, const char *xsl,
+		size_t xsl_len, const char *xsl_url, char **out, size_t *out_len, char *method,
+		size_t method_size)
+{
+	JSContext *ctx;
+	JSValue g, fn, args[3], r;
+	nserror e = NSERROR_INVALID;
+
+	*out = NULL;
+	*out_len = 0;
+	if (t == NULL || t->closed || t->ctx == NULL)
+		return NSERROR_BAD_PARAMETER;
+	ctx = t->ctx;
+	g = JS_GetGlobalObject(ctx);
+	fn = JS_GetPropertyStr(ctx, g, "\x01onyx_xslt");	/* (html5.js: hidden) */
+	JS_FreeValue(ctx, g);
+	if (!JS_IsFunction(ctx, fn)) {
+		JS_FreeValue(ctx, fn);
+		return NSERROR_INVALID;
+	}
+	args[0] = qjs_wrap(t, (dom_node *) doc);
+	args[1] = JS_NewStringLen(ctx, xsl, xsl_len);
+	args[2] = JS_NewString(ctx, xsl_url != NULL ? xsl_url : "");
+	qjs_enter(t);
+	r = JS_Call(ctx, fn, JS_UNDEFINED, 3, (JSValueConst *) args);
+	if (JS_IsException(r)) {
+		qjs_report(ctx, "XSLT");
+		r = JS_UNDEFINED;
+	}
+	qjs_leave(t);
+	if (JS_IsArray(r)) {
+		JSValue m = JS_GetPropertyUint32(ctx, r, 0), x = JS_GetPropertyUint32(ctx, r, 1);
+		const char *ms = JS_ToCString(ctx, m);
+		size_t n = 0;
+		const char *xs = JS_ToCStringLen(ctx, &n, x);
+		if (ms != NULL && xs != NULL) {
+			snprintf(method, method_size, "%s", ms);
+			*out = malloc(n + 1);
+			if (*out != NULL) {
+				memcpy(*out, xs, n);
+				(*out)[n] = '\0';
+				*out_len = n;
+				e = NSERROR_OK;
+			} else {
+				e = NSERROR_NOMEM;
+			}
+		}
+		if (ms != NULL)
+			JS_FreeCString(ctx, ms);
+		if (xs != NULL)
+			JS_FreeCString(ctx, xs);
+		JS_FreeValue(ctx, m);
+		JS_FreeValue(ctx, x);
+	}
+	JS_FreeValue(ctx, r);
+	JS_FreeValue(ctx, fn);
+	JS_FreeValue(ctx, args[0]);
+	JS_FreeValue(ctx, args[1]);
+	JS_FreeValue(ctx, args[2]);
+	return e;
 }
 
 /* exported interface documented in qjs_net.h */

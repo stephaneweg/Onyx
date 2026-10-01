@@ -3743,7 +3743,8 @@ navigate_internal_real(struct browser_window *bw,
 	}
 
 	res = hlcache_handle_retrieve(params->url,
-				      fetch_flags | HLCACHE_RETRIEVE_SNIFF_TYPE,
+				      fetch_flags | HLCACHE_RETRIEVE_SNIFF_TYPE |
+				      HLCACHE_RETRIEVE_ONYX_DOCUMENT,	/* (Onyx: §43) */
 				      params->referrer,
 				      fetch_is_post ? &post : NULL,
 				      browser_window_callback,

@@ -6641,8 +6641,10 @@ bool layout_document(html_content *content, int width, int height)
 
 	ret = layout_block_context(doc, height, content);
 
-	/* make <html> and <body> fill available height */
-	if (doc->y + doc->padding[TOP] + doc->height + doc->padding[BOTTOM] +
+	/* make <html> and <body> fill available height (Onyx: not an SVG document's
+	 * root, a replaced box drawn at its own size -- docs/06 §43) */
+	if (!(doc->flags & IS_REPLACED) &&
+	    doc->y + doc->padding[TOP] + doc->height + doc->padding[BOTTOM] +
 			doc->border[BOTTOM].width + doc->margin[BOTTOM] <
 			height) {
 		doc->height = height - (doc->y + doc->padding[TOP] +

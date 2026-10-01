@@ -74,6 +74,8 @@
 #include "html/layout.h"
 #include "html/textselection.h"
 #include "html/onyx_webfont.h"
+#include "html/onyx_xml.h"
+#include "content/llcache.h"
 
 #define CHUNK 4096
 
@@ -85,7 +87,12 @@
 
 static const char *html_types[] = {
 	"application/xhtml+xml",
-	"text/html"
+	"text/html",
+	/* Onyx (docs/06 §43): XML documents, parsed by expat (onyx_xml.c); an SVG document
+	 * shown by a window (hlcache gives a window's image/svg+xml this type) */
+	"text/xml",
+	"application/xml",
+	"application/x-onyx-svg-document"
 };
 
 /**
@@ -273,8 +280,13 @@ static void html_box_convert_done(html_content *c, bool success)
 	/*imagemap_dump(c);*/
 
 	/* Destroy the parser binding */
-	dom_hubbub_parser_destroy(c->parser);
+	if (c->parser != NULL)
+		dom_hubbub_parser_destroy(c->parser);
 	c->parser = NULL;
+	if (c->xml_parser != NULL) {	/* (Onyx) */
+		onyx_xml_parser_destroy(c->xml_parser);
+		c->xml_parser = NULL;
+	}
 
 	content_set_ready(&c->base);
 
@@ -959,6 +971,10 @@ bool html_early_layout(html_content *c)
 	    c->box_conversion_context != NULL || c->script_hold > 0 ||
 	    c->document == NULL)
 		return c->layout != NULL;
+	/* (Onyx: an XML document that may still become another -- its tree view, an XSLT's
+	 * result -- is not laid out early: XHTML and SVG documents only) */
+	if (c->xml_parser != NULL && c->xml_mode == 0 && onyx_xml_root_ns(c->document) == 0)
+		return c->layout != NULL;
 	if (c->layout != NULL && !c->early_stale)
 		return true;
 	if (dom_document_get_document_element(c->document, (void *) &html) !=
@@ -1268,6 +1284,330 @@ html_document_user_data_handler(dom_node_operation operation,
 }
 
 
+/* ---- Onyx: XML documents (docs/06 §43) ---------------------------------------------------- */
+
+static nserror html_onyx_reparse(html_content *c, const char *src, size_t len, bool xml);
+
+/** a script element's end in an XML document: run when the document is XHTML or SVG */
+static dom_hubbub_error html_onyx_xml_script(void *ctx, struct dom_node *node)
+{
+	html_content *c = ctx;
+	int root = onyx_xml_root_ns(c->document);
+
+	if (root == 0)
+		return DOM_HUBBUB_OK;	/* (the scripts of an XML document shown otherwise) */
+	return html_process_script(ctx, node);
+}
+
+/** an xml-stylesheet of the prolog: a CSS one is fetched at once */
+static void html_onyx_xml_stylesheet(void *ctx, const struct onyx_xml_stylesheet *s)
+{
+	html_content *c = ctx;
+
+	if (s->alternate || s->href == NULL)
+		return;
+	if (s->type == NULL || strcmp(s->type, "text/css") == 0) {
+		c->xml_css = true;
+		html_css_process_pi(c, s->pi, s->href, s->media);
+	}
+}
+
+/** the XSLT style sheet of the prolog: the first xml-stylesheet of an XSLT type */
+static const struct onyx_xml_stylesheet *html_onyx_xslt_sheet(html_content *c)
+{
+	const struct onyx_xml_stylesheet *s;
+	int n, i;
+
+	s = onyx_xml_parser_stylesheets(c->xml_parser, &n);
+	for (i = 0; i < n; i++) {
+		const char *t = s[i].type;
+		if (s[i].alternate || t == NULL)
+			continue;
+		if (strcmp(t, "text/xsl") == 0 || strcmp(t, "application/xslt+xml") == 0 ||
+		    strcmp(t, "text/xml") == 0 || strcmp(t, "application/xml") == 0)
+			return &s[i];
+	}
+	return NULL;
+}
+
+/** the tree view of the document parsed (with its error, if any, or a message) */
+static nserror html_onyx_tree_view(html_content *c, const char *message)
+{
+	int line = 0, col = 0;
+	const char *msg = message;
+	size_t len = 0;
+	char *src;
+	nserror e;
+
+	if (message != NULL)
+		line = -1;
+	else if (!onyx_xml_parser_error(c->xml_parser, &line, &col, &msg))
+		line = 0;
+	src = onyx_xml_tree_view(c->document, &len, line, col, msg != NULL ? msg : "");
+	if (src == NULL)
+		return NSERROR_NOMEM;
+	e = html_onyx_reparse(c, src, len, false);
+	free(src);
+	c->xml_mode = 2;
+	return e;
+}
+
+/** the XSLT style sheet fetched: the transform (xslt.js, in the document's realm), its
+ *  result parsed as the document */
+static void html_onyx_xslt_apply(html_content *c)
+{
+	char *out = NULL, method[16] = "";
+	size_t out_len = 0;
+	nserror e = NSERROR_INVALID;
+
+	if (c->jsthread == NULL) {
+		union content_msg_data msg_data;
+		msg_data.jsthread = &c->jsthread;
+		content_broadcast(&c->base, CONTENT_MSG_GETTHREAD, &msg_data);
+	}
+	if (c->jsthread != NULL)
+		e = js_xslt_transform(c->jsthread, c->document, c->xslt_text, c->xslt_len,
+				nsurl_access(c->xslt_url), &out, &out_len, method, sizeof(method));
+	/* (the realm made for the transform goes: the result is another document) */
+	if (c->jsthread != NULL) {
+		js_destroythread(c->jsthread);
+		c->jsthread = NULL;
+	}
+	if (e != NSERROR_OK || out == NULL) {
+		char m[300];
+		snprintf(m, sizeof(m), "Error loading stylesheet: XSLT transformation failed (%s)",
+				nsurl_access(c->xslt_url));
+		free(out);
+		html_onyx_tree_view(c, m);
+		return;
+	}
+	if (strcmp(method, "text") == 0) {
+		/* (text: shown as a plain text page) */
+		size_t i, n = 0;
+		char *h = malloc(out_len * 6 + 64);
+		if (h == NULL) {
+			free(out);
+			html_onyx_tree_view(c, "Error loading stylesheet: out of memory");
+			return;
+		}
+		n += sprintf(h, "<!DOCTYPE html><pre style=\"word-wrap:break-word;white-space:pre-wrap\">");
+		for (i = 0; i < out_len; i++) {
+			if (out[i] == '<') { memcpy(h + n, "&lt;", 4); n += 4; }
+			else if (out[i] == '&') { memcpy(h + n, "&amp;", 5); n += 5; }
+			else h[n++] = out[i];
+		}
+		memcpy(h + n, "</pre>", 6);
+		n += 6;
+		html_onyx_reparse(c, h, n, false);
+		free(h);
+	} else {
+		if (strcmp(method, "xml") == 0) {
+			/* (an XML result: XHTML, SVG, XML -- decided again once parsed) */
+			html_onyx_reparse(c, out, out_len, true);
+			free(out);
+			return;
+		}
+		html_onyx_reparse(c, out, out_len, false);
+	}
+	free(out);
+	c->xml_mode = 3;
+}
+
+static nserror html_onyx_xslt_cb(llcache_handle *handle, const llcache_event *event, void *pw)
+{
+	html_content *c = pw;
+
+	switch (event->type) {
+	case LLCACHE_EVENT_DONE: {
+		size_t n = 0;
+		const uint8_t *d = llcache_handle_get_source_data(handle, &n);
+		c->xslt_text = malloc(n + 1);
+		if (c->xslt_text != NULL) {
+			if (n > 0)
+				memcpy(c->xslt_text, d, n);
+			c->xslt_text[n] = '\0';
+			c->xslt_len = n;
+		}
+		llcache_handle_release(handle);
+		c->xslt_fetch = NULL;
+		if (c->xml_parser != NULL) {
+			if (c->xslt_text != NULL)
+				html_onyx_xslt_apply(c);
+			else
+				html_onyx_tree_view(c, "Error loading stylesheet: out of memory");
+		}
+		c->base.active--;
+		if (html_can_begin_conversion(c))
+			html_begin_conversion(c);
+		break;
+	}
+	case LLCACHE_EVENT_ERROR: {
+		char m[300];
+		llcache_handle_release(handle);
+		c->xslt_fetch = NULL;
+		snprintf(m, sizeof(m), "Error loading stylesheet: %s",
+				c->xslt_url != NULL ? nsurl_access(c->xslt_url) : "?");
+		if (c->xml_parser != NULL)
+			html_onyx_tree_view(c, m);
+		c->base.active--;
+		if (html_can_begin_conversion(c))
+			html_begin_conversion(c);
+		break;
+	}
+	default:
+		break;
+	}
+	return NSERROR_OK;
+}
+
+/** whether an XSLT style sheet may be read by this document (same origin, data:) */
+static bool html_onyx_xslt_allowed(html_content *c, nsurl *url)
+{
+	nsurl *doc = content_get_url(&c->base);
+	lwc_string *s1, *s2, *h1, *h2, *p1, *p2;
+	bool ok;
+
+	s2 = nsurl_get_component(url, NSURL_SCHEME);
+	if (s2 != NULL && strcmp(lwc_string_data(s2), "data") == 0) {
+		lwc_string_unref(s2);
+		return true;
+	}
+	s1 = nsurl_get_component(doc, NSURL_SCHEME);
+	h1 = nsurl_get_component(doc, NSURL_HOST);
+	h2 = nsurl_get_component(url, NSURL_HOST);
+	p1 = nsurl_get_component(doc, NSURL_PORT);
+	p2 = nsurl_get_component(url, NSURL_PORT);
+	ok = s1 == s2 && h1 == h2 && p1 == p2;	/* (interned: the same strings) */
+	if (s1) lwc_string_unref(s1);
+	if (s2) lwc_string_unref(s2);
+	if (h1) lwc_string_unref(h1);
+	if (h2) lwc_string_unref(h2);
+	if (p1) lwc_string_unref(p1);
+	if (p2) lwc_string_unref(p2);
+	return ok;
+}
+
+/**
+ * The XML parse completed: what the document becomes. XHTML and SVG stay (an error: the
+ * page as far as it went, Chrome's error box first); another XML document is transformed
+ * by its XSLT style sheet, rendered with its CSS style sheets, or else shown as a tree.
+ * \return 0 go on, 1 wait (a script, the XSLT style sheet), -1 out of memory
+ */
+static int html_onyx_xml_complete(html_content *c)
+{
+	const struct onyx_xml_stylesheet *xsl;
+	int line, col;
+	const char *msg;
+	bool err;
+
+	if (onyx_xml_parser_completed(c->xml_parser) == DOM_HUBBUB_HUBBUB_ERR_PAUSED &&
+	    !onyx_xml_parser_done(c->xml_parser))
+		return 1;
+	if (c->xml_mode != 0)
+		return 0;	/* (decided already) */
+	c->xml_root = onyx_xml_root_ns(c->document);
+	err = onyx_xml_parser_error(c->xml_parser, &line, &col, &msg);
+	if (c->xml_root != 0) {
+		if (err)
+			onyx_xml_error_banner(c->document, line, col, msg);
+		c->xml_mode = 4;	/* (as is) */
+		return 0;
+	}
+	/* (an XSLT's result is not transformed again) */
+	xsl = err || c->xslt_url != NULL ? NULL : html_onyx_xslt_sheet(c);
+	if (xsl != NULL) {
+		nsurl *url = NULL;
+		if (nsurl_join(c->base_url, xsl->href, &url) == NSERROR_OK &&
+		    html_onyx_xslt_allowed(c, url)) {
+			c->xslt_url = url;
+			if (llcache_handle_retrieve(url, 0, content_get_url(&c->base), NULL,
+					html_onyx_xslt_cb, c, &c->xslt_fetch) == NSERROR_OK) {
+				c->base.active++;
+				return 1;
+			}
+		} else if (url != NULL) {
+			char m[300];
+			snprintf(m, sizeof(m), "Error loading stylesheet: unsafe attempt to load "
+					"URL %s", nsurl_access(url));
+			nsurl_unref(url);
+			return html_onyx_tree_view(c, m) == NSERROR_OK ? 0 : -1;
+		}
+	}
+	if (c->xml_css) {
+		/* (XML with CSS: its elements laid out by its style sheets only) */
+		if (err)
+			onyx_xml_error_banner(c->document, line, col, msg);
+		c->xml_mode = 1;
+		html_css_onyx_xml_mode(c);
+		return 0;
+	}
+	return html_onyx_tree_view(c, NULL) == NSERROR_OK ? 0 : -1;
+}
+
+/**
+ * The document replaced by another parsed from src (the tree view's, an XSLT's result)
+ * -- by the HTML parser, or by expat when xml (an XSLT's xml output): the XML document is
+ * dropped, the new one parsed now (completed by html_begin_conversion).
+ */
+static nserror html_onyx_reparse(html_content *c, const char *src, size_t len, bool xml)
+{
+	dom_hubbub_parser_params parse_params;
+	void *old_node_data;
+
+	if (c->xml_parser != NULL) {
+		onyx_xml_parser_destroy(c->xml_parser);
+		c->xml_parser = NULL;
+	}
+	/* (a realm made for the XML document -- no script of it ran -- goes with it: the
+	 * new document's is made when it is asked for) */
+	if (c->jsthread != NULL) {
+		js_destroythread(c->jsthread);
+		c->jsthread = NULL;
+	}
+	if (c->document != NULL) {
+		dom_node_unref(c->document);
+		c->document = NULL;
+	}
+	if (xml) {
+		onyx_xml_params xp;
+		memset(&xp, 0, sizeof(xp));
+		xp.enc = "UTF-8";
+		xp.enable_script = c->enable_scripting;
+		xp.script = html_process_script;	/* (its root's namespace not checked) */
+		xp.stylesheet = html_onyx_xml_stylesheet;
+		xp.ctx = c;
+		xp.daf = html_dom_event_fetcher;
+		xp.kind = DOM_HTML_DOCUMENT_XML;
+		c->xml_kind = DOM_HTML_DOCUMENT_XML;
+		if (onyx_xml_parser_create(&xp, &c->xml_parser, &c->document) != NSERROR_OK)
+			return NSERROR_NOMEM;
+	} else {
+		memset(&parse_params, 0, sizeof(parse_params));
+		parse_params.enc = "UTF-8";
+		parse_params.fix_enc = true;
+		parse_params.enable_script = c->enable_scripting;
+		parse_params.msg = NULL;
+		parse_params.script = html_process_script;
+		parse_params.ctx = c;
+		parse_params.daf = html_dom_event_fetcher;
+		c->xml_kind = 0;
+		if (dom_hubbub_parser_create(&parse_params, &c->parser, &c->document) !=
+				DOM_HUBBUB_OK)
+			return NSERROR_NOMEM;
+	}
+	free(c->encoding);
+	c->encoding = strdup("UTF-8");
+	dom_node_set_user_data(c->document, corestring_dom___ns_key_html_content_data, c,
+			html_document_user_data_handler, (void *) &old_node_data);
+	if (xml) {
+		onyx_xml_parser_parse_chunk(c->xml_parser, (const uint8_t *) src, len);
+		c->xml_mode = 0;	/* (decided again once parsed) */
+		return NSERROR_OK;
+	}
+	dom_hubbub_parser_parse_chunk(c->parser, (const uint8_t *) src, len);
+	return NSERROR_OK;
+}
+
 static nserror
 html_create_html_data(html_content *c, const http_parameter *params)
 {
@@ -1364,6 +1704,31 @@ html_create_html_data(html_content *c, const http_parameter *params)
 		c->encoding_source = DOM_HUBBUB_ENCODING_SOURCE_HEADER;
 	}
 
+	/* Onyx (docs/06 §43): an XML document -- expat's parse (onyx_xml.c) */
+	c->xml_kind = onyx_xml_kind_of_type(c->base.mime_type != NULL ?
+			lwc_string_data(c->base.mime_type) : NULL);
+	if (c->xml_kind != 0) {
+		onyx_xml_params xp;
+		memset(&xp, 0, sizeof(xp));
+		xp.enc = c->encoding;
+		xp.enable_script = c->enable_scripting;
+		xp.script = html_onyx_xml_script;
+		xp.stylesheet = html_onyx_xml_stylesheet;
+		xp.ctx = c;
+		xp.daf = html_dom_event_fetcher;
+		xp.kind = c->xml_kind;
+		if (onyx_xml_parser_create(&xp, &c->xml_parser, &c->document) != NSERROR_OK) {
+			nsurl_unref(c->base_url);
+			c->base_url = NULL;
+			lwc_string_unref(c->universal);
+			c->universal = NULL;
+			lwc_string_unref(c->media.prefers_color_scheme);
+			c->media.prefers_color_scheme = NULL;
+			return NSERROR_NOMEM;
+		}
+		goto onyx_user_data;
+	}
+
 	/* Create the parser binding */
 	parse_params.enc = c->encoding;
 	parse_params.fix_enc = true;
@@ -1400,13 +1765,17 @@ html_create_html_data(html_content *c, const http_parameter *params)
 		return libdom_hubbub_error_to_nserror(error);
 	}
 
+onyx_user_data:
 	err = dom_node_set_user_data(c->document,
 				     corestring_dom___ns_key_html_content_data,
 				     c, html_document_user_data_handler,
 				     (void *) &old_node_data);
 	if (err != DOM_NO_ERR) {
-		dom_hubbub_parser_destroy(c->parser);
+		if (c->parser != NULL)
+			dom_hubbub_parser_destroy(c->parser);
 		c->parser = NULL;
+		onyx_xml_parser_destroy(c->xml_parser);
+		c->xml_parser = NULL;
 		nsurl_unref(c->base_url);
 		c->base_url = NULL;
 
@@ -1570,6 +1939,13 @@ html_process_data(struct content *c, const char *data, unsigned int size)
 	dom_hubbub_error dom_ret;
 	nserror err = NSERROR_OK; /* assume its all going to be ok */
 
+	if (html->xml_parser != NULL) {	/* (Onyx: XML) */
+		onyx_xml_parser_parse_chunk(html->xml_parser, (const uint8_t *) data, size);
+		return true;
+	}
+	if (html->parser == NULL)	/* (Onyx: an XML document's replacement) */
+		return true;
+
 	dom_ret = dom_hubbub_parser_parse_chunk(html->parser,
 					      (const uint8_t *) data,
 					      size);
@@ -1681,6 +2057,20 @@ html_begin_conversion(html_content *htmlc)
 	 * multiple times, so store a flag to indicate that parsing is
 	 * complete to avoid repeating the completion pointlessly.
 	 */
+	if (htmlc->parse_completed == false && htmlc->xml_parser != NULL) {
+		/* Onyx (docs/06 §43): the XML document parsed; it may become another
+		 * (the tree view, an XSLT's result: parsed by the HTML parser below) */
+		int r = html_onyx_xml_complete(htmlc);
+		if (r == 1)
+			return true;	/* (a script or the XSLT style sheet is fetched) */
+		if (r < 0) {
+			content_broadcast_error(&htmlc->base, NSERROR_NOMEM, NULL);
+			return false;
+		}
+		if (htmlc->xml_parser != NULL) {
+			htmlc->parse_completed = true;
+		}
+	}
 	if (htmlc->parse_completed == false) {
 		NSLOG(netsurf, INFO, "Completing parse (%p)", htmlc);
 		/* complete parsing */
@@ -1733,6 +2123,9 @@ html_begin_conversion(html_content *htmlc)
 	if (htmlc->encoding == NULL) {
 		const char *encoding;
 
+		if (htmlc->xml_parser != NULL)	/* (Onyx) */
+			encoding = onyx_xml_parser_encoding(htmlc->xml_parser);
+		else
 		encoding = dom_hubbub_parser_get_encoding(htmlc->parser,
 					&htmlc->encoding_source);
 		if (encoding == NULL) {
@@ -1763,7 +2156,8 @@ html_begin_conversion(html_content *htmlc)
 	if ((exc != DOM_NO_ERR) ||
 	    (node_name == NULL) ||
 	    (!dom_string_caseless_lwc_isequal(node_name,
-			corestring_lwc_html))) {
+			corestring_lwc_html) &&
+	     htmlc->xml_parser == NULL)) {	/* (Onyx: an XML document's root: any) */
 		NSLOG(netsurf, INFO, "root element not html");
 		content_broadcast_error(&htmlc->base, NSERROR_DOM, NULL);
 		dom_node_unref(html);
@@ -2287,6 +2681,21 @@ static void html_destroy(struct content *c)
 		dom_hubbub_parser_destroy(html->parser);
 		html->parser = NULL;
 	}
+	if (html->xml_parser != NULL) {	/* (Onyx) */
+		onyx_xml_parser_destroy(html->xml_parser);
+		html->xml_parser = NULL;
+	}
+	if (html->xslt_fetch != NULL) {
+		llcache_handle_abort(html->xslt_fetch);
+		llcache_handle_release(html->xslt_fetch);
+		html->xslt_fetch = NULL;
+	}
+	if (html->xslt_url != NULL) {
+		nsurl_unref(html->xslt_url);
+		html->xslt_url = NULL;
+	}
+	free(html->xslt_text);
+	html->xslt_text = NULL;
 
 	if (html->document != NULL) {
 		dom_node_unref(html->document);

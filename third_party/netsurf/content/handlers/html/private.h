@@ -95,6 +95,20 @@ typedef struct html_content {
 
 	dom_hubbub_parser *parser; /**< Parser object handle */
 	bool parse_completed; /**< Whether the parse has been completed */
+	/** Onyx (docs/06 §43): an XML document -- its parser (expat: onyx_xml.c) instead of
+	 * the HTML one while it is parsed, its kind (dom_html_document_xml_kind; 0: HTML), its
+	 * root's namespace once parsed (onyx_xml_root_ns), what it became: 1 rendered with its
+	 * style sheets (XML + CSS), 2 the tree view, 3 an XSLT's result, 4 an error page in
+	 * place of the document; the XSLT style sheet's fetch */
+	struct onyx_xml_parser *xml_parser;
+	int xml_kind;
+	int xml_root;
+	int xml_mode;
+	bool xml_css;		/**< an xml-stylesheet of type text/css was seen */
+	struct llcache_handle *xslt_fetch;
+	struct nsurl *xslt_url;
+	char *xslt_text;	/**< the XSLT style sheet's bytes once fetched (NUL ended) */
+	size_t xslt_len;
 	bool conversion_begun; /**< Whether or not the conversion has begun */
 
 	/** Document tree */

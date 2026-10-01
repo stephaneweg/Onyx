@@ -241,4 +241,14 @@ void js_animation_frame(jsthread *thread, double now);
  */
 void js_view_visibility_changed(void);
 
+/**
+ * Onyx (docs/06 §43): an XML document transformed by its XSLT style sheet (an
+ * <?xml-stylesheet type="text/xsl"?>) in its thread's realm (xslt.js): the result
+ * serialized into *out (malloc'd, *out_len bytes) and its output method ("html", "xml",
+ * "text") into method.
+ */
+nserror js_xslt_transform(jsthread *thread, struct dom_document *doc, const char *xsl,
+		size_t xsl_len, const char *xsl_url, char **out, size_t *out_len, char *method,
+		size_t method_size);
+
 #endif /* NETSURF_JAVASCRIPT_JS_H_ */

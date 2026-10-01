@@ -1,0 +1,17 @@
+Expat 2.7.1 (https://libexpat.github.io/, MIT: COPYING) -- Onyx's copy
+=======================================================================
+
+The XML parser of Jet Browser (NetSurf): XML documents -- XHTML served as XML, XML with a
+style sheet or an XSLT, SVG documents, DOMParser's XML types, XMLHttpRequest's responseXML,
+XSLT style sheets -- are parsed by expat into libdom (NetSurf's
+content/handlers/html/onyx_xml.c, docs/06 section 43).
+
+Only lib/'s sources the parser needs are kept (xmlparse.c, xmlrole.c, xmltok.c and the
+headers they include; no xmlwf, tests, examples or build files), unchanged.
+lib/expat_config.h is Onyx's, written by hand for the three builds (no configure): little
+endian, XML_NS, XML_DTD, XML_GE (general entities, with expat's billion-laughs
+protection), XML_CONTEXT_BYTES 1024, and XML_POOR_ENTROPY -- the Pi has no getrandom():
+the hash salt is given by the caller (XML_SetHashSalt).
+
+Built by: user/netsurf/netsurf-app.mk (the Pi: compiled with the app),
+tools/tests/netsurf/host.mk (the PC bench), pc/Jet/jet.mk (Windows).
