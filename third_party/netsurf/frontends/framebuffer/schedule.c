@@ -128,10 +128,16 @@ nserror framebuffer_schedule(int tival, void (*callback)(void *p), void *p)
  * page's timers: a heavy page's scripts would otherwise keep the window from responding) */
 #define SCHEDULE_BUDGET_US 40000
 
+/* Onyx: and sooner when the user clicked, turned the wheel or typed meanwhile (asked every
+ * few ms: onyx_chrome.cpp pumps the window's events) -- a click waits for one callback at
+ * most, not for the budget's worth */
+#define SCHEDULE_INPUT_CHECK_US 4000
+extern int onyx_chrome_input_pending(void) __attribute__((weak));
+
 /* exported function documented in framebuffer/schedule.h */
 int schedule_run(void)
 {
-	struct timeval start, now;
+	struct timeval start, now, checked;
 	struct timeval tv;
 	struct timeval nexttime;
 	struct timeval rettime;
@@ -148,7 +154,7 @@ int schedule_run(void)
 	nexttime = cur_nscb->tv;
 
 	gettimeofday(&tv, NULL);
-	start = tv;
+	start = checked = tv;
 
         while (cur_nscb != NULL) {
                 if (timercmp(&tv, &cur_nscb->tv, >)) {
@@ -176,6 +182,13 @@ int schedule_run(void)
 			if ((now.tv_sec - start.tv_sec) * 1000000L +
 			    (now.tv_usec - start.tv_usec) > SCHEDULE_BUDGET_US)
 				return 0;
+			if (onyx_chrome_input_pending != NULL &&
+			    (now.tv_sec - checked.tv_sec) * 1000000L +
+			    (now.tv_usec - checked.tv_usec) > SCHEDULE_INPUT_CHECK_US) {
+				checked = now;
+				if (onyx_chrome_input_pending())
+					return 0;
+			}
 			
                         /* reset enumeration to the start of the list */
                         cur_nscb = schedule_list;

@@ -82,8 +82,10 @@
 #include "qjs_dom_js.h"		/* dom.js, as a C string (the build makes it) */
 #include "qjs_html5_js.h"	/* Onyx: html5.js, the same way */
 #include "javascript/quickjs/qjs_canvas.h"	/* Onyx: <canvas> 2D (qjs_canvas.c) */
+#include "javascript/quickjs/qjs_wasm.h"	/* Onyx: WebAssembly, Web Crypto */
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 #include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
+#include "javascript/quickjs/qjs_codecache.h"	/* Onyx: the scripts' bytecode on the card */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -338,15 +340,27 @@ static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int
 	return r;
 }
 
+/* Onyx: the window's events pumped while a script runs long (onyx_chrome.cpp: kept, handled
+ * after it) -- the system saw the browser frozen ("not pumping") in Google's 5 s script */
+extern void onyx_chrome_pump_deferred(void) __attribute__((weak));
+#define QJS_PUMP_MS 100
+
 static int qjs_interrupt(JSRuntime *rt, void *opaque)
 {
 	jsheap *heap = opaque;
+	static uint64_t last_pump;
+	uint64_t now = qjs_now_ms();
 
 	(void) rt;
 	if (qjs_prof_f != NULL)
 		qjs_prof_sample();
+	if (onyx_chrome_pump_deferred != NULL && now - heap->start > QJS_PUMP_MS &&
+	    now - last_pump > QJS_PUMP_MS) {
+		last_pump = now;
+		onyx_chrome_pump_deferred();
+	}
 	return heap->timeout > 0 &&
-		qjs_now_ms() - heap->start > (uint64_t) heap->timeout * 1000;
+		now - heap->start > (uint64_t) heap->timeout * 1000;
 }
 
 
@@ -702,6 +716,45 @@ static JSValue n_attr(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 	dom_element_get_attribute((dom_element *) n, name, &v);
 	dom_string_unref(name);
 	return qjs_str(ctx, v);
+}
+
+/** hasToken(node, name, token): the attribute, split at ASCII whitespace, has the token
+ * (a class, a ~= selector, classList.contains: dom.js split the value into an array each
+ * time -- selector matching over a page's nodes) */
+static JSValue n_has_token(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	dom_string *name, *v = NULL;
+	const char *tok, *s, *end;
+	size_t tlen;
+	bool found = false;
+	QJS_NODE_ARG(n, 0);
+	name = qjs_dstr(ctx, argc > 1 ? argv[1] : JS_UNDEFINED);
+	if (name == NULL)
+		return JS_FALSE;
+	dom_element_get_attribute((dom_element *) n, name, &v);
+	dom_string_unref(name);
+	if (v == NULL)
+		return JS_FALSE;
+	tok = JS_ToCStringLen(ctx, &tlen, argc > 2 ? argv[2] : JS_UNDEFINED);
+	if (tok == NULL) {
+		dom_string_unref(v);
+		return JS_EXCEPTION;
+	}
+	s = dom_string_data(v);
+	end = s + dom_string_byte_length(v);
+	while (s < end && !found) {
+		const char *w;
+
+		while (s < end && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r' || *s == '\f'))
+			s++;
+		for (w = s; s < end && !(*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r' ||
+				*s == '\f'); s++)
+			;
+		found = s > w && (size_t) (s - w) == tlen && memcmp(w, tok, tlen) == 0;
+	}
+	JS_FreeCString(ctx, tok);
+	dom_string_unref(v);
+	return JS_NewBool(ctx, found);
 }
 
 static JSValue n_set_attr(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
@@ -1103,6 +1156,115 @@ static JSValue n_module_source(JSContext *ctx, JSValueConst this_val, int argc,
 	JS_SetPropertyStr(ctx, t->modsrc, url, JS_DupValue(ctx, argv[1]));
 	JS_FreeCString(ctx, url);
 	return JS_UNDEFINED;
+}
+
+/* moduleImports' scanner: the regular expression dom.js had, by hand (its backtracking over
+ * a big module was 13 % of github.com's scripts) */
+static bool mi_space(char ch)
+{
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f';
+}
+
+static bool mi_word(char ch)
+{
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+		(ch >= '0' && ch <= '9') || ch == '_';
+}
+
+/* a quoted specifier at s[i] ('...' or "...", no newline): its end past the quote, or 0 */
+static size_t mi_quoted(const char *s, size_t len, size_t i, size_t *b, size_t *e)
+{
+	size_t j;
+
+	if (i >= len || (s[i] != '\'' && s[i] != '"'))
+		return 0;
+	for (j = i + 1; j < len && s[j] != '\'' && s[j] != '"' && s[j] != '\n'; j++)
+		;
+	if (j == i + 1 || j >= len || s[j] != s[i])
+		return 0;
+	*b = i + 1;
+	*e = j;
+	return j + 1;
+}
+
+/* the static form after "import" / "export" at s[k]: [names from] 'spec' */
+static size_t mi_static(const char *s, size_t len, size_t k, size_t *b, size_t *e)
+{
+	size_t i, j, end;
+
+	/* (names) from 'spec' -- the first "from" that one follows */
+	for (i = k; i < len && (mi_word(s[i]) || mi_space(s[i]) || s[i] == '*' ||
+			s[i] == '{' || s[i] == '}' || s[i] == ',' || s[i] == '$'); i++) {
+		if (i == k || len - i < 4 || memcmp(s + i, "from", 4) != 0)
+			continue;
+		for (j = i + 4; j < len && mi_space(s[j]); j++)
+			;
+		if ((end = mi_quoted(s, len, j, b, e)) != 0)
+			return end;
+	}
+	for (i = k; i < len && mi_space(s[i]); i++)
+		;
+	return mi_quoted(s, len, i, b, e);
+}
+
+/**
+ * moduleImports(text): the specifiers a module's import / export ... from and import()
+ * name, as dom.js's MOD_IMPORT found them
+ */
+static JSValue n_module_imports(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	const char *s;
+	size_t len, pos = 0, k, b, e, end;
+	uint32_t n = 0;
+	JSValue arr;
+
+	(void) this_val;
+	if (argc < 1 || (s = JS_ToCStringLen(ctx, &len, argv[0])) == NULL)
+		return JS_EXCEPTION;
+	arr = JS_NewArray(ctx);
+	for (k = pos; k + 6 <= len; k++) {
+		bool imp;
+		size_t i;
+
+		if (s[k] == 'i')
+			imp = memcmp(s + k, "import", 6) == 0;
+		else if (s[k] == 'e')
+			imp = false;
+		else
+			continue;
+		if (!imp && memcmp(s + k, "export", 6) != 0)
+			continue;
+		end = 0;
+		/* (^|[;\n\r}])\s* before it */
+		for (i = k; i > pos && mi_space(s[i - 1]) && s[i - 1] != '\n' && s[i - 1] != '\r'; i--)
+			;
+		if (i == 0 || (i > pos && (s[i - 1] == ';' || s[i - 1] == '}' ||
+				s[i - 1] == '\n' || s[i - 1] == '\r')))
+			end = mi_static(s, len, k + 6, &b, &e);
+		/* \bimport\s*\(\s*'spec'\s*\) */
+		if (end == 0 && imp && (k == 0 || !mi_word(s[k - 1]))) {
+			for (i = k + 6; i < len && mi_space(s[i]); i++)
+				;
+			if (i < len && s[i] == '(') {
+				for (i++; i < len && mi_space(s[i]); i++)
+					;
+				if ((i = mi_quoted(s, len, i, &b, &e)) != 0) {
+					for (; i < len && mi_space(s[i]); i++)
+						;
+					if (i < len && s[i] == ')')
+						end = i + 1;
+				}
+			}
+		}
+		if (end == 0)
+			continue;
+		JS_SetPropertyUint32(ctx, arr, n++, JS_NewStringLen(ctx, s + b, e - b));
+		pos = end;
+		k = end - 1;
+	}
+	JS_FreeCString(ctx, s);
+	return arr;
 }
 
 /**
@@ -3962,6 +4124,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("text", 1, n_text),
 	JS_CFUNC_DEF("setText", 2, n_set_text),
 	JS_CFUNC_DEF("attr", 2, n_attr),
+	JS_CFUNC_DEF("hasToken", 3, n_has_token),
 	JS_CFUNC_DEF("setAttr", 3, n_set_attr),
 	JS_CFUNC_DEF("removeAttr", 2, n_remove_attr),
 	JS_CFUNC_DEF("attrs", 1, n_attrs),
@@ -3979,6 +4142,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("cssKept", 2, n_css_kept),
 	JS_CFUNC_DEF("sheetText", 1, n_sheet_text),
 	JS_CFUNC_DEF("moduleSource", 2, n_module_source),
+	JS_CFUNC_DEF("moduleImports", 1, n_module_imports),
 	JS_CFUNC_DEF("moduleRun", 2, n_module_run),
 	JS_CFUNC_DEF("setHTML", 2, n_set_html),
 	JS_CFUNC_DEF("descendants", 1, n_descendants),
@@ -4099,12 +4263,16 @@ void js_destroyheap(jsheap *heap)
 
 /* Onyx: a prelude (dom.js, html5.js, canvas.js) is compiled once per process; its bytecode
  * is kept (in the process's heap) and read back in the next contexts -- several times faster
- * than parsing it again (the same as Intl, qjs_intl.h). Returns the prelude's value. */
+ * than parsing it again (the same as Intl, qjs_intl.h). The first context of a process reads
+ * it from the code cache on the card (qjs_codecache.c: 0.5 s of parsing on the Pi at each
+ * launch), or writes it there. Returns the prelude's value. */
 JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char *name,
 		uint8_t **bc, size_t *bclen)
 {
 	JSValue obj;
 
+	if (*bc == NULL)
+		*bc = qjs_cc_load(src, len, bclen);
 	if (*bc == NULL) {
 		obj = JS_Eval(ctx, src, len, name, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
 		if (JS_IsException(obj))
@@ -4115,6 +4283,7 @@ JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char 
 			*bc = malloc(*bclen);
 			if (*bc != NULL)
 				memcpy(*bc, b, *bclen);
+			qjs_cc_store(src, len, b, *bclen);
 			js_free(ctx, b);
 		}
 	} else {
@@ -4199,6 +4368,8 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_FreeValue(t->ctx, prelude);
 	qjs_canvas_setup(t->ctx, natives);	/* Onyx: <canvas> 2D (canvas.js) */
 	qjs_net_setup(t->ctx, natives, NULL);	/* Onyx: WebSocket, EventSource, Workers */
+	qjs_wasm_setup(t->ctx, natives);	/* Onyx: WebAssembly (wasm.js, on wasm3) */
+	qjs_crypto_setup(t->ctx, natives);	/* Onyx: Web Crypto (crypto.js, on mbedTLS) */
 	JS_FreeValue(t->ctx, natives);
 	onyx_perf_log("js:prelude", t_prelude);	/* (a context's dom.js, html5.js, canvas.js, Intl) */
 	t->dirty = false;	/* (nothing laid out yet) */
@@ -4250,6 +4421,7 @@ static void qjs_thread_free(jsthread *t)
 	JS_FreeValue(t->ctx, t->ce_hook);
 	JS_FreeValue(t->ctx, t->shadow_proto);
 	qjs_canvas_context_gone(t->ctx);	/* Onyx: its canvases, images */
+	qjs_wasm_context_gone(t->ctx);	/* Onyx: its WebAssembly store */
 	JS_FreeContext(t->ctx);
 	if (t->doc != NULL)
 		dom_node_unref(t->doc);
@@ -4304,8 +4476,10 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 			txtlen = rl;
 		}
 	}
-	r = JS_Eval(thread->ctx, src, txtlen, name != NULL ? name : "script",
-			JS_EVAL_TYPE_GLOBAL);
+	/* Onyx: compiled, or read from the code cache (qjs_codecache.c), then run */
+	r = qjs_cc_compile(thread->ctx, src, txtlen, name != NULL ? name : "script", false);
+	if (!JS_IsException(r))
+		r = JS_EvalFunction(thread->ctx, r);
 	if (JS_IsException(r)) {
 		qjs_report(thread->ctx, name != NULL ? name : "script");
 #ifdef ONYX_HOST_SIM
@@ -4530,6 +4704,14 @@ struct nsurl *qjs_ctx_url(JSContext *ctx)
 	return t->htmlc != NULL ? content_get_url(&t->htmlc->base) : NULL;
 }
 
+/* exported interface documented in qjs_wasm.h */
+bool qjs_ctx_timed_out(JSContext *ctx)
+{
+	jsthread *t = QJS_T(ctx);
+
+	return t != NULL && t->heap != NULL && qjs_interrupt(JS_GetRuntime(ctx), t->heap);
+}
+
 /* exported interface documented in qjs_net.h */
 bool qjs_ctx_closed(JSContext *ctx)
 {
@@ -4610,6 +4792,8 @@ JSContext *qjs_worker_create(JSContext *parent, const char *url)
 	}
 	JS_FreeValue(t->ctx, prelude);
 	qjs_net_setup(t->ctx, natives, parent);
+	qjs_wasm_setup(t->ctx, natives);	/* (Onyx: WebAssembly) */
+	qjs_crypto_setup(t->ctx, natives);	/* (Onyx: Web Crypto) */
 	JS_FreeValue(t->ctx, natives);
 	t->dirty = false;
 	qjs_leave(t);

@@ -1933,7 +1933,11 @@ changes. The network (docs/06 §24) links two more vendored libraries, built by
 `libzstddec.a`) and `third_party/nghttp2-1.70.0` (`libnghttp2.a`, its `config.h` written by
 hand for newlib); the disk cache is `user/netsurf/onyx_cache.c`. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
 <out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
-`sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium.
+`sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium. The
+scripts' engine is QuickJS (`third_party/quickjs-ng-0.17.0`, `libquickjs.a`), with
+WebAssembly on wasm3 (`third_party/wasm3-0.9.2`, `libm3.a`: both made by `make -C
+user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (docs/06 §27);
+`sh tools/tests/netsurf/jstest.sh` runs their regression pages on the PC.
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:

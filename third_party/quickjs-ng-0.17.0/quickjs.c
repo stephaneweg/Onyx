@@ -99,6 +99,12 @@ const char* JS_GetVersion(void) {
     return QJS_VERSION_STRING;
 }
 
+/* Onyx: this build of the engine (its bytecode's format may change with any build: a code
+   cache keeps bytecode only for the build that wrote it) */
+const char* JS_GetBuildId(void) {
+    return QJS_VERSION_STRING " " __DATE__ " " __TIME__;
+}
+
 #undef STRINFIGY_
 #undef STRINGIFY
 
@@ -8663,7 +8669,9 @@ static no_inline __exception int __js_poll_interrupts(JSContext *ctx)
     return 0;
 }
 
-static inline __exception int js_poll_interrupts(JSContext *ctx)
+/* (Onyx: always inlined -- the interpreter calls it at each call and loop, and GCC did not
+   inline it into JS_CallInternal) */
+static inline __attribute__((always_inline)) __exception int js_poll_interrupts(JSContext *ctx)
 {
     if (unlikely(--ctx->interrupt_counter <= 0)) {
         return __js_poll_interrupts(ctx);
@@ -18036,6 +18044,19 @@ static bool needs_backtrace(JSValue exc)
 }
 
 /* argv[] is modified if (flags & JS_CALL_FLAG_COPY_ARGV) = 0. */
+/* Onyx: JS_FreeValue is a function of the API (quickjs.h); in the interpreter's loop its
+   decrement is inlined, the value freed by a call only when that was its last reference
+   (3 % of React's rendering went to the calls) */
+static inline __attribute__((always_inline)) void js_free_value_inl(JSRuntime *rt, JSValue v)
+{
+    if (JS_VALUE_HAS_REF_COUNT(v)) {
+        void *p = JS_VALUE_GET_PTR(v);
+        if (--JS_REF_COUNT(p) <= 0)
+            js_free_value_rt(rt, v);
+    }
+}
+#define JS_FreeValue(ctx, v) js_free_value_inl((ctx)->rt, (v))
+
 static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                                JSValueConst this_obj, JSValueConst new_target,
                                int argc, JSValueConst *argv, int flags)
@@ -18265,8 +18286,16 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             }
             BREAK;
         CASE(OP_push_atom_value):
-            *sp++ = JS_AtomToValue(ctx, get_u32(pc));
-            pc += 4;
+            {
+                /* Onyx: a string atom is its own value (a string literal): no call */
+                JSAtom atom = get_u32(pc);
+                pc += 4;
+                if (likely(!__JS_AtomIsTaggedInt(atom) &&
+                           rt->atom_array[atom]->atom_type == JS_ATOM_TYPE_STRING))
+                    *sp++ = js_dup(JS_MKPTR(JS_TAG_STRING, rt->atom_array[atom]));
+                else
+                    *sp++ = JS_AtomToValue(ctx, atom);
+            }
             BREAK;
         CASE(OP_undefined):
             *sp++ = JS_UNDEFINED;
@@ -20645,8 +20674,57 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
             OP_CMP(OP_gte, >=, js_relational_slow(ctx, sp, opcode));
             OP_CMP(OP_eq, ==, js_eq_slow(ctx, sp, 0));
             OP_CMP(OP_neq, !=, js_eq_slow(ctx, sp, 1));
-            OP_CMP(OP_strict_eq, ==, js_strict_eq_slow(ctx, sp, 0));
-            OP_CMP(OP_strict_neq, !=, js_strict_eq_slow(ctx, sp, 1));
+            /* Onyx: === and !== decided here when they can be without a call: the
+               same object, string or symbol (typeof x === 'string': both are the atom's
+               string), two objects, undefined / null on one side -- 8 % of React's
+               rendering went to js_strict_eq_slow */
+#define OP_STRICT_EQ(opcode, is_neq)                                    \
+            CASE(opcode):                                               \
+                {                                                       \
+                JSValue op1, op2;                                       \
+                int tag1, tag2;                                         \
+                op1 = sp[-2];                                           \
+                op2 = sp[-1];                                           \
+                tag1 = JS_VALUE_GET_TAG(op1);                           \
+                tag2 = JS_VALUE_GET_TAG(op2);                           \
+                if (likely(JS_VALUE_IS_BOTH_INT(op1, op2))) {           \
+                    sp[-2] = js_bool((JS_VALUE_GET_INT(op1) == JS_VALUE_GET_INT(op2)) ^ is_neq); \
+                    sp--;                                               \
+                } else if (tag1 == tag2 && JS_VALUE_HAS_REF_COUNT(op1) && \
+                           (JS_VALUE_GET_PTR(op1) == JS_VALUE_GET_PTR(op2) || \
+                            tag1 == JS_TAG_OBJECT || tag1 == JS_TAG_SYMBOL)) { \
+                    bool res = JS_VALUE_GET_PTR(op1) == JS_VALUE_GET_PTR(op2); \
+                    JS_FreeValue(ctx, op1);                             \
+                    JS_FreeValue(ctx, op2);                             \
+                    sp[-2] = js_bool(res ^ is_neq);                     \
+                    sp--;                                               \
+                } else if (tag1 == JS_TAG_STRING && tag2 == JS_TAG_STRING && \
+                           (JS_VALUE_GET_STRING(op1)->len != JS_VALUE_GET_STRING(op2)->len || \
+                            (JS_VALUE_GET_STRING(op1)->atom_type == JS_ATOM_TYPE_STRING && \
+                             JS_VALUE_GET_STRING(op2)->atom_type == JS_ATOM_TYPE_STRING))) { \
+                    /* two strings of different lengths, or two string atoms (unique \
+                       by their text: 'td' against 'img', React's tag names; a \
+                       symbol's description is an atom of another type) */ \
+                    JS_FreeValue(ctx, op1);                             \
+                    JS_FreeValue(ctx, op2);                             \
+                    sp[-2] = js_bool(is_neq);                           \
+                    sp--;                                               \
+                } else if (tag1 == JS_TAG_UNDEFINED || tag1 == JS_TAG_NULL || \
+                           tag2 == JS_TAG_UNDEFINED || tag2 == JS_TAG_NULL) { \
+                    JS_FreeValue(ctx, op1);                             \
+                    JS_FreeValue(ctx, op2);                             \
+                    sp[-2] = js_bool((tag1 == tag2) ^ is_neq);          \
+                    sp--;                                               \
+                } else {                                                \
+                    sf->cur_pc = pc;                                    \
+                    if (js_strict_eq_slow(ctx, sp, is_neq))             \
+                        goto exception;                                 \
+                    sp--;                                               \
+                }                                                       \
+                }                                                       \
+            BREAK
+            OP_STRICT_EQ(OP_strict_eq, 0);
+            OP_STRICT_EQ(OP_strict_neq, 1);
 
         CASE(OP_in):
             sf->cur_pc = pc;
@@ -20673,7 +20751,8 @@ static JSValue JS_CallInternal(JSContext *caller_ctx, JSValueConst func_obj,
                 op1 = sp[-1];
                 atom = js_operator_typeof(ctx, op1);
                 JS_FreeValue(ctx, op1);
-                sp[-1] = JS_AtomToString(ctx, atom);
+                /* (Onyx: the type's name, a string atom: no call) */
+                sp[-1] = js_dup(JS_MKPTR(JS_TAG_STRING, rt->atom_array[atom]));
             }
             BREAK;
         CASE(OP_delete):
@@ -21063,6 +21142,8 @@ static JSValue js_create_from_ctor(JSContext *ctx, JSValueConst ctor,
 }
 
 /* argv[] is modified if (flags & JS_CALL_FLAG_COPY_ARGV) = 0. */
+#undef JS_FreeValue	/* (Onyx: the function again) */
+
 static JSValue JS_CallConstructorInternal(JSContext *ctx,
                                           JSValueConst func_obj,
                                           JSValueConst new_target,
@@ -44996,6 +45077,13 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValueConst this_val,
     if (JS_IsUndefined(it->obj))
         goto done;
     p = JS_VALUE_GET_OBJ(it->obj);
+    /* Onyx: for (const x of array) over a dense array: its element, without the generic
+       length and element reads */
+    if (p->class_id == JS_CLASS_ARRAY && p->fast_array &&
+        it->kind == JS_ITERATOR_KIND_VALUE && it->idx < p->u.array.count) {
+        *pdone = false;
+        return js_dup(p->u.array.u.values[it->idx++]);
+    }
     if (is_typed_array(p->class_id)) {
         if (typed_array_is_oob(p)) {
             JS_ThrowTypeErrorArrayBufferOOB(ctx);

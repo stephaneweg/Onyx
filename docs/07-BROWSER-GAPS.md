@@ -42,7 +42,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
-| **WebAssembly** | all | none (QuickJS has no Wasm) -- pages that need it stop (Figma, Google Earth, some players, emulators, some bundles for codecs / crypto) | wasm3 (a fast C interpreter, ~70 KB, MIT) or WAMR's fast interpreter, bound to QuickJS as the `WebAssembly` namespace (`Module`, `Instance`, `Memory` on an ArrayBuffer, `Table`, imports / exports as JS functions, `instantiateStreaming`); an AOT / JIT for AArch64 later (WAMR has one) | M | P1 |
+| ~~**WebAssembly**~~ -- done (docs/06 §27) | all | the standard API on wasm3 (an interpreter, bound to QuickJS: `Module`, `Instance`, `Memory` over the linear memory, `Table`, `Global`, imports / exports, i64 as BigInt, traps as RuntimeError, the streaming forms), in pages and workers; 3.5-9x slower than V8 on the PC. Left: SIMD, threads / shared memory, `WebAssembly.Tag` / `Exception`, JSPI | speed: an AOT / JIT for AArch64 (WAMR fast-JIT / AOT, or a template JIT of wasm3's operations) -- see the JIT row | M | P2 |
 | **JIT (speed)** | V8 / JSC / LibJS (bytecode interpreter + JIT on x86-64 only) | QuickJS-ng bytecode interpreter: 20-50x slower than V8 on heavy scripts (a React hydration: seconds on the Pi) | short term: profile-guided fixes in the natives (dom.js's hot paths in C: the DOM wrappers, the selector engine, innerHTML), QuickJS's inline caches (quickjs-ng has shape caches: keep them warm), avoid megamorphic dom.js code; long term: a baseline JIT for AArch64 in QuickJS (XL) | M / XL | P1 |
 | Engine conformance (test262 core) | V8 ~99 %, LibJS ~95 % | QuickJS-ng ~ 99 % of ES2024 | follow quickjs-ng releases | S | P3 |
 | Memory: generational GC | V8 / JSC | refcount + cycle collector, 384 MB limit | fine for the Pi; watch leaks | - | P4 |
@@ -58,7 +58,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | `:active`, `:focus`, `:focus-visible`, `:focus-within` styles | all | answer no | the hover code's incremental restyle, with the focus / press state | S | P2 |
 | Clipboard API, drag and drop (HTML5 DnD), File System Access | all | none | Onyx's clipboard (the desktop's); DnD events from the mouse | M | P3 |
 | Notifications, Geolocation, Permissions, Vibration, Battery, Gamepad, Web MIDI, Web Serial / USB / Bluetooth / HID | Chromium (most), WebKit (some) | none | Notifications -> the Onyx shell; Gamepad -> the kernel's USB HID pads (Onyx has them for the emulators); the rest P4 | S each | P3 |
-| **Web Crypto** (`crypto.subtle`; `getRandomValues` from a real CSPRNG) | all | `subtle` is an empty object; `getRandomValues` / `randomUUID` use `Math.random` (predictable: session tokens, nonces) | mbedTLS is linked: its CTR-DRBG for `getRandomValues`, then digest, HMAC, AES-GCM / CBC, ECDSA / ECDH (P-256), RSA-PSS / OAEP, PBKDF2, HKDF through it, `importKey` / `exportKey` (raw, JWK, SPKI, PKCS#8) | M | P1 (logins, many SPAs call `subtle.digest`) |
+| ~~**Web Crypto**~~ -- done (docs/06 §27) | all | `getRandomValues` / `randomUUID` from a CTR-DRBG seeded by the hardware RNG; `crypto.subtle` on mbedTLS: SHA-1/2, HMAC, AES-GCM / CBC / CTR / KW, ECDSA / ECDH P-256/384/521, RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, PBKDF2, HKDF; raw / JWK / SPKI / PKCS#8; in workers. Left: Ed25519 / X25519 (not in mbedTLS 3.6), RSA key generation blocks the window | Ed25519 / X25519 from another small library (monocypher, TweetNaCl) | S | P3 |
 | `Intl` leftovers | all | §15 (Temporal, DurationFormat, other calendars) | quickjs-ng's Temporal work, CLDR data | M | P3 |
 | Accessibility tree (ARIA) | all | none | a screen reader is not in Onyx; P4 | L | P4 |
 
@@ -188,7 +188,7 @@ with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layou
    between redraws, clip-path / mask on it).
 2. Transitions, `@keyframes`, Web Animations, `requestAnimationFrame` pacing (a new
    `html/onyx_anim.c`, libcss computed-value interpolation) -- done (docs/06 §22).
-3. WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS.
+3. ~~WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS~~ -- done (docs/06 §27).
 4. TLS certificate verification, HTTP/2 (nghttp2), `br` announced, CORS / CSP basics, a disk
    cache with validators -- done but CSP (06 §24: also zstd, TLS sessions kept across
    launches, preconnect, per-connection timings, TLS 1.3); left: CSP, SameSite.
