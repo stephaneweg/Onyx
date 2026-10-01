@@ -749,11 +749,20 @@ void CWindowManager::SetFullscreen (CWindow *pWindow)
 
 u32 *CWindowManager::EnsureFullscreenBuffer (int nW, int nH, u64 *pPhys, unsigned *pnPages)
 {
+	unsigned nBytes = (unsigned) (nW * nH) * sizeof (u32);
+	unsigned nNeed = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
+	if (nNeed == 0) nNeed = 1;
+	if (m_pFsRaw != 0 && nNeed > m_nFsPages)
+	{
+		// The screen grew since the buffer was made (kapi_screen_set): a new one of the new
+		// size, else fullscreen_begin's clear, the app and present_fb run past its end (the
+		// kernel heap overwritten). The old one is left allocated, as the wallpaper's: an app
+		// may still have it mapped.
+		m_pFsRaw = 0; m_ulFsPhys = 0; m_nFsPages = 0;
+	}
 	if (m_pFsRaw == 0)
 	{
-		unsigned nBytes = (unsigned) (nW * nH) * sizeof (u32);
-		m_nFsPages = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
-		if (m_nFsPages == 0) m_nFsPages = 1;
+		m_nFsPages = nNeed;
 		m_pFsRaw = new u8[m_nFsPages * KPAGE_SIZE + KPAGE_SIZE];
 		if (m_pFsRaw == 0) { m_nFsPages = 0; return 0; }
 		m_ulFsPhys = ((uintptr) m_pFsRaw + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);

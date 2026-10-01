@@ -1982,6 +1982,7 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 		return 0;
 	}
 	pAS->MapContig (USER_FULLSCREEN_CANVAS, ulPhys, nPages, KPAGE_ATTR_APP_DATA);
+	pAS->FlushTLB ();					// (a new buffer after a change of resolution)
 	CWindow *pWin = pAS->GetWindow ();
 	if (pWM->FullscreenWindow () != pWin) { s_pFsWin = pWin; s_nFsX = pWin->X (); s_nFsY = pWin->Y (); }
 	pWin->Move (0, 0);
