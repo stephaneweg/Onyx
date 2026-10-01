@@ -165,6 +165,11 @@ struct browser_window {
 
 	/** Fragment identifier for current_content. */
 	lwc_string *frag_id;
+	/** Onyx: the scroll offset frag_scroll() left (valid when onyx_frag_done): a
+	 * different one later means the user (or a script) scrolled, and the fragment is
+	 * no longer followed as the page reflows */
+	bool onyx_frag_done;
+	int onyx_frag_x, onyx_frag_y;
 
 	/**
 	 * Current drag status.

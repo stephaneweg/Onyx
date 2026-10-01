@@ -1163,6 +1163,12 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   (lemonde.fr); a canvas `Image`'s callback is taken off before it is freed at the page's
   teardown (qjs_canvas.c) -- the closure held its image, whose finalizer freed it again
   (yahoo.com). `performance.measure` takes PerformanceTiming names (`"navigationStart"`: bbc).
+- **A fragment let go of once the user scrolls** (`desktop/browser_window.c` `frag_scroll`,
+  NetSurf's own "@todo don't do this if the user has scrolled"): each reformat scrolled back
+  to the URL's `#fragment`, so a page still reflowing (late images, scripts, animations) could
+  not be scrolled up from it (kotonstudio.com's menu links). The offset the fragment scroll
+  left is kept; a different one later (the user, a script) ends it, until the next
+  navigation. Test: `gputest.sh` 3b (nav-fragment.html#target scrolled up while it reflows).
 - **A context's prelude compiled once**: dom.js, html5.js and canvas.js are compiled by the
   first context of the process, their bytecode kept and read back in the next ones
   (`qjs_eval_cached`, as Intl's): on the PC a context's prelude went from ~37 ms to ~5 ms
@@ -1817,6 +1823,18 @@ offered). Google's "unusual traffic" page (`/sorry/`) comes to this bench's addr
 every client (curl included, with TLS 1.3 and HTTP/2): what TLS 1.3 changes for it cannot
 be measured from here.
 
+**Chrome's request fingerprint** (`onyx_fetch.c`, `utils/useragent.c`): bot checks (Google's
+`/sorry/` and its reCAPTCHA among them) compare a request with the Chrome its User-Agent
+names. The User-Agents name **Chrome 142** (`ONYX_CHROME_MAJOR`; Chrome's reduced form:
+`Android 10; K`, `Windows NT 10.0`, `<major>.0.0.0`); the headers go in **Chrome's order**
+(`onyx_hdr_rank`: HTTP/1.1 from `onyx_order_headers`, HTTP/2 sorted after the pseudo-headers,
+with Chrome's `priority` header by destination: `u=0, i` for a document...); `sec-ch-ua` is
+Chromium's brand list with its GREASE brand drawn from the major version as Chromium does
+(`GenerateBrandVersionList`); the **high-entropy client hints** (`-full-version-list`,
+`-arch`, `-bitness`, `-model`, `-platform-version`, `-wow64`, `-form-factors`) go only to the
+origins that asked for them by `Accept-CH` (kept per origin for the app's life), as Chrome.
+Bump `ONYX_CHROME_MAJOR` / `ONYX_CHROME_FULL` now and then: an old Chrome stands out.
+
 **Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
 comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
 1.5.7's decompressor vendored in `third_party/zstd-1.5.7`, `libzstddec.a`, ~70 KB).
@@ -2045,6 +2063,12 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
   when a blurred or blended group is in it (github.com's hero: 11-20 ms a redraw on the PC) -- to
   one composite, and animated transforms and fades from a redraw of their rectangles to a
   composite.
+- **A new page drops the retained layers** (`onyx_comp_page_changed`, from the window's
+  `GW_EVENT_NEW_CONTENT`): they were kept per window -- an animated layer of the page before
+  (kotonstudio.com's CSS-animated screenshot) stayed over the next page (kotonviolins.com).
+  A page closed (another shows in its window, it is kept for the history) pauses its
+  animations (`html_content.onyx_closed`; `oa_tick` looks again every second). Test:
+  `gputest.sh` 3b (gpu-nav-a.html -> gpu-nav-b.html, composited = CPU).
 - **Not done**: overflow scrollers as layers (an inner scroller's scroll paints its box again,
   in the band); groups with retained layers inside (a filter or opacity group holding layers: the
   CPU paints what it holds, into the band or the parent layer -- docs/07 §6 step 6's ARGB target

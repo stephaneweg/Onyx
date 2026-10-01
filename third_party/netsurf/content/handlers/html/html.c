@@ -2007,6 +2007,7 @@ html_open(struct content *c,
 	html_content *html = (html_content *) c;
 
 	html->bw = bw;
+	html->onyx_closed = false;	/* (Onyx: its animations run again) */
 	html->page = (html_content *) page;
 
 	html->drag_type = HTML_DRAG_NONE;
@@ -2036,6 +2037,7 @@ static nserror html_close(struct content *c)
 
 	/* clear the html content reference to the browser window */
 	htmlc->bw = NULL;
+	htmlc->onyx_closed = true;	/* (Onyx: onyx_anim.c's frames paused) */
 
 	/* remove all object references from the html content */
 	html_object_close_objects(htmlc);

@@ -65,6 +65,10 @@ void onyx_comp_damage(int x0, int y0, int x1, int y1);
 /** The whole document to paint again (the view first, the rest of the band later). */
 void onyx_comp_damage_all(void);
 
+/** A new page in the window: the retained layers (the page before's) dropped, all painted
+ * again. */
+void onyx_comp_page_changed(void);
+
 /**
  * The view: its rows painted where they are not yet, the damage painted, the frame composited
  * into the canvas. prepaint: an idle turn -- a piece of the band out of view painted ahead.

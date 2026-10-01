@@ -682,6 +682,19 @@ void onyx_comp_damage_all(void)
 		C.reset = true;
 }
 
+/* exported interface documented in framebuffer/onyx_comp.h */
+void onyx_comp_page_changed(void)
+{
+	if (!C.on)
+		return;
+	/* the layers were the page before's (their keys its boxes: a new box may even get the
+	 * address of an old one) -- all dropped, the band painted again */
+	for (int i = C.nlayers - 1; i >= 0; i--)
+		layer_remove(i);
+	C.nanimated = 0;
+	C.reset = true;
+}
+
 /* ---- painting into the band ----------------------------------------------------------------- */
 
 static void painted_add(const struct crect *r)
