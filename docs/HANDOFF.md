@@ -191,6 +191,18 @@ answer in French. The docs stay in English.
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
+## The shared clipboard (2026-10-01, not yet tried on the Pi)
+
+- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/clipboard.h`**
+  (the apps' side, its old functions kept + images and formats), **`user/clipproto.h`** (messages by mailbox,
+  bytes by `RAM:/clip` files), **`user/Apps/clipboard`** (the widget, the dock's new button; the dock's small
+  buttons now: lock / gear at the left, power / clipboard at the right). Every wtk app gets it through
+  `textbox.cpp` / `textarea.cpp`: all the apps were rebuilt and staged. `autostart` runs clipd.
+- **Tested on the PC**: `sh tools/tests/run_clipboard_test.sh` (21 checks); the simulator has in-process
+  mailboxes (`SIM_IPC=1`) and the magenta key of `WIN_FLAG_TRANSPARENT` windows in its dumps.
+- **To do**: Jet's copy / paste through clipboard.h (docs/clipboard/README.md, *Still to do*); try on the
+  Pi: a copy in tinypad, the notification, the widget above the dock, an image (when an app copies one).
+
 ## Archiver, the archive manager -- version 1, ZIP (2026-10-01, not yet tried on the Pi)
 
 - **`user/Apps/archiver`** (docs/04 §9 *Archiver*, docs/03 *The Archiver*, the plan and the user's

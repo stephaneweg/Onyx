@@ -65,6 +65,8 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <map>
+#include <deque>
 #include "kapi.h"
 
 // The kernel's frame metrics (kernel/include/kern/gui/window.h: WIN_TITLEBAR_H, WIN_BORDER).
@@ -355,6 +357,8 @@ static void dump (const char *file)
 	if (!(g_flags & (1u << 5)))					// (not a see-through window: its client opaque)
 		for (int j = 0; j < g_lh; j++)
 			for (int i = 0; i < g_lw; i++) px[(size_t) (j + (g_act ? SIM_TITLE_H : 0)) * g_ow + i + (g_act ? SIM_BORDER : 0)] &= 0x00FFFFFFu;
+	if (g_flags & (1u << 3))					// (WIN_FLAG_TRANSPARENT: magenta = see-through)
+		for (size_t i = 0; i < px.size (); i++) if ((px[i] & 0x00FFFFFFu) == 0x00FF00FFu) px[i] = 0xFF000000u;
 	fwrite (px.data (), 4, px.size (), f);
 	fclose (f);
 	fprintf (stderr, "sim: dumped %dx%d at %d,%d -> %s\n", g_ow, g_oh, g_x, g_y, file);
@@ -551,7 +555,8 @@ static void wallpaper_commit (void)
 	fclose (fp);
 	fprintf (stderr, "sim: the wallpaper -> %s\n", f);
 }
-static int mailbox_recv (int *, int *, void *, unsigned, int) { return -1; }
+static int sipc_recv (int *, int *, void *, unsigned, int);
+static int mailbox_recv (int *f, int *t, void *b, unsigned c, int bl) { return getenv ("SIM_IPC") ? sipc_recv (f, t, b, c, bl) : -1; }
 // (the BASIC runtime: started as an app -- no stdout --, its folder the current one, no GPU)
 static int h_chdir (const char *) { return 0; }
 static void *h_stdout_stream (void) { return 0; }
@@ -826,7 +831,8 @@ static void set_wheel (int v) { s_wheel = v; }
 static int get_wheel (void) { return s_wheel; }
 static int h_kill (const char *n) { fprintf (stderr, "sim: kill %s\n", n); return 1; }
 static int set_keymap_data (const char *, const void *, unsigned) { return 1; }
-static int mailbox_send (int, int, const void *, unsigned) { return 0; }
+static int sipc_send (int, int, const void *, unsigned);
+static int mailbox_send (int to, int type, const void *d, unsigned n) { return getenv ("SIM_IPC") ? sipc_send (to, type, d, n) : 0; }
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
 static int drag_data (int *type, void *buf, unsigned cap)
 {
@@ -866,9 +872,59 @@ static void cursor_pos (int *x, int *y)
 	if (x) *x = cx; if (y) *y = cy;
 }
 static void set_alpha (int) {}
-static int ipc_register (const char *n) { return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
+// SIM_IPC=1: services and mailboxes inside this process -- each thread that registers a service is a
+// "process" of its own (its pid), the others are pid 1 (a client and its services as threads: the
+// shared clipboard's test)
+struct SimMsg { int from, type; std::string bytes; };
+static std::map<std::string, int> g_ipcNames;
+static std::map<pthread_t, int> g_ipcThread;
+static std::map<int, std::deque<SimMsg> > g_ipcBox;
+static pthread_mutex_t g_ipcLock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_ipcCond = PTHREAD_COND_INITIALIZER;
+static int g_ipcNext = 100;
+static bool sim_ipc (void) { return getenv ("SIM_IPC") != 0; }
+static int ipc_self (void) { auto it = g_ipcThread.find (pthread_self ()); return it == g_ipcThread.end () ? 1 : it->second; }
+static int sipc_register (const char *n)
+{
+	pthread_mutex_lock (&g_ipcLock);
+	int r = 0;
+	if (!g_ipcNames.count (n)) { int pid = g_ipcNext++; g_ipcNames[n] = pid; g_ipcThread[pthread_self ()] = pid; r = 1; }
+	pthread_mutex_unlock (&g_ipcLock);
+	return r;
+}
+static int sipc_lookup (const char *n)
+{
+	pthread_mutex_lock (&g_ipcLock);
+	auto it = g_ipcNames.find (n); int r = it == g_ipcNames.end () ? 0 : it->second;
+	pthread_mutex_unlock (&g_ipcLock);
+	return r;
+}
+static int sipc_send (int to, int type, const void *d, unsigned n)
+{
+	if (n > 512) return -1;
+	pthread_mutex_lock (&g_ipcLock);
+	g_ipcBox[to].push_back ({ ipc_self (), type, std::string ((const char *) d, n) });
+	pthread_cond_broadcast (&g_ipcCond);
+	pthread_mutex_unlock (&g_ipcLock);
+	return 0;
+}
+static int sipc_recv (int *from, int *type, void *buf, unsigned cap, int blocking)
+{
+	pthread_mutex_lock (&g_ipcLock);
+	int me = ipc_self ();
+	while (blocking && g_ipcBox[me].empty ()) pthread_cond_wait (&g_ipcCond, &g_ipcLock);
+	if (g_ipcBox[me].empty ()) { pthread_mutex_unlock (&g_ipcLock); return -1; }
+	SimMsg m = g_ipcBox[me].front (); g_ipcBox[me].pop_front ();
+	pthread_mutex_unlock (&g_ipcLock);
+	if (from) *from = m.from; if (type) *type = m.type;
+	unsigned k = (unsigned) m.bytes.size () < cap ? (unsigned) m.bytes.size () : cap;
+	memcpy (buf, m.bytes.data (), k);
+	return (int) k;
+}
+static int ipc_register (const char *n) { if (sim_ipc ()) return sipc_register (n); return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
 static int ipc_lookup (const char *n)
 {
+	if (sim_ipc ()) return sipc_lookup (n);
 	if (getenv ("SIM_APPLET") && !strcmp (n, "control")) return 99;	// (the applet's host: there)
 	if (getenv ("SIM_MAIL") && !strcmp (n, "control")) return 5;		// (the Control Panel: us)
 	if (getenv ("SIM_MBOX")) return 7;					// (SIM_MBOX's sender: any service)
@@ -907,8 +963,9 @@ static int list_procs (char *b, unsigned n)
 { if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n12 a R 64 memmon\n"); return 6; }
 static int meminfo (unsigned long *t, unsigned long *f, unsigned long *a, unsigned *pk)
 { if (t) *t = 3145728; if (f) *f = 2097152; if (a) *a = 409600; if (pk) *pk = 64; return 1; }
-static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int)
+static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int blocking)
 {
+	if (getenv ("SIM_IPC")) return sipc_recv (from, type, buf, cap, blocking);
 	static bool mailed = false;
 	const char *mail = getenv ("SIM_MAIL");
 	if (mail && !mailed)						// one message (an applet's hello)

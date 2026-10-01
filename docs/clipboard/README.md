@@ -1,6 +1,9 @@
 # The shared clipboard — a service with a history (study, first mock-ups)
 
-> **Status (2026-10-01): design and mock-ups, to be validated by the user.** Asked by the user (with
+> **Status (2026-10-01): implemented** (`user/Apps/clipd`, `user/clipboard.h`, `user/clipproto.h`, the widget
+> `user/Apps/clipboard`; tested on the PC: `tools/tests/run_clipboard_test.sh`; not yet tried on the Pi).
+> The transfers go through files of `RAM:/clip` rather than shared surfaces (a surface mapped stays
+> mapped in clipd until it ends: memory kept for nothing). Its use: docs/04 §5 *The clipboard*. Asked by the user (with
 > Screenshot, `docs/screenshot/README.md`): a clipboard **shared by every app through IPC**, not the
 > kernel's — a **ring of 10 slots**; Ctrl+C / Ctrl+X send the data **with its type** (text, image, a
 > path...) to the clipboard, which **keeps it in its own memory** (nothing left to maintain in the
@@ -79,16 +82,19 @@ used — or answer for clipd when it is not running (a fallback, one text). Noth
   user's choice; done: it launches `clipboard`), a click elsewhere hides it.
 - It is a client of clipd (`CLIP_LIST`, `CLIP_SUBSCRIBE`), not clipd itself: clipd has no window.
 
-## Questions for the user
+## Decided with the user (2026-10-01)
 
-1. **When is the widget shown?** Always, on the desktop (behind the windows, as the agenda widget), coming
-   to the front for a few seconds at each copy? Or hidden, shown only at a copy and by a shortcut
-   (**Ctrl+Shift+V**, as Windows' Win+V), gone when one clicks elsewhere?
-2. **Ctrl+V when the cursor's item does not suit the app** (an image under the cursor, Ctrl+V in tinypad):
-   paste nothing, or the newest item that suits (here the text)? (Proposed: the newest that suits, the
-   panel showing which one was pasted.)
-3. **After a paste**, the cursor stays on that item (Ctrl+V again pastes it again — proposed), or moves
-   to the next one (pasting the history in turn)?
-4. **Kept across a restart?** The ring in memory only (lost at a reboot, as on Windows unless synced), or
-   saved to the card at shutdown?
-5. **Pinned items** (kept past the 10, never pushed out), as Windows' clipboard history has?
+1. The widget opens from the **dock's button** only; a copy shows a **notification** (*Text copied*,
+   *Image copied*, *2 items cut*), not the widget.
+2. Ctrl+V with an item that does not suit the app under the cursor: the **newest item that suits**.
+3. After a paste the **cursor stays** (Ctrl+V again pastes the same).
+4. The history is **lost at a restart** (memory only).
+5. No pinned items for now.
+
+## Still to do
+
+- **Jet Browser** writes and reads the kernel's clipboard itself (`user/netsurf/onyx_chrome.cpp`
+  `clip_copy` and its ^V): switch it to `clipboard.h` (`clip_set_text_n`, `clip_get_text`) in a Jet
+  session — until then its copies are not in the history, and its paste gets the last text copied.
+- The apps' own formats: Paint and Screenshot `clip_set_image`, Writer `rtf` + `text`, the Spreadsheet's
+  cells (`x-sheet` + `text`).

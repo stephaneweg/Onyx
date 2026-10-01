@@ -340,7 +340,17 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
 > launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
-> `clip_set_files (path, cut)`, `clip_get_file` — the kernel keeps one shared clipboard.
+> `clip_set_files (paths, cut)`, `clip_get_file`, `clip_clear`, `clip_set_image (px, w, h)`,
+> `clip_get_image (&w, &h)`, and for several formats of one copy `clip_put (fmts, datas, lens, n)` /
+> `clip_get (fmts, nf, got, cap, &data, &len)` (formats: `text`, `rtf`, `image`, `files`, `files-cut`,
+> `url`, `x-<app>`; Writer would give `rtf` + `text`). **The shared clipboard** (`docs/clipboard/README.md`):
+> the service `clipd` keeps the last 10 copies in its memory, a cursor on the one Ctrl+V pastes (the
+> cursor's item in a format the app takes, else the newest that has one); every copy shows a
+> notification; the dock's clipboard button opens its widget (`apps/clipboard`). The protocol
+> (`clipproto.h`): mailboxes for the messages, files of `RAM:/clip` for the bytes (an app never reads
+> its own mailbox); the kernel's v40 clipboard is kept as the fallback. Test: `sh
+> tools/tests/run_clipboard_test.sh` (clipd and an app as threads over the simulator's in-process
+> mailboxes, `SIM_IPC=1`).
 > **Full-screen apps (ABI v41)**: `unsigned *fb = kapi_fullscreen_begin (&w, &h);` gives a
 > screen-sized buffer; draw into it and call `kapi_present_fb ()` once per frame (it also
 > yields). The desktop is not drawn meanwhile and all input comes to your key/pointer

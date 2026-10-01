@@ -388,7 +388,7 @@ the Trash, four on each side.
   its windows drawn small in it. Click one to show that workspace (see *Workspaces* below).
   Beside them: at the left the **lock** (the screen is locked: `lock` below) over the **gear** (the
   **Control Panel**, §11); at the right the red **power** button (**Shut Down…**) over the
-  **clipboard** (its history, a widget at the bottom right of the screen — coming: `docs/clipboard/README.md`).
+  **clipboard** (its history, a widget at the bottom right of the screen: *The clipboard* below).
 
 Rest the pointer on a launcher to see its name. **Right-click the dock**: **Panel Settings…** —
 the Control Panel's **Panel** applet, where the drawers (their group and main app: add, remove,
@@ -463,6 +463,27 @@ the title** to move it (its place is kept in `SD:/apps/agenda.app/config.ini`).
 
 ![Agenda widget](../screenshots/agenda.png)
 *The agenda widget on a dark wallpaper.*
+
+### The clipboard (`clipd`, `clipboard`)
+
+![The clipboard](../screenshots/clipboard.png)
+*The clipboard's widget, opened by the dock's clipboard button: the last copies, the image under the
+cursor (Ctrl+V pastes it), the pointer over a row shows its × (delete).*
+
+Every **Ctrl+C / Ctrl+X** (in any text field, the File Viewer, the BASIC programs...) goes to the
+**shared clipboard**, which keeps the **last 10 copies** — text, images, files (copied or cut), links —
+and shows a notification (*Text copied*, *Image copied*, *2 items cut*). **Ctrl+V** pastes the item under
+its **cursor**: the newest copy, unless you moved the cursor; if that item does not suit the app (an
+image under the cursor, Ctrl+V in a text field), the newest item that suits is pasted. The cursor stays
+where it is after a paste (Ctrl+V again pastes the same).
+
+The **clipboard button** of the dock (at the right of its middle, under the power button) opens the
+**widget** at the bottom right of the screen, always above the dock: the items newest first — an icon of
+their kind, a line of them (an image: its size), the time. **Click** an item: the cursor goes there.
+Its **×** (the row under the pointer) or **Delete** deletes it; **Up / Down** move the cursor; the **bin**
+empties the list; **Esc**, **Enter** or a click elsewhere closes the widget. The history is in memory
+only: it is gone when the Pi restarts. (The service is `clipd`, started by `autostart`; the files
+`RAM:/clip/*` are the copies on their way.)
 
 ### Drag & drop and file associations
 
