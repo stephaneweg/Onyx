@@ -15,12 +15,20 @@
 #define _writer_view_h
 
 #include "edit.h"
+#include "pdf/pdfwrite.h"
 
 namespace wr {
 
 using namespace wtk;
 
 enum { GAP = 22, SBW = 13 };
+
+// File > Export as PDF: the pages drawn again into a PDF (pdf/pdfwrite.h) instead of the screen -- at 100 % (96 px an
+// inch: a px is 0.75 point), each page's top left at (0, 0); what is only for the screen (the crop marks, a table's grid
+// without lines, the selection, the formatting marks) left out.
+static pdfw::Writer *g_pdf;
+static bool g_pdfJpeg;				// the images as JPEG (a smaller file)
+static const float PX2PT = 0.75f;
 
 static unsigned C_DESK () { return wk_mix (wk_tone (C_BG, 92), 0x7A7E86, 110); }
 static unsigned C_SELECT () { return wk_mix (0xFFFFFF, C_ACCENT, 92); }
@@ -130,6 +138,46 @@ public:
 		}
 	}
 
+	// a page's contents: its header and footer, the body's tables and lines (the screen's, or the PDF's: g_pdf)
+	void paintPage (int pg, int ox, int pt, int vh, Para **bp, bool inBody)
+	{
+		// the header and the footer (greyed while the body is edited)
+		for (int f = 0; f < 2; f++)
+		{
+			int s = hf_story (f != 0, pg);
+			if (story_empty (*L.d, s) && L.d->cur != s) continue;
+			hf_place (s, pg);
+			int sn; Para **sp = story_p (*L.d, s, &sn);
+			bool cur = L.d->cur == s;
+			for (int i = 0; i < sn; i++) for (int l = 0; l < sp[i]->nln; l++) drawLine (sp[i], i, l, ox, pt, vh, 0, !cur, cur && pg == L.hfPage);
+		}
+		// the body: the tables' shading, the lines, the tables' lines (greyed while a header is edited)
+		for (int k = 0; k < L.nruns; k++) drawTable (L.runs[k], pg, ox, pt, true);
+		int g1 = pg + 1 < L.npages ? L.pageFirst[pg + 1] : L.nall;
+		for (int g = L.pageFirst[pg]; g < g1; g++) drawLine (bp[L.all[g].p], L.all[g].p, L.all[g].l, ox, pt, vh, 0, !inBody, inBody);
+		for (int k = 0; k < L.nruns; k++)
+		{
+			const TRun &run = L.runs[k];
+			int dy;
+			if (repeatAt (run.t, pg, &dy))			// (the heading row again on this page)
+				for (int i = run.p0; i < run.p1; i++)
+					if (bp[i]->pf.row == 0) for (int l = 0; l < bp[i]->nln; l++) drawLine (bp[i], i, l, ox, pt, vh, dy, !inBody, false);
+			drawTable (run, pg, ox, pt, false);
+		}
+	}
+	// the pages from..to (from 0) into a PDF: each a page of it
+	void exportPages (pdfw::Writer &w, int from, int to)
+	{
+		g_pdf = &w;
+		int n; Para **bp = story_p (*L.d, SY_BODY, &n);
+		for (int pg = from; pg <= to && pg < L.npages; pg++)
+		{
+			w.begin_page (L.d->page.w / 20.0f, L.d->page.h / 20.0f);
+			paintPage (pg, 0, 0, 1 << 28, bp, true);
+			w.end_page ();
+		}
+		g_pdf = 0;
+	}
 	void onDraw () override
 	{
 		relayout ();
@@ -149,29 +197,7 @@ public:
 			fillClip (ox - 1, pt - 1, L.pageW + 2, L.pageH + 2, wk_mix (C_DESK (), 0, 90));
 			fillClip (ox, pt, L.pageW, L.pageH, 0xFFFFFF);
 			cropMarks (ox, pt);
-			// the header and the footer (greyed while the body is edited)
-			for (int f = 0; f < 2; f++)
-			{
-				int s = hf_story (f != 0, pg);
-				if (story_empty (*L.d, s) && L.d->cur != s) continue;
-				hf_place (s, pg);
-				int sn; Para **sp = story_p (*L.d, s, &sn);
-				bool cur = L.d->cur == s;
-				for (int i = 0; i < sn; i++) for (int l = 0; l < sp[i]->nln; l++) drawLine (sp[i], i, l, ox, pt, vh, 0, !cur, cur && pg == L.hfPage);
-			}
-			// the body: the tables' shading, the lines, the tables' lines (greyed while a header is edited)
-			for (int k = 0; k < L.nruns; k++) drawTable (L.runs[k], pg, ox, pt, true);
-			int g1 = pg + 1 < L.npages ? L.pageFirst[pg + 1] : L.nall;
-			for (int g = L.pageFirst[pg]; g < g1; g++) drawLine (bp[L.all[g].p], L.all[g].p, L.all[g].l, ox, pt, vh, 0, !inBody, inBody);
-			for (int k = 0; k < L.nruns; k++)
-			{
-				const TRun &run = L.runs[k];
-				int dy;
-				if (repeatAt (run.t, pg, &dy))			// (the heading row again on this page)
-					for (int i = run.p0; i < run.p1; i++)
-						if (bp[i]->pf.row == 0) for (int l = 0; l < bp[i]->nln; l++) drawLine (bp[i], i, l, ox, pt, vh, dy, !inBody, false);
-				drawTable (run, pg, ox, pt, false);
-			}
+			paintPage (pg, ox, pt, vh, bp, inBody);
 			if (!inBody) hfFrame (pg, ox, pt);
 		}
 		placeStory ();
@@ -577,12 +603,14 @@ private:
 	// ---- drawing ----
 	void fillClip (int x, int y, int w, int h, unsigned c)
 	{
+		if (g_pdf) { g_pdf->fill_rect (x * PX2PT, y * PX2PT, w * PX2PT, h * PX2PT, c); return; }
 		int x1 = wmin (x + w, viewW ()), y1 = wmin (y + h, viewH ());
 		x = wmax (x, 0); y = wmax (y, 0);
 		if (x1 > x && y1 > y) canvas.fillRect (x, y, x1 - x, y1 - y, c);
 	}
 	void cropMarks (int ox, int pt)
 	{
+		if (g_pdf) return;
 		unsigned c = 0xC8C8C8;
 		int x0 = ox + (L.ml64 >> 6), y0 = pt + (L.mt64 >> 6), x1 = ox + L.pageW - (L.mr64 >> 6), y1 = pt + L.pageH - (L.mb64 >> 6);
 		int m = wmin (14, wmin (L.ml64 >> 6, L.mt64 >> 6) - 2);
@@ -654,6 +682,7 @@ private:
 				}
 				if (t->border == TB_NONE)				// (the grid shown faintly: not printed)
 				{
+					if (g_pdf) continue;
 					unsigned g = 0xC9D3E6;
 					for (int x = x0; x < x1; x += 3) { fillClip (x, y0, 1, 1, g); fillClip (x, y1, 1, 1, g); }
 					for (int y = y0; y < y1; y += 3) { fillClip (x0, y, 1, 1, g); fillClip (x1, y, 1, 1, g); }
@@ -666,6 +695,19 @@ private:
 			}
 		}
 	}
+	// A character at x64 (1/64 px) on the baseline: on the screen, or into the PDF (its font's file embedded: the glyph of
+	// the face it comes from -- the font's own or DejaVu Sans, the fallback --, a made bold / italic as such)
+	void glyph (fnt::Font *font, int x64, int base, unsigned cp, unsigned col, int vh)
+	{
+		if (!g_pdf) { fnt::draw (canvas, font, x64, base, cp, col, 0, 0, viewW (), vh); return; }
+		fnt::Glyph *g = fnt::glyph (font, cp);
+		fnt::Font *src = g && g->src ? g->src : font;
+		fnt::FaceFile &ff = fnt::g_face[src->face];
+		if (!ff.data || !g) return;
+		int f = g_pdf->add_font (ff.data, ff.len);
+		if (f < 0) return;
+		g_pdf->glyph (f, src->size64 / 64.0f * PX2PT, x64 / 64.0f * PX2PT, base * PX2PT, (unsigned) g->gi, cp, col, src->fakeBold, src->fakeItalic);
+	}
 	// A tab's leader (dots, dashes, a line) from x0 to x1 (1/64 px), on a grid of the page's.
 	void leader (int kind, int x0, int x1, int base, fnt::Font *font, unsigned col, int ox, int vh)
 	{
@@ -675,7 +717,7 @@ private:
 		if (a < 64) return;
 		int step = kind == TL_DOT ? a * 3 / 2 : a + a / 3, org = ox << 6;
 		for (int x = org + ((x0 - org) / step + 1) * step; x + a <= x1 - step / 3; x += step)
-			fnt::draw (canvas, font, x, base, g, col, 0, 0, viewW (), vh);
+			glyph (font, x, base, g, col, vh);
 	}
 
 	// A line: the highlights, the fields' shading and the selection behind, the characters (a field's
@@ -683,6 +725,7 @@ private:
 	// (a table's heading row again); dim: greyed (another story is edited); sel: its selection shown.
 	void drawLine (const Para *q, int pi, int li, int ox, int pt, int vh, int dy64, bool dim, bool sel)
 	{
+		if (g_pdf) { dim = false; sel = false; }
 		const Line &ln = q->ln[li];
 		int top64 = (pt << 6) + ln.py64 + dy64;
 		int top = top64 >> 6, bot = (top64 + ln.h64 + 63) >> 6;
@@ -699,7 +742,7 @@ private:
 			bool field = q->ch[i] == FIELD_CHAR && f0.fld;
 			int j = i + 1;
 			while (j < ln.end && !field && L.d->fmt[q->cf[j]].hilite == hl && !(q->ch[j] == FIELD_CHAR && L.d->fmt[q->cf[j]].fld)) j++;
-			if (hl != AUTO || field)
+			if (hl != AUTO || (field && !g_pdf))		// (a field's shading: the screen's only)
 			{
 				int x0 = (tx64 + xAt (i)) >> 6, x1 = (tx64 + xAt (j)) >> 6;
 				int raise = 0; fnt::Font *hf = cf_font (q->cf[i], &raise);
@@ -764,10 +807,10 @@ private:
 			{
 				unsigned t[80]; int tn = field_chars (q, i, ln.page, t, 80);
 				int x = x64;
-				for (int k = 0; k < tn; k++) { if (t[k] > ' ') fnt::draw (canvas, font, x, base, t[k], col, 0, 0, viewW (), vh); x += fnt::advance (font, t[k]); }
+				for (int k = 0; k < tn; k++) { if (t[k] > ' ') glyph (font, x, base, t[k], col, vh); x += fnt::advance (font, t[k]); }
 			}
 			else if (ch == '\t') { if (q->lead[i]) leader (q->lead[i], x64, tx64 + xAt (i + 1), base, font, col, ox, vh); }
-			else if (ch > ' ' && ch != 0xA0) fnt::draw (canvas, font, x64, base, ch, col, 0, 0, viewW (), vh);
+			else if (ch > ' ' && ch != 0xA0) glyph (font, x64, base, ch, col, vh);
 			if (f.flags & (CF_UNDER | CF_STRIKE))
 			{
 				bool trailing = true;
@@ -783,7 +826,7 @@ private:
 		}
 		// the formatting marks: a dot a space, an arrow a tab, the line breaks, the paragraph's (a
 		// cell's) end
-		if (g_showMarks && !dim)
+		if (g_showMarks && !dim && !g_pdf)
 		{
 			unsigned mc = 0x4A7FD0;
 			bool cellEnd = false;
@@ -820,7 +863,7 @@ private:
 				int x64 = tx64 + tw2px64 (q->pf.left + q->pf.first);
 				int base = (top64 + ln.base64 + 32) >> 6;
 				unsigned col = ink (mf.color == AUTO ? 0 : mf.color);
-				for (int i = 0; i < n; i++) { fnt::draw (canvas, font, x64, base, mk[i], col, 0, 0, viewW (), vh); x64 += fnt::advance (font, mk[i]); }
+				for (int i = 0; i < n; i++) { glyph (font, x64, base, mk[i], col, vh); x64 += fnt::advance (font, mk[i]); }
 			}
 		}
 	}
@@ -829,6 +872,7 @@ private:
 	{ fillClip (x, y, w, 1, c); fillClip (x, y + h - 1, w, 1, c); fillClip (x, y, 1, h, c); fillClip (x + w - 1, y, 1, h, c); }
 	void blendClip (int x, int y, int w, int h, unsigned c, int a)
 	{
+		if (g_pdf) return;
 		int x1 = wmin (x + w, viewW ()), y1 = wmin (y + h, viewH ());
 		for (int j = wmax (y, 0); j < y1; j++) for (int i = wmax (x, 0); i < x1; i++) wk_blend_px (canvas, i, j, c, a);
 	}
@@ -836,6 +880,7 @@ private:
 	void drawImage (Image &im, int x, int y, int w, int h, int vh)
 	{
 		if (w <= 0 || h <= 0 || !im.px) return;
+		if (g_pdf) { g_pdf->image (im.px, im.w, im.h, x * PX2PT, y * PX2PT, w * PX2PT, h * PX2PT, g_pdfJpeg, 85); return; }
 		if (im.cw != w || im.ch != h || !im.cache)
 		{
 			delete[] im.cache;

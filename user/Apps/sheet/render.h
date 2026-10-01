@@ -11,8 +11,32 @@
 
 #include "condfmt.h"
 #include "ui_base.h"
+#include "pdf/pdfwrite.h"
 
 namespace ss {
+
+// File > Export as PDF: the cells drawn again into a PDF (pdf/pdfwrite.h) instead of the screen -- each sheet px at
+// (g_pdfX + x * g_pdfS, g_pdfY + y * g_pdfS) points.
+static pdfw::Writer *g_pdf;
+static float g_pdfS = 0.75f, g_pdfX, g_pdfY;
+static inline void out_rect (Canvas &cv, int x, int y, int w, int h, unsigned c)
+{
+	if (g_pdf) { g_pdf->fill_rect (g_pdfX + x * g_pdfS, g_pdfY + y * g_pdfS, w * g_pdfS, h * g_pdfS, c); return; }
+	cv.fillRect (x, y, w, h, c);
+}
+static inline void out_glyph (Canvas &cv, fnt::Font *f, int x64, int y, unsigned cp, unsigned c, int cx0, int cy0, int cx1, int cy1)
+{
+	if (!g_pdf) { fnt::draw (cv, f, x64, y, cp, c, cx0, cy0, cx1, cy1); return; }
+	if (cp <= ' ') return;
+	if ((x64 >> 6) < cx0 - 2 || (x64 >> 6) >= cx1) return;		// (outside its cell's box: clipped, as on the screen)
+	fnt::Glyph *g = fnt::glyph (f, cp);
+	fnt::Font *src = g && g->src ? g->src : f;
+	fnt::FaceFile &ff = fnt::g_face[src->face];
+	if (!g || !ff.data) return;
+	int k = g_pdf->add_font (ff.data, ff.len);
+	if (k < 0) return;
+	g_pdf->glyph (k, src->size64 / 64.0f * g_pdfS, g_pdfX + x64 / 64.0f * g_pdfS, g_pdfY + y * g_pdfS, (unsigned) g->gi, cp, c, src->fakeBold, src->fakeItalic);
+}
 
 // ---- fonts -------------------------------------------------------------------------------------------------
 static int g_famOf[256];					// the book's font -> a family on the card (-1: not yet)
@@ -65,7 +89,7 @@ static int u8_draw (Canvas &cv, fnt::Font *f, int x64, int y, const char *s, int
 		unsigned cp = u8_dec (s + i, n - i, &l); i += l;
 		if (prev) x64 += fnt::kern (f, prev, cp);
 		if ((x64 >> 6) > cx1) break;
-		fnt::draw (cv, f, x64, y, cp == '\t' ? ' ' : cp, c, cx0, cy0, cx1, cy1);
+		out_glyph (cv, f, x64, y, cp == '\t' ? ' ' : cp, c, cx0, cy0, cx1, cy1);
 		x64 += fnt::advance (f, cp);
 		prev = cp;
 	}
@@ -163,24 +187,26 @@ static void hline (Canvas &cv, int x0, int x1, int y, unsigned c, int bs, const 
 {
 	if (y < clip.r0 || y > clip.r1) return;
 	x0 = imax (x0, clip.c0); x1 = imin (x1, clip.c1);
-	for (int x = x0; x <= x1; x++)
+	int run = -1;
+	for (int x = x0; x <= x1 + 1; x++)
 	{
-		if (bs == BS_DOTTED && (x & 1)) continue;
-		if (bs == BS_DASHED && (x % 6) >= 4) continue;
-		if (bs == BS_HAIR && (x & 1)) continue;
-		cv.px[y * cv.stride + x] = c;
+		bool on = x <= x1 && !((bs == BS_DOTTED || bs == BS_HAIR) && (x & 1)) && !(bs == BS_DASHED && (x % 6) >= 4);
+		if (!g_pdf) { if (on) cv.px[y * cv.stride + x] = c; continue; }
+		if (on && run < 0) run = x;
+		if (!on && run >= 0) { out_rect (cv, run, y, x - run, 1, c); run = -1; }
 	}
 }
 static void vline (Canvas &cv, int x, int y0, int y1, unsigned c, int bs, const Rect &clip)
 {
 	if (x < clip.c0 || x > clip.c1) return;
 	y0 = imax (y0, clip.r0); y1 = imin (y1, clip.r1);
-	for (int y = y0; y <= y1; y++)
+	int run = -1;
+	for (int y = y0; y <= y1 + 1; y++)
 	{
-		if (bs == BS_DOTTED && (y & 1)) continue;
-		if (bs == BS_DASHED && (y % 6) >= 4) continue;
-		if (bs == BS_HAIR && (y & 1)) continue;
-		cv.px[y * cv.stride + x] = c;
+		bool on = y <= y1 && !((bs == BS_DOTTED || bs == BS_HAIR) && (y & 1)) && !(bs == BS_DASHED && (y % 6) >= 4);
+		if (!g_pdf) { if (on) cv.px[y * cv.stride + x] = c; continue; }
+		if (on && run < 0) run = y;
+		if (!on && run >= 0) { out_rect (cv, x, run, 1, y - run, c); run = -1; }
 	}
 }
 // A cell's borders over its box (x, y, w, h) -- its edges on the grid's lines.
@@ -344,7 +370,7 @@ static void paint_pane (Canvas &cv, Book &b, Sheet *s, int z, const PaneView &pv
 			if (nm && merged (r, c) >= 0) continue;
 			int X0 = imax (pv.col[ci].at, clip.c0), Y0 = imax (pv.row[ri].at, clip.r0);
 			int X1 = imin (pv.col[ci].at + pv.col[ci].len, clip.c1 + 1), Y1 = imin (pv.row[ri].at + pv.row[ri].len, clip.r1 + 1);
-			if (fill != AUTO && X1 > X0 && Y1 > Y0) cv.fillRect (X0, Y0, X1 - X0, Y1 - Y0, fill);
+			if (fill != AUTO && X1 > X0 && Y1 > Y0) out_rect (cv, X0, Y0, X1 - X0, Y1 - Y0, fill);
 			if (cl.bar >= 0)					// a data bar: a gradient fading to the right, its edge
 			{
 				int bx = pv.col[ci].at + 2, by = pv.row[ri].at + 2, bh = pv.row[ri].len - 5;
@@ -352,7 +378,7 @@ static void paint_pane (Canvas &cv, Book &b, Sheet *s, int z, const PaneView &pv
 				for (int xx = imax (bx, clip.c0); xx < imin (bx + bw, clip.c1 + 1); xx++)
 				{
 					unsigned col = mix_rgb (cl.barColor, 0xFFFFFF, bw > 1 ? 0.85 * (xx - bx) / (bw - 1) : 0);
-					for (int yy = imax (by, clip.r0); yy < imin (by + bh, clip.r1 + 1); yy++) cv.px[yy * cv.stride + xx] = col;
+					{ int ya = imax (by, clip.r0), yb = imin (by + bh, clip.r1 + 1); if (g_pdf) { if (yb > ya) out_rect (cv, xx, ya, 1, yb - ya, col); } else for (int yy = ya; yy < yb; yy++) cv.px[yy * cv.stride + xx] = col; }
 				}
 				if (bw > 0)
 				{
@@ -378,7 +404,7 @@ static void paint_pane (Canvas &cv, Book &b, Sheet *s, int z, const PaneView &pv
 		unsigned fill = st.fill;
 		if (s->ncf) { CfLook cl; cf_cell (b, s, x, m.r0, m.c0, cl); if (cl.fill != AUTO) fill = cl.fill; }
 		int X0 = imax (x0, clip.c0), Y0 = imax (y0, clip.r0), X1 = imin (x1 - 1, clip.c1 + 1), Y1 = imin (y1 - 1, clip.r1 + 1);
-		if (X1 > X0 && Y1 > Y0) cv.fillRect (X0, Y0, X1 - X0, Y1 - Y0, fill == AUTO ? 0xFFFFFF : fill);
+		if (X1 > X0 && Y1 > Y0 && !(g_pdf && fill == AUTO)) out_rect (cv, X0, Y0, X1 - X0, Y1 - Y0, fill == AUTO ? 0xFFFFFF : fill);
 		if (x && x->kind != K_NONE)
 		{
 			Look L; cell_look (b, s, x, m.r0, m.c0, x1 - x0, z, L);

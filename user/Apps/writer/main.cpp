@@ -194,6 +194,115 @@ static void cmd_export (const char *ext)
 static void cmd_export_html () { cmd_export (".html"); }
 static void cmd_export_txt () { cmd_export (".txt"); }
 
+// ---- File > Export as PDF (pdf/pdfwrite.h: the pages as they are printed, the fonts embedded as subsets) ------------------
+struct PdfOpts { int pages; int from, to; bool marks, jpeg, open; char title[120], author[80]; };
+class PdfDialog : public Dialog
+{
+public:
+	PdfOpts &o; Textbox *file, *range, *title, *author; RadioButton *rAll, *rCur, *rRange; Checkbox *cMarks, *cJpeg, *cOpen;
+	char dir[200];
+	PdfDialog (PdfOpts &o_, const char *def, const char *startDir) : Dialog (520, 470, "Export as PDF"), o (o_)
+	{
+		scpy (dir, startDir, sizeof dir);
+		int y = titleH () + 14;
+		file = field (110, y, 280, def); button (400, y - 1, 100, "Browse...", 9); y += 40;
+		y += 26;
+		rAll = new RadioButton (30, y, 220, 24, "All the pages", 1, true, 0, C_FACE); addChild (rAll);
+		char b[48]; snprintf (b, sizeof b, "The current page (%d)", o.from + 1);
+		rCur = new RadioButton (30, y + 26, 260, 24, b, 1, false, 0, C_FACE); addChild (rCur);
+		rRange = new RadioButton (30, y + 52, 100, 24, "Pages", 1, false, 0, C_FACE); addChild (rRange);
+		range = field (130, y + 52, 160, ""); y += 96;
+		y += 26;
+		cMarks = new Checkbox (30, y, 400, 24, "Bookmarks from the headings", true, 0, C_FACE); addChild (cMarks);
+		cJpeg = new Checkbox (30, y + 26, 440, 24, "Photos as JPEG (a smaller file)", false, 0, C_FACE); addChild (cJpeg);
+		y += 66;
+		title = field (110, y, 390, o.title); author = field (110, y + 32, 390, o.author); y += 72;
+		cOpen = new Checkbox (16, height - 42, 280, 24, "Open the PDF when it is saved", true, 0, C_FACE); addChild (cOpen);
+		button (width - 210, height - 42, 92, "Export", 1); button (width - 108, height - 42, 92, "Cancel", 0);
+	}
+	void drawBody () override
+	{
+		int y = titleH () + 14;
+		label (16, y + 5, "Save as"); y += 40;
+		label (16, y + 4, "PAGES"); y += 26 + 96;
+		label (16, y + 4, "CONTENT"); y += 26 + 66;
+		label (16, y + 5, "Title"); label (16, y + 37, "Author");
+		canvas.text (16, height - 64, "The fonts are embedded: it looks the same everywhere.", wk_mix (C_FACE, C_TEXT, 150));
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 9) { char p[200]; if (wk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 1)
+		{
+			o.pages = rAll->checked ? 0 : rCur->checked ? 1 : 2;
+			if (o.pages == 2)
+			{
+				int a = 0, b = 0; const char *t = range->text;
+				a = atoi (t); const char *d = strchr (t, '-'); b = d ? atoi (d + 1) : a;
+				if (a < 1 || b < a) { wk_messagebox ("Export as PDF", "Type the pages as \"2-5\" (or one page: \"3\").", MB_OK); return; }
+				o.from = a - 1; o.to = b - 1;
+			}
+			o.marks = cMarks->checked; o.jpeg = cJpeg->checked; o.open = cOpen->checked;
+			scpy (o.title, title->text, sizeof o.title); scpy (o.author, author->text, sizeof o.author);
+		}
+		close (tag);
+	}
+	const char *path () const { return file->text; }
+};
+static int utf8_put (char *o, unsigned c)
+{
+	if (c < 0x80) { o[0] = (char) c; return 1; }
+	if (c < 0x800) { o[0] = (char) (0xC0 | c >> 6); o[1] = (char) (0x80 | (c & 63)); return 2; }
+	if (c < 0x10000) { o[0] = (char) (0xE0 | c >> 12); o[1] = (char) (0x80 | (c >> 6 & 63)); o[2] = (char) (0x80 | (c & 63)); return 3; }
+	o[0] = (char) (0xF0 | c >> 18); o[1] = (char) (0x80 | (c >> 12 & 63)); o[2] = (char) (0x80 | (c >> 6 & 63)); o[3] = (char) (0x80 | (c & 63)); return 4;
+}
+static void cmd_export_pdf ()
+{
+	char def[200];
+	scpy (def, g_path[0] ? base_name (g_path) : "Untitled", sizeof def);
+	{ int n = slen (def), dot = n; while (dot > 0 && def[dot - 1] != '.') dot--; if (dot > 0) def[dot - 1] = 0; n = slen (def); scpy (def + n, ".pdf", (int) sizeof def - n); }
+	char dir[200]; scpy (dir, "SD:/docs", sizeof dir);
+	if (g_path[0]) { scpy (dir, g_path, sizeof dir); int k = slen (dir); while (k > 0 && dir[k - 1] != '/') k--; if (k > 0) dir[k - 1] = 0; }
+	char full[200]; snprintf (full, sizeof full, "%s/%s", dir, def);
+	PdfOpts o; memset (&o, 0, sizeof o);
+	o.from = g_view->pageAt (g_view->viewH () / 2); o.to = o.from;
+	{ int n = slen (def) - 4; scpy (o.title, def, n + 1 < (int) sizeof o.title ? n + 1 : (int) sizeof o.title); }
+	PdfDialog d (o, full, dir);
+	if (!d.run ()) { focus_view (); return; }
+	char path[200]; scpy (path, d.path (), sizeof path);
+	if (!has_ext (path, ".pdf")) { int k = slen (path); scpy (path + k, ".pdf", (int) sizeof path - k); }
+	// the pages at 100 % (a px: 0.75 point), drawn into the PDF
+	int zoom = L.zoom;
+	set_zoom (100); g_relayout = true; g_view->relayout ();
+	int from = o.pages == 0 ? 0 : o.from, to = o.pages == 0 ? L.npages - 1 : o.to;
+	if (from >= L.npages) from = L.npages - 1; if (to >= L.npages) to = L.npages - 1;
+	pdfw::Writer w;
+	w.info (o.title, o.author, 0, "Writer (Onyx)");
+	g_pdfJpeg = o.jpeg;
+	g_view->exportPages (w, from, to);
+	if (o.marks)
+	{	// the headings: their page, their place
+		int n; Para **bp = story_p (g_doc, SY_BODY, &n);
+		for (int i = 0; i < n; i++)
+		{
+			Para *q = bp[i];
+			int lv = style_outline (q->pf.style);
+			if (!lv || !q->nln || q->ln[0].page < from || q->ln[0].page > to) continue;
+			char t[200]; int k = 0;
+			for (int c = 0; c < q->len && k < 190; c++) { unsigned ch = q->ch[c]; if (ch < ' ' || ch == OBJ_CHAR || ch == FIELD_CHAR) ch = ' '; k += utf8_put (t + k, ch); }
+			t[k] = 0;
+			if (k) w.outline (lv - 1, t, q->ln[0].page - from, (q->ln[0].py64 >> 6) * PX2PT);
+		}
+	}
+	unsigned len; unsigned char *pdf = w.finish (&len);
+	set_zoom (zoom); g_relayout = true; g_view->relayout (); g_view->invalidate (true);
+	int r = pdf ? kapi_save_file (path, pdf, len) : -1;
+	delete[] pdf;
+	if (r != (int) len) wk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
+	else if (o.open) kapi_exec ("SD:apps/pdf.app/main", path);
+	focus_view ();
+}
+
 // ---- edits -----------------------------------------------------------------------------------------------
 static void cmd_undo () { ed_undo (); after_edit (); }
 static void cmd_redo () { ed_redo (); after_edit (); }
@@ -675,6 +784,7 @@ int main (void)
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as HTML...", "", 0, cmd_export_html);
 	menu.item ("Export as Text...", "", 0, cmd_export_txt);
+	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
 	menu.separator ();
 	menu.item ("Page Setup...", "", 0, cmd_page_setup);
 	menu.menu ("Edit");

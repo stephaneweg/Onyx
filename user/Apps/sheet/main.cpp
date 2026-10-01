@@ -135,6 +135,149 @@ static void cmd_export_csv ()
 	free (d);
 }
 
+// ---- File > Export as PDF: the used cells of a sheet (or all), cut into pages (pdf/pdfwrite.h) ---------------------------
+struct PdfOpts { bool all, landscape, fit, grid, jpeg, open; };
+class PdfDialog : public Dialog
+{
+public:
+	PdfOpts &o; Textbox *file; RadioButton *rThis, *rAll, *rPort, *rLand; Checkbox *cFit, *cGrid, *cOpen; char dir[256];
+	PdfDialog (PdfOpts &o_, const char *def, const char *startDir) : Dialog (500, 400, "Export as PDF"), o (o_)
+	{
+		snprintf (dir, sizeof dir, "%s", startDir);
+		int y = titleH () + 14;
+		file = field (100, y, 270, def); button (380, y - 1, 100, "Browse...", 9); y += 66;
+		rThis = new RadioButton (30, y, 200, 24, "This sheet", 1, true, 0, C_FACE); addChild (rThis);
+		rAll = new RadioButton (240, y, 220, 24, "All the sheets", 1, false, 0, C_FACE); addChild (rAll); y += 58;
+		rPort = new RadioButton (30, y, 200, 24, "Portrait", 2, !o.landscape, 0, C_FACE); addChild (rPort);
+		rLand = new RadioButton (240, y, 200, 24, "Landscape", 2, o.landscape, 0, C_FACE); addChild (rLand); y += 58;
+		cFit = new Checkbox (30, y, 440, 24, "Fit the columns to the page's width", true, 0, C_FACE); addChild (cFit);
+		cGrid = new Checkbox (30, y + 26, 440, 24, "Print the grid's lines", false, 0, C_FACE); addChild (cGrid);
+		cOpen = new Checkbox (16, height - 42, 260, 24, "Open the PDF when it is saved", true, 0, C_FACE); addChild (cOpen);
+		button (width - 210, height - 42, 92, "Export", 1); button (width - 108, height - 42, 92, "Cancel", 0);
+	}
+	void drawBody () override
+	{
+		int y = titleH () + 14;
+		label (16, y + 5, "Save as"); y += 40;
+		label (16, y + 4, "WHAT"); y += 58;
+		label (16, y + 4, "THE PAGE (A4)"); y += 58;
+		label (16, y + 4, "LAYOUT");
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 9) { char p[256]; if (wk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 1) { o.all = rAll->checked; o.landscape = rLand->checked; o.fit = cFit->checked; o.grid = cGrid->checked; o.open = cOpen->checked; }
+		close (tag);
+	}
+	const char *path () const { return file->text; }
+};
+// a sheet's used cells as pages: the columns, then the rows, in bands that fit; the footer: its name and the page
+static void pdf_sheet (pdfw::Writer &w, Sheet *s, const PdfOpts &o, int &pageNo, Canvas &dummy)
+{
+	sheet_bounds (s);
+	int maxR = s->maxR, maxC = s->maxC;
+	for (int i = 0; i < s->nmerge; i++) { if (s->merges[i].r1 > maxR) maxR = s->merges[i].r1; if (s->merges[i].c1 > maxC) maxC = s->merges[i].c1; }
+	for (int i = 0; i < s->ncharts; i++)		// (the charts: in the pages too)
+	{
+		Chart *c = s->charts[i];
+		if (maxC < 0) maxC = 0; if (maxR < 0) maxR = 0;
+		while (maxC < MAXC - 1 && col_x (s, maxC + 1) < c->x + c->w) maxC++;
+		while (maxR < 100000 && row_y (s, maxR + 1) < c->y + c->h) maxR++;
+	}
+	if (maxR < 0 || maxC < 0) return;
+	float PW = o.landscape ? 841.89f : 595.28f, PH = o.landscape ? 595.28f : 841.89f, M = 36, FOOT = 18;
+	float scale = 0.75f;
+	long long usedW = col_x (s, maxC + 1);
+	if (o.fit && usedW * scale > PW - 2 * M) scale = (PW - 2 * M) / usedW;
+	int bandW = (int) ((PW - 2 * M) / scale), bandH = (int) ((PH - 2 * M - FOOT) / scale);
+	// the column bands, the row bands
+	int cb[256], ncb = 0, rb[2048], nrb = 0;
+	for (int c = 0; c <= maxC && ncb < 255; )
+	{
+		cb[ncb++] = c; int w = 0;
+		while (c <= maxC && (w + col_w (s, c) <= bandW || w == 0)) { w += col_w (s, c); c++; }
+	}
+	cb[ncb] = maxC + 1;
+	for (int r = 0; r <= maxR && nrb < 2047; )
+	{
+		rb[nrb++] = r; int h = 0;
+		while (r <= maxR && (h + row_h (s, r) <= bandH || h == 0)) { h += row_h (s, r); r++; }
+	}
+	rb[nrb] = maxR + 1;
+	for (int i = 0; i < ncb; i++)
+		for (int j = 0; j < nrb; j++)
+		{
+			w.begin_page (PW, PH);
+			g_pdfS = scale; g_pdfX = M; g_pdfY = M;
+			PaneView pv;
+			int pw = (int) (col_x (s, cb[i + 1]) - col_x (s, cb[i])), ph = (int) (row_y (s, rb[j + 1]) - row_y (s, rb[j]));
+			pane_layout (s, 100, cb[i], cb[i + 1], rb[j], rb[j + 1], 0, 0, pw, ph, pv);
+			paint_pane (dummy, g_b, s, 100, pv, o.grid);
+			// the charts whose top left is on this page: drawn at twice the size, as images
+			int bx0 = (int) col_x (s, cb[i]), by0 = (int) row_y (s, rb[j]);
+			for (int k = 0; k < s->ncharts; k++)
+			{
+				Chart *c = s->charts[k];
+				if (c->x < bx0 || c->x >= bx0 + pw || c->y < by0 || c->y >= by0 + ph || c->w <= 0 || c->h <= 0) continue;
+				Canvas cc;
+				if (!cc.alloc (c->w * 2, c->h * 2)) continue;
+				cc.clear (0xFFFFFF);
+				pdfw::Writer *keep = g_pdf; g_pdf = 0;
+				draw_chart (cc, g_b, c, 0, 0, c->w * 2, c->h * 2, 200, Rect { 0, 0, c->h * 2 - 1, c->w * 2 - 1 });
+				g_pdf = keep;
+				for (int q = 0; q < c->w * 2 * c->h * 2; q++) cc.px[q] |= 0xFF000000u;
+				w.image (cc.px, c->w * 2, c->h * 2, M + (c->x - bx0) * scale, M + (c->y - by0) * scale, c->w * scale, c->h * scale);
+			}
+			// the footer: the sheet, the page
+			char foot[120]; snprintf (foot, sizeof foot, "%s  \xE2\x80\x94  %d", s->name, ++pageNo);
+			fnt::Font *f = fnt::get (g_famSans >= 0 ? g_famSans : 0, 0, 12 * 64);
+			if (f)
+			{
+				g_pdfS = 0.75f; g_pdfX = 0; g_pdfY = 0;
+				int tw = u8_width (f, foot, (int) strlen (foot));
+				u8_draw (dummy, f, (int) ((PW / 0.75f) * 64 - tw) / 2, (int) ((PH - M + 6) / 0.75f), foot, (int) strlen (foot), 0x707070, 0, 0, 1 << 20, 1 << 20);
+			}
+			w.end_page ();
+		}
+}
+static void cmd_export_pdf ()
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	char def[256], dir[256] = "SD:/docs";
+	snprintf (def, sizeof def, "%s", g_path[0] ? base_name (g_path) : "Book1");
+	char *dot = strrchr (def, '.'); if (dot) *dot = 0;
+	if (g_path[0]) { snprintf (dir, sizeof dir, "%s", g_path); char *e = strrchr (dir, '/'); if (e) *e = 0; }
+	char full[300]; snprintf (full, sizeof full, "%s/%s.pdf", dir, def);
+	Sheet *s0 = S (); sheet_bounds (s0);
+	PdfOpts o; memset (&o, 0, sizeof o);
+	long long uw = col_x (s0, s0->maxC + 1), uh = row_y (s0, s0->maxR + 1);	// (the used part's size, the charts with it)
+	for (int i = 0; i < s0->ncharts; i++) { Chart *c = s0->charts[i]; if (c->x + c->w > uw) uw = c->x + c->w; if (c->y + c->h > uh) uh = c->y + c->h; }
+	o.landscape = uw > uh && uw > 700;
+	PdfDialog d (o, full, dir);
+	if (!d.run ()) return;
+	char path[256]; snprintf (path, sizeof path, "%s", d.path ());
+	if (!ends_with (path, ".pdf")) { int n = (int) strlen (path); scpy (path + n, ".pdf", (int) sizeof path - n); }
+	pdfw::Writer w;
+	w.info (def, 0, 0, "Spreadsheet (Onyx)");
+	Canvas dummy;
+	g_pdf = &w;
+	int pageNo = 0;
+	for (int i = 0; i < g_b.ns; i++)
+	{
+		if (!o.all && g_b.sh[i] != s0) continue;
+		int before = pageNo;
+		pdf_sheet (w, g_b.sh[i], o, pageNo, dummy);
+		if (o.all && pageNo > before) w.outline (0, g_b.sh[i]->name, before, 0);
+	}
+	g_pdf = 0; g_pdfS = 0.75f; g_pdfX = g_pdfY = 0;
+	if (!pageNo) { message ("There is nothing in the sheet to export."); return; }
+	unsigned len; unsigned char *pdf = w.finish (&len);
+	bool ok = pdf && write_file (path, (const char *) pdf, (int) len);
+	delete[] pdf;
+	if (!ok) message ("The file cannot be written.");
+	else if (o.open) kapi_exec ("SD:apps/pdf.app/main", path);
+}
+
 // ---- after a change ----------------------------------------------------------------------------------------
 static void after_change (bool rows = false)
 {
@@ -1532,6 +1675,7 @@ int main (void)
 	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as CSV...", "", 0, cmd_export_csv);
+	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
 	menu.menu ("Edit");
 	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
 	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);
