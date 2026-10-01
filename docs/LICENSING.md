@@ -63,6 +63,7 @@ Two weaknesses, worth fixing:
 |---|---|---|---|
 | Circle (fork, branch `onyx`) | `circle/` (submodule), the kernel | GPL-3.0-or-later | The kernel's source (ours + the fork) available; the GPL's text |
 | NetSurf | `third_party/netsurf`, Jet | **GPL-2.0-only** | Jet under GPLv2, source available (also for `pc/dist/Jet/Jet.exe`) |
+| talloc (Samba) | `third_party/netsurf/utils/talloc.c`, Jet | LGPL-2.1-or-later | Fine in a GPL program; in a permissive Jet it would have to go (or be relinkable) |
 | libcss, libdom, libhubbub, libnsbmp, libnsfb, libnsgif, libnslog, libnsutils, libparserutils, libwapcaplet, nsgenbind | `third_party/` | MIT | Keep the notices |
 | doomgeneric | `third_party/doomgeneric` | GPL-2.0-or-later | Source available |
 | mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` | Apache-2.0 **or** GPL-2.0-or-later | Jet: take the GPL option |
@@ -120,7 +121,43 @@ So the Archiver reads RAR through libarchive's readers (BSD): RAR 4 and RAR 5, s
 **not** encrypted RAR (libarchive does not decrypt it), never writing RAR (no free encoder, and its
 licence forbids it).
 
-## 5. To do (when the user decides)
+## 5. Jet without NetSurf — what is still NetSurf's
+
+Measured 2026-10-01: each file of the NetSurf tree that Jet compiles, compared line by line with
+upstream NetSurf (`github.com/netsurf-browser/netsurf`, master).
+
+| | Files | Lines | Still identical to upstream |
+|---|---|---|---|
+| Upstream files compiled | 149 | 123 000 | **~112 000 (91 %)** |
+| Files written for Onyx in the NetSurf tree (`qjs*.c`, `onyx_*.c`, `layout_grid.c`) | 22 | 28 000 | — |
+| Onyx glue (`user/netsurf/*.c, *.cpp`) | | 7 600 | — |
+
+So Jet is not a NetSurf skeleton: the engine's skeleton *and most of its organs* are still
+NetSurf's. What Onyx changed most is in the MIT libraries (libcss, libdom, hubbub: no licence
+issue) and in Onyx's own files. What would have to be replaced, by block (identical lines):
+
+| Block | Lines (identical) | What it is | Effort |
+|---|---|---|---|
+| `desktop/` | 30 100 (97 %) | `browser_window.c`, frames, history, `textarea.c` (form fields), scrollbars, selection, search; plus parts Jet does not use (treeview, hotlist, cookie manager, global history, page info, save as PDF / text / complete, print) — dead weight to drop first | large (the used half) |
+| `content/` core | 16 100 (98 %) | `llcache` / `hlcache` (the caches), `urldb` (cookies, visited), `fetch.c`, `fs_backing_store`, `content.c`, mime sniffing | medium |
+| `content/handlers/html` | 34 000 (80 %) | the heart: `box_construct`, `layout.c` (block, inline, tables), `redraw.c`, `interaction.c`, forms, `html.c` (the document's load, the scripts), tables, imagemaps | **the largest and hardest** |
+| `utils/` | 14 000 (97 %) | `nsurl`, hashtables, options, messages, utf8, time, idna, punycode, log, talloc (LGPL) | small to medium |
+| `content/handlers/css` | 7 000 (89 %) | the libcss glue: `select.c` (the cascade's callbacks), hints | medium |
+| `content/fetchers` | 6 600 (96 %) | about:, file:, data:, resource: (http is Onyx's) | small |
+| framebuffer frontend + fbtk | 9 700 (77 %) | `gui.c`, `framebuffer.c`, `font_freetype.c`, the fbtk toolkit — replaceable by a wtk frontend | small to medium |
+| image, text handlers | 5 200 (99 %) | thin wrappers over libnsgif / libpng / libjpeg / libwebp, plain text | small |
+| `resources/` | — | `default.css`, Messages, `credits.html`, `licence.html`, icons (GPL content) | small (the UA stylesheet can come from the HTML Standard, CC-BY 4.0) |
+
+The Onyx files in the NetSurf tree carry NetSurf's GPL header but are the user's own: their
+author can relicense them (MIT) — as long as they were not translated from NetSurf code.
+
+A rewrite must be one, not a translation: written from the specifications (HTML, CSS 2.1 / 3,
+Fetch, URL), with its own structures, NetSurf's files not open beside it — otherwise the result
+stays a derived work under GPLv2. The permissive engines that could replace NetSurf whole —
+litehtml (BSD-3, no JavaScript, simpler layout), Ladybird's LibWeb (BSD-2, far too large for
+Onyx), Servo / Blitz (Rust) — would lose much of what Jet does today.
+
+## 6. To do (when the user decides)
 
 1. A root **`LICENSE`**: GPL-3.0-or-later's text, the kapi exception (§2), the list of the parts
    under other licences (this file's §3), Jet's GPL-2.0.
