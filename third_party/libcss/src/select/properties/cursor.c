@@ -104,6 +104,11 @@ css_error css__cascade_cursor(uint32_t opv, css_style *style,
 		case CURSOR_PROGRESS:
 			value = CSS_CURSOR_PROGRESS;
 			break;
+		default:
+			/* Onyx: CSS3 UI's keywords */
+			if (v >= CURSOR_NONE && v <= CURSOR_ALL_SCROLL)
+				value = v + 1;
+			break;
 		}
 	}
 

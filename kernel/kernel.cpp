@@ -904,6 +904,26 @@ public:
 		for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
 			for (u8 nPhy = 0; nPhy <= PHY_MAX_CODE; nPhy++)
 				g_KeyMap[nPhy][nTable] = pMap[nPhy * (K_CTRLTAB + 1) + nTable];
+		// Ctrl with the keys of - = + 0 (a browser's zoom: Jet Browser, docs/06 §38): Circle's
+		// keymap uses the Ctrl column for any key but a letter, and the layouts leave it empty
+		// there -- nothing came. The empty Ctrl entry of the key whose own character (or, for
+		// '0', its Shift one: AZERTY) is one of them gets the keypad's key of that character,
+		// whose string ("-", "+", "0") Circle sends with or without Ctrl: the app sees the
+		// character, kapi_get_modifiers () says Ctrl. Letters and the keypad (0x53..0x63) keep
+		// theirs; Ctrl+Shift+= (US '+') still gives nothing (Shift's column wins in Circle).
+		for (unsigned nPhy = 1; nPhy <= PHY_MAX_CODE; nPhy++)
+		{
+			if ((nPhy >= 0x04 && nPhy <= 0x1D) || (nPhy >= 0x53 && nPhy <= 0x63)
+			    || g_KeyMap[nPhy][K_CTRLTAB] != KeyNone)
+				continue;
+			u16 nNorm = g_KeyMap[nPhy][K_NORMTAB], nShift = g_KeyMap[nPhy][K_SHIFTTAB];
+			if (nNorm == '0' || (nShift == '0' && nNorm != '-' && nNorm != '='))
+				g_KeyMap[nPhy][K_CTRLTAB] = KeyKP_0;
+			else if (nNorm == '-')
+				g_KeyMap[nPhy][K_CTRLTAB] = KeyKP_Subtract;
+			else if (nNorm == '=' || nNorm == '+')
+				g_KeyMap[nPhy][K_CTRLTAB] = KeyKP_Add;
+		}
 		// Apply live if a keyboard is already up; otherwise the snapshot is enough --
 		// Detect() loads g_KeyMap onto the keyboard the moment it attaches.
 		if (s_pThis != 0)

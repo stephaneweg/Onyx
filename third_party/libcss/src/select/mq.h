@@ -389,14 +389,23 @@ static inline bool mq__list_match(
 		const css_select_strings *str)
 {
 	for (; m != NULL; m = m->next) {
-		/* Check type */
-		if (!!(m->type & media->type) != m->negate_type) {
-			if (m->cond == NULL ||
-					mq_match_condition(m->cond,
-							unit_ctx, media, str) == 1) {
-				/* We have a match, no need to look further. */
-				return true;
-			}
+		/* Onyx: "not" negates the whole query, its type and its
+		 * condition ("not all and (min-color: 1)" matches a screen
+		 * without colours); an unknown condition matches neither way */
+		int r = 1;
+
+		if (m->type & media->type) {
+			if (m->cond != NULL)
+				r = mq_match_condition(m->cond, unit_ctx, media,
+						str);
+		} else {
+			r = 0;
+		}
+		if (r < 0)
+			continue;
+		if ((r == 1) != !!m->negate_type) {
+			/* We have a match, no need to look further. */
+			return true;
 		}
 	}
 

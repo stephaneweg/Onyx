@@ -1415,6 +1415,10 @@ box_object(dom_node *n,
 			box_is_root(n)) == CSS_DISPLAY_NONE)
 		return true;
 
+	/* Onyx: its resource failed: its fallback content (its children) */
+	if (html_object_has_failed(content, n))
+		return true;
+
 	if (box_get_attribute(n, "usemap", content->bctx, &box->usemap) ==
 			false)
 		return false;

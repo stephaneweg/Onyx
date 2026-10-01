@@ -114,7 +114,15 @@ static std::wstring winpath (const char *p)
 	{
 		std::string r = s.substr (c + 1);
 		while (!r.empty () && (r[0] == '/' || r[0] == '\\')) r.erase (0, 1);
-		out = g_root + (r.empty () ? L"" : L"\\" + wide (r.c_str ()));
+		// (Jet's downloads, docs/06 §38: "SD:/Downloads" is the user's own Downloads folder,
+		// %USERPROFILE%\Downloads, when it is there -- else Downloads\ beside Jet.exe)
+		const wchar_t *home = _wgetenv (L"USERPROFILE");
+		DWORD at = home ? GetFileAttributesW ((std::wstring (home) + L"\\Downloads").c_str ()) : INVALID_FILE_ATTRIBUTES;
+		if (prefix_ci (r, "Downloads") && (r.size () == 9 || r[9] == '/' || r[9] == '\\') &&
+		    at != INVALID_FILE_ATTRIBUTES && (at & FILE_ATTRIBUTE_DIRECTORY))
+			out = std::wstring (home) + L"\\Downloads" + wide (r.substr (9).c_str ());
+		else
+			out = g_root + (r.empty () ? L"" : L"\\" + wide (r.c_str ()));
 	}
 	else if (!s.empty () && (s[0] == '/' || s[0] == '\\')) out = g_root + wide (s.c_str ());
 	else if (s.empty ()) out = g_root;
@@ -641,6 +649,14 @@ static LRESULT CALLBACK wndproc (HWND h, UINT m, WPARAM w, LPARAM l)
 		else if (w != VK_MENU && (GetKeyState (VK_MENU) & 0x8000)) g_altUsed = true;
 		long k = key_code (w);
 		if (k) { push (1, GUI_EVENT_KEY, k); return 0; }
+		// Ctrl with + = - 0 (the zoom, docs/06 §38): Windows gives no character (or a control one)
+		// -- the key's own, as the Pi's kernel sends it, Ctrl read by get_modifiers
+		if ((GetKeyState (VK_CONTROL) & 0x8000) && !(GetKeyState (VK_MENU) & 0x8000))
+		{
+			long z = w == VK_OEM_PLUS || w == VK_ADD ? '+' : w == VK_OEM_MINUS || w == VK_SUBTRACT ? '-' :
+				 w == '0' || w == VK_NUMPAD0 ? '0' : 0;
+			if (z) { push (1, GUI_EVENT_KEY, z); return 0; }
+		}
 		break;
 	}
 	case WM_SYSCOMMAND:
@@ -656,6 +672,9 @@ static LRESULT CALLBACK wndproc (HWND h, UINT m, WPARAM w, LPARAM l)
 		// codes above are the arrows and F-keys (0x100..), so no other characters
 		if (w == 0x20AC) w = 0x80;
 		else if ((w >= 0x80 && w < 0xA0) || w > 0xFF) return 0;
+		if ((GetKeyState (VK_CONTROL) & 0x8000) && !(GetKeyState (VK_MENU) & 0x8000) &&
+		    (w == 0x1F || w == '+' || w == '-' || w == '0' || w == '='))
+			return 0;	// (Ctrl+- and the like: sent from WM_KEYDOWN, above)
 		push (1, GUI_EVENT_KEY, (long long) w);
 		return 0;
 	case WM_COMMAND:
@@ -926,8 +945,46 @@ static int clipboard_get (int *type, void *buf, unsigned cap, unsigned *serial)
 	std::string o; for (char c : u) if (c != '\r') o += c;
 	if (o.empty ()) return 0;
 	if (type) *type = 1;
-	memcpy (buf, o.data (), o.size () < cap ? o.size () : cap);
+	if (buf) memcpy (buf, o.data (), o.size () < cap ? o.size () : cap);
 	return (int) o.size ();
+}
+
+// Jet Browser's Copy Image (docs/06 §40, frontends/framebuffer/onyx_edit.c): the picture -- w x h pixels
+// 0xAARRGGBB -- on the Windows clipboard as a DIB (CF_DIB: 32-bit, bottom-up; Paint, Word, mail take it).
+// 1 done.
+extern "C" int onyx_win_clip_image (const unsigned *px, int w, int h)
+{
+	if (!px || w <= 0 || h <= 0) return 0;
+	SIZE_T bytes = sizeof (BITMAPINFOHEADER) + (SIZE_T) w * h * 4;
+	HGLOBAL g = GlobalAlloc (GMEM_MOVEABLE, bytes);
+	if (!g) return 0;
+	unsigned char *p = (unsigned char *) GlobalLock (g);
+	BITMAPINFOHEADER bi = {};
+	bi.biSize = sizeof bi; bi.biWidth = w; bi.biHeight = h;	// (positive: bottom-up)
+	bi.biPlanes = 1; bi.biBitCount = 32; bi.biCompression = BI_RGB;
+	bi.biSizeImage = (DWORD) ((SIZE_T) w * h * 4);
+	memcpy (p, &bi, sizeof bi);
+	unsigned *d = (unsigned *) (p + sizeof bi);
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++)
+		{
+			unsigned c = px[(size_t) (h - 1 - y) * w + x], a = c >> 24;
+			if (a != 255)		// (laid on white: CF_DIB's readers ignore the alpha)
+			{
+				unsigned r = (((c >> 16) & 255) * a + 255 * (255 - a)) / 255;
+				unsigned gg = (((c >> 8) & 255) * a + 255 * (255 - a)) / 255;
+				unsigned b = ((c & 255) * a + 255 * (255 - a)) / 255;
+				c = r << 16 | gg << 8 | b;
+			}
+			d[(size_t) y * w + x] = c | 0xFF000000u;	// (BGRA in memory: 0xAARRGGBB as a word)
+		}
+	GlobalUnlock (g);
+	if (!OpenClipboard (g_hwnd)) { GlobalFree (g); return 0; }
+	EmptyClipboard ();
+	bool ok = SetClipboardData (CF_DIB, g) != 0;
+	CloseClipboard ();
+	if (!ok) GlobalFree (g);
+	return ok ? 1 : 0;
 }
 
 // ---- the network (Winsock) ----------------------------------------------------------------------------------------------------

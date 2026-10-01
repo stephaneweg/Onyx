@@ -34,9 +34,9 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
-| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog, the About box), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
+| `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38; the find bar, the context menu: §40), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -3380,6 +3380,410 @@ applied no style at all (not even its own pages'), while the PC bench (built fro
 right. The objects now carry their header lists (`-MMD -MP -MF <obj>.o.d`, included by the
 Makefile; ignored by git): a header changed rebuilds its users. libdom and libcss were rebuilt
 from scratch.
+
+## 37. Acid2 and Acid3 (2026-10-01)
+
+**The tests**, kept as published (with their support files) in `tools/tests/netsurf/pages/acid2/`
+(acid2.acidtests.org: `index.html`, `reference.png`, `reference.html`) and `pages/acid3/`
+(acid3.acidtests.org: `index.html`, `empty.*`, `support-*.png`, `svg.xml`, `xhtml.1-3`,
+`font.ttf`/`.svg`, `reference.*`). Acid3 needs its original server's statuses and content types
+(`empty.css` served as `text/html`, `support-a.png` a 404, `support-b.png` as `text/html`, the
+`xhtml.N` as `text/xml`, `svg.xml` as `image/svg+xml`): **`tools/tests/netsurf/acidsrv.py`**
+serves `pages/acid3/` that way (anything else: 404).
+
+**Run them**: `OUT=/tmp/nsbench PORT=8160 sh tools/tests/netsurf/acidtest.sh [acid2|acid3]`
+(both when no argument; the bench is built in `$OUT/build`, the pictures and logs go to
+`$OUT/acid/`).
+
+- **Acid2**: the test opened at `#top`, as a browser shows it, in three modes: composited
+  (the default), painted by the CPU (`NS_GPU=0`), and scrolled down twice and back (the fixed
+  boxes and backgrounds painted again where the scroll moved them). The face (168 x 168 px
+  below "Hello World!") is found in the view and compared with `reference.png` pixel by
+  pixel, no tolerance; the whole view is compared with `reference.html`'s render (the
+  reference image in a page). **Result: identical in the three modes (0 pixels differ).**
+- **Acid3**: the page over `acidsrv.py` (`SIM_REALNET=1`), `NS_INJECT` adds a report that
+  prints `ACID3-SCORE n (index run)` and one `ACID3-FAIL nn: message` line per failed
+  subtest (from the test's own log, `NS_JSDEBUG=1`); F5 reloads it five times and the last
+  report counts. It fails when the score is below **`ACID3_MIN` (94)** or when fewer than 100
+  subtests ran. **Score: 51 -> 94 / 100.**
+
+### What Acid2 found (all fixed)
+
+- `position: fixed` painted where the viewport is: the fixed boxes are laid out at scroll 0
+  and moved by the scroll offset when painted (`html_box_viewport_fixed`, `redraw.c`); a scroll
+  repaints them where they were and where they are now (`html_fixed_scrolled`, called from
+  `browser_window_scrolled`), composited or not. `background-attachment: fixed` is positioned
+  in the viewport.
+- The painting order of CSS 2.1 Appendix E inside each block formatting context: the
+  in-flow blocks' backgrounds, then the floats, then the lines (`redraw.c`'s phases:
+  `onyx_phase_*`, `html_redraw_box_body`). Acid2's eyes and nose overlap that way. A layered
+  float's inline container is no longer culled (`HAS_FLOATS` in the descendant bounds).
+- `<object>` fallback content when its resource fails: a fetch error, an HTTP error status
+  (llcache's code >= 400) or a type it cannot show; the element's children are boxed instead
+  (`html_object_fallback`, `box_object`).
+- A float after a block takes the collapsed margins before it only (the following blocks'
+  margins put it too high: `layout.c`'s margin walk).
+- Relative offsets in `em` from the bottom / right (libcss returned the offset's type without
+  its unit: 1px); auto heights never negative.
+- A fragment (`#top`) scrolled to again once the page is shown -- the new content's scroll
+  reset undid it -- unless the user has scrolled away meanwhile.
+- A 1x1 opaque PNG used as a tiled background painted nothing (the fill colour's
+  transparency byte, `image.c`).
+- `medium` / `thick` borders are 3 / 5 px (as Chrome; also outlines and column rules).
+- The alpha blend (`libnsfb_plot_util.h`) is now exactly `floor((s*a + d*(255-a)) / 255)`:
+  the reference's semi-transparent pixels were off by one.
+
+### What Acid3 found (fixed)
+
+- **Selectors (libcss, NetSurf's `css/select.c`)**: `:enabled`, `:disabled`, `:checked`
+  (an input's checkedness, an option's selectedness), `:lang()` (the `lang` attributes up the
+  tree), `:empty` ignoring empty text nodes; attribute values compared case-sensitively except
+  for HTML's list of case-insensitive attributes; `~=` splitting on any whitespace; a
+  descendant or `~` combinator backtracked when the rest of the selector has another
+  combinator (it took the first match only; bounded to depth 32).
+- **Media queries (libcss)**: an invalid query drops itself, not the whole list (recovery at
+  the next top-level comma); `not` negates the whole query.
+- **The CSS3 `cursor` keywords** (15 of them; the computed style's cursor field is now 6 bits).
+- **Style sheets and scripts in the same turn**: a script that changed a `<style>` and reads a
+  geometry or `getComputedStyle` sees the new rules (`html_css_flush_sync`: the modified
+  inline sheets converted now, their `x-ns-css` fetches polled, their contents caught up --
+  also when the scheduled conversion already started them); a `<style>` inside an inserted
+  subtree (`innerHTML`, `document.write` into a frame) gets its sheet
+  (`html_css_style_inserted`, from `DOMNodeInsertedIntoDocument`); images with a `data:` URL
+  are converted before a script's read (`html_object_flush_sync`), so a pending image's box is
+  the image's, not its alt text's. More forced layouts a turn when they are cheap (16, or
+  100 ms).
+- **DOM (dom.js, html5.js, qjs.c, libdom)**: a full `Range` with live boundary updates on
+  insertions, removals, `splitText` and data changes; `NodeIterator`'s pre-removal steps;
+  the pre-insertion validity checks (`HierarchyRequestError`); `replaceData` with offsets
+  (all the CharacterData edits through it); real `DocumentType` nodes
+  (`createDocumentType`, `createDocument` with a doctype, `publicId` / `systemId`); the XML
+  Name / QName checks (`InvalidCharacterError`, `NamespaceError`); `localName` without the
+  prefix; `document.open` / `write` / `close` on a frame's document after it was parsed; the
+  table API (`caption`, `tHead`, `tBodies`, `rows`, `insertRow`, `cells`, `rowIndex`...);
+  `initUIEvent`; `defaultSelected`; `<object>`'s `data` / `type` reflected; `document.forms`
+  / `images` named collections; a node seen from another frame keeps its identity (the
+  wrapper of the realm whose document owns it); `getComputedStyle` answers the keyword
+  properties.
+- **libdom**: class names split on ASCII whitespace; `nodeValue` on a text node fires its
+  mutation events; an input's checkedness and dirty value are state, not the attribute
+  (`checked` set by script no longer changes `defaultChecked`); a detached text node's data
+  change no longer crashes.
+- **NetSurf**: an image map's `coords` no longer corrupted by `strtok` on the DOM's string;
+  the user's checkbox / radio toggles restyle (`:checked`).
+
+### The subtests still failing (94 / 100)
+
+| Test | What | Why |
+|---|---|---|
+| 69 | the support files loaded (seven frames' `load` events), then the SVG frame's DOM | `svg.xml` (`image/svg+xml`), `empty.xml` and the `xhtml.N` (`text/xml`) are not documents in Jet's frames: no XML parser builds a DOM for a frame, so not all the loads come and the SVG document has no elements (times out) |
+| 74 | `getSVGDocument()` on an `<iframe>` / `<object>` | no SVG documents (above) |
+| 75 | SVG DOM interfaces (`SVGRectElement`...) | no SVG DOM: SVG is drawn by PlutoSVG from its source, not from DOM nodes (§12) |
+| 77 | `SVGTextContentElement.getNumberOfChars()` | no SVG DOM |
+| 79 | an SVG font in a frame's document | no SVG documents in frames |
+| 80 | scripts in an XHTML frame (`xhtml.1`) | XHTML served as `text/xml` is not parsed as a document |
+
+All six need **XML documents in frames** (an XML parser into libdom -- libdom has an expat
+binding -- and a content handler for `text/xml`, `application/xhtml+xml`, `image/svg+xml` in a
+frame) and then an **SVG DOM** over those nodes. Not done: weeks of work for the SVG DOM, rare
+on the web (docs/07 §3).
+
+**The Pi**: not built here. Rebuild `libcss.a` (the computed style's layout changed: the
+cursor bits), `libdom.a` (`struct dom_html_input_element` changed), `libhubbub.a`, libnsfb
+(`libnsfb_plot_util.h`), then link Jet again (`make -C user/netsurf`, then
+`make -f user/netsurf/netsurf-app.mk link stage`); the Makefile now tracks headers, but a clean
+build of libcss and libdom is the safe choice after the generated headers changed.
+
+**After the merge (seen on the Pi).** Two leftovers on the real Acid3 page: the hidden link of
+test 48 ("YOU SHOULD NOT SEE THIS AT ALL", `#linktest`) stayed red -- it points at the page the
+`selectors` iframe has just loaded, which a browser counts as visited, but NetSurf marked visited
+only the pages of the top window's history; now a frame's page is visited for `:visited` too
+(`nscss_frame_visited_add` from `browser_window_content_ready`, a ring of the session's last 1024
+frame pages, hashed -- `node_is_visited` checks it after urldb; not in the History); and the
+status bar showed "Error: UnacceptableType" -- test 69's frames (`svg.xml`, an XML type Jet does
+not show) failed and the bar took that frame's error for the page's: it now keeps a fetch error
+only when the window shows that error page (its address `about:query/fetcherror...`, or the
+failed address itself).
+
+**text-shadow and font-weight: bolder (seen on the Pi).** Acid3's title is bolder with a silver
+shadow 3 px down-right: Jet showed neither. libcss computed `text-shadow` but NetSurf never drew
+it: `html_redraw_text_box` now draws the text first in the shadow's colour at its offset (one
+shadow; a blur is not drawn -- a blurred shadow's colour goes half way to the background, a blur
+with no offset (a glow) is skipped). And `bolder` / `lighter` stayed unresolved (the font code took
+them for normal): `css__compute_absolute_values` (libcss `computed.c`) resolves them against the
+parent's weight (CSS Fonts' table: bolder 100-300 -> 400, 400-500 -> 700, 600+ -> 900; lighter
+the reverse).
+
+## 38. The page zoom, the status bar, the downloads (2026-10-01)
+
+Three things of every browser that Jet Browser lacked: Ctrl+ / Ctrl- (the user: "a zoom in the
+toolbar, Ctrl+ and Ctrl-, Ctrl+0 back to the original size"), a status bar ("Loading or Ready, the
+HTTP error, the link under the pointer") and downloads ("a dialog to save the file, its name filled
+in; SD:/Downloads made if missing").
+
+![The toolbar: the zoom control at its right; the status bar](../screenshots/jet.png)
+
+**The zoom.** NetSurf scales a whole browser window (`browser_window_set_scale`: the layout is done
+at the viewport's width / the scale, the plotters draw at the scale -- text at its real size, sharp,
+not a stretched bitmap; the frontend's fbtk keys for it never came on Onyx, whose keys are characters).
+The toolbar's **zoom control** (`ZoomCtl`, right of the pill: a framed **-**, the percentage, a
+framed **+**; the percentage in the accent when not 100 %) and the keys call
+`onyx_browser_zoom (step)` (gui.c): Chrome's steps -- 25, 33, 50, 67, 75, 80, 90, 100, 110, 125,
+150, 175, 200, 250, 300, 400, 500 % -- in or out, or back to 100 % (a click on the percentage,
+Ctrl+0); the scale is Choices' `scale` (100 by default) times the zoom; the view keeps the same part
+of the page at its top. Keys (`key_event`, before the address field and the page: Ctrl held, not
+Alt): **Ctrl++** / **Ctrl+=** (the keypad's + too), **Ctrl+-**, **Ctrl+0**; **Ctrl+wheel** over the
+page (`ptr_event`: not a scroll); View ▸ Zoom In / Zoom Out / Actual Size. **The kernel** had to
+change for the keys: Circle's keymap looks a key with Ctrl up in its Ctrl column (unless it is a
+letter) and the layouts (`SD:/etc/keymaps/*.kmap`) leave that column empty for - = 0 -- nothing
+came. `CInputTask::SetKeyMapData` (kernel.cpp) now fills the empty Ctrl entry of the key whose own
+character is `-`, `=` / `+`, or `0` (its own or, AZERTY, its Shift one) with the keypad's key of
+that character (`KeyKP_Subtract`, `KeyKP_Add`, `KeyKP_0`), whose string Circle sends with or
+without Ctrl: the app gets the character, `kapi_get_modifiers ()` says Ctrl (no kapi change; docs/02
+§ the keyboard). Ctrl+Shift+= (a US `+`) still gives nothing: Circle's Shift column wins. The
+Windows build sends the same characters from `WM_KEYDOWN` (VK_OEM_PLUS / MINUS, '0', the keypad's)
+and drops their `WM_CHAR` (Ctrl+- made a 0x1F).
+
+**Per site, kept.** The zoom belongs to the page's host (`www.example.com`; `file` / `about` for
+those pages), as in Chrome; `SD:/apps/jet.app/view` keeps it -- `zoom <site> <percent>` lines (100 %
+is not written), with the status bar's `status_bar 0|1` --, read at the start, written at each
+change. A new page gets its site's zoom **before its first layout**: a core hook
+(`netsurf/onyx_jet.h`, `onyx_zoom_hook`, called by `browser_window_content_ready` for a root
+window -- the new content is the current one, the page before is gone, its iframes follow), so a
+site keeps its zoom without being laid out twice; the hook also sets the toolbar's percentage.
+
+**What the page's scripts see** (qjs.c): CSS px are the scale's device px -- `qjs_scroll` divides
+the frontend's scroll offsets by the scale, `n_scroll` the viewport's size (`innerWidth`,
+`innerHeight`), `n_scroll_to` multiplies; so `getBoundingClientRect`, the events' `clientX` /
+`clientY`, `elementFromPoint`, `scrollX` are in CSS px (a click on a box at 200 % lands on it:
+`dltest.sh`). `devicePixelRatio` is the scale (a getter: `N.scroll ()[6]`, rounded to 1e-4), as
+Chrome's zoom makes it.
+
+**GPU compositing** (§25) at a scale other than 1: the band works as ever (the core paints it
+through the scaled plotters); the retained layers are not offered (`onyx_fx_retain` refuses when
+`scale != 1`: painted in the band, as on the CPU). `gputest.sh` §3a: gpu-scroll.html at 150 %,
+scrolled, composited = CPU.
+
+**The status bar** (`StatusBar`, a wtk widget at the window's bottom, `ONYX_STATUSBAR_H` = 22 px:
+the page's area is that much shorter -- `onyx_chrome_page` gives the page's height without it, the
+pointer's events below the page go to the wtk tree, and View ▸ Hide / Show Status Bar is a resize of
+the page, `g_resized`, kept in `view`; the window's size does not change). Left: the page's state --
+`onyx_status_start` (the throbber's start) "**Loading...**", four times a second "**Loading... 12 of
+30**" (the fetcher's fetches made and ended since: `onyx_fetch_counts`, onyx_fetch.c -- the page,
+its sheets, scripts, images); `onyx_status_stop` (the throbber's stop): "**Ready**", or in red the
+page's **HTTP status** when 4xx / 5xx (`onyx_browser_window_http_code`, browser_window.c: the
+current content's llcache code; the RFC's reason phrase: "404 Not Found", "500 Internal Server
+Error") or "**Error: <reason>**" when the fetch failed (about:query/fetcherror's reason, through
+`onyx_fetch_error_hook`: "Connection failed", a timeout...), kept until the next load. The
+**link under the pointer** replaces it: NetSurf's `set_status` texts are its own state messages
+("Loading", "Fetching...", "Done (0.3s)", "Processing": the bar shows its state again) or the
+pointer's (a link's address, a form field's hint): those are shown, cut in their middle with "..."
+when too long. Right: a download's progress or the last one's end. The widget is repainted only
+when its text changes; the page is not (a hover costs the bar's blit and a present). The fbtk status
+text left of the horizontal scroll bar is gone (`toolbar_status_size` 0).
+
+**Downloads.** NetSurf's core makes a **download context** (`desktop/download.c`) for a response
+not shown: a type it does not display (hlcache's `CONTENT_MSG_DOWNLOAD`), and now also a page load
+answered **`Content-Disposition: attachment`** whatever its type (`hlcache_migrate_ctx`, for a
+navigation that may download), and a **link with a `download` attribute** (`onyx_link_download`,
+html/interaction.c: the nearest `<a>` of the box clicked; `BW_NAVIGATE_DOWNLOAD`, the attribute's
+value as the name hint -- `download_onyx_hint`, taken by the next context; a Content-Disposition
+filename wins, as the spec says) -- a script's `a.click ()` too (dom.js `activate`: `N.download (url,
+name)`). A **`blob:`** link's bytes are the page's (html5.js keeps them): the click calls
+`__onyxBlobDownload` (html5.js), which hands them to `N.download (bytes, name, type)` ->
+`onyx_download_bytes_hook`; a **`data:`** link goes through NetSurf's data: fetcher. The name:
+`filename*=charset'lang'%..` (RFC 6266 / 5987, UTF-8 or ISO-8859-1) first, else `filename=`
+(quoted or not), its last path segment; else the link's; else the address's last segment,
+%-decoded; "download" when none (data: URLs). The address bar goes back to the page's address
+(it showed the download's while asked).
+
+The frontend's table (`frontends/framebuffer/onyx_download.c`): **create** answers at once -- the
+name made safe for the card (`dl_safe_name`: ASCII -- the card's names are code page 850 bytes on
+the Pi, UTF-16 on Windows; accented letters without accent, `€` "EUR", others `_` -- no
+`/ \ : * ? " < > |` nor control characters, no dots / spaces at the ends, 60 characters at most, the
+extension kept; one from the type when it has none: `.pdf`, `.zip`, `.txt`...) -- and the **Save
+dialog** is shown from the main loop a moment later (`framebuffer_schedule (0)`: never inside the
+core's callback): `SD:/Downloads` made when missing (`kapi_mkdir`), wtk's `FileDialog` in save mode
+(`onyx_chrome_save_dialog`: its name box focused, Enter = Save, Esc = Cancel -- wtk's FileDialog has
+those keys now -- and a question before a file is replaced). The bytes that came meanwhile are kept;
+NetSurf waits while the dialog is open, and the fetcher's HTTP/1.1 threads stop reading past 8 MB
+not taken (`ONYX_JOB_BACKLOG`, onyx_fetch.c): a big file waits in its socket, not in memory.
+**Cancel** aborts the fetch (`download_context_abort`, `_destroy`). **Saved**: the file is opened
+(`kapi_file_out`) and a **writer thread** (`jet:download`) writes the bytes as they come, 64 KB at a
+time -- the core's `data` callback only queues them (the card's writes never on the UI thread; 64 MB
+queued at most) --; `done`: the writer closes the file, then posts the end (`kapi_post`). Without
+threads (an older kernel) the UI thread writes. The core's context is destroyed at its `done` /
+`error`, or from the main loop when the user cancels.
+
+**Progress, cancel, the end.** `onyx_chrome_downloads` hands the list (16 at most, the newest first)
+to the chrome: the **downloads' button** (`DlButton`, an arrow at the toolbar's right end, shown
+from the first download: a bar of the running ones' progress along its foot; a green / red dot: the
+last one's end) opens its menu (`DlMenu`; also File ▸ Downloads...): each download's name and state
+("1.2 MB of 2.6 MB (45%)", "Done: 2.8 MB in SD:/Downloads/...", "Failed: ...", "Cancelled"); a
+running one clicked -- after a question -- is **cancelled** (`onyx_browser_download_cancel`: the
+fetch aborted, the writer stopped, the partial file removed); "Clear the list" forgets the ended
+ones. The status bar's right part: "Downloading x: ...", "Downloaded x (2.8 MB)". At the end a
+desktop notification ("Download complete", notifyd -- when it runs; not on the PC builds), a
+failure a message box. The log: `ONYX-DOWNLOAD start / ask / save / done / failed / cancelled`
+lines. Jet Browser closed: the running downloads stopped, their partial files removed
+(`onyx_download_finalise`). The fetcher now passes a plain 200 response's `Content-Length` to the
+core (it dropped them all: the inflate makes an encoded one wrong), so a download's size is known.
+
+**Windows** (§34): `SD:/Downloads` is the user's own `%USERPROFILE%\Downloads` (winkapi's
+`winpath`), else `Downloads\` beside Jet.exe.
+
+![The Save dialog of a download](../screenshots/jet-save.png)
+
+![The downloads' menu](../screenshots/jet-downloads.png)
+
+**Tests.** `tools/tests/netsurf/dltest.sh` (`httpsrv.py`'s new `/dl/<name>?n=&cd=` -- n bytes, a
+Content-Disposition per `cd`, chunked or slow on demand -- and `/status/<code>`; `pages/jet-zoom.html`,
+`pages/jet-dl.html`): the zoom's keys, buttons and Ctrl+wheel in Chrome's steps, `devicePixelRatio`
+/ `innerWidth`, a click mapped through 200 %, the zoom kept and applied at the next launch, the
+percentage resetting it; the status bar's "Ready", the link under the pointer, 404 / 500 / a refused
+connection, hidden and shown (the page 22 px taller, kept); downloads: SD:/Downloads made, the
+dialog's name (filename=, filename*=, the address, `download="..."`, data:, a script's blob:, an
+HTML page as an attachment, a dangerous name), the bytes exactly (a 3 MB chunked body), Esc: nothing,
+a slow download cancelled from the menu (the server sees the connection closed, no file left). The
+desktop simulator's stand-in kernel (`fakekapi.cpp`) got `kapi_file_out` (a file written in pieces
+in `SIM_WRITES`) and removes what an app wrote there. Logged for the bench (`ONYX_HOST_SIM`):
+`ONYX-STATUSBAR` (each repaint of the bar: its text), `ONYX-CHROME` (the band's places),
+`ONYX-STATUS` (the load's end); `ONYX-ZOOM` (a zoom changed) and `ONYX-DOWNLOAD` everywhere. `jstest.sh`'s two clicks at a panel's foot moved up 22 px; `uatest.sh`'s
+pill is left of the zoom control now; `gputest.sh`'s nav-fragment compares the page only (the
+address fields differ). Screenshots: `shots.sh jet` (`jet.png`, `jet-menu.png`, `jet-save.png`,
+`jet-downloads.png`).
+
+**Not done.** Pause / resume, a download's speed and time left, opening the file or its folder
+from the menu; a per-page (not per-site) zoom; the status bar's text in the page's font (the
+toolbar's bitmap font: Latin-1, a link's other characters as `?`); Ctrl+Shift+= (US `+`).
+
+## 40. Find in page, copy and paste, the context menu (2026-10-01)
+
+The user: "a Ctrl+F; and a Ctrl+C to copy the selected text or a selected image (to paste it into
+Paint)". NetSurf has a free text search in its core and a text selection; Jet Browser had no way to
+reach the first, and the second copied into a buffer of the framebuffer frontend's own that no other
+app could read.
+
+![Find in page: the find bar, every match highlighted, the current one in orange](../screenshots/jet-find.png)
+
+**The find bar** (`FindBar`, onyx_chrome.cpp: 30 px above the status bar while shown -- the page that
+much shorter, a resize of the page as for the status bar): **Ctrl+F** (Edit ▸ Find in Page..., the
+context menu) shows it and focuses its field with its words selected; the field (`FindField`, a
+`LineEdit` -- the address field's editor, now shared: Latin-1, UTF-8 to the search and the clipboard)
+says **"3 of 17"** in its right end, or "No matches" with the field tinted red; **^ / v** buttons,
+**Match case**, **×**. Keys: **Enter** / **Shift+Enter** in the field, **F3** / **Shift+F3** and
+**Ctrl+G** / **Ctrl+Shift+G** anywhere (key_event, before the page); **Esc** in the field or × closes
+the bar and clears the highlights (its words kept: the next Ctrl+F finds them again). A new page loaded
+while the bar is open is searched again (`onyx_find_page_loaded`, from the status bar's "load ended",
+without moving the view).
+
+**The search** (frontends/framebuffer/onyx_edit.c, `onyx_browser_find`): `browser_window_search` with
+the words in UTF-8 -- a new search when the words, the case or the page changed (the same words again:
+cleared first, so a search starts at the first match), else a step. **Typed words are searched at
+once** while a search costs little; when the last one took more than 30 ms (a long page on the Pi)
+the next waits for a pause of 300 ms in the typing (`framebuffer_schedule`, replaced at each key).
+The core asks to scroll the current match into view (`CONTENT_MSG_SCROLL` -> `gui_window_set_scroll`,
+which put its top left corner at the view's): taken while a find runs (`onyx_find_take_scroll`) and
+done as Chrome does -- nothing when the match is all in view, else the match in the view's middle (the
+zoom's scale applied: the core's rectangle is in CSS px).
+
+**content/textsearch.c, rewritten for the Pi.** NetSurf kept the matches in a list, **each with a
+selection object** (`selection_create` + `selection_init`, a walk of the whole box tree to count its
+text, then `selection_set_position`, another walk to repaint it) -- a search for "e" on a long page
+was O(boxes × matches); and **each text box painted looked through every match**
+(`content_textsearch_ishighlighted`) -- again O(boxes × matches) per paint. Now:
+
+- the matches are an **array in document order** (the box walk finds them in order; one out of
+  order would be put in place), no selection objects;
+- a painted text's matches are found by a **binary search** (`content_textsearch_onyx_ranges`:
+  every match in the text -- NetSurf highlighted only the first --, the current one told apart);
+- a new search repaints **the matches' boxes** (the content's `textsearch_bounds`: `box_coords`, no
+  walk), or the whole content past 64 matches; a step repaints **the two current ones**; closing
+  repaints what was highlighted. With GPU compositing (§25) these are damage rectangles like any:
+  the band is painted again there (findtest.sh compares the composited frame with the CPU's);
+- the search is **literal** (NetSurf's `#` and `*` wildcards are gone: "C#" finds C#) and, unless
+  Match case, **ignores case and accents**: `fold_next` folds ASCII and Latin-1 letters to their
+  lower-case base letter (é è ê ë É -> e, ç -> c, ñ -> n, Œ -> œ), the typographic quotes to `'`
+  and `"`; the no-break space is a space either way. A match's bytes in the page may be longer or
+  shorter than the typed ones (é is two bytes, e one): the match's length is the page's;
+- a step **wraps around** at the ends (NetSurf stopped);
+- **a layout made after the search** (the page changed, the window resized, the find bar shown)
+  left the matches' boxes freed and their text offsets stale: html_reformat now bumps
+  `content->textsearch.layout_gen`; the matches are found again at the next paint, step or count
+  (`refresh_matches`, the current one kept at its place) and the bar told the new count (the core's
+  `CONTENT_TEXTSEARCH_MATCH` -> the frontend's `gui_search_table.status` -> the count, from the main
+  loop).
+
+The highlight (html/redraw.c, `onyx_find_redraw`): the text drawn as ever, then each match in it on
+**yellow** (`#ffff00`), the current one **orange** (`#ff9632`, Chrome's), the text in black clipped to
+the match. A selection still wins over a match (as before). Text in a plain-text page (textplain.c)
+is searched and highlighted as before (its first match a line, through the old call).
+
+Cost: the bench's 4000-paragraph page (88 000 "e"s): the search with its repaint requests 8 ms on the
+PC, so ~0.1 s on the Pi -- past 30 ms, the typing is then waited for; a paint's lookups are a binary
+search a text box.
+
+**The clipboard** (frontends/framebuffer/clipboard.c): the kernel's (`kapi_clipboard_set / _get`,
+`CLIP_TEXT`, UTF-8; 64 KB at most: a longer copy is cut at a character's start) both ways -- the
+core's copy of a selection (`selection_copy_to_clipboard`: Ctrl+C = `NS_KEY_COPY_SELECTION`, already
+mapped by `onyx_key_to_ucs4`) reaches every app, and the core's paste into a form's field (Ctrl+V,
+`NS_KEY_PASTE`) reads what another app copied; Ctrl+X, Ctrl+A in fields as before. **Edit ▸ Cut /
+Copy / Paste / Select All** send those keys where the keys go (the address field, the find field,
+else the page). The log: `ONYX-CLIPBOARD text <n> bytes`.
+
+**The context menu** (a right press on the page: `ptr_event` takes it -- the page does not get it,
+nor its release): `onyx_browser_context_menu` asks the core what is there
+(`browser_window_get_features`: a link, an object, a text field; `browser_window_get_editor_flags`:
+a selection, cut allowed) and the chrome shows wtk's `PopupMenu` (`onyx_chrome_context_menu`):
+
+| Under the pointer | Items |
+|---|---|
+| a link | Open Link, Save Link As... (`BW_NAVIGATE_DOWNLOAD`: §38's Save dialog), Copy Link Address |
+| an image | Open Image, Save Image As..., **Copy Image** (greyed for an image without pixels: SVG), Copy Image Address |
+| a text field | Cut, Copy (greyed without a selection), Paste (greyed without text on the clipboard), Select All |
+| selected text | Copy |
+| none of those | Back, Forward (greyed when not possible), Reload |
+| always | Select All, Find in Page... |
+
+Paste or Select All on a field without a selection first clicks it (the caret there). The menu is
+driven by the arrows and Enter too. The log: `ONYX-CONTEXT at x,y flags=...`, `... command n`.
+
+![The context menu of an image](../screenshots/jet-context.png)
+
+**Copy Image.** The kernel's clipboard holds 64 KB -- not a picture -- but Paint's Paste already reads
+**an image file copied** (`clip_get_file` + `img_is_image_name` + `img_load`: the File Viewer's
+Copy). So the image's **decoded bitmap** (as the page shows it: a GIF's current frame, the alpha
+kept; `content_get_bitmap`, the frontend's nsfb surface, R G B A bytes) is written as a **PNG**
+(img/pngsave.hpp's encoder, `onyx_chrome_save_png`: RGB when opaque) to **`RAM:/jet/clip/image-1.png`**
+or **`image-2.png`** in turn (the copy before stays readable while a new one is written; two files at
+most) and the clipboard set to that path (`CLIP_FILES`). In Paint, Ctrl+V pastes it as a floating
+selection. On **Windows** the pixels go to the Windows clipboard as a **DIB** (`CF_DIB`, laid on white:
+`onyx_win_clip_image`, pc/Jet/winkapi.cpp) -- Paint, Word, a mail take it; Windows' text clipboard
+(CF_UNICODETEXT) was already the kapi's.
+
+**Also fixed**: a page made shorter (the status bar shown again, now the find bar) left the
+horizontal scroll bar's arrows unpainted: the compositor's hole (§25: the canvas it writes itself)
+still covered the old page's height when the frame after the resize copied the back buffer --
+`gui_resize` now clears it (the next composite sets it again).
+
+**Tests.** `tools/tests/netsurf/findtest.sh` (`pages/jet-find.html`, `pages/jet-find.png`; the
+stand-in kernel's clipboard is real now: `SIM_CLIP` -- its text at the start, or `files:PATH` --,
+`SIM_CLIPFILE` -- each copy written there --, `SIM-CLIPBOARD type= len=` logged): the bar opened, the
+words found as typed ("c" 9, "cafe" 5: Café, cafe, CAFE, café, cafeteria), the highlights' pixels
+(yellow, orange), Enter / Shift+Enter / F3 / Shift+F3 around the ends, Match case (2), `a*b` and `#`
+literal, `l'ete` finding l’été, a match 3000 px down scrolled into view, Esc clearing, Ctrl+F finding
+the kept words again, the composited frame = the CPU's, a 4000-paragraph page's time; a line selected
+by a drag + Ctrl+C (its exact UTF-8), the menu's Copy, Copy Link Address, Copy Image (the PNG's
+pixels = the image's, alpha included; `image-1` / `image-2` in turn), **Paint** (the desktop
+simulator's build) pasting it with Ctrl+V, the menu's Paste into an unfocused field, Ctrl+V, Ctrl+A +
+Ctrl+C and Ctrl+X in a field. Screenshots: `shots.sh jet` (`jet-find.png`, `jet-context.png`).
+
+**Not done.** A search across a tag (`foo <b>bar</b>`: NetSurf searches each text box) and in a
+page's frames; a new search starts at the page's top (Chrome: after the view's top); the selection is
+not set to the current match on Esc; double / triple click to select a word / a line (NetSurf has
+neither); a drag past the end of a shrink-to-fit block's line selects nothing more (NetSurf's
+`box_pick_text_box` looks only inside the line's container); Copy Image of an SVG; Ctrl+C on a
+clicked image (Chrome does not either).
 
 ## 8. Known gaps
 

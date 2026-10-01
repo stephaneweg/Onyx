@@ -2017,6 +2017,24 @@ AArch64 only -- `QJS_JIT=n` turns it on in `qjsrun`). A change to `quickjs.c` (o
 `quickjs-jit.c`) means `libquickjs.a` made again: delete `third_party/quickjs-ng-0.17.0/*.o`
 first. The scripts' compiled code is cached on the card (`SD:/apps/jet.app/jscache/`,
 keyed by the engine's build: a new `libquickjs.a` starts it afresh).
+The browser's page zoom, status bar and downloads (docs/06 §38) are checked by
+`sh tools/tests/netsurf/dltest.sh` (the zoom keys and buttons, what the scripts see, the bar's texts,
+the Save dialog's names and the bytes saved in the simulator's `SIM_WRITES/Downloads`); the core
+calls the frontend back through `third_party/netsurf/include/netsurf/onyx_jet.h`'s hooks (the
+zoom of a new page's site, a fetch's error, a script's bytes to save), the downloads are
+`frontends/framebuffer/onyx_download.c` (a writer thread per file). The desktop simulator's
+stand-in kernel implements `kapi_file_out` (a file written in pieces, in `SIM_WRITES`) and lets
+`kapi_remove` delete what an app wrote there (never the card). wtk's `FileDialog` takes Enter
+(Open / Save) and Esc (Cancel), its name box focused in save mode; `fileName ()` reads the box.
+Find in page, copy and paste and the page's context menu (docs/06 §40) are checked by
+`sh tools/tests/netsurf/findtest.sh`; the frontend's side is `frontends/framebuffer/onyx_edit.c`
+(the search, the context menu's commands, Copy Image as a PNG in `RAM:/jet/clip/` + `CLIP_FILES`)
+and `clipboard.c` (the kernel's clipboard, UTF-8); the core's search is
+`content/textsearch.c` (an array of matches, binary-searched when painting). The stand-in
+kernel's clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or `files:PATH` for
+`CLIP_FILES`), **`SIM_CLIPFILE`** receives each copy's bytes, and every set logs
+`SIM-CLIPBOARD type=T len=N`. An app that pastes a copied picture reads it as Paint does
+(`clip_get_file` + `img_load`).
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:

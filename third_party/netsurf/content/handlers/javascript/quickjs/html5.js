@@ -63,7 +63,11 @@ function task(fn) { N.timer(() => { try { fn(); } catch (e) { report(e); } }, 0,
 
 def(Element.prototype, {
 	get namespaceURI() { return N.nsURI(this); },
-	get localName() { return N.lname(this); },
+	get localName() {
+		/* (Onyx: a namespaced element's name less its prefix) */
+		const q = N.lname(this), i = q.indexOf(':');
+		return i > 0 && N.nsURI(this) !== NS_HTML ? q.slice(i + 1) : q;
+	},
 	get tagName() { return N.qname(this); },
 	get prefix() {
 		const q = N.qname(this), i = q.indexOf(':');
@@ -149,6 +153,35 @@ def(Node.prototype, {
 	cloneNode(deep) { return copyNode(this, !!deep, N.ownerDoc(this) || this); },
 });
 
+/* Onyx: the names an element may have (XML's Name, QName: createElement('<div>') throws an
+ * InvalidCharacterError, createElementNS('x', 'xml:a') a NamespaceError -- as browsers) */
+const NAME_START = 'A-Za-z_:\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D' +
+	'\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF' +
+	'\uFDF0-\uFFFD';
+const NAME_RE = new RegExp('^[' + NAME_START + '][' + NAME_START +
+	'\\-.0-9\u00B7\u0300-\u036F\u203F-\u2040]*$');
+const NS_XMLNS_URI = 'http://www.w3.org/2000/xmlns/', NS_XML_URI = 'http://www.w3.org/XML/1998/namespace';
+function checkName(name) {
+	if (!NAME_RE.test(name))
+		throw domError('not a valid name: ' + name, 'InvalidCharacterError');
+}
+/* validate and extract (DOM): [namespace, prefix, local] or throws */
+function checkQName(ns, q) {
+	checkName(q);
+	const i = q.indexOf(':');
+	if (i === 0 || (i > 0 && (q.indexOf(':', i + 1) >= 0 || i === q.length - 1)))
+		throw domError('not a valid qualified name: ' + q, 'NamespaceError');
+	const prefix = i > 0 ? q.slice(0, i) : null;
+	if (prefix !== null && !/^[^0-9.\-]/.test(q.slice(i + 1)))
+		throw domError('not a valid qualified name: ' + q, 'NamespaceError');
+	if (prefix !== null && ns === null)
+		throw domError('a prefix without a namespace', 'NamespaceError');
+	if (prefix === 'xml' && ns !== NS_XML_URI)
+		throw domError('the xml prefix in another namespace', 'NamespaceError');
+	if ((q === 'xmlns' || prefix === 'xmlns') !== (ns === NS_XMLNS_URI))
+		throw domError('xmlns and its namespace', 'NamespaceError');
+}
+
 /* the documents: a node made by a document is that document's (DOMParser's own documents) */
 function isMainDoc(d) { return d === G.document; }
 const docCreate = G.Document.prototype;
@@ -163,12 +196,14 @@ def(G.Document.prototype, {
 	createElementNS(ns, qname) {
 		ns = ns === undefined || ns === null || ns === '' ? null : String(ns);
 		const q = String(qname);
+		checkQName(ns, q);	/* (Onyx) */
 		if (!isMainDoc(this)) return N.createIn(this, 'elementNS', ns, q);
 		if (ns === NS_HTML && !q.includes(':'))
 			return this.createElement(q);
 		return N.createNS(ns, q);
 	},
 	createElement(name) {
+		checkName(String(name));	/* (Onyx) */
 		if (isMainDoc(this)) return mainCreate.createElement.call(this, name);
 		return N.createIn(this, 'element', String(name).toLowerCase());
 	},
@@ -415,12 +450,17 @@ const implementation = {
 		}
 		return d;
 	},
-	createDocument(ns, qname) {
-		const d = N.createDocument();
+	createDocument(ns, qname, doctype) {
+		/* (Onyx: with its doctype, which becomes the document's) */
+		const d = N.createDocument(doctype || null);
 		if (qname) d.appendChild(d.createElementNS(ns, qname));
 		return d;
 	},
-	createDocumentType(name, pub, sys) { return { nodeType: DOCUMENT_TYPE_NODE, name, publicId: pub, systemId: sys }; },
+	createDocumentType(name, pub, sys) {
+		checkQName('', String(name));	/* (Onyx: "a:" is no qualified name) */
+		/* (a DocumentType node, as browsers: it joins a document) */
+		return N.createDoctype(String(name), String(pub), String(sys));
+	},
 	hasFeature() { return true; },
 };
 getter(G.Document.prototype, 'implementation', () => implementation);
@@ -2349,6 +2389,12 @@ let streamOfBytes = null;	/* (a stream of the bytes a promise gives: Blob.stream
 		},
 		revokeObjectURL(u) { blobURLs.delete(String(u)); },
 	});
+	/* (Onyx: <a download href="blob:...">, clicked or click()ed: the bytes saved -- the
+	 * frontend asks where; qjs.c n_download) */
+	Object.defineProperty(G, '__onyxBlobDownload', { configurable: true, value(u, name) {
+		const b = blobURLs.get(String(u).replace(/#.*$/, ''));
+		if (b) N.download(bytesOf(b), name || '', b.type || '');
+	} });
 	const nativeFetch = G.fetch;
 	G.fetch = function fetch(input, init) {
 		const u = typeof input === 'string' ? input : input && input.url !== undefined ? input.url : String(input);

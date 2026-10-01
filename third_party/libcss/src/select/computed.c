@@ -384,7 +384,7 @@ uint8_t css_computed_outline_width(const css_computed_style *style,
 	/* This property is in the uncommon block, so we need to handle
 	 * absolute value calculation for initial value (medium) here. */
 	if (get_outline_width(style, length, unit) == CSS_BORDER_WIDTH_MEDIUM) {
-		*length = INTTOFIX(2);
+		*length = INTTOFIX(3);	/* (Onyx: as a border's) */
 		*unit = CSS_UNIT_PX;
 	}
 
@@ -511,7 +511,12 @@ uint8_t css_computed_top(const css_computed_style *style,
 		top = CSS_TOP_AUTO;
 	} else if (position == CSS_POSITION_RELATIVE) {
 		/* Relative -> follow $9.4.3 */
-		uint8_t bottom = get_bottom_bits(style);
+		/* Onyx: the other side's unit too (get_bottom_bits gives
+		 * its type alone: an offset in em moved the box that many px:
+		 * Acid2's smile, "bottom: -1em") */
+		css_fixed olen = 0;
+		css_unit ounit = CSS_UNIT_PX;
+		uint8_t bottom = get_bottom(style, &olen, &ounit);
 
 		if (top == CSS_TOP_AUTO && (bottom & 0x3) == CSS_BOTTOM_AUTO) {
 			/* Both auto => 0px */
@@ -519,8 +524,8 @@ uint8_t css_computed_top(const css_computed_style *style,
 			*unit = CSS_UNIT_PX;
 		} else if (top == CSS_TOP_AUTO) {
 			/* Top is auto => -bottom */
-			*length = -style->i.bottom;
-			*unit = (css_unit) (bottom >> 2);
+			*length = -olen;
+			*unit = ounit;
 		}
 
 		top = CSS_TOP_SET;
@@ -541,7 +546,12 @@ uint8_t css_computed_right(const css_computed_style *style,
 		right = CSS_RIGHT_AUTO;
 	} else if (position == CSS_POSITION_RELATIVE) {
 		/* Relative -> follow $9.4.3 */
-		uint8_t left = get_left_bits(style);
+		/* Onyx: the other side's unit too (get_left_bits gives
+		 * its type alone: an offset in em moved the box that many px:
+		 * Acid2's smile, "bottom: -1em") */
+		css_fixed olen = 0;
+		css_unit ounit = CSS_UNIT_PX;
+		uint8_t left = get_left(style, &olen, &ounit);
 
 		if (right == CSS_RIGHT_AUTO && (left & 0x3) == CSS_LEFT_AUTO) {
 			/* Both auto => 0px */
@@ -549,8 +559,8 @@ uint8_t css_computed_right(const css_computed_style *style,
 			*unit = CSS_UNIT_PX;
 		} else if (right == CSS_RIGHT_AUTO) {
 			/* Right is auto => -left */
-			*length = -style->i.left;
-			*unit = (css_unit) (left >> 2);
+			*length = -olen;
+			*unit = ounit;
 		} else {
 			/** \todo Consider containing block's direction
 			 * if overconstrained */
@@ -574,7 +584,12 @@ uint8_t css_computed_bottom(const css_computed_style *style,
 		bottom = CSS_BOTTOM_AUTO;
 	} else if (position == CSS_POSITION_RELATIVE) {
 		/* Relative -> follow $9.4.3 */
-		uint8_t top = get_top_bits(style);
+		/* Onyx: the other side's unit too (get_top_bits gives
+		 * its type alone: an offset in em moved the box that many px:
+		 * Acid2's smile, "bottom: -1em") */
+		css_fixed olen = 0;
+		css_unit ounit = CSS_UNIT_PX;
+		uint8_t top = get_top(style, &olen, &ounit);
 
 		if (bottom == CSS_BOTTOM_AUTO && (top & 0x3) == CSS_TOP_AUTO) {
 			/* Both auto => 0px */
@@ -583,8 +598,8 @@ uint8_t css_computed_bottom(const css_computed_style *style,
 		} else if (bottom == CSS_BOTTOM_AUTO ||
 				(top & 0x3) != CSS_TOP_AUTO) {
 			/* Bottom is auto or top is not auto => -top */
-			*length = -style->i.top;
-			*unit = (css_unit) (top >> 2);
+			*length = -olen;
+			*unit = ounit;
 		}
 
 		bottom = CSS_BOTTOM_SET;
@@ -605,7 +620,12 @@ uint8_t css_computed_left(const css_computed_style *style,
 		left = CSS_LEFT_AUTO;
 	} else if (position == CSS_POSITION_RELATIVE) {
 		/* Relative -> follow $9.4.3 */
-		uint8_t right = get_right_bits(style);
+		/* Onyx: the other side's unit too (get_right_bits gives
+		 * its type alone: an offset in em moved the box that many px:
+		 * Acid2's smile, "bottom: -1em") */
+		css_fixed olen = 0;
+		css_unit ounit = CSS_UNIT_PX;
+		uint8_t right = get_right(style, &olen, &ounit);
 
 		if (left == CSS_LEFT_AUTO && (right & 0x3) == CSS_RIGHT_AUTO) {
 			/* Both auto => 0px */
@@ -613,8 +633,8 @@ uint8_t css_computed_left(const css_computed_style *style,
 			*unit = CSS_UNIT_PX;
 		} else if (left == CSS_LEFT_AUTO) {
 			/* Left is auto => -right */
-			*length = -style->i.right;
-			*unit = (css_unit) (right >> 2);
+			*length = -olen;
+			*unit = ounit;
 		} else {
 			/** \todo Consider containing block's direction
 			 * if overconstrained */
@@ -1224,7 +1244,7 @@ uint8_t css_computed_column_rule_width(const css_computed_style *style,
 	 * absolute value calculation for initial value (medium) here. */
 	if (get_column_rule_width(style, length, unit) ==
 			CSS_BORDER_WIDTH_MEDIUM) {
-		*length = INTTOFIX(2);
+		*length = INTTOFIX(3);	/* (Onyx: as a border's) */
 		*unit = CSS_UNIT_PX;
 	}
 
@@ -1491,6 +1511,30 @@ css_error css__compute_absolute_values(const css_computed_style *parent,
 			size.data.length.unit);
 	if (error != CSS_OK)
 		return error;
+
+	/* Onyx: bolder / lighter resolved against the parent's weight (CSS Fonts' table) --
+	 * left as they were, the font code took them for normal */
+	{
+		uint8_t w = get_font_weight(style);
+
+		if (w == CSS_FONT_WEIGHT_BOLDER || w == CSS_FONT_WEIGHT_LIGHTER) {
+			uint8_t pw = parent != NULL ? get_font_weight(parent) :
+					CSS_FONT_WEIGHT_NORMAL;
+			int n;
+
+			n = pw == CSS_FONT_WEIGHT_BOLD ? 700 :
+				(pw >= CSS_FONT_WEIGHT_100 && pw <= CSS_FONT_WEIGHT_900) ?
+				100 * (pw - CSS_FONT_WEIGHT_100 + 1) : 400;
+			if (w == CSS_FONT_WEIGHT_BOLDER)
+				n = n < 400 ? 400 : n < 600 ? 700 : 900;
+			else
+				n = n < 600 ? 100 : n < 800 ? 400 : 700;
+			error = set_font_weight(style,
+					CSS_FONT_WEIGHT_100 + n / 100 - 1);
+			if (error != CSS_OK)
+				return error;
+		}
+	}
 
 	/* Compute the size of an ex unit */
 	ex_size.status = CSS_FONT_SIZE_DIMENSION;
@@ -1885,12 +1929,13 @@ css_error compute_absolute_border_side_width(css_computed_style *style,
 		length = INTTOFIX(1);
 		unit = CSS_UNIT_PX;
 		break;
-	case CSS_BORDER_WIDTH_MEDIUM:
-		length = INTTOFIX(2);
+	case CSS_BORDER_WIDTH_MEDIUM:	/* Onyx: 3 and 5 px, as CSS
+					 * Backgrounds 3 and Chrome (2, 4) */
+		length = INTTOFIX(3);
 		unit = CSS_UNIT_PX;
 		break;
 	case CSS_BORDER_WIDTH_THICK:
-		length = INTTOFIX(4);
+		length = INTTOFIX(5);
 		unit = CSS_UNIT_PX;
 		break;
 	case CSS_BORDER_WIDTH_WIDTH:

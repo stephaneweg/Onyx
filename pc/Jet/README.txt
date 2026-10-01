@@ -33,6 +33,11 @@ Using it
   version of the site -- Standard (Jet Browser's own User-Agent), Mobile (Chrome on Android), Desktop
   (Chrome on Windows); click it to choose (the page reloads; remembered per site). From the address bar,
   Tab goes to the pill, Shift+Tab to the padlock.
+  The zoom: "-  100%  +" right of the pill, or Ctrl+- / Ctrl++ (Ctrl+=) / Ctrl+0, or Ctrl + the wheel;
+  kept per site (data\view). The status bar at the bottom: Loading / Ready / an HTTP error, the link
+  under the pointer (View > Hide Status Bar). Downloads: the Save dialog opens in your own Downloads
+  folder (%USERPROFILE%\Downloads; Downloads\ beside Jet.exe when there is none), the name filled in;
+  the arrow button at the toolbar's right end (or File > Downloads...) shows them and cancels one.
   The window resizes and maximises as any; the mouse wheel scrolls. Drop an .html file on the window, or
   "Open with" Jet.exe, or give an address on the command line:
       Jet.exe https://css3test.com/

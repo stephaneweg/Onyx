@@ -56,7 +56,10 @@
 #include "desktop/scrollbar.h"
 #include "desktop/gui_internal.h"
 #include "desktop/download.h"
+#include "netsurf/onyx_jet.h"	/* Onyx: the zoom per site, the status bar */
+#include "content/content_protected.h"	/* Onyx: the page's HTTP status */
 #include "desktop/frames.h"
+#include "css/select.h"		/* Onyx: a frame's page visited (:visited) */
 #include "desktop/global_history.h"
 #include "desktop/textinput.h"
 #include "desktop/hotlist.h"
@@ -82,6 +85,11 @@
  * maximum frame depth
  */
 #define FRAME_DEPTH 8
+
+/* Onyx: used before their definitions (the zoom per site, a download's address bar) */
+static nserror browser_window_set_scale_internal(struct browser_window *bw, float scale);
+static inline nserror browser_window_refresh_url_bar_internal(struct browser_window *bw,
+		nsurl *url);
 
 /* Forward declare internal navigation function */
 static nserror browser_window__navigate_internal(
@@ -689,6 +697,12 @@ browser_window_convert_to_download(struct browser_window *bw,
 	bw->loading_content = NULL;
 
 	browser_window_stop_throbber(bw);
+
+	/* Onyx: the page stays -- its address back in the address bar (the download's was
+	 * shown while it was asked for) */
+	if (bw->current_content != NULL)
+		browser_window_refresh_url_bar_internal(bw,
+				hlcache_handle_get_url(bw->current_content));
 }
 
 
@@ -866,11 +880,29 @@ static nserror browser_window_content_ready(struct browser_window *bw)
 		bw->loading_cert_chain = NULL;
 	}
 
+	/* Onyx (docs/06 §38): the zoom of the new page's site, before its first layout -- the
+	 * page before is gone, so no layout of it at the new scale; its iframes follow */
+	if (onyx_zoom_hook != NULL &&
+	    bw->browser_window_type == BROWSER_WINDOW_NORMAL) {
+		float s = onyx_zoom_hook(hlcache_handle_get_url(bw->current_content),
+				bw->scale);
+		if (s > 0 && fabs(s - bw->scale) >= 0.0001) {
+			int i;
+			bw->scale = s;
+			for (i = 0; i < bw->iframe_count; i++)
+				browser_window_set_scale_internal(bw->iframes[i], s);
+		}
+	}
+
 	/* Format the new content to the correct dimensions */
 	browser_window_get_dimensions(bw, &width, &height);
 	width /= bw->scale;
 	height /= bw->scale;
 	content_reformat(bw->current_content, false, width, height);
+
+	/* Onyx: a frame's page is visited for :visited (not the History's) */
+	if (bw->parent != NULL && !bw->internal_nav)
+		nscss_frame_visited_add(hlcache_handle_get_url(bw->current_content));
 
 	/* history */
 	if (bw->history_add && bw->history && !bw->internal_nav) {
@@ -915,7 +947,20 @@ static nserror browser_window_content_ready(struct browser_window *bw)
 	browser_window_remove_caret(bw, false);
 
 	if (bw->window != NULL) {
+		int fsx, fsy;
+		/* Onyx: the view still where the fragment's scroll put it (the user did not
+		 * scroll away while the page loaded) */
+		bool at_frag = !bw->onyx_frag_done ||
+			(onyx_bw_get_scroll(bw, &fsx, &fsy) &&
+			 fsx == bw->onyx_frag_x && fsy == bw->onyx_frag_y);
+
 		guit->window->event(bw->window, GW_EVENT_NEW_CONTENT);
+		/* Onyx: the view is back at the top: the fragment is scrolled to again (a
+		 * scroll to it while the page still loaded is undone by this) -- unless the
+		 * user scrolled away from it meanwhile: the view stays at the top */
+		if (at_frag)
+			bw->onyx_frag_done = false;
+		bw->onyx_fixed_sx = bw->onyx_fixed_sy = 0;
 
 		browser_window_refresh_url_bar(bw);
 	}
@@ -2004,6 +2049,23 @@ browser_window_set_scale_internal(struct browser_window *bw, float scale)
 }
 
 
+/* Onyx (netsurf/onyx_jet.h): the zoom per site, set by the frontend */
+float (*onyx_zoom_hook)(struct nsurl *url, float scale) = NULL;
+
+/* Onyx (netsurf/onyx_jet.h): the HTTP status of the window's page */
+long onyx_browser_window_http_code(struct browser_window *bw)
+{
+	struct content *c;
+
+	if (bw == NULL || bw->current_content == NULL)
+		return 0;
+	c = hlcache_handle_get_content(bw->current_content);
+	if (c == NULL || c->llcache == NULL)
+		return 0;
+	return llcache_handle_get_http_code(c->llcache);
+}
+
+
 /**
  * Find browser window.
  *
@@ -3056,8 +3118,41 @@ void browser_window_scrolled(struct browser_window *bw)
 {
 	/* Onyx: the page's scripts told (html_scrolled: a scroll event soon) */
 	if (bw != NULL && bw->current_content != NULL &&
-	    content_get_type(bw->current_content) == CONTENT_HTML)
+	    content_get_type(bw->current_content) == CONTENT_HTML) {
+		int sx, sy, w, h;
+
+		/* Onyx: what stays in the viewport (position: fixed, background-
+		 * attachment: fixed) painted again where the scroll moved it */
+		browser_window_onyx_viewport(bw, &sx, &sy, &w, &h);
+		if (sx != bw->onyx_fixed_sx || sy != bw->onyx_fixed_sy) {
+			html_fixed_scrolled(bw->current_content,
+					bw->onyx_fixed_sx, bw->onyx_fixed_sy,
+					sx, sy, w, h);
+			bw->onyx_fixed_sx = sx;
+			bw->onyx_fixed_sy = sy;
+		}
 		html_scrolled(bw->current_content);
+	}
+}
+
+/* exported interface documented in netsurf/browser_window.h */
+void browser_window_onyx_viewport(struct browser_window *bw, int *sx, int *sy,
+		int *width, int *height)
+{
+	*sx = *sy = 0;
+	*width = *height = 0;
+	if (bw == NULL)
+		return;
+	if (!onyx_bw_get_scroll(bw, sx, sy))
+		*sx = *sy = 0;
+	if (browser_window_get_dimensions(bw, width, height) != NSERROR_OK)
+		*width = *height = 0;
+	if (bw->scale > 0 && bw->scale != 1.0f) {
+		*sx /= bw->scale;
+		*sy /= bw->scale;
+		*width /= bw->scale;
+		*height /= bw->scale;
+	}
 }
 
 

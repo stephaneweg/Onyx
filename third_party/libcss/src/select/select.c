@@ -2426,6 +2426,74 @@ static void update_reject_cache(css_select_state *state,
 	state->next_reject--;
 }
 
+/* Onyx: the rest of a selector chain from node (s's compound matched there), its
+ * combinators matched with backtracking -- an ancestor or a preceding sibling that matches
+ * its compound but not the combinators before it in the chain gives way to the next one
+ * ("#a ~ div div + div > div": the nearest div ancestor had no #a before it, a farther
+ * one had; libcss took the first candidate only: Acid3's test 42) */
+/* whether the chain from s on has a combinator other than the descendant one: only then can
+ * a farther candidate match where a nearer one did not (with descendant combinators alone,
+ * a farther ancestor's ancestors are some of the nearer one's) */
+static bool chain_needs_backtrack(const css_selector *s)
+{
+	for (; s != NULL && s->data.comb != CSS_COMBINATOR_NONE; s = s->combinator)
+		if (s->data.comb != CSS_COMBINATOR_ANCESTOR)
+			return true;
+	return false;
+}
+
+static css_error match_chain_tail(css_select_ctx *ctx, const css_selector *s,
+		void *node, css_select_state *state, int depth, bool *matched)
+{
+	css_error error;
+	bool rejected_by_cache;
+
+	*matched = false;
+	if (depth > 32)
+		return CSS_OK;	/* (a bound on the backtracking) */
+	while (s->data.comb != CSS_COMBINATOR_NONE) {
+		css_combinator type = s->data.comb;
+		bool named = s->combinator->data.qname.name != ctx->str.universal;
+		void *next = NULL;
+
+		if ((type == CSS_COMBINATOR_ANCESTOR ||
+		     type == CSS_COMBINATOR_GENERIC_SIBLING) &&
+		    s->combinator->data.comb != CSS_COMBINATOR_NONE &&
+		    chain_needs_backtrack(s->combinator)) {
+			void *from = node;
+
+			for (;;) {
+				error = named ? match_named_combinator(ctx, type,
+						s->combinator, state, from, &next) :
+					match_universal_combinator(ctx, type,
+						s->combinator, state, from, false,
+						&rejected_by_cache, &next);
+				if (error != CSS_OK)
+					return error;
+				if (next == NULL)
+					return CSS_OK;
+				error = match_chain_tail(ctx, s->combinator, next,
+						state, depth + 1, matched);
+				if (error != CSS_OK || *matched)
+					return error;
+				from = next;
+			}
+		}
+		error = named ? match_named_combinator(ctx, type, s->combinator,
+				state, node, &next) :
+			match_universal_combinator(ctx, type, s->combinator, state,
+				node, false, &rejected_by_cache, &next);
+		if (error != CSS_OK)
+			return error;
+		if (next == NULL)
+			return CSS_OK;
+		s = s->combinator;
+		node = next;
+	}
+	*matched = true;
+	return CSS_OK;
+}
+
 css_error match_selector_chain(css_select_ctx *ctx,
 		const css_selector *selector, css_select_state *state)
 {
@@ -2467,6 +2535,22 @@ css_error match_selector_chain(css_select_ctx *ctx,
 	/* Iterate up the selector chain, matching combinators */
 	do {
 		void *next_node = NULL;
+
+		/* Onyx: an ancestor or generic sibling combinator with more
+		 * combinators after it: the rest matched with backtracking */
+		if ((s->data.comb == CSS_COMBINATOR_ANCESTOR ||
+		     s->data.comb == CSS_COMBINATOR_GENERIC_SIBLING) &&
+		    s->combinator->data.comb != CSS_COMBINATOR_NONE &&
+		    chain_needs_backtrack(s->combinator)) {
+			bool ok = false;
+
+			error = match_chain_tail(ctx, s, node, state, 0, &ok);
+			if (error != CSS_OK)
+				return error;
+			if (!ok)
+				return CSS_OK;
+			break;
+		}
 
 		/* Consider any combinator on this selector */
 		if (s->data.comb != CSS_COMBINATOR_NONE &&

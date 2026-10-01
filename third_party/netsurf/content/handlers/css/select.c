@@ -1035,6 +1035,40 @@ css_error node_has_attribute(void *pw, void *node,
 	return CSS_OK;
 }
 
+/* Onyx: attribute selectors' values compared as HTML has them: case-sensitively, but for
+ * the attributes HTML lists as case-insensitive in HTML documents (align, type, lang...) --
+ * every value was compared without case: [class=a] matched class="A" (Acid3) */
+static bool nscss_attr_icase(const css_qname *qname)
+{
+	static const char *const names[] = { "accept", "accept-charset", "align", "alink",
+		"axis", "bgcolor", "charset", "checked", "clear", "codetype", "color",
+		"compact", "declare", "defer", "dir", "direction", "disabled", "enctype",
+		"face", "frame", "hreflang", "http-equiv", "lang", "language", "link",
+		"media", "method", "multiple", "nohref", "noresize", "noshade", "nowrap",
+		"readonly", "rel", "rev", "rules", "scope", "scrolling", "selected", "shape",
+		"target", "text", "type", "valign", "valuetype", "vlink" };
+	const char *n = lwc_string_data(qname->name);
+	size_t len = lwc_string_length(qname->name), i;
+
+	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+		if (strlen(names[i]) == len && strncasecmp(n, names[i], len) == 0)
+			return true;
+	return false;
+}
+
+static int nscss_ncmp(const css_qname *qname, const char *a, const char *b, size_t n)
+{
+	return nscss_attr_icase(qname) ? strncasecmp(a, b, n) : strncmp(a, b, n);
+}
+
+static bool nscss_attr_eq(const css_qname *qname, dom_string *v, lwc_string *value)
+{
+	size_t len = dom_string_byte_length(v);
+
+	return len == lwc_string_length(value) &&
+		nscss_ncmp(qname, dom_string_data(v), lwc_string_data(value), len) == 0;
+}
+
 /**
  * Callback to determine if a node has an attribute with given name and value.
  *
@@ -1079,7 +1113,7 @@ css_error node_has_attribute_equal(void *pw, void *node,
 
 	dom_string_unref(name);
 
-	*match = dom_string_caseless_lwc_isequal(atr_val, value);
+	*match = nscss_attr_eq(qname, atr_val, value);
 
 	dom_string_unref(atr_val);
 
@@ -1132,7 +1166,7 @@ css_error node_has_attribute_dashmatch(void *pw, void *node,
 	dom_string_unref(name);
 
 	/* check for exact match */
-	*match = dom_string_caseless_lwc_isequal(atr_val, value);
+	*match = nscss_attr_eq(qname, atr_val, value);
 
 	/* check for dashmatch */
 	if (*match == false) {
@@ -1141,7 +1175,7 @@ css_error node_has_attribute_dashmatch(void *pw, void *node,
 		size_t len = dom_string_byte_length(atr_val);
 
 		if (len > vlen && data[vlen] == '-' &&
-		    strncasecmp(data, vdata, vlen) == 0) {
+		    nscss_ncmp(qname, data, vdata, vlen) == 0) {
 				*match = true;
 		}
 	}
@@ -1204,9 +1238,10 @@ css_error node_has_attribute_includes(void *pw, void *node,
 	end = start + dom_string_byte_length(atr_val);
 
 	for (p = start; p <= end; p++) {
-		if (*p == ' ' || *p == '\0') {
+		if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\f' ||
+		    *p == '\r' || *p == '\0') {
 			if ((size_t) (p - start) == vlen &&
-			    strncasecmp(start,
+			    nscss_ncmp(qname, start,
 					lwc_string_data(value),
 					vlen) == 0) {
 				*match = true;
@@ -1268,7 +1303,7 @@ css_error node_has_attribute_prefix(void *pw, void *node,
 	dom_string_unref(name);
 
 	/* check for exact match */
-	*match = dom_string_caseless_lwc_isequal(atr_val, value);
+	*match = nscss_attr_eq(qname, atr_val, value);
 
 	/* check for prefix match */
 	if (*match == false) {
@@ -1276,7 +1311,7 @@ css_error node_has_attribute_prefix(void *pw, void *node,
 		size_t len = dom_string_byte_length(atr_val);
 
 		if ((len >= vlen) &&
-		    (strncasecmp(data, lwc_string_data(value), vlen) == 0)) {
+		    (nscss_ncmp(qname, data, lwc_string_data(value), vlen) == 0)) {
 			*match = true;
 		}
 	}
@@ -1332,7 +1367,7 @@ css_error node_has_attribute_suffix(void *pw, void *node,
 	dom_string_unref(name);
 
 	/* check for exact match */
-	*match = dom_string_caseless_lwc_isequal(atr_val, value);
+	*match = nscss_attr_eq(qname, atr_val, value);
 
 	/* check for prefix match */
 	if (*match == false) {
@@ -1342,7 +1377,7 @@ css_error node_has_attribute_suffix(void *pw, void *node,
 		const char *start = (char *) data + len - vlen;
 
 		if ((len >= vlen) &&
-		    (strncasecmp(start, lwc_string_data(value), vlen) == 0)) {
+		    (nscss_ncmp(qname, start, lwc_string_data(value), vlen) == 0)) {
 			*match = true;
 		}
 
@@ -1400,7 +1435,7 @@ css_error node_has_attribute_substring(void *pw, void *node,
 	dom_string_unref(name);
 
 	/* check for exact match */
-	*match = dom_string_caseless_lwc_isequal(atr_val, value);
+	*match = nscss_attr_eq(qname, atr_val, value);
 
 	/* check for prefix match */
 	if (*match == false) {
@@ -1411,7 +1446,7 @@ css_error node_has_attribute_substring(void *pw, void *node,
 
 		if (len >= vlen) {
 			while (start <= last_start) {
-				if (strncasecmp(start, vdata,
+				if (nscss_ncmp(qname, start, vdata,
 						vlen) == 0) {
 					*match = true;
 					break;
@@ -1705,11 +1740,25 @@ css_error node_is_empty(void *pw, void *node, bool *match)
 			return CSS_BADPARM;
 		}
 
-		if (ntype == DOM_ELEMENT_NODE ||
-		    ntype == DOM_TEXT_NODE) {
+		if (ntype == DOM_ELEMENT_NODE) {
 			*match = false;
 			dom_node_unref(n);
 			break;
+		}
+		if (ntype == DOM_TEXT_NODE) {
+			/* Onyx: an empty text node leaves the element :empty
+			 * (Selectors 3) */
+			dom_string *data = NULL;
+			bool empty = dom_characterdata_get_data(n, &data) == DOM_NO_ERR &&
+				(data == NULL || dom_string_byte_length(data) == 0);
+
+			if (data != NULL)
+				dom_string_unref(data);
+			if (!empty) {
+				*match = false;
+				dom_node_unref(n);
+				break;
+			}
 		}
 
 		err = dom_node_get_next_sibling(n, &next);
@@ -1773,6 +1822,45 @@ css_error node_is_link(void *pw, void *n, bool *match)
  *
  * \post \a match will contain true if the node matches and false otherwise.
  */
+/* Onyx: the pages loaded in frames this session -- visited for :visited as in the browsers
+ * (Acid3's test 48), but not the History's (urldb's visits: the pages the user opened).
+ * A ring of the last 1024, hashed. */
+#define NSCSS_FRAME_VISITED 1024
+static nsurl *nscss_frame_url[NSCSS_FRAME_VISITED];
+static uint32_t nscss_frame_hash[NSCSS_FRAME_VISITED];
+static unsigned int nscss_frame_next, nscss_frame_count;
+
+/* exported function documented in css/select.h (Onyx) */
+void nscss_frame_visited_add(nsurl *url)
+{
+	if (url == NULL || nscss_frame_visited(url))
+		return;
+	if (nscss_frame_url[nscss_frame_next] != NULL)
+		nsurl_unref(nscss_frame_url[nscss_frame_next]);
+	nscss_frame_url[nscss_frame_next] = nsurl_ref(url);
+	nscss_frame_hash[nscss_frame_next] = nsurl_hash(url);
+	nscss_frame_next = (nscss_frame_next + 1) % NSCSS_FRAME_VISITED;
+	if (nscss_frame_count < NSCSS_FRAME_VISITED)
+		nscss_frame_count++;
+}
+
+/* exported function documented in css/select.h (Onyx) -- the hashes compared first: a link
+ * costs a few integer compares (most sessions load a few frames) */
+bool nscss_frame_visited(nsurl *url)
+{
+	unsigned int i;
+	uint32_t h;
+
+	if (nscss_frame_count == 0)
+		return false;
+	h = nsurl_hash(url);
+	for (i = 0; i < nscss_frame_count; i++)
+		if (nscss_frame_hash[i] == h &&
+		    nsurl_compare(nscss_frame_url[i], url, NSURL_COMPLETE))
+			return true;
+	return false;
+}
+
 css_error node_is_visited(void *pw, void *node, bool *match)
 {
 	nscss_select_ctx *ctx = pw;
@@ -1826,6 +1914,8 @@ css_error node_is_visited(void *pw, void *node, bool *match)
 	 * non-zero visit count */
 	if (data != NULL && data->visits > 0)
 		*match = true;
+	else if (nscss_frame_visited(url))
+		*match = true;		/* (Onyx: a frame's page) */
 
 	nsurl_unref(url);
 
@@ -1941,11 +2031,115 @@ css_error node_is_focus(void *pw, void *node, bool *match)
  *
  * \post \a match with contain true if the node is enabled and false otherwise.
  */
+/* Onyx: whether an element is a form control that can be disabled (HTML's :enabled /
+ * :disabled elements), and whether it is: its disabled attribute, a disabled <fieldset>
+ * ancestor (not in its first <legend>), an <option> in a disabled <optgroup> */
+static bool nscss_html_name(dom_node *n, const char *name)
+{
+	dom_string *s = NULL;
+	bool r = false;
+
+	if (dom_node_get_local_name(n, &s) == DOM_NO_ERR && s != NULL) {
+		r = dom_string_byte_length(s) == strlen(name) &&
+			strncasecmp(dom_string_data(s), name, strlen(name)) == 0;
+		dom_string_unref(s);
+	} else if (dom_node_get_node_name(n, &s) == DOM_NO_ERR && s != NULL) {
+		r = dom_string_byte_length(s) == strlen(name) &&
+			strncasecmp(dom_string_data(s), name, strlen(name)) == 0;
+		dom_string_unref(s);
+	}
+	return r;
+}
+
+static bool nscss_has_attr(dom_node *n, dom_string *name)
+{
+	bool has = false;
+
+	return dom_element_has_attribute((dom_element *) n, name, &has) == DOM_NO_ERR &&
+		has;
+}
+
+static bool nscss_can_disable(dom_node *n)
+{
+	static const char *const names[] = { "button", "input", "select", "textarea",
+		"optgroup", "option", "fieldset" };
+	size_t i;
+
+	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+		if (nscss_html_name(n, names[i]))
+			return true;
+	return false;
+}
+
+static bool nscss_is_disabled(dom_node *node)
+{
+	dom_node *n = node, *child = NULL, *p = NULL;
+
+	if (nscss_has_attr(node, corestring_dom_disabled))
+		return true;
+	if (nscss_html_name(node, "option")) {
+		if (dom_node_get_parent_node(node, &p) == DOM_NO_ERR && p != NULL) {
+			bool d = nscss_html_name(p, "optgroup") &&
+				nscss_has_attr(p, corestring_dom_disabled);
+			dom_node_unref(p);
+			return d;
+		}
+		return false;
+	}
+	if (nscss_html_name(node, "optgroup"))
+		return false;
+	/* a disabled fieldset ancestor, unless in its first legend */
+	dom_node_ref(n);
+	while (dom_node_get_parent_node(n, &p) == DOM_NO_ERR && p != NULL) {
+		dom_node_type type = DOM_ELEMENT_NODE;
+
+		if (dom_node_get_node_type(p, &type) != DOM_NO_ERR ||
+		    type != DOM_ELEMENT_NODE) {
+			dom_node_unref(p);
+			break;
+		}
+		if (nscss_html_name(p, "fieldset") &&
+		    nscss_has_attr(p, corestring_dom_disabled)) {
+			/* (n: the fieldset's child on the way) */
+			bool legend = false;
+			dom_node *c = NULL;
+
+			if (nscss_html_name(n, "legend") &&
+			    dom_node_get_first_child(p, &c) == DOM_NO_ERR) {
+				/* its first legend child? */
+				while (c != NULL) {
+					dom_node *next = NULL;
+					dom_node_type ct = DOM_TEXT_NODE;
+
+					dom_node_get_node_type(c, &ct);
+					if (ct == DOM_ELEMENT_NODE &&
+					    nscss_html_name(c, "legend")) {
+						legend = c == n;
+						dom_node_unref(c);
+						break;
+					}
+					dom_node_get_next_sibling(c, &next);
+					dom_node_unref(c);
+					c = next;
+				}
+			}
+			if (!legend) {
+				dom_node_unref(p);
+				dom_node_unref(n);
+				return true;
+			}
+		}
+		dom_node_unref(n);
+		n = p;
+	}
+	dom_node_unref(n);
+	(void) child;
+	return false;
+}
+
 css_error node_is_enabled(void *pw, void *node, bool *match)
 {
-	/** \todo Support enabled nodes */
-
-	*match = false;
+	*match = nscss_can_disable(node) && !nscss_is_disabled(node);
 
 	return CSS_OK;
 }
@@ -1962,9 +2156,7 @@ css_error node_is_enabled(void *pw, void *node, bool *match)
  */
 css_error node_is_disabled(void *pw, void *node, bool *match)
 {
-	/** \todo Support disabled nodes */
-
-	*match = false;
+	*match = nscss_can_disable(node) && nscss_is_disabled(node);	/* (Onyx) */
 
 	return CSS_OK;
 }
@@ -1981,9 +2173,34 @@ css_error node_is_disabled(void *pw, void *node, bool *match)
  */
 css_error node_is_checked(void *pw, void *node, bool *match)
 {
-	/** \todo Support checked nodes */
+	/* Onyx: a checkbox's or radio button's checkedness, an option's selectedness
+	 * (libdom's state: the scripts' and the user's) */
+	dom_node *n = node;
 
 	*match = false;
+	if (nscss_html_name(n, "input")) {
+		dom_string *type = NULL;
+		bool c = false;
+
+		if (dom_element_get_attribute(n, corestring_dom_type, &type) ==
+				DOM_NO_ERR && type != NULL) {
+			if ((dom_string_caseless_lwc_isequal(type,
+					corestring_lwc_checkbox) ||
+			     dom_string_caseless_lwc_isequal(type,
+					corestring_lwc_radio)) &&
+			    dom_html_input_element_get_checked(
+					(dom_html_input_element *) n, &c) ==
+					DOM_NO_ERR)
+				*match = c;
+			dom_string_unref(type);
+		}
+	} else if (nscss_html_name(n, "option")) {
+		bool s = false;
+
+		if (dom_html_option_element_get_selected(
+				(dom_html_option_element *) n, &s) == DOM_NO_ERR)
+			*match = s;
+	}
 
 	return CSS_OK;
 }
@@ -2021,10 +2238,39 @@ css_error node_is_target(void *pw, void *node, bool *match)
 css_error node_is_lang(void *pw, void *node,
 		lwc_string *lang, bool *match)
 {
-	/** \todo Support languages */
+	/* Onyx: the element's language -- its own lang attribute, else its nearest
+	 * ancestor's -- is lang or starts with lang and a "-", without case (Acid3) */
+	dom_node *n = node;
+	dom_exception err;
+	size_t llen = lwc_string_length(lang);
 
 	*match = false;
+	dom_node_ref(n);
+	while (n != NULL) {
+		dom_node *parent = NULL;
+		dom_node_type type = DOM_ELEMENT_NODE;
+		dom_string *v = NULL;
 
+		if (dom_node_get_node_type(n, &type) == DOM_NO_ERR &&
+		    type == DOM_ELEMENT_NODE &&
+		    dom_element_get_attribute(n, corestring_dom_lang, &v) ==
+				DOM_NO_ERR && v != NULL) {
+			const char *d = dom_string_data(v);
+			size_t len = dom_string_byte_length(v);
+
+			*match = len >= llen &&
+				strncasecmp(d, lwc_string_data(lang), llen) == 0 &&
+				(len == llen || d[llen] == '-');
+			dom_string_unref(v);
+			dom_node_unref(n);
+			return CSS_OK;
+		}
+		err = dom_node_get_parent_node(n, &parent);
+		dom_node_unref(n);
+		if (err != DOM_NO_ERR)
+			return CSS_OK;
+		n = parent;
+	}
 	return CSS_OK;
 }
 

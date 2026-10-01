@@ -726,6 +726,16 @@ static void html_restyle_attr_clear(html_content *c, bool only)
 }
 
 /* exported interface documented in html/private.h */
+void html_state_restyle(html_content *c, struct dom_node *node)
+{
+	if (c == NULL || node == NULL || c->layout == NULL)
+		return;
+	onyx_restyle_attr_changed(c, node);
+	html_script_mutation(c, node, true);
+	html_script_dom_changed(c);
+}
+
+/* exported interface documented in html/private.h */
 void html_script_mutation(html_content *c, struct dom_node *node, bool attr)
 {
 	bool hidden;
@@ -1871,6 +1881,131 @@ static void html_stop(struct content *c)
  * Reformat a CONTENT_HTML to a new width.
  */
 
+/* ---- Onyx: what stays in the viewport as it scrolls ------------------------------------
+ * position: fixed is laid out against the viewport at the document's origin (the scroll
+ * offset 0) and painted moved by the viewport's scroll offset (html/redraw.c), a
+ * background-attachment: fixed positioned in the viewport; a scroll paints them again
+ * where they were and where they are now (a scroll moves the rest of the page: a blit, or
+ * the compositor's band). Acid2's scalp and chin.
+ */
+#include "html/onyx_fx.h"
+
+/* exported interface documented in html/html.h */
+bool html_box_viewport_fixed(const struct box *box)
+{
+	const struct box *p;
+
+	if (box->style == NULL ||
+	    css_computed_position(box->style) != CSS_POSITION_FIXED)
+		return false;
+	switch (box->type) {
+	case BOX_BLOCK: case BOX_TABLE: case BOX_INLINE_BLOCK:
+	case BOX_FLEX: case BOX_INLINE_FLEX:
+		break;
+	default:
+		return false;
+	}
+	/* (a transformed or filtered ancestor is its containing block: painted in it) */
+	for (p = box->parent; p != NULL; p = p->parent)
+		if (p->style != NULL && onyx_fx_style(p->style) && onyx_fx_box(p))
+			return false;
+	return true;
+}
+
+static bool onyx_fixed_background(const struct box *box)
+{
+	lwc_string *url = NULL;
+
+	return box->style != NULL &&
+		css_computed_background_attachment(box->style) ==
+				CSS_BACKGROUND_ATTACHMENT_FIXED &&
+		css_computed_background_image(box->style, &url) ==
+				CSS_BACKGROUND_IMAGE_IMAGE && url != NULL;
+}
+
+static void onyx_fixed_add(html_content *c, struct box *box)
+{
+	if (c->fixed_n == c->fixed_cap) {
+		unsigned int cap = c->fixed_cap ? c->fixed_cap * 2 : 8;
+		struct box **a = realloc(c->fixed_boxes, cap * sizeof(*a));
+
+		if (a == NULL)
+			return;
+		c->fixed_boxes = a;
+		c->fixed_cap = cap;
+	}
+	c->fixed_boxes[c->fixed_n++] = box;
+}
+
+/** the boxes that stay in the viewport, found again (after a layout) */
+static void onyx_fixed_collect(html_content *c)
+{
+	struct box *b = c->layout;
+
+	c->fixed_n = 0;
+	c->fixed_layout = b;
+	while (b != NULL) {
+		bool down = true;
+
+		if (html_box_viewport_fixed(b)) {
+			onyx_fixed_add(c, b);
+			down = false;	/* (its descendants move with it) */
+		} else if (onyx_fixed_background(b)) {
+			onyx_fixed_add(c, b);
+		}
+		if (down && b->children != NULL) {
+			b = b->children;
+			continue;
+		}
+		while (b != NULL && b->next == NULL)
+			b = b->parent;
+		if (b != NULL)
+			b = b->next;
+	}
+}
+
+/* exported interface documented in html/html.h */
+void html_fixed_scrolled(hlcache_handle *h, int osx, int osy, int sx, int sy, int w,
+		int ht)
+{
+	html_content *c = (html_content *) hlcache_handle_get_content(h);
+
+	if (c == NULL || c->layout == NULL || c->reflowing ||
+	    c->fixed_layout != c->layout)
+		return;
+	for (unsigned int k = 0; k < c->fixed_n; k++) {
+		struct box *b = c->fixed_boxes[k];
+		int x, y;
+
+		box_coords(b, &x, &y);
+		if (html_box_viewport_fixed(b)) {
+			/* (its extent, a margin for an outline's antialiasing) */
+			int x0 = x + b->descendant_x0 - 2, y0 = y + b->descendant_y0 - 2;
+			int bw = b->descendant_x1 - b->descendant_x0 + 4;
+			int bh = b->descendant_y1 - b->descendant_y0 + 4;
+
+			content__request_redraw(&c->base, x0 + osx, y0 + osy, bw, bh);
+			content__request_redraw(&c->base, x0 + sx, y0 + sy, bw, bh);
+		} else {
+			/* (its border box, where it is in view) */
+			int x0 = x - b->border[LEFT].width;
+			int y0 = y - b->border[TOP].width;
+			int x1 = x + b->padding[LEFT] + b->width + b->padding[RIGHT] +
+					b->border[RIGHT].width;
+			int y1 = y + b->padding[TOP] + b->height + b->padding[BOTTOM] +
+					b->border[BOTTOM].width;
+
+			if (x0 < sx) x0 = sx;
+			if (y0 < sy) y0 = sy;
+			if (x1 > sx + w) x1 = sx + w;
+			if (y1 > sy + ht) y1 = sy + ht;
+			if (x0 < x1 && y0 < y1)
+				content__request_redraw(&c->base, x0, y0,
+						x1 - x0, y1 - y0);
+		}
+	}
+}
+
 static void html_reformat(struct content *c, int width, int height)
 {
 	html_content *htmlc = (html_content *) c;
@@ -1904,7 +2039,10 @@ static void html_reformat(struct content *c, int width, int height)
 		union content_msg_data md = { .getdims = { .viewport_width = &vw,
 				.viewport_height = &vh } };
 		content_broadcast(&htmlc->base, CONTENT_MSG_GETDIMS, &md);
-		if (vw != 0 && vh != 0) {
+		/* (Onyx: a frame's may be 0 x 0 -- its element's box: Acid3's
+		 * media queries; a window's 0 is one not sized yet) */
+		if ((vw != 0 && vh != 0) ||
+		    (htmlc->bw != NULL && htmlc->bw->parent != NULL)) {
 			css_fixed mw = css_unit_device2css_px(INTTOFIX(vw), nscss_screen_dpi);
 			css_fixed mh = css_unit_device2css_px(INTTOFIX(vh), nscss_screen_dpi);
 			if (mw != htmlc->media.width || mh != htmlc->media.height) {
@@ -1922,6 +2060,7 @@ static void html_reformat(struct content *c, int width, int height)
 		onyx_perf_log("layout", t0);
 	}
 	layout = htmlc->layout;
+	onyx_fixed_collect(htmlc);	/* (Onyx) */
 
 	/* width and height are at least margin box of document */
 	c->width = layout->x + layout->padding[LEFT] + layout->width +
@@ -1939,6 +2078,7 @@ static void html_reformat(struct content *c, int width, int height)
 		c->height = layout->y + layout->scroll_ext_y1;
 
 	selection_reinit(htmlc->sel);
+	c->textsearch.layout_gen++;	/* Onyx: a find's boxes are stale (§40) */
 
 	htmlc->reflowing = false;
 	htmlc->had_initial_layout = true;
@@ -2084,6 +2224,14 @@ static void html_destroy(struct content *c)
 	onyx_restyle_fini(html);	/* (Onyx) */
 	html_restyle_attr_clear(html, false);
 	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
+	for (unsigned int k = 0; k < html->object_failed_n; k++)	/* (Onyx) */
+		dom_node_unref(html->object_failed[k]);
+	free(html->object_failed);
+	html->object_failed = NULL;
+	free(html->fixed_boxes);	/* (Onyx) */
+	html->fixed_boxes = NULL;
+	html->fixed_n = html->fixed_cap = 0;
+	html->object_failed_n = html->object_failed_cap = 0;
 	if (html->focus_pending != NULL) {	/* (Onyx) */
 		dom_node_unref(html->focus_pending);
 		html->focus_pending = NULL;

@@ -17,11 +17,19 @@
  */
 
 /** \file
-  * nsfb internal clipboard handling
+  * nsfb clipboard handling
+  *
+  * Onyx (Jet Browser, docs/06 §40): the system's clipboard (the kernel's, kapi_clipboard_set /
+  * _get: one typed blob that every app shares, 64 KB at most) -- not a buffer of the browser's
+  * own: text selected in a page or a form field and copied (Ctrl+C, Ctrl+X, the context menu)
+  * pastes into the other apps, and their text into the page's fields (Ctrl+V). UTF-8 both
+  * ways; a copy longer than the kernel keeps is cut at a character's boundary. On Windows
+  * (pc/Jet/winkapi.cpp) the kapi is the Windows clipboard (CF_UNICODETEXT).
   */
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -32,12 +40,9 @@
 #include "framebuffer/gui.h"
 #include "framebuffer/clipboard.h"
 
+#include "kapi.h"
 
-static struct gui_clipboard {
-	char *buffer;
-	size_t buffer_len;
-	size_t length;
-} gui_clipboard;
+#define CLIP_MAX (64 * 1024)	/* what the kernel keeps (kernel/sys/kapi.cpp CLIPBOARD_MAX) */
 
 
 /**
@@ -48,22 +53,30 @@ static struct gui_clipboard {
  */
 static void gui_get_clipboard(char **buffer, size_t *length)
 {
+	int type = 0, n;
+	char *b;
+
 	*buffer = NULL;
 	*length = 0;
 
-	if (gui_clipboard.length > 0) {
-		assert(gui_clipboard.buffer != NULL);
-		NSLOG(netsurf, INFO, "Pasting %zd bytes: \"%s\"\n",
-		      gui_clipboard.length, gui_clipboard.buffer);
-
-		*buffer = malloc(gui_clipboard.length);
-
-		if (*buffer != NULL) {
-			memcpy(*buffer, gui_clipboard.buffer,
-					gui_clipboard.length);
-			*length = gui_clipboard.length;
-		}
+	n = kapi_clipboard_get(&type, NULL, 0, NULL);	/* (its length) */
+	if (n <= 0 || type != CLIP_TEXT)
+		return;
+	if (n > CLIP_MAX)
+		n = CLIP_MAX;
+	b = malloc(n + 1);
+	if (b == NULL)
+		return;
+	n = kapi_clipboard_get(&type, b, n, NULL);
+	if (n <= 0 || type != CLIP_TEXT) {
+		free(b);
+		return;
 	}
+	if (n > CLIP_MAX)
+		n = CLIP_MAX;
+	b[n] = '\0';
+	*buffer = b;
+	*length = n;
 }
 
 
@@ -78,23 +91,20 @@ static void gui_get_clipboard(char **buffer, size_t *length)
 static void gui_set_clipboard(const char *buffer, size_t length,
 		nsclipboard_styles styles[], int n_styles)
 {
-	if (gui_clipboard.buffer_len < length + 1) {
-		/* Make buffer big enough */
-		char *new_buff;
+	(void) styles;
+	(void) n_styles;
 
-		new_buff = realloc(gui_clipboard.buffer, length + 1);
-		if (new_buff == NULL)
-			return;
-
-		gui_clipboard.buffer = new_buff;
-		gui_clipboard.buffer_len = length + 1;
+	if (buffer == NULL || length == 0)
+		return;		/* (nothing selected: the clipboard kept) */
+	if (length > CLIP_MAX) {
+		/* cut at a character's start (not inside a UTF-8 sequence) */
+		length = CLIP_MAX;
+		while (length > 0 && (((unsigned char) buffer[length]) & 0xC0) == 0x80)
+			length--;
 	}
-
-	gui_clipboard.length = 0;
-
-	memcpy(gui_clipboard.buffer, buffer, length);
-	gui_clipboard.length = length;
-	gui_clipboard.buffer[gui_clipboard.length] = '\0';
+	kapi_clipboard_set(CLIP_TEXT, buffer, (unsigned) length);
+	printf("ONYX-CLIPBOARD text %u bytes\n", (unsigned) length);
+	fflush(stdout);
 }
 
 static struct gui_clipboard_table clipboard_table = {

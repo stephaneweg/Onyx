@@ -85,7 +85,79 @@ enum { ONYX_SEC_NONE = 0,	/* not a web page (file:, about:): no padlock */
        ONYX_SEC_BROKEN };	/* https past a certificate warning ("Proceed"): red */
 void onyx_chrome_set_site(int sec, int mode);
 
+/* --- Onyx (docs/06 §38): the zoom, the status bar, the downloads -------------------- */
+
+/* The page's zoom (percent), shown by the toolbar's zoom control ("-  100 %  +"). */
+void onyx_chrome_set_zoom(int percent);
+
+/* The status bar (the window's bottom band, ONYX_STATUSBAR_H high, shown by default): its
+ * left part tells the page's state -- "Loading...", "Ready", "404 Not Found" (error: in red);
+ * the link under the pointer replaces it while there is one (UTF-8, NULL: none). Only the
+ * bar is repainted, and only when its text changes. */
+#define ONYX_STATUSBAR_H 22
+void onyx_chrome_set_state(const char *text, int error);
+void onyx_chrome_set_link(const char *text);
+/* Show / hide the bar (the page area grows or shrinks: a resize of the page). */
+void onyx_chrome_show_status_bar(int shown);
+int  onyx_chrome_status_bar_shown(void);
+
+/* The downloads, for the toolbar's download button (its menu: progress, cancel) and the
+ * status bar. state: ONYX_DL_*. The chrome copies what it shows. */
+enum { ONYX_DL_ASK = 0, ONYX_DL_RUNNING, ONYX_DL_DONE, ONYX_DL_FAILED, ONYX_DL_CANCELLED };
+struct onyx_dl_info {
+	int id;
+	const char *name;		/* the file's name (ASCII: safe for the card) */
+	const char *path;		/* where it is saved ("" while asked) */
+	const char *error;		/* why it failed, or "" */
+	unsigned long long got, total;	/* bytes so far, in all (0: not known) */
+	int state;
+};
+void onyx_chrome_downloads(const struct onyx_dl_info *list, int n);
+/* The Save dialog (wtk's FileDialog, in save mode): starting in dir, the name filled in
+ * (ASCII). 1 and the path chosen in path, 0 cancelled. Asks before replacing a file. */
+int  onyx_chrome_save_dialog(const char *dir, const char *name, char *path, int cap);
+/* A message box over the page (OK). */
+void onyx_chrome_message(const char *title, const char *text);
+/* A desktop notification (notifyd), when it runs; else nothing. */
+void onyx_chrome_notify(const char *title, const char *text);
+
+/* --- Onyx (docs/06 §40): find in page, the context menu, copying -------------------- */
+
+/* The find bar (above the status bar; Ctrl+F, Edit > Find in Page...): the search's state --
+ * the current match (0-based, -1 none) and the count (-1: not searched). */
+void onyx_chrome_find_result(int index, int count);
+int  onyx_chrome_find_shown(void);
+void onyx_chrome_find_open(void);
+/* A new page shown while the bar is open: its words searched again (the view not moved). */
+void onyx_chrome_find_again(void);
+
+/* The page's context menu (a right press on the page, x y the page's): what is under the
+ * pointer (ONYX_CTXF_*) -> the item chosen (ONYX_CMD_*), 0 none. */
+enum { ONYX_CTXF_LINK = 1, ONYX_CTXF_IMAGE = 2, ONYX_CTXF_IMAGE_PIXELS = 4,	/* (decoded: copyable) */
+       ONYX_CTXF_SELECTION = 8, ONYX_CTXF_EDITABLE = 16, ONYX_CTXF_CAN_CUT = 32,
+       ONYX_CTXF_BACK = 64, ONYX_CTXF_FORWARD = 128 };
+enum { ONYX_CMD_NONE = 0, ONYX_CMD_BACK, ONYX_CMD_FORWARD, ONYX_CMD_RELOAD, ONYX_CMD_CUT,
+       ONYX_CMD_COPY, ONYX_CMD_PASTE, ONYX_CMD_SELECT_ALL, ONYX_CMD_FIND, ONYX_CMD_OPEN_LINK,
+       ONYX_CMD_SAVE_LINK, ONYX_CMD_COPY_LINK, ONYX_CMD_OPEN_IMAGE, ONYX_CMD_SAVE_IMAGE,
+       ONYX_CMD_COPY_IMAGE, ONYX_CMD_COPY_IMAGE_URL };
+int  onyx_chrome_context_menu(int x, int y, int flags);
+
+/* w x h pixels 0xAARRGGBB written as a PNG file (img/pngsave.hpp): 1 done, 0 failed. */
+int  onyx_chrome_save_png(const char *path, const unsigned *px, int w, int h);
+
+/* gui.c / onyx_edit.c: the words (UTF-8) searched in the page -- dir 0 a new search (the
+ * first match; typed: after a pause on a page slow to search), 1 the next match, -1 the one
+ * before (around at the ends), 2 again without moving the view; match_case: exact letters
+ * and accents. "" clears. */
+void onyx_browser_find(const char *utf8, int dir, int match_case);
+void onyx_browser_find_close(void);		/* the highlights cleared */
+void onyx_browser_context_menu(int x, int y);	/* a right press on the page (its coordinates) */
+
 /* --- the commands the toolbar / the menu run (implemented in gui.c) ------------------ */
+void onyx_browser_zoom(int step);		/* +1 in, -1 out, 0 back to 100 % (Chrome's steps) */
+void onyx_browser_set_status_bar(int shown);	/* View > Status Bar (kept in jet.app's view file) */
+void onyx_browser_download_cancel(int id);	/* a download stopped, its file removed */
+void onyx_browser_downloads_clear(void);	/* the finished ones out of the list */
 void onyx_browser_back(void);
 void onyx_browser_forward(void);
 void onyx_browser_reload(void);

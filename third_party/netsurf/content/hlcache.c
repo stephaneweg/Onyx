@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>	/* (Onyx: strncasecmp) */
 
 #include "utils/http.h"
 #include "utils/log.h"
@@ -357,6 +358,22 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
 	       effective_type ? lwc_string_data(effective_type) : "(null)",
 	       ctx->llcache ? nsurl_access(llcache_handle_get_url(ctx->llcache)) : "?");
 	fflush(stdout);
+
+	/* Onyx (docs/06 §38): a page's own load answered "Content-Disposition: attachment"
+	 * -- a download, whatever its type (an HTML or a text file the server sends to be
+	 * saved, not shown), as in the other browsers */
+	if (ctx->flags & HLCACHE_RETRIEVE_MAY_DOWNLOAD) {
+		const char *cd = llcache_handle_get_header(ctx->llcache,
+				"Content-Disposition");
+		while (cd != NULL && (*cd == ' ' || *cd == '\t'))
+			cd++;
+		if (cd != NULL && strncasecmp(cd, "attachment", 10) == 0 &&
+		    (cd[10] == '\0' || cd[10] == ';' || cd[10] == ' ' ||
+		     cd[10] == '\t')) {
+			effective_type = NULL;	/* (below: a download) */
+			type = CONTENT_NONE;
+		}
+	}
 
 	if ((effective_type != NULL) &&
 	    hlcache_type_is_acceptable(effective_type,
@@ -805,6 +822,27 @@ struct content *hlcache_handle_get_content(const hlcache_handle *handle)
 }
 
 /* See hlcache.h for documentation */
+nserror hlcache_handle_catch_up(hlcache_handle *handle)
+{
+	/* Onyx: the low-level object behind a handle -- its content's, or its
+	 * retrieval's while no content is made yet -- has its users told now */
+	hlcache_retrieval_ctx *ctx;
+
+	if (handle == NULL)
+		return NSERROR_BAD_PARAMETER;
+	if (handle->entry != NULL && handle->entry->content != NULL)
+		return llcache_handle_catch_up(handle->entry->content->llcache);
+	ctx = hlcache->retrieval_ctx_ring;
+	if (ctx != NULL) {
+		do {
+			if (ctx->handle == handle)
+				return llcache_handle_catch_up(ctx->llcache);
+			ctx = ctx->r_next;
+		} while (ctx != hlcache->retrieval_ctx_ring);
+	}
+	return NSERROR_NOT_FOUND;
+}
+
 nserror hlcache_handle_abort(hlcache_handle *handle)
 {
 	struct hlcache_entry *entry = handle->entry;

@@ -16,19 +16,30 @@
 // The app is Jet Browser ("Jet" in the window's title): Onyx's web browser, based on NetSurf;
 // Help > About Jet Browser... credits NetSurf and the libraries (their licences).
 //
+// docs/06 §38: right of the pill the zoom control ("-  100%  +"; Ctrl+- / Ctrl++ / Ctrl+0,
+// Ctrl+wheel), then the downloads' button (its menu: progress, cancel); the status bar at the
+// window's bottom (the page's state, the link under the pointer: View > Hide Status Bar); the
+// Save dialog of a download (frontends/framebuffer/onyx_download.c asks for it).
+//
 #include <time.h>
 #include "wtk/wtk.h"
 #include "onyx_chrome.h"
 #include "onyx_io.h"
+#include "img/pngsave.hpp"	// (docs/06 §40: a copied image, as a PNG file)
+#ifdef ONYX_HOST_SIM
+#include <stdio.h>		// (the PC bench: the bar's text and the band's places logged)
+#endif
 
 using namespace wtk;
 
 namespace {
 
 const int TB = ONYX_TOOLBAR_H;
+const int SB = ONYX_STATUSBAR_H;	// the status bar, at the window's bottom (when shown)
 const int BTN_W = 34, BTN_H = 30, BTN_Y = (TB - BTN_H) / 2 - 1, GAP = 4, PAD = 6;
 const int URL_MAX = 2048;
 const int LOCK_W = 32;		// the padlock's half pill, left of the address field
+bool g_sbOn = true;		// the status bar shown (View > Status Bar; gui.c keeps the choice)
 
 // ---- a toolbar button: the theme's framed button with a glyph --------------------------------
 class ToolButton : public Widget
@@ -37,6 +48,7 @@ public:
 	int glyph;
 	void (*cmd) (void);
 	ToolButton (int l, int t, int g, void (*c) (void)) : Widget (l, t, BTN_W, BTN_H), glyph (g), cmd (c) {}
+	ToolButton (int l, int t, int w, int h, int g, void (*c) (void)) : Widget (l, t, w, h), glyph (g), cmd (c) {}
 	void setGlyph (int g) { if (g != glyph) { glyph = g; invalidate (true); } }
 	void setDisabled (bool d) { if (d != disabled) { disabled = d; if (d) hover = pressed = false; invalidate (true); } }
 	void onDraw () override
@@ -102,44 +114,26 @@ void clip_copy (const char *s, int n)
 	kapi_clipboard_set (CLIP_TEXT, u, (unsigned) m);
 }
 
-class UrlField : public Widget
+// A one-line editor of Latin-1 text (the address field, the find bar's field): the caret, the
+// whole text selected (a click into it, Ctrl+A), Ctrl+C / X / V with the system's clipboard
+// (UTF-8 there), the arrows, Home / End, Backspace / Del, the characters typed.
+class LineEdit : public Widget
 {
 public:
 	char text[URL_MAX];	// what is shown / edited
-	char page[URL_MAX];	// the page's address (Esc goes back to it)
 	int  len, caret, start;
 	bool all;		// the whole text selected (a click into the field, Ctrl+A)
-	bool joinL, joinR;	// the padlock / the pill against its left / right side (square there)
-	UrlField (int l, int t, int w, int h) : Widget (l, t, w, h), len (0), caret (0), start (0), all (false),
-		joinL (false), joinR (false)
-	{ canFocus = true; text[0] = page[0] = '\0'; }
+	LineEdit (int l, int t, int w, int h) : Widget (l, t, w, h), len (0), caret (0), start (0), all (false)
+	{ canFocus = true; text[0] = '\0'; }
 
-	void setPage (const char *s)
-	{
-		int n = 0;
-		for (; s && s[n] && n < URL_MAX - 1; n++) page[n] = s[n];
-		page[n] = '\0';
-		if (!hasFocus) { revert (); invalidate (true); }	// (not while it is being edited)
-	}
-	void revert ()
-	{
-		for (len = 0; page[len]; len++) text[len] = page[len];
-		text[len] = '\0'; caret = len; start = 0; all = false;
-	}
-	void focusIn () { setFocus (); all = true; caret = len; invalidate (true); joined (); }
-	void focusOut () { if (hasFocus) { hasFocus = false; revert (); invalidate (true); joined (); } }	// (back to the page)
-	void joined ();		// the padlock and the pill redrawn (they show the field's focus)
-
-	int visible () const { int n = (width - 2 * PAD) / wk_fw (); return n < 1 ? 1 : n; }
-	void onDraw () override
+	int visible (int w) const { int n = (w - 2 * PAD) / wk_fw (); return n < 1 ? 1 : n; }
+	// The field's face from x0 to x1 (its rounded ends past the canvas when joined), the
+	// text in [PAD, tw) of it
+	void drawField (int xl, int xr, unsigned face, int tw)
 	{
 		int fw = wk_fw (), fh = wk_fh ();
-		canvas.clear (bgColor ());
-		// (a side joined to the padlock or the pill: the field's rounded end drawn past the
-		// canvas -- cut off: the field and its neighbours read as one control)
-		int xl = joinL ? -6 : 0, xr = joinR ? 6 : 0;
-		wk_sunken (canvas, xl, 0, width - xl + xr, height, 4, C_FIELD, hasFocus);
-		int vis = visible ();
+		wk_sunken (canvas, xl, 0, width - xl + xr, height, 4, face, hasFocus);
+		int vis = visible (tw);
 		if (caret < start) start = caret;
 		if (caret > start + vis - 1) start = caret - (vis - 1);
 		if (start < 0) start = 0;
@@ -156,34 +150,32 @@ public:
 		if (hasFocus && !all)
 			canvas.fillRect (PAD + (caret - start) * fw, ty, 1, fh, C_ACCENT);
 	}
-	bool onMouse (int mx, int, int bl, int, int, int) override
+	void clickAt (int mx)
 	{
-		if (mx < 0 || !bl) return mx >= 0;
-		if (!hasFocus) { focusIn (); return true; }
 		int c = start + (mx - PAD + wk_fw () / 2) / wk_fw ();
 		caret = c < 0 ? 0 : c > len ? len : c;
 		all = false;
 		invalidate (true);
-		return true;
 	}
 	void erase () { len = caret = start = 0; text[0] = '\0'; all = false; }
-	bool onKey (long k) override
+	void setText (const char *s)
 	{
-		if (k == KEY_ENTER)
-		{
-			static char u[URL_MAX * 3];
-			latin1_to_utf8 (text, len, u, sizeof u);
-			onyx_browser_go (u); focusOut (); return true;
-		}
-		if (k == 27) { focusOut (); return true; }
-		if (k == 1) { all = true; invalidate (true); return true; }			// ^A
-		if (k == 3) { clip_copy (text, len); return true; }				// ^C
-		if (k == 24) { clip_copy (text, len); erase (); invalidate (true); return true; }	// ^X
-		if (k == 22)									// ^V
+		for (len = 0; s && s[len] && len < URL_MAX - 1; len++) text[len] = s[len];
+		text[len] = '\0'; caret = len; start = 0; all = false;
+	}
+	// The editing keys; true: taken (*changed: the text changed)
+	bool editKey (long k, bool *changed)
+	{
+		*changed = false;
+		if (k == 1) { all = true; invalidate (true); return true; }				// ^A
+		if (k == 3) { clip_copy (text, len); return true; }					// ^C
+		if (k == 24) { clip_copy (text, len); erase (); *changed = true; invalidate (true); return true; }	// ^X
+		if (k == 22)										// ^V
 		{
 			static char clip[URL_MAX];
 			int type = 0; unsigned serial = 0;
 			int n = kapi_clipboard_get (&type, clip, sizeof clip - 1, &serial);
+			if (n > (int) sizeof clip - 1) n = (int) sizeof clip - 1;
 			if (n > 0 && type == CLIP_TEXT)
 			{
 				if (all) erase ();
@@ -197,6 +189,7 @@ public:
 					text[caret++] = ch; len++;
 				}
 				text[len] = '\0';
+				*changed = true;
 				invalidate (true);
 			}
 			return true;
@@ -210,10 +203,14 @@ public:
 		case KEY_BACKSPACE:
 			if (all) erase ();
 			else if (caret > 0) { for (int m = caret - 1; m < len; m++) text[m] = text[m + 1]; caret--; len--; }
+			else break;
+			*changed = true;
 			break;
 		case KEY_DEL:
 			if (all) erase ();
 			else if (caret < len) { for (int m = caret; m < len; m++) text[m] = text[m + 1]; len--; }
+			else break;
+			*changed = true;
 			break;
 		default:
 			if (k < 32 || (k > 126 && k != 0x80 && k < 0xA0) || k > 0xFF) return false;	// (Latin-1, the euro)
@@ -221,10 +218,59 @@ public:
 			if (len >= URL_MAX - 1) return true;
 			for (int m = len; m > caret; m--) text[m] = text[m - 1];
 			text[caret++] = (char) k; len++; text[len] = '\0';
+			*changed = true;
 			break;
 		}
 		invalidate (true);
 		return true;
+	}
+};
+
+class UrlField : public LineEdit
+{
+public:
+	char page[URL_MAX];	// the page's address (Esc goes back to it)
+	bool joinL, joinR;	// the padlock / the pill against its left / right side (square there)
+	UrlField (int l, int t, int w, int h) : LineEdit (l, t, w, h), joinL (false), joinR (false)
+	{ page[0] = '\0'; }
+
+	void setPage (const char *s)
+	{
+		int n = 0;
+		for (; s && s[n] && n < URL_MAX - 1; n++) page[n] = s[n];
+		page[n] = '\0';
+		if (!hasFocus) { revert (); invalidate (true); }	// (not while it is being edited)
+	}
+	void revert () { setText (page); }
+	void focusIn () { setFocus (); all = true; caret = len; invalidate (true); joined (); }
+	void focusOut () { if (hasFocus) { hasFocus = false; revert (); invalidate (true); joined (); } }	// (back to the page)
+	void joined ();		// the padlock and the pill redrawn (they show the field's focus)
+
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		// (a side joined to the padlock or the pill: the field's rounded end drawn past the
+		// canvas -- cut off: the field and its neighbours read as one control)
+		drawField (joinL ? -6 : 0, joinR ? 6 : 0, C_FIELD, width);
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override
+	{
+		if (mx < 0 || !bl) return mx >= 0;
+		if (!hasFocus) { focusIn (); return true; }
+		clickAt (mx);
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_ENTER)
+		{
+			static char u[URL_MAX * 3];
+			latin1_to_utf8 (text, len, u, sizeof u);
+			onyx_browser_go (u); focusOut (); return true;
+		}
+		if (k == 27) { focusOut (); return true; }
+		bool ch;
+		return editKey (k, &ch);
 	}
 };
 
@@ -466,6 +512,438 @@ public:
 	{
 		if (k == KEY_ENTER || k == ' ' || k == KEY_DOWN) { openMenu (); return true; }
 		return false;
+	}
+};
+
+void to_latin1 (const char *s, char *out, int cap);	// (below: UTF-8 -> the bitmap font's Latin-1)
+
+// ---- the zoom control (docs/06 §38): "-  100%  +" -----------------------------------------
+// Two small framed buttons and the zoom between them: - zooms out, + in (Chrome's steps), a
+// click on the percentage goes back to 100 %. Ctrl+- / Ctrl++ / Ctrl+0 and Ctrl+wheel do the same.
+class ZoomCtl : public Widget
+{
+public:
+	enum { SEG = 26 };
+	int pct, hot, down;		// the zoom; the part under the pointer, pressed (0 -, 1 %, 2 +)
+	char label[8];
+	ZoomCtl (int l, int t) : Widget (l, t, needW (), BTN_H), pct (100), hot (-1), down (-1)
+	{ label[0] = '\0'; set (100); tip = "Zoom: - out (Ctrl+-), + in (Ctrl++), the % back to 100 % (Ctrl+0)"; }
+	static int needW () { return 2 * SEG + wk_text_w ("500%", 2) + 12; }
+	void set (int p)
+	{
+		pct = p;
+		int n = 0, v = p;
+		char t[6]; int k = 0;
+		do { t[k++] = (char) ('0' + v % 10); v /= 10; } while (v && k < 5);
+		while (k) label[n++] = t[--k];
+		label[n++] = '%'; label[n] = '\0';
+		invalidate (true);
+	}
+	int partAt (int mx) const { return mx < SEG ? 0 : mx >= width - SEG ? 2 : 1; }
+	bool can (int part) const { return part == 0 ? pct > 25 : part == 2 ? pct < 500 : pct != 100; }
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		for (int part = 0; part <= 2; part += 2)
+		{
+			int x = part == 0 ? 0 : width - SEG;
+			int st = !can (part) ? WK_DISABLED : down == part ? WK_PRESSED : hot == part ? WK_HOT : WK_NORMAL;
+			int bx, by, bw, bh;
+			wk_framed (canvas, x, 0, SEG, height, C_FACE, st, &bx, &by, &bw, &bh);
+			wk_glyph (canvas, part == 0 ? WKG_MINUS : WKG_PLUS, bx + bw / 2, by + bh / 2, 11,
+				  st == WK_DISABLED ? C_DIS : C_TEXT);
+		}
+		int lx = SEG + 2, lw = width - 2 * SEG - 4;
+		if (hot == 1 && can (1)) wk_rbox (canvas, lx, 3, lw, height - 6, 5,
+			wk_tone (C_BG, down == 1 ? 112 : 140), wk_tone (C_BG, down == 1 ? 104 : 132));
+		wk_text_c (canvas, lx, 0, lw, height, label, pct == 100 ? C_TEXT : C_ACCENT, 2);
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		if (mx < 0) { if (hot >= 0 || down >= 0) { hot = down = -1; invalidate (true); } return false; }
+		int h = my >= 0 && my < height && mx < width ? partAt (mx) : -1, wh = hot, wd = down;
+		hot = h;
+		if (bl && down < 0) down = h;
+		else if (!bl && down >= 0)
+		{
+			int was = down; down = -1;
+			if (was == h && can (h)) onyx_browser_zoom (h == 0 ? -1 : h == 2 ? 1 : 0);
+		}
+		if (hot != wh || down != wd) invalidate (true);
+		return true;
+	}
+};
+
+// ---- the downloads (docs/06 §38): the toolbar's button and its menu -------------------------
+// The list gui.c's onyx_download.c publishes (onyx_chrome_downloads), copied.
+struct DlRow
+{
+	int id, state;
+	char name[64], path[512], error[160];
+	unsigned long long got, total;
+};
+enum { DL_ROWS = 16 };
+DlRow g_dl[DL_ROWS];
+int g_ndl;
+
+// "1.2 MB", "340 KB", "87 bytes"
+void tell_size (unsigned long long n, char *out, int cap)
+{
+	const char *u = n >= 1048576 ? "MB" : n >= 1024 ? "KB" : "bytes";
+	unsigned long long whole = n >= 1048576 ? n / 1048576 : n >= 1024 ? n / 1024 : n;
+	unsigned tenth = n >= 1048576 ? (unsigned) (n % 1048576 * 10 / 1048576) : 0;
+	char t[24]; int k = 0, o = 0;
+	do { t[k++] = (char) ('0' + whole % 10); whole /= 10; } while (whole && k < 20);
+	while (k && o < cap - 12) out[o++] = t[--k];
+	if (n >= 1048576 && whole < 100) { out[o++] = '.'; out[o++] = (char) ('0' + tenth); }
+	out[o++] = ' ';
+	for (; *u && o < cap - 1; u++) out[o++] = *u;
+	out[o] = '\0';
+}
+
+// A download's state in words: "1.2 MB of 2.6 MB (45%)", "Done: 2.6 MB", "Failed: ...", "Cancelled"
+void tell_dl (const DlRow &d, char *out, int cap)
+{
+	char a[24], b[24];
+	int o = 0;
+	auto put = [&] (const char *s) { for (; *s && o < cap - 1; s++) out[o++] = *s; out[o] = '\0'; };
+	out[0] = '\0';
+	tell_size (d.got, a, sizeof a);
+	switch (d.state)
+	{
+	case ONYX_DL_ASK: put ("Waiting for a place to save it..."); break;
+	case ONYX_DL_RUNNING:
+		put (a);
+		if (d.total > 0)
+		{
+			tell_size (d.total, b, sizeof b);
+			put (" of "); put (b);
+			char pc[8]; int p = (int) (d.got * 100 / d.total), k = 0;
+			if (p > 100) p = 100;
+			pc[k++] = ' '; pc[k++] = '(';
+			if (p >= 100) pc[k++] = '1';
+			if (p >= 10) pc[k++] = (char) ('0' + p / 10 % 10);
+			pc[k++] = (char) ('0' + p % 10); pc[k++] = '%'; pc[k++] = ')'; pc[k] = '\0';
+			put (pc);
+		}
+		break;
+	case ONYX_DL_DONE: put ("Done: "); put (a); put (" in "); put (d.path); break;
+	case ONYX_DL_FAILED: put ("Failed: "); put (d.error[0] ? d.error : "an error"); break;
+	default: put ("Cancelled"); break;
+	}
+}
+
+bool dl_active (const DlRow &d) { return d.state == ONYX_DL_ASK || d.state == ONYX_DL_RUNNING; }
+
+// The button: an arrow down; while a download runs, its progress along the button's foot.
+class DlButton : public ToolButton
+{
+public:
+	DlButton (int l, int t, void (*c) (void)) : ToolButton (l, t, WKG_DOWN, c)
+	{ hidden = true; tip = "Downloads"; }
+	void onDraw () override
+	{
+		ToolButton::onDraw ();
+		unsigned long long got = 0, total = 0;
+		bool run = false, fail = false;
+		for (int i = 0; i < g_ndl; i++)
+		{
+			if (dl_active (g_dl[i])) { run = true; got += g_dl[i].got; total += g_dl[i].total ? g_dl[i].total : g_dl[i].got + 1; }
+			if (i == 0 && g_dl[i].state == ONYX_DL_FAILED) fail = true;
+		}
+		if (run)
+		{
+			int w = width - 12, fill = total ? (int) (got * (unsigned long long) w / total) : 0;
+			canvas.fillRect (6, height - 7, w, 3, wk_tone (C_FACE, 96));
+			canvas.fillRect (6, height - 7, fill, 3, C_ACCENT);
+		}
+		else if (g_ndl > 0)		// (the last one's end: a dot, green or red)
+			canvas.fillRect (width - 10, 5, 4, 4, fail ? SEC_RED : SEC_GREEN);
+	}
+};
+
+// Its menu: the downloads, the newest first -- a name, its state under it; a click on one that
+// runs (or Del) cancels it, after a question; "Clear the list" takes the finished ones out.
+class DlMenu : public Modal
+{
+public:
+	enum { PADY = 4 };
+	int hot;
+	DlMenu (int right, int y) : Modal (380, 40), hot (-1)
+	{
+		int w = 380;
+		for (int i = 0; i < g_ndl; i++)
+		{
+			char t[700]; tell_dl (g_dl[i], t, sizeof t);
+			int iw = wk_text_w (t) + 28, nw = wk_text_w (g_dl[i].name, 2) + 28;
+			if (iw > w) w = iw;
+			if (nw > w) w = nw;
+		}
+		if (w > 640) w = 640;
+		resizeTo (w, 2 * PADY + rowH () * (g_ndl > 0 ? g_ndl : 1) + clearH ());
+		left = right - w; top = y;
+		if (left < 2) left = 2;
+	}
+	static int rowH () { return 2 * wk_fh () + 12; }
+	static bool anyEnded () { for (int i = 0; i < g_ndl; i++) if (!dl_active (g_dl[i])) return true; return false; }
+	int clearH () const { return anyEnded () ? wk_fh () + 18 : 0; }	// ("Clear the list": the ended ones)
+	int rowAt (int my) const
+	{
+		if (my < PADY) return -1;
+		int r = (my - PADY) / rowH ();
+		if (r < g_ndl) return r;
+		return clearH () > 0 && my >= height - clearH () ? DL_ROWS : -1;	// (Clear the list)
+	}
+	void onDraw () override
+	{
+		int fh = wk_fh (), rh = rowH ();
+		canvas.clear (WK_TRANSPARENT_KEY);
+		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 110);
+		if (g_ndl == 0) wk_text_l (canvas, 14, PADY, rh, "No downloads.", dim);
+		for (int i = 0; i < g_ndl; i++)
+		{
+			int y = PADY + i * rh;
+			bool h = i == hot && dl_active (g_dl[i]);
+			if (h) wk_hilite (canvas, PADY, y, width - 2 * PADY, rh, 5, true);
+			char t[700]; tell_dl (g_dl[i], t, sizeof t);
+			char line[200]; fit (line, t, (width - 28) / wk_fw ());
+			wk_text_l (canvas, 14, y + 4, fh, g_dl[i].name, h ? C_SEL_TEXT : C_FIELD_TEXT, 2);
+			wk_text_l (canvas, 14, y + 6 + fh, fh, line, h ? C_SEL_TEXT :
+				   g_dl[i].state == ONYX_DL_FAILED ? SEC_RED : dim);
+			if (h) wk_text_l (canvas, width - 20 - wk_text_w ("Cancel"), y + 4, fh, "Cancel", C_SEL_TEXT);
+			if (i + 1 < g_ndl) canvas.fillRect (10, y + rh - 1, width - 20, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 28));
+		}
+		if (clearH () > 0)
+		{
+			int y = height - clearH ();
+			wk_etch_h (canvas, 8, y, width - 16, C_FIELD);
+			if (hot == DL_ROWS) wk_hilite (canvas, PADY, y + 3, width - 2 * PADY, clearH () - 6, 5, true);
+			wk_text_l (canvas, 14, y + 3, clearH () - 6, "Clear the list", hot == DL_ROWS ? C_SEL_TEXT : C_FIELD_TEXT);
+		}
+	}
+	void fit (char *out, const char *s, int max)
+	{
+		int n = wk_len (s);
+		if (max < 4) max = 4;
+		if (n <= max) { for (int i = 0; i <= n; i++) out[i] = s[i]; return; }
+		int k = 0;
+		for (; k < max - 3 && k < 196; k++) out[k] = s[k];
+		out[k++] = '.'; out[k++] = '.'; out[k++] = '.'; out[k] = '\0';
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		int h = in ? rowAt (my) : -1;
+		if (h != hot) { hot = h; invalidate (true); }
+		if (bl && !pressed) { pressed = true; if (!in) close (0); }
+		else if (!bl && pressed)
+		{
+			pressed = false;
+			if (in && h == DL_ROWS) close (DL_ROWS + 1);
+			else if (in && h >= 0 && dl_active (g_dl[h])) close (h + 1);
+		}
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27 || k == 9 || k == KEY_ENTER) close (0);
+		return true;
+	}
+};
+
+// ---- the status bar (docs/06 §38) ------------------------------------------------------------
+// The window's bottom band: the page's state on the left ("Loading... 12 of 30", "Ready", "404
+// Not Found" in red) -- or, while the pointer is on a link, its address (cut in its middle when
+// too long); on the right a download's progress. Repainted alone, when its text changes.
+class StatusBar : public Widget
+{
+public:
+	char state[160], link[URL_MAX], right[200];
+	bool error;
+	StatusBar (int l, int t, int w) : Widget (l, t, w, SB), error (false)
+	{ state[0] = link[0] = right[0] = '\0'; anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM; }
+	static bool same (const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
+	static void copy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
+	void setState (const char *t, bool err)
+	{
+		char b[160]; to_latin1 (t ? t : "", b, sizeof b);
+		if (same (b, state) && err == error) return;
+		copy (state, b, sizeof state); error = err;
+		if (!link[0]) invalidate (true);
+	}
+	void setLink (const char *t)
+	{
+		static char b[URL_MAX];
+		to_latin1 (t ? t : "", b, sizeof b);
+		if (same (b, link)) return;
+		copy (link, b, sizeof link);
+		invalidate (true);
+	}
+	void setRight (const char *t)
+	{
+		if (same (t, right)) return;
+		copy (right, t, sizeof right);
+		invalidate (true);
+	}
+	// s in at most max columns: its middle replaced by "..." when too long
+	static void middle (char *out, const char *s, int max)
+	{
+		int n = wk_len (s);
+		if (max < 7) max = 7;
+		if (n <= max) { copy (out, s, URL_MAX); return; }
+		int head = (max - 3) * 3 / 5, tail = max - 3 - head, o = 0;
+		for (int i = 0; i < head; i++) out[o++] = s[i];
+		out[o++] = '.'; out[o++] = '.'; out[o++] = '.';
+		for (int i = n - tail; i < n; i++) out[o++] = s[i];
+		out[o] = '\0';
+	}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		wk_etch_h (canvas, 0, 0, width, C_BG);
+		int fh = wk_fh (), ty = 2, th = height - 2;
+		int rw = right[0] ? wk_text_w (right) + 16 : 0;
+		if (rw > width / 2) rw = width / 2;
+		int avail = width - 16 - rw;
+		static char line[URL_MAX];
+		if (link[0])
+		{
+			middle (line, link, avail / wk_fw ());
+			wk_text_l (canvas, 8, ty, th, line, C_TEXT);
+		}
+		else
+		{
+			middle (line, state, avail / wk_fw ());
+			wk_text_l (canvas, 8, ty, th, line, error ? 0xC5221F : wk_mix (C_BG, C_TEXT, 200));
+		}
+		if (rw)
+		{
+			canvas.fillRect (width - rw, 5, 1, height - 8, wk_tone (C_BG, 100));
+			char r[200]; middle (r, right, (rw - 16) / wk_fw ());
+			wk_text_l (canvas, width - rw + 8, ty, th, r, wk_mix (C_BG, C_TEXT, 200));
+		}
+		(void) fh;
+#ifdef ONYX_HOST_SIM
+		printf ("ONYX-STATUSBAR %s=%s%s%s%s\n", link[0] ? "link" : "state", link[0] ? link : state,
+			!link[0] && error ? " (error)" : "", right[0] ? " | " : "", right);
+		fflush (stdout);
+#endif
+	}
+};
+
+// ---- the find bar (docs/06 §40) -------------------------------------------------------------
+// Above the status bar while shown (Ctrl+F, Edit > Find in Page...; the page that much shorter):
+// the words to find (Latin-1, as the address field; searched as UTF-8), "3 of 17" in the field's
+// right end -- the field tinted red when nothing matches --, the previous / next match (Shift+
+// Enter / Enter, Shift+F3 / F3), Match case, and x (Esc) that closes it and clears the
+// highlights. Typing searches as it goes (gui.c waits for a pause on a page slow to search).
+const int FB = 30;			// its height
+const int FIND_W = 300;			// the field's width
+void find_typed ();
+void find_step (int dir);
+void find_close ();
+
+class FindField : public LineEdit
+{
+public:
+	int idx, cnt;		// the current match (0-based, -1 none), how many (-1: not searched)
+	FindField (int l, int t, int w, int h) : LineEdit (l, t, w, h), idx (-1), cnt (-1) {}
+	void count (char *out) const
+	{
+		if (cnt < 0 || len == 0) { out[0] = '\0'; return; }
+		if (cnt == 0) { const char *t = "No matches"; int i = 0; for (; t[i]; i++) out[i] = t[i]; out[i] = '\0'; return; }
+		char a[12], b[12]; int na = 0, nb = 0, v = idx + 1, o = 0;
+		do { a[na++] = (char) ('0' + v % 10); v /= 10; } while (v && na < 11);
+		v = cnt;
+		do { b[nb++] = (char) ('0' + v % 10); v /= 10; } while (v && nb < 11);
+		while (na) out[o++] = a[--na];
+		out[o++] = ' '; out[o++] = 'o'; out[o++] = 'f'; out[o++] = ' ';
+		while (nb) out[o++] = b[--nb];
+		out[o] = '\0';
+	}
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		char c[32]; count (c);
+		int cw = c[0] ? wk_text_w (c) + 10 : 0;
+		bool none = cnt == 0 && len > 0;
+		drawField (0, 0, none ? wk_mix (C_FIELD, 0xF28B82, 96) : C_FIELD, width - cw);
+		if (cw)
+			wk_text_l (canvas, width - cw, 0, height, c,
+				   none ? 0xC5221F : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override
+	{
+		if (mx < 0 || !bl) return mx >= 0;
+		if (!hasFocus) { setFocus (); all = true; caret = len; invalidate (true); return true; }
+		clickAt (mx);
+		return true;
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_ENTER) { find_step ((kapi_get_modifiers () & MOD_SHIFT) ? -1 : 1); return true; }
+		if (k == 27) { find_close (); return true; }
+		bool ch;
+		bool took = editKey (k, &ch);
+		if (ch) { cnt = -1; idx = -1; invalidate (true); find_typed (); }
+		return took;
+	}
+};
+
+// Match case: a check box and its words
+class CaseToggle : public Widget
+{
+public:
+	bool on;
+	CaseToggle (int l, int t) : Widget (l, t, 24 + wk_text_w ("Match case"), 24), on (false)
+	{ tip = "Upper and lower case, and accents, as typed"; }
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		wk_check_mark (canvas, 2, (height - 14) / 2, 14, on, pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL);
+		wk_text_l (canvas, 22, 0, height, "Match case", C_TEXT);
+	}
+	bool onMouse (int mx, int, int bl, int, int, int) override
+	{
+		if (mx < 0) { if (hover || pressed) { hover = pressed = false; invalidate (true); } return false; }
+		bool wh = hover, wp = pressed;
+		hover = true;
+		if (bl && !pressed) pressed = true;
+		else if (!bl && pressed) { pressed = false; on = !on; invalidate (true); find_typed (); }
+		if (hover != wh || pressed != wp) invalidate (true);
+		return true;
+	}
+};
+
+void find_prev () { find_step (-1); }
+void find_next () { find_step (1); }
+
+class FindBar : public Widget
+{
+public:
+	FindField  *field;
+	ToolButton *prev, *next, *close;
+	CaseToggle *mcase;
+	FindBar (int l, int t, int w) : Widget (l, t, w, FB)
+	{
+		anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
+		int y = 3, h = FB - 6, x = 8;
+		field = new FindField (x, y, FIND_W, h);		x += FIND_W + 6;
+		prev  = new ToolButton (x, y, 28, h, WKG_CHEV_UP, find_prev);	x += 28 + 2;
+		next  = new ToolButton (x, y, 28, h, WKG_CHEV_DOWN, find_next);	x += 28 + 12;
+		mcase = new CaseToggle (x, y);
+		close = new ToolButton (w - 8 - 28, y, 28, h, WKG_CLOSE, find_close);
+		close->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		prev->tip = "Previous match (Shift+Enter, Shift+F3)";
+		next->tip = "Next match (Enter, F3)";
+		close->tip = "Close the find bar (Esc)";
+		addChild (field); addChild (prev); addChild (next); addChild (mcase); addChild (close);
+	}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		wk_etch_h (canvas, 0, 0, width, C_BG);
 	}
 };
 
@@ -852,6 +1330,7 @@ bool FilterBox::onKey (long k)
 }
 
 void open_history ();
+void open_downloads ();		// (the downloads' button, File > Downloads...)
 
 // ---- the window ----------------------------------------------------------------------------
 bool g_resized;
@@ -863,9 +1342,13 @@ public:
 	UrlField   *url;
 	LockSeg    *lock;
 	ModePill   *mode;
+	ZoomCtl    *zoom;		// (docs/06 §38) the zoom control, right of the field
+	DlButton   *dl;		// ... the downloads' button, at the right end (while there are some)
+	StatusBar  *status;		// ... the status bar, at the bottom (View > Status Bar)
+	FindBar    *find;		// (docs/06 §40) the find bar, above the status bar (Ctrl+F)
 	int         urlX;		// where the band's right part starts (the padlock, the field)
 	bool        busy;
-	NsWindow (int w, int h) : Root (w, h + TB, "Jet"), busy (false)
+	NsWindow (int w, int h) : Root (w, h + TB + (g_sbOn ? SB : 0), "Jet"), busy (false)
 	{
 		int x = PAD;
 		back   = new ToolButton (x, BTN_Y, WKG_CHEV_LEFT, onyx_browser_back);     x += BTN_W + GAP;
@@ -880,20 +1363,39 @@ public:
 		lock   = new LockSeg (x, BTN_Y, LOCK_W, BTN_H);
 		mode   = new ModePill (width - PAD - ModePill::needW (), BTN_Y, ModePill::needW (), BTN_H);
 		mode->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		zoom   = new ZoomCtl (width - PAD - ZoomCtl::needW (), BTN_Y);
+		zoom->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		dl     = new DlButton (width - PAD - BTN_W, BTN_Y, open_downloads);
+		dl->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+		status = new StatusBar (0, height - SB, width);
+		status->hidden = !g_sbOn;
+		find   = new FindBar (0, height - SB - FB, width);
+		find->hidden = true;
+		status->setState ("Ready", false);
 		back->setDisabled (true);
 		fwd->setDisabled (true);
 		back->tip = "Back (Alt+Left)"; fwd->tip = "Forward (Alt+Right)"; reload->tip = "Reload (F5)";
 		home->tip = "Home"; hist->tip = "History (Ctrl+H)";
 		addChild (back); addChild (fwd); addChild (reload); addChild (home); addChild (hist); addChild (url);
-		addChild (lock); addChild (mode);
+		addChild (lock); addChild (mode); addChild (zoom); addChild (dl); addChild (status); addChild (find);
 		setResizable (true);
+		layoutBand ();
 	}
-	// The field between the padlock and the pill (each there or not): its place and its ends.
+	// The page's height in the window: less the band, the status bar and the find bar (when shown).
+	int pageH () const { return height - TB - (status->hidden ? 0 : SB) - (find->hidden ? 0 : FB); }
+	// The field between the padlock and the pill (each there or not): its place and its ends;
+	// right of them the zoom control, then the downloads' button (when there are downloads).
 	void layoutBand ()
 	{
+		int dlw = dl->hidden ? 0 : BTN_W + GAP;
+		int right = width - PAD - dlw - zoom->width - GAP - 2;	// (the field's group ends there)
+		int zl = zoom->left, ml = mode->left;
+		dl->left = width - PAD - BTN_W;
+		zoom->left = width - PAD - dlw - zoom->width;
+		mode->left = right - mode->width;
+		if (zl != zoom->left || ml != mode->left) invalidate (true);	// (the band behind them)
 		int x0 = urlX + (lock->hidden ? 0 : LOCK_W);
-		int x1 = width - PAD - (mode->hidden ? 0 : mode->width);
-		mode->left = width - PAD - mode->width;
+		int x1 = right - (mode->hidden ? 0 : mode->width);
 		if (url->left != x0 || url->width != x1 - x0 || url->joinL != !lock->hidden || url->joinR != !mode->hidden)
 		{
 			url->left = x0;
@@ -902,11 +1404,24 @@ public:
 			url->invalidate (true);
 			invalidate (false);
 		}
+		if (status->top != height - SB || status->width != width)
+		{
+			status->top = height - SB;
+			status->resizeTo (width, SB);
+		}
+		int ft = height - (status->hidden ? 0 : SB) - FB;
+		if (find->top != ft || find->width != width)
+		{
+			find->top = ft;
+			find->resizeTo (width, FB);
+			find->invalidate (true);
+		}
 	}
 	// The band's keyboard: the field (F6), Tab to the pill, Shift+Tab to the padlock.
-	bool bandFocus () const { return url->hasFocus || lock->hasFocus || mode->hasFocus; }
+	bool bandFocus () const { return url->hasFocus || lock->hasFocus || mode->hasFocus || find->field->hasFocus; }
 	void blurBand ()
 	{
+		if (find->field->hasFocus) { clearFocusTree (); find->field->invalidate (true); }
 		if (url->hasFocus) url->focusOut ();
 		if (lock->hasFocus || mode->hasFocus) { clearFocusTree (); lock->invalidate (true); mode->invalidate (true); url->invalidate (true); }
 	}
@@ -991,6 +1506,32 @@ void ModePill::openMenu ()
 	if (r > 0 && r - 1 != mode) onyx_browser_set_site_mode (r - 1);
 }
 
+// The downloads' menu, under its button: a running one clicked -> stopped (after a question);
+// "Clear the list" -> the finished ones out.
+void open_downloads ()
+{
+	if (g_win == 0 || has_modal ()) return;
+	if (g_url && g_url->hasFocus) g_url->focusOut ();
+	DlButton *b = g_win->dl;
+	int right = b->hidden ? g_win->width - PAD : b->left + b->width;
+	DlMenu *m = new DlMenu (right, BTN_Y + BTN_H + 2);
+	int r = m->run ();
+	delete m;
+	onyx_browser_redraw ();			// (the page under the menu)
+	if (r == DL_ROWS + 1) { onyx_browser_downloads_clear (); return; }
+	if (r > 0 && r <= g_ndl && dl_active (g_dl[r - 1]))
+	{
+		static char q[200];
+		int id = g_dl[r - 1].id, n = 0;
+		const char *a = "Stop downloading ";
+		for (; *a; a++) q[n++] = *a;
+		for (const char *c = g_dl[r - 1].name; *c && n < 190; c++) q[n++] = *c;
+		q[n++] = '?'; q[n] = '\0';
+		if (wk_messagebox ("Cancel the download", q, MB_YESNO) == 1) onyx_browser_download_cancel (id);
+		onyx_browser_redraw ();
+	}
+}
+
 bool has_modal (void)
 {
 	for (Widget *c = g_win ? g_win->firstChild : 0; c; c = c->nextSib)
@@ -1007,6 +1548,7 @@ gui_value page_value (gui_value v)
 }
 
 unsigned g_inputs;	// the clicks, wheel turns and keys so far (onyx_chrome_input_pending)
+bool g_ctxUp;		// a right press opened the context menu: its release is not the page's
 
 // Events taken while a script runs (onyx_chrome_pump_deferred): kept, handled after it.
 struct DeferredEvent { unsigned long sender; int ev; gui_value v; bool key; };
@@ -1074,7 +1616,22 @@ void ptr_event (unsigned long sender, int ev, gui_value v)
 	if (ev == GUI_EVENT_PTR_DOWN) { if (c & 1) bl = 1; if (c & 2) br = 1; if (c & 4) bm = 1; }
 	if (ev == GUI_EVENT_PTR_UP)   { if (c & 1) bl = 0; if (c & 2) br = 0; if (c & 4) bm = 0; }
 	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v);
-	bool band = has_modal () || (g_grab ? g_grab == 1 : y < TB);
+	if (ev == GUI_EVENT_PTR_UP && (c & 2) && g_ctxUp) { g_ctxUp = false; return; }	// (its menu's)
+	bool band = has_modal () || (g_grab ? g_grab == 1 : y < TB || y >= TB + g_win->pageH ());
+	if (ev == GUI_EVENT_PTR_DOWN && (c & 2) && !band && !g_grab && !bl && !bm)
+	{	// (docs/06 §40) a right press on the page: its context menu (the page does not get it)
+		if (!g_win->pageFocus ()) g_win->blurBand ();
+		g_win->handleMouse (-1, -1, 0, 0, 0, 0);
+		g_ctxUp = true;
+		onyx_browser_context_menu (x, y - TB);
+		return;
+	}
+	if (ev == GUI_EVENT_PTR_WHEEL && !band && (kapi_get_modifiers () & MOD_CTRL))
+	{	// Ctrl+wheel: the page's zoom (docs/06 §38), not a scroll
+		int n = GUI_PTR_WHEEL (v);
+		if (n != 0) onyx_browser_zoom (n > 0 ? 1 : -1);
+		return;
+	}
 	if (ev == GUI_EVENT_PTR_DOWN && !g_grab) g_grab = band ? 1 : 2;
 	if (ev == GUI_EVENT_PTR_LEAVE)
 	{
@@ -1103,7 +1660,16 @@ void key_event (unsigned long sender, int ev, gui_value k)
 	onyx_io_activity ();
 	if (has_modal ()) { g_win->handleKey (k); return; }
 	unsigned mods = kapi_get_modifiers ();
+	if ((mods & MOD_CTRL) && !(mods & MOD_ALT))
+	{	// the zoom (docs/06 §38): Ctrl++ (or Ctrl+=, the keypad's +), Ctrl+-, Ctrl+0 -- the
+		// kernel sends these keys with Ctrl held as their characters (kernel.cpp's keymap)
+		if (k == '+' || k == '=') { onyx_browser_zoom (1); return; }
+		if (k == '-' || k == '_') { onyx_browser_zoom (-1); return; }
+		if (k == '0') { onyx_browser_zoom (0); return; }
+	}
 	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
+	if (k == KEY_F1 + 2 || (k == 7 && (mods & MOD_CTRL)))		// F3, Ctrl+G (Shift: back)
+	{ find_step ((mods & MOD_SHIFT) ? -1 : 1); return; }
 	if (Menu::current () && Menu::current ()->shortcut (k)) return;
 	if ((mods & MOD_ALT) && k == KEY_LEFT)  { onyx_browser_back (); return; }
 	if ((mods & MOD_ALT) && k == KEY_RIGHT) { onyx_browser_forward (); return; }
@@ -1111,8 +1677,9 @@ void key_event (unsigned long sender, int ev, gui_value k)
 	if (k == KEY_F1 + 5) { if (g_win->url->hasFocus) g_win->blurBand (); else g_win->url->focusIn (); return; }	// F6
 	if (!g_win->pageFocus ())
 	{
-		if (k == 9) { g_win->tab ((mods & MOD_SHIFT) != 0); return; }	// Tab, Shift+Tab: the band's parts
-		if (k == 27 && !g_win->url->hasFocus) { g_win->blurBand (); return; }
+		bool infind = g_win->find->field->hasFocus;
+		if (k == 9) { if (!infind) g_win->tab ((mods & MOD_SHIFT) != 0); return; }	// Tab, Shift+Tab: the band's parts
+		if (k == 27 && !g_win->url->hasFocus && !infind) { g_win->blurBand (); return; }
 		g_win->handleKey (k);
 		return;
 	}
@@ -1129,6 +1696,83 @@ void m_stop ()     { onyx_browser_stop (); }
 void m_home ()     { onyx_browser_home (); }
 void m_site ()     { if (g_win) g_win->mode->openMenu (); }	// the site's version: the pill's menu
 void m_cert ()     { if (g_win) g_win->lock->click (); }	// the padlock's: the certificate
+void m_zoom_in ()  { onyx_browser_zoom (1); }
+void m_zoom_out () { onyx_browser_zoom (-1); }
+void m_zoom_100 () { onyx_browser_zoom (0); }
+void m_status ()   { onyx_browser_set_status_bar (!g_sbOn); }
+
+// ---- find in page (docs/06 §40) --------------------------------------------------------------
+// The field's words (UTF-8) searched by gui.c: dir 0 a new search (typed: the first match), 1 the
+// next match, -1 the one before, 2 again without moving the view (a new page loaded).
+void find_search (int dir)
+{
+	if (g_win == 0) return;
+	FindField *f = g_win->find->field;
+	static char u[URL_MAX * 3];
+	latin1_to_utf8 (f->text, f->len, u, sizeof u);
+	onyx_browser_find (u, dir, g_win->find->mcase->on ? 1 : 0);
+}
+void find_typed () { find_search (0); }
+
+// Ctrl+F, Edit > Find in Page...: the bar shown (the page shorter), its field focused with its
+// words selected (typing replaces them; Enter finds them again)
+void find_open ()
+{
+	if (g_win == 0 || has_modal ()) return;
+	FindBar *b = g_win->find;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	if (b->hidden)
+	{
+		b->hidden = false;
+		g_win->layoutBand ();
+		g_win->invalidate (true);
+		g_resized = true;		// (the page's area changed: the surface asks again)
+		if (b->field->len > 0) find_search (0);	// (the words of the last time: found again)
+	}
+	b->field->setFocus ();
+	b->field->all = true;
+	b->field->caret = b->field->len;
+	b->field->invalidate (true);
+}
+
+// Enter / F3 (1), Shift+Enter / Shift+F3 (-1): the next / previous match, around at the ends
+void find_step (int dir)
+{
+	if (g_win == 0 || has_modal ()) return;
+	if (g_win->find->hidden || g_win->find->field->len == 0) { find_open (); return; }
+	find_search (dir);
+}
+
+// x, Esc in the field: the bar hidden, the highlights cleared (its words kept for the next time)
+void find_close ()
+{
+	if (g_win == 0 || g_win->find->hidden) return;
+	FindBar *b = g_win->find;
+	if (b->field->hasFocus) g_win->clearFocusTree ();
+	b->hidden = true;
+	b->field->cnt = b->field->idx = -1;
+	g_win->layoutBand ();
+	g_win->invalidate (true);
+	g_resized = true;
+	onyx_browser_find_close ();
+}
+
+void m_find ()      { find_open (); }
+void m_find_next () { find_step (1); }
+void m_find_prev () { find_step (-1); }
+
+// Edit's Cut / Copy / Paste / Select All: the key's, where the keys go (the address field, the
+// find bar's field, else the page: its selection, its form field)
+void route_key (long k)
+{
+	if (g_win == 0) return;
+	if (!g_win->pageFocus ()) { g_win->handleKey (k); return; }
+	if (g_pageKey) g_pageKey (0, GUI_EVENT_KEY, k);
+}
+void m_cut ()    { route_key (24); }
+void m_copy ()   { route_key (3); }
+void m_paste ()  { route_key (22); }
+void m_selall () { route_key (1); }
 
 // The History dialog: shown over the page (NetSurf waits meanwhile); a page chosen is opened.
 void open_history ()
@@ -1203,7 +1847,46 @@ void open_about ()
 	onyx_browser_redraw ();			// (the page under the dialog)
 }
 
-Menu g_menu;
+// The menus, twice: View's last item reads "Hide Status Bar" or "Show Status Bar" (wtk's
+// menus have no check mark): the one that fits is published.
+Menu g_menus[2];
+
+void build_menu (Menu &m, bool sbOn)
+{
+	m.menu ("File");
+	m.item ("Open Location...", "^L", WK_CTRL ('L'), m_location);
+	m.separator ();
+	m.item ("Downloads...", "", 0, open_downloads);
+	m.menu ("Edit");				// (docs/06 §40; key_event: the keys)
+	m.item ("Cut", "^X", 0, m_cut);
+	m.item ("Copy", "^C", 0, m_copy);
+	m.item ("Paste", "^V", 0, m_paste);
+	m.item ("Select All", "^A", 0, m_selall);
+	m.separator ();
+	m.item ("Find in Page...", "^F", WK_CTRL ('F'), m_find);
+	m.item ("Find Next", "F3", 0, m_find_next);
+	m.item ("Find Previous", "Shift+F3", 0, m_find_prev);
+	m.menu ("View");
+	m.item ("Zoom In", "Ctrl++", 0, m_zoom_in);		// (key_event: the keys)
+	m.item ("Zoom Out", "Ctrl+-", 0, m_zoom_out);
+	m.item ("Actual Size", "Ctrl+0", 0, m_zoom_100);
+	m.separator ();
+	m.item (sbOn ? "Hide Status Bar" : "Show Status Bar", "", 0, m_status);
+	m.menu ("Navigate");
+	m.item ("Back", "Alt+Left", 0, m_back);
+	m.item ("Forward", "Alt+Right", 0, m_forward);
+	m.separator ();
+	m.item ("Reload", "^R", WK_CTRL ('R'), m_reload);
+	m.item ("Stop", "Esc", 0, m_stop);
+	m.separator ();
+	m.item ("Site Version (Standard / Mobile / Desktop)...", "", 0, m_site);
+	m.item ("Page Security / Certificate...", "", 0, m_cert);
+	m.separator ();
+	m.item ("Home", "", 0, m_home);
+	m.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
+	m.menu ("Help");
+	m.item ("About Jet Browser...", "", 0, open_about);
+}
 
 } // namespace
 
@@ -1214,23 +1897,14 @@ unsigned *onyx_chrome_open (int w, int h, int *stride)
 {
 	if (g_win) return onyx_chrome_page (stride, 0, 0);
 	g_win = new NsWindow (w, h);
-	g_menu.menu ("File");
-	g_menu.item ("Open Location...", "^L", WK_CTRL ('L'), m_location);
-	g_menu.menu ("Navigate");
-	g_menu.item ("Back", "Alt+Left", 0, m_back);
-	g_menu.item ("Forward", "Alt+Right", 0, m_forward);
-	g_menu.separator ();
-	g_menu.item ("Reload", "^R", WK_CTRL ('R'), m_reload);
-	g_menu.item ("Stop", "Esc", 0, m_stop);
-	g_menu.separator ();
-	g_menu.item ("Site Version (Standard / Mobile / Desktop)...", "", 0, m_site);
-	g_menu.item ("Page Security / Certificate...", "", 0, m_cert);
-	g_menu.separator ();
-	g_menu.item ("Home", "", 0, m_home);
-	g_menu.item ("History...", "^H", 0, open_history);	// (^H: key_event -- it is Backspace's code)
-	g_menu.menu ("Help");
-	g_menu.item ("About Jet Browser...", "", 0, open_about);
-	g_menu.publish ();
+	build_menu (g_menus[0], false);
+	build_menu (g_menus[1], true);
+	g_menus[g_sbOn ? 1 : 0].publish ();
+#ifdef ONYX_HOST_SIM
+	printf ("ONYX-CHROME w=%d h=%d zoom=%d,%d,%d dl=%d status=%d\n", g_win->width, g_win->height,
+		g_win->zoom->left, g_win->zoom->width, ZoomCtl::SEG, g_win->width - PAD - BTN_W, g_win->status->top);
+	fflush (stdout);
+#endif
 	kapi_set_pointer_handler (ptr_event);
 	kapi_set_key_handler (key_event);
 	return onyx_chrome_page (stride, 0, 0);
@@ -1242,7 +1916,7 @@ unsigned *onyx_chrome_page (int *stride, int *w, int *h)
 	Canvas &c = g_win->canvas;
 	if (stride) *stride = c.stride;
 	if (w) *w = c.w;
-	if (h) *h = c.h - TB;
+	if (h) *h = g_win->pageH ();	// (the band above, the status bar below)
 	return c.px + (long) TB * c.stride;
 }
 
@@ -1250,7 +1924,7 @@ void onyx_chrome_default_size (int *w, int *h)
 {
 	int sw = 1024, sh = 768;
 	kapi_screen_size (&sw, &sh);
-	int pw = sw - 64, ph = sh - TB - 28 - 8 - 24 - 90;	// the band, the title + border, the menu bar, the dock
+	int pw = sw - 64, ph = sh - TB - (g_sbOn ? SB : 0) - 28 - 8 - 24 - 90;	// the band, the status bar, the title + border, the menu bar, the dock
 	if (pw > 1280) pw = 1280;
 	if (ph > 960) ph = 960;
 	if (pw < 480) pw = 480;
@@ -1443,6 +2117,244 @@ void onyx_chrome_set_nav (int can_back, int can_forward)
 	if (g_win == 0) return;
 	g_win->back->setDisabled (!can_back);
 	g_win->fwd->setDisabled (!can_forward);
+}
+
+// ---- Onyx (docs/06 §38): the zoom, the status bar, the downloads --------------------------------
+
+void onyx_chrome_set_zoom (int percent)
+{
+	if (g_win && g_win->zoom->pct != percent) g_win->zoom->set (percent);
+}
+
+void onyx_chrome_set_state (const char *text, int error)
+{
+	if (g_win) g_win->status->setState (text, error != 0);
+}
+
+void onyx_chrome_set_link (const char *text)
+{
+	if (g_win) g_win->status->setLink (text);
+}
+
+int onyx_chrome_status_bar_shown (void)
+{
+	return g_sbOn;
+}
+
+void onyx_chrome_show_status_bar (int shown)
+{
+	bool on = shown != 0;
+	if (g_win == 0) { g_sbOn = on; return; }	// (before the window: its first size)
+	if (on == g_sbOn) return;
+	g_sbOn = on;
+	g_win->status->hidden = !on;
+	g_win->layoutBand ();
+	g_win->invalidate (true);
+	g_menus[on ? 1 : 0].publish ();
+	g_resized = true;		// (the page's area changed: the surface asks again)
+}
+
+void onyx_chrome_downloads (const struct onyx_dl_info *list, int n)
+{
+	if (n > DL_ROWS) n = DL_ROWS;
+	g_ndl = n;
+	const struct onyx_dl_info *run = 0, *last = n > 0 ? &list[0] : 0;
+	for (int i = 0; i < n; i++)
+	{
+		DlRow &d = g_dl[i];
+		d.id = list[i].id; d.state = list[i].state; d.got = list[i].got; d.total = list[i].total;
+		StatusBar::copy (d.name, list[i].name, sizeof d.name);
+		StatusBar::copy (d.path, list[i].path, sizeof d.path);
+		StatusBar::copy (d.error, list[i].error, sizeof d.error);
+		if (run == 0 && list[i].state == ONYX_DL_RUNNING) run = &list[i];
+	}
+	if (g_win == 0) return;
+	bool hide = n == 0;
+	if (hide != g_win->dl->hidden)
+	{
+		g_win->dl->hidden = hide;
+		g_win->dl->hover = g_win->dl->pressed = false;
+		g_win->layoutBand ();
+		g_win->invalidate (true);
+	}
+	g_win->dl->invalidate (true);
+	// the status bar's right part: the download that runs, else the last one's end
+	char t[200]; int o = 0;
+	auto put = [&] (const char *x) { for (; *x && o < (int) sizeof t - 1; x++) t[o++] = *x; t[o] = '\0'; };
+	t[0] = '\0';
+	const struct onyx_dl_info *d = run ? run : last;
+	if (d && d->state != ONYX_DL_ASK)
+	{
+		DlRow r; r.state = d->state; r.got = d->got; r.total = d->total;
+		StatusBar::copy (r.path, d->path, sizeof r.path); StatusBar::copy (r.error, d->error, sizeof r.error);
+		char st[700]; tell_dl (r, st, sizeof st);
+		if (d->state == ONYX_DL_RUNNING) { put ("Downloading "); put (d->name); put (": "); put (st); }
+		else if (d->state == ONYX_DL_DONE)
+		{
+			char sz[24]; tell_size (d->got, sz, sizeof sz);
+			put ("Downloaded "); put (d->name); put (" ("); put (sz); put (")");
+		}
+		else { put (d->state == ONYX_DL_FAILED ? "Download failed: " : "Download cancelled: "); put (d->name); }
+	}
+	g_win->status->setRight (t);
+}
+
+// The Save dialog: wtk's FileDialog, asking before a file is replaced.
+namespace {
+class SaveDialog : public FileDialog
+{
+public:
+	SaveDialog (const char *dir, const char *name) : FileDialog (dir, name, true, false) {}
+	void onButton (int tag) override
+	{
+		if (tag == 1 && fileName ()[0] != '\0')
+		{
+			char p[512];
+			getResult (p, sizeof p);
+			void *h = kapi_open (p);
+			if (h != 0)
+			{
+				kapi_close (h);
+				if (wk_messagebox ("Replace the file", "A file of that name is already there.\nReplace it?",
+						   MB_YESNO) != 1)
+					return;
+			}
+		}
+		FileDialog::onButton (tag);
+	}
+};
+}
+
+int onyx_chrome_save_dialog (const char *dir, const char *name, char *path, int cap)
+{
+	if (g_win == 0 || cap < 2) return 0;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	SaveDialog *d = new SaveDialog (dir, name);
+	int r = d->run ();
+	if (r == 1) d->getResult (path, (unsigned) cap);
+	delete d;
+	onyx_browser_redraw ();			// (the page under the dialog)
+	return r == 1;
+}
+
+// ---- Onyx (docs/06 §40): find in page, the context menu, a copied image ---------------------
+
+void onyx_chrome_find_result (int index, int count)
+{
+	if (g_win == 0) return;
+	FindField *f = g_win->find->field;
+	if (f->idx == index && f->cnt == count) return;
+	f->idx = index; f->cnt = count;
+	f->invalidate (true);
+#ifdef ONYX_HOST_SIM
+	char c[32]; f->count (c);
+	printf ("ONYX-FINDBAR %s\n", c[0] ? c : "(none)");
+	fflush (stdout);
+#endif
+}
+
+int onyx_chrome_find_shown (void)
+{
+	return g_win && !g_win->find->hidden;
+}
+
+void onyx_chrome_find_open (void)
+{
+	find_open ();
+}
+
+void onyx_chrome_find_again (void)
+{
+	if (g_win && !g_win->find->hidden && g_win->find->field->len > 0) find_search (2);
+}
+
+int onyx_chrome_context_menu (int x, int y, int flags)
+{
+	if (g_win == 0 || has_modal ()) return 0;
+	if (g_win->url->hasFocus) g_win->url->focusOut ();
+	int type = 0;
+	bool paste = kapi_clipboard_get (&type, 0, 0, 0) > 0 && type == CLIP_TEXT;
+	bool sel = (flags & ONYX_CTXF_SELECTION) != 0;
+	PopupMenu *m = new PopupMenu (x, y + TB);
+	if (flags & ONYX_CTXF_LINK)
+	{
+		m->add ("Open Link", ONYX_CMD_OPEN_LINK);
+		m->add ("Save Link As...", ONYX_CMD_SAVE_LINK);
+		m->add ("Copy Link Address", ONYX_CMD_COPY_LINK);
+		m->separator ();
+	}
+	if (flags & ONYX_CTXF_IMAGE)
+	{
+		m->add ("Open Image", ONYX_CMD_OPEN_IMAGE);
+		m->add ("Save Image As...", ONYX_CMD_SAVE_IMAGE);
+		m->add ("Copy Image", ONYX_CMD_COPY_IMAGE, (flags & ONYX_CTXF_IMAGE_PIXELS) != 0);
+		m->add ("Copy Image Address", ONYX_CMD_COPY_IMAGE_URL);
+		m->separator ();
+	}
+	if (flags & ONYX_CTXF_EDITABLE)
+	{
+		m->add ("Cut", ONYX_CMD_CUT, sel && (flags & ONYX_CTXF_CAN_CUT), "Ctrl+X");
+		m->add ("Copy", ONYX_CMD_COPY, sel, "Ctrl+C");
+		m->add ("Paste", ONYX_CMD_PASTE, paste, "Ctrl+V");
+		m->add ("Select All", ONYX_CMD_SELECT_ALL, true, "Ctrl+A");
+		m->separator ();
+	}
+	else if (sel)
+	{
+		m->add ("Copy", ONYX_CMD_COPY, true, "Ctrl+C");
+		m->separator ();
+	}
+	if (!(flags & (ONYX_CTXF_LINK | ONYX_CTXF_IMAGE | ONYX_CTXF_EDITABLE)) && !sel)
+	{
+		m->add ("Back", ONYX_CMD_BACK, (flags & ONYX_CTXF_BACK) != 0, "Alt+Left");
+		m->add ("Forward", ONYX_CMD_FORWARD, (flags & ONYX_CTXF_FORWARD) != 0, "Alt+Right");
+		m->add ("Reload", ONYX_CMD_RELOAD, true, "F5");
+		m->separator ();
+	}
+	if (!(flags & ONYX_CTXF_EDITABLE)) m->add ("Select All", ONYX_CMD_SELECT_ALL, true, "Ctrl+A");
+	m->add ("Find in Page...", ONYX_CMD_FIND, true, "Ctrl+F");
+	int r = m->run ();
+	delete m;
+	onyx_browser_redraw ();			// (the page under the menu)
+	return r < 0 ? 0 : r;
+}
+
+int onyx_chrome_save_png (const char *path, const unsigned *px, int w, int h)
+{
+	if (px == 0 || w <= 0 || h <= 0) return 0;
+	bool alpha = false;
+	for (long i = 0, n = (long) w * h; i < n && !alpha; i++) alpha = (px[i] >> 24) != 255;
+	unsigned len = 0;
+	unsigned char *png = pngsave::png_encode (px, w, h, alpha, &len);
+	if (png == 0) return 0;
+	int ok = kapi_save_file (path, png, len) == (int) len;
+	delete [] png;
+	return ok;
+}
+
+void onyx_chrome_message (const char *title, const char *text)
+{
+	if (g_win == 0) return;
+	wk_messagebox (title, text, MB_OK);
+	onyx_browser_redraw ();
+}
+
+// A notification by notifyd (notify.h's message), when it runs: not launched here (that waits).
+void onyx_chrome_notify (const char *title, const char *text)
+{
+#if !defined(_WIN32) && !defined(ONYX_HOST_SIM)
+	int pid = kapi_ipc_lookup ("notify");
+	if (pid == 0) return;
+	static char msg[500];
+	int n = 0;
+	for (int i = 0; title && title[i] && n < 80; i++) msg[n++] = title[i];
+	msg[n++] = '\0';
+	for (int i = 0; text && text[i] && n < 498; i++) msg[n++] = text[i];
+	msg[n++] = '\0';
+	kapi_mailbox_send (pid, 1, msg, (unsigned) n);	// (NOTIFY_MSG_SHOW)
+#else
+	(void) title; (void) text;
+#endif
 }
 
 } // extern "C"

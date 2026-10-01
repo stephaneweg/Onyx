@@ -67,6 +67,7 @@ dom_exception _dom_html_input_element_initialise(
 	ele->default_value_set = false;
 	ele->checked = false;
 	ele->checked_set = false;
+	ele->dirty_value = NULL;	/* (Onyx) */
 
 	return _dom_html_element_initialise(params, &ele->base);
 }
@@ -81,6 +82,10 @@ void _dom_html_input_element_finalise(struct dom_html_input_element *ele)
 	if (ele->default_value != NULL) {
 		dom_string_unref(ele->default_value);
 		ele->default_value = NULL;
+	}
+	if (ele->dirty_value != NULL) {	/* (Onyx) */
+		dom_string_unref(ele->dirty_value);
+		ele->dirty_value = NULL;
 	}
 
 	_dom_html_element_finalise(&ele->base);
@@ -185,8 +190,12 @@ dom_exception dom_html_input_element_get_checked(dom_html_input_element *ele,
 dom_exception dom_html_input_element_set_checked(dom_html_input_element *ele,
 		bool checked)
 {
-	return dom_html_element_set_bool_property(&ele->base, "checked",
-			SLEN("checked"), checked);
+	/* Onyx: the element's checkedness (HTML's checked IDL attribute), not its
+	 * checked content attribute (defaultChecked): a script's setAttribute("checked")
+	 * after a click left the state as it was, and :checked follows the state */
+	ele->checked = checked;
+	ele->checked_set = true;
+	return DOM_NO_ERR;
 }
 
 /**
@@ -346,6 +355,8 @@ dom_exception _dom_html_input_element_copy_internal(
 	new->default_value_set = old->default_value_set;
 	new->checked = old->checked;
 	new->checked_set = old->checked_set;
+	new->dirty_value = old->dirty_value == NULL ? NULL :	/* (Onyx) */
+			dom_string_ref(old->dirty_value);
 
 	return DOM_NO_ERR;
 }
@@ -398,7 +409,30 @@ SIMPLE_GET_SET(name);
 SIMPLE_GET_SET(src);
 SIMPLE_GET(type);
 SIMPLE_GET_SET(use_map);
-SIMPLE_GET_SET(value);
+
+/* Onyx: the value IDL attribute -- its own value once set (the "dirty" value),
+ * else the value content attribute: input.value = 'x' left no value attribute */
+dom_exception dom_html_input_element_get_value(
+	dom_html_input_element *element, dom_string **value)
+{
+	dom_string *memo = ((struct dom_html_document *)
+			((struct dom_node_internal *) element)->owner)->memoised[hds_value];
+
+	if (element->dirty_value != NULL) {
+		*value = dom_string_ref(element->dirty_value);
+		return DOM_NO_ERR;
+	}
+	return dom_element_get_attribute(element, memo, value);
+}
+
+dom_exception dom_html_input_element_set_value(
+	dom_html_input_element *element, dom_string *value)
+{
+	if (element->dirty_value != NULL)
+		dom_string_unref(element->dirty_value);
+	element->dirty_value = value != NULL ? dom_string_ref(value) : NULL;
+	return DOM_NO_ERR;
+}
 
 dom_exception dom_html_input_element_get_size(
 	dom_html_input_element *input, dom_ulong *size)

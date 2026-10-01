@@ -155,6 +155,12 @@ bool image_bitmap_plot(struct bitmap *bitmap,
 					area.y1 = data->y + data->height;
 				}
 
+				/* Onyx: a NetSurf colour's top byte is its
+				 * transparency ((1-A)BGR: the plotters' fb_col),
+				 * the pixel's its alpha (or anything, opaque):
+				 * the fill is opaque (it was invisible: Acid2's
+				 * forehead, a 1x1 yellow PNG over red) */
+				fill_style.fill_colour &= 0x00ffffff;
 				fill_style.stroke_type = PLOT_OP_TYPE_NONE;
 				fill_style.fill_type = PLOT_OP_TYPE_SOLID;
 

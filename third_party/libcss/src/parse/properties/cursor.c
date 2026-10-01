@@ -6,6 +6,7 @@
  */
 
 #include <string.h>
+#include <strings.h>
 
 #include "bytecode/bytecode.h"
 #include "bytecode/opcodes.h"
@@ -189,7 +190,25 @@ css_error css__parse_cursor(css_language *c,
 					&match) == lwc_error_ok && match)) {
 				error=CSS_APPEND(CURSOR_PROGRESS);
 			} else {
-				error =  CSS_INVALID;
+				/* Onyx: CSS3 UI's keywords (Acid3) */
+				static const char *const more[] = { "none",
+					"context-menu", "cell", "vertical-text",
+					"alias", "copy", "no-drop", "not-allowed",
+					"ew-resize", "ns-resize", "nesw-resize",
+					"nwse-resize", "col-resize", "row-resize",
+					"all-scroll" };
+				size_t k;
+
+				error = CSS_INVALID;
+				for (k = 0; k < sizeof(more) / sizeof(more[0]); k++)
+					if (lwc_string_length(token->idata) ==
+							strlen(more[k]) &&
+					    strncasecmp(lwc_string_data(
+							token->idata), more[k],
+							strlen(more[k])) == 0) {
+						error = CSS_APPEND(CURSOR_NONE + k);
+						break;
+					}
 			}
 		}
 

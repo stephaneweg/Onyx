@@ -49,6 +49,68 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Jet Browser: find in page, copy and paste, the context menu (2026-10-01, PC bench only)
+
+- **Find** (docs/06 §40): Ctrl+F / Edit ▸ Find in Page... -- a find bar above the status bar ("3 of 17",
+  ^ v, Match case, x); typed words searched as they come (after a 300 ms pause once a search took
+  over 30 ms), every match yellow, the current orange, scrolled into the middle when out of view;
+  Enter / Shift+Enter, F3 / Shift+F3, Ctrl+G; Esc clears. content/textsearch.c rewritten: an array
+  of matches, a binary search a painted text (was O(boxes x matches) a search and a paint), literal,
+  case and accents folded, wraps, found again after a layout (`layout_gen`).
+- **Clipboard**: frontends/framebuffer/clipboard.c on the kernel's clipboard (UTF-8, 64 KB) both ways:
+  Ctrl+C of a selection, Ctrl+V / X / A in fields; Edit ▸ Cut / Copy / Paste / Select All.
+- **Context menu** (right click; frontends/framebuffer/onyx_edit.c + wtk's PopupMenu): link (Open,
+  Save As, Copy Address), image (Open, Save As, **Copy Image** -> `RAM:/jet/clip/image-1|2.png` +
+  CLIP_FILES: Paint's Ctrl+V pastes it; Windows: CF_DIB), field (Cut, Copy, Paste, Select All),
+  selection (Copy), Back / Forward / Reload, Select All, Find.
+- Fixed: the horizontal scroll bar's arrows left unpainted when the page got shorter (status bar /
+  find bar shown: the compositor's stale hole). Menus: Edit inserted after File (View's items moved:
+  `menu 12` is Hide Status Bar now).
+- Tests: **`tools/tests/netsurf/findtest.sh`** (new; Paint pasting in the simulator), fakekapi's clipboard
+  is real (`SIM_CLIP`, `SIM_CLIPFILE`). Screenshots: `shots.sh jet` (jet-find.png, jet-context.png).
+- **Needs a rebuild for the Pi** (Jet, `sdcard/apps/jet.app/main`) and Windows (`sh pc/Jet/build.sh`).
+  **To try on the Pi**: Ctrl+F on bbc.co.uk (typing speed, the count), a copied image pasted into
+  Paint, text copied into the Text Editor and back into a page's field.
+
+## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
+
+- **Acid2 identical** to its reference (the face pixel by pixel, composited, CPU-painted and after
+  a scroll); **Acid3 51 -> 94 / 100** (docs/06 §37: what was fixed -- `position: fixed`, the
+  Appendix E paint order, `<object>` fallback, selectors, media query lists, DOM Range /
+  NodeIterator, `document.open`, the table API, sheets and `data:` images in the script's turn).
+- Bench: `OUT=/tmp/nsbench PORT=8160 sh tools/tests/netsurf/acidtest.sh [acid2|acid3]` (Acid3 over
+  `acidsrv.py`, fails below `ACID3_MIN`=94). Left: tests 69, 74, 75, 77, 79, 80 = XML / SVG
+  documents in frames and the SVG DOM (docs/07 §3). **The Pi's `libcss.a`, `libdom.a`,
+  `libhubbub.a`, libnsfb and the Jet app need a rebuild** (not done here).
+
+## Jet Browser: the page zoom, the status bar, downloads (2026-10-01, PC bench only)
+
+- **The zoom** (docs/06 §38): the toolbar's **"-  100%  +"** (right of the pill), **Ctrl+- / Ctrl++
+  (Ctrl+=, keypad +) / Ctrl+0**, Ctrl+wheel, View ▸ Zoom In / Out / Actual Size -- Chrome's steps
+  (25..500 %), `browser_window_set_scale`; kept per host in **`SD:/apps/jet.app/view`** (`zoom <site>
+  <pct>`), applied before a new page's first layout (core hook `onyx_zoom_hook`,
+  `netsurf/onyx_jet.h`); the scripts see CSS px (`devicePixelRatio`, `innerWidth`, `clientX`...).
+  **Kernel change** (kernel.cpp `SetKeyMapData`): Ctrl + the `-` / `=` `+` / `0` keys now reach the
+  apps (the empty Ctrl column filled with the keypad's keys) -- docs/02.
+- **The status bar** (bottom, 22 px; View ▸ Hide / Show Status Bar, kept in `view`): Loading... (n of
+  m fetches), Ready, "404 Not Found" / "500 ..." / "Error: Connection failed" in red, the link under
+  the pointer; a download's progress on the right.
+- **Downloads**: unknown types, `Content-Disposition: attachment` (any type), `<a download[="name"]>`
+  (also `blob:` / `data:`, a script's `a.click()`): the Save dialog in **`SD:/Downloads`** (made if
+  missing), the name pre-filled (filename*, filename, the link's, the URL's; ASCII-safe for FAT),
+  written by a writer thread as it arrives (`frontends/framebuffer/onyx_download.c`), the toolbar's
+  downloads button + menu (progress, cancel, clear), File ▸ Downloads..., a notification at the end.
+  Windows: `SD:/Downloads` = `%USERPROFILE%\Downloads`.
+- Tests: **`tools/tests/netsurf/dltest.sh`** (new), jstest / uatest / httptest / gputest adjusted
+  (the page 22 px shorter; the pill moved left) and green. Screenshots: `shots.sh jet` (jet.png,
+  jet-menu.png, new jet-save.png, jet-downloads.png).
+- **Needs a rebuild for the Pi**: the kernel (the Ctrl keys), wtk (FileDialog's Enter / Esc) and Jet
+  (`sdcard/apps/jet.app/main`); Windows: `sh pc/Jet/build.sh` (built and checked here, `pc/dist` not
+  committed). **To try on the Pi**: Ctrl+- / Ctrl+= / Ctrl+0 on a US and a French keyboard, the
+  zoom on bbc.co.uk (text sharp, clicks where expected, scrolling), a download of a big file (a
+  Linux ISO's checksum file, a ZIP) -- the desktop must stay smooth while it writes --, cancel one,
+  the status bar's 404 on a missing page.
+
 ## Jet Browser: the quadratic audit (2026-10-01, PC bench only)
 
 - What grew faster than a page (docs/06 §36, its table): child lists / `getElementsByTagName` /

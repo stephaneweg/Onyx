@@ -121,6 +121,12 @@ class UIEvent extends Event {
 		this.view = init.view || null;
 		this.detail = init.detail || 0;
 	}
+	/* (Onyx: the legacy initialiser -- document.createEvent('UIEvents')) */
+	initUIEvent(type, bubbles, cancelable, view, detail) {
+		this.initEvent(type, bubbles, cancelable);
+		this.view = view || null;
+		this.detail = detail | 0;
+	}
 }
 class MouseEvent extends UIEvent {
 	constructor(type, init = {}) {
@@ -540,11 +546,29 @@ class HTMLCollection extends NodeList {
 	}
 }
 function nodeList(arr) { const l = new NodeList(); for (const x of arr) l.push(x); return l; }
+/* Onyx: a collection whose elements are also its properties by their name / id
+ * (document.forms.myform, form.elements.q) -- the same object for the same list */
+const NAMED_COLL = new WeakMap();
+function namedCollection(list) {
+	let p = NAMED_COLL.get(list);
+	if (p === undefined) {
+		p = new Proxy(list, {
+			get(t, k) {
+				if (k in t || typeof k !== 'string') return t[k];
+				return t.namedItem(k) || undefined;
+			},
+			has(t, k) { return k in t || (typeof k === 'string' && t.namedItem(k) !== null); },
+		});
+		NAMED_COLL.set(list, p);
+	}
+	return p;
+}
 
 /* Onyx: a node's children kept while no tree changed (libdom's counter, N.treeGen) -- a loop
  * reading el.childNodes[i], el.children[i], sel.options[i] or matching :nth-child built the
  * whole list again at each read (n^2: 1000 children, 0.4 s on the PC). The lists given to the
  * scripts are the same object until the tree changes (as live lists are). */
+const DOC_OPEN = Symbol('open');	/* (Onyx: document.open()'s text, till close()) */
 const KIDS = Symbol('kids'), TAG_LISTS = Symbol('tags'), OPT_IDX = Symbol('optidx'), OPT_COLL = Symbol('opts');
 function kidsOf(n) {
 	const g = N.treeGen();
@@ -712,6 +736,57 @@ function nodesToNode(args) {
 	return f;
 }
 
+/* Onyx: the DOM's pre-insertion validity (a node into one of its descendants, a second root
+ * element into a document, text into a document...: HierarchyRequestError, as browsers) --
+ * libdom refused some with an error of its own, allowed others */
+function hierarchyError(m) { return new DOMException(m, 'HierarchyRequestError'); }
+function preInsertCheck(parent, node, child, replacing = null) {
+	const pt = N.type(parent), nt = N.type(node);
+	if (pt !== DOCUMENT_NODE && pt !== DOCUMENT_FRAGMENT_NODE && pt !== ELEMENT_NODE)
+		throw hierarchyError('this node cannot have children');
+	for (let n = parent; n !== null; n = N.parent(n))
+		if (n === node) throw hierarchyError('the node is an ancestor of the parent');
+	if (child !== null && (!isNode(child) || N.parent(child) !== parent))
+		throw new DOMException('the reference node is not a child', 'NotFoundError');
+	if (nt === DOCUMENT_NODE || nt === ATTRIBUTE_NODE)
+		throw hierarchyError('this node cannot be inserted');
+	if ((nt === TEXT_NODE || nt === CDATA_SECTION_NODE) && pt === DOCUMENT_NODE)
+		throw hierarchyError('text in a document');
+	if (nt === DOCUMENT_TYPE_NODE && pt !== DOCUMENT_NODE)
+		throw hierarchyError('a doctype outside a document');
+	if (pt !== DOCUMENT_NODE) return;
+	const kids = N.children(parent);
+	const elsOther = kids.filter(k => N.type(k) === ELEMENT_NODE && k !== node && k !== replacing);
+	const doctypeAfter = r => {
+		if (r === null) return false;
+		for (let k = r; k !== null; k = N.next(k))
+			if (N.type(k) === DOCUMENT_TYPE_NODE) return true;
+		return false;
+	};
+	if (nt === DOCUMENT_FRAGMENT_NODE) {
+		const fk = N.children(node);
+		const fe = fk.filter(k => N.type(k) === ELEMENT_NODE).length;
+		if (fe > 1 || fk.some(k => N.type(k) === TEXT_NODE))
+			throw hierarchyError('a fragment of more than one element into a document');
+		if (fe === 1 && (elsOther.length > 0 || (child !== null &&
+		    (N.type(child) === DOCUMENT_TYPE_NODE || doctypeAfter(N.next(child))))))
+			throw hierarchyError('a second element into a document');
+	} else if (nt === ELEMENT_NODE) {
+		if (elsOther.length > 0 || (child !== null &&
+		    (N.type(child) === DOCUMENT_TYPE_NODE || doctypeAfter(N.next(child)))))
+			throw hierarchyError('a second element into a document');
+	} else if (nt === DOCUMENT_TYPE_NODE) {
+		if (kids.some(k => N.type(k) === DOCUMENT_TYPE_NODE && k !== node && k !== replacing))
+			throw hierarchyError('a second doctype into a document');
+		if (child !== null) {
+			for (let k = N.prev(child); k !== null; k = N.prev(k))
+				if (N.type(k) === ELEMENT_NODE) throw hierarchyError('a doctype after the element');
+		} else if (elsOther.length > 0) {
+			throw hierarchyError('a doctype after the element');
+		}
+	}
+}
+
 class Node extends EventTarget {
 	constructor() { super(); throw new TypeError('Illegal constructor'); }
 	get nodeType() { return N.type(this); }
@@ -780,15 +855,20 @@ class Node extends EventTarget {
 	insertBefore(c, ref) {
 		if (!isNode(c))
 			throw new TypeError('not a Node');
+		preInsertCheck(this, c, ref === undefined ? null : ref);	/* (Onyx) */
 		let added = N.type(c) === DOCUMENT_FRAGMENT_NODE ? N.children(c) : [c];
 		const oldParent = N.parent(c);
 		if (oldParent && observers.size)
 			childListRecord(oldParent, [], [c]);
+		if (oldParent && liveRanges.size) rangesRemoving(c);	/* (Onyx) */
+		if (oldParent && liveIterators.size) nodeIteratorPreRemove(c);
 		const ins = insertAdopting(this, c, ref || null);	/* (Onyx) */
 		if (ins !== c) {
 			c = ins;
 			added = N.type(c) === DOCUMENT_FRAGMENT_NODE ? N.children(c) : [c];
 		}
+		if (liveRanges.size && added.length)	/* (Onyx: the live ranges) */
+			rangesInserted(this, nodeIndex(added[0]), added.length);
 		if (observers.size)
 			childListRecord(this, added, [], null, ref || null);
 		return c;
@@ -796,6 +876,8 @@ class Node extends EventTarget {
 	removeChild(c) {
 		if (!isNode(c) || N.parent(c) !== this)
 			throw new DOMException('not a child', 'NotFoundError');
+		if (liveIterators.size) nodeIteratorPreRemove(c);	/* (Onyx) */
+		if (liveRanges.size) rangesRemoving(c);
 		N.remove(this, c);
 		if (observers.size)
 			childListRecord(this, [], [c]);
@@ -806,8 +888,11 @@ class Node extends EventTarget {
 			throw new DOMException('not a child', 'NotFoundError');
 		if (nc === oc)
 			return oc;
-		this.insertBefore(nc, oc);
+		/* (Onyx: checked as a replacement -- a document's root element replaced) */
+		preInsertCheck(this, nc, oc, oc);
+		const next = N.next(oc) === nc ? N.next(nc) : N.next(oc);
 		this.removeChild(oc);
+		this.insertBefore(nc, next);
 		return oc;
 	}
 	cloneNode(deep) { return N.clone(this, !!deep); }
@@ -958,18 +1043,32 @@ function mixin(cls, m) {
 class CharacterData extends Node {
 	get data() { return N.value(this); }
 	set data(v) {
+		v = v === null ? '' : String(v);
+		this.replaceData(0, N.value(this).length, v);
+	}
+	get length() { return this.data.length; }
+	appendData(s) { this.replaceData(N.value(this).length, 0, s); }
+	insertData(o, s) { this.replaceData(o, 0, s); }
+	deleteData(o, n) { this.replaceData(o, n, ''); }
+	/* (Onyx: the DOM's "replace data": an offset past the end throws, the live ranges
+	 * follow) */
+	replaceData(o, n, s) {
 		const old = N.value(this);
-		N.setValue(this, String(v));
+		o = o >>> 0; n = n >>> 0; s = String(s);
+		if (o > old.length) throw new DOMException('offset past the data', 'IndexSizeError');
+		if (o + n > old.length) n = old.length - o;
+		N.setValue(this, old.slice(0, o) + s + old.slice(o + n));
+		if (liveRanges.size) rangesDataReplaced(this, o, n, s.length);
 		if (observers.size)
 			queueMutation({ type: 'characterData', target: this, oldValue: old,
 				addedNodes: nodeList([]), removedNodes: nodeList([]) });
 	}
-	get length() { return this.data.length; }
-	appendData(s) { this.data += s; }
-	insertData(o, s) { const d = this.data; this.data = d.slice(0, o) + s + d.slice(o); }
-	deleteData(o, n) { const d = this.data; this.data = d.slice(0, o) + d.slice(o + n); }
-	replaceData(o, n, s) { const d = this.data; this.data = d.slice(0, o) + s + d.slice(o + n); }
-	substringData(o, n) { return this.data.substr(o, n); }
+	substringData(o, n) {
+		const d = this.data;
+		o = o >>> 0;
+		if (o > d.length) throw new DOMException('offset past the data', 'IndexSizeError');
+		return d.substr(o, n >>> 0);
+	}
 }
 mixin(CharacterData, {
 	get nextElementSibling() { return ChildNode.nextElementSibling.call(this); },
@@ -984,10 +1083,15 @@ class Text extends CharacterData {
 	get wholeText() { return this.data; }
 	splitText(o) {
 		const d = this.data;
-		const t = N.createText(d.slice(o));
-		this.data = d.slice(0, o);
+		o = o >>> 0;
+		if (o > d.length) throw new DOMException('offset past the data', 'IndexSizeError');
+		/* (Onyx: in this node's document; the live ranges split with it) */
+		const doc = this.ownerDocument;
+		const t = doc && doc.createTextNode ? doc.createTextNode(d.slice(o)) : N.createText(d.slice(o));
 		const p = N.parent(this);
 		if (p) p.insertBefore(t, N.next(this));
+		if (liveRanges.size) rangesSplit(this, t, o);
+		this.replaceData(o, d.length - o, '');
 		return t;
 	}
 }
@@ -1002,8 +1106,9 @@ G.CDATASection = CDATASection;
 
 class DocumentType extends Node {
 	get name() { return N.name(this); }
-	get publicId() { return ''; }
-	get systemId() { return ''; }
+	/* (Onyx: the parser's or createDocumentType's) */
+	get publicId() { return N.doctypeIds ? N.doctypeIds(this)[0] : ''; }
+	get systemId() { return N.doctypeIds ? N.doctypeIds(this)[1] : ''; }
 }
 G.DocumentType = DocumentType;
 
@@ -2876,6 +2981,13 @@ function activate(el) {
 		const tag = n.localName;
 		if (tag === 'a' && N.attr(n, 'href') !== null) {
 			const href = N.attr(n, 'href');
+			if (N.attr(n, 'download') !== null && !/^javascript:/i.test(href) && !href.startsWith('#')) {
+				/* (Onyx: <a download>: saved, not opened -- a blob:'s bytes are html5.js') */
+				const u = n.href, name = N.attr(n, 'download');
+				if (/^blob:/i.test(u)) G.__onyxBlobDownload(u, name);
+				else N.download(u, name);
+				return;
+			}
 			if (/^javascript:/i.test(href)) {
 				try { (0, eval)(decodeURIComponent(href.slice(11))); } catch (e) { report(e); }
 			} else if (href.startsWith('#')) {
@@ -3107,6 +3219,7 @@ class HTMLOptionElement extends HTMLElement {
 	get selected() { const c = N.formChecked(this); return c === null ? N.attr(this, 'selected') !== null : c; }
 	set selected(v) { N.setFormChecked(this, !!v); }
 	get defaultSelected() { return N.attr(this, 'selected') !== null; }
+	set defaultSelected(v) { if (v) this.setAttribute('selected', ''); else this.removeAttribute('selected'); }
 	get index() {
 		const s = this.closest('select');
 		if (!s) return 0;
@@ -3382,6 +3495,160 @@ for (const [name, tags] of [['HTMLMetaElement', ['meta']],
 		['HTMLMenuElement', ['menu']], ['HTMLFontElement', ['font']],
 		['HTMLUnknownElement', []]])
 	htmlClass(name, tags);
+/* Onyx: the tables' DOM (HTML's HTMLTableElement, sections, rows, cells): caption, tHead,
+ * tFoot, tBodies, rows, insertRow / deleteRow, cells, insertCell, rowIndex... -- missing
+ * (Acid3's tests 29, 49 to 51) */
+{
+	const kidsNamed = (el, names) => N.children(el).filter(c => N.type(c) === ELEMENT_NODE &&
+		N.nsURI(c) === 'http://www.w3.org/1999/xhtml' && names.includes(N.lname(c)));
+	const firstNamed = (el, name) => kidsNamed(el, [name])[0] || null;
+	const make = (el, name) => {
+		const d = el.ownerDocument;
+		return d && d.createElement ? d.createElement(name) : N.create(name);
+	};
+	const indexError = () => new DOMException('index out of range', 'IndexSizeError');
+	const tableRows = t => {
+		const out = [];
+		for (const h of kidsNamed(t, ['thead'])) out.push(...kidsNamed(h, ['tr']));
+		for (const c of kidsNamed(t, ['tbody', 'tr']))
+			if (N.lname(c) === 'tr') out.push(c);
+			else out.push(...kidsNamed(c, ['tr']));
+		for (const f of kidsNamed(t, ['tfoot'])) out.push(...kidsNamed(f, ['tr']));
+		return out;
+	};
+	const insertRowIn = (parent, rows, index, appendTo) => {
+		index = index === undefined ? -1 : index | 0;
+		if (index < -1 || index > rows.length) throw indexError();
+		const tr = make(parent, 'tr');
+		if (index === -1 || index === rows.length) appendTo().appendChild(tr);
+		else N.parent(rows[index]).insertBefore(tr, rows[index]);
+		return tr;
+	};
+	const deleteRowIn = (rows, index) => {
+		index = index | 0;
+		if (index === -1) index = rows.length - 1;
+		if (index < 0 || index >= rows.length) { if (rows.length === 0 && index === -1) return; throw indexError(); }
+		N.parent(rows[index]).removeChild(rows[index]);
+	};
+	const setSection = (t, name, v, place) => {
+		if (v !== null && (!isElement(v) || N.lname(v) !== name))
+			throw new DOMException('not a ' + name, 'HierarchyRequestError');
+		const old = firstNamed(t, name);
+		if (old === v) return;
+		if (old) t.removeChild(old);
+		if (v !== null) place(v);
+	};
+	const beforeNonCaption = (t, v) => {
+		let ref = N.first(t);
+		while (ref !== null && N.type(ref) === ELEMENT_NODE &&
+		       ['caption', 'colgroup'].includes(N.lname(ref))) ref = N.next(ref);
+		while (ref !== null && N.type(ref) !== ELEMENT_NODE) {
+			const n = N.next(ref);
+			if (n === null) break;
+			ref = n;
+		}
+		t.insertBefore(v, ref);
+	};
+	def(G.HTMLTableElement.prototype, {
+		get caption() { return firstNamed(this, 'caption'); },
+		set caption(v) { setSection(this, 'caption', v, c => this.insertBefore(c, N.first(this))); },
+		createCaption() {
+			let c = this.caption;
+			if (!c) { c = make(this, 'caption'); this.insertBefore(c, N.first(this)); }
+			return c;
+		},
+		deleteCaption() { const c = this.caption; if (c) this.removeChild(c); },
+		get tHead() { return firstNamed(this, 'thead'); },
+		set tHead(v) { setSection(this, 'thead', v, h => beforeNonCaption(this, h)); },
+		createTHead() {
+			let h = this.tHead;
+			if (!h) { h = make(this, 'thead'); beforeNonCaption(this, h); }
+			return h;
+		},
+		deleteTHead() { const h = this.tHead; if (h) this.removeChild(h); },
+		get tFoot() { return firstNamed(this, 'tfoot'); },
+		set tFoot(v) { setSection(this, 'tfoot', v, f => this.appendChild(f)); },
+		createTFoot() {
+			let f = this.tFoot;
+			if (!f) { f = make(this, 'tfoot'); this.appendChild(f); }
+			return f;
+		},
+		deleteTFoot() { const f = this.tFoot; if (f) this.removeChild(f); },
+		get tBodies() { return htmlCollection(kidsNamed(this, ['tbody'])); },
+		createTBody() {
+			const b = make(this, 'tbody'), bodies = kidsNamed(this, ['tbody']);
+			this.insertBefore(b, bodies.length ? N.next(bodies[bodies.length - 1]) : null);
+			return b;
+		},
+		get rows() { return htmlCollection(tableRows(this)); },
+		insertRow(index) {
+			const rows = tableRows(this);
+			index = index === undefined ? -1 : index | 0;
+			if (index < -1 || index > rows.length) throw indexError();
+			const bodies = kidsNamed(this, ['tbody']);
+			if (rows.length === 0 && bodies.length === 0) {
+				const b = make(this, 'tbody'), tr = make(this, 'tr');
+				this.appendChild(b);
+				b.appendChild(tr);
+				return tr;
+			}
+			if (rows.length === 0) {
+				const tr = make(this, 'tr');
+				bodies[bodies.length - 1].appendChild(tr);
+				return tr;
+			}
+			return insertRowIn(this, rows, index, () => N.parent(rows[rows.length - 1]));
+		},
+		deleteRow(index) { deleteRowIn(tableRows(this), index); },
+	});
+	def(G.HTMLTableSectionElement.prototype, {
+		get rows() { return htmlCollection(kidsNamed(this, ['tr'])); },
+		insertRow(index) { return insertRowIn(this, kidsNamed(this, ['tr']), index, () => this); },
+		deleteRow(index) { deleteRowIn(kidsNamed(this, ['tr']), index); },
+	});
+	def(G.HTMLTableRowElement.prototype, {
+		get rowIndex() {
+			let p = N.parent(this);
+			if (p !== null && N.type(p) === ELEMENT_NODE && ['thead', 'tbody', 'tfoot'].includes(N.lname(p)))
+				p = N.parent(p);
+			if (p === null || N.type(p) !== ELEMENT_NODE || N.lname(p) !== 'table') return -1;
+			return tableRows(p).indexOf(this);
+		},
+		get sectionRowIndex() {
+			const p = N.parent(this);
+			if (p === null || N.type(p) !== ELEMENT_NODE) return -1;
+			const rows = N.lname(p) === 'table' ? tableRows(p) : kidsNamed(p, ['tr']);
+			return rows.indexOf(this);
+		},
+		get cells() { return htmlCollection(kidsNamed(this, ['td', 'th'])); },
+		insertCell(index) {
+			const cells = kidsNamed(this, ['td', 'th']);
+			index = index === undefined ? -1 : index | 0;
+			if (index < -1 || index > cells.length) throw indexError();
+			const td = make(this, 'td');
+			this.insertBefore(td, index === -1 || index === cells.length ? null : cells[index]);
+			return td;
+		},
+		deleteCell(index) {
+			const cells = kidsNamed(this, ['td', 'th']);
+			index = index | 0;
+			if (index === -1) { if (cells.length) this.removeChild(cells[cells.length - 1]); return; }
+			if (index < 0 || index >= cells.length) throw indexError();
+			this.removeChild(cells[index]);
+		},
+	});
+	def(G.HTMLTableCellElement.prototype, {
+		get cellIndex() {
+			const p = N.parent(this);
+			if (p === null || N.type(p) !== ELEMENT_NODE || N.lname(p) !== 'tr') return -1;
+			return kidsNamed(p, ['td', 'th']).indexOf(this);
+		},
+	});
+}
+/* Onyx: <object>'s data, as a URL resolved against the document (Acid3's test 64) */
+reflectURL(G.HTMLObjectElement.prototype, 'data');
+reflectString(G.HTMLObjectElement.prototype, 'type');
+reflectString(G.HTMLObjectElement.prototype, 'name');
 Object.defineProperty(G.HTMLTitleElement.prototype, 'text', { configurable: true,
 	get() { return N.text(this); }, set(v) { this.textContent = v; } });
 for (const k of ['href', 'target'])
@@ -3545,8 +3812,8 @@ class Document extends Node {
 	get hidden() { return N.viewHidden(); }	/* (Onyx: the window minimised, elsewhere, covered) */
 	get visibilityState() { return N.viewHidden() ? 'hidden' : 'visible'; }
 	get scrollingElement() { return this.documentElement; }
-	get forms() { return this.getElementsByTagName('form'); }
-	get images() { return this.getElementsByTagName('img'); }
+	get forms() { return namedCollection(this.getElementsByTagName('form')); }
+	get images() { return namedCollection(this.getElementsByTagName('img')); }
 	get links() { return htmlCollection(this.querySelectorAll('a[href],area[href]')); }
 	get scripts() { return this.getElementsByTagName('script'); }
 	get styleSheets() { return documentSheets(this); }
@@ -3587,7 +3854,7 @@ class Document extends Node {
 		if (t.startsWith('ui')) return new UIEvent('');
 		return new Event('');
 	}
-	createRange() { return new Range(); }
+	createRange() { return new Range(this); }
 	createTreeWalker(root, what = 0xffffffff, filter = null) { return new TreeWalker(root, what, filter); }
 	createNodeIterator(root, what = 0xffffffff, filter = null) { return new NodeIterator(root, what, filter); }
 	importNode(n, deep) { return N.clone(n, !!deep); }
@@ -3610,10 +3877,35 @@ class Document extends Node {
 	}
 	elementsFromPoint(x, y) { const e = this.elementFromPoint(x, y); return e ? [e] : []; }
 	getSelection() { return G.getSelection(); }
-	write(...s) { N.write(s.join('')); }
-	writeln(...s) { N.write(s.join('') + '\n'); }
-	open() { return this; }
-	close() {}
+	/* Onyx: while the document is parsed, write() goes into the parser; after, open()
+	 * starts a new document: its nodes taken out, what write() gives parsed at close()
+	 * (an iframe's document written by its parent: Acid3's test 71) */
+	write(...s) {
+		if (this[DOC_OPEN] !== undefined) this[DOC_OPEN] += s.join('');
+		else N.write(s.join(''));
+	}
+	writeln(...s) { this.write(s.join('') + '\n'); }
+	open() {
+		if (this === G.document && N.parsing && N.parsing()) return this;
+		this[DOC_OPEN] = '';
+		for (let c; (c = N.first(this)) !== null;) this.removeChild(c);
+		return this;
+	}
+	close() {
+		const html = this[DOC_OPEN];
+		if (html === undefined) return;
+		this[DOC_OPEN] = undefined;
+		const parsed = N.parseDocument(html);
+		for (const k of N.children(parsed)) {
+			if (N.type(k) === DOCUMENT_TYPE_NODE) {
+				const ids = N.doctypeIds(k);
+				const dt = N.createDoctype(N.name(k), ids[0], ids[1]);
+				if (dt) this.appendChild(dt);
+			} else {
+				this.appendChild(k);
+			}
+		}
+	}
 	execCommand() { return false; }
 	queryCommandSupported() { return false; }
 	exitFullscreen() { return Promise.resolve(); }
@@ -3782,6 +4074,47 @@ function traversalPreceding(n, root) {
 	for (let c; (c = N.last(s)) !== null;) s = c;
 	return s;
 }
+/* Onyx: the live NodeIterators (weakly): a node removed moves their reference first (the
+ * DOM's pre-removing steps, nodeIteratorPreRemove) */
+const liveIterators = new Set();
+function isInclusiveAncestor(a, n) {
+	for (; n !== null; n = N.parent(n))
+		if (n === a) return true;
+	return false;
+}
+/* where a position (node, before) moves when `removed` goes: [node, before] */
+function iteratorPositionMoved(root, removed, node, before) {
+	if (removed === root || !isInclusiveAncestor(removed, node)) return [node, before];
+	if (before) {
+		/* the first following node in the root, not in the removed subtree */
+		let next = null;
+		for (let t = removed; t !== null && t !== root; t = N.parent(t)) {
+			const sib = N.next(t);
+			if (sib !== null) { next = sib; break; }
+		}
+		if (next !== null && isInclusiveAncestor(root, next)) return [next, true];
+	}
+	let prev = N.prev(removed);
+	if (prev === null) return [N.parent(removed), false];
+	for (let c; (c = N.last(prev)) !== null;) prev = c;
+	return [prev, false];
+}
+function nodeIteratorPreRemove(removed) {
+	for (const ref of liveIterators) {
+		const it = ref.deref();
+		if (it === undefined) { liveIterators.delete(ref); continue; }
+		[it.referenceNode, it.pointerBeforeReferenceNode] = iteratorPositionMoved(it.root,
+			removed, it.referenceNode, it.pointerBeforeReferenceNode);
+		/* (a traversal in progress -- a filter removing nodes: its position too, as
+		 * the DOM Level 2 iterators had it: Acid3's test 2) */
+		if (it._cand !== undefined) {
+			const was = it._cand;
+			[it._cand, it._candBefore] = iteratorPositionMoved(it.root, removed,
+				it._cand, it._candBefore);
+			if (it._cand !== was) it._candMoved = true;
+		}
+	}
+}
 class NodeIterator {
 	constructor(root, what, filter) {
 		this.root = root;
@@ -3789,28 +4122,43 @@ class NodeIterator {
 		this.filter = filter === undefined ? null : filter;
 		this.referenceNode = root;
 		this.pointerBeforeReferenceNode = true;
+		if (typeof WeakRef === 'function') liveIterators.add(new WeakRef(this));
 	}
 	_traverse(next) {
-		let node = this.referenceNode, before = this.pointerBeforeReferenceNode;
-		for (;;) {
-			if (next) {
-				if (!before) {
-					node = traversalFollowing(node, this.root);
+		this._cand = this.referenceNode;
+		this._candBefore = this.pointerBeforeReferenceNode;
+		try {
+			for (;;) {
+				let node = this._cand, before = this._candBefore;
+				if (next) {
+					if (!before) {
+						node = traversalFollowing(node, this.root);
+						if (node === null) return null;
+					} else {
+						before = false;
+					}
+				} else if (before) {
+					node = traversalPreceding(node, this.root);
 					if (node === null) return null;
 				} else {
-					before = false;
+					before = true;
 				}
-			} else if (before) {
-				node = traversalPreceding(node, this.root);
-				if (node === null) return null;
-			} else {
-				before = true;
+				this._cand = node;
+				this._candBefore = before;
+				this._candMoved = false;
+				if (traversalFilter(this, node) === 1) {
+					/* (accepted, though the filter removed it: returned,
+					 * the reference left where the removal put it) */
+					if (this._candMoved) return node;
+					break;
+				}
 			}
-			if (traversalFilter(this, node) === 1) break;
+			this.referenceNode = this._cand;
+			this.pointerBeforeReferenceNode = this._candBefore;
+			return this.referenceNode;
+		} finally {
+			this._cand = undefined;
 		}
-		this.referenceNode = node;
-		this.pointerBeforeReferenceNode = before;
-		return node;
 	}
 	nextNode() { return this._traverse(true); }
 	previousNode() { return this._traverse(false); }
@@ -3823,20 +4171,317 @@ G.NodeFilter = { FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3, SHOW_ALL: 0
 	SHOW_PROCESSING_INSTRUCTION: 64, SHOW_COMMENT: 128, SHOW_DOCUMENT: 256,
 	SHOW_DOCUMENT_TYPE: 512, SHOW_DOCUMENT_FRAGMENT: 1024 };
 
+/* Onyx: DOM Range as the DOM standard has it -- boundary points, their comparison in tree
+ * order, the contents cloned / extracted / deleted, insertNode, surroundContents, the text,
+ * and live: a node inserted or removed, a text's data changed or split move the boundary
+ * points of the ranges (liveRanges, held weakly) -- it was a stub (Acid3's tests 7 to 13) */
+const liveRanges = new Set();
+function nodeLength(n) {
+	const t = N.type(n);
+	if (t === DOCUMENT_TYPE_NODE) return 0;
+	if (t === TEXT_NODE || t === COMMENT_NODE || t === CDATA_SECTION_NODE ||
+	    t === PROCESSING_INSTRUCTION_NODE)
+		return N.value(n).length;
+	return N.children(n).length;
+}
+function nodeIndex(n) { const p = N.parent(n); return p === null ? 0 : childIndex(p, n); }
+function rootOf(n) { for (let p; (p = N.parent(n)) !== null; n = p); return n; }
+function isCharData(n) {
+	const t = N.type(n);
+	return t === TEXT_NODE || t === COMMENT_NODE || t === CDATA_SECTION_NODE ||
+		t === PROCESSING_INSTRUCTION_NODE;
+}
+/* -1, 0, 1: (a, ao) before, equal to, after (b, bo) -- in the same tree */
+function boundaryCompare(a, ao, b, bo) {
+	if (a === b) return ao === bo ? 0 : ao < bo ? -1 : 1;
+	const ca = [], cb = [];
+	for (let n = a; n !== null; n = N.parent(n)) ca.push(n);
+	for (let n = b; n !== null; n = N.parent(n)) cb.push(n);
+	let i = ca.length - 1, j = cb.length - 1;
+	while (i > 0 && j > 0 && ca[i - 1] === cb[j - 1]) { i--; j--; }
+	if (i === 0)	/* a is an ancestor of b: the child of a holding b against ao */
+		return childIndex(a, cb[j - 1]) < ao ? 1 : -1;
+	if (j === 0)	/* b is an ancestor of a */
+		return childIndex(b, ca[i - 1]) < bo ? -1 : 1;
+	return childIndex(ca[i], ca[i - 1]) < childIndex(ca[i], cb[j - 1]) ? -1 : 1;
+}
+function rangeCheckPoint(n, o) {
+	if (!isNode(n)) throw new TypeError('not a Node');
+	if (N.type(n) === DOCUMENT_TYPE_NODE)
+		throw new DOMException('a doctype is not a boundary point', 'InvalidNodeTypeError');
+	o = o >>> 0;
+	if (o > nodeLength(n)) throw new DOMException('offset past the node', 'IndexSizeError');
+	return o;
+}
+function isContained(n, r) {
+	return rootOf(n) === rootOf(r._sc) &&
+		boundaryCompare(n, 0, r._sc, r._so) > 0 &&
+		boundaryCompare(n, nodeLength(n), r._ec, r._eo) < 0;
+}
+function isPartiallyContained(n, r) {
+	return isInclusiveAncestor(n, r._sc) !== isInclusiveAncestor(n, r._ec);
+}
+function rangeDocOf(n) { return N.type(n) === DOCUMENT_NODE ? n : n.ownerDocument; }
+function newFragmentFor(n) {
+	const d = rangeDocOf(n);
+	return d && d.createDocumentFragment ? d.createDocumentFragment() : N.createFragment();
+}
+function charClone(n, data) { const c = n.cloneNode(false); c.data = data; return c; }
 class Range {
-	constructor() { this.startContainer = this.endContainer = G.document; this.startOffset = this.endOffset = 0; this.collapsed = true; }
-	setStart(n, o) { this.startContainer = n; this.startOffset = o; }
-	setEnd(n, o) { this.endContainer = n; this.endOffset = o; }
-	selectNode(n) { this.startContainer = this.endContainer = n; }
-	selectNodeContents(n) { this.startContainer = this.endContainer = n; }
-	collapse() {}
-	cloneRange() { return new Range(); }
-	deleteContents() {}
-	createContextualFragment(html) { return fragmentFromHTML(html); }
-	getBoundingClientRect() { return isElement(this.startContainer) ? this.startContainer.getBoundingClientRect() : new DOMRect(); }
-	getClientRects() { return []; }
-	toString() { return ''; }
+	constructor(doc) {
+		this._sc = this._ec = doc && N.type(doc) === DOCUMENT_NODE ? doc : G.document;
+		this._so = this._eo = 0;
+		if (typeof WeakRef === 'function') liveRanges.add(new WeakRef(this));
+	}
+	get startContainer() { return this._sc; }
+	get startOffset() { return this._so; }
+	get endContainer() { return this._ec; }
+	get endOffset() { return this._eo; }
+	get collapsed() { return this._sc === this._ec && this._so === this._eo; }
+	get commonAncestorContainer() {
+		let c = this._sc;
+		while (!isInclusiveAncestor(c, this._ec)) c = N.parent(c);
+		return c;
+	}
+	setStart(n, o) {
+		o = rangeCheckPoint(n, o);
+		if (rootOf(n) !== rootOf(this._sc) || boundaryCompare(n, o, this._ec, this._eo) > 0) {
+			this._ec = n; this._eo = o;
+		}
+		this._sc = n; this._so = o;
+	}
+	setEnd(n, o) {
+		o = rangeCheckPoint(n, o);
+		if (rootOf(n) !== rootOf(this._sc) || boundaryCompare(n, o, this._sc, this._so) < 0) {
+			this._sc = n; this._so = o;
+		}
+		this._ec = n; this._eo = o;
+	}
+	_parentOf(n) {
+		const p = isNode(n) ? N.parent(n) : null;
+		if (p === null) throw new DOMException('the node has no parent', 'InvalidNodeTypeError');
+		return p;
+	}
+	setStartBefore(n) { this.setStart(this._parentOf(n), nodeIndex(n)); }
+	setStartAfter(n) { this.setStart(this._parentOf(n), nodeIndex(n) + 1); }
+	setEndBefore(n) { this.setEnd(this._parentOf(n), nodeIndex(n)); }
+	setEndAfter(n) { this.setEnd(this._parentOf(n), nodeIndex(n) + 1); }
+	collapse(toStart) {
+		if (toStart) { this._ec = this._sc; this._eo = this._so; }
+		else { this._sc = this._ec; this._so = this._eo; }
+	}
+	selectNode(n) {
+		const p = this._parentOf(n), i = nodeIndex(n);
+		this._sc = this._ec = p;
+		this._so = i; this._eo = i + 1;
+	}
+	selectNodeContents(n) {
+		if (!isNode(n)) throw new TypeError('not a Node');
+		if (N.type(n) === DOCUMENT_TYPE_NODE)
+			throw new DOMException('a doctype', 'InvalidNodeTypeError');
+		this._sc = this._ec = n;
+		this._so = 0; this._eo = nodeLength(n);
+	}
+	compareBoundaryPoints(how, src) {
+		how = +how;
+		if (!(how >= 0 && how <= 3)) throw new DOMException('bad comparison', 'NotSupportedError');
+		if (rootOf(this._sc) !== rootOf(src._sc))
+			throw new DOMException('ranges in different trees', 'WrongDocumentError');
+		const t = how === 0 || how === 3 ? [this._sc, this._so] : [this._ec, this._eo];
+		const o = how === 0 || how === 1 ? [src._sc, src._so] : [src._ec, src._eo];
+		return boundaryCompare(t[0], t[1], o[0], o[1]);
+	}
+	comparePoint(n, o) {
+		if (rootOf(n) !== rootOf(this._sc)) throw new DOMException('another tree', 'WrongDocumentError');
+		o = rangeCheckPoint(n, o);
+		if (boundaryCompare(n, o, this._sc, this._so) < 0) return -1;
+		if (boundaryCompare(n, o, this._ec, this._eo) > 0) return 1;
+		return 0;
+	}
+	isPointInRange(n, o) {
+		if (rootOf(n) !== rootOf(this._sc)) return false;
+		o = rangeCheckPoint(n, o);
+		return boundaryCompare(n, o, this._sc, this._so) >= 0 &&
+			boundaryCompare(n, o, this._ec, this._eo) <= 0;
+	}
+	intersectsNode(n) {
+		if (rootOf(n) !== rootOf(this._sc)) return false;
+		const p = N.parent(n);
+		if (p === null) return true;
+		const i = nodeIndex(n);
+		return boundaryCompare(p, i, this._ec, this._eo) < 0 &&
+			boundaryCompare(p, i + 1, this._sc, this._so) > 0;
+	}
+	cloneRange() {
+		const r = new Range();
+		r._sc = this._sc; r._so = this._so; r._ec = this._ec; r._eo = this._eo;
+		return r;
+	}
 	detach() {}
+	toString() {
+		const sc = this._sc, ec = this._ec;
+		if (sc === ec && N.type(sc) === TEXT_NODE)
+			return N.value(sc).slice(this._so, this._eo);
+		let s = '';
+		if (N.type(sc) === TEXT_NODE) s += N.value(sc).slice(this._so);
+		/* the text nodes contained, in tree order */
+		const root = this.commonAncestorContainer;
+		for (let n = traversalFollowing(root, root); n !== null; n = traversalFollowing(n, root))
+			if (N.type(n) === TEXT_NODE && n !== sc && n !== ec && isContained(n, this))
+				s += N.value(n);
+		if (N.type(ec) === TEXT_NODE && ec !== sc) s += N.value(ec).slice(0, this._eo);
+		return s;
+	}
+	/* the contents cloned (clone) or extracted (!clone) into a fragment */
+	_contents(clone) {
+		const frag = newFragmentFor(this._sc);
+		if (this.collapsed) return frag;
+		const sc = this._sc, so = this._so, ec = this._ec, eo = this._eo;
+		if (sc === ec && isCharData(sc)) {
+			frag.appendChild(charClone(sc, N.value(sc).slice(so, eo)));
+			if (!clone) sc.replaceData(so, eo - so, '');
+			return frag;
+		}
+		let common = sc;
+		while (!isInclusiveAncestor(common, ec)) common = N.parent(common);
+		let firstPartial = null, lastPartial = null;
+		if (!isInclusiveAncestor(sc, ec))
+			for (let c = N.first(common); c !== null; c = N.next(c))
+				if (isPartiallyContained(c, this)) { firstPartial = c; break; }
+		if (!isInclusiveAncestor(ec, sc))
+			for (let c = N.last(common); c !== null; c = N.prev(c))
+				if (isPartiallyContained(c, this)) { lastPartial = c; break; }
+		const contained = [];
+		for (let c = N.first(common); c !== null; c = N.next(c))
+			if (isContained(c, this)) contained.push(c);
+		if (contained.some(c => N.type(c) === DOCUMENT_TYPE_NODE))
+			throw new DOMException('a doctype in the range', 'HierarchyRequestError');
+		let newNode, newOffset;
+		if (!clone) {
+			if (isInclusiveAncestor(sc, ec)) { newNode = sc; newOffset = so; }
+			else {
+				let ref = sc;
+				while (N.parent(ref) !== null && !isInclusiveAncestor(N.parent(ref), ec))
+					ref = N.parent(ref);
+				newNode = N.parent(ref); newOffset = nodeIndex(ref) + 1;
+			}
+		}
+		if (firstPartial !== null && isCharData(firstPartial)) {
+			frag.appendChild(charClone(sc, N.value(sc).slice(so)));
+			if (!clone) sc.replaceData(so, nodeLength(sc) - so, '');
+		} else if (firstPartial !== null) {
+			const c = firstPartial.cloneNode(false);
+			frag.appendChild(c);
+			const sub = new Range();
+			sub._sc = sc; sub._so = so; sub._ec = firstPartial; sub._eo = nodeLength(firstPartial);
+			c.appendChild(sub._contents(clone));
+		}
+		for (const c of contained)
+			frag.appendChild(clone ? c.cloneNode(true) : c);
+		if (lastPartial !== null && isCharData(lastPartial)) {
+			frag.appendChild(charClone(ec, N.value(ec).slice(0, eo)));
+			if (!clone) ec.replaceData(0, eo, '');
+		} else if (lastPartial !== null) {
+			const c = lastPartial.cloneNode(false);
+			frag.appendChild(c);
+			const sub = new Range();
+			sub._sc = lastPartial; sub._so = 0; sub._ec = ec; sub._eo = eo;
+			c.appendChild(sub._contents(clone));
+		}
+		if (!clone) { this._sc = this._ec = newNode; this._so = this._eo = newOffset; }
+		return frag;
+	}
+	cloneContents() { return this._contents(true); }
+	extractContents() { return this._contents(false); }
+	deleteContents() { if (!this.collapsed) this._contents(false); }
+	insertNode(node) {
+		const sc = this._sc, so = this._so, st = N.type(sc);
+		if (st === PROCESSING_INSTRUCTION_NODE || st === COMMENT_NODE ||
+		    (st === TEXT_NODE && N.parent(sc) === null) || sc === node)
+			throw new DOMException('cannot insert there', 'HierarchyRequestError');
+		let ref = st === TEXT_NODE ? sc : (N.children(sc)[so] || null);
+		const parent = ref === null ? sc : N.parent(ref);
+		if (st === TEXT_NODE) ref = sc.splitText(so);
+		if (node === ref) ref = N.next(ref);
+		const p = N.parent(node);
+		if (p !== null) p.removeChild(node);
+		let newOffset = ref === null ? nodeLength(parent) : nodeIndex(ref);
+		newOffset += N.type(node) === DOCUMENT_FRAGMENT_NODE ? nodeLength(node) : 1;
+		parent.insertBefore(node, ref);
+		if (this.collapsed) { this._ec = parent; this._eo = newOffset; }
+	}
+	surroundContents(newParent) {
+		const root = this.commonAncestorContainer;
+		for (let n = traversalFollowing(root, root); n !== null; n = traversalFollowing(n, root))
+			if (N.type(n) !== TEXT_NODE && isPartiallyContained(n, this))
+				throw new DOMException('a node partially in the range', 'InvalidStateError');
+		for (const c of [this._sc, this._ec])
+			if (isCharData(c) && N.type(c) !== TEXT_NODE && isPartiallyContained(c, this))
+				throw new DOMException('a node partially in the range', 'InvalidStateError');
+		if (this._sc !== this._ec && ((isCharData(this._sc) && N.type(this._sc) !== TEXT_NODE) ||
+		    (isCharData(this._ec) && N.type(this._ec) !== TEXT_NODE)))
+			throw new DOMException('a node partially in the range', 'InvalidStateError');
+		const t = N.type(newParent);
+		if (t === DOCUMENT_NODE || t === DOCUMENT_TYPE_NODE || t === DOCUMENT_FRAGMENT_NODE)
+			throw new DOMException('cannot surround with that', 'InvalidNodeTypeError');
+		const frag = this.extractContents();
+		while (N.first(newParent) !== null) newParent.removeChild(N.first(newParent));
+		this.insertNode(newParent);
+		newParent.appendChild(frag);
+		this.selectNode(newParent);
+	}
+	createContextualFragment(html) { return fragmentFromHTML(html); }
+	getBoundingClientRect() { return isElement(this._sc) ? this._sc.getBoundingClientRect() : new DOMRect(); }
+	getClientRects() { return []; }
+}
+def(Range, { START_TO_START: 0, START_TO_END: 1, END_TO_END: 2, END_TO_START: 3 });
+def(Range.prototype, { START_TO_START: 0, START_TO_END: 1, END_TO_END: 2, END_TO_START: 3 });
+/* the live ranges' boundary points as the tree changes (the DOM's insert, remove, replace
+ * data and split steps) */
+function rangesEach(f) {
+	for (const ref of liveRanges) {
+		const r = ref.deref();
+		if (r === undefined) { liveRanges.delete(ref); continue; }
+		f(r);
+	}
+}
+function rangesInserted(parent, index, count) {
+	rangesEach(r => {
+		if (r._sc === parent && r._so > index) r._so += count;
+		if (r._ec === parent && r._eo > index) r._eo += count;
+	});
+}
+function rangesRemoving(node) {
+	const parent = N.parent(node);
+	if (parent === null) return;
+	const index = nodeIndex(node);
+	rangesEach(r => {
+		if (isInclusiveAncestor(node, r._sc)) { r._sc = parent; r._so = index; }
+		if (isInclusiveAncestor(node, r._ec)) { r._ec = parent; r._eo = index; }
+		if (r._sc === parent && r._so > index) r._so--;
+		if (r._ec === parent && r._eo > index) r._eo--;
+	});
+}
+function rangesDataReplaced(node, offset, count, len) {
+	rangesEach(r => {
+		if (r._sc === node && r._so > offset && r._so <= offset + count) r._so = offset;
+		if (r._ec === node && r._eo > offset && r._eo <= offset + count) r._eo = offset;
+		if (r._sc === node && r._so > offset + count) r._so += len - count;
+		if (r._ec === node && r._eo > offset + count) r._eo += len - count;
+	});
+}
+/* a text split at offset into node and its new next sibling */
+function rangesSplit(node, newNode, offset) {
+	const parent = N.parent(node);
+	rangesEach(r => {
+		if (r._sc === node && r._so > offset) { r._sc = newNode; r._so -= offset; }
+		if (r._ec === node && r._eo > offset) { r._ec = newNode; r._eo -= offset; }
+		if (parent !== null) {
+			const i = nodeIndex(node) + 1;
+			if (r._sc === parent && r._so === i) r._so++;
+			if (r._ec === parent && r._eo === i) r._eo++;
+		}
+	});
 }
 G.Range = Range;
 
@@ -6158,7 +6803,6 @@ Object.assign(G, {
 	closed: false,
 	isSecureContext: true,
 	origin: location.origin,
-	devicePixelRatio: 1,
 	crossOriginIsolated: false,
 	crypto: {
 		getRandomValues(a) { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256 ** (a.BYTES_PER_ELEMENT || 1)); return a; },
@@ -6212,6 +6856,9 @@ G.scroll = G.scrollTo;
 for (const [k, i] of [['scrollX', 0], ['scrollY', 1], ['pageXOffset', 0], ['pageYOffset', 1],
 		['innerWidth', 2], ['innerHeight', 3], ['outerWidth', 2], ['outerHeight', 3]])
 	Object.defineProperty(G, k, { configurable: true, get: () => N.scroll()[i] });
+/* (Onyx: the page zoom -- Ctrl+ / Ctrl- -- as Chrome: the device pixels a CSS px) */
+Object.defineProperty(G, 'devicePixelRatio', { configurable: true, enumerable: true,
+	get: () => N.scroll()[6] || 1 });
 Object.defineProperty(G, 'screenX', { value: 0, configurable: true });
 Object.defineProperty(G, 'screenY', { value: 0, configurable: true });
 Object.defineProperty(G, 'document', { configurable: true, get: () => N.document() });

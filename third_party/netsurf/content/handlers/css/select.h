@@ -64,6 +64,13 @@ bool nscss_text_kept(const char *text, size_t len, bool inline_style, uint32_t *
 #define NSCSS_STATE_MODAL 2u
 void nscss_node_state_set(struct dom_node *n, unsigned int state, bool on);
 
+struct nsurl;
+
+/** Onyx: a page loaded in a frame -- :visited matches links to it (this session) */
+void nscss_frame_visited_add(struct nsurl *url);
+/** Onyx: whether a frame loaded it this session */
+bool nscss_frame_visited(struct nsurl *url);
+
 /**
  * Onyx: matchMedia -- the media query list text as libcss reads and evaluates it for media
  * (css_select_onyx_media_match): false if it could not be parsed at all.

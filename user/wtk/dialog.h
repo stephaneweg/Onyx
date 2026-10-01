@@ -59,8 +59,10 @@ public:
 	void onScroll (int v) override { m_top = v; invalidate (true); }
 	void onButton (int tag) override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;	// list area
+	bool onKey (long k) override;		// Enter = Open / Save, Esc = Cancel
 	void onDraw () override;
 	void getResult (char *out, unsigned cap);		// dir + "/" + filename (folder mode: dir)
+	const char *fileName () const { return m_nameBox ? m_nameBox->text : ""; }	// the name box's text
 };
 
 // Colour dialog (WPF-style ColorPicker dialog): R / G / B sliders, a 16-colour palette,

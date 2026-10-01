@@ -230,6 +230,11 @@ nserror llcache_handle_clone(llcache_handle *handle, llcache_handle **result);
  * \return NSERROR_OK on success, appropriate error otherwise
  */
 nserror llcache_handle_abort(llcache_handle *handle);
+/**
+ * Onyx: tell the users of a handle's object its state now (what its fetch delivered),
+ * not at the next scheduled catch-up.
+ */
+nserror llcache_handle_catch_up(llcache_handle *handle);
 
 /**
  * Force a low-level cache handle into streaming mode

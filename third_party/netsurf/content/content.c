@@ -239,6 +239,7 @@ content__init(struct content *c,
 
 	c->textsearch.string = NULL;
 	c->textsearch.context = NULL;
+	c->textsearch.layout_gen = 0;
 
 	content_set_status(c, messages_get("Loading"));
 
