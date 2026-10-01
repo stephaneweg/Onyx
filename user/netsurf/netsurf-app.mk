@@ -68,7 +68,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # --- JavaScript: QuickJS (libquickjs.a, user/netsurf/Makefile) and the DOM on it ----------
 # javascript/quickjs/qjs.c: NetSurf's js.h on QuickJS, the natives (libdom's tree, the
 # boxes, the window); dom.js: the DOM in JavaScript, compiled in as a C string (qjs_dom_js.h,
-# made below). The Duktape backend (javascript/duktape, gen/duktape) is no longer built.
+# made below). (NetSurf's Duktape backend and its generated bindings are removed.)
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
 JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c

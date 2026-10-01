@@ -32,11 +32,7 @@
 #include "image/gif.h"
 #include "image/ico.h"
 #include "image/jpeg.h"
-#include "image/jpegxl.h"
-#include "image/nssprite.h"
 #include "image/png.h"
-#include "image/rsvg.h"
-#include "image/svg.h"
 #include "image/webp.h"
 #include "image/onyx_svg.h"
 #include "image/image.h"
@@ -74,32 +70,8 @@ nserror image_init(void)
 		return error;
 #endif
 
-#ifdef WITH_JPEGXL
-	error = nsjpegxl_init();
-	if (error != NSERROR_OK)
-		return error;
-#endif
-
 #ifdef WITH_PNG
 	error = nspng_init();
-	if (error != NSERROR_OK)
-		return error;
-#endif
-
-#ifdef WITH_NSSPRITE
-	error = nssprite_init();
-	if (error != NSERROR_OK)
-		return error;
-#endif
-
-	/* Prefer rsvg over libsvgtiny for svgs */
-#ifdef WITH_NS_SVG
-	error = svg_init();
-	if (error != NSERROR_OK)
-		return error;
-#endif
-#ifdef WITH_RSVG
-	error = nsrsvg_init();
 	if (error != NSERROR_OK)
 		return error;
 #endif
@@ -110,7 +82,8 @@ nserror image_init(void)
 		return error;
 #endif
 
-	/* Onyx: SVG images on PlutoSVG (onyx_svg.c; libsvgtiny is not built) */
+	/* Onyx: SVG images on PlutoSVG (onyx_svg.c; NetSurf's svg.c (libsvgtiny), rsvg.c,
+	 * jpegxl.c and nssprite.c -- never built for Onyx -- are removed) */
 	error = onyx_svg_init();
 	if (error != NSERROR_OK)
 		return error;
