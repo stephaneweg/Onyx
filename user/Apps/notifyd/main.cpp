@@ -4,7 +4,8 @@
 // Apps call notify (title, text); the message lands in our mailbox and is shown as a
 // bubble in the top-right corner, just below the menu bar: it fades in, stays ~4 s and
 // fades out (whole-window opacity, kapi_set_window_alpha). Several notifications queue
-// and are shown one after the other; a click dismisses the current one. The kernel can
+// and are shown one after the other; a click dismisses the current one -- or, for a notification
+// with an action (notify_action: "app args"), runs it (and it stays longer). The kernel can
 // post too (from pid 0), e.g. "Network up".
 //
 // The window is BORDERLESS | TOPMOST (above the apps, never the active app). When idle
@@ -26,7 +27,7 @@ using namespace wtk;
 #define FADE_OUT_MS	700
 #define MAX_ALPHA	240
 
-struct Note { char title[64]; char text[300]; };
+struct Note { char title[64]; char text[300]; char action[124]; };
 static Note g_q[QMAX];
 static int  g_head = 0, g_count = 0;
 
@@ -49,6 +50,7 @@ static void draw (const Note &n)
 	wk_paint_alpha (false);
 	wk_rbox (g_cv, 7, 9, 4, NH - 18, 2, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 110));
 	wk_text_l (g_cv, 18, 8, g_fh, n.title, C_FIELD_TEXT, 2);
+	if (n.action[0]) { const char *h = "click: open"; wk_text_l (g_cv, NW - 12 - wk_tw (h), 8, g_fh, h, C_ACCENT); }
 	// Word-wrap the text over up to 3 lines.
 	unsigned ink = wk_mix (C_FIELD, C_FIELD_TEXT, 190);
 	int maxc = (NW - 28) / g_fw, y = 10 + g_fh, lines = 0;
@@ -83,6 +85,22 @@ static void show_next (void)
 	kapi_move_window (g_sw - NW - MARGIN, TOP);
 	kapi_set_window_alpha (0);
 	g_state = FADE_IN; g_t0 = now_ms ();
+}
+
+// "app args": SD:/apps/<app>.app/main started with args
+static void run_action (const char *a)
+{
+	char app[48]; int k = 0;
+	while (*a && *a != ' ' && k < 47) app[k++] = *a++;
+	app[k] = '\0';
+	while (*a == ' ') a++;
+	char path[96]; int n = 0;
+	const char *pre = "SD:/apps/", *post = ".app/main";
+	for (int i = 0; pre[i]; i++) path[n++] = pre[i];
+	for (int i = 0; app[i]; i++) path[n++] = app[i];
+	for (int i = 0; post[i]; i++) path[n++] = post[i];
+	path[n] = '\0';
+	kapi_exec (path, a);
 }
 
 static void ptr (unsigned long, int ev, long v)
@@ -129,6 +147,11 @@ int main (void)
 			k = 0;
 			for (; i < n && buf[i] && k < (int) sizeof q.text - 1; i++) q.text[k++] = buf[i];
 			q.text[k] = '\0';
+			while (i < n && buf[i]) i++;			// (text overflow)
+			i++;
+			k = 0;
+			for (; i < n && buf[i] && k < (int) sizeof q.action - 1; i++) q.action[k++] = buf[i];
+			q.action[k] = '\0';
 			g_count++;
 			if (g_state == IDLE) show_next ();
 		}
@@ -142,7 +165,8 @@ int main (void)
 			if (t >= FADE_IN_MS) { g_state = HOLD; g_t0 = now_ms (); }
 			break;
 		case HOLD:
-			if (t >= HOLD_MS || g_click) { g_state = FADE_OUT; g_t0 = now_ms (); }
+			if (g_click && g_q[g_head].action[0]) run_action (g_q[g_head].action);
+			if (t >= (g_q[g_head].action[0] ? 2 * HOLD_MS : HOLD_MS) || g_click) { g_state = FADE_OUT; g_t0 = now_ms (); }
 			break;
 		case FADE_OUT:
 			kapi_set_window_alpha (t >= FADE_OUT_MS ? 0 : MAX_ALPHA - (int) (t * MAX_ALPHA / FADE_OUT_MS));

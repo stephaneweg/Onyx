@@ -43,6 +43,7 @@ MBEDTLS_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))../../third_party/mb
 TLS_PROGS =
 ifneq ($(strip $(MBEDTLS_DIR)),)
 TLS_PROGS = httpsget.elf ftpfs.elf groq.elf llm.elf
+PKG_PROGS = pkg.elf
 endif
 
 # Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../img/README.md).
@@ -91,7 +92,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -124,6 +125,14 @@ $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 	@rm -f crt0libc.o onyx_syscalls.o
+# pkg (the packages, docs/pkg/README.md): HTTPS + the Archiver's ZIP engine + zlib
+$(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../Apps/archiver/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+	$(CXX) $(CXXFLAGS_LIBC) -DPKG_NET -DONYX_HTTP_TLS -I$(MBEDTLS_DIR)/include -I$(ZLIB_DIR) -Wno-maybe-uninitialized -Wno-format-truncation \
+	       -ffunction-sections -fdata-sections -Wl,--gc-sections $(LDFLAGS) $*.crt0.o $*.sys.o $< \
+	       -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -L$(ZLIB_DIR) -lz -lm -o $@
+	@rm -f $*.crt0.o $*.sys.o
 # llm (the AI helper: Gemini / Groq / Mistral / Claude / OpenAI-compatible) also reads ../json.hpp
 llm.elf: ../json.hpp
 endif

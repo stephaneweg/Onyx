@@ -5,7 +5,9 @@
 // apps are launched with the `run` tool (e.g. "run panel"); the builtin `sleep <s>`
 // pauses init between lines (staggered startup). Blank lines and lines
 // starting with '#' are ignored. Fire-and-forget (kapi_exec): init launches
-// everything and exits; the started programs keep running.
+// everything and exits; the started programs keep running -- but `wait <command>` runs the
+// command and waits for its end before the next line (`wait pkg commit`: the packages staged
+// for the next boot moved in before the desktop starts, docs/pkg/README.md).
 //
 #include "kapi.h"
 #include "applib.h"
@@ -31,10 +33,26 @@ static void run_line (char *line)
 		return;
 	}
 
+	// Builtin: `wait <command>`: run it and wait for its end
+	int wait = 0;
+	if (ax_streq (line, "wait") && *args)
+	{
+		wait = 1; line = args;
+		while (*args != '\0' && *args != ' ' && *args != '\t') args++;
+		if (*args != '\0') { *args++ = '\0'; while (*args == ' ' || *args == '\t') args++; }
+	}
+
 	char path[128]; int p = 0;				// /bin/<token>
 	ax_strcat (path, sizeof path, &p, "SD:bin/");
 	ax_strcat (path, sizeof path, &p, line);
 
+	if (wait)
+	{
+		void *proc = kapi_spawn (path, args, 0, 0);
+		if (proc) kapi_wait (proc);
+		else { ax_puts ("init: cannot run "); ax_putln (path); }
+		return;
+	}
 	if (!kapi_exec (path, args))
 	{
 		ax_puts ("init: cannot run "); ax_putln (path);

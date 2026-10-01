@@ -2,7 +2,7 @@
 // nesemu -- the Onyx NES / Famicom emulator (the core: user/nes).
 //
 //   nesemu <rom.nes> [--fullscreen]   (without a ROM: opens the Game Library)
-//                               (runners.ini: opening a .nes file starts it; the Game Library
+//                               (its app.txt "games": opening a .nes file starts it; the Game Library
 //                               app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, Enter = Start, Backspace = Select (held keys,
 //     kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A, bottom /

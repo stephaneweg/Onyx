@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Display
+icon   = SD:/apps/displayconf.app/icon.bmp
+target = displayconf
+text   = The screen's resolution, changed at once

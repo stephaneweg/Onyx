@@ -339,7 +339,8 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
-> launched on demand). `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
+> launched on demand); `notify_action (title, text, "app args")`: a click on it runs that app with those
+> arguments (`pkgd`: `"control pkgman"`), and it stays longer. `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
 > `clip_set_files (paths, cut)`, `clip_get_file`, `clip_clear`, `clip_set_image (px, w, h)`,
 > `clip_get_image (&w, &h)`, and for several formats of one copy `clip_put (fmts, datas, lens, n)` /
 > `clip_get (fmts, nf, got, cap, &data, &len)` (formats: `text`, `rtf`, `image`, `files`, `files-cut`,
@@ -1532,6 +1533,35 @@ then `/bin/zip` and `/bin/unzip` built for the PC, driven by `cli_test.py`.
 The screenshots: `sh tools/tests/desktop_sim/shots.sh archiver` (a sample archive made by
 `arc_sample.py`).
 
+### The packages: `pkg`, `user/pkg/pkglib.h`, `tools/pkg`
+
+The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
+
+| Part | What |
+|---|---|
+| `tools/pkg/packages.ini` | Which files of `sdcard/` make each package: `[onyx]` (the kernel, `bin/`, `etc/` as settings, the fonts, the Shell and Settings apps, the terminal, the File Viewer, the Task Manager, Tinypad, voronoy and imageview; `required`, `restart`), `[pi-firmware]`, `[demos]`, the samples each with its app (`[basic-samples]`, `[writer-samples]`... `needs` their app; their files are the user's: `config`), then `[*apps]`: every other app its own package (`[app.<name>]`: its files outside its bundle, its `needs` — the emulators `gamelib`, Writer / Sheet / Ledger `cardfile` —, its `config`). |
+| `tools/pkg/versions.ini` | Each package's version, raised by `mkrepo.py --bump` (a package whose files changed at the same version is refused). |
+| `tools/pkg/mkrepo.py` | `--out <onyx-packages checkout> --key <private key>`: the `.opk` of each package (a deterministic ZIP: the card's tree + `PKG/manifest.ini`), the icons, `index.txt` (version, size, SHA-256, needs — `kapi >= KAPI_ABI_VERSION` added —, the content's hash) signed into `index.sig` (ECDSA P-256 / SHA-256). `--db`: `sdcard/var/pkg/db/*.ini`, the card made "installed". `--lite sdcard_lite`: the card of the required packages only. |
+| `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
+| `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
+| `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`. |
+| `user/bin/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/bin/Makefile` (newlib + mbedTLS + zlib). |
+| `user/Apps/pkgman` | The **Package Manager**, the Control Panel's applet (`70-pkgman.lnk`; FreeType): a snapshot of the index and the database (`Row`s, rebuilt after each job) drawn by its own widgets (`Tabs`, `PkgList`: the rows, the boxes, the mode pills, the buttons, the restart banner); a job (check, install, remove, mode) in a thread (`kapi_thread_create`), its progress read each frame (`onTick`: the package being done, its percentage — `http.hpp`'s new `progress ()` callback and the extraction —, the packages finished). Built by `pkgman.elf` in `user/Makefile` (newlib + FreeType + mbedTLS + zlib, `-DPKG_NET -DONYX_HTTP_TLS`). |
+| `user/Apps/pkgd` | The **update daemon** (no window; `run pkgd` in `etc/autostart`): waits for the network and the time, then once a day (`SD:/var/pkg/lastcheck`) `refresh`, the "auto" packages installed (their new needs first; the system staged), `notify_action` for the others; `--once`: one round; `check = never` in `pkg.ini`: it ends. |
+| `user/bin/init.c` | The `wait <command>` builtin (`kapi_spawn` + `kapi_wait`): `wait pkg commit`, the autostart's first line. |
+
+**Screenshots**: `sh tools/tests/desktop_sim/shots.sh pkgman` — `tools/tests/desktop_sim/pkg_sample.py`
+makes a card of its own (the real one through symbolic links, its own `etc/pkg` and `var/pkg/db`: a
+few apps not installed) and a repository with four newer versions (a key made for it); the applet's
+four pictures (`pkgman`, `-installed`, `-available`, `-restart`: Install 4 Updates run to its end).
+
+**Host test**: `sh tools/tests/run_pkg_test.sh` — mbedTLS and `pkg` built for the PC over the
+simulator's kapi (`SIM_SD` an empty card, the repository a folder of it), driven by
+`tools/tests/pkg/test.py`: a repository made by `mkrepo.py` with a key made for the test; install with
+the needs, already installed, update (a changed setting kept, `.new`, a dropped file removed), the
+modes and `upgrade`, removals refused (needed, running, the system), the system staged then committed
+(and the reboot), a changed index and a changed archive refused.
+
 ### Screenshot, the capture tool (`user/Apps/screenshot`)
 
 The screen capture tool (the study, the mock-ups and the user's decisions: `docs/screenshot/README.md`;
@@ -2136,13 +2166,18 @@ SD:apps/<nom>.app/
 
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
 `main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
-**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`,
-`gb` / `gbc = SD:/apps/gbemu.app/main`, `gba = SD:/apps/gbaemu.app/main`, `nes = SD:/apps/nesemu.app/main`, `sfc` / `smc = SD:/apps/snesemu.app/main`, `wad = SD:/apps/doom.app/main`):
+**`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`), then from the
+**apps' own `app.txt`** (`lx_app_for`: an emulator's `games = Game Boy Color: gbc; Game Boy: gb` —
+the extensions after each system's name —, any app's `opens = wad`; the app's `main` must be there),
+then a built-in list (those that exist):
 `lx_launch (name, args)` starts an app (its `main`, else the first `main.<ext>` with a
 runner), `lx_open (path, args)` a program file (an ELF, or by its runner), both through
 `kapi_exec_as` so the process is named after the app. The launchers use it: the menu bar,
-`run`, `fileassoc.h` (File Viewer, the dock), the dock, the Game Library. A new format = one line in
-`runners.ini`. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
+`run`, `fileassoc.h` (File Viewer, the dock), the dock, the Game Library. A new format = a `games =` / `opens =` line in the app's `app.txt`
+(installed with its package: nothing to change elsewhere), or one line in `runners.ini`. **The Game
+Library's systems** come from the same keys (`load_systems`: every app with `games =`, its sections
+sorted by `order =`); a system whose emulator is not one of the cores it carries (GB, GBA, NES, SNES;
+the N64's label, the GameCube's banner) shows its emulator's icon on the cards. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
 `kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
 compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
 
@@ -2378,6 +2413,37 @@ barwidth = 40
   calls are wrapped at the link (`-Wl,--wrap=fopen`...) to take the Pi's paths (`/res/...`, `/data/...`,
   `RAM:/...`). The details, what was changed for it and how it was tested: docs/06 §34;
   `pc/Jet/README.txt` is the user's page.
+- **Ledger for macOS** (`pc/macOS`, built **on a Mac** by `sh pc/macOS/build.sh` into
+  `pc/dist/macOS/Ledger.app` + `Ledger-macOS-arm64.zip` -- the Xcode command-line tools only; not built
+  here, so not committed). As Koton for Windows, **the Onyx sources unchanged** -- `user/Apps/ledger`,
+  `user/Apps/writer` (it prints Ledger's documents from their templates), `user/wtk`, FreeType -- over the
+  kernel's ABI table on macOS, in two halves: [`pc/macOS/hostkapi.cpp`](../pc/macOS/hostkapi.cpp) (POSIX:
+  the table at `KAPI_TABLE_VA` by `mach_vm_allocate (VM_FLAGS_FIXED)` -- taken only if free --, files,
+  time, threads, `wait_word`, processes, arguments) and [`pc/macOS/cocoa.mm`](../pc/macOS/cocoa.mm) (an
+  `NSWindow` whose view draws the canvas with CoreGraphics, 1 point a pixel; the events queued and handed
+  out by `pump_events` -- the app's thread pumps Cocoa's events itself, no `[NSApp run]`; the app's menu
+  bar as the Mac's; `NSPasteboard`; files dropped or opened from the Finder as `GUI_EVENT_DROP`). Mach-O
+  has no `init_priority`: `hostkapi.o` is linked first (Mach-O and ELF run the files' initialisers in the
+  link's order) and the screen's half keeps no C++ object at file scope (they would be made after
+  `gui_setup`). **The card** is two folders over the bundle's read-only one
+  (`Contents/Resources/sd`, filled by `pc/macOS/card.sh`): `SD:/docs` is `~/Documents/Onyx Ledger`
+  (`ONYX_DOCS`), the rest of `SD:/` `~/Library/Application Support/Onyx Ledger` (`ONYX_SD`; the app's
+  `apps/<app>.app` -- Ledger's templates -- copied there at the first start); read from the user's
+  folder else the bundle's, written in the user's (the demo company, saved, lands in Documents);
+  `HOME:/` is `~`, `MAC:/` the Mac's `/` (a file the Finder gives: `MAC:/Users/...`). **Programs**:
+  `SD:/apps/writer.app/main` is `Ledger.app/Contents/Helpers/Writer.app` (`ONYX_HELPERS`), the arguments
+  passed whole in `ONYX_ARGS`; one the Mac lacks (the Spreadsheet, the File Viewer) has its file or
+  folder shown by `open` (Numbers / Excel, the Finder). **Keys**: Cmd+letter is the Onyx Ctrl+letter
+  (the real Ctrl too), Cmd+Left / Right Home / End, Cmd+Up / Down Ctrl+Home / End (each event carries
+  its modifiers: `get_modifiers` answers the event's while it is handled), Option is Alt, the text
+  through `NSTextInputClient` (dead keys). One thing in the shared sources exists for it: wtk's file
+  dialog lists `SD:`, `HOME:`, `MAC:` on `__APPLE__`. Checked on Linux by **`sh pc/macOS/check.sh`**:
+  the same `hostkapi.cpp` under Ledger and Writer with a screen-less half (`pc/macOS/headless.cpp`,
+  a script of events, the window written as a picture) -- the demo company opened from the bundle's
+  card, a quote printed (Writer started from `Helpers/`, its `.rtf` in the user's `SD:/docs/Quotes`), a
+  document saved (the books written in the user's folder, the bundle's untouched), the templates copied,
+  a host path opened as `MAC:/...`; `cocoa.mm` syntax-checked against GNUstep's headers (the Mac-only
+  calls aside). `pc/macOS/README.txt` is the user's page.
 - **Volume and Wi-Fi from the menu bar** (ABI v60): `user/volume.h` (`volume_save` /
   `volume_restore`: `SD:/etc/sound.ini`) for the menu bar's volume box and `/bin/volume`
   (`kapi_sound_volume (vol, mute)`, −1 keeps). The Wi-Fi menu is its own app,

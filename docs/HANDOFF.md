@@ -1320,6 +1320,14 @@ sources unchanged over `pc/Koton/winkapi.cpp`, the kernel's table on Win32 -- do
 Windows*. Checked under Wine (no sound card there: the silent drain); to try on a real Windows: the
 sound (WASAPI), a USB MIDI keyboard, the window's resize by hand.
 
+**Ledger for macOS (2026-10-01):** `pc/macOS` -- Ledger (and Writer, its printing) for Apple silicon,
+the Onyx sources unchanged over `pc/macOS/hostkapi.cpp` (POSIX) + `cocoa.mm` (the window, menus, keys,
+clipboard): docs/03 *Ledger for macOS*. Built **on a Mac** by `sh pc/macOS/build.sh` -> `pc/dist/macOS/
+Ledger.app` + zip (not built here: no macOS SDK on Linux; nothing committed in pc/dist/macOS). Checked on
+Linux by `sh pc/macOS/check.sh` (the POSIX half under a screen-less window: open, print, save, the card's
+folders). To try on a real Mac: the first build (Apple clang's warnings), the window, Retina drawing, the
+keys (Cmd, dead keys), resizing / full screen, the trackpad's scrolling, drop / Finder open, printing.
+
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
 (`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by
 `sh tools/manuals/koton_shots.sh` (clicks at fixed places on the demo song: move them if the layout
@@ -1362,7 +1370,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 - **Quick notes** with a desktop widget that can be shown or hidden.
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
-**Priority 3–4**: **video player**; the **app store / package manager** (see IDEAS.md below).
+**Priority 3–4**: **video player**; the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).

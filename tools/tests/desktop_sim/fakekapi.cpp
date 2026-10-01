@@ -913,6 +913,7 @@ static void stream_close (void *h)
 	pthread_mutex_lock (&g_fsLock); g_fstreams.erase (h); pthread_mutex_unlock (&g_fsLock);
 	fclose (((FStream *) h)->f); delete (FStream *) h;
 }
+static void h_reboot (void) { printf ("[sim: reboot]\n"); fflush (stdout); _exit (0); }
 static int get_args (char *b, unsigned n)
 {
 	const char *a = getenv ("SIM_APPLET") ? "--applet 1 99" : getenv ("SIM_ARGS");
@@ -1149,7 +1150,7 @@ static void setup (void)
 	T->list_windows = list_windows; T->draw_text_buf = draw_text_buf;
 	T->get_chrome = get_chrome; T->get_args = get_args; T->clipboard_set = clipboard_set;
 	T->clipboard_get = clipboard_get; T->set_click_handler = set_click; T->key_held = key_held;
-	T->cursor_pos = cursor_pos; T->set_window_alpha = set_alpha; T->random = random_fill;
+	T->cursor_pos = cursor_pos; T->set_window_alpha = set_alpha; T->random = random_fill; T->reboot = h_reboot;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
 	T->shell_request = shell_request;
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
