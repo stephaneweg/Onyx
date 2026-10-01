@@ -33,6 +33,7 @@
 #include "utils/utils.h"
 #include "utils/nsoption.h"
 #include "utils/useragent.h"	/* (Onyx: "Desktop Site") */
+#include "utils/url.h"		/* Onyx: url_escape (the address bar's search) */
 #include "utils/filepath.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -2841,6 +2842,82 @@ void onyx_browser_home(void)
 	}
 }
 
+/* Does the text typed look like an address (else: words to search for)? A scheme
+ * ("https://x", "about:blank", "file:", "data:", "javascript:"), "localhost[:port]",
+ * an IPv4 address or a host with a dot whose last label is 2+ letters ("example.com",
+ * "a.b.org:8080/path?q"), with no space in it. */
+static bool onyx_looks_like_address(const char *text)
+{
+	static const char *const schemes[] = { "about:", "file:", "data:",
+			"javascript:", "view-source:", NULL };
+	const char *p, *host_end, *last_dot = NULL;
+	bool digits_dots = true;
+	int i, n;
+
+	if (strstr(text, "://") != NULL && strchr(text, ' ') == NULL)
+		return true;
+	for (i = 0; schemes[i] != NULL; i++)
+		if (strncasecmp(text, schemes[i], strlen(schemes[i])) == 0)
+			return true;
+	if (strchr(text, ' ') != NULL)
+		return false;
+	host_end = text + strcspn(text, ":/?#");
+	if (host_end == text)
+		return false;
+	if ((size_t)(host_end - text) == 9 && strncasecmp(text, "localhost", 9) == 0)
+		return true;
+	for (p = text; p < host_end; p++) {
+		if (*p == '.')
+			last_dot = p;
+		else if (*p < '0' || *p > '9')
+			digits_dots = false;
+		if (*p != '.' && *p != '-' && (unsigned char)*p < 0x80 &&
+				!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+				  (*p >= '0' && *p <= '9')))
+			return false;	/* ("c++", "what's": words) */
+	}
+	if (last_dot == NULL || last_dot == text)
+		return false;
+	if (digits_dots)
+		return true;	/* (192.168.1.10) */
+	n = 0;
+	for (p = last_dot + 1; p < host_end; p++, n++)
+		if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+				(unsigned char)*p >= 0x80))
+			return false;	/* ("3.14": a number) */
+	return n >= 2;
+}
+
+/* The words typed, as a URL of the search engine of jet.ini ([search] engine, default
+ * https://duckduckgo.com/?q=): the words, escaped (spaces as '+'), put in place of a
+ * "%s" else appended. */
+static nserror onyx_search_url(const char *words, nsurl **url)
+{
+	const char *engine = jet_search_engine(), *at;
+	char *esc, *full;
+	size_t len;
+	nserror error;
+
+	error = url_escape(words, true, NULL, &esc);
+	if (error != NSERROR_OK)
+		return error;
+	len = strlen(engine) + strlen(esc) + 1;
+	full = malloc(len);
+	if (full == NULL) {
+		free(esc);
+		return NSERROR_NOMEM;
+	}
+	at = strstr(engine, "%s");
+	if (at != NULL)
+		snprintf(full, len, "%.*s%s%s", (int)(at - engine), engine, esc, at + 2);
+	else
+		snprintf(full, len, "%s%s", engine, esc);
+	free(esc);
+	error = nsurl_create(full, url);
+	free(full);
+	return error;
+}
+
 /* An address typed in the toolbar: a URL, a host ("example.com"), a path on the card
  * ("/docs/a.html", "SD:/docs/a.html" -> file:), else words to search the web for. */
 void onyx_browser_go(const char *text)
@@ -2862,7 +2939,10 @@ void onyx_browser_go(const char *text)
 		snprintf(buf, sizeof buf, "file://%s", text + 3);
 		text = buf;
 	}
-	error = search_web_omni(text, SEARCH_WEB_OMNI_NONE, &url);
+	if (onyx_looks_like_address(text))
+		error = search_web_omni(text, SEARCH_WEB_OMNI_NONE, &url);
+	else
+		error = onyx_search_url(text, &url);
 	if (error != NSERROR_OK) {
 		fb_warn_user("Errorcode:", messages_get_errorcode(error));
 		return;

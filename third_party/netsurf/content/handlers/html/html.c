@@ -1891,6 +1891,31 @@ static void html_reformat(struct content *c, int width, int height)
 			INTTOFIX(height), htmlc->unit_len_ctx.device_dpi);
 	htmlc->unit_len_ctx.root_style = htmlc->layout->style;
 
+	/* Onyx: the media queries follow the viewport -- the selection's media (set once,
+	 * html_get_dimensions) kept the size the page was loaded at: a window resized never
+	 * switched a site's @media layout (mobile <-> desktop). A new size: the styles are
+	 * selected again (onyx_restyle.c drops the kept ones when the media size changes) by
+	 * a rebox, coalesced and throttled as the scripts' are; the layout below is the old
+	 * styles' meanwhile. */
+	{
+		/* (the window's own size, scroll bars included, as browsers measure the media
+		 * width: a scroll bar coming and going never flips a query in a loop) */
+		unsigned vw = 0, vh = 0;
+		union content_msg_data md = { .getdims = { .viewport_width = &vw,
+				.viewport_height = &vh } };
+		content_broadcast(&htmlc->base, CONTENT_MSG_GETDIMS, &md);
+		if (vw != 0 && vh != 0) {
+			css_fixed mw = css_unit_device2css_px(INTTOFIX(vw), nscss_screen_dpi);
+			css_fixed mh = css_unit_device2css_px(INTTOFIX(vh), nscss_screen_dpi);
+			if (mw != htmlc->media.width || mh != htmlc->media.height) {
+				htmlc->media.width = mw;
+				htmlc->media.height = mh;
+				if (htmlc->had_initial_layout)
+					html_script_dom_changed(htmlc);
+			}
+		}
+	}
+
 	{
 		uint64_t t0 = onyx_perf_now();	/* Onyx */
 		layout_document(htmlc, width, height);

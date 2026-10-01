@@ -1851,6 +1851,16 @@ Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with
   `js-cssdetect.html` (24: `CSS.supports`, `element.style`, the CSSOM, `matchMedia` say no to
   garbage). `libcss-test`, `css-check` pass; `csscheck` with the Pi's `libcss.a` under qemu too.
 
+**The media queries follow the window** (`html.c` `html_reformat`): the selection's media size was
+set once, at the page's load (`html_get_dimensions`) -- a window resized was laid out again at its
+new width with the load's `@media` answers (a site never switched between its mobile and desktop
+layouts) and `matchMedia` kept its first answer. Each reformat now reads the window's size
+(`CONTENT_MSG_GETDIMS`: scroll bars included, as browsers measure the media width -- a scroll bar
+coming and going never flips a query in a loop); a new size updates the selection's media and the
+styles are selected again by a rebox (coalesced and throttled; onyx_restyle.c drops the kept
+selections when the media size changes); `matchMedia`'s `change` events follow. Test:
+`jstest.sh`'s `css-mqresize.html` (the window maximised across a `min-width` query).
+
 ## 24. The network as in Chrome: certificates, brotli / zstd, HTTP/2, a disk cache, CORS
 
 The fetcher (`user/netsurf/onyx_fetch.c`), its TLS (`user/netsurf/onyx_nstls.cpp` on
@@ -1924,6 +1934,18 @@ user picks, and Choices' `user_agent:` any other (the Android Chrome's is given 
 host or its subdomains); read at the first request; the order: the site's line, "Desktop site",
 `default`, Choices' `user_agent:`, NetSurf's own. The client hints and `navigator.vendor` follow
 the User-Agent the site gets (a Chrome one: Chrome's hints, `Google Inc.`).
+
+**The address bar's search** (`frontends/framebuffer/gui.c`, `onyx_browser_go`). The text typed is
+an address when it has a scheme (`://`, `about:`, `file:`, `data:`, `javascript:`,
+`view-source:`), is `localhost[:port]`, or has no space and a host part of letters, digits, `-`
+and dots ending in an IPv4 address or a label of 2+ letters (`example.com`, `a.b.org:8080/x?q`);
+it then goes to NetSurf's `search_web_omni` (no scheme: `https://`). Anything else (`what is my
+user agent`, `c++`, `3.14`, `foo`) is searched for: `onyx_search_url` takes jet.ini's
+`[search] engine =` (`jet_search_engine()` in `utils/useragent.c`; default
+`https://duckduckgo.com/?q=`), escapes the words with `url_escape` (spaces as `+`), and puts
+them in place of a `%s` in it, else at its end. Tested by `uatest.sh` (a `%s` engine, an
+appended one with `c++ & co` → `c%2B%2B+%26+co`, and `127.0.0.1:port/ua?addr` opened, not
+searched).
 
 **Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
 comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd

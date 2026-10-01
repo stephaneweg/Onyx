@@ -100,5 +100,18 @@ run g "${W}dump $OUT/ua/ua-custom.elsm;${PILL}dump $OUT/ua/ua-custom-menu.elsm;$
 png ua-custom; png ua-custom-menu
 check "jet.ini's [sites] line wins (Custom), the menu changes nothing" \
 	"sent g 'UATest/1.0 (jet.ini)' && ! sent g 'Chrome' && [ ! -e '$DATA/site-modes' ]"
+echo "the address bar: words to the search engine (jet.ini's [search] engine), an address to its site"
+typed() {	# a click in the address field (all of it selected), the text's keys, Enter
+	printf 'move 400 19;wait;down 400 19;up 400 19;wait;wait;'
+	python3 -c 'import sys; print("".join("key 0x20;" if c == " " else "key %s;" % c for c in sys.argv[1]), end="")' "$1"
+	printf 'wait;key 13;'; waits 100; }
+printf '[search]\nengine = http://127.0.0.1:%s/ua?s=%%s&from=jet\n' $PORT > "$DATA/jet.ini"
+run h "${W}$(typed 'hi there')$Q"
+check "words: the engine's URL, the words in place of %s (spaces as +)" "sent h 'REQ' && grep -q -F '/ua?s=hi+there&from=jet ' '$OUT/ua/h.srv'"
+printf '[search]\nengine = http://127.0.0.1:%s/ua?q=\n' $PORT > "$DATA/jet.ini"
+run i "${W}$(typed 'c++ & co')$(typed "127.0.0.1:$PORT/ua?addr")$Q"
+check "words: appended to the engine, escaped" "grep -q -F '/ua?q=c%2B%2B+%26+co ' '$OUT/ua/i.srv'"
+check "an address (host:port/path, no scheme): its site in https (the server here speaks http), not a search" \
+	"grep -q -F 'https://127.0.0.1:$PORT/ua?addr' '$OUT/ua/i.log' && ! grep -q -F 'addr' '$OUT/ua/i.srv'"
 echo "  (screenshots: $OUT/ua/ua-standard.png ua-menu.png ua-mobile.png ua-desktop.png ua-custom-menu.png)"
 [ $fail = 0 ] && echo "all passed" || exit 1

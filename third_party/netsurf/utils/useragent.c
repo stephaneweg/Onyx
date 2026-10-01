@@ -365,6 +365,7 @@ const char *user_agent_for_host(const char *host)
 
 static bool ua_ini_read;
 static char *ua_ini_default, *ua_ini_desktop, *ua_ini_mobile;
+static char *ua_ini_search;	/* ([search] engine: jet_search_engine) */
 static struct { char *host, *ua; } ua_ini_site[UA_INI_SITES];
 static int ua_ini_nsites;
 
@@ -417,6 +418,9 @@ static void ua_ini_load(void)
 				ua_ini_desktop = strdup(v);
 			else if (strcasecmp(k, "mobile") == 0 && ua_ini_mobile == NULL)
 				ua_ini_mobile = strdup(v);
+		} else if (strcasecmp(section, "search") == 0) {
+			if (strcasecmp(k, "engine") == 0 && ua_ini_search == NULL)
+				ua_ini_search = strdup(v);
 		} else if (strcasecmp(section, "sites") == 0 && ua_ini_nsites < UA_INI_SITES) {
 			ua_ini_site[ua_ini_nsites].host = strdup(k);
 			ua_ini_site[ua_ini_nsites].ua = strdup(v);
@@ -458,4 +462,12 @@ static const char *onyx_ini_ua(int what, const char *host)
 		if (ua_host_in(host, ua_ini_site[i].host))
 			return ua_ini_site[i].ua;
 	return NULL;
+}
+
+/* Public API documented in useragent.h */
+const char *jet_search_engine(void)
+{
+	if (!ua_ini_read)
+		ua_ini_load();
+	return ua_ini_search != NULL ? ua_ini_search : "https://duckduckgo.com/?q=";
 }

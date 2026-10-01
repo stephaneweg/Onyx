@@ -64,6 +64,10 @@ void user_agent_set_site_mode(const char *host, int mode);
 /** Onyx: a host's site (its registrable domain, approximated: bbc.co.uk for www.bbc.co.uk) */
 const char *user_agent_site_of(const char *host);
 
+/** Onyx: the search engine of the address bar (jet.ini's [search] engine: the words typed
+ * appended, or put in place of a "%s"; default "https://duckduckgo.com/?q=") */
+const char *jet_search_engine(void);
+
 /** Onyx: whether a host's site gets the desktop version */
 bool user_agent_is_desktop(const char *host);
 

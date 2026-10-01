@@ -18,7 +18,7 @@ waits() { i=0; while [ "$i" -lt "$1" ]; do printf 'wait;'; i=$((i + 1)); done; }
 # a click at a simulator point (window client coordinates: the page's y + 40)
 click() { printf 'move %s %s;wait;down %s %s;wait;wait;up %s %s;' "$1" "$2" "$1" "$2" "$1" "$2"; waits 30; }
 run() {	# run <page> <sim script> <log>
-	SIM_SCREEN=900x900 SIM_SLEEP=1 SIM_POS=0,0 NS_JSDEBUG=1 \
+	SIM_SCREEN=${RUN_SCREEN:-900x900} SIM_SLEEP=1 SIM_POS=0,0 NS_JSDEBUG=1 \
 	SIM_ARGS="file://$(realpath "$T/pages/$1")" SIM="$2exit" \
 		timeout 300 "$OUT/build/netsurf" >"$3" 2>&1
 }
@@ -384,6 +384,11 @@ html5page js-wasm.html wasm "WebAssembly on wasm3: modules, memory, imports, tra
 sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
 html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"
 sed -n 's/^console: crypto timing /  timing (mbedTLS): /p' "$OUT/js-crypto.log"
+
+echo "css-mqresize.html (the window resized: the @media rules and matchMedia follow)"
+L=$OUT/css-mqresize.log
+RUN_SCREEN=1400x900 run css-mqresize.html "$(waits 80)winctl 2;$(waits 160)" "$L"
+for s in "mqresize load width 1262 bg rgb(255, 0, 0) matches false" "mqresize change true" "mqresize resized width 1374 bg rgb(0, 128, 0) matches true"; do expect "$L" "$s"; done
 
 echo "js-insertrule.html (2000 rules inserted one by one: written back once a turn, fast)"
 L=$OUT/js-insertrule.log
