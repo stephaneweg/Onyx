@@ -90,8 +90,11 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
             plot/32bpp-xrgb8888.c plot/32bpp-xbgr8888.c) $(ZUSER)/nsfb/onyx_surface.c
 
 QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c $(JSQ)/qjs_media.c
 W3_SRC := $(wildcard $(W3)/src/*.c)
+# Onyx: the media library (user/av) for <video> / <audio> / MSE (docs/06 section 44)
+AV := $(ZUSER)/av
+AV_SRC := $(wildcard $(AV)/*.c)
 
 CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) $(wildcard $(NS)/utils/nsurl/*.c) \
@@ -139,7 +142,7 @@ MBED_SRC := $(wildcard $(MBED)/library/*.c)
 ZSTD_SRC := $(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c)
 NGH_SRC := $(wildcard $(NGH)/lib/*.c)
 
-LIB_ALL := $(EXPAT_SRC) $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
+LIB_ALL := $(AV_SRC) $(EXPAT_SRC) $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
            $(PNG_SRC) $(ZLIB_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) \
            $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(IMG_C)
@@ -187,7 +190,7 @@ $(OUT)/qjsgen/qjs_$(1)_js.h: $(JSQ)/$(1).js
 	{ echo '/* generated from $(1).js by pc/Jet/jet.mk */'; echo 'static const char qjs_$(1)_js[] ='; \
 	  sed -e 's/\r$$$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$$$/\\n"/' $$<; echo ';'; } > $$@
 endef
-$(foreach j,dom html5 canvas net wasm crypto,$(eval $(call JS_STR,$(j))))
+$(foreach j,dom html5 canvas net wasm crypto media,$(eval $(call JS_STR,$(j))))
 $(OUT)/qjsgen/qjs_intl_js.h: $(JSQ)/intl.js $(TP)/cldr-48/intl-data.txt
 	@mkdir -p $(dir $@)
 	{ echo '/* generated from intl.js and intl-data.txt by pc/Jet/jet.mk */'; echo 'static const char qjs_intl_js[] ='; \
@@ -217,6 +220,7 @@ $(foreach s,$(MBED_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(MBED)/include
 $(foreach s,$(ZSTD_SRC),$(eval $(call LIB_RULE,$(s),-DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DDEBUGLEVEL=0 -DZSTD_NO_TRACE -I$(ZSTD)/lib -I$(ZSTD)/lib/common)))
 $(foreach s,$(NGH_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu99 -DHAVE_CONFIG_H -DNGHTTP2_STATICLIB -I$(NGH)/lib -I$(NGH)/lib/includes)))
 $(foreach s,$(W3_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O3 -I$(W3)/src)))
+$(foreach s,$(AV_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O2 -I$(AV) -I$(ZUSER) -I$(ZKINC))))
 # (wasm3's default m3_Yield is weak elsewhere, not on Windows: qjs_wasm.c's is the one)
 $(call obj,$(W3)/src/m3_core.c): CF += -Dm3_Yield=m3_Yield_default
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
@@ -268,6 +272,8 @@ $(call obj,$(JSQ)/qjs_crypto.c): $(OUT)/qjsgen/qjs_crypto_js.h
 $(call obj,$(JSQ)/qjs_crypto.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBED)/include
 $(call obj,$(JSQ)/qjs_codecache.c): NS_INC += -I$(QJS) -I$(MBED)/include
 $(call obj,$(JSQ)/qjs_frames.c): NS_INC += -I$(QJS)
+$(call obj,$(JSQ)/qjs_media.c): $(OUT)/qjsgen/qjs_media_js.h
+$(call obj,$(JSQ)/qjs_media.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(AV)
 # Onyx: XPath / XSLT (docs/06 section 43) -- xslt.js as a C string for qjs_xml.c (loaded on demand)
 $(OUT)/qjsgen/qjs_xslt_js.h: $(JSQ)/xslt.js
 	@mkdir -p $(dir $@)

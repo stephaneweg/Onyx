@@ -8,7 +8,7 @@
  *
  * The layers, each usable alone:
  *   1. Containers (av_demux_*): WebM / Matroska, ISO BMFF (MP4, fragmented MP4 -- MSE's), WAV,
- *      native FLAC. Bytes are fed in stream order (a push parser: a network stream, MSE appends)
+ *      native FLAC, MPEG audio (MP3). Bytes are fed in stream order (a push parser: a network stream, MSE appends)
  *      or from where the demuxer asks (av_demux_want: a file, Range requests); packets come out
  *      with their track, times (microseconds) and key flag.
  *   2. Codecs (av_decoder_*): a packet in, frames out. Video frames are planar YUV (I420) or
@@ -101,7 +101,7 @@ void av_packet_free(struct av_packet *p);
 
 /* ---- 1. containers ---------------------------------------------------------------------- */
 
-enum av_format { AV_FMT_UNKNOWN = 0, AV_FMT_MKV, AV_FMT_MP4, AV_FMT_WAV, AV_FMT_FLAC };
+enum av_format { AV_FMT_UNKNOWN = 0, AV_FMT_MKV, AV_FMT_MP4, AV_FMT_WAV, AV_FMT_FLAC, AV_FMT_MP3 };
 
 /* the container of a stream from its first bytes (at least 12): AV_FMT_* */
 int av_probe(const uint8_t *p, size_t n);
@@ -184,6 +184,10 @@ int av_codec_of_string(const char *s, int *profile_ok);
  * MediaSource.isTypeSupported (mse 1: the byte stream formats MSE has, and no "maybe").
  * *smooth: 1 if the size / rate given decode in real time on the Pi (MediaCapabilities). */
 int av_type_supported(const char *mime, int mse, int *smooth);
+
+/* the tests: stand-in decoders (grey frames, silence) for the codecs not built in -- a site's
+ * media path runs on its real streams (av_stub.c) */
+void av_codec_enable_stubs(void);
 
 /* ---- 3. conversion ---------------------------------------------------------------------- */
 

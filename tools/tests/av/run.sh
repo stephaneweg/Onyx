@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../../.."
 OUT=${OUT:-/tmp/avtest}
 mkdir -p "$OUT"
 python3 tools/tests/av/mkmedia.py "$OUT/media" || { echo "mkmedia failed"; exit 1; }
-SRC="user/av/av_demux.c user/av/av_mkv.c user/av/av_mp4.c user/av/av_riff.c user/av/av_flac.c \
+SRC="user/av/av_demux.c user/av/av_mkv.c user/av/av_mp4.c user/av/av_riff.c user/av/av_flac.c user/av/av_mp3.c user/av/av_stub.c \
      user/av/av_codec.c user/av/av_yuv.c user/av/av_resample.c user/av/av_store.c user/av/av_player.c"
 CF="-std=gnu99 -O2 -g -Wall -Wno-unused-function -DAV_POSIX -Iuser/av"
 fail=0

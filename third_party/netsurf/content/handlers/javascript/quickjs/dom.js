@@ -6410,7 +6410,15 @@ function encodeBody(b, h) {
 		return u.toString();
 	}
 	if (b instanceof Blob) { if (b.type) type(b.type); return b._s; }
-	if (b instanceof ArrayBuffer || ArrayBuffer.isView(b)) return N.utf8(b);
+	/* Onyx: bytes stay bytes (a gzipped JSON -- YouTube's player API --, a protobuf): handed to
+	 * the fetcher as base64 behind a marker it decodes (onyx_fetch.c: the request's body may
+	 * then hold any byte, NUL too) */
+	if (b instanceof ArrayBuffer || ArrayBuffer.isView(b)) {
+		const u = b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+		let s = '';
+		for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192));
+		return '\u0001onyx-b64:' + btoa(s);
+	}
 	type('text/plain;charset=UTF-8');
 	return String(b);
 }

@@ -69,6 +69,31 @@ answer in French. The docs stay in English.
 - **Next**: **the videos** -- first push into `main` and merge `main`: another session makes a reusable
   video playback library for NetSurf, to use here (the user). Media keys; ReplayGain; gapless; the
   covers cached on the card; a playlist reordered by dragging.
+## Jet Browser: video and audio -- `<video>`, `<audio>`, MSE, the media library (2026-10-01, PC bench only)
+
+- docs/06 §44. **The media library `user/av`** (docs/03 "The media library": also for the Media Player's
+  videos): WebM / MP4 / fMP4 / WAV / FLAC / MP3 containers, FLAC / MP3 / PCM decoders, NEON YUV, the MSE
+  store, the player (threads, the kapi's sound as the clock, A/V sync ~3-5 ms). **In Jet**: `media.js` +
+  `qjs_media.c` (HTMLMediaElement, MSE, MediaCapabilities, Fullscreen, native controls), replaced boxes
+  (`box_special.c`, `hints.c`, `redraw.c`, `default.css`). YouTube's pages and player run (`html.c`'s
+  paused-parser fix, `window.Window`, `ProcessingInstruction`).
+- **Blocked: the video codecs.** libvpx / dav1d / libopus are not vendored (the session's sandbox refused
+  their download): the glue is written (`user/av/av_vpx.c`, `av_dav1d.c`, `av_opus.c`), not compiled.
+  **Next**: vendor libvpx + libopus (BSD), build them (§44 *Adding the codecs*), `-DAV_WITH_VPX
+  -DAV_WITH_OPUS`, then YouTube VP9 + Opus at <= 480p; measure the decoding on the Pi (`NS_PERF`-like:
+  `__onyxMediaStats(video).decodeUs`); then the decoder on an app core.
+- Tests: `sh tools/tests/av/run.sh` (79 checks, PC + qemu-aarch64), `sh tools/tests/netsurf/mediatest.sh`
+  (all pass); the bench's stand-in sound `SIM_SOUND=1` (`SIM_SOUNDOUT=<file>`), `NS_MEDIADEBUG=1`,
+  `NS_MEDIASTUB=1` (grey frames / silence for the codecs not built in: YouTube's path on its real streams).
+- The bench's network got Google's "unusual traffic" page for YouTube's watch pages (the embed pages
+  answered): try `https://www.youtube.com/embed/<id>` in an iframe (`yt-embed.html` pattern in §44).
+- Fixed on the way (every site): a script request's **binary body** (ArrayBuffer / typed array) was sent as
+  text cut at its first NUL (dom.js `encodeBody` + `onyx_fetch.c` `onyx_body_decode`) -- YouTube's player
+  API answered 400. With the stand-in decoders the embed player then picks its formats, adds its
+  SourceBuffers and starts **SABR** (UMP over POST to googlevideo): the redirected request gets its head
+  and no bytes on the bench -- the next thing to look at (`NS_NETBODY=videoplayback`), with a real decoder.
+- Windows: `winkapi.cpp` has the sound now (waveOut: `sound_acquire / write / status / config`).
+
 ## Jet Browser: Wikipedia's search box (2026-10-01, PC bench only)
 
 - The user's two bugs on fr.wikipedia.org (Mobile and Desktop: Codex's TypeaheadSearch, Vue 3),

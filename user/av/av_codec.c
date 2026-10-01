@@ -29,10 +29,7 @@ static const struct av_codec_impl *const impls[] = {
 #ifdef AV_WITH_VORBIS
 	&av_vorbis_codec,
 #endif
-#ifdef AV_WITH_MINIMP3
-	&av_mp3_codec,
-#endif
-	&av_flac_codec, &av_pcm_codec, &av_alaw_codec, &av_ulaw_codec, &av_i420_codec,
+	&av_flac_codec, &av_mp3_codec, &av_pcm_codec, &av_alaw_codec, &av_ulaw_codec, &av_i420_codec,
 };
 #define NIMPL ((int) (sizeof impls / sizeof impls[0]))
 
@@ -50,7 +47,7 @@ static const struct av_codec_impl *impl_of(int codec)
 	for (i = 0; i < NIMPL; i++)
 		if (impls[i]->codec == codec)
 			return impls[i];
-	return NULL;
+	return av__stub_of(codec);	/* (the tests' stand-ins, when on: av_stub.c) */
 }
 
 const struct av_codec_info *av_codec_list(int *n)
@@ -570,6 +567,8 @@ static int fits(int fmt, int codec, int audio_type)
 		return codec == AV_C_PCM_S16LE || codec == AV_C_ALAW || codec == AV_C_ULAW;
 	case AV_FMT_FLAC:
 		return codec == AV_C_FLAC;
+	case AV_FMT_MP3:
+		return codec == AV_C_MP3;
 	}
 	return 0;
 }
@@ -592,7 +591,7 @@ int av_type_supported(const char *mime, int mse, int *smooth)
 	if (fmt == AV_FMT_UNKNOWN)
 		return 0;
 	/* MSE's byte stream formats: WebM and ISO BMFF only */
-	if (mse && fmt != AV_FMT_MKV && fmt != AV_FMT_MP4)
+	if (mse && fmt != AV_FMT_MKV && fmt != AV_FMT_MP4 && fmt != AV_FMT_MP3)
 		return 0;
 	audio_type = !strncmp(type, "audio/", 6);
 	if (mime_param(mime, "codecs", codecs, sizeof codecs)) {
@@ -651,10 +650,21 @@ int av_type_supported(const char *mime, int mse, int *smooth)
 		if (max_fps > 0 && fps > max_fps + 0.5)
 			*smooth = 0;
 	}
-	/* (an HDR transfer -- YouTube asks with eotf= -- is not shown right: no) */
+	/* (an HDR transfer -- YouTube asks with eotf= -- is not shown right: no; no tunnel mode, no
+	 * encrypted blocks; a size well past what decodes smoothly: no -- a player probing the
+	 * largest size it may ask for -- YouTube's width= / height= -- stays at what the Pi decodes) */
 	{
 		char v[32];
+		int w = 0, h = 0;
 		if (mime_param(mime, "eotf", v, sizeof v) && strcasecmp(v, "bt709") && strcasecmp(v, "sdr"))
+			return 0;
+		if (mime_param(mime, "tunnelmode", v, sizeof v) && !strcasecmp(v, "true"))
+			return 0;
+		if (mime_param(mime, "cryptoblockformat", v, sizeof v))
+			return 0;
+		if (mime_param(mime, "width", v, sizeof v)) w = atoi(v);
+		if (mime_param(mime, "height", v, sizeof v)) h = atoi(v);
+		if (max_w > 0 && (w > max_w * 3 / 2 || h > max_h * 3 / 2))
 			return 0;
 	}
 	if (!any_codec)

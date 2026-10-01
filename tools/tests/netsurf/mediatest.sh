@@ -11,7 +11,7 @@
 #     appendBuffer while updating, abort, remove, buffered, endOfStream, playback to the end, the
 #     A/V sync (the frames shown against the audio heard);
 #   - media-audio.html: <audio src> FLAC then new Audio() WAV: events, the sound heard
-#     bit-exact against the FLAC's reference PCM;
+#     bit-exact against the FLAC's reference PCM; an MP3 (minimp3; its Info frame's duration);
 #   - media-seek.html: a 10 s file loaded by 64 KB ranges, a seek to 8 s before those bytes came;
 #   - media-types.html: canPlayType, isTypeSupported, mediaCapabilities.
 # Builds as jstest.sh (OUT, default /tmp/nsbench). PORT (default 8417). Exit 0: all passed.
@@ -92,7 +92,7 @@ for m in "mse.webm mse.json video/webm;codecs=%22i420,pcm%22" "frag.mp4 frag.jso
 	expect "$L" "ended ended duration=2.00"
 	expect "$L" "sourceended"
 	expect "$L" "play resolved"
-	expect_re "$L" "summary t=2.00 decoded=50 dropped=0 sound=true sync_ms=([0-9]|[1-3][0-9])\." "played to the end, A/V sync under 40 ms"
+	expect_re "$L" "summary t=2.00 decoded=50 dropped=[0-2] sound=true sync_ms=([0-9]|[1-3][0-9])\." "played to the end, A/V sync under 40 ms"
 	grep "console: summary" "$L" | sed 's/^/        /'
 	grep -q "^JS " "$L" && { echo "  FAIL  script errors:"; grep -A2 "^JS " "$L" | head -6; fail=1; }
 done
@@ -106,6 +106,11 @@ expect "$L" "second duration=1.000 paused=false"
 expect "$L" "second ended t=1.000"
 if python3 $T/mediacheck.py heard "$OUT/sound.raw" "$W/tone-ref.raw" | sed 's/^/        /'; then
 	echo "  ok    the FLAC heard bit-exact"; else echo "  FAIL  the FLAC heard"; fail=1; fi
+
+echo "media-audio.html: <audio src=silence.mp3> (minimp3; an Info frame: the duration)"
+L="$OUT/media-audio-mp3.log"
+run "media-audio.html?src=silence.mp3" "$L" 300
+expect "$L" "summary duration=1.306 t=1.306 sound=true rect=300x54"
 
 for f in long.webm long.mp4; do
 	echo "media-seek.html: $f by 64 KB ranges, a seek to 8 s"

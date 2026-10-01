@@ -147,6 +147,7 @@ struct qjs_req {
 	struct jsthread *t;
 	int id;
 	bool binary;			/* the body as an ArrayBuffer (else a string) */
+	bool debug;			/* (Onyx: NS_NETBODY: its response printed) */
 	llcache_handle *handle;
 	JSValue cb;			/* cb(error, { status, statusText, url, headers, body }) */
 	/* Onyx: the response as it comes (streams, XHR's progress) -- pcb(0, head) when its
@@ -3979,6 +3980,14 @@ static nserror qjs_req_cb(llcache_handle *handle, const llcache_event *event, vo
 
 	(void) handle;
 	/* Onyx: the head and the body's parts, as they come, to a script that asked for them */
+	if (event->type == LLCACHE_EVENT_HAD_DATA && r->debug) {	/* (NS_NETBODY: the parts) */
+		size_t size = 0, k;
+		const uint8_t *d = llcache_handle_get_source_data(r->handle, &size);
+		fprintf(stderr, "JS request data (%u bytes so far):", (unsigned) size);
+		for (k = r->given; d != NULL && k < size && k < r->given + 64; k++)
+			fprintf(stderr, " %02x", d[k]);
+		fprintf(stderr, "\n");
+	}
 	if ((event->type == LLCACHE_EVENT_HAD_HEADERS || event->type == LLCACHE_EVENT_HAD_DATA) &&
 	    !t->closed && JS_IsFunction(t->ctx, r->pcb)) {
 		if (event->type == LLCACHE_EVENT_HAD_HEADERS) {
@@ -4017,6 +4026,20 @@ static nserror qjs_req_cb(llcache_handle *handle, const llcache_event *event, vo
 	if (event->type == LLCACHE_EVENT_DONE) {
 		args[0] = JS_NULL;
 		args[1] = qjs_req_result(t->ctx, r);
+		if (r->debug) {	/* (Onyx: NS_NETBODY: the response's start) */
+			size_t size = 0;
+			const uint8_t *d = llcache_handle_get_source_data(r->handle, &size);
+			if (r->binary) {	/* (bytes: in hex) */
+				size_t k;
+				fprintf(stderr, "JS request done (%u bytes):", (unsigned) size);
+				for (k = 0; d != NULL && k < size && k < 600; k++)
+					fprintf(stderr, " %02x", d[k]);
+				fprintf(stderr, "\n");
+			} else {
+				fprintf(stderr, "JS request done: %.*s\n", (int) (size < 1500 ? size : 1500),
+						d != NULL ? (const char *) d : "");
+			}
+		}
 	} else {
 		const char *m = event->data.error.msg;
 		args[0] = JS_NewString(t->ctx, m != NULL ? m : messages_get_errorcode(event->data.error.code));
@@ -4127,6 +4150,15 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 	if (argc > 7)
 		JS_ToInt32(ctx, &r->flags, argv[7]);
 
+	/* (Onyx: NS_NETBODY=<part of a URL>: the request's headers and body, and its response, on
+	 * stderr -- what a site's API calls send and get back) */
+	if (getenv("NS_NETBODY") != NULL && strstr(nsurl_access(url), getenv("NS_NETBODY")) != NULL) {
+		r->debug = true;
+		fprintf(stderr, "JS request %s\n", nsurl_access(url));
+		for (i = 0; hv != NULL && hv[i] != NULL; i++)
+			fprintf(stderr, "JS request header %s\n", hv[i]);
+		fprintf(stderr, "JS request body %.2000s\n", body != NULL ? body : "(none)");
+	}
 	/* a body (or a method with one): as a POST's url-encoded data -- any text (not NUL) */
 	post.type = LLCACHE_POST_URL_ENCODED;
 	post.data.urlenc = (char *) (body != NULL ? body : "");

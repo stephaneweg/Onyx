@@ -13,6 +13,7 @@
 //                  (__wrap_fopen, __wrap_open, __wrap_stat... below): the same paths as on the Pi.
 //   network        Winsock (tcp_*, net_resolve); a lock around the socket table (the downloads' threads).
 //   threads        Win32 threads; mutexes, events, barriers; wait_word (WaitOnAddress); post + pump_wait.
+//   sound          waveOut: the PCM stream (sound_write, sound_status; 44100 Hz stereo) for <video> / <audio>.
 //   no GPU         gpu_info answers 0: Choices' gpu_compositing falls back to the CPU path.
 //   logs           stderr / stdout go to data\jet.log (a new one each launch), or to a console window
 //                  (--console, or a file "console" beside Jet.exe). Switches: --perf, --jsdebug,
@@ -1137,6 +1138,100 @@ static int surface_create (int, int) { return -1; }
 static unsigned *surface_map (int) { return 0; }
 static int surface_size (int, int *, int *) { return 0; }
 
+// ---- sound (the PCM stream: <video>, <audio>) on waveOut: 44100 Hz s16 stereo -----------------------
+// sound_write queues at most 0.5 s (as the Pi's), each write a buffer of its own given to waveOut,
+// the played ones freed at the next calls; sound_status's free frames from waveOutGetPosition.
+static HWAVEOUT g_wo;
+static CRITICAL_SECTION g_woLock;
+static bool g_woLockInit;
+static long long g_woWritten;
+static std::vector<WAVEHDR *> g_woBufs;
+static const long long WO_CAP = 22050;
+static long long wo_played (void)
+{
+	MMTIME t; t.wType = TIME_SAMPLES;
+	if (!g_wo || waveOutGetPosition (g_wo, &t, sizeof t) != MMSYSERR_NOERROR || t.wType != TIME_SAMPLES) return g_woWritten;
+	return (long long) t.u.sample;
+}
+static void wo_reap (void)
+{
+	for (size_t i = 0; i < g_woBufs.size (); )
+		if (g_woBufs[i]->dwFlags & WHDR_DONE)
+		{
+			waveOutUnprepareHeader (g_wo, g_woBufs[i], sizeof (WAVEHDR));
+			free (g_woBufs[i]->lpData); delete g_woBufs[i];
+			g_woBufs.erase (g_woBufs.begin () + i);
+		}
+		else i++;
+}
+static int sound_acquire (void)
+{
+	if (!g_woLockInit) { InitializeCriticalSection (&g_woLock); g_woLockInit = true; }
+	EnterCriticalSection (&g_woLock);
+	int r = 0;
+	if (!g_wo)
+	{
+		WAVEFORMATEX f = {}; f.wFormatTag = WAVE_FORMAT_PCM; f.nChannels = 2; f.nSamplesPerSec = 44100;
+		f.wBitsPerSample = 16; f.nBlockAlign = 4; f.nAvgBytesPerSec = 44100 * 4;
+		if (waveOutOpen (&g_wo, WAVE_MAPPER, &f, 0, 0, CALLBACK_NULL) == MMSYSERR_NOERROR) { g_woWritten = 0; r = 1; }
+		else { g_wo = 0; r = -1; }
+	}
+	LeaveCriticalSection (&g_woLock);
+	return r;
+}
+static void sound_release (void)
+{
+	if (!g_woLockInit) return;
+	EnterCriticalSection (&g_woLock);
+	if (g_wo)
+	{
+		waveOutReset (g_wo);
+		wo_reap ();
+		waveOutClose (g_wo);
+		g_wo = 0;
+	}
+	LeaveCriticalSection (&g_woLock);
+}
+static int sound_write (const short *p, unsigned n)
+{
+	if (!g_woLockInit) return -1;
+	EnterCriticalSection (&g_woLock);
+	if (!g_wo) { LeaveCriticalSection (&g_woLock); return -1; }
+	wo_reap ();
+	long long q = g_woWritten - wo_played ();
+	if (q < 0) q = 0;
+	if (n > WO_CAP - q) n = q >= WO_CAP ? 0 : (unsigned) (WO_CAP - q);
+	if (n)
+	{
+		WAVEHDR *h = new WAVEHDR (); h->dwBufferLength = n * 4; h->lpData = (LPSTR) malloc (n * 4);
+		memcpy (h->lpData, p, n * 4);
+		waveOutPrepareHeader (g_wo, h, sizeof *h);
+		waveOutWrite (g_wo, h, sizeof *h);
+		g_woBufs.push_back (h);
+		g_woWritten += n;
+	}
+	LeaveCriticalSection (&g_woLock);
+	return (int) n;
+}
+static int sound_status (unsigned *r, unsigned *f, unsigned *o)
+{
+	if (r) *r = 44100;
+	if (f) *f = 0;
+	if (o) *o = 0;
+	if (!g_woLockInit) return -1;
+	EnterCriticalSection (&g_woLock);
+	if (g_wo)
+	{
+		long long q = g_woWritten - wo_played ();
+		if (q < 0) q = 0;
+		if (f) *f = (unsigned) (q >= WO_CAP ? 0 : WO_CAP - q);
+		if (o) *o = 1;
+	}
+	LeaveCriticalSection (&g_woLock);
+	return 0;
+}
+static int sound_config (int, int) { return 0; }	// (waveOut's own latency: not known; the queue is the delay)
+
 static void unimplemented (void)
 {
 	char b[200];
@@ -1243,6 +1338,8 @@ static void setup (void)
 	T->stream_close = stream_close; T->stream_eof = stream_eof;
 	T->exec = h_exec; T->exec_as = exec_as; T->list_procs = list_procs;
 	T->thread_create = thread_create; T->thread_join = thread_join; T->thread_exit = thread_exit; T->thread_self = thread_self;
+	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_write = sound_write;
+	T->sound_status = sound_status; T->sound_config = sound_config;	// (<video>, <audio>: waveOut)
 	T->thread_priority = thread_priority; T->core_acquire = core_acquire; T->core_run = core_run; T->core_state = core_state; T->core_release = core_release;
 	T->mutex_create = mutex_create; T->mutex_lock = mutex_lock; T->mutex_unlock = mutex_unlock;
 	T->event_create = event_create; T->event_set = event_set; T->event_reset = event_reset; T->event_wait = event_wait;

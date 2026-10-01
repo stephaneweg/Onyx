@@ -110,6 +110,7 @@ struct fetch_onyx_context {
 	char *hdrs;			/* its header lines ("Name: value\r\n"...): the caller's,
 					 * the cookies, the referer */
 	char *body;			/* the body (url-encoded / text), or 0 */
+	size_t body_len;		/* (Onyx: its length: a script's binary body may hold NULs) */
 
 	/* --- the response, as it comes (threads) --- */
 	bool head_done;			/* its head handed to the core */
@@ -403,9 +404,8 @@ static void onyx_order_headers(char *block)
  * lower case). */
 static char *onyx_request(const char *method, const char *path, const char *host,
 		unsigned port, bool tls, const char *ua, const char *lang, const char *hdrs,
-		const char *body, bool keepalive, int *len)
+		const char *body, size_t blen, bool keepalive, int *len)
 {
-	size_t blen = body != NULL ? strlen(body) : 0;
 	size_t plen = strcspn(path, "#");
 	bool has_ctype = hdrs_have(hdrs, "Content-Type");
 	bool has_accept = hdrs_have(hdrs, "Accept");
@@ -461,6 +461,48 @@ static char *onyx_request(const char *method, const char *path, const char *host
 		memcpy(r + n, body, blen);
 	*len = n + (int) blen;
 	return r;
+}
+
+/* Onyx: a request's body from NetSurf's "url-encoded" post data (a string): a script's binary
+ * body comes as "\x01onyx-b64:" + base64 (dom.js' encodeBody) and is decoded to its bytes (NULs
+ * too); else the string as it is. -> malloc'd (NUL-terminated after *len bytes) */
+static char *onyx_body_decode(const char *post, size_t *len)
+{
+	static const char mark[] = "\x01onyx-b64:";
+	const char *s;
+	unsigned char *out;
+	size_t n = 0;
+	unsigned acc = 0;
+	int bits = 0;
+
+	if (strncmp(post, mark, sizeof mark - 1) != 0) {
+		*len = strlen(post);
+		return strdup(post);
+	}
+	s = post + sizeof mark - 1;
+	out = malloc(strlen(s) * 3 / 4 + 4);
+	if (out == NULL) {
+		*len = 0;
+		return NULL;
+	}
+	for (; *s; s++) {
+		int v;
+		if (*s >= 'A' && *s <= 'Z') v = *s - 'A';
+		else if (*s >= 'a' && *s <= 'z') v = *s - 'a' + 26;
+		else if (*s >= '0' && *s <= '9') v = *s - '0' + 52;
+		else if (*s == '+' || *s == '-') v = 62;
+		else if (*s == '/' || *s == '_') v = 63;
+		else continue;			/* '=' and the rest */
+		acc = acc << 6 | (unsigned) v;
+		bits += 6;
+		if (bits >= 8) {
+			bits -= 8;
+			out[n++] = (unsigned char) (acc >> bits);
+		}
+	}
+	out[n] = 0;
+	*len = n;
+	return (char *) out;
 }
 
 /* Append "Name: value\r\n" to *hdrs (malloc'd, or NULL). */
@@ -981,7 +1023,7 @@ static void *fetch_onyx_setup(struct fetch *parent_fetch, nsurl *url,
 		}
 	}
 	if (post_urlenc != NULL)
-		ctx->body = strdup(post_urlenc);
+		ctx->body = onyx_body_decode(post_urlenc, &ctx->body_len);
 	if (ctx->method == NULL)
 		ctx->method = strdup(post_urlenc != NULL ? "POST" : "GET");
 
@@ -1379,7 +1421,7 @@ static bool fetch_onyx_begin(struct fetch_onyx_context *c)
 
 	req = onyx_request(c->method, path, host, port, c->tls, user_agent_for_host(host),
 			nsoption_charp(accept_language) != NULL ? nsoption_charp(accept_language) :
-			"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7", c->hdrs, c->body, false, &len);
+			"fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7", c->hdrs, c->body, c->body_len, false, &len);
 	if (req == NULL) {
 		onyx_conn_close(c);
 		fetch_onyx_error(c, "Request too large");
@@ -1525,6 +1567,7 @@ struct onyx_h2;
 struct onyx_job {
 	char *url;			/* a copy: the worker never touches an nsurl */
 	char *method, *hdrs, *body;	/* copies of the request's (see the context) */
+	size_t body_len;		/* (Onyx: the body may hold NULs: onyx_body_decode) */
 	const char *ua, *lang;		/* (static / the options': they outlive the job) */
 	volatile int lk;		/* kapi_lock: everything below */
 	volatile int state;		/* JOB_RUNNING, JOB_DONE */
@@ -2707,7 +2750,7 @@ static bool h2_submit(struct onyx_h2 *e, struct onyx_job *j)
 	s->e = e;
 	s->t_last = kapi_get_ticks();
 	if (j->body != NULL) {
-		s->blen = strlen(j->body);
+		s->blen = j->body_len;
 		if (!has_ctype) {
 			H2_NV(nv[n], "content-type", 12, "application/x-www-form-urlencoded", 33);
 			n++;
@@ -2960,7 +3003,7 @@ static int fetch_onyx_worker(void *arg)
 	}
 	j->proto = "http/1.1";
 	req = onyx_request(j->method, path, host, port, tls, j->ua, j->lang, j->hdrs, j->body,
-			true, &len);
+			j->body_len, true, &len);
 	if (req == NULL) {
 		if (have)
 			conn_close(&k);
@@ -3052,7 +3095,10 @@ static int onyx_job_start(struct fetch_onyx_context *c)
 	j->url = strdup(nsurl_access(c->url));
 	j->method = strdup(c->method);
 	j->hdrs = c->hdrs != NULL ? strdup(c->hdrs) : NULL;
-	j->body = c->body != NULL ? strdup(c->body) : NULL;
+	j->body = NULL;
+	j->body_len = c->body_len;
+	if (c->body != NULL && (j->body = malloc(c->body_len + 1)) != NULL)
+		memcpy(j->body, c->body, c->body_len + 1);
 	{	/* (Onyx: the host's -- the site's version, the toolbar's pill) */
 		lwc_string *hh = nsurl_get_component(c->url, NSURL_HOST);
 		j->ua = user_agent_for_host(hh != NULL ? lwc_string_data(hh) : NULL);
@@ -3380,7 +3426,7 @@ static void onyx_nt_done(struct fetch_onyx_context *c, struct onyx_job *j, bool 
 	h = nsurl_get_component(c->url, NSURL_HOST);
 	out = failed ? 0 : strlen(nsurl_access(c->url)) +	/* (~ the request) */
 			(c->hdrs != NULL ? strlen(c->hdrs) : 0) +
-			(c->body != NULL ? strlen(c->body) : 0) + 200;
+			c->body_len + 200;
 	onyx_nt_request(h != NULL ? lwc_string_data(h) : NULL, c->script, failed, c->retries > 0,
 			j->total, out);
 	if (h != NULL)

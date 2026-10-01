@@ -4256,6 +4256,212 @@ seconds since 1970 (`x509_secs`, `clock_secs`), in a `long`: 64 bits on the Pi, 
 right (its `long` is 64-bit): replayed there with the Pi's own mbedTLS libraries under
 qemu-aarch64 -- E6 -> ISRG Root X2, the bundle's root chosen, not the expired X1-signed copy.
 
+## 44. Video and audio: `<video>`, `<audio>`, Media Source Extensions, the media library (2026-10-01)
+
+The goal: YouTube in Jet Browser on the Pi 4 -- its pages, and a video that plays with its sound
+at a resolution the Pi decodes in software. **What is done**: the whole media path except the
+large codecs -- a media library shared with the Media Player (`user/av`), HTMLMediaElement,
+Media Source Extensions, MediaCapabilities, the Fullscreen API, native controls, the sound, A/V
+sync; YouTube's pages and its player run (they load, the player probes the codecs). **What is
+missing**: the decoders YouTube serves -- VP9 / AV1 / H.264 and Opus / AAC. Their libraries
+(libvpx, dav1d, libopus: BSD) are **not vendored**: fetching their sources was refused in the
+session that did this work (its sandbox's policy), so the glue for them is written
+(`user/av/av_vpx.c`, `av_dav1d.c`, `av_opus.c`) but not compiled. With them vendored (below:
+*Adding the codecs*) YouTube plays. Today YouTube's player says "This video can't be played
+with your browser" -- honestly: `MediaSource.isTypeSupported('video/webm; codecs="vp9"')` is false.
+
+### The media library (`user/av`, docs/03 "The media library")
+
+Plain C, five layers, each usable alone (`user/av/av.h` is the reference):
+
+- **Containers** (push parsers over a byte window; fed in stream order -- a network stream, MSE's
+  appends -- or from where they ask, `av_demux_want`: a file, Range requests): **WebM /
+  Matroska** (`av_mkv.c`: EBML, unknown-size Segment / Cluster, SimpleBlock and BlockGroup, the
+  three lacings, Cues read where the SeekHead says -- a seek may read them first --,
+  ContentEncryption = encrypted), **ISO BMFF** (`av_mp4.c`: plain files with the moov before or
+  after the mdat -- its samples merged by offset, an mdat before the moov jumped over then come
+  back to --, fragmented files and MSE's byte stream: moof / traf / tfhd / tfdt / trun, trex
+  defaults, the first edit's media time, sidx for seeking; avcC, vpcC, av1C, esds, dOps, dfLa,
+  pcmC; encv / enca = encrypted), **WAV** (`av_riff.c`), **FLAC** (`av_flac.c`: frames cut where a
+  header with a right CRC-8 follows a right CRC-16), **MPEG audio** (`av_mp3.c`: ID3v2 skipped,
+  frames by their headers checked against the next, Xing / Info / VBRI for the duration and the
+  seek table).
+- **Codecs** (`av_codec.c`): the table of what is compiled in -- **built in**: FLAC (a decoder
+  written from RFC 9639: fixed and LPC predictors, escaped Rice partitions, the stereo
+  decorrelations, wasted bits), PCM (8 / 16 / 24 / 32-bit, float, A-law, mu-law), uncompressed
+  I420 (the tests' video codec); **MP3** on minimp3 (the Media Player's `third_party/minimp3`,
+  its public names renamed so that both link together); **glue, not compiled**: VP8 / VP9
+  (libvpx), AV1 (dav1d), Opus (libopus) behind `AV_WITH_VPX`, `AV_WITH_DAV1D`, `AV_WITH_OPUS`.
+  `av_type_supported` answers `canPlayType` / `isTypeSupported` / MediaCapabilities from that
+  table only (RFC 6381 strings: `vp09.PP.LL.DD` profile 0 / 8 bits, `av01.0.*` 8 / 10 bits,
+  `avc1.*`, `mp4a.40.*`, `opus`, `flac`, `pcm`...), with "smooth" = within what the codec
+  decodes in real time on the Pi (854 x 480 at 30 fps for the video glue's codecs); a size past
+  one and a half times that, an HDR `eotf`, `tunnelmode=true` or encrypted blocks: not supported
+  (YouTube probes the largest size it may ask for with `width=` / `height=`).
+- **Conversion**: `av_yuv.c` -- I420 to 32-bit RGB (BT.601 / BT.709, limited / full range), 16-bit
+  fixed point; on AArch64 a **NEON** path (16 pixels a step: `vmull_u8`, saturating adds,
+  `vqrshrun`, `vst4q_u8`) that is **bit-exact** with the C one (checked under qemu-aarch64);
+  `av_resample.c` -- any rate and channel count to s16 stereo at the output's rate (Catmull-Rom;
+  the playback rate; the volume; 5.1 / 7.1 folded down).
+- **The store** (`av_store.c`): MSE's coded frames by source and track -- the coded frame
+  processing (timestampOffset, sequence mode, the append window, a discontinuity waits for a
+  random access point, frames of another coded frame group that new ones overlap removed with
+  those depending on them), `remove()`, buffered ranges (a track's union, a source's
+  intersection, the last range stretched at the end of the stream), a quota per source with
+  eviction behind the playback position (else QuotaExceededError), the file mode (bytes fed at
+  offsets, the demuxer's seek).
+- **The player** (`av_player.c`): an **audio thread** (decodes, resamples, keeps the output's
+  queue ~150 ms deep, corrects the clock from what is heard: the audio is the master clock), a
+  **video thread** (decodes and converts four frames ahead, drops a frame already late without
+  converting it, frames before a seek's target decoded and not shown), the **host's poll** (the
+  frame due now, the clock, readyState, waiting / ended / seeked), the file mode
+  (`av_player_open_file`: a reader thread ~30 s ahead -- the Media Player's videos). The sound
+  output is the kapi's (`kapi_sound_acquire` / `write` / `status` / `config`; released while paused
+  -- what was queued stops at once); another app holding it: the clock is the wall's, the audio
+  not decoded. Threads poll with naps (2..10 ms): nothing needs the kapi's events.
+
+### In Jet Browser
+
+- `media.js` (compiled in, as canvas.js; run after net.js) and `qjs_media.c` (the natives
+  `N.md*`: a player per element, its poll every 10 ms while playing / seeking / waiting, 40 ms
+  until the first frame, 250 ms else). **HTMLMediaElement**: the load algorithm and the resource
+  selection (`src`, `<source type>` children, `srcObject`; `setAttribute('src')`; an element the
+  parser made is set up when its box is made -- `onyx_media_box_made` -- or at
+  DOMContentLoaded), `play()` / `pause()` and their promises, `currentTime` (seeking),
+  `duration`, `paused`, `ended`, `seeking`, `readyState`, `networkState`, `buffered`,
+  `seekable`, `played`, `volume`, `muted` / `defaultMuted`, `playbackRate`, `loop`, `autoplay`,
+  `preload` (`none`: nothing fetched before `play()`), `error` (MediaError 2 / 3 / 4),
+  `canPlayType`, the events and their order (`loadstart`, `durationchange`, `resize`,
+  `loadedmetadata`, `loadeddata`, `canplay`, `canplaythrough`, `play`, `playing`, `waiting`,
+  `timeupdate` every 250 ms, `seeking`, `seeked`, `pause`, `ended`, `progress`, `suspend`,
+  `emptied`, `abort`, `volumechange`, `ratechange`, `error`) and their `on...` properties;
+  `videoWidth` / `videoHeight`, `getVideoPlaybackQuality()`, `requestVideoFrameCallback()`,
+  `webkitDecodedFrameCount` / `webkitDroppedFrameCount`, empty `textTracks` / `audioTracks` /
+  `videoTracks`, `addTextTrack`; EME refused (`setMediaKeys`,
+  `navigator.requestMediaKeySystemAccess`: NotSupportedError); `new Audio(url)`.
+- **A `src` that is not a MediaSource** is fetched with `fetch()` by **ranges of 1 MB**
+  (`Range: bytes=`) from where the demuxer wants bytes, ~30 s ahead of the playback; a seek to
+  where nothing came yet sends the demuxer there (WebM's Cues -- read first if needed --, MP4's
+  sample tables) and drops the piece on its way; a server that ignores ranges (200): the whole
+  body; `data:` and `blob:` URLs read whole.
+- **Media Source Extensions**: `MediaSource` (`isTypeSupported`, `readyState`, `duration` --
+  the first initialization segment's, else +Infinity; endOfStream: the highest end buffered --,
+  `addSourceBuffer` / `removeSourceBuffer`, `sourceBuffers` / `activeSourceBuffers`,
+  `endOfStream(error)`, `setLiveSeekableRange`, `sourceopen` / `sourceended` / `sourceclose`),
+  `SourceBuffer` (`appendBuffer` -- parsed at once, its events in the next tasks:
+  `updatestart`, `update`, `updateend`; QuotaExceededError thrown; a parse error or codecs not
+  supported: `error` + `endOfStream('decode')` --, `abort`, `remove`, `changeType`, `mode`,
+  `timestampOffset`, `appendWindowStart` / `End`, `buffered`, `updating`), `SourceBufferList`;
+  `URL.createObjectURL(mediaSource)` (a `blob:` URL the element attaches to).
+- **navigator.mediaCapabilities.decodingInfo** (`file` / `media-source`): supported, smooth
+  (the Pi's limit above), `powerEfficient: false` (no hardware decoder) -- YouTube's adaptive bit
+  rate stays at what decodes smoothly.
+- **The Fullscreen API**: `element.requestFullscreen()` (and the `webkit` names),
+  `document.fullscreenElement` / `exitFullscreen()` / `fullscreenEnabled`, `fullscreenchange`;
+  the element is given a fixed, full-viewport style (its own restored after), the page scrolled
+  to its top; Escape leaves. (The window is not maximised: a later step.)
+- **Layout and painting**: `<video>` and `<audio controls>` are replaced boxes (`box_special.c`:
+  their children not shown; without scripts the fallback content); their size from presentational
+  hints (`css/hints.c`): `width` / `height`, else the video's natural size once known (a restyle
+  when it comes), else 300 x 150; `<audio controls>` 300 x 54; `audio:not([controls])` is
+  `display: none` (`default.css`). The frame is the node's bitmap (as a canvas'), copied at each
+  new frame and its box redrawn (`html__redraw_a_box`: the compositor uploads that rectangle);
+  `onyx_media_redraw` (`redraw.c`) fits it in the content box (`object-fit: contain`) and draws
+  the **native controls** when `controls` is set (the bar: play / pause, the time, the progress
+  in red, the volume -- crossed when muted --, full screen; shown while paused, and for 3 s after
+  the pointer moves over a playing video); their clicks and double clicks are handled in
+  media.js.
+- **YouTube** (tried on the PC bench, the real site): `window.Window` and
+  `ProcessingInstruction` (dom.js: ShadyDOM patches their prototypes) and **a page that became
+  "Error: OK"** (`html.c`: a style sheet finished while a script ran `getComputedStyle` -- the
+  parser paused under it was taken for a failed parse) fixed: **the home page, the watch page
+  and its player load and run** (no script error). The embed player
+  (`/embed/<id>` in an iframe) probes `isTypeSupported` (vp9, av01, avc1 with `width=`,
+  `height=`, `framerate=`, `eotf=`, `tunnelmode=`, `decode-to-texture=`...; opus, mp4a) and shows
+  "This video can't be played with your browser". The bench's network was later refused the
+  watch pages by Google ("unusual traffic": the 429 of `google.com/sorry`), not the embed pages.
+  `NS_MEDIASTUB=1` (the bench only: `user/av/av_stub.c`) decodes the codecs not built in into
+  grey frames and silence, so that a site's media path runs on its real streams. With it the
+  embed player, its play button clicked, went further and showed **a bug of every script
+  request**: a **binary body** (an ArrayBuffer / typed array: YouTube gzips its player API's
+  JSON, `content-encoding: gzip`; SABR's requests are protobuf) was sent as UTF-8 text cut at its
+  first NUL -- the API answered 400 and the player "An error occurred". Fixed: dom.js'
+  `encodeBody` hands the bytes as base64 behind a marker, `onyx_fetch.c` (`onyx_body_decode`)
+  sends them as they are (the body's length kept: `body_len`). Then: the player API answers,
+  **YouTube picks its formats from our answers** (Opus in WebM, AV1 at 480p -- the stand-ins
+  claim AV1; with libvpx alone it would be VP9), `addSourceBuffer` twice, and starts **SABR**
+  streaming (Server ABR: a POST to `googlevideo.com/videoplayback?sabr=1` answered in UMP,
+  `application/vnd.yt-ump`): the first answer is a redirect part (UMP part 43, to another
+  googlevideo host), the second request gets its HTTP head and then **no bytes** within 80 s on
+  the bench, and the player shows "Video unavailable". Not understood yet (the BotGuard
+  attestation -- `jnn-pa.googleapis.com ... Waa/GenerateIT` -- answers 200; the egress may be
+  flagged, as for the watch pages) -- the place to continue once a decoder is in. Debugging aids
+  (the PC bench): `NS_MEDIADEBUG=1` (media.js' steps on the console), `NS_NETBODY=<part of a
+  URL>` (a script request's headers, body, response or its parts on stderr).
+
+### Speed on the Pi 4 (measured / estimated)
+
+- **Measured** (PC bench, and AArch64 under qemu for correctness only -- qemu gives no Pi
+  timings): the YUV to RGB conversion of a 854 x 480 frame takes 4.2 ms with the C path on the
+  PC; on the Pi the NEON path does 16 pixels in ~20 instructions: **~1-2 ms** a 480p frame
+  (estimated); the frame's copy into the bitmap 1.6 MB (~1 ms); FLAC decodes 1.5 s of 44.1 kHz
+  stereo in ~37 ms on the PC (~0.2 s of CPU a minute on the Pi, estimated).
+- **Estimated** for the codecs to vendor (published numbers for one Cortex-A72 core at 1.5 GHz;
+  Onyx runs an app's threads on core 0 only): **VP9** (libvpx, NEON) ~4-6 ms a 480p frame, ~10-14
+  ms a 720p frame; **AV1** (dav1d, NEON) ~5-8 ms at 480p; **H.264** (openh264) ~4 ms at 480p;
+  **Opus** ~1-2 % of the core. 480p at 30 fps (33 ms a frame) leaves ~20 ms a frame to the page's
+  scripts and the painting; 720p30 would take most of the core -- hence "smooth" up to 854 x 480.
+- **The page**: YouTube's watch page runs more than 14 MB of scripts (kevlar_base alone 10.8 MB,
+  the player's base.js 3.0 MB); on the PC bench the watch page and its player settle in under a
+  minute with the code cache cold (a bench run, not a timing). On the Pi expect a long first
+  visit (the code cache helps the next ones); the embed player (`youtube.com/embed/<id>`: its
+  base.js is 1.9 MB) is much lighter -- the better way to watch on the Pi.
+
+### Adding the codecs (the next step)
+
+1. Vendor `third_party/libvpx-1.15.x`, `third_party/opus-1.5.x` (and later
+   `third_party/dav1d-1.5.x`), BSD licences: record them in docs/LICENSING.md.
+2. Build them as static libraries for the three targets in `user/netsurf/Makefile` (as the other
+   libraries): libvpx configured `--target=armv8-linux-gcc --disable-vp8-encoder
+   --disable-vp9-encoder --disable-multithread --disable-runtime-cpu-detect --enable-neon`
+   (its generated `vpx_config.h` / `vp9_rtcd.h` committed), libopus with `--disable-float-api`
+   off, NEON intrinsics on; `tools/tests/netsurf/host.mk` and `pc/Jet/jet.mk` compile their
+   sources directly.
+3. Compile `user/av` with `-DAV_WITH_VPX -DAV_WITH_OPUS` (and `-DAV_WITH_DAV1D`) and the libraries'
+   include paths; link them. `av_codec_list` then lists them, `isTypeSupported` answers yes,
+   YouTube serves VP9 + Opus (WebM) at <= 480p.
+4. Test: `mediatest.sh` with clips made by the vendored encoders' examples (vpxenc / opusenc
+   are not needed on the Pi: a tiny committed clip, a few hundred KB, made once); then the live
+   site with the stand-ins off.
+
+Out of reach for now: the Pi 4's **H.264 hardware decoder** (the VideoCore's, behind the
+firmware's MMAL / V4L2 interfaces: a kernel driver Circle does not have -- a kernel project of
+its own); **HEVC** (hardware only); **EME / DRM** (Widevine: never). The decoder on an **app core**
+(kapi_core_run: no kapi and no malloc there -- the decoders allocate at each frame) would take
+the decoding off core 0: the next optimisation once a decoder runs.
+
+### Tests
+
+- `tools/tests/av/run.sh` (no NetSurf): the clips of `tools/tests/av/mkmedia.py` (synthetic,
+  made at test time, nothing committed: I420 video with a moving bar and a flash every 0.5 s, a
+  440 Hz tone with a 1 kHz burst at the same times, WebM / MP4 / MP4 with its moov at the end /
+  fragmented MP4 / MSE's WebM and fMP4 byte ranges, WAV, a FLAC made by mkmedia's own encoder --
+  every predictor, stereo mode, escapes, wasted bits --, an MP3 of silent frames with an Info
+  frame); `avtest`: every container whole and in pieces of up to 7 bytes, the frames' bytes
+  against the reference, seeks, FLAC bit-exact, the store's MSE cases (out of order,
+  remove, appended twice, timestampOffset), YUV fast path = C path (also built for AArch64 and
+  run under qemu-aarch64), the type answers, the player (first frame before play, playback to
+  the end, every frame in order, A/V sync ~3 ms, a seek): **79 passed**, on the PC and AArch64.
+- `tools/tests/netsurf/mediatest.sh` (the bench, `mediasrv.py` with Range requests, the
+  stand-in sound output `SIM_SOUND=1` / `SIM_SOUNDOUT`): `<video src>` for each container
+  (the events and their order, 50 frames presented in order, the last frame's and a seek's
+  frame's **pixels = the reference** -- the RGB sums mkmedia computes with the same
+  conversion --, buffered, the window's picture), MSE with WebM and fMP4 (appends out of order,
+  appendBuffer while updating, abort, remove, endOfStream, playback, **A/V sync < 6 ms**), `<audio>`
+  FLAC then `new Audio()` WAV (the sound heard **bit-exact**), MP3, a 10 s file by 64 KB ranges
+  and a seek to 8 s before those bytes came (17 requests, not the whole file), the type
+  answers: **all passed**. jstest.sh, acidtest.sh and the others pass as before.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies

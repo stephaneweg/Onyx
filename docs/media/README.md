@@ -50,7 +50,14 @@ artists and their covers are made up).
 ## Still open
 
 - The SoundFont: one for all the MIDI files (Settings), proposed.
-- **The videos** (the user, 2026-10-01): before starting them, push into `main` and merge `main` -- another
-  session is making a reusable video playback library for NetSurf (Jet Browser), to use here.
-- The videos' formats: MPEG-1 (`pl_mpeg`) is light enough for the Pi's CPU; H.264 (MP4) would need the
-  Pi's video decoder, not reached through Circle yet -- to study when the videos are built.
+- **The videos** (the user, 2026-10-01): the playback library is there -- **`user/av`** (docs/03 "The media
+  library", docs/06 §44): `av_player_open_file (player, path)` plays a file (WebM / MKV, MP4 / MOV, WAV,
+  FLAC, MP3) -- a reader thread ~30 s ahead, decoding threads, the sound (the kapi's, master clock), the
+  frames handed over by `av_player_poll` at their time in the window's pixel layout, seeking, rate,
+  volume. The Media Player's videos are built on it.
+- **The videos' formats**: the library's containers are WebM / Matroska and MP4 (the formats of the videos
+  people have); its video codecs today are the tests' (uncompressed I420) -- **VP9 / AV1 / H.264 need their
+  libraries vendored** (libvpx, dav1d, openh264: BSD; the glue is written, `user/av/av_vpx.c`,
+  `av_dav1d.c`) -- see docs/06 §44 *Adding the codecs*. In software on the Pi 4: up to 480p at 30 fps
+  (VP9, AV1, H.264), 720p is too much for one core. MPEG-1 (`pl_mpeg`, MIT) would be the lightest, if
+  wanted for older files. H.264 through the Pi's hardware decoder: a kernel driver, not in Circle.

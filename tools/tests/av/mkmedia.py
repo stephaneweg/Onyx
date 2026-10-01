@@ -291,6 +291,19 @@ def write_frag_mp4(path, frames, pcm):
         json.dump(ranges, f)
 
 # ---------------------------------------------------------------- WAV
+def write_mp3(path, nframes=50):
+    """MPEG-1 layer III, 128 kb/s, 44.1 kHz joint stereo: an ID3v2 tag, an Info frame (the frame
+    count: the duration), then frames of zero side information (they decode to silence) -- the
+    container, the timing and the decoder's path (no encoder here for a real sound)"""
+    hdr = b'\xff\xfb\x90\x64'
+    flen = 144 * 128000 // 44100
+    info = bytearray(hdr + b'\0' * (flen - 4))
+    info[36:44] = b'Info' + struct.pack('>I', 1)
+    info[44:48] = struct.pack('>I', nframes)
+    id3 = b'ID3\x03\x00\x00' + bytes([0, 0, 0, 10]) + b'\0' * 10
+    with open(path, 'wb') as f:
+        f.write(id3 + bytes(info) + (hdr + b'\0' * (flen - 4)) * nframes)
+
 def write_wav(path):
     rate = 22050
     pcm = audio_pcm(1.0, rate, 1)
@@ -499,6 +512,7 @@ def main():
     write_mp4(os.path.join(out, 'clip-moovend.mp4'), frames, pcm, False)
     write_frag_mp4(os.path.join(out, 'frag.mp4'), frames, pcm)
     write_wav(os.path.join(out, 'tone.wav'))
+    write_mp3(os.path.join(out, 'silence.mp3'))
     write_flac(os.path.join(out, 'tone.flac'), os.path.join(out, 'tone-ref.raw'))
     # long.webm / long.mp4: 10 s of the same (4 MB: loaded by ranges, seeking where nothing came yet)
 

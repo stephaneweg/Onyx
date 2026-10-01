@@ -139,6 +139,8 @@ int av_probe(const uint8_t *p, size_t n)
 		return AV_FMT_WAV;
 	if (n >= 4 && !memcmp(p, "fLaC", 4))
 		return AV_FMT_FLAC;
+	if (av__mp3_probe(p, n))
+		return AV_FMT_MP3;
 	return AV_FMT_UNKNOWN;
 }
 
@@ -163,6 +165,9 @@ int av_format_of_mime(const char *mime)
 		return AV_FMT_WAV;
 	if (!strcmp(t, "audio/flac") || !strcmp(t, "audio/x-flac"))
 		return AV_FMT_FLAC;
+	if (!strcmp(t, "audio/mpeg") || !strcmp(t, "audio/mp3") || !strcmp(t, "audio/x-mp3") ||
+	    !strcmp(t, "audio/mpeg3"))
+		return AV_FMT_MP3;
 	return AV_FMT_UNKNOWN;
 }
 
@@ -173,6 +178,7 @@ static const struct av_fmt_ops *ops_of(int fmt)
 	case AV_FMT_MP4: return &av_mp4_ops;
 	case AV_FMT_WAV: return &av_wav_ops;
 	case AV_FMT_FLAC: return &av_flac_ops;
+	case AV_FMT_MP3: return &av_mp3_ops;
 	}
 	return NULL;
 }

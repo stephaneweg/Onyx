@@ -76,7 +76,7 @@ Two weaknesses, worth fixing:
 | stb_image | `user/img` | Public domain / MIT | — |
 | simplewebp | `user/img` | BSD | Keep the notice |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
-| minimp3 | `third_party/minimp3`, Media Player | CC0 (public domain) | — |
+| minimp3 | `third_party/minimp3`, Media Player, Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
 | stb_vorbis | `third_party/stb_vorbis`, Media Player | Public domain / MIT | — |
 | dr_flac, dr_wav | `third_party/dr_libs`, Media Player | Public domain / MIT-0 | — |
 | ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |

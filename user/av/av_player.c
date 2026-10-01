@@ -663,6 +663,7 @@ int av_player_open_file(struct av_player *p, const char *path)
 	case AV_FMT_MP4: mime = "video/mp4"; break;
 	case AV_FMT_WAV: mime = "audio/wav"; break;
 	case AV_FMT_FLAC: mime = "audio/flac"; break;
+	case AV_FMT_MP3: mime = "audio/mpeg"; break;
 	default:
 		fclose(p->file);
 		p->file = NULL;

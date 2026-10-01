@@ -282,6 +282,30 @@ static void test_flac(const char *dir)
 	free(ref);
 }
 
+static void test_mp3(const char *dir)
+{
+	size_t n;
+	uint8_t *b = load(dir, "silence.mp3", &n);
+	struct dstats a, c;
+	struct av_demux *d;
+
+	if (b == NULL)
+		return;
+	demux_all(b, n, 0, &a, 1);
+	CHECK(a.apk == 51 && a.asamples >= 50 * 1152, "silence.mp3: 51 frames (the Info frame too), %lld samples decoded (minimp3)", a.asamples);
+	demux_all(b, n, 100, &c, 1);
+	CHECK(c.apk == a.apk && c.asamples == a.asamples, "silence.mp3: fed in pieces of <= 100 bytes: the same");
+	d = av_demux_new(AV_FMT_UNKNOWN);
+	av_demux_feed(d, 0, b, n);
+	{ struct av_packet p; if (av_demux_read(d, &p) == AV_OK) av_packet_free(&p); }
+	CHECK(!strcmp(av_demux_name(d), "mp3") && av_demux_duration(d) > 1300000 && av_demux_duration(d) < 1310000,
+		"silence.mp3: probed as mp3, duration %.3f s from the Info frame", av_demux_duration(d) / 1e6);
+	av_demux_free(d);
+	CHECK(av_type_supported("audio/mpeg", 0, NULL) == 1 && av_type_supported("audio/mpeg; codecs=\"mp3\"", 1, NULL) == 2,
+		"audio/mpeg: canPlayType maybe, MSE probably");
+	free(b);
+}
+
 static void test_wav(const char *dir)
 {
 	size_t n;
@@ -562,6 +586,7 @@ int main(int argc, char **argv)
 	test_seek(dir, "clip-moovend.mp4");
 	test_flac(dir);
 	test_wav(dir);
+	test_mp3(dir);
 	test_mse(dir, "mse.webm", "mse.json", "video/webm; codecs=\"i420, pcm\"");
 	test_mse(dir, "frag.mp4", "frag.json", "video/mp4; codecs=\"i420, pcm\"");
 	test_yuv();

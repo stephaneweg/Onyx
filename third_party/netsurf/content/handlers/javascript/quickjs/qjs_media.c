@@ -1158,6 +1158,18 @@ void qjs_media_setup(JSContext *ctx, JSValueConst natives)
 	if (!JS_IsRegisteredClass(rt, qm_class))
 		JS_NewClass(rt, qm_class, &qm_classdef);
 	JS_SetPropertyFunctionList(ctx, natives, qm_natives, sizeof(qm_natives) / sizeof(qm_natives[0]));
+#ifdef ONYX_HOST_SIM
+	/* (the PC bench: NS_MEDIASTUB=1 -- the codecs not built in decoded into grey frames and
+	 * silence: a site's media path runs on its real streams, user/av/av_stub.c) */
+	if (getenv("NS_MEDIASTUB") != NULL)
+		av_codec_enable_stubs();
+#endif
+	if (getenv("NS_MEDIADEBUG") != NULL) {
+		/* (the media's steps on the console: media.js' debug()) */
+		JSValue g = JS_GetGlobalObject(ctx);
+		JS_SetPropertyStr(ctx, g, "__onyxMediaDebug", JS_TRUE);
+		JS_FreeValue(ctx, g);
+	}
 	fn = qjs_eval_cached(ctx, qjs_media_js, sizeof(qjs_media_js) - 1, "media.js",
 			&qjs_media_bc, &qjs_media_bc_len);
 	if (JS_IsException(fn)) {

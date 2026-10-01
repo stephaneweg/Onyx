@@ -74,7 +74,7 @@ INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
 # made below). (NetSurf's Duktape backend and its generated bindings are removed.)
 QJS    := $(LIBROOT)/quickjs-ng-0.17.0
 JSQ    := $(NS)/content/handlers/javascript/quickjs
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c $(JSQ)/qjs_media.c
 # Onyx: WebAssembly on wasm3 (libm3.a, user/netsurf/Makefile)
 W3     := $(LIBROOT)/wasm3-0.9.2
 
@@ -98,8 +98,11 @@ FB := $(NS)/frontends/framebuffer
 include $(HERE)netsurf-src.mk
 FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 
+# Onyx: the media library (user/av: demuxers, decoders, the player) for <video> / <audio> / MSE
+AV := $(ZUSER)/av
+AV_SRC := $(wildcard $(AV)/*.c)
 # Onyx glue
-ONYX_SRC := $(HERE)onyx_fetch.c $(HERE)onyx_cache.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
+ONYX_SRC := $(AV_SRC) $(HERE)onyx_fetch.c $(HERE)onyx_cache.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
 # frontend toolbar/pointer/throbber bitmaps: res PNG -> image-NAME.c via a HOST convert_image
 # (needs host libpng); the name:respath pairs are in netsurf-src.mk.
@@ -192,6 +195,16 @@ $(QCRYPTO_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBEDTLS)/include
 # Onyx: the code cache (the scripts' bytecode on the card; SHA-256 from libmbedcrypto)
 QCC_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_codecache.c))
 $(QCC_OBJ_NS): INC += -I$(QJS) -I$(MBEDTLS)/include
+# Onyx: <video>, <audio>, MSE -- media.js as a C string for qjs_media.c (on user/av)
+$(OUT)/qjsgen/qjs_media_js.h: $(JSQ)/media.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from media.js by netsurf-app.mk */'; echo 'static const char qjs_media_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+QMEDIA_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_media.c))
+$(QMEDIA_OBJ_NS): $(OUT)/qjsgen/qjs_media_js.h
+$(QMEDIA_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(AV)
+# the media library: C11-ish code (its own includes)
+$(foreach s,$(AV_SRC),$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(s)))): CF += -std=gnu11 -I$(AV)
 # Onyx: the frames' windows, postMessage between them, MessagePort across realms
 QFR_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_frames.c))
 $(QFR_OBJ_NS): INC += -I$(QJS)

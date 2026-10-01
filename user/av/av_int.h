@@ -73,7 +73,9 @@ static inline uint32_t av_rl16(const uint8_t *p) { return (uint32_t) p[1] << 8 |
 static inline uint32_t av_rl32(const uint8_t *p) { return (uint32_t) p[3] << 24 | (uint32_t) p[2] << 16 | (uint32_t) p[1] << 8 | p[0]; }
 
 /* the containers */
-extern const struct av_fmt_ops av_mkv_ops, av_mp4_ops, av_wav_ops, av_flac_ops;
+extern const struct av_fmt_ops av_mkv_ops, av_mp4_ops, av_wav_ops, av_flac_ops, av_mp3_ops;
+/* an MPEG audio stream's start (av_mp3.c) */
+int av__mp3_probe(const uint8_t *p, size_t n);
 
 /* a codec string ("vp09.00.10.08") for a track from its setup data, when the container gives it */
 void av__codec_string(struct av_track *t);
@@ -93,7 +95,7 @@ struct av_codec_impl {
 	int (*profile_ok)(const char *s);
 };
 extern const struct av_codec_impl av_pcm_codec, av_alaw_codec, av_ulaw_codec, av_i420_codec,
-	av_flac_codec;
+	av_flac_codec, av_mp3_codec;
 #ifdef AV_WITH_VPX
 extern const struct av_codec_impl av_vp8_codec, av_vp9_codec;
 #endif
@@ -103,12 +105,12 @@ extern const struct av_codec_impl av_opus_codec;
 #ifdef AV_WITH_DAV1D
 extern const struct av_codec_impl av_av1_codec;
 #endif
-#ifdef AV_WITH_MINIMP3
-extern const struct av_codec_impl av_mp3_codec;
-#endif
 #ifdef AV_WITH_VORBIS
 extern const struct av_codec_impl av_vorbis_codec;
 #endif
+
+/* the tests' stand-in decoders (av_stub.c): NULL unless av_codec_enable_stubs () */
+const struct av_codec_impl *av__stub_of(int codec);
 
 /* a FLAC frame's length in a buffer of n bytes starting at a frame header (CRC-checked) -> its
  * size, 0 if more bytes are needed (and more are coming: !final), -1 not a frame there */

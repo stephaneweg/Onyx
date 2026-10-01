@@ -1641,6 +1641,56 @@ tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tes
 `pip install mutagen`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
 `python3 tools/icons/media_icon.py`.
 
+### The media library (`user/av`): video and audio for Jet Browser and the Media Player
+
+`user/av` plays media files and streams: containers, decoders, conversions, a store of coded frames
+(Media Source Extensions') and a player with its threads, sound and clock. Jet Browser's `<video>`,
+`<audio>` and MSE are built on it (docs/06 §44); the Media Player's videos are meant to be. Plain C
+(`av.h` is the reference), threads and locks through `av_os.h` (the kapi; pthreads with `-DAV_POSIX`
+for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I kernel/include`
+(`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given.
+
+| File | What |
+|---|---|
+| `av.h` | The API (below). |
+| `av_demux.c`, `av_mkv.c`, `av_mp4.c`, `av_riff.c`, `av_flac.c`, `av_mp3.c` | The containers: WebM / Matroska, MP4 / MOV / fragmented MP4, WAV, FLAC, MPEG audio. |
+| `av_codec.c`, `av_flac.c`, `av_mp3.c` | The codecs' table, PCM / A-law / mu-law / uncompressed I420, FLAC (built in), MP3 (minimp3); `av_type_supported` (canPlayType, isTypeSupported, MediaCapabilities). |
+| `av_vpx.c`, `av_dav1d.c`, `av_opus.c` | VP8 / VP9, AV1, Opus on libvpx / dav1d / libopus -- **not vendored yet**: with `-DAV_WITH_VPX` / `AV_WITH_DAV1D` / `AV_WITH_OPUS` and the library. |
+| `av_stub.c` | The tests' stand-ins (grey frames, silence) for the codecs not built in: `av_codec_enable_stubs ()`. |
+| `av_yuv.c`, `av_resample.c` | YUV 4:2:0 to RGBA / BGRA (NEON on AArch64), the resampler (any rate / channels to s16 stereo). |
+| `av_store.c` | The coded frames by source and track (MSE's semantics), buffered ranges, removal, quota. |
+| `av_player.c` | The player: audio and video threads, the kapi's sound, the clock, the frame due now. |
+
+**Playing a file** (the Media Player's case):
+
+```c
+#include "av.h"
+struct av_player *p = av_player_new (AV_PIX_BGRA, NULL);   /* NULL: the kapi's sound */
+if (av_player_open_file (p, "SD:/Videos/film.webm") != AV_OK) { /* not a format we read */ }
+av_player_play (p);
+for (;;) {                                         /* the window's loop, every ~10-20 ms */
+	struct av_player_status st; struct av_video_out v;
+	if (av_player_poll (p, &st, &v))               /* a new frame is due: v.pixels (v.width x v.height,
+		blit (v.pixels, v.width, v.height, v.stride);   v.stride bytes a row) until the next poll */
+	/* st.time, st.duration, st.paused, st.ended, st.waiting, st.ready (AV_HAVE_*), st.width / height
+	 * (the display size), st.error (AV_EUNSUP: a codec not built in), st.decoded / st.dropped */
+}
+av_player_seek (p, 90 * AV_US);  av_player_pause (p);  av_player_set_volume (p, 0.8f, 0);
+av_player_set_rate (p, 1.5);  av_player_free (p);
+```
+
+**Feeding it yourself** (a network stream, Jet's `<video src>`): `av_store_add_source (av_player_store (p),
+"video/webm", 0)` then `av_store_feed (store, src, offset, bytes, n)` from where `av_store_want (store,
+src)` says, `av_store_feed_end` at the end. **MSE**: `av_store_append` per SourceBuffer (`av_store_remove`,
+`av_store_set_offset`, `av_store_buffered`, `av_store_reset_parser`, `av_store_change_type`,
+`av_store_set_eos`). **Lower layers alone**: `av_demux_new` / `av_demux_feed` / `av_demux_read` (packets with
+their track, pts / dts in microseconds, key flag), `av_decoder_new (track)` / `av_decoder_send` /
+`av_decoder_receive` (frames: I420 planes or float PCM), `av_yuv_to_rgb`, `av_resampler_new` / `av_resample`.
+
+What decodes today: FLAC, MP3, PCM (WAV), the tests' I420 -- `av_codec_list ()` says. A file whose codec is
+not there plays nothing: `st.error == AV_EUNSUP` (Jet: MediaError 4). **Tests**: `sh tools/tests/av/run.sh`
+(the library alone, PC and AArch64 under qemu), `sh tools/tests/netsurf/mediatest.sh` (in Jet Browser).
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app
