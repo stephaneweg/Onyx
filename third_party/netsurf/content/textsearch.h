@@ -98,4 +98,27 @@ const char *content_textsearch_find_pattern(const char *string, int s_len, const
  */
 nserror content_textsearch_add_match(struct textsearch_context *context, unsigned start_idx, unsigned end_idx, struct box *start_ptr, struct box *end_ptr);
 
+/**
+ * Onyx (docs/06 §40): a match within a painted text -- byte offsets in it; the current
+ * match told apart (Chrome's orange, the others yellow).
+ */
+struct content_textsearch_range {
+	unsigned start, end;
+	int current;
+};
+
+/**
+ * Onyx: the matches overlapping [start_offset, end_offset) of the content's text (up to
+ * max), their offsets relative to start_offset, in out. Returns how many.
+ */
+int content_textsearch_onyx_ranges(struct textsearch_context *textsearch,
+		unsigned start_offset, unsigned end_offset,
+		struct content_textsearch_range *out, int max);
+
+/**
+ * Onyx: the search's state -- the current match (0-based, -1 none) and the count. false:
+ * no search on that content.
+ */
+bool content_textsearch_onyx_state(struct hlcache_handle *h, int *index, int *count);
+
 #endif

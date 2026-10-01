@@ -20,10 +20,30 @@
 /**
  * \file
  * Free text search
+ *
+ * Onyx (Jet Browser, docs/06 §40): find in page as in Chrome.
+ *
+ * NetSurf kept its matches in a list, each with a selection object of its own (made by a walk
+ * of the whole box tree: selection_init, then selection_set_position's redraw: another walk)
+ * and looked every match up for each text box painted -- O(boxes x matches) a search and a
+ * paint. The matches are now an array in document order (the box walk finds them so); a
+ * painted text's matches are found by a binary search (content_textsearch_onyx_ranges: all
+ * of them, the current one told apart -- Chrome's orange, the others yellow); a new search
+ * repaints the matches' boxes (or the whole content past HL_REDRAW_MAX of them), a step the
+ * two current ones.
+ *
+ * The search is literal ('#' and '*' are no longer NetSurf's wildcards), case-insensitive by
+ * default -- then without the accents too ("e" finds "é", as Chrome does), the typographic
+ * quotes as ' and " -- and the no-break space is a space; a step wraps around at the ends.
+ * A layout made after the search (the page changed, the window resized) leaves its boxes and
+ * offsets stale: the matches are found again at the next paint, step or state query
+ * (refresh_matches), the current one kept where it was, the frontend told
+ * (CONTENT_TEXTSEARCH_MATCH).
  */
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,77 +58,31 @@
 #include "content/hlcache.h"
 #include "content/textsearch.h"
 
+#define HL_REDRAW_MAX	64	/* matches repainted one by one; more: the whole content */
+
 /**
- * search match
+ * a search match
  */
-struct list_entry {
-	/**
-	 * previous match
-	 */
-	struct list_entry *prev;
-
-	/**
-	 * next match
-	 */
-	struct list_entry *next;
-
-	/**
-	 * start position of match
-	 */
-	unsigned start_idx;
-
-	/**
-	 * end of match
-	 */
+struct ts_match {
+	unsigned start_idx;	/**< its text offsets [start, end) */
 	unsigned end_idx;
-
-	/**
-	 * content opaque start pointer
-	 */
-	struct box *start_box;
-
-	/**
-	 * content opaque end pointer
-	 */
+	struct box *start_box;	/**< content opaque pointers (html: the boxes) */
 	struct box *end_box;
-
-	/**
-	 * content specific selection object
-	 */
-	struct selection *sel;
 };
 
 /**
  * The context for a free text search
  */
 struct textsearch_context {
-
-	/**
-	 * content search was performed upon
-	 */
-	struct content *c;
-
-	/**
-	 * opaque pointer passed to constructor.
-	 */
-	void *gui_p;
-
-	/**
-	 * List of matches
-	 */
-	struct list_entry *found;
-
-	/**
-	 * current selected match
-	 */
-	struct list_entry *current; /* first for select all */
-
-	/**
-	 * query string search results are for
-	 */
-	char *string;
+	struct content *c;	/**< content search was performed upon */
+	void *gui_p;		/**< opaque pointer passed to constructor */
+	struct ts_match *m;	/**< the matches, in document order */
+	unsigned n, cap;
+	int current;		/**< the current match, -1 none */
+	char *string;		/**< query string search results are for */
 	bool prev_case_sens;
 	bool newsearch;
+	unsigned gen;		/**< the content's layout_gen when found */
 };
 
 
@@ -130,65 +104,113 @@ textsearch_broadcast(struct textsearch_context *textsearch,
 }
 
 
-/**
- * Release the memory used by the list of matches,
- * deleting selection objects too
- */
+/** A match's area repainted (its boxes fresh: found since the last layout) */
+static void redraw_match(struct textsearch_context *ctx, int i)
+{
+	struct content *c = ctx->c;
+	struct rect r;
+
+	if (i < 0 || (unsigned) i >= ctx->n ||
+	    ctx->gen != c->textsearch.layout_gen)
+		return;
+	if (c->handler->textsearch_bounds(c, ctx->m[i].start_idx,
+			ctx->m[i].end_idx, ctx->m[i].start_box,
+			ctx->m[i].end_box, &r) == NSERROR_OK &&
+	    r.x1 > r.x0 && r.y1 > r.y0)
+		content__request_redraw(c, r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+}
+
+/** All the matches' areas repainted (their highlights appear or go) */
+static void redraw_matches(struct textsearch_context *ctx)
+{
+	unsigned i;
+
+	if (ctx->n == 0)
+		return;
+	if (ctx->n > HL_REDRAW_MAX || ctx->gen != ctx->c->textsearch.layout_gen) {
+		content__request_redraw(ctx->c, 0, 0, ctx->c->width,
+				ctx->c->height);
+		return;
+	}
+	for (i = 0; i < ctx->n; i++)
+		redraw_match(ctx, (int) i);
+}
+
+
+/** Forget the matches (no repaint) */
 static void free_matches(struct textsearch_context *textsearch)
 {
-	struct list_entry *cur;
-	struct list_entry *nxt;
+	textsearch->n = 0;
+	textsearch->current = -1;
+}
 
-	cur = textsearch->found->next;
 
-	/*
-	 * empty the list before clearing and deleting the selections
-	 * because the the clearing may update the toolkit immediately,
-	 * causing nested accesses to the list
-	 */
+/** The first match that ends after offset (a binary search): ctx->n when none */
+static unsigned first_ending_after(struct textsearch_context *ctx, unsigned offset)
+{
+	unsigned lo = 0, hi = ctx->n;
 
-	textsearch->found->prev = NULL;
-	textsearch->found->next = NULL;
-
-	for (; cur; cur = nxt) {
-		nxt = cur->next;
-		if (cur->sel) {
-			selection_destroy(cur->sel);
-		}
-		free(cur);
+	while (lo < hi) {
+		unsigned mid = lo + (hi - lo) / 2;
+		if (ctx->m[mid].end_idx <= offset)
+			lo = mid + 1;
+		else
+			hi = mid;
 	}
+	return lo;
+}
+
+
+/** The matches found (the content's handler), no repaint */
+static nserror find_all(struct textsearch_context *ctx, const char *string,
+		int string_len, bool case_sensitive)
+{
+	nserror res;
+
+	free_matches(ctx);
+	ctx->gen = ctx->c->textsearch.layout_gen;
+	textsearch_broadcast(ctx, CONTENT_TEXTSEARCH_FIND, true, NULL);
+	res = ctx->c->handler->textsearch_find(ctx->c, ctx, string, string_len,
+			case_sensitive);
+	textsearch_broadcast(ctx, CONTENT_TEXTSEARCH_FIND, false, NULL);
+	if (res != NSERROR_OK)
+		free_matches(ctx);
+	return res;
+}
+
+
+/** The match state told to the frontend */
+static void broadcast_state(struct textsearch_context *ctx)
+{
+	textsearch_broadcast(ctx, CONTENT_TEXTSEARCH_MATCH, ctx->current >= 0, NULL);
+	textsearch_broadcast(ctx, CONTENT_TEXTSEARCH_BACK, ctx->n > 1, NULL);
+	textsearch_broadcast(ctx, CONTENT_TEXTSEARCH_FORWARD, ctx->n > 1, NULL);
 }
 
 
 /**
- * Specifies whether all matches or just the current match should
- * be highlighted in the search text.
+ * A layout came since the search: the matches found again (their boxes, their offsets), the
+ * current one the first at or after where it was. No repaint (called while painting, or
+ * before a step that repaints).
  */
-static void search_show_all(bool all, struct textsearch_context *context)
+static void refresh_matches(struct textsearch_context *ctx)
 {
-	struct list_entry *a;
+	unsigned at = 0;
+	bool had = ctx->current >= 0;
 
-	for (a = context->found->next; a; a = a->next) {
-		bool add = true;
-		if (!all && a != context->current) {
-			add = false;
-			if (a->sel) {
-				selection_destroy(a->sel);
-				a->sel = NULL;
-			}
-		}
-
-		if (add && !a->sel) {
-
-			a->sel = selection_create(context->c);
-			if (a->sel != NULL) {
-				selection_init(a->sel);
-				selection_set_position(a->sel,
-						       a->start_idx,
-						       a->end_idx);
-			}
-		}
+	if (ctx->string == NULL || ctx->newsearch ||
+	    ctx->gen == ctx->c->textsearch.layout_gen)
+		return;
+	if (had)
+		at = ctx->m[ctx->current].start_idx;
+	if (find_all(ctx, ctx->string, strlen(ctx->string),
+			ctx->prev_case_sens) != NSERROR_OK)
+		return;
+	if (ctx->n > 0) {
+		unsigned i = first_ending_after(ctx, at);
+		ctx->current = had ? (int) (i < ctx->n ? i : ctx->n - 1) : 0;
 	}
+	broadcast_state(ctx);
 }
 
 
@@ -208,13 +230,12 @@ search_text(struct textsearch_context *context,
 {
 	struct rect bounds;
 	union content_msg_data msg_data;
-	bool case_sensitive, forwards, showall;
+	bool case_sensitive, forwards;
 	nserror res = NSERROR_OK;
 
 	case_sensitive = ((flags & SEARCH_FLAG_CASE_SENSITIVE) != 0) ?
 			true : false;
-	forwards = ((flags & SEARCH_FLAG_FORWARDS) != 0) ? true : false;
-	showall = ((flags & SEARCH_FLAG_SHOWALL) != 0) ? true : false;
+	forwards = ((flags & SEARCH_FLAG_BACKWARDS) == 0) ? true : false;
 
 	if (context->c == NULL) {
 		return res;
@@ -223,91 +244,70 @@ search_text(struct textsearch_context *context,
 	/* check if we need to start a new search or continue an old one */
 	if ((context->newsearch) ||
 	    (context->prev_case_sens != case_sensitive)) {
+		/* the old matches' highlights go */
+		redraw_matches(context);
 
 		if (context->string != NULL) {
 			free(context->string);
 		}
-
-		context->current = NULL;
-		free_matches(context);
-
 		context->string = malloc(string_len + 1);
 		if (context->string != NULL) {
 			memcpy(context->string, string, string_len);
 			context->string[string_len] = '\0';
 		}
 
-		/* indicate find operation starting */
-		textsearch_broadcast(context, CONTENT_TEXTSEARCH_FIND, true, NULL);
-
-
-		/* call content find handler */
-		res = context->c->handler->textsearch_find(context->c,
-							   context,
-							   string,
-							   string_len,
-							   case_sensitive);
-
-		/* indicate find operation finished */
-		textsearch_broadcast(context, CONTENT_TEXTSEARCH_FIND, false, NULL);
-
+		res = find_all(context, string, string_len, case_sensitive);
 		if (res != NSERROR_OK) {
-			free_matches(context);
 			return res;
 		}
 
 		context->prev_case_sens = case_sensitive;
 
 		/* new search, beginning at the top of the page */
-		context->current = context->found->next;
+		context->current = context->n > 0 ? 0 : -1;
 		context->newsearch = false;
 
-	} else if (context->current != NULL) {
-		/* continued search in the direction specified */
-		if (forwards) {
-			if (context->current->next)
-				context->current = context->current->next;
-		} else {
-			if (context->current->prev)
-				context->current = context->current->prev;
+		/* the new matches' highlights */
+		redraw_matches(context);
+
+	} else {
+		/* continued search in the direction given: around at the ends */
+		int old = context->current;
+
+		if (context->gen != context->c->textsearch.layout_gen) {
+			redraw_matches(context);	/* (stale: the whole content) */
+			refresh_matches(context);
+			old = -1;
+		}
+		if (context->n > 0) {
+			if (context->current < 0)
+				context->current = 0;
+			else if (forwards)
+				context->current = (context->current + 1) %
+						(int) context->n;
+			else
+				context->current = (context->current +
+						(int) context->n - 1) %
+						(int) context->n;
+			redraw_match(context, old);
+			redraw_match(context, context->current);
 		}
 	}
 
-	/* update match state */
-	textsearch_broadcast(context,
-			     CONTENT_TEXTSEARCH_MATCH,
-			     (context->current != NULL),
-			     NULL);
+	broadcast_state(context);
 
-	search_show_all(showall, context);
-
-	/* update back state */
-	textsearch_broadcast(context,
-			     CONTENT_TEXTSEARCH_BACK,
-			     ((context->current != NULL) &&
-			      (context->current->prev != NULL)),
-			     NULL);
-
-	/* update forward state */
-	textsearch_broadcast(context,
-			     CONTENT_TEXTSEARCH_FORWARD,
-			     ((context->current != NULL) &&
-			      (context->current->next != NULL)),
-			     NULL);
-
-
-	if (context->current == NULL) {
+	if (context->current < 0) {
 		/* no current match */
 		return res;
 	}
 
 	/* call content match bounds handler */
 	res = context->c->handler->textsearch_bounds(context->c,
-					context->current->start_idx,
-					context->current->end_idx,
-					context->current->start_box,
-					context->current->end_box,
-					&bounds);
+			context->m[context->current].start_idx,
+			context->m[context->current].end_idx,
+			context->m[context->current].start_box,
+			context->m[context->current].end_box,
+			&bounds);
 	if (res == NSERROR_OK) {
 		msg_data.scroll.area = true;
 		msg_data.scroll.x0 = bounds.x0;
@@ -336,7 +336,6 @@ content_textsearch_step(struct textsearch_context *textsearch,
 			const char *string)
 {
 	int string_len;
-	int i = 0;
 	nserror res = NSERROR_OK;
 
 	assert(textsearch != NULL);
@@ -348,43 +347,12 @@ content_textsearch_step(struct textsearch_context *textsearch,
 			     string);
 
 	string_len = strlen(string);
-	for (i = 0; i < string_len; i++) {
-		if (string[i] != '#' && string[i] != '*')
-			break;
-	}
-
-	if (i < string_len) {
+	if (string_len > 0) {
 		res = search_text(textsearch, string, string_len, flags);
 	} else {
-		union content_msg_data msg_data;
-
+		redraw_matches(textsearch);
 		free_matches(textsearch);
-
-		/* update match state */
-		textsearch_broadcast(textsearch,
-				     CONTENT_TEXTSEARCH_MATCH,
-				     true,
-				     NULL);
-
-		/* update back state */
-		textsearch_broadcast(textsearch,
-				     CONTENT_TEXTSEARCH_BACK,
-				     false,
-				     NULL);
-
-		/* update forward state */
-		textsearch_broadcast(textsearch,
-				     CONTENT_TEXTSEARCH_FORWARD,
-				     false,
-				     NULL);
-
-		/* clear scroll */
-		msg_data.scroll.area = false;
-		msg_data.scroll.x0 = 0;
-		msg_data.scroll.y0 = 0;
-		content_broadcast(textsearch->c,
-				  CONTENT_MSG_SCROLL,
-				  &msg_data);
+		broadcast_state(textsearch);
 	}
 
 	return res;
@@ -402,6 +370,8 @@ static nserror content_textsearch__clear(struct content *c)
 	c->textsearch.string = NULL;
 
 	if (c->textsearch.context != NULL) {
+		/* (the highlights go) */
+		redraw_matches(c->textsearch.context);
 		content_textsearch_destroy(c->textsearch.context);
 		c->textsearch.context = NULL;
 	}
@@ -413,8 +383,8 @@ static nserror content_textsearch__clear(struct content *c)
  * create a search_context
  *
  * \param c The content the search_context is connected to
- * \param context A context pointer passed to the provider routines.
- * \param search_out A pointer to recive the new text search context
+ * \param gui_data A context pointer passed to the provider routines.
+ * \param textsearch_out A pointer to recive the new text search context
  * \return NSERROR_OK on success and \a search_out updated else error code
  */
 static nserror
@@ -423,8 +393,6 @@ content_textsearch_create(struct content *c,
 			  struct textsearch_context **textsearch_out)
 {
 	struct textsearch_context *context;
-	struct list_entry *search_head;
-	content_type type;
 
 	if ((c->handler->textsearch_find == NULL) ||
 	    (c->handler->textsearch_bounds == NULL)) {
@@ -435,38 +403,74 @@ content_textsearch_create(struct content *c,
 		return NSERROR_NOT_IMPLEMENTED;
 	}
 
-	type = c->handler->type();
-
-	context = malloc(sizeof(struct textsearch_context));
+	context = calloc(1, sizeof(struct textsearch_context));
 	if (context == NULL) {
 		return NSERROR_NOMEM;
 	}
 
-	search_head = malloc(sizeof(struct list_entry));
-	if (search_head == NULL) {
-		free(context);
-		return NSERROR_NOMEM;
-	}
-
-	search_head->start_idx = 0;
-	search_head->end_idx = 0;
-	search_head->start_box = NULL;
-	search_head->end_box = NULL;
-	search_head->sel = NULL;
-	search_head->prev = NULL;
-	search_head->next = NULL;
-
-	context->found = search_head;
-	context->current = NULL;
-	context->string = NULL;
-	context->prev_case_sens = false;
+	context->current = -1;
 	context->newsearch = true;
 	context->c = c;
 	context->gui_p = gui_data;
+	context->gen = c->textsearch.layout_gen;
 
 	*textsearch_out = context;
 
 	return NSERROR_OK;
+}
+
+
+/*
+ * Onyx: the character of UTF-8 text at *sp (before es), folded for the search, *sp moved past
+ * it. The no-break space is a space; with fold (case-insensitive): ASCII and Latin-1 letters
+ * in lower case without their accents (é è ê ë É -> e, ç -> c, ñ -> n, ÿ -> y), œ Œ as one,
+ * the typographic quotes as ' and ".
+ */
+static uint32_t fold_next(const char **sp, const char *es, bool fold)
+{
+	const unsigned char *s = (const unsigned char *) *sp;
+	uint32_t u = *s;
+	int k = u >= 0xF0 ? 3 : u >= 0xE0 ? 2 : u >= 0xC0 ? 1 : 0;
+
+	if (k > 0 && (const char *) s + k < es) {
+		uint32_t v = u & (0x3F >> k);
+		int i;
+		for (i = 1; i <= k; i++) {
+			if ((s[i] & 0xC0) != 0x80)
+				break;
+			v = v << 6 | (s[i] & 0x3F);
+		}
+		if (i > k) {
+			u = v;
+			s += k;
+		}
+	}
+	*sp = (const char *) (s + 1);
+	if (u == 0xA0)
+		return ' ';
+	if (!fold)
+		return u;
+	if (u < 0x80)
+		return (u >= 'A' && u <= 'Z') ? u + 32 : u;
+	if (u >= 0xC0 && u <= 0xFF) {
+		/* Latin-1's letters: their base letter (0: the letter itself, lower case) */
+		static const char base[64] =
+			"aaaaaa\0ceeeeiiii" "dnooooo\0ouuuuy\0\0"
+			"aaaaaa\0ceeeeiiii" "dnooooo\0ouuuuy\0y";
+		char b = base[u - 0xC0];
+		if (b != '\0')
+			return (uint32_t) (unsigned char) b;
+		if (u >= 0xC0 && u <= 0xDE && u != 0xD7)
+			return u + 0x20;	/* (Æ Ø Þ: æ ø þ) */
+		return u;
+	}
+	if (u == 0x152)
+		return 0x153;			/* (Œ: œ) */
+	if (u == 0x2018 || u == 0x2019)
+		return '\'';
+	if (u == 0x201C || u == 0x201D)
+		return '"';
+	return u;
 }
 
 
@@ -479,105 +483,36 @@ content_textsearch_find_pattern(const char *string,
 				bool case_sens,
 				unsigned int *m_len)
 {
-	struct { const char *ss, *s, *p; bool first; } context[16];
-	const char *ep = pattern + p_len;
-	const char *es = string  + s_len;
-	const char *p = pattern - 1;  /* a virtual '*' before the pattern */
-	const char *ss = string;
-	const char *s = string;
-	bool first = true;
-	int top = 0;
+	/* Onyx: a literal search (see the file's comment); the pattern folded once */
+	uint32_t pat[256];
+	int np = 0;
+	const char *p = pattern, *ep = pattern + p_len;
+	const char *s = string, *es = string + s_len;
+	bool fold = !case_sens;
 
-	while (p < ep) {
-		bool matches;
-		if (p < pattern || *p == '*') {
-			char ch;
+	while (p < ep && np < (int) NOF_ELEMENTS(pat))
+		pat[np++] = fold_next(&p, ep, fold);
+	if (np == 0)
+		return NULL;
 
-			/* skip any further asterisks; one is the same as many
-			*/
-			do p++; while (p < ep && *p == '*');
+	while (s < es) {
+		const char *t = s;
+		const char *next;
+		uint32_t ch = fold_next(&t, es, fold);
 
-			/* if we're at the end of the pattern, yes, it matches
-			*/
-			if (p >= ep) break;
-
-			/* anything matches a # so continue matching from
-			   here, and stack a context that will try to match
-			   the wildcard against the next character */
-
-			ch = *p;
-			if (ch != '#') {
-				/* scan forwards until we find a match for
-				   this char */
-				if (!case_sens) ch = ascii_to_upper(ch);
-				while (s < es) {
-					if (case_sens) {
-						if (*s == ch) break;
-					} else if (ascii_to_upper(*s) == ch)
-						break;
-					s++;
-				}
+		next = t;
+		if (ch == pat[0]) {
+			int i = 1;
+			while (i < np && t < es && fold_next(&t, es, fold) == pat[i])
+				i++;
+			if (i == np) {
+				*m_len = t - s;
+				return s;
 			}
-
-			if (s < es) {
-				/* remember where we are in case the match
-				   fails; we may then resume */
-				if (top < (int)NOF_ELEMENTS(context)) {
-					context[top].ss = ss;
-					context[top].s  = s + 1;
-					context[top].p  = p - 1;
-					/* ptr to last asterisk */
-					context[top].first = first;
-					top++;
-				}
-
-				if (first) {
-					ss = s;
-					/* remember first non-'*' char */
-					first = false;
-				}
-
-				matches = true;
-			} else {
-				matches = false;
-			}
-
-		} else if (s < es) {
-			char ch = *p;
-			if (ch == '#')
-				matches = true;
-			else {
-				if (case_sens)
-					matches = (*s == ch);
-				else
-					matches = (ascii_to_upper(*s) == ascii_to_upper(ch));
-			}
-			if (matches && first) {
-				ss = s;  /* remember first non-'*' char */
-				first = false;
-			}
-		} else {
-			matches = false;
 		}
-
-		if (matches) {
-			p++; s++;
-		} else {
-			/* doesn't match,
-			 * resume with stacked context if we have one */
-			if (--top < 0)
-				return NULL;  /* no match, give up */
-
-			ss = context[top].ss;
-			s  = context[top].s;
-			p  = context[top].p;
-			first = context[top].first;
-		}
+		s = next;
 	}
-
-	/* end of pattern reached */
-	*m_len = max(s - ss, 1);
-	return ss;
+	return NULL;
 }
 
 
@@ -589,32 +524,60 @@ content_textsearch_add_match(struct textsearch_context *context,
 			     struct box *start_box,
 			     struct box *end_box)
 {
-	struct list_entry *entry;
+	struct ts_match t;
+	unsigned i;
 
-	/* found string in box => add to list */
-	entry = calloc(1, sizeof(*entry));
-	if (entry == NULL) {
-		return NSERROR_NOMEM;
+	if (context->n == context->cap) {
+		unsigned cap = context->cap ? context->cap * 2 : 64;
+		struct ts_match *m = realloc(context->m, cap * sizeof(*m));
+		if (m == NULL) {
+			return NSERROR_NOMEM;
+		}
+		context->m = m;
+		context->cap = cap;
 	}
 
-	entry->start_idx = start_idx;
-	entry->end_idx = end_idx;
-	entry->start_box = start_box;
-	entry->end_box = end_box;
-	entry->sel = NULL;
-
-	entry->next = NULL;
-	entry->prev = context->found->prev;
-
-	if (context->found->prev == NULL) {
-		context->found->next = entry;
-	} else {
-		context->found->prev->next = entry;
+	t.start_idx = start_idx;
+	t.end_idx = end_idx;
+	t.start_box = start_box;
+	t.end_box = end_box;
+	/* (in document order: the walks find them so -- one out of order kept sorted) */
+	i = context->n;
+	while (i > 0 && context->m[i - 1].start_idx > start_idx) {
+		context->m[i] = context->m[i - 1];
+		i--;
 	}
-
-	context->found->prev = entry;
+	context->m[i] = t;
+	context->n++;
 
 	return NSERROR_OK;
+}
+
+
+/* exported interface, documented in content/textsearch.h */
+int
+content_textsearch_onyx_ranges(struct textsearch_context *textsearch,
+			       unsigned start_offset,
+			       unsigned end_offset,
+			       struct content_textsearch_range *out,
+			       int max)
+{
+	unsigned i;
+	int n = 0;
+
+	refresh_matches(textsearch);	/* (a layout since: found again) */
+	for (i = first_ending_after(textsearch, start_offset);
+	     i < textsearch->n && n < max; i++) {
+		const struct ts_match *m = &textsearch->m[i];
+		if (m->start_idx >= end_offset)
+			break;
+		out[n].start = (m->start_idx > start_offset) ?
+				m->start_idx - start_offset : 0;
+		out[n].end = min(end_offset, m->end_idx) - start_offset;
+		out[n].current = (int) i == textsearch->current;
+		n++;
+	}
+	return n;
 }
 
 
@@ -626,20 +589,14 @@ content_textsearch_ishighlighted(struct textsearch_context *textsearch,
 				 unsigned *start_idx,
 				 unsigned *end_idx)
 {
-	struct list_entry *cur;
+	struct content_textsearch_range r;
 
-	for (cur = textsearch->found->next; cur != NULL; cur = cur->next) {
-		if (cur->sel &&
-		    selection_highlighted(cur->sel,
-					  start_offset,
-					  end_offset,
-					  start_idx,
-					  end_idx)) {
-			return true;
-		}
-	}
-
-	return false;
+	if (content_textsearch_onyx_ranges(textsearch, start_offset,
+			end_offset, &r, 1) == 0)
+		return false;
+	*start_idx = r.start;
+	*end_idx = r.end;
+	return true;
 }
 
 
@@ -670,7 +627,7 @@ nserror content_textsearch_destroy(struct textsearch_context *textsearch)
 			     true,
 			     NULL);
 
-	free_matches(textsearch);
+	free(textsearch->m);
 	free(textsearch);
 
 	return NSERROR_OK;
@@ -705,6 +662,8 @@ content_textsearch(struct hlcache_handle *h,
 		}
 
 		if (c->textsearch.context != NULL) {
+			/* (the old matches' highlights go) */
+			redraw_matches(c->textsearch.context);
 			content_textsearch_destroy(c->textsearch.context);
 			c->textsearch.context = NULL;
 		}
@@ -737,4 +696,22 @@ nserror content_textsearch_clear(struct hlcache_handle *h)
 	assert(c != 0);
 
 	return(content_textsearch__clear(c));
+}
+
+
+/* exported interface, documented in content/textsearch.h */
+bool content_textsearch_onyx_state(struct hlcache_handle *h, int *index, int *count)
+{
+	struct content *c = h != NULL ? hlcache_handle_get_content(h) : NULL;
+	struct textsearch_context *ctx;
+
+	*index = -1;
+	*count = 0;
+	if (c == NULL || c->textsearch.context == NULL)
+		return false;
+	ctx = c->textsearch.context;
+	refresh_matches(ctx);
+	*index = ctx->current;
+	*count = (int) ctx->n;
+	return true;
 }
