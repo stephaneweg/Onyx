@@ -131,23 +131,28 @@ void IpcOnProcessGone (unsigned nPid)
 	}
 }
 
-void IpcNotify (const char *pTitle, const char *pText)
+boolean IpcPost (const char *pService, int nType, const void *pData, unsigned nLen)
 {
+	if (pService == 0 || nLen > MAILBOX_MSG_MAX) return FALSE;
 	for (unsigned i = 0; i < IPC_MAX_SERVICES; i++)
 	{
-		if (s_Services[i].pid == 0 || !NameEq (s_Services[i].name, "notify")) continue;
+		if (s_Services[i].pid == 0 || !NameEq (s_Services[i].name, pService)) continue;
 		CAddressSpace *pAS = FindASByPid (s_Services[i].pid);
 		CMailbox *pMb = pAS != 0 ? pAS->GetOrCreateMailbox () : 0;
-		if (pMb == 0) return;
-		u8 Msg[MAILBOX_MSG_MAX];
-		unsigned n = 0;
-		for (unsigned k = 0; pTitle && pTitle[k] && n < 80; k++) Msg[n++] = (u8) pTitle[k];
-		Msg[n++] = 0;
-		for (unsigned k = 0; pText && pText[k] && n < MAILBOX_MSG_MAX - 1; k++) Msg[n++] = (u8) pText[k];
-		Msg[n++] = 0;
-		pMb->Push (0, 1, Msg, n);		// NOTIFY_MSG_SHOW
-		return;
+		return pMb != 0 && pMb->Push (0, nType, pData, nLen);
 	}
+	return FALSE;
+}
+
+void IpcNotify (const char *pTitle, const char *pText)
+{
+	u8 Msg[MAILBOX_MSG_MAX];
+	unsigned n = 0;
+	for (unsigned k = 0; pTitle && pTitle[k] && n < 80; k++) Msg[n++] = (u8) pTitle[k];
+	Msg[n++] = 0;
+	for (unsigned k = 0; pText && pText[k] && n < MAILBOX_MSG_MAX - 1; k++) Msg[n++] = (u8) pText[k];
+	Msg[n++] = 0;
+	IpcPost ("notify", 1, Msg, n);		// NOTIFY_MSG_SHOW
 }
 
 // ---- kapis -----------------------------------------------------------------

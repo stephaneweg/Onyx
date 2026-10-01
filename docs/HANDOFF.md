@@ -54,6 +54,27 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Screenshot, the screen capture tool (2026-10-01, not yet tried on the Pi)
+
+- **What**: `user/Apps/screenshot` (docs/03 *Screenshot, the capture tool*; docs/04 §12; the study and the
+  mock-ups validated by the user: `docs/screenshot/README.md`), laid out as Windows' Snipping Tool: New,
+  the mode (Rectangle / Window / Full screen) and the delay (0 / 3 / 5 / 10 s) as drop-down buttons, then
+  Copy and Save As, the drawing tools at the right (pen and marker with their colours and sizes, an
+  eraser that takes a stroke away, a crop, undo / redo). The screen frozen full screen for a rectangle
+  (a magnifier) or a window; copied to the clipboard at once (clipd), notifyd's notification; saved only
+  on Save As (PNG / JPEG / BMP).
+- **Kernel** (no ABI change: v71): **Print Screen** -- the input task sees USB usage 0x46, the main
+  task's loop (now every 50 ms) tells the `screenshot` service or starts the app (`--now`;
+  Alt: `--window <id>`, the window that has the keyboard); `IpcPost (service, type, data, len)` in
+  `sys/ipc.cpp` (IpcNotify is built on it). docs/02 §2.
+- **The simulator**: `SIM_GRAB` (what screen_grab gives), full-screen apps dumped, `SIM_WINS` titles;
+  `sh tools/tests/desktop_sim/shots.sh screenshot`. Icon: `tools/icons/screenshot_icon.py`.
+- **To try on the Pi**: the window hidden before the grab (0.35 s: the compositor must have drawn the
+  screen without it -- lengthen if the window shows in the captures), Print Screen from another app
+  (started / told), Alt+Print Screen, a capture pasted in Paint.
+- **Next ideas**: handles to adjust a rectangle before taking it, text / arrows / shapes / a blur, a
+  free-form selection, the capture of a menu (the delay works today).
+
 ## Jet Browser: find in page, copy and paste, the context menu (2026-10-01, PC bench only)
 
 - **Find** (docs/06 §40): Ctrl+F / Edit ▸ Find in Page... -- a find bar above the status bar ("3 of 17",
@@ -1271,7 +1292,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   form: the mail client creates the `.card` structure, reads / writes it (address completion,
   "add sender"), and the file opens in Cardfile too.
 - **PDF viewer** (MuPDF-like, FreeType) + **PDF export** in Writer and the Spreadsheet.
-- **Screenshot** tool (screen / window / area; Print Screen key).
+- **Screenshot** tool (screen / window / area; Print Screen key). **Done** (2026-10-01: its section above).
 - **Clock**: alarms, timer, stopwatch, world clocks (notifications through notifyd).
 
 **Priority 2**
