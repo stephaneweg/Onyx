@@ -1225,6 +1225,8 @@ writes the scripts that failed, `NS_INJECT` + F5 runs a script in the page).
   the typing, `/complete/s` is asked at each key and its suggestions listed (with their
   pictures), the arrow closes the overlay and Enter runs the search (`/search?q=`; this
   container's IP gets Google's captcha). Test: `pages/js-searchoverlay.html` (jstest).
+  A field a script focuses while an attribute-only change is pending (restyled in place,
+  no rebox: §26) takes the caret after the restyle too (`html_rebox_scheduled`).
 - **A document a few bytes past 4 KB failed to load: "BadParameter"** (libparserutils
   `inputstream.c`, `parserutils_inputstream_refill_buffer`): the input filter decodes the raw
   bytes 64 characters at a time into its pivot and writes them to the 4096-byte UTF-8

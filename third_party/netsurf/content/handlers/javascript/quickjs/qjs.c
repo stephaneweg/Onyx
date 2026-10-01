@@ -2453,7 +2453,8 @@ static bool qjs_cstyle_known(const char *p)
 		"fill", "stroke", "stroke-width", "width", "height", "color", "background-color",
 		"font-size", "transform", "translate", "scale", "rotate", "filter",
 		"backdrop-filter", "left", "top", "right", "bottom", "outline-color",
-		"letter-spacing", "z-index", "box-shadow" };
+		"letter-spacing", "z-index", "box-shadow",
+		"overflow", "overflow-x", "overflow-y" };	/* (Onyx: overflow, google search) */
 	size_t i;
 
 	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)

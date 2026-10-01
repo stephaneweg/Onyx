@@ -644,8 +644,18 @@ static void html_rebox_scheduled(void *p)
 		return;
 	}
 	c->rebox_pending = false;
-	if (html_restyle_in_place(c))
-		return;		/* (Onyx: attributes only: restyled in the boxes) */
+	if (html_restyle_in_place(c)) {
+		/* (Onyx: attributes only: restyled in the boxes -- a text field a
+		 * script focused meanwhile takes the caret now, as after a rebox) */
+		if (c->focus_pending != NULL && !c->early_layout) {
+			dom_node *n = c->focus_pending;
+
+			c->focus_pending = NULL;
+			html_focus_control_box(c, n);
+			dom_node_unref(n);
+		}
+		return;
+	}
 	html_rebox(c);
 }
 

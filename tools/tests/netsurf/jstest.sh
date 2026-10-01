@@ -335,9 +335,9 @@ for s in "active ta" "overlay full" "typed ab"; do expect "$L" "$s"; done
 
 echo "js-searchoverlay.html (google.com's mobile search: a fixed overlay opened on focus, its suggestions)"
 L=$OUT/js-searchoverlay.log
-run js-searchoverlay.html "$(waits 30)$(click 200 158)key a;wait;key b;$(waits 30)key 13;$(waits 10)$(click 30 60)" "$L"
+run js-searchoverlay.html "$(waits 30)$(click 200 158)key a;wait;key b;$(waits 30)key 13;$(waits 10)$(click 30 60)$(click 70 355)key z;$(waits 20)" "$L"
 for s in "adopt true true true" "overlay open" "overlay scroll none" "point back" "computed 9 auto fixed" "typed ab" \
-	 "suggestions ab|abercrombie|abraham" "search ab" "back clicked"; do
+	 "suggestions ab|abercrombie|abraham" "search ab" "back clicked" "typed2 z"; do
 	expect "$L" "$s"
 done
 refuse "$L" "sanitize error"
