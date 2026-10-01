@@ -1187,7 +1187,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 *The downloads button's menu (File ▸ Downloads...): each download, how it went; the status bar says the last one's end.*
 
 ![Jet Browser: find in page](../screenshots/jet-find.png)
-*Find in page (Ctrl+F): the find bar above the status bar — "2 of 5", every match highlighted, the current one in orange.*
+*Find in page (Ctrl+F): the find bar above the status bar — "2 of 4", every match highlighted, the current one in orange.*
 
 ![Jet Browser: the context menu](../screenshots/jet-context.png)
 *The context menu of an image: Copy Image puts it on the clipboard for Paint.*
