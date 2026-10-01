@@ -47,7 +47,7 @@ git -C circle diff Step51..onyx
 | 17 | **The host name set after the constructor** (`CNetSubSystem::SetHostname`: `system.ini`'s `hostname=`) | `include/circle/net/netsubsystem.h` | none (inline) — the kernel |
 | 7b | **Yielding SD waits, many short ones**: a second weak hook `OnyxDriverPoll` at each turn of a short wait | `addon/SDCard/emmc.cpp` | `libsdcard` |
 | 20 | **TCP: real duplicate ACKs only** (RFC 5681 §2) — the peer's data segments no longer start a fast retransmit | `lib/net/tcpconnection.cpp` | `libnet` |
-| 21 | **TCP: RTO 1 s initial, 200 ms minimum** (was 3 s / 1 s), Karn after a fast retransmit, 8 tries for data | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
+| 21 | **TCP: RTO 1 s initial** (was 3 s; the 1 s minimum kept — 200 ms was tried and undone), Karn after a fast retransmit | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
@@ -688,18 +688,19 @@ end of a burst (nothing behind it to cause duplicate ACKs) stalled the stream a 
 the remote desktop froze.
 
 **What.**
-- `INITIAL_RTO` 1 s (RFC 6298 2.1); `MIN_RTO` **200 ms** (`MSEC2HZ (200)`, Linux's
-  `TCP_RTO_MIN`); RFC 6298's granularity term G is 200 ms too, so RTO = SRTT + max (200 ms,
-  4 RTTVAR) — as Linux does: a peer that delays its ACKs (Windows: up to 200 ms) raises SRTT,
-  not the spurious timeouts. The kernel timer ticks at 100 Hz: 200 ms = 20 ticks (an RTT sample
-  of a LAN is 0–1 tick).
+- `INITIAL_RTO` 1 s (RFC 6298 2.1); `MIN_RTO` stays **1 s**. A 200 ms minimum (Linux's
+  `TCP_RTO_MIN`) was tried on 2026-10-01 and undone the same day: the remote desktop's
+  throughput over Wi-Fi to a Windows PC collapsed (64 KB sends taking 0.5–2 s instead of a few
+  ms, ~50x slower). Windows delays its ACKs up to 200 ms and Wi-Fi adds bursts of delay: the
+  timer fired spuriously and each timeout cut the congestion window to one segment; Linux
+  survives that floor with F-RTO / undo of spurious timeouts, which Circle lacks. RFC 6298's
+  granularity term G is 200 ms (was 1 tick).
 - **Karn's algorithm** also after a fast retransmit: `CRetransmissionTimeoutCalculator::SegmentResent`
   (new) marks a segment sent again by `ResendSegment` (fast retransmit, a partial ACK in fast
   recovery), so its ACK gives no RTT sample (only a timeout marked it before). A valid sample
   resets the backed-off RTO, as before.
-- `MAX_RETRANSMISSIONS` 5 → **7** for data and FIN (a dead peer given up at the 8th timeout:
-  ≥ 51 s from 200 ms, about the 63 s it was from 1 s), `MAX_SYN_RETRANSMISSIONS` 5 for a SYN
-  (63 s from 1 s; it was 189 s from 3 s).
+- `MAX_RETRANSMISSIONS` stays 5 (63 s from 1 s), `MAX_SYN_RETRANSMISSIONS` 5 (63 s from the
+  1 s initial RTO; it was 189 s from 3 s).
 - After a SYN retransmitted, RFC 6298 (5.7) wants the data phase to start at 3 s: the RTO is
   then the backed-off one (≥ 2 s) until the first sample — close enough, left as is.
 

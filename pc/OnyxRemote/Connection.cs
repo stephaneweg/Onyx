@@ -95,13 +95,22 @@ namespace OnyxRemote
 		public void Close ()
 		{
 			stop = true;
-			lock (q) { Online = false; Monitor.PulseAll (q); }
+			TcpClient pending;
+			lock (q) { Online = false; Monitor.PulseAll (q); pending = connecting; }
 			try { tcp?.Close (); } catch { }
+			try { pending?.Close (); } catch { }	// (a reconnection under way: abandoned, not left open)
 		}
+
+		TcpClient connecting;		// the connection a handshake is making (Close aborts it)
 
 		void Handshake ()
 		{
 			var t = new TcpClient ();
+			lock (q)
+			{
+				if (stop) { t.Close (); throw new IOException ("closed"); }
+				connecting = t;
+			}
 			try
 			{
 				t.NoDelay = true;
@@ -125,6 +134,8 @@ namespace OnyxRemote
 				}
 				lock (q)
 				{
+					connecting = null;
+					if (stop) throw new IOException ("closed");	// (Disconnect during the handshake)
 					tcp = t; net = s;
 					outBuf.Clear (); pendingMove = null; lastButtons = 0;
 					Pipelined = false; InFlight = 1;
@@ -132,7 +143,7 @@ namespace OnyxRemote
 					Online = true;
 				}
 			}
-			catch { try { t.Close (); } catch { } throw; }
+			catch { lock (q) if (connecting == t) connecting = null; try { t.Close (); } catch { } throw; }
 		}
 
 		static byte[] ReadExactly (Stream s, int n)

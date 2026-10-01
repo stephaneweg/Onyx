@@ -1040,9 +1040,9 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   retransmit -- a remote desktop client's input messages (data segments that do not advance the
   ACK) started a spurious fast retransmit + recovery while the mouse moved, the Pi's sending
   throttled to ~2 segments a round trip. The **RTO** starts at 1 s (RFC 6298; was 3 s) and its
-  floor is **200 ms** (Linux's; was 1 s): RTO = SRTT + max (200 ms, 4 RTTVAR), Karn's algorithm
-  also after a fast retransmit; a data connection is given up after 8 timeouts (≥ 51 s), a SYN
-  after 6 (63 s). **`tcp_send`'s count** is exact: Circle's `CSocket::Send` queues MSS-sized
+  floor stays **1 s** (200 ms was tried and undone: spurious timeouts over Wi-Fi to Windows
+  collapsed the remote desktop's throughput), Karn's algorithm also after a fast retransmit; a
+  connection is given up after 6 timeouts (63 s). **`tcp_send`'s count** is exact: Circle's `CSocket::Send` queues MSS-sized
   chunks, and when one times out (5 s, its queue full) the chunks before it are counted (it
   answered the error, those bytes already on their way: an app resending "the rest" put bytes
   twice in the stream); `NetTcpSend` adds up its 32 KB requests the same way. A short count

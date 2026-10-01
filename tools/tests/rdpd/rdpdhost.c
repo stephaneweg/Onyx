@@ -117,6 +117,21 @@ static void h_key (const char *k) { fprintf (stderr, "host: key \"%s\"\n", k); }
 static void h_held (int k, int d) { fprintf (stderr, "host: held %d %d\n", k, d); }
 static void h_mods (unsigned m) { fprintf (stderr, "host: mods %u\n", m); }
 
+// kapi_thread_create on a POSIX thread (rdpd's accepting thread)
+#include <pthread.h>
+struct h_thr { int (*fn) (void *); void *arg; };
+static void *h_thr_run (void *p) { struct h_thr t = *(struct h_thr *) p; free (p); t.fn (t.arg); return 0; }
+static int h_thread (int (*fn) (void *), void *arg, unsigned st, const char *name)
+{
+	(void) st; (void) name;
+	struct h_thr *t = malloc (sizeof *t); pthread_t id;
+	if (!t) return -1;
+	t->fn = fn; t->arg = arg;
+	if (pthread_create (&id, 0, h_thr_run, t) != 0) { free (t); return -1; }
+	pthread_detach (id);
+	return 2;
+}
+
 static void unimplemented (void) { fprintf (stderr, "host: an unimplemented kapi call\n"); abort (); }
 
 #define main rdpd_main
@@ -138,6 +153,7 @@ int main (int argc, char **argv)
 	T->get_args = h_args; T->screen_size = h_screen; T->net_status = h_net;
 	T->tcp_listen = h_listen; T->tcp_accept = h_accept; T->tcp_send = h_send; T->tcp_recv = h_recv; T->tcp_close = h_close;
 	T->win_list = h_win_list; T->win_read = h_win_read; T->win_raise = h_win_raise; T->win_close = h_win_close;
+	T->thread_create = h_thread;
 	T->inject_pointer = h_ptr; T->inject_key = h_key; T->inject_key_held = h_held; T->inject_modifiers = h_mods;
 	setvbuf (stderr, 0, _IOLBF, 0);
 	return rdpd_main ();

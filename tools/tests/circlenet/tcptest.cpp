@@ -9,7 +9,7 @@
 //  1. the peer's data segments (ACK = SND.UNA, not advancing) are not duplicate ACKs
 //  2. nor are window updates, nor pure ACKs with nothing in flight
 //  3. three real duplicate ACKs still start a fast retransmit + fast recovery, a full ACK ends it
-//  4. the RTO: 200 ms (20 ticks) on a LAN, not 1 s; Karn's algorithm after a fast retransmit
+//  4. the RTO: its 1 s minimum on a LAN (200 ms was tried: spurious timeouts on Wi-Fi to Windows); Karn's algorithm after a fast retransmit
 //  5. CSocket::Send: a chunk timing out after earlier chunks were queued answers their count
 //
 #define private public			// (the test reads the connection's state)
@@ -272,20 +272,20 @@ static void TestRTO (void)
 	printf ("4. the retransmission timeout\n");
 	{
 		TWorld W; W.Open ();		// (the SYN's RTT: 0 ticks -- a LAN)
-		Check (W.pConn->m_RTOCalculator.GetRTO () == 20, "RTO after a LAN sample: 20 ticks (200 ms)");
+		Check (W.pConn->m_RTOCalculator.GetRTO () == 100, "RTO after a LAN sample: 100 ticks (the 1 s minimum)");
 		W.Queue (1460);
 		u32 nUna = W.Una ();
 		unsigned nMark = s_nSent;
-		W.Timer.Advance (19); W.pConn->Process ();
-		Check (W.CountSent (nUna, nMark) == 0, "not retransmitted after 190 ms");
+		W.Timer.Advance (99); W.pConn->Process ();
+		Check (W.CountSent (nUna, nMark) == 0, "not retransmitted after 990 ms");
 		W.Timer.Advance (2); W.pConn->Process ();
-		Check (W.CountSent (nUna, nMark) == 1, "retransmitted after 200 ms");
-		Check (W.pConn->m_RTOCalculator.GetRTO () == 40, "backed off: 400 ms");
+		Check (W.CountSent (nUna, nMark) == 1, "retransmitted after 1 s");
+		Check (W.pConn->m_RTOCalculator.GetRTO () == 200, "backed off: 2 s");
 		W.Inject (F_ACK, W.nPeerSeq, W.Nxt ());
 		W.Queue (1460);
 		W.Timer.Advance (3);
 		W.Inject (F_ACK, W.nPeerSeq, W.Nxt ());
-		Check (W.pConn->m_RTOCalculator.GetRTO () == 20, "a new sample: back to 200 ms");
+		Check (W.pConn->m_RTOCalculator.GetRTO () == 100, "a new sample: back to 1 s");
 	}
 	{
 		TWorld W;

@@ -10,5 +10,5 @@ OUT=${1:-/tmp/rdpd_host}
 SRC=${2:-$ROOT/user/bin/rdpd.c}
 mkdir -p "$OUT"
 gcc -std=gnu11 -O1 -g -Wall -Wno-unused-function -Wno-format-truncation -I "$ROOT/user" -I "$ROOT/user/bin" \
-	-I "$ROOT/kernel/include" -DRDPD_SRC="\"$SRC\"" -o "$OUT/rdpd_host" "$ROOT/tools/tests/rdpd/rdpdhost.c"
+	-I "$ROOT/kernel/include" -DRDPD_SRC="\"$SRC\"" -o "$OUT/rdpd_host" "$ROOT/tools/tests/rdpd/rdpdhost.c" -lpthread
 echo "built: $OUT/rdpd_host"

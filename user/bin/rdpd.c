@@ -144,6 +144,7 @@ static void stats_tick (int force)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
 static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop, g_noFrames, g_pipe;
+static volatile int g_next = -1;	// a new client accepted while a session runs (-1 none): acceptor ()
 static int g_roundMsgs;			// messages in this round but its END (0: nothing changed)
 
 // ---- output -------------------------------------------------------------------------------
@@ -213,6 +214,7 @@ static int need (int n)
 	for (int t = 0; g_inlen < n; t++)
 	{
 		if (!fill_in () || t > 1000) return 0;
+		if (__atomic_load_n (&g_next, __ATOMIC_ACQUIRE) >= 0) return 0;	// (a newer client)
 		if (g_inlen < n) kapi_msleep (10);
 	}
 	return 1;
@@ -472,6 +474,28 @@ static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 
 // ---- one client ---------------------------------------------------------------------------
 
+// A new client while a session runs (the PC reconnecting after a drop the Pi has not seen, a
+// second PC): taken at once by an accepting thread and the session in course ended -- the new
+// client wins. Without it a dead session (its peer gone without a word) held rdpd up to
+// SILENT_LIMIT and the reconnections waited or were refused.
+static char g_nextPeer[32];
+static int g_lsock;
+
+static int acceptor (void *arg)
+{
+	(void) arg;
+	for (;;)
+	{
+		char peer[32];
+		int s = kapi_tcp_accept (g_lsock, peer, sizeof peer);
+		if (s < 0) { kapi_msleep (500); continue; }
+		while (__atomic_load_n (&g_next, __ATOMIC_ACQUIRE) >= 0) kapi_msleep (20);	// (one waiting)
+		memcpy (g_nextPeer, peer, sizeof peer);
+		__atomic_store_n (&g_next, s, __ATOMIC_RELEASE);
+	}
+	return 0;
+}
+
 static void session (void)
 {
 	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
@@ -558,6 +582,11 @@ static void session (void)
 			last = now;
 		}
 		if (g_dead) break;
+		if (__atomic_load_n (&g_next, __ATOMIC_ACQUIRE) >= 0)
+		{
+			rdlog ("rdpd: a new client (%s): this session ends", g_nextPeer);
+			break;
+		}
 		us = kapi_clock_us ();
 		keepalive (us);
 		if (g_pipe && us - g_lastRx > SILENT_LIMIT)
@@ -610,11 +639,22 @@ int main (void)
 	while (!kapi_net_status (ip, sizeof ip)) kapi_msleep (1000);
 	int lsock = kapi_tcp_listen (port);
 	if (lsock < 0) { kapi_stdout_write ("rdpd: cannot listen\n", 20); return 1; }
+	g_lsock = lsock;
+	int threaded = kapi_thread_create (acceptor, 0, 0, "accept") >= 0;	// (kernel v67)
 	for (;;)
 	{
 		char peer[32];
-		g_sock = kapi_tcp_accept (lsock, peer, sizeof peer);
-		if (g_sock < 0) { kapi_msleep (500); continue; }
+		if (threaded)
+		{
+			while ((g_sock = __atomic_load_n (&g_next, __ATOMIC_ACQUIRE)) < 0) kapi_msleep (20);
+			memcpy (peer, g_nextPeer, sizeof peer);
+			__atomic_store_n (&g_next, -1, __ATOMIC_RELEASE);
+		}
+		else
+		{
+			g_sock = kapi_tcp_accept (lsock, peer, sizeof peer);
+			if (g_sock < 0) { kapi_msleep (500); continue; }
+		}
 		rdlog ("rdpd: client %s", peer);
 		session ();
 		rdlog ("rdpd: session end");

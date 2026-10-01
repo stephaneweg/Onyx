@@ -783,6 +783,10 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   a PC gone without a word). Slow sends point to the network (Wi-Fi), a slow read / compress
   to the Pi's CPU (another app using core 0), a slow answer with quick sends to the PC or the
   network's latency, long pings to lost packets being resent.
+- **A new connection takes over**: when a PC connects while a session runs (Onyx Remote
+  reconnecting after a drop the Pi did not see, or Disconnect then Connect), the new one is
+  served at once and the old session ends (`rdpd: a new client (...): this session ends` in
+  kmsg). Disconnect during a reconnection abandons it (no connection left open).
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 

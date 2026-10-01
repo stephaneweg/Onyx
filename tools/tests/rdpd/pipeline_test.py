@@ -181,6 +181,35 @@ def test_new_server(exe, old_exe):
         c.close()
         sv.stop()
 
+def test_takeover(exe):
+    """a second client while a session runs (the PC reconnecting, the first connection dead
+    without the Pi knowing): it is served at once, the first session ends"""
+    sv = Server(exe, False, PORT + 7)
+    a = Client(sv.port, 4)
+    a.ready()
+    check(any(t == 5 for t in types(a.collect(1.0))), "takeover: the first client served")
+    t0 = time.time()
+    b = Client(sv.port, 4)              # (raises if no hello comes within 5 s)
+    took = time.time() - t0
+    check(took < 2.0, "takeover: the second client greeted at once (%.2f s)" % took)
+    b.ready()
+    check(any(t == 5 for t in types(b.collect(1.5))), "takeover: the second client served")
+    try:
+        a.s.settimeout(3.0)
+        dead = False
+        while True:
+            d = a.s.recv(65536)
+            if not d:
+                dead = True
+                break
+    except (socket.timeout, ConnectionResetError):
+        dead = isinstance(sys.exc_info()[1], ConnectionResetError)
+    check(dead, "takeover: the first session closed")
+    a.close(); b.close()
+    out = sv.stop()
+    check("this session ends" in out, "takeover: kmsg says the session ended for the new client")
+
 test_new_server(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
+test_takeover(sys.argv[1])
 print("FAILED: %d" % fails if fails else "all passed")
 sys.exit(1 if fails else 0)

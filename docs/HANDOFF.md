@@ -82,9 +82,9 @@ answer in French. The docs stay in English.
 - **Circle's TCP** (docs/05 §20–22, docs/02 §11; host test `sh tools/tests/run_circlenet_test.sh`,
   the fork's real TCP code against stub headers): only real duplicate ACKs count (the remote
   desktop client's input messages started spurious fast retransmits: the Pi's sending throttled
-  while the mouse moved); RTO 1 s initial, **200 ms minimum** (was 3 s / 1 s; RTO = SRTT +
-  max (200 ms, 4 RTTVAR) as Linux), Karn after a fast retransmit, a dead peer given up after
-  ≥ 51 s; `CSocket::Send` answers the bytes queued when a later chunk times out (it answered the
+  while the mouse moved); RTO 1 s initial (was 3 s), the **1 s minimum kept** (200 ms was tried and
+  undone: spurious timeouts over Wi-Fi to Windows, the remote desktop ~50x slower), Karn after
+  a fast retransmit; `CSocket::Send` answers the bytes queued when a later chunk times out (it answered the
   error: an app resending "the rest" duplicated bytes). rdpd now sends the rest after a short
   count instead of ending the session.
 - **SD writes no longer hold core 0**: many short waits in a row (a long multi-block write)
