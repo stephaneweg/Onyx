@@ -2,8 +2,10 @@
 # encoded (the pages gzip, the style sheets br, the PNG images zstd), a redirect (/redir) with a
 # Set-Cookie, a Set-Cookie on each page; logs each connection (CONN n), request (REQ n path
 # cookie= referer=) and coding (ENC n path coding); /ua shows and logs the User-Agent (UA n ...); the cache: the style sheets no-cache with an
-# ETag (a 304 to a matching If-None-Match: NOTMOD n path), the PNG images max-age=3600.
-import gzip, http.server, os, socketserver, sys, threading, zlib
+# ETag (a 304 to a matching If-None-Match: NOTMOD n path), the PNG images max-age=3600; /dl/<name>?n=&cd=
+# (dltest.sh: n bytes to download, a Content-Disposition per cd=, logged DL n path size) and /status/<code>
+# (a page with that HTTP status).
+import gzip, http.server, os, socketserver, sys, threading, time, zlib
 try:
     import brotli
 except ImportError:
@@ -56,6 +58,51 @@ class H(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.send_header('Cache-Control', 'max-age=3600')	# (fresh: the disk cache's key)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path.startswith('/dl/'):	# (the downloads: dltest.sh) -- n bytes (i*7+3 mod 251), named per cd=
+            q = dict(p.split('=', 1) for p in self.path.split('?', 1)[1].split('&')) if '?' in self.path else {}
+            n = int(q.get('n', '1000'))
+            body = bytes((i * 7 + 3) % 251 for i in range(n))
+            cd = q.get('cd', '')
+            log('DL', self.cid, self.path, n)
+            self.send_response(200)
+            self.send_header('Content-Type', q.get('type', 'application/octet-stream').replace('%2F', '/'))
+            if cd == 'attach':
+                self.send_header('Content-Disposition', 'attachment; filename="report 2026.pdf"')
+            elif cd == 'star':
+                self.send_header('Content-Disposition',
+                                 "attachment; filename=\"fallback.txt\"; filename*=UTF-8''r%C3%A9sum%C3%A9%20%E2%82%AC.txt")
+            elif cd == 'bare':
+                self.send_header('Content-Disposition', 'attachment')
+            elif cd == 'evil':
+                self.send_header('Content-Disposition', 'attachment; filename="../x/a:b*c?.txt"')
+            if q.get('chunked'):
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+                for i in range(0, len(body), 65536):
+                    c = body[i:i + 65536]
+                    try:
+                        self.wfile.write(b'%x\r\n' % len(c) + c + b'\r\n')
+                        self.wfile.flush()
+                    except OSError:	# (the download cancelled: the connection closed)
+                        log('DLABORT', self.cid, self.path, i)
+                        return
+                    if q.get('slow'):
+                        time.sleep(0.1)
+                self.wfile.write(b'0\r\n\r\n')
+            else:
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            return
+        if path.startswith('/status/'):	# (the status bar: dltest.sh) -- that HTTP status, a page
+            code = int(path.split('/')[2])
+            body = b'<!doctype html><title>Error %d</title><h1>The server says %d</h1>' % (code, code)
+            self.send_response(code)
+            self.send_header('Content-Type', 'text/html')
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)

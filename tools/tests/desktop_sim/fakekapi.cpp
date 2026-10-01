@@ -553,7 +553,13 @@ static int app_dir (char *b, unsigned n)				// SD:apps/<the program's name>.app/
 }
 static int f_mkdir (const char *p) { return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
 // (the card is only read: a file is removed / renamed on RAM: only)
-static int f_remove (const char *p) { if (!is_ram (p)) return -1; std::string f = sdpath (p); return remove (f.c_str ()) == 0 ? 0 : -1; }
+// (RAM:, or a file an app wrote -- in SIM_WRITES: the card itself is never touched)
+static int f_remove (const char *p)
+{
+	std::string f = sdpath (p), w = writes () + "/";
+	if (!is_ram (p) && f.compare (0, w.size (), w) != 0) return -1;
+	return remove (f.c_str ()) == 0 ? 0 : -1;
+}
 static int f_rename (const char *a, const char *b)
 {
 	if (!is_ram (a) || !is_ram (b)) return -1;
@@ -757,7 +763,12 @@ static int win_list (struct kapi_win_info *o, int max)
 static void draw_text (int x, int y, const char *s, unsigned c) { draw_text_buf (g_canvas, g_stride, g_lh, x, y, s, c); }
 static int stream_read (void *h, void *b, unsigned n) { return pipe_read (h, b, n); }
 static int stream_read_nb (void *h, void *b, unsigned n) { return pipe_read (h, b, n); }
-static int stream_write (void *, const void *, unsigned n) { return (int) n; }
+// kapi_file_out: a file written in pieces (SIM_WRITES, as save_file); its handle told from the pipes by a tag
+struct SimOut { unsigned tag; FILE *f; };
+enum { SIM_OUT_TAG = 0x4F555446 };
+static SimOut *sim_out (void *h) { return (unsigned long) h > 0x10000 && ((SimOut *) h)->tag == SIM_OUT_TAG ? (SimOut *) h : 0; }
+static void *file_out (const char *p, int append) { FILE *f = fopen (wpath (p).c_str (), append ? "ab" : "wb"); if (!f) return 0; SimOut *o = new SimOut; o->tag = SIM_OUT_TAG; o->f = f; return o; }
+static int stream_write (void *h, const void *b, unsigned n) { SimOut *o = sim_out (h); if (o) return (int) fwrite (b, 1, n, o->f); return (int) n; }
 static void stream_eof (void *) {}
 static int stdin_read (void *, unsigned) { return 0; }
 static int f_seek (void *h, unsigned long long pos) { return fseek ((FILE *) h, (long) pos, SEEK_SET) == 0 ? 0 : -1; }
@@ -781,7 +792,7 @@ static void *spawn (const char *p, const char *a, void *, void *)
 }
 static unsigned long g_pipes;
 static void *h_pipe (void) { return getenv ("SIM_PIPE") && g_pipes < 64 ? (void *) ++g_pipes : 0; }
-static void stream_close (void *) {}
+static void stream_close (void *h) { SimOut *o = sim_out (h); if (o) { fclose (o->f); o->tag = 0; delete o; } }
 static int get_args (char *b, unsigned n)
 {
 	const char *a = getenv ("SIM_APPLET") ? "--applet 1 99" : getenv ("SIM_ARGS");
@@ -942,7 +953,7 @@ static void setup (void)
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_start = sound_start;
 	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
 	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->stream_read_nb = stream_read_nb;
-	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
+	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read; T->file_out = file_out;
 	T->vol_info = vol_info;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
