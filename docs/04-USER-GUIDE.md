@@ -1994,6 +1994,16 @@ overdue.*
 > `SD:/manuals/ledger/Ledger.pdf`, `Ledger.fr.pdf`, `Ledger.nl.pdf` (and their `.md`) — getting started, every page and document step by step, the VAT codes, the
 > printing's fields, questions and answers. What follows is its summary.
 
+> **Ledger for macOS.** The same Ledger runs on a Mac with Apple silicon (macOS 11 Big Sur to 26
+> Tahoe): `Ledger.app`, built on a Mac by `sh pc/macOS/build.sh` (`pc/dist/macOS/`), Writer inside it
+> for the printed documents. Your books and what Ledger makes (quotes, invoices, reports, VAT files) are
+> in **Documents/Onyx Ledger** — the manual's `SD:/docs` —, its settings and templates in
+> Library/Application Support/Onyx Ledger; the file dialogs show `SD:`, `HOME:` (your home folder) and
+> `MAC:` (the whole Mac). The manual's **Ctrl+key is Cmd+key** (Cmd+S, Cmd+N, Cmd+F, Cmd+C/V), Option is
+> Alt; the menus are in the Mac's menu bar; a `.ledger` opens by a double click in the Finder or dropped
+> on the window. A printed document (an `.rtf`) is put on paper or made a PDF from Pages, TextEdit or
+> Word; a report for the Spreadsheet (`.xlsx`) opens in Numbers or Excel. Its `README.txt` says the rest.
+
 Ledger keeps the **double-entry books** of a Belgian company or self-employed person: its chart of
 accounts (the **PCMN**, in French or in Dutch), its customers and suppliers, its **journals** (sales,
 purchases, bank, cash, miscellaneous operations) and their documents, its **fiscal years**, its **VAT

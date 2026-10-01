@@ -2412,6 +2412,37 @@ barwidth = 40
   calls are wrapped at the link (`-Wl,--wrap=fopen`...) to take the Pi's paths (`/res/...`, `/data/...`,
   `RAM:/...`). The details, what was changed for it and how it was tested: docs/06 §34;
   `pc/Jet/README.txt` is the user's page.
+- **Ledger for macOS** (`pc/macOS`, built **on a Mac** by `sh pc/macOS/build.sh` into
+  `pc/dist/macOS/Ledger.app` + `Ledger-macOS-arm64.zip` -- the Xcode command-line tools only; not built
+  here, so not committed). As Koton for Windows, **the Onyx sources unchanged** -- `user/Apps/ledger`,
+  `user/Apps/writer` (it prints Ledger's documents from their templates), `user/wtk`, FreeType -- over the
+  kernel's ABI table on macOS, in two halves: [`pc/macOS/hostkapi.cpp`](../pc/macOS/hostkapi.cpp) (POSIX:
+  the table at `KAPI_TABLE_VA` by `mach_vm_allocate (VM_FLAGS_FIXED)` -- taken only if free --, files,
+  time, threads, `wait_word`, processes, arguments) and [`pc/macOS/cocoa.mm`](../pc/macOS/cocoa.mm) (an
+  `NSWindow` whose view draws the canvas with CoreGraphics, 1 point a pixel; the events queued and handed
+  out by `pump_events` -- the app's thread pumps Cocoa's events itself, no `[NSApp run]`; the app's menu
+  bar as the Mac's; `NSPasteboard`; files dropped or opened from the Finder as `GUI_EVENT_DROP`). Mach-O
+  has no `init_priority`: `hostkapi.o` is linked first (Mach-O and ELF run the files' initialisers in the
+  link's order) and the screen's half keeps no C++ object at file scope (they would be made after
+  `gui_setup`). **The card** is two folders over the bundle's read-only one
+  (`Contents/Resources/sd`, filled by `pc/macOS/card.sh`): `SD:/docs` is `~/Documents/Onyx Ledger`
+  (`ONYX_DOCS`), the rest of `SD:/` `~/Library/Application Support/Onyx Ledger` (`ONYX_SD`; the app's
+  `apps/<app>.app` -- Ledger's templates -- copied there at the first start); read from the user's
+  folder else the bundle's, written in the user's (the demo company, saved, lands in Documents);
+  `HOME:/` is `~`, `MAC:/` the Mac's `/` (a file the Finder gives: `MAC:/Users/...`). **Programs**:
+  `SD:/apps/writer.app/main` is `Ledger.app/Contents/Helpers/Writer.app` (`ONYX_HELPERS`), the arguments
+  passed whole in `ONYX_ARGS`; one the Mac lacks (the Spreadsheet, the File Viewer) has its file or
+  folder shown by `open` (Numbers / Excel, the Finder). **Keys**: Cmd+letter is the Onyx Ctrl+letter
+  (the real Ctrl too), Cmd+Left / Right Home / End, Cmd+Up / Down Ctrl+Home / End (each event carries
+  its modifiers: `get_modifiers` answers the event's while it is handled), Option is Alt, the text
+  through `NSTextInputClient` (dead keys). One thing in the shared sources exists for it: wtk's file
+  dialog lists `SD:`, `HOME:`, `MAC:` on `__APPLE__`. Checked on Linux by **`sh pc/macOS/check.sh`**:
+  the same `hostkapi.cpp` under Ledger and Writer with a screen-less half (`pc/macOS/headless.cpp`,
+  a script of events, the window written as a picture) -- the demo company opened from the bundle's
+  card, a quote printed (Writer started from `Helpers/`, its `.rtf` in the user's `SD:/docs/Quotes`), a
+  document saved (the books written in the user's folder, the bundle's untouched), the templates copied,
+  a host path opened as `MAC:/...`; `cocoa.mm` syntax-checked against GNUstep's headers (the Mac-only
+  calls aside). `pc/macOS/README.txt` is the user's page.
 - **Volume and Wi-Fi from the menu bar** (ABI v60): `user/volume.h` (`volume_save` /
   `volume_restore`: `SD:/etc/sound.ini`) for the menu bar's volume box and `/bin/volume`
   (`kapi_sound_volume (vol, mute)`, −1 keeps). The Wi-Fi menu is its own app,
