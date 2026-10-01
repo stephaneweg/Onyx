@@ -87,6 +87,16 @@ bool html_css_saw_insecure_stylesheets(struct html_content *htmlc);
 bool html_css_process_link(struct html_content *htmlc, dom_node *node);
 
 /**
+ * Onyx (docs/06 §43): an XML document's <?xml-stylesheet type="text/css" href media?>:
+ * the sheet fetched as a <link>'s (the processing instruction is its node).
+ */
+bool html_css_process_pi(struct html_content *htmlc, dom_node *pi, const char *href,
+		const char *media);
+
+/** Onyx: an XML document laid out with its own style sheets: HTML's UA sheet left out */
+void html_css_onyx_xml_mode(struct html_content *htmlc);
+
+/**
  * process a css style dom node 
  *
  * \param htmlc The HTML content.

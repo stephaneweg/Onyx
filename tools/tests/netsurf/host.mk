@@ -65,7 +65,8 @@ NS_INC = -I$(NS) -I$(NS)/include -I$(NS)/content/handlers -I$(NS)/frontends \
          -I$(NSU)/include -I$(GIF)/include -I$(BMP)/include -I$(NSFB)/include \
          -I$(DOM)/bindings -I$(DOM)/src -I$(FT)/include -I$(UN)/freetype $(NS_FT_CF) \
          -I$(JPEG) -I$(WEBP)/src \
-         -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source
+         -DPLUTOVG_BUILD_STATIC -DPLUTOSVG_BUILD_STATIC -I$(PVG)/include -I$(PSVG)/source \
+         -DXML_STATIC -I$(TP)/expat-2.7.1/lib
 
 # ---- sources -------------------------------------------------------------
 WAP_SRC := $(shell find $(WAP)/src -name '*.c')
@@ -90,7 +91,7 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
 QJS := $(TP)/quickjs-ng-0.17.0
 JSQ := $(NS)/content/handlers/javascript/quickjs
 QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c $(JSQ)/qjs_xml.c
 # Onyx: Web Crypto on mbedTLS -- its crypto library compiled here with the Pi's configuration
 # (include/mbedtls/mbedtls_config.h; the bench's https is OpenSSL's, host_stubs.c)
 MBEDTLS := $(TP)/mbedtls-3.6.3
@@ -144,6 +145,10 @@ I_FT := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
 PVG_SRC := $(wildcard $(PVG)/source/plutovg-*.c)
 PSVG_SRC := $(PSVG)/source/plutosvg.c
 
+# Onyx: expat, the XML parser (XML documents, DOMParser's XML: docs/06 section 43)
+EXPAT := $(TP)/expat-2.7.1
+EXPAT_SRC := $(EXPAT)/lib/xmlparse.c $(EXPAT)/lib/xmlrole.c $(EXPAT)/lib/xmltok.c
+
 # Onyx: the GPU compositing service (user/gpucomp: its CPU path here -- fakekapi has no GPU)
 GPC_SRC := $(ZUSER)/gpucomp/gpucomp.c
 
@@ -157,7 +162,7 @@ ZSTD_SRC := $(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c)
 NGH := $(TP)/nghttp2-1.70.0
 NGH_SRC := $(wildcard $(NGH)/lib/*.c)
 
-LIB_ALL := $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+LIB_ALL := $(EXPAT_SRC) $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -218,6 +223,7 @@ $(foreach s,$(W3_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O3 -I$(W3)/src)))
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
 $(foreach s,$(PVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF))))
 $(foreach s,$(PSVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source)))
+$(foreach s,$(EXPAT_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu99 -DXML_STATIC -I$(EXPAT)/lib)))
 $(foreach s,$(WEBP_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(WEBP) -I$(WEBP)/src)))
 $(foreach s,$(FT_SRC),$(eval $(call LIB_RULE,$(s),$(I_FT))))
 $(foreach s,$(BRO_SRC),$(eval $(call LIB_RULE,$(s),$(I_BRO))))
@@ -302,6 +308,13 @@ $(call obj,$(JSQ)/qjs_crypto.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBEDTLS)
 $(call obj,$(JSQ)/qjs_codecache.c): NS_INC += -I$(QJS) -I$(MBEDTLS)/include
 # Onyx: the frames' windows, postMessage between them, MessagePort across realms
 $(call obj,$(JSQ)/qjs_frames.c): NS_INC += -I$(QJS)
+# Onyx: XPath / XSLT (docs/06 section 43) -- xslt.js as a C string for qjs_xml.c (loaded on demand)
+$(OUT)/qjsgen/qjs_xslt_js.h: $(JSQ)/xslt.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from xslt.js by host.mk */'; echo 'static const char qjs_xslt_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs_xml.c): $(OUT)/qjsgen/qjs_xslt_js.h
+$(call obj,$(JSQ)/qjs_xml.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
 
 CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \
        -MMD -MP

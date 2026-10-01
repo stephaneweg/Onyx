@@ -351,6 +351,7 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
 {
 	content_type type = CONTENT_NONE;
 	nserror error = NSERROR_OK;
+	lwc_string *onyx_doc_type = NULL;	/* (Onyx: a window's XML type) */
 
 	ctx->migrate_target = true;
 
@@ -372,6 +373,27 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
 		     cd[10] == '\t')) {
 			effective_type = NULL;	/* (below: a download) */
 			type = CONTENT_NONE;
+		}
+	}
+
+	/* Onyx (docs/06 §43): a window's SVG is an XML document (the HTML handler's
+	 * expat parse), an +xml type no handler takes an XML document too */
+	if ((ctx->flags & HLCACHE_RETRIEVE_ONYX_DOCUMENT) && effective_type != NULL) {
+		const char *t = lwc_string_data(effective_type);
+		size_t n = lwc_string_length(effective_type);
+		const char *to = NULL;
+		if (strcasecmp(t, "image/svg+xml") == 0)
+			to = "application/x-onyx-svg-document";
+		else if ((n > 4 && strcasecmp(t + n - 4, "+xml") == 0 &&
+			  content_factory_type_from_mime_type(effective_type) == CONTENT_NONE) ||
+			 strcasecmp(t, "text/xsl") == 0)
+			to = "application/xml";
+		if (to != NULL) {
+			lwc_string *m;
+			if (lwc_intern_string(to, strlen(to), &m) == lwc_error_ok) {
+				onyx_doc_type = m;
+				effective_type = m;
+			}
 		}
 	}
 
@@ -430,6 +452,8 @@ static nserror hlcache_migrate_ctx(hlcache_retrieval_ctx *ctx,
 	}
 
 	ctx->migrate_target = false;
+	if (onyx_doc_type != NULL)
+		lwc_string_unref(onyx_doc_type);
 
 	/* No longer require retrieval context */
 	RING_REMOVE(hlcache->retrieval_ctx_ring, ctx);

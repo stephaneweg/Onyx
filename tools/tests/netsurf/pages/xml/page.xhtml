@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:svg="http://www.w3.org/2000/svg" lang="en">
+<head>
+<title>XHTML page</title>
+<link rel="stylesheet" href="page.css"/>
+<style type="text/css">
+p.blue { color: #0000ff; }
+</style>
+</head>
+<body>
+<h1 id="h">XHTML&nbsp;served as application/xhtml+xml &copy;</h1>
+<p class="blue" id="p1">A blue paragraph<br/>with a self-closed br.</p>
+<div id="box"></div>
+<svg:svg width="60" height="40"><svg:rect width="60" height="40" fill="#00aa00"/></svg:svg>
+<script type="text/javascript"><![CDATA[
+var p = document.getElementById("p1");
+console.log("XMLT xhtml script ran " + (p ? "p1" : "none"));
+console.log("XMLT xhtml contentType " + document.contentType);
+console.log("XMLT xhtml tagName " + p.tagName + " " + document.documentElement.tagName + " " + document.documentElement.namespaceURI);
+console.log("XMLT xhtml entity " + (document.getElementById("h").textContent.indexOf(" ") > 0) + " " + (document.getElementById("h").textContent.indexOf("©") > 0));
+var d = document.createElement("div");
+console.log("XMLT xhtml createElement " + d.namespaceURI + " " + d.localName);
+var b = document.getElementById("box");
+b.style.width = "100px"; b.style.height = "20px"; b.style.background = "#ff0000";
+console.log("XMLT xhtml box " + b.offsetWidth);
+console.log("XMLT xhtml color " + getComputedStyle(p).color);
+try { document.write("x"); console.log("XMLT xhtml write no-throw"); } catch (e) { console.log("XMLT xhtml write throws " + e.name); }
+]]></script>
+</body>
+</html>

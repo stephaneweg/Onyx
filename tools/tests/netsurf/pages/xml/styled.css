@@ -1,0 +1,4 @@
+catalog { display: block; margin: 10px; font-family: sans-serif; }
+title { display: block; font-size: 24px; color: #008000; }
+book { display: block; background: #ddeeff; margin: 4px 0; padding: 4px; }
+price { color: #cc0000; }

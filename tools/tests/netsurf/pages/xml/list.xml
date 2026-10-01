@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="list.xsl"?>
+<list>
+  <item n="3">Cherry</item>
+  <item n="1">Apple</item>
+  <item n="2">Banana</item>
+</list>

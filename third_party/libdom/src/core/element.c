@@ -929,7 +929,21 @@ dom_exception _dom_element_set_attribute_ns(struct dom_element *element,
 
 	err = _dom_element_set_attr(element, namespace, localname, value);
 
-	dom_string_unref(prefix);
+	/* Onyx (docs/06 §43): the attribute keeps its prefix -- its name is the qualified
+	 * name ("xlink:href", "x:a"), as the DOM says */
+	if (err == DOM_NO_ERR && prefix != NULL) {
+		struct dom_attr *a = NULL;
+		if (_dom_element_get_attr_node(element, namespace, localname, &a) ==
+				DOM_NO_ERR && a != NULL) {
+			dom_node_internal *an = (dom_node_internal *) a;
+			if (an->prefix == NULL)
+				an->prefix = dom_string_ref(prefix);
+			dom_node_unref(a);
+		}
+	}
+
+	if (prefix != NULL)
+		dom_string_unref(prefix);
 	dom_string_unref(localname);
 
 	return err;
