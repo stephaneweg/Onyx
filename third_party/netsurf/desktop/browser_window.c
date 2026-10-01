@@ -59,6 +59,7 @@
 #include "netsurf/onyx_jet.h"	/* Onyx: the zoom per site, the status bar */
 #include "content/content_protected.h"	/* Onyx: the page's HTTP status */
 #include "desktop/frames.h"
+#include "css/select.h"		/* Onyx: a frame's page visited (:visited) */
 #include "desktop/global_history.h"
 #include "desktop/textinput.h"
 #include "desktop/hotlist.h"
@@ -898,6 +899,10 @@ static nserror browser_window_content_ready(struct browser_window *bw)
 	width /= bw->scale;
 	height /= bw->scale;
 	content_reformat(bw->current_content, false, width, height);
+
+	/* Onyx: a frame's page is visited for :visited (not the History's) */
+	if (bw->parent != NULL && !bw->internal_nav)
+		nscss_frame_visited_add(hlcache_handle_get_url(bw->current_content));
 
 	/* history */
 	if (bw->history_add && bw->history && !bw->internal_nav) {

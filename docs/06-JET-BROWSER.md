@@ -3495,6 +3495,17 @@ cursor bits), `libdom.a` (`struct dom_html_input_element` changed), `libhubbub.a
 `make -f user/netsurf/netsurf-app.mk link stage`); the Makefile now tracks headers, but a clean
 build of libcss and libdom is the safe choice after the generated headers changed.
 
+**After the merge (seen on the Pi).** Two leftovers on the real Acid3 page: the hidden link of
+test 48 ("YOU SHOULD NOT SEE THIS AT ALL", `#linktest`) stayed red -- it points at the page the
+`selectors` iframe has just loaded, which a browser counts as visited, but NetSurf marked visited
+only the pages of the top window's history; now a frame's page is visited for `:visited` too
+(`nscss_frame_visited_add` from `browser_window_content_ready`, a ring of the session's last 1024
+frame pages, hashed -- `node_is_visited` checks it after urldb; not in the History); and the
+status bar showed "Error: UnacceptableType" -- test 69's frames (`svg.xml`, an XML type Jet does
+not show) failed and the bar took that frame's error for the page's: it now keeps a fetch error
+only when the window shows that error page (its address `about:query/fetcherror...`, or the
+failed address itself).
+
 ## 38. The page zoom, the status bar, the downloads (2026-10-01)
 
 Three things of every browser that Jet Browser lacked: Ctrl+ / Ctrl- (the user: "a zoom in the

@@ -1822,6 +1822,45 @@ css_error node_is_link(void *pw, void *n, bool *match)
  *
  * \post \a match will contain true if the node matches and false otherwise.
  */
+/* Onyx: the pages loaded in frames this session -- visited for :visited as in the browsers
+ * (Acid3's test 48), but not the History's (urldb's visits: the pages the user opened).
+ * A ring of the last 1024, hashed. */
+#define NSCSS_FRAME_VISITED 1024
+static nsurl *nscss_frame_url[NSCSS_FRAME_VISITED];
+static uint32_t nscss_frame_hash[NSCSS_FRAME_VISITED];
+static unsigned int nscss_frame_next, nscss_frame_count;
+
+/* exported function documented in css/select.h (Onyx) */
+void nscss_frame_visited_add(nsurl *url)
+{
+	if (url == NULL || nscss_frame_visited(url))
+		return;
+	if (nscss_frame_url[nscss_frame_next] != NULL)
+		nsurl_unref(nscss_frame_url[nscss_frame_next]);
+	nscss_frame_url[nscss_frame_next] = nsurl_ref(url);
+	nscss_frame_hash[nscss_frame_next] = nsurl_hash(url);
+	nscss_frame_next = (nscss_frame_next + 1) % NSCSS_FRAME_VISITED;
+	if (nscss_frame_count < NSCSS_FRAME_VISITED)
+		nscss_frame_count++;
+}
+
+/* exported function documented in css/select.h (Onyx) -- the hashes compared first: a link
+ * costs a few integer compares (most sessions load a few frames) */
+bool nscss_frame_visited(nsurl *url)
+{
+	unsigned int i;
+	uint32_t h;
+
+	if (nscss_frame_count == 0)
+		return false;
+	h = nsurl_hash(url);
+	for (i = 0; i < nscss_frame_count; i++)
+		if (nscss_frame_hash[i] == h &&
+		    nsurl_compare(nscss_frame_url[i], url, NSURL_COMPLETE))
+			return true;
+	return false;
+}
+
 css_error node_is_visited(void *pw, void *node, bool *match)
 {
 	nscss_select_ctx *ctx = pw;
@@ -1875,6 +1914,8 @@ css_error node_is_visited(void *pw, void *node, bool *match)
 	 * non-zero visit count */
 	if (data != NULL && data->visits > 0)
 		*match = true;
+	else if (nscss_frame_visited(url))
+		*match = true;		/* (Onyx: a frame's page) */
 
 	nsurl_unref(url);
 
