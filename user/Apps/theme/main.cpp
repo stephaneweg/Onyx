@@ -16,7 +16,7 @@
 // number, the picture's file and how it fills the screen, the pattern.
 //
 // Apply writes SD:/etc/theme.txt and SD:/etc/wallpaper.ini, paints the wallpaper again
-// (apps/voronoy), gives the dock (DOCK_MSG_RELOAD), the menu bar and the agenda the new colours at
+// (apps/voronoy), starts the dock again (dock_reload), the menu bar and the agenda the new colours at
 // once, and the Control Panel too (AP_THEME: it starts the applet again); the other apps take them
 // when they are opened again. Discard reloads what is saved.
 //
