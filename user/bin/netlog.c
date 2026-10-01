@@ -3,8 +3,9 @@
 // kernel starts it before init when cmdline.txt has netlog=1 (or run it by hand). It checks
 // SD:/etc/wpa_supplicant.conf (its psk is never written, only its length) and the Wi-Fi
 // firmware, then keeps the kernel log (the net: lines, wpa_supplicant's, DHCP) as it comes,
-// the file rewritten every 2 s. It stops 15 s after the link is up, or after 5 minutes; when
-// the link never came up, the access points around are listed at the end. Read the file on
+// the file rewritten every 2 s. It stops 30 s after the link is up, or after 5 minutes; at the
+// end the programs running (telnetd, vncd, rdpd, Setup...: started by init?), and when the link
+// never came up, the access points around. Read the file on
 // the PC (the card in a reader). It takes the kernel log's events: kmsg sees none meanwhile.
 //   usage: netlog
 //
@@ -15,7 +16,7 @@
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
 #define HZ		100			// kapi_get_ticks: Circle's HZ ticks
 #define RUN_MAX		(300 * HZ)		// 5 minutes at most
-#define AFTER_UP	(15 * HZ)		// kept going this long once the link is up
+#define AFTER_UP	(30 * HZ)		// kept going this long once the link is up (the services listening)
 
 static char g_head[6000]; static int g_hn;	// the checks (written once)
 static char g_log[56000]; static int g_ln;	// the kernel log since netlog started
@@ -38,6 +39,7 @@ static void stamp (char *b, int cap, int *n)
 	ax_fmt2 (s, (int) (t % HZ)); s[2] = 0; put (b, cap, n, s); put (b, cap, n, "s] ");
 }
 
+static int same (const char *a, const char *b, int n) { for (int i = 0; i < n; i++) if (a[i] != b[i]) return 0; return 1; }
 static int exists (const char *p) { void *f = kapi_open (p); if (!f) return 0; kapi_close (f); return 1; }
 
 // SD:/etc/wpa_supplicant.conf: there, its encoding, each line (the psk's length only)
@@ -133,6 +135,29 @@ static void save (void)
 	kapi_save_file (OUT_PATH, g_out, (unsigned) n);
 }
 
+// the programs running ("<state><kind> <name>" a line): did init start the services?
+static void tasks (void)
+{
+	static char buf[3000];
+	T ("== the programs running (telnetd, vncd, rdpd: started by etc/autostart; their \"listening on\" lines above)\n");
+	int n = kapi_list_tasks (buf, sizeof buf);
+	if (n <= 0) { T ("  (none listed)\n"); return; }
+	buf[sizeof buf - 1] = 0;
+	for (char *t = buf; *t; )
+	{
+		char *e = t; while (*e && *e != '\n') e++;
+		char c = *e; *e = 0; T ("  "); T (t); T ("\n"); if (!c) break; t = e + 1;
+	}
+	static const char *want[] = { "telnetd", "vncd", "rdpd", 0 };
+	for (int i = 0; want[i]; i++)
+	{
+		int found = 0; int l = ax_strlen (want[i]);
+		for (char *t = buf; *t; t++)
+			if ((t == buf || t[-1] == ' ') && same (t, want[i], l) && (t[l] == '\n' || t[l] == 0 || t[l] == ' ')) found = 1;
+		if (!found) { T ("  "); T (want[i]); T (" is NOT running (its line in etc/autostart? init stopped before it?)\n"); }
+	}
+}
+
 static void scan (void)
 {
 	static struct kapi_wlan_ap ap[32];
@@ -181,10 +206,11 @@ int main (void)
 		kapi_msleep (100);
 	}
 	T ("\n== the result\n");
-	if (upAt) { T ("  the link is UP, IP "); T (ip); T (", after "); TN ((int) (upAt / HZ)); T (" s\n"); }
+	if (upAt) { T ("  the link is UP, IP "); T (ip); T (", after "); TN ((int) (upAt / HZ)); T (" s\n"); tasks (); }
 	else
 	{
 		T ("  the link is DOWN after "); TN (RUN_MAX / HZ); T (" s\n");
+		tasks ();
 		save ();
 		scan ();
 		drain ();
