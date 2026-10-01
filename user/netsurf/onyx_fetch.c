@@ -655,6 +655,8 @@ static void onyx_add_client_hints(char **hdrs, const char *host, const char *ua)
 	unsigned hints = host != NULL ? onyx_ch_hints(host) : 0;
 	int k;
 
+	if (cv == NULL)
+		return;		/* (Onyx: not a Chrome -- NetSurf's own User-Agent: no client hints) */
 	if (cv != NULL) {
 		for (k = 0, cv += 7; k < 15 && cv[k] >= '0' && cv[k] <= '9'; k++)
 			v[k] = cv[k];
