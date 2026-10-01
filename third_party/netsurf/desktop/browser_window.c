@@ -1441,6 +1441,51 @@ browser_window__handle_fetcherror(struct browser_window *bw,
 
 
 /**
+ * Onyx (docs/06 §43): an iframe whose resource is of a type Jet does not show (no handler
+ * accepts it: "UnacceptableType") gets an empty document, as in the other browsers (the
+ * frame stays an about:blank-like page, no error page in it): about:blank is loaded in its
+ * place -- the frame's document is then an empty HTML document of its parent's origin --
+ * and its element's load event comes when that is done (not now: a handler reading
+ * contentDocument finds the empty document).
+ *
+ * \return true when the frame was sent to about:blank (the error handled)
+ */
+static bool
+onyx_frame_error_blank(struct browser_window *bw, hlcache_handle *c,
+		       const hlcache_event *event)
+{
+	struct browser_fetch_parameters params;
+	const char *msg = event->data.errordata.errormsg;
+	const char *unacceptable = messages_get("UnacceptableType");
+
+	if (bw->browser_window_type != BROWSER_WINDOW_IFRAME || msg == NULL ||
+	    (msg != unacceptable && strcmp(msg, unacceptable) != 0 &&
+	     strcmp(msg, "UnacceptableType") != 0))
+		return false;
+
+	if (c == bw->loading_content) {
+		bw->loading_content = NULL;
+	} else if (c == bw->current_content) {
+		bw->current_content = NULL;
+		browser_window_remove_caret(bw, false);
+	}
+	hlcache_handle_release(c);
+
+	memset(&params, 0, sizeof(params));
+	params.url = nsurl_ref(corestring_nsurl_about_blank);
+	params.flags = BW_NAVIGATE_NO_TERMINAL_HISTORY_UPDATE | BW_NAVIGATE_UNVERIFIABLE;
+	bw->onyx_loaded = false;
+	if (browser_window__navigate_internal(bw, &params) != NSERROR_OK) {
+		browser_window__free_fetch_parameters(&params);
+		onyx_frame_loaded(bw);	/* (no document: its load all the same) */
+		return true;
+	}
+	browser_window__free_fetch_parameters(&params);
+	return true;
+}
+
+
+/**
  * Handle errors during content fetch
  */
 static nserror
@@ -1583,6 +1628,10 @@ browser_window_callback(hlcache_handle *c, const hlcache_event *event, void *pw)
 		break;
 
 	case CONTENT_MSG_ERROR:
+		/* (Onyx: a type a frame cannot show: an empty document in it, its load
+		 * when that is done -- docs/06 §43) */
+		if (onyx_frame_error_blank(bw, c, event))
+			break;
 		res = browser_window__handle_error(bw, c, event);
 		onyx_frame_loaded(bw);	/* (Onyx: a frame that failed is loaded too, as in Chrome) */
 		break;

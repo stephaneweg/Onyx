@@ -3785,6 +3785,33 @@ neither); a drag past the end of a shrink-to-fit block's line selects nothing mo
 `box_pick_text_box` looks only inside the line's container); Copy Image of an SVG; Ctrl+C on a
 clicked image (Chrome does not either).
 
+## 43. XML documents: XHTML, XML with CSS or XSLT, SVG documents, XPath (2026-10-01)
+
+### Frames on a resource Jet does not show: an empty document, their load event
+
+Acid3's test 65 makes seven frames (`svg.xml` in an `<iframe>` and an `<object>`, `empty.xml`,
+`empty.html`, `xhtml.1-3`) and test 69 waits -- up to 5 s, retried every 10 ms -- for their seven
+`load` events. Before, the `<object>` on `svg.xml` fired `error` (PlutoSVG refused the file: a
+`<?xml-stylesheet?>` before its root), so Acid3 sat on test 69 for its whole timeout (on the Pi the
+score stayed at 69 for seconds). Now:
+
+- **A frame whose resource has a type no handler takes** ("UnacceptableType": an unknown binary,
+  before §43's XML handler `text/xml`...) is loaded with **about:blank** instead of the fetch error
+  page (`onyx_frame_error_blank`, `desktop/browser_window.c`): its `contentDocument` is an empty HTML
+  document of its parent's origin, its element's `load` event comes once that is loaded (a handler
+  reading `contentDocument` finds it) -- as in the other browsers, where the frame stays empty (or
+  the file is downloaded) and `load` fires. The status bar no longer shows the frame's error.
+- **A frame showing an image or a text** (no document of its own in Jet; Chrome makes an image or a
+  text document) gives a same-origin script an empty document as its `contentDocument`
+  (`N.frameShown`, `qjs_frames.c`; kept per element while the frame shows that resource).
+- **PlutoSVG skips any processing instruction** before the root, not only `<?xml ...?>`.
+- `getElementById` on a document other than the window's (`createHTMLDocument`, `DOMParser`,
+  a frame's) searches that document (it searched the window's).
+
+Acid3's own time (its log's "Total elapsed time", first run on the PC bench): **5.56 s -> 0.52 s**
+(`acidtest.sh` prints it). `xmltest.sh`'s `frameload.html`: the six frames' `load` events (an SVG
+in an `<object>` and an `<iframe>`, an unknown type, a 404, a malformed XML, XHTML as `text/xml`).
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies

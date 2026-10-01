@@ -1688,11 +1688,21 @@ static JSValue n_by_id(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	jsthread *t = QJS_T(ctx);
 	dom_string *id = qjs_dstr(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
 	dom_element *e = NULL;
+	dom_document *doc = t->doc;
+	dom_node_type nt;
 	JSValue v;
 
 	if (id == NULL)
 		return JS_NULL;
-	dom_document_get_element_by_id(t->doc, id, &e);
+	/* (Onyx: byId(id, doc) -- another document's: DOMParser's, createHTMLDocument's, an
+	 * XML document's -- docs/06 §43) */
+	if (argc > 1) {
+		dom_node *d = qjs_node_of(argv[1]);
+		if (d != NULL && dom_node_get_node_type(d, &nt) == DOM_NO_ERR &&
+		    nt == DOM_DOCUMENT_NODE)
+			doc = (dom_document *) d;
+	}
+	dom_document_get_element_by_id(doc, id, &e);
 	dom_string_unref(id);
 	v = qjs_wrap(t, (dom_node *) e);
 	if (e != NULL)

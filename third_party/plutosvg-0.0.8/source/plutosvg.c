@@ -1710,14 +1710,12 @@ plutosvg_document_t* plutosvg_document_load_from_data(const char* data, int leng
             goto error;
         ++it;
         if(it < end && *it == '?') {
-            ++it;
-            if(!skip_string(&it, end, "xml"))
+            /* Onyx: any processing instruction skipped, not only the XML declaration
+             * (<?xml-stylesheet ...?> before the root: Acid3's svg.xml) */
+            const char* pi_end = string_find(it, end, "?>");
+            if(pi_end == NULL)
                 goto error;
-            skip_ws(&it, end);
-            if(!parse_attributes(&it, end, NULL, NULL))
-                goto error;
-            if(!skip_string(&it, end, "?>"))
-                goto error;
+            it = pi_end + 2;
             skip_ws(&it, end);
             continue;
         }

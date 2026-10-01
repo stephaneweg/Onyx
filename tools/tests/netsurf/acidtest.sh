@@ -97,6 +97,8 @@ console.log("ACID3-SCORE " + score + " (" + index + " run)");
 log.split("\n").forEach(function (l) {
 	var m = /^Test (\d+) failed: (.*)/.exec(l);
 	if (m) console.log("ACID3-FAIL " + m[1] + ": " + m[2]);
+	m = /^Total elapsed time: (.*)/.exec(l);
+	if (m) console.log("ACID3-TIME " + m[1]);
 });
 EOF
 	# (the test runs its 100 subtests on timers, the ones waiting for a support file
@@ -115,6 +117,10 @@ scores = re.findall(r'ACID3-SCORE (\d+)', log[last:] if last >= 0 else '')
 fails = re.findall(r'ACID3-FAIL (\d+): (.*)', log[last:] if last >= 0 else '')
 for n, why in fails:
     print("        test %s: %s" % (n, why[:150]))
+# (the test's own time, its first run: the page as loaded, the support files fetched)
+times = re.findall(r'ACID3-TIME (\S+)', log)
+if times:
+    print("        the test's time (its first run): %s" % times[0])
 if not scores:
     print("  FAIL  acid3: no score (see %s)" % sys.argv[1]); sys.exit(1)
 score = int(scores[-1])
