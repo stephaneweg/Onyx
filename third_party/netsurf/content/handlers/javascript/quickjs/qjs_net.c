@@ -885,6 +885,26 @@ static JSValue n_worker_close(JSContext *ctx, JSValueConst this_val, int argc, J
 	return JS_UNDEFINED;
 }
 
+/** Onyx: whether two contexts' scripts are of the same origin (http(s): scheme, host,
+ *  port; file: URLs one origin) -- a worker's by its script's URL */
+static bool qnet_same_origin(JSContext *a, JSContext *b)
+{
+	nsurl *ua = qjs_ctx_url(a), *ub = qjs_ctx_url(b);
+	lwc_string *sa;
+	bool same = false;
+
+	if (ua == NULL || ub == NULL)
+		return false;
+	sa = nsurl_get_component(ua, NSURL_SCHEME);
+	if (sa != NULL && (strcmp(lwc_string_data(sa), "http") == 0 ||
+			strcmp(lwc_string_data(sa), "https") == 0 ||
+			strcmp(lwc_string_data(sa), "file") == 0))
+		same = nsurl_compare(ua, ub, NSURL_SCHEME | NSURL_HOST | NSURL_PORT);
+	if (sa != NULL)
+		lwc_string_unref(sa);
+	return same;
+}
+
 /** broadcast(name, value): a BroadcastChannel's message to the page's other contexts */
 static JSValue n_broadcast(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
@@ -913,7 +933,9 @@ static JSValue n_broadcast(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 			continue;
 		for (a = x; a != NULL && a != root; a = a->parent)
 			;
-		if (a != root)
+		/* Onyx: and the other same-origin documents of the app (a tab's frames, other
+		 * tabs) with their workers */
+		if (a != root && !qnet_same_origin(root->ctx, x->ctx))
 			continue;
 		if (len > 0 && (copy = malloc(len)) == NULL)
 			continue;

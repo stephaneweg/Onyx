@@ -22,12 +22,12 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/wasm3-0.9.2/` | wasm3, the WebAssembly interpreter (MIT): the engine alone, its Onyx settings and patches in `README.onyx` (§27) |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19), `wasm.js` + `qjs_wasm.c` (WebAssembly on wasm3) and `crypto.js` + `qjs_crypto.c` (Web Crypto on mbedTLS: §27) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19), `wasm.js` + `qjs_wasm.c` (WebAssembly on wasm3) and `crypto.js` + `qjs_crypto.c` (Web Crypto on mbedTLS: §27), `qjs_frames.c` (the frames' windows, postMessage between them, MessagePort across realms: §29) |
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -2191,6 +2191,12 @@ Tests: `jstest.sh` -- `js-restyle` (46 checks: each kind of DOM change, sibling
 combinators, `:nth-child`, `:empty`, moves, custom properties, sheets added / taken out /
 changed, a change under a hidden ancestor); perf pages `rebox-perf.html`,
 `flex-deep-perf.html` (a Facebook-like dialog of nested flex containers).
+- **Attributes that build boxes** (`dom_event.c`, `onyx_attr_builds_boxes`): a change of `src`,
+  `srcdoc`, `srcset`, `sizes`, `data`, `type`, `colspan` / `rowspan` / `span`, `alt`, `value`,
+  `multiple`, `size`, `rows`, `cols`, `usemap`, `poster`, `href`, `rel`, `media`,
+  `placeholder`, `start`, `reversed` is not an attribute-only change: the boxes are built again
+  (an iframe's new `src` loads -- §29's frames are synced at the rebox -- an image's new source
+  is fetched, a cell spans again). Found by `iframetest.sh` once §29 met the in-place restyle.
 
 ## 27. WebAssembly (wasm3) and Web Crypto (mbedTLS)
 
@@ -2402,6 +2408,148 @@ property through `getComputedStyle`, the console's JSON for a small object, a 50
 named fast, a long string whole. `urltest.sh` (WPT's URL data) as before: 896 / 896, 278 / 278,
 72 / 87. `jstest.sh`, `nettest.sh`, `fxtest.sh` pass; `sitesweep.sh`: no crash.
 
+## 29. Iframes and the messaging between windows (reCAPTCHA's frames)
+
+The aim: the sites that work through frames -- Google's reCAPTCHA (the "I'm not a robot" box of
+www.google.com/sorry/ could not be validated), embedded videos, login and payment widgets,
+consent managers -- working as in Chrome. What was there: NetSurf's iframes drawn and given the
+mouse, but each in a JavaScript world of its own (its own QuickJS runtime) with `window.parent`
+= `window.top` = itself, `contentWindow` / `contentDocument` null, `window.length` undefined,
+`postMessage` to itself only, no `load` event on the element; an iframe without `src` (srcdoc,
+about:blank) or hidden (`visibility: hidden`: reCAPTCHA's challenge frame waits so, off the page)
+had no frame at all; and **every DOM change of the parent made all its frames again** (a rebox
+destroyed the iframes' windows and loaded them anew: their scripts' state lost at each change
+of the page around them).
+
+**The frames follow the document's elements** (`desktop/frames.c`, `onyx_frames_sync`). A
+document's frames are its `<iframe>` elements -- all of them, shown or not, with a `src`, a
+`srcdoc` or neither -- each a browser window **kept by its element** (`bw->onyx_el`):
+
+- `bw->iframes` is an array of pointers (each window its own allocation), in the document's
+  order; the sync (at the document's first layout, at each rebox, and when a script asks:
+  `contentWindow` right after `appendChild`, `window.length`, `window[i]`) keeps the windows of
+  the elements still there, makes the new ones, destroys the ones whose element left
+  (`html_rebox` used to destroy them all). The box tree only links them: `box->iframe` set on
+  the new boxes (`content_html_iframe.node`); a frame whose element has no box (`display: none`,
+  its document still loading) is laid out at 300 x 150 and not drawn.
+- A frame is **navigated when what its element asks for changes** (`bw->onyx_src`: `U:<url>` /
+  `D:<srcdoc>`): a script's `iframe.src = ...` loads it again; the window's own navigations
+  (its links, `location`) do not touch it. `srcdoc` is loaded as a `data:text/html` URL whose
+  document takes the parent's base URL (`onyx_frames_srcdoc_base`, read by `html.c` where the
+  base URL is set); no src (or a `javascript:` one): `about:blank`. A frame showing one of its ancestors' URLs (or 10
+  frames deep) stays blank, as in Chrome.
+- `sandbox`: read when the frame is navigated (`ONYX_SANDBOX*`); without `allow-scripts` the
+  document gets no JavaScript thread (`CONTENT_MSG_GETTHREAD` refused), without
+  `allow-same-origin` its origin is opaque. `allow`, `loading`, `referrerpolicy`... are
+  reflected and otherwise ignored.
+- **`load` on the element**: when a frame's document has loaded (its window's load event fired:
+  `qjs_load_later`; a document without scripts or not HTML: `onyx_frame_content_done`; a failed
+  load too, as Chrome) -- again at each navigation of the frame. A window's own load waits for
+  its frames' (`onyx_frames_loading`, within the 30 s the load waits at most).
+- An iframe's window as the scripts see it: its size (`innerWidth` / `innerHeight`), its scroll
+  (`scrollX` / `scrollY`, `scrollTo`) are its scrollbars' (`qjs.c`: the frame has no gui
+  window), and a scroll of the frame sends its document a `scroll` event (`frames.c`'s scrollbar
+  callback). The scrollbars of an iframe are decided from its content alone (a frame first laid
+  out at another size kept a horizontal scrollbar it did not need).
+
+**One runtime per tab.** The frames of a tab run in its QuickJS runtime (`js_heap_share`: the
+iframe's window takes its parent's heap; `js_destroyheap` gives each share back), each document
+in a realm (context) of its own: a same-origin frame's objects are the objects themselves, as in
+a browser. What that needed in `qjs.c`: a script's changes to another frame's DOM (or the
+runtime's shared promise jobs) lay that frame out again (`qjs_leave` looks at the heap's other
+threads); a thread freed while another realm may still hold its objects keeps its record -- its
+natives find a closed thread with nothing in it, not freed memory -- until the heap goes
+(`zombie`).
+
+**WindowProxy** (`net.js`, the frames section; the natives in `quickjs/qjs_frames.c`). Each
+window has a frame id (`onyx_frame_id`); another window -- `iframe.contentWindow`, `parent`,
+`top`, `frames[i]` / `window[i]`, `event.source`, `window.open(url, name)`'s result -- is a
+`Proxy`, one per window in each realm (`event.source === iframe.contentWindow`), that asks at
+each use what the window's document is now (it follows its navigations):
+
+- same origin (scheme, host, port; `file:` URLs are one origin among themselves, shown as
+  "null" as Chrome does; about:blank and srcdoc take their parent's): the window's global object
+  behind it (`contentWindow.document`, its functions and variables, `frameElement`);
+- another origin: what HTML lets through -- `postMessage`, `location` (set, `replace`,
+  `assign`; not read), `closed`, `length`, `frames`, `window`, `self`, `parent`, `top`,
+  `opener`, `close` / `focus` / `blur`, indexed and named child frames -- the rest a
+  `SecurityError` ("Blocked a frame with origin ... from accessing a cross-origin frame.");
+  `then` and the symbols undefined (a promise resolved with a window does not throw);
+- no document running scripts yet (a frame just inserted): those fields, and the language's
+  built-ins of the asking realm (`Array`, `JSON`... -- the scripts that take "clean" built-ins
+  from a fresh iframe).
+
+`window.parent`, `top`, `length`, `frameElement` (same origin only), `name` (the frame's target
+name, settable), `window[0..31]` and `iframe.contentDocument` (same origin) are defined per
+document; the **named frames** -- `window[name]`, `frames[name]` (the consent managers' stubs
+look for `frames['__tcfapiLocator']`) -- are getters the frames' sync defines on the window
+below its own properties (`js_frames_changed`), and the WindowProxy finds them by name too;
+`window.open(url, name)` to a frame's name navigates that frame (and `_self`, `_parent`,
+`_top`). **Navigating another window** (its `location` set through the WindowProxy): its own
+frames and a same-origin window freely; an ancestor (top, parent: "frame busting") or another
+frame only within 5 s of the user's click or key in the caller's document, and from a sandboxed
+frame only with `allow-top-navigation` -- Chrome's rules, simplified (an ad frame cannot send
+the page elsewhere by itself).
+
+**Nodes between documents** (`dom.js`: `insertAdopting`): a node of another document -- the
+parent's element appended into a same-origin frame's document (ad verification scripts do so),
+a frame's node into the parent's, a DOMParser document's -- is adopted when it is inserted, as in
+browsers. libdom cannot move a node between documents (its import keeps the old document as the
+copy's owner, and the insertion then fails: "not a Node" / WRONG_DOCUMENT before), so the
+subtree is made again by the target document (elements with their attributes, texts, comments)
+and the original taken out of its parent; the copy is inserted and returned. Another realm's
+node is a node (`isNode`: `N.isNode`).
+
+**postMessage between windows** (`framePost`): the value written by QuickJS's serializer in the
+sender's realm and read in the receiver's (net.js' `toWire` / `fromWire` around it: Blob, File,
+Error, ImageData, the ports) -- every object of `event.data` is the receiver's realm's
+(`Object.getPrototypeOf(e.data) === Object.prototype`): nothing of a cross-origin sender leaks
+through it. Delivered as a task (one scheduler callback for the queue, the receiver's microtasks
+between messages), to the window's document of that moment; the `targetOrigin` checked then
+(`*`; `/`: the sender's origin; an origin: the receiver's, never an opaque one) and the message
+dropped otherwise; `event.origin` the sender's, `event.source` its WindowProxy (to reply).
+`postMessage(msg, '/')`, `{ targetOrigin, transfer }`, a bad targetOrigin (`SyntaxError`), a
+function in the message (`DataCloneError`) as Chrome. A window posting to itself keeps
+html5.js' path (no serializer: a `setImmediate` polyfill posts at each task).
+
+**MessagePort across realms**: a channel within one realm stays html5.js' (React's scheduler
+posts on one at each task); a port transferred to another realm -- in the transfer list, or in
+the message itself (`{ port: ch.port2 }`) -- becomes a pair of ids in `qjs_frames.c`
+(`portPair`, `portOwn`, `portPost`, `portClose`): its other end, still here, posts through it;
+the messages that wait for a port in flight are given to the realm that takes it, those it had
+not given its scripts yet go with it (`portQueue`); `start()`, `onmessage` starting it,
+`close()` (the other end gets nothing more), a port transferred twice or detached
+(`DataCloneError`). Both ends of a channel can go to two other realms (reCAPTCHA's anchor and
+challenge frames talk so). **BroadcastChannel** reaches the same-origin documents of the app and
+their workers (`qjs_net.c`: `n_broadcast` looked at a page's own workers only).
+
+**The tests** (`tools/tests/netsurf/iframetest.sh`, checked against Chromium headless for the
+same pages): `pages/frames-api.html` (55 checks: the parser's and a script's frames, srcdoc,
+about:blank written by its parent, a `src` changed, a frame removed (`closed`), the parent's DOM
+changed (the frame kept with its state), a frame in a frame talking to the top window, sibling
+frames, sandbox, the structured clone each way, the targetOrigin checks, ports in the transfer
+list and in the value, a port closed, BroadcastChannel across frames, `window.open` to a frame
+name); `pages/frames-input.html` (a checkbox clicked, an input focused and typed into, Enter, the
+wheel in a frame; a link targeting the frame's name); `pages/recaptcha-outer.html` (a local
+mimic of reCAPTCHA v2 over two servers -- two origins: the page renders the anchor frame and a
+hidden challenge frame as api.js does, the frames say they are ready, the page gives each a port
+and the two of them a channel of their own, the anchor's checkbox clicked shows the challenge,
+its tile and "Verify" clicked, the token goes to the anchor, then to the page, which fills the
+hidden `g-recaptcha-response` and calls the site's callback; the cross-origin limits checked
+both ways, a message for another origin dropped, the anchor's try at sending the page elsewhere
+refused). Google's own reCAPTCHA is not touched by the
+tests.
+
+**Not done**: a frame's initial about:blank is not there synchronously (a script that writes
+into `contentDocument` right after inserting the iframe finds null until it has loaded, a few ms
+-- the built-ins above aside); `document.domain`; a node adopted from another document is a
+copy (its listeners and form state stay on the original, which a script may still hold);
+`location.href` of a srcdoc document is its data: URL (Chrome: about:srcdoc); the frames share
+the tab's process and runtime (no site isolation: a cross-origin frame's long script holds the
+page, as it did); `loading="lazy"` frames load at once; focus does not move between frames by
+script (`contentWindow.focus()` does nothing; a click does); a frame inside a shadow root has no
+window; MessagePort to a worker.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -2417,6 +2565,10 @@ named fast, a long string whole. `urltest.sh` (WPT's URL data) as before: 896 / 
 - The network (§24): no revocation checks, no CSP, no SameSite cookies, no
   CORS for the core's loads (EventSource, fonts, `<img crossorigin>`, module scripts), no
   HTTP/3, no back-forward cache.
+- Frames (§29): a frame's initial about:blank is not there synchronously, no
+  `document.domain`, a srcdoc's `location.href` is its data: URL, no
+  focus moved between frames by script, `loading="lazy"` frames load at once, no frames in
+  shadow trees.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.

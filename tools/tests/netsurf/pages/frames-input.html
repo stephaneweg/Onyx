@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html><head><title>frames input</title>
+<style>body { margin: 0 } #f { position: absolute; left: 20px; top: 60px; width: 300px; height: 120px; border: 0 }
+#lnk { position: absolute; left: 20px; top: 200px; font: 16px sans-serif }</style></head>
+<body>
+<!-- Onyx: the mouse, the keyboard and the wheel reach a frame's document; a link targets a frame by
+     its name (iframetest.sh clicks at fixed points: the frame at 20,60 in the page) -->
+<iframe id="f" name="fin" src="frame-input-child.html?n=a"></iframe>
+<a id="lnk" href="frame-input-child.html?n=nav" target="fin">go</a>
+<script>
+var f = document.getElementById('f'), loads = 0;
+f.addEventListener('load', function () {
+	loads++;
+	console.log('framein load ' + loads + ' ' + f.contentWindow.childVar);
+});
+document.addEventListener('click', function (e) { console.log('framein outer click ' + (e.target.id || e.target.nodeName)); });
+</script>
+</body></html>

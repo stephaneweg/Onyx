@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html><head><title>frames api</title></head>
+<body>
+<!-- Onyx: iframes as browsing contexts and the messaging between them (iframetest.sh) -- each
+     check logs "OK frames <name>" or "FAIL frames <name> ...", then "frames done <n>". Same-origin
+     frames (file: URLs); the cross-origin ones are recaptcha-*.html's (two servers). -->
+<iframe id="a" name="fa" src="frame-child.html?n=a" width="220" height="80"></iframe>
+<iframe id="b" srcdoc="<p>srcdoc</p><script>parent.postMessage({ srcdoc: true, parentTitle: parent.document.title, fe: frameElement && frameElement.id }, '*')</script>" width="120" height="40"></iframe>
+<iframe id="c" width="120" height="40"></iframe>
+<script>
+'use strict';
+var checks = 0, failed = 0, ended = false;
+function ok(name, cond, info) {
+	checks++;
+	if (!cond) failed++;
+	console.log((cond ? 'OK' : 'FAIL') + ' frames ' + name + (cond ? '' : ' ' + (info === undefined ? '' : info)));
+}
+var $ = function (id) { return document.getElementById(id); };
+var a = $('a'), b = $('b'), c = $('c');
+
+/* the parser's iframes are windows at once */
+ok('length by the parser', window.length === 3, window.length);
+ok('contentWindow is frames[i]', a.contentWindow !== null && a.contentWindow === window[0] && a.contentWindow === frames[0] &&
+	b.contentWindow === window[1] && c.contentWindow === window[2]);
+ok('window[3] undefined', window[3] === undefined);
+ok('frames is window', window.frames === window && window.top === window && window.parent === window && window.frameElement === null);
+ok('sandbox token list', a.sandbox.length === 0 && typeof a.sandbox.add === 'function');
+
+/* the messages: ready from each child, echoes... */
+var waits = {}, got = {};
+function want(key, fn) { waits[key] = fn; }
+window.addEventListener('message', function (e) {
+	var d = e.data;
+	if (!d || typeof d !== 'object') { got[d] = e; if (waits[d]) { var f = waits[d]; delete waits[d]; f(e); } return; }
+	var key = d.ready !== undefined ? 'ready-' + d.ready : d.topReady !== undefined ? 'top-' + d.topReady :
+		d.echo !== undefined ? 'echo-' + (typeof d.echo === 'string' ? d.echo : 'obj') :
+		d.srcdoc ? 'srcdoc' : d.sibling !== undefined ? 'sibling' : d.bcReady !== undefined ? 'bcready' :
+		d.sb !== undefined ? 'sb' : 'other';
+	got[key] = e;
+	if (waits[key]) { var f = waits[key]; delete waits[key]; f(e); }
+});
+
+want('srcdoc', function (e) {
+	ok('srcdoc runs, reaches its parent', e.data.parentTitle === 'frames api' && e.data.fe === 'b', JSON.stringify(e.data));
+	ok('srcdoc source', e.source === b.contentWindow);
+});
+
+want('ready-a', function (e) {
+	var d = e.data;
+	ok('child ready', d.name === 'fa' && d.topIsParent === true && d.len === 0, JSON.stringify(d));
+	ok('child viewport', d.iw >= 200 && d.iw <= 220 && d.ih >= 60 && d.ih <= 80, d.iw + 'x' + d.ih);
+	ok('event.source is contentWindow', e.source === a.contentWindow);
+	ok('event.origin', e.origin === location.origin, e.origin + ' vs ' + location.origin);
+	var w = a.contentWindow;
+	ok('same-origin globals', w.childVar === 'va' && w.childFn(2) === 4, w.childVar);
+	ok('same-origin document', a.contentDocument !== null && a.contentDocument.getElementById('p').textContent === 'child' &&
+		w.document === a.contentDocument);
+	ok('child relatives', w.parent === window && w.top === window && w.frameElement === a && w.length === 0);
+	ok('named frame', window.fa === w && frames['fa'] === w && !('fa' in Object.keys(window)));
+	a.contentDocument.getElementById('p').textContent = 'changed';
+	ok('child DOM changed from here', w.document.getElementById('p').textContent === 'changed');
+	w.keep = 42;
+	/* nodes moved between the two documents (adopted) */
+	var el = document.createElement('b');
+	el.id = 'adopted';
+	el.textContent = 'from the parent';
+	var put = a.contentDocument.body.appendChild(el);
+	var found = a.contentDocument.getElementById('adopted');
+	ok('node adopted by the frame', found !== null && found.textContent === 'from the parent' &&
+		found.ownerDocument === a.contentDocument && put.ownerDocument === a.contentDocument && !document.getElementById('adopted'));
+	var back = document.body.appendChild(a.contentDocument.createElement('i'));
+	ok('frame node adopted here', back.ownerDocument === document && back.parentNode === document.body);
+	back.remove();
+	step2();
+});
+
+function step2() {
+	var w = a.contentWindow;
+	/* a structured clone each way: the values come in this realm's objects */
+	var sentAt = 0, after = false;
+	want('echo-obj', function (e) {
+		var v = e.data.echo;
+		ok('async delivery', after === true);
+		ok('clone kinds', v.m instanceof Map && v.m.get(1) === 'x' && v.d instanceof Date && v.d.getTime() === 0 &&
+			Array.isArray(v.arr) && v.arr[1] === 2 && v.nested.deep === true && v.self === v &&
+			v.u8 instanceof Uint8Array && v.u8[2] === 3);
+		ok('clone in this realm', Object.getPrototypeOf(e.data) === Object.prototype && v.m.constructor === Map);
+		ok('echo source/origin', e.data.srcIsParent === true && e.data.origin === location.origin);
+		step3();
+	});
+	var obj = { m: new Map([[1, 'x']]), d: new Date(0), arr: [1, 2], nested: { deep: true }, u8: new Uint8Array([1, 2, 3]) };
+	obj.self = obj;
+	w.postMessage({ cmd: 'echo', v: obj }, '*');
+	after = true;
+	var threw = '';
+	try { w.postMessage({ f: function () {} }, '*'); } catch (x) { threw = x.name; }
+	ok('function not cloned', threw === 'DataCloneError', threw);
+	threw = '';
+	try { w.postMessage('x', 'not a url'); } catch (x) { threw = x.name; }
+	ok('bad targetOrigin', threw === 'SyntaxError', threw);
+}
+
+function step3() {
+	var w = a.contentWindow;
+	/* targetOrigin: another origin's message is dropped, "/" and "*" reach */
+	w.postMessage({ cmd: 'echo', v: 'wrong' }, 'http://example.com');
+	w.postMessage({ cmd: 'echo', v: 'slash' }, '/');
+	want('echo-slash', function () {
+		ok('targetOrigin "/"', true);
+		w.postMessage({ cmd: 'echo', v: 'star' }, '*');
+	});
+	want('echo-star', function () {
+		ok('targetOrigin elsewhere dropped', !got['echo-wrong']);
+		step4();
+	});
+}
+
+function step4() {
+	var w = a.contentWindow;
+	/* a MessageChannel: port2 to the child (in transfer, then in the value) */
+	var ch = new MessageChannel(), n = 0;
+	ch.port1.onmessage = function (m) {
+		n++;
+		if (n === 1) {
+			ok('port ready', m.data === 'ready port 1', m.data);
+			ch.port1.postMessage({ x: [1, 2] });
+		} else if (n === 2) {
+			ok('port pong', m.data && m.data.pong && m.data.pong.x[1] === 2 && m.data.n === 'a', JSON.stringify(m.data));
+			ok('port message in this realm', Object.getPrototypeOf(m.data) === Object.prototype);
+			ch.port1.postMessage('bye');
+		} else if (n === 3) {
+			ok('port closing', m.data === 'closing');
+			ch.port1.postMessage('after close');
+			setTimeout(function () { ok('closed port: nothing more', n === 3, n); step5(); }, 300);
+		}
+	};
+	w.postMessage({ cmd: 'port' }, '*', [ch.port2]);
+	var threw = '';
+	try { ch.port2.postMessage('x'); } catch (x) { threw = 'threw'; }
+	ok('port2 detached here', threw === '');
+}
+
+function step5() {
+	var w = a.contentWindow;
+	var ch = new MessageChannel();
+	ch.port1.addEventListener('message', function (m) {
+		if (m.data === 'ready port2 1') {
+			ok('port in the value', true);
+			ch.port1.postMessage('p2');
+		} else if (m.data && m.data.pong === 'p2') {
+			ok('port in the value answers', true);
+			step6();
+		}
+	});
+	ch.port1.start();
+	w.postMessage({ cmd: 'port2', port: ch.port2 }, { targetOrigin: '*', transfer: [ch.port2] });
+}
+
+function step6() {
+	/* a frame made by a script: a window at once, its load event, a src changed, removed */
+	var d = document.createElement('iframe');
+	d.id = 'dyn';
+	d.width = 100; d.height = 40;
+	ok('detached iframe has no window', d.contentWindow === null);
+	d.src = 'frame-child.html?n=dyn';
+	var loads = 0, w;
+	d.addEventListener('load', function () {
+		loads++;
+		if (loads === 1) {
+			ok('dynamic load', d.contentWindow === w && w.childVar === 'vdyn', w.childVar);
+			d.src = 'frame-child.html?n=dyn2';
+		} else if (loads === 2) {
+			ok('src changed: loaded again', d.contentWindow === w && w.childVar === 'vdyn2', w.childVar);
+			d.remove();
+			setTimeout(function () {
+				ok('removed: closed', w.closed === true && d.contentWindow === null, w.closed);
+				step7();
+			}, 200);
+		}
+	});
+	document.body.appendChild(d);
+	w = d.contentWindow;
+	ok('dynamic window at once', w !== null && window.length === 4 && window[3] === w, window.length);
+	ok('fresh frame built-ins', typeof w.JSON.stringify === 'function' && w.Array.isArray([]) === true);
+}
+
+function step7() {
+	/* (a javascript: src, checked by step8) */
+	jsf = document.createElement('iframe');
+	jsf.src = 'javascript:false';
+	jsf.width = 40; jsf.height = 20;
+	jsf.onload = function () { jsLoaded = true; };
+	document.body.appendChild(jsf);
+	/* the parent's DOM changed (its boxes made again): the frame keeps its document */
+	var w = a.contentWindow, loads = 0;
+	a.addEventListener('load', function () { loads++; });
+	document.body.className = 'x';
+	var p = document.createElement('p');
+	p.textContent = 'new paragraph';
+	document.body.insertBefore(p, a);
+	setTimeout(function () {
+		ok('rebox keeps the frame', w.keep === 42 && loads === 0 && a.contentDocument.getElementById('p').textContent === 'changed', w.keep + ' ' + loads);
+		step8();
+	}, 300);
+}
+
+var jsf, jsLoaded = false;
+function step8() {
+	/* a javascript: src: an empty, same-origin document */
+	ok('javascript: src', jsLoaded && jsf.contentDocument !== null);
+	jsf.remove();
+	/* about:blank: same origin, written by the parent */
+	var doc = c.contentDocument;
+	ok('about:blank document', doc !== null && doc.body !== null);
+	if (doc && doc.body) {
+		doc.body.innerHTML = '<p id="w">written</p>';
+		ok('about:blank written', c.contentWindow.document.getElementById('w').textContent === 'written');
+	}
+	/* a frame in a frame (it talks to the top window), a sibling of a (they talk) */
+	var e = document.createElement('iframe');
+	e.src = 'frame-nested.html';
+	e.width = 220; e.height = 80;
+	document.body.appendChild(e);
+	var s = document.createElement('iframe');
+	s.src = 'frame-child.html?n=s';
+	s.width = 100; s.height = 40;
+	document.body.appendChild(s);
+	var pending = 2;
+	want('top-inner', function (m) {
+		ok('nested frame reaches top', m.data.parentVar === 'nested' && m.data.isFrame0 === true, JSON.stringify(m.data));
+		ok('nested source', m.source === e.contentWindow.frames[0] && m.source === window[3][0]);
+		ok('nested lengths', window[3].length === 1 && e.contentWindow.frames[0].parent === e.contentWindow &&
+			e.contentWindow.frames[0].top === window);
+		if (--pending === 0) sibling();
+	});
+	want('ready-s', function () { if (--pending === 0) sibling(); });
+	function sibling() {
+		want('sibling', function (m) {
+			ok('sibling frames talk', m.data.sibling === 's' && m.data.srcIsSib === true, JSON.stringify(m.data));
+			step9();
+		});
+		a.contentWindow.postMessage({ cmd: 'sib', idx: 4 }, '*');
+	}
+}
+
+function step9() {
+	/* sandbox: no allow-scripts, nothing runs; allow-scripts alone, an opaque origin */
+	var f = document.createElement('iframe');
+	f.setAttribute('sandbox', '');
+	f.srcdoc = "<script>parent.postMessage('sandboxed ran', '*')<\/script>";
+	document.body.appendChild(f);
+	var g = document.createElement('iframe');
+	g.setAttribute('sandbox', 'allow-scripts');
+	g.srcdoc = "<script>var r = 'no'; try { r = parent.document.title; } catch (e) { r = e.name; } parent.postMessage({ sb: r, origin: 1 }, '*')<\/script>";
+	document.body.appendChild(g);
+	want('sb', function (m) {
+		ok('sandboxed allow-scripts runs, opaque origin', m.data.sb === 'SecurityError' && m.origin === 'null', JSON.stringify(m.data) + ' ' + m.origin);
+		ok('sandboxed: no contentDocument', g.contentDocument === null);
+		var threw = '';
+		try { void g.contentWindow.document; } catch (x) { threw = x.name; }
+		ok('cross-origin access throws', threw === 'SecurityError', threw);
+		setTimeout(function () { ok('sandbox without allow-scripts', !got['sandboxed ran']); step10(); }, 300);
+	});
+}
+
+function step10() {
+	/* BroadcastChannel between the window and its frames */
+	var bc = new BroadcastChannel('frames-bc');
+	want('bcready', function () {
+		bc.onmessage = function (m) {
+			ok('BroadcastChannel across frames', m.data === 'child a got hello', m.data);
+			bc.close();
+			step11();
+		};
+		bc.postMessage('hello');
+	});
+	a.contentWindow.postMessage({ cmd: 'bc' }, '*');
+}
+
+function step11() {
+	/* window.open(url, name): the frame of that name goes there */
+	var loads = 0;
+	a.addEventListener('load', function () {
+		if (++loads === 1) {
+			ok('window.open to a frame name', a.contentWindow.childVar === 'vnamed', a.contentWindow.childVar);
+			finish();
+		}
+	});
+	var r = window.open('frame-child.html?n=named', 'fa');
+	ok('window.open returns the frame', r === a.contentWindow);
+}
+
+function finish() {
+	if (ended) return;
+	ended = true;
+	console.log('frames done ' + checks + (failed ? ' (' + failed + ' failed)' : ''));
+}
+setTimeout(function () { if (!ended) { console.log('FAIL frames timeout, waiting for ' + Object.keys(waits).join(',')); finish(); } }, 20000);
+</script>
+</body></html>

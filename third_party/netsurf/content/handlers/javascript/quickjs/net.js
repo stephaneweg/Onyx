@@ -105,7 +105,7 @@ async function readAll(stream) {
  * (DataCloneError), as structuredClone does. */
 const WIRE = '__onyxWire';
 function cloneError(what) { return domError(what + ' could not be cloned.', 'DataCloneError'); }
-function toWire(value, transfer) {
+function toWire(value, transfer, ports) {
 	let special = false;
 	const memo = new Map();
 	const walk = v => {
@@ -146,6 +146,10 @@ function toWire(value, transfer) {
 			memo.set(v, r);
 			for (const k of Object.keys(v)) r[k] = walk(v[k]);
 			return r;
+		} else if (ports && G.MessagePort && v instanceof G.MessagePort && ports.includes(v)) {
+			/* (Onyx: a port transferred, in the value itself: the receiver's port there) */
+			special = true;
+			r = { [WIRE]: 'port', i: ports.indexOf(v) };
 		} else if (v instanceof Promise || v instanceof WeakMap || v instanceof WeakSet ||
 				(typeof WeakRef !== 'undefined' && v instanceof WeakRef) ||
 				(G.MessagePort && v instanceof G.MessagePort)) {
@@ -167,7 +171,7 @@ function toWire(value, transfer) {
 	return { value: special ? { [WIRE]: 'root', v: out } : out, detach };
 }
 function sent(w) { for (const t of w.detach) try { t.transfer(); } catch (e) { /* */ } }
-function fromWire(v) {
+function fromWire(v, ports) {
 	if (v === null || typeof v !== 'object' || v[WIRE] !== 'root') return v;
 	const memo = new Map();
 	const walk = x => {
@@ -186,6 +190,9 @@ function fromWire(v) {
 		}
 		case 'imagedata':
 			r = G.ImageData ? new G.ImageData(x.data, x.w, x.h) : x;
+			break;
+		case 'port':		/* (Onyx: a port transferred with the message) */
+			r = ports && ports[x.i] || null;
 			break;
 		default:
 			memo.set(x, x);
@@ -1099,6 +1106,343 @@ if (G.BroadcastChannel) {
 		relaying = true;
 		try { origPost.call(tmp, fromWire(data)); } finally { relaying = false; tmp.close(); }
 	};
+}
+
+/* ---- Onyx: the frames' windows (qjs_frames.c) -------------------------------------------------------
+ * Another window -- an iframe's contentWindow, parent, top, frames[i], event.source -- is a
+ * WindowProxy: one object per window in this realm (contentWindow === event.source), that asks
+ * at each use what the window's document is now (it follows its navigations): same origin, the
+ * window's own global object behind it (its document, its functions, its variables); another
+ * origin, only what HTML lets through (postMessage, location's setter, closed, length, frames,
+ * parent, top, window, self, close, focus, blur), the rest a SecurityError; no document yet,
+ * nothing but those. postMessage to another window: the value cloned into the receiver's realm
+ * by QuickJS' serializer (toWire / fromWire: Blob, File, Error, ImageData, the ports), a task
+ * later, the targetOrigin checked against its document then; a MessagePort transferred to
+ * another realm becomes a pair of ids in C (its messages through the same serializer). */
+if (!isWorker && typeof N.frameSelf === 'function' && N.frameSelf()) {
+	const SELF = N.frameSelf();
+	const PARENT = N.frameRel(SELF, 0), TOP = N.frameRel(SELF, 1);
+	const proxies = new Map(), posters = new Map();
+	const noop = function () {};
+	const SAFE = ['window', 'self', 'location', 'close', 'closed', 'focus', 'blur', 'frames',
+		'length', 'top', 'opener', 'parent', 'postMessage'];
+	const BUILTINS = new Set(['Object', 'Function', 'Array', 'String', 'Number', 'Boolean', 'Symbol',
+		'BigInt', 'Date', 'RegExp', 'Error', 'TypeError', 'RangeError', 'SyntaxError', 'Promise', 'Map',
+		'Set', 'WeakMap', 'WeakSet', 'Proxy', 'Reflect', 'JSON', 'Math', 'Intl', 'ArrayBuffer',
+		'DataView', 'Uint8Array', 'Int32Array', 'Float64Array', 'parseInt', 'parseFloat', 'isNaN',
+		'isFinite', 'encodeURIComponent', 'decodeURIComponent', 'escape', 'unescape', 'console',
+		'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Event', 'EventTarget', 'Node',
+		'Element', 'HTMLElement', 'Document', 'XMLHttpRequest', 'fetch', 'navigator',
+		'MutationObserver', 'atob', 'btoa', 'TextEncoder', 'TextDecoder', 'URL', 'crypto']);
+	const isIndex = k => typeof k === 'string' && /^(0|[1-9]\d*)$/.test(k);
+	const securityError = () => domError('Blocked a frame with origin "' + N.frameOrigin() +
+		'" from accessing a cross-origin frame.', 'SecurityError');
+	const winFor = id => {
+		if (!id) return null;
+		if (id === SELF) return G;
+		let p = proxies.get(id);
+		if (!p) { p = windowProxy(id); proxies.set(id, p); }
+		return p;
+	};
+	const navigateFrame = (id, url) => {
+		let href;
+		try { href = new URL(String(url), baseURL()).href; } catch (e) {
+			throw domError("Failed to set the 'href' property on 'Location': '" + url + "' is not a valid URL.", 'SyntaxError');
+		}
+		N.frameNavigate(id, href);
+	};
+	/* a cross-origin window's Location: set, not read */
+	const crossLocation = id => Object.freeze(Object.create(null, {
+		href: { get() { throw securityError(); }, set(v) { navigateFrame(id, v); } },
+		replace: { value: v => navigateFrame(id, v) },
+		assign: { value: v => navigateFrame(id, v) },
+		toString: { value() { throw securityError(); } },
+	}));
+
+	/* the ports this realm lets go to another (ids), and the ones it receives */
+	const remotes = new Map();		/* port id -> this realm's MessagePort */
+	const newPort = () => {
+		const ch = new G.MessageChannel();
+		const p = ch.port1;
+		ch.port2.close();		/* (p alone: its other end is the id's) */
+		p._closed = false;
+		return p;
+	};
+	const portIn = id => {
+		const p = newPort();
+		p._rid = id;
+		remotes.set(id, p);
+		N.portOwn(id);
+		return p;
+	};
+	const portOut = p => {
+		let id;
+		if (p._rid) {
+			id = p._rid;
+			remotes.delete(id);
+			p._rid = 0;
+		} else {
+			const [a, b] = N.portPair(), q = p._other;
+			if (q) {		/* (its other end, here: now an id's too) */
+				p._other = null;
+				q._other = null;
+				q._rid = a;
+				remotes.set(a, q);
+				N.portOwn(a);
+			} else {
+				N.portClose(a);
+			}
+			id = b;
+		}
+		/* the messages it had not given its scripts go with it */
+		if (p._queue && p._queue.length) {
+			N.portQueue(id, p._queue.map(m => toWire(m.data).value));
+			p._queue.length = 0;
+		}
+		p._closed = true;
+		p._gone = true;
+		return id;
+	};
+	/* the value and its ports for another realm (the ports detached here once written) */
+	const wire = (message, transfer) => {
+		const list = transfer == null ? [] : Array.from(transfer);
+		const ports = list.filter(t => t instanceof G.MessagePort);
+		for (const p of ports)
+			if (p._gone || ports.indexOf(p) !== ports.lastIndexOf(p))
+				throw domError('Failed to execute \'postMessage\': A MessagePort could not be cloned because it was detached or listed twice.', 'DataCloneError');
+		const w = toWire(message, list, ports);
+		w.ports = ports.map(portOut);
+		return w;
+	};
+	const postTo = (id, message, targetOrigin, transfer) => {
+		let opts = targetOrigin;
+		if (typeof targetOrigin !== 'object' || targetOrigin === null)
+			opts = { targetOrigin: targetOrigin === undefined ? '/' : String(targetOrigin), transfer };
+		let to = opts.targetOrigin === undefined ? '/' : String(opts.targetOrigin);
+		if (to !== '*' && to !== '/') {
+			try { to = new URL(to).origin; } catch (e) {
+				throw domError("Failed to execute 'postMessage' on 'Window': Invalid target origin '" + to + "' in a call to 'postMessage'.", 'SyntaxError');
+			}
+		}
+		if (id === SELF) return G.postMessage(message, opts);
+		const w = wire(message, opts.transfer);
+		N.framePost(id, w.value, to, w.ports);
+		sent(w);
+	};
+	const poster = id => {
+		let f = posters.get(id);
+		if (!f) {
+			f = function postMessage(message, targetOrigin, transfer) { postTo(id, message, targetOrigin, transfer); };
+			posters.set(id, f);
+		}
+		return f;
+	};
+
+	const windowProxy = id => {
+		let xloc = null, proxy;
+		const rel = which => winFor(N.frameRel(id, which)) || proxy;
+		/* what any window gives (its document or not) */
+		const common = k => {
+			switch (k) {
+			case 'window': case 'self': case 'frames': return proxy;
+			case 'parent': return rel(0);
+			case 'top': return rel(1);
+			case 'postMessage': return poster(id);
+			}
+			if (isIndex(k)) return winFor(N.frameChild(id, +k)) || undefined;
+			return undefined;
+		};
+		const cross = k => {
+			switch (k) {
+			case 'window': case 'self': case 'frames': case 'parent': case 'top': case 'postMessage':
+				return common(k);
+			case 'opener': return null;
+			case 'length': return N.frameCount(id);
+			case 'closed': return !N.frameAlive(id);
+			case 'location': return xloc || (xloc = crossLocation(id));
+			case 'close': case 'focus': case 'blur': return noop;
+			case 'then': return undefined;
+			}
+			if (typeof k === 'symbol') return undefined;
+			if (isIndex(k)) return common(k);
+			const named = N.frameNamed(id, k);
+			if (named) return winFor(named);
+			throw securityError();
+		};
+		const handler = {
+			get(t, k) {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') {
+					const c = common(k);
+					if (c !== undefined) return c;
+					const v = Reflect.get(g, k, g);
+					if (v === undefined && typeof k === 'string' && !(k in g)) {
+						const named = N.frameNamed(id, k);	/* (its named frames) */
+						if (named) return winFor(named);
+					}
+					return v;
+				}
+				if (g === false) return cross(k);
+				/* (no document running scripts yet -- a frame just inserted, its
+				 * about:blank still to come: the window's own fields, and the language's
+				 * built-ins of this realm for the scripts that take a "clean" Array or
+				 * JSON from a fresh iframe) */
+				if (typeof k === 'string' && BUILTINS.has(k)) return G[k];
+				switch (k) {
+				case 'closed': return !N.frameAlive(id);
+				case 'length': return N.frameCount(id);
+				case 'location': return xloc || (xloc = crossLocation(id));
+				case 'close': case 'focus': case 'blur': case 'addEventListener':
+				case 'removeEventListener': return noop;
+				}
+				return common(k);
+			},
+			set(t, k, v) {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') return Reflect.set(g, k, v, g);
+				if (k === 'location') { navigateFrame(id, v); return true; }
+				if (g === false) throw securityError();
+				return true;
+			},
+			has(t, k) {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') return k in g;
+				return SAFE.includes(k) || (isIndex(k) && +k < N.frameCount(id));
+			},
+			ownKeys() {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') return Reflect.ownKeys(g);
+				const keys = [];
+				for (let i = 0, n = N.frameCount(id); i < n; i++) keys.push(String(i));
+				return keys.concat(SAFE);
+			},
+			getOwnPropertyDescriptor(t, k) {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') {
+					const d = Reflect.getOwnPropertyDescriptor(g, k);
+					if (d) d.configurable = true;	/* (the proxy's invariants) */
+					return d;
+				}
+				if (SAFE.includes(k) || isIndex(k)) {
+					const v = g === false ? cross(k) : handler.get(t, k);
+					return v === undefined ? undefined : { value: v, writable: false, enumerable: false, configurable: true };
+				}
+				if (g === false) throw securityError();
+				return undefined;
+			},
+			defineProperty(t, k, d) {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') return Reflect.defineProperty(g, k, Object.assign({}, d, { configurable: true }));
+				throw securityError();
+			},
+			deleteProperty(t, k) {
+				const g = N.frameAccess(id);
+				if (g && typeof g === 'object') return Reflect.deleteProperty(g, k);
+				throw securityError();
+			},
+			getPrototypeOf() {
+				const g = N.frameAccess(id);
+				return g && typeof g === 'object' ? Object.getPrototypeOf(g) : null;
+			},
+			setPrototypeOf() { return false; },
+			preventExtensions() { return false; },
+		};
+		proxy = new Proxy({}, handler);
+		return proxy;
+	};
+
+	/* the messages to this realm: a window's (kind 5; 7: it could not be read), a port's (6, 8) */
+	/* window[name] / frames[name]: the named frames as properties of the window (below its own) */
+	const named = new Set();
+	const namedFrames = names => {
+		const want = new Set(names);
+		for (const k of named)
+			if (!want.has(k)) { named.delete(k); delete G[k]; }
+		for (const k of want) {
+			if (named.has(k) || isIndex(k) || Object.prototype.hasOwnProperty.call(G, k)) continue;
+			named.add(k);
+			Object.defineProperty(G, k, { configurable: true, enumerable: false,
+				get: () => winFor(N.frameNamed(SELF, k)) || undefined,
+				set(v) {
+					named.delete(k);
+					Object.defineProperty(G, k, { value: v, writable: true, configurable: true, enumerable: true });
+				} });
+		}
+	};
+	N.frameHook((kind, data, a, origin, ids) => {
+		if (kind === 9) { namedFrames(data); return; }
+		const ports = ids.map(portIn);
+		if (kind === 5 || kind === 7) {
+			const ev = kind === 5 ?
+				new G.MessageEvent('message', { data: fromWire(data, ports), origin, source: winFor(a), ports }) :
+				new G.MessageEvent('messageerror', { data: null, origin, source: winFor(a), ports });
+			G.dispatchEvent(ev);
+		} else {
+			const p = remotes.get(a);
+			if (!p || p._closed) return;
+			if (kind === 6) p._enqueue({ data: fromWire(data, ports), ports });
+			else p.dispatchEvent(new G.MessageEvent('messageerror', { data: null }));
+		}
+	});
+
+	/* a port whose other end is in another realm */
+	const MP = G.MessagePort.prototype, mpPost = MP.postMessage, mpClose = MP.close;
+	MP.postMessage = function postMessage(message, opts) {
+		if (!this._rid) return mpPost.call(this, message, opts);
+		const transfer = Array.isArray(opts) ? opts : opts && opts.transfer ? opts.transfer : [];
+		const w = wire(message, transfer);
+		if (this._closed) return;
+		N.portPost(this._rid, w.value, w.ports);
+		sent(w);
+	};
+	MP.close = function close() {
+		if (this._rid) {
+			N.portClose(this._rid);
+			remotes.delete(this._rid);
+			this._rid = 0;
+		}
+		return mpClose.call(this);
+	};
+
+	/* the window's relatives (parent, top, frames, length, window[i], frameElement, name) */
+	const replaceable = (name, get) => Object.defineProperty(G, name, { configurable: true, enumerable: true, get,
+		set(v) { Object.defineProperty(G, name, { value: v, writable: true, configurable: true, enumerable: true }); } });
+	replaceable('parent', () => (PARENT ? winFor(PARENT) : G));
+	Object.defineProperty(G, 'top', { configurable: true, enumerable: true, get: () => (TOP && TOP !== SELF ? winFor(TOP) : G) });
+	replaceable('length', () => N.frameCount(SELF));
+	replaceable('frameElement', () => N.frameElement());
+	Object.defineProperty(G, 'name', { configurable: true, enumerable: true,
+		get: () => N.frameName(), set: v => { N.frameName(String(v)); } });
+	for (let i = 0; i < 32; i++)
+		if (!Object.prototype.hasOwnProperty.call(G, i))
+			Object.defineProperty(G, String(i), { configurable: true, enumerable: false,
+				get: () => winFor(N.frameChild(SELF, i)) || undefined });
+	/* window.open(url, name) to a frame of that name: it goes there */
+	{
+		const open = G.open;
+		G.open = function (url, target, features) {
+			const name = target === undefined ? '' : String(target);
+			const id = name === '_self' ? SELF : name === '_parent' ? (PARENT || SELF) :
+				name === '_top' ? (TOP || SELF) : name && name !== '_blank' ? N.frameNamed(SELF, name) : 0;
+			if (id) {
+				if (url) navigateFrame(id, url);
+				return winFor(id);
+			}
+			return open.call(this, url, target, features);
+		};
+	}
+
+	/* an iframe's window and (same origin) its document */
+	if (G.HTMLIFrameElement) {
+		Object.defineProperty(G.HTMLIFrameElement.prototype, 'contentWindow', { configurable: true, enumerable: true,
+			get() { const id = N.frameOf(this); return id ? winFor(id) : null; } });
+		Object.defineProperty(G.HTMLIFrameElement.prototype, 'contentDocument', { configurable: true, enumerable: true,
+			get() {
+				const id = N.frameOf(this);
+				const g = id ? N.frameAccess(id) : null;
+				return g && typeof g === 'object' ? g.document : null;
+			} });
+	}
 }
 
 if (!isWorker) {

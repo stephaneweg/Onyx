@@ -1044,30 +1044,20 @@ box_iframe(dom_node *n,
 			box_is_root(n)) == CSS_DISPLAY_NONE)
 		return true;
 
-	if (box->style &&
-	    css_computed_visibility(box->style) == CSS_VISIBILITY_HIDDEN) {
-		/* Don't create iframe discriptors for invisible iframes
-		 * TODO: handle hidden iframes at browser_window generation
-		 * time instead? */
-		return true;
-	}
+	/* Onyx: a hidden iframe (visibility: hidden) has its frame too -- it loads and runs
+	 * as in Chrome, its box is not drawn; one with no src (about:blank, a srcdoc) too.
+	 * desktop/frames.c makes the frames from the document's elements (what each one
+	 * shows: its src / srcdoc), the descriptors only link them to the boxes. */
 
 	/* get frame URL */
+	url = NULL;
 	err = dom_element_get_attribute(n, corestring_dom_src, &s);
-	if (err != DOM_NO_ERR || s == NULL)
-		return true;
-	if (box_extract_link(content, s, content->base_url, &url) == false) {
+	if (err == DOM_NO_ERR && s != NULL) {
+		if (box_extract_link(content, s, content->base_url, &url) == false) {
+			dom_string_unref(s);
+			return false;
+		}
 		dom_string_unref(s);
-		return false;
-	}
-	dom_string_unref(s);
-	if (url == NULL)
-		return true;
-
-	/* don't include ourself */
-	if (nsurl_compare(content->base_url, url, NSURL_COMPLETE)) {
-		nsurl_unref(url);
-		return true;
 	}
 
 	/* create a new iframe */
@@ -1080,6 +1070,7 @@ box_iframe(dom_node *n,
 	talloc_set_destructor(iframe, box_iframes_talloc_destructor);
 
 	iframe->box = box;
+	iframe->node = n;	/* (Onyx) */
 	iframe->margin_width = 0;
 	iframe->margin_height = 0;
 	iframe->name = NULL;

@@ -90,7 +90,7 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
 QJS := $(TP)/quickjs-ng-0.17.0
 JSQ := $(NS)/content/handlers/javascript/quickjs
 QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c
 # Onyx: Web Crypto on mbedTLS -- its crypto library compiled here with the Pi's configuration
 # (include/mbedtls/mbedtls_config.h; the bench's https is OpenSSL's, host_stubs.c)
 MBEDTLS := $(TP)/mbedtls-3.6.3
@@ -307,6 +307,8 @@ $(call obj,$(JSQ)/qjs_crypto.c): $(OUT)/qjsgen/qjs_crypto_js.h
 $(call obj,$(JSQ)/qjs_crypto.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBEDTLS)/include
 # Onyx: the code cache (the scripts' bytecode on the card; SHA-256 from mbedTLS)
 $(call obj,$(JSQ)/qjs_codecache.c): NS_INC += -I$(QJS) -I$(MBEDTLS)/include
+# Onyx: the frames' windows, postMessage between them, MessagePort across realms
+$(call obj,$(JSQ)/qjs_frames.c): NS_INC += -I$(QJS)
 
 CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \
        -MMD -MP
