@@ -6,6 +6,11 @@ answer in French. The docs stay in English.
 
 ## Working conventions (keep them)
 
+- **Git (the user's rule, 2026-10-01)**: before each new development and each commit, fetch and
+  merge the latest `origin/main` into the working branch, commit, then push into `main`
+  (`git push origin HEAD:main`) and the branch. Delete the working branch only when the user
+  asks (CLAUDE.md).
+
 - Repo `stephaneweg/Onyx`; the cloud session worked on branch `claude/kind-rubin-vddz2w` and
   always pushed it to `main` as well. Circle is a submodule (`circle/`, fork
   `stephaneweg/circle`, branch `onyx`): commit there with
