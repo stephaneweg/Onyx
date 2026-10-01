@@ -12,7 +12,8 @@
 > **Onyx Package Manager (`pkgman`)**; the daemon **`pkgd`**; an app installed is **manual**; the
 > split: **the system** in one package (`onyx`: the kernel, `/bin`, the settings it needs — plus the
 > desktop's own apps, the terminal, the File Viewer, the Task Manager, the text editor Tinypad, and
-> the wallpaper's painters voronoy and imageview), **the firmware** in another (`pi-firmware`), **every
+> the wallpaper's painters voronoy and imageview), **the package manager** in its own (`pkgman`: `bin/pkg`,
+> the applet, the daemon — required, updated without the system, which needs it), **the firmware** in another (`pi-firmware`), **every
 > app its own package**, the **demos** in one (`demos`); the **samples each with their app**
 > (`basic-samples`, `writer-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
 > `koton-samples`, `fmtracker-samples`, each needing its app); **each emulator its own package**,

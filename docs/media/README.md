@@ -1,6 +1,8 @@
 # Media Player for Onyx — the music library (study, first mock-ups)
 
-> **Status (2026-10-01): second mock-ups, after the user's answers (below), to be validated.** Priority 1 of the end-user apps roadmap
+> **Status (2026-10-01): the music is implemented** (`user/Apps/media`, docs/03 *Media Player*; its use: docs/04
+> §12; the real app: `screenshots/media-*.png`), **not yet tried on the Pi**; the videos: to do (below). The
+> mock-ups (validated): Priority 1 of the end-user apps roadmap
 > (docs/HANDOFF.md): a **music library** as a polished app, in the way of Windows Media Player / iTunes /
 > Rhythmbox (the user: "a library, as in Media Player"); **MP3, OGG, FLAC, WAV and MIDI**; artists,
 > albums, songs, genres, folders, playlists; tags and cover art; a now-playing view; file associations.
@@ -48,5 +50,7 @@ artists and their covers are made up).
 ## Still open
 
 - The SoundFont: one for all the MIDI files (Settings), proposed.
+- **The videos** (the user, 2026-10-01): before starting them, push into `main` and merge `main` -- another
+  session is making a reusable video playback library for NetSurf (Jet Browser), to use here.
 - The videos' formats: MPEG-1 (`pl_mpeg`) is light enough for the Pi's CPU; H.264 (MP4) would need the
   Pi's video decoder, not reached through Circle yet -- to study when the videos are built.

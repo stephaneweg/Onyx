@@ -1,24 +1,17 @@
 #!/bin/sh
 #
-# Onyx pre-commit hook -- never let the real Wi-Fi PSK reach git history.
+# Onyx pre-commit hook -- never let the user's Wi-Fi network and key reach git history.
 #
-# If sdcard/etc/wpa_supplicant.conf is staged, rewrite ONLY the staged blob so the
-# committed copy has a redacted psk. The working tree is left untouched: it keeps
-# the real key so the SD card still associates. The file is normally also marked
-# `skip-worktree` (so `git add` ignores it and git status stays clean) -- this hook
-# is the safety net for the case where that flag is lost and the file gets staged.
+# sdcard/etc/wpa_supplicant.conf (and sdcard_lite's) is not tracked (.gitignore): it lives on
+# the SD card only, written by the Wi-Fi settings. If it is ever staged (git add -f), the
+# commit is refused.
 #
 # Install (once per clone):  git config core.hooksPath tools/git-hooks
 #
-f="sdcard/etc/wpa_supplicant.conf"
-
-if git diff --cached --name-only -z | tr '\0' '\n' | grep -qx "$f"; then
-	mode=$(git ls-files --stage "$f" | awk '{print $1}')
-	blob=$(git show ":$f" \
-		| sed -E 's/^([[:space:]]*psk=)"[^"]*"/\1"REDACTED-set-on-the-SD-card"/' \
-		| git hash-object -w --stdin)
-	git update-index --cacheinfo "$mode,$blob,$f"
-	echo "pre-commit: redacted the Wi-Fi psk in the committed wpa_supplicant.conf"
+if git diff --cached --name-only --diff-filter=ACMR | grep -q "etc/wpa_supplicant.conf$"; then
+	echo "pre-commit: etc/wpa_supplicant.conf holds your Wi-Fi key: it must not be committed" >&2
+	echo "            (git restore --staged <file>)" >&2
+	exit 1
 fi
 
 exit 0

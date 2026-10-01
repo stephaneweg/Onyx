@@ -45,6 +45,7 @@
 #include <mach/mach_vm.h>
 #include <mach-o/dyld.h>
 #include <crt_externs.h>
+#include <CoreFoundation/CoreFoundation.h>
 #endif
 #include "host.h"
 
@@ -92,6 +93,26 @@ static void run (const char *const argv[])
 	pid_t pid;
 	if (posix_spawn (&pid, argv[0], 0, 0, (char **) argv, environ) == 0) { int st; waitpid (pid, &st, 0); }
 }
+// the user's language, two letters ("fr"): the Mac's first preferred language (Linux: $LANG)
+static std::string system_language ()
+{
+	std::string l;
+#ifdef __APPLE__
+	CFArrayRef langs = CFLocaleCopyPreferredLanguages ();
+	if (langs && CFArrayGetCount (langs) > 0)
+	{
+		char b[32];
+		if (CFStringGetCString ((CFStringRef) CFArrayGetValueAtIndex (langs, 0), b, sizeof b, kCFStringEncodingUTF8)) l = b;
+	}
+	if (langs) CFRelease (langs);
+#else
+	const char *e = getenv ("LANG");
+	if (e) l = e;
+#endif
+	l = l.substr (0, 2);
+	for (auto &c : l) c = (char) tolower ((unsigned char) c);
+	return l.size () == 2 ? l : "en";
+}
 static void init_paths ()
 {
 	const char *h = getenv ("HOME");
@@ -109,14 +130,25 @@ static void init_paths ()
 	g_root = env_or ("ONYX_SD", g_home + "/Library/Application Support/Onyx Ledger");
 	g_docs = env_or ("ONYX_DOCS", g_home + "/Documents/Onyx Ledger");
 	mkdirs (g_root); mkdirs (g_docs);
-	// the first start: the app's folder of the card (Ledger's templates) copied to the user's, to be changed
+	// the first start: the app's templates (Ledger's printing) copied to the user's folder, to be changed; and its
+	// language, the Mac's when the app has its words in it (SD:/apps/<app>.app/lang/<code>.txt)
 	std::string mine = g_root + "/apps/" + g_app + ".app", given = g_base + "/apps/" + g_app + ".app";
-	if (!is_dir (mine) && is_dir (given))
+	if (!is_dir (mine + "/templates") && is_dir (given + "/templates"))
 	{
-		mkdirs (g_root + "/apps");
-		std::string dst = g_root + "/apps/";
-		const char *const cp[] = { "/bin/cp", "-R", given.c_str (), dst.c_str (), 0 };
+		mkdirs (mine);
+		std::string src = given + "/templates", dst = mine + "/";
+		const char *const cp[] = { "/bin/cp", "-R", src.c_str (), dst.c_str (), 0 };
 		run (cp);
+	}
+	if (!exists (mine + "/lang.txt"))
+	{
+		std::string code = system_language ();
+		if (code != "en" && exists (given + "/lang/" + code + ".txt"))
+		{
+			mkdirs (mine);
+			FILE *f = fopen ((mine + "/lang.txt").c_str (), "wb");
+			if (f) { fputs (code.c_str (), f); fclose (f); }
+		}
 	}
 }
 // "SD:/a//b/" -> volume "SD", rest "a/b" (false: no volume of ours)
@@ -316,7 +348,7 @@ static int f_readdir (void *h, struct kapi_dirent *e)
 	return 1;
 }
 static void f_closedir (void *h) { delete (Dir *) h; }
-static int app_dir (char *b, unsigned n) { snprintf (b, n, "SD:/apps/%s.app/", g_app.c_str ()); return 1; }
+static int app_dir (char *b, unsigned n) { snprintf (b, n, "SD:/apps/%s.app/", g_app.c_str ()); return (int) strlen (b); }	// (its length, as the kernel's)
 static int h_chdir (const char *) { return 1; }
 static int h_getcwd (char *b, unsigned n) { snprintf (b, n, "SD:/"); return 1; }
 
@@ -449,6 +481,10 @@ static std::string program (const char *path)
 	size_t s = r.find_last_of ('/', a);
 	std::string x = r.substr (s == std::string::npos ? 0 : s + 1, a - (s == std::string::npos ? 0 : s + 1)), X = x;
 	if (X.empty ()) return "";
+	{
+		std::string lx = x; for (auto &c : lx) c = (char) tolower ((unsigned char) c);
+		if (lx == g_app) return exe_path ();		// (the app itself, started again: Ledger in another language)
+	}
 	X[0] = (char) toupper ((unsigned char) X[0]);
 	std::string m = g_helpers + "/" + X + ".app/Contents/MacOS/" + X;
 	if (executable (m)) return m;

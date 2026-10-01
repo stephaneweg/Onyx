@@ -798,7 +798,11 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > `writer --merge JOB` — Writer's `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
-> **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; integer only — money in
+> **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; **in English or French**: its words
+> `TR (...)`, `sdcard/apps/ledger.app/lang/fr.txt` — wtk's `lang.h` above —, the language chosen at the
+> side bar's foot or in the File menu, Ledger then started again by itself on the same books; the books'
+> own words — the chart, the printed documents — follow the company's and the party's language as before;
+> integer only — money in
 > **cents** (`money`, a `long long`), VAT rates in hundredths of a percent, quantities in thousandths,
 > dates `yyyymmdd` —; Cardfile's `model.h` and `widgets.h` are reused: strings, `Out`, the editors).
 > **The engine** (plain C++, the same on the PC, no wtk): `core.h` (money and dates typed and shown
@@ -1229,6 +1233,21 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > the same way (for an app that never has the keyboard: the dock); `ask_text_poll (out, cap)`
 > returns -1, then 1 (the text in `out`) / 0.
 
+> **An app in another language** (`wtk/lang.h`). The sources keep their English words, wrapped:
+> **`TR ("Save")`** is the word in the language the user chose, else the English itself (a `const char *`
+> valid for the app's life: it may be kept); **`TRC ("status", "Open")`** looks up `status|Open` first, for
+> a word whose translation depends on where it stands. The catalogues are UTF-8 text, a line a word —
+> `English<TAB>translation` (`\t \n \\` escaped, `#` a comment) —: **`SD:/res/lang/<code>.txt`** for
+> wtk's own words (the dialogs' buttons, the file dialog, the months and days of `Calendar`, the window
+> menu, Cardfile's editors), **`SD:/apps/<app>.app/lang/<code>.txt`** for the app's. The language chosen
+> is `SD:/apps/<app>.app/lang.txt` (`"fr"`; none: English): **`wk_lang_init ()`** first thing in `main`
+> (after a text face is installed, if any), **`wk_lang_choose (code)`** writes it (taken at the next start —
+> the widgets are made with their words). An app drawing with the bitmap fonts gets the words converted to
+> Latin-1 at load (as its text is drawn: one byte a glyph; the euro `0x80`), one with a face keeps UTF-8.
+> A word missing from a catalogue stays English. Ledger is the first app translated (French: its
+> side bar's EN | FR, File menu); wrap only what is shown — never a file's keys, paths, XML or a string
+> the code compares.
+
 > **Text faces — anti-aliased, proportional text in every widget** (`wtk/text.h`). By default wtk
 > draws with its bitmap fonts (8 × 16 cells); an app may install a **`TextFace`** instead and every
 > text path of wtk goes through it: `Canvas::text`, `wk_text_l` / `wk_text_c` / `wk_text_w`, the
@@ -1544,7 +1563,7 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 | `tools/pkg/mkrepo.py` | `--out <onyx-packages checkout> --key <private key>`: the `.opk` of each package (a deterministic ZIP: the card's tree + `PKG/manifest.ini`), the icons, `index.txt` (version, size, SHA-256, needs — `kapi >= KAPI_ABI_VERSION` added —, the content's hash) signed into `index.sig` (ECDSA P-256 / SHA-256). `--db`: `sdcard/var/pkg/db/*.ini`, the card made "installed". `--lite sdcard_lite`: the card of the required packages only. |
 | `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
 | `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
-| `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`. |
+| `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed — unless another installed package has them, `owned_elsewhere`, as when `bin/pkg` moved from `onyx` into `pkgman`), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`. |
 | `user/bin/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/bin/Makefile` (newlib + mbedTLS + zlib). |
 | `user/Apps/pkgman` | The **Package Manager**, the Control Panel's applet (`70-pkgman.lnk`; FreeType): a snapshot of the index and the database (`Row`s, rebuilt after each job) drawn by its own widgets (`Tabs`, `PkgList`: the rows, the boxes, the mode pills, the buttons, the restart banner); a job (check, install, remove, mode) in a thread (`kapi_thread_create`), its progress read each frame (`onTick`: the package being done, its percentage — `http.hpp`'s new `progress ()` callback and the extraction —, the packages finished). Built by `pkgman.elf` in `user/Makefile` (newlib + FreeType + mbedTLS + zlib, `-DPKG_NET -DONYX_HTTP_TLS`). |
 | `user/Apps/pkgd` | The **update daemon** (no window; `run pkgd` in `etc/autostart`): waits for the network and the time, then once a day (`SD:/var/pkg/lastcheck`) `refresh`, the "auto" packages installed (their new needs first; the system staged), `notify_action` for the others; `--once`: one round; `check = never` in `pkg.ini`: it ends. |
@@ -1596,6 +1615,31 @@ The icon: `python3 tools/icons/screenshot_icon.py`. The screenshots: `sh tools/t
 screenshot` — the simulator's `SIM_GRAB=<file>.elsm` is what `kapi_screen_grab` gives (`screenshots/
 desktop.png` made an `.elsm` there), a full-screen app is dumped as its whole buffer, and `SIM_WINS`'
 windows may end with `,title`.
+
+### Media Player, the music library (`user/Apps/media`)
+
+The music library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
+**newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers.
+
+| File | What |
+|---|---|
+| `codecs.h`, `codecs.c`, `vorbis.c` | The decoders from `third_party`: **minimp3** (`minimp3_ex.h`: an index for exact seeks), **dr_flac**, **dr_wav** (in `codecs.c`), **stb_vorbis** (alone in `vorbis.c`: its static names clash with minimp3's). C, built with the FPU into `Apps/media/obj/`; no stdio (`*_NO_STDIO`). |
+| `decode.h` | `Src` (a file through the kapi: `kapi_open` / `kapi_read` / `kapi_seek` / `kapi_fsize64`, any size), `Decoder` (s16 stereo frames at the file's rate; mono doubled, more than two channels: the first two), one per format (an Ogg file read whole: stb_vorbis decodes from memory), `Stream` (a linear resampler to `SOUND_RATE`), `decoder_open` (by extension, then the first bytes). |
+| `midi.h` | `MidiSong` (a Standard MIDI File, formats 0 / 1, RMID too: the tempo map, running status, the events in time order in frames, the notes for the view, the channels' General MIDI instruments), the SoundFont loaded once (`soundfont ()`), `MidiDecoder` (the events fired between `render`s of MeltySynth — Koton's `Apps/koton/synth`, linked from Koton's objects —; a seek replays the programs and controllers, no notes). |
+| `player.h` | `Player`: a thread (`kapi_thread_create`) that opens the song asked for, decodes ahead and feeds `kapi_sound_write` (`kapi_sound_config (1024, 3)`: ~0.1 s queued, so a pause is heard at once), at the volume (a square law); the window asks (play, pause, resume, seek, stop) and reads `state`, `posMs` (what is heard: the frames sent less those queued), `lenMs`, `endedGen`, `errGen` under a `kapi_lock`. No output (the simulator): the song is decoded and timed silently. |
+| `tags.h` | `read_tags`: ID3v2.2–2.4 (Latin-1, UTF-16, UTF-8; `APIC`: the cover's offset and length in the file) then ID3v1, the MP3's length (the Xing / Info / VBRI header, else the bit rate), FLAC's `STREAMINFO`, `VORBIS_COMMENT`, `PICTURE`, Ogg's comment header and the last page's granule, WAV's `fmt`, `data`, `LIST INFO`, MIDI's track name; the path fills the rest (`<artist>/<album>/<nn> - <title>`). |
+| `lib.h` | `Library`: the songs (strings `strdup`'d), grouped by `build ()` into albums (album artist — else artist — and album), artists, genres, folders; `sort_idx` (a merge sort with a context: the scan's thread sorts too); `library.tsv` / `stats.tsv`; the scan (`scan_dir`, `scan_thread`): the folders walked, a known file (same path, same size) copied, the others read; a folder's `cover.jpg` noted. |
+| `covers.h` | `Covers`: a thread decodes the pictures (`img_load_mem` / `img_load`), cropped square at 320 px; each size drawn is made once (box filter, bilinear up) and cached (the oldest dropped); an album without a picture gets one drawn from its name; `round_corners` (polygons over the corners); `tone ()` (a cover's colour: the bands, now playing). |
+| `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`wtk/vpaint.h`), `IntList`. |
+| `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu), `NowBar`, `MiniView` —, the mini player (`kapi_resize_window2` + `kapi_move_window` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name). |
+
+**Tests on the PC**: `sh tools/tests/run_media_test.sh` — sample files made by ffmpeg (MP3, Ogg, FLAC, WAV at
+48 kHz, a 22 kHz mono WAV) and `tools/tests/media/make_midi.py`, decoded by `tools/tests/media/dectest.cpp`
+through the simulator's kapi: the length, the level, a seek, each. **The screenshots**: `sh
+tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tests/media/make_library.py`
+(the mock-ups' albums and covers in every format, two MIDI albums, playlists, play counts; needs ffmpeg and
+`pip install mutagen`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
+`python3 tools/icons/media_icon.py`.
 
 ### A large app: Koton, the studio (`user/Apps/koton`)
 

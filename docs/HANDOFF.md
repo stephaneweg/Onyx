@@ -20,8 +20,8 @@ answer in French. The docs stay in English.
 - The user never compiles for the Pi: they test the staged `sdcard/` on the Pi and `pc/dist` on
   Windows. `pc/dist` and `sdcard/` binaries are committed.
 - Never commit: ROMs / ISOs / saves (`.z64 .n64 .v64 .sfc .smc .nes .gb* .sav .iso .gcm .wav`),
-  `sdcard/etc/wpa_supplicant.conf` (psk REDACTED, pre-commit hook + skip-worktree — never defeat
-  it), `sdcard/etc/ftpfs.ini`, `shelf.ini`, `SD:/apps/lisa.app/config.ini` (Groq key),
+  `sdcard/etc/wpa_supplicant.conf` (the user's Wi-Fi: untracked, ignored, never packaged, the
+  pre-commit hook refuses it — never defeat it), `sdcard/etc/ftpfs.ini`, `shelf.ini`, `SD:/apps/lisa.app/config.ini` (Groq key),
   `sdcard/etc/clock`. Check before each commit:
   `git diff --cached --name-only | grep -i -E "\.sfc$|\.smc$|\.nes$|\.gb|\.sav$|\.z64$|\.n64$|\.v64$|\.wav$|\.iso$|\.gcm$|wpa_supplicant|ftpfs.ini|shelf.ini|lisa.app/config"`
   must print nothing. Do not download commercial ROMs; the user's own ISO/ROMs stay local.
@@ -54,6 +54,21 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Media Player, the music library (2026-10-01, not yet tried on the Pi)
+
+- **What**: `user/Apps/media` (docs/03 *Media Player*; docs/04 §12; the mock-ups and the user's decisions:
+  `docs/media/README.md`): MP3, OGG, FLAC, WAV (minimp3, stb_vorbis, dr_flac, dr_wav in `third_party/`) and
+  MIDI (Koton's MeltySynth + GeneralUser GS), a library scanned from the folders watched (`SD:/Music`), by
+  artists / albums / songs / genres / folders, favourites, recently added, `.m3u` playlists; home, album
+  pages, search, a songs' table with its menu, now playing (a MIDI file: its notes as coloured lines),
+  the mini player (the window reduced at the screen's bottom right). Tags read only; covers from the
+  files and folders; closing stops the music.
+- **To try on the Pi**: the sound (`kapi_sound_write` from the player's thread: a song heard whole,
+  pause / seek at once), the scan of a big `SD:/Music` (its time; the next start from `library.tsv`), a
+  MIDI file (the SoundFont's load: 30 MB, a second or two), the covers' loading, the mini player's place.
+- **Next**: **the videos** -- first push into `main` and merge `main`: another session makes a reusable
+  video playback library for NetSurf, to use here (the user). Media keys; ReplayGain; gapless; the
+  covers cached on the card; a playlist reordered by dragging.
 ## Jet Browser: Wikipedia's search box (2026-10-01, PC bench only)
 
 - The user's two bugs on fr.wikipedia.org (Mobile and Desktop: Codex's TypeaheadSearch, Vue 3),
@@ -1328,6 +1343,13 @@ Linux by `sh pc/macOS/check.sh` (the POSIX half under a screen-less window: open
 folders). To try on a real Mac: the first build (Apple clang's warnings), the window, Retina drawing, the
 keys (Cmd, dead keys), resizing / full screen, the trackpad's scrolling, drop / Finder open, printing.
 
+**Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (wtk's new `lang.h`, docs/03 *An app
+in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + wtk's own
+`sdcard/res/lang/fr.txt` (in the `onyx` package); EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
+Pi binary rebuilt (`sdcard/apps/ledger.app/main`, Arm GNU 13.3); the other apps not restaged (their old
+wtk has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
+To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Writer's own words.
+
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
 (`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by
 `sh tools/manuals/koton_shots.sh` (clicks at fixed places on the demo song: move them if the layout
@@ -1349,7 +1371,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 `shots.sh` scenario. In the user's priority order:
 
 **Priority 1**
-- **Music library** -- mock-ups proposed (2026-10-01, `docs/media/README.md`: *Media Player*, its questions to the user) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
+- **Music library** -- **done** (2026-10-01: *Media Player*, its section above; the videos next) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
   MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
   is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
   tags and cover art, a now-playing view, file associations.

@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -178,6 +178,19 @@ koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) ft/lib
 	   libc/crt0libc.o libc/onyx_syscalls.o user.ld $(KOTON_HDR)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       $(KOTON_OBJ) wtk/libwtk.a ft/libft.a -lm -o $@
+
+# Media Player, the music library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through wtk),
+# its decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built with
+# the FPU) and Koton's MeltySynth for the MIDI files (Koton's objects, shared).
+MEDIA_OBJ = Apps/media/obj/codecs.o Apps/media/obj/vorbis.o
+Apps/media/obj/%.o: Apps/media/%.c Apps/media/codecs.h
+	@mkdir -p $(dir $@)
+	$(CC) $(NL_CFLAGS) -w -I../third_party -c $< -o $@
+MEDIA_SYNTH = $(filter Apps/koton/obj/synth/%,$(KOTON_OBJ))
+media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_OBJ) $(MEDIA_SYNTH) img/imgload.hpp fileassoc.h notify.h \
+	   ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       $(MEDIA_OBJ) $(MEDIA_SYNTH) wtk/libwtk.a ft/libft.a -lm -o $@
 
 # Koton's plugins (user/kplug.h, the protocol user/kplug_proto.h; the host: Apps/koton/plug): each
 # Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to

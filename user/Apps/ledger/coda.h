@@ -103,7 +103,7 @@ static void squeeze (char *s)
 // (0: none -- *why says why).
 static int coda_read (const char *b, int n, CodaStmt *st, const char **why)
 {
-	*why = "The file holds no CODA statement (its lines: 128 characters, the first one starting with 0).";
+	*why = TR ("The file holds no CODA statement (its lines: 128 characters, the first one starting with 0).");
 	int ns = 0; CodaStmt *cur = 0; CodaMove *mv = 0;
 	bool skip = false;					// (a globalisation's details: their total already read)
 	char comm[200] = "";					// (the movement's free communication so far)
@@ -124,7 +124,7 @@ static int coda_read (const char *b, int n, CodaStmt *st, const char **why)
 		case '0': break;
 		case '1':
 			endMove (); mv = 0;
-			if (ns >= CODA_MAXST) { *why = "The file holds too many statements."; break; }
+			if (ns >= CODA_MAXST) { *why = TR ("The file holds too many statements."); break; }
 			cur = &st[ns++]; coda_init (*cur);
 			{
 				char a[40];
@@ -180,7 +180,7 @@ static int coda_read (const char *b, int n, CodaStmt *st, const char **why)
 		case '9': endMove (); mv = 0; cur = 0; break;
 		default:
 			for (int i = 0; i < ns; i++) coda_free (st[i]);
-			*why = "The file is not a CODA file (a line starts with neither 0, 1, 2, 3, 4, 8 nor 9).";
+			*why = TR ("The file is not a CODA file (a line starts with neither 0, 1, 2, 3, 4, 8 nor 9).");
 			return 0;
 		}
 	}
@@ -188,7 +188,7 @@ static int coda_read (const char *b, int n, CodaStmt *st, const char **why)
 	for (int i = 0; i < ns; i++)
 	{
 		money s = st[i].oldBal; for (int k = 0; k < st[i].nm; k++) s += st[i].m[k].amount;
-		if (s != st[i].newBal) { for (int j = 0; j < ns; j++) coda_free (st[j]); *why = "A statement's movements do not add up to its new balance: the file is incomplete."; return 0; }
+		if (s != st[i].newBal) { for (int j = 0; j < ns; j++) coda_free (st[j]); *why = TR ("A statement's movements do not add up to its new balance: the file is incomplete."); return 0; }
 		if (!st[i].newDate) st[i].newDate = st[i].nm ? st[i].m[st[i].nm - 1].date : st[i].oldDate;
 	}
 	if (ns) *why = "";
@@ -258,7 +258,7 @@ static int coda_statement (const Book &b, const CodaStmt &c, int journal, Statem
 {
 	st_free (s); st_init (s);
 	s.journal = journal; s.date = c.newDate;
-	char t[48] = "Statement "; scat_num (t, c.paper, sizeof t); scpy (s.text, t, sizeof s.text);
+	char t[48]; scpy (t, TR ("Statement "), sizeof t); scat_num (t, c.paper, sizeof t); scpy (s.text, t, sizeof s.text);
 	s.old = fin_balance_before (b, journal, s.date);
 	int left = 0;
 	static LineRef open[400];
