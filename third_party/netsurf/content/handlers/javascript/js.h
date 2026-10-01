@@ -81,6 +81,25 @@ nserror js_newheap(int timeout, jsheap **heap);
 void js_destroyheap(jsheap *heap);
 
 /**
+ * Onyx: a heap shared by another window -- a tab's iframes run in its heap (the same
+ * QuickJS runtime: their windows reach each other's objects). Each share is given back
+ * by js_destroyheap; the heap goes with the last.
+ *
+ * \param heap The heap to share (NULL: none)
+ * 
+eturn the heap
+ */
+jsheap *js_heap_share(jsheap *heap);
+
+/**
+ * Onyx: a document's frames changed (desktop/frames.c): its window's named frames
+ * (window[name], frames[name]) defined again for its scripts.
+ *
+ * \param thread The document's thread
+ */
+void js_frames_changed(jsthread *thread);
+
+/**
  * Create a new javascript thread
  *
  * This is called once for a page with javascript script tags on

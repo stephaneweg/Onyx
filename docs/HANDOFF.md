@@ -684,6 +684,14 @@ against Chromium). PC bench: css3test 83 %, browserscore 86 % (Chromium 71 %, 75
 Popover API (`:popover-open` / `:modal` in libcss), matchMedia by libcss (aspect-ratio,
 orientation, hover...), `NS_JSPROF` + `jsprof.py` (a sampling profiler of the scripts). The
 Pi's `libcss.a` rebuilt; the NetSurf binary for the card NOT restaged by this work.
+**Then (2026-10-01, docs/06 §28)**: browserscore.dev still "0 of 0" on the Pi -- Vue's first
+render job hit the 60 s limit with the `jsdebug` log on. The console's formatting bounded hard,
+Map / WeakMap object keys hashed properly in QuickJS (Pi `libquickjs.a` rebuilt), `new URL`'s
+cache, no rebox for `getComputedStyle('--x')`, a native `getElementsByClassName`: the job 8.5 ->
+6.4 s (log on), 7.0 -> 6.5 s (off) on the PC; the rest is the interpreter. And the time limit now
+spares a script still changing the page (up to 4x the limit). To try on the Pi: browserscore.dev
+with `jsdebug` on (kmsg: `JS: a script past 60 s still changing the page` if it runs that long).
+Not restaged either.
 
 **START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
 far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more
@@ -710,14 +718,22 @@ docs/06 §12-§19 describe each piece; read them first. Where it stands:
   script errors -- run it after any core change), `site.sh <url> <name>` (NetSurf and Chromium
   side by side), `layoutdiff.sh` (box by box against Chromium), `prof.sh` (a sampling profiler:
   `NS_PROF=<file>`), `NS_BOXDUMP=<file>` / `NS_INJECT=<file.js>` then F5 (`key 276`),
-  `html5lib.sh`, `css3test.sh`, `html5test.sh`, `urltest.sh`, `wpt.sh`. The container reaches the
+  `html5lib.sh`, `css3test.sh`, `html5test.sh`, `urltest.sh`, `wpt.sh`, `iframetest.sh` (iframes,
+  postMessage, MessagePort across frames, a local reCAPTCHA v2 mimic on two origins: docs/06 §26). The container reaches the
   web through a proxy (`fakekapi.cpp` tunnels with CONNECT); OpenSSL gives the bench https.
 - **To try on the Pi first**: kotonviolins.com / kotonstudio.com (regressions), bbc.co.uk (the
   memory), google.com (search, results), m.facebook.com (log in), en.wikipedia.org, a
   WebSocket echo. Watch `kmsg` for `app:` lines and `SD:/etc/apphang.txt`.
-- **Next**: incremental relayout for React (a restyle of the changed subtree instead of a full
-  rebox), `opacity` groups and filters, transitions / animations, a worker thread for Workers,
-  CORS, Google's results on the user's network.
+- **Layout / rebox performance (docs/06 §26)**: the flex layout memo (m.facebook.com's
+  layout pass 170 ms -> under 1 ms on the PC; its cookie dialog took 3.5 s a pass on the Pi),
+  the style selections kept between box trees (github.com's rebox 150 ms -> 6-20 ms),
+  attribute-only changes restyled in the boxes, reboxes coalesced / throttled.
+  `NS_RESTYLE_CHECK=1` / `NS_NORESTYLE=1` / `NS_NOINPLACE=1` on the bench to check them.
+- **Iframes as windows (docs/06 §29)**: postMessage, MessagePort across frames: Google's captcha
+  page (www.google.com/sorry/, reCAPTCHA's "I'm not a robot") -- the bench's mimic of its frames
+  passes; the real one is to be tried on the Pi by the user, not by the tests.
+- **Next**: an incremental layout and box construction (06 §26 "Left"), a worker thread for
+  Workers, Google's results on the user's network.
 
 **Done, in `main`, staged on the card:** CSS3 (calc / var / grid / flex / gradients /
 shadows / radii / background-clip: text / vendor prefixes), Chrome's Windows fonts

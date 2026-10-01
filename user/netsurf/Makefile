@@ -52,7 +52,8 @@ LIBS := libwapcaplet libparserutils libnsutils libnsgif libnsbmp libhubbub libcs
 ARCHIVES := $(foreach l,$(LIBS),$(NS)/$(l)/$(l).a) $(NS)/freetype-2.14.3/libfreetype.a \
             $(NS)/brotli-1.1.0/libbrotlidec.a $(NS)/quickjs-ng-0.17.0/libquickjs.a \
             $(NS)/plutovg-1.3.3/libplutovg.a $(NS)/plutosvg-0.0.8/libplutosvg.a \
-            $(NS)/zstd-1.5.7/libzstddec.a $(NS)/nghttp2-1.70.0/libnghttp2.a
+            $(NS)/zstd-1.5.7/libzstddec.a $(NS)/nghttp2-1.70.0/libnghttp2.a \
+            $(NS)/wasm3-0.9.2/libm3.a
 
 .PHONY: all clean
 all: $(ARCHIVES)
@@ -178,9 +179,18 @@ NGH_OBJ := $(patsubst %.c,%.o,$(wildcard $(NGH)/lib/*.c))
 $(NGH_OBJ): CINC := -std=gnu99 -DHAVE_CONFIG_H -DNGHTTP2_STATICLIB -I$(NGH)/lib -I$(NGH)/lib/includes
 $(NGH)/libnghttp2.a: $(NGH_OBJ); $(AR) rcs $@ $^
 
+# ---- wasm3 (Onyx: WebAssembly for the scripts, quickjs/qjs_wasm.c) ---------------------
+# The interpreter alone (MIT; no WASI, no CLI), its settings in src/m3_onyx_config.h (read
+# by its own m3_config.h, so qjs_wasm.c sees the same structures). -O3 as upstream builds it:
+# the interpreter's operations are tail calls, faster at -O3. C11 (gnu11).
+W3 := $(NS)/wasm3-0.9.2
+W3_OBJ := $(patsubst %.c,%.o,$(wildcard $(W3)/src/*.c))
+$(W3_OBJ): CINC := -std=gnu11 -O3 -I$(W3)/src
+$(W3)/libm3.a: $(W3_OBJ); $(AR) rcs $@ $^
+
 clean:
 	rm -f $(ZSTD_OBJ) $(NGH_OBJ)
-	rm -f $(PVG_OBJ) $(PSVG_OBJ)
+	rm -f $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ)
 	rm -f $(QJS_OBJ) $(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ) $(ARCHIVES)
 	rm -f $(NS)/libcss/build/gen_parser $(CSS_AUTO_C)
 	rm -f $(NS)/libparserutils/src/charset/aliases.inc

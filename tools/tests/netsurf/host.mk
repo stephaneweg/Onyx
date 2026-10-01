@@ -90,7 +90,16 @@ NSFB_SRC := $(addprefix $(NSFB)/src/,libnsfb.c cursor.c palette.c surface/surfac
 QJS := $(TP)/quickjs-ng-0.17.0
 JSQ := $(NS)/content/handlers/javascript/quickjs
 QJS_SRC := $(addprefix $(QJS)/,quickjs.c libregexp.c libunicode.c dtoa.c)
-JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c
+JS_SRC := $(JSQ)/qjs.c $(JSQ)/qjs_canvas.c $(JSQ)/qjs_net.c $(JSQ)/qjs_wasm.c $(JSQ)/qjs_crypto.c $(JSQ)/qjs_codecache.c $(JSQ)/qjs_frames.c
+# Onyx: Web Crypto on mbedTLS -- its crypto library compiled here with the Pi's configuration
+# (include/mbedtls/mbedtls_config.h; the bench's https is OpenSSL's, host_stubs.c)
+MBEDTLS := $(TP)/mbedtls-3.6.3
+MBED_SRC := $(filter-out %/net_sockets.c %/timing.c %/psa_its_file.c $(MBEDTLS)/library/ssl_% \
+            $(MBEDTLS)/library/x509% $(MBEDTLS)/library/mps_% $(MBEDTLS)/library/pkcs7.c \
+            $(MBEDTLS)/library/debug.c,$(wildcard $(MBEDTLS)/library/*.c))
+# Onyx: WebAssembly on wasm3 (the interpreter compiled here, -O3 as the Pi's libm3.a)
+W3 := $(TP)/wasm3-0.9.2
+W3_SRC := $(wildcard $(W3)/src/*.c)
 
 CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) $(wildcard $(NS)/utils/nsurl/*.c) \
@@ -149,7 +158,7 @@ ZSTD_SRC := $(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c)
 NGH := $(TP)/nghttp2-1.70.0
 NGH_SRC := $(wildcard $(NGH)/lib/*.c)
 
-LIB_ALL := $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
+LIB_ALL := $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(GENFONT) $(IMG_C)
 
 obj = $(OUT)/o/$(subst /,_,$(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1))))
@@ -212,6 +221,7 @@ $(foreach s,$(GPC_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -ffp-contract=off 
 $(foreach s,$(MBED_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(MBED)/include -I$(MBED)/library)))
 $(foreach s,$(ZSTD_SRC),$(eval $(call LIB_RULE,$(s),-DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DDEBUGLEVEL=0 -DZSTD_NO_TRACE -I$(ZSTD)/lib -I$(ZSTD)/lib/common)))
 $(foreach s,$(NGH_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu99 -DHAVE_CONFIG_H -DNGHTTP2_STATICLIB -I$(NGH)/lib -I$(NGH)/lib/includes)))
+$(foreach s,$(W3_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O3 -I$(W3)/src)))
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))
 $(foreach s,$(PVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF))))
 $(foreach s,$(PSVG_SRC),$(eval $(call LIB_RULE,$(s),$(PVG_CF) -DPLUTOSVG_BUILD -DPLUTOSVG_BUILD_STATIC -I$(PSVG)/source)))
@@ -281,6 +291,24 @@ $(OUT)/qjsgen/qjs_net_js.h: $(JSQ)/net.js
 	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
 $(call obj,$(JSQ)/qjs_net.c): $(OUT)/qjsgen/qjs_net_js.h
 $(call obj,$(JSQ)/qjs_net.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen
+# Onyx: WebAssembly -- wasm.js as a C string for qjs_wasm.c (on wasm3's headers)
+$(OUT)/qjsgen/qjs_wasm_js.h: $(JSQ)/wasm.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from wasm.js by host.mk */'; echo 'static const char qjs_wasm_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs_wasm.c): $(OUT)/qjsgen/qjs_wasm_js.h
+$(call obj,$(JSQ)/qjs_wasm.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(W3)/src
+# Onyx: Web Crypto -- crypto.js as a C string for qjs_crypto.c (on mbedTLS)
+$(OUT)/qjsgen/qjs_crypto_js.h: $(JSQ)/crypto.js
+	@mkdir -p $(dir $@)
+	{ echo '/* generated from crypto.js by host.mk */'; echo 'static const char qjs_crypto_js[] ='; \
+	  sed -e 's/\r$$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/?/\\?/g' -e 's/^/"/' -e 's/$$/\\n"/' $<; echo ';'; } > $@
+$(call obj,$(JSQ)/qjs_crypto.c): $(OUT)/qjsgen/qjs_crypto_js.h
+$(call obj,$(JSQ)/qjs_crypto.c): NS_INC += -I$(QJS) -I$(OUT)/qjsgen -I$(MBEDTLS)/include
+# Onyx: the code cache (the scripts' bytecode on the card; SHA-256 from mbedTLS)
+$(call obj,$(JSQ)/qjs_codecache.c): NS_INC += -I$(QJS) -I$(MBEDTLS)/include
+# Onyx: the frames' windows, postMessage between them, MessagePort across realms
+$(call obj,$(JSQ)/qjs_frames.c): NS_INC += -I$(QJS)
 
 CXXF = -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -I$(ZUSER) -I$(ZKINC) -DIMG_HOST_TEST -DONYX_HOST_SIM \
        -MMD -MP

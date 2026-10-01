@@ -23,7 +23,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | ~~`transform` (rotate / scale / skew / matrix, 3D flattened)~~ | all | **done (§21)**: painted apart (black and white passes, one when opaque), drawn through the matrix, bilinear; `transform-origin`, the individual properties, 3D flattened; hit test and `getBoundingClientRect` through it; translations still the layout's. Left: a real `perspective` | a projective composite (the layer mapped through a 3x3 homography) | S | P3 |
 | ~~`filter` / `backdrop-filter` (blur, brightness, drop-shadow...)~~ | all | **done (§21)**: every filter function but `url()`, `backdrop-filter`, the separable `mix-blend-mode`s; a large blur on a reduced layer. Left: `filter: url()`, the non-separable blend modes, `isolation` | SVG filter primitives on the layer | M | P3 |
 | ~~Transitions and animations (`transition`, `@keyframes`, Web Animations API)~~ | all | **done (docs/06 §22)**: a timeline per content interpolates the computed values each frame (colours, lengths, opacity, transforms, shadows), redraws the animated boxes' rectangles when paint-only, lays out otherwise; the events; `element.animate()` / `Animation` / `getAnimations()` on the same engine; `requestAnimationFrame` paced by the frames (~60 Hz, slower when frames are long, none when idle) | left: pseudo-elements' animations, reversing shortening, keyframes recomputed on a base change, `composite` | S | P2 |
-| **Incremental restyle and relayout** | all (dirty bits per node) | a DOM change = full rebox + layout (10 ms after the turn); `:hover` already incremental | dirty flags on nodes; restyle the changed subtrees (libcss selection per node, the hover code's machinery); relayout from the nearest box whose size cannot change (a formatting-context root with fixed size); React pages would stop costing a full layout per update | L | P1 |
+| **Incremental restyle and relayout** | all (dirty bits per node) | **restyle done (docs/06 §26)**: the style selections kept from one box tree to the next (marks from the mutation events, sheets added or taken out probed, a check mode), attribute-only changes restyled in the boxes (redrawn, or laid out without a rebox), reboxes coalesced / throttled, none for changes in `display: none` subtrees; the flex layout memo (nested flex: once per inputs instead of 2^depth). Left: a rebox still builds every box (~3 µs an element on the PC), a layout still lays out the whole tree | incremental box construction (the changed subtrees' boxes re-attached: anonymous boxes and inline containers make it delicate); relayout from the nearest box whose size cannot change (a formatting-context root with a fixed size), the dirty boxes and their ancestors only | M | P1 |
 | `position: fixed` / `sticky` in every case | all | fixed and sticky exist (z-layers), some cases wrong | layoutdiff pages per case | S | P2 |
 | **Text shaping (ligatures, kerning, Arabic, Indic, Thai...)** | HarfBuzz (Chromium, WebKit, Ladybird) | FreeType glyph by glyph | vendor HarfBuzz (C++, ~1 MB, no exceptions needed) in `font_freetype.c`: shape each run, cache shaped words | M | P2 |
 | **Bidirectional text (RTL: Arabic, Hebrew)** | ICU / own | none (`direction` parsed) | Unicode bidi algorithm (fribidi, or the small `unicode-bidi` reference) on each line's runs; mirrored layout of the line boxes | M | P3 |
@@ -42,7 +42,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
-| **WebAssembly** | all | none (QuickJS has no Wasm) -- pages that need it stop (Figma, Google Earth, some players, emulators, some bundles for codecs / crypto) | wasm3 (a fast C interpreter, ~70 KB, MIT) or WAMR's fast interpreter, bound to QuickJS as the `WebAssembly` namespace (`Module`, `Instance`, `Memory` on an ArrayBuffer, `Table`, imports / exports as JS functions, `instantiateStreaming`); an AOT / JIT for AArch64 later (WAMR has one) | M | P1 |
+| ~~**WebAssembly**~~ -- done (docs/06 §27) | all | the standard API on wasm3 (an interpreter, bound to QuickJS: `Module`, `Instance`, `Memory` over the linear memory, `Table`, `Global`, imports / exports, i64 as BigInt, traps as RuntimeError, the streaming forms), in pages and workers; 3.5-9x slower than V8 on the PC. Left: SIMD, threads / shared memory, `WebAssembly.Tag` / `Exception`, JSPI | speed: an AOT / JIT for AArch64 (WAMR fast-JIT / AOT, or a template JIT of wasm3's operations) -- see the JIT row | M | P2 |
 | **JIT (speed)** | V8 / JSC / LibJS (bytecode interpreter + JIT on x86-64 only) | QuickJS-ng bytecode interpreter: 20-50x slower than V8 on heavy scripts (a React hydration: seconds on the Pi) | short term: profile-guided fixes in the natives (dom.js's hot paths in C: the DOM wrappers, the selector engine, innerHTML), QuickJS's inline caches (quickjs-ng has shape caches: keep them warm), avoid megamorphic dom.js code; long term: a baseline JIT for AArch64 in QuickJS (XL) | M / XL | P1 |
 | Engine conformance (test262 core) | V8 ~99 %, LibJS ~95 % | QuickJS-ng ~ 99 % of ES2024 | follow quickjs-ng releases | S | P3 |
 | Memory: generational GC | V8 / JSC | refcount + cycle collector, 384 MB limit | fine for the Pi; watch leaks | - | P4 |
@@ -51,6 +51,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
+| ~~Iframes as browsing contexts, cross-document messaging (`postMessage`, `MessagePort` across frames, `BroadcastChannel`)~~ | all | **done (docs/06 §29)**: each `<iframe>` (src, srcdoc, about:blank, hidden, a script's) a window kept by its element across reboxes, `load` events, `contentWindow` / `contentDocument`, `parent` / `top` / `frames` / `frameElement`, a WindowProxy with the cross-origin limits, the structured clone into the receiver's realm, ports transferred between realms, `sandbox`; a reCAPTCHA v2 mimic passes (`iframetest.sh`). Left: the initial about:blank synchronously, `document.domain`, focus between frames by script, site isolation (below) | a synchronous about:blank document (a content made without a fetch) | S | P2 |
 | **Editing: `contenteditable`, `designMode`, `execCommand`, Selection / Range editing, `beforeinput` / `input` events on editable content, IME** | all | text inputs and textareas only | an editing host = a caret in the box tree (inline boxes, the textarea's code as model), insert / delete as DOM mutations, the Selection API's ranges drawn; enough for Gmail compose, Google Docs is out of reach | L | P2 |
 | **IndexedDB** | all | none | a key-value store per origin on the card (a B-tree or a simple log file per object store), transactions async, structured clone (exists for workers), indexes | M | P2 |
 | **Service Workers, Cache API, offline, Push** | all | none | Cache API first (over the HTTP cache), then SW interception of fetches in the fetcher (a worker context exists) | L | P3 |
@@ -58,7 +59,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | `:active`, `:focus`, `:focus-visible`, `:focus-within` styles | all | answer no | the hover code's incremental restyle, with the focus / press state | S | P2 |
 | Clipboard API, drag and drop (HTML5 DnD), File System Access | all | none | Onyx's clipboard (the desktop's); DnD events from the mouse | M | P3 |
 | Notifications, Geolocation, Permissions, Vibration, Battery, Gamepad, Web MIDI, Web Serial / USB / Bluetooth / HID | Chromium (most), WebKit (some) | none | Notifications -> the Onyx shell; Gamepad -> the kernel's USB HID pads (Onyx has them for the emulators); the rest P4 | S each | P3 |
-| **Web Crypto** (`crypto.subtle`; `getRandomValues` from a real CSPRNG) | all | `subtle` is an empty object; `getRandomValues` / `randomUUID` use `Math.random` (predictable: session tokens, nonces) | mbedTLS is linked: its CTR-DRBG for `getRandomValues`, then digest, HMAC, AES-GCM / CBC, ECDSA / ECDH (P-256), RSA-PSS / OAEP, PBKDF2, HKDF through it, `importKey` / `exportKey` (raw, JWK, SPKI, PKCS#8) | M | P1 (logins, many SPAs call `subtle.digest`) |
+| ~~**Web Crypto**~~ -- done (docs/06 §27) | all | `getRandomValues` / `randomUUID` from a CTR-DRBG seeded by the hardware RNG; `crypto.subtle` on mbedTLS: SHA-1/2, HMAC, AES-GCM / CBC / CTR / KW, ECDSA / ECDH P-256/384/521, RSASSA-PKCS1-v1_5, RSA-PSS, RSA-OAEP, PBKDF2, HKDF; raw / JWK / SPKI / PKCS#8; in workers. Left: Ed25519 / X25519 (not in mbedTLS 3.6), RSA key generation blocks the window | Ed25519 / X25519 from another small library (monocypher, TweetNaCl) | S | P3 |
 | `Intl` leftovers | all | §15 (Temporal, DurationFormat, other calendars) | quickjs-ng's Temporal work, CLDR data | M | P3 |
 | Accessibility tree (ARIA) | all | none | a screen reader is not in Onyx; P4 | L | P4 |
 
@@ -83,7 +84,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | ~~HTTP/2~~ (done, 06 §24) / HTTP/3 (QUIC) | all | nghttp2: one connection per origin by ALPN, streams, Chrome's settings, fallback to HTTP/1.1 | HTTP/3 needs QUIC (ngtcp2 + a TLS 1.3 QUIC stack) | L | P4 |
 | ~~Brotli / zstd~~ (done, 06 §24) | all | `gzip, deflate, br, zstd` decoded as they come | -- | -- | -- |
 | **Same-origin policy, CSP, cookies' SameSite / partitioning, mixed content** | all | CORS done for fetch / XHR (06 §24: preflight, the Allow-Origin / -Credentials / -Headers / -Methods checks, modes, credentials, opaque responses); no CSP, no SameSite, no CORS for EventSource / fonts / `<img crossorigin>` | CSP parsing and enforcement for scripts / frames; SameSite in the cookie jar; CORS in the core's loads | M | P2 (security of logins) |
-| Site isolation, sandboxed renderer processes | Chromium, WebKit, Ladybird (multi-process) | one process, one context per page | Onyx has processes: one NetSurf per tab is already the model; within a page, iframes share the process | XL | P4 |
+| Site isolation, sandboxed renderer processes | Chromium, WebKit, Ladybird (multi-process) | one process; a tab's frames share one QuickJS runtime, a realm per document (docs/06 §29: cross-origin frames reach each other only through the WindowProxy's allowed fields and the serializer) | Onyx has processes: one NetSurf per tab is already the model; within a page, iframes share the process | XL | P4 |
 | ~~HTTP cache on disk, validators~~ (done, 06 §24) / back-forward cache | all | `SD:/apps/netsurf.app/cache` (64 MB, LRU), ETag / Last-Modified revalidated (304), max-age honoured; TLS sessions kept across launches; preconnect / dns-prefetch | a back-forward cache; the cache partitioned by site; preload hints (`rel=preload`, 103 Early Hints) | M | P3 |
 | DNS over HTTPS, HSTS preload | all | HSTS headers kept by NetSurf's urldb, no preload list | the preload list for the big sites | S | P3 |
 | Downloads manager, `download` attribute, file pickers (`<input type=file>`) | all | ? | the Onyx file dialog (wtk) | S | P2 |
@@ -92,9 +93,13 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 ## 6. Performance on the Pi
 
 - **Where the time goes** (bbc.com on the PC, `NS_PROF`): after the fetcher fix, JS execution
-  (QuickJS) and the full rebox after each script turn dominate. On the Pi each is 5-10x
-  slower. The big levers, in order: incremental restyle / relayout (§1), the DOM natives' hot
-  paths in C (§2), Wasm for the sites that compute in it, HTTP/2 for many small resources.
+  (QuickJS) and the full rebox after each script turn dominated. Since docs/06 §26 (the kept
+  style selections, the flex layout memo, the in-place restyles) the reboxes and layouts are
+  small next to the scripts (bbc.com: 86 % of the samples in QuickJS; m.facebook.com's layout
+  pass 170 ms -> under 1 ms, github.com's rebox 150 ms -> 6-20 ms on the PC). On the Pi each is
+  5-20x slower. The big levers now, in order: the DOM natives' hot paths in C (§2), an
+  incremental layout and box construction for the big pages (§1: wikipedia's layout ~45 ms on
+  the PC), Wasm for the sites that compute in it.
 - **Multi-core**: Chromium runs raster, decode, network and the compositor on other threads.
   Onyx NetSurf already fetches in threads; next: image decoding in a thread (the decoders are
   pure C over a buffer), a raster thread for the compositing layers, workers on their own
@@ -184,13 +189,15 @@ with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layou
    between redraws, clip-path / mask on it).
 2. Transitions, `@keyframes`, Web Animations, `requestAnimationFrame` pacing (a new
    `html/onyx_anim.c`, libcss computed-value interpolation) -- done (docs/06 §22).
-3. WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS.
+3. ~~WebAssembly on wasm3 (vendored), bound to QuickJS; Web Crypto on mbedTLS~~ -- done (docs/06 §27).
 4. TLS certificate verification, HTTP/2 (nghttp2), `br` announced, CORS / CSP basics, a disk
    cache with validators -- done but CSP (06 §24: also zstd, TLS sessions kept across
    launches, preconnect, per-connection timings, TLS 1.3); left: CSP, SameSite.
 
 Wave 2 -- P1 / P2 depending on wave 1:
-5. Incremental restyle and relayout (after the layers, since both touch the redraw).
+5. Incremental restyle and relayout (after the layers, since both touch the redraw) --
+   restyle done (06 §26: kept selections, in-place restyles, the flex layout memo); left:
+   incremental box construction and layout.
 6. Text: HarfBuzz shaping, colour emoji, UAX #14 line breaking, then bidi.
 7. Media: audio (`<audio>`, Web Audio basics) on the Onyx sound kapi; AVIF (dav1d).
 8. Editing (`contenteditable`) and IndexedDB; `:focus` / `:active` styles.

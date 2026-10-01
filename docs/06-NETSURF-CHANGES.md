@@ -19,14 +19,15 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/freetype-2.14.3/` | FreeType (options and modules: `user/netsurf/freetype/`) |
 | `third_party/webref-css-8.7.5/` | the CSS specifications' value grammars (W3C webref, MIT): libcss's grammar tables are made from them (§14) |
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
+| `third_party/wasm3-0.9.2/` | wasm3, the WebAssembly interpreter (MIT): the engine alone, its Onyx settings and patches in `README.onyx` (§27) |
 | `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19), `wasm.js` + `qjs_wasm.c` (WebAssembly on wasm3) and `crypto.js` + `qjs_crypto.c` (Web Crypto on mbedTLS: §27), `qjs_frames.c` (the frames' windows, postMessage between them, MessagePort across realms: §29) |
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -228,6 +229,8 @@ contributions (`layout_minmax_flex`, 9.9.1: the larger of an item's content and 
 width, clamped by its flex base size -- a maximum if it does not grow, a minimum if it does not
 shrink -- then by its min / max-width; summed in a row, the widest in a column); a flex item's
 own `min_width` / `max_width` stay its content's (its automatic minimum, its content basis).
+Each item's layout goes through a per-pass memo (§26): an item is laid out once per set of
+inputs, however deep the nesting (it was 2^depth).
 
 ### 5.2 Heights and blocks
 
@@ -498,6 +501,7 @@ optional chaining...) with the DOM written in JavaScript:
   (a submit button, Enter; prevented: not sent); the window's `scroll` (the frontend tells
   the core: `browser_window_scrolled`), `resize`, `DOMContentLoaded` (the document parsed),
   `load` (laid out, its images in; `<body onload>`).
+- **WebAssembly** (wasm3) and **Web Crypto** (mbedTLS): §27.
 - A script runs at most `script_timeout` seconds (NetSurf's option); its recursion is
   stopped past **4 MB** of stack (a `RangeError`). The Onyx app has an 8 MB stack for it:
   `stack = 8M` in `SD:/apps/netsurf.app/app.txt`, read by the kernel (`AppStackSize`,
@@ -540,6 +544,10 @@ optional chaining...) with the DOM written in JavaScript:
   (`html_script_dom_changed`). On the two sites every hover is now a restyle: no rebox, the
   pixels those of a rebox (`NS_HOVER_FULL=1`: always the rebox, to compare). The replaced style
   results are kept until the next rebox (a box the walk missed would still point at them).
+- **The rebox after a script's change** keeps the elements' style selections and selects
+  again only what the change can have restyled; attribute-only changes are restyled in the
+  boxes as a hover is (`onyx_hover_restyle_nodes`); reboxes are coalesced and throttled:
+  §26.
 - **libcss**: `css_computed_style_paint_only_change (a, b, &moved)` (`src/select/arena.c`) copies
   the paint properties' bits and values of b over a copy of a's, then compares the rest as the
   interning does; the bits' positions are in `src/select/onyx_propbits.h`, copied from
@@ -1748,14 +1756,15 @@ Pi stays. Nothing in NetSurf answers true for everything: `csscheck` linked with
 `libcss.a` and run under qemu gives the PC's answers.
 
 - **The time limit** 10 -> **60 s** (`desktop/options.h`; `script_timeout` in `SD:/res/Choices`,
-  0 = none). Browsers do not stop a script at all; the limit only ends a loop that never does.
+  0 = none). Browsers do not stop a script at all; the limit only ends a loop that never does
+  (§28: past it, a script still changing the page now runs on).
 - **Faster** (the PC; the Pi in proportion): css3test's run 2834 -> 1390 ms, browserscore's
   render job 9.6 -> 6.6 s.
   - `console.*` formats its arguments only when the log is read (`N.logOn`: `NS_JSDEBUG` /
     `jsdebug`, or NetSurf's verbose log), and as bounded JSON (2000 values; no `toJSON()` but
     a `Date`'s): Vue's development build passes whole component trees to `console.warn`
     (browserscore.dev: 1500 warnings, each its features' `toJSON()` of a whole subtree -- 64 %
-    of its time, a minute with the log on).
+    of its time, a minute with the log on) -- bounded harder since (§28).
   - `querySelector('#id')` from libdom's `getElementById`; `querySelector` walks with
     `N.nextElement` and stops at the first match (it wrapped every element of the tree first:
     bliss's `$('#x')` thousands of times on css3test).
@@ -2128,6 +2137,471 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
   `GPC_F_ASYNC` (the composite waits); a translation animated as a composite (it moves the box as
   the layout does: its rectangles are redrawn).
 
+## 26. Layout and rebox performance: the flex layout memo, the kept style selections, partial restyles
+
+Profiled on the PC bench (`NS_PERF=1`, the sampling profiler `NS_PROF=<file>` +
+`prof.sh`; the Pi is ~5-20x slower -- m.facebook.com's layout pass was 175 ms on the PC and
+3.5 s on the Pi). Two costs dominated: m.facebook.com's **layout** (each pass ~170 ms, 64 % of
+the samples in the flex layout, nested up to 10 levels) and github.com's **reboxes** (the box
+tree built again 8-9 times while it loads, ~150 ms each, nine tenths of it the style selection
+of every element).
+
+- **The flex / grid items' layout memo** (`layout_flex.c`: `layout_memo_*`,
+  `layout_internal.h`). A flex item was laid out to measure it (its height at an auto height,
+  in a column; its cross size, in a row) and again to place it (at its flexed or stretched
+  size) -- at each nesting level, so nested flex containers cost 2^depth layouts. Within one
+  `layout_document()` pass, two tables keyed by the box: the size a layout gave per inputs
+  (its width, its height or AUTO, `DEF_HEIGHT`, the available width, its paddings and
+  borders), and the inputs its subtree is laid out at now. An item's layout asks the memo:
+  a size known is taken without laying out ("size only"); the container lays its items out
+  again at the end (`fx_ensure_item`) only when the memo gave a size without the subtree's
+  state (and before a baseline is read). Grid items take the memo when their subtree is
+  already laid out at the same inputs. Outside a pass (an early layout, a textarea) nothing
+  is kept. m.facebook.com: a layout pass 165-175 ms -> under 1 ms (the first one 8 ms) on the
+  PC, the pixels the same; the box dumps of every bench page identical.
+- **The kept style selections** (`html/onyx_restyle.c`). Each element keeps its last
+  selection (the cascade's result, before the transitions and animations) in its DOM user
+  data (`__ns_key_onyx_style_memo`), and a box tree selects again only the elements a change
+  since can have restyled. The marks come from the mutation events (`dom_event.c`:
+  `DOMAttrModified`, `DOMNodeInserted` / `Removed`, `DOMCharacterDataModified`; and the
+  scripts' states, `n_set_state`), stamped with the next box tree's serial:
+  - an element's attribute changed or the element inserted: it and its subtree (descendant
+    and child combinators);
+  - a child of P inserted or removed, its children or text changed: P's "children" mark --
+    the children whose selection looked at their position (`NSCSS_STRUCT_SELF`: `:nth-child`,
+    `:first-child`, `:empty`, recorded by the selection callbacks in `css/select.c`) or at
+    their previous siblings (`NSCSS_STRUCT_SIB`: sibling combinators, `:nth-child(of S)`);
+    a child's attributes changed: P's "children's attributes" mark, for the `SIB` ones only
+    (a class toggled in a list striped by `:nth-child` restyles one row); and every
+    descendant whose selection looked at the structure around another node
+    (`NSCSS_STRUCT_ANC`) when an ancestor has such a mark.
+  An element selected again for a mark gives its subtree the mark. A kept selection is also
+  checked against its parent's and the root's computed styles (interned by libcss: the same
+  pointer is the same style; references held), its parent's custom properties (libcss keeps
+  them in the node data, not in the computed style: `css_onyx_node_vars_ref` /
+  `css_onyx_vars_same`), the `:hover` state of each node its selection tried `:hover` on (the
+  element and its ancestors -- libcss asks it of every element; a `:hover` tried on another
+  node is not kept) whose notes for `onyx_hover.c` are replayed, a link's `:visited` state
+  (the history changes without the DOM), and an epoch that a new selection context or a
+  media change moves. When the new context only adds or takes out sheets (a late `<link>`, a
+  script's `<style>`, a `<style>`'s text changed -- github.com loads its sheets after the
+  page), a kept selection of an epoch since stays for an element no selector of those sheets
+  matches (libcss `css_select_style_onyx_probe` on a context of those sheets only; a probe
+  that looks at another node's `:hover` or at the structure counts as a match); the sheets
+  taken out are kept alive meanwhile (`onyx_restyle_keep_sheet`). Never kept: the elements
+  in a shadow tree, shadow hosts and their light children (the first shadow root does not
+  move the epoch: a light element's selection is the same through `onyx_shadow_style`).
+  The PC bench: `NS_NORESTYLE=1` selects every element; `NS_RESTYLE_CHECK=1` compares each
+  kept selection with a new one (`RESTYLE-MISMATCH` lines: 0 on github.com, bbc.com,
+  m.facebook.com, en.wikipedia.org, reddit.com, amazon.fr, lemonde.fr, yahoo.com,
+  duckduckgo.com, developer.mozilla.org, youtube.com); `NS_PERF` prints `styles: K of N kept`.
+- **Selection costs that were n^2** (`css/select.c`, libcss): `:nth-child` and `:last-child`
+  counted an element's siblings for each element -- the counts are now found for all a
+  parent's children at once and kept until the next mutation event (`nscss_dom_changed`);
+  libcss's style-sharing search walked back over every previous sibling of the same name that
+  could not share (a list striped by `:nth-child`) -- it tries 8 candidates. A 2500-row list
+  (`pages/rebox-perf.html`, 10 000 elements): a rebox 380 ms -> 20-40 ms.
+- **Reboxes coalesced and throttled** (`html.c` `html_script_dom_changed`): the first change
+  sets when the rebox comes (a later one no longer puts it off -- a script changing the DOM
+  every few ms kept it from ever coming), and while the scripts keep changing the DOM, one
+  every max(50 ms, twice the last rebox's cost) at most; a script asking for a geometry still
+  has its rebox at once (`html_script_layout_now`). A script turn whose DOM changes were all
+  under a `display: none` ancestor of the last box tree (head, script, template, a hidden
+  panel: `onyx_restyle_node_hidden`) reboxes nothing (`html_script_dom_changed_by_script`,
+  from `qjs.c`).
+- **Attribute-only changes restyled in the boxes** (`html_restyle_in_place`,
+  `onyx_hover_restyle_nodes`): when every DOM change since the last rebox set attributes (a
+  class toggled by a timer, a style attribute, `aria-expanded`, a popover state), the changed
+  elements' subtrees -- with their following siblings whose selections looked at previous
+  siblings -- are styled again in their boxes with the `:hover` machinery (§9): redrawn when
+  only how they are painted changed, else laid out again without building the boxes; anything
+  else (an unboxed element shown, a pseudo-element appearing, an image to fetch) builds the
+  boxes again. `rebox-perf.html` (a class toggled every 100 ms): rebox + layout 60-100 ms ->
+  5-9 ms. `NS_NOINPLACE=1` turns it off.
+
+Measured on the PC bench (the sites live, the same session; `layout` / `rebox:boxes` summed
+over the load with its scripts, ~16 s), before (the branch without these changes) -> after:
+
+| Site | layout | rebox:boxes | note |
+|---|---|---|---|
+| m.facebook.com | 10 passes, 1971 ms -> 1 pass over 1 ms, 8 ms | 37 -> 11 ms | each pass ~170 ms -> < 1 ms |
+| github.com/stephaneweg/Onyx | 30 -> 23-42 ms | 8 reboxes, 1613 -> 87-280 ms | a rebox 150 ms -> 6-20 ms (the first one full) |
+| bbc.com | ~9 ms a pass (unchanged) | ~33 -> ~8-15 ms a rebox | a sheet taken out restyles the root: two full reboxes left |
+| en.wikipedia.org | ~45 ms a pass | 237 -> 110-195 ms a rebox | its startup script changes `<html>`'s class: the first rebox is full |
+| rebox-perf.html (10 000 elements) | 40-60 ms -> none (paint-only) | 380 ms -> 5-9 ms (in place) | a class toggled every 100 ms |
+
+On the Pi (~20x for m.facebook.com's layout): its cookie dialog's 3.5 s passes should drop to
+~20-160 ms; github's reboxes from ~1.5-3 s to ~0.1-0.4 s. The scripts are now the bulk of
+the time on these sites (bbc.com: 86 % of the samples in QuickJS).
+
+Left: an **incremental layout** (a pass lays out the whole tree: wikipedia ~45 ms on the PC;
+the dirty boxes and their ancestors only, from the nearest box whose size cannot change),
+**incremental box construction** (a rebox builds every box even when every style is kept:
+~3 µs an element on the PC), the in-place restyle for child-list changes (a node inserted
+into a flex container) and for elements whose parent has no box (`display: contents`).
+Tests: `jstest.sh` -- `js-restyle` (46 checks: each kind of DOM change, sibling
+combinators, `:nth-child`, `:empty`, moves, custom properties, sheets added / taken out /
+changed, a change under a hidden ancestor); perf pages `rebox-perf.html`,
+`flex-deep-perf.html` (a Facebook-like dialog of nested flex containers).
+- **Attributes that build boxes** (`dom_event.c`, `onyx_attr_builds_boxes`): a change of `src`,
+  `srcdoc`, `srcset`, `sizes`, `data`, `type`, `colspan` / `rowspan` / `span`, `alt`, `value`,
+  `multiple`, `size`, `rows`, `cols`, `usemap`, `poster`, `href`, `rel`, `media`,
+  `placeholder`, `start`, `reversed` is not an attribute-only change: the boxes are built again
+  (an iframe's new `src` loads -- §29's frames are synced at the rebox -- an image's new source
+  is fetched, a cell spans again). Found by `iframetest.sh` once §29 met the in-place restyle.
+
+## 27. WebAssembly (wasm3) and Web Crypto (mbedTLS)
+
+Two P1 gaps of docs/07 §2-§3: pages that need WebAssembly stopped (QuickJS has none), and
+`crypto.getRandomValues` / `randomUUID` used `Math.random` (predictable session tokens and
+nonces) with an empty `crypto.subtle` (logins and SPAs call `subtle.digest`). Both work in a
+page's context and in a worker's (`js_newthread`, `qjs_worker_create`: set up after net.js).
+
+### WebAssembly
+
+- **The engine**: wasm3 (`third_party/wasm3-0.9.2`, MIT; `main` at 28ecb9a, which says
+  0.9.2) -- an interpreter in portable C99 whose operations are threaded by tail calls, ~200 KB
+  of AArch64 code, nothing to port (WAMR's fast interpreter needs its OS layer -- mmap,
+  threads, stack guards -- and is several times larger; its AOT / JIT is the step after, docs/07
+  §2). Its Onyx settings (`src/m3_onyx_config.h`, read by its `m3_config.h`: no stack
+  switching, snapshots, typed function references or gas metering, no guarded memories, 1.5
+  MB of native stack for a module's recursion, memories of 1 GiB at most) and one patch (the
+  validator refuses an opcode the compiler lacks -- SIMD's 0xFD --, so `WebAssembly.validate`
+  answers for the whole module: pages detect features that way) are in its `README.onyx`.
+  Its spec suite (wg-3.0: 27878 tests) passes with these settings. The Pi links `libm3.a`
+  (committed; `user/netsurf/Makefile`, -O3), the bench compiles the sources (`host.mk`).
+- **The API** (`quickjs/qjs_wasm.c`, the classes in C; `quickjs/wasm.js`, compiled in as
+  `qjs_wasm_js.h`): `WebAssembly.validate`, `compile`, `instantiate` (bytes or a Module; the
+  import object read a microtask after the call, as a browser does once it has compiled),
+  `compileStreaming` / `instantiateStreaming` (a Response or a promise of one: `ok`,
+  `application/wasm` over http(s) -- a file: / data: URL has no type), `Module` (the bytes
+  copied and every function body validated at once; `Module.exports`, `imports`,
+  `customSections`), `Instance` (`exports`: frozen, null prototype, the same function object
+  each time), `Memory` (`buffer`, `grow`), `Table` (`get`, `set`, `grow`, `length`; funcref
+  and externref), `Global` (`value`, `valueOf`; the seven value types), `CompileError`,
+  `LinkError`, `RuntimeError`.
+- **Values**: i32 (ToInt32), i64 as BigInt (a Number is a TypeError, as in browsers), f32 /
+  f64, funcref (null or a function WebAssembly exported), externref (any value), several
+  results as an array (and from an import, an iterable). A JavaScript import is a raw function
+  of wasm3 (`qw_host_call`) that calls it; a function exported by the same store is linked
+  directly (a Wasm-to-Wasm call). Re-entrancy works both ways (Wasm calls JavaScript which
+  calls Wasm...).
+- **Errors**: a trap is a `RuntimeError` ("unreachable executed", "integer divide by zero",
+  "out of bounds memory access"...), Wasm's stack overflow a `RangeError` (Chromium's), a
+  JavaScript exception thrown by an import crosses the Wasm frames and reaches the caller as
+  the same object; link failures (a missing import, a wrong type, a memory too small) are
+  `LinkError`s, bad bytes `CompileError`s. A module past the page's `script_timeout` traps
+  (m3_Yield, which wasm3 calls at each call, asks qjs.c: `qjs_ctx_timed_out`).
+- **Stores**: an instance is a module loaded into a wasm3 runtime -- a store -- under a
+  name of its own. wasm3 links a module's imported memory, table and global to another
+  module's export in the same runtime, so an instance goes into the store of the Memory /
+  Table / Global objects it imports (the imports are renamed to their owner module and export:
+  `qw_rename`), else into a store of its own. `new WebAssembly.Memory / Table / Global` make a
+  small module exporting the one thing (`qw_make_holder`), in the context's shared store (the
+  Emscripten pattern: `env.memory`, `env.table`, `__stack_pointer` made by JavaScript, then
+  imported). A function of another store put in a table or passed as a funcref gets a
+  trampoline -- a tiny module of this store importing it (Emscripten's `addFunction` puts a
+  small instance's export in the main table so). Every JavaScript object of a store references
+  a hidden store object, which owns the JavaScript values Wasm holds (the imported functions,
+  the externref values) and shows them to the garbage collector (its `gc_mark`): cycles
+  through imports are collected, and when nothing of a store is left its runtime -- linear
+  memories, compiled code -- is freed (on the bench: 300 instances of 2 MB made and dropped, at
+  most 9 stores alive at once). Linear memories are outside QuickJS's heap: past 64 MB more
+  of them since the last collection, one is run (`qw_pressure`). A store's memories together
+  are capped at 512 MB (the app has 2 GB of heap).
+- **Memory buffers**: `Memory.buffer` is an ArrayBuffer over the linear memory itself (no
+  copy); it holds the store (so a view outliving the Instance stays valid) and is detached when
+  the memory grows or moves -- checked each time Wasm returns to JavaScript (after a call,
+  before an import runs) and by `grow`. A Memory made by JavaScript and imported keeps its
+  buffer (the module uses its bytes).
+- **Speed** (the PC bench, `js-wasm.html`'s C program, `wasm/build.sh`): SHA-256 x 20000:
+  wasm3 104 ms, V8 (Node 22) 12 ms, native gcc -O2 7 ms; a sieve to 2e6: 53 / 11-28 / 10.5
+  ms; fib(27): 9 / 1-1.5 / 0.4 ms; a Mandelbrot 320x240x256: 64 / 19-28 / 15.6 ms -- 3.5 to 9
+  times V8, as an interpreter. Not measured on the Pi yet (a Cortex-A72 at 1.5-1.8 GHz: expect 3-4
+  times the PC's times).
+- **Not done**: SIMD (wasm3 has none: `validate` says false, pages fall back to their scalar
+  build), threads and shared memories (`shared: true` is a TypeError; `crossOriginIsolated` is
+  false anyway), `WebAssembly.Tag` / `Exception` (a Wasm exception reaching JavaScript is a
+  RuntimeError; tags are not exported), JSPI, the JS string builtins, ESM integration
+  (`import` of a .wasm), `Memory.toResizableBuffer`, the i64 `address` of memory64 descriptors.
+  `Module.imports` lists functions, tables, memories, globals, tags in that order (wasm3's),
+  not the import section's. Imports from two different instances' stores (a memory of one, a
+  table of the other) are a LinkError. externref values stay referenced while their store
+  lives. A loop without calls is not interrupted by `script_timeout`. A buffer
+  `transfer()`red keeps pointing at the memory (not detached on grow).
+- Tests: `tools/tests/netsurf/pages/js-wasm.html` in `jstest.sh` (100 checks: modules written
+  byte by byte by a small assembler in the page -- add, memory with a data segment and grows
+  from both sides, a Memory imported, imports and re-entrancy, a JS exception through Wasm,
+  traps, a stack overflow, a start function's trap, tables with call_indirect and an imported
+  Table, the addFunction pattern, i64 / BigInt, globals, f32 rounding, multi-value, externref;
+  the promises and the streaming forms; `wasm/bench.c` compiled by clang to
+  `js-wasm-bench.wasm` (SHA-256, sieve, qsort, recursion, Mandelbrot, an import, memory grown
+  by its allocator); a worker; 300 stores made and dropped). The same page in V8 (Node) passes
+  all checks but "SIMD is false" (V8 has SIMD). `NS_WASMDEBUG=1` logs the stores made and
+  freed.
+
+### Web Crypto
+
+- **Random**: `crypto.getRandomValues` (an integer typed array, 65536 bytes at most:
+  `TypeMismatchError` / `QuotaExceededError`) and `randomUUID` take their bytes from mbedTLS's
+  CTR-DRBG (AES-256), seeded by the best entropy there is -- on the Pi the hardware RNG
+  (`kapi_random`, Circle's `CBcmRandomNumberGenerator`, as `user/tls/onyx_tls.hpp`), on the
+  PC bench `getrandom` -- and reseeded by mbedTLS every 10000 requests (`qjs_crypto.c`).
+- **crypto.subtle** (`quickjs/crypto.js`, the natives in `quickjs/qjs_crypto.c` on
+  `third_party/mbedtls-3.6.3`, which the app links for TLS): `digest` (SHA-1 / 256 / 384 /
+  512), `generateKey`, `importKey` / `exportKey` (raw, jwk, spki, pkcs8), `sign` / `verify`
+  (HMAC, ECDSA on P-256 / P-384 / P-521 with IEEE P1363 signatures, RSASSA-PKCS1-v1_5,
+  RSA-PSS), `encrypt` / `decrypt` (AES-GCM with its tag lengths and additional data, AES-CBC
+  with PKCS#7 padding, AES-CTR counting in the counter's low `length` bits, RSA-OAEP with a
+  label), `deriveBits` / `deriveKey` (ECDH, PBKDF2, HKDF), `wrapKey` / `unwrapKey` (AES-KW and
+  the ciphers above; raw, pkcs8, spki or a JWK as JSON). Each method returns a promise; the
+  algorithm is normalized as the standard says (case-insensitive names, `hash` normalized) and
+  its arguments copied when called; failures reject with the standard's `DOMException`s
+  (`NotSupportedError`, `SyntaxError` for usages, `InvalidAccessError` for a key's type /
+  usage / extractability, `DataError` for key data, `OperationError`), parameter types with
+  `TypeError`. `CryptoKey` (`type`, `extractable`, `algorithm`, `usages`) keeps its material in
+  a WeakMap: a secret key's bytes, an asymmetric key's DER -- PKCS#8 (written here around
+  mbedTLS's SEC1 / PKCS#1) or SPKI --, parsed by mbedTLS at each use. JWK: `kty` oct / EC /
+  RSA with `alg`, `key_ops`, `ext`, `use` checked; EC private keys checked against their point.
+- **Speed** (PC bench; Chromium's in brackets): SHA-256 of 1 MB 5-7 ms (8), AES-GCM of 1 MB
+  14 ms (7), an ECDSA P-256 signature 1 ms (0.2), RSA-2048 4 ms (1). RSA key generation is
+  synchronous: seconds for 2048 bits on the Pi (the promise resolves after).
+- **Not done**: Ed25519 / X25519 (mbedTLS 3.6 has neither), AES-KW with PKCS#8 of odd
+  lengths (the standard's), a `CryptoKey` sent to a worker (the structured clone does not know
+  it), `SubtleCrypto` on the workers' own thread (there is none: §19). ECDSA signatures are
+  deterministic (RFC 6979: mbedTLS's; valid everywhere, Chromium's are random).
+- Tests: `tools/tests/netsurf/pages/js-crypto.html` in `jstest.sh` (88 checks): the standards'
+  answers (FIPS 180 digests, RFC 4231 HMAC, RFC 6070 PBKDF2), and against Chromium's API --
+  `tools/tests/netsurf/crypto/mkvectors.js` runs Node's WebCrypto (the same API) and writes
+  `pages/js-crypto-vectors.js`: its keys (every format, the three curves, RSA-2048) imported,
+  its signatures verified, its ciphertexts decrypted, its derived bits (ECDH, PBKDF2, HKDF) and
+  its deterministic outputs (AES, HMAC, AES-KW, RSASSA-PKCS1-v1_5) made the same; generated
+  keys, round trips, the error names, a worker. The page passes in Chromium too.
+
+## 28. Vue's first render on the Pi (browserscore.dev "0 of 0 features"); the time limit
+
+**What the Pi showed** (after §23): browserscore.dev still at "0 of 0 features, 0 %". Its kmsg:
+1646 `[Vue warn]` lines (the site's own: Vue's development build warns the same in Chrome), then
+`JS job: InternalError: interrupted at refreshComputed` and `ONYX-PERF js:job 60030626 us` --
+Vue's first render, one promise job, cut off by the 60 s `script_timeout`. On the PC bench the
+job took 8.5 s with the log on (`NS_JSDEBUG`; the Pi had its `jsdebug` file), 6.6-7 s without;
+the Pi is 5-7 times slower.
+
+**The profile** (`NS_JSPROF` + `jsprof.py`, `NS_PROF` + `prof.sh`): 85 % of the job is QuickJS
+interpreting the site's code and Vue's (the component mounts, the reactivity's proxies and
+`track()`, Score.js's recalculation of every ancestor at each feature -- quadratic, the site's
+own); DOM-in-JS work (insertBefore, setAttribute, createElement, textContent) is 2-3 %. What was
+ours and slow:
+
+- **The console with the log on**: each warning's arguments (Vue's component trace: reactive
+  proxies of the features, every value read a tracked `get`) formatted up to 2000 values --
+  ~2 s of the job. Now (`dom.js` `fmt`, `fmtJSON`) an object is JSON's text but 40 values,
+  4 levels and 160 characters at most (a long string cut with `…`), and once the line passes
+  256 characters the further objects are only named (`[Object ...]`): the kmsg line is cut at
+  ~128 characters anyway, and a string argument (Vue's message) costs nothing. A function shows
+  as `function name()`, `undefined` as `undefined` (it printed nothing).
+- **Map / Set / WeakMap keyed by objects** (`quickjs.c` `map_hash_key`, marked Onyx): the hash of
+  an object key was `pointer * 3163` -- the low bits of an 8- or 16-byte aligned pointer stay
+  zero, and the bucket is the low bits: one bucket in 8 to 16 used, chains as long
+  (`js_map_get` spent its time in `js_same_value_zero`). The pointer is now mixed (murmur3's
+  finalizer). Vue's `targetMap` / `reactiveMap` (WeakMaps of every reactive object) and its
+  dependency maps are looked up at each property read: a WeakMap / Map lookup 1.4-1.7x faster.
+  The Pi's `libquickjs.a` rebuilt.
+- **`new URL(link, base).href`** (`dom.js`): the parse cache held 1024 URLs and was cleared when
+  full -- browserscore.dev makes 3000 links a render (its features' spec and draft links), so
+  every URL was parsed again; now 8192. A URL keeps the cached parse itself (`_c`, shared, never
+  changed) and copies it only when something reads its record to change it (`_u`, a getter;
+  the getters read `_r`), and its `href` is serialized once per cached parse (a WeakMap). The
+  lone surrogates' replacement (`toUSV`) is the native `String.prototype.toWellFormed` (a
+  regexp with a look-behind before). 3000 `new URL(..).href` 126 -> 36 ms, again 93 -> 13 ms.
+- **`getComputedStyle(el).getPropertyValue('--color')`** after a render (the site's favicon):
+  `N.cstyle` laid the page out first (a whole rebox of 10000 elements: 0.4-0.5 s on the PC,
+  seconds on the Pi) to answer a property it does not compute (dom.js answers a custom property
+  from the style attribute). `qjs_cstyle_known` lists what `n_cstyle` answers; for the others it
+  returns at once, no layout. (Also: `fill` / `stroke` / `stroke-width` read the style found,
+  not `box->style`: an element without a box crashed there.)
+- **`getElementsByClassName`** (carbon ads asks it of the whole document after the render): it
+  wrapped every element of the tree and split its classes in JS; `N.descendants(root, names)`
+  matches the class attribute natively (`qjs_has_classes`; ASCII white space, as the spec).
+- `CSS.supports` / `element.style`'s value check runs its string-stripping regexp only when the
+  value holds one of `;{}!`.
+- **`NS_PERF`** logs a layout a script's read forced when it is over 50 ms, with the script's
+  stack (`js:forced-layout at cstyle (native)|at get (dom.js...)|...`).
+
+**The timings** (the PC bench, the job's CPU time; the machine shared, ±0.5 s):
+
+| browserscore.dev's render job | before | after |
+|---|---|---|
+| log on (`NS_JSDEBUG`) | 8.3-9.4 s | 6.4 s |
+| log off | 7.0-7.1 s | 6.5-6.6 s |
+| the next job (favicon's `getComputedStyle`) | 0.8-1.4 s | 0.07 s |
+
+The score is unchanged (86 %, 1283 / 1489). The goal of ~3 s on the PC is not reached: what is
+left is the interpreter itself running the site's code (the JIT / bytecode work on QuickJS is
+separate). On the Pi the job is some 35-45 s -- under the limit with the log on or off, and the
+limit no longer stops a render that works:
+
+**The time limit spares a working script** (`qjs.c` `qjs_interrupt`, `QJS_TIMEOUT_MAX`):
+browsers do not stop a script at all (Chrome asks after a while: "Page unresponsive"); NetSurf
+has no such dialog, and its limit only has to end a script that is stuck. The scripts' DOM
+changes are counted (`QJS_DIRTY`, where a change marks the page to lay out again:
+`qjs_dom_writes`); past `script_timeout` a script (a call or one promise job) runs on while it
+still changes the page -- its last change less than a quarter of the limit ago (15 s for 60) --
+up to 4 times the limit (240 s). A loop that never ends changes nothing and stops at the limit
+as before; one that changes the page for ever stops at 4 times the limit. The first time a script
+runs past the limit the log says `JS: a script past 60 s still changing the page: let run`. The
+default stays 60 s (`script_timeout` in `SD:/res/Choices`, 0 = none); `NS_SCRIPT_TIMEOUT=<s>`
+overrides it on the PC bench.
+
+**Tests**: `jstest.sh`'s `js-scripttime.html` (run with `NS_SCRIPT_TIMEOUT=1`): a script changing
+the page for 2.5 s finishes, a stuck one is stopped at 1 s, a runaway that changes the page for
+ever at ~4 s; `getElementsByClassName` (several names, white space, none, a miss), a custom
+property through `getComputedStyle`, the console's JSON for a small object, a 5000-key object
+named fast, a long string whole. `urltest.sh` (WPT's URL data) as before: 896 / 896, 278 / 278,
+72 / 87. `jstest.sh`, `nettest.sh`, `fxtest.sh` pass; `sitesweep.sh`: no crash.
+
+## 29. Iframes and the messaging between windows (reCAPTCHA's frames)
+
+The aim: the sites that work through frames -- Google's reCAPTCHA (the "I'm not a robot" box of
+www.google.com/sorry/ could not be validated), embedded videos, login and payment widgets,
+consent managers -- working as in Chrome. What was there: NetSurf's iframes drawn and given the
+mouse, but each in a JavaScript world of its own (its own QuickJS runtime) with `window.parent`
+= `window.top` = itself, `contentWindow` / `contentDocument` null, `window.length` undefined,
+`postMessage` to itself only, no `load` event on the element; an iframe without `src` (srcdoc,
+about:blank) or hidden (`visibility: hidden`: reCAPTCHA's challenge frame waits so, off the page)
+had no frame at all; and **every DOM change of the parent made all its frames again** (a rebox
+destroyed the iframes' windows and loaded them anew: their scripts' state lost at each change
+of the page around them).
+
+**The frames follow the document's elements** (`desktop/frames.c`, `onyx_frames_sync`). A
+document's frames are its `<iframe>` elements -- all of them, shown or not, with a `src`, a
+`srcdoc` or neither -- each a browser window **kept by its element** (`bw->onyx_el`):
+
+- `bw->iframes` is an array of pointers (each window its own allocation), in the document's
+  order; the sync (at the document's first layout, at each rebox, and when a script asks:
+  `contentWindow` right after `appendChild`, `window.length`, `window[i]`) keeps the windows of
+  the elements still there, makes the new ones, destroys the ones whose element left
+  (`html_rebox` used to destroy them all). The box tree only links them: `box->iframe` set on
+  the new boxes (`content_html_iframe.node`); a frame whose element has no box (`display: none`,
+  its document still loading) is laid out at 300 x 150 and not drawn.
+- A frame is **navigated when what its element asks for changes** (`bw->onyx_src`: `U:<url>` /
+  `D:<srcdoc>`): a script's `iframe.src = ...` loads it again; the window's own navigations
+  (its links, `location`) do not touch it. `srcdoc` is loaded as a `data:text/html` URL whose
+  document takes the parent's base URL (`onyx_frames_srcdoc_base`, read by `html.c` where the
+  base URL is set); no src (or a `javascript:` one): `about:blank`. A frame showing one of its ancestors' URLs (or 10
+  frames deep) stays blank, as in Chrome.
+- `sandbox`: read when the frame is navigated (`ONYX_SANDBOX*`); without `allow-scripts` the
+  document gets no JavaScript thread (`CONTENT_MSG_GETTHREAD` refused), without
+  `allow-same-origin` its origin is opaque. `allow`, `loading`, `referrerpolicy`... are
+  reflected and otherwise ignored.
+- **`load` on the element**: when a frame's document has loaded (its window's load event fired:
+  `qjs_load_later`; a document without scripts or not HTML: `onyx_frame_content_done`; a failed
+  load too, as Chrome) -- again at each navigation of the frame. A window's own load waits for
+  its frames' (`onyx_frames_loading`, within the 30 s the load waits at most).
+- An iframe's window as the scripts see it: its size (`innerWidth` / `innerHeight`), its scroll
+  (`scrollX` / `scrollY`, `scrollTo`) are its scrollbars' (`qjs.c`: the frame has no gui
+  window), and a scroll of the frame sends its document a `scroll` event (`frames.c`'s scrollbar
+  callback). The scrollbars of an iframe are decided from its content alone (a frame first laid
+  out at another size kept a horizontal scrollbar it did not need).
+
+**One runtime per tab.** The frames of a tab run in its QuickJS runtime (`js_heap_share`: the
+iframe's window takes its parent's heap; `js_destroyheap` gives each share back), each document
+in a realm (context) of its own: a same-origin frame's objects are the objects themselves, as in
+a browser. What that needed in `qjs.c`: a script's changes to another frame's DOM (or the
+runtime's shared promise jobs) lay that frame out again (`qjs_leave` looks at the heap's other
+threads); a thread freed while another realm may still hold its objects keeps its record -- its
+natives find a closed thread with nothing in it, not freed memory -- until the heap goes
+(`zombie`).
+
+**WindowProxy** (`net.js`, the frames section; the natives in `quickjs/qjs_frames.c`). Each
+window has a frame id (`onyx_frame_id`); another window -- `iframe.contentWindow`, `parent`,
+`top`, `frames[i]` / `window[i]`, `event.source`, `window.open(url, name)`'s result -- is a
+`Proxy`, one per window in each realm (`event.source === iframe.contentWindow`), that asks at
+each use what the window's document is now (it follows its navigations):
+
+- same origin (scheme, host, port; `file:` URLs are one origin among themselves, shown as
+  "null" as Chrome does; about:blank and srcdoc take their parent's): the window's global object
+  behind it (`contentWindow.document`, its functions and variables, `frameElement`);
+- another origin: what HTML lets through -- `postMessage`, `location` (set, `replace`,
+  `assign`; not read), `closed`, `length`, `frames`, `window`, `self`, `parent`, `top`,
+  `opener`, `close` / `focus` / `blur`, indexed and named child frames -- the rest a
+  `SecurityError` ("Blocked a frame with origin ... from accessing a cross-origin frame.");
+  `then` and the symbols undefined (a promise resolved with a window does not throw);
+- no document running scripts yet (a frame just inserted): those fields, and the language's
+  built-ins of the asking realm (`Array`, `JSON`... -- the scripts that take "clean" built-ins
+  from a fresh iframe).
+
+`window.parent`, `top`, `length`, `frameElement` (same origin only), `name` (the frame's target
+name, settable), `window[0..31]` and `iframe.contentDocument` (same origin) are defined per
+document; the **named frames** -- `window[name]`, `frames[name]` (the consent managers' stubs
+look for `frames['__tcfapiLocator']`) -- are getters the frames' sync defines on the window
+below its own properties (`js_frames_changed`), and the WindowProxy finds them by name too;
+`window.open(url, name)` to a frame's name navigates that frame (and `_self`, `_parent`,
+`_top`). **Navigating another window** (its `location` set through the WindowProxy): its own
+frames and a same-origin window freely; an ancestor (top, parent: "frame busting") or another
+frame only within 5 s of the user's click or key in the caller's document, and from a sandboxed
+frame only with `allow-top-navigation` -- Chrome's rules, simplified (an ad frame cannot send
+the page elsewhere by itself).
+
+**Nodes between documents** (`dom.js`: `insertAdopting`): a node of another document -- the
+parent's element appended into a same-origin frame's document (ad verification scripts do so),
+a frame's node into the parent's, a DOMParser document's -- is adopted when it is inserted, as in
+browsers. libdom cannot move a node between documents (its import keeps the old document as the
+copy's owner, and the insertion then fails: "not a Node" / WRONG_DOCUMENT before), so the
+subtree is made again by the target document (elements with their attributes, texts, comments)
+and the original taken out of its parent; the copy is inserted and returned. Another realm's
+node is a node (`isNode`: `N.isNode`).
+
+**postMessage between windows** (`framePost`): the value written by QuickJS's serializer in the
+sender's realm and read in the receiver's (net.js' `toWire` / `fromWire` around it: Blob, File,
+Error, ImageData, the ports) -- every object of `event.data` is the receiver's realm's
+(`Object.getPrototypeOf(e.data) === Object.prototype`): nothing of a cross-origin sender leaks
+through it. Delivered as a task (one scheduler callback for the queue, the receiver's microtasks
+between messages), to the window's document of that moment; the `targetOrigin` checked then
+(`*`; `/`: the sender's origin; an origin: the receiver's, never an opaque one) and the message
+dropped otherwise; `event.origin` the sender's, `event.source` its WindowProxy (to reply).
+`postMessage(msg, '/')`, `{ targetOrigin, transfer }`, a bad targetOrigin (`SyntaxError`), a
+function in the message (`DataCloneError`) as Chrome. A window posting to itself keeps
+html5.js' path (no serializer: a `setImmediate` polyfill posts at each task).
+
+**MessagePort across realms**: a channel within one realm stays html5.js' (React's scheduler
+posts on one at each task); a port transferred to another realm -- in the transfer list, or in
+the message itself (`{ port: ch.port2 }`) -- becomes a pair of ids in `qjs_frames.c`
+(`portPair`, `portOwn`, `portPost`, `portClose`): its other end, still here, posts through it;
+the messages that wait for a port in flight are given to the realm that takes it, those it had
+not given its scripts yet go with it (`portQueue`); `start()`, `onmessage` starting it,
+`close()` (the other end gets nothing more), a port transferred twice or detached
+(`DataCloneError`). Both ends of a channel can go to two other realms (reCAPTCHA's anchor and
+challenge frames talk so). **BroadcastChannel** reaches the same-origin documents of the app and
+their workers (`qjs_net.c`: `n_broadcast` looked at a page's own workers only).
+
+**The tests** (`tools/tests/netsurf/iframetest.sh`, checked against Chromium headless for the
+same pages): `pages/frames-api.html` (55 checks: the parser's and a script's frames, srcdoc,
+about:blank written by its parent, a `src` changed, a frame removed (`closed`), the parent's DOM
+changed (the frame kept with its state), a frame in a frame talking to the top window, sibling
+frames, sandbox, the structured clone each way, the targetOrigin checks, ports in the transfer
+list and in the value, a port closed, BroadcastChannel across frames, `window.open` to a frame
+name); `pages/frames-input.html` (a checkbox clicked, an input focused and typed into, Enter, the
+wheel in a frame; a link targeting the frame's name); `pages/recaptcha-outer.html` (a local
+mimic of reCAPTCHA v2 over two servers -- two origins: the page renders the anchor frame and a
+hidden challenge frame as api.js does, the frames say they are ready, the page gives each a port
+and the two of them a channel of their own, the anchor's checkbox clicked shows the challenge,
+its tile and "Verify" clicked, the token goes to the anchor, then to the page, which fills the
+hidden `g-recaptcha-response` and calls the site's callback; the cross-origin limits checked
+both ways, a message for another origin dropped, the anchor's try at sending the page elsewhere
+refused). Google's own reCAPTCHA is not touched by the
+tests.
+
+**Not done**: a frame's initial about:blank is not there synchronously (a script that writes
+into `contentDocument` right after inserting the iframe finds null until it has loaded, a few ms
+-- the built-ins above aside); `document.domain`; a node adopted from another document is a
+copy (its listeners and form state stay on the original, which a script may still hold);
+`location.href` of a srcdoc document is its data: URL (Chrome: about:srcdoc); the frames share
+the tab's process and runtime (no site isolation: a cross-origin frame's long script holds the
+page, as it did); `loading="lazy"` frames load at once; focus does not move between frames by
+script (`contentWindow.focus()` does nothing; a click does); a frame inside a shadow root has no
+window; MessagePort to a worker.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -2143,12 +2617,18 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
 - The network (§24): no revocation checks, no CSP, no SameSite cookies, no
   CORS for the core's loads (EventSource, fonts, `<img crossorigin>`, module scripts), no
   HTTP/3, no back-forward cache.
+- Frames (§29): a frame's initial about:blank is not there synchronously, no
+  `document.domain`, a srcdoc's `location.href` is its data: URL, no
+  focus moved between frames by script, `loading="lazy"` frames load at once, no frames in
+  shadow trees.
 - Shadow DOM (§20): the manual slot assignment's rendering, `exportparts`, a clonable root's
   cloning, `<link>` / `@import` / `@font-face` in shadow trees, `:host` in `matches()`;
   `::before` / `::after` of a `display: contents` element.
 - The compositing layers' gaps (§21: a real perspective, `clip-path` / `mask` on a layer, the
   non-separable blend modes); animations: §22's "Not done"; GPU compositing: §25's (scrollers
   and groups as layers, fixed boxes that stay in view).
+- WebAssembly and Web Crypto (§27): no Wasm SIMD, threads, `WebAssembly.Tag` / `Exception`,
+  JSPI; no Ed25519 / X25519; RSA key generation blocks the window.
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
   CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss

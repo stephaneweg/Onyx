@@ -615,10 +615,47 @@ long page_value (long v)
 	return (v & ~0xFFFFL) | (y & 0xFFFF);
 }
 
+unsigned g_inputs;	// the clicks, wheel turns and keys so far (onyx_chrome_input_pending)
+
+// Events taken while a script runs (onyx_chrome_pump_deferred): kept, handled after it.
+struct DeferredEvent { unsigned long sender; int ev; long v; bool key; };
+enum { DEFER_MAX = 256 };
+DeferredEvent g_deferred[DEFER_MAX];
+int g_ndeferred;
+bool g_defer, g_pumping;
+
+bool defer_event (unsigned long sender, int ev, long v, bool key)
+{
+	if (!g_defer) return false;
+	bool move = !key && ev == GUI_EVENT_PTR_MOVE;
+	if (move && g_ndeferred > 0 && !g_deferred[g_ndeferred - 1].key &&
+	    g_deferred[g_ndeferred - 1].ev == GUI_EVENT_PTR_MOVE)
+		g_deferred[g_ndeferred - 1] = { sender, ev, v, key };	// (a move replaces the move before)
+	else if (g_ndeferred < DEFER_MAX)
+		g_deferred[g_ndeferred++] = { sender, ev, v, key };	// (full: this one lost)
+	return true;
+}
+
+void ptr_event (unsigned long sender, int ev, long v);
+void key_event (unsigned long sender, int ev, long k);
+
+void replay_deferred ()
+{
+	for (int i = 0; i < g_ndeferred; i++)
+	{
+		DeferredEvent e = g_deferred[i];
+		if (e.key) key_event (e.sender, e.ev, e.v);
+		else ptr_event (e.sender, e.ev, e.v);
+	}
+	g_ndeferred = 0;
+}
+
 void ptr_event (unsigned long sender, int ev, long v)
 {
 	static int bl, br, bm;
 	if (g_win == 0) return;
+	if (defer_event (sender, ev, v, false)) return;
+	if (ev == GUI_EVENT_PTR_DOWN || ev == GUI_EVENT_PTR_UP || ev == GUI_EVENT_PTR_WHEEL) g_inputs++;
 	if (ev == GUI_EVENT_WINCTL)			// a title button (v64)
 	{
 		if (v == KAPI_FRAME_MENU) { g_win->windowMenu (); onyx_browser_redraw (); }
@@ -666,6 +703,8 @@ void ptr_event (unsigned long sender, int ev, long v)
 void key_event (unsigned long sender, int ev, long k)
 {
 	if (g_win == 0 || ev != GUI_EVENT_KEY) return;
+	if (defer_event (sender, ev, k, true)) return;
+	g_inputs++;
 	if (has_modal ()) { g_win->handleKey (k); return; }
 	unsigned mods = kapi_get_modifiers ();
 	if (k == KEY_BACKSPACE && (mods & MOD_CTRL)) { open_history (); return; }	// Ctrl+H (^H is 8)
@@ -777,8 +816,11 @@ int onyx_chrome_pump (void)
 int onyx_chrome_pump_wait (int ms)
 {
 	if (g_win == 0) return 0;
+	if (g_ndeferred > 0) { replay_deferred (); ms = 0; }	// (taken while a script ran)
+	g_pumping = true;
 	if (ms > 0) kapi_pump_wait ((unsigned) ms);
 	else kapi_pump_events ();
+	g_pumping = false;
 	if (!g_win->valid || !g_shown)
 	{
 		g_win->draw ();
@@ -788,6 +830,34 @@ int onyx_chrome_pump_wait (int ms)
 	int r = g_resized;
 	g_resized = false;
 	return r;
+}
+
+// The scheduler's question between two callbacks: did the user click, turn the wheel, type,
+// resize or close since? The events are taken (the page's wait in the surface's ring for the
+// main loop, which then runs before the next callbacks: a heavy page's timers and scripts
+// no longer keep a click waiting for the whole budget).
+int onyx_chrome_input_pending (void)
+{
+	unsigned before = g_inputs;
+	if (g_win == 0) return 0;
+	if (g_ndeferred > 0) return 1;
+	g_pumping = true;
+	kapi_pump_events ();
+	g_pumping = false;
+	return g_inputs != before || g_resized || kapi_should_exit ();
+}
+
+// While a script runs long (its interrupt handler, every 100 ms): the window's events taken
+// (the system's queue drained -- no "not pumping" freeze, nothing dropped) but kept, handled
+// once the script is done (a click then, as the user did it); the fetch threads' posts run.
+void onyx_chrome_pump_deferred (void)
+{
+	if (g_win == 0 || g_pumping || g_defer) return;
+	g_defer = true;
+	g_pumping = true;
+	kapi_pump_events ();
+	g_pumping = false;
+	g_defer = false;
 }
 
 void onyx_chrome_present (void)
