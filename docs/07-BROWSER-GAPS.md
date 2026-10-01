@@ -23,7 +23,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 | ~~`transform` (rotate / scale / skew / matrix, 3D flattened)~~ | all | **done (§21)**: painted apart (black and white passes, one when opaque), drawn through the matrix, bilinear; `transform-origin`, the individual properties, 3D flattened; hit test and `getBoundingClientRect` through it; translations still the layout's. Left: a real `perspective` | a projective composite (the layer mapped through a 3x3 homography) | S | P3 |
 | ~~`filter` / `backdrop-filter` (blur, brightness, drop-shadow...)~~ | all | **done (§21)**: every filter function but `url()`, `backdrop-filter`, the separable `mix-blend-mode`s; a large blur on a reduced layer. Left: `filter: url()`, the non-separable blend modes, `isolation` | SVG filter primitives on the layer | M | P3 |
 | ~~Transitions and animations (`transition`, `@keyframes`, Web Animations API)~~ | all | **done (docs/06 §22)**: a timeline per content interpolates the computed values each frame (colours, lengths, opacity, transforms, shadows), redraws the animated boxes' rectangles when paint-only, lays out otherwise; the events; `element.animate()` / `Animation` / `getAnimations()` on the same engine; `requestAnimationFrame` paced by the frames (~60 Hz, slower when frames are long, none when idle) | left: pseudo-elements' animations, reversing shortening, keyframes recomputed on a base change, `composite` | S | P2 |
-| **Incremental restyle and relayout** | all (dirty bits per node) | a DOM change = full rebox + layout (10 ms after the turn); `:hover` already incremental | dirty flags on nodes; restyle the changed subtrees (libcss selection per node, the hover code's machinery); relayout from the nearest box whose size cannot change (a formatting-context root with fixed size); React pages would stop costing a full layout per update | L | P1 |
+| **Incremental restyle and relayout** | all (dirty bits per node) | **restyle done (docs/06 §26)**: the style selections kept from one box tree to the next (marks from the mutation events, sheets added or taken out probed, a check mode), attribute-only changes restyled in the boxes (redrawn, or laid out without a rebox), reboxes coalesced / throttled, none for changes in `display: none` subtrees; the flex layout memo (nested flex: once per inputs instead of 2^depth). Left: a rebox still builds every box (~3 µs an element on the PC), a layout still lays out the whole tree | incremental box construction (the changed subtrees' boxes re-attached: anonymous boxes and inline containers make it delicate); relayout from the nearest box whose size cannot change (a formatting-context root with a fixed size), the dirty boxes and their ancestors only | M | P1 |
 | `position: fixed` / `sticky` in every case | all | fixed and sticky exist (z-layers), some cases wrong | layoutdiff pages per case | S | P2 |
 | **Text shaping (ligatures, kerning, Arabic, Indic, Thai...)** | HarfBuzz (Chromium, WebKit, Ladybird) | FreeType glyph by glyph | vendor HarfBuzz (C++, ~1 MB, no exceptions needed) in `font_freetype.c`: shape each run, cache shaped words | M | P2 |
 | **Bidirectional text (RTL: Arabic, Hebrew)** | ICU / own | none (`direction` parsed) | Unicode bidi algorithm (fribidi, or the small `unicode-bidi` reference) on each line's runs; mirrored layout of the line boxes | M | P3 |
@@ -92,9 +92,13 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 ## 6. Performance on the Pi
 
 - **Where the time goes** (bbc.com on the PC, `NS_PROF`): after the fetcher fix, JS execution
-  (QuickJS) and the full rebox after each script turn dominate. On the Pi each is 5-10x
-  slower. The big levers, in order: incremental restyle / relayout (§1), the DOM natives' hot
-  paths in C (§2), Wasm for the sites that compute in it, HTTP/2 for many small resources.
+  (QuickJS) and the full rebox after each script turn dominated. Since docs/06 §26 (the kept
+  style selections, the flex layout memo, the in-place restyles) the reboxes and layouts are
+  small next to the scripts (bbc.com: 86 % of the samples in QuickJS; m.facebook.com's layout
+  pass 170 ms -> under 1 ms, github.com's rebox 150 ms -> 6-20 ms on the PC). On the Pi each is
+  5-20x slower. The big levers now, in order: the DOM natives' hot paths in C (§2), an
+  incremental layout and box construction for the big pages (§1: wikipedia's layout ~45 ms on
+  the PC), Wasm for the sites that compute in it.
 - **Multi-core**: Chromium runs raster, decode, network and the compositor on other threads.
   Onyx NetSurf already fetches in threads; next: image decoding in a thread (the decoders are
   pure C over a buffer), a raster thread for the compositing layers, workers on their own
@@ -190,7 +194,9 @@ with the tests: `jstest.sh`, `nettest.sh`, `libcss-test`, `sitesweep.sh`, `layou
    launches, preconnect, per-connection timings, TLS 1.3); left: CSP, SameSite.
 
 Wave 2 -- P1 / P2 depending on wave 1:
-5. Incremental restyle and relayout (after the layers, since both touch the redraw).
+5. Incremental restyle and relayout (after the layers, since both touch the redraw) --
+   restyle done (06 §26: kept selections, in-place restyles, the flex layout memo); left:
+   incremental box construction and layout.
 6. Text: HarfBuzz shaping, colour emoji, UAX #14 line breaking, then bidi.
 7. Media: audio (`<audio>`, Web Audio basics) on the Onyx sound kapi; AVIF (dav1d).
 8. Editing (`contenteditable`) and IndexedDB; `:focus` / `:active` styles.

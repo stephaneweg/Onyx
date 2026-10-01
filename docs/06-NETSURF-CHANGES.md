@@ -228,6 +228,8 @@ contributions (`layout_minmax_flex`, 9.9.1: the larger of an item's content and 
 width, clamped by its flex base size -- a maximum if it does not grow, a minimum if it does not
 shrink -- then by its min / max-width; summed in a row, the widest in a column); a flex item's
 own `min_width` / `max_width` stay its content's (its automatic minimum, its content basis).
+Each item's layout goes through a per-pass memo (§26): an item is laid out once per set of
+inputs, however deep the nesting (it was 2^depth).
 
 ### 5.2 Heights and blocks
 
@@ -540,6 +542,10 @@ optional chaining...) with the DOM written in JavaScript:
   (`html_script_dom_changed`). On the two sites every hover is now a restyle: no rebox, the
   pixels those of a rebox (`NS_HOVER_FULL=1`: always the rebox, to compare). The replaced style
   results are kept until the next rebox (a box the walk missed would still point at them).
+- **The rebox after a script's change** keeps the elements' style selections and selects
+  again only what the change can have restyled; attribute-only changes are restyled in the
+  boxes as a hover is (`onyx_hover_restyle_nodes`); reboxes are coalesced and throttled:
+  §26.
 - **libcss**: `css_computed_style_paint_only_change (a, b, &moved)` (`src/select/arena.c`) copies
   the paint properties' bits and values of b over a copy of a's, then compares the rest as the
   interning does; the bits' positions are in `src/select/onyx_propbits.h`, copied from
@@ -2051,6 +2057,113 @@ between redraws. Choices' **`gpu_compositing`** (default 1; the PC bench: `NS_GP
   and re-upload are not used); `will-change` (not parsed); fixed boxes that stay in view (above);
   `GPC_F_ASYNC` (the composite waits); a translation animated as a composite (it moves the box as
   the layout does: its rectangles are redrawn).
+
+## 26. Layout and rebox performance: the flex layout memo, the kept style selections, partial restyles
+
+Profiled on the PC bench (`NS_PERF=1`, the sampling profiler `NS_PROF=<file>` +
+`prof.sh`; the Pi is ~5-20x slower -- m.facebook.com's layout pass was 175 ms on the PC and
+3.5 s on the Pi). Two costs dominated: m.facebook.com's **layout** (each pass ~170 ms, 64 % of
+the samples in the flex layout, nested up to 10 levels) and github.com's **reboxes** (the box
+tree built again 8-9 times while it loads, ~150 ms each, nine tenths of it the style selection
+of every element).
+
+- **The flex / grid items' layout memo** (`layout_flex.c`: `layout_memo_*`,
+  `layout_internal.h`). A flex item was laid out to measure it (its height at an auto height,
+  in a column; its cross size, in a row) and again to place it (at its flexed or stretched
+  size) -- at each nesting level, so nested flex containers cost 2^depth layouts. Within one
+  `layout_document()` pass, two tables keyed by the box: the size a layout gave per inputs
+  (its width, its height or AUTO, `DEF_HEIGHT`, the available width, its paddings and
+  borders), and the inputs its subtree is laid out at now. An item's layout asks the memo:
+  a size known is taken without laying out ("size only"); the container lays its items out
+  again at the end (`fx_ensure_item`) only when the memo gave a size without the subtree's
+  state (and before a baseline is read). Grid items take the memo when their subtree is
+  already laid out at the same inputs. Outside a pass (an early layout, a textarea) nothing
+  is kept. m.facebook.com: a layout pass 165-175 ms -> under 1 ms (the first one 8 ms) on the
+  PC, the pixels the same; the box dumps of every bench page identical.
+- **The kept style selections** (`html/onyx_restyle.c`). Each element keeps its last
+  selection (the cascade's result, before the transitions and animations) in its DOM user
+  data (`__ns_key_onyx_style_memo`), and a box tree selects again only the elements a change
+  since can have restyled. The marks come from the mutation events (`dom_event.c`:
+  `DOMAttrModified`, `DOMNodeInserted` / `Removed`, `DOMCharacterDataModified`; and the
+  scripts' states, `n_set_state`), stamped with the next box tree's serial:
+  - an element's attribute changed or the element inserted: it and its subtree (descendant
+    and child combinators);
+  - a child of P inserted or removed, its children or text changed: P's "children" mark --
+    the children whose selection looked at their position (`NSCSS_STRUCT_SELF`: `:nth-child`,
+    `:first-child`, `:empty`, recorded by the selection callbacks in `css/select.c`) or at
+    their previous siblings (`NSCSS_STRUCT_SIB`: sibling combinators, `:nth-child(of S)`);
+    a child's attributes changed: P's "children's attributes" mark, for the `SIB` ones only
+    (a class toggled in a list striped by `:nth-child` restyles one row); and every
+    descendant whose selection looked at the structure around another node
+    (`NSCSS_STRUCT_ANC`) when an ancestor has such a mark.
+  An element selected again for a mark gives its subtree the mark. A kept selection is also
+  checked against its parent's and the root's computed styles (interned by libcss: the same
+  pointer is the same style; references held), its parent's custom properties (libcss keeps
+  them in the node data, not in the computed style: `css_onyx_node_vars_ref` /
+  `css_onyx_vars_same`), the `:hover` state of each node its selection tried `:hover` on (the
+  element and its ancestors -- libcss asks it of every element; a `:hover` tried on another
+  node is not kept) whose notes for `onyx_hover.c` are replayed, a link's `:visited` state
+  (the history changes without the DOM), and an epoch that a new selection context or a
+  media change moves. When the new context only adds or takes out sheets (a late `<link>`, a
+  script's `<style>`, a `<style>`'s text changed -- github.com loads its sheets after the
+  page), a kept selection of an epoch since stays for an element no selector of those sheets
+  matches (libcss `css_select_style_onyx_probe` on a context of those sheets only; a probe
+  that looks at another node's `:hover` or at the structure counts as a match); the sheets
+  taken out are kept alive meanwhile (`onyx_restyle_keep_sheet`). Never kept: the elements
+  in a shadow tree, shadow hosts and their light children (the first shadow root does not
+  move the epoch: a light element's selection is the same through `onyx_shadow_style`).
+  The PC bench: `NS_NORESTYLE=1` selects every element; `NS_RESTYLE_CHECK=1` compares each
+  kept selection with a new one (`RESTYLE-MISMATCH` lines: 0 on github.com, bbc.com,
+  m.facebook.com, en.wikipedia.org, reddit.com, amazon.fr, lemonde.fr, yahoo.com,
+  duckduckgo.com, developer.mozilla.org, youtube.com); `NS_PERF` prints `styles: K of N kept`.
+- **Selection costs that were n^2** (`css/select.c`, libcss): `:nth-child` and `:last-child`
+  counted an element's siblings for each element -- the counts are now found for all a
+  parent's children at once and kept until the next mutation event (`nscss_dom_changed`);
+  libcss's style-sharing search walked back over every previous sibling of the same name that
+  could not share (a list striped by `:nth-child`) -- it tries 8 candidates. A 2500-row list
+  (`pages/rebox-perf.html`, 10 000 elements): a rebox 380 ms -> 20-40 ms.
+- **Reboxes coalesced and throttled** (`html.c` `html_script_dom_changed`): the first change
+  sets when the rebox comes (a later one no longer puts it off -- a script changing the DOM
+  every few ms kept it from ever coming), and while the scripts keep changing the DOM, one
+  every max(50 ms, twice the last rebox's cost) at most; a script asking for a geometry still
+  has its rebox at once (`html_script_layout_now`). A script turn whose DOM changes were all
+  under a `display: none` ancestor of the last box tree (head, script, template, a hidden
+  panel: `onyx_restyle_node_hidden`) reboxes nothing (`html_script_dom_changed_by_script`,
+  from `qjs.c`).
+- **Attribute-only changes restyled in the boxes** (`html_restyle_in_place`,
+  `onyx_hover_restyle_nodes`): when every DOM change since the last rebox set attributes (a
+  class toggled by a timer, a style attribute, `aria-expanded`, a popover state), the changed
+  elements' subtrees -- with their following siblings whose selections looked at previous
+  siblings -- are styled again in their boxes with the `:hover` machinery (§9): redrawn when
+  only how they are painted changed, else laid out again without building the boxes; anything
+  else (an unboxed element shown, a pseudo-element appearing, an image to fetch) builds the
+  boxes again. `rebox-perf.html` (a class toggled every 100 ms): rebox + layout 60-100 ms ->
+  5-9 ms. `NS_NOINPLACE=1` turns it off.
+
+Measured on the PC bench (the sites live, the same session; `layout` / `rebox:boxes` summed
+over the load with its scripts, ~16 s), before (the branch without these changes) -> after:
+
+| Site | layout | rebox:boxes | note |
+|---|---|---|---|
+| m.facebook.com | 10 passes, 1971 ms -> 1 pass over 1 ms, 8 ms | 37 -> 11 ms | each pass ~170 ms -> < 1 ms |
+| github.com/stephaneweg/Onyx | 30 -> 23-42 ms | 8 reboxes, 1613 -> 87-280 ms | a rebox 150 ms -> 6-20 ms (the first one full) |
+| bbc.com | ~9 ms a pass (unchanged) | ~33 -> ~8-15 ms a rebox | a sheet taken out restyles the root: two full reboxes left |
+| en.wikipedia.org | ~45 ms a pass | 237 -> 110-195 ms a rebox | its startup script changes `<html>`'s class: the first rebox is full |
+| rebox-perf.html (10 000 elements) | 40-60 ms -> none (paint-only) | 380 ms -> 5-9 ms (in place) | a class toggled every 100 ms |
+
+On the Pi (~20x for m.facebook.com's layout): its cookie dialog's 3.5 s passes should drop to
+~20-160 ms; github's reboxes from ~1.5-3 s to ~0.1-0.4 s. The scripts are now the bulk of
+the time on these sites (bbc.com: 86 % of the samples in QuickJS).
+
+Left: an **incremental layout** (a pass lays out the whole tree: wikipedia ~45 ms on the PC;
+the dirty boxes and their ancestors only, from the nearest box whose size cannot change),
+**incremental box construction** (a rebox builds every box even when every style is kept:
+~3 µs an element on the PC), the in-place restyle for child-list changes (a node inserted
+into a flex container) and for elements whose parent has no box (`display: contents`).
+Tests: `jstest.sh` -- `js-restyle` (46 checks: each kind of DOM change, sibling
+combinators, `:nth-child`, `:empty`, moves, custom properties, sheets added / taken out /
+changed, a change under a hidden ancestor); perf pages `rebox-perf.html`,
+`flex-deep-perf.html` (a Facebook-like dialog of nested flex containers).
 
 ## 8. Known gaps
 

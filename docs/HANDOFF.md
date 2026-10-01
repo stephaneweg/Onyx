@@ -715,9 +715,13 @@ docs/06 §12-§19 describe each piece; read them first. Where it stands:
 - **To try on the Pi first**: kotonviolins.com / kotonstudio.com (regressions), bbc.co.uk (the
   memory), google.com (search, results), m.facebook.com (log in), en.wikipedia.org, a
   WebSocket echo. Watch `kmsg` for `app:` lines and `SD:/etc/apphang.txt`.
-- **Next**: incremental relayout for React (a restyle of the changed subtree instead of a full
-  rebox), `opacity` groups and filters, transitions / animations, a worker thread for Workers,
-  CORS, Google's results on the user's network.
+- **Layout / rebox performance (docs/06 §26)**: the flex layout memo (m.facebook.com's
+  layout pass 170 ms -> under 1 ms on the PC; its cookie dialog took 3.5 s a pass on the Pi),
+  the style selections kept between box trees (github.com's rebox 150 ms -> 6-20 ms),
+  attribute-only changes restyled in the boxes, reboxes coalesced / throttled.
+  `NS_RESTYLE_CHECK=1` / `NS_NORESTYLE=1` / `NS_NOINPLACE=1` on the bench to check them.
+- **Next**: an incremental layout and box construction (06 §26 "Left"), a worker thread for
+  Workers, Google's results on the user's network.
 
 **Done, in `main`, staged on the card:** CSS3 (calc / var / grid / flex / gradients /
 shadows / radii / background-clip: text / vendor prefixes), Chrome's Windows fonts
