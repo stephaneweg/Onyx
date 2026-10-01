@@ -229,9 +229,16 @@ def main ():
 	for f in os.listdir (os.path.join (a.out, "pkgs")):
 		if f.endswith (".opk") and f not in keep: os.remove (os.path.join (a.out, "pkgs", f))
 	data = ("\n".join (idx)).encode ()
-	open (os.path.join (a.out, "index.txt"), "wb").write (data)
-	if not a.no_sign:
-		open (os.path.join (a.out, "index.sig"), "w").write (sign (data, a.key) + "\n")
+	# nothing changed (the same packages, versions, archives): the index and its signature left as they are
+	ip = os.path.join (a.out, "index.txt")
+	oldtext = open (ip, "rb").read () if os.path.exists (ip) else b""
+	strip = lambda t: re.sub (rb"\ndate = [^\n]*", b"", t)
+	if strip (oldtext) == strip (data) and os.path.exists (os.path.join (a.out, "index.sig")):
+		print ("mkrepo: no package changed: the index kept")
+	else:
+		open (ip, "wb").write (data)
+		if not a.no_sign:
+			open (os.path.join (a.out, "index.sig"), "w").write (sign (data, a.key) + "\n")
 	if a.db: write_db (os.path.join (a.sd, "var", "pkg", "db"), pkgs)
 	if a.lite:
 		# the smallest card: the required packages only (the system, the firmware) and their

@@ -133,16 +133,18 @@ each package of the index whose files are all there is recorded as installed (it
 
 ## Publishing the repository
 
-On the PC, in a checkout of `stephaneweg/onyx-packages` beside `onyx` (GitHub Pages on, from `main`):
+**`sh tools/pkg/publish.sh`** (the procedure every session follows: the skill
+`.claude/skills/onyx-packages/SKILL.md`, CLAUDE.md's rule): the clone of `stephaneweg/onyx-packages`
+beside (`$ONYX_PACKAGES_DIR`, default `../onyx-packages`) brought up to date, `mkrepo.py --bump --db
+--lite sdcard_lite` (a package whose files changed gets a new version in `tools/pkg/versions.ini`), the
+index's signature checked with the cards' public key, `tools/tests/run_pkg_test.sh`, then
+`onyx-packages` committed and pushed (GitHub Pages serves its `main`); then commit in onyx
+`versions.ini`, `sdcard/var/pkg/db`, `sdcard_lite`. Nothing changed: nothing published.
 
-```
-python3 tools/pkg/mkrepo.py --out ../onyx-packages --key ~/.onyx/pkg-key.pem --db --lite sdcard_lite
-cd ../onyx-packages && git add -A && git commit -m "Onyx packages" && git push
-```
-
-`--bump` when an app changed (its version raised in `tools/pkg/versions.ini`, to commit in `onyx`).
-The private key `~/.onyx/pkg-key.pem` signs the index: keep it off the repositories (its public half,
-`sdcard/etc/pkg/onyx.pub`, is on every card).
+The private key signs the index: kept off the repositories — `~/.onyx/pkg-key.pem` on the PC, or the
+environment variable **`ONYX_PKG_KEY`** (its PEM; `\n` escapes or base64 taken) in the cloud
+environment's settings, so that a session can publish; without a key `publish.sh` publishes nothing.
+Its public half, `sdcard/etc/pkg/onyx.pub`, is on every card: never make another key.
 
 ## The emulators (a question of the user)
 
