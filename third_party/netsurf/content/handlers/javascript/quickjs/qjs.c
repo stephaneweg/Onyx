@@ -4618,6 +4618,16 @@ void js_finalise(void)
 {
 }
 
+#ifndef ONYX_HOST_SIM
+#include "kapi.h"
+
+/* Onyx: the JIT's code chunks (kapi v58: executable, the app's until it ends) */
+static void *qjs_code_alloc(size_t size)
+{
+	return kapi_code_alloc(size);
+}
+#endif
+
 /* exported interface documented in js.h */
 nserror js_newheap(int timeout, jsheap **heap)
 {
@@ -4637,6 +4647,12 @@ nserror js_newheap(int timeout, jsheap **heap)
 	/* a script's recursion stopped (RangeError) past 4 MB of stack -- the Onyx app's is
 	 * 8 MB (its app.txt: stack = 8M), NetSurf's own frames below the JS */
 	JS_SetMaxStackSize(h->rt, 4 * 1024 * 1024);
+#ifndef ONYX_HOST_SIM
+	/* Onyx: the JIT (Choices: js_jit, the calls before a function is compiled; 0 off) in
+	 * the kernel's executable memory */
+	if (nsoption_int(js_jit) > 0)
+		JS_SetJIT(h->rt, nsoption_int(js_jit), qjs_code_alloc);
+#endif
 	/* Onyx: a window's scripts take 384 MB at most -- past it an allocation throws
 	 * (InternalError: out of memory) where it would stop the whole app on the Pi */
 	JS_SetMemoryLimit(h->rt, 384 * 1024 * 1024);

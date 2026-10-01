@@ -1,6 +1,7 @@
 /* tools/tests/netsurf/jit/react-ssr.js -- React 18 renders 1000 table rows to a string, 10
  * times (the components of pages/perf-react.html's kind); prints the milliseconds of a render
- * (the best of the last 5) -- lower is better (bench.sh) */
+ * (the best of the last half) -- lower is better (bench.sh). ROWS / RUNS set before it: less
+ * (icount.sh) */
 var e = React.createElement;
 function Row(p) {
 	return e('tr', { className: p.i % 2 ? 'odd' : 'even' },
@@ -14,10 +15,11 @@ function Table(p) {
 	return e('table', null, e('tbody', null, rows));
 }
 var best = Infinity, len = 0;
-for (var k = 0; k < 10; k++) {
+var ROWS = typeof ROWS === 'number' ? ROWS : 1000, RUNS = typeof RUNS === 'number' ? RUNS : 10;
+for (var k = 0; k < RUNS; k++) {
 	var t = performance.now();
-	len = ReactDOMServer.renderToString(e(Table, { n: 1000, seed: 7 + k })).length;
+	len = ReactDOMServer.renderToString(e(Table, { n: ROWS, seed: 7 + k })).length;
 	t = performance.now() - t;
-	if (k >= 5 && t < best) best = t;
+	if (k >= RUNS / 2 && t < best) best = t;
 }
 print('ReactSSR: ' + best.toFixed(1) + ' ms (' + len + ' chars)');

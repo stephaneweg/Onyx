@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/mman.h>
 
 #include "quickjs.h"
 
@@ -108,6 +109,14 @@ static int report(JSContext *ctx)
 	return 1;
 }
 
+/* the JIT's executable memory */
+static void *code_alloc(size_t size)
+{
+	void *p = mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS,
+		       -1, 0);
+	return p == MAP_FAILED ? NULL : p;
+}
+
 int main(int argc, char **argv)
 {
 	JSRuntime *rt = JS_NewRuntime();
@@ -116,6 +125,8 @@ int main(int argc, char **argv)
 	int i, status = 0;
 
 	JS_SetMaxStackSize(rt, 4 * 1024 * 1024);
+	if (getenv("QJS_JIT"))	/* the JIT (AArch64): compiled after QJS_JIT calls */
+		JS_SetJIT(rt, atoi(getenv("QJS_JIT")), code_alloc);
 	JS_SetPropertyStr(ctx, g, "print", JS_NewCFunction(ctx, js_print, "print", 1));
 	o = JS_NewObject(ctx);
 	JS_SetPropertyStr(ctx, o, "log", JS_NewCFunction(ctx, js_print, "log", 1));

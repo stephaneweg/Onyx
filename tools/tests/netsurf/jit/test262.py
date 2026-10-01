@@ -97,6 +97,9 @@ def main():
     dirs = a.dirs or ['test/language', 'test/built-ins']
     tests = []
     for d in dirs:
+        if os.path.isfile(os.path.join(a.t262, d)):     # (a test named alone)
+            tests.append(os.path.join(a.t262, d))
+            continue
         for root, _, files in os.walk(os.path.join(a.t262, d)):
             for f in files:
                 if f.endswith('.js') and '_FIXTURE' not in f:
@@ -118,7 +121,7 @@ def main():
     print('tests %d: %s' % (len(tests), ', '.join('%s %d' % kv for kv in sorted(counts.items()))))
     if a.bin2:
         print('differing from --bin2: %d' % len(diffs))
-        for t, r1, r2 in diffs[:200]:
+        for t, r1, r2 in diffs:
             print('  %s: %s (bin2: %s)' % (t, r1, r2))
     return 1 if diffs else 0
 

@@ -22,6 +22,14 @@ Onyx patches (marked Onyx):
   upstream pointer * 3163 left the bucket index's low bits zero (aligned pointers), one bucket
   in 8-16 used -- Map / Set / WeakMap lookups by object (Vue's reactivity) walked long chains
   (docs/06-NETSURF-CHANGES.md §28).
+- quickjs-jit.c (new), quickjs.c, quickjs.h: a baseline JIT for AArch64 (CONFIG_QJS_JIT, on
+  __aarch64__; off until JS_SetJIT(rt, threshold, code_alloc)): JSFunctionBytecode.jit_code /
+  jit_count, JSRuntime.jit_threshold / jit_steps; JS_CallInternal runs a function's machine
+  code after its frame is set up, and runs one instruction for it on request
+  (JS_CALL_FLAG_JIT_STEP: the frame resumed from a copy of the instruction followed by
+  OP_JIT_STEP_END, an invalid opcode whose dispatch returns); backtraces map a pc in such a
+  copy back (js_frame_pc); the code is freed with its function. CONFIG_QJS_NO_JIT leaves it
+  out. NetSurf's docs/06 section 30 describes it.
 
 Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
 libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.

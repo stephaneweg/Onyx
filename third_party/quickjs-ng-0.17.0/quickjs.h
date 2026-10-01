@@ -516,6 +516,10 @@ JS_EXTERN size_t JS_GetGCThreshold(JSRuntime *rt);
 JS_EXTERN void JS_SetGCThreshold(JSRuntime *rt, size_t gc_threshold);
 /* use 0 to disable maximum stack size check */
 JS_EXTERN void JS_SetMaxStackSize(JSRuntime *rt, size_t stack_size);
+/* Onyx: the baseline JIT (AArch64 only): a function called `threshold` times is compiled to
+   machine code, in executable memory from code_alloc (asked for in chunks, kept for the
+   process's life; blocks are reused); 0 turns it off. False where there is no JIT. */
+JS_EXTERN bool JS_SetJIT(JSRuntime *rt, int threshold, void *(*code_alloc)(size_t size));
 /* should be called when changing thread to update the stack top value
    used to check stack overflow. */
 JS_EXTERN void JS_UpdateStackTop(JSRuntime *rt);

@@ -140,6 +140,10 @@ NSOPTION_BOOL(author_level_css, true)
  * Browsers do not stop a script at all; this only ends a loop that never does. */
 NSOPTION_INTEGER(script_timeout, 60)
 
+/** Onyx: the scripts' JIT (QuickJS on AArch64, quickjs-jit.c): a function is compiled to
+ * machine code after this many calls; 0 (the default): the interpreter only */
+NSOPTION_INTEGER(js_jit, 0)
+
 /** How many days to retain URL data for */
 NSOPTION_INTEGER(expire_url, 28)
 
