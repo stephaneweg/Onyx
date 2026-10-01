@@ -119,7 +119,13 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      0.2 s once `NetIsUp()`; a frozen LED means the scheduler stopped.
    - **`CInputTask`** (if USB is present) — pumps keyboard/mouse events to the
      window manager; every 100 ms it also looks for new gamepads (`upad1..4`) and USB MIDI
-     devices (`umidi1..4`, v68: §8 *USB MIDI*), also after a hot plug.
+     devices (`umidi1..4`, v68: §8 *USB MIDI*), also after a hot plug. It takes **every**
+     USB keyboard (`ukbd1..4`, each with the layout snapshot), not only `ukbd1`: a wireless
+     mouse's receiver (Logitech's nano receiver, e.g. the M187's) has a boot-keyboard
+     interface of its own, which may enumerate first and take `ukbd1` — the real keyboard,
+     `ukbd2`, was then ignored. Each keyboard's raw report is kept and the window manager gets
+     them merged (modifiers ORed, held keys joined), so one keyboard's empty report does not
+     release the keys held on another. The mouse is still `mouse1` only.
    - **`CGuiWatchdogTask`** (skipped with `watchdog=0` in `cmdline.txt`) — once a second, checks the GUI and writes to the kernel
      log (`kmsg`): `compositor STALLED` when `CWindowManager::FrameCount()` has not moved
      for 2 s (with every task's `name:state`), `app '<title>' NOT PUMPING events` when a
