@@ -414,6 +414,13 @@ bool browser_window_scroll_at_point(struct browser_window *bw,
  */
 void browser_window_scrolled(struct browser_window *bw);
 
+/**
+ * Onyx: the window's viewport in its document: its scroll offset and its size, in CSS px
+ * (what position: fixed and background-attachment: fixed are relative to).
+ */
+void browser_window_onyx_viewport(struct browser_window *bw, int *sx, int *sy,
+		int *width, int *height);
+
 
 /**
  * Drop a file onto a browser window at a particular point, or determine if a

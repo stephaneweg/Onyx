@@ -171,6 +171,10 @@ struct browser_window {
 	bool onyx_frag_done;
 	int onyx_frag_x, onyx_frag_y;
 
+	/** Onyx: the scroll offset the fixed boxes were last painted at (they move by
+	 * the difference at the next scroll: browser_window_scrolled) */
+	int onyx_fixed_sx, onyx_fixed_sy;
+
 	/**
 	 * Current drag status.
 	 *

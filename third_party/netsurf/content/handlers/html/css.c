@@ -37,6 +37,7 @@
 #include "netsurf/misc.h"
 #include "netsurf/content.h"
 #include "content/hlcache.h"
+#include "content/fetch.h"
 #include "css/css.h"
 #include "desktop/gui_internal.h"
 
@@ -143,8 +144,11 @@ html_convert_css_callback(hlcache_handle *css,
 		      nsurl_access(hlcache_handle_get_url(css)));
 		parent->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", parent->base.active);
-		/* Onyx: the <link> / <style>'s load event (async CSS loaders wait for it) */
-		if (parent->jsthread != NULL && s->node != NULL)
+		/* Onyx: the <link> / <style>'s load event (async CSS loaders wait for it)
+		 * -- after the script that waits for it (html_css_flush_sync) */
+		if (parent->css_sync)
+			s->load_pending = true;
+		else if (parent->jsthread != NULL && s->node != NULL)
 			js_fire_event(parent->jsthread, "load", parent->document, s->node);
 		break;
 
@@ -173,8 +177,10 @@ html_convert_css_callback(hlcache_handle *css,
 		break;
 	}
 
-	/* Onyx: a script waiting for the sheets runs now they are in */
-	if (event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR)
+	/* Onyx: a script waiting for the sheets runs now they are in (not while a
+	 * script runs: html_css_flush_sync's turn after) */
+	if ((event->type == CONTENT_MSG_DONE || event->type == CONTENT_MSG_ERROR) &&
+	    !parent->css_sync)
 		html_script_sheets_arrived(parent);
 	/* Onyx: a sheet come after the conversion (a script's <style> or <link>: Facebook's
 	 * Bloks, the single-page apps) restyles the page -- it was ignored */
@@ -378,6 +384,75 @@ static void html_css_process_modified_styles(void *pw)
 	}
 }
 
+
+/** Onyx: what html_css_flush_sync put off: the sheets' load events, the scripts that
+ * wait for the sheets */
+static void html_css_sync_after(void *pw)
+{
+	html_content *c = pw;
+	unsigned int i;
+
+	for (i = 0; i != c->stylesheet_count; i++) {
+		struct html_stylesheet *s = &c->stylesheets[i];
+
+		if (s->load_pending) {
+			s->load_pending = false;
+			if (c->jsthread != NULL && s->node != NULL)
+				js_fire_event(c->jsthread, "load", c->document,
+						s->node);
+		}
+	}
+	html_script_sheets_arrived(c);
+}
+
+/* exported function documented in html/css.h */
+void html_css_flush_sync(html_content *c)
+{
+	lwc_string *scheme;
+	unsigned int i, round;
+	bool modified = false, pending = true;
+
+	for (i = 0; i != c->stylesheet_count; i++)
+		if (c->stylesheets[i].modified)
+			modified = true;
+	if (!modified || c->css_sync)
+		return;
+	if (lwc_intern_string("x-ns-css", 8, &scheme) != lwc_error_ok)
+		return;
+	c->css_sync = true;
+	guit->misc->schedule(-1, html_css_process_modified_styles, c);
+	html_css_process_modified_styles(c);
+	/* (their fetches delivered and their contents converted now: a few
+	 * rounds of the inline sheets' fetcher and their objects' users) */
+	for (round = 0; round < 8 && pending; round++) {
+		fetch_poll_scheme(scheme);
+		pending = false;
+		for (i = 0; i != c->stylesheet_count; i++) {
+			struct html_stylesheet *s = &c->stylesheets[i];
+			content_status st;
+
+			if (s->sheet == NULL)
+				continue;
+			/* (no content yet: still fetched) */
+			st = hlcache_handle_get_content(s->sheet) == NULL ?
+				CONTENT_STATUS_LOADING : content_get_status(s->sheet);
+			if (st == CONTENT_STATUS_DONE || st == CONTENT_STATUS_ERROR)
+				continue;
+			hlcache_handle_catch_up(s->sheet);
+			if (s->sheet != NULL) {
+				st = hlcache_handle_get_content(s->sheet) == NULL ?
+					CONTENT_STATUS_LOADING :
+					content_get_status(s->sheet);
+				if (st != CONTENT_STATUS_DONE &&
+				    st != CONTENT_STATUS_ERROR)
+					pending = true;
+			}
+		}
+	}
+	lwc_string_unref(scheme);
+	c->css_sync = false;
+	guit->misc->schedule(0, html_css_sync_after, c);
+}
 
 /* exported function documented in html/css.h */
 bool html_css_update_style(html_content *c, dom_node *style)
@@ -667,6 +742,7 @@ nserror html_css_free_stylesheets(html_content *html)
 	unsigned int i;
 
 	guit->misc->schedule(-1, html_css_process_modified_styles, html);
+	guit->misc->schedule(-1, html_css_sync_after, html);	/* (Onyx) */
 
 	for (i = 0; i != html->stylesheet_count; i++) {
 		if (html->stylesheets[i].sheet != NULL) {

@@ -16,16 +16,23 @@
 static inline nsfb_colour_t 
 nsfb_plot_ablend(nsfb_colour_t pixel, nsfb_colour_t scrpixel)
 {
-    int opacity = pixel >> 24;
-    int transp = 0x100 - opacity;
+    /* Onyx: exact -- (s * a + d * (255 - a)) / 255, its integer part, each
+     * channel: alpha 255 is the source, 0 the screen (with 256 - a and >> 8,
+     * an opaque pixel let 1/256 of the screen through and every blend was a
+     * little dark). x / 255 = (x + 1 + (x >> 8)) >> 8 for x <= 65025, two
+     * channels at once (no carry between them). Acid2's eyes, as its
+     * reference rendering. */
+    uint32_t opacity = pixel >> 24;
+    uint32_t transp = 0xFF - opacity;
     uint32_t rb, g;
 
-    rb = ((pixel & 0xFF00FF) * opacity +
-          (scrpixel & 0xFF00FF) * transp) >> 8;
-    g  = ((pixel & 0x00FF00) * opacity +
-          (scrpixel & 0x00FF00) * transp) >> 8;
+    rb = (pixel & 0xFF00FF) * opacity + (scrpixel & 0xFF00FF) * transp;
+    rb = ((rb + 0x00010001 + ((rb >> 8) & 0x00FF00FF)) >> 8) & 0x00FF00FF;
+    g  = (((pixel & 0x00FF00) >> 8) * opacity +
+          ((scrpixel & 0x00FF00) >> 8) * transp);
+    g  = ((g + 1 + (g >> 8)) >> 8) << 8;
 
-    return (rb & 0xFF00FF) | (g & 0xFF00);
+    return rb | (g & 0xFF00);
 }
 
 

@@ -305,6 +305,22 @@ static void fetcher_poll(void *unused)
  ******************************************************************************/
 
 /* exported interface documented in content/fetch.h */
+void fetch_poll_scheme(lwc_string *scheme)
+{
+	int fetcherd;
+	bool match;
+
+	/* Onyx: one fetcher polled now (a script waiting for its inline style
+	 * sheets: html_css_flush_sync) -- the jobs queued for it started first */
+	fetch_dispatch_jobs();
+	for (fetcherd = 0; fetcherd < MAX_FETCHERS; fetcherd++)
+		if (fetchers[fetcherd].refcount > 0 &&
+		    lwc_string_isequal(fetchers[fetcherd].scheme, scheme,
+				&match) == lwc_error_ok && match)
+			fetchers[fetcherd].ops.poll(fetchers[fetcherd].scheme);
+}
+
+/* exported interface documented in content/fetch.h */
 /* Onyx: the http scheme is served by our TCP-kapi fetcher (user/netsurf/onyx_fetch.c)
  * instead of libcurl. Declared here; registered below in fetcher_init(). */
 extern nserror fetch_onyx_register(void);

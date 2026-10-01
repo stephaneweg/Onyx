@@ -916,6 +916,10 @@ static nserror browser_window_content_ready(struct browser_window *bw)
 
 	if (bw->window != NULL) {
 		guit->window->event(bw->window, GW_EVENT_NEW_CONTENT);
+		/* Onyx: the view is back at the top: the fragment is scrolled to again (a
+		 * scroll to it while the page still loaded is undone by this) */
+		bw->onyx_frag_done = false;
+		bw->onyx_fixed_sx = bw->onyx_fixed_sy = 0;
 
 		browser_window_refresh_url_bar(bw);
 	}
@@ -3056,8 +3060,41 @@ void browser_window_scrolled(struct browser_window *bw)
 {
 	/* Onyx: the page's scripts told (html_scrolled: a scroll event soon) */
 	if (bw != NULL && bw->current_content != NULL &&
-	    content_get_type(bw->current_content) == CONTENT_HTML)
+	    content_get_type(bw->current_content) == CONTENT_HTML) {
+		int sx, sy, w, h;
+
+		/* Onyx: what stays in the viewport (position: fixed, background-
+		 * attachment: fixed) painted again where the scroll moved it */
+		browser_window_onyx_viewport(bw, &sx, &sy, &w, &h);
+		if (sx != bw->onyx_fixed_sx || sy != bw->onyx_fixed_sy) {
+			html_fixed_scrolled(bw->current_content,
+					bw->onyx_fixed_sx, bw->onyx_fixed_sy,
+					sx, sy, w, h);
+			bw->onyx_fixed_sx = sx;
+			bw->onyx_fixed_sy = sy;
+		}
 		html_scrolled(bw->current_content);
+	}
+}
+
+/* exported interface documented in netsurf/browser_window.h */
+void browser_window_onyx_viewport(struct browser_window *bw, int *sx, int *sy,
+		int *width, int *height)
+{
+	*sx = *sy = 0;
+	*width = *height = 0;
+	if (bw == NULL)
+		return;
+	if (!onyx_bw_get_scroll(bw, sx, sy))
+		*sx = *sy = 0;
+	if (browser_window_get_dimensions(bw, width, height) != NSERROR_OK)
+		*width = *height = 0;
+	if (bw->scale > 0 && bw->scale != 1.0f) {
+		*sx /= bw->scale;
+		*sy /= bw->scale;
+		*width /= bw->scale;
+		*height /= bw->scale;
+	}
 }
 
 

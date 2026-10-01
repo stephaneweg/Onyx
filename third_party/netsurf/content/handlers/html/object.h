@@ -51,6 +51,12 @@ bool html_fetch_object(struct html_content *c, struct nsurl *url, struct box *bo
  *
  * \return true on success, false on memory exhaustion
  */
+/**
+ * Onyx: whether an <object> element's resource failed (its fallback content is shown).
+ */
+struct dom_node;
+bool html_object_has_failed(struct html_content *c, struct dom_node *node);
+
 bool html_fetch_mask(struct html_content *c, struct nsurl *url, struct box *box);
 
 /**

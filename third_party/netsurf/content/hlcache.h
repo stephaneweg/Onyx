@@ -137,6 +137,11 @@ nserror hlcache_handle_release(hlcache_handle *handle);
  * \return NSERROR_OK on success, appropriate error otherwise
  */
 nserror hlcache_handle_abort(hlcache_handle *handle);
+/**
+ * Onyx: the handle's low-level object's users told its state now (the data its fetch
+ * delivered processed: content made, converted...), not at the scheduled catch-up.
+ */
+nserror hlcache_handle_catch_up(hlcache_handle *handle);
 
 /**
  * Replace a high-level cache handle's callback

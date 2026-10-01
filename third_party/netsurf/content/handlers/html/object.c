@@ -36,6 +36,8 @@
 #include "netsurf/content.h"
 #include "netsurf/misc.h"
 #include "content/hlcache.h"
+#include "content/content_protected.h"
+#include "content/llcache.h"
 #include "css/utils.h"
 #include "desktop/scrollbar.h"
 #include "desktop/gui_internal.h"
@@ -83,6 +85,55 @@ html_object_failed(struct box *box, html_content *content, bool background)
 {
 	/* Nothing to do */
 	return;
+}
+
+/* exported interface documented in html/object.h */
+bool html_object_has_failed(html_content *c, struct dom_node *node)
+{
+	for (unsigned int k = 0; k < c->object_failed_n; k++)
+		if (c->object_failed[k] == node)
+			return true;
+	return false;
+}
+
+/**
+ * Onyx: an <object> whose resource failed (an error, an HTTP error status, a type
+ * not shown) shows its fallback content, as the HTML standard has it: the element
+ * noted, its boxes built again (box_object boxes its children instead) -- the
+ * element was empty. Acid2's eyes: an unknown type, then a 404, then an image.
+ */
+static void
+html_object_fallback(html_content *c, struct box *box)
+{
+	dom_html_element_type type;
+	dom_node **a;
+
+	if (box == NULL || box->node == NULL ||
+	    dom_html_element_get_tag_type(box->node, &type) != DOM_NO_ERR ||
+	    type != DOM_HTML_ELEMENT_TYPE_OBJECT ||
+	    html_object_has_failed(c, box->node))
+		return;
+	if (c->object_failed_n == c->object_failed_cap) {
+		unsigned int cap = c->object_failed_cap ? c->object_failed_cap * 2 : 4;
+
+		a = realloc(c->object_failed, cap * sizeof(*a));
+		if (a == NULL)
+			return;
+		c->object_failed = a;
+		c->object_failed_cap = cap;
+	}
+	c->object_failed[c->object_failed_n++] = dom_node_ref(box->node);
+	html_script_dom_changed(c);
+}
+
+/** Onyx: an object's resource came with an HTTP error status (a 404 page) */
+static bool
+html_object_http_error(hlcache_handle *object)
+{
+	struct content *oc = hlcache_handle_get_content(object);
+
+	return oc != NULL && oc->llcache != NULL &&
+		llcache_handle_get_http_code(oc->llcache) >= 400;
 }
 
 /**
@@ -202,6 +253,15 @@ html_object_callback(hlcache_handle *object,
 		c->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
+		/* Onyx: an <object>'s error page is its fallback content */
+		if (!o->background && !o->mask && box != NULL &&
+		    box->node != NULL && html_object_http_error(object)) {
+			html_object_fallback(c, box);
+			if (box->node != NULL &&
+			    html_object_has_failed(c, box->node))
+				break;
+		}
+
 		html_object_done(box, object, o->background, o->mask);
 		/* Onyx: the <img> / <object>'s load event (lazy loaders, galleries) */
 		if (!o->background && box != NULL && box->node != NULL &&
@@ -239,6 +299,8 @@ html_object_callback(hlcache_handle *object,
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
 		html_object_failed(box, c, o->background);
+		if (!o->background && !o->mask)	/* (Onyx) */
+			html_object_fallback(c, box);
 		if (!o->background && box != NULL && box->node != NULL &&
 				c->jsthread != NULL)	/* (Onyx) */
 			js_fire_event(c->jsthread, "error", c->document, box->node);

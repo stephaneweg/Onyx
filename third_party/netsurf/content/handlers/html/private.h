@@ -247,6 +247,22 @@ typedef struct html_content {
 	 * the handler that shows it): the caret put in it after the next rebox */
 	struct dom_node *focus_pending;
 
+	/** Onyx: the <object> elements whose resource failed (an error, an HTTP
+	 * error status, a type not shown): their fallback content is boxed
+	 * instead (html_object_fallback, box_object), refs */
+	struct dom_node **object_failed;
+	unsigned int object_failed_n, object_failed_cap;
+
+	/** Onyx: the boxes that stay in the viewport as it scrolls (position: fixed,
+	 * background-attachment: fixed), found after each layout (html_reformat) */
+	struct box **fixed_boxes;
+	unsigned int fixed_n, fixed_cap;
+	struct box *fixed_layout;	/**< the box tree they were found in */
+
+	/** Onyx: inline style sheets converted while a script waits (html_css_flush_sync):
+	 * their load events and the scripts waiting for sheets come after it */
+	bool css_sync;
+
 	/** Onyx: the pointer's last position in the page (the keys scroll the scroller
 	 * under it) */
 	int pointer_x, pointer_y;

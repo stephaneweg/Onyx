@@ -166,6 +166,7 @@ struct jsthread {
 	int in_use;			/* calls into JS nested */
 	bool dirty;			/* the DOM changed: a new layout due */
 	int forced_layouts;		/* Onyx: layouts a script's reads forced this turn */
+	uint64_t forced_ms;		/* Onyx: and the time they took (ms) */
 	nsurl *url_override;		/* Onyx: history.pushState's URL (the document's now) */
 	JSValue ce_hook;		/* Onyx: html5.js' custom elements check of an element
 					 * the parser inserted (undefined: none defined) */
@@ -340,6 +341,7 @@ static void qjs_leave(jsthread *t)
 		}
 	}
 	t->forced_layouts = 0;
+	t->forced_ms = 0;
 	if (t->dirty) {
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
@@ -1914,15 +1916,20 @@ static void qjs_scroll(jsthread *t, int *sx, int *sy)
  * first (they used to wait for the turn's end: offsetHeight after details.open = true) */
 static void qjs_layout_now(jsthread *t)
 {
-	/* (at most 16 a turn: a script alternating writes and reads would rebuild the whole
-	 * layout at each read -- past that, the reads see the layout before the turn) */
-	if (t->dirty && !t->closed && t->forced_layouts < 16) {
-		uint64_t t0 = onyx_perf_now();
+	/* (at most 16 a turn, or 100 ms of them: a script alternating writes and reads would
+	 * rebuild the whole layout at each read -- past that, the reads see the layout before
+	 * the turn; a small document's are cheap: Acid3's selector tests read a style after
+	 * each rule they add, dozens a turn) */
+	if (t->dirty && !t->closed && (t->forced_layouts < 16 || t->forced_ms < 100)) {
+		uint64_t t0 = onyx_perf_now(), ms0 = qjs_now_ms();
 
 		t->forced_layouts++;
 		t->dirty = false;
+		/* Onyx: the <style>s it changed converted first (their rules apply) */
+		html_css_flush_sync(t->htmlc);
 		html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
 		html_script_layout_now(t->htmlc);
+		t->forced_ms += qjs_now_ms() - ms0;
 		/* Onyx (NS_PERF): a long layout a script's read forced, and where (the script's
 		 * stack: its first frames) -- a whole rebox of a big page each time */
 		if (onyx_perf_on() && onyx_perf_now() - t0 > 50000) {
