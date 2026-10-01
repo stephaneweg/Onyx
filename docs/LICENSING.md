@@ -97,7 +97,7 @@ Two weaknesses, worth fixing:
 | libgcc / libstdc++ | the toolchain | GPLv3 + **GCC Runtime Library Exception** | None for our binaries |
 | DejaVu | `third_party/dejavu-*`, `sdcard/res/fonts` | Bitstream Vera + public domain | Keep the licence; fonts not sold alone |
 | Liberation, Gelasio, Selawik | `sdcard/res/fonts`, `third_party/fonts` | SIL OFL 1.1 | Keep the licences (they are there) |
-| GeneralUser GS 2.0.3 | `sdcard/koton/soundfonts` | Its own, free (also commercial) | Keep the licence (it is there) |
+| GeneralUser GS 2.0.3 | `sdcard/res/soundfonts` (the package `generaluser-gs`) | Its own, free (also commercial) | Keep the licence (it is there) |
 | Freedoom | `sdcard/doom` | BSD-3 | Keep `FREEDOOM-COPYING.txt` (it is there) |
 | Raspberry Pi firmware (`start4.elf`, `fixup4.dat`, the `.dtb`) | `sdcard/` | Broadcom's redistributable binary licence; the `.dtb` from Linux's device trees (GPL-2.0, most also MIT) | **Add `LICENCE.broadcom`** to the card |
 | `armstub8-rpi4.bin` | `sdcard/` | BSD-3 (raspberrypi/tools) | Add its notice |

@@ -1867,7 +1867,8 @@ brings the window back. **Closing the window stops the music.**
 **The folders** (*File > Folders to Watch...*, or the songs' count at the sidebar's bottom): the
 folders Media Player looks in (`SD:/Music` at first; another partition, a USB drive...), how many songs
 each has; *Add a folder...*, × to stop watching one. The library is updated at each start, or with
-*File > Look for New Songs*.
+*File > Look for New Songs*. The **Folders** page has its own **Add a folder...** button; while the library is
+empty, the library's pages (Albums, Artists, Songs, Genres, Folders) say so and show it too.
 
 ![The folders](../screenshots/media-welcome.png)
 
@@ -1876,7 +1877,8 @@ first track's name (MIDI) —; what is missing comes from the path (`<artist>/<a
 The covers: the picture inside the file, else the folder's `cover.jpg` / `folder.jpg` / `front.jpg`
 (PNG and BMP too); an album without one gets a picture drawn from its name. **Nothing is downloaded.**
 MIDI files are played by **MeltySynth** (Koton's synthesizer) through a **SoundFont**: the first `.sf2`
-of `SD:/koton/soundfonts` (GeneralUser GS), or `soundfont = <path>` in the settings.
+of `SD:/res/soundfonts` (GeneralUser GS: the package `generaluser-gs`, which Media Player and Koton need, installed
+with them), or `soundfont = <path>` in the settings.
 
 **Keys**: Space or ^P play / pause, ^F next, ^B previous, ^S shuffle, ^T repeat,
 ^E search, ^L now playing, ^M the mini player, Esc (now playing: back; the search: cleared), ^O open a file.
@@ -2844,7 +2846,8 @@ accompaniments, melodic lines or riffs, drums, the sections as markers, the key,
 change the request and Generate again. Without a key: *Copy the prompt* (paste it into any chat), then
 copy the chat's whole answer and *Paste a reply* — checked and applied the same way.
 
-**Sound**: the SoundFont is the first `.sf2` of `SD:/koton/soundfonts` (GeneralUser GS is shipped;
+**Sound**: the SoundFont is the first `.sf2` of `SD:/res/soundfonts` (GeneralUser GS: its own package,
+`generaluser-gs`, installed with Koton and shared with Media Player; then the older `SD:/koton/soundfonts`;
 File ▸ *SoundFont…* chooses another, from the next start). The engine runs on the third core (else a
 real-time thread): about 40 ms from a key to the ear. A **USB MIDI keyboard** plays the selected track (or
 writes into the riff editor with *Step record*). **File ▸ Export as WAV…** renders the song off line
@@ -2855,7 +2858,7 @@ writes into the riff editor with *Step record*). **File ▸ Export as WAV…** r
 ^L loop.
 
 **Files**: songs in `SD:/koton/songs` (`.kson`; Koton's `.sq` open — *Save* then writes a `.kson`);
-`SD:/koton/soundfonts/*.sf2`; `SD:/koton/settings.json` (the SoundFont chosen, the last folder, the
+`SD:/res/soundfonts/*.sf2`; `SD:/koton/settings.json` (the SoundFont chosen, the last folder, the
 AI provider, model and **API key — in plain text on the card**, and *Compose with AI*'s last request:
 what, style, intention, bars and options, offered again the next time); `SD:/apps/koton.app/drums.json`
 (the drum catalog); the plugins in `SD:/koton/plugins/<name>/` (`main` + `plugin.json`). A double
