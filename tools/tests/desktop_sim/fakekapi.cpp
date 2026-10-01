@@ -860,8 +860,46 @@ static int get_args (char *b, unsigned n)
 	snprintf (b, n, "%s", a ? a : "");
 	return (int) strlen (b);
 }
-static int clipboard_set (int, const void *, unsigned) { return 1; }
-static int clipboard_get (int *t, void *, unsigned, unsigned *serial) { if (t) *t = 0; if (serial) *serial = 0; return 0; }
+// The clipboard: one typed blob, 64 KB at most, as the kernel's (kapi.cpp). SIM_CLIP: what it
+// holds at the start ("text", or "files:PATH" -- CLIP_FILES); SIM_CLIPFILE: each set written
+// there (its bytes exactly; its type on stdout: "SIM-CLIPBOARD type=T len=N").
+static std::string g_clip;
+static int g_clipType = -1;		// (-1: SIM_CLIP not read yet)
+static unsigned g_clipSerial;
+static void clip_init (void)
+{
+	if (g_clipType >= 0) return;
+	g_clipType = 0;
+	const char *c = getenv ("SIM_CLIP");
+	if (!c || !*c) return;
+	if (!strncmp (c, "files:", 6)) { g_clip = c + 6; g_clipType = 2; }
+	else { g_clip = c; g_clipType = 1; }
+}
+static int clipboard_set (int type, const void *d, unsigned n)
+{
+	clip_init ();
+	if (n > 64 * 1024) n = 64 * 1024;
+	if (!d) n = 0;
+	g_clip.assign ((const char *) (d ? d : ""), n);
+	g_clipType = n ? type : 0;
+	g_clipSerial++;
+	printf ("SIM-CLIPBOARD type=%d len=%u\n", g_clipType, n); fflush (stdout);
+	if (getenv ("SIM_CLIPFILE"))
+	{
+		FILE *f = fopen (getenv ("SIM_CLIPFILE"), "wb");
+		if (f) { fwrite (g_clip.data (), 1, g_clip.size (), f); fclose (f); }
+	}
+	return (int) n;
+}
+static int clipboard_get (int *t, void *b, unsigned cap, unsigned *serial)
+{
+	clip_init ();
+	if (t) *t = g_clipType;
+	if (serial) *serial = g_clipSerial;
+	unsigned n = (unsigned) g_clip.size () < cap ? (unsigned) g_clip.size () : cap;
+	if (b && n) memcpy (b, g_clip.data (), n);
+	return (int) g_clip.size ();
+}
 static void set_click (gui_handler h) { g_click = h; }
 static int key_held (int) { return 0; }
 // SIM_CURSOR="x,y": the pointer, relative to the client area (the eyes look at it); none: away
