@@ -4012,9 +4012,10 @@ input, the document, an event. Each check fails on the build before.
 
 **Not done.** An absolute box escaping a scroller does not stay put when the scroller is scrolled
 (it moves with the scroller's content); the `form` attribute (`<input form="id">`); a form with
-two text fields and no submit button is still submitted by Enter (HTML: only a lone field). The
-footer fix was checked on the local page only: by then Wikimedia's API answered the bench with 429
-(rate limited) -- the list's opacity and Enter were checked on the live site, Mobile and Desktop.
+two text fields and no submit button is still submitted by Enter (HTML: only a lone field); the
+menu's list shows a scroll bar of its own when its ten rows are taller than it (Chrome's overlay
+scroll bars take no room). Checked on the live site: the list opaque (Mobile and Desktop), Enter
+(both), the footer shown and a row clicked opening its article (Mobile).
 
 ## 8. Known gaps
 
