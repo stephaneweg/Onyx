@@ -104,7 +104,11 @@ typedef enum {
 	/* Onyx: a line container holding floats (their bounds are their float
 	 * container's, not its: the redraw does not skip it for its own bounds --
 	 * a float in a positioned box is painted from its line, html/redraw.c) */
-	HAS_FLOATS  = 1 << 16
+	HAS_FLOATS  = 1 << 16,
+	/* Onyx: a descendant is position: absolute with its containing block
+	 * outside this box: this box's overflow does not clip it, nor does it make
+	 * this box scroll (Codex's menu footer under its scrolling list) */
+	HAS_ABS_OUT = 1 << 17
 } box_flags;
 
 

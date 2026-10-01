@@ -63,12 +63,23 @@ nserror box_textarea_keypress(html_content *html, struct box *box, uint32_t key)
 	switch (key) {
 	case NS_KEY_NL:
 	case NS_KEY_CR:
-		/* Onyx: unless the page's scripts prevent the form's submit event */
-		if (form && html_script_event(html, "submit", form->node, NULL)) {
-			res = form_submit(content_get_url(c),
-					  html->bw,
-					  form,
-					  NULL);
+		/* Onyx: the implicit submission (HTML 4.10.21.2): the form's default
+		 * button clicked (a script's click handler sees it, may prevent it; the
+		 * button sent with the form), else the form sent -- unless the page's
+		 * scripts prevent its submit event */
+		if (form) {
+			struct form_control *def;
+
+			for (def = form->controls; def != NULL; def = def->next)
+				if ((def->type == GADGET_SUBMIT ||
+				     def->type == GADGET_IMAGE) && !def->disabled)
+					break;
+			if (def != NULL && !html_script_event(html, "click", def->node,
+					NULL))
+				break;
+			if (html_script_event(html, "submit", form->node, NULL))
+				res = form_submit(content_get_url(c), html->bw, form,
+						def);
 		}
 		break;
 

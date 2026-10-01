@@ -142,7 +142,10 @@ PS="$OUT/paintsim"
 mkdir -p "$PS/obj"
 PCXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 if [ ! -x "$PS/paint" ] || [ -n "$(find user/wtk user/Apps/paint user/img tools/tests/desktop_sim/fakekapi.cpp -newer "$PS/paint" 2>/dev/null | head -1)" ]; then
-	for f in user/wtk/*.cpp; do $PCXX -c "$f" -o "$PS/obj/$(basename "$f" .cpp).o" & done; wait
+	# (wait for these only: a bare wait also waits for the HTTP server, forever)
+	pids=
+	for f in user/wtk/*.cpp; do $PCXX -c "$f" -o "$PS/obj/$(basename "$f" .cpp).o" & pids="$pids $!"; done
+	wait $pids
 	rm -f "$PS/libwtk.a"; ar rcs "$PS/libwtk.a" "$PS"/obj/*.o
 	$PCXX -o "$PS/paint" tools/tests/desktop_sim/fakekapi.cpp user/Apps/paint/main.cpp "$PS/libwtk.a" 2>"$PS/build.log"
 fi

@@ -672,6 +672,9 @@ css_error css__parse_stroke(css_language *c,
 css_error css__parse_stroke_width(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);
+css_error css__parse_pointer_events(css_language *c,
+		const parserutils_vector *vector, int32_t *ctx,
+		css_style *result);
 css_error css__parse_fill_rule(css_language *c,
 		const parserutils_vector *vector, int32_t *ctx,
 		css_style *result);

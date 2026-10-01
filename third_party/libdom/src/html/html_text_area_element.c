@@ -11,6 +11,7 @@
 #include <dom/html/html_text_area_element.h>
 
 #include "html/html_document.h"
+#include "html/html_form_element.h"
 #include "html/html_text_area_element.h"
 
 #include "core/node.h"
@@ -445,7 +446,9 @@ dom_exception dom_html_text_area_element_set_rows(
 dom_exception dom_html_text_area_element_get_form(
 	dom_html_text_area_element *text_area, dom_html_form_element **form)
 {
-	*form = text_area->form;
+	/* (Onyx: else its nearest ancestor form -- a control a script made) */
+	*form = _dom_html_form_owner((struct dom_node_internal *) text_area,
+			text_area->form);
 
 	if (*form != NULL)
 		dom_node_ref(*form);

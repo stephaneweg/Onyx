@@ -336,6 +336,7 @@ bool css_computed_style_paint_only_change(const css_computed_style *a,
 	PAINT_BITS(STROKE_LINECAP);
 	PAINT_BITS(STROKE_LINEJOIN);
 	PAINT_BITS(FILL_RULE);
+	PAINT_BITS(POINTER_EVENTS);		/* (Onyx: the hit test only) */
 	PAINT_BITS(STOP_COLOR);			t.stop_color = bi->stop_color;
 	PAINT_BITS(STOP_OPACITY);		t.stop_opacity = bi->stop_opacity;
 	PAINT_BITS(Z_INDEX);			t.z_index = bi->z_index;

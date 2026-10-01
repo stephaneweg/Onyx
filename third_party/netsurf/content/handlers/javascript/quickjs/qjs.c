@@ -2837,7 +2837,7 @@ static bool qjs_cstyle_known(const char *p)
 		"white-space", "text-transform", "cursor", "float", "clear", "text-align",
 		"font-style", "font-variant", "font-weight", "direction", "unicode-bidi",
 		"box-sizing", "table-layout", "border-collapse", "empty-cells", "caption-side",
-		"list-style-position", "outline-style", "vertical-align" };
+		"list-style-position", "outline-style", "vertical-align", "pointer-events" };
 	size_t i;
 
 	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
@@ -2903,6 +2903,9 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		snprintf(buf, sizeof(buf), "%s", css_computed_visibility(
 				style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
 				"visible");
+	} else if (strcmp(prop, "pointer-events") == 0) {	/* (Onyx) */
+		snprintf(buf, sizeof(buf), "%s", css_computed_pointer_events(style) ==
+				CSS_POINTER_EVENTS_NONE ? "none" : "auto");
 	} else if (strcmp(prop, "overflow") == 0 || strcmp(prop, "overflow-x") == 0 ||
 		   strcmp(prop, "overflow-y") == 0) {
 		/* Onyx: the scrollers' (a script looking for its scrolling ancestor) */

@@ -3999,5 +3999,11 @@ def(SVGE.prototype, {
 	},
 });
 
+/* Onyx: the interfaces made here tagged as dom.js' (Object.prototype.toString) */
+if (typeof G.__onyxTagInterfaces === 'function') {
+	G.__onyxTagInterfaces();
+	delete G.__onyxTagInterfaces;
+}
+
 return { serialize: outerHTMLOf, parseFragment, structuredClone };
 })

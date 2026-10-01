@@ -26,6 +26,8 @@
 #include "utils/config.h"
 #include "utils/corestrings.h"
 #include "utils/log.h"
+#include "utils/nsurl.h"
+#include "content/content.h"
 
 #include "html/form_internal.h"
 #include "html/private.h"
@@ -592,17 +594,111 @@ html_forms_get_control_for_node(struct form *forms, dom_node *node)
 }
 
 
+/**
+ * Onyx: a control's nearest ancestor form element (its form owner when a script made it:
+ * libdom's _dom_html_form_owner) -- NULL: none. No ref (the document holds it).
+ */
+static dom_node *onyx_form_element_of(dom_node *node)
+{
+	static lwc_string *s_form;
+	dom_node *p = NULL, *q;
+
+	if (s_form == NULL && lwc_intern_string("form", 4, &s_form) != lwc_error_ok)
+		return NULL;
+	if (dom_node_get_parent_node(node, &p) != DOM_NO_ERR)
+		return NULL;
+	while (p != NULL) {
+		dom_node_type nt;
+		dom_string *name = NULL;
+		bool is_form = false;
+
+		if (dom_node_get_node_type(p, &nt) == DOM_NO_ERR &&
+		    nt == DOM_ELEMENT_NODE &&
+		    dom_node_get_node_name(p, &name) == DOM_NO_ERR && name != NULL) {
+			is_form = dom_string_caseless_lwc_isequal(name, s_form);
+			dom_string_unref(name);
+		}
+		if (is_form)
+			break;
+		q = NULL;
+		dom_node_get_parent_node(p, &q);
+		dom_node_unref(p);
+		p = q;
+	}
+	if (p != NULL)
+		dom_node_unref(p);
+	return p;
+}
+
+/**
+ * Onyx: the struct form of a form element -- the parser's (html_forms_get_forms), else, for
+ * a form a script made, one made now as html.c makes theirs (its action absolute, the
+ * document's encoding) and added to the content's forms. Its controls join it: Enter in its
+ * text field submits it (box_textarea.c), its submit button sends it. NULL: none.
+ */
+static struct form *onyx_form_for(struct html_content *c, dom_node *node)
+{
+	struct form *f;
+	nsurl *action;
+	nserror err;
+
+	for (f = c->forms; f != NULL; f = f->prev)
+		if (f->node == node)
+			return f;
+	f = parse_form_element(c->encoding, node);
+	if (f == NULL)
+		return NULL;
+	if (f->action == NULL || f->action[0] == '\0')
+		err = nsurl_join(c->base_url, nsurl_access(content_get_url(&c->base)),
+				&action);
+	else
+		err = nsurl_join(c->base_url, f->action, &action);
+	if (err != NSERROR_OK) {
+		form_free(f);
+		return NULL;
+	}
+	free(f->action);
+	f->action = strdup(nsurl_access(action));
+	nsurl_unref(action);
+	if (f->document_charset == NULL && c->encoding != NULL)
+		f->document_charset = strdup(c->encoding);
+	if (f->action == NULL || (c->encoding != NULL && f->document_charset == NULL)) {
+		form_free(f);
+		return NULL;
+	}
+	f->node_ref = true;	/* (form_free unrefs it) */
+	dom_node_ref(node);
+	f->prev = c->forms;
+	c->forms = f;
+	return f;
+}
+
 /* documented in private.h (Onyx): a control outside any form was made again at each rebox --
  * what the user typed in a React app's input was lost, and the old control leaked */
 struct form_control *
 html_forms_control_for_node(struct html_content *c, dom_node *node)
 {
-	struct form_control *ctl;
+	struct form_control *ctl, **pp;
+	struct form *f;
+	dom_node *fn;
 
-	for (ctl = c->orphan_controls; ctl != NULL; ctl = ctl->next) {
-		if (ctl->node == node)
-			return ctl;
+	for (pp = &c->orphan_controls; (ctl = *pp) != NULL; pp = &ctl->next) {
+		if (ctl->node != node)
+			continue;
+		/* put in a form since it was made (a script made the field, then put
+		 * it in its form): it joins the form */
+		fn = onyx_form_element_of(node);
+		if (fn != NULL && (f = onyx_form_for(c, fn)) != NULL) {
+			*pp = ctl->next;
+			ctl->next = ctl->prev = NULL;
+			form_add_control(f, ctl);
+		}
+		return ctl;
 	}
+	/* a form a script made: its struct before the control looks for it */
+	fn = onyx_form_element_of(node);
+	if (fn != NULL)
+		onyx_form_for(c, fn);
 	ctl = html_forms_get_control_for_node(c->forms, node);
 	if (ctl != NULL && ctl->form == NULL) {
 		ctl->prev = NULL;
