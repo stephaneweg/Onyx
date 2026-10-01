@@ -67,6 +67,8 @@ sdcard/apps/lisa.app/config.ini
 # commit them
 sdcard/apps/netsurf.app/History
 sdcard/apps/netsurf.app/Cookies
+# (and the code cache: the visited sites' scripts, compiled)
+sdcard/apps/netsurf.app/jscache/
 
 # The PC tools' build folders (pc/build.sh; the result, pc/dist/, is kept)
 pc/OnyxBasic/bin/

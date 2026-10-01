@@ -14,7 +14,10 @@ Onyx patches (marked Onyx):
   lengths or both unique atoms, and undefined / null inline (OP_STRICT_EQ, js_strict_eq_slow
   otherwise); JS_FreeValue's decrement is inlined in the loop (js_free_value_inl); a string
   atom is pushed as its own value (OP_push_atom_value, OP_typeof) without JS_AtomToValue;
-  js_poll_interrupts is always inlined.
+  js_poll_interrupts is always inlined. for...of over a dense array reads its elements
+  directly (js_array_iterator_next).
+- quickjs.c, quickjs.h: JS_GetBuildId (the version and quickjs.c's build date: NetSurf's code
+  cache keeps bytecode for the build that wrote it).
 
 Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
 libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.

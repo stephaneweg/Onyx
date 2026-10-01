@@ -41,6 +41,9 @@ int onyx_chrome_pump_wait(int ms);	/* the same, waiting up to ms for an event / 
 /* Pump the events without waiting: 1 when a click, a wheel turn, a key, a resize or the close
  * box came since (framebuffer/schedule.c: the main loop takes them before more callbacks). */
 int onyx_chrome_input_pending(void);
+/* Pump the events while a script runs long (qjs.c's interrupt handler): they are kept and
+ * handled at the next pump, after the script. */
+void onyx_chrome_pump_deferred(void);
 
 /* Show the window's pixels. */
 void onyx_chrome_present(void);

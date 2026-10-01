@@ -81,6 +81,7 @@
 #include "javascript/quickjs/qjs_wasm.h"	/* Onyx: WebAssembly, Web Crypto */
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 #include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
+#include "javascript/quickjs/qjs_codecache.h"	/* Onyx: the scripts' bytecode on the card */
 
 /** the prototypes a node's wrapper gets, set by the prelude */
 enum qjs_proto {
@@ -296,13 +297,25 @@ static JSValue qjs_call(jsthread *t, JSValueConst fn, JSValueConst this_val, int
 	return r;
 }
 
+/* Onyx: the window's events pumped while a script runs long (onyx_chrome.cpp: kept, handled
+ * after it) -- the system saw the browser frozen ("not pumping") in Google's 5 s script */
+extern void onyx_chrome_pump_deferred(void) __attribute__((weak));
+#define QJS_PUMP_MS 100
+
 static int qjs_interrupt(JSRuntime *rt, void *opaque)
 {
 	jsheap *heap = opaque;
+	static uint64_t last_pump;
+	uint64_t now = qjs_now_ms();
 
 	(void) rt;
+	if (onyx_chrome_pump_deferred != NULL && now - heap->start > QJS_PUMP_MS &&
+	    now - last_pump > QJS_PUMP_MS) {
+		last_pump = now;
+		onyx_chrome_pump_deferred();
+	}
 	return heap->timeout > 0 &&
-		qjs_now_ms() - heap->start > (uint64_t) heap->timeout * 1000;
+		now - heap->start > (uint64_t) heap->timeout * 1000;
 }
 
 
@@ -3591,12 +3604,16 @@ void js_destroyheap(jsheap *heap)
 
 /* Onyx: a prelude (dom.js, html5.js, canvas.js) is compiled once per process; its bytecode
  * is kept (in the process's heap) and read back in the next contexts -- several times faster
- * than parsing it again (the same as Intl, qjs_intl.h). Returns the prelude's value. */
+ * than parsing it again (the same as Intl, qjs_intl.h). The first context of a process reads
+ * it from the code cache on the card (qjs_codecache.c: 0.5 s of parsing on the Pi at each
+ * launch), or writes it there. Returns the prelude's value. */
 JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char *name,
 		uint8_t **bc, size_t *bclen)
 {
 	JSValue obj;
 
+	if (*bc == NULL)
+		*bc = qjs_cc_load(src, len, bclen);
 	if (*bc == NULL) {
 		obj = JS_Eval(ctx, src, len, name, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
 		if (JS_IsException(obj))
@@ -3607,6 +3624,7 @@ JSValue qjs_eval_cached(JSContext *ctx, const char *src, size_t len, const char 
 			*bc = malloc(*bclen);
 			if (*bc != NULL)
 				memcpy(*bc, b, *bclen);
+			qjs_cc_store(src, len, b, *bclen);
 			js_free(ctx, b);
 		}
 	} else {
@@ -3799,8 +3817,10 @@ bool js_exec(jsthread *thread, const uint8_t *txt, size_t txtlen, const char *na
 			txtlen = rl;
 		}
 	}
-	r = JS_Eval(thread->ctx, src, txtlen, name != NULL ? name : "script",
-			JS_EVAL_TYPE_GLOBAL);
+	/* Onyx: compiled, or read from the code cache (qjs_codecache.c), then run */
+	r = qjs_cc_compile(thread->ctx, src, txtlen, name != NULL ? name : "script", false);
+	if (!JS_IsException(r))
+		r = JS_EvalFunction(thread->ctx, r);
 	if (JS_IsException(r)) {
 		qjs_report(thread->ctx, name != NULL ? name : "script");
 #ifdef ONYX_HOST_SIM

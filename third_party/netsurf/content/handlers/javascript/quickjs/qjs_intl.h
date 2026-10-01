@@ -28,6 +28,7 @@
 #endif
 #include "quickjs.h"
 #include "qjs_intl_js.h"	/* qjs_intl_js[] (intl.js), qjs_intl_data[] (the locale data) */
+#include "javascript/quickjs/qjs_codecache.h"	/* the bytecode kept on the card */
 
 #define QJS_INTL_MARK "//@@INTL-IMPL@@"
 
@@ -87,6 +88,8 @@ static JSValue qjs_intl_zone_fn(JSContext *ctx, JSValueConst this_val, int argc,
 static JSValue qjs_intl_eval(JSContext *ctx, const char *src, size_t len, uint8_t **bc, size_t *bclen)
 {
 	JSValue obj;
+	if (*bc == NULL)	/* (Onyx: the first context: from the code cache, qjs_codecache.c) */
+		*bc = qjs_cc_load(src, len, bclen);
 	if (*bc == NULL) {
 		obj = JS_Eval(ctx, src, len, "intl.js", JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
 		if (JS_IsException(obj))
@@ -96,6 +99,7 @@ static JSValue qjs_intl_eval(JSContext *ctx, const char *src, size_t len, uint8_
 			*bc = malloc(*bclen);
 			if (*bc != NULL)
 				memcpy(*bc, b, *bclen);
+			qjs_cc_store(src, len, b, *bclen);
 			js_free(ctx, b);
 		}
 	} else {

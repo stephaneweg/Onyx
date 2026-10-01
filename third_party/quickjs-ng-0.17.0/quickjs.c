@@ -99,6 +99,12 @@ const char* JS_GetVersion(void) {
     return QJS_VERSION_STRING;
 }
 
+/* Onyx: this build of the engine (its bytecode's format may change with any build: a code
+   cache keeps bytecode only for the build that wrote it) */
+const char* JS_GetBuildId(void) {
+    return QJS_VERSION_STRING " " __DATE__ " " __TIME__;
+}
+
 #undef STRINFIGY_
 #undef STRINGIFY
 
@@ -45071,6 +45077,13 @@ static JSValue js_array_iterator_next(JSContext *ctx, JSValueConst this_val,
     if (JS_IsUndefined(it->obj))
         goto done;
     p = JS_VALUE_GET_OBJ(it->obj);
+    /* Onyx: for (const x of array) over a dense array: its element, without the generic
+       length and element reads */
+    if (p->class_id == JS_CLASS_ARRAY && p->fast_array &&
+        it->kind == JS_ITERATOR_KIND_VALUE && it->idx < p->u.array.count) {
+        *pdone = false;
+        return js_dup(p->u.array.u.values[it->idx++]);
+    }
     if (is_typed_array(p->class_id)) {
         if (typed_array_is_oob(p)) {
             JS_ThrowTypeErrorArrayBufferOOB(ctx);
