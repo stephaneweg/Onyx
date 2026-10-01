@@ -61,6 +61,8 @@ struct html_stylesheet {
 	bool modified;
 	bool unused;
 	bool removed;	/**< Onyx: its node taken out of the document */
+	bool load_pending; /**< Onyx: converted while a script waited (its load
+			    * event comes after the script: html_css_flush_sync) */
 };
 
 
@@ -233,5 +235,20 @@ bool html_get_id_offset(struct hlcache_handle *h, lwc_string *frag_id,
  * the next turn of the loop: one for several steps).
  */
 void html_scrolled(struct hlcache_handle *h);
+
+/**
+ * Onyx: the viewport scrolled from (osx, osy) to (sx, sy) (CSS px; w x h): the fixed
+ * boxes painted again where they were and where they are now, the boxes with a fixed
+ * background where they are in view.
+ */
+void html_fixed_scrolled(struct hlcache_handle *h, int osx, int osy, int sx, int sy,
+		int w, int ht);
+
+/**
+ * Onyx: whether a box is laid out and painted against the viewport (position: fixed, no
+ * transformed / filtered ancestor): painted moved by the viewport's scroll offset.
+ */
+struct box;
+bool html_box_viewport_fixed(const struct box *box);
 
 #endif

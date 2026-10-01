@@ -148,7 +148,12 @@ dom_exception _dom_characterdata_set_data(struct dom_characterdata *cdata,
 	c->value = data;
 
 	success = true;
-	return _dom_dispatch_subtree_modified_event(doc, c->parent, &success);
+	/* Onyx: a node out of the tree has no parent to tell (set_node_value now
+	 * comes here: a detached text's data set crashed) */
+	if (c->parent == NULL)
+		return DOM_NO_ERR;
+	return c->parent == NULL ? DOM_NO_ERR :	/* (Onyx: detached) */
+		_dom_dispatch_subtree_modified_event(doc, c->parent, &success);
 }
 
 /**
@@ -259,7 +264,8 @@ dom_exception _dom_characterdata_append_data(struct dom_characterdata *cdata,
 	c->value = temp;
 
 	success = true;
-	return _dom_dispatch_subtree_modified_event(doc, c->parent, &success);
+	return c->parent == NULL ? DOM_NO_ERR :	/* (Onyx: detached) */
+		_dom_dispatch_subtree_modified_event(doc, c->parent, &success);
 }
 
 /**
@@ -321,7 +327,8 @@ dom_exception _dom_characterdata_insert_data(struct dom_characterdata *cdata,
 	c->value = temp;
 
 	success = true;
-	return _dom_dispatch_subtree_modified_event(doc, c->parent, &success);
+	return c->parent == NULL ? DOM_NO_ERR :	/* (Onyx: detached) */
+		_dom_dispatch_subtree_modified_event(doc, c->parent, &success);
 }
 
 /**
@@ -389,7 +396,8 @@ dom_exception _dom_characterdata_delete_data(struct dom_characterdata *cdata,
 	c->value = temp;
 
 	success = true;
-	return _dom_dispatch_subtree_modified_event(doc, c->parent, &success);
+	return c->parent == NULL ? DOM_NO_ERR :	/* (Onyx: detached) */
+		_dom_dispatch_subtree_modified_event(doc, c->parent, &success);
 }
 
 /**
@@ -455,7 +463,8 @@ dom_exception _dom_characterdata_replace_data(struct dom_characterdata *cdata,
 	c->value = temp;
 
 	success = true;
-	return _dom_dispatch_subtree_modified_event(doc, c->parent, &success);
+	return c->parent == NULL ? DOM_NO_ERR :	/* (Onyx: detached) */
+		_dom_dispatch_subtree_modified_event(doc, c->parent, &success);
 }
 
 dom_exception _dom_characterdata_get_text_content(dom_node_internal *node,

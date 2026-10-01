@@ -230,7 +230,7 @@ style = {
     ('counter_reset', 1, 'counter_arr', None, 'CSS_COUNTER_RESET_NONE',
         'Encode counter_reset as an array of name, value pairs, '
         'terminated with a blank entry.'),
-    ('cursor', 5, 'string_arr', None, 'CSS_CURSOR_AUTO',
+    ('cursor', 6, 'string_arr', None, 'CSS_CURSOR_AUTO',
         'Encode cursor uri(s) as an array of string objects, terminated '
         'with a blank entry'),
     ('content', 2, 'content_item', 'CSS_CONTENT_SET', 'CSS_CONTENT_NORMAL',

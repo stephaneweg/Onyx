@@ -4291,6 +4291,15 @@ nserror llcache_handle_clone(llcache_handle *handle, llcache_handle **result)
 }
 
 /* See llcache.h for documentation */
+nserror llcache_handle_catch_up(llcache_handle *handle)
+{
+	/* Onyx: this object's users told its state now (not at the scheduled
+	 * catch-up of all of them) */
+	if (handle == NULL || handle->object == NULL)
+		return NSERROR_BAD_PARAMETER;
+	return llcache_object_notify_users(handle->object);
+}
+
 nserror llcache_handle_abort(llcache_handle *handle)
 {
 	llcache_object_user *user = llcache_object_find_user(handle);

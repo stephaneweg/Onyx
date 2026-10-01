@@ -412,7 +412,23 @@ enum op_cursor {
 	CURSOR_TEXT			= 0x000d,
 	CURSOR_WAIT			= 0x000e,
 	CURSOR_HELP			= 0x000f,
-	CURSOR_PROGRESS			= 0x0010
+	CURSOR_PROGRESS			= 0x0010,
+	/* Onyx: CSS3 UI's -- the computed value is the opcode + 1 */
+	CURSOR_NONE                    = 0x0011,
+	CURSOR_CONTEXT_MENU            = 0x0012,
+	CURSOR_CELL                    = 0x0013,
+	CURSOR_VERTICAL_TEXT           = 0x0014,
+	CURSOR_ALIAS                   = 0x0015,
+	CURSOR_COPY                    = 0x0016,
+	CURSOR_NO_DROP                 = 0x0017,
+	CURSOR_NOT_ALLOWED             = 0x0018,
+	CURSOR_EW_RESIZE               = 0x0019,
+	CURSOR_NS_RESIZE               = 0x001a,
+	CURSOR_NESW_RESIZE             = 0x001b,
+	CURSOR_NWSE_RESIZE             = 0x001c,
+	CURSOR_COL_RESIZE              = 0x001d,
+	CURSOR_ROW_RESIZE              = 0x001e,
+	CURSOR_ALL_SCROLL              = 0x001f
 };
 
 enum op_direction {

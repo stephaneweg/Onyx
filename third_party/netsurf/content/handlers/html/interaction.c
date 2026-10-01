@@ -1096,6 +1096,8 @@ gadget_mouse_action(html_content *html,
 				(dom_html_input_element *)(mas->gadget.control->node),
 				mas->gadget.control->selected);
 			html__redraw_a_box(html, mas->gadget.box);
+			/* Onyx: its :checked styles */
+			html_state_restyle(html, mas->gadget.control->node);
 		}
 		break;
 

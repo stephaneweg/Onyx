@@ -51,7 +51,19 @@ bool html_fetch_object(struct html_content *c, struct nsurl *url, struct box *bo
  *
  * \return true on success, false on memory exhaustion
  */
+/**
+ * Onyx: whether an <object> element's resource failed (its fallback content is shown).
+ */
+struct dom_node;
+bool html_object_has_failed(struct html_content *c, struct dom_node *node);
+
 bool html_fetch_mask(struct html_content *c, struct nsurl *url, struct box *box);
+
+/**
+ * Onyx: the images with a data: URL fetched and converted now (a script reading a
+ * geometry: the image's box is the image's, not its alt text's).
+ */
+void html_object_flush_sync(struct html_content *c);
 
 /**
  * Onyx: a list of objects released -- the old box tree's, the DOM changed by a script.

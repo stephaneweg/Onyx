@@ -72,6 +72,17 @@ answer in French. The docs stay in English.
   **To try on the Pi**: Ctrl+F on bbc.co.uk (typing speed, the count), a copied image pasted into
   Paint, text copied into the Text Editor and back into a page's field.
 
+## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
+
+- **Acid2 identical** to its reference (the face pixel by pixel, composited, CPU-painted and after
+  a scroll); **Acid3 51 -> 94 / 100** (docs/06 §37: what was fixed -- `position: fixed`, the
+  Appendix E paint order, `<object>` fallback, selectors, media query lists, DOM Range /
+  NodeIterator, `document.open`, the table API, sheets and `data:` images in the script's turn).
+- Bench: `OUT=/tmp/nsbench PORT=8160 sh tools/tests/netsurf/acidtest.sh [acid2|acid3]` (Acid3 over
+  `acidsrv.py`, fails below `ACID3_MIN`=94). Left: tests 69, 74, 75, 77, 79, 80 = XML / SVG
+  documents in frames and the SVG DOM (docs/07 §3). **The Pi's `libcss.a`, `libdom.a`,
+  `libhubbub.a`, libnsfb and the Jet app need a rebuild** (not done here).
+
 ## Jet Browser: the page zoom, the status bar, downloads (2026-10-01, PC bench only)
 
 - **The zoom** (docs/06 §38): the toolbar's **"-  100%  +"** (right of the pill), **Ctrl+- / Ctrl++

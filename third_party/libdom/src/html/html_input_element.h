@@ -23,6 +23,9 @@ struct dom_html_input_element {
 	bool default_value_set; /**< Whether default_value has been set */
 	bool checked; /**< Whether the element has been checked by a click */
 	bool checked_set;
+	/** Onyx: the value the IDL attribute set (HTML's "dirty" value), not the
+	 * value content attribute (the default value) */
+	dom_string *dirty_value;
 };
 
 /* Create a dom_html_input_element object */

@@ -36,6 +36,9 @@
 #include "netsurf/content.h"
 #include "netsurf/misc.h"
 #include "content/hlcache.h"
+#include "content/content_protected.h"
+#include "content/llcache.h"
+#include "content/fetch.h"	/* Onyx: fetch_poll_scheme (html_object_flush_sync) */
 #include "css/utils.h"
 #include "desktop/scrollbar.h"
 #include "desktop/gui_internal.h"
@@ -83,6 +86,55 @@ html_object_failed(struct box *box, html_content *content, bool background)
 {
 	/* Nothing to do */
 	return;
+}
+
+/* exported interface documented in html/object.h */
+bool html_object_has_failed(html_content *c, struct dom_node *node)
+{
+	for (unsigned int k = 0; k < c->object_failed_n; k++)
+		if (c->object_failed[k] == node)
+			return true;
+	return false;
+}
+
+/**
+ * Onyx: an <object> whose resource failed (an error, an HTTP error status, a type
+ * not shown) shows its fallback content, as the HTML standard has it: the element
+ * noted, its boxes built again (box_object boxes its children instead) -- the
+ * element was empty. Acid2's eyes: an unknown type, then a 404, then an image.
+ */
+static void
+html_object_fallback(html_content *c, struct box *box)
+{
+	dom_html_element_type type;
+	dom_node **a;
+
+	if (box == NULL || box->node == NULL ||
+	    dom_html_element_get_tag_type(box->node, &type) != DOM_NO_ERR ||
+	    type != DOM_HTML_ELEMENT_TYPE_OBJECT ||
+	    html_object_has_failed(c, box->node))
+		return;
+	if (c->object_failed_n == c->object_failed_cap) {
+		unsigned int cap = c->object_failed_cap ? c->object_failed_cap * 2 : 4;
+
+		a = realloc(c->object_failed, cap * sizeof(*a));
+		if (a == NULL)
+			return;
+		c->object_failed = a;
+		c->object_failed_cap = cap;
+	}
+	c->object_failed[c->object_failed_n++] = dom_node_ref(box->node);
+	html_script_dom_changed(c);
+}
+
+/** Onyx: an object's resource came with an HTTP error status (a 404 page) */
+static bool
+html_object_http_error(hlcache_handle *object)
+{
+	struct content *oc = hlcache_handle_get_content(object);
+
+	return oc != NULL && oc->llcache != NULL &&
+		llcache_handle_get_http_code(oc->llcache) >= 400;
 }
 
 /**
@@ -202,6 +254,15 @@ html_object_callback(hlcache_handle *object,
 		c->base.active--;
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
+		/* Onyx: an <object>'s error page is its fallback content */
+		if (!o->background && !o->mask && box != NULL &&
+		    box->node != NULL && html_object_http_error(object)) {
+			html_object_fallback(c, box);
+			if (box->node != NULL &&
+			    html_object_has_failed(c, box->node))
+				break;
+		}
+
 		html_object_done(box, object, o->background, o->mask);
 		/* Onyx: the <img> / <object>'s load event (lazy loaders, galleries) */
 		if (!o->background && box != NULL && box->node != NULL &&
@@ -239,6 +300,8 @@ html_object_callback(hlcache_handle *object,
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 
 		html_object_failed(box, c, o->background);
+		if (!o->background && !o->mask)	/* (Onyx) */
+			html_object_fallback(c, box);
 		if (!o->background && box != NULL && box->node != NULL &&
 				c->jsthread != NULL)	/* (Onyx) */
 			js_fire_event(c->jsthread, "error", c->document, box->node);
@@ -872,8 +935,74 @@ html_fetch_object_ex(html_content *c,
 		c->base.active++;
 		NSLOG(netsurf, INFO, "%d fetches active", c->base.active);
 	}
+	/* Onyx: its data in the page itself: there when a script asks (html_object_flush_sync) */
+	if (box != NULL && !background && !mask) {
+		lwc_string *scheme = nsurl_get_component(url, NSURL_SCHEME);
+		bool match = false;
+
+		if (scheme != NULL) {
+			if (lwc_string_isequal(scheme, corestring_lwc_data,
+					&match) == lwc_error_ok && match)
+				c->objects_data_pending = true;
+			lwc_string_unref(scheme);
+		}
+	}
 
 	return true;
+}
+
+
+/** Onyx: whether an object's content is still fetched with a data: URL */
+static bool html_object_data_pending(struct content_html_object *o)
+{
+	lwc_string *scheme;
+	content_status st;
+	bool match = false;
+
+	if (o->content == NULL || o->background || o->box == NULL)
+		return false;
+	if (hlcache_handle_get_content(o->content) != NULL) {
+		st = content_get_status(o->content);
+		if (st == CONTENT_STATUS_READY || st == CONTENT_STATUS_DONE ||
+		    st == CONTENT_STATUS_ERROR)
+			return false;
+	}
+	scheme = nsurl_get_component(hlcache_handle_get_url(o->content), NSURL_SCHEME);
+	if (scheme == NULL)
+		return false;
+	if (lwc_string_isequal(scheme, corestring_lwc_data, &match) != lwc_error_ok)
+		match = false;
+	lwc_string_unref(scheme);
+	return match;
+}
+
+/* exported interface documented in html/object.h (Onyx) */
+void html_object_flush_sync(html_content *c)
+{
+	struct content_html_object *o;
+	unsigned int round;
+	bool pending = true;
+
+	/* (the flag: no walk of the objects at each geometry a script reads) */
+	if (!c->objects_data_pending || c->aborted)
+		return;
+	c->objects_data_pending = false;
+	/* (a few rounds: the data fetcher's, then each content's conversion -- its READY
+	 * reformats the page; an error's fallback reboxes later: the list stays) */
+	for (round = 0; round < 4 && pending; round++) {
+		fetch_poll_scheme(corestring_lwc_data);
+		pending = false;
+		for (o = c->object_list; o != NULL; o = o->next) {
+			if (!html_object_data_pending(o))
+				continue;
+			hlcache_handle_catch_up(o->content);
+			if (html_object_data_pending(o))
+				pending = true;
+		}
+	}
+	/* (what is left: one more try at the next read) */
+	if (pending)
+		c->objects_data_pending = true;
 }
 
 

@@ -594,7 +594,23 @@ enum css_cursor_e {
 	CSS_CURSOR_TEXT				= 0x0e,
 	CSS_CURSOR_WAIT				= 0x0f,
 	CSS_CURSOR_HELP				= 0x10,
-	CSS_CURSOR_PROGRESS			= 0x11
+	CSS_CURSOR_PROGRESS			= 0x11,
+	/* Onyx: CSS3 UI's (the computed style keeps 6 bits) */
+	CSS_CURSOR_NONE                        = 0x12,
+	CSS_CURSOR_CONTEXT_MENU                = 0x13,
+	CSS_CURSOR_CELL                        = 0x14,
+	CSS_CURSOR_VERTICAL_TEXT               = 0x15,
+	CSS_CURSOR_ALIAS                       = 0x16,
+	CSS_CURSOR_COPY                        = 0x17,
+	CSS_CURSOR_NO_DROP                     = 0x18,
+	CSS_CURSOR_NOT_ALLOWED                 = 0x19,
+	CSS_CURSOR_EW_RESIZE                   = 0x1a,
+	CSS_CURSOR_NS_RESIZE                   = 0x1b,
+	CSS_CURSOR_NESW_RESIZE                 = 0x1c,
+	CSS_CURSOR_NWSE_RESIZE                 = 0x1d,
+	CSS_CURSOR_COL_RESIZE                  = 0x1e,
+	CSS_CURSOR_ROW_RESIZE                  = 0x1f,
+	CSS_CURSOR_ALL_SCROLL                  = 0x20
 };
 
 enum css_direction_e {

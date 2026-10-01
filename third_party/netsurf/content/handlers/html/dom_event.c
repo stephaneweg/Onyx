@@ -708,7 +708,13 @@ dom_default_action_DOMNodeInsertedIntoDocument_cb(struct dom_event *evt,
 			switch (tag_type) {
 			case DOM_HTML_ELEMENT_TYPE_SCRIPT:
 				dom_SCRIPT_showed_up(htmlc, (dom_html_script_element *) node);
-				fallthrough;
+				break;
+			case DOM_HTML_ELEMENT_TYPE_STYLE:
+				/* Onyx: a <style> inside an inserted subtree (DOMNodeInserted
+				 * sees only the subtree's root): its sheet, made once */
+				if (nsoption_bool(author_level_css))
+					html_css_style_inserted(htmlc, (dom_node *) node);
+				break;
 			default:
 				break;
 			}
