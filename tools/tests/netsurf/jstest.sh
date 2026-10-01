@@ -362,5 +362,14 @@ sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
 html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"
 sed -n 's/^console: crypto timing /  timing (mbedTLS): /p' "$OUT/js-crypto.log"
 
+echo "js-scripttime.html (the time limit spares a working script; console, getElementsByClassName)"
+L=$OUT/js-scripttime.log
+NS_SCRIPT_TIMEOUT=1 run js-scripttime.html "$(waits 700)" "$L"
+for s in "classes ab 2,3" "classes b 4" "classes c 2" "classes none 0" "classes miss 0" \
+	 "custom inline 4px" '{"a":1,"b":"two","c":[1,2,3],"d":null,"f":{"g":true}}' \
+	 "console big fast" "long 300 yyyyyyyyyy" "busy done" "after stuck false" "after runaway stopped"; do
+	expect "$L" "$s"
+done
+
 [ "$fail" = 0 ] && echo "all passed" || echo "FAILED (logs: $OUT/js-*.log)"
 exit "$fail"
