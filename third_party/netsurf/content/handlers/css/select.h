@@ -75,6 +75,13 @@ bool nscss_media_match(css_select_ctx *sctx, const css_media *media,
 css_stylesheet *nscss_create_inline_style(const uint8_t *data, size_t len,
 		const char *charset, const char *url, bool allow_quirks);
 
+/**
+ * Onyx: whether a selector of the sheets of probe (a context of the sheets added since an
+ * element's selection) matches it -- true on failure (html/onyx_restyle.c)
+ */
+bool nscss_probe_style(nscss_select_ctx *ctx, css_select_ctx *probe, dom_node *n,
+		const css_media *media, const css_unit_ctx *unit_len_ctx);
+
 css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		const css_media *media,
 		const css_unit_ctx *unit_len_ctx,
@@ -109,5 +116,25 @@ extern bool nscss_hover_used;
 extern void (*nscss_hover_note)(void *ctx, struct dom_node *tested, struct dom_node *styled);
 extern void *nscss_hover_note_ctx;
 extern struct dom_node *nscss_styled_node;
+/* Onyx: how the selection of nscss_styled_node depended on the tree's structure:
+ * NSCSS_STRUCT_SELF -- its position among its siblings or its children (:nth-child,
+ * :first-child, :empty...), NSCSS_STRUCT_SIB -- its previous siblings (sibling
+ * combinators, :nth-child(of S)), NSCSS_STRUCT_ANC -- another node's structure (an
+ * ancestor's, a sibling's); set by the selection callbacks, cleared by the caller
+ * (html/onyx_restyle.c keeps it) */
+#define NSCSS_STRUCT_SELF 1u
+#define NSCSS_STRUCT_ANC 2u
+#define NSCSS_STRUCT_SIB 4u
+extern unsigned int nscss_struct_used;
+/* Onyx: whether the selection of nscss_styled_node asked if it is a visited link: 0 no,
+ * 1 not visited, 2 visited, 3 another link was asked about (the history changes without
+ * the DOM) -- cleared by the
+ * caller; and the question asked again for a node (base_url: its document's) */
+extern int nscss_visited_seen;
+bool nscss_node_visited(struct dom_node *n, struct nsurl *base_url);
+
+/* Onyx: the DOM changed (a mutation event): the siblings counted for :nth-child() are
+ * counted again */
+void nscss_dom_changed(void);
 
 #endif

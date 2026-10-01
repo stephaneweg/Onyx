@@ -289,10 +289,13 @@ static void html_box_convert_done(html_content *c, bool success)
 #include "html/onyx_hover.h"
 #include "html/onyx_shadow.h"
 #include "html/onyx_anim.h"
+#include "html/onyx_restyle.h"
 
 static void html_destroy_iframe(struct content_html_iframe *iframe);
 
 static bool html_rebox_success;
+static bool html_restyle_in_place(html_content *c);
+static void html_restyle_attr_clear(html_content *c, bool only);
 static void html_early_reformat(html_content *c);
 static void html_get_dimensions(html_content *htmlc);
 static void html_reformat(struct content *c, int width, int height);
@@ -511,6 +514,9 @@ static void html_rebox(html_content *c)
 	html_rebox_index(c);
 	onyx_hover_reset(c);	/* (the :hover notes made again with the styles) */
 	t0 = onyx_perf_now();
+	nsu_getmonotonic_ms(&c->rebox_last_start);
+	c->rebox_mut_events = c->rebox_mut_shown = 0;
+	html_restyle_attr_clear(c, true);
 	if (dom_to_box_now(html, c, html_rebox_converted) != NSERROR_OK)
 		html_rebox_success = false;
 	onyx_perf_log("rebox:boxes", t0);
@@ -605,6 +611,11 @@ static void html_rebox(html_content *c)
 				c->base.available_height);
 	}
 	onyx_perf_log("rebox:reformat", t0);
+	{
+		uint64_t now;
+		nsu_getmonotonic_ms(&now);
+		c->rebox_last_cost = now - c->rebox_last_start;
+	}
 
 	/* Onyx: a text field a script focused before it had a box */
 	if (c->focus_pending != NULL && !c->early_layout) {
@@ -637,6 +648,8 @@ static void html_rebox_scheduled(void *p)
 		return;
 	}
 	c->rebox_pending = false;
+	if (html_restyle_in_place(c))
+		return;		/* (Onyx: attributes only: restyled in the boxes) */
 	html_rebox(c);
 }
 
@@ -672,14 +685,176 @@ bool html_script_focus_control(html_content *c, dom_node *node)
 /* exported interface documented in html/private.h */
 void html_script_dom_changed(html_content *c)
 {
+	uint64_t now, interval, delay = 10;
+
 	if (c->layout == NULL && c->box_conversion_context == NULL)
 		return;	/* not boxed yet: the boxes will see the change */
 	if (c->early_layout && !c->conversion_begun) {
 		c->early_stale = true;	/* (Onyx: made again when asked, or at the conversion) */
 		return;
 	}
+	/* Onyx: one rebox for the changes of the turns that come meanwhile -- the first
+	 * change sets when (a later one no longer puts it off: a script changing the DOM
+	 * every few ms kept it from ever coming) -- and while the scripts keep changing
+	 * the DOM, one every max(50 ms, twice its cost) at most: the scripts get the time
+	 * between (a script asking for a geometry has its rebox at once:
+	 * html_script_layout_now) */
+	if (c->rebox_pending)
+		return;
+	nsu_getmonotonic_ms(&now);
+	interval = c->rebox_last_cost * 2 > 50 ? c->rebox_last_cost * 2 : 50;
+	if (c->rebox_last_start != 0 && now < c->rebox_last_start + interval &&
+	    c->rebox_last_start + interval - now > delay)
+		delay = c->rebox_last_start + interval - now;
 	c->rebox_pending = true;
-	guit->misc->schedule(10, html_rebox_scheduled, c);
+	guit->misc->schedule((int) delay, html_rebox_scheduled, c);
+}
+
+/** Onyx: the attribute-changed elements forgotten (a rebox, another kind of change) */
+static void html_restyle_attr_clear(html_content *c, bool only)
+{
+	for (unsigned int k = 0; k < c->restyle_attr_n; k++)
+		dom_node_unref(c->restyle_attr[k]);
+	c->restyle_attr_n = 0;
+	c->restyle_attr_only = only;
+}
+
+/* exported interface documented in html/private.h */
+void html_script_mutation(html_content *c, struct dom_node *node, bool attr)
+{
+	bool hidden;
+
+	if (c->layout == NULL)
+		return;
+	if (c->rebox_mut_events == 0)
+		html_restyle_attr_clear(c, true);	/* (the first change since a rebox) */
+	c->rebox_mut_events++;
+	hidden = onyx_restyle_node_hidden(c, node);
+	if (!hidden)
+		c->rebox_mut_shown++;
+	if (hidden || !c->restyle_attr_only)
+		return;
+	if (!attr || c->restyle_attr_n == sizeof(c->restyle_attr) /
+			sizeof(c->restyle_attr[0])) {
+		html_restyle_attr_clear(c, false);
+		return;
+	}
+	for (unsigned int k = 0; k < c->restyle_attr_n; k++)
+		if (c->restyle_attr[k] == node)
+			return;
+	c->restyle_attr[c->restyle_attr_n++] = dom_node_ref(node);
+}
+
+/**
+ * Onyx: the DOM changes since the last rebox only set attributes (a class toggled, a
+ * style attribute, aria-expanded...): the elements' subtrees styled again in their boxes
+ * (onyx_hover_restyle_nodes) -- with the following siblings whose selections looked at
+ * their previous siblings (onyx_restyle_sibling_dependent) -- redrawn when only how
+ * they are painted changed, else laid out again; no rebox. False: the boxes must be
+ * built again.
+ */
+static bool html_restyle_in_place(html_content *c)
+{
+	struct dom_node *roots[64];
+	unsigned int n = 0, k;
+	bool ok, layout = false;
+	uint64_t t0;
+
+	if (!c->restyle_attr_only || c->restyle_attr_n == 0 || c->layout == NULL ||
+	    c->early_layout || c->box_conversion_context != NULL ||
+	    getenv("NS_NOINPLACE") != NULL)
+		return false;
+	for (k = 0; k < c->restyle_attr_n; k++) {
+		struct dom_node *e = c->restyle_attr[k], *s = NULL, *next;
+
+		if (n == 64)
+			return false;
+		roots[n++] = e;
+		/* its following siblings that may depend on it */
+		if (dom_node_get_next_sibling(e, &s) != DOM_NO_ERR)
+			s = NULL;
+		while (s != NULL) {
+			dom_node_type type;
+			if (dom_node_get_node_type(s, &type) == DOM_NO_ERR &&
+			    type == DOM_ELEMENT_NODE) {
+				int dep = onyx_restyle_sibling_dependent(c, s);
+				if (dep != 0) {
+					if (dep < 0 || n == 64) {
+						dom_node_unref(s);
+						return false;
+					}
+					roots[n++] = s;
+				}
+			}
+			next = NULL;
+			dom_node_get_next_sibling(s, &next);
+			dom_node_unref(s);
+			s = next;
+		}
+	}
+	/* (a root inside another's subtree: restyled with it) */
+	for (k = 0; k < n; k++) {
+		for (unsigned int j = 0; j < n; j++) {
+			struct dom_node *a = NULL, *next;
+			bool inside = false;
+			if (j == k || roots[j] == NULL || roots[k] == NULL)
+				continue;
+			if (dom_node_get_parent_node(roots[k], &a) != DOM_NO_ERR)
+				a = NULL;
+			while (a != NULL) {
+				if (a == roots[j])
+					inside = true;
+				next = NULL;
+				if (inside || dom_node_get_parent_node(a, &next) != DOM_NO_ERR)
+					next = NULL;
+				dom_node_unref(a);
+				a = next;
+			}
+			if (inside) {
+				roots[k] = NULL;
+				break;
+			}
+		}
+	}
+	for (k = 0; k < n; ) {
+		if (roots[k] == NULL) {
+			roots[k] = roots[--n];
+			continue;
+		}
+		k++;
+	}
+
+	t0 = onyx_perf_now();
+	ok = onyx_hover_restyle_nodes(c, roots, (int) n, false);
+	if (!ok)
+		ok = layout = onyx_hover_restyle_nodes(c, roots, (int) n, true);
+	if (!ok)
+		return false;
+	html_restyle_attr_clear(c, true);
+	c->rebox_mut_events = c->rebox_mut_shown = 0;
+	onyx_perf_log("dom:restyle", t0);
+	if (layout) {
+		t0 = onyx_perf_now();
+		content__reformat(&c->base, false, c->base.available_width,
+				c->base.available_height);
+		onyx_perf_log("dom:layout", t0);
+	}
+	return true;
+}
+
+/* exported interface documented in html/private.h */
+void html_script_dom_changed_by_script(html_content *c)
+{
+	if (c->layout != NULL && !c->rebox_pending && !c->early_layout &&
+	    c->rebox_mut_events > 0 && c->rebox_mut_shown == 0) {
+		/* (nothing shown changed: no rebox) */
+		if (onyx_perf_on())
+			fprintf(stderr, "ONYX-PERF rebox:skipped (%u hidden changes) 0 us\n",
+					c->rebox_mut_events);
+		c->rebox_mut_events = 0;
+		return;
+	}
+	html_script_dom_changed(c);
 }
 
 /* Onyx: the viewport's size in device pixels (the browser window's), as the first
@@ -782,6 +957,7 @@ bool html_early_layout(html_content *c)
 		dom_node_unref(html);
 		return false;
 	}
+	onyx_restyle_invalidate_all(c);	/* (Onyx) */
 	html_get_dimensions(c);
 	c->early_layout = true;
 	c->early_stale = false;
@@ -816,7 +992,8 @@ void html_script_layout_now(html_content *c)
 	if (c->rebox_pending && html_rebox_possible(c)) {
 		guit->misc->schedule(-1, html_rebox_scheduled, c);
 		c->rebox_pending = false;
-		html_rebox(c);
+		if (!html_restyle_in_place(c))	/* (Onyx) */
+			html_rebox(c);
 	}
 }
 
@@ -987,6 +1164,7 @@ void html_finish_conversion(html_content *htmlc)
 
 	/* create new css selection context */
 	error = html_css_new_selection_context(htmlc, &htmlc->select_ctx);
+	onyx_restyle_invalidate_all(htmlc);	/* (Onyx) */
 	if (error != NSERROR_OK) {
 		content_broadcast_error(&htmlc->base, error, NULL);
 		content_set_error(&htmlc->base);
@@ -1863,6 +2041,8 @@ static void html_destroy(struct content *c)
 	html->rebox_pending = false;
 	onyx_anim_fini(html);		/* (Onyx: transitions, animations) */
 	onyx_hover_fini(html);		/* (Onyx) */
+	onyx_restyle_fini(html);	/* (Onyx) */
+	html_restyle_attr_clear(html, false);
 	onyx_shadow_destroy(html);	/* (Onyx: shadow DOM's caches) */
 	if (html->focus_pending != NULL) {	/* (Onyx) */
 		dom_node_unref(html->focus_pending);

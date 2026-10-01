@@ -69,6 +69,7 @@
 #include "html/form_internal.h"
 #include "css/utils.h"		/* Onyx: nscss_screen_dpi (unboxed styles) */
 #include "html/css.h"		/* Onyx: html_css_new_selection_context (unboxed styles) */
+#include "html/onyx_restyle.h"	/* Onyx: the kept selections (a state set) */
 #include "html/box_construct.h"	/* Onyx: box_style_select (unboxed styles) */
 #include "html/onyx_shadow.h"	/* Onyx: shadow DOM (adopted sheets) */
 #include "html/onyx_anim.h"	/* Onyx: animations, requestAnimationFrame */
@@ -297,7 +298,7 @@ static void qjs_leave(jsthread *t)
 	if (t->dirty) {
 		t->dirty = false;
 		if (!t->closed && t->htmlc != NULL)
-			html_script_dom_changed(t->htmlc);
+			html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
 	}
 	if (t->pending_destroy)
 		qjs_thread_free(t);
@@ -1459,7 +1460,7 @@ static void qjs_layout_now(jsthread *t)
 	if (t->dirty && !t->closed && t->forced_layouts < 16) {
 		t->forced_layouts++;
 		t->dirty = false;
-		html_script_dom_changed(t->htmlc);
+		html_script_dom_changed_by_script(t->htmlc);	/* (Onyx) */
 	}
 	html_script_layout_now(t->htmlc);
 	onyx_anim_flush(t->htmlc);	/* (Onyx: an animation a script changed) */
@@ -2760,6 +2761,11 @@ static JSValue n_set_state(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 	if (argc < 3 || JS_ToUint32(ctx, &state, argv[1]) != 0)
 		return JS_UNDEFINED;
 	nscss_node_state_set(n, state, JS_ToBool(ctx, argv[2]));
+	if (t->htmlc != NULL) {
+		/* (Onyx: its kept style selection made again, as for an attribute) */
+		onyx_restyle_attr_changed(t->htmlc, n);
+		html_script_mutation(t->htmlc, n, true);
+	}
 	t->dirty = true;
 	return JS_UNDEFINED;
 }

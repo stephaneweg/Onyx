@@ -100,6 +100,13 @@ for s in "late added flex" "late removed block block" "late back flex"; do
 	expect "$L" "$s"
 done
 
+echo "js-restyle.html (the style selections a rebox keeps: each DOM change restyles right)"
+L=$OUT/js-restyle.log
+run js-restyle.html "$(waits 150)" "$L"
+grep "^console: FAIL " "$L" | sed 's/^/  FAIL  /'
+if grep -q "^console: FAIL " "$L"; then fail=1; fi
+expect "$L" "restyle checks 46"
+
 echo "css-bodyoverflow.html (the body's overflow is the viewport's)"
 L=$OUT/css-bodyoverflow.log
 run css-bodyoverflow.html "$(waits 40)" "$L"

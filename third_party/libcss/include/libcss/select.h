@@ -253,6 +253,17 @@ css_error css_libcss_node_data_handler(css_select_handler *handler,
  */
 lwc_string *css_onyx_node_var(void *libcss_node_data, const char *name, size_t len);
 
+/**
+ * Onyx: the custom properties an element's selection stored in its node data (its own
+ * and those it inherits): an opaque handle with a reference -- the same handle as long as
+ * they are the same (NetSurf's kept selections compare their parent's); NULL if none.
+ * css_onyx_vars_release drops the reference.
+ */
+const void *css_onyx_node_vars_ref(void *libcss_node_data);
+void css_onyx_vars_release(const void *vars);
+/** Onyx: whether two such handles hold the same custom properties (in the same order) */
+bool css_onyx_vars_same(const void *a, const void *b);
+
 css_error css_select_ctx_create(css_select_ctx **result);
 css_error css_select_ctx_destroy(css_select_ctx *ctx);
 
@@ -294,6 +305,14 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		const css_media *media, const css_stylesheet *inline_style,
 		css_select_handler *handler, void *pw,
 		css_select_results **result);
+/**
+ * Onyx: whether any selector of the context's sheets matches the element (or one of its
+ * pseudo-elements) in the media -- NetSurf's kept selections after sheets were added:
+ * the context holds the new sheets only. The node's own node data is left as it is.
+ */
+css_error css_select_style_onyx_probe(css_select_ctx *ctx, void *node,
+		const css_unit_ctx *unit_ctx, const css_media *media,
+		css_select_handler *handler, void *pw, bool *matched);
 /**
  * Onyx: css_select_style for an element of a document with shadow trees: ctx and pw are
  * its own tree's; inherit_parent the element whose custom properties it inherits (its

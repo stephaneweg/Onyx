@@ -6493,6 +6493,7 @@ bool layout_document(html_content *content, int width, int height)
 
 	layout_minmax_block(doc, font_func, content);
 
+	layout_memo_begin();	/* Onyx: the flex / grid items' layout memo */
 	layout_block_find_dimensions(&content->unit_len_ctx,
 			width, height, 0, 0, doc);
 	doc->x = doc->margin[LEFT] + doc->border[LEFT].width;
@@ -6531,6 +6532,7 @@ bool layout_document(html_content *content, int width, int height)
 	layout_position_relative(&content->unit_len_ctx, doc, doc, 0, 0);
 
 	layout_calculate_descendant_bboxes(&content->unit_len_ctx, doc);
+	layout_memo_end();
 
 	return ret;
 }

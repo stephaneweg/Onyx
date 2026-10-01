@@ -991,7 +991,10 @@ printf("      \t%s\tno share: inline style\n");
 	if (state->node_data->flags & CSS_NODE_FLAGS_ONYX_NO_SHARE)
 		return CSS_OK;		/* Onyx: shadow DOM */
 
-	while (true) {
+	/* Onyx: a few candidates at most -- the search walked back over every previous
+	 * sibling of the same name that could not share (a list of 2500 rows striped by
+	 * :nth-child: 2500 x 2500 steps a box tree) */
+	for (int tries = 0; tries < 8; tries++) {
 		void *share_candidate_node;
 
 		/* Get previous sibling with same element name */
@@ -1388,6 +1391,76 @@ done:
 	state->onyx_parts = NULL;
 	state->onyx_n_parts = 0;
 	return error;
+}
+
+/* exported function documented in libcss/select.h (Onyx) */
+css_error css_select_style_onyx_probe(css_select_ctx *ctx, void *node,
+		const css_unit_ctx *unit_ctx, const css_media *media,
+		css_select_handler *handler, void *pw, bool *matched)
+{
+	css_select_state state;
+	void *parent = NULL;
+	css_error error;
+	uint32_t i;
+
+	*matched = true;
+	if (ctx == NULL || node == NULL || handler == NULL ||
+	    handler->handler_version != CSS_SELECT_HANDLER_VERSION_1)
+		return CSS_BADPARM;
+	error = handler->parent_node(pw, node, &parent);
+	if (error != CSS_OK)
+		return error;
+	error = css_select__initialise_selection_state(
+			&state, node, parent, media, unit_ctx, handler, pw);
+	if (error != CSS_OK)
+		return error;
+	for (i = 0; i < ctx->n_sheets && error == CSS_OK; i++) {
+		const css_select_sheet s = ctx->sheets[i];
+		if (mq__list_match(s.media, unit_ctx, media, &ctx->str) &&
+				s.sheet->disabled == false)
+			error = select_from_sheet(ctx, s.sheet, s.origin, &state);
+	}
+	if (error == CSS_OK)
+		*matched = state.onyx_matched > 0;
+	/* (the node's own node data stays: the probe's is freed with the state -- its
+	 * bloom is the parent's, borrowed) */
+	if (state.node_data != NULL)
+		state.node_data->bloom = NULL;
+	css_select__finalise_selection_state(&state);
+	return error;
+}
+
+/* exported function documented in libcss/select.h (Onyx) */
+const void *css_onyx_node_vars_ref(void *libcss_node_data)
+{
+	struct css_node_data *node_data = libcss_node_data;
+
+	if (node_data == NULL)
+		return NULL;
+	return css__onyx_vars_ref(node_data->onyx_vars);
+}
+
+/* exported function documented in libcss/select.h (Onyx) */
+void css_onyx_vars_release(const void *vars)
+{
+	css__onyx_vars_unref((css_onyx_vars *) vars);
+}
+
+/* exported function documented in libcss/select.h (Onyx) */
+bool css_onyx_vars_same(const void *a, const void *b)
+{
+	const css_onyx_vars *va = a, *vb = b;
+	uint32_t i;
+
+	if (va == vb)
+		return true;
+	if (va == NULL || vb == NULL || va->n != vb->n)
+		return false;
+	for (i = 0; i < va->n; i++) {
+		if (va->v[i].name != vb->v[i].name || va->v[i].value != vb->v[i].value)
+			return false;
+	}
+	return true;
 }
 
 /* exported function documented in libcss/select.h (Onyx) */
@@ -2431,6 +2504,7 @@ css_error match_selector_chain(css_select_ctx *ctx,
 
 	/* If we got here, then the entire selector chain matched, so cascade */
 	state->current_specificity = selector->specificity;
+	state->onyx_matched++;		/* (Onyx: css_select_style_onyx_probe) */
 
 	/* Ensure that the appropriate computed style exists */
 	if (state->results->styles[pseudo] == NULL) {

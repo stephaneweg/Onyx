@@ -84,6 +84,28 @@ bool layout_grid(
 		html_content *content);
 
 /**
+ * Onyx: the layout memo (layout_flex.c) -- within one layout_document() pass, the size
+ * a flex / grid item's layout gave for the same inputs (its width, its height or AUTO,
+ * DEF_HEIGHT, the available width, its paddings and borders), and the inputs its subtree
+ * is laid out at now. A flex item is laid out to measure it and again to place it at
+ * each nesting level: without it nested flex containers cost 2^depth layouts.
+ */
+void layout_memo_begin(void);
+void layout_memo_end(void);
+
+/**
+ * Onyx: lay a flex / grid item out through the memo. \a lay lays it out at its
+ * current inputs. With \a size_only a memo hit only restores its width and height
+ * (its subtree may be in another layout's state: layout_memo_ensure() later); else a
+ * layout is skipped only when its subtree is already laid out at these inputs.
+ */
+bool layout_memo_layout(struct box *b, int avail, bool size_only,
+		bool (*lay)(void *ctx, struct box *b, int avail), void *ctx);
+
+/** Onyx: whether \a b's subtree is laid out at these inputs (true outside a pass) */
+bool layout_memo_state_is(const struct box *b, int w, int h, bool def, int avail);
+
+/**
  * Onyx: a grid container's min-content / max-content widths (its content box), from its
  * items' (already computed) min / max widths.
  */

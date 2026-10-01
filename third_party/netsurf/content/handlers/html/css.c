@@ -49,6 +49,7 @@
 /* Onyx: user/netsurf/onyx_fetch.c -- a page's <link rel=preconnect|dns-prefetch> */
 void onyx_fetch_preconnect(const char *url, bool dns_only);
 #include "html/onyx_shadow.h"
+#include "html/onyx_restyle.h"	/* Onyx */
 
 static nsurl *html_default_stylesheet_url;
 static nsurl *html_adblock_stylesheet_url;
@@ -105,6 +106,8 @@ static void html_css_restyle(html_content *c)
 		return;
 	if (html_css_new_selection_context(c, &ctx) != NSERROR_OK)
 		return;
+	/* (Onyx: the kept selections were the old context's) */
+	onyx_restyle_sheets_changed(c, c->select_ctx, ctx);
 	css_select_ctx_destroy(c->select_ctx);
 	c->select_ctx = ctx;
 	html_script_dom_changed(c);
@@ -331,6 +334,10 @@ html_css_process_modified_style(html_content *c, struct html_stylesheet *s)
 		if (old != NULL) {
 			switch (content_get_status(old)) {
 			case CONTENT_STATUS_DONE:
+				/* Onyx: kept while the kept selections are probed
+				 * with it (onyx_restyle.c) */
+				onyx_restyle_keep_sheet(c, old);
+				old = NULL;
 				break;
 			default:
 				hlcache_handle_abort(old);
@@ -338,7 +345,8 @@ html_css_process_modified_style(html_content *c, struct html_stylesheet *s)
 				NSLOG(netsurf, INFO, "%d fetches active",
 				      c->base.active);
 			}
-			hlcache_handle_release(old);
+			if (old != NULL)
+				hlcache_handle_release(old);
 		}
 	}
 
