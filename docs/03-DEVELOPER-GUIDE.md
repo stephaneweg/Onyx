@@ -1485,6 +1485,29 @@ Key points:
 See the demos `demoD.c` (widget gallery), `demoE.c` (textarea + scrollview), and the
 apps `tinypad.c`, `paint.c`, `mandelbrot.c` for complete examples.
 
+### The Archiver (`user/Apps/archiver`)
+
+The archive manager (the plan and the user's decisions: `docs/archiver/README.md`; its use:
+docs/04 §9) is a **newlib** wtk app with FreeType text (`archiver.elf` in `user/Makefile`, with
+**zlib** built from `third_party/zlib-1.3.1` into `user/zlib/libz.a`), one translation unit:
+
+| File | What |
+|---|---|
+| `arc.h` (namespace `arc`) | The engine's base, no wtk: `Entry` (a path in UTF-8, sizes, CRC, DOS time, the format's fields), `Archive` (the interface a format implements: `open`, `extract (i, Sink &, Progress *)`, `rewrite (Plan, dest, Progress *)`, `writable`, `methodName`), `Plan` (a rewrite: the entries kept — renamed or not — and the new ones, a file of the disk or a folder), `Reader` (random access: `kapi_open` + `kapi_seek`, files of any size, not slurped like newlib's), `FileSink` (a `kapi_file_out` stream), CP437 → UTF-8, DOS dates, human sizes. |
+| `zip.h` | ZIP: the central directory (zip64, Info-ZIP's Unicode path, a self-extractor's offset, a UTF-8 name without its flag), extract (Store, Deflate through zlib, ZipCrypto), rewrite (the kept entries copied packed under a new local header; the new ones stored, deflated in memory when small — stored if that is not smaller —, streamed with a data descriptor when big; zip64 records when needed). |
+| `ops.h` | The operations whatever the format: `archive_open` (the format from the first bytes), `run_extract` (the layouts `LAY_FULL / LAY_FROM_CURRENT / LAY_FLAT`, the overwrite policy and its question, names made safe for FAT, no half file left), `apply_plan` (a new copy `*.part`, then swapped in), `op_add` / `op_delete` / `op_rename` / `op_new_folder`, `plan_add` (a folder walked, the names that exist replaced or kept). |
+| `model.h` (namespace `ui`) | The archive as a tree for the view: a node per path part (implicit folders too), totals, children sorted (folders first, by the list's column), the search. |
+| `icons.h`, `widgets.h`, `dialogs.h` | The vector icons; the widgets (`ToolStrip` of large buttons, `PathBar` with its `SearchBox`, `FolderTree`, `EntryList` — multiple selection, sort, drag out, the drop's banner —, `InfoCard`, `StatusBar`, `Welcome`); the dialogs (Extract, Add, progress, exists, text, properties). |
+| `main.cpp` | The app: the jobs (a thread per job, `kapi_post` for the progress and the end, a question to the main thread answered through an event), drag & drop both ways, files opened into `RAM:` and watched to be put back, the menus. |
+
+A job works on **its own instance** of the archive (opened again): the view keeps reading the old one
+until the job ends and the archive is read again from the disk. **Host test**:
+`sh tools/tests/run_archiver_test.sh` — `tools/tests/archiver/arctool.cpp` (the engine on the
+simulator's kapi) driven by `test.py`: archives made by Python's `zipfile` and the `zip` tool (stored,
+deflated, a self-extractor, ZipCrypto, UTF-8 names), every result checked by `zipfile` and `unzip -t`.
+The screenshots: `sh tools/tests/desktop_sim/shots.sh archiver` (a sample archive made by
+`arc_sample.py`).
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app
@@ -2106,7 +2129,12 @@ barwidth = 40
   (the modifiers held from then on: 1 Ctrl, 2 Shift, 4 Alt — Shift+arrows select...), `menu N`
   (the app's menu item N: its items counted from 0 in the order the app adds them), `winctl N`,
   `dump FILE`, `quit` (the window closed: the app's loop ends and what it does before leaving
-  `main` runs — `exit` stops the process on the spot). Like the kernel, the simulator makes no
+  `main` runs — `exit` stops the process on the spot), and drag & drop from another app:
+  `dragover X Y [FLAGS]` (`GUI_EVENT_DRAG_OVER`; FLAGS 1 Ctrl, 4 the drag left) and
+  `drop X Y PATH|PATH... [FLAGS]` (`GUI_EVENT_DROP`, the paths a `DND_FILES` payload that
+  `kapi_drag_data` returns). Files: what an app writes goes to `SIM_WRITES` (never the card) —
+  `kapi_save_file`, `kapi_mkdir`, the streams `kapi_file_out` / `kapi_file_in` (a `FILE *` behind
+  the handle) —, and `kapi_remove` / `kapi_rename` work on `RAM:` and on those written files. Like the kernel, the simulator makes no
   window over 1024 × 768 (`kapi_create_window` returns 0).
   **Threads and the network**: the simulator runs an app's threads (kapi v67) as pthreads —
   `kapi_post`'s calls run at the main thread's next `pump_events`, a thread's `msleep` only

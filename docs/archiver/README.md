@@ -1,10 +1,18 @@
-# Archiver for Onyx — an archive manager (study, first mock-ups)
+# Archiver for Onyx — an archive manager (study, mock-ups, first version)
 
-> **Status (2026-10-01): mock-ups, to be validated by the user.** Asked by the user: an archive
-> manager — zip, 7-zip if possible, rar if possible — with a careful interface: open an archive,
-> browse its folders, extract the selection or everything **keeping the folder hierarchy**, and add
-> files into the archive's current folder by **drag & drop from the File Viewer** or by an **Add**
-> menu. Working name: **Archiver** (app folder `archiver`).
+> **Status (2026-10-01): version 1 implemented — ZIP** (open, browse, extract, add, delete, rename,
+> new folder; drag & drop both ways; files opened and put back). Its use: `docs/04-USER-GUIDE.md` §9;
+> its code: `docs/03-DEVELOPER-GUIDE.md`, *The Archiver*. **Next: 7z, tar (.tar.gz / .tar.zst / .tar.xz),
+> RAR read only** (§ *Formats* below; the licences: `docs/LICENSING.md` §4). Asked by the user: an
+> archive manager — zip, 7-zip if possible, rar if possible — with a careful interface: open an
+> archive, browse its folders, extract the selection or everything **keeping the folder hierarchy**,
+> and add files into the archive's current folder by **drag & drop from the File Viewer** or by an
+> **Add** menu. Name: **Archiver** (app folder `archiver`).
+
+| | |
+|---|---|
+| ![](../../screenshots/archiver.png) | **The app** (version 1, the real one run on the PC): `kernel/sys` of a sample archive, three files selected. |
+| ![](../../screenshots/archiver-drop.png) | Files dragged from the File Viewer over a folder row: they go into `kernel/include/`. |
 
 The mock-ups are made by `python3 tools/screenshot/mockup_archiver.py` → `docs/archiver/mockups/*.png`
 (1280 × 800; the look of today's apps — `screenshots/irc.png`, `fileviewer.png`: the Peach frame,
@@ -56,3 +64,13 @@ the beige faces, the white lists, the teal selection, the global menu bar at the
 4. RAR: **read only, through libarchive's readers (BSD-2)** — unRAR's licence is not compatible
    with the GPL (see [`docs/LICENSING.md`](../LICENSING.md) §4). No encrypted RAR.
 5. The order (not answered yet, the default): ZIP, then 7z + tar.gz, then RAR.
+
+## What version 1 does not do yet
+
+- The formats besides ZIP (the welcome page lists them as *coming next*); in ZIP, the AES encryption
+  (WinZip's) and the methods other than Store / Deflate (listed, not extracted); writing encrypted
+  entries (the Add dialog's *Encrypt* of the mock-up is left out).
+- File dates: the kapi has no file times, so extracted files get the time they are written, and files
+  added get the time they are added.
+- An archive inside the archive: it opens with its app (the Archiver itself, from `RAM:`), not in place.
+- *Add Files...*' file dialog picks one file at a time (wtk's `FileDialog`); a drop takes many.

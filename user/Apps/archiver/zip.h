@@ -374,6 +374,33 @@ public:
 				if (!ok && !error[0]) fail ("Cannot write ", dest);
 				continue;
 			}
+			// a small file: deflated in memory, stored if that did not make it smaller; sizes known
+			if (size <= 4u * 1024 * 1024)
+			{
+				u8 *src = (u8 *) malloc ((size_t) size), *dst = 0;
+				z_stream zs; memset (&zs, 0, sizeof zs);
+				uLong bound = 0;
+				bool mem = src && f.read (src, (u32) size) && deflateInit2 (&zs, plan.level, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY) == Z_OK;
+				if (mem)
+				{
+					bound = deflateBound (&zs, (uLong) size);
+					dst = (u8 *) malloc (bound);
+					zs.next_in = src; zs.avail_in = (uInt) size; zs.next_out = dst; zs.avail_out = (uInt) bound;
+					mem = dst && deflate (&zs, Z_FINISH) == Z_STREAM_END;
+					deflateEnd (&zs);
+				}
+				if (!mem) { free (src); free (dst); fail ("Cannot read ", it.disk); ok = false; break; }
+				u32 crc = (u32) crc32 (crc32 (0, 0, 0), src, (uInt) size);
+				bool st = zs.total_out >= size;
+				ce.crc = crc; ce.method = st ? 0 : 8; ce.packed = st ? size : zs.total_out;
+				ce.flags = utf | (st ? 0u : plan.level >= 8 ? 2u : plan.level <= 2 ? 4u : 0u);
+				u32 hl = localHeader (hb, it.name, ce.flags, ce.method, now, crc, ce.packed, size, 0, 0, false);
+				ok = out.write (hb, hl) && out.write (st ? src : dst, (u32) ce.packed);
+				free (src); free (dst);
+				if (!ok) { fail ("Cannot write ", dest); break; }
+				if (pr && !pr->step (size)) { fail ("Cancelled."); ok = false; }
+				continue;
+			}
 			// deflated, streamed: the sizes and the CRC in a data descriptor after the data
 			ce.method = 8; ce.flags = utf | ZF_DESCRIPTOR | (plan.level >= 8 ? 2u : plan.level <= 2 ? 4u : 0u);
 			u32 hl = localHeader (hb, it.name, ce.flags, 8, now, 0, 0, 0, 0, 0, z64);

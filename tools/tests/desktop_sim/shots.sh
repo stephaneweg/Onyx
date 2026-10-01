@@ -46,6 +46,12 @@ build () {
 		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libwtk.a" "$OUT/libft.a"
 		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
 	fi
+	if [ "$1" = archiver ]; then			# (newlib-like: FreeType, zlib)
+		mkdir -p "$OUT/zlib"
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/$f.o" || return 1; done
+		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp \
+			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
+	fi
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
@@ -57,7 +63,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier setup
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver setup
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -190,6 +196,20 @@ if want courier; then			# (the demo collection and environments of sd/courier, i
 	sim courier courier-tests "wait;wait;mods 1;key 13;mods 0;$W;down 614 364;up 614 364;$W" $P SIM_SD="$OUT/csd" SIM_NET="$CN"; png courier-tests
 	sim courier courier-env "wait;wait;down 40 160;up 40 160;wait;down 160 180;up 160 180;$W" $P SIM_SD="$OUT/csd"; png courier-env
 	rm -rf "$OUT/writes/courier" "$OUT/csd"
+fi
+if want archiver; then			# (a sample archive of Onyx's sources in RAM:, arc_sample.py: opened, in kernel/sys three
+					#  files selected; the Extract dialog; files dragged from the File Viewer over a folder;
+					#  the welcome page with the archive among the recent ones)
+	rm -rf "$OUT/arc"; mkdir -p "$OUT/arc"; rm -rf "$OUT/writes/apps/archiver.app"
+	python3 $D/arc_sample.py "$OUT/arc/Projet-Onyx.zip"
+	AN="down 300 175;up 300 175;down 300 175;up 300 175;wait;wait;down 330 201;up 330 201;down 330 201;up 330 201;wait;wait"
+	AS="down 330 279;up 330 279;mods 1;down 330 305;up 330 305;down 330 331;up 330 331;mods 0;wait"
+	sim archiver archiver "wait;wait;$AN;$AS;$W" $P SIM_RAM="$OUT/arc" SIM_ARGS=RAM:/Projet-Onyx.zip; png archiver
+	sim archiver archiver-extract "wait;wait;$AN;$AS;key 0x05;$W" $P SIM_RAM="$OUT/arc" SIM_ARGS=RAM:/Projet-Onyx.zip; png archiver-extract
+	sim archiver archiver-drop "wait;wait;down 300 175;up 300 175;down 300 175;up 300 175;wait;wait;dragover 330 175;$W" $P SIM_RAM="$OUT/arc" SIM_ARGS=RAM:/Projet-Onyx.zip
+	png archiver-drop
+	sim archiver archiver-welcome "$W" $P SIM_RAM="$OUT/arc"; png archiver-welcome
+	rm -rf "$OUT/arc" "$OUT/writes/apps/archiver.app"
 fi
 if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
 	sim cardfile cardfile "$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile

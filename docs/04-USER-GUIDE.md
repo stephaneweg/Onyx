@@ -929,6 +929,89 @@ the Trash — the dock's Trash does so).
 *The File Viewer: the sidebar (Personal, Computer, Network), `SD:` ▸ `etc` in the path bar, one
 folder per column, and the preview of the selected `autostart` file.*
 
+### Archiver, the archive manager (`archiver`)
+
+![Archiver](../screenshots/archiver.png)
+*An archive of Onyx's sources open in `kernel/sys`, three files selected (Ctrl + click): their
+sizes, what they take packed, how much was saved.*
+
+The Archiver opens **ZIP archives** (`.zip`, `.jar`; also a self-extracting ZIP), shows what they
+hold as folders, **extracts** some files or all of them — **keeping the archive's folders** — and
+**changes** them: files and folders added (dropped from the File Viewer, or *Add Files...*), deleted,
+renamed, new folders. It is in the **Productivity** drawer; a `.zip` opened in the File Viewer opens
+in it (`fileassoc.ini`), as `run archiver SD:/path/file.zip` does. 7z, tar (.tar.gz) and RAR (read
+only) come next (`docs/archiver/README.md`).
+
+- **The window**: the toolbar (**Open**, **New** · **Add**, **Extract**, **Extract All**, **Delete** ·
+  **Test**, **Properties**), the path bar (Back, Up, the archive and its folders — click one to go
+  there —, the format's badge, **Search in the archive**: every name holding the text, with its
+  path), the archive's folders at the left (the archive at their root; a click opens a folder, the
+  arrow opens or closes it) above its summary (format, files, folders, sizes, how much is saved,
+  encrypted, the comment), and the list: the folder's subfolders, then its files — **Name**, **Size**,
+  **Packed**, **Ratio** (a bar), **Modified**, **Method**. A click on a column's title sorts by it (again:
+  the other way). The window can be maximised; the divider between the folders and the list drags.
+- **Selecting**: a click, **Ctrl** + click adds or removes a row, **Shift** + click a range; the keys
+  Up / Down / Page Up / Page Down / Home / End (with Shift: the range; Space adds the row the cursor
+  is on); ^A all, *Invert Selection*. A folder selected is everything under it.
+- **Opening**: a double click (or Enter) on a folder goes in, on `..` or **Backspace** up. On a file:
+  it is extracted to `RAM:/archiver/open/` and opened with its app (`fileassoc.ini`: a text in
+  tinypad, a picture in the image viewer...). **Change it and save it** there: the Archiver sees it and
+  asks *"... was changed. Put it back in the archive?"* — Yes replaces it in the archive.
+- **Extract...** (^E, the toolbar, the right-click menu) — *What*: the selection, or everything.
+  *Where*: a folder (Browse...), and **into a new folder** named after the archive (on by default).
+  *Folders*: **keep the archive's folders** (`kernel/sys/kapi.cpp` is extracted as
+  `kernel/sys/kapi.cpp`), **from the current folder down** (as `kapi.cpp` when you are in
+  `kernel/sys`), or **all in one folder** (flat). *If a file exists*: ask for each one (Replace,
+  Replace All, Skip, Skip All, Keep Both — a new name, `kapi (2).cpp` —, Cancel), replace them, skip
+  them, keep both. **Show the folder after** opens it in the File Viewer. *Password*: for encrypted
+  files. **Extract All...** is the same with *everything* chosen; **Extract Here** (the right-click
+  menu) extracts the selection next to the archive, from the current folder down. A name that
+  climbs out of the folder (`../`) or that FAT refuses (`:` `*` `?`...) is made safe; a file whose
+  checksum is wrong is not left half written.
+
+![Extract](../screenshots/archiver-extract.png)
+*The Extract dialog: the selection or everything, where, which folders, what to do when a file
+exists; the hints show where the first file selected would go.*
+
+- **Adding — drag & drop**: drag files or folders from the File Viewer onto the list: they go
+  **straight into the folder shown**, or into the **folder row** under the pointer (outlined), or into
+  a folder of the tree at the left. A banner says where (*Drop to add to Projet-Onyx.zip > kernel/
+  include/*). A folder added keeps its name and its tree. When names exist in that folder already,
+  the Archiver asks once: Yes replaces them, No keeps the old ones, Cancel adds nothing.
+- **Add Files...** (^D, the toolbar): a list to fill with **Add Files...** / **Add Folder...**
+  (**Remove** takes one out), **into the folder** (the one shown; type another: `docs/images`), *keep
+  the folders I add* or *only the files*, the **compression** (Store, Fast, Normal, Best — files that do
+  not shrink, png, jpg, zip, mp3..., are stored; a small file that deflate would make bigger is
+  stored too), and what to do with a name that exists (replace it, keep the old one).
+
+![Dropping files](../screenshots/archiver-drop.png)
+*Files dragged from the File Viewer over the `include` folder: they will go into
+`kernel/include/`.*
+
+- **Dragging out**: drag rows of the list to the File Viewer, the desktop or an app: they are
+  extracted to `RAM:/archiver/drag/` and handed over as files (folders with their tree; up to 96 MB).
+- **Delete** (Del, the toolbar), **Rename...** (F2), **New Folder...** (^K): in the archive. Each change
+  writes a **new copy** of the archive next to it (`name.zip.part`), then replaces the old one — if
+  anything fails, the old archive is still whole.
+- **Test** (^T): every file decompressed and its checksum checked → *No errors: N files checked*, or
+  the first one damaged. **Properties** (^P): the archive's folder, format, sizes, encryption, comment.
+- **New...** (^N, the toolbar, the welcome page): a new, empty `.zip` (the file dialog asks where).
+  **Dropping files on the welcome page** makes a new archive of them (it asks its name); dropping an
+  archive there opens it.
+- **Jobs**: extracting, adding, deleting, testing run while the window stays alive: a box shows the
+  file being done and a bar (**Background** hides it — the bar goes on in the status bar —, **Cancel**
+  stops). One job at a time.
+- **Encrypted ZIPs**: the classic ZIP encryption (ZipCrypto, `zip -P`) is read — the password is asked
+  once (or typed in the Extract dialog); AES-encrypted files and the methods other than Store and
+  Deflate (Deflate64, BZip2, LZMA, Zstd...) are listed but not extracted yet.
+- **The welcome page** (no archive open): a drop zone, *Open an Archive...*, *New Archive...*, the
+  formats, the **recent archives** (a click opens one).
+
+![Archiver's welcome page](../screenshots/archiver-welcome.png)
+
+Files: `recent.txt` in `SD:/apps/archiver.app` (the archives opened lately); `RAM:/archiver/open/`
+and `RAM:/archiver/drag/` (what was opened or dragged out; gone at the next start of the Pi).
+
 ## 10. Keyboard and layouts
 
 The layout at boot is set by the autostart line **`keyb FR`** (in `SD:/etc/autostart`) —
@@ -1127,6 +1210,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *taskman — task manager* | *2048 — tile game* | *minesweeper — minesweeper* |
 | ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
+| ![archiver](../screenshots/archiver.png) | | |
+| *archiver — archive manager* | | |
 
 ### Productivity and tools
 
@@ -1168,6 +1253,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | **eyes** | Gadget: two eyes whose pupils follow the mouse. |
 | **mandelbrot** | Fractal explorer (Mandelbrot, Julia, Burning Ship, Tricorn via the dropdown). **Click** = zoom in (re-centers); `o` = zoom out; `r` = reset. |
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
+| **archiver** | The **archive manager**: ZIP archives opened, browsed as folders, extracted (the selection or all; the archive's folders kept, from the current folder down, or flat), changed — files and folders **dropped from the File Viewer go into the folder under the pointer**, Add Files, Delete, Rename, New Folder; a file opened from the archive and saved is put back. 7z, tar and RAR next. See *Archiver, the archive manager* (§9). Files: `recent.txt` in `SD:/apps/archiver.app`. |
 | **irc** | The **IRC client**, a messaging app's look: the server (a combo box of the servers used) and your **nickname** on top — sent at once on connecting, `nickname_` tried when it is taken —, your conversations on the left (unread counts), a channel's messages grouped by author under coloured avatars, its users on the right; **Rooms** lists the server's channels (search, minimum of users, sort; double-click to join). A private conversation opens in a **window of its own**, with bubbles, as a messenger's. Files: `config.ini`, `servers.txt`, `nick.txt` in `SD:/apps/irc.app`. See *IRC, the chat client* below. Needs the network up (see §3). |
 | **jet** (Jet Browser) | **Jet Browser**, the Onyx web browser, based on **NetSurf** (its window is titled "Jet"; launch it from the dock's Internet drawer or with `run jet [address]`) — a full graphical HTML/CSS rendering engine ported to Onyx: `http://` and `https://`, images, modern CSS (custom properties `var()`, `calc()`, flexbox, grid, rounded corners, gradients, shadows, gradient text, translucent `rgba` colours…), **SVG** (the logos and icons of the sites: SVG images and the SVG drawn in a page, sharp at any size) and **JavaScript** (QuickJS, ES2023: a page's menus, tabs and forms work — a script's changes are laid out again; clicks, keys, typing, scrolling and the pointer's moves (hover) reach the page's scripts; `fetch` and `XMLHttpRequest` load data, `localStorage` is kept between visits; a page's `<canvas>` drawings — charts, games — are drawn). Each download runs in its own thread: the window stays responsive while a page loads; the connections to a site are kept for its next resources (HTTP/1.1 keep-alive) and a page is drawn while it still downloads. **Cookies** are sent and kept (a site's logins and consent choices stay); Jet Browser presents itself honestly as NetSurf (`Mozilla/5.0 (X11; Linux aarch64) NetSurf/3.12`), so the search engines (Google, DuckDuckGo) serve their light pages without taking it for a robot; **The site's version — the blue pill right of the address field** (only for an `http`/`https` page) shows how Jet Browser presents itself to the current site: **Standard** (its own User-Agent — NetSurf's, or `jet.ini`'s `default`), **Mobile** (Chrome on Android: the sites' light mobile pages) or **Desktop** (Chrome on Windows: the full desktop pages); click it (or Navigate ▸ Site Version...) for a small menu — the site's name, the three versions, the current one checked — and pick one: the page is loaded again with it, and the choice is remembered for the whole site (`www.bbc.co.uk` and `news.bbc.co.uk` are `bbc.co.uk`) in **`SD:/apps/jet.app/site-modes`** (one `site standard|mobile|desktop` line per site; the older `desktop-sites` list is still read until the first change). A site with its own line in `jet.ini`'s `[sites]` shows **Custom** (grey): its versions are greyed in the menu — edit `jet.ini`. Each version of a page is kept apart in the disk cache. **The padlock — left of the address field**: **green** for an `https` page whose certificate was verified, **red** for an `https` page loaded past a certificate warning ("Proceed"), **grey and struck** for an `http` page (not encrypted); none for a page on the card or an `about:` page. Click it (or Navigate ▸ Page Security / Certificate...) to see the page's certificates (the viewer: names, validity, fingerprints, each certificate's fault). Keyboard: from the address field (F6) **Tab** goes to the pill, **Shift+Tab** to the padlock; Enter or Space opens them, Esc goes back to the page. **The User-Agent is editable** in `SD:/apps/jet.app/jet.ini` (read at start): `[user_agent]` `default =` (every site: the Standard version), `desktop =` and `mobile =` (the sites switched to Desktop / Mobile), and a `[sites]` section with one line per site (`example.com = <User-Agent>`, also for its subdomains); first match wins: the site's line, the site's version (Desktop / Mobile), `default`, Choices' old `user_agent:`, NetSurf's own. The file lists the common User-Agents (Chrome on Android or Windows, Firefox, NetSurf) to copy. Pointing at a link or a button repaints only what changes. **Fonts** as Chrome's on Windows: a page's web fonts (`@font-face`: TrueType, OpenType, WOFF, WOFF2) are downloaded; Arial, Times New Roman, Segoe UI and Georgia are drawn with metric-compatible free fonts (Liberation, Selawik, Gelasio — in `SD:/res/fonts`, with DejaVu for the other characters). **Toolbar** (the screenshots below the table): **<** back (Alt+Left), **>** forward (Alt+Right), reload — a **×** stop while a page loads — (F5 / Ctrl+R, Esc), home, the **clock** (the history), the **padlock**, the **address field** (click it, F6 or Ctrl+L; an address, a host, a path on the card or words to search the web; Enter — text that does not look like an address (spaces, no dot, `3.14`...) is **searched for** with the engine of `jet.ini`'s `[search] engine =` (default `https://duckduckgo.com/?q=`: `what is my user agent` → `https://duckduckgo.com/?q=what+is+my+user+agent`; the words, escaped, replace a `%s` in it, else are added at its end); `example.com`, `192.168.1.10`, `localhost:8080` or `https://...` are opened; accented letters and `€` can be typed there and in the pages' fields — sent as UTF-8), the site's version (the pill). The mouse wheel scrolls the page; a file dropped on the window is opened. **Navigate ▸ History...** (Ctrl+H, the clock): the pages visited, **the most recent at the top** — their title, their address, when (the time today, the day this week, else the date); type in **Find** to filter them; a double-click or Enter opens one; **Delete** (or Del in the list) forgets it, **Clear all** forgets them all. **GPU compositing** (default): the page is kept in a band taller than the window and its faded or turned parts apart, and the graphics processor assembles them into the window — scrolling repaints nothing already drawn, animated turns and fades cost no painting (`gpu_compositing:0` in Choices: painted into the window as before; the processor does the assembling when the GPU fails its check at start — the kernel log says `netsurf: compositing on: GPU: ...` or why not). Files: the options in `SD:/res/Choices` (`enable_javascript:0` turns the scripts off; `max_fetchers:` the downloads at once; `user_agent:`, `accept_language:`; `js_jit:N` compiles the scripts' functions called N times to machine code — experimental, off by default); an empty file `SD:/apps/jet.app/perf` makes Jet Browser log its timings (layout, redraws, restyles, scripts) to the kernel log, `SD:/apps/jet.app/jsdebug` the scripts' errors and `console.log`; its `app.txt` asks the kernel for an 8 MB stack (`stack = 8M`: the JavaScript engine's); the pages visited in `SD:/apps/jet.app/History` and the cookies in `SD:/apps/jet.app/Cookies` (written a few seconds after a page — once a minute at most — and when Jet Browser closes — private: never committed); the **caches are in memory** — on **`RAM:`** (§2), not on the card: the **disk cache** in `RAM:/jet/cache/` (the images, styles and scripts of the sites visited: a page visited again, even after Jet Browser was closed and opened again, loads from it; 64 MB at most — Choices' `disc_cache_size` —, and at most half of `RAM:`; an object over 2 MB is not kept) and the **code cache** in `RAM:/jet/jscache/` (the scripts of the sites visited, compiled: the next time a script starts without being parsed again — and Jet Browser itself starts faster; 32 MB at most). They are written at once, in the background; **nothing of the pages you visit is written to the card** (faster — a write to the card holds the whole system for a moment — and more private) and **both are emptied when the Pi restarts** (the first visits after a restart load everything from the network again). **`cache_on_card:1`** in `SD:/res/Choices` puts them back on the card, kept across restarts: `SD:/apps/jet.app/cache/` and `SD:/apps/jet.app/jscache/` — an object is then kept the second time Jet Browser sees it (in a later start; at most 512 KB), a script the second time it runs, written in small pieces while you are not clicking or a page is not loading; deleting those folders is safe. (An older kernel without `RAM:`, or `ramfs=0`, also means the card.) **A Jet Browser in the background costs little**: the animations run at 30 frames a second (fewer for tiny ones, half in a window without the keyboard) and stop altogether — with the pages' timers slowed to once a second and nothing drawn — while its window is minimised, on another workspace or covered by other windows. While a long script runs, clicks and keys are kept and handled after it. **Help ▸ About Jet Browser...**: its name, NetSurf's copyright and licence (GPL v2) and the libraries' licences (the full texts: `about:licence`, `about:credits`). The browser was called NetSurf (`netsurf.app`) until 2026-10-01: at its first start, the cookies, the pages visited and `desktop-sites` still in `SD:/apps/netsurf.app/` are copied to `SD:/apps/jet.app/` (once; that old folder can then be deleted). Build: `user/netsurf/README.md`. Needs the network up (see §3). |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |

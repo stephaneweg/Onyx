@@ -191,6 +191,25 @@ answer in French. The docs stay in English.
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
+## Archiver, the archive manager -- version 1, ZIP (2026-10-01, not yet tried on the Pi)
+
+- **`user/Apps/archiver`** (docs/04 §9 *Archiver*, docs/03 *The Archiver*, the plan and the user's
+  decisions in `docs/archiver/README.md`): ZIP opened (zip64, CP437 / UTF-8 names, self-extractors,
+  ZipCrypto), browsed as folders, extracted (the selection or all; the archive's folders kept, from
+  the current folder down, or flat; Ask / Replace / Skip / Keep both), changed by a rewrite into a
+  new copy swapped in (add, delete, rename, new folder). Files **dropped** from the File Viewer go
+  straight into the folder under the pointer; rows dragged out are extracted to `RAM:` and handed
+  over; a file opened (extracted to `RAM:`) and saved is put back. Jobs on a **thread**. A newlib
+  app (FreeType) with zlib (`user/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
+- **Tested on the PC**: `sh tools/tests/run_archiver_test.sh` (the engine, 52 checks against
+  `zipfile` and `unzip -t`) and the app in the desktop simulator (which now has `kapi_file_in /
+  file_out` streams, remove / rename of the files an app wrote, and the script's `dragover` / `drop`).
+- **To try on the Pi**: a big archive (hundreds of MB: the reads go through `kapi_seek`, the
+  central directory is read whole), extracting to the card while it writes slowly, a drop from the
+  File Viewer, Background / Cancel during a long add, a `.zip` opened from the File Viewer.
+- **Next**: 7z (the LZMA SDK), tar / .tar.gz / .tar.zst / .tar.xz, RAR read only through
+  libarchive's readers (BSD; unRAR's licence is not GPL-compatible: `docs/LICENSING.md` §4).
+
 ## Courier, the HTTP client -- Postman for Onyx (2026-09-30, not yet tried on the Pi)
 
 - **`user/Apps/courier`** (docs/04 *Courier, the HTTP client*, docs/03 after `http.hpp`): requests

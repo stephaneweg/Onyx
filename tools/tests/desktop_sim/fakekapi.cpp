@@ -86,6 +86,7 @@ static gui_handler g_ptr, g_key, g_click, g_menuFn; static int g_btn;	// (the bu
 static unsigned g_ticks = 1000;
 static std::vector<std::string> g_script; static size_t g_step;
 static unsigned g_mods;					// (the script's "mods")
+static std::string g_dragData;				// (the script's last "drop")
 static bool g_quit;					// (the script's "quit": the window closed)
 
 // The card is only READ: what an app writes (a saved file, a folder) goes to SIM_WRITES (default
@@ -448,6 +449,19 @@ static void step (void)
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
+	// drag & drop (ABI v42) from another app: "dragover X Y [FLAGS]" (FLAGS 1 = Ctrl, 4 = left),
+	// "drop X Y PATH|PATH... [FLAGS]" (the paths a DND_FILES payload, '|' for the newlines)
+	else if (!strcmp (cmd, "dragover"))
+	{
+		c = 0; sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c);
+		if (g_ptr) g_ptr (0, GUI_EVENT_DRAG_OVER, ((long) c << 32) | ((long) a << 16) | (long) b);
+	}
+	else if (!strcmp (cmd, "drop"))
+	{
+		c = 0; sscanf (st.c_str (), "%*s %d %d %255s %d", &a, &b, arg, &c);
+		g_dragData = arg; for (char &ch : g_dragData) if (ch == '|') ch = '\n';
+		if (g_ptr) g_ptr (0, GUI_EVENT_DROP, ((long) c << 32) | ((long) a << 16) | (long) b);
+	}
 	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
@@ -814,6 +828,13 @@ static int h_kill (const char *n) { fprintf (stderr, "sim: kill %s\n", n); retur
 static int set_keymap_data (const char *, const void *, unsigned) { return 1; }
 static int mailbox_send (int, int, const void *, unsigned) { return 0; }
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
+static int drag_data (int *type, void *buf, unsigned cap)
+{
+	if (type) *type = DND_FILES;
+	unsigned n = (unsigned) g_dragData.size ();
+	if (buf && cap) memcpy (buf, g_dragData.c_str (), n < cap ? n : cap);
+	return (int) n;
+}
 static void *spawn (const char *p, const char *a, void *, void *)
 {
 	fprintf (stderr, "sim: spawn %s %s\n", p, a ? a : "");
@@ -977,7 +998,7 @@ static void setup (void)
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
 	T->shell_request = shell_request;
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
-	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin;
+	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin; T->drag_data = drag_data;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
 	T->wallpaper_buffer = wallpaper_buffer; T->wallpaper_commit = wallpaper_commit;
 	T->chdir = h_chdir; T->stdout_stream = h_stdout_stream; T->kbd_ready = h_kbd_ready; T->gpu_info = h_gpu_info;
