@@ -20,14 +20,14 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/webref-css-8.7.5/` | the CSS specifications' value grammars (W3C webref, MIT): libcss's grammar tables are made from them (§14) |
 | `third_party/brotli-1.1.0/` | Brotli's decoder only (FreeType's WOFF2), MIT |
 | `third_party/wasm3-0.9.2/` | wasm3, the WebAssembly interpreter (MIT): the engine alone, its Onyx settings and patches in `README.onyx` (§27) |
-| `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches) |
+| `third_party/quickjs-ng-0.17.0/` | QuickJS-ng, the JavaScript engine (ES2023), MIT: the engine alone (`README.onyx`: its patches); `quickjs-jit.c`, the Onyx baseline JIT for AArch64 (§30) |
 | `third_party/plutovg-1.3.3/`, `third_party/plutosvg-0.0.8/` | PlutoVG, the vector rasteriser (anti-aliased paths, strokes, gradients, clipping, compositing, TrueType text), and PlutoSVG, the SVG renderer on it, MIT: SVG images, inline `<svg>`, `<canvas>` (§12, §13; PlutoSVG's patches: its `README.onyx`) |
-| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19), `wasm.js` + `qjs_wasm.c` (WebAssembly on wasm3) and `crypto.js` + `qjs_crypto.c` (Web Crypto on mbedTLS: §27), `qjs_frames.c` (the frames' windows, postMessage between them, MessagePort across realms: §29) |
+| `third_party/netsurf/content/handlers/javascript/quickjs/` | NetSurf's JavaScript on QuickJS: `qjs.c` (the engine's glue, the natives), `dom.js` (the DOM, in JavaScript), `canvas.js` + `qjs_canvas.c` (canvas, §13), `intl.js` + `qjs_intl.h` (Intl, §15), `html5.js` (the HTML5 DOM: §17), `net.js` + `qjs_net.c` (WebSocket, EventSource, the streamed fetch, Workers: §19), `wasm.js` + `qjs_wasm.c` (WebAssembly on wasm3) and `crypto.js` + `qjs_crypto.c` (Web Crypto on mbedTLS: §27), `qjs_codecache.c` (the scripts' bytecode kept on the card: §30), `qjs_frames.c` (the frames' windows, postMessage between them, MessagePort across realms: §29) |
 | `third_party/libhubbub/`, `third_party/libdom/`, `third_party/libparserutils/` | the HTML parser (the current standard's: §16), the DOM, the input decoding |
 | `third_party/cldr-48/` | the locale data of Intl (CLDR 48 through ICU 78; Unicode License v3), made by `tools/tests/netsurf/intl/gendata.js` |
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar, the History dialog), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -502,6 +502,7 @@ optional chaining...) with the DOM written in JavaScript:
   the core: `browser_window_scrolled`), `resize`, `DOMContentLoaded` (the document parsed),
   `load` (laid out, its images in; `<body onload>`).
 - **WebAssembly** (wasm3) and **Web Crypto** (mbedTLS): §27.
+- **Speed**: the interpreter's measured wins, the code cache on the card, the window kept responsive, the JIT: §30.
 - A script runs at most `script_timeout` seconds (NetSurf's option); its recursion is
   stopped past **4 MB** of stack (a `RangeError`). The Onyx app has an 8 MB stack for it:
   `stack = 8M` in `SD:/apps/netsurf.app/app.txt`, read by the kernel (`AppStackSize`,
@@ -2550,6 +2551,169 @@ page, as it did); `loading="lazy"` frames load at once; focus does not move betw
 script (`contentWindow.focus()` does nothing; a click does); a frame inside a shadow root has no
 window; MessagePort to a worker.
 
+## 30. JavaScript speed: the interpreter, the code cache, a responsive window, the JIT
+
+What the Pi's users met: github.com "hangs a lot before I can use it", m.facebook.com and
+google.com slow to load (Google's 1 MB script: 4.9 s on the Pi, the window not pumping its
+events for 2 s; 0.5 s of preludes at each launch). Profiled on the PC bench (`NS_PROF` +
+`prof.sh`, `NS_PERF`; the Pi is 5-10x slower):
+
+- **github.com** (a repository page): the box tree rebuilt in full 9 times (`html_rebox`,
+  ~130 ms each on the PC) and 0.46 s of layout outweighed its 1 s of scripts. In the scripts:
+  13 % in the module loader's regular expression (below), the forced layouts of geometry reads,
+  `for...of` iterations, selector matching.
+- **m.facebook.com**: 2 s of layout in 10 passes, 64 % of the samples in nested flex boxes
+  (`layout_flex_item` 6-10 levels deep: each level lays its items out to measure them, then
+  again to place them -- exponential); scripts 1.9 s, of which parsing a good part.
+- **google.com**: the scripts' time split about evenly between parsing / compiling and
+  running.
+
+The layout costs went to the layout work (§26: the flex layout memo, partial restyles); what
+follows is the JavaScript side.
+
+### The interpreter (`third_party/quickjs-ng-0.17.0/quickjs.c`, `README.onyx`)
+
+Measured with callgrind's instruction counts (the shared PC's clock moves by 30 %): the
+bench `tools/tests/netsurf/jit/` -- `qjsrun.c` (QuickJS-ng alone: `print`, `console.log`,
+`performance.now`, test262's `$262`, the promise jobs; built for the PC and, static, for
+AArch64 Linux under `qemu-aarch64` by `build.sh`), `bench.sh` (Octane's CPU benchmarks and
+React 18's server rendering of 1000 rows, fetched once into `$CACHE`; `COUNT=1`: callgrind),
+`test262.py` (test262 with its harness, strict and sloppy, async; with `--bin2` the tests whose
+outcome differs between two builds), `icount.sh` (the exact AArch64 instruction count of a run:
+qemu logs one instruction a block -- slow, small workloads).
+
+- `OP_strict_eq` / `OP_strict_neq` decide inline: two ints, the same object or symbol, two
+  strings of different lengths or both string atoms (unique by their text -- not a symbol's
+  description, an atom of another type), `undefined` / `null` against anything; the rest calls
+  `js_strict_eq_slow`. React compares strings against literals all the time (`switch (type)`).
+- `JS_FreeValue`'s decrement inlined in the loop (`js_free_value_inl`); a string atom pushed as
+  its own value (`OP_push_atom_value`, `typeof`'s result) without `JS_AtomToValue`; the
+  interrupt poll always inlined.
+- `for...of` over a dense array reads its elements directly (`js_array_iterator_next`).
+- Instructions (x86, callgrind), before -> after: React SSR 4992M -> 4426M (-11.3 %),
+  Richards 166.9M -> 157.5M (-5.7 %), DeltaBlue 290.4M -> 277.2M (-4.5 %), RayTrace -3.3 %,
+  NavierStokes -4.1 %, Crypto -2.5 %, Splay -1.7 %, EarleyBoyer -4.1 %. test262 (35543
+  tests: 33785 pass) gives the same outcome for every test before and after.
+
+### The DOM glue (`qjs.c`, `dom.js`)
+
+- ES modules: the imports a module names were found by a regular expression whose
+  backtracking over github.com's 81 modules was 13 % of its script time; `N.moduleImports` does
+  the same scan in C (the same specifiers on all 81 modules and the edge cases: comments,
+  strings, `import(...)`, `export * from`).
+- Class matching: `matches` / `querySelector*` / `closest`, `getElementsByClassName`,
+  `classList.contains` and `[attr~=v]` split the attribute into an array for each node;
+  `N.hasToken(node, name, token)` checks it in C (ASCII whitespace, as HTML says).
+
+### The code cache (`quickjs/qjs_codecache.c`)
+
+A browser does not parse a script it has seen: V8 keeps its compiled code. Here the scripts'
+QuickJS bytecode is kept on the card, `SD:/apps/netsurf.app/jscache/<16 hex digits>.bc`:
+
+- **What**: every classic script of 8 KB or more (external or inline), and the preludes
+  (`dom.js`, `html5.js`, `canvas.js`, `net.js`, `wasm.js`, `crypto.js`, `intl.js` -- their
+  bytecode was already kept in memory for a process's next contexts; the first context now
+  reads it from the card too). `js_exec` compiles (`JS_EVAL_FLAG_COMPILE_ONLY`) or reads the
+  function, then runs it (`JS_EvalFunction`: the same as `JS_Eval`).
+- **The key is the source**: its SHA-256 (mbedTLS) names the file (the first 8 bytes); the
+  file's header holds the whole hash, the source's length, the engine's build
+  (`JS_GetBuildId`: the version and quickjs.c's build date -- a new build writes its own, an old
+  file is not read), the bytecode's length and checksum. A file is used only if all match: the
+  same text, byte for byte, gives the same code wherever it came from (another URL, inline). A
+  page's script that changes at every load (Google varies its scripts between requests) gets a
+  new entry -- the same limit as V8's cache.
+- **The functions' source is kept** (`Function.prototype.toString` gives the same text as
+  without the cache): the files are ~3x the source (QuickJS keeps each function's own text).
+- **Its size**: `jscache/index` lists the files (their key, size, last use); past 32 MB the
+  least recently used are removed. **Writing** is a thread of its own on the Pi (`kapi_thread_create`;
+  the stores queued in order, up to 16 MB waiting), the bench writes at once; `NS_JSCACHE=0`
+  (the bench) turns the cache off. A file unreadable or not matching is compiled again.
+- **Measured** (PC bench): the preludes 80 -> 11 ms (the first context of a process: 0.5 s on
+  the Pi); a 1.2 MB script (Octane's TypeScript compiler) compiles in 62 ms, its bytecode
+  reads back in 5 ms (on AArch64 under qemu: 506 -> 18 ms); google.com's gstatic script (244
+  KB) 81 -> 36 ms (compile + run -> read + run).
+
+### A responsive window during the scripts
+
+- **Between the scheduler's callbacks** (`framebuffer/schedule.c`): every 4 ms the frontend
+  is asked whether a click, a wheel turn, a key, a resize or the close box came
+  (`onyx_chrome_input_pending`, `user/netsurf/onyx_chrome.cpp`: it pumps the window's events
+  without waiting); if so the scheduler returns and the main loop takes them before the next
+  callbacks -- a click no longer waits for the 40 ms budget of timers and fetch callbacks.
+- **During a long script** (`qjs.c`'s interrupt handler, every 100 ms of a script): the
+  window's events are pumped in a deferred mode (`onyx_chrome_pump_deferred`): the system's
+  queue is drained (no "not pumping" freeze, nothing dropped), the fetch threads' posts run
+  (they only schedule), and the window's pointer and key events are kept (moves merged) and
+  handled once the script is done, before anything else (`replay_deferred` at the next pump).
+
+### The JIT (`third_party/quickjs-ng-0.17.0/quickjs-jit.c`; experimental, off by default)
+
+A baseline JIT for QuickJS's bytecode on AArch64, a function at a time, after `js_jit` calls
+(Choices: `js_jit:N`; 0, the default: the interpreter only; `JS_SetJIT` in quickjs.h, the
+executable memory from `kapi_code_alloc`). The design, kept small by leaning on the
+interpreter:
+
+- **The frame stays the interpreter's**: `JS_CallInternal` sets it up (arguments, locals, the
+  value stack in memory) then calls the function's code; the code keeps the stack pointer in
+  `x19` (the locals `x20`, the arguments `x21`, its `JitFrame` `x22`, the realm `x23`, the
+  bytecode `x24`, the stack frame `x25`, the runtime `x26`).
+- **Templates** for the frequent instructions: constants and string atoms, locals / arguments /
+  closure variables (with the reference counts inline), the TDZ checks, stack shuffles, `if` on
+  a boolean / int / null / undefined, `goto` (the interrupt poll on the backward ones),
+  integer `+ - * & | ^ << >> >>>` (overflow -> the slow case), comparisons -- fused with the
+  branch after them when that is not a branch target --, `++` / `--` and `+=` on locals, `!`,
+  `this`, `return`. **Inline caches** for `o.x` reads, writes and `.length`: each site keeps
+  (in the code, branched over) the shape its objects had and the property's index; the
+  template checks the object's shape, then the index, the atom and the flags in that shape
+  again (a shape not shared can change in place: a property deleted or made an accessor), and
+  reads / writes `p->prop[idx]` without a call; a miss calls the helper, which fills the cache
+  when the object itself has the data property. **Helpers** in C for the rest (prototype
+  properties, dense arrays' elements, calls -- tail calls included --, globals, closures, `{}`,
+  `===` on non-ints: the interpreter's fast paths).
+- **Every other instruction, and every slow case, is the interpreter's**: the code calls
+  `jh_step`, which runs that one instruction in `JS_CallInternal` (`JS_CALL_FLAG_JIT_STEP`: the
+  frame resumed from a *copy* of the instruction followed by an invalid opcode,
+  `OP_JIT_STEP_END`, whose dispatch returns -- the interpreter's own dispatch is untouched; a
+  backtrace maps a pc in a copy back, `js_frame_pc`). So every instruction keeps the
+  interpreter's exact semantics.
+- **Leaving**: a return; an exception (the interpreter unwinds it: a `catch` goes on
+  interpreted); an instruction whose next one is not the next in the bytecode (a `finally`'s
+  `ret`, `with`): the interpreter goes on from there. Generators and async functions are not
+  compiled.
+- The code: blocks by powers of two in 1 MB chunks, the blocks of freed functions reused
+  (process-wide; a spin lock). The interpreter with the JIT built in but off runs as fast as
+  without it (the instruction counts: within 2-3 %; taking the address of the interpreter's
+  `sp` / `pc` for the JIT had put them in memory: +28 %, found by `icount.sh`).
+- **Measured** (AArch64 instructions, `icount.sh`, the JIT after 2 calls): a counting loop
+  3.7x fewer (53.3M -> 14.3M), a loop of small calls -11 %, Octane's Richards -8.8 % (56.9M ->
+  51.9M), DeltaBlue -3.8 % (98.2M -> 94.5M), RayTrace -2.8 % (530.4M -> 515.4M: its doubles
+  go through C), React's server rendering even (211.4M -> 212.9M:
+  calls and property reads on prototypes dominate it, both still through C). The interpreter
+  with the JIT built in but off: +0.5 % (React) to +1.8 % (DeltaBlue). Before the inline caches
+  and the slow cases' own helpers (a step cost ~100 instructions: the interpreter's prologue) it
+  was +4 % to +9 % slower than the interpreter -- the reason they came first. Not yet measured
+  on the Pi: hence off by default.
+- **Validation**: test262 under qemu with the JIT after 1 call against the interpreter
+  (`test262.py --bin "env QJS_JIT=1 qemu-aarch64 qjsrun-a64" --bin2 ...`, the interpreter built
+  without the JIT): `test/language` and ten of `test/built-ins`' folders (Array, Function,
+  Object, String, RegExp, JSON, Promise, Map, Math, Number), 35394 tests, the same outcome for
+  every one. A first run found 384 differing: a step passed no function to the interpreter,
+  which `OP_init_ctor` (a derived class's default constructor) reads. Plus the edge cases of
+  the caches (a property deleted, made an accessor or read-only, a frozen object, a shape grown
+  past its hash) and of the arithmetic (every pair of 19 values through `+ - * / < <= > >= ==
+  != ! - %`) against the interpreter. jstest.sh, nettest.sh and iframetest.sh pass (the PC
+  bench is x86: no JIT there).
+- **Next**: the prototype's methods in the caches (`o.f()`: a second shape), calls from
+  compiled code to compiled code without `JS_CallInternal`'s prologue, re-entering the code at
+  a `catch` and after a `finally`, float arithmetic, then measured on the Pi.
+
+### WebAssembly: an AArch64 JIT?
+
+WAMR (the Bytecode Alliance's runtime) was considered for compiled Wasm: its fast JIT
+generates x86-64 code only (its build refuses other targets), its LLVM JIT / AOT is far too
+heavy for the Pi. wasm3 stays (§27: an interpreter 3.5-9x slower than V8); a template JIT of
+its operations, on this JIT's assembler, is the way if the sites need it.
+
 ## 8. Known gaps
 
 - JavaScript: synchronous XHR (runs async), multipart request bodies, binary request bodies
@@ -2577,6 +2741,10 @@ window; MessagePort to a worker.
   and groups as layers, fixed boxes that stay in view).
 - WebAssembly and Web Crypto (§27): no Wasm SIMD, threads, `WebAssembly.Tag` / `Exception`,
   JSPI; no Ed25519 / X25519; RSA key generation blocks the window.
+- JavaScript speed (§30): the JIT is a first version, off by default (a `catch` goes on
+  interpreted, calls go through the interpreter's frame set-up); the code cache keys a script
+  by its exact text (a script that changes at each load is compiled each time); a single long
+  script still holds the window (its events are kept and handled after it).
 - SVG: no `<mask>`, `<pattern>`, `<marker>`, filters, SMIL animations, `<textPath>`, per-glyph
   position lists, the page's web fonts in `<text>`; the page's
   CSS `fill` / `stroke` (`.icon path { fill: red }`) do not reach an inline `<svg>` -- libcss

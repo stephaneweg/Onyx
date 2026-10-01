@@ -42,8 +42,8 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
-| ~~**WebAssembly**~~ -- done (docs/06 §27) | all | the standard API on wasm3 (an interpreter, bound to QuickJS: `Module`, `Instance`, `Memory` over the linear memory, `Table`, `Global`, imports / exports, i64 as BigInt, traps as RuntimeError, the streaming forms), in pages and workers; 3.5-9x slower than V8 on the PC. Left: SIMD, threads / shared memory, `WebAssembly.Tag` / `Exception`, JSPI | speed: an AOT / JIT for AArch64 (WAMR fast-JIT / AOT, or a template JIT of wasm3's operations) -- see the JIT row | M | P2 |
-| **JIT (speed)** | V8 / JSC / LibJS (bytecode interpreter + JIT on x86-64 only) | QuickJS-ng bytecode interpreter: 20-50x slower than V8 on heavy scripts (a React hydration: seconds on the Pi) | short term: profile-guided fixes in the natives (dom.js's hot paths in C: the DOM wrappers, the selector engine, innerHTML), QuickJS's inline caches (quickjs-ng has shape caches: keep them warm), avoid megamorphic dom.js code; long term: a baseline JIT for AArch64 in QuickJS (XL) | M / XL | P1 |
+| ~~**WebAssembly**~~ -- done (docs/06 §27) | all | the standard API on wasm3 (an interpreter, bound to QuickJS: `Module`, `Instance`, `Memory` over the linear memory, `Table`, `Global`, imports / exports, i64 as BigInt, traps as RuntimeError, the streaming forms), in pages and workers; 3.5-9x slower than V8 on the PC. Left: SIMD, threads / shared memory, `WebAssembly.Tag` / `Exception`, JSPI | speed: an AOT / JIT for AArch64 -- WAMR's fast JIT turned out x86-64 only and its AOT needs LLVM, so a template JIT of wasm3's operations (the JS JIT's assembler) -- see the JIT row | M | P2 |
+| **JIT (speed)** -- under way (docs/06 §30) | V8 / JSC / LibJS (bytecode interpreter + JIT on x86-64 only) | QuickJS-ng's interpreter, sped up where measured (React's rendering -11 %, Octane -2..-6 % instructions), the DOM glue's hot paths in C (module imports, class matching), a **code cache** on the card (a script seen before is read as bytecode, not parsed: the preludes 80 -> 11 ms, a 1.2 MB script 62 -> 5 ms on the PC), the window kept responsive during long scripts; a **baseline JIT for AArch64**, first version, off by default (Choices `js_jit:N`): templates for locals, constants, integer arithmetic, compares and branches, C helpers for properties and calls, the interpreter for one instruction otherwise -- a counting loop 3.7x fewer instructions | next: inline caches (shape + slot per site) for property reads / writes, compiled-to-compiled calls, `catch` re-entry, float arithmetic; measure on the Pi, then turn it on. WebAssembly: WAMR's fast JIT is x86-64 only and its LLVM AOT too heavy -- wasm3 stays; a template JIT of its operations on the same assembler if needed | L | P1 |
 | Engine conformance (test262 core) | V8 ~99 %, LibJS ~95 % | QuickJS-ng ~ 99 % of ES2024 | follow quickjs-ng releases | S | P3 |
 | Memory: generational GC | V8 / JSC | refcount + cycle collector, 384 MB limit | fine for the Pi; watch leaks | - | P4 |
 
@@ -203,8 +203,8 @@ Wave 2 -- P1 / P2 depending on wave 1:
 8. Editing (`contenteditable`) and IndexedDB; `:focus` / `:active` styles.
 
 Wave 3 -- P3: video (VP9 software, then H.264 hardware in the kernel), WebGL on V3D,
-Service Workers / Cache API, multi-column, container queries, scroll-snap, zoom / HiDPI, the
-JIT study for QuickJS on AArch64.
+Service Workers / Cache API, multi-column, container queries, scroll-snap, zoom / HiDPI. (The
+JIT for QuickJS on AArch64 was brought forward: a first version is in, off by default -- §2.)
 
 Each item is measured before and after on the Pi's workload (the bench's `NS_PERF` /
 `NS_PROF`, the sweep's 15 sites) -- a feature that slows every page is gated to the pages that

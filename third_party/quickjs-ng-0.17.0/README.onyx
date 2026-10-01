@@ -29,7 +29,7 @@ Onyx patches (marked Onyx):
   (JS_CALL_FLAG_JIT_STEP: the frame resumed from a copy of the instruction followed by
   OP_JIT_STEP_END, an invalid opcode whose dispatch returns); backtraces map a pc in such a
   copy back (js_frame_pc); the code is freed with its function. CONFIG_QJS_NO_JIT leaves it
-  out. NetSurf's docs/06 section 29 describes it.
+  out. NetSurf's docs/06 section 30 describes it.
 
 Built into libquickjs.a by user/netsurf/Makefile (-std=gnu11 -D__ONYX__; committed like the other
 libraries); the PC bench (tools/tests/netsurf/host.mk) compiles the same four files.

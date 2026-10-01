@@ -1937,7 +1937,15 @@ hand for newlib); the disk cache is `user/netsurf/onyx_cache.c`. A change is che
 scripts' engine is QuickJS (`third_party/quickjs-ng-0.17.0`, `libquickjs.a`), with
 WebAssembly on wasm3 (`third_party/wasm3-0.9.2`, `libm3.a`: both made by `make -C
 user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (docs/06 §27);
-`sh tools/tests/netsurf/jstest.sh` runs their regression pages on the PC.
+`sh tools/tests/netsurf/jstest.sh` runs their regression pages on the PC. The engine's speed
+(docs/06 §30) is measured without the browser: `tools/tests/netsurf/jit/` builds QuickJS alone
+(`build.sh`: `qjsrun` for the PC and AArch64 under `qemu-aarch64`), runs Octane and React
+(`bench.sh`, `COUNT=1`: callgrind's instruction counts), test262 against another build
+(`test262.py --bin2`), and counts AArch64 instructions exactly (`icount.sh`: the JIT, which is
+AArch64 only -- `QJS_JIT=n` turns it on in `qjsrun`). A change to `quickjs.c` (or
+`quickjs-jit.c`) means `libquickjs.a` made again: delete `third_party/quickjs-ng-0.17.0/*.o`
+first. The scripts' compiled code is cached on the card (`SD:/apps/netsurf.app/jscache/`,
+keyed by the engine's build: a new `libquickjs.a` starts it afresh).
 
 And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
 entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
