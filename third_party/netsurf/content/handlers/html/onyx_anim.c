@@ -1849,6 +1849,13 @@ static void oa_tick(void *p)
 	if (a == NULL)
 		return;
 	a->tick_scheduled = false;
+	if (c->onyx_closed && !c->aborted) {
+		/* closed (another page shows in its window, this one kept for the history): no
+		 * frames, its boxes' layers not touched; looked at again in a second */
+		a->tick_scheduled = true;
+		guit->misc->schedule(1000, oa_tick, c);
+		return;
+	}
 	start = now = oa_clock();
 	a->last_tick = now;
 	if (c->aborted)

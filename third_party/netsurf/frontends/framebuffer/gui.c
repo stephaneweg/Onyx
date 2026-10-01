@@ -2340,6 +2340,7 @@ gui_window_event(struct gui_window *gw, enum gui_window_event event)
 		bwidget->pan_required = false;
 		fbtk_set_scroll_position(gw->vscroll, 0);
 		fbtk_set_scroll_position(gw->hscroll, 0);
+		onyx_comp_page_changed();	/* (the page before's layers: gone) */
 		fb_queue_redraw(gw->browser, 0, 0, fbtk_get_width(gw->browser),
 				fbtk_get_height(gw->browser));
 		break;

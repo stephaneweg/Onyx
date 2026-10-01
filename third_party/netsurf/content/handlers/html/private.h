@@ -178,6 +178,8 @@ typedef struct html_content {
 
 	/** Browser window containing this document, or NULL if not open. */
 	struct browser_window *bw;
+	/** Onyx: closed (another page shows in its window): its animations paused */
+	bool onyx_closed;
 
 	/** Frameset information */
 	struct content_html_frames *frameset;

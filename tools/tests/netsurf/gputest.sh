@@ -93,6 +93,23 @@ NS_GPU=0 shoot $T/pages/gpu-scroll.html "@W@W$N$N$N$N$N$N$N$N$N$N$N$N$N$N$N@W" "
 same "$G/band-notches.png" "$G/band-jump.png" "gpu-scroll: 15 notches = a jump of 15" || fail=1
 same "$G/band-notches.png" "$G/band-cpu.png" "gpu-scroll: 15 notches, composited = CPU" || fail=1
 
+echo "---- 3b. a new page: the page before's layers gone; a fragment let go of once scrolled"
+# (gpu-nav-a.html: an animated layer and a link to gpu-nav-b.html, clicked)
+NAV="move 500 450;wait;down 500 450;wait;wait;up 500 450;@W@W@W"
+NS_GPU=1 shoot $T/pages/gpu-nav-a.html "@W@W$NAV" "$G/nav-gpu.png"
+NS_GPU=0 shoot $T/pages/gpu-nav-a.html "@W@W$NAV" "$G/nav-cpu.png"
+same "$G/nav-gpu.png" "$G/nav-cpu.png" "gpu-nav: the animated layer of the page before gone" || fail=1
+# (nav-fragment.html#target, scrolled to the top while late content still reflows the page)
+frag() {
+	steps=$(echo "$2" | sed "s/@W/$W/g")
+	SIM_SCREEN=900x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_ARGS="file://$(realpath $T/pages/nav-fragment.html)$1" \
+		SIM="${steps}dump $3.elsm;exit" timeout ${TMO:-300} "$OUT/build/netsurf" >"$3.log" 2>&1
+	python3 tools/tests/desktop_sim/shot.py "$3.elsm" "$3" >/dev/null
+}
+NS_GPU=1 frag "#target" "@Wwheel 400 300 60;@W@W@W@W@W" "$G/frag-up.png"
+NS_GPU=1 frag "" "@W@W@W@W@W@W" "$G/frag-top.png"
+same "$G/frag-up.png" "$G/frag-top.png" "nav-fragment: scrolled up from #target, stays up" || fail=1
+
 echo "---- 4. the software V3D (gpucomp's GPU path)"
 GPC_SOFTGPU=1 NS_GPU=1 TMO=900 shoot $T/pages/css-transform.html "@W" "$G/softgpu.png" 520x420
 NS_GPU=0 shoot $T/pages/css-transform.html "@W" "$G/softgpu-cpu.png" 520x420
