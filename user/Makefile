@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -178,6 +178,17 @@ koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) ft/lib
 	   libc/crt0libc.o libc/onyx_syscalls.o user.ld $(KOTON_HDR)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       $(KOTON_OBJ) wtk/libwtk.a ft/libft.a -lm -o $@
+
+# PDF Viewer (Apps/pdf: docs/pdf/README.md): a newlib app as Writer, on MuPDF -- its fitz + pdf parts, jbig2dec, openjpeg,
+# zlib, libjpeg and a FreeType with the PDF fonts' drivers, built by Apps/pdf/mupdf.mk into Apps/pdf/obj/libmupdf.a (that
+# FreeType serves the app's own text too: no ft/libft.a). The app is AGPL-3.0, MuPDF's licence (docs/LICENSING.md).
+MU_NL_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections
+Apps/pdf/obj/libmupdf.a: Apps/pdf/mupdf.mk $(wildcard Apps/pdf/mu/*)
+	@$(MAKE) --no-print-directory -f Apps/pdf/mupdf.mk MU_ROOT=.. MU_ONYX=1 MU_CC=$(CC) MU_AR=$(AR) MU_OUT=Apps/pdf/obj MU_CFLAGS="$(MU_NL_CFLAGS)"
+pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clipboard.h docguard.h ft/wtkface.h \
+	 wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I../third_party/mupdf-1.28.5/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a Apps/pdf/obj/libmupdf.a -lm -o $@
 
 # Media Player, the music library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through wtk),
 # its decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built with
@@ -315,5 +326,6 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 
 clean:
 	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf
+	rm -rf Apps/pdf/obj
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean
