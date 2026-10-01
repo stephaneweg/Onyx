@@ -1219,9 +1219,13 @@ class CSSRuleList {
 		Object.defineProperty(this, '_r', { value: rules || [], writable: true });
 		this._fill();
 	}
-	_fill() {
-		for (const k of Object.keys(this)) delete this[k];
-		this._r.forEach((r, i) => Object.defineProperty(this, i, { value: r, configurable: true, enumerable: true }));
+	/* the index properties again from index `from` on (Onyx: not the whole list at each
+	 * insertRule -- an append is one property: thousands of rules inserted one by one were
+	 * O(n^2)) */
+	_fill(from = 0) {
+		for (let i = from; Object.prototype.hasOwnProperty.call(this, i); i++) delete this[i];
+		for (let i = from, n = this._r.length; i < n; i++)
+			Object.defineProperty(this, i, { value: this._r[i], configurable: true, enumerable: true });
 	}
 	get length() { return this._r.length; }
 	item(i) { return this._r[i] || null; }
@@ -1321,7 +1325,7 @@ class CSSGroupingRule extends CSSRule {
 		const r = cssParseRules(String(text), this, this._sheet, this._childKind());
 		if (r.length !== 1) throw new DOMException('invalid rule', 'SyntaxError');
 		l._r.splice(index, 0, r[0]);
-		l._fill();
+		l._fill(index);
 		this._changed();
 		return index;
 	}
@@ -1789,7 +1793,7 @@ class CSSStyleSheet extends StyleSheet {
 		const r = cssParseRules(String(text), this, this, 'sheet');
 		if (r.length !== 1) throw new DOMException('invalid rule: ' + text, 'SyntaxError');
 		l._r.splice(index, 0, r[0]);
-		l._fill();
+		l._fill(index);
 		this._changed();
 		return index;
 	}
@@ -1799,7 +1803,7 @@ class CSSStyleSheet extends StyleSheet {
 		if (index >= l._r.length) throw new DOMException('index out of range', 'IndexSizeError');
 		l._r[index]._sheet = null;
 		l._r.splice(index, 1);
-		l._fill();
+		l._fill(index);
 		this._changed();
 	}
 	addRule(sel, style, index) {
@@ -1817,8 +1821,17 @@ class CSSStyleSheet extends StyleSheet {
 		try { this.replaceSync(text); return NativePromise.resolve(this); }
 		catch (e) { return NativePromise.reject(e); }
 	}
-	/* a rule changed: the text again from the rules, written back */
+	/* a rule changed: the text again from the rules, written back -- Onyx: once, at the end
+	 * of the script's turn (a microtask) or before a layout read (flushSheets), not at each
+	 * change: google.com inserts its rules one by one (insertRule) by the thousand, and each
+	 * write-back made NetSurf parse and apply the whole sheet again (O(n^2): 10 000+ sheet
+	 * conversions for one search page on the Pi) */
 	_changed() {
+		if (!this._rl) return;
+		if (pendingSheets.size === 0) NativePromise.resolve().then(flushSheets);
+		pendingSheets.add(this);
+	}
+	_writeBack() {
 		if (!this._rl) return;
 		const t = this._rl._r.map(r => r.cssText).join('\n');
 		if (this._owner && this._owner.localName === 'style') {
@@ -1835,6 +1848,20 @@ class CSSStyleSheet extends StyleSheet {
 	}
 }
 G.CSSStyleSheet = CSSStyleSheet;
+
+/* Onyx: the sheets changed by the CSSOM in this turn, written back together (_changed) */
+const pendingSheets = new Set();
+function flushSheets() {
+	if (pendingSheets.size === 0) return;
+	const l = [...pendingSheets];
+	pendingSheets.clear();
+	for (const sh of l) sh._writeBack();
+}
+/* a layout read sees the rules inserted before it (offsetWidth after insertRule) */
+for (const k of ['rect', 'boxed', 'boxScroll']) {
+	const f = N[k];
+	if (typeof f === 'function') N[k] = function () { flushSheets(); return f.apply(N, arguments); };
+}
 
 const sheetOfEl = new WeakMap();
 function cssSheetOf(el) {
@@ -4377,6 +4404,7 @@ function checkMedia() {
 
 /* getComputedStyle: the box's own values for a few properties, else the style attribute */
 function getComputedStyle(el, pseudo) {
+	flushSheets();	/* (Onyx: the CSSOM's pending rules first) */
 	const decl = new CSSStyleDeclaration(null);
 	const get = p => {
 		const k = p.startsWith('--') ? p : kebab(p);

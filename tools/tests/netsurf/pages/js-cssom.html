@@ -51,7 +51,8 @@ function run() {
 	check(s.cssRules[1].selectorText === 'body', 'deleteRule');
 	const last = s.cssRules[s.cssRules.length - 1];
 	last.style.setProperty('background', 'rgb(0, 0, 255)');
-	check(/rgb\(0, 0, 255\)/.test(document.getElementById('s1').textContent), 'a rule\'s style written back to the <style>');
+	/* (written back at the end of the turn: the CSSOM's changes coalesced, dom.js) */
+	Promise.resolve().then(() => check(/rgb\(0, 0, 255\)/.test(document.getElementById('s1').textContent), 'a rule\'s style written back to the <style>'));
 	const c = new CSSStyleSheet();
 	c.replaceSync('.x { color: red } .y { color: blue }');
 	check(c.cssRules.length === 2 && c.cssRules[0].selectorText === '.x', 'constructed sheet, replaceSync');

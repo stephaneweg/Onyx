@@ -385,6 +385,12 @@ sed -n 's/^console: wasm timing /  timing (wasm3): /p' "$OUT/js-wasm.log"
 html5page js-crypto.html crypto "Web Crypto on mbedTLS: getRandomValues, digests, HMAC, AES, KDFs, ECDSA / ECDH, RSA against Chromium's answers, a worker"
 sed -n 's/^console: crypto timing /  timing (mbedTLS): /p' "$OUT/js-crypto.log"
 
+echo "js-insertrule.html (2000 rules inserted one by one: written back once a turn, fast)"
+L=$OUT/js-insertrule.log
+run js-insertrule.html "$(waits 200)" "$L"
+for s in "insertRule rules 2000" "insertRule applied yes" "insertRule later yes"; do expect "$L" "$s"; done
+grep -a "^console: insertRule time" "$L" | sed 's/^console: /  /'
+
 echo "js-scripttime.html (the time limit spares a working script; console, getElementsByClassName)"
 L=$OUT/js-scripttime.log
 NS_SCRIPT_TIMEOUT=1 run js-scripttime.html "$(waits 700)" "$L"

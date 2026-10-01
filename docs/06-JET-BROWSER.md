@@ -2490,6 +2490,15 @@ property through `getComputedStyle`, the console's JSON for a small object, a 50
 named fast, a long string whole. `urltest.sh` (WPT's URL data) as before: 896 / 896, 278 / 278,
 72 / 87. `jstest.sh`, `nettest.sh`, `fxtest.sh` pass; `sitesweep.sh`: no crash.
 
+**The CSSOM's changes written back once a turn** (`dom.js`, `CSSStyleSheet._changed`): each
+`insertRule` / `deleteRule` rewrote the whole `<style>`'s text at once, and NetSurf parsed and
+applied the whole sheet again -- google.com's search page inserts its rules one by one by the
+thousand: 10 000+ sheet conversions on the Pi, the page "running mad". Now the sheets changed are
+written back together at the end of the script's turn (a microtask) or before a layout read
+(`offsetWidth`, `getBoundingClientRect`, `getComputedStyle`); and `CSSRuleList._fill(from)`
+redefines the index properties from the changed index only (an append: one). 2000 rules: 1049 ->
+40 ms on the PC, 2000 -> 1 sheet conversion. Test: `jstest.sh`'s `js-insertrule.html`.
+
 ## 29. Iframes and the messaging between windows (reCAPTCHA's frames)
 
 The aim: the sites that work through frames -- Google's reCAPTCHA (the "I'm not a robot" box of
