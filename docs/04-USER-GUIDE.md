@@ -1183,6 +1183,9 @@ on the right that filters them (a name, a category, a word of the summary):
 A **system update** (`onyx`, `pi-firmware`) is **staged**: a banner offers to **Restart**; at the next
 boot it is moved in before the desktop starts (the previous kernel kept as `kernel8-rpi4.img.old`),
 and the Pi restarts once more when the kernel or the firmware changed. Alone: `run pkgman`.
+The package manager itself (`pkg`, this applet, `pkgd`) is a package of its own, **`pkgman`**: part of
+the system (it cannot be removed), but updated at once, without a restart (the new version runs the next
+time it starts).
 
 ![The Package Manager: the updates](../screenshots/pkgman.png)
 *Updates: the system, Archiver, Jet Browser and Koton have a newer version.*
