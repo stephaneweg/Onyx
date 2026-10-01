@@ -2594,6 +2594,13 @@ both ways, a message for another origin dropped, the anchor's try at sending the
 refused). Google's own reCAPTCHA is not touched by the
 tests.
 
+**A node adopted by another frame's document keeps its object** (`qjs.c` `qjs_wraps_take`):
+since the in-place adoption (§18: `dom_document_onyx_adopt`, the same node, not a copy), the
+wrappers of the adopted subtree move to the adopting document's realm -- its wrapper table,
+its prototypes -- so `el` appended into a frame's body is the frame's node (`el.ownerDocument
+=== frame.contentDocument`), and a frame's node appended here is this document's
+(`node.parentNode === document.body`).
+
 **Not done**: a frame's initial about:blank is not there synchronously (a script that writes
 into `contentDocument` right after inserting the iframe finds null until it has loaded, a few ms
 -- the built-ins above aside); `document.domain`; a node adopted from another document is a

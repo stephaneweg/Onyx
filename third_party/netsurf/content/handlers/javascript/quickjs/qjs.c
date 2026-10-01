@@ -564,7 +564,7 @@ static JSValue qjs_wrap(jsthread *t, dom_node *n)
 	if (t->capwraps != 0) {
 		for (h = qjs_hash(n, t->capwraps); t->wraps[h].node != NULL;
 		     h = (h + 1) & (t->capwraps - 1)) {
-			if (t->wraps[h].node == n)
+			if (t->wraps[h].node == n && !JS_IsUndefined(t->wraps[h].obj))
 				return JS_DupValue(t->ctx, t->wraps[h].obj);
 		}
 	}
@@ -998,16 +998,125 @@ static dom_document *qjs_doc_of(dom_node *n)
 	return d;
 }
 
+/* Onyx: the live thread (realm) of a tab's shared heap whose document is d (NULL: none) */
+static jsthread *qjs_thread_of_doc(jsthread *t, dom_document *d)
+{
+	jsthread *o;
+
+	if (t->doc == d)
+		return t;
+	if (t->heap == NULL)
+		return NULL;
+	for (o = t->heap->live; o != NULL; o = o->hnext)
+		if (o->doc == d && !o->closed && !o->zombie && !o->worker)
+			return o;
+	return NULL;
+}
+
+/* Onyx: the wrappers of a subtree adopted by another frame's document (in place: the same
+ * nodes) moved to that document's realm -- its wrapper table and its prototypes -- so a node
+ * is one object for the frames of the tab (el.ownerDocument, el.parentNode answered by the
+ * new document's realm: iframetest.sh's frames-api.html) */
+static void qjs_wraps_take(jsthread *from, jsthread *to, dom_node *root)
+{
+	dom_node *n = dom_node_ref(root), *next;
+	bool moved = false;
+
+	if (from == NULL || to == NULL || from == to || from->capwraps == 0)
+		goto out;
+	while (n != NULL) {
+		size_t h;
+
+		for (h = qjs_hash(n, from->capwraps); from->wraps[h].node != NULL;
+		     h = (h + 1) & (from->capwraps - 1)) {
+			if (from->wraps[h].node != n || JS_IsUndefined(from->wraps[h].obj))
+				continue;
+			if ((to->nwraps + 1) * 2 <= to->capwraps || qjs_wraps_grow(to)) {
+				JSValue obj = from->wraps[h].obj, proto = qjs_proto_for(to, n);
+				size_t k;
+
+				JS_SetPrototype(to->ctx, obj, proto);
+				JS_FreeValue(to->ctx, proto);
+				for (k = qjs_hash(n, to->capwraps); to->wraps[k].node != NULL;
+				     k = (k + 1) & (to->capwraps - 1))
+					;
+				to->wraps[k].node = n;	/* (the table's reference moves) */
+				to->wraps[k].obj = obj;
+				to->nwraps++;
+				/* (the node kept as a tombstone until the table is made
+				 * again below: the other nodes' probes go past it) */
+				from->wraps[h].obj = JS_UNDEFINED;
+				from->nwraps--;
+				moved = true;
+			}
+			break;
+		}
+		/* the next node of the subtree, in document order */
+		next = NULL;
+		if (dom_node_get_first_child(n, &next) == DOM_NO_ERR && next != NULL) {
+			dom_node_unref(n);
+			n = next;
+			continue;
+		}
+		while (n != NULL) {
+			if (n == root) {
+				dom_node_unref(n);
+				n = NULL;
+				break;
+			}
+			next = NULL;
+			if (dom_node_get_next_sibling(n, &next) == DOM_NO_ERR && next != NULL) {
+				dom_node_unref(n);
+				n = next;
+				break;
+			}
+			next = NULL;
+			dom_node_get_parent_node(n, &next);
+			dom_node_unref(n);
+			n = next;
+		}
+	}
+	if (moved) {
+		/* (the tombstones dropped: the table made again) */
+		size_t cap = from->capwraps;
+		{
+			struct qjs_wrap *old = from->wraps;
+			struct qjs_wrap *w = calloc(cap, sizeof(*w));
+			size_t i;
+			if (w != NULL) {
+				for (i = 0; i < cap; i++) {
+					if (old[i].node != NULL && !JS_IsUndefined(old[i].obj)) {
+						size_t h2 = qjs_hash(old[i].node, cap);
+						while (w[h2].node != NULL)
+							h2 = (h2 + 1) & (cap - 1);
+						w[h2] = old[i];
+					}
+				}
+				free(old);
+				from->wraps = w;
+			}
+		}
+	}
+	return;
+out:
+	dom_node_unref(n);
+}
+
 /* Onyx: a node inserted into another document's tree is adopted by that document first,
  * in place (the DOM's insertion steps: libdom refused it, WRONG_DOCUMENT_ERR) */
-static void qjs_adopt_for(dom_node *parent, dom_node *child)
+static void qjs_adopt_for(jsthread *t, dom_node *parent, dom_node *child)
 {
 	dom_document *pd = qjs_doc_of(parent), *cd = qjs_doc_of(child);
-	dom_node_type t;
+	dom_node_type type;
 
 	if (pd != NULL && cd != NULL && pd != cd &&
-	    dom_node_get_node_type(child, &t) == DOM_NO_ERR && t != DOM_DOCUMENT_NODE)
-		dom_document_onyx_adopt(pd, child);
+	    dom_node_get_node_type(child, &type) == DOM_NO_ERR && type != DOM_DOCUMENT_NODE &&
+	    dom_document_onyx_adopt(pd, child) == DOM_NO_ERR && t != NULL) {
+		jsthread *from = qjs_thread_of_doc(t, cd), *to = qjs_thread_of_doc(t, pd);
+		/* (a document without a realm -- a DOMParser's -- has its wrappers in the
+		 * realm that made them: the caller's) */
+		qjs_wraps_take(from != NULL ? from : t, to, child);
+	}
 	if (pd != NULL) dom_node_unref(pd);
 	if (cd != NULL) dom_node_unref(cd);
 }
@@ -1020,7 +1129,7 @@ static JSValue n_insert(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	QJS_NODE_ARG(p, 0);
 	QJS_NODE_ARG(c, 1);
 
-	qjs_adopt_for(p, c);	/* (Onyx: a node of another document adopted first) */
+	qjs_adopt_for(QJS_T(ctx), p, c);	/* (Onyx: a node of another document adopted first) */
 	if (ref != NULL)
 		e = dom_node_insert_before(p, c, ref, &res);
 	else
@@ -4140,11 +4249,23 @@ static JSValue n_create_in(JSContext *ctx, JSValueConst this_val, int argc, JSVa
 /* adopt(doc, node): node (out of its tree) and its subtree made doc's, in place (Onyx) */
 static JSValue n_adopt(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
 {
+	jsthread *t = QJS_T(ctx), *from;
+	dom_document *cd = NULL;
 	QJS_NODE_ARG(d, 0);
 	QJS_NODE_ARG(n, 1);
-	if (dom_document_onyx_adopt((dom_document *) d, n) != DOM_NO_ERR)
+	if (dom_node_get_owner_document(n, &cd) != DOM_NO_ERR)
+		cd = NULL;
+	if (dom_document_onyx_adopt((dom_document *) d, n) != DOM_NO_ERR) {
+		if (cd != NULL)
+			dom_node_unref(cd);
 		return JS_ThrowTypeError(ctx, "NotSupportedError");
-	QJS_T(ctx)->dirty = true;
+	}
+	/* (Onyx: its wrappers to the adopting document's realm: qjs_wraps_take) */
+	from = cd != NULL ? qjs_thread_of_doc(t, cd) : NULL;
+	qjs_wraps_take(from != NULL ? from : t, qjs_thread_of_doc(t, (dom_document *) d), n);
+	if (cd != NULL)
+		dom_node_unref(cd);
+	QJS_DIRTY(t);
 	return JS_DupValue(ctx, argv[1]);
 }
 
