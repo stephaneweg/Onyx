@@ -1916,6 +1916,11 @@ NetSurf/3.12`: no client hints (`sec-ch-ua...` only with a Chrome User-Agent),
 `navigator.vendor` empty, `navigator.platform` `Linux aarch64`. DuckDuckGo serves its full
 results to it (the PC bench). "Desktop site" still sends a desktop Chrome's to the sites the
 user picks, and Choices' `user_agent:` any other (the Android Chrome's is given there).
+**`SD:/apps/jet.app/jet.ini`** (`utils/useragent.c`, `onyx_ini_ua`) makes them editable: an
+`[user_agent]` section (`default`, `desktop`) and a `[sites]` section (`host = User-Agent`, the
+host or its subdomains); read at the first request; the order: the site's line, "Desktop site",
+`default`, Choices' `user_agent:`, NetSurf's own. The client hints and `navigator.vendor` follow
+the User-Agent the site gets (a Chrome one: Chrome's hints, `Google Inc.`).
 
 **Brotli and zstd.** `Accept-Encoding: gzip, deflate, br, zstd`; the body is decoded as it
 comes by the matching streaming decoder (zlib, the brotli decoder already linked, zstd
