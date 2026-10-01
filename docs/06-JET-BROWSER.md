@@ -2917,6 +2917,13 @@ simulator's main loop turning every 16 ms where the Pi's sleeps until an event -
 Over the floor, kotonstudio.com's idle cost went from ~6 / ~13 % to ~1 % of a PC core (on
 the Pi: from most of core 0 to ~5-8 %), none when the window is not seen.
 
+**google.com** (the live page, `--env SIM_REALNET=1 --settle 30`), idle: at the floor before
+and after, its light page (NetSurf's User-Agent) and its desktop page (`desktop-sites`) alike
+(0.6-0.9 %): Google's timers do little once the page is up. What it costs the Pi is its load
+(its scripts) and what follows it: the writes (below), and its HTTP/2 connections, kept 30 s
+for the next request, each looking at its socket 100 times a second -- now 10 (`strace -c` of
+the idle page: 363 `poll`s in 10 s for 4 connections).
+
 ### The card: write less, write gently
 
 - **The disk cache stores an object the second time it is seen** (`onyx_cache.c`,
