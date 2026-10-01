@@ -12,8 +12,8 @@ real desktop, 1024 × 768).
 
 | | |
 |---|---|
-| ![](mockups/clipboard-panel.png) | **The panel, from the menu bar** (its icon, the number of items). The 10 slots newest first: each its kind (text, image with a thumbnail, files — *cut* marked —, rich text, a link), a preview, the app it came from, the time, the size. **A click puts the cursor there**: *Ctrl+V pastes this*. The × of the row under the pointer deletes it; **Clear All** empties the ring. |
-| ![](mockups/clipboard-window.png) | **The same as a window** (`clipboard` app): the list, the item at the cursor shown whole (the image, all the text), *Paste Next*, *Delete*, *Clear All*, a search, *Save as PNG...* for an image; keys Up / Down, Enter, Del. |
+| ![](mockups/clipboard-widget.png) | **The widget, bottom right** (the user's choice): a small card listing the ring, newest first — each item its kind (an icon: text, image, files, rich text, link), one line of it (an image: its size only, **no preview**), the time. **Ctrl+C in the Calendar**: the widget comes to the front, the new item on top with the cursor on it (*Copied*). The bin at the top right clears the list. |
+| ![](mockups/clipboard-widget-dock.png) | **Above the dock, always**: its bottom is a little above the dock's top edge, so a dock as wide as the screen never hides it and it never covers the dock. **A click on an item puts the cursor there** (here the image: Ctrl+V pastes it); the row under the pointer shows its × (delete). |
 
 ## The service: `clipd`
 
@@ -51,9 +51,9 @@ share their buffers): the sender writes into one, the receiver maps it by its id
 - **Paste** — the app: `CLIP_GET {the formats it takes, best first}` → clipd answers `CLIP_DATA
   {format, size, surface}` with the cursor item's best representation the app takes (a surface it made,
   freed when the app answers `CLIP_DONE`), or `CLIP_NONE`.
-- **The front end** — `CLIP_LIST` (the items' kinds, previews, sources, times, sizes — thumbnails as a
-  small surface), `CLIP_CURSOR {id}`, `CLIP_DELETE {id}`, `CLIP_CLEAR`; and `CLIP_SUBSCRIBE`: clipd
-  tells the subscribers when the ring changes (the menu bar's count, an open panel).
+- **The front end** — `CLIP_LIST` (the items' kinds, a line of text each — an image: its size —,
+  sources, times), `CLIP_CURSOR {id}`, `CLIP_DELETE {id}`, `CLIP_CLEAR`; and `CLIP_SUBSCRIBE`: clipd
+  tells the subscribers when the ring changes (the widget).
 - **Cut and paste of files**: the File Viewer pastes a `files-cut` item by moving the files, then sends
   `CLIP_DELETE` for it.
 
@@ -68,17 +68,20 @@ the apps that use the header get the history without a change; an app then adds 
 **The kernel**: `kapi_clipboard_set / _get` (v40) stay in the ABI (it only grows) but are no longer
 used — or answer for clipd when it is not running (a fallback, one text). Nothing else is kept there.
 
-### The front end
+### The front end: a widget, bottom right
 
-- **In the menu bar**: an icon with the number of items; a click opens the panel (the first mock-up).
-  A shortcut opens it from anywhere (the menu bar routes it, as Print Screen for Screenshot).
-- **The `clipboard` app** (the second mock-up): the same list, the item whole, search, save an image.
-- Both are clipd's clients (`CLIP_LIST`, `CLIP_SUBSCRIBE`), not clipd itself: clipd has no window.
+- A small card (300 px wide, a row of 30 px an item) at the **bottom right of the screen**, its bottom
+  **above the dock's top edge** (the dock's place read from the window list, followed when the dock
+  moves or the screen changes): a dock as wide as the screen never hides it, it never covers the dock.
+- **No preview of the images**: an icon and their size.
+- A click on an item: the **cursor** goes there (Ctrl+V pastes it); its ×: deleted; the bin: all cleared.
+- It is a client of clipd (`CLIP_LIST`, `CLIP_SUBSCRIBE`), not clipd itself: clipd has no window.
 
 ## Questions for the user
 
-1. **The front end**: the menu bar's panel, the window, or both? And a shortcut to open it (**Ctrl+Shift+V**,
-   as Windows' Win+V)?
+1. **When is the widget shown?** Always, on the desktop (behind the windows, as the agenda widget), coming
+   to the front for a few seconds at each copy? Or hidden, shown only at a copy and by a shortcut
+   (**Ctrl+Shift+V**, as Windows' Win+V), gone when one clicks elsewhere?
 2. **Ctrl+V when the cursor's item does not suit the app** (an image under the cursor, Ctrl+V in tinypad):
    paste nothing, or the newest item that suits (here the text)? (Proposed: the newest that suits, the
    panel showing which one was pasted.)

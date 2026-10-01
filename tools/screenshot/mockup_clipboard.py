@@ -91,65 +91,73 @@ def item_row (c, x, y, w, it, i, hot = False, wide = False):
 		c.line ([(x + w - 27, y + 19), (x + w - 17, y + 29)], DIM, 2); c.line ([(x + w - 17, y + 19), (x + w - 27, y + 29)], DIM, 2)
 	return h
 
-# ---- 1. the panel, from the menu bar -----------------------------------------------------------------------------
-def shot_panel ():
-	c = screen ()
-	# the clipboard's icon among the menu bar's (left of the volume), lit
-	ix = 878
-	c.rect (ix - 6, 2, 30, 22, SEL, r = 5); ic_clip (c, ix, 4, 18, WHITE)
-	c.ellipse (ix + 18, 6, 6, (226, 80, 76)); c.text_c (ix + 12, 0, 12, 12, "7", "tiny", WHITE)
-	pw = 440; px = M.W - pw - 12; py = 30
-	rows = sum (64 if it[0] == "image" else 52 for it in ITEMS) + 6 * len (ITEMS)
-	ph = 56 + rows + 56
-	c.rect (px, py, pw, ph, MENU, r = 12, outline = M.shade (FACE, 0.62))
-	c.poly ([(ix + 3, py), (ix + 9, py - 6), (ix + 15, py)], MENU)
-	ic_clip (c, px + 16, py + 16, 20, TEXT)
-	c.text_l (px + 44, py + 10, 32, "Clipboard", "big")
-	c.text_r (px + pw - 16, py + 10, 32, "7 of 10", "small", DIM)
-	c.hline (px + 12, px + pw - 12, py + 50, (226, 218, 212))
-	y = py + 58
-	for i, it in enumerate (ITEMS):
-		y += item_row (c, px + 10, y, pw - 20, it, i, hot = i == 4) + 6
-	c.hline (px + 12, px + pw - 12, y + 2, (226, 218, 212))
-	M.button (c, px + 14, y + 12, 104, 30, "Clear All")
-	c.text_l (px + 132, y + 12, 30, "Click an item: Ctrl+V pastes it", "small", DIM)
-	M.cursor (c, px + pw - 60, py + 58 + 52 * 2 + 64 + 6 * 4 + 52 + 20)
-	c.save ("clipboard-panel.png")
+# ---- the widget: bottom right, above the dock's top (never under it, whatever its width) --------------------------------
+DOCK_TOP = 676						# the dock's top edge in desktop.png
+def widget (c, rows, cursor, hot = -1, fresh = -1, title = "Clipboard"):
+	ww, rh = 300, 30
+	wh = 40 + len (rows) * rh + 10
+	wx, wy = M.W - ww - 12, DOCK_TOP - 10 - wh
+	c.rect (wx, wy, ww, wh, M.A (MENU, 245), r = 12, outline = M.shade (FACE, 0.62))
+	ic_clip (c, wx + 14, wy + 11, 18, TEXT)
+	c.text_l (wx + 40, wy + 6, 28, title, "uib")
+	c.text_l (wx + 40 + c.tw (title, "uib") + 8, wy + 6, 28, "%d / 10" % len (rows), "small", DIM)
+	# Clear All: a small bin at the top right
+	bx = wx + ww - 34
+	c.rect (bx, wy + 8, 24, 24, M.A ((0, 0, 0), 14), r = 6)
+	c.rect (bx + 7, wy + 14, 10, 13, None, r = 2, outline = DIM, width = 1.6); c.rect (bx + 5, wy + 12, 14, 2, DIM)
+	c.hline (wx + 10, wx + ww - 10, wy + 38, (226, 218, 212))
+	y = wy + 42
+	for i, (kind, text, src, when) in enumerate (rows):
+		cur = i == cursor
+		if cur: c.rect (wx + 6, y, ww - 12, rh - 2, M.mix (MENU, SEL, 0.22), r = 6, outline = SEL, width = 1.5)
+		elif i == hot: c.rect (wx + 6, y, ww - 12, rh - 2, M.mix (MENU, SEL, 0.08), r = 6)
+		if i == fresh: c.rect (wx + 6, y, 4, rh - 2, (78, 160, 92), r = 2)
+		ic_type (c, kind, wx + 14, y + 5, 18)
+		right = when if i != hot else ""
+		mono = src in ("Tinypad", "Terminal")
+		f = "mono" if mono else "ui"
+		limit = ww - 44 - 14 - (c.tw (right, "small") + 10 if right else 30)
+		t = text
+		while c.tw (t, f) > limit and len (t) > 4: t = t[:-2]
+		if t != text: t = t[:-1] + "..."
+		c.text_l (wx + 40, y, rh - 2, t, f, M.LINK if kind == "url" else TEXT)
+		if i == hot:
+			c.line ([(wx + ww - 26, y + 9), (wx + ww - 17, y + 18)], DIM, 1.8); c.line ([(wx + ww - 17, y + 9), (wx + ww - 26, y + 18)], DIM, 1.8)
+		elif right: c.text_r (wx + ww - 14, y, rh - 2, right, "small", DIM)
+		y += rh
+	return wx, wy, ww, wh
 
-# ---- 2. the same as a window: the list, the item shown whole ---------------------------------------------------------
-def shot_window ():
+ROWS = [("text", "Dentist at 17:30 -- call them before", "Calendar", "12:34"),
+	("image", "Image  468 x 300", "Screenshot", "12:31"),
+	("files", "kapi.cpp, kapi_abi.h  (cut)", "File Viewer", "12:28"),
+	("rich", "Onyx -- a homemade OS for the Pi 4", "Writer", "12:20"),
+	("text", "static int g_folder;", "Tinypad", "12:12"),
+	("url", "https://github.com/stephaneweg/onyx", "Jet Browser", "11:58"),
+	("text", "ls /bin | grep e", "Terminal", "11:40")]
+
+def toast_tag (c, wx, wy, s):
+	w = c.tw (s, "smallb") + 16
+	c.rect (wx + 300 - w - 44, wy + 12, w, 18, (78, 160, 92), r = 9); c.text_c (wx + 300 - w - 44, wy + 12, w, 18, s, "smallb", WHITE)
+
+# 1. Ctrl+C in the calendar: the widget comes to the front, the new item on top, the cursor on it
+def shot_widget ():
 	c = screen ()
-	x, y, w, h = 120, 60, 800, 560
-	cx, cy, cw, ch = M.window (c, x, y, w, h, "Clipboard")
-	# the toolbar
-	c.rect (cx, cy, cw, 46, FACE); c.hline (cx, cx + cw, cy + 46, M.shade (FACE, 0.85))
-	M.button (c, cx + 10, cy + 8, 120, 30, "Paste Next")
-	M.button (c, cx + 138, cy + 8, 90, 30, "Delete")
-	M.button (c, cx + 236, cy + 8, 100, 30, "Clear All")
-	M.field (c, cx + cw - 230, cy + 10, 220, 26, "", "Search in the clipboard", "small")
-	# the list
-	lx, ly, lw = cx + 10, cy + 56, 380
-	c.rect (lx, ly, lw, ch - 56 - 34, M.LIST, r = 6, outline = M.LINE)
-	yy = ly + 6
-	for i, it in enumerate (ITEMS):
-		yy += item_row (c, lx + 4, yy, lw - 8, it, i) + 4
-	# the item at the cursor, whole
-	vx, vw = lx + lw + 10, cw - lw - 30
-	c.rect (vx, ly, vw, ch - 56 - 34, M.LIST, r = 6, outline = M.LINE)
-	c.text (vx + 14, ly + 12, "Screenshot 468 x 300", "uib")
-	c.text (vx + 14, ly + 32, "An image  -  from Screenshot at 12:31  -  549 KB", "small", DIM)
-	iw = vw - 28; ih = iw * 300 / 468
-	c.img.paste (SHOT.resize ((int (iw * K), int (ih * K)), Image.LANCZOS), (int ((vx + 14) * K), int ((ly + 58) * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
-	c.rect (vx + 14, ly + 58, iw, ih, None, outline = (170, 160, 150))
-	c.text (vx + 14, ly + 70 + ih, "Pastes as an image in Paint, Writer...;", "small", DIM)
-	c.text (vx + 14, ly + 88 + ih, "as a PNG file in the File Viewer.", "small", DIM)
-	M.button (c, vx + 14, ly + 116 + ih, 150, 30, "Save as PNG...")
-	# the status bar
-	c.rect (cx, cy + ch - 24, cw, 24, FACE); c.hline (cx, cx + cw, cy + ch - 24, M.shade (FACE, 0.85))
-	c.ellipse (cx + 12, cy + ch - 12, 4, M.GREEN)
-	c.text_l (cx + 22, cy + ch - 24, 24, "7 of 10 items  -  1.2 MB in memory", "ui")
-	c.text_r (cx + cw - 10, cy + ch - 24, 24, "Up / Down: choose  -  Enter: paste next  -  Del: delete", "ui", DIM)
-	c.save ("clipboard-window.png")
+	wx, wy, ww, wh = widget (c, ROWS, cursor = 0, fresh = 0)
+	toast_tag (c, wx, wy, "Copied")
+	c.save ("clipboard-widget.png")
+
+# 2. a dock as wide as the screen: the widget above it; a click put the cursor on the image, the
+#    pointer over a row shows its x (delete)
+def shot_widget_dock ():
+	c = screen ()
+	# the dock stretched to the whole width (its face extended, its icons kept in the middle)
+	band = DESK.crop ((183, 676, 841, 756))
+	face = DESK.getpixel ((200, 740))
+	c.rect (6, DOCK_TOP, M.W - 12, 80, face, r = 10, outline = M.shade (face, 0.7))
+	c.img.paste (band.resize ((int (658 * K), int (80 * K)), Image.LANCZOS), (int ((M.W - 658) / 2 * K), int (DOCK_TOP * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
+	wx, wy, ww, wh = widget (c, ROWS, cursor = 1, hot = 4)
+	M.cursor (c, wx + ww - 22, wy + 42 + 4 * 30 + 16)
+	c.save ("clipboard-widget-dock.png")
 
 if __name__ == "__main__":
-	shot_panel (); shot_window ()
+	shot_widget (); shot_widget_dock ()
