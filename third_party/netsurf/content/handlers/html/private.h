@@ -330,6 +330,9 @@ typedef struct html_content {
 	/** Onyx: a control the user changed: its input / change events due (soon) */
 	struct dom_node *script_changed;
 	unsigned int script_changed_events;
+	/** Onyx: the edit the input event tells (InputEvent's inputType, data: NULL) */
+	const char *script_input_type;
+	char *script_input_data;
 
 } html_content;
 
@@ -476,6 +479,12 @@ bool html_script_event(html_content *htmlc, const char *type, struct dom_node *n
 void html_script_changed(html_content *htmlc, struct dom_node *node, unsigned int events);
 
 /**
+ * Onyx: the input / change events html_script_changed made due, dispatched now (a key's
+ * edit: its input event before its keyup, as browsers do).
+ */
+void html_script_changed_flush(html_content *htmlc);
+
+/**
  * Onyx: element.focus() on a text field or a textarea: the browser's caret in it, at the
  * end of its text (typing goes there, as after a click) -- now if it has a box, else
  * after the next rebox.
@@ -484,6 +493,20 @@ void html_script_changed(html_content *htmlc, struct dom_node *node, unsigned in
 eturn whether the node is (or will be tried as) a text control
  */
 bool html_script_focus_control(html_content *htmlc, struct dom_node *node);
+
+/**
+ * Onyx: a text field's selection in characters (selectionStart / selectionEnd) -- false
+ * when it is not the focused field (the scripts then answer its text's end).
+ */
+bool html_script_control_selection(html_content *htmlc, struct dom_node *node, int *start,
+		int *end);
+
+/**
+ * Onyx: a focused text field's selection set (setSelectionRange, select) -- false when it
+ * is not the focused field.
+ */
+bool html_script_control_select(html_content *htmlc, struct dom_node *node, int start,
+		int end);
 
 /**
  * Onyx: the boxes from the root down to the one painted last under a point (the box a
@@ -503,7 +526,8 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
 /**
  * Onyx: whether a box is painted in a layer of its own, after its layer's in-flow
  * content (a positioned box; a flex / grid item with a z-index), and its z-index (auto:
- * 0; negative: false, painted in place).
+ * 0; negative: false -- its stacking context paints it under its in-flow content,
+ * html_redraw_negz).
  */
 bool html_redraw_layer_z(const struct box *box, int32_t *z);
 
@@ -525,6 +549,36 @@ struct onyx_layer_key {
 	double lo, span;
 };
 int onyx_layer_key_cmp(const struct onyx_layer_key *a, const struct onyx_layer_key *b);
+
+/**
+ * Onyx: whether a box has a negative z-index (a layer html_redraw_layer_z does not put
+ * off: its stacking context paints it under its in-flow content, html_redraw_negz).
+ */
+bool html_redraw_negz_box(const struct box *box);
+
+/**
+ * Onyx: whether a box is a stacking context (the root; a layer with a z-index set, fixed
+ * or sticky, a compositing group).
+ */
+bool html_redraw_stacking_context(const struct box *box);
+
+/** Onyx: a box with a negative z-index in a stacking context */
+struct onyx_negz {
+	struct box *box;
+	int dx, dy;		/* its parent's origin (x_parent), from the context's origin */
+	struct rect clip;	/* the overflow clips between them (when clipped), idem */
+	bool clipped;
+	int32_t z;
+	int order;		/* (the tree's) */
+};
+
+/**
+ * Onyx: the boxes with a negative z-index a stacking context holds (not those of the
+ * stacking contexts inside it), in their painting order (the most negative first, then
+ * the tree's order): a malloc'd array (NULL when none), its length returned. cull (from
+ * the context's origin, NULL: none): the subtrees outside it are not looked into.
+ */
+int html_redraw_negz(struct box *context, const struct rect *cull, struct onyx_negz **out);
 
 
 /* in html/redraw_border.c */

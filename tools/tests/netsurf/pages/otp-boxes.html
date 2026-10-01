@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>one-time code: six boxes</title>
+<!-- The common one-time-code widgets without a framework (docs/06 section 45):
+     row 1 -- six <input maxlength="1" inputmode="numeric" autocomplete="one-time-code">,
+       moving on at the input event (focus() + select() of the next box), back at Backspace
+       in an empty box (keydown), a pasted code shared out by the paste event
+       (clipboardData.getData('text'), preventDefault); keydown filtering on e.key;
+     row 2 -- the same moving on at keyup (it reads the box's value: the input before keyup);
+     row 3 -- a field with maxlength="4" (what is typed beyond it dropped);
+     row 4 -- setSelectionRange / select / selectionStart in a focused field; beforeinput
+       prevented (a "#" refused). -->
+<style>
+body { margin: 0; font: 16px sans-serif; }
+.row { margin: 8px 20px; height: 40px; }
+.row input { width: 32px; height: 32px; margin-right: 6px; text-align: center; font: 22px monospace;
+  border: 2px solid #888; padding: 0; }
+#long, #sel { width: 200px; text-align: left; }
+</style>
+</head><body>
+<div class="row" id="r1"></div>
+<div class="row" id="r2"></div>
+<div class="row"><input id="long" maxlength="4"></div>
+<div class="row"><input id="sel" value="abcdef"></div>
+<script>
+function log(s) { console.log(s); }
+function boxes(row, advanceOn) {
+	var r = document.getElementById(row), list = [];
+	for (var i = 0; i < 6; i++) {
+		var b = document.createElement('input');
+		b.maxLength = 1;
+		b.inputMode = 'numeric';
+		b.autocomplete = i ? 'off' : 'one-time-code';
+		b.setAttribute('aria-label', row + ' digit ' + (i + 1));
+		b.id = row + '-' + i;
+		r.appendChild(b);
+		list.push(b);
+	}
+	function code() { return list.map(function (b) { return b.value || '_'; }).join(''); }
+	list.forEach(function (b, i) {
+		b.addEventListener('focus', function () { b.select(); });
+		b.addEventListener('keydown', function (e) {
+			if (e.key === 'Backspace' && b.value === '' && i > 0) {
+				e.preventDefault();
+				list[i - 1].value = '';
+				list[i - 1].focus();
+				log(row + ' back to ' + (i - 1) + ' ' + code());
+				return;
+			}
+			if (e.key.length === 1 && !/^[0-9]$/.test(e.key) && !e.ctrlKey) {
+				e.preventDefault();
+				log(row + ' refused ' + e.key + ' code=' + e.code + ' keyCode=' + e.keyCode);
+			}
+		});
+		function advance(e) {
+			if (/^[0-9]$/.test(b.value)) {
+				if (i < 5) list[i + 1].focus();
+				log(row + ' ' + e.type + ' ' + i + ' ' + code() + (e.inputType ? ' ' + e.inputType + ' ' + e.data : '') +
+					' active=' + document.activeElement.id);
+				if (code().indexOf('_') < 0) log(row + ' complete ' + code());
+			}
+		}
+		b.addEventListener(advanceOn, advance);
+		b.addEventListener('paste', function (e) {
+			var t = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+			e.preventDefault();
+			log(row + ' paste ' + JSON.stringify(e.clipboardData.getData('text/plain')) + ' types=' +
+				e.clipboardData.types.join(','));
+			for (var k = 0; k < 6; k++) list[k].value = t[k] || '';
+			list[Math.min(t.length, 5)].focus();
+			log(row + ' pasted ' + code() + ' active=' + document.activeElement.id);
+		});
+	});
+}
+boxes('r1', 'input');
+boxes('r2', 'keyup');
+var long = document.getElementById('long');
+long.addEventListener('input', function (e) {
+	log('long ' + long.value + ' ' + e.inputType + ' ' + JSON.stringify(e.data) + ' ' +
+		(e instanceof InputEvent));
+});
+var sel = document.getElementById('sel');
+sel.addEventListener('focus', function () {
+	sel.setSelectionRange(2, 4);
+	log('sel range ' + sel.selectionStart + ',' + sel.selectionEnd);
+});
+sel.addEventListener('beforeinput', function (e) {
+	if (e.data === '#') { e.preventDefault(); log('sel beforeinput refused #'); }
+});
+sel.addEventListener('input', function () {
+	log('sel ' + sel.value + ' caret ' + sel.selectionStart + ',' + sel.selectionEnd);
+});
+log('ready ' + document.getElementById('r1-0').maxLength + ' ' + typeof ClipboardEvent + ' ' +
+	typeof DataTransfer);
+</script>
+</body></html>

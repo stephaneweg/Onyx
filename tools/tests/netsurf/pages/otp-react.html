@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>one-time code: React boxes, a hidden field</title>
+<!-- One-time-code widgets as React and the libraries build them (docs/06 section 45):
+     row 1 -- six React-controlled boxes (value from the state: React sets the field's value
+       and its value attribute back at each render), onChange keeps the last digit typed and
+       focuses the next box through its ref, onKeyDown Backspace goes back, onPaste shares a
+       pasted code out (input-otp / react-otp-input);
+     row 2 -- one field over six drawn boxes, the field invisible (opacity: 0; position:
+       absolute over them; z-index 1), its keydown refusing what is not a digit, the boxes
+       drawn from its value; the boxes inside a <label for> (a click on one focuses it). -->
+<style>
+body { margin: 0; font: 16px sans-serif; }
+.row { margin: 10px 20px; height: 44px; }
+.row input.box { width: 32px; height: 32px; margin-right: 6px; text-align: center; font: 22px monospace;
+  border: 2px solid #888; padding: 0; }
+.hidden-wrap { position: relative; display: inline-block; }
+.hidden-wrap input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0;
+  z-index: 1; border: 0; padding: 0; margin: 0; font-size: 1px; }
+.slot { display: inline-block; width: 32px; height: 32px; margin-right: 6px; border: 2px solid #888;
+  text-align: center; font: 22px/32px monospace; vertical-align: top; }
+.slot.on { border-color: rgb(0, 0, 255); }
+</style>
+<script src="react/react.production.min.js"></script>
+<script src="react/react-dom.production.min.js"></script>
+</head><body>
+<div id="app"></div>
+<script>
+var h = React.createElement;
+function log(s) { console.log(s); }
+function Boxes() {
+	var st = React.useState(['', '', '', '', '', '']), vals = st[0], setVals = st[1];
+	var refs = React.useRef([]);
+	function setAt(i, v) {
+		var n = vals.slice();
+		n[i] = v;
+		setVals(n);
+		return n;
+	}
+	return h('div', { className: 'row' }, vals.map(function (v, i) {
+		return h('input', { key: i, id: 'b' + i, className: 'box', value: v, maxLength: 1,
+			inputMode: 'numeric', autoComplete: i ? 'off' : 'one-time-code',
+			ref: function (el) { refs.current[i] = el; },
+			onFocus: function (e) { e.target.select(); },
+			onChange: function (e) {
+				var d = e.target.value.replace(/\D/g, '').slice(-1);
+				var n = setAt(i, d);
+				log('boxes change ' + i + ' ' + JSON.stringify(e.target.value) + ' ' +
+					e.nativeEvent.inputType + ' -> ' + n.join('') +
+					(d && i < 5 ? ' next' : ''));
+				if (d && i < 5) refs.current[i + 1].focus();
+				if (n.join('').length === 6) log('boxes complete ' + n.join(''));
+			},
+			onKeyDown: function (e) {
+				if (e.key === 'Backspace' && !vals[i] && i > 0) {
+					e.preventDefault();
+					setAt(i - 1, '');
+					refs.current[i - 1].focus();
+					log('boxes back ' + (i - 1));
+				}
+			},
+			onPaste: function (e) {
+				e.preventDefault();
+				var t = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6).split('');
+				var n = [0, 1, 2, 3, 4, 5].map(function (k) { return t[k] || ''; });
+				setVals(n);
+				refs.current[Math.min(t.length, 5)].focus();
+				log('boxes pasted ' + n.join(''));
+			} });
+	}));
+}
+function Hidden() {
+	var st = React.useState(''), value = st[0], setValue = st[1];
+	var fs = React.useState(false), focused = fs[0], setFocused = fs[1];
+	var slots = [];
+	for (var i = 0; i < 6; i++)
+		slots.push(h('span', { key: i, className: 'slot' + (focused && i === value.length ? ' on' : '') },
+			value[i] || ''));
+	return h('div', { className: 'row' },
+		h('label', { htmlFor: 'hid', className: 'hidden-wrap', id: 'hidlabel' },
+			h('input', { id: 'hid', value: value, inputMode: 'numeric', autoComplete: 'one-time-code',
+				maxLength: 6,
+				onFocus: function () { setFocused(true); log('hidden focus'); },
+				onBlur: function () { setFocused(false); },
+				onKeyDown: function (e) {
+					if (e.key.length === 1 && !/^[0-9]$/.test(e.key)) {
+						e.preventDefault();
+						log('hidden refused ' + e.key);
+					}
+				},
+				onChange: function (e) {
+					var v = e.target.value.replace(/\D/g, '').slice(0, 6);
+					setValue(v);
+					log('hidden ' + v);
+					if (v.length === 6) log('hidden complete ' + v);
+				} }),
+			slots));
+}
+ReactDOM.createRoot(document.getElementById('app')).render(h('div', null, h(Boxes), h(Hidden)));
+window.addEventListener('mousedown', function (e) {
+	log('mousedown ' + e.target.tagName.toLowerCase() + (e.target.id ? '#' + e.target.id : ''));
+}, true);
+setTimeout(function () { log('ready ' + document.querySelectorAll('input').length); }, 50);
+</script>
+</body></html>

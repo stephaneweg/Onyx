@@ -115,6 +115,28 @@ answer in French. The docs stay in English.
   and no bytes on the bench -- the next thing to look at (`NS_NETBODY=videoplayback`), with a real decoder.
 - Windows: `winkapi.cpp` has the sound now (waveOut: `sound_acquire / write / status / config`).
 
+## Jet Browser: Netflix's sign-in code (2026-10-01, PC bench only)
+
+- The user: on netflix.com, the code sent by e-mail could not be typed into the boxes. docs/06
+  §45 (the audit). Netflix's code step (Hawkins' `<InputPinCodeV2>`, React) is ONE transparent
+  field over its "chrome" (`position: absolute; z-index: -1` behind it) drawing the six boxes.
+  **Cause**: Jet painted and hit a negative z-index in place (the tree's order) -- the chrome
+  took the click, the field never had the focus. Now a stacking context paints its negative
+  z-index boxes under its in-flow content, and the hit test the same (`redraw.c`
+  `onyx_negz_*`, `interaction.c` `onyx_hit_negz`).
+- Also: the caret kept while React re-renders (a `value` attribute change updates the control,
+  no rebox; the caret placed again after a reformat); the key's events in browser order
+  (keydown, keypress, `paste` with `clipboardData`, `beforeinput`, the edit with `maxlength`
+  kept, `input` with `inputType` / `data` at once, keyup); `select()` / `setSelectionRange()` /
+  `selectionStart` real in the focused field; `focus()` at once when the box exists; keys to
+  `document.activeElement`; `ClipboardEvent`, `DataTransfer`; no `navigator.serviceWorker` key.
+- NetSurf only (no libcss / libdom header or struct change; `js_event_init` and
+  `html_content` grew): rebuild Jet (`sdcard/apps/jet.app/main`); Windows `sh pc/Jet/build.sh`.
+- Test: **`tools/tests/netsurf/otptest.sh`** (new; React 18 in `pages/react/`, MIT).
+  **To try on the Pi**: the code step with an account. Not done: `text-align` / `text-indent` /
+  `letter-spacing` in a text field (Netflix's caret at the field's left; digits not centred in
+  six-box widgets), `contenteditable`.
+
 ## Jet Browser: Wikipedia's search box (2026-10-01, PC bench only)
 
 - The user's two bugs on fr.wikipedia.org (Mobile and Desktop: Codex's TypeaheadSearch, Vue 3),

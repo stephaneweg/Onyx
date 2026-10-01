@@ -36,7 +36,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38; the find bar, the context menu: §40), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40); `typeaheadtest.sh` (+ `pages/stack-typeahead.html`, `pages/form-scripted.html`): Wikipedia's search box -- the stacking order, a menu's footer out of its scroller, `pointer-events`, Enter in a form a script made (§42) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40); `typeaheadtest.sh` (+ `pages/stack-typeahead.html`, `pages/form-scripted.html`): Wikipedia's search box -- the stacking order, a menu's footer out of its scroller, `pointer-events`, Enter in a form a script made (§42); `otptest.sh` (+ `pages/otp-*.html`, `pages/stack-negz.html`, React in `pages/react/`): one-time-code fields -- Netflix's, six boxes, React-controlled boxes, an invisible field; negative z-indexes (§45) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -4483,6 +4483,121 @@ the decoding off core 0: the next optimisation once a decoder runs.
   FLAC then `new Audio()` WAV (the sound heard **bit-exact**), MP3, a 10 s file by 64 KB ranges
   and a seek to 8 s before those bytes came (17 requests, not the whole file), the type
   answers: **all passed**. jstest.sh, acidtest.sh and the others pass as before.
+
+## 45. Netflix's sign-in code: the boxes no digit could be typed in (2026-10-01)
+
+The user, on netflix.com: the home page and the sign-in page fine, the e-mail address typed,
+Continue, then the page asking for the one-time code sent by e-mail -- "impossible to type the
+digits into the boxes". An audit on the PC bench, without an account: no address was entered on
+netflix.com and no code was asked for (the code step needs a real address); the code step's
+component was read in the sign-in page's script (`assets.nflxext.com/.../clcs/login/client.*.js`,
+4.6 MB, read-only) and rebuilt as a local page with the real React.
+
+**What Netflix does.** The sign-in page is server-driven ("CLCS": the server sends a tree of
+components, the client renders them with React). The code step is a `CLCSInputPinCode`, drawn by
+the design system's (Hawkins) **`<InputPinCodeV2>`**: not six fields but **one** --
+`<input type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*">`, its text
+`color: transparent` (`caret-color: black`, `font-family: monospace`, a `letter-spacing` and a
+negative `text-indent` computed from CSS custom properties so that the caret falls on the next
+box), with no label. The six boxes are its **"chrome"**: Hawkins' `FormControl` puts after the
+field a `<div aria-hidden data-hcw-form-control-chrome>` that is `position: absolute; inset: 0;
+z-index: -1; background: white; border: ...` -- **behind** the field, in the field wrapper's
+stacking context (`position: relative; z-index: 0`) -- and the code component fills it with a
+span per box (the digits typed, then "○" placeholders). The value is React-controlled: onChange
+keeps the digits (`/\D/g` removed), six at most, and sets the state; on focus the caret is put at
+the end in an animation frame (`setSelectionRange`). The e-mail field is a `FormControl` too
+(its chrome behind it as well), but it has a floating label over most of it: a click on the label
+focuses the field -- the e-mail could be typed.
+
+**What was wrong in Jet.**
+
+1. **A negative z-index was painted, and hit, in place** (`redraw.c` §21: "a negative z-index is
+   painted in place"): in the tree's order, so the chrome -- after the field in the tree -- was
+   painted over the field and **took its clicks**: the mousedown went to the chrome's
+   `<div class=chars>`, which is not focusable; the field never got the focus, the keys went to
+   the page. That is the bug the user saw (reproduced: `mousedown on DIV.chars`, no focus event,
+   nothing typed). CSS 2.1 appendix E: a stacking context paints its children with a negative
+   z-index **after its own background and borders, before its in-flow content**.
+2. **The caret vanished at each key**: React sets the value attribute back at each render
+   (`node.defaultValue = value`), and Jet rebuilt the field's boxes for a `value` attribute
+   change; and any rebox (React re-rendering the boxes' spans) reformats the page -- the browser
+   window hides the caret then (`CONTENT_MSG_REFORMAT`) and nothing placed it again: the field
+   was typed in with no caret.
+3. **Less visible, but what other code widgets rely on**: the `input` event came after `keyup`
+   (a widget moving on at keyup read the old value) and was a bare InputEvent (no `inputType`,
+   no `data`); no `beforeinput`; no `paste` event (no `ClipboardEvent`, no `DataTransfer`) -- a
+   six-box widget sharing a pasted code out got the whole code in its first box; `maxlength`
+   was not kept (a `maxlength="1"` box took "12"); `select()`, `setSelectionRange()` were no-ops
+   and `selectionStart` always the text's end; `focus()` on the next box waited for the rebox
+   (the next key could still go to the box before); a key with no text field focused went to
+   the root, not to `document.activeElement` (a `<div tabindex>` widget); Ctrl+V gave no keydown;
+   keypress's `keyCode` of a letter was the upper case's.
+
+**The fixes (no site-specific code).**
+
+- **Negative z-indexes** (`redraw.c` `onyx_negz_*`, `html_redraw_negz`; `interaction.c`
+  `onyx_hit_negz`): `html_redraw_box_children` of a stacking context (the root; a layer with a
+  z-index set, fixed / sticky, a compositing group: `html_redraw_stacking_context`) first paints
+  the boxes with a negative z-index it holds -- found by a walk that does not go into the
+  stacking contexts inside it (they paint their own), culled by the redraw's clip, sorted by
+  z-index then the tree's order, each placed from the context's origin and clipped by the
+  overflow of the boxes between them (an absolute one not by a static scroller between it and
+  its containing block, as `onyx_oclip_escape`), each with what it puts off; the in-flow walk
+  passes over them. The hit test looks at them first (under the rest): the field takes the
+  click, the chrome only where nothing in-flow covers it. A z-index -1 box inside a positioned
+  box with z-index auto belongs to the outer context: painted under that box's background, as in
+  Chrome.
+- **The caret kept**: a `value` attribute change on a text field updates its control
+  (`dom_event.c` `onyx_attr_text_value` -> `html_texty_element_update`) instead of rebuilding
+  its boxes; after a reformat the focused field's caret is placed again
+  (`html.c` `html_caret_refresh`, scheduled by `html_reformat`; `textarea_onyx_caret_refresh`).
+- **The key's events in browser order** (`interaction.c` `html_keypress`,
+  `html_keypress_edit`): keydown, keypress, then for an edit in the focused field `paste` (a
+  `ClipboardEvent` whose `clipboardData.getData('text')` is the clipboard's text; prevented: not
+  pasted), `beforeinput` (prevented: no edit), the edit -- **`maxlength` kept** (what is typed or
+  pasted beyond it dropped; read from the element at the time) --, the **`input` event at once**
+  with its `inputType` (`insertText`, `insertFromPaste`, `deleteContentBackward`,
+  `deleteContentForward`, `deleteByCut`, `insertLineBreak`, `historyUndo` / `Redo`) and `data`
+  (`js_event_init`'s new `data` / `input_type`; `html_script_changed_flush`), then keyup (at the
+  field focused by then). Ctrl+A / C / V / X / Z / Y are keydowns of "a", "c", "v"... with
+  `ctrlKey` (no keypress).
+- **The selection** (`textarea_onyx_get_selection` / `textarea_onyx_set_selection`, in
+  characters; natives `controlSelection` / `controlSelect`): in the focused field
+  `selectionStart` / `selectionEnd` are the browser's, `setSelectionRange()`, `select()`,
+  `setRangeText()` and the setters move its caret / selection (what is typed replaces a
+  selection); a field without the caret keeps what a script set.
+- **`focus()`** puts the caret in the field now when its box is there (`html_script_focus_control`),
+  a rebox due or not (the rebox keeps the focus on its control).
+- dom.js: `ClipboardEvent`, `DataTransfer` (text), `InputEvent.getTargetRanges`, keys to
+  `document.activeElement` when no text field has the caret, keypress's `keyCode` / `charCode`
+  the character's ("a": 97), `code` "Space". And `navigator.serviceWorker` is no longer an
+  undefined key (`'serviceWorker' in navigator` was true: the sign-in page threw at
+  `.getRegistrations`).
+
+**Tests.** `tools/tests/netsurf/otptest.sh` (new; local pages, no network; React 18's
+production builds in `pages/react/`, MIT):
+`pages/otp-netflix.html` -- `<InputPinCodeV2>` rebuilt with React: a click on the boxes focuses
+the field, "1 2 a 3 4 5 6" gives 123456 (the letter dropped by onChange), the caret drawn while
+typing, a pasted "98-76 54" gives 987654; `pages/otp-boxes.html` -- six `maxlength=1` boxes moving
+on at `input` (focus + select of the next), at `keyup`, Backspace back, keydown filtering
+(`key` / `code` / `keyCode`), a paste shared out (`clipboardData`), `maxlength=4` kept (typed and
+pasted), `inputType` / `data`, `setSelectionRange` and typing over a selection, `beforeinput`
+prevented; `pages/otp-react.html` -- six React-controlled boxes (ref focus, select, onPaste) and an
+invisible field (`opacity: 0`) over drawn boxes in a `<label>`; `pages/stack-negz.html` -- the
+painting order (a z-index -1 box under the in-flow block after it, under a z-index auto parent's
+background, under a static block, -2 under -1, clipped by an `overflow: hidden` box) with and
+without the GPU compositor, and the clicks. On the build before, the Netflix page's click went to
+the chrome (no focus, nothing typed) and the caret was not drawn. jstest, typeaheadtest,
+findtest, dltest, acidtest (Acid2 identical, Acid3 100 / 100), uatest, iframetest, fxtest pass;
+gputest's 3a as before (§41). Checked on the live sign-in page: no script error, the e-mail
+field typed in (a placeholder text, nothing sent).
+
+**Not done.** A text field's `text-align`, `text-indent` and `letter-spacing` are not drawn by
+its text area (NetSurf's `desktop/textarea.c`): Netflix's caret shows at the field's left, not on
+the next box (the boxes themselves are right), and a box's digit is at its left instead of
+centred; no `contenteditable` (a code widget built on it cannot be typed in); Tab moves the caret
+to the next field without telling the scripts (`document.activeElement`, focus events); no
+composition (IME) events. **To try on the Pi**: the code step itself (an account needed).
 
 ## 8. Known gaps
 

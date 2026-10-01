@@ -202,6 +202,9 @@ struct js_event_init {
 	int key_code;		/**< its legacy keyCode */
 	bool shift, ctrl, alt;
 	int delta_x, delta_y;	/**< Onyx: a wheel's, in px (down / right: positive) */
+	const char *data;	/**< Onyx: an InputEvent's data (the text typed, pasted), a
+				     ClipboardEvent's text; NULL: none */
+	const char *input_type;	/**< Onyx: an InputEvent's inputType ("insertText"...) */
 };
 
 /**

@@ -2121,6 +2121,39 @@ static JSValue n_focus_control(JSContext *ctx, JSValueConst this_val, int argc,
 	return JS_NewBool(ctx, html_script_focus_control(t->htmlc, n));
 }
 
+/* Onyx: controlSelection(node): a focused text field's [start, end] (characters), null
+ * when it is not the focused one; controlSelect(node, start, end): set it */
+static JSValue n_control_selection(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	int s, e;
+	JSValue a;
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc == NULL || t->closed ||
+	    !html_script_control_selection(t->htmlc, n, &s, &e))
+		return JS_NULL;
+	a = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, a, 0, JS_NewInt32(ctx, s));
+	JS_SetPropertyUint32(ctx, a, 1, JS_NewInt32(ctx, e));
+	return a;
+}
+
+static JSValue n_control_select(JSContext *ctx, JSValueConst this_val, int argc,
+		JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	int32_t s = 0, e = 0;
+	QJS_NODE_ARG(n, 0);
+
+	if (argc < 3 || JS_ToInt32(ctx, &s, argv[1]) || JS_ToInt32(ctx, &e, argv[2]))
+		return JS_EXCEPTION;
+	if (t->htmlc == NULL || t->closed)
+		return JS_FALSE;
+	return JS_NewBool(ctx, html_script_control_select(t->htmlc, n, s, e));
+}
+
 /* Onyx: hitNode(x, y): the element under a point of the viewport as a click finds it
  * (html_hit_path: the box painted last there, visibility: hidden ones passed over) --
  * document.elementFromPoint; null outside the page */
@@ -5093,6 +5126,8 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("rect", 1, n_rect),
 	JS_CFUNC_DEF("hitNode", 2, n_hit_node),
 	JS_CFUNC_DEF("focusControl", 1, n_focus_control),
+	JS_CFUNC_DEF("controlSelection", 1, n_control_selection),	/* (Onyx) */
+	JS_CFUNC_DEF("controlSelect", 3, n_control_select),
 	JS_CFUNC_DEF("boxScroll", 1, n_box_scroll),
 	JS_CFUNC_DEF("boxScrollTo", 3, n_box_scroll_to),
 	JS_CFUNC_DEF("boxed", 1, n_boxed),
@@ -5571,6 +5606,12 @@ bool js_dispatch_event(jsthread *thread, const char *type, struct dom_node *targ
 		JS_SetPropertyStr(ctx, o, "deltaY", JS_NewInt32(ctx, init->delta_y));
 		JS_SetPropertyStr(ctx, o, "buttons",
 				JS_NewInt32(ctx, init->button == 0 ? 1 : 0));
+		/* (Onyx: an input's, a paste's) */
+		if (init->data != NULL)
+			JS_SetPropertyStr(ctx, o, "data", JS_NewString(ctx, init->data));
+		if (init->input_type != NULL)
+			JS_SetPropertyStr(ctx, o, "inputType",
+					JS_NewString(ctx, init->input_type));
 	}
 	args[0] = target != NULL ? qjs_wrap(thread, target) : JS_NULL;
 	args[1] = JS_NewString(ctx, type);

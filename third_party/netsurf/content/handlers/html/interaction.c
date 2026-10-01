@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>	/* (Onyx: strcasecmp) */
+#include <limits.h>	/* (Onyx: UINT_MAX) */
 
 #include <dom/dom.h>
 
@@ -45,6 +46,7 @@
 #include "netsurf/misc.h"
 #include "netsurf/layout.h"
 #include "netsurf/keypress.h"
+#include "netsurf/clipboard.h"	/* (Onyx: a paste's text) */
 #include "content/hlcache.h"
 #include "content/textsearch.h"
 #include "desktop/browser_history.h"
@@ -805,15 +807,55 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 			by - scrollbar_get_offset(box->scroll_y));
 }
 
+/** a stacking context's boxes with a negative z-index (redraw.c's onyx_negz_paint: under
+ * its in-flow content), its children's origin at (ox, oy) */
+static void onyx_hit_negz(struct onyx_hit *h, struct box *box, int ox, int oy)
+{
+	struct onyx_negz *a;
+	int cx = ox + scrollbar_get_offset(box->scroll_x);	/* (the box's origin) */
+	int cy = oy + scrollbar_get_offset(box->scroll_y);
+	struct rect cull = { h->px - cx, h->py - cy, h->px - cx + 1, h->py - cy + 1 };
+	int n, i;
+
+	/* (a fixed box is hit where the viewport is: no culling then) */
+	n = html_redraw_negz(box, (h->vsx != 0 || h->vsy != 0) ? NULL : &cull, &a);
+	for (i = 0; i < n; i++) {
+		const struct box *was = h->escape;
+		int start = h->n;
+
+		if (h->escape != NULL && (a[i].box->style == NULL ||
+				css_computed_position(a[i].box->style) !=
+				CSS_POSITION_ABSOLUTE))
+			continue;	/* (outside a clipping box: its absolute boxes) */
+		if (a[i].clipped && (h->px - cx < a[i].clip.x0 ||
+				h->px - cx >= a[i].clip.x1 ||
+				h->py - cy < a[i].clip.y0 ||
+				h->py - cy >= a[i].clip.y1))
+			continue;
+		h->escape = NULL;	/* (a layer: its own clip) */
+		onyx_hit_box(h, a[i].box, cx + a[i].dx, cy + a[i].dy);
+		h->escape = was;
+		if (h->n > start)
+			onyx_hit_layer(h, start, true, 0, 1);
+		h->n = start;
+	}
+	free(a);
+}
+
 /** a box's children (html_redraw_box_children): the positioned ones put off */
 static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy)
 {
 	struct box *c;
 	int32_t z;
 
+	/* Onyx: a stacking context: its boxes with a negative z-index first (under) */
+	if (html_redraw_stacking_context(box))
+		onyx_hit_negz(h, box, ox, oy);
 	for (c = box->children; c != NULL; c = c->next) {
 		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT)
 			continue;
+		if (html_redraw_negz_box(c))
+			continue;	/* (Onyx: its stacking context's: onyx_hit_negz) */
 		if (html_redraw_layer_z(c, &z)) {
 			/* (Onyx: outside a clipping box, only its absolute boxes) */
 			if (h->escape != NULL && (c->style == NULL ||
@@ -2064,6 +2106,128 @@ static const char *html_script_key_name(uint32_t key, char buf[8])
 	return buf;
 }
 
+/** Onyx: the letter of an editing shortcut (Ctrl+V for NS_KEY_PASTE...), NULL: none */
+static const char *html_script_ctrl_key(uint32_t key)
+{
+	switch (key) {
+	case NS_KEY_SELECT_ALL: return "a";
+	case NS_KEY_COPY_SELECTION: return "c";
+	case NS_KEY_PASTE: return "v";
+	case NS_KEY_CUT_SELECTION: return "x";
+	case NS_KEY_UNDO: return "z";
+	case NS_KEY_REDO: return "y";
+	default: return NULL;
+	}
+}
+
+static bool html_keypress_action(html_content *html, uint32_t key);
+
+/**
+ * Onyx: a key in the focused text field -- the edit it makes told to the scripts:
+ * a paste's paste event (a ClipboardEvent: its text; prevented: not pasted), the
+ * beforeinput event (prevented: no edit), the field's maxlength kept (what is typed or
+ * pasted beyond it dropped), then the input event telling the edit (inputType, data:
+ * html_changed_event). false: not an edit (the key's own action then).
+ */
+static bool html_keypress_edit(html_content *html, struct box *box, uint32_t key,
+		bool *handled)
+{
+	struct form_control *gadget = box->gadget;
+	struct textarea *ta = gadget->data.text.ta;
+	struct js_event_init init;
+	char utf8[8], *paste = NULL;
+	size_t paste_len = 0;
+	const char *type = NULL;
+	unsigned int maxlength = UINT_MAX;
+	int32_t ml;
+
+	/* (its maxlength now: a script may have set it since the control was made) */
+	if ((gadget->type == GADGET_TEXTBOX || gadget->type == GADGET_PASSWORD) &&
+	    box->node != NULL && dom_html_input_element_get_max_length(
+			(dom_html_input_element *) box->node, &ml) == DOM_NO_ERR &&
+	    ml >= 0)
+		maxlength = ml;
+	memset(&init, 0, sizeof(init));
+	if (key >= 0x20 && !(key >= 0x7f && key <= 0x9f) && key < 0x110000) {
+		utf8[utf8_from_ucs4(key, utf8)] = '\0';
+		type = "insertText";
+		init.data = utf8;
+	} else switch (key) {
+	case NS_KEY_DELETE_LEFT: type = "deleteContentBackward"; break;
+	case NS_KEY_DELETE_RIGHT: type = "deleteContentForward"; break;
+	case NS_KEY_CUT_SELECTION: type = "deleteByCut"; break;
+	case NS_KEY_UNDO: type = "historyUndo"; break;
+	case NS_KEY_REDO: type = "historyRedo"; break;
+	case NS_KEY_NL: case NS_KEY_CR:
+		if (gadget->type == GADGET_TEXTAREA)
+			type = "insertLineBreak";
+		break;
+	case NS_KEY_PASTE:
+		type = "insertFromPaste";
+		guit->clipboard->get(&paste, &paste_len);
+		if (paste == NULL)
+			return false;
+		init.data = paste;
+		/* the page's paste handler first (an OTP's boxes share the code out) */
+		if (!html_script_event(html, "paste", box->node, &init)) {
+			free(paste);
+			*handled = true;
+			return true;
+		}
+		break;
+	default:
+		break;
+	}
+	if (type == NULL)
+		return false;
+	init.input_type = type;
+	if (!html_script_event(html, "beforeinput", box->node, &init)) {
+		free(paste);
+		*handled = true;
+		return true;
+	}
+	/* the edit, the input event told what it was */
+	free(html->script_input_data);
+	html->script_input_data = init.data != NULL ? strdup(init.data) : NULL;
+	html->script_input_type = type;
+	if (init.data != NULL && maxlength != UINT_MAX && box->gadget == gadget &&
+	    gadget->data.text.ta == ta) {
+		/* (the maxlength attribute: the user's edits only) */
+		unsigned int len = 0, have, room;
+		const char *text = textarea_data(ta, &len);
+		int s, e;
+		size_t n, b;
+
+		/* (its length counts its terminator) */
+		have = text != NULL && len > 0 ? utf8_bounded_length(text, len - 1) : 0;
+		textarea_onyx_get_selection(ta, &s, &e);
+		have -= (e > s ? (unsigned int) (e - s) : 0);
+		room = have < maxlength ? maxlength - have : 0;
+		n = utf8_bounded_length(init.data, strlen(init.data));
+		if (room == 0) {
+			*handled = true;	/* (full: nothing typed) */
+		} else if (n > room) {
+			b = utf8_bounded_byte_length(init.data, strlen(init.data), room);
+			free(html->script_input_data);
+			html->script_input_data = strndup(init.data, b);
+			*handled = textarea_drop_text(ta, init.data, b);
+		} else if (paste != NULL) {
+			*handled = textarea_drop_text(ta, paste, paste_len);
+		} else {
+			*handled = box_textarea_keypress(html, box, key) == NSERROR_OK;
+		}
+		free(paste);
+		html_script_changed_flush(html);
+		html->script_input_type = NULL;
+		return true;
+	}
+	free(paste);
+	*handled = box_textarea_keypress(html, box, key) == NSERROR_OK;
+	html_script_changed_flush(html);
+	html->script_input_type = NULL;
+	return true;
+}
+
 /**
  * Handle keypresses.
  *
@@ -2074,9 +2238,66 @@ static const char *html_script_key_name(uint32_t key, char buf[8])
 bool html_keypress(struct content *c, uint32_t key)
 {
 	html_content *html = (html_content *) c;
-	struct selection *sel = html->sel;
+	struct js_event_init init;
+	char name[8];
+	dom_node *target = NULL;
+	bool handled, ok = true;
 
 	onyx_webfont_scope(html);	/* Onyx: text positions in its fonts */
+
+	/* Onyx: the page's scripts see the key first (keydown, keypress for a character),
+	 * at the element with the focus; one they prevent is not typed. Then the key's
+	 * edit in a text field (beforeinput, input: html_keypress_edit) or its action; its
+	 * keyup last -- after the input event, as browsers do: a code's box that moves on
+	 * at keyup sees its value typed. Ctrl+V, Ctrl+C... are keys too ("v", ctrlKey). */
+	memset(&init, 0, sizeof(init));
+	if (html->jsthread != NULL && html->layout != NULL) {
+		target = html->layout->node;
+		if (html->focus_type == HTML_FOCUS_TEXTAREA &&
+		    html->focus_owner.textarea != NULL &&
+		    html->focus_owner.textarea->node != NULL)
+			target = html->focus_owner.textarea->node;
+		init.key = html_script_key_name(key, name);
+		if (init.key == NULL && (init.key = html_script_ctrl_key(key)) != NULL)
+			init.ctrl = true;
+		if (init.key != NULL) {
+			ok = html_script_event(html, "keydown", target, &init);
+			if (ok && !init.ctrl && ((key >= 0x20 && key < 0x7f) ||
+				   (key >= 0xa0 && key < 0x110000)))
+				ok = html_script_event(html, "keypress", target,
+						&init);
+		}
+	}
+	if (!ok) {
+		handled = true;	/* (prevented: not typed) */
+	} else if (html->jsthread != NULL &&
+		   html->focus_type == HTML_FOCUS_TEXTAREA &&
+		   html->focus_owner.textarea != NULL &&
+		   html->focus_owner.textarea->gadget != NULL &&
+		   html->focus_owner.textarea->gadget->data.text.ta != NULL &&
+		   html_keypress_edit(html, html->focus_owner.textarea, key, &handled)) {
+		/* (an edit, told to the scripts) */
+	} else {
+		handled = html_keypress_action(html, key);
+	}
+	if (target != NULL && init.key != NULL && html->layout != NULL) {
+		/* (the focus may have moved on meanwhile: the keyup goes there) */
+		if (html->focus_type == HTML_FOCUS_TEXTAREA &&
+		    html->focus_owner.textarea != NULL &&
+		    html->focus_owner.textarea->node != NULL)
+			target = html->focus_owner.textarea->node;
+		else
+			target = html->layout->node;
+		html_script_event(html, "keyup", target, &init);
+	}
+	return handled;
+}
+
+/** a key's own action (the focused field's editing, the page's shortcuts, scrolling) */
+static bool html_keypress_action(html_content *html, uint32_t key)
+{
+	struct content *c = (struct content *) html;
+	struct selection *sel = html->sel;
 
 	/** \todo
 	 * At the moment, the front end interface for keypress only gives
@@ -2109,32 +2330,7 @@ bool html_keypress(struct content *c, uint32_t key)
 	 * `event.preventDefault()` then we won't handle the event when
 	 * we're not supposed to.
 	 */
-	/* Onyx: the page's scripts see the key first (keydown, keypress for a character),
-	 * at the element with the focus; one they prevent is not typed */
-	if (html->jsthread != NULL && html->layout != NULL) {
-		dom_node *target = html->layout->node;
-		struct js_event_init init;
-		char name[8];
-
-		if (html->focus_type == HTML_FOCUS_TEXTAREA &&
-		    html->focus_owner.textarea != NULL &&
-		    html->focus_owner.textarea->node != NULL)
-			target = html->focus_owner.textarea->node;
-		memset(&init, 0, sizeof(init));
-		init.key = html_script_key_name(key, name);
-		if (init.key != NULL) {
-			bool ok = html_script_event(html, "keydown", target, &init);
-
-			if (ok && ((key >= 0x20 && key < 0x7f) ||
-				   (key >= 0xa0 && key < 0x110000)))
-				ok = html_script_event(html, "keypress", target,
-						&init);
-			html_script_event(html, "keyup", target, &init);
-			if (!ok)
-				return true;
-		}
-	}
-
+	/* (Onyx: the scripts' events: html_keypress, above) */
 	switch (html->focus_type) {
 	case HTML_FOCUS_CONTENT:
 		return content_keypress(html->focus_owner.content->object, key);

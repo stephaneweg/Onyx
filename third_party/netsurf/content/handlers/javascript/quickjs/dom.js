@@ -207,7 +207,39 @@ class InputEvent extends UIEvent {
 		super(type, init);
 		this.data = init.data === undefined ? null : init.data;
 		this.inputType = init.inputType || '';
-		this.isComposing = false;
+		this.isComposing = !!init.isComposing;
+		this.dataTransfer = init.dataTransfer || null;
+	}
+	getTargetRanges() { return []; }
+}
+/* Onyx: the clipboard's events (a paste into a field: its text in clipboardData -- one-time
+ * code boxes share a pasted code out) and their DataTransfer (text only) */
+class DataTransfer {
+	constructor() {
+		Object.defineProperty(this, '_d', { value: new Map() });
+		this.dropEffect = 'none';
+		this.effectAllowed = 'uninitialized';
+	}
+	static _norm(t) {
+		t = String(t).toLowerCase();
+		return t === 'text' ? 'text/plain' : t === 'url' ? 'text/uri-list' : t;
+	}
+	getData(t) { return this._d.get(DataTransfer._norm(t)) ?? ''; }
+	setData(t, v) { this._d.set(DataTransfer._norm(t), String(v)); }
+	clearData(t) { if (t === undefined) this._d.clear(); else this._d.delete(DataTransfer._norm(t)); }
+	get types() { return [...this._d.keys()]; }
+	get files() { return []; }
+	get items() {
+		return [...this._d].map(([type, v]) => ({ kind: 'string', type,
+			getAsString(cb) { if (typeof cb === 'function') setTimeout(() => cb(v), 0); },
+			getAsFile() { return null; } }));
+	}
+	setDragImage() {}
+}
+class ClipboardEvent extends Event {
+	constructor(type, init = {}) {
+		super(type, init);
+		this.clipboardData = init.clipboardData || null;
 	}
 }
 class ErrorEvent extends Event {
@@ -290,7 +322,8 @@ protoFields(WheelEvent, ['deltaX', 'deltaY', 'deltaZ', 'deltaMode']);
 protoFields(KeyboardEvent, ['key', 'code', 'keyCode', 'which', 'charCode', 'location', 'repeat',
 	'isComposing', 'ctrlKey', 'shiftKey', 'altKey', 'metaKey']);
 protoFields(FocusEvent, ['relatedTarget']);
-protoFields(InputEvent, ['data', 'inputType', 'isComposing']);
+protoFields(InputEvent, ['data', 'inputType', 'isComposing', 'dataTransfer']);
+protoFields(ClipboardEvent, ['clipboardData']);
 protoFields(ErrorEvent, ['message', 'error']);
 protoFields(ProgressEvent, ['lengthComputable', 'loaded', 'total']);
 protoFields(PopStateEvent, ['state']);
@@ -303,7 +336,7 @@ protoFields(TransitionEvent, ['propertyName', 'elapsedTime', 'pseudoElement']);
 Object.assign(G, { Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, WheelEvent,
 	KeyboardEvent, FocusEvent, InputEvent, ErrorEvent, ProgressEvent, PopStateEvent,
 	HashChangeEvent, MessageEvent, SubmitEvent, PromiseRejectionEvent, AnimationEvent,
-	TransitionEvent, TouchEvent: undefined });
+	TransitionEvent, ClipboardEvent, DataTransfer, TouchEvent: undefined });
 delete G.TouchEvent;
 
 /* the event's path: its target, its ancestors, the document, the window */
@@ -3166,10 +3199,15 @@ class HTMLInputElement extends HTMLElement {
 	checkValidity() { return !(this.required && !this.value); }
 	reportValidity() { return this.checkValidity(); }
 	setCustomValidity() {}
-	select() {}
-	setSelectionRange() {}
-	get selectionStart() { return this.value.length; }
-	get selectionEnd() { return this.value.length; }
+	select() { textSelect(this, 0, this.value.length); }
+	setSelectionRange(s, e, dir) { textSelect(this, s, e, dir); }
+	setRangeText(text, s, e, mode) { textRangeText(this, text, s, e, mode); }
+	get selectionStart() { return textSelection(this)[0]; }
+	set selectionStart(v) { textSelect(this, v, Math.max(v, this.selectionEnd)); }
+	get selectionEnd() { return textSelection(this)[1]; }
+	set selectionEnd(v) { textSelect(this, Math.min(this.selectionStart, v), v); }
+	get selectionDirection() { return 'forward'; }
+	set selectionDirection(v) {}
 	stepUp(n = 1) { this.value = String((parseFloat(this.value) || 0) + n * (parseFloat(this.step) || 1)); }
 	stepDown(n = 1) { this.stepUp(-n); }
 	showPicker() {}
@@ -3187,6 +3225,40 @@ Object.defineProperty(HTMLInputElement.prototype, 'defaultChecked', { configurab
 	get() { return N.attr(this, 'checked') !== null; }, set(v) { this.toggleAttribute('checked', !!v); } });
 htmlClass('HTMLInputElement', ['input'], HTMLInputElement);
 
+/* Onyx: a text field's selection -- the browser's when it has the caret (characters:
+ * N.controlSelection), else what a script set last (kept on the element), else the text's
+ * end; setSelectionRange in the focused field moves its caret (a code's box: the caret
+ * after its digit) */
+const TEXT_SEL = Symbol('selection');
+function textSelection(el) {
+	const n = el.value.length;
+	const s = N.controlSelection(el);
+	if (s) return [Math.min(s[0], n), Math.min(s[1], n)];
+	const k = el[TEXT_SEL];
+	if (k) return [Math.min(k[0], n), Math.min(k[1], n)];
+	return [n, n];
+}
+function textSelect(el, s, e, dir) {
+	const n = el.value.length;
+	s = Math.max(0, Math.min(n, Number(s) || 0));
+	e = e === undefined || e === null ? s : Math.max(0, Math.min(n, Number(e) || 0));
+	if (e < s) s = e;
+	Object.defineProperty(el, TEXT_SEL, { value: [s, e], writable: true, configurable: true });
+	N.controlSelect(el, s, e);
+}
+function textRangeText(el, text, s, e, mode) {
+	const v = el.value;
+	let [a, b] = textSelection(el);
+	if (s !== undefined) { a = Math.max(0, Math.min(v.length, s)); b = Math.max(a, Math.min(v.length, e ?? a)); }
+	text = String(text);
+	el.value = v.slice(0, a) + text + v.slice(b);
+	const end = a + text.length;
+	if (mode === 'select') textSelect(el, a, end);
+	else if (mode === 'start') textSelect(el, a, a);
+	else if (mode === 'end') textSelect(el, end, end);
+	else textSelect(el, end, end);	/* (preserve: as end) */
+}
+
 class HTMLTextAreaElement extends HTMLElement {
 	get type() { return 'textarea'; }
 	get value() { const v = N.formValue(this); return v === null ? N.text(this) : v; }
@@ -3199,10 +3271,15 @@ class HTMLTextAreaElement extends HTMLElement {
 	checkValidity() { return !(this.required && !this.value); }
 	reportValidity() { return this.checkValidity(); }
 	setCustomValidity() {}
-	select() {}
-	setSelectionRange() {}
-	get selectionStart() { return this.value.length; }
-	get selectionEnd() { return this.value.length; }
+	select() { textSelect(this, 0, this.value.length); }
+	setSelectionRange(s, e, dir) { textSelect(this, s, e, dir); }
+	setRangeText(text, s, e, mode) { textRangeText(this, text, s, e, mode); }
+	get selectionStart() { return textSelection(this)[0]; }
+	set selectionStart(v) { textSelect(this, v, Math.max(v, this.selectionEnd)); }
+	get selectionEnd() { return textSelection(this)[1]; }
+	set selectionEnd(v) { textSelect(this, Math.min(this.selectionStart, v), v); }
+	get selectionDirection() { return 'forward'; }
+	set selectionDirection(v) {}
 }
 for (const p of ['name', 'placeholder', 'wrap', 'autocomplete'])
 	reflectString(HTMLTextAreaElement.prototype, p);
@@ -4576,7 +4653,8 @@ const navigator = {
 	clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') },
 	permissions: { query: () => Promise.resolve({ state: 'denied', onchange: null }) },
 	mediaDevices: undefined,
-	serviceWorker: undefined,
+	/* (Onyx: no serviceWorker key -- 'serviceWorker' in navigator was true, its value
+	 * undefined: netflix.com's sign-in page then threw at .getRegistrations) */
 	geolocation: {
 		getCurrentPosition(ok, err) { if (err) setTimeout(() => err({ code: 1, message: 'denied' }), 0); },
 		watchPosition(ok, err) { this.getCurrentPosition(ok, err); return 0; },
@@ -6922,9 +7000,22 @@ function browserEvent(target, type, init) {
 		break;
 	case 'keydown': case 'keyup': case 'keypress': {
 		const key = init.key || '';
-		const code = KEY_CODES[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
+		/* (keypress: the character's code -- 'a' 97 --, keydown / keyup: the key's -- 65) */
+		const code = type === 'keypress' && [...key].length === 1 ? key.codePointAt(0) :
+			KEY_CODES[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
 		ev = new KeyboardEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true, view: G, keyCode: code,
-			code: key.length === 1 ? (/[a-z]/i.test(key) ? 'Key' + key.toUpperCase() : /\d/.test(key) ? 'Digit' + key : '') : key }, init, { keyCode: code }));
+			code: key.length === 1 ? (/[a-z]/i.test(key) ? 'Key' + key.toUpperCase() : /\d/.test(key) ? 'Digit' + key : key === ' ' ? 'Space' : '') : key },
+			init, { keyCode: code, ctrlKey: !!init.ctrlKey, shiftKey: !!init.shiftKey, altKey: !!init.altKey }));
+		break;
+	}
+	case 'beforeinput':
+		ev = new InputEvent(type, { bubbles: true, cancelable: true, composed: true,
+			data: init.data ?? null, inputType: init.inputType || '' });
+		break;
+	case 'paste': case 'copy': case 'cut': {
+		const dt = new DataTransfer();
+		if (init.data != null) dt.setData('text/plain', init.data);
+		ev = new ClipboardEvent(type, { bubbles: true, cancelable: true, composed: true, clipboardData: dt });
 		break;
 	}
 	case 'DOMContentLoaded':
@@ -6940,7 +7031,8 @@ function browserEvent(target, type, init) {
 		ev = new UIEvent(type);
 		break;
 	case 'input':
-		ev = new InputEvent(type, { bubbles: true, composed: true });
+		ev = new InputEvent(type, { bubbles: true, composed: true,
+			data: init.data ?? null, inputType: init.inputType || '' });
 		break;
 	case 'change':
 		ev = new Event(type, { bubbles: true });
@@ -7136,6 +7228,12 @@ function browserDispatch(target, type, init) {
 	let t = target === null ? G : target;
 	if (t instanceof CharacterData)		/* (a text's element is the target) */
 		t = N.parent(t) || G;
+	/* Onyx: a key the browser sends to the document (no text field has its caret): to
+	 * the focused element, as browsers do -- a <div tabindex> listening to its keys */
+	if ((type === 'keydown' || type === 'keypress' || type === 'keyup') &&
+	    (t === G.document.documentElement || t === G.document.body) &&
+	    activeElement && activeElement !== G.document.body && activeElement.isConnected)
+		t = activeElement;
 	if (type === 'onyx:hover') {
 		hoverTo(t instanceof Element ? t : null, init || {});
 		return true;

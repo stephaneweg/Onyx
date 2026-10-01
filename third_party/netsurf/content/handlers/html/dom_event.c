@@ -819,6 +819,29 @@ static bool onyx_attr_builds_boxes(dom_mutation_event *evt)
 	return hit;
 }
 
+/* Onyx: the value attribute of a text field (its default value): its control updated in
+ * place (html_texty_element_update), not made again. React sets it at each keystroke of a
+ * controlled field (node.defaultValue = value): the field's boxes were built again, its
+ * textarea with them -- the caret gone from the field being typed in (Netflix's code) */
+static bool onyx_attr_text_value(dom_mutation_event *evt, dom_node *node)
+{
+	struct box *box;
+	dom_string *an = NULL;
+	bool value;
+
+	box = box_for_node(node);
+	if (box == NULL || box->gadget == NULL ||
+	    (box->gadget->type != GADGET_TEXTBOX &&
+	     box->gadget->type != GADGET_PASSWORD &&
+	     box->gadget->type != GADGET_HIDDEN))
+		return false;
+	if (dom_mutation_event_get_attr_name(evt, &an) != DOM_NO_ERR || an == NULL)
+		return false;
+	value = dom_string_caseless_isequal(an, corestring_dom_value);
+	dom_string_unref(an);
+	return value;
+}
+
 /* Onyx: an element's attribute set or removed: its selection and its subtree's made
  * again at the next box tree (onyx_restyle.c) */
 static void
@@ -826,12 +849,18 @@ dom_default_action_DOMAttrModified_cb(struct dom_event *evt, void *pw)
 {
 	html_content *htmlc = pw;
 	dom_event_target *node = NULL;
+	bool builds;
 
 	if (dom_event_get_target(evt, &node) != DOM_NO_ERR || node == NULL)
 		return;
 	onyx_restyle_attr_changed(htmlc, (dom_node *) node);
-	html_script_mutation(htmlc, (dom_node *) node,
-			!onyx_attr_builds_boxes((dom_mutation_event *) evt));
+	builds = onyx_attr_builds_boxes((dom_mutation_event *) evt);
+	if (builds && onyx_attr_text_value((dom_mutation_event *) evt,
+			(dom_node *) node)) {
+		builds = false;
+		html_texty_element_update(htmlc, (dom_node *) node);
+	}
+	html_script_mutation(htmlc, (dom_node *) node, !builds);
 	nscss_dom_changed();	/* (Onyx: :nth-child()'s counts) */
 	dom_node_unref(node);
 }

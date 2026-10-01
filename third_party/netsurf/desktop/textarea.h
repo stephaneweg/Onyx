@@ -232,6 +232,27 @@ const char * textarea_data(struct textarea *ta, unsigned int *len);
  */
 bool textarea_set_caret(struct textarea *ta, int caret);
 
+/**
+ * Onyx: the caret told again where it is (its client's: the page laid out again moved
+ * the field, and hid the caret meanwhile).
+ *
+ * \param ta Text area
+ * \return false if the text area has no caret
+ */
+bool textarea_onyx_caret_refresh(struct textarea *ta);
+
+/**
+ * Onyx: the selection, in characters (the caret's place twice when none: the end of the
+ * text when the text area has no caret) -- a script's selectionStart / selectionEnd.
+ */
+void textarea_onyx_get_selection(struct textarea *ta, int *start, int *end);
+
+/**
+ * Onyx: the selection set, in characters (the caret placed there when start == end) --
+ * a script's setSelectionRange() / select().
+ */
+void textarea_onyx_set_selection(struct textarea *ta, int start, int end);
+
 
 /**
  * Handle redraw requests for text areas
