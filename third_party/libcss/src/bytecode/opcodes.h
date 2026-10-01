@@ -1027,6 +1027,11 @@ enum op_svg_number {			/* stroke-miterlimit, stop-opacity */
 	SVG_NUMBER_SET			= 0x0080	/* + fixed */
 };
 
+enum op_pointer_events {		/* Onyx */
+	POINTER_EVENTS_AUTO		= 0x0000,
+	POINTER_EVENTS_NONE		= 0x0001
+};
+
 enum op_fill_rule {
 	FILL_RULE_NONZERO		= 0x0000,
 	FILL_RULE_EVENODD		= 0x0001

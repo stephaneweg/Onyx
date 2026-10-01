@@ -11,6 +11,7 @@
 'use strict';
 
 const G = globalThis;
+const BUILTIN_NAMES = new Set(Object.getOwnPropertyNames(G));	/* (tagInterfaces) */
 const NativePromise = Promise;	/* (a page's polyfill may replace Promise: queueMicrotask's own) */
 const LISTENERS = Symbol('listeners');
 const HANDLERS = Symbol('handlers');
@@ -7151,6 +7152,28 @@ N.setup({
 	tags: TAGS,
 	dispatch: browserDispatch,
 });
+
+/* Onyx: each interface's Symbol.toStringTag (as WebIDL's): Object.prototype.toString of an
+ * element says "[object HTMLDivElement]", not "[object Object]" -- Vue 3's reactive() wraps
+ * only plain objects (toRawType), and a proxied element given to the natives was "not a
+ * node" (Wikipedia's Codex search: its menu's scroll height, getComputedStyle). html5.js
+ * tags its own the same way (G.__onyxTagInterfaces, removed there). */
+function tagInterfaces(builtins) {
+	for (const k of Object.getOwnPropertyNames(G)) {
+		if (builtins.has(k) || !/^[A-Z]/.test(k)) continue;
+		const d = Object.getOwnPropertyDescriptor(G, k);
+		const f = d && d.value;
+		if (typeof f !== 'function' || f.prototype === null || typeof f.prototype !== 'object' ||
+		    Object.prototype.hasOwnProperty.call(f.prototype, Symbol.toStringTag)) continue;
+		try {
+			Object.defineProperty(f.prototype, Symbol.toStringTag,
+				{ value: k, configurable: true });
+		} catch (e) { /* (a frozen prototype) */ }
+	}
+}
+tagInterfaces(BUILTIN_NAMES);
+Object.defineProperty(G, '__onyxTagInterfaces', { value: () => tagInterfaces(BUILTIN_NAMES),
+	configurable: true });
 
 /* the document's own wrapper made now: window.document is it */
 N.document();

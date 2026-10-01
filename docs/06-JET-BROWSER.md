@@ -36,7 +36,7 @@ line or the block), and each is listed here. The user's guide entry is in
 | `third_party/fonts/`, `third_party/dejavu-fonts-ttf-2.37/` | the fonts staged into `SD:/res/fonts` |
 | `user/netsurf/` | the Onyx glue: `onyx_chrome.cpp` (the window, its wtk toolbar -- the zoom control, the downloads' button --, the status bar, the History dialog, the About box, the Save dialog: §38; the find bar, the context menu: §40), `onyx_fetch.c` (HTTP/HTTPS over the Onyx TCP kapis, mbedTLS; each download in a thread of its own), `onyx_ws.c` (WebSocket and event streams, each in a thread: §19), `onyx_main.c`, the makefiles |
 | `pc/Jet/` | Jet Browser for Windows (§34): `winkapi.cpp` (the kapi on Win32), `jet.mk` + `build.sh` (MinGW-w64) -> `pc/dist/Jet/`, `pc/dist/Jet.zip` |
-| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40) |
+| `tools/tests/netsurf/` | the PC test bench: NetSurf built for the PC on the desktop simulator (`host.mk`), a page to a PNG (`shot.sh`), the same page in Chromium (`chrome.sh`), copies of the two sites (`getsites.sh`), the JavaScript regression test (`jstest.sh`, `pages/js-*.html`), the HTTP test (`httptest.sh`: the fetcher over a local HTTP/1.1 server, `httpsrv.py` -- keep-alive, chunked, gzip, a redirect, cookies, the Referer, the page drawn as its file:// copy); `NS_JSDEBUG=1` prints the scripts' errors and `console.log`, `NS_BOXDUMP=<file>` + F5 dumps the box tree, `NS_PERF=1` the timings (§9). `css3test.sh`: css3test.com's score in NetSurf and Chromium; `css-check`: what libcss keeps (`csscheck.c`, `css-values.txt`) (§14). `layouttest.sh` (+ `layoutdiff.sh`, `nsfonts-conf.sh`, `pages/layout/`): the layout against Chromium box by box (§5); `jstest.sh`: the DOM, the events, a recursion, `fetch` / XHR (file:// and data: URLs), the hover events, CSS `:hover`, `localStorage` kept, the HTML5 pages (`js-html5`, `js-forms`, `js-apis`, `js-ce`); `html5lib.sh` (the parser against the html5lib-tests, its speed: §16), `html5test.sh` (the html5test.co score: §17), `nettest.sh` (WebSocket, EventSource, the streamed fetch over a local server, `wssrv.py`: §19), `fxtest.sh` (the compositing layers against Chromium pixel by pixel, a hover's partial redraw against a full one: §21); `jstest.sh`'s `js-wasm.html` and `js-crypto.html` (§27: `wasm/bench.c` compiled by clang, `crypto/mkvectors.js`'s answers from Chromium's API in Node), `iframetest.sh` (iframes, postMessage, MessageChannel, a reCAPTCHA mimic over two local origins: §29); `jit/`: QuickJS alone (`qjsrun`), Octane / React, test262, AArch64 instruction counts (§30); `quadtest.sh` (+ `pages/perf-quadratic.html`): what grows faster than the page, each case at n = 1000..8000 (§36); `dltest.sh` (+ `pages/jet-zoom.html`, `pages/jet-dl.html`): the page zoom, the status bar, the downloads (§38); `acidtest.sh` (+ `acidsrv.py`, `pages/acid2/`, `pages/acid3/`): Acid2 pixel by pixel, Acid3's score (§37); `findtest.sh` (+ `pages/jet-find.html`): find in page, copy and paste, the context menu, Paint pasting a copied image (§40); `typeaheadtest.sh` (+ `pages/stack-typeahead.html`, `pages/form-scripted.html`): Wikipedia's search box -- the stacking order, a menu's footer out of its scroller, `pointer-events`, Enter in a form a script made (§42) |
 
 Build for the Pi: `make -C user/netsurf` (the libraries, their `.a` are committed:
 `libquickjs.a` among them), then `make -f user/netsurf/netsurf-app.mk link stage`. A header change needs a clean rebuild of
@@ -3784,6 +3784,100 @@ not set to the current match on Esc; double / triple click to select a word / a 
 neither); a drag past the end of a shrink-to-fit block's line selects nothing more (NetSurf's
 `box_pick_text_box` looks only inside the line's container); Copy Image of an SVG; Ctrl+C on a
 clicked image (Chrome does not either).
+
+## 42. Wikipedia's search box: the stacking order, forms a script made, pointer-events (2026-10-01)
+
+The user, on `fr.wikipedia.org`'s main page in the Mobile version (Minerva) -- and the same on the
+Desktop one (Vector 2022): the suggestions list under the search field "has no background" (the
+page's text through it), and Enter in the field does nothing. Both skins' search is Codex's
+**TypeaheadSearch**, a Vue 3 app: its form, field and menu are made by the script. Reproduced on the
+PC bench with the real site (`site-modes`: `wikipedia.org mobile` / `desktop`; the suggestions come
+from `/w/rest.php/v1/search/title`, which answered 429 now and then -- Wikimedia's rate limit for
+the bench's address, not Jet's doing). Four causes:
+
+**1. The stacking order (CSS 2.1 appendix E): a z-index inside a z-index auto box.** The menu
+(`.cdx-menu`, `position: absolute; z-index: 50`, its background white) is in a relative wrapper
+with `z-index: auto` (`.cdx-search-input__input-wrapper`), in the page's stacking context (Minerva's
+`position: relative; z-index: 0` page box); the page's content after it is in relative boxes with
+`z-index: auto`. Jet's layers (§21, `redraw.c`'s `onyx_layer_*`) treated **every positioned box as
+a stacking context**: the wrapper's put-off boxes were sorted and painted with the wrapper, in the
+tree's order among the z-index 0 boxes -- so the later relative content was painted over the menu
+(its transparent background over the menu's white, its text over the rows). Now
+`html_redraw_layer_context(box)` says whether a put-off box is a stacking context (a z-index set,
+`position: fixed` / `sticky`, a compositing group: opacity, transform, filter...); a positioned
+box with z-index auto is not: `onyx_layer_paint_in` paints its put-off boxes with z-index 0 /
+auto right after it (the tree's order), and **gives those above 0 to its stacking context**
+(`onyx_hoist_*`), which sorts them in with the boxes it still has to paint. The tree's order among
+equal z-indexes is kept as nested intervals (`struct onyx_layer_key`: a box put off inside another
+gets a sub-interval of it, between it and the next one). The hit test (`interaction.c`'s
+`onyx_hit_layer`) does the same, so the clicks go to the menu's rows, not to the page under them.
+No cost for a page without such boxes (the hoist list stays empty; an insertion is a short move).
+
+**2. Enter in a field of a form a script made.** NetSurf's forms (`html->forms`) are the parser's,
+read once when the document is made, and libdom's form owner of a control (`dom_html_input_element
+_get_form`, the form's `elements` collection) was only the parser's association: a form and a field
+created by `createElement` (Vue, React) had no `struct form`, the field's control was an orphan,
+and Enter (`box_textarea.c`) had no form to submit. Now:
+- **libdom** (`src/html/html_form_element.c` `_dom_html_form_owner`): a control without the
+  parser's association has its **nearest ancestor form** as its owner -- for `get_form` (input,
+  button, select, textarea) and the form's `elements` (so `form_dom_to_data` sends the script's
+  hidden fields too, `title=Spécial:Recherche`). (Not done: the `form="id"` attribute.)
+- **NetSurf** (`html/forms.c`, `html_forms_control_for_node`): a control in a form the parser did
+  not see gets one made then (`onyx_form_for`: its action made absolute, the document's encoding,
+  added to `html->forms`, the node referenced: `struct form`'s new `node_ref`, unreferenced by
+  `form_free`); an orphan control put in a form since it was made joins it at the next rebox.
+- **The implicit submission** (`box_textarea.c`, HTML 4.10.21.2): Enter in a text field clicks
+  the form's **default button** (its first submit button: a `click` event the page may prevent,
+  then the button's `name=value` sent with the form), else sends the form; the `submit` event
+  first, as before. On Wikipedia: `/w/index.php?title=Spécial:Recherche&search=paris`, which
+  redirects to the article.
+
+**3. `Object.prototype.toString` of the DOM's objects.** Each interface's prototype now has its
+`Symbol.toStringTag` (`dom.js`' `tagInterfaces`, `html5.js` for its own: every constructor the two
+files add to the global object): `[object HTMLInputElement]`, `[object Event]`... It was `[object
+Object]`, so **Vue 3's `reactive()` wrapped the elements** it keeps in its state in Proxies (it
+leaves alone what `toRawType` does not call Object / Array / Map / Set): the menu's code then
+handed a Proxy to the natives -- `TypeError: not a node` (its `scrollHeight`, `getComputedStyle`)
+at each keystroke.
+
+**4. `pointer-events`** (Desktop): MediaWiki's notification area
+(`.mw-notification-area-overlay`: absolute, the whole page, `z-index: 9999`,
+`pointer-events: none`) took every click on the page's top -- the search field could not be
+focused. libcss now computes **`pointer-events`** (inherited; `auto` | `none`, SVG's values read as
+`auto`: `parse/properties/onyx_svg.c`, `select/properties/onyx_svg.c`, `select_config.py` and the
+autogenerated headers made again, `onyx_propbits.py`: a paint-only change; `CSS_PROP_POINTER_EVENTS`,
+`css_computed_pointer_events()` in `computed.h`, `enum css_pointer_events_e` in `properties.h`).
+The hit test passes over a box with `pointer-events: none` (`onyx_hit_visible`, as `visibility:
+hidden`): its descendants with `auto` still take the clicks. `getComputedStyle` answers it.
+
+**And the menu's footer** ("Rechercher les pages contenant ...": absolute in the menu, under the
+menu's list, a static box with `overflow-y: auto`) was cut away by the list's overflow, and gave the
+list a scroll bar. An absolute box is clipped by the overflow of its containing block and of the
+containing block's ancestors, not by a static scroller between them: the redraw keeps the clipping
+boxes being painted with the clip they were given (`onyx_oclip`), and an absolute box put off takes
+the clip from outside those between it and its containing block (`onyx_oclip_escape`); the hit test
+looks, under a static clipping box the point is outside of, for its absolute boxes only
+(`onyx_hit_escapes`); the layout marks the boxes between an absolute box and its containing block
+(`HAS_ABS_OUT`, box.h) so their scroll extent leaves it out (`layout_update_scroll_extent`) and
+their descendant bounds take it in.
+
+**GPU compositing.** The same with `NS_GPU=0` and `NS_GPU=1` (the compositor composites what the
+redraw painted: the order was the redraw's).
+
+**Tests.** `tools/tests/netsurf/typeaheadtest.sh` (new; local pages, no network):
+`pages/stack-typeahead.html` -- the menu's pixels over the later content, the footer's, no scroll
+bar, the content beside, a z-index 999 box inside a z-index 1 context under a later z-index 2 one,
+the clicks (the menu's, the footer's, through a `pointer-events: none` overlay, on its `auto` part),
+`getComputedStyle(...).pointerEvents`, with and without the GPU compositor; `pages/form-scripted.html`
+-- a form and its field made by the script: Enter fires `submit` and sends the GET with the hidden
+field; with a default button, Enter clicks it and sends its value; `Object.prototype.toString` of an
+input, the document, an event. Each check fails on the build before.
+
+**Not done.** An absolute box escaping a scroller does not stay put when the scroller is scrolled
+(it moves with the scroller's content); the `form` attribute (`<input form="id">`); a form with
+two text fields and no submit button is still submitted by Enter (HTML: only a lone field); the
+Codex menu's list keeps its own scroll bar when its ten rows are taller than the window (as in
+Chrome).
 
 ## 8. Known gaps
 

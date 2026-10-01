@@ -679,8 +679,7 @@ static dom_node *html_text_box_element(struct box *text)
 struct onyx_hit_off {
 	struct box *box;
 	int x, y;		/* its parent's origin */
-	int32_t z;
-	int order;
+	struct onyx_layer_key key;	/* its z-index, its tree order */
 };
 
 struct onyx_hit {
@@ -689,10 +688,17 @@ struct onyx_hit {
 	struct box *box;		/* the last box painted under it */
 	struct onyx_hit_off *off;
 	int n, cap;
+	struct onyx_hit_off *hoist;	/* (redraw.c's onyx_hoist_*) */
+	int nh, caph;
+	/* Onyx: a static box clipping its overflow, the point outside it: only the
+	 * absolute boxes in it whose containing block is outside it are looked at
+	 * (redraw.c's onyx_oclip_escape) */
+	const struct box *escape;
 };
 
 static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy);
-static void onyx_hit_layer(struct onyx_hit *h, int start);
+static void onyx_hit_layer(struct onyx_hit *h, int start, bool context, double lo,
+		double span);
 
 /** whether a box is visible -- an anonymous box (no style: an inline container...)
  * as its parent (visibility: hidden made the boxes of a hidden fixed panel's text
@@ -701,8 +707,26 @@ static bool onyx_hit_visible(const struct box *box)
 {
 	while (box != NULL && box->style == NULL)
 		box = box->parent;
+	/* (Onyx: and pointer-events: none -- an overlay the clicks go through, as
+	 * MediaWiki's notification area over the whole page: inherited, so its
+	 * descendants too unless they set auto) */
 	return box == NULL ||
-		css_computed_visibility(box->style) != CSS_VISIBILITY_HIDDEN;
+		(css_computed_visibility(box->style) != CSS_VISIBILITY_HIDDEN &&
+		 css_computed_pointer_events(box->style) != CSS_POINTER_EVENTS_NONE);
+}
+
+/** whether a box clipping its overflow, not a containing block, may hold absolute boxes
+ * (whose containing block is outside it) at the point (its coordinates) */
+static bool onyx_hit_escapes(const struct box *box, int x, int y)
+{
+	if (box->style == NULL || box->parent == NULL ||
+	    css_computed_position(box->style) != CSS_POSITION_STATIC ||
+	    (onyx_fx_style(box->style) && onyx_fx_box(box)) ||
+	    (css_computed_overflow_x(box->style) == CSS_OVERFLOW_VISIBLE &&
+	     css_computed_overflow_y(box->style) == CSS_OVERFLOW_VISIBLE))
+		return false;
+	return box->descendant_x0 <= x && x < box->descendant_x1 &&
+		box->descendant_y0 <= y && y < box->descendant_y1;
 }
 
 /** a box, its parent's origin at (ox, oy) (html_redraw_box) */
@@ -729,7 +753,7 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 				h->box = box;
 			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
 					by - scrollbar_get_offset(box->scroll_y));
-			onyx_hit_layer(h, start);
+			onyx_hit_layer(h, start, true, 0, 1);
 		}
 		h->n = start;
 		h->px = px;
@@ -738,9 +762,20 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 	}
 
 	if (!box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
-			h->py - by, &physically))
+			h->py - by, &physically)) {
+		/* Onyx: a static box clipping its overflow: its absolute boxes whose
+		 * containing block is outside it, outside it too (Codex's menu footer) */
+		if (onyx_hit_escapes(box, h->px - bx, h->py - by)) {
+			const struct box *was = h->escape;
+
+			h->escape = box;
+			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
+					by - scrollbar_get_offset(box->scroll_y));
+			h->escape = was;
+		}
 		return;
-	if (physically && onyx_hit_visible(box))	/* (Onyx) */
+	}
+	if (physically && h->escape == NULL && onyx_hit_visible(box))	/* (Onyx) */
 		h->box = box;
 	onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
 			by - scrollbar_get_offset(box->scroll_y));
@@ -756,6 +791,11 @@ static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int o
 		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT)
 			continue;
 		if (html_redraw_layer_z(c, &z)) {
+			/* (Onyx: outside a clipping box, only its absolute boxes) */
+			if (h->escape != NULL && (c->style == NULL ||
+					css_computed_position(c->style) !=
+					CSS_POSITION_ABSOLUTE))
+				continue;
 			if (h->n == h->cap) {
 				int cap = h->cap ? h->cap * 2 : 32;
 				struct onyx_hit_off *off = realloc(h->off,
@@ -770,8 +810,7 @@ static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int o
 			h->off[h->n].box = c;
 			h->off[h->n].x = ox;
 			h->off[h->n].y = oy;
-			h->off[h->n].z = z;
-			h->off[h->n].order = h->n;
+			h->off[h->n].key.z = z;
 			h->n++;
 			continue;
 		}
@@ -785,25 +824,71 @@ static int onyx_hit_cmp(const void *a, const void *b)
 {
 	const struct onyx_hit_off *x = a, *y = b;
 
-	if (x->z != y->z)
-		return x->z < y->z ? -1 : 1;
-	return x->order - y->order;
+	return onyx_layer_key_cmp(&x->key, &y->key);
 }
 
-/** the boxes a layer put off (from start on), in their painting order */
-static void onyx_hit_layer(struct onyx_hit *h, int start)
+/** room for one more (false: none) */
+static bool onyx_hit_room(struct onyx_hit_off **a, int n, int *cap)
 {
-	int end = h->n, i;
+	struct onyx_hit_off *off;
+	int c;
 
+	if (n < *cap)
+		return true;
+	c = *cap ? *cap * 2 : 32;
+	off = realloc(*a, c * sizeof(*off));
+	if (off == NULL)
+		return false;
+	*a = off;
+	*cap = c;
+	return true;
+}
+
+/** the boxes a layer put off (from start on), in their painting order (redraw.c's
+ * onyx_layer_paint_in: a z-index auto box gives those above 0 to its stacking context) */
+static void onyx_hit_layer(struct onyx_hit *h, int start, bool context, double lo,
+		double span)
+{
+	int end = h->n, n = end - start, h0 = h->nh, i, k;
+
+	for (i = start; i < end; i++) {
+		h->off[i].key.lo = lo + span * (i - start + 1) / (n + 1);
+		h->off[i].key.span = span / (n + 1);
+	}
+	if (!context) {
+		for (i = k = start; i < end; i++) {
+			if (h->off[i].key.z > 0 && onyx_hit_room(&h->hoist, h->nh, &h->caph))
+				h->hoist[h->nh++] = h->off[i];
+			else
+				h->off[k++] = h->off[i];
+		}
+		end = h->n = k;
+		h0 = h->nh;
+	}
 	if (end - start > 1)
 		qsort(h->off + start, end - start, sizeof(*h->off), onyx_hit_cmp);
 	for (i = start; i < end; i++) {
 		struct onyx_hit_off e = h->off[i];
+		const struct box *was = h->escape;
 
+		h->escape = NULL;	/* (a box put off: its own clip) */
 		onyx_hit_box(h, e.box, e.x, e.y);
+		h->escape = was;
 		if (h->n > end)
-			onyx_hit_layer(h, end);
+			onyx_hit_layer(h, end, html_redraw_layer_context(e.box),
+					e.key.lo, e.key.span);
 		h->n = end;
+		while (context && h->nh > h0) {
+			struct onyx_hit_off o = h->hoist[--h->nh];
+
+			if (!onyx_hit_room(&h->off, end, &h->cap))
+				continue;
+			for (k = end; k > i + 1 &&
+					onyx_layer_key_cmp(&o.key, &h->off[k - 1].key) < 0; k--)
+				h->off[k] = h->off[k - 1];
+			h->off[k] = o;
+			h->n = ++end;
+		}
 	}
 	h->n = start;
 }
@@ -823,8 +908,9 @@ static struct box **onyx_hit_path(html_content *html, int x, int y, int *n)
 	h.px = x;
 	h.py = y;
 	onyx_hit_box(&h, html->layout, 0, 0);
-	onyx_hit_layer(&h, 0);
+	onyx_hit_layer(&h, 0, true, 0, 1);
 	free(h.off);
+	free(h.hoist);
 	if (h.box == NULL)
 		h.box = html->layout;
 

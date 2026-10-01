@@ -1130,6 +1130,11 @@ uint8_t css_computed_stroke_dasharray(const css_computed_style *style, lwc_strin
 	return get_stroke_dasharray(style, text);
 }
 
+uint8_t css_computed_pointer_events(const css_computed_style *style)
+{
+	return get_pointer_events(style);
+}
+
 uint8_t css_computed_fill_rule(const css_computed_style *style)
 {
 	return get_fill_rule(style);

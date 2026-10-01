@@ -359,6 +359,7 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("animation-play-state"),
 	SMAP("transition"),
 	SMAP("animation"),
+	SMAP("pointer-events"),	/* Onyx */
 
 	SMAP("inherit"),
 	SMAP("unset"),

@@ -1397,7 +1397,9 @@ bool html_redraw_box(const html_content *html, struct box *box,
  * positioned box (and a flex / grid item with a z-index) is put off while its layer is
  * painted -- the page, or the positioned box it is in -- and painted after that layer's
  * other content, the layer's put-off boxes sorted by z-index (auto: 0), each with its own
- * layer inside it. A negative z-index is painted in place.
+ * layer inside it. A negative z-index is painted in place. A positioned box with z-index
+ * auto is no stacking context (html_redraw_layer_context): the boxes above 0 it puts off
+ * are sorted with its stacking context's (onyx_layer_paint_in, docs/06 §42).
  */
 
 /** a box put off: painted after its layer's in-flow content */
@@ -1406,8 +1408,7 @@ struct onyx_layer_box {
 	int x_parent, y_parent;
 	struct rect clip;
 	colour background;
-	int32_t z;		/* its z-index (libcss' fixed point) */
-	int order;		/* (the tree's order, for equal z-indexes) */
+	struct onyx_layer_key key;	/* its z-index (libcss' fixed point), its tree order */
 };
 
 /* Onyx: the redraw's own clip (the document's): a fixed box is not clipped by
@@ -1417,6 +1418,10 @@ static bool onyx_redraw_root_clip_set;
 
 static struct onyx_layer_box *onyx_layer_boxes;
 static int onyx_layer_count, onyx_layer_cap;
+/* the boxes with a z-index above 0 a positioned box with z-index auto put off: painted
+ * by its stacking context, sorted with its own (onyx_layer_paint) */
+static struct onyx_layer_box *onyx_hoist_boxes;
+static int onyx_hoist_count, onyx_hoist_cap;
 static bool onyx_layering;	/* a redraw that paints by layers is going on */
 
 /* exported interface documented in html/private.h */
@@ -1450,6 +1455,63 @@ bool html_redraw_layer_z(const struct box *box, int32_t *z)
 	return *z >= 0;
 }
 
+/* exported interface documented in html/private.h */
+bool html_redraw_layer_context(const struct box *box)
+{
+	int32_t zi;
+	uint8_t pos;
+
+	if (box->style == NULL)
+		return true;
+	if (css_computed_z_index(box->style, &zi) == CSS_Z_INDEX_SET)
+		return true;
+	pos = css_computed_position(box->style);
+	if (pos == CSS_POSITION_FIXED || pos == CSS_POSITION_STICKY)
+		return true;
+	return onyx_fx_style(box->style) && onyx_fx_box(box);
+}
+
+/* exported interface documented in html/private.h */
+int onyx_layer_key_cmp(const struct onyx_layer_key *a, const struct onyx_layer_key *b)
+{
+	if (a->z != b->z)
+		return a->z < b->z ? -1 : 1;
+	return a->lo < b->lo ? -1 : a->lo > b->lo ? 1 : 0;
+}
+
+/* Onyx: the boxes clipping their overflow being painted, each with the clip it was given:
+ * an absolutely positioned box is clipped by the overflow of its containing block and of
+ * its containing block's ancestors only, not by a static scroller between them (Codex's
+ * menu: its footer, absolute in the menu, under the scrolling list -- it was cut away) */
+#define ONYX_OCLIP_MAX 64
+static struct {
+	const struct box *box;
+	struct rect outer;
+} onyx_oclip[ONYX_OCLIP_MAX];
+static int onyx_oclip_depth;
+
+/** an absolute box's clip: the one outside the static clipping boxes between it and its
+ * containing block (clip unchanged when there are none) */
+static void onyx_oclip_escape(const struct box *c, struct rect *clip)
+{
+	const struct box *a;
+	int i;
+
+	if (onyx_oclip_depth == 0)
+		return;
+	for (a = c->parent; a != NULL; a = a->parent) {
+		if (a->style != NULL &&
+		    (css_computed_position(a->style) != CSS_POSITION_STATIC ||
+		     (onyx_fx_style(a->style) && onyx_fx_box(a))))
+			break;	/* (the containing block: its own overflow clips) */
+		for (i = onyx_oclip_depth - 1; i >= 0; i--)
+			if (onyx_oclip[i].box == a) {
+				*clip = onyx_oclip[i].outer;
+				break;
+			}
+	}
+}
+
 /** a child put off (true), or to paint now */
 static bool onyx_layer_defer(struct box *c, int x_parent, int y_parent,
 		const struct rect *clip, colour background)
@@ -1475,9 +1537,13 @@ static bool onyx_layer_defer(struct box *c, int x_parent, int y_parent,
 	if (onyx_redraw_root_clip_set && c->style != NULL &&
 	    css_computed_position(c->style) == CSS_POSITION_FIXED)
 		e->clip = onyx_redraw_root_clip;
+	else if (c->style != NULL &&
+		 css_computed_position(c->style) == CSS_POSITION_ABSOLUTE)
+		onyx_oclip_escape(c, &e->clip);
 	e->background = background;
-	e->z = z;
-	e->order = onyx_layer_count;
+	e->key.z = z;
+	e->key.lo = onyx_layer_count;	/* (onyx_layer_paint gives the tree's order) */
+	e->key.span = 1;
 	onyx_layer_count++;
 	return true;
 }
@@ -1486,9 +1552,7 @@ static int onyx_layer_cmp(const void *a, const void *b)
 {
 	const struct onyx_layer_box *x = a, *y = b;
 
-	if (x->z != y->z)
-		return x->z < y->z ? -1 : 1;
-	return x->order - y->order;
+	return onyx_layer_key_cmp(&x->key, &y->key);
 }
 
 /* ---- Onyx: the painting phases of CSS 2.1 appendix E within a stacking context ----
@@ -1582,13 +1646,55 @@ static bool onyx_phase_paint(const html_content *html, int start, float scale,
 	return ok;
 }
 
-/** the boxes a layer put off (from start on), painted in their order; each a layer */
-static bool onyx_layer_paint(const html_content *html, int start, float scale,
-		const struct redraw_context *ctx)
+/** room for one more box put off (false: none) */
+static bool onyx_layer_room(struct onyx_layer_box **a, int count, int *cap)
 {
-	int end = onyx_layer_count, i;
+	struct onyx_layer_box *e;
+	int n;
+
+	if (count < *cap)
+		return true;
+	n = *cap ? *cap * 2 : 64;
+	e = realloc(*a, n * sizeof(*e));
+	if (e == NULL)
+		return false;
+	*a = e;
+	*cap = n;
+	return true;
+}
+
+/**
+ * The boxes a layer put off (from start on), painted in their order. A stacking
+ * context's (context true) are all painted here; a positioned box's with z-index auto
+ * (context false: its own z-index is 0) paints those at 0 only, after it in the tree's
+ * order, and gives those above 0 to its stacking context (onyx_hoist_*), which sorts
+ * them with its own -- CSS 2.1 appendix E: they are its context's, not the box's.
+ * lo / span: the interval of the tree's order the boxes are in (their layer's own).
+ */
+static bool onyx_layer_paint_in(const html_content *html, int start, bool context,
+		double lo, double span, float scale, const struct redraw_context *ctx)
+{
+	int end = onyx_layer_count, n = end - start, h0 = onyx_hoist_count, i, k;
 	bool ok = true;
 
+	for (i = start; i < end; i++) {
+		struct onyx_layer_key *key = &onyx_layer_boxes[i].key;
+
+		key->lo = lo + span * (i - start + 1) / (n + 1);
+		key->span = span / (n + 1);
+	}
+	if (!context) {
+		for (i = k = start; i < end; i++) {
+			if (onyx_layer_boxes[i].key.z > 0 &&
+			    onyx_layer_room(&onyx_hoist_boxes, onyx_hoist_count,
+					&onyx_hoist_cap))
+				onyx_hoist_boxes[onyx_hoist_count++] = onyx_layer_boxes[i];
+			else
+				onyx_layer_boxes[k++] = onyx_layer_boxes[i];
+		}
+		end = onyx_layer_count = k;
+		h0 = onyx_hoist_count;
+	}
 	if (end - start > 1)
 		qsort(onyx_layer_boxes + start, end - start,
 				sizeof(*onyx_layer_boxes), onyx_layer_cmp);
@@ -1599,11 +1705,33 @@ static bool onyx_layer_paint(const html_content *html, int start, float scale,
 		ok = html_redraw_box(html, e.box, e.x_parent, e.y_parent, &e.clip,
 				scale, e.background, ctx);
 		if (ok && onyx_layer_count > end)
-			ok = onyx_layer_paint(html, end, scale, ctx);
+			ok = onyx_layer_paint_in(html, end,
+					html_redraw_layer_context(e.box),
+					e.key.lo, e.key.span, scale, ctx);
 		onyx_layer_count = end;
+		/* a stacking context: the boxes its descendants gave it, sorted in
+		 * with those still to paint */
+		while (context && onyx_hoist_count > h0) {
+			struct onyx_layer_box h = onyx_hoist_boxes[--onyx_hoist_count];
+
+			if (!onyx_layer_room(&onyx_layer_boxes, end, &onyx_layer_cap))
+				continue;	/* (dropped: out of memory) */
+			for (k = end; k > i + 1 && onyx_layer_key_cmp(&h.key,
+					&onyx_layer_boxes[k - 1].key) < 0; k--)
+				onyx_layer_boxes[k] = onyx_layer_boxes[k - 1];
+			onyx_layer_boxes[k] = h;
+			onyx_layer_count = ++end;
+		}
 	}
 	onyx_layer_count = start;
 	return ok;
+}
+
+/** a stacking context's boxes put off (from start on), painted in their order */
+static bool onyx_layer_paint(const html_content *html, int start, float scale,
+		const struct redraw_context *ctx)
+{
+	return onyx_layer_paint_in(html, start, true, 0, 1, scale, ctx);
 }
 
 /**
@@ -2385,13 +2513,16 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 		colour current_background_color,
 		const struct redraw_context *ctx)
 {
-	int start;
+	int start, oclip = onyx_oclip_depth;	/* (the body may push its own) */
 	bool ok;
 
 	if (!onyx_layering || html_redraw_printing ||
-	    (onyx_phase_depth > 0 && onyx_phase_transparent(box)))
-		return html_redraw_box_body(html, box, x_parent, y_parent, clip,
+	    (onyx_phase_depth > 0 && onyx_phase_transparent(box))) {
+		ok = html_redraw_box_body(html, box, x_parent, y_parent, clip,
 				scale, current_background_color, ctx);
+		onyx_oclip_depth = oclip;
+		return ok;
+	}
 	start = onyx_phase_count;
 	onyx_phase_depth++;
 	ok = html_redraw_box_body(html, box, x_parent, y_parent, clip, scale,
@@ -2404,6 +2535,7 @@ static bool html_redraw_box_inner(const html_content *html, struct box *box,
 	}
 	onyx_phase_count = start;
 	onyx_phase_depth--;
+	onyx_oclip_depth = oclip;
 	return ok;
 }
 
@@ -3130,6 +3262,13 @@ static bool html_redraw_box_body(const html_content *html, struct box *box,
 		     box->type == BOX_INLINE_BLOCK ||
 		     box->type == BOX_FLEX || box->type == BOX_INLINE_FLEX ||
 		     box->type == BOX_TABLE_CELL || box->object)) {
+			/* Onyx: the clip outside it, for the absolute boxes in it
+			 * whose containing block is outside it (onyx_oclip_escape) */
+			if (onyx_layering && onyx_oclip_depth < ONYX_OCLIP_MAX) {
+				onyx_oclip[onyx_oclip_depth].box = box;
+				onyx_oclip[onyx_oclip_depth].outer = *clip;
+				onyx_oclip_depth++;
+			}
 			if (ctx->plot->clip(ctx, &r) != NSERROR_OK)
 				return false;
 			/* Onyx: and to its padding box's rounded corners */

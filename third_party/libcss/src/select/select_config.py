@@ -196,6 +196,7 @@ style = {
         'CSS_STROKE_MITERLIMIT_SET'),
     ('stroke_dasharray', 2, 'string', 'CSS_ONYX_TEXT_SET', 'CSS_ONYX_TEXT_NONE'),
     ('fill_rule', 2, None, None, 'CSS_FILL_RULE_NONZERO'),
+    ('pointer_events', 2, None, None, 'CSS_POINTER_EVENTS_AUTO'),
     ('stroke_linecap', 2, None, None, 'CSS_STROKE_LINECAP_BUTT'),
     ('stroke_linejoin', 3, None, None, 'CSS_STROKE_LINEJOIN_MITER'),
     ('stop_color', 2, 'color', None, 'CSS_STOP_COLOR_COLOR'),
