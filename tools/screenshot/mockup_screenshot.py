@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""mockup_capture.py -- the first mock-ups of Onyx's screen capture tool (as Windows 10's Snip & Sketch):
+"""mockup_screenshot.py -- the first mock-ups of Onyx's screen capture tool, Screenshot, (as Windows 10's Snip & Sketch):
 a capture of a region, a window or the whole screen, now or after a delay; then the picture in an
 editor -- a pen and a marker to draw on it, an eraser, a crop --, saved and copied to the clipboard.
-See docs/capture/README.md.
+See docs/screenshot/README.md.
 
-    python3 tools/screenshot/mockup_capture.py  -> docs/capture/mockups/capture-*.png
+    python3 tools/screenshot/mockup_screenshot.py  -> docs/screenshot/mockups/capture-*.png
 
 The screen is the Pi's default 1024 x 768: the real desktop (screenshots/desktop.png) is what gets
 captured. The drawing helpers and the look are mockup_archiver.py's (the Peach frame, the beige faces).
@@ -17,7 +17,7 @@ sys.path.insert (0, HERE)
 import mockup_archiver as M
 
 M.W, M.H = 1024, 768
-M.OUT = os.path.join (M.ROOT, "docs", "capture", "mockups")
+M.OUT = os.path.join (M.ROOT, "docs", "screenshot", "mockups")
 K = M.K
 DESK = Image.open (os.path.join (M.ROOT, "screenshots", "desktop.png")).convert ("RGB")
 TEXT, DIM, FACE, SEL, MENU = M.TEXT, M.DIM, M.FACE, M.SEL, M.MENU
@@ -114,7 +114,7 @@ def crosshair (c, x, y):
 def shot_start ():
 	c = screen ()
 	x, y, w, h = 430, 230, 440, 300
-	cx, cy, cw, ch = M.window (c, x, y, w, h, "Capture")
+	cx, cy, cw, ch = M.window (c, x, y, w, h, "Screenshot")
 	c.text (cx + 20, cy + 16, "Take a capture of the screen", "big")
 	c.text (cx + 20, cy + 40, "draw on it, save it, copy it", "small", DIM)
 	# what
@@ -134,7 +134,7 @@ def shot_start ():
 	M.menu_popup (c, bx + 6, by + 38, 210, [("Capture now", "Print"), ("In 3 seconds", ""), ("In 5 seconds", ""), ("In 10 seconds", ""), None,
 		("Open a picture...", "^O")], hot = "In 3 seconds")
 	M.cursor (c, bx + 120, by + 88)
-	c.save ("capture-start.png")
+	c.save ("screenshot-start.png")
 
 # ---- 2. a region being chosen ------------------------------------------------------------------------------
 def shot_region ():
@@ -160,7 +160,7 @@ def shot_region ():
 	capture_bar (c, "Region")
 	hint (c, "Drag a region  -  Enter: the whole screen  -  Esc: cancel")
 	crosshair (c, px, py)
-	c.save ("capture-region.png")
+	c.save ("screenshot-region.png")
 
 # ---- 3. a window chosen ----------------------------------------------------------------------------------------
 def shot_window ():
@@ -174,7 +174,7 @@ def shot_window ():
 	capture_bar (c, "Window", "3 seconds")
 	hint (c, "Click a window  -  Tab: the next one  -  Esc: cancel")
 	M.cursor (c, 700, 420)
-	c.save ("capture-window.png")
+	c.save ("screenshot-window.png")
 
 # ---- 4. the delay counting down --------------------------------------------------------------------------------
 def shot_delay ():
@@ -186,7 +186,7 @@ def shot_delay ():
 	t = "Capturing the screen in 2 s  -  Esc: cancel"; tw = c.tw (t, "uib") + 36
 	c.rect (cx - tw / 2, cy + 82, tw, 30, M.A ((20, 20, 24), 200), r = 15)
 	c.text_c (cx - tw / 2, cy + 82, tw, 30, t, "uib", WHITE)
-	c.save ("capture-delay.png")
+	c.save ("screenshot-delay.png")
 
 # ---- 5. the editor: the capture, drawn on --------------------------------------------------------------------
 def tool_button (c, x, y, w, h, icon, label = None, on = False, split = False):
@@ -199,7 +199,7 @@ def tool_button (c, x, y, w, h, icon, label = None, on = False, split = False):
 def shot_editor ():
 	c = screen ()
 	x, y, w, h = 40, 34, 944, 640
-	cx, cy, cw, ch = M.window (c, x, y, w, h, "Capture - Capture 2026-10-01 12-34.png")
+	cx, cy, cw, ch = M.window (c, x, y, w, h, "Screenshot - Screenshot 2026-10-01 12-34.png")
 	# the toolbar
 	ty = cy + 6
 	c.rect (cx, cy, cw, 52, FACE)
@@ -269,11 +269,11 @@ def shot_editor ():
 	c.rect (nx, ny, nw, nh, M.A (MENU, 250), r = 10, outline = M.shade (FACE, 0.62))
 	c.img.paste (cap.resize ((96 * K, 62 * K), Image.LANCZOS), (int ((nx + 12) * K), int ((ny + 11) * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
 	c.rect (nx + 12, ny + 11, 96, 62, None, outline = (180, 170, 160))
-	c.text (nx + 120, ny + 12, "Capture copied to the clipboard", "uib")
-	c.text (nx + 120, ny + 34, "Saved in SD:/Pictures/Captures", "small", DIM)
+	c.text (nx + 120, ny + 12, "Screenshot copied to the clipboard", "uib")
+	c.text (nx + 120, ny + 34, "Saved in SD:/Pictures/Screenshots", "small", DIM)
 	c.text (nx + 120, ny + 52, "Click to draw on it", "small", M.LINK)
 	M.cursor (c, a1[0] + 40, a1[1] - 30)
-	c.save ("capture-editor.png")
+	c.save ("screenshot-editor.png")
 
 if __name__ == "__main__":
 	M.F["huge"] = M._f ("DejaVuSans-Bold.ttf", 54)
