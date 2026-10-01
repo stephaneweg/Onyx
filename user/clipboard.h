@@ -51,7 +51,7 @@ static inline void clip_source_ (char *out, int cap)
 static inline void clip_tmp_ (char *out, const char *what)
 {
 	static unsigned seq;
-	unsigned v[3] = { kapi_get_ticks (), ++seq, (unsigned) (unsigned long) &seq };
+	unsigned v[3] = { kapi_get_ticks (), ++seq, (unsigned) (unsigned long long) &seq };
 	const char *base = CLIP_DIR "/";
 	int k = 0;
 	for (int i = 0; base[i]; i++) out[k++] = base[i];

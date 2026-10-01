@@ -44,16 +44,16 @@ public:
 	void buttons (void (*onSave) (), void (*onSaveNew) (), void (*onCancel) (), void (*onDel) ())
 	{
 		HeadRow h (this);
-		bSave = h.add ("Save", onSave, FB_PRIMARY, NI_CHECK, "Save the document and go back to the list (Ctrl+S)");
-		if (onSaveNew) bSaveNew = h.add ("Save & New", onSaveNew, FB_SECONDARY, -1, "Save it and type the next one");
-		bCancel = h.add ("Cancel", onCancel, FB_SECONDARY, -1, "Leave it without saving (Esc)");
+		bSave = h.add (TR ("Save"), onSave, FB_PRIMARY, NI_CHECK, TR ("Save the document and go back to the list (Ctrl+S)"));
+		if (onSaveNew) bSaveNew = h.add (TR ("Save & New"), onSaveNew, FB_SECONDARY, -1, TR ("Save it and type the next one"));
+		bCancel = h.add (TR ("Cancel"), onCancel, FB_SECONDARY, -1, TR ("Leave it without saving (Esc)"));
 		h.gap (10);
-		bDelete = h.add ("", onDel, FB_DANGER, NI_TRASH, "Delete the document...");
+		bDelete = h.add ("", onDel, FB_DANGER, NI_TRASH, TR ("Delete the document..."));
 	}
 	bool leave () override
 	{
 		if (!dirty) return true;
-		int r = ask ("Unsaved document", "This document has changes not saved. Save it now?", MB_YESNOCANCEL, 1);
+		int r = ask (TR ("Unsaved document"), TR ("This document has changes not saved. Save it now?"), MB_YESNOCANCEL, 1);
 		if (r == 0) return false;
 		if (r == 1) return save ();
 		dirty = false;
@@ -63,7 +63,7 @@ public:
 	void cancel ()
 	{
 		if (grid ()) grid ()->cancelEditing ();
-		if (dirty && ask ("Cancel", "Leave this document without saving its changes?", MB_YESNO, 1) != 1) return;
+		if (dirty && ask (TR ("Cancel"), TR ("Leave this document without saving its changes?"), MB_YESNO, 1) != 1) return;
 		close ();
 	}
 	void tick () override { if (grid ()) grid ()->tick (); }
@@ -95,7 +95,7 @@ static void mark_dirty (Widget &) { if (g_doc) g_doc->dirty = true; }
 static const char *put_money (const char *text, money *out)
 {
 	money v;
-	if (!parse_money (text, &v)) return "Type an amount, as 1.234,56.";
+	if (!parse_money (text, &v)) return TR ("Type an amount, as 1.234,56.");
 	*out = v;
 	return "";
 }
@@ -112,10 +112,10 @@ static const char *resolve_account (const char *text, int filter, char *code)
 	else
 	{
 		Sug s[2]; int n = sug_accounts (g_b, t, filter, 0, s, 2);
-		if (n != 1) return n ? "Several accounts match: choose one from the list." : "No such account: choose one from the list (or add it in the chart).";
+		if (n != 1) return n ? TR ("Several accounts match: choose one from the list.") : TR ("No such account: choose one from the list (or add it in the chart).");
 		scpy (code, s[0].value, CODE_MAX);
 	}
-	if ((filter & AF_NOPARTY) && acc_party (g_b, code)) return "That is a customers' or suppliers' account: choose a revenue, expense or other account.";
+	if ((filter & AF_NOPARTY) && acc_party (g_b, code)) return TR ("That is a customers' or suppliers' account: choose a revenue, expense or other account.");
 	return "";
 }
 // A party typed or picked ("P12", its name, its code): its id (0 none).
@@ -128,17 +128,17 @@ static const char *resolve_party (const char *text, int kind, int *id)
 	for (int i = 0; i < g_b.npty; i++) if ((kind < 0 || g_b.pty[i].kind == kind) && (ci_eq (g_b.pty[i].name, t) || ci_eq (g_b.pty[i].code, t))) { *id = g_b.pty[i].id; return ""; }
 	Sug s[2]; int n = sug_parties (g_b, t, kind, s, 2);
 	if (n == 1) { *id = cell_int (s[0].value + 1); return ""; }
-	return n ? "Several parties match: choose one from the list." : "No such party: choose one from the list (or add it: the + button).";
+	return n ? TR ("Several parties match: choose one from the list.") : TR ("No such party: choose one from the list (or add it: the + button).");
 }
 static const char *vat_label (int v) { return v >= 0 && v < NVAT ? VAT_DEFS[v].code : ""; }
 static const char *resolve_vat (const char *text, int side, int *v)
 {
 	char t[16]; trim_copy (t, text, sizeof t);
-	if (!t[0] || seq (t, "-") || ci_eq (t, "(none)")) { *v = -1; return ""; }
+	if (!t[0] || seq (t, "-") || ci_eq (t, "(none)") || ci_eq (t, TR ("(none)"))) { *v = -1; return ""; }
 	int i = vat_find (t);
 	if (i < 0) { Sug s[2]; int n = sug_vat (t, side, s, 2); if (n == 1 && !seq (s[0].value, "-")) i = vat_find (s[0].value); }
-	if (i < 0) return "No such VAT code: choose one from the list.";
-	if (side >= 0 && VAT_DEFS[i].side != side && VAT_DEFS[i].side != VS_OTHER) return side == VS_SALES ? "That is a purchases' VAT code." : "That is a sales' VAT code.";
+	if (i < 0) return TR ("No such VAT code: choose one from the list.");
+	if (side >= 0 && VAT_DEFS[i].side != side && VAT_DEFS[i].side != VS_OTHER) return side == VS_SALES ? TR ("That is a purchases' VAT code.") : TR ("That is a sales' VAT code.");
 	*v = i;
 	return "";
 }
@@ -188,30 +188,31 @@ public:
 		inv_init (v); entry_init (preview); tNet = tTax = tTot = tRev = 0;
 		resizeTo (800, 660);
 		buttons (s_save, s_saveNew, s_cancel, s_del);
-		bPrint = new FlatButton ("Print", s_print, FB_SECONDARY, NI_PRINT); bPrint->left = bDelete->left - 8 - bPrint->width; bPrint->top = bSave->top;
-		bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP; bPrint->tip = "The invoice made by Writer from its template"; addChild (bPrint);
+		bPrint = new FlatButton (TR ("Print"), s_print, FB_SECONDARY, NI_PRINT); bPrint->left = bDelete->left - 8 - bPrint->width; bPrint->top = bSave->top;
+		bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP; bPrint->tip = TR ("The invoice made by Writer from its template"); addChild (bPrint);
 		int W = width, rx = W - 330;
 		party = new PickEdit (130, 72, rx - 130 - 60, SK_PARTY, PK_CUSTOMER); party->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
-		party->placeholder = "Type a name, a code, a VAT number"; party->onPick = on_party; party->onChange = mark_dirty; addChild (party);
+		party->placeholder = TR ("Type a name, a code, a VAT number"); party->onPick = on_party; party->onChange = mark_dirty; addChild (party);
 		bParty = new FlatButton ("", s_newParty, FB_SECONDARY, NI_PLUS); bParty->left = rx - 52; bParty->top = 70; bParty->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		bParty->resizeTo (34, 30); bParty->tip = "A new party (its card)"; addChild (bParty);
+		bParty->resizeTo (34, 30); bParty->tip = TR ("A new party (its card)"); addChild (bParty);
 		date = new DateEdit (rx + 110, 72, 150); date->anchor = ANCHOR_RIGHT | ANCHOR_TOP; date->onChange = on_date; addChild (date);
 		due = new DateEdit (rx + 110, 104, 150); due->anchor = ANCHOR_RIGHT | ANCHOR_TOP; due->onChange = mark_dirty; addChild (due);
 		text = new LineEdit (130, 136, rx - 130 - 18); text->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT; text->onChange = mark_dirty;
-		text->placeholder = "What the invoice is for"; addChild (text);
+		text->placeholder = TR ("What the invoice is for"); addChild (text);
 		static const char *const KINDS[2] = { "Invoice", "Credit note" };
-		kind = new Segmented (rx + 110, 136, KINDS, 2, on_kind); kind->anchor = ANCHOR_RIGHT | ANCHOR_TOP; addChild (kind);
+		const char *kindsTr[2] = { TR (KINDS[0]), TR (KINDS[1]) };
+		kind = new Segmented (rx + 110, 136, kindsTr, 2, on_kind); kind->anchor = ANCHOR_RIGHT | ANCHOR_TOP; addChild (kind);
 		comm = new LineEdit (130, 168, 230); comm->onChange = mark_dirty; addChild (comm);
 		ref = new LineEdit (rx + 110, 168, 200); ref->anchor = ANCHOR_RIGHT | ANCHOR_TOP; ref->onChange = mark_dirty; addChild (ref);
 		jbox = new ChoiceBox (rx + 110, 200, 200); jbox->anchor = ANCHOR_RIGHT | ANCHOR_TOP; jbox->onChange = on_journal; addChild (jbox);
 		g = new EditGrid (16, 238, W - 32, height - 238 - 150, this);
 		g->anchor = ANCHOR_FILL;
-		g->addCol ("Account", 200, EK_ACCOUNT, false, AF_NOPARTY, "7");
-		g->addCol ("Description", 160, EK_TEXT);
-		g->addCol ("Excl. VAT", 104, EK_MONEY, true);
-		g->addCol ("VAT code", 116, EK_VAT, false, VS_SALES);
-		g->addCol ("VAT", 90, EK_MONEY, true);
-		g->addCol ("Total", 104, EK_READ, true);
+		g->addCol (TR ("Account"), 200, EK_ACCOUNT, false, AF_NOPARTY, "7");
+		g->addCol (TR ("Description"), 160, EK_TEXT);
+		g->addCol (TR ("Excl. VAT"), 104, EK_MONEY, true);
+		g->addCol (TR ("VAT code"), 116, EK_VAT, false, VS_SALES);
+		g->addCol (TR ("VAT"), 90, EK_MONEY, true);
+		g->addCol (TR ("Total"), 104, EK_READ, true);
 		g->flex = 0;
 		addChild (g);
 	}
@@ -228,9 +229,9 @@ public:
 		jc.fill (sale ? JT_SALES : JT_PURCH);
 		jbox->setOptions (jc.names, jc.n); jbox->sel = jc.find (journal); jbox->hidden = jc.n < 2;
 		kind->set (credit ? 1 : 0);
-		comm->placeholder = sale ? "Made when saved" : "+++123/4567/89012+++";
-		ref->placeholder = sale ? "Order, your reference" : "The supplier's invoice number";
-		party->placeholder = sale ? "The customer: a name, a code, a VAT number" : "The supplier: a name, a code, a VAT number";
+		comm->placeholder = sale ? TR ("Made when saved") : "+++123/4567/89012+++";
+		ref->placeholder = sale ? TR ("Order, your reference") : TR ("The supplier's invoice number");
+		party->placeholder = sale ? TR ("The customer: a name, a code, a VAT number") : TR ("The supplier: a name, a code, a VAT number");
 		g->reset ();
 	}
 	void fields ()
@@ -247,8 +248,8 @@ public:
 	void titleFor ()
 	{
 		char r[40];
-		if (v.id) { doc_ref (v.id, r, sizeof r); scpy (head, sale ? (v.credit ? "Sales credit note " : "Sales invoice ") : (v.credit ? "Purchase credit note " : "Purchase invoice "), sizeof head); scat (head, r, sizeof head); }
-		else scpy (head, sale ? (v.credit ? "New sales credit note" : "New sales invoice") : (v.credit ? "New purchase credit note" : "New purchase invoice"), sizeof head);
+		if (v.id) { doc_ref (v.id, r, sizeof r); scpy (head, sale ? (v.credit ? TR ("Sales credit note ") : TR ("Sales invoice ")) : (v.credit ? TR ("Purchase credit note ") : TR ("Purchase invoice ")), sizeof head); scat (head, r, sizeof head); }
+		else scpy (head, sale ? (v.credit ? TR ("New sales credit note") : TR ("New sales invoice")) : (v.credit ? TR ("New purchase credit note") : TR ("New purchase invoice")), sizeof head);
 		invalidate (true);
 	}
 	void startNew (int journal, bool credit)
@@ -303,18 +304,18 @@ public:
 	void subtitle (char *out, int cap) override
 	{
 		out[0] = '\0';
-		if (!v.id) { scpy (out, sale ? "Type the customer, the dates, the lines; Save posts it." : "Type the supplier, the dates, the lines; Save posts it.", cap); return; }
+		if (!v.id) { scpy (out, sale ? TR ("Type the customer, the dates, the lines; Save posts it.") : TR ("Type the supplier, the dates, the lines; Save posts it."), cap); return; }
 		int i = entry_index (g_b, v.id);
 		if (i < 0) return;
 		const Entry &e = g_b.e[i];
 		const char *lk = entry_locked (g_b, e);
-		if (lk[0]) { scpy (out, "Locked: ", cap); scat (out, lk, cap); return; }
+		if (lk[0]) { scpy (out, TR ("Locked: "), cap); scat (out, lk, cap); return; }
 		for (int k = 0; k < e.nl; k++)
 			if (e.l[k].party && acc_party (g_b, e.l[k].account))
 			{
-				if (e.l[k].match) { scpy (out, "Paid (matched)", cap); return; }
+				if (e.l[k].match) { scpy (out, TR ("Paid (matched)"), cap); return; }
 				char d[16]; date_show (e.l[k].due ? e.l[k].due : e.date, d);
-				scpy (out, (e.l[k].due ? e.l[k].due : e.date) < today_ymd () ? "Open, overdue since " : "Open, due on ", cap); scat (out, d, cap);
+				scpy (out, (e.l[k].due ? e.l[k].due : e.date) < today_ymd () ? TR ("Open, overdue since ") : TR ("Open, due on "), cap); scat (out, d, cap);
 				return;
 			}
 	}
@@ -442,19 +443,19 @@ public:
 	bool read (const char **why)
 	{
 		*why = "";
-		if (!party->resolve ()) { *why = "Choose the party from the list (or add it: the + button)."; party->setError (true); return false; }
+		if (!party->resolve ()) { *why = TR ("Choose the party from the list (or add it: the + button)."); party->setError (true); return false; }
 		partyChosen ();
 		int d = date_parse (date->text ());
-		if (!d) { *why = "Type the date, as 29/09/2026."; date->setError (true); return false; }
+		if (!d) { *why = TR ("Type the date, as 29/09/2026."); date->setError (true); return false; }
 		v.date = d;
 		v.due = due->text ()[0] ? date_parse (due->text ()) : d;
-		if (!v.due) { *why = "Type the due date, as 29/09/2026 (or leave it empty)."; due->setError (true); return false; }
+		if (!v.due) { *why = TR ("Type the due date, as 29/09/2026 (or leave it empty)."); due->setError (true); return false; }
 		scpy (v.ref, ref->text (), sizeof v.ref);
 		scpy (v.text, text->text (), sizeof v.text);
 		char c[16]; char t[40]; trim_copy (t, comm->text (), sizeof t);
 		if (!t[0]) v.comm[0] = '\0';
 		else if (ogm_parse (t, c)) scpy (v.comm, c, sizeof v.comm);
-		else { *why = "The structured communication's check digits are wrong (+++123/4567/89012+++)."; comm->setError (true); return false; }
+		else { *why = TR ("The structured communication's check digits are wrong (+++123/4567/89012+++)."); comm->setError (true); return false; }
 		v.journal = jc.n ? jc.idx[iclamp (jbox->sel, 0, jc.n - 1)] : v.journal;
 		v.credit = kind->cur == 1;
 		// the blank lines left out
@@ -465,14 +466,14 @@ public:
 	{
 		if (!g->commit ()) return false;
 		const char *why;
-		if (!read (&why)) { if (!v.nl) inv_add (v); status (why); warn ("Save", why); return false; }
+		if (!read (&why)) { if (!v.nl) inv_add (v); status (why); warn (TR ("Save"), why); return false; }
 		if (v.id)
 		{
 			int i = entry_index (g_b, v.id);
-			if (i >= 0) { const char *lk = entry_locked (g_b, g_b.e[i]); if (lk[0]) { warn ("Save", lk); return false; } }
+			if (i >= 0) { const char *lk = entry_locked (g_b, g_b.e[i]); if (lk[0]) { warn (TR ("Save"), lk); return false; } }
 		}
 		const char *w = inv_check (g_b, v);
-		if (w[0]) { if (!v.nl) inv_add (v); warn ("Save", w); return false; }
+		if (w[0]) { if (!v.nl) inv_add (v); warn (TR ("Save"), w); return false; }
 		if (!sale && v.ref[0])					// the same supplier's number twice?
 			for (int i = 0; i < g_b.ne; i++)
 			{
@@ -480,9 +481,9 @@ public:
 				if (e.id != v.id && e.party == v.party && g_b.jr[e.journal].type == JT_PURCH && ci_eq (e.ref, v.ref) && year_of (g_b, e.date) == year_of (g_b, v.date))
 				{
 					char r[40], m[200]; entry_ref (g_b, e, r, sizeof r);
-					scpy (m, "This supplier's invoice ", sizeof m); scat (m, v.ref, sizeof m); scat (m, " is already posted (", sizeof m); scat (m, r, sizeof m);
-					scat (m, "). Post it again?", sizeof m);
-					if (ask ("Save", m, MB_YESNO, 2) != 1) return false;
+					scpy (m, TR ("This supplier's invoice "), sizeof m); scat (m, v.ref, sizeof m); scat (m, TR (" is already posted ("), sizeof m); scat (m, r, sizeof m);
+					scat (m, TR ("). Post it again?"), sizeof m);
+					if (ask (TR ("Save"), m, MB_YESNO, 2) != 1) return false;
 					break;
 				}
 			}
@@ -504,7 +505,7 @@ public:
 		}
 		bPrint->hidden = !sale;
 		char r[40]; entry_ref (g_b, s, r, sizeof r);
-		char m[96]; scpy (m, v.credit ? "Credit note " : "Invoice ", sizeof m); scat (m, r, sizeof m); scat (m, wasNew ? " posted" : " saved", sizeof m);
+		char m[96]; scpy (m, v.credit ? TR ("Credit note ") : TR ("Invoice "), sizeof m); scat (m, r, sizeof m); scat (m, wasNew ? TRC ("fem", " posted") : TRC ("fem", " saved"), sizeof m);
 		dirty = false;
 		changed ();
 		status (m);
@@ -515,13 +516,13 @@ public:
 		int i = entry_index (g_b, v.id);
 		if (i < 0) return;
 		const char *w = entry_can_delete (g_b, i);
-		if (w[0]) { warn ("Delete", w); return; }
+		if (w[0]) { warn (TR ("Delete"), w); return; }
 		char r[40], m[160]; entry_ref (g_b, g_b.e[i], r, sizeof r);
-		scpy (m, "Delete ", sizeof m); scat (m, r, sizeof m); scat (m, " for good? Its payments' matchings are undone.", sizeof m);
-		if (ask ("Delete", m, MB_YESNO, 2) != 1) return;
+		scpy (m, TR ("Delete "), sizeof m); scat (m, r, sizeof m); scat (m, TR (" for good? Its payments' matchings are undone."), sizeof m);
+		if (ask (TR ("Delete"), m, MB_YESNO, 2) != 1) return;
 		entry_delete (g_b, i);
 		changed ();
-		status ("Document deleted");
+		status (TR ("Document deleted"));
 		close ();
 	}
 	void refresh () override
@@ -537,22 +538,22 @@ public:
 	{
 		drawHead ();
 		int W = width, rx = W - 330;
-		lab (20, 72, sale ? "Customer" : "Supplier");
-		lab (rx, 72, "Date"); lab (rx, 104, "Due date"); lab (20, 136, "Description"); lab (rx, 136, "Kind");
-		lab (20, 168, "Communication"); lab (rx, 168, sale ? "Reference" : "Their number");
-		if (!jbox->hidden) lab (rx, 200, "Journal");
+		lab (20, 72, sale ? TR ("Customer") : TR ("Supplier"));
+		lab (rx, 72, TR ("Date")); lab (rx, 104, TR ("Due date")); lab (20, 136, TR ("Description")); lab (rx, 136, TR ("Kind"));
+		lab (20, 168, TR ("Communication")); lab (rx, 168, sale ? TR ("Reference") : TR ("Their number"));
+		if (!jbox->hidden) lab (rx, 200, TR ("Journal"));
 		const Party *p = pty ();
 		if (p)							// the party's address, its VAT number
 		{
 			char t[200] = ""; scpy (t, p->street, sizeof t);
 			if (p->zip[0] || p->city[0]) { if (t[0]) scat (t, ", ", sizeof t); scat (t, p->zip, sizeof t); scat (t, " ", sizeof t); scat (t, p->city, sizeof t); }
 			if (p->vat[0]) { char vv[24]; vat_show (p->vat, vv, sizeof vv); if (t[0]) scat (t, "  \xB7  ", sizeof t); scat (t, vv, sizeof t); }
-			else { if (t[0]) scat (t, "  \xB7  ", sizeof t); scat (t, REGIME_NAME[p->regime < PR_COUNT ? p->regime : 0], sizeof t); }
+			else { if (t[0]) scat (t, "  \xB7  ", sizeof t); scat (t, TR (REGIME_NAME[p->regime < PR_COUNT ? p->regime : 0]), sizeof t); }
 			text_fit_l (canvas, 132, 102, rx - 150, 26, t, dim_ink (C_BG));
 		}
 		{
 			int d = date_parse (date->text ()), dd = date_parse (due->text ());
-			if (d && dd && dd >= d) { char t[32]; itoa10 (days_between (d, dd), t); scat (t, " days", sizeof t); wk_text_l (canvas, rx + 270, 104, ED_H, t, dim_ink (C_BG)); }
+			if (d && dd && dd >= d) { char t[32]; itoa10 (days_between (d, dd), t); scat (t, TR (" days"), sizeof t); wk_text_l (canvas, rx + 270, 104, ED_H, t, dim_ink (C_BG)); }
 		}
 		// the foot: the entry at the left, the totals at the right
 		int fy = wg (g)->top + g->height + 12, fh = height - fy - 8;
@@ -561,23 +562,23 @@ public:
 		wk_rline (canvas, tx, fy, 284, fh, 8, wk_mix (C_BG, 0, 60), 100);
 		char a[32];
 		int y = fy + 8;
-		wk_text_l (canvas, tx + 14, y, 20, "Total excl. VAT", field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tNet, a), C_FIELD_TEXT); y += 20;
+		wk_text_l (canvas, tx + 14, y, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tNet, a), C_FIELD_TEXT); y += 20;
 		for (int c = 0; c < NVAT && y < fy + fh - 50; c++)		// the VAT by code
 		{
 			money base = 0, tax = 0; bool any = false;
 			for (int i = 0; i < v.nl; i++) if (v.l[i].vat == c) { any = true; base += v.l[i].net; tax += inv_tax (v.l[i]); }
 			if (!any || (!tax && !base)) continue;
-			char t[48] = "VAT "; scat (t, VAT_DEFS[c].code, sizeof t);
+			char t[48]; scpy (t, TR ("VAT "), sizeof t); scat (t, VAT_DEFS[c].code, sizeof t);
 			if (VAT_DEFS[c].rate) { char rt[16]; fmt_rate (VAT_DEFS[c].rate, rt); scat (t, " (", sizeof t); scat (t, rt, sizeof t); scat (t, ")", sizeof t); }
-			if (vat_reverse (c)) scat (t, " reverse charge", sizeof t);
+			if (vat_reverse (c)) scat (t, TR (" reverse charge"), sizeof t);
 			wk_text_l (canvas, tx + 14, y, 20, t, field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tax, a), vat_reverse (c) ? field_dim () : C_FIELD_TEXT); y += 20;
 		}
 		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, wk_tone (C_FIELD, 100));
-		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, v.credit || kind->cur == 1 ? "Total to refund" : "Total to pay", C_FIELD_TEXT, 2);
+		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, v.credit || kind->cur == 1 ? TR ("Total to refund") : TR ("Total to pay"), C_FIELD_TEXT, 2);
 		text_r (canvas, tx + 270, fy + fh - 36, 28, money_s (tTot, a), C_FIELD_TEXT, 2);
 		// the entry
 		int ex = 16, ew = tx - 16 - 16;
-		wk_text_l (canvas, ex + 2, fy, 20, "The entry it makes", dim_ink (C_BG), 2);
+		wk_text_l (canvas, ex + 2, fy, 20, TR ("The entry it makes"), dim_ink (C_BG), 2);
 		int ly = fy + 22, maxl = (fh - 24) / 18;
 		for (int k = 0; k < preview.nl && k < maxl; k++)
 		{
@@ -591,7 +592,7 @@ public:
 			text_r (canvas, ex + ew - (l.amount < 0 ? 0 : 100), ly, 18, a, C_TEXT);
 			ly += 18;
 		}
-		if (preview.nl) { text_r (canvas, ex + ew - 100, fy, 20, "Debit", dim_ink (C_BG)); text_r (canvas, ex + ew, fy, 20, "Credit", dim_ink (C_BG)); }
+		if (preview.nl) { text_r (canvas, ex + ew - 100, fy, 20, TR ("Debit"), dim_ink (C_BG)); text_r (canvas, ex + ew, fy, 20, TR ("Credit"), dim_ink (C_BG)); }
 	}
 	// ---- the commands ----
 	static void on_party (Widget &) { g_inv->partyChosen (); }
@@ -638,27 +639,27 @@ public:
 		jbox = new ChoiceBox (130, 72, 240); jbox->onChange = on_journal; addChild (jbox);
 		date = new DateEdit (rx + 110, 72, 150); date->anchor = ANCHOR_RIGHT | ANCHOR_TOP; date->onChange = on_date; addChild (date);
 		text = new LineEdit (130, 104, rx - 130 - 18); text->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT; text->onChange = mark_dirty;
-		text->placeholder = "Statement 12, the bank's reference..."; addChild (text);
+		text->placeholder = TR ("Statement 12, the bank's reference..."); addChild (text);
 		newBal = new LineEdit (rx + 110, 104, 150); newBal->anchor = ANCHOR_RIGHT | ANCHOR_TOP; newBal->accept = accept_dec; newBal->rightAlign = true;
-		newBal->placeholder = "As the bank says"; newBal->onChange = on_newbal; addChild (newBal);
+		newBal->placeholder = TR ("As the bank says"); newBal->onChange = on_newbal; addChild (newBal);
 		int gh = (height - 176 - 44) * 55 / 100;
 		g = new EditGrid (16, 176, W - 32, gh, this);
 		g->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
-		g->addCol ("Party or account", 230, EK_TARGET, false, 0, "6");
-		g->addCol ("Description", 200, EK_TEXT);
-		g->addCol ("Amount", 116, EK_MONEY, true);
-		g->addCol ("Pays", 170, EK_READ);
+		g->addCol (TR ("Party or account"), 230, EK_TARGET, false, 0, "6");
+		g->addCol (TR ("Description"), 200, EK_TEXT);
+		g->addCol (TR ("Amount"), 116, EK_MONEY, true);
+		g->addCol (TR ("Pays"), 170, EK_READ);
 		g->flex = 0;
-		g->addText = "Add a movement";
+		g->addText = TR ("Add a movement");
 		addChild (g);
 		int iy = 176 + gh + 34;
 		items = new TickGrid (16, iy, W - 32, height - iy - 44);
 		items->anchor = ANCHOR_FILL;
 		items->setColumns (6);
-		items->setColumn (0, "", 30); items->setColumn (1, "Date", 96); items->setColumn (2, "Document", 130);
-		items->setColumn (3, "Description", 250); items->setColumn (4, "Due", 96); items->setColumn (5, "Amount", 110, GRID_RIGHT);
+		items->setColumn (0, "", 30); items->setColumn (1, TR ("Date"), 96); items->setColumn (2, TR ("Document"), 130);
+		items->setColumn (3, TR ("Description"), 250); items->setColumn (4, TR ("Due"), 96); items->setColumn (5, TR ("Amount"), 110, GRID_RIGHT);
 		items->cellText = item_text; items->cellDraw = item_draw; items->onActivate = on_item; items->onTickRow = on_tick;
-		items->emptyText = "Choose a movement's party: its open invoices show here.";
+		items->emptyText = TR ("Choose a movement's party: its open invoices show here.");
 		items->user = this;
 		addChild (items);
 		// (the grid's height follows the page's: the items take what the window grows)
@@ -683,8 +684,8 @@ public:
 	}
 	void titleFor ()
 	{
-		if (s.id) { char r[40]; doc_ref (s.id, r, sizeof r); scpy (head, "Statement ", sizeof head); scat (head, r, sizeof head); }
-		else scpy (head, g_b.jr[s.journal].type == JT_CASH ? "New cash statement" : "New bank statement", sizeof head);
+		if (s.id) { char r[40]; doc_ref (s.id, r, sizeof r); scpy (head, TR ("Statement "), sizeof head); scat (head, r, sizeof head); }
+		else scpy (head, g_b.jr[s.journal].type == JT_CASH ? TR ("New cash statement") : TR ("New bank statement"), sizeof head);
 		invalidate (true);
 	}
 	void computeOld () { oldBal = fin_balance_before (g_b, s.journal, s.date ? s.date : default_date (), s.id); s.old = oldBal; }
@@ -705,7 +706,7 @@ public:
 		if (!t[0])
 		{
 			int n = 1; for (int i = 0; i < g_b.ne; i++) if (g_b.e[i].journal == journal && year_of (g_b, g_b.e[i].date) == year_of (g_b, s.date)) n++;
-			scpy (t, "Statement ", sizeof t); scat_num (t, n, sizeof t);
+			scpy (t, TR ("Statement "), sizeof t); scat_num (t, n, sizeof t);
 		}
 		scpy (s.text, t, sizeof s.text);
 		st_add (s);
@@ -749,15 +750,15 @@ public:
 		if (imported)						// "CODA 1 of 3: 2 movements to complete"
 		{
 			scpy (out, "CODA", cap);
-			if (importN > 1) { scat (out, " ", cap); scat_num (out, importK, cap); scat (out, " of ", cap); scat_num (out, importN, cap); }
+			if (importN > 1) { scat (out, " ", cap); scat_num (out, importK, cap); scat (out, TR (" of "), cap); scat_num (out, importN, cap); }
 			int left = 0; for (int i = 0; i < s.nl; i++) if (s.l[i].amount && !s.l[i].party && !s.l[i].account[0]) left++;
-			if (importOff) scat (out, ": the bank's old balance is not the books' (a statement missing?)", cap);
-			else if (left) { scat (out, ": ", cap); scat_num (out, left, cap); scat (out, left == 1 ? " movement to complete" : " movements to complete", cap); }
-			else scat (out, ": every movement has its party or account; Save posts it", cap);
+			if (importOff) scat (out, TR (": the bank's old balance is not the books' (a statement missing?)"), cap);
+			else if (left) { scat (out, TR (": "), cap); scat_num (out, left, cap); scat (out, left == 1 ? TR (" movement to complete") : TR (" movements to complete"), cap); }
+			else scat (out, TR (": every movement has its party or account; Save posts it"), cap);
 			return;
 		}
-		scpy (out, "Old balance ", cap); scat (out, money_s (s.old, a), cap);
-		scat (out, "  \xB7  movements ", cap); money m = st_sum (s); if (m > 0) scat (out, "+", cap); scat (out, money_s (m, b), cap);
+		scpy (out, TR ("Old balance "), cap); scat (out, money_s (s.old, a), cap);
+		scat (out, "  \xB7  ", cap); scat (out, TR ("movements "), cap); money m = st_sum (s); if (m > 0) scat (out, "+", cap); scat (out, money_s (m, b), cap);
 	}
 	// ---- the movements (EGModel) ----
 	int rows () override { return s.nl; }
@@ -771,7 +772,7 @@ public:
 		case 0:
 			if (l.party) { const Party *p = party_of (g_b, l.party); if (p) scpy (out, p->name, cap); }
 			else if (l.account[0]) { scpy (out, l.account, cap); if (!edit) { scat (out, "  ", cap); scat (out, acc_name (g_b, l.account), cap); } }
-			else if (!edit && l.amount) scpy (out, "To complete: a party or an account", cap);
+			else if (!edit && l.amount) scpy (out, TR ("To complete: a party or an account"), cap);
 			break;
 		case 1: scpy (out, l.text, cap); break;
 		case 2: if (edit) edit_money (l.amount, out); else if (l.amount) { fmt_money (l.amount, out); if (l.amount > 0) { char t[40] = "+"; scat (t, out, sizeof t); scpy (out, t, cap); } } break;
@@ -785,7 +786,7 @@ public:
 			{
 				int first = 0, n = grouped (l, &first);
 				if (n) { doc_ref (first, out, cap); if (n > 1) { scat (out, " +", cap); scat_num (out, n - 1, cap); } }
-				else scpy (out, "(matched)", cap);
+				else scpy (out, TR ("(matched)"), cap);
 			}
 			break;
 		}
@@ -808,7 +809,7 @@ public:
 			int pid = 0; char code[CODE_MAX] = "";
 			if (!x[0]) { l.party = 0; l.account[0] = '\0'; l.npay = 0; break; }
 			if (x[0] == 'P' && all_digits (x + 1) && party_of (g_b, cell_int (x + 1))) pid = cell_int (x + 1);
-			else if (x[0] == 'A' && all_digits (x + 1)) { if (!acc_postable (g_b, x + 1)) return "No such account."; scpy (code, x + 1, CODE_MAX); }
+			else if (x[0] == 'A' && all_digits (x + 1)) { if (!acc_postable (g_b, x + 1)) return TR ("No such account."); scpy (code, x + 1, CODE_MAX); }
 			else if (digit (x[0])) { const char *w = resolve_account (x, AF_NOPARTY, code); if (w[0]) return w; }
 			else
 			{
@@ -845,7 +846,7 @@ public:
 							{
 								l.pay[l.npay].entry = e.id; l.pay[l.npay].line = x; l.npay++;
 								if (!l.amount) l.amount = e.l[x].amount;
-								status ("Its invoice found by the structured communication");
+								status (TR ("Its invoice found by the structured communication"));
 							}
 						}
 					break;
@@ -928,7 +929,7 @@ public:
 				}
 			}
 		}
-		items->emptyText = r >= 0 && r < s.nl && s.l[r].party ? "Nothing open for this party: its documents are paid." : "Choose a movement's party: its open invoices show here.";
+		items->emptyText = r >= 0 && r < s.nl && s.l[r].party ? TR ("Nothing open for this party: its documents are paid.") : TR ("Choose a movement's party: its open invoices show here.");
 		items->setRows (nopen);
 		invalidate (true);
 	}
@@ -983,15 +984,15 @@ public:
 		if (r < 0 || r >= s.nl || row < 0 || row >= nopen) return;
 		if (g->editing ()) g->commit ();
 		StLine &l = s.l[r];
-		if (paidElsewhere (open[row], r)) { status ("Another movement of this statement pays it"); return; }
-		if (inGroup (l, open[row])) { status ("Matched with this movement: to undo it, Unmatch in the party's account"); return; }
+		if (paidElsewhere (open[row], r)) { status (TR ("Another movement of this statement pays it")); return; }
+		if (inGroup (l, open[row])) { status (TR ("Matched with this movement: to undo it, Unmatch in the party's account")); return; }
 		money before = 0; for (int i = 0; i < l.npay; i++) { int x = entry_index (g_b, l.pay[i].entry); if (x >= 0) before += g_b.e[x].l[l.pay[i].line].amount; }
 		int id = g_b.e[open[row].e].id, ln = open[row].l;
 		bool had = false;
 		for (int i = 0; i < l.npay; i++) if (l.pay[i].entry == id && l.pay[i].line == ln) { for (int k = i + 1; k < l.npay; k++) l.pay[k - 1] = l.pay[k]; l.npay--; had = true; break; }
 		if (!had)
 		{
-			if (l.npay >= MAXPAY) { status ("A movement pays twelve items at most"); return; }
+			if (l.npay >= MAXPAY) { status (TR ("A movement pays twelve items at most")); return; }
 			l.pay[l.npay].entry = id; l.pay[l.npay].line = ln; l.npay++;
 		}
 		money after = 0; for (int i = 0; i < l.npay; i++) { int x = entry_index (g_b, l.pay[i].entry); if (x >= 0) after += g_b.e[x].l[l.pay[i].line].amount; }
@@ -1007,7 +1008,7 @@ public:
 	{
 		if (!g->commit ()) return false;
 		int d = date_parse (date->text ());
-		if (!d) { date->setError (true); warn ("Save", "Type the statement's date, as 29/09/2026."); return false; }
+		if (!d) { date->setError (true); warn (TR ("Save"), TR ("Type the statement's date, as 29/09/2026.")); return false; }
 		s.date = d;
 		s.journal = jc.n ? jc.idx[iclamp (jbox->sel, 0, jc.n - 1)] : s.journal;
 		scpy (s.text, text->text (), sizeof s.text);
@@ -1017,24 +1018,24 @@ public:
 		char nb[40]; trim_copy (nb, newBal->text (), sizeof nb);
 		if (nb[0])
 		{
-			money m; if (!parse_money (nb, &m)) { if (!s.nl) st_add (s); newBal->setError (true); warn ("Save", "Type the new balance as an amount, or leave it empty."); return false; }
+			money m; if (!parse_money (nb, &m)) { if (!s.nl) st_add (s); newBal->setError (true); warn (TR ("Save"), TR ("Type the new balance as an amount, or leave it empty.")); return false; }
 			if (m != s.old + sum)
 			{
 				char a[32], b[32], c[32], msg[240];
 				fmt_money (s.old, a); fmt_money (s.old + sum, b); fmt_money (m - s.old - sum, c);
-				scpy (msg, "The old balance ", sizeof msg); scat (msg, a, sizeof msg); scat (msg, " plus the movements makes ", sizeof msg); scat (msg, b, sizeof msg);
-				scat (msg, ", not the new balance typed: ", sizeof msg); scat (msg, c, sizeof msg); scat (msg, " is missing. Check the movements (or empty the new balance).", sizeof msg);
+				scpy (msg, TR ("The old balance "), sizeof msg); scat (msg, a, sizeof msg); scat (msg, TR (" plus the movements makes "), sizeof msg); scat (msg, b, sizeof msg);
+				scat (msg, TR (", not the new balance typed: "), sizeof msg); scat (msg, c, sizeof msg); scat (msg, TR (" is missing. Check the movements (or empty the new balance)."), sizeof msg);
 				if (!s.nl) st_add (s);
-				warn ("Save", msg); return false;
+				warn (TR ("Save"), msg); return false;
 			}
 		}
 		s.now = s.old + sum;
 		const char *w = st_check (g_b, s);
-		if (w[0]) { if (!s.nl) st_add (s); warn ("Save", w); return false; }
+		if (w[0]) { if (!s.nl) st_add (s); warn (TR ("Save"), w); return false; }
 		if (s.id)
 		{
 			int i = entry_index (g_b, s.id);
-			if (i >= 0) { const char *lk = entry_locked (g_b, g_b.e[i]); if (lk[0]) { warn ("Save", lk); return false; } }
+			if (i >= 0) { const char *lk = entry_locked (g_b, g_b.e[i]); if (lk[0]) { warn (TR ("Save"), lk); return false; } }
 		}
 		Entry e; st_to_entry (g_b, s, e);
 		bool wasNew = !s.id;
@@ -1042,7 +1043,7 @@ public:
 		st_apply_matches (g_b, i, s);
 		s.id = g_b.e[i].id;
 		char r[40], m[96]; entry_ref (g_b, g_b.e[i], r, sizeof r);
-		scpy (m, "Statement ", sizeof m); scat (m, r, sizeof m); scat (m, wasNew ? " posted" : " saved", sizeof m);
+		scpy (m, TR ("Statement "), sizeof m); scat (m, r, sizeof m); scat (m, wasNew ? TR (" posted") : TR (" saved"), sizeof m);
 		dirty = false;
 		changed ();
 		status (m);
@@ -1053,11 +1054,11 @@ public:
 		int i = entry_index (g_b, s.id);
 		if (i < 0) return;
 		const char *w = entry_can_delete (g_b, i);
-		if (w[0]) { warn ("Delete", w); return; }
-		if (ask ("Delete", "Delete this statement for good? Its matchings are undone.", MB_YESNO, 2) != 1) return;
+		if (w[0]) { warn (TR ("Delete"), w); return; }
+		if (ask (TR ("Delete"), TR ("Delete this statement for good? Its matchings are undone."), MB_YESNO, 2) != 1) return;
 		entry_delete (g_b, i);
 		changed ();
-		status ("Statement deleted");
+		status (TR ("Statement deleted"));
 		close ();
 	}
 	void refresh () override { titleFor (); computeOld (); listItems (itemsFor, true); }
@@ -1066,31 +1067,31 @@ public:
 	{
 		drawHead ();
 		int W = width, rx = W - 330;
-		lab (20, 72, "Journal"); lab (rx, 72, "Date"); lab (20, 104, "Description"); lab (rx, 104, "New balance");
+		lab (20, 72, TR ("Journal")); lab (rx, 72, TR ("Date")); lab (20, 104, TR ("Description")); lab (rx, 104, TR ("New balance"));
 		money sum = st_sum (s), now = s.old + sum;
 		char a[32], b[32], t[160];
 		int y = 138;
-		scpy (t, "Old balance  ", sizeof t); scat (t, money_s (s.old, a), sizeof t);
+		scpy (t, TR ("Old balance  "), sizeof t); scat (t, money_s (s.old, a), sizeof t);
 		wk_text_l (canvas, 20, y, 26, t, C_TEXT);
-		scpy (t, "Movements  ", sizeof t); if (sum > 0) scat (t, "+", sizeof t); scat (t, money_s (sum, a), sizeof t);
+		scpy (t, TR ("Movements  "), sizeof t); if (sum > 0) scat (t, "+", sizeof t); scat (t, money_s (sum, a), sizeof t);
 		wk_text_l (canvas, 240, y, 26, t, C_TEXT);
-		scpy (t, "New balance  ", sizeof t); scat (t, money_s (now, b), sizeof t);
+		scpy (t, TR ("New balance  "), sizeof t); scat (t, money_s (now, b), sizeof t);
 		wk_text_l (canvas, rx, y, 26, t, C_TEXT, 2);
 		char nb[40]; trim_copy (nb, newBal->text (), sizeof nb); money m;
 		if (nb[0] && parse_money (nb, &m))
 		{
-			if (m == now) draw_pill (canvas, rx + 250, y + 4, 20, "Balanced", C_GOOD);
-			else { char d[48] = "Off by "; scat (d, money_s (m - now, a), sizeof d); draw_pill (canvas, rx + 250 - pill_w (d) + pill_w ("Balanced"), y + 4, 20, d, C_BAD); }
+			if (m == now) draw_pill (canvas, rx + 250, y + 4, 20, TR ("Balanced"), C_GOOD);
+			else { char d[48]; scpy (d, TR ("Off by "), sizeof d); scat (d, money_s (m - now, a), sizeof d); draw_pill (canvas, rx + 250 - pill_w (d) + pill_w (TR ("Balanced")), y + 4, 20, d, C_BAD); }
 		}
 		// the open items' title
 		int iy = wg (items)->top - 26;
 		int r = itemsFor;
 		if (r >= 0 && r < s.nl && s.l[r].party)
 		{
-			scpy (t, "Open items of ", sizeof t); scat (t, party_name (g_b, s.l[r].party), sizeof t);
-			scat (t, "  \xB7  tick those this movement pays", sizeof t);
+			scpy (t, TR ("Open items of "), sizeof t); scat (t, party_name (g_b, s.l[r].party), sizeof t);
+			scat (t, "  \xB7  ", sizeof t); scat (t, TR ("tick those this movement pays"), sizeof t);
 		}
-		else scpy (t, "Open items", sizeof t);
+		else scpy (t, TR ("Open items"), sizeof t);
 		wk_text_l (canvas, 20, iy, 24, t, C_TEXT, 2);
 	}
 	void resizeTo (int w, int h) override
@@ -1133,21 +1134,21 @@ public:
 		jbox = new ChoiceBox (130, 72, 240); jbox->onChange = mark_dirty; addChild (jbox);
 		date = new DateEdit (rx + 110, 72, 150); date->anchor = ANCHOR_RIGHT | ANCHOR_TOP; date->onChange = mark_dirty; addChild (date);
 		text = new LineEdit (130, 104, rx - 130 - 18); text->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT; text->onChange = mark_dirty;
-		text->placeholder = "Salaries of September, depreciation 2026..."; addChild (text);
-		opening = new Checkbox (rx + 110, 104, 200, ED_H, "Opening balances", false, mark_dirty, C_BG); opening->anchor = ANCHOR_RIGHT | ANCHOR_TOP; addChild (opening);
+		text->placeholder = TR ("Salaries of September, depreciation 2026..."); addChild (text);
+		opening = new Checkbox (rx + 110, 104, 200, ED_H, TR ("Opening balances"), false, mark_dirty, C_BG); opening->anchor = ANCHOR_RIGHT | ANCHOR_TOP; addChild (opening);
 		g = new EditGrid (16, 144, W - 32, height - 144 - 64, this);
 		g->anchor = ANCHOR_FILL;
-		g->addCol ("Account", 200, EK_ACCOUNT, false, AF_ALL, "6");
-		g->addCol ("Party", 130, EK_PARTY, false, -1);
-		g->addCol ("Description", 150, EK_TEXT);
-		g->addCol ("Debit", 100, EK_MONEY, true);
-		g->addCol ("Credit", 100, EK_MONEY, true);
-		g->addCol ("VAT", 64, EK_VAT, false, -1);
+		g->addCol (TR ("Account"), 200, EK_ACCOUNT, false, AF_ALL, "6");
+		g->addCol (TR ("Party"), 130, EK_PARTY, false, -1);
+		g->addCol (TR ("Description"), 150, EK_TEXT);
+		g->addCol (TR ("Debit"), 100, EK_MONEY, true);
+		g->addCol (TR ("Credit"), 100, EK_MONEY, true);
+		g->addCol (TR ("VAT"), 64, EK_VAT, false, -1);
 		g->flex = 0;
 		addChild (g);
-		bBalance = new FlatButton ("Balance it on this line", s_balance, FB_QUIET);
+		bBalance = new FlatButton (TR ("Balance it on this line"), s_balance, FB_QUIET);
 		bBalance->left = W - 16 - bBalance->width; bBalance->top = height - 46; bBalance->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM;
-		bBalance->tip = "The difference put on the active line"; addChild (bBalance);
+		bBalance->tip = TR ("The difference put on the active line"); addChild (bBalance);
 	}
 	~MiscPage () { entry_free (e); }
 	EditGrid *grid () override { return g; }
@@ -1167,8 +1168,8 @@ public:
 	}
 	void titleFor ()
 	{
-		if (e.id) { char r[40]; doc_ref (e.id, r, sizeof r); scpy (head, "Operation ", sizeof head); scat (head, r, sizeof head); }
-		else scpy (head, "New miscellaneous operation", sizeof head);
+		if (e.id) { char r[40]; doc_ref (e.id, r, sizeof r); scpy (head, TR ("Operation "), sizeof head); scat (head, r, sizeof head); }
+		else scpy (head, TR ("New miscellaneous operation"), sizeof head);
 		invalidate (true);
 	}
 	void startNew (int journal)
@@ -1195,9 +1196,9 @@ public:
 		money d = 0, c = 0;
 		for (int i = 0; i < e.nl; i++) { if (e.l[i].amount > 0) d += e.l[i].amount; else c -= e.l[i].amount; }
 		char a[32], b[32];
-		scpy (out, "Debit ", cap); scat (out, money_s (d, a), cap); scat (out, "  \xB7  credit ", cap); scat (out, money_s (c, b), cap);
-		if (d != c) { scat (out, "  \xB7  difference ", cap); scat (out, money_s (d - c, a), cap); }
-		else if (d) scat (out, "  \xB7  balanced", cap);
+		scpy (out, TR ("Debit "), cap); scat (out, money_s (d, a), cap); scat (out, "  \xB7  ", cap); scat (out, TR ("credit "), cap); scat (out, money_s (c, b), cap);
+		if (d != c) { scat (out, "  \xB7  ", cap); scat (out, TR ("difference "), cap); scat (out, money_s (d - c, a), cap); }
+		else if (d) { scat (out, "  \xB7  ", cap); scat (out, TR ("balanced"), cap); }
 	}
 	// ---- the lines (EGModel) ----
 	int rows () override { return e.nl; }
@@ -1236,8 +1237,8 @@ public:
 			break;
 		}
 		case 2: sset (l.text, t); break;
-		case 3: { money m; const char *w = put_money (t, &m); if (w[0]) return w; if (m < 0) return "A debit is positive: type the credit in its column."; if (m || l.amount > 0) l.amount = m; break; }
-		case 4: { money m; const char *w = put_money (t, &m); if (w[0]) return w; if (m < 0) return "A credit is positive: type the debit in its column."; if (m || l.amount < 0) l.amount = -m; break; }
+		case 3: { money m; const char *w = put_money (t, &m); if (w[0]) return w; if (m < 0) return TR ("A debit is positive: type the credit in its column."); if (m || l.amount > 0) l.amount = m; break; }
+		case 4: { money m; const char *w = put_money (t, &m); if (w[0]) return w; if (m < 0) return TR ("A credit is positive: type the debit in its column."); if (m || l.amount < 0) l.amount = -m; break; }
 		case 5: { int x; const char *w = resolve_vat (t, -1, &x); if (w[0]) return w; l.vat = (signed char) x; l.role = LR_NONE; break; }
 		}
 		dirty = true;
@@ -1268,7 +1269,7 @@ public:
 	{
 		if (!g->commit ()) return false;
 		int d = date_parse (date->text ());
-		if (!d) { date->setError (true); warn ("Save", "Type the date, as 29/09/2026."); return false; }
+		if (!d) { date->setError (true); warn (TR ("Save"), TR ("Type the date, as 29/09/2026.")); return false; }
 		Entry x; entry_copy (x, e);
 		x.date = d; x.due = d;
 		x.journal = jc.n ? jc.idx[iclamp (jbox->sel, 0, jc.n - 1)] : x.journal;
@@ -1277,17 +1278,17 @@ public:
 		misc_tidy (x);
 		for (int k = 0; k < x.nl; k++) { if (!x.l[k].due) x.l[k].due = d; if (!x.l[k].text[0]) sset (x.l[k].text, x.text); }
 		const char *w = misc_check (g_b, x);
-		if (w[0]) { entry_free (x); warn ("Save", w); return false; }
+		if (w[0]) { entry_free (x); warn (TR ("Save"), w); return false; }
 		if (e.id)
 		{
 			int i = entry_index (g_b, e.id);
-			if (i >= 0) { const char *lk = entry_locked (g_b, g_b.e[i]); if (lk[0]) { entry_free (x); warn ("Save", lk); return false; } }
+			if (i >= 0) { const char *lk = entry_locked (g_b, g_b.e[i]); if (lk[0]) { entry_free (x); warn (TR ("Save"), lk); return false; } }
 		}
 		bool wasNew = !e.id;
 		int i = entry_save (g_b, x);
 		entry_free (e); entry_copy (e, g_b.e[i]);
 		char r[40], m[96]; entry_ref (g_b, g_b.e[i], r, sizeof r);
-		scpy (m, "Operation ", sizeof m); scat (m, r, sizeof m); scat (m, wasNew ? " posted" : " saved", sizeof m);
+		scpy (m, TR ("Operation "), sizeof m); scat (m, r, sizeof m); scat (m, wasNew ? TRC ("fem", " posted") : TRC ("fem", " saved"), sizeof m);
 		dirty = false;
 		changed ();
 		status (m);
@@ -1298,11 +1299,11 @@ public:
 		int i = entry_index (g_b, e.id);
 		if (i < 0) return;
 		const char *w = entry_can_delete (g_b, i);
-		if (w[0]) { warn ("Delete", w); return; }
-		if (ask ("Delete", "Delete this operation for good?", MB_YESNO, 2) != 1) return;
+		if (w[0]) { warn (TR ("Delete"), w); return; }
+		if (ask (TR ("Delete"), TR ("Delete this operation for good?"), MB_YESNO, 2) != 1) return;
 		entry_delete (g_b, i);
 		changed ();
-		status ("Operation deleted");
+		status (TR ("Operation deleted"));
 		close ();
 	}
 	void refresh () override { titleFor (); }
@@ -1311,15 +1312,15 @@ public:
 	{
 		drawHead ();
 		int rx = width - 330;
-		lab (20, 72, "Journal"); lab (rx, 72, "Date"); lab (20, 104, "Description");
+		lab (20, 72, TR ("Journal")); lab (rx, 72, TR ("Date")); lab (20, 104, TR ("Description"));
 		money d = 0, c = 0;
 		for (int i = 0; i < e.nl; i++) { if (e.l[i].amount > 0) d += e.l[i].amount; else c -= e.l[i].amount; }
 		char a[32], t[96];
 		int y = height - 46;
-		scpy (t, "Debit  ", sizeof t); scat (t, money_s (d, a), sizeof t); wk_text_l (canvas, 20, y, 30, t, C_TEXT, 2);
-		scpy (t, "Credit  ", sizeof t); scat (t, money_s (c, a), sizeof t); wk_text_l (canvas, 230, y, 30, t, C_TEXT, 2);
-		if (d != c) { scpy (t, "Difference ", sizeof t); scat (t, money_s (d - c, a), sizeof t); draw_pill (canvas, 440, y + 5, 20, t, C_BAD); }
-		else if (d) draw_pill (canvas, 440, y + 5, 20, "Balanced", C_GOOD);
+		scpy (t, TR ("Debit  "), sizeof t); scat (t, money_s (d, a), sizeof t); wk_text_l (canvas, 20, y, 30, t, C_TEXT, 2);
+		scpy (t, TR ("Credit  "), sizeof t); scat (t, money_s (c, a), sizeof t); wk_text_l (canvas, 230, y, 30, t, C_TEXT, 2);
+		if (d != c) { scpy (t, TR ("Difference "), sizeof t); scat (t, money_s (d - c, a), sizeof t); draw_pill (canvas, 440, y + 5, 20, t, C_BAD); }
+		else if (d) draw_pill (canvas, 440, y + 5, 20, TR ("Balanced"), C_GOOD);
 	}
 	static void s_save () { if (g_misc->save ()) g_misc->close (); }
 	static void s_saveNew () { if (g_misc->save ()) { int j = g_misc->e.journal; g_misc->startNew (j); g_misc->sync (); g_misc->g->focusIn (); } }

@@ -2,7 +2,7 @@
 // snesemu -- the Onyx Super Nintendo / Super Famicom emulator (the core: user/snes).
 //
 //   snesemu <rom.sfc | rom.smc> [--fullscreen]   (without a ROM: opens the Game Library)
-//                               (runners.ini: opening a .sfc / .smc file starts it; the Game
+//                               (its app.txt "games": opening a .sfc / .smc file starts it; the Game
 //                               Library app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start,
 //     Backspace = Select (held keys, kapi_key_held); a USB gamepad too (user/gamepad.h, by

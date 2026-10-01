@@ -30,7 +30,6 @@
 #include "content/hlcache.h"
 #include "content/backing_store.h"
 
-#include "desktop/save_pdf.h"
 #include "desktop/download.h"
 #include "desktop/searchweb.h"
 #include "netsurf/download.h"
@@ -727,13 +726,6 @@ static nserror gui_default_401login_open(
 	return NSERROR_NOT_IMPLEMENTED;
 }
 
-static void
-gui_default_pdf_password(char **owner_pass, char **user_pass, char *path)
-{
-	*owner_pass = NULL;
-	save_pdf(path);
-}
-
 static nserror
 gui_default_present_cookies(const char *search_term)
 {
@@ -763,9 +755,7 @@ static nserror verify_misc_register(struct gui_misc_table *gmt)
 	if (gmt->login == NULL) {
 		gmt->login = gui_default_401login_open;
 	}
-	if (gmt->pdf_password == NULL) {
-		gmt->pdf_password = gui_default_pdf_password;
-	}
+	/* Onyx: no default pdf_password -- save as PDF (save_pdf.c), its only caller, is removed */
 	if (gmt->present_cookies == NULL) {
 		gmt->present_cookies = gui_default_present_cookies;
 	}

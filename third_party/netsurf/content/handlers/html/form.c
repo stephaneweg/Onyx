@@ -2345,6 +2345,8 @@ void form_free(struct form *form)
 	free(form->target);
 	free(form->accept_charsets);
 	free(form->document_charset);
+	if (form->node_ref)	/* (Onyx: a form a script made, forms.c) */
+		dom_node_unref(form->node);
 
 	free(form);
 }

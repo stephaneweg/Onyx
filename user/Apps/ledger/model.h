@@ -494,8 +494,8 @@ static bool entry_has_vat (const Entry &e) { for (int i = 0; i < e.nl; i++) if (
 // lines -- the VAT return of its period filed.
 static const char *entry_locked (const Book &b, const Entry &e)
 {
-	if (year_closed (b, e.date)) return "Its fiscal year is closed.";
-	if (entry_has_vat (e) && return_of (b, e.date) >= 0) return "The VAT return of its period has been filed.";
+	if (year_closed (b, e.date)) return TR ("Its fiscal year is closed.");
+	if (entry_has_vat (e) && return_of (b, e.date) >= 0) return TR ("The VAT return of its period has been filed.");
 	return "";
 }
 

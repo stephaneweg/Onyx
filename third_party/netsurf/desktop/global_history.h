@@ -29,107 +29,16 @@ struct redraw_context;
 struct nsurl;
 struct rect;
 
-/**
- * Initialise the global history.
- *
- * This iterates through the URL database, generating the global history data,
- * and creates a treeview.
- *
- * This must be called before any other global_history_* function.
- *
- * \param core_window_handle The core_window in which the global history is shown.
- * \return NSERROR_OK on success, appropriate error otherwise
+/*
+ * Onyx: global_history.c (NetSurf's global history tree view) is removed. Jet's History
+ * dialog (onyx_chrome.cpp) reads urldb, and the tree view was never created, so
+ * global_history_add() always returned at once: it stays a no-op so the call site in
+ * browser_window.c keeps its upstream shape.
  */
-nserror global_history_init(void *core_window_handle);
-
-/**
- * Finalise the global history.
- *
- * This destroys the global history treeview and the global history module's
- * internal data.  After calling this if global history is required again,
- * global_history_init must be called.
- *
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror global_history_fini(void);
-
-/**
- * Add an entry to the global history.
- *
- * If the URL already exists in the global history, the old node is removed.
- *
- * \param url		URL for node being added
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror global_history_add(struct nsurl *url);
-
-/**
- * Save global history to file (html)
- *
- * \param path		The path to save history to
- * \param title		The title to give the document, or NULL for default
- * \return NSERROR_OK on success, or appropriate error otherwise
- */
-nserror global_history_export(const char *path, const char *title);
-
-/**
- * Redraw the global history.
- *
- * \param x     X coordinate to render treeview at
- * \param y     Y coordinate to render treeview at
- * \param clip  Current clip rectangle (wrt tree origin)
- * \param ctx   Current redraw context
- */
-void global_history_redraw(int x, int y, struct rect *clip,
-		const struct redraw_context *ctx);
-
-/**
- * Handles all kinds of mouse action
- *
- * \param mouse		The current mouse state
- * \param x		X coordinate
- * \param y		Y coordinate
- */
-void global_history_mouse_action(enum browser_mouse_state mouse, int x, int y);
-
-/**
- * Key press handling.
- *
- * \param key		The ucs4 character codepoint
- * \return true if the keypress is dealt with, false otherwise.
- */
-bool global_history_keypress(uint32_t key);
-
-/**
- * Determine whether there is a selection
- *
- * \return true iff there is a selection
- */
-bool global_history_has_selection(void);
-
-/**
- * Get the first selected node
- *
- * \param url		Updated to the selected entry's address, or NULL
- * \param title		Updated to the selected entry's title, or NULL
- * \return true iff global history has a selection
- */
-bool global_history_get_selection(struct nsurl **url, const char **title);
-
-/**
- * Expand the treeview's nodes
- *
- * \param only_folders	Iff true, only folders are expanded.
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror global_history_expand(bool only_folders);
-
-/**
- * Contract the treeview's nodes
- *
- * \param all		Iff false, only entries are contracted.
- * \return NSERROR_OK on success, appropriate error otherwise
- */
-nserror global_history_contract(bool all);
+static inline nserror global_history_add(struct nsurl *url)
+{
+	(void)url;
+	return NSERROR_OK;
+}
 
 #endif

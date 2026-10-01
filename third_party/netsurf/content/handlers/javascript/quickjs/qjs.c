@@ -88,7 +88,8 @@
 #include "qjs_intl.h"		/* Onyx: Intl (intl.js), before dom.js in each context */
 #include "javascript/quickjs/qjs_net.h"	/* Onyx: WebSocket, EventSource, Workers (qjs_net.c) */
 #include "javascript/quickjs/qjs_codecache.h"	/* Onyx: the scripts' bytecode on the card */
-#include "javascript/quickjs/qjs_frames.h"	/* Onyx: the frames' windows (qjs_frames.c) */
+#include "javascript/quickjs/qjs_frames.h"
+#include "javascript/quickjs/qjs_xml.h"	/* Onyx: the frames' windows (qjs_frames.c) */
 #include "desktop/frames.h"		/* Onyx: an iframe's load (onyx_frame_loaded) */
 #include "netsurf/onyx_jet.h"		/* Onyx: <a download> (n_download) */
 
@@ -516,6 +517,22 @@ static JSValue qjs_proto_for(jsthread *t, dom_node *n)
 			else if (dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_MATHML]))
 				pfx = "math:";
 			dom_string_unref(ns);
+		} else {
+			/* Onyx (docs/06 §43): an XML document's element in no namespace is an
+			 * Element, none of HTML's classes (its <title> is not HTML's) */
+			dom_document *od = NULL;
+			int kind = 0;
+			if (dom_node_get_owner_document(n, &od) == DOM_NO_ERR && od != NULL) {
+				kind = dom_html_document_get_xml_kind((dom_html_document *) od);
+				dom_node_unref(od);
+			}
+			if (kind != 0) {
+				JSValue x = JS_GetPropertyStr(t->ctx, t->tag_protos, "*xml");
+				if (JS_IsObject(x))
+					return x;
+				JS_FreeValue(t->ctx, x);
+				return JS_DupValue(t->ctx, t->protos[QP_ELEMENT]);
+			}
 		}
 		if (dom_node_get_node_name(n, &name) == DOM_NO_ERR && name != NULL) {
 			char tag[48];
@@ -1688,11 +1705,21 @@ static JSValue n_by_id(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	jsthread *t = QJS_T(ctx);
 	dom_string *id = qjs_dstr(ctx, argc > 0 ? argv[0] : JS_UNDEFINED);
 	dom_element *e = NULL;
+	dom_document *doc = t->doc;
+	dom_node_type nt;
 	JSValue v;
 
 	if (id == NULL)
 		return JS_NULL;
-	dom_document_get_element_by_id(t->doc, id, &e);
+	/* (Onyx: byId(id, doc) -- another document's: DOMParser's, createHTMLDocument's, an
+	 * XML document's -- docs/06 §43) */
+	if (argc > 1) {
+		dom_node *d = qjs_node_of(argv[1]);
+		if (d != NULL && dom_node_get_node_type(d, &nt) == DOM_NO_ERR &&
+		    nt == DOM_DOCUMENT_NODE)
+			doc = (dom_document *) d;
+	}
+	dom_document_get_element_by_id(doc, id, &e);
 	dom_string_unref(id);
 	v = qjs_wrap(t, (dom_node *) e);
 	if (e != NULL)
@@ -2196,6 +2223,13 @@ static JSValue n_rect(JSContext *ctx, JSValueConst this_val, int argc, JSValueCo
 			}
 		}
 		qjs_scroll(t, &sx, &sy);
+		{	/* Onyx: in a fixed box, where it is painted (docs/06 §41) */
+			int fdx, fdy;
+			if (html_box_fixed_shift(t->htmlc, box, &fdx, &fdy)) {
+				x += fdx;
+				y += fdy;
+			}
+		}
 		x -= sx;
 		y -= sy;
 		/* Onyx: a box transformed (or in a transformed box): the bounding box of
@@ -2302,6 +2336,67 @@ static JSValue n_boxed(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 	if (t->htmlc != NULL)
 		qjs_layout_now(t);
 	return JS_NewBool(ctx, qjs_box(n) != NULL);
+}
+
+/**
+ * offset(n, body): [offsetParent, offsetLeft, offsetTop] as CSSOM View defines them (Onyx,
+ * docs/06 §41), or null when the element has no box. The offsetParent: the nearest
+ * positioned ancestor, the body, or a td / th / table for a static element; none (null) for
+ * a fixed element. The offsets: its border box from that parent's padding box -- from the
+ * document's origin when the parent is the body or none -- the scrolls between left out
+ * (box_coords counts them). The offsetParent was always the body, the body's own included:
+ * a loop up the chain (`while (e.offsetParent) e = e.offsetParent`, Facebook's
+ * VisualCompletion) never ended -- 60 s of a frozen window on facebook.com's login page.
+ */
+static JSValue n_offset(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	jsthread *t = QJS_T(ctx);
+	dom_node *body = argc > 1 ? qjs_node(argv[1]) : NULL;
+	struct box *box, *b, *op = NULL;
+	dom_node *opn = NULL;
+	bool fixed, stat;
+	int x, y;
+	JSValue arr;
+	QJS_NODE_ARG(n, 0);
+
+	if (t->htmlc != NULL)
+		qjs_layout_now(t);
+	box = qjs_box(n);
+	if (box == NULL || box->style == NULL || t->htmlc == NULL || t->htmlc->layout == NULL)
+		return JS_NULL;
+	fixed = css_computed_position(box->style) == CSS_POSITION_FIXED;
+	stat = css_computed_position(box->style) == CSS_POSITION_STATIC;
+	x = box->x - box->border[LEFT].width;
+	y = box->y - box->border[TOP].width;
+	/* (up the boxes: a float's position is its float container's) */
+#define QJS_UP(b) ((((b)->type == BOX_FLOAT_LEFT || (b)->type == BOX_FLOAT_RIGHT) && \
+		(b)->float_container != NULL) ? (b)->float_container : (b)->parent)
+	for (b = box; b->parent != NULL; ) {
+		b = QJS_UP(b);
+		if (!fixed && b->node != NULL && b->node != n && b->style != NULL &&
+		    (b->node == body ||
+		     css_computed_position(b->style) != CSS_POSITION_STATIC ||
+		     (stat && (b->type == BOX_TABLE_CELL || b->type == BOX_TABLE)))) {
+			op = b;
+			opn = b->node;
+			break;
+		}
+		x += b->x;
+		y += b->y;
+	}
+	if (op != NULL && opn == body) {
+		/* (the body: from the document's origin) */
+		for (b = op; b != NULL; b = QJS_UP(b)) {
+			x += b->x;
+			y += b->y;
+		}
+	}
+#undef QJS_UP
+	arr = JS_NewArray(ctx);
+	JS_SetPropertyUint32(ctx, arr, 0, opn != NULL ? qjs_wrap(t, opn) : JS_NULL);
+	JS_SetPropertyUint32(ctx, arr, 1, JS_NewInt32(ctx, x));
+	JS_SetPropertyUint32(ctx, arr, 2, JS_NewInt32(ctx, y));
+	return arr;
 }
 
 /** scroll(): [x, y, viewport width, viewport height, page width, page height] */
@@ -2742,7 +2837,7 @@ static bool qjs_cstyle_known(const char *p)
 		"white-space", "text-transform", "cursor", "float", "clear", "text-align",
 		"font-style", "font-variant", "font-weight", "direction", "unicode-bidi",
 		"box-sizing", "table-layout", "border-collapse", "empty-cells", "caption-side",
-		"list-style-position", "outline-style", "vertical-align" };
+		"list-style-position", "outline-style", "vertical-align", "pointer-events" };
 	size_t i;
 
 	for (i = 0; i < sizeof(names) / sizeof(names[0]); i++)
@@ -2808,6 +2903,9 @@ static JSValue n_cstyle(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		snprintf(buf, sizeof(buf), "%s", css_computed_visibility(
 				style) == CSS_VISIBILITY_HIDDEN ? "hidden" :
 				"visible");
+	} else if (strcmp(prop, "pointer-events") == 0) {	/* (Onyx) */
+		snprintf(buf, sizeof(buf), "%s", css_computed_pointer_events(style) ==
+				CSS_POINTER_EVENTS_NONE ? "none" : "auto");
 	} else if (strcmp(prop, "overflow") == 0 || strcmp(prop, "overflow-x") == 0 ||
 		   strcmp(prop, "overflow-y") == 0) {
 		/* Onyx: the scrollers' (a script looking for its scrolling ancestor) */
@@ -4267,6 +4365,22 @@ static JSValue n_setup(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
  * templateContent(n): a template's contents; parseDocument(html): a new document
  * (DOMParser), parsed by the same parser. */
 
+/** Onyx (docs/06 §43): the XML kind of a node's document (0: HTML) */
+static int qjs_doc_kind(dom_node *n)
+{
+	dom_document *od = NULL;
+	dom_node_type t = DOM_ELEMENT_NODE;
+	int kind = 0;
+
+	if (dom_node_get_node_type(n, &t) == DOM_NO_ERR && t == DOM_DOCUMENT_NODE)
+		return dom_html_document_get_xml_kind((dom_html_document *) n);
+	if (dom_node_get_owner_document(n, &od) == DOM_NO_ERR && od != NULL) {
+		kind = dom_html_document_get_xml_kind((dom_html_document *) od);
+		dom_node_unref(od);
+	}
+	return kind;
+}
+
 static bool qjs_is_html_ns(dom_node *n)
 {
 	dom_string *ns = NULL;
@@ -4275,6 +4389,8 @@ static bool qjs_is_html_ns(dom_node *n)
 	r = ns == NULL || dom_string_isequal(ns, dom_namespaces[DOM_NAMESPACE_HTML]);
 	if (ns != NULL)
 		dom_string_unref(ns);
+	else if (qjs_doc_kind(n) != 0)
+		r = false;	/* (Onyx: an XML document's element in no namespace) */
 	return r;
 }
 
@@ -4288,7 +4404,8 @@ static JSValue n_ns_uri(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		return JS_NULL;
 	dom_node_get_namespace(n, &ns);
 	if (ns == NULL)	/* createElement in an HTML document: the HTML namespace */
-		return JS_NewString(ctx, "http://www.w3.org/1999/xhtml");
+		return qjs_doc_kind(n) != 0 ? JS_NULL :	/* (Onyx: XML's none) */
+			JS_NewString(ctx, "http://www.w3.org/1999/xhtml");
 	return qjs_str(ctx, ns);
 }
 
@@ -4304,6 +4421,15 @@ static JSValue qjs_name_case(JSContext *ctx, dom_node *n, bool upper)
 	if (s == NULL)
 		return JS_NewString(ctx, "");
 	len = dom_string_byte_length(s);
+	if (html && upper) {
+		/* (Onyx, docs/06 §43: an XHTML element of an XML document keeps its case) */
+		dom_document *od = NULL;
+		if (dom_node_get_owner_document(n, &od) == DOM_NO_ERR && od != NULL) {
+			if (dom_html_document_get_xml_kind((dom_html_document *) od) != 0)
+				html = false;
+			dom_node_unref(od);
+		}
+	}
 	if (!html) {
 		v = JS_NewStringLen(ctx, dom_string_data(s), len);
 		dom_string_unref(s);
@@ -4932,6 +5058,7 @@ static const JSCFunctionListEntry qjs_natives[] = {
 	JS_CFUNC_DEF("boxScroll", 1, n_box_scroll),
 	JS_CFUNC_DEF("boxScrollTo", 3, n_box_scroll_to),
 	JS_CFUNC_DEF("boxed", 1, n_boxed),
+	JS_CFUNC_DEF("offset", 2, n_offset),
 	JS_CFUNC_DEF("scroll", 0, n_scroll),
 	JS_CFUNC_DEF("scrollTo", 2, n_scroll_to),
 	JS_CFUNC_DEF("cstyle", 2, n_cstyle),
@@ -5157,6 +5284,7 @@ nserror js_newthread(jsheap *heap, void *win_priv, void *doc_priv, jsthread **th
 	JS_SetPropertyFunctionList(t->ctx, natives, qjs_natives_shadow,	/* Onyx: shadow DOM */
 			sizeof(qjs_natives_shadow) / sizeof(qjs_natives_shadow[0]));
 	qjs_frames_natives(t->ctx, natives);	/* Onyx: the frames' windows (qjs_frames.c) */
+	qjs_xml_natives(t->ctx, natives);	/* Onyx: XML, XPath, XSLT (qjs_xml.c) */
 	qjs_enter(t);
 	uint64_t t_prelude = onyx_perf_now();	/* (Onyx: onyx_perf.h) */
 	qjs_intl_init(t->ctx);	/* (Onyx: Intl) */
@@ -5639,6 +5767,69 @@ JSValue qjs_wrap_node(JSContext *ctx, struct dom_node *n)
 	if (t == NULL || t->closed)
 		return JS_NULL;
 	return qjs_wrap(t, n);
+}
+
+/* exported interface documented in js.h (Onyx, docs/06 §43) */
+nserror js_xslt_transform(jsthread *t, struct dom_document *doc, const char *xsl,
+		size_t xsl_len, const char *xsl_url, char **out, size_t *out_len, char *method,
+		size_t method_size)
+{
+	JSContext *ctx;
+	JSValue g, fn, args[3], r;
+	nserror e = NSERROR_INVALID;
+
+	*out = NULL;
+	*out_len = 0;
+	if (t == NULL || t->closed || t->ctx == NULL)
+		return NSERROR_BAD_PARAMETER;
+	ctx = t->ctx;
+	g = JS_GetGlobalObject(ctx);
+	fn = JS_GetPropertyStr(ctx, g, "\x01onyx_xslt");	/* (html5.js: hidden) */
+	JS_FreeValue(ctx, g);
+	if (!JS_IsFunction(ctx, fn)) {
+		JS_FreeValue(ctx, fn);
+		return NSERROR_INVALID;
+	}
+	args[0] = qjs_wrap(t, (dom_node *) doc);
+	args[1] = JS_NewStringLen(ctx, xsl, xsl_len);
+	args[2] = JS_NewString(ctx, xsl_url != NULL ? xsl_url : "");
+	qjs_enter(t);
+	r = JS_Call(ctx, fn, JS_UNDEFINED, 3, (JSValueConst *) args);
+	if (JS_IsException(r)) {
+		qjs_report(ctx, "XSLT");
+		r = JS_UNDEFINED;
+	}
+	qjs_leave(t);
+	if (JS_IsArray(r)) {
+		JSValue m = JS_GetPropertyUint32(ctx, r, 0), x = JS_GetPropertyUint32(ctx, r, 1);
+		const char *ms = JS_ToCString(ctx, m);
+		size_t n = 0;
+		const char *xs = JS_ToCStringLen(ctx, &n, x);
+		if (ms != NULL && xs != NULL) {
+			snprintf(method, method_size, "%s", ms);
+			*out = malloc(n + 1);
+			if (*out != NULL) {
+				memcpy(*out, xs, n);
+				(*out)[n] = '\0';
+				*out_len = n;
+				e = NSERROR_OK;
+			} else {
+				e = NSERROR_NOMEM;
+			}
+		}
+		if (ms != NULL)
+			JS_FreeCString(ctx, ms);
+		if (xs != NULL)
+			JS_FreeCString(ctx, xs);
+		JS_FreeValue(ctx, m);
+		JS_FreeValue(ctx, x);
+	}
+	JS_FreeValue(ctx, r);
+	JS_FreeValue(ctx, fn);
+	JS_FreeValue(ctx, args[0]);
+	JS_FreeValue(ctx, args[1]);
+	JS_FreeValue(ctx, args[2]);
+	return e;
 }
 
 /* exported interface documented in qjs_net.h */

@@ -95,6 +95,20 @@ typedef struct html_content {
 
 	dom_hubbub_parser *parser; /**< Parser object handle */
 	bool parse_completed; /**< Whether the parse has been completed */
+	/** Onyx (docs/06 §43): an XML document -- its parser (expat: onyx_xml.c) instead of
+	 * the HTML one while it is parsed, its kind (dom_html_document_xml_kind; 0: HTML), its
+	 * root's namespace once parsed (onyx_xml_root_ns), what it became: 1 rendered with its
+	 * style sheets (XML + CSS), 2 the tree view, 3 an XSLT's result, 4 an error page in
+	 * place of the document; the XSLT style sheet's fetch */
+	struct onyx_xml_parser *xml_parser;
+	int xml_kind;
+	int xml_root;
+	int xml_mode;
+	bool xml_css;		/**< an xml-stylesheet of type text/css was seen */
+	struct llcache_handle *xslt_fetch;
+	struct nsurl *xslt_url;
+	char *xslt_text;	/**< the XSLT style sheet's bytes once fetched (NUL ended) */
+	size_t xslt_len;
 	bool conversion_begun; /**< Whether or not the conversion has begun */
 
 	/** Document tree */
@@ -492,6 +506,25 @@ bool html_redraw(struct content *c, struct content_redraw_data *data,
  * 0; negative: false, painted in place).
  */
 bool html_redraw_layer_z(const struct box *box, int32_t *z);
+
+/**
+ * Onyx: whether a box put off as a layer (html_redraw_layer_z) is a stacking context --
+ * a z-index set, position fixed / sticky, a compositing group (opacity, transform...).
+ * A positioned box with z-index auto is not: the boxes with a z-index above 0 inside it
+ * are sorted with its stacking context's (a menu at z-index 50 in a relative box over
+ * the relative boxes after it).
+ */
+bool html_redraw_layer_context(const struct box *box);
+
+/**
+ * Onyx: the boxes a layer puts off, in their order (tree order kept as nested
+ * intervals: a box put off inside another lands between it and the next one)
+ */
+struct onyx_layer_key {
+	int32_t z;
+	double lo, span;
+};
+int onyx_layer_key_cmp(const struct onyx_layer_key *a, const struct onyx_layer_key *b);
 
 
 /* in html/redraw_border.c */

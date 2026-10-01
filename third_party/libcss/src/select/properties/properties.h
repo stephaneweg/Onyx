@@ -104,6 +104,7 @@ PROPERTY_FUNCS(animation_iteration_count);
 PROPERTY_FUNCS(animation_direction);
 PROPERTY_FUNCS(animation_fill_mode);
 PROPERTY_FUNCS(animation_play_state);
+PROPERTY_FUNCS(pointer_events);	/* Onyx */
 PROPERTY_FUNCS(fill_opacity);
 PROPERTY_FUNCS(flex_basis);
 PROPERTY_FUNCS(flex_direction);

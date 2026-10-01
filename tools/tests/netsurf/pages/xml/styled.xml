@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/css" href="styled.css"?>
+<catalog>
+  <title>Styled catalog</title>
+  <book><name>First book</name> <price>10</price></book>
+  <book><name>Second book</name> <price>20</price></book>
+</catalog>

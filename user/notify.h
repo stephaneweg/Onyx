@@ -5,16 +5,18 @@
 //
 //   #include "notify.h"
 //   notify ("File Viewer", "3 items pasted");
+//   notify_action ("Updates", "3 updates available", "control pkgman");   // a click: that app, with its
+//                                                                         // arguments (a longer stay)
 //
 #ifndef _notify_h
 #define _notify_h
 #include "kapi.h"
 
 #define NOTIFY_SERVICE	"notify"
-#define NOTIFY_MSG_SHOW	1		// payload: title '\0' text '\0'
+#define NOTIFY_MSG_SHOW	1		// payload: title '\0' text '\0' [action '\0': "app args", run on a click]
 #define NOTIFY_MAX	500		// payload bytes (IPC limit 512)
 
-static inline int notify (const char *title, const char *text)
+static inline int notify_action (const char *title, const char *text, const char *action)
 {
 	int pid = kapi_ipc_lookup (NOTIFY_SERVICE);
 	if (pid == 0)
@@ -27,9 +29,11 @@ static inline int notify (const char *title, const char *text)
 	int n = 0;
 	for (int i = 0; title && title[i] && n < 80; i++) msg[n++] = title[i];
 	msg[n++] = '\0';
-	for (int i = 0; text && text[i] && n < NOTIFY_MAX - 1; i++) msg[n++] = text[i];
+	for (int i = 0; text && text[i] && n < NOTIFY_MAX - 130; i++) msg[n++] = text[i];
 	msg[n++] = '\0';
+	if (action && *action) { for (int i = 0; action[i] && i < 120; i++) msg[n++] = action[i]; msg[n++] = '\0'; }
 	return kapi_mailbox_send (pid, NOTIFY_MSG_SHOW, msg, (unsigned) n);
 }
+static inline int notify (const char *title, const char *text) { return notify_action (title, text, 0); }
 
 #endif

@@ -106,6 +106,32 @@ else
 	echo "  ok    server: no request after a refused preflight"
 fi
 
+echo "net-retry.html (a refused WebSocket and a failing fetch tried again at once: held back, docs/06 §41)"
+L=$OUT/net-retry.log
+# (the app ended as when its window is closed -- quit: the last net:minute printed)
+SIM_REALNET=1 SIM_SCREEN=900x900 SIM_SLEEP=1 SIM_POS=0,0 NS_JSDEBUG=1 NS_PERF=1 \
+	SIM_ARGS="http://127.0.0.1:$PORT/net-retry.html" SIM="$(waits 700)quit;$(waits 100)exit" \
+	timeout 300 "$OUT/build/netsurf" >"$L" 2>&1
+expect "$L" "websocket attempts held back"
+n=$(grep -a -c "ONYX-PERF net:tcp 127.0.0.1:9 failed" "$L")
+h=$(grep -a -c "ONYX-PERF net:tcp 127.0.0.1:9 held back" "$L")
+if [ "$n" -le 8 ] && [ "$h" -gt 0 ]; then
+	echo "  ok    the closed port connected to $n times, $h held back"
+else
+	echo "  FAIL  the closed port connected to $n times ($h held back)"; fail=1
+fi
+if grep -a -q "ONYX-PERF net:minute" "$L"; then echo "  ok    net:minute"; else echo "  FAIL  no net:minute line"; fail=1; fi
+
+echo "net-hidden.html (a poll: the window hidden, the scripts' requests one a second)"
+L=$OUT/net-hidden.log
+SIM_REALNET=1 SIM_SCREEN=900x900 SIM_SLEEP=1 SIM_POS=0,0 NS_JSDEBUG=1 \
+	SIM_ARGS="http://127.0.0.1:$PORT/net-hidden.html" SIM="winstate 4;$(waits 600)exit" \
+	timeout 300 "$OUT/build/netsurf" >"$L" 2>&1
+expect "$L" "hidden poll paced"
+L=$OUT/net-shown.log
+run net-hidden.html 600 "$L"
+expect "$L" "hidden poll not paced"
+
 echo "net-preconnect.html (<link rel=preconnect>, <link rel=dns-prefetch>)"
 L=$OUT/net-preconnect.log
 NS_PERF=1 run net-preconnect.html 300 "$L"

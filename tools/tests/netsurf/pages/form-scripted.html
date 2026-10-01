@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>forms a script made: Enter submits</title>
+<style>body { margin: 0; font: 16px sans-serif; } input { width: 300px; height: 24px; display: block; margin: 8px; }</style>
+</head><body>
+<div id="app"></div>
+<script>
+/* As Vue / React render Wikipedia's search (Codex's TypeaheadSearch): the form and its
+ * field made by the script; Enter in the field submits the form (implicit submission). */
+const q = new URLSearchParams(location.search);
+if (q.has('search'))
+	console.log('submitted search=' + q.get('search') + ' title=' + q.get('title') + ' go=' + q.get('go'));
+else if (q.has('q2'))
+	console.log('submitted q2=' + q.get('q2') + ' btn=' + q.get('btn'));
+/* 1. the field made, then its form around it (the field's control made first) */
+const f = document.createElement('form');
+f.action = location.pathname;
+f.method = 'get';
+const h = document.createElement('input');
+h.type = 'hidden'; h.name = 'title'; h.value = 'Special:Search';
+const i = document.createElement('input');
+i.name = 'search'; i.id = 'one';
+f.appendChild(h);
+f.appendChild(i);
+f.addEventListener('submit', e => console.log('submit event one ' + i.value));
+document.getElementById('app').appendChild(f);
+/* 2. a form with a default button whose click handler the page uses */
+const f2 = document.createElement('form');
+f2.action = location.pathname;
+const i2 = document.createElement('input');
+i2.name = 'q2'; i2.id = 'two';
+const b = document.createElement('button');
+b.name = 'btn'; b.value = 'go'; b.textContent = 'Go';
+b.addEventListener('click', () => console.log('default button clicked ' + i2.value));
+f2.appendChild(i2);
+f2.appendChild(b);
+document.getElementById('app').appendChild(f2);
+console.log('Object.prototype.toString ' + Object.prototype.toString.call(i) + ' ' +
+	Object.prototype.toString.call(document) + ' ' + Object.prototype.toString.call(new Event('x')));
+</script>
+</body></html>

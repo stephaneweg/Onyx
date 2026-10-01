@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Sound
+icon   = SD:/apps/soundconf.app/icon.bmp
+target = soundconf
+text   = The volume, mute, a test sound

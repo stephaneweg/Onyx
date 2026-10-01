@@ -156,6 +156,4 @@ typedef enum {
 } browser_pointer_shape;
 
 
-void browser_mouse_state_dump(browser_mouse_state mouse);
-
 #endif

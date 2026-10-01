@@ -305,6 +305,32 @@ static css_error svg_parse_keyword(css_language *c, const parserutils_vector *ve
 	return CSS_INVALID;
 }
 
+/* Onyx: pointer-events -- auto | none; SVG's values (visiblePainted ... all) are auto here */
+css_error css__parse_pointer_events(css_language *c, const parserutils_vector *vector,
+		int32_t *ctx, css_style *result)
+{
+	static const char *const w[] = { "auto", "none", "visiblepainted", "visiblefill",
+		"visiblestroke", "visible", "painted", "fill", "stroke", "all",
+		"bounding-box", NULL };
+	int32_t orig_ctx = *ctx;
+	const css_token *t;
+	css_error error = CSS_OK;
+	uint16_t i;
+
+	if (svg_flag(c, vector, ctx, result, CSS_PROP_POINTER_EVENTS, &error))
+		return error;
+	consumeWhitespace(vector, ctx);
+	t = parserutils_vector_iterate(vector, ctx);
+	for (i = 0; w[i] != NULL; i++) {
+		if (svg_word(t, w[i]) && svg_end(vector, ctx))
+			return css__stylesheet_style_appendOPV(result,
+					CSS_PROP_POINTER_EVENTS, 0,
+					i == 1 ? POINTER_EVENTS_NONE : POINTER_EVENTS_AUTO);
+	}
+	*ctx = orig_ctx;
+	return CSS_INVALID;
+}
+
 css_error css__parse_fill_rule(css_language *c, const parserutils_vector *vector,
 		int32_t *ctx, css_style *result)
 {

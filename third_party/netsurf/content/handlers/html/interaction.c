@@ -67,6 +67,7 @@
 #include "netsurf/onyx_perf.h"
 #include "html/onyx_webfont.h"
 #include "html/onyx_fx.h"	/* Onyx: the hit test through transforms */
+#include "html/html.h"		/* Onyx: html_box_viewport_fixed, html_box_fixed_shift */
 #include "netsurf/onyx_jet.h"	/* Onyx: <a download> (docs/06 §38) */
 
 /**
@@ -174,12 +175,24 @@ static browser_pointer_shape get_pointer_shape(struct box *box, bool imagemap)
  * \param y	y ordinate
  */
 
-static void html_box_drag_start(struct box *box, int x, int y)
+/** Onyx: box_coords, where the box is painted (in a fixed box: moved by the scroll) */
+static void onyx_box_coords(const html_content *html, struct box *box, int *x, int *y)
+{
+	int dx, dy;
+
+	box_coords(box, x, y);
+	if (html_box_fixed_shift(html, box, &dx, &dy)) {
+		*x += dx;
+		*y += dy;
+	}
+}
+
+static void html_box_drag_start(const html_content *html, struct box *box, int x, int y)
 {
 	int box_x, box_y;
 	int scroll_mouse_x, scroll_mouse_y;
 
-	box_coords(box, &box_x, &box_y);
+	onyx_box_coords(html, box, &box_x, &box_y);
 
 	if (box->scroll_x != NULL) {
 		scroll_mouse_x = x - box_x ;
@@ -310,7 +323,7 @@ html_overflow_scroll_drag_end(struct scrollbar *scrollbar,
 	struct box *box;
 
 	box = data->box;
-	box_coords(box, &box_x, &box_y);
+	onyx_box_coords((html_content *) data->c, box, &box_x, &box_y);
 
 	if (scrollbar_is_horizontal(scrollbar)) {
 		scroll_mouse_x = x - box_x;
@@ -479,7 +492,7 @@ mouse_action_drag_scrollbar(html_content *html,
 
 	box = data->box;
 
-	box_coords(box, &box_x, &box_y);
+	onyx_box_coords(html, box, &box_x, &box_y);
 
 	if (scrollbar_is_horizontal(scr)) {
 		scroll_mouse_x = x - box_x ;
@@ -536,7 +549,7 @@ mouse_action_drag_textarea(html_content *html,
 	       box->gadget->type == GADGET_PASSWORD ||
 	       box->gadget->type == GADGET_TEXTBOX);
 
-	box_coords(box, &box_x, &box_y);
+	onyx_box_coords(html, box, &box_x, &box_y);
 	textarea_mouse_action(box->gadget->data.text.ta,
 			      mouse,
 			      x - box_x,
@@ -563,7 +576,7 @@ mouse_action_drag_content(html_content *html,
 	box = html->drag_owner.content;
 	assert(box->object != NULL);
 
-	box_coords(box, &box_x, &box_y);
+	onyx_box_coords(html, box, &box_x, &box_y);
 	content_mouse_track(box->object,
 			    bw, mouse,
 			    x - box_x,
@@ -679,20 +692,27 @@ static dom_node *html_text_box_element(struct box *text)
 struct onyx_hit_off {
 	struct box *box;
 	int x, y;		/* its parent's origin */
-	int32_t z;
-	int order;
+	struct onyx_layer_key key;	/* its z-index, its tree order */
 };
 
 struct onyx_hit {
 	const html_content *html;
 	int px, py;			/* the point */
+	int vsx, vsy;			/* (the viewport's scroll: the fixed boxes) */
 	struct box *box;		/* the last box painted under it */
 	struct onyx_hit_off *off;
 	int n, cap;
+	struct onyx_hit_off *hoist;	/* (redraw.c's onyx_hoist_*) */
+	int nh, caph;
+	/* Onyx: a static box clipping its overflow, the point outside it: only the
+	 * absolute boxes in it whose containing block is outside it are looked at
+	 * (redraw.c's onyx_oclip_escape) */
+	const struct box *escape;
 };
 
 static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int oy);
-static void onyx_hit_layer(struct onyx_hit *h, int start);
+static void onyx_hit_layer(struct onyx_hit *h, int start, bool context, double lo,
+		double span);
 
 /** whether a box is visible -- an anonymous box (no style: an inline container...)
  * as its parent (visibility: hidden made the boxes of a hidden fixed panel's text
@@ -701,8 +721,26 @@ static bool onyx_hit_visible(const struct box *box)
 {
 	while (box != NULL && box->style == NULL)
 		box = box->parent;
+	/* (Onyx: and pointer-events: none -- an overlay the clicks go through, as
+	 * MediaWiki's notification area over the whole page: inherited, so its
+	 * descendants too unless they set auto) */
 	return box == NULL ||
-		css_computed_visibility(box->style) != CSS_VISIBILITY_HIDDEN;
+		(css_computed_visibility(box->style) != CSS_VISIBILITY_HIDDEN &&
+		 css_computed_pointer_events(box->style) != CSS_POINTER_EVENTS_NONE);
+}
+
+/** whether a box clipping its overflow, not a containing block, may hold absolute boxes
+ * (whose containing block is outside it) at the point (its coordinates) */
+static bool onyx_hit_escapes(const struct box *box, int x, int y)
+{
+	if (box->style == NULL || box->parent == NULL ||
+	    css_computed_position(box->style) != CSS_POSITION_STATIC ||
+	    (onyx_fx_style(box->style) && onyx_fx_box(box)) ||
+	    (css_computed_overflow_x(box->style) == CSS_OVERFLOW_VISIBLE &&
+	     css_computed_overflow_y(box->style) == CSS_OVERFLOW_VISIBLE))
+		return false;
+	return box->descendant_x0 <= x && x < box->descendant_x1 &&
+		box->descendant_y0 <= y && y < box->descendant_y1;
 }
 
 /** a box, its parent's origin at (ox, oy) (html_redraw_box) */
@@ -711,6 +749,16 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 	int bx = ox + box->x, by = oy + box->y;
 	bool physically = false;
 	float m[6], inv[6];
+
+	/* Onyx: a fixed box is where the viewport is, as painted (redraw.c) -- it was hit
+	 * where it is laid out (the scroll offset 0): once the page was scrolled, the
+	 * pointer missed a fixed dialog's scroller, buttons and fields (docs/06 §41) */
+	if ((h->vsx != 0 || h->vsy != 0) && box->style != NULL &&
+	    css_computed_position(box->style) == CSS_POSITION_FIXED &&
+	    html_box_viewport_fixed(box)) {
+		bx += h->vsx;
+		by += h->vsy;
+	}
 
 	/* Onyx: a transformed box (html/onyx_fx.c) -- the point taken back through its
 	 * matrix, for it and all its stacking context holds (what it puts off) */
@@ -729,7 +777,7 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 				h->box = box;
 			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
 					by - scrollbar_get_offset(box->scroll_y));
-			onyx_hit_layer(h, start);
+			onyx_hit_layer(h, start, true, 0, 1);
 		}
 		h->n = start;
 		h->px = px;
@@ -738,9 +786,20 @@ static void onyx_hit_box(struct onyx_hit *h, struct box *box, int ox, int oy)
 	}
 
 	if (!box_contains_point(&h->html->unit_len_ctx, box, h->px - bx,
-			h->py - by, &physically))
+			h->py - by, &physically)) {
+		/* Onyx: a static box clipping its overflow: its absolute boxes whose
+		 * containing block is outside it, outside it too (Codex's menu footer) */
+		if (onyx_hit_escapes(box, h->px - bx, h->py - by)) {
+			const struct box *was = h->escape;
+
+			h->escape = box;
+			onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
+					by - scrollbar_get_offset(box->scroll_y));
+			h->escape = was;
+		}
 		return;
-	if (physically && onyx_hit_visible(box))	/* (Onyx) */
+	}
+	if (physically && h->escape == NULL && onyx_hit_visible(box))	/* (Onyx) */
 		h->box = box;
 	onyx_hit_children(h, box, bx - scrollbar_get_offset(box->scroll_x),
 			by - scrollbar_get_offset(box->scroll_y));
@@ -756,6 +815,11 @@ static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int o
 		if (c->type == BOX_FLOAT_LEFT || c->type == BOX_FLOAT_RIGHT)
 			continue;
 		if (html_redraw_layer_z(c, &z)) {
+			/* (Onyx: outside a clipping box, only its absolute boxes) */
+			if (h->escape != NULL && (c->style == NULL ||
+					css_computed_position(c->style) !=
+					CSS_POSITION_ABSOLUTE))
+				continue;
 			if (h->n == h->cap) {
 				int cap = h->cap ? h->cap * 2 : 32;
 				struct onyx_hit_off *off = realloc(h->off,
@@ -770,8 +834,7 @@ static void onyx_hit_children(struct onyx_hit *h, struct box *box, int ox, int o
 			h->off[h->n].box = c;
 			h->off[h->n].x = ox;
 			h->off[h->n].y = oy;
-			h->off[h->n].z = z;
-			h->off[h->n].order = h->n;
+			h->off[h->n].key.z = z;
 			h->n++;
 			continue;
 		}
@@ -785,25 +848,71 @@ static int onyx_hit_cmp(const void *a, const void *b)
 {
 	const struct onyx_hit_off *x = a, *y = b;
 
-	if (x->z != y->z)
-		return x->z < y->z ? -1 : 1;
-	return x->order - y->order;
+	return onyx_layer_key_cmp(&x->key, &y->key);
 }
 
-/** the boxes a layer put off (from start on), in their painting order */
-static void onyx_hit_layer(struct onyx_hit *h, int start)
+/** room for one more (false: none) */
+static bool onyx_hit_room(struct onyx_hit_off **a, int n, int *cap)
 {
-	int end = h->n, i;
+	struct onyx_hit_off *off;
+	int c;
 
+	if (n < *cap)
+		return true;
+	c = *cap ? *cap * 2 : 32;
+	off = realloc(*a, c * sizeof(*off));
+	if (off == NULL)
+		return false;
+	*a = off;
+	*cap = c;
+	return true;
+}
+
+/** the boxes a layer put off (from start on), in their painting order (redraw.c's
+ * onyx_layer_paint_in: a z-index auto box gives those above 0 to its stacking context) */
+static void onyx_hit_layer(struct onyx_hit *h, int start, bool context, double lo,
+		double span)
+{
+	int end = h->n, n = end - start, h0 = h->nh, i, k;
+
+	for (i = start; i < end; i++) {
+		h->off[i].key.lo = lo + span * (i - start + 1) / (n + 1);
+		h->off[i].key.span = span / (n + 1);
+	}
+	if (!context) {
+		for (i = k = start; i < end; i++) {
+			if (h->off[i].key.z > 0 && onyx_hit_room(&h->hoist, h->nh, &h->caph))
+				h->hoist[h->nh++] = h->off[i];
+			else
+				h->off[k++] = h->off[i];
+		}
+		end = h->n = k;
+		h0 = h->nh;
+	}
 	if (end - start > 1)
 		qsort(h->off + start, end - start, sizeof(*h->off), onyx_hit_cmp);
 	for (i = start; i < end; i++) {
 		struct onyx_hit_off e = h->off[i];
+		const struct box *was = h->escape;
 
+		h->escape = NULL;	/* (a box put off: its own clip) */
 		onyx_hit_box(h, e.box, e.x, e.y);
+		h->escape = was;
 		if (h->n > end)
-			onyx_hit_layer(h, end);
+			onyx_hit_layer(h, end, html_redraw_layer_context(e.box),
+					e.key.lo, e.key.span);
 		h->n = end;
+		while (context && h->nh > h0) {
+			struct onyx_hit_off o = h->hoist[--h->nh];
+
+			if (!onyx_hit_room(&h->off, end, &h->cap))
+				continue;
+			for (k = end; k > i + 1 &&
+					onyx_layer_key_cmp(&o.key, &h->off[k - 1].key) < 0; k--)
+				h->off[k] = h->off[k - 1];
+			h->off[k] = o;
+			h->n = ++end;
+		}
 	}
 	h->n = start;
 }
@@ -822,9 +931,14 @@ static struct box **onyx_hit_path(html_content *html, int x, int y, int *n)
 	h.html = html;
 	h.px = x;
 	h.py = y;
+	if (html->bw != NULL) {
+		int w, ht;
+		browser_window_onyx_viewport(html->bw, &h.vsx, &h.vsy, &w, &ht);
+	}
 	onyx_hit_box(&h, html->layout, 0, 0);
-	onyx_hit_layer(&h, 0);
+	onyx_hit_layer(&h, 0, true, 0, 1);
 	free(h.off);
+	free(h.hoist);
 	if (h.box == NULL)
 		h.box = html->layout;
 
@@ -896,6 +1010,8 @@ get_mouse_action_node(html_content *html,
 	int path_n = 0, path_i;
 	int box_x = 0;
 	int box_y = 0;
+	int fixed_dx = 0, fixed_dy = 0;	/* (Onyx: in a fixed box) */
+	bool in_fixed = false;
 
 	/* initialise the mouse action state data */
 	memset(man, 0, sizeof(struct mouse_action_state));
@@ -910,8 +1026,12 @@ get_mouse_action_node(html_content *html,
 	for (path_i = 0; path_i < path_n; path_i++) {
 		box = path[path_i];
 		box_coords(box, &box_x, &box_y);
-		box_x -= scrollbar_get_offset(box->scroll_x);
-		box_y -= scrollbar_get_offset(box->scroll_y);
+		/* Onyx: from a fixed box down, where they are painted */
+		if (!in_fixed && box->style != NULL &&
+		    css_computed_position(box->style) == CSS_POSITION_FIXED)
+			in_fixed = html_box_fixed_shift(html, box, &fixed_dx, &fixed_dy);
+		box_x += fixed_dx - scrollbar_get_offset(box->scroll_x);
+		box_y += fixed_dy - scrollbar_get_offset(box->scroll_y);
 
 		/* skip hidden boxes */
 		if ((box->style != NULL) &&
@@ -1618,7 +1738,7 @@ default_mouse_action(html_content *html,
 			if (mas->drag_candidate == NULL) {
 				browser_window_page_drag_start(bw, x, y);
 			} else {
-				html_box_drag_start(mas->drag_candidate, x, y);
+				html_box_drag_start(html, mas->drag_candidate, x, y);
 			}
 			mas->result.pointer = BROWSER_POINTER_MOVE;
 		}
@@ -1632,7 +1752,7 @@ default_mouse_action(html_content *html,
 			if (mas->drag_candidate == NULL) {
 				browser_window_page_drag_start(bw, x, y);
 			} else {
-				html_box_drag_start(mas->drag_candidate, x, y);
+				html_box_drag_start(html, mas->drag_candidate, x, y);
 			}
 			mas->result.pointer = BROWSER_POINTER_MOVE;
 		}
@@ -2188,11 +2308,11 @@ void html_set_focus(html_content *html, html_focus_type focus_type,
 		break;
 
 	case HTML_FOCUS_CONTENT:
-		box_coords(focus_owner.content, &x_off, &y_off);
+		onyx_box_coords(html, focus_owner.content, &x_off, &y_off);
 		break;
 
 	case HTML_FOCUS_TEXTAREA:
-		box_coords(focus_owner.textarea, &x_off, &y_off);
+		onyx_box_coords(html, focus_owner.textarea, &x_off, &y_off);
 		break;
 	}
 

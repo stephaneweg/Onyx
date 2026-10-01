@@ -23,6 +23,10 @@
 #include "Apps/ledger/setup.h"
 #include "Apps/ledger/fileio.h"
 #include "Apps/ledger/coda.h"
+
+// (Ledger's words: English here -- wtk/lang.cpp is the apps')
+const char *wk_tr (const char *s) { return s; }
+const char *wk_trc (const char *, const char *s) { return s; }
 using namespace lg;
 
 static Book b;

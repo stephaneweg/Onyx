@@ -3,6 +3,7 @@
 // calendar).
 //
 #include "wtk/calendar.h"
+#include "wtk/lang.h"
 
 namespace wtk {
 
@@ -53,15 +54,16 @@ void Calendar::onDraw ()
 	for (int i = 1; i < width - 1; i++) canvas.pixel (i, CAL_HDR, wk_tone (C_FACE, 100));
 	wk_glyph (canvas, WKG_CHEV_LEFT, 13, CAL_HDR / 2, 9, C_TEXT);
 	wk_glyph (canvas, WKG_CHEV_RIGHT, width - 14, CAL_HDR / 2, 9, C_TEXT);
-	char t[24]; int p = 0;
-	for (int i = 0; MONTHS[viewMonth - 1][i]; i++) t[p++] = MONTHS[viewMonth - 1][i];
+	char t[48]; int p = 0;
+	const char *mn = TR (MONTHS[viewMonth - 1]);
+	for (int i = 0; mn[i] && p < 40; i++) t[p++] = mn[i];
 	t[p++] = ' ';
 	int y = viewYear; t[p++] = (char) ('0' + y / 1000 % 10); t[p++] = (char) ('0' + y / 100 % 10);
 	t[p++] = (char) ('0' + y / 10 % 10); t[p++] = (char) ('0' + y % 10); t[p] = '\0';
 	wk_text_c (canvas, 0, 0, width, CAL_HDR, t, C_TEXT, 2);
 	unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 140);
 	for (int i = 0; i < 7; i++)
-		canvas.text (1 + i * CAL_CELL_W + (CAL_CELL_W - wk_tw (DOWS[i])) / 2, CAL_HDR + 2, DOWS[i],
+		canvas.text (1 + i * CAL_CELL_W + (CAL_CELL_W - wk_tw (TR (DOWS[i]))) / 2, CAL_HDR + 2, TR (DOWS[i]),
 			     i >= 5 ? wk_mix (C_FIELD, WEEKEND, 190) : dim);
 	int ty = 0, tm = 0, td = 0;
 	kapi_get_datetime (&ty, &tm, &td, 0, 0, 0);

@@ -6032,6 +6032,14 @@ layout_position_absolute(struct box *box,
 				     p != NULL && !(p->flags & HAS_FIXED);
 				     p = p->parent)
 					p->flags |= HAS_FIXED;
+			} else {
+				/* (Onyx: nor do the boxes' between it and its
+				 * containing block make it scroll: HAS_ABS_OUT) */
+				struct box *p;
+
+				for (p = c->parent; p != NULL &&
+						p != containing_block; p = p->parent)
+					p->flags |= HAS_ABS_OUT;
 			}
 			if (!layout_absolute(c, containing_block,
 					cx, cy, content))
@@ -6382,14 +6390,14 @@ layout_update_descendant_bbox(
 			&child_desc_x1, &child_desc_y1);
 
 	if ((overflow_x == CSS_OVERFLOW_VISIBLE ||
-	     (child->flags & HAS_FIXED)) &&	/* (Onyx) */
+	     (child->flags & (HAS_FIXED | HAS_ABS_OUT))) &&	/* (Onyx) */
 			html_object == false) {
 		/* get child's descendant bbox relative to box */
 		child_desc_x0 = child->descendant_x0;
 		child_desc_x1 = child->descendant_x1;
 	}
 	if ((overflow_y == CSS_OVERFLOW_VISIBLE ||
-	     (child->flags & HAS_FIXED)) &&
+	     (child->flags & (HAS_FIXED | HAS_ABS_OUT))) &&
 			html_object == false) {
 		/* get child's descendant bbox relative to box */
 		child_desc_y0 = child->descendant_y0;
@@ -6438,14 +6446,22 @@ static void layout_update_scroll_extent(const css_unit_ctx *unit_len_ctx,
 	if (child->style != NULL &&
 	    css_computed_position(child->style) == CSS_POSITION_FIXED)
 		return;
+	/* (an absolute child of a box that is not its containing block: the box
+	 * is between it and its containing block, HAS_ABS_OUT) */
+	if (child->style != NULL && (box->flags & HAS_ABS_OUT) &&
+	    css_computed_position(child->style) == CSS_POSITION_ABSOLUTE &&
+	    box->style != NULL &&
+	    css_computed_position(box->style) == CSS_POSITION_STATIC &&
+	    !(onyx_fx_style(box->style) && onyx_fx_box(box)))
+		return;
 	layout_get_box_bbox(unit_len_ctx, child, &x0, &y0, &x1, &y1);
 	if (!html_object && (child->style == NULL ||
 			css_computed_overflow_x(child->style) == CSS_OVERFLOW_VISIBLE ||
-			(child->flags & HAS_FIXED)))
+			(child->flags & (HAS_FIXED | HAS_ABS_OUT))))
 		x1 = child->scroll_ext_x1;
 	if (!html_object && (child->style == NULL ||
 			css_computed_overflow_y(child->style) == CSS_OVERFLOW_VISIBLE ||
-			(child->flags & HAS_FIXED)))
+			(child->flags & (HAS_FIXED | HAS_ABS_OUT))))
 		y1 = child->scroll_ext_y1;
 	x1 += child->x - off_x;
 	y1 += child->y - off_y;
@@ -6468,7 +6484,7 @@ static void layout_calculate_scroll_extent(const css_unit_ctx *unit_len_ctx,
 
 	box->scroll_ext_x1 = box->descendant_x1;
 	box->scroll_ext_y1 = box->descendant_y1;
-	if (!(box->flags & HAS_FIXED) || box->type == BOX_INLINE ||
+	if (!(box->flags & (HAS_FIXED | HAS_ABS_OUT)) || box->type == BOX_INLINE ||
 	    box->type == BOX_TEXT || box->type == BOX_INLINE_END ||
 	    (box->flags & REPLACE_DIM))
 		return;
@@ -6641,8 +6657,10 @@ bool layout_document(html_content *content, int width, int height)
 
 	ret = layout_block_context(doc, height, content);
 
-	/* make <html> and <body> fill available height */
-	if (doc->y + doc->padding[TOP] + doc->height + doc->padding[BOTTOM] +
+	/* make <html> and <body> fill available height (Onyx: not an SVG document's
+	 * root, a replaced box drawn at its own size -- docs/06 §43) */
+	if (!(doc->flags & IS_REPLACED) &&
+	    doc->y + doc->padding[TOP] + doc->height + doc->padding[BOTTOM] +
 			doc->border[BOTTOM].width + doc->margin[BOTTOM] <
 			height) {
 		doc->height = height - (doc->y + doc->padding[TOP] +

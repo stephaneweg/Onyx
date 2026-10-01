@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Panel
+icon   = SD:/apps/dockconf.app/icon.bmp
+target = dockconf
+text   = The dock's drawers and launchers; the workspaces

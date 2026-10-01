@@ -11,6 +11,7 @@
 'use strict';
 
 const G = globalThis;
+const BUILTIN_NAMES = new Set(Object.getOwnPropertyNames(G));	/* (tagInterfaces) */
 const NativePromise = Promise;	/* (a page's polyfill may replace Promise: queueMicrotask's own) */
 const LISTENERS = Symbol('listeners');
 const HANDLERS = Symbol('handlers');
@@ -2786,9 +2787,10 @@ class Element extends Node {
 	getClientRects() { const r = this.getBoundingClientRect(); return r.width || r.height ? [r] : []; }
 	get offsetWidth() { return N.rect(this)[2]; }
 	get offsetHeight() { return N.rect(this)[3]; }
-	get offsetTop() { return N.rect(this)[1] + (G.scrollY || 0); }
-	get offsetLeft() { return N.rect(this)[0] + (G.scrollX || 0); }
-	get offsetParent() { return N.boxed(this) ? G.document.body : null; }
+	/* (Onyx: CSSOM View's -- N.offset; the body's and the root's none, 0) */
+	get offsetTop() { const o = elementOffset(this); return o ? o[2] : 0; }
+	get offsetLeft() { const o = elementOffset(this); return o ? o[1] : 0; }
+	get offsetParent() { const o = elementOffset(this); return o ? o[0] : null; }
 	get clientWidth() {
 		if (this === G.document.documentElement) return G.innerWidth;
 		return N.rect(this)[2];
@@ -3833,7 +3835,7 @@ class Document extends Node {
 			createDocumentType: () => null };
 	}
 	hasFocus() { return true; }
-	getElementById(id) { return N.byId(String(id)); }
+	getElementById(id) { return N.byId(String(id), this); }
 	getElementsByName(name) { return nodeList(N.descendants(this).filter(e => N.attr(e, 'name') === name)); }
 	createElement(tag) { return N.create(lower(tag)); }
 	createElementNS(ns, tag) {
@@ -5186,6 +5188,14 @@ function checkMedia() {
 			if (typeof m.onchange === 'function') try { m.onchange(ev); } catch (e) { report(e); }
 		}
 	}
+}
+
+/* (Onyx) an element's [offsetParent, offsetLeft, offsetTop] (N.offset), null for the body,
+ * the root and an element without a box */
+function elementOffset(e) {
+	const d = G.document;
+	if (e === d.body || e === d.documentElement) return null;
+	return N.offset(e, d.body);
 }
 
 /* getComputedStyle: the box's own values for a few properties, else the style attribute */
@@ -7151,6 +7161,28 @@ N.setup({
 	tags: TAGS,
 	dispatch: browserDispatch,
 });
+
+/* Onyx: each interface's Symbol.toStringTag (as WebIDL's): Object.prototype.toString of an
+ * element says "[object HTMLDivElement]", not "[object Object]" -- Vue 3's reactive() wraps
+ * only plain objects (toRawType), and a proxied element given to the natives was "not a
+ * node" (Wikipedia's Codex search: its menu's scroll height, getComputedStyle). html5.js
+ * tags its own the same way (G.__onyxTagInterfaces, removed there). */
+function tagInterfaces(builtins) {
+	for (const k of Object.getOwnPropertyNames(G)) {
+		if (builtins.has(k) || !/^[A-Z]/.test(k)) continue;
+		const d = Object.getOwnPropertyDescriptor(G, k);
+		const f = d && d.value;
+		if (typeof f !== 'function' || f.prototype === null || typeof f.prototype !== 'object' ||
+		    Object.prototype.hasOwnProperty.call(f.prototype, Symbol.toStringTag)) continue;
+		try {
+			Object.defineProperty(f.prototype, Symbol.toStringTag,
+				{ value: k, configurable: true });
+		} catch (e) { /* (a frozen prototype) */ }
+	}
+}
+tagInterfaces(BUILTIN_NAMES);
+Object.defineProperty(G, '__onyxTagInterfaces', { value: () => tagInterfaces(BUILTIN_NAMES),
+	configurable: true });
 
 /* the document's own wrapper made now: window.document is it */
 N.document();

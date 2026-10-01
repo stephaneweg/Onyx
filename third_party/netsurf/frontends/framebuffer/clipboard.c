@@ -19,7 +19,7 @@
 /** \file
   * nsfb clipboard handling
   *
-  * Onyx (Jet Browser, docs/06 §40): the system's clipboard (the kernel's, kapi_clipboard_set /
+  * Onyx (Jet Browser, docs/06 §40): the system's clipboard (clipd's shared one through onyx_chrome.cpp, else the kernel's kapi_clipboard_set /
   * _get: one typed blob that every app shares, 64 KB at most) -- not a buffer of the browser's
   * own: text selected in a page or a form field and copied (Ctrl+C, Ctrl+X, the context menu)
   * pastes into the other apps, and their text into the page's fields (Ctrl+V). UTF-8 both
@@ -39,6 +39,7 @@
 
 #include "framebuffer/gui.h"
 #include "framebuffer/clipboard.h"
+#include "netsurf/onyx_chrome.h"	/* Onyx: the shared clipboard (onyx_clip_*) */
 
 #include "kapi.h"
 
@@ -53,30 +54,11 @@
  */
 static void gui_get_clipboard(char **buffer, size_t *length)
 {
-	int type = 0, n;
-	char *b;
+	unsigned n = 0;
 
-	*buffer = NULL;
-	*length = 0;
-
-	n = kapi_clipboard_get(&type, NULL, 0, NULL);	/* (its length) */
-	if (n <= 0 || type != CLIP_TEXT)
-		return;
-	if (n > CLIP_MAX)
-		n = CLIP_MAX;
-	b = malloc(n + 1);
-	if (b == NULL)
-		return;
-	n = kapi_clipboard_get(&type, b, n, NULL);
-	if (n <= 0 || type != CLIP_TEXT) {
-		free(b);
-		return;
-	}
-	if (n > CLIP_MAX)
-		n = CLIP_MAX;
-	b[n] = '\0';
-	*buffer = b;
-	*length = n;
+	/* (the shared clipboard -- clipd's current item, else the kernel's: onyx_chrome.cpp) */
+	*buffer = onyx_clip_get_text(CLIP_MAX, &n);
+	*length = *buffer != NULL ? n : 0;
 }
 
 
@@ -102,7 +84,7 @@ static void gui_set_clipboard(const char *buffer, size_t length,
 		while (length > 0 && (((unsigned char) buffer[length]) & 0xC0) == 0x80)
 			length--;
 	}
-	kapi_clipboard_set(CLIP_TEXT, buffer, (unsigned) length);
+	onyx_clip_set_text(buffer, (unsigned) length);
 	printf("ONYX-CLIPBOARD text %u bytes\n", (unsigned) length);
 	fflush(stdout);
 }

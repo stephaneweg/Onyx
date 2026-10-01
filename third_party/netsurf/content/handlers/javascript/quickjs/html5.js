@@ -92,7 +92,13 @@ function attrRecord(el, k, old) {
 			addedNodes: G.NodeList ? [] : [], removedNodes: [] });
 }
 const attrProto = {
-	getAttribute(name) { return N.attr(this, attrKey(this, name)); },
+	getAttribute(name) {
+		const k = attrKey(this, name), v = N.attr(this, k);
+		if (v !== null || k.indexOf(':') < 0) return v;
+		/* (Onyx: a namespaced attribute by its qualified name, "xlink:href") */
+		for (const a of N.attrsNS(this)) if (a[0] === k) return a[1];
+		return null;
+	},
 	hasAttribute(name) { return N.attr(this, attrKey(this, name)) !== null; },
 	setAttribute(name, value) {
 		const k = attrKey(this, name);
@@ -254,6 +260,7 @@ elementClass('HTMLDirectoryElement', ['dir']);
 elementClass('HTMLFrameElement', ['frame']);
 elementClass('HTMLSelectedContentElement', ['selectedcontent']);
 if (G.HTMLUnknownElement) TAGS['*unknown'] = G.HTMLUnknownElement.prototype;
+TAGS['*xml'] = Element.prototype;	/* (Onyx, docs/06 §43: an XML document's element in no namespace) */
 TAGS['*custom'] = HTMLElement.prototype;	/* (a valid custom element name: HTMLElement) */
 
 /* SVG: the classes dom.js gave plain names get their namespaced name; MathML */
@@ -451,8 +458,13 @@ const implementation = {
 		return d;
 	},
 	createDocument(ns, qname, doctype) {
-		/* (Onyx: with its doctype, which becomes the document's) */
+		/* (Onyx: with its doctype, which becomes the document's; an XML document, of
+		 * the root's kind -- docs/06 §43) */
+		ns = ns === undefined || ns === null || ns === '' ? null : String(ns);
+		qname = qname === null || qname === undefined ? '' : String(qname);
+		if (qname) checkQName(ns, qname);
 		const d = N.createDocument(doctype || null);
+		N.setDocKind(d, ns === NS_HTML ? 2 : ns === NS_SVG ? 3 : 1);
 		if (qname) d.appendChild(d.createElementNS(ns, qname));
 		return d;
 	},
@@ -465,96 +477,11 @@ const implementation = {
 };
 getter(G.Document.prototype, 'implementation', () => implementation);
 
-/* XML documents (DOMParser's XML types): a small non-validating parser -- elements in
- * their namespaces (xmlns declarations), attributes, text, CDATA, comments, the five
- * entities and numeric references; a malformed document gets a <parsererror> as the
- * browsers give */
+/* XML documents (DOMParser's XML types, responseXML): expat's parse (qjs_xml.c, docs/06 §43);
+ * a malformed document gets Chrome's <parsererror> in it */
 function parseXMLDocument(src, type) {
-	const doc = N.createDocument();
-	const stack = [{ node: doc, ns: new Map([['xml', NS_XML], ['xmlns', NS_XMLNS]]),
-		dflt: type === 'application/xhtml+xml' ? NS_HTML : null }];
-	const ent = s => s.replace(/&(#x[0-9a-f]+|#[0-9]+|lt|gt|amp|quot|apos);/gi, (m, e) => {
-		if (e[0] === '#') return String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ?
-			parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10));
-		return { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" }[e.toLowerCase()];
-	});
-	let i = 0, error = null;
-	const top = () => stack[stack.length - 1];
-	while (i < src.length && !error) {
-		const lt = src.indexOf('<', i);
-		if (lt < 0 || lt > i) {
-			const text = src.slice(i, lt < 0 ? src.length : lt);
-			if (stack.length > 1) top().node.appendChild(doc.createTextNode(ent(text)));
-			else if (text.trim()) error = 'text outside the root element';
-			if (lt < 0) break;
-			i = lt;
-			continue;
-		}
-		if (src.startsWith('<!--', i)) {
-			const e = src.indexOf('-->', i + 4);
-			if (e < 0) { error = 'unclosed comment'; break; }
-			top().node.appendChild(doc.createComment(src.slice(i + 4, e)));
-			i = e + 3;
-		} else if (src.startsWith('<![CDATA[', i)) {
-			const e = src.indexOf(']]>', i + 9);
-			if (e < 0) { error = 'unclosed CDATA section'; break; }
-			top().node.appendChild(doc.createTextNode(src.slice(i + 9, e)));
-			i = e + 3;
-		} else if (src.startsWith('<?', i)) {
-			const e = src.indexOf('?>', i + 2);
-			if (e < 0) { error = 'unclosed processing instruction'; break; }
-			i = e + 2;
-		} else if (src.startsWith('<!', i)) {
-			const e = src.indexOf('>', i + 2);
-			if (e < 0) { error = 'unclosed declaration'; break; }
-			i = e + 1;
-		} else if (src[i + 1] === '/') {
-			const e = src.indexOf('>', i);
-			const name = src.slice(i + 2, e).trim();
-			if (e < 0 || stack.length < 2 || top().qname !== name) { error = 'mismatched end tag ' + name; break; }
-			stack.pop();
-			i = e + 1;
-		} else {
-			const m = /^<([^\s/>]+)((?:\s+[^\s=/>]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/.exec(src.slice(i));
-			if (!m) { error = 'bad start tag'; break; }
-			const qname = m[1];
-			const attrs = [];
-			const re = /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-			let a;
-			while ((a = re.exec(m[2]))) attrs.push([a[1], ent(a[2] !== undefined ? a[2] : a[3])]);
-			const scope = { ns: new Map(top().ns), dflt: top().dflt, qname };
-			for (const [k, v] of attrs) {
-				if (k === 'xmlns') scope.dflt = v || null;
-				else if (k.startsWith('xmlns:')) scope.ns.set(k.slice(6), v);
-			}
-			const colon = qname.indexOf(':');
-			const ns = colon > 0 ? scope.ns.get(qname.slice(0, colon)) : scope.dflt;
-			if (colon > 0 && ns === undefined) { error = 'unbound prefix ' + qname; break; }
-			if (stack.length === 1 && N.first(doc) && [...N.children(doc)].some(c => N.type(c) === ELEMENT_NODE)) {
-				error = 'a second root element'; break;
-			}
-			const el = N.createIn(doc, 'elementNS', ns || null, qname);
-			for (const [k, v] of attrs) {
-				const c = k.indexOf(':');
-				const ans = k === 'xmlns' || k.startsWith('xmlns:') ? NS_XMLNS :
-					c > 0 ? scope.ns.get(k.slice(0, c)) : null;
-				try { N.setAttrNS(el, ans || null, k, v); } catch (e) { N.setAttr(el, k, v); }
-			}
-			top().node.appendChild(el);
-			scope.node = el;
-			if (!m[3]) stack.push(scope);
-			i += m[0].length;
-		}
-	}
-	if (!error && stack.length > 1) error = 'unclosed element ' + top().qname;
-	if (!error && ![...N.children(doc)].some(c => N.type(c) === ELEMENT_NODE)) error = 'no root element';
-	if (error) {
-		for (let c; (c = N.first(doc));) N.remove(doc, c);
-		const pe = N.createIn(doc, 'elementNS', 'http://www.mozilla.org/newlayout/xml/parsererror.xml', 'parsererror');
-		pe.textContent = 'XML Parsing Error: ' + error;
-		doc.appendChild(pe);
-	}
-	return doc;
+	const k = type === 'application/xhtml+xml' ? 2 : type === 'image/svg+xml' ? 3 : 1;
+	return N.parseXML(String(src), k);
 }
 
 /* ---- structuredClone -------------------------------------------------------------------- */
@@ -3532,6 +3459,551 @@ ceAttributeChanged = (el, k, old, now) => {
 			ceCall(el, s.def, 'attributeChangedCallback', [k, old, now, null]);
 	}
 };
+
+/* ---- Onyx (docs/06 §43): XML documents, XPath, XSLT, the SVG DOM ------------------------------ */
+
+/* a document's XML kind (qjs_xml.c): 0 HTML, 1 XML, 2 XHTML, 3 SVG */
+const docKind = d => (d && N.type(d) === DOCUMENT_NODE ? N.docKind(d) : 0);
+const KIND_TYPE = ['text/html', 'application/xml', 'application/xhtml+xml', 'image/svg+xml'];
+getter(G.Document.prototype, 'contentType', function () { return KIND_TYPE[docKind(this)] || 'text/html'; });
+{
+	/* an XML document: createElement keeps the name's case (XHTML's in the HTML namespace,
+	 * else in none); write / open / close are HTML's only */
+	const ce = G.Document.prototype.createElement, ceNS = G.Document.prototype.createElementNS;
+	const w = G.Document.prototype.write, wl = G.Document.prototype.writeln,
+		op = G.Document.prototype.open, cl = G.Document.prototype.close;
+	const xmlOnly = name => domError(name + ': not on an XML document', 'InvalidStateError');
+	def(G.Document.prototype, {
+		createElement(name) {
+			const k = docKind(this);
+			if (k) {
+				checkName(String(name));
+				const ns = k === 2 ? NS_HTML : null;
+				if (!isMainDoc(this)) return N.createIn(this, 'elementNS', ns, String(name));
+				return N.createNS(ns, String(name));
+			}
+			return ce.call(this, name);
+		},
+		createElementNS(ns, qname) {
+			if (docKind(this) && isMainDoc(this)) {
+				ns = ns === undefined || ns === null || ns === '' ? null : String(ns);
+				checkQName(ns, String(qname));
+				return N.createNS(ns, String(qname));
+			}
+			return ceNS.call(this, ns, qname);
+		},
+		createCDATASection(s) {
+			if (!docKind(this)) throw domError('createCDATASection: an HTML document', 'NotSupportedError');
+			s = String(s);
+			if (s.includes(']]>')) throw domError('createCDATASection: "]]>"', 'InvalidCharacterError');
+			return N.createIn(this, 'text', s);
+		},
+		write(...s) { if (docKind(this)) throw xmlOnly('write'); return w.apply(this, s); },
+		writeln(...s) { if (docKind(this)) throw xmlOnly('writeln'); return wl.apply(this, s); },
+		open(...a) { if (docKind(this)) throw xmlOnly('open'); return op.apply(this, a); },
+		close() { if (docKind(this)) throw xmlOnly('close'); return cl.call(this); },
+	});
+	if (!G.XMLDocument) {
+		G.XMLDocument = class XMLDocument extends G.Document {};
+		Object.defineProperty(G.XMLDocument, Symbol.hasInstance, { value: d => docKind(d) !== 0 });
+	}
+}
+
+/* getElementsByTagNameNS (a static collection, as the others here) */
+{
+	const byNS = function (ns, local) {
+		ns = ns === undefined || ns === null || ns === '' ? null : String(ns);
+		local = String(local);
+		const c = new G.HTMLCollection();
+		for (const e of N.descendants(this)) {
+			if (ns !== '*' && N.nsURI(e) !== ns) continue;
+			if (local !== '*') {
+				const q = N.lname(e), i = q.indexOf(':');
+				const l = i > 0 && N.nsURI(e) !== NS_HTML ? q.slice(i + 1) : q;
+				if (l !== local) continue;
+			}
+			c.push(e);
+		}
+		return c;
+	};
+	def(Element.prototype, { getElementsByTagNameNS: byNS });
+	def(G.Document.prototype, { getElementsByTagNameNS: byNS });
+	if (G.DocumentFragment) def(G.DocumentFragment.prototype, { getElementsByTagNameNS: byNS });
+}
+
+/* XMLSerializer: the XML serialization (the DOM Parsing standard's, namespaces fixed up) */
+const XML_VOID = new Set(['area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame',
+	'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+function xmlEscText(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function xmlEscAttr(s) {
+	return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function xmlSerialize(node) {
+	const out = [];
+	let gen = 0;
+	const walk = (n, scope) => {
+		switch (N.type(n)) {
+		case ELEMENT_NODE: {
+			const ns = N.nsURI(n);
+			const q = N.qname(n), ci = q.indexOf(':');
+			let prefix = ci > 0 ? q.slice(0, ci) : null;
+			let local = ci > 0 ? q.slice(ci + 1) : q;
+			const htmlDoc = ns === NS_HTML && docKind(N.ownerDoc(n)) === 0;
+			if (htmlDoc) local = local.toLowerCase();
+			let sc = scope;
+			const decls = [];
+			const set = (p, u) => { if (sc === scope) sc = new Map(scope); sc.set(p, u); };
+			/* the element's own xmlns attributes first */
+			const attrs = N.attrsNS(n);
+			for (const [aq, v, ans, al] of attrs) {
+				if (ans !== NS_XMLNS) continue;
+				const p = aq === 'xmlns' ? '' : al;
+				if (p === '' && (ns || '') !== v) continue;	/* (a default contradicting the element) */
+				if (p === 'xml') continue;
+				if (sc.get(p) !== v) { set(p, v); decls.push([p, v]); }
+			}
+			let name = local;
+			if (ns === null) {
+				if ((sc.get('') || '') !== '') { set('', ''); decls.push(['', '']); }
+				prefix = null;
+			} else if (prefix !== null && prefix !== 'xml') {
+				if (sc.get(prefix) !== ns) { set(prefix, ns); decls.push([prefix, ns]); }
+				name = prefix + ':' + local;
+			} else if (prefix === 'xml') {
+				name = 'xml:' + local;
+			} else if (sc.get('') !== ns) {
+				set('', ns); decls.push(['', ns]);
+			}
+			out.push('<', name);
+			for (const [p, u] of decls)
+				out.push(p ? ' xmlns:' + p : ' xmlns', '="', xmlEscAttr(u), '"');
+			for (const [aq, v, ans, al] of attrs) {
+				if (ans === NS_XMLNS) continue;
+				let an = al || aq;
+				if (ans === NS_XML) an = 'xml:' + al;
+				else if (ans) {
+					const ai = aq.indexOf(':');
+					let p = ai > 0 ? aq.slice(0, ai) : null;
+					if (!p || (sc.has(p) && sc.get(p) !== ans)) {
+						p = null;
+						for (const [kp, ku] of sc) if (ku === ans && kp) { p = kp; break; }
+						if (!p) p = 'ns' + (++gen);
+					}
+					if (sc.get(p) !== ans) { set(p, ans); out.push(' xmlns:', p, '="', xmlEscAttr(ans), '"'); }
+					an = p + ':' + al;
+				} else if (htmlDoc) an = an.toLowerCase();
+				out.push(' ', an, '="', xmlEscAttr(v), '"');
+			}
+			const kids = N.children(ns === NS_HTML && local === 'template' ? (N.templateContent(n) || n) : n);
+			if (!kids.length) {
+				if (ns === NS_HTML && XML_VOID.has(local)) out.push(' />');
+				else if (ns === NS_HTML) out.push('></', name, '>');
+				else out.push('/>');
+				break;
+			}
+			out.push('>');
+			for (const c of kids) walk(c, sc);
+			out.push('</', name, '>');
+			break;
+		}
+		case TEXT_NODE: out.push(xmlEscText(N.value(n))); break;
+		case CDATA_SECTION_NODE: out.push('<![CDATA[', N.value(n), ']]>'); break;
+		case COMMENT_NODE: out.push('<!--', N.value(n), '-->'); break;
+		case PROCESSING_INSTRUCTION_NODE: out.push('<?', N.name(n), ' ', N.value(n), '?>'); break;
+		case DOCUMENT_TYPE_NODE: {
+			const ids = N.doctypeIds ? N.doctypeIds(n) : ['', ''];
+			out.push('<!DOCTYPE ', N.name(n));
+			if (ids[0]) out.push(' PUBLIC "', ids[0], '"');
+			else if (ids[1]) out.push(' SYSTEM');
+			if (ids[1]) out.push(' "', ids[1], '"');
+			out.push('>');
+			break;
+		}
+		case DOCUMENT_NODE: case DOCUMENT_FRAGMENT_NODE:
+			for (const c of N.children(n)) walk(c, scope);
+			break;
+		default:
+			if (G.Attr && n instanceof G.Attr) out.push(xmlEscText(n.value));
+		}
+	};
+	walk(node, new Map([['xml', NS_XML]]));
+	return out.join('');
+}
+G.XMLSerializer.prototype.serializeToString = function (n) {
+	if (!(n instanceof Node) && !(G.Attr && n instanceof G.Attr)) throw new TypeError('XMLSerializer: not a node');
+	return xmlSerialize(n);
+};
+
+/* ---- XPath (document.evaluate) and XSLT (XSLTProcessor): xslt.js, loaded when first used ---- */
+let xsltLib = null;
+const XL = () => xsltLib || (xsltLib = N.loadXslt());
+const XPR_TYPES = ['ANY_TYPE', 'NUMBER_TYPE', 'STRING_TYPE', 'BOOLEAN_TYPE', 'UNORDERED_NODE_ITERATOR_TYPE',
+	'ORDERED_NODE_ITERATOR_TYPE', 'UNORDERED_NODE_SNAPSHOT_TYPE', 'ORDERED_NODE_SNAPSHOT_TYPE',
+	'ANY_UNORDERED_NODE_TYPE', 'FIRST_ORDERED_NODE_TYPE'];
+const XPR = new WeakMap();
+class XPathResult {
+	constructor() { throw new TypeError('Illegal constructor'); }
+	get resultType() { return XPR.get(this).type; }
+	get numberValue() {
+		const r = XPR.get(this);
+		if (r.type !== 1) throw new TypeError('XPathResult: not a number');
+		return r.value;
+	}
+	get stringValue() {
+		const r = XPR.get(this);
+		if (r.type !== 2) throw new TypeError('XPathResult: not a string');
+		return r.value;
+	}
+	get booleanValue() {
+		const r = XPR.get(this);
+		if (r.type !== 3) throw new TypeError('XPathResult: not a boolean');
+		return r.value;
+	}
+	get singleNodeValue() {
+		const r = XPR.get(this);
+		if (r.type !== 8 && r.type !== 9) throw new TypeError('XPathResult: not a single node');
+		return r.value[0] || null;
+	}
+	get invalidIteratorState() {
+		const r = XPR.get(this);
+		return (r.type === 4 || r.type === 5) && r.gen !== N.treeGen();
+	}
+	get snapshotLength() {
+		const r = XPR.get(this);
+		if (r.type !== 6 && r.type !== 7) throw new TypeError('XPathResult: not a snapshot');
+		return r.value.length;
+	}
+	snapshotItem(i) {
+		const r = XPR.get(this);
+		if (r.type !== 6 && r.type !== 7) throw new TypeError('XPathResult: not a snapshot');
+		i = Number(i);
+		return i >= 0 && i < r.value.length ? r.value[Math.floor(i)] : null;
+	}
+	iterateNext() {
+		const r = XPR.get(this);
+		if (r.type !== 4 && r.type !== 5) throw new TypeError('XPathResult: not an iterator');
+		if (r.gen !== N.treeGen()) throw domError('XPathResult: the document changed', 'InvalidStateError');
+		return r.i < r.value.length ? r.value[r.i++] : null;
+	}
+}
+XPR_TYPES.forEach((k, i) => {
+	Object.defineProperty(XPathResult, k, { value: i, enumerable: true });
+	Object.defineProperty(XPathResult.prototype, k, { value: i, enumerable: true });
+});
+G.XPathResult = XPathResult;
+function xpathResult(r) {
+	const o = Object.create(XPathResult.prototype);
+	XPR.set(o, { type: r.type, value: r.value, i: 0, gen: N.treeGen() });
+	return o;
+}
+function xpathEval(expr, ctx, resolver, type) {
+	if (arguments.length < 1) throw new TypeError('evaluate: an expression is needed');
+	if (ctx === undefined || ctx === null) throw new TypeError("evaluate: parameter 2 is not of type 'Node'");
+	return xpathResult(XL().evaluate(expr, ctx, resolver, type === undefined ? 0 : Number(type) | 0));
+}
+const XPE = new WeakMap();
+class XPathExpression {
+	constructor() { throw new TypeError('Illegal constructor'); }
+	evaluate(ctx, type) {
+		const e = XPE.get(this);
+		if (ctx === undefined || ctx === null) throw new TypeError("evaluate: parameter 1 is not of type 'Node'");
+		return xpathResult(XL().evaluate(e, ctx, null, type === undefined ? 0 : Number(type) | 0));
+	}
+}
+G.XPathExpression = XPathExpression;
+function xpathCompile(expr, resolver) {
+	const r = resolver == null ? null : typeof resolver === 'function' ? resolver :
+		typeof resolver.lookupNamespaceURI === 'function' ? p => resolver.lookupNamespaceURI(p) : null;
+	const o = Object.create(XPathExpression.prototype);
+	XPE.set(o, XL().compile(String(expr), r));
+	return o;
+}
+const xpathApi = {
+	evaluate(expr, ctx, resolver, type) { return xpathEval(String(expr), ctx, resolver, type); },
+	createExpression(expr, resolver) { return xpathCompile(expr, resolver); },
+	createNSResolver(node) { return node; },
+};
+def(G.Document.prototype, xpathApi);
+class XPathEvaluator {}
+def(XPathEvaluator.prototype, xpathApi);
+G.XPathEvaluator = XPathEvaluator;
+if (!Node.prototype.lookupNamespaceURI) {
+	def(Node.prototype, {
+		lookupNamespaceURI(prefix) {
+			prefix = prefix === undefined || prefix === '' ? null : prefix;
+			if (prefix === 'xml') return NS_XML;
+			if (prefix === 'xmlns') return NS_XMLNS;
+			for (let n = N.type(this) === DOCUMENT_NODE ? this.documentElement : this; n; n = N.parent(n)) {
+				if (N.type(n) !== ELEMENT_NODE) continue;
+				const q = N.qname(n), ci = q.indexOf(':');
+				if (N.nsURI(n) && (ci > 0 ? q.slice(0, ci) : null) === prefix) return N.nsURI(n);
+				for (const [aq, v, ans, al] of N.attrsNS(n))
+					if (ans === NS_XMLNS && ((prefix === null && aq === 'xmlns') || (prefix !== null && al === prefix)))
+						return v || null;
+			}
+			return null;
+		},
+	});
+}
+
+/* XSLTProcessor: a style sheet's transform of a node into a document or a fragment */
+const XSP = new WeakMap();
+class XSLTProcessor {
+	constructor() { XSP.set(this, { ss: null, params: new Map() }); }
+	importStylesheet(node) {
+		if (!node || !(node instanceof Node)) throw new TypeError("importStylesheet: parameter 1 is not of type 'Node'");
+		XSP.get(this).ss = XL().compileStylesheet(node, null, '');
+	}
+	transformToFragment(src, doc) {
+		const s = XSP.get(this);
+		if (!src || !(src instanceof Node)) throw new TypeError("transformToFragment: parameter 1 is not of type 'Node'");
+		if (!s.ss) throw domError('XSLTProcessor: no style sheet imported', 'InvalidStateError');
+		try {
+			return XL().toFragment(XL().transform(s.ss, src, s.params), doc || G.document);
+		} catch (e) { report(e); return null; }
+	}
+	transformToDocument(src) {
+		const s = XSP.get(this);
+		if (!src || !(src instanceof Node)) throw new TypeError("transformToDocument: parameter 1 is not of type 'Node'");
+		if (!s.ss) throw domError('XSLTProcessor: no style sheet imported', 'InvalidStateError');
+		try {
+			return XL().toDocument(XL().transform(s.ss, src, s.params));
+		} catch (e) { report(e); return null; }
+	}
+	setParameter(ns, name, value) { XSP.get(this).params.set(XL().paramKey(ns || null, String(name)), value); }
+	getParameter(ns, name) {
+		const v = XSP.get(this).params.get(XL().paramKey(ns || null, String(name)));
+		return v === undefined ? null : v;
+	}
+	removeParameter(ns, name) { XSP.get(this).params.delete(XL().paramKey(ns || null, String(name))); }
+	clearParameters() { XSP.get(this).params.clear(); }
+	reset() { const s = XSP.get(this); s.ss = null; s.params.clear(); }
+}
+G.XSLTProcessor = XSLTProcessor;
+
+/* the top-level transform of an XML document by its <?xml-stylesheet type="text/xsl"?>
+ * (html.c through js_xslt_transform): [method, the result serialized] */
+Object.defineProperty(G, '\x01onyx_xslt', { value: (doc, text, url) => {
+	const xsl = N.parseXML(String(text), 1);
+	if (!xsl || xsl.getElementsByTagName('parsererror').length)
+		throw new Error('the XSLT style sheet ' + url + ' is not well-formed');
+	return XL().transformText(XL().compileStylesheet(xsl, null, url), doc, null);
+} });
+
+/* ---- an SVG document in a frame or an <object> (getSVGDocument) -------------------------------- */
+const objDocs = new WeakMap();
+function objectDocument(el) {
+	const src = N.objectSource(el);
+	if (!src) return null;
+	/* (same origin only, as a frame's document) */
+	try {
+		const u = new G.URL(el.data || el.src || '', G.location.href);
+		if (u.protocol !== 'data:' && u.origin !== G.location.origin) return null;
+	} catch (e) { return null; }
+	const type = String(src[0]).toLowerCase();
+	const k = type === 'image/svg+xml' ? 3 : type === 'application/xhtml+xml' ? 2 :
+		/(^text\/xml|^application\/xml|\+xml$)/.test(type) ? 1 : 0;
+	if (!k) return null;
+	let e = objDocs.get(el);
+	if (!e || e.text !== src[1]) {
+		e = { text: src[1], doc: N.parseXML(src[1], k) };
+		objDocs.set(el, e);
+	}
+	return e.doc;
+}
+const svgDocOf = d => (d && (docKind(d) === 3 || (d.documentElement && d.documentElement.namespaceURI === NS_SVG)) ? d : null);
+for (const C of [G.HTMLObjectElement, G.HTMLEmbedElement]) {
+	if (!C) continue;
+	def(C.prototype, {
+		get contentDocument() { return objectDocument(this); },
+		getSVGDocument() { return svgDocOf(objectDocument(this)); },
+	});
+}
+if (G.HTMLIFrameElement)
+	def(G.HTMLIFrameElement.prototype, { getSVGDocument() { return svgDocOf(this.contentDocument); } });
+
+/* ---- the SVG DOM: the elements' classes, their geometry as SVGAnimatedLength ---------------------- */
+const SVG_UNITS = { '': 1, px: 1, '%': 2, em: 3, ex: 4, cm: 6, mm: 7, in: 8, pt: 9, pc: 10 };
+const UNIT_PX = { 1: 1, 3: 16, 4: 8, 6: 96 / 2.54, 7: 96 / 25.4, 8: 96, 9: 96 / 72, 10: 16 };
+class SVGLength {
+	constructor(el, name) { Object.defineProperty(this, '_s', { value: { el, name } }); }
+	_parse() {
+		const v = this._s.el ? (N.attr(this._s.el, this._s.name) || '') : (this._s.v || '0');
+		const m = /^\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([a-zA-Z%]*)\s*$/.exec(v);
+		if (!m) return { n: 0, unit: 1, s: '0' };
+		const unit = SVG_UNITS[m[2].toLowerCase()] || 0;
+		return { n: parseFloat(m[1]), unit, s: v.trim() };
+	}
+	get unitType() { return this._parse().unit; }
+	get valueInSpecifiedUnits() { return this._parse().n; }
+	set valueInSpecifiedUnits(x) { const p = this._parse(); this._set(String(+x) + Object.keys(SVG_UNITS).find(k => SVG_UNITS[k] === p.unit && k !== '')); }
+	get value() {
+		const p = this._parse();
+		if (p.unit === 2) {
+			const svg = this._s.el && this._s.el.ownerSVGElement;
+			const r = svg ? N.rect(svg) : [0, 0, 0, 0];
+			const h = /^(y|height|cy|y1|y2|ry)$/.test(this._s.name);
+			return p.n / 100 * (h ? r[3] : r[2]);
+		}
+		return p.n * (UNIT_PX[p.unit] || 1);
+	}
+	set value(x) { this._set(String(+x)); }
+	get valueAsString() { return this._parse().s; }
+	set valueAsString(s) { this._set(String(s)); }
+	newValueSpecifiedUnits(unit, x) {
+		const u = Object.keys(SVG_UNITS).find(k => SVG_UNITS[k] === unit && k !== '') || '';
+		this._set(String(+x) + (unit === 1 ? '' : u));
+	}
+	convertToSpecifiedUnits(unit) { const px = this.value; this.newValueSpecifiedUnits(unit, px / (UNIT_PX[unit] || 1)); }
+	_set(v) { if (this._s.el) this._s.el.setAttribute(this._s.name, v); else this._s.v = v; }
+}
+Object.assign(SVGLength, { SVG_LENGTHTYPE_UNKNOWN: 0, SVG_LENGTHTYPE_NUMBER: 1, SVG_LENGTHTYPE_PERCENTAGE: 2,
+	SVG_LENGTHTYPE_EMS: 3, SVG_LENGTHTYPE_EXS: 4, SVG_LENGTHTYPE_PX: 5, SVG_LENGTHTYPE_CM: 6,
+	SVG_LENGTHTYPE_MM: 7, SVG_LENGTHTYPE_IN: 8, SVG_LENGTHTYPE_PT: 9, SVG_LENGTHTYPE_PC: 10 });
+class SVGAnimatedLength {
+	constructor(el, name) { Object.defineProperty(this, '_s', { value: { el, name } }); }
+	get baseVal() { return new SVGLength(this._s.el, this._s.name); }
+	get animVal() { return new SVGLength(this._s.el, this._s.name); }
+}
+class SVGAnimatedString {
+	constructor(el, name) { Object.defineProperty(this, '_s', { value: { el, name } }); }
+	get baseVal() { return N.attr(this._s.el, this._s.name) || ''; }
+	set baseVal(v) { this._s.el.setAttribute(this._s.name, String(v)); }
+	get animVal() { return this.baseVal; }
+}
+Object.assign(G, { SVGLength, SVGAnimatedLength, SVGAnimatedString });
+const lengths = (C, names) => {
+	for (const n of names)
+		Object.defineProperty(C.prototype, n, { configurable: true, enumerable: true,
+			get() { return new SVGAnimatedLength(this, n); } });
+};
+const SVGE = G.SVGElement;
+const svgClass = (name, tags, base, body) => {
+	const cls = body || class extends base {};
+	Object.defineProperty(cls, 'name', { value: name });
+	G[name] = cls;
+	for (const t of tags) TAGS['svg:' + t.toLowerCase()] = cls.prototype;
+	return cls;
+};
+const SVGGraphicsElement = svgClass('SVGGraphicsElement', [], SVGE);
+def(SVGGraphicsElement.prototype, {
+	getCTM() { return G.DOMMatrix ? new G.DOMMatrix() : null; },
+	getScreenCTM() { return G.DOMMatrix ? new G.DOMMatrix() : null; },
+	get farthestViewportElement() { return this.ownerSVGElement; },
+	get nearestViewportElement() { return this.ownerSVGElement; },
+});
+const SVGGeometryElement = svgClass('SVGGeometryElement', [], SVGGraphicsElement);
+def(SVGGeometryElement.prototype, {
+	getTotalLength() { const r = N.rect(this); return 2 * (r[2] + r[3]); },
+	isPointInFill() { return false; },
+	isPointInStroke() { return false; },
+});
+lengths(svgClass('SVGRectElement', ['rect'], SVGGeometryElement), ['x', 'y', 'width', 'height', 'rx', 'ry']);
+lengths(svgClass('SVGCircleElement', ['circle'], SVGGeometryElement), ['cx', 'cy', 'r']);
+lengths(svgClass('SVGEllipseElement', ['ellipse'], SVGGeometryElement), ['cx', 'cy', 'rx', 'ry']);
+lengths(svgClass('SVGLineElement', ['line'], SVGGeometryElement), ['x1', 'y1', 'x2', 'y2']);
+svgClass('SVGPathElement', ['path'], SVGGeometryElement);
+svgClass('SVGPolylineElement', ['polyline'], SVGGeometryElement);
+svgClass('SVGPolygonElement', ['polygon'], SVGGeometryElement);
+svgClass('SVGGElement', ['g'], SVGGraphicsElement);
+svgClass('SVGDefsElement', ['defs'], SVGGraphicsElement);
+lengths(svgClass('SVGUseElement', ['use'], SVGGraphicsElement), ['x', 'y', 'width', 'height']);
+lengths(svgClass('SVGImageElement', ['image'], SVGGraphicsElement), ['x', 'y', 'width', 'height']);
+lengths(svgClass('SVGForeignObjectElement', ['foreignObject'], SVGGraphicsElement), ['x', 'y', 'width', 'height']);
+svgClass('SVGSymbolElement', ['symbol'], SVGE);
+svgClass('SVGTitleElement', ['title'], SVGE);
+svgClass('SVGDescElement', ['desc'], SVGE);
+svgClass('SVGMetadataElement', ['metadata'], SVGE);
+svgClass('SVGStyleElement', ['style'], SVGE);
+svgClass('SVGScriptElement', ['script'], SVGE);
+svgClass('SVGSwitchElement', ['switch'], SVGGraphicsElement);
+svgClass('SVGAElement', ['a'], SVGGraphicsElement);
+svgClass('SVGClipPathElement', ['clipPath'], SVGE);
+lengths(svgClass('SVGMaskElement', ['mask'], SVGE), ['x', 'y', 'width', 'height']);
+lengths(svgClass('SVGPatternElement', ['pattern'], SVGE), ['x', 'y', 'width', 'height']);
+lengths(svgClass('SVGMarkerElement', ['marker'], SVGE), ['refX', 'refY', 'markerWidth', 'markerHeight']);
+const SVGGradientElement = svgClass('SVGGradientElement', [], SVGE);
+lengths(svgClass('SVGLinearGradientElement', ['linearGradient'], SVGGradientElement), ['x1', 'y1', 'x2', 'y2']);
+lengths(svgClass('SVGRadialGradientElement', ['radialGradient'], SVGGradientElement), ['cx', 'cy', 'r', 'fx', 'fy']);
+svgClass('SVGStopElement', ['stop'], SVGE);
+lengths(svgClass('SVGFilterElement', ['filter'], SVGE), ['x', 'y', 'width', 'height']);
+const SVGTextContentElement = svgClass('SVGTextContentElement', [], SVGGraphicsElement);
+const chars = el => Array.from(el.textContent || '');
+const charRange = (el, i) => {
+	if (!(i >= 0 && i < chars(el).length)) throw domError('SVGTextContentElement: index out of range', 'IndexSizeError');
+};
+def(SVGTextContentElement.prototype, {
+	getNumberOfChars() { return chars(this).length; },
+	getComputedTextLength() { return N.rect(this)[2]; },
+	getSubStringLength(i, n) {
+		charRange(this, i);
+		const c = chars(this).length;
+		return c ? N.rect(this)[2] * Math.min(n, c - i) / c : 0;
+	},
+	getStartPositionOfChar(i) {
+		charRange(this, i);
+		const r = N.rect(this), c = chars(this).length;
+		return G.DOMPoint ? new G.DOMPoint(r[0] + r[2] * i / c, r[1] + r[3]) : { x: r[0] + r[2] * i / c, y: r[1] + r[3] };
+	},
+	getEndPositionOfChar(i) {
+		charRange(this, i);
+		const r = N.rect(this), c = chars(this).length;
+		return G.DOMPoint ? new G.DOMPoint(r[0] + r[2] * (i + 1) / c, r[1] + r[3]) : { x: r[0] + r[2] * (i + 1) / c, y: r[1] + r[3] };
+	},
+	getExtentOfChar(i) {
+		charRange(this, i);
+		const r = N.rect(this), c = chars(this).length;
+		return new G.DOMRect(r[0] + r[2] * i / c, r[1], r[2] / c, r[3]);
+	},
+	getRotationOfChar(i) { charRange(this, i); return 0; },
+	getCharNumAtPosition() { return -1; },
+	selectSubString() {},
+});
+lengths(SVGTextContentElement, ['textLength']);
+const SVGTextPositioningElement = svgClass('SVGTextPositioningElement', [], SVGTextContentElement);
+svgClass('SVGTextElement', ['text'], SVGTextPositioningElement);
+svgClass('SVGTSpanElement', ['tspan'], SVGTextPositioningElement);
+svgClass('SVGTextPathElement', ['textPath'], SVGTextContentElement);
+/* <svg>: its viewport, the factories of the SVG types, the animations' clock */
+if (G.SVGSVGElement) {
+	const S = G.SVGSVGElement;
+	Object.setPrototypeOf(S.prototype, SVGGraphicsElement.prototype);
+	Object.setPrototypeOf(S, SVGGraphicsElement);
+	lengths(S, ['x', 'y', 'width', 'height']);
+	let t0 = Date.now(), paused = 0;
+	def(S.prototype, {
+		createSVGLength() { return new SVGLength(null, ''); },
+		createSVGNumber() { return { value: 0 }; },
+		createSVGPoint() { return G.DOMPoint ? new G.DOMPoint() : { x: 0, y: 0 }; },
+		createSVGMatrix() { return G.DOMMatrix ? new G.DOMMatrix() : null; },
+		createSVGRect() { return new G.DOMRect(); },
+		createSVGTransform() { return { type: 1, matrix: G.DOMMatrix ? new G.DOMMatrix() : null, angle: 0 }; },
+		getCurrentTime() { return ((paused || Date.now()) - t0) / 1000; },
+		setCurrentTime(s) { t0 = (paused || Date.now()) - Number(s) * 1000; },
+		pauseAnimations() { if (!paused) paused = Date.now(); },
+		unpauseAnimations() { if (paused) { t0 += Date.now() - paused; paused = 0; } },
+		animationsPaused() { return !!paused; },
+		suspendRedraw() { return 1; },
+		unsuspendRedraw() {},
+		unsuspendRedrawAll() {},
+		forceRedraw() {},
+		getElementById(id) { return [...this.querySelectorAll('[id]')].find(e => e.id === String(id)) || null; },
+	});
+}
+def(SVGE.prototype, {
+	get viewportElement() { return this.ownerSVGElement; },
+	get ownerSVGElement() {
+		for (let p = N.parent(this); p && N.type(p) === ELEMENT_NODE; p = N.parent(p))
+			if (N.nsURI(p) === NS_SVG && N.lname(p) === 'svg') return p;
+		return null;
+	},
+});
+
+/* Onyx: the interfaces made here tagged as dom.js' (Object.prototype.toString) */
+if (typeof G.__onyxTagInterfaces === 'function') {
+	G.__onyxTagInterfaces();
+	delete G.__onyxTagInterfaces;
+}
 
 return { serialize: outerHTMLOf, parseFragment, structuredClone };
 })

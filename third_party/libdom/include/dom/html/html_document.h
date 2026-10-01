@@ -241,5 +241,20 @@ static inline dom_exception dom_html_document_get_elements_by_name(dom_html_docu
 		dom_html_document_get_elements_by_name((dom_html_document *) (d), \
 			(n), (struct dom_nodelist **) (l))
 
+/**
+ * Onyx (docs/06 §43): the documents parsed as XML (expat: NetSurf's onyx_xml.c) are HTML
+ * documents underneath (NetSurf lays them out as such) of an XML kind: element names keep
+ * their case, an element in no namespace is none of HTML's types.
+ */
+typedef enum dom_html_document_xml_kind {
+	DOM_HTML_DOCUMENT_HTML = 0,	/**< text/html */
+	DOM_HTML_DOCUMENT_XML = 1,	/**< application/xml, text/xml... */
+	DOM_HTML_DOCUMENT_XHTML = 2,	/**< application/xhtml+xml */
+	DOM_HTML_DOCUMENT_SVG = 3	/**< image/svg+xml */
+} dom_html_document_xml_kind;
+
+void dom_html_document_set_xml_kind(dom_html_document *doc, int kind);
+int dom_html_document_get_xml_kind(dom_html_document *doc);
+
 #endif
 

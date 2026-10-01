@@ -60,6 +60,16 @@ build () {
 		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
+	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
+		if [ ! -f "$OUT/libmb.a" ]; then
+			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
+			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
+		fi
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o" || return 1; done
+		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
+			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
@@ -75,7 +85,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media setup
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -119,8 +129,9 @@ P=SIM_POS=100,100
 WINS="100,80,500,400,0,1;560,200,400,300,0,0;150,120,600,450,1,0;50,60,300,200,2,0"
 # applet APP DUMP "SCRIPT": APP as a Control Panel applet, shown in the Control Panel's window
 applet () {
-	sim $1 ${2}_ap "$3" SIM_APPLET=1
-	sim control $2 "$W" $P SIM_ARGS=$1 SIM_MAIL=40:7 SIM_SURFACE="$OUT/${2}_ap.elsm"
+	a=$1; d=$2; sc=$3; shift 3
+	sim $a ${d}_ap "$sc" SIM_APPLET=1 "$@"
+	sim control $d "$W" $P SIM_ARGS=$a SIM_MAIL=40:7 SIM_SURFACE="$OUT/${d}_ap.elsm"
 }
 
 # ---- the apps, a window each -------------------------------------------------------------------
@@ -364,6 +375,16 @@ if want clipboard; then			# (the shared clipboard's widget over the desktop: cli
 	[ -f "$OUT/d_term.elsm" ] || { echo "shots: clipboard needs desktop's dumps (shots.sh desktop clipboard)"; exit 1; }
 	sim clipboard clipboard "wait;wait;wait;move 200 260;$W" SIM_IPC=1
 	scene clipboard "$OUT/d_agenda.elsm" "$OUT/d_calc.elsm" "$OUT/d_term.elsm" "$OUT/d_dock.elsm" "$OUT/d_bar.elsm" "$OUT/clipboard.elsm"
+fi
+if want pkgman; then			# (the Package Manager: a card of its own -- pkg_sample.py: a repository with 4 updates,
+					#  a few apps not installed; what it installs written apart, $OUT/pkgw)
+	python3 $D/pkg_sample.py "$OUT/pkgsim" >/dev/null
+	PK="SIM_SD=$OUT/pkgsim/card SIM_SLEEP=1"
+	for t in "pkgman:" "pkgman-installed:down 165 25;up 165 25;wait;wait" "pkgman-available:down 300 25;up 300 25;wait;wait" \
+		 "pkgman-restart:down 600 447;up 600 447;$(printf 'wait;%.0s' $(seq 250))"; do
+		rm -rf "$OUT/pkgw"; mkdir -p "$OUT/pkgw"
+		n=${t%%:*}; applet pkgman $n "wait;wait;wait;wait;wait;${t#*:};$W" $PK SIM_WRITES="$OUT/pkgw"; png $n
+	done
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)
 	M=SIM_OVERLAY=$D/milk:$D/sd
