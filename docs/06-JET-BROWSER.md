@@ -519,7 +519,8 @@ optional chaining...) with the DOM written in JavaScript:
   scripts' errors and `console.log` on stderr.
 - **libdom**: a changed `class` attribute updates the element's classes (`element.c`: they
   were cached when the attribute was made, so a `classList` change did not restyle).
-- The Duktape backend (`javascript/duktape`, `user/netsurf/gen/duktape`) is no longer built.
+- The Duktape backend (`javascript/duktape`, `user/netsurf/gen/duktape`) is no longer built (and,
+  since §39, no longer in the repository).
 
 ## 9. Performance
 
@@ -3380,6 +3381,37 @@ applied no style at all (not even its own pages'), while the PC bench (built fro
 right. The objects now carry their header lists (`-MMD -MP -MF <obj>.o.d`, included by the
 Makefile; ignored by git): a header changed rebuilds its users. libdom and libcss were rebuilt
 from scratch.
+
+## 39. NetSurf's dead code removed (2026-10-01)
+
+**Why**: after the licence audit, the user kept Jet on NetSurf (GPL-2.0) but decided that the
+NetSurf code Jet does not use goes — out of the build, then out of the repository — with no
+behaviour change. The task and its method are in [`JET-DEAD-CODE.md`](JET-DEAD-CODE.md): the dead
+code was found by the linker (`-ffunction-sections`, then `--gc-sections --print-gc-sections`) on
+the Pi build and on the PC bench's, every finding then checked on the three builds (Pi,
+PC bench, Windows) by building without it.
+
+**What went** (three commits, one per step):
+
+| Step | What | Size |
+|---|---|---|
+| §4: never compiled | the other frontends (amiga, atari, beos, gtk, monkey, qt, riscos, windows); the Duktape backend, WebIDL, its generated bindings (`user/netsurf/gen/duktape`, `gen-duktape.sh`) and `third_party/nsgenbind`; `javascript/none`; the image handlers not built (jpegxl, nssprite, rsvg, svg — libsvgtiny —, video); `fetchers/curl.c`; the framebuffer's `fb_search.c` (empty stubs) and `font_internal.c` (the bitmap font: every build uses FreeType); NetSurf's tests, docs, own build (every `Makefile*`, `tools/` but `convert_font.c` / `convert_image.c`); the resources no build stages (other languages' pages, other frontends' icons, the framebuffer `res/` copies) | 1 893 files, 600 500 lines, 22 MB; the Pi's `netsurf.elf` byte-identical |
+| §1: compiled, entirely dead | `content/fs_backing_store.c` (`onyx_cache.c` is the store), `desktop/save_complete.c`, printing and save as PDF (`print.c`, `printer.h`, `save_pdf.c`, `font_haru.c`), `desktop/mouse.c`, `utils/hashmap.c`, the HTTP auth header parsers (`utils/http/challenge.c`, `www-authenticate.c`); generated: the internal bitmap font (`font-ns-sans.c`, 49 KB of data only `font_internal.c` read) and two toolbar bitmaps nothing draws (`reload_g`, `history_image_g`) | 6 200 lines; Pi binary −129 KB |
+| §2: alive only through calls that fed nothing | `desktop/global_history.c`, `hotlist.c`, `cookie_manager.c`, `page-info.c` and `treeview.c` — NetSurf's tree view windows, never shown (Jet's History dialog, `onyx_chrome.cpp`, reads `urldb`); the calls left (`global_history_add`, `hotlist_update_url`, `cookie_manager_add / _remove`, `page_info_init / _fini`) are `static inline` no-ops in their headers, so the call sites keep their upstream shape | 10 900 lines; Pi binary −82 KB |
+
+The Pi's `netsurf.elf`: 9 439 232 → 9 228 400 bytes; Windows' `Jet.exe` (unstripped) 10 526 291 →
+10 374 888. The upstream NetSurf files Jet compiles: 149 files / 123 200 lines (112 000 identical
+to upstream) → 135 / 107 600 (96 400 identical). The bench tests (`jstest`, `layouttest`,
+`html5test`, `css3test`, `httptest`, `uatest`, `gputest`) and the `jet` screenshots are
+unchanged.
+
+**Kept**: `desktop/search.c` and `content/textsearch.c` (find in page — pending the user's
+decision on Ctrl+F); everything about downloads; `tools/convert_image.c` (the toolbar bitmaps);
+`tools/convert_font.c` and `res/fonts/glyph_data` (no build runs `convert_font` any more, but
+`tools/fonts/gen_nssans.py` reads `glyph_data` for wtk's `ns-sans.fnt`); `COPYING` and the
+licence / credits pages. **Left for later** (JET-DEAD-CODE.md §3): the dead functions inside
+live files (talloc, `browser_window.c`, `urldb.c`, `content.c`...), once the sessions editing
+those files are done.
 
 ## 8. Known gaps
 
