@@ -2407,7 +2407,17 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"
   check silently treated every successful move as failed; fixed in `trash.h`, `fsutil.h`,
   the File Viewer and `ftpd`).
-- **Host tests** (`tools/tests/`): `run_fs_test.sh` (the Circle fork's FatFs + `diskio.cpp`
+- **`kapi_save_file` returns the bytes written** (≥ 0; 0 for an empty file) or -1 — test `< 0`
+  for a failure, or `== n` (a full card writes less). A `!= 0` test reported every save failed
+  on the Pi (Koton's `Doc::save`), and `fsutil.h`'s copy treated an empty file as a failure; the
+  desktop simulator's fake answered 0 and hid it (it answers the length now, as the kernel).
+- **`kapi_tcp_send` returns the bytes queued.** A short count means a 5 s timeout (the network's
+  queue full) after those bytes: they will be sent, so send the rest again (or give up). Before
+  2026-10-01 the count was wrong after a timeout part-way (Circle's `CSocket::Send` answered
+  the error, its earlier chunks already queued: `docs/05` §22), and resending "the rest" put
+  bytes twice in the stream.
+- **Host tests** (`tools/tests/`): `run_circlenet_test.sh` (the Circle fork's TCP: duplicate
+  ACKs, the RTO, `CSocket::Send`'s count -- run it after touching `circle/lib/net`), `run_fs_test.sh` (the Circle fork's FatFs + `diskio.cpp`
   sector cache on a RAM disk: 4000 random file operations checked against a model, cache on
   and off, same disk image — run it after touching `circle/addon/fatfs`), `run_trash_test.sh` (trash.h + fsutil.h against a mock
   kapi with the kernel's return conventions) and `run_ftpd_test.sh` (ftpd over real

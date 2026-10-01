@@ -165,14 +165,12 @@ static void flush_out (void)
 		g_st.bytes += (unsigned) n;
 		if (n < g_outlen - off)
 		{
-			// A short count is an error part-way (the kernel's send: a 32 KB request whose
-			// Circle send timed out -- 5 s with its queue full -- after some of its segments
-			// were queued; those are NOT counted). Sending the rest again would put those bytes
-			// twice in the stream: the client would read garbage (a message cut, its fields
-			// out of range). The stream is lost: the session ends (the client reconnects).
+			// A short count: the send timed out (5 s with Circle's queue full) part-way. The
+			// count is exact (the bytes queued, those of the kernel's earlier 32 KB requests and
+			// Circle's earlier chunks included), so the rest is sent next. A send that queues
+			// nothing at all fails (n <= 0, above): the session ends there.
 			g_st.partial++;
-			rdlog ("rdpd: a send stopped after %d of %d bytes (timed out?): the session ends", n, g_outlen - off);
-			g_dead = 1; break;
+			rdlog ("rdpd: a send stopped after %d of %d bytes (timed out?): the rest follows", n, g_outlen - off);
 		}
 		off += n;
 	}

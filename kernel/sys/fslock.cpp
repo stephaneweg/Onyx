@@ -14,6 +14,7 @@
 //
 #include <kern/crashlog.h>
 #include <circle/sched/scheduler.h>
+#include <circle/timer.h>
 #include <circle/types.h>
 #include <fatfs/ff.h>
 
@@ -79,6 +80,32 @@ void OnyxFsLockGive (int vol)
 	{
 		__atomic_store_n (&s_pOwner[vol], (CTask *) 0, __ATOMIC_RELEASE);
 		pSched->LeaveNoKill ();			// (ends the task here if it was killed)
+	}
+}
+
+// OnyxDriverPoll: the SD driver's shorter waits (each under 2 ms) call it at each turn. Many in
+// a row -- a long multi-block write (FatFs' multi-cluster transfers: one command for a whole
+// file's contiguous clusters), the card taking 100-500 us per block -- kept core 0 for
+// 200 ms ("stall: jet:cache ran 213 ms without yielding", pc in TimeoutWait). Once the task
+// has run DRIVER_SLICE_US since its last yield, it yields here. Between two blocks of a
+// transfer is a safe point: the volume lock is held (nobody else sends the card a command), and
+// an SDHCI host holds a PIO transfer until its buffer is served (it stops the card's clock on a
+// read) -- upstream Circle's NO_BUSY_WAIT yields at every turn of these same waits, and patch 7
+// already yielded there when one wait was long. Reads, 40 MB/s, yield about every 400 KB; a
+// write at 5-10 MB/s every 50-100 KB.
+#define DRIVER_SLICE_US	10000
+
+void OnyxDriverPoll (void)
+{
+	if (!CScheduler::IsActive ())		// (core 1, 2: no scheduler)
+	{
+		return;
+	}
+	CScheduler *pSched = CScheduler::Get ();
+	if (   CTimer::GetClockTicks () - pSched->GetLastYield () >= DRIVER_SLICE_US
+	    && IrqsOn () && !g_bCrashDumping)
+	{
+		pSched->Yield ();
 	}
 }
 

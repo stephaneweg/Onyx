@@ -730,7 +730,10 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   fewer packets to lose; and when a round goes unanswered for 250 ms, rdpd sends a few small
   **probes** that Onyx Remote answers at once, so that a lost packet on either side is resent
   within a fraction of a second instead of after a timeout. A slow or lossy link still costs
-  updates, but no longer stops the screen for seconds.
+  updates, but no longer stops the screen for seconds. The Pi's TCP itself resends a lost
+  packet sooner now (after 200 ms at least, not a second), and the pointer's moves no longer
+  make it slow down its sending (they were taken for signs of a lost packet). A send that waits
+  more than 5 s for the network no longer ends the session: rdpd sends the rest when it can.
 - **The connection lost** (the Wi-Fi dropped, the Pi restarted, nothing heard from it for 12 s,
   a damaged stream), Onyx Remote **reconnects by itself** with the same options (16-bit colours,
   Desktop, Onyx frames): the status (and the window's title) says *Connection lost (why):

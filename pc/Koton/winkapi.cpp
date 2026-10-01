@@ -151,7 +151,7 @@ static int save_file (const char *p, const void *b, unsigned n)
 	if (!f) return -1;
 	size_t w = n ? fwrite (b, 1, n, f) : 0;
 	fclose (f);
-	return w == n ? 0 : -1;
+	return w == n ? (int) n : -1;		// (as the kernel's: the bytes written, or -1)
 }
 static int f_mkdir (const char *p) { return CreateDirectoryW (winpath (p).c_str (), 0) ? 0 : -1; }
 static int f_remove (const char *p)

@@ -173,6 +173,8 @@ static inline void *kapi_open (const char *p) { return KT->open (p); }
 static inline int  kapi_read (void *h, void *b, unsigned n) { return KT->read (h, b, n); }
 static inline unsigned kapi_fsize (void *h) { return KT->fsize (h); }
 static inline void kapi_close (void *h) { KT->close (h); }
+// save_file: the whole file written (created / replaced): the bytes written (>= 0; an empty file:
+// 0 -- test < 0 for a failure, or == n), or -1.
 static inline int  kapi_save_file (const char *p, const void *b, unsigned n) { return KT->save_file (p, b, n); }
 // Working directory: chdir (1/0) + getcwd. Relative paths in file ops resolve here.
 static inline int  kapi_chdir (const char *p) { return KT->chdir (p); }
@@ -214,7 +216,8 @@ static inline int  kapi_get_verbose (void) { return KT->get_verbose (); }
 
 // TCP/IP sockets over WLAN (ABI v21). net_status: 1 + dotted IP into ip[] if the
 // link is up, else 0. tcp_connect: host = dotted-quad or DNS name; >=0 handle / <0
-// error. tcp_send: blocking, bytes sent / <0. tcp_recv: NON-BLOCKING -- >0 bytes,
+// error. tcp_send: blocking, the bytes queued / <0 -- a short count: a 5 s timeout after those
+// (they are sent; send the rest again). tcp_recv: NON-BLOCKING -- >0 bytes,
 // 0 nothing yet, <0 closed/error. tcp_close: drop the connection.
 static inline int  kapi_net_status (char *ip, unsigned cap) { return KT->net_status (ip, cap); }
 static inline int  kapi_tcp_connect (const char *host, unsigned port) { return KT->tcp_connect (host, port); }

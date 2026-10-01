@@ -154,7 +154,8 @@ static void draw_text_buf (unsigned *dst, int dw, int dh, int x, int y, const ch
 static void *f_open (const char *p) { return fopen (sdpath (p).c_str (), "rb"); }
 static int f_read (void *h, void *b, unsigned n) { return (int) fread (b, 1, n, (FILE *) h); }
 static int f_write (int fd, const void *b, unsigned n) { return (int) fwrite (b, 1, n, fd == 2 ? stderr : stdout); }
-static int save_file (const char *p, const void *b, unsigned n) { FILE *f = fopen (wpath (p).c_str (), "wb"); if (!f) return -1; fwrite (b, 1, n, f); fclose (f); return 0; }
+// As the kernel's: the bytes written, or -1 (it answered 0: a caller testing "== 0" passed here, failed on the Pi).
+static int save_file (const char *p, const void *b, unsigned n) { FILE *f = fopen (wpath (p).c_str (), "wb"); if (!f) return -1; size_t w = n ? fwrite (b, 1, n, f) : 0; if (fclose (f) != 0) return -1; return (int) w; }
 static unsigned f_fsize (void *h) { FILE *f = (FILE *) h; long c = ftell (f); fseek (f, 0, SEEK_END); long n = ftell (f); fseek (f, c, SEEK_SET); return (unsigned) n; }
 static void f_close (void *h) { fclose ((FILE *) h); }
 struct SimDir { DIR *d; std::string path; };

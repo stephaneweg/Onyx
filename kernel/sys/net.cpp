@@ -172,7 +172,10 @@ static int DoSend (int hSock, const void *pBuf, unsigned nLen)
 {
 	CSocket *pSock = SockOf (hSock);
 	if (pSock == 0) return -1;
-	return pSock->Send (pBuf, nLen, 0);			// blocking (5 s send timeout)
+	// Blocking (5 s send timeout). The count is the bytes queued: Circle's CSocket::Send
+	// queues MSS-sized chunks, and when a later chunk times out the earlier ones are
+	// counted (our Circle patch: it used to answer the error, those bytes already sent).
+	return pSock->Send (pBuf, nLen, 0);
 }
 
 static int DoRecv (int hSock, void *pBuf, unsigned nLen)
@@ -804,9 +807,9 @@ int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
 		memcpy (r->Buf, p, k);				// (the app's memory: mapped here, on core 0)
 		Post (r); Wait (r);
 		int n = r->nResult; Release (r);
-		if (n < 0) return nTotal > 0 ? nTotal : n;
+		if (n < 0) return nTotal > 0 ? nTotal : n;	// (the requests before: queued)
 		nTotal += n; p += n; nLen -= (unsigned) n;
-		if ((unsigned) n < k) break;
+		if ((unsigned) n < k) break;			// short: the bytes queued, then a timeout
 	}
 	while (nLen > 0);
 	return nTotal;

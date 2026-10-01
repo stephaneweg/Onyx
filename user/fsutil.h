@@ -76,7 +76,7 @@ static inline bool fs_copy_file (const char *src, const char *dst)
 		done += (unsigned) r;
 	}
 	kapi_close (f);
-	bool ok = done == n && kapi_save_file (dst, buf, n) != 0;
+	bool ok = done == n && kapi_save_file (dst, buf, n) == (int) n;	// (the bytes written, or -1)
 	delete [] buf;
 	return ok;
 }

@@ -199,6 +199,13 @@ public:
 	// sleeps work unchanged on either core. The other cores have none (IsActive () = FALSE).
 	static CScheduler *Get (void);
 
+	// Clock ticks (us) of the last Yield() entry on this core: how long the current task has
+	// run without yielding (the SD driver's wait hook: kernel/sys/fslock.cpp).
+	unsigned GetLastYield (void) const
+	{
+		return m_nLastYield;
+	}
+
 	static boolean IsActive (void)
 	{
 		return s_pThis[ThisCore ()] != 0 ? TRUE : FALSE;

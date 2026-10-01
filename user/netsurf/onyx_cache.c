@@ -149,7 +149,9 @@ int onyx_io_save(const char *path, const void *p, unsigned n)
 	int ok;
 
 #ifdef ONYX_HOST_SIM
-	ok = kapi_save_file(path, p, n) >= 0;	/* (the bench's save_file answers 0) */
+	/* (the bench has no kapi_file_out: it writes at once; its save_file answers as the
+	   kernel's, the bytes written or -1) */
+	ok = kapi_save_file(path, p, n) == (int) n;
 #else
 	if (n <= ONYX_IO_PIECE) {
 		/* (kapi_save_file: the bytes written, -1) */

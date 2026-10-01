@@ -45,6 +45,10 @@ git -C circle diff Step51..onyx
 | 14 | **DHCP restart** (joining another Wi-Fi network while running; the reconfiguration itself: the kernel's link-time wrap, no hostap change) | `include/circle/net/dhcpclient.h`, `lib/net/dhcpclient.cpp` | `libnet` (+ the kernel) |
 | 13 | **The SD card's partitions as volumes** `SD:` `SD1:` … `SD3:` + **exFAT** on | `addon/fatfs/ffconf.h`, `addon/fatfs/diskio.cpp`, `addon/fatfs/ff.c` | `libfatfs` + the kernel (`FSIZE_t` is 64-bit: clean rebuild) |
 | 17 | **The host name set after the constructor** (`CNetSubSystem::SetHostname`: `system.ini`'s `hostname=`) | `include/circle/net/netsubsystem.h` | none (inline) — the kernel |
+| 7b | **Yielding SD waits, many short ones**: a second weak hook `OnyxDriverPoll` at each turn of a short wait | `addon/SDCard/emmc.cpp` | `libsdcard` |
+| 20 | **TCP: real duplicate ACKs only** (RFC 5681 §2) — the peer's data segments no longer start a fast retransmit | `lib/net/tcpconnection.cpp` | `libnet` |
+| 21 | **TCP: RTO 1 s initial, 200 ms minimum** (was 3 s / 1 s), Karn after a fast retransmit, 8 tries for data | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
+| 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -421,6 +425,19 @@ and a directory walk or a big read froze the GUI and the network 100–200 ms at
 The kernel defines them in `kernel/sys/fslock.cpp`: a sleeping, re-entrant volume lock
 (waiters `Yield`), and a wait hook that yields when IRQs are on. See `docs/02` (preemption).
 
+**7b (2026-10-01): many short waits.** One command can now carry a whole file's contiguous
+clusters (patch 10): a long write waits for the card a few hundred µs per block, every wait
+under the 2 ms spin, and kept core 0 for 200 ms (`stall: jet:cache ran 213 ms without yielding`,
+the PC in `TimeoutWait`). `emmc.cpp` now also calls a second weak hook, `OnyxDriverPoll ()`, at
+each turn of a wait shorter than 2 ms. The kernel's (`fslock.cpp`) yields once the task has run
+10 ms since its last `Yield` (the scheduler notes that time), with the same conditions as
+`OnyxDriverWait` (a scheduler on this core, IRQs on, not core 1's crash dump). Safe for the
+same reasons as patch 7: the volume lock is held (no other task sends the card a command — and
+nothing outside FatFs drives the card while tasks run), and the SD host holds a PIO transfer
+between two blocks until it is served (upstream's `NO_BUSY_WAIT` yields at every turn of these
+waits). Reads (40 MB/s) yield about every 400 KB, writes every 50–100 KB. Without the hook,
+Circle behaves as upstream.
+
 ## 8. Sector cache in the FatFs disk layer
 
 FatFs reads the FAT and the directories one sector at a time (through its window), and each
@@ -647,6 +664,66 @@ connection could not carry more than 14.6 KB a round trip (about 730 KB/s at 20 
 
 **What.** `lib/net/tcpconnection.cpp`: `TCP_CONFIG_WINDOW` is 44 segments (64240 bytes, the most
 a 16-bit window field holds); the reassembly queue follows it. Rebuild `lib/net`.
+
+## 20. TCP: real duplicate ACKs only
+
+**Why.** `CTCPConnection::PacketReceived` counted **every** segment whose ACK did not advance as
+a duplicate ACK — the peer's own data segments too, and ACKs with nothing in flight, window
+updates — and the count was reset only by an advancing ACK. The remote desktop client (Onyx
+Remote) sends small messages (READY, the pointer's moves) while the Pi streams the screen: three
+in a row between two ACKs started a **spurious fast retransmit + fast recovery** (cwnd cut to
+about two segments), and the Pi's sending crawled while the mouse moved.
+
+**What.** `lib/net/tcpconnection.cpp`: in the "ACK not advancing" branch, `OnDuplicateAck` is
+called only for a duplicate ACK as RFC 5681 §2 defines it: no data and no SYN / FIN
+(`nSEG_LEN == 0`), the ACK number SND.UNA, the advertised window unchanged (`m_nSND_WND`), and
+data outstanding (`FLIGHT_SIZE > 0`). Other segments neither count nor reset the count. Fast
+retransmit and fast recovery (NewReno) are unchanged otherwise. The same bug is in upstream.
+
+## 21. TCP: the retransmission timeout
+
+**Why.** `retranstimeoutcalc.cpp` started at 3 s (RFC 1122's value) and never went below 1 s
+(RFC 6298's conservative minimum): on a LAN or Wi-Fi peer a few ms away, a segment lost at the
+end of a burst (nothing behind it to cause duplicate ACKs) stalled the stream a whole second —
+the remote desktop froze.
+
+**What.**
+- `INITIAL_RTO` 1 s (RFC 6298 2.1); `MIN_RTO` **200 ms** (`MSEC2HZ (200)`, Linux's
+  `TCP_RTO_MIN`); RFC 6298's granularity term G is 200 ms too, so RTO = SRTT + max (200 ms,
+  4 RTTVAR) — as Linux does: a peer that delays its ACKs (Windows: up to 200 ms) raises SRTT,
+  not the spurious timeouts. The kernel timer ticks at 100 Hz: 200 ms = 20 ticks (an RTT sample
+  of a LAN is 0–1 tick).
+- **Karn's algorithm** also after a fast retransmit: `CRetransmissionTimeoutCalculator::SegmentResent`
+  (new) marks a segment sent again by `ResendSegment` (fast retransmit, a partial ACK in fast
+  recovery), so its ACK gives no RTT sample (only a timeout marked it before). A valid sample
+  resets the backed-off RTO, as before.
+- `MAX_RETRANSMISSIONS` 5 → **7** for data and FIN (a dead peer given up at the 8th timeout:
+  ≥ 51 s from 200 ms, about the 63 s it was from 1 s), `MAX_SYN_RETRANSMISSIONS` 5 for a SYN
+  (63 s from 1 s; it was 189 s from 3 s).
+- After a SYN retransmitted, RFC 6298 (5.7) wants the data phase to start at 3 s: the RTO is
+  then the backed-off one (≥ 2 s) until the first sample — close enough, left as is.
+
+## 22. `CSocket::Send`: the bytes queued
+
+**Why.** `CSocket::Send` cuts a buffer into MSS-sized chunks and queues them one by one; when
+the connection's queue stays full past the send timeout (Onyx sets 5 s), a chunk fails — and
+`Send` answered the **error**, although the chunks before it were queued and would be sent. The
+kernel's `NetTcpSend` (32 KB requests) then counted none of that request, and an app sending "the
+rest" again put those bytes **twice** in the stream (the remote desktop's stream broke: its
+client read garbage).
+
+**What.** `lib/net/socket.cpp`: `Send` (and `SendTo`, for TCP) answers the bytes queued when a
+later chunk fails, if any (as POSIX `send`); the error comes back at the next call. The kernel's
+`NetTcpSend` adds its requests' counts and stops at a short one.
+
+**Test** (patches 20–22): `tools/tests/run_circlenet_test.sh` builds the fork's real
+`tcpconnection.cpp`, `retranstimeoutcalc.cpp`, `socket.cpp` (+ the buffers, queues, checksum)
+on the PC against stub Circle headers (`tools/tests/circlenet/stub`: a simulated clock and kernel
+timers, no tasks, a network layer that hands each segment to the test) and plays the peer: the
+peer's data segments and window updates are no duplicate ACKs, three real ones still start a
+fast retransmit and a full ACK ends the recovery, the RTO (200 ms, backed off, reset by a sample,
+1 s for a SYN, Karn after a fast retransmit, a dead peer given up after 51 s), and `Send`'s count
+after a timeout. Against the unpatched sources it fails 15 of its 25 checks.
 
 ## Contributions to upstream Circle
 

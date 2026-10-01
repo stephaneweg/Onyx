@@ -156,7 +156,7 @@ public:
 		json::Writer w (true);
 		saveProject (p, w);
 		if (!w.ok ()) return false;
-		if (kapi_save_file (file, w.data (), (unsigned) w.size ()) != 0) return false;
+		if (kapi_save_file (file, w.data (), (unsigned) w.size ()) != (int) w.size ()) return false;	// (the bytes written, or -1)
 		if (file != path) snprintf (path, sizeof path, "%s", file);
 		dirty = false;
 		return true;

@@ -49,6 +49,29 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## TCP, SD and save fixes (2026-10-01, not yet tried on the Pi)
+
+- **Circle's TCP** (docs/05 §20–22, docs/02 §11; host test `sh tools/tests/run_circlenet_test.sh`,
+  the fork's real TCP code against stub headers): only real duplicate ACKs count (the remote
+  desktop client's input messages started spurious fast retransmits: the Pi's sending throttled
+  while the mouse moved); RTO 1 s initial, **200 ms minimum** (was 3 s / 1 s; RTO = SRTT +
+  max (200 ms, 4 RTTVAR) as Linux), Karn after a fast retransmit, a dead peer given up after
+  ≥ 51 s; `CSocket::Send` answers the bytes queued when a later chunk times out (it answered the
+  error: an app resending "the rest" duplicated bytes). rdpd now sends the rest after a short
+  count instead of ending the session.
+- **SD writes no longer hold core 0**: many short waits in a row (a long multi-block write)
+  yield after 10 ms (`OnyxDriverPoll`, a second weak hook: docs/05 §7b, docs/02 §5).
+- **`kapi_save_file` returns the bytes written**: Koton's `Doc::save` (every save "failed" on the
+  Pi) and `fsutil.h`'s copy (an empty file) fixed; the desktop simulator's fake answers the length
+  (it answered 0), so does `pc/Koton/winkapi.cpp` (pc/dist/Koton not rebuilt: no MinGW here).
+- **To try on the Pi**: Onyx Remote while moving the mouse over a busy window (the updates a
+  second should not drop; `rdpd` lines in `kmsg`: `partial`, the send times); a big file copied
+  or saved (File Viewer copy of a 20 MB file, Jet's cache) with no `stall: ... TimeoutWait` lines
+  in `kmsg`; Koton: save a song (no error); `fsbench` (the read speed should be about as before).
+- The NetSurf bench `httptest.sh` fails its two "launched again" disc-cache checks, before and
+  after these changes (only 3 entries reach the cache folder; perhaps the "written on second
+  sight" rule of 8b0cca3b) -- not looked into.
+
 ## The screen's resolution, changed while running (2026-09-29, not yet tried on the Pi)
 
 - **Kernel v66 `screen_set`** (`ScreenResizeRequest`, kernel.cpp): the compositor task calls

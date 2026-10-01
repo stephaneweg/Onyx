@@ -322,6 +322,17 @@ entering FatFs would spin forever against a holder it never lets run. The holder
 only marks it, and it ends in `LeaveNoKill`, once the lock is free — a dead owner would
 lock the card forever. (Before: 100–200 ms freezes each time the menu bar read the
 `app.txt` files, or an app opened a file in a big directory.)
+Many **short** waits in a row also yield (2026-10-01): a long multi-block write (one SD command
+for a file's contiguous clusters, the card taking a few hundred µs per block, each wait well
+under 2 ms) kept core 0 for 200 ms (`stall: jet:cache ran 213 ms without yielding`, PC in
+`TimeoutWait`). Each turn of a shorter wait calls `OnyxDriverPoll ()` (a second weak hook,
+`docs/05` §7), which `Yield`s once the task has run **10 ms** (`DRIVER_SLICE_US`) since its last
+`Yield` (`CScheduler::GetLastYield`), under the same conditions (a scheduler on this core, IRQs
+on, not core 1's crash dump). Between two blocks of a transfer is a safe point: the volume lock
+is held, and the SD host holds a PIO transfer until it is served. Reads (40 MB/s) yield about
+every 400 KB, writes every 50–100 KB. Nothing outside FatFs drives the SD card while tasks run:
+the boot's `CEMMCDevice::Initialize` comes before the mount, and core 1's crash dump writes raw
+sectors only with core 0 stopped (it never yields).
 
 **Stall watchdog.** To find the kernel code that still keeps the CPU too long, the
 scheduler notes the time of every `Yield()`. When the running task (not idle) has not
@@ -1010,6 +1021,19 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   left), so a process that exits or dies without closing does not hold its connections or
   table slots -- a browser relaunched at once found them still held and its pages waited
   (10 s). The table has **64 slots** (`MAX_SOCKETS`; 16 before: a browser keeps a dozen open).
+- **TCP fixes in our Circle fork** (2026-10-01, `docs/05` §20–22; host test
+  `tools/tests/run_circlenet_test.sh`): only a **real duplicate ACK** (no data, no SYN / FIN,
+  the window unchanged, data in flight, ACK = SND.UNA: RFC 5681 §2) counts towards a fast
+  retransmit -- a remote desktop client's input messages (data segments that do not advance the
+  ACK) started a spurious fast retransmit + recovery while the mouse moved, the Pi's sending
+  throttled to ~2 segments a round trip. The **RTO** starts at 1 s (RFC 6298; was 3 s) and its
+  floor is **200 ms** (Linux's; was 1 s): RTO = SRTT + max (200 ms, 4 RTTVAR), Karn's algorithm
+  also after a fast retransmit; a data connection is given up after 8 timeouts (≥ 51 s), a SYN
+  after 6 (63 s). **`tcp_send`'s count** is exact: Circle's `CSocket::Send` queues MSS-sized
+  chunks, and when one times out (5 s, its queue full) the chunks before it are counted (it
+  answered the error, those bytes already on their way: an app resending "the rest" put bytes
+  twice in the stream); `NetTcpSend` adds up its 32 KB requests the same way. A short count
+  means the bytes queued, then a timeout: resending the rest is right (rdpd does).
 - **Clock.** Once the link is up the bring-up task starts a `CNTPDaemon`
   (`system.ini ntp=`; `off` or `none`: no daemon, the clock is not set), which updates
   `CTimer`'s wall clock; the boot reads `system.ini timezone=` (minutes from UTC) and calls
