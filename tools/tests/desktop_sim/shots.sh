@@ -313,7 +313,7 @@ if want jet; then			# (Jet Browser: the bench's build, tools/tests/netsurf/host.
 	JW=$(i=0; while [ $i -lt 120 ]; do printf 'wait;'; i=$((i + 1)); done)
 	# (docs/06 §40: Ctrl+F, "page" typed, Enter: 2 of n -- jet-find; Esc; a right click on the card's
 	# image -- jet-context)
-	JFIND="wait;wait;mods 1;key 0x06;mods 0;wait;wait;key p;key a;key g;key e;wait;wait;wait;key 13;${JW}dump $OUT/jet-find.elsm;key 27;${JW}move ${JIMG:-528 342};wait;rdown ${JIMG:-528 342};wait;rup ${JIMG:-528 342};wait;wait;wait;key 0x101;key 0x101;key 0x101;wait;wait;dump $OUT/jet-context.elsm;key 27;wait;"
+	JFIND="up 835 19;wait;wait;mods 1;key 0x06;mods 0;wait;wait;key p;key a;key g;key e;wait;wait;wait;key 13;${JW}dump $OUT/jet-find.elsm;key 27;${JW}move ${JIMG:-528 342};wait;rdown ${JIMG:-528 342};wait;rup ${JIMG:-528 342};wait;wait;wait;key 0x101;key 0x101;key 0x101;wait;wait;dump $OUT/jet-context.elsm;key 27;wait;"
 	# (the pill: its right end at 852, left of the zoom control)
 	env SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" SIM_ARGS=https://localhost:$JP/index.html \
 		SIM="${JW}move 300 200;wait;dump $OUT/jet.elsm;move 835 19;wait;down 835 19;wait;wait;wait;move 760 114;wait;wait;dump $OUT/jet-menu.elsm;key 27;wait;${JFIND}exit" \
