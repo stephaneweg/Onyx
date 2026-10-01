@@ -868,8 +868,9 @@ public:
 	CInputTask (CUSBHCIDevice *pUSB, CDeviceNameService *pDNS, CDisplay *pDisplay,
 		    CLogger *pLogger)
 	:	m_pUSB (pUSB), m_pDNS (pDNS), m_pDisplay (pDisplay), m_pLogger (pLogger),
-		m_pMouse (0), m_pKeyboard (0)
+		m_pMouse (0)
 	{
+		for (unsigned i = 0; i < KBD_MAX; i++) m_pKeyboards[i] = 0;
 		SetName ("input");
 		s_pThis = this;
 	}
@@ -901,9 +902,13 @@ public:
 				g_KeyMap[nPhy][nTable] = pMap[nPhy * (K_CTRLTAB + 1) + nTable];
 		// Apply live if a keyboard is already up; otherwise the snapshot is enough --
 		// Detect() loads g_KeyMap onto the keyboard the moment it attaches.
-		if (s_pThis != 0 && s_pThis->m_pKeyboard != 0)
+		if (s_pThis != 0)
 		{
-			LoadKeyMapTable (s_pThis->m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
+			for (unsigned i = 0; i < KBD_MAX; i++)
+			{
+				CUSBKeyboardDevice *pKbd = s_pThis->m_pKeyboards[i];
+				if (pKbd != 0) LoadKeyMapTable (pKbd->GetKeyMap (), (const u16 *) g_KeyMap);
+			}
 		}
 		return TRUE;
 	}
@@ -911,17 +916,20 @@ public:
 	// Is a USB keyboard attached and ready right now? Exposed to userspace via
 	// kapi_kbd_ready so the `keyb` tool can poll before applying a layout at boot
 	// (it may run before USB enumeration finishes).
-	static boolean HasKeyboard (void) { return s_pThis != 0 && s_pThis->m_pKeyboard != 0; }
+	static boolean HasKeyboard (void)
+	{
+		if (s_pThis == 0) return FALSE;
+		for (unsigned i = 0; i < KBD_MAX; i++) if (s_pThis->m_pKeyboards[i] != 0) return TRUE;
+		return FALSE;
+	}
 
 	void Run (void) override
 	{
 		Detect ();			// devices already present at boot
 		for (;;)
 		{
-			if (m_pUSB->UpdatePlugAndPlay () || m_pMouse == 0 || m_pKeyboard == 0)
-			{
-				Detect ();
-			}
+			m_pUSB->UpdatePlugAndPlay ();
+			Detect ();		// (cheap: a few name lookups; a keyboard plugged later is taken too)
 			DetectPads ();
 			DetectMidi ();
 			CScheduler::Get ()->MsSleep (100);
@@ -931,22 +939,28 @@ public:
 private:
 	void Detect (void)
 	{
-		if (m_pKeyboard == 0)
+		// Every USB keyboard, ukbd1..ukbd4 -- not only the first: a wireless mouse's receiver
+		// (Logitech's nano receiver: a boot keyboard interface beside the mouse) or a
+		// keyboard's extra interface may take ukbd1, and the real keyboard is then ukbd2.
+		for (unsigned i = 0; i < KBD_MAX; i++)
 		{
-			m_pKeyboard = (CUSBKeyboardDevice *)
-				m_pDNS->GetDevice ("ukbd1", FALSE);
-			if (m_pKeyboard != 0)
-			{
-				m_pKeyboard->RegisterRemovedHandler (KeyboardRemoved);
-				m_pKeyboard->RegisterKeyPressedHandler (KeyPressedStub);
-				// Mixed mode: the raw report too (cooked keys unaffected), for the
-				// modifier state (Ctrl = copy in drag & drop, kapi_get_modifiers).
-				m_pKeyboard->RegisterKeyStatusHandlerRaw (KeyRawStub, TRUE);
-				// Apply the current layout snapshot (empty until keyb loads a .kmap),
-				// so a hot re-plug keeps the layout -- a fresh CKeyMap starts empty.
-				LoadKeyMapTable (m_pKeyboard->GetKeyMap (), (const u16 *) g_KeyMap);
-				m_pLogger->Write ("input", LogNotice, "keyboard attached");
-			}
+			if (m_pKeyboards[i] != 0) continue;
+			CString Name;
+			Name.Format ("ukbd%u", i + 1);
+			CUSBKeyboardDevice *pKbd = (CUSBKeyboardDevice *) m_pDNS->GetDevice (Name, FALSE);
+			if (pKbd == 0) continue;
+			s_KbdMods[i] = 0;
+			for (unsigned k = 0; k < 6; k++) s_KbdKeys[i][k] = 0;
+			pKbd->RegisterRemovedHandler (KeyboardRemoved, (void *) (uintptr) i);
+			pKbd->RegisterKeyPressedHandler (KeyPressedStub);
+			// Mixed mode: the raw report too (cooked keys unaffected), for the
+			// modifier state (Ctrl = copy in drag & drop, kapi_get_modifiers).
+			pKbd->RegisterKeyStatusHandlerRaw (KeyRawStub, TRUE, (void *) (uintptr) i);
+			// Apply the current layout snapshot (empty until keyb loads a .kmap),
+			// so a hot re-plug keeps the layout -- a fresh CKeyMap starts empty.
+			LoadKeyMapTable (pKbd->GetKeyMap (), (const u16 *) g_KeyMap);
+			m_pKeyboards[i] = pKbd;
+			m_pLogger->Write ("input", LogNotice, "keyboard attached (%s)", (const char *) Name);
 		}
 
 		if (m_pMouse == 0)
@@ -1056,15 +1070,34 @@ private:
 		}
 	}
 
-	// USB HID modifier byte: bit0/4 Ctrl, bit1/5 Shift, bit2/6 Alt (left/right).
-	static void KeyRawStub (unsigned char ucModifiers, const unsigned char RawKeys[6])
+	// USB HID modifier byte: bit0/4 Ctrl, bit1/5 Shift, bit2/6 Alt (left/right). Each
+	// keyboard's last report is kept (pArg: its slot); the WM gets them merged, so a
+	// keyboard's empty report does not release the keys held on another one.
+	static void KeyRawStub (unsigned char ucModifiers, const unsigned char RawKeys[6], void *pArg)
 	{
-		unsigned nMods = ((ucModifiers & 0x11) ? MOD_CTRL : 0)
-			       | ((ucModifiers & 0x22) ? MOD_SHIFT : 0)
-			       | ((ucModifiers & 0x44) ? MOD_ALT : 0);
+		unsigned nSlot = (unsigned) (uintptr) pArg;
+		if (nSlot >= KBD_MAX) return;
+		s_KbdMods[nSlot] = ucModifiers;
+		for (unsigned k = 0; k < 6; k++) s_KbdKeys[nSlot][k] = RawKeys[k];
+		PublishKeys ();
+	}
+
+	static void PublishKeys (void)
+	{
+		unsigned char ucMods = 0, Keys[6] = { 0, 0, 0, 0, 0, 0 };
+		unsigned n = 0;
+		for (unsigned i = 0; i < KBD_MAX; i++)
+		{
+			ucMods |= s_KbdMods[i];
+			for (unsigned k = 0; k < 6 && n < 6; k++)
+				if (s_KbdKeys[i][k] != 0) Keys[n++] = s_KbdKeys[i][k];
+		}
+		unsigned nMods = ((ucMods & 0x11) ? MOD_CTRL : 0)
+			       | ((ucMods & 0x22) ? MOD_SHIFT : 0)
+			       | ((ucMods & 0x44) ? MOD_ALT : 0);
 		CWindowManager *pWM = CWindowManager::Get ();
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
-		if (pWM != 0) pWM->SetUsbHeld (RawKeys);	// held keys (games, ABI v48)
+		if (pWM != 0) pWM->SetUsbHeld (Keys);	// held keys (games, ABI v48)
 	}
 
 	static void KeyPressedStub (const char *pString)
@@ -1082,9 +1115,14 @@ private:
 		if (s_pThis != 0) { s_pThis->m_pMouse = 0; }
 	}
 
-	static void KeyboardRemoved (CDevice *, void *)
+	static void KeyboardRemoved (CDevice *, void *pContext)
 	{
-		if (s_pThis != 0) { s_pThis->m_pKeyboard = 0; }
+		unsigned nSlot = (unsigned) (uintptr) pContext;
+		if (s_pThis == 0 || nSlot >= KBD_MAX) return;
+		s_pThis->m_pKeyboards[nSlot] = 0;
+		s_KbdMods[nSlot] = 0;				// (its keys no longer held)
+		for (unsigned k = 0; k < 6; k++) s_KbdKeys[nSlot][k] = 0;
+		PublishKeys ();
 	}
 
 	CUSBHCIDevice	   *m_pUSB;
@@ -1092,12 +1130,18 @@ private:
 	CDisplay	   *m_pDisplay;
 	CLogger		   *m_pLogger;
 	CMouseDevice       * volatile m_pMouse;
-	CUSBKeyboardDevice * volatile m_pKeyboard;
+	static const unsigned KBD_MAX = 4;		// ukbd1..ukbd4
+	CUSBKeyboardDevice * volatile m_pKeyboards[KBD_MAX];
+
+	static unsigned char s_KbdMods[KBD_MAX];	// each keyboard's last raw report
+	static unsigned char s_KbdKeys[KBD_MAX][6];
 
 	static CInputTask  *s_pThis;
 };
 
 CInputTask *CInputTask::s_pThis = 0;
+unsigned char CInputTask::s_KbdMods[CInputTask::KBD_MAX];
+unsigned char CInputTask::s_KbdKeys[CInputTask::KBD_MAX][6];
 
 // Keyboard-layout control exposed to the kapi layer (sys/kapi.cpp). The kernel no longer
 // compiles in any country map, so loading one *by name* (kapi_set_keymap) is unsupported
