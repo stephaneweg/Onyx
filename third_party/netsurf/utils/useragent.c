@@ -83,6 +83,10 @@ user_agent_build_string(void)
 #define ONYX_CHROME_MAJOR "142"
 #define ONYX_CHROME_FULL "142.0.7444.176"
 
+/* Onyx: jet.ini (below) */
+enum { UA_INI_DEFAULT, UA_INI_DESKTOP, UA_INI_SITE };
+static const char *onyx_ini_ua(int what, const char *host);
+
 /* This is a function so that later we can override it trivially */
 const char *
 user_agent_string(void)
@@ -96,6 +100,10 @@ user_agent_string(void)
 	const char *choice = nsoption_charp(user_agent);
 	static char netsurf_ua[64];
 
+	const char *ini = onyx_ini_ua(UA_INI_DEFAULT, NULL);
+
+	if (ini != NULL)
+		return ini;		/* (Onyx: jet.ini's [user_agent] default) */
 	if (choice != NULL && choice[0] != '\0')
 		return choice;
 	/* Onyx (Jet Browser, the user's choice 2026-10-01): NetSurf's own, honest User-Agent by
@@ -242,5 +250,120 @@ void user_agent_set_desktop(const char *host, bool desktop)
 /* Public API documented in useragent.h */
 const char *user_agent_for_host(const char *host)
 {
-	return user_agent_is_desktop(host) ? ua_desktop : user_agent_string();
+	const char *site = onyx_ini_ua(UA_INI_SITE, host), *desk;
+
+	if (site != NULL)
+		return site;		/* (jet.ini's [sites]: this site's own) */
+	if (user_agent_is_desktop(host)) {
+		desk = onyx_ini_ua(UA_INI_DESKTOP, NULL);
+		return desk != NULL ? desk : ua_desktop;
+	}
+	return user_agent_string();
+}
+
+/* ---- Onyx: SD:/apps/jet.app/jet.ini -- the User-Agents, edited by the user -------------
+ *
+ *   [user_agent]
+ *   default = Mozilla/5.0 (X11; Linux aarch64) NetSurf/3.12     ; every site
+ *   desktop = Mozilla/5.0 (Windows NT 10.0; ...) Chrome/...     ; "Desktop site"'s
+ *   [sites]
+ *   example.com = Mozilla/5.0 ...                                ; one site's (and its
+ *                                                                ;  subdomains')
+ *
+ * Read once, at the first request (an edit takes effect at Jet Browser's next start). An
+ * empty or missing value keeps the built-in one; "; " and "#" start a comment line. */
+#define UA_INI_FILE ONYX_NS_DATAPATH "jet.ini"
+#define UA_INI_SITES 64
+
+static bool ua_ini_read;
+static char *ua_ini_default, *ua_ini_desktop;
+static struct { char *host, *ua; } ua_ini_site[UA_INI_SITES];
+static int ua_ini_nsites;
+
+static char *ua_trim(char *p)
+{
+	char *e;
+
+	while (*p == ' ' || *p == '\t')
+		p++;
+	e = p + strlen(p);
+	while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'))
+		*--e = '\0';
+	return p;
+}
+
+static void ua_ini_load(void)
+{
+	FILE *f;
+	char line[1024], section[32] = "";
+
+	ua_ini_read = true;
+	f = fopen(UA_INI_FILE, "r");
+	if (f == NULL)
+		return;
+	while (fgets(line, sizeof line, f) != NULL) {
+		char *p = ua_trim(line), *eq, *k, *v;
+
+		if (*p == '\0' || *p == ';' || *p == '#')
+			continue;
+		if (*p == '[') {
+			char *e = strchr(p, ']');
+			if (e != NULL) {
+				*e = '\0';
+				snprintf(section, sizeof section, "%s", ua_trim(p + 1));
+			}
+			continue;
+		}
+		eq = strchr(p, '=');
+		if (eq == NULL)
+			continue;
+		*eq = '\0';
+		k = ua_trim(p);
+		v = ua_trim(eq + 1);
+		if (*v == '\0')
+			continue;
+		if (strcasecmp(section, "user_agent") == 0) {
+			if (strcasecmp(k, "default") == 0 && ua_ini_default == NULL)
+				ua_ini_default = strdup(v);
+			else if (strcasecmp(k, "desktop") == 0 && ua_ini_desktop == NULL)
+				ua_ini_desktop = strdup(v);
+		} else if (strcasecmp(section, "sites") == 0 && ua_ini_nsites < UA_INI_SITES) {
+			ua_ini_site[ua_ini_nsites].host = strdup(k);
+			ua_ini_site[ua_ini_nsites].ua = strdup(v);
+			if (ua_ini_site[ua_ini_nsites].host != NULL && ua_ini_site[ua_ini_nsites].ua != NULL)
+				ua_ini_nsites++;
+		}
+	}
+	fclose(f);
+	NSLOG(netsurf, INFO, "jet.ini: default %s, desktop %s, %d sites",
+			ua_ini_default != NULL ? "set" : "built-in",
+			ua_ini_desktop != NULL ? "set" : "built-in", ua_ini_nsites);
+}
+
+/* a host is the site's, or one of its subdomains (www.example.com for example.com) */
+static bool ua_host_in(const char *host, const char *site)
+{
+	size_t h = strlen(host), s = strlen(site);
+
+	if (h == s)
+		return strcasecmp(host, site) == 0;
+	return h > s && host[h - s - 1] == '.' && strcasecmp(host + h - s, site) == 0;
+}
+
+static const char *onyx_ini_ua(int what, const char *host)
+{
+	int i;
+
+	if (!ua_ini_read)
+		ua_ini_load();
+	if (what == UA_INI_DEFAULT)
+		return ua_ini_default;
+	if (what == UA_INI_DESKTOP)
+		return ua_ini_desktop;
+	if (host == NULL || host[0] == '\0')
+		return NULL;
+	for (i = 0; i < ua_ini_nsites; i++)
+		if (ua_host_in(host, ua_ini_site[i].host))
+			return ua_ini_site[i].ua;
+	return NULL;
 }
