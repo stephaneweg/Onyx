@@ -239,6 +239,7 @@ static int job_thread (void *)
 	{
 		if (!m.set_mode (g_job.names[0], g_job.mode)) rc = E_NOTINST;
 	}
+	m.refresh_desktop ();				// (an app installed or removed: the dock started again)
 	g_job.rc = rc;
 	g_job.cur[0] = 0;
 	g_job.done = true;

@@ -1196,6 +1196,9 @@ and the Pi restarts once more when the kernel or the firmware changed. Alone: `r
 The package manager itself (`pkg`, this applet, `pkgd`) is a package of its own, **`pkgman`**: part of
 the system (it cannot be removed), but updated at once, without a restart (the new version runs the next
 time it starts).
+Once an app is installed, updated or removed (by the applet, `pkg` or `pkgd`), the **dock starts again**: its
+launchers and drawers know the new app at once (a click on it starts it). Each click on the dock is noted
+in the kernel log (`kmsg`: `dock: <app>: started`, `…: its window raised`, `…: NOT started`).
 
 ![The Package Manager: the updates](../screenshots/pkgman.png)
 *Updates: the system, Archiver, Jet Browser and Koton have a newer version.*

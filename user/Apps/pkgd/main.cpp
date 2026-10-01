@@ -68,6 +68,7 @@ static void round (bool count_day)
 		}
 		if (nw++ < 4) { if (wait[0]) strncat (wait, ", ", sizeof wait - strlen (wait) - 1); strncat (wait, title, sizeof wait - strlen (wait) - 1); }
 	}
+	m.refresh_desktop ();				// (an app updated: the dock started again)
 	if (!nd && !nw) return;
 	char text[480] = "";
 	if (nw) snprintf (text, sizeof text, "%s%s", wait, nw > 4 ? "..." : "");

@@ -368,8 +368,9 @@ public:
 	Index index; bool haveIndex, verified;
 	Db db;
 	bool kernelChanged;				// (a commit replaced the kernel or the firmware: reboot)
+	bool appsChanged;				// (an app installed, updated or removed: refresh_desktop)
 
-	Manager () : haveIndex (false), verified (false), kernelChanged (false)
+	Manager () : haveIndex (false), verified (false), kernelChanged (false), appsChanged (false)
 	{
 		Ini c; c.load (PKG_CONF);
 		cpy (repo, c.get ("", "repo", PKG_REPO), sizeof repo);
@@ -611,6 +612,7 @@ public:
 		}
 		else snprintf (dbp, sizeof dbp, PKG_DB "/%s.ini", name);
 		bool ok = write_file (dbp, dbt, dl);
+		if (ok && !stage && strstr (dbt, "\napps/")) appsChanged = true;
 		free (dbt); free (mv);
 		if (!ok) { r.sayf ("cannot write %s", dbp); return E_IO; }
 		char t[300];
@@ -619,6 +621,33 @@ public:
 		r.say (t);
 		db.load ();
 		return OK;
+	}
+
+	// An app installed, updated or removed: the dock started again (a dock that only read its
+	// settings again showed a new app's launcher, but a click on it started nothing until the
+	// Pi restarted). The callers (pkg, pkgman, pkgd) call it once their job is done.
+	static bool task_running (const char *name)
+	{
+		static char tasks[4096];
+		kapi_list_tasks (tasks, sizeof tasks);
+		size_t l = strlen (name);
+		for (const char *t = tasks; *t; )
+		{
+			const char *e = t; while (*e && *e != '\n') e++;
+			if ((size_t) (e - t) == l + 3 && !strncmp (t + 3, name, l)) return true;
+			t = *e ? e + 1 : e;
+		}
+		return false;
+	}
+	void refresh_desktop ()
+	{
+		if (!appsChanged) return;
+		appsChanged = false;
+		if (!kapi_kill ("dock")) return;			// (no dock running: nothing to refresh)
+#ifndef IMG_HOST_TEST
+		for (int i = 0; i < 30 && task_running ("dock"); i++) kapi_msleep (50);	// (gone, its service too)
+#endif
+		kapi_launch ("dock");
 	}
 
 	// the empty folders above a file removed
@@ -658,6 +687,7 @@ public:
 			char card[300]; snprintf (card, sizeof card, "SD:/%s", in->ini.kv[i].key);
 			char hh[65];
 			if (!purge && in->is_config (in->ini.kv[i].key) && sha_file (card, hh) && !eq (hh, in->ini.kv[i].val)) { kept++; continue; }
+			if (starts (in->ini.kv[i].key, "apps/")) appsChanged = true;
 			if (kapi_remove (card) == 0) gone++;
 			prune (card);
 		}
