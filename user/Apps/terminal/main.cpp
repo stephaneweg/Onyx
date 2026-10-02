@@ -40,7 +40,7 @@ static void *g_to_cmd = 0;		// terminal writes keystrokes -> cmd stdin
 static void *g_from_cmd = 0;		// cmd stdout -> terminal reads
 static void *g_cmd = 0;
 
-static char g_input[256];		// the line being typed (for editing + sending)
+static char g_input[2048];		// the line being typed (for editing + sending; cmd takes 2047)
 static int  g_inlen = 0;
 
 // ---- scrollback / output ----------------------------------------------------

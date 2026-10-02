@@ -41,7 +41,7 @@ struct Session
 	int  outlen;
 	int  state;			// telnet parser state (S_*)
 	int  skip_lf;			// swallow the LF / NUL that follows a CR
-	char line[512];
+	char line[2048];				// (cmd takes 2047)
 	int  linelen;
 	int  quit;			// Ctrl-D on an empty line -> end cmd
 	unsigned char in[512];

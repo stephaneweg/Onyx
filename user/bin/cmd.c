@@ -2,60 +2,58 @@
 // cmd -- the shell, as an ordinary /bin console program. It reads command lines from
 // stdin (the terminal feeds the keyboard there) and writes the prompt + output to
 // stdout (the terminal displays it). For each line it builds a pipeline of stages
-// (split on '|') with redirections (< > >>), spawns /bin/<cmd> for each, wires
+// (split on '|') with redirections (< > >>) -- quotes and backslash escapes as in
+// cmdparse.h --, spawns /bin/<cmd> for each with its exact argv, wires
 // the stages together, forwards its own stdin to the first stage (so interactive
 // programs read the keyboard; Ctrl-D ends that input), and drains the last stage's
 // output to stdout. Builtins: cd, pwd, clear, exit. Loops until stdin EOF.
 //
 #include "kapi.h"
 #include "applib.h"
+#include "cmdparse.h"
 
-#define MAXSTAGES	6
-
-struct Stage { char cmd[64]; char args[160]; char infile[96]; char outfile[96]; int append; };
-static struct Stage g_stage[MAXSTAGES];
+static struct CmdStage g_stage[CMD_MAXSTAGES];
 static int g_exit = 0;
 
 static void out (const char *s) { kapi_stdout_write (s, (unsigned) ax_strlen (s)); }
 
-static void scopy (char *d, const char *s, int cap)
-{ int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
-
-static int read_word (const char *s, int i, char *dst, int cap)
+// A stage spawned: spawn_ex with its exact argv block (argv[0] the program's path), so the child
+// gets the words as cmd split them; a kernel without it (< v75): kapi_spawn with the words joined
+// by blanks, a word with a blank in double quotes (the kernel splits that again). -> the process
+// handle, or 0 (*nf: the program was not found).
+static void *spawn_stage (const char *bin, const struct CmdStage *st, void *in, void *outs, int *nf)
 {
-	int t = 0;
-	while (s[i] && s[i] != ' ' && s[i] != '<' && s[i] != '>' && t < cap - 1) dst[t++] = s[i++];
-	dst[t] = '\0';
-	return i;
-}
+	static char blk[CMD_ARGV + 300];
+	int p = 0;
+	for (int k = 0; bin[k]; k++) blk[p++] = bin[k];
+	blk[p++] = '\0';
+	const char *rest = st->argv + ax_strlen (st->argv) + 1;		// (after the command word)
+	int nrest = st->len - (int) (rest - st->argv);
+	for (int k = 0; k < nrest; k++) blk[p++] = rest[k];
+	blk[p++] = '\0';
+	struct kapi_spawn_attr a = { 0 };
+	a.path = bin; a.argv = blk; a.in = in; a.out = outs;
+	long long h = kapi_spawn_ex (&a);
+	*nf = h == -KAPI_ENOENT;
+	if (h > 0) return (void *) (unsigned long) h;
+	if (h != -KAPI_ENOSYS) return 0;
 
-static void parse_stage (const char *s, struct Stage *st)
-{
-	st->cmd[0] = st->args[0] = st->infile[0] = st->outfile[0] = '\0';
-	st->append = 0;
-	int i = 0;
-	while (s[i])
+	static char line[1024];					// (the child keeps 1023)
+	int o = 0;
+	for (int i = 1; i < st->argc; i++)
 	{
-		while (s[i] == ' ') i++;
-		if (!s[i]) break;
-		if (s[i] == '<') { i++; while (s[i] == ' ') i++; i = read_word (s, i, st->infile, sizeof st->infile); continue; }
-		if (s[i] == '>')
-		{
-			i++; if (s[i] == '>') { st->append = 1; i++; }
-			while (s[i] == ' ') i++;
-			i = read_word (s, i, st->outfile, sizeof st->outfile); continue;
-		}
-		char tok[96];
-		i = read_word (s, i, tok, sizeof tok);
-		if (tok[0] == '\0') continue;
-		if (st->cmd[0] == '\0') scopy (st->cmd, tok, sizeof st->cmd);
-		else
-		{
-			int n = ax_strlen (st->args);
-			if (n > 0 && n < (int) sizeof st->args - 1) st->args[n++] = ' ';
-			scopy (st->args + n, tok, (int) sizeof st->args - n);
-		}
+		const char *w = cmd_arg (st, i);
+		int q = 0;
+		for (int k = 0; w[k]; k++) if (cmd_blank (w[k])) q = 1;
+		if (o > 0 && o < (int) sizeof line - 1) line[o++] = ' ';
+		if (q && o < (int) sizeof line - 1) line[o++] = '"';
+		for (int k = 0; w[k] && o < (int) sizeof line - 1; k++) line[o++] = w[k];
+		if (q && o < (int) sizeof line - 1) line[o++] = '"';
 	}
+	line[o] = '\0';
+	void *pr = kapi_spawn (bin, line, in, outs);
+	*nf = pr == 0;
+	return pr;
 }
 
 static void prompt (void)
@@ -66,39 +64,32 @@ static void prompt (void)
 
 static void run_line (char *input)
 {
-	int ns = 0, i = 0;
-	while (input[i] && ns < MAXSTAGES)
-	{
-		char sub[256]; int s = 0;
-		while (input[i] && input[i] != '|' && s < (int) sizeof sub - 1) sub[s++] = input[i++];
-		sub[s] = '\0';
-		if (input[i] == '|') i++;
-		parse_stage (sub, &g_stage[ns++]);
-	}
-	if (ns == 0 || g_stage[0].cmd[0] == '\0') return;
+	const char *err;
+	int ns = cmd_parse (input, g_stage, CMD_MAXSTAGES, &err);
+	if (ns < 0) { out ("cmd: "); out (err); out ("\n"); return; }
+	if (ns == 0) return;
 
 	// Builtins (single stage). clear emits form-feed; the terminal clears on it.
 	if (ns == 1)
 	{
-		const char *c = g_stage[0].cmd;
+		const char *c = g_stage[0].argv;
 		if (ax_streq (c, "clear")) { kapi_stdout_write ("\f", 1); return; }
 		if (ax_streq (c, "exit"))  { g_exit = 1; return; }
 		if (ax_streq (c, "pwd"))   { char w[256]; kapi_getcwd (w, sizeof w); out (w); out ("\n"); return; }
 		if (ax_streq (c, "cd"))
 		{
-			const char *d = g_stage[0].args[0] ? g_stage[0].args : "SD:/";
+			const char *d = g_stage[0].argc > 1 ? cmd_arg (&g_stage[0], 1) : "SD:/";
 			if (!kapi_chdir (d)) { out ("cd: no such directory: "); out (d); out ("\n"); }
 			return;
 		}
 	}
 
-	void *proc[MAXSTAGES]; int nproc = 0;
-	void *owned[MAXSTAGES * 2 + 2]; int nowned = 0;
+	void *proc[CMD_MAXSTAGES]; int nproc = 0;
+	void *owned[CMD_MAXSTAGES * 2 + 2]; int nowned = 0;
 	void *cin = 0, *pout = 0, *prev = 0; int failed = 0;
 
 	for (int s = 0; s < ns; s++)
 	{
-		if (g_stage[s].cmd[0] == '\0') { out ("syntax error\n"); failed = 1; break; }
 		void *sin, *sout;
 		if (s == 0)
 		{
@@ -124,14 +115,19 @@ static void run_line (char *input)
 		}
 		else { sout = kapi_pipe (); owned[nowned++] = sout; prev = sout; }
 
-		char bin[160]; int p = 0;
+		char bin[300]; int p = 0;
 		const char *pre = "SD:/bin/";
 		for (int k = 0; pre[k]; k++) bin[p++] = pre[k];
-		for (int k = 0; g_stage[s].cmd[k] && p < (int) sizeof bin - 1; k++) bin[p++] = g_stage[s].cmd[k];
+		for (int k = 0; g_stage[s].argv[k] && p < (int) sizeof bin - 1; k++) bin[p++] = g_stage[s].argv[k];
 		bin[p] = '\0';
 
-		void *pr = kapi_spawn (bin, g_stage[s].args, sin, sout);
-		if (!pr) { out (g_stage[s].cmd); out (": command not found\n"); failed = 1; break; }
+		int nf = 0;
+		void *pr = spawn_stage (bin, &g_stage[s], sin, sout, &nf);
+		if (!pr)
+		{
+			out (g_stage[s].argv); out (nf ? ": command not found\n" : ": cannot start\n");
+			failed = 1; break;
+		}
 		proc[nproc++] = pr;
 	}
 
@@ -167,7 +163,7 @@ static void run_line (char *input)
 
 int main (void)
 {
-	static char line[512];
+	static char line[CMD_LINE];
 	out ("Onyx shell (cmd) -- type a command, or `exit`.\n");
 
 	while (!g_exit)

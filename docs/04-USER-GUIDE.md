@@ -616,6 +616,37 @@ The terminal composes commands in the Unix style:
 | `cmd >> file` | same, but **appends** to the end of `file`. |
 | `cmd < file` | the input (`stdin`) of the **first** stage comes from `file`. |
 
+### Quotes and escapes
+
+Blanks separate the arguments, and `|`, `<`, `>` are the pipe and the redirections — unless
+they are **quoted**:
+
+| Syntax | Effect |
+|---|---|
+| `"text"` | one argument, exactly `text`: blanks, `\|`, `<`, `>`, `>>` and `'` are ordinary characters inside. `\"` is a literal `"`, `\\` a literal `\`; any other backslash stays as it is (`"a\nb"` reaches the program as `a\nb`). |
+| `'text'` | one argument, exactly `text`, with **no** escape at all (a `'` cannot appear inside: use double quotes for it). |
+| `\x` (outside quotes) | a literal `x`, for `x` one of `"` `'` `\` `<` `>` `\|` or a blank (`my\ file.txt`). A backslash before any other character stays (`SD:\dir` is unchanged). |
+
+Quoted parts join the unquoted text next to them into one word (`ab"c d"'e'` is the single
+argument `abc de`); quotes can also hold a redirection's file name (`> "my notes.txt"`). An
+empty argument (`""`) is dropped. A quote left open prints `cmd: unterminated " quote` and runs
+nothing; so do the other syntax errors (`ls |`, `> ` with no file name, more than 6 stages).
+
+```sh
+jsc -e "print(1 + 2)"                                   # jsc gets two arguments: -e and print(1 + 2)
+jsc -e "let a = []; for (let i = 0; i < 3e5; i++) a.push({i}); print(a.length)"
+jsc -e "print([1, 2].map(x => x * 2))"                  # => inside quotes: not a redirection
+jsc -e 'print("hello" + " | " + "world")'
+cd "SD:/My Documents"
+cat "my file.txt" > "a copy.txt"
+grep "two words" < notes.txt
+```
+
+A command line holds up to **2047 characters** (the terminal and `telnetd` accept that much).
+Each program receives its arguments **exactly as split by the shell** (its argv, `get_argv`).
+Programs that read the older single-string form (`get_args`, most `/bin` tools) get the words
+joined by blanks, a word containing a blank in double quotes, up to 1023 characters.
+
 **Path resolution.** Redirection files are resolved by the kernel **against the
 current working directory**: a relative path (`notes.txt`) targets `<cwd>/notes.txt`, an
 absolute path (`SD:/notes.txt`) is taken as-is.
@@ -640,9 +671,10 @@ ps                      # list the processes
 run mandelbrot          # launch a graphical application
 ```
 
-**Under the hood.** The terminal splits the line on `|`, creates a memory pipe (`pipe`)
-between each stage — and a file stream for `<`/`>` —, then launches (`spawn`) each
-`SD:/bin/<cmd>` with its (`stdin`, `stdout`) pair. The stages run **concurrently**
+**Under the hood.** The shell (`/bin/cmd`, which the terminal runs) splits the line into
+words and stages (quotes and escapes applied, `|` outside quotes), creates a memory pipe
+(`pipe`) between each stage — and a file stream for `<`/`>` —, then launches (`spawn_ex`) each
+`SD:/bin/<cmd>` with its argument list and its (`stdin`, `stdout`) pair. The stages run **concurrently**
 (cooperatively); the terminal continuously drains the final output pipe (non-blocking
 read) and displays it, then waits for each process to finish. The details of streams and
 the process model are in
@@ -720,7 +752,7 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
-| `cmd` | `cmd` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin`, builds the pipelines (`\|`, `<`, `>`, `>>`), spawns `/bin/<cmd>` for each stage; builtins `cd`, `pwd`, `clear`, `exit` (§7). The terminal runs it; `telnetd` serves it over the network. |
+| `cmd` | `cmd` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit` (§7). The terminal runs it; `telnetd` serves it over the network. |
 | `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
 | `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. |
 
