@@ -68,8 +68,9 @@ multi-cluster reads are not merged: page-ins must call the disk layer from the e
 
 ## For the user to decide
 
-- **One multi-call executable for the browser's processes, or three**: sharing is per file — one
-  executable is what makes (c) pay.
+- ~~One multi-call executable for the browser's processes, or three~~ — **decided (2026-10-02):
+  one executable for the UI, web and network roles.** Sharing is per file: this is what makes (c)
+  pay.
 - Whether a first start of about 5 s is acceptable with instant further processes and relaunches
   (and the host window at once); if not, (b).
 - For (b): restart the system call or let the probes yield; hide or complete the file on

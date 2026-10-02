@@ -299,9 +299,11 @@ In this order; a later step is not started early:
 1. **A usable browser** — the target: **kotonstudio.com near-instant on the Pi**. This is WebKit2
    (the UI, web and network processes over Onyx's IPC), the Onyx view and the browser's UI, pages
    loaded over HTTPS. The criterion is the time to show the page once the browser is open.
-   *Proposed to the user, not yet answered:* that this step includes one multi-call executable
-   for the three processes and the kernel's shared read-only image (`docs/ELF-LOADER-PLAN.md`,
-   stages a and c: low risk) — three unshared 80 MB processes would take about 15 s to start.
+   **One executable for the three roles** (the user's decision): the UI, the web and the network
+   process are the same program, its role chosen at launch. *Proposed to the user, not yet
+   answered:* that this step also includes the kernel's shared read-only image
+   (`docs/ELF-LOADER-PLAN.md`, stages a and c: low risk), which is what makes the single
+   executable pay — three unshared 80 MB process images would take about 15 s to load.
 2. **The compositor on the V3D.**
 3. **The JIT** (executable memory in the kernel first).
 4. **Video** (`MediaPlayerPrivate` on `user/av`, MSE).
