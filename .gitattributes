@@ -9,3 +9,6 @@
 *.img  binary
 *.elf  binary
 *.cod  binary
+
+# ICU's filtered data file (tools/ports/icu/gen-data.sh): binary
+third_party/icu-78.3/source/data/in/icudt78l.dat binary
