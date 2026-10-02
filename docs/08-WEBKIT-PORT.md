@@ -292,6 +292,25 @@ CMake patches, then `ninja -k 0` on WebCore and the errors in families (as step 
 the real implementations (TLS glue, pasteboard, theme) once it links. The target of step 2 on the
 PC: WebCore links into a test program that loads a page from a file and paints it into a PNG.
 
+## The roadmap from here (the user, 2026-10-02)
+
+In this order; a later step is not started early:
+
+1. **A usable browser** — the target: **kotonstudio.com near-instant on the Pi**. This is WebKit2
+   (the UI, web and network processes over Onyx's IPC), the Onyx view and the browser's UI, pages
+   loaded over HTTPS. The criterion is the time to show the page once the browser is open.
+   *Proposed to the user, not yet answered:* that this step includes one multi-call executable
+   for the three processes and the kernel's shared read-only image (`docs/ELF-LOADER-PLAN.md`,
+   stages a and c: low risk) — three unshared 80 MB processes would take about 15 s to start.
+2. **The compositor on the V3D.**
+3. **The JIT** (executable memory in the kernel first).
+4. **Video** (`MediaPlayerPrivate` on `user/av`, MSE).
+5. **The host window + the web view that attaches to it**, a component the Mail client embeds too.
+6. **Lazy loading** (the image filled page by page from the file: `docs/ELF-LOADER-PLAN.md`,
+   stage b).
+
+WebGL comes after these (its route is chosen: step 2 of the WebCore section above).
+
 ## The plan of the whole port
 
 WebKit replaces Jet (NetSurf) as Onyx's browser engine (docs/POSIX-PLAN.md §8, §9, §15: WebKit2 on
