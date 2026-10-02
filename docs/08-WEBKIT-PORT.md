@@ -118,7 +118,7 @@ The LLInt is the one staged: it needs no executable memory at run time (it is as
 time), is the faster, and is the one WebAssembly works with. `el0scan` on the unstripped `jsc`: clean (libgcc's guarded SME helpers
 only, as every program of the toolchain).
 
-### The Pi test (to do: the user)
+### The Pi test (2026-10-02: steps 1 to 4 pass; step 5 to run again)
 
 On a card made from the branch's `sdcard/` (kernel v76 or later), in the Terminal:
 
@@ -127,9 +127,26 @@ On a card made from the branch's `sdcard/` (kernel v76 or later), in the Termina
 3. `jsc SD:/docs/jsc/bench.js` → nine lines of timings (send them back: the first real numbers).
 4. `jsc` alone → a `>>>` prompt: `1+1`, `new Intl.DateTimeFormat("fr-FR", {dateStyle: "full"}).format(new Date())`,
    `quit()`.
-5. `jsc -e "setTimeout(() => print('late'), 2000); let a = []; for (let i = 0; i < 300000; i++) a.push({i})"`
-   → `late` after two seconds (the collector while the shell waits).
+5. `jsc -e "a=[];for(i=0;i!=300000;i++)a.push({i});setTimeout(function(){print('late')},2000)"`
+   → `late` after two seconds (the collector while the shell waits). No `<`, `>`, `|` and no space
+   in the script: Onyx's shell (`user/bin/cmd.c`) has no quoting — they are redirections and
+   separators even between quotes (a first version of this step, with `i < 300000` and arrow
+   functions, answered "cannot open input file" without starting `jsc`).
 6. Memory: the Task Manager's figure for `jsc` while step 3 runs.
+`bench.js` on the Pi 4 (the LLInt, 2026-10-02) — 2 to 6 times the PC's qemu figures above:
+
+| | Pi 4 |
+|---|---|
+| `fib(30)` | 1852 ms |
+| 20M additions in a loop | 5595 ms |
+| 1M object allocations | 2085 ms |
+| 300k string concat / split | 2307 ms |
+| sort 300k numbers | 4896 ms |
+| regexp, 100k matches | 1330 ms |
+| Map, 500k set / get | 4001 ms |
+| 5M typed-array doubles | 17357 ms |
+| JSON, 20 × 200 KB | 1609 ms |
+
 What can differ from the bench: the loader on a 33.1 MB image, the kernel's `vm_*` under the
 collector's reservations, the main thread's stack size, timing.
 
