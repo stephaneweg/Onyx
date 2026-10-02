@@ -79,6 +79,9 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf \
 	  filetest.elf proctest.elf
 
+# kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
+PROGS  += nettest.elf
+
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.
 LIBC_PROGS = libctest.elf rdpd.elf

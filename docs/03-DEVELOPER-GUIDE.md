@@ -2813,6 +2813,14 @@ on the PC. An app can use these directly (64-bit offsets, pread / pwrite, a file
 an argv / environment for a child) — but should not mix them with the old `open` / `save_file` on the
 same file at the same time.
 
+**BSD sockets and `poll` (v75, docs/02 §8 "v75: sockets and poll"):** `kapi_sock_*` are the kernel
+half of `socket`/`connect`/`send`/`recv`… (IPv4 TCP and UDP; a port in `struct kapi_sockaddr` is
+in host order). A socket number is not a handle: poll it as `KAPI_PK_SOCKET`, a pipe or stream
+handle as `KAPI_PK_STREAM`. The `tcp_*` handles are numbers of the same table (they can be polled).
+With `netcore=0` nothing announces a socket's change, so a wait looks again every 10 ms; with
+`netcore=1` a change wakes within a tick. `shutdown (SHUT_WR)` sends no FIN (the connection ends at
+`close`). Test on the Pi with `/bin/nettest` (+ `tools/tests/nettest_peer.py` on the PC).
+
 > **Golden rule:** never change the signature or the order of an existing field. If some
 > semantics must change, add a **new** entry. An app can query
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.

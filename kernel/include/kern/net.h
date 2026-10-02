@@ -44,6 +44,43 @@ int   NetInfo       (char *pBuf, unsigned nCap);		// netstat text
 unsigned NetSocketOwner (int hSock);				// its owner pid, 0 = none
 boolean  NetSocketAdopt (int hSock, unsigned nFrom, unsigned nTo);	// owner nFrom -> nTo
 
+// ---- BSD sockets (kapi v75, sys/bsdsock.cpp; docs/POSIX-PLAN.md §3.3) --------------------
+// The same table as the tcp_* handles (MAX_SOCKETS 256, every process). These calls never wait
+// (-KAPI_EAGAIN: not now); bsdsock.cpp waits on kern/iowait.h. Results >= 0, or -KAPI_E*.
+// nPid: the caller (NetCurrentPid); another process's socket is -KAPI_EBADF.
+enum				// a socket's state
+{
+	NET_SS_FREE = 0, NET_SS_NEW, NET_SS_BOUND, NET_SS_LISTEN, NET_SS_CONNECTING,
+	NET_SS_CONNECTED, NET_SS_FAILED
+};
+struct TNetSockView		// what core 0 reads of a socket (NetSockView)
+{
+	int	 nType;			// KAPI_SOCK_STREAM / KAPI_SOCK_DGRAM
+	unsigned nState;		// NET_SS_*
+	boolean	 bNonBlock, bBroadcast;
+	unsigned nRcvTimeoutMs, nSndTimeoutMs;
+	u16	 nLocalPort, nPeerPort;	// nPeerPort 0: no peer (UDP: no default)
+	u8	 PeerIP[4];
+	unsigned nCarry;		// bytes in its carry buffer
+};
+unsigned NetCurrentPid (void);
+extern "C" void SocketAdopt (int hSock);	// (sys/kapi.cpp) a descendant of its owner adopts it
+int   NetSockOpen   (int nType, boolean bNonBlock, unsigned nPid);	// -ENETDOWN / -ENFILE
+int   NetSockView   (int h, unsigned nPid, TNetSockView *pView);
+int   NetSockSetOpt (int h, unsigned nPid, int nOpt, int nValue);	// KAPI_SO_NONBLOCK/_TIMEO/_BROADCAST
+int   NetSockTakeError (int h, unsigned nPid);			// the pending error (positive), cleared
+int   NetSockShutdown (int h, unsigned nPid, int nHow);
+unsigned NetSockPoll (int h, unsigned nPid);			// KAPI_POLL* now (NVAL: not the caller's)
+boolean NetSockWakesOnChange (void);	// TRUE: a readiness change calls IoWake (else poll each tick)
+int   NetSockBind   (int h, unsigned nPid, unsigned nPort);
+int   NetSockListen (int h, unsigned nPid, int nBacklog);
+int   NetSockConnect (int h, unsigned nPid, const u8 *pIP, unsigned nPort);	// TCP: -EINPROGRESS
+int   NetSockAccept (int h, unsigned nPid, boolean bNonBlock, u8 *pIP, u16 *pPort);
+int   NetSockSend   (int h, unsigned nPid, const void *pBuf, unsigned nLen, const u8 *pIP, unsigned nPort);
+int   NetSockRecv   (int h, unsigned nPid, void *pBuf, unsigned nLen, unsigned nFlags, u8 *pIP, u16 *pPort);
+int   NetSockClose  (int h, unsigned nPid);
+void  NetOwnIP      (u8 *pIP);				// 0.0.0.0 while down
+
 // Wi-Fi scan (kapi_wlan_scan, ABI v45): ~3 s, fills pOut strongest first; returns the count.
 struct kapi_wlan_ap;
 int   NetWlanScan (struct kapi_wlan_ap *pOut, int nMax);
