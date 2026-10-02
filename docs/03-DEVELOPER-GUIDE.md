@@ -2402,8 +2402,13 @@ int main (void)
 ```
 
 - **`kapi_get_args(buf, size)`**: the entire argument line as **a single string**
-  separated by spaces (there is no `argv` array; parse the first word yourself,
-  etc.).
+  separated by spaces (parse the words yourself). The shell (`/bin/cmd`) applies the
+  quotes and escapes itself (`"…"`, `'…'`, `\`: docs/04 §7) and spawns with `spawn_ex` and the
+  exact argv; this string is rebuilt from it by the kernel — the words joined by blanks, a word
+  with a blank in double quotes (`grep "two words" f` → `"two words" f`), at most 1023
+  characters. A program that needs the words exactly (one holding a `"`, a long line) reads
+  **`kapi_get_argv`** (v75: the block `"path\0arg1\0…\0\0"`), as the POSIX programs' `argv` does.
+  The parser is `user/bin/cmdparse.h` (host test: `sh tools/tests/run_cmd_test.sh`).
 - **`kapi_stdin_read(buf, n)`**: reads the task's stdin (`0` = EOF). **`kapi_stdout_write`**: writes stdout.
 - To read a file passed as an argument: `kapi_open/read/close`. To list a
   directory: `kapi_opendir/readdir/closedir`.

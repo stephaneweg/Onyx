@@ -130,10 +130,12 @@ On a card made from the branch's `sdcard/` (kernel v76 or later), in the Termina
 5. `jsc -e "a=[];for(i=0;i!=300000;i++)a.push({i});setTimeout(function(){print('late')},2000)"`
    → `late` after two seconds (the collector while the shell waits; on the Pi 3 to 4 seconds in
    all: the 33 MB image loaded from the card, JavaScriptCore's start, the loop, then the timer's
-   two seconds). No `<`, `>`, `|` and no space
-   in the script: Onyx's shell (`user/bin/cmd.c`) has no quoting — they are redirections and
-   separators even between quotes (a first version of this step, with `i < 300000` and arrow
-   functions, answered "cannot open input file" without starting `jsc`).
+   two seconds). Written without `<`, `>`, `|` or spaces because the shell had no quoting
+   then (a first version, with `i < 300000` and arrow functions, answered "cannot open input
+   file" without starting `jsc`); since 2026-10-02 `/bin/cmd` honours `"…"`, `'…'` and `\`
+   (docs/04 §7 *Quotes and escapes*), so
+   `jsc -e "let a = []; for (let i = 0; i < 300000; i++) a.push({i}); setTimeout(() => print('late'), 2000)"`
+   works as well.
 6. Memory: the Task Manager's figure for `jsc` while step 3 runs.
 `bench.js` on the Pi 4 (the LLInt, 2026-10-02) — 2 to 6 times the PC's qemu figures above:
 
