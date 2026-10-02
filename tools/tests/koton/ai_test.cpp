@@ -725,7 +725,7 @@ static void testLlm ()
 	// the download mode's request and result
 	{
 		json::Writer rq (false);
-		aiBuildFetchJson ("https://example.org/GeneralUser-GS.sf2", "SD:/koton/soundfonts/GeneralUser-GS.sf2", rq);
+		aiBuildFetchJson ("https://example.org/GeneralUser-GS.sf2", "SD:/res/soundfonts/GeneralUser-GS.sf2", rq);
 		json::Doc d; CHECK (d.parse (rq.data (), rq.size ()));
 		CHECK (json::seq (d.root ()["fetch"].asStr (), "https://example.org/GeneralUser-GS.sf2") && d.root ()["timeout"].asInt () == 120);
 		json::Writer w (false);

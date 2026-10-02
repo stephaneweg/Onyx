@@ -1396,7 +1396,7 @@ helper), wtk's text face (`user/ft/wtkface.h`) and studio widgets. Docs: docs/04
 studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section. Tests:
 `sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
 `sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont
-(`sdcard/koton/soundfonts`, licence beside it).
+(`sdcard/res/soundfonts`, licence beside it: its own package, `generaluser-gs`, that Koton and Media Player need).
 
 **Koton for Windows (2026-09-30):** `pc/dist/Koton` (`sh pc/Koton/build.sh`, MinGW-w64): the Onyx
 sources unchanged over `pc/Koton/winkapi.cpp`, the kernel's table on Win32 -- docs/03 *Koton for

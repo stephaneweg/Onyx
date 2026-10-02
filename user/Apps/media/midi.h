@@ -3,7 +3,7 @@
 // map, running status), its events in time order (MidiSong), played by MeltySynth -- Koton's
 // synthesizer (Apps/koton/synth) -- through a SoundFont (MidiDecoder, a Decoder of decode.h); and its
 // notes for the view (a line a note, a colour a channel) with the channels' General MIDI instruments.
-// The SoundFont: SD:/etc/media/settings.ini's `soundfont`, else the first .sf2 of SD:/koton/soundfonts,
+// The SoundFont: SD:/etc/media/settings.ini's `soundfont`, else the first .sf2 of SD:/res/soundfonts (the package generaluser-gs; Koton's old SD:/koton/soundfonts too),
 // loaded once, the first time a MIDI file plays (it may be big: GeneralUser GS is 30 MB).
 //
 #ifndef _media_midi_h
@@ -193,24 +193,30 @@ private:
 static ms::SoundFont *g_sf;
 static char g_sfName[96];
 static bool g_sfTried;
-static char g_sfPath[256];					// (settings: "" = the first of SD:/koton/soundfonts)
+static char g_sfPath[256];					// (settings: "" = the first of SD:/res/soundfonts)
+// the SoundFonts' folders: the shared one (the package generaluser-gs puts GeneralUser GS there), then Koton's old one
+static const char *const SF_DIRS[] = { "SD:/res/soundfonts", "SD:/koton/soundfonts" };
 static bool soundfont_find (char *out, int cap)
 {
-	if (g_sfPath[0]) { snprintf (out, cap, "%s", g_sfPath); return true; }
-	void *d = kapi_opendir ("SD:/koton/soundfonts");
-	if (!d) return false;
-	struct kapi_dirent e; bool found = false;
-	while (kapi_readdir (d, &e) > 0)
-		if (!e.is_dir && ext_is (e.name, "sf2")) { snprintf (out, cap, "SD:/koton/soundfonts/%s", e.name); found = true; break; }
-	kapi_closedir (d);
+	if (g_sfPath[0]) { void *f = kapi_open (g_sfPath); if (f) { kapi_close (f); snprintf (out, cap, "%s", g_sfPath); return true; } }
+	bool found = false;
+	for (unsigned k = 0; k < sizeof SF_DIRS / sizeof SF_DIRS[0] && !found; k++)
+	{
+		void *d = kapi_opendir (SF_DIRS[k]);
+		if (!d) continue;
+		struct kapi_dirent e;
+		while (kapi_readdir (d, &e) > 0)
+			if (!e.is_dir && ext_is (e.name, "sf2")) { snprintf (out, cap, "%s/%s", SF_DIRS[k], e.name); found = true; break; }
+		kapi_closedir (d);
+	}
 	return found;
 }
 static ms::SoundFont *soundfont (char *err, int cap)
 {
-	if (g_sf || g_sfTried) { if (!g_sf) snprintf (err, cap, "No SoundFont to play MIDI files (SD:/koton/soundfonts)."); return g_sf; }
+	if (g_sf || g_sfTried) { if (!g_sf) snprintf (err, cap, "No SoundFont to play MIDI files (SD:/res/soundfonts: the package GeneralUser GS)."); return g_sf; }
 	g_sfTried = true;
 	char path[256];
-	if (!soundfont_find (path, sizeof path)) { snprintf (err, cap, "No SoundFont to play MIDI files (SD:/koton/soundfonts)."); return 0; }
+	if (!soundfont_find (path, sizeof path)) { snprintf (err, cap, "No SoundFont to play MIDI files (SD:/res/soundfonts: the package GeneralUser GS)."); return 0; }
 	Src s;
 	if (!s.open (path) || s.size == 0 || s.size > (512u << 20)) { snprintf (err, cap, "The SoundFont %s cannot be read.", path); return 0; }
 	unsigned char *b = new unsigned char[(size_t) s.size];

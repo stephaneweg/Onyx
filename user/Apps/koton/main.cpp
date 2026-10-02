@@ -16,7 +16,7 @@
 // the arrangement; grid.h: the note grids; editor.h + ed_*.h: the block editors; dialogs.h; chrome.h:
 // the transport bar, the browser, the editor's host, the status bar).
 //
-// Files: SD:/koton/songs (the songs, .kson / .sq), SD:/koton/soundfonts (the .sf2), SD:/koton/settings.json;
+// Files: SD:/koton/songs (the songs, .kson / .sq), SD:/res/soundfonts (the .sf2: the package generaluser-gs, shared with Media Player), SD:/koton/settings.json;
 // "koton SD:/koton/songs/a.kson" opens it.
 //
 #include "wtk/wtk.h"
@@ -304,20 +304,21 @@ static void cmdCadence () { cadenceOnChordTrack (); refreshAll (); }
 static void cmdSoundFont ()
 {
 	char p[256];
-	kapi_mkdir ("SD:/koton"); kapi_mkdir ("SD:/koton/soundfonts");
-	if (!wk_file_open (p, sizeof p, "SD:/koton/soundfonts")) return;
+	kapi_mkdir ("SD:/res"); kapi_mkdir ("SD:/res/soundfonts");
+	if (!wk_file_open (p, sizeof p, "SD:/res/soundfonts")) return;
 	int n = (int) strlen (p);
 	if (n < 4 || strcasecmp (p + n - 4, ".sf2")) { wk_messagebox ("SoundFont", "Choose a .sf2 file.", MB_OK); return; }
 	snprintf (g_settings.soundfont, sizeof g_settings.soundfont, "%s", p);
 	g_settings.save ();
 	wk_messagebox ("SoundFont", "Koton will use it from its next start.", MB_OK);
 }
-// GeneralUser GS fetched by SD:/bin/llm (a TLS download) into SD:/koton/soundfonts
+// GeneralUser GS fetched by SD:/bin/llm (a TLS download) into SD:/res/soundfonts (the package generaluser-gs puts it there too)
 static void cmdGetSoundFont ()
 {
-	if (wk_messagebox ("SoundFont", "Download GeneralUser GS (32 MB, free) into SD:/koton/soundfonts? The network must be up.", MB_YESNO) != 1) return;
+	if (wk_messagebox ("SoundFont", "Download GeneralUser GS (32 MB, free) into SD:/res/soundfonts? The network must be up.", MB_YESNO) != 1) return;
+	kapi_mkdir ("SD:/res"); kapi_mkdir ("SD:/res/soundfonts");
 	json::Writer w (false);
-	aiBuildFetchJson ("https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/GeneralUser-GS.sf2", "SD:/koton/soundfonts/GeneralUser-GS.sf2", w, 600);
+	aiBuildFetchJson ("https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/GeneralUser-GS.sf2", "SD:/res/soundfonts/GeneralUser-GS.sf2", w, 600);
 	if (!w.ok ()) return;
 	Vec<char> out;
 	AiBusy *busy = new AiBusy ();
@@ -329,7 +330,7 @@ static void cmdGetSoundFont ()
 	out.push (0);
 	unsigned long bytes = 0; Str err;
 	if (!aiParseFetchOutput (out.data (), out.size () - 1, &bytes, err)) { char m[300]; snprintf (m, sizeof m, "The download failed: %s", err.c ()); wk_messagebox ("SoundFont", m, MB_OK); return; }
-	snprintf (g_settings.soundfont, sizeof g_settings.soundfont, "SD:/koton/soundfonts/GeneralUser-GS.sf2");
+	snprintf (g_settings.soundfont, sizeof g_settings.soundfont, "SD:/res/soundfonts/GeneralUser-GS.sf2");
 	g_settings.save ();
 	wk_messagebox ("SoundFont", "Downloaded: Koton uses it from its next start.", MB_OK);
 }

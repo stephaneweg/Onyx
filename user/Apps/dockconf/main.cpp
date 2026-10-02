@@ -7,8 +7,8 @@
 //   * the LAUNCHERS after the drawers (the Terminal, the File Viewer...): add an app from the list
 //     of them all, remove one, move it;
 //   * the WORKSPACES (virtual desktops): how many (1 to 6) and their names.
-// Apply writes dock.ini and tells the dock (DOCK_MSG_RELOAD): it takes them at once, the number of
-// workspaces too. Discard reloads what is saved.
+// Apply writes dock.ini and starts the dock again (dock_reload, dockconf.h): it takes them at once, the
+// number of workspaces too. Discard reloads what is saved.
 //
 #include "kapi.h"
 #include "applib.h"
