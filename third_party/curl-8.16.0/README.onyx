@@ -1,0 +1,19 @@
+curl 8.16.0 -- libcurl and the curl tool, a smoke port of Onyx's POSIX layer
+===========================================================================
+
+Source: https://curl.se/download/curl-8.16.0.tar.xz
+(sha256 40c8cddbcb6cc6251c03dea423a472a6cea4037be654ba5cf5dec6eb2d22ff1d), the curl licence
+(MIT-like: COPYING).
+
+Kept: lib/, include/, src/ (the tool), the CMake build (CMakeLists.txt, CMake/, scripts/ -- the
+build adds it --, curl-config.in, libcurl.pc.in), COPYING, README, RELEASE-NOTES, docs/THANKS.
+Not kept: the tests, the documentation sources (the man page; the tool's --manual is off), the
+autotools build files, the packages. No change to the sources.
+
+Built by tools/ports/curl/build.sh with CMake and tools/onyx-toolchain.cmake against the POSIX
+sysroot (libonyxposix): libcurl.a and include/curl into the sysroot, the tool into
+out/ports/bin/curl.elf. TLS: mbedTLS (third_party/mbedtls-3.6.3, a POSIX build of its own:
+tools/ports/mbedtls/build.sh, taken under Apache-2.0); HTTP/2: nghttp2; zlib and brotli -- all in
+third_party. The threaded resolver (pthreads + getaddrinfo on the kernel's DNS), poll, non-blocking
+connect; no IPv6, no Unix sockets, no LDAP / libpsl / libssh2 / libidn2; the multi handle's wake-up
+is a pipe (socketpair is off). The CA bundle: SD:/res/ca-bundle (the card's Mozilla bundle).

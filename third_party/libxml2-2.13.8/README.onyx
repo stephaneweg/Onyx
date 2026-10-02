@@ -1,0 +1,17 @@
+libxml2 2.13.8 -- the XML toolkit, a smoke port of Onyx's POSIX layer
+=====================================================================
+
+Source: https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.8.tar.xz
+(sha256 277294cb33119ab71b2bc81f2f445e9bc9435b893ad15bb2cd2b0e859a0ee84a, as GNOME's .sha256sum),
+MIT licence (Copyright).
+
+Kept: the library's sources (*.c, *.h, include/), xmllint.c and xmlcatalog.c, the CMake build
+(CMakeLists.txt, config.h.cmake.in, the .in files it configures, configure.ac -- CMake reads the
+version from it --, libxml.m4 and doc/*.1, which its install step copies). Not kept: the tests and
+their results, the fuzzers, the Python bindings, the documentation, the autotools / meson / Windows
+/ OS400 builds. No change to the sources.
+
+Built by tools/ports/libxml2/build.sh with CMake and tools/onyx-toolchain.cmake against the POSIX
+sysroot (libonyxposix): libxml2.a and include/libxml2 into the sysroot, xmllint into
+out/ports/bin/xmllint.elf. Threads on (pthreads), zlib on (third_party/zlib-1.3.1), no iconv (newlib's
+is configured out), no HTTP / FTP, no dynamic modules, no Python.

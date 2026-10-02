@@ -226,6 +226,8 @@ Notes / caveats:
   on `close`. Fine for resource files; the kapi has had `seek` since v57 (and `file_out` for
   streamed writes), which `onyx_syscalls.c` does not use yet — a big file is better read with
   `kapi_open` / `kapi_seek` / `kapi_read` directly (the GameCube discs, the Media Player).
+  A new port or tool should rather use **libonyxposix** (§5.4): real descriptors on the v75 open
+  files, pthreads, sockets, `poll`, `mmap`.
 - **Size.** Static newlib pulls a fair amount of code (`printf` float support etc.).
   Acceptable for big apps; a `nano` variant can be revisited later for small tools.
 - **Threads** (§5.2): newlib's locks are defined in `onyx_syscalls.c` (newlib is built with
@@ -344,6 +346,169 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
   folder **`SIM_RAM`** — the same folder for several runs is several launches within one boot
   (`tools/tests/netsurf/httptest.sh` does that); unset, each run gets a fresh temporary folder,
   deleted at its end (a boot of its own). `vol_info` answers 128 MB.
+
+### 5.4. The POSIX layer (`libonyxposix`)
+
+`user/libc/posix/` is a **POSIX C library layer** over newlib and the kapi (docs/POSIX-PLAN.md
+§3.4): what large portable code (SQLite, libxml2, curl, and later ICU, Skia, WebKit) expects —
+real file descriptors, pthreads, BSD sockets, `poll`, `mmap`, `clock_gettime`, `posix_spawn`.
+It is the kernel's v75 POSIX ABI (docs/02 §8, "v75") seen from C. MIT, ours.
+
+A program links **libonyxposix or `onyx_syscalls.c`, never both**: the existing newlib apps (§5.1:
+Writer, Doom, the TLS tools, `pkg`, `rdpd`, the SuperTuxKart port…) keep `onyx_syscalls.c` and are
+unchanged; new ports and tools use libonyxposix.
+
+**Building with it.** `make -C user/libc/posix` builds `build/libonyxposix.a`, `crt0posix.o`,
+`onyx-posix.ld` and `build/onyx.specs` (in-tree programs); `make -C user/libc/posix install
+SYSROOT=<dir>` makes the **sysroot** third-party code builds against (§5.5). A program needs two
+flags — the headers first on the path, and the specs, which bring the start code, the link
+script and the libraries:
+
+```sh
+aarch64-none-elf-gcc -mcpu=cortex-a72 -O2 -isystem <sysroot>/include -DFD_SETSIZE=1024 \
+    -specs=<sysroot>/lib/onyx.specs prog.c -o prog.elf      # (C++: g++, the same flags)
+```
+
+`main (int argc, char **argv, char **envp)` gets its arguments and environment; `exit` flushes
+stdio. In the tree: the `POSIX_PROGS` rule of [`user/bin/Makefile`](../user/bin/Makefile)
+(`posixtest`).
+
+**What it provides** (each piece on its v75 kapi; on a kernel without it, the fallback in
+brackets — so a program runs on today's kernel too, with less):
+
+| Area | Calls | On the kernel | (without v75) |
+|---|---|---|---|
+| Descriptors | `open` (`O_CREAT/EXCL/TRUNC/APPEND/CLOEXEC/NONBLOCK/DIRECTORY`), `read`, `write`, `lseek`, `pread`, `pwrite`, `readv`/`writev`, `close`, `dup`/`dup2`/`dup3`, `fcntl` (flags, `FD_CLOEXEC`, `F_DUPFD`; locks always granted), `flock`, `ftruncate`, `fsync`, `pipe`/`pipe2`, `openat`… | `file_*` (64-bit offsets per handle, pread / pwrite, unlink of an open file), the pipe streams, `stream_write_nb` | the old calls: read-only through `kapi_open`/`kapi_seek`; a writable file held whole in memory, written back at `fsync`/`close` (as `onyx_syscalls.c`) |
+| Files | `stat`/`lstat`/`fstat`/`fstatat`, `access`, `unlink`/`rmdir`/`remove`, `mkdir`, `rename` (replaces its target), `utime(s)`/`utimensat`/`futimens`, `statvfs`, `realpath`, `getcwd`/`chdir`/`fchdir`, `mkstemp`/`tmpfile` (newlib's), `truncate` | `path_*`, `file_stat` (mtime, a 64-bit id), `vol_info` | stat probes with `opendir`/`open`; `kapi_remove`/`kapi_rename` |
+| Directories | `opendir`/`fdopendir`/`readdir`/`readdir_r`/`closedir`/`rewinddir`/`dirfd`, `scandir`, `alphasort` | `dir_read` (255-character names) | `kapi_readdir` (127) |
+| Threads | `pthread_create` (stack size up to 16 MB, detached), `join`/`tryjoin_np`/`timedjoin_np`, `detach`, `exit`, `self`, `setname_np`/`getname_np`, `getattr_np` (the stack's bounds), `sched_yield`, priorities (> 0: the kernel's "real time") | `thread_create_ex` / `thread_info` (lazy 8 MB stacks, the TLS pointer) | `thread_create` (v67: the stack mapped at once, 1 MB by default), bounds estimated |
+| Synchronisation | mutexes (normal, recursive, errorcheck, `timedlock`, `clocklock`), condition variables (`timedwait` on `CLOCK_REALTIME`, or `CLOCK_MONOTONIC` with `condattr_setclock`; `clockwait`), `once`, keys with destructors (128), rwlocks, barriers, spin locks, `sem_*` | the futex (`wait_word` / `wake_word`, v68) + a CAS fast path; on an app core a spin | — |
+| TLS, errno | `__thread`; `errno` per thread | `TPIDR_EL0` → the thread's TCB + TLS block | — |
+| Memory | `mmap` (anonymous, `PROT_NONE` reservations, `MAP_FIXED`/`FIXED_NOREPLACE`, `MAP_PRIVATE` files), `munmap` (partial), `mprotect`, `madvise`, `mincore`, `msync`/`mlock` (no-ops), `posix_memalign`, `getpagesize` (65536) | `vm_*` (lazy regions in the 34–60 GB arena) | heap blocks (64 KB-aligned): no reservations, no `MAP_FIXED`, protections not enforced |
+| Time | `clock_gettime`/`getres` (`REALTIME`, `MONOTONIC(_RAW/_COARSE)`, `BOOTTIME`, the CPU clocks = monotonic), `gettimeofday`, `time`, `nanosleep`, `clock_nanosleep`, `usleep`, `sleep`, `timegm`; `localtime_r`/`mktime`/`strftime` with `TZ` (newlib's) | `CNTPCT_EL0` read at EL0, scaled with one `clock_info` sample (no system call per read); `sleep_us` | `get_datetime` once (local time taken as UTC, `TZ=UTC0`); `msleep` |
+| Processes | `getpid`/`getppid`, `posix_spawn(p)` (file actions: a pipe or a file onto 0 / 1, `addchdir_np`), `waitpid`/`wait` (`WNOHANG`; exit code, `SIGSEGV` for a fault, `SIGKILL` for killed / out of memory); `fork`/`exec*`/`system`/`popen` → `ENOSYS` | `spawn_ex` (argv / envp blocks) + `proc_wait` | `kapi_spawn` (one argument line) + `kapi_wait` |
+| Environment | `environ`, `getenv`/`setenv`/`unsetenv`/`putenv` (newlib's) from the process's block; `TZ` set from the kernel's zone when unset | `get_env`, `get_argv` | `HOME=SD:/home`, `PATH=SD:/bin`, `TMPDIR=RAM:/tmp`, `LANG=C.UTF-8`; argv from `get_args` |
+| Sockets | `socket` (`AF_INET` TCP / UDP, `SOCK_NONBLOCK`/`CLOEXEC`), `connect` (non-blocking: `EINPROGRESS`, then `poll` + `SO_ERROR`), `bind`/`listen`/`accept(4)`, `send`/`recv`/`sendto`/`recvfrom`/`sendmsg`/`recvmsg` (`MSG_PEEK`/`DONTWAIT`/`WAITALL`; `MSG_NOSIGNAL` accepted), `get`/`setsockopt` (`SO_ERROR`, `SO_RCVTIMEO`/`SNDTIMEO`, `SO_BROADCAST`; the rest accepted), `getsockname`/`getpeername`, `shutdown`; `AF_INET6`/`AF_UNIX` → `EAFNOSUPPORT`, `socketpair` → `EOPNOTSUPP` | `sock_*` | `tcp_*` (TCP only: connect blocks, accept blocks) |
+| Names | `getaddrinfo` (numeric, `localhost`, else the kernel's DNS; services by number or a small table), `getnameinfo` (numeric), `gethostbyname(_r)`, `inet_pton`/`ntop`/`aton`/`addr`/`ntoa`, `htons`… | `net_resolve` (v43) | — |
+| Waiting | `poll`, `ppoll`, `select`, `pselect` (`FD_SETSIZE` 1024) over sockets, pipes, files, the console | the `poll` kapi | a user-space loop (non-blocking reads into a carry buffer, 1 ms sleeps) |
+| Signals | `sigaction`/`signal` (a table), `raise`, `kill (getpid (), sig)` and `pthread_kill (self)` run the handler at once; `abort` (status 134); masks kept; `SIGPIPE` never raised (`EPIPE`); `kill` of another pid: `SIGKILL`/`SIGTERM` → `kill_pid`, 0 → exists | — | — |
+| Misc. | `sysconf` (page 65536, **1** processor: a process's threads all run on core 0), `pathconf`, `uname` (`Onyx`, `aarch64`), `gethostname`, `getrandom`/`getentropy`, `/dev/null`, `/dev/zero`, `/dev/urandom`, `isatty`/`ttyname`, `ioctl` (`FIONBIO`, `FIONREAD`, `TIOCGWINSZ`), `getrlimit`/`setrlimit`, `getrusage`, one user `onyx` (`getpwuid`…), `basename`/`dirname`, `err`/`warn`, `syslog` (→ kmsg); stubs: `dlopen` (fails: static programs), `backtrace` (the frame-pointer chain), `iconv_open` (`EINVAL`), `getifaddrs` | | |
+
+**Headers** (`user/libc/posix/include/`, first on the path with `-isystem`): `pthread.h` and
+`sys/_pthreadtypes.h` (the types, frozen once WP-TC's toolchain is built on them), `semaphore.h`,
+`sys/mman.h`, `poll.h`, `sys/socket.h`, `netinet/in.h`, `netinet/tcp.h`, `arpa/inet.h`, `netdb.h`,
+`sys/uio.h`, `sys/un.h`, `sys/utsname.h`, `sys/ioctl.h`, `net/if.h`, `ifaddrs.h`, `sys/random.h`,
+`sys/statvfs.h`, `sys/resource.h`, `sys/dirent.h`, `sys/termios.h`, `endian.h`, `byteswap.h`,
+`sys/sysmacros.h`, `dlfcn.h`, `execinfo.h`, `syslog.h`, `err.h`; and small overlays of newlib's
+(`#include_next`): `sys/features.h` (the `_POSIX_*` options newlib leaves off for this target:
+without them `<time.h>` hides `clock_gettime`), `time.h` (`timegm`), `unistd.h` (`pipe2`,
+`dup3`), `sys/stat.h` (`lstat`, `UTIME_NOW`), `signal.h` (`SA_RESTART`…), `sys/file.h` (`flock`).
+
+**Paths.** Onyx paths as everywhere (`SD:/x`, `RAM:/y`; relative and `/x` against the working
+directory, as the kernel resolves them). Two names are mapped: **`/tmp` → `RAM:/tmp`** (made at
+the first use) and **`/dev/null|zero|urandom|random|stdin|stdout|stderr|tty`**. A volume met as a
+later component restarts the path there (`SD:/x/RAM:/t.db` is `RAM:/t.db`): Unix code that takes
+`RAM:/t.db` for a relative name and puts the working directory before it (SQLite does) still
+reaches the file — `:` is not allowed in a FAT name, so no real name is mistaken for a volume.
+
+**Threads and TLS, how.** `TPIDR_EL0` points at a 16-byte TCB with the thread's static TLS block
+after it (AArch64 "variant 1"); libonyxposix's `struct __onyx_thread` sits just below, so
+`pthread_self` costs no system call. `crt0posix` sets the main thread's before any other code; a
+new thread gets it from `thread_create_ex` (and sets it itself under v67). The kernel saves
+`TPIDR_EL0` per task. Under the **interim toolchain** (`aarch64-none-elf`, `--disable-tls`,
+docs/POSIX-PLAN.md §2) `__thread` compiles to *emutls* calls: libonyxposix overrides
+`__emutls_get_address` with a per-thread vector, and `__cxa_guard_*` (C++ function-local statics,
+thread-safe), both pulled in by `onyx.specs` before libgcc / libsupc++. **errno**: the main thread
+keeps newlib's (`_impure_ptr->_errno`), the others have their own — except what newlib sets
+through its reentrancy structure directly (`strtol`'s `ERANGE`, the maths functions), which a
+worker thread does not see (fully per-thread errno needs WP-TC's newlib, `_REENT_THREAD_LOCAL`).
+**Code on an app core** (`kapi_core_run`) shares the main thread's TLS and errno, and its locks
+spin instead of sleeping (no kapi call there); stdio and files from there go through the RPC of
+§5.1 (`onyx_rpc_enable`).
+
+**Limits to know.**
+- C++ `std::thread` / `std::mutex` / `condition_variable` need the threaded libstdc++ of WP-TC
+  (`aarch64-onyx-elf`); under the interim toolchain C code is the target (the SuperTuxKart port's
+  gthreads shim is separate: `user/stk`).
+- newlib's `struct stat` has a 16-bit `st_ino` / `st_dev`: `st_ino` is the kernel's 64-bit id
+  folded to 16 bits.
+- No asynchronous signals, no `fork`, no shared memory between processes (`MAP_SHARED` of a file
+  for writing: `ENOTSUP`), no `PROT_EXEC`.
+- `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/tls/README.md).
+
+**Testing it: `/bin/posixtest [group…] [dir]`** ([`user/bin/posixtest.c`](../user/bin/posixtest.c);
+groups `mem thread file io time proc net misc cxx`): one line per check, `PASS`, `FAIL (what was
+seen)` or `SKIP (kernel ENOSYS)` for a check that needs a v75 piece the kernel does not have yet
+— it first prints which pieces it found —, then a summary; the exit code is the number of
+failures. The `file` group runs in `RAM:/posixtest` and `/tmp/posixtest` (give a directory to run
+it elsewhere, `posixtest file SD:/tmp`); `net` needs the Wi-Fi up; `cxx` waits for WP-TC.
+The group `loop` (not in the default run) does TCP / UDP over `127.0.0.1`.
+
+**Testing it on the PC: the posixsim bench** ([`tools/tests/posixsim/`](../tools/tests/posixsim/)).
+`sh tools/tests/posixsim/run.sh [group…]` builds libonyxposix with `-DONYX_POSIXSIM` (the counter
+`cntvct` instead of `cntpct`, which Linux traps at EL0) and runs `posixtest` under
+`qemu-aarch64-static` against `fakekapi.c`: a kapi table built from raw Linux system calls (the
+volumes are directories of `$POSIXSIM_ROOT`, default `/tmp/posixsim`; threads are `clone`s; the
+v75 handles, `spawn_ex`, sockets and `poll` are emulated). `POSIXSIM_LEVEL=74` answers `ENOSYS` to
+every v75 call, to test libonyxposix's fallbacks on today's kernel; `POSIXSIM_NONET=0` lets the
+`net` group out. `sh tools/tests/posixsim/ports.sh` relinks the smoke ports (§5.5) for the bench
+and runs them on real jobs (a SQLite database on `RAM:` and `SD:`, xmllint, curl over HTTP and
+HTTPS from a local Python server). The bench checks the library's logic, not the kernel's: the Pi
+run stays the reference.
+
+### 5.5. Building a third-party library for Onyx (the sysroot, the CMake toolchain file)
+
+The **sysroot** is libonyxposix installed with what ports add to it: `out/sysroot/` by default
+(git-ignored), `include/`, `lib/` (`libonyxposix.a`, `crt0posix.o`, `onyx-posix.ld`,
+`onyx.specs`, the ports' `.a`), `lib/pkgconfig/`.
+
+```sh
+make -C user/libc/posix install                     # SYSROOT=<dir> for another place
+```
+
+**CMake** — [`tools/onyx-toolchain.cmake`](../tools/onyx-toolchain.cmake) (+
+`tools/cmake/Platform/Onyx.cmake`: `CMAKE_SYSTEM_NAME Onyx`, `UNIX`, `ONYX`, static only):
+
+```sh
+cmake -S <src> -B <build> -G Ninja -DCMAKE_TOOLCHAIN_FILE=<onyx>/tools/onyx-toolchain.cmake \
+      -DBUILD_SHARED_LIBS=OFF [-DONYX_SYSROOT=<dir>]
+cmake --build <build> && cmake --install <build>    # installs into the sysroot
+```
+
+It sets the compilers (`ONYX_TOOLCHAIN_PREFIX`, default `aarch64-none-elf-`; WP-TC:
+`aarch64-onyx-elf-`), the flags (`-mcpu=cortex-a72`, sections, `-isystem <sysroot>/include`,
+`-DFD_SETSIZE=1024`; the link: `-specs=<sysroot>/lib/onyx.specs`), libraries / headers /
+packages searched in the sysroot only, programs on the host, `pkg-config` on the sysroot's `.pc`
+files, the install prefix = the sysroot. Executables link (configure checks that link work) but
+cannot run on the build machine: a `try_run` question is answered with a cache variable.
+Do not let CMake also see `CFLAGS` / `LDFLAGS` from the environment (the specs given twice fail):
+`tools/ports/common.sh`'s `onyx_cmake` runs it under `env -u CFLAGS -u LDFLAGS`. `CMAKE_SYSROOT`
+is deliberately not set: the interim toolchain keeps newlib in its own tree.
+
+**Autotools / plain Makefiles** — [`tools/onyx-env.sh`](../tools/onyx-env.sh) exports `CC`,
+`CXX`, `AR`, `RANLIB`, `CFLAGS`, `LDFLAGS`, `PKG_CONFIG_LIBDIR`, `ONYX_HOST`:
+
+```sh
+. tools/onyx-env.sh
+./configure --host=$ONYX_HOST --prefix=$ONYX_SYSROOT --disable-shared --enable-static
+```
+
+**The ports** (`tools/ports/<name>/build.sh`, sources vendored and trimmed in `third_party/`
+with a `README.onyx`; `sh tools/ports/build-all.sh`, or `make -C user/bin ports`, which also
+copies the tools to `user/bin/*.elf` — opt-in, a few minutes; `PORTS=1` adds it to `all`):
+
+| Port | Source | Licence | Built as | Tool |
+|---|---|---|---|---|
+| SQLite 3.50.4 | the amalgamation | public domain | `libsqlite3.a` (threadsafe, no mmap I/O, no extensions, FTS5, JSON, R-tree) | `sqlite3` (the shell) |
+| mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` (the newlib apps' copy) | Apache-2.0 | `libmbed{tls,x509,crypto}.a`, a configuration of its own out of tree (files, time, entropy from `getrandom`), for curl | — |
+| libxml2 2.13.8 | trimmed release | MIT | `libxml2.a` (threads, zlib; no iconv / HTTP / modules) | `xmllint` |
+| curl 8.16.0 | trimmed release | curl (MIT-like) | `libcurl.a` (mbedTLS, HTTP/2 with nghttp2, zlib, brotli, the threaded resolver; no IPv6) | `curl` (CA bundle `SD:/res/ca-bundle`) |
+
+A new port: a `build.sh` sourcing `tools/ports/common.sh` (it installs the sysroot first;
+`onyx_install_deps` puts the in-tree zlib, nghttp2 and brotli in it; `onyx_cmake` calls CMake
+with the toolchain file; `onyx_tool_done` copies a tool to `out/ports/bin` and runs
+`tools/el0scan.sh` on it). Licences: docs/LICENSING.md — ask before a library that would force
+its licence on the app.
 
 ## 6. Writing a graphical application
 
@@ -2099,6 +2264,11 @@ int main (void)
 
 The existing tools to study: `ls`, `cat`, `grep`, `wc`, `echo`, `page`, `rm`, `mkdir`,
 `touch`, `cp`, `mv`, `ps`, `kill`, `run`, `keyb` (in `user/bin/`).
+
+A tool written as **portable POSIX C** (`main (argc, argv)`, `open`/`read`, `pthread_create`,
+sockets, `poll`) is built on libonyxposix instead (§5.4): add it to `POSIX_PROGS` in
+[`user/bin/Makefile`](../user/bin/Makefile) (`posixtest` is the example). The ports' tools
+(`sqlite3`, `xmllint`, `curl`) come from `make -C user/bin ports` (§5.5).
 
 ### `memset` / `memcpy` in freestanding apps
 

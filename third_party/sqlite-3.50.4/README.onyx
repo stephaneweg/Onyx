@@ -1,0 +1,17 @@
+SQLite 3.50.4 -- the SQL database engine, a smoke port of Onyx's POSIX layer
+===========================================================================
+
+Source: https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip
+(sha256 1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032), public domain
+(https://www.sqlite.org/copyright.html: "SQLite is in the Public Domain").
+
+Kept: the amalgamation as released -- sqlite3.c, sqlite3.h, sqlite3ext.h and shell.c (the sqlite3
+command-line shell). No change.
+
+Built by tools/ports/sqlite/build.sh against the POSIX sysroot (libonyxposix, user/libc/posix;
+docs/03, "Building a third-party library for Onyx"): libsqlite3.a and sqlite3.h into the sysroot,
+the shell into out/ports/bin/sqlite3.elf (`make -C user/bin ports` copies it to user/bin). Options:
+SQLITE_THREADSAFE=1, SQLITE_OMIT_LOAD_EXTENSION, SQLITE_MAX_MMAP_SIZE=0 (no memory-mapped I/O),
+HAVE_USLEEP, FTS5, JSON1, RTREE, temporary tables in memory. The unix VFS runs on the kernel's v75
+open files (pread / pwrite / fsync / ftruncate, unlink of an open file); its POSIX advisory locks
+always succeed (one process per database). WAL needs PRAGMA locking_mode=EXCLUSIVE.

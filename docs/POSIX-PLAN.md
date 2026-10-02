@@ -967,6 +967,53 @@ Can start at once:
 - the link order of the emutls and guard overrides;
 - the libstdc++ hacks under (a), hence WP-TC.
 
+#### WP-LIBC resolutions (what parts 1 and 2 landed; docs/03 §5.4, §5.5)
+
+1. **Every v75 call has a fallback** when the kernel answers `ENOSYS`, so a libonyxposix program
+   runs on a v74 kernel too: files → the old calls (read-only through `kapi_open`/`kapi_seek`, a
+   writable file held whole and written back at `fsync`/`close`); dirs → `kapi_readdir`; threads →
+   v67 `thread_create` (eager stacks: 1 MB default) with the trampoline setting `TPIDR_EL0`; clock →
+   `get_datetime` once; sleeps → `msleep`; argv/env → `get_args` and fixed defaults; spawn →
+   `kapi_spawn` + `kapi_wait`; TCP → the `tcp_*` calls (blocking connect / accept, a carry buffer);
+   `poll` → a user-space loop (non-blocking reads into the carry); `mmap` → 64 KB-aligned heap blocks.
+   `posixtest` reports each check that needs the real piece as `SKIP (kernel ENOSYS)`.
+2. **Sources** sit in `user/libc/posix/` itself (`start.c` is crt0's C half, `libgen.c` the POSIX
+   `basename`/`dirname`); the build tree is `user/libc/posix/build/`.
+3. **Specs:** `*startfile` = `crt0posix.o` **and `libonyxposix.a`**, `*link` adds
+   `-u __emutls_get_address -u __cxa_guard_acquire -u __onyx_pthread_anchor`: the archive is
+   searched before the program's objects and before g++'s `-lstdc++`, so the emutls / guard
+   overrides always win, and the whole pthread layer is in every program (libstdc++'s weak
+   gthr-posix references under WP-TC must find it). `*lib` = `--start-group libonyxposix.a -lc -lm
+   --end-group` + the original libs.
+4. **`CMAKE_SYSROOT` is not set** by `tools/onyx-toolchain.cmake` (a `--sysroot` would hide the
+   interim toolchain's newlib): the sysroot is an overlay (`-isystem`, `-L`, the specs,
+   `CMAKE_FIND_ROOT_PATH`). CMake must not also get `CFLAGS`/`LDFLAGS` from the environment (the
+   specs twice fail: `%rename`).
+5. **Header overlays** (`#include_next`): `sys/features.h` defines the `_POSIX_*` options (and
+   `__onyx__`), plus small ones for `time.h` (`timegm`), `unistd.h` (`pipe2`, `dup3`),
+   `sys/stat.h` (`lstat`, `mknod`, `UTIME_*`), `signal.h` (`SA_*`), `sys/file.h` (`flock`); new
+   `sys/termios.h` (newlib's `termios.h` includes it and it is missing) and `sys/resource.h`
+   (rlimits, a full `rusage`).
+6. **errno:** `__errno ()` overridden; the main thread keeps `_impure_ptr->_errno` (single-threaded
+   programs behave as before), the other threads have their own; newlib's direct `ptr->_errno`
+   writes (`strtol`, libm) still land in the shared one. Full per-thread errno: WP-TC's newlib.
+7. **ABI notes for the frozen types:** `pthread_t` = the control block's address
+   (`unsigned long`); `pthread_mutex_t` 16 B {lock, type, owner (tid / −core), count},
+   `pthread_cond_t` 16 B {seq, clock, waiters, pad}, `pthread_rwlock_t` 16 B {state, seq, waiters,
+   writers waiting}, `pthread_once_t` {state}, `pthread_barrier_t` 16 B {seq, in, count, pad},
+   `pthread_attr_t` 48 B, `pthread_key_t` unsigned, `pthread_spinlock_t` int, `sem_t` 8 B {value,
+   waiters}; the constants as glibc (`PTHREAD_CREATE_JOINABLE` 0, `PTHREAD_MUTEX_RECURSIVE` 1,
+   `PTHREAD_MUTEX_DEFAULT` = NORMAL 0): every zero-filled object is a valid default one.
+8. **Not done / stubs:** `socketpair` → `EOPNOTSUPP` (curl built with its wake-up on a pipe);
+   `pthread_cancel` → `ENOSYS`; `pthread_kill` of another thread → `ENOTSUP`; `sigsuspend`,
+   timers, `alarm` stubs; `getifaddrs` `ENOSYS`; `dlopen` fails; `posix_spawn` returns the child's
+   pid when `proc_wait (NOHANG | KEEP)` reports it, else the process handle's value (waitpid
+   knows both); newlib's `struct stat` keeps its 16-bit `st_ino` (the 64-bit id folded).
+9. **mbedTLS for curl** is built out of tree with a configuration of its own
+   (`tools/ports/mbedtls`: `FS_IO`, `HAVE_TIME(_DATE)`, `NO_PLATFORM_ENTROPY` +
+   `ENTROPY_HARDWARE_ALT` over `getrandom`, PSA's RNG from the entropy module); the vendored tree
+   and its prebuilt `.a` (the newlib apps') are untouched.
+
 ---
 
 ## 4. Sequencing and effort

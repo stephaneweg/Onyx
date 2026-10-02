@@ -89,6 +89,16 @@ LIBC_PROGS = libctest.elf rdpd.elf
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
 
+# Console tools on libonyxposix, the POSIX layer (../libc/posix, docs/03 §5.4): newlib + pthreads,
+# BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and
+# library come from ../libc/posix/build/onyx.specs (made first: the posixlib target).
+POSIX_DIR    = ../libc/posix
+CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
+	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
+	       -I.. -I../../kernel/include
+LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
+POSIX_PROGS  = posixtest.elf
+
 # C++ console tools on the V3D QPU builder (../v3d/libv3d.a: shaders generated at run time),
 # with FP on.
 V3D_PROGS = v3dprog.elf
@@ -96,7 +106,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(PORT_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -108,6 +118,27 @@ fptest.elf: CFLAGS := $(CFLAGS_FP)
 # pulled automatically since this is not -nostdlib).
 $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
 	$(CC) $(CFLAGS_LIBC) $(LDFLAGS) $(LIBC_SRC) $< -lm -o $@
+
+# libonyxposix programs: the library is built (or brought up to date) first.
+.PHONY: posixlib
+posixlib:
+	@$(MAKE) --no-print-directory -C $(POSIX_DIR)
+$(POSIX_PROGS): %.elf: %.c posixlib ../kapi.h
+	$(CC) $(CFLAGS_POSIX) $(LDFLAGS_POSIX) $< -o $@
+
+# The C smoke ports of the POSIX layer (SQLite, libxml2, curl + mbedTLS: third_party, built with
+# CMake / the Onyx toolchain file into out/sysroot and out/ports, tools/ports/build-all.sh). OPT-IN
+# (a few minutes): `make ports`, or PORTS=1 with `all`. The tools: sqlite3, xmllint, curl.
+PORTS ?=
+PORT_TOOLS = sqlite3 xmllint curl
+PORT_OUT = ../../out/ports/bin
+.PHONY: ports
+ports:
+	sh ../../tools/ports/build-all.sh
+	@for t in $(PORT_TOOLS); do cp $(PORT_OUT)/$$t.elf $$t.elf; done
+ifneq ($(strip $(PORTS)),)
+PORT_PROGS = ports
+endif
 
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
 $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
