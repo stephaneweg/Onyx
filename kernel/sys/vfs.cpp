@@ -10,6 +10,7 @@
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>		// ExecPath (auto-start a provider)
 #include <kern/ipc.h>			// IpcPidAlive
+#include <kern/uaccess.h>		// the provider's pointers (the kapis)
 #include <circle/sched/scheduler.h>
 #include <circle/sched/synchronizationevent.h>
 #include <circle/timer.h>
@@ -184,9 +185,11 @@ static unsigned MyPid (void)
 	return pAS != 0 ? pAS->GetPid () : 0;
 }
 
-extern "C" int kapi_vfs_register (const char *pPrefix)
+extern "C" int kapi_vfs_register (const char *pUserPrefix)
 {
 	unsigned nPid = MyPid ();
+	CUserStr Prefix (pUserPrefix);			// (kern/uaccess.h: the kernel's copy)
+	const char *pPrefix = Prefix.Get ();
 	if (nPid == 0 || pPrefix == 0 || pPrefix[0] == '\0') return 0;
 	TProvider *pFree = 0;
 	for (unsigned i = 0; i < MAX_PROVIDERS; i++)
@@ -215,7 +218,8 @@ extern "C" int kapi_vfs_next (struct kapi_vfs_req *pReq, int bBlocking)
 	unsigned nPid = MyPid ();
 	CSynchronizationEvent *pEv = 0;
 	for (unsigned i = 0; i < MAX_PROVIDERS; i++) if (s_Prov[i].nPid == nPid) { pEv = s_Prov[i].pEvent; break; }
-	if (pEv == 0 || pReq == 0) return 0;
+	// (the provider's buffer checked before a request is taken)
+	if (pEv == 0 || pReq == 0 || !UserRange (pReq, sizeof *pReq)) return 0;
 	for (int nTry = 0; ; nTry++)
 	{
 		pEv->Clear ();
@@ -223,12 +227,15 @@ extern "C" int kapi_vfs_next (struct kapi_vfs_req *pReq, int bBlocking)
 		{
 			TReq *r = &s_Req[i];
 			if (r->nState != REQ_PENDING || r->nProvider != nPid) continue;
+			struct kapi_vfs_req Req;		// (made here, copied out whole)
+			memset (&Req, 0, sizeof Req);
+			Req.id = r->nId; Req.op = r->nOp;
+			memcpy (Req.path, r->Path, sizeof Req.path);
+			memcpy (Req.path2, r->Path2, sizeof Req.path2);
+			Req.a0 = r->a0; Req.a1 = r->a1; Req.a2 = r->a2;
+			Req.in_len = r->nInLen;
+			if (!UserPut (pReq, Req)) return 0;	// (a fault: the request stays pending)
 			r->nState = REQ_TAKEN;
-			pReq->id = r->nId; pReq->op = r->nOp;
-			memcpy (pReq->path, r->Path, sizeof pReq->path);
-			memcpy (pReq->path2, r->Path2, sizeof pReq->path2);
-			pReq->a0 = r->a0; pReq->a1 = r->a1; pReq->a2 = r->a2;
-			pReq->in_len = r->nInLen;
 			return 1;
 		}
 		if (!bBlocking || nTry > 0) return 0;
@@ -251,7 +258,7 @@ extern "C" int kapi_vfs_req_data (unsigned nId, void *pBuf, unsigned nCap, unsig
 	TReq *r = ReqById (nId);
 	if (r == 0 || pBuf == 0 || nOffset >= r->nInLen) return 0;
 	unsigned n = r->nInLen - nOffset; if (n > nCap) n = nCap;
-	memcpy (pBuf, r->pIn + nOffset, n);
+	if (!UserCopyOut (pBuf, r->pIn + nOffset, n)) return 0;
 	return (int) n;
 }
 
@@ -260,15 +267,22 @@ extern "C" int kapi_vfs_reply (unsigned nId, int nStatus, const void *pData, uns
 {
 	TReq *r = ReqById (nId);
 	if (r == 0) return 0;
+	boolean bOK = TRUE;
 	if (pData != 0 && nLen > 0)
 	{
-		r->pOut = new u8[nLen];
-		if (r->pOut != 0) { memcpy (r->pOut, pData, nLen); r->nOutLen = nLen; }
+		bOK = UserRange (pData, nLen);			// (kern/uaccess.h)
+		r->pOut = bOK ? new u8[nLen] : 0;
+		if (r->pOut != 0)
+		{
+			bOK = UserCopyIn (r->pOut, pData, nLen);
+			if (bOK) r->nOutLen = nLen;
+			else { delete [] r->pOut; r->pOut = 0; }
+		}
 	}
-	r->nStatus = nStatus;
+	r->nStatus = bOK ? nStatus : -1;			// (a bad pointer: the request fails)
 	r->nState = REQ_DONE;
 	if (r->pDone) r->pDone->Set ();
-	return 1;
+	return bOK ? 1 : 0;
 }
 
 // ---- file / dir handles --------------------------------------------------------------

@@ -35,10 +35,9 @@
 extern "C" {
 #endif
 
-// User-memory access. Use unprivileged loads/stores (LDTR/STTR) so accesses honor
-// EL0 permissions while running in EL1. Return 0 on success, SYS_EFAULT on a bad
-// user pointer. (Fault-trapping for bad pointers is wired with the process model
-// in #6; for now these assume a valid mapped user range.)
+// User-memory access: the range checked and the copy fault-safe (kern/uaccess.h: the
+// caller's range, the exception fixup table). Return 0 on success, SYS_EFAULT on a bad
+// user pointer.
 int copy_from_user (void *pDst, const void *pUserSrc, size_t nLen);
 int copy_to_user (void *pUserDst, const void *pSrc, size_t nLen);
 

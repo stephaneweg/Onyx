@@ -777,7 +777,9 @@ struct TKApiTable
 	int  (*mailbox_recv) (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
 	// --- v36 additions (memory primitives) ---
-	// Circle's memset/memcpy/memmove (general registers only -> safe from any app).
+	// The kernel's memset/memcpy/memmove (general registers only -> safe from any app;
+	// since step 2 of protected mode its own copies, arch/aarch64/uaccess.S: a bad pointer
+	// kills the app, not the machine).
 	// GCC may emit calls to these even in -ffreestanding code; user/kapi.h defines
 	// weak memset/memcpy/memmove symbols that forward here.
 	void *(*memset) (void *dst, int c, unsigned long n);

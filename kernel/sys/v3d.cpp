@@ -24,6 +24,7 @@
 #include <kern/v3d.h>
 #include <kern/v3d_clip.h>
 #include <kern/addrspace.h>
+#include <kern/uaccess.h>		// the app's pointers (the kapis)
 #include <circle/memio.h>
 #include <circle/bcm2835.h>
 #include <circle/string.h>
@@ -932,13 +933,34 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 }
 
 // ---- kapi ------------------------------------------------------------------------------------------------------
+//
+// The app's pointers (kern/uaccess.h): the frame and program structures copied into the kernel
+// first (their inner pointers -- pixels, the shaders -- then checked on the copy, which is what the
+// call uses), the arrays the kernel reads in place (vertices, batches, uniforms, texels) and the
+// pixels it writes probed (UserReadable / UserWritable) -> -2 (bad arguments). (The batches are
+// still read twice -- checked, then used --: a thread changing them meanwhile makes a wrong frame;
+// the GPU itself is not confined anyway: docs/EL0-PROTECTED-MODE.md §5.)
+
+// The bytes of a w x h picture with stride pixels a row (w, h > 0, stride >= w).
+static u64 PixelSpan (int w, int h, int nStride)
+{
+	return ((u64) (h - 1) * (u64) nStride + (u64) w) * 4;
+}
+
+// An app's pixels the kernel will read: FALSE if they are given, well-formed and not readable
+// (the calls reject the ill-formed ones themselves).
+static boolean PixelsReadable (const unsigned *pPx, int w, int h, int nStride)
+{
+	if (pPx == 0 || w <= 0 || h <= 0 || nStride < w) return TRUE;
+	return UserReadable (pPx, PixelSpan (w, h, nStride));
+}
+
 extern "C" int kapi_gpu_info (char *pBuf, unsigned nCap)
 {
 	boolean bUp = Up ();
 	if (pBuf != 0 && nCap > 0)
 	{
-		unsigned i = 0; for (; s_Info[i] && i + 1 < nCap; i++) pBuf[i] = s_Info[i];
-		pBuf[i] = 0;
+		UserStrOut (pBuf, nCap, s_Info);
 	}
 	return bUp ? 1 : 0;
 }
@@ -947,7 +969,8 @@ extern "C" int kapi_gpu_draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nC
 {
 	if (!Up ()) return -1;
 	if (pDst == 0 || w <= 0 || h <= 0 || w > MAX_W || h > MAX_H || nStride < w
-	    || n % 3 != 0 || n > KAPI_GPU_MAX_VERTS || (n && pV == 0))
+	    || n % 3 != 0 || n > KAPI_GPU_MAX_VERTS || (n && pV == 0)
+	    || !UserReadable (pV, (u64) n * sizeof *pV) || !UserWritable (pDst, PixelSpan (w, h, nStride)))
 		return -2;
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// one frame at a time
 	s_bBusy = TRUE;
@@ -961,6 +984,7 @@ extern "C" int kapi_gpu_draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nC
 extern "C" int kapi_gpu_texture (int nHandle, const unsigned *pPixels, int w, int h, int nStride)
 {
 	if (!Up ()) return -1;
+	if (!PixelsReadable (pPixels, w, h, nStride)) return -2;
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame reads them)
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
@@ -975,6 +999,7 @@ extern "C" int kapi_gpu_texture (int nHandle, const unsigned *pPixels, int w, in
 extern "C" int kapi_gpu_texture_rect (int nHandle, int x, int y, int w, int h, const unsigned *pPixels, int nStride)
 {
 	if (!Up ()) return -1;
+	if (!PixelsReadable (pPixels, w, h, nStride)) return -2;
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame reads it)
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
@@ -1036,12 +1061,17 @@ static boolean ClipFrame (const kapi_gpu_vertex3 *pV, unsigned nV, const kapi_gp
 	return TRUE;
 }
 
-extern "C" int kapi_gpu_render (const kapi_gpu_frame *pF, const kapi_gpu_vertex3 *pV, unsigned nV,
+extern "C" int kapi_gpu_render (const kapi_gpu_frame *pUserF, const kapi_gpu_vertex3 *pV, unsigned nV,
 				const kapi_gpu_batch *pB, unsigned nB)
 {
 	if (!Up ()) return -1;
-	if (pF == 0 || pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
-	    || pF->stride < pF->w || nV > KAPI_GPU_MAX_VERTS || (nV && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0))
+	kapi_gpu_frame Frame;					// (the kernel's copy, used from here)
+	if (pUserF == 0 || !UserGet (&Frame, pUserF)) return -2;
+	const kapi_gpu_frame *pF = &Frame;
+	if (pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
+	    || pF->stride < pF->w || nV > KAPI_GPU_MAX_VERTS || (nV && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0)
+	    || !UserWritable (pF->pixels, PixelSpan (pF->w, pF->h, pF->stride))
+	    || !UserReadable (pV, (u64) nV * sizeof *pV) || !UserReadable (pB, (u64) nB * sizeof *pB))
 		return -2;
 	CAddressSpace *pAS = CurrentAS ();
 	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, its texture
@@ -1563,9 +1593,21 @@ static void R2Log (void)
 	s_nR2Frames = 0; s_nR2Clip = s_nR2Lists = s_nR2Gpu = s_nR2After = s_nR2Verts = 0;
 }
 
-extern "C" int kapi_gpu_program (int nHandle, const kapi_gpu_program *pP)
+extern "C" int kapi_gpu_program (int nHandle, const kapi_gpu_program *pUserP)
 {
 	if (!Up ()) return -1;
+	struct kapi_gpu_program Prog;				// (the kernel's copy, used from here)
+	const struct kapi_gpu_program *pP = 0;
+	if (pUserP != 0)
+	{
+		if (!UserGet (&Prog, pUserP)) return -2;
+		// the shaders read (Program rejects the counts out of range itself)
+		if (   (Prog.nvs <= 4096 && !UserReadable (Prog.vs, (u64) Prog.nvs * 8))
+		    || (Prog.ncs <= 4096 && !UserReadable (Prog.cs, (u64) Prog.ncs * 8))
+		    || (Prog.nfs <= 4096 && !UserReadable (Prog.fs, (u64) Prog.nfs * 8)))
+			return -2;
+		pP = &Prog;
+	}
 	while (s_bBusy) CScheduler::Get ()->Yield ();		// (not while a frame runs them)
 	s_bBusy = TRUE;
 	CScheduler::Get ()->EnterNoKill ();
@@ -1575,13 +1617,19 @@ extern "C" int kapi_gpu_program (int nHandle, const kapi_gpu_program *pP)
 	return r;
 }
 
-extern "C" int kapi_gpu_render2 (const kapi_gpu_frame *pF, const float *pV, unsigned nV, unsigned nStride,
+extern "C" int kapi_gpu_render2 (const kapi_gpu_frame *pUserF, const float *pV, unsigned nV, unsigned nStride,
 				 const kapi_gpu_batch2 *pB, unsigned nB, const unsigned *pUni, unsigned nUni)
 {
 	if (!Up ()) return -1;
-	if (pF == 0 || pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
+	kapi_gpu_frame Frame;					// (the kernel's copy, used from here)
+	if (pUserF == 0 || !UserGet (&Frame, pUserF)) return -2;
+	const kapi_gpu_frame *pF = &Frame;
+	if (pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
 	    || pF->stride < pF->w || nV > KAPI_GPU_MAX_VERTS || (nV && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0)
-	    || nStride < 4 || nStride > CLIP_MAX_FLOATS || nUni > KAPI_GPU_MAX_UNIFORMS || (nUni && pUni == 0))
+	    || nStride < 4 || nStride > CLIP_MAX_FLOATS || nUni > KAPI_GPU_MAX_UNIFORMS || (nUni && pUni == 0)
+	    || !UserWritable (pF->pixels, PixelSpan (pF->w, pF->h, pF->stride))
+	    || !UserReadable (pV, (u64) nV * nStride * sizeof *pV) || !UserReadable (pB, (u64) nB * sizeof *pB)
+	    || !UserReadable (pUni, (u64) nUni * sizeof *pUni))
 		return -2;
 	CAddressSpace *pAS = CurrentAS ();
 	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, program, uniforms, textures
@@ -1621,13 +1669,23 @@ extern "C" int kapi_gpu_render2 (const kapi_gpu_frame *pF, const float *pV, unsi
 	return r;
 }
 
-extern "C" int kapi_gpu_render3 (const kapi_gpu_frame *pF, const float *pV, unsigned nFloats,
-				 const kapi_gpu_batch3 *pB, unsigned nB, const unsigned *pUni, unsigned nUni, const float *pView)
+extern "C" int kapi_gpu_render3 (const kapi_gpu_frame *pUserF, const float *pV, unsigned nFloats,
+				 const kapi_gpu_batch3 *pB, unsigned nB, const unsigned *pUni, unsigned nUni,
+				 const float *pUserView)
 {
 	if (!Up ()) return -1;
-	if (pF == 0 || pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
+	kapi_gpu_frame Frame;					// (the kernel's copies, used from here)
+	if (pUserF == 0 || !UserGet (&Frame, pUserF)) return -2;
+	const kapi_gpu_frame *pF = &Frame;
+	float View[4];
+	if (pUserView != 0 && !UserCopyIn (View, pUserView, sizeof View)) return -2;
+	const float *pView = pUserView != 0 ? View : 0;
+	if (pF->pixels == 0 || pF->w <= 0 || pF->h <= 0 || pF->w > MAX_W || pF->h > MAX_H
 	    || pF->stride < pF->w || (nFloats && pV == 0) || nB > KAPI_GPU_MAX_BATCHES || (nB && pB == 0)
-	    || nUni > KAPI_GPU_MAX_UNIFORMS || (nUni && pUni == 0))
+	    || nUni > KAPI_GPU_MAX_UNIFORMS || (nUni && pUni == 0)
+	    || !UserWritable (pF->pixels, PixelSpan (pF->w, pF->h, pF->stride))
+	    || !UserReadable (pV, (u64) nFloats * sizeof *pV) || !UserReadable (pB, (u64) nB * sizeof *pB)
+	    || !UserReadable (pUni, (u64) nUni * sizeof *pUni))
 		return -2;
 	CAddressSpace *pAS = CurrentAS ();
 	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, program, uniforms, textures

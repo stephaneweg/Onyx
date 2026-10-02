@@ -174,6 +174,8 @@ extern unsigned g_nUserPages;
 // Capture the kernel's TTBR0 base (call once, after the MMU is up) so kernel-only
 // tasks can be switched back to the kernel address space.
 void AddrSpaceInit (void);
+// cmdline.txt nullguard=1 (set before AddrSpaceInit): page 0 unmapped in the app spaces.
+extern boolean g_bNullGuard;
 void ActivateKernelAddressSpace (void);
 
 // Scheduler task-switch handler: activate the new task's address space, or the

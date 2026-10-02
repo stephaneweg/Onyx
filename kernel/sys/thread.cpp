@@ -8,6 +8,7 @@
 #include <kern/kapi_abi.h>		// KAPI_WAIT_FOREVER
 #include <kern/layout.h>		// KERNEL_IDENTITY_END
 #include <kern/el0.h>			// protected mode: a thread at EL0
+#include <kern/uaccess.h>		// the app's pointers (name, code, word, post)
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -244,7 +245,9 @@ int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, 
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CProcThreads *pT = ThreadsOf (pAS, TRUE);
-	if (pT == 0 || pFunc == 0) return -1;
+	CUserStr Given (pName, 32, TRUE);		// (its name: 31 characters kept)
+	if (pT == 0 || pFunc == 0 || (!Given.OK () && !Given.IsNull ())) return -1;
+	pName = Given.Get ();
 
 	unsigned nRunning = 0;
 	TThreadRec *pRec = 0, *pOldest = 0;
@@ -306,11 +309,7 @@ int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, 
 	App[n] = '\0';
 	if (pName != 0 && pName[0] != '\0')
 	{
-		char Given[32];
-		unsigned i = 0;
-		for (; pName[i] != '\0' && i < sizeof Given - 1; i++) Given[i] = pName[i];
-		Given[i] = '\0';
-		Name.Format ("%s:%s", App, Given);
+		Name.Format ("%s:%s", App, pName);		// (the kernel's copy)
 	}
 	else
 	{
@@ -362,6 +361,7 @@ int kapi_thread_join (int nTid, unsigned nTimeoutMs, int *pCode)
 {
 	CProcThreads *pT = MyThreads (FALSE);
 	if (pT == 0 || nTid < 2) return -2;
+	if (pCode != 0 && !UserRange (pCode, sizeof *pCode)) return -2;	// (before it is joined)
 	TThreadRec *r = 0;
 	for (unsigned i = 0; i < THREAD_RECS && r == 0; i++)
 		if (pT->Rec[i].nTid == (unsigned) nTid) r = &pT->Rec[i];
@@ -375,7 +375,7 @@ int kapi_thread_join (int nTid, unsigned nTimeoutMs, int *pCode)
 		if (r->nTid != (unsigned) nTid) return -2;	// joined by another thread meanwhile
 		if (r->bDone)
 		{
-			if (pCode != 0) *pCode = r->nCode;
+			if (pCode != 0) UserPut (pCode, r->nCode);
 			r->nTid = 0;				// (the record is free again)
 			return 0;
 		}
@@ -601,11 +601,14 @@ int kapi_pop_post (struct kapi_posted *pPost)
 {
 	CProcThreads *pT = MyThreads (FALSE);
 	if (pT == 0 || pPost == 0 || pT->nPostTail == pT->nPostHead) return 0;
+	struct kapi_posted Out;				// (made here, copied out whole: kern/uaccess.h)
+	memset (&Out, 0, sizeof Out);
 	TPost P = pT->Posts[pT->nPostTail];
+	Out.fn = P.ulFunc;
+	Out.ctx = P.ulCtx;
+	Out.value = P.lValue;
+	if (!UserPut (pPost, Out)) return 0;		// (a bad pointer: the post stays queued)
 	pT->nPostTail = (pT->nPostTail + 1) % POSTS_MAX;
-	pPost->fn = P.ulFunc;
-	pPost->ctx = P.ulCtx;
-	pPost->value = P.lValue;
 	return 1;
 }
 
@@ -664,6 +667,7 @@ int kapi_wait_word (volatile unsigned *pWord, unsigned nExpected, unsigned nTime
 	if (   pWord == 0
 	    || ((uintptr) pWord & 3) != 0
 	    || !CScheduler::IsActive ()
+	    || !UserRange ((const void *) pWord, sizeof *pWord)	// (the caller's: kern/uaccess.h)
 	    || !WordPhys (pWord, &ulPhys))
 	{
 		return -1;
@@ -745,7 +749,9 @@ static int WakeWords (u64 ulPhys)
 int kapi_wake_word (volatile unsigned *pWord)
 {
 	u64 ulPhys;
-	if (pWord == 0 || ((uintptr) pWord & 3) != 0 || !WordPhys (pWord, &ulPhys)) return -1;
+	if (   pWord == 0 || ((uintptr) pWord & 3) != 0
+	    || !UserRange ((const void *) pWord, sizeof *pWord)
+	    || !WordPhys (pWord, &ulPhys)) return -1;
 	return WakeWords (ulPhys);
 }
 

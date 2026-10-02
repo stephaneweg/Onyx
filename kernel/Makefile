@@ -40,8 +40,10 @@ OBJS = \
 	sys/crashlog.o \
 	sys/thread.o \
 	sys/handle.o \
+	sys/uaccess.o \
 	sys/el0.o \
 	arch/aarch64/vectors.o \
+	arch/aarch64/uaccess.o \
 	arch/aarch64/el0.o \
 	arch/aarch64/el0blob.o \
 	arch/aarch64/exception.o
