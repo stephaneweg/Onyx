@@ -5,7 +5,8 @@
 #                                 the in-tree programs: user/bin's posixtest and the ports' tools)
 #   make install SYSROOT=<dir>    the sysroot third-party code builds against (default
 #                                 ../../../out/sysroot, git-ignored): include/, lib/libonyxposix.a,
-#                                 lib/crt0posix.o, lib/onyx-posix.ld, lib/onyx.specs, lib/pkgconfig/
+#                                 lib/crt0posix.o, lib/onyx-posix.ld, lib/onyx.specs, lib/onyx-cc.specs,
+#                                 lib/pkgconfig/
 #   make PREFIX=aarch64-onyx-elf-  the same for WP-TC's toolchain: build-onyx/, out/sysroot-onyx
 #
 # A program links libonyxposix OR ../onyx_syscalls.c (the existing newlib apps), never both:
@@ -55,12 +56,12 @@ CFLAGS   = -mcpu=cortex-a72 -O2 -g0 -Wall -Wextra -Wno-unused-parameter -fno-sta
 CFLAGS_ABS = -mcmodel=large
 
 SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c ipc.c \
-       file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c newlib_syscalls.c
+       file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c uchar.c newlib_syscalls.c
 OBJ  = $(SRC:%.c=$(B)/%.o)
 HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../kapi.h \
        ../../../kernel/include/kern/kapi_abi.h
 
-all: $(B)/libonyxposix.a $(B)/crt0posix.o $(B)/onyx.specs $(B)/onyx-posix.ld
+all: $(B)/libonyxposix.a $(B)/crt0posix.o $(B)/onyx.specs $(B)/onyx-cc.specs $(B)/onyx-posix.ld
 
 $(B)/%.o: %.c $(HDRS) Makefile
 	@mkdir -p $(B)
@@ -99,13 +100,33 @@ $(1)/crt0posix.o $(1)/libonyxposix.a
 *lib:
 --start-group $(1)/libonyxposix.a -lc -lm --end-group %(onyx_orig_lib)
 
+*cpp:
++ -D__unix__=1 -D__unix=1 %{pthread:-D_REENTRANT}
+
 endef
+
+# The compile specs (onyx-cc.specs, with the flags of every compile: tools/onyx-toolchain.cmake,
+# tools/onyx-env.sh): what makes the toolchain a "Unix" one for portable code -- __unix__ / __unix
+# defined, and -pthread accepted (a no-op but _REENTRANT: the threads are always there). GCC's
+# driver takes an unknown option only when a -specs= file names it (a Driver option in a target
+# .opt would need a GCC rebuild): onyx.specs (the link) names it too. No %rename here, so it may
+# be given twice (CMake passes the compile flags to the link too).
+define CC_SPECS
+*cpp:
++ -D__unix__=1 -D__unix=1 %{pthread:-D_REENTRANT}
+
+endef
+export CC_SPECS
 export SPECS_BUILD = $(call SPECS,$(HERE)/$(B))
 export SPECS_SYSROOT = $(call SPECS,$(SYSROOT)/lib)
 
 $(B)/onyx.specs: Makefile
 	@mkdir -p $(B)
 	@printf '%s\n' "$$SPECS_BUILD" > $@
+
+$(B)/onyx-cc.specs: Makefile
+	@mkdir -p $(B)
+	@printf '%s\n' "$$CC_SPECS" > $@
 
 PC_LIBDIR = $(SYSROOT)/lib/pkgconfig
 
@@ -114,6 +135,7 @@ install: all
 	cp -r include/. $(SYSROOT)/include/
 	cp $(B)/libonyxposix.a $(B)/crt0posix.o onyx-posix.ld $(SYSROOT)/lib/
 	@printf '%s\n' "$$SPECS_SYSROOT" > $(SYSROOT)/lib/onyx.specs
+	cp $(B)/onyx-cc.specs $(SYSROOT)/lib/
 	@printf 'prefix=%s\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: onyxposix\nDescription: The POSIX layer of Onyx (threads, files, sockets, mmap) over newlib\nVersion: 76\nLibs: -L$${libdir} -lonyxposix\nCflags: -isystem $${includedir} -DFD_SETSIZE=1024\n' "$(SYSROOT)" > $(PC_LIBDIR)/onyxposix.pc
 	@echo "libonyxposix installed in $(SYSROOT)"
 
