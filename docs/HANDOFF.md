@@ -54,6 +54,29 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Every app at EL0, the legacy mode removed (2026-10-02, kapi v74; branch `ccr-182e4cf6-fxr778`, tried on the Pi: all tests pass)
+
+- **What**: apps, /bin tools, Koton plugins, Jet run at **EL0** and call the kernel by `svc` through the
+  same kapi table (per-process handles, every pointer checked, user-side `memcpy` and event pump); a
+  fault kills the app only; the EL1 "legacy" mode and its options are gone; ID register reads emulated;
+  `proc_stats` (v74) → `ps` SYSC/s, the Task Manager, `/bin/sysstat`; `tools/el0scan.sh` checks binaries.
+  The story and the design: `docs/EL0-PROTECTED-MODE.md` §7; the reference: docs/02 §5–§6.
+- **On the Pi (the user, 2026-10-02)**: every test of the plan passes (el0test, faulttest, threads,
+  app cores, emulators, Jet, media, office, network, BASIC, kills under load). **Not yet in `main`,
+  packages not published** (the branch was kept apart on purpose: merge it, then `publish.sh`).
+- **Open: the GameCube emulator is slower than before** (the user: "later"). Leads, to measure first
+  (`sysstat gcemu`, the GX/machine frame times): (1) the user-side `memcpy`/`memset` (el0blob.S) copy
+  < 16 bytes byte by byte and align the destination first -- slower than Circle's for many small
+  copies; a fast path for small Normal-memory copies (unaligned `ldr`/`str` when no Device memory is
+  involved -- only `fullscreen_direct` is Device) would restore it; (2) system calls from its main
+  thread per frame (the top slots in `sysstat`); (3) IRQs taken at EL0 on cores 2–3 now build a full
+  800-byte frame (the stop IPI only: should be rare); (4) `tlbi`/ASID on each `core_run`.
+- **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
+  first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
+  files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (TPIDR_EL0 saved per thread), mmap,
+  clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
+  (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
+
 ## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
 
 - **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
