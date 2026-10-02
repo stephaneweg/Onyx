@@ -13,6 +13,8 @@ The mock-ups (`python3 tools/screenshot/mockup_paint.py` → `mockups/paint-*.pn
 | `paint-select.png` | The Select menu (Rectangle, Free-form, Magic wand, Select All, Invert…) and a magic-wand selection with its marching ants; the wand's options (New / Add / Subtract, Tolerance, Contiguous, All layers). |
 | `paint-layers.png` | A layer's blend mode chosen: Normal, Multiply, Screen, Add, Subtract, Lighten, Mask, Cut out. The picture shows them at work: a warm tint (Multiply 60 %), the sun's glow (Add), the vignette (a white rounded shape as a Mask: the picture shows only inside it). |
 | `paint-text.png` | The Text tool: font, size, bold / italic / underline, alignment, smooth edges; the text in its box on the canvas, movable until it is put down. |
+| `paint-gradient-fill.png` | The paint bucket in **gradient** mode (the user's ask): the press picks the zone (its colour, the tolerance, contiguous), the line dragged gives the gradient's direction and length; its stops can be dragged on the line; Enter applies, Esc cancels. The gradients' list (presets and yours); the shapes: linear, bi-linear, radial, square, conical; repeat (none, sawtooth, triangular); reverse. |
+| `paint-gradient-editor.png` | The gradient editor, as GIMP's: stops (colour, opacity, position), midpoints, the presets; saved in GIMP's `.ggr` format (`SD:/apps/paint.app/gradients/`). The Gradient tool uses the same gradients over the selection or the whole layer. |
 | `paint-resize.png` | The Resize dialog redone; Tab / Shift+Tab go from one field to the next (fixed in wtk for every app). |
 
 ## The look
