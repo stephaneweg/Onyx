@@ -69,7 +69,7 @@ stage on the Pi and agrees, merge `webkit-port` into `main` (`git push origin HE
    ```sh
    sudo apt update
    sudo apt install -y build-essential git curl xz-utils bzip2 cmake ninja-build ccache \
-        python3 python3-pip perl ruby gperf bison flex texinfo pkg-config \
+        python3 python3-pip perl ruby gperf unifdef bison flex texinfo pkg-config \
         qemu-user-static unzip zip file
    ```
    (`ruby` runs WebKit's offlineasm; `gperf`, `perl`, `python3` its generators; `qemu-user-static`
