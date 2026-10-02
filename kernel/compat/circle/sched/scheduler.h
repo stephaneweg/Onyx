@@ -122,7 +122,7 @@ public:
 	void EnterNoKill (void);
 	void LeaveNoKill (void);
 	// The current task is in a no-kill section (it holds a kernel resource). Never while it
-	// runs an app's own code: the app-fault path (exception.cpp) checks that invariant.
+	// runs an app's own code (at EL0: a system call returns holding nothing).
 	boolean InNoKill (void) const	{ return m_pCurNode != 0 && m_pCurNode->nNoKill > 0; }
 
 	void RegisterTaskSwitchHandler (TSchedulerTaskHandler *pHandler);

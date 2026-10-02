@@ -4,16 +4,18 @@
  * Our EL1 exception vector table (KVectorTable) and entry/exit stubs. Installed
  * over Circle's VectorTable after CExceptionHandler runs (see install_vectors).
  *
- * Design (see ARCHITECTURE.md §6):
- *   - IRQ (from EL1h and EL0): save full trap frame on the CURRENT stack (which is
- *     the running thread's kernel stack), call Circle's InterruptHandler (GIC
- *     dispatch + EOI + the registered periodic tick handler), then KernelIRQExit
- *     (reschedules if the time slice expired -> preemption), then restore + eret.
- *   - Sync from EL1: SVC -> syscall (test path); a fault in an app's own code -> the
- *     app is killed (exception.cpp, AppFaultRedirect); any other -> kernel panic dump.
- *   - Sync from EL0: SVC -> syscall; abort -> page-fault handler.
+ * Design (docs/02 §6):
+ *   - From EL1 (the kernel: its tasks at EL1t, the exception paths at EL1h):
+ *     - IRQ: save the full trap frame on the CURRENT stack, call Circle's InterruptHandler
+ *       (GIC dispatch + EOI + the registered periodic tick handler), then KernelIRQExit (the
+ *       watchdog samples; never a task switch: the kernel is not preempted), restore + eret.
+ *     - Sync: a fault in a fault-safe copy of an app's memory recovers (kern/uaccess.h);
+ *       any other is a kernel bug -> the panic dump (exception.cpp).
+ *   - From EL0 (every app): arch/aarch64/el0.S -- the trap frame on the task's kernel stack;
+ *     a system call, an emulated ID register read or a fault that kills the app; an IRQ
+ *     that may preempt the app (sys/el0.cpp).
  *   - FIQ: branch to Circle's FIQStub (unchanged) so its FIQ path keeps working.
- *   - Everything else (EL1t, AArch32 lower EL, SError): bad-mode dump.
+ *   - Everything else (AArch32 lower EL, SError): bad-mode dump.
  *
  * The trap frame layout matches kern/trapframe.h (TTrapFrame).
  */
@@ -134,8 +136,9 @@
 	.globl	KVectorTable
 KVectorTable:
 	/* Current EL with SP0 (EL1t) -- Circle runs the main thread + all tasks HERE
-	   (they use SP_EL0), so normal IRQs/sync come through this group. Must use the
-	   real handlers, NOT BadMode. */
+	   (they use SP_EL0), and a system call runs here too (on the app task's kernel
+	   stack), so normal IRQs/sync come through this group. Must use the real
+	   handlers, NOT BadMode. */
 	VEC	SyncEL1Entry
 	VEC	IrqEntry
 	VEC	FIQStub
@@ -147,8 +150,8 @@ KVectorTable:
 	VEC	FIQStub			/* reuse Circle's FIQ path */
 	VEC	BadModeEntry		/* SError */
 
-	/* Lower EL using AArch64 (EL0) -- protected processes only (kern/el0.h): their own entry
-	   paths, on the task's kernel stack (arch/aarch64/el0.S). Never taken by legacy (EL1) apps. */
+	/* Lower EL using AArch64 (EL0) -- every app (kern/el0.h): its own entry paths, on the
+	   task's kernel stack (arch/aarch64/el0.S). */
 	VEC	El0SyncEntry
 	VEC	El0IrqEntry
 	VEC	FIQStub
@@ -161,7 +164,7 @@ KVectorTable:
 	VEC	BadModeEntry
 
 /*
- * IRQ (shared by EL1t/EL1h/EL0). We MUST enable FIQ during handling: Circle's
+ * IRQ from EL1 (EL1t/EL1h; EL0's is El0IrqEntry). We MUST enable FIQ during handling: Circle's
  * InterruptHandler (and registered IRQ handlers) call EnterCritical(IRQ_LEVEL),
  * which asserts FIQ is not masked (synchronize64.cpp:111). Circle's own IRQStub
  * does the same DAIFClr/DAIFSet around the handler. Re-mask FIQ before eret.
@@ -175,21 +178,15 @@ IrqEntry:
 	msr	DAIFSet, #1		/* disable FIQ again before returning */
 	RESTORE_TRAP_ERET
 
-/* Synchronous from EL1 (kernel): SVC test path or kernel panic. */
+/* Synchronous from EL1 (kernel): a fault-safe copy's recovery, or kernel panic. */
 SyncEL1Entry:
 	SAVE_TRAP
 	mov	x0, sp
 	bl	SyncHandlerEL1
 	RESTORE_TRAP_ERET
 
-/* Synchronous from EL0 (user): syscall or page fault. */
-SyncEL0Entry:
-	SAVE_TRAP
-	mov	x0, sp
-	bl	SyncHandlerEL0
-	RESTORE_TRAP_ERET
-
-/* Unexpected vector / SError / AArch32: dump and halt. */
+/* Unexpected vector / SError / AArch32: dump and halt. (An SError taken at EL0 comes here
+   too, on SP_EL1: SAVE_TRAP is right for both.) */
 BadModeEntry:
 	SAVE_TRAP
 	mov	x0, sp
@@ -205,135 +202,5 @@ install_vectors:
 	msr	vbar_el1, x0
 	isb
 	ret
-
-/*
- * enter_user(entry=x0, user_sp=x1, kparam=x2): drop to EL0 (used from #6).
- * SP_EL1 keeps its current value as the kernel stack used on the next trap.
- */
-	.globl	enter_user
-enter_user:
-	msr	elr_el1, x0		/* user entry PC */
-	msr	sp_el0,  x1		/* user stack */
-	mov	x0, #SPSR_MODE_EL0t	/* EL0t, DAIF clear */
-	msr	spsr_el1, x0
-	mov	x0, x2			/* pass kparam in x0 to the user entry */
-	/* scrub the rest to avoid leaking kernel state into EL0 */
-	mov	x1, xzr
-	mov	x2, xzr
-	mov	x3, xzr
-	eret
-
-/*
- * ===== Track A preemption trampoline =======================================
- *
- * KernelIRQExit redirects a preempted EL1t app here (via ELR/SPSR in its trap
- * frame) so the actual task switch happens at EL1t ON THE APP'S OWN SP_EL0 STACK,
- * where the cooperative Yield() is correct (it swaps SP_EL0 + TTBR0). On entry we
- * are at EL1t, IRQ+FIQ masked, with the app's full register/FP state LIVE and
- * SP = the app's stack; the globals g_PreemptELR / g_PreemptSPSR hold the app's
- * interrupted PC / PSTATE. We save the app context, do an ordinary Yield (parking
- * this task exactly like a voluntary yielder -- one resume path), then on resume
- * rebuild PC+PSTATE into ELR_EL1/SPSR_EL1 and ERET back to the exact interrupted
- * instruction with the original NZCV + interrupts re-enabled.
- *
- * NB: cannot reuse SAVE_TRAP/RESTORE_TRAP_ERET -- those mrs/msr SP_EL0, but at EL1t
- * SP_EL0 *is* the current SP, so their sp_el0 handling would corrupt SP. These
- * macros save x0..x30 + full FP/SIMD only (the sp_el0/elr/spsr frame slots are
- * unused; we drive PC/PSTATE via ELR_EL1/SPSR_EL1 + eret instead).
- */
-	.macro	PCTX_SAVE
-	sub	sp, sp, #TF_SIZE
-	stp	x0,  x1,  [sp, #TF_X(0)]
-	stp	x2,  x3,  [sp, #TF_X(2)]
-	stp	x4,  x5,  [sp, #TF_X(4)]
-	stp	x6,  x7,  [sp, #TF_X(6)]
-	stp	x8,  x9,  [sp, #TF_X(8)]
-	stp	x10, x11, [sp, #TF_X(10)]
-	stp	x12, x13, [sp, #TF_X(12)]
-	stp	x14, x15, [sp, #TF_X(14)]
-	stp	x16, x17, [sp, #TF_X(16)]
-	stp	x18, x19, [sp, #TF_X(18)]
-	stp	x20, x21, [sp, #TF_X(20)]
-	stp	x22, x23, [sp, #TF_X(22)]
-	stp	x24, x25, [sp, #TF_X(24)]
-	stp	x26, x27, [sp, #TF_X(26)]
-	stp	x28, x29, [sp, #TF_X(28)]
-	str	x30,      [sp, #TF_X(30)]
-	stp	q0,  q1,  [sp, #TF_Q(0)]
-	stp	q2,  q3,  [sp, #TF_Q(2)]
-	stp	q4,  q5,  [sp, #TF_Q(4)]
-	stp	q6,  q7,  [sp, #TF_Q(6)]
-	stp	q8,  q9,  [sp, #TF_Q(8)]
-	stp	q10, q11, [sp, #TF_Q(10)]
-	stp	q12, q13, [sp, #TF_Q(12)]
-	stp	q14, q15, [sp, #TF_Q(14)]
-	stp	q16, q17, [sp, #TF_Q(16)]
-	stp	q18, q19, [sp, #TF_Q(18)]
-	stp	q20, q21, [sp, #TF_Q(20)]
-	stp	q22, q23, [sp, #TF_Q(22)]
-	stp	q24, q25, [sp, #TF_Q(24)]
-	stp	q26, q27, [sp, #TF_Q(26)]
-	stp	q28, q29, [sp, #TF_Q(28)]
-	stp	q30, q31, [sp, #TF_Q(30)]
-	mrs	x9,  fpsr
-	mrs	x10, fpcr
-	str	x9,  [sp, #TF_FPSR]
-	str	x10, [sp, #TF_FPCR]
-	.endm
-
-	.macro	PCTX_REST
-	ldr	x9,  [sp, #TF_FPSR]
-	ldr	x10, [sp, #TF_FPCR]
-	msr	fpsr, x9
-	msr	fpcr, x10
-	ldp	q0,  q1,  [sp, #TF_Q(0)]
-	ldp	q2,  q3,  [sp, #TF_Q(2)]
-	ldp	q4,  q5,  [sp, #TF_Q(4)]
-	ldp	q6,  q7,  [sp, #TF_Q(6)]
-	ldp	q8,  q9,  [sp, #TF_Q(8)]
-	ldp	q10, q11, [sp, #TF_Q(10)]
-	ldp	q12, q13, [sp, #TF_Q(12)]
-	ldp	q14, q15, [sp, #TF_Q(14)]
-	ldp	q16, q17, [sp, #TF_Q(16)]
-	ldp	q18, q19, [sp, #TF_Q(18)]
-	ldp	q20, q21, [sp, #TF_Q(20)]
-	ldp	q22, q23, [sp, #TF_Q(22)]
-	ldp	q24, q25, [sp, #TF_Q(24)]
-	ldp	q26, q27, [sp, #TF_Q(26)]
-	ldp	q28, q29, [sp, #TF_Q(28)]
-	ldp	q30, q31, [sp, #TF_Q(30)]
-	ldp	x0,  x1,  [sp, #TF_X(0)]
-	ldp	x2,  x3,  [sp, #TF_X(2)]
-	ldp	x4,  x5,  [sp, #TF_X(4)]
-	ldp	x6,  x7,  [sp, #TF_X(6)]
-	ldp	x8,  x9,  [sp, #TF_X(8)]
-	ldp	x10, x11, [sp, #TF_X(10)]
-	ldp	x12, x13, [sp, #TF_X(12)]
-	ldp	x14, x15, [sp, #TF_X(14)]
-	ldp	x16, x17, [sp, #TF_X(16)]
-	ldp	x18, x19, [sp, #TF_X(18)]
-	ldp	x20, x21, [sp, #TF_X(20)]
-	ldp	x22, x23, [sp, #TF_X(22)]
-	ldp	x24, x25, [sp, #TF_X(24)]
-	ldp	x26, x27, [sp, #TF_X(26)]
-	ldp	x28, x29, [sp, #TF_X(28)]
-	ldr	x30,      [sp, #TF_X(30)]
-	add	sp, sp, #TF_SIZE
-	.endm
-
-	.globl	PreemptTrampoline
-PreemptTrampoline:
-	PCTX_SAVE			/* stash the app's live x0..x30 + FP on its own stack */
-	adrp	x19, g_PreemptELR	/* x19 = app's interrupted PC (callee-saved -> survives Yield) */
-	add	x19, x19, :lo12:g_PreemptELR
-	ldr	x19, [x19]
-	adrp	x20, g_PreemptSPSR	/* x20 = app's PSTATE (NZCV + DAIF, mode EL1t) */
-	add	x20, x20, :lo12:g_PreemptSPSR
-	ldr	x20, [x20]
-	bl	PreemptDoYield		/* ordinary cooperative switch; returns when WE run again */
-	msr	elr_el1,  x19		/* return to the exact interrupted instruction ... */
-	msr	spsr_el1, x20		/* ... restoring the app's NZCV + re-enabling interrupts */
-	PCTX_REST			/* restore x0..x30 + FP (overwrites x19/x20 with app values) */
-	eret
 
 /* End */

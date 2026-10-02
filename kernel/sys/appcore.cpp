@@ -2,15 +2,16 @@
 // appcore.cpp -- cores 2 and 3 as a resource an app can acquire (see kern/appcore.h).
 //
 // Core side: each core waits in AppCoreLoop (WFE). When its owner starts a job, it loads
-// the owner's TTBR0 (its ASID too), flushes its own TLB, and calls fn (arg) on the app's
-// stack at EL1t -- like the app itself on core 0. When fn returns it goes back to the
-// kernel address space and to sleep.
+// the owner's TTBR0 (its ASID too), flushes its own TLB, and enters fn (arg) at EL0 on the
+// app's stack (kern/el0.h) -- like the app itself on core 0 --, returning into the EL0 blob's
+// El0CoreReturn, whose system call ends the job (AppCoreOnEl0Sync -> AppCoreEl0Done): back to
+// the kernel address space and to sleep.
 //
 // Stopping a running job (release, app exit or kill): core 0 raises bAbort and sends the
-// core an IPI. The core's IRQ comes through OUR vectors (installed on cores 2-3 too), and
-// its exit (AppCoreOnIRQExit) rewrites the trap frame to return into AppCoreRestart, on
-// the core's own kernel stack -- the job is simply dropped. A fault in the job (bad
-// access...) is caught the same way (AppCoreOnFault) instead of a kernel panic.
+// core an IPI. The core's IRQ comes through OUR vectors (installed on cores 2-3 too: the EL0
+// ones while the job runs), and its exit (AppCoreOnIRQExit) rewrites the trap frame to return
+// into AppCoreRestart, on the core's own kernel stack -- the job is simply dropped. A fault in
+// the job (bad access, any system call but its end...) is caught the same way (AppCoreOnFault).
 //
 // Everything here is plain memory shared between cores (inner-shareable, cache coherent)
 // with explicit barriers; core 0 is the only writer of the ownership.
@@ -19,7 +20,7 @@
 #include <kern/addrspace.h>
 #include <kern/trapframe.h>
 #include <kern/layout.h>
-#include <kern/el0.h>			// protected mode: a job at EL0
+#include <kern/el0.h>			// a job at EL0: El0Enter, El0CoreReturnVA
 #include <circle/multicore.h>
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
@@ -33,29 +34,8 @@
 #define IPI_APPCORE_STOP	(IPI_USER + 0)
 #define STOP_TIMEOUT_US		200000
 
-extern "C" void AppCoreCall (u64 ulFunc, u64 ulArg, u64 ulStack);
 extern "C" void install_vectors (void);
 void ActivateKernelAddressSpace (void);
-
-// fn (arg) on the app's stack; x19 keeps the kernel SP (callee-saved: fn preserves it).
-asm (
-	".text\n"
-	".global AppCoreCall\n"
-	".type AppCoreCall, %function\n"
-	"AppCoreCall:\n"
-	"	stp	x29, x30, [sp, #-32]!\n"
-	"	str	x19, [sp, #16]\n"
-	"	mov	x19, sp\n"
-	"	mov	sp, x2\n"
-	"	mov	x16, x0\n"
-	"	mov	x0, x1\n"
-	"	mov	x29, xzr\n"
-	"	blr	x16\n"
-	"	mov	sp, x19\n"
-	"	ldr	x19, [sp, #16]\n"
-	"	ldp	x29, x30, [sp], #32\n"
-	"	ret\n"
-);
 
 struct TAppCore
 {
@@ -63,7 +43,6 @@ struct TAppCore
 	volatile boolean	bLost;		// did not answer a stop: never used again
 	CAddressSpace *volatile	pOwner;		// (core 0 only)
 	volatile u64		ulTTBR0, ulFunc, ulArg, ulStack;
-	volatile boolean	bEl0;		// the job runs at EL0 (a protected owner, kern/el0.h)
 	volatile int		nState;		// CORE_IDLE / CORE_RUNNING / CORE_FAULT
 	volatile boolean	bGo;		// core 0 -> core: start the job
 	volatile boolean	bAbort;		// core 0 -> core: drop it (cleared = done)
@@ -97,21 +76,11 @@ static void __attribute__ ((noreturn)) AppCoreLoop (unsigned nCore)
 			Barrier ();
 			asm volatile ("msr ttbr0_el1, %0; isb" :: "r" (C.ulTTBR0) : "memory");
 			LocalTLBFlush ();			// (an ASID may have been reused)
-			if (C.bEl0)
-			{
-				// A protected owner's job: fn at EL0 on its stack, returning into the blob's
-				// El0CoreReturn, whose system call ends it (AppCoreOnEl0Sync -> AppCoreEl0Done,
-				// on a fresh kernel stack). Its IRQ (the stop IPI) and its faults come through
-				// the EL0 vectors (arch/aarch64/el0.S) to the same AppCoreOnIRQExit / fault path.
-				El0Enter (C.ulFunc, C.ulStack, C.ulArg, El0CoreReturnVA ());
-			}
-			AppCoreCall (C.ulFunc, C.ulArg, C.ulStack);
-			ActivateKernelAddressSpace ();
-			Barrier ();
-			C.nState = CORE_IDLE;
-			Barrier ();
-			asm volatile ("sev");
-			continue;
+			// fn at EL0 on the app's stack, returning into the blob's El0CoreReturn, whose
+			// system call ends it (AppCoreOnEl0Sync -> AppCoreEl0Done, on a fresh kernel stack).
+			// Its IRQ (the stop IPI) and its faults come through the EL0 vectors
+			// (arch/aarch64/el0.S) to AppCoreOnIRQExit / AppCoreOnFault.
+			El0Enter (C.ulFunc, C.ulStack, C.ulArg, El0CoreReturnVA ());	// (no return)
 		}
 		asm volatile ("wfe");
 	}
@@ -131,8 +100,8 @@ extern "C" void __attribute__ ((noreturn)) AppCoreRestart (unsigned nCore)
 	AppCoreLoop (nCore);
 }
 
-// An EL0 job returned (El0CoreReturn): as a job returning from AppCoreCall, but here at EL1t on
-// the core's own kernel stack (the frame was redirected).
+// A job returned (El0CoreReturn): here at EL1t on the core's own kernel stack (the frame was
+// redirected).
 extern "C" void __attribute__ ((noreturn)) AppCoreEl0Done (unsigned nCore)
 {
 	TAppCore &C = s_Core[nCore];
@@ -178,23 +147,11 @@ boolean AppCoreOnIRQExit (TTrapFrame *pFrame)
 	return TRUE;
 }
 
-void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone)
+// A fault in the job (an EL0 synchronous exception: anything but its end and an emulated ID
+// register read): recorded for kapi_core_state / the log, the job dropped.
+static void AppCoreOnFault (TTrapFrame *pFrame)
 {
 	unsigned nCore = CMultiCoreSupport::ThisCore ();
-	if (nCore < APPCORE_FIRST || nCore >= CORES) return;	// (no EL0 code runs elsewhere)
-	if (!bDone)
-	{
-		AppCoreOnFault (pFrame);		// (a system call there is a fault too: EC 0x15)
-		return;
-	}
-	Redirect (pFrame, nCore);
-	pFrame->elr_el1 = (u64) &AppCoreEl0Done;
-}
-
-boolean AppCoreOnFault (TTrapFrame *pFrame)
-{
-	unsigned nCore = CMultiCoreSupport::ThisCore ();
-	if (nCore < APPCORE_FIRST || nCore >= CORES) return FALSE;
 	TAppCore &C = s_Core[nCore];
 	u64 ulESR, ulFAR;
 	asm volatile ("mrs %0, esr_el1" : "=r" (ulESR));
@@ -206,7 +163,19 @@ boolean AppCoreOnFault (TTrapFrame *pFrame)
 	C.nState       = CORE_FAULT;
 	Barrier ();
 	Redirect (pFrame, nCore);
-	return TRUE;
+}
+
+void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone)
+{
+	unsigned nCore = CMultiCoreSupport::ThisCore ();
+	if (nCore < APPCORE_FIRST || nCore >= CORES) return;	// (no EL0 code runs elsewhere)
+	if (!bDone)
+	{
+		AppCoreOnFault (pFrame);		// (a system call there is a fault too: EC 0x15)
+		return;
+	}
+	Redirect (pFrame, nCore);
+	pFrame->elr_el1 = (u64) &AppCoreEl0Done;
 }
 
 // ---- core 0 side ---------------------------------------------------------------------
@@ -284,7 +253,6 @@ int kapi_core_run (int nCore, void (*pFunc) (void *), void *pArg, void *pStackTo
 	u64 ulStack = (u64) pStackTop & ~15ULL;
 	if (!IS_USER_VA (pFunc) || !IS_USER_VA (ulStack - 16)) return -1;
 	p->ulTTBR0 = pAS->GetTTBR0 ();
-	p->bEl0    = pAS->IsProtected ();
 	p->ulFunc  = (u64) pFunc;
 	p->ulArg   = (u64) pArg;
 	p->ulStack = ulStack;

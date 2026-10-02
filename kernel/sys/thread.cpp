@@ -7,7 +7,7 @@
 #include <kern/gui/window.h>
 #include <kern/kapi_abi.h>		// KAPI_WAIT_FOREVER
 #include <kern/layout.h>		// KERNEL_IDENTITY_END
-#include <kern/el0.h>			// protected mode: a thread at EL0
+#include <kern/el0.h>			// a thread at EL0: El0Enter, its stacks
 #include <kern/uaccess.h>		// the app's pointers (name, code, word, post)
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -21,7 +21,6 @@
 extern "C" void kapi_exit (int nStatus);
 
 static void WordWaitsFree (CAddressSpace *pAS);
-extern "C" void kapi_pump_events (void);
 
 enum { SYNC_MUTEX = 1, SYNC_EVENT, SYNC_BARRIER };
 
@@ -203,12 +202,10 @@ static int NewObj (unsigned nType)
 class CUserThreadTask : public CTask
 {
 public:
-	// ulUserStack: 0, a legacy thread (fn runs at EL1 on this task's stack); else a protected
-	// process's thread (kern/el0.h): fn runs at EL0 on that user stack (its top), this task's
-	// stack is its kernel stack, and fn returns into the blob's El0ThreadReturn (thread_exit).
-	CUserThreadTask (unsigned nStackSize, CAddressSpace *pAS, u64 ulFunc, u64 ulArg,
-			 u64 ulUserStack = 0)
-	:	CTask (nStackSize),
+	// fn runs at EL0 (kern/el0.h) on the user stack whose top is ulUserStack, and returns into
+	// the blob's El0ThreadReturn (thread_exit); this task's own stack is the thread's kernel stack.
+	CUserThreadTask (CAddressSpace *pAS, u64 ulFunc, u64 ulArg, u64 ulUserStack)
+	:	CTask (EL0_KSTACK_SIZE),
 		m_ulFunc (ulFunc),
 		m_ulArg (ulArg),
 		m_ulUserStack (ulUserStack)
@@ -221,12 +218,7 @@ public:
 
 	void Run (void) override
 	{
-		if (m_ulUserStack != 0)
-		{
-			El0Enter (m_ulFunc, m_ulUserStack, m_ulArg, El0ThreadReturnVA ());	// (no return)
-		}
-		int nCode = ((int (*) (void *)) m_ulFunc) ((void *) m_ulArg);	// the app's code
-		kapi_thread_exit (nCode);
+		El0Enter (m_ulFunc, m_ulUserStack, m_ulArg, El0ThreadReturnVA ());	// (no return)
 	}
 
 private:
@@ -273,28 +265,25 @@ int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, 
 	pRec->nCode = 0;
 	pRec->nSeq = 0;
 
-	CUserThreadTask *pTask;
-	if (!pAS->IsProtected ())
+	// The thread's user stack (nStackSize) in the slot of its record (a slot is reused with its
+	// record: its pages stay mapped), a guard below it; the task's own stack is only its kernel
+	// stack (kern/el0.h).
+	if (!IS_USER_VA (pFunc))
 	{
-		pTask = new CUserThreadTask (nStackSize, pAS, (u64) pFunc, (u64) pArg);
+		pRec->nTid = 0;
+		return -1;
 	}
-	else
+	u64 ulTop = USER_THREAD_STACKS + (u64) (pRec - pT->Rec + 1) * USER_THREAD_SLOT;
+	if (!pAS->MapStack (ulTop, nStackSize))
 	{
-		// A protected process (kern/el0.h): the thread's user stack in the slot of its record
-		// (a slot is reused with its record: its pages stay mapped), a guard below it; the task's
-		// own stack is only its kernel stack.
-		if (!IS_USER_VA (pFunc))
-		{
-			pRec->nTid = 0;
-			return -1;
-		}
-		u64 ulTop = USER_THREAD_STACKS + (u64) (pRec - pT->Rec + 1) * USER_THREAD_SLOT;
-		if (!pAS->MapStack (ulTop, nStackSize))
-		{
-			pRec->nTid = 0;
-			return -1;				// (out of memory)
-		}
-		pTask = new CUserThreadTask (EL0_KSTACK_SIZE, pAS, (u64) pFunc, (u64) pArg, ulTop);
+		pRec->nTid = 0;
+		return -1;				// (out of memory)
+	}
+	CUserThreadTask *pTask = new CUserThreadTask (pAS, (u64) pFunc, (u64) pArg, ulTop);
+	if (pTask == 0)
+	{
+		pRec->nTid = 0;
+		return -1;				// (out of memory: its stack stays mapped)
 	}
 	pRec->pTask = pTask;
 
@@ -548,25 +537,8 @@ int kapi_post (void (*pFunc) (void *, long), void *pCtx, long lValue)
 	return 0;
 }
 
-unsigned ThreadsRunPosts (CAddressSpace *pAS)
-{
-	CProcThreads *pT = ThreadsOf (pAS, FALSE);
-	if (pT == 0) return 0;
-	unsigned n = 0;
-	// (at most one ring's worth: a call that posts again runs at the next pump)
-	while (pT->nPostTail != pT->nPostHead && n < POSTS_MAX)
-	{
-		TPost P = pT->Posts[pT->nPostTail];
-		pT->nPostTail = (pT->nPostTail + 1) % POSTS_MAX;
-		((void (*) (void *, long)) P.ulFunc) ((void *) P.ulCtx, P.lValue);	// the app's code
-		n++;
-	}
-	return n;
-}
-
-
-// (v73) pump_wait's sleep, without the pump: a protected process's user-side pump_wait /
-// wait_for_exit (kern/el0.h) sleep here, then pump themselves.
+// (v73) pump_wait's sleep, without the pump: the user-side pump_wait / wait_for_exit (the EL0
+// table's, kern/el0.h) sleep here, then pump themselves.
 int kapi_pump_sleep (unsigned nTimeoutMs)
 {
 	CAddressSpace *pAS = CurrentAS ();
@@ -588,15 +560,7 @@ int kapi_pump_sleep (unsigned nTimeoutMs)
 	return (int) nPending;
 }
 
-int kapi_pump_wait (unsigned nTimeoutMs)
-{
-	int nPending = kapi_pump_sleep (nTimeoutMs);
-	if (nPending < 0) return -1;
-	kapi_pump_events ();
-	return nPending;
-}
-
-// (v73) The next posted call, not run: a protected process's user-side pump runs it at EL0.
+// (v73) The next posted call, not run: the user-side pump (kern/el0.h) runs it at EL0.
 int kapi_pop_post (struct kapi_posted *pPost)
 {
 	CProcThreads *pT = MyThreads (FALSE);

@@ -33,101 +33,30 @@
 
 // ---- who calls --------------------------------------------------------------------------------
 
-enum TCaller
-{
-	CALLER_KERNEL,			// kernel code on its own behalf: trusted
-	CALLER_LEGACY,			// a legacy (EL1) process: the user range + its tasks' stacks
-	CALLER_STRICT			// a protected (EL0) process, an app core: the user range only
-};
-
-static TCaller Caller (CTask **ppTask, CAddressSpace **ppAS)
-{
-	*ppTask = 0;
-	*ppAS = 0;
-	if (!CScheduler::IsActive ())
-	{
-		// boot (core 0), or a core without tasks: an app core (its job's KT->memcpy...)
-		return CScheduler::ThisCore () == 0 ? CALLER_KERNEL : CALLER_STRICT;
-	}
-	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
-	CAddressSpace *pAS = pTask != 0 ? (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER) : 0;
-	if (pAS == 0)
-	{
-		return CALLER_KERNEL;			// a kernel task (no process)
-	}
-	*ppTask = pTask;
-	*ppAS = pAS;
-	return pAS->IsProtected () ? CALLER_STRICT : CALLER_LEGACY;	// (kern/el0.h)
-}
-
+// The kernel itself (kern/uaccess.h): no scheduler yet on core 0 (boot), or a task without an
+// address space (a kernel task). An app core (2-3, no scheduler: its jobs make no kapi call) or a
+// process's task is not.
 boolean UserIsKernelCaller (void)
 {
-	CTask *pTask; CAddressSpace *pAS;
-	return Caller (&pTask, &pAS) == CALLER_KERNEL;
+	if (!CScheduler::IsActive ())
+	{
+		return CScheduler::ThisCore () == 0;
+	}
+	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
+	return pTask == 0 || pTask->GetUserData (TASK_USER_DATA_USER) == 0;
 }
 
 // ---- the range ----------------------------------------------------------------------------------
 
 #define AVAIL_ANY	(~(u64) 0)
 
-// The bytes from p to the end of a task's CTask stack holding it (0: not in it).
-static u64 StackAvail (CTask *pTask, u64 p)
+u64 UserRangeAvail (const void *p)
 {
-	TStackInfo Stack = pTask->GetStack ();
-	if (Stack.Size == 0 || Stack.Top >= KERNEL_IDENTITY_END || Stack.Top < Stack.Size)
-	{
-		return 0;
-	}
-	return UAccessAvailIn (p, Stack.Top - Stack.Size, Stack.Top);
-}
-
-struct TStackFind
-{
-	CAddressSpace *pAS;
-	u64	       p;
-	u64	       nAvail;
-};
-
-static boolean StackFindCallback (CTask *pTask, const char *pName, TTaskState State,
-				  TTaskFlags Flags, void *pParam)
-{
-	(void) pName; (void) Flags;
-	TStackFind *pFind = (TStackFind *) pParam;
-	if (   State == TaskStateTerminated		// (its stack about to be freed)
-	    || pTask->GetUserData (TASK_USER_DATA_USER) != pFind->pAS)
-	{
-		return TRUE;
-	}
-	pFind->nAvail = StackAvail (pTask, pFind->p);
-	return pFind->nAvail == 0;			// (found: stop)
-}
-
-u64 UserRangeAvail (const void *pv)
-{
-	u64 p = (u64) (uintptr) pv;
-	CTask *pTask; CAddressSpace *pAS;
-	TCaller Who = Caller (&pTask, &pAS);
-	if (Who == CALLER_KERNEL)
+	if (UserIsKernelCaller ())
 	{
 		return AVAIL_ANY;
 	}
-
-	u64 nAvail = UAccessAvailIn (p, USER_VA_BASE, USER_VA_END);
-	if (nAvail != 0 || Who != CALLER_LEGACY)
-	{
-		return nAvail;
-	}
-
-	// A legacy process: its stacks are kernel memory. The caller's own first (the common case:
-	// a local variable), then its process's other tasks (a thread's pointer into another's).
-	nAvail = StackAvail (pTask, p);
-	if (nAvail != 0 || p < KPAGE_SIZE || p >= KERNEL_IDENTITY_END)
-	{
-		return nAvail;
-	}
-	TStackFind Find = { pAS, p, 0 };
-	CScheduler::Get ()->EnumerateTasks (StackFindCallback, &Find);
-	return Find.nAvail;
+	return UAccessAvailIn ((u64) (uintptr) p, USER_VA_BASE, USER_VA_END);
 }
 
 boolean UserRange (const void *p, u64 n)
@@ -324,7 +253,6 @@ struct TUAccessFixup
 };
 
 extern "C" const TUAccessFixup g_UAccessFixups[];	// (arch/aarch64/uaccess.S)
-extern "C" const char AppMemStart[], AppMemEnd[];
 
 #define EC_DABORT_SAME		0x25
 
@@ -343,9 +271,4 @@ boolean UAccessFixup (TTrapFrame *pFrame, u64 ulESR)
 		}
 	}
 	return FALSE;
-}
-
-boolean UAccessInAppMem (u64 ulPC)
-{
-	return ulPC >= (u64) (uintptr) AppMemStart && ulPC < (u64) (uintptr) AppMemEnd;
 }

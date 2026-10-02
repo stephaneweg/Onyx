@@ -1,16 +1,16 @@
 //
-// kapitable.cpp -- defines the published kapi function table and fills it with the
-// addresses of the kapi_* functions (in sys/kapi.cpp). The table lives on its own
-// 64 KB page (identity-mapped) and is mapped read-only at KAPI_TABLE_VA into every
-// app's address space (see mm/addrspace.cpp), so apps call the kernel through it
-// without linking against kernel addresses.
+// kapitable.cpp -- the kernel's kapi table: TKApiTable (kern/kapi_abi.h) filled with the
+// addresses of the kapi_* functions (sys/kapi.cpp...). It is the SYSTEM-CALL table: an app's
+// "svc #0" with slot n in x8 runs entry n (sys/el0.cpp, El0SyncHandler). Apps never see it --
+// their KAPI_TABLE_VA page is the EL0 table (kern/el0.h), whose entries point at EL0 stubs
+// that make those system calls. The layout is the ABI (append-only): every field is kept.
 //
 #include <kern/kapitable.h>
 #include <kern/kapi_abi.h>
 #include <kern/appcore.h>
 #include <kern/v3d.h>
+#include <kern/el0.h>			// kapi_proc_stats (v74)
 #include <circle/types.h>
-#include <kern/uaccess.h>		// AppMemset / AppMemcpy / AppMemmove (ABI v36)
 
 // The kapi_* functions (defined in sys/kapi.cpp). Declared here with the ABI's
 // signatures (handler params as gui_handler) so they assign straight into the
@@ -118,7 +118,6 @@ int  kapi_barrier_create (unsigned);
 int  kapi_barrier_wait (int);
 int  kapi_sync_close (int);
 int  kapi_post (void (*) (void *, long), void *, long);
-int  kapi_pump_wait (unsigned);
 int  kapi_wait_word (volatile unsigned *, unsigned, unsigned);
 int  kapi_wake_word (volatile unsigned *);
 int  kapi_thread_priority (int, int);
@@ -145,8 +144,6 @@ void kapi_msleep (unsigned);
 void kapi_yield (void);
 void kapi_exit (int);
 
-void kapi_pump_events (void);
-void kapi_wait_for_exit (void);
 int kapi_should_exit (void);
 
 void kapi_draw_text (int, int, const char *, unsigned);
@@ -214,12 +211,12 @@ int kapi_mailbox_recv (int *, int *, void *, unsigned, int);
 
 }  // extern "C"
 
-// The table, on its own 64 KB page so a single mapping covers it exactly.
-__attribute__ ((aligned (0x10000))) static TKApiTable s_Table;
+// The table (kernel memory only: never mapped into an app's space).
+static TKApiTable s_Table;
 
-u64 KApiTablePhys (void)
+const TKApiTable *KApiKernelTable (void)
 {
-	return (u64) (uintptr) &s_Table;	// identity region: PA == kernel VA
+	return &s_Table;
 }
 
 void KApiTableInit (void)
@@ -241,8 +238,11 @@ void KApiTableInit (void)
 	t->yield             = kapi_yield;
 	t->exit              = kapi_exit;
 
-	t->pump_events       = kapi_pump_events;
-	t->wait_for_exit     = kapi_wait_for_exit;
+	// pump_events, wait_for_exit (and pump_wait, memset, memcpy, memmove below): 0 here --
+	// not system calls. The EL0 table points them at user-side code (kern/el0.h): the pump
+	// calls the app's handlers itself, at EL0 (the kernel never runs an app's code).
+	t->pump_events       = 0;
+	t->wait_for_exit     = 0;
 	t->should_exit       = kapi_should_exit;
 
 	t->draw_text         = kapi_draw_text;
@@ -331,12 +331,11 @@ void KApiTableInit (void)
 	t->mailbox_send      = kapi_mailbox_send;
 	t->mailbox_recv      = kapi_mailbox_recv;
 
-	// (v36) the legacy apps' memset / memcpy / memmove: kernel code, but our own copies
-	// (arch/aarch64/uaccess.S) -- a fault in them with the return address in the app is the
-	// app's bad pointer and kills the app, not the machine (exception.cpp, AppFaultRedirect)
-	t->memset            = AppMemset;
-	t->memcpy            = AppMemcpy;
-	t->memmove           = AppMemmove;
+	// (v36) memset / memcpy / memmove: done at EL0 (the EL0 table's, kern/el0.h), never a
+	// system call
+	t->memset            = 0;
+	t->memcpy            = 0;
+	t->memmove           = 0;
 
 	t->tcp_listen        = kapi_tcp_listen;
 	t->tcp_accept        = kapi_tcp_accept;
@@ -430,7 +429,7 @@ void KApiTableInit (void)
 	t->barrier_wait      = kapi_barrier_wait;
 	t->sync_close        = kapi_sync_close;
 	t->post              = kapi_post;
-	t->pump_wait         = kapi_pump_wait;
+	t->pump_wait         = 0;			// (user-side: kern/el0.h)
 	t->sound_config      = kapi_sound_config;
 	t->sound_map         = kapi_sound_map;
 	t->wait_word         = kapi_wait_word;
@@ -446,4 +445,5 @@ void KApiTableInit (void)
 	t->event_mods        = kapi_event_mods;
 	t->pop_post          = kapi_pop_post;
 	t->pump_sleep        = kapi_pump_sleep;
+	t->proc_stats        = kapi_proc_stats;		// (v74, sys/el0.cpp)
 }

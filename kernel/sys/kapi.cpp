@@ -1,14 +1,14 @@
 //
 // kapi.cpp
 //
-// Kernel API (Option C): functions that EL1 apps call DIRECTLY (no syscall trap).
-// Their addresses are exported at the kernel link step (see kernel/Makefile ->
-// user/kernel_syms.ld) and resolved when the app ELFs are linked. Apps run in EL1
-// in their own address space, so these run in the app's context with the kernel
-// mapped in -- arguments are plain pointers in the active address space, checked on
-// entry and copied fault-safe (kern/uaccess.h; see "the app's pointers" below).
+// Kernel API: the kapi_* functions behind the kapi table (kern/kapi_abi.h). Apps run at EL0
+// and reach them by system calls (kern/el0.h: the EL0 table's stub for slot n does "svc #0" with
+// n in x8, El0SyncHandler calls the kernel table's entry n). They run in the calling task --
+// at EL1, on its kernel stack, with the app's address space active -- so the arguments are plain
+// pointers in that space, checked on entry and copied fault-safe (kern/uaccess.h; see "the
+// app's pointers" below). The kernel's own tasks call some of them directly.
 //
-// extern "C": stable, unmangled names for the symbol-export/link step.
+// extern "C": stable, unmangled names (kapitable.cpp fills the table with them).
 //
 #include <kern/crashlog.h>
 #include <kern/vfs.h>
@@ -25,7 +25,7 @@
 #include <kern/net.h>		// NetTcpConnect/Send/Recv/Close/Status (socket backend)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
-#include <kern/thread.h>		// (v67) threads, posts: ThreadsRunPosts / ThreadsEndProcess
+#include <kern/thread.h>		// (v67) threads, posts: ThreadsEndProcess
 #include <kern/uaccess.h>		// the app's pointers: checked, copied fault-safe
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -146,8 +146,7 @@ static void ResolvePath (const char *pIn, char *pOut, unsigned nCap)
 
 // ---- the app's pointers (kern/uaccess.h) --------------------------------------------------------
 //
-// Every pointer an app passes is checked on entry -- in the caller's range (the user VA range,
-// or a legacy app's own stacks), mapped -- and a kapi given a bad one fails with its usual error
+// Every pointer an app passes is checked on entry -- in the user VA range, mapped -- and a kapi given a bad one fails with its usual error
 // value instead of faulting in the kernel. Strings and small structures are copied into the
 // kernel once (CUserStr, UserGet / UserPut: fault-safe, what is checked is what is used), the
 // buffers the kernel reads or fills in place are probed first (UserReadable / UserWritable).
@@ -223,7 +222,7 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 	}
 	pWin->SetOwnerPid (pAS->GetPid ());			// drag & drop results name it
 
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW, ASID-tagged
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL0 RW, ASID-tagged
 	pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
 	if (pWin->HasChrome ())					// user-drawn window chrome buffers
 	{
@@ -789,7 +788,7 @@ unsigned *kapi_wallpaper_buffer (int *pW, int *pH)
 	{
 		return 0;
 	}
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW, ASID-tagged
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL0 RW, ASID-tagged
 	pAS->MapContig (USER_WALLPAPER_CANVAS, ulPhys, nPages, Attr);
 	OutPut (pW, g_nScreenWidth);
 	OutPut (pH, g_nScreenHeight);
@@ -805,36 +804,8 @@ void kapi_wallpaper_commit (void)
 	}
 }
 
-void kapi_pump_events (void)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	if (pAS == 0)
-	{
-		return;
-	}
-	ThreadsRunPosts (pAS);				// (v67) the calls its threads posted
-	CWindow *pWin = pAS->GetWindow ();
-	if (pWin == 0)
-	{
-		return;
-	}
-
-	GUIEvent Ev;
-	while (pWin->PopEvent (&Ev))
-	{
-		if (Ev.ulHandler != 0)
-		{
-			unsigned nPrev = pWin->m_nKeyEventMods;
-			if (Ev.nEvent == GUI_EVENT_KEY) pWin->m_nKeyEventMods = Ev.nMods;
-			((void (*) (unsigned long, int, long)) Ev.ulHandler)
-				(Ev.ulSender, Ev.nEvent, Ev.lValue);
-			pWin->m_nKeyEventMods = nPrev;
-		}
-	}
-}
-
-// (v73) The kernel half of a user-side pump (a protected process's, kern/el0.h): the next event,
-// its handler NOT called -- the caller calls it.
+// (v73) The kernel half of the event pump: the next event, its handler NOT called -- the
+// user-side pump_events (the EL0 table's, kern/el0.h) calls it, at EL0.
 int kapi_pop_event (struct kapi_event *pEv)
 {
 	CAddressSpace *pAS = CurrentAS ();
@@ -858,8 +829,8 @@ int kapi_pop_event (struct kapi_event *pEv)
 	return UserPut (pEv, E) ? 1 : 0;
 }
 
-// (v73) What kapi_get_modifiers reports while a key handler runs (kapi_pump_events sets it around
-// the call): set by the user-side pump; the previous value back.
+// (v73) What kapi_get_modifiers reports while a key handler runs: set by the user-side pump
+// around the call; the previous value back.
 unsigned kapi_event_mods (unsigned nMods)
 {
 	CAddressSpace *pAS = CurrentAS ();
@@ -882,39 +853,6 @@ int kapi_should_exit (void)
 	}
 	CWindow *pWin = pAS->GetWindow ();
 	return (pWin != 0 && pWin->ShouldExit ()) ? 1 : 0;
-}
-
-void kapi_wait_for_exit (void)
-{
-	// Blocking message pump for passive apps: dispatch events until the window's
-	// close box is clicked (RequestExit), then return so the app can clean up.
-	for (;;)
-	{
-		kapi_pump_events ();
-		if (kapi_should_exit ())
-		{
-			return;
-		}
-		// (v67) until an event, a post or the close box -- 16 ms at most, as before
-		CAddressSpace *pAS = CurrentAS ();
-		CProcThreads *pT = ThreadsOf (pAS, TRUE);
-		CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-		if (pT != 0 && pWin != 0)
-		{
-			pWin->SetWake (&pT->WakeEv);
-			if (   pWin->QueuedEvents () == 0
-			    && pT->nPostHead == pT->nPostTail)
-			{
-				pT->nWakeWaiters++;
-				pT->WakeEv.WaitWithTimeout (16000);
-				pT->nWakeWaiters--;
-			}
-		}
-		else if (CScheduler::IsActive ())
-		{
-			CScheduler::Get ()->MsSleep (16);
-		}
-	}
 }
 
 unsigned kapi_get_ticks (void)
@@ -2739,7 +2677,6 @@ extern "C" {
 int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	// (kern/uaccess.h: a legacy app's buffer may be on its stack -- its kernel task's)
 	if (pWM == 0 || pOut == 0 || nMax <= 0 || !UserWritable (pOut, (u64) nMax * sizeof *pOut)) return 0;
 	CWindow *List[WM_MAX_WINDOWS];
 	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);

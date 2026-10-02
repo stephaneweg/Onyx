@@ -7,13 +7,12 @@
 #include <kern/gui/surface.h>		// CSurfaceManager (free a dead owner's surfaces)
 #include <kern/ipc.h>			// CMailbox + IpcOnProcessGone (activity-shell IPC)
 #include <kern/stream.h>		// CStream + CProcess (stdio teardown)
-#include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA for the kapi table)
-#include <kern/kapitable.h>		// KApiTablePhys
+#include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA of the app's kapi table)
 #include <kern/applaunch.h>		// g_bVerbose (gated lifecycle logging)
 #include <kern/net.h>			// NetCloseByPid (reclaim a dead process's sockets)
 #include <kern/v3d.h>			// V3DReleaseAS (free a dead process's GPU textures)
 #include <kern/thread.h>		// ThreadsFree (its threads' objects)
-#include <kern/el0.h>			// protected mode: the EL0 table + code pages
+#include <kern/el0.h>			// the EL0 table + code pages, KAPI_STUBS_VA
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -54,59 +53,6 @@ static void FreeASID (u8 nASID)
 	}
 }
 
-// ---- the null guard (cmdline.txt nullguard=1, off by default) -------------------
-//
-// Circle maps the first 64 KB page (the armstub, the spin table the secondary cores read at
-// boot) read / write / executable at EL1 in its identity map, which every app space shares: a
-// legacy app's NULL write silently scribbles there, a call through a NULL pointer runs the
-// armstub. With nullguard=1 the app spaces see the low 512 MB through a copy of the kernel's L3
-// table with page 0 left out: a NULL access by an app (or by the kernel while an app's space is
-// active: a kapi, an interrupt taken in the app) faults -- the app is killed (exception.cpp).
-// The kernel's own space keeps page 0. The kernel's descriptor for page 0 is made non-global
-// (nG = 1, ASID 0) too: a global TLB entry, filled by any kernel access to page 0 (a speculative
-// one included), would otherwise match in every app's ASID and bypass the guard. Off by default
-// until tried on the Pi: nothing after boot should need page 0 (the secondary cores read the
-// spin table before their MMU is on and clear their slot once, at start-up, in the kernel's
-// space), but an interrupt handler touching it while an app runs would now fault.
-
-boolean g_bNullGuard = FALSE;			// (kernel.cpp: nullguard=)
-
-static TARMV8MMU_LEVEL3_DESCRIPTOR *s_pNullGuardL3 = 0;
-
-#define L3_DESC_NG	(1ULL << 11)		// a page descriptor's nG bit
-
-static void NullGuardInit (void)
-{
-	const TARMV8MMU_LEVEL2_DESCRIPTOR *pKernelL2 = (const TARMV8MMU_LEVEL2_DESCRIPTOR *) s_ulKernelTTBR0;
-	if (pKernelL2[0].Table.Value11 != 3)
-	{
-		return;					// (not a table: no page to leave out)
-	}
-	TARMV8MMU_LEVEL3_DESCRIPTOR *pKernelL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *)
-		ARMV8MMUL2TABLEPTR ((u64) pKernelL2[0].Table.TableAddress);
-	TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *) palloc ();
-	if (pL3 == 0)
-	{
-		return;
-	}
-	memcpy (pL3, pKernelL3, KPAGE_SIZE);
-	volatile u64 *pGuard = (volatile u64 *) &pL3[0];
-	*pGuard = 0;					// page 0: invalid in the apps' copy
-
-	// The kernel's page 0 made non-global, break-before-make (no other core runs yet: they are
-	// started later in CKernel::Initialize; nothing on this one touches page 0 meanwhile).
-	volatile u64 *pKernel0 = (volatile u64 *) &pKernelL3[0];
-	u64 ulDesc = *pKernel0;
-	*pKernel0 = 0;
-	asm volatile ("dsb ishst; tlbi vaae1is, %0; dsb ish; isb" :: "r" ((u64) 0) : "memory");
-	*pKernel0 = ulDesc | L3_DESC_NG;
-	asm volatile ("dsb ishst; isb" ::: "memory");
-
-	DataSyncBarrier ();
-	s_pNullGuardL3 = pL3;
-	CLogger::Get ()->Write ("proc", LogNotice, "nullguard=1: page 0 unmapped in the app spaces");
-}
-
 // ---- CAddressSpace -----------------------------------------------------------
 
 // Monotonic process-id source (1..). 0 means "kernel task" (no address space).
@@ -115,9 +61,8 @@ static unsigned s_nNextPid = 1;
 // Total 64 KB frames owned by all user address spaces (see kern/addrspace.h).
 unsigned g_nUserPages = 0;
 
-CAddressSpace::CAddressSpace (boolean bProtected)
+CAddressSpace::CAddressSpace (void)
 :	m_pL2 (0),
-	m_bProtected (bProtected),
 	m_nASID (0),
 	m_nPid (s_nNextPid++),
 	m_nParentPid (0),
@@ -137,6 +82,7 @@ CAddressSpace::CAddressSpace (boolean bProtected)
 	m_pThreads (0)
 {
 	m_Args[0] = '\0';
+	memset (&m_Syscalls, 0, sizeof m_Syscalls);
 	m_Cwd[0] = 'S'; m_Cwd[1] = 'D'; m_Cwd[2] = ':'; m_Cwd[3] = '/'; m_Cwd[4] = '\0';	// root
 
 	assert (s_ulKernelTTBR0 != 0);		// AddrSpaceInit() must run first
@@ -156,30 +102,14 @@ CAddressSpace::CAddressSpace (boolean bProtected)
 
 	m_nASID = AllocASID ();
 
-	// Publish the kapi ABI table read-only at the fixed user VA, so apps call the
-	// kernel through it (no linking against kernel addresses). The table page is a
-	// kernel global (not owned by this space), so teardown frees the L3 we add here
-	// but never the page itself.
-	TKPageAttr ApiAttr = KPAGE_ATTR_APP_RODATA;
-	if (s_pNullGuardL3 != 0)
-	{
-		// nullguard=1: the low 512 MB through the kernel's L3 copy without page 0 (shared by
-		// every app, never freed: the teardown only walks the user range's L2 entries)
-		m_pL2[0].Table.TableAddress = ARMV8MMUL2TABLEADDR ((u64) (uintptr) s_pNullGuardL3);
-	}
-	if (!m_bProtected)
-	{
-		MapContig (KAPI_TABLE_VA, KApiTablePhys (), 1, ApiAttr);
-	}
-	else
-	{
-		// A protected process: the EL0 table (its entries point at the EL0 code, not at the
-		// kernel), and the EL0 code page next to it -- both kernel globals, shared, read-only
-		// (MapPage makes them EL0-readable, the code EL0-executable).
-		TKPageAttr CodeAttr = KPAGE_ATTR_APP_CODE;
-		MapContig (KAPI_TABLE_VA, El0TablePhys (), 1, ApiAttr);
-		MapContig (KAPI_STUBS_VA, El0CodePhys (), 1, CodeAttr);
-	}
+	// The app's view of the kernel (kern/el0.h): the EL0 kapi table, read-only at the fixed
+	// KAPI_TABLE_VA (its entries point at the EL0 code, never at the kernel), and the EL0 code
+	// page (the system-call stubs, the user-side routines) next to it, executable at EL0. Both
+	// are kernel globals shared by every process: mapped not-owned, never freed here.
+	TKPageAttr TableAttr = KPAGE_ATTR_APP_RODATA;
+	TKPageAttr CodeAttr = KPAGE_ATTR_APP_CODE;
+	MapContig (KAPI_TABLE_VA, El0TablePhys (), 1, TableAttr);
+	MapContig (KAPI_STUBS_VA, El0CodePhys (), 1, CodeAttr);
 
 	DataSyncBarrier ();
 }
@@ -332,12 +262,11 @@ CAddressSpace::~CAddressSpace (void)
 			if (pPage->Value11 == 3 && (pPage->Ignored & PAGE_SW_OWNED))
 			{
 				u64 ulFrame = (u64) ARMV8MMUL3PAGEPTR ((u64) pPage->OutputAddress);
-				// Never free the shared kapi ABI table page: it is a kernel global
-				// aliased read-only into every address space (mapped not-owned, so
-				// this should already be skipped -- but guard explicitly: freeing it
-				// would corrupt the table for every app).
-				if (   ulFrame == KApiTablePhys ()
-				    || (m_bProtected && (ulFrame == El0TablePhys () || ulFrame == El0CodePhys ())))
+				// Never free the shared EL0 table and code pages: kernel globals
+				// aliased into every address space (mapped not-owned, so this should
+				// already be skipped -- but guard explicitly: freeing them would
+				// corrupt every app's view of the kernel).
+				if (ulFrame == El0TablePhys () || ulFrame == El0CodePhys ())
 				{
 					continue;
 				}
@@ -408,24 +337,10 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 
 	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[L3_INDEX (ulVA)].Page;
 
-	// A protected (EL0) process: the same presets, for EL0 -- the one place every mapping goes
-	// through (the ELF, the heap, the canvases and chrome copies, the surfaces, the sound ring,
-	// the GPU's buffers, the code arena, the screens, the stacks). Readable / writable at EL0 as
-	// they were at EL1; what was executable at EL1 (code, a JIT's pages) is executable at EL0
-	// only (UXN 0); nothing of it at EL1 (PXN 1; an EL0-writable page is PXN anyway).
-	unsigned nAP = Attr.AP, nPXN = Attr.PXN, nUXN = Attr.UXN;
-	if (m_bProtected)
-	{
-		if (nAP == ATTRIB_AP_RW_EL1) nAP = ATTRIB_AP_RW_ALL;
-		else if (nAP == ATTRIB_AP_RO_EL1) nAP = ATTRIB_AP_RO_ALL;
-		if (nPXN == 0) nUXN = 0;
-		nPXN = 1;
-	}
-
 	pPage->Value11	     = 3;
 	pPage->AttrIndx	     = Attr.AttrIndx;
 	pPage->NS	     = 0;
-	pPage->AP	     = nAP;
+	pPage->AP	     = Attr.AP;
 	pPage->SH	     = Attr.SH;
 	pPage->AF	     = 1;
 	pPage->nG	     = Attr.nG;
@@ -433,8 +348,8 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 	pPage->OutputAddress = ARMV8MMUL3PAGEADDR (ulPA);
 	pPage->Reserved0_2   = 0;
 	pPage->Continous     = 0;
-	pPage->PXN	     = nPXN;
-	pPage->UXN	     = nUXN;
+	pPage->PXN	     = Attr.PXN;
+	pPage->UXN	     = Attr.UXN;
 	pPage->Ignored	     = bOwned ? PAGE_SW_OWNED : 0;
 
 	DataSyncBarrier ();
@@ -468,7 +383,7 @@ void *CAddressSpace::MapSurface (u64 ulPhys, unsigned nPages)
 	{
 		return 0;				// arena exhausted
 	}
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;		// EL1 RW (frames owned by the CSurface)
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;		// EL0 RW (frames owned by the CSurface)
 	MapContig (ulVA, ulPhys, nPages, Attr);
 	m_ulSurfaceNext = ulNext;
 	DataSyncBarrier ();
@@ -546,7 +461,7 @@ void *CAddressSpace::Sbrk (long nIncrement)
 	u64 ulWant = ulOld + (u64) nIncrement;
 	if (ulWant > USER_HEAP_MAX) return (void *) -1;		// out of heap VA
 
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW (apps run in EL1)
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL0 RW
 	while (m_ulHeapEnd < ulWant)				// map fresh pages to cover [old,want)
 	{
 		if (MapNewPage (m_ulHeapEnd, Attr) == 0) return (void *) -1;	// OOM
@@ -588,11 +503,6 @@ void AddrSpaceInit (void)
 	u64 ulTTBR0;
 	asm volatile ("mrs %0, ttbr0_el1" : "=r" (ulTTBR0));
 	s_ulKernelTTBR0 = ulTTBR0 & ~(0xFFFFULL << TTBR0_ASID_SHIFT);	// strip ASID
-
-	if (g_bNullGuard)
-	{
-		NullGuardInit ();
-	}
 }
 
 void ActivateKernelAddressSpace (void)

@@ -24,7 +24,6 @@ OBJS = \
 	gui/window.o \
 	gui/surface.o \
 	proc/elf.o \
-	sys/syscall.o \
 	sys/kapi.o \
 	sys/kapitable.o \
 	sys/ipc.o \

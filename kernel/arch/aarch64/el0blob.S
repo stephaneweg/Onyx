@@ -1,8 +1,8 @@
 /*
- * el0blob.S -- the user-side code of protected mode (kern/el0.h), run AT EL0 by protected
- * processes. Not kernel code: these bytes are copied at boot (El0Init) into the EL0 code page,
- * mapped read-only + EL0-executable at KAPI_STUBS_VA + EL0_BLOB_OFFSET in every protected
- * process, and the EL0 table points at them. So: position-independent (relative branches and
+ * el0blob.S -- the user-side part of the kapi table (kern/el0.h), run AT EL0 by every process.
+ * Not kernel code: these bytes are copied at boot (El0Init) into the EL0 code page, mapped
+ * read-only + EL0-executable at KAPI_STUBS_VA + EL0_BLOB_OFFSET in every process, and the EL0
+ * table points at them. So: position-independent (relative branches and
  * immediates only, no literal pool, no data), nothing but the AAPCS64, system calls by
  * "mov x8, #slot; svc #0" (the kernel returns x0 and preserves every other register).
  *

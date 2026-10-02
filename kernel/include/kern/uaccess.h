@@ -5,15 +5,11 @@
 // Every kapi that takes a pointer from an app checks it on entry and fails with its documented
 // error value (the ABI and the apps' failure conventions unchanged). Three tools:
 //
-//  - The RANGE check: [p, p + n) must lie where the calling process may point. For every process
-//    that is the user VA range (kern/layout.h IS_USER_VA: its image, heap, canvases, surfaces,
-//    the sound ring, GPU buffers, the kapi table page...). A LEGACY process (EL1t, the model since
-//    the beginning) also runs on stacks the kernel heap gives it -- its main task's and its
-//    threads' CTask stacks, in the identity region -- so for it a range inside one of ITS
-//    tasks' stacks is accepted too (a buffer on the caller's stack, or on another thread's of the
-//    same process: a C++ thread handed a pointer to its parent's local). A PROTECTED process
-//    (EL0, kern/el0.h: CAddressSpace::IsProtected) has its stacks in the user VA range, and its
-//    CTask stack is its KERNEL stack: the user range only. The check never wraps (no p + n).
+//  - The RANGE check: [p, p + n) must lie in the user VA range (kern/layout.h IS_USER_VA: the
+//    process's image, stacks, heap, canvases, surfaces, the sound ring, GPU buffers, the kapi
+//    table page...) -- full stop: an app runs at EL0 (kern/el0.h), everything it may point at is
+//    there; its task's CTask stack is its KERNEL stack, never the app's. The check never wraps
+//    (no p + n).
 //
 //  - The PROBE (UserReadable / UserWritable): the range check, then every 64 KB page of the
 //    range translated by the MMU (AT S1E1R / S1E1W, PAR_EL1) -- mapped, and writable for a
@@ -32,13 +28,10 @@
 //    whatever another thread (or an app core) writes there meanwhile (closes the TOCTOU of a
 //    path that ResolvePath reads while the app's other threads run).
 //
-// Why plain LDR / STR, not LDTR / STTR (the unprivileged loads / stores): executed at EL1, those
-// access memory with EL0's permissions -- unless PSTATE.UAO is set (ARMv8.2 FEAT_UAO; the
-// Cortex-A72 is ARMv8.0: no UAO, no PAN), when they act as ordinary EL1 accesses. A legacy app's
-// pages are EL1-only (KPAGE_ATTR_APP_*: AP = *_EL1) and its stacks are kernel memory: LDTR would
-// fault on every pointer it passes. A protected app's pages are EL0- and EL1-accessible (AP =
-// *_ALL, no PAN): plain loads work for both, and the range check above is what keeps a protected
-// app's pointer off the kernel's memory.
+// Plain LDR / STR, not LDTR / STTR (the unprivileged loads / stores): an app's pages are EL0- and
+// EL1-accessible (AP = *_ALL, kern/layout.h; the Cortex-A72 is ARMv8.0: no PAN, no UAO), so plain
+// loads and stores reach them, with the same read-only pages (AP = RO_ALL is read-only at EL1
+// too). The range check above is what keeps an app's pointer off the kernel's memory.
 //
 // KERNEL callers: a kapi called by kernel code on its own behalf -- no scheduler yet (boot), or the
 // current task has no address space (TASK_USER_DATA_USER == 0: the compositor, the reaper...)
@@ -79,8 +72,8 @@ struct TTrapFrame;
 // The caller is the kernel itself (see above): its pointers are not checked.
 boolean UserIsKernelCaller (void);
 
-// How many bytes from p on the caller may hand the kernel: to the end of the user VA range, or
-// (legacy) of its process's stack that holds p; 0 if p is in neither. A kernel caller: no limit.
+// How many bytes from p on the caller may hand the kernel: to the end of the user VA range; 0 if
+// p is not in it. A kernel caller: no limit.
 u64 UserRangeAvail (const void *p);
 
 // [p, p + n) is the caller's to hand over (n == 0: always TRUE, p is not touched).
@@ -151,17 +144,11 @@ private:
 // TRUE: pFrame's ELR redirected.
 boolean UAccessFixup (TTrapFrame *pFrame, u64 ulESR);
 
-// PC lies in the legacy apps' memcpy / memset / memmove (the kapi table's entries).
-boolean UAccessInAppMem (u64 ulPC);
-
 // The routines (arch/aarch64/uaccess.S).
 extern "C" {
 long UAccessCopy (void *pDst, const void *pSrc, u64 nLen);		// 0 / -1
 long UAccessStrCopy (char *pDst, const char *pSrc, u64 nCap);		// length, nCap, -1
 long UAccessStrLen (const char *pSrc, u64 nMax);			// length, nMax, -1
-void *AppMemcpy (void *pDst, const void *pSrc, size_t nLen);
-void *AppMemset (void *pDst, int nValue, size_t nLen);
-void *AppMemmove (void *pDst, const void *pSrc, size_t nLen);
 }
 
 #endif // _kern_uaccess_h

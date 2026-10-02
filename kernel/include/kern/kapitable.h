@@ -9,8 +9,9 @@
 // Fill the published function table (call once, before any app runs).
 void KApiTableInit (void);
 
-// Physical address of the table page (identity-mapped: PA == kernel VA). Each
-// CAddressSpace maps this to KAPI_TABLE_VA so apps reach it at a fixed address.
-u64 KApiTablePhys (void);
+// The kernel's table: the system calls' entries (sys/el0.cpp dispatches "svc #0" through it,
+// El0Init builds the apps' EL0 table from it). Kernel memory, never mapped into an app's space.
+struct TKApiTable;
+const TKApiTable *KApiKernelTable (void);
 
 #endif // _kern_kapitable_h

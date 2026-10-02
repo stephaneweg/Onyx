@@ -4,7 +4,7 @@
 // The scheduler, the interrupts and every task stay on core 0, core 1 is the sound
 // producer. An app may acquire core 2 or 3 (kapi_core_acquire), then run one function of
 // ITS OWN code there (kapi_core_run): the core switches to the app's address space and
-// calls fn (arg) on a stack the app provides, until fn returns. The code on that core
+// enters fn (arg) at EL0 (kern/el0.h) on a stack the app provides, until fn returns. The code on that core
 // makes no kapi call and does not allocate (the kernel and newlib's malloc are not
 // multi-core safe): it computes and talks to the app's main thread through memory.
 // See docs/02 (App cores).
@@ -28,9 +28,8 @@ class CAddressSpace;
 
 void AppCoreMain (unsigned nCore);			// cores 2, 3: from COnyxCores::Run
 boolean AppCoreOnIRQExit (TTrapFrame *pFrame);		// secondary-core IRQ exit (TRUE: handled)
-boolean AppCoreOnFault (TTrapFrame *pFrame);		// secondary-core sync exception (TRUE: handled)
-// A synchronous exception from an EL0 job (a protected process's, kern/el0.h): bDone, the job
-// returned (El0CoreReturn's system call); else a fault -- dropped as AppCoreOnFault does.
+// A synchronous exception from a job (EL0, kern/el0.h; an ID register read is emulated before):
+// bDone, the job returned (El0CoreReturn's system call); else a fault -- the job is dropped.
 void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone);
 
 // Stop and free the cores an address space holds (its teardown). FALSE if a core did not

@@ -2,8 +2,9 @@
 // trapframe.h
 //
 // Full exception/trap frame saved by our VBAR_EL1 vectors (kernel/arch/aarch64/
-// vectors.S), shared between the assembly stubs and the C handlers. Offsets are
-// usable from both assembly and C.
+// vectors.S for the exceptions taken at EL1, el0.S for those taken at EL0), shared
+// between the assembly stubs and the C handlers. Offsets are usable from both
+// assembly and C.
 //
 // Layout (800 bytes, 16-byte aligned), low address first:
 //   x0..x30   (31 * 8 = 248 bytes)
@@ -15,12 +16,11 @@
 //   fpcr      (FP control register, in a 64-bit slot)
 //
 // The FP/SIMD block lets floating-point user code survive ANY context switch,
-// including a future preemptive switch taken from the IRQ path: that path saves
-// this whole frame on the way in and restores it on the way out, whereas the
-// cooperative TaskSwitch only preserves the callee-saved d8-d15 mandated by the
-// AArch64 PCS. FP/SIMD is enabled at EL0/EL1 at boot (CPACR_EL1, see
-// circle/lib/startup64.S), so the stp/ldp q-register forms in vectors.S never
-// trap. See kernel/arch/aarch64/vectors.S (SAVE_TRAP / RESTORE_TRAP_ERET).
+// including the preemptive one taken from an IRQ at EL0 (el0.S saves this whole
+// frame on the way in and restores it on the way out), whereas the cooperative
+// TaskSwitch only preserves the callee-saved d8-d15 mandated by the AArch64 PCS.
+// FP/SIMD is enabled at EL0/EL1 at boot (CPACR_EL1, see circle/lib/startup64.S),
+// so the stp/ldp q-register forms never trap.
 //
 #ifndef _kern_trapframe_h
 #define _kern_trapframe_h
@@ -34,9 +34,6 @@
 #define TF_FPSR		784		// 0x310
 #define TF_FPCR		792		// 0x318
 #define TF_SIZE		800		// 0x320 (16-byte aligned)
-
-// SPSR_EL1 mode field (M[3:0]) values used when entering EL0.
-#define SPSR_MODE_EL0t	0x0		// EL0, all of DAIF clear (interrupts enabled)
 
 #ifndef __ASSEMBLER__
 
@@ -59,12 +56,10 @@ PACKED;
 extern "C" {
 #endif
 
-// C handlers called from vectors.S
-void SyncHandlerEL0 (TTrapFrame *pFrame);	// SVC -> syscall, abort -> page fault
-void SyncHandlerEL1 (TTrapFrame *pFrame);	// SVC (test) -> syscall, else kernel panic
-void KernelIRQExit (TTrapFrame *pFrame);	// M0: instrument would-be preemption points (no switch yet)
+// C handlers called from vectors.S (the exceptions taken at EL1; EL0's: kern/el0.h)
+void SyncHandlerEL1 (TTrapFrame *pFrame);	// a fault-safe copy's recovery, else kernel panic
+void KernelIRQExit (TTrapFrame *pFrame);	// after an IRQ at EL1: the watchdog samples
 void BadModeHandler (TTrapFrame *pFrame);	// unexpected vector / SError -> dump + halt
-void SyscallEntry (TTrapFrame *pFrame);		// syscall ABI dispatch (kernel/sys)
 
 // Timer periodic handler (100 Hz) -> CScheduler::OnTimerTick(). Registered with
 // CTimer::RegisterPeriodicHandler() in CKernel; runs inside the timer IRQ.
@@ -72,7 +67,6 @@ void PeriodicTick (void);
 
 // Assembly helpers (vectors.S)
 void install_vectors (void);			// set VBAR_EL1 to our table + isb
-void enter_user (u64 ulEntry, u64 ulUserSP, void *pKernelParam);  // ERET to EL0 (#6)
 
 #ifdef __cplusplus
 }

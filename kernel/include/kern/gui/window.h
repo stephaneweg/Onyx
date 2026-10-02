@@ -320,8 +320,8 @@ public:
 	void PushEvent (const GUIEvent &Event);
 	boolean PopEvent (GUIEvent *pEvent);
 
-	// Modifiers of the key event being dispatched right now (kapi_pump_events sets it
-	// around the app's key handler; kapi_get_modifiers reports it), 0xFFFFFFFF = none.
+	// Modifiers of the key event being dispatched right now (the user-side pump sets it,
+	// kapi_event_mods, around the app's key handler; kapi_get_modifiers reports it), 0xFFFFFFFF = none.
 	volatile unsigned m_nKeyEventMods = 0xFFFFFFFF;
 
 	// --- keyboard --------------------------------------------------------

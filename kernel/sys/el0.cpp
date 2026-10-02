@@ -1,6 +1,7 @@
 //
-// el0.cpp -- protected mode (kern/el0.h): the EL0 table and code pages, the per-core EL0 setup,
-// the C side of the EL0 exceptions (system calls, faults, preemption), the launch policy.
+// el0.cpp -- apps at EL0 (kern/el0.h): the EL0 table and code pages, the per-core EL0 setup, the C
+// side of the EL0 exceptions (system calls and their statistics, the ID register emulation,
+// faults, preemption).
 //
 // MIT licence (Onyx). Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
 //
@@ -13,6 +14,7 @@
 #include <kern/crashlog.h>
 #include <kern/ipc.h>			// IpcNotify (a killed process: a notice)
 #include <kern/layout.h>
+#include <kern/uaccess.h>		// UAccessCopy (the faulting instruction), UserPut
 #include <circle/multicore.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -24,12 +26,11 @@
 #include <assert.h>
 
 extern "C" void kapi_exit (int nStatus);
-extern "C" void PreemptDoYield (void);		// arch/aarch64/exception.cpp
 
 // ---- the table's layout, as the blob (arch/aarch64/el0blob.S) and the stubs use it -------------
 
 #define SLOT(f)		(__builtin_offsetof (TKApiTable, f) / sizeof (u64))
-#define KAPI_SLOTS	(sizeof (TKApiTable) / sizeof (u64))
+#define KAPI_SLOTS	KAPI_TABLE_SLOTS		// (kern/addrspace.h)
 
 static_assert (KAPI_STUBS_VA == KAPI_TABLE_VA + 0x10000ULL, "kern/el0.h: KAPI_STUBS_VA");
 static_assert (__builtin_offsetof (TKApiTable, create_window) == 8, "slot 0 is version (+ padding)");
@@ -47,6 +48,7 @@ static_assert (sizeof (struct kapi_event) == 32 && __builtin_offsetof (struct ka
 	       "el0blob.S: struct kapi_event's layout");
 static_assert (sizeof (struct kapi_posted) == 24 && __builtin_offsetof (struct kapi_posted, value) == 16,
 	       "el0blob.S: struct kapi_posted's layout");
+static_assert (sizeof (struct kapi_syscall_stats) == 104, "kern/kapi_abi.h: struct kapi_syscall_stats (ABI)");
 
 // The blob (arch/aarch64/el0blob.S): EL0 code, copied into the code page.
 extern "C" const u8 El0BlobStart[], El0BlobEnd[];
@@ -69,6 +71,11 @@ u64 El0CoreReturnVA (void)	{ return BlobVA (El0CoreReturn); }
 u64 El0TablePhys (void)		{ return (u64) (uintptr) s_pTable; }
 u64 El0CodePhys (void)		{ return (u64) (uintptr) s_pCode; }
 
+static inline const u64 *KernelSlots (void)
+{
+	return (const u64 *) KApiKernelTable ();
+}
+
 void El0Init (void)
 {
 	s_pTable = (u64 *) palloc ();
@@ -83,7 +90,7 @@ void El0Init (void)
 
 	// Slot 0 is not a pointer (version + padding): the same value. Every other slot: its stub, or 0
 	// where the kernel's table has 0 (an app tests some entries before calling them).
-	const u64 *pKernel = (const u64 *) KApiTablePhys ();
+	const u64 *pKernel = KernelSlots ();
 	s_pTable[0] = pKernel[0];
 	for (unsigned n = 1; n < KAPI_SLOTS; n++)
 	{
@@ -95,8 +102,8 @@ void El0Init (void)
 		s_pTable[n] = pKernel[n] != 0 ? KAPI_STUBS_VA + (u64) n * EL0_STUB_SIZE : 0;
 	}
 
-	// Done at EL0, without the kernel: the memory primitives (docs/EL0 §4.5) and the event pump,
-	// whose handlers are the app's code (§4.2).
+	// Done at EL0, without the kernel (their kernel slots are 0): the memory primitives (docs/EL0
+	// §4.5) and the event pump, whose handlers are the app's code (§4.2).
 	struct { unsigned nSlot; const u8 *pCode; } User[] =
 	{
 		{ SLOT (memcpy),	El0Memcpy },
@@ -123,6 +130,16 @@ void El0Init (void)
 // ---- every core ------------------------------------------------------------------------------
 
 static boolean s_bPmu = FALSE;			// cmdline.txt el0pmu=1: the PMU at EL0
+static u64 s_ulCntFrq = 1;			// CNTFRQ_EL0 (the system counter's Hz)
+
+// The ID registers ID_AA64*_EL1 (op0 3, op1 0, CRn 0, CRm 4..7, op2 0..7) as core 0 read them at
+// boot: the same on every core of the BCM2711 (four Cortex-A72). The unallocated encodings of that
+// space are RAZ (ARMv8.0), so all 32 can be read.
+static u64 s_IdRegs[8][8];
+
+#define ID_READ(m, o)	asm volatile ("mrs %0, S3_0_C0_C" #m "_" #o : "=r" (s_IdRegs[m][o]))
+#define ID_READ8(m)	do { ID_READ (m, 0); ID_READ (m, 1); ID_READ (m, 2); ID_READ (m, 3); \
+			     ID_READ (m, 4); ID_READ (m, 5); ID_READ (m, 6); ID_READ (m, 7); } while (0)
 
 void El0CoreInit (unsigned nCore)
 {
@@ -152,46 +169,21 @@ void El0CoreInit (unsigned nCore)
 	asm volatile ("msr tpidrro_el0, %0" :: "r" ((u64) nCore));
 	asm volatile ("msr tpidr_el1, xzr");		// (El0Return sets it before any EL0 code)
 	asm volatile ("isb" ::: "memory");
-}
 
-// ---- the launch policy ----------------------------------------------------------------------
-
-static boolean s_bDefaultProtected = FALSE;
-static char s_ProtectedList[256];
-
-void El0Configure (const char *pAppMode, const char *pList)
-{
-	s_bDefaultProtected = pAppMode != 0 && strcmp (pAppMode, "protected") == 0;
-	unsigned i = 0;
-	if (pList != 0)
-		for (; pList[i] != '\0' && i < sizeof s_ProtectedList - 1; i++) s_ProtectedList[i] = pList[i];
-	s_ProtectedList[i] = '\0';
+	if (nCore == 0)
+	{
+		ID_READ8 (4);
+		ID_READ8 (5);
+		ID_READ8 (6);
+		ID_READ8 (7);
+		asm volatile ("mrs %0, cntfrq_el0" : "=r" (v));
+		s_ulCntFrq = v != 0 ? v : 1;
+	}
 }
 
 void El0ConfigurePmu (boolean bOn)
 {
 	s_bPmu = bOn;
-}
-
-static boolean InList (const char *pName)
-{
-	if (pName == 0 || pName[0] == '\0') return FALSE;
-	unsigned nLen = strlen (pName);
-	for (const char *p = s_ProtectedList; *p != '\0'; )
-	{
-		const char *q = p;
-		while (*q != '\0' && *q != ',') q++;
-		if ((unsigned) (q - p) == nLen && strncmp (p, pName, nLen) == 0) return TRUE;
-		p = *q == ',' ? q + 1 : q;
-	}
-	return FALSE;
-}
-
-boolean El0ShouldProtect (int nAppTxtMode, const char *pName)
-{
-	if (nAppTxtMode >= 0) return nAppTxtMode != 0;
-	if (InList (pName)) return TRUE;
-	return s_bDefaultProtected;
 }
 
 // ---- the exceptions from EL0 ----------------------------------------------------------------
@@ -225,14 +217,58 @@ static const char *FaultName (unsigned nEC)
 	}
 }
 
+static inline u64 Cntpct (void)
+{
+	u64 v;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (v));
+	return v;
+}
+
+// The calling process (core 0 only: an app core's job has no task there).
+static inline CAddressSpace *CurrentAS (void)
+{
+	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
+	return pTask != 0 ? (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER) : 0;
+}
+
+// One system call counted (core 0, IRQs masked: no lock). The rate: calls per second over a
+// window of at least 1 s of CNTPCT, closed by the first call after its end.
+static inline void CountSyscall (CAddressSpace *pAS, u64 n)
+{
+	TSyscallStats &S = *pAS->GetSyscallStats ();
+	S.nTotal++;
+	if (n < KAPI_SLOTS && S.nSlot[n] != 0xFFFFFFFFu)
+	{
+		S.nSlot[n]++;
+	}
+	S.nWindowCount++;
+	u64 ulNow = Cntpct ();
+	if (S.ulWindowStart == 0)
+	{
+		S.ulWindowStart = ulNow;
+	}
+	else if (ulNow - S.ulWindowStart >= s_ulCntFrq)
+	{
+		S.nRate = (u32) ((u64) S.nWindowCount * s_ulCntFrq / (ulNow - S.ulWindowStart));
+		S.ulWindowStart = ulNow;
+		S.nWindowCount = 0;
+	}
+}
+
 // A system call: the table's slot x8, its arguments x0-x7 (every kapi takes at most 8, all
-// integers or pointers: none on the stack, none in the FP registers), its result in x0. Run as an
-// EL1 app's call runs it, on this task's kernel stack with the IRQs on: a kapi that Yields (a
-// wait, a chunked read) parks the task as usual.
+// integers or pointers: none on the stack, none in the FP registers), its result in x0. Run in the
+// calling task, on its kernel stack with the IRQs on: a kapi that Yields (a wait, a chunked read)
+// parks the task as usual.
 static void Syscall (TTrapFrame *pFrame)
 {
 	u64 n = pFrame->x[8];
-	const u64 *pKernel = (const u64 *) KApiTablePhys ();
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS != 0)
+	{
+		CountSyscall (pAS, n);
+	}
+
+	const u64 *pKernel = KernelSlots ();
 	if (n == 0 || n >= KAPI_SLOTS || s_bUserSide[n] || pKernel[n] == 0)
 	{
 		pFrame->x[0] = 0;		// (not a system call: done at EL0, or no such entry)
@@ -247,8 +283,116 @@ static void Syscall (TTrapFrame *pFrame)
 			       pFrame->x[4], pFrame->x[5], pFrame->x[6], pFrame->x[7]);
 }
 
-// A fault at EL0 (any synchronous exception but a system call): the process is killed, never the
-// machine. Its kmsg line names it; the desktop shows a notice.
+// ---- the MRS emulation (kern/el0.h) ----
+//
+// Emulated: op0 3, op1 0, CRn 0 -- the ID register space -- with
+//   CRm 0: op2 0 MIDR_EL1 (the real value), 5 MPIDR_EL1 (the real value of the core the app runs
+//          on: Aff0 = the core's number -- what an app built before v73 read in kapi__core),
+//          6 REVIDR_EL1 (real); the other op2 are not emulated (the app is killed);
+//   CRm 1..3 (the AArch32 ID registers): 0 (no AArch32 at EL0 on Onyx);
+//   CRm 4..7 (ID_AA64*_EL1): the boot snapshot, sanitised --
+//     ID_AA64PFR0_EL1 (4, 0): EL0, EL1, FP, AdvSIMD, SVE, DIT, CSV2, CSV3 kept; EL2, EL3, GIC, RAS,
+//                             SEL2, MPAM, AMU, RME... 0 (nothing an app can use);
+//     ID_AA64DFR0_EL1 (5, 0): DebugVer only (the rest is the self-hosted debug / PMU / trace
+//                             hardware: an app cannot reach it);
+//     ID_AA64DFR1_EL1 (5, 1), ID_AA64AFR0_EL1 (5, 4), ID_AA64AFR1_EL1 (5, 5): 0;
+//     everything else (PFR1, ZFR0, ISAR0..2, MMFR0..2, the RAZ ones): the hardware's value.
+// Either encoding of the trap: EC 0x00 (ARMv8.0, the A72: the instruction is read from the app's
+// code) or EC 0x18 (FEAT_IDST: decoded from the ISS).
+
+#define PFR0_KEEP	0xFF0F000F00FF00FFULL	// CSV3 CSV2 . DIT . . SVE . . . AdvSIMD FP . . EL1 EL0
+#define DFR0_KEEP	0x000000000000000FULL	// DebugVer
+
+// The value of the register (op1 = 0, CRn = 0 assumed): TRUE if it is emulated.
+static boolean IdRegValue (unsigned nCRm, unsigned nOp2, u64 *pValue)
+{
+	u64 v = 0;
+	if (nCRm == 0)
+	{
+		switch (nOp2)
+		{
+		case 0:	asm volatile ("mrs %0, midr_el1" : "=r" (v)); break;
+		case 5:	asm volatile ("mrs %0, mpidr_el1" : "=r" (v)); break;
+		case 6:	asm volatile ("mrs %0, revidr_el1" : "=r" (v)); break;
+		default: return FALSE;
+		}
+	}
+	else if (nCRm >= 4 && nCRm <= 7)
+	{
+		v = s_IdRegs[nCRm][nOp2];
+		if (nCRm == 4 && nOp2 == 0)		v &= PFR0_KEEP;
+		else if (nCRm == 5 && nOp2 == 0)	v &= DFR0_KEEP;
+		else if (nCRm == 5 && (nOp2 == 1 || nOp2 == 4 || nOp2 == 5)) v = 0;
+	}
+	else if (nCRm > 7)
+	{
+		return FALSE;
+	}
+	// (CRm 1..3: 0)
+	*pValue = v;
+	return TRUE;
+}
+
+// An EL0 exception that may be an MRS of an ID register: emulated (the target register written,
+// ELR past the instruction) -> TRUE. IRQs masked; touches no lock (an app core's too).
+static boolean EmulateMrs (TTrapFrame *pFrame, unsigned nEC, u64 ulESR)
+{
+	unsigned nOp0, nOp1, nCRn, nCRm, nOp2, nRt;
+	if (nEC == EC_SYSREG)
+	{
+		u32 nISS = (u32) ulESR & 0x1FFFFFF;
+		if ((nISS & 1) == 0)
+		{
+			return FALSE;				// an MSR (a write): never
+		}
+		nOp0 = (nISS >> 20) & 3;
+		nOp2 = (nISS >> 17) & 7;
+		nOp1 = (nISS >> 14) & 7;
+		nCRn = (nISS >> 10) & 15;
+		nRt  = (nISS >> 5) & 31;
+		nCRm = (nISS >> 1) & 15;
+	}
+	else if (nEC == EC_UNKNOWN)
+	{
+		u64 ulPC = pFrame->elr_el1;
+		u32 nInsn;
+		if (   (ulPC & 3) != 0
+		    || !IS_USER_VA (ulPC) || !IS_USER_VA (ulPC + 3)
+		    || UAccessCopy (&nInsn, (const void *) (uintptr) ulPC, 4) != 0)
+		{
+			return FALSE;
+		}
+		if ((nInsn & 0xFFF00000u) != 0xD5300000u)	// MRS Xt, S<op0>_<op1>_C<n>_C<m>_<op2>
+		{
+			return FALSE;
+		}
+		nOp0 = 2 | ((nInsn >> 19) & 1);
+		nOp1 = (nInsn >> 16) & 7;
+		nCRn = (nInsn >> 12) & 15;
+		nCRm = (nInsn >> 8) & 15;
+		nOp2 = (nInsn >> 5) & 7;
+		nRt  = nInsn & 31;
+	}
+	else
+	{
+		return FALSE;
+	}
+
+	u64 ulValue;
+	if (nOp0 != 3 || nOp1 != 0 || nCRn != 0 || !IdRegValue (nCRm, nOp2, &ulValue))
+	{
+		return FALSE;
+	}
+	if (nRt != 31)					// (31: XZR, the value dropped)
+	{
+		pFrame->x[nRt] = ulValue;
+	}
+	pFrame->elr_el1 += 4;
+	return TRUE;
+}
+
+// A fault at EL0 (any synchronous exception but a system call or an emulated MRS): the process is
+// killed, never the machine. Its kmsg line names it; the desktop shows a notice.
 static void __attribute__ ((noreturn)) Fault (TTrapFrame *pFrame, unsigned nEC, u64 ulESR, u64 ulFAR)
 {
 	asm volatile ("msr daifclr, #3" ::: "memory");
@@ -277,6 +421,19 @@ void El0SyncHandler (TTrapFrame *pFrame)
 	asm volatile ("mrs %0, esr_el1" : "=r" (ulESR));
 	asm volatile ("mrs %0, far_el1" : "=r" (ulFAR));
 	unsigned nEC = (unsigned) (ulESR >> 26) & 0x3F;
+
+	// An ID register read: emulated, on any core (an app core's job too).
+	if ((nEC == EC_UNKNOWN || nEC == EC_SYSREG) && EmulateMrs (pFrame, nEC, ulESR))
+	{
+#ifdef ARM_ALLOW_MULTI_CORE
+		if (CMultiCoreSupport::ThisCore () == 0)
+#endif
+		{
+			CAddressSpace *pAS = CurrentAS ();
+			if (pAS != 0) pAS->GetSyscallStats ()->nEmulated++;
+		}
+		return;
+	}
 
 #ifdef ARM_ALLOW_MULTI_CORE
 	// An app core's job (kern/appcore.h): its end (El0CoreReturn) or a fault -- the job is
@@ -314,13 +471,105 @@ void El0IrqExit (TTrapFrame *pFrame)
 	CrashLogSample (pFrame);
 	CScheduler::Get ()->StallSample (pFrame->elr_el1, pFrame->x[30]);
 
-	// The time slice is over: the app is always in its own code here (EL0) -- switch now, on this
-	// task's kernel stack at EL1t, IRQ + FIQ masked: the task is parked exactly as
-	// PreemptTrampoline parks a legacy app (one resume path: Yield returns, El0Return erets).
+	// The time slice is over (or a "real time" task is ready): the app is in its own code here
+	// (EL0) -- switch now, on this task's kernel stack at EL1t, IRQ + FIQ masked: the task is parked
+	// exactly as a voluntary yielder (one resume path: Yield returns, El0Return erets). The only
+	// preemption there is: the kernel itself is not preempted (an IRQ taken at EL1 never switches,
+	// arch/aarch64/exception.cpp KernelIRQExit).
 	if (!CScheduler::Get ()->IsReschedPending ())
 	{
 		return;
 	}
 	CScheduler::Get ()->ClearResched ();
-	PreemptDoYield ();
+	CScheduler::Get ()->OnPreempt ();	// (the tasks that yield voluntarily go first)
+	CScheduler::Get ()->Yield ();
+}
+
+// ---- the statistics (v74) ---------------------------------------------------------------------
+
+struct TFindPid
+{
+	unsigned       nPid;
+	CAddressSpace *pFound;
+};
+
+static boolean FindPidCallback (CTask *pTask, const char *pName, TTaskState State,
+				TTaskFlags Flags, void *pParam)
+{
+	(void) pName; (void) Flags;
+	TFindPid *pFind = (TFindPid *) pParam;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (State != TaskStateTerminated && pAS != 0 && pAS->GetPid () == pFind->nPid)
+	{
+		pFind->pFound = pAS;
+		return FALSE;				// (found: stop)
+	}
+	return TRUE;
+}
+
+int kapi_proc_stats (int nPid, struct kapi_syscall_stats *pOut)
+{
+	if (!CScheduler::IsActive ())
+	{
+		return -1;
+	}
+	CAddressSpace *pAS = 0;
+	if (nPid == 0)
+	{
+		pAS = CurrentAS ();
+	}
+	else if (nPid > 0)
+	{
+		TFindPid Find = { (unsigned) nPid, 0 };
+		CScheduler::Get ()->EnumerateTasks (FindPidCallback, &Find);
+		pAS = Find.pFound;
+	}
+	if (pAS == 0)
+	{
+		return -1;
+	}
+
+	// Made here, copied out whole (kern/uaccess.h); no Yield in between: the space stays.
+	const TSyscallStats &S = *pAS->GetSyscallStats ();
+	struct kapi_syscall_stats Out;
+	memset (&Out, 0, sizeof Out);
+	Out.syscalls = S.nTotal;
+	Out.emulated = S.nEmulated;
+	Out.slots = KAPI_SLOTS;
+	Out.rate = S.nRate;
+	u64 ulElapsed = S.ulWindowStart != 0 ? Cntpct () - S.ulWindowStart : 0;
+	if (ulElapsed >= s_ulCntFrq)			// the current window is over 1 s (idle: 0)
+	{
+		Out.rate = (unsigned) ((u64) S.nWindowCount * s_ulCntFrq / ulElapsed);
+	}
+
+	// The top slots, the most first (a selection: KAPI_SYSCALL_STATS_TOP passes over ~200 slots).
+	u32 nPrev = 0xFFFFFFFFu;
+	unsigned nPrevSlot = 0;
+	for (unsigned k = 0; k < KAPI_SYSCALL_STATS_TOP; k++)
+	{
+		unsigned nBest = 0;
+		u32 nBestCount = 0;
+		for (unsigned n = 1; n < KAPI_SLOTS; n++)
+		{
+			u32 c = S.nSlot[n];
+			// strictly after the previous one in the order (count descending, slot ascending)
+			boolean bAfter = c < nPrev || (c == nPrev && n > nPrevSlot);
+			if (bAfter && c > nBestCount)	// (the first of the largest: its smallest slot)
+			{
+				nBest = n;
+				nBestCount = c;
+			}
+		}
+		if (nBest == 0)
+		{
+			break;
+		}
+		Out.top_slot[k] = nBest;
+		Out.top_count[k] = nBestCount;
+		nPrev = nBestCount;
+		nPrevSlot = nBest;
+	}
+
+	return UserPut (pOut, Out) ? 0 : -2;
 }

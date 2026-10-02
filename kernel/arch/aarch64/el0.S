@@ -1,9 +1,9 @@
 /*
- * el0.S -- protected mode (kern/el0.h): the exceptions taken from EL0, the return to EL0, and
+ * el0.S -- apps at EL0 (kern/el0.h): the exceptions taken from EL0, the return to EL0, and
  * the first entry into EL0 of a task, a thread or an app core's job.
  *
- * The legacy (EL1) paths of vectors.S are not touched: only the "Lower EL using AArch64" group
- * of KVectorTable branches here, and no EL0 code ever runs unless a process is protected.
+ * The "Lower EL using AArch64" group of KVectorTable (vectors.S) branches here; the exceptions
+ * taken at EL1 (the kernel's own) keep vectors.S's paths.
  *
  * The stacks.
  *   - While a core runs EL0 code, TPIDR_EL1 holds the top of the running task's KERNEL stack (its
@@ -14,8 +14,8 @@
  *     DAIF all masked. EL0_ENTRY borrows 16 bytes of it for two scratch registers, builds the
  *     whole trap frame (kern/trapframe.h: x0-x30, the user's SP_EL0, ELR, SPSR, q0-q31, FPSR,
  *     FPCR) at TPIDR_EL1 - TF_SIZE, gives SP_EL1 its 16 bytes back, points SP_EL0 at the frame
- *     and selects it (SPSel = 0): the handler runs at EL1t on the task's kernel stack -- like an
- *     EL1 app's kapi call --, where Yield / TaskSwitch (which saves and restores SP_EL0) work.
+ *     and selects it (SPSel = 0): the handler runs at EL1t on the task's kernel stack -- as the
+ *     kernel's own tasks run --, where Yield / TaskSwitch (which saves and restores SP_EL0) work.
  *   - El0Return: IRQs masked, back to SPSel = 1 (SP_EL0 is then free to hold the user's SP again:
  *     MSR SP_EL0 is UNDEFINED at EL1 with SPSel = 0), TPIDR_EL1 = frame + TF_SIZE, everything
  *     restored, eret. SP_EL1 is exactly as the exception found it.
@@ -95,7 +95,7 @@ El0SyncEntry:
 /*
  * IRQ from EL0: as IrqEntry does (FIQ enabled around Circle's handler, which EnterCritical
  * requires), but on the task's kernel stack, then El0IrqExit -- which may simply Yield there when
- * the time slice is over (no trampoline: the switch already happens at EL1t on the right stack).
+ * the time slice is over (the switch happens at EL1t, on this task's kernel stack).
  */
 	.globl	El0IrqEntry
 	.type	El0IrqEntry, %function
@@ -103,7 +103,7 @@ El0IrqEntry:
 	EL0_ENTRY
 	msr	DAIFClr, #1		/* enable FIQ (EnterCritical asserts it) */
 	bl	InterruptHandler	/* Circle: GIC dispatch + EOI + the periodic tick */
-	msr	DAIFSet, #1		/* IRQ + FIQ masked again (as PreemptTrampoline's Yield) */
+	msr	DAIFSet, #1		/* IRQ + FIQ masked again (El0IrqExit may Yield so) */
 	mov	x0, sp
 	bl	El0IrqExit
 	b	El0Return
@@ -192,8 +192,8 @@ El0Enter:
 	str	x1, [sp, #TF_SP_EL0]
 	str	x0, [sp, #TF_ELR]
 	/* SPSR = EL0t (M[4:0] = 0b00000: AArch64, EL0, SP_EL0), NZCV 0, IRQ + FIQ enabled, SError
-	   and debug masked (D, A = bits 9, 8) -- as the kernel's tasks and the EL1 apps run: a
-	   pending SError is not taken in the app's code. FPSR / FPCR 0. */
+	   and debug masked (D, A = bits 9, 8) -- as the kernel's tasks run: a pending SError is
+	   not taken in the app's code. FPSR / FPCR 0. */
 	mov	x4, #0x300
 	str	x4, [sp, #TF_SPSR]
 	b	El0Return

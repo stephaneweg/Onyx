@@ -168,7 +168,7 @@ void CTask::TaskEntry (void *pParam)
 #if AARCH == 64
 	// A new task is first entered from a context switch that ran with IRQ
 	// disabled (see CScheduler::Yield) -- and with FIQ disabled too when that
-	// switch came from a preemption (PreemptTrampoline masks both). Enable both so
+	// switch came from a preemption (El0IrqExit Yields with both masked). Enable both so
 	// the task runs at task level with interrupts on, like every other task after
 	// it resumes: Circle's EnterCritical (IRQ_LEVEL: every spin lock) asserts that
 	// FIQ is on. (A thread first run after another was preempted halted there.)

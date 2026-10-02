@@ -4,9 +4,9 @@
 //
 // A thread is one more CTask in the app's address space: its TASK_USER_DATA_USER is the
 // same CAddressSpace, so the task switch activates the app's page table and every kapi
-// sees the same process (window, heap, files, sockets). It runs at EL1 on its own
-// kernel-allocated stack (identity-mapped, like the main task's), and the timer preempts
-// it in its own code like any app. The process ends with its main task (the others are
+// sees the same process (window, heap, files, sockets). It runs at EL0 (kern/el0.h) on its
+// own user stack, mapped in the process's space; its task's (CTask) stack is its kernel stack.
+// The timer preempts it like any app. The process ends with its main task (the others are
 // terminated with it), or when a thread calls kapi_exit; killing the app kills them all
 // (CScheduler::TerminateGroup).
 //
@@ -26,10 +26,11 @@
 // word (through the kernel's identity map) and wakes those whose value moved. A process
 // that dies unlinks its sleepers first (ThreadsFree).
 //
-// kapi_post queues a call (fn, ctx, value) that the process's event pump runs --
-// kapi_pump_events on the thread that pumps (the main one): a worker thread hands its
-// result to the UI thread that way, and kapi_pump_wait sleeps until a post or a window
-// event arrives.
+// kapi_post queues a call (fn, ctx, value) that the process's event pump runs -- the
+// user-side pump_events of the EL0 table (kern/el0.h), on the thread that pumps (the main
+// one), takes it with kapi_pop_post and calls it at EL0: a worker thread hands its result to
+// the UI thread that way; pump_wait sleeps (kapi_pump_sleep) until a post or a window event
+// arrives. The kernel never calls an app's code.
 //
 #ifndef _kern_thread_h
 #define _kern_thread_h
@@ -44,7 +45,7 @@ struct kapi_posted;
 
 #define THREADS_MAX		32		// threads a process may run besides its main one
 #define THREAD_RECS		(THREADS_MAX * 2)	// ... + the ended ones not joined yet
-#define THREAD_STACK_DEFAULT	0x40000		// 256 KB
+#define THREAD_STACK_DEFAULT	0x40000		// 256 KB (a thread's USER stack; the kernel's: EL0_KSTACK_SIZE)
 #define THREAD_STACK_MIN	0x4000		// 16 KB
 #define THREAD_STACK_MAX	0x1000000	// 16 MB
 #define SYNC_OBJS_MAX		256		// mutexes + events + barriers per process
@@ -96,9 +97,6 @@ void ThreadsFree (CAddressSpace *pAS);
 // End the other tasks of the current process (it ends: kapi_exit, main returned).
 void ThreadsEndProcess (void);
 
-// Run the calls posted to the current process (kapi_pump_events). Returns how many.
-unsigned ThreadsRunPosts (CAddressSpace *pAS);
-
 // The timer tick (IRQ, core 0): wake the word waiters whose word has changed.
 void WordWaitTick (void);
 
@@ -118,7 +116,6 @@ int  kapi_barrier_create (unsigned nCount);
 int  kapi_barrier_wait (int h);
 int  kapi_sync_close (int h);
 int  kapi_post (void (*pFunc) (void *, long), void *pCtx, long lValue);
-int  kapi_pump_wait (unsigned nTimeoutMs);
 int  kapi_pump_sleep (unsigned nTimeoutMs);		// (v73)
 int  kapi_pop_post (struct kapi_posted *pPost);		// (v73)
 int  kapi_wait_word (volatile unsigned *pWord, unsigned nExpected, unsigned nTimeoutMs);

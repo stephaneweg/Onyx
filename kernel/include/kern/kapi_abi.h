@@ -5,7 +5,9 @@
 // every kernel rebuild), the kernel publishes a function-pointer TABLE at a FIXED
 // virtual address, mapped read-only into every app's address space. Apps call the
 // kernel through this table, so an app binary keeps working against any kernel that
-// exposes the same ABI -- no rebuild needed when the kernel changes.
+// exposes the same ABI -- no rebuild needed when the kernel changes. Apps run at EL0:
+// the entries they see point at EL0 stubs that make system calls (slot n: "svc #0" with
+// n in x8) or at user-side code (memcpy & co., the event pump) -- kern/el0.h.
 //
 // THE CONTRACT IS: this struct layout + KAPI_TABLE_VA. It is APPEND-ONLY -- never
 // reorder or remove fields; add new ones at the end and bump KAPI_ABI_VERSION. Old
@@ -119,7 +121,13 @@
 //      wait_for_exit / pump_wait are EL0 code that pops the window's events and the posted calls
 //      (struct kapi_event, struct kapi_posted) and calls the handlers itself. An EL1 app may call
 //      them too (its pump_events still runs in the kernel).
-#define KAPI_ABI_VERSION	73
+// v74: every process runs at EL0 (the EL1 "legacy" mode is gone: kern/el0.h). + proc_stats --
+//      a process's system calls (struct kapi_syscall_stats: the total, the rate per second, the
+//      8 table slots most called) and its ID register reads; those reads (MRS of MIDR_EL1,
+//      MPIDR_EL1, REVIDR_EL1, ID_AA64*_EL1 at EL0) are now emulated by the kernel, sanitised,
+//      instead of killing the app. The kernel table's pump_events / wait_for_exit / pump_wait /
+//      memset / memcpy / memmove are 0: they were never system calls (user-side code).
+#define KAPI_ABI_VERSION	74
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -502,6 +510,22 @@ struct kapi_posted
 	long long value;
 };
 
+// (v74) A process's system calls, as proc_stats returns them. A "slot" is a kapi entry's index
+// in TKApiTable counted in 8-byte words (version = 0, create_window = 1, ...): the number the
+// EL0 stub puts in x8.
+#define KAPI_SYSCALL_STATS_TOP	8
+struct kapi_syscall_stats
+{
+	unsigned long long syscalls;	// system calls since the process started
+	unsigned long long emulated;	// ID register reads (MRS) emulated by the kernel
+	unsigned rate;			// system calls per second: the last full window (>= 1 s),
+					// or the current one when it is over 1 s (an idle process: 0)
+	unsigned slots;			// the kernel's table slots (KAPI_TABLE_SLOTS: the version's)
+	unsigned top_slot[KAPI_SYSCALL_STATS_TOP];	 // the slots most called, the most first (0: none)
+	unsigned top_count[KAPI_SYSCALL_STATS_TOP]; // their counts (saturating at 0xFFFFFFFF)
+	unsigned reserved[4];		// 0
+};
+
 struct TKApiTable
 {
 	unsigned version;		// KAPI_ABI_VERSION the kernel filled
@@ -777,9 +801,8 @@ struct TKApiTable
 	int  (*mailbox_recv) (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
 	// --- v36 additions (memory primitives) ---
-	// The kernel's memset/memcpy/memmove (general registers only -> safe from any app;
-	// since step 2 of protected mode its own copies, arch/aarch64/uaccess.S: a bad pointer
-	// kills the app, not the machine).
+	// memset/memcpy/memmove: user-side code (the EL0 table's, kern/el0.h: no system call;
+	// a bad pointer is the app's own fault and kills it).
 	// GCC may emit calls to these even in -ffreestanding code; user/kapi.h defines
 	// weak memset/memcpy/memmove symbols that forward here.
 	void *(*memset) (void *dst, int c, unsigned long n);
@@ -1147,6 +1170,10 @@ struct TKApiTable
 	// pump_wait without the pump: sleep until a window event, a post or the close box (at most
 	// timeout_ms; 0: no sleep), -> how many are pending (-1: not a process).
 	int (*pump_sleep) (unsigned timeout_ms);
+	// --- v74 ---
+	// proc_stats: the system-call statistics of process `pid` (0: the caller) -> 0 (*out
+	// filled), -1 no such process (or a kernel task), -2 a bad pointer.
+	int (*proc_stats) (int pid, struct kapi_syscall_stats *out);
 };
 
 #ifdef __cplusplus

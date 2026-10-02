@@ -141,47 +141,35 @@ struct TKPageAttr
 	unsigned UXN;		// 1 = no execute at EL0
 };
 
-// User read-only code: EL0 can read+execute, nobody writes, never exec at EL1.
-#define KPAGE_ATTR_USER_CODE \
+// ---- An app's pages (every process runs at EL0, kern/el0.h) ----
+//
+// Readable / writable by the app at EL0 (AP = *_ALL) -- and by the kernel at EL1, which works
+// in the app's buffers in place (the A72 has no PAN). What is executable is so at EL0 only
+// (UXN = 0, PXN = 1): the kernel never runs an app's code. nG = 1 keeps them ASID-tagged.
+// The kernel's identity region (0-4 GB, Circle's tables) stays AP = RW_EL1, UXN = 1: an app
+// can neither read, write nor execute it (page 0 included: a NULL access faults).
+//
+// App code (the ELF's PF_X segments, the EL0 code page): EL0 read + execute, no write.
+#define KPAGE_ATTR_APP_CODE \
 	{ ATTRINDX_NORMAL, ATTRIB_AP_RO_ALL,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 0 }
 
-// User read/write data and stack: EL0 RW, no execute at either level.
-#define KPAGE_ATTR_USER_DATA \
+// App data / stacks / heap / window canvas / surfaces: EL0 read/write, never executable.
+#define KPAGE_ATTR_APP_DATA \
 	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_ALL,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
 
-// Convenience: writable+executable user page (loader scratch before remapping
-// code RO+X). Avoid leaving pages in this state once a process runs.
-#define KPAGE_ATTR_USER_RWX \
-	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_ALL,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 0 }
-
-//
-// ---- Option C: apps run in EL1 (privileged) with per-process page tables ----
-//
-// Apps are NOT isolated from the kernel (they can call kernel code directly), but
-// each has its own ASID-tagged address space, so apps are isolated from EACH OTHER.
-// These pages are therefore EL1-accessible (AP=*_EL1), executable at EL1 for code
-// (PXN=0), and never executable at EL0 (UXN=1). nG=1 keeps them ASID-tagged.
-//
-// App code: EL1 read+execute, no write.
-#define KPAGE_ATTR_APP_CODE \
-	{ ATTRINDX_NORMAL, ATTRIB_AP_RO_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 0, 1 }
-
-// App data / stack / window canvas: EL1 read/write, never executable.
-#define KPAGE_ATTR_APP_DATA \
-	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
-
-// The displayed framebuffer (kapi_fullscreen_direct): EL1 read/write, normal uncached
+// The displayed framebuffer (kapi_fullscreen_direct): EL0 read/write, normal uncached
 // (what the app writes reaches the scan-out at once), never executable.
 #define KPAGE_ATTR_APP_SCREEN \
-	{ ATTRINDX_COHERENT, ATTRIB_AP_RW_EL1,  ATTRIB_SH_OUTER_SHAREABLE, 1, 1, 1 }
+	{ ATTRINDX_COHERENT, ATTRIB_AP_RW_ALL,  ATTRIB_SH_OUTER_SHAREABLE, 1, 1, 1 }
 
-// Generated code (kapi_code_alloc, a JIT): EL1 read/write AND execute at EL1. The
-// app writes the code, cleans the D-cache and invalidates the I-cache, then runs it.
+// Generated code (kapi_code_alloc, a JIT): EL0 read/write AND execute at EL0. The app writes
+// the code, cleans the D-cache and invalidates the I-cache (SCTLR_EL1.UCI: kern/el0.h), then
+// runs it.
 #define KPAGE_ATTR_APP_RWX \
-	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 0, 1 }
+	{ ATTRINDX_NORMAL, ATTRIB_AP_RW_ALL,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 0 }
 
-// App read-only data (the shared kapi ABI table): EL1 read-only, never executable.
+// App read-only data (the EL0 kapi table at KAPI_TABLE_VA): EL0 read-only, never executable.
 #define KPAGE_ATTR_APP_RODATA \
-	{ ATTRINDX_NORMAL, ATTRIB_AP_RO_EL1,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
+	{ ATTRINDX_NORMAL, ATTRIB_AP_RO_ALL,  ATTRIB_SH_INNER_SHAREABLE, 1, 1, 1 }
 
 #endif // _kern_layout_h

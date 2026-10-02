@@ -19,7 +19,7 @@
 #include <kern/addrspace.h>
 #include <kern/thread.h>		// ThreadsEndProcess (an app ends with its threads)
 #include <kern/appcore.h>
-#include <kern/el0.h>			// protected mode (EL0 apps)
+#include <kern/el0.h>			// apps at EL0: El0Enter, the stacks, the per-core setup
 #include <fatfs/diskio.h>		// disk_cache_enable (the sector cache: sdcache=)
 #include <kern/applaunch.h>
 #include <kern/stream.h>
@@ -74,24 +74,17 @@ boolean g_bVerbose = FALSE;
 #define VLOG(...)	do { if (g_bVerbose) CLogger::Get ()->Write (__VA_ARGS__); } while (0)
 
 //
-// An app's stack: its kernel task's (the app runs on it at EL1, with the kernel functions
-// it calls). 256 KB, or what its folder's app.txt asks for -- "stack = 8M" (a number of
-// bytes, K or M) -- rounded up to 64 KB, at most 64 MB: NetSurf's JavaScript engine
-// recurses deep. The kernel heap reuses the block when the app ends (Circle patch 2: the
-// large free lists). Read from the launcher's context, before the task exists (CTask
-// allocates its stack in its constructor): one small file, only for an x.app/main.
+// An app's user stack: mapped below USER_STACK_TOP in its address space -- 1 MB, or what its
+// folder's app.txt asks for, "stack = 8M" (a number of bytes, K or M), rounded up to 64 KB, at
+// most 64 MB: NetSurf's JavaScript engine recurses deep. Its task's own (CTask) stack is only its
+// kernel stack (EL0_KSTACK_SIZE: the trap frames, the kapis it calls). Read by the process's own
+// task, before the ELF: one small file, only for an x.app/main. (A "mode" line, from the time an
+// app could run at EL1, is ignored: every process runs at EL0.)
 //
-#define APP_STACK_DEFAULT	0x40000			// 256 KB
-#define APP_STACK_MAX		0x4000000		// 64 MB
-
-// The folder's app.txt, for an x.app/main: its "stack" (what the app's task stack was always
-// sized by) and its "mode" (protected mode, kern/el0.h: 1 "protected", 0 "legacy", -1 none or
-// not an app).
-static unsigned ReadAppTxt (const char *pPath, int *pMode)
+static unsigned AppUserStack (const char *pPath)
 {
-	*pMode = -1;
 	if (pPath == 0)
-		return APP_STACK_DEFAULT;
+		return EL0_USTACK_MIN;
 
 	// "...<name>.app/main[.ext]": the folder's app.txt
 	unsigned nLen = 0, nSlash = 0;
@@ -104,7 +97,7 @@ static unsigned ReadAppTxt (const char *pPath, int *pMode)
 	if (!bSlash || nSlash < 4 || nSlash + 1 + 9 > 256
 	    || pPath[nSlash - 4] != '.' || pPath[nSlash - 3] != 'a'
 	    || pPath[nSlash - 2] != 'p' || pPath[nSlash - 1] != 'p')
-		return APP_STACK_DEFAULT;
+		return EL0_USTACK_MIN;
 	char Txt[256];
 	unsigned i;
 	for (i = 0; i <= nSlash; i++) Txt[i] = pPath[i];
@@ -114,7 +107,7 @@ static unsigned ReadAppTxt (const char *pPath, int *pMode)
 
 	FIL File;
 	if (f_open (&File, Txt, FA_READ) != FR_OK)
-		return APP_STACK_DEFAULT;
+		return EL0_USTACK_MIN;
 	char Buf[1024];
 	UINT nRead = 0;
 	if (f_read (&File, Buf, sizeof Buf - 1, &nRead) != FR_OK)
@@ -122,19 +115,13 @@ static unsigned ReadAppTxt (const char *pPath, int *pMode)
 	f_close (&File);
 	Buf[nRead] = '\0';
 
-	// a line "stack = <n>[K|M]" (spaces, '=' or ':'; the key in any case), a line
-	// "mode = protected|legacy" (the value in any case)
+	// a line "stack = <n>[K|M]" (spaces, '=' or ':'; the key in any case)
 	auto lower = [] (char c) { return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; };
-	auto word = [&] (const char *q, const char *w)	// q starts with the word w (any case)
+	auto key = [&] (const char *q, const char *k)	// q starts with the key k, then a separator
 	{
 		unsigned n = 0;
-		for (; w[n] != '\0'; n++) if (lower (q[n]) != w[n]) return 0u;
-		return n;
-	};
-	auto key = [&] (const char *q, const char *k)	// ... then a separator: its length
-	{
-		unsigned n = word (q, k);
-		return n != 0 && (q[n] == ' ' || q[n] == '\t' || q[n] == '=' || q[n] == ':') ? n : 0u;
+		for (; k[n] != '\0'; n++) if (lower (q[n]) != k[n]) return 0u;
+		return q[n] == ' ' || q[n] == '\t' || q[n] == '=' || q[n] == ':' ? n : 0u;
 	};
 	u64 nStack = 0;
 	for (const char *p = Buf; *p != '\0'; )
@@ -146,68 +133,34 @@ static unsigned ReadAppTxt (const char *pPath, int *pMode)
 			p += n;
 			while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
 			u64 v = 0;
-			while (*p >= '0' && *p <= '9' && v < APP_STACK_MAX)
+			while (*p >= '0' && *p <= '9' && v < EL0_USTACK_MAX)
 				v = v * 10 + (u64) (*p++ - '0');
 			if (*p == 'k' || *p == 'K') v <<= 10;
 			else if (*p == 'm' || *p == 'M') v <<= 20;
 			nStack = v;
 		}
-		else if ((n = key (p, "mode")) != 0)
-		{
-			p += n;
-			while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
-			if (word (p, "protected")) *pMode = 1;
-			else if (word (p, "legacy")) *pMode = 0;
-		}
 		while (*p != '\0' && *p != '\n') p++;	// next line
 		if (*p == '\n') p++;
 	}
-	if (nStack <= APP_STACK_DEFAULT)
-		return APP_STACK_DEFAULT;
-	if (nStack > APP_STACK_MAX)
-		nStack = APP_STACK_MAX;
+	if (nStack <= EL0_USTACK_MIN)
+		return EL0_USTACK_MIN;
+	if (nStack > EL0_USTACK_MAX)
+		nStack = EL0_USTACK_MAX;
 	return (unsigned) ((nStack + 0xFFFF) & ~(u64) 0xFFFF);
 }
 
-static void NameFromPath (const char *pPath, char *pOut, unsigned nCap);
-
-// The stack of a new process's task, and whether the process runs protected (kern/el0.h). A
-// legacy app runs on its task's stack: app.txt's "stack" (or 256 KB), as always. A protected
-// app's task stack is only its kernel stack (EL0_KSTACK_SIZE); its user stack is mapped in its
-// address space (app.txt's "stack", at least EL0_USTACK_MIN). Called by CUserProcessTask's
-// constructor for its CTask base: the answer waits in s_Launch for the constructor's body (no
-// Yield between them: the kernel is not preempted, and nothing in between waits).
-static struct { boolean bProtected; unsigned nUserStack; } s_Launch;
-
-static unsigned AppTaskStack (const char *pPath)
-{
-	int nMode;
-	unsigned nStack = ReadAppTxt (pPath, &nMode);
-	char Name[40];
-	NameFromPath (pPath != 0 ? pPath : "", Name, sizeof Name);
-	s_Launch.bProtected = El0ShouldProtect (nMode, Name);
-	s_Launch.nUserStack = 0;
-	if (!s_Launch.bProtected)
-	{
-		return nStack;
-	}
-	s_Launch.nUserStack = nStack < EL0_USTACK_MIN ? EL0_USTACK_MIN
-			    : nStack > EL0_USTACK_MAX ? EL0_USTACK_MAX : nStack;
-	return EL0_KSTACK_SIZE;
-}
-
 //
-// CUserProcessTask (Option C): launch an ELF as an EL1 app in its own address
-// space. The thread builds a private address space, loads the ELF segments
-// (EL1-executable), activates the space, and CALLS the entry point directly --
-// the app runs in EL1 on this thread's (large) stack and calls kapi_* kernel
-// functions directly (resolved at link). Apps are isolated from each other (own
-// page tables) but not from the kernel. The thread is preempted like any other.
+// CUserProcessTask: one process = one task (plus its threads, kern/thread.h). The task builds the
+// process's address space, loads the ELF into it, maps the user stack, then enters the entry
+// point at EL0 (kern/el0.h) -- for good: the process calls the kernel by system calls through
+// the EL0 kapi table, and ends in the kernel (exit, a fault, a kill) on this task's stack, which
+// is its kernel stack from then on. Processes are isolated from each other (their own page
+// tables, ASIDs) and from the kernel (EL0). Preempted at the end of its time slice.
 //
 class CUserProcessTask : public CTask
 {
 public:
-	// Large stack: the app and the kernel functions it calls share this thread stack.
+	// The task's stack is the process's kernel stack (EL0_KSTACK_SIZE).
 	// We take the ELF PATH (not a preloaded buffer): the SD read happens in Run(), on
 	// THIS task's thread the first time the scheduler switches to us -- so the launcher /
 	// shell that spawned us is never blocked by the (slow, ~MB) read.
@@ -217,9 +170,7 @@ public:
 	CUserProcessTask (const char *pPath, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
 			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
-	:	CTask (AppTaskStack (pPath)),	// 256 KB, or its app.txt's "stack" (legacy)
-		m_bProtected (s_Launch.bProtected),
-		m_nUserStack (s_Launch.nUserStack),
+	:	CTask (EL0_KSTACK_SIZE),	// the kernel stack (the user stack: Run)
 		m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
 		m_nParentPid (nParentPid)
@@ -241,7 +192,7 @@ public:
 
 	void Run (void) override
 	{
-		CAddressSpace *pAS = new CAddressSpace (m_bProtected);
+		CAddressSpace *pAS = new CAddressSpace;
 		if (pAS == 0 || !pAS->IsValid ())
 		{
 			m_pLogger->Write (GetName (), LogError, "address space creation failed");
@@ -324,40 +275,24 @@ public:
 		pAS->AddTask (this);				// (its main task: the first)
 		pAS->Activate ();
 
-		if (m_bProtected)
+		// Its user stack in its own space, then EL0 -- for good: the process ends in the
+		// kernel (exit, a fault, a kill), on this task's stack, now only its kernel stack.
+		unsigned nUserStack = AppUserStack (m_Path);
+		if (!pAS->MapStack (USER_STACK_TOP, nUserStack))
 		{
-			// Protected (kern/el0.h): its user stack in its own space, then EL0 -- for good:
-			// the process ends in the kernel (exit, a fault), on this task's stack, now only
-			// its kernel stack.
-			if (!pAS->MapStack (USER_STACK_TOP, m_nUserStack))
-			{
-				m_pLogger->Write (GetName (), LogError, "out of memory for the stack");
-				ThreadsEndProcess ();
-				CScheduler::Get ()->GetCurrentTask ()->Terminate ();
-			}
-			m_pLogger->Write (GetName (), LogNotice,
-					  "running (EL0, protected) entry %lp ASID %u, stack %u KB, kernel stack %u KB",
-					  (void *) ulEntry, (unsigned) pAS->GetASID (), m_nUserStack >> 10,
-					  (unsigned) (GetStack ().Size >> 10));
-			El0Enter (ulEntry, USER_STACK_TOP, 0, El0MainReturnVA ());
+			m_pLogger->Write (GetName (), LogError, "out of memory for the stack");
+			ThreadsEndProcess ();
+			CScheduler::Get ()->GetCurrentTask ()->Terminate ();
 		}
-
-		m_pLogger->Write (GetName (), LogNotice, "running (EL1) entry %lp ASID %u, stack %u KB",
-				  (void *) ulEntry, (unsigned) pAS->GetASID (),
+		m_pLogger->Write (GetName (), LogNotice,
+				  "running entry %lp ASID %u, stack %u KB, kernel stack %u KB",
+				  (void *) ulEntry, (unsigned) pAS->GetASID (), nUserStack >> 10,
 				  (unsigned) (GetStack ().Size >> 10));
-
-		// Direct EL1 call into the app. It calls kapi_* directly; loops or exits.
-		((void (*) (void)) ulEntry) ();
-
-		// App returned: terminate, with its threads (frees the address space + window).
-		ThreadsEndProcess ();
-		CScheduler::Get ()->GetCurrentTask ()->Terminate ();
+		El0Enter (ulEntry, USER_STACK_TOP, 0, El0MainReturnVA ());
 	}
 
 private:
 	char	    m_Path[256];	// ELF path; loaded in Run() on our own thread
-	boolean	    m_bProtected;	// runs at EL0 (kern/el0.h)
-	unsigned    m_nUserStack;	// (protected) its user stack's size
 	CLogger	   *m_pLogger;
 	CStream	   *m_pStdin;
 	CStream	   *m_pStdout;
@@ -373,7 +308,6 @@ private:
 // owners only draw into their own canvas.
 //
 boolean g_bDisplayDma = TRUE;			// cmdline.txt dispdma=0: no asynchronous display DMA
-extern boolean g_bAppFaultKill;			// (arch/aarch64/exception.cpp) appfault=halt: an app fault halts
 extern boolean g_bGpuDirect;			// (sys/v3d.cpp) gpudirect=0: the GPU never writes the window itself
 
 class CCompositorTask : public CTask
@@ -1610,7 +1544,7 @@ public:
 	COnyxCores (void) : CMultiCoreSupport (CMemorySystem::Get ()) {}
 	void Run (unsigned nCore) override
 	{
-		El0CoreInit (nCore);			// (protected mode's EL0 controls, kern/el0.h)
+		El0CoreInit (nCore);			// (the EL0 controls of this core, kern/el0.h)
 		if (nCore == 1) SoundCoreMain ();
 		else if (nCore == 3 && g_bNetCore) NetCoreMain ();	// the network core
 		else AppCoreMain (nCore);		// cores 2-3: app cores (kern/appcore.h)
@@ -1620,7 +1554,7 @@ public:
 static COnyxCores *s_pCores = 0;
 #endif
 
-// Launch an app by folder name: SD:apps/<name>.app/main -> a new EL1 process.
+// Launch an app by folder name: SD:apps/<name>.app/main -> a new process.
 // Safe to call from any task context (cooperative); the new task runs when scheduled.
 static boolean LaunchApp (const char *pName, CLogger *pLogger)
 {
@@ -1891,30 +1825,16 @@ boolean CKernel::Initialize (void)
 
 	if (bOK)
 	{
-		// Take over exception handling from Circle: install our VBAR_EL1 (EL0/EL1
-		// vectors + trap frame + syscall path), and drive the scheduler's time
+		// Take over exception handling from Circle: install our VBAR_EL1 (EL1 + EL0
+		// vectors: the trap frame, the system calls), and drive the scheduler's time
 		// slice from the 100 Hz timer tick -> preemptive multitasking (#4).
 		install_vectors ();
 		m_Timer.RegisterPeriodicHandler (PeriodicTick);
 
-		// A fault in an app's own code (a bad pointer, an undefined instruction...) kills
-		// that app (arch/aarch64/exception.cpp); appfault=halt (cmdline.txt): it halts
-		// the machine instead, with the post-mortem screen and the crash record (debugging).
-		g_bAppFaultKill = strcmp (m_Options.GetAppOptionString ("appfault", "kill"), "halt") != 0;
-		if (!g_bAppFaultKill)
-			m_Logger.Write (FromKernel, LogNotice, "appfault=halt: a fault in an app halts the system");
-
-		// Protected mode (kern/el0.h): the launch policy (cmdline.txt appmode= / protected=,
-		// el0pmu=), then this core's EL0 controls (nothing changes for EL1 code).
-		El0Configure (m_Options.GetAppOptionString ("appmode", "legacy"),
-			      m_Options.GetAppOptionString ("protected", ""));
+		// The EL0 controls of this core (kern/el0.h; cmdline.txt el0pmu=1: the performance
+		// counters readable by the apps).
 		El0ConfigurePmu (m_Options.GetAppOptionDecimal ("el0pmu", 0) != 0);
 		El0CoreInit (0);
-
-		// nullguard=1 (cmdline.txt): the first 64 KB page (the armstub, the spin table) unmapped
-		// in the app spaces -- an app's NULL access faults (it is killed) instead of writing
-		// there (mm/addrspace.cpp). Off by default until tried on the Pi.
-		g_bNullGuard = m_Options.GetAppOptionDecimal ("nullguard", 0) != 0;
 
 		// Per-process address spaces (#5): remember the kernel TTBR0 and switch
 		// TTBR0/ASID on every task switch based on the task's address space.
@@ -2057,7 +1977,7 @@ TShutdownMode CKernel::Run (void)
 {
 	m_Logger.Write (FromKernel, LogNotice, "Onyx -- a lean OS on Circle (codename Zircon)");
 	m_Logger.Write (FromKernel, LogNotice,
-			"Multi-process kernel + GUI, EL1 apps via direct kapi calls");
+			"Multi-process kernel + GUI, apps at EL0 calling the kernel by system calls");
 	m_Logger.Write (FromKernel, LogNotice, "Compiled on " __DATE__ " " __TIME__);
 
 	CMachineInfo *pInfo = CMachineInfo::Get ();
@@ -2065,7 +1985,7 @@ TShutdownMode CKernel::Run (void)
 			pInfo->GetMachineName (),
 			(unsigned long) (CMemorySystem::Get ()->GetMemSize () / 0x100000));
 
-	// Load + spawn the two demos (Option C: EL1 apps that link against kapi_*).
+	// Launch the autostart apps (each one a process at EL0, kern/el0.h).
 	// They create their windows and draw into the shared canvas; the compositor is
 	// started AFTER a readable pause so the boot log stays on screen first.
 	if (m_bGraphics)
