@@ -1,0 +1,967 @@
+# Onyx: demand paging and the minimum POSIX layer for a WebKit port
+
+*Status: plan (2026-10-02, kapi v74 on `main`). This is the spec for kapi **v75**: what WebKit and its libraries need from the OS, the toolchain decision, and the work packages, each with its exact ABI. Every claim about the current system cites the code it was checked against. Where something still has to be confirmed against a chosen upstream revision, it is marked **(verify)**.*
+
+---
+
+## 0. Findings from the code (read these first)
+
+Five facts from the code shape the design. Some of them contradict the current docs.
+
+1. **`TPIDR_EL0` is already saved per task.** Circle's `TaskSwitch` (`circle/lib/sched/taskswitch.S` lines 71 and 94, field `TTaskRegisters::tpidr_el0`) saves and restores it, and Onyx's scheduler calls it (`kernel/sched/scheduler.cpp:211`). Preemption from EL0 also goes through it: `El0IrqExit` → `Yield` → `TaskSwitch`. The kernel never writes `TPIDR_EL0`. So a value an EL0 thread writes with `msr tpidr_el0` (allowed at EL0) survives every switch today. Only three things are missing:
+   - an initial value for a new thread (a new `CTask` starts with 0: `memset (&m_Regs, 0 …)` in `circle/lib/sched/task.cpp`);
+   - a value for app-core jobs (cores 2–3 keep whatever was there);
+   - a test.
+
+   `docs/HANDOFF.md`, `docs/EL0-PROTECTED-MODE.md` §7 and `docs/SUPERTUXKART-PORT.md` K1 should be corrected (WP-MEM does this).
+2. **The kernel works in app buffers in place**, and assumes that *"an app's user pages are never unmapped while it lives"* (`kern/uaccess.h`). For example, `kapi_read` calls `UserWritable` and then `f_read` straight into the buffer, yielding between 64 KB chunks (`ChunkedRead`, `sys/kapi.cpp`). `kapi_tcp_recv` does `memcpy` into the user buffer. A fault at EL1 outside the uaccess fixup table is a **kernel panic** (`SyncHandlerEL1` → `DumpAndHalt`). Demand paging and `munmap` must therefore:
+   - make `UserReadable` / `UserWritable` **populate**;
+   - make the fault-safe copies **retry after populating**;
+   - never free a frame that a kapi in progress is using: "pins" plus a *deferred zap* (§3.1).
+3. **`SyncHandlerEL1` runs on the core's small exception stack** (`vectors.S`: `SyncEL1Entry` uses `SAVE_TRAP` on `SP_EL1`), with all of DAIF masked. Circle's spin locks assert there (the FIQ check documented in `DumpAndHalt`). So **no page allocation may happen in the EL1 exception path**: the EL1 copy routines fail through the fixup, and C code populates and retries.
+4. **Circle's sockets support TCP and UDP and `MSG_DONTWAIT`, and have a `GetStatus ()`** that returns `bConnected`, `bRxReady` and `bTxReady` (`circle/include/circle/net/netconnection.h`). They have no select, no non-blocking connect, no non-blocking accept (`CSocket::Accept` blocks, `circle/lib/net/socket.cpp:192`), no `MSG_PEEK`, no half-close and no peer-port getter. Also, `CSocket::Receive` **loses data when the buffer is smaller than `FRAME_BUFFER_SIZE`** (its own doc comment). Today's `DoRecv` passes the app's length straight through when `netcore=0`.
+5. **The toolchain is `--disable-threads --disable-tls`** (`Thread model: single`). `__thread` compiles to **emutls**, and with single gthreads that is one process-wide copy. libsupc++'s static-init guards are not thread-safe. `std::thread` and `std::condition_variable` are missing from `libstdc++.a`. `libstdc++.a` already contains `std::filesystem`.
+   - newlib is 4.4.0 with retargetable locking and `_REENT_THREAD_LOCAL` off, so `errno` is shared by all threads.
+   - newlib's `pthread.h` declares nothing unless `_POSIX_THREADS` is defined, and its pthread types are 32-bit object ids.
+   - newlib lacks these headers: `sys/mman.h`, `poll.h`, `sys/socket.h`, `netinet/*`, `arpa/inet.h`, `netdb.h`, `sys/uio.h`, `sys/un.h`, `sys/utsname.h`, `semaphore.h`, `sys/ioctl.h`, `net/if.h`, `sys/random.h`, `sys/statvfs.h`, `endian.h`, `byteswap.h`, `dlfcn.h`, `execinfo.h`, `syslog.h`, `sys/sysmacros.h`.
+   - `libc.a` lacks these functions: `posix_memalign`, `realpath`, `sysconf`, `clock_gettime`, `nanosleep`, `sleep`, `usleep`, `sigaction`, `posix_spawn`, `getpagesize`, `getcwd`, `opendir`, `lstat`, `mmap`, `uname`, `gethostname`, `timegm`.
+   - newlib's `rename` goes through `_link_r` + `_unlink_r` (`libc_a-renamer.o`), so the POSIX layer must define `rename` itself.
+
+---
+
+## 1. What WebKit and its dependencies need from the OS
+
+Scope:
+- **WTF**, using its POSIX/Unix code paths (`wtf/posix`, `wtf/unix`, generic RunLoop and WorkQueue as on PlayStation).
+- **JavaScriptCore** with C_LOOP: `ENABLE_JIT=OFF`, `ENABLE_C_LOOP=ON`, no WebAssembly, no sampling profiler, `USE_SYSTEM_MALLOC=ON`, Gigacage off.
+- **WebCore** with curl networking and Skia or Cairo CPU rendering, statically linked, with no `dlopen`.
+- The libraries: **curl** (+mbedTLS, nghttp2, zlib, brotli), **ICU**, **HarfBuzz**, **FreeType**, **libxml2** (+libxslt optional), **SQLite**, **Cairo/pixman** or **Skia**.
+
+Legend:
+- **MUST**: needed to build or run correctly.
+- **SHOULD**: real code paths use it; a degraded fallback exists.
+- **STUB-OK**: it must link and return a sane failure or no-op.
+- "Who" names the main users.
+
+### 1.1 Threads and TLS
+
+| Need | Who | Level | How in Onyx |
+|---|---|---|---|
+| `pthread_create` (attr: stack size, detach state), `join`, `detach`, `self`, `equal`, `exit` | WTF `ThreadingPOSIX`, curl threaded resolver, SQLite, libxml2, Skia, cairo, ICU (via libstdc++) | MUST | libc on `thread_create_ex` (WP-MEM) |
+| `pthread_attr_*` (setstacksize, getstacksize, setdetachstate, setguardsize no-op, setstack → `ENOTSUP`, sched* no-op) | WTF, curl | MUST | libc |
+| `pthread_getattr_np` + `pthread_attr_getstack` (stack bounds) | WTF `StackBounds` (JSC recursion limits, conservative GC) | MUST | libc on `thread_info` |
+| `pthread_setname_np` / `getname_np` | WTF, Skia | STUB-OK | name kept in libc; the kernel name is set at creation |
+| `pthread_key_create`/`delete`/`getspecific`/`setspecific` with destructors | WTF `ThreadSpecific`, libxml2, libstdc++ (thread_local destructors), mbedTLS no | MUST | libc, 128 keys |
+| `__thread` / C++ `thread_local` (static TLS) | pixman, Skia, libstdc++ (`call_once`), newlib errno (option b), WebKit in places | MUST | `TPIDR_EL0` + TLS block per thread (libc). Toolchain (a): emutls override; (b): native TLS |
+| `pthread_mutex_*` (normal, recursive, errorcheck, trylock, timedlock), mutexattr | everyone | MUST | futex (`wait_word` / `wake_word`, v68) |
+| `pthread_cond_*` (wait, timedwait on REALTIME or MONOTONIC via `condattr_setclock`, signal, broadcast); `pthread_cond_clockwait` | WTF `ThreadCondition`, libstdc++ `condition_variable`, curl | MUST | futex sequence counter |
+| `pthread_once` | ICU (via `std::call_once`), libxml2, curl | MUST | futex state word |
+| `pthread_rwlock_*` | libstdc++ `shared_mutex`, Skia, curl | MUST | futex |
+| `sem_init`/`wait`/`trywait`/`timedwait`/`post`/`destroy` (`semaphore.h`) | WTF `ThreadingPOSIX` (suspend/resume handshake), Skia | MUST | futex |
+| `pthread_barrier_*`, `pthread_spin_*` | Skia, tests | SHOULD | libc |
+| `sched_yield` | WTF, libstdc++ | MUST | `kapi_yield` |
+| `sched_get_priority_min/max`, `pthread_setschedparam` | WTF | STUB-OK | map priority > 0 to `thread_priority (tid, 1)` (SHOULD) |
+| `pthread_kill` / `Thread::suspend` / `resume` via signals | WTF (JSC: `MachineThreads` scanning threads registered with the same VM; sampling profiler; Watchdog) | STUB-OK for the minimum | Use one VM on the main thread, no concurrent GC across VMs, no sampling profiler. Later: a `thread_suspend` / `thread_regs` kapi |
+| `pthread_cancel`, `pthread_atfork` | rare | STUB-OK | `ENOSYS`; `atfork` returns 0 (there is no fork) |
+| `sysconf(_SC_NPROCESSORS_ONLN/CONF)` | WTF `numberOfProcessorCores`, JSC GC markers, Skia | MUST | **1**: all of a process's threads run on core 0 (docs/02 §5) |
+
+### 1.2 Memory
+
+| Need | Who | Level | How |
+|---|---|---|---|
+| `mmap(MAP_PRIVATE\|MAP_ANONYMOUS)` with any prot, PROT_NONE reservations of GBs, `MAP_NORESERVE`, `MAP_FIXED` inside a reservation | WTF `OSAllocatorPOSIX` (reserve, then commit with `mprotect`; aligned reservations trim their edges with partial `munmap`), JSC CLoopStack, JSC structure heap (a multi-GB aligned reservation **(verify** the size in the chosen revision; can be shrunk)) | MUST | `vm_map` (WP-MEM) |
+| `munmap`, partial (splits) | WTF | MUST | `vm_unmap` |
+| `mprotect` (NONE ↔ READ ↔ READ\|WRITE; no EXEC: there is no JIT) | WTF `OSAllocator::commit/decommit` | MUST | `vm_protect` |
+| `madvise(MADV_DONTNEED / MADV_FREE)` (zero-fill on next touch), `MADV_WILLNEED`, NORMAL/RANDOM/SEQUENTIAL | WTF decommit and `hintMemoryNotNeededSoon` | MUST | `vm_advise` |
+| `mmap` of a file, `MAP_PRIVATE`, `PROT_READ` | WTF `MappedFileData`, HarfBuzz `hb_blob_create_from_file`, Skia `SkData::MakeFromFILE`, ICU (unused with static data) | MUST | libc: anonymous map + `pread` (eager copy). `MAP_SHARED` + `PROT_WRITE` on a file → `ENOTSUP` |
+| `getpagesize`, `sysconf(_SC_PAGESIZE)` = **65536** | WTF `pageSize()` (asserts ≤ `CeilingOnPageSize`), Skia, SQLite | MUST | libc. WebKit port: `CeilingOnPageSize = 64 KB` for OS(ONYX) (`wtf/PageBlock.h`) |
+| `posix_memalign`, `aligned_alloc`, `memalign`, `malloc_usable_size` | WTF `fastAlignedMalloc` (JSC MarkedBlocks with system malloc), Skia | MUST | newlib has `memalign`, `aligned_alloc` and `malloc_usable_size`; libc adds `posix_memalign` |
+| A good `malloc` (multi-threaded, returns memory) | everything | SHOULD | newlib's `mallocr` is sbrk-only with one lock. Later: dlmalloc 2.8.6 (CC0) or mimalloc (MIT) on `vm_map` (§6) |
+| `sysconf(_SC_PHYS_PAGES)`, memory footprint (`vm_stats`), `getrusage` (zeros + maxrss) | WTF `ramSize`, `MemoryPressureHandler`, `memoryFootprint` | SHOULD | libc on `meminfo` / `vm_stats` |
+
+### 1.3 Time
+
+| Need | Who | Level | How |
+|---|---|---|---|
+| `clock_gettime(CLOCK_REALTIME, CLOCK_MONOTONIC, _RAW, _COARSE, CLOCK_BOOTTIME)`, `clock_getres` | WTF `MonotonicTime` / `WallTime`, libstdc++ `chrono`, curl, SQLite | MUST | libc, user-side: `CNTPCT_EL0` plus one `clock_info` sample (WP-PROC); no system call per read |
+| `CLOCK_PROCESS_CPUTIME_ID` / `CLOCK_THREAD_CPUTIME_ID` | WTF `CPUTime` | STUB-OK | monotonic time (per-task CPU accounting later) |
+| `gettimeofday`, `time` | everyone | MUST | rebuilt on `clock_info` (today's `_gettimeofday` re-derives the epoch from `get_datetime`) |
+| `nanosleep`, `clock_nanosleep`, `usleep`, `sleep` | WTF, curl, SQLite, libstdc++ `sleep_for` | MUST | `sleep_us` (WP-PROC). Resolution: scheduler wake checks, worst case one 10 ms tick when the system idles; < 1 ms sleeps yield-spin |
+| `localtime_r`, `gmtime_r`, `mktime`, `strftime`, `tzset` + `TZ` | WTF date code, ICU, SQLite, curl | MUST | newlib has them. libc sets `TZ` to a fixed offset from `clock_info.tz_minutes` when the environment has none (no DST). An Olson name in `TZ` is honoured by ICU (JS dates), not by newlib |
+| `timegm` | curl (has its own), WebKit (own date math) | SHOULD | libc |
+| `alarm`, `setitimer`, `timer_create` | curl (SIGALRM resolver: off) | STUB-OK | `ENOSYS` |
+
+### 1.4 Files and directories
+
+| Need | Who | Level | How |
+|---|---|---|---|
+| `open` with `O_RDONLY/WRONLY/RDWR/CREAT/TRUNC/APPEND/EXCL/CLOEXEC/NONBLOCK/DIRECTORY`; `read`, `write`, `lseek`, `pread`, `pwrite`, `close` — **incremental, not whole-file** | SQLite (pread/pwrite of pages), WTF `FileSystem`, curl (CA file, cookies), libxml2, ICU (no) | MUST | `file_*` (WP-FILE) |
+| `fstat`, `stat`, `lstat` (= stat): size, mode file/dir, mtime, a stable `st_ino`/`st_dev` (SQLite identifies files by them for its inode lock table) | SQLite, WTF, libstdc++ filesystem | MUST | `file_stat` / `path_stat` |
+| `ftruncate` (grow with zeros), `truncate`, `fsync`, `fdatasync` | SQLite | MUST | `file_truncate`, `file_sync` |
+| `unlink` **of an open file** (SQLite's `DELETEONCLOSE` temp files are unlinked right after `open`), `rename` replacing an existing target, `mkdir`, `rmdir` (`ENOTEMPTY`) | SQLite, WTF, curl | MUST | `path_unlink` / `path_rename` / `path_mkdir` |
+| `opendir`, `readdir` (255-character names), `closedir`, `fdopendir`, `dirfd`, `scandir` | WTF, libstdc++ filesystem, fontconfig | MUST (opendir/readdir), SHOULD (rest) | `dir_read` (`kapi_dirent2`) |
+| `access`, `getcwd`, `chdir`, `realpath` | WTF, ICU, SQLite, curl | MUST | libc on `path_stat` + `getcwd` |
+| `openat`/`fstatat`/`unlinkat`/`mkdirat`/`renameat` (`AT_FDCWD` + dirfd of a known path) | libstdc++ `std::filesystem::remove_all` | SHOULD | libc |
+| `fcntl(F_GETFL/F_SETFL O_NONBLOCK/O_APPEND, F_GETFD/F_SETFD FD_CLOEXEC, F_DUPFD(_CLOEXEC))`; `F_SETLK/F_GETLK/F_SETLKW`; `flock` | curl (NONBLOCK), SQLite (POSIX locks), WTF `lockFile` | MUST (flags); STUB-OK (locks succeed, single process per DB) | libc |
+| `dup`, `dup2`, `dup3` (shared offset) | curl, generic code | MUST | libc (refcounted open-file descriptions) |
+| `pipe`, `pipe2(O_NONBLOCK\|O_CLOEXEC)` | curl `multi_wakeup` (pipe fallback), WebKit run loops | MUST | kernel pipe stream + `stream_write_nb` |
+| `socketpair(AF_UNIX)` | curl (if `HAVE_SOCKETPAIR`: leave undefined) | SHOULD | libc: two pipes |
+| `mkstemp`, `tmpfile`, `/tmp` | SQLite, WTF `openTemporaryFile` | MUST | newlib `mkstemp` (works once `O_EXCL` does); libc maps `/tmp` → `RAM:/tmp` |
+| `statvfs`/`fstatvfs` | WebKit disk-cache sizing | SHOULD | `vol_info` (v71) |
+| `utime`/`utimes`/`futimens` | WTF, curl `-R` | SHOULD | `path_utime` |
+| `chmod`, `fchmod`, `umask`, `chown` | SQLite, curl | STUB-OK | read-only attribute (SHOULD), else 0 |
+| `symlink`, `readlink`, `link` | WTF | STUB-OK | `ENOSYS` / `EPERM` |
+| `/dev/null`, `/dev/zero`, `/dev/urandom`, `/dev/random`, `/dev/stdin\|stdout\|stderr` | mbedTLS entropy, curl, WebKit `RandomDevice` fallback | MUST | libc pseudo-files |
+| `readv`/`writev` | misc | SHOULD | libc loops |
+| `isatty`, `ttyname`, `tcgetattr` | curl progress, generic | STUB-OK | console fds → 1, else 0 / `ENOTTY` |
+
+### 1.5 Processes, environment, signals, misc
+
+| Need | Who | Level | How |
+|---|---|---|---|
+| `getenv`/`setenv`/`unsetenv`/`putenv`/`environ`, populated at start | WebKit (`WEBKIT_*`, `JSC_*` options), curl (proxies, `CURL_CA_BUNDLE`), ICU (`TZ`, `ICU_DATA`) | MUST | `get_env` (WP-PROC) + newlib |
+| `argc`/`argv`/`envp` to `main` | every tool | MUST | `get_argv` + `crt0posix` |
+| `getpid`, `getppid` | SQLite (temp names), curl | MUST | `getpid` kapi |
+| `posix_spawn(p)`, `waitpid(WNOHANG)`, `WIFEXITED`/`WIFSIGNALED` | tests, curl (no), WebKit2 (out of scope) | SHOULD | `spawn_ex` + `proc_wait` |
+| `fork`, `execve`, `system`, `popen` | — | STUB-OK | `ENOSYS` |
+| `sigaction`/`signal` (stored handlers), `sigprocmask`/`pthread_sigmask` (no-op), `sigemptyset` & co., `raise`, `abort`, `kill(getpid(), sig)`; `SIGPIPE` never raised (`send` → `EPIPE`); `sigaltstack` no-op | curl (`signal(SIGPIPE, SIG_IGN)`, `MSG_NOSIGNAL`), WTF, JSC | MUST (to link and behave) | libc only; no asynchronous signals |
+| `atexit`, `exit`, `_exit`, `abort` (status 134) | everyone | MUST | newlib + `_exit` → `kapi_exit` |
+| `getrandom`, `getentropy`, `arc4random` | WebKit `cryptographicallyRandomValues`, mbedTLS, curl | MUST | existing `kapi_random` (v30) |
+| `uname`, `gethostname` | curl, UA strings | SHOULD | libc: `Onyx`, `aarch64`, host name from `net_info` |
+| `getuid`/`geteuid`/`getgid`/`getegid` → 0, `getpwuid(_r)`/`getpwnam` (a fixed `onyx` user, `HOME`) | SQLite, curl (`.netrc`) | STUB-OK | libc |
+| `getrlimit`/`setrlimit` (`RLIMIT_STACK` from `thread_info(1)`, `NOFILE` 1024) | WTF, JSC | SHOULD | libc |
+| `setlocale` with `C`/`C.UTF-8`/`""`, `nl_langinfo(CODESET)`, `newlocale`/`uselocale` | ICU default code page, libstdc++ | MUST (C/C.UTF-8 only) | newlib (`_MB_CAPABLE`) |
+| `iconv_*` | libxml2 (build without iconv), curl (no) | STUB-OK | newlib's is disabled; `iconv_open` → −1 `EINVAL` |
+| `dlopen`/`dlsym`/`dladdr`, `backtrace`, `syslog` | WTF (backtrace, symbolication), ICU (`U_ENABLE_DYLOAD=0`) | STUB-OK | stubs; `syslog` → kmsg (SHOULD) |
+| `setjmp`/`longjmp` | JSC conservative register scan, libpng | MUST | newlib has them |
+
+### 1.6 Network (curl, WebCore's curl backend)
+
+| Need | Who | Level | How |
+|---|---|---|---|
+| `socket(AF_INET, SOCK_STREAM\|SOCK_NONBLOCK\|SOCK_CLOEXEC)`, `SOCK_DGRAM`; `AF_INET6`/`AF_UNIX` → `EAFNOSUPPORT` | curl (built `--disable-ipv6`) | MUST (TCP), SHOULD (UDP) | `sock_open` (WP-NET) |
+| **non-blocking `connect` → `EINPROGRESS`**, then `poll(POLLOUT)` and `getsockopt(SO_ERROR)` | curl's connection filters (always non-blocking) | MUST | async connect (§3.3) |
+| `send`/`recv` with `MSG_DONTWAIT`, `MSG_PEEK` (curl's connection-alive check), `MSG_NOSIGNAL` (ignored), `MSG_WAITALL` (libc loop); `sendto`/`recvfrom` | curl | MUST (PEEK included) | `sock_send` / `sock_recv` with a kernel carry buffer |
+| `bind`/`listen`/`accept`/`accept4` (non-blocking accept) | servers, tests | SHOULD | Circle patch `CSocket::AcceptReady ()` |
+| `getsockname`/`getpeername` | curl (connection info) | MUST | `sock_name` (+ Circle patch `GetForeignPort`) |
+| `setsockopt`/`getsockopt`: `SO_ERROR`, `SO_RCVTIMEO`/`SO_SNDTIMEO`, `SO_TYPE`, `SO_BROADCAST`; `TCP_NODELAY`, `SO_KEEPALIVE`, `SO_REUSEADDR`, `SO_RCVBUF`/`SNDBUF` accepted and ignored | curl | MUST | `sock_getopt` / `sock_setopt` + libc |
+| `shutdown` | rare (curl no) | STUB-OK | `SHUT_RDWR` = mark; `SHUT_WR` = no-op |
+| `poll` over sockets, pipes, files and stdin; `select`/`pselect` on top of poll (`FD_SETSIZE` 1024) | curl (`curl_multi_poll`), WebKit's curl scheduler thread | MUST | `poll` kapi (WP-NET) |
+| `ioctl(FIONBIO, FIONREAD)` | curl alternatives | SHOULD | libc |
+| `getaddrinfo` (`AI_NUMERICHOST`, `AI_PASSIVE`, numeric and well-known services), `freeaddrinfo`, `getnameinfo` (`NI_NUMERICHOST`), `gai_strerror`, `gethostbyname(_r)`, `inet_pton`/`ntop`/`aton`/`addr`, `htons`… | curl (threaded resolver: blocks a worker thread) | MUST | libc on the existing `net_resolve` (v43: the kernel's DNS cache; IPv4, one address) |
+| TLS: curl + mbedTLS (in tree: `third_party/mbedtls-3.6.3`) | curl | MUST | curl `--with-mbedtls`. **Note:** WebKit's curl backend reads certificate details through **OpenSSL** APIs (`CurlSSLVerifier`, `CURLOPT_SSL_CTX_FUNCTION`) **(verify)**: either a small mbedTLS adaptation of that file (recommended) or OpenSSL/BoringSSL (§6, licences) |
+
+### 1.7 What the libraries need from the build
+
+- **WebKit:** C++20/23 with GCC ≥ 14 (OK), libstdc++ `<filesystem>`, `<span>`, `<bit>`, `<expected>`, ranges, `<atomic>` (lock-free on AArch64: libgcc's `__aarch64_cas*` outline atomics are present). It uses `std::mutex`/`std::condition_variable` in places and in RunLoopGeneric/WorkQueueGeneric (the PlayStation model). Built `-fno-exceptions -fno-rtti`. Host tools: Perl, Python 3, **Ruby** (offlineasm generates the C_LOOP LLInt), gperf, CMake, Ninja.
+- **ICU:** `std::mutex`, `std::condition_variable` and `std::call_once` (`umutex.cpp`) → it needs a **threaded libstdc++**. ICU data linked as a static object; cross-building ICU needs a host ICU build.
+- **Skia:** `std::thread`, `std::mutex`, `thread_local`, C++20; `getauxval` for CPU features → port tweak (AArch64 NEON is always present).
+- **Cairo/pixman:** pthreads; pixman uses `__thread`; pixman's ARM CPU detection (`/proc/cpuinfo`) → compile-time flags.
+- **SQLite:** `-DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_MAX_MMAP_SIZE=0 -DHAVE_USLEEP=1`, the unix VFS on the calls above. Avoid WAL, which needs `MAP_SHARED` for `-shm`, unless `locking_mode=EXCLUSIVE`.
+- **libxml2:** `--without-http --without-ftp --without-iconv --without-python`, threads on.
+- **curl:** `--with-mbedtls --disable-ipv6 --enable-threaded-resolver --disable-unix-sockets --without-libpsl --disable-ldap`, nghttp2/zlib/brotli (in tree).
+
+---
+
+## 2. The toolchain
+
+### 2.1 What we have
+
+`/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf`:
+- GCC 14.2.1, configured `--disable-threads --disable-tls --disable-shared --with-newlib`, thread model **single**;
+- newlib 4.4.0 with `_RETARGETABLE_LOCKING 1`, `_MB_CAPABLE`, `_WANT_IO_LONG_LONG`, no `_WANT_REENT_THREAD_LOCAL`, iconv disabled;
+- libstdc++ with exceptions and RTTI available (the STK port uses them through `stk.ld` + `onyx_eh.c`), `std::filesystem` compiled in, and none of the thread classes' out-of-line code.
+
+The STK port (`user/stk/compat/bits/gthr-default.h`, `onyx_gthreads.c`, `onyx_gthreads_cxx.cpp`) shows the workaround: shadow `gthr-default.h`, define `_GLIBCXX_HAS_GTHREADS`, and rewrite `std::thread` / `condition_variable` / `call_once`. Its own doc lists what remains broken (docs/SUPERTUXKART-PORT.md):
+- function-local statics are not thread-safe;
+- `thread_local` is one global copy (emutls with single gthreads);
+- `errno` is shared;
+- `libstdc++.a`'s internal code still believes it is single-threaded: `__is_single_threaded()` → non-atomic reference counts on `std::locale` facets mixed with atomic ones in user code.
+
+### 2.2 The options
+
+**(a) Keep `aarch64-none-elf` + newlib, and provide pthreads and the glue.** It is possible:
+- shadow `pthread.h` and `sys/_pthreadtypes.h` through `-isystem $SYSROOT/include`;
+- shadow `gthr-default.h` with a copy of GCC's `gthr-posix.h`;
+- override `__emutls_get_address` (libgcc) with a `TPIDR_EL0`-based per-thread table;
+- override `__cxa_guard_acquire/release/abort`;
+- compile libstdc++'s `thread.cc`, `condition_variable.cc`, `mutex.cc`, `future.cc` and `shared_ptr.cc` from GCC 14.2 sources into a side library.
+
+It stays fragile: archive-member clashes with `libstdc++.a`, single-threaded refcounts inside `libstdc++.a`, `errno` shared, `chrono` / `this_thread` configured without `clock_gettime` / `nanosleep`. It is acceptable for **C libraries** (SQLite, libxml2, curl, mbedTLS, FreeType, HarfBuzz with pthreads, cairo/pixman with the emutls override). It is not a sound base for ICU + Skia + WebKit.
+
+**(b) A custom toolchain `aarch64-onyx-elf`** (vendor `onyx`, OS `elf`): GCC 14.2 + binutils 2.43 + newlib 4.4.
+- **No GCC source patch.** GCC's `config.gcc` matches `aarch64*-*-elf` **(verify)**, autotools' `config.sub` accepts any vendor, and `--host=aarch64-onyx-elf` works for every third-party configure script.
+- GCC: `--enable-threads=posix --enable-tls --disable-shared --enable-languages=c,c++ --with-newlib --enable-libstdcxx-time=yes`.
+- newlib: `--enable-newlib-reent-thread-local` (errno and `_reent` per thread), `--enable-newlib-retargetable-locking`, `--enable-newlib-io-long-long`, `--enable-newlib-io-c99-formats`, `--disable-newlib-supplied-syscalls`.
+- The only Onyx-specific input is a **header overlay** installed into `$PREFIX/aarch64-onyx-elf/include` **after** newlib and **before** the final GCC stage, so that libgcc and libstdc++ build against our `pthread.h`. The overlay is exactly `user/libc/posix/include/pthread.h`, `sys/_pthreadtypes.h`, `semaphore.h` and `sched.h` (if needed); `pthread.h` also defines `_POSIX_TIMEOUTS` / `_POSIX_THREADS` / `_POSIX_READER_WRITER_LOCKS`, which `gthr-posix.h` tests. **The pthread types are then ABI-frozen.**
+- Result: native TLS (`mrs tpidr_el0` + local-exec offsets), real gthreads (`std::thread` and `std::mutex` work and libstdc++ is internally thread-aware), thread-safe statics, per-thread errno, `steady_clock` on `clock_gettime` (checked in the installed `c++config.h`).
+
+### 2.3 Recommendation: (b), staged after an (a) interim
+
+**Phase 1** uses (a). WP-LIBC, its tests and the C smoke ports (SQLite, libxml2, curl + mbedTLS) are developed on the existing toolchain with the `-isystem` shadowing and the emutls override. Nothing in WP-LIBC's code depends on the choice: the same headers and the same `libonyxposix.a` sources.
+
+**Phase 2** builds **WP-TC**, the `aarch64-onyx-elf` toolchain. It is required before ICU, Skia and WebKit.
+
+Reasons:
+- ICU and Skia need a real threaded libstdc++;
+- WebKit's `std::filesystem`, `chrono` and `thread_local` must be right;
+- the patch surface is tiny (a header overlay and a build script);
+- the kernel and the existing apps keep `aarch64-none-elf` unchanged.
+
+WP-TC deliverables:
+- `tools/toolchain/build-onyx-toolchain.sh`: pinned tarball URLs + sha256; stages binutils → GCC stage 1 (C only) → newlib → overlay → GCC final; `-j$(nproc)`. About **45–60 min** on 8 cores, about 600 MB installed, about 150 MB as `.tar.xz`.
+- Installed at `/opt/toolchains/aarch64-onyx-elf-14.2`.
+- `tools/toolchain/fetch.sh` downloads a prebuilt asset from a GitHub Release (`stephaneweg/Onyx`, tag `toolchain-14.2-onyx1`, Linux x86_64 host) and checks its sha256.
+  - On Windows the user runs it in **WSL**, as docs/03 §1 already prescribes.
+  - The cloud environment's setup script runs it too.
+  - GPL: the release also carries the exact source tarballs and the script.
+- Acceptance checks:
+  - `aarch64-onyx-elf-gcc -v` shows `Thread model: posix`;
+  - `c++config.h` has `_GLIBCXX_HAS_GTHREADS`, `_GLIBCXX_USE_CLOCK_MONOTONIC`, `_GLIBCXX_USE_NANOSLEEP`, `_GLIBCXX_USE_SCHED_YIELD`, `_GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT`, `_GLIBCXX_HAVE_TLS`;
+  - `posixtest cxx` passes on the Pi.
+- **Risk:** libstdc++'s cross configure for newlib (`crossconfig.m4`) may not enable the time features → a 1-file patch or `--enable-libstdcxx-time=yes` must be confirmed.
+
+---
+
+## 3. The design: work packages
+
+Order: **WP-0** (skeleton, first, on `main`) → **WP-MEM ∥ WP-FILE/PROC ∥ WP-NET** (kernel, parallel worktrees) ∥ **WP-LIBC** (starts at once against the skeleton) ∥ **WP-TC** (independent). Merge order: WP-MEM, then WP-FILE/PROC, then WP-NET, then WP-LIBC.
+
+### WP-0: the v75 ABI skeleton (half a day, one commit, before anything else)
+
+The goal is that **no two WPs edit the same lines**. WP-0 lands the whole v75 ABI with stub bodies, so each WP then only fills functions in files it owns.
+
+- `kern/kapi_abi.h`:
+  - `KAPI_ABI_VERSION 75`;
+  - all the structs and constants of §3.1–§3.3, plus `KAPI_E*`;
+  - the three blocks at the end of `TKApiTable`, after `proc_stats` (slot 198), **in this order**: WP-MEM (slots 199–206), WP-FILE/PROC (207–228), WP-NET (229–241).
+  - Use `long long` / `unsigned long long` for 64-bit values, never `long`: the PC build (`pc/`, `fakekapi.cpp`) has a 32-bit `long`.
+- New files with stub kapis that return `-KAPI_ENOSYS`, already assigned in `kapitable.cpp`:
+  - `sys/vm.cpp` (WP-MEM);
+  - `sys/ofile.cpp` and `sys/procx.cpp` (WP-FILE/PROC);
+  - `sys/bsdsock.cpp` (WP-NET);
+  - added to `kernel/Makefile`.
+- `user/kapi.h`: one wrapper per entry,
+  `static inline long long kapi_vm_map (…) { return KT->version >= 75 && KT->vm_map ? KT->vm_map (…) : -KAPI_ENOSYS; }`.
+  The EL0 table maps a null kernel slot to 0 (`El0Init`), so the null test also covers the PC simulator, which leaves the new fields 0.
+- `kern/iowait.h` + `sys/iowait.cpp`: the shared readiness wait, complete (about 60 lines):
+
+  ```cpp
+  u32  IoGen (void);                              // the I/O generation
+  void IoWake (void);                             // ++gen, wake every IoWait sleeper (core 0, IRQ context allowed)
+  int  IoWait (u32 nGen, unsigned nTimeoutMs);    // sleep while IoGen () == nGen -> 0 changed / 1 timeout
+  void IoWaitAddTickHook (void (*pfn) (void));    // called at each 100 Hz tick (IRQ, core 0), up to 8 hooks
+  void IoWaitTick (void);                         // PeriodicTick calls it (exception.cpp, next to WordWaitTick)
+  ```
+
+  `IoWait` uses a `CSynchronizationEvent` that is pulsed (Set, then Clear, as `kern/thread.h` objects do) with a waiter count.
+- `kern/stream.h`: `virtual unsigned CStream::PollMask (void) { return KAPI_POLLIN | KAPI_POLLOUT; }`.
+- `kern/handle.h`: `HANDLE_OFILE = 6`; `HandleObjectClose` routes it to `OFileClose (pObj, bTeardown)` (stub in `ofile.cpp`).
+- `kern/addrspace.h`:
+  - `struct TVmSpace *m_pVm;` and `struct TProcInfo *m_pProcInfo;` (0 initially; `~CAddressSpace` calls `VmTeardown (this)` and `ProcInfoTeardown (this)`, both stubs);
+  - `void SetTermReason (int nReason, int nCode)` / `int GetTermReason (void) const` (default `KAPI_PROC_EXITED`).
+- Regenerate `user/kapi_names.h` (`tools/gen_kapi_names.py`).
+- Add this file as `docs/POSIX-PLAN.md`, and three empty subsections in docs/02 §8 ("v75: memory", "v75: files and processes", "v75: sockets and poll"), one per WP.
+
+Error convention for **every** v75 call: ≥ 0 is success; **< 0 is `-KAPI_Exxx`**, where `KAPI_Exxx` equals newlib's errno value (`sys/errno.h`), so libc does `errno = -r`. The values used:
+
+```
+EPERM 1 ENOENT 2 EINTR 4 EIO 5 EBADF 9 ECHILD 10 EAGAIN 11 ENOMEM 12 EACCES 13 EFAULT 14 EBUSY 16
+EEXIST 17 EXDEV 18 ENODEV 19 ENOTDIR 20 EISDIR 21 EINVAL 22 ENFILE 23 EMFILE 24 EFBIG 27 ENOSPC 28
+ESPIPE 29 EROFS 30 EPIPE 32 ENOSYS 88 ENOTEMPTY 90 ENAMETOOLONG 91 EOPNOTSUPP 95 ECONNRESET 104
+ENOBUFS 105 EAFNOSUPPORT 106 ENOTSOCK 108 ENOPROTOOPT 109 ECONNREFUSED 111 EADDRINUSE 112
+ECONNABORTED 113 ENETUNREACH 114 ENETDOWN 115 ETIMEDOUT 116 EHOSTUNREACH 118 EINPROGRESS 119
+EALREADY 120 EDESTADDRREQ 121 EMSGSIZE 122 EPROTONOSUPPORT 123 EADDRNOTAVAIL 125 EISCONN 127
+ENOTCONN 128 ENOTSUP 134
+```
+
+Every v75 kapi follows docs/03 §10's EL0 rules: pointers checked at entry, no kernel pointer handed out, ≤ 8 integer arguments, no callbacks into the app.
+
+---
+
+### 3.1 WP-MEM (kernel): demand paging, mmap, TLS, stacks
+
+**Owned files:** `sys/vm.cpp` (new), `kern/vm.h` (new), `mm/addrspace.cpp/.h` (Sbrk, MapStack, teardown hook), `sys/uaccess.cpp`, `sys/el0.cpp` (fault path, unpin after a system call), `arch/aarch64/exception.cpp` (`SyncHandlerEL1` safety net only), `sys/thread.cpp` (`thread_create_ex`, `thread_info`, WordPhys), `sys/appcore.cpp` (page-in, TLS), `kernel.cpp` (main stack VMA, the pager task); `user/bin/memtest.c`.
+
+#### Address space
+
+| Range | Use |
+|---|---|
+| ELF image at 8 GB | **eager**, as today (app-core jobs touch static arrays) |
+| Heap `USER_HEAP_BASE` (10 GB)…12 GB | VMA kind HEAP, **lazy** |
+| Main stack `[16 GB − size, 16 GB)` | VMA kind STACK, lazy |
+| Thread stacks: slot `32 GB + (rec + 1) × 32 MB`, top of the slot | VMA STACK, lazy; the rest of the slot is unmapped (the guard) |
+| **mmap arena `USER_MMAP_BASE` = 34 GB (0x8_8000_0000) … `USER_MMAP_END` = `USER_VA_END` (60 GB)** | 26 GB, only `vm_map` places mappings here. The thread slots end exactly at 34 GB (64 records × 32 MB) |
+| Canvas, wallpaper, surfaces, kapi pages, code arena, full-screen buffers, sound ring, `gpu_vbuf` | VMA kind FIXED: **eager**, never touched by `vm_*` (refused with `-EINVAL`) |
+
+`[16 GB, 32 GB)` stays unused (reserve).
+
+#### Kernel structures (`kern/vm.h`)
+
+```cpp
+struct TVma { u64 ulStart, ulEnd; u16 nProt; u16 nKind; u32 nFlags; };   // sorted, non-overlapping
+struct TVmSpace {
+	TVma    *pVma; unsigned nVma, nCap;        // binary-searched array, grows by doubling, cap 4096 (-ENOMEM)
+	TVmPin   Pin[32]; unsigned nPins;          // { CTask *pTask; u64 ulStart, ulEnd; }  kapi in-place ranges
+	TVmZap  *pZapPending;                      // ranges unmapped while pinned (deferred)
+	u64      nFaults, nResident;               // statistics
+	u16      L3Count[L2 slots of the user range];   // valid PTEs per L3 table (free empty L3s: SHOULD)
+	boolean  bEagerHeap;                       // set by core_acquire
+};
+boolean VmFaultIn (CAddressSpace *pAS, u64 ulVA, boolean bWrite, int *pErr);  // software walk, NEVER yields
+```
+
+#### Faults
+
+**EL0** (`El0SyncHandler`, EC 0x24 data abort or 0x20 instruction abort from EL0; DFSC/IFSC from the ESR):
+- **Translation fault, levels 1–3** (`0b0001xx`), with FAR in a lazy VMA whose prot allows the access (WnR → `PROT_WRITE`; read → `READ`; instruction → never, `EXEC` is not supported):
+  - `VmFaultIn`: `palloc_high`, `memset` 64 KB, `MapPage` (owned, AP from the VMA's prot), `dsb ishst`;
+  - return; the `eret` retries the access.
+  - **No TLBI:** invalid entries are never cached.
+- **Permission fault** (`0b0011xx`) where the VMA now allows the access (a spurious fault after an upgrade): `tlbi vale1, va|asid` locally, return.
+- **Anything else:** `Fault()` as today. Its kmsg says "stack overflow" when FAR is within 1 MB below a STACK VMA, "PROT_NONE access" when FAR is in a VMA with prot 0, and "out of memory" for OOM.
+- **The handler does not yield in v1.** It does no I/O, and zeroing 64 KB takes about 10 µs. Core 0 runs the kernel non-preemptively, so two threads faulting the same page are serialized: the second one finds the PTE valid and returns.
+
+**EL1, kapi side** (`sys/uaccess.cpp`):
+- `Probe` (`UserReadable` / `UserWritable`): translate with **`AT S1E0R/S1E0W`** instead of `S1E1R/W`, so EL0 permissions are checked (a `PROT_NONE` page is EL1-accessible: AP `RW_EL1`). On failure, `VmFaultIn` the page and check again. Then **pin** `[p, p + n)` for the calling task (`TVmSpace::Pin`).
+- `El0SyncHandler`'s `Syscall()` drops the task's pins when the kapi returns (`VmUnpinTask`), and runs the deferred zaps that no pin covers any more.
+- `UserCopyIn`/`UserCopyOut`/`UserStrOut`/`CUserStr`: when `UAccessCopy` fails, `VmFaultIn` every page of the range in C (not in the exception) and retry once. A fault in the routines themselves still goes through the fixup table unchanged (point 3 of §0).
+- `WordPhys` (futex): `AT S1E0R`; populate first. **`WordWaitsZap (phys, len)`** wakes the waiters on a frame about to be freed (spurious wakes are allowed).
+- **Safety net (SHOULD):** in `SyncHandlerEL1`, a fault at a user VA by a task with an address space, outside the fixup table, inside a lazy VMA → unmask the FIQ (`msr daifclr, #1`, as `IrqEntry` does), `VmFaultIn`, log once `vm: kernel touched an unpopulated user page at pc %lx`, and return. Otherwise panic as today.
+
+**App cores** (`sys/appcore.cpp`): the decision is **pre-populate, plus a correct but slow fallback; no allocator on cores 2–3.**
+- `core_acquire` sets `bEagerHeap`: from then on `Sbrk` populates what it maps. This protects the existing emulators, which `malloc` on the main thread and touch on the core.
+- `core_run` pre-populates `[stack_top − 256 KB, stack_top)` (within its VMA).
+- `emucore.h` and `onyx_rpc` users call `vm_advise (WILLNEED)` on their buffers.
+- Fallback: `AppCoreOnEl0Sync` on a translation fault at a user VA stores `{ulPageInVA, bWrite}` in its `TAppCore`, sets `nPageIn = 1`, `dsb ish; sev`, then waits in `wfe` with IRQs enabled (the stop IPI still drops the job). It returns to retry when `nPageIn == 2`, and turns the job into `CORE_FAULT` when it is 3.
+- Core 0: a tick hook (`IoWaitAddTickHook (AppCorePageInTick)`) sets the event of a kernel **pager** task (created at boot in `kernel.cpp`). The pager runs `VmFaultIn` for the owner's space by a **software table walk** (no `AT`: its `TTBR0` is the kernel's), stores 2 or 3, then `dsb ish; sev`. Latency ≤ 10 ms plus one scheduling.
+- SHOULD: an SGI from the app core to core 0 for an immediate wake.
+
+#### TLB rules
+- invalid → valid: `dsb ishst` only.
+- valid → invalid (`unmap`, DONTNEED) or a permission change (`protect`): write the PTE, `dsb ishst`, `tlbi vae1is, (va >> 12) | (asid << 48)` per page (`tlbi aside1is` above 64 pages), `dsb ish; isb`, and **only then** free the frames. Inner-shareable reaches cores 2–3 and the network core.
+- Freeing an L3 table of a live space (SHOULD): `tlbi vmalle1is` (walk caches).
+- Permission changes do not need break-before-make; output-address changes never happen.
+
+#### Pins and the deferred zap
+- `vm_unmap`, DONTNEED and a protect downgrade that overlap another task's pin: the VMA change happens at once (new faults see the new state); the PTEs and frames under the pin stay until the pin is released, then they are zapped (`pZapPending`).
+- No waiting, so no deadlock, and the kernel never touches a freed frame. A kapi of the same task that pinned the range is not affected (its pins end with its call).
+
+#### OOM policy: heuristic overcommit
+- No commit accounting.
+- A single `Sbrk` growth or writable `vm_map` (without `MAP_NORESERVE`) larger than the free app pool (the high-zone free counters `ram_detail` reads) minus `VM_RESERVE` (16 MB) fails with `-ENOMEM` (sbrk returns −1 as today). Apps that check `malloc` keep working.
+- `VmFaultIn` refuses when the free pages fall under `VM_RESERVE`:
+  - at EL0, the faulting process is killed: kmsg `vm: <name> (pid N) killed: out of memory (page fault at %lx, %u KB resident)`, `IpcNotify ("Application error", "<name> ran out of memory")`, `SetTermReason (KAPI_PROC_OOM, -9)`, `kapi_exit`;
+  - in a kapi, the call fails (`-ENOMEM` / its error value);
+  - on an app core, `CORE_FAULT`.
+- SHOULD: a per-process limit, `app.txt` `memlimit = 1G`.
+- On a 1 GB Pi `palloc_high` falls back to the low pager, so the reserve also protects the page tables.
+
+#### Page-table cost (64 KB granule)
+- One L3 table (64 KB, from the **low** pager, `GetOrCreateL3`) per 512 MB slot that has at least one present page. That is about 6 per process (image, heap, canvas, kapi, stack, threads), at most 104 for the user range (6.5 MB).
+- Reservations cost nothing until touched.
+- The 64 KB granule costs at least 64 KB resident per touched page: a thread's first stack page, a lone malloc page.
+
+#### Other changes
+- **Lazy main stack:** `kernel.cpp` `CUserProcessTask::Run` replaces `MapStack (USER_STACK_TOP, nUserStack)` with a STACK VMA. `AppUserStack`'s default becomes **8 MB** (lazy: it costs nothing); the maximum stays 64 MB.
+- **Lazy thread stacks:** `kapi_thread_create` replaces `MapStack (ulTop, nStackSize)` with a STACK VMA (the old ABI benefits too). A reused slot whose size changes has its VMA replaced and its pages zapped. SHOULD: zap an ended thread's stack in `kapi_thread_exit`.
+- **Sbrk:** grows the HEAP VMA (lazy unless `bEagerHeap`). A shrink zaps the pages above the new break (respecting pins).
+- **TLS:** see §0.1. `CUserThreadTask::Run` writes `msr tpidr_el0, m_ulTls` before `El0Enter`. `kapi_core_run` reads the caller's `TPIDR_EL0` (`mrs`: the kernel never changes it) and the core's loop writes it before `El0Enter`, so a job shares its caller's TLS (errno included). The main thread's value is set by `crt0posix` at EL0.
+
+#### ABI (slots 199–206)
+
+```c
+#define KAPI_PROT_NONE 0
+#define KAPI_PROT_READ 1
+#define KAPI_PROT_WRITE 2
+#define KAPI_PROT_EXEC 4            /* refused: -KAPI_ENOTSUP */
+#define KAPI_MAP_FIXED 0x10
+#define KAPI_MAP_NORESERVE 0x4000
+#define KAPI_MAP_POPULATE 0x8000
+#define KAPI_MAP_FIXED_NOREPLACE 0x100000
+#define KAPI_MADV_NORMAL 0
+#define KAPI_MADV_RANDOM 1
+#define KAPI_MADV_SEQUENTIAL 2
+#define KAPI_MADV_WILLNEED 3
+#define KAPI_MADV_DONTNEED 4
+#define KAPI_MADV_FREE 8
+#define KAPI_VMK_ANON 1             /* vm_map */
+#define KAPI_VMK_HEAP 2
+#define KAPI_VMK_STACK 3
+#define KAPI_VMK_IMAGE 4
+#define KAPI_VMK_FIXED 5            /* canvas, surface, sound ring, GPU memory, code arena, kapi pages */
+#define KAPI_VMF_LAZY 1
+#define KAPI_THREAD_DETACHED 1      /* no join: the kernel frees its record when it ends */
+
+struct kapi_vm_region {             /* 32 bytes */
+	unsigned long long start, end;  /* 0, 8: [start, end), 64 KB-aligned */
+	unsigned prot;                  /* 16: KAPI_PROT_* */
+	unsigned kind;                  /* 20: KAPI_VMK_* */
+	unsigned resident;              /* 24: pages present */
+	unsigned flags;                 /* 28: KAPI_VMF_* */
+};
+struct kapi_vm_stats {              /* 48 bytes */
+	unsigned long long resident;    /* 0: bytes of owned frames, page tables included */
+	unsigned long long lazy;        /* 8: bytes of VA in lazy regions */
+	unsigned long long writable;    /* 16: bytes of writable VA (all lazy regions touched) */
+	unsigned long long faults;      /* 24: pages filled on demand (EL0 + kernel + app cores) */
+	unsigned long long pt_bytes;    /* 32: page tables */
+	unsigned long long limit;       /* 40: per-process limit, 0 = none */
+};
+struct kapi_thread_attr {           /* 64 bytes */
+	unsigned long long fn;          /* 0: int (*) (void *) */
+	unsigned long long arg;         /* 8 */
+	unsigned long long stack_size;  /* 16: 0 = 8 MB; 16 KB..16 MB (lazy) */
+	unsigned long long tls;         /* 24: the thread's initial TPIDR_EL0 */
+	const char *name;               /* 32: may be 0; 31 characters kept */
+	unsigned flags;                 /* 40: KAPI_THREAD_DETACHED */
+	int prio;                       /* 44: 0, or 1 = "real time" (as thread_priority) */
+	unsigned long long reserved[2]; /* 48: 0 */
+};
+struct kapi_thread_info {           /* 32 bytes */
+	unsigned long long stack_lo;    /* 0: lowest usable byte of its stack VMA */
+	unsigned long long stack_hi;    /* 8: its top (the initial SP) */
+	int tid;                        /* 16 */
+	int state;                      /* 20: 0 running, 1 ended (joinable) */
+	unsigned long long guard;       /* 24: unmapped bytes below stack_lo */
+};
+
+/* --- v75 WP-MEM --- (slots 199..206) */
+long long (*vm_map) (unsigned long long addr, unsigned long long len, unsigned prot, unsigned flags);
+	/* -> the address (>= USER_VA_BASE), -EINVAL (len 0, FIXED not aligned / outside the arena),
+	   -ENOMEM (no room / heuristic overcommit / > 4096 regions), -ENOTSUP (EXEC),
+	   -EEXIST (FIXED_NOREPLACE overlaps). len rounded up to 64 KB; addr a hint unless FIXED;
+	   POPULATE fills now (yields every 64 pages). Zero-filled. */
+int (*vm_unmap) (unsigned long long addr, unsigned long long len);
+	/* -> 0 / -EINVAL (not inside KAPI_VMK_ANON regions); splits */
+int (*vm_protect) (unsigned long long addr, unsigned long long len, unsigned prot);
+	/* ANON regions -> 0 / -EINVAL / -ENOMEM (split cap) / -ENOTSUP (EXEC); present pages re-protected
+	   + TLBI */
+int (*vm_advise) (unsigned long long addr, unsigned long long len, int advice);
+	/* any lazy region: WILLNEED populates (-ENOMEM); DONTNEED / FREE zap (zero on the next touch;
+	   ANON and HEAP only); the others no-op -> 0 / -EINVAL */
+int (*vm_query) (unsigned long long addr, struct kapi_vm_region *out);
+	/* -> 0 the region holding addr, 1 the next region above it, -ENOMEM none above, -EFAULT */
+int (*vm_stats) (int pid, struct kapi_vm_stats *out);
+	/* pid 0 = self -> 0 / -ESRCH(3) / -EFAULT */
+int (*thread_create_ex) (const struct kapi_thread_attr *attr);
+	/* -> tid >= 2 / -EAGAIN (32 running) / -ENOMEM / -EINVAL / -EFAULT */
+int (*thread_info) (int tid, struct kapi_thread_info *out);
+	/* tid 0 = self, 1 = main -> 0 / -ESRCH / -EFAULT */
+```
+
+(`ESRCH` is 3 in newlib: add `KAPI_ESRCH 3`.)
+
+#### Tests and acceptance
+
+`/bin/memtest` (freestanding, kapi level), each check prints PASS/FAIL:
+- lazy `vm_map`: resident 0 before, 1 page after one touch;
+- 1 GB `PROT_NONE` reservation, then commit 64 KB with `vm_protect`, then write;
+- partial unmap in the middle (split): `vm_query` shows 2 regions;
+- DONTNEED zero-fill; `FIXED` / `FIXED_NOREPLACE`;
+- a child (spawned with an argument) writes a READ page → `proc_wait` reason FAULT; a child overflows its 1 MB thread stack → FAULT "stack overflow";
+- in-place kapi I/O into fresh lazy memory: `kapi_read` of a 1 MB file, `tcp_recv`, `get_args`;
+- futex on a lazy page; unmap of a buffer while another thread blocks in a `kapi_read` into it → no panic (deferred zap);
+- app-core job touching unpopulated memory (fallback page-in, timed);
+- TLS: two threads `msr tpidr_el0` distinct values, sleep and yield 1000×, check; an app-core job sees its caller's value;
+- `thread_create_ex` / `thread_info` bounds contain a local's address;
+- OOM: a child that touches until killed → reason OOM, the system alive, `memmon` back.
+
+Also run `tools/el0scan.sh` (no new instructions in user code).
+
+**On the Pi:**
+- `memtest`, `threadtest`, `futextest`, `coretest`, `el0test`, `faulttest`;
+- every emulator that uses an app core (gb, gba, nes, snes, n64, gc), Doom (the RPC on an app core), Jet, Writer/Spreadsheet, Media, Mail, Photos;
+- `ps`/`memmon`: page counts should **drop** (lazy stacks: 1–64 MB less per app);
+- a kill under load.
+
+**Risks:**
+- a kernel in-place access that bypasses the helpers → panic (mitigated by the audit `grep` for app pointers used without `User*`, and by the safety net);
+- performance of page-ins (64 KB zeroing on first touch of the heap);
+- emulator regressions on app cores (`bEagerHeap`);
+- deferred-zap bookkeeping;
+- futex waiters on zapped frames.
+
+---
+
+### 3.2 WP-FILE/PROC (kernel): file descriptors, stat, pipes, environment, spawn/wait, clock
+
+**Owned files:** `sys/ofile.cpp` (new), `sys/procx.cpp` (new), `sys/stream.cpp`/`kern/stream.h` (pipe), `sys/ramfs.cpp`/`kern/ramfs.h` (random access, deferred delete), `sys/kapi.cpp` (kill reasons in `kapi_kill`/`kapi_kill_pid`, `kapi_spawn` env inheritance), `kernel.cpp` (`SpawnProcess`/`ExecPath`/`LaunchApp`: env and argv blocks; boot: the default environment and the cleanup of hidden deleted files), `sys/el0.cpp` (one line: `SetTermReason (KAPI_PROC_FAULT, -11)` in `Fault`; coordinate with WP-MEM or put it in WP-0); `user/bin/filetest.c`.
+
+#### Open files (`sys/ofile.cpp`)
+
+- **`CFileNode`**, one per open file:
+  - key: the absolute path from `ResolvePath`, upper-cased (FAT and `RAM:` are case-insensitive);
+  - kind FATFS or RAMFS (a VFS provider path: `-ENOTSUP` in v1);
+  - **one `FIL`** for all its openers: opened `FA_READ`, or re-opened `FA_READ|FA_WRITE` when the first writer comes; the offsets are per description, so re-opening is invisible;
+  - a reference count; a sleeping lock (a busy flag + `Yield` loop, as `sys/fslock.cpp`) held across one call, because FatFs calls yield (`OnyxDriverWait`);
+  - `bDeleteOnClose` + its hidden name.
+  - One `FIL` per file avoids FatFs' double-open corruption (`FF_FS_LOCK 0`) and keeps the sector caches coherent.
+- **`COpenFile`**, the `HANDLE_OFILE` object: node, 64-bit offset, access, `bAppend`. **`dup` is user-space** (libc counts references to descriptions), so it needs no kernel call.
+- Read and write: `f_lseek (offset)` then `ChunkedRead` / `ChunkedWrite` (64 KB pieces with `Yield`, reused from `sys/kapi.cpp`) after `UserWritable` / `UserReadable`. `O_APPEND` writes at the node's size. A short `f_write` → `-ENOSPC` if nothing was written.
+  - **Never use FatFs fast seek (`CREATE_LINKMAP`, as `kapi_seek` does) on a writable node:** FatFs cannot expand a file in that mode.
+- `O_CREAT|O_EXCL` → `FA_CREATE_NEW` (`FR_EXIST` → `-EEXIST`). `O_TRUNC` (writable only) → `f_truncate` at 0. A directory → `-EISDIR` (libc gives `open (dir, O_RDONLY)` a directory fd of its own, which SQLite's directory `fsync` accepts).
+- `file_truncate` growing writes zeros in 64 KB chunks (FatFs leaves the extension undefined). `file_sync` → `f_sync`.
+- **Unlink while open:** rename the file to `<dir>/.~onyx-deleted-<n>` and delete it at the last close. Leftovers are removed at boot. **Rename onto an open target:** the same hiding first, then `f_rename`. Rename of an open source updates the node's key.
+- **stat:**
+  - `st_ino` = FNV-1a-64 of the key; `st_dev` = volume (1 `SD:`, 2–4 `SD1:`–`SD3:`, 5+ `USB:`…, 64 `RAM:`);
+  - mode `S_IFREG 0644` / `S_IFDIR 0755`, and `0444` with the read-only attribute;
+  - `mtime` from FatFs `fdate`/`ftime` (local time) converted to UTC with the current `CTimer` zone; `RAM:` keeps a write time;
+  - `blksize` = the cluster size; root paths (`SD:/`) are synthesized as directories.
+- FRESULT → errno:
+
+  | FRESULT | errno |
+  |---|---|
+  | `NO_FILE`/`NO_PATH` | `ENOENT` |
+  | `EXIST` | `EEXIST` |
+  | `DENIED` | `EACCES` (`ENOTEMPTY` for a directory that is not empty) |
+  | `WRITE_PROTECTED` | `EROFS` |
+  | `INVALID_NAME` | `EINVAL` / `ENAMETOOLONG` |
+  | `DISK_ERR`/`INT_ERR`/`NOT_READY` | `EIO` |
+  | `LOCKED` | `EBUSY` |
+  | `TOO_MANY_OPEN_FILES` | `EMFILE` |
+  | `NOT_ENOUGH_CORE` | `ENOMEM` |
+  | `INVALID_DRIVE`/`NOT_ENABLED`/`NO_FILESYSTEM` | `ENODEV` |
+
+- `RAM:`: add `RamFsPRead/PWrite/Truncate/Stat` and a deferred delete to `sys/ramfs.cpp` (the same semantics).
+- The old kapis (`open`/`read`/`save_file`/`file_out`) keep their own `FIL`s. Mixing them with `file_*` on the same file is not coherent (documented).
+
+#### Pipes
+- `CPipeStream::PollMask`: IN when not empty, or HUP|IN when the write end is closed; OUT when there is room.
+- `IoWake ()` in `Write`, `Read` (room appeared) and `CloseWrite`.
+- `stream_write_nb`: `-EAGAIN` when full.
+- `PIPE_CAP` stays 8 KB (64 KB: SHOULD).
+- `EPIPE` without readers is not detected (the reference count cannot tell readers from writers). A blocking write to a full pipe nobody drains waits, as today.
+
+#### Processes (`sys/procx.cpp`)
+- `TProcInfo`: an env block and an argv block (kernel heap, ≤ 64 KB each: strings separated by NUL, ended by an empty string) and the term reason.
+- Inheritance: `kapi_spawn` / `exec` / `exec_as` children get the parent's **initial** env block. Desktop-launched apps get the system default, read at boot from `SD:/etc/environment` (`KEY=VALUE` lines). Without it: `HOME=SD:/home`, `PATH=SD:/bin`, `TMPDIR=RAM:/tmp`, `LANG=C.UTF-8`.
+- `spawn_ex` passes argv and envp explicitly. The old `get_args` string of such a child is argv[1..] joined with spaces, an argument containing spaces wrapped in double quotes.
+- Term reasons:
+  - `Fault` → `KAPI_PROC_FAULT` (code −11);
+  - `kapi_kill` / `kapi_kill_pid` and the cascade of a dead parent → `KAPI_PROC_KILLED` (−9). Today a killed process reports status 0 (`m_nExitStatus` default, `~CAddressSpace`);
+  - OOM (WP-MEM) → `KAPI_PROC_OOM`.
+- `proc_wait` blocks on an event set at the child's end instead of `kapi_wait`'s `MsSleep (5)` loop (SHOULD).
+- `clock_info`: `CNTPCT` / `CNTFRQ` and `CTimer::GetUniversalTime ()` sampled together (±10 ms). libc rebases its realtime clock every 60 s, which follows NTP.
+- `sleep_us`: under 1000 µs, a `Yield` loop on `GetClockTicks`; otherwise `usSleep`.
+
+#### ABI (slots 207–228)
+
+```c
+#define KAPI_O_RDONLY 0
+#define KAPI_O_WRONLY 1
+#define KAPI_O_RDWR 2
+#define KAPI_O_ACCMODE 3
+#define KAPI_O_CREAT 0x40
+#define KAPI_O_EXCL 0x80
+#define KAPI_O_TRUNC 0x200
+#define KAPI_O_APPEND 0x400
+#define KAPI_SEEK_SET 0
+#define KAPI_SEEK_CUR 1
+#define KAPI_SEEK_END 2
+#define KAPI_S_IFMT 0170000
+#define KAPI_S_IFDIR 0040000
+#define KAPI_S_IFREG 0100000
+#define KAPI_UNLINK_DIR 1           /* rmdir semantics */
+#define KAPI_WAIT_NOHANG 1
+#define KAPI_WAIT_KEEP 2            /* do not close the process handle */
+#define KAPI_PROC_EXITED 0
+#define KAPI_PROC_FAULT 1
+#define KAPI_PROC_KILLED 2
+#define KAPI_PROC_OOM 3
+#define KAPI_CLOCK_REALTIME_VALID 1 /* the date is real (NTP / RTC), not "since boot" */
+
+struct kapi_stat {                  /* 64 bytes */
+	unsigned long long size;        /* 0 */
+	long long mtime;                /* 8: UTC seconds since 1970 */
+	unsigned long long ino;         /* 16: FNV-1a 64 of the upper-cased absolute path */
+	unsigned mode;                  /* 24: KAPI_S_IF* | permission bits */
+	unsigned dev;                   /* 28: volume number */
+	unsigned blksize;               /* 32: cluster size (RAM: 65536) */
+	unsigned attr;                  /* 36: FAT attributes (1 RO, 2 HID, 4 SYS, 0x10 DIR, 0x20 ARC) */
+	unsigned long long blocks;      /* 40: 512-byte blocks allocated */
+	long long ctime;                /* 48: = mtime (FF_FS_CRTIME 0) */
+	unsigned long long reserved;    /* 56 */
+};
+struct kapi_dirent2 {               /* 288 bytes */
+	char name[256];                 /* 0: up to 255 characters (kapi_dirent cut at 127) */
+	unsigned long long size;        /* 256 */
+	long long mtime;                /* 264 */
+	unsigned mode;                  /* 272 */
+	unsigned attr;                  /* 276 */
+	unsigned long long ino;         /* 280 */
+};
+struct kapi_spawn_attr {            /* 64 bytes */
+	const char *path;               /* 0: the program (resolved against cwd) */
+	const char *argv;               /* 8: block "a\0b\0\0" (argv[0] first), <= 64 KB */
+	const char *envp;               /* 16: same format; 0 = the caller's initial environment */
+	const char *cwd;                /* 24: 0 = the caller's */
+	void *in, *out;                 /* 32, 40: stream handles of the caller, or 0 */
+	unsigned long long reserved;    /* 48: 0 (a future stderr) */
+	unsigned flags;                 /* 56: 0 */
+	unsigned reserved2;             /* 60 */
+};
+struct kapi_proc_status {           /* 16 bytes */
+	int code; int reason; int pid; int reserved;
+};
+struct kapi_clock_info {            /* 48 bytes */
+	unsigned long long cnt;         /* 0: CNTPCT_EL0 at the sample */
+	unsigned long long freq;        /* 8: CNTFRQ_EL0 */
+	long long utc_us;               /* 16: UTC microseconds since 1970 at cnt */
+	int tz_minutes;                 /* 24: local - UTC (set_timezone) */
+	unsigned flags;                 /* 28: KAPI_CLOCK_* */
+	unsigned long long boot_cnt;    /* 32: CNTPCT at boot */
+	unsigned long long reserved;    /* 40 */
+};
+
+/* --- v75 WP-FILE/PROC --- (slots 207..228) */
+long long (*file_open) (const char *path, unsigned flags, unsigned mode);  /* -> handle > 0 / -errno */
+long long (*file_read) (long long h, void *buf, unsigned long long len, long long off);
+	/* off -1: at the handle's offset (advanced); else pread -> bytes, 0 = end / -errno */
+long long (*file_write) (long long h, const void *buf, unsigned long long len, long long off);
+	/* off -1: at the offset (or the end with APPEND) */
+long long (*file_seek) (long long h, long long off, int whence);  /* -> new offset / -EINVAL / -EBADF */
+int (*file_truncate) (long long h, long long size);               /* grow with zeros */
+int (*file_sync) (long long h);
+int (*file_stat) (long long h, struct kapi_stat *out);
+int (*file_close) (long long h);
+int (*path_stat) (const char *path, struct kapi_stat *out);
+int (*path_unlink) (const char *path, unsigned flags);
+	/* file: -EISDIR on a directory; KAPI_UNLINK_DIR: -ENOTDIR / -ENOTEMPTY */
+int (*path_mkdir) (const char *path, unsigned mode);              /* -EEXIST / -ENOENT (parent) */
+int (*path_rename) (const char *from, const char *to);            /* replaces to; -EXDEV across volumes */
+int (*path_utime) (const char *path, long long mtime);
+int (*dir_read) (void *dir, struct kapi_dirent2 *out);
+	/* an opendir handle -> 1 / 0 end / -EBADF / -EFAULT */
+int (*stream_write_nb) (void *h, const void *buf, unsigned len);   /* -> n (> 0) / -EAGAIN / -EBADF */
+long long (*spawn_ex) (const struct kapi_spawn_attr *a);          /* -> process handle / -errno */
+int (*proc_wait) (void *proc, unsigned flags, struct kapi_proc_status *out);
+	/* -> 1 ended (handle closed unless KEEP) / 0 running (NOHANG) / -EBADF */
+int (*get_argv) (char *buf, unsigned cap);  /* -> the block's size (filled up to cap); argv[0] = the path */
+int (*get_env) (char *buf, unsigned cap);   /* -> the block's size */
+int (*getpid) (int which);                  /* 0 pid, 1 parent pid */
+int (*clock_info) (struct kapi_clock_info *out);
+int (*sleep_us) (unsigned long long us);
+```
+
+#### Tests and acceptance
+
+`/bin/filetest`, run on `SD:` and on `RAM:`:
+- the open-flag matrix; pread/pwrite at random offsets compared with a model (10 000 operations, two handles);
+- `O_APPEND` from two handles; truncate grow (zeros) and shrink; sync;
+- stat fields (mtime within 2 s of `clock_info`);
+- unlink while open (still readable, gone from the listing, no leftover after close);
+- rename replace; mkdir/rmdir `ENOTEMPTY`; 200-character names in `dir_read`;
+- a 64 MB write/read with the MB/s printed;
+- `write_nb` on a full pipe → `-EAGAIN`, then a reader thread drains it; HUP after `stream_eof`;
+- `spawn_ex` of itself with argv/env → child checks → exit 42 → `proc_wait` (42, EXITED); a child that faults → FAULT; NOHANG;
+- `clock_info` against `get_datetime`; `sleep_us (1000/5000/20000)` statistics.
+
+**On the Pi:**
+- `filetest`, then a reboot (no `.~onyx-deleted-*` left);
+- `fsbench` unchanged;
+- the terminal's pipes and redirections, cp/mv/rm, the file manager, Writer save/load (old kapis);
+- a USB stick if present.
+
+**Risks:**
+- FatFs performance for many small `pwrite`s (SQLite pages) with `f_lseek` cluster-chain walks: measure;
+- old and new kapis on one file;
+- hidden-file cleanup after a crash;
+- time zone in `mtime`.
+
+---
+
+### 3.3 WP-NET (kernel): BSD sockets and `poll`
+
+**Owned files:** `sys/net.cpp`, `kern/net.h`, `sys/bsdsock.cpp` (new: the kapis and `poll`), the Circle fork (`include/circle/net/socket.h`, `lib/net/socket.cpp`: `boolean AcceptReady (void) const` and `u16 GetForeignPort (void) const`, plus docs/05 §23), `user/bin/nettest.c`, `tools/tests/nettest_peer.py`.
+
+#### Slots
+
+`MAX_SOCKETS` goes to **256** (shared by every process, today 64). `TSocketSlot` gains:
+- `nType` (TCP/UDP), `nState` (NEW, BOUND, LISTEN, CONNECTING, CONNECTED, FAILED, CLOSED), `bNonBlock`, `nError` (pending `SO_ERROR`);
+- `nLocalPort`, peer address and port, the receive/send timeouts;
+- a **carry buffer** (`FRAME_BUFFER_SIZE`, allocated at the first receive): each `Receive` goes into it, the caller gets what fits, the rest stays. This fixes the data loss of small receives and gives `MSG_PEEK`;
+- `nStatus`: the readiness snapshot bits.
+
+The old `tcp_*` kapis keep working on the same table (they create CONNECTED / LISTEN TCP slots).
+
+#### Asynchronous connect
+- Non-blocking `sock_connect` sets the slot to CONNECTING, posts a **detached** `NR_CONNECT_ADDR` request and returns `-EINPROGRESS`. The worker stores CONNECTED or FAILED + `nError` (Circle errors mapped: refused → `ECONNREFUSED`, timeout → `ETIMEDOUT`, no route → `ENETUNREACH`), then frees the request itself and wakes (`IoWake`, or the generation word on the network core).
+- With `netcore=1` this uses the existing core-3 worker pool.
+- With `netcore=0`, a **core-0 worker pool** (the same `CNetWorker` code, 2 tasks growing to 16, created at the first asynchronous request) serves the detached requests. Blocking calls keep running directly in the app's task, as today.
+- Closing a CONNECTING slot sets the request to `RQ_ORPHAN`; `Finish` already closes what it made.
+
+#### Accept
+`sock_accept` without a ready connection (`CSocket::AcceptReady ()`, the Circle patch: any backlog connection `IsConnected`) → `-EAGAIN` when non-blocking; blocking mode waits (`IoWait` loop) and only then calls `Accept`, which no longer blocks.
+
+#### Readiness and `poll`
+- **`netcore=1`:** the network core's main loop (`NetCoreMain`), at each turn, computes `nStatus` for every open slot (`GetStatus`, `AcceptReady`, the carry buffer, CONNECTING/FAILED) and bumps a generation word when any changed. Core 0's tick hook (`IoWaitAddTickHook (NetPollTick)`) turns a changed generation into `IoWake`. Latency ≤ 10 ms.
+- **`netcore=0`:** `poll` evaluates the sockets directly on core 0 and waits in steps of one tick when sockets are in the set.
+- Bits:
+  - `POLLIN`: data, carry, FIN, or a pending accept;
+  - `POLLOUT`: `bTxReady` and connected, or a connect that completed;
+  - `POLLERR`: FAILED;
+  - `POLLHUP`: was connected and no longer is.
+- `poll`: copy the array in (≤ 1024 entries), evaluate each entry (sockets through `NetSockPoll`, stream handles through `CStream::PollMask`, file handles always IN|OUT, an invalid one `POLLNVAL`, kind 0 or `h < 0` ignored), and return as soon as any is ready. Otherwise `IoWait (gen, step)` and loop until the timeout (`-1` = forever, `0` = only check). Copy `revents` out → the number of ready entries.
+
+#### Other calls
+- UDP: `sock_bind` creates a `CSocket (IPPROTO_UDP)` and binds it (port 0 = ephemeral). Send/recv use `SendTo` / `ReceiveFrom` with the peer.
+- `sock_name`: local IP from `CNetConfig` plus the own port; the peer from `GetForeignIP` + `GetForeignPort` (patch).
+- DNS stays the existing `net_resolve` (v43): no new call.
+
+#### ABI (slots 229–241)
+
+```c
+#define KAPI_AF_INET 2
+#define KAPI_SOCK_STREAM 1
+#define KAPI_SOCK_DGRAM 2
+#define KAPI_SOCKF_NONBLOCK 1
+#define KAPI_MSG_PEEK 0x2
+#define KAPI_MSG_DONTWAIT 0x40
+#define KAPI_MSG_WAITALL 0x100
+#define KAPI_SHUT_RD 0
+#define KAPI_SHUT_WR 1
+#define KAPI_SHUT_RDWR 2
+#define KAPI_SO_ERROR 1             /* get: pending error (positive errno), cleared */
+#define KAPI_SO_NONBLOCK 2          /* get / set 0/1 */
+#define KAPI_SO_RCVTIMEO_MS 3
+#define KAPI_SO_SNDTIMEO_MS 4
+#define KAPI_SO_BROADCAST 5
+#define KAPI_SO_NREAD 6             /* get: bytes in the carry buffer, 1 if more is ready */
+#define KAPI_SO_TYPE 7
+#define KAPI_SO_ACCEPTCONN 8
+#define KAPI_POLLIN 0x001
+#define KAPI_POLLPRI 0x002
+#define KAPI_POLLOUT 0x004
+#define KAPI_POLLERR 0x008
+#define KAPI_POLLHUP 0x010
+#define KAPI_POLLNVAL 0x020
+#define KAPI_PK_NONE 0
+#define KAPI_PK_SOCKET 1
+#define KAPI_PK_STREAM 2
+#define KAPI_PK_FILE 3
+#define KAPI_POLL_MAX 1024
+
+struct kapi_sockaddr {              /* 16 bytes, IPv4 only */
+	unsigned short family;          /* 0: KAPI_AF_INET */
+	unsigned short port;            /* 2: host byte order */
+	unsigned char addr[4];          /* 4: a.b.c.d */
+	unsigned char zero[8];          /* 8 */
+};
+struct kapi_pollfd {                /* 16 bytes */
+	int kind;                       /* 0: KAPI_PK_* */
+	int h;                          /* 4: socket number, or a handle's value (<= 0xFFFFFF) */
+	short events;                   /* 8 */
+	short revents;                  /* 10 */
+	int reserved;                   /* 12 */
+};
+
+/* --- v75 WP-NET --- (slots 229..241) */
+int (*sock_open) (int type, unsigned flags);
+	/* -> socket >= 0 / -EPROTONOSUPPORT / -ENFILE (table full) / -ENETDOWN */
+int (*sock_connect) (int s, const struct kapi_sockaddr *to);
+	/* -> 0 / -EINPROGRESS / -EALREADY / -EISCONN / -ECONNREFUSED / -ETIMEDOUT / -ENETUNREACH / -EBADF */
+int (*sock_bind) (int s, const struct kapi_sockaddr *addr);   /* -> 0 / -EADDRINUSE / -EINVAL */
+int (*sock_listen) (int s, int backlog);                       /* backlog clamped 1..32 */
+int (*sock_accept) (int s, struct kapi_sockaddr *peer, unsigned flags);
+	/* flags KAPI_SOCKF_NONBLOCK for the new socket -> socket / -EAGAIN */
+long long (*sock_send) (int s, const void *buf, unsigned long long len, unsigned flags,
+			const struct kapi_sockaddr *to);
+	/* -> bytes / -EAGAIN / -EPIPE / -ENOTCONN / -EDESTADDRREQ */
+long long (*sock_recv) (int s, void *buf, unsigned long long len, unsigned flags,
+			struct kapi_sockaddr *from);
+	/* -> bytes, 0 = orderly end / -EAGAIN / -ECONNRESET / -ENOTCONN / -ETIMEDOUT */
+int (*sock_shutdown) (int s, int how);
+int (*sock_close) (int s);
+int (*sock_getopt) (int s, int opt, int *value);
+int (*sock_setopt) (int s, int opt, int value);
+int (*sock_name) (int s, int peer, struct kapi_sockaddr *out);  /* peer 0 local, 1 remote; -ENOTCONN */
+int (*poll) (struct kapi_pollfd *fds, unsigned n, int timeout_ms);  /* -> ready count / 0 / -EINVAL / -EFAULT */
+```
+
+Ownership, adoption and `NetCloseByPid` reclaim work as today. Every buffer is checked (`UserReadable` / `UserWritable`: with WP-MEM merged they populate and pin). With `netcore=1` the copies stay on core 0 (`TNetReq::Buf`), as today.
+
+#### Tests and acceptance
+
+`/bin/nettest`:
+- `net_resolve ("example.com")`;
+- blocking HTTP GET on port 80; the same with a non-blocking connect + `poll(POLLOUT)` + `SO_ERROR`;
+- connect to a closed port → `ECONNREFUSED`;
+- a 10-byte `recv` loop over a 100 KB response (no loss, compared with one big read);
+- `MSG_PEEK` then read; `poll` timeout accuracy (100 ms ± 15);
+- UDP: a DNS query to the gateway or `8.8.8.8:53` with `sendto`/`recvfrom`;
+- `getsockname`/`getpeername`; 200 sockets open and closed.
+- `nettest serve <port>` + `tools/tests/nettest_peer.py <pi-ip> <port>` on the PC: non-blocking accept, echo, `POLLHUP`.
+
+**On the Pi: run it twice, with `netcore=0` and with `netcore=1`** (`cmdline.txt`). Also check Jet, Mail, `ftpd`, `telnetd`, `vncd`, `rdpd`, `pkg` (the `tcp_*` compatibility) and `netstat` (`net_info` lists the new slots).
+
+**Risks:**
+- Circle's TCP quirks under non-blocking use;
+- cancelling asynchronous connects;
+- the snapshot cost with 256 slots on core 3 (only open slots are scanned);
+- the 10 ms readiness latency on core 3 (SHOULD later: an SGI or a weak Circle hook in `CTCPConnection` for immediate wakes).
+
+---
+
+### 3.4 WP-LIBC (user space): `libonyxposix`, the sysroot, the tests, the smoke ports
+
+Can start at once:
+- pthreads, TLS, time and environment fallbacks work on v67/v68 kapis plus the skeleton's `-ENOSYS` (`thread_create` + a trampoline that sets `TPIDR_EL0` works today, §0.1);
+- files, sockets and mmap light up as WP-FILE, WP-NET and WP-MEM merge.
+
+**Tree:** `user/libc/posix/` (MIT):
+- sources: `fd.c` (the descriptor table), `file.c`, `dir.c`, `stat.c`, `path.c` (realpath, `/tmp` → `RAM:/tmp`, `/dev/*`), `mman.c`, `pthread.c`, `pthread_sync.c` (mutex, cond, rwlock, once, barrier, spin), `sem.c`, `tls.c`, `emutls.c` (option a only), `guard.c` (option a only), `time.c`, `env.c`, `proc.c` (spawn, waitpid, getpid, kill), `signal.c`, `socket.c`, `netdb.c`, `poll.c` (poll, select, pselect), `misc.c` (sysconf, uname, gethostname, getrandom, getentropy, rlimit, rusage, pwd, uid stubs, `dl*` / `backtrace` / `syslog` stubs), `newlib_syscalls.c` (`_read`, `_write`, `_open`, `_close`, `_lseek`, `_fstat`, `_stat`, `_unlink`, `_link`→`EMLINK`, `_isatty`, `_getpid`, `_kill`, `_gettimeofday`, `_times`, `_sbrk`, `_exit`, `_execve`/`_fork`→`ENOSYS`, `_wait`, newlib's retargetable locks as today, the app-core RPC of `onyx_syscalls.c`, plus `rename`, `mkdir`, `posix_memalign` defined here);
+- `crt0posix.S`;
+- `onyx-posix.ld` (from `user.ld`, plus a `PT_TLS` program header, `.tdata`/`.tbss`, `.eh_frame` kept with `__onyx_eh_frame_start` (from `stk.ld`), the main thread's TLS block reserved in `.bss`, `__tls_align`);
+- `include/` (below);
+- `Makefile` (builds `libonyxposix.a` + `crt0posix.o`; `make install SYSROOT=…`).
+- The existing apps keep `onyx_syscalls.c`: a program links one or the other, never both.
+
+**Headers** (`include/`, shadowing through `-isystem` under (a), and the frozen subset in the toolchain overlay under (b)):
+- `pthread.h` and `sys/_pthreadtypes.h`:
+  - `pthread_t` = `unsigned long`;
+  - mutex `{lock, type, owner, count}` (16 B); cond `{seq, clock, waiters, pad}` (16 B); rwlock (16 B); `once {state}`; barrier (16 B); attr (48 B); `key` unsigned; spin int.
+- `semaphore.h` (`sem_t {value, waiters}`), `sys/mman.h`, `poll.h`, `sys/poll.h`, `sys/socket.h` (Linux layouts: `sa_family_t` 16-bit, `sockaddr_storage` 128 B, `MSG_NOSIGNAL` 0x4000), `netinet/in.h`, `netinet/tcp.h`, `arpa/inet.h`, `netdb.h`, `sys/uio.h`, `sys/un.h`, `sys/utsname.h`, `sys/ioctl.h`, `net/if.h`, `ifaddrs.h` (stub), `sys/random.h`, `sys/statvfs.h`, `endian.h`, `byteswap.h`, `sys/sysmacros.h`, `dlfcn.h`, `execinfo.h`, `syslog.h`.
+- `FD_SETSIZE 1024`, defined by the wrapper flags.
+
+**Design points:**
+- **Descriptors:** `fds[1024]` → refcounted open-file descriptions `{type FILE|DIR|PIPE_R|PIPE_W|STREAM|SOCKET|DEV_NULL|DEV_ZERO|DEV_RANDOM|CONSOLE, kernel handle or socket, O_* flags, refs, path}` + `FD_CLOEXEC`, under a lock.
+  - `dup`/`dup2`/`F_DUPFD` share a description.
+  - A pipe = one kernel stream handle shared by two descriptions; closing the last write end calls `stream_eof`.
+  - `fd 0` = `stdin_stream ()` (or the console); `1` and `2` = `stdout_stream ()`.
+- **TLS (variant 1):** `TPIDR_EL0` → a 16-byte TCB, then the TLS block (aligned to `__tls_align`). `struct pthread` sits just below the TCB, so `pthread_self ()` = `TP − sizeof (struct pthread)`.
+  - `crt0posix`: sets the main thread's `TP` (the `.bss` block, `.tdata` copied, `.tbss` zeroed) **before any C code**, registers the EH frames (`__register_frame_info`, as `onyx_eh.c`), builds argc/argv/envp (`get_argv`, `get_env`; falls back to `get_args` split on older kernels), sets `TZ` when it is unset, then `exit (main (argc, argv, envp))`.
+  - Option (a): `__emutls_get_address` keeps a per-thread vector in `struct pthread`, indexed by an atomically assigned object index.
+- **pthread_create:** `malloc` `struct pthread` + the TLS block → `thread_create_ex {fn = __onyx_thread_start, arg = self, stack_size (default 8 MB, max 16 MB), tls = TP, name}`. The trampoline runs the start routine, then the key destructors (4 rounds) and the emutls frees, stores the result, and calls `kapi_thread_exit`.
+  - `join`: `kapi_thread_join` then free.
+  - Detached threads are freed lazily by later creates, when `thread_info` says they ended.
+  - `pthread_exit` from main waits for the other threads, then exits.
+- **Sync objects:** a lock-free fast path (CAS), the slow path through `wait_word`/`wake_word`. On an app core (`kapi__core () != 0`) the slow path spins with `wfe` (no kapi call there). Timed waits convert the absolute `timespec` (REALTIME, or the condattr's clock) into ms on each loop turn.
+- **mmap:** anonymous → `vm_map`; a `MAP_PRIVATE` file → `vm_map (RW)` + `pread` + `vm_protect` to the requested prot; `MAP_SHARED` anonymous = private (no fork); `MAP_SHARED` + write on a file → `ENOTSUP`; `msync` → 0; `mlock` → 0; `mincore` from `vm_query`.
+- **Time:**
+  - `clock_gettime`: `CNTPCT` read at EL0 (`isb; mrs cntpct_el0`), scaled with `clock_info` (MONOTONIC from `boot_cnt`; REALTIME from `utc_us`, resampled every 60 s);
+  - `nanosleep`/`usleep`/`sleep` → `sleep_us`;
+  - `gettimeofday` rebuilt on the same base.
+- **Signals:** a handler table; `sigaction`/`signal`/`raise`/`kill (self)` call the handler synchronously. Defaults: `SIGABRT`/`SIGSEGV`/`SIGTERM`/`SIGKILL` → `_exit (128 + sig)`; `CHLD`/`WINCH`/`URG` ignored. `SIGPIPE` is never raised (`send` → `EPIPE`).
+  - `kill` of another pid: `SIGKILL`/`SIGTERM` → `kapi_kill_pid`; signal 0 → `proc_stats` existence check.
+  - `waitpid` encoding: exited → `code << 8`; FAULT → `SIGSEGV`; KILLED/OOM → `SIGKILL`.
+- **Sockets:** a thin mapping to WP-NET.
+  - `getaddrinfo`: numeric parse, else `net_resolve`. Services: numeric, `http`, `https`, `ftp`, `smtp`, `imap(s)`, `pop3(s)`, `dns`. One `AF_INET` `addrinfo` per requested socktype.
+  - `EAI_NONAME` on a failure; `EAI_FAMILY` for `AF_INET6`.
+  - `select` over `poll`; `socketpair (AF_UNIX)` = two pipes (SHOULD).
+
+**Sysroot and building third-party code:**
+- `make -C user/libc/posix install SYSROOT=$ONYX_SYSROOT` (default `out/sysroot`, git-ignored) installs `include/`, `lib/libonyxposix.a`, `lib/crt0posix.o`, `lib/onyx-posix.ld`, `lib/onyx.specs` and `lib/pkgconfig/`.
+- `onyx.specs`: `*startfile: crt0posix.o`; `*lib: --start-group -lonyxposix -lc -lm -lstdc++ -lgcc --end-group`; `*link: -T onyx-posix.ld -z max-page-size=0x10000 --gc-sections`.
+- `tools/onyx-env.sh` exports:
+  - `CC`/`CXX`/`AR`/`RANLIB`;
+  - `CFLAGS=-mcpu=cortex-a72 -O2 -ffunction-sections -fdata-sections -fno-pic -fno-pie -isystem $SYSROOT/include -DFD_SETSIZE=1024`;
+  - `LDFLAGS=-specs=$SYSROOT/lib/onyx.specs -L$SYSROOT/lib`;
+  - `PKG_CONFIG_LIBDIR=$SYSROOT/lib/pkgconfig`, `PKG_CONFIG_SYSROOT_DIR=`;
+  - `HOST=aarch64-onyx-elf` (or `aarch64-none-elf` under (a)).
+- Autotools: `./configure --host=$HOST --prefix=$SYSROOT --disable-shared --enable-static`.
+- CMake: `-DCMAKE_TOOLCHAIN_FILE=tools/onyx-toolchain.cmake`, which sets `CMAKE_SYSTEM_NAME Onyx` (with `tools/cmake/Platform/Onyx.cmake`: `UNIX 1`, static only, `TARGET_SUPPORTS_SHARED_LIBS FALSE`), `CMAKE_SYSROOT`, the compilers, the flags, and `CMAKE_FIND_ROOT_PATH_MODE_*`.
+- Ports: `tools/ports/<name>/build.sh` plus sources in `third_party/` (as today).
+  - **SQLite** (amalgamation, public domain): `/bin/sqlite3`.
+  - **libxml2** 2.13 (MIT): `/bin/xmllint`.
+  - **curl** 8.x (curl licence) + mbedTLS 3.6.3, nghttp2, zlib and brotli (all in tree): `/bin/curl`, using the CA bundle the card already has for Jet.
+  - Staging any of these on the card triggers the onyx-packages skill.
+
+**Tests:** `/bin/posixtest [group]` (C) and `/bin/posixtest-cxx` (needs WP-TC). PASS/FAIL per check, a summary, exit code = failures. Groups:
+- `mem`: every WP-MEM case through `mmap`/`mprotect`/`madvise`/`munmap`; the JSC reserve/commit/decommit pattern; a 4 GB-aligned reservation; a `MAP_PRIVATE` file.
+- `thread`: 100 threads in waves of 30; mutex counter under contention (recursive, errorcheck, timedlock); condvar ping-pong 10 000×; timedwait accuracy; rwlock; once; keys + destructors; `__thread` and errno per thread (errno only under b); semaphores; barrier; `pthread_getattr_np` contains a local; `sched_yield`.
+- `file`: the filetest matrix through `open`/`read`/`write`/`lseek`/`pread`/`pwrite`/`fstat`/`ftruncate`/`fsync`/`rename`/`unlink`/`mkdir`/`rmdir`/`opendir`/`access`/`realpath`/`getcwd`/`chdir`/`dup`/`dup2`/`fcntl`/`mkstemp`, on `SD:` and `RAM:` and through `/tmp`.
+- `io`: pipe `O_NONBLOCK`; poll wake latency from another thread; poll and select timeouts; `/dev/urandom`.
+- `time`: monotonic strictly increasing; REALTIME against `gettimeofday`; `nanosleep` statistics; `localtime_r` with `TZ`.
+- `proc`: `posix_spawn` of itself; `waitpid` 42; crash → `WIFSIGNALED`; environment inheritance; `getenv`/`setenv`.
+- `net`: the nettest cases through BSD calls; curl-style non-blocking connect; `getaddrinfo`.
+- `misc`: `sysconf` (page size 65536, 1 CPU), `uname`, `getrandom`, signals.
+- `cxx`: `std::thread`, `mutex`, `condition_variable`, `call_once`, `thread_local` with destructors, static-init race, `std::filesystem`, `steady_clock`, `sleep_for` accuracy.
+
+**On the Pi:**
+- `posixtest` with `netcore=0` and `netcore=1`;
+- `sqlite3 SD:/x.db` (create/insert 100k/select; the same on `RAM:`);
+- `xmllint --noout` on large samples;
+- `curl -o RAM:/x https://www.wikipedia.org` (TLS + HTTP/2) and `curl -I` on several sites;
+- `posixtest-cxx` once WP-TC lands.
+
+**Risks:**
+- newlib internals: under (a), errno is shared and `__errno` cannot be overridden cleanly;
+- header-shadowing conflicts with newlib's `sys/types.h`;
+- the link order of the emutls and guard overrides;
+- the libstdc++ hacks under (a), hence WP-TC.
+
+---
+
+## 4. Sequencing and effort
+
+| Step | Content | Agent effort | Notes |
+|---|---|---|---|
+| 0 | WP-0 skeleton on `main` | 0.5 d | Boot test only on the Pi (no behaviour change) |
+| 1 (parallel) | WP-MEM | 7–9 d | the largest kernel risk |
+| | WP-FILE/PROC | 6–8 d | |
+| | WP-NET | 5–7 d | Circle fork patch |
+| | WP-LIBC part 1 (headers, fd table, pthreads/TLS on v67, time, env, stubs) | 6–8 d | |
+| | WP-TC | 3–5 d + about 1 h per build | independent |
+| 2 | Merge MEM → FILE/PROC → NET; Pi round 1 (memtest, filetest, nettest, regressions) | 2–4 d + the user's test day | |
+| 3 | WP-LIBC part 2 (files, sockets, mmap, posixtest); smoke ports SQLite, libxml2, curl + mbedTLS; Pi round 2 | 6–8 d | |
+| 4 | On WP-TC: `posixtest-cxx`, ICU, HarfBuzz, FreeType, Skia (or Cairo/pixman) as static libraries; Pi round 3 | 5–8 d | |
+
+**Total:** about 45–60 agent-days. With 3–4 agents in parallel and the user's Pi rounds, about **6–8 weeks elapsed** to "a POSIX sysroot in which SQLite, libxml2, curl, ICU, HarfBuzz and Skia build and pass smoke tests on the Pi".
+
+---
+
+## 5. What remains before WebKit itself can start
+
+1. **WP-TC** in place (above).
+2. **Kernel:**
+   - a **streaming ELF loader**: today the whole file is read into a kernel buffer, then copied (`CUserProcessTask::Run`), which for a 60–100 MB static WebKit means as much kernel heap at load;
+   - later, file-backed lazy mapping of the image (`.rodata` with the ICU data);
+   - per-thread CPU time; optionally `thread_suspend` / `thread_regs` (JSC sampling, a multi-VM GC);
+   - a high-resolution one-shot timer (sleeps below 10 ms when idle);
+   - an EL0 crash record (today kmsg only).
+3. **malloc:** replace newlib's sbrk-only, single-lock `mallocr` with dlmalloc 2.8.6 (CC0) or mimalloc (MIT) on `vm_map` (it returns memory and scales with threads).
+4. **ICU** (74 or later, Unicode licence): a host build for the tools; a **filtered data file** (locales, collation, break iterators, the converters WebKit's `TextCodecICU` needs). Expect about 8–15 MB (full: about 30 MB), linked as a static object.
+5. **Fonts:** fontconfig (HPND/MIT) + expat (in tree) with a config for the card's fonts (`SD:/res/fonts`, the DejaVu set) and a cache on `RAM:`; or a small fontconfig shim implementing the subset WebKit's FreeType font cache calls.
+6. **Graphics: decision Skia or Cairo.** Recommended: **Skia** (BSD-3, the library WebKit's GTK/WPE ports moved to and maintain, vendored in WebKit's tree with CMake; CPU raster backend). Cairo is LGPL-2.1/MPL-1.1 and leaving WebKit's main ports.
+7. **TLS in WebKit's curl backend:** adapt `CurlSSLVerifier`/`CurlSSLHandle` to mbedTLS (curl's mbedTLS backend gives an `mbedtls_ssl_config *` in `SSL_CTX_FUNCTION`), or bring in OpenSSL 3 / BoringSSL **(verify** the current upstream files).
+8. **The embedding:** upstream WebKitLegacy is now essentially Cocoa-only (the Windows WebKitLegacy was removed) **(verify)**. So "single process" means an **Onyx WebView written over WebCore** (`Page`/`LocalFrame`, `FrameLoaderClient`, `ChromeClient`, `EditorClient`, …; the removed Windows WebKitLegacy in git history is a template). WebKit2 multi-process would add `AF_UNIX` socketpair with fd passing and cross-process shared memory (`MAP_SHARED`), none of which is in this minimum.
+9. **The Onyx port layer:**
+   - WTF `OS(ONYX)`: `PlatformOS`/`Have`/`Use`; `PageBlock` 64 KB; `StackBounds` via `pthread_getattr_np`; `CPUTime`; `MemoryFootprint` via `vm_stats`; RunLoop (Generic, or Onyx on `pump_wait` + `post`); `RandomDevice` via `getrandom`; `Language` from `LANG`;
+   - WebCore: the graphics context on the window canvas (`present`), events from Onyx GUI events, cursors, clipboard (`clipd`), drag and drop (`drag_*`), popup menus, `RenderTheme`/scrollbars, MIME types, curl networking, `CookieJarDB` (SQLite), storage, caches on `RAM:`/`SD:`, screen and DPI;
+   - a CMake port: `Source/cmake/OptionsOnyx.cmake` with JIT/WASM/VIDEO/WEB_AUDIO/WEBGL/MEDIA_STREAM/REMOTE_INSPECTOR off;
+   - host build time: hours.
+10. **Performance and memory expectations:** C_LOOP JavaScript is several times slower than LLInt asm and far slower than a JIT on the A72. A 4 GB Pi 4 is the realistic target; a 1 GB Pi has about 250 MB of app pool (docs/02 §4).
+
+---
+
+## 6. Licences (CLAUDE.md rule: ours under MIT; ask before a library forces a licence on an app)
+
+| Component | Licence | Decision needed? |
+|---|---|---|
+| `libonyxposix`, the kernel WPs' new code, the tests | ours, **MIT** (the kernel binary stays GPL-3.0 with Circle) | no |
+| GCC/binutils (tools), libgcc/libstdc++ (GPL-3 + **GCC Runtime Library Exception**: linking does not impose GPL), newlib (BSD-style mix) | — | no. Distributing the toolchain binaries: ship the sources with the release |
+| SQLite | public domain | no |
+| libxml2, libxslt | MIT | no |
+| curl | curl licence (MIT-like) | no |
+| mbedTLS (in tree) | Apache-2.0 OR GPL-2.0-or-later (take Apache-2.0) | no |
+| nghttp2, brotli, expat, woff2 | MIT; zlib: zlib licence | no |
+| ICU | Unicode-3.0 (permissive, keep the notice) | no |
+| HarfBuzz | "Old MIT" | no |
+| FreeType (in tree) | FTL (BSD-like with credit) or GPL-2 | no |
+| fontconfig | HPND/MIT-style | no |
+| Skia | BSD-3 | no |
+| **Cairo** | **LGPL-2.1 or MPL-1.1** (pixman MIT) | **yes**, if chosen over Skia |
+| **OpenSSL 3 / BoringSSL** (only if WebKit's curl backend is not adapted to mbedTLS) | Apache-2.0 / ISC + OpenSSL | **yes** |
+| **WebKit** (WebCore and JavaScriptCore largely LGPL-2.1+, the rest BSD-2) | the WebKit app would be distributed under **LGPL-2.1+** (its own files MIT). Static linking: the source is published, which satisfies relinking | **yes** (HANDOFF already notes it as the user's decision) |
+| dlmalloc (CC0) / mimalloc (MIT) | — | no |
+
+---
+
+### Critical files for implementation
+
+- `/home/user/Onyx/kernel/include/kern/kapi_abi.h`: the v75 blocks (WP-0), the structs and constants above.
+- `/home/user/Onyx/kernel/mm/addrspace.cpp` (+ `kern/addrspace.h`): lazy VMAs, `Sbrk`, `MapStack`, page-in, zaps, TLBI.
+- `/home/user/Onyx/kernel/sys/uaccess.cpp`: probes with `AT S1E0*`, populate, pins, copy retry.
+- `/home/user/Onyx/kernel/sys/el0.cpp`: the EL0 fault path (demand paging, OOM kill) and unpin after a system call.
+- `/home/user/Onyx/kernel/sys/net.cpp`: socket slots, asynchronous connect, the carry buffer, the readiness snapshot. Also `kernel/sys/kapi.cpp`, `kernel/sys/thread.cpp`, `kernel/sys/appcore.cpp`, `kernel/sys/stream.cpp` and `user/libc/onyx_syscalls.c` as described per WP.
