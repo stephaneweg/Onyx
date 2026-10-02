@@ -71,6 +71,15 @@ build () {
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
+	if [ "$1" = mail ]; then			# (Mail: mbedTLS built for the PC, as the Package Manager's; its demo accounts' maker)
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb"
+		if [ ! -f "$OUT/libmb.a" ]; then
+			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
+			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
+		fi
+		$CXX -Iuser/ft -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
+		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
+	fi
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
@@ -91,7 +100,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf setup pkgman
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -416,6 +425,34 @@ if want pkgman; then			# (the Package Manager: a card of its own -- pkg_sample.p
 		rm -rf "$OUT/pkgw"; mkdir -p "$OUT/pkgw"
 		n=${t%%:*}; applet pkgman $n "wait;wait;wait;wait;wait;${t#*:};$W" $PK SIM_WRITES="$OUT/pkgw"; png $n
 	done
+fi
+if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fakemail.py --demo personal (IMAP, a
+					#  Gmail-like folder tree) and --demo work (POP3); the accounts and the contacts made by Mail's own
+					#  code (mkaccounts); the real network of the PC, local ports only)
+	MB=$(( 33000 + $$ % 500 * 4 ))
+	python3 tools/tests/mail/fakemail.py --imap $MB --pop $((MB+1)) --smtp $((MB+2)) --http $((MB+3)) --demo personal --user me@example.com >"$OUT/mail-srv1.log" 2>&1 &
+	MS1=$!
+	python3 tools/tests/mail/fakemail.py --imap $((MB+100)) --pop $((MB+101)) --smtp $((MB+102)) --http $((MB+103)) --demo work --user steph@atelier-lumen.example >"$OUT/mail-srv2.log" 2>&1 &
+	MS2=$!
+	sleep 2
+	ML="$OUT/mailw0"; rm -rf "$ML"; mkdir -p "$ML"
+	SIM_WRITES="$ML" SIM=exit "$OUT/mkaccounts" "Personal|me@example.com|Stéphane|imap|127.0.0.1|$MB|$((MB+2))|secret|#D93025|gmail" \
+		"Atelier|steph@atelier-lumen.example|Stéphane|pop3|127.0.0.1|$((MB+101))|$((MB+102))|secret|#1A73E8" >>"$OUT/log.txt" 2>&1
+	printf 'client_id = test-client\nhost = 127.0.0.1\nport = %d\ntls = 0\n' $((MB+3)) > "$ML/etc/mail/oauth.ini"
+	W40="$(printf 'wait;%.0s' $(seq 40))"
+	ms () { n=$1; shift; rm -rf "$OUT/mailw"; cp -r "$ML" "$OUT/mailw"; [ "$1" = new ] && { rm -rf "$OUT/mailw/etc/mail/accounts.ini" "$OUT/mailw/etc/mail/secrets"; shift; }
+		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_REALNET=1 SIM_REALCLOCK=1 SIM_POS=10,30 SIM_WRITES="$OUT/mailw" SIM="$W40;$W40;$W40;$1;dump $OUT/$n.elsm;exit" "$OUT/mail" >>"$OUT/log.txt" 2>&1 \
+			|| { echo "shots: mail failed"; kill $MS1 $MS2; exit 1; }
+		png $n; }
+	ms mail "down 380 240;up 380 240;$W40;$W40"
+	ms mail-thread "down 380 430;up 380 430;$W40;$W40"
+	ms mail-html "down 380 330;up 380 330;$W40;$W40"
+	ms mail-compose "down 380 430;up 380 430;$W40;down 870 386;up 870 386;$W40;$(typ 'Sure, I will add them to the quote.');$W40"
+	ms mail-contacts "down 60 537;up 60 537;$W40;down 380 390;up 380 390;$W40"
+	WZ="down 606 414;up 606 414;$W40;$(typ 'Stephane');down 500 260;up 500 260"
+	ms mail-wizard new "$WZ;$(typ 'steph.demo@gmail.com');$W40;down 714 514;up 714 514;$W40"
+	ms mail-outlook new "$WZ;$(typ 'steph.demo@outlook.com');$W40;down 714 514;up 714 514;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
+	kill $MS1 $MS2
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)
 	M=SIM_OVERLAY=$D/milk:$D/sd

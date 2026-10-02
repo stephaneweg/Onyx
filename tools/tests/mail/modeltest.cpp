@@ -162,7 +162,7 @@ int main ()
 	Folder *in2 = m2.stores[0]->special (SP_INBOX);
 	CHECK (in2 && in2->msgs.n == in->msgs.n, "cache read back %d", in2 ? in2->msgs.n : -1);
 	CHECK (m2.stores[0]->folders.n == 8, "folders read back");
-	m2.sel.kind = SEL_UNIFIED; m2.build (); CHECK (m2.view.refs.n == m.stores[0]->special (SP_INBOX)->msgs.n + 5, "unified again %d", m2.view.refs.n);
+	m2.sel.kind = SEL_UNIFIED; m2.grouped = false; m2.build (); CHECK (m2.view.refs.n == m.stores[0]->special (SP_INBOX)->msgs.n + 5, "unified again %d", m2.view.refs.n);
 
 	printf ("model: %d checks, %d failed\n", checks, fails);
 	return fails ? 1 : 0;

@@ -52,7 +52,7 @@ static void contacts_search_changed (Widget &);
 class ContactsPane : public Widget
 {
 public:
-	Textbox *search; Button *bNew;
+	HintBox *search; Button *bNew;
 	int order[4096]; int n, sel, sy;
 	HitList hits;
 	char lastQ[200];
@@ -61,8 +61,8 @@ public:
 	ContactsPane (int l, int t, int w, int h) : Widget (l, t, w, h), n (0), sel (-1), sy (0)
 	{
 		hidden = true; lastQ[0] = 0;
-		search = new Textbox (12, 12, LW - 24 - 40, 30, ""); addChild (search);
-		bNew = new Button (LW - 46, 12, 34, 30, "+", [] (Widget &) { ((ContactsPane *) g_contacts)->add_new (); }); addChild (bNew);
+		search = new HintBox (12, 12, LW - 24 - 64, 30, "Search the contacts"); addChild (search);
+		bNew = new Button (LW - 70, 12, 58, 30, "New", [] (Widget &) { ((ContactsPane *) g_contacts)->add_new (); }); addChild (bNew);
 		reload ();
 	}
 	unsigned bgColor () override { return C_FIELD; }
@@ -89,7 +89,7 @@ public:
 	{
 		canvas.clear (C_FIELD); hits.clear ();
 		canvas.fillRect (LW, 0, 1, height, col_line ());
-		search->resizeTo (LW - 24 - 40, 30);
+		search->resizeTo (LW - 24 - 64, 30);
 		// the list, its letters
 		int y = 54 - sy; char letter[8] = "";
 		for (int i = 0; i < n; i++)
