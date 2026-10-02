@@ -231,10 +231,12 @@ static int do_unlink (const char *p, int dir)
 	int r = kapi_path_unlink (p, dir ? KAPI_UNLINK_DIR : 0);
 	if (r != -KAPI_ENOSYS)
 		return r < 0 ? ONYX_ERR (-r) : 0;
-	/* an older kernel: kapi_remove takes a file or an empty directory */
+	/* an older kernel: kapi_remove takes a file or an empty directory; a file held open for
+	   writing by the old calls (written at its close) is forgotten, not written */
 	struct stat st;
+	int held = dir ? 0 : __onyx_lfile_unlinked (p);
 	if (legacy_stat (p, &st) != 0)
-		return -1;
+		return held ? 0 : -1;
 	if (dir && !S_ISDIR (st.st_mode))
 		return ONYX_ERR (ENOTDIR);
 	if (!dir && S_ISDIR (st.st_mode))

@@ -343,7 +343,7 @@ int posix_spawnp (pid_t *pid, const char *file, const posix_spawn_file_actions_t
 			n++;
 		if (n > 0 && n < sizeof dir - 2)
 		{
-			char cand[ONYX_PATH_MAX];
+			char cand[ONYX_PATH_MAX * 2 + 2];
 			memcpy (dir, s, n);
 			dir[n] = '\0';
 			snprintf (cand, sizeof cand, "%s%s%s", dir, dir[n - 1] == '/' ? "" : "/", file);

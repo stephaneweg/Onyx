@@ -603,7 +603,8 @@ static void file_group_in (const char *dir)
 	CHECK ("write / lseek / read 100 KB", w == (ssize_t) sizeof buf && o == 0 && r == w && !memcmp (buf, back, sizeof buf), "%zd %ld %zd", w, (long) o, r);
 
 	/* pread / pwrite at random offsets, two descriptors, against a model */
-	int fdb = open (p, O_RDWR);
+	/* (the old calls hold a writable file per descriptor: one descriptor there) */
+	int fdb = k_files ? open (p, O_RDWR) : dup (fd);
 	unsigned seed = 12345;
 	int ok = fdb >= 0;
 	for (int k = 0; k < 1000 && ok; k++)
@@ -622,7 +623,7 @@ static void file_group_in (const char *dir)
 		else if (pread (f, back, (size_t) len, at) != len || memcmp (back, buf + at, (size_t) len))
 			ok = 0;
 	}
-	CHECK ("pread / pwrite: 1000 random operations on two descriptors", ok, "mismatch");
+	CHECK (k_files ? "pread / pwrite: 1000 random operations on two descriptors" : "pread / pwrite: 1000 random operations (one description)", ok, "mismatch");
 	if (fdb >= 0)
 		close (fdb);
 
@@ -990,28 +991,29 @@ static void group_proc (void)
 	int r = spawn_wait (a1, environ, &st);
 	CHECK ("posix_spawn of itself, waitpid: exit 42", r == 0 && WIFEXITED (st) && WEXITSTATUS (st) == 42, "%d status %x", r, st);
 
-	char *a2[] = { (char *) s_self, "--child", "argv", "a b", "", 0 };
-	r = spawn_wait (a2, environ, &st);
 	if (!k_proc)
-		skip ("argv with a space and an empty argument", NOSYS " (the old spawn: one line)");
+	{
+		/* (the old spawn passes one line, no environment, and a crash shows up as exit 0) */
+		skip ("argv with a space and an empty argument", NOSYS);
+		skip ("the child gets the environment", NOSYS);
+		skip ("a crashing child: WIFSIGNALED, SIGSEGV", NOSYS);
+	}
 	else
+	{
+		char *a2[] = { (char *) s_self, "--child", "argv", "a b", "", 0 };
+		r = spawn_wait (a2, environ, &st);
 		CHECK ("argv with a space and an empty argument", r == 0 && WIFEXITED (st) && WEXITSTATUS (st) == 9, "%d status %x", r, st);
 
-	setenv ("POSIXTEST_X", "hello world", 1);
-	char *a3[] = { (char *) s_self, "--child", "env", 0 };
-	r = spawn_wait (a3, environ, &st);
-	if (!k_proc)
-		skip ("the child gets the environment", NOSYS);
-	else
+		setenv ("POSIXTEST_X", "hello world", 1);
+		char *a3[] = { (char *) s_self, "--child", "env", 0 };
+		r = spawn_wait (a3, environ, &st);
 		CHECK ("the child gets the environment", r == 0 && WIFEXITED (st) && WEXITSTATUS (st) == 7, "%d status %x", r, st);
-	unsetenv ("POSIXTEST_X");
+		unsetenv ("POSIXTEST_X");
 
-	char *a4[] = { (char *) s_self, "--child", "crash", 0 };
-	r = spawn_wait (a4, environ, &st);
-	if (!k_proc)
-		skip ("a crashing child: WIFSIGNALED, SIGSEGV", NOSYS);
-	else
+		char *a4[] = { (char *) s_self, "--child", "crash", 0 };
+		r = spawn_wait (a4, environ, &st);
 		CHECK ("a crashing child: WIFSIGNALED, SIGSEGV", r == 0 && WIFSIGNALED (st) && WTERMSIG (st) == SIGSEGV, "%d status %x", r, st);
+	}
 
 	CHECK ("waitpid with no child -> ECHILD", waitpid (-1, &st, WNOHANG) == -1 && errno == ECHILD, "errno %d", errno);
 	CHECK ("fork -> ENOSYS", fork () == -1 && errno == ENOSYS, "errno %d", errno);

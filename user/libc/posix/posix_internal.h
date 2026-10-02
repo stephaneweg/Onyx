@@ -184,6 +184,7 @@ struct __onyx_ofd
 	volatile int refs;
 	int flags;			/* newlib's O_ACCMODE | O_APPEND | O_NONBLOCK bits */
 	long long h;			/* FILE: handle; SOCKET / LSOCKET: socket number */
+	int kappend;			/* FILE: the kernel handle was opened with KAPI_O_APPEND */
 	void *stream;			/* STREAM: handle; CONSOLE: the stdin stream (for poll) */
 	struct __onyx_pipe *pipe;	/* PIPE_R / PIPE_W */
 	char *path;			/* FILE / LFILE / DIR: the Onyx path (fstat, fchdir, dirfd) */
@@ -194,7 +195,7 @@ struct __onyx_ofd
 	void *lh;
 	unsigned char *buf;
 	long long size, cap, pos, kpos;
-	int dirty, whole;
+	int dirty, whole, unlinked;
 	/* a carry buffer: bytes read ahead by poll's user-space emulation (pipes, the old
 	 * sockets) or kept by MSG_PEEK on an old socket */
 	unsigned char *carry;
@@ -231,6 +232,7 @@ int __onyx_fstat (struct __onyx_ofd *d, struct stat *st);
 int __onyx_ofd_release (struct __onyx_ofd *d);	/* the last reference: close the kernel object */
 int __onyx_open (const char *path, int flags, int mode);
 int __onyx_lfile_flush (struct __onyx_ofd *d);
+int __onyx_lfile_unlinked (const char *onyxpath);	/* fd.c: the LFILEs of a path unlinked -> how many */
 
 /* stat (stat.c) */
 void __onyx_stat_from_kapi (const struct kapi_stat *ks, struct stat *st);

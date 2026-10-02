@@ -113,7 +113,7 @@ static int lfile_open (struct __onyx_ofd *d, int flags)
 
 int __onyx_lfile_flush (struct __onyx_ofd *d)
 {
-	if (d->type != ONYX_FD_LFILE || !d->whole || !d->dirty)
+	if (d->type != ONYX_FD_LFILE || !d->whole || !d->dirty || d->unlinked)
 		return 0;
 	if (kapi_save_file (d->path, d->buf ? d->buf : (unsigned char *) "", (unsigned) d->size) < 0)
 		return ONYX_ERR (EIO);
@@ -189,8 +189,11 @@ int __onyx_open (const char *path, int flags, int mode)
 		struct __onyx_ofd *d;
 		if (dev == ONYX_FD_CONSOLE)
 		{
-			int which = strstr (path, "stdin") || (strstr (path, "fd/0")) ? 0 :
-				    strstr (path, "stderr") || strstr (path, "fd/2") ? 2 : 1;
+			int which = 1;
+			if (strstr (path, "stdin") || strstr (path, "fd/0"))
+				which = 0;
+			else if (strstr (path, "stderr") || strstr (path, "fd/2"))
+				which = 2;
 			if (!strcmp (path, "/dev/tty") || !strcmp (path, "/dev/console"))
 				which = acc == O_RDONLY ? 0 : 1;
 			d = __onyx_ofd_new (ONYX_FD_CONSOLE, keep);
@@ -265,6 +268,7 @@ int __onyx_open (const char *path, int flags, int mode)
 		return -1;
 	}
 	d->h = h;
+	d->kappend = (flags & O_APPEND) != 0;
 	d->path = strdup (p);
 	return __onyx_fd_install (d, 0, cloexec);
 }
@@ -413,7 +417,7 @@ ssize_t __onyx_write (struct __onyx_ofd *d, const void *buf, size_t n)
 	case ONYX_FD_FILE:
 	{
 		/* O_APPEND set later by fcntl: the kernel's handle was opened without it */
-		if (d->flags & O_APPEND)
+		if ((d->flags & O_APPEND) && !d->kappend)
 			kapi_file_seek (d->h, 0, KAPI_SEEK_END);
 		return (ssize_t) __onyx_sys (kapi_file_write (d->h, buf, n, -1));
 	}

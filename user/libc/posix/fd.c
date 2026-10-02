@@ -23,6 +23,7 @@
  */
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdarg.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -153,6 +154,29 @@ int __onyx_fd_cloexec (int fd, int set)
 	if (r < 0)
 		errno = EBADF;
 	return r;
+}
+
+/* The old calls (LFILE): a path unlinked while descriptions hold it for writing -- they must not
+ * write it back at their close (the file stays readable through them until then). */
+int __onyx_lfile_unlinked (const char *path)
+{
+	char a[ONYX_PATH_MAX], b[ONYX_PATH_MAX];
+	if (__onyx_abspath (path, a, sizeof a) != 0)
+		return 0;
+	int n = 0;
+	__onyx_lock (&s_fdLock);
+	for (int i = 0; i < ONYX_FD_MAX; i++)
+	{
+		struct __onyx_ofd *d = s_fd[i].d;
+		if (d && d->type == ONYX_FD_LFILE && d->whole && !d->unlinked && d->path &&
+		    __onyx_abspath (d->path, b, sizeof b) == 0 && strcasecmp (a, b) == 0)
+		{
+			d->unlinked = 1;
+			n++;
+		}
+	}
+	__onyx_unlock (&s_fdLock);
+	return n;
 }
 
 /* ---- dup ---- */
