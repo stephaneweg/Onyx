@@ -33,6 +33,8 @@ struct TSyscallStats
 	u32	nSlot[KAPI_TABLE_SLOTS];	// per table slot (saturating at 0xFFFFFFFF)
 };
 
+extern unsigned g_nUserPages;		// (below)
+
 class CWindow;
 class CStream;
 class CMailbox;
@@ -71,8 +73,8 @@ public:
 	// Is the 64 KB page at ulVA mapped?
 	boolean IsMapped (uintptr ulVA);
 
-	// Map fresh zeroed pages (EL0 RW, owned) over [ulTop - nSize, ulTop)
-	// where nothing is mapped yet: a user stack (kern/el0.h). FALSE: out of memory.
+	// (v75) A user stack (kern/el0.h) over [ulTop - nSize, ulTop): a LAZY region (kern/vm.h) --
+	// its pages filled on first touch; nothing mapped now. FALSE: out of memory.
 	boolean MapStack (u64 ulTop, u64 nSize);
 
 	// Allocate a fresh physical frame and map it at ulVA. Returns the frame's
@@ -80,9 +82,11 @@ public:
 	void *MapNewPage (uintptr ulVA, const TKPageAttr &Attr);
 
 	// Unix-style sbrk for the per-process heap at USER_HEAP_BASE: move the break by
-	// nIncrement bytes, mapping fresh 64 KB pages (EL0 RW) as it grows. Returns the
-	// PREVIOUS break (a user VA), or (void*)-1 on failure (out of heap VA / OOM).
-	// The user allocator (user/umm.h) calls this through kapi_sbrk.
+	// nIncrement bytes. (v75) The heap is a lazy region (kern/vm.h) that grows with the break
+	// (its pages filled on first touch; at once once the app holds an app core) and shrinks with
+	// it (the pages above the new break dropped). Returns the PREVIOUS break (a user VA), or
+	// (void*)-1 on failure (out of heap VA, or a growth beyond the app pool: the overcommit
+	// check). The user allocators (user/umm.h, newlib's malloc) call this through kapi_sbrk.
 	void *Sbrk (long nIncrement);
 
 	// Fresh zeroed pages, EL0 read/write/execute, in the code arena (a JIT) -> VA, 0 full.
@@ -104,6 +108,14 @@ public:
 	// every MapNewPage frame). For ps / the memory monitor. Excludes shared mappings
 	// like a window canvas (owned by its CWindow).
 	unsigned GetPages (void) const		{ return m_nOwnedPages; }
+
+	// (v75, kern/vm.h) The L3 descriptor of ulVA's page (a user VA), or 0 if its 512 MB slot has
+	// no table yet. The VM code reads and writes it as one 64-bit word.
+	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *PageDesc (u64 ulVA);
+	// A frame the VM code unmapped and freed: no longer counted.
+	void PageReleased (void)		{ if (m_nOwnedPages > 0) m_nOwnedPages--; if (g_nUserPages > 0) g_nUserPages--; }
+	// Its page tables (the L2 + its private L3s), in 64 KB pages.
+	unsigned GetTablePages (void) const;
 
 	// Process id: a small monotonic number assigned at creation, for ps/kill.
 	unsigned GetPid (void) const		{ return m_nPid; }

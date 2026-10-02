@@ -12,6 +12,7 @@
 #include <kern/trapframe.h>
 #include <kern/appcore.h>
 #include <kern/uaccess.h>		// UAccessFixup
+#include <kern/vm.h>			// VmKernelFault (v75)
 #include <kern/crashlog.h>
 #include <kern/thread.h>		// WordWaitTick (v68)
 #include <kern/iowait.h>		// IoWaitTick (v75)
@@ -179,6 +180,13 @@ void SyncHandlerEL1 (TTrapFrame *pFrame)
 {
 	// A fault-safe copy (kern/uaccess.h) hit an app's bad pointer: it returns a failure.
 	if (UAccessFixup (pFrame, ReadESR ()))
+	{
+		return;
+	}
+
+	// (v75) The safety net: kernel code touched an unfilled page of the current app's lazy
+	// region outside the helpers (kern/vm.h) -- filled, logged once, the access retried.
+	if (VmKernelFault (pFrame, ReadESR (), ReadFAR ()))
 	{
 		return;
 	}

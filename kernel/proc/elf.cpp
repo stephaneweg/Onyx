@@ -4,6 +4,8 @@
 #include <kern/elf.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
+#include <kern/vm.h>			// VmNoteRegion (v75: the image's regions, for vm_query)
+#include <kern/kapi_abi.h>		// KAPI_PROT_*, KAPI_VMK_IMAGE
 #include <circle/synchronize.h>		// SyncDataAndInstructionCache
 #include <circle/util.h>		// memcpy
 #include <circle/logger.h>
@@ -103,6 +105,10 @@ boolean LoadELF (const void *pImage, size_t nSize, CAddressSpace *pAS, u64 *pEnt
 		{
 			return FALSE;
 		}
+		// (v75) An eager region of its own (kern/vm.h): never filled on demand.
+		VmNoteRegion (pAS, pPhdr->p_vaddr, pPhdr->p_vaddr + pPhdr->p_memsz,
+			      (pPhdr->p_flags & PF_X) ? KAPI_PROT_READ | KAPI_PROT_EXEC
+						      : KAPI_PROT_READ | KAPI_PROT_WRITE, KAPI_VMK_IMAGE);
 	}
 
 	// We wrote code via the identity mapping: make it executable at the user VA.
