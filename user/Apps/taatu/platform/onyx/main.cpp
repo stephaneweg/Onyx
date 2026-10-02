@@ -168,7 +168,10 @@ static int net_thread (void *)
 // ---- room/avatar drawing (GUI thread) ---------------------------------------------------
 #define ROOM_OX 0
 #define ROOM_OY 36
-static const int CLOTH2RL[N_LAYERS] = { RL_BOTTOM, RL_TOP, RL_SHOES, RL_BEARD, RL_HAIR, RL_GLASSES, RL_HAT };
+// cloth index (model.hpp Layer) -> render layer + whether it is a head item (col 6)
+static const struct { int cloth, rl; bool head; } CLOTHMAP[N_LAYERS] = {
+    { L_BOTTOM, RL_BOTTOM, false }, { L_TOP, RL_TOP, false }, { L_SHOES, RL_SHOES, false },
+    { L_BEARD, RL_BEARD, true }, { L_HAIR, RL_HAIR, true }, { L_GLASSES, RL_GLASSES, true }, { L_HAT, RL_HAT, true } };
 
 // alpha-over an Rgba onto the (opaque 0x00RRGGBB) framebuffer at (dx,dy).
 static void blit_rgba_fb (int dx, int dy, const Rgba &img)
@@ -188,21 +191,24 @@ static void blit_rgba_fb (int dx, int dy, const Rgba &img)
 static void build_layers (const Avatar &a, LayerSrc L[RL_COUNT])
 {
     for (int i = 0; i < RL_COUNT; i++) L[i] = LayerSrc ();
-    L[RL_SKIN].sheet = g_assets.get (body_sheet_path (a.gender)); L[RL_SKIN].present = L[RL_SKIN].sheet != 0; L[RL_SKIN].tint = parse_hex_color (a.skin_tone_hex);
-    if (a.eye_sprite_path[0]) { L[RL_EYES].sheet = g_assets.get (a.eye_sprite_path); L[RL_EYES].present = L[RL_EYES].sheet != 0; }
+    const Rgba *body = g_assets.get (body_sheet_path (a.gender));
+    unsigned skin = parse_hex_color (a.skin_tone_hex);
+    L[RL_BODY].sheet = body; L[RL_BODY].present = body != 0; L[RL_BODY].tint = skin;                    // headless body (frame col)
+    L[RL_HEAD].sheet = body; L[RL_HEAD].present = body != 0; L[RL_HEAD].tint = skin; L[RL_HEAD].head = true;  // bare head (col 6)
+    if (a.eye_sprite_path[0]) { L[RL_EYES].sheet = g_assets.get (a.eye_sprite_path); L[RL_EYES].present = L[RL_EYES].sheet != 0; L[RL_EYES].head = true; }
     for (int j = 0; j < N_LAYERS; j++)
     {
-        if (!a.cloth[j].present || !a.cloth[j].sprite_path[0]) continue;
-        int rl = CLOTH2RL[j];
-        L[rl].sheet = g_assets.get (a.cloth[j].sprite_path); L[rl].present = L[rl].sheet != 0;
-        L[rl].tint = (a.cloth[j].color_editable && a.cloth[j].color_hex[0]) ? parse_hex_color (a.cloth[j].color_hex) : 0;
+        const ClothingItem &ci = a.cloth[CLOTHMAP[j].cloth]; if (!ci.present || !ci.sprite_path[0]) continue;
+        int rl = CLOTHMAP[j].rl;
+        L[rl].sheet = g_assets.get (ci.sprite_path); L[rl].present = L[rl].sheet != 0; L[rl].head = CLOTHMAP[j].head;
+        L[rl].tint = (ci.color_editable && ci.color_hex[0]) ? parse_hex_color (ci.color_hex) : 0;
     }
 }
 // returns true if a composed sprite was drawn (else the caller draws the placeholder)
 static bool draw_avatar_sprite (const Avatar &a, int screenX, int screenY)
 {
     LayerSrc L[RL_COUNT]; build_layers (a, L);
-    if (!L[RL_SKIN].present) return false;        // body not downloaded yet
+    if (!L[RL_BODY].present) return false;        // body not downloaded yet
     Rgba frame; compose_avatar (frame, L, a.direction, 0);
     blit_rgba_fb (screenX - AV_CELL_W / 2, screenY - AV_CELL_H + 12, frame);   // feet ~12px up from cell bottom
     return true;
