@@ -1,6 +1,6 @@
 # Mail for Onyx — study, first mock-ups
 
-> **Status (2026-10-02): mock-ups validated; being built** (the protocol layer `user/mail/` done and tested: `sh tools/tests/run_mail_test.sh`). Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
+> **Status (2026-10-02): mock-ups validated; being built** (the protocol layer and the HTML renderer in `user/mail/`, done and tested: `sh tools/tests/run_mail_test.sh`). Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
 > client "as user-friendly as possible". The user (2026-10-02): it must connect to **Gmail, Outlook, IMAP and
 > POP3 / SMTP**; Gmail with an **app password**, Outlook with Microsoft's sign-in **by a code** (an "Onyx Mail"
 > application registered by the user at Microsoft: below). **Contacts** = a Cardfile form (`.card`), opened in
@@ -71,5 +71,10 @@ a Microsoft account:
 | `user/mail/smtp.h` | SMTP: EHLO, STARTTLS, AUTH PLAIN / LOGIN / XOAUTH2, MAIL / RCPT / DATA |
 | `user/mail/mime.h` | a message read (the parts' tree, RFC 2231 names, the text to show, the attachments, `cid:`) and written (text + HTML, inline pictures, attachments) |
 | `user/mail/oauth.h` | Microsoft's device code flow, the refresh; HTTPS POST over `conn.h` |
+| `user/mail/html_dom.h` | HTML read into a tree: tags, attributes, character references, HTML 4's forgiving rules (`<p>`, `<li>`, cells without rows...), `<style>` kept |
+| `user/mail/html_css.h` | CSS 2: the sheets (`@media` by the view's width), the selectors, the cascade (a UA sheet, the presentational attributes, `!important`), the computed styles |
+| `user/mail/html_layout.h` | the layout: blocks, margins, inline lines, `white-space`, inline boxes (buttons), inline-blocks, floats, lists, tables (automatic widths, colspan / rowspan, `align=center`), pictures (blocked ones as boxes) -> a display list |
+| `user/mail/html.h`, `html_ft.h` | the renderer's face: parse, layout, paint, the link under a point, the text; drawn with the card's fonts (Liberation, Gelasio, Selawik, DejaVu Mono) |
 | `tools/tests/mail/fakemail.py` | a fake IMAP / POP3 / SMTP / OAuth server (the tests, the screenshots) |
 | `tools/tests/mail/mailtest.cpp` | 98 checks against it (`sh tools/tests/run_mail_test.sh`) |
+| `tools/tests/mail/htmltest.cpp` | the renderer on a newsletter, styles, plain text, broken HTML: 22 checks, PNGs to look at |
