@@ -9,7 +9,8 @@
 // On the left the PLACES, in three groups a click on their title folds or unfolds (as
 // elementary OS's Files): Personal -- the folders pinned there (each under a name of its own:
 // a folder's right-click menu, Pin to Sidebar..., or Go > Pin This Folder...) and the Trash;
-// Computer -- the SD card's partitions (SD:, SD1: .. SD3:, and the VD0: .. disk images to come);
+// Computer -- the SD card's partitions (SD:, SD1: .. SD3:, and the VD0: .. disk images to come)
+// and RAM:, the volume in memory, when there is one;
 // Network -- the servers connected once (Go > Connect to Server..., under a name: a click
 // connects again, the login kept by /bin/ftpfs) and Connect to Server... A right click on a
 // place: Rename..., Unpin / Forget; files dropped on a pinned folder, the Trash or a volume go
@@ -262,8 +263,10 @@ static void preview_clear (void)
 // A path served by a file-system provider (FTP:..., FTPS:...), not the SD card: opening a
 // file there downloads it whole, so previews are limited to small files.
 // The SD card's volumes: SD: (partition 1, the boot one) and SD1: .. SD3: (partitions 2..4, FAT or exFAT).
-static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" prefix, 0 = not the card
+// RAM:, the volume in memory, is local like them (its files are read in place, not downloaded).
+static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" / "RAM:" prefix, 0 = not a local volume
 {
+	if (lower (path[0]) == 'r' && lower (path[1]) == 'a' && lower (path[2]) == 'm' && path[3] == ':') return 4;
 	if (lower (path[0]) != 's' || lower (path[1]) != 'd') return 0;
 	if (path[2] == ':') return 3;
 	return path[2] >= '0' && path[2] <= '3' && path[3] == ':' ? 4 : 0;
@@ -579,6 +582,8 @@ static void show_volume (const char *root)
 static void op_show_sd1 ()   { show_volume ("SD1:/"); }
 static void op_show_sd2 ()   { show_volume ("SD2:/"); }
 static void op_show_sd3 ()   { show_volume ("SD3:/"); }
+// RAM:, the volume in memory (absent with "ramfs=0" in system.ini)
+static void op_show_ram ()   { if (volume_mounted ("RAM:/")) show_root ("RAM:/"); else status ("No RAM: volume", ""); }
 
 // A path shown as columns from its volume's root: "SD1:/roms/gb" -> SD1: | roms | gb.
 static void open_path (const char *path)
@@ -699,7 +704,7 @@ static void places_build (void)
 	add_place (PL_VOL, G_COMPUTER, -1, "SD Card", "SD:/");
 	static const char *const VOLS[][2] = { { "SD1:/", "SD1: partition 2" }, { "SD2:/", "SD2: partition 3" },
 		{ "SD3:/", "SD3: partition 4" }, { "VD0:/", "VD0: disk image" }, { "VD1:/", "VD1: disk image" },
-		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" } };
+		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" }, { "RAM:/", "RAM: memory" } };
 	for (unsigned i = 0; i < sizeof VOLS / sizeof VOLS[0]; i++)
 		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, VOLS[i][1], VOLS[i][0]);
 	for (int i = 0; i < g_nnet; i++) add_place (PL_NET, G_NETWORK, i, g_netName[i], g_netPath[i]);
@@ -1727,6 +1732,7 @@ int main (void)
 	if (volume_mounted ("SD1:/")) menu.item ("SD1: (partition 2)", "", 0, op_show_sd1);
 	if (volume_mounted ("SD2:/")) menu.item ("SD2: (partition 3)", "", 0, op_show_sd2);
 	if (volume_mounted ("SD3:/")) menu.item ("SD3: (partition 4)", "", 0, op_show_sd3);
+	if (volume_mounted ("RAM:/")) menu.item ("RAM: (memory)", "", 0, op_show_ram);
 	menu.item ("Trash",      "",      0,             op_open_trash);
 	menu.item ("Connect to Server...", "", 0,       op_connect);
 	menu.separator ();

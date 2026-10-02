@@ -1023,7 +1023,7 @@ the Trash — the dock's Trash does so).
     right-click menu ▸ **Pin to Sidebar…**, or **Go ▸ Pin This Folder…** (**Ctrl-D**), asks the
     name —, and the **Trash**;
   - **Computer**: the SD card's partitions (`SD:`, and `SD1:` … `SD3:` when present; the disk
-    images `VD0:` … to come);
+    images `VD0:` … to come) and **`RAM:`**, the volume in memory (§2), when there is one;
   - **Network**: the servers connected once (**Go ▸ Connect to Server…**, under the name given
     in its **Name** field — the address when empty): a click **connects again** (the login kept
     by `ftpfs`, "Remember password") and opens its folder; and **Add a Server…**.
@@ -1054,7 +1054,8 @@ the Trash — the dock's Trash does so).
   "Trash"): select an item, **Go ▸ Restore from Trash** puts it back where it was (its
   folder is recreated if needed; a clash gets a "(restored)" name), **Del** there deletes it
   for good; **Go ▸ Empty Trash…** deletes everything; **Go ▸ SD Card** (or the sidebar)
-  returns to the card, **Go ▸ SD1: (partition 2)** … to the card's other FAT / exFAT partitions (listed when present;
+  returns to the card, **Go ▸ SD1: (partition 2)** … to the card's other FAT / exFAT partitions and
+  **Go ▸ RAM: (memory)** to the volume in memory (§2) (listed when present;
   a move between two volumes is a copy then a delete; the Trash is on `SD:`, so an item of
   another volume is deleted with File ▸ Delete Permanently…).
   **File ▸ Delete Permanently…** skips the Trash (with confirmation). Names starting with
