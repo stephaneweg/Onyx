@@ -1291,11 +1291,42 @@ static void group_misc (void)
 	CHECK ("strerror (ENOSYS)", strerror (ENOSYS) && strlen (strerror (ENOSYS)) > 3, "");
 }
 
+/* The C++ part is its own program, built with WP-TC's aarch64-onyx-elf (posixtest-cxx.cpp), next
+ * to this one: run it (its PASS / FAIL lines on the same output), one check on its exit status
+ * (its number of failures). */
 static void group_cxx (void)
 {
 	s_group = "cxx";
-	skip ("std::thread, mutex, condition_variable, thread_local, statics, filesystem, steady_clock",
-	      "needs the aarch64-onyx-elf toolchain (WP-TC): /bin/posixtest-cxx");
+	char path[256];
+	const char *slash = strrchr (s_self, '/');
+	size_t n = slash ? (size_t) (slash - s_self) : 0;
+	if (n == 0 || n + sizeof "/posixtest-cxx" > sizeof path)
+	{
+		strcpy (path, "SD:/bin");
+		n = strlen (path);
+	}
+	else
+		memcpy (path, s_self, n);
+	strcpy (path + n, "/posixtest-cxx");
+	struct stat st;
+	if (stat (path, &st) != 0)
+	{
+		skip ("std::thread, mutex, condition_variable, thread_local, statics, filesystem, steady_clock",
+		      "no posixtest-cxx next to posixtest (built with the aarch64-onyx-elf toolchain, WP-TC)");
+		return;
+	}
+	fflush (stdout);
+	char *argv[] = { path, 0 };
+	extern char **environ;
+	pid_t pid;
+	int r = posix_spawn (&pid, path, 0, 0, argv, environ);
+	int status = 0;
+	if (r == 0 && waitpid (pid, &status, 0) != pid)
+		r = errno;
+	CHECK ("posixtest-cxx: std::thread, mutex, condition_variable, thread_local, statics, filesystem, "
+	       "steady_clock, async / future, exceptions across threads",
+	       r == 0 && WIFEXITED (status) && WEXITSTATUS (status) == 0,
+	       "spawn %d, status %x: %d failed", r, status, WIFEXITED (status) ? WEXITSTATUS (status) : -1);
 }
 
 int main (int argc, char **argv)

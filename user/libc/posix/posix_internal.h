@@ -27,7 +27,16 @@
 #include <errno.h>
 #include <time.h>
 #include <pthread.h>
+#include <newlib.h>
 #include "kapi.h"
+
+/* The toolchain in use, from newlib's configuration (no compiler macro tells them apart):
+ * WP-TC's aarch64-onyx-elf has newlib built --enable-newlib-reent-thread-local (errno and the
+ * _reent members are __thread variables) and GCC --enable-tls: native TLS, no emutls override,
+ * newlib's own __errno. The interim aarch64-none-elf has neither (emutls.c, tls.c's __errno). */
+#if defined(_WANT_REENT_THREAD_LOCAL)
+#define ONYX_NATIVE_TLS		1
+#endif
 
 #define ONYX_PAGE		65536UL		/* the kernel's page (64 KB granule) */
 #define ONYX_PATH_MAX		1024

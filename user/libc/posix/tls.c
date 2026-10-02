@@ -19,8 +19,12 @@
  * __thread goes through emutls (emutls.c keeps a per-thread vector in the block). Under WP-TC's
  * aarch64-onyx-elf it is native TLS, laid out here.
  *
- * errno: newlib 4.4 is built without _REENT_THREAD_LOCAL, so its errno is _impure_ptr->_errno,
- * one for the process. __errno () is overridden: the main thread keeps newlib's (so a
+ * errno under WP-TC's aarch64-onyx-elf: newlib is built --enable-newlib-reent-thread-local, its
+ * errno is a __thread variable (_tls_errno) in this block, set by newlib itself everywhere
+ * (strtol, libm included): per thread, nothing to override (ONYX_NATIVE_TLS).
+ *
+ * errno under the interim aarch64-none-elf: newlib 4.4 is built without _REENT_THREAD_LOCAL, so
+ * its errno is _impure_ptr->_errno, one for the process. __errno () is overridden: the main thread keeps newlib's (so a
  * single-threaded program behaves exactly as before), every other thread gets its own. What
  * newlib sets through its reentrancy structure directly (__errno_r (ptr): strtol's ERANGE, the
  * maths functions) still lands in the shared one -- a worker thread does not see it. Every errno
@@ -177,7 +181,8 @@ void __onyx_thread_list_remove (struct __onyx_thread *t)
 	__onyx_unlock (&s_listLock);
 }
 
-/* ---- errno ---- */
+/* ---- errno (the interim toolchain only: newlib's own is per thread under WP-TC's) ---- */
+#ifndef ONYX_NATIVE_TLS
 int *__errno (void)
 {
 	struct __onyx_thread *t = __onyx_self ();
@@ -185,3 +190,4 @@ int *__errno (void)
 		return &_REENT->_errno;
 	return &t->err;
 }
+#endif
