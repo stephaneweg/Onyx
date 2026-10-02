@@ -308,6 +308,15 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
 5. The browser (Jet's UI reused). **No tabs** (the user, 2026-10-02): one page per browser
    window — one UI, one web and one network process per browser; what `window.open` and
    `target=_blank` do is to be decided then (the same view, or a new window).
+   **Start-up** (the user, 2026-10-02): the large images are slow to load (above). Two ways,
+   which add up: a lazy, file-backed ELF loader in the kernel (pages read from the file when
+   first touched, code pages shared between the processes: a study is under way), and — the
+   fallback if that cannot be done, and good for the perceived speed in any case — **a small
+   front end, the host window, separate from the web view** (the page and the toolbar): the front
+   end is a few hundred KB, its window appears at once, and it starts the web view, which then
+   attaches to the window as an applet does (to check: how a process draws into another's
+   window on Onyx — an existing applet mechanism, or a canvas in v76 shared memory — and how the
+   key and mouse events reach it).
 6. Parity with Jet, then the switch.
 
 ## The patch series
