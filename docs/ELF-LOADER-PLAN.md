@@ -48,10 +48,13 @@ the template for a shared image.
 loaded at boot and kept — stage (c)'s image object, created ahead of any process and pinned (never
 dropped by stage (d)'s eviction). A run of one of them maps the read-only image (99.8 % of the
 file: shared, not duplicated) and copies only its writable data (169 KB for `wctest`): no card
-read, 80 MB held once whatever the number of processes. About 100 lines over (c): the list (a file
-such as `/etc/preload` rather than `cmdline.txt`, whose line is short), a low-priority kernel task
-that loads after the desktop is up so the boot is not 5 s longer, a run that arrives during the
-load waiting for it, and the image replaced when `pkg` updates the file (the key changes: drop the
+read, 80 MB held once whatever the number of processes. **No kernel parameter** (the user): the
+list is `preload <program>` lines in `/etc/autostart`, which `init` reads (`user/bin/init.c`) — a
+`/bin/preload` tool over a new kapi call (appended: the ABI version goes up), which returns at
+once while a kernel task loads the image. The line's place in the file gives the order (after the
+dock, so the boot is not 5 s longer), the same tool works from the terminal at any time, and with
+an option it lists the kept images or releases one. About 150 lines over (c) with the tool: the
+call, the loading task, a run that arrives during the load waiting for it, and the image replaced when `pkg` updates the file (the key changes: drop the
 old object when its last process ends, load the new file). It makes the first start as quick as
 the next ones without a daemon. What it does not remove is the program's own initialisation (ICU,
 the fonts, the engine): the frozen copy is the file's image, not an initialised process — that is
