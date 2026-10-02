@@ -1,7 +1,8 @@
 //
 // taskman -- task manager. Lists every task (state + app/kernel), refreshing
 // periodically. Up/Down select; k or Del kills the selected app (kernel tasks are
-// protected); Enter raises an app's window; r refreshes now.
+// protected); Enter raises an app's window; r refreshes now. An app's row shows its system
+// calls per second (kapi v74 proc_stats; the pid found by name in kapi_list_procs).
 //
 #include "kapi.h"
 #include "wtk/wtk.h"
@@ -20,6 +21,7 @@ static int g_fw = 8, g_fh = 16, g_rows = 1;
 static char g_name[MAXT][NAMEL];
 static char g_state[MAXT];		// R/S/B/N
 static char g_kernel[MAXT];		// 1 = kernel task (not killable)
+static int  g_rate[MAXT];		// system calls per second, -1 unknown
 static int  g_count = 0, g_sel = 0;
 static int  g_frames = 0;
 
@@ -45,6 +47,35 @@ static void refresh (void)
 	}
 	if (g_sel >= g_count) g_sel = g_count - 1;
 	if (g_sel < 0) g_sel = 0;
+
+	// The system calls per second: each app row's pid from kapi_list_procs ("<pid> <a|k> <state>
+	// <pages> <name>" a line), by its name.
+	static char procs[4096];
+	kapi_list_procs (procs, sizeof (procs));
+	for (int t = 0; t < g_count; t++)
+	{
+		g_rate[t] = -1;
+		if (g_kernel[t]) continue;
+		for (int j = 0; procs[j]; )
+		{
+			int ls = j; while (procs[j] && procs[j] != '\n') j++;
+			int le = j; if (procs[j] == '\n') j++;
+			int k = ls, pid = 0;
+			while (k < le && procs[k] >= '0' && procs[k] <= '9') pid = pid * 10 + (procs[k++] - '0');
+			for (int f = 0; f < 4 && k < le; f++)		// past pid, kind, state, pages
+			{
+				while (k < le && procs[k] == ' ') k++;
+				if (f < 3) while (k < le && procs[k] != ' ') k++;
+			}
+			int n = 0; while (g_name[t][n] && k + n < le && procs[k + n] == g_name[t][n]) n++;
+			struct kapi_syscall_stats ss;
+			if (pid > 0 && g_name[t][n] == 0 && k + n == le && kapi_proc_stats (pid, &ss) == 0)
+			{
+				g_rate[t] = (int) ss.rate;
+				break;
+			}
+		}
+	}
 }
 
 static void on_key (unsigned long s, int ev, long key)
@@ -97,6 +128,11 @@ static void redraw (void)
 		g_cv.text (12, y, st, sel ? ink : wk_tone (C_ACCENT, 84));	// state char
 		g_cv.text (30, y, g_name[i], sel ? ink : g_kernel[i] ? dim : C_FIELD_TEXT);
 		if (g_kernel[i]) g_cv.text (W - 62, y, "kernel", sel ? ink : dim);
+		else if (g_rate[i] >= 0)
+		{
+			char r[16]; int n = ax_itoa (g_rate[i], r); r[n++] = '/'; r[n++] = 's'; r[n] = '\0';
+			g_cv.text (W - 14 - n * g_fw, y, r, sel ? ink : dim);	// system calls per second
+		}
 	}
 }
 

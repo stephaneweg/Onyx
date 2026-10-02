@@ -2,7 +2,8 @@
 // ps -- list running processes. The kernel returns one line per task as
 // "<pid> <a|k> <state> <pages> <name>" (pid 0 = kernel task); we print it in columns.
 // State: R ready, S sleeping, B blocked, N new. Kind: a app (killable), k kernel.
-// PAGES is 64 KB physical frames the app owns; MEM is that in KB.
+// PAGES is 64 KB physical frames the app owns; MEM is that in KB; SYSC/s the app's system calls
+// per second (kapi v74 proc_stats; "-" for a kernel task or an older kernel).
 //
 #include "kapi.h"
 #include "applib.h"
@@ -28,7 +29,7 @@ int main (void)
 	static char buf[4096];
 	kapi_list_procs (buf, sizeof (buf));
 
-	ax_putln (" PID  K  S  PAGES   MEM  NAME");
+	ax_putln (" PID  K  S  PAGES   MEM  SYSC/s  NAME");
 
 	int i = 0;
 	while (buf[i] != '\0')
@@ -47,12 +48,16 @@ int main (void)
 		name[n] = '\0';
 		if (buf[i] == '\n') i++;
 
-		char num[12]; char line[128]; int p = 0;
+		char num[12]; char line[140]; int p = 0;
 		ax_itoa (pid, num);   pad (line, &p, num, 4);
 		line[p++] = ' '; line[p++] = ' '; line[p++] = kind;
 		line[p++] = ' '; line[p++] = ' '; line[p++] = st;
 		ax_itoa (pages, num);          pad (line, &p, num, 7);
 		ax_itoa (pages * 64, num);     pad (line, &p, num, 6);   // KB (64 KB/page)
+		struct kapi_syscall_stats ss;
+		if (pid > 0 && kind == 'a' && kapi_proc_stats (pid, &ss) == 0) ax_itoa ((int) ss.rate, num);
+		else { num[0] = '-'; num[1] = 0; }
+		pad (line, &p, num, 8);
 		line[p++] = ' '; line[p++] = ' ';
 		for (int s = 0; name[s]; s++) line[p++] = name[s];
 		line[p] = '\0';

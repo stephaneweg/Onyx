@@ -383,6 +383,9 @@ static inline int kapi_pop_event (struct kapi_event *ev) { return KT->version >=
 static inline unsigned kapi_event_mods (unsigned mods) { return KT->version >= 73 ? KT->event_mods (mods) : 0xFFFFFFFFu; }
 static inline int kapi_pop_post (struct kapi_posted *p) { return KT->version >= 73 ? KT->pop_post (p) : 0; }
 static inline int kapi_pump_sleep (unsigned timeout_ms) { return KT->version >= 73 ? KT->pump_sleep (timeout_ms) : 0; }
+// (v74) A process's system calls (pid 0: the caller): the total, the rate per second, the 8 table
+// slots most called (user/kapi_names.h names them) -> 0, -1 no such process / older kernel, -2 bad pointer.
+static inline int kapi_proc_stats (int pid, struct kapi_syscall_stats *out) { return KT->version >= 74 && KT->proc_stats ? KT->proc_stats (pid, out) : -1; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)
