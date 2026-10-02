@@ -54,6 +54,59 @@ static void FreeASID (u8 nASID)
 	}
 }
 
+// ---- the null guard (cmdline.txt nullguard=1, off by default) -------------------
+//
+// Circle maps the first 64 KB page (the armstub, the spin table the secondary cores read at
+// boot) read / write / executable at EL1 in its identity map, which every app space shares: a
+// legacy app's NULL write silently scribbles there, a call through a NULL pointer runs the
+// armstub. With nullguard=1 the app spaces see the low 512 MB through a copy of the kernel's L3
+// table with page 0 left out: a NULL access by an app (or by the kernel while an app's space is
+// active: a kapi, an interrupt taken in the app) faults -- the app is killed (exception.cpp).
+// The kernel's own space keeps page 0. The kernel's descriptor for page 0 is made non-global
+// (nG = 1, ASID 0) too: a global TLB entry, filled by any kernel access to page 0 (a speculative
+// one included), would otherwise match in every app's ASID and bypass the guard. Off by default
+// until tried on the Pi: nothing after boot should need page 0 (the secondary cores read the
+// spin table before their MMU is on and clear their slot once, at start-up, in the kernel's
+// space), but an interrupt handler touching it while an app runs would now fault.
+
+boolean g_bNullGuard = FALSE;			// (kernel.cpp: nullguard=)
+
+static TARMV8MMU_LEVEL3_DESCRIPTOR *s_pNullGuardL3 = 0;
+
+#define L3_DESC_NG	(1ULL << 11)		// a page descriptor's nG bit
+
+static void NullGuardInit (void)
+{
+	const TARMV8MMU_LEVEL2_DESCRIPTOR *pKernelL2 = (const TARMV8MMU_LEVEL2_DESCRIPTOR *) s_ulKernelTTBR0;
+	if (pKernelL2[0].Table.Value11 != 3)
+	{
+		return;					// (not a table: no page to leave out)
+	}
+	TARMV8MMU_LEVEL3_DESCRIPTOR *pKernelL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *)
+		ARMV8MMUL2TABLEPTR ((u64) pKernelL2[0].Table.TableAddress);
+	TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *) palloc ();
+	if (pL3 == 0)
+	{
+		return;
+	}
+	memcpy (pL3, pKernelL3, KPAGE_SIZE);
+	volatile u64 *pGuard = (volatile u64 *) &pL3[0];
+	*pGuard = 0;					// page 0: invalid in the apps' copy
+
+	// The kernel's page 0 made non-global, break-before-make (no other core runs yet: they are
+	// started later in CKernel::Initialize; nothing on this one touches page 0 meanwhile).
+	volatile u64 *pKernel0 = (volatile u64 *) &pKernelL3[0];
+	u64 ulDesc = *pKernel0;
+	*pKernel0 = 0;
+	asm volatile ("dsb ishst; tlbi vaae1is, %0; dsb ish; isb" :: "r" ((u64) 0) : "memory");
+	*pKernel0 = ulDesc | L3_DESC_NG;
+	asm volatile ("dsb ishst; isb" ::: "memory");
+
+	DataSyncBarrier ();
+	s_pNullGuardL3 = pL3;
+	CLogger::Get ()->Write ("proc", LogNotice, "nullguard=1: page 0 unmapped in the app spaces");
+}
+
 // ---- CAddressSpace -----------------------------------------------------------
 
 // Monotonic process-id source (1..). 0 means "kernel task" (no address space).
@@ -108,6 +161,12 @@ CAddressSpace::CAddressSpace (boolean bProtected)
 	// kernel global (not owned by this space), so teardown frees the L3 we add here
 	// but never the page itself.
 	TKPageAttr ApiAttr = KPAGE_ATTR_APP_RODATA;
+	if (s_pNullGuardL3 != 0)
+	{
+		// nullguard=1: the low 512 MB through the kernel's L3 copy without page 0 (shared by
+		// every app, never freed: the teardown only walks the user range's L2 entries)
+		m_pL2[0].Table.TableAddress = ARMV8MMUL2TABLEADDR ((u64) (uintptr) s_pNullGuardL3);
+	}
 	if (!m_bProtected)
 	{
 		MapContig (KAPI_TABLE_VA, KApiTablePhys (), 1, ApiAttr);
@@ -529,6 +588,11 @@ void AddrSpaceInit (void)
 	u64 ulTTBR0;
 	asm volatile ("mrs %0, ttbr0_el1" : "=r" (ulTTBR0));
 	s_ulKernelTTBR0 = ulTTBR0 & ~(0xFFFFULL << TTBR0_ASID_SHIFT);	// strip ASID
+
+	if (g_bNullGuard)
+	{
+		NullGuardInit ();
+	}
 }
 
 void ActivateKernelAddressSpace (void)

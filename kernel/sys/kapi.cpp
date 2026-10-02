@@ -5,8 +5,8 @@
 // Their addresses are exported at the kernel link step (see kernel/Makefile ->
 // user/kernel_syms.ld) and resolved when the app ELFs are linked. Apps run in EL1
 // in their own address space, so these run in the app's context with the kernel
-// mapped in -- arguments are plain pointers in the active address space (no
-// copy_from_user needed).
+// mapped in -- arguments are plain pointers in the active address space, checked on
+// entry and copied fault-safe (kern/uaccess.h; see "the app's pointers" below).
 //
 // extern "C": stable, unmangled names for the symbol-export/link step.
 //
@@ -26,6 +26,7 @@
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
 #include <kern/thread.h>		// (v67) threads, posts: ThreadsRunPosts / ThreadsEndProcess
+#include <kern/uaccess.h>		// the app's pointers: checked, copied fault-safe
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -143,6 +144,28 @@ static void ResolvePath (const char *pIn, char *pOut, unsigned nCap)
 	pOut[o] = '\0';
 }
 
+// ---- the app's pointers (kern/uaccess.h) --------------------------------------------------------
+//
+// Every pointer an app passes is checked on entry -- in the caller's range (the user VA range,
+// or a legacy app's own stacks), mapped -- and a kapi given a bad one fails with its usual error
+// value instead of faulting in the kernel. Strings and small structures are copied into the
+// kernel once (CUserStr, UserGet / UserPut: fault-safe, what is checked is what is used), the
+// buffers the kernel reads or fills in place are probed first (UserReadable / UserWritable).
+// The checks are in the kapi_* entry points only: the helpers below them (CreateWindow,
+// ResolvePath...) take kernel memory, and the kernel calls them with its own.
+
+// An optional out-parameter (0: not wanted): FALSE if it is given but not the caller's.
+template <class T> static inline boolean OutOK (T *p)
+{
+	return p == 0 || UserRange (p, sizeof (T));
+}
+
+// Store an optional out-parameter (checked on entry with OutOK; a fault: not stored).
+template <class T> static inline void OutPut (T *p, const T &Value)
+{
+	if (p != 0) UserPut (p, Value);
+}
+
 extern "C" {
 
 // --- windowing ---------------------------------------------------------------
@@ -191,8 +214,8 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 		y = nYMin + (nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0);
 	}
 
-	// pTitle is a pointer in the calling app's address space, which is active here
-	// (EL1) -- CWindow copies it. Fall back to a default if null.
+	// pTitle: kernel memory (the kapi copied the app's) -- CWindow copies it. Fall back to a
+	// default if null.
 	CWindow *pWin = new CWindow (x, y, w, h, pTitle != 0 ? pTitle : "app", nFlags);
 	if (pWin == 0 || !pWin->IsValid ())
 	{
@@ -216,15 +239,22 @@ static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
 	return (unsigned *) USER_WINDOW_CANVAS;
 }
 
+// The title: a copy (a window's holds 47 characters; a longer one is cut, as before).
+#define TITLE_MAX	64
+
 unsigned *kapi_create_window (int w, int h, const char *pTitle)
 {
-	return CreateWindow (-1, -1, w, h, pTitle, 0);		// auto-placed, normal chrome
+	CUserStr Title (pTitle, TITLE_MAX, TRUE);
+	if (!Title.OK () && !Title.IsNull ()) return 0;
+	return CreateWindow (-1, -1, w, h, Title.Get (), 0);	// auto-placed, normal chrome
 }
 
 unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *pTitle,
 				 unsigned nFlags)
 {
-	return CreateWindow (x, y, w, h, pTitle, nFlags);
+	CUserStr Title (pTitle, TITLE_MAX, TRUE);
+	if (!Title.OK () && !Title.IsNull ()) return 0;
+	return CreateWindow (x, y, w, h, Title.Get (), nFlags);
 }
 
 // Resize the calling app's window to w x h (logical; clamped to the canvas it was
@@ -258,6 +288,9 @@ void kapi_move_window (int x, int y)
 // Draw text into the calling app's window canvas using the kernel bitmap font
 // (transparent background -- only glyph pixels are written). Apps have no font of
 // their own, so this is how an app-drawn UI (e.g. the editor) renders text.
+// (a text drawn: one line, what is past 64 K characters cut)
+#define DRAW_TEXT_MAX	0x10000
+
 void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
 {
 	CAddressSpace *pAS = CurrentAS ();
@@ -266,7 +299,12 @@ void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
 	{
 		return;
 	}
-	pWin->Canvas ()->DrawText (x, y, pStr, (u32) nColor);
+	CUserStr Text (pStr, DRAW_TEXT_MAX, TRUE);
+	if (!Text.OK ())
+	{
+		return;
+	}
+	pWin->Canvas ()->DrawText (x, y, Text.Get (), (u32) nColor);
 }
 
 // Report the calling app's window surfaces so a user-side toolkit can draw the window
@@ -284,35 +322,36 @@ int kapi_get_chrome (struct kapi_chrome *out)
 	{
 		return 0;
 	}
-	memset (out, 0, sizeof *out);
-	out->content   = (unsigned *) USER_WINDOW_CANVAS;
-	out->content_w = pWin->ClientWidth ();
-	out->content_h = pWin->ClientHeight ();
+	struct kapi_chrome C;					// (made here, copied out whole)
+	memset (&C, 0, sizeof C);
+	C.content   = (unsigned *) USER_WINDOW_CANVAS;
+	C.content_w = pWin->ClientWidth ();
+	C.content_h = pWin->ClientHeight ();
 	if (pWin->HasChrome ())
 	{
-		out->active   = (unsigned *) USER_WINDOW_CHROME;
-		out->inactive = (unsigned *) USER_WINDOW_CHROME_INACTIVE;
-		out->chrome_w = pWin->OuterW ();
-		out->chrome_h = pWin->OuterH ();
-		out->inset_l  = pWin->ChromeL ();
-		out->inset_r  = pWin->ChromeR ();
-		out->inset_t  = pWin->ChromeT ();
-		out->inset_b  = pWin->ChromeB ();
+		C.active   = (unsigned *) USER_WINDOW_CHROME;
+		C.inactive = (unsigned *) USER_WINDOW_CHROME_INACTIVE;
+		C.chrome_w = pWin->OuterW ();
+		C.chrome_h = pWin->OuterH ();
+		C.inset_l  = pWin->ChromeL ();
+		C.inset_r  = pWin->ChromeR ();
+		C.inset_t  = pWin->ChromeT ();
+		C.inset_b  = pWin->ChromeB ();
 	}
 	const char *pTitle = pWin->Title ();
 	unsigned i;
-	for (i = 0; i + 1 < sizeof out->title && pTitle[i] != '\0'; i++)
+	for (i = 0; i + 1 < sizeof C.title && pTitle[i] != '\0'; i++)
 	{
-		out->title[i] = pTitle[i];
+		C.title[i] = pTitle[i];
 	}
-	out->title[i] = '\0';
-	return 1;
+	C.title[i] = '\0';
+	return UserPut (out, C) ? 1 : 0;
 }
 
 // Draw kernel-font text (transparent background) into an arbitrary app-mapped
 // 0x00RRGGBB buffer (dst, dstW x dstH) at (x,y). Lets a user-side toolkit render text
 // into surfaces other than the main canvas -- e.g. the window-chrome buffers (the
-// kernel bitmap font is the only font apps have). dst must lie in user space.
+// kernel bitmap font is the only font apps have). dst must be the caller's, mapped writable.
 void kapi_draw_text_buf (unsigned *dst, int dstW, int dstH, int x, int y,
 			 const char *pStr, unsigned nColor)
 {
@@ -321,12 +360,17 @@ void kapi_draw_text_buf (unsigned *dst, int dstW, int dstH, int x, int y,
 		return;
 	}
 	u64 nBytes = (u64) dstW * dstH * sizeof (u32);
-	if (!IS_USER_VA (dst) || !IS_USER_VA ((u8 *) dst + nBytes - 1))
+	if (!UserWritable (dst, nBytes))
+	{
+		return;
+	}
+	CUserStr Text (pStr, DRAW_TEXT_MAX, TRUE);
+	if (!Text.OK ())
 	{
 		return;
 	}
 	GImage Img ((u32 *) dst, dstW, dstH);
-	Img.DrawText (x, y, pStr, (u32) nColor);
+	Img.DrawText (x, y, Text.Get (), (u32) nColor);
 }
 
 int kapi_font_width  (void) { return GImage::FontWidth (); }	// glyph cell width
@@ -373,26 +417,35 @@ void kapi_set_pointer_handler (void *pHandler)
 // Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
 int kapi_launch (const char *pName)
 {
-	return LaunchAppByName (pName) ? 1 : 0;
+	CUserStr Name (pName);
+	return Name.OK () && LaunchAppByName (Name.Get ()) ? 1 : 0;
 }
+
+// An argv string: the child keeps 1023 characters (CAddressSpace::SetArgs), a longer one is cut.
+#define ARGS_MAX	1024
 
 // Run an ELF by absolute path with an argv string (e.g. the file manager opening a
 // document in an editor, or launching a program). Fire-and-forget.
 int kapi_exec (const char *pPath, const char *pArgs)
 {
-	return ExecPath (pPath, pArgs ? pArgs : "") ? 1 : 0;
+	CUserStr Path (pPath, UPATH_MAX), Args (pArgs, ARGS_MAX, TRUE);
+	if (!Path.OK () || (!Args.OK () && !Args.IsNull ())) return 0;
+	return ExecPath (Path.Get (), Args.OK () ? Args.Get () : "") ? 1 : 0;
 }
 // v49: the same, the process named pName (a runner running an app: named after the app).
 int kapi_exec_as (const char *pPath, const char *pArgs, const char *pName)
 {
-	return ExecPath (pPath, pArgs ? pArgs : "", pName != 0 && pName[0] ? pName : 0) ? 1 : 0;
+	CUserStr Path (pPath, UPATH_MAX), Args (pArgs, ARGS_MAX, TRUE), Name (pName, 64, TRUE);
+	if (!Path.OK () || (!Args.OK () && !Args.IsNull ()) || (!Name.OK () && !Name.IsNull ())) return 0;
+	const char *p = Name.OK () && Name.Get ()[0] ? Name.Get () : 0;
+	return ExecPath (Path.Get (), Args.OK () ? Args.Get () : "", p) ? 1 : 0;
 }
 
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
 void kapi_screen_size (int *pW, int *pH)
 {
-	if (pW != 0) *pW = g_nScreenWidth;
-	if (pH != 0) *pH = g_nScreenHeight;
+	if (OutOK (pW)) OutPut (pW, g_nScreenWidth);
+	if (OutOK (pH)) OutPut (pH, g_nScreenHeight);
 }
 
 // --- v39: system menu bar ----------------------------------------------------
@@ -407,14 +460,40 @@ int kapi_set_menu (const char *pSpec, void *pHandler)
 	{
 		return 0;
 	}
-	pWin->SetMenu (pSpec, (u64) pHandler);
+	CUserStr Spec (pSpec, WIN_MENU_MAX, TRUE);		// (cut as before: the window's copy)
+	if (!Spec.OK () && !Spec.IsNull ())
+	{
+		return 0;
+	}
+	pWin->SetMenu (Spec.Get (), (u64) pHandler);
 	return 1;
 }
 
+// (filled in kernel memory -- the window manager's lock is held meanwhile --, then copied out)
 unsigned kapi_get_menu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	return pWM != 0 ? pWM->GetActiveMenu (pBuf, nCap, pTitle, nTitleCap) : 0;
+	if (pWM == 0)
+	{
+		return 0;
+	}
+	char Title[64];						// (a window's title: 47 characters)
+	boolean bMenu = pBuf != 0 && nCap > 0, bTitle = pTitle != 0 && nTitleCap > 0;
+	if (   (bMenu && !UserRange (pBuf, nCap < WIN_MENU_MAX ? nCap : WIN_MENU_MAX))
+	    || (bTitle && !UserRange (pTitle, nTitleCap < sizeof Title ? nTitleCap : sizeof Title)))
+	{
+		return 0;
+	}
+	char *pMenu = bMenu ? new char[WIN_MENU_MAX] : 0;
+	if (bMenu && pMenu == 0)
+	{
+		return 0;
+	}
+	unsigned nSerial = pWM->GetActiveMenu (pMenu, bMenu ? WIN_MENU_MAX : 0, Title, bTitle ? sizeof Title : 0);
+	if (bMenu) UserStrOut (pBuf, nCap, pMenu);
+	if (bTitle) UserStrOut (pTitle, nTitleCap, Title);
+	delete [] pMenu;
+	return nSerial;
 }
 
 int kapi_menu_command (int nID)
@@ -457,7 +536,8 @@ static unsigned *MapScreen (CAddressSpace *pAS, unsigned *pPitch)
 int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0 || pDst == 0 || nW != g_nScreenWidth || nH != g_nScreenHeight)
+	if (   pWM == 0 || pDst == 0 || nW != g_nScreenWidth || nH != g_nScreenHeight
+	    || !UserWritable (pDst, (u64) nW * nH * 4))
 	{
 		return 0;
 	}
@@ -507,9 +587,10 @@ void kapi_inject_pointer (int x, int y, unsigned nButtons, int nWheel)
 void kapi_inject_key (const char *pKeys)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM != 0 && pKeys != 0)
+	CUserStr Keys (pKeys, 4096, TRUE);			// (read under the window manager's lock)
+	if (pWM != 0 && Keys.OK ())
 	{
-		pWM->OnKey (pKeys);
+		pWM->OnKey (Keys.Get ());
 	}
 }
 
@@ -517,8 +598,10 @@ void kapi_inject_key (const char *pKeys)
 // close (set its window's exit flag) and return 0; otherwise launch it and return 1
 // (-1 on error). The shell's "apps" button uses this so a second click closes the
 // popup -- no IPC needed.
-int kapi_toggle_app (const char *pName)
+int kapi_toggle_app (const char *pUserName)
 {
+	CUserStr Name (pUserName);
+	const char *pName = Name.Get ();
 	if (pName == 0 || pName[0] == '\0' || !CScheduler::IsActive ())
 	{
 		return -1;
@@ -558,8 +641,10 @@ static boolean RaiseCallback (CTask *pTask, const char *pTaskName, TTaskState St
 
 // Raise the named running app's window to the front (taskbar / quicklaunch click on
 // an already-open app). Returns 1 if raised, 0 if not running / no window.
-int kapi_raise_app (const char *pName)
+int kapi_raise_app (const char *pUserName)
 {
+	CUserStr Name (pUserName);
+	const char *pName = Name.Get ();
 	if (pName == 0 || !CScheduler::IsActive () || CWindowManager::Get () == 0)
 	{
 		return 0;
@@ -623,7 +708,7 @@ unsigned *kapi_surface_map (int id)
 
 int kapi_surface_size (int id, int *pW, int *pH)
 {
-	if (CSurfaceManager::Get () == 0)
+	if (CSurfaceManager::Get () == 0 || !OutOK (pW) || !OutOK (pH))
 	{
 		return 0;
 	}
@@ -632,8 +717,8 @@ int kapi_surface_size (int id, int *pW, int *pH)
 	{
 		return 0;
 	}
-	if (pW != 0) *pW = pS->Width ();
-	if (pH != 0) *pH = pS->Height ();
+	OutPut (pW, (int) pS->Width ());
+	OutPut (pH, (int) pS->Height ());
 	return 1;
 }
 
@@ -695,7 +780,7 @@ unsigned *kapi_wallpaper_buffer (int *pW, int *pH)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pAS == 0 || pWM == 0)
+	if (pAS == 0 || pWM == 0 || !OutOK (pW) || !OutOK (pH))
 	{
 		return 0;
 	}
@@ -706,8 +791,8 @@ unsigned *kapi_wallpaper_buffer (int *pW, int *pH)
 	}
 	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL1 RW, ASID-tagged
 	pAS->MapContig (USER_WALLPAPER_CANVAS, ulPhys, nPages, Attr);
-	if (pW != 0) *pW = g_nScreenWidth;
-	if (pH != 0) *pH = g_nScreenHeight;
+	OutPut (pW, g_nScreenWidth);
+	OutPut (pH, g_nScreenHeight);
 	return (unsigned *) USER_WALLPAPER_CANVAS;
 }
 
@@ -754,8 +839,8 @@ int kapi_pop_event (struct kapi_event *pEv)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || pEv == 0)
-	{
+	if (pWin == 0 || pEv == 0 || !UserRange (pEv, sizeof *pEv))	// (checked before an event
+	{								// is taken off the queue)
 		return 0;
 	}
 	GUIEvent Ev;
@@ -763,12 +848,14 @@ int kapi_pop_event (struct kapi_event *pEv)
 	{
 		return 0;
 	}
-	pEv->handler = Ev.ulHandler;
-	pEv->sender = Ev.ulSender;
-	pEv->value = Ev.lValue;
-	pEv->event = Ev.nEvent;
-	pEv->mods = Ev.nMods;
-	return 1;
+	struct kapi_event E;
+	memset (&E, 0, sizeof E);
+	E.handler = Ev.ulHandler;
+	E.sender = Ev.ulSender;
+	E.value = Ev.lValue;
+	E.event = Ev.nEvent;
+	E.mods = Ev.nMods;
+	return UserPut (pEv, E) ? 1 : 0;
 }
 
 // (v73) What kapi_get_modifiers reports while a key handler runs (kapi_pump_events sets it around
@@ -907,7 +994,7 @@ void kapi_exit (int nStatus)
 // this for the app-list popup.
 int kapi_list_apps (char *pBuf, unsigned nBufSize)
 {
-	if (pBuf == 0 || nBufSize == 0)
+	if (pBuf == 0 || nBufSize == 0 || !UserWritable (pBuf, nBufSize))
 	{
 		return 0;
 	}
@@ -1005,7 +1092,7 @@ static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState Stat
 
 int kapi_list_windows (char *pBuf, unsigned nBufSize)
 {
-	if (pBuf == 0 || nBufSize == 0)
+	if (pBuf == 0 || nBufSize == 0 || !UserWritable (pBuf, nBufSize))
 	{
 		return 0;
 	}
@@ -1058,7 +1145,7 @@ static boolean TaskListCallback (CTask *pTask, const char *pName, TTaskState Sta
 
 int kapi_list_tasks (char *pBuf, unsigned nBufSize)
 {
-	if (pBuf == 0 || nBufSize == 0)
+	if (pBuf == 0 || nBufSize == 0 || !UserWritable (pBuf, nBufSize))
 	{
 		return 0;
 	}
@@ -1075,8 +1162,10 @@ int kapi_list_tasks (char *pBuf, unsigned nBufSize)
 
 // Kill an app by name (refuses kernel tasks -- those have no address space -- and
 // the caller itself). Returns 1 if killed, 0 otherwise.
-int kapi_kill (const char *pName)
+int kapi_kill (const char *pUserName)
 {
+	CUserStr Name (pUserName);
+	const char *pName = Name.Get ();
 	if (pName == 0 || !CScheduler::IsActive ())
 	{
 		return 0;
@@ -1144,7 +1233,7 @@ static boolean ProcListCallback (CTask *pTask, const char *pName, TTaskState Sta
 
 int kapi_list_procs (char *pBuf, unsigned nBufSize)
 {
-	if (pBuf == 0 || nBufSize == 0) return 0;
+	if (pBuf == 0 || nBufSize == 0 || !UserWritable (pBuf, nBufSize)) return 0;
 	pBuf[0] = '\0';
 	if (!CScheduler::IsActive ()) return 0;
 	WinListCtx Ctx = { pBuf, nBufSize, 0, 0 };
@@ -1206,7 +1295,8 @@ int kapi_kill_pid (int nPid, int nForce)
 // "ES","IT","DV"). Returns 1 on success, 0 if unknown / no keyboard.
 int kapi_set_keymap (const char *pName)
 {
-	return KernelSetKeyMap (pName) ? 1 : 0;
+	CUserStr Name (pName);
+	return Name.OK () && KernelSetKeyMap (Name.Get ()) ? 1 : 0;
 }
 
 // 1 if a USB keyboard is attached & ready, else 0 (ABI v26). The `keyb` tool polls
@@ -1227,15 +1317,18 @@ int kapi_kbd_ready (void)
 // only on a malformed blob. Lets layouts be added as files without recompiling the kernel.
 int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 {
-	const unsigned char *p = (const unsigned char *) pData;
-	if (p == 0 || nLen < 8) return 0;
+	const unsigned char *pUser = (const unsigned char *) pData;
+	unsigned char p[8];					// the header, copied
+	if (pUser == 0 || nLen < 8 || !UserCopyIn (p, pUser, sizeof p)) return 0;
 	if (!(p[0] == 'O' && p[1] == 'K' && p[2] == 'M' && p[3] == '1')) return 0;
 	unsigned nRows = (unsigned) p[4] | ((unsigned) p[5] << 8);
 	unsigned nCols = (unsigned) p[6] | ((unsigned) p[7] << 8);
 	if (nRows != 128 || nCols != 5) return 0;
 	unsigned nTable = nRows * nCols * 2;
-	if (nLen < 8 + nTable) return 0;
-	return KernelSetKeyMapData (pName, p + 8, nTable) ? 1 : 0;
+	if (nLen < 8 + nTable || !UserReadable (pUser + 8, nTable)) return 0;
+	CUserStr Name (pName, 64, TRUE);			// (the kernel keeps 7 characters)
+	if (!Name.OK () && !Name.IsNull ()) return 0;
+	return KernelSetKeyMapData (Name.Get (), pUser + 8, nTable) ? 1 : 0;
 }
 
 // kapi_random: random bytes for cryptographic seeding (the TLS entropy source in
@@ -1253,7 +1346,7 @@ int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 // up properly (enable via the VC mailbox / verify on real hardware) for real entropy.
 int kapi_random (void *pBuf, unsigned nLen)
 {
-	if (pBuf == 0) return 0;
+	if (pBuf == 0 || !UserWritable (pBuf, nLen)) return 0;
 
 	static u64 s = 0;
 	if (s == 0)
@@ -1281,11 +1374,8 @@ int kapi_get_verbose (void) { return KernelGetVerbose () ? 1 : 0; }
 int kapi_get_keymap (char *pBuf, unsigned nMax)
 {
 	if (pBuf == 0 || nMax == 0) return 0;
-	const char *p = KernelGetKeyMap ();
-	unsigned i = 0;
-	for (; p[i] != '\0' && i < nMax - 1; i++) pBuf[i] = p[i];
-	pBuf[i] = '\0';
-	return (int) i;
+	int n = UserStrOut (pBuf, nMax, KernelGetKeyMap ());
+	return n > 0 ? n : 0;
 }
 
 // The calling app's local folder ("SD:apps/<name>.app/") into pBuf -- the task name
@@ -1307,14 +1397,16 @@ int kapi_app_dir (char *pBuf, unsigned nMax)
 		}
 	}
 
+	char Dir[300];						// (made here, then copied out)
 	unsigned p = 0;
 	const char *pPre = "SD:apps/";
 	const char *pSuf = ".app/";
-	for (unsigned i = 0; pPre[i] != '\0' && p + 1 < nMax; i++) pBuf[p++] = pPre[i];
-	for (unsigned i = 0; pName[i] != '\0' && p + 1 < nMax; i++) pBuf[p++] = pName[i];
-	for (unsigned i = 0; pSuf[i] != '\0' && p + 1 < nMax; i++) pBuf[p++] = pSuf[i];
-	pBuf[p] = '\0';
-	return (int) p;
+	for (unsigned i = 0; pPre[i] != '\0' && p + 1 < sizeof Dir; i++) Dir[p++] = pPre[i];
+	for (unsigned i = 0; pName[i] != '\0' && p + 1 < sizeof Dir; i++) Dir[p++] = pName[i];
+	for (unsigned i = 0; pSuf[i] != '\0' && p + 1 < sizeof Dir; i++) Dir[p++] = pSuf[i];
+	Dir[p] = '\0';
+	int n = UserStrOut (pBuf, nMax, Dir);
+	return n > 0 ? n : 0;
 }
 
 // Current local date/time, broken down. Any pointer may be 0. Returns 1 if the
@@ -1327,12 +1419,12 @@ int kapi_get_datetime (int *pYear, int *pMonth, int *pDay,
 	CTime Time;
 	Time.Set ((time_t) nSeconds);
 
-	if (pYear)   *pYear   = (int) Time.GetYear ();
-	if (pMonth)  *pMonth  = (int) Time.GetMonth ();
-	if (pDay)    *pDay    = (int) Time.GetMonthDay ();
-	if (pHour)   *pHour   = (int) Time.GetHours ();
-	if (pMinute) *pMinute = (int) Time.GetMinutes ();
-	if (pSecond) *pSecond = (int) Time.GetSeconds ();
+	OutPut (pYear,   (int) Time.GetYear ());		// (a bad pointer: that field skipped)
+	OutPut (pMonth,  (int) Time.GetMonth ());
+	OutPut (pDay,    (int) Time.GetMonthDay ());
+	OutPut (pHour,   (int) Time.GetHours ());
+	OutPut (pMinute, (int) Time.GetMinutes ());
+	OutPut (pSecond, (int) Time.GetSeconds ());
 
 	return nSeconds > 60u * 60 * 24 * 365 ? 1 : 0;	// > ~1 year => a real date
 }
@@ -1343,7 +1435,10 @@ int kapi_write (int /*fd*/, const void *pBuf, unsigned nLen)
 {
 	char Tmp[129];
 	unsigned n = nLen < sizeof (Tmp) - 1 ? nLen : sizeof (Tmp) - 1;
-	memcpy (Tmp, pBuf, n);			// app buffer is in the active AS (EL1)
+	if (!UserCopyIn (Tmp, pBuf, n))		// (the app's buffer: copied fault-safe)
+	{
+		return -1;
+	}
 	Tmp[n] = '\0';
 	CLogger::Get ()->Write ("app", LogNotice, "%s", Tmp);
 	return (int) nLen;
@@ -1419,8 +1514,11 @@ static void HandleClose (void *h, unsigned nType)
 // A file handle's object: a FatFs FIL (read-only), a RAM: file or a provider's file -- the
 // handle's entry says which (HKIND_*).
 
-void *kapi_open (const char *pPath)
+void *kapi_open (const char *pUserPath)
 {
+	CUserStr Path (pUserPath, UPATH_MAX);			// (read once: the kernel's copy from here)
+	const char *pPath = Path.Get ();
+	if (pPath == 0) return 0;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	if (RamFsHandles (abs)) return HandleNew (RamFsOpen (abs), HANDLE_FILE, HKIND_RAMFS);	// RAM: (kern/ramfs.h)
 	if (VfsHandles (pPath)) return HandleNew (VfsOpen (pPath), HANDLE_FILE, HKIND_VFS);	// a provider path (FTP:...)
@@ -1510,6 +1608,19 @@ int kapi_read (void *pHandle, void *pBuf, unsigned nLen)
 	{
 		return -1;
 	}
+	// The bytes it will fill, checked first: a card file's are known (what is left of it: an app
+	// passing a buffer's capacity for a short file keeps working), the others' are nLen.
+	u64 nFill = nLen;
+	if (Use.Kind () == HKIND_FATFS)
+	{
+		FIL *pFile = (FIL *) pObj;
+		u64 nLeft = f_size (pFile) > f_tell (pFile) ? (u64) (f_size (pFile) - f_tell (pFile)) : 0;
+		if (nFill > nLeft) nFill = nLeft;
+	}
+	if (!UserWritable (pBuf, nFill))
+	{
+		return -1;
+	}
 	if (Use.Kind () == HKIND_RAMFS) return RamFsRead (pObj, pBuf, nLen);
 	if (Use.Kind () == HKIND_VFS) return VfsRead (pObj, pBuf, nLen);
 	UINT nRead = 0;
@@ -1593,9 +1704,11 @@ void *kapi_pipe (void)
 	return HandleNew (new CPipeStream, HANDLE_STREAM);
 }
 
-void *kapi_file_in (const char *pPath)
+void *kapi_file_in (const char *pUserPath)
 {
-	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	CUserStr Path (pUserPath, UPATH_MAX);
+	if (!Path.OK ()) return 0;
+	char abs[300]; ResolvePath (Path.Get (), abs, sizeof abs);
 	if (RamFsHandles (abs))
 	{
 		CRamStream *pRam = new CRamStream (abs, 0);
@@ -1608,9 +1721,11 @@ void *kapi_file_in (const char *pPath)
 	return HandleNew (pFile, HANDLE_STREAM);
 }
 
-void *kapi_file_out (const char *pPath, int bAppend)
+void *kapi_file_out (const char *pUserPath, int bAppend)
 {
-	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	CUserStr Path (pUserPath, UPATH_MAX);
+	if (!Path.OK ()) return 0;
+	char abs[300]; ResolvePath (Path.Get (), abs, sizeof abs);
 	if (RamFsHandles (abs))
 	{
 		CRamStream *pRam = new CRamStream (abs, bAppend ? 2 : 1);
@@ -1626,6 +1741,7 @@ void *kapi_file_out (const char *pPath, int bAppend)
 int kapi_stream_read (void *pHandle, void *pBuf, unsigned nLen)
 {
 	CHandleUse Use (pHandle, HANDLE_STREAM);	// (a pipe's read waits for its writer)
+	if (!UserWritable (pBuf, nLen)) return 0;	// (as a bad handle)
 	return Use.Obj () != 0 ? ((CStream *) Use.Obj ())->Read (pBuf, nLen) : 0;
 }
 
@@ -1634,12 +1750,14 @@ int kapi_stream_read (void *pHandle, void *pBuf, unsigned nLen)
 int kapi_stream_read_nb (void *pHandle, void *pBuf, unsigned nLen)
 {
 	CHandleUse Use (pHandle, HANDLE_STREAM);	// (a file stream's read may yield)
+	if (!UserWritable (pBuf, nLen)) return 0;	// (as a bad handle)
 	return Use.Obj () != 0 ? ((CStream *) Use.Obj ())->ReadNonBlocking (pBuf, nLen) : 0;
 }
 
 int kapi_stream_write (void *pHandle, const void *pBuf, unsigned nLen)
 {
 	CHandleUse Use (pHandle, HANDLE_STREAM);	// (a full pipe waits for its reader)
+	if (!UserReadable (pBuf, nLen)) return -1;
 	return Use.Obj () != 0 ? ((CStream *) Use.Obj ())->Write (pBuf, nLen) : -1;
 }
 
@@ -1662,6 +1780,7 @@ int kapi_stdin_read (void *pBuf, unsigned nLen)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CStream *pStream = pAS != 0 ? pAS->GetStdin () : 0;
+	if (!UserWritable (pBuf, nLen)) return 0;
 	return pStream != 0 ? pStream->Read (pBuf, nLen) : 0;
 }
 
@@ -1672,11 +1791,12 @@ int kapi_stdout_write (const void *pBuf, unsigned nLen)
 	CStream *pStream = pAS != 0 ? pAS->GetStdout () : 0;
 	if (pStream != 0)
 	{
+		if (!UserReadable (pBuf, nLen)) return -1;
 		return pStream->Write (pBuf, nLen);
 	}
 	char Tmp[129];
 	unsigned n = nLen < sizeof (Tmp) - 1 ? nLen : sizeof (Tmp) - 1;
-	memcpy (Tmp, pBuf, n);
+	if (!UserCopyIn (Tmp, pBuf, n)) return -1;
 	Tmp[n] = '\0';
 	CLogger::Get ()->Write ("app", LogNotice, "%s", Tmp);
 	return (int) nLen;
@@ -1690,19 +1810,20 @@ int kapi_klog_read (int *pSeverity, char *pSrc, unsigned nSrcCap, char *pMsg, un
 {
 	TLogSeverity Sev; char Src[LOG_MAX_SOURCE]; char Msg[LOG_MAX_MESSAGE];
 	time_t t; unsigned ht; int tz;
+	// (the outputs checked before an event is taken off the queue)
+	if (   !OutOK (pSeverity)
+	    || (pSrc != 0 && nSrcCap > 0 && !UserRange (pSrc, nSrcCap < sizeof Src ? nSrcCap : sizeof Src))
+	    || (pMsg != 0 && nMsgCap > 0 && !UserRange (pMsg, nMsgCap < sizeof Msg ? nMsgCap : sizeof Msg)))
+	{
+		return 0;
+	}
 	if (!CLogger::Get ()->ReadEvent (&Sev, Src, Msg, &t, &ht, &tz))
 	{
 		return 0;
 	}
-	if (pSeverity != 0) *pSeverity = (int) Sev;
-	if (pSrc != 0 && nSrcCap > 0)
-	{
-		unsigned i = 0; for (; Src[i] != '\0' && i < nSrcCap - 1; i++) pSrc[i] = Src[i]; pSrc[i] = '\0';
-	}
-	if (pMsg != 0 && nMsgCap > 0)
-	{
-		unsigned i = 0; for (; Msg[i] != '\0' && i < nMsgCap - 1; i++) pMsg[i] = Msg[i]; pMsg[i] = '\0';
-	}
+	OutPut (pSeverity, (int) Sev);
+	if (pSrc != 0 && nSrcCap > 0) UserStrOut (pSrc, nSrcCap, Src);
+	if (pMsg != 0 && nMsgCap > 0) UserStrOut (pMsg, nMsgCap, Msg);
 	return 1;
 }
 
@@ -1745,8 +1866,14 @@ void *kapi_stdout (void)
 // Spawn a console program (ELF at pPath) with stdin/stdout streams (stream handles of the
 // caller, or 0) + argv. Returns a process handle for kapi_wait, or 0 on failure (also when
 // pStdin / pStdout is not a stream handle of the caller).
-void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStdout)
+void *kapi_spawn (const char *pUserPath, const char *pUserArgs, void *pStdin, void *pStdout)
 {
+	CUserStr Path (pUserPath, UPATH_MAX), Args (pUserArgs, ARGS_MAX, TRUE);
+	if (!Path.OK () || (!Args.OK () && !Args.IsNull ()))
+	{
+		return 0;
+	}
+	const char *pPath = Path.Get (), *pArgs = Args.Get ();
 	// (pinned: SpawnProcess may yield -- it looks for the file -- before the child takes
 	// its refs on them)
 	CHandleUse In (pStdin, HANDLE_STREAM), Out (pStdout, HANDLE_STREAM);
@@ -1784,9 +1911,11 @@ void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStd
 
 // Change the calling task's working directory: resolve pPath, verify it is a real
 // directory (f_opendir), and store it. Returns 1 on success, 0 otherwise.
-int kapi_chdir (const char *pPath)
+int kapi_chdir (const char *pUserPath)
 {
 	CAddressSpace *pAS = CurrentAS ();
+	CUserStr Path (pUserPath, UPATH_MAX);
+	const char *pPath = Path.Get ();
 	if (pAS == 0 || pPath == 0) return 0;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	if (RamFsHandles (abs))
@@ -1806,11 +1935,8 @@ int kapi_chdir (const char *pPath)
 int kapi_getcwd (char *pBuf, unsigned nMax)
 {
 	if (pBuf == 0 || nMax == 0) return 0;
-	const char *p = CurCwd ();
-	unsigned i = 0;
-	for (; p[i] != '\0' && i < nMax - 1; i++) pBuf[i] = p[i];
-	pBuf[i] = '\0';
-	return (int) i;
+	int n = UserStrOut (pBuf, nMax, CurCwd ());
+	return n > 0 ? n : 0;
 }
 
 // Wait (cooperatively) for a spawned process to finish; returns its exit status and
@@ -1848,20 +1974,16 @@ int kapi_get_args (char *pBuf, unsigned nMax)
 {
 	if (pBuf == 0 || nMax == 0) return 0;
 	CAddressSpace *pAS = CurrentAS ();
-	const char *pArgs = pAS != 0 ? pAS->GetArgs () : 0;
-	unsigned i = 0;
-	if (pArgs != 0)
-	{
-		for (; pArgs[i] != '\0' && i < nMax - 1; i++) pBuf[i] = pArgs[i];
-	}
-	pBuf[i] = '\0';
-	return (int) i;
+	int n = UserStrOut (pBuf, nMax, pAS != 0 ? pAS->GetArgs () : "");
+	return n > 0 ? n : 0;
 }
 
 // --- directory listing -------------------------------------------------------
 
-void *kapi_opendir (const char *pPath)
+void *kapi_opendir (const char *pUserPath)
 {
+	CUserStr Path (pUserPath, UPATH_MAX);
+	const char *pPath = Path.Get ();
 	if (pPath == 0)
 	{
 		return 0;
@@ -1882,18 +2004,9 @@ void *kapi_opendir (const char *pPath)
 	return HandleNew (pDir, HANDLE_DIR, HKIND_FATFS);
 }
 
-int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
+static int ReadDir (CHandleUse &Use, struct kapi_dirent *pEnt)	// (pEnt: kernel memory)
 {
-	if (pEnt == 0)
-	{
-		return 0;
-	}
-	CHandleUse Use (pHandle, HANDLE_DIR);
 	void *pObj = Use.Obj ();
-	if (pObj == 0)
-	{
-		return 0;
-	}
 	if (Use.Kind () == HKIND_RAMFS) return RamFsReadDir (pObj, pEnt);
 	if (Use.Kind () == HKIND_VFS) return VfsReadDir (pObj, pEnt);
 	FILINFO Info;
@@ -1912,6 +2025,27 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 	return 1;
 }
 
+int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
+{
+	if (pEnt == 0 || !UserRange (pEnt, sizeof *pEnt))	// (checked before an entry is read)
+	{
+		return 0;
+	}
+	CHandleUse Use (pHandle, HANDLE_DIR);
+	if (Use.Obj () == 0)
+	{
+		return 0;
+	}
+	struct kapi_dirent Ent;
+	memset (&Ent, 0, sizeof Ent);
+	int r = ReadDir (Use, &Ent);
+	if (r <= 0)
+	{
+		return r;
+	}
+	return UserPut (pEnt, Ent) ? r : 0;
+}
+
 void kapi_closedir (void *pHandle)
 {
 	HandleClose (pHandle, HANDLE_DIR);
@@ -1919,8 +2053,10 @@ void kapi_closedir (void *pHandle)
 
 // --- file operations ---------------------------------------------------------
 
-int kapi_mkdir (const char *pPath)
+int kapi_mkdir (const char *pUserPath)
 {
+	CUserStr Path (pUserPath, UPATH_MAX);
+	const char *pPath = Path.Get ();
 	if (pPath == 0) return -1;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	if (RamFsHandles (abs)) return RamFsMkdir (abs);
@@ -1928,8 +2064,10 @@ int kapi_mkdir (const char *pPath)
 	return (f_mkdir (abs) == FR_OK) ? 0 : -1;
 }
 
-int kapi_remove (const char *pPath)		// file or empty directory
+int kapi_remove (const char *pUserPath)		// file or empty directory
 {
+	CUserStr Path (pUserPath, UPATH_MAX);
+	const char *pPath = Path.Get ();
 	if (pPath == 0) return -1;
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	if (RamFsHandles (abs)) return RamFsRemove (abs);
@@ -1937,8 +2075,10 @@ int kapi_remove (const char *pPath)		// file or empty directory
 	return (f_unlink (abs) == FR_OK) ? 0 : -1;
 }
 
-int kapi_rename (const char *pFrom, const char *pTo)
+int kapi_rename (const char *pUserFrom, const char *pUserTo)
 {
+	CUserStr From (pUserFrom, UPATH_MAX), To (pUserTo, UPATH_MAX);
+	const char *pFrom = From.Get (), *pTo = To.Get ();
 	if (pFrom == 0 || pTo == 0) return -1;
 	{
 		char ramF[300], ramT[300];				// RAM: -> RAM: only
@@ -1978,16 +2118,18 @@ void kapi_cursor_pos (int *pX, int *pY)
 		cx -= pWin->X () + pWin->ChromeL ();
 		cy -= pWin->Y () + pWin->ChromeT ();
 	}
-	if (pX) *pX = cx;
-	if (pY) *pY = cy;
+	OutPut (pX, cx);
+	OutPut (pY, cy);
 }
 
 // --- modal dialogs -----------------------------------------------------------
 
 // Write a whole file (create/truncate). Returns bytes written, or -1 on error.
-int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
+int kapi_save_file (const char *pUserPath, const void *pBuf, unsigned nLen)
 {
-	if (pPath == 0)
+	CUserStr Path (pUserPath, UPATH_MAX);
+	const char *pPath = Path.Get ();
+	if (pPath == 0 || !UserReadable (pBuf, nLen))
 	{
 		return -1;
 	}
@@ -2018,13 +2160,30 @@ int kapi_save_file (const char *pPath, const void *pBuf, unsigned nLen)
 // so Connect/DNS/Send block cooperatively (the rest of the system keeps running);
 // Recv is non-blocking so a GUI app can poll it from its event loop.
 
-int kapi_net_status (char *pIP, unsigned nCap) { return NetStatus (pIP, nCap); }
+// An address as text ("192.168.1.10", an IPv6 one): the net layer writes it into kernel memory,
+// copied out to the app.
+#define IP_TEXT_MAX	64
 
-int kapi_tcp_connect (const char *pHost, unsigned nPort)
+int kapi_net_status (char *pIP, unsigned nCap)
 {
+	boolean bOut = pIP != 0 && nCap > 0;
+	if (bOut && !UserRange (pIP, nCap < IP_TEXT_MAX ? nCap : IP_TEXT_MAX)) return 0;
+	char IP[IP_TEXT_MAX]; IP[0] = '\0';
+	int n = NetStatus (IP, sizeof IP);
+	if (bOut) UserStrOut (pIP, nCap, IP);
+	return n;
+}
+
+// A host name: DNS allows 253 characters.
+#define HOST_MAX	256
+
+int kapi_tcp_connect (const char *pUserHost, unsigned nPort)
+{
+	CUserStr Host (pUserHost, HOST_MAX);
+	if (!Host.OK ()) return -1;
 	CAddressSpace *pAS = CurrentAS ();
 	unsigned nPid = (pAS != 0) ? pAS->GetPid () : 0;	// owner -> auto-close on death
-	return NetTcpConnect (pHost, nPort, nPid);
+	return NetTcpConnect (Host.Get (), nPort, nPid);
 }
 
 // Is the calling process (pid nMe) a descendant of process nAncestor? (Its parent chain,
@@ -2058,8 +2217,18 @@ static void SocketAdopt (int hSock)
 	}
 }
 
-int  kapi_tcp_send  (int hSock, const void *pBuf, unsigned nLen) { SocketAdopt (hSock); return NetTcpSend (hSock, pBuf, nLen); }
-int  kapi_tcp_recv  (int hSock, void *pBuf, unsigned nLen)       { SocketAdopt (hSock); return NetTcpRecv (hSock, pBuf, nLen); }
+int kapi_tcp_send (int hSock, const void *pBuf, unsigned nLen)
+{
+	if (!UserReadable (pBuf, nLen)) return -1;
+	SocketAdopt (hSock);
+	return NetTcpSend (hSock, pBuf, nLen);
+}
+int kapi_tcp_recv (int hSock, void *pBuf, unsigned nLen)
+{
+	if (!UserWritable (pBuf, nLen)) return -1;
+	SocketAdopt (hSock);
+	return NetTcpRecv (hSock, pBuf, nLen);
+}
 void kapi_tcp_close (int hSock)                                  { SocketAdopt (hSock); NetTcpClose (hSock); }
 
 // --- v37: TCP server side ----------------------------------------------------
@@ -2071,9 +2240,14 @@ int kapi_tcp_listen (unsigned nPort)
 
 int kapi_tcp_accept (int hListen, char *pIP, unsigned nCap)
 {
+	boolean bOut = pIP != 0 && nCap > 0;			// (checked before a client is taken)
+	if (bOut && !UserRange (pIP, nCap < IP_TEXT_MAX ? nCap : IP_TEXT_MAX)) return -1;
 	SocketAdopt (hListen);
 	CAddressSpace *pAS = CurrentAS ();
-	return NetTcpAccept (hListen, pIP, nCap, (pAS != 0) ? pAS->GetPid () : 0);
+	char IP[IP_TEXT_MAX]; IP[0] = '\0';
+	int n = NetTcpAccept (hListen, IP, sizeof IP, (pAS != 0) ? pAS->GetPid () : 0);
+	if (n >= 0 && bOut) UserStrOut (pIP, nCap, IP);
+	return n;
 }
 
 // --- memory info -------------------------------------------------------------
@@ -2101,10 +2275,11 @@ int kapi_meminfo (unsigned long *pTotalKB, unsigned long *pFreeKB,
 						 + CMemorySystem::GetPagerHighFreeListSpace ());
 	unsigned long nApp   = (unsigned long) g_nUserPages * (unsigned long) KPAGE_SIZE;
 
-	if (pTotalKB) *pTotalKB = nTotal / 1024;
-	if (pFreeKB)  *pFreeKB  = (nHeap + nPager) / 1024;
-	if (pAppKB)   *pAppKB   = nApp / 1024;
-	if (pPageKB)  *pPageKB  = KPAGE_SIZE / 1024;
+	if (!OutOK (pTotalKB) || !OutOK (pFreeKB) || !OutOK (pAppKB) || !OutOK (pPageKB)) return 0;
+	OutPut (pTotalKB, nTotal / 1024);
+	OutPut (pFreeKB,  (nHeap + nPager) / 1024);
+	OutPut (pAppKB,   nApp / 1024);
+	OutPut (pPageKB,  (unsigned) (KPAGE_SIZE / 1024));
 	return 1;
 }
 
@@ -2122,11 +2297,13 @@ int kapi_ram_detail (unsigned long *pDetectedKB, unsigned long *pAppPoolKB,
 						 + CMemorySystem::GetPagerHighFreeListSpace ()) / 1024);
 	unsigned long nAbove4G = (unsigned long) (CMemorySystem::GetHighMem4GSize () / 1024);
 
-	if (pDetectedKB)    *pDetectedKB    = nDetected;
-	if (pAppPoolKB)     *pAppPoolKB     = nPool;
-	if (pAppPoolFreeKB) *pAppPoolFreeKB = nFree;
-	if (pAbove4GKB)     *pAbove4GKB     = nAbove4G;
-	if (pNSegments)     *pNSegments     = CMemorySystem::GetHighSegCount ();
+	if (   !OutOK (pDetectedKB) || !OutOK (pAppPoolKB) || !OutOK (pAppPoolFreeKB)
+	    || !OutOK (pAbove4GKB) || !OutOK (pNSegments)) return 0;
+	OutPut (pDetectedKB,    nDetected);
+	OutPut (pAppPoolKB,     nPool);
+	OutPut (pAppPoolFreeKB, nFree);
+	OutPut (pAbove4GKB,     nAbove4G);
+	OutPut (pNSegments,     (unsigned) CMemorySystem::GetHighSegCount ());
 	return 1;
 }
 
@@ -2178,6 +2355,7 @@ int kapi_clipboard_set (int nType, const void *pData, unsigned nLen)
 {
 	if (nLen > CLIPBOARD_MAX) nLen = CLIPBOARD_MAX;
 	if (pData == 0) nLen = 0;
+	if (!UserReadable (pData, nLen)) return 0;		// (the clipboard left as it was)
 	if (nLen) memcpy (s_Clip, pData, nLen);
 	s_nClipLen = nLen;
 	s_nClipType = nLen ? nType : 0;
@@ -2187,10 +2365,11 @@ int kapi_clipboard_set (int nType, const void *pData, unsigned nLen)
 
 int kapi_clipboard_get (int *pType, void *pBuf, unsigned nCap, unsigned *pSerial)
 {
-	if (pType != 0) *pType = s_nClipType;
-	if (pSerial != 0) *pSerial = s_nClipSerial;
 	unsigned n = s_nClipLen < nCap ? s_nClipLen : nCap;
-	if (pBuf != 0 && n) memcpy (pBuf, s_Clip, n);
+	if (!OutOK (pType) || !OutOK (pSerial) || (pBuf != 0 && !UserRange (pBuf, n))) return 0;
+	OutPut (pType, s_nClipType);
+	OutPut (pSerial, s_nClipSerial);
+	if (pBuf != 0 && n && !UserCopyOut (pBuf, s_Clip, n)) return 0;
 	return (int) s_nClipLen;
 }
 
@@ -2218,7 +2397,7 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pAS == 0 || pWM == 0 || g_pGraphics == 0)
+	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || !OutOK (pW) || !OutOK (pH))
 	{
 		return 0;
 	}
@@ -2239,8 +2418,8 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 	memset ((void *) ulPhys, 0, (size_t) g_nScreenWidth * g_nScreenHeight * 4);
 	pWM->SetFullscreen (pWin);
 	s_pDirectWin = 0;
-	if (pW != 0) *pW = g_nScreenWidth;
-	if (pH != 0) *pH = g_nScreenHeight;
+	OutPut (pW, g_nScreenWidth);
+	OutPut (pH, g_nScreenHeight);
 	return (unsigned *) USER_FULLSCREEN_CANVAS;
 }
 
@@ -2252,7 +2431,8 @@ unsigned *kapi_fullscreen_direct (int *pW, int *pH, int *pStride)
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
 	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || pWM->FullscreenWindow () == 0
-	    || pWM->FullscreenWindow () != pAS->GetWindow ())
+	    || pWM->FullscreenWindow () != pAS->GetWindow ()
+	    || !OutOK (pW) || !OutOK (pH) || !OutOK (pStride))
 	{
 		return 0;
 	}
@@ -2268,9 +2448,9 @@ unsigned *kapi_fullscreen_direct (int *pW, int *pH, int *pStride)
 		return 0;
 	}
 	s_pDirectWin = pAS->GetWindow ();
-	if (pW != 0) *pW = g_nScreenWidth;
-	if (pH != 0) *pH = g_nScreenHeight;
-	if (pStride != 0) *pStride = (int) (nPitch / 4);
+	OutPut (pW, g_nScreenWidth);
+	OutPut (pH, g_nScreenHeight);
+	OutPut (pStride, (int) (nPitch / 4));
 	return pScreen;
 }
 
@@ -2365,13 +2545,18 @@ int kapi_drag_begin (int nType, const void *pData, unsigned nLen, const char *pL
 	{
 		return 0;
 	}
-	char Label[DND_LABEL_MAX];				// copy out of the app's memory first
-	unsigned i = 0;
-	for (; pLabel != 0 && pLabel[i] != '\0' && i < DND_LABEL_MAX - 1; i++) Label[i] = pLabel[i];
-	Label[i] = '\0';
+	CUserStr Label (pLabel, DND_LABEL_MAX, TRUE);		// copy out of the app's memory first
+	if (!Label.OK () && !Label.IsNull ())
+	{
+		return 0;
+	}
 	if (nLen > DND_MAX) nLen = DND_MAX;
 	if (pData == 0) nLen = 0;
-	if (!pWM->DragBegin (pWin, Label))
+	if (!UserReadable (pData, nLen))
+	{
+		return 0;
+	}
+	if (!pWM->DragBegin (pWin, Label.OK () ? Label.Get () : ""))
 	{
 		return 0;
 	}
@@ -2384,9 +2569,10 @@ int kapi_drag_begin (int nType, const void *pData, unsigned nLen, const char *pL
 // The dropped payload: copies <= cap bytes, returns the full length (+ its type).
 int kapi_drag_data (int *pType, void *pBuf, unsigned nCap)
 {
-	if (pType != 0) *pType = s_nDndType;
 	unsigned n = s_nDndLen < nCap ? s_nDndLen : nCap;
-	if (pBuf != 0 && n) memcpy (pBuf, s_Dnd, n);
+	if (!OutOK (pType) || (pBuf != 0 && !UserRange (pBuf, n))) return 0;
+	OutPut (pType, s_nDndType);
+	if (pBuf != 0 && n && !UserCopyOut (pBuf, s_Dnd, n)) return 0;
 	return (int) s_nDndLen;
 }
 
@@ -2409,11 +2595,36 @@ void kapi_inject_modifiers (unsigned nMods)
 }
 
 // --- v43: network tools --------------------------------------------------------------
-int kapi_net_ping (const char *pHost, unsigned nSeq, unsigned nTimeoutMs, char *pIP, unsigned nCap)
-{ return NetPing (pHost, nSeq, nTimeoutMs, pIP, nCap); }
-int kapi_net_resolve (const char *pHost, char *pIP, unsigned nCap) { return NetResolve (pHost, pIP, nCap); }
-int kapi_net_info (char *pBuf, unsigned nCap) { return NetInfo (pBuf, nCap); }
-int kapi_wlan_scan (struct kapi_wlan_ap *pOut, int nMax) { return NetWlanScan (pOut, nMax); }
+int kapi_net_ping (const char *pUserHost, unsigned nSeq, unsigned nTimeoutMs, char *pIP, unsigned nCap)
+{
+	CUserStr Host (pUserHost, HOST_MAX);
+	boolean bOut = pIP != 0 && nCap > 0;
+	if (!Host.OK () || (bOut && !UserRange (pIP, nCap < IP_TEXT_MAX ? nCap : IP_TEXT_MAX))) return -1;
+	char IP[IP_TEXT_MAX]; IP[0] = '\0';
+	int n = NetPing (Host.Get (), nSeq, nTimeoutMs, IP, sizeof IP);
+	if (bOut) UserStrOut (pIP, nCap, IP);
+	return n;
+}
+int kapi_net_resolve (const char *pUserHost, char *pIP, unsigned nCap)
+{
+	CUserStr Host (pUserHost, HOST_MAX);
+	boolean bOut = pIP != 0 && nCap > 0;
+	if (!Host.OK () || (bOut && !UserRange (pIP, nCap < IP_TEXT_MAX ? nCap : IP_TEXT_MAX))) return 0;
+	char IP[IP_TEXT_MAX]; IP[0] = '\0';
+	int n = NetResolve (Host.Get (), IP, sizeof IP);
+	if (n > 0 && bOut) UserStrOut (pIP, nCap, IP);
+	return n;
+}
+int kapi_net_info (char *pBuf, unsigned nCap)
+{
+	if (pBuf != 0 && !UserWritable (pBuf, nCap)) return 0;
+	return NetInfo (pBuf, nCap);
+}
+int kapi_wlan_scan (struct kapi_wlan_ap *pOut, int nMax)
+{
+	if (pOut != 0 && nMax > 0 && !UserWritable (pOut, (u64) nMax * sizeof *pOut)) return 0;
+	return NetWlanScan (pOut, nMax);
+}
 int kapi_wlan_reconnect (void) { return NetWlanReconnect (); }
 
 // --- v46: sound (kern/sound.h) ---
@@ -2422,10 +2633,29 @@ int  kapi_sound_acquire (void) { return SoundAcquire (CallerPid ()); }
 void kapi_sound_release (void) { SoundRelease (CallerPid ()); }
 int  kapi_sound_start (int nVoice, unsigned nMilliHz, int nWave, int nVolume) { return SoundStart (CallerPid (), nVoice, nMilliHz, nWave, nVolume); }
 int  kapi_sound_stop (int nVoice) { return SoundStop (CallerPid (), nVoice); }
-int  kapi_sound_write (const short *pFrames, unsigned nFrames) { return SoundWrite (CallerPid (), (const s16 *) pFrames, nFrames); }
-int  kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner) { return SoundStatus (pRate, pFree, pOwner); }
+int kapi_sound_write (const short *pFrames, unsigned nFrames)
+{
+	// (the ring holds half a second: no call takes more frames than that -- what is read)
+	if (nFrames > SND_RATE / 2) nFrames = SND_RATE / 2;
+	if (pFrames == 0 || !UserReadable (pFrames, (u64) nFrames * 2 * sizeof (short))) return -1;
+	return SoundWrite (CallerPid (), (const s16 *) pFrames, nFrames);	// (read under its lock)
+}
+int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
+{
+	unsigned nRate = 0, nFree = 0, nOwner = 0;		// (written under its lock: kernel memory)
+	int r = SoundStatus (&nRate, &nFree, &nOwner);
+	if (OutOK (pRate)) OutPut (pRate, nRate);
+	if (OutOK (pFree)) OutPut (pFree, nFree);
+	if (OutOK (pOwner)) OutPut (pOwner, nOwner);
+	return r;
+}
 int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
-int  kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns) { return SoundInstrument (CallerPid (), nVoice, pIns); }
+int kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns)
+{
+	struct kapi_fm_instrument In;
+	if (pIns == 0 || !UserGet (&In, pIns)) return -1;
+	return SoundInstrument (CallerPid (), nVoice, &In);
+}
 
 // --- v68: low-latency sound ---
 int kapi_sound_config (int nChunkFrames, int nAhead) { return SoundConfig (CallerPid (), nChunkFrames, nAhead); }
@@ -2475,17 +2705,22 @@ void kapi_inject_key_held (int nKey, int bDown)
 }
 
 // --- v68: USB MIDI input (kernel.cpp) ---
-int kapi_midi_read (struct kapi_midi_event *pEv, int nMax) { return KernelMidiRead (pEv, nMax); }
+int kapi_midi_read (struct kapi_midi_event *pEv, int nMax)
+{
+	if (pEv != 0 && nMax > 0 && !UserWritable (pEv, (u64) nMax * sizeof *pEv)) return -1;
+	return KernelMidiRead (pEv, nMax);
+}
 int kapi_midi_devices (void) { return KernelMidiDevices (); }
 
 // --- v50: USB gamepads ---
 int kapi_pad_state (int nIndex, struct kapi_pad *pOut)
 {
-	if (pOut == 0 || !KernelPadState (nIndex, pOut)) return 0;
+	struct kapi_pad Pad;
+	if (pOut == 0 || !UserRange (pOut, sizeof *pOut) || !KernelPadState (nIndex, &Pad)) return 0;
 	CWindowManager *pWM = CWindowManager::Get ();
 	CAddressSpace *pAS = CurrentAS ();
-	pOut->focus = pWM != 0 && pAS != 0 && pWM->HasKeyFocus (pAS->GetWindow ()) ? 1 : 0;
-	return 1;
+	Pad.focus = pWM != 0 && pAS != 0 && pWM->HasKeyFocus (pAS->GetWindow ()) ? 1 : 0;
+	return UserPut (pOut, Pad) ? 1 : 0;
 }
 
 }  // extern "C"
@@ -2504,9 +2739,8 @@ extern "C" {
 int kapi_win_list (struct kapi_win_info *pOut, int nMax)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	// (no IS_USER_VA check: an app's stack is its kernel task's -- apps run at EL1 -- so a
-	// buffer on the caller's stack is not in the user range)
-	if (pWM == 0 || pOut == 0 || nMax <= 0) return 0;
+	// (kern/uaccess.h: a legacy app's buffer may be on its stack -- its kernel task's)
+	if (pWM == 0 || pOut == 0 || nMax <= 0 || !UserWritable (pOut, (u64) nMax * sizeof *pOut)) return 0;
 	CWindow *List[WM_MAX_WINDOWS];
 	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
 	CWindow *pFs = pWM->FullscreenWindow ();
@@ -2545,7 +2779,7 @@ int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned
 	if (pWM != 0 && nId == KAPI_WIN_DESKTOP)		// the whole desktop, composited straight in
 	{
 		if (nPart != 0 || x != 0 || y != 0 || w != g_nScreenWidth || h != g_nScreenHeight || nStride != w
-		    || pDst == 0) return -1;
+		    || pDst == 0 || !UserWritable (pDst, (u64) w * h * 4)) return -1;
 		GImage Img ((u32 *) pDst, w, h);
 		pWM->CompositeDesktop (&Img);
 		return 0;
@@ -2579,6 +2813,7 @@ int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned
 	if (y + h > H) h = H - y;
 	if (w <= 0 || h <= 0) return 0;
 	if (nStride < w) return -1;
+	if (!UserWritable (pDst, ((u64) (h - 1) * (u64) nStride + (u64) w) * 4)) return -1;
 	for (int r = 0; r < h; r++)
 		memcpy (pDst + (size_t) r * nStride, pSrc + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
 	return 0;
@@ -2622,14 +2857,15 @@ int kapi_win_geometry (struct kapi_win_geom *pOut)
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pW = pAS != 0 ? pAS->GetWindow () : 0;
 	if (pWM == 0 || pW == 0 || pOut == 0) return -1;
-	memset (pOut, 0, sizeof *pOut);
-	pOut->x = pW->X (); pOut->y = pW->Y ();
-	pOut->w = pW->OuterWidth (); pOut->h = pW->OuterHeight ();
-	pOut->cw = pW->ClientWidth (); pOut->ch = pW->ClientHeight ();
-	pWM->WorkArea (&pOut->ax, &pOut->ay, &pOut->aw, &pOut->ah);
-	pOut->state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
+	struct kapi_win_geom G;					// (made here, copied out whole)
+	memset (&G, 0, sizeof G);
+	G.x = pW->X (); G.y = pW->Y ();
+	G.w = pW->OuterWidth (); G.h = pW->OuterHeight ();
+	G.cw = pW->ClientWidth (); G.ch = pW->ClientHeight ();
+	pWM->WorkArea (&G.ax, &G.ay, &G.aw, &G.ah);
+	G.state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
 		| (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
-	return 0;
+	return UserPut (pOut, G) ? 0 : -1;
 }
 
 // ---- v65: the workspaces (virtual desktops) -------------------------------------------------
@@ -2662,7 +2898,7 @@ int kapi_screen_set (int w, int h)
 // pixels, 8 low bits and the 4 high ones of a shared byte, horizontally then vertically.
 int kapi_screen_native (int *pw, int *ph)
 {
-	if (pw == 0 || ph == 0) return 0;
+	if (pw == 0 || ph == 0 || !OutOK (pw) || !OutOK (ph)) return 0;
 	CBcmPropertyTags Tags;
 	TPropertyTagEDIDBlock Edid;
 	Edid.nBlockNumber = EDID_FIRST_BLOCK;
@@ -2674,7 +2910,7 @@ int kapi_screen_native (int *pw, int *ph)
 	if (d[0] == 0 && d[1] == 0) return 0;			// (not a timing: a display descriptor)
 	int w = d[2] | ((d[4] & 0xF0) << 4), h = d[5] | ((d[7] & 0xF0) << 4);
 	if (w < 320 || h < 200) return 0;
-	*pw = w; *ph = h;
+	OutPut (pw, w); OutPut (ph, h);
 	return 1;
 }
 
@@ -2690,7 +2926,7 @@ unsigned *kapi_resize_window2 (int w, int h, int *pStride)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || w <= 0 || h <= 0)
+	if (pWin == 0 || w <= 0 || h <= 0 || !OutOK (pStride))
 	{
 		return 0;
 	}
@@ -2712,16 +2948,19 @@ unsigned *kapi_resize_window2 (int w, int h, int *pStride)
 		pAS->FlushTLB ();
 	}
 	pWin->SetLogicalSize (w, h);
-	if (pStride != 0) *pStride = pWin->Canvas ()->Width ();
+	OutPut (pStride, (int) pWin->Canvas ()->Width ());
 	return (unsigned *) USER_WINDOW_CANVAS;
 }
 
 // (v71) A volume's room: RAM: (kern/ramfs.h) or a FatFs volume ("SD:", "SD1:"...: f_getfree,
 // from the FAT's free-cluster count -- FSINFO on FAT32, kept by FatFs once known).
-int kapi_vol_info (const char *pPath, struct kapi_vol_info *pOut)
+int kapi_vol_info (const char *pUserPath, struct kapi_vol_info *pUserOut)
 {
-	if (pPath == 0 || pOut == 0) return -1;
-	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	CUserStr Path (pUserPath, UPATH_MAX);
+	if (!Path.OK () || pUserOut == 0 || !UserRange (pUserOut, sizeof *pUserOut)) return -1;
+	struct kapi_vol_info Out;				// (made here, copied out whole)
+	struct kapi_vol_info *pOut = &Out;
+	char abs[300]; ResolvePath (Path.Get (), abs, sizeof abs);
 	memset (pOut, 0, sizeof *pOut);
 	if (RamFsHandles (abs))
 	{
@@ -2731,7 +2970,7 @@ int kapi_vol_info (const char *pPath, struct kapi_vol_info *pOut)
 		pOut->total = nTotal; pOut->used = nUsed; pOut->free = nFree;
 		pOut->files = nFiles; pOut->dirs = nDirs; pOut->flags = KAPI_VOL_RAM;
 		strcpy (pOut->type, "RAM");
-		return 0;
+		return UserPut (pUserOut, Out) ? 0 : -1;
 	}
 	unsigned nVol = VolumePrefix (abs);
 	if (nVol == 0) return -1;
@@ -2746,7 +2985,7 @@ int kapi_vol_info (const char *pPath, struct kapi_vol_info *pOut)
 	pOut->used = pOut->total - pOut->free;
 	strcpy (pOut->type, pFs->fs_type == FS_FAT12 ? "FAT12" : pFs->fs_type == FS_FAT16 ? "FAT16"
 			  : pFs->fs_type == FS_FAT32 ? "FAT32" : "exFAT");
-	return 0;
+	return UserPut (pUserOut, Out) ? 0 : -1;
 }
 
 }  // extern "C"

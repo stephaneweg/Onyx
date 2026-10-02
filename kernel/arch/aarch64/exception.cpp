@@ -8,6 +8,7 @@
 #include <kern/trapframe.h>
 #include <kern/appcore.h>
 #include <kern/addrspace.h>		// the faulting app's pid (AppFaultExit)
+#include <kern/uaccess.h>		// UAccessFixup, UAccessInAppMem
 #include <kern/crashlog.h>
 #include <kern/thread.h>		// WordWaitTick (v68)
 #include <circle/multicore.h>
@@ -195,7 +196,8 @@ static void DumpAndHalt (unsigned nException, TTrapFrame *pFrame)
 // Only a fault taken at EL1t in the app's own code qualifies: the faulting PC in the user VA
 // range (IS_USER_VA -- the same test as the preemption gate in KernelIRQExit), or an instruction
 // abort / PC alignment fault at a wild PC reached from app code (LR in the user VA range: a
-// call through a bad pointer). A fault whose PC is in the kernel (a kapi call on behalf of an
+// call through a bad pointer), or a fault in the memcpy / memset / memmove of the kapi table
+// called from app code (LR in the user VA range: those leaf routines hold nothing). A fault whose PC is in the kernel (a kapi call on behalf of an
 // app included) keeps the post-mortem console. Kernel locks are never held while app code runs
 // (the kapis that call back into an app -- the event pump, posts, a thread's entry -- hold
 // nothing across the call); the no-kill count, the one such state the scheduler tracks, is
@@ -235,6 +237,15 @@ static boolean AppFaultRedirect (TTrapFrame *pFrame, u64 ulESR)
 	    && IS_USER_VA (pFrame->x[30]))
 	{
 		bApp = TRUE;				// a branch from app code to a wild address
+	}
+	if (   !bApp
+	    && UAccessInAppMem (pFrame->elr_el1)
+	    && IS_USER_VA (pFrame->x[30]))
+	{
+		// The app's memcpy / memset / memmove (the kapi table's, arch/aarch64/uaccess.S:
+		// leaf functions -- no frame, no lock -- called straight from the app's code): its
+		// bad pointer, its fault.
+		bApp = TRUE;
 	}
 	if (!bApp)
 	{
@@ -364,6 +375,12 @@ void AppFaultExit (u64 ulESR, u64 ulFAR, u64 ulPC, u64 ulSPSR, u64 ulLR, u64 ulS
 
 void SyncHandlerEL1 (TTrapFrame *pFrame)
 {
+	// A fault-safe copy (kern/uaccess.h) hit an app's bad pointer: it returns a failure.
+	if (UAccessFixup (pFrame, ReadESR ()))
+	{
+		return;
+	}
+
 #ifdef ARM_ALLOW_MULTI_CORE
 	// A fault in an app's job on core 2-3: stop that job, not the machine.
 	if (CMultiCoreSupport::ThisCore () != 0 && AppCoreOnFault (pFrame))

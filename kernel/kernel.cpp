@@ -1911,6 +1911,11 @@ boolean CKernel::Initialize (void)
 		El0ConfigurePmu (m_Options.GetAppOptionDecimal ("el0pmu", 0) != 0);
 		El0CoreInit (0);
 
+		// nullguard=1 (cmdline.txt): the first 64 KB page (the armstub, the spin table) unmapped
+		// in the app spaces -- an app's NULL access faults (it is killed) instead of writing
+		// there (mm/addrspace.cpp). Off by default until tried on the Pi.
+		g_bNullGuard = m_Options.GetAppOptionDecimal ("nullguard", 0) != 0;
+
 		// Per-process address spaces (#5): remember the kernel TTBR0 and switch
 		// TTBR0/ASID on every task switch based on the task's address space.
 		AddrSpaceInit ();

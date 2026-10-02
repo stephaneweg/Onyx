@@ -10,7 +10,7 @@
 #include <kern/appcore.h>
 #include <kern/v3d.h>
 #include <circle/types.h>
-#include <circle/util.h>		// memset / memcpy / memmove (ABI v36)
+#include <kern/uaccess.h>		// AppMemset / AppMemcpy / AppMemmove (ABI v36)
 
 // The kapi_* functions (defined in sys/kapi.cpp). Declared here with the ABI's
 // signatures (handler params as gui_handler) so they assign straight into the
@@ -331,9 +331,12 @@ void KApiTableInit (void)
 	t->mailbox_send      = kapi_mailbox_send;
 	t->mailbox_recv      = kapi_mailbox_recv;
 
-	t->memset            = memset;
-	t->memcpy            = memcpy;
-	t->memmove           = memmove;
+	// (v36) the legacy apps' memset / memcpy / memmove: kernel code, but our own copies
+	// (arch/aarch64/uaccess.S) -- a fault in them with the return address in the app is the
+	// app's bad pointer and kills the app, not the machine (exception.cpp, AppFaultRedirect)
+	t->memset            = AppMemset;
+	t->memcpy            = AppMemcpy;
+	t->memmove           = AppMemmove;
 
 	t->tcp_listen        = kapi_tcp_listen;
 	t->tcp_accept        = kapi_tcp_accept;

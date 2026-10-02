@@ -9,6 +9,7 @@
 #include <kern/trapframe.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
+#include <kern/uaccess.h>		// copy_from_user / copy_to_user
 #include <kern/gui/window.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -17,30 +18,16 @@
 #include <circle/util.h>
 #include <circle/types.h>
 
-// ---- user-memory access (for #6; LDTR/STTR honor EL0 permissions in EL1) -----
+// ---- user-memory access: the fault-safe copies (kern/uaccess.h) ------------------
 
 int copy_from_user (void *pDst, const void *pUserSrc, size_t nLen)
 {
-	u8 *pD = (u8 *) pDst;
-	const u8 *pS = (const u8 *) pUserSrc;
-	for (size_t i = 0; i < nLen; i++)
-	{
-		u8 v;
-		asm volatile ("ldtrb %w0, [%1]" : "=r" (v) : "r" (pS + i));
-		pD[i] = v;
-	}
-	return SYS_OK;
+	return UserCopyIn (pDst, pUserSrc, nLen) ? SYS_OK : SYS_EFAULT;
 }
 
 int copy_to_user (void *pUserDst, const void *pSrc, size_t nLen)
 {
-	u8 *pD = (u8 *) pUserDst;
-	const u8 *pS = (const u8 *) pSrc;
-	for (size_t i = 0; i < nLen; i++)
-	{
-		asm volatile ("sttrb %w0, [%1]" : : "r" (pS[i]), "r" (pD + i));
-	}
-	return SYS_OK;
+	return UserCopyOut (pUserDst, pSrc, nLen) ? SYS_OK : SYS_EFAULT;
 }
 
 // ---- individual syscalls -----------------------------------------------------
@@ -52,7 +39,7 @@ static long sys_write (unsigned nFD, const void *pBuf, size_t nLen, boolean bFro
 
 	if (bFromUser)
 	{
-		// EL0 buffer: use unprivileged loads (works under PAN, honors EL0 rights).
+		// An app's buffer: range-checked, copied fault-safe (kern/uaccess.h).
 		if (copy_from_user (Tmp, pBuf, n) != SYS_OK)
 		{
 			return SYS_EFAULT;

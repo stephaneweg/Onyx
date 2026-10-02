@@ -11,6 +11,7 @@
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/util.h>		// memcpy
+#include <kern/uaccess.h>		// the app's pointers (the kapis below)
 
 // ---- CMailbox --------------------------------------------------------------
 CMailbox::CMailbox (void)
@@ -170,9 +171,11 @@ extern "C" int kapi_register_shell (void)
 
 // Register the caller as service `pName`. 1 = registered (or already ours), 0 = the
 // name is held by another live process / bad name / table full.
-extern "C" int kapi_ipc_register (const char *pName)
+extern "C" int kapi_ipc_register (const char *pUserName)
 {
 	CAddressSpace *pAS = CurAS ();
+	CUserStr UserName (pUserName, 256, TRUE);	// (a copy: IPC_NAME_MAX - 1 are kept)
+	const char *pName = UserName.Get ();
 	if (pAS == 0 || pName == 0 || pName[0] == '\0')
 	{
 		return 0;
@@ -204,8 +207,10 @@ extern "C" int kapi_ipc_register (const char *pName)
 }
 
 // pid of the process registered as `pName`, or 0.
-extern "C" int kapi_ipc_lookup (const char *pName)
+extern "C" int kapi_ipc_lookup (const char *pUserName)
 {
+	CUserStr UserName (pUserName, 256, TRUE);	// (NameEq compares IPC_NAME_MAX at most)
+	const char *pName = UserName.Get ();
 	if (pName == 0)
 	{
 		return 0;
@@ -222,8 +227,21 @@ extern "C" int kapi_ipc_lookup (const char *pName)
 	return 0;
 }
 
-extern "C" int kapi_shell_request (int nType, const void *pIn, unsigned nLen)
+// The payload, copied into the kernel before the mailbox's lock is taken (fault-safe): FALSE on
+// a bad pointer. Longer than a message: left to Push (it refuses it).
+static boolean PayloadIn (u8 *pBuf, const void *pIn, unsigned nLen)
 {
+	return pIn == 0 || nLen == 0 || nLen > MAILBOX_MSG_MAX || UserCopyIn (pBuf, pIn, nLen);
+}
+
+extern "C" int kapi_shell_request (int nType, const void *pUserIn, unsigned nLen)
+{
+	u8 In[MAILBOX_MSG_MAX];
+	if (!PayloadIn (In, pUserIn, nLen))
+	{
+		return 0;			// (a bad pointer: as a full mailbox)
+	}
+	const void *pIn = pUserIn != 0 ? (const void *) In : 0;
 	if (g_nShellPid == 0)
 	{
 		return -1;			// no shell registered
@@ -244,8 +262,14 @@ extern "C" int kapi_shell_request (int nType, const void *pIn, unsigned nLen)
 	return pMb->Push (nFrom, nType, pIn, nLen) ? 1 : 0;	// 0 = mailbox full
 }
 
-extern "C" int kapi_mailbox_send (int nTargetPid, int nType, const void *pIn, unsigned nLen)
+extern "C" int kapi_mailbox_send (int nTargetPid, int nType, const void *pUserIn, unsigned nLen)
 {
+	u8 In[MAILBOX_MSG_MAX];
+	if (!PayloadIn (In, pUserIn, nLen))
+	{
+		return 0;
+	}
+	const void *pIn = pUserIn != 0 ? (const void *) In : 0;
 	CAddressSpace *pTarget = FindASByPid ((unsigned) nTargetPid);
 	if (pTarget == 0)
 	{
@@ -268,6 +292,14 @@ extern "C" int kapi_mailbox_recv (int *pFromPid, int *pType, void *pBuf, unsigne
 	{
 		return -1;
 	}
+	// (the outputs checked before a message is taken off the mailbox)
+	unsigned nMost = nCap < MAILBOX_MSG_MAX ? nCap : MAILBOX_MSG_MAX;
+	if (   (pFromPid != 0 && !UserRange (pFromPid, sizeof *pFromPid))
+	    || (pType != 0 && !UserRange (pType, sizeof *pType))
+	    || (pBuf != 0 && !UserRange (pBuf, nMost)))
+	{
+		return -1;
+	}
 	CMailbox *pMb = pAS->GetOrCreateMailbox ();
 	if (pMb == 0)
 	{
@@ -278,11 +310,11 @@ extern "C" int kapi_mailbox_recv (int *pFromPid, int *pType, void *pBuf, unsigne
 	{
 		if (pMb->Pop (&Msg))
 		{
-			if (pFromPid != 0) *pFromPid = (int) Msg.from_pid;
-			if (pType    != 0) *pType    = Msg.type;
+			if (pFromPid != 0) UserPut (pFromPid, (int) Msg.from_pid);
+			if (pType    != 0) UserPut (pType, Msg.type);
 			unsigned n = Msg.len;
 			if (n > nCap) n = nCap;
-			if (pBuf != 0 && n != 0) memcpy (pBuf, Msg.data, n);
+			if (pBuf != 0 && n != 0 && !UserCopyOut (pBuf, Msg.data, n)) return -1;
 			return (int) n;			// payload length delivered
 		}
 		if (!bBlocking || !CScheduler::IsActive ())
