@@ -74,6 +74,13 @@ answer in French. The docs stay in English.
   800-byte frame (the stop IPI only: should be rare); (4) `tlbi`/ASID on each `core_run`.
   **Jet (NetSurf) may be a little slower too** (the user: not important, a WebKit port is planned);
   lead (1) and the newlib/umm locks (`sysstat jet`) apply there as well.
+- **Performance after EL0, to analyse later (the user, 2026-10-02)**: the GameCube emulator and maybe Jet
+  slower (above); **Arkanoid in full screen slow** (a BASIC `.bax` app; only ~4 300 system calls/s, so
+  not the calls: look at the user-side `memcpy`/`memset` -- byte loops under 16 bytes and the
+  destination aligned first, for the Device framebuffer -- and `present_fb`/`fullscreen_direct`);
+  **Doom slower, ~588 000 system calls/s** (`ps` SYSC/s): a kapi in a tight loop (a clock read --
+  `get_ticks`/`clock_us`, readable at EL0 through `cntvct` instead --, newlib's locks, the app-core
+  RPC of `user/doom`): `sysstat doom` names the top slots; fix it app-side.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
