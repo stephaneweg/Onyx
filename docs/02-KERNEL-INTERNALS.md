@@ -295,7 +295,13 @@ the plan: [`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1.
   "<name> ran out of memory", term reason `KAPI_PROC_OOM`, status −9. In a kapi the call fails with
   its error value; on an app core the job ends `CORE_FAULT`. **Heuristic overcommit**: one `sbrk`
   growth or one writable `vm_map` (without `NORESERVE`) larger than the free pool − 16 MB fails
-  (`sbrk` → −1, `vm_map` → −`ENOMEM`); nothing else is counted.
+  (`sbrk` → −1, `vm_map` → −`ENOMEM`); nothing else is counted. **The counters are repaired
+  first** (`VmPagerRepair`, at each check and after each `palloc_high`): Circle's
+  `CPageAllocator::Allocate` advances its bump pointer before it finds its region full and never
+  steps it back, so each failed attempt — and `palloc_high` tries the full segment 0 before every
+  page it takes elsewhere — made `GetFreeSpace` (and `meminfo`) one page short for ever: an OOM
+  kill seemed to lose ~1.1 GB, and the OOM check fired with half the memory free (Pi round 1). A
+  region past its limit is set back to it, under its lock.
 - **Frames leaving** (`vm_unmap`, `MADV_DONTNEED`/`FREE`, an `sbrk` shrink, an ended thread's
   stack) and **protections lowered** (`vm_protect`): the PTE written, `DSB ISHST`,
   `TLBI VAE1IS (va >> 12 | ASID << 48)` per page (`TLBI ASIDE1IS` above 64 pages), `DSB ISH`, `ISB`
