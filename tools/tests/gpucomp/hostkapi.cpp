@@ -217,9 +217,28 @@ static int h_gpu_render (const kapi_gpu_frame *f, const kapi_gpu_vertex3 *v, uns
 				float s4[4]; for (int c = 0; c < 4; c++) s4[c] = (float) ((pix[i].rgba >> (c * 8)) & 255) / 255.0f;
 				float *d = &tb[(size_t) at[i] * 4];
 				float r4[4];
-				if (blend == KAPI_GPU_BLEND_PREMUL) for (int c = 0; c < 4; c++) r4[c] = s4[c] + d[c] * (1 - s4[3]);
-				else if (blend == KAPI_GPU_BLEND_NONE) for (int c = 0; c < 4; c++) r4[c] = s4[c];
-				else return -2;
+				// the kernel's table (sys/v3d.cpp): colour src, dst, equation, alpha src, dst, equation
+				static const unsigned char Fac[KAPI_GPU_BLEND_LAST + 1][6] = {
+					{ 1, 0, 0, 1, 0, 0 }, { 6, 7, 0, 1, 7, 0 }, { 6, 1, 0, 6, 1, 0 }, { 4, 0, 0, 4, 0, 0 },
+					{ 1, 7, 0, 1, 7, 0 }, { 4, 7, 0, 0, 1, 0 }, { 9, 1, 0, 1, 7, 0 }, { 1, 3, 0, 1, 7, 0 },
+					{ 1, 1, 0, 1, 7, 0 }, { 1, 1, 2, 0, 1, 0 }, { 1, 1, 4, 1, 7, 0 }, { 0, 6, 0, 0, 6, 0 },
+					{ 0, 7, 0, 0, 7, 0 } };
+				if (blend > KAPI_GPU_BLEND_LAST || blend == 1 || blend == 2 || blend == 3) return -2;
+				if (blend == KAPI_GPU_BLEND_NONE) for (int c = 0; c < 4; c++) r4[c] = s4[c];
+				else
+				{
+					float dd[4] = { d[0], d[1], d[2], alpha ? d[3] : 1.0f };
+					auto fac = [&] (int f, int c) -> float {
+						switch (f) { case 0: return 0; case 1: return 1; case 3: return 1 - s4[c]; case 4: return dd[c];
+							     case 6: return s4[3]; case 7: return 1 - s4[3]; case 9: return 1 - dd[3]; }
+						return 0; };
+					for (int c = 0; c < 4; c++)
+					{
+						const unsigned char *f = Fac[blend] + (c < 3 ? 0 : 3);
+						float a = s4[c] * fac (f[0], c), b = dd[c] * fac (f[1], c);
+						r4[c] = f[2] == 2 ? b - a : f[2] == 4 ? std::max (s4[c], dd[c]) : a + b;
+					}
+				}
 				for (int c = 0; c < 4; c++) { float x = r4[c] < 0 ? 0 : r4[c] > 1 ? 1 : r4[c]; r4[c] = roundf (x * 255.0f) / 255.0f; }
 				d[0] = r4[0]; d[1] = r4[1]; d[2] = r4[2];
 				if (alpha) d[3] = r4[3];				// (else the write mask keeps it)

@@ -5,8 +5,8 @@
 namespace wtk {
 
 Textbox::Textbox (int l, int t, int w, int h, const char *s, Action cb_)
-  : Widget (l, t, w, h), caret (0), password (false), cb (cb_), padR (0), vstart (0), maxLen (63)
-{ int i = 0; if (s) for (; s[i] && i < maxLen; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); }
+  : Widget (l, t, w, h), caret (0), password (false), cb (cb_), maxLen (63), padR (0), vstart (0), changed (0)
+{ canFocus = true; int i = 0; if (s) for (; s[i] && i < maxLen; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); }
 
 void Textbox::setText (const char *s)
 { int i = 0; if (s) for (; s[i] && i < maxLen; i++) text[i] = s[i]; text[i] = '\0'; caret = wk_len (text); invalidate (true); }
@@ -147,7 +147,7 @@ bool Textbox::keyFace (long k)
 	else if (k == KEY_RIGHT) caret = wk_u8_next (text, caret, len);
 	else if (k == KEY_HOME)  caret = 0;
 	else if (k == KEY_END)   caret = len;
-	else if (k == KEY_ENTER) { if (cb) cb (*this); }
+	else if (k == KEY_ENTER) { if (!cb) return false; cb (*this); }
 	else return false;
 	invalidate (true); return true;
 }
@@ -198,7 +198,19 @@ bool Textbox::clipKey (long k)
 	invalidate (true); return true;
 }
 
+void Textbox::onTabFocus () { caret = wk_len (text); vstart = 0; }
+
+// A key: the edit (editKey), then `changed` told if the text is not what it was.
 bool Textbox::onKey (long k)
+{
+	char before[TEXT_CAP];
+	int i = 0; for (; text[i]; i++) before[i] = text[i]; before[i] = '\0';
+	bool r = editKey (k);
+	if (r && changed) { int j = 0; while (before[j] && before[j] == text[j]) j++; if (before[j] != text[j]) changed (*this); }
+	return r;
+}
+
+bool Textbox::editKey (long k)
 {
 	if (clipKey (k)) return true;
 	if (wk_textface ()) return keyFace (k);
@@ -219,7 +231,7 @@ bool Textbox::onKey (long k)
 	else if (k == KEY_RIGHT)     { if (caret < len) caret++; }
 	else if (k == KEY_HOME)        caret = 0;
 	else if (k == KEY_END)         caret = len;
-	else if (k == KEY_ENTER)     { if (cb) cb (*this); }
+	else if (k == KEY_ENTER)     { if (!cb) return false; cb (*this); }
 	else return false;
 	invalidate (true); return true;
 }

@@ -18,12 +18,16 @@ public:
 	int	 maxLen;			// the most bytes typed or set (63; up to TEXT_CAP - 1: a chat line)
 	int	 padR;				// px kept free at the right (a Combobox's arrow)
 	int	 vstart;			// the first character shown (set by onDraw)
+	Action	 changed;			// called after each edit typed or pasted (0: none; cb is Enter's)
 	Textbox (int l, int t, int w, int h, const char *s = "", Action cb_ = 0);
 	void setText (const char *s);
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;
+	bool isField () override { return true; }		// a Tab stop
+	void onTabFocus () override;			// Tab: the caret at the end
 private:
+	bool editKey (long k);
 	// With a proportional face installed (wtk/text.h): the text is UTF-8, measured; vstart is then
 	// the byte the field shows from.
 	int  shown (char *d) const;		// what is shown (a password's '*'s) -> its length

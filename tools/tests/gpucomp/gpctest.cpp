@@ -83,9 +83,25 @@ static void reference (std::vector<double> &buf, int W, int H, bool alpha, const
 				double *d = &buf[((size_t) y * W + x) * 4];
 				double op = L.opacity / 255.0;
 				for (int k = 0; k < 4; k++) s[k] *= op;
-				double ia2 = 1 - s[3] / 255.0;
-				for (int k = 0; k < 3; k++) d[k] = s[k] + d[k] * ia2;
-				if (alpha) d[3] = s[3] + d[3] * ia2;
+				if (L.blend == GPC_B_MASK) { refSample (t, L.src_x + lx, L.src_y + ly, (L.flags & GPC_L_NEAREST) != 0, s); op = 1; }
+				double sa = s[3] / 255.0, da = alpha ? d[3] / 255.0 : 1.0, ia2 = 1 - sa;
+				for (int k = 0; k < 3; k++)
+				{
+					double sc = s[k], dc = d[k], c;
+					switch (L.blend)
+					{
+					case GPC_B_MULTIPLY: c = sc * dc / 255 + dc * ia2 + sc * (1 - da); break;
+					case GPC_B_SCREEN: c = sc + dc - sc * dc / 255; break;
+					case GPC_B_ADD: c = fmin (255, sc + dc); break;
+					case GPC_B_SUBTRACT: c = fmax (0, dc - sc) + sc * (1 - da); break;
+					case GPC_B_LIGHTEN: c = fmax (sc, dc); break;
+					case GPC_B_MASK: c = dc * sa; break;
+					case GPC_B_CUTOUT: c = dc * ia2; break;
+					default: c = sc + dc * ia2; break;
+					}
+					d[k] = fmin (255, c);
+				}
+				if (alpha) d[3] = L.blend == GPC_B_MASK ? d[3] * sa : L.blend == GPC_B_CUTOUT ? d[3] * ia2 : s[3] + d[3] * ia2;
 			}
 	}
 }
@@ -230,6 +246,19 @@ int main (void)
 		gpc_layer b = layer (0, 0, 100, 80, 140); gpc_matrix_translate (&b.m, 70, 50); gpc_matrix_scale (&b.m, 1.2f, 1.1f);
 		s.layers = { a, b }; s.li = { 0, 1 }; scenes.push_back (s);
 	}
+	// the blend modes, over an ARGB target (a translucent layer under) and an opaque one
+	static const char *const BN[GPC_B_COUNT] = { "normal", "multiply", "screen", "add", "subtract", "lighten", "mask", "cut out" };
+	static char bnames[2][GPC_B_COUNT][64];
+	for (int al = 0; al < 2; al++)
+		for (int bm = 1; bm < GPC_B_COUNT; bm++)
+		{
+			snprintf (bnames[al][bm], sizeof bnames[al][bm], "blend %s, %s target", BN[bm], al ? "ARGB" : "opaque");
+			Scene s = base (bnames[al][bm], 200, 150, al != 0, al ? 0x00000000 : 0x406080);
+			addTex (s, 140, 110, al ? 1 : 0); addTex (s, 120, 90, 2);
+			gpc_layer a = layer (0, 0, 140, 110, 255); gpc_matrix_translate (&a.m, 10, 10);
+			gpc_layer b = layer (0, 0, 120, 90, 200); gpc_matrix_translate (&b.m, 60, 40); b.blend = (unsigned) bm;
+			s.layers = { a, b }; s.li = { 0, 1 }; scenes.push_back (s);
+		}
 	{
 		Scene s = base ("tiles: a 2200-texel-wide texture's seam x3", 320, 64, false, 0x000000);
 		addTex (s, 2200, 40, 3);

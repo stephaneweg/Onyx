@@ -454,6 +454,49 @@ static void gpc_row (unsigned *d, const unsigned *s, int n, unsigned k, int alph
 	}
 }
 
+// x y / 255, rounded (x, y 0..255)
+static inline unsigned gpc_mul8 (unsigned x, unsigned y) { unsigned t = x * y + 128; return (t + (t >> 8)) >> 8; }
+// one pixel of a blend mode (gpucomp.h): s premultiplied at its opacity, d the target's (alpha: its
+// alpha too, else opaque -- da 255, the top byte kept)
+unsigned gpc_blend_pixel (unsigned s, unsigned d, unsigned blend, int alpha)
+{
+	unsigned sa = s >> 24, da = alpha ? d >> 24 : 255, oa = sa + gpc_mul8 (da, 255 - sa), o = 0;
+	if (blend == GPC_B_NORMAL)
+	{
+		if (alpha) return gpc_over (s, d);
+		return (d & 0xFF000000) | (gpc_over (s, d | 0xFF000000) & 0x00FFFFFF);
+	}
+	if (blend == GPC_B_MASK || blend == GPC_B_CUTOUT)
+	{
+		unsigned k = blend == GPC_B_MASK ? sa : 255 - sa;
+		if (!alpha) return (d & 0xFF000000) | (gpc_scale (d, k + (k >> 7)) & 0x00FFFFFF);
+		for (int sh = 0; sh < 32; sh += 8) o |= gpc_mul8 ((d >> sh) & 255, k) << sh;
+		return o;
+	}
+	for (int sh = 0; sh < 24; sh += 8)
+	{
+		int sc = (int) ((s >> sh) & 255), dc = (int) ((d >> sh) & 255), c;
+		switch (blend)
+		{
+		case GPC_B_MULTIPLY: c = (int) (gpc_mul8 ((unsigned) sc, (unsigned) dc) + gpc_mul8 ((unsigned) dc, 255 - sa) + gpc_mul8 ((unsigned) sc, 255 - da)); break;
+		case GPC_B_SCREEN: c = sc + dc - (int) gpc_mul8 ((unsigned) sc, (unsigned) dc); break;
+		case GPC_B_ADD: c = sc + dc; break;
+		case GPC_B_SUBTRACT: c = (dc > sc ? dc - sc : 0) + (int) gpc_mul8 ((unsigned) sc, 255 - da); break;
+		case GPC_B_LIGHTEN: c = sc > dc ? sc : dc; break;
+		default: c = sc + (int) gpc_mul8 ((unsigned) dc, 255 - sa); break;
+		}
+		if (c > 255) c = 255;
+		o |= (unsigned) c << sh;
+	}
+	return o | (alpha ? (oa > 255 ? 255 : oa) << 24 : d & 0xFF000000);
+}
+// a row in a blend mode other than normal (k: the opacity 0..256; a mask's unused)
+static void gpc_row_blend (unsigned *d, const unsigned *s, int n, unsigned k, int alpha, unsigned blend)
+{
+	if (blend == GPC_B_MASK) k = 256;
+	for (int i = 0; i < n; i++) d[i] = gpc_blend_pixel (k >= 256 ? s[i] : gpc_scale (s[i], k), d[i], blend, alpha);
+}
+
 // the bilinear filter at fixed weights fx, fy (0..255) of texel pairs (a, b) above, (c, d) below
 static inline unsigned gpc_lerp4 (unsigned a, unsigned b, unsigned c, unsigned d, unsigned fx, unsigned fy)
 {
@@ -607,7 +650,8 @@ static void gpc_cpu_layer (const gpc_target *T, const gpc_layer *L, unsigned *ro
 				for (int i = 0; i < n; i++, U += dU, V += dV) row[i] = gpc_bilinear (t->px, tw, th, U, V);
 			}
 		}
-		gpc_row (d, src, n, k, alpha, opaque);
+		if (L->blend != GPC_B_NORMAL && L->blend < GPC_B_COUNT) gpc_row_blend (d, src, n, k, alpha, L->blend);
+		else gpc_row (d, src, n, k, alpha, opaque);
 	}
 }
 
@@ -685,7 +729,7 @@ static int gpc_flush (gpc_ctx *g, const gpc_target *T, int ox, int oy, int w, in
 }
 
 // the layer's batches for the target's part (ox, oy, w x h) -> 1, 0 no memory
-static int gpc_gpu_layer (gpc_ctx *g, const gpc_layer *L, int ox, int oy, int w, int h, int tw, int th)
+static int gpc_gpu_layer (gpc_ctx *g, const gpc_layer *L, int ox, int oy, int w, int h, int tw, int th, int alpha)
 {
 	double lx0, ly0, lx1, ly1;
 	int C[4];
@@ -697,8 +741,21 @@ static int gpc_gpu_layer (gpc_ctx *g, const gpc_layer *L, int ox, int oy, int w,
 	const gpc_matrix *m = &L->m;
 	unsigned op = L->opacity > 255 ? 255 : L->opacity;
 	int opaque = (L->flags & GPC_L_OPAQUE) && op == 255;
+	// the blend mode: one or two passes of the kernel's presets (v72); the second, UNDER, adds
+	// s (1 - da) -- nothing on an opaque target, left out there
+	unsigned pass[2] = { opaque ? KAPI_GPU_BLEND_NONE : KAPI_GPU_BLEND_PREMUL, 0 };
+	switch (L->blend < GPC_B_COUNT ? L->blend : GPC_B_NORMAL)
+	{
+	case GPC_B_MULTIPLY: pass[0] = KAPI_GPU_BLEND_MULCOL; pass[1] = alpha ? KAPI_GPU_BLEND_UNDER : 0; break;
+	case GPC_B_SCREEN: pass[0] = KAPI_GPU_BLEND_SCREEN; break;
+	case GPC_B_ADD: pass[0] = KAPI_GPU_BLEND_PLUS; break;
+	case GPC_B_SUBTRACT: pass[0] = KAPI_GPU_BLEND_RSUB; pass[1] = alpha ? KAPI_GPU_BLEND_UNDER : 0; break;
+	case GPC_B_LIGHTEN: pass[0] = KAPI_GPU_BLEND_LIGHTEN; break;
+	case GPC_B_MASK: pass[0] = KAPI_GPU_BLEND_DSTIN; op = 255; break;
+	case GPC_B_CUTOUT: pass[0] = KAPI_GPU_BLEND_DSTOUT; break;
+	default: break;
+	}
 	unsigned flags = KAPI_GPU_Z_ALWAYS | KAPI_GPU_B_NOZWRITE | KAPI_GPU_B_NOMATRIX
-		       | KAPI_GPU_B_BLEND (opaque ? KAPI_GPU_BLEND_NONE : KAPI_GPU_BLEND_PREMUL)
 		       | KAPI_GPU_B_WRAP_S (KAPI_GPU_WRAP_CLAMP) | KAPI_GPU_B_WRAP_T (KAPI_GPU_WRAP_CLAMP)
 		       | ((L->flags & GPC_L_NEAREST) ? 0 : KAPI_GPU_B_LINEAR);
 	double u0 = L->src_x + lx0, u1 = L->src_x + lx1, v0 = L->src_y + ly0, v1 = L->src_y + ly1;	// (texels drawn)
@@ -720,11 +777,14 @@ static int gpc_gpu_layer (gpc_ctx *g, const gpc_layer *L, int ox, int oy, int w,
 		n = gpc_clip_side (R, n, Q, 1, cy0, 1);
 		n = gpc_clip_side (Q, n, R, 1, cy1, 0);
 		if (n < 3) continue;
-		if (!gpc_grow (g, (unsigned) (n - 2) * 3, 1)) return 0;
-		struct kapi_gpu_batch *b = &g->b[g->nb++];
-		b->first = g->nv; b->count = (unsigned) (n - 2) * 3;
-		b->texture = T->handle; b->flags = flags;
-		for (int k = 0; k < 16; k++) b->matrix[k] = (k % 5) == 0 ? 1.0f : 0.0f;
+		if (!gpc_grow (g, (unsigned) (n - 2) * 3, 2)) return 0;
+		for (int ps = 0; ps < 2 && (ps == 0 || pass[ps]); ps++)	// (the passes: the same vertices)
+		{
+			struct kapi_gpu_batch *b = &g->b[g->nb++];
+			b->first = g->nv; b->count = (unsigned) (n - 2) * 3;
+			b->texture = T->handle; b->flags = flags | KAPI_GPU_B_BLEND (pass[ps]);
+			for (int k = 0; k < 16; k++) b->matrix[k] = (k % 5) == 0 ? 1.0f : 0.0f;
+		}
 		for (int k = 1; k + 1 < n; k++)
 		{
 			const gpc_pt *tri[3] = { &R[0], &R[k], &R[k + 1] };
@@ -758,13 +818,13 @@ static int gpc_gpu_run (gpc_ctx *g, const gpc_target *T, const gpc_layer *Ls, in
 			for (int i = i0; i < i1; i++)
 			{
 				const gpc_tex *t = Ls[i].tex;
-				if (g->nb + (unsigned) (t->ncx * t->ncy) > GPC_MAX_BATCHES || g->nv + 18u * (unsigned) (t->ncx * t->ncy) > GPC_MAX_VERTS)
+				if (g->nb + 2u * (unsigned) (t->ncx * t->ncy) > GPC_MAX_BATCHES || g->nv + 18u * (unsigned) (t->ncx * t->ncy) > GPC_MAX_VERTS)
 				{
 					int r = gpc_flush (g, T, ox, oy, w, h, k, clear);
 					if (r) return r;
 					k = 1;
 				}
-				if (!gpc_gpu_layer (g, &Ls[i], ox, oy, w, h, T->w, T->h)) return -4;
+				if (!gpc_gpu_layer (g, &Ls[i], ox, oy, w, h, T->w, T->h, (T->flags & GPC_T_ALPHA) != 0)) return -4;
 			}
 			if (g->nb || !k)
 			{
@@ -776,6 +836,12 @@ static int gpc_gpu_run (gpc_ctx *g, const gpc_target *T, const gpc_layer *Ls, in
 }
 
 // ---- compositing ------------------------------------------------------------------------------------------------------
+// the layer can be the GPU's: its texture is there, and its blend mode is normal or the kernel has
+// the presets (v72)
+static int gpc_on_gpu (const gpc_layer *L)
+{
+	return L->tex && L->tex->onGpu && (L->blend == GPC_B_NORMAL || L->blend >= GPC_B_COUNT || KT->version >= 72);
+}
 static int gpc_do_composite (gpc_ctx *g, const gpc_target *T, const gpc_layer *Ls, int n, unsigned clear, unsigned flags)
 {
 	if (g == 0 || T == 0 || T->pixels == 0 || T->w <= 0 || T->h <= 0 || T->stride < T->w || n < 0 || (n && Ls == 0))
@@ -796,9 +862,9 @@ static int gpc_do_composite (gpc_ctx *g, const gpc_target *T, const gpc_layer *L
 	{
 		// a run: layers of the same kind (on the GPU or not); the lost ones and the empty skipped
 		int big = T->w >= 2 && T->h >= 2;		// (the kernel's viewport: halves of the size, integers)
-		int gpu = g->gpu && big && i < n && Ls[i].tex && Ls[i].tex->onGpu;
+		int gpu = g->gpu && big && i < n && gpc_on_gpu (&Ls[i]);
 		int j = i;
-		while (j < n && (g->gpu && big && Ls[j].tex && Ls[j].tex->onGpu) == gpu) j++;
+		while (j < n && (g->gpu && big && gpc_on_gpu (&Ls[j])) == gpu) j++;
 		if (gpu)
 		{
 			int r = gpc_gpu_run (g, T, Ls, i, j, keep, clear);

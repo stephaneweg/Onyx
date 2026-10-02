@@ -1,12 +1,16 @@
 //
 // pdoc.h -- Paint's picture: layers of 0xAARRGGBB pixels (straight alpha: A = 255 opaque, 0 clear),
-// bottom first, each with a name, shown or hidden, an opacity; their composite (kept, recomputed
-// where something changed: a floating selection and a shape being drawn are composed with their
-// layer); the edits undone and redone -- a stroke keeps the 64 x 64 tiles it touched as they were,
-// a change of the picture's size or of its layers keeps the whole picture.
+// bottom first, each with a name, shown or hidden (a hidden layer is not drawn at all), an opacity
+// and a blend mode (normal, multiply, screen, add, subtract, lighten, mask, cut out: gpucomp's, so
+// that what the GPU shows and what Paint flattens agree pixel for pixel); what changed since the
+// screen last showed it (the view uploads those rectangles into the layers' textures); the edits
+// undone and redone -- a stroke keeps the 64 x 64 tiles it touched as they were, a change of the
+// picture's size or of its layers keeps the whole picture.
 //
 #ifndef _paint_pdoc_h
 #define _paint_pdoc_h
+
+#include "gpucomp/gpucomp.h"
 
 namespace pd {
 
@@ -37,7 +41,10 @@ struct Layer
 	unsigned *px;			// w * h
 	bool visible;
 	int opacity;			// 0..255
+	int blend;			// GPC_B_*: how it mixes with the layers under it
 };
+enum { NBLENDS = GPC_B_COUNT };
+static const char *const BLEND_NAMES[NBLENDS] = { "Normal", "Multiply", "Screen", "Add", "Subtract", "Lighten", "Mask", "Cut out" };
 
 // A rectangle [x0, x1) x [y0, y1).
 struct Rect
@@ -73,10 +80,12 @@ struct Doc
 	int w, h;
 	Layer lay[MAXLAYERS]; int n;	// bottom first
 	int cur;			// the layer drawn on
-	unsigned *comp;			// the composite (w * h)
 	Floater fl;
 	Overlay ov;
 	unsigned changes;		// counts the edits (the saved state: its count)
+	Rect dirty;			// the current layer's pixels (with what floats over it) changed there
+	bool dirtyAll;			// ... every layer's may have (the textures made again)
+	unsigned gen;			// bumped at each change shown (the thumbnails' cache)
 };
 static Doc D;
 
@@ -89,64 +98,86 @@ static unsigned *new_px (int w, int h, unsigned fill)
 }
 static void layer_init (Layer &l, const char *name, unsigned *px)
 {
-	scpy (l.name, name, sizeof l.name); l.px = px; l.visible = true; l.opacity = 255;
+	scpy (l.name, name, sizeof l.name); l.px = px; l.visible = true; l.opacity = 255; l.blend = GPC_B_NORMAL;
 }
 // A new picture: w x h, its background layer white (or clear).
 static void doc_new (int w, int h, bool white)
 {
 	for (int i = 0; i < D.n; i++) delete[] D.lay[i].px;
-	delete[] D.comp; delete[] D.fl.px; delete[] D.ov.px;
+	delete[] D.fl.px; delete[] D.ov.px;
 	D.w = w; D.h = h; D.n = 1; D.cur = 0;
 	layer_init (D.lay[0], "Background", new_px (w, h, white ? 0xFFFFFFFFu : 0));
-	D.comp = new_px (w, h, 0);
 	D.fl.px = 0; D.fl.w = D.fl.h = 0; D.fl.x = D.fl.y = 0;
 	D.ov.px = new_px (w, h, 0); D.ov.r = norect (); D.ov.eraser = false;
 	D.changes = 0;
+	D.dirty = norect (); D.dirtyAll = true;
 }
 
 // ---- the composite ------------------------------------------------------------------------------------------
-// Recompute r: the visible layers bottom first, the floater and the overlay with the current one.
+// r of the current layer changed (or of what floats over it): shown again there.
 static void compose (Rect r)
 {
 	r.clip (D.w, D.h);
 	if (r.empty ()) return;
-	for (int y = r.y0; y < r.y1; y++)
-	{
-		unsigned *o = D.comp + (unsigned) y * D.w;
-		for (int x = r.x0; x < r.x1; x++) o[x] = 0;
-		for (int k = 0; k < D.n; k++)
-		{
-			const Layer &l = D.lay[k];
-			if (!l.visible && k != D.cur) continue;
-			const unsigned *s = l.px + (unsigned) y * D.w;
-			bool extra = k == D.cur && (D.fl.px || !D.ov.r.empty ());
-			if (!extra)
-			{
-				if (!l.visible) continue;
-				if (l.opacity == 255) { for (int x = r.x0; x < r.x1; x++) { unsigned c = s[x]; if ((c >> 24) == 255) o[x] = c; else if (c >> 24) o[x] = over (o[x], c, 255); } }
-				else for (int x = r.x0; x < r.x1; x++) if (s[x] >> 24) o[x] = over (o[x], s[x], (unsigned) l.opacity);
-				continue;
-			}
-			// the current layer with what floats over it: made first, then laid on the others
-			const unsigned *ov = D.ov.px + (unsigned) y * D.w;
-			bool ovRow = y >= D.ov.r.y0 && y < D.ov.r.y1;
-			bool flRow = D.fl.px && y >= D.fl.y && y < D.fl.y + D.fl.h;
-			for (int x = r.x0; x < r.x1; x++)
-			{
-				unsigned c = l.visible ? s[x] : 0;
-				if (ovRow && x >= D.ov.r.x0 && x < D.ov.r.x1 && (ov[x] >> 24))
-					c = D.ov.eraser ? 0 : over (c, ov[x], 255);
-				if (flRow && x >= D.fl.x && x < D.fl.x + D.fl.w)
-				{
-					unsigned f = D.fl.px[(unsigned) (y - D.fl.y) * D.fl.w + (x - D.fl.x)];
-					if (f >> 24) c = over (c, f, 255);
-				}
-				if (c >> 24) o[x] = over (o[x], c, (unsigned) (l.visible ? l.opacity : 255));
-			}
-		}
-	}
+	D.dirty.add (r); D.gen++;
 }
-static void compose_all () { compose (mkrect (0, 0, D.w, D.h)); }
+// Any layer may have changed (an undo, a change of size, of the layers' order).
+static void compose_all () { D.dirtyAll = true; D.gen++; }
+
+// The current layer's pixel as shown: with the shape being drawn and the floating pixels over it.
+static inline unsigned shown_px (int k, int x, int y)
+{
+	unsigned c = D.lay[k].px[(unsigned) y * D.w + x];
+	if (k != D.cur) return c;
+	if (y >= D.ov.r.y0 && y < D.ov.r.y1 && x >= D.ov.r.x0 && x < D.ov.r.x1)
+	{
+		unsigned o = D.ov.px[(unsigned) y * D.w + x];
+		if (o >> 24) c = D.ov.eraser ? 0 : over (c, o, 255);
+	}
+	if (D.fl.px && y >= D.fl.y && y < D.fl.y + D.fl.h && x >= D.fl.x && x < D.fl.x + D.fl.w)
+	{
+		unsigned f = D.fl.px[(unsigned) (y - D.fl.y) * D.fl.w + (x - D.fl.x)];
+		if (f >> 24) c = over (c, f, 255);
+	}
+	return c;
+}
+// straight <-> premultiplied
+static inline unsigned premul (unsigned c)
+{
+	unsigned a = c >> 24;
+	if (a == 255) return c;
+	if (a == 0) return 0;
+	unsigned r = (((c >> 16) & 255) * a + 127) / 255, g = (((c >> 8) & 255) * a + 127) / 255, b = ((c & 255) * a + 127) / 255;
+	return a << 24 | r << 16 | g << 8 | b;
+}
+static inline unsigned unpremul (unsigned c)
+{
+	unsigned a = c >> 24;
+	if (a == 255 || a == 0) return a ? c : 0;
+	unsigned r = pmin (255u, (((c >> 16) & 255) * 255 + a / 2) / a), g = pmin (255u, (((c >> 8) & 255) * 255 + a / 2) / a), b = pmin (255u, ((c & 255) * 255 + a / 2) / a);
+	return a << 24 | r << 16 | g << 8 | b;
+}
+// The picture's pixel (x, y) as the visible layers make it, by the CPU: straight alpha. withExtras:
+// the current layer with what floats over it (the screen's), else the layers alone (a file's).
+static unsigned comp_px (int x, int y, bool withExtras)
+{
+	unsigned d = 0;						// (premultiplied)
+	for (int k = 0; k < D.n; k++)
+	{
+		const Layer &l = D.lay[k];
+		if (!l.visible) continue;
+		unsigned s = premul (withExtras ? shown_px (k, x, y) : l.px[(unsigned) y * D.w + x]);
+		if (l.blend == GPC_B_MASK) { d = gpc_blend_pixel (s, d, GPC_B_MASK, 1); continue; }
+		if (l.opacity < 255)
+		{
+			unsigned o = (unsigned) l.opacity;
+			s = ((((s >> 24) * o + 127) / 255) << 24) | (((((s >> 16) & 255) * o + 127) / 255) << 16) | (((((s >> 8) & 255) * o + 127) / 255) << 8) | (((s & 255) * o + 127) / 255);
+		}
+		if (!s && l.blend != GPC_B_MASK) continue;
+		d = gpc_blend_pixel (s, d, (unsigned) l.blend, 1);
+	}
+	return unpremul (d);
+}
 
 // ---- undo ---------------------------------------------------------------------------------------------------
 // A record: the tiles of one layer as they were (TILES), or the whole picture as it was (WHOLE).
@@ -164,7 +195,7 @@ enum { MAXUNDO = 60 };
 static const unsigned UNDO_BYTES = 192u << 20;
 static Undo g_undo[MAXUNDO]; static int g_nundo, g_uptr;	// [0, uptr) done, [uptr, nundo) undone
 static Undo g_rec; static bool g_recOpen;			// the record being made
-static unsigned char *g_seen; static int g_seenW, g_seenH;	// its tiles already kept
+static int *g_seen; static int g_seenW, g_seenH;		// its tiles already kept (their index + 1)
 
 static void snap_free (Snapshot *s) { if (!s) return; for (int i = 0; i < s->n; i++) delete[] s->lay[i].px; delete s; }
 static void undo_free (Undo &u)
@@ -204,7 +235,7 @@ static void rec_begin ()
 	if (g_recOpen) return;
 	g_rec.kind = U_TILES; g_rec.layer = D.cur; g_rec.t = 0; g_rec.nt = g_rec.ct = 0; g_rec.snap = 0; g_rec.bytes = 0;
 	int tw = (D.w + TILE - 1) / TILE, th = (D.h + TILE - 1) / TILE;
-	if (!g_seen || g_seenW != tw || g_seenH != th) { delete[] g_seen; g_seen = new unsigned char[tw * th]; g_seenW = tw; g_seenH = th; }
+	if (!g_seen || g_seenW != tw || g_seenH != th) { delete[] g_seen; g_seen = new int[tw * th]; g_seenW = tw; g_seenH = th; }
 	for (int i = 0; i < tw * th; i++) g_seen[i] = 0;
 	g_recOpen = true;
 }
@@ -218,9 +249,9 @@ static void rec_touch (Rect r)
 	for (int ty = r.y0 / TILE; ty <= (r.y1 - 1) / TILE; ty++)
 		for (int tx = r.x0 / TILE; tx <= (r.x1 - 1) / TILE; tx++)
 		{
-			unsigned char &s = g_seen[ty * g_seenW + tx];
+			int &s = g_seen[ty * g_seenW + tx];
 			if (s) continue;
-			s = 1;
+			s = g_rec.nt + 1;
 			if (g_rec.nt == g_rec.ct)
 			{
 				int c = g_rec.ct ? g_rec.ct * 2 : 16;
@@ -238,6 +269,16 @@ static void rec_touch (Rect r)
 				}
 			g_rec.bytes += TILE * TILE * 4;
 		}
+}
+// A pixel of the layer being recorded as it was before the record began (its tile kept, or as it is).
+static inline unsigned rec_orig (int x, int y)
+{
+	if (g_recOpen && g_seen)
+	{
+		int i = g_seen[(y / TILE) * g_seenW + x / TILE];
+		if (i) return g_rec.t[i - 1].px[(y % TILE) * TILE + x % TILE];
+	}
+	return D.lay[g_recOpen ? g_rec.layer : D.cur].px[(unsigned) y * D.w + x];
 }
 static void rec_end ()
 {
@@ -296,7 +337,6 @@ static void swap_record (Undo &u)
 	for (int i = 0; i < s->n; i++) D.lay[i] = s->lay[i];
 	delete s;
 	u.snap = now;
-	delete[] D.comp; D.comp = new_px (D.w, D.h, 0);
 	delete[] D.ov.px; D.ov.px = new_px (D.w, D.h, 0); D.ov.r = norect ();
 }
 static bool undo ()
