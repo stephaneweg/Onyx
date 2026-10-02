@@ -198,7 +198,33 @@ EXPAT_OBJ := $(patsubst %.c,%.o,$(EXPAT)/lib/xmlparse.c $(EXPAT)/lib/xmlrole.c $
 $(EXPAT_OBJ): CINC := -std=gnu99 -DXML_STATIC -I$(EXPAT)/lib
 $(EXPAT)/libexpat.a: $(EXPAT_OBJ); $(AR) rcs $@ $^
 
+# ---- the media codecs (Onyx: user/av -- <video>, <audio>, MSE: docs/06 section 44) ----------
+# libvpx 1.15.2 (VP8, VP9: its NEON intrinsics), dav1d 1.5.1 (AV1: its AArch64 assembly),
+# libopus 1.5.2 (float, C); the sources and flags in user/av/codecs.mk, shared with the PC
+# bench and Windows (README.onyx in each). -O3 for libvpx as upstream builds it.
+TP := $(NS)
+AV_ARCH := aarch64
+include $(CURDIR)/../av/codecs.mk
+VPX_OBJ := $(patsubst %.c,%.o,$(VPX_SRC))
+$(VPX_OBJ): CINC := -O3 $(VPX_CF)
+$(VPX)/libvpx.a: $(VPX_OBJ); $(AR) rcs $@ $^
+DAV1D_OBJ := $(patsubst %.c,%.o,$(DAV1D_SRC)) $(patsubst %.S,%.o,$(DAV1D_ASM))
+DAV1D_TMPL_OBJ := $(patsubst %.c,%.o,$(DAV1D_TMPL_SRC))
+$(DAV1D_OBJ): CINC := $(DAV1D_CF)
+$(DAV1D_TMPL_OBJ): CINC := -DBITDEPTH=8 $(DAV1D_CF)
+%.o: %.S
+	$(CC) -mcpu=cortex-a72 -fno-pic -fno-pie $(CINC) -MMD -MP -MF $@.d -c $< -o $@
+$(DAV1D)/libdav1d.a: $(DAV1D_OBJ) $(DAV1D_TMPL_OBJ); $(AR) rcs $@ $^
+OPUS_OBJ := $(patsubst %.c,%.o,$(OPUS_SRC))
+$(OPUS_OBJ): CINC := $(OPUS_CF)
+$(OPUS)/libopus.a: $(OPUS_OBJ); $(AR) rcs $@ $^
+CODEC_OBJ := $(VPX_OBJ) $(DAV1D_OBJ) $(DAV1D_TMPL_OBJ) $(OPUS_OBJ)
+.PHONY: codecs
+codecs: $(VPX)/libvpx.a $(DAV1D)/libdav1d.a $(OPUS)/libopus.a
+all: codecs
+
 clean:
+	rm -f $(CODEC_OBJ) $(VPX)/libvpx.a $(DAV1D)/libdav1d.a $(OPUS)/libopus.a
 	rm -f $(ZSTD_OBJ) $(NGH_OBJ) $(EXPAT_OBJ)
 	rm -f $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ)
 	rm -f $(QJS_OBJ) $(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ) $(ARCHIVES)
@@ -207,6 +233,6 @@ clean:
 	rm -f $(NS)/libparserutils/src/charset/aliases.inc
 
 # the headers each object was built from (-MMD): a changed header rebuilds its users
-ALL_DEPS := $(patsubst %.o,%.o.d,$(EXPAT_OBJ) $(ZSTD_OBJ) $(NGH_OBJ) $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ) $(QJS_OBJ) \
+ALL_DEPS := $(patsubst %.o,%.o.d,$(CODEC_OBJ) $(EXPAT_OBJ)$(ZSTD_OBJ) $(NGH_OBJ) $(PVG_OBJ) $(PSVG_OBJ) $(W3_OBJ) $(QJS_OBJ) \
 	$(FT_OBJ) $(BRO_OBJ) $(WAP_OBJ) $(NSU_OBJ) $(GIF_OBJ) $(BMP_OBJ) $(PU_OBJ) $(HB_OBJ) $(CSS_OBJ) $(DOM_OBJ))
 -include $(wildcard $(ALL_DEPS))

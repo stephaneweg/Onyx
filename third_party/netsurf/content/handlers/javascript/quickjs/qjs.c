@@ -4190,7 +4190,7 @@ static JSValue n_request(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 		fprintf(stderr, "JS request %s\n", nsurl_access(url));
 		for (i = 0; hv != NULL && hv[i] != NULL; i++)
 			fprintf(stderr, "JS request header %s\n", hv[i]);
-		fprintf(stderr, "JS request body %.2000s\n", body != NULL ? body : "(none)");
+		fprintf(stderr, "JS request body %s\n", body != NULL ? body : "(none)");
 	}
 	/* a body (or a method with one): as a POST's url-encoded data -- any text (not NUL) */
 	post.type = LLCACHE_POST_URL_ENCODED;

@@ -1,12 +1,12 @@
 /*
- * user/av/av_vpx.c -- VP8 and VP9 on libvpx (BSD; NEON on AArch64): compiled with AV_WITH_VPX
- * when third_party/libvpx-<version> is vendored (docs/06 §44: not vendored yet -- this glue has
- * not been compiled; its API is libvpx's stable vpx_decoder.h).
+ * user/av/av_vpx.c -- VP8 and VP9 on libvpx 1.15.2 (BSD; its NEON intrinsics on the Pi):
+ * compiled with AV_WITH_VPX (user/av/codecs.mk; third_party/libvpx-1.15.2/README.onyx).
  *
  * One thread (the player's video thread; Onyx's threads share core 0), frames handed out as
  * libvpx's I420 planes (valid until the next decode). Profile 0 (8 bits, 4:2:0) only.
- * Smooth on a Pi 4 (estimated from libvpx's NEON speed on Cortex-A72: ~2.5 ms for a 360p frame,
- * ~5 ms for 480p, ~12 ms for 720p on one core) -- 854 x 480 at 30 fps advertised.
+ * Smooth on a Pi 4: 854 x 480 at 30 fps advertised (tools/tests/av/bench.sh: a 480p clip at
+ * YouTube's rate decodes in ~16 ms a frame under qemu, a third of that or less on a Cortex-A72 --
+ * docs/06 §44 has the measures and the estimate).
  */
 #ifdef AV_WITH_VPX
 #include "av_int.h"

@@ -1,11 +1,11 @@
 /*
- * user/av/av_dav1d.c -- AV1 on dav1d (BSD; hand-written NEON for AArch64): compiled with
- * AV_WITH_DAV1D when third_party/dav1d-<version> is vendored (docs/06 §44: not vendored yet --
- * this glue has not been compiled; its API is dav1d's stable dav1d.h). Main profile, 8 bits
+ * user/av/av_dav1d.c -- AV1 on dav1d 1.5.1 (BSD; its AArch64 assembly on the Pi): compiled with
+ * AV_WITH_DAV1D (user/av/codecs.mk; third_party/dav1d-1.5.1/README.onyx). Main profile, 8 bits
  * (10-bit pictures are not converted: skipped). One thread, no frame threading (Onyx's threads
- * share core 0; dav1d's own threads would need pthreads over the kapi).
- * Smooth on a Pi 4 (estimated from dav1d's published A72 numbers: ~6 ms for a 480p frame on one
- * core) -- 854 x 480 at 30 fps advertised.
+ * share core 0; on the Pi dav1d's pthreads are a stand-in that never starts one).
+ * Smooth on a Pi 4: 640 x 360 at 30 fps advertised -- AV1 costs about 1.5 x VP9 (a 480p clip at
+ * YouTube's rate: ~25 ms a frame under qemu, its key frames several times that), so 480p would
+ * share one core too tightly with the page (docs/06 §44).
  */
 #ifdef AV_WITH_DAV1D
 #include "av_int.h"
@@ -118,7 +118,7 @@ static void av1_close(void *cv)
 }
 
 const struct av_codec_impl av_av1_codec = {
-	AV_C_AV1, AV_VIDEO, "av1", "dav1d", 854, 480, 30,
+	AV_C_AV1, AV_VIDEO, "av1", "dav1d", 640, 360, 30,
 	av1_open, av1_send, av1_receive, av1_flush, av1_close, NULL
 };
 #endif

@@ -68,7 +68,7 @@ break without it, P2 = pages look or feel wrong, P3 = missing features, P4 = not
 
 | Gap | Others | Onyx today | How to close it | Cost | Prio |
 |---|---|---|---|---|---|
-| **`<video>` / `<audio>`, Media Source Extensions** | all (H.264, VP9, AV1, AAC, Opus) | **done except the large codecs** (docs/06 §44, 2026-10-01): the media library `user/av` (WebM, MP4 / fMP4, WAV, FLAC, MP3 containers; FLAC, MP3, PCM decoders; NEON YUV; the player: threads, sound, A/V sync), HTMLMediaElement, MSE, MediaCapabilities, Fullscreen, native controls; YouTube's pages and player run. **Missing: VP9 / AV1 / H.264 / Opus / AAC** -- the glue for libvpx, dav1d, libopus is written, the libraries are not vendored | vendor libvpx + libopus (then dav1d): YouTube's VP9 + Opus at <= 480p (§44 *Adding the codecs*); H.264 through the Pi's hardware decoder needs a V4L2-like kernel driver -- a kernel project; Vorbis (an Ogg demuxer + stb_vorbis' packet API); EME / DRM (Widevine) impossible | M (the codecs) | P2 |
+| **`<video>` / `<audio>`, Media Source Extensions** | all (H.264, VP9, AV1, AAC, Opus) | **done except H.264 / AAC** (docs/06 §44, 2026-10-01/02): the media library `user/av` (WebM, MP4 / fMP4, WAV, FLAC, MP3 containers; VP9 / VP8 (libvpx), AV1 (dav1d), Opus (libopus), FLAC, MP3, PCM decoders -- NEON / AArch64 assembly on the Pi; NEON YUV; the player: threads, sound, A/V sync), HTMLMediaElement, MSE, MediaCapabilities, Fullscreen, native controls; YouTube's pages and player run and pick VP9 / AV1 + Opus. **Missing**: YouTube's video stream (Google's server sends the second SABR request's head and no data -- server side, §44); H.264 / AAC | YouTube from another network / compared with a desktop Chrome's SABR exchange; H.264 through the Pi's hardware decoder needs a V4L2-like kernel driver -- a kernel project; Vorbis (an Ogg demuxer + stb_vorbis' packet API); EME / DRM (Widevine) impossible | M (YouTube's stream) | P2 |
 | **WebGL / WebGL2** | all | none | Onyx has a V3D driver (`kernel/sys/v3d.cpp`, the GameCube renderer): a GLES2 subset on it, WebGL bound to it; or a software rasteriser (slow) | XL | P3 |
 | WebGPU | Chromium, WebKit (partial), Ladybird (starting) | none | after WebGL | XL | P4 |
 | Canvas leftovers | all | §13: no shadows, filters, blend modes, conic gradients, smooth image scaling | PlutoVG extensions (blend modes, conic), a blur for shadows, bilinear texture sampling | M | P2 |
@@ -211,10 +211,10 @@ Wave 2 -- P1 / P2 depending on wave 1:
    restyle done (06 §26: kept selections, in-place restyles, the flex layout memo); left:
    incremental box construction and layout.
 6. Text: HarfBuzz shaping, colour emoji, UAX #14 line breaking, then bidi.
-7. Media: ~~`<audio>`~~ (done: §44), Web Audio basics on the Onyx sound kapi; AVIF (dav1d).
+7. Media: ~~`<audio>`~~ (done: §44), Web Audio basics on the Onyx sound kapi; AVIF (dav1d: vendored since §44).
 8. Editing (`contenteditable`) and IndexedDB; `:focus` / `:active` styles.
 
-Wave 3 -- P3: video (VP9 software -- the media path is done, docs/06 §44: vendor libvpx / libopus --, then H.264 hardware in the kernel), WebGL on V3D,
+Wave 3 -- P3: video (VP9 / AV1 / Opus in software: done, docs/06 §44 -- YouTube's stream still refused --, then H.264 hardware in the kernel), WebGL on V3D,
 Service Workers / Cache API, multi-column, container queries, scroll-snap, zoom / HiDPI. (The
 JIT for QuickJS on AArch64 was brought forward: a first version is in, off by default -- §2.)
 

@@ -1,0 +1,21 @@
+libopus 1.5.2 -- the Opus codec, for Onyx's media library (user/av)
+==================================================================
+
+Source: https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
+(sha256 65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1), BSD 3-clause licence
+(COPYING; the patent licences it lists are royalty-free).
+
+Kept: include/, src/ (the library's files: not the demos), celt/ and silk/ (their C files and
+headers, not the x86 / ARM / MIPS directories), silk/float/ (the floating-point build). Not kept:
+the DNN code (deep PLC, DRED, OSCE: off), the fixed-point build's silk/fixed/, the tests, the
+documentation, the build systems; celt/opus_custom_demo.c.
+
+onyx/config.h (Onyx's, by hand in place of configure): the floating-point build, VAR_ARRAYS, C
+only (no intrinsics, no run-time CPU detection) -- decoding Opus costs a few % of a core.
+
+No change to the sources. The source list and the flags are in user/av/codecs.mk: built by
+user/netsurf/Makefile into libopus.a, compiled by tools/tests/netsurf/host.mk, pc/Jet/jet.mk and
+tools/tests/av/bench.mk. The encoder's files are compiled too (the linker keeps the decoder's
+alone on the Pi).
+
+Used by user/av/av_opus.c (AV_WITH_OPUS): Opus in WebM and MP4, 1 to 8 channels, 48 kHz.

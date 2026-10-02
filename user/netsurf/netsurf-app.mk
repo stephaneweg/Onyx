@@ -101,6 +101,10 @@ FE_SRC := $(addprefix $(FB)/,$(NS_FB_FILES)) $(wildcard $(FB)/fbtk/*.c)
 # Onyx: the media library (user/av: demuxers, decoders, the player) for <video> / <audio> / MSE
 AV := $(ZUSER)/av
 AV_SRC := $(wildcard $(AV)/*.c)
+# its codecs (user/av/codecs.mk): libvpx.a, libdav1d.a, libopus.a, built by user/netsurf/Makefile
+TP := $(LIBROOT)
+AV_ARCH := aarch64
+include $(AV)/codecs.mk
 # Onyx glue
 ONYX_SRC := $(AV_SRC) $(HERE)onyx_fetch.c $(HERE)onyx_cache.c $(HERE)onyx_ws.c $(HERE)compat/onyx_compat.c $(HERE)onyx_main.c
 
@@ -204,7 +208,7 @@ QMEDIA_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_media.c))
 $(QMEDIA_OBJ_NS): $(OUT)/qjsgen/qjs_media_js.h
 $(QMEDIA_OBJ_NS): INC += -I$(QJS) -I$(OUT)/qjsgen -I$(AV)
 # the media library: C11-ish code (its own includes)
-$(foreach s,$(AV_SRC),$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(s)))): CF += -std=gnu11 -I$(AV)
+$(foreach s,$(AV_SRC),$(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(s)))): CF += -std=gnu11 -I$(AV) $(AV_CODECS_CF)
 # Onyx: the frames' windows, postMessage between them, MessagePort across realms
 QFR_OBJ_NS := $(OUT)/o/$(subst /,_,$(patsubst %.c,%.o,$(JSQ)/qjs_frames.c))
 $(QFR_OBJ_NS): INC += -I$(QJS)
@@ -256,10 +260,10 @@ objs: $(ALL_OBJ) $(CXX_OBJ) $(OUT)/libwtk-ns.a
 # ---- link --------------------------------------------------------------
 LDLIBS := -L$(CSS) -L$(DOM) -L$(HB) -L$(PU) -L$(WAP) -L$(NSU) -L$(GIF) -L$(BMP) \
           -L$(NSFB) -L$(PNG) -L$(JPEG) -L$(ZLIB) -L$(WEBP)/src/.libs -L$(FT) -L$(BRO) -L$(QJS) \
-          -L$(PSVG) -L$(PVG) -L$(ZSTD) -L$(NGH) -L$(W3) -L$(EXPAT) \
+          -L$(PSVG) -L$(PVG) -L$(ZSTD) -L$(NGH) -L$(W3) -L$(EXPAT) -L$(VPX) -L$(DAV1D) -L$(OPUS) \
           -lcss -ldom -lhubbub -lparserutils -lwapcaplet -lnsutils -lnsgif -lnsbmp \
           -lnsfb -lpng -ljpeg -lwebp -lfreetype -lbrotlidec -lquickjs -lplutosvg -lplutovg \
-          -lm3 -lzstddec -lnghttp2 -lexpat -lz -lm
+          -lm3 -lzstddec -lnghttp2 -lexpat -lvpx -ldav1d -lopus -lz -lm
 LDFLAGS := -Wl,-T,$(ZUSER)/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
 
 # Link driver = g++ (for onyx_nstls.o + mbedTLS). The C startup + syscalls are compiled by

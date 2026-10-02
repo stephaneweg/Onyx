@@ -4,9 +4,9 @@
  * RFC 6381 codec strings, and the answers to canPlayType / MediaSource.isTypeSupported /
  * MediaCapabilities (av_type_supported).
  *
- * The large decoders are glue files (av_vpx.c, av_opus.c, av_dav1d.c, av_minimp3.c,
- * av_vorbis.c) compiled with their library when it is vendored (AV_WITH_*): a build answers
- * only for what it really decodes.
+ * The large decoders are glue files compiled with their library (AV_WITH_*: user/av/codecs.mk
+ * builds libvpx 1.15.2 for av_vpx.c, dav1d 1.5.1 for av_dav1d.c, libopus 1.5.2 for av_opus.c;
+ * av_mp3.c has minimp3 in it): a build answers only for what it really decodes.
  */
 #include <stdio.h>
 #include <ctype.h>
@@ -469,10 +469,11 @@ int av_codec_of_string(const char *s, int *profile_ok)
 	} else if (!strncmp(l, "av01", 4)) {
 		int n = dotted(l, v, 8);
 		codec = AV_C_AV1;
-		/* main profile, 8 / 10 bits: the decoder's (dav1d) */
+		/* main profile, 8 bits: dav1d as built here (CONFIG_8BPC only -- av_dav1d.c
+		 * shows 8-bit 4:2:0 pictures alone) */
 		if (n >= 1 && v[0] != 0)
 			ok = 0;
-		if (n >= 3 && v[2] != 8 && v[2] != 10)
+		if (n >= 3 && v[2] != 8)
 			ok = 0;
 	} else if (!strncmp(l, "avc1", 4) || !strncmp(l, "avc3", 4)) {
 		codec = AV_C_H264;

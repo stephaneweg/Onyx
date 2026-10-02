@@ -548,6 +548,26 @@ static void step (void)
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
+	// "waitlog N TEXT": stay on this step (one main-loop turn each) until the app's log (SIM_LOG, the
+	// file its stdout/stderr go to) holds TEXT, or N turns passed -- a test waits for what it
+	// expects rather than a fixed count of turns (a loaded machine is slower)
+	else if (!strcmp (cmd, "waitlog"))
+	{
+		static size_t turns; static size_t at = (size_t) -1;
+		if (at != g_step) { at = g_step; turns = 0; }
+		sscanf (st.c_str (), "%*s %d %255[^\n]", &a, arg);
+		bool found = false;
+		if (const char *lp = getenv ("SIM_LOG"))
+			if (FILE *f = fopen (lp, "rb"))
+			{
+				std::string all; char buf[65536]; size_t n;
+				while ((n = fread (buf, 1, sizeof buf, f)) > 0) all.append (buf, n);
+				fclose (f);
+				found = all.find (arg) != std::string::npos;
+			}
+		if (!found && (int) ++turns < a) g_step--;
+		else at = (size_t) -1;
+	}
 	else if (!strcmp (cmd, "quit")) g_quit = true;
 	else if (!strcmp (cmd, "exit")) { if (onyx_host_exit_hook) onyx_host_exit_hook (); exit (0); }
 }

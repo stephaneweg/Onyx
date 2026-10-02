@@ -1,7 +1,6 @@
 /*
- * user/av/av_opus.c -- Opus on libopus (BSD; fixed or float, NEON): compiled with AV_WITH_OPUS
- * when third_party/opus-<version> is vendored (docs/06 §44: not vendored yet -- this glue has not
- * been compiled; its API is libopus' stable opus_multistream.h).
+ * user/av/av_opus.c -- Opus on libopus 1.5.2 (BSD; floating point, C): compiled with
+ * AV_WITH_OPUS (user/av/codecs.mk; third_party/opus-1.5.2/README.onyx).
  *
  * The setup: Matroska's CodecPrivate is an OpusHead ("OpusHead", version, channels, pre-skip,
  * rate, gain, mapping family [, streams, coupled, mapping]); MP4's dOps is the same fields

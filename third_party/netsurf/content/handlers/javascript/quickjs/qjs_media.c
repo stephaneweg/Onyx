@@ -1161,7 +1161,7 @@ void qjs_media_setup(JSContext *ctx, JSValueConst natives)
 #ifdef ONYX_HOST_SIM
 	/* (the PC bench: NS_MEDIASTUB=1 -- the codecs not built in decoded into grey frames and
 	 * silence: a site's media path runs on its real streams, user/av/av_stub.c) */
-	if (getenv("NS_MEDIASTUB") != NULL)
+	if (getenv("NS_MEDIASTUB") != NULL && strcmp(getenv("NS_MEDIASTUB"), "0") != 0)
 		av_codec_enable_stubs();
 #endif
 	if (getenv("NS_MEDIADEBUG") != NULL) {

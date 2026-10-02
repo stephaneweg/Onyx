@@ -2032,6 +2032,15 @@ static bool job_append(struct onyx_job *j, const uint8_t *b, size_t n, size_t *s
 	return ok;
 }
 
+/* the UI thread told of the body bytes appended since it last was (before the input waits) */
+static void in_flush_post(size_t *since_post)
+{
+	if (*since_post > 0) {
+		*since_post = 0;
+		onyx_post_wake();
+	}
+}
+
 /* n body bytes (or to the close when n is (size_t) -1) from the input to the job: true when
  * all came (to the close: when it closed). */
 static bool in_body(struct onyx_in *in, size_t n, size_t *since_post)
@@ -2041,7 +2050,11 @@ static bool in_body(struct onyx_in *in, size_t n, size_t *since_post)
 	while (to_close || n > 0) {
 		size_t have = in->len - in->pos, take;
 		if (have == 0) {
-			int r = in_fill(in);
+			int r;
+			/* Onyx: what came is handed over before waiting for more (a streamed answer
+			 * -- YouTube's SABR, a server's events -- may pause for long under 32 KB) */
+			in_flush_post(since_post);
+			r = in_fill(in);
 			if (r == 0) return to_close;	/* closed */
 			if (r < 0) return false;
 			continue;
@@ -2067,6 +2080,8 @@ static bool in_chunked(struct onyx_in *in, size_t *since_post)
 	for (;;) {
 		size_t sz = 0;
 		int digits = 0;
+		if (in->pos == in->len)
+			in_flush_post(since_post);	/* (the next chunk may be long in coming) */
 		if (in_line(in, line, sizeof line) < 0)
 			return false;
 		for (const char *p = line; ; p++) {

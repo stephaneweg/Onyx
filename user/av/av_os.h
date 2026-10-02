@@ -66,7 +66,9 @@ static inline void av_sleep_ms(unsigned ms) { kapi_msleep(ms); }
 typedef struct { int tid; } av_thread_t;
 static inline int av_thread_start(av_thread_t *t, int (*fn)(void *), void *arg, const char *name)
 {
-	t->tid = kapi_thread_create(fn, arg, 256 * 1024, name);
+	/* 1 MB: the decoders run on these threads (dav1d's assembly keeps blocks on the stack: it
+	 * gives its own threads 1 MB; libopus' VAR_ARRAYS) */
+	t->tid = kapi_thread_create(fn, arg, 1024 * 1024, name);
 	return t->tid >= 2 ? 0 : -1;
 }
 static inline void av_thread_join(av_thread_t *t)
