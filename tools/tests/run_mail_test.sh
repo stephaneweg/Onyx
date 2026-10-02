@@ -2,7 +2,7 @@
 # tools/tests/run_mail_test.sh -- Mail's protocol layer (user/mail/: IMAP, POP3, SMTP, MIME, OAuth) built for the PC
 # (the stand-in kernel, mbedTLS) and run against tools/tests/mail/fakemail.py on local ports (IMAP also over a
 # self-signed TLS: refused when checked, accepted when the account says not to check); then Mail's HTML renderer
-# (user/mail/html.h) on a few messages, drawn into $OUT/html-*.png.
+# (user/mail/html.h) on a few messages, drawn into $OUT/html-*.png; and Mail's model (user/Apps/mail/model.h).
 set -e
 cd "$(dirname "$0")/../.."
 OUT=${MAIL_TEST_TMP:-/tmp/onyx_mail_test}
@@ -15,6 +15,7 @@ if [ ! -f "$OUT/libmb.a" ]; then
 fi
 $CXX -c tools/tests/desktop_sim/fakekapi.cpp -o "$OUT/fakekapi.o"
 $CXX -I$M/include tools/tests/mail/mailtest.cpp "$OUT/fakekapi.o" "$OUT/libmb.a" -lpthread -o "$OUT/mailtest"
+$CXX -I$M/include tools/tests/mail/modeltest.cpp "$OUT/fakekapi.o" "$OUT/libmb.a" -lpthread -o "$OUT/modeltest"
 # the HTML renderer: wtk's canvas and the apps' FreeType, built for the PC
 FT=third_party/freetype-2.14.3
 mkdir -p "$OUT/wtk" "$OUT/ft"
@@ -37,6 +38,13 @@ SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
 for i in 1 2 3 4 5 6 7 8 9 10; do grep -q ready "$OUT/server.log" 2>/dev/null && break; sleep 0.3; done
 SIM_REALNET=1 SIM_REALCLOCK=1 IMAP_PORT=$B POP_PORT=$((B+1)) SMTP_PORT=$((B+2)) HTTP_PORT=$((B+3)) IMAPS_PORT=$((B+4)) "$OUT/mailtest" 2>"$OUT/sim.log"
+# Mail's model (accounts, secrets, the store, the worker), its writes in $OUT/writes; a fresh server for it
+kill $SRV 2>/dev/null; sleep 0.5
+python3 tools/tests/mail/fakemail.py --imap $B --pop $((B+1)) --smtp $((B+2)) --http $((B+3)) >"$OUT/server2.log" 2>&1 &
+SRV=$!
+for i in 1 2 3 4 5 6 7 8 9 10; do grep -q ready "$OUT/server2.log" 2>/dev/null && break; sleep 0.3; done
+rm -rf "$OUT/writes"; mkdir -p "$OUT/writes"
+SIM_SLEEP=1 SIM="$(printf 'wait;%.0s' $(seq 6000))" SIM_WRITES="$OUT/writes" SIM_REALNET=1 SIM_REALCLOCK=1 IMAP_PORT=$B POP_PORT=$((B+1)) SMTP_PORT=$((B+2)) "$OUT/modeltest" 2>>"$OUT/sim.log"
 OUT="$OUT" "$OUT/htmltest" 2>>"$OUT/sim.log"
 python3 -c "
 import glob
