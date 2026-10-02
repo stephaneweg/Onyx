@@ -1187,3 +1187,16 @@ self-hosted toolchain want them. Design (the Cygwin way):
 - Limits: hard links (`link()`) stay impossible on FAT (`EPERM`, as Cygwin on FAT); on a PC the
   link shows as a small text file holding its target. The File Viewer shows links (an arrow
   overlay); `cp` / `zip` / the Archiver choose link or target (`-P` / `-L`).
+
+## 12. Later: `fork()` and `vfork()` (the user, 2026-10-02: "for later")
+
+Not needed for launching programs (`posix_spawn` covers fork+exec with redirections) nor for
+WebKit2; useful for compatibility (shells such as dash/bash and make's recipes — so mainly for
+self-hosting, §10 —, servers, part of OPTS). When a port needs it, **WP-FORK**: `fork` by an
+**eager copy of the resident pages** (cheap thanks to demand paging: only touched pages), the
+handles duplicated with a shared open-file description (POSIX: parent and child share a file's
+offset), only the calling thread copied (a new task from its trap frame, x0 = 0 in the child),
+no windows / app cores / GPU / sound / surfaces in the child; libc `fork` + `pthread_atfork`, the
+malloc/stdio locks made sane in the child; plus `vfork` (the child borrows the parent's address
+space until exec). Copy-on-write (per-frame refcounts, a write-fault path, TLBI of the parent)
+only if a real performance need appears.
