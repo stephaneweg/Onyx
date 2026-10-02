@@ -208,3 +208,10 @@ Onyx), Servo / Blitz (Rust) — would lose much of what Jet does today.
    (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/kapi.h`, `user/kapi_names.h` (generated)
    and most older files do not yet.
 6. The FM Song covers out of the public distribution.
+
+## Decision (2026-10-02): the WebKit browser
+
+The browser to come on **WebKit** (the WebKit2 port replacing Jet, docs/POSIX-PLAN.md §8–§9) is
+distributed under **LGPL-2.1+** (WebCore and JavaScriptCore; the rest of WebKit is BSD-2), with the
+user's agreement; Onyx's own files in it stay under MIT; WebKit's sources and Onyx's patches to them
+are published.

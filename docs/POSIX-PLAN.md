@@ -1646,3 +1646,9 @@ The ABI of slots 242–252 is the one above, with these points settled while bui
     leaks until reboot), `SCM_CREDENTIALS`, `read` / `write` on a shm descriptor (`EINVAL`: map it),
     memory accounting of shm pages per process (`vm_stats.resident` counts a space's own frames only;
     `meminfo`'s free memory shows them).
+
+## 15. Licence decision: the WebKit browser (the user, 2026-10-02)
+
+The user agreed: the browser built on WebKit (WebCore and JavaScriptCore largely LGPL-2.1+, the rest
+BSD-2) is **distributed under LGPL-2.1+**; Onyx's own files in it stay MIT; the WebKit sources and
+our patches are published (static linking: the published source satisfies relinking).
