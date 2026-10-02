@@ -338,7 +338,8 @@ Toolchain absente de la machine de dev Windows → voir
       `update-position` / `update-destination` / `chat-message`.
 - [x] **Login REST complet** (`httpc.hpp` + `auth.hpp`) : csrf → login → mfa-verify,
       `device-id`/`fingerprint` ; crypto + `fnv1a` validés sur vecteurs. (PC compilé+exécuté.)
-- [ ] Transport **TLS côté PC** (pour tester le login/WS prod sans Onyx) — manquant.
+- [x] Transport **TLS côté PC** (Schannel, `platform/pc/tls_win.hpp`) : login+WS prod depuis
+      le client PC. Testé contre `taatu.world:443` (csrf 200 + cookie ; login path complet).
 - [ ] Écran de login natif (champs pseudo/mot de passe, invite MFA) + `config.ini`.
 - [ ] Connexion + entrée en salle de bout en bout (prod ou serveur dev), reconnexion Wi-Fi.
 - [ ] Rendu iso : décor + avatars (dots → sprites composés) triés en profondeur ; pseudos.

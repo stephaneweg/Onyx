@@ -10,6 +10,7 @@
 #include "../../core/client.hpp"
 #include "../../core/auth.hpp"
 #include "transport_tcp.hpp"
+#include "tls_win.hpp"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,8 +30,16 @@ namespace taatu {
     void httpc_sleep_ms (unsigned ms) { nap (ms); }
 }
 
-// transport factory for the REST auth flow (a fresh socket per request)
-static taatu::ITransport *mk_tcp (void *) { return new taatu::PcTcpTransport (); }
+// transport factory (plain TCP, or Schannel TLS on Windows). A fresh transport per call:
+// the REST auth flow needs one per request, the WebSocket one for the session.
+static bool g_tls = false;
+static taatu::ITransport *mk_auto (void *)
+{
+#ifdef _WIN32
+    if (g_tls) return new taatu::WinTlsTransport ();
+#endif
+    return new taatu::PcTcpTransport ();
+}
 static unsigned now_ms ()
 {
 #ifdef _WIN32
@@ -49,6 +58,24 @@ static const char *arg (int argc, char **argv, const char *k, const char *def)
     for (int i = 1; i + 1 < argc; i++) if (!strcmp (argv[i], k)) return argv[i + 1];
     return def;
 }
+static bool has_flag (int argc, char **argv, const char *k)
+{
+    for (int i = 1; i < argc; i++) if (!strcmp (argv[i], k)) return true;
+    return false;
+}
+static void read_line (const char *prompt, char *out, int cap, bool hide)
+{
+    printf ("%s", prompt); fflush (stdout);
+#ifdef _WIN32
+    HANDLE hin = GetStdHandle (STD_INPUT_HANDLE); DWORD mode = 0;
+    if (hide) { GetConsoleMode (hin, &mode); SetConsoleMode (hin, mode & ~ENABLE_ECHO_INPUT); }
+#endif
+    if (!fgets (out, cap, stdin)) out[0] = 0;
+    char *nl = strpbrk (out, "\r\n"); if (nl) *nl = 0;
+#ifdef _WIN32
+    if (hide) { SetConsoleMode (hin, mode); printf ("\n"); }
+#endif
+}
 
 int main (int argc, char **argv)
 {
@@ -62,16 +89,26 @@ int main (int argc, char **argv)
     int seconds = atoi (arg (argc, argv, "--seconds", "30"));
     const char *pseudo = arg (argc, argv, "--pseudo", "");
     const char *password = arg (argc, argv, "--password", "");
+    g_tls = (port == 443) || !strcmp (arg (argc, argv, "--tls", "0"), "1");
 
     char tokbuf[600]; tokbuf[0] = 0;
     if (token && token[0]) { strncpy (tokbuf, token, sizeof tokbuf - 1); tokbuf[sizeof tokbuf - 1] = 0; }
 
-    // REST login if no token was given but a pseudo was
+    // interactive login: --login (or a --pseudo) with no token prompts for anything missing.
+    char pbuf[64], wbuf[128];
+    bool wantLogin = !tokbuf[0] && (pseudo[0] || has_flag (argc, argv, "--login"));
+    if (wantLogin)
+    {
+        if (!pseudo[0])   { read_line ("Pseudo: ", pbuf, sizeof pbuf, false); pseudo = pbuf; }
+        if (!password[0]) { read_line ("Mot de passe: ", wbuf, sizeof wbuf, true); password = wbuf; }
+    }
+
+    // REST login if no token was given but a pseudo is now set
     if (!tokbuf[0] && pseudo[0])
     {
         TaatuAuth auth;
         auth.set_target (host, port);
-        auth.mk = mk_tcp;
+        auth.mk = mk_auto;
         char uuid[37]; TaatuAuth::gen_uuid (uuid); strncpy (auth.device_id, uuid, sizeof auth.device_id - 1);
         auth.set_fingerprint ("TaatuOnyx/0.1 (PC)", "fr", "onyx", "Europe/Brussels", 1000, 700, 32, 1, 0, 0);
         printf ("[taatu] login as '%s' ...\n", pseudo);
@@ -87,15 +124,15 @@ int main (int argc, char **argv)
         else { printf ("[taatu] login FAILED: %s\n", auth.err[0] ? auth.err : "unknown"); return 1; }
     }
 
-    printf ("[taatu] connecting ws://%s:%d  room=%d\n", host, port, room);
+    printf ("[taatu] connecting %s://%s:%d  room=%d\n", g_tls ? "wss" : "ws", host, port, room);
 
-    PcTcpTransport tp;
+    ITransport *tp = mk_auto (0);
     TaatuClient cli;
     cli.now_ms = now_ms;
-    cli.set_target (host, port, false, "https://taatu.world");
+    cli.set_target (host, port, g_tls, "https://taatu.world");
     cli.set_token (tokbuf);
 
-    if (!cli.connect (tp)) { printf ("[taatu] connect/handshake FAILED\n"); return 1; }
+    if (!cli.connect (*tp)) { printf ("[taatu] connect/handshake FAILED\n"); delete tp; return 1; }
     printf ("[taatu] websocket + engine.io up, waiting for socket.io connect...\n");
 
     bool joined = false, said = false;
@@ -145,6 +182,7 @@ int main (int argc, char **argv)
 
     if (joined) cli.leave_room ();
     cli.sio.close ();
+    delete tp;
     printf ("[taatu] done.\n");
     return 0;
 }

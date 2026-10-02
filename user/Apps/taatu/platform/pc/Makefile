@@ -12,10 +12,10 @@ HDRS      = $(wildcard ../../core/*.hpp) transport_tcp.hpp
 
 ifeq ($(OS),Windows_NT)
   BIN  = taatu_pc.exe
-  LIBS = -lws2_32
+  LIBS = -lsecur32 -lws2_32      # secur32: Schannel TLS (tls_win.hpp)
 else
   BIN  = taatu_pc
-  LIBS =
+  LIBS =                         # Linux prod TLS (OpenSSL) is a TODO; plain TCP for dev
 endif
 
 $(BIN): $(SRC) $(HDRS)
