@@ -43,3 +43,9 @@ telnetd
 vncd
 # Remote windows (port 3390): the Onyx windows on a Windows PC (pc/dist/OnyxRemote.exe).
 rdpd
+# Programs loaded ahead and kept in memory (large ones: they then start without reading the
+# card, and their code is in memory once whatever the number of their processes). One line per
+# program -- a path, an app's name or a /bin tool's -- here, after the desktop's lines: the load
+# runs in the background. `preload` alone lists them, `unload <program>` releases one. Example
+# (remove the "#   " to enable it):
+#   preload jsc
