@@ -72,7 +72,9 @@ enum THandleType
 	HANDLE_STREAM	= 3,		// pipe, file_in, file_out, stdin_stream, stdout_stream: CStream
 	HANDLE_PROCESS	= 4,		// spawn: CProcess
 	HANDLE_RESERVED	= 5,		// taken, its object not there yet (no kapi finds it)
-	HANDLE_OFILE	= 6		// (v75) file_open: an open-file description (kern/ofile.h)
+	HANDLE_OFILE	= 6,		// (v75) file_open: an open-file description (kern/ofile.h)
+	HANDLE_LSOCK	= 7,		// (v76) a local socket's end (kern/lsock.h): its value is the socket number
+	HANDLE_SHM	= 8		// (v76) a shared memory object (kern/lsock.h); nKind: KAPI_O_RDONLY / RDWR
 };
 
 // ... and, for a file or a directory, the volume behind it.
@@ -121,6 +123,9 @@ public:
 
 	// The handle already naming pObj (type nType), 0 if none.
 	void *Find (const void *pObj, unsigned nType) const;
+
+	// (v76) The type of open handle h (HANDLE_FREE: none).
+	unsigned TypeOf (void *h) const;
 
 	// The owner ends: every entry closed, pins ignored (no task of the process runs any more).
 	// bTeardown: the reaper's teardown, the interrupts masked -- nothing may block or yield.

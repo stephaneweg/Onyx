@@ -12,6 +12,10 @@
 //   IMAGE  the ELF's segments: eager (loaded at start)
 //   FIXED  canvases, surfaces, the sound ring, the kapi pages, the code arena...: eager, frames
 //          owned elsewhere or mapped once; never changed by the vm_* calls
+//   SHM    (v76) shm_map'ed memory, in the mmap arena: lazy, its frames the shared object's
+//          (kern/lsock.h: pObj + ulObjOff name them; the PTEs are not owned). The space holds one
+//          reference on each object it maps (TVmSpace::pShm), dropped once no region and no
+//          deferred zap can name it any more (VmShmGc)
 //
 // A LAZY region's pages are filled on first touch (VmFaultIn): a zeroed 64 KB frame from the
 // app pool (palloc_high), mapped with the region's protection; the access is retried. An EL0
@@ -78,12 +82,22 @@ struct TTrapFrame;
 #define VM_PTE_SW_ZAP		(1ULL << 56)	// to drop when no pin covers it any more
 #define VM_PTE_SW_SYNC		(1ULL << 57)	// to re-protect (or drop) when no pin covers it
 
+#define VMA_F_SHM_RDONLY	1		// (SHM) mapped from a read-only handle: no PROT_WRITE
+
 struct TVma
 {
 	u64	ulStart, ulEnd;			// [start, end), 64 KB-aligned
 	u16	nProt;				// KAPI_PROT_*
 	u16	nKind;				// KAPI_VMK_*
-	u32	nFlags;				// (reserved: 0)
+	u32	nFlags;				// VMA_F_*
+	void	*pObj;				// (v76) SHM: the shared object (kern/lsock.h), else 0
+	u64	ulObjOff;			// (v76) SHM: the object's offset at ulStart
+};
+
+struct TVmShmRef				// (v76) an object this space maps (one reference)
+{
+	void	   *pObj;
+	TVmShmRef  *pNext;
 };
 
 struct TVmPin					// a kapi of pTask works in [ulStart, ulEnd) in place
@@ -107,6 +121,7 @@ struct TVmSpace
 	TVmZap	*pZapPending;
 	u64	 nFaults;			// pages filled (EL0, kernel probes and copies, app cores)
 	boolean	 bEagerHeap;			// an app core was acquired: the heap is filled as it grows
+	TVmShmRef *pShm;			// (v76) the shared objects mapped (or still zapped)
 };
 
 // The space's regions (0 if it has none yet: bCreate makes them; 0 then only on out of memory).

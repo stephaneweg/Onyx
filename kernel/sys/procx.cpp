@@ -32,6 +32,8 @@
 #include <kern/applaunch.h>		// SpawnProcess
 #include <kern/stream.h>		// CProcess
 #include <kern/handle.h>
+#include <kern/lsock.h>			// the handles given to a child (v76)
+#include <kern/net.h>			// NetCurrentPid
 #include <kern/iowait.h>
 #include <kern/uaccess.h>
 #include <kern/kapi_abi.h>
@@ -43,12 +45,22 @@
 #include <circle/new.h>
 #include <fatfs/ff.h>
 
+struct TInherit					// (v76) a handle spawn_ex2 gave the child
+{
+	TIpcXfer  X;				// the reference (until the child asks: get_handles)
+	int	  nFd;				// the child's descriptor
+	long long h;				// the child's handle (once given; -1: dropped)
+};
+
 struct TProcInfo
 {
 	char	 *pArgv;			// "a\0b\0\0"
 	unsigned  nArgv;			// its bytes, the final NUL included
 	char	 *pEnv;
 	unsigned  nEnv;
+	TInherit *pInherit;			// (v76) spawn_ex2's handles, 0: none
+	unsigned  nInherit;
+	boolean	  bGiven;			// get_handles put them in the child's table
 };
 
 #define ENV_FILE	"SD:/etc/environment"
@@ -164,6 +176,7 @@ static TProcInfo *InfoMake (char *pArgv, unsigned nArgv, char *pEnv, unsigned nE
 	}
 	p->pArgv = pArgv; p->nArgv = nArgv;
 	p->pEnv = pEnv; p->nEnv = nEnv;
+	p->pInherit = 0; p->nInherit = 0; p->bGiven = FALSE;
 	return p;
 }
 
@@ -197,6 +210,11 @@ void ProcInfoFree (TProcInfo *pInfo)
 	if (pInfo == 0) return;
 	delete [] pInfo->pArgv;
 	delete [] pInfo->pEnv;
+	for (unsigned i = 0; i < pInfo->nInherit; i++)		// (v76: never asked for: closed)
+	{
+		IpcXferDrop (&pInfo->pInherit[i].X, TRUE);	// (TRUE: from a teardown too)
+	}
+	delete [] pInfo->pInherit;
 	delete pInfo;
 }
 
@@ -276,8 +294,14 @@ void ProcInfoBootInit (void)
 
 extern "C" {
 
-long long kapi_spawn_ex (const struct kapi_spawn_attr *pUserAttr)
+// spawn_ex / spawn_ex2: pInherit (nInherit, referenced) handed to the child's record, or dropped.
+static long long SpawnCommon (const struct kapi_spawn_attr *pUserAttr, TInherit *pInherit, unsigned nInherit)
 {
+	struct TDrop					// (until the child's record holds them)
+	{
+		TInherit *p; unsigned n;
+		~TDrop (void) { for (unsigned i = 0; i < n; i++) IpcXferDrop (&p[i].X, FALSE); delete [] p; }
+	} Drop = { pInherit, nInherit };
 	struct kapi_spawn_attr A;
 	if (pUserAttr == 0 || !UserGet (&A, pUserAttr)) return -KAPI_EFAULT;
 	CUserStr Path (A.path, UPATH_MAX);
@@ -319,6 +343,10 @@ long long kapi_spawn_ex (const struct kapi_spawn_attr *pUserAttr)
 	ArgsFrom (pArgv, pArgs, ARGS_OLD);
 	TProcInfo *pInfo = InfoMake (pArgv, nArgv, pEnv, nEnv);
 	if (pInfo == 0) { delete [] pArgs; return -KAPI_ENOMEM; }
+	pInfo->pInherit = Drop.p;			// (the record's from here: ProcInfoFree drops them)
+	pInfo->nInherit = Drop.n;
+	Drop.p = 0;
+	Drop.n = 0;
 
 	// (pinned: SpawnProcess may yield before the child takes its refs on them)
 	CHandlePin In (A.in, HANDLE_STREAM), Out (A.out, HANDLE_STREAM);
@@ -356,6 +384,79 @@ long long kapi_spawn_ex (const struct kapi_spawn_attr *pUserAttr)
 		}
 	}
 	return (long long) (uintptr) h;
+}
+
+long long kapi_spawn_ex (const struct kapi_spawn_attr *pUserAttr)
+{
+	return SpawnCommon (pUserAttr, 0, 0);
+}
+
+// (v76) spawn_ex, and n of the caller's handles referenced for the child (get_handles).
+long long kapi_spawn_ex2 (const struct kapi_spawn_attr *pUserAttr, const struct kapi_handle_xfer *pUser, unsigned n)
+{
+	if (n == 0) return SpawnCommon (pUserAttr, 0, 0);
+	if (n > KAPI_IPC_HANDLES_MAX) return -KAPI_EINVAL;
+	struct kapi_handle_xfer *pIn = new struct kapi_handle_xfer[n];
+	TInherit *pInh = new TInherit[n];
+	if (pIn == 0 || pInh == 0) { delete [] pIn; delete [] pInh; return -KAPI_ENOMEM; }
+	if (pUser == 0 || !UserCopyIn (pIn, pUser, n * sizeof *pIn))
+	{
+		delete [] pIn; delete [] pInh;
+		return -KAPI_EFAULT;
+	}
+	CHandleTable *pTable = HandlesCurrent ();
+	unsigned nPid = NetCurrentPid ();
+	for (unsigned i = 0; i < n; i++)
+	{
+		int r = pIn[i].fd < 0 ? -KAPI_EBADF : IpcXferTake (pTable, pIn[i], nPid, &pInh[i].X);
+		if (r < 0)
+		{
+			for (unsigned k = 0; k < i; k++) IpcXferDrop (&pInh[k].X, FALSE);
+			delete [] pIn; delete [] pInh;
+			return r;
+		}
+		pInh[i].nFd = pIn[i].fd;
+		pInh[i].h = -1;
+	}
+	delete [] pIn;
+	return SpawnCommon (pUserAttr, pInh, n);		// (pInh: its own now)
+}
+
+// (v76) The handles the spawner gave: in this process's table at the first call.
+int kapi_get_handles (struct kapi_handle_xfer *pOut, unsigned nCap)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	TProcInfo *pInfo = pAS != 0 ? pAS->GetProcInfo () : 0;
+	if (pInfo == 0 || pInfo->nInherit == 0) return 0;
+	if (nCap > pInfo->nInherit) nCap = pInfo->nInherit;
+	if (nCap > 0 && (pOut == 0 || !UserWritable (pOut, (u64) nCap * sizeof *pOut))) return -KAPI_EFAULT;
+	if (!pInfo->bGiven)
+	{
+		pInfo->bGiven = TRUE;
+		CHandleTable *pTable = HandlesCurrent ();
+		unsigned nPid = pAS->GetPid ();
+		for (unsigned i = 0; i < pInfo->nInherit; i++)
+		{
+			struct kapi_handle_xfer X;
+			TInherit &I = pInfo->pInherit[i];
+			int nKind = I.X.nHK;
+			I.h = IpcXferGive (pTable, &I.X, nPid, FALSE, &X) ? X.h : -1;
+			I.X.nHK = (u8) (I.h >= 0 ? nKind : KAPI_HK_NONE);	// (kept to report it)
+			I.X.pObj = 0;
+		}
+	}
+	for (unsigned i = 0; i < nCap; i++)
+	{
+		const TInherit &I = pInfo->pInherit[i];
+		struct kapi_handle_xfer X;
+		memset (&X, 0, sizeof X);
+		X.h = I.h;
+		X.kind = I.X.nHK;
+		X.tag = I.X.nTag;
+		X.fd = I.nFd;
+		if (!UserCopyOut (&pOut[i], &X, sizeof X)) return -KAPI_EFAULT;
+	}
+	return (int) pInfo->nInherit;
 }
 
 int kapi_proc_wait (void *hProc, unsigned nFlags, struct kapi_proc_status *pOut)

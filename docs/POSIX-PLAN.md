@@ -1396,7 +1396,7 @@ The error convention is v75's (≥ 0 success, `-KAPI_Exxx` = newlib's errno). No
 
 ### 14.3 Semantics
 
-**Local sockets** (`sys/ipc.cpp`, a new `HANDLE_LSOCK = 7` in the caller's handle table).
+**Local sockets** (`sys/lsock.cpp`, `kern/lsock.h`, a new `HANDLE_LSOCK = 7` in the caller's handle table).
 - A local socket's **number is its handle's value** in the caller's table (`(gen << 16) | (idx + 1)`,
   always ≥ 0x10001 > `KAPI_SOCK_LOCAL_BASE`), so it is per process, reference-counted, closed by the
   teardown, and the number range tells it from an IP socket (0..255). `bsdsock.cpp`'s dispatch and
@@ -1511,6 +1511,6 @@ type (the `tag` carries the sender's descriptor type and `O_*` flags); `sys/un.h
   `meminfo` / `vm_stats` as `memtest`).
 - `posixtest ipc`: the same through the POSIX calls.
 - The PC: `tools/tests/posixsim` (qemu-user, its fake kapi table implements v76 over Linux
-  socketpairs / `SCM_RIGHTS` / memfd), and `tools/tests/run_ipc_test.sh`: the real `sys/ipc.cpp`,
+  socketpairs / `SCM_RIGHTS` / memfd), and `tools/tests/run_ipc_test.sh`: the real `sys/lsock.cpp`,
   `sys/shm.cpp` and `sys/handle.cpp` on the host with the kernel around them stubbed (two handle
   tables standing for two processes).
