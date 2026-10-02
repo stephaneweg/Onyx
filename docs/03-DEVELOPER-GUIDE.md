@@ -383,7 +383,9 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 `user/libc/posix/` is a **POSIX C library layer** over newlib and the kapi (docs/POSIX-PLAN.md
 §3.4): what large portable code (SQLite, libxml2, curl, and later ICU, Skia, WebKit) expects —
 real file descriptors, pthreads, BSD sockets, `poll`, `mmap`, `clock_gettime`, `posix_spawn`.
-It is the kernel's v75 POSIX ABI (docs/02 §8, "v75") seen from C. MIT, ours.
+It is the kernel's v75 POSIX ABI (docs/02 §8, "v75") seen from C, and v76's IPC between processes
+(docs/02 §8 "v76: IPC": local sockets, descriptors passed with `SCM_RIGHTS`, shared memory — what
+WebKit2's processes use). MIT, ours.
 
 A program links **libonyxposix or `onyx_syscalls.c`, never both**: the existing newlib apps (§5.1:
 Writer, Doom, the TLS tools, `pkg`, `rdpd`, the SuperTuxKart port…) keep `onyx_syscalls.c` and are
@@ -424,9 +426,11 @@ brackets — so a program runs on today's kernel too, with less):
 | TLS, errno | `__thread`; `errno` per thread | `TPIDR_EL0` → the thread's TCB + TLS block | — |
 | Memory | `mmap` (anonymous, `PROT_NONE` reservations, `MAP_FIXED`/`FIXED_NOREPLACE`, `MAP_PRIVATE` files), `munmap` (partial), `mprotect`, `madvise`, `mincore`, `msync`/`mlock` (no-ops), `posix_memalign`, `getpagesize` (65536) | `vm_*` (lazy regions in the 34–60 GB arena) | heap blocks (64 KB-aligned): no reservations, no `MAP_FIXED`, protections not enforced |
 | Time | `clock_gettime`/`getres` (`REALTIME`, `MONOTONIC(_RAW/_COARSE)`, `BOOTTIME`, the CPU clocks = monotonic), `gettimeofday`, `time`, `nanosleep`, `clock_nanosleep`, `usleep`, `sleep`, `timegm`; `localtime_r`/`mktime`/`strftime` with `TZ` (newlib's) | `CNTPCT_EL0` read at EL0, scaled with one `clock_info` sample (no system call per read); `sleep_us` | `get_datetime` once (local time taken as UTC, `TZ=UTC0`); `msleep` |
-| Processes | `getpid`/`getppid`, `posix_spawn(p)` (file actions: a pipe or a file onto 0 / 1, `addchdir_np`), `waitpid`/`wait` (`WNOHANG`; exit code, `SIGSEGV` for a fault, `SIGKILL` for killed / out of memory); `fork`/`exec*`/`system`/`popen` → `ENOSYS` | `spawn_ex` (argv / envp blocks) + `proc_wait` | `kapi_spawn` (one argument line) + `kapi_wait` |
+| Processes | `getpid`/`getppid`, `posix_spawn(p)` (file actions: a pipe or a file onto 0 / 1, `addchdir_np`; **v76:** every descriptor without `FD_CLOEXEC` is given to the child at its number — files, pipe ends, streams, sockets, shm objects —, `adddup2` onto 3 or more too, `addclose` keeps one back), `waitpid`/`wait` (`WNOHANG`; exit code, `SIGSEGV` for a fault, `SIGKILL` for killed / out of memory); `fork`/`exec*`/`system`/`popen` → `ENOSYS` | `spawn_ex` (argv / envp blocks) + `proc_wait`; v76 `spawn_ex2` + `get_handles` (the child installs them at start) | `kapi_spawn` (one argument line) + `kapi_wait`; (without v76) no descriptor but 0 / 1 |
 | Environment | `environ`, `getenv`/`setenv`/`unsetenv`/`putenv` (newlib's) from the process's block; `TZ` set from the kernel's zone when unset | `get_env`, `get_argv` | `HOME=SD:/home`, `PATH=SD:/bin`, `TMPDIR=RAM:/tmp`, `LANG=C.UTF-8`; argv from `get_args` |
-| Sockets | `socket` (`AF_INET` TCP / UDP, `SOCK_NONBLOCK`/`CLOEXEC`), `connect` (non-blocking: `EINPROGRESS`, then `poll` + `SO_ERROR`), `bind`/`listen`/`accept(4)`, `send`/`recv`/`sendto`/`recvfrom`/`sendmsg`/`recvmsg` (`MSG_PEEK`/`DONTWAIT`/`WAITALL`; `MSG_NOSIGNAL` accepted), `get`/`setsockopt` (`SO_ERROR`, `SO_RCVTIMEO`/`SNDTIMEO`, `SO_BROADCAST`; the rest accepted), `getsockname`/`getpeername`, `shutdown`; `AF_INET6`/`AF_UNIX` → `EAFNOSUPPORT`, `socketpair` → `EOPNOTSUPP` | `sock_*` | `tcp_*` (TCP only: connect blocks, accept blocks) |
+| Sockets | `socket` (`AF_INET` TCP / UDP, `SOCK_NONBLOCK`/`CLOEXEC`), `connect` (non-blocking: `EINPROGRESS`, then `poll` + `SO_ERROR`), `bind`/`listen`/`accept(4)`, `send`/`recv`/`sendto`/`recvfrom`/`sendmsg`/`recvmsg` (`MSG_PEEK`/`DONTWAIT`/`WAITALL`; `MSG_NOSIGNAL` accepted), `get`/`setsockopt` (`SO_ERROR`, `SO_RCVTIMEO`/`SNDTIMEO`, `SO_BROADCAST`; the rest accepted), `getsockname`/`getpeername`, `shutdown`; `AF_INET6` and `socket (AF_UNIX)` → `EAFNOSUPPORT` | `sock_*` | `tcp_*` (TCP only: connect blocks, accept blocks) |
+| Local sockets (v76) | `socketpair (AF_UNIX, SOCK_STREAM / SOCK_SEQPACKET / SOCK_DGRAM [\| SOCK_NONBLOCK \| SOCK_CLOEXEC])`; every socket call, `poll`/`select` on them; `sendmsg`/`recvmsg` with `SCM_RIGHTS` (up to 256 descriptors a message, Linux: 253; the real `CMSG_FIRSTHDR`/`CMSG_NXTHDR`/`CMSG_DATA`/`CMSG_SPACE`/`CMSG_LEN`), `MSG_CTRUNC`, `MSG_TRUNC`, `MSG_CMSG_CLOEXEC`; `SO_PEERCRED` (the pid), `SO_RCVBUF`/`SO_SNDBUF`, `SO_DOMAIN`; `getsockname` → `AF_UNIX`, no name. A descriptor received is of the sender's kind (the open file and its offset shared, a pipe end, a stream, a local or IP socket — the IP socket becomes the receiver's —, a shm object) | `sock_pair`, `sock_sendmsg` / `sock_recvmsg` | `socketpair` → `EOPNOTSUPP` |
+| Shared memory (v76) | `memfd_create` (`MFD_CLOEXEC`, `MFD_ALLOW_SEALING`), `shm_open`/`shm_unlink` (`O_CREAT/EXCL/TRUNC`, `O_RDONLY`/`O_RDWR`; `FD_CLOEXEC` set), `ftruncate`, `fstat` (size, an id), `fcntl (F_ADD_SEALS / F_GET_SEALS)`, `mmap` (`MAP_SHARED`: the same pages in every process mapping it; `MAP_PRIVATE`: a copy), `munmap`/`mprotect`/`madvise`; `read`/`write` on one: `EINVAL` (map it) | `shm_create` / `shm_open` / `shm_ctl` / `shm_map` | `ENOSYS` |
 | Names | `getaddrinfo` (numeric, `localhost`, else the kernel's DNS; services by number or a small table), `getnameinfo` (numeric), `gethostbyname(_r)`, `inet_pton`/`ntop`/`aton`/`addr`/`ntoa`, `htons`… | `net_resolve` (v43) | — |
 | Waiting | `poll`, `ppoll`, `select`, `pselect` (`FD_SETSIZE` 1024) over sockets, pipes, files, the console | the `poll` kapi | a user-space loop (non-blocking reads into a carry buffer, 1 ms sleeps) |
 | Signals | `sigaction`/`signal` (a table), `raise`, `kill (getpid (), sig)` and `pthread_kill (self)` run the handler at once; `abort` (status 134); masks kept; `SIGPIPE` never raised (`EPIPE`); `kill` of another pid: `SIGKILL`/`SIGTERM` → `kill_pid`, 0 → exists | — | — |
@@ -440,7 +444,8 @@ brackets — so a program runs on today's kernel too, with less):
 `sys/sysmacros.h`, `dlfcn.h`, `execinfo.h`, `syslog.h`, `err.h`; and small overlays of newlib's
 (`#include_next`): `sys/features.h` (the `_POSIX_*` options newlib leaves off for this target:
 without them `<time.h>` hides `clock_gettime`), `time.h` (`timegm`), `unistd.h` (`pipe2`,
-`dup3`), `sys/stat.h` (`lstat`, `UTIME_NOW`), `signal.h` (`SA_RESTART`…), `sys/file.h` (`flock`).
+`dup3`), `sys/stat.h` (`lstat`, `UTIME_NOW`), `signal.h` (`SA_RESTART`…), `sys/file.h` (`flock`),
+`fcntl.h` (v76: `F_ADD_SEALS`, `F_GET_SEALS`, `F_SEAL_*`).
 
 **Paths.** Onyx paths as everywhere (`SD:/x`, `RAM:/y`; relative and `/x` against the working
 directory, as the kernel resolves them). Two names are mapped: **`/tmp` → `RAM:/tmp`** (made at
@@ -483,18 +488,37 @@ spin instead of sleeping (no kapi call there); stdio and files from there go thr
 - `std::thread::hardware_concurrency ()` is 1 (a process's threads all run on core 0).
 - newlib's `struct stat` has a 16-bit `st_ino` / `st_dev`: `st_ino` is the kernel's 64-bit id
   folded to 16 bits.
-- No asynchronous signals, no `fork`, no shared memory between processes (`MAP_SHARED` of a file
-  for writing: `ENOTSUP`), no `PROT_EXEC`.
+- No asynchronous signals, no `fork`, no `PROT_EXEC`. Shared memory between processes is a shm
+  object (v76: `memfd_create`, `shm_open`); `MAP_SHARED` of a *file* for writing stays `ENOTSUP`, and
+  an anonymous `MAP_SHARED` is private (there is no `fork` to share it with).
+- (v76) A pipe end passed to another process (`SCM_RIGHTS`, `posix_spawn`): the pipe's end-of-file
+  waits for every holder of a write end (the kernel counts them: `KAPI_HXF_WRITER`), as on Unix —
+  so mark the descriptors a child must not keep `FD_CLOEXEC`. No named `AF_UNIX` sockets; reference
+  cycles of local sockets queued on themselves through other connections are not collected.
 - `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/tls/README.md).
 
 **Testing it: `/bin/posixtest [group…] [dir]`** ([`user/bin/posixtest.c`](../user/bin/posixtest.c);
-groups `mem thread file io time proc net misc cxx`): one line per check, `PASS`, `FAIL (what was
+groups `mem thread file io time proc ipc net misc cxx`): one line per check, `PASS`, `FAIL (what was
 seen)` or `SKIP (kernel ENOSYS)` for a check that needs a v75 piece the kernel does not have yet
 — it first prints which pieces it found —, then a summary; the exit code is the number of
 failures. The `file` group runs in `RAM:/posixtest` and `/tmp/posixtest` (give a directory to run
 it elsewhere, `posixtest file SD:/tmp`); `net` needs the Wi-Fi up; `cxx` runs `posixtest-cxx` from the
 same directory (SKIP when it is not there).
-The group `loop` (not in the default run) does TCP / UDP over `127.0.0.1`.
+The group `loop` (not in the default run) does TCP / UDP over `127.0.0.1`. The group `ipc` (v76):
+`socketpair` SEQPACKET / STREAM / DGRAM, `poll`, `SO_PEERCRED`, `memfd_create` + `mmap MAP_SHARED`
+(twice: the same pages) and `MAP_PRIVATE`, seals, `sendmsg`/`recvmsg` with a memfd and a pipe end
+(3 iovecs, `CMSG_NXTHDR`), `MSG_CTRUNC` and `MSG_CMSG_CLOEXEC`, `shm_open`, and a `posix_spawn`'d
+child given the socket at its number (WebKit's launcher: the number in argv, the server end
+`FD_CLOEXEC` kept out, an `adddup2`) that receives the memfd and writes into it.
+
+**`/bin/ipctest [net]`** ([`user/bin/ipctest.c`](../user/bin/ipctest.c), libonyxposix, the kapi calls
+directly): the v76 kernel itself — local sockets (merging, `EAGAIN`, `POLLOUT`, `SO_RCVBUF`,
+boundaries, `MSG_TRUNC`, `EMSGSIZE`, a 1 MB packet, the end, `EPIPE`, a blocked receive woken by
+another thread, `SO_RCVTIMEO`), children spawned with `spawn_ex2` that use a file (its offset shared),
+a pipe end, a shm object, a local socket and (`ipctest net`) an IP socket sent to them, shared memory
+read after its writer exited, a futex across processes, 8 MB through a stream, 253 handles in a
+message, `MSG_CTRUNC`, seals, `shm_open`, a child killed touching beyond its object, the free memory
+back after 64 MB of shared pages (`meminfo`) and after a queued message is discarded.
 
 **`/bin/posixtest-cxx [group…] [dir]`** ([`user/bin/posixtest-cxx.cpp`](../user/bin/posixtest-cxx.cpp),
 `aarch64-onyx-elf`, C++20): the C++ part, same output and exit code. Groups `thread` (`std::thread`,
@@ -516,8 +540,12 @@ nested exceptions), `errno` (newlib's `ERANGE` in a worker thread, 8 threads eac
 `cntvct` instead of `cntpct`, which Linux traps at EL0) and runs `posixtest` under
 `qemu-aarch64-static` against `fakekapi.c`: a kapi table built from raw Linux system calls (the
 volumes are directories of `$POSIXSIM_ROOT`, default `/tmp/posixsim`; threads are `clone`s; the
-v75 handles, `spawn_ex`, sockets and `poll` are emulated). `POSIXSIM_LEVEL=74` answers `ENOSYS` to
-every v75 call, to test libonyxposix's fallbacks on today's kernel; `POSIXSIM_NONET=0` lets the
+v75 handles, `spawn_ex`, sockets and `poll` are emulated; v76's local sockets are Linux `AF_UNIX`
+socketpairs carrying the descriptors with `SCM_RIGHTS` and their kinds in a header or a side
+channel, shm objects are memfds, `spawn_ex2` leaves the descriptors open across `execve`).
+`POSIXSIM_LEVEL=75` answers `ENOSYS` to the v76 calls, `POSIXSIM_LEVEL=74` to every v75 call too,
+to test libonyxposix's fallbacks; `PROG=user/bin/ipctest.c sh tools/tests/posixsim/run.sh` runs
+ipctest there; `POSIXSIM_NONET=0` lets the
 `net` group out. `sh tools/tests/posixsim/ports.sh` relinks the smoke ports (§5.5) for the bench
 and runs them on real jobs (a SQLite database on `RAM:` and `SD:`, xmllint, curl over HTTP and
 HTTPS from a local Python server). The bench checks the library's logic, not the kernel's: the Pi
@@ -3125,6 +3153,19 @@ handle as `KAPI_PK_STREAM`. The `tcp_*` handles are numbers of the same table (t
 With `netcore=0` nothing announces a socket's change, so a wait looks again every 10 ms; with
 `netcore=1` a change wakes within a tick. `shutdown (SHUT_WR)` sends no FIN (the connection ends at
 `close`). Test on the Pi with `/bin/nettest` (+ `tools/tests/nettest_peer.py` on the PC).
+
+**IPC between processes (v76, docs/02 §8 "v76: IPC", [`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §14):**
+`kapi_sock_pair` makes two connected **local sockets** (STREAM / SEQPACKET / DGRAM) whose numbers are
+handles of the caller (≥ `KAPI_SOCK_LOCAL_BASE`) and work with every `kapi_sock_*` call and `poll`;
+`kapi_sock_sendmsg` / `kapi_sock_recvmsg` carry up to 256 handles (`struct kapi_handle_xfer {h, kind,
+tag, fd, flags}`: an open file, a stream — `KAPI_HXF_WRITER` for a pipe's write end —, a local or IP
+socket, a shm object) into the receiver's table; `kapi_shm_create` / `shm_open` / `shm_ctl` /
+`shm_map` give **shared memory** (the same frames in every space mapping it; `kapi_vm_unmap` and the
+other `vm_*` work on it); `kapi_spawn_ex2` gives a child handles at chosen descriptors, the child reads
+them with `kapi_get_handles`; `kapi_handle_close` closes a shm (or any passable) handle. A new kapi that
+takes a handle should accept one received this way (it is an ordinary entry of the caller's table).
+Tests: `/bin/ipctest` on the Pi, `sh tools/tests/run_ipc_test.sh` (the kernel code on the PC) and the
+posixsim bench.
 
 > **Golden rule:** never change the signature or the order of an existing field. If some
 > semantics must change, add a **new** entry. An app can query

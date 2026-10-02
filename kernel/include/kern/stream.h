@@ -36,6 +36,9 @@ public:
 	virtual int WriteNonBlocking (const void *pBuf, unsigned nLen) { return Write (pBuf, nLen); }
 	// Signal "no more data will be written" so readers see EOF.
 	virtual void CloseWrite (void) {}
+	// (v76) One more writer (a write end carried to another process, kern/lsock.h): CloseWrite
+	// ends the data only when every writer has called it.
+	virtual void AddWriter (void) {}
 	// (v75) The poll bits ready now (KAPI_POLLIN / OUT / HUP...): poll asks it without blocking.
 	// Default: always readable and writable (a file). A pipe answers for itself (WP-FILE/PROC).
 	virtual unsigned PollMask (void) { return KAPI_POLLIN | KAPI_POLLOUT; }
@@ -58,6 +61,7 @@ public:
 	int Write (const void *pBuf, unsigned nLen) override;
 	int WriteNonBlocking (const void *pBuf, unsigned nLen) override;	// (v75)
 	void CloseWrite (void) override;
+	void AddWriter (void) override		{ m_nWriters++; }	// (v76)
 	unsigned PollMask (void) override;	// (v75) IN: data (or HUP | IN: closed), OUT: room
 
 private:
@@ -69,6 +73,7 @@ private:
 	volatile unsigned m_nHead;	// next write slot
 	volatile unsigned m_nTail;	// next read slot
 	volatile boolean  m_bWriteClosed;
+	unsigned	  m_nWriters;	// (v76) the creator's writers (1) + the write ends carried away
 };
 
 // A FatFs file as a stream. nMode: 0 = read, 1 = write (truncate), 2 = append.

@@ -5,7 +5,10 @@
  * blocks, a working directory, stdin / stdout stream handles) and collects it with proc_wait
  * (the exit code and why it ended). posix_spawn maps its file actions onto the two streams the
  * kernel passes: a pipe end (or another stream) dup2'ed onto 0 or 1, or a file opened onto them
- * (kapi file_in / file_out); stderr is the child's stdout; closes are ignored.
+ * (kapi file_in / file_out); stderr is the child's stdout. (v76) Every other descriptor without
+ * FD_CLOEXEC is given to the child at its number (kapi spawn_ex2: files, pipe ends, streams, local
+ * and IP sockets, shared memory objects; the child's libc installs them at start), and so is a
+ * dup2 onto 3 or more; addclose keeps a descriptor from it.
  * The pid posix_spawn returns is the child's process id when the kernel reports it (proc_wait,
  * KAPI_WAIT_NOHANG | KAPI_WAIT_KEEP), else the value of its process handle; waitpid knows both.
  * waitpid's status: an exit -> code << 8 (WIFEXITED); a fault -> SIGSEGV, killed or out of
@@ -70,11 +73,16 @@ struct child
 static struct child *s_children;
 static volatile unsigned s_childLock;
 
+#define SPAWN_DUPS	32
+
 struct onyx_spawn_actions			/* posix_spawn_file_actions_t points at one */
 {
 	void *in, *out;				/* stream handles for the child's 0 / 1 (0: inherited) */
 	int in_owned, out_owned;		/* opened here (file_in / file_out): closed after spawn */
 	char *cwd;
+	int ndup;				/* (v76) dup2 (from, to) with to >= 3 */
+	int dup_from[SPAWN_DUPS], dup_to[SPAWN_DUPS];
+	unsigned char closed[ONYX_FD_MAX / 8];	/* (v76) addclose: not given to the child */
 };
 
 /* newlib declares these types as pointers to its (absent) structures: ours stand in */
@@ -135,6 +143,17 @@ int posix_spawn_file_actions_adddup2 (posix_spawn_file_actions_t *fa, int fd, in
 			a->out = h;
 		/* (2: the child's stderr is its stdout) */
 	}
+	else if (newfd > 2 && newfd < ONYX_FD_MAX)	/* (v76: spawn_ex2 gives it at newfd) */
+	{
+		if (a->ndup >= SPAWN_DUPS)
+			return ENOMEM;
+		a->dup_from[a->ndup] = fd;
+		a->dup_to[a->ndup] = newfd;
+		a->ndup++;
+		a->closed[newfd / 8] |= (unsigned char) (1u << (newfd % 8));	/* (whatever was there) */
+	}
+	else
+		return EBADF;
 	return 0;
 }
 
@@ -163,7 +182,16 @@ int posix_spawn_file_actions_addopen (posix_spawn_file_actions_t *__restrict fa,
 	return 0;
 }
 
-int posix_spawn_file_actions_addclose (posix_spawn_file_actions_t *fa, int fd) { (void) fa; (void) fd; return 0; }
+int posix_spawn_file_actions_addclose (posix_spawn_file_actions_t *fa, int fd)
+{
+	struct onyx_spawn_actions *a = (struct onyx_spawn_actions *) *fa;
+	if (a == 0)
+		return EINVAL;
+	if (fd < 0 || fd >= ONYX_FD_MAX)
+		return EBADF;
+	a->closed[fd / 8] |= (unsigned char) (1u << (fd % 8));
+	return 0;
+}
 
 int posix_spawn_file_actions_addchdir_np (posix_spawn_file_actions_t *__restrict fa, const char *__restrict path)
 {
@@ -278,7 +306,27 @@ static int do_spawn (pid_t *pid, const char *path, const posix_spawn_file_action
 	sa.cwd = a ? a->cwd : 0;
 	sa.in = a ? a->in : 0;
 	sa.out = a ? a->out : 0;
-	long long h = ab ? kapi_spawn_ex (&sa) : -KAPI_ENOMEM;
+	/* (v76) the descriptors the child inherits: those without FD_CLOEXEC, the dup2 targets */
+	struct kapi_handle_xfer *x = (struct kapi_handle_xfer *) malloc (KAPI_IPC_HANDLES_MAX * sizeof *x);
+	int nx = 0;
+	if (x)
+	{
+		nx = __onyx_fd_collect (x, KAPI_IPC_HANDLES_MAX - (a ? a->ndup : 0), a ? a->closed : 0);
+		for (int i = 0; a && i < a->ndup; i++)
+		{
+			struct __onyx_ofd *d = __onyx_fd_get (a->dup_from[i]);
+			if (d && __onyx_ofd_xfer (d, &x[nx]) == 0)
+				x[nx++].fd = a->dup_to[i];
+			if (d)
+				__onyx_fd_put (d);
+		}
+	}
+	long long h = -KAPI_ENOMEM;
+	if (ab && nx > 0)
+		h = kapi_spawn_ex2 (&sa, x, (unsigned) nx);
+	if (ab && (nx == 0 || h == -KAPI_ENOSYS))	/* (none to give, or a kernel before v76) */
+		h = kapi_spawn_ex (&sa);
+	free (x);
 	free (ab);
 	free (eb);
 	if (h == -KAPI_ENOSYS)

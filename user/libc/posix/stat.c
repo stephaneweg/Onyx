@@ -165,6 +165,19 @@ int __onyx_fstat (struct __onyx_ofd *d, struct stat *st)
 	case ONYX_FD_LSOCKET:
 		st->st_mode = S_IFSOCK | 0600;
 		return 0;
+	case ONYX_FD_SHM:				/* (v76) memfd_create / shm_open */
+	{
+		long long size = kapi_shm_ctl (d->h, KAPI_SHM_GET_SIZE, 0);
+		if (size < 0)
+			return ONYX_ERR ((int) -size);
+		st->st_mode = S_IFREG | 0600;
+		st->st_size = (off_t) size;
+		st->st_blocks = (blkcnt_t) ((size + 511) / 512);
+		st->st_blksize = 65536;
+		st->st_ino = (ino_t) kapi_shm_ctl (d->h, KAPI_SHM_GET_ID, 0);
+		st->st_dev = 0xEE;
+		return 0;
+	}
 	case ONYX_FD_CONSOLE:
 		st->st_mode = S_IFCHR | 0620;	/* a tty: newlib keeps stdout line-buffered */
 		st->st_blksize = 1024;

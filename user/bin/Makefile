@@ -97,7 +97,7 @@ CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic 
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
 	       -I.. -I../../kernel/include
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
-POSIX_PROGS  = posixtest.elf
+POSIX_PROGS  = posixtest.elf ipctest.elf
 POSIX_CXX_PROGS = posixtest-cxx.elf
 
 # C++ console tools on the V3D QPU builder (../v3d/libv3d.a: shaders generated at run time),

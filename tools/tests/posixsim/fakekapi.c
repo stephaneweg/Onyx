@@ -7,9 +7,14 @@
  * with functions made of raw Linux system calls, then jumps to the program's _start. So the
  * library runs as on the Pi -- its start-up, TLS on TPIDR_EL0, the descriptor table, newlib's
  * stdio, the futex-based locks with real concurrency -- against:
- *   POSIXSIM_LEVEL=75 (default): the v75 calls (files, sockets, poll, threads with TLS, vm_*,
+ *   POSIXSIM_LEVEL=76 (default): the v75 calls (files, sockets, poll, threads with TLS, vm_*,
  *                     spawn / wait, clock, environment), as WP-MEM / WP-FILE/PROC / WP-NET
- *                     specify them (docs/POSIX-PLAN.md §3);
+ *                     specify them (docs/POSIX-PLAN.md §3), and v76's IPC (§14: local sockets
+ *                     over Linux AF_UNIX socketpairs, handles carried with SCM_RIGHTS -- their
+ *                     kinds and tags in a header (packets) or a side channel (streams) --,
+ *                     shared memory over memfd_create / files in $ROOT/.shm, spawn_ex2 through
+ *                     inherited descriptors and POSIXSIM_HANDLES);
+ *   POSIXSIM_LEVEL=75: no v76;
  *   POSIXSIM_LEVEL=74: none of them (the table says v74): libonyxposix's fallbacks on the old calls.
  * Onyx paths map to POSIXSIM_ROOT (default /tmp/posixsim): "SD:/x" -> $ROOT/SD/x, "RAM:/y" ->
  * $ROOT/RAM/y; the working directory starts at SD:/. A spawned program is run by the qemu binary
@@ -37,7 +42,7 @@ static char s_qemu[256] = "/usr/bin/qemu-aarch64-static";
 static char s_cwd[512] = "SD:/";
 static long s_argc;
 static char **s_argv, **s_envp;
-static int s_level = 75;
+static int s_level = 76;
 static int s_tz = 60;
 static int s_nonet = 1;
 static unsigned long long s_bootCnt;
@@ -187,11 +192,12 @@ static char *host (const char *p, char *buf)		/* an app path -> the host's (buf:
 }
 
 /* ---- handles ---- */
-enum { H_FREE, H_FILE, H_DIR, H_STREAM, H_PROC, H_OFILE };
+enum { H_FREE, H_FILE, H_DIR, H_STREAM, H_PROC, H_OFILE, H_LSOCK, H_SHM };
 struct handle
 {
 	int type;
-	int fd, fd2;				/* STREAM: read end, write end */
+	int fd, fd2;				/* STREAM: read end, write end; LSOCK: data, side channel */
+	int stype, acc;				/* LSOCK: the socket type; SHM: the access */
 	int pid, done, status;			/* PROC */
 	int dpos, dlen;				/* DIR */
 	char dbuf[4096];
@@ -497,7 +503,14 @@ static void *f_stdin_stream (void) { long h = hnew (H_STREAM); s_h[h - 1].fd = 0
 static void *f_stdout_stream (void) { long h = hnew (H_STREAM); s_h[h - 1].fd2 = 1; return (void *) h; }
 
 /* processes: the program is run by the qemu binary */
+static long do_spawn2 (const char *path, char **argv, char **envp, const char *cwd, void *in, void *out,
+		      const int *keep, int nkeep, const char *henv);
 static long do_spawn (const char *path, char **argv, char **envp, const char *cwd, void *in, void *out)
+{
+	return do_spawn2 (path, argv, envp, cwd, in, out, 0, 0, 0);
+}
+static long do_spawn2 (const char *path, char **argv, char **envp, const char *cwd, void *in, void *out,
+		      const int *keep, int nkeep, const char *henv)
 {
 	char hp[1024];
 	host (path, hp);
@@ -524,16 +537,21 @@ static long do_spawn (const char *path, char **argv, char **envp, const char *cw
 	strcpy (cw, "POSIXSIM_CWD=");
 	resolve (cwd ? cwd : s_cwd, cw + 13, sizeof cw - 13);
 	for (int i = 0; envp && envp[i] && m < 590; i++)
-		if (strncmp (envp[i], "POSIXSIM_ARGV0=", 15) && strncmp (envp[i], "POSIXSIM_CWD=", 13))
+		if (strncmp (envp[i], "POSIXSIM_ARGV0=", 15) && strncmp (envp[i], "POSIXSIM_CWD=", 13)
+		    && strncmp (envp[i], "POSIXSIM_HANDLES=", 17))
 			ev[m++] = envp[i];
 	ev[m++] = a0;
 	ev[m++] = cw;
+	if (henv)
+		ev[m++] = (char *) henv;
 	ev[m] = 0;
 	long pid = sc5 (L_clone, 17 /* SIGCHLD */, 0, 0, 0, 0);
 	if (pid == 0)
 	{
 		if (hi && hi->fd >= 0) sc3 (24 /* dup3 */, hi->fd, 0, 0);
 		if (ho && ho->fd2 >= 0) { sc3 (24, ho->fd2, 1, 0); sc3 (24, ho->fd2, 2, 0); }
+		for (int i = 0; i < nkeep; i++)
+			sc3 (L_fcntl, keep[i], 2 /* F_SETFD */, 0);	/* (v76: given to the child) */
 		sc3 (L_execve, s_qemu, av, ev);
 		sc1 (L_exit_group, 127);
 	}
@@ -898,11 +916,11 @@ static int f_vm_query (unsigned long long addr, struct kapi_vm_region *o)
 		while (*l && *l != '-') a = a * 16 + (unsigned long long) (*l <= '9' ? *l - '0' : (*l | 32) - 'a' + 10), l++;
 		if (*l) l++;
 		while (*l && *l != ' ') b = b * 16 + (unsigned long long) (*l <= '9' ? *l - '0' : (*l | 32) - 'a' + 10), l++;
-		unsigned prot = 0;
-		if (*l == ' ') { l++; if (l[0] == 'r') prot |= 1; if (l[1] == 'w') prot |= 2; }
+		unsigned prot = 0, kind = KAPI_VMK_ANON;
+		if (*l == ' ') { l++; if (l[0] == 'r') prot |= 1; if (l[1] == 'w') prot |= 2; if (l[3] == 's') kind = KAPI_VMK_SHM; }
 		while (*l && *l != '\n') l++;
 		if (*l) l++;
-		if (addr >= a && addr < b) { o->start = a; o->end = b; o->prot = prot; o->kind = KAPI_VMK_ANON; o->resident = 0; o->flags = KAPI_VMF_LAZY; return 0; }
+		if (addr >= a && addr < b) { o->start = a; o->end = b; o->prot = prot; o->kind = kind; o->resident = 0; o->flags = KAPI_VMF_LAZY; return 0; }
 		if (a > addr && a < best) { best = a; bend = b; bprot = prot; }
 	}
 	if (best == ~0ULL) return -KAPI_ENOMEM;
@@ -1084,6 +1102,471 @@ static int f_clock_info (struct kapi_clock_info *o)
 }
 static int f_sleep_us (unsigned long long us) { if (us) sleep_ns ((long long) us * 1000); else sc0 (L_sched_yield); return 0; }
 
+/* ---- v76: local sockets, handles carried, shared memory (docs/POSIX-PLAN.md §14) ----
+ * A local socket = a Linux AF_UNIX socket of the same type (its number: LBASE + the handle); a
+ * STREAM one also has a SEQPACKET side channel. The handles of a message travel as Linux
+ * descriptors (SCM_RIGHTS) with, for each, its kind, tag, which descriptors (mask) and socket
+ * type: in a header at the start of the packet (SEQPACKET / DGRAM: every packet has one), or as one
+ * record on the side channel for each send that carries some (STREAM: the descriptors ride on the
+ * data, so Linux keeps them at their byte). */
+#define LBASE		KAPI_SOCK_LOCAL_BASE
+#define XMAX		KAPI_IPC_HANDLES_MAX
+struct xmeta { int kind; unsigned tag; int mask; int stype; unsigned xflags; unsigned pad; };
+struct xhdr { unsigned n, pad; struct xmeta m[XMAX]; };
+
+static struct handle *lsock (long s) { return s >= LBASE ? hget (s - LBASE, H_LSOCK) : 0; }
+static int is_packet (const struct handle *x) { return x->stype != KAPI_SOCK_STREAM; }
+static int ltype (int kt) { return kt == KAPI_SOCK_STREAM ? 1 : kt == KAPI_SOCK_SEQPACKET ? 5 : 2; }
+
+/* the Linux descriptors of one handle of this process -> how many (<= 2), 0: not one */
+static int xfds (const struct kapi_handle_xfer *x, int *fd, struct xmeta *m)
+{
+	struct handle *h = 0;
+	int n = 0;
+	m->kind = x->kind;
+	m->tag = x->tag;
+	m->mask = 0;
+	m->stype = 0;
+	m->xflags = x->flags;
+	m->pad = 0;
+	switch (x->kind)
+	{
+	case KAPI_HK_OFILE: h = hget ((long) x->h, H_OFILE); break;
+	case KAPI_HK_STREAM: h = hget ((long) x->h, H_STREAM); break;
+	case KAPI_HK_SHM: h = hget ((long) x->h, H_SHM); break;
+	case KAPI_HK_LSOCK: h = lsock ((long) x->h); break;
+	case KAPI_HK_SOCKET:
+		if (x->h < 0 || x->h >= LBASE) return 0;
+		fd[n++] = (int) x->h;
+		m->mask = 1;
+		return n;
+	default: return 0;
+	}
+	if (!h) return 0;
+	int wantR = 1, wantW = 1;
+	if (h->type == H_STREAM && h->fd >= 0 && h->fd2 >= 0)	/* (a pipe: the end asked for only) */
+	{
+		wantR = !(x->flags & KAPI_HXF_WRITER);
+		wantW = !wantR;
+	}
+	if (h->fd >= 0 && wantR) { fd[n++] = h->fd; m->mask |= 1; }
+	if (h->fd2 >= 0 && wantW) { fd[n++] = h->fd2; m->mask |= 2; }
+	m->stype = h->type == H_LSOCK ? h->stype : h->acc;
+	return n;
+}
+
+/* a handle of this process for descriptors received -> its value (-1: the table full: closed) */
+static long long xmake (const struct xmeta *m, const int *fd)
+{
+	int n = (m->mask & 1) + ((m->mask >> 1) & 1);
+	if (m->kind == KAPI_HK_SOCKET)
+		return fd[0];
+	int type = m->kind == KAPI_HK_OFILE ? H_OFILE : m->kind == KAPI_HK_STREAM ? H_STREAM
+		 : m->kind == KAPI_HK_SHM ? H_SHM : H_LSOCK;
+	long h = hnew (type);
+	if (h == 0)
+	{
+		for (int i = 0; i < n; i++) sc1 (L_close, fd[i]);
+		return -1;
+	}
+	struct handle *x = &s_h[h - 1];
+	int k = 0;
+	if (m->mask & 1) x->fd = fd[k++];
+	if (m->mask & 2) x->fd2 = fd[k++];
+	if (type == H_LSOCK) { x->stype = m->stype; return LBASE + h; }
+	x->acc = m->stype;
+	return h;
+}
+
+/* send: the iovecs and nx handles from local socket x -> bytes / -errno */
+static long long local_send (struct handle *x, const struct kapi_iovec *iov, unsigned niov,
+			     const struct kapi_handle_xfer *hx, unsigned nx, unsigned flags)
+{
+	static struct xhdr H;			/* (one flow at a time sends handles here) */
+	static int fds[2 * XMAX];
+	static char cbuf[sizeof (struct l_cmsghdr) + sizeof fds + 8];
+	if (nx > XMAX) return -KAPI_EINVAL;
+	int nfd = 0;
+	H.n = nx;
+	for (unsigned i = 0; i < nx; i++)
+	{
+		int k = xfds (&hx[i], fds + nfd, &H.m[i]);
+		if (k == 0) return -KAPI_EBADF;
+		nfd += k;
+	}
+	struct l_iovec lv[KAPI_IPC_IOV_MAX + 1];
+	unsigned nv = 0;
+	unsigned hdr = 8 + nx * (unsigned) sizeof (struct xmeta);
+	if (is_packet (x)) { lv[nv].base = &H; lv[nv].len = hdr; nv++; }
+	else if (nx > 0)
+	{
+		long r = sc6 (L_sendto, x->fd2, (long) &H, hdr, 0x4000, 0, 0);	/* (the record first) */
+		if (r < 0) return kret (r);
+	}
+	for (unsigned i = 0; i < niov && nv <= KAPI_IPC_IOV_MAX; i++)
+	{
+		lv[nv].base = (void *) (unsigned long) iov[i].base;
+		lv[nv].len = iov[i].len;
+		nv++;
+	}
+	struct l_msghdr m;
+	memset (&m, 0, sizeof m);
+	m.iov = lv;
+	m.iovlen = nv;
+	if (nfd > 0)
+	{
+		struct l_cmsghdr *c = (struct l_cmsghdr *) cbuf;
+		c->len = sizeof *c + (unsigned) nfd * sizeof (int);
+		c->level = 1;			/* SOL_SOCKET */
+		c->type = 1;			/* SCM_RIGHTS */
+		memcpy (c + 1, fds, (unsigned) nfd * sizeof (int));
+		m.control = cbuf;
+		m.controllen = (c->len + 7) & ~7UL;
+	}
+	long r = sc3 (L_sendmsg, x->fd, &m, (flags & KAPI_MSG_DONTWAIT) | 0x4000);
+	if (r < 0) return kret (r);
+	return is_packet (x) ? (r >= (long) hdr ? r - (long) hdr : 0) : r;
+}
+
+/* receive into the iovecs; up to cap handles to out (*pn, *pfl updated) -> bytes / -errno */
+static long long local_recv (struct handle *x, const struct kapi_iovec *iov, unsigned niov,
+			     struct kapi_handle_xfer *out, unsigned cap, unsigned *pn, unsigned *pfl, unsigned flags)
+{
+	static struct xhdr H;
+	static char cbuf[sizeof (struct l_cmsghdr) + 2 * XMAX * sizeof (int) + 8];
+	unsigned long long total = 0;
+	for (unsigned i = 0; i < niov; i++) total += iov[i].len;
+	char *tmp = 0;
+	struct l_iovec lv[KAPI_IPC_IOV_MAX];
+	struct l_msghdr m;
+	memset (&m, 0, sizeof m);
+	if (is_packet (x))		/* the header + the data in one buffer, then copied out */
+	{
+		tmp = (char *) sc6 (L_mmap, 0, (long) (sizeof H + total + 1), 3, 0x22, -1, 0);
+		if ((long) tmp < 0) return -KAPI_ENOMEM;
+		lv[0].base = tmp;
+		lv[0].len = sizeof H + total;
+		m.iovlen = 1;
+	}
+	else
+	{
+		for (unsigned i = 0; i < niov; i++) { lv[i].base = (void *) (unsigned long) iov[i].base; lv[i].len = iov[i].len; }
+		m.iovlen = niov;
+	}
+	m.iov = lv;
+	m.control = cbuf;
+	m.controllen = sizeof cbuf;
+	long r = sc3 (L_recvmsg, x->fd, &m, flags & (KAPI_MSG_PEEK | KAPI_MSG_DONTWAIT | KAPI_MSG_WAITALL));
+	*pn = 0;
+	*pfl = 0;
+	if (r < 0)
+	{
+		if (tmp) sc2 (L_munmap, tmp, sizeof H + total + 1);
+		return kret (r);
+	}
+	if (m.flags & 0x20) *pfl |= KAPI_MSG_TRUNC;
+	/* the descriptors that came */
+	int nfd = 0, *fds = 0;
+	if (m.controllen >= sizeof (struct l_cmsghdr))
+	{
+		struct l_cmsghdr *c = (struct l_cmsghdr *) cbuf;
+		if (c->level == 1 && c->type == 1)
+		{
+			nfd = (int) ((c->len - sizeof *c) / sizeof (int));
+			fds = (int *) (c + 1);
+		}
+	}
+	long long got = r;
+	unsigned nmeta = 0;
+	if (is_packet (x))
+	{
+		if (r >= 8)
+		{
+			memcpy (&H, tmp, (unsigned long) r < sizeof H ? (unsigned long) r : sizeof H);
+			nmeta = H.n;
+			unsigned hdr = 8 + nmeta * (unsigned) sizeof (struct xmeta);
+			got = r > (long) hdr ? r - (long) hdr : 0;
+			if ((unsigned long long) got > total)	/* (cut to the caller's room) */
+			{
+				got = (long long) total;
+				*pfl |= KAPI_MSG_TRUNC;
+			}
+			unsigned long long o = 0;
+			for (unsigned i = 0; i < niov && o < (unsigned long long) got; i++)
+			{
+				unsigned long long k = iov[i].len < got - o ? iov[i].len : got - o;
+				memcpy ((void *) (unsigned long) iov[i].base, tmp + hdr + o, k);
+				o += k;
+			}
+		}
+		else
+			got = 0;
+		sc2 (L_munmap, tmp, sizeof H + total + 1);
+	}
+	else if (nfd > 0)
+	{
+		long q = sc6 (L_recvfrom, x->fd2, (long) &H, sizeof H, 0, 0, 0);	/* (its record) */
+		nmeta = q >= 8 ? H.n : 0;
+	}
+	if (flags & KAPI_MSG_PEEK)		/* (no handles with a peek: the duplicates closed) */
+	{
+		for (int i = 0; i < nfd; i++) sc1 (L_close, fds[i]);
+		return got;
+	}
+	int k = 0;
+	for (unsigned i = 0; i < nmeta && k < nfd; i++)
+	{
+		int n = (H.m[i].mask & 1) + ((H.m[i].mask >> 1) & 1);
+		if (*pn >= cap)
+		{
+			for (int j = 0; j < n; j++) sc1 (L_close, fds[k + j]);
+			*pfl |= KAPI_MSG_CTRUNC;
+		}
+		else
+		{
+			long long h = xmake (&H.m[i], fds + k);
+			if (h < 0) *pfl |= KAPI_MSG_CTRUNC;
+			else
+			{
+				memset (&out[*pn], 0, sizeof out[*pn]);
+				out[*pn].h = h;
+				out[*pn].kind = H.m[i].kind;
+				out[*pn].tag = H.m[i].tag;
+				out[*pn].flags = H.m[i].xflags;
+				out[*pn].fd = -1;
+				(*pn)++;
+			}
+		}
+		k += n;
+	}
+	if (m.flags & 0x8) *pfl |= KAPI_MSG_CTRUNC;
+	return got;
+}
+
+static int f_sock_pair (int type, unsigned flags, int *sv)
+{
+	if (type != KAPI_SOCK_STREAM && type != KAPI_SOCK_SEQPACKET && type != KAPI_SOCK_DGRAM) return -KAPI_EPROTONOSUPPORT;
+	if (flags & ~KAPI_SOCKF_NONBLOCK) return -KAPI_EINVAL;
+	int d[2], m[2] = { -1, -1 };
+	long r = sc4 (L_socketpair, 1, ltype (type) | L_O_CLOEXEC | ((flags & KAPI_SOCKF_NONBLOCK) ? L_O_NONBLOCK : 0), 0, d);
+	if (r < 0) return (int) kret (r);
+	if (type == KAPI_SOCK_STREAM && (r = sc4 (L_socketpair, 1, 5 | L_O_CLOEXEC, 0, m)) < 0)
+	{
+		sc1 (L_close, d[0]); sc1 (L_close, d[1]);
+		return (int) kret (r);
+	}
+	for (int i = 0; i < 2; i++)
+	{
+		long h = hnew (H_LSOCK);
+		if (h == 0) return -KAPI_EMFILE;
+		s_h[h - 1].fd = d[i];
+		s_h[h - 1].fd2 = m[i];
+		s_h[h - 1].stype = type;
+		sv[i] = (int) (LBASE + h);
+	}
+	s_h[sv[0] - LBASE - 1].pid = sv[1];		/* (the peer, while both are ours: the cycle check) */
+	s_h[sv[1] - LBASE - 1].pid = sv[0];
+	return 0;
+}
+
+static long long f_sock_sendmsg (int s, const struct kapi_msghdr *m, unsigned flags)
+{
+	struct handle *x = lsock (s);
+	if (!x) return s >= 0 && s < LBASE ? -KAPI_EOPNOTSUPP : -KAPI_EBADF;
+	if (m->iovcnt > KAPI_IPC_IOV_MAX || m->nhandles > XMAX) return -KAPI_EINVAL;
+	for (unsigned i = 0; i < m->nhandles; i++)
+		if (m->handles[i].kind == KAPI_HK_LSOCK && x->pid != 0 && m->handles[i].h == x->pid && lsock (x->pid))
+			return -KAPI_EINVAL;		/* (the receiving end over its own connection) */
+	return local_send (x, m->iov, m->iovcnt, m->handles, m->nhandles, flags);
+}
+
+static long long f_sock_recvmsg (int s, struct kapi_msghdr *m, unsigned flags)
+{
+	struct handle *x = lsock (s);
+	if (!x) return s >= 0 && s < LBASE ? -KAPI_EOPNOTSUPP : -KAPI_EBADF;
+	if (m->iovcnt > KAPI_IPC_IOV_MAX || m->nhandles > XMAX) return -KAPI_EINVAL;
+	unsigned n, fl;
+	long long r = local_recv (x, m->iov, m->iovcnt, m->handles, m->handles ? m->nhandles : 0, &n, &fl, flags);
+	if (r >= 0) { m->nhandles = n; m->flags = fl; }
+	return r;
+}
+
+static long long f_shm_create (unsigned long long size, unsigned flags)
+{
+	if (flags & ~KAPI_SHM_ALLOW_SEALING) return -KAPI_EINVAL;
+	long fd = sc2 (L_memfd_create, "posixsim", 1 | ((flags & KAPI_SHM_ALLOW_SEALING) ? 2 : 0));
+	if (fd < 0) return kret (fd);
+	if (size && sc2 (L_ftruncate, fd, size) < 0) { sc1 (L_close, fd); return -KAPI_ENOMEM; }
+	long h = hnew (H_SHM);
+	if (h == 0) { sc1 (L_close, fd); return -KAPI_EMFILE; }
+	s_h[h - 1].fd = (int) fd;
+	s_h[h - 1].acc = KAPI_O_RDWR;
+	return h;
+}
+
+static int shm_path (const char *name, char *out)
+{
+	if (*name == '/') name++;
+	if (!*name || strchr (name, '/')) return -KAPI_EINVAL;
+	if (strlen (name) > KAPI_SHM_NAME_MAX) return -KAPI_ENAMETOOLONG;
+	strcpy (out, s_root);
+	strcat (out, "/.shm");
+	sc3 (L_mkdirat, L_AT_FDCWD, out, 0755);
+	strcat (out, "/");
+	strcat (out, name);
+	return 0;
+}
+
+static long long f_shm_open (const char *name, unsigned oflags, unsigned mode)
+{
+	char p[512];
+	int r = shm_path (name, p);
+	if (r < 0) return r;
+	unsigned acc = oflags & KAPI_O_ACCMODE;
+	if (acc != KAPI_O_RDONLY && acc != KAPI_O_RDWR) return -KAPI_EINVAL;
+	long fd = l_open (p, (acc == KAPI_O_RDWR ? L_O_RDWR : L_O_RDONLY) | L_O_CLOEXEC | ((oflags & KAPI_O_CREAT) ? L_O_CREAT : 0)
+			  | ((oflags & KAPI_O_EXCL) ? L_O_EXCL : 0) | ((oflags & KAPI_O_TRUNC) ? L_O_TRUNC : 0), mode ? mode : 0600);
+	if (fd < 0) return kret (fd);
+	long h = hnew (H_SHM);
+	if (h == 0) { sc1 (L_close, fd); return -KAPI_EMFILE; }
+	s_h[h - 1].fd = (int) fd;
+	s_h[h - 1].acc = (int) acc;
+	return h;
+}
+
+static int f_shm_unlink (const char *name)
+{
+	char p[512];
+	int r = shm_path (name, p);
+	return r < 0 ? r : (int) kret (sc3 (L_unlinkat, L_AT_FDCWD, p, 0));
+}
+
+static long long f_shm_ctl (long long h, int op, unsigned long long arg)
+{
+	struct handle *x = hget ((long) h, H_SHM);
+	if (!x) return -KAPI_EBADF;
+	struct l_stat st;
+	switch (op)
+	{
+	case KAPI_SHM_GET_SIZE: return sc2 (L_fstat, x->fd, &st) < 0 ? -KAPI_EIO : st.st_size;
+	case KAPI_SHM_SET_SIZE:
+		if (x->acc != KAPI_O_RDWR) return -KAPI_EINVAL;
+		return kret (sc2 (L_ftruncate, x->fd, arg));
+	case KAPI_SHM_ADD_SEALS:
+		if (x->acc != KAPI_O_RDWR) return -KAPI_EPERM;
+		return kret (sc3 (L_fcntl, x->fd, 1033, arg));
+	case KAPI_SHM_GET_SEALS: { long r = sc3 (L_fcntl, x->fd, 1034, 0); return r < 0 ? 0 : r; }
+	case KAPI_SHM_GET_ID: return sc2 (L_fstat, x->fd, &st) < 0 ? -KAPI_EIO : (long long) st.st_ino;
+	case KAPI_SHM_GET_ACCESS: return x->acc;
+	default: return -KAPI_EINVAL;
+	}
+}
+
+static long long f_shm_map (long long h, unsigned long long addr, unsigned long long len, unsigned prot,
+			    unsigned flags, unsigned long long off)
+{
+	struct handle *x = hget ((long) h, H_SHM);
+	if (!x) return -KAPI_EBADF;
+	if (prot & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
+	if ((prot & KAPI_PROT_WRITE) && x->acc != KAPI_O_RDWR) return -KAPI_EACCES;
+	if (off & 0xFFFF) return -KAPI_EINVAL;
+	len = (len + 0xFFFF) & ~0xFFFFULL;
+	long lf = 1 /* MAP_SHARED */ | ((flags & KAPI_MAP_FIXED) ? 0x10 : 0) | ((flags & KAPI_MAP_FIXED_NOREPLACE) ? 0x100000 : 0)
+		| ((flags & KAPI_MAP_POPULATE) ? 0x8000 : 0);
+	return kret (sc6 (L_mmap, (long) addr, (long) len, prot, lf, x->fd, (long) off));
+}
+
+static int f_handle_close (long long h)
+{
+	struct handle *x = h >= LBASE ? lsock ((long) h) : (h >= 1 && h <= 256 ? &s_h[h - 1] : 0);
+	if (!x || (x->type != H_SHM && x->type != H_LSOCK && x->type != H_OFILE && x->type != H_STREAM)) return -KAPI_EBADF;
+	if (x->fd > 2) sc1 (L_close, x->fd);
+	if (x->fd2 > 2) sc1 (L_close, x->fd2);
+	x->type = H_FREE;
+	return 0;
+}
+
+/* spawn_ex2: the Linux descriptors stay open in the child; POSIXSIM_HANDLES tells it what they are:
+ * "fd,kind,tag,mask,stype,lfd,lfd;..." */
+static long long f_spawn_ex2 (const struct kapi_spawn_attr *a, const struct kapi_handle_xfer *hx, unsigned n)
+{
+	static char env[16384];
+	static int keep[2 * XMAX];
+	if (n > XMAX) return -KAPI_EINVAL;
+	int nk = 0;
+	unsigned o = 0;
+	strcpy (env, "POSIXSIM_HANDLES=");
+	o = 17;
+	for (unsigned i = 0; i < n; i++)
+	{
+		int fd[2] = { -1, -1 };
+		struct xmeta m;
+		int k = xfds (&hx[i], fd, &m);
+		if (k == 0 || hx[i].fd < 0) return -KAPI_EBADF;
+		char line[160];
+		int v[8] = { hx[i].fd, m.kind, (int) m.tag, m.mask, m.stype, fd[0], fd[1], (int) m.xflags };
+		unsigned l = 0;
+		for (int j = 0; j < 8; j++)
+		{
+			char num[16];
+			int q = 0;
+			unsigned u = (unsigned) v[j];
+			int neg = v[j] < 0 && j != 2;
+			if (neg) u = (unsigned) -v[j];
+			do { num[q++] = (char) ('0' + u % 10); u /= 10; } while (u);
+			if (neg) line[l++] = '-';
+			while (q) line[l++] = num[--q];
+			line[l++] = j < 7 ? ',' : ';';
+		}
+		if (o + l + 1 >= sizeof env) return -KAPI_ENOMEM;
+		memcpy (env + o, line, l);
+		o += l;
+		for (int j = 0; j < k; j++) keep[nk++] = fd[j];
+	}
+	env[o] = 0;
+	char *av[260], *ev[600];
+	split_block (a->argv, av, 260);
+	char **e = a->envp ? split_block (a->envp, ev, 600) : s_envp;
+	return do_spawn2 (a->path, av, e, a->cwd, a->in, a->out, keep, nk, env);
+}
+
+static int f_get_handles (struct kapi_handle_xfer *out, unsigned cap)
+{
+	static struct kapi_handle_xfer got[XMAX];
+	static int n = -1;
+	if (n < 0)
+	{
+		n = 0;
+		const char *p = getenv_ ("POSIXSIM_HANDLES");
+		while (p && *p && n < XMAX)
+		{
+			long v[8];
+			for (int j = 0; j < 8; j++)
+			{
+				int neg = *p == '-';
+				if (neg) p++;
+				unsigned long u = 0;
+				while (*p >= '0' && *p <= '9') u = u * 10 + (unsigned long) (*p++ - '0');
+				v[j] = neg ? -(long) u : (long) u;
+				if (*p == ',' || *p == ';') p++;
+			}
+			struct xmeta m = { (int) v[1], (unsigned) v[2], (int) v[3], (int) v[4], (unsigned) v[7], 0 };
+			int fd[2] = { (int) v[5], (int) v[6] };
+			for (int j = 0; j < 2; j++)
+				if (fd[j] >= 0) sc3 (L_fcntl, fd[j], 2, 1);	/* (FD_CLOEXEC again) */
+			memset (&got[n], 0, sizeof got[n]);
+			got[n].h = xmake (&m, fd);
+			got[n].kind = got[n].h < 0 ? KAPI_HK_NONE : m.kind;
+			got[n].tag = m.tag;
+			got[n].flags = m.xflags;
+			got[n].fd = (int) v[0];
+			n++;
+		}
+	}
+	for (unsigned i = 0; i < cap && i < (unsigned) n; i++) out[i] = got[i];
+	return n;
+}
+
 /* ---- v75: sockets and poll ---- */
 static void to_sin (const struct kapi_sockaddr *k, struct l_sockaddr_in *s)
 {
@@ -1104,18 +1587,24 @@ static int f_sock_open (int type, unsigned flags)
 	if (type != KAPI_SOCK_STREAM && type != KAPI_SOCK_DGRAM) return -KAPI_EPROTONOSUPPORT;
 	return (int) kret (sc3 (L_socket, 2, (type == KAPI_SOCK_STREAM ? 1 : 2) | 02000000 | ((flags & KAPI_SOCKF_NONBLOCK) ? L_O_NONBLOCK : 0), 0));
 }
-static int f_sock_connect (int s, const struct kapi_sockaddr *to) { struct l_sockaddr_in a; to_sin (to, &a); return (int) kret (sc3 (L_connect, s, &a, sizeof a)); }
+static int f_sock_connect (int s, const struct kapi_sockaddr *to)
+{
+	if (s >= LBASE) return -KAPI_EOPNOTSUPP;
+	struct l_sockaddr_in a; to_sin (to, &a); return (int) kret (sc3 (L_connect, s, &a, sizeof a));
+}
 static int f_sock_bind (int s, const struct kapi_sockaddr *to)
 {
+	if (s >= LBASE) return -KAPI_EOPNOTSUPP;
 	struct l_sockaddr_in a;
 	int one = 1;
 	to_sin (to, &a);
 	sc5 (L_setsockopt, s, 1, 2, &one, 4);
 	return (int) kret (sc3 (L_bind, s, &a, sizeof a));
 }
-static int f_sock_listen (int s, int b) { return (int) kret (sc2 (L_listen, s, b < 1 ? 1 : b > 32 ? 32 : b)); }
+static int f_sock_listen (int s, int b) { return s >= LBASE ? -KAPI_EOPNOTSUPP : (int) kret (sc2 (L_listen, s, b < 1 ? 1 : b > 32 ? 32 : b)); }
 static int f_sock_accept (int s, struct kapi_sockaddr *peer, unsigned flags)
 {
+	if (s >= LBASE) return -KAPI_EOPNOTSUPP;
 	struct l_sockaddr_in a;
 	unsigned len = sizeof a;
 	long r = sc4 (L_accept4, s, &a, &len, 02000000 | ((flags & KAPI_SOCKF_NONBLOCK) ? L_O_NONBLOCK : 0));
@@ -1124,25 +1613,68 @@ static int f_sock_accept (int s, struct kapi_sockaddr *peer, unsigned flags)
 }
 static long long f_sock_send (int s, const void *b, unsigned long long n, unsigned flags, const struct kapi_sockaddr *to)
 {
+	if (s >= LBASE)
+	{
+		struct handle *x = lsock (s);
+		struct kapi_iovec v = { (unsigned long long) (unsigned long) b, n };
+		return x ? local_send (x, &v, 1, 0, 0, flags) : -KAPI_EBADF;
+	}
 	struct l_sockaddr_in a;
 	if (to) to_sin (to, &a);
 	return kret (sc6 (L_sendto, s, (long) b, (long) n, (long) (flags | 0x4000), to ? (long) &a : 0, to ? (long) sizeof a : 0));
 }
 static long long f_sock_recv (int s, void *b, unsigned long long n, unsigned flags, struct kapi_sockaddr *from)
 {
+	if (s >= LBASE)
+	{
+		struct handle *x = lsock (s);
+		struct kapi_iovec v = { (unsigned long long) (unsigned long) b, n };
+		unsigned nh, fl;
+		long long r = x ? local_recv (x, &v, 1, 0, 0, &nh, &fl, flags) : -KAPI_EBADF;
+		if (r >= 0 && from) { memset (from, 0, sizeof *from); from->family = KAPI_AF_UNIX; }
+		return r;
+	}
 	struct l_sockaddr_in a;
 	unsigned len = sizeof a;
 	long r = sc6 (L_recvfrom, s, (long) b, (long) n, (long) flags, from ? (long) &a : 0, from ? (long) &len : 0);
 	if (r >= 0 && from) from_sin (&a, from);
 	return kret (r);
 }
-static int f_sock_shutdown (int s, int how) { return (int) kret (sc2 (L_shutdown, s, how)); }
-static int f_sock_close (int s) { return (int) kret (sc1 (L_close, s)); }
+static int f_sock_shutdown (int s, int how)
+{
+	if (s >= LBASE) { struct handle *x = lsock (s); if (!x) return -KAPI_EBADF; s = x->fd; }
+	return (int) kret (sc2 (L_shutdown, s, how));
+}
+static int f_sock_close (int s) { return s >= LBASE ? f_handle_close (s) : (int) kret (sc1 (L_close, s)); }
 static int f_sock_getopt (int s, int opt, int *v)
 {
 	int x = 0;
 	unsigned len = 4;
 	long r = 0;
+	struct handle *ls = s >= LBASE ? lsock (s) : 0;
+	if (s >= LBASE)
+	{
+		if (!ls) return -KAPI_EBADF;
+		s = ls->fd;
+		switch (opt)
+		{
+		case KAPI_SO_TYPE: *v = ls->stype; return 0;
+		case KAPI_SO_DOMAIN: *v = KAPI_AF_UNIX; return 0;
+		case KAPI_SO_RCVBUF: r = sc5 (L_getsockopt, s, 1, 8, &x, &len); *v = x / 2; return (int) kret (r < 0 ? r : 0);
+		case KAPI_SO_NREAD: r = sc3 (L_ioctl, s, 0x541B, &x); *v = x; return (int) kret (r < 0 ? r : 0);
+		case KAPI_SO_SNDBUF: r = sc5 (L_getsockopt, s, 1, 7, &x, &len); *v = x / 2; return (int) kret (r < 0 ? r : 0);
+		case KAPI_SO_PEERPID:
+		{
+			int cred[3];
+			len = sizeof cred;
+			r = sc5 (L_getsockopt, s, 1, 17, cred, &len);
+			if (r < 0) return (int) kret (r);
+			*v = cred[0];
+			return 0;
+		}
+		default: break;
+		}
+	}
 	switch (opt)
 	{
 	case KAPI_SO_ERROR: r = sc5 (L_getsockopt, s, 1, 4, &x, &len); x = x ? lerr (x) : 0; break;
@@ -1160,6 +1692,7 @@ static int f_sock_getopt (int s, int opt, int *v)
 	case KAPI_SO_NREAD: r = sc3 (L_ioctl, s, 0x541B, &x); break;
 	case KAPI_SO_TYPE: r = sc5 (L_getsockopt, s, 1, 3, &x, &len); x = x == 1 ? KAPI_SOCK_STREAM : KAPI_SOCK_DGRAM; break;
 	case KAPI_SO_ACCEPTCONN: r = sc5 (L_getsockopt, s, 1, 30, &x, &len); break;
+	case KAPI_SO_DOMAIN: x = KAPI_AF_INET; break;
 	default: return -KAPI_ENOPROTOOPT;
 	}
 	if (r < 0) return -lerr (-r);
@@ -1169,6 +1702,17 @@ static int f_sock_getopt (int s, int opt, int *v)
 static int f_sock_setopt (int s, int opt, int v)
 {
 	long r;
+	if (s >= LBASE)
+	{
+		struct handle *ls = lsock (s);
+		if (!ls) return -KAPI_EBADF;
+		s = ls->fd;
+		if (opt == KAPI_SO_RCVBUF || opt == KAPI_SO_SNDBUF)	/* (the FORCE options past wmem_max, as root) */
+		{
+			if (sc5 (L_setsockopt, s, 1, opt == KAPI_SO_RCVBUF ? 33 : 32, &v, 4) == 0) return 0;
+			return (int) kret (sc5 (L_setsockopt, s, 1, opt == KAPI_SO_RCVBUF ? 8 : 7, &v, 4) < 0 ? -22 : 0);
+		}
+	}
 	switch (opt)
 	{
 	case KAPI_SO_NONBLOCK:
@@ -1191,6 +1735,14 @@ static int f_sock_setopt (int s, int opt, int v)
 }
 static int f_sock_name (int s, int peer, struct kapi_sockaddr *o)
 {
+	if (s >= LBASE)
+	{
+		struct handle *x = lsock (s);
+		if (!x) return -KAPI_EBADF;
+		memset (o, 0, sizeof *o);
+		o->family = KAPI_AF_UNIX;
+		return 0;
+	}
 	struct l_sockaddr_in a;
 	unsigned len = sizeof a;
 	long r = sc3 (peer ? L_getpeername : L_getsockname, s, &a, &len);
@@ -1208,7 +1760,13 @@ static int f_poll (struct kapi_pollfd *fds, unsigned n, int ms)
 		p[i].events = fds[i].events;
 		p[i].revents = 0;
 		fds[i].revents = 0;
-		if (fds[i].kind == KAPI_PK_SOCKET)
+		if (fds[i].kind == KAPI_PK_SOCKET && fds[i].h >= LBASE)
+		{
+			struct handle *x = lsock (fds[i].h);
+			if (!x) { fds[i].revents = KAPI_POLLNVAL; continue; }
+			p[i].fd = x->fd;
+		}
+		else if (fds[i].kind == KAPI_PK_SOCKET)
 			p[i].fd = fds[i].h;
 		else if (fds[i].kind == KAPI_PK_STREAM)
 		{
@@ -1267,7 +1825,7 @@ void posixsim_init (long *sp)
 		sc1 (L_exit_group, 99);
 	}
 	struct TKApiTable *T = KT_W;
-	T->version = s_level >= 75 ? 75 : 74;
+	T->version = s_level >= 76 ? 76 : s_level >= 75 ? 75 : 74;
 	T->create_window = f_create_window;
 	T->yield = f_yield;
 	T->msleep = f_msleep;
@@ -1372,5 +1930,19 @@ void posixsim_init (long *sp)
 		T->sock_setopt = f_sock_setopt;
 		T->sock_name = f_sock_name;
 		T->poll = f_poll;
+	}
+	if (s_level >= 76)
+	{
+		T->sock_pair = f_sock_pair;
+		T->sock_sendmsg = f_sock_sendmsg;
+		T->sock_recvmsg = f_sock_recvmsg;
+		T->shm_create = f_shm_create;
+		T->shm_open = f_shm_open;
+		T->shm_unlink = f_shm_unlink;
+		T->shm_ctl = f_shm_ctl;
+		T->shm_map = f_shm_map;
+		T->handle_close = f_handle_close;
+		T->spawn_ex2 = f_spawn_ex2;
+		T->get_handles = f_get_handles;
 	}
 }

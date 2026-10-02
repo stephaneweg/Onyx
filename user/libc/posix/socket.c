@@ -10,8 +10,12 @@
  * MSG_PEEK) wait in a carry buffer, listen / accept are tcp_listen / tcp_accept (accept blocks).
  * No UDP then.
  *
- * Not on Onyx: AF_INET6 and AF_UNIX sockets (EAFNOSUPPORT), socketpair (EOPNOTSUPP), SIGPIPE
- * (a send on a closed connection fails with EPIPE; MSG_NOSIGNAL is accepted).
+ * Local sockets (v76: socketpair (AF_UNIX), ipc.c) are ONYX_FD_SOCKET descriptions too, numbered
+ * from KAPI_SOCK_LOCAL_BASE: send / recv / shutdown / poll / the options go to the same kernel
+ * calls; sendmsg / recvmsg carry descriptors (SCM_RIGHTS) through ipc.c.
+ *
+ * Not on Onyx: AF_INET6 and named AF_UNIX sockets (EAFNOSUPPORT), SIGPIPE (a send on a closed
+ * connection fails with EPIPE; MSG_NOSIGNAL is accepted).
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
  * hereby granted, free of charge, to any person obtaining a copy of this software and associated
@@ -126,12 +130,6 @@ int socket (int domain, int type, int proto)
 	}
 	d->sotype = base;
 	return __onyx_fd_install (d, 0, (type & SOCK_CLOEXEC) != 0);
-}
-
-int socketpair (int domain, int type, int proto, int sv[2])
-{
-	(void) domain; (void) type; (void) proto; (void) sv;
-	return ONYX_ERR (EOPNOTSUPP);
 }
 
 static int legacy_connect (struct __onyx_ofd *d, const struct kapi_sockaddr *k)
@@ -459,6 +457,16 @@ ssize_t send (int fd, const void *buf, size_t n, int flags) { return sendto (fd,
 
 ssize_t sendmsg (int fd, const struct msghdr *m, int flags)
 {
+	struct __onyx_ofd *d = sock_get (fd);
+	if (d == 0)
+		return -1;
+	if (ONYX_IS_LOCAL_SOCK (d))			/* (v76: with SCM_RIGHTS, ipc.c) */
+	{
+		ssize_t r = __onyx_local_sendmsg (d, m, flags);
+		__onyx_fd_put (d);
+		return r;
+	}
+	__onyx_fd_put (d);
 	size_t total = 0;
 	for (size_t i = 0; i < m->msg_iovlen; i++)
 		total += m->msg_iov[i].iov_len;
@@ -478,6 +486,16 @@ ssize_t sendmsg (int fd, const struct msghdr *m, int flags)
 
 ssize_t recvmsg (int fd, struct msghdr *m, int flags)
 {
+	struct __onyx_ofd *d = sock_get (fd);
+	if (d == 0)
+		return -1;
+	if (ONYX_IS_LOCAL_SOCK (d))			/* (v76: with SCM_RIGHTS, ipc.c) */
+	{
+		ssize_t r = __onyx_local_recvmsg (d, m, flags);
+		__onyx_fd_put (d);
+		return r;
+	}
+	__onyx_fd_put (d);
 	size_t total = 0;
 	for (size_t i = 0; i < m->msg_iovlen; i++)
 		total += m->msg_iov[i].iov_len;
@@ -548,7 +566,31 @@ int getsockopt (int fd, int level, int opt, void *v, socklen_t *len)
 		case SO_TYPE:		x = d->sotype; break;
 		case SO_ACCEPTCONN:	x = d->listening; break;
 		case SO_RCVBUF:
-		case SO_SNDBUF:		x = 65536; break;
+		case SO_SNDBUF:
+			x = 65536;
+			if (ONYX_IS_LOCAL_SOCK (d))
+				kapi_sock_getopt ((int) d->h, opt == SO_RCVBUF ? KAPI_SO_RCVBUF : KAPI_SO_SNDBUF, &x);
+			break;
+		case SO_DOMAIN:		x = ONYX_IS_LOCAL_SOCK (d) ? AF_UNIX : AF_INET; break;
+		case SO_PROTOCOL:	x = 0; break;
+		case SO_PEERCRED:
+		{
+			struct ucred u = { 0, 0, 0 };
+			int pid = 0;
+			int k = ONYX_IS_LOCAL_SOCK (d) ? kapi_sock_getopt ((int) d->h, KAPI_SO_PEERPID, &pid) : -KAPI_ENOTCONN;
+			if (k < 0)
+				r = ONYX_ERR (-k);
+			else if (v == 0 || len == 0 || *len < sizeof u)
+				r = ONYX_ERR (EINVAL);
+			else
+			{
+				u.pid = (pid_t) pid;
+				memcpy (v, &u, sizeof u);
+				*len = sizeof u;
+			}
+			__onyx_fd_put (d);
+			return r;
+		}
 		case SO_RCVTIMEO:
 		case SO_SNDTIMEO:
 		{
@@ -614,6 +656,15 @@ int setsockopt (int fd, int level, int opt, const void *v, socklen_t len)
 				d->sndtimeo = (unsigned) ms;
 		}
 	}
+	else if (level == SOL_SOCKET && (opt == SO_RCVBUF || opt == SO_SNDBUF) && ONYX_IS_LOCAL_SOCK (d))
+	{
+		int x = 0;
+		if (v && len >= sizeof x)
+			memcpy (&x, v, sizeof x);
+		int k = kapi_sock_setopt ((int) d->h, opt == SO_RCVBUF ? KAPI_SO_RCVBUF : KAPI_SO_SNDBUF, x);
+		if (k < 0)
+			r = ONYX_ERR (-k);
+	}
 	else if (level == SOL_SOCKET && opt == SO_BROADCAST && d->type == ONYX_FD_SOCKET)
 	{
 		int x = 0;
@@ -637,7 +688,20 @@ static int name (int fd, int peer, struct sockaddr *sa, socklen_t *len)
 	if (d == 0)
 		return -1;
 	int r = 0;
-	if (d->type == ONYX_FD_SOCKET)
+	if (ONYX_IS_LOCAL_SOCK (d))			/* (v76: unnamed AF_UNIX) */
+	{
+		struct kapi_sockaddr k;
+		int x = kapi_sock_name ((int) d->h, peer, &k);
+		if (x < 0)
+			r = ONYX_ERR (-x);
+		else if (sa && len)
+		{
+			if (*len >= sizeof (sa_family_t))
+				sa->sa_family = AF_UNIX;
+			*len = sizeof (sa_family_t);
+		}
+	}
+	else if (d->type == ONYX_FD_SOCKET)
 	{
 		struct kapi_sockaddr k;
 		memset (&k, 0, sizeof k);

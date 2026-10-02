@@ -7,6 +7,8 @@
  *  - a file, MAP_PRIVATE (or MAP_SHARED read-only): an anonymous read-write mapping filled with
  *    pread, then protected as asked (an eager copy; later writes to the file are not seen);
  *    MAP_SHARED with PROT_WRITE on a file -> ENOTSUP;
+ *  - (v76) a shared memory object (memfd_create, shm_open: ipc.c): MAP_SHARED -> shm_map (the
+ *    object's own pages, seen by every process mapping it); MAP_PRIVATE -> an anonymous copy;
  *  - munmap (partial: the kernel splits), mprotect, madvise (DONTNEED / FREE: zero at the next
  *    touch), mincore (from vm_query), msync / mlock: no-ops.
  * On a kernel without vm_map (ENOSYS) an anonymous mapping is 64 KB-aligned heap memory
@@ -126,6 +128,44 @@ static void *anon_map (void *addr, unsigned long len, int prot, int flags)
 	return heap_map (len);
 }
 
+/* (v76) a shared memory object's mapping: MAP_SHARED in place, MAP_PRIVATE a copy */
+static void *shm_mmap (struct __onyx_ofd *d, void *addr, size_t len, unsigned long n, int prot, int flags, off_t off)
+{
+	unsigned kf = 0;
+	if (flags & MAP_FIXED) kf |= KAPI_MAP_FIXED;
+	if (flags & MAP_FIXED_NOREPLACE) kf |= KAPI_MAP_FIXED_NOREPLACE;
+	if (flags & MAP_POPULATE) kf |= KAPI_MAP_POPULATE;
+	if ((flags & MAP_TYPE) == MAP_SHARED)
+	{
+		if ((prot & PROT_WRITE) && (d->flags & O_ACCMODE) != O_RDWR)
+		{
+			errno = EACCES;
+			return MAP_FAILED;
+		}
+		long long r = kapi_shm_map (d->h, (unsigned long long) (unsigned long) addr, n, (unsigned) prot, kf, (unsigned long long) off);
+		if (r < 0)
+		{
+			errno = (int) -r;
+			return MAP_FAILED;
+		}
+		return (void *) (unsigned long) r;
+	}
+	void *p = anon_map (addr, n, PROT_READ | PROT_WRITE, flags & ~MAP_NORESERVE);
+	if (p == MAP_FAILED)
+		return p;
+	long long size = kapi_shm_ctl (d->h, KAPI_SHM_GET_SIZE, 0);
+	long long src = size > (long long) off ? kapi_shm_map (d->h, 0, n, PROT_READ, 0, (unsigned long long) off) : -1;
+	if (src > 0)
+	{
+		unsigned long long have = (unsigned long long) (size - off);
+		memcpy (p, (void *) (unsigned long) src, have < len ? (size_t) have : len);
+		kapi_vm_unmap ((unsigned long long) src, n);
+	}
+	if ((prot & (PROT_READ | PROT_WRITE)) != (PROT_READ | PROT_WRITE))
+		kapi_vm_protect ((unsigned long) p, n, (unsigned) prot);
+	return p;
+}
+
 void *mmap (void *addr, size_t len, int prot, int flags, int fd, off_t off)
 {
 	if (len == 0 || (off & (ONYX_PAGE - 1)) != 0 || off < 0)
@@ -158,6 +198,12 @@ void *mmap (void *addr, size_t len, int prot, int flags, int fd, off_t off)
 	if (d == 0)
 		return MAP_FAILED;
 	void *p = MAP_FAILED;
+	if (d->type == ONYX_FD_SHM)			/* (v76) a shared memory object */
+	{
+		p = shm_mmap (d, addr, len, n, prot, flags, off);
+		__onyx_fd_put (d);
+		return p;
+	}
 	if (type == MAP_SHARED && (prot & PROT_WRITE))
 		errno = ENOTSUP;
 	else if (d->type != ONYX_FD_FILE && d->type != ONYX_FD_LFILE)
@@ -270,8 +316,6 @@ int mlock (const void *addr, size_t len) { (void) addr; (void) len; return 0; }
 int munlock (const void *addr, size_t len) { (void) addr; (void) len; return 0; }
 int mlockall (int flags) { (void) flags; return 0; }
 int munlockall (void) { return 0; }
-int shm_open (const char *name, int flags, mode_t mode) { (void) name; (void) flags; (void) mode; return ONYX_ERR (ENOSYS); }
-int shm_unlink (const char *name) { (void) name; return ONYX_ERR (ENOSYS); }
 
 int getpagesize (void) { return (int) ONYX_PAGE; }
 

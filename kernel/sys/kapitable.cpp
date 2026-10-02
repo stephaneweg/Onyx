@@ -257,6 +257,19 @@ int kapi_sock_getopt (int s, int nOpt, int *pValue);
 int kapi_sock_setopt (int s, int nOpt, int nValue);
 int kapi_sock_name (int s, int nPeer, struct kapi_sockaddr *pOut);
 int kapi_poll (struct kapi_pollfd *pFds, unsigned n, int nTimeoutMs);
+// v76 WP-IPC (sys/lsock.cpp, sys/shm.cpp, sys/vm.cpp, sys/procx.cpp)
+int kapi_sock_pair (int nType, unsigned nFlags, int *pSv);
+long long kapi_sock_sendmsg (int s, const struct kapi_msghdr *pM, unsigned nFlags);
+long long kapi_sock_recvmsg (int s, struct kapi_msghdr *pM, unsigned nFlags);
+long long kapi_shm_create (unsigned long long nSize, unsigned nFlags);
+long long kapi_shm_open (const char *pName, unsigned nOFlags, unsigned nMode);
+int kapi_shm_unlink (const char *pName);
+long long kapi_shm_ctl (long long h, int nOp, unsigned long long nArg);
+long long kapi_shm_map (long long h, unsigned long long ulAddr, unsigned long long ulLen, unsigned nProt,
+			unsigned nFlags, unsigned long long ulOff);
+int kapi_handle_close (long long h);
+long long kapi_spawn_ex2 (const struct kapi_spawn_attr *pA, const struct kapi_handle_xfer *pH, unsigned n);
+int kapi_get_handles (struct kapi_handle_xfer *pOut, unsigned nCap);
 
 }  // extern "C"
 
@@ -541,4 +554,17 @@ void KApiTableInit (void)
 	t->sock_setopt       = kapi_sock_setopt;
 	t->sock_name         = kapi_sock_name;
 	t->poll              = kapi_poll;
+
+	// --- v76 WP-IPC (sys/lsock.cpp, sys/shm.cpp, sys/vm.cpp, sys/procx.cpp) ---
+	t->sock_pair         = kapi_sock_pair;
+	t->sock_sendmsg      = kapi_sock_sendmsg;
+	t->sock_recvmsg      = kapi_sock_recvmsg;
+	t->shm_create        = kapi_shm_create;
+	t->shm_open          = kapi_shm_open;
+	t->shm_unlink        = kapi_shm_unlink;
+	t->shm_ctl           = kapi_shm_ctl;
+	t->shm_map           = kapi_shm_map;
+	t->handle_close      = kapi_handle_close;
+	t->spawn_ex2         = kapi_spawn_ex2;
+	t->get_handles       = kapi_get_handles;
 }

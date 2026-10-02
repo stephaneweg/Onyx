@@ -36,6 +36,7 @@
 #include <kern/uaccess.h>
 #include <kern/handle.h>
 #include <kern/stream.h>
+#include <kern/lsock.h>			// the local sockets (v76, WP-IPC)
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
 #include <circle/new.h>
@@ -43,12 +44,11 @@
 
 // Socket numbers. 0 .. 255 are IP sockets: sys/net.cpp's table (the stack's, shared with the
 // tcp_* handles), served where the stack runs (core 0, or core 3 with netcore=1). The numbers from
-// SOCK_LOCAL_BASE up are kept for the local sockets of WP-IPC (AF_UNIX: socketpair, handle
-// passing): kernel objects of core 0 with their own buffers. They plug in at the "WP-IPC" marks:
-// sock_open (a family in the type's high bits, rejected today), every call's dispatch (here they
-// all reach the net layer, which answers -EBADF for these numbers), and SockPoll; their changes
-// wake the waiters with IoWake, so the waits below serve them unchanged.
-#define SOCK_LOCAL_BASE	0x10000
+// SOCK_LOCAL_BASE up are the local sockets of WP-IPC (v76, sys/lsock.cpp: socketpair, handle
+// passing): handles of the caller's table naming core-0 kernel objects with their own buffers.
+// Each call below sends them there first ("WP-IPC" marks), and SockPoll; their changes wake the
+// waiters with IoWake. sock_open makes no local socket (sock_pair does).
+#define SOCK_LOCAL_BASE	KAPI_SOCK_LOCAL_BASE
 
 #define SOCK_IO_MAX	0x40000000ULL	// one call moves at most 1 GB (a short count beyond)
 #define WAIT_SPINS	8		// yields before a wait sleeps (an answer often takes µs)
@@ -84,7 +84,7 @@ static void WaitStep (u32 nGen, unsigned *pRound, unsigned nLeftMs)
 // The readiness of socket s (KAPI_POLL*; POLLNVAL: not a socket of the caller).
 static unsigned SockPoll (int s, unsigned nPid)
 {
-	if (s >= SOCK_LOCAL_BASE) return KAPI_POLLNVAL;		// (WP-IPC: the local sockets)
+	if (s >= SOCK_LOCAL_BASE) return IpcLocalPoll (s);		// (WP-IPC: the local sockets)
 	return NetSockPoll (s, nPid);
 }
 
@@ -108,6 +108,15 @@ static unsigned Caller (int s)
 {
 	SocketAdopt (s);					// (an ancestor's: ours from now on)
 	return NetCurrentPid ();
+}
+
+// (WP-IPC) A local socket's address: AF_UNIX, no name.
+static boolean PutLocalAddr (struct kapi_sockaddr *pUser)
+{
+	struct kapi_sockaddr a;
+	memset (&a, 0, sizeof a);
+	a.family = KAPI_AF_UNIX;
+	return UserPut (pUser, a);
 }
 
 static int GetAddr (const struct kapi_sockaddr *pUser, struct kapi_sockaddr *pOut)
@@ -141,6 +150,7 @@ int kapi_sock_open (int nType, unsigned nFlags)
 
 int kapi_sock_connect (int s, const struct kapi_sockaddr *pTo)
 {
+	if (IpcIsLocal (s)) return -KAPI_EOPNOTSUPP;		// (WP-IPC: no named local sockets)
 	struct kapi_sockaddr To;
 	int r = GetAddr (pTo, &To);
 	if (r < 0) return r;
@@ -167,6 +177,7 @@ int kapi_sock_connect (int s, const struct kapi_sockaddr *pTo)
 
 int kapi_sock_bind (int s, const struct kapi_sockaddr *pAddr)
 {
+	if (IpcIsLocal (s)) return -KAPI_EOPNOTSUPP;		// (WP-IPC)
 	struct kapi_sockaddr A;
 	int r = GetAddr (pAddr, &A);
 	if (r < 0) return r;
@@ -179,6 +190,7 @@ int kapi_sock_bind (int s, const struct kapi_sockaddr *pAddr)
 
 int kapi_sock_listen (int s, int nBacklog)
 {
+	if (IpcIsLocal (s)) return -KAPI_EOPNOTSUPP;		// (WP-IPC)
 	if (nBacklog < 1) nBacklog = 1;
 	if (nBacklog > 32) nBacklog = 32;
 	return NetSockListen (s, Caller (s), nBacklog);
@@ -187,6 +199,7 @@ int kapi_sock_listen (int s, int nBacklog)
 int kapi_sock_accept (int s, struct kapi_sockaddr *pPeer, unsigned nFlags)
 {
 	if (nFlags & ~KAPI_SOCKF_NONBLOCK) return -KAPI_EINVAL;
+	if (IpcIsLocal (s)) return -KAPI_EOPNOTSUPP;		// (WP-IPC)
 	if (pPeer != 0 && !UserRange (pPeer, sizeof *pPeer)) return -KAPI_EFAULT;	// (before a peer is taken)
 	unsigned nPid = Caller (s);
 	TNetSockView V;
@@ -209,6 +222,7 @@ int kapi_sock_accept (int s, struct kapi_sockaddr *pPeer, unsigned nFlags)
 long long kapi_sock_send (int s, const void *pBuf, unsigned long long nLen, unsigned nFlags,
 			 const struct kapi_sockaddr *pTo)
 {
+	if (IpcIsLocal (s)) return IpcLocalSend (s, pBuf, nLen, nFlags);	// (WP-IPC; `to` ignored)
 	if (nLen > SOCK_IO_MAX) nLen = SOCK_IO_MAX;
 	if (nLen > 0 && !UserReadable (pBuf, nLen)) return -KAPI_EFAULT;
 	struct kapi_sockaddr To;
@@ -248,9 +262,15 @@ long long kapi_sock_send (int s, const void *pBuf, unsigned long long nLen, unsi
 long long kapi_sock_recv (int s, void *pBuf, unsigned long long nLen, unsigned nFlags,
 			 struct kapi_sockaddr *pFrom)
 {
+	if (pFrom != 0 && !UserRange (pFrom, sizeof *pFrom)) return -KAPI_EFAULT;
+	if (IpcIsLocal (s))					// (WP-IPC)
+	{
+		long long r = IpcLocalRecv (s, pBuf, nLen, nFlags);
+		if (r >= 0 && pFrom != 0) PutLocalAddr (pFrom);
+		return r;
+	}
 	if (nLen > SOCK_IO_MAX) nLen = SOCK_IO_MAX;
 	if (nLen > 0 && !UserWritable (pBuf, nLen)) return -KAPI_EFAULT;
-	if (pFrom != 0 && !UserRange (pFrom, sizeof *pFrom)) return -KAPI_EFAULT;
 	unsigned nPid = Caller (s);
 	TNetSockView V;
 	if (NetSockView (s, nPid, &V) < 0) return -KAPI_EBADF;
@@ -291,21 +311,29 @@ long long kapi_sock_recv (int s, void *pBuf, unsigned long long nLen, unsigned n
 int kapi_sock_shutdown (int s, int nHow)
 {
 	if (nHow != KAPI_SHUT_RD && nHow != KAPI_SHUT_WR && nHow != KAPI_SHUT_RDWR) return -KAPI_EINVAL;
+	if (IpcIsLocal (s)) return IpcLocalShutdown (s, nHow);	// (WP-IPC)
 	return NetSockShutdown (s, Caller (s), nHow);
 }
 
 int kapi_sock_close (int s)
 {
+	if (IpcIsLocal (s)) return IpcLocalClose (s);		// (WP-IPC)
 	return NetSockClose (s, Caller (s));
 }
 
 int kapi_sock_getopt (int s, int nOpt, int *pValue)
 {
 	if (!UserRange (pValue, sizeof *pValue)) return -KAPI_EFAULT;
+	int nValue;
+	if (IpcIsLocal (s))					// (WP-IPC)
+	{
+		int r = IpcLocalGetOpt (s, nOpt, &nValue);
+		if (r < 0) return r;
+		return UserPut (pValue, nValue) ? 0 : -KAPI_EFAULT;
+	}
 	unsigned nPid = Caller (s);
 	TNetSockView V;
 	if (NetSockView (s, nPid, &V) < 0) return -KAPI_EBADF;
-	int nValue;
 	switch (nOpt)
 	{
 	case KAPI_SO_ERROR:	  nValue = NetSockTakeError (s, nPid); if (nValue < 0) return nValue; break;
@@ -319,6 +347,7 @@ int kapi_sock_getopt (int s, int nOpt, int *pValue)
 		break;
 	case KAPI_SO_TYPE:	  nValue = V.nType; break;
 	case KAPI_SO_ACCEPTCONN:  nValue = V.nState == NET_SS_LISTEN ? 1 : 0; break;
+	case KAPI_SO_DOMAIN:	  nValue = KAPI_AF_INET; break;	// (v76)
 	default:		  return -KAPI_ENOPROTOOPT;
 	}
 	return UserPut (pValue, nValue) ? 0 : -KAPI_EFAULT;
@@ -326,12 +355,19 @@ int kapi_sock_getopt (int s, int nOpt, int *pValue)
 
 int kapi_sock_setopt (int s, int nOpt, int nValue)
 {
+	if (IpcIsLocal (s)) return IpcLocalSetOpt (s, nOpt, nValue);	// (WP-IPC)
 	return NetSockSetOpt (s, Caller (s), nOpt, nValue);
 }
 
 int kapi_sock_name (int s, int nPeer, struct kapi_sockaddr *pOut)
 {
 	if (!UserRange (pOut, sizeof *pOut)) return -KAPI_EFAULT;
+	if (IpcIsLocal (s))					// (WP-IPC)
+	{
+		int r = IpcLocalName (s, nPeer);
+		if (r < 0) return r;
+		return PutLocalAddr (pOut) ? 0 : -KAPI_EFAULT;
+	}
 	unsigned nPid = Caller (s);
 	TNetSockView V;
 	if (NetSockView (s, nPid, &V) < 0) return -KAPI_EBADF;
@@ -357,8 +393,9 @@ static unsigned PollOne (const struct kapi_pollfd &f, unsigned nPid, boolean *pS
 	switch (f.kind)
 	{
 	case KAPI_PK_SOCKET:
+		if (f.h >= SOCK_LOCAL_BASE) return IpcLocalPoll (f.h);	// (WP-IPC: IoWake on changes)
 		*pSocket = TRUE;
-		if (f.h < SOCK_LOCAL_BASE && NetSocketOwner (f.h) != nPid) SocketAdopt (f.h);
+		if (NetSocketOwner (f.h) != nPid) SocketAdopt (f.h);
 		return SockPoll (f.h, nPid);
 
 	case KAPI_PK_STREAM:

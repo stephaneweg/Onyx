@@ -1,7 +1,9 @@
 /*
  * sys/socket.h -- BSD sockets on Onyx (libonyxposix socket.c, over the kapi v75 sock_* calls).
- * IPv4 TCP and UDP; AF_INET6 and AF_UNIX -> EAFNOSUPPORT (socketpair (AF_UNIX) is two pipes).
- * The layouts are Linux's (sa_family_t 16-bit, sockaddr_storage 128 bytes, MSG_NOSIGNAL 0x4000).
+ * IPv4 TCP and UDP; AF_INET6 and socket (AF_UNIX) -> EAFNOSUPPORT. (v76) socketpair (AF_UNIX,
+ * SOCK_STREAM / SOCK_SEQPACKET / SOCK_DGRAM): local sockets, with SCM_RIGHTS through sendmsg /
+ * recvmsg (ipc.c). The layouts are Linux's (sa_family_t 16-bit, sockaddr_storage 128 bytes,
+ * MSG_NOSIGNAL 0x4000, struct cmsghdr with a size_t length).
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
  * hereby granted, free of charge, to any person obtaining a copy of this software and associated
@@ -64,7 +66,27 @@ struct cmsghdr
 #define CMSG_LEN(n)		(CMSG_ALIGN (sizeof (struct cmsghdr)) + (n))
 #define CMSG_FIRSTHDR(m)	((m)->msg_controllen >= sizeof (struct cmsghdr) ? \
 				 (struct cmsghdr *) (m)->msg_control : (struct cmsghdr *) 0)
-#define CMSG_NXTHDR(m, c)	((struct cmsghdr *) 0)	/* no ancillary data on Onyx */
+#define CMSG_NXTHDR(m, c)	__onyx_cmsg_nxthdr ((m), (c))
+static __inline__ struct cmsghdr *__onyx_cmsg_nxthdr (const struct msghdr *__m, const struct cmsghdr *__c)
+{
+	unsigned char *__end = (unsigned char *) __m->msg_control + __m->msg_controllen;
+	if (__c->cmsg_len < sizeof (struct cmsghdr))
+		return (struct cmsghdr *) 0;
+	struct cmsghdr *__n = (struct cmsghdr *) ((unsigned char *) __c + CMSG_ALIGN (__c->cmsg_len));
+	if ((unsigned char *) (__n + 1) > __end || (unsigned char *) __n + CMSG_ALIGN (__n->cmsg_len) > __end)
+		return (struct cmsghdr *) 0;
+	return __n;
+}
+
+/* (v76) the ancillary data of a local socket (sendmsg / recvmsg) */
+#define SCM_RIGHTS	1		/* int[]: descriptors passed */
+#define SCM_CREDENTIALS	2		/* (not sent on Onyx) */
+struct ucred				/* SO_PEERCRED */
+{
+	pid_t pid;
+	uid_t uid;
+	gid_t gid;
+};
 
 struct linger
 {
@@ -108,6 +130,10 @@ struct linger
 #define SO_RCVTIMEO	20
 #define SO_SNDTIMEO	21
 #define SO_ACCEPTCONN	30
+#define SO_PASSCRED	16
+#define SO_PEERCRED	17		/* struct ucred: the peer's pid (local sockets) */
+#define SO_PROTOCOL	38
+#define SO_DOMAIN	39
 
 #define MSG_OOB		0x1
 #define MSG_PEEK	0x2
@@ -118,6 +144,7 @@ struct linger
 #define MSG_EOR		0x80
 #define MSG_WAITALL	0x100
 #define MSG_NOSIGNAL	0x4000
+#define MSG_CMSG_CLOEXEC 0x40000000	/* recvmsg: the descriptors received get FD_CLOEXEC */
 
 #define SHUT_RD		0
 #define SHUT_WR		1

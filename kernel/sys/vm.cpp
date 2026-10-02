@@ -33,6 +33,8 @@
 #include <kern/layout.h>
 #include <kern/trapframe.h>
 #include <kern/uaccess.h>		// UserPut (vm_query, vm_stats)
+#include <kern/lsock.h>			// the shared objects (v76: SHM regions)
+#include <kern/handle.h>		// shm_map's handle
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/memory.h>		// the app pool's free counters
@@ -47,7 +49,7 @@ static inline u64 Max64 (u64 a, u64 b)	{ return a > b ? a : b; }
 
 static inline boolean IsLazy (unsigned nKind)
 {
-	return nKind == KAPI_VMK_ANON || nKind == KAPI_VMK_HEAP || nKind == KAPI_VMK_STACK;
+	return nKind == KAPI_VMK_ANON || nKind == KAPI_VMK_HEAP || nKind == KAPI_VMK_STACK || nKind == KAPI_VMK_SHM;
 }
 
 // ---- the region list (pure data: unit-tested on the host) ------------------------------------
@@ -141,6 +143,7 @@ static boolean VmaCut (TVmSpace *pVm, u64 s, u64 e)
 	{
 		if (!VmaRoom (pVm, 1)) return FALSE;
 		TVma Hi = pVm->pVma[i];
+		if (Hi.pObj != 0) Hi.ulObjOff += e - Hi.ulStart;	// (SHM: each piece keeps its offset)
 		Hi.ulStart = e;
 		pVm->pVma[i].ulEnd = s;
 		VmaInsertAt (pVm, i + 1, Hi);
@@ -156,6 +159,7 @@ static boolean VmaCut (TVmSpace *pVm, u64 s, u64 e)
 	VmaEraseAt (pVm, i, j - i);
 	if (i < pVm->nVma && pVm->pVma[i].ulStart < e)
 	{
+		if (pVm->pVma[i].pObj != 0) pVm->pVma[i].ulObjOff += e - pVm->pVma[i].ulStart;
 		pVm->pVma[i].ulStart = e;
 	}
 	return TRUE;
@@ -168,6 +172,7 @@ static boolean VmaSplitAt (TVmSpace *pVm, u64 ulVA)
 	if (i < 0 || pVm->pVma[i].ulStart == ulVA) return TRUE;
 	if (!VmaRoom (pVm, 1)) return FALSE;
 	TVma Hi = pVm->pVma[i];
+	if (Hi.pObj != 0) Hi.ulObjOff += ulVA - Hi.ulStart;
 	Hi.ulStart = ulVA;
 	pVm->pVma[i].ulEnd = ulVA;
 	VmaInsertAt (pVm, (unsigned) i + 1, Hi);
@@ -180,6 +185,17 @@ static void VmaInsert (TVmSpace *pVm, u64 s, u64 e, unsigned nProt, unsigned nKi
 	TVma V;
 	V.ulStart = s; V.ulEnd = e;
 	V.nProt = (u16) nProt; V.nKind = (u16) nKind; V.nFlags = 0;
+	V.pObj = 0; V.ulObjOff = 0;
+	VmaInsertAt (pVm, VmaLowerBound (pVm, s), V);
+}
+
+// (v76) Insert an SHM region (pObj from offset ulOff) over a free range (VmaRoom (1) first).
+static void VmaInsertShm (TVmSpace *pVm, u64 s, u64 e, unsigned nProt, void *pObj, u64 ulOff, u32 nFlags)
+{
+	TVma V;
+	V.ulStart = s; V.ulEnd = e;
+	V.nProt = (u16) nProt; V.nKind = KAPI_VMK_SHM; V.nFlags = nFlags;
+	V.pObj = pObj; V.ulObjOff = ulOff;
 	VmaInsertAt (pVm, VmaLowerBound (pVm, s), V);
 }
 
@@ -192,7 +208,8 @@ static void VmaMerge (TVmSpace *pVm, u64 s, u64 e)
 	{
 		TVma &A = pVm->pVma[i], &B = pVm->pVma[i + 1];
 		if (   A.ulEnd == B.ulStart && A.nProt == B.nProt && A.nKind == B.nKind
-		    && A.nFlags == B.nFlags && A.nKind != KAPI_VMK_STACK)
+		    && A.nFlags == B.nFlags && A.nKind != KAPI_VMK_STACK && A.pObj == B.pObj
+		    && (A.pObj == 0 || A.ulObjOff + (A.ulEnd - A.ulStart) == B.ulObjOff))
 		{
 			A.ulEnd = B.ulEnd;
 			VmaEraseAt (pVm, i + 1, 1);
@@ -261,6 +278,13 @@ void VmTeardown (CAddressSpace *pAS)
 		delete z;
 	}
 	for (unsigned i = 0; i < VM_SWEEPS; i++) if (s_Sweep[i].pVm == pVm) s_Sweep[i].pVm = 0;
+	while (pVm->pShm != 0)				// (v76: no PTE of the space is used any more)
+	{
+		TVmShmRef *r = pVm->pShm;
+		pVm->pShm = r->pNext;
+		ShmMapDetach (r->pObj, TRUE);
+		delete r;
+	}
 	delete [] pVm->pVma;
 	pAS->SetVm (0);
 	delete pVm;					// (the frames: freed by ~CAddressSpace's walk)
@@ -518,6 +542,40 @@ static boolean HasSweep (const TVmSpace *pVm)
 	return FALSE;
 }
 
+// (v76) The shared objects no region names any more let go -- unless deferred zaps are pending in
+// the space (a PTE marked ZAP may still name a frame of one: kept until they are settled).
+static void VmShmGc (TVmSpace *pVm)
+{
+	if (pVm->pShm == 0 || pVm->pZapPending != 0 || HasSweep (pVm)) return;
+	for (TVmShmRef **pp = &pVm->pShm; *pp != 0; )
+	{
+		TVmShmRef *r = *pp;
+		boolean bUsed = FALSE;
+		for (unsigned i = 0; i < pVm->nVma && !bUsed; i++) bUsed = pVm->pVma[i].pObj == r->pObj;
+		if (bUsed)
+		{
+			pp = &r->pNext;
+			continue;
+		}
+		*pp = r->pNext;
+		ShmMapDetach (r->pObj, FALSE);
+		delete r;
+	}
+}
+
+// (v76) The space maps pObj from now on (its reference taken once). FALSE: out of memory.
+static boolean VmShmAttach (TVmSpace *pVm, void *pObj)
+{
+	for (TVmShmRef *r = pVm->pShm; r != 0; r = r->pNext) if (r->pObj == pObj) return TRUE;
+	TVmShmRef *r = new TVmShmRef;
+	if (r == 0) return FALSE;
+	r->pObj = pObj;
+	r->pNext = pVm->pShm;
+	pVm->pShm = r;
+	ShmMapAttach (pObj);
+	return TRUE;
+}
+
 static volatile u64 s_ulNetPC;			// the EL1 safety net caught kernel code at that PC
 static volatile u64 s_ulNetVA;
 static boolean s_bNetLogged;
@@ -547,6 +605,7 @@ void VmUnpinTask (CAddressSpace *pAS, CTask *pTask)
 	if (pVm->pZapPending != 0 || HasSweep (pVm))
 	{
 		RunPending (pAS, pVm);
+		VmShmGc (pVm);				// (v76: an object kept for a zap)
 	}
 }
 
@@ -672,6 +731,18 @@ int VmFaultIn (CAddressSpace *pAS, u64 ulVA, boolean bWrite)
 	{
 		return ApAllows (PteAP (*p), bWrite) ? 0 : -KAPI_EACCES;	// (another thread filled it)
 	}
+	if (pVm->pVma[i].nKind == KAPI_VMK_SHM)			// (v76) the object's frame
+	{
+		const TVma &V = pVm->pVma[i];
+		u64 ulPhys;
+		int r = ShmFrame (V.pObj, (ulVA - V.ulStart + V.ulObjOff) / KPAGE_SIZE, &ulPhys);
+		if (r < 0) return r;					// (-EFAULT: beyond its size)
+		TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
+		Attr.AP = ApForProt (nProt);
+		if (!pAS->MapPage (ulVA, ulPhys, Attr, FALSE)) return -KAPI_ENOMEM;	// (not owned)
+		pVm->nFaults++;
+		return 1;
+	}
 	if (VmPoolFree () < VM_RESERVE + 2 * KPAGE_SIZE)			// (the page, maybe an L3)
 	{
 		return -KAPI_ENOMEM;
@@ -726,7 +797,13 @@ const char *VmFaultWhy (CAddressSpace *pAS, u64 ulFAR)
 	int i = VmaFind (pVm, ulFAR);
 	if (i >= 0)
 	{
-		return pVm->pVma[i].nProt == KAPI_PROT_NONE ? "PROT_NONE access" : 0;
+		const TVma &V = pVm->pVma[i];
+		if (   V.nKind == KAPI_VMK_SHM && V.nProt != KAPI_PROT_NONE
+		    && ulFAR - V.ulStart + V.ulObjOff >= ShmSize (V.pObj))
+		{
+			return "beyond the shared object";
+		}
+		return V.nProt == KAPI_PROT_NONE ? "PROT_NONE access" : 0;
 	}
 	unsigned k = VmaLowerBound (pVm, ulFAR);
 	if (   k < pVm->nVma && pVm->pVma[k].nKind == KAPI_VMK_STACK
@@ -873,7 +950,9 @@ u64 VmRegionEndBelow (CAddressSpace *pAS, u64 ulVA)
 // ---- the kapis ---------------------------------------------------------------------------------
 
 #define KIND_BIT(k)		(1u << (k))
-#define KINDS_LAZY		(KIND_BIT (KAPI_VMK_ANON) | KIND_BIT (KAPI_VMK_HEAP) | KIND_BIT (KAPI_VMK_STACK))
+#define KINDS_LAZY		(KIND_BIT (KAPI_VMK_ANON) | KIND_BIT (KAPI_VMK_HEAP) | KIND_BIT (KAPI_VMK_STACK) \
+				 | KIND_BIT (KAPI_VMK_SHM))
+#define KINDS_ARENA		(KIND_BIT (KAPI_VMK_ANON) | KIND_BIT (KAPI_VMK_SHM))
 #define PROT_ALL		(KAPI_PROT_READ | KAPI_PROT_WRITE | KAPI_PROT_EXEC)
 
 // [addr, addr + len) rounded to pages; FALSE: unaligned, empty or wrapping.
@@ -917,8 +996,9 @@ long long kapi_vm_map (unsigned long long ulAddr, unsigned long long ulLen, unsi
 		{
 			if (!(nFlags & KAPI_MAP_FIXED)) return -KAPI_EEXIST;	// (NOREPLACE alone)
 			if (nFlags & KAPI_MAP_FIXED_NOREPLACE) return -KAPI_EEXIST;
-			VmaCut (pVm, s, s + nLen);		// (only ANON regions in the arena)
+			VmaCut (pVm, s, s + nLen);		// (only ANON / SHM regions in the arena)
 			Release (pAS, pVm, s, s + nLen, CurrentTask ());
+			VmShmGc (pVm);
 		}
 	}
 	else
@@ -941,6 +1021,75 @@ long long kapi_vm_map (unsigned long long ulAddr, unsigned long long ulLen, unsi
 	return (long long) s;
 }
 
+// (v76) [off, off + len) of shared object h mapped MAP_SHARED: an SHM region (lazy: its pages are the
+// object's frames, filled at the first touch). Placed as vm_map places an anonymous mapping.
+long long kapi_shm_map (long long h, unsigned long long ulAddr, unsigned long long ulLen, unsigned nProt,
+			unsigned nFlags, unsigned long long ulOff)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0 || ulLen == 0 || (nProt & ~PROT_ALL) != 0) return -KAPI_EINVAL;
+	if (nFlags & ~(KAPI_MAP_FIXED | KAPI_MAP_FIXED_NOREPLACE | KAPI_MAP_POPULATE | KAPI_MAP_NORESERVE)) return -KAPI_EINVAL;
+	if (nProt & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
+	if ((ulOff & KPAGE_MASK) != 0 || ulOff > IPC_SHM_MAX) return -KAPI_EINVAL;
+	if (ulLen > USER_MMAP_END - USER_MMAP_BASE) return -KAPI_ENOMEM;
+	CHandleTable *pTable = HandlesCurrent ();
+	unsigned nAccess = 0;
+	void *pObj = pTable != 0 && h > 0 && h <= 0xFFFFFF
+		   ? pTable->Get ((void *) (uintptr) (unsigned) h, HANDLE_SHM, &nAccess) : 0;
+	if (!ShmIs (pObj)) return -KAPI_EBADF;
+	if (nProt & KAPI_PROT_WRITE)
+	{
+		if (nAccess != KAPI_O_RDWR) return -KAPI_EACCES;
+		if (ShmSeals (pObj) & KAPI_SEAL_WRITE) return -KAPI_EPERM;
+	}
+	u64 nLen = (ulLen + KPAGE_MASK) & ~(u64) KPAGE_MASK;
+	TVmSpace *pVm = VmOf (pAS, TRUE);
+	if (pVm == 0 || !VmaRoom (pVm, 2)) return -KAPI_ENOMEM;
+	CTask *pSelf = CurrentTask ();
+
+	u64 s;
+	boolean bCut = FALSE;
+	if (nFlags & (KAPI_MAP_FIXED | KAPI_MAP_FIXED_NOREPLACE))
+	{
+		s = ulAddr;
+		if ((s & KPAGE_MASK) != 0 || s + nLen < s || !InArena (s, s + nLen)) return -KAPI_EINVAL;
+		if (VmaOverlaps (pVm, s, s + nLen) && !(nFlags & KAPI_MAP_FIXED)) return -KAPI_EEXIST;
+		if (VmaOverlaps (pVm, s, s + nLen) && (nFlags & KAPI_MAP_FIXED_NOREPLACE)) return -KAPI_EEXIST;
+		if (PinnedByOther (pVm, s, s + nLen, pSelf)) return -KAPI_EBUSY;	// (a kapi works there)
+		bCut = VmaOverlaps (pVm, s, s + nLen);
+	}
+	else
+	{
+		s = ulAddr;
+		if (   (s & KPAGE_MASK) != 0 || s + nLen < s || !InArena (s, s + nLen)
+		    || VmaOverlaps (pVm, s, s + nLen) || PinnedByOther (pVm, s, s + nLen, pSelf))
+		{
+			u64 lo = USER_MMAP_BASE;
+			for (unsigned nTry = 0; ; nTry++)	// (a gap still zapped under a pin: the next)
+			{
+				s = VmaFindGap (pVm, nLen, lo, USER_MMAP_END);
+				if (s == 0 || nTry >= 16) return -KAPI_ENOMEM;
+				if (!PinnedByOther (pVm, s, s + nLen, pSelf)) break;
+				lo = s + nLen;
+			}
+		}
+	}
+	if (!VmShmAttach (pVm, pObj)) return -KAPI_ENOMEM;
+	if (bCut)
+	{
+		VmaCut (pVm, s, s + nLen);
+		Release (pAS, pVm, s, s + nLen, pSelf);
+	}
+	VmaInsertShm (pVm, s, s + nLen, nProt, pObj, ulOff, nAccess != KAPI_O_RDWR ? VMA_F_SHM_RDONLY : 0);
+	VmaMerge (pVm, s, s + nLen);
+	VmShmGc (pVm);					// (what the cut let go)
+	if (nFlags & KAPI_MAP_POPULATE)
+	{
+		VmPopulate (pAS, s, s + nLen, TRUE);		// (as vm_map: a failure is not reported)
+	}
+	return (long long) s;
+}
+
 int kapi_vm_unmap (unsigned long long ulAddr, unsigned long long ulLen)
 {
 	CAddressSpace *pAS = CurrentAS ();
@@ -950,6 +1099,7 @@ int kapi_vm_unmap (unsigned long long ulAddr, unsigned long long ulLen)
 	if (VmaCutSplits (pVm, ulAddr, e) && !VmaRoom (pVm, 1)) return -KAPI_ENOMEM;
 	VmaCut (pVm, ulAddr, e);				// (holes allowed, as munmap)
 	Release (pAS, pVm, ulAddr, e, CurrentTask ());
+	VmShmGc (pVm);
 	return 0;
 }
 
@@ -960,7 +1110,17 @@ int kapi_vm_protect (unsigned long long ulAddr, unsigned long long ulLen, unsign
 	u64 e;
 	if (pVm == 0 || (nProt & ~PROT_ALL) != 0 || !PageRange (ulAddr, ulLen, &e)) return -KAPI_EINVAL;
 	if (nProt & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
-	if (!VmaCovered (pVm, ulAddr, e, KIND_BIT (KAPI_VMK_ANON))) return -KAPI_EINVAL;
+	if (!VmaCovered (pVm, ulAddr, e, KINDS_ARENA)) return -KAPI_EINVAL;
+	if (nProt & KAPI_PROT_WRITE)				// (v76: a shared object's write rights)
+	{
+		for (unsigned i = VmaLowerBound (pVm, ulAddr); i < pVm->nVma && pVm->pVma[i].ulStart < e; i++)
+		{
+			const TVma &V = pVm->pVma[i];
+			if (V.nKind != KAPI_VMK_SHM) continue;
+			if (V.nFlags & VMA_F_SHM_RDONLY) return -KAPI_EACCES;
+			if (ShmSeals (V.pObj) & KAPI_SEAL_WRITE) return -KAPI_EPERM;
+		}
+	}
 	if (!VmaRoom (pVm, 2)) return -KAPI_ENOMEM;		// (the split cap)
 	VmaSplitAt (pVm, ulAddr);
 	VmaSplitAt (pVm, e);
@@ -993,11 +1153,11 @@ int kapi_vm_advise (unsigned long long ulAddr, unsigned long long ulLen, int nAd
 
 	case KAPI_MADV_DONTNEED:
 	case KAPI_MADV_FREE:
-		if (!VmaCovered (pVm, ulAddr, e, KIND_BIT (KAPI_VMK_ANON) | KIND_BIT (KAPI_VMK_HEAP)))
+		if (!VmaCovered (pVm, ulAddr, e, KIND_BIT (KAPI_VMK_ANON) | KIND_BIT (KAPI_VMK_HEAP) | KIND_BIT (KAPI_VMK_SHM)))
 		{
 			return -KAPI_EINVAL;
 		}
-		Release (pAS, pVm, ulAddr, e, CurrentTask ());	// (zeros on the next touch)
+		Release (pAS, pVm, ulAddr, e, CurrentTask ());	// (zeros on the next touch; SHM: the object's data kept)
 		return 0;
 
 	default:

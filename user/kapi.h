@@ -488,6 +488,34 @@ static inline int kapi_sock_name (int s, int peer, struct kapi_sockaddr *out)
 	{ return KT->version >= 75 && KT->sock_name ? KT->sock_name (s, peer, out) : -KAPI_ENOSYS; }
 static inline int kapi_poll (struct kapi_pollfd *fds, unsigned n, int timeout_ms)
 	{ return KT->version >= 75 && KT->poll ? KT->poll (fds, n, timeout_ms) : -KAPI_ENOSYS; }
+// (v76, WP-IPC: docs/POSIX-PLAN.md §14) Local sockets (sock_pair: STREAM / SEQPACKET / DGRAM;
+// numbers >= KAPI_SOCK_LOCAL_BASE, served by every sock_* call and poll), messages carrying handles
+// (sock_sendmsg / sock_recvmsg: struct kapi_msghdr, struct kapi_handle_xfer), shared memory objects
+// (shm_create / shm_open / shm_unlink / shm_ctl / shm_map), handle_close, spawn_ex2 (handles given
+// to the child) and get_handles (the child's side). -KAPI_ENOSYS on an older kernel.
+static inline int kapi_sock_pair (int type, unsigned flags, int *sv)
+	{ return KT->version >= 76 && KT->sock_pair ? KT->sock_pair (type, flags, sv) : -KAPI_ENOSYS; }
+static inline long long kapi_sock_sendmsg (int s, const struct kapi_msghdr *m, unsigned flags)
+	{ return KT->version >= 76 && KT->sock_sendmsg ? KT->sock_sendmsg (s, m, flags) : -KAPI_ENOSYS; }
+static inline long long kapi_sock_recvmsg (int s, struct kapi_msghdr *m, unsigned flags)
+	{ return KT->version >= 76 && KT->sock_recvmsg ? KT->sock_recvmsg (s, m, flags) : -KAPI_ENOSYS; }
+static inline long long kapi_shm_create (unsigned long long size, unsigned flags)
+	{ return KT->version >= 76 && KT->shm_create ? KT->shm_create (size, flags) : -KAPI_ENOSYS; }
+static inline long long kapi_shm_open (const char *name, unsigned oflags, unsigned mode)
+	{ return KT->version >= 76 && KT->shm_open ? KT->shm_open (name, oflags, mode) : -KAPI_ENOSYS; }
+static inline int kapi_shm_unlink (const char *name)
+	{ return KT->version >= 76 && KT->shm_unlink ? KT->shm_unlink (name) : -KAPI_ENOSYS; }
+static inline long long kapi_shm_ctl (long long h, int op, unsigned long long arg)
+	{ return KT->version >= 76 && KT->shm_ctl ? KT->shm_ctl (h, op, arg) : -KAPI_ENOSYS; }
+static inline long long kapi_shm_map (long long h, unsigned long long addr, unsigned long long len, unsigned prot,
+				      unsigned flags, unsigned long long off)
+	{ return KT->version >= 76 && KT->shm_map ? KT->shm_map (h, addr, len, prot, flags, off) : -KAPI_ENOSYS; }
+static inline int kapi_handle_close (long long h)
+	{ return KT->version >= 76 && KT->handle_close ? KT->handle_close (h) : -KAPI_ENOSYS; }
+static inline long long kapi_spawn_ex2 (const struct kapi_spawn_attr *a, const struct kapi_handle_xfer *handles, unsigned n)
+	{ return KT->version >= 76 && KT->spawn_ex2 ? KT->spawn_ex2 (a, handles, n) : -KAPI_ENOSYS; }
+static inline int kapi_get_handles (struct kapi_handle_xfer *out, unsigned cap)
+	{ return KT->version >= 76 && KT->get_handles ? KT->get_handles (out, cap) : -KAPI_ENOSYS; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

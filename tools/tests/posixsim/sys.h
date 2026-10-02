@@ -68,6 +68,7 @@ static inline long sc6 (long n, long a, long b, long c, long d, long e, long f)
 #define L_getppid	173
 #define L_gettid	178
 #define L_socket	198
+#define L_socketpair	199
 #define L_bind		200
 #define L_listen	201
 #define L_connect	203
@@ -78,6 +79,8 @@ static inline long sc6 (long n, long a, long b, long c, long d, long e, long f)
 #define L_setsockopt	208
 #define L_getsockopt	209
 #define L_shutdown	210
+#define L_sendmsg	211
+#define L_recvmsg	212
 #define L_munmap	215
 #define L_clone		220
 #define L_execve	221
@@ -87,6 +90,8 @@ static inline long sc6 (long n, long a, long b, long c, long d, long e, long f)
 #define L_accept4	242
 #define L_wait4		260
 #define L_getrandom	278
+#define L_memfd_create	279
+#define L_dup3		24
 
 #define L_AT_FDCWD	-100
 #define L_O_RDONLY	0
@@ -115,5 +120,8 @@ struct l_stat				/* aarch64 struct stat (asm-generic) */
 struct l_timespec { long tv_sec, tv_nsec; };
 struct l_pollfd { int fd; short events, revents; };
 struct l_sockaddr_in { unsigned short family, port; unsigned addr; unsigned char zero[8]; };
+struct l_iovec { void *base; unsigned long len; };
+struct l_msghdr { void *name; unsigned namelen; struct l_iovec *iov; unsigned long iovlen; void *control; unsigned long controllen; int flags; };
+struct l_cmsghdr { unsigned long len; int level, type; };
 
 #endif

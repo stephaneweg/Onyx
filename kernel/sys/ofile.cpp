@@ -56,6 +56,7 @@
 // ---------------------------------------------------------------------------------------------
 //
 #include <kern/ofile.h>
+#include <kern/lsock.h>		// OFileRef (v76)
 #include <kern/handle.h>
 #include <kern/stream.h>
 #include <kern/ramfs.h>
@@ -288,6 +289,7 @@ struct TOFile
 	void	*pRam;				// OF_RAM: its RAM: node
 	u64	 nOffset;
 	TOFile	*pNextDeferred;
+	unsigned nHolders;			// (v76) handles and carried handles naming it (OFileRef)
 };
 
 static TSLock	 s_Table;			// the node list, open / close / unlink / rename
@@ -513,6 +515,11 @@ void OFileClose (void *pObj, boolean bTeardown)
 	{
 		return;
 	}
+	if (of->nHolders > 1)				// (v76: another process still holds it)
+	{
+		of->nHolders--;
+		return;
+	}
 	if (bTeardown)					// (nothing may wait here: the reaper closes it)
 	{
 		of->pNextDeferred = s_pDeferred;
@@ -520,6 +527,14 @@ void OFileClose (void *pObj, boolean bTeardown)
 		return;
 	}
 	CloseNow (of);
+}
+
+// (v76, kern/lsock.h) One more holder: a handle carried to another process names the same
+// description (its offset shared, as a dup'd descriptor).
+void OFileRef (void *pObj)
+{
+	TOFile *of = (TOFile *) pObj;
+	if (of != 0 && of->nMagic == OF_MAGIC) of->nHolders++;
 }
 
 void OFileRunDeferred (void)
@@ -629,6 +644,7 @@ long long kapi_file_open (const char *pUserPath, unsigned nFlags, unsigned nMode
 	if (of == 0) return -KAPI_ENOMEM;
 	memset (of, 0, sizeof *of);
 	of->nMagic = OF_MAGIC;
+	of->nHolders = 1;
 	of->nAccess = (u8) nAcc;
 	of->bAppend = (nFlags & KAPI_O_APPEND) != 0;
 

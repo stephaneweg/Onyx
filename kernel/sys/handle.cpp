@@ -27,6 +27,7 @@
 #include <kern/ramfs.h>
 #include <kern/vfs.h>
 #include <kern/ofile.h>		// OFileClose (v75)
+#include <kern/lsock.h>		// IpcLocalRelease, ShmRelease (v76)
 #include <kern/addrspace.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -98,6 +99,10 @@ void HandleObjectClose (void *pObj, unsigned nType, unsigned nKind, boolean bTea
 		break;
 
 	case HANDLE_STREAM:
+		if ((nKind & HKIND_STREAM_WRITER) && !(nKind & HKIND_STREAM_EOF_DONE))
+		{
+			((CStream *) pObj)->CloseWrite ();	// (v76: a carried write end gone)
+		}
 		if (bTeardown) HandlesDeferRelease ((CStream *) pObj);
 		else ((CStream *) pObj)->Release ();
 		break;
@@ -108,6 +113,14 @@ void HandleObjectClose (void *pObj, unsigned nType, unsigned nKind, boolean bTea
 
 	case HANDLE_OFILE:				// (v75: its node's reference dropped)
 		OFileClose (pObj, bTeardown);
+		break;
+
+	case HANDLE_LSOCK:				// (v76: the end's reference dropped)
+		IpcLocalRelease (pObj, bTeardown);
+		break;
+
+	case HANDLE_SHM:				// (v76: the object's reference dropped)
+		ShmRelease (pObj, bTeardown);
 		break;
 
 	case HANDLE_RESERVED:				// (no object yet)
@@ -337,6 +350,24 @@ void *CHandleTable::Find (const void *pObj, unsigned nType) const
 		}
 	}
 	return 0;
+}
+
+boolean CHandleTable::SetKind (void *h, unsigned nType, unsigned nKind)
+{
+	int i = Lookup (h, nType);
+	if (i < 0) return FALSE;
+	m_pEntry[i].nKind = (u8) nKind;
+	return TRUE;
+}
+
+unsigned CHandleTable::TypeOf (void *h) const
+{
+	uintptr v = (uintptr) h;
+	unsigned nIdx = (unsigned) (v & HV_INDEX_MASK);
+	if (v == 0 || v > HV_MAX || nIdx == 0 || nIdx > m_nSize) return HANDLE_FREE;
+	const THandleEntry *e = &m_pEntry[nIdx - 1];
+	if (e->pObj == 0 || e->bClosing || e->nGen != (unsigned) (v >> HV_INDEX_BITS)) return HANDLE_FREE;
+	return e->nType;
 }
 
 void CHandleTable::CloseAll (boolean bTeardown)

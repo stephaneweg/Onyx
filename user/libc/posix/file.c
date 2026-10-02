@@ -386,6 +386,8 @@ ssize_t __onyx_read (struct __onyx_ofd *d, void *buf, size_t n)
 		return pipe_read (d, buf, n);
 	case ONYX_FD_PIPE_W:
 		return ONYX_ERR (EBADF);
+	case ONYX_FD_SHM:				/* (v76: mmap it) */
+		return ONYX_ERR (EINVAL);
 	case ONYX_FD_SOCKET:
 	case ONYX_FD_LSOCKET:
 		return __onyx_sock_recv (d, buf, n, 0, 0);
@@ -442,6 +444,8 @@ ssize_t __onyx_write (struct __onyx_ofd *d, const void *buf, size_t n)
 		return pipe_write (d, buf, n);
 	case ONYX_FD_PIPE_R:
 		return ONYX_ERR (EBADF);
+	case ONYX_FD_SHM:				/* (v76: mmap it) */
+		return ONYX_ERR (EINVAL);
 	case ONYX_FD_SOCKET:
 	case ONYX_FD_LSOCKET:
 		return __onyx_sock_send (d, buf, n, 0, 0);
@@ -542,6 +546,14 @@ int __onyx_ofd_release (struct __onyx_ofd *d)
 	case ONYX_FD_PIPE_W:
 	{
 		struct __onyx_pipe *p = d->pipe;
+		if (p->remote)				/* (v76: an end received: its handle is its own) */
+		{
+			if (d->type == ONYX_FD_PIPE_W)
+				kapi_stream_eof (p->h);	/* (one writer less: the kernel counts them) */
+			kapi_stream_close (p->h);
+			free (p);
+			break;
+		}
 		int readers, writers;
 		if (d->type == ONYX_FD_PIPE_R)
 			readers = __atomic_sub_fetch (&p->readers, 1, __ATOMIC_ACQ_REL), writers = p->writers;
@@ -565,6 +577,9 @@ int __onyx_ofd_release (struct __onyx_ofd *d)
 	case ONYX_FD_SOCKET:
 	case ONYX_FD_LSOCKET:
 		r = __onyx_sock_close (d);
+		break;
+	case ONYX_FD_SHM:				/* (v76: its mappings keep the object) */
+		r = (int) __onyx_sys (kapi_handle_close (d->h));
 		break;
 	default:
 		break;
@@ -677,6 +692,8 @@ int ftruncate (int fd, off_t len)
 		r = ONYX_ERR (EBADF);
 	else if (d->type == ONYX_FD_FILE)
 		r = (int) __onyx_sys (kapi_file_truncate (d->h, (long long) len));
+	else if (d->type == ONYX_FD_SHM)		/* (v76) */
+		r = (int) __onyx_sys (kapi_shm_ctl (d->h, KAPI_SHM_SET_SIZE, (unsigned long long) len));
 	else if (d->type == ONYX_FD_LFILE && d->whole)
 	{
 		__onyx_ofd_lock (d);

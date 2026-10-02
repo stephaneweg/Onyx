@@ -54,7 +54,7 @@ CFLAGS   = -mcpu=cortex-a72 -O2 -g0 -Wall -Wextra -Wno-unused-parameter -fno-sta
 # references): the large code model reaches them anywhere (no ADRP range).
 CFLAGS_ABS = -mcmodel=large
 
-SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c \
+SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c ipc.c \
        file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c newlib_syscalls.c
 OBJ  = $(SRC:%.c=$(B)/%.o)
 HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../kapi.h \
@@ -114,7 +114,7 @@ install: all
 	cp -r include/. $(SYSROOT)/include/
 	cp $(B)/libonyxposix.a $(B)/crt0posix.o onyx-posix.ld $(SYSROOT)/lib/
 	@printf '%s\n' "$$SPECS_SYSROOT" > $(SYSROOT)/lib/onyx.specs
-	@printf 'prefix=%s\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: onyxposix\nDescription: The POSIX layer of Onyx (threads, files, sockets, mmap) over newlib\nVersion: 75\nLibs: -L$${libdir} -lonyxposix\nCflags: -isystem $${includedir} -DFD_SETSIZE=1024\n' "$(SYSROOT)" > $(PC_LIBDIR)/onyxposix.pc
+	@printf 'prefix=%s\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: onyxposix\nDescription: The POSIX layer of Onyx (threads, files, sockets, mmap) over newlib\nVersion: 76\nLibs: -L$${libdir} -lonyxposix\nCflags: -isystem $${includedir} -DFD_SETSIZE=1024\n' "$(SYSROOT)" > $(PC_LIBDIR)/onyxposix.pc
 	@echo "libonyxposix installed in $(SYSROOT)"
 
 clean:

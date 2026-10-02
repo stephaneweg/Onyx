@@ -43,6 +43,7 @@
 #include <sys/select.h>
 #include <dlfcn.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/utsname.h>
 #include <sys/random.h>
 #include <sys/resource.h>
@@ -83,7 +84,7 @@ static void skip (const char *name, const char *why)
 #define NOSYS		"kernel ENOSYS"
 
 /* ---- the kernel's v75 pieces (each answers -KAPI_ENOSYS until its work package lands) ---- */
-static int k_vm, k_threads, k_files, k_proc, k_clock, k_sleep, k_env, k_net, k_poll, k_pipe_nb;
+static int k_vm, k_threads, k_files, k_proc, k_clock, k_sleep, k_env, k_net, k_poll, k_pipe_nb, k_ipc;
 
 static void probe_kernel (void)
 {
@@ -103,11 +104,13 @@ static void probe_kernel (void)
 	k_net = kapi_sock_close (-1) != -KAPI_ENOSYS;
 	k_poll = kapi_poll (0, 0, 0) != -KAPI_ENOSYS;
 	k_pipe_nb = kapi_stream_write_nb (0, b, 0) != -KAPI_ENOSYS;
+	k_ipc = kapi_shm_ctl (0, 0, 0) != -KAPI_ENOSYS;
 	printf ("posixtest: kapi v%u; v75 pieces: vm %s, threads %s, files %s, processes %s, clock %s, "
 		"sleep %s, environment %s, sockets %s, poll %s, pipe writes %s\n", KT->version,
 		k_vm ? "yes" : "no", k_threads ? "yes" : "no", k_files ? "yes" : "no", k_proc ? "yes" : "no",
 		k_clock ? "yes" : "no", k_sleep ? "yes" : "no", k_env ? "yes" : "no", k_net ? "yes" : "no",
 		k_poll ? "yes" : "no", k_pipe_nb ? "yes" : "no");
+	printf ("posixtest: v76 IPC (local sockets, SCM_RIGHTS, shared memory) %s\n", k_ipc ? "yes" : "no");
 }
 
 static long long ms_now (void)
@@ -948,6 +951,44 @@ static void group_time (void)
 /* ================================================================================= proc == */
 static const char *s_self = "SD:/bin/posixtest";
 
+/* (ipc group) the child: a socket at fd (as WebKit's auxiliary processes: its number in argv), the
+ * parent's CLOEXEC end must not be here, the dup2 target is the same kind of socket. It receives a
+ * memfd by SCM_RIGHTS, maps it MAP_SHARED, checks the parent's bytes, writes its own, says "ok". */
+static int ipc_child (int fd, int cloexec_fd, int dup_fd)
+{
+	if (fcntl (cloexec_fd, F_GETFD) != -1 || errno != EBADF)
+		return 20;				/* (the CLOEXEC end leaked into the child) */
+	int t = 0;
+	socklen_t tl = sizeof t;
+	if (getsockopt (dup_fd, SOL_SOCKET, SO_TYPE, &t, &tl) != 0 || t != SOCK_SEQPACKET)
+		return 21;
+	char b[16];
+	char cbuf[CMSG_SPACE (sizeof (int))];
+	struct iovec v = { b, sizeof b };
+	struct msghdr m;
+	memset (&m, 0, sizeof m);
+	m.msg_iov = &v;
+	m.msg_iovlen = 1;
+	m.msg_control = cbuf;
+	m.msg_controllen = sizeof cbuf;
+	ssize_t n = recvmsg (fd, &m, MSG_CMSG_CLOEXEC);
+	struct cmsghdr *c = CMSG_FIRSTHDR (&m);
+	if (n != 3 || c == 0 || c->cmsg_type != SCM_RIGHTS)
+		return 22;
+	int mfd;
+	memcpy (&mfd, CMSG_DATA (c), sizeof mfd);
+	struct stat st;
+	if (fstat (mfd, &st) != 0 || st.st_size != 100000)
+		return 23;
+	unsigned char *p = (unsigned char *) mmap (0, 100000, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
+	if (p == MAP_FAILED || p[0] != 0x11 || p[99999] != 0x22)
+		return 24;
+	p[50000] = 0x33;
+	munmap (p, 100000);
+	close (mfd);
+	return send (fd, "ok", 2, MSG_NOSIGNAL) == 2 ? 30 : 25;
+}
+
 static int child_main (int argc, char **argv)
 {
 	const char *mode = argc > 2 ? argv[2] : "";
@@ -966,6 +1007,8 @@ static int child_main (int argc, char **argv)
 	}
 	if (!strcmp (mode, "argv"))
 		return argc == 5 && !strcmp (argv[3], "a b") && !strcmp (argv[4], "\"q\"") ? 9 : 10;
+	if (!strcmp (mode, "ipc") && argc == 6)
+		return ipc_child (atoi (argv[3]), atoi (argv[4]), atoi (argv[5]));
 	return 1;
 }
 
@@ -1024,6 +1067,241 @@ static void group_proc (void)
 
 	CHECK ("waitpid with no child -> ECHILD", waitpid (-1, &st, WNOHANG) == -1 && errno == ECHILD, "errno %d", errno);
 	CHECK ("fork -> ENOSYS", fork () == -1 && errno == ENOSYS, "errno %d", errno);
+}
+
+/* ================================================================================== ipc == */
+static int send_fds (int s, const char *data, const int *fds, int n)
+{
+	char cbuf[CMSG_SPACE (8 * sizeof (int))];
+	struct iovec v[3] = { { (void *) data, 1 }, { (void *) (data + 1), 1 }, { (void *) (data + 2), strlen (data) - 2 } };
+	struct msghdr m;
+	memset (&m, 0, sizeof m);
+	memset (cbuf, 0, sizeof cbuf);
+	m.msg_iov = v;
+	m.msg_iovlen = 3;
+	if (n > 0)
+	{
+		m.msg_control = cbuf;
+		m.msg_controllen = CMSG_SPACE (n * sizeof (int));
+		struct cmsghdr *c = CMSG_FIRSTHDR (&m);
+		c->cmsg_level = SOL_SOCKET;
+		c->cmsg_type = SCM_RIGHTS;
+		c->cmsg_len = CMSG_LEN (n * sizeof (int));
+		memcpy (CMSG_DATA (c), fds, n * sizeof (int));
+	}
+	return (int) sendmsg (s, &m, MSG_NOSIGNAL);
+}
+
+/* -> bytes; the fds received in fds (*n in: room, out: count), *mflags */
+static int recv_fds (int s, char *data, size_t cap, int *fds, int *n, int *mflags, int flags)
+{
+	char cbuf[CMSG_SPACE (8 * sizeof (int))];
+	struct iovec v = { data, cap };
+	struct msghdr m;
+	memset (&m, 0, sizeof m);
+	m.msg_iov = &v;
+	m.msg_iovlen = 1;
+	m.msg_control = cbuf;
+	m.msg_controllen = CMSG_LEN (*n * sizeof (int));	/* (room for exactly *n) */
+	int r = (int) recvmsg (s, &m, flags);
+	int got = 0;
+	for (struct cmsghdr *c = r >= 0 ? CMSG_FIRSTHDR (&m) : 0; c; c = CMSG_NXTHDR (&m, c))
+		if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS)
+		{
+			int k = (int) ((c->cmsg_len - CMSG_LEN (0)) / sizeof (int));
+			memcpy (fds + got, CMSG_DATA (c), k * sizeof (int));
+			got += k;
+		}
+	*n = got;
+	*mflags = m.msg_flags;
+	return r;
+}
+
+static void group_ipc (void)
+{
+	s_group = "ipc";
+	if (!k_ipc)
+	{
+		int sv[2];
+		CHECK ("socketpair (AF_UNIX) without the kernel's v76 -> EOPNOTSUPP",
+		       socketpair (AF_UNIX, SOCK_STREAM, 0, sv) == -1 && errno == EOPNOTSUPP, "errno %d", errno);
+		skip ("local sockets, SCM_RIGHTS, memfd, shm_open, posix_spawn with descriptors", NOSYS);
+		return;
+	}
+	CHECK ("socket (AF_UNIX) -> EAFNOSUPPORT (no named local sockets)",
+	       socket (AF_UNIX, SOCK_STREAM, 0) == -1 && errno == EAFNOSUPPORT, "errno %d", errno);
+
+	/* SEQPACKET (WebKit's connection), CLOEXEC */
+	int sp[2];
+	int r = socketpair (AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sp);
+	CHECK ("socketpair (AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC)", r == 0 && (fcntl (sp[0], F_GETFD) & FD_CLOEXEC), "r %d errno %d", r, errno);
+	if (r != 0)
+		return;
+	char b[64];
+	send (sp[0], "hello", 5, 0);
+	send (sp[0], "you", 3, 0);
+	ssize_t a1 = recv (sp[1], b, sizeof b, 0), a2 = recv (sp[1], b + 8, sizeof b - 8, 0);
+	CHECK ("SEQPACKET keeps the boundaries", a1 == 5 && a2 == 3 && !memcmp (b, "hello", 5) && !memcmp (b + 8, "you", 3), "%d %d", (int) a1, (int) a2);
+	struct pollfd pf = { sp[1], POLLIN, 0 };
+	long long t0 = ms_now ();
+	int pr = poll (&pf, 1, 100);
+	long long dt = ms_now () - t0;
+	CHECK ("poll on an empty local socket: the timeout", pr == 0 && dt >= 90 && dt < 400, "%d in %lld ms", pr, dt);
+	send (sp[0], "x", 1, 0);
+	pr = poll (&pf, 1, 1000);
+	CHECK ("poll: POLLIN", pr == 1 && (pf.revents & POLLIN), "%d %x", pr, pf.revents);
+	recv (sp[1], b, sizeof b, 0);
+	struct ucred cr;
+	socklen_t cl = sizeof cr;
+	int dom = 0;
+	socklen_t dl = sizeof dom;
+	memset (&cr, 0, sizeof cr);
+	CHECK ("SO_PEERCRED: our pid; SO_DOMAIN AF_UNIX",
+	       getsockopt (sp[0], SOL_SOCKET, SO_PEERCRED, &cr, &cl) == 0 && cr.pid == getpid ()
+	       && getsockopt (sp[0], SOL_SOCKET, SO_DOMAIN, &dom, &dl) == 0 && dom == AF_UNIX, "pid %d dom %d", (int) cr.pid, dom);
+	struct sockaddr_un un;
+	socklen_t ul = sizeof un;
+	memset (&un, 0, sizeof un);
+	CHECK ("getsockname: AF_UNIX, unnamed", getsockname (sp[0], (struct sockaddr *) &un, &ul) == 0 && un.sun_family == AF_UNIX
+	       && ul == sizeof (sa_family_t), "len %u", (unsigned) ul);
+
+	/* memfd: ftruncate, fstat, seals, two MAP_SHARED mappings alias, MAP_PRIVATE copies */
+	int mfd = memfd_create ("posixtest", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	struct stat st;
+	r = mfd >= 0 && ftruncate (mfd, 100000) == 0 && fstat (mfd, &st) == 0 && st.st_size == 100000 && S_ISREG (st.st_mode);
+	CHECK ("memfd_create, ftruncate, fstat", r, "fd %d errno %d", mfd, errno);
+	unsigned char *m1 = (unsigned char *) mmap (0, 100000, PROT_READ | PROT_WRITE, MAP_SHARED, mfd, 0);
+	unsigned char *m2 = (unsigned char *) mmap (0, 100000, PROT_READ, MAP_SHARED, mfd, 0);
+	int alias = m1 != MAP_FAILED && m2 != MAP_FAILED && m1 != m2;
+	if (alias)
+	{
+		m1[0] = 0x11;
+		m1[99999] = 0x22;
+		alias = m2[0] == 0x11 && m2[99999] == 0x22;
+	}
+	CHECK ("mmap MAP_SHARED twice: the same pages", alias, "%p %p", (void *) m1, (void *) m2);
+	unsigned char *mp = (unsigned char *) mmap (0, 100000, PROT_READ | PROT_WRITE, MAP_PRIVATE, mfd, 0);
+	int copy = mp != MAP_FAILED && mp[0] == 0x11;
+	if (copy)
+	{
+		mp[0] = 0x44;
+		copy = m1[0] == 0x11;
+		munmap (mp, 100000);
+	}
+	CHECK ("mmap MAP_PRIVATE of it: a copy", copy, "");
+	r = fcntl (mfd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_GROW);
+	CHECK ("F_ADD_SEALS / F_GET_SEALS; ftruncate then EPERM", r == 0
+	       && fcntl (mfd, F_GET_SEALS) == (F_SEAL_SHRINK | F_SEAL_GROW) && ftruncate (mfd, 5) == -1 && errno == EPERM, "r %d errno %d", r, errno);
+
+	/* sendmsg / recvmsg with SCM_RIGHTS: a memfd and a pipe's write end, 3 iovecs */
+	int pp[2];
+	pipe (pp);
+	int out[2] = { mfd, pp[1] };
+	int sn = send_fds (sp[0], "fds!", out, 2);
+	int in[8], n = 8, mf = 0;
+	int rn = recv_fds (sp[1], b, sizeof b, in, &n, &mf, 0);
+	CHECK ("sendmsg / recvmsg: 3 iovecs, 2 descriptors (CMSG_FIRSTHDR / CMSG_NXTHDR)", sn == 4 && rn == 4 && !memcmp (b, "fds!", 4)
+	       && n == 2 && in[0] != mfd && in[1] != pp[1] && mf == 0, "%d %d n %d flags %x", sn, rn, n, mf);
+	if (n == 2)
+	{
+		unsigned char *m3 = (unsigned char *) mmap (0, 100000, PROT_READ, MAP_SHARED, in[0], 0);
+		CHECK ("the memfd received maps the same object", m3 != MAP_FAILED && m3[99999] == 0x22, "");
+		if (m3 != MAP_FAILED)
+			munmap (m3, 100000);
+		ssize_t w = write (in[1], "pipe", 4);
+		char pb[8];
+		ssize_t k = read (pp[0], pb, sizeof pb);
+		CHECK ("the pipe end received writes into our pipe", w == 4 && k == 4 && !memcmp (pb, "pipe", 4), "%d %d", (int) w, (int) k);
+		close (in[0]);
+		close (in[1]);
+	}
+	/* MSG_CTRUNC (room for 1 of 3), MSG_CMSG_CLOEXEC */
+	int three[3] = { mfd, pp[0], pp[1] };
+	send_fds (sp[0], "abc", three, 3);
+	n = 1;
+	rn = recv_fds (sp[1], b, sizeof b, in, &n, &mf, MSG_CMSG_CLOEXEC);
+	CHECK ("MSG_CTRUNC: room for 1 of 3; MSG_CMSG_CLOEXEC", rn == 3 && n == 1 && (mf & MSG_CTRUNC)
+	       && (fcntl (in[0], F_GETFD) & FD_CLOEXEC), "%d n %d flags %x", rn, n, mf);
+	if (n == 1)
+		close (in[0]);
+
+	/* STREAM and DGRAM pairs */
+	int ss[2], ds[2];
+	r = socketpair (AF_UNIX, SOCK_STREAM, 0, ss);
+	send (ss[0], "ab", 2, 0);
+	send (ss[0], "cd", 2, 0);
+	usleep (10000);
+	ssize_t k = recv (ss[1], b, sizeof b, 0);
+	CHECK ("SOCK_STREAM pair: the bytes of two sends", r == 0 && k == 4 && !memcmp (b, "abcd", 4), "%d", (int) k);
+	close (ss[0]);
+	ssize_t e0 = recv (ss[1], b, sizeof b, 0);
+	ssize_t e1 = send (ss[1], "x", 1, MSG_NOSIGNAL);
+	CHECK ("SOCK_STREAM: the peer closed -> 0, and EPIPE back", e0 == 0 && e1 == -1 && errno == EPIPE, "%d %d errno %d", (int) e0, (int) e1, errno);
+	close (ss[1]);
+	r = socketpair (AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK, 0, ds);
+	CHECK ("SOCK_DGRAM | SOCK_NONBLOCK pair: EAGAIN when empty", r == 0 && recv (ds[1], b, sizeof b, 0) == -1 && errno == EAGAIN, "errno %d", errno);
+	if (r == 0)
+	{
+		close (ds[0]);
+		close (ds[1]);
+	}
+
+	/* shm_open / shm_unlink */
+	shm_unlink ("/posixtest");
+	int s1 = shm_open ("/posixtest", O_RDWR | O_CREAT | O_EXCL, 0600);
+	int s2 = s1 >= 0 ? shm_open ("/posixtest", O_RDWR, 0) : -1;
+	r = s1 >= 0 && s2 >= 0 && ftruncate (s1, 4096) == 0 && (fcntl (s1, F_GETFD) & FD_CLOEXEC);
+	unsigned char *q1 = r ? (unsigned char *) mmap (0, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, s1, 0) : MAP_FAILED;
+	unsigned char *q2 = r ? (unsigned char *) mmap (0, 4096, PROT_READ, MAP_SHARED, s2, 0) : MAP_FAILED;
+	int same = q1 != MAP_FAILED && q2 != MAP_FAILED;
+	if (same)
+	{
+		q1[7] = 9;
+		same = q2[7] == 9;
+	}
+	CHECK ("shm_open twice: the same object (FD_CLOEXEC)", same, "%d %d", s1, s2);
+	CHECK ("shm_unlink, then the name is gone", shm_unlink ("/posixtest") == 0 && shm_open ("/posixtest", O_RDWR, 0) == -1
+	       && errno == ENOENT, "errno %d", errno);
+	if (q1 != MAP_FAILED) munmap (q1, 4096);
+	if (q2 != MAP_FAILED) munmap (q2, 4096);
+	if (s1 >= 0) close (s1);
+	if (s2 >= 0) close (s2);
+
+	/* posix_spawn: the client end (no CLOEXEC) at its number; the server end (CLOEXEC) not given;
+	 * a dup2 onto 30; the child receives the memfd and writes into it */
+	int cs[2];
+	socketpair (AF_UNIX, SOCK_SEQPACKET, 0, cs);
+	fcntl (cs[0], F_SETFD, FD_CLOEXEC);			/* (the server end: ours only) */
+	posix_spawn_file_actions_t fa;
+	posix_spawn_file_actions_init (&fa);
+	posix_spawn_file_actions_adddup2 (&fa, cs[1], 30);
+	char fdn[3][12];
+	snprintf (fdn[0], sizeof fdn[0], "%d", cs[1]);
+	snprintf (fdn[1], sizeof fdn[1], "%d", cs[0]);
+	snprintf (fdn[2], sizeof fdn[2], "%d", 30);
+	char *av[] = { (char *) s_self, "--child", "ipc", fdn[0], fdn[1], fdn[2], 0 };
+	pid_t pid = 0;
+	r = posix_spawn (&pid, s_self, &fa, 0, av, environ);
+	posix_spawn_file_actions_destroy (&fa);
+	close (cs[1]);
+	int one[1] = { mfd };
+	sn = send_fds (cs[0], "mem", one, 1);
+	char ok[4] = "";
+	ssize_t okn = recv (cs[0], ok, sizeof ok, 0);
+	int status = 0;
+	pid_t w = r == 0 ? waitpid (pid, &status, 0) : -1;
+	CHECK ("posix_spawn: the socket at its number in the child, CLOEXEC kept out, a dup2 onto 30",
+	       r == 0 && w == pid && WIFEXITED (status) && WEXITSTATUS (status) == 30, "spawn %d status %x", r, status);
+	CHECK ("the child got the memfd, mapped it, wrote; we see it", sn == 3 && okn == 2 && m1 != MAP_FAILED && m1[50000] == 0x33,
+	       "%d %d %x", sn, (int) okn, m1 != MAP_FAILED ? m1[50000] : 0);
+	close (cs[0]);
+	if (m1 != MAP_FAILED) munmap (m1, 100000);
+	if (m2 != MAP_FAILED) munmap (m2, 100000);
+	close (mfd);
+	close (pp[0]);
+	close (pp[1]);
+	close (sp[0]);
+	close (sp[1]);
 }
 
 /* ================================================================================== net == */
@@ -1338,7 +1616,7 @@ int main (int argc, char **argv)
 
 	setvbuf (stdout, 0, _IOLBF, 0);
 	probe_kernel ();
-	static const char *all[] = { "mem", "thread", "file", "io", "time", "proc", "net", "misc", "cxx", 0 };
+	static const char *all[] = { "mem", "thread", "file", "io", "time", "proc", "ipc", "net", "misc", "cxx", 0 };
 	const char *const *groups = all;
 	const char *sel[16];
 	const char *fileDir = 0;
@@ -1365,11 +1643,12 @@ int main (int argc, char **argv)
 		else if (!strcmp (g, "io")) group_io ();
 		else if (!strcmp (g, "time")) group_time ();
 		else if (!strcmp (g, "proc")) group_proc ();
+		else if (!strcmp (g, "ipc")) group_ipc ();
 		else if (!strcmp (g, "net")) group_net ();
 		else if (!strcmp (g, "loop")) group_loop ();
 		else if (!strcmp (g, "misc")) group_misc ();
 		else if (!strcmp (g, "cxx")) group_cxx ();
-		else printf ("posixtest: no group '%s' (mem thread file io time proc net misc cxx loop)\n", g);
+		else printf ("posixtest: no group '%s' (mem thread file io time proc ipc net misc cxx loop)\n", g);
 	}
 	printf ("posixtest: %d passed, %d failed, %d skipped\n", s_pass, s_fail, s_skip);
 	return s_fail;
