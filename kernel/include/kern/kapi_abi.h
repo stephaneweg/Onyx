@@ -135,7 +135,15 @@
 //      clock); + sock_* / poll (229..241: BSD sockets and poll). Every v75 call returns >= 0 on
 //      success, -KAPI_Exxx (newlib's errno values) on failure. The skeleton: every entry exists
 //      and returns -KAPI_ENOSYS until its work package lands.
-#define KAPI_ABI_VERSION	75
+// v76: IPC between processes (docs/POSIX-PLAN.md §14, WP-IPC: what WebKit2's Unix IPC needs),
+//      a block after poll: + sock_pair (local sockets: SOCK_STREAM / SOCK_SEQPACKET / SOCK_DGRAM
+//      pairs, numbered from KAPI_SOCK_LOCAL_BASE, served by every sock_* call and poll) /
+//      sock_sendmsg / sock_recvmsg (scatter-gather, up to KAPI_IPC_HANDLES_MAX handles per message
+//      moved into the receiver's table: SCM_RIGHTS) / shm_create / shm_open / shm_unlink / shm_ctl
+//      (size, seals) / shm_map (shared memory objects mapped MAP_SHARED in several spaces) /
+//      handle_close / spawn_ex2 (handles given to the child at chosen descriptors) / get_handles
+//      (slots 242..252). + KAPI_SO_RCVBUF / SNDBUF / PEERPID / DOMAIN, KAPI_VMK_SHM.
+#define KAPI_ABI_VERSION	76
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -788,6 +796,67 @@ struct kapi_pollfd				// 16 bytes
 	int reserved;				// 12
 };
 
+// (v76, WP-IPC) Local sockets, handles passed between processes, shared memory (docs/POSIX-PLAN.md
+// §14). A local socket's number is a handle of the caller's table (always >= KAPI_SOCK_LOCAL_BASE;
+// IP sockets are 0..255): the sock_* calls and poll (KAPI_PK_SOCKET) take either.
+#define KAPI_AF_UNIX		1
+#define KAPI_SOCK_SEQPACKET	5
+#define KAPI_SOCK_LOCAL_BASE	0x10000		// local socket numbers are >= this
+#define KAPI_MSG_CTRUNC		0x8		// recvmsg out: handles dropped (no room in the array / table)
+#define KAPI_MSG_TRUNC		0x20		// recvmsg out: a datagram cut to the buffers
+#define KAPI_MSG_NOSIGNAL	0x4000		// accepted, ignored (no signals: EPIPE)
+#define KAPI_SO_RCVBUF		9		// local sockets: the receive queue's limit (bytes)
+#define KAPI_SO_SNDBUF		10		// local sockets: the largest datagram / packet (bytes)
+#define KAPI_SO_PEERPID		11		// get: the peer's pid (local sockets; -ENOTCONN)
+#define KAPI_SO_DOMAIN		12		// get: KAPI_AF_INET / KAPI_AF_UNIX
+#define KAPI_HK_NONE		0		// a handle's kind (struct kapi_handle_xfer)
+#define KAPI_HK_OFILE		1		// a file_open handle (the description is shared)
+#define KAPI_HK_STREAM		2		// a stream handle: a pipe (both ends), file_in / file_out
+#define KAPI_HK_SOCKET		3		// an IP socket number (0..255)
+#define KAPI_HK_LSOCK		4		// a local socket
+#define KAPI_HK_SHM		5		// a shared memory object
+#define KAPI_IPC_HANDLES_MAX	256		// handles per message, per spawn_ex2
+#define KAPI_IPC_IOV_MAX	64		// iovecs per message
+#define KAPI_SHM_ALLOW_SEALING	1		// shm_create: seals may be added (else F_SEAL_SEAL is set)
+#define KAPI_SHM_GET_SIZE	1		// shm_ctl ops
+#define KAPI_SHM_SET_SIZE	2
+#define KAPI_SHM_ADD_SEALS	3
+#define KAPI_SHM_GET_SEALS	4
+#define KAPI_SHM_GET_ID		5		// a number naming the object system-wide (stat's st_ino)
+#define KAPI_SHM_GET_ACCESS	6		// KAPI_O_RDONLY / KAPI_O_RDWR of this handle
+#define KAPI_SEAL_SEAL		1		// = Linux's F_SEAL_*
+#define KAPI_SEAL_SHRINK	2
+#define KAPI_SEAL_GROW		4
+#define KAPI_SEAL_WRITE		8
+#define KAPI_SHM_NAME_MAX	63		// shm_open's name ("/x" or "x"), without the leading '/'
+#define KAPI_VMK_SHM		6		// vm_query: a shm_map region
+
+struct kapi_iovec				// 16 bytes
+{
+	unsigned long long base;		// 0
+	unsigned long long len;			// 8
+};
+
+struct kapi_handle_xfer				// 24 bytes
+{
+	long long h;				// 0: a handle's value, or an IP socket's number
+	int kind;				// 8: KAPI_HK_*
+	unsigned tag;				// 12: the sender's word, given to the receiver as it is
+	int fd;					// 16: spawn_ex2 / get_handles: the child's descriptor
+	unsigned reserved;			// 20: 0
+};
+
+struct kapi_msghdr				// 48 bytes
+{
+	const struct kapi_iovec *iov;		// 0: the data (sendmsg: read, recvmsg: written)
+	struct kapi_handle_xfer *handles;	// 8: sendmsg: to pass; recvmsg: received (0: none)
+	unsigned iovcnt;			// 16: <= KAPI_IPC_IOV_MAX
+	unsigned nhandles;			// 20: sendmsg: count; recvmsg: capacity in, received out
+	unsigned flags;				// 24: recvmsg out: KAPI_MSG_TRUNC / KAPI_MSG_CTRUNC
+	unsigned reserved;			// 28: 0
+	unsigned long long reserved2[2];	// 32: 0
+};
+
 // The v75 structures' layout (the 64-bit ABI: pointers are 8 bytes).
 #define KAPI_CHECK_SIZE(type, size) \
 	KAPI_STATIC_ASSERT (sizeof (struct type) == (size), "sizeof (struct " #type ") is not " #size)
@@ -819,6 +888,13 @@ KAPI_CHECK_SIZE (kapi_sockaddr, 16);
 KAPI_CHECK_FIELD (kapi_sockaddr, addr, 4);
 KAPI_CHECK_SIZE (kapi_pollfd, 16);
 KAPI_CHECK_FIELD (kapi_pollfd, revents, 10);
+KAPI_CHECK_SIZE (kapi_iovec, 16);
+KAPI_CHECK_SIZE (kapi_handle_xfer, 24);
+KAPI_CHECK_FIELD (kapi_handle_xfer, kind, 8);
+KAPI_CHECK_FIELD (kapi_handle_xfer, fd, 16);
+KAPI_CHECK_SIZE (kapi_msghdr, 48);
+KAPI_CHECK_FIELD (kapi_msghdr, iovcnt, 16);
+KAPI_CHECK_FIELD (kapi_msghdr, flags, 24);
 
 struct TKApiTable
 {
@@ -1564,6 +1640,42 @@ struct TKApiTable
 	// poll: up to KAPI_POLL_MAX entries, timeout_ms -1 forever, 0 only check -> the ready count /
 	// 0 / -EINVAL / -EFAULT.
 	int (*poll) (struct kapi_pollfd *fds, unsigned n, int timeout_ms);
+
+	// --- v76 WP-IPC --- (slots 242..252; docs/POSIX-PLAN.md §14)
+	// sock_pair: KAPI_SOCK_STREAM / _SEQPACKET / _DGRAM, KAPI_SOCKF_NONBLOCK -> 0, sv[0] and sv[1]
+	// two connected local sockets / -EPROTONOSUPPORT / -EMFILE / -ENOMEM / -EFAULT.
+	int (*sock_pair) (int type, unsigned flags, int *sv);
+	// sock_sendmsg: the iovecs gathered into one message (a datagram / packet whole, or stream
+	// bytes) with m->nhandles handles (local sockets only, else -EOPNOTSUPP) -> bytes / -EAGAIN /
+	// -EPIPE / -EMSGSIZE / -ENOBUFS / -EBADF (a handle) / -EINVAL / -EFAULT.
+	long long (*sock_sendmsg) (int s, const struct kapi_msghdr *m, unsigned flags);
+	// sock_recvmsg: into the iovecs; the handles carried added to the caller's table and written
+	// to m->handles (m->nhandles, m->flags updated) -> bytes, 0 = the end / -EAGAIN / -EFAULT.
+	long long (*sock_recvmsg) (int s, struct kapi_msghdr *m, unsigned flags);
+	// shm_create: an anonymous object of size bytes (zero-filled; 0 allowed), KAPI_SHM_ALLOW_SEALING
+	// -> a handle / -ENOMEM / -EMFILE.
+	long long (*shm_create) (unsigned long long size, unsigned flags);
+	// shm_open: a named object (KAPI_O_RDONLY / RDWR | CREAT | EXCL | TRUNC) -> a handle / -ENOENT /
+	// -EEXIST / -EINVAL / -ENAMETOOLONG / -EACCES.
+	long long (*shm_open) (const char *name, unsigned oflags, unsigned mode);
+	int (*shm_unlink) (const char *name);			// -> 0 / -ENOENT
+	// shm_ctl: KAPI_SHM_* (SET_SIZE: arg the size; ADD_SEALS: arg the seals) -> the value asked / 0 /
+	// -EPERM (sealed) / -EBUSY (mapped: no shrink, no write seal) / -EINVAL / -EBADF.
+	long long (*shm_ctl) (long long h, int op, unsigned long long arg);
+	// shm_map: [off, off + len) of the object mapped MAP_SHARED (as vm_map: addr a hint unless
+	// KAPI_MAP_FIXED / _NOREPLACE, KAPI_MAP_POPULATE; vm_unmap / vm_protect / vm_advise work on it)
+	// -> the address / -EACCES (write on a read-only handle) / -EPERM (write-sealed) / -EINVAL /
+	// -ENOMEM / -EBADF.
+	long long (*shm_map) (long long h, unsigned long long addr, unsigned long long len, unsigned prot,
+			      unsigned flags, unsigned long long off);
+	// handle_close: a shm, local socket, file_open or stream handle closed -> 0 / -EBADF.
+	int (*handle_close) (long long h);
+	// spawn_ex2: spawn_ex, and n handles of the caller (KAPI_HK_*: duplicated, the caller keeps its
+	// own) given to the child, which reads them with get_handles -> a process handle / -errno.
+	long long (*spawn_ex2) (const struct kapi_spawn_attr *a, const struct kapi_handle_xfer *handles, unsigned n);
+	// get_handles: the handles the spawner gave (h: in this process's table now; fd, kind, tag as
+	// given), up to cap written -> how many there are (0: none).
+	int (*get_handles) (struct kapi_handle_xfer *out, unsigned cap);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1614,6 +1726,17 @@ KAPI_CHECK_SLOT (sock_getopt, 238);
 KAPI_CHECK_SLOT (sock_setopt, 239);
 KAPI_CHECK_SLOT (sock_name, 240);
 KAPI_CHECK_SLOT (poll, 241);
+KAPI_CHECK_SLOT (sock_pair, 242);
+KAPI_CHECK_SLOT (sock_sendmsg, 243);
+KAPI_CHECK_SLOT (sock_recvmsg, 244);
+KAPI_CHECK_SLOT (shm_create, 245);
+KAPI_CHECK_SLOT (shm_open, 246);
+KAPI_CHECK_SLOT (shm_unlink, 247);
+KAPI_CHECK_SLOT (shm_ctl, 248);
+KAPI_CHECK_SLOT (shm_map, 249);
+KAPI_CHECK_SLOT (handle_close, 250);
+KAPI_CHECK_SLOT (spawn_ex2, 251);
+KAPI_CHECK_SLOT (get_handles, 252);
 
 #ifdef __cplusplus
 }
