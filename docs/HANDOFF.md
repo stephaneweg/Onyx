@@ -104,6 +104,14 @@ answer in French. The docs stay in English.
   (the reserve chosen at boot from the board's RAM, in the Circle fork + kernel), a small-memory
   profile (smaller `RAM:` -- `ramfs=` --, Jet's caches on the card / capped), and a `vmmap <app>`
   tool (the regions, resident pages, kinds: heap, stacks, image, canvases) on vm_query/vm_stats.
+- **To do: the PDF Viewer flickers when scrolling fast from page to page (the user, 2026-10-02).**
+  Check first where it comes from (the view cleared / a blank placeholder painted before the
+  worker thread's bitmap arrives; drawing straight into the visible canvas without a back buffer;
+  pages rendered again on every scroll). The fix the user suggests: render into memory buffers
+  once and scroll what is already generated -- keep the rendered pages (at the current zoom) of
+  the visible ones and their neighbours in a cache, render ahead above and below, compose the view
+  from that cache into a back buffer and present it whole (never clear first); while a page is not
+  rendered yet, show its thumbnail or the previous zoom's bitmap scaled, not a blank.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
