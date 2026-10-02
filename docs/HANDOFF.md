@@ -104,7 +104,6 @@ answer in French. The docs stay in English.
   (the reserve chosen at boot from the board's RAM, in the Circle fork + kernel), a small-memory
   profile (smaller `RAM:` -- `ramfs=` --, Jet's caches on the card / capped), and a `vmmap <app>`
   tool (the regions, resident pages, kinds: heap, stacks, image, canvases) on vm_query/vm_stats.
-  Meanwhile on 1 GB: `cache_on_card:1` in `SD:/res/Choices`, `ramfs=16` in `SD:/etc/system.ini`.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
