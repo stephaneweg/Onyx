@@ -169,13 +169,74 @@ installed.)
 
 ### Next steps
 
-1. Publish the package `jsc` if it is not yet (`tools/pkg/packages.ini` declares it: `bin/jsc`,
-   `docs/jsc/`; `sh tools/pkg/publish.sh`, the user's signing key).
-2. Step 2, WebCore, on a branch `webkit-port` made from `main`: widen the checkout
-   (`SPARSE_EXTRA="Source/WebCore Source/ThirdParty/..."`), `PLATFORM(ONYX)` on the PlayStation
-   port's model, Skia from the sysroot, curl + mbedTLS, libxml2, SQLite, woff2 (to port).
-3. For later, in the kernel: PROT_EXEC for a JIT, a call to suspend a thread (above), a malloc that
+1. Step 2, WebCore (below), on the branch `webkit-port`. The package `jsc` 1.0.0 is published.
+2. For later, in the kernel: PROT_EXEC for a JIT, a call to suspend a thread (above), a malloc that
    returns memory, a streaming ELF loader and shared code pages (a static WebKit is 60–100 MB).
+
+## Step 2: WebCore — the design (2026-10-02, branch `webkit-port`; in progress)
+
+**Decided (the user, 2026-10-02): the graphics, in this order** — (1) a browser rendered on the
+**CPU, without GL** (Skia raster); (2) once that has worked well for a few days, a **compositor on
+the V3D** (Onyx's own kernel driver, as Jet with `user/gpucomp`); (3) **WebGL is a goal for later**:
+it needs Mesa's `v3d` driver (WebKit's WebGL is ANGLE over a GLES or Vulkan driver, and Mesa has the
+only GLSL → QPU compiler; a software WebGL would need executable memory). Nothing done now should
+close that door: GL is cut out of the build by a flag, not removed.
+
+What a study of the pinned sources found (read, not compiled: verify when building):
+
+- **No port builds WebCore without GL.** Windows, WPE / GTK and PlayStation all composite with GL
+  (TextureMapper or Coordinated Graphics); `platform/graphics/skia/SkiaCompositingLayer*` is
+  GL-only too. With `USE(SKIA)`, about ten files use Ganesh / GL whatever the configuration:
+  `PlatformDisplaySkia.cpp`, `ImageBufferSkiaAcceleratedBackend.cpp`, `SkiaGPUAtlas.cpp`,
+  `SkiaReplayAtlas.cpp`, `SkiaReplayCanvas.cpp` (whole files), and hunks of `GraphicsContextSkia.cpp`,
+  `NativeImageSkia.cpp`, `ImageUtilitiesSkia.cpp`, `SkiaUtilities.cpp/.h`,
+  `SkiaSerializedImageBuffer.cpp`, `SkiaRecordingResult.h`, `platform/graphics/ImageBuffer.cpp`,
+  `PlatformDisplay.h/.cpp`. The run-time paths are already CPU-safe (`RenderingMode::Unaccelerated`):
+  the problem is compiling and linking. **Chosen: a guard patch** (a flag such as `USE(SKIA_GPU)`,
+  set by the other ports, unset by Onyx) rather than building Ganesh with stubbed GL. Onyx's Skia
+  (`tools/ports/skia`) has no Ganesh.
+- **Compositing compiled out**: none of `USE_TEXTURE_MAPPER`, `USE_COORDINATED_GRAPHICS`,
+  `USE_GRAPHICS_LAYER_WC`, `USE_LIBEPOXY`, `USE_ANGLE_EGL`, `USE_LIBWPE`; `ENABLE_WEBGL`,
+  `ENABLE_GPU_PROCESS`, `ENABLE_ASYNC_SCROLLING`, `ENABLE_VIDEO`, `ENABLE_WEB_AUDIO` OFF for the
+  first build. Onyx supplies `GraphicsLayer::create()` (a `GraphicsLayerOnyx` with no-op
+  `setNeedsDisplay*`: the only pure virtuals); pages paint through `LocalFrameView` into a plain
+  `GraphicsContext` with `acceleratedCompositingEnabled` false at run time. WebKit2 has the
+  matching path (`DrawingAreaCoordinatedGraphics::display` into a `ShareableBitmap`,
+  `UIProcess/skia/BackingStoreSkia.cpp`): step 3.
+- **CMake**: `Source/CMakeLists.txt` adds `ThirdParty/skia` when `USE_SKIA` (Onyx: an imported
+  `Skia::Skia` from the sysroot, with a `<skia/...>` include directory — the sysroot has
+  `include/skia/include/...`); `WebCore/CMakeLists.txt` links GLES / EGL for every port without
+  epoxy or ANGLE (to skip for Onyx).
+- **Fonts**: `FontCacheSkia.cpp` and `SkiaSystemFallbackFontCache.cpp` call fontconfig directly
+  except for Android / Windows: Onyx takes that side of the guards with `SkFontMgr_New_Onyx`.
+- **TLS**: the curl back end uses OpenSSL in `OpenSSLHelper.cpp` (the certificate chain and its
+  summary), `CurlSSLVerifier.cpp`, `CertificateInfoCurl.cpp`, a few places of `CurlContext.cpp`.
+  curl 8.16's mbedTLS back end already gives what they need (`CURLOPT_SSL_CTX_FUNCTION` with the
+  `mbedtls_ssl_config *`, `CURLINFO_TLS_SSL_PTR`, CA blobs): **mbedTLS glue, about 600 lines**
+  (docs/POSIX-PLAN.md §5.7's choice). Read the chain after the handshake rather than replacing
+  curl's own verify callback.
+- **WebCrypto cannot be switched off** (no option; its sources are unconditional) and its only
+  portable back ends are OpenSSL (`crypto/openssl/`, 2700 lines) and gcrypt. **First build: a stub
+  back end** (every `platform*` function answers NotSupported; SHA digests through
+  `PAL::CryptoDigest` on mbedTLS). **Open decision for the user, later**: a real back end on mbedTLS
+  (one crypto stack, about 3000 lines of ours to maintain) or OpenSSL's libcrypto ported for it
+  (Apache-2.0, WebKit's code unchanged, a second crypto library on the card).
+- **Others**: libpsl (public suffixes) is required by `Curl.cmake`: a `PublicSuffixStoreOnyx.cpp`
+  first, the library (MIT) later — cookies and site isolation need a real list. `USE_WOFF2` OFF
+  first (FreeType with brotli, or libwoff2, later). No libwpe: `PasteboardOnyx`,
+  `PlatformPasteboardOnyx` (on `clipd`), `PlatformKeyboardEventOnyx` instead of the `libwpe/` files.
+- **The per-port files** (the PlayStation ones are 40–160 lines each): accessibility (`AXObjectCache`,
+  `AccessibilityObject`: no-ops), `SystemFontDatabase`, `CurlSSLHandle` (the CA bundle
+  `SD:/res/ca-bundle`), `NetworkStateNotifier`, `MIMETypeRegistry`, `PlatformScreen`,
+  `ScrollbarTheme`, `Theme`, `UserAgent`, `RenderTheme`; `PLATFORM(PLAYSTATION)` appears only 13
+  times in WebCore (`RenderTheme.h`, `PlatformRenderTheme.h`, `AXCoreObject.h`, `ChromeClient.h`,
+  `EmptyClients.h`...): an `ONYX` branch beside each that matters. PAL: `CryptoDigestMbedTLS.cpp`.
+
+The order of work: `OptionsOnyx.cmake` (`ENABLE_WEBCORE`, the packages, `USE_SKIA`, `USE_CURL`,
+`USE_HARFBUZZ`, `USE_MBEDTLS`), `WebCore/PlatformOnyx.cmake` and `PAL/pal/PlatformOnyx.cmake`, the
+CMake patches, then `ninja -k 0` on WebCore and the errors in families (as step 1), the stubs first,
+the real implementations (TLS glue, pasteboard, theme) once it links. The target of step 2 on the
+PC: WebCore links into a test program that loads a page from a file and paints it into a PNG.
 
 ## The plan of the whole port
 
@@ -184,8 +245,8 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
 
 1. **WTF + JavaScriptCore** → the `jsc` shell (the LLInt without JIT, WebAssembly in its
    interpreter; C_LOOP as an alternative). *Done: validated on the Pi, 2026-10-02.*
-2. **WebCore** (Skia CPU raster from WebKit's own copy, `SkFontMgr_onyx` instead of fontconfig,
-   curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2).
+2. **WebCore** (Skia CPU raster from WebKit's own copy, no GL, `SkFontMgr_onyx` instead of
+   fontconfig, curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2). *In progress.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
 4. The Onyx view, compositor (later the V3D) and media (`MediaPlayerPrivate` on `user/av`).
 5. The browser (Jet's UI reused).
