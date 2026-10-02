@@ -729,6 +729,22 @@ fast retransmit and a full ACK ends the recovery, the RTO (200 ms, backed off, r
 1 s for a SYN, Karn after a fast retransmit, a dead peer given up after 51 s), and `Send`'s count
 after a timeout. Against the unpatched sources it fails 15 of its 25 checks.
 
+## 23. Sockets for the BSD layer: `AcceptReady`, a connection kept until its socket lets it go
+
+**Why.** The kapi v75 BSD sockets (docs/02 §8, `sys/bsdsock.cpp`) need a non-blocking accept and
+sockets that stay valid after a reset until `close`. Upstream deleted a terminated connection at
+the next `Process` even while a `CSocket` still held its handle; after a reset the handle went to
+the next connection, which the old socket then read, wrote and closed.
+
+**What** (fork commit `f1d6b200`; `tools/circle-patches/wp-net.patch`): `CSocket::AcceptReady ()`
+(a backlog connection already connected, so `Accept` will not block; it also replaces backlog
+connections that died before being accepted); `CNetConnection::SetReleased` / `IsReleased`, set by
+`CTransportLayer::Disconnect` and by a failed `Connect` — a terminated connection is deleted only
+once released; `CSocket::Accept` disconnects a failed backlog connection instead of leaking it;
+`CTransportLayer::IsTerminated (h)`.
+
+**Test**: `tools/tests/run_circlenet_test.sh` (the stub gained `IsTerminated`): 25/25.
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on
