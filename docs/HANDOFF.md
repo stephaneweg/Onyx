@@ -54,7 +54,7 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Mail, the mail client (2026-10-02; not yet tried on the Pi)
+## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
 
 - **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
   decisions: `docs/mail/README.md`), **MIT**. Gmail (an **app password**), Outlook.com / Hotmail (**Microsoft's
@@ -68,7 +68,9 @@ answer in French. The docs stay in English.
   passwords and tokens are encrypted on the card (AES-256-GCM, a key of the card).
 - **Tests**: `sh tools/tests/run_mail_test.sh` (162 checks: protocols against `fakemail.py`, the renderer, the
   model); the screenshots: `shots.sh mail` (two made-up mailboxes: `fakemail.py --demo`).
-- **On the Pi**: to try with real accounts (Gmail with an app password first). Watch: big mailboxes (the first
+- **On the Pi** (2026-10-02, the user): **works well with Gmail** (an app password). Yahoo: its app passwords are
+  currently unavailable at Yahoo (the option greyed: Yahoo's own doing, no date given). Outlook: waits for the
+  user's Azure registration (the client id). Watch: big mailboxes (the first
   look takes a folder's newest 100), the TLS handshakes' time, the memory of large HTML mails (a newsletter
   wider than the pane is drawn once at its width and averaged down).
 - **Next**: Outlook's client id (the user's registration), IDLE for the Inbox (the code is in `imap.h`, the
@@ -1504,7 +1506,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
   is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
   tags and cover art, a now-playing view, file associations.
-- **Mail client** -- **done** (2026-10-02: *Mail*, its section above; not yet tried on the Pi), as user-friendly as possible: IMAP / SMTP over TLS, an account wizard
+- **Mail client** -- **done** (2026-10-02: *Mail*, its section above; works on the Pi with Gmail), as user-friendly as possible: IMAP / SMTP over TLS, an account wizard
   (well-known providers pre-filled), threads, attachments, drafts. **Contacts** = a Cardfile
   form: the mail client creates the `.card` structure, reads / writes it (address completion,
   "add sender"), and the file opens in Cardfile too.
