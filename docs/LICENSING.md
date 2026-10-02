@@ -14,6 +14,7 @@
 | **Jet Browser** (`jet.app`, `pc/dist/Jet`) | **GPL-2.0** (only) | NetSurf is **GPL-2.0-only** ("version 2 of the License", no "or later") — incompatible with GPLv3. Its Onyx code must stay GPLv2-compatible (GPL-2.0-or-later or permissive), mbedTLS taken under its GPL-2.0-or-later option (not Apache-2.0), FreeType under its GPLv2 option. |
 | **Doom** (`doom.app`) | GPL-2.0-or-later (→ GPLv3 fine) | doomgeneric: "version 2 … or any later version". |
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
+| **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
 | **Every other app, the tools** | Your choice | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |

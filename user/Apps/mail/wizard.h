@@ -191,7 +191,7 @@ public:
 	{
 		// a paragraph wrapped at w (UTF-8 words)
 		WkFaceScope sc (f == F_UI ? 0 : g_face[f]);
-		char line[400]; int ln = 0; const char *p = s; int lh = wk_fh () + 3;
+		char line[400]; line[0] = 0; int ln = 0; const char *p = s; int lh = wk_fh () + 3;
 		while (*p)
 		{
 			const char *ws = p; while (*p && *p != ' ' && *p != '\n') p++;

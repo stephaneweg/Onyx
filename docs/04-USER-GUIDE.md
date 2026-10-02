@@ -2215,6 +2215,88 @@ also writes `agenda.txt` (the month's appointments, for the agenda widget) and `
 (the month's reminders). The notes of the former calendar (in `agenda.txt`) become appointments
 the first time. An argument `YYYYMMDD` opens that day (the agenda widget's clicks).
 
+### Mail, the mail client (`mail`)
+
+![Mail](../screenshots/mail.png)
+*The unified inbox: the accounts and their folders at the left, the conversations by day, an invoice open with its attachments.*
+
+Mail reads and sends your e-mail: **Gmail**, **Outlook.com / Hotmail / Live**, **iCloud**, **Yahoo**,
+and **any IMAP or POP3 account** (with SMTP to send). Start it from the dock or the app list
+(*Internet*); a `.eml` file opened from the File Viewer is shown on its own.
+
+**Adding an account** (the *Add an account* button the first time, *File > Add an Account...*, or
+*Accounts and settings*): your name and your address. Mail recognises the big providers by the address
+and fills their servers in:
+
+| | |
+|:---:|:---:|
+| ![Gmail](../screenshots/mail-wizard.png) | ![Outlook](../screenshots/mail-outlook.png) |
+| *Gmail: an app password* | *Outlook.com: Microsoft's sign-in by a code* |
+
+* **Gmail, iCloud, Yahoo, Fastmail** ask for an **app password** (not your usual one): turn on 2-step
+  verification, make the password on the provider's page (*Open the page in Jet Browser*), type it.
+* **Outlook.com / Hotmail / Live** do not take passwords from mail apps: Mail shows a **code**; on a phone
+  or a PC open `microsoft.com/devicelogin`, type the code, sign in, allow "Onyx Mail" — Mail goes on by
+  itself. (This needs the application's id in `SD:/etc/mail/oauth.ini`: `docs/mail/README.md`.)
+* **Another provider**: its password; Mail tries `imap.<domain>` and `smtp.<domain>`. **Settings by hand**:
+  IMAP or **POP3**, each server, its port and security (SSL/TLS, STARTTLS), the user names and passwords,
+  POP3's *Leave the messages on the server*.
+
+Mail then **checks** the settings (it says plainly what is wrong: a server not found, a password refused,
+a certificate not trusted) and fetches your mail.
+
+**The window**: at the left the **All inboxes** (every account's Inbox together, the unread counted),
+**Starred**, then each account (its colour, its name; a click folds it) and its folders — Inbox, Sent,
+Drafts, Archive, Junk, Trash and your own; at the bottom **Contacts**, **Accounts and settings**, and what
+Mail is doing. In the middle the **conversations** by day (Today, Yesterday, this week...): who, how many
+messages, the subject, the first words, when, a paper clip, a star, the account's stripe; *All* /
+*Unread*. At the right the conversation. The **toolbar**: *New message*, Reply, Reply all, Forward,
+Archive, Delete, Junk, Star, the **search** (who, subject, text, in every account), *Check now*.
+
+| | |
+|:---:|:---:|
+| ![A conversation](../screenshots/mail-thread.png) | ![An HTML message](../screenshots/mail-html.png) |
+| *A conversation: the earlier messages folded* | *An HTML newsletter, its web pictures held back* |
+
+**Reading**: a conversation shows its messages oldest first, the read ones folded (a click opens one);
+your own replies (from Sent) are in it, as Gmail shows them. Messages in **HTML** are drawn by Mail's own
+renderer (HTML 4 and CSS 2: tables, colours, fonts, buttons; a newsletter wider than the pane is shrunk to
+fit); nothing runs in them, and their **pictures from the web are hidden** until you click *Show the
+pictures* (they would tell the sender you read the message). A **link** asks before opening Jet Browser
+(a `mailto:` link starts a message). **Attachments**: a click — *Open* (in the app that opens that kind:
+a PDF in the PDF Viewer, a picture in the Image Viewer) or *Save as...*; *Save all* puts them in
+`SD:/Downloads`. A click on the sender: write to them, add them to the contacts, copy the address. The
+**quick reply** at the bottom sends at once. A right click on a conversation: reply, forward, read /
+unread, star, archive, junk, delete, *Move to...*
+
+![Writing](../screenshots/mail-compose.png)
+
+**Writing** (*New message*, Ctrl+N; Reply Ctrl+R, Reply all, Forward Ctrl+L): *From* (which account),
+*To*, *Cc* / *Bcc* (*Cc Bcc*), the subject, the text. Addresses **complete as you type** from your
+contacts and the people you wrote to (Up / Down, Enter or Tab takes one). A reply quotes the message and
+stays in its conversation; a forward carries its attachments. *Attach...* adds files (20 MB at most);
+**Send** (or Ctrl+Enter); *Save draft* keeps it in Drafts; *Discard*. The message goes as text and as
+simple HTML (its links, the quote with a bar), with your signature.
+
+![Contacts](../screenshots/mail-contacts.png)
+
+**Contacts**: the people A to Z (a search), the card of the one chosen — e-mails, phones, company,
+address, birthday, notes —, *Write*, *Edit*, *Delete*, *New*, *Open in Cardfile*: they are a
+**Cardfile** form, `SD:/Documents/Contacts.card`, which Cardfile opens too.
+
+**Accounts and settings**: each account's name (what people see), its label, how often new mail is
+looked for (by hand, every minute ... every hour; 5 minutes by default — a **notification** tells new
+mail), its **signature**, a new password, its servers; *Add an account...*, *Remove...* (the mail stays on
+the server).
+
+**Files**: `SD:/etc/mail/accounts.ini` (the accounts, without their passwords), `SD:/etc/mail/secrets` (the
+passwords and Microsoft's tokens, **encrypted** — AES-256 — with a key of this card, `SD:/etc/mail/key`:
+not readable as text, but whoever has the card has them), `SD:/etc/mail/oauth.ini` (Outlook's application
+id), `SD:/mail/<account>/` (the folders, the messages' list, the messages opened, as `.eml`),
+`SD:/mail/recipients.tsv` (the addresses written to), `SD:/Documents/Contacts.card`. Keys: ^N new, F5
+check, ^R reply, ^L forward, ^S star, ^U unread, Del delete, ^F search, Up / Down the conversations,
+Ctrl+Enter send.
+
 ### IRC, the chat client (`irc`)
 
 ![IRC](../screenshots/irc.png)

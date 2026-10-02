@@ -1764,6 +1764,37 @@ bookmarks, a landscape page) and read back. **The screenshots**: `sh tools/tests
 (the manuals of `sdcard/manuals`; `writer` and `sheet` take their export's dialog). The icon: `python3
 tools/icons/pdf_icon.py`.
 
+### Mail, the mail client (`user/Apps/mail`, `user/mail`)
+
+The mail client (the mock-ups, the plan and the user's decisions: `docs/mail/README.md`; its use: docs/04 §12) is a
+**newlib** wtk app (`mail.elf`: FreeType's text, mbedTLS as Courier, wtk's image codecs). **MIT**, all of it. Two
+layers: `user/mail/` (header-only, the protocols and the HTML renderer, reusable by any app) and `user/Apps/mail/`
+(the app).
+
+| File | What |
+|---|---|
+| `mail/util.h` | `Buf`; base64, quoted-printable; the charsets met in mail (UTF-8, Latin-1, Windows-1252, ISO-8859-15) to UTF-8; RFC 2047 words both ways; RFC 5322 dates; address lists (`parse_addrs`: split first, then each name decoded). |
+| `mail/conn.h` | `Conn`: a server's connection over the kapi sockets — TLS at once or after STARTTLS (`tls/onyx_tls.hpp`, the certificate checked against `SD:/res/ca-bundle` unless the account says not to), lines and literals, a time-out (`kapi_clock_us`; `softTimeout` for IDLE), a cancel flag. |
+| `mail/imap.h` | IMAP4rev1: LOGIN / AUTHENTICATE PLAIN / **XOAUTH2** (SASL-IR), CAPABILITY, LIST with SPECIAL-USE (and the usual names), modified UTF-7, SELECT, UID FETCH (ENVELOPE, BODYSTRUCTURE — the part to preview, the attachments —, `X-GM-THRID`, the References), FETCH by number (a folder's newest), sections and partial bodies, UID STORE, UID MOVE (else COPY + \Deleted + EXPUNGE), APPEND (LITERAL+), IDLE. A response is read whole and parsed into a small tree (`Resp`, `Val`). |
+| `mail/pop3.h`, `mail/smtp.h` | POP3 (CAPA, STLS, USER / PASS, AUTH PLAIN / XOAUTH2, STAT, LIST + UIDL, TOP, RETR — the dot-stuffing undone —, DELE, QUIT); SMTP submission (EHLO, STARTTLS, AUTH PLAIN / LOGIN / XOAUTH2, SIZE, MAIL / RCPT / DATA — the dots doubled —, the recipients refused reported). |
+| `mail/mime.h` | `Mime`: a message's parts' tree (multipart, `message/rfc822`, RFC 2231 names), a part decoded and its text in UTF-8, the part to show (HTML or text), the attachments, `cid:`; `build`: a message made (text + HTML as `multipart/alternative`, inline pictures as `related`, attachments base64, UTF-8 headers, a Message-ID). |
+| `mail/oauth.h` | Microsoft's **device code** flow (`start`, `poll`, `refresh`; the client id from `SD:/etc/mail/oauth.ini`), HTTPS POST / GET over `conn.h`, a JSON field reader. |
+| `mail/html_dom.h`, `html_css.h`, `html_layout.h`, `html.h`, `html_ft.h` | **Mail's own HTML renderer** (the user: "simple, not Jet, HTML 4 at least with CSS 2"): a forgiving parser (HTML 4's implied ends, character references), CSS 2 (a UA sheet with HTML's quirks for tables, the presentational attributes, `<style>` with `@media` by width, selectors, specificity, `!important`, `style=`), a layout to a display list (blocks and margins, inline lines, inline boxes and inline-blocks — the mail "buttons" —, floats, lists, tables with the automatic widths, colspan / rowspan, `align=center`), painted by `FtHost` with the card's fonts; the links hit-tested; remote pictures only when the host gives them. |
+| `Apps/mail/accounts.h` | The accounts (`SD:/etc/mail/accounts.ini`), the providers known by their domain, the secrets encrypted (AES-256-GCM, `SD:/etc/mail/key`). |
+| `Apps/mail/store.h` | The cache on the card (`SD:/mail/<id>/`: `folders.tsv`, each folder's `index.tsv`, the `.eml` fetched), the previews. |
+| `Apps/mail/sync.h` | The **worker thread**: jobs (sync, a body, flags, move, delete, send, a draft, a check, OAuth, a picture) one after another, the IMAP sessions kept open, the tokens renewed, each result posted (`kapi_post`). |
+| `Apps/mail/contacts.h` | Contacts: Cardfile's model (`Apps/cardfile/model.h`) on `SD:/Documents/Contacts.card` (Latin-1 there), the addresses written to, the completion. |
+| `Apps/mail/model.h` | The state apart from the window: the jobs from what the user does, the results applied, the lists — a folder, all the inboxes, starred, a search — grouped in conversations (Gmail's thread id, else the References), the replies from Sent joined. |
+| `Apps/mail/ui.h`, `read.h`, `compose.h`, `wizard.h`, `contactsui.h`, `main.cpp` | The window: the toolbar, the folders, the list, the reading pane (an HTML too wide drawn once and averaged down), writing (completion), the wizard and the settings, the contacts. |
+
+**Tests on the PC**: `sh tools/tests/run_mail_test.sh` — `tools/tests/mail/fakemail.py` (a small IMAP + POP3 + SMTP +
+Microsoft-endpoints server; `--demo personal|work`: the screenshots' made-up mailboxes, `demo_mail.py`) and three
+programs on the stand-in kernel (`SIM_REALNET`, `SIM_REALCLOCK`: real sockets and clock): `mailtest.cpp` (the
+protocols, MIME, OAuth, TLS refused / accepted: 98 checks), `htmltest.cpp` (the renderer: 22 checks, PNGs to look
+at), `modeltest.cpp` (accounts, secrets, the worker, conversations, the cache read back: 42 checks). **The
+screenshots**: `sh tools/tests/desktop_sim/shots.sh mail` (two demo servers, `tools/tests/mail/mkaccounts.cpp` writing
+the accounts and the contacts with Mail's own code). The icon: `python3 tools/icons/mail_icon.py`.
+
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app

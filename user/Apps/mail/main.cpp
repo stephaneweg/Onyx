@@ -29,6 +29,7 @@ using namespace mailapp;
 namespace mailapp {
 
 static char g_note[300]; static unsigned g_noteT;
+static bool g_emlMode;			// a .eml file shown alone ("mail SD:/x.eml"): read only
 static void status_note (const char *s) { scpy (g_note, s, sizeof g_note); g_noteT = kapi_get_ticks (); refresh_all (); }
 
 // ---- the tool bar ------------------------------------------------------------------------------------------------------------
@@ -662,6 +663,7 @@ static void add_signature (Buf &b, int acct)
 }
 static void compose_new (int mode, const Ref *about)
 {
+	if (g_emlMode) { wk_messagebox ("Mail", "This message is a file. To answer it, open Mail with your accounts.", MB_OK); return; }
 	if (!g_m.accts.n) { open_wizard (); return; }
 	if (!g_compose->hidden && !g_compose->empty ())
 	{
@@ -904,8 +906,6 @@ static void on_result (void *ctx, long)
 	refresh_all ();
 }
 
-// ---- a .eml file opened alone ----------------------------------------------------------------------------------------------------
-static bool g_emlMode;
 
 // ---- the window --------------------------------------------------------------------------------------------------------------------
 class MailRoot : public Root
@@ -964,7 +964,7 @@ static bool open_eml (const char *path)
 	g_m.accts.n = 1;
 	Store *s = new Store; s->acct = &a; scpy (s->root, "RAM:/mail-eml", sizeof s->root);
 	g_m.stores[0] = s;
-	Folder &f = s->add_folder ("INBOX"); scpy (f.show, path, sizeof f.show); f.special = SP_INBOX; f.loaded = true;
+	Folder &f = s->add_folder ("INBOX"); const char *bn = strrchr (path, '/'); scpy (f.show, bn ? bn + 1 : path, sizeof f.show); f.special = SP_INBOX; f.loaded = true;
 	Envelope e; envelope_of (raw, len, e); e.uid = 1; e.flags = F_SEEN;
 	Msg m; msg_from_env (m, e); s->insert (f, m);
 	mkdirs ("RAM:/mail-eml"); s->keep_body (f, 1, raw, len);
@@ -1003,7 +1003,7 @@ int main (void)
 	static Menu menu;
 	menu.menu ("File");
 	menu.item ("New Message", "^N", WK_CTRL ('N'), m_new);
-	menu.item ("Check for New Mail", "F5", 0, act_check);
+	menu.item ("Check for New Mail", "F5", KEY_F1 + 4, act_check);
 	menu.separator ();
 	menu.item ("Add an Account...", "", 0, open_wizard);
 	menu.item ("Accounts and Settings...", "", 0, open_settings);

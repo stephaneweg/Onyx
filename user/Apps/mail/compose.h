@@ -153,7 +153,7 @@ public:
 		cc->hidden = bcc->hidden = !ccOn;
 		if (ccOn) { cc->left = PAD + LBL; cc->top = y; cc->resizeTo (w, 30); y += ROW; bcc->left = PAD + LBL; bcc->top = y; bcc->resizeTo (w, 30); y += ROW; }
 		subject->left = PAD + LBL; subject->top = y; subject->resizeTo (w, 30); y += ROW + 6;
-		body->left = PAD; body->top = y; body->resizeTo (width - 2 * PAD, attY () - y - 8);
+		body->Widget::left = PAD; body->Widget::top = y; body->resizeTo (width - 2 * PAD, attY () - y - 8);
 		int by = height - 46;
 		send->left = PAD; send->top = by;
 		attach->left = PAD + 110; attach->top = by;

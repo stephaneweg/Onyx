@@ -1,6 +1,6 @@
 # Mail for Onyx — study, first mock-ups
 
-> **Status (2026-10-02): mock-ups validated; being built** (the protocol layer and the HTML renderer in `user/mail/`, done and tested: `sh tools/tests/run_mail_test.sh`). Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
+> **Status (2026-10-02): done** -- the app `user/Apps/mail` (docs/04 §12 *Mail*, docs/03 *Mail*), the protocols and the HTML renderer in `user/mail/`; tested on the PC (`sh tools/tests/run_mail_test.sh`, `shots.sh mail`), not yet on the Pi. Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
 > client "as user-friendly as possible". The user (2026-10-02): it must connect to **Gmail, Outlook, IMAP and
 > POP3 / SMTP**; Gmail with an **app password**, Outlook with Microsoft's sign-in **by a code** (an "Onyx Mail"
 > application registered by the user at Microsoft: below). **Contacts** = a Cardfile form (`.card`), opened in
@@ -78,3 +78,8 @@ a Microsoft account:
 | `tools/tests/mail/fakemail.py` | a fake IMAP / POP3 / SMTP / OAuth server (the tests, the screenshots) |
 | `tools/tests/mail/mailtest.cpp` | 98 checks against it (`sh tools/tests/run_mail_test.sh`) |
 | `tools/tests/mail/htmltest.cpp` | the renderer on a newsletter, styles, plain text, broken HTML: 22 checks, PNGs to look at |
+| `user/Apps/mail/*` | the app: accounts (encrypted secrets), the cache, the worker thread, contacts (Cardfile's model), the model, the window |
+| `tools/tests/mail/modeltest.cpp` | the model and the worker against `fakemail.py`: 42 checks |
+| `tools/tests/mail/demo_mail.py`, `mkaccounts.cpp` | the screenshots' made-up mailboxes and accounts (`shots.sh mail`) |
+
+The screenshots of the app: `screenshots/mail*.png`.
