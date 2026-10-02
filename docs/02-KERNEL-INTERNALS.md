@@ -476,7 +476,7 @@ tick crashes.
 |---|---|---|---|---|
 | Current EL SP0 (EL1t) | SyncEL1 | Irq | FIQStub | BadMode |
 | Current EL SPx (EL1h) | SyncEL1 | Irq | FIQStub | BadMode |
-| Lower EL AArch64 (EL0) | SyncEL0 | Irq | FIQStub | BadMode |
+| Lower EL AArch64 (EL0) | El0Sync | El0Irq | FIQStub | BadMode |
 | Lower EL AArch32 | BadMode ×4 | | | |
 
 ### IRQ path
@@ -510,15 +510,141 @@ mid-computation. Saving the whole register file here (and in `PreemptTrampoline`
 and preemption from the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`CPACR_EL1`,
 `circle/lib/startup64.S`), so the `stp`/`ldp` `q`-register forms never trap.
 
-### System calls (dormant)
+### A fault in an app's own code (step 0 of protected mode)
 
-The `ESR_EL1.EC` decode recognizes `SVC64 = 0x15`. `SyscallEntry` dispatches on `x8`
-(number) with args `x0–x5` and return in `x0` (Linux-style ABI). **But** because the apps
-run in EL1 and call `kapi_*` directly, **this path is not taken in
-normal operation**; it is only self-tested. The `copy_from_user`/
-`copy_to_user` helpers use the unprivileged `LDTR`/`STTR` accesses. Synchronous non-SVC EL1
-faults trigger a panic dump to the screen (`PanicToScreen` + Circle's register
-dump).
+`SyncHandlerEL1` no longer halts on every fault. In order: an app-core fault (cores 2–3,
+`AppCoreOnFault`) → `svc` (the old self-test) → **`UAccessFixup`** (a fault inside a fault-safe
+copy routine, below) → **`AppFaultRedirect`** → otherwise the post-mortem console (`DumpAndHalt`).
+
+`AppFaultRedirect` treats the fault as the **app's** when all of these hold: `appfault=kill`
+(the default; `cmdline.txt` `appfault=halt` restores the halt for debugging), a scheduler on this
+core, the fault taken at **EL1t** (`SPSR.M = 0b0100`; EL1h always halts), the faulting PC in the
+user VA range (`IS_USER_VA`) — or, for an instruction abort / PC alignment fault, `x30` in the user
+VA range (a call through a wild pointer) — or the PC inside the kernel's **app copies of
+`memcpy`/`memset`/`memmove`** (`AppMemStart` … `AppMemEnd`, the kapi table's entries) with `x30` in
+the user VA range; the current task has an address space and is not in a no-kill section
+(`CScheduler::InNoKill`). Then the trap frame is rewritten (nothing is logged or yielded on the
+exception stack): `x0..x5` = ESR, FAR, ELR, SPSR, LR, SP; `sp_el0` = the top of the task's own
+`CTask` stack; `elr_el1` = **`AppFaultExit`**; SPSR = EL1t with I+F masked. The `eret` lands in
+`AppFaultExit`, in the faulting task, which unmasks the IRQs, writes two `appfault` lines to kmsg
+(the task, the pid, the decoded fault: undefined instruction, data abort on a read/write with its
+fault type and level, PC alignment, BRK…; the registers) and ends the process through
+`kapi_exit(-11)` (its window off the screen, its threads terminated, its sockets closed; the reaper
+frees the rest). A fault with a kernel PC (inside a kapi) still halts, with the crash record.
+
+### Fault-safe access to app memory (`kern/uaccess.h`, step 2)
+
+Every kapi checks the pointers it gets from an app **at its entry point** (`kapi_*`; the helpers
+below them take kernel memory): `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`.
+
+- **Who may point where.** A kernel caller (no scheduler yet, or a task without an address space)
+  is trusted. An app core (2–3): the user VA range only. A **legacy** (EL1) process: the user VA
+  range plus the `CTask` stacks of its own live tasks (its stacks are in the kernel heap). A
+  **protected** (EL0) process: the user VA range only (its `CTask` stack is its kernel stack).
+- **`UserRange` / `UserRangeAvail`**: `[p, p+n)` inside what the caller may use, computed as "bytes
+  left from p", never `p+n` (no wrap). **`UserReadable` / `UserWritable`**: the range, then each
+  64 KB page translated with `AT S1E1R/W` — used where the kernel works directly in the app's
+  buffer (file reads, pipes, sockets, GPU pixels); an app's pages are never unmapped while it lives.
+- **Copies**: `UserCopyIn`, `UserCopyOut`, `UserGet`, `UserPut`, `UserStrOut` and `CUserStr` (a
+  kernel copy of an app string, 256 bytes inline, the heap beyond; paths over 511 characters are
+  refused): leaf assembly routines, word-sized when both pointers are 8-aligned (byte-wise
+  otherwise: the display is Device memory). Plain `LDR`/`STR`, not `LDTR`/`STTR` (the A72 has no
+  UAO: `LDTR` would fault on a legacy app's EL1-only pages).
+- **The fixup table**: a hand-made `.rodata` list of `{start, end, recovery}`, one per routine;
+  `SyncHandlerEL1` looks the faulting ELR up first and resumes at the recovery label (the routine
+  returns −1). It works for kapis reached by `svc` from EL0 too (they run at EL1t).
+- Every pointer-taking kapi fails with its usual error value on a bad pointer; the queues
+  (`klog_read`, `mailbox_recv`, `pop_event`, `pop_post`, `readdir`, `vfs_next`, `tcp_accept`,
+  `thread_join`) check before they consume anything; the GPU structs are copied and their inner
+  pointers (`kapi_gpu_frame.pixels`, `kapi_gpu_program.vs/cs/fs`) checked on the copy. Code
+  pointers (handlers, `post`, `thread_create`'s `fn`) are not data and are not checked.
+  **A new kapi that takes a pointer must do the same.**
+
+**The NULL page** (`cmdline.txt` `nullguard=1`, off by default): Circle maps the first 64 KB page
+(armstub, spin table) in every address space, so an app's NULL write corrupts it silently. With
+`nullguard=1`, `AddrSpaceInit` builds one shared copy of the kernel's L3 table for 0–512 MB with
+page 0 invalid and every app's L2[0] points at it; the kernel's own page-0 entry is made non-global
+(nG, break-before-make, before the secondary cores start) so a global TLB entry cannot bypass the
+guard. Off until tried on the Pi (an IRQ handler touching page 0 under an app's ASID would fault).
+
+### Per-process handles (`kern/handle.h`, step 1)
+
+`open`, `opendir`, `pipe`, `file_in`, `file_out`, `spawn`, `stdin_stream`, `stdout_stream` return
+a **per-process handle**, not a kernel pointer: `(generation << 16) | (index + 1)` (never 0, at most
+0xFFFFFF, through the same `void *`). The `CHandleTable` is a member of `CAddressSpace` (threads
+share it; kernel tasks share one kernel table); entries `{object, type FILE/DIR/STREAM/PROCESS,
+kind FATFS/RAMFS/VFS, generation 1..255, closing, pins}`; 16 entries growing to 4096. A lookup
+needs index, generation and type to match an open entry; anything else (a forged or stale handle,
+a raw pointer) gets the kapi's failure value (`read` −1, `fsize` 0, `stream_write` −1, `wait` −1,
+`proc_done` 1, the closes do nothing). A kapi that may yield **pins** the entry (`CHandleUse`): a
+close by another thread meanwhile only marks it, the last unpin closes. **The handles still open are
+closed when the process ends** (`~CAddressSpace` → `CloseAll`; a stream's last release, which may
+write to the card, is deferred to the reaper task: `HandlesRunDeferred`). Streams and `CProcess`
+records are **reference-counted** (a pipe: the creator's handle and each child; a `CProcess`: the
+spawner's handle and the child), so either side can end first. **Sockets** are owner-checked (the
+request's pid, also on the network core); a descendant of the owner adopts one on first use
+(`ftpd` hands its sessions their socket). `vfs_req_data` / `vfs_reply` only take requests
+addressed to the calling provider.
+
+### Protected mode: apps at EL0 (steps 3–5)
+
+Source: [`kernel/arch/aarch64/el0.S`](../kernel/arch/aarch64/el0.S),
+[`el0blob.S`](../kernel/arch/aarch64/el0blob.S), [`kernel/sys/el0.cpp`](../kernel/sys/el0.cpp),
+[`kern/el0.h`](../kernel/include/kern/el0.h). Design and history: [EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md).
+
+A process is **legacy** (EL1t, direct calls through the kapi table) or **protected** (EL0t,
+system calls), chosen at launch (`El0Configure`): the app's `app.txt` `mode = protected | legacy`,
+else `cmdline.txt` `protected=<name>,<name>…` (the app's folder name or the tool's file name; a
+BASIC program: `basic`), else `cmdline.txt` `appmode=protected | legacy` (default `legacy`).
+
+- **Mappings** (`CAddressSpace(bProtected)`, one change in `MapPage`): `RW_EL1 → RW_ALL`,
+  `RO_EL1 → RO_ALL`; code (and `code_alloc`) `UXN = 0, PXN = 1`; everything else `PXN = UXN = 1`.
+  The identity region 0–4 GB keeps Circle's `AP = RW_EL1, UXN = 1`: EL0 can neither read, write
+  nor execute it. There is no PAN on the A72: the kernel reads and writes EL0 pages directly.
+- **Stacks**: the `CTask` stack (256 KB, `EL0_KSTACK_SIZE`) is the task's **kernel** stack; the user
+  stack (app.txt's `stack`, 1–64 MB) is mapped in the address space; a thread's at
+  `USER_THREAD_STACKS` (32 GB) + (index + 1) × 32 MB with a 16 MB+ guard below.
+- **Entry from EL0** (`EL0_ENTRY`, sync and IRQ): `TPIDR_EL1` holds the top of the running task's
+  kernel stack (written by `El0Return` just before each `eret`, so it follows the scheduler with
+  no switch hook); the full `TTrapFrame` (x0–x30, `SP_EL0`, ELR, SPSR, q0–q31, FPSR, FPCR) is
+  built at `TPIDR_EL1 − 800`, `SP_EL0` pointed at it and `SPSel` set to 0: the handler runs at
+  **EL1t on the task's kernel stack**, as a legacy app's kapi call does, so the kapis that yield
+  work unchanged. **Exit** (`El0Return`): DAIF masked, `SPSel = 1`, `TPIDR_EL1` set, the frame
+  restored (x0 last), `eret; dsb nsh; isb`. First entry: `El0Enter(entry, user_sp, arg, lr)`
+  (a zeroed frame, SPSR `0x300` = EL0t with IRQ/FIQ on).
+- **System calls** (`El0SyncHandler`): `svc #0` with the table slot in `x8`, arguments in x0–x7
+  (no kapi takes more, none on the stack or in FP registers), result in x0. Refused (x0 = 0):
+  slot 0, out of range, a null kernel slot, and the user-side slots (memcpy, memset, memmove,
+  pump_events, wait_for_exit, pump_wait — the kernel's pump would run user handlers at EL1).
+- **IRQ from EL0** (`El0IrqEntry` → `El0IrqExit`): Circle's `InterruptHandler` on the kernel stack;
+  on core 0 the crash-log and stall samples, and at the end of the slice `PreemptDoYield` right
+  there (the `PreemptTrampoline` is for legacy apps only); on cores 2–3 `AppCoreOnIRQExit`.
+- **A fault from EL0** (any synchronous exception but `svc`) kills the process: a kmsg line
+  `el0: <name> (pid N) killed: …`, a desktop notice (`IpcNotify`), `kapi_exit(-11)`. SError still
+  goes to `BadModeEntry`.
+- **The per-process kapi table**: at boot `El0Init` fills two pages shared by every protected
+  process: the **EL0 table**, mapped read-only at `KAPI_TABLE_VA` (14 GB), and the **EL0 code
+  page** at `KAPI_STUBS_VA` (14 GB + 64 KB). Slot *n* points at the stub `movz x8,#n; svc #0;
+  ret; nop` at `+n × 16`; the user-side entries point into the blob (`el0blob.S`, position-independent,
+  at `+8 KB`): **`memcpy`/`memmove`/`memset`** in user code, **`pump_events`** (posts via `pop_post`,
+  then events via `pop_event`, a key handler bracketed by `event_mods` so `get_modifiers` is right),
+  **`wait_for_exit`**, **`pump_wait`** (`pump_sleep` then the pump), and the return paths
+  `El0ThreadReturn` (→ `thread_exit`), `El0MainReturn` (→ `exit(0)`), `El0CoreReturn`. Existing
+  binaries run unmodified.
+- **Per core** (`El0CoreInit`): `CNTKCTL_EL1.EL0PCTEN/EL0VCTEN` (the counters at EL0); `SCTLR_EL1`
+  UCI (`dc cvau`/`ic ivau` for the JITs), nTWE/nTWI (`wfe`/`wfi`), UCT (`ctr_el0`), DZE (`dc zva`);
+  **`TPIDRRO_EL0` = the core number** (`kapi__core` in `user/kapi.h` reads it from v73 — apps built
+  earlier read `mpidr_el1` and are killed at EL0: rebuild them); `PMUSERENR_EL0.EN` only with
+  `cmdline.txt` `el0pmu=1`.
+- **Threads**: `thread_create` in a protected process `eret`s to `fn` on its user stack, returning
+  through `El0ThreadReturn`. **App cores**: `core_run` for a protected owner enters `fn` at EL0 on
+  the app's stack; the job's end is an `svc` from `El0CoreReturn` (→ `AppCoreEl0Done`); any other
+  `svc` or fault → `KAPI_CORE_FAULT`.
+- The old dormant EL0 path (`SyncEL0Entry`, `SyncHandlerEL0`, `SyscallEntry`, `enter_user`) is
+  dead code; `copy_from_user`/`copy_to_user` now use the fault-safe copies.
+
+Not closed yet: the powerful kapis (`reboot`, `kill_pid`, `inject_*`, `screen_grab`,
+`win_read`…) stay open to every app, and the GPU (an app's V3D shaders can reach physical memory).
 
 ---
 
@@ -697,7 +823,11 @@ and the **RAM: volume** (§16): the file calls (`open` … `rename`, `save_file`
 `chdir`, `seek`, `fsize64`) reach a file system in memory on `RAM:` paths — no new call for that,
 v72 = `gpu_render`'s **compositing blend presets** `KAPI_GPU_BLEND_MULCOL` … `DSTOUT` (5–12, §15: the
 layer blend modes of `user/gpucomp` — multiply, screen, plus, subtract, lighten, mask, cut out); an older
-kernel draws 5–15 as `ALPHA` (the service checks the version) — no new call.
+kernel draws 5–15 as `ALPHA` (the service checks the version) — no new call,
+v73 = **protected mode** (§6): `pop_event`, `event_mods`, `pop_post`, `pump_sleep` — the pieces of the
+event pump an EL0 app runs on its own side (an EL1 app never needs them); the core number in
+`TPIDRRO_EL0` (`kapi__core`); the file / stream / process handles per process and every pointer
+checked (no change for a well-behaved app).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -717,7 +847,8 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
 | App-drawn text | `draw_text`, `font_width`, `font_height` |
-| Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; a handle is told apart by its address (the RAM volume's handle tables, then the provider's, else a FatFs `FIL` / `DIR`). |
+| Protected mode (v73) | `pop_event(struct kapi_event *ev)` → 1 and the next window event `{ handler, sender, value, event, mods }` (the handler **not** called), 0 none / no window; `event_mods(mods)` sets what `get_modifiers` reports while a key handler runs → the previous value (`0xFFFFFFFF` = live); `pop_post(struct kapi_posted *p)` → 1 and the next posted call `{ fn, ctx, value }` (not run), 0 none; `pump_sleep(timeout_ms)` = `pump_wait` without the pump → what is pending, −1 not a process. The user-side `pump_events` / `wait_for_exit` / `pump_wait` of a protected app (§6) are built on them. `user/kapi.h`: the wrappers (version ≥ 73) and `kapi_is_protected()`. |
+| Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; since v73 a handle is a per-process handle (§6, *Per-process handles*) whose entry records the kind (FatFs, RAM, provider). |
 | Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), `USB:`…, `FD:`, `NVME:` (declared, not mounted yet). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
 | Streams/processes | `pipe`, `file_in/out`, `stream_read(_nb)/write/close/eof`, `stdin_read`, `stdout_write`, `spawn`, `wait`, `proc_done`, `get_args` |
 | Modal dialogs | `message_box`, `file_open`, `file_save` |

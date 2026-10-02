@@ -1,8 +1,11 @@
 # Protected mode for apps (EL0 + system calls) — design note
 
-> **Status: study only, nothing implemented.** This note records what moving Onyx apps from
-> EL1 (direct `kapi` calls) to EL0 (system calls) would cost and bring, and an inventory of the
-> `kapi` ABI (v68, 189 entries) against that goal. Written 2026-09-30.
+> **Status (2026-10-02): steps 0–5 implemented on branch `ccr-182e4cf6-fxr778`, kapi v73 —
+> built, not yet tried on the Pi.** Apps still run legacy (EL1) by default; protected (EL0) is
+> opt-in per app (`app.txt` `mode = protected`, `cmdline.txt` `protected=` / `appmode=`). The user's
+> goal: **every app protected, no legacy left** — after the test on the Pi. What was done is in
+> [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. Below, the original study
+> (2026-09-30, kapi v68, 189 entries).
 
 ## 1. Where things stand
 
@@ -171,3 +174,33 @@ Apps only ever call `KT->fn (...)` at a fixed address. So:
 **Step 0 (cheap, independent):** on a synchronous fault at EL1t whose PC is in the user VA
 range, kill the process instead of halting the machine — as `core_run` already does for app
 cores. It gives much of gain 1, none of gains 2–3.
+
+
+## 7. Implementation (2026-10-02)
+
+Done in four parts (each built, reviewed, not run on hardware: there is no Pi 4 emulator here).
+The reference description is [docs/02 §6](02-KERNEL-INTERNALS.md#6-exceptions-and-vectors).
+
+| Step | What | Where |
+|---|---|---|
+| 0 | A fault at EL1t in an app's own code (or a wild call from it, or in the kernel's app `memcpy`/`memset`/`memmove`) kills the app, not the machine; `appfault=halt` restores the halt | `arch/aarch64/exception.cpp` (`AppFaultRedirect`, `AppFaultExit`); `/bin/faulttest` |
+| 1 | Per-process opaque handles for files, dirs, streams, processes; closed at the process's end; streams and `CProcess` reference-counted; sockets owner-checked | `sys/handle.cpp`, `kern/handle.h`, `sys/kapi.cpp`, `sys/net.cpp`, `sys/vfs.cpp` |
+| 2 | Every pointer-taking kapi checks its pointers (`CUserStr`, `UserCopyIn/Out`, `UserReadable/Writable`), fault-safe copies with a fixup table; `nullguard=1` (off by default) takes page 0 out of the apps' spaces | `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`, `kern/uaccess.h`, `mm/addrspace.cpp` |
+| 3–5 | EL0 entry/exit on the task's kernel stack, `svc` dispatch, IRQ/preemption from EL0, EL0 mappings, the shared EL0 table + stubs + user-side `memcpy` and event pump (v73: `pop_event`, `event_mods`, `pop_post`, `pump_sleep`), threads and app cores at EL0, `TPIDRRO_EL0` for the core number, opt-in per app | `arch/aarch64/el0.S`, `el0blob.S`, `sys/el0.cpp`, `kern/el0.h`, `mm/addrspace.cpp`, `sys/thread.cpp`, `sys/appcore.cpp`; `/bin/el0test` |
+
+Findings on the way:
+
+- Circle maps **page 0** (armstub, spin table) RWX at EL1 everywhere: a legacy app's NULL write
+  corrupts it silently — hence `nullguard`. A protected app cannot reach it (EL1-only).
+- An app's legitimate pointer may be on its **stack in the kernel heap** (legacy): the checks accept
+  the calling process's own `CTask` stacks for a legacy app, never for a protected one.
+- Apps built before v73 read `mpidr_el1` in `kapi__core` and are killed at EL0: every app was
+  rebuilt (Jet must be rebuilt apart before it runs protected).
+- The A72 has no PAN and no UAO: the kernel reaches EL0 pages directly, and the copies use plain
+  `LDR`/`STR` after the range check.
+
+**Still open:** the powerful kapis (§5) need a permission model; the GPU can reach physical memory
+through shaders; the crash record does not capture EL0 kills (kmsg only); the system-call cost is
+not measured; the old dormant EL0 code can be removed. **Next (the user's go):** test on the Pi
+(`faulttest`, `el0test`, `eyes`, `tinycalc` protected), then every app protected, `appmode=protected`
+by default, and the legacy path removed.

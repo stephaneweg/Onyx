@@ -165,6 +165,20 @@ running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachabl
 shows EC/ELR/FAR); LED frozen on or off = the kernel hangs. `config.txt` sets `hdmi_force_hotplug=1` so a
 headless Pi still gets a framebuffer (without it, Onyx would start neither the GUI nor
 the userland, `telnetd` included).
+- **Protected mode** (the apps at EL0, isolated from the kernel: [EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md),
+  docs/02 §6): **`appmode=legacy|protected`** — how the apps run by default (`legacy` today: at EL1,
+  as always); **`protected=<name>,<name>…`** — these apps and `/bin` tools run protected whatever
+  `appmode` says (the app's folder name or the tool's name, e.g. `protected=eyes,tinycalc,el0test`;
+  an app's own `app.txt` `mode = protected` or `mode = legacy` wins over both). A protected app that
+  does something wrong (a bad pointer, a privileged instruction) is **killed**, with a notice on the
+  desktop and an `el0:` line in `kmsg`; the system goes on. **`el0pmu=1`** lets protected apps read
+  the CPU's performance counters (off by default).
+- **`appfault`**: what happens when an app (not protected) faults in its own code: **`kill`** (the
+  default) ends that app only, with two `appfault` lines in `kmsg`; **`halt`** stops the whole
+  machine with the red post-mortem screen and the crash record, as before (for debugging).
+- **`nullguard=1`**: the first 64 KB of memory (address 0) is taken out of the apps' address spaces,
+  so writing through a NULL pointer kills the app instead of silently damaging that memory. Off by
+  default until it has been tried on the Pi.
 
 ### `system.ini`
 
@@ -739,6 +753,8 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
+| `faulttest` | `faulttest <write\|read\|ro\|jump\|wild\|pcalign\|udf\|brk\|irqoff\|thread\|post\|kapi\|memcpy\|null>` | **Faults on purpose** to check that a crashing app is killed and the system goes on (`appfault=kill`, the default): a write or read at an unmapped address, a write to read-only memory, a jump to garbage, an undefined instruction, `brk`, a fault in a thread (the whole process ends) or in a posted call. After each one the prompt must come back, `kmsg` shows the `appfault` report, and "BUG: still alive" must never appear. `kapi`: hands bad, kernel and read-only pointers to about fifteen kapis — every line PASS, the process ends normally; `memcpy`: a bad pointer to `memcpy` (killed); `null`: a NULL write (killed with `nullguard=1`, else "still alive"). |
+| `el0test` | `el0test`, `el0test fault\|exec\|sysreg\|corefault` | Self-test of **protected mode** (run it protected: `protected=el0test` in `cmdline.txt`): tells the mode it runs in, then checks the user-side `memcpy`/`memmove`/`memset`, the counters at EL0, the core number, `getcwd` and `win_list` into stack buffers, three threads with a mutex, a post run by `pump_wait`, a job on an app core at EL0 → `ok` lines then PASS. `fault` (a write into the kernel's memory), `exec` (a jump into it), `sysreg` (a privileged register read) must get the app killed (a notice, an `el0:` line in `kmsg`, the prompt back); `corefault`: a job that faults on an app core, the app goes on (PASS). The fault tests only run when protected. |
 | `threadtest` | `threadtest` | Self-test of the **threads** (kernel v67): threads created and joined with their exit codes, a counter shared under a mutex, the allocator used by four threads at once, a manual- and an auto-reset event, a barrier, timeouts, the limit of 32 threads per process, and a worker whose results are posted to the main thread while it waits for events. One line per check, then PASS/FAIL. It quits with a thread still running: the prompt must come back anyway (the threads end with the process). Takes a few seconds. |
 | `futextest` | `futextest` | Self-test of the **word waits** (kernel v68: `kapi_wait_word` / `kapi_wake_word`, futex-like) and of the real-time thread priority: immediate returns, a timeout, a thread woken, the same word through two mappings of a shared surface, a word changed by an app core without a wake (seen within ~10 ms), bad addresses. One line per check, then PASS/FAIL. |
 | `ringtest` | `ringtest [chunk [ahead]]` (default 256 2) | Self-test of the **low-latency sound** (kernel v68): becomes the sound owner, asks for small chunks, maps the PCM ring and plays 3 s of a 440 Hz triangle written by an app core straight into the ring. Prints the latency, the underruns and PASS/FAIL (`ringtest 128 2`, `ringtest 1024 4` try others). Headphones on. |
