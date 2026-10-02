@@ -316,9 +316,17 @@ In this order; a later step is not started early:
    one network process shared by all the views (one cookie jar, one connection pool, one cache)
    and of a spare, already initialised web process (WebKit's process prewarming) handed to the
    next view. Its price: about 80 MB held from boot — an option to turn off on a 1 GB Pi, where
-   stage d (the image kept after exit) gives the same from the second start on. Onyx has no
-   `fork`, so the daemon cannot clone an initialised engine: it spawns the roles, and it is the
-   shared image and the prewarmed process that make them quick.
+   stage d (the image kept after exit) gives the same from the second start on. **A `fork` is to
+   be implemented in the kernel for this** (the user, 2026-10-02), so that the daemon is a
+   zygote: it initialises the engine once (WTF, ICU, the font list, Skia) and each role is a
+   clone of it instead of a fresh start. What that fork needs: the read-only image shared (stage
+   c), the writable data, the heap and the calling thread's stack copied — copy-on-write of 64 KB
+   pages, or an eager copy while those are small —, the descriptors duplicated, a kapi addition
+   (append-only). Its constraint, as on every system: only the calling thread exists in the
+   child, so the zygote must fork **before it starts any thread** (the collector, the timers, the
+   IPC monitors are started by the child), and locks held at that moment must not exist. To
+   measure first: how much of a role's start-up is initialisation that a zygote can do ahead,
+   next to the image load that stage c already removes.
 6. **Lazy loading** (the image filled page by page from the file: `docs/ELF-LOADER-PLAN.md`,
    stage b).
 
