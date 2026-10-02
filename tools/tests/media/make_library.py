@@ -6,7 +6,7 @@ comments, a PICTURE), Ogg Vorbis (comments; the cover as the folder's cover.jpg)
 albums of MIDI files (a Bach-like aria and an 8-bit game tune: several channels, General MIDI instruments).
 The songs last minutes but are tiny: a quiet tone, 8 kHz mono, a low bit rate. A playlist in Music/Playlists.
 And OUT_DIR/Videos: films, clips and a series' episodes (the made-up frames of the mock-ups, panned) -- VP9 + Opus
-in WebM, AV1 in MP4, and one H.264 MP4 (a codec Onyx does not decode: its badge); a film left half way (videos.tsv).
+in WebM, AV1 in MP4, H.264 + AAC in MP4, an AVI (MPEG-4 Part 2 + MP3) and a WMV (FFmpeg's); a film left half way (videos.tsv).
 
 Needs ffmpeg, Pillow and mutagen (pip install mutagen)."""
 import os, sys, struct, subprocess, random, io
@@ -101,7 +101,7 @@ def midi (path, name, style, seed):
 # (path under Videos, the mock-ups' frame, seconds, codec)
 VIDEOS = [("Films/Sunset Harbour.webm", 2, 40, "vp9"), ("Films/Night Train.webm", 1, 24, "vp9"), ("Clips/Mountain Trails.webm", 0, 16, "vp9"),
 	  ("Series/City Nights S01E03.webm", 1, 14, "vp9"), ("Series/City Nights S01E04.webm", 4, 14, "vp9"), ("Clips/Foxy & Friends.mp4", 3, 8, "av1"),
-	  ("Clips/Garden Party.mp4", 0, 6, "h264")]
+	  ("Clips/Garden Party.mp4", 0, 6, "h264"), ("Clips/Old Holiday.avi", 2, 10, "xvid"), ("Films/Harbour at Dawn.wmv", 4, 12, "wmv")]
 
 def video (path, frame, seconds, codec, tmp):
 	png = os.path.join (tmp, "frame%d.png" % frame)
@@ -112,6 +112,8 @@ def video (path, frame, seconds, codec, tmp):
 	       "-map", "[v]", "-map", "[a]", "-t", str (seconds), "-pix_fmt", "yuv420p"]
 	if codec == "vp9": run ("ffmpeg", "-y", *src, "-c:v", "libvpx-vp9", "-b:v", "150k", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus", "-b:a", "24k", path)
 	elif codec == "av1": run ("ffmpeg", "-y", *src, "-c:v", "libaom-av1", "-b:v", "150k", "-cpu-used", "8", "-row-mt", "1", "-c:a", "libopus", "-b:a", "24k", "-strict", "-2", path)
+	elif codec == "xvid": run ("ffmpeg", "-y", *src, "-c:v", "mpeg4", "-vtag", "XVID", "-b:v", "300k", "-c:a", "libmp3lame", "-b:a", "64k", path)
+	elif codec == "wmv": run ("ffmpeg", "-y", *src, "-c:v", "wmv2", "-b:v", "300k", "-c:a", "wmav2", "-b:a", "64k", path)
 	else: run ("ffmpeg", "-y", *src, "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "150k", "-c:a", "aac", "-b:a", "32k", path)
 
 def videos (root):

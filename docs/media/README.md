@@ -64,12 +64,15 @@ by `av_player_poll`.
 - **Playing**: in the whole window, from where it was left; the controls over the picture while the pointer
   moves; ◀◀ / ▶▶ 10 s; the volume (the music's); **full screen** (`kapi_fullscreen_begin`); at the end *Watch
   again*, an episode's *Next*. The music and a video share the sound: one stops the other.
-- **The codecs**: VP9, VP8, AV1 + Opus, FLAC, MP3, PCM (Jet's). An H.264 / H.265 video, or AAC sound, is listed
-  with its codec and *not played here* (its message says what plays).
+- **The codecs** (2026-10-02, the user: "prends FFmpeg complet ... on passera le Media Player en GPL-2"): Jet's
+  (VP9, VP8, AV1, Opus, FLAC, MP3, PCM) and **FFmpeg 7.1.2**'s -- every decoder (H.264, H.265, AAC, MPEG-4 Part 2,
+  MPEG-2, WMV, Theora, AC-3, DTS, WMA...) and container (AVI, MPEG-TS / PS, ASF, FLV, Ogg...): `user/av`'s
+  `av_ffmpeg.c`, `av_lavf.c`. **The Media Player is GPL-2.0-or-later** (docs/LICENSING.md). Test videos in every
+  format: `Samples/Videos` (the Sintel trailer).
 - **Not done** (next): the mini player for a video (a picture in picture), subtitles (WebVTT / SRT next to the
-  file; Matroska's), audio tracks to choose, the rate (`av_player_set_rate` is there), a video's playlists,
-  AAC (a decoder: MP4 files' usual sound; fdk-aac's licence is not free enough — a small one to find),
-  H.264 (openh264, BSD-2; or the Pi's hardware decoder: a driver).
+  file; Matroska's, MP4's -- FFmpeg decodes them), audio tracks to choose, the rate (`av_player_set_rate` is
+  there), a video's playlists; the music through FFmpeg too (M4A / AAC, WMA, Opus, APE... songs); the Pi's
+  hardware H.264 decoder (the VideoCore's, through VCHIQ / MMAL: a kernel driver) for 1080p.
 
 ## Still open
 

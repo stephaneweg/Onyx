@@ -29,20 +29,21 @@ static unsigned *video_frame_at (const char *path, int atMs, int *ow, int *oh, v
 	unsigned char *buf = (unsigned char *) malloc (65536);
 	unsigned *out = 0; int vt = -1; bool sought = false; av_us target = (av_us) atMs * 1000;
 	u64 read = 0; int frames = 0, packets = 0;
-	struct av_frame fr; bool have = false;
-	while (d && buf && read < (48u << 20) && !(stop && *stop))
+	struct av_frame fr; bool have = false; int idle = 0;
+	if (d) av_demux_set_size (d, (int64_t) size);
+	while (d && buf && read < (48u << 20) && !(stop && *stop) && idle < 3000)
 	{
 		struct av_packet pk; int r;
 		while ((r = av_demux_read (d, &pk)) == AV_OK)
 		{
 			if (vt < 0)
 				for (int i = 0; i < av_demux_ntracks (d); i++) if (av_demux_track (d, i)->kind == AV_VIDEO) { vt = i; break; }
-			if (vt >= 0 && !dec) { dec = av_decoder_new (av_demux_track (d, vt)); if (!dec) { av_packet_free (&pk); goto done; } }
+			if (vt >= 0 && !dec) { dec = av_decoder_new (av_demux_track (d, vt)); if (!dec) { av_pkt_free (&pk); goto done; } }
 			if (vt >= 0 && !sought)
 			{	// the first packet: the tracks are known -- go near the target (an index: Cues, stbl), else decode on from here
 				sought = true;
 				av_us at = 0; int64_t off = target > 0 ? av_demux_seek (d, target, &at) : -1;
-				if (off >= 0) { av_packet_free (&pk); break; }
+				if (off >= 0) { av_pkt_free (&pk); break; }
 				if (target > 4 * AV_US) target = 4 * AV_US;		// (no index: not far)
 			}
 			if (pk.track == vt)
@@ -58,16 +59,17 @@ static unsigned *video_frame_at (const char *path, int atMs, int *ow, int *oh, v
 						delete[] out; out = new unsigned[(size_t) fr.width * fr.height];
 						av_yuv_to_rgb (&fr, (uint8_t *) out, fr.width * 4, AV_PIX_BGRA);
 						*ow = fr.width; *oh = fr.height; have = true;
-						if (fr.pts >= target - 50000 || frames > 90) { av_packet_free (&pk); goto done; }
+						if (fr.pts >= target - 50000 || frames > 90) { av_pkt_free (&pk); goto done; }
 					}
 				}
 			}
-			av_packet_free (&pk);
+			av_pkt_free (&pk);
 			if (packets > 400) goto done;
 		}
 		if (r == AV_EOF || r == AV_ERR || r == AV_EUNSUP) break;
 		int64_t want = av_demux_want (d);
-		if (want < 0 || (u64) want >= size) { av_demux_end (d); continue; }
+		if (want == -1) { kapi_msleep (2); idle++; continue; }	// (FFmpeg's demuxer on its thread: busy)
+		if (want < 0 || (u64) want >= size) { av_demux_end (d); kapi_msleep (1); idle++; continue; }
 		if (kapi_seek (f, (unsigned long long) want) != 0) break;
 		int n = kapi_read (f, buf, 65536);
 		if (n <= 0) { av_demux_end (d); continue; }

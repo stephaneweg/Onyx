@@ -194,7 +194,9 @@ pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clip
 # wtk), its music decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built
 # with the FPU), Koton's MeltySynth for the MIDI files (Koton's objects, shared), and for the videos Onyx's media library
 # (user/av, compiled here into Apps/media/obj/av/) with its codecs -- libvpx, dav1d, libopus, the libraries Jet links
-# (built by `make -C netsurf codecs`; their sources and flags: av/codecs.mk).
+# (built by `make -C netsurf codecs`; their sources and flags: av/codecs.mk) -- and FFmpeg 7.1 (every decoder and
+# demuxer: H.264, H.265, AAC, AVI, MPEG-TS...; GPL-2.0+: the Media Player is distributed under the GPL-2.0), its
+# libraries built by third_party/ffmpeg-7.1.2/onyx/build.sh pi (committed).
 MEDIA_OBJ = Apps/media/obj/codecs.o Apps/media/obj/vorbis.o
 Apps/media/obj/%.o: Apps/media/%.c Apps/media/codecs.h
 	@mkdir -p $(dir $@)
@@ -203,10 +205,13 @@ TP := ../third_party
 AV_ARCH := aarch64
 include av/codecs.mk
 MEDIA_AV_OBJ = $(patsubst av/%.c,Apps/media/obj/av/%.o,$(wildcard av/*.c))
-MEDIA_AV_LIBS = $(VPX)/libvpx.a $(DAV1D)/libdav1d.a $(OPUS)/libopus.a
+FFMPEG = ../third_party/ffmpeg-7.1.2/onyx
+MEDIA_AV_LIBS = $(VPX)/libvpx.a $(DAV1D)/libdav1d.a $(OPUS)/libopus.a \
+	$(FFMPEG)/aarch64/libavformat.a $(FFMPEG)/aarch64/libavcodec.a $(FFMPEG)/aarch64/libswscale.a \
+	$(FFMPEG)/aarch64/libswresample.a $(FFMPEG)/aarch64/libavutil.a
 Apps/media/obj/av/%.o: av/%.c $(wildcard av/*.h) kapi.h
 	@mkdir -p $(dir $@)
-	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. $(AV_CODECS_CF) -c $< -o $@
+	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
 MEDIA_SYNTH = $(filter Apps/koton/obj/synth/%,$(KOTON_OBJ))
 media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_OBJ) $(MEDIA_AV_OBJ) $(MEDIA_SYNTH) img/imgload.hpp img/pngsave.hpp fileassoc.h notify.h \
 	   ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h $(wildcard av/*.h)

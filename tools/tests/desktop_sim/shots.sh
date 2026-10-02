@@ -57,9 +57,11 @@ build () {
 		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/media/codecs.o" || return 1
 		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/media/vorbis.o" || return 1
 		for f in user/Apps/koton/synth/*.cpp; do $CXX -c "$f" -o "$OUT/media/$(basename "$f" .cpp).o" || return 1; done
-		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1	# (the videos: user/av and its codecs)
+		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/av, its codecs, FFmpeg for the PC)
+		sh third_party/ffmpeg-7.1.2/onyx/build.sh host "$FFH" || return 1
+		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1
 		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -lpthread -lm; return
+			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
 		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"

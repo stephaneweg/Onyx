@@ -240,10 +240,10 @@ static int audio_fill(struct av_player *p, double rate, float vol)
 	p->a_first = 0;
 	p->a_next = pk.dts;
 	if (av_decoder_send(p->adec, &pk) != AV_OK) {
-		av_packet_free(&pk);
+		av_pkt_free(&pk);
 		return AV_OK;	/* (a bad packet: skipped) */
 	}
-	av_packet_free(&pk);
+	av_pkt_free(&pk);
 	while (av_decoder_receive(p->adec, &f) == AV_OK) {
 		int skip = 0, n, cap;
 		if (f.samples <= 0 || f.rate <= 0 || f.channels <= 0)
@@ -579,7 +579,7 @@ static int video_main(void *arg)
 		p->v_next = pk.dts;
 		t0 = av_now();
 		r = av_decoder_send(p->vdec, &pk);
-		av_packet_free(&pk);
+		av_pkt_free(&pk);
 		if (r != AV_OK)
 			continue;
 		while (av_decoder_receive(p->vdec, &f) == AV_OK) {
@@ -646,7 +646,7 @@ static int reader_main(void *arg)
 
 int av_player_open_file(struct av_player *p, const char *path)
 {
-	uint8_t head[16];
+	uint8_t head[4096];
 	size_t n;
 	const char *mime;
 
@@ -664,6 +664,9 @@ int av_player_open_file(struct av_player *p, const char *path)
 	case AV_FMT_WAV: mime = "audio/wav"; break;
 	case AV_FMT_FLAC: mime = "audio/flac"; break;
 	case AV_FMT_MP3: mime = "audio/mpeg"; break;
+#ifdef AV_WITH_FFMPEG
+	case AV_FMT_LAVF: mime = "application/x-onyx-lavf"; break;	/* (AVI, MPEG-TS, FLV, WMV...: FFmpeg's) */
+#endif
 	default:
 		av_file_close(p->file);
 		p->file = NULL;
@@ -675,6 +678,7 @@ int av_player_open_file(struct av_player *p, const char *path)
 		p->file = NULL;
 		return AV_ERR;
 	}
+	av_store_set_size(p->store, p->file_src, p->file_size);
 	if (av_thread_start(&p->rth, reader_main, p, "av reader") < 0)
 		return AV_ERR;
 	return AV_OK;

@@ -30,6 +30,10 @@ static const struct av_codec_impl *const impls[] = {
 	&av_vorbis_codec,
 #endif
 	&av_flac_codec, &av_mp3_codec, &av_pcm_codec, &av_alaw_codec, &av_ulaw_codec, &av_i420_codec,
+#ifdef AV_WITH_FFMPEG
+	/* FFmpeg's, after Onyx's own (taken only for what these do not decode) */
+	&av_ff_h264_codec, &av_ff_hevc_codec, &av_ff_aac_codec, &av_ff_vorbis_codec, &av_ff_mjpeg_codec, &av_ff_any_codec,
+#endif
 };
 #define NIMPL ((int) (sizeof impls / sizeof impls[0]))
 
@@ -52,12 +56,12 @@ static const struct av_codec_impl *impl_of(int codec)
 
 const struct av_codec_info *av_codec_list(int *n)
 {
-	static struct av_codec_info list[16];
+	static struct av_codec_info list[32];
 	static int made;
 	int i;
 
 	if (!made) {
-		for (i = 0; i < NIMPL && i < 16; i++) {
+		for (i = 0; i < NIMPL && i < 32; i++) {
 			list[i].codec = impls[i]->codec;
 			list[i].kind = impls[i]->kind;
 			list[i].name = impls[i]->name;
@@ -72,9 +76,22 @@ const struct av_codec_info *av_codec_list(int *n)
 	return list;
 }
 
+/* the decoder of a track: Onyx's own for its codec, else FFmpeg's (by ff_id, AV_C_FFMPEG) */
+static const struct av_codec_impl *impl_for(const struct av_track *t)
+{
+	const struct av_codec_impl *im = t->codec == AV_C_FFMPEG ? NULL : impl_of(t->codec);
+#ifdef AV_WITH_FFMPEG
+	if ((im == NULL || im->open == av_ff_any_codec.open) && av__ff_decodes(t))
+		return &av_ff_any_codec;
+	if (im != NULL && im->open == av_ff_any_codec.open)
+		return NULL;
+#endif
+	return im;
+}
+
 int av_decoder_supported_track(const struct av_track *t)
 {
-	return t != NULL && !t->encrypted && impl_of(t->codec) != NULL;
+	return t != NULL && !t->encrypted && impl_for(t) != NULL;
 }
 
 /* ---- the decoder object ----------------------------------------------------------------- */
@@ -91,7 +108,7 @@ struct av_decoder *av_decoder_new(const struct av_track *t)
 
 	if (t == NULL || t->encrypted)
 		return NULL;
-	im = impl_of(t->codec);
+	im = impl_for(t);
 	if (im == NULL)
 		return NULL;
 	d = (struct av_decoder *) calloc(1, sizeof *d);
@@ -362,6 +379,14 @@ const struct av_codec_impl av_i420_codec = {
 	i420_open, i420_send, i420_receive, i420_flush, i420_close, NULL
 };
 
+#ifndef AV_WITH_FFMPEG
+/* (without FFmpeg: the codecs Onyx's decoders do not know stay unknown) */
+void av__ff_identify(struct av_track *t, int fmt, uint32_t fourcc, int esds_oti)
+{
+	(void) t; (void) fmt; (void) fourcc; (void) esds_oti;
+}
+#endif
+
 /* ---- codec strings ---------------------------------------------------------------------- */
 
 void av__codec_string(struct av_track *t)
@@ -422,6 +447,10 @@ void av__codec_string(struct av_track *t)
 	case AV_C_FLAC: snprintf(s, sz, "flac"); break;
 	case AV_C_MJPEG: snprintf(s, sz, "mjpeg"); break;
 	case AV_C_I420: snprintf(s, sz, "i420"); break;
+	case AV_C_FFMPEG:
+		if (!s[0])
+			snprintf(s, sz, "%s", t->codec_id);
+		break;
 	default:
 		if (is_pcm(t->codec) || t->codec == AV_C_ALAW || t->codec == AV_C_ULAW)
 			snprintf(s, sz, "pcm");

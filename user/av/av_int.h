@@ -26,6 +26,9 @@ struct av_fmt_ops {
 	int64_t (*seek)(struct av_demux *d, void *priv, av_us t, av_us *at);
 	/* MSE: the parser's partial state dropped (abort()) -- back to "expect a segment" */
 	void (*reset)(struct av_demux *d, void *priv);
+	/* an asynchronous parser (libavformat on a thread of its own, av_lavf.c): 1 while packets may
+	 * still come without more bytes (its queue, its work); NULL: never */
+	int (*busy)(struct av_demux *d, void *priv);
 };
 
 struct av_demux {
@@ -44,6 +47,7 @@ struct av_demux {
 	int ntracks;
 	int init_new;			/* the tracks were (re)defined */
 	av_us duration;
+	int64_t size;			/* the whole stream's size, -1 unknown (av_demux_set_size) */
 	char name[12];
 };
 
@@ -74,6 +78,18 @@ static inline uint32_t av_rl32(const uint8_t *p) { return (uint32_t) p[3] << 24 
 
 /* the containers */
 extern const struct av_fmt_ops av_mkv_ops, av_mp4_ops, av_wav_ops, av_flac_ops, av_mp3_ops;
+#ifdef AV_WITH_FFMPEG
+extern const struct av_fmt_ops av_lavf_ops;
+/* a stream's first bytes: one libavformat reads (AV_FMT_LAVF) */
+int av__lavf_probe(const uint8_t *p, size_t n);
+#endif
+/* 1 while an asynchronous parser may still give packets (av_fmt_ops.busy) */
+int av__demux_busy(struct av_demux *d);
+/* a track whose codec Onyx's own decoders do not know: FFmpeg's, when built in -- from the
+ * container's id (Matroska's "A_AC3", "V_MS/VFW/FOURCC" with its BITMAPINFOHEADER; MP4's fourcc
+ * "mp4v", "ac-3"; an esds object type) -> t->codec AV_C_FFMPEG, t->ff_id, t->codec_str; else
+ * nothing changes (av_ffmpeg.c; a stub without FFmpeg) */
+void av__ff_identify(struct av_track *t, int fmt, uint32_t fourcc, int esds_oti);
 /* an MPEG audio stream's start (av_mp3.c) */
 int av__mp3_probe(const uint8_t *p, size_t n);
 
@@ -107,6 +123,13 @@ extern const struct av_codec_impl av_av1_codec;
 #endif
 #ifdef AV_WITH_VORBIS
 extern const struct av_codec_impl av_vorbis_codec;
+#endif
+#ifdef AV_WITH_FFMPEG
+/* FFmpeg's libavcodec: every codec it decodes (H.264, H.265, AAC, MPEG-4, AC-3, Vorbis, WMV...),
+ * the codec of each entry for the lists; av__ff_impl_for: the one decoding a track, or NULL */
+extern const struct av_codec_impl av_ff_h264_codec, av_ff_hevc_codec, av_ff_aac_codec, av_ff_vorbis_codec,
+	av_ff_mjpeg_codec, av_ff_any_codec;
+int av__ff_decodes(const struct av_track *t);
 #endif
 
 /* the tests' stand-in decoders (av_stub.c): NULL unless av_codec_enable_stubs () */

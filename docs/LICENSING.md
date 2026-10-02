@@ -13,13 +13,14 @@
 | **The kernel image** (`kernel8-rpi4.img`) | **GPL-3.0-or-later** | Circle (our fork, statically linked) is GPL-3.0-or-later. |
 | **Jet Browser** (`jet.app`, `pc/dist/Jet`) | **GPL-2.0** (only) | NetSurf is **GPL-2.0-only** ("version 2 of the License", no "or later") — incompatible with GPLv3. Its Onyx code must stay GPLv2-compatible (GPL-2.0-or-later or permissive), mbedTLS taken under its GPL-2.0-or-later option (not Apache-2.0), FreeType under its GPLv2 option. |
 | **Doom** (`doom.app`) | GPL-2.0-or-later (→ GPLv3 fine) | doomgeneric: "version 2 … or any later version". |
+| **Media Player** (`media.app`) | **GPL-2.0-or-later** | It links **FFmpeg** built with `--enable-gpl` (GPL-2.0-or-later): H.264, H.265, AAC, AVI, MPEG-TS... Decided with the user (2026-10-02: "on passera le Media Player en GPL-2"). Its own files stay MIT; its source is the repository's. |
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Every other app, the tools** | Your choice | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |
 
 **Recommendation:** distribute Onyx under **GPL-3.0-or-later** (forced anyway for the kernel by
-Circle), with **Jet Browser under GPL-2.0** and the **PDF Viewer under AGPL-3.0** as documented
+Circle), with **Jet Browser under GPL-2.0**, the **Media Player under GPL-2.0-or-later** (FFmpeg) and the **PDF Viewer under AGPL-3.0** as documented
 exceptions. A purely permissive licence (MIT) for the whole is **not possible**: the kernel is GPLv3
 because of Circle.
 
@@ -74,6 +75,7 @@ Two weaknesses, worth fixing:
 | talloc (Samba) | `third_party/netsurf/utils/talloc.c`, Jet | LGPL-2.1-or-later | Fine in a GPL program; in a permissive Jet it would have to go (or be relinkable) |
 | libcss, libdom, libhubbub, libnsbmp, libnsfb, libnsgif, libnslog, libnsutils, libparserutils, libwapcaplet, nsgenbind | `third_party/` | MIT | Keep the notices |
 | doomgeneric | `third_party/doomgeneric` | GPL-2.0-or-later | Source available |
+| FFmpeg 7.1.2 (libavcodec, libavformat, libavutil, libswscale, libswresample; `--enable-gpl`, no external library) | `third_party/ffmpeg-7.1.2`, the Media Player (`user/av/av_ffmpeg.c`, `av_lavf.c`) | **GPL-2.0-or-later** | The Media Player under GPL-2.0-or-later, its source available (the repository: `onyx/build.sh` makes the libraries); keep `COPYING.GPLv2`, `LICENSE.md`. Some formats it decodes are patented in some countries (H.264, H.265, AAC...): FFmpeg's own note in `LICENSE.md` |
 | mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` | Apache-2.0 **or** GPL-2.0-or-later | Jet: take the GPL option |
 | FreeType 2.14.3 | `third_party/freetype-2.14.3` | FTL **or** GPL-2.0-or-later | FTL: a credit in the docs ("Portions of this software are copyright © The FreeType Project") |
 | zlib, libpng | `third_party/` | zlib / libpng licence | — |

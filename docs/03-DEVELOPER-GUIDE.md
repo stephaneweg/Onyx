@@ -1621,8 +1621,12 @@ windows may end with `,title`.
 The music and video library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
 **newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers. Its
 videos are played by **the media library** (`user/av`, below), compiled by the rule into `Apps/media/obj/av/`
-with `av/codecs.mk`'s `AV_CODECS_CF`, and linked with Jet's codec libraries — `libvpx.a`, `libdav1d.a`,
-`libopus.a` (`make -C user/netsurf codecs`; committed in `third_party/`).
+with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with Jet's codec libraries — `libvpx.a`,
+`libdav1d.a`, `libopus.a` (`make -C user/netsurf codecs`; committed in `third_party/`) — and **FFmpeg 7.1.2**'s
+(`third_party/ffmpeg-7.1.2/onyx/aarch64/lib{avformat,avcodec,swscale,swresample,avutil}.a`, committed; made by
+`sh third_party/ffmpeg-7.1.2/onyx/build.sh pi`: every decoder and demuxer, `--enable-gpl`, no threads, no programs).
+**The Media Player is therefore GPL-2.0-or-later** (its files stay MIT; docs/LICENSING.md). The app is ~16 MB
+(FFmpeg: 10 MB of code, 20 MB of tables in its bss).
 
 | File | What |
 |---|---|
@@ -1666,6 +1670,8 @@ assembly; `user/netsurf/Makefile codecs` builds `libvpx.a`, `libdav1d.a`, `libop
 | `av_demux.c`, `av_mkv.c`, `av_mp4.c`, `av_riff.c`, `av_flac.c`, `av_mp3.c` | The containers: WebM / Matroska, MP4 / MOV / fragmented MP4, WAV, FLAC, MPEG audio. |
 | `av_codec.c`, `av_flac.c`, `av_mp3.c` | The codecs' table, PCM / A-law / mu-law / uncompressed I420, FLAC (built in), MP3 (minimp3); `av_type_supported` (canPlayType, isTypeSupported, MediaCapabilities). |
 | `av_vpx.c`, `av_dav1d.c`, `av_opus.c` | VP8 / VP9, AV1, Opus on libvpx 1.15.2 / dav1d 1.5.1 / libopus 1.5.2 (`third_party/`, `user/av/codecs.mk`): with `-DAV_WITH_VPX` / `AV_WITH_DAV1D` / `AV_WITH_OPUS` and the library. One decoding thread each; 8-bit 4:2:0 video. |
+| `av_ffmpeg.c` | With `-DAV_WITH_FFMPEG` (the Media Player; GPL-2.0+): **every codec libavcodec decodes** that Onyx's own do not (H.264, H.265, AAC, MPEG-4 Part 2, MPEG-2, WMV / VC-1, Theora, AC-3, DTS, Vorbis, WMA, ALAC...): a track's `ff_id` (libavformat's tracks, `AV_C_FFMPEG`) or its codec (H.264, H.265, AAC, Vorbis, MJPEG); the frames brought to 8-bit 4:2:0 (libswscale for 10-bit, 4:2:2, RGB...), the sound to interleaved float; `av__ff_identify` (the Matroska / MP4 codecs Onyx's parsers do not know: `A_AC3`, `V_MS/VFW/FOURCC`, `mp4v`, `ac-3`, an esds object type...). FFmpeg is built without threads: its first-time initialisations are not guarded, so the opens go one at a time under `av__ff_lock`. Our `av_packet_free` was renamed **`av_pkt_free`** (FFmpeg has the name). |
+| `av_lavf.c` | With `-DAV_WITH_FFMPEG`: **`AV_FMT_LAVF`**, every other container through **libavformat** (AVI, MPEG-TS / PS, ASF / WMV, FLV, Ogg, RealMedia...: `av_probe` asks FFmpeg's probe after Onyx's, from 4 KB). libavformat pulls its bytes, the library pushes them: it runs on **a thread of its own**, its AVIOContext's read waiting for the bytes it needs (`av_demux_want` answers that offset; -1 when nothing is wanted now: its thread works on what it has), the parser's read copying the window into its cache and handing over the packets it queued; a seek is asked of the thread (`avformat_seek_file` on its index); the times start at 0 (MPEG-TS's start time taken off). The parser is **busy** (`av_fmt_ops.busy`) while packets may still come: the store takes them when asked where to feed (`av_store_want`), and is not "ended" before. `av_demux_set_size` / `av_store_set_size`: the file's size (its demuxers seek from the end). |
 | `av_stub.c` | The tests' stand-ins (grey frames, silence) for the codecs not built in: `av_codec_enable_stubs ()`. |
 | `av_yuv.c`, `av_resample.c` | YUV 4:2:0 to RGBA / BGRA (NEON on AArch64), the resampler (any rate / channels to s16 stereo). |
 | `av_store.c` | The coded frames by source and track (MSE's semantics), buffered ranges, removal, quota. |
@@ -1697,9 +1703,16 @@ src)` says, `av_store_feed_end` at the end. **MSE**: `av_store_append` per Sourc
 their track, pts / dts in microseconds, key flag), `av_decoder_new (track)` / `av_decoder_send` /
 `av_decoder_receive` (frames: I420 planes or float PCM), `av_yuv_to_rgb`, `av_resampler_new` / `av_resample`.
 
-What decodes: VP9, VP8, AV1, Opus (with `codecs.mk`'s libraries), FLAC, MP3, PCM (WAV), the tests' I420 --
-`av_codec_list ()` says. A file whose codec is not there plays nothing: `st.error == AV_EUNSUP` (Jet:
-MediaError 4). **Tests**: `sh tools/tests/av/run.sh` (the library alone, PC and AArch64 under qemu),
+What decodes: VP9, VP8, AV1, Opus (with `codecs.mk`'s libraries), FLAC, MP3, PCM (WAV), the tests' I420, and
+with FFmpeg (the Media Player) nearly everything else -- `av_codec_list ()` says, `av_decoder_supported_track
+(track)` for a track. A file whose codec is not there plays nothing: `st.error == AV_EUNSUP` (Jet: MediaError 4).
+**Decode times**: Matroska keeps none (its blocks are in decode order, their times are the pictures'): its video
+packets come with `dts = AV_NOTIME` and the store makes them (after the last one: H.264 / H.265 with B-frames).
+In the file mode a jump forward in the times is the stream's own (a variable frame rate, Theora's repeated
+frames left out), neither a discontinuity nor a hole to wait for. **Tests**: `sh tools/tests/av/run.sh` (the library alone, PC and AArch64 under qemu; then, with
+the `ffmpeg` command, `tools/tests/av/fftest.c`: FFmpeg for the PC -- `third_party/ffmpeg-7.1.2/onyx/build.sh host`
+-- and clips made in H.264 / AAC (MP4, TS), H.265, Xvid AVI, MPEG-2, WMV, FLV, Theora OGV, AC-3, 10-bit 4:2:2:
+each read and decoded whole, played in the file mode, a seek),
 `sh tools/tests/netsurf/mediatest.sh` (in Jet Browser; the VP9 / AV1 / Opus clips of `tools/tests/av/clips`,
 made by `mkcodec.py` with PyAV), `sh tools/tests/av/bench.sh <clips>` (the decoders' speed, PC and AArch64
 under qemu, the frames' checksum the same on both).

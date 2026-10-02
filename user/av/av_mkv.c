@@ -370,6 +370,8 @@ static void tracks_child(struct av_demux *d, struct mkv *m, void *ctx, uint32_t 
 		t->kind = 0;
 	}
 	mkv_codec(t, tc.colourspace);
+	if (t->codec == AV_C_NONE && t->kind != 0)
+		av__ff_identify(t, AV_FMT_MKV, 0, 0);	/* (FFmpeg's, when built in) */
 	av__codec_string(t);
 }
 
@@ -558,6 +560,10 @@ static int lace_next(struct av_demux *d, struct mkv *m, struct av_packet *pkt)
 
 	pkt->track = L->track;
 	pkt->pts = pkt->dts = L->t + each * L->i;
+	/* (Matroska keeps no decode times: a video stream with B-frames has its frames' times out of order
+	 * -- the decode order is the blocks' order; the store makes the decode times) */
+	if (t->kind == AV_VIDEO)
+		pkt->dts = AV_NOTIME;
 	pkt->dur = each;
 	pkt->key = L->key;
 	pkt->pos = L->pos[L->i];

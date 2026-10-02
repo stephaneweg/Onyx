@@ -164,8 +164,10 @@ static void parse_esds(struct av_track *t, const uint8_t *p, int64_t n)
 				t->codec = AV_C_MP3;
 			else if (oti == 0xAD)
 				t->codec = AV_C_OPUS;
-			else
+			else {
 				t->codec = AV_C_NONE;
+				av__ff_identify(t, AV_FMT_MP4, 0, oti);	/* (MPEG-4 Part 2, AC-3...: FFmpeg's, when built in) */
+			}
 			i += 13;
 			continue;		/* its DecoderSpecificInfo follows */
 		}
@@ -208,6 +210,17 @@ static void parse_entry(struct av_track *t, uint32_t type, const uint8_t *p, int
 	case FOURCC('i','p','c','m'): case FOURCC('f','p','c','m'): audio = 1; break;
 	case FOURCC('.','m','p','3'): t->codec = AV_C_MP3; audio = 1; break;
 	case FOURCC('e','n','c','a'): t->encrypted = 1; audio = 1; break;
+	/* (decoded by FFmpeg, when built in: av__ff_identify below) */
+	case FOURCC('m','p','4','v'): case FOURCC('s','2','6','3'): case FOURCC('h','2','6','3'): case FOURCC('m','j','p','b'):
+	case FOURCC('d','v','h','1'): case FOURCC('d','v','h','e'): case FOURCC('a','p','c','n'): case FOURCC('a','p','c','h'):
+	case FOURCC('a','p','c','s'): case FOURCC('a','p','c','o'): case FOURCC('a','p','4','h'): case FOURCC('m','x','5','p'):
+	case FOURCC('x','d','v','5'): case FOURCC('d','v','c','p'): case FOURCC('d','v','c',' '): case FOURCC('S','V','Q','3'):
+		t->codec = AV_C_NONE; video = 1; break;
+	case FOURCC('a','c','-','3'): case FOURCC('e','c','-','3'): case FOURCC('a','l','a','c'): case FOURCC('d','t','s','c'):
+	case FOURCC('d','t','s','h'): case FOURCC('d','t','s','l'): case FOURCC('s','a','m','r'): case FOURCC('s','a','w','b'):
+	case FOURCC('l','p','c','m'): case FOURCC('i','n','2','4'): case FOURCC('f','l','3','2'): case FOURCC('i','m','a','4'):
+	case FOURCC('Q','c','l','p'): case FOURCC('m','p','3',' '):
+		t->codec = AV_C_NONE; audio = 1; break;
 	default:
 		t->codec = AV_C_NONE;
 		break;
@@ -288,11 +301,25 @@ static void parse_entry(struct av_track *t, uint32_t type, const uint8_t *p, int
 	default:
 		break;
 	}
-	if (type == FOURCC('m','p','4','a')) {
+	if (type == FOURCC('m','p','4','a') || type == FOURCC('m','p','4','v')) {
 		if ((c = find_box(p, n, FOURCC('e','s','d','s'), &clen)) != NULL)
 			parse_esds(t, c, clen);
 		else
 			t->codec = AV_C_NONE;
+	} else if (t->codec == AV_C_NONE && !t->encrypted) {
+		/* the codec's setup, the box after the sample entry's fields (alac, dac3, dec3, glbl...) */
+		const uint8_t *b = NULL;
+		if (type == FOURCC('a','l','a','c'))
+			b = find_box(p, n, FOURCC('a','l','a','c'), &clen);
+		else if (type == FOURCC('a','c','-','3'))
+			b = find_box(p, n, FOURCC('d','a','c','3'), &clen);
+		else if (type == FOURCC('e','c','-','3'))
+			b = find_box(p, n, FOURCC('d','e','c','3'), &clen);
+		else
+			b = find_box(p, n, FOURCC('g','l','b','l'), &clen);
+		if (b != NULL && clen > 0)
+			set_extra(t, type == FOURCC('a','l','a','c') ? b - 8 : b, type == FOURCC('a','l','a','c') ? clen + 8 : clen);
+		av__ff_identify(t, AV_FMT_MP4, type, 0);
 	} else if (type == FOURCC('i','p','c','m') || type == FOURCC('f','p','c','m')) {
 		/* pcmC: version / flags, format_flags (bit 0: little endian), sample size */
 		if ((c = find_box(p, n, FOURCC('p','c','m','C'), &clen)) != NULL && clen >= 6) {

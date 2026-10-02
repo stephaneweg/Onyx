@@ -71,7 +71,8 @@ it, say so to the user and do not publish. Never generate another key.
 
 Everything of ours that can be is under the **MIT licence** (the user, 2026-10-01): new code carries the MIT
 notice; a programme that links a copyleft library keeps its files MIT but is distributed under that licence (the
-kernel GPL-3.0 with Circle, Jet GPL-2.0 with NetSurf, the PDF Viewer AGPL-3.0 with MuPDF, Doom GPL). Never pull a
+kernel GPL-3.0 with Circle, Jet GPL-2.0 with NetSurf, the Media Player GPL-2.0 with FFmpeg, the PDF Viewer AGPL-3.0
+with MuPDF, Doom GPL). Never pull a
 library that would force another licence on an app without asking the user. Details: `docs/LICENSING.md`.
 
 ## Build (reminder)

@@ -23,8 +23,11 @@ enum { VK_FILM, VK_CLIP, VK_SERIES };
 
 static inline bool is_video_path (const char *p)
 {
+	static const char *const E[] = { "webm", "mkv", "mp4", "m4v", "mov", "avi", "divx", "mpg", "mpeg", "m2v", "vob", "ts", "m2ts", "mts",
+		"flv", "f4v", "wmv", "asf", "ogv", "3gp", "3g2", "rm", "rmvb", "mxf", "nut", 0 };
 	const char *e = ext_of (p);
-	return !strcasecmp (e, "webm") || !strcasecmp (e, "mkv") || !strcasecmp (e, "mp4") || !strcasecmp (e, "m4v") || !strcasecmp (e, "mov");
+	for (int i = 0; E[i]; i++) if (!strcasecmp (e, E[i])) return true;
+	return false;
 }
 
 struct Video
@@ -33,7 +36,7 @@ struct Video
 	int kind, season, episode;			// (an episode: its numbers, else 0)
 	int durMs, w, h;
 	u64 size;
-	char vcodec[12], acodec[12];			// "vp9", "opus" ... ("" none)
+	char vcodec[20], acodec[20];			// "vp9", "h264", "opus", "ac3" ... ("" none)
 	bool playable;					// this build decodes its video (and its sound, if any)
 	int posMs;					// where it was left (0: from the start)
 	bool watched;					// seen to the end once
@@ -53,20 +56,18 @@ static inline const char *codec_short (int c)
 	}
 	return "pcm";
 }
-// the name shown ("VP9", "H.264")
+// the name shown ("VP9", "H.264"; FFmpeg's names: "mpeg4", "wmv2", "ac3"...)
 static inline const char *codec_label (const char *s)
 {
 	static const char *const M[][2] = { { "vp8", "VP8" }, { "vp9", "VP9" }, { "av1", "AV1" }, { "h264", "H.264" }, { "hevc", "H.265" }, { "mjpeg", "Motion JPEG" },
-		{ "i420", "raw" }, { "opus", "Opus" }, { "vorbis", "Vorbis" }, { "aac", "AAC" }, { "mp3", "MP3" }, { "flac", "FLAC" }, { "pcm", "PCM" } };
+		{ "i420", "raw" }, { "opus", "Opus" }, { "vorbis", "Vorbis" }, { "aac", "AAC" }, { "mp3", "MP3" }, { "flac", "FLAC" }, { "pcm", "PCM" },
+		{ "mpeg4", "MPEG-4" }, { "msmpeg4v3", "DivX 3" }, { "msmpeg4v2", "MS MPEG-4" }, { "mpeg2video", "MPEG-2" }, { "mpeg1video", "MPEG-1" },
+		{ "wmv1", "WMV 7" }, { "wmv2", "WMV 8" }, { "wmv3", "WMV 9" }, { "vc1", "VC-1" }, { "theora", "Theora" }, { "flv1", "Sorenson" },
+		{ "h263", "H.263" }, { "prores", "ProRes" }, { "rv40", "RealVideo" }, { "rv30", "RealVideo" }, { "ac3", "AC-3" }, { "eac3", "E-AC-3" },
+		{ "dts", "DTS" }, { "truehd", "TrueHD" }, { "wmav2", "WMA" }, { "wmav1", "WMA" }, { "wmapro", "WMA Pro" }, { "mp2", "MP2" },
+		{ "alac", "ALAC" }, { "cook", "RealAudio" }, { "amr_nb", "AMR" }, { "adpcm_ima_wav", "ADPCM" }, { "adpcm_ms", "ADPCM" } };
 	for (auto &m : M) if (!strcmp (s, m[0])) return m[1];
 	return s[0] ? s : "?";
-}
-// the build decodes it (av_codec_list: the codecs compiled in)
-static inline bool codec_built (int c)
-{
-	int n = 0; const struct av_codec_info *l = av_codec_list (&n);
-	for (int i = 0; i < n; i++) if (l[i].codec == c) return true;
-	return false;
 }
 
 // the title and kind from the path: the file's name tidied, an episode's numbers found
@@ -126,10 +127,12 @@ static bool probe_video (const char *path, Video *v)
 	unsigned char *buf = (unsigned char *) malloc (65536);
 	bool ok = false; u64 read = 0;
 	int tries = 0;
-	while (d && buf && read < (8u << 20) && tries++ < 400)
+	if (d) av_demux_set_size (d, (int64_t) size);
+	while (d && buf && read < (16u << 20) && tries++ < 3000)
 	{
 		int64_t want = av_demux_want (d);
-		if (want < 0 || (u64) want >= size) { av_demux_end (d); }
+		if (want == -1) kapi_msleep (2);		// (FFmpeg's demuxer on its thread, busy: nothing wanted now)
+		else if (want < 0 || (u64) want >= size) { av_demux_end (d); kapi_msleep (2); }	// (all fed: its thread works on)
 		else
 		{
 			if (kapi_seek (f, (unsigned long long) want) != 0) break;
@@ -138,7 +141,7 @@ static bool probe_video (const char *path, Video *v)
 		}
 		struct av_packet pk; int r;
 		bool packets = false;
-		while ((r = av_demux_read (d, &pk)) == AV_OK) { av_packet_free (&pk); packets = true; }
+		while ((r = av_demux_read (d, &pk)) == AV_OK) { av_pkt_free (&pk); packets = true; }
 		if (av_demux_ntracks (d) > 0 && (packets || r == AV_EOF)) { ok = true; break; }
 		if (r == AV_EOF || r == AV_ERR || r == AV_EUNSUP) break;
 	}
@@ -156,10 +159,15 @@ static bool probe_video (const char *path, Video *v)
 		{
 			const struct av_track *t = av_demux_track (d, vt);
 			v->w = t->dwidth ? t->dwidth : t->width; v->h = t->dheight ? t->dheight : t->height;
-			scopy (v->vcodec, codec_short (t->codec), sizeof v->vcodec);
-			bool vok = t->codec != AV_C_NONE && !t->encrypted && codec_built (t->codec), aok = true;
+			scopy (v->vcodec, t->codec == AV_C_FFMPEG || t->codec == AV_C_NONE ? t->codec_str[0] ? t->codec_str : t->codec_id : codec_short (t->codec), sizeof v->vcodec);
+			bool vok = av_decoder_supported_track (t) != 0, aok = true;
 			v->acodec[0] = 0;
-			if (at >= 0) { const struct av_track *a = av_demux_track (d, at); scopy (v->acodec, codec_short (a->codec), sizeof v->acodec); aok = a->codec != AV_C_NONE && codec_built (a->codec); }
+			if (at >= 0)
+			{
+				const struct av_track *a = av_demux_track (d, at);
+				scopy (v->acodec, a->codec == AV_C_FFMPEG || a->codec == AV_C_NONE ? a->codec_str[0] ? a->codec_str : a->codec_id : codec_short (a->codec), sizeof v->acodec);
+				aok = av_decoder_supported_track (a) != 0;
+			}
 			v->playable = vok && aok;
 			av_us dur = av_demux_duration (d);
 			if (dur <= 0) dur = t->duration;

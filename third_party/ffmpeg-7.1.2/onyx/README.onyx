@@ -1,0 +1,12 @@
+FFmpeg 7.1.2 for Onyx -- https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz, unchanged (tests/ref left out: the
+FATE suite's reference outputs).
+
+Used by Onyx's media library, user/av (av_ffmpeg.c: libavcodec's decoders; av_lavf.c: libavformat's
+demuxers), when compiled with -DAV_WITH_FFMPEG: the Media Player (user/Makefile's media.elf).
+
+Licence: built with --enable-gpl, FFmpeg is GPL-2.0-or-later (COPYING.GPLv2, LICENSE.md); every program
+linking it is distributed under the GPL-2.0 (the Media Player: docs/LICENSING.md).
+
+Build: onyx/build.sh (pi: onyx/aarch64/*.a, committed; host: the PC's, for the simulator and the tests).
+The headers in onyx/include are make install-headers' (avconfig.h: little-endian, fast unaligned -- the
+same on the Pi and the PC).

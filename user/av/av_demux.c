@@ -11,7 +11,7 @@
 #include <ctype.h>
 #include "av_int.h"
 
-void av_packet_free(struct av_packet *p)
+void av_pkt_free(struct av_packet *p)
 {
 	if (p != NULL) {
 		free(p->data);
@@ -141,6 +141,10 @@ int av_probe(const uint8_t *p, size_t n)
 		return AV_FMT_FLAC;
 	if (av__mp3_probe(p, n))
 		return AV_FMT_MP3;
+#ifdef AV_WITH_FFMPEG
+	if (av__lavf_probe(p, n))
+		return AV_FMT_LAVF;
+#endif
 	return AV_FMT_UNKNOWN;
 }
 
@@ -168,6 +172,15 @@ int av_format_of_mime(const char *mime)
 	if (!strcmp(t, "audio/mpeg") || !strcmp(t, "audio/mp3") || !strcmp(t, "audio/x-mp3") ||
 	    !strcmp(t, "audio/mpeg3"))
 		return AV_FMT_MP3;
+#ifdef AV_WITH_FFMPEG
+	/* the others FFmpeg reads (and "application/x-onyx-lavf": the file mode's, probed by it) */
+	if (!strcmp(t, "application/x-onyx-lavf") || !strcmp(t, "video/x-msvideo") || !strcmp(t, "video/avi") ||
+	    !strcmp(t, "video/mp2t") || !strcmp(t, "video/mpeg") || !strcmp(t, "video/x-flv") ||
+	    !strcmp(t, "video/x-ms-wmv") || !strcmp(t, "video/x-ms-asf") || !strcmp(t, "audio/x-ms-wma") ||
+	    !strcmp(t, "video/ogg") || !strcmp(t, "audio/ogg") || !strcmp(t, "video/3gpp") || !strcmp(t, "audio/aac") ||
+	    !strcmp(t, "audio/ac3"))
+		return AV_FMT_LAVF;
+#endif
 	return AV_FMT_UNKNOWN;
 }
 
@@ -179,6 +192,9 @@ static const struct av_fmt_ops *ops_of(int fmt)
 	case AV_FMT_WAV: return &av_wav_ops;
 	case AV_FMT_FLAC: return &av_flac_ops;
 	case AV_FMT_MP3: return &av_mp3_ops;
+#ifdef AV_WITH_FFMPEG
+	case AV_FMT_LAVF: return &av_lavf_ops;
+#endif
 	}
 	return NULL;
 }
@@ -192,6 +208,7 @@ struct av_demux *av_demux_new(int fmt)
 	if (d == NULL)
 		return NULL;
 	d->fmt = fmt;
+	d->size = -1;
 	d->ops = ops_of(fmt);
 	if (d->ops != NULL) {
 		d->priv = d->ops->create(d);
@@ -221,6 +238,11 @@ static int start_probe(struct av_demux *d)
 	if (d->len - d->off < 12 && !d->ended)
 		return AV_AGAIN;
 	d->fmt = av_probe(d->buf + d->off, d->len - d->off);
+#ifdef AV_WITH_FFMPEG
+	/* (FFmpeg's probe wants more bytes than ours: a few KB) */
+	if (d->fmt == AV_FMT_UNKNOWN && d->len - d->off < 4096 && !d->ended)
+		return AV_AGAIN;
+#endif
 	d->ops = ops_of(d->fmt);
 	if (d->ops == NULL) {
 		d->error = AV_EUNSUP;
@@ -299,7 +321,7 @@ int av_demux_read(struct av_demux *d, struct av_packet *pkt)
 		return r;
 	d->want = av__end(d);
 	r = d->ops->read(d, d->priv, pkt);
-	if (r == AV_AGAIN && d->ended && d->want >= av__end(d))
+	if (r == AV_AGAIN && d->ended && d->want >= av__end(d) && !av__demux_busy(d))
 		r = AV_EOF;
 	if (r < 0 && r != AV_EFULL)
 		d->error = r;
@@ -355,6 +377,16 @@ int64_t av_demux_seek(struct av_demux *d, av_us t, av_us *at)
 		d->error = 0;
 	}
 	return r;
+}
+
+void av_demux_set_size(struct av_demux *d, int64_t size)
+{
+	d->size = size;
+}
+
+int av__demux_busy(struct av_demux *d)
+{
+	return d->ops != NULL && d->ops->busy != NULL && d->ops->busy(d, d->priv);
 }
 
 void av__demux_reset(struct av_demux *d)

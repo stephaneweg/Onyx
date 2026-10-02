@@ -4341,7 +4341,7 @@ Plain C, five layers, each usable alone (`user/av/av.h` is the reference):
   **video thread** (decodes and converts four frames ahead, drops a frame already late without
   converting it, frames before a seek's target decoded and not shown), the **host's poll** (the
   frame due now, the clock, readyState, waiting / ended / seeked), the file mode
-  (`av_player_open_file`: a reader thread ~30 s ahead, the file read through the kapi -- the Media Player's videos, done 2026-10-02). The sound
+  (`av_player_open_file`: a reader thread ~30 s ahead, the file read through the kapi -- the Media Player's videos, done 2026-10-02). **FFmpeg** (2026-10-02, `-DAV_WITH_FFMPEG`: `av_ffmpeg.c`, `av_lavf.c`, docs/03): every decoder and container -- built into the Media Player only (GPL-2.0+); Jet is GPL-2.0 too and could link it (H.264 / AAC for the sites that serve only those: `canPlayType` would say so) -- not done: Jet's size, its Windows build. The sound
   output is the kapi's (`kapi_sound_acquire` / `write` / `status` / `config`; released while paused
   -- what was queued stops at once); another app holding it: the clock is the wall's, the audio
   not decoded. Threads poll with naps (2..10 ms): nothing needs the kapi's events.

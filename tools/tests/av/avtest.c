@@ -121,7 +121,7 @@ static int demux_all(const uint8_t *b, size_t n, size_t chunk, struct dstats *st
 							st->asamples += f.samples;
 				}
 			}
-			av_packet_free(&p);
+			av_pkt_free(&p);
 			continue;
 		}
 		if (r == AV_AGAIN) {
@@ -195,7 +195,7 @@ static void test_seek(const char *dir, const char *name)
 		struct av_packet p;
 		int r = av_demux_read(d, &p);
 		if (r == AV_OK) {
-			av_packet_free(&p);
+			av_pkt_free(&p);
 			if (++got == 5)
 				break;
 			continue;
@@ -214,10 +214,10 @@ static void test_seek(const char *dir, const char *name)
 			if (t->kind == AV_VIDEO) {
 				first = p.pts;
 				CHECK(p.key, "%s: seek 1.3 s: lands on a random access point", name);
-				av_packet_free(&p);
+				av_pkt_free(&p);
 				break;
 			}
-			av_packet_free(&p);
+			av_pkt_free(&p);
 			continue;
 		}
 		if (r != AV_AGAIN)
@@ -262,7 +262,7 @@ static void test_flac(const char *dir)
 		frames++;
 		if (dec == NULL || av_decoder_send(dec, &p) != AV_OK || av_decoder_receive(dec, &f) != AV_OK) {
 			bad += 4096;
-			av_packet_free(&p);
+			av_pkt_free(&p);
 			continue;
 		}
 		for (i = 0; i < f.samples * f.channels; i++, k++) {
@@ -271,7 +271,7 @@ static void test_flac(const char *dir)
 			if (2 * k + 1 >= (long long) rn || got != want)
 				bad++;
 		}
-		av_packet_free(&p);
+		av_pkt_free(&p);
 	}
 	CHECK(bad == 0 && k * 2 == (long long) rn,
 		"tone.flac: %lld frames, %lld samples bit-exact with the reference (%lld wrong) in %.1f ms",
@@ -297,7 +297,7 @@ static void test_mp3(const char *dir)
 	CHECK(c.apk == a.apk && c.asamples == a.asamples, "silence.mp3: fed in pieces of <= 100 bytes: the same");
 	d = av_demux_new(AV_FMT_UNKNOWN);
 	av_demux_feed(d, 0, b, n);
-	{ struct av_packet p; if (av_demux_read(d, &p) == AV_OK) av_packet_free(&p); }
+	{ struct av_packet p; if (av_demux_read(d, &p) == AV_OK) av_pkt_free(&p); }
 	CHECK(!strcmp(av_demux_name(d), "mp3") && av_demux_duration(d) > 1300000 && av_demux_duration(d) < 1310000,
 		"silence.mp3: probed as mp3, duration %.3f s from the Info frame", av_demux_duration(d) / 1e6);
 	av_demux_free(d);

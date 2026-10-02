@@ -89,7 +89,9 @@ answer in French. The docs stay in English.
   episodes), `thumbs.h` (a frame a tenth in, `SD:/etc/media/thumbs/*.jpg`), `watch.h` + `WatchView` (the
   whole window, controls over the picture, full screen, resumed where left, *Next* episode); the sound
   handed between the music's thread and the video's (`Player::release`). `media.elf` links `libvpx.a`,
-  `libdav1d.a`, `libopus.a`. PC: `shots.sh media` (the sample library's `Videos/`: `make_library.py`; the
+  `libdav1d.a`, `libopus.a` and **FFmpeg 7.1.2** (the user, 2026-10-02: "FFmpeg complet", the Media Player
+  GPL-2.0): every decoder (H.264, H.265, AAC...) and container (AVI, TS, WMV, FLV, OGV...) through `user/av`'s
+  `av_ffmpeg.c` / `av_lavf.c` (`third_party/ffmpeg-7.1.2/onyx/build.sh`; test videos: `Samples/Videos`). PC: `shots.sh media` (the sample library's `Videos/`: `make_library.py`; the
   simulator's build of `user/av`: `tools/tests/desktop_sim/av_host.mk`); `tools/tests/av/run.sh` checks the
   file mode now.
 - **To try on the Pi**: the sound (`kapi_sound_write` from the player's thread: a song heard whole,

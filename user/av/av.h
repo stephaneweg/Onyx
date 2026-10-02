@@ -14,7 +14,8 @@
  *   2. Codecs (av_decoder_*): a packet in, frames out. Video frames are planar YUV (I420) or
  *      RGBA; audio frames are interleaved float PCM. The decoders built in are listed by
  *      av_codec_list (); the big ones (VP9, AV1, H.264, Opus, AAC...) are glue to libraries that
- *      are compiled in only when present (AV_WITH_* -- docs/06 §44).
+ *      are compiled in only when present (AV_WITH_* -- docs/06 §44; AV_WITH_FFMPEG: FFmpeg's decoders
+ *      and, AV_FMT_LAVF, its demuxers -- AVI, MPEG-TS, WMV... -- GPL-2.0+: the Media Player's build).
  *   3. Conversion: av_yuv_to_rgb (NEON on AArch64), av_resampler (any rate / channels -> s16
  *      stereo at the output's rate, with a volume).
  *   4. The store (av_store_*): MSE's coded frames by track, buffered ranges, removal, eviction.
@@ -57,7 +58,10 @@ enum av_codec_id {
 	/* audio */
 	AV_C_OPUS = 64, AV_C_VORBIS, AV_C_AAC, AV_C_MP3, AV_C_FLAC,
 	AV_C_PCM_S16LE, AV_C_PCM_S16BE, AV_C_PCM_S24LE, AV_C_PCM_S24BE, AV_C_PCM_S32LE,
-	AV_C_PCM_F32LE, AV_C_PCM_F64LE, AV_C_PCM_U8, AV_C_ALAW, AV_C_ULAW
+	AV_C_PCM_F32LE, AV_C_PCM_F64LE, AV_C_PCM_U8, AV_C_ALAW, AV_C_ULAW,
+	/* any other codec FFmpeg decodes (builds with AV_WITH_FFMPEG): the track's ff_id says which,
+	 * its codec_str its name ("mpeg4", "ac3", "wmv2"...) */
+	AV_C_FFMPEG = 255
 };
 
 /* pixel formats of a video frame / of the RGB conversion's output */
@@ -86,6 +90,10 @@ struct av_track {
 	av_us default_dur;	/* a frame's duration when the container gives none */
 	av_us duration;		/* the track's length, 0 unknown */
 	int lang_default;	/* the container's "default track" flag */
+	/* FFmpeg's view (AV_C_FFMPEG, or any track of an AV_FMT_LAVF stream): its AVCodecID, the
+	 * container's tag, and what some decoders need (WMA, ADPCM: block_align...) */
+	int ff_id, ff_tag, block_align, bits_coded;
+	int64_t bit_rate;
 };
 
 struct av_packet {
@@ -93,17 +101,20 @@ struct av_packet {
 	av_us pts, dts, dur;	/* dur 0: unknown */
 	int key;		/* a random access point */
 	int64_t pos;		/* byte offset of its data in the stream, -1 unknown */
-	uint8_t *data;		/* malloc'd: the caller's (av_packet_free) */
+	uint8_t *data;		/* malloc'd: the caller's (av_pkt_free) */
 	size_t size;
 	av_us discard_end;	/* Matroska DiscardPadding: audio to drop at its end */
 };
-void av_packet_free(struct av_packet *p);
+void av_pkt_free(struct av_packet *p);
 
 /* ---- 1. containers ---------------------------------------------------------------------- */
 
-enum av_format { AV_FMT_UNKNOWN = 0, AV_FMT_MKV, AV_FMT_MP4, AV_FMT_WAV, AV_FMT_FLAC, AV_FMT_MP3 };
+enum av_format { AV_FMT_UNKNOWN = 0, AV_FMT_MKV, AV_FMT_MP4, AV_FMT_WAV, AV_FMT_FLAC, AV_FMT_MP3,
+	AV_FMT_LAVF	/* any other container, read by FFmpeg's libavformat (AV_WITH_FFMPEG): AVI, MPEG-TS / PS,
+			 * FLV, ASF / WMV, Ogg, RealMedia... */ };
 
-/* the container of a stream from its first bytes (at least 12): AV_FMT_* */
+/* the container of a stream from its first bytes (at least 12): AV_FMT_*; with AV_WITH_FFMPEG,
+ * from more bytes (4 KB is good) the others FFmpeg knows are AV_FMT_LAVF */
 int av_probe(const uint8_t *p, size_t n);
 /* the container of a MIME type ("video/webm", "audio/mp4; codecs=..."), AV_FMT_UNKNOWN if none */
 int av_format_of_mime(const char *mime);
@@ -133,7 +144,10 @@ av_us av_demux_duration(const struct av_demux *d);
 /* Where to restart to reach time t: the offset to feed from (the parser is reset to expect it),
  * *at the time of the random access point there; -1: unknown (feed from the start / scan). */
 int64_t av_demux_seek(struct av_demux *d, av_us t, av_us *at);
-/* the container's name for messages ("webm", "matroska", "mp4", "wav", "flac") */
+/* the stream's whole size when known (a file): libavformat's demuxers use it (seeking from the end,
+ * the duration of a stream without an index) */
+void av_demux_set_size(struct av_demux *d, int64_t size);
+/* the container's name for messages ("webm", "matroska", "mp4", "wav", "flac"; FFmpeg's: "avi"...) */
 const char *av_demux_name(const struct av_demux *d);
 
 /* ---- 2. codecs -------------------------------------------------------------------------- */
@@ -154,8 +168,10 @@ struct av_frame {
 };
 
 struct av_decoder;
-/* NULL: the track's codec is not supported (av_codec_supported says why) */
+/* NULL: the track's codec is not supported (av_decoder_supported_track says why) */
 struct av_decoder *av_decoder_new(const struct av_track *t);
+/* 1 if this build decodes the track (its codec, FFmpeg's ff_id, not encrypted) */
+int av_decoder_supported_track(const struct av_track *t);
 void av_decoder_free(struct av_decoder *d);
 /* a packet in (NULL: drain the frames held) -> AV_OK, AV_ERR (a bad packet: skipped) */
 int av_decoder_send(struct av_decoder *d, const struct av_packet *p);
@@ -241,6 +257,8 @@ const struct av_track *av_store_track(struct av_store *s, int src, int i);
 void av_store_set_eos(struct av_store *s, int eos);
 /* the largest end time buffered by any source */
 av_us av_store_end(struct av_store *s);
+/* the file mode: the resource's whole size (FFmpeg's demuxers use it) */
+void av_store_set_size(struct av_store *s, int src, int64_t size);
 /* the file mode: bytes of the whole resource at offset pos (a discontinuity restarts) */
 int av_store_feed(struct av_store *s, int src, int64_t pos, const void *p, size_t n);
 void av_store_feed_end(struct av_store *s, int src);

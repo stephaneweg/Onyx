@@ -112,7 +112,7 @@ int main(int argc, char **argv)
 					asamples += f.samples, rate = f.rate;
 				atot += now_ms() - t0;
 			}
-			av_packet_free(&pk);
+			av_pkt_free(&pk);
 		}
 		if (vd != NULL) {
 			av_decoder_send(vd, NULL);

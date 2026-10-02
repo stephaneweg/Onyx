@@ -4,9 +4,12 @@
 // MP3, OGG, FLAC, WAV and MIDI, by artists, albums, songs, genres, folders and playlists; a now-playing
 // view (a MIDI file: its notes scrolling as coloured lines); a mini player at the bottom right of the screen.
 // Closing the window stops the music. Tags are read, never written; covers come from the files and their
-// folders, nothing is downloaded. The videos (films, clips, episodes: WebM / MKV / MP4 in VP9, VP8, AV1 with
-// Opus...) are played by Onyx's media library (user/av), in the window or full screen, each resumed where it
-// was left.
+// folders, nothing is downloaded. The videos (films, clips, episodes: MP4, MKV, WebM, AVI, MPEG, WMV...) are
+// played by Onyx's media library (user/av, with FFmpeg's decoders and demuxers), in the window or full screen,
+// each resumed where it was left.
+//
+// This file is MIT (Onyx's own code); the Media Player as a program links FFmpeg (GPL-2.0-or-later) and is
+// distributed under the GPL-2.0 (docs/LICENSING.md).
 //
 // A newlib wtk app with FreeType's text (user/Makefile's media.elf rule): the decoders (codecs.c,
 // vorbis.c), MeltySynth (Apps/koton/synth) for MIDI, user/av and its codecs for the videos. Its parts:
@@ -865,7 +868,7 @@ public:
 			VPath c; c.circle (V (x + w / 2), V (y + 70), V (40)); c.fill (canvas, C_ACCENT); icon (canvas, I_FILM, x + w / 2 - 20, y + 50, 40, 0xFFFFFF);
 			text_c (canvas, x, y + 124, w, 24, kind == VK_FILM ? "No films yet." : kind == VK_CLIP ? "No clips or episodes yet." : "No videos yet.", C_FIELD_TEXT, F_BIG, 2);
 			text_c (canvas, x, y + 154, w, 20, "Put them in SD:/Videos (Films, Series, Clips...) or in a folder watched: Media Player finds them at each start.", col_dim ());
-			text_c (canvas, x, y + 174, w, 20, "WebM, MKV and MP4 files, their picture in VP9, VP8 or AV1 (H.264 is not played yet).", col_dim ());
+			text_c (canvas, x, y + 174, w, 20, "MP4, MKV, WebM, AVI, MPEG, TS, WMV, FLV, OGV... -- H.264, H.265, VP9, AV1, MPEG-4, AAC, AC-3...", col_dim ());
 			band_button (x + w / 2 - 85, y + 210, 170, I_PLAY, "Open a video...", true, H_OPENVID);
 			return y + 260;
 		}
@@ -1097,7 +1100,7 @@ public:
 		y += 120;
 		text_c (canvas, x, y, w, 34, "Your music, all in one place", C_FIELD_TEXT, F_H1, 2);
 		text_c (canvas, x, y + 40, w, 20, "Media Player finds the songs in the folders you give it, and looks again at each start.", col_dim ());
-		text_c (canvas, x, y + 60, w, 20, "MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: WebM, MKV and MP4 (VP9, VP8, AV1).", col_dim ());
+		text_c (canvas, x, y + 60, w, 20, "MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: MP4, MKV, WebM, AVI, WMV and more.", col_dim ());
 		int fw = 460, fx = mx - fw / 2, fy = y + 100;
 		int fh_ = 10 + (g_nfolders ? g_nfolders : 1) * 36;
 		wk_rbox (canvas, fx, fy, fw, fh_, 8, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, fx, fy, fw, fh_, 8, wk_tone (C_BG, 110));
@@ -1867,7 +1870,7 @@ static bool video_start (int vi, bool fromStart)
 	int r = g_vp.open (x.path, fromStart || x.watched && !x.posMs ? 0 : x.posMs, g_volume, g_muted);
 	if (r != AV_OK)
 	{
-		wk_messagebox ("Media Player", r == AV_EUNSUP ? "This file is not a video Media Player\nreads (WebM, MKV, MP4, MOV are)." : "This video cannot be read.", MB_OK);
+		wk_messagebox ("Media Player", r == AV_EUNSUP ? "This file is not a video Media Player\ncan read." : "This video cannot be read.", MB_OK);
 		return false;
 	}
 	g_vidx = vi; g_vpEnded = false;
@@ -1884,7 +1887,7 @@ void play_video (int vi, bool fromStart)
 	if (!x.playable)
 	{
 		char m[300], t[28]; scopy (t, x.title, sizeof t);
-		snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D: its picture is %s,\nwhich Onyx does not play yet.\n(VP9, VP8 and AV1 videos play.)", t, codec_label (x.vcodec));
+		snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be played:\nits picture (%s) or its sound (%s)\nis in a format Onyx cannot decode.", t, codec_label (x.vcodec), x.acodec[0] ? codec_label (x.acodec) : "none");
 		wk_messagebox ("Media Player", m, MB_OK);
 		return;
 	}
@@ -1941,7 +1944,6 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 		text_c (cv, cx - 260, cy - 44, 520, 26, "This video cannot be played.", 0xFFFFFF, F_BIG, 2);
 		const char *why = st.error == AV_EUNSUP ? "Its picture or sound is in a format Onyx does not decode yet." : "The file is damaged, or its data could not be read.";
 		text_c (cv, cx - 260, cy - 10, 520, 20, why, 0xC8CCD4);
-		text_c (cv, cx - 260, cy + 12, 520, 20, "(Onyx plays VP9, VP8 and AV1 pictures; Opus, FLAC, MP3 and PCM sound.)", 0x9098A4, F_SMALL);
 	}
 	else if (st.ended)
 	{
@@ -2480,7 +2482,7 @@ void open_file (const char *p)
 		if (vi < 0)
 		{
 			Video &x = VL->add ();
-			if (!probe_video (p, &x)) { VL->n--; wk_messagebox ("Media Player", "This file is not a video Media Player\ncan read (WebM, MKV, MP4, MOV).", MB_OK); return; }
+			if (!probe_video (p, &x)) { VL->n--; wk_messagebox ("Media Player", "This file is not a video Media Player\ncan read.", MB_OK); return; }
 			char t[200]; video_names (p, t, sizeof t, &x.kind, &x.season, &x.episode);
 			if (x.kind < 0) x.kind = x.durMs >= 40 * 60000 ? VK_FILM : VK_CLIP;
 			x.path = sdup (p); x.title = sdup (t); x.ext = true; x.added = now_stamp ();
@@ -2508,7 +2510,7 @@ void open_file (const char *p)
 		return;
 	}
 	Tags t;
-	if (!read_tags (p, &t)) { wk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV and MIDI files are; WebM,\nMKV and MP4 videos).", MB_OK); return; }
+	if (!read_tags (p, &t)) { wk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV and MIDI songs are; MP4,\nMKV, WebM, AVI, WMV... videos).", MB_OK); return; }
 	int k = g_next < 16 ? g_next++ : 15;
 	Song &x = g_ext[k];
 	if (x.path) { free (x.path); free (x.title); free (x.artist); free (x.albumArtist); free (x.album); free (x.genre); free (x.folderCover); }

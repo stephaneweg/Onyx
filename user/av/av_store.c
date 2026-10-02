@@ -238,7 +238,7 @@ static int process(struct av_store *s, struct source *so, struct av_packet *p)
 	int k;
 
 	if (info == NULL || info->kind == 0 || p->track >= AV_MAX_TRACKS) {
-		av_packet_free(p);
+		av_pkt_free(p);
 		return AV_OK;
 	}
 	t = &so->tr[p->track];
@@ -251,8 +251,15 @@ static int process(struct av_store *s, struct source *so, struct av_packet *p)
 	}
 	pts = p->pts + so->offset;
 	dts = (p->dts != AV_NOTIME ? p->dts : p->pts) + so->offset;
+	if (p->dts == AV_NOTIME && t->last_dts != AV_NOTIME && pts >= t->last_dts - AV_US && pts <= t->last_dts + 3 * AV_US)
+		/* no decode time (Matroska's video): the frames in the order they came, their times
+		 * reordered (B-frames) -- a decode time after the last one, at most the frame's */
+		dts = pts > t->last_dts ? pts : t->last_dts + 1;
 	/* a discontinuity: every track of the source waits for a random access point */
-	if (t->last_dts != AV_NOTIME && (dts < t->last_dts || dts - t->last_dts > 2 * (t->last_dur > 0 ? t->last_dur : dur) + 100000)) {
+	/* (a file's frames come in their order: a jump forward is the stream's own -- a variable frame rate,
+	 * Theora's repeated frames left out --, not a discontinuity) */
+	if (t->last_dts != AV_NOTIME && (dts < t->last_dts || dts - t->last_dts > (so->file_mode ? 10 * AV_US : 2 * (t->last_dur > 0 ? t->last_dur : dur) + 100000)) &&
+	    !(p->dts == AV_NOTIME && dts > t->last_dts && dts - t->last_dts < 3 * AV_US)) {
 		for (k = 0; k < AV_MAX_TRACKS; k++) {
 			so->tr[k].last_dts = AV_NOTIME;
 			so->tr[k].need_rap = 1;
@@ -262,19 +269,19 @@ static int process(struct av_store *s, struct source *so, struct av_packet *p)
 	/* the append window */
 	if (pts < so->win_start || pts + dur > so->win_end) {
 		t->need_rap = 1;
-		av_packet_free(p);
+		av_pkt_free(p);
 		return AV_OK;
 	}
 	if (t->need_rap || t->last_dts == AV_NOTIME) {
 		if (!p->key) {
-			av_packet_free(p);
+			av_pkt_free(p);
 			return AV_OK;
 		}
 		t->need_rap = 0;
 	}
 	remove_overlap(so, t, pts, pts + dur, so->gen);
 	if (insert(so, t, p, pts, dts, dur) != AV_OK) {
-		av_packet_free(p);
+		av_pkt_free(p);
 		return AV_ENOMEM;
 	}
 	p->data = NULL;
@@ -394,13 +401,28 @@ void av_store_feed_end(struct av_store *s, int src)
 	av_unlock(&s->lock);
 }
 
+void av_store_set_size(struct av_store *s, int src, int64_t size)
+{
+	struct source *so;
+
+	av_lock(&s->lock);
+	if ((so = get(s, src)) != NULL)
+		av_demux_set_size(so->dx, size);
+	av_unlock(&s->lock);
+}
+
 int64_t av_store_want(struct av_store *s, int src)
 {
 	struct source *so;
 	int64_t w = -1;
 
 	av_lock(&s->lock);
-	if ((so = get(s, src)) != NULL && !so->fed_end)
+	/* an asynchronous parser (FFmpeg's) gives packets without bytes fed: taken now */
+	if ((so = get(s, src)) != NULL && so->file_mode && av__demux_busy(so->dx)) {
+		pump(s, so);
+		s->serial++;
+	}
+	if (so != NULL && !so->fed_end)
 		w = av_demux_want(so->dx);
 	av_unlock(&s->lock);
 	return w;
@@ -775,8 +797,9 @@ int av__store_next(struct av_store *s, int src, int track, av_us after, int incl
 			return AV_EOF;
 		return AV_AGAIN;
 	}
-	/* a hole after the last frame read: wait for it to be filled (unless the stream ended) */
-	if (after != AV_NOTIME && gap > 0 && t->f[i].dts > after + gap && !(s->eos || so->fed_end))
+	/* a hole after the last frame read: wait for it to be filled (unless the stream ended; a file's holes
+	 * are its own) */
+	if (after != AV_NOTIME && gap > 0 && t->f[i].dts > after + gap && !(s->eos || so->fed_end) && !so->file_mode)
 		return AV_AGAIN;
 	p->track = track;
 	p->pts = t->f[i].pts;
@@ -820,7 +843,7 @@ av_us av__store_rap_before(struct av_store *s, int src, int track, av_us t)
 int av__store_ended(struct av_store *s, int src)
 {
 	struct source *so = get(s, src);
-	return s->eos || (so != NULL && so->fed_end);
+	return s->eos || (so != NULL && so->fed_end && !av__demux_busy(so->dx));
 }
 
 int av__store_is_file(struct av_store *s, int src)

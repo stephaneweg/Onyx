@@ -1808,7 +1808,8 @@ size, the last folder) and the pictures saved with Save As.
 Media Player keeps **your music and your videos** in one place, in the way of Windows Media Player or iTunes:
 the songs of the folders it watches — **`SD:/Music`** at first —, **MP3, OGG, FLAC, WAV and MIDI** files, by
 **artists, albums, songs, genres and folders**, and your **playlists**; and the **films, clips and series'
-episodes** of those folders and of **`SD:/Videos`** — **WebM, MKV and MP4** files. It finds them by itself:
+episodes** of those folders and of **`SD:/Videos`** — **MP4, MKV, WebM, AVI, MPEG, TS, WMV, FLV, OGV, 3GP...** files.
+It finds them by itself:
 at each start it looks again at the folders (the sidebar says *Looking for songs...*) and shows what it
 knew at once. Start it from the dock or the app list (*Multimedia*), or open a music or video file in the
 File Viewer.
@@ -1922,11 +1923,16 @@ keeps where you were; a song started stops the video (they share the sound), a v
 **Keys** while a video plays: Space (or K) play / pause, ← / → 10 s back / on (J / L too), ↑ / ↓ the volume,
 M mute, Home the start, 0 … 9 a tenth of the way (5: half way), F full screen, Esc back.
 
-**What plays**: the media library Onyx shares with Jet Browser decodes **VP9, VP8 and AV1** pictures (in
-software: up to 480p smoothly on a Pi 4 for VP9, 360p for AV1) with **Opus, FLAC, MP3 or PCM** sound, in
-WebM / MKV and MP4 / MOV files. A video in another codec — **H.264** (most phones' and cameras' MP4s), H.265 —
-is listed with its codec on its frame and *not played here*; convert it to WebM (VP9 + Opus) on a computer,
-e.g. `ffmpeg -i in.mp4 -c:v libvpx-vp9 -b:v 1M -vf scale=-2:480 -c:a libopus out.webm`.
+**What plays**: nearly everything — the media library Onyx shares with Jet Browser, with **FFmpeg**'s decoders
+and file readers in the Media Player: pictures in **H.264**, **H.265 (HEVC)**, VP9, VP8, AV1, MPEG-4 Part 2
+(DivX / Xvid), MPEG-1 / 2, WMV / VC-1, Theora, Sorenson, ProRes...; sound in **AAC**, **AC-3 / E-AC-3**, DTS,
+MP3, MP2, Opus, Vorbis, FLAC, WMA, ALAC, PCM...; in MP4 / MOV, MKV / WebM, **AVI**, MPEG-TS / PS, ASF / WMV, FLV,
+Ogg, 3GP files. Everything is decoded by the Pi's processor (no graphics chip): smooth, it is expected, up to about
+**720p for H.264**, 480p for VP9 and H.265, 360p for AV1 (to be measured on a Pi); larger videos play, with
+frames left out. A video whose codec
+is not decoded (rare: encrypted, a very unusual codec) is listed with its codec on its frame and *not played
+here*. (The test videos in every format: `Samples/Videos` in the repository.) The Media Player links FFmpeg
+and is therefore distributed under the **GPL-2.0** (docs/LICENSING.md).
 
 ### Cardfile, a small database (`cardfile`)
 
