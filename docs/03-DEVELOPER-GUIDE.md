@@ -2805,7 +2805,13 @@ success and **−`KAPI_Exxx`** on failure (`kapi_abi.h`: newlib's errno values, 
 Windows build); a structure's size and its slot are `static_assert`ed in `kapi_abi.h`
 (`KAPI_CHECK_SIZE`, `KAPI_CHECK_SLOT`); and the `user/kapi.h` wrapper tests the version **and** the
 slot — `return KT->version >= 75 && KT->x ? KT->x (…) : -KAPI_ENOSYS;` — since the host tables (the PC
-simulator, `pc/`) leave the v75 slots 0.
+simulator, `pc/`) leave the v75 slots 0. The files and processes block (`file_*`, `path_*`,
+`dir_read`, `stream_write_nb`, `spawn_ex`, `proc_wait`, `get_argv`, `get_env`, `getpid`,
+`clock_info`, `sleep_us`) is implemented: its semantics are in docs/02 §8 *v75: files and
+processes*; `/bin/filetest` and `/bin/proctest` exercise it on the Pi, `tools/tests/run_ofile_test.sh`
+on the PC. An app can use these directly (64-bit offsets, pread / pwrite, a file unlinked while open,
+an argv / environment for a child) — but should not mix them with the old `open` / `save_file` on the
+same file at the same time.
 
 > **Golden rule:** never change the signature or the order of an existing field. If some
 > semantics must change, add a **new** entry. An app can query

@@ -162,6 +162,7 @@ void HandlesRunDeferred (void)
 		delete p;
 		p = pNext;
 	}
+	OFileRunDeferred ();				// (v75: the open files a teardown left, kern/ofile.h)
 }
 
 // ---- CHandleTable ---------------------------------------------------------------------------

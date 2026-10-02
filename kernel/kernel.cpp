@@ -32,6 +32,8 @@
 #include <kern/ipc.h>		// IpcNotify ("Network up")
 #include <kern/sound.h>		// SoundCoreMain (core 1)
 #include <kern/ramfs.h>		// RAM:, the RAM volume (system.ini ramfs=)
+#include <kern/procx.h>		// (v75) a process's argv / environment blocks
+#include <kern/ofile.h>		// (v75) OFileBootCleanup
 #ifdef ARM_ALLOW_MULTI_CORE
 #include <circle/multicore.h>
 #endif
@@ -169,11 +171,13 @@ public:
 	// the app's stdio + exit status work; pArgs becomes kapi_get_args.
 	CUserProcessTask (const char *pPath, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
-			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
+			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0,
+			  TProcInfo *pInfo = 0)
 	:	CTask (EL0_KSTACK_SIZE),	// the kernel stack (the user stack: Run)
 		m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
-		m_nParentPid (nParentPid)
+		m_nParentPid (nParentPid),
+		m_pInfo (pInfo)			// (v75) its argv / environment (kern/procx.h), 0: none
 	{
 		SetName (pName);	// copies into CTask::m_Name (caller's may be transient)
 		unsigned p = 0;		// copy the path (the caller's string may be transient)
@@ -200,6 +204,7 @@ public:
 			if (m_pStdin  != 0) m_pStdin->Release ();
 			if (m_pStdout != 0) m_pStdout->Release ();
 			if (m_pProcess != 0) { m_pProcess->nStatus = -1; m_pProcess->bDone = TRUE; ProcessRelease (m_pProcess); }
+			ProcInfoFree (m_pInfo);
 			delete pAS;
 			return;
 		}
@@ -213,6 +218,8 @@ public:
 		pAS->SetArgs (m_Args);
 		if (m_Cwd[0] != '\0') pAS->SetCwd (m_Cwd);	// else keep the default root
 		pAS->SetParentPid (m_nParentPid);		// 0 = no parent (drawer launch)
+		ProcInfoInstall (pAS, m_pInfo);			// (v75: its own now; its record learns its pid)
+		m_pInfo = 0;
 
 		// Load the ELF from SD HERE -- on our own thread, deferred to our first schedule
 		// ("when we are switched to") -- so the launcher/shell wasn't blocked by the read.
@@ -300,6 +307,7 @@ private:
 	char	    m_Args[1024];
 	char	    m_Cwd[256];
 	unsigned    m_nParentPid;
+	TProcInfo  *m_pInfo;
 };
 
 //
@@ -503,6 +511,8 @@ static void TerminateOrphans (void)
 		if (s.pOrphan == 0) return;
 		VLOG ("proc", LogNotice, "orphan %s (parent pid %u gone) terminated",
 		      s.pOrphan->GetName (), s.nParent);
+		CAddressSpace *pAS = (CAddressSpace *) s.pOrphan->GetUserData (TASK_USER_DATA_USER);
+		if (pAS != 0) pAS->SetTermReason (KAPI_PROC_KILLED, -9);	// (v75: proc_wait)
 		CScheduler::Get ()->TerminateTask (s.pOrphan);	// (its whole process: terminated now)
 	}
 }
@@ -1570,9 +1580,13 @@ static boolean LaunchApp (const char *pName, CLogger *pLogger)
 
 	// Deferred load: hand the PATH to the task; it reads the ELF on its own thread when
 	// the scheduler first switches to it, so this caller (often the UI) returns at once.
-	CUserProcessTask *pTask = new CUserProcessTask ((const char *) Path, pName, pLogger);
+	// (v75: a desktop launch gets the system's default environment, kern/procx.h)
+	TProcInfo *pInfo = ProcInfoNew ((const char *) Path, 0, FALSE);
+	CUserProcessTask *pTask = new CUserProcessTask ((const char *) Path, pName, pLogger,
+							0, 0, 0, 0, 0, 0, pInfo);
 	if (pTask == 0)
 	{
+		ProcInfoFree (pInfo);
 		pLogger->Write (FromKernel, LogError, "launch: out of memory for %s", pName);
 		return FALSE;
 	}
@@ -1598,25 +1612,30 @@ boolean LaunchAppByName (const char *pName)
 // are set when the child exits.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout, const char *pCwd,
-			unsigned nParentPid)
+			unsigned nParentPid, TProcInfo *pInfo)
 {
-	if (pElfPath == 0)
+	if (pElfPath == 0 || !SdFileExists (pElfPath))	// missing -> immediate failure (shell prints "not found")
 	{
+		ProcInfoFree (pInfo);
 		return 0;
 	}
-	if (!SdFileExists (pElfPath))		// missing -> immediate failure (shell prints "not found")
+	// (v75) its argv / environment (kern/procx.h): spawn_ex's, else the spawner's environment
+	if (pInfo == 0)
 	{
-		return 0;
+		pInfo = ProcInfoNew (pElfPath, pArgs, TRUE);
 	}
 
 	CProcess *pProc = new CProcess;
 	if (pProc == 0)
 	{
+		ProcInfoFree (pInfo);
 		return 0;
 	}
 	pProc->bDone = FALSE;
 	pProc->nStatus = 0;
 	pProc->nRef = 2;			// the caller's handle + the child (kern/handle.h)
+	pProc->nReason = KAPI_PROC_EXITED;	// (v75: the teardown sets both)
+	pProc->nPid = 0;
 
 	if (pStdin  != 0) pStdin->AddRef ();		// the child AS will release these
 	if (pStdout != 0) pStdout->AddRef ();
@@ -1624,11 +1643,12 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	// Deferred load: the task reads pElfPath on its own thread. If the file is missing,
 	// it marks pProc done (status -1) so a waiter unblocks -- the failure surfaces async.
 	CUserProcessTask *pTask = new CUserProcessTask (pElfPath, pElfPath, CLogger::Get (),
-				      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid);
+				      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid, pInfo);
 	if (pTask == 0)
 	{
 		if (pStdin  != 0) pStdin->Release ();
 		if (pStdout != 0) pStdout->Release ();
+		ProcInfoFree (pInfo);
 		delete pProc;
 		return 0;
 	}
@@ -1696,8 +1716,15 @@ boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName)
 	{
 		return FALSE;
 	}
-	// Deferred load (see CUserProcessTask): the task reads pElfPath on its own thread.
-	return new CUserProcessTask (pElfPath, Name, CLogger::Get (), 0, 0, 0, pArgs) != 0;
+	// Deferred load (see CUserProcessTask): the task reads pElfPath on its own thread. (v75: the
+	// caller's environment -- the system default when the kernel starts it, kern/procx.h.)
+	TProcInfo *pInfo = ProcInfoNew (pElfPath, pArgs, TRUE);
+	if (new CUserProcessTask (pElfPath, Name, CLogger::Get (), 0, 0, 0, pArgs, 0, 0, pInfo) == 0)
+	{
+		ProcInfoFree (pInfo);
+		return FALSE;
+	}
+	return TRUE;
 }
 
 // Log the .app subdirectories of /apps (validates FatFs directory enumeration;
@@ -1738,6 +1765,9 @@ static void EnumerateApps (CLogger *pLogger)
 // rebuilding the kernel.
 void CKernel::StartAutostart (void)
 {
+	ProcInfoBootInit ();			// (v75) the default environment: SD:/etc/environment
+	OFileBootCleanup ();			// (v75) files unlinked while open that a crash left
+
 	// cmdline netlog=1: the network's start written to SD:/netlog.txt (bin/netlog) -- for a Pi
 	// without a screen; started first, so that it has the kernel log from the bring-up on
 	if (m_Options.GetAppOptionDecimal ("netlog", 0) != 0 && !ExecPath ("SD:bin/netlog", ""))

@@ -82,4 +82,27 @@ void    RamFsInfo (u64 *pTotal, u64 *pUsed, u64 *pFree, unsigned *pFiles, unsign
 // A process ended: its open handles closed (the reaper, from IpcOnProcessGone).
 void    RamFsOnProcessGone (unsigned nPid);
 
+// ---- (v75) open files with POSIX semantics (sys/ofile.cpp, docs/POSIX-PLAN.md §3.2) -----------
+// A file's node, held (a reference) by an open-file description: read and written anywhere (a
+// write past the end, a truncate that grows: zeros in between), removed while open (unlinked
+// at once, freed at the last close). Errors: -KAPI_Exxx. Every node has a write time (UTC) and
+// a number (stat's ino: unique, kept across a rename). stat's dev for RAM: is RAMFS_DEV.
+#define RAMFS_DEV		64
+
+struct kapi_stat;
+struct kapi_dirent2;
+void   *RamFsNodeOpen (const char *pAbs, unsigned nFlags, int *pErr);	// KAPI_O_CREAT / EXCL / TRUNC
+void    RamFsNodeClose (void *pNode);
+s64     RamFsPRead (void *pNode, u64 nPos, void *pBuf, u64 nLen);	// bytes (0: the end)
+// at nPos (bAppend: at the end, *pEnd the offset after) -> bytes / -ENOSPC / -EFBIG
+s64     RamFsPWrite (void *pNode, u64 nPos, const void *pBuf, u64 nLen, boolean bAppend, u64 *pEnd);
+int     RamFsTruncate (void *pNode, u64 nSize);				// 0 / -ENOSPC / -EFBIG
+void    RamFsNodeStat (void *pNode, struct kapi_stat *pOut);
+int     RamFsStat (const char *pAbs, struct kapi_stat *pOut);
+int     RamFsUnlink (const char *pAbs, boolean bDir);			// rmdir with bDir
+int     RamFsMkdirEx (const char *pAbs);
+int     RamFsRenameEx (const char *pFrom, const char *pTo);		// replaces pTo
+int     RamFsUtime (const char *pAbs, s64 nMTime);
+int     RamFsReadDir2 (void *pHandle, struct kapi_dirent2 *pEnt);	// 1, 0 the end, -EBADF
+
 #endif

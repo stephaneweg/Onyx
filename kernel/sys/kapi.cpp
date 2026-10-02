@@ -27,6 +27,7 @@
 #include <kern/gui/gimage.h>
 #include <kern/thread.h>		// (v67) threads, posts: ThreadsEndProcess
 #include <kern/uaccess.h>		// the app's pointers: checked, copied fault-safe
+#include <kern/ofile.h>		// (v75) ResolvePath & co. shared with sys/ofile.cpp, OFileNoteDir
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -55,7 +56,7 @@ static CAddressSpace *CurrentAS (void)
 }
 
 // The calling task's current working directory (FatFs absolute path), or root.
-static const char *CurCwd (void)
+const char *CurCwd (void)					// (kern/ofile.h: sys/procx.cpp uses it too)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	return (pAS != 0) ? pAS->GetCwd () : "SD:/";
@@ -78,7 +79,7 @@ static unsigned VolumePrefix (const char *p)
 // form (incl. "./x", "../x", "x") is relative to the current working dir. ".", ".." and
 // redundant slashes are normalised away. Lets ls/cat/redirection/etc. use relative or
 // absolute paths transparently.
-static void ResolvePath (const char *pIn, char *pOut, unsigned nCap)
+void ResolvePath (const char *pIn, char *pOut, unsigned nCap)		// (kern/ofile.h: v75 uses it too)
 {
 	if (pIn == 0 || nCap < 8) { if (nCap) pOut[0] = '\0'; return; }
 
@@ -1121,6 +1122,7 @@ int kapi_kill (const char *pUserName)
 	{
 		return 0;			// its own process (a thread of it)
 	}
+	((CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER))->SetTermReason (KAPI_PROC_KILLED, -9);	// (v75)
 	CScheduler::Get ()->TerminateTask (pTask);
 	return 1;
 }
@@ -1224,6 +1226,7 @@ int kapi_kill_pid (int nPid, int nForce)
 		if (pWin != 0) { pWin->RequestExit (); return 1; }	// clean close
 		// else: no window to signal -> hard terminate below
 	}
+	pAS->SetTermReason (KAPI_PROC_KILLED, -9);			// (v75: proc_wait)
 	CScheduler::Get ()->TerminateTask (pTask);
 	return 1;
 }
@@ -1484,7 +1487,7 @@ void *kapi_open (const char *pUserPath)
 extern unsigned long long g_ullEMMCWaitUs, g_ullEMMCCopyUs;
 extern unsigned g_nEMMCDataCmds;
 
-static FRESULT ChunkedRead (FIL *pFile, void *pBuf, unsigned nLen, UINT *pDone)
+FRESULT ChunkedRead (FIL *pFile, void *pBuf, unsigned nLen, UINT *pDone)	// (kern/ofile.h)
 {
 	u8 *p = (u8 *) pBuf;
 	*pDone = 0;
@@ -1521,7 +1524,7 @@ static FRESULT ChunkedRead (FIL *pFile, void *pBuf, unsigned nLen, UINT *pDone)
 	return Res;
 }
 
-static FRESULT ChunkedWrite (FIL *pFile, const void *pBuf, unsigned nLen, UINT *pDone)
+FRESULT ChunkedWrite (FIL *pFile, const void *pBuf, unsigned nLen, UINT *pDone)	// (kern/ofile.h)
 {
 	const u8 *p = (const u8 *) pBuf;
 	*pDone = 0;
@@ -1939,6 +1942,7 @@ void *kapi_opendir (const char *pUserPath)
 		delete pDir;
 		return 0;
 	}
+	OFileNoteDir (pDir, abs);			// (v75: dir_read's ino)
 	return HandleNew (pDir, HANDLE_DIR, HKIND_FATFS);
 }
 
