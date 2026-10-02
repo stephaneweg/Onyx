@@ -1149,3 +1149,41 @@ launcher):
 - memory budget: the network and UI processes add roughly 30–60 MB (WPE runs multi-process on
   512 MB devices).
 The single-process path stays possible only as an optional bring-up step (a first page sooner).
+
+## 10. Self-hosting: a native toolchain on the Pi (the user, 2026-10-02)
+
+Goal: compile Onyx apps **on the Pi** (and, later, Onyx itself). Path, after WP-TC (the cross
+`aarch64-onyx-elf` toolchain):
+1. **Native GCC + binutils** by a Canadian cross (`--build=x86_64-linux --host=aarch64-onyx-elf
+   --target=aarch64-onyx-elf`): static `gcc`, `cc1`, `cc1plus`, `as`, `ld` on the card (a `sdk`
+   package). The driver starts `cc1` / `as` / `ld` through libiberty's pex: use its `posix_spawn`
+   path (verify for GCC 14; else a small pex patch) — Onyx has no `fork()`.
+2. **Build tools**: Ninja (posix_spawn) + CMake first; GNU make ≥ 4.4 (posix_spawn) needs a
+   `/bin/sh` for its recipes, and a POSIX shell (dash/ash) forks for subshells → either the shell's
+   no-MMU mode (busybox on uClinux uses **`vfork`**) with a `vfork` in the kernel (the child borrows
+   the parent's address space until its exec — much simpler than fork), or a make that runs
+   simple recipes directly.
+3. **The SDK on the card** (`SD:/sdk`): newlib, libstdc++, libonyxposix, `kapi.h`, wtk, the CMake
+   toolchain file for native builds, an app template.
+4. **Milestone**: a wtk app compiled on the Pi and launched from the desktop. Later: a code editor
+   with a Build command; the kernel itself built on the Pi (the native GCC with `-ffreestanding`).
+Expect seconds to a minute for a small C app, minutes for a larger C++ one; WebKit stays a PC build.
+
+## 11. Symbolic links on FAT (the user's design, 2026-10-02)
+
+FAT has no symlinks; ports (`make install`, CMake trees, `libfoo.so -> libfoo.so.1`) and the
+self-hosted toolchain want them. Design (the Cygwin way):
+- A link = a small file with the FAT **System attribute** set, starting with a magic
+  (`!<onyx-link>\n`) followed by the target path (UTF-8). The attribute is the fast filter: it
+  comes free in the directory entry (`FILINFO.fattrib`), so only flagged files have their header
+  read — no cost on ordinary files. On `RAM:`: a real link node type.
+- Resolved **in the kernel's path lookup**, so every app benefits (old ones too): component by
+  component (a link in the middle of a path to a directory), a relative target resolved from the
+  link's directory, cross-volume targets (SD: → RAM:) allowed, at most 40 hops (`ELOOP`).
+- POSIX semantics: `open`/`stat` follow; `lstat` reports `S_IFLNK`; `readlink`, `symlink`;
+  `unlink`/`rename` act on the link; `O_NOFOLLOW`. New kapis (a v76 block): `path_symlink`,
+  `path_readlink`, `path_lstat` (or a NOFOLLOW flag on `path_stat`), `KAPI_O_NOFOLLOW`; libonyxposix
+  maps the POSIX calls.
+- Limits: hard links (`link()`) stay impossible on FAT (`EPERM`, as Cygwin on FAT); on a PC the
+  link shows as a small text file holding its target. The File Viewer shows links (an arrow
+  overlay); `cp` / `zip` / the Archiver choose link or target (`-P` / `-L`).
