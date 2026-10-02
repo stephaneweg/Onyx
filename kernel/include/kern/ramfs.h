@@ -34,7 +34,7 @@
 #define RAMFS_RESERVE		(32ull << 20)		// page memory always left to the apps
 #define RAMFS_MAX_NODES		16384			// files + folders
 #define RAMFS_FILE_MAX		(128ull << 20)		// one file (and the volume's size)
-#define RAMFS_NAME_MAX		127
+#define RAMFS_NAME_MAX		255
 #define RAMFS_SLICE		(1u << 20)		// bytes copied between two yields
 
 struct kapi_dirent;

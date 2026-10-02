@@ -82,19 +82,22 @@ static int str_starts (const char *s, const char *prefix)
 // "a.b.c.d" -> addr[4]; 1 ok
 static int parse_ip (const char *s, unsigned char *ip)
 {
+	unsigned char t[4];				// (ip untouched unless all four parse)
 	int k = 0, v = -1;
 	for (;; s++)
 	{
 		if (*s >= '0' && *s <= '9') { v = (v < 0 ? 0 : v * 10) + (*s - '0'); if (v > 255) return 0; }
-		else if (*s == '.' || *s == '\0' || *s == ' ')
+		else if (*s == '.' || *s == '\0' || *s == ' ' || *s == '\n' || *s == '\r')
 		{
 			if (v < 0 || k >= 4) return 0;
-			ip[k++] = (unsigned char) v; v = -1;
+			t[k++] = (unsigned char) v; v = -1;
 			if (*s != '.') break;
 		}
 		else return 0;
 	}
-	return k == 4;
+	if (k != 4) return 0;
+	for (int i = 0; i < 4; i++) ip[i] = t[i];
+	return 1;
 }
 
 static struct kapi_sockaddr addr (const unsigned char *ip, unsigned port)

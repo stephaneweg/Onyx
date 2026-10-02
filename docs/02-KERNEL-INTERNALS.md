@@ -1995,7 +1995,7 @@ docs/06 §33): no browsing data on the card, and no SD write freezing core 0.
 
 **The tree.** Folders and files are `TNode` records on the kernel heap — one size, so a freed one is
 reused as is (Circle's heap keeps freed blocks by size, it never merges them): a name of up to
-127 characters (**case-insensitive, case kept**, as on the card's FAT), the parent, the children (a
+255 characters (**case-insensitive, case kept**, as on the card's FAT), the parent, the children (a
 list in creation order: `readdir`'s order), the open count (`nRefs`). A file removed while open
 leaves its folder at once and is freed at its last close (it can still be read to its end); a
 folder must be empty to be removed; a folder cannot be moved into itself; `rename` onto an existing

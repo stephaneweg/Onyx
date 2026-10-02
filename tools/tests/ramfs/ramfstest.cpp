@@ -270,9 +270,9 @@ static void edges (void)
 	CHECK (RamFsMkdir ("RAM:/Jet") == 0 && RamFsMkdir ("RAM:/jet") != 0, "mkdir case");
 	CHECK (RamFsMkdir ("RAM:/JET/cache") == 0 && RamFsIsDirPath ("RAM:/jet/CACHE"), "nested");
 	CHECK (RamFsMkdir ("RAM:/nope/x") != 0, "mkdir without its parent");
-	std::string longn (127, 'n'), toolong (128, 'n');
-	CHECK (RamFsSave (("RAM:/jet/" + longn).c_str (), "x", 1) == 1, "127 characters");
-	CHECK (RamFsSave (("RAM:/jet/" + toolong).c_str (), "x", 1) == -1, "128 characters");
+	std::string longn (255, 'n'), toolong (256, 'n');
+	CHECK (RamFsSave (("RAM:/jet/" + longn).c_str (), "x", 1) == 1, "255 characters");
+	CHECK (RamFsSave (("RAM:/jet/" + toolong).c_str (), "x", 1) == -1, "256 characters");
 	void *dh = RamFsOpenDir ("RAM:/");
 	kapi_dirent e; CHECK (RamFsReadDir (dh, &e) == 1 && strcmp (e.name, "Jet") == 0 && e.is_dir == 1, "the case kept");
 	RamFsCloseDir (dh);
