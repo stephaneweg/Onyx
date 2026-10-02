@@ -447,7 +447,17 @@ public:
 		}
 		if (g_lib.scanning) k += snprintf (s + k, sizeof s - k, g_lib.scanCount ? "   \xC2\xB7   Looking for photos... %d new" : "   \xC2\xB7   Looking for photos...", g_lib.scanCount);
 		text_v (canvas, 14, y, ST_H, s, col_dim (), F_SMALL);
-		if (g_note[0] && kapi_get_ticks () - g_noteT < 600) text_r (canvas, width - 14, y, ST_H, g_note, C_ACCENT, F_SMALL);
+		int rx = width - 14;
+		if (g_th.blTotal > 0 && g_th.blDone < g_th.blTotal)
+		{	// the thumbnails made in the background: a small bar
+			int bw = 120, bx = rx - bw, by = y + ST_H / 2 - 3, done = g_th.blDone, total = g_th.blTotal;
+			fill_round (canvas, bx, by, bw, 6, 3, col_line ());
+			int k = (int) ((long long) bw * done / total); if (k > 0) fill_round (canvas, bx, by, k < 6 ? 6 : k, 6, 3, C_ACCENT);
+			char t[80]; snprintf (t, sizeof t, "Thumbnails %d / %d", done, total);
+			text_r (canvas, bx - 10, y, ST_H, t, col_dim (), F_SMALL);
+			rx = bx - 20 - tw (t, F_SMALL);
+		}
+		if (g_note[0] && kapi_get_ticks () - g_noteT < 600) text_r (canvas, rx, y, ST_H, g_note, C_ACCENT, F_SMALL);
 	}
 	void draw_empty ()
 	{

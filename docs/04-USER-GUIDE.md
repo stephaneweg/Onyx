@@ -2231,7 +2231,9 @@ volume's **`DCIM`** folder (a camera's card), and the **folders you add** (*Add 
 dropped on the window; a right click on it: *Remove from Photos* — the files stay). JPEG, PNG, GIF, BMP,
 WebP and PCX. Start it from the dock or the app list (*Graphics*); `photos <picture>` opens that one. The
 first time, Photos looks through the folders (the status line says how many it found), then remembers
-them: the next starts are immediate, and new pictures are found by themselves.
+them: the next starts are immediate, and new pictures are found by themselves. The **thumbnails** are made in
+the background — the photos in sight first, then all the others —, a small bar in the status line telling how
+far it is (*Thumbnails 120 / 2814*); the window stays usable meanwhile.
 
 **The library**: the photos **by day** (*Today*, *Yesterday*, then the date) — the day the camera wrote in
 the picture (its EXIF), else a date in the file's name (`IMG_20260927_164200.jpg`,
@@ -2288,7 +2290,8 @@ photos three by four on A4 pages, the oldest first, with their dates), rename, d
 
 **Sharing**: *Send by Mail...* opens a new message in **Mail** with the photos attached, made smaller
 (1920 pixels, 16 photos at most); *Copy* puts the picture on the **Clipboard**; *Set as the wallpaper*
-makes it the desktop's (the Theme applet's *image* mode); *Open in Paint*; *Export as a PDF...* (the
+makes it the desktop's (the Theme applet's *image* mode; a photo on another volume than `SD:` — or one the camera
+stored turned — is first copied, upright, to `SD:/res/wallpaper.<ext>`); *Open in Paint*; *Export as a PDF...* (the
 selection, or the photos shown). **Slideshow** (F5, the toolbar's button): the whole screen, a photo every
 4.5 seconds melting into the next (the selection, or the photos shown); ← / → , Space pauses, Esc or a
 click ends it.
@@ -2296,7 +2299,8 @@ click ends it.
 **Files**: reads the pictures of the folders watched; writes `SD:/etc/photos/library.db` (what is known of
 each photo: its date, size, camera, favourite, description), `SD:/etc/photos/thumbs/` (the thumbnails, as
 JPEGs), `SD:/etc/photos/albums/<album>.txt` (one path a line), `SD:/etc/photos/folders.txt` (the folders
-added); the photos it edits, rotates or sends (copies in `RAM:/photos-mail`). Keys: ← → Home End, Page
+added), `SD:/res/wallpaper.<ext>` (a wallpaper copied); the photos it edits, rotates or sends (copies in
+`RAM:/photos-mail`). Keys: ← → Home End, Page
 Up / Down, Enter, Esc, Del, F, E, R, I, + − 0 1, Ctrl+A, Ctrl+F (search), F5 (slideshow).
 
 ### Mail, the mail client (`mail`)

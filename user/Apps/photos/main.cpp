@@ -121,7 +121,9 @@ public:
 		unsigned now = kapi_get_ticks ();
 		if (strcmp (lastQ, g_tb->search->text)) { scpy (lastQ, g_tb->search->text, sizeof lastQ); qT = now ? now : 1; }
 		if (qT && now - qT > 25) { qT = 0; scpy (g_query, lastQ, sizeof g_query); if (g_src == SRC_ALBUMS && g_query[0]) g_src = SRC_ALL; g_grid->sy = 0; lib_changed (); }
-		static bool wasScanning; if (g_lib.scanning != wasScanning) { wasScanning = g_lib.scanning; g_grid->invalidate (true); }
+		static bool wasScanning; if (g_lib.scanning != wasScanning) { wasScanning = g_lib.scanning; g_grid->invalidate (true); if (!wasScanning) g_th.set_backlog (); }
+		static int lastDone = -1; static unsigned doneT;	// (the thumbnails' bar: a few times a second)
+		if (g_th.blDone != lastDone && now - doneT > 30) { lastDone = g_th.blDone; doneT = now; g_grid->invalidate (true); }
 		static unsigned noteT; if (g_note[0] && now - g_noteT > 600 && noteT != g_noteT) { noteT = g_noteT; g_grid->invalidate (true); }
 		if (g_lib.dirty && !g_lib.scanning) { static unsigned dT; if (!dT) dT = now; if (now - dT > 300) { dT = 0; g_lib.save (); } }
 	}
@@ -243,6 +245,7 @@ int main (void)
 	refresh_all ();
 	root.fitWorkArea ();
 	g_th.start ();
+	g_th.set_backlog ();			// (those already known: at once; the scan's new ones when it ends)
 	g_lib.start_scan ();
 	if (a[0]) PhotosRoot::open_path (a);
 

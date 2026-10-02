@@ -3,7 +3,8 @@
 // window stays live: a thumbnail is the photo turned the right way, brought to 320 pixels on its long side, kept on
 // the card as a JPEG (SD:/etc/photos/thumbs/<key>.jpg: the next start shows it at once); each size drawn is made once
 // from it and kept (a small cache). The one asked last comes first (what is in sight). The photo shown big is decoded
-// whole (turned the right way) before any thumbnail.
+// whole (turned the right way) before any thumbnail. When nothing is asked, the same thread makes the thumbnails still
+// missing for the whole library, one after another (the backlog: set_backlog; its progress in blDone / blTotal).
 //
 //   g_thumbs.draw (canvas, photoIndex, x, y, w, h, radius, bg);   (a soft placeholder until it is there)
 //   g_thumbs.want_full (photoIndex);  ... onFull (index, Pix &)
@@ -54,7 +55,7 @@ public:
 	void (*onLoaded) ();				// a thumbnail came
 	void (*onFull) (FullDone *);			// the big one came (the window takes d->pix)
 	volatile bool pause;
-	Thumbs () : lib (0), onLoaded (0), onFull (0), pause (false), m_tick (0), m_lk (0), m_qn (0), m_tid (-1), m_quit (false), m_ev (-1), m_fullSerial (0), m_fullWant (false)
+	Thumbs () : lib (0), onLoaded (0), onFull (0), pause (false), m_tick (0), m_lk (0), m_qn (0), m_tid (-1), m_quit (false), m_ev (-1), m_fullSerial (0), m_fullWant (false), blDone (0), blTotal (0), m_bl (0), m_bln (0), m_blGen (0), m_todo (0), m_todoN (0), m_todoAt (0), m_seenGen (0)
 	{ memset (m_base, 0, sizeof m_base); memset (m_sc, 0, sizeof m_sc); }
 
 	void start () { m_ev = kapi_event_create (0, 0); m_tid = kapi_thread_create (thread_main, this, 512 * 1024, "photos-thumbs"); }
@@ -103,6 +104,24 @@ public:
 		if (m_ev > 0) kapi_event_set (m_ev);
 	}
 	int full_serial () const { return m_fullSerial; }
+	// the backlog: every photo of the library whose thumbnail is not on the card yet, made in the background (the
+	// visible ones still first); progress: blDone of blTotal (blTotal 0: nothing to do, or not counted yet)
+	volatile int blDone, blTotal;
+	void set_backlog ()
+	{
+		if (!lib) return;
+		int n = 0; for (int i = 0; i < lib->ph.n; i++) if (!lib->ph[i].offline) n++;
+		Req *b = (Req *) malloc (sizeof (Req) * (n ? n : 1)); int k = 0;
+		for (int i = 0; i < lib->ph.n && b; i++)
+		{
+			const Photo &p = lib->ph[i]; if (p.offline) continue;
+			b[k].key = p.key (); scpy (b[k].path, p.path, sizeof b[k].path); b[k].orient = p.orient; k++;
+		}
+		kapi_lock (&m_lk);
+		free (m_bl); m_bl = b; m_bln = k; m_blGen++;
+		kapi_unlock (&m_lk);
+		if (m_ev > 0) kapi_event_set (m_ev);
+	}
 
 	static void blit (Canvas &cv, const unsigned *px, int x, int y, int w, int h)
 	{
@@ -125,6 +144,7 @@ private:
 	int m_tid; volatile bool m_quit; int m_ev;
 	struct FullReq { int serial, index; char path[400]; int orient; };
 	FullReq m_full; volatile int m_fullSerial; volatile bool m_fullWant;
+	Req *m_bl; int m_bln; volatile int m_blGen;		// the backlog given (the thread takes it)
 
 	Base *base_of (unsigned key) { for (int i = 0; i < NBASE; i++) if (m_base[i].key == key) return &m_base[i]; return 0; }
 	Base *base_slot ()
@@ -198,12 +218,42 @@ private:
 			kapi_lock (&m_lk);
 			if (m_qn > 0) { r = m_q[m_qn - 1]; m_qn--; have = true; }		// (the latest asked first: what is in sight)
 			kapi_unlock (&m_lk);
-			if (!have) { kapi_event_wait (m_ev, 500); continue; }
+			if (!have) { if (!backlog_step ()) kapi_event_wait (m_ev, 500); continue; }
 			Done *d = new Done; d->t = this; d->key = r.key;
 			make (r, d->pix);
 			kapi_post (loaded, d, 0);
 		}
 	}
+	// the backlog: when a new one is given, the missing thumbnails picked out of it (a file looked for each: fast);
+	// then one made at each turn with nothing else to do -> false when there is nothing left
+	Req *m_todo; int m_todoN, m_todoAt, m_seenGen;
+	static bool thumb_on_card (unsigned key) { char cp[80]; snprintf (cp, sizeof cp, PH_THUMBS "/%08x.jpg", key); void *f = kapi_open (cp); if (f) kapi_close (f); return f != 0; }
+	bool backlog_step ()
+	{
+		if (m_blGen != m_seenGen)
+		{
+			Req *b = 0; int n = 0;
+			kapi_lock (&m_lk); m_seenGen = m_blGen; b = m_bl; n = m_bln; m_bl = 0; m_bln = 0; kapi_unlock (&m_lk);
+			free (m_todo); m_todo = b; m_todoN = 0; m_todoAt = 0; blDone = 0; blTotal = 0;
+			for (int i = 0; i < n && !m_quit; i++)
+			{
+				if (m_blGen != m_seenGen) return true;		// (a newer one came meanwhile)
+				if (!thumb_on_card (b[i].key)) b[m_todoN++] = b[i];
+			}
+			blTotal = m_todoN;
+		}
+		while (m_todoAt < m_todoN && !m_quit)
+		{
+			Req &r = m_todo[m_todoAt++];
+			if (thumb_on_card (r.key)) { blDone = blDone + 1; continue; }	// (made meanwhile, asked by the window)
+			Pix px; make (r, px); px.free_ ();
+			blDone = blDone + 1;
+			if (m_todoAt >= m_todoN && m_ev > 0) kapi_post (backlog_done, this, 0);
+			return true;
+		}
+		return false;
+	}
+	static void backlog_done (void *t, long) { Thumbs *th = (Thumbs *) t; if (th->onLoaded) th->onLoaded (); }
 public:
 	// a photo decoded whole, turned the right way, its transparency laid on a grey
 	static bool load_full (const char *path, int orientation, Pix &out)
