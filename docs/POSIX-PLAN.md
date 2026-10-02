@@ -937,7 +937,7 @@ Can start at once:
 5. **Fonts:** fontconfig (HPND/MIT) + expat (in tree) with a config for the card's fonts (`SD:/res/fonts`, the DejaVu set) and a cache on `RAM:`; or a small fontconfig shim implementing the subset WebKit's FreeType font cache calls.
 6. **Graphics: decision Skia or Cairo.** Recommended: **Skia** (BSD-3, the library WebKit's GTK/WPE ports moved to and maintain, vendored in WebKit's tree with CMake; CPU raster backend). Cairo is LGPL-2.1/MPL-1.1 and leaving WebKit's main ports.
 7. **TLS in WebKit's curl backend:** adapt `CurlSSLVerifier`/`CurlSSLHandle` to mbedTLS (curl's mbedTLS backend gives an `mbedtls_ssl_config *` in `SSL_CTX_FUNCTION`), or bring in OpenSSL 3 / BoringSSL **(verify** the current upstream files).
-8. **The embedding:** upstream WebKitLegacy is now essentially Cocoa-only (the Windows WebKitLegacy was removed) **(verify)**. So "single process" means an **Onyx WebView written over WebCore** (`Page`/`LocalFrame`, `FrameLoaderClient`, `ChromeClient`, `EditorClient`, …; the removed Windows WebKitLegacy in git history is a template). WebKit2 multi-process would add `AF_UNIX` socketpair with fd passing and cross-process shared memory (`MAP_SHARED`), none of which is in this minimum.
+8. **The embedding (superseded by §9: WebKit2):** upstream WebKitLegacy is now essentially Cocoa-only (the Windows WebKitLegacy was removed) **(verify)**. So "single process" means an **Onyx WebView written over WebCore** (`Page`/`LocalFrame`, `FrameLoaderClient`, `ChromeClient`, `EditorClient`, …; the removed Windows WebKitLegacy in git history is a template). WebKit2 multi-process would add `AF_UNIX` socketpair with fd passing and cross-process shared memory (`MAP_SHARED`), none of which is in this minimum.
 9. **The Onyx port layer:**
    - WTF `OS(ONYX)`: `PlatformOS`/`Have`/`Use`; `PageBlock` 64 KB; `StackBounds` via `pthread_getattr_np`; `CPUTime`; `MemoryFootprint` via `vm_stats`; RunLoop (Generic, or Onyx on `pump_wait` + `post`); `RandomDevice` via `getrandom`; `Language` from `LANG`;
    - WebCore: the graphics context on the window canvas (`present`), events from Onyx GUI events, cursors, clipboard (`clipd`), drag and drop (`drag_*`), popup menus, `RenderTheme`/scrollbars, MIME types, curl networking, `CookieJarDB` (SQLite), storage, caches on `RAM:`/`SD:`, screen and DPI;
@@ -1010,3 +1010,30 @@ Consequences for the plan:
   licence would go from GPL-2.0 to LGPL-2.1+).
 - **Memory**: a 4 GB Pi 4 is the realistic target; demand paging (WP-MEM) is a prerequisite.
 - Reused from Jet: the browser UI (toolbar, dialogs, `jet.ini` settings, site-version logic).
+
+## 9. Decision: WebKit2 (the user, 2026-10-02)
+
+The target is **WebKit2** (multi-process), on the model of WebKit's **PlayStation** port (WebKit2
+without GLib, curl networking, its own platform layer) — not a single-process embedding over
+WebCore: WebKitLegacy is maintained upstream for Cocoa only, so a single-process port would mean
+maintaining our own embedding against WebCore's moving APIs alone. With WebKit2, upstream's
+architecture is kept (UI process, one web process per tab/site with WebCore + JSC, a network
+process), a crashing page kills only its process (matching Onyx's EL0 isolation), and upstream
+updates can be followed. In both cases the engine (DOM, CSS, layout, JS) is WebKit's; Onyx owns the
+platform port, the media backend on `user/av`, the compositor on the V3D, the browser UI and the
+system below.
+
+What it adds to this plan — **WP-IPC** (after the POSIX minimum is merged; its spec to be written
+then, against WebKit's `Source/WebKit/Platform/IPC/unix/` and the PlayStation port's process
+launcher):
+- local stream/datagram sockets between processes: `socketpair(AF_UNIX, SOCK_STREAM|SOCK_SEQPACKET)`
+  (and named `AF_UNIX` sockets if WebKit needs them), readable by `poll`;
+- **passing handles between processes** (`sendmsg`/`recvmsg` with `SCM_RIGHTS`): a file, a pipe end,
+  a socket, a shared-memory object moved into the receiver's handle table;
+- **shared memory between processes**: anonymous shared objects (a `memfd_create` / `shm_open`
+  equivalent) mapped `MAP_SHARED` in several address spaces (pages pinned in the object, refcounted,
+  never zapped by one process's `munmap` while another maps them), sealing/size fixed after creation;
+- the process launcher (`posix_spawn` with inherited handles: the IPC socket's end given to the child);
+- memory budget: the network and UI processes add roughly 30–60 MB (WPE runs multi-process on
+  512 MB devices).
+The single-process path stays possible only as an optional bring-up step (a first page sooner).
