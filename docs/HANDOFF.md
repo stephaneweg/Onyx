@@ -138,8 +138,10 @@ answer in French. The docs stay in English.
   validated on the Pi (2026-10-02), in `main`** (built on the user's PC, WSL): WTF and JavaScriptCore build, `jsc`
   runs with the LLInt (no JIT; WebAssembly in its interpreter) and passes WebKit's es6, default
   stress and WebAssembly tests under qemu
-  (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is on the card (its own package, `jsc`). **Next:
-  step 2 (WebCore) on a branch `webkit-port`** (and the package `jsc` to publish if
+  (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is on the card (its own package, `jsc`). **Step 2 (WebCore) renders a
+  page on the bench and on the Pi** (2026-10-02: `tools/webkit/build-webcore.sh`, `wctest`,
+  `test-webcore.sh`; Skia on the CPU, no GL; the network path and WebCrypto still to do), in `main`.
+  **Next: step 3 (WebKit2) on the branch `webkit-port`** (and the package `jsc` to publish if
   `tools/pkg/versions.ini` has no `jsc` yet). To resume: `docs/08-WEBKIT-PORT.md` ("status / how
   to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain
   (`sh tools/toolchain/fetch.sh`), WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse

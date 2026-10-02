@@ -177,7 +177,13 @@ installed.)
 
 ## Step 2: WebCore (2026-10-02, branch `webkit-port`)
 
-**Where it stands: WebCore builds for Onyx, links, and renders a page on the PC bench.**
+**Where it stands: WebCore builds for Onyx, links, and renders a page — on the PC bench and on
+the Pi (2026-10-02).** On the Pi 4, `wctest SD:/docs/page1.html RAM:/page1.png` (the 80 MB program
+copied by hand to `SD:/bin`) printed the same title, element count and text as the bench — the
+line written by the page's script included — and wrote the same picture (47 465 bytes, as on the
+bench; opened in the Image Viewer): the kernel's loader takes an 80 MB static image, the card's
+fonts are found, Skia paints on the CPU, JavaScriptCore runs inside WebCore. (How long it takes
+on the Pi was not measured.)
 `libPAL.a` and `libWebCore.a` build (`sh tools/webkit/build-webcore.sh`: 30 minutes on 16 cores
 for a first build, 18 to 22 GB of memory at 14 jobs); `wctest` (`tools/webkit/wctest.cpp`, built by
 `build-wctest.sh`: WebCore alone, the "empty" clients, no window and no network) loads an HTML
@@ -204,8 +210,8 @@ the Onyx files). What was found on the way, beyond the study below:
   both are in `wctest.cpp`, and are WebKit2's job in step 3.
 - The link asked for 36 symbols in all (pasteboard, editor, WebCrypto, one keyboard function).
 
-**Not done / not tested yet in step 2**: nothing has run on the Pi (the 80 MB image against the
-kernel's ELF loader, memory, speed); **the network path is compiled, not exercised** (curl with
+**Not done / not tested yet in step 2**: the time and the memory on the Pi were not measured;
+**the network path is compiled, not exercised** (curl with
 the mbedTLS glue of `MbedTLSHelper.cpp`: a page loaded over HTTPS comes with step 3's network
 process, or a `wctest` with a real loader); **WebCrypto** is digests only (decision below);
 the public suffix list is an interim rule (`PublicSuffixStoreOnyx.cpp`); WOFF2 fonts, video and
@@ -289,7 +295,9 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
 1. **WTF + JavaScriptCore** → the `jsc` shell (the LLInt without JIT, WebAssembly in its
    interpreter; C_LOOP as an alternative). *Done: validated on the Pi, 2026-10-02.*
 2. **WebCore** (Skia CPU raster from WebKit's own copy, no GL, `SkFontMgr_onyx` instead of
-   fontconfig, curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2). *In progress.*
+   fontconfig, curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2). *Builds, links,
+   renders a page on the bench and on the Pi (2026-10-02); the network path, WebCrypto, WOFF2 and
+   media are still to do.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
 4. The Onyx view, compositor (later the V3D) and media (`MediaPlayerPrivate` on `user/av`).
 5. The browser (Jet's UI reused).
