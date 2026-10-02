@@ -134,13 +134,13 @@ answer in French. The docs stay in English.
   curl, Skia CPU, our compositor on the V3D later); static binaries (§13); the WebKit browser under
   **LGPL-2.1+** (§15); fork/vfork, symlinks on FAT, self-hosting, Mesa (GPU), 1 GB memory balance,
   the input-state page for key_held/pad_state, the PDF Viewer's flicker: later (notes above / plan).
-- **WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`): **done on the
-  PC bench** (branch **`webkit-port-step1`**, the user's PC, WSL): WTF and JavaScriptCore build, `jsc`
+- **WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`): **done,
+  validated on the Pi (2026-10-02), in `main`** (built on the user's PC, WSL): WTF and JavaScriptCore build, `jsc`
   runs with the LLInt (no JIT; WebAssembly in its interpreter) and passes WebKit's es6, default
   stress and WebAssembly tests under qemu
-  (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is staged on that branch's card. **Waiting for the
-  Pi test** (the plan is in `docs/08-WEBKIT-PORT.md`), then: merge into `main`, publish the package,
-  and step 2 (WebCore) on a branch `webkit-port`. To resume: `docs/08-WEBKIT-PORT.md` ("status / how
+  (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is on the card (its own package, `jsc`). **Next:
+  step 2 (WebCore) on a branch `webkit-port`** (and the package `jsc` to publish if
+  `tools/pkg/versions.ini` has no `jsc` yet). To resume: `docs/08-WEBKIT-PORT.md` ("status / how
   to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain
   (`sh tools/toolchain/fetch.sh`), WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
   checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), the build

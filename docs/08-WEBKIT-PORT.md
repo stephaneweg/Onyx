@@ -1,10 +1,11 @@
 # Onyx: the WebKit port
 
-## Status / how to resume (2026-10-02, branch `webkit-port-step1`)
+## Status / how to resume (2026-10-02)
 
-**Step 1 (WTF + JavaScriptCore → the `jsc` shell) is done on the PC bench and waits for its test
-on the Pi.** `/bin/jsc` (the LLInt and WebAssembly's interpreter, no JIT; 33.1 MB with ICU's data) is
-staged in that branch's
+**Step 1 (WTF + JavaScriptCore → the `jsc` shell) is done: it passes on the PC bench and on the
+Pi** (the five steps of the Pi test below), and is in `main`. Step 2 (WebCore) is next, on a branch
+`webkit-port`. `/bin/jsc` (the LLInt and WebAssembly's interpreter, no JIT; 33.1 MB with ICU's data) is
+staged in
 `sdcard/`, with `SD:/docs/jsc/smoke.js` and `bench.js`.
 
 **Pinned WebKit revision:** `b8a7a626127c0010a557c9d6466fefd38d9477c1` (WebKit `main`, 2026-10-02;
@@ -118,7 +119,7 @@ The LLInt is the one staged: it needs no executable memory at run time (it is as
 time), is the faster, and is the one WebAssembly works with. `el0scan` on the unstripped `jsc`: clean (libgcc's guarded SME helpers
 only, as every program of the toolchain).
 
-### The Pi test (2026-10-02: steps 1 to 4 pass; step 5 to run again)
+### The Pi test (2026-10-02: the five steps pass)
 
 On a card made from the branch's `sdcard/` (kernel v76 or later), in the Terminal:
 
@@ -167,9 +168,9 @@ installed.)
 
 ### Next steps
 
-1. The Pi test above; then merge `webkit-port-step1` into `main` and publish the package `jsc`
-   (`tools/pkg/packages.ini` declares it: `bin/jsc`, `docs/jsc/`).
-2. Step 2, WebCore, on a branch `webkit-port` made from this one: widen the checkout
+1. Publish the package `jsc` if it is not yet (`tools/pkg/packages.ini` declares it: `bin/jsc`,
+   `docs/jsc/`; `sh tools/pkg/publish.sh`, the user's signing key).
+2. Step 2, WebCore, on a branch `webkit-port` made from `main`: widen the checkout
    (`SPARSE_EXTRA="Source/WebCore Source/ThirdParty/..."`), `PLATFORM(ONYX)` on the PlayStation
    port's model, Skia from the sysroot, curl + mbedTLS, libxml2, SQLite, woff2 (to port).
 3. For later, in the kernel: PROT_EXEC for a JIT, a call to suspend a thread (above), a malloc that
@@ -181,7 +182,7 @@ WebKit replaces Jet (NetSurf) as Onyx's browser engine (docs/POSIX-PLAN.md §8, 
 the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
 
 1. **WTF + JavaScriptCore** → the `jsc` shell (the LLInt without JIT, WebAssembly in its
-   interpreter; C_LOOP as an alternative). *Done on the bench; the Pi test is pending.*
+   interpreter; C_LOOP as an alternative). *Done: validated on the Pi, 2026-10-02.*
 2. **WebCore** (Skia CPU raster from WebKit's own copy, `SkFontMgr_onyx` instead of fontconfig,
    curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2).
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
