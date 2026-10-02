@@ -119,7 +119,7 @@ answer in French. The docs stay in English.
   clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
   (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
 
-## Program images: loaded once, shared, preloaded (2026-10-02, kapi v77, branch `shared-image`; NOT built for the Pi, NOT in `main`)
+## Program images: loaded once, shared, preloaded (2026-10-03, kapi v77; validated on the Pi, in `main`, published)
 
 - **What**: stages (a), (c), (e) of `docs/ELF-LOADER-PLAN.md` -- the loader streams a program from
   its file once into an image object (`kernel/proc/image.cpp`, `kern/image.h`); its read-only
@@ -134,10 +134,11 @@ answer in French. The docs stay in English.
   checks, load / share / wait / fail / pin / unload / the hook); `run_ipc_test.sh`,
   `run_ofile_test.sh` (`CIRCLE=<circle tree>`), `run_pkg_test.sh` still pass; the changed kernel
   files pass `g++ -fsyntax-only` against Circle's headers on the PC.
-- **Not done**: the kernel and the tools were **not compiled for AArch64** (no toolchain in that
-  session) and nothing ran on the Pi; `sdcard/` is not staged, nothing is published; the Word / PDF
-  exports are not regenerated. The user tests on the Pi before any merge into `main`.
-- **To test on the Pi** (`kmsg` shows one `image <path>: loaded|shared in N ms, mapped in N ms`
+- **On the Pi (the user, 2026-10-03)**: built with Arm's `aarch64-none-elf` 14.2 (first compile
+  clean, the kernel 313 KB below its size limit); the system and the apps run as before; `wctest`
+  (80 MB) preloaded starts and runs its test at least 4 times faster. Not reported one by one:
+  `unload`, a `pkg` update of a preloaded program, the file hook, a preload from `/etc/autostart`.
+- **The checks to run when something looks wrong** (`kmsg` shows one `image <path>: loaded|shared in N ms, mapped in N ms`
   line per start): boot (every program now goes through the new loader); start a program twice
   (`shared` the second time; `ps`' `PAGES` no longer counts a program's code); `preload jsc`, `preload` (the list),
   `jsc` (shared: no card read), `unload jsc`; replace a preloaded tool with `pkg` or over FTP and

@@ -1,8 +1,10 @@
 # Onyx: loading large programs faster (a study and a plan)
 
-*Status (2026-10-02): the study below was read from the code; **stages (a), (c) and (e) are
-written** (kapi v77, branch `shared-image`) with host tests — **not yet built for the Pi nor run
-on it** — and described in docs/02 §7 *Program images*. Stage (d) exists only as far as (e) needs
+*Status (2026-10-03): the study below was read from the code; **stages (a), (c) and (e) are
+built, in `main` and published** (kapi v77) with host tests, and **validated by the user on the
+Pi**: the system runs as before on the new loader, and `wctest` (80 MB), once preloaded, starts
+and does its test at least four times faster (its time was the card read) — described in docs/02
+§7 *Program images*. Stage (d) exists only as far as (e) needs
 it (a pinned image is kept); stage (b) is not started. See **What is built** below; the rest of
 this page is the study as it was written, kept for its reasoning.
 Why: the WebKit port's programs are 33 MB (`jsc`) to 80 MB (`wctest`, WebCore) static images; on
