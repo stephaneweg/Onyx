@@ -70,7 +70,7 @@ Cette édition n'a pas de vue partition.
 ### 1.2 Ce qu'il vous faut
 
 - Un Pi sous Onyx, avec un **casque ou des enceintes** sur la prise jack 3,5 mm.
-- La **SoundFont** fournie sur la carte (`SD:/koton/soundfonts/GeneralUser-GS.sf2`, 32 Mo). Koton la
+- La **SoundFont** fournie sur la carte (`SD:/res/soundfonts/GeneralUser-GS.sf2`, 32 Mo : son propre paquet, installé avec Koton et partagé avec Media Player). Koton la
   charge au démarrage : cela prend quelques secondes.
 - Pour l'IA : le **réseau** actif (voir le guide de l'utilisateur d'Onyx) et une **clé d'API** d'un
   fournisseur — celles de Gemini sont gratuites sur `aistudio.google.com`.
@@ -603,7 +603,7 @@ Le moteur tourne sur le troisième cœur du Pi, environ 40 ms avant vos oreilles
 
 Les instruments de Koton viennent d'une **SoundFont** (`.sf2`) : des échantillons enregistrés des 128
 instruments General MIDI et des kits de batterie. La carte contient **GeneralUser GS**. Koton charge le
-premier `.sf2` de `SD:/koton/soundfonts` ; **File ▸ SoundFont…** en choisit un autre (utilisé au prochain
+premier `.sf2` de `SD:/res/soundfonts` (puis de l'ancien `SD:/koton/soundfonts`) ; **File ▸ SoundFont…** en choisit un autre (utilisé au prochain
 démarrage), et **File ▸ Get a SoundFont…** retélécharge GeneralUser GS s'il manque (le réseau doit être
 actif).
 
@@ -711,7 +711,7 @@ même après la fermeture de Koton.
 | Où | Quoi |
 |---|---|
 | `SD:/koton/songs` | vos morceaux ; `demo.kson` est la démonstration |
-| `SD:/koton/soundfonts` | les SoundFonts (`.sf2`) |
+| `SD:/res/soundfonts` | les SoundFonts (`.sf2`), partagées avec Media Player |
 | `SD:/koton/plugins` | les plugins, un dossier chacun |
 | `SD:/koton/settings.json` | la SoundFont choisie, le dernier dossier, le fournisseur, le modèle et la clé de l'IA, votre dernière demande à l'IA |
 | `SD:/apps/koton.app/drums.json` | le catalogue de batterie |
@@ -719,7 +719,7 @@ même après la fermeture de Koton.
 ## 18. Questions et réponses
 
 **Je n'entends rien.**
-Regardez la barre d'état. *No SoundFont* — mettez un `.sf2` dans `SD:/koton/soundfonts` ou utilisez
+Regardez la barre d'état. *No SoundFont* — installez le paquet GeneralUser GS (le gestionnaire de paquets), mettez un `.sf2` dans `SD:/res/soundfonts` ou utilisez
 **File ▸ Get a SoundFont…**. *The sound output is used by another app* — fermez l'autre application qui
 joue du son (un émulateur, un lecteur) et relancez Koton. Vérifiez aussi les **M** / **S** des pistes,
 leur volume, et le volume d'Onyx (le haut-parleur de la barre de menus).

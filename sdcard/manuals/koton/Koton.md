@@ -66,7 +66,7 @@ There is no score (staff notation) view in this edition.
 ### 1.2 What you need
 
 - An Onyx Pi with **headphones or speakers** on the 3.5 mm jack.
-- The **SoundFont** shipped on the card (`SD:/koton/soundfonts/GeneralUser-GS.sf2`, 32 MB). Koton loads it
+- The **SoundFont** GeneralUser GS (`SD:/res/soundfonts/GeneralUser-GS.sf2`, 32 MB: its own package, installed with Koton and shared with Media Player). Koton loads it
   when it starts: it takes a few seconds.
 - For the AI: the **network** up (see the Onyx User Guide) and an **API key** from a provider — Gemini's
   are free at `aistudio.google.com`.
@@ -540,8 +540,8 @@ delays the whole mix by 0.1 s so that everything stays together (section 15.4).
 ### 15.1 The SoundFont
 
 Koton's instruments come from a **SoundFont** (`.sf2`): recorded samples of the 128 General MIDI
-instruments and drum kits. The card carries **GeneralUser GS**. Koton loads the first `.sf2` of
-`SD:/koton/soundfonts`; **File ▸ SoundFont…** chooses another one (used from the next start), and **File ▸
+instruments and drum kits. The card carries **GeneralUser GS** (its own package, `generaluser-gs`, which Koton and Media Player need). Koton loads the first `.sf2` of
+`SD:/res/soundfonts` (then of the older `SD:/koton/soundfonts`); **File ▸ SoundFont…** chooses another one (used from the next start), and **File ▸
 Get a SoundFont…** downloads GeneralUser GS again if it is missing (the network must be up).
 
 ### 15.2 The sound chain
@@ -640,7 +640,7 @@ and options (from the transport bar or the **AI** menu, with the same kind of re
 | Where | What |
 |---|---|
 | `SD:/koton/songs` | your songs; `demo.kson` is the demo |
-| `SD:/koton/soundfonts` | the SoundFonts (`.sf2`) |
+| `SD:/res/soundfonts` | the SoundFonts (`.sf2`), shared with Media Player |
 | `SD:/koton/plugins` | the plugins, a folder each |
 | `SD:/koton/settings.json` | the SoundFont chosen, the last folder, the AI's provider, model and key, your last AI request |
 | `SD:/apps/koton.app/drums.json` | the drum catalog |
@@ -648,7 +648,7 @@ and options (from the transport bar or the **AI** menu, with the same kind of re
 ## 18. Questions and answers
 
 **I hear nothing.**
-Check the status bar. *No SoundFont* — put a `.sf2` in `SD:/koton/soundfonts` or use **File ▸ Get a
+Check the status bar. *No SoundFont* — install the package GeneralUser GS (the Package Manager), put a `.sf2` in `SD:/res/soundfonts` or use **File ▸ Get a
 SoundFont…**. *The sound output is used by another app* — close the other app that plays sound (an
 emulator, a player) and restart Koton. Check also the tracks' **M** / **S**, their volume, and the Onyx
 volume (the menu bar's speaker).

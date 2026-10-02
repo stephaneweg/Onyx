@@ -829,10 +829,30 @@ public:
 		text (canvas, x, y, "Songs", C_FIELD_TEXT, F_BIG, 2); y += 34;
 		return song_table (x, y, w, rows, true, false);
 	}
+	// the library has no song yet: where to add a folder, in sight
+	int empty_library (int x, int y, int w)
+	{
+		if (g_scan && !g_scan->done)
+		{
+			char t[64]; snprintf (t, sizeof t, "Looking for songs...  %d", g_scan->found);
+			text_c (canvas, x, y + 110, w, 24, t, C_FIELD_TEXT, F_BIG, 2);
+			return y + 150;
+		}
+		text_c (canvas, x, y + 110, w, 24, "No songs yet.", C_FIELD_TEXT, F_BIG, 2);
+		text_c (canvas, x, y + 140, w, 20, "Add the folders where your music is (SD:/Music, another partition, a USB drive):", col_dim ());
+		text_c (canvas, x, y + 160, w, 20, "Media Player finds the songs in them, and looks again at each start.", col_dim ());
+		band_button (x + w / 2 - 85, y + 196, 170, I_PLUS, "Add a folder...", true, H_ADDFOLDER);
+		return y + 250;
+	}
 	int draw_groups (int x, int y, int w, Group *gs, int n, const char *title, int kind, bool paths)
 	{
 		char sub[48]; snprintf (sub, sizeof sub, "%d", n);
 		section_head (x, y, w, title, sub, 0, 0);
+		if (paths)
+		{	// the folders: where to add one, in sight (the menu's Folders to Watch... too)
+			band_button (x + w - 170, y, 170, I_PLUS, "Add a folder...", true, H_ADDFOLDER);
+			if (!n) return empty_library (x, y, w);
+		}
 		y += 54;
 		if (!paths)
 		{	// tiles of colour
@@ -1106,13 +1126,23 @@ void Content::onDraw ()
 	int sy_ = sy (), x = 28, w = width - 56 - WK_SBW, y0 = 22 - sy_, yEnd = y0;
 	switch (page ().kind)
 	{
+	case P_ALBUMS: case P_ARTISTS: case P_SONGS: case P_GENRES:
+		if (!L->n)
+		{
+			static const char *T[] = { "Albums", "Artists", "Songs", "Genres" };
+			int k = page ().kind == P_ALBUMS ? 0 : page ().kind == P_ARTISTS ? 1 : page ().kind == P_SONGS ? 2 : 3;
+			section_head (x, y0, w, T[k], "0", 0, 0);
+			yEnd = empty_library (x, y0, w);
+			break;
+		}
+		if (page ().kind == P_ALBUMS) yEnd = draw_albums (x, y0, w);
+		else if (page ().kind == P_ARTISTS) yEnd = draw_artists (x, y0, w);
+		else if (page ().kind == P_GENRES) yEnd = draw_groups (x, y0, w, L->ge, L->nge, "Genres", H_GENRE, false);
+		else { char sub[32]; snprintf (sub, sizeof sub, "%d songs", rows.n); section_head (x, y0, w, "Songs", sub, 0, 0); yEnd = song_table (x, y0 + 54, w, rows, true, false); }
+		break;
 	case P_HOME: yEnd = draw_home (x, y0, w); break;
-	case P_ALBUMS: yEnd = draw_albums (x, y0, w); break;
 	case P_ALBUM: yEnd = draw_album (x, y0, w); break;
-	case P_ARTISTS: yEnd = draw_artists (x, y0, w); break;
 	case P_ARTIST: yEnd = draw_artist (x, y0, w); break;
-	case P_SONGS: { char sub[32]; snprintf (sub, sizeof sub, "%d songs", rows.n); section_head (x, y0, w, "Songs", sub, 0, 0); yEnd = song_table (x, y0 + 54, w, rows, true, false); break; }
-	case P_GENRES: yEnd = draw_groups (x, y0, w, L->ge, L->nge, "Genres", H_GENRE, false); break;
 	case P_GENRE: yEnd = draw_list_page (x, y0, w, "GENRE", L->ge[page ().arg].name, L->ge[page ().arg].na ? L->ge[page ().arg].albums[0] : -1); break;
 	case P_FOLDERS: yEnd = draw_groups (x, y0, w, L->fo, L->nfo, "Folders", H_FOLDER, true); break;
 	case P_FOLDER: yEnd = draw_list_page (x, y0, w, "FOLDER", L->fo[page ().arg].name, L->fo[page ().arg].na ? L->fo[page ().arg].albums[0] : -1); break;

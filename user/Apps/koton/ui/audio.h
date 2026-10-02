@@ -67,7 +67,7 @@ struct AudioHost
 	bool findSoundFont (const char *preferred)
 	{
 		if (preferred && preferred[0] && exists (preferred)) { snprintf (sfPath, sizeof sfPath, "%s", preferred); return true; }
-		static const char *const dirs[] = { "SD:/koton/soundfonts", "SD:/music/soundfonts", "SD:/music", "SD:/apps/koton.app" };
+		static const char *const dirs[] = { "SD:/res/soundfonts", "SD:/koton/soundfonts", "SD:/music/soundfonts", "SD:/music", "SD:/apps/koton.app" };
 		for (unsigned i = 0; i < sizeof dirs / sizeof dirs[0]; i++) if (firstSf2 (dirs[i], sfPath, sizeof sfPath)) return true;
 		return false;
 	}
@@ -113,7 +113,7 @@ struct AudioHost
 	// ---- starting ---------------------------------------------------------------------------------------------------------
 	bool start (const char *preferredSf)
 	{
-		if (!findSoundFont (preferredSf)) { snprintf (status, sizeof status, "no SoundFont: put a .sf2 in SD:/koton/soundfonts (Settings > Get a SoundFont)"); return false; }
+		if (!findSoundFont (preferredSf)) { snprintf (status, sizeof status, "no SoundFont: install the package GeneralUser GS, or put a .sf2 in SD:/res/soundfonts"); return false; }
 		if (!loadSoundFont ()) return false;
 		engine.init (sf, SOUND_RATE);
 		engine.ensureTracks (8);
