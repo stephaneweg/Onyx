@@ -1,5 +1,8 @@
 FFmpeg 7.1.2 for Onyx -- https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz, unchanged (tests/ref left out: the
-FATE suite's reference outputs).
+FATE suite's reference outputs) but for one Onyx patch: libavutil/aarch64/timer.h reads cntvct_el0 with
+-D__ONYX__ (build.sh pi), not the PMU's pmccntr_el0 -- the apps run at EL0, where the PMU is closed
+(av_get_random_seed, reached by a subtitle's colour "random", killed the Media Player). The committed
+libavutil.a got that one member, random_seed.o, rebuilt (ar rD) -- the rest is as build.sh made it.
 
 Used by Onyx's media library, user/av (av_ffmpeg.c: libavcodec's decoders; av_lavf.c: libavformat's
 demuxers), when compiled with -DAV_WITH_FFMPEG: the Media Player (user/Makefile's media.elf).

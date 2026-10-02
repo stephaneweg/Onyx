@@ -11,6 +11,8 @@
 #   sh third_party/ffmpeg-7.1.2/onyx/build.sh host [OUT]  -> OUT/lib*.a (the PC: the desktop simulator, the
 #                                                        tests; default /tmp/onyx_ffmpeg_host)
 #   the headers: onyx/include (make install-headers; the same for both: little-endian, 64 bits)
+# Onyx: -D__ONYX__ (pi): libavutil/aarch64/timer.h reads cntvct_el0, not the PMU's pmccntr_el0 -- the
+# apps run at EL0, where the PMU is closed (tools/el0scan.sh checks the libraries).
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$(dirname "$HERE")
@@ -23,7 +25,7 @@ pi)
 	B=${2:-/tmp/onyx_ffmpeg_pi}; mkdir -p "$B"; cd "$B"
 	"$SRC/configure" $COMMON --enable-cross-compile --cross-prefix=aarch64-none-elf- --arch=aarch64 --cpu=cortex-a72 \
 		--target-os=none --disable-pic --disable-runtime-cpudetect \
-		--extra-cflags="-mcpu=cortex-a72 -fno-pic -fno-pie -ffunction-sections -fdata-sections -fno-stack-protector" \
+		--extra-cflags="-mcpu=cortex-a72 -fno-pic -fno-pie -ffunction-sections -fdata-sections -fno-stack-protector -D__ONYX__" \
 		--extra-ldflags="--specs=nosys.specs" >configure.log
 	make -j"$(nproc)" >make.log
 	mkdir -p "$HERE/aarch64"

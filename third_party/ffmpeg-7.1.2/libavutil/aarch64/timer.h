@@ -33,9 +33,11 @@ static inline uint64_t read_time(void)
     uint64_t cycle_counter;
     __asm__ volatile(
         "isb                   \t\n"
-#if defined(__ANDROID__) || defined(__APPLE__)
+#if defined(__ANDROID__) || defined(__APPLE__) || defined(__ONYX__)
         // cntvct_el0 has lower resolution than pmccntr_el0, but is usually
         // accessible from user space by default.
+        // Onyx: apps run at EL0, where the PMU is closed (pmccntr_el0 kills
+        // the app); the virtual counter is open (onyx/build.sh: -D__ONYX__).
         "mrs %0, cntvct_el0        "
 #else
         // pmccntr_el0 has higher resolution, but is usually not accessible
