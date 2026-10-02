@@ -98,11 +98,17 @@ answer in French. The docs stay in English.
   `qjs_media.c` (HTMLMediaElement, MSE, MediaCapabilities, Fullscreen, native controls), replaced boxes
   (`box_special.c`, `hints.c`, `redraw.c`, `default.css`). YouTube's pages and player run (`html.c`'s
   paused-parser fix, `window.Window`, `ProcessingInstruction`).
-- **Blocked: the video codecs.** libvpx / dav1d / libopus are not vendored (the session's sandbox refused
-  their download): the glue is written (`user/av/av_vpx.c`, `av_dav1d.c`, `av_opus.c`), not compiled.
-  **Next**: vendor libvpx + libopus (BSD), build them (§44 *Adding the codecs*), `-DAV_WITH_VPX
-  -DAV_WITH_OPUS`, then YouTube VP9 + Opus at <= 480p; measure the decoding on the Pi (`NS_PERF`-like:
-  `__onyxMediaStats(video).decodeUs`); then the decoder on an app core.
+- **The codecs (2026-10-02)**: libvpx 1.15.2 (VP9 / VP8), dav1d 1.5.1 (AV1), libopus 1.5.2 vendored
+  (`third_party/`, `README.onyx` each), one source list `user/av/codecs.mk` for the Pi
+  (`make -C user/netsurf codecs`: `libvpx.a`, `libdav1d.a`, `libopus.a` -- NEON, dav1d's AArch64 assembly),
+  the PC bench and Windows. VP9 / AV1 + Opus play bit-exact in mediatest (`tools/tests/av/clips`, made by
+  `mkcodec.py` with PyAV); `sh tools/tests/av/bench.sh <clips>` times them (PC; AArch64 under qemu, its
+  frames checksummed against C's). Smooth (advertised): VP9 <= 854x480, AV1 <= 640x360 -- **measure on a
+  Pi** (`__onyxMediaStats(video).decodeUs`) and raise AV1 if it allows.
+- **YouTube's video stream does not come** (§44 *YouTube with the real codecs*): the player picks its
+  formats, SABR's first POST is answered, the second gets its head and no bytes; the same request replayed
+  with curl is answered at once. Next: a run from another network (the Pi), a desktop Chrome's SABR exchange
+  for the same video compared field by field (PO token, headers, TLS); then the decoder on an app core.
 - Tests: `sh tools/tests/av/run.sh` (79 checks, PC + qemu-aarch64), `sh tools/tests/netsurf/mediatest.sh`
   (all pass); the bench's stand-in sound `SIM_SOUND=1` (`SIM_SOUNDOUT=<file>`), `NS_MEDIADEBUG=1`,
   `NS_MEDIASTUB=1` (grey frames / silence for the codecs not built in: YouTube's path on its real streams).

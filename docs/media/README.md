@@ -56,8 +56,9 @@ artists and their covers are made up).
   frames handed over by `av_player_poll` at their time in the window's pixel layout, seeking, rate,
   volume. The Media Player's videos are built on it.
 - **The videos' formats**: the library's containers are WebM / Matroska and MP4 (the formats of the videos
-  people have); its video codecs today are the tests' (uncompressed I420) -- **VP9 / AV1 / H.264 need their
-  libraries vendored** (libvpx, dav1d, openh264: BSD; the glue is written, `user/av/av_vpx.c`,
-  `av_dav1d.c`) -- see docs/06 §44 *Adding the codecs*. In software on the Pi 4: up to 480p at 30 fps
-  (VP9, AV1, H.264), 720p is too much for one core. MPEG-1 (`pl_mpeg`, MIT) would be the lightest, if
+  people have); its video codecs are **VP9 / VP8** (libvpx), **AV1** (dav1d) and **Opus** audio (libopus), vendored
+  and built for the Pi with their NEON / assembly (docs/06 §44 *The codecs*: link `libvpx.a`,
+  `libdav1d.a`, `libopus.a` and compile `user/av` with `user/av/codecs.mk`'s `AV_CODECS_CF`); H.264 has
+  none yet (openh264, BSD, would be the one). In software on the Pi 4: VP9 up to 480p at 30 fps, AV1 up to
+  360p (480p likely: to measure on a Pi), 720p is too much for one core. MPEG-1 (`pl_mpeg`, MIT) would be the lightest, if
   wanted for older files. H.264 through the Pi's hardware decoder: a kernel driver, not in Circle.

@@ -4281,16 +4281,18 @@ qemu-aarch64 -- E6 -> ISRG Root X2, the bundle's root chosen, not the expired X1
 ## 44. Video and audio: `<video>`, `<audio>`, Media Source Extensions, the media library (2026-10-01)
 
 The goal: YouTube in Jet Browser on the Pi 4 -- its pages, and a video that plays with its sound
-at a resolution the Pi decodes in software. **What is done**: the whole media path except the
-large codecs -- a media library shared with the Media Player (`user/av`), HTMLMediaElement,
-Media Source Extensions, MediaCapabilities, the Fullscreen API, native controls, the sound, A/V
-sync; YouTube's pages and its player run (they load, the player probes the codecs). **What is
-missing**: the decoders YouTube serves -- VP9 / AV1 / H.264 and Opus / AAC. Their libraries
-(libvpx, dav1d, libopus: BSD) are **not vendored**: fetching their sources was refused in the
-session that did this work (its sandbox's policy), so the glue for them is written
-(`user/av/av_vpx.c`, `av_dav1d.c`, `av_opus.c`) but not compiled. With them vendored (below:
-*Adding the codecs*) YouTube plays. Today YouTube's player says "This video can't be played
-with your browser" -- honestly: `MediaSource.isTypeSupported('video/webm; codecs="vp9"')` is false.
+at a resolution the Pi decodes in software. **What is done**: the whole media path -- a media
+library shared with the Media Player (`user/av`), HTMLMediaElement, Media Source Extensions,
+MediaCapabilities, the Fullscreen API, native controls, the sound, A/V sync -- and the decoders
+YouTube serves except H.264 / AAC: **VP9 and VP8** (libvpx 1.15.2), **AV1** (dav1d 1.5.1),
+**Opus** (libopus 1.5.2), vendored and built for the Pi (libvpx's NEON, dav1d's AArch64
+assembly), the PC bench and Windows (*The codecs* below). VP9 / AV1 + Opus play in `<video>` and
+through MSE, every frame bit-exact against the reference decoders. YouTube's pages and its player
+run, pick VP9 / AV1 + Opus from our answers and start streaming; **the video itself does not
+come yet**: Google's video servers answer the player's second streaming request with its head
+and no bytes (*YouTube* below: the transport is checked, the cause is on the server's side --
+most likely the attestation Google asks of the player, or the bench's network, which Google
+already refuses the watch pages).
 
 ### The media library (`user/av`, docs/03 "The media library")
 
@@ -4312,12 +4314,14 @@ Plain C, five layers, each usable alone (`user/av/av.h` is the reference):
   written from RFC 9639: fixed and LPC predictors, escaped Rice partitions, the stereo
   decorrelations, wasted bits), PCM (8 / 16 / 24 / 32-bit, float, A-law, mu-law), uncompressed
   I420 (the tests' video codec); **MP3** on minimp3 (the Media Player's `third_party/minimp3`,
-  its public names renamed so that both link together); **glue, not compiled**: VP8 / VP9
-  (libvpx), AV1 (dav1d), Opus (libopus) behind `AV_WITH_VPX`, `AV_WITH_DAV1D`, `AV_WITH_OPUS`.
+  its public names renamed so that both link together); **on vendored libraries**: VP8 / VP9
+  (libvpx, `av_vpx.c`), AV1 (dav1d, `av_dav1d.c`), Opus (libopus, `av_opus.c`) with
+  `AV_WITH_VPX`, `AV_WITH_DAV1D`, `AV_WITH_OPUS` (`user/av/codecs.mk`).
   `av_type_supported` answers `canPlayType` / `isTypeSupported` / MediaCapabilities from that
-  table only (RFC 6381 strings: `vp09.PP.LL.DD` profile 0 / 8 bits, `av01.0.*` 8 / 10 bits,
+  table only (RFC 6381 strings: `vp09.PP.LL.DD` profile 0 / 8 bits, `av01.0.*` 8 bits,
   `avc1.*`, `mp4a.40.*`, `opus`, `flac`, `pcm`...), with "smooth" = within what the codec
-  decodes in real time on the Pi (854 x 480 at 30 fps for the video glue's codecs); a size past
+  decodes in real time on the Pi (VP9 / VP8: 854 x 480 at 30 fps; AV1: 640 x 360 at 30 fps --
+  *Speed* below); a size past
   one and a half times that, an HDR `eotf`, `tunnelmode=true` or encrypted blocks: not supported
   (YouTube probes the largest size it may ask for with `width=` / `height=`).
 - **Conversion**: `av_yuv.c` -- I420 to 32-bit RGB (BT.601 / BT.709, limited / full range), 16-bit
@@ -4415,46 +4419,82 @@ Plain C, five layers, each usable alone (`user/av/av.h` is the reference):
   streaming (Server ABR: a POST to `googlevideo.com/videoplayback?sabr=1` answered in UMP,
   `application/vnd.yt-ump`): the first answer is a redirect part (UMP part 43, to another
   googlevideo host), the second request gets its HTTP head and then **no bytes** within 80 s on
-  the bench, and the player shows "Video unavailable". Not understood yet (the BotGuard
-  attestation -- `jnn-pa.googleapis.com ... Waa/GenerateIT` -- answers 200; the egress may be
-  flagged, as for the watch pages) -- the place to continue once a decoder is in. Debugging aids
-  (the PC bench): `NS_MEDIADEBUG=1` (media.js' steps on the console), `NS_NETBODY=<part of a
-  URL>` (a script request's headers, body, response or its parts on stderr).
+  the bench, and the player shows "Video unavailable".
+- **YouTube with the real codecs** (the stand-ins off): the same path -- the player picks Opus in
+  WebM and AV1 in MP4 (the embed's 480p is past AV1's smooth size but YouTube asks without
+  `width=` / `height=` there; VP9 at 360p it asks with them), `addSourceBuffer` twice, SABR --
+  and the same end: the first POST answered (1.1 KB: the redirect part), the second one's head
+  (HTTP/1.1 200, `application/vnd.yt-ump`, chunked) and then nothing; "Vidéo non disponible".
+  What was ruled out: **the transport** -- a POST of a binary body arrives byte for byte (a local
+  server: length, content, sum), a chunked or HTTP/2 answer that comes in pieces seconds apart
+  is handed to the script piece by piece over TLS (httpbin's `/drip`, HTTP/1.1 and HTTP/2) --;
+  one bug was found and fixed on the way: the fetcher's HTTP/1.1 threads woke the page only
+  every 32 KB of body, so a streamed answer that pauses under 32 KB (SABR's parts, server
+  events) waited for its end (`onyx_fetch.c`, `in_flush_post`: what came is handed over before
+  the thread waits for more). **The same request replayed with curl** (its URL, headers and
+  body taken from the bench's log, even Jet's User-Agent and headers) is answered at once (151
+  bytes: UMP part 46, the server asking the player to reload its player response). So Google's
+  server holds Jet's own stream open without data -- the cause is on its side of the wire: the
+  player's attestation (BotGuard's PO token, which our run produces but YouTube may judge), the
+  TLS fingerprint, or the bench's network (Google already refuses it the watch pages). The next
+  step is a run from another network (the Pi at home) and a capture of a desktop Chrome's SABR
+  exchange for the same video to compare the requests field by field. Debugging aids (the PC
+  bench): `NS_MEDIADEBUG=1` (media.js' steps on the console), `NS_NETBODY=<part of a URL>` (a
+  script request's headers, its whole body, its response or its parts on stderr),
+  `NS_NETDEBUG=1` (each response's head, each HTTP/2 frame), `NS_MEDIASTUB=1` (the stand-ins;
+  `0`: off).
 
 ### Speed on the Pi 4 (measured / estimated)
 
-- **Measured** (PC bench, and AArch64 under qemu for correctness only -- qemu gives no Pi
-  timings): the YUV to RGB conversion of a 854 x 480 frame takes 4.2 ms with the C path on the
-  PC; on the Pi the NEON path does 16 pixels in ~20 instructions: **~1-2 ms** a 480p frame
-  (estimated); the frame's copy into the bitmap 1.6 MB (~1 ms); FLAC decodes 1.5 s of 44.1 kHz
-  stereo in ~37 ms on the PC (~0.2 s of CPU a minute on the Pi, estimated).
-- **Estimated** for the codecs to vendor (published numbers for one Cortex-A72 core at 1.5 GHz;
-  Onyx runs an app's threads on core 0 only): **VP9** (libvpx, NEON) ~4-6 ms a 480p frame, ~10-14
-  ms a 720p frame; **AV1** (dav1d, NEON) ~5-8 ms at 480p; **H.264** (openh264) ~4 ms at 480p;
-  **Opus** ~1-2 % of the core. 480p at 30 fps (33 ms a frame) leaves ~20 ms a frame to the page's
-  scripts and the painting; 720p30 would take most of the core -- hence "smooth" up to 854 x 480.
+`tools/tests/av/bench.sh <clips>` (avbench: demux, decode, convert; the PC's C build, then the
+AArch64 build -- libvpx's NEON, dav1d's assembly -- under `qemu-aarch64 -cpu cortex-a72`; it
+prints a checksum of every frame's pixels: **the AArch64 build's frames are identical to the C
+build's** for every clip). Clips made with FFmpeg (PyAV) from its `mandelbrot` source (fine
+detail, constant motion: harder than most videos), 5 s at 30 fps, at YouTube's bit rates:
+
+| clip | PC, C code | AArch64 under qemu | YUV to RGB (qemu) |
+|---|---|---|---|
+| VP9 640x360, 500 kb/s | 3.4 ms a frame | 11.2 ms (key frame 72) | 3.8 ms |
+| VP9 854x480, 860 kb/s | 5.7 ms | 20.0 ms (95) | 7.1 ms |
+| AV1 640x360, 320 kb/s | 5.0 ms | 17.7 ms (148) | 4.2 ms |
+| AV1 854x480, 590 kb/s | 7.9 ms | 28.0 ms (211) | 6.8 ms |
+| Opus 48 kHz stereo | 0.2 % of a core | 3-4 % | -- |
+
+qemu runs NEON code several times slower than the Cortex-A72 does (each vector instruction
+becomes a dozen of the host's); the YUV conversion, our own NEON loop of ~20 instructions for
+16 pixels, takes ~1 ms on the A72 at 1.5 GHz for 480p against 7 ms under qemu. Scaled the same
+way (5-7x for these decoders, whose time is part scalar entropy decoding), **estimated on the
+Pi 4**: VP9 480p ~3-5 ms a frame, AV1 360p ~3-4 ms, AV1 480p ~5-7 ms with key frames of
+~30-40 ms (the four decoded frames queued ahead absorb them). Onyx runs an app's threads on core
+0 with the page's scripts and painting, so "smooth" (MediaCapabilities, `isTypeSupported` with
+a size) is set with a margin: **VP9 / VP8 up to 854 x 480 at 30 fps, AV1 up to 640 x 360 at 30
+fps** (`av_vpx.c`, `av_dav1d.c`). To be confirmed on a Pi: if AV1 480p proves comfortable,
+raise `av_av1_codec`'s size.
 - **The page**: YouTube's watch page runs more than 14 MB of scripts (kevlar_base alone 10.8 MB,
   the player's base.js 3.0 MB); on the PC bench the watch page and its player settle in under a
   minute with the code cache cold (a bench run, not a timing). On the Pi expect a long first
   visit (the code cache helps the next ones); the embed player (`youtube.com/embed/<id>`: its
   base.js is 1.9 MB) is much lighter -- the better way to watch on the Pi.
 
-### Adding the codecs (the next step)
+### The codecs (vendored, 2026-10-02)
 
-1. Vendor `third_party/libvpx-1.15.x`, `third_party/opus-1.5.x` (and later
-   `third_party/dav1d-1.5.x`), BSD licences: record them in docs/LICENSING.md.
-2. Build them as static libraries for the three targets in `user/netsurf/Makefile` (as the other
-   libraries): libvpx configured `--target=armv8-linux-gcc --disable-vp8-encoder
-   --disable-vp9-encoder --disable-multithread --disable-runtime-cpu-detect --enable-neon`
-   (its generated `vpx_config.h` / `vp9_rtcd.h` committed), libopus with `--disable-float-api`
-   off, NEON intrinsics on; `tools/tests/netsurf/host.mk` and `pc/Jet/jet.mk` compile their
-   sources directly.
-3. Compile `user/av` with `-DAV_WITH_VPX -DAV_WITH_OPUS` (and `-DAV_WITH_DAV1D`) and the libraries'
-   include paths; link them. `av_codec_list` then lists them, `isTypeSupported` answers yes,
-   YouTube serves VP9 + Opus (WebM) at <= 480p.
-4. Test: `mediatest.sh` with clips made by the vendored encoders' examples (vpxenc / opusenc
-   are not needed on the Pi: a tiny committed clip, a few hundred KB, made once); then the live
-   site with the stand-ins off.
+- `third_party/libvpx-1.15.2` (BSD + Google's patent grant), `third_party/dav1d-1.5.1` (BSD),
+  `third_party/opus-1.5.2` (BSD): the decoders' sources only (no encoder but libopus', no tests,
+  no build systems), each with a `README.onyx` (what is kept, how it is configured). libvpx's
+  configure was run once per target and its generated headers committed (`onyx/generic`: C;
+  `onyx/arm64`: NEON, no run-time CPU detection, ARMv8.0); dav1d's and libopus' `config.h` are
+  written by hand (`onyx/`). dav1d asks for pthreads, which newlib lacks: on the Pi a header of
+  inline stand-ins (`onyx/pthread/pthread.h`; `user/av` opens it with one thread and a frame
+  delay of 1, so it never starts a thread nor waits) and `sysconf` renamed (`onyx_sysconf.c`).
+- **One source list for every build**: `user/av/codecs.mk` (the files, the flags, the
+  `AV_WITH_*` and include paths of `user/av`'s glue), included by `user/netsurf/Makefile` (the
+  Pi: `libvpx.a`, `libdav1d.a`, `libopus.a`, `make -C user/netsurf codecs`; dav1d's `.S` files
+  assembled by GCC 13.3), `user/netsurf/netsurf-app.mk` (links them), `tools/tests/netsurf/host.mk`
+  (the PC bench: the C code), `pc/Jet/jet.mk` (Windows: the C code, dav1d's Win32 threads) and
+  `tools/tests/av/bench.mk` (avbench). Jet on the Pi grows by ~1.1 MB (9.9 to 11.0 MB).
+- The decoding threads get **1 MB stacks** (`av_os.h`; 256 KB before): dav1d's assembly keeps
+  blocks on the stack (it gives its own threads 1 MB), libopus uses variable-length arrays.
+- `av01` with 10 bits is no longer claimed (dav1d is built for 8 bits only).
 
 Out of reach for now: the Pi 4's **H.264 hardware decoder** (the VideoCore's, behind the
 firmware's MMAL / V4L2 interfaces: a kernel driver Circle does not have -- a kernel project of
@@ -4483,6 +4523,17 @@ the decoding off core 0: the next optimisation once a decoder runs.
   FLAC then `new Audio()` WAV (the sound heard **bit-exact**), MP3, a 10 s file by 64 KB ranges
   and a seek to 8 s before those bytes came (17 requests, not the whole file), the type
   answers: **all passed**. jstest.sh, acidtest.sh and the others pass as before.
+- **The codecs in mediatest** (2026-10-02): `tools/tests/av/clips/` (committed, 110 KB, made by
+  `tools/tests/av/mkcodec.py` with PyAV from mkmedia's picture and sound: 96 x 64, 25 fps, 2 s,
+  a key frame each 0.5 s, Opus at 64 kb/s): `vp9.webm` (VP9 + Opus) and `av1.mp4` (AV1 + Opus)
+  in `<video src>` -- the events, 50 frames in order, **the last frame's and a seek's frame's
+  pixels equal to the reference decoders' frames** (libvpx's VP9 via FFmpeg, libdav1d; their
+  RGB sums in `<clip>.txt`), the 440 Hz tone heard --, `vp9-mse.webm` and `av1-frag.mp4` through
+  MSE (the same steps as the raw clips; the buffered ranges within 20 ms -- an Opus packet -- of
+  theirs), and the type answers (`vp9`, `av01`, `opus`: "probably"; `avc1`: ""): **106 checks,
+  all passed**. The runs now end when the page logs `done` (the desktop simulator's new
+  `waitlog N TEXT` step, `SIM_LOG`) instead of after a fixed number of turns, and the seek's
+  frame is read once it is shown: the seek check failed now and then on a loaded machine.
 
 ## 45. Netflix's sign-in code: the boxes no digit could be typed in (2026-10-01)
 

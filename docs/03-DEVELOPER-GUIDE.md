@@ -1648,14 +1648,17 @@ tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tes
 `<audio>` and MSE are built on it (docs/06 §44); the Media Player's videos are meant to be. Plain C
 (`av.h` is the reference), threads and locks through `av_os.h` (the kapi; pthreads with `-DAV_POSIX`
 for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I kernel/include`
-(`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given.
+(`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given --
+`user/av/codecs.mk` has their libraries' sources and flags and `AV_CODECS_CF` (the `-DAV_WITH_*` and
+include paths): include it with `TP` = `third_party` and `AV_ARCH` = `aarch64` (the Pi: NEON, dav1d's
+assembly; `user/netsurf/Makefile codecs` builds `libvpx.a`, `libdav1d.a`, `libopus.a`) or `generic` (C).
 
 | File | What |
 |---|---|
 | `av.h` | The API (below). |
 | `av_demux.c`, `av_mkv.c`, `av_mp4.c`, `av_riff.c`, `av_flac.c`, `av_mp3.c` | The containers: WebM / Matroska, MP4 / MOV / fragmented MP4, WAV, FLAC, MPEG audio. |
 | `av_codec.c`, `av_flac.c`, `av_mp3.c` | The codecs' table, PCM / A-law / mu-law / uncompressed I420, FLAC (built in), MP3 (minimp3); `av_type_supported` (canPlayType, isTypeSupported, MediaCapabilities). |
-| `av_vpx.c`, `av_dav1d.c`, `av_opus.c` | VP8 / VP9, AV1, Opus on libvpx / dav1d / libopus -- **not vendored yet**: with `-DAV_WITH_VPX` / `AV_WITH_DAV1D` / `AV_WITH_OPUS` and the library. |
+| `av_vpx.c`, `av_dav1d.c`, `av_opus.c` | VP8 / VP9, AV1, Opus on libvpx 1.15.2 / dav1d 1.5.1 / libopus 1.5.2 (`third_party/`, `user/av/codecs.mk`): with `-DAV_WITH_VPX` / `AV_WITH_DAV1D` / `AV_WITH_OPUS` and the library. One decoding thread each; 8-bit 4:2:0 video. |
 | `av_stub.c` | The tests' stand-ins (grey frames, silence) for the codecs not built in: `av_codec_enable_stubs ()`. |
 | `av_yuv.c`, `av_resample.c` | YUV 4:2:0 to RGBA / BGRA (NEON on AArch64), the resampler (any rate / channels to s16 stereo). |
 | `av_store.c` | The coded frames by source and track (MSE's semantics), buffered ranges, removal, quota. |
@@ -1687,9 +1690,12 @@ src)` says, `av_store_feed_end` at the end. **MSE**: `av_store_append` per Sourc
 their track, pts / dts in microseconds, key flag), `av_decoder_new (track)` / `av_decoder_send` /
 `av_decoder_receive` (frames: I420 planes or float PCM), `av_yuv_to_rgb`, `av_resampler_new` / `av_resample`.
 
-What decodes today: FLAC, MP3, PCM (WAV), the tests' I420 -- `av_codec_list ()` says. A file whose codec is
-not there plays nothing: `st.error == AV_EUNSUP` (Jet: MediaError 4). **Tests**: `sh tools/tests/av/run.sh`
-(the library alone, PC and AArch64 under qemu), `sh tools/tests/netsurf/mediatest.sh` (in Jet Browser).
+What decodes: VP9, VP8, AV1, Opus (with `codecs.mk`'s libraries), FLAC, MP3, PCM (WAV), the tests' I420 --
+`av_codec_list ()` says. A file whose codec is not there plays nothing: `st.error == AV_EUNSUP` (Jet:
+MediaError 4). **Tests**: `sh tools/tests/av/run.sh` (the library alone, PC and AArch64 under qemu),
+`sh tools/tests/netsurf/mediatest.sh` (in Jet Browser; the VP9 / AV1 / Opus clips of `tools/tests/av/clips`,
+made by `mkcodec.py` with PyAV), `sh tools/tests/av/bench.sh <clips>` (the decoders' speed, PC and AArch64
+under qemu, the frames' checksum the same on both).
 
 ### PDF Viewer, and the PDF export (`user/Apps/pdf`, `user/pdf/pdfwrite.h`)
 
@@ -2375,7 +2381,10 @@ barwidth = 40
   `main` runs — `exit` stops the process on the spot), and drag & drop from another app:
   `dragover X Y [FLAGS]` (`GUI_EVENT_DRAG_OVER`; FLAGS 1 Ctrl, 4 the drag left) and
   `drop X Y PATH|PATH... [FLAGS]` (`GUI_EVENT_DROP`, the paths a `DND_FILES` payload that
-  `kapi_drag_data` returns). Files: what an app writes goes to `SIM_WRITES` (never the card) —
+  `kapi_drag_data` returns), and `waitlog N TEXT` (the script stays on this step, one main-loop
+  turn at a time, until the file `SIM_LOG` -- where the app's output is redirected -- holds TEXT, or
+  N turns: a test waits for what it expects, `console: done` in mediatest.sh, rather than a fixed
+  count of `wait`s a loaded machine may not be enough for). Files: what an app writes goes to `SIM_WRITES` (never the card) —
   `kapi_save_file`, `kapi_mkdir`, the streams `kapi_file_out` / `kapi_file_in` (a `FILE *` behind
   the handle) —, and `kapi_remove` / `kapi_rename` work on `RAM:` and on those written files. Like the kernel, the simulator makes no
   window over 1024 × 768 (`kapi_create_window` returns 0).

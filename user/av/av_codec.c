@@ -469,10 +469,11 @@ int av_codec_of_string(const char *s, int *profile_ok)
 	} else if (!strncmp(l, "av01", 4)) {
 		int n = dotted(l, v, 8);
 		codec = AV_C_AV1;
-		/* main profile, 8 / 10 bits: the decoder's (dav1d) */
+		/* main profile, 8 bits: dav1d as built here (CONFIG_8BPC only -- av_dav1d.c
+		 * shows 8-bit 4:2:0 pictures alone) */
 		if (n >= 1 && v[0] != 0)
 			ok = 0;
-		if (n >= 3 && v[2] != 8 && v[2] != 10)
+		if (n >= 3 && v[2] != 8)
 			ok = 0;
 	} else if (!strncmp(l, "avc1", 4) || !strncmp(l, "avc3", 4)) {
 		codec = AV_C_H264;
