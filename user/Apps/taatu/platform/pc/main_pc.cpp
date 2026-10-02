@@ -124,6 +124,22 @@ int main (int argc, char **argv)
         else { printf ("[taatu] login FAILED: %s\n", auth.err[0] ? auth.err : "unknown"); return 1; }
     }
 
+    // --get <path>: one authenticated GET, print the response, exit. (Schema introspection:
+    // e.g. --login --get /api/rooms/4  to learn the room layout / groundGrid / background.)
+    const char *getPath = arg (argc, argv, "--get", "");
+    if (getPath[0])
+    {
+        ITransport *gt = mk_auto (0);
+        Buf h;
+        if (tokbuf[0]) { h.add ("X-Session-Token: "); h.add (tokbuf); h.add ("\r\n"); }
+        HttpResp rp;
+        bool ok = http_request (*gt, host, port, "GET", getPath, h.p ? h.p : "", 0, 0, rp);
+        delete gt;
+        printf ("[get] %s -> ok=%d status=%d bytes=%d\n", getPath, ok, rp.status, rp.body.n);
+        if (rp.body.p) printf ("%.4000s\n", rp.body.p);
+        return ok ? 0 : 1;
+    }
+
     printf ("[taatu] connecting %s://%s:%d  room=%d\n", g_tls ? "wss" : "ws", host, port, room);
 
     ITransport *tp = mk_auto (0);

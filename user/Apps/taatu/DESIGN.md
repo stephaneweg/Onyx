@@ -340,7 +340,15 @@ Toolchain absente de la machine de dev Windows → voir
       `device-id`/`fingerprint` ; crypto + `fnv1a` validés sur vecteurs. (PC compilé+exécuté.)
 - [x] Transport **TLS côté PC** (Schannel, `platform/pc/tls_win.hpp`) : login+WS prod depuis
       le client PC. Testé contre `taatu.world:443` (csrf 200 + cookie ; login path complet).
+- [x] **Pipeline de rendu** (portable, testé) : `sprite.hpp` (blit/mirror/tint), `avatar_render.hpp`
+      (compositeur paper-doll : cellule 34×80, 7 frames × 5 lignes, dirs 5–7 = miroir),
+      `roommap.hpp` (parse `ROOM_DATA` : origine, grille 0/1/2, textures, projection iso +
+      unproject). `assets.hpp` (Onyx) : téléchargement TLS + cache + `img_load_mem`.
+- [x] Intégration GUI Onyx : charge la salle (`/api/rooms/{id}` → `file_path` →
+      `/src/rooms/*.js`), dessine le décor + avatars composités triés en profondeur, clic→tuile
+      marchable→déplacement. (À **calibrer** : tailles de tuile / ancrage pieds, sur screenshot.)
 - [ ] Écran de login natif (champs pseudo/mot de passe, invite MFA) + `config.ini`.
+- [ ] Bulles de chat au-dessus des têtes ; animation de marche (frames) ; escaliers (iso Z).
 - [ ] Connexion + entrée en salle de bout en bout (prod ou serveur dev), reconnexion Wi-Fi.
 - [ ] Rendu iso : décor + avatars (dots → sprites composés) triés en profondeur ; pseudos.
 - [ ] Clic → pathfinding client → déplacement ; bulles de chat ; saisie du chat.

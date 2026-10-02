@@ -12,7 +12,9 @@
 #include "applib.h"
 #include "../../core/client.hpp"
 #include "../../core/auth.hpp"
+#include "../../core/avatar_render.hpp"
 #include "transport_onyx.hpp"
+#include "assets.hpp"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -73,20 +75,65 @@ static bool pop_cmd (Cmd &out)
 
 static void mark_dirty (void *) { g_dirty = 1; }
 
+// ---- room geometry + assets -------------------------------------------------------------
+static AssetCache g_assets;
+static RoomMap    g_room;
+static volatile int g_room_loaded = 0;
+static char       g_token[600];
+
+static void ensure_room_bg ()
+{
+    if (!g_room.bgGame[0]) return;
+    char p[160]; snprintf (p, sizeof p, "/images/game/%s", g_room.bgGame);
+    g_assets.ensure (p);
+}
+// fetch /api/rooms/{id} -> file_path -> /src/rooms/{file_path} -> parse geometry (net thread)
+static void load_room (int id)
+{
+    OnyxTransport tp (CFG_TLS);
+    char path[48]; snprintf (path, sizeof path, "/api/rooms/%d", id);
+    Buf h; if (g_token[0]) { h.add ("X-Session-Token: "); h.add (g_token); h.add ("\r\n"); }
+    HttpResp rp;
+    if (!http_request (tp, CFG_HOST, CFG_PORT, "GET", path, h.p ? h.p : "", 0, 0, rp) || rp.status != 200) return;
+    json::Doc d; d.parse (rp.body.p ? rp.body.p : "", (unsigned long) rp.body.n, json::TOLERANT);
+    const char *fp = d.root ()["room"]["file_path"].asStr ("");
+    if (!fp[0]) return;
+    char src[192]; snprintf (src, sizeof src, "/src/rooms/%s", fp);
+    OnyxTransport tp2 (CFG_TLS);
+    HttpResp rs;
+    if (!http_request (tp2, CFG_HOST, CFG_PORT, "GET", src, "", 0, 0, rs) || rs.status != 200) return;
+    kapi_mutex_lock (g_world_mtx, KAPI_WAIT_FOREVER);
+    g_room.parse (rs.body.p ? rs.body.p : "", rs.body.n);
+    kapi_mutex_unlock (g_world_mtx);
+    ensure_room_bg ();
+    g_room_loaded = 1; g_dirty = 1;
+}
+// ensure every present avatar's sheets are downloaded (net thread; sole writer, no lock vs poll)
+static void ensure_avatar_assets ()
+{
+    for (int i = 0; i < g_cli.world.n_av; i++)
+    {
+        Avatar &a = g_cli.world.av[i]; if (!a.used) continue;
+        g_assets.ensure (body_sheet_path (a.gender));
+        if (a.eye_sprite_path[0]) g_assets.ensure (a.eye_sprite_path);
+        for (int j = 0; j < N_LAYERS; j++) if (a.cloth[j].present && a.cloth[j].sprite_path[0]) g_assets.ensure (a.cloth[j].sprite_path);
+    }
+}
+
 // ---- the network thread -----------------------------------------------------------------
 static int net_thread (void *)
 {
     // ensure a session token (TAATU_TOKEN, else REST login with TAATU_PSEUDO/PASSWORD)
-    char tok[600]; tok[0] = 0;
+    g_token[0] = 0;
     const char *envtok = getenv ("TAATU_TOKEN");
-    if (envtok) { strncpy (tok, envtok, sizeof tok - 1); tok[sizeof tok - 1] = 0; }
-    do_login_if_needed (tok, sizeof tok);
-    g_cli.set_token (tok);
+    if (envtok) { strncpy (g_token, envtok, sizeof g_token - 1); g_token[sizeof g_token - 1] = 0; }
+    do_login_if_needed (g_token, sizeof g_token);
+    g_cli.set_token (g_token);
 
     OnyxTransport tp (CFG_TLS);
     if (!g_cli.connect (tp)) { g_dirty = 1; return 1; }
     bool joined = false;
-    unsigned last_step = 0;
+    unsigned last_step = 0, last_assets = 0;
     while (g_net_run)
     {
         g_cli.poll ();
@@ -96,6 +143,7 @@ static int net_thread (void *)
         {
             g_cli.note_input ();
             g_cli.join_room (CFG_ROOM, CFG_SX, CFG_SZ, 1);
+            load_room (CFG_ROOM);
             joined = true;
         }
         // drain GUI commands
@@ -109,10 +157,55 @@ static int net_thread (void *)
         // advance an in-progress move ~ every 230 ms
         unsigned t = nowms ();
         if (t - last_step > 230) { g_cli.step_move (); last_step = t; }
+        // keep avatar assets loaded (cheap once cached), a few times a second
+        if (joined && t - last_assets > 500) { ensure_avatar_assets (); last_assets = t; g_dirty = 1; }
 
         kapi_msleep (10);
     }
     return 0;
+}
+
+// ---- room/avatar drawing (GUI thread) ---------------------------------------------------
+#define ROOM_OX 0
+#define ROOM_OY 36
+static const int CLOTH2RL[N_LAYERS] = { RL_BOTTOM, RL_TOP, RL_SHOES, RL_BEARD, RL_HAIR, RL_GLASSES, RL_HAT };
+
+// alpha-over an Rgba onto the (opaque 0x00RRGGBB) framebuffer at (dx,dy).
+static void blit_rgba_fb (int dx, int dy, const Rgba &img)
+{
+    for (int y = 0; y < img.h; y++)
+    {
+        int ty = dy + y; if ((unsigned) ty >= (unsigned) WIN_H) continue;
+        for (int x = 0; x < img.w; x++)
+        {
+            int tx = dx + x; if ((unsigned) tx >= (unsigned) WIN_W) continue;
+            unsigned s = img.px[y * img.w + x]; unsigned a = s >> 24; if (!a) continue;
+            unsigned *dpx = &fb[ty * WIN_W + tx];
+            *dpx = blend_px (*dpx | 0xFF000000u, s) & 0x00FFFFFFu;
+        }
+    }
+}
+static void build_layers (const Avatar &a, LayerSrc L[RL_COUNT])
+{
+    for (int i = 0; i < RL_COUNT; i++) L[i] = LayerSrc ();
+    L[RL_SKIN].sheet = g_assets.get (body_sheet_path (a.gender)); L[RL_SKIN].present = L[RL_SKIN].sheet != 0; L[RL_SKIN].tint = parse_hex_color (a.skin_tone_hex);
+    if (a.eye_sprite_path[0]) { L[RL_EYES].sheet = g_assets.get (a.eye_sprite_path); L[RL_EYES].present = L[RL_EYES].sheet != 0; }
+    for (int j = 0; j < N_LAYERS; j++)
+    {
+        if (!a.cloth[j].present || !a.cloth[j].sprite_path[0]) continue;
+        int rl = CLOTH2RL[j];
+        L[rl].sheet = g_assets.get (a.cloth[j].sprite_path); L[rl].present = L[rl].sheet != 0;
+        L[rl].tint = (a.cloth[j].color_editable && a.cloth[j].color_hex[0]) ? parse_hex_color (a.cloth[j].color_hex) : 0;
+    }
+}
+// returns true if a composed sprite was drawn (else the caller draws the placeholder)
+static bool draw_avatar_sprite (const Avatar &a, int screenX, int screenY)
+{
+    LayerSrc L[RL_COUNT]; build_layers (a, L);
+    if (!L[RL_SKIN].present) return false;        // body not downloaded yet
+    Rgba frame; compose_avatar (frame, L, a.direction, 0);
+    blit_rgba_fb (screenX - AV_CELL_W / 2, screenY - AV_CELL_H + 12, frame);   // feet ~12px up from cell bottom
+    return true;
 }
 
 // ---- drawing ----------------------------------------------------------------------------
@@ -149,9 +242,11 @@ static void redraw ()
     wtk::draw_text (fb, WIN_W, WIN_H, 12, 10, hdr, 0x00E8EEF8, 1, 2);
 
     kapi_mutex_lock (g_world_mtx, KAPI_WAIT_FOREVER);
-    // floor grid (placeholder 30x30)
-    for (int x = 0; x < 30; x++) for (int z = 0; z < 30; z++)
-        if (((x + z) & 1) == 0) diamond (x, z, 0x001b1b2a);
+    // room background (downloaded) or a placeholder grid
+    const Rgba *bg = 0;
+    if (g_room_loaded && g_room.bgGame[0]) { char bp[160]; snprintf (bp, sizeof bp, "/images/game/%s", g_room.bgGame); bg = g_assets.get (bp); }
+    if (bg) blit_rgba_fb (ROOM_OX, ROOM_OY, *bg);
+    else for (int x = 0; x < 30; x++) for (int z = 0; z < 30; z++) if (((x + z) & 1) == 0) diamond (x, z, 0x001b1b2a);
     // avatars, sorted back-to-front by (x+z)
     int order[MAX_AVATARS], n = 0;
     for (int i = 0; i < g_cli.world.n_av; i++) if (g_cli.world.av[i].used) order[n++] = i;
@@ -161,13 +256,17 @@ static void redraw ()
     for (int k = 0; k < n; k++)
     {
         Avatar &a = g_cli.world.av[order[k]];
-        int cx, cy; iso (a.x, a.z, &cx, &cy);
-        unsigned col = a.user_id == g_cli.world.self_id ? 0x0070E0FF : (a.gender ? 0x00FF99CC : 0x00FFD080);
-        // body as a vertical capsule on the tile
-        fill (cx - 6, cy - 34, 12, 30, a.is_absent ? 0x00707080 : col);
-        px (cx, cy, 0x00FFFFFF);
-        wtk::draw_text (fb, WIN_W, WIN_H, cx - (int) strlen (a.pseudo) * kapi_font_width () / 2, cy - 48, a.pseudo, 0x00FFFFFF, 1, 1);
-        if (a.typing) wtk::draw_text (fb, WIN_W, WIN_H, cx - 6, cy - 60, "...", 0x00AAD4FF, 1, 1);
+        int cx, cy;
+        if (g_room_loaded) { g_room.iso (a.x, a.z, &cx, &cy); cx += ROOM_OX; cy += ROOM_OY; }
+        else iso (a.x, a.z, &cx, &cy);
+        if (!draw_avatar_sprite (a, cx, cy))
+        {
+            unsigned col = a.user_id == g_cli.world.self_id ? 0x0070E0FF : (a.gender ? 0x00FF99CC : 0x00FFD080);
+            fill (cx - 6, cy - 34, 12, 30, a.is_absent ? 0x00707080 : col);
+            px (cx, cy, 0x00FFFFFF);
+        }
+        wtk::draw_text (fb, WIN_W, WIN_H, cx - (int) strlen (a.pseudo) * kapi_font_width () / 2, cy - AV_CELL_H + 2, a.pseudo, 0x00FFFFFF, 1, 1);
+        if (a.typing) wtk::draw_text (fb, WIN_W, WIN_H, cx - 6, cy - AV_CELL_H - 10, "...", 0x00AAD4FF, 1, 1);
     }
     // chat log (bottom-left)
     int cy = WIN_H - 150;
@@ -205,10 +304,11 @@ static void on_click (unsigned long, int ev, long value)
 {
     if (ev != GUI_EVENT_CANVAS_CLICK) return;
     int x = GUI_PTR_X (value), y = GUI_PTR_Y (value);
-    int dx = x - ISO_OX, dy = y - ISO_OY;
-    int tx = (dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2;
-    int tz = (dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2;
+    int tx, tz;
+    if (g_room_loaded) g_room.unproject (x - ROOM_OX, y - ROOM_OY, &tx, &tz);
+    else { int dx = x - ISO_OX, dy = y - ISO_OY; tx = (dx / (TILE_W / 2) + dy / (TILE_H / 2)) / 2; tz = (dy / (TILE_H / 2) - dx / (TILE_W / 2)) / 2; }
     if (tx < 0) tx = 0; if (tz < 0) tz = 0;
+    if (g_room_loaded && !g_room.walkable (tx, tz)) return;    // don't walk into blocked tiles
     g_cli.note_input ();
     Cmd c; c.kind = CMD_MOVE; c.a = tx; c.b = tz; c.text[0] = 0; push_cmd (c);
     g_dirty = 1;
@@ -252,6 +352,7 @@ int main (void)
 
     g_world_mtx = kapi_mutex_create ();
     g_cmd_mtx = kapi_mutex_create ();
+    g_assets.init (CFG_HOST, CFG_PORT, CFG_TLS);
 
     g_cli.now_ms = nowms;
     g_cli.lock_fn = wlock; g_cli.unlock_fn = wunlock; g_cli.lock_ctx = 0;
