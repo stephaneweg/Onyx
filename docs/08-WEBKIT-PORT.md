@@ -5,8 +5,7 @@
 **Step 1 (WTF + JavaScriptCore → the `jsc` shell) is done: it passes on the PC bench and on the
 Pi** (the five steps of the Pi test below), and is in `main`. Step 2 (WebCore) is next, on a branch
 `webkit-port`. `/bin/jsc` (the LLInt and WebAssembly's interpreter, no JIT; 33.1 MB with ICU's data) is
-staged in
-`sdcard/`, with `SD:/docs/jsc/smoke.js` and `bench.js`.
+staged in `sdcard/`, with `SD:/docs/jsc/smoke.js` and `bench.js`.
 
 **Pinned WebKit revision:** `b8a7a626127c0010a557c9d6466fefd38d9477c1` (WebKit `main`, 2026-10-02;
 its `Source/ThirdParty/skia` is Skia m154 `588b550a`, the copy already ported into the sysroot:
@@ -129,7 +128,9 @@ On a card made from the branch's `sdcard/` (kernel v76 or later), in the Termina
 4. `jsc` alone → a `>>>` prompt: `1+1`, `new Intl.DateTimeFormat("fr-FR", {dateStyle: "full"}).format(new Date())`,
    `quit()`.
 5. `jsc -e "a=[];for(i=0;i!=300000;i++)a.push({i});setTimeout(function(){print('late')},2000)"`
-   → `late` after two seconds (the collector while the shell waits). No `<`, `>`, `|` and no space
+   → `late` after two seconds (the collector while the shell waits; on the Pi 3 to 4 seconds in
+   all: the 33 MB image loaded from the card, JavaScriptCore's start, the loop, then the timer's
+   two seconds). No `<`, `>`, `|` and no space
    in the script: Onyx's shell (`user/bin/cmd.c`) has no quoting — they are redirections and
    separators even between quotes (a first version of this step, with `i < 300000` and arrow
    functions, answered "cannot open input file" without starting `jsc`).
