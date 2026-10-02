@@ -52,8 +52,13 @@ read, 80 MB held once whatever the number of processes. **No kernel parameter** 
 list is `preload <program>` lines in `/etc/autostart`, which `init` reads (`user/bin/init.c`) — a
 `/bin/preload` tool over a new kapi call (appended: the ABI version goes up), which returns at
 once while a kernel task loads the image. The line's place in the file gives the order (after the
-dock, so the boot is not 5 s longer), the same tool works from the terminal at any time, and with
-an option it lists the kept images or releases one. About 150 lines over (c) with the tool: the
+dock, so the boot is not 5 s longer), the same tool works from the terminal at any time and, with
+no argument, lists the kept images. **`/bin/unload <program>`** (the user) releases one: the
+image loses its pin and its name at once — no new process maps it —, and its frames are freed
+when the last process running it ends (the reference count of (c)). `pkg` uses it: before it
+replaces a program it asks whether the file is preloaded, unloads it, installs, then preloads the
+new file. The kernel's own check stays as the safety net (the image's key is the file's volume,
+first cluster, size and time: a changed file never runs from a stale image). About 150 lines over (c) with the tool: the
 call, the loading task, a run that arrives during the load waiting for it, and the image replaced when `pkg` updates the file (the key changes: drop the
 old object when its last process ends, load the new file). It makes the first start as quick as
 the next ones without a daemon. What it does not remove is the program's own initialisation (ICU,
