@@ -304,7 +304,14 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    renders a page on the bench and on the Pi (2026-10-02); the network path, WebCrypto, WOFF2 and
    media are still to do.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
-4. The Onyx view, compositor (later the V3D) and media (`MediaPlayerPrivate` on `user/av`).
+4. The Onyx view; then, in the order the user asked for (2026-10-02): **the JavaScript JIT before
+   video**. The JIT: executable memory for a program's own mappings in the kernel (`PROT_EXEC`
+   through `vm_map` / `vm_protect`, W^X, the instruction cache flushed from EL0: a kapi change),
+   then `ENABLE_JIT` (the Baseline tier first) with JavaScriptCore's executable allocator on it —
+   and a check of what the JIT tiers ask of thread suspension and signals, which Onyx lacks
+   (above). Then media (`MediaPlayerPrivate` on `user/av`, MSE: Jet's decoders — VP9, AV1, Opus —
+   are there), and the compositor on the V3D once the CPU rendering has proved itself. YouTube is
+   the reference site: its pages need the JIT to feel fast, its videos need MSE.
 5. The browser (Jet's UI reused). **No tabs** (the user, 2026-10-02): one page per browser
    window — one UI, one web and one network process per browser; what `window.open` and
    `target=_blank` do is to be decided then (the same view, or a new window).
