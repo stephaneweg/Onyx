@@ -121,6 +121,9 @@ public:
 	// only marks it; LeaveNoKill ends the task then, once the resource is free.
 	void EnterNoKill (void);
 	void LeaveNoKill (void);
+	// The current task is in a no-kill section (it holds a kernel resource). Never while it
+	// runs an app's own code: the app-fault path (exception.cpp) checks that invariant.
+	boolean InNoKill (void) const	{ return m_pCurNode != 0 && m_pCurNode->nNoKill > 0; }
 
 	void RegisterTaskSwitchHandler (TSchedulerTaskHandler *pHandler);
 	void RegisterTaskTerminationHandler (TSchedulerTaskHandler *pHandler);

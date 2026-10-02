@@ -9,7 +9,8 @@
  *     the running thread's kernel stack), call Circle's InterruptHandler (GIC
  *     dispatch + EOI + the registered periodic tick handler), then KernelIRQExit
  *     (reschedules if the time slice expired -> preemption), then restore + eret.
- *   - Sync from EL1: SVC -> syscall (test path); any other -> kernel panic dump.
+ *   - Sync from EL1: SVC -> syscall (test path); a fault in an app's own code -> the
+ *     app is killed (exception.cpp, AppFaultRedirect); any other -> kernel panic dump.
  *   - Sync from EL0: SVC -> syscall; abort -> page-fault handler.
  *   - FIQ: branch to Circle's FIQStub (unchanged) so its FIQ path keeps working.
  *   - Everything else (EL1t, AArch32 lower EL, SError): bad-mode dump.

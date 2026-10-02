@@ -300,6 +300,7 @@ private:
 // owners only draw into their own canvas.
 //
 boolean g_bDisplayDma = TRUE;			// cmdline.txt dispdma=0: no asynchronous display DMA
+extern boolean g_bAppFaultKill;			// (arch/aarch64/exception.cpp) appfault=halt: an app fault halts
 extern boolean g_bGpuDirect;			// (sys/v3d.cpp) gpudirect=0: the GPU never writes the window itself
 
 class CCompositorTask : public CTask
@@ -1818,6 +1819,13 @@ boolean CKernel::Initialize (void)
 		// slice from the 100 Hz timer tick -> preemptive multitasking (#4).
 		install_vectors ();
 		m_Timer.RegisterPeriodicHandler (PeriodicTick);
+
+		// A fault in an app's own code (a bad pointer, an undefined instruction...) kills
+		// that app (arch/aarch64/exception.cpp); appfault=halt (cmdline.txt): it halts
+		// the machine instead, with the post-mortem screen and the crash record (debugging).
+		g_bAppFaultKill = strcmp (m_Options.GetAppOptionString ("appfault", "kill"), "halt") != 0;
+		if (!g_bAppFaultKill)
+			m_Logger.Write (FromKernel, LogNotice, "appfault=halt: a fault in an app halts the system");
 
 		// Per-process address spaces (#5): remember the kernel TTBR0 and switch
 		// TTBR0/ASID on every task switch based on the task's address space.
