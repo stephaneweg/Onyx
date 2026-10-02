@@ -740,19 +740,41 @@ static void compose_discard ()
 	compose_close ();
 }
 static void compose_ccbcc () { g_compose->ccOn = true; g_compose->place (); g_compose->invalidate (true); g_compose->cc->setFocus (); }
+static bool compose_attach_path (const char *path);
 static void compose_attach ()
 {
 	char path[300];
 	if (!wk_file_open (path, sizeof path, "SD:/Documents")) return;
-	if (g_compose->natt >= 16) { wk_messagebox ("Mail", "16 attachments at most.", MB_OK); return; }
+	compose_attach_path (path);
+}
+static bool compose_attach_path (const char *path)
+{
+	if (g_compose->natt >= 16) { wk_messagebox ("Mail", "16 attachments at most.", MB_OK); return false; }
 	int len; char *b = file_read (path, &len);
-	if (!b) { wk_messagebox ("Mail", "The file could not be read.", MB_OK); return; }
-	if (len > 20 * 1024 * 1024) { free (b); wk_messagebox ("Mail", "This file is too big to send by mail (20 MB at most).", MB_OK); return; }
+	if (!b) { wk_messagebox ("Mail", "The file could not be read.", MB_OK); return false; }
+	if (len > 20 * 1024 * 1024) { free (b); wk_messagebox ("Mail", "This file is too big to send by mail (20 MB at most).", MB_OK); return false; }
 	Attach &A = g_compose->att[g_compose->natt++];
 	const char *nm = strrchr (path, '/'); nm = nm ? nm + 1 : path;
 	scpy (A.name, nm, sizeof A.name); scpy (A.type, mime_type_of (nm), sizeof A.type);
 	A.data = b; A.n = len;
 	g_compose->place (); g_compose->invalidate (true);
+	return true;
+}
+// "mail --attach <list>": a new message with the files the list names (one path a line: Photos' Send by Mail)
+static void compose_with_files (const char *list)
+{
+	int len; char *b = file_read (list, &len);
+	if (!b) return;
+	compose_new (0);
+	if (!g_compose->hidden)
+		for (char *l = b; l && *l; )
+		{
+			char *e = strchr (l, '\n'); if (e) *e = 0;
+			int k = (int) strlen (l); if (k && l[k - 1] == '\r') l[--k] = 0;
+			if (l[0]) compose_attach_path (l);
+			l = e ? e + 1 : 0;
+		}
+	free (b);
 }
 // the message made: its bytes, its recipients
 static bool compose_build (Buf &raw, Job *j, bool draft)
@@ -982,6 +1004,8 @@ int main (void)
 	char args[400]; int na = kapi_get_args (args, sizeof args); args[na > 0 && na < 400 ? na : 0] = 0;
 	char *a = args; while (*a == ' ') a++;
 	int al = (int) strlen (a); while (al && a[al - 1] == ' ') a[--al] = 0;
+	char attachList[300] = "";
+	if (!strncmp (a, "--attach ", 9)) { a += 9; while (*a == ' ') a++; scpy (attachList, a, sizeof attachList); a[0] = 0; }
 	if (a[0] == '"') { a++; char *q = strchr (a, '"'); if (q) *q = 0; }
 	if (a[0] && open_eml (a)) {}
 	else g_m.open ();
@@ -1039,6 +1063,7 @@ int main (void)
 	{
 		if (g_m.view.convs.n) open_conv (0);
 		if (g_m.accts.n) g_m.sync_all ();
+		if (attachList[0]) compose_with_files (attachList);
 	}
 
 	root.run ();

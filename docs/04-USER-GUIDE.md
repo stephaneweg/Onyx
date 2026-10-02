@@ -2221,6 +2221,84 @@ also writes `agenda.txt` (the month's appointments, for the agenda widget) and `
 (the month's reminders). The notes of the former calendar (in `agenda.txt`) become appointments
 the first time. An argument `YYYYMMDD` opens that day (the agenda widget's clicks).
 
+### Photos, the photo library (`photos`)
+
+![Photos](../screenshots/photos.png)
+*All the photos by day, the newest first; the albums and the folders at the left, the years at the right.*
+
+Photos shows **every picture of the card in one place**: `SD:/Pictures` (and its `Camera` folder), each
+volume's **`DCIM`** folder (a camera's card), and the **folders you add** (*Add a folder...*, or a folder
+dropped on the window; a right click on it: *Remove from Photos* — the files stay). JPEG, PNG, GIF, BMP,
+WebP and PCX. Start it from the dock or the app list (*Graphics*); `photos <picture>` opens that one. The
+first time, Photos looks through the folders (the status line says how many it found), then remembers
+them: the next starts are immediate, and new pictures are found by themselves.
+
+**The library**: the photos **by day** (*Today*, *Yesterday*, then the date) — the day the camera wrote in
+the picture (its EXIF), else a date in the file's name (`IMG_20260927_164200.jpg`,
+`Screenshot 2026-09-27 at 16.42.00.png`). A photo taken standing is shown standing. At the right the
+**years**: click or drag there to jump through thousands of photos. The slider in the toolbar makes the
+thumbnails bigger or smaller (Ctrl + / Ctrl −). At the left: **All photos**, **Favourites**, **Recently
+added** (the last 30 days), the **albums** (*Albums* shows them all, with their covers), the **folders**.
+The **search** finds a name, a date (`september`, `2025`, `saturday`), a camera, an album, a description.
+
+| | |
+|:---:|:---:|
+| ![Selecting](../screenshots/photos-select.png) | ![A right click](../screenshots/photos-menu.png) |
+| *Three photos selected: the toolbar acts on them* | *A photo's menu* |
+
+**Selecting**: the **ring** at the top left of a photo (or Ctrl + click; Shift + click: a range; the ring
+of a day: all its photos; Ctrl+A: all; Esc: none). Once one is selected, a click selects more. The
+toolbar then shows **favourite** (the heart), **add to an album** (an album made before, or *New
+album...*; again: taken out of it), **share**, **move to the trash** (the File Viewer's trash: they can
+come back) and the cross that unselects. A **right click** on a photo: open, slideshow from here,
+favourite, add to an album, rotate to the left, edit, *Send by Mail...*, *Copy*, *Set as the wallpaper*,
+*Open in Paint*, *Show in the File Viewer*, *Move to the trash*.
+
+![A photo](../screenshots/photos-viewer.png)
+
+**A photo** (a click): dark around it, as big as the window lets it. ← / → (or the arrows on its sides,
+the film strip of its neighbours underneath) the previous / next; the **zoom**: the wheel, + / −, *Fit*
+(0), 1 = actual size, a drag when it is larger than the window. At the top: back (Esc), the date,
+**favourite** (F), **rotate to the left** (R: for a camera's JPEG only the orientation in its EXIF changes,
+no quality lost), **edit** (E), add to an album, share, delete (Del), the **details** (I): the file, its
+size, when it was taken, the camera and the exposure (f/, speed, ISO, focal length), the folder, its
+albums (a click opens one; *+ Add*), and a **description** you write (the search finds it).
+
+| | |
+|:---:|:---:|
+| ![Adjust](../screenshots/photos-edit.png) | ![Crop](../screenshots/photos-crop.png) |
+| *Adjust: Enhance (automatic) applied* | *Crop: the 3:2 shape, the thirds* |
+
+![Filters](../screenshots/photos-filters.png)
+
+**Editing** (E, or the pencil): **Crop** — drag the corners, the sides or the frame; the shape: *Free*,
+*Original*, 1:1, 4:3, 3:2, 16:9 (standing when the frame stands); a quarter turn left or right;
+**Straighten** (±15°: the picture is enlarged so no corner is empty). **Adjust** — **Enhance
+(automatic)**, then by hand: exposure, contrast, highlights, shadows, saturation, warmth, sharpness.
+**Filters** — black and white, warm, cool, vintage, vivid, each shown on the photo. Hold **Before /
+after** to see the original. **Save** writes over the photo (a JPEG keeps its camera facts; a PNG stays a
+PNG); **Save as...** writes a new file (JPEG, or PNG by its name) and leaves the original as it was.
+*Reset* undoes a tab's changes; *Cancel* (Esc) leaves without saving (it asks).
+
+![Albums](../screenshots/photos-albums.png)
+
+**Albums** hold no copies: a photo can be in several, and deleting an album never deletes its photos. A
+right click on an album: open, slideshow, *Send by Mail...*, *Export as a PDF...* (a contact sheet: the
+photos three by four on A4 pages, the oldest first, with their dates), rename, delete.
+
+**Sharing**: *Send by Mail...* opens a new message in **Mail** with the photos attached, made smaller
+(1920 pixels, 16 photos at most); *Copy* puts the picture on the **Clipboard**; *Set as the wallpaper*
+makes it the desktop's (the Theme applet's *image* mode); *Open in Paint*; *Export as a PDF...* (the
+selection, or the photos shown). **Slideshow** (F5, the toolbar's button): the whole screen, a photo every
+4.5 seconds melting into the next (the selection, or the photos shown); ← / → , Space pauses, Esc or a
+click ends it.
+
+**Files**: reads the pictures of the folders watched; writes `SD:/etc/photos/library.db` (what is known of
+each photo: its date, size, camera, favourite, description), `SD:/etc/photos/thumbs/` (the thumbnails, as
+JPEGs), `SD:/etc/photos/albums/<album>.txt` (one path a line), `SD:/etc/photos/folders.txt` (the folders
+added); the photos it edits, rotates or sends (copies in `RAM:/photos-mail`). Keys: ← → Home End, Page
+Up / Down, Enter, Esc, Del, F, E, R, I, + − 0 1, Ctrl+A, Ctrl+F (search), F5 (slideshow).
+
 ### Mail, the mail client (`mail`)
 
 ![Mail](../screenshots/mail.png)
@@ -2228,7 +2306,8 @@ the first time. An argument `YYYYMMDD` opens that day (the agenda widget's click
 
 Mail reads and sends your e-mail: **Gmail**, **Outlook.com / Hotmail / Live**, **iCloud**, **Yahoo**,
 and **any IMAP or POP3 account** (with SMTP to send). Start it from the dock or the app list
-(*Internet*); a `.eml` file opened from the File Viewer is shown on its own.
+(*Internet*); a `.eml` file opened from the File Viewer is shown on its own; `mail --attach <list>` opens a
+new message with the files the list names attached (Photos' *Send by Mail*).
 
 **Adding an account** (the *Add an account* button the first time, *File > Add an Account...*, or
 *Accounts and settings*): your name and your address. Mail recognises the big providers by the address
@@ -2243,7 +2322,7 @@ and fills their servers in:
   verification, make the password on the provider's page (*Open the page in Jet Browser*), type it.
 * **Outlook.com / Hotmail / Live** do not take passwords from mail apps: Mail shows a **code**; on a phone
   or a PC open `microsoft.com/devicelogin`, type the code, sign in, allow "Onyx Mail" — Mail goes on by
-  itself. (This needs the application's id in `SD:/etc/mail/oauth.ini`: `docs/mail/README.md`.)
+  itself. (Mail carries the "Onyx Mail" application's id, registered at Microsoft; `SD:/etc/mail/oauth.ini` may give another: `docs/mail/README.md`.)
 * **Another provider**: its password; Mail tries `imap.<domain>` and `smtp.<domain>`. **Settings by hand**:
   IMAP or **POP3**, each server, its port and security (SSL/TLS, STARTTLS), the user names and passwords,
   POP3's *Leave the messages on the server*.
@@ -2297,8 +2376,8 @@ the server).
 
 **Files**: `SD:/etc/mail/accounts.ini` (the accounts, without their passwords), `SD:/etc/mail/secrets` (the
 passwords and Microsoft's tokens, **encrypted** — AES-256 — with a key of this card, `SD:/etc/mail/key`:
-not readable as text, but whoever has the card has them), `SD:/etc/mail/oauth.ini` (Outlook's application
-id), `SD:/mail/<account>/` (the folders, the messages' list, the messages opened, as `.eml`),
+not readable as text, but whoever has the card has them), `SD:/etc/mail/oauth.ini` (optional: another
+Outlook application id), `SD:/mail/<account>/` (the folders, the messages' list, the messages opened, as `.eml`),
 `SD:/mail/recipients.tsv` (the addresses written to), `SD:/Documents/Contacts.card`. Keys: ^N new, F5
 check, ^R reply, ^L forward, ^S star, ^U unread, Del delete, ^F search, Up / Down the conversations,
 Ctrl+Enter send.

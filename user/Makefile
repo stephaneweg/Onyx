@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -128,6 +128,13 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps
 	  img/imgload.hpp ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+
+# Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Writer (FreeType's text through
+# wtk), the image codecs (wtk's imgload), the JPEG / PNG writers (img/pngsave.hpp), the PDF writer (pdf/pdfwrite.h).
+photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) img/imgload.hpp img/pngsave.hpp pdf/pdfwrite.h clipboard.h notify.h trash.h wallpaper.h \
+	  ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a ft/libft.a -lm -o $@
 
 # Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Writer (FreeType's text
 # through wtk), its engine and widgets headers included by main.cpp; zlib (Deflate) built from third_party into

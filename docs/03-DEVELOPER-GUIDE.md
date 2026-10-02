@@ -1791,7 +1791,7 @@ layers: `user/mail/` (header-only, the protocols and the HTML renderer, reusable
 | `mail/imap.h` | IMAP4rev1: LOGIN / AUTHENTICATE PLAIN / **XOAUTH2** (SASL-IR), CAPABILITY, LIST with SPECIAL-USE (and the usual names), modified UTF-7, SELECT, UID FETCH (ENVELOPE, BODYSTRUCTURE — the part to preview, the attachments —, `X-GM-THRID`, the References), FETCH by number (a folder's newest), sections and partial bodies, UID STORE, UID MOVE (else COPY + \Deleted + EXPUNGE), APPEND (LITERAL+), IDLE. A response is read whole and parsed into a small tree (`Resp`, `Val`). |
 | `mail/pop3.h`, `mail/smtp.h` | POP3 (CAPA, STLS, USER / PASS, AUTH PLAIN / XOAUTH2, STAT, LIST + UIDL, TOP, RETR — the dot-stuffing undone —, DELE, QUIT); SMTP submission (EHLO, STARTTLS, AUTH PLAIN / LOGIN / XOAUTH2, SIZE, MAIL / RCPT / DATA — the dots doubled —, the recipients refused reported). |
 | `mail/mime.h` | `Mime`: a message's parts' tree (multipart, `message/rfc822`, RFC 2231 names), a part decoded and its text in UTF-8, the part to show (HTML or text), the attachments, `cid:`; `build`: a message made (text + HTML as `multipart/alternative`, inline pictures as `related`, attachments base64, UTF-8 headers, a Message-ID). |
-| `mail/oauth.h` | Microsoft's **device code** flow (`start`, `poll`, `refresh`; the client id from `SD:/etc/mail/oauth.ini`), HTTPS POST / GET over `conn.h`, a JSON field reader. |
+| `mail/oauth.h` | Microsoft's **device code** flow (`start`, `poll`, `refresh`; the "Onyx Mail" client id built in, `SD:/etc/mail/oauth.ini` overriding it), HTTPS POST / GET over `conn.h`, a JSON field reader. |
 | `mail/html_dom.h`, `html_css.h`, `html_layout.h`, `html.h`, `html_ft.h` | **Mail's own HTML renderer** (the user: "simple, not Jet, HTML 4 at least with CSS 2"): a forgiving parser (HTML 4's implied ends, character references), CSS 2 (a UA sheet with HTML's quirks for tables, the presentational attributes, `<style>` with `@media` by width, selectors, specificity, `!important`, `style=`), a layout to a display list (blocks and margins, inline lines, inline boxes and inline-blocks — the mail "buttons" —, floats, lists, tables with the automatic widths, colspan / rowspan, `align=center`), painted by `FtHost` with the card's fonts; the links hit-tested; remote pictures only when the host gives them. |
 | `Apps/mail/accounts.h` | The accounts (`SD:/etc/mail/accounts.ini`), the providers known by their domain, the secrets encrypted (AES-256-GCM, `SD:/etc/mail/key`). |
 | `Apps/mail/store.h` | The cache on the card (`SD:/mail/<id>/`: `folders.tsv`, each folder's `index.tsv`, the `.eml` fetched), the previews. |
@@ -1807,6 +1807,26 @@ protocols, MIME, OAuth, TLS refused / accepted: 98 checks), `htmltest.cpp` (the 
 at), `modeltest.cpp` (accounts, secrets, the worker, conversations, the cache read back: 42 checks). **The
 screenshots**: `sh tools/tests/desktop_sim/shots.sh mail` (two demo servers, `tools/tests/mail/mkaccounts.cpp` writing
 the accounts and the contacts with Mail's own code). The icon: `python3 tools/icons/mail_icon.py`.
+
+### Photos, the photo library (`user/Apps/photos`)
+
+The photo library (the mock-ups, the plan and the user's decisions: `docs/photos/README.md`; its use: docs/04 *Photos*)
+is a **newlib** wtk app (`photos.elf`: FreeType's text, wtk's image codecs, `img/pngsave.hpp` to write JPEG and PNG,
+`pdf/pdfwrite.h` for the contact sheets). **MIT**. Headers included by `main.cpp`:
+
+| File | What |
+|---|---|
+| `exif.h` | A picture's facts without decoding it: the size (JPEG's SOF, PNG, GIF, BMP, WebP, PCX headers), the EXIF (TIFF) fields — DateTimeOriginal (local time), Make / Model, f-number, exposure, ISO, focal length, **orientation**, the camera's preview —, a date in the file's name; `jpeg_with_exif` puts the original's EXIF into a new JPEG (orientation 1, no preview). |
+| `lib.h` | `Library`: the photos (`Photo`, a path hash index), `SD:/etc/photos/library.db` (tab-separated lines), the folders watched (`SD:/Pictures`, its `Camera`, each volume's `DCIM`, `folders.txt`), the albums (`albums/<name>.txt`, paths), the **scan thread** (walks the folders; what is known by path + size is not read again; batches posted with `kapi_post`; the gone dropped, an absent volume's kept aside). |
+| `imgops.h` | `Pix`; orientation, quarter turns, straighten (bilinear, enlarged), crop, scaling (area average down, bilinear up), the adjustments as one tone curve (`ToneMap`: exposure, contrast, highlights, shadows) + saturation, warmth, an unsharp mask, the filters, `auto_enhance` (from the histogram). |
+| `thumbs.h` | `Thumbs`: a thread making the thumbnails (320 px, turned the right way, kept as `thumbs/<key>.jpg`; the key = path, size, orientation) and decoding the photo shown big first (`want_full` → `onFull`); a cache of the sizes drawn. |
+| `ui.h`, `app.h` | Faces, icons (vpaint), hit lists, the colours (the library follows the theme; viewer and editor dark); what is shown (`g_src`, the search), the list by day, the selection. |
+| `grid.h`, `viewer.h`, `editor.h`, `share.h`, `main.cpp` | The toolbar, the left column, the days' grid (only what shows is drawn; the years' strip), the albums' page; the viewer; the editor (works on a 1600 px copy, the whole photo rendered when saved); favourites, albums, trash, the lossless rotation (the EXIF orientation rewritten), Send by Mail (`mail --attach <list>`), the wallpaper (`wallpaper.h`), the Clipboard, the PDF, the slideshow (`kapi_fullscreen_begin`, a cross-fade). |
+
+**On the PC**: `python3 tools/tests/photos/make_samples.py <dir>` makes a library (drawn photos as JPEGs with their EXIF —
+some standing, orientation 6 —, a screenshot dated by its name, a `library.db` with favourites, albums); `sh
+tools/tests/desktop_sim/shots.sh photos` the screenshots. The mock-ups: `python3 tools/screenshot/mockup_photos.py`; the icon:
+`python3 tools/icons/photos_icon.py`.
 
 ### A large app: Koton, the studio (`user/Apps/koton`)
 

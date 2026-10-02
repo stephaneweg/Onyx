@@ -202,6 +202,8 @@ static void test_oauth ()
 	OAuth o; oauth_defaults (o.cfg);
 	scpy (o.cfg.host, "127.0.0.1", sizeof o.cfg.host); o.cfg.port = port ("HTTP_PORT", 10080); o.cfg.sec = SEC_NONE;
 	DeviceCode dc;
+	CHECK (!strcmp (o.cfg.clientId, "85ccaf6e-81ff-4a62-9194-930fc36429ad"), "the built-in id: [%s]", o.cfg.clientId);
+	o.cfg.clientId[0] = 0;
 	CHECK (!o.start (dc) && strstr (o.err, "not set up"), "[%s]", o.err);
 	scpy (o.cfg.clientId, "wrong", sizeof o.cfg.clientId);
 	CHECK (!o.start (dc) && strstr (o.err, "Application not found") && !strstr (o.err, "Trace"), "[%s]", o.err);

@@ -1,12 +1,11 @@
 # Photos for Onyx — study, first mock-ups
 
-> **Status (2026-10-02): mock-ups validated by the user** (the decisions below). A photo library "as in a phone or a modern
+> **Status (2026-10-02): done** -- the app `user/Apps/photos` (docs/04 *Photos*, docs/03 *Photos*), tested on the PC (`shots.sh photos`), not yet on the Pi. The mock-ups were validated by the user (the decisions below). A photo library "as in a phone or a modern
 > desktop": all the pictures of the card in one place, by day, favourites, albums, a slideshow, simple
 > editing. Proposed name: **Photos** (app folder `photos`). The Image Viewer stays the quick viewer of one file.
 
 The mock-ups are made by `python3 tools/screenshot/mockup_photos.py` → `docs/photos/mockups/*.png` (1024 × 768, the
-real desktop behind; the drawing helpers are `mockup_archiver.py`'s; the photos are drawn, the
-camera are made up).
+real desktop behind; the drawing helpers are `mockup_archiver.py`'s; the photos are drawn, the camera is made up).
 
 | | |
 |---|---|
@@ -21,8 +20,8 @@ camera are made up).
 |---|---|---|
 | Decoding | `user/img/imgload.hpp` (`img_load`: JPEG, PNG, GIF, BMP, WebP, PCX) in libwtk | JPEG's **downscaled decode** for the thumbnails (a 12 MP JPEG is 48 MB as pixels): decode then shrink in strips, or the EXIF thumbnail when there is one |
 | EXIF | — | our own reader (MIT): date, camera, exposure, orientation (the photo turned the right way), the embedded thumbnail |
-| The library | the File Viewer's walking of folders | `SD:/var/photos/library.db` (one line per photo: path, size, date, w×h, favourite, description) + `thumbs/` (256 px JPEG or raw cache), built by a **worker thread** in the background, refreshed when a folder changes |
-| Albums | — | `SD:/var/photos/albums/<name>.txt` (the paths): an album never copies a photo |
+| The library | the File Viewer's walking of folders | `SD:/etc/photos/library.db` (one line per photo: path, size, date, w×h, favourite, description) + `thumbs/` (320 px JPEGs), built by a **worker thread** in the background, refreshed when a folder changes |
+| Albums | — | `SD:/etc/photos/albums/<name>.txt` (the paths): an album never copies a photo |
 | Editing | Paint's filters | crop / rotate / the adjustments on the full picture in a worker thread, saved as JPEG (stb_image_write, public domain) |
 | Sharing | Mail (`mailto` with attachments), Clipboard, wallpaper setting | — |
 
