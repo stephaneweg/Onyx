@@ -1082,7 +1082,7 @@ Can start at once:
    `pthread_attr_t` 48 B, `pthread_key_t` unsigned, `pthread_spinlock_t` int, `sem_t` 8 B {value,
    waiters}; the constants as glibc (`PTHREAD_CREATE_JOINABLE` 0, `PTHREAD_MUTEX_RECURSIVE` 1,
    `PTHREAD_MUTEX_DEFAULT` = NORMAL 0): every zero-filled object is a valid default one.
-8. **Not done / stubs:** `socketpair` → `EOPNOTSUPP` (curl built with its wake-up on a pipe);
+8. **Not done / stubs:** `socketpair` → `EOPNOTSUPP` (curl built with its wake-up on a pipe; v76: real, §14);
    `pthread_cancel` → `ENOSYS`; `pthread_kill` of another thread → `ENOTSUP`; `sigsuspend`,
    timers, `alarm` stubs; `getifaddrs` `ENOSYS`; `dlopen` fails; `posix_spawn` returns the child's
    pid when `proc_wait (NOHANG | KEEP)` reports it, else the process handle's value (waitpid
@@ -1296,7 +1296,7 @@ WebKit2 runs; real dynamic loading only if an indispensable piece of software de
 
 ## 14. WP-IPC: the v76 spec (WebKit2's processes)
 
-*Status: spec, then implementation (kapi **v76**, one block of slots 242–252 after `poll`). It
+*Status: implemented (kapi **v76**, one block of slots 242–252 after `poll`; the resolutions at the end). It
 follows §9's decision. Every claim about WebKit was checked against WebKit `main` (2026-10):
 `Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp`, `IPCUtilitiesUnix.cpp`,
 `IPCSemaphoreUnix.cpp`, `Source/WebCore/platform/unix/SharedMemoryUnix.cpp`,
@@ -1364,7 +1364,7 @@ struct kapi_handle_xfer {                                      /* 24 bytes */
 	int kind;           /* 8: KAPI_HK_* */
 	unsigned tag;       /* 12: the sender's word, delivered as it is (libc: its fd type, O_* flags) */
 	int fd;             /* 16: spawn_ex2 / get_handles: the child's descriptor */
-	unsigned reserved;  /* 20 */
+	unsigned flags;     /* 20: KAPI_HXF_WRITER (1): a pipe's write end (resolution 3) */
 };
 struct kapi_msghdr {                                           /* 48 bytes */
 	const struct kapi_iovec *iov;       /* 0 */
@@ -1507,10 +1507,70 @@ type (the `tag` carries the sender's descriptor type and `O_*` flags); `sys/un.h
   socket end at a chosen fd, passing a file / a pipe end / a shm object / a local socket / an IP
   socket through the socket and using it there, shared memory written by one process and read by
   the other (and after the writer has exited), a cross-process futex, seals, large messages (1 MB),
-  254 handles in one message, `MSG_CTRUNC`, refcounts (the free memory back after the children end,
+  253 handles in one message, `MSG_CTRUNC`, refcounts (the free memory back after the children end,
   `meminfo` / `vm_stats` as `memtest`).
 - `posixtest ipc`: the same through the POSIX calls.
 - The PC: `tools/tests/posixsim` (qemu-user, its fake kapi table implements v76 over Linux
   socketpairs / `SCM_RIGHTS` / memfd), and `tools/tests/run_ipc_test.sh`: the real `sys/lsock.cpp`,
   `sys/shm.cpp` and `sys/handle.cpp` on the host with the kernel around them stubbed (two handle
   tables standing for two processes).
+
+#### WP-IPC resolutions (what was implemented; docs/02 §8 "v76: IPC", docs/03 §5.4)
+
+The ABI of slots 242–252 is the one above, with these points settled while building it:
+
+1. **Files.** `kern/ipc.h` and `sys/ipc.cpp` already existed (the v35 shell mailboxes), so the local
+   sockets and the carried handles are `sys/lsock.cpp` / `kern/lsock.h`; the shared memory objects
+   `sys/shm.cpp` (+ `handle_close`); `shm_map` and the SHM regions are in `sys/vm.cpp` (they need its
+   region list); `spawn_ex2` / `get_handles` in `sys/procx.cpp` (`spawn_ex` is now `SpawnCommon`
+   with no handles). New handle types `HANDLE_LSOCK = 7`, `HANDLE_SHM = 8`, `CHandleTable::TypeOf`
+   and `SetKind`.
+2. **Open-file descriptions** got a holder count (`TOFile::nHolders`, `OFileRef`): a description
+   carried to another process is the same one (its offset shared, as POSIX's `SCM_RIGHTS`), closed
+   with its last holder.
+3. **`kapi_handle_xfer.reserved` became `flags`** (still 0 for every older use: v76 is the first to
+   define the structure). `KAPI_HXF_WRITER` marks a pipe's **write end**: the pipe counts one more
+   writer (`CPipeStream::AddWriter`; `m_nWriters` starts at 1, the creator's libc) and its
+   end-of-file waits until each writer has called `stream_eof` — or, for a received write end
+   (`HKIND_STREAM_WRITER` on the receiver's entry), closed it or ended (its process's teardown).
+   Without it, a child given a pipe's write end saw the parent's `close` end the data for everybody.
+   libonyxposix sets it for every `PIPE_W` it passes; a received pipe end is "remote" in libc (its own
+   kernel handle, closed with its last descriptor).
+4. **Message sizes.** The kernel takes up to 256 handles a message; Linux takes 253
+   (`SCM_MAX_FD`), and WebKit sends at most 253 (`attachmentMaxAmount − 1`; more goes out of line), so
+   the tests that also run on the PC bench use 253. Packets up to `SO_SNDBUF` (≤ 16 MB, 256 KB by
+   default; WebKit's are ≤ 4 KB inline).
+5. **DGRAM pairs** end as SEQPACKET ones (a `SHUT_WR` / close is the peer's end). Linux keeps a DGRAM
+   peer readable (it only propagates the shutdown for STREAM / SEQPACKET); nothing in WebKit uses a
+   DGRAM pair off Darwin.
+6. **`MSG_PEEK`** delivers no handles (Linux duplicates them); a STREAM read stops *before* a send
+   that carried handles when it already has bytes, and *after* it once it took them — Linux's rule.
+7. **The space's reference on a shm object** is dropped by a garbage pass (`VmShmGc`: after an
+   unmap, a fixed map that cut regions, the settling of deferred zaps) that runs only when the space
+   has no deferred zap pending — a PTE marked ZAP may still name the object's frame under another
+   task's pin. A `shm_map` over a range another task's kapi has pinned: `-EBUSY` (fixed), or the
+   next gap (a hint). A shrink of a mapped object: `-EBUSY`, so a mapped frame is never freed.
+8. **posix_spawn** gives the child every descriptor without `FD_CLOEXEC` from 3 up (plus `adddup2`
+   targets from 3, minus `addclose`), as Unix's fork + exec would; fds 0–2 still go as the `in` /
+   `out` streams. The child's libc installs them before `main` (`__onyx_fd_init` →
+   `__onyx_fd_inherit`). A received descriptor's kind comes from the tag:
+   `(sotype << 24) | (O_* flags << 8) | its libc type` (`0x8000` in the flags: the kernel handle was
+   opened `O_APPEND`).
+9. **IP sockets** passed by `sendmsg` are adopted at the receive (they have one owner pid); by
+   `spawn_ex2` they keep the parent's ownership until the child uses them (the existing descendant
+   adoption). `kapi_sock_sendmsg` / `recvmsg` on an IP socket: `EOPNOTSUPP` (libc flattens the
+   iovecs over `sock_send` / `sock_recv`, as before).
+10. **No named `AF_UNIX`** (no WebKit path binds a path): `socket (AF_UNIX)` stays `EAFNOSUPPORT`,
+    `sock_connect` / `bind` / `listen` / `accept` on a local socket `EOPNOTSUPP`. `shm_open`'s names are
+    a kernel table (not files): they last until `shm_unlink` or the reboot.
+11. **Tests.** `/bin/ipctest` (54 checks), `posixtest ipc` (22), `tools/tests/run_ipc_test.sh` (the real
+    `lsock.cpp` / `shm.cpp` / `handle.cpp` on the host, two handle tables standing for two processes,
+    ASan + UBSan: 199 checks), and the posixsim bench (`POSIXSIM_LEVEL=76` by default: its table
+    emulates v76 over Linux `AF_UNIX` socketpairs, `SCM_RIGHTS` — the kinds and tags in a header per
+    packet, or a side SEQPACKET channel for a STREAM pair —, memfds and descriptors left open across
+    `execve` for `spawn_ex2`). Bench results: posixtest 140/0 (v76), 119/0 (v75), 101/0 (v74) with both
+    toolchains; ipctest 54/54 (with `net`).
+12. **Not done:** reference-cycle collection (an end queued on itself through other connections
+    leaks until reboot), `SCM_CREDENTIALS`, `read` / `write` on a shm descriptor (`EINVAL`: map it),
+    memory accounting of shm pages per process (`vm_stats.resident` counts a space's own frames only;
+    `meminfo`'s free memory shows them).

@@ -279,7 +279,8 @@ the plan: [`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1.
   16 GB, 8 MB by default; each thread's at the top of its 32 MB slot). Eager kinds, noted for
   `vm_query` only: `IMAGE` (the ELF loader), `FIXED` (`MapContig`: canvases, surfaces, the sound
   ring, the kapi pages, the full-screen buffers; the code arena). Nothing is mapped for a lazy
-  region until it is touched.
+  region until it is touched. (v76) `SHM`: a shared memory object mapped by `shm_map` (in the arena,
+  lazy, its frames the object's and not owned by the space: §8 *v76: IPC*).
 - **The fill** (`VmFaultIn`): the region must be lazy and allow the access; a zeroed frame from
   `palloc_high`, a `DSB ISHST`, the PTE (`AP` from the region: `RW_ALL`, `RO_ALL`, or `RO_EL1` for
   `PROT_NONE` — the frame kept, the app shut out), `DSB`. A software walk: it never yields and works
@@ -633,7 +634,10 @@ write to the card, is deferred to the reaper task: `HandlesRunDeferred`). Stream
 records are **reference-counted** (a pipe: the creator's handle and each child; a `CProcess`: the
 spawner's handle and the child), so either side can end first. **Sockets** are owner-checked (the
 request's pid, also on the network core); a descendant of the owner adopts one on first use
-(`ftpd` hands its sessions their socket). `vfs_req_data` / `vfs_reply` only take requests
+(`ftpd` hands its sessions their socket). (v75) `OFILE` entries (`file_open`); (v76) `LSOCK` (a
+local socket: its handle's value is its socket number) and `SHM` (a shared memory object, the kind
+is the access) — and every passable object (open file, stream, local socket, shm) can be **carried
+into another process's table** by `sock_sendmsg` or `spawn_ex2` (§8 *v76: IPC*). `vfs_req_data` / `vfs_reply` only take requests
 addressed to the calling provider.
 
 ### Protected mode: apps at EL0 (steps 3–5)
@@ -878,7 +882,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 75`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 76`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -924,7 +928,13 @@ blocks after `proc_stats`: memory (slots 199–206), files and processes (207–
 returns ≥ 0, or −`KAPI_Exxx`). **The skeleton:** the entries exist (the slot numbers are
 `static_assert`ed in `kapi_abi.h`) and return `-KAPI_ENOSYS` until their work package lands; the
 subsections below say what is implemented. `user/kapi.h`'s wrappers also return `-KAPI_ENOSYS` on an
-older kernel or where a host table (the PC simulator, the Windows / macOS builds) leaves the slot 0.
+older kernel or where a host table (the PC simulator, the Windows / macOS builds) leaves the slot 0,
+v76 = **IPC between processes** ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §14, WP-IPC: what WebKit2
+needs), 11 entries after `poll` (slots 242–252): `sock_pair` (local sockets, STREAM / SEQPACKET /
+DGRAM), `sock_sendmsg` / `sock_recvmsg` (handles carried between processes), `shm_create` /
+`shm_open` / `shm_unlink` / `shm_ctl` / `shm_map` (shared memory), `handle_close`, `spawn_ex2` /
+`get_handles` (handles given to a child); `KAPI_SO_RCVBUF` / `SNDBUF` / `PEERPID` / `DOMAIN`,
+`KAPI_VMK_SHM` (*v76: IPC* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1185,6 +1195,92 @@ listening on its own; `CTransportLayer::IsTerminated (h)`.
 Test: `/bin/nettest` (`user/bin/nettest.c`; the PC side `tools/tests/nettest_peer.py`): run it with
 `netcore=0` and with `netcore=1`.
 
+### v76: IPC
+
+Work package WP-IPC ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §14: what WebKit2's Unix IPC uses, the
+spec): what a browser's UI, web and network processes need to talk. `kernel/sys/lsock.cpp` (local
+sockets, the handles they carry; `kern/lsock.h`), `kernel/sys/shm.cpp` (shared memory objects),
+`kernel/sys/vm.cpp` (`shm_map`, SHM regions), `kernel/sys/procx.cpp` (`spawn_ex2`, `get_handles`),
+`bsdsock.cpp`'s dispatch. Slots 242–252 (`struct kapi_iovec`, `struct kapi_handle_xfer` 24 bytes,
+`struct kapi_msghdr` 48 bytes). Every call returns ≥ 0 or −`KAPI_Exxx`.
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 242 | `sock_pair (type, flags, sv)` | two connected local sockets: `KAPI_SOCK_STREAM`, `KAPI_SOCK_SEQPACKET` (5), `KAPI_SOCK_DGRAM`; `KAPI_SOCKF_NONBLOCK` → `sv[0]`, `sv[1]` (numbers ≥ `KAPI_SOCK_LOCAL_BASE`); `EPROTONOSUPPORT`, `EMFILE`, `EFAULT` |
+| 243 | `sock_sendmsg (s, m, flags)` | the `m->iovcnt` (≤ 64) iovecs gathered into one message with `m->nhandles` (≤ 256) handles → the bytes; `EAGAIN`, `EPIPE`, `EMSGSIZE`, `ENOBUFS`, `EBADF` (a handle: nothing sent), `EINVAL`; an IP socket: `EOPNOTSUPP` |
+| 244 | `sock_recvmsg (s, m, flags)` | into the iovecs; the handles carried added to the caller's table and written to `m->handles` (`m->nhandles` in: room, out: count; `m->flags`: `KAPI_MSG_TRUNC`, `KAPI_MSG_CTRUNC`) → the bytes, 0 the end |
+| 245 | `shm_create (size, flags)` | an anonymous object (`KAPI_SHM_ALLOW_SEALING`, else `KAPI_SEAL_SEAL` set) → a read-write handle |
+| 246 | `shm_open (name, oflags, mode)` | a named object (`/x`, ≤ 63 characters, a kernel-wide table): `KAPI_O_RDONLY` / `RDWR`, `CREAT`, `EXCL`, `TRUNC` → a handle; `ENOENT`, `EEXIST`, `EINVAL`, `ENAMETOOLONG` |
+| 247 | `shm_unlink (name)` | the name dropped (the object lives while referenced); `ENOENT` |
+| 248 | `shm_ctl (h, op, arg)` | `KAPI_SHM_GET_SIZE`, `SET_SIZE` (ftruncate: `EPERM` sealed, `EBUSY` a shrink while mapped, `ENOMEM`), `ADD_SEALS` / `GET_SEALS` (as memfd's `F_SEAL_*`), `GET_ID`, `GET_ACCESS` |
+| 249 | `shm_map (h, addr, len, prot, flags, off)` | the object mapped `MAP_SHARED` (an SHM region in the mmap arena, placed as `vm_map`) → the address; `EACCES` (write, read-only handle), `EPERM` (`SEAL_WRITE`), `EBUSY` (a fixed place under another task's kapi) |
+| 250 | `handle_close (h)` | a shm, local socket, open-file or stream handle closed |
+| 251 | `spawn_ex2 (attr, handles, n)` | `spawn_ex` plus `n` (≤ 256) handles referenced for the child at the descriptors `fd` given |
+| 252 | `get_handles (out, cap)` | the child's side: those handles, put in its table at the first call → how many |
+
+**Local sockets.** An end (`TLsEnd`) is a core-0 object: its type, a receive queue of messages
+(`TLsMsg`: the data and the handles carried, one allocation), its peer, the shutdown bits,
+`bNonBlock`, the timeouts, `SO_RCVBUF` (the queue's limit, 256 KB by default) and `SO_SNDBUF` (the
+largest packet, 256 KB), both 4 KB–16 MB. **A local socket's number is a handle** (`HANDLE_LSOCK`)
+of the caller's table — so it is per process, reference-counted and closed by the teardown, and its
+value (always ≥ 0x10001) tells it from an IP socket (0..255, the global table of §11). `bsdsock.cpp`
+sends every call on such a number here first (`IpcLocal*`): `sock_send` / `recv` / `shutdown` /
+`close` / `getopt` / `setopt` / `name` and `poll` (`connect` / `bind` / `listen` / `accept`:
+`EOPNOTSUPP`: no named local sockets — WebKit only uses `socketpair`). A send copies into a new
+message on the **peer's** queue: STREAM takes what fits (a blocking send waits for the rest), a
+packet (SEQPACKET, DGRAM) is whole or refused (`EMSGSIZE` above `SO_SNDBUF`; an empty queue always
+takes one); a receive copies out of its own queue — STREAM across messages but never past one that
+carried handles (they come with its first byte, as Linux), a packet whole (cut: `MSG_TRUNC`).
+Every change calls `IoWake`, so a wait (`IoWait`) or a `poll` over local sockets sleeps until it (no
+10 ms polling as for IP sockets). The end: a closed peer (its last handle and every message holding
+it gone) or its `SHUT_WR` → 0 once the queue is empty; a send to it → `EPIPE`. Readiness: `POLLIN`
+data or the end, `POLLOUT` room in the peer's queue or a send that would fail at once, `POLLHUP` the
+peer gone. All the queues together hold at most 64 MB (`ENOBUFS`). A call pins its handle (another
+thread's close waits for the call to end, as for files).
+
+**Carried handles** (`TIpcXfer`). `sendmsg` turns each `{h, kind, tag, flags}` into a reference at
+once (`IpcXferTake`): an open-file description (`HANDLE_OFILE`: ofile.cpp's `nHolders`, so the
+offset is shared as by a `dup`), a stream (`CStream::AddRef`), a local socket end, a shm object; an
+**IP socket** keeps its number and the sender's pid and is **adopted** by the receiver at
+`recvmsg` (`NetSocketAdopt`: it becomes the receiver's — an IP socket has one owner; one the sender
+closed meanwhile arrives as `KAPI_HK_NONE`, −1). `recvmsg` adds each to the caller's table
+(`IpcXferGive`); no room in the array or the table: closed, `MSG_CTRUNC`. A message discarded (its
+end closed, its process gone) closes what it carried (the teardown's way: deferred where a close
+may wait). Sending the receiving end over its own connection is refused (`EINVAL`: no close could
+ever free it); longer reference cycles are not collected. The `tag` is the sender's word, given back
+as it is: libonyxposix puts its descriptor type and `O_*` flags there. `KAPI_HXF_WRITER` on a stream
+(a pipe's write end): the pipe counts one more writer (`CPipeStream::AddWriter`), and its
+end-of-file comes when every writer has called `stream_eof` or closed (the receiver's entry is
+`HKIND_STREAM_WRITER`: its close or its process's end counts as its `stream_eof`, §9).
+
+**Shared memory.** A `TShm` is a size and an array of 64 KB frames, each taken from the app pool
+(`palloc_high`, refused under `VM_RESERVE`) and zeroed at its first use, all freed — their word
+waiters woken first — when the last reference goes: the handles (`HANDLE_SHM`, the entry's kind =
+the access), the messages and spawn records carrying it, the name table, and **each address space
+mapping it** (one reference per space, `TVmSpace::pShm`). `shm_map` makes a lazy **SHM region**
+(`KAPI_VMK_SHM`, `TVma::pObj` + `ulObjOff`; a split keeps each piece's offset; neighbours merge only
+over contiguous offsets of the same object). A fault there (EL0, a kapi's probe, the safety net, an
+app core's pager) maps the object's frame with the region's protection **not owned**
+(`VM_PTE_SW_OWNED` clear): `Release` (unmap, `DONTNEED`), the deferred zap and the teardown never free
+it. A page beyond the object's size faults (the process is killed: "beyond the shared object", as
+Linux's `SIGBUS`). The space keeps its reference until no region names the object **and** no deferred
+zap is pending (a PTE marked ZAP may still point at a frame), checked after each unmap / fixed map /
+settled zap (`VmShmGc`), dropped by `VmTeardown`. A shrink while any space maps the object is refused
+(`EBUSY`), so a mapped frame never goes. `vm_protect` / `vm_advise` / `vm_query` work on SHM regions
+(`DONTNEED` drops the mapping, the data stays). The futex (`wait_word` / `wake_word`) keys on the
+physical word: two processes meet on a shm word (WebKit's `IPC::Semaphore`).
+
+**Spawning with handles.** `spawn_ex2` references the handles (as `sendmsg`, but an IP socket is not
+adopted: the child, a descendant, adopts it at its first use as before) in the child's `TProcInfo`;
+the child's `get_handles` puts them in its table at the first call (the same list at every call);
+those never asked for are closed with the process. CLOEXEC is user space: libonyxposix's
+`posix_spawn` gives every descriptor without `FD_CLOEXEC` (docs/03 §5.4).
+
+Tests: `/bin/ipctest` (`user/bin/ipctest.c`, kapi level), `posixtest ipc` (the POSIX calls); on the PC
+`tools/tests/run_ipc_test.sh` (the real `lsock.cpp`, `shm.cpp`, `handle.cpp` with two handle tables,
+ASan) and the posixsim bench (its fake table implements v76 over Linux socketpairs, `SCM_RIGHTS` and
+memfd).
+
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against
 > those addresses. This approach is **no longer used**: the fixed-address table replaced
@@ -1212,7 +1308,10 @@ destroyed when the last reference drops). Three implementations:
 
 Virtual methods: `Read` (cooperative blocking: yields until ≥1 byte or EOF;
 0 = EOF), `ReadNonBlocking` (`>0` / `0`=EOF / `-1`=would block), `Write` (may block if
-full), `CloseWrite` (signals "no more writing" → readers see EOF).
+full), `CloseWrite` (signals "no more writing" → readers see EOF). (v76) `AddWriter`: a pipe's
+write end carried to another process (`KAPI_HXF_WRITER`) is one more writer — `CloseWrite` ends the
+data only when every writer has called it (a received write end's close, or its process's end,
+counts as its call: `HKIND_STREAM_WRITER`).
 
 - **`CPipeStream`**: ring buffer `head`/`tail`. `Read` waits while empty and
   the write end is not closed; `Write` waits while full. Cooperative → no lock. (v75: the waits

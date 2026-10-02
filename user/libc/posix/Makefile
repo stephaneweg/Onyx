@@ -114,7 +114,7 @@ install: all
 	cp -r include/. $(SYSROOT)/include/
 	cp $(B)/libonyxposix.a $(B)/crt0posix.o onyx-posix.ld $(SYSROOT)/lib/
 	@printf '%s\n' "$$SPECS_SYSROOT" > $(SYSROOT)/lib/onyx.specs
-	@printf 'prefix=%s\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: onyxposix\nDescription: The POSIX layer of Onyx (threads, files, sockets, mmap) over newlib\nVersion: 75\nLibs: -L$${libdir} -lonyxposix\nCflags: -isystem $${includedir} -DFD_SETSIZE=1024\n' "$(SYSROOT)" > $(PC_LIBDIR)/onyxposix.pc
+	@printf 'prefix=%s\nlibdir=$${prefix}/lib\nincludedir=$${prefix}/include\n\nName: onyxposix\nDescription: The POSIX layer of Onyx (threads, files, sockets, mmap) over newlib\nVersion: 76\nLibs: -L$${libdir} -lonyxposix\nCflags: -isystem $${includedir} -DFD_SETSIZE=1024\n' "$(SYSROOT)" > $(PC_LIBDIR)/onyxposix.pc
 	@echo "libonyxposix installed in $(SYSROOT)"
 
 clean:
