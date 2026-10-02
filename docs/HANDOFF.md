@@ -119,6 +119,29 @@ answer in French. The docs stay in English.
   clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
   (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
 
+## POSIX layer, IPC, toolchain, WebKit port -- where it stands (2026-10-02)
+
+- **Done, on `main`, validated on the Pi**: kapi **v76** -- demand paging and `vm_*` (v75), real files /
+  processes / BSD sockets + `poll` (v75), IPC for WebKit2 (v76: AF_UNIX socketpair, SCM_RIGHTS-like
+  handle passing, memfd/shm shared memory, spawn with handles); **libonyxposix** (`user/libc/posix/`);
+  the **`aarch64-onyx-elf`** toolchain (GCC 14.2, posix threads, native TLS; prebuilt + sources in the
+  repo `stephaneweg/onyx-toolchain`; install: `sh tools/toolchain/fetch.sh`, rebuild:
+  `tools/toolchain/build-onyx-toolchain.sh`); ports: SQLite, libxml2, curl+mbedTLS, ICU 78.3, HarfBuzz,
+  Skia m154 (WebKit's copy), libjpeg-turbo (`tools/ports/`, `make -C user/bin ports`). Tests on the Pi:
+  memtest, filetest, proctest, nettest, ipctest, posixtest (all groups), posixtest-cxx, icutest,
+  hbtest, skiatest, skiademo -- all pass. The plan and every decision: **`docs/POSIX-PLAN.md`**.
+- **Decisions (the user)**: WebKit2 replaces Jet (§8–§9), on the PlayStation port's model (no GLib,
+  curl, Skia CPU, our compositor on the V3D later); static binaries (§13); the WebKit browser under
+  **LGPL-2.1+** (§15); fork/vfork, symlinks on FAT, self-hosting, Mesa (GPU), 1 GB memory balance,
+  the input-state page for key_held/pad_state, the PDF Viewer's flicker: later (notes above / plan).
+- **In progress: WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`):
+  an agent works on branch **`webkit-port-step1`** (pushed regularly). To resume after a reset:
+  check that branch's `docs/08-WEBKIT-PORT.md` ("status / how to resume"), reinstall the toolchain
+  (`sh tools/toolchain/fetch.sh`), fetch WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
+  checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), build with
+  `tools/webkit/build-jsc.sh`. Then: merge into `main` after the Pi test of `jsc`; next steps
+  WebCore → WebKit2 → the Onyx view / compositor / media player → the browser → parity with Jet.
+
 ## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
 
 - **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
