@@ -12,8 +12,8 @@
 //   #include "ft/wtkface.h"              (a newlib app linking ft/libft.a: FreeType's anti-aliased text)
 //   int main () { ft_wtk_install ("DejaVu Sans", 13); Root root (...); ... }
 //
-// The window's frame (its title) keeps the desktop's bitmap font: every window's frame looks the
-// same whatever its app draws inside.
+// The window's frame (its title) has a face of its own, the same in every app: SD:/res/fonts/title.aaf
+// (DejaVu Sans Bold rendered by FreeType ahead of time: wtk/skin.cpp), else the desktop's bitmap font.
 //
 #ifndef _wtk_text_h
 #define _wtk_text_h

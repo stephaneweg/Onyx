@@ -1284,7 +1284,11 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > boxes' carets. `Textbox` and `Textarea` place the caret, the clicks and the selection by the
 > glyphs' real widths (a `Textarea` then scrolls sideways by pixels: `leftPx`). Without a face,
 > nothing changes — byte for byte (the screenshots stay identical). Not through the face: the
-> window's **frame** (its title keeps the desktop's bitmap font, the same on every window),
+> window's **frame** — its title has a face of its own, the same in every window, FreeType app or
+> not: **`SD:/res/fonts/title.aaf`**, DejaVu Sans Bold at 13 px rendered ahead of time by the apps'
+> own FreeType and gamma (`sh tools/title_font/build.sh`: `gen_title_font.cpp` documents the format —
+> Latin-1, anti-aliased bitmaps, kerning pairs), read once by `wtk/skin.cpp`'s `AafFace` (without the
+> file: the bitmap font) —,
 > `RichTextBox` (its own styled bitmap glyphs), and the explicit bitmap calls `Canvas::drawFont` /
 > `wtk::draw_text`.
 > - The interface: `struct TextFace { virtual int height (); virtual int ascent (); virtual int

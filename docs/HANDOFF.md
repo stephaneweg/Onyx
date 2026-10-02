@@ -554,6 +554,8 @@ answer in French. The docs stay in English.
   list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
   its 8 applets, the Game Library, (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone), (2026-10-02)
   Paint and the File Viewer (names cut to the column's width: `wk_text_fit`; the text preview clipped).
+  **The windows' titles** too, in every app (FreeType or not): `SD:/res/fonts/title.aaf` (DejaVu Sans Bold
+  13 px pre-rendered by the apps' FreeType: `sh tools/title_font/build.sh`), read by wtk's frame (`skin.cpp`).
 - **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
