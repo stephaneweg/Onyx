@@ -10,11 +10,12 @@
 #   REAPPLY=1 sh tools/webkit/fetch.sh          # reset the checkout to the pinned revision and
 #                                               # apply the patches again (local changes lost)
 #
-# Only what step 1 (WTF + JavaScriptCore + the jsc shell) needs is checked out: the top-level
-# CMake files, Source/cmake, Source/WTF, Source/JavaScriptCore, Source/bmalloc (its headers are
-# still included with USE_SYSTEM_MALLOC), Source/ThirdParty/skia is NOT (the sysroot's libskia.a is
-# the same sources), and the JSTests subsets the bench runs. The whole repository is many GB;
-# this is about 300 MB. Later steps widen the cone (SPARSE_EXTRA="Source/WebCore ...").
+# Only what steps 1 and 2 (WTF + JavaScriptCore + the jsc shell; PAL + WebCore) need is checked
+# out: the top-level CMake files, Source/cmake, Source/WTF, Source/JavaScriptCore, Source/bmalloc
+# (its headers are still included with USE_SYSTEM_MALLOC), Source/WebCore (the patch series
+# touches it: it must be there for `git am`), Source/ThirdParty/skia is NOT (the sysroot's
+# libskia.a is the same sources), and the JSTests subsets the bench runs. The whole repository is
+# many GB; this is about 500 MB. Later steps widen the cone (SPARSE_EXTRA="Source/WebKit ...").
 #
 # To work on the port: commit in the checkout's branch `onyx`, then regenerate the series with
 #   sh tools/webkit/export-patches.sh
@@ -40,7 +41,7 @@ fi
 : "${TESTS:=1}"
 : "${SPARSE_EXTRA:=}"
 
-PATHS="Source/cmake Source/WTF Source/JavaScriptCore Source/bmalloc Tools/Scripts/webkitperl"
+PATHS="Source/cmake Source/WTF Source/JavaScriptCore Source/bmalloc Source/WebCore Tools/Scripts/webkitperl"
 # (JSTests/wasm: the directories test-jsc.sh runs and the files they load; the whole of it is 190 MB)
 WASM_TESTS="stress js-api noJIT function-tests references function-references gc regress self-test branch-hints extended-const modules v8/resources"
 [ "$TESTS" = 1 ] && PATHS="$PATHS JSTests/stress JSTests/es6 JSTests/resources $(for d in $WASM_TESTS; do printf 'JSTests/wasm/%s ' "$d"; done)"

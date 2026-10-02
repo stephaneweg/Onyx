@@ -173,14 +173,55 @@ installed.)
 2. For later, in the kernel: PROT_EXEC for a JIT, a call to suspend a thread (above), a malloc that
    returns memory, a streaming ELF loader and shared code pages (a static WebKit is 60–100 MB).
 
-## Step 2: WebCore — the design (2026-10-02, branch `webkit-port`; in progress)
+## Step 2: WebCore (2026-10-02, branch `webkit-port`)
+
+**Where it stands: WebCore builds for Onyx, links, and renders a page on the PC bench.**
+`libPAL.a` and `libWebCore.a` build (`sh tools/webkit/build-webcore.sh`: 30 minutes on 16 cores
+for a first build, 18 to 22 GB of memory at 14 jobs); `wctest` (`tools/webkit/wctest.cpp`, built by
+`build-wctest.sh`: WebCore alone, the "empty" clients, no window and no network) loads an HTML
+file, lays it out, paints it with Skia on the CPU into a PNG; `sh tools/webkit/test-webcore.sh`
+runs it under qemu on `tools/webkit/tests/page1.html` and checks what it prints and the picture's
+pixels: **21 checks pass** — the title and the text (UTF-8, the card's fonts through
+`SkFontMgr_onyx`), CSS boxes, flexbox, grid, a gradient with rounded corners, an inline SVG, form
+controls (WebKit's Adwaita theme), a script that changes the DOM and draws into a canvas
+(JavaScriptCore inside WebCore). One second under qemu. The program is 80 MB (58 MB of code, 22 MB
+of data with ICU's): not staged on the card (too big for the repository) — for a Pi test, strip
+`<build>/bin/wctest` and copy it by hand.
+
+Patches `0008`–`0011` (`tools/webkit/patches/`): `USE(SKIA_GPU)` (Skia's GL / Ganesh paths compiled
+out: 24 files), the curl back end and PAL's digests on mbedTLS, WebCrypto's containers and stubs
+for mbedTLS, and the port itself (`OptionsOnyx.cmake` with `ONYX_WEBCORE`, `PlatformOnyx.cmake`,
+the Onyx files). What was found on the way, beyond the study below:
+- **The theme is WebKit's own Adwaita** (`USE_THEME_ADWAITA`, as WPE, GTK and Windows): drawn form
+  controls and scrollbars with no GLib and nothing from the system. No Onyx theme was written.
+- **The libwpe pasteboard and editor files call no libwpe function**: Onyx shares them
+  (`PLATFORM(ONYX)` beside `USE(LIBWPE)`); the real clipboard is behind the `PasteboardStrategy`
+  (step 3, on `clipd`).
+- WebCore needs a `LoaderStrategy` even to make a page (`Page::firstTimeInitialization`); the
+  "empty clients" page is fully sandboxed (scripts refused) until its sandbox flags are cleared:
+  both are in `wctest.cpp`, and are WebKit2's job in step 3.
+- The link asked for 36 symbols in all (pasteboard, editor, WebCrypto, one keyboard function).
+
+**Not done / not tested yet in step 2**: nothing has run on the Pi (the 80 MB image against the
+kernel's ELF loader, memory, speed); **the network path is compiled, not exercised** (curl with
+the mbedTLS glue of `MbedTLSHelper.cpp`: a page loaded over HTTPS comes with step 3's network
+process, or a `wctest` with a real loader); **WebCrypto** is digests only (decision below);
+the public suffix list is an interim rule (`PublicSuffixStoreOnyx.cpp`); WOFF2 fonts, video and
+audio are off; `PlatformScreenOnyx` answers 1920 × 1080.
+
+### The design (the study it started from)
 
 **Decided (the user, 2026-10-02): the graphics, in this order** — (1) a browser rendered on the
 **CPU, without GL** (Skia raster); (2) once that has worked well for a few days, a **compositor on
-the V3D** (Onyx's own kernel driver, as Jet with `user/gpucomp`); (3) **WebGL is a goal for later**:
-it needs Mesa's `v3d` driver (WebKit's WebGL is ANGLE over a GLES or Vulkan driver, and Mesa has the
-only GLSL → QPU compiler; a software WebGL would need executable memory). Nothing done now should
-close that door: GL is cut out of the build by a flag, not removed.
+the V3D** (Onyx's own kernel driver, as Jet with `user/gpucomp`); (3) **WebGL is a goal for later**,
+and its route is chosen: **an ANGLE back end of our own that drives Onyx's V3D kernel driver
+directly, with only Mesa's shader compiler library (SPIR-V → NIR → QPU) behind it** — not a port of
+the whole of Mesa (no Gallium `v3d` driver, no emulation of Linux's DRM interface, no Mesa EGL):
+the fewest interfaces, the most direct path. (WebKit's WebGL is ANGLE, which translates GLSL to
+another shader language, never to QPU code: Mesa has the only GLSL → QPU compiler. The GL state →
+control lists driver is then ours to write. A software WebGL would need executable memory.) To
+study before any code: ANGLE's back-end interface, Mesa's compiler built alone. Nothing done now
+should close that door: GL is cut out of the build by a flag, not removed.
 
 What a study of the pinned sources found (read, not compiled: verify when building):
 

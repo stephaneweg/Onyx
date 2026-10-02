@@ -40,5 +40,7 @@ grep -E "Protocols:|Features:|Enabled SSL backends" "$B/configure.log" || true
 echo "curl: build"
 cmake --build "$B" -j "$JOBS" >"$B/build.log" || { grep -B2 -A12 "error" "$B/build.log" | head -80; exit 1; }
 cmake --install "$B" >"$B/install.log" 2>&1 || { tail -20 "$B/install.log"; exit 1; }
+# (with CURL_ENABLE_EXPORT_TARGET off, curl's install leaves the library out: WebKit links it)
+cp "$B/lib/libcurl.a" "$S/lib/libcurl.a"
 
 onyx_tool_done "$B/src/curl" curl
