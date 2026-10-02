@@ -102,6 +102,10 @@ Two weaknesses, worth fixing:
 | ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
 | Mesa (V3D / QPU headers) | `tools/qpu/mesa` | MIT | Keep the notices |
 | React 18.3.1, React DOM (their production builds, test pages only: not on the card) | `tools/tests/netsurf/pages/react` | MIT | Keep the notice (its `LICENSE` is there) |
+| libonyxposix (the POSIX layer) and its sysroot files | `user/libc/posix`, `tools/onyx-toolchain.cmake`, `tools/cmake`, `tools/ports`, `/bin/posixtest` | **MIT** (ours) | — |
+| SQLite 3.50.4 (the amalgamation and its shell) | `third_party/sqlite-3.50.4`, `/bin/sqlite3` (the POSIX ports, not on the card yet) | Public domain | — |
+| libxml2 2.13.8 | `third_party/libxml2-2.13.8`, `/bin/xmllint` (the POSIX ports) | MIT | Keep `Copyright` |
+| curl 8.16.0 (libcurl and the tool) | `third_party/curl-8.16.0`, `/bin/curl` (the POSIX ports; with mbedTLS taken under Apache-2.0, nghttp2, zlib, brotli) | curl licence (MIT-like) | Keep `COPYING` |
 | newlib (libc of the C/C++ apps) | the toolchain | BSD-like (several) | Ship newlib's `COPYING.NEWLIB` notices with the binaries |
 | libgcc / libstdc++ | the toolchain | GPLv3 + **GCC Runtime Library Exception** | None for our binaries |
 | DejaVu | `third_party/dejavu-*`, `sdcard/res/fonts` | Bitstream Vera + public domain | Keep the licence; fonts not sold alone |

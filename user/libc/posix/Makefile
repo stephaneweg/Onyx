@@ -32,7 +32,7 @@ CFLAGS   = -mcpu=cortex-a72 -O2 -g0 -Wall -Wextra -Wno-unused-parameter -fno-sta
 CFLAGS_ABS = -mcmodel=large
 
 SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c \
-       file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c newlib_syscalls.c
+       file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c newlib_syscalls.c
 OBJ  = $(SRC:%.c=$(B)/%.o)
 HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../kapi.h \
        ../../../kernel/include/kern/kapi_abi.h

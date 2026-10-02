@@ -586,3 +586,4 @@ size_t iconv (iconv_t cd, char **in, size_t *inl, char **out, size_t *outl)
 	return (size_t) -1;
 }
 int iconv_close (iconv_t cd) { (void) cd; return 0; }
+

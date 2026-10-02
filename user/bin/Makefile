@@ -122,6 +122,20 @@ posixlib:
 $(POSIX_PROGS): %.elf: %.c posixlib ../kapi.h
 	$(CC) $(CFLAGS_POSIX) $(LDFLAGS_POSIX) $< -o $@
 
+# The C smoke ports of the POSIX layer (SQLite, libxml2, curl + mbedTLS: third_party, built with
+# CMake / the Onyx toolchain file into out/sysroot and out/ports, tools/ports/build-all.sh). OPT-IN
+# (a few minutes): `make ports`, or PORTS=1 with `all`. The tools: sqlite3, xmllint, curl.
+PORTS ?=
+PORT_TOOLS = sqlite3 xmllint curl
+PORT_OUT = ../../out/ports/bin
+.PHONY: ports
+ports:
+	sh ../../tools/ports/build-all.sh
+	@for t in $(PORT_TOOLS); do cp $(PORT_OUT)/$$t.elf $$t.elf; done
+ifneq ($(strip $(PORTS)),)
+PORT_PROGS = ports
+endif
+
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
 $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
