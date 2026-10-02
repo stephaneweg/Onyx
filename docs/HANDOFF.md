@@ -1512,7 +1512,6 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   "add sender"), and the file opens in Cardfile too.
 - **PDF viewer** + **PDF export** in Writer and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
 - **Screenshot** tool (screen / window / area; Print Screen key). **Done** (2026-10-01: its section above).
-- **Clock**: alarms, timer, stopwatch, world clocks (notifications through notifyd).
 
 **Priority 2**
 - **Localisation** screen: the Keyboard applet becomes *Region & Keyboard* -- the country /
@@ -1523,7 +1522,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 - **Quick notes** with a desktop widget that can be shown or hidden.
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
-**Priority 3–4**: **video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
+**Priority 3–4**: **Clock** (moved here by the user, 2026-10-02): alarms, timer, stopwatch, world clocks (notifications through notifyd; a small service for the alarms when the app is closed). **Video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).
