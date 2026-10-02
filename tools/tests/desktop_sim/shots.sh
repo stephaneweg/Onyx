@@ -98,7 +98,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot fileviewer " in
+	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot fileviewer photos " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
 	esac
@@ -106,7 +106,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail setup pkgman
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -452,6 +452,28 @@ if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fak
 	ms mail-wizard new "$WZ;$(typ 'steph.demo@gmail.com');$W40;down 714 514;up 714 514;$W40"
 	ms mail-outlook new "$WZ;$(typ 'steph.demo@outlook.com');$W40;down 714 514;up 714 514;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
 	kill $MS1 $MS2
+fi
+if want photos; then			# (Photos over a made-up library -- tools/tests/photos/make_samples.py: drawn photos as JPEGs with
+					#  their EXIF, a library.db with favourites, albums --: the days, a selection, a photo and its
+					#  details, editing (adjust, crop, filters), the albums; each run over a fresh copy)
+	[ -d "$OUT/plib/Pictures" ] || python3 tools/tests/photos/make_samples.py "$OUT/plib" >/dev/null
+	rm -rf "$OUT/pthumbs"
+	pp () { n=$1; shift; s=$1; shift
+		rm -rf "$OUT/writes/Pictures" "$OUT/writes/etc/photos"; mkdir -p "$OUT/writes/etc"; cp -r "$OUT/plib/Pictures" "$OUT/writes/"; cp -r "$OUT/plib/etc/photos" "$OUT/writes/etc/"
+		[ -d "$OUT/pthumbs" ] && cp -r "$OUT/pthumbs" "$OUT/writes/etc/photos/thumbs"
+		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_POS=12,30 "$@" SIM="$s;dump $OUT/$n.elsm;exit" "$OUT/photos" >>"$OUT/log.txt" 2>&1 || { echo "shots: photos failed"; exit 1; }
+		[ -d "$OUT/pthumbs" ] || cp -r "$OUT/writes/etc/photos/thumbs" "$OUT/pthumbs"
+		png $n; }
+	W10="$W;$W;$W;$W"; S0="$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"	# (the scan, the thumbnails)
+	OPEN="down 300 360;up 300 360;$W10;$W10"; EDIT="$OPEN;down 812 24;up 812 24;$W10"
+	pp photos "$S0;move 600 470;$W10"
+	pp photos-select "$S0;down 232 279;up 232 279;$W;down 397 320;up 397 320;$W;down 640 320;up 640 320;$W;move 520 330;$W10"
+	pp photos-viewer "$S0;$OPEN;key 0x103;$W10;$W10;move 400 300;$W10"
+	pp photos-edit "$S0;$EDIT;down 857 151;up 857 151;$W10;$W10"
+	pp photos-crop "$S0;$EDIT;down 767 83;up 767 83;$W;down 749 324;up 749 324;$W10;$W10"
+	pp photos-filters "$S0;$EDIT;down 950 110;up 950 110;$W10;$W10;down 800 300;up 800 300;$W10;$W10"
+	pp photos-albums "$S0;down 60 196;up 60 196;$W10;$W10"
+	pp photos-menu "$S0;rdown 300 360;rup 300 360;$W;$W"
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)
 	M=SIM_OVERLAY=$D/milk:$D/sd

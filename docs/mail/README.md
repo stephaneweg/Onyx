@@ -51,7 +51,8 @@ a Microsoft account:
 4. **API permissions** → *Add a permission* → *Microsoft Graph* → *Delegated*: `offline_access`,
    `IMAP.AccessAsUser.All`, `POP.AccessAsUser.All`, `SMTP.Send` (and `email`, `openid`) → Add.
 5. Copy the **Application (client) ID** (a GUID) from *Overview*: it goes into Mail (`SD:/etc/mail/oauth.ini`, or
-   built in).
+   built in). **Done (2026-10-02)**: the user registered "Onyx Mail"; its id `85ccaf6e-81ff-4a62-9194-930fc36429ad` is
+   built in (`oauth_defaults`, `user/mail/oauth.h`) -- a public client's id, not a secret.
 
 ## Decided (the user, 2026-10-02)
 

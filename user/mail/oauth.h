@@ -187,6 +187,7 @@ struct OAuthCfg
 static void oauth_defaults (OAuthCfg &o)
 {
 	memset (&o, 0, sizeof o);
+	scpy (o.clientId, "85ccaf6e-81ff-4a62-9194-930fc36429ad", sizeof o.clientId);	// "Onyx Mail" (Microsoft Entra: a public client, not a secret)
 	scpy (o.tenant, "common", sizeof o.tenant);
 	scpy (o.host, "login.microsoftonline.com", sizeof o.host); o.port = 443; o.sec = SEC_TLS;
 	scpy (o.scope, "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/POP.AccessAsUser.All "
