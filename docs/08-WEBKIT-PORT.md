@@ -305,7 +305,9 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    media are still to do.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
 4. The Onyx view, compositor (later the V3D) and media (`MediaPlayerPrivate` on `user/av`).
-5. The browser (Jet's UI reused).
+5. The browser (Jet's UI reused). **No tabs** (the user, 2026-10-02): one page per browser
+   window — one UI, one web and one network process per browser; what `window.open` and
+   `target=_blank` do is to be decided then (the same view, or a new window).
 6. Parity with Jet, then the switch.
 
 ## The patch series
