@@ -15,6 +15,7 @@
 | **Doom** (`doom.app`) | GPL-2.0-or-later (→ GPLv3 fine) | doomgeneric: "version 2 … or any later version". |
 | **Media Player** (`media.app`) | **GPL-2.0-or-later** | It links **FFmpeg** built with `--enable-gpl` (GPL-2.0-or-later): H.264, H.265, AAC, AVI, MPEG-TS... Decided with the user (2026-10-02: "on passera le Media Player en GPL-2"). Its own files stay MIT; its source is the repository's. |
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
+| **Photos** (`photos.app`) | **MIT** (ours) | Its EXIF reader, library, editing and slideshow are ours; it links FreeType (FTL), stb_image and simplewebp (public domain, BSD-3), our PNG / JPEG / PDF writers (MIT): all permissive. |
 | **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
 | **Every other app, the tools** | Your choice | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |

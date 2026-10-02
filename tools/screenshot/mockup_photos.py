@@ -187,8 +187,7 @@ def tbtn (c, x, y, icon, label = None, accent = False, col = None, hot = False):
 def toolbar (c, x, y, w, sel_count = 0):
 	c.rect (x, y, w, TB_H, FACE)
 	bx = x + 10
-	bx = tbtn (c, bx, y + 8, ic_import, "Import", accent = True) + 8
-	bx = tbtn (c, bx, y + 8, ic_play, "Slideshow")
+	bx = tbtn (c, bx, y + 8, ic_play, "Slideshow", accent = True) + 8
 	c.vline (bx + 3, y + 12, y + 38, M.shade (FACE, 0.82)); bx += 12
 	if sel_count:
 		c.text_l (bx, y, TB_H, "%d selected" % sel_count, "uib", M.SEL); bx += c.tw ("%d selected" % sel_count, "uib") + 12
@@ -196,7 +195,7 @@ def toolbar (c, x, y, w, sel_count = 0):
 	# the thumbnails' size, the search
 	sx = x + w - 10 - 230
 	c.rect (sx, y + 11, 230, 28, WHITE, r = 14, outline = M.LINE)
-	ic_search (c, sx + 10, y + 17, 16, DIM); c.text_l (sx + 34, y + 11, 28, "Search: a place, a date...", "ui", FAINT)
+	ic_search (c, sx + 10, y + 17, 16, DIM); c.text_l (sx + 34, y + 11, 28, "Search: a name, a date...", "ui", FAINT)
 	zx = sx - 150
 	ic_photos (c, zx, y + 18, 13, DIM); c.rect (zx + 20, y + 24, 90, 3, M.LINE2, r = 1); c.rect (zx + 20, y + 24, 52, 3, M.SEL, r = 1)
 	c.ellipse (zx + 72, y + 25, 7, WHITE, M.shade (FACE, 0.6), 1.2); ic_photos (c, zx + 118, y + 15, 19, DIM)
@@ -222,7 +221,8 @@ def sidebar (c, x, y, h, sel = "All photos"):
 	for nm, n in (("Ghent, September", 64), ("The Ardennes", 38), ("The kids", 412), ("Brewery labels", 22)): item (nm, ic_album, n, DIM)
 	c.text_l (x + 44, yy, 26, "New album...", "ui", M.SEL); ic_plus (c, x + 18, yy + 5, 16, M.SEL); yy += 34
 	head ("FOLDERS")
-	for nm, n in (("Pictures", 1960), ("Camera (import)", 812), ("SD1: Photos 2019", 42)): item (nm, ic_folder, n, (210, 165, 80))
+	for nm, n in (("Pictures", 1960), ("Camera", 812), ("SD1: DCIM", 42)): item (nm, ic_folder, n, (210, 165, 80))
+	c.text_l (x + 44, yy, 26, "Add a folder...", "ui", M.SEL); ic_plus (c, x + 18, yy + 5, 16, M.SEL); yy += 28
 
 # ---- 1. the library -------------------------------------------------------------------------------------------------------
 def shot_library ():
@@ -233,7 +233,7 @@ def shot_library ():
 	gx, gy, gw = cx + SIDE_W + 1, cy + TB_H + 1, cw - SIDE_W - 1
 	c.rect (gx, gy, gw, ch - TB_H - 1, LIST)
 	y = gy + 12
-	groups = [("Saturday 27 September 2026", "Ghent · 18 photos", 12, 1), ("Sunday 21 September 2026", "La Roche-en-Ardenne · 9 photos", 6, 40), ("Monday 15 September 2026", "Brussels · 4 photos", 4, 80)]
+	groups = [("Saturday 27 September 2026", "18 photos", 12, 1), ("Sunday 21 September 2026", "9 photos", 6, 40), ("Monday 15 September 2026", "4 photos", 4, 80)]
 	sel = { 2, 4, 9 }; fav = { 1, 5, 41 }
 	tile = 106; gap = 6
 	cols = (gw - 32 - 44) // (tile + gap)
@@ -250,8 +250,6 @@ def shot_library ():
 				c.rect (tx, ty, tile, tile, M.A (M.SEL, 70), r = 4); c.rect (tx, ty, tile, tile, None, r = 4, outline = M.SEL, width = 3)
 				check_mark (c, tx + 6, ty + 6, True)
 			if idx in fav: ic_heart (c, tx + tile - 24, ty + tile - 22, 16, WHITE)
-			if idx == 5:
-				c.rect (tx + tile - 44, ty + 6, 38, 18, M.A ((0, 0, 0), 150), r = 9); c.text_c (tx + tile - 44, ty + 6, 38, 18, "0:42", "smallb", WHITE)
 		y += ((min (n, 99) + cols - 1) // cols) * (tile + gap) + 14
 	# the year's bar at the right (the timeline)
 	bx = gx + gw - 26
@@ -260,7 +258,7 @@ def shot_library ():
 		c.text_r (bx - 6, gy + 10 + i * 70, 16, yr, "small", DIM if i else M.SEL)
 	c.rect (bx - 2, gy + 14, 7, 30, M.SEL, r = 3)
 	# the status line
-	c.rect (gx, cy + ch - 26, gw, 26, M.HEAD); c.text_l (gx + 14, cy + ch - 26, 26, "2 814 photos and 37 videos · 3 selected (11,2 MB)", "small", DIM)
+	c.rect (gx, cy + ch - 26, gw, 26, M.HEAD); c.text_l (gx + 14, cy + ch - 26, 26, "2 814 photos · 3 selected (11,2 MB)", "small", DIM)
 	c.save ("photos-library.png")
 
 # ---- 2. a photo, its film strip, its details ------------------------------------------------------------------------------
@@ -297,7 +295,7 @@ def shot_viewer ():
 	y = cy + 62
 	c.text (px + 18, y, "Details", "h2", WHITE); y += 34
 	rows = [("IMG_2041.jpg", "4032 × 3024 · 3,4 MB", ic_photos), ("Saturday 27 September 2026", "16:42", ic_clock),
-		("Pixel 8", "f/1.7 · 1/640 s · ISO 50 · 6,9 mm", ic_info), ("Ghent, Belgium", "Graslei · 51.0547° N, 3.7206° E", ic_folder),
+		("Pixel 8", "f/1.7 · 1/640 s · ISO 50 · 6,9 mm", ic_info),
 		("Pictures / 2026 / Ghent", "SD:/Pictures/2026/Ghent", ic_folder)]
 	for a, b, ic in rows:
 		ic (c, px + 18, y + 2, 18, (170, 174, 180))
@@ -334,7 +332,8 @@ def shot_edit ():
 	c.text_c (cx, cy, cw - 260, 46, "IMG_1988.jpg", "uib", (220, 222, 226))
 	bx = cx + cw - 8 - 300
 	c.rect (bx, cy + 7, 120, 32, (70, 74, 82), r = 6); c.text_c (bx, cy + 7, 120, 32, "Before / after", "ui", (230, 230, 232))
-	M.button (c, bx + 128, cy + 7, 172, 32, "Save a copy  ▾", accent = True)
+	c.rect (bx + 128, cy + 7, 84, 32, (70, 74, 82), r = 6); c.text_c (bx + 128, cy + 7, 84, 32, "Save as...", "ui", (230, 230, 232))
+	M.button (c, bx + 220, cy + 7, 80, 32, "Save", accent = True)
 	# the photo, cropped, a grid of thirds
 	pw, ph = cw - 330, ch - 46 - 60
 	ix, iy = cx + 30, cy + 76

@@ -58,24 +58,42 @@ answer in French. The docs stay in English.
 
 - **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
   decisions: `docs/mail/README.md`), **MIT**. Gmail (an **app password**), Outlook.com / Hotmail (**Microsoft's
-  device code**: needs the "Onyx Mail" application's id in `SD:/etc/mail/oauth.ini` -- the user registers it at
-  Azure, the steps in the README), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
+  device code**: the "Onyx Mail" application registered by the user at Microsoft Entra, its id
+  `85ccaf6e-81ff-4a62-9194-930fc36429ad` built in -- `oauth_defaults`, user/mail/oauth.h; `SD:/etc/mail/oauth.ini` overrides it), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
   starred, each account's folders; conversations (Gmail's thread id, else References; one's replies from Sent
   joined); the reading pane with **our own HTML 4 + CSS 2 renderer** (`user/mail/html*.h`: the user, "simple,
   not Jet"), remote pictures held back, attachments opened / saved; writing with completion (contacts + the
   addresses written to), drafts, attachments; the wizard and the settings; **Contacts = a Cardfile form**,
   `SD:/Documents/Contacts.card`. `eml = mail` in `fileassoc.ini`. A worker thread does all the network; the
   passwords and tokens are encrypted on the card (AES-256-GCM, a key of the card).
-- **Tests**: `sh tools/tests/run_mail_test.sh` (162 checks: protocols against `fakemail.py`, the renderer, the
+- **Tests**: `sh tools/tests/run_mail_test.sh` (163 checks: protocols against `fakemail.py`, the renderer, the
   model); the screenshots: `shots.sh mail` (two made-up mailboxes: `fakemail.py --demo`).
 - **On the Pi** (2026-10-02, the user): **works well with Gmail** (an app password). Yahoo: its app passwords are
-  currently unavailable at Yahoo (the option greyed: Yahoo's own doing, no date given). Outlook: waits for the
-  user's Azure registration (the client id). Watch: big mailboxes (the first
+  currently unavailable at Yahoo (the option greyed: Yahoo's own doing, no date given). Outlook: the user registered
+  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in, to try on the Pi. Watch: big mailboxes (the first
   look takes a folder's newest 100), the TLS handshakes' time, the memory of large HTML mails (a newsletter
   wider than the pane is drawn once at its width and averaged down).
-- **Next**: Outlook's client id (the user's registration), IDLE for the Inbox (the code is in `imap.h`, the
+- **Next**: try Outlook on the Pi (the id is in), IDLE for the Inbox (the code is in `imap.h`, the
   worker polls today), older messages on demand, rich text when writing (bold, lists, links: the HTML part is
   generated from the text today), "always show pictures from this sender", search on the server, printing / PDF.
+
+## Photos, the photo library (2026-10-02; tested on the PC, not yet on the Pi)
+
+- **What**: `user/Apps/photos` (docs/03 *Photos*; docs/04 *Photos*; the mock-ups and the user's decisions:
+  `docs/photos/README.md`), **MIT**. Every picture of `SD:/Pictures` (+ `Camera`), each volume's `DCIM` and the folders
+  added by hand, **by day** (the EXIF date, else the name's), favourites, recently added, albums (lists of paths),
+  folders, the search (name, date, camera, album, description), the years' strip; the viewer (zoom, film strip,
+  details, a description); **editing** (crop with ratios, quarter turns, straighten, Enhance, 7 adjustments, 5
+  filters; **Save** over the original or **Save as...**, the user's choice; a JPEG keeps its EXIF); the lossless
+  rotation (the EXIF orientation); Send by Mail (`mail --attach <list>`, added to Mail), the Clipboard, the
+  wallpaper, Paint, a PDF contact sheet, the slideshow (full screen, cross-fade). The user decided: no import, no
+  videos, no places (GPS). Two threads: the scan, the thumbnails (cached as JPEGs in `SD:/etc/photos/thumbs`).
+- **Tests**: `shots.sh photos` over `tools/tests/photos/make_samples.py`'s library.
+- **Watch on the Pi**: the first scan of a big card (only headers are read: fast) and the thumbnails (each photo
+  decoded whole once: a 12 MP JPEG is ~1 s on the Pi -- the visible ones first, then cached), the memory when
+  editing a big photo (the whole picture plus two working copies when saving).
+- **Next**: the camera's own preview (EXIF IFD1) as a first thumbnail while the real one is made; a JPEG decoded at
+  1/2, 1/4, 1/8 (stb has no DCT scaling: our own, or the preview); drag photos onto an album; a map is out (no GPS).
 
 ## PDF Viewer and the PDF export (2026-10-01; the viewer tried on the Pi 2026-10-02: works well)
 
@@ -1512,6 +1530,9 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   "add sender"), and the file opens in Cardfile too.
 - **PDF viewer** + **PDF export** in Writer and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
 - **Screenshot** tool (screen / window / area; Print Screen key). **Done** (2026-10-01: its section above).
+- **Photos** (the user's pick among the ideas of 2026-10-02: weather, EPUB reader, RSS, SSH, a KeePass-compatible
+  vault, GPIO lab, home automation, backup, WebDAV, CalDAV / CardDAV, internet radio and podcasts, a code editor,
+  chess, Matrix) -- **done** (2026-10-02: *Photos*, its section above).
 
 **Priority 2**
 - **Localisation** screen: the Keyboard applet becomes *Region & Keyboard* -- the country /
