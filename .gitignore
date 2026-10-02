@@ -118,3 +118,5 @@ pc/dist/Koton/koton/settings.json
 # The user's Wi-Fi network and key: on the card only, never in git (see the note above)
 /sdcard/etc/wpa_supplicant.conf
 /sdcard_lite/etc/wpa_supplicant.conf
+sdcard/res/wallpaper.*
+sdcard_lite/res/wallpaper.*

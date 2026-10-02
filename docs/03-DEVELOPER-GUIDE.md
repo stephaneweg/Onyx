@@ -1284,7 +1284,11 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > boxes' carets. `Textbox` and `Textarea` place the caret, the clicks and the selection by the
 > glyphs' real widths (a `Textarea` then scrolls sideways by pixels: `leftPx`). Without a face,
 > nothing changes — byte for byte (the screenshots stay identical). Not through the face: the
-> window's **frame** (its title keeps the desktop's bitmap font, the same on every window),
+> window's **frame** — its title has a face of its own, the same in every window, FreeType app or
+> not: **`SD:/res/fonts/title.aaf`**, DejaVu Sans Bold at 13 px rendered ahead of time by the apps'
+> own FreeType and gamma (`sh tools/title_font/build.sh`: `gen_title_font.cpp` documents the format —
+> Latin-1, anti-aliased bitmaps, kerning pairs), read once by `wtk/skin.cpp`'s `AafFace` (without the
+> file: the bitmap font) —,
 > `RichTextBox` (its own styled bitmap glyphs), and the explicit bitmap calls `Canvas::drawFont` /
 > `wtk::draw_text`.
 > - The interface: `struct TextFace { virtual int height (); virtual int ascent (); virtual int
@@ -1819,9 +1823,9 @@ is a **newlib** wtk app (`photos.elf`: FreeType's text, wtk's image codecs, `img
 | `exif.h` | A picture's facts without decoding it: the size (JPEG's SOF, PNG, GIF, BMP, WebP, PCX headers), the EXIF (TIFF) fields — DateTimeOriginal (local time), Make / Model, f-number, exposure, ISO, focal length, **orientation**, the camera's preview —, a date in the file's name; `jpeg_with_exif` puts the original's EXIF into a new JPEG (orientation 1, no preview). |
 | `lib.h` | `Library`: the photos (`Photo`, a path hash index), `SD:/etc/photos/library.db` (tab-separated lines), the folders watched (`SD:/Pictures`, its `Camera`, each volume's `DCIM`, `folders.txt`), the albums (`albums/<name>.txt`, paths), the **scan thread** (walks the folders; what is known by path + size is not read again; batches posted with `kapi_post`; the gone dropped, an absent volume's kept aside). |
 | `imgops.h` | `Pix`; orientation, quarter turns, straighten (bilinear, enlarged), crop, scaling (area average down, bilinear up), the adjustments as one tone curve (`ToneMap`: exposure, contrast, highlights, shadows) + saturation, warmth, an unsharp mask, the filters, `auto_enhance` (from the histogram). |
-| `thumbs.h` | `Thumbs`: a thread making the thumbnails (320 px, turned the right way, kept as `thumbs/<key>.jpg`; the key = path, size, orientation) and decoding the photo shown big first (`want_full` → `onFull`); a cache of the sizes drawn. |
+| `thumbs.h` | `Thumbs`: a thread making the thumbnails (320 px, turned the right way, kept as `thumbs/<key>.jpg`; the key = path, size, orientation) and decoding the photo shown big first (`want_full` → `onFull`); when idle, the **backlog** (`set_backlog`, at start and after each scan): every thumbnail missing on the card made, `blDone` / `blTotal` drawn as the status line's bar; a cache of the sizes drawn. |
 | `ui.h`, `app.h` | Faces, icons (vpaint), hit lists, the colours (the library follows the theme; viewer and editor dark); what is shown (`g_src`, the search), the list by day, the selection. |
-| `grid.h`, `viewer.h`, `editor.h`, `share.h`, `main.cpp` | The toolbar, the left column, the days' grid (only what shows is drawn; the years' strip), the albums' page; the viewer; the editor (works on a 1600 px copy, the whole photo rendered when saved); favourites, albums, trash, the lossless rotation (the EXIF orientation rewritten), Send by Mail (`mail --attach <list>`), the wallpaper (`wallpaper.h`), the Clipboard, the PDF, the slideshow (`kapi_fullscreen_begin`, a cross-fade). |
+| `grid.h`, `viewer.h`, `editor.h`, `share.h`, `main.cpp` | The toolbar, the left column, the days' grid (only what shows is drawn; the years' strip), the albums' page; the viewer; the editor (works on a 1600 px copy, the whole photo rendered when saved); favourites, albums, trash, the lossless rotation (the EXIF orientation rewritten), Send by Mail (`mail --attach <list>`), the wallpaper (`wallpaper.h`; a photo not on `SD:` or stored turned copied upright to `SD:/res/wallpaper.<ext>`), the Clipboard, the PDF, the slideshow (`kapi_fullscreen_begin`, a cross-fade). |
 
 **On the PC**: `python3 tools/tests/photos/make_samples.py <dir>` makes a library (drawn photos as JPEGs with their EXIF —
 some standing, orientation 6 —, a screenshot dated by its name, a `library.db` with favourites, albums); `sh

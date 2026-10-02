@@ -182,10 +182,38 @@ static void act_mail (int one)
 }
 
 // ---- the wallpaper, the Clipboard, Paint --------------------------------------------------------------------------------------------
+// the wallpaper's setting (SD:/etc/wallpaper.ini, the image mode) pointed at the photo. A photo not on SD: (another
+// volume: not there at every start) is copied to SD:/res/wallpaper.<ext>; a photo the camera stored turned (its EXIF
+// orientation: the wallpaper's painter does not read it) is written there turned, as SD:/res/wallpaper.jpg.
 static void act_wallpaper (int pi)
 {
+	const Photo &p = g_lib.ph[pi];
+	char img[200]; scpy (img, p.path, sizeof img);
+	bool turned = p.orient > 1 && p.orient <= 8, away = !ipfx (p.path, "SD:/");
+	if (turned || away)
+	{
+		const char *dot = strrchr (base_name (p.path), '.');
+		char ext[16]; scpy (ext, dot ? dot + 1 : "jpg", sizeof ext); for (char *c = ext; *c; c++) *c = (char) lc (*c);
+		// (the other wallpaper.* removed: one file only)
+		static const char *const EX[] = { "jpg", "jpeg", "jpe", "png", "gif", "bmp", "webp", "pcx" };
+		for (unsigned i = 0; i < sizeof EX / sizeof EX[0]; i++) { char o[60]; snprintf (o, sizeof o, "SD:/res/wallpaper.%s", EX[i]); kapi_remove (o); }
+		bool ok = false;
+		if (turned)
+		{
+			Pix full; if (Thumbs::load_full (p.path, p.orient, full)) { opaque (full); unsigned n = 0; unsigned char *d = pngsave::jpeg_encode (full.px, full.w, full.h, 92, &n);
+				if (d) { ok = kapi_save_file ("SD:/res/wallpaper.jpg", d, n) >= 0; delete[] d; } }
+			scpy (img, "SD:/res/wallpaper.jpg", sizeof img);
+		}
+		else
+		{
+			int len; char *b = file_read (p.path, &len);
+			snprintf (img, sizeof img, "SD:/res/wallpaper.%s", ext);
+			if (b) { ok = kapi_save_file (img, b, (unsigned) len) >= 0; free (b); }
+		}
+		if (!ok) { wk_messagebox ("Photos", "The picture could not be copied to SD:/res for the wallpaper.", MB_OK); return; }
+	}
 	Wallpaper w; wp_load (w);
-	w.mode = WP_IMAGE; scpy (w.image, g_lib.ph[pi].path, sizeof w.image); w.tile = 0; w.tint = 0;
+	w.mode = WP_IMAGE; scpy (w.image, img, sizeof w.image); w.tile = 0; w.tint = 0;
 	wp_save (w);
 	kapi_exec ("SD:apps/voronoy.app/main", "");
 	status_note ("The desktop's wallpaper is set.");

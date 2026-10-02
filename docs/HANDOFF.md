@@ -86,11 +86,12 @@ answer in French. The docs stay in English.
   details, a description); **editing** (crop with ratios, quarter turns, straighten, Enhance, 7 adjustments, 5
   filters; **Save** over the original or **Save as...**, the user's choice; a JPEG keeps its EXIF); the lossless
   rotation (the EXIF orientation); Send by Mail (`mail --attach <list>`, added to Mail), the Clipboard, the
-  wallpaper, Paint, a PDF contact sheet, the slideshow (full screen, cross-fade). The user decided: no import, no
+  wallpaper (copied upright to `SD:/res/wallpaper.<ext>` when not on `SD:`), Paint, a PDF contact sheet, the slideshow (full screen, cross-fade). The user decided: no import, no
   videos, no places (GPS). Two threads: the scan, the thumbnails (cached as JPEGs in `SD:/etc/photos/thumbs`).
 - **Tests**: `shots.sh photos` over `tools/tests/photos/make_samples.py`'s library.
 - **Watch on the Pi**: the first scan of a big card (only headers are read: fast) and the thumbnails (each photo
-  decoded whole once: a 12 MP JPEG is ~1 s on the Pi -- the visible ones first, then cached), the memory when
+  decoded whole once: a 12 MP JPEG is ~1 s on the Pi -- the visible ones first, then the backlog of all the
+  missing ones in the same thread, a bar in the status line; cached as JPEGs), the memory when
   editing a big photo (the whole picture plus two working copies when saving).
 - **Next**: the camera's own preview (EXIF IFD1) as a first thumbnail while the real one is made; a JPEG decoded at
   1/2, 1/4, 1/8 (stb has no DCT scaling: our own, or the preview); drag photos onto an album; a map is out (no GPS).
@@ -553,6 +554,8 @@ answer in French. The docs stay in English.
   list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
   its 8 applets, the Game Library, (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone), (2026-10-02)
   Paint and the File Viewer (names cut to the column's width: `wk_text_fit`; the text preview clipped).
+  **The windows' titles** too, in every app (FreeType or not): `SD:/res/fonts/title.aaf` (DejaVu Sans Bold
+  13 px pre-rendered by the apps' FreeType: `sh tools/title_font/build.sh`), read by wtk's frame (`skin.cpp`).
 - **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
