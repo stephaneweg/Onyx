@@ -81,10 +81,16 @@ set(CMAKE_STRIP "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}strip" CACHE FILE
 set(CMAKE_OBJCOPY "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}objcopy" CACHE FILEPATH "")
 
 # The flags (the _INIT values: a project's own flags are added to them)
-set(ONYX_COMMON_FLAGS "-mcpu=cortex-a72 -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem ${ONYX_SYSROOT}/include -DFD_SETSIZE=1024")
+# onyx-cc.specs (libonyxposix's sysroot): __unix__ / __unix defined and -pthread accepted (a
+# no-op): the toolchain seen as a Unix one by portable code. Older sysroots lack it.
+set(ONYX_CC_SPECS "")
+if(EXISTS "${ONYX_SYSROOT}/lib/onyx-cc.specs")
+	set(ONYX_CC_SPECS "-specs=${ONYX_SYSROOT}/lib/onyx-cc.specs")
+endif()
+set(ONYX_COMMON_FLAGS "-mcpu=cortex-a72 ${ONYX_CC_SPECS} -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem ${ONYX_SYSROOT}/include -DFD_SETSIZE=1024")
 set(CMAKE_C_FLAGS_INIT "${ONYX_COMMON_FLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "${ONYX_COMMON_FLAGS}")
-set(CMAKE_ASM_FLAGS_INIT "-mcpu=cortex-a72")
+set(CMAKE_ASM_FLAGS_INIT "-mcpu=cortex-a72 ${ONYX_CC_SPECS}")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-specs=${ONYX_SYSROOT}/lib/onyx.specs -L${ONYX_SYSROOT}/lib")
 
 # Search: the sysroot for libraries, headers, packages; the host for programs

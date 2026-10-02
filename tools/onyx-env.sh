@@ -54,11 +54,14 @@ CXX=${ONYX_TOOLCHAIN_PREFIX}g++
 AR=${ONYX_TOOLCHAIN_PREFIX}ar
 RANLIB=${ONYX_TOOLCHAIN_PREFIX}ranlib
 STRIP=${ONYX_TOOLCHAIN_PREFIX}strip
-CFLAGS="-mcpu=cortex-a72 -O2 -ffunction-sections -fdata-sections -fno-pic -fno-pie -isystem $ONYX_SYSROOT/include -DFD_SETSIZE=1024"
+# onyx-cc.specs: __unix__ defined, -pthread accepted (libonyxposix's sysroot; older ones lack it)
+_onyx_ccspecs=
+[ -f "$ONYX_SYSROOT/lib/onyx-cc.specs" ] && _onyx_ccspecs="-specs=$ONYX_SYSROOT/lib/onyx-cc.specs"
+CFLAGS="-mcpu=cortex-a72 $_onyx_ccspecs -O2 -ffunction-sections -fdata-sections -fno-pic -fno-pie -isystem $ONYX_SYSROOT/include -DFD_SETSIZE=1024"
 CXXFLAGS="$CFLAGS"
 LDFLAGS="-specs=$ONYX_SYSROOT/lib/onyx.specs -L$ONYX_SYSROOT/lib"
 PKG_CONFIG_LIBDIR=$ONYX_SYSROOT/lib/pkgconfig
 PKG_CONFIG_SYSROOT_DIR=
 export PATH ONYX_SYSROOT ONYX_HOST ONYX_TOOLCHAIN_PREFIX CC CXX AR RANLIB STRIP CFLAGS CXXFLAGS LDFLAGS \
        PKG_CONFIG_LIBDIR PKG_CONFIG_SYSROOT_DIR
-unset _onyx_here
+unset _onyx_here _onyx_ccspecs
