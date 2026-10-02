@@ -558,7 +558,12 @@ static void h_msleep (unsigned ms)
 	if (getenv ("SIM_SLEEP")) usleep (ms * 1000);	// real time (NetSurf's scheduler reads the clock)
 	step ();
 }
-static unsigned h_get_ticks (void) { return g_ticks; }
+// SIM_REALCLOCK: the ticks are the PC's monotonic clock (a test whose threads wait on the network)
+static unsigned h_get_ticks (void)
+{
+	if (getenv ("SIM_REALCLOCK")) { struct timespec t; clock_gettime (CLOCK_MONOTONIC, &t); return (unsigned) (t.tv_sec * 100 + t.tv_nsec / 10000000); }
+	return g_ticks;
+}
 static int h_should_exit (void) { return g_quit; }
 static int h_pump_wait (unsigned ms) { h_msleep (ms < 16 ? ms : 16); pump (); return 0; }
 static void yield (void) {}

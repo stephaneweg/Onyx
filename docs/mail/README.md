@@ -1,6 +1,6 @@
 # Mail for Onyx — study, first mock-ups
 
-> **Status (2026-10-02): mock-ups, to validate.** Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
+> **Status (2026-10-02): mock-ups validated; being built** (the protocol layer `user/mail/` done and tested: `sh tools/tests/run_mail_test.sh`). Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
 > client "as user-friendly as possible". The user (2026-10-02): it must connect to **Gmail, Outlook, IMAP and
 > POP3 / SMTP**; Gmail with an **app password**, Outlook with Microsoft's sign-in **by a code** (an "Onyx Mail"
 > application registered by the user at Microsoft: below). **Contacts** = a Cardfile form (`.card`), opened in
@@ -30,7 +30,7 @@ providers' marks are drawn in their colours, not their logos).
 | POP3 | — | `pop3.h`: USER / PASS (or XOAUTH2), STAT, UIDL, RETR, DELE; the messages kept on the card (their UIDL remembered). |
 | SMTP | — | `smtp.h`: EHLO, STARTTLS or SSL, AUTH PLAIN / LOGIN / **XOAUTH2**, MAIL / RCPT / DATA; the message also put in Sent (IMAP: APPEND). |
 | MIME | — | `mime.h`: reading (multipart, quoted-printable, base64, RFC 2047 headers, charsets — UTF-8, Latin-1, Windows-1252), writing (multipart/alternative text + HTML, attachments base64, UTF-8 headers). |
-| HTML mail | NetSurf (Jet Browser) | a message's HTML shown **safely**: no remote pictures unless asked ("Show the pictures"), no scripts; first a simple HTML → text with its links and pictures (our own), Jet's engine later. |
+| HTML mail | NetSurf (Jet Browser) | **our own** small renderer (`user/mail/html.h`, MIT; the user, 2026-10-02: "simple, not Jet, HTML 4 at least with CSS 2"): HTML 4's elements, tables, CSS 2 (`<style>`, `style=`, the selectors, the box model, floats as blocks), the card's fonts; shown **safely**: no remote pictures unless asked ("Show the pictures"), no scripts, no forms; `cid:` pictures from the message. |
 | OAuth 2 (Outlook) | Courier's HTTPS (`http.hpp`) | the device code flow (`login.microsoftonline.com/consumers/oauth2/v2.0/devicecode`, then `/token` polled), the scopes `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access`; the refresh token kept encrypted. Needs the **client id** of an application registered at Microsoft (below). |
 | The cache | — | `SD:/mail/<account>/`: the folders' lists, the messages' headers (an index), the bodies fetched once, the attachments on demand; a worker thread syncs while the window stays live (kapi threads, as Media Player). |
 | Secrets | — | the passwords and tokens **encrypted** on the card (a key of the card; the future key vault, HANDOFF's priority 5, takes them over). |
@@ -49,15 +49,27 @@ a Microsoft account:
    accounts**; *Redirect URI*: none. **Register**.
 3. **Authentication** → *Advanced settings* → **Allow public client flows: Yes** → Save (the device code needs it).
 4. **API permissions** → *Add a permission* → *Microsoft Graph* → *Delegated*: `offline_access`,
-   `IMAP.AccessAsUser.All`, `SMTP.Send` (and `email`, `openid`) → Add.
+   `IMAP.AccessAsUser.All`, `POP.AccessAsUser.All`, `SMTP.Send` (and `email`, `openid`) → Add.
 5. Copy the **Application (client) ID** (a GUID) from *Overview*: it goes into Mail (`SD:/etc/mail/oauth.ini`, or
    built in).
 
-## To decide with the user
+## Decided (the user, 2026-10-02)
 
-1. The name: **Mail** (folder `mail`)?
-2. The layout: **three columns** (accounts and folders, the conversations, the message) as in the mock-ups — and
-   the message alone in the window when it is narrow?
-3. **Conversations** grouped (as Gmail) by default, or the messages one by one (a View option either way)?
-4. **HTML messages**: shown as text with their links (safe and light) in the first version, Jet's engine later?
-5. Contacts: `SD:/Documents/Contacts.card`, the fields of the mock-up?
+1. The name **Mail** (folder `mail`); the **three columns** of the mock-ups; **conversations** grouped by default.
+2. HTML messages: **our own HTML 4 + CSS 2 renderer**, not Jet.
+3. Contacts: `SD:/Documents/Contacts.card`, the fields of the mock-up.
+4. Gmail by an **app password**; Outlook by the **device code** (the "Onyx Mail" id in `SD:/etc/mail/oauth.ini`).
+
+## The code
+
+| File | What |
+|---|---|
+| `user/mail/util.h` | the buffer, base64, quoted-printable, charsets → UTF-8, RFC 2047 words, RFC 5322 dates, addresses |
+| `user/mail/conn.h` | a connection: TCP, TLS (at once or STARTTLS; the certificate checked), lines, literals, time-out, cancel |
+| `user/mail/imap.h` | IMAP4rev1: login (LOGIN, PLAIN, XOAUTH2), LIST + special use, SELECT, UID FETCH (envelope, structure, sections), STORE, MOVE / COPY, EXPUNGE, APPEND, IDLE |
+| `user/mail/pop3.h` | POP3: CAPA, STLS, USER / PASS, AUTH PLAIN / XOAUTH2, STAT, LIST, UIDL, TOP, RETR, DELE, QUIT |
+| `user/mail/smtp.h` | SMTP: EHLO, STARTTLS, AUTH PLAIN / LOGIN / XOAUTH2, MAIL / RCPT / DATA |
+| `user/mail/mime.h` | a message read (the parts' tree, RFC 2231 names, the text to show, the attachments, `cid:`) and written (text + HTML, inline pictures, attachments) |
+| `user/mail/oauth.h` | Microsoft's device code flow, the refresh; HTTPS POST over `conn.h` |
+| `tools/tests/mail/fakemail.py` | a fake IMAP / POP3 / SMTP / OAuth server (the tests, the screenshots) |
+| `tools/tests/mail/mailtest.cpp` | 98 checks against it (`sh tools/tests/run_mail_test.sh`) |
