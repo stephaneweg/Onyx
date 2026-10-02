@@ -67,29 +67,39 @@ struct RoomMap
     }
 
 private:
-    // find `key` then the first integer after the following ':' or '='.
+    // find a real `key: <int>` / `key = <int>` (skip occurrences in comments: require that
+    // the key is immediately followed, after spaces, by ':' or '=' then a number).
     static int find_int (const char *js, const char *key, int def)
     {
-        const char *p = strstr (js, key); if (!p) return def;
-        p += strlen (key);
-        while (*p && *p != ':' && *p != '=' && *p != '\n') p++;
-        if (!*p) return def; p++;
-        while (*p == ' ' || *p == '\t') p++;
-        bool neg = false; if (*p == '-') { neg = true; p++; }
-        if (*p < '0' || *p > '9') return def;
-        int v = 0; while (*p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0');
-        return neg ? -v : v;
+        int kl = (int) strlen (key);
+        for (const char *p = strstr (js, key); p; p = strstr (p + kl, key))
+        {
+            const char *q = p + kl;
+            while (*q == ' ' || *q == '\t') q++;
+            if (*q != ':' && *q != '=') continue; q++;
+            while (*q == ' ' || *q == '\t') q++;
+            bool neg = (*q == '-'); if (neg) q++;
+            if (*q < '0' || *q > '9') continue;
+            int v = 0; while (*q >= '0' && *q <= '9') v = v * 10 + (*q++ - '0');
+            return neg ? -v : v;
+        }
+        return def;
     }
-    // find `key` then the first "..." string after it.
+    // find a real `key: "value"` (skip comment mentions: require ':'/'=' then '"').
     static void find_str (const char *js, const char *key, char *out, int cap)
     {
         out[0] = 0;
-        const char *p = strstr (js, key); if (!p) return;
-        p += strlen (key);
-        while (*p && *p != '"' && *p != '\n' && *p != '}') p++;
-        if (*p != '"') return; p++;
-        int i = 0; while (*p && *p != '"' && i + 1 < cap) out[i++] = *p++;
-        out[i] = 0;
+        int kl = (int) strlen (key);
+        for (const char *p = strstr (js, key); p; p = strstr (p + kl, key))
+        {
+            const char *q = p + kl;
+            while (*q == ' ' || *q == '\t') q++;
+            if (*q != ':' && *q != '=') continue; q++;
+            while (*q == ' ' || *q == '\t') q++;
+            if (*q != '"') continue; q++;
+            int i = 0; while (*q && *q != '"' && i + 1 < cap) out[i++] = *q++;
+            out[i] = 0; return;
+        }
     }
     // parse groundGrid: [ [n,n,...], [..], ... ] -> grid[z*gw+x]
     void parse_grid (const char *js, int len)

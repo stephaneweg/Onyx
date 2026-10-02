@@ -347,7 +347,12 @@ Toolchain absente de la machine de dev Windows → voir
 - [x] Intégration GUI Onyx : charge la salle (`/api/rooms/{id}` → `file_path` →
       `/src/rooms/*.js`), dessine le décor + avatars composités triés en profondeur, clic→tuile
       marchable→déplacement. (À **calibrer** : tailles de tuile / ancrage pieds, sur screenshot.)
-- [ ] Écran de login natif (champs pseudo/mot de passe, invite MFA) + `config.ini`.
+- [x] **Client GUI PC** (`platform/pc/gui_win.cpp`, Win32 + GDI+) : même cœur + renderer que
+      Onyx, décode les PNG, rend la salle live + avatars composités. Modes `--demo` (salle +
+      avatar sans login) et `--login` (live, clic→déplacement, chat). Dump PNG `--shot` pour
+      calibrer. **Vérifié** : rend la salle Patio + avatar sur la piste (voir hero.png).
+      Origine iso auto-dérivée (`originX += zSize·tileW/4`) — à affiner (formule exacte du moteur `Iso`).
+- [ ] Écran de login natif Onyx (champs pseudo/mot de passe, invite MFA) + `config.ini`.
 - [ ] Bulles de chat au-dessus des têtes ; animation de marche (frames) ; escaliers (iso Z).
 - [ ] Connexion + entrée en salle de bout en bout (prod ou serveur dev), reconnexion Wi-Fi.
 - [ ] Rendu iso : décor + avatars (dots → sprites composés) triés en profondeur ; pseudos.

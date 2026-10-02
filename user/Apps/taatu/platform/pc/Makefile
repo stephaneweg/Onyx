@@ -21,7 +21,13 @@ endif
 $(BIN): $(SRC) $(HDRS)
 	$(CXX) $(CXXFLAGS) $(SRC) -o $@ $(LIBS)
 
-clean:
-	rm -f taatu_pc taatu_pc.exe
+# Windows GUI build (GDI+ decode, Win32 window): see what the renderer looks like on the PC.
+#   make gui && ./taatu_gui --demo                      # room + sample avatar, no login
+#   ./taatu_gui --login --pseudo <p> --password <pw>    # live (prompts if omitted)
+gui: gui_win.cpp crypto_pc.cpp $(HDRS) assets_pc.hpp tls_win.hpp
+	$(CXX) $(CXXFLAGS) gui_win.cpp crypto_pc.cpp -o taatu_gui.exe -lgdiplus -lole32 -lgdi32 -luser32 -lsecur32 -lws2_32
 
-.PHONY: clean
+clean:
+	rm -f taatu_pc taatu_pc.exe taatu_gui.exe
+
+.PHONY: clean gui
