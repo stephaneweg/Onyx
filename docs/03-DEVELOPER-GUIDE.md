@@ -1313,8 +1313,8 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 >   the installed one. The face holds no `fnt::Font *` between two calls (`fnt::trim` is safe).
 > - **Every new app uses the FreeType face** (unless told otherwise): add it to **`FT_APPS`** in
 >   `user/Makefile` — the newlib + `ft/libft.a` rule the Control Panel, its applets (Theme, Panel,
->   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup and
->   the menu bar share (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
+>   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup, the
+>   menu bar and the File Viewer share (Paint, Writer, the Calendar... have rules of their own) (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
 >   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`wk_tw`, `wk_text_fit`),
 >   never in characters, and draw it through the face (`wk_text`, `canvas.text`), not `drawFont`
 >   (the bitmap fonts only).
