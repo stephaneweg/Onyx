@@ -17,7 +17,7 @@
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Photos** (`photos.app`) | **MIT** (ours) | Its EXIF reader, library, editing and slideshow are ours; it links FreeType (FTL), stb_image and simplewebp (public domain, BSD-3), our PNG / JPEG / PDF writers (MIT): all permissive. |
 | **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
-| **Every other app, the tools** | Your choice | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
+| **Every other app, the tools** | **MIT** (ours; the user's decision, below) | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |
 
@@ -57,14 +57,15 @@ same seam as Linux's system calls, so the two are an aggregate, not one work.
 
 Two weaknesses, worth fixing:
 
-1. The apps run at **EL1** in the kernel's address space (identity region mapped RW) and call the
-   `kapi` as plain indirect calls, not traps. The FSF reads "function calls in a shared address
-   space" as one program. The interface is still a stable, documented ABI, but **say so
-   explicitly**: add to `LICENSE` a **kapi exception**, like Linux's syscall note — *"Programs that
-   use the Onyx kernel only through the kapi table (`user/kapi.h`) are not derived works of the
+1. **Settled by the move to EL0 (kapi v74, 2026-10-02).** The apps used to run at **EL1** in the
+   kernel's address space and call the `kapi` as plain indirect calls — what the FSF reads as
+   "function calls in a shared address space". Since v74 every app runs at **EL0**, out of the
+   kernel's memory, and each kapi entry is a **system call** (`svc`) through a stub
+   (docs/EL0-PROTECTED-MODE.md, docs/02 §6): the same seam as Linux's system calls. Still worth
+   saying explicitly in the future `LICENSE`, as Linux's syscall note does — *"Programs that use
+   the Onyx kernel only through the kapi table (`user/kapi.h`) are not derived works of the
    kernel."* You can grant it for your own kernel code; Circle's author grants nothing, but your
-   code is the only part the apps call. The move to EL0 (docs/EL0-PROTECTED-MODE.md) would make the
-   separation plain.
+   code is the only part the apps call.
 2. `user/kapi.h` (included by every app, Jet too) must be under a licence GPLv2 can take: put it
    (and `user/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
 
@@ -191,4 +192,9 @@ Onyx), Servo / Blitz (Rust) — would lose much of what Jet does today.
 4. The firmware licences on the card (`LICENCE.broadcom`, the Wi-Fi's).
 5. SPDX headers in our own files (`// SPDX-License-Identifier: MIT`: the user's decision above),
    `user/kapi.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
+   The new files already carry the MIT notice — the EL0 work (`kernel/arch/aarch64/el0.S`,
+   `el0blob.S`, `kernel/sys/el0.cpp`, `sys/uaccess.cpp`, `kern/handle.h`, `kern/uaccess.h`,
+   `tools/el0scan.sh`, `tools/gen_kapi_names.py`, `/bin/sysstat`, `el0test`, `faulttest`), Mail
+   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/kapi.h`, `user/kapi_names.h` (generated)
+   and most older files do not yet.
 6. The FM Song covers out of the public distribution.

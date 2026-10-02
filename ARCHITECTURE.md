@@ -1,5 +1,29 @@
 # Multi-process kernel on Circle (Raspberry Pi 4)
 
+> **Historical design record — read [`docs/`](docs/README.md) for the system as it is today.**
+> This file is the original design and bring-up log of what became **Onyx** (it predates the
+> name). It is kept for the *why* of the early decisions; it is **not** a description of the
+> current system. What has changed since:
+>
+> - **Execution model**: apps ran at **EL1** calling the kernel directly ("Option C", §11);
+>   since kapi **v74** (2026-10-02) **every app runs at EL0** and calls the kernel by **system
+>   calls** (`svc`) through the kapi table, with per-process handles and checked pointers; a
+>   fault kills the app only. Current: [`docs/02-KERNEL-INTERNALS.md`](docs/02-KERNEL-INTERNALS.md)
+>   §6, [`docs/EL0-PROTECTED-MODE.md`](docs/EL0-PROTECTED-MODE.md).
+> - **ABI**: link-time resolution against kernel symbols (`user/kernel_syms.ld`, §11) was
+>   replaced by a **fixed-address, append-only function table** (`KAPI_TABLE_VA` = 14 GB,
+>   `kernel/include/kern/kapi_abi.h`): apps need no rebuild when the kernel changes.
+> - **Scheduling**: cooperative at bring-up (§12); application code is **preempted** (100 Hz,
+>   from the EL0 IRQ path), the kernel stays non-preemptive; threads (v67).
+> - **Cores**: not "SMP deferred" (§11) but an asymmetric design: core 0 kernel + desktop +
+>   processes, core 1 sound, cores 2–3 app cores, core 3 the network with `netcore=1`
+>   ([`docs/01-PROJECT-OVERVIEW.md`](docs/01-PROJECT-OVERVIEW.md) §7).
+> - **Files**: `kernel/sys/syscall.cpp`, `user_stub.S`, `enter_user`, `usys.h`,
+>   `user/kernel_syms.ld` and the 640×480 / "two demos" state are gone; the kernel layout is in
+>   [`kernel/README.md`](kernel/README.md).
+>
+> The current overview: [`docs/01-PROJECT-OVERVIEW.md`](docs/01-PROJECT-OVERVIEW.md).
+
 A multi-process kernel with per-process MMU isolation, built **on top of Circle**
 ([rsta2/circle](https://github.com/rsta2/circle)) as the hardware-abstraction +
 driver layer. Apps are loaded from the SD card and run as EL1 apps in their own
@@ -12,8 +36,9 @@ cooperative at bring-up (§12); it has since become **preemptive for application
 >
 > NOTE: §3–§5 below describe the original *preemptive / EL0* design. The hardware
 > bring-up (§11–§12) changed this to *EL1 apps + cooperative scheduling*; where they
-> conflict, §11–§12 win. (Later still, application code became preemptive again, via
-> a trampoline instead of a switch inside the IRQ: `docs/` is authoritative.)
+> conflict, §11–§12 win. (Later still, application code became preemptive again, and in
+> 2026-10 the apps moved back to EL0 with system calls — the banner above; `docs/` is
+> authoritative.)
 
 ---
 
@@ -344,6 +369,9 @@ Chosen after #1–#11: instead of isolated EL0 processes + syscalls, apps run in
   must be rebuilt after the kernel (`make` in `kernel/` does kernel → syms → apps).
 - The EL0/`SVC` machinery (#4 `enter_user`, syscall dispatch) is kept but **inert** —
   available if isolated EL0 apps are wanted later.
+- *(Superseded: the link-time resolution gave way to the fixed kapi table, and in kapi v74
+  the apps moved to EL0 with system calls through that table — a new EL0 path, `el0.S`, not
+  this inert one, which was removed. See the banner.)*
 
 ### Build manifest delta (Option C)
 - Add `kernel/sys/kapi.cpp`; remove `proc/embedded_apps.S` + the EL0 `user_stub.S`.
@@ -357,6 +385,8 @@ Chosen after #1–#11: instead of isolated EL0 processes + syscalls, apps run in
   `CMouseDevice` "mouse1"), feeding the window manager. Ref: `sample/VMKernel`.
 - **Multi-core (SMP):** deferred — needs an SMP-safe scheduler (per-core current
   task, real spinlocks, IPIs, cross-core TLB) — a milestone of its own.
+  *(Superseded: the cores are used asymmetrically instead — core 1 sound, cores 2–3 app
+  cores, core 3 the network with `netcore=1`; see the banner.)*
 
 ---
 
@@ -385,7 +415,8 @@ EL1t thread (its stack is SP_EL0). So `KernelIRQExit` no longer reschedules; thr
 switch when they call `Yield`/`MsSleep`/`present` (which the demos do), exactly like
 Circle's own scheduler. The time-slice hook (`OnTimerTick`) is dormant. True
 preemption would need a full trap-frame switch that saves/restores SP_EL0 — future
-work. (This supersedes the "preemptive" framing in §3/§4/§5.)
+work. (This supersedes the "preemptive" framing in §3/§4/§5.) *(Since superseded in turn: the
+apps are preempted again — today from the EL0 IRQ path, docs/02 §5.)*
 
 Other bring-up notes: `config.txt` needs `enable_uart=1` (PL011 clock) for serial;
 the boot log is sent to the HDMI `CScreenDevice` so it is visible without a serial

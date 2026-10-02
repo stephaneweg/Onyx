@@ -17,11 +17,27 @@ of the **Circle** bare-metal framework.
 
 | # | Document | For | Contents |
 |---|---|---|---|
-| 01 | **[Project Overview](01-PROJECT-OVERVIEW.md)** | everyone | vision, architecture, features, execution model, repository structure |
-| 02 | **[Kernel Internals](02-KERNEL-INTERNALS.md)** | to understand the kernel | boot, memory/MMU/ASID, scheduling, exceptions, ELF loader, kapi ABI, streams, GUI (excluding Circle) |
-| 03 | **[Developer Guide](03-DEVELOPER-GUIDE.md)** | to build / extend | toolchain, build, app model, writing an app/tool, extending the ABI, conventions, debugging, pitfalls |
-| 04 | **[User Guide](04-USER-GUIDE.md)** | to use it | SD card, boot, Onyx desktop, terminal, files, customization, app catalog |
-| 05 | **[Circle Changes](05-CIRCLE-CHANGES.md)** | HAL maintainers | the patches in our Circle fork vs upstream (runtime keymap, heap large-block reuse, pager accessor) |
+| 01 | **[Project Overview](01-PROJECT-OVERVIEW.md)** | everyone | vision, architecture, features, execution model (apps at EL0), the cores, repository structure |
+| 02 | **[Kernel Internals](02-KERNEL-INTERNALS.md)** | to understand the kernel | boot, memory/MMU/ASID, scheduling, exceptions and system calls, ELF loader, threads, kapi ABI, streams, GUI, network, sound, app cores, GPU, `RAM:` (excluding Circle) |
+| 03 | **[Developer Guide](03-DEVELOPER-GUIDE.md)** | to build / extend | toolchain, build, app model, writing an app/tool, wtk, the big apps' code, extending the ABI, conventions, debugging, pitfalls |
+| 04 | **[User Guide](04-USER-GUIDE.md)** | to use it | SD card, boot options, Onyx desktop, terminal, `/bin` tools, files, Control Panel, app catalog, BASIC |
+| 05 | **[Circle Changes](05-CIRCLE-CHANGES.md)** | HAL maintainers | the patches in our Circle fork vs upstream `Step51` |
+| 06 | **[Jet Browser](06-JET-BROWSER.md)** | the browser | the Onyx changes to NetSurf, libcss, FreeType, QuickJS; the fonts; the media |
+| 07 | **[Browser Gaps](07-BROWSER-GAPS.md)** | the browser | what Jet lacks next to Ladybird / Chromium / WebKit, the plan |
+| | **[EL0 protected mode](EL0-PROTECTED-MODE.md)** | the execution model | how the apps moved from EL1 to EL0 (system calls), the design, the steps |
+| | **[Licensing](LICENSING.md)** | distributors | the licences of everything Onyx contains; under which licence it can be distributed |
+| | **[Handoff](HANDOFF.md)** | the next session | where the work stands, the conventions, the next tasks |
+
+**Plans and studies** (each with its status at the top): [PI5-PORT](PI5-PORT.md) (the Raspberry Pi 5
+port, a plan), [SUPERTUXKART-PORT](SUPERTUXKART-PORT.md) (paused), [BASIC-VM-THREADS](BASIC-VM-THREADS.md)
+(an idea), [GC-WINDOWS-REPORT](GC-WINDOWS-REPORT.md) (the GameCube emulator on Windows),
+[JET-DEAD-CODE](JET-DEAD-CODE.md) (NetSurf's dead code removed). The apps' studies and mock-ups, the
+user's decisions: [gui-redesign](gui-redesign/README.md) (the modernised CDE desktop),
+[pkg](pkg/README.md) (packages and updates), [mail](mail/README.md), [pdf](pdf/README.md),
+[photos](photos/README.md), [paint](paint/README.md), [media](media/README.md),
+[screenshot](screenshot/README.md), [clipboard](clipboard/README.md), [archiver](archiver/README.md),
+[daw](daw/README.md) (Koton, and its [performance notes](daw/PERFORMANCE.md)),
+[circle-upstream](circle-upstream/README.md) (the fork's changes offered to upstream Circle).
 
 ## Formats
 
@@ -39,10 +55,9 @@ a PC against a stand-in kernel).
 
 ## A note on the legacy docs
 
-At the repository root, `ARCHITECTURE.md`, `README.md`, `kernel/README.md`, and
-`sdcard/README.md` describe **older states** of the project (EL0 processes, preemptive
-scheduling, 640×480, "two demos") and still use the legacy name *Zircon*. Where they
-conflict, **this documentation (`docs/`) is authoritative** for the current state.
-`ARCHITECTURE.md` §11–§12 remains the best historical reference for *why* the "Option C"
-model (EL1 apps) was chosen (its cooperative scheduling has since become preemptive for
-applications, see `02-KERNEL-INTERNALS.md`).
+At the repository root, `ARCHITECTURE.md` is the **original design record**: it describes the
+first execution model ("Option C": apps at EL1 calling the kernel directly) and cooperative
+scheduling; a banner at its top says what changed. Where it conflicts, **this documentation
+(`docs/`) is authoritative**. Its §11–§12 remain the historical reference for *why* Option C was
+chosen; apps run at EL0 since kapi v74 ([EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md)). The
+in-OS strings and some screenshots may still say *Zircon* (the rename is a separate task).
