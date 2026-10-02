@@ -38,7 +38,7 @@ $(OUT)/doom_onyx.o: doom_onyx.c ../kapi.h ../gamepad.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/doom_sound.o: doom_sound.c ../kapi.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_wtk.o: doom_wtk.cpp | $(OUT)
+$(OUT)/doom_wtk.o: doom_wtk.cpp ../kapi.h | $(OUT)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 $(OUT)/crt0libc.o: ../libc/crt0libc.S | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@

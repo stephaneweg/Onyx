@@ -746,6 +746,12 @@ int main (void)
 		}
 	}
 
+	if (g_pmu && !gc::gcPmuAvail ())					// (EL0: the PMU only with el0pmu=1)
+	{
+		g_pmu = false;
+		static const char m[] = "gcemu: --pmu ignored: the PMU is closed to apps (cmdline.txt el0pmu=1)\n";
+		kapi_write (1, m, sizeof m - 1);				// (a GUI app's output: kmsg)
+	}
 	{ int b = slen (g_path); while (b > 0 && g_path[b - 1] != '/' && g_path[b - 1] != ':') b--; scpy (g_loadName, g_path + b, sizeof g_loadName); }
 	char title[64]; scpy (title, g_loadName, sizeof title);
 	{ int e = slen (title); while (e > 0 && title[e - 1] != '.') e--; if (e > 1) title[e - 1] = 0; }

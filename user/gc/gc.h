@@ -96,10 +96,21 @@ static inline u64 gcClock ()
 }
 struct GcTimed { u64 &acc; u64 t0; GcTimed (u64 &a) : acc (a), t0 (gcClock ()) {} ~GcTimed () { acc += gcClock () - t0; } };
 
-// The ARM's performance counters (gcemu --pmu, AArch64 at EL1: the core that runs the machine
-// starts them): cycles, instructions, L1D refills, L2 refills, branch mispredictions. GcPmu adds
-// what a function used to a counter set (0: nothing).
+// The ARM's performance counters (gcemu --pmu: the core that runs the machine starts them):
+// cycles, instructions, L1D refills, L2 refills, branch mispredictions. GcPmu adds what a function
+// used to a counter set (0: nothing). The app runs at EL0: the kernel opens the PMU to it only
+// with cmdline.txt el0pmu=1 (PMUSERENR_EL0.EN, set on every core; EL0 may read that register) --
+// otherwise a PMU access kills the app, so gcPmuAvail first.
 enum { PMU_N = 5 };
+static inline bool gcPmuAvail (void)
+{
+#if defined (__aarch64__)
+	u64 v; asm volatile ("mrs %0, pmuserenr_el0" : "=r" (v));
+	return (v & 1) != 0;
+#else
+	return false;
+#endif
+}
 static inline void gcPmuStart (const u32 *ev = 0)		// (ev: the 4 events, else these)
 {
 #if defined (__aarch64__)

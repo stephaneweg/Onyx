@@ -489,15 +489,14 @@ static inline int kapi__xchg (volatile int *p, int v)
 	return __atomic_exchange_n (p, v, __ATOMIC_ACQUIRE);
 #endif
 }
-// The core this code runs on (0: the main one; 2, 3: an app core). From v73 the kernel publishes it
-// in TPIDRRO_EL0 (readable at EL0: a protected app may not read MPIDR_EL1, kern/el0.h); an older
-// kernel runs every app at EL1, where MPIDR_EL1 is readable.
+// The core this code runs on (0: the main one; 2, 3: an app core). The kernel publishes it in
+// TPIDRRO_EL0 (v73, kern/el0.h): every app runs at EL0, where MPIDR_EL1 may not be read (the app
+// would be killed) -- never read MPIDR_EL1 in an app.
 static inline unsigned kapi__core (void)
 {
 #if defined(__aarch64__)
 	unsigned long m;
-	if (KT->version >= 73) __asm__ volatile ("mrs %0, tpidrro_el0" : "=r" (m));
-	else __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m));
+	__asm__ volatile ("mrs %0, tpidrro_el0" : "=r" (m));
 	return (unsigned) (m & 3);
 #else
 	return 0;

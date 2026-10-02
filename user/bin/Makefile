@@ -75,7 +75,7 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  run.elf keyb.elf cmd.elf kmsg.elf netlog.elf verbose.elf net.elf wget.elf heaptest.elf \
 	  fptest.elf init.elf telnetd.elf notifytest.elf \
 	  ping.elf nslookup.elf netstat.elf whois.elf ftpd.elf ftp.elf wifiscan.elf tone.elf \
-	  coretest.elf fsbench.elf shutdown.elf reboot.elf volume.elf hangtest.elf \
+	  coretest.elf fsbench.elf shutdown.elf reboot.elf volume.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf
 
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
@@ -118,13 +118,14 @@ $(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../kapi.h ../applib.h ../umm.h ../
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.
+# (Objects named after the program: a parallel make (-j) builds several at once.)
 ifneq ($(strip $(MBEDTLS_DIR)),)
 $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o crt0libc.o
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o onyx_syscalls.o
-	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) $*.crt0.o $*.sys.o $< \
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
-	@rm -f crt0libc.o onyx_syscalls.o
+	@rm -f $*.crt0.o $*.sys.o
 # pkg (the packages, docs/pkg/README.md): HTTPS + the Archiver's ZIP engine + zlib
 $(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../Apps/archiver/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
@@ -141,12 +142,12 @@ endif
 # as the TLS apps: C startup + syscalls as C objects (gcc), then linked with g++.
 ifneq ($(strip $(IMG_DIR)),)
 $(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../img/image.hpp
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o crt0libc.o
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o onyx_syscalls.o
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(IMG_DIR)/libpng -I$(IMG_DIR)/zlib -I$(IMG_DIR)/libjpeg \
-	  $(LDFLAGS) crt0libc.o onyx_syscalls.o $< \
+	  $(LDFLAGS) $*.crt0.o $*.sys.o $< \
 	  -L$(IMG_DIR)/libpng -L$(IMG_DIR)/zlib -L$(IMG_DIR)/libjpeg -lpng -ljpeg -lz -lm -o $@
-	@rm -f crt0libc.o onyx_syscalls.o
+	@rm -f $*.crt0.o $*.sys.o
 endif
 
 # zlib apps (newlib C + libz). Built by default against the vendored zlib.

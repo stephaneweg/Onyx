@@ -1,17 +1,20 @@
 //
-// el0test -- protected mode (kern/el0.h): what changes for a program running at EL0, checked from
-// the inside. Runs in both modes (legacy: the same checks pass, the fault tests are skipped -- a
-// fault there would halt the machine); to run it protected, cmdline.txt "protected=el0test" (or
-// appmode=protected). Prints one line per check, then PASS / FAIL.
+// el0test -- protected mode (kern/el0.h): what a program running at EL0 -- every app, tool and
+// plugin -- may and may not do, checked from the inside. Prints one line per check, then PASS /
+// FAIL (a process not at EL0 is a failure: a kernel that still runs apps at EL1).
 //
 //   el0test            the checks: the mode, the user-side memcpy / memmove / memset, the
 //                      counters, the core number, a kapi with buffers on the stack, threads and a
 //                      mutex, a post run by the user-side pump, a job on an app core (at EL0).
-//   el0test fault      (protected only) a write into the kernel's memory: the process is killed
-//                      (kmsg "el0: ... killed: a data abort ..."), the shell's prompt comes back.
-//   el0test exec       (protected only) a jump into the kernel's code: killed (an instruction abort).
-//   el0test sysreg     (protected only) mrs mpidr_el1: killed (a privileged system register).
-//   el0test corefault  a job that faults on an app core: the job stops, the process goes on.
+//   el0test fault      a write into the kernel's memory: the process is killed (kmsg "el0: ...
+//                      killed: a data abort ..."), the shell's prompt comes back.
+//   el0test exec       a jump into the kernel's code: killed (an instruction abort).
+//   el0test sysreg     mrs sctlr_el1, an EL1 register: killed (an undefined instruction).
+//   el0test corefault  a job that faults on an app core: the job stops (state FAULT), the process
+//                      goes on.
+//
+// (The function named *_el0scan_expected holds the privileged instruction on purpose:
+// tools/el0scan.sh does not report it.)
 //
 // MIT licence (Onyx). Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
 //
@@ -131,8 +134,14 @@ static void core_job (void *arg)
 static void core_fault_job (void *arg)
 {
 	(void) arg;
-	*(volatile unsigned *) 0x1000 = 1;		// the kernel's memory (protected: a fault; legacy:
-						// the kernel's low memory -- never run this there)
+	*(volatile unsigned *) 0x1000 = 1;		// the kernel's memory (EL1-only): a fault
+}
+
+static unsigned long __attribute__ ((noinline)) sysreg_el0scan_expected (void)
+{
+	unsigned long v;
+	asm volatile ("mrs %0, sctlr_el1" : "=r" (v));	// an EL1 register: undefined at EL0
+	return v;
 }
 
 static int wait_core (int c, unsigned ms)
@@ -151,26 +160,26 @@ int main (void)
 	int prot = kapi_is_protected ();
 	ax_puts ("el0test: kapi v");
 	put_num ((long) KT->version);
-	ax_putln (prot ? ", PROTECTED (EL0)" : ", legacy (EL1)");
+	ax_putln (prot ? ", PROTECTED (EL0)" : ", NOT protected: every app should run at EL0");
 
 	if (ax_streq (args, "fault") || ax_streq (args, "exec") || ax_streq (args, "sysreg"))
 	{
 		if (!prot)
 		{
-			ax_putln ("legacy mode: a fault would halt the machine -- not done (run it protected)");
+			ax_putln ("FAIL: not at EL0 -- a fault here would not be an app's (not done)");
 			return 1;
 		}
 		ax_putln ("now faulting: this process must be killed, the system must go on");
 		if (ax_streq (args, "fault")) *(volatile unsigned *) 0x80000 = 0;		// the kernel image
 		else if (ax_streq (args, "exec")) ((void (*) (void)) 0x80000) ();
-		else { unsigned long m; asm volatile ("mrs %0, mpidr_el1" : "=r" (m)); (void) m; }
+		else (void) sysreg_el0scan_expected ();
 		ax_putln ("FAIL: still running");
 		return 1;
 	}
 
 	if (ax_streq (args, "corefault"))
 	{
-		if (!prot) { ax_putln ("legacy mode: not done (run it protected)"); return 1; }
+		if (!prot) { ax_putln ("FAIL: not at EL0 (not done)"); return 1; }
 		int c = kapi_core_acquire ();
 		if (c < 0) { ax_putln ("no free app core"); return 1; }
 		kapi_core_run (c, core_fault_job, 0, s_CoreStack + sizeof s_CoreStack);
@@ -181,15 +190,14 @@ int main (void)
 		return s_fail;
 	}
 
+	check ("the process runs at EL0", prot, prot);
+
 	// 1. memory primitives
 	check ("memcpy / memset / memmove (sizes, offsets, overlaps): bytes wrong", mem_checks () == 0, 0);
-	if (prot)
-	{
-		check ("the table's memcpy is user code next to the table",
-		       (unsigned long long) KT->memcpy > KAPI_TABLE_VA, 1);
-		check ("the table's exit is a stub (a system call)",
-		       (unsigned long long) KT->exit > KAPI_TABLE_VA, 1);
-	}
+	check ("the table's memcpy is user code next to the table",
+	       (unsigned long long) KT->memcpy > KAPI_TABLE_VA, 1);
+	check ("the table's exit is a stub (a system call)",
+	       (unsigned long long) KT->exit > KAPI_TABLE_VA, 1);
 
 	// 2. what EL0 may read: the counters, the core number; a kapi writing to the stack
 	unsigned long f, c0, c1;
