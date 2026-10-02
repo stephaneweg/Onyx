@@ -815,6 +815,8 @@ struct kapi_pollfd				// 16 bytes
 #define KAPI_HK_SOCKET		3		// an IP socket number (0..255)
 #define KAPI_HK_LSOCK		4		// a local socket
 #define KAPI_HK_SHM		5		// a shared memory object
+#define KAPI_HXF_WRITER		1		// kapi_handle_xfer.flags: a pipe's write end (a STREAM): the
+						// pipe's end-of-file then waits for this holder too
 #define KAPI_IPC_HANDLES_MAX	256		// handles per message, per spawn_ex2
 #define KAPI_IPC_IOV_MAX	64		// iovecs per message
 #define KAPI_SHM_ALLOW_SEALING	1		// shm_create: seals may be added (else F_SEAL_SEAL is set)
@@ -843,7 +845,7 @@ struct kapi_handle_xfer				// 24 bytes
 	int kind;				// 8: KAPI_HK_*
 	unsigned tag;				// 12: the sender's word, given to the receiver as it is
 	int fd;					// 16: spawn_ex2 / get_handles: the child's descriptor
-	unsigned reserved;			// 20: 0
+	unsigned flags;				// 20: KAPI_HXF_* (given back as sent)
 };
 
 struct kapi_msghdr				// 48 bytes

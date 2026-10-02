@@ -1712,8 +1712,14 @@ void kapi_stream_close (void *pHandle)
 void kapi_stream_eof (void *pHandle)
 {
 	CHandleTable *pTable = HandlesCurrent ();
-	CStream *pStream = pTable != 0 ? (CStream *) pTable->Get (pHandle, HANDLE_STREAM) : 0;
-	if (pStream != 0) pStream->CloseWrite ();
+	unsigned nKind = 0;
+	CStream *pStream = pTable != 0 ? (CStream *) pTable->Get (pHandle, HANDLE_STREAM, &nKind) : 0;
+	if (pStream == 0 || (nKind & HKIND_STREAM_EOF_DONE)) return;
+	if (nKind & HKIND_STREAM_WRITER)		// (v76: a carried write end: once)
+	{
+		pTable->SetKind (pHandle, HANDLE_STREAM, nKind | HKIND_STREAM_EOF_DONE);
+	}
+	pStream->CloseWrite ();
 }
 
 // Read from this task's stdin (0 = EOF / no stdin).

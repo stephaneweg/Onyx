@@ -21,7 +21,7 @@ static void PipeWait (u32 nGen)
 // ---- CPipeStream ------------------------------------------------------------
 
 CPipeStream::CPipeStream (void)
-:	m_nHead (0), m_nTail (0), m_bWriteClosed (FALSE)
+:	m_nHead (0), m_nTail (0), m_bWriteClosed (FALSE), m_nWriters (1)
 {
 }
 
@@ -95,6 +95,11 @@ int CPipeStream::ReadNonBlocking (void *pBuf, unsigned nLen)
 
 void CPipeStream::CloseWrite (void)
 {
+	if (m_nWriters > 1)				// (v76: a write end elsewhere still writes)
+	{
+		m_nWriters--;
+		return;
+	}
 	m_bWriteClosed = TRUE;
 	IoWake ();					// (a reader sees the end)
 }

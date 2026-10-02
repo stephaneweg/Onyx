@@ -77,6 +77,12 @@ int mincore (void *, size_t, unsigned char *);
 int shm_open (const char *, int, mode_t);
 int shm_unlink (const char *);
 
+/* (v76) an anonymous shared memory object as a descriptor (ftruncate, mmap MAP_SHARED, passed with
+ * SCM_RIGHTS or posix_spawn; seals with fcntl F_ADD_SEALS) */
+#define MFD_CLOEXEC		0x0001U
+#define MFD_ALLOW_SEALING	0x0002U
+int memfd_create (const char *, unsigned int);
+
 #ifdef __cplusplus
 }
 #endif

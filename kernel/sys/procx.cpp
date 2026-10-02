@@ -454,6 +454,7 @@ int kapi_get_handles (struct kapi_handle_xfer *pOut, unsigned nCap)
 		X.kind = I.X.nHK;
 		X.tag = I.X.nTag;
 		X.fd = I.nFd;
+		X.flags = I.X.nXFlags;
 		if (!UserCopyOut (&pOut[i], &X, sizeof X)) return -KAPI_EFAULT;
 	}
 	return (int) pInfo->nInherit;

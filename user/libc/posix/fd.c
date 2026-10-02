@@ -71,6 +71,52 @@ void __onyx_fd_init (void)
 	for (int i = 0; i < 3; i++)
 		if (s_fd[i].d == 0)
 			s_fd[i].d = console (i);
+	if (kapi__core () == 0)
+		__onyx_fd_inherit ();			/* (v76: the spawner's handles, ipc.c) */
+}
+
+/* d (its reference moves in) at descriptor fd, replacing what was there -> fd, or -1 (EBADF). */
+int __onyx_fd_place (struct __onyx_ofd *d, int fd, int cloexec)
+{
+	if (fd < 0 || fd >= ONYX_FD_MAX)
+	{
+		__onyx_fd_put (d);
+		return ONYX_ERR (EBADF);
+	}
+	__onyx_lock (&s_fdLock);
+	struct __onyx_ofd *old = s_fd[fd].d;
+	s_fd[fd].d = d;
+	s_fd[fd].cloexec = cloexec;
+	__onyx_unlock (&s_fdLock);
+	if (old)
+		__onyx_fd_put (old);
+	return fd;
+}
+
+int __onyx_fd_collect (struct kapi_handle_xfer *out, int max, const unsigned char *skip)
+{
+	int n = 0;
+	for (int fd = 3; fd < ONYX_FD_MAX && n < max; fd++)
+	{
+		if (skip && (skip[fd / 8] & (1u << (fd % 8))))
+			continue;
+		__onyx_lock (&s_fdLock);
+		struct __onyx_ofd *d = s_fd[fd].cloexec ? 0 : s_fd[fd].d;
+		if (d)
+			__atomic_add_fetch (&d->refs, 1, __ATOMIC_ACQ_REL);
+		__onyx_unlock (&s_fdLock);
+		if (d == 0)
+			continue;
+		int e = errno;
+		if (__onyx_ofd_xfer (d, &out[n]) == 0)
+		{
+			out[n].fd = fd;
+			n++;
+		}
+		errno = e;
+		__onyx_fd_put (d);
+	}
+	return n;
 }
 
 struct __onyx_ofd *__onyx_fd_get (int fd)
@@ -258,6 +304,17 @@ int fcntl (int fd, int cmd, ...)
 		d->flags = keep | (int) (arg & (O_APPEND | O_NONBLOCK));
 		break;
 	}
+	case F_ADD_SEALS:				/* (v76: memfd_create's objects) */
+	case F_GET_SEALS:
+		if (d->type != ONYX_FD_SHM)
+			r = ONYX_ERR (EINVAL);
+		else
+		{
+			long long k = cmd == F_GET_SEALS ? kapi_shm_ctl (d->h, KAPI_SHM_GET_SEALS, 0)
+							 : kapi_shm_ctl (d->h, KAPI_SHM_ADD_SEALS, (unsigned long long) arg);
+			r = k < 0 ? ONYX_ERR ((int) -k) : (int) k;
+		}
+		break;
 	case F_GETLK:
 	{
 		struct flock *fl = (struct flock *) arg;

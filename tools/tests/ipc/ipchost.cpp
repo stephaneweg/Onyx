@@ -111,7 +111,11 @@ public:
 	~CTestStream (void)	{ s_nStreams--; }
 	int Read (void *, unsigned) override		{ return 0; }
 	int Write (const void *, unsigned n) override	{ return (int) n; }
+	void AddWriter (void) override			{ m_nWriters++; }
+	void CloseWrite (void) override			{ m_nCloses++; }
+	int m_nWriters = 1, m_nCloses = 0;
 };
+
 
 // ---- the checks ------------------------------------------------------------------------------------
 
@@ -453,6 +457,34 @@ static void TestShm (void)
 	CHECK (kapi_handle_close (a) == 0 && ShmObjectsTotal () == 0);
 }
 
+// A pipe's write end carried (KAPI_HXF_WRITER): one more writer, closed once by its holder's close.
+static void TestWriter (void)
+{
+	s_pCur = &P1;
+	CTestStream *p = new CTestStream;
+	void *h = P1.GetHandles ()->Add (p, HANDLE_STREAM);
+	kapi_handle_xfer In = X ((long long) (uintptr_t) h, KAPI_HK_STREAM, 5), Out;
+	In.flags = KAPI_HXF_WRITER;
+	TIpcXfer T;
+	CHECK (IpcXferTake (P1.GetHandles (), In, 1, &T) == 0 && p->m_nWriters == 2 && p->GetRefs () == 2);
+	s_pCur = &P2;
+	CHECK (IpcXferGive (P2.GetHandles (), &T, 2, FALSE, &Out) && Out.flags == KAPI_HXF_WRITER && Out.tag == 5);
+	unsigned nKind = 0;
+	CHECK (P2.GetHandles ()->Get ((void *) (uintptr_t) Out.h, HANDLE_STREAM, &nKind) == p && nKind == HKIND_STREAM_WRITER);
+	CHECK (kapi_handle_close (Out.h) == 0 && p->m_nCloses == 1 && p->GetRefs () == 1);	// (its end: CloseWrite)
+	// a carried write end dropped with its message: CloseWrite too; a read end: no
+	s_pCur = &P1;
+	CHECK (IpcXferTake (P1.GetHandles (), In, 1, &T) == 0);
+	IpcXferDrop (&T, FALSE);
+	CHECK (p->m_nCloses == 2 && p->GetRefs () == 1);
+	In.flags = 0;
+	CHECK (IpcXferTake (P1.GetHandles (), In, 1, &T) == 0);
+	IpcXferDrop (&T, FALSE);
+	CHECK (p->m_nCloses == 2 && p->m_nWriters == 3);
+	P1.GetHandles ()->Close (h, HANDLE_STREAM);
+	CHECK (s_nStreams == 0);
+}
+
 int main (void)
 {
 	P1.m_nPid = 1;
@@ -463,6 +495,7 @@ int main (void)
 	TestHandles ();
 	TestTruncAndDiscard ();
 	TestShm ();
+	TestWriter ();
 	s_pCur = &P1;
 	CHECK (kapi_sock_pair (3, 0, 0) == -KAPI_EPROTONOSUPPORT);
 	CHECK (kapi_sock_pair (KAPI_SOCK_STREAM, 0, 0) == -KAPI_EFAULT);

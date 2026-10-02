@@ -54,7 +54,7 @@ CFLAGS   = -mcpu=cortex-a72 -O2 -g0 -Wall -Wextra -Wno-unused-parameter -fno-sta
 # references): the large code model reaches them anywhere (no ADRP range).
 CFLAGS_ABS = -mcmodel=large
 
-SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c \
+SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c ipc.c \
        file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c newlib_syscalls.c
 OBJ  = $(SRC:%.c=$(B)/%.o)
 HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../kapi.h \

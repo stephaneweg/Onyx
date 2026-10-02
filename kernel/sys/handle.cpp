@@ -99,6 +99,10 @@ void HandleObjectClose (void *pObj, unsigned nType, unsigned nKind, boolean bTea
 		break;
 
 	case HANDLE_STREAM:
+		if ((nKind & HKIND_STREAM_WRITER) && !(nKind & HKIND_STREAM_EOF_DONE))
+		{
+			((CStream *) pObj)->CloseWrite ();	// (v76: a carried write end gone)
+		}
 		if (bTeardown) HandlesDeferRelease ((CStream *) pObj);
 		else ((CStream *) pObj)->Release ();
 		break;
@@ -346,6 +350,14 @@ void *CHandleTable::Find (const void *pObj, unsigned nType) const
 		}
 	}
 	return 0;
+}
+
+boolean CHandleTable::SetKind (void *h, unsigned nType, unsigned nKind)
+{
+	int i = Lookup (h, nType);
+	if (i < 0) return FALSE;
+	m_pEntry[i].nKind = (u8) nKind;
+	return TRUE;
 }
 
 unsigned CHandleTable::TypeOf (void *h) const

@@ -177,7 +177,8 @@ enum
 	ONYX_FD_NULL,			/* /dev/null */
 	ONYX_FD_ZERO,			/* /dev/zero */
 	ONYX_FD_RANDOM,			/* /dev/urandom, /dev/random */
-	ONYX_FD_CONSOLE			/* 0, 1, 2: the task's stdin / stdout */
+	ONYX_FD_CONSOLE,		/* 0, 1, 2: the task's stdin / stdout */
+	ONYX_FD_SHM			/* (v76) a shared memory object: memfd_create, shm_open */
 };
 
 struct __onyx_pipe
@@ -185,6 +186,7 @@ struct __onyx_pipe
 	void *h;			/* the kernel stream */
 	volatile int readers, writers;
 	int eof_sent;
+	int remote;			/* (v76) an end received from another process: its own stream handle */
 };
 
 struct __onyx_ofd
@@ -228,6 +230,7 @@ int __onyx_fd_install (struct __onyx_ofd *d, int min, int cloexec);
 int __onyx_fd_close (int fd);
 void __onyx_fd_init (void);
 int __onyx_fd_cloexec (int fd, int set);	/* set -1: ask */
+int __onyx_fd_place (struct __onyx_ofd *d, int fd, int cloexec);	/* (v76) at fd exactly */
 void __onyx_ofd_lock (struct __onyx_ofd *d);
 void __onyx_ofd_unlock (struct __onyx_ofd *d);
 
@@ -256,6 +259,22 @@ int __onyx_sock_set_nonblock (struct __onyx_ofd *d, int on);
 /* poll's helpers for the old sockets and the pipes (user-space readiness) */
 int __onyx_carry_fill (struct __onyx_ofd *d);	/* -> 1 data, 0 none, -1 end / error */
 size_t __onyx_carry_take (struct __onyx_ofd *d, void *buf, size_t n, int peek);
+
+/* IPC (ipc.c, v76): descriptors carried by a local socket (SCM_RIGHTS) or given to a child */
+#define ONYX_IS_LOCAL_SOCK(d)	((d)->type == ONYX_FD_SOCKET && (d)->h >= KAPI_SOCK_LOCAL_BASE)
+struct msghdr;
+/* The kernel handle behind a description, for sendmsg / posix_spawn -> 0, or -1 (EOPNOTSUPP: a
+ * description that cannot be passed: a directory, /dev/null, an old-call file or socket...). */
+int __onyx_ofd_xfer (struct __onyx_ofd *d, struct kapi_handle_xfer *x);
+/* A new description for a handle received (its reference moves in) -> it, or 0 (errno). */
+struct __onyx_ofd *__onyx_ofd_from_xfer (const struct kapi_handle_xfer *x);
+/* The handles the spawner gave (get_handles), installed at their descriptors (start-up). */
+void __onyx_fd_inherit (void);
+/* posix_spawn: the descriptors a child inherits (no FD_CLOEXEC, passable, >= 3), not in skip[]
+ * (a bitmap of ONYX_FD_MAX bits) -> how many written to out (at most max). */
+int __onyx_fd_collect (struct kapi_handle_xfer *out, int max, const unsigned char *skip);
+ssize_t __onyx_local_sendmsg (struct __onyx_ofd *d, const struct msghdr *m, int flags);
+ssize_t __onyx_local_recvmsg (struct __onyx_ofd *d, struct msghdr *m, int flags);
 
 /* ---- environment, arguments, start-up (env.c, crt0posix) --------------------------------- */
 void __onyx_env_init (void);

@@ -85,6 +85,11 @@ enum THandleKind
 	HKIND_VFS	= 2		// a user-space provider's (kern/vfs.h)
 };
 
+// (v76) A stream entry's kind: bits. A pipe's write end received from another process
+// (KAPI_HXF_WRITER) counts as a writer of the pipe until its stream_eof or its close.
+#define HKIND_STREAM_WRITER	1
+#define HKIND_STREAM_EOF_DONE	2
+
 struct THandleEntry
 {
 	void	*pObj;			// the kernel object; 0: a free slot
@@ -126,6 +131,9 @@ public:
 
 	// (v76) The type of open handle h (HANDLE_FREE: none).
 	unsigned TypeOf (void *h) const;
+
+	// (v76) Open handle h's kind changed (FALSE: not an open handle of type nType).
+	boolean SetKind (void *h, unsigned nType, unsigned nKind);
 
 	// The owner ends: every entry closed, pins ignored (no task of the process runs any more).
 	// bTeardown: the reaper's teardown, the interrupts masked -- nothing may block or yield.

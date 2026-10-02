@@ -170,6 +170,7 @@ int IpcXferTake (CHandleTable *pTable, const struct kapi_handle_xfer &In, unsign
 	memset (pOut, 0, sizeof *pOut);
 	pOut->nTag = In.tag;
 	pOut->nHK = (u8) In.kind;
+	pOut->nXFlags = (u8) In.flags;
 	unsigned nKind = 0;
 	void *pObj = 0;
 	switch (In.kind)
@@ -196,6 +197,12 @@ int IpcXferTake (CHandleTable *pTable, const struct kapi_handle_xfer &In, unsign
 		pObj = pTable != 0 ? pTable->Get (HandleOf (In.h), HANDLE_STREAM, &nKind) : 0;
 		if (pObj == 0) return -KAPI_EBADF;
 		((CStream *) pObj)->AddRef ();
+		nKind = 0;
+		if (In.flags & KAPI_HXF_WRITER)		// (a write end: one more writer until it goes)
+		{
+			((CStream *) pObj)->AddWriter ();
+			nKind = HKIND_STREAM_WRITER;
+		}
 		pOut->nType = HANDLE_STREAM;
 		break;
 
@@ -239,6 +246,7 @@ boolean IpcXferGive (CHandleTable *pTable, TIpcXfer *p, unsigned nPid, boolean b
 	pOut->h = -1;
 	pOut->fd = -1;
 	pOut->tag = p->nTag;
+	pOut->flags = p->nXFlags;
 	if (p->nHK == KAPI_HK_SOCKET)
 	{
 		boolean bOK = !bAdopt || NetSocketOwner (p->nSock) == nPid

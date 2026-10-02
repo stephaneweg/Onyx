@@ -69,7 +69,7 @@ struct TIpcXfer
 	u8	 nHK;			// KAPI_HK_*
 	u8	 nType;			// HANDLE_*
 	u8	 nKind;			// the handle entry's kind (HANDLE_SHM: the access)
-	u8	 nPad;
+	u8	 nXFlags;		// KAPI_HXF_* as sent
 };
 
 // The object of pTable's handle In (In.kind, In.h) referenced into *pOut. nPid: the caller.
