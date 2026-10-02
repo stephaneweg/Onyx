@@ -1,0 +1,29 @@
+Skia (milestone 154) -- the 2D graphics library of WebKit's GTK / WPE ports, ported to Onyx
+========================================================================================
+
+Source: WebKit's own copy of Skia, Source/ThirdParty/skia of https://github.com/WebKit/WebKit at
+commit b8a7a626127c0010a557c9d6466fefd38d9477c1 (2026-10-02), fetched by a sparse checkout of that
+subtree only. WebKit's README.WebKit (kept) names the Skia commit it is:
+https://skia.googlesource.com/skia commit 588b550a4dd8af90dbe71c0554852806bd8f0b21 (SkMilestone.h:
+154). BSD-3-Clause licence (LICENSE, AUTHORS). This is the Skia WebKit builds with, so the Onyx port of
+WebKit (docs/POSIX-PLAN.md §9) compiles the same sources.
+
+Kept -- only what the Onyx build compiles and includes (the compiler's dependency lists, 12.6 MB of the
+subtree's 216 MB): the ~545 sources of tools/ports/skia/sources.cmake (WebKit's list for the CPU raster
+back end, + the directory font managers, the encoders, WebP decoding, SkOSPath), every header they
+include, all of include/ except include/third_party (Vulkan, ANGLE...), modules/skcms; WebKit's
+CMakeLists.txt as CMakeLists.WebKit.txt (the reference list; not used), WebKitSkiaConfig.h, README,
+README.WebKit, README.chromium. Not kept: the GPU back ends (Ganesh, Graphite: src/gpu/ganesh,
+src/gpu/graphite), the other ports (Windows, Mac, Android, Fontations), the modules but skcms (skshaper,
+skparagraph, svg, skottie...), the tests, tools, docs, bench, gm, the Bazel / GN builds, third_party/.
+No change to the sources.
+
+Built by tools/ports/skia/build.sh with CMake (tools/ports/skia/CMakeLists.txt) and
+tools/onyx-toolchain.cmake (aarch64-onyx-elf, gnu++20): libskia.a (15 MB) + include/skia + skia.pc into
+the POSIX sysroot. CPU raster only (no SK_GANESH / SK_GL), SK_BUILD_FOR_UNIX (Onyx's GCC defines no
+__unix__), SK_R32_SHIFT=16 (N32 = BGRA = the Onyx canvas), NEON through Skia's SKVX (AArch64), FreeType
+text (tools/ports/freetype), PNG / JPEG / WebP decoding and encoding (libpng, libjpeg-turbo, libwebp),
+fonts from Skia's custom directory font manager with Onyx's over it (tools/ports/skia/SkFontMgr_onyx.cpp,
+MIT: CSS family aliases, case-insensitive names, fallback per character) instead of fontconfig. Smoke
+tests: tools/ports/skia/skiatest.cpp (/bin/skiatest) and skiademo.cpp (/bin/skiademo, in a window).
+To build against a whole WebKit checkout's copy instead: SKIA_SRC=<webkit>/Source/ThirdParty/skia.
