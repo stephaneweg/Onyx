@@ -32,6 +32,7 @@ extern "C" {
 
 #define MAP_SHARED		0x01
 #define MAP_PRIVATE		0x02
+#define MAP_FILE		0	/* (BSD: a file mapping, the default) */
 #define MAP_TYPE		0x0F
 #define MAP_FIXED		0x10
 #define MAP_ANONYMOUS		0x20

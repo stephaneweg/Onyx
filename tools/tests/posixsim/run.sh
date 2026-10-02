@@ -13,7 +13,8 @@
 # The toolchain: PREFIX, else $ONYX_TOOLCHAIN_PREFIX, else aarch64-none-elf-. libonyxposix is built
 # for the bench in build-sim (aarch64-none-elf) or build-onyx-sim (aarch64-onyx-elf).
 #
-# Needs qemu-aarch64-static (apt install qemu-user-static) and the toolchain. The files live in
+# Needs qemu-aarch64-static or qemu-aarch64 (apt install qemu-user-static; qemu-user on Ubuntu
+# 25.04 and later) and the toolchain. The files live in
 # POSIXSIM_ROOT (default /tmp/posixsim: SD/ and RAM/), the program is installed as SD:/bin/<name>.
 # Not a model of the real kernel's timing, FAT, the RAM volume or its DNS: a check of the library's
 # logic. The Pi is the reference.
@@ -33,7 +34,7 @@ ONYX=$(cd "$HERE/../../.." && pwd)
 command -v "${PREFIX}gcc" >/dev/null 2>&1 || PATH=/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:/opt/toolchains/aarch64-onyx-elf-14.2/bin:$PATH
 command -v "${PREFIX}gcc" >/dev/null 2>&1 || { echo "run.sh: no ${PREFIX}gcc" >&2; exit 2; }
 : "${POSIXSIM_QEMU:=$(command -v qemu-aarch64-static || command -v qemu-aarch64)}"
-[ -x "$POSIXSIM_QEMU" ] || { echo "run.sh: no qemu-aarch64(-static) (apt install qemu-user-static)" >&2; exit 2; }
+[ -x "$POSIXSIM_QEMU" ] || { echo "run.sh: no qemu-aarch64(-static) (apt install qemu-user-static, or qemu-user on Ubuntu 25.04 and later)" >&2; exit 2; }
 : "${POSIXSIM_ROOT:=/tmp/posixsim}"
 : "${PROG:=$ONYX/user/bin/posixtest.c}"
 case $PROG in *.cpp) SIM_CXX=1;; esac

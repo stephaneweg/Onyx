@@ -134,13 +134,17 @@ answer in French. The docs stay in English.
   curl, Skia CPU, our compositor on the V3D later); static binaries (§13); the WebKit browser under
   **LGPL-2.1+** (§15); fork/vfork, symlinks on FAT, self-hosting, Mesa (GPU), 1 GB memory balance,
   the input-state page for key_held/pad_state, the PDF Viewer's flicker: later (notes above / plan).
-- **In progress: WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`):
-  an agent works on branch **`webkit-port-step1`** (pushed regularly). To resume after a reset:
-  check that branch's `docs/08-WEBKIT-PORT.md` ("status / how to resume"), reinstall the toolchain
-  (`sh tools/toolchain/fetch.sh`), fetch WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
-  checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), build with
-  `tools/webkit/build-jsc.sh`. Then: merge into `main` after the Pi test of `jsc`; next steps
-  WebCore → WebKit2 → the Onyx view / compositor / media player → the browser → parity with Jet.
+- **WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`): **done on the
+  PC bench** (branch **`webkit-port-step1`**, the user's PC, WSL): WTF and JavaScriptCore build, `jsc`
+  runs with the LLInt (no JIT) and passes WebKit's es6 and default stress tests under qemu
+  (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is staged on that branch's card. **Waiting for the
+  Pi test** (the plan is in `docs/08-WEBKIT-PORT.md`), then: merge into `main`, publish the package,
+  and step 2 (WebCore) on a branch `webkit-port`. To resume: `docs/08-WEBKIT-PORT.md` ("status / how
+  to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain
+  (`sh tools/toolchain/fetch.sh`), WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
+  checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), the build
+  with `tools/webkit/build-jsc.sh` (or `make -C user/bin jsc`). Next steps: WebCore → WebKit2 → the
+  Onyx view / compositor / media player → the browser → parity with Jet.
 
 ## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
 

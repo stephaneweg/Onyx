@@ -1,0 +1,268 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 17:29:00 +0200
+Subject: [PATCH 2/5] Onyx: WTF builds (no asynchronous signals, memory status,
+ newlib's feature macros)
+
+What: libWTF.a compiles and links for PORT=Onyx.
+- OptionsOnyx.cmake: -D_GNU_SOURCE (newlib hides siginfo_t, memmem, realpath, symlink, ftruncate,
+  mkostemp, O_CLOEXEC... from a strict -std=c++NN compile; CMAKE_CXX_EXTENSIONS is OFF);
+  HAVE_PTHREAD_SETNAME_NP no longer set (it selects Darwin's one-argument call).
+- wtf/PlatformRegisters.h: no <sys/ucontext.h> for OS(ONYX). HAVE(MACHINE_CONTEXT) stays off:
+  PlatformRegisters is the stack pointer only.
+- wtf/posix/ThreadingPOSIX.cpp: no suspend/resume signal handler for OS(ONYX); Thread::suspend()
+  is a fatal error there; the thread name through pthread_setname_np(pthread_self(), name).
+- wtf/threads/Signals.cpp: for OS(ONYX), handlers can be added but none is installed.
+- wtf/ProcessMemoryStatus.h, MemoryPressureHandler.{h,cpp}, unix/MemoryPressureHandlerUnix.cpp:
+  OS(ONYX) beside OS(LINUX) / OS(HAIKU) (the hold-off timer, the process memory status from
+  wtf/onyx/CurrentProcessMemoryStatus.h).
+
+Why: Onyx has no asynchronous signals: a handler only runs when the process raises the signal
+itself, a faulting process is ended by the kernel, and newlib's struct sigaction has no
+sa_sigaction. A thread therefore cannot be stopped from another one. JavaScriptCore only
+suspends a thread to scan its stack when several threads use the same VM, for the sampling
+profiler, and for the signal-based VM traps of the JIT tiers: none of these exists in this port
+(one thread per VM, no JIT, no sampling profiler), and reaching Thread::suspend() stops the
+process with a message rather than letting the collector miss a stack.
+---
+ Source/WTF/wtf/MemoryPressureHandler.cpp      |  2 +-
+ Source/WTF/wtf/MemoryPressureHandler.h        |  4 ++--
+ Source/WTF/wtf/PlatformRegisters.h            |  2 ++
+ Source/WTF/wtf/ProcessMemoryStatus.h          |  4 ++--
+ Source/WTF/wtf/posix/ThreadingPOSIX.cpp       | 19 +++++++++++++++----
+ Source/WTF/wtf/threads/Signals.cpp            |  7 +++++++
+ .../wtf/unix/MemoryPressureHandlerUnix.cpp    |  6 ++++--
+ Source/cmake/OptionsOnyx.cmake                |  5 ++++-
+ 8 files changed, 37 insertions(+), 12 deletions(-)
+
+diff --git a/Source/WTF/wtf/MemoryPressureHandler.cpp b/Source/WTF/wtf/MemoryPressureHandler.cpp
+index d1831c6a..ed8a4310 100644
+--- a/Source/WTF/wtf/MemoryPressureHandler.cpp
++++ b/Source/WTF/wtf/MemoryPressureHandler.cpp
+@@ -63,7 +63,7 @@ MemoryPressureHandler& MemoryPressureHandler::singleton()
+ }
+ 
+ MemoryPressureHandler::MemoryPressureHandler()
+-#if (OS(LINUX) || OS(FREEBSD) || OS(HAIKU) || OS(QNX)) && !OS(ANDROID)
++#if (OS(LINUX) || OS(FREEBSD) || OS(HAIKU) || OS(QNX) || OS(ONYX)) && !OS(ANDROID)
+     : m_holdOffTimer(RunLoop::mainSingleton(), "MemoryPressureHandler::HoldOffTimer"_s, [] {
+         MemoryPressureHandler::singleton().holdOffTimerFired();
+     })
+diff --git a/Source/WTF/wtf/MemoryPressureHandler.h b/Source/WTF/wtf/MemoryPressureHandler.h
+index f4a31bd8..c1a964e1 100644
+--- a/Source/WTF/wtf/MemoryPressureHandler.h
++++ b/Source/WTF/wtf/MemoryPressureHandler.h
+@@ -93,7 +93,7 @@ public:
+     WTF_EXPORT_PRIVATE void NODELETE setMemoryFootprintPollIntervalForTesting(Seconds);
+     WTF_EXPORT_PRIVATE void setShouldUsePeriodicMemoryMonitor(bool);
+ 
+-#if OS(LINUX) || OS(FREEBSD) || OS(HAIKU) || OS(QNX)
++#if OS(LINUX) || OS(FREEBSD) || OS(HAIKU) || OS(QNX) || OS(ONYX)
+     WTF_EXPORT_PRIVATE void triggerMemoryPressureEvent(bool isCritical);
+ #endif
+ 
+@@ -265,7 +265,7 @@ private:
+     HANDLE m_lowMemoryWaitHandle { nullptr };
+ #endif
+ 
+-#if (OS(LINUX) || OS(FREEBSD) || OS(HAIKU) || OS(QNX)) && !OS(ANDROID)
++#if (OS(LINUX) || OS(FREEBSD) || OS(HAIKU) || OS(QNX) || OS(ONYX)) && !OS(ANDROID)
+     RunLoop::Timer m_holdOffTimer;
+     void holdOffTimerFired();
+ #endif
+diff --git a/Source/WTF/wtf/PlatformRegisters.h b/Source/WTF/wtf/PlatformRegisters.h
+index 37efb86d..f05ac2c0 100644
+--- a/Source/WTF/wtf/PlatformRegisters.h
++++ b/Source/WTF/wtf/PlatformRegisters.h
+@@ -39,6 +39,8 @@
+ typedef ucontext_t mcontext_t;
+ #elif OS(QNX)
+ #include <ucontext.h>
++#elif OS(ONYX)
++// No asynchronous signals, so no machine context: PlatformRegisters is the stack pointer only.
+ #else
+ #include <sys/ucontext.h>
+ #endif
+diff --git a/Source/WTF/wtf/ProcessMemoryStatus.h b/Source/WTF/wtf/ProcessMemoryStatus.h
+index 44f924d9..e5469729 100644
+--- a/Source/WTF/wtf/ProcessMemoryStatus.h
++++ b/Source/WTF/wtf/ProcessMemoryStatus.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if OS(LINUX) || OS(HAIKU)
++#if OS(LINUX) || OS(HAIKU) || OS(ONYX)
+ 
+ #include <wtf/ForbidHeapAllocation.h>
+ 
+@@ -47,4 +47,4 @@ public:
+ 
+ using WTF::ProcessMemoryStatus;
+ 
+-#endif // OS(LINUX) || OS(HAIKU)
++#endif // OS(LINUX) || OS(HAIKU) || OS(ONYX)
+diff --git a/Source/WTF/wtf/posix/ThreadingPOSIX.cpp b/Source/WTF/wtf/posix/ThreadingPOSIX.cpp
+index 94ecfb0a..88b20aeb 100644
+--- a/Source/WTF/wtf/posix/ThreadingPOSIX.cpp
++++ b/Source/WTF/wtf/posix/ThreadingPOSIX.cpp
+@@ -99,7 +99,11 @@ namespace WTF {
+ 
+ Thread::~Thread() = default;
+ 
+-#if !OS(DARWIN)
++// Onyx has no asynchronous signals (a handler only runs when the process raises the signal
++// itself, and newlib's struct sigaction has no sa_sigaction), so a thread cannot be stopped from
++// another one: Thread::suspend() is a fatal error there. Nothing reaches it while each VM is
++// used by one thread (the JIT, the sampling profiler and the signal-based VM traps are off).
++#if !OS(DARWIN) && !OS(ONYX)
+ class Semaphore final {
+     WTF_MAKE_NONCOPYABLE(Semaphore);
+     WTF_DEPRECATED_MAKE_FAST_ALLOCATED(Semaphore);
+@@ -190,7 +194,7 @@ void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
+     globalSemaphoreForSuspendResume->post();
+ }
+ 
+-#endif // !OS(DARWIN)
++#endif // !OS(DARWIN) && !OS(ONYX)
+ 
+ void Thread::initializePlatformThreading()
+ {
+@@ -206,7 +210,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
+     }
+     g_wtfConfig.isThreadSuspendResumeSignalConfigured = true;
+ 
+-#if !OS(DARWIN)
++#if !OS(DARWIN) && !OS(ONYX)
+     globalSemaphoreForSuspendResume.construct(0);
+ 
+     // Signal handlers are process global configuration.
+@@ -247,7 +251,7 @@ ThreadIdentifier Thread::currentID()
+ 
+ void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
+ {
+-#if !OS(DARWIN)
++#if !OS(DARWIN) && !OS(ONYX)
+     RELEASE_ASSERT(g_wtfConfig.isThreadSuspendResumeSignalConfigured);
+     sigset_t mask;
+     sigemptyset(&mask);
+@@ -464,6 +468,8 @@ void Thread::initializeCurrentThreadInternal(const char* threadName)
+ {
+ #if HAVE(PTHREAD_SETNAME_NP)
+     pthread_setname_np(normalizeThreadName(threadName));
++#elif OS(ONYX)
++    pthread_setname_np(pthread_self(), normalizeThreadName(threadName));
+ #elif OS(HAIKU)
+     rename_thread(find_thread(nullptr), normalizeThreadName(threadName));
+ #elif OS(LINUX)
+@@ -580,6 +586,9 @@ auto Thread::suspend(const ThreadSuspendLocker&) -> std::expected<void, Platform
+     if (result != KERN_SUCCESS)
+         return makeUnexpected(result);
+     return { };
++#elif OS(ONYX)
++    RELEASE_ASSERT_WITH_MESSAGE(false, "Onyx cannot suspend a thread (no asynchronous signals): a VM shared between threads is not supported.");
++    return makeUnexpected(ENOSYS);
+ #else
+     if (!m_suspendCount) {
+         targetThread.store(this);
+@@ -606,6 +615,8 @@ void Thread::resume(const ThreadSuspendLocker&)
+ {
+ #if OS(DARWIN)
+     thread_resume(m_platformThread);
++#elif OS(ONYX)
++    // Never suspended (see Thread::suspend).
+ #else
+     if (m_suspendCount == 1) {
+         // When allowing sigThreadSuspendResume interrupt in the signal handler by sigsuspend and SigThreadSuspendResume is actually issued,
+diff --git a/Source/WTF/wtf/threads/Signals.cpp b/Source/WTF/wtf/threads/Signals.cpp
+index 87536bb9..b3828a05 100644
+--- a/Source/WTF/wtf/threads/Signals.cpp
++++ b/Source/WTF/wtf/threads/Signals.cpp
+@@ -474,6 +474,10 @@ void addSignalHandler(Signal signal, SignalHandler&& handler)
+     g_wtfConfig.signalHandlers.add(signal, WTF::move(handler));
+ }
+ 
++// Onyx delivers no fault or asynchronous signal to a handler (the kernel ends a faulting
++// process), and newlib's struct sigaction has no sa_sigaction: handlers can be added, none is
++// ever installed.
++#if !OS(ONYX)
+ static void jscSignalHandler(int sig, siginfo_t* info, void* ucontext)
+ {
+     Signal signal = fromSystemSignal(sig);
+@@ -543,6 +547,7 @@ static void jscSignalHandler(int sig, siginfo_t* info, void* ucontext)
+         return;
+     }
+ }
++#endif // !OS(ONYX)
+ 
+ void SignalHandlers::initialize()
+ {
+@@ -573,6 +578,7 @@ void SignalHandlers::finalize()
+         initMachExceptionHandlerThread();
+ #endif
+ 
++#if !OS(ONYX)
+     if (!handlers.useMach) {
+         for (unsigned i = 0; i < numberOfSignals; ++i) {
+             if (!handlers.numberOfHandlers[i])
+@@ -595,6 +601,7 @@ void SignalHandlers::finalize()
+             RELEASE_ASSERT(!result);
+         }
+     }
++#endif // !OS(ONYX)
+ }
+ 
+ } // namespace WTF
+diff --git a/Source/WTF/wtf/unix/MemoryPressureHandlerUnix.cpp b/Source/WTF/wtf/unix/MemoryPressureHandlerUnix.cpp
+index 97b0e3de..0d7df61f 100644
+--- a/Source/WTF/wtf/unix/MemoryPressureHandlerUnix.cpp
++++ b/Source/WTF/wtf/unix/MemoryPressureHandlerUnix.cpp
+@@ -39,6 +39,8 @@
+ #include <wtf/linux/CurrentProcessMemoryStatus.h>
+ #elif OS(HAIKU)
+ #include <wtf/haiku/CurrentProcessMemoryStatus.h>
++#elif OS(ONYX)
++#include <wtf/onyx/CurrentProcessMemoryStatus.h>
+ #elif OS(FREEBSD)
+ #include <array>
+ #include <sys/sysctl.h>
+@@ -114,7 +116,7 @@ void MemoryPressureHandler::holdOff(Seconds seconds)
+ 
+ static size_t processMemoryUsage()
+ {
+-#if OS(LINUX) || OS(HAIKU)
++#if OS(LINUX) || OS(HAIKU) || OS(ONYX)
+     ProcessMemoryStatus memoryStatus;
+     currentProcessMemoryStatus(memoryStatus);
+     return (memoryStatus.resident - memoryStatus.shared);
+@@ -170,7 +172,7 @@ void MemoryPressureHandler::platformReleaseMemory(Critical)
+ 
+ std::optional<MemoryPressureHandler::ReliefLogger::MemoryUsage> MemoryPressureHandler::ReliefLogger::platformMemoryUsage()
+ {
+-#if OS(LINUX) || OS(HAIKU)
++#if OS(LINUX) || OS(HAIKU) || OS(ONYX)
+     ProcessMemoryStatus memoryStatus;
+     currentProcessMemoryStatus(memoryStatus);
+     return MemoryUsage { memoryStatus.resident - memoryStatus.shared, memoryStatus.resident };
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+index b826bdca..07f2a2d4 100644
+--- a/Source/cmake/OptionsOnyx.cmake
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -33,6 +33,10 @@ set(PORT Onyx)
+ add_definitions(-DBUILDING_ONYX__=1)
+ add_definitions(-DWTF_PLATFORM_ONYX=1)
+ 
++# newlib hides its POSIX / BSD / GNU declarations (siginfo_t, memmem, realpath, O_CLOEXEC,
++# mkostemp...) from a strict -std=c++NN compile (CMAKE_CXX_EXTENSIONS is OFF).
++add_definitions(-D_GNU_SOURCE)
++
+ set(PROJECT_VERSION_MAJOR 1)
+ set(PROJECT_VERSION_MINOR 0)
+ set(PROJECT_VERSION_MICRO 0)
+@@ -93,6 +97,5 @@ SET_AND_EXPOSE_TO_BUILD(WTF_DEFAULT_EVENT_LOOP 0)
+ set(EVENT_LOOP_TYPE "Generic")
+ set(LOWERCASE_EVENT_LOOP_TYPE "generic")
+ 
+-SET_AND_EXPOSE_TO_BUILD(HAVE_PTHREAD_SETNAME_NP ON)
+ SET_AND_EXPOSE_TO_BUILD(HAVE_MAP_ALIGNED OFF)
+ SET_AND_EXPOSE_TO_BUILD(USE_UNIX_DOMAIN_SOCKETS ON)

@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 18:01:33 +0200
+Subject: [PATCH 5/5] Onyx: the mutator finishes the collections before it
+ releases heap access
+
+What: heap/Heap.h, heap/Heap.cpp: for OS(ONYX), Heap::releaseAccess() first calls
+finishCollectionsBeforeReleasingAccess(): while the collector has an outstanding request, the
+mutator waits for all collections (waitForAllCollections(): it runs the phases itself when it
+has the conn, and is stopped at a safepoint with its CurrentThreadState otherwise). Nothing is
+done when the heap is not safe to collect, is shutting down, or the mutator is itself
+collecting.
+
+Why: a collection that goes on after the mutator released heap access (the VM's lock dropped:
+the thread is back in its run loop) is conducted by the collector thread, which has to suspend
+the mutator's thread to scan its stack and registers (MachineThreads::
+tryCopyOtherThreadStacks). Onyx has no asynchronous signals and cannot suspend a thread
+(Thread::suspend() is fatal there): a program that allocated, then waited in its run loop
+(setTimeout in the jsc shell; any page in a browser) was ended by that assertion as soon as a
+collection was still running or pending when it went idle. With this, a thread's stack is only
+ever scanned by the thread itself. Collections are requested by the thread that holds the VM's
+lock, so none starts while the mutator has no access. The cost: the end of a collection is a
+pause on the mutator when it goes idle, instead of running beside it; marking is still
+concurrent and parallel while the mutator runs. A kernel call to suspend a thread and read its
+registers would lift this (and allow a VM shared between threads).
+---
+ Source/JavaScriptCore/heap/Heap.cpp | 19 +++++++++++++++++++
+ Source/JavaScriptCore/heap/Heap.h   |  6 ++++++
+ 2 files changed, 25 insertions(+)
+
+diff --git a/Source/JavaScriptCore/heap/Heap.cpp b/Source/JavaScriptCore/heap/Heap.cpp
+index 9e0f4956..9ffda470 100644
+--- a/Source/JavaScriptCore/heap/Heap.cpp
++++ b/Source/JavaScriptCore/heap/Heap.cpp
+@@ -1552,6 +1552,25 @@ void Heap::acquireAccessSlow()
+     }
+ }
+ 
++#if OS(ONYX)
++// A collection that goes on after the mutator released heap access runs in the collector thread,
++// which then has to suspend the mutator's thread to scan its stack and registers
++// (MachineThreads::tryCopyOtherThreadStacks). Onyx cannot suspend a thread (no asynchronous
++// signals: Thread::suspend() is fatal there). So the mutator never leaves a collection behind:
++// it waits for the requested collections (running their phases itself when it has the conn,
++// its own stack scanned through its CurrentThreadState) before it gives up heap access. No
++// collection starts while it has no access: requests come from the thread holding the VM's lock.
++void Heap::finishCollectionsBeforeReleasingAccess()
++{
++    if (!m_isSafeToCollect || m_isShuttingDown || mutatorState() != MutatorState::Running)
++        return;
++    if (!(m_worldState.load() & hasAccessBit))
++        return;
++    while (m_collector->hasOutstandingRequest())
++        waitForAllCollections();
++}
++#endif
++
+ void Heap::releaseAccessSlow()
+ {
+     for (;;) {
+diff --git a/Source/JavaScriptCore/heap/Heap.h b/Source/JavaScriptCore/heap/Heap.h
+index 41046409..ef6ab109 100644
+--- a/Source/JavaScriptCore/heap/Heap.h
++++ b/Source/JavaScriptCore/heap/Heap.h
+@@ -553,6 +553,9 @@ public:
+     // on the ParkingLot.
+     void releaseAccess()
+     {
++#if OS(ONYX)
++        finishCollectionsBeforeReleasingAccess();
++#endif
+         if (m_worldState.compareExchangeWeak(hasAccessBit, 0))
+             return;
+         releaseAccessSlow();
+@@ -705,6 +708,9 @@ private:
+     
+     JS_EXPORT_PRIVATE void acquireAccessSlow();
+     JS_EXPORT_PRIVATE void releaseAccessSlow();
++#if OS(ONYX)
++    JS_EXPORT_PRIVATE void finishCollectionsBeforeReleasingAccess();
++#endif
+     
+     bool handleNeedCollectionEpilogue(unsigned);
+     void handleNeedCollectionEpilogue();

@@ -168,6 +168,17 @@ ifneq ($(strip $(PORTS)),)
 PORT_PROGS = ports
 endif
 
+# jsc: the shell of WebKit's JavaScriptCore (step 1 of the WebKit port, docs/08-WEBKIT-PORT.md).
+# WebKit is not in this repository: tools/webkit/fetch.sh checks the pinned revision out beside it
+# and applies tools/webkit/patches; build-jsc.sh builds it with aarch64-onyx-elf against the sysroot
+# (ICU from `make ports`) and strips it into jsc.elf here. OPT-IN: `make jsc` (about 6 minutes on
+# 16 cores, 70 on 4). JSC_INTERP=cloop for the portable C++ interpreter instead of the LLInt.
+JSC_INTERP ?= llint
+.PHONY: jsc
+jsc:
+	sh ../../tools/webkit/fetch.sh
+	INTERP=$(JSC_INTERP) sh ../../tools/webkit/build-jsc.sh install
+
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
 $(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@

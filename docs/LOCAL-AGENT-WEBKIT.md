@@ -65,7 +65,9 @@ stage on the Pi and agrees, merge `webkit-port` into `main` (`git push origin HE
    ```
 2. **Work on the Linux filesystem, never under `/mnt/c/...`** (Windows files from WSL are 5–10× slower
    to build): e.g. `~/src/Onyx`. Keep ~60 GB free there (WebKit sources + build trees).
-3. **Packages** (Ubuntu 22.04/24.04):
+3. **Packages** (Ubuntu 22.04/24.04; on 25.04 and later, 26.04 included, `qemu-user-static` is gone:
+   install **`qemu-user`** instead — it holds the static binaries, as `qemu-aarch64`, which the
+   benches accept):
    ```sh
    sudo apt update
    sudo apt install -y build-essential git curl xz-utils bzip2 cmake ninja-build ccache \
@@ -73,7 +75,7 @@ stage on the Pi and agrees, merge `webkit-port` into `main` (`git push origin HE
         qemu-user-static unzip zip file
    ```
    (`ruby` runs WebKit's offlineasm; `gperf`, `perl`, `python3` its generators; `qemu-user-static`
-   the PC benches.) Optional for the docs exports: `pip install pypandoc` + `sudo apt install pandoc`.
+   / `qemu-user` the PC benches.) Optional for the docs exports: `pip install pypandoc` + `sudo apt install pandoc`.
 4. **ccache** for fast rebuilds: `ccache -M 30G`; the WebKit build script and CMake toolchain file use
    it when `CCACHE=1` / `-DCMAKE_C_COMPILER_LAUNCHER=ccache` (add it if the script does not).
 
