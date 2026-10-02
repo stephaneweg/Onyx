@@ -4341,7 +4341,7 @@ Plain C, five layers, each usable alone (`user/av/av.h` is the reference):
   **video thread** (decodes and converts four frames ahead, drops a frame already late without
   converting it, frames before a seek's target decoded and not shown), the **host's poll** (the
   frame due now, the clock, readyState, waiting / ended / seeked), the file mode
-  (`av_player_open_file`: a reader thread ~30 s ahead -- the Media Player's videos). The sound
+  (`av_player_open_file`: a reader thread ~30 s ahead, the file read through the kapi -- the Media Player's videos, done 2026-10-02). The sound
   output is the kapi's (`kapi_sound_acquire` / `write` / `status` / `config`; released while paused
   -- what was queued stops at once); another app holding it: the clock is the wall's, the audio
   not decoded. Threads poll with naps (2..10 ms): nothing needs the kapi's events.

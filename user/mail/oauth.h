@@ -121,6 +121,61 @@ static int https_post (const char *host, int port, int sec, const char *path, co
 	return status;
 }
 
+// ---- an HTTP(S) GET (a message's remote pictures, once the user allows them): redirects followed (3), at most max bytes
+static int http_get (const char *url, Buf &body, long max, char *err, int errCap, volatile int *cancel, char *ctype = 0, int ctCap = 0)
+{
+	char u[1024]; scpy (u, url, sizeof u);
+	for (int hop = 0; hop < 4; hop++)
+	{
+		body.clear ();
+		bool tls = istarts (u, "https://"); if (!tls && !istarts (u, "http://")) { scpy (err, "Not a web address.", errCap); return -1; }
+		const char *h = u + (tls ? 8 : 7);
+		const char *pe = h; while (*pe && *pe != '/' && *pe != '?') pe++;
+		char host[200]; int hl = (int) (pe - h); if (hl >= (int) sizeof host) hl = sizeof host - 1; memcpy (host, h, hl); host[hl] = 0;
+		int port = tls ? 443 : 80; char *colon = strchr (host, ':'); if (colon) { port = atoi (colon + 1); *colon = 0; }
+		const char *path = *pe ? pe : "/";
+		Conn c; c.cancel = cancel; c.timeoutMs = 20000;
+		if (!c.open (host, port, tls ? SEC_TLS : SEC_NONE)) { scpy (err, c.err, errCap); return -1; }
+		Buf rq; rq.addf ("GET %s%s HTTP/1.1\r\nHost: %s\r\nUser-Agent: Onyx-Mail/1.0\r\nAccept: image/*\r\nConnection: close\r\n\r\n", *path == '?' ? "/" : "", path, host);
+		if (!c.send (rq.c (), rq.n)) { scpy (err, c.err, errCap); return -1; }
+		Buf ln;
+		if (!c.line (ln)) { scpy (err, c.err, errCap); return -1; }
+		int status = 0; const char *sp = strchr (ln.c (), ' '); if (sp) status = atoi (sp + 1);
+		long len = -1; bool chunked = false; char loc[1024] = "";
+		for (;;)
+		{
+			if (!c.line (ln)) { scpy (err, c.err, errCap); return -1; }
+			if (!ln.n) break;
+			if (istarts (ln.c (), "Content-Length:")) len = atol (ln.c () + 15);
+			else if (istarts (ln.c (), "Transfer-Encoding:") && ifind (ln.c (), "chunked")) chunked = true;
+			else if (istarts (ln.c (), "Location:")) { const char *v = ln.c () + 9; while (*v == ' ') v++; scpy (loc, v, sizeof loc); }
+			else if (ctype && istarts (ln.c (), "Content-Type:")) { const char *v = ln.c () + 13; while (*v == ' ') v++; scpy (ctype, v, ctCap); }
+		}
+		if (status >= 300 && status < 400 && loc[0])
+		{
+			if (loc[0] == '/') { char b[1024]; snprintf (b, sizeof b, "%s://%s%s", tls ? "https" : "http", host, loc); scpy (u, b, sizeof u); }
+			else scpy (u, loc, sizeof u);
+			continue;
+		}
+		if (len > max) { scpy (err, "Too big.", errCap); return -1; }
+		if (chunked)
+		{
+			for (;;)
+			{
+				if (!c.line (ln)) break;
+				long n = strtol (ln.c (), 0, 16); if (n <= 0) break;
+				if (body.n + n > max) { scpy (err, "Too big.", errCap); return -1; }
+				if (!c.bytes (body, n) || !c.line (ln)) break;
+			}
+		}
+		else if (len >= 0) { if (!c.bytes (body, len)) { scpy (err, c.err, errCap); return -1; } }
+		else { while (body.n < max && c.fill ()) { int k = c.wp - c.rp; body.add (c.in + c.rp, k); c.rp = c.wp; } }
+		return status;
+	}
+	scpy (err, "Too many redirections.", errCap);
+	return -1;
+}
+
 // ---- the device code flow ----------------------------------------------------------------------------------------------
 struct OAuthCfg
 {

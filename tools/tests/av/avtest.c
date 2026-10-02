@@ -569,6 +569,61 @@ static void test_player(const char *dir, const char *name, const char *json, con
 	free(j);
 }
 
+/* the file mode (the Media Player's): a file opened by path, its reader thread, played to the end, a seek */
+static void test_player_file(const char *dir, const char *name)
+{
+	char path[512];
+	struct av_player *p;
+	struct av_player_status st;
+	int shown = 0, mono = 1, r;
+	av_us last = -1, t0, half;
+
+	snprintf(path, sizeof path, "%s/%s", dir, name);
+	p = av_player_new(AV_PIX_BGRA, &fake);
+	r = av_player_open_file(p, path);
+	CHECK(r == AV_OK, "%s: file mode: opened (%d)", name, r);
+	if (r != AV_OK) {
+		av_player_free(p);
+		return;
+	}
+	av_player_play(p);
+	t0 = av_now();
+	memset(&st, 0, sizeof st);
+	while (av_now() - t0 < 6 * AV_US) {
+		struct av_video_out v;
+		if (av_player_poll(p, &st, &v)) {
+			if (v.pts <= last)
+				mono = 0;
+			last = v.pts;
+			shown++;
+		}
+		if (st.ended)
+			break;
+		av_sleep_ms(4);
+	}
+	CHECK(st.ended && shown >= 20 && mono && st.duration > 0, "%s: file mode: played to the end (%d frames in order, %.2f s long)",
+		name, shown, st.duration / 1e6);
+	half = st.duration / 2;
+	av_player_seek(p, half);
+	av_player_play(p);
+	t0 = av_now();
+	last = -1;
+	while (av_now() - t0 < 3 * AV_US && last < 0) {
+		struct av_video_out v;
+		if (av_player_poll(p, &st, &v))
+			last = v.pts;
+		av_sleep_ms(4);
+	}
+	CHECK(last >= half - 200000 && last <= half + 100000, "%s: file mode: seek %.2f s: first frame at %.3f s", name, half / 1e6, last / 1e6);
+	av_player_free(p);
+	/* not a media file */
+	p = av_player_new(AV_PIX_BGRA, &fake);
+	snprintf(path, sizeof path, "%s/%s", dir, "mse.json");
+	r = av_player_open_file(p, path);
+	CHECK(r == AV_EUNSUP, "%s: file mode: a file of another kind refused (%d)", name, r);
+	av_player_free(p);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : ".";
@@ -593,6 +648,8 @@ int main(int argc, char **argv)
 	test_types();
 	test_player(dir, "mse.webm", "mse.json", "video/webm");
 	test_player(dir, "frag.mp4", "frag.json", "video/mp4");
+	test_player_file(dir, "clip.webm");
+	test_player_file(dir, "clip-moovend.mp4");
 	printf("%d passed, %d failed\n", oks, fails);
 	return fails ? 1 : 0;
 }

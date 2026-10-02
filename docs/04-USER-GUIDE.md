@@ -1350,7 +1350,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | ![sheet](../screenshots/sheet.png) | ![irc](../screenshots/irc.png) | ![ledger](../screenshots/ledger.png) |
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
 | ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | ![media](../screenshots/media-albums.png) |
-| *archiver — archive manager* | *screenshot — screen capture* | *media — the music library* |
+| *archiver — archive manager* | *screenshot — screen capture* | *media — the music and video library* |
 
 ### PDF Viewer, the reader of PDF documents (`pdf`)
 
@@ -1865,17 +1865,18 @@ The menus: **File** (New Capture, New Rectangle / Window / Full Screen, Save As.
 **Files:** writes `SD:/etc/screenshot.ini` (the mode, the delay, the pen's and the marker's colour and
 size, the last folder) and the pictures saved with Save As.
 
-### Media Player, the music library (`media`)
+### Media Player, the music and video library (`media`)
 
 ![Media Player](../screenshots/media-home.png)
-*Media Player's home: what was played last, the albums played lately, those added lately.*
+*Media Player's home: the film left half way and what was played last, the albums played lately, the videos.*
 
-Media Player keeps **your music** in one place, in the way of Windows Media Player or iTunes: the songs of
-the folders it watches — **`SD:/Music`** at first —, **MP3, OGG, FLAC, WAV and MIDI** files, by
-**artists, albums, songs, genres and folders**, and your **playlists**. It finds the songs by itself:
+Media Player keeps **your music and your videos** in one place, in the way of Windows Media Player or iTunes:
+the songs of the folders it watches — **`SD:/Music`** at first —, **MP3, OGG, FLAC, WAV and MIDI** files, by
+**artists, albums, songs, genres and folders**, and your **playlists**; and the **films, clips and series'
+episodes** of those folders and of **`SD:/Videos`** — **WebM, MKV and MP4** files. It finds them by itself:
 at each start it looks again at the folders (the sidebar says *Looking for songs...*) and shows what it
-knew at once. Start it from the dock or the app list (*Multimedia*), or open a music file in the File
-Viewer.
+knew at once. Start it from the dock or the app list (*Multimedia*), or open a music or video file in the
+File Viewer.
 
 **The window**: the **sidebar** at the left (Home, the library, the playlists; *+ New playlist*; at its
 bottom the songs counted — a click shows the folders watched), the **bar on top** (back, forward, where
@@ -1892,7 +1893,8 @@ the speaker mutes).
 
 **The pages**:
 
-- **Home**: what was played last (*Play* / *Resume*), the albums played lately, those added lately.
+- **Home**: what to go on with — the video left half way (*Resume*) and the song played last (*Play* /
+  *Resume*) —, the albums played lately, the videos, the albums added lately.
 - **Artists** (their albums' covers in circles), an **artist**: their albums, their songs.
 - **Albums**: a grid of covers (under the pointer: ▶ plays the album) or a list; an **album**: its
   facts on a band of its cover's colours, **Play**, **Shuffle**, **⋯** (play next, add to the queue,
@@ -1900,6 +1902,7 @@ the speaker mutes).
 - **Songs**: every song, by artist; a click on a column's head sorts by it (again: the other way).
 - **Genres** (tiles), **Folders** (the folders that hold songs), and their songs.
 - **Favourites** (the songs with a ♥), **Recently added** (the last 100), **your playlists**.
+- **Films** and **Clips and series** (the sidebar's *Videos*): the videos' frames (below).
 
 | | |
 |:---:|:---:|
@@ -1946,13 +1949,49 @@ of `SD:/res/soundfonts` (GeneralUser GS: the package `generaluser-gs`, which Med
 with them), or `soundfont = <path>` in the settings.
 
 **Keys**: Space or ^P play / pause, ^F next, ^B previous, ^S shuffle, ^T repeat,
-^E search, ^L now playing, ^M the mini player, Esc (now playing: back; the search: cleared), ^O open a file.
+^E search, ^L now playing, ^K the mini player, Esc (now playing: back; the search: cleared), ^O open a file.
 
 **Files**: reads the music folders; writes `SD:/etc/media/settings.ini` (the folders, the volume,
 shuffle, repeat, the SoundFont, the albums' order and view), `SD:/etc/media/library.tsv` (what the
 scan found: the next start is at once), `SD:/etc/media/stats.tsv` (plays, the last time, favourites),
 and the playlists, **`SD:/Music/Playlists/*.m3u`** (other players read them; a `.m3u` opened from the
-File Viewer plays). *(The videos will come in a later version of the same app.)*
+File Viewer plays), `SD:/etc/media/videos.tsv` (the videos found, where each was left, those seen to the
+end) and `SD:/etc/media/thumbs/*.jpg` (the videos' frames shown in the library). Reads `SD:/Videos` and the
+folders watched.
+
+#### The videos
+
+| | |
+|:---:|:---:|
+| ![The videos](../screenshots/media-videos.png) | ![A video playing](../screenshots/media-watch.png) |
+| *Clips and series: each video's frame, its length, how much was watched* | *A video playing, its controls over it* |
+
+Put your videos in **`SD:/Videos`** (always looked at) or in a folder watched. **Films** and **Clips and
+series** show a frame of each (taken a tenth of the way in, kept on the card so the next start shows them at
+once), its length, a red line for the part watched, a ✓ for one seen to the end; under the pointer ▶ plays it.
+What is what: a video in a folder named *Films* (or *Movies*) is a film, in *Series* (*TV*, *Shows*) an
+episode, in *Clips* a clip; else a name with `S01E03` (or `1x03`) is an episode — its series' name and its
+numbers shown, the episodes in order —, and a video of 40 minutes or more a film. The search finds videos
+by their title too. A **right click**: *Play* / *Resume*, *Play from the Start*, *Mark as Watched / Not
+Watched*, *Properties...* (its length, its picture's size, its codecs, its file), *Show in the File Viewer*.
+
+**Playing**: a video plays in the **whole window** and starts again **where you left it**. Its controls show
+while the pointer moves (and when paused): ← back to the library (or Esc), its title and facts, the position
+(drag it), play / pause, ◀◀ / ▶▶ (10 s back / on), the time, the volume (drag it, or the wheel; the speaker
+mutes), **full screen** (or **F**, or a double click on the picture; Esc or F leaves it). A click on the
+picture plays or pauses. At its end: **Watch again**, and for an episode **Next: S1 E4**. Leaving a video
+keeps where you were; a song started stops the video (they share the sound), a video started stops the song.
+
+![The end of an episode](../screenshots/media-episode.png)
+
+**Keys** while a video plays: Space (or K) play / pause, ← / → 10 s back / on (J / L too), ↑ / ↓ the volume,
+M mute, Home the start, 0 … 9 a tenth of the way (5: half way), F full screen, Esc back.
+
+**What plays**: the media library Onyx shares with Jet Browser decodes **VP9, VP8 and AV1** pictures (in
+software: up to 480p smoothly on a Pi 4 for VP9, 360p for AV1) with **Opus, FLAC, MP3 or PCM** sound, in
+WebM / MKV and MP4 / MOV files. A video in another codec — **H.264** (most phones' and cameras' MP4s), H.265 —
+is listed with its codec on its frame and *not played here*; convert it to WebM (VP9 + Opus) on a computer,
+e.g. `ffmpeg -i in.mp4 -c:v libvpx-vp9 -b:v 1M -vf scale=-2:480 -c:a libopus out.webm`.
 
 ### Cardfile, a small database (`cardfile`)
 

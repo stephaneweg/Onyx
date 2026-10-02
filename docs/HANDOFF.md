@@ -95,7 +95,7 @@ answer in French. The docs stay in English.
   Paint's speed on a big picture, the brushes, Ctrl+wheel (it was there before: the user had not tried it),
   Tab in other apps' dialogs (Ledger keeps its own Tab).
 
-## Media Player, the music library (2026-10-01, not yet tried on the Pi)
+## Media Player, the music and video library (2026-10-01 music, 2026-10-02 videos; not yet tried on the Pi)
 
 - **What**: `user/Apps/media` (docs/03 *Media Player*; docs/04 §12; the mock-ups and the user's decisions:
   `docs/media/README.md`): MP3, OGG, FLAC, WAV (minimp3, stb_vorbis, dr_flac, dr_wav in `third_party/`) and
@@ -104,12 +104,23 @@ answer in French. The docs stay in English.
   pages, search, a songs' table with its menu, now playing (a MIDI file: its notes as coloured lines),
   the mini player (the window reduced at the screen's bottom right). Tags read only; covers from the
   files and folders; closing stops the music.
+- **The videos (2026-10-02)**: on Jet's media library `user/av` (VP9, VP8, AV1 + Opus...; `av_player_open_file`,
+  its reader now through the kapi): `videos.h` (the facts, `videos.tsv`, the kinds: Films / Clips and series,
+  episodes), `thumbs.h` (a frame a tenth in, `SD:/etc/media/thumbs/*.jpg`), `watch.h` + `WatchView` (the
+  whole window, controls over the picture, full screen, resumed where left, *Next* episode); the sound
+  handed between the music's thread and the video's (`Player::release`). `media.elf` links `libvpx.a`,
+  `libdav1d.a`, `libopus.a`. PC: `shots.sh media` (the sample library's `Videos/`: `make_library.py`; the
+  simulator's build of `user/av`: `tools/tests/desktop_sim/av_host.mk`); `tools/tests/av/run.sh` checks the
+  file mode now.
 - **To try on the Pi**: the sound (`kapi_sound_write` from the player's thread: a song heard whole,
   pause / seek at once), the scan of a big `SD:/Music` (its time; the next start from `library.tsv`), a
-  MIDI file (the SoundFont's load: 30 MB, a second or two), the covers' loading, the mini player's place.
-- **Next**: **the videos** -- first push into `main` and merge `main`: another session makes a reusable
-  video playback library for NetSurf, to use here (the user). Media keys; ReplayGain; gapless; the
-  covers cached on the card; a playlist reordered by dragging.
+  MIDI file (the SoundFont's load: 30 MB, a second or two), the covers' loading, the mini player's place;
+  **a video**: 480p VP9 / 360p AV1 smooth in the window and full screen (the frame scaled on the UI thread:
+  nearest neighbour; `st.decode_us`, `st.dropped` to look at), the sound's hand-over with the music, a big
+  film's thumbnail (the seek through Cues / `stbl`), the start's scan with many videos (`probe_video`: a few MB
+  each the first time).
+- **Next**: media keys; ReplayGain; gapless; the covers cached on the card; a playlist reordered by
+  dragging; the videos' next steps in `docs/media/README.md` (subtitles, AAC, H.264, a video's mini player).
 ## Jet Browser: video and audio -- `<video>`, `<audio>`, MSE, the media library (2026-10-01, PC bench only)
 
 - docs/06 §44. **The media library `user/av`** (docs/03 "The media library": also for the Media Player's
@@ -1465,7 +1476,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 `shots.sh` scenario. In the user's priority order:
 
 **Priority 1**
-- **Music library** -- **done** (2026-10-01: *Media Player*, its section above; the videos next) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
+- **Music library** -- **done** (2026-10-01: *Media Player*, its section above; its videos done 2026-10-02) -- (audio player as a polished library app, in the way of iTunes / Rhythmbox):
   MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
   is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
   tags and cover art, a now-playing view, file associations.
@@ -1486,7 +1497,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 - **Quick notes** with a desktop widget that can be shown or hidden.
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
-**Priority 3–4**: **video player**; the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
+**Priority 3–4**: **video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).

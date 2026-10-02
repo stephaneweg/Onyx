@@ -57,8 +57,9 @@ build () {
 		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/media/codecs.o" || return 1
 		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/media/vorbis.o" || return 1
 		for f in user/Apps/koton/synth/*.cpp; do $CXX -c "$f" -o "$OUT/media/$(basename "$f" .cpp).o" || return 1; done
+		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1	# (the videos: user/av and its codecs)
 		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
-			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -lpthread -lm; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
 		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
@@ -357,9 +358,10 @@ PY
 fi
 if want media; then			# (Media Player over a sample library made by tools/tests/media/make_library.py -- ffmpeg,
 					#  mutagen --: the home, the albums, an album playing, the songs' menu, now playing, a MIDI
-					#  file's notes, the folders, the mini player; each run over a fresh copy of the library)
-	[ -d "$OUT/mlib/Music" ] || python3 tools/tests/media/make_library.py "$OUT/mlib" >/dev/null
-	mm () { rm -rf "$OUT/writes/Music" "$OUT/writes/etc/media"; mkdir -p "$OUT/writes/etc"; cp -r "$OUT/mlib/Music" "$OUT/writes/"; cp -r "$OUT/mlib/etc/media" "$OUT/writes/etc/";
+					#  file's notes, the folders, the mini player; the videos, one playing, an episode's end;
+					#  each run over a fresh copy of the library)
+	[ -d "$OUT/mlib/Videos" ] || python3 tools/tests/media/make_library.py "$OUT/mlib" >/dev/null
+	mm () { rm -rf "$OUT/writes/Music" "$OUT/writes/Videos" "$OUT/writes/etc/media"; mkdir -p "$OUT/writes/etc"; cp -r "$OUT/mlib/Music" "$OUT/mlib/Videos" "$OUT/writes/"; cp -r "$OUT/mlib/etc/media" "$OUT/writes/etc/";
 		n=$1; shift; s=$1; shift
 		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_POS=12,30 "$@" SIM="$s;dump $OUT/$n.elsm;exit" "$OUT/media.bin" >>"$OUT/log.txt" 2>&1 || { echo "shots: media failed"; exit 1; }; }
 	W10="$W;$W;$W;$W"; S0="$W10;$W10;$W10;$W10;$W10"	# (the scan, the covers)
@@ -373,6 +375,10 @@ if want media; then			# (Media Player over a sample library made by tools/tests/
 	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
 	mm media-welcome "$S0;menu 1;$W10"; png media-welcome
 	mm media-mini "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 841 581;up 841 581;$W10;$W10"; png media-mini
+	VID="down 100 290;up 100 290;$W10;$W10;$W10"				# (Clips and series: their frames decoded)
+	mm media-videos "$S0;$VID;move 600 210;$W10"; png media-videos
+	mm media-watch "$S0;down 414 183;up 414 183;$W10;$W10;$W10;$W10;move 500 300;$W"; png media-watch
+	mm media-episode "$S0;$VID;down 366 185;up 366 185;$W10;key 9;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-episode
 fi
 if want pdf; then			# (the PDF Viewer over Onyx's own manuals, sdcard/manuals: reading, the contents, a search,
 					#  two pages and the zoom's menu, the home with recent documents, the Properties)
