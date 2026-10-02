@@ -1200,3 +1200,19 @@ no windows / app cores / GPU / sound / surfaces in the child; libc `fork` + `pth
 malloc/stdio locks made sane in the child; plus `vfork` (the child borrows the parent's address
 space until exec). Copy-on-write (per-frame refcounts, a write-fault path, TLBI of the parent)
 only if a real performance need appears.
+
+## 13. Dynamic loading: not now; shared code pages instead (the user, 2026-10-02)
+
+Onyx stays with **static binaries**. Real dynamic loading (`.so`, `dlopen`) would need: a real OS
+target in GCC/binutils (`aarch64-onyx` with `config/aarch64/onyx.h`, shared libgcc/libstdc++,
+`crtbeginS.o`: GCC patches, as SerenityOS did) and everything built `-fPIC`; a user-side dynamic
+linker (`ld.so`: load order, AArch64 relocations, `DT_GNU_HASH` symbol lookup, dynamic TLS with
+TLSDESC / `__tls_get_addr`, init/fini, `dlopen`/`dlsym`/`dlclose`; musl's as the model); the kernel
+allowing `PROT_EXEC` mappings (refused today outside `code_alloc`), `PT_INTERP` and the aux vector,
+and file pages shared between processes; shared builds of newlib, libonyxposix, libstdc++ and the
+ports. Plugins do not need it (Koton's are processes, safer).
+**What WebKit2 needs instead** (its several identical web processes, each a 60–100 MB static
+binary): the kernel **sharing the read-only code (and rodata) pages of the same ELF file between
+the processes that run it** — a small page cache keyed by the file, the image's text/rodata mapped
+read-only from it instead of copied per process. Much simpler, most of the memory gain. To do when
+WebKit2 runs; real dynamic loading only if an indispensable piece of software demands it.
