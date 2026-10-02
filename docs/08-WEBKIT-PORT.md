@@ -317,7 +317,10 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    `target=_blank` do is to be decided then (the same view, or a new window).
    **Start-up** (the user, 2026-10-02): the large images are slow to load (above). Two ways,
    which add up: a lazy, file-backed ELF loader in the kernel (pages read from the file when
-   first touched, code pages shared between the processes: a study is under way), and — the
+   first touched, code pages shared between the processes: the study is `docs/ELF-LOADER-PLAN.md`
+   — the time is the SD read at 16 MB/s, the images are 99.8 % read-only, and sharing one loaded
+   image between the processes of one executable is the cheap, safe gain; lazy fill is riskier
+   and only helps the first start), and — the
    fallback if that cannot be done, and good for the perceived speed in any case — **a small
    front end, the host window, separate from the web view** (the page and the toolbar): the front
    end is a few hundred KB, its window appears at once, and it starts the web view, which then
