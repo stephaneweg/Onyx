@@ -86,16 +86,15 @@ answer in French. The docs stay in English.
   (`user/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
   called ~4 300 times a second (not once a frame). The same per-key polling is in **every emulator**
   (gb, gba, nes, snes, n64, **gc**), invaders, `user/game.h` and the BASIC runtime (**Arkanoid**) --
-  likely a big part of their slowdown at EL0. **The fix (the user's design):** `key_held` must not be
-  a system call. The kernel delivers **key down and key up** (and "all released" when the window
-  loses the keyboard) through the event pump (`pop_event`); the user-side pump (`el0blob.S`) keeps
-  the held-key state in the process's own memory (a per-process RW data page next to the EL0 code
-  page, or a block the pump owns), and the EL0 table's `key_held` slot points at a user-side
-  function reading it -- like memcpy: **existing binaries get it without a rebuild**, the ABI
-  unchanged (one new event code, the kernel's `key_held` kept for the dispatcher). Same idea worth
-  checking for `get_modifiers` (already partly user-side via `event_mods`) and `pad_state` (7 %:
-  pads are polled HID; a state the kernel pushes into a shared page could do). Then Doom polling
-  once per frame, and the small-`memcpy` fast path.
+  likely a big part of their slowdown at EL0. **The fix (the user's design, 2026-10-02):** `key_held` must not be
+  a system call. The kernel keeps **one input-state page** (a 256-bit held-key map, the modifiers,
+  the pads' state -- removing `pad_state`'s 7 % too), mapped **read-only at a fixed VA** next to the
+  kapi table; the EL0 table's `key_held` (and `get_modifiers`, `pad_state`) slots point at
+  user-side functions reading it (like memcpy): **existing binaries get it without a rebuild**.
+  **Anti-keylogger**: only the process with the keyboard focus maps the real page; every other
+  process maps a shared zero page at the same VA (no key held); on a focus change the kernel swaps
+  the two PTEs (TLBI by VA + ASID) and clears the state. Key events for typing still go through
+  the pump. Then Doom polling once per frame, and the small-`memcpy` fast path.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
