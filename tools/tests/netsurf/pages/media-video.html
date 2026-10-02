@@ -48,10 +48,19 @@ v.addEventListener('ended', () => {
 v.addEventListener('seeked', () => {
 	if (phase !== 1) return;
 	phase = 2;
-	const f = __onyxMediaFrame(v);
-	console.log('seekframe t=' + v.currentTime.toFixed(3) + ' pts=' + (f ? f[0].toFixed(3) + ' sum=' + f[1] : 'none') +
-		' paused=' + v.paused);
-	console.log('done');
+	/* the frame at the target: presented with seeked or soon after (a loaded machine) -- poll */
+	const t0 = Date.now();
+	const report = () => {
+		const f = __onyxMediaFrame(v);
+		if ((!f || Math.abs(f[0] - v.currentTime) > 0.001) && Date.now() - t0 < 5000) {
+			setTimeout(report, 20);
+			return;
+		}
+		console.log('seekframe t=' + v.currentTime.toFixed(3) + ' pts=' + (f ? f[0].toFixed(3) + ' sum=' + f[1] : 'none') +
+			' paused=' + v.paused);
+		console.log('done');
+	};
+	report();
 });
 v.addEventListener('error', () => console.log('error code=' + (v.error && v.error.code) + ' ' + (v.error && v.error.message)));
 console.log('canPlayType webm=' + v.canPlayType('video/webm') + ' i420=' + v.canPlayType('video/webm; codecs="i420"') +

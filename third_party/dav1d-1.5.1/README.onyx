@@ -1,0 +1,30 @@
+dav1d 1.5.1 -- the AV1 decoder, for Onyx's media library (user/av)
+===================================================================
+
+Source: https://code.videolan.org/videolan/dav1d/-/archive/1.5.1/dav1d-1.5.1.tar.gz
+(sha256 fa635e2bdb25147b1384007c83e15de44c589582bb3b9a53fc1579cb9d74b695), BSD 2-clause licence
+(COPYING).
+
+Kept: include/dav1d/ (the API), include/common/, src/*.c and *.h (the decoder; the *_tmpl.c files
+compiled once, -DBITDEPTH=8), src/arm/ (cpu.c, the headers, asm.S) and src/arm/64/ the 8-bit
+AArch64 assembly (itx, looprestoration_common, msac, refmvs, cdef, filmgrain, ipred, loopfilter,
+looprestoration, mc, mc_dotprod -- with util.S, cdef_tmpl.S, looprestoration_tmpl.S they
+include), src/win32/thread.c (Windows' threads). Not kept: the 16-bit (10/12-bit) code, the
+x86 / 32-bit ARM / PowerPC / RISC-V / LoongArch code, the tools, the tests, meson's files.
+
+onyx/ (Onyx's, written by hand in place of meson's configure):
+  config.h        one file for the three builds: the Pi (aarch64: HAVE_ASM, ARMv8.0 -- no
+                  dot product, i8mm, SVE; memalign; __ONYX_DAV1D_PI), the PC bench and Windows
+                  (the C code: x86's assembly is nasm's, not built)
+  vcs_version.h   DAV1D_VERSION "1.5.1"
+  pthread/pthread.h  the Pi's (newlib has no threads): static inline stand-ins under private
+                  names -- user/av opens dav1d with n_threads = 1, max_frame_delay = 1, so it
+                  decodes on the caller's thread and never waits; pthread_create fails
+  onyx_sysconf.c  the Pi's processor count for dav1d (1)
+
+No change to the sources. The source list and the flags are in user/av/codecs.mk: built by
+user/netsurf/Makefile into libdav1d.a (the assembly with GCC 13.3's assembler), compiled by
+tools/tests/netsurf/host.mk, pc/Jet/jet.mk and tools/tests/av/bench.mk. The AArch64 build's
+frames are bit-exact with the C build's (tools/tests/av/bench.sh prints a checksum of them).
+
+Used by user/av/av_dav1d.c (AV_WITH_DAV1D): AV1 Main profile, 8 bits.

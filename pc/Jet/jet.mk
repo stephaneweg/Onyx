@@ -95,6 +95,10 @@ W3_SRC := $(wildcard $(W3)/src/*.c)
 # Onyx: the media library (user/av) for <video> / <audio> / MSE (docs/06 section 44)
 AV := $(ZUSER)/av
 AV_SRC := $(wildcard $(AV)/*.c)
+# its codecs: libvpx (VP8, VP9), dav1d (AV1), libopus -- the C code (user/av/codecs.mk)
+AV_ARCH := generic
+include $(AV)/codecs.mk
+CODEC_SRC := $(VPX_SRC) $(DAV1D_SRC) $(DAV1D_TMPL_SRC) $(DAV1D_WIN_SRC) $(OPUS_SRC)
 
 CORE_SRC := \
   $(wildcard $(NS)/utils/*.c) $(wildcard $(NS)/utils/http/*.c) $(wildcard $(NS)/utils/nsurl/*.c) \
@@ -142,7 +146,7 @@ MBED_SRC := $(wildcard $(MBED)/library/*.c)
 ZSTD_SRC := $(wildcard $(ZSTD)/lib/common/*.c $(ZSTD)/lib/decompress/*.c)
 NGH_SRC := $(wildcard $(NGH)/lib/*.c)
 
-LIB_ALL := $(AV_SRC) $(EXPAT_SRC) $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
+LIB_ALL := $(AV_SRC) $(CODEC_SRC) $(EXPAT_SRC) $(W3_SRC) $(GPC_SRC) $(ZSTD_SRC) $(NGH_SRC) $(MBED_SRC) $(PVG_SRC) $(PSVG_SRC) $(JPEG_SRC) $(WEBP_SRC) \
            $(PNG_SRC) $(ZLIB_SRC) $(QJS_SRC) $(FT_SRC) $(BRO_SRC) $(WAP_SRC) $(PU_SRC) $(NSU_SRC) $(GIF_SRC) $(BMP_SRC) \
            $(HB_SRC) $(CSS_SRC) $(DOM_SRC)
 NS_ALL  := $(CORE_SRC) $(FE_SRC) $(ONYX_SRC) $(IMG_C)
@@ -220,7 +224,11 @@ $(foreach s,$(MBED_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -I$(MBED)/include
 $(foreach s,$(ZSTD_SRC),$(eval $(call LIB_RULE,$(s),-DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DDEBUGLEVEL=0 -DZSTD_NO_TRACE -I$(ZSTD)/lib -I$(ZSTD)/lib/common)))
 $(foreach s,$(NGH_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu99 -DHAVE_CONFIG_H -DNGHTTP2_STATICLIB -I$(NGH)/lib -I$(NGH)/lib/includes)))
 $(foreach s,$(W3_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O3 -I$(W3)/src)))
-$(foreach s,$(AV_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O2 -I$(AV) -I$(ZUSER) -I$(ZKINC))))
+$(foreach s,$(AV_SRC),$(eval $(call LIB_RULE,$(s),-std=gnu11 -O2 -I$(AV) -I$(ZUSER) -I$(ZKINC) $(AV_CODECS_CF))))
+$(foreach s,$(VPX_SRC),$(eval $(call LIB_RULE,$(s),-O2 $(VPX_CF))))
+$(foreach s,$(DAV1D_SRC) $(DAV1D_WIN_SRC),$(eval $(call LIB_RULE,$(s),-O2 $(DAV1D_CF))))
+$(foreach s,$(DAV1D_TMPL_SRC),$(eval $(call LIB_RULE,$(s),-O2 -DBITDEPTH=8 $(DAV1D_CF))))
+$(foreach s,$(OPUS_SRC),$(eval $(call LIB_RULE,$(s),-O2 $(OPUS_CF))))
 # (wasm3's default m3_Yield is weak elsewhere, not on Windows: qjs_wasm.c's is the one)
 $(call obj,$(W3)/src/m3_core.c): CF += -Dm3_Yield=m3_Yield_default
 $(foreach s,$(JPEG_SRC),$(eval $(call LIB_RULE,$(s),-I$(JPEG))))

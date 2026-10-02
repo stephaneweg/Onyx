@@ -7,6 +7,9 @@
 #     the events and their order, every frame presented in order (requestVideoFrameCallback),
 #     the last frame's pixels = the decoded reference (RGB sums), a seek and its frame, the
 #     window's picture (the frame and the native controls painted);
+#   - the codecs (tools/tests/av/clips, made by mkcodec.py): <video src> VP9 + Opus (WebM) and
+#     AV1 + Opus (MP4), every frame's pixels against the reference decoders', the tone heard;
+#     MSE with VP9 + Opus (WebM) and AV1 + Opus (fragmented MP4);
 #   - media-mse.html: MediaSource + SourceBuffer (WebM and fragmented MP4): appends out of order,
 #     appendBuffer while updating, abort, remove, buffered, endOfStream, playback to the end, the
 #     A/V sync (the frames shown against the audio heard);
@@ -29,17 +32,18 @@ rm -rf "$W"
 mkdir -p "$W"
 python3 tools/tests/av/mkmedia.py "$W" || { echo "mkmedia failed"; exit 1; }
 cp $T/pages/media-*.html "$W/"
+cp tools/tests/av/clips/* "$W/"	# VP9, AV1, Opus (tools/tests/av/mkcodec.py)
 python3 $T/mediasrv.py "$W" "$PORT" >"$OUT/mediasrv.log" 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
 sleep 1
 fail=0
 waits() { i=0; while [ "$i" -lt "$1" ]; do printf 'wait;'; i=$((i + 1)); done; }
-run() {	# run <page?query> <log> <waits>
+run() {	# run <page?query> <log> <turns>: until the page logs "done" (at most 4 x <turns> turns)
 	rm -f "$OUT/sound.raw"
 	SIM_SCREEN=800x600 SIM_SLEEP=1 SIM_POS=0,0 NS_JSDEBUG=1 SIM_REALNET=1 SIM_SOUND=1 \
-	SIM_SOUNDOUT="$OUT/sound.raw" SIM_ARGS="http://127.0.0.1:$PORT/$1" \
-	SIM="$(waits "$3")dump $2.elsm;exit" timeout 300 "$OUT/build/netsurf" >"$2" 2>&1
+	SIM_SOUNDOUT="$OUT/sound.raw" SIM_ARGS="http://127.0.0.1:$PORT/$1" SIM_LOG="$2" \
+	SIM="waitlog $(($3 * 4)) console: done;$(waits 10)dump $2.elsm;exit" timeout 600 "$OUT/build/netsurf" >"$2" 2>&1
 }
 expect() {	# expect <log> <text>
 	if grep -q -F -- "console: $2" "$1"; then echo "  ok    $2"; else echo "  FAIL  $2"; fail=1; fi
@@ -77,22 +81,54 @@ sys.exit(0 if ok else 1)
 EOF
 then echo "  ok    the window: the frame and the native controls painted"; else echo "  FAIL  the window's picture"; fail=1; fi
 
-for m in "mse.webm mse.json video/webm;codecs=%22i420,pcm%22" "frag.mp4 frag.json video/mp4;codecs=%22i420,pcm%22"; do
+# the codecs: VP9 (libvpx), AV1 (dav1d), Opus (libopus) -- each frame bit-exact against the
+# reference decoders' (tools/tests/av/clips/<clip>.txt), the 440 Hz tone heard
+csum() { python3 $T/mediacheck.py sum "$W/$1.txt" "$2"; }
+for f in vp9.webm av1.mp4; do
+	b=${f%.*}
+	echo "media-video.html: <video src=$f>"
+	L="$OUT/media-video-$f.log"
+	run "media-video.html?src=$f" "$L" 300
+	expect "$L" "order loadstart,durationchange,resize,loadedmetadata,loadeddata,canplay,canplaythrough,play,playing,pause,ended"
+	expect_re "$L" "summary frames=(49|50) mono=true timeupdates=[0-9]+ duration=2.0[0-9] size=96x64 paused=true decoded=50" \
+		"50 frames decoded, all presented in order, 96x64"
+	expect "$L" "frame pts=1.960 sum=$(csum $b 49) 96x64"
+	expect "$L" "seekframe t=1.000 pts=1.000 sum=$(csum $b 25) paused=true"
+	expect_re "$L" "stats sound=true sync_ms=" "the sound heard"
+	if python3 $T/mediacheck.py tone "$OUT/sound.raw" 440 44100 | sed 's/^/        /'; then
+		echo "  ok    the Opus tone heard (440 Hz)"; else echo "  FAIL  the Opus tone"; fail=1; fi
+	grep "console: stats" "$L" | sed 's/^/        /'
+	grep -q "^JS " "$L" && { echo "  FAIL  script errors:"; grep -A2 "^JS " "$L" | head -6; fail=1; }
+done
+
+for m in "mse.webm mse.json video/webm;codecs=%22i420,pcm%22" "frag.mp4 frag.json video/mp4;codecs=%22i420,pcm%22" \
+		"vp9-mse.webm vp9-mse.json video/webm;codecs=%22vp9,opus%22" \
+		"av1-frag.mp4 av1-frag.json video/mp4;codecs=%22av01.0.04M.08,opus%22"; do
 	set -- $m
 	echo "media-mse.html: MediaSource, $1"
 	L="$OUT/media-mse-$1.log"
 	run "media-mse.html?file=$1&json=$2&mime=$3" "$L" 300
-	expect "$L" "isTypeSupported true vp9=false"
+	expect "$L" "isTypeSupported true vp9=true"
 	expect "$L" "init updating=false events=updatestart,update,updateend"
 	expect "$L" "appendBuffer while updating: InvalidStateError"
-	expect "$L" "buffered after 3,4 [1.00,2.00]"
-	expect "$L" "buffered all [0.00,2.00] element [0.00,2.00]"
-	expect "$L" "buffered after remove [0.00,0.50][1.00,2.00]"
-	expect "$L" "buffered again [0.00,2.00]"
-	expect "$L" "ended ended duration=2.00"
+	case $1 in
+	mse.webm|frag.mp4)
+		expect "$L" "buffered after 3,4 [1.00,2.00]"
+		expect "$L" "buffered all [0.00,2.00] element [0.00,2.00]"
+		expect "$L" "buffered after remove [0.00,0.50][1.00,2.00]"
+		expect "$L" "buffered again [0.00,2.00]"
+		expect "$L" "ended ended duration=2.00";;
+	*)	# Opus: 20 ms packets, its pre-skip -- the ranges within a packet of the picture's
+		# (the partial segment before abort() may have left its first frames: [0.00,0.06])
+		expect_re "$L" "buffered after 3,4 (\[0\.00,0\.0[0-9]\])?\[1\.0[0-2],2\.0[01]\]$" "buffered after 3,4 [1.00,2.00] (+-20 ms)"
+		expect_re "$L" "buffered all \[0\.00,2\.0[01]\] element \[0\.00,2\.0[01]\]$" "buffered all [0.00,2.00] (+-20 ms)"
+		expect_re "$L" "buffered after remove \[0\.00,0\.(4[89]|50)\]\[1\.0[0-2],2\.0[01]\]$" "buffered after remove [0.00,0.50][1.00,2.00] (+-20 ms)"
+		expect_re "$L" "buffered again \[0\.00,2\.0[01]\]$" "buffered again [0.00,2.00] (+-20 ms)"
+		expect_re "$L" "ended ended duration=2\.0[01] " "ended, duration 2.00 (+-20 ms)";;
+	esac
 	expect "$L" "sourceended"
 	expect "$L" "play resolved"
-	expect_re "$L" "summary t=2.00 decoded=50 dropped=[0-2] sound=true sync_ms=([0-9]|[1-3][0-9])\." "played to the end, A/V sync under 40 ms"
+	expect_re "$L" "summary t=2\.0[01] decoded=50 dropped=[0-2] sound=true sync_ms=([0-9]|[1-3][0-9])\." "played to the end, A/V sync under 40 ms"
 	grep "console: summary" "$L" | sed 's/^/        /'
 	grep -q "^JS " "$L" && { echo "  FAIL  script errors:"; grep -A2 "^JS " "$L" | head -6; fail=1; }
 done
@@ -131,6 +167,10 @@ expect "$L" 'type video/webm; codecs="i420, pcm" can="probably" mse=true'
 expect "$L" 'type audio/webm; codecs="pcm" can="probably" mse=true'
 expect "$L" 'type audio/flac can="maybe" mse=false'
 expect "$L" 'type video/x-nothing can="" mse=false'
+expect "$L" 'type video/webm; codecs="vp9" can="probably" mse=true'
+expect "$L" 'type video/mp4; codecs="av01.0.05M.08" can="probably" mse=true'
+expect "$L" 'type audio/webm; codecs="opus" can="probably" mse=true'
+expect "$L" 'type video/mp4; codecs="avc1.42E01E" can="" mse=false'
 expect "$L" "api function,function,function,function,function,function,function,true,function,HAVE_ENOUGH_DATA=4,0,0,true,true"
 expect "$L" "caps supported=true smooth=true powerEfficient=false"
 expect "$L" "caps supported=false smooth=false powerEfficient=false"

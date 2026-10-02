@@ -1,0 +1,27 @@
+libvpx 1.15.2 -- the VP8 and VP9 decoders, for Onyx's media library (user/av)
+==========================================================================
+
+Source: https://github.com/webmproject/libvpx, tag v1.15.2 (commit
+d168454ecd099805c675d4a98c66f4891373302a), BSD licence (LICENSE; PATENTS: Google's patent grant).
+
+Kept: the files a decoder-only build compiles -- vpx/ (the codec API), vpx_dsp/, vpx_mem/,
+vpx_ports/, vpx_scale/, vpx_util/, vp8/common + vp8/decoder + vp8_dx_iface.c, vp9/common +
+vp9/decoder + vp9_dx_iface.c, the NEON intrinsics of their arm/ directories -- and the headers
+they include. Not kept: the encoders, the x86 / MIPS / LoongArch / PowerPC code, the tools, the
+tests and their vectors, the build system.
+
+onyx/: what libvpx's configure generates, made once and committed (no configure at build time):
+  onyx/generic/  configure --target=generic-gnu          (the PC bench, Windows: C only)
+  onyx/arm64/    configure --target=arm64-linux-gcc       (the Pi: NEON, no run-time CPU
+                 detection, no dot-product / i8mm / SVE -- the Cortex-A72 is ARMv8.0)
+both with --disable-vp8-encoder --disable-vp9-encoder --disable-multithread
+--disable-vp9-highbitdepth --disable-postproc --disable-vp9-postproc --disable-webm-io
+--disable-libyuv --size-limit=8192x8192: vpx_config.h / vpx_config.c, vpx_dsp_rtcd.h,
+vp8_rtcd.h, vp9_rtcd.h, vpx_scale_rtcd.h; onyx/vpx_version.h. (onyx/generic/vpx_config.h:
+HAVE_PTHREAD_H set to 0 by hand -- no threads, and MinGW's would not be wanted.)
+
+No change to the sources. The source list and the flags are in user/av/codecs.mk: built by
+user/netsurf/Makefile into libvpx.a (-O3), compiled by tools/tests/netsurf/host.mk (the PC
+bench), pc/Jet/jet.mk (Windows) and tools/tests/av/bench.mk (avbench).
+
+Used by user/av/av_vpx.c (AV_WITH_VPX): one decoding thread, 8-bit 4:2:0 frames.
