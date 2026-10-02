@@ -1092,6 +1092,78 @@ Can start at once:
    `ENTROPY_HARDWARE_ALT` over `getrandom`, PSA's RNG from the entropy module); the vendored tree
    and its prebuilt `.a` (the newlib apps') are untouched.
 
+#### Ports for WebKit resolutions (§5 items 4–6: ICU, HarfBuzz, Skia, fonts; docs/03 §5.5)
+
+1. **What was ported** (all with `aarch64-onyx-elf`, static, into `out/sysroot-onyx`, one
+   `tools/ports/<name>/build.sh` each, `sh tools/ports/build-all.sh webkit`; the smoke tools go to
+   `/bin` with `make -C user/bin ports`):
+
+   | Library | Version (pin) | Options | `.a` | Vendored (repo, uncompressed / gzip) |
+   |---|---|---|---|---|
+   | ICU | 78.3 (Debian's orig of the release, sha256 `3a2e7a47…`; data sources: tag `release-78.3` = `21d1eb0f`) — WebKit wants ≥ 70.1 | our CMake (ICU's autoconf has no Onyx host); `U_STATIC_IMPLEMENTATION`, no dyload, no mmap, newlib's `_timezone` / `_tzname`, UTF-8 default code page | uc 4.8 MB, i18n 10 MB, data 15.9 MB | `third_party/icu-78.3`: common + i18n + the filtered `.dat`, 34 MB / 11 MB |
+   | libpng | 1.6.44 (in tree) | NEON | 0.5 MB | (the apps' copy) |
+   | FreeType | 2.14.3 (in tree) | TrueType, CFF, hinters, smooth / mono, OT-SVG, GX variations, COLR; zlib, brotli, libpng | 0.9 MB | (the apps' copy) |
+   | HarfBuzz | 14.5.1 (tag, `eb033319`) — WebKit wants ≥ 2.7.4 with ICU | hb-ft, hb-icu; no subset / raster / vector / gpu / utils | 3.0 MB + 7 KB | `third_party/harfbuzz-14.5.1`, 6.9 MB / 1.5 MB |
+   | libjpeg-turbo | 3.1.4 (tag, `e352b02f`) | NEON intrinsics, arithmetic coding; no TurboJPEG API | 1.0 MB | `third_party/libjpeg-turbo-3.1.4`, 3.3 MB / 0.7 MB |
+   | libwebp | 1.4.0 (in tree) | NEON, threads, demux, mux, sharpyuv | 0.9 MB | (the apps' copy) |
+   | Skia | m154: **WebKit's copy** (`Source/ThirdParty/skia` at WebKit `b8a7a626`, = Skia `588b550a`), sparse checkout | CPU raster only (no Ganesh / Graphite / GL), WebKit's source list, FreeType text, PNG / JPEG / WebP codecs + encoders, `SK_BUILD_FOR_UNIX`, `SK_R32_SHIFT=16` | 15.7 MB | `third_party/skia-m154`, only what is compiled and included: 12.6 MB / 2.9 MB |
+
+   Repository growth: about 58 MB uncompressed, 16 MB compressed. WebKit's own tree will carry its
+   Skia again; `third_party/skia-m154` is the same sources, kept so the port and its tests build without
+   a WebKit checkout.
+2. **ICU's data** (`tools/ports/icu/data-filter.json`, `gen-data.sh`: ICU's data filter with a host build
+   of ICU's tools — reproducible, byte-identical): 15.9 MB against 32.4 MB full. In: 42 languages with all
+   their regional variants (locales, units, currencies, languages / regions / zones display names);
+   break iterators (rules, the Thai / Lao / Khmer / Burmese / CJ dictionaries, the Japanese phrase
+   model for `word-break: auto-phrase`); collation (implicit Han order instead of the 600 KB Unihan
+   tables); 50 converters — every legacy encoding WebKit's `TextCodecICU` registers (ISO-8859-x, KOI8,
+   windows-125x, Mac encodings, EUC-TW) plus Shift_JIS, EUC-JP, ISO-2022-JP/KR/CN, GBK, GB18030, GB2312,
+   Big5(-HKSCS), EUC-KR, windows-949 (their `icu:base` tables included); normalization, properties,
+   time zones. Out: transliteration, rbnf, confusables (WebKit has no `uspoof`), stringprep (its IDNA is
+   UTS 46), character names, the LSTM models. ISO-8859-16 has no ICU table (WebKit's single-byte codec
+   covers it). Linked in as the symbol `icudt78_dat` (one `.incbin`): no data file, no `ICU_DATA`.
+3. **Fonts: no fontconfig** (§5 item 5 decided). WebKit's Skia font code uses fontconfig in exactly two
+   places (`FontCacheSkia.cpp`: `SkFontMgr_New_FontConfig`; `SkiaSystemFallbackFontCache.cpp`: the
+   per-character fallback through `FcFontSort` / charsets), and already has a non-fontconfig path for
+   Android and Windows (`matchFamilyStyleCharacter` on the `SkFontMgr`). Porting fontconfig would add
+   expat, a configuration, a cache on `RAM:` built or read by **every web process** at start (WebKit2),
+   and Skia's 1 000-line fontconfig manager — for seven font families. Instead
+   `tools/ports/skia/SkFontMgr_onyx.cpp` (MIT, 210 lines, compiled into `libskia.a`):
+   `SkFontMgr_New_Onyx ("SD:/res/fonts/")` = Skia's custom directory manager + the CSS generic families
+   and common web names mapped to the card's fonts + case-insensitive names + `matchFamilyStyleCharacter`
+   (the asked family, then the card's families in a fixed order, cached per character and style). The
+   WebKit port adds an `OS(ONYX)` branch to `FontCache::fontManager()` and takes the Android / Windows
+   fallback branch (a few lines). Revisit only if a user-installed font folder with hundreds of fonts
+   appears (then: a small index file, still not fontconfig).
+4. **The smoke tools** (bench `sh tools/tests/posixsim/ports.sh webkit`, v75 and v74 fallbacks):
+   `icutest` 52 / 52, `hbtest` 10 / 10 (Devanagari with the PC's FreeSerif; on the card SKIP: none of its
+   fonts covers Devanagari), `skiatest` 18 / 18 (the 800 × 600 scene in ~0.5 s under qemu, its PNG
+   identical when read back), `skiademo` links (a window: the Pi). The C ports: 13 / 13 unchanged. Sizes
+   (unstripped ELF): icutest 20.5 MB, hbtest 2.8 MB, skiatest 25 MB, skiademo 8.5 MB (no ICU: HarfBuzz's
+   own Unicode functions) — the ICU data dominates; the kernel's whole-file ELF loading (§5 item 2) holds
+   such a file in kernel memory while it loads.
+5. **Gaps met** (none blocking, none fixed in libonyxposix): (a) newlib has **no `<uchar.h>`**: ICU's
+   headers include it from C (`ptypes.h`, C11 `char16_t`) — C code using ICU fails; C++ is fine (WebKit is
+   C++). Fix later: a `uchar.h` in libonyxposix's overlay (`char16_t` / `char32_t`, `mbrtoc16` & co.);
+   (b) `aarch64-onyx-elf-gcc` **rejects `-pthread`** (a Linux / BSD target option): libwebp's CMake adds it
+   unconditionally — worked around with a compiler launcher (`tools/ports/drop-pthread-flag.sh`); WebKit's
+   CMake uses `THREADS_PREFER_PTHREAD_FLAG` → FindThreads probes the flag and falls back, but the next
+   toolchain revision should accept `-pthread` as a no-op (a target `.opt` + spec, as `gnu-user.opt`);
+   (c) the compiler defines no `__unix__`: Skia needs `SK_BUILD_FOR_UNIX` (in `skia.pc`), and other
+   libraries will want `__unix__` too — consider defining it in the toolchain's specs (`-D__unix__`);
+   (d) `getauxval` absent: Skia only calls it on LoongArch, AArch64 features are compile-time.
+6. **What WebKit's build needs next** from these: `OptionsOnyx.cmake` finding them through the
+   sysroot's pkg-config files (`ICU` components data / i18n / uc, `HarfBuzz` with `ICU`, `Freetype`, `PNG`,
+   `JPEG`, `WebP` with demux) and building Skia from its own tree with `tools/ports/skia/sources.cmake`'s
+   list (CPU only at first: `USE_SKIA` without `USE_LIBEPOXY` / GL — WebKit's `Skia` CMake currently
+   compiles Ganesh GL unconditionally on non-Windows: an `OS(ONYX)` / no-GPU branch is needed, or the V3D
+   later), `SkFontMgr_onyx` in place of fontconfig, `libxml2` (done), `SQLite` (done), `curl` (done),
+   **libxslt** (optional), **woff2** (WebKit decodes WOFF2 itself: brotli is in tree), **libavif / JPEG XL**
+   (optional), **lcms2** (optional), and the host tools of §1.7 (Perl, Python 3, Ruby, gperf — `gperf` is
+   not on this build machine). Card space: the static WebKit binaries will each carry ICU's data (16 MB)
+   unless it becomes a file (`udata_setCommonData` / `ICU_DATA` on `SD:`) shared by the processes — worth
+   doing once several web processes run (§13).
+
 ---
 
 ## 4. Sequencing and effort
@@ -1122,9 +1194,9 @@ Can start at once:
    - a high-resolution one-shot timer (sleeps below 10 ms when idle);
    - an EL0 crash record (today kmsg only).
 3. **malloc:** replace newlib's sbrk-only, single-lock `mallocr` with dlmalloc 2.8.6 (CC0) or mimalloc (MIT) on `vm_map` (it returns memory and scales with threads).
-4. **ICU** (74 or later, Unicode licence): a host build for the tools; a **filtered data file** (locales, collation, break iterators, the converters WebKit's `TextCodecICU` needs). Expect about 8–15 MB (full: about 30 MB), linked as a static object.
-5. **Fonts:** fontconfig (HPND/MIT) + expat (in tree) with a config for the card's fonts (`SD:/res/fonts`, the DejaVu set) and a cache on `RAM:`; or a small fontconfig shim implementing the subset WebKit's FreeType font cache calls.
-6. **Graphics: decision Skia or Cairo.** Recommended: **Skia** (BSD-3, the library WebKit's GTK/WPE ports moved to and maintain, vendored in WebKit's tree with CMake; CPU raster backend). Cairo is LGPL-2.1/MPL-1.1 and leaving WebKit's main ports.
+4. **ICU** — *done: ICU 78.3, a 15.9 MB filtered data file ("Ports for WebKit resolutions" 1–2).* (74 or later, Unicode licence): a host build for the tools; a **filtered data file** (locales, collation, break iterators, the converters WebKit's `TextCodecICU` needs). Expect about 8–15 MB (full: about 30 MB), linked as a static object.
+5. **Fonts** — *decided and done: no fontconfig, `SkFontMgr_New_Onyx` ("Ports for WebKit resolutions" 3).* Was: fontconfig (HPND/MIT) + expat (in tree) with a config for the card's fonts (`SD:/res/fonts`, the DejaVu set) and a cache on `RAM:`; or a small fontconfig shim implementing the subset WebKit's FreeType font cache calls.
+6. **Graphics: decision Skia or Cairo** — *done: Skia m154 (WebKit's copy), CPU raster, with HarfBuzz 14.5.1, FreeType, libpng, libjpeg-turbo, libwebp ("Ports for WebKit resolutions" 1).* Recommended: **Skia** (BSD-3, the library WebKit's GTK/WPE ports moved to and maintain, vendored in WebKit's tree with CMake; CPU raster backend). Cairo is LGPL-2.1/MPL-1.1 and leaving WebKit's main ports.
 7. **TLS in WebKit's curl backend:** adapt `CurlSSLVerifier`/`CurlSSLHandle` to mbedTLS (curl's mbedTLS backend gives an `mbedtls_ssl_config *` in `SSL_CTX_FUNCTION`), or bring in OpenSSL 3 / BoringSSL **(verify** the current upstream files).
 8. **The embedding (superseded by §9: WebKit2):** upstream WebKitLegacy is now essentially Cocoa-only (the Windows WebKitLegacy was removed) **(verify)**. So "single process" means an **Onyx WebView written over WebCore** (`Page`/`LocalFrame`, `FrameLoaderClient`, `ChromeClient`, `EditorClient`, …; the removed Windows WebKitLegacy in git history is a template). WebKit2 multi-process would add `AF_UNIX` socketpair with fd passing and cross-process shared memory (`MAP_SHARED`), none of which is in this minimum.
 9. **The Onyx port layer:**

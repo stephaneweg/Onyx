@@ -149,11 +149,14 @@ $(POSIX_CXX_PROGS):
 	@echo "  SKIP $@: no $(ONYX_TC_PREFIX)g++ (WP-TC toolchain: sh tools/toolchain/fetch.sh, docs/03 §1)"
 endif
 
-# The C smoke ports of the POSIX layer (SQLite, libxml2, curl + mbedTLS: third_party, built with
-# CMake / the Onyx toolchain file into out/sysroot and out/ports, tools/ports/build-all.sh). OPT-IN
-# (a few minutes): `make ports`, or PORTS=1 with `all`. The tools: sqlite3, xmllint, curl.
+# The ports of the POSIX layer (third_party, built with CMake / the Onyx toolchain file into
+# out/sysroot(-onyx) and out/ports(-onyx), tools/ports/build-all.sh): the C smoke ports (SQLite,
+# libxml2, curl + mbedTLS) and WebKit's graphics / text / i18n libraries (ICU, FreeType, HarfBuzz,
+# libpng, libjpeg-turbo, libwebp, Skia: aarch64-onyx-elf only). OPT-IN (about 15 minutes on 4 cores,
+# Skia the most): `make ports`, or PORTS=1 with `all`. The tools: sqlite3, xmllint, curl, icutest,
+# hbtest, skiatest, skiademo (docs/04).
 PORTS ?=
-PORT_TOOLS = sqlite3 xmllint curl
+PORT_TOOLS = sqlite3 xmllint curl icutest hbtest skiatest skiademo
 # The toolchain: ONYX_TOOLCHAIN_PREFIX (make ports ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-), else
 # aarch64-onyx-elf when installed, else aarch64-none-elf (tools/onyx-env.sh); the tools come from
 # out/ports-onyx/bin or out/ports/bin.

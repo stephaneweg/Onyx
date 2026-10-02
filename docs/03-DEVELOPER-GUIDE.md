@@ -584,6 +584,42 @@ forces the interim one:
 | libxml2 2.13.8 | trimmed release | MIT | `libxml2.a` (threads, zlib; no iconv / HTTP / modules) | `xmllint` |
 | curl 8.16.0 | trimmed release | curl (MIT-like) | `libcurl.a` (mbedTLS, HTTP/2 with nghttp2, zlib, brotli, the threaded resolver; no IPv6) | `curl` (CA bundle `SD:/res/ca-bundle`) |
 
+**WebKit's graphics / text / i18n libraries** (docs/POSIX-PLAN.md "Ports for WebKit"; `aarch64-onyx-elf`
+only — ICU and Skia need the threaded libstdc++ —, `build-all.sh webkit`, about 12 minutes on 4 cores, Skia
+the most; sizes of the `.a` with `-ffunction-sections`, the linker keeps what a program uses):
+
+| Port | Source (`third_party/`, size in the repo) | Licence | Built as | Tool |
+|---|---|---|---|---|
+| ICU 78.3 | `icu-78.3`: `common/`, `i18n/` (21 MB) + **the filtered data** `source/data/in/icudt78l.dat` (15.9 MB, made by `tools/ports/icu/gen-data.sh` with `data-filter.json`) | Unicode-3.0 | `libicuuc.a` 4.8 MB, `libicui18n.a` 10 MB, `libicudata.a` 15.9 MB (the data linked in, `.incbin`; no data file on the card); `icu-uc.pc`, `icu-i18n.pc`. Our CMake (`tools/ports/icu/CMakeLists.txt`): ICU's autoconf knows no Onyx host | `icutest` |
+| libpng 1.6.44 | `libpng-1.6.44` (the apps' copy) | libpng | `libpng16.a` 0.5 MB (NEON filters) | — |
+| FreeType 2.14.3 | `freetype-2.14.3` (the apps' copy) | FTL | `libfreetype.a` 0.9 MB: TrueType + CFF/CFF2, sfnt, auto-hinter + PS hinter, smooth + mono, OT-SVG, variable fonts, COLR; zlib (WOFF), brotli (WOFF2), libpng (colour bitmaps) — the apps keep their lean `user/ft` | — |
+| HarfBuzz 14.5.1 | `harfbuzz-14.5.1` (8 MB) | Old MIT | `libharfbuzz.a` 3.0 MB (hb-ft) + `libharfbuzz-icu.a` (WebKit's `HarfBuzz COMPONENTS ICU`) | `hbtest` |
+| libjpeg-turbo 3.1.4 | `libjpeg-turbo-3.1.4` (4 MB) | IJG + BSD-3 + zlib | `libjpeg.a` 1.0 MB (NEON; the turbo extensions Skia and WebKit use — the in-tree jpeg-9f lacks them) | — |
+| libwebp 1.4.0 | `libwebp-1.4.0` (the apps' copy) | BSD-3 | `libwebp.a` 0.8 MB, `libwebpdemux.a`, `libwebpmux.a`, `libsharpyuv.a` (NEON, threads) | — |
+| Skia m154 | `skia-m154` (12.6 MB): **WebKit's own copy** (`Source/ThirdParty/skia`, fetched by a sparse checkout), trimmed to what is compiled | BSD-3 | `libskia.a` 15.7 MB: the CPU raster back end (no Ganesh / GL), WebKit's source list (`tools/ports/skia/sources.cmake`), FreeType text, PNG / JPEG / WebP codecs and encoders, `SkFontMgr_New_Onyx` (below) | `skiatest`, `skiademo` |
+
+- **ICU's data** is cut to WebKit's needs (TextCodecICU's legacy encodings + the CJK ones: 50
+  converters; break iterators with the Thai / Lao / Khmer / Burmese / CJ dictionaries; collation; JSC's
+  Intl for 42 languages; no transliteration, spell-out, confusables, stringprep, character names). To change
+  it: edit `tools/ports/icu/data-filter.json`, run `sh tools/ports/icu/gen-data.sh` (fetches ICU 78.3's
+  release and its data sources, a host build of ICU's tools, 3 minutes), commit the new `.dat`.
+- **Fonts: no fontconfig.** `#include "include/ports/SkFontMgr_onyx.h"`, `SkFontMgr_New_Onyx ("SD:/res/fonts/")`:
+  Skia's custom directory font manager with what WebKit would ask fontconfig for — the CSS generic families
+  and common web names mapped to the card's fonts (`sans-serif` → DejaVu Sans, `serif` → DejaVu Serif,
+  `monospace` → DejaVu Sans Mono, Arial / Helvetica → Liberation Sans, Times New Roman → Liberation Serif,
+  Georgia → Gelasio, Segoe UI → Selawik), family names without regard to case, and `matchFamilyStyleCharacter`
+  (a fallback font for a character: WebKit's FontCache path on Android and Windows).
+- **Using them**: `pkg-config` on the sysroot (`icu-uc icu-i18n harfbuzz harfbuzz-icu freetype2 libpng16
+  libjpeg libwebp libwebpdemux skia`); Skia's headers are under `include/skia` (`#include
+  "include/core/SkCanvas.h"`) and a client needs `skia.pc`'s definitions (`SK_BUILD_FOR_UNIX`,
+  `SK_R32_SHIFT=16`: N32 is BGRA, the canvas' layout — an Onyx window buffer wraps as an `SkSurface` with
+  `SkSurfaces::WrapPixels`). A C file including ICU's headers fails (they want `<uchar.h>`, which newlib
+  lacks): include them from C++. A CMake project that adds `-pthread` itself (libwebp) needs
+  `-DCMAKE_C_COMPILER_LAUNCHER="sh;tools/ports/drop-pthread-flag.sh"`: `aarch64-onyx-elf`'s GCC does not
+  know the option.
+- **Bench**: `sh tools/tests/posixsim/ports.sh webkit` (icutest 52 checks, hbtest 10 with the PC's
+  FreeSerif for Devanagari, skiatest 18 — the scene kept as `$POSIXSIM_ROOT/RAM/skiatest.png`).
+
 A new port: a `build.sh` sourcing `tools/ports/common.sh` (it installs the sysroot first;
 `onyx_install_deps` puts the in-tree zlib, nghttp2 and brotli in it — the prebuilt `.a` of
 `third_party/` under `aarch64-none-elf`, compiled from their sources under `aarch64-onyx-elf`, whose
