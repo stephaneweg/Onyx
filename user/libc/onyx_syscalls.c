@@ -106,9 +106,7 @@ static volatile int s_rpcState = 0;		// 0 free, 1 asked, 2 done
 
 static inline int on_app_core (void)
 {
-	unsigned long m;
-	__asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m));
-	return (m & 0xFF) != 0;
+	return kapi__core () != 0;		// (TPIDRRO_EL0 from kapi v73: readable at EL0)
 }
 
 void onyx_rpc_enable (int on) { s_rpcOn = on; }
