@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf taatu.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -122,6 +122,18 @@ sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/writer/icons.h im
 COURIER_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       wtk/libwtk.a ft/libft.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+
+# TAATU, the native client for taatu.world (Apps/taatu: see Apps/taatu/DESIGN.md). A newlib app
+# (FreeType text through wtk) whose portable core/ (WebSocket + Engine.IO + Socket.IO + the _ui
+# HMAC signer + world model) runs over onyx_tls/kapi sockets; mbedTLS backs the crypto. Two
+# sources: the Onyx GUI (platform/onyx/main.cpp) + the crypto backend (platform/onyx/crypto_onyx.cpp).
+TAATU_MBEDTLS ?= ../third_party/mbedtls-3.6.3
+TAATU_SRC = Apps/taatu/platform/onyx/main.cpp Apps/taatu/platform/onyx/crypto_onyx.cpp
+taatu.elf: $(TAATU_SRC) $(wildcard Apps/taatu/core/*.hpp) $(wildcard Apps/taatu/platform/onyx/*.hpp) \
+	   tls/onyx_tls.hpp json.hpp img/imgload.hpp ft/libft.a ft/fonts.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(TAATU_MBEDTLS)/include $(NL_LDFLAGS) \
+	       libc/crt0libc.o libc/onyx_syscalls.o $(TAATU_SRC) wtk/libwtk.a ft/libft.a \
+	       -L$(TAATU_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Writer (FreeType's text through wtk), its
 # protocols and its HTML renderer in mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (wtk's imgload).

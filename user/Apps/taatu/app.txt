@@ -1,0 +1,3 @@
+name     = TAATU
+category = Internet
+stack    = 2M
