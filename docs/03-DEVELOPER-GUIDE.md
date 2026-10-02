@@ -2375,6 +2375,18 @@ its pages are owned by the address space, so they are **freed automatically when
 app exits** and show up in the app's page count (`ps` / `memmon`). `kapi_sbrk` is the
 underlying primitive (rarely called directly). `/bin/heaptest` exercises it.
 
+**Memory is filled on first touch (kernel v75).** The heap, the stacks (the main one: 8 MB by
+default, `app.txt` `stack = 16M` for more; a thread's) and `kapi_vm_map`'s regions cost RAM only for
+the 64 KB pages actually touched; a large `sbrk` or `malloc` is cheap until written. What changes for
+an app: a growth larger than the free memory fails at once (`sbrk` → −1, `malloc` → 0); a page the
+system cannot give when touched **kills the app** ("out of memory" in `kmsg`) rather than the
+system; a stack overflow is a clean kill ("stack overflow"). Code that runs on an **app core**: the
+heap is filled as it grows once a core is acquired, and the job's stack top at `core_run`; other
+untouched memory a job writes is filled through core 0 (slow: up to 10 ms a request) —
+`kapi_vm_advise (addr, len, KAPI_MADV_WILLNEED)` it first. `kapi_vm_map` / `vm_protect` /
+`vm_advise` (`mmap` / `mprotect` / `madvise`) and `kapi_vm_stats` are in docs/02 §8 "v75: memory";
+`/bin/memtest` exercises them.
+
 **C++ apps** are supported (freestanding subset — no exceptions, no RTTI, no STL):
 
 - Name the source `*.cpp`; the user `Makefile` builds it with `g++`
@@ -2784,6 +2796,11 @@ points** to touch (all in the same direction, at the end):
   read, a socket) — and fail with the function's usual error value. These accept the user VA
   range only (anything from a kernel caller). Never dereference an app pointer with plain C
   before that check.
+- **App memory may not be there yet (v75)**: the heap, the stacks and `vm_map`'s regions are
+  filled on first touch (docs/02 §4 *Demand paging*). `UserReadable` / `UserWritable` fill the
+  range and **pin** it until the system call returns (another thread's `vm_unmap` cannot take it
+  away meanwhile), and the copies fill and retry — so never touch an app buffer in place without a
+  probe first, and never allocate in an exception handler (fill in C, then retry).
 - **Return no kernel pointer as a handle**: put the object in the process's handle table
   (`kern/handle.h`: `HandlesCurrent()->Add (pObj, type, kind)`, `Get`, pinned with
   `CHandleUse` across a call that may yield) so it is checked and closed when the process ends.

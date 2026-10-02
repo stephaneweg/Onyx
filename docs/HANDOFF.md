@@ -76,7 +76,8 @@ answer in French. The docs stay in English.
   lead (1) and the newlib/umm locks (`sysstat jet`) apply there as well.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
-  files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (TPIDR_EL0 saved per thread), mmap,
+  files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
+  task by Circle's `TaskSwitch`; v75 gives a new thread and an app-core job their initial value), mmap,
   clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
   (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
 
@@ -512,8 +513,10 @@ answer in French. The docs stay in English.
   (`TerminateGroup`), and the reaper frees a killed task only with its whole group (it may be on
   a wait list of the process). 32 threads per process. docs/02 §7, docs/03 §5.2.
 - **User side**: `umm` and newlib (its retargetable locks, in `libc/onyx_syscalls.c`) are
-  thread-safe; `kapi_lock` / `kapi_unlock`. `errno` is still shared (per-thread would need TLS:
-  `TPIDR_EL0` saved at each switch).
+  thread-safe; `kapi_lock` / `kapi_unlock`. `errno` is still shared (per-thread needs TLS: the
+  kernel side is there -- `TPIDR_EL0` is saved and restored per task by Circle's `TaskSwitch`, and
+  since v75 a thread starts with `thread_create_ex`'s `tls` and an app-core job with its caller's
+  value; the C library's TLS block is WP-LIBC's, docs/POSIX-PLAN.md).
 - **To try on the Pi**: `threadtest` in a terminal (PASS; the prompt comes back although a thread
   still runs), then kill it from the task manager in the middle; the usual apps (nothing should
   change for them: one task each). Watch `stall:` lines in `kmsg`.
