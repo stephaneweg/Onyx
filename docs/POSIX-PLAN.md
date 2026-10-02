@@ -991,3 +991,22 @@ UNSUPPORTED/FAIL by design: everything built on `fork()` (Onyx has posix_spawn; 
 adapted), real signals, `timer_create`, `mq_*`, named semaphores, real-time scheduling. Each failure
 is triaged as a bug, a deliberate absence, or a Linux assumption. Complement: musl's **libc-test**
 (the libc functions themselves).
+
+## 8. The goal: WebKit replaces Jet (the user, 2026-10-02)
+
+The WebKit port is meant to **replace Jet (NetSurf)** as Onyx's browser engine, not to sit beside it.
+Consequences for the plan:
+- **Parity before the switch**: everything Jet does today must exist in the WebKit browser — the
+  padlock and certificate viewer, the per-site version (Standard / Mobile / Desktop) and User-Agent,
+  per-site zoom, find in page, history, downloads, cookies, clipboard and context menu, the caches on
+  `RAM:`, the status bar, and **video/audio with MSE**: WebCore's media normally uses GStreamer — Onyx
+  needs its own `MediaPlayerPrivate` on `user/av` (FFmpeg, dav1d, libvpx, Opus). `docs/07-BROWSER-GAPS.md`
+  becomes the parity checklist; Jet's PC bench (shots against Chromium) the regression bench.
+- **JavaScript speed**: C_LOOP only for bring-up; then JSC's **LLInt** (offlineasm, ARM64; generated
+  at build time, no runtime code generation, no JIT needed) — the target is not to be slower than
+  Jet's QuickJS; later the Baseline JIT on `vm_protect`.
+- **Transition**: Jet stays until parity (both installed, e.g. `jet` and a WebKit build), then the
+  switch. Open question for the user: keep the name "Jet Browser" on the WebKit engine (the app's
+  licence would go from GPL-2.0 to LGPL-2.1+).
+- **Memory**: a 4 GB Pi 4 is the realistic target; demand paging (WP-MEM) is a prerequisite.
+- Reused from Jet: the browser UI (toolbar, dialogs, `jet.ini` settings, site-version logic).
