@@ -101,19 +101,19 @@ $(1)/crt0posix.o $(1)/libonyxposix.a
 --start-group $(1)/libonyxposix.a -lc -lm --end-group %(onyx_orig_lib)
 
 *cpp:
-+ -D__unix__=1 -D__unix=1 %{pthread:-D_REENTRANT}
++ -D__unix__=1 -D__unix=1 -D__onyx__=1 %{pthread:-D_REENTRANT}
 
 endef
 
 # The compile specs (onyx-cc.specs, with the flags of every compile: tools/onyx-toolchain.cmake,
-# tools/onyx-env.sh): what makes the toolchain a "Unix" one for portable code -- __unix__ / __unix
+# tools/onyx-env.sh): what makes the toolchain a "Unix" one for portable code -- __unix__ / __unix (and __onyx__)
 # defined, and -pthread accepted (a no-op but _REENTRANT: the threads are always there). GCC's
 # driver takes an unknown option only when a -specs= file names it (a Driver option in a target
 # .opt would need a GCC rebuild): onyx.specs (the link) names it too. No %rename here, so it may
 # be given twice (CMake passes the compile flags to the link too).
 define CC_SPECS
 *cpp:
-+ -D__unix__=1 -D__unix=1 %{pthread:-D_REENTRANT}
++ -D__unix__=1 -D__unix=1 -D__onyx__=1 %{pthread:-D_REENTRANT}
 
 endef
 export CC_SPECS
