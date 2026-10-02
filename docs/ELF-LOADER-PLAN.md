@@ -44,6 +44,20 @@ the template for a shared image.
 | **(d) kept after exit** | the object stays at zero references until memory is wanted or the file is unlinked, renamed or written | ~100 lines + hooks | none | a relaunch is near-instant | low |
 | **(b) lazy fill** | image regions filled from the file on first touch: per-page absent / loading / ready, an extent map of the file and direct sector reads, instruction aborts handled, cache maintenance per page, a size threshold | 800–1000 lines + tests | none | the only stage that shortens the *first* start: to (the fraction touched) × 5 s | real, below |
 
+**(e) a preload list** (the user's idea, 2026-10-02): a kernel option naming executables that are
+loaded at boot and kept — stage (c)'s image object, created ahead of any process and pinned (never
+dropped by stage (d)'s eviction). A run of one of them maps the read-only image (99.8 % of the
+file: shared, not duplicated) and copies only its writable data (169 KB for `wctest`): no card
+read, 80 MB held once whatever the number of processes. About 100 lines over (c): the list (a file
+such as `/etc/preload` rather than `cmdline.txt`, whose line is short), a low-priority kernel task
+that loads after the desktop is up so the boot is not 5 s longer, a run that arrives during the
+load waiting for it, and the image replaced when `pkg` updates the file (the key changes: drop the
+old object when its last process ends, load the new file). It makes the first start as quick as
+the next ones without a daemon. What it does not remove is the program's own initialisation (ICU,
+the fonts, the engine): the frozen copy is the file's image, not an initialised process — that is
+what spare processes, or a snapshot taken after initialisation (docs/08, roadmap step 5), add if
+the measurement asks for it.
+
 The risks of (b): the kernel's probes and fault-safe copies of user memory promise never to yield
 (a string literal in an unread page passed to a system call: restart the call, or audit every
 kapi); the EL1 safety net cannot do I/O; two faults on one page while the first read has yielded;
