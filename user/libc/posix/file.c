@@ -108,6 +108,9 @@ static int lfile_open (struct __onyx_ofd *d, int flags)
 	}
 	if (!exists || (flags & O_TRUNC))
 		d->dirty = 1;				/* (created / emptied: written at close) */
+	/* a new file exists at once (O_EXCL of another open, stat), empty until written back */
+	if (!exists && kapi_save_file (d->path, "", 0) < 0)
+		return ONYX_ERR (EACCES);
 	return 0;
 }
 

@@ -44,6 +44,20 @@ char *__onyx_path (const char *in, char *buf, size_t cap)
 		errno = EFAULT;
 		return 0;
 	}
+	/* a volume met as a later component ("/SD:/RAM:/t.db", "SD:/x/USB1:/y": a Unix program that
+	   took "RAM:/t.db" for a relative path and put its cwd before it) restarts the path there;
+	   ':' is not allowed in a FAT name, so no real file name is mistaken for one */
+	for (const char *p = in, *c = in; *p != '\0'; p++)
+	{
+		if (*p == '/')
+			c = p + 1;
+		else if (*p == ':' && p > c && c > in && (p[1] == '/' || p[1] == '\0'))
+		{
+			in = c;
+			p = c;
+			c = in;
+		}
+	}
 	if (starts_with_dir (in, "/tmp"))
 	{
 		if (!s_tmpMade && kapi__core () == 0)

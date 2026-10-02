@@ -406,7 +406,10 @@ without them `<time.h>` hides `clock_gettime`), `time.h` (`timegm`), `unistd.h` 
 
 **Paths.** Onyx paths as everywhere (`SD:/x`, `RAM:/y`; relative and `/x` against the working
 directory, as the kernel resolves them). Two names are mapped: **`/tmp` → `RAM:/tmp`** (made at
-the first use) and **`/dev/null|zero|urandom|random|stdin|stdout|stderr|tty`**.
+the first use) and **`/dev/null|zero|urandom|random|stdin|stdout|stderr|tty`**. A volume met as a
+later component restarts the path there (`SD:/x/RAM:/t.db` is `RAM:/t.db`): Unix code that takes
+`RAM:/t.db` for a relative name and puts the working directory before it (SQLite does) still
+reaches the file — `:` is not allowed in a FAT name, so no real name is mistaken for a volume.
 
 **Threads and TLS, how.** `TPIDR_EL0` points at a 16-byte TCB with the thread's static TLS block
 after it (AArch64 "variant 1"); libonyxposix's `struct __onyx_thread` sits just below, so
@@ -439,6 +442,19 @@ seen)` or `SKIP (kernel ENOSYS)` for a check that needs a v75 piece the kernel d
 — it first prints which pieces it found —, then a summary; the exit code is the number of
 failures. The `file` group runs in `RAM:/posixtest` and `/tmp/posixtest` (give a directory to run
 it elsewhere, `posixtest file SD:/tmp`); `net` needs the Wi-Fi up; `cxx` waits for WP-TC.
+The group `loop` (not in the default run) does TCP / UDP over `127.0.0.1`.
+
+**Testing it on the PC: the posixsim bench** ([`tools/tests/posixsim/`](../tools/tests/posixsim/)).
+`sh tools/tests/posixsim/run.sh [group…]` builds libonyxposix with `-DONYX_POSIXSIM` (the counter
+`cntvct` instead of `cntpct`, which Linux traps at EL0) and runs `posixtest` under
+`qemu-aarch64-static` against `fakekapi.c`: a kapi table built from raw Linux system calls (the
+volumes are directories of `$POSIXSIM_ROOT`, default `/tmp/posixsim`; threads are `clone`s; the
+v75 handles, `spawn_ex`, sockets and `poll` are emulated). `POSIXSIM_LEVEL=74` answers `ENOSYS` to
+every v75 call, to test libonyxposix's fallbacks on today's kernel; `POSIXSIM_NONET=0` lets the
+`net` group out. `sh tools/tests/posixsim/ports.sh` relinks the smoke ports (§5.5) for the bench
+and runs them on real jobs (a SQLite database on `RAM:` and `SD:`, xmllint, curl over HTTP and
+HTTPS from a local Python server). The bench checks the library's logic, not the kernel's: the Pi
+run stays the reference.
 
 ### 5.5. Building a third-party library for Onyx (the sysroot, the CMake toolchain file)
 

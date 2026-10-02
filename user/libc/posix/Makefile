@@ -19,14 +19,15 @@ CC       = $(PREFIX)gcc
 AR       = $(PREFIX)ar
 HERE    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 SYSROOT ?= $(abspath $(HERE)/../../../out/sysroot)
-B        = build
+B       ?= build
+EXTRA_CFLAGS ?=
 
 # -D_GNU_SOURCE: the GNU names (CLOCK_MONOTONIC_RAW...) inside the library; -isystem include: the
 # headers it implements first on the path (as for every program built on it).
 CFLAGS   = -mcpu=cortex-a72 -O2 -g0 -Wall -Wextra -Wno-unused-parameter -fno-stack-protector \
 	   -fno-pic -fno-pie -ffunction-sections -fdata-sections -fno-builtin-malloc \
 	   -D_GNU_SOURCE -DFD_SETSIZE=1024 -isystem $(HERE)/include -I$(HERE) -I$(HERE)/../.. \
-	   -I$(HERE)/../../../kernel/include
+	   -I$(HERE)/../../../kernel/include $(EXTRA_CFLAGS)
 # tls.c and start.c take the addresses of linker-script symbols (absolute values, weak
 # references): the large code model reaches them anywhere (no ADRP range).
 CFLAGS_ABS = -mcmodel=large

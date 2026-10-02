@@ -30,11 +30,20 @@
 #include <errno.h>
 #include "posix_internal.h"
 
+/* The physical counter (the kernel's clock_info samples it; Onyx lets EL0 read it). The PC test
+ * bench (tools/tests/posixsim, under qemu-user: Linux traps CNTPCT at EL0) builds the library with
+ * -DONYX_POSIXSIM and reads the virtual one (equal on the Pi: CNTVOFF is 0). */
+#ifdef ONYX_POSIXSIM
+#define ONYX_COUNTER	"cntvct_el0"
+#else
+#define ONYX_COUNTER	"cntpct_el0"
+#endif
+
 static inline unsigned long long cntpct (void)
 {
 #if defined(__aarch64__)
 	unsigned long long c;
-	__asm__ volatile ("isb\n\tmrs %0, cntpct_el0" : "=r" (c));
+	__asm__ volatile ("isb\n\tmrs %0, " ONYX_COUNTER : "=r" (c));
 	return c;
 #else
 	return 0;

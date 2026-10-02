@@ -65,17 +65,21 @@ static void stack_bounds (struct __onyx_thread *t, int tid)
 		t->guard = ti.guard;
 		return;
 	}
+	unsigned long sp;
+	__asm__ volatile ("mov %0, sp" : "=r" (sp));
 	if (t->is_main)
 	{
-		/* (kern/layout.h: USER_STACK_TOP 16 GB, USER_STACK_SIZE 1 MB by default) */
-		t->stack_hi = 16ULL << 30;
-		t->stack_lo = t->stack_hi - (1ULL << 20);
+		/* (kern/layout.h: USER_STACK_TOP 16 GB, USER_STACK_SIZE 1 MB by default -- the app's own
+		   size may be larger: the bounds given are the part sure to be there) */
+		unsigned long long top = 16ULL << 30;
+		if (sp >= top || sp < top - (64ULL << 20))
+			top = (sp + ONYX_PAGE - 1) & ~(ONYX_PAGE - 1);	/* (another layout) */
+		t->stack_hi = top;
+		t->stack_lo = top - (1ULL << 20);
 		t->guard = 0;
 		return;
 	}
 	/* a v67 thread: its stack top is 64 KB-aligned, the SP starts just below it */
-	unsigned long sp;
-	__asm__ volatile ("mov %0, sp" : "=r" (sp));
 	t->stack_hi = (sp + ONYX_PAGE - 1) & ~(ONYX_PAGE - 1);
 	t->stack_lo = t->stack_hi - t->stack_size;
 	t->guard = ONYX_PAGE;

@@ -2,7 +2,8 @@
  * posixtest.c -- /bin/posixtest: the conformance test of libonyxposix, the POSIX layer
  * (docs/POSIX-PLAN.md §3.4; docs/03 §5.4).
  *
- *   posixtest [group...]     groups: mem thread file io time proc net misc cxx (default: all)
+ *   posixtest [group...]     groups: mem thread file io time proc net misc cxx (default: all), and
+ *                            loop (TCP / UDP over 127.0.0.1: not in the default, see group_loop)
  *   posixtest file SD:/tmp   the file group in another directory (default RAM:/posixtest and /tmp)
  *
  * Each check prints PASS, FAIL (with what was seen) or SKIP; then a summary; the exit status is
@@ -314,6 +315,11 @@ static void *t_reader (void *a)
 		int n = __atomic_add_fetch (&s_readers, 1, __ATOMIC_SEQ_CST);
 		if (n > s_maxReaders)
 			s_maxReaders = n;
+		/* (the first rounds hold the lock a little: another reader can come in meanwhile) */
+		for (int k = 0; i < 3 && k < 50 && s_readers < 2; k++)
+			usleep (1000);
+		if (s_readers > s_maxReaders)
+			s_maxReaders = s_readers;
 		sched_yield ();
 		__atomic_sub_fetch (&s_readers, 1, __ATOMIC_SEQ_CST);
 		pthread_rwlock_unlock (&s_rw);
@@ -959,7 +965,7 @@ static int child_main (int argc, char **argv)
 		return v && !strcmp (v, "hello world") ? 7 : 8;
 	}
 	if (!strcmp (mode, "argv"))
-		return argc == 5 && !strcmp (argv[3], "a b") && !strcmp (argv[4], "") ? 9 : 10;
+		return argc == 5 && !strcmp (argv[3], "a b") && !strcmp (argv[4], "\"q\"") ? 9 : 10;
 	return 1;
 }
 
@@ -994,15 +1000,16 @@ static void group_proc (void)
 	if (!k_proc)
 	{
 		/* (the old spawn passes one line, no environment, and a crash shows up as exit 0) */
-		skip ("argv with a space and an empty argument", NOSYS);
+		skip ("argv: an argument with a space, one with quotes", NOSYS);
 		skip ("the child gets the environment", NOSYS);
 		skip ("a crashing child: WIFSIGNALED, SIGSEGV", NOSYS);
 	}
 	else
 	{
-		char *a2[] = { (char *) s_self, "--child", "argv", "a b", "", 0 };
+		/* (no empty argument: the kernel's argv block ends at an empty string) */
+		char *a2[] = { (char *) s_self, "--child", "argv", "a b", "\"q\"", 0 };
 		r = spawn_wait (a2, environ, &st);
-		CHECK ("argv with a space and an empty argument", r == 0 && WIFEXITED (st) && WEXITSTATUS (st) == 9, "%d status %x", r, st);
+		CHECK ("argv: an argument with a space, one with quotes", r == 0 && WIFEXITED (st) && WEXITSTATUS (st) == 9, "%d status %x", r, st);
 
 		setenv ("POSIXTEST_X", "hello world", 1);
 		char *a3[] = { (char *) s_self, "--child", "env", 0 };
@@ -1126,6 +1133,120 @@ static void group_net (void)
 	close (u);
 }
 
+/* ================================================================================= loop == */
+/* TCP and UDP between two sockets of this program on 127.0.0.1 -- not in the default groups:
+ * Onyx's network stack may not loop back (the PC bench, tools/tests/posixsim, runs it). */
+static void *t_server (void *a)
+{
+	int ls = (int) (long) a;
+	struct pollfd p = { ls, POLLIN, 0 };
+	if (poll (&p, 1, 5000) != 1)
+		return (void *) 1;
+	struct sockaddr_in peer;
+	socklen_t pl = sizeof peer;
+	int c = accept4 (ls, (struct sockaddr *) &peer, &pl, SOCK_CLOEXEC);
+	if (c < 0)
+		return (void *) 2;
+	char b[16];
+	ssize_t n = recv (c, b, sizeof b, MSG_WAITALL & 0);
+	if (n != 4 || memcmp (b, "ping", 4))
+	{
+		close (c);
+		return (void *) 3;
+	}
+	send (c, "pong!", 5, MSG_NOSIGNAL);
+	usleep (50000);
+	close (c);
+	return 0;
+}
+
+static void group_loop (void)
+{
+	s_group = "loop";
+	/* (without the v75 sockets: the old tcp_* calls -- a fixed port, a blocking accept) */
+	struct sockaddr_in a;
+	memset (&a, 0, sizeof a);
+	a.sin_family = AF_INET;
+	a.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+	a.sin_port = k_net ? 0 : htons (47123);
+	int ls = socket (AF_INET, SOCK_STREAM | (k_net ? SOCK_NONBLOCK : 0), 0);
+	socklen_t al = sizeof a;
+	int ok = ls >= 0 && bind (ls, (struct sockaddr *) &a, sizeof a) == 0 && listen (ls, 4) == 0 &&
+		 (!k_net || (getsockname (ls, (struct sockaddr *) &a, &al) == 0 && a.sin_port != 0));
+	CHECK (k_net ? "socket, bind (port 0), listen, getsockname" : "socket, bind, listen (the old tcp_listen)", ok, "errno %d", errno);
+	if (!ok)
+		return;
+	if (k_net)
+	{
+		int e = accept (ls, 0, 0);
+		CHECK ("accept on a non-blocking socket with nobody -> EAGAIN", e == -1 && errno == EAGAIN, "%d errno %d", e, errno);
+	}
+
+	pthread_t th;
+	pthread_create (&th, 0, t_server, (void *) (long) ls);
+	int s = socket (AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+	int c = connect (s, (struct sockaddr *) &a, sizeof a);
+	int ce = errno;
+	struct pollfd p = { s, POLLOUT, 0 };
+	int pr = poll (&p, 1, 3000);
+	int soerr = -1;
+	socklen_t sl = sizeof soerr;
+	getsockopt (s, SOL_SOCKET, SO_ERROR, &soerr, &sl);
+	CHECK ("non-blocking connect, poll (POLLOUT), SO_ERROR", (c == 0 || ce == EINPROGRESS) && pr == 1 && (p.revents & POLLOUT) && soerr == 0,
+	       "connect %d errno %d, poll %d revents %x, so_error %d", c, ce, pr, p.revents, soerr);
+	ssize_t w = send (s, "ping", 4, MSG_NOSIGNAL);
+	p.events = POLLIN;
+	pr = poll (&p, 1, 3000);
+	char pk[8] = "", got[8] = "";
+	ssize_t r1 = recv (s, pk, 5, MSG_PEEK);
+	ssize_t r2 = recv (s, got, 5, 0);
+	CHECK ("send, poll (POLLIN), MSG_PEEK then recv", w == 4 && pr == 1 && r1 == 5 && r2 == 5 && !memcmp (pk, "pong!", 5) && !memcmp (got, "pong!", 5),
+	       "send %zd poll %d peek %zd recv %zd", w, pr, r1, r2);
+	struct sockaddr_in peer;
+	socklen_t pl = sizeof peer;
+	CHECK ("getpeername", getpeername (s, (struct sockaddr *) &peer, &pl) == 0 && peer.sin_port == a.sin_port, "port %d", ntohs (peer.sin_port));
+	if (!k_net)
+		fcntl (s, F_SETFL, 0);			/* (the old recv: blocking until the end) */
+	pr = poll (&p, 1, 3000);
+	ssize_t r3 = recv (s, got, sizeof got, 0);
+	CHECK ("the peer closes: poll wakes, recv -> 0", pr == 1 && r3 == 0, "poll %d revents %x recv %zd errno %d", pr, p.revents, r3, errno);
+	void *sr = (void *) 9;
+	pthread_join (th, &sr);
+	CHECK ("the server side: poll on the listening socket, accept4, recv", sr == 0, "%p", sr);
+	close (s);
+	if (!k_net)
+	{
+		close (ls);
+		skip ("connect to a closed port, UDP", NOSYS);
+		return;
+	}
+
+	/* nothing listens on the listening socket's port once it is closed */
+	close (ls);
+	int s2 = socket (AF_INET, SOCK_STREAM, 0);
+	int c2 = connect (s2, (struct sockaddr *) &a, sizeof a);
+	CHECK ("connect to a closed port -> ECONNREFUSED", c2 == -1 && errno == ECONNREFUSED, "%d errno %d", c2, errno);
+	close (s2);
+
+	int u1 = socket (AF_INET, SOCK_DGRAM, 0), u2 = socket (AF_INET, SOCK_DGRAM, 0);
+	struct sockaddr_in ua = a;
+	ua.sin_port = 0;
+	al = sizeof ua;
+	bind (u1, (struct sockaddr *) &ua, sizeof ua);
+	getsockname (u1, (struct sockaddr *) &ua, &al);
+	struct timeval to = { 2, 0 };
+	setsockopt (u1, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof to);
+	ssize_t us = sendto (u2, "hey", 3, 0, (struct sockaddr *) &ua, sizeof ua);
+	char ub[8] = "";
+	struct sockaddr_in from;
+	socklen_t fl = sizeof from;
+	ssize_t ur = recvfrom (u1, ub, sizeof ub, 0, (struct sockaddr *) &from, &fl);
+	CHECK ("UDP: sendto / recvfrom (SO_RCVTIMEO)", us == 3 && ur == 3 && !memcmp (ub, "hey", 3) && from.sin_addr.s_addr == htonl (INADDR_LOOPBACK),
+	       "sent %zd got %zd errno %d", us, ur, errno);
+	close (u1);
+	close (u2);
+}
+
 /* ================================================================================= misc == */
 static volatile int s_sig;
 static void on_sig (int s) { s_sig = s; }
@@ -1214,9 +1335,10 @@ int main (int argc, char **argv)
 		else if (!strcmp (g, "time")) group_time ();
 		else if (!strcmp (g, "proc")) group_proc ();
 		else if (!strcmp (g, "net")) group_net ();
+		else if (!strcmp (g, "loop")) group_loop ();
 		else if (!strcmp (g, "misc")) group_misc ();
 		else if (!strcmp (g, "cxx")) group_cxx ();
-		else printf ("posixtest: no group '%s' (mem thread file io time proc net misc cxx)\n", g);
+		else printf ("posixtest: no group '%s' (mem thread file io time proc net misc cxx loop)\n", g);
 	}
 	printf ("posixtest: %d passed, %d failed, %d skipped\n", s_pass, s_fail, s_skip);
 	return s_fail;
