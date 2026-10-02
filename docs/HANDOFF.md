@@ -86,9 +86,16 @@ answer in French. The docs stay in English.
   (`user/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
   called ~4 300 times a second (not once a frame). The same per-key polling is in **every emulator**
   (gb, gba, nes, snes, n64, **gc**), invaders, `user/game.h` and the BASIC runtime (**Arkanoid**) --
-  likely a big part of their slowdown at EL0. Fix: one new kapi at the end of the table returning
-  the whole held-key state (a 256-bit map) in one call, used once per frame by game.h, the
-  emulators, Doom and BASIC; Doom polling once per frame; then the small-`memcpy` fast path.
+  likely a big part of their slowdown at EL0. **The fix (the user's design):** `key_held` must not be
+  a system call. The kernel delivers **key down and key up** (and "all released" when the window
+  loses the keyboard) through the event pump (`pop_event`); the user-side pump (`el0blob.S`) keeps
+  the held-key state in the process's own memory (a per-process RW data page next to the EL0 code
+  page, or a block the pump owns), and the EL0 table's `key_held` slot points at a user-side
+  function reading it -- like memcpy: **existing binaries get it without a rebuild**, the ABI
+  unchanged (one new event code, the kernel's `key_held` kept for the dispatcher). Same idea worth
+  checking for `get_modifiers` (already partly user-side via `event_mods`) and `pad_state` (7 %:
+  pads are polled HID; a state the kernel pushes into a shared page could do). Then Doom polling
+  once per frame, and the small-`memcpy` fast path.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per

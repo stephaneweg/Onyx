@@ -27,13 +27,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // ---------------------------------------------------------------------------------------------
 //
-// (Pi round 1) The page allocators' counters are repaired here (VmPagerRepair, below): Circle's
-// CPageAllocator keeps them private, so this one file sees its members. Nothing else changes.
-#define private public
-#include <circle/memory.h>
-#include <circle/pageallocator.h>
-#undef private
-
 #include <kern/vm.h>
 #include <kern/addrspace.h>
 #include <kern/kapi_abi.h>
@@ -275,41 +268,8 @@ void VmTeardown (CAddressSpace *pAS)
 
 // ---- the app pool -------------------------------------------------------------------------------
 
-// The page allocators' "never handed out" counters repaired. Circle's CPageAllocator::Allocate
-// advances m_pNext BEFORE it finds the region exhausted and does not step it back: every failed
-// attempt leaves m_pNext one page further past m_pLimit, and GetFreeSpace () (m_pLimit - m_pNext,
-// as a size_t) then wraps -- the sums meminfo and VmPoolFree make come out short by one page per
-// failed attempt. palloc_high tries the high segments in order, so once segment 0 is full EVERY
-// app page taken from another segment (or the low pager) costs it one more page of overshoot:
-// under memtest oom the counted free memory fell by ~1.1 GB per kill, for ever, and the OOM check
-// (which reads the same counters) killed the child with half the memory still free. The memory
-// itself was never lost (an exhausted region's pages are all handed out; freed ones go to its
-// free list), only the count. A region past its limit is set back to it (under its lock).
-// (Circle's own fix -- `m_pNext -= PAGE_SIZE` before the failed return -- makes this a no-op.)
-static void RepairPager (CPageAllocator &P)
-{
-	if (P.m_pNext <= P.m_pLimit) return;		// (the usual case: no lock)
-	P.m_SpinLock.Acquire ();
-	if (P.m_pNext > P.m_pLimit) P.m_pNext = P.m_pLimit;
-	P.m_SpinLock.Release ();
-}
-
-void VmPagerRepair (void)
-{
-	CMemorySystem *pMem = CMemorySystem::Get ();
-	if (pMem == 0) return;
-	RepairPager (pMem->m_Pager);
-#if RASPPI >= 4
-	for (unsigned i = 0; i < pMem->m_nHighSeg; i++)
-	{
-		RepairPager (pMem->m_PagerHigh[i]);
-	}
-#endif
-}
-
 u64 VmPoolFree (void)
 {
-	VmPagerRepair ();				// (the counters right first: see above)
 	// The high zone (app frames) and the low pager (where palloc_high falls back, on a 1 GB Pi
 	// always; it also holds the page tables): the reserve protects both.
 	return   (u64) CMemorySystem::GetPagerHighFreeSpace () + CMemorySystem::GetPagerHighFreeListSpace ()

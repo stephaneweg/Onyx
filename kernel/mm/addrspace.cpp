@@ -475,7 +475,6 @@ void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 	// (kernel zeroes/ELF-loads it by identity) and is mapped into the app at ulVA. The
 	// per-AS page tables themselves stay in the low pager (palloc, see GetOrCreateL3).
 	void *pFrame = palloc_high ();		// identity-mapped: kernel VA == PA
-	VmPagerRepair ();			// (a full segment tried first: its count, kern/vm.h)
 	if (pFrame == 0)
 	{
 		return 0;

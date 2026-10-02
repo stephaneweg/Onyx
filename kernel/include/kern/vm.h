@@ -139,12 +139,8 @@ boolean VmKernelFault (TTrapFrame *pFrame, u64 ulESR, u64 ulFAR);
 // Is a growth of nBytes of writable memory acceptable (the heuristic overcommit)?
 boolean VmCommitOK (u64 nBytes);
 
-// Bytes free in the app pool (the high zone + the low pager), the counters repaired first.
+// Bytes free in the app pool (the high zone + the low pager).
 u64 VmPoolFree (void);
-
-// The page allocators' free counters repaired: a failed allocation in Circle's CPageAllocator
-// leaves its bump pointer past its limit (sys/vm.cpp). Cheap when nothing is wrong.
-void VmPagerRepair (void);
 
 // ---- pins (kern/uaccess.h's probes) ---------------------------------------------------------------
 

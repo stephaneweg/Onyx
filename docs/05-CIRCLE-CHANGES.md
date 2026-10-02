@@ -745,6 +745,20 @@ once released; `CSocket::Accept` disconnects a failed backlog connection instead
 
 **Test**: `tools/tests/run_circlenet_test.sh` (the stub gained `IsTerminated`): 25/25.
 
+## 24. `CPageAllocator::Allocate`: a failed attempt leaves the count as it was
+
+**Why.** `Allocate` advanced its bump pointer (`m_pNext += PAGE_SIZE`) before checking it against
+`m_pLimit`, and returned 0 without stepping it back: every failed attempt left the pointer one page
+further past the limit, and `GetFreeSpace ()` (`m_pLimit - m_pNext`, a `size_t`) wrapped.
+`palloc_high` tries the high segments in order, so once segment 0 was full every page served
+elsewhere cost it one more page: `meminfo`'s free memory fell for ever (an OOM kill seemed to lose
+~1.1 GB on an 8 GB Pi) and the kernel's OOM check fired with half the memory still free. No frame
+was lost.
+
+**What.** `lib/pageallocator.cpp`: `m_pNext -= PAGE_SIZE` before that `return 0`.
+
+**Test**: `memtest oom` on the Pi (the OOM kill twice, each run ending where it started).
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on
