@@ -39,6 +39,8 @@ class CMailbox;
 struct CProcess;
 class CTask;
 class CProcThreads;
+struct TVmSpace;			// (v75) kern/vm.h (WP-MEM)
+struct TProcInfo;			// (v75) kern/procx.h (WP-FILE/PROC)
 
 class CAddressSpace
 {
@@ -127,7 +129,9 @@ public:
 	void SetStdout (CStream *p)		{ m_pStdout = p; }
 	CStream *GetStdout (void)		{ return m_pStdout; }
 	void SetProcess (CProcess *p)		{ m_pProcess = p; }
+	CProcess *GetProcess (void)		{ return m_pProcess; }		// (v75)
 	void SetExitStatus (int n)		{ m_nExitStatus = n; }
+	int GetExitStatus (void) const		{ return m_nExitStatus; }	// (v75)
 	void SetArgs (const char *pArgs);
 	const char *GetArgs (void)		{ return m_Args; }
 
@@ -154,6 +158,21 @@ public:
 
 	// Its system-call statistics (kern/el0.h).
 	TSyscallStats *GetSyscallStats (void)	{ return &m_Syscalls; }
+
+	// (v75) Its virtual memory (kern/vm.h: lazy regions, pins) and its POSIX side (kern/procx.h:
+	// argv and environment blocks): 0 until their work package makes them; freed by the
+	// teardown (VmTeardown, ProcInfoTeardown).
+	TVmSpace *GetVm (void)			{ return m_pVm; }
+	void SetVm (TVmSpace *p)		{ m_pVm = p; }
+	TProcInfo *GetProcInfo (void)		{ return m_pProcInfo; }
+	void SetProcInfo (TProcInfo *p)		{ m_pProcInfo = p; }
+
+	// (v75) Why the process ended, as proc_wait reports it: KAPI_PROC_EXITED (the default: it
+	// exited, its status is the code), KAPI_PROC_FAULT (-11), KAPI_PROC_KILLED (-9),
+	// KAPI_PROC_OOM (-9). Set before the end (a fault, a kill, the OOM killer).
+	void SetTermReason (int nReason, int nCode) { m_nTermReason = nReason; m_nTermCode = nCode; }
+	int GetTermReason (void) const		{ return m_nTermReason; }
+	int GetTermCode (void) const		{ return m_nTermCode; }
 
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
@@ -182,6 +201,10 @@ private:
 	CProcThreads		    *m_pThreads; // threads / sync objects / posts (lazy)
 	CHandleTable		     m_Handles;	// opaque handles (closed on teardown)
 	TSyscallStats		     m_Syscalls; // system calls counted (sys/el0.cpp)
+	TVmSpace		    *m_pVm;	// (v75) virtual memory (WP-MEM; 0: none yet)
+	TProcInfo		    *m_pProcInfo; // (v75) argv / env blocks (WP-FILE/PROC; 0: none)
+	int			     m_nTermReason; // (v75) KAPI_PROC_* (proc_wait)
+	int			     m_nTermCode;	// (v75) its code (the exit status for EXITED)
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

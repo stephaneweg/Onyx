@@ -71,7 +71,8 @@ enum THandleType
 	HANDLE_DIR	= 2,		// opendir
 	HANDLE_STREAM	= 3,		// pipe, file_in, file_out, stdin_stream, stdout_stream: CStream
 	HANDLE_PROCESS	= 4,		// spawn: CProcess
-	HANDLE_RESERVED	= 5		// taken, its object not there yet (no kapi finds it)
+	HANDLE_RESERVED	= 5,		// taken, its object not there yet (no kapi finds it)
+	HANDLE_OFILE	= 6		// (v75) file_open: an open-file description (kern/ofile.h)
 };
 
 // ... and, for a file or a directory, the volume behind it.

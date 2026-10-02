@@ -209,6 +209,55 @@ int kapi_shell_request (int, const void *, unsigned);
 int kapi_mailbox_send (int, int, const void *, unsigned);
 int kapi_mailbox_recv (int *, int *, void *, unsigned, int);
 
+// v75 WP-MEM (sys/vm.cpp)
+long long kapi_vm_map (unsigned long long ulAddr, unsigned long long ulLen, unsigned nProt, unsigned nFlags);
+int kapi_vm_unmap (unsigned long long ulAddr, unsigned long long ulLen);
+int kapi_vm_protect (unsigned long long ulAddr, unsigned long long ulLen, unsigned nProt);
+int kapi_vm_advise (unsigned long long ulAddr, unsigned long long ulLen, int nAdvice);
+int kapi_vm_query (unsigned long long ulAddr, struct kapi_vm_region *pOut);
+int kapi_vm_stats (int nPid, struct kapi_vm_stats *pOut);
+int kapi_thread_create_ex (const struct kapi_thread_attr *pAttr);
+int kapi_thread_info (int nTid, struct kapi_thread_info *pOut);
+
+// v75 WP-FILE/PROC (sys/ofile.cpp, sys/procx.cpp)
+long long kapi_file_open (const char *pPath, unsigned nFlags, unsigned nMode);
+long long kapi_file_read (long long h, void *pBuf, unsigned long long nLen, long long nOff);
+long long kapi_file_write (long long h, const void *pBuf, unsigned long long nLen, long long nOff);
+long long kapi_file_seek (long long h, long long nOff, int nWhence);
+int kapi_file_truncate (long long h, long long nSize);
+int kapi_file_sync (long long h);
+int kapi_file_stat (long long h, struct kapi_stat *pOut);
+int kapi_file_close (long long h);
+int kapi_path_stat (const char *pPath, struct kapi_stat *pOut);
+int kapi_path_unlink (const char *pPath, unsigned nFlags);
+int kapi_path_mkdir (const char *pPath, unsigned nMode);
+int kapi_path_rename (const char *pFrom, const char *pTo);
+int kapi_path_utime (const char *pPath, long long nMTime);
+int kapi_dir_read (void *hDir, struct kapi_dirent2 *pOut);
+int kapi_stream_write_nb (void *h, const void *pBuf, unsigned nLen);
+long long kapi_spawn_ex (const struct kapi_spawn_attr *pAttr);
+int kapi_proc_wait (void *hProc, unsigned nFlags, struct kapi_proc_status *pOut);
+int kapi_get_argv (char *pBuf, unsigned nCap);
+int kapi_get_env (char *pBuf, unsigned nCap);
+int kapi_getpid (int nWhich);
+int kapi_clock_info (struct kapi_clock_info *pOut);
+int kapi_sleep_us (unsigned long long nMicros);
+
+// v75 WP-NET (sys/bsdsock.cpp)
+int kapi_sock_open (int nType, unsigned nFlags);
+int kapi_sock_connect (int s, const struct kapi_sockaddr *pTo);
+int kapi_sock_bind (int s, const struct kapi_sockaddr *pAddr);
+int kapi_sock_listen (int s, int nBacklog);
+int kapi_sock_accept (int s, struct kapi_sockaddr *pPeer, unsigned nFlags);
+long long kapi_sock_send (int s, const void *pBuf, unsigned long long nLen, unsigned nFlags, const struct kapi_sockaddr *pTo);
+long long kapi_sock_recv (int s, void *pBuf, unsigned long long nLen, unsigned nFlags, struct kapi_sockaddr *pFrom);
+int kapi_sock_shutdown (int s, int nHow);
+int kapi_sock_close (int s);
+int kapi_sock_getopt (int s, int nOpt, int *pValue);
+int kapi_sock_setopt (int s, int nOpt, int nValue);
+int kapi_sock_name (int s, int nPeer, struct kapi_sockaddr *pOut);
+int kapi_poll (struct kapi_pollfd *pFds, unsigned n, int nTimeoutMs);
+
 }  // extern "C"
 
 // The table (kernel memory only: never mapped into an app's space).
@@ -446,4 +495,50 @@ void KApiTableInit (void)
 	t->pop_post          = kapi_pop_post;
 	t->pump_sleep        = kapi_pump_sleep;
 	t->proc_stats        = kapi_proc_stats;		// (v74, sys/el0.cpp)
+	// --- v75 WP-MEM (sys/vm.cpp) ---
+	t->vm_map            = kapi_vm_map;
+	t->vm_unmap          = kapi_vm_unmap;
+	t->vm_protect        = kapi_vm_protect;
+	t->vm_advise         = kapi_vm_advise;
+	t->vm_query          = kapi_vm_query;
+	t->vm_stats          = kapi_vm_stats;
+	t->thread_create_ex  = kapi_thread_create_ex;
+	t->thread_info       = kapi_thread_info;
+	// --- v75 WP-FILE/PROC (sys/ofile.cpp, sys/procx.cpp) ---
+	t->file_open         = kapi_file_open;
+	t->file_read         = kapi_file_read;
+	t->file_write        = kapi_file_write;
+	t->file_seek         = kapi_file_seek;
+	t->file_truncate     = kapi_file_truncate;
+	t->file_sync         = kapi_file_sync;
+	t->file_stat         = kapi_file_stat;
+	t->file_close        = kapi_file_close;
+	t->path_stat         = kapi_path_stat;
+	t->path_unlink       = kapi_path_unlink;
+	t->path_mkdir        = kapi_path_mkdir;
+	t->path_rename       = kapi_path_rename;
+	t->path_utime        = kapi_path_utime;
+	t->dir_read          = kapi_dir_read;
+	t->stream_write_nb   = kapi_stream_write_nb;
+	t->spawn_ex          = kapi_spawn_ex;
+	t->proc_wait         = kapi_proc_wait;
+	t->get_argv          = kapi_get_argv;
+	t->get_env           = kapi_get_env;
+	t->getpid            = kapi_getpid;
+	t->clock_info        = kapi_clock_info;
+	t->sleep_us          = kapi_sleep_us;
+	// --- v75 WP-NET (sys/bsdsock.cpp) ---
+	t->sock_open         = kapi_sock_open;
+	t->sock_connect      = kapi_sock_connect;
+	t->sock_bind         = kapi_sock_bind;
+	t->sock_listen       = kapi_sock_listen;
+	t->sock_accept       = kapi_sock_accept;
+	t->sock_send         = kapi_sock_send;
+	t->sock_recv         = kapi_sock_recv;
+	t->sock_shutdown     = kapi_sock_shutdown;
+	t->sock_close        = kapi_sock_close;
+	t->sock_getopt       = kapi_sock_getopt;
+	t->sock_setopt       = kapi_sock_setopt;
+	t->sock_name         = kapi_sock_name;
+	t->poll              = kapi_poll;
 }

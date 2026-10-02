@@ -386,6 +386,103 @@ static inline int kapi_pump_sleep (unsigned timeout_ms) { return KT->version >= 
 // (v74) A process's system calls (pid 0: the caller): the total, the rate per second, the 8 table
 // slots most called (user/kapi_names.h names them) -> 0, -1 no such process / older kernel, -2 bad pointer.
 static inline int kapi_proc_stats (int pid, struct kapi_syscall_stats *out) { return KT->version >= 74 && KT->proc_stats ? KT->proc_stats (pid, out) : -1; }
+// (v75) The POSIX layer's kernel half (docs/POSIX-PLAN.md; the structures and KAPI_* values in
+// kern/kapi_abi.h). Every call returns >= 0 on success, -KAPI_Exxx (newlib's errno value) on
+// failure, and -KAPI_ENOSYS on an older kernel or until the call is implemented. libonyxposix
+// (user/libc/posix) wraps them as the POSIX functions.
+// v75 WP-MEM: virtual memory (vm_map = mmap, vm_protect = mprotect, vm_advise = madvise...),
+// threads with their stack size and TLS (struct kapi_thread_attr).
+static inline long long kapi_vm_map (unsigned long long addr, unsigned long long len, unsigned prot, unsigned flags)
+	{ return KT->version >= 75 && KT->vm_map ? KT->vm_map (addr, len, prot, flags) : -KAPI_ENOSYS; }
+static inline int kapi_vm_unmap (unsigned long long addr, unsigned long long len)
+	{ return KT->version >= 75 && KT->vm_unmap ? KT->vm_unmap (addr, len) : -KAPI_ENOSYS; }
+static inline int kapi_vm_protect (unsigned long long addr, unsigned long long len, unsigned prot)
+	{ return KT->version >= 75 && KT->vm_protect ? KT->vm_protect (addr, len, prot) : -KAPI_ENOSYS; }
+static inline int kapi_vm_advise (unsigned long long addr, unsigned long long len, int advice)
+	{ return KT->version >= 75 && KT->vm_advise ? KT->vm_advise (addr, len, advice) : -KAPI_ENOSYS; }
+static inline int kapi_vm_query (unsigned long long addr, struct kapi_vm_region *out)
+	{ return KT->version >= 75 && KT->vm_query ? KT->vm_query (addr, out) : -KAPI_ENOSYS; }
+static inline int kapi_vm_stats (int pid, struct kapi_vm_stats *out)
+	{ return KT->version >= 75 && KT->vm_stats ? KT->vm_stats (pid, out) : -KAPI_ENOSYS; }
+static inline int kapi_thread_create_ex (const struct kapi_thread_attr *attr)
+	{ return KT->version >= 75 && KT->thread_create_ex ? KT->thread_create_ex (attr) : -KAPI_ENOSYS; }
+static inline int kapi_thread_info (int tid, struct kapi_thread_info *out)
+	{ return KT->version >= 75 && KT->thread_info ? KT->thread_info (tid, out) : -KAPI_ENOSYS; }
+// v75 WP-FILE/PROC: open files with 64-bit offsets (pread / pwrite), stat, unlink / rename of open
+// files, dir_read (255-character names), non-blocking pipe writes; spawn_ex / proc_wait,
+// argv / environment blocks, getpid, clock_info (CNTPCT + UTC sample), sleep_us.
+static inline long long kapi_file_open (const char *path, unsigned flags, unsigned mode)
+	{ return KT->version >= 75 && KT->file_open ? KT->file_open (path, flags, mode) : -KAPI_ENOSYS; }
+static inline long long kapi_file_read (long long h, void *buf, unsigned long long len, long long off)
+	{ return KT->version >= 75 && KT->file_read ? KT->file_read (h, buf, len, off) : -KAPI_ENOSYS; }
+static inline long long kapi_file_write (long long h, const void *buf, unsigned long long len, long long off)
+	{ return KT->version >= 75 && KT->file_write ? KT->file_write (h, buf, len, off) : -KAPI_ENOSYS; }
+static inline long long kapi_file_seek (long long h, long long off, int whence)
+	{ return KT->version >= 75 && KT->file_seek ? KT->file_seek (h, off, whence) : -KAPI_ENOSYS; }
+static inline int kapi_file_truncate (long long h, long long size)
+	{ return KT->version >= 75 && KT->file_truncate ? KT->file_truncate (h, size) : -KAPI_ENOSYS; }
+static inline int kapi_file_sync (long long h)
+	{ return KT->version >= 75 && KT->file_sync ? KT->file_sync (h) : -KAPI_ENOSYS; }
+static inline int kapi_file_stat (long long h, struct kapi_stat *out)
+	{ return KT->version >= 75 && KT->file_stat ? KT->file_stat (h, out) : -KAPI_ENOSYS; }
+static inline int kapi_file_close (long long h)
+	{ return KT->version >= 75 && KT->file_close ? KT->file_close (h) : -KAPI_ENOSYS; }
+static inline int kapi_path_stat (const char *path, struct kapi_stat *out)
+	{ return KT->version >= 75 && KT->path_stat ? KT->path_stat (path, out) : -KAPI_ENOSYS; }
+static inline int kapi_path_unlink (const char *path, unsigned flags)
+	{ return KT->version >= 75 && KT->path_unlink ? KT->path_unlink (path, flags) : -KAPI_ENOSYS; }
+static inline int kapi_path_mkdir (const char *path, unsigned mode)
+	{ return KT->version >= 75 && KT->path_mkdir ? KT->path_mkdir (path, mode) : -KAPI_ENOSYS; }
+static inline int kapi_path_rename (const char *from, const char *to)
+	{ return KT->version >= 75 && KT->path_rename ? KT->path_rename (from, to) : -KAPI_ENOSYS; }
+static inline int kapi_path_utime (const char *path, long long mtime)
+	{ return KT->version >= 75 && KT->path_utime ? KT->path_utime (path, mtime) : -KAPI_ENOSYS; }
+static inline int kapi_dir_read (void *dir, struct kapi_dirent2 *out)
+	{ return KT->version >= 75 && KT->dir_read ? KT->dir_read (dir, out) : -KAPI_ENOSYS; }
+static inline int kapi_stream_write_nb (void *h, const void *buf, unsigned len)
+	{ return KT->version >= 75 && KT->stream_write_nb ? KT->stream_write_nb (h, buf, len) : -KAPI_ENOSYS; }
+static inline long long kapi_spawn_ex (const struct kapi_spawn_attr *a)
+	{ return KT->version >= 75 && KT->spawn_ex ? KT->spawn_ex (a) : -KAPI_ENOSYS; }
+static inline int kapi_proc_wait (void *proc, unsigned flags, struct kapi_proc_status *out)
+	{ return KT->version >= 75 && KT->proc_wait ? KT->proc_wait (proc, flags, out) : -KAPI_ENOSYS; }
+static inline int kapi_get_argv (char *buf, unsigned cap)
+	{ return KT->version >= 75 && KT->get_argv ? KT->get_argv (buf, cap) : -KAPI_ENOSYS; }
+static inline int kapi_get_env (char *buf, unsigned cap)
+	{ return KT->version >= 75 && KT->get_env ? KT->get_env (buf, cap) : -KAPI_ENOSYS; }
+static inline int kapi_getpid (int which)
+	{ return KT->version >= 75 && KT->getpid ? KT->getpid (which) : -KAPI_ENOSYS; }
+static inline int kapi_clock_info (struct kapi_clock_info *out)
+	{ return KT->version >= 75 && KT->clock_info ? KT->clock_info (out) : -KAPI_ENOSYS; }
+static inline int kapi_sleep_us (unsigned long long us)
+	{ return KT->version >= 75 && KT->sleep_us ? KT->sleep_us (us) : -KAPI_ENOSYS; }
+// v75 WP-NET: BSD sockets (IPv4 TCP / UDP: non-blocking connect, accept, MSG_PEEK...) and poll
+// over sockets, streams and files.
+static inline int kapi_sock_open (int type, unsigned flags)
+	{ return KT->version >= 75 && KT->sock_open ? KT->sock_open (type, flags) : -KAPI_ENOSYS; }
+static inline int kapi_sock_connect (int s, const struct kapi_sockaddr *to)
+	{ return KT->version >= 75 && KT->sock_connect ? KT->sock_connect (s, to) : -KAPI_ENOSYS; }
+static inline int kapi_sock_bind (int s, const struct kapi_sockaddr *addr)
+	{ return KT->version >= 75 && KT->sock_bind ? KT->sock_bind (s, addr) : -KAPI_ENOSYS; }
+static inline int kapi_sock_listen (int s, int backlog)
+	{ return KT->version >= 75 && KT->sock_listen ? KT->sock_listen (s, backlog) : -KAPI_ENOSYS; }
+static inline int kapi_sock_accept (int s, struct kapi_sockaddr *peer, unsigned flags)
+	{ return KT->version >= 75 && KT->sock_accept ? KT->sock_accept (s, peer, flags) : -KAPI_ENOSYS; }
+static inline long long kapi_sock_send (int s, const void *buf, unsigned long long len, unsigned flags, const struct kapi_sockaddr *to)
+	{ return KT->version >= 75 && KT->sock_send ? KT->sock_send (s, buf, len, flags, to) : -KAPI_ENOSYS; }
+static inline long long kapi_sock_recv (int s, void *buf, unsigned long long len, unsigned flags, struct kapi_sockaddr *from)
+	{ return KT->version >= 75 && KT->sock_recv ? KT->sock_recv (s, buf, len, flags, from) : -KAPI_ENOSYS; }
+static inline int kapi_sock_shutdown (int s, int how)
+	{ return KT->version >= 75 && KT->sock_shutdown ? KT->sock_shutdown (s, how) : -KAPI_ENOSYS; }
+static inline int kapi_sock_close (int s)
+	{ return KT->version >= 75 && KT->sock_close ? KT->sock_close (s) : -KAPI_ENOSYS; }
+static inline int kapi_sock_getopt (int s, int opt, int *value)
+	{ return KT->version >= 75 && KT->sock_getopt ? KT->sock_getopt (s, opt, value) : -KAPI_ENOSYS; }
+static inline int kapi_sock_setopt (int s, int opt, int value)
+	{ return KT->version >= 75 && KT->sock_setopt ? KT->sock_setopt (s, opt, value) : -KAPI_ENOSYS; }
+static inline int kapi_sock_name (int s, int peer, struct kapi_sockaddr *out)
+	{ return KT->version >= 75 && KT->sock_name ? KT->sock_name (s, peer, out) : -KAPI_ENOSYS; }
+static inline int kapi_poll (struct kapi_pollfd *fds, unsigned n, int timeout_ms)
+	{ return KT->version >= 75 && KT->poll ? KT->poll (fds, n, timeout_ms) : -KAPI_ENOSYS; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

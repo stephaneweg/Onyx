@@ -13,6 +13,8 @@
 #include <kern/v3d.h>			// V3DReleaseAS (free a dead process's GPU textures)
 #include <kern/thread.h>		// ThreadsFree (its threads' objects)
 #include <kern/el0.h>			// the EL0 table + code pages, KAPI_STUBS_VA
+#include <kern/vm.h>			// VmTeardown (v75)
+#include <kern/procx.h>		// ProcInfoTeardown (v75)
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -79,7 +81,11 @@ CAddressSpace::CAddressSpace (void)
 	m_ulCodeNext (USER_CODE_BASE),
 	m_pMainTask (0),
 	m_nTasks (0),
-	m_pThreads (0)
+	m_pThreads (0),
+	m_pVm (0),
+	m_pProcInfo (0),
+	m_nTermReason (KAPI_PROC_EXITED),
+	m_nTermCode (0)
 {
 	m_Args[0] = '\0';
 	memset (&m_Syscalls, 0, sizeof m_Syscalls);
@@ -166,6 +172,8 @@ CAddressSpace::~CAddressSpace (void)
 		HandlesDeferRelease (m_pStdin);
 		m_pStdin = 0;
 	}
+	// (v75) Its POSIX side (kern/procx.h): before the spawn record is marked done.
+	ProcInfoTeardown (this);
 	if (m_pProcess != 0)
 	{
 		m_pProcess->nStatus = m_nExitStatus;
@@ -194,6 +202,7 @@ CAddressSpace::~CAddressSpace (void)
 	}
 
 	V3DReleaseAS (this);			// its GPU textures (no frame of it is in flight now)
+	VmTeardown (this);			// (v75) its regions (kern/vm.h), before the frames go
 
 	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the
 	// scheduler core: IRQs are enabled and the task is already quiescent, so it is

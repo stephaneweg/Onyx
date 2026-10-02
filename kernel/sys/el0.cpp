@@ -411,6 +411,7 @@ static void __attribute__ ((noreturn)) Fault (TTrapFrame *pFrame, unsigned nEC, 
 		     (unsigned long) pFrame->elr_el1);
 	IpcNotify ("Application error", Text);
 
+	if (pAS != 0) pAS->SetTermReason (KAPI_PROC_FAULT, EL0_FAULT_STATUS);	// (v75: proc_wait)
 	kapi_exit (EL0_FAULT_STATUS);		// (the whole process: its other threads too)
 	for (;;) { }
 }

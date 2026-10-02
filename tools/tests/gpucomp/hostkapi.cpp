@@ -318,6 +318,8 @@ static struct Setup
 		void **slots = (void **) T;
 		for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 		T->version = KAPI_ABI_VERSION;
+		// (v75) the POSIX entries absent here: 0, so kapi.h's wrappers return -KAPI_ENOSYS
+		for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 		T->get_ticks = h_get_ticks; T->stdout_write = h_stdout_write; T->get_args = h_get_args;
 		T->memcpy = h_memcpy; T->memset = h_memset; T->memmove = h_memmove; T->sbrk = h_sbrk;
 		T->create_window = h_create_window; T->present = h_present; T->pump_events = h_pump;

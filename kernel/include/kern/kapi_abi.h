@@ -127,7 +127,15 @@
 //      MPIDR_EL1, REVIDR_EL1, ID_AA64*_EL1 at EL0) are now emulated by the kernel, sanitised,
 //      instead of killing the app. The kernel table's pump_events / wait_for_exit / pump_wait /
 //      memset / memcpy / memmove are 0: they were never system calls (user-side code).
-#define KAPI_ABI_VERSION	74
+// v75: the POSIX layer's kernel half (docs/POSIX-PLAN.md), three blocks after proc_stats:
+//      + vm_map / vm_unmap / vm_protect / vm_advise / vm_query / vm_stats / thread_create_ex /
+//      thread_info (slots 199..206: demand paging, mmap, TLS, stacks); + file_* / path_* /
+//      dir_read / stream_write_nb / spawn_ex / proc_wait / get_argv / get_env / getpid /
+//      clock_info / sleep_us (207..228: file descriptors, stat, pipes, environment, spawn/wait,
+//      clock); + sock_* / poll (229..241: BSD sockets and poll). Every v75 call returns >= 0 on
+//      success, -KAPI_Exxx (newlib's errno values) on failure. The skeleton: every entry exists
+//      and returns -KAPI_ENOSYS until its work package lands.
+#define KAPI_ABI_VERSION	75
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -525,6 +533,292 @@ struct kapi_syscall_stats
 	unsigned top_count[KAPI_SYSCALL_STATS_TOP]; // their counts (saturating at 0xFFFFFFFF)
 	unsigned reserved[4];		// 0
 };
+
+// ---- v75: the POSIX layer's kernel half (docs/POSIX-PLAN.md §3) ------------------------------
+// 64-bit values are `long long` / `unsigned long long`, never `long` (32 bits in the Windows
+// build of the apps). Each structure's size and its key field offsets are the ABI: checked below.
+
+#ifdef __cplusplus
+#define KAPI_STATIC_ASSERT(c, m)	static_assert (c, m)
+#else
+#define KAPI_STATIC_ASSERT(c, m)	_Static_assert (c, m)
+#endif
+
+// (v75) The error values: a v75 call returns -KAPI_Exxx on failure. KAPI_Exxx = newlib's errno
+// value (sys/errno.h), so a libc does errno = -r.
+#define KAPI_EPERM		1
+#define KAPI_ENOENT		2
+#define KAPI_ESRCH		3
+#define KAPI_EINTR		4
+#define KAPI_EIO		5
+#define KAPI_EBADF		9
+#define KAPI_ECHILD		10
+#define KAPI_EAGAIN		11
+#define KAPI_ENOMEM		12
+#define KAPI_EACCES		13
+#define KAPI_EFAULT		14
+#define KAPI_EBUSY		16
+#define KAPI_EEXIST		17
+#define KAPI_EXDEV		18
+#define KAPI_ENODEV		19
+#define KAPI_ENOTDIR		20
+#define KAPI_EISDIR		21
+#define KAPI_EINVAL		22
+#define KAPI_ENFILE		23
+#define KAPI_EMFILE		24
+#define KAPI_EFBIG		27
+#define KAPI_ENOSPC		28
+#define KAPI_ESPIPE		29
+#define KAPI_EROFS		30
+#define KAPI_EPIPE		32
+#define KAPI_ENOSYS		88
+#define KAPI_ENOTEMPTY		90
+#define KAPI_ENAMETOOLONG	91
+#define KAPI_EOPNOTSUPP		95
+#define KAPI_ECONNRESET		104
+#define KAPI_ENOBUFS		105
+#define KAPI_EAFNOSUPPORT	106
+#define KAPI_ENOTSOCK		108
+#define KAPI_ENOPROTOOPT	109
+#define KAPI_ECONNREFUSED	111
+#define KAPI_EADDRINUSE		112
+#define KAPI_ECONNABORTED	113
+#define KAPI_ENETUNREACH	114
+#define KAPI_ENETDOWN		115
+#define KAPI_ETIMEDOUT		116
+#define KAPI_EHOSTUNREACH	118
+#define KAPI_EINPROGRESS	119
+#define KAPI_EALREADY		120
+#define KAPI_EDESTADDRREQ	121
+#define KAPI_EMSGSIZE		122
+#define KAPI_EPROTONOSUPPORT	123
+#define KAPI_EADDRNOTAVAIL	125
+#define KAPI_EISCONN		127
+#define KAPI_ENOTCONN		128
+#define KAPI_ENOTSUP		134
+
+// (v75, WP-MEM) Memory: vm_* (mmap, mprotect, madvise), threads with their TLS and stack.
+#define KAPI_PROT_NONE		0
+#define KAPI_PROT_READ		1
+#define KAPI_PROT_WRITE		2
+#define KAPI_PROT_EXEC		4		// refused: -KAPI_ENOTSUP
+#define KAPI_MAP_FIXED		0x10
+#define KAPI_MAP_NORESERVE	0x4000
+#define KAPI_MAP_POPULATE	0x8000
+#define KAPI_MAP_FIXED_NOREPLACE 0x100000
+#define KAPI_MADV_NORMAL	0
+#define KAPI_MADV_RANDOM	1
+#define KAPI_MADV_SEQUENTIAL	2
+#define KAPI_MADV_WILLNEED	3
+#define KAPI_MADV_DONTNEED	4
+#define KAPI_MADV_FREE		8
+#define KAPI_VMK_ANON		1		// vm_map
+#define KAPI_VMK_HEAP		2
+#define KAPI_VMK_STACK		3
+#define KAPI_VMK_IMAGE		4
+#define KAPI_VMK_FIXED		5		// canvas, surface, sound ring, GPU memory, code arena, kapi pages
+#define KAPI_VMF_LAZY		1
+#define KAPI_THREAD_DETACHED	1		// no join: the kernel frees its record when it ends
+
+struct kapi_vm_region				// 32 bytes
+{
+	unsigned long long start, end;		// 0, 8: [start, end), 64 KB-aligned
+	unsigned prot;				// 16: KAPI_PROT_*
+	unsigned kind;				// 20: KAPI_VMK_*
+	unsigned resident;			// 24: pages present
+	unsigned flags;				// 28: KAPI_VMF_*
+};
+
+struct kapi_vm_stats				// 48 bytes
+{
+	unsigned long long resident;		// 0: bytes of owned frames, page tables included
+	unsigned long long lazy;		// 8: bytes of VA in lazy regions
+	unsigned long long writable;		// 16: bytes of writable VA (all lazy regions touched)
+	unsigned long long faults;		// 24: pages filled on demand (EL0 + kernel + app cores)
+	unsigned long long pt_bytes;		// 32: page tables
+	unsigned long long limit;		// 40: per-process limit, 0 = none
+};
+
+struct kapi_thread_attr				// 64 bytes
+{
+	unsigned long long fn;			// 0: int (*) (void *)
+	unsigned long long arg;			// 8
+	unsigned long long stack_size;		// 16: 0 = 8 MB; 16 KB..16 MB (lazy)
+	unsigned long long tls;			// 24: the thread's initial TPIDR_EL0
+	const char *name;			// 32: may be 0; 31 characters kept
+	unsigned flags;				// 40: KAPI_THREAD_DETACHED
+	int prio;				// 44: 0, or 1 = "real time" (as thread_priority)
+	unsigned long long reserved[2];		// 48: 0
+};
+
+struct kapi_thread_info				// 32 bytes
+{
+	unsigned long long stack_lo;		// 0: lowest usable byte of its stack VMA
+	unsigned long long stack_hi;		// 8: its top (the initial SP)
+	int tid;				// 16
+	int state;				// 20: 0 running, 1 ended (joinable)
+	unsigned long long guard;		// 24: unmapped bytes below stack_lo
+};
+
+// (v75, WP-FILE/PROC) Files (descriptors, stat, directories), processes (spawn / wait, argv,
+// environment), the clock.
+#define KAPI_O_RDONLY		0
+#define KAPI_O_WRONLY		1
+#define KAPI_O_RDWR		2
+#define KAPI_O_ACCMODE		3
+#define KAPI_O_CREAT		0x40
+#define KAPI_O_EXCL		0x80
+#define KAPI_O_TRUNC		0x200
+#define KAPI_O_APPEND		0x400
+#define KAPI_SEEK_SET		0
+#define KAPI_SEEK_CUR		1
+#define KAPI_SEEK_END		2
+#define KAPI_S_IFMT		0170000
+#define KAPI_S_IFDIR		0040000
+#define KAPI_S_IFREG		0100000
+#define KAPI_UNLINK_DIR		1		// rmdir semantics
+#define KAPI_WAIT_NOHANG	1
+#define KAPI_WAIT_KEEP		2		// do not close the process handle
+#define KAPI_PROC_EXITED	0
+#define KAPI_PROC_FAULT		1
+#define KAPI_PROC_KILLED	2
+#define KAPI_PROC_OOM		3
+#define KAPI_CLOCK_REALTIME_VALID 1		// the date is real (NTP / RTC), not "since boot"
+
+struct kapi_stat				// 64 bytes
+{
+	unsigned long long size;		// 0
+	long long mtime;			// 8: UTC seconds since 1970
+	unsigned long long ino;			// 16: FNV-1a 64 of the upper-cased absolute path
+	unsigned mode;				// 24: KAPI_S_IF* | permission bits
+	unsigned dev;				// 28: volume number
+	unsigned blksize;			// 32: cluster size (RAM: 65536)
+	unsigned attr;				// 36: FAT attributes (1 RO, 2 HID, 4 SYS, 0x10 DIR, 0x20 ARC)
+	unsigned long long blocks;		// 40: 512-byte blocks allocated
+	long long ctime;			// 48: = mtime (FF_FS_CRTIME 0)
+	unsigned long long reserved;		// 56
+};
+
+struct kapi_dirent2				// 288 bytes
+{
+	char name[256];				// 0: up to 255 characters (kapi_dirent cut at 127)
+	unsigned long long size;		// 256
+	long long mtime;			// 264
+	unsigned mode;				// 272
+	unsigned attr;				// 276
+	unsigned long long ino;			// 280
+};
+
+struct kapi_spawn_attr				// 64 bytes
+{
+	const char *path;			// 0: the program (resolved against cwd)
+	const char *argv;			// 8: block "a\0b\0\0" (argv[0] first), <= 64 KB
+	const char *envp;			// 16: same format; 0 = the caller's initial environment
+	const char *cwd;			// 24: 0 = the caller's
+	void *in, *out;				// 32, 40: stream handles of the caller, or 0
+	unsigned long long reserved;		// 48: 0 (a future stderr)
+	unsigned flags;				// 56: 0
+	unsigned reserved2;			// 60
+};
+
+struct kapi_proc_status				// 16 bytes
+{
+	int code;				// 0: the exit status (FAULT -11, KILLED / OOM -9)
+	int reason;				// 4: KAPI_PROC_*
+	int pid;				// 8
+	int reserved;				// 12
+};
+
+struct kapi_clock_info				// 48 bytes
+{
+	unsigned long long cnt;			// 0: CNTPCT_EL0 at the sample
+	unsigned long long freq;		// 8: CNTFRQ_EL0
+	long long utc_us;			// 16: UTC microseconds since 1970 at cnt
+	int tz_minutes;				// 24: local - UTC (set_timezone)
+	unsigned flags;				// 28: KAPI_CLOCK_*
+	unsigned long long boot_cnt;		// 32: CNTPCT at boot
+	unsigned long long reserved;		// 40
+};
+
+// (v75, WP-NET) BSD sockets (IPv4: TCP, UDP) and poll.
+#define KAPI_AF_INET		2
+#define KAPI_SOCK_STREAM	1
+#define KAPI_SOCK_DGRAM		2
+#define KAPI_SOCKF_NONBLOCK	1
+#define KAPI_MSG_PEEK		0x2
+#define KAPI_MSG_DONTWAIT	0x40
+#define KAPI_MSG_WAITALL	0x100
+#define KAPI_SHUT_RD		0
+#define KAPI_SHUT_WR		1
+#define KAPI_SHUT_RDWR		2
+#define KAPI_SO_ERROR		1		// get: pending error (positive errno), cleared
+#define KAPI_SO_NONBLOCK	2		// get / set 0/1
+#define KAPI_SO_RCVTIMEO_MS	3
+#define KAPI_SO_SNDTIMEO_MS	4
+#define KAPI_SO_BROADCAST	5
+#define KAPI_SO_NREAD		6		// get: bytes in the carry buffer, 1 if more is ready
+#define KAPI_SO_TYPE		7
+#define KAPI_SO_ACCEPTCONN	8
+#define KAPI_POLLIN		0x001
+#define KAPI_POLLPRI		0x002
+#define KAPI_POLLOUT		0x004
+#define KAPI_POLLERR		0x008
+#define KAPI_POLLHUP		0x010
+#define KAPI_POLLNVAL		0x020
+#define KAPI_PK_NONE		0
+#define KAPI_PK_SOCKET		1
+#define KAPI_PK_STREAM		2
+#define KAPI_PK_FILE		3
+#define KAPI_POLL_MAX		1024
+
+struct kapi_sockaddr				// 16 bytes, IPv4 only
+{
+	unsigned short family;			// 0: KAPI_AF_INET
+	unsigned short port;			// 2: host byte order
+	unsigned char addr[4];			// 4: a.b.c.d
+	unsigned char zero[8];			// 8
+};
+
+struct kapi_pollfd				// 16 bytes
+{
+	int kind;				// 0: KAPI_PK_*
+	int h;					// 4: socket number, or a handle's value (<= 0xFFFFFF)
+	short events;				// 8
+	short revents;				// 10
+	int reserved;				// 12
+};
+
+// The v75 structures' layout (the 64-bit ABI: pointers are 8 bytes).
+#define KAPI_CHECK_SIZE(type, size) \
+	KAPI_STATIC_ASSERT (sizeof (struct type) == (size), "sizeof (struct " #type ") is not " #size)
+#define KAPI_CHECK_FIELD(type, field, off) \
+	KAPI_STATIC_ASSERT (__builtin_offsetof (struct type, field) == (off), #type "." #field " is not at " #off)
+KAPI_CHECK_SIZE (kapi_vm_region, 32);
+KAPI_CHECK_FIELD (kapi_vm_region, flags, 28);
+KAPI_CHECK_SIZE (kapi_vm_stats, 48);
+KAPI_CHECK_SIZE (kapi_thread_attr, 64);
+KAPI_CHECK_FIELD (kapi_thread_attr, name, 32);
+KAPI_CHECK_FIELD (kapi_thread_attr, flags, 40);
+KAPI_CHECK_FIELD (kapi_thread_attr, reserved, 48);
+KAPI_CHECK_SIZE (kapi_thread_info, 32);
+KAPI_CHECK_FIELD (kapi_thread_info, guard, 24);
+KAPI_CHECK_SIZE (kapi_stat, 64);
+KAPI_CHECK_FIELD (kapi_stat, mode, 24);
+KAPI_CHECK_FIELD (kapi_stat, blocks, 40);
+KAPI_CHECK_SIZE (kapi_dirent2, 288);
+KAPI_CHECK_FIELD (kapi_dirent2, size, 256);
+KAPI_CHECK_FIELD (kapi_dirent2, ino, 280);
+KAPI_CHECK_SIZE (kapi_spawn_attr, 64);
+KAPI_CHECK_FIELD (kapi_spawn_attr, in, 32);
+KAPI_CHECK_FIELD (kapi_spawn_attr, flags, 56);
+KAPI_CHECK_SIZE (kapi_proc_status, 16);
+KAPI_CHECK_SIZE (kapi_clock_info, 48);
+KAPI_CHECK_FIELD (kapi_clock_info, tz_minutes, 24);
+KAPI_CHECK_FIELD (kapi_clock_info, boot_cnt, 32);
+KAPI_CHECK_SIZE (kapi_sockaddr, 16);
+KAPI_CHECK_FIELD (kapi_sockaddr, addr, 4);
+KAPI_CHECK_SIZE (kapi_pollfd, 16);
+KAPI_CHECK_FIELD (kapi_pollfd, revents, 10);
 
 struct TKApiTable
 {
@@ -1174,7 +1468,152 @@ struct TKApiTable
 	// proc_stats: the system-call statistics of process `pid` (0: the caller) -> 0 (*out
 	// filled), -1 no such process (or a kernel task), -2 a bad pointer.
 	int (*proc_stats) (int pid, struct kapi_syscall_stats *out);
+
+	// --- v75 WP-MEM --- (slots 199..206; docs/POSIX-PLAN.md §3.1). Every v75 call: >= 0
+	// success, -KAPI_Exxx failure; every one -KAPI_ENOSYS until its work package lands.
+	// vm_map: a region of len bytes (rounded up to 64 KB) in the mmap arena, zero-filled, filled
+	// on first touch (KAPI_MAP_POPULATE: now); addr a hint unless KAPI_MAP_FIXED -> the address,
+	// -EINVAL (len 0, FIXED not aligned / outside the arena), -ENOMEM (no room, overcommit, > 4096
+	// regions), -ENOTSUP (EXEC), -EEXIST (FIXED_NOREPLACE overlaps).
+	long long (*vm_map) (unsigned long long addr, unsigned long long len, unsigned prot, unsigned flags);
+	// vm_unmap: inside KAPI_VMK_ANON regions (splits them) -> 0 / -EINVAL.
+	int (*vm_unmap) (unsigned long long addr, unsigned long long len);
+	// vm_protect: ANON regions; present pages re-protected -> 0 / -EINVAL / -ENOMEM (split cap) /
+	// -ENOTSUP (EXEC).
+	int (*vm_protect) (unsigned long long addr, unsigned long long len, unsigned prot);
+	// vm_advise: any lazy region: WILLNEED populates (-ENOMEM); DONTNEED / FREE drop the pages
+	// (zero on the next touch; ANON and HEAP only); the others no-op -> 0 / -EINVAL.
+	int (*vm_advise) (unsigned long long addr, unsigned long long len, int advice);
+	// vm_query -> 0 the region holding addr, 1 the next region above it, -ENOMEM none above,
+	// -EFAULT.
+	int (*vm_query) (unsigned long long addr, struct kapi_vm_region *out);
+	// vm_stats: pid 0 = self -> 0 / -ESRCH / -EFAULT.
+	int (*vm_stats) (int pid, struct kapi_vm_stats *out);
+	// thread_create_ex: a thread with its stack size, TLS (TPIDR_EL0), name, flags, priority
+	// -> tid >= 2 / -EAGAIN (32 running) / -ENOMEM / -EINVAL / -EFAULT.
+	int (*thread_create_ex) (const struct kapi_thread_attr *attr);
+	// thread_info: tid 0 = self, 1 = main -> 0 / -ESRCH / -EFAULT.
+	int (*thread_info) (int tid, struct kapi_thread_info *out);
+
+	// --- v75 WP-FILE/PROC --- (slots 207..228; docs/POSIX-PLAN.md §3.2)
+	// file_open: KAPI_O_* flags -> handle > 0 / -errno.
+	long long (*file_open) (const char *path, unsigned flags, unsigned mode);
+	// file_read / file_write: off -1 at the handle's offset (advanced; a write with APPEND: at the
+	// end), else at off (pread / pwrite) -> bytes (read: 0 = the end) / -errno.
+	long long (*file_read) (long long h, void *buf, unsigned long long len, long long off);
+	long long (*file_write) (long long h, const void *buf, unsigned long long len, long long off);
+	// file_seek: KAPI_SEEK_* -> the new offset / -EINVAL / -EBADF.
+	long long (*file_seek) (long long h, long long off, int whence);
+	// file_truncate: grows with zeros.
+	int (*file_truncate) (long long h, long long size);
+	int (*file_sync) (long long h);
+	int (*file_stat) (long long h, struct kapi_stat *out);
+	int (*file_close) (long long h);
+	int (*path_stat) (const char *path, struct kapi_stat *out);
+	// path_unlink: a file (-EISDIR on a directory); KAPI_UNLINK_DIR: a directory (-ENOTDIR /
+	// -ENOTEMPTY).
+	int (*path_unlink) (const char *path, unsigned flags);
+	// path_mkdir -> 0 / -EEXIST / -ENOENT (no parent).
+	int (*path_mkdir) (const char *path, unsigned mode);
+	// path_rename: replaces `to`; -EXDEV across volumes.
+	int (*path_rename) (const char *from, const char *to);
+	int (*path_utime) (const char *path, long long mtime);
+	// dir_read: an opendir handle -> 1 / 0 the end / -EBADF / -EFAULT.
+	int (*dir_read) (void *dir, struct kapi_dirent2 *out);
+	// stream_write_nb -> n (> 0) / -EAGAIN (full) / -EBADF.
+	int (*stream_write_nb) (void *h, const void *buf, unsigned len);
+	// spawn_ex: argv / envp blocks given -> a process handle / -errno.
+	long long (*spawn_ex) (const struct kapi_spawn_attr *a);
+	// proc_wait -> 1 ended (the handle closed unless KAPI_WAIT_KEEP) / 0 running (NOHANG) / -EBADF.
+	int (*proc_wait) (void *proc, unsigned flags, struct kapi_proc_status *out);
+	// get_argv / get_env: the block ("a\0b\0\0"), filled up to cap -> the block's size;
+	// argv[0] = the path.
+	int (*get_argv) (char *buf, unsigned cap);
+	int (*get_env) (char *buf, unsigned cap);
+	// getpid: which 0 the pid, 1 the parent's.
+	int (*getpid) (int which);
+	int (*clock_info) (struct kapi_clock_info *out);
+	int (*sleep_us) (unsigned long long us);
+
+	// --- v75 WP-NET --- (slots 229..241; docs/POSIX-PLAN.md §3.3)
+	// sock_open: KAPI_SOCK_STREAM / _DGRAM, KAPI_SOCKF_NONBLOCK -> socket >= 0 / -EPROTONOSUPPORT /
+	// -ENFILE (table full) / -ENETDOWN.
+	int (*sock_open) (int type, unsigned flags);
+	// sock_connect -> 0 / -EINPROGRESS / -EALREADY / -EISCONN / -ECONNREFUSED / -ETIMEDOUT /
+	// -ENETUNREACH / -EBADF.
+	int (*sock_connect) (int s, const struct kapi_sockaddr *to);
+	// sock_bind -> 0 / -EADDRINUSE / -EINVAL.
+	int (*sock_bind) (int s, const struct kapi_sockaddr *addr);
+	// sock_listen: backlog clamped 1..32.
+	int (*sock_listen) (int s, int backlog);
+	// sock_accept: flags KAPI_SOCKF_NONBLOCK for the new socket -> socket / -EAGAIN.
+	int (*sock_accept) (int s, struct kapi_sockaddr *peer, unsigned flags);
+	// sock_send: KAPI_MSG_* -> bytes / -EAGAIN / -EPIPE / -ENOTCONN / -EDESTADDRREQ.
+	long long (*sock_send) (int s, const void *buf, unsigned long long len, unsigned flags,
+				const struct kapi_sockaddr *to);
+	// sock_recv -> bytes, 0 = orderly end / -EAGAIN / -ECONNRESET / -ENOTCONN / -ETIMEDOUT.
+	long long (*sock_recv) (int s, void *buf, unsigned long long len, unsigned flags,
+				struct kapi_sockaddr *from);
+	int (*sock_shutdown) (int s, int how);
+	int (*sock_close) (int s);
+	// sock_getopt / sock_setopt: KAPI_SO_*.
+	int (*sock_getopt) (int s, int opt, int *value);
+	int (*sock_setopt) (int s, int opt, int value);
+	// sock_name: peer 0 the local address, 1 the remote one (-ENOTCONN).
+	int (*sock_name) (int s, int peer, struct kapi_sockaddr *out);
+	// poll: up to KAPI_POLL_MAX entries, timeout_ms -1 forever, 0 only check -> the ready count /
+	// 0 / -EINVAL / -EFAULT.
+	int (*poll) (struct kapi_pollfd *fds, unsigned n, int timeout_ms);
 };
+
+// The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
+// are append-only: a slot never moves.
+#define KAPI_CHECK_SLOT(name, n) \
+	KAPI_STATIC_ASSERT (__builtin_offsetof (struct TKApiTable, name) == (n) * 8, "kapi " #name " is not slot " #n)
+KAPI_CHECK_SLOT (proc_stats, 198);
+KAPI_CHECK_SLOT (vm_map, 199);
+KAPI_CHECK_SLOT (vm_unmap, 200);
+KAPI_CHECK_SLOT (vm_protect, 201);
+KAPI_CHECK_SLOT (vm_advise, 202);
+KAPI_CHECK_SLOT (vm_query, 203);
+KAPI_CHECK_SLOT (vm_stats, 204);
+KAPI_CHECK_SLOT (thread_create_ex, 205);
+KAPI_CHECK_SLOT (thread_info, 206);
+KAPI_CHECK_SLOT (file_open, 207);
+KAPI_CHECK_SLOT (file_read, 208);
+KAPI_CHECK_SLOT (file_write, 209);
+KAPI_CHECK_SLOT (file_seek, 210);
+KAPI_CHECK_SLOT (file_truncate, 211);
+KAPI_CHECK_SLOT (file_sync, 212);
+KAPI_CHECK_SLOT (file_stat, 213);
+KAPI_CHECK_SLOT (file_close, 214);
+KAPI_CHECK_SLOT (path_stat, 215);
+KAPI_CHECK_SLOT (path_unlink, 216);
+KAPI_CHECK_SLOT (path_mkdir, 217);
+KAPI_CHECK_SLOT (path_rename, 218);
+KAPI_CHECK_SLOT (path_utime, 219);
+KAPI_CHECK_SLOT (dir_read, 220);
+KAPI_CHECK_SLOT (stream_write_nb, 221);
+KAPI_CHECK_SLOT (spawn_ex, 222);
+KAPI_CHECK_SLOT (proc_wait, 223);
+KAPI_CHECK_SLOT (get_argv, 224);
+KAPI_CHECK_SLOT (get_env, 225);
+KAPI_CHECK_SLOT (getpid, 226);
+KAPI_CHECK_SLOT (clock_info, 227);
+KAPI_CHECK_SLOT (sleep_us, 228);
+KAPI_CHECK_SLOT (sock_open, 229);
+KAPI_CHECK_SLOT (sock_connect, 230);
+KAPI_CHECK_SLOT (sock_bind, 231);
+KAPI_CHECK_SLOT (sock_listen, 232);
+KAPI_CHECK_SLOT (sock_accept, 233);
+KAPI_CHECK_SLOT (sock_send, 234);
+KAPI_CHECK_SLOT (sock_recv, 235);
+KAPI_CHECK_SLOT (sock_shutdown, 236);
+KAPI_CHECK_SLOT (sock_close, 237);
+KAPI_CHECK_SLOT (sock_getopt, 238);
+KAPI_CHECK_SLOT (sock_setopt, 239);
+KAPI_CHECK_SLOT (sock_name, 240);
+KAPI_CHECK_SLOT (poll, 241);
 
 #ifdef __cplusplus
 }

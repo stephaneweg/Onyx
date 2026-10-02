@@ -2799,6 +2799,14 @@ points** to touch (all in the same direction, at the end):
   shows), and after a build run `tools/el0scan.sh` on the card: an app must contain no
   instruction EL0 cannot run.
 
+**From v75 (the POSIX calls, [`docs/POSIX-PLAN.md`](POSIX-PLAN.md)):** a new entry returns ≥ 0 on
+success and **−`KAPI_Exxx`** on failure (`kapi_abi.h`: newlib's errno values, so a libc does
+`errno = -r`); 64-bit values are `long long` / `unsigned long long`, never `long` (32 bits in the
+Windows build); a structure's size and its slot are `static_assert`ed in `kapi_abi.h`
+(`KAPI_CHECK_SIZE`, `KAPI_CHECK_SLOT`); and the `user/kapi.h` wrapper tests the version **and** the
+slot — `return KT->version >= 75 && KT->x ? KT->x (…) : -KAPI_ENOSYS;` — since the host tables (the PC
+simulator, `pc/`) leave the v75 slots 0.
+
 > **Golden rule:** never change the signature or the order of an existing field. If some
 > semantics must change, add a **new** entry. An app can query
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.

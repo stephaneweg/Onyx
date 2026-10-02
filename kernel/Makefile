@@ -41,6 +41,11 @@ OBJS = \
 	sys/handle.o \
 	sys/uaccess.o \
 	sys/el0.o \
+	sys/iowait.o \
+	sys/vm.o \
+	sys/ofile.o \
+	sys/procx.o \
+	sys/bsdsock.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/uaccess.o \
 	arch/aarch64/el0.o \

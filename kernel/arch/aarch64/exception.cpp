@@ -14,6 +14,7 @@
 #include <kern/uaccess.h>		// UAccessFixup
 #include <kern/crashlog.h>
 #include <kern/thread.h>		// WordWaitTick (v68)
+#include <kern/iowait.h>		// IoWaitTick (v75)
 #include <circle/multicore.h>
 #include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
@@ -228,6 +229,7 @@ void PeriodicTick (void)
 	if (CScheduler::IsActive ())
 	{
 		WordWaitTick ();			// (v68) words changed without a wake (app cores)
+		IoWaitTick ();				// (v75) the readiness wait's tick hooks
 		CScheduler::Get ()->OnTimerTick ();	// (after: a "real time" task it woke preempts)
 	}
 }

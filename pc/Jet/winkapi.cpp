@@ -1311,6 +1311,8 @@ static void setup (void)
 	void **slots = (void **) T;
 	for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 	T->version = KAPI_ABI_VERSION;
+	// (v75) the POSIX entries absent here: 0, so kapi.h's wrappers return -KAPI_ENOSYS
+	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	_fmode = _O_BINARY;
 	QueryPerformanceFrequency (&g_qpf); QueryPerformanceCounter (&g_qp0);
 	InitializeCriticalSection (&g_thLock); InitializeCriticalSection (&g_postLock); InitializeCriticalSection (&g_sockLock);

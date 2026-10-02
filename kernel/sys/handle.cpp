@@ -26,6 +26,7 @@
 #include <kern/stream.h>		// CStream, CProcess
 #include <kern/ramfs.h>
 #include <kern/vfs.h>
+#include <kern/ofile.h>		// OFileClose (v75)
 #include <kern/addrspace.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -103,6 +104,10 @@ void HandleObjectClose (void *pObj, unsigned nType, unsigned nKind, boolean bTea
 
 	case HANDLE_PROCESS:
 		ProcessRelease ((CProcess *) pObj);
+		break;
+
+	case HANDLE_OFILE:				// (v75: its node's reference dropped)
+		OFileClose (pObj, bTeardown);
 		break;
 
 	case HANDLE_RESERVED:				// (no object yet)

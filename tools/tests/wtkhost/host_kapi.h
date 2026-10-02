@@ -83,6 +83,8 @@ static void host_kapi_init (const char *sdroot)
 	void **slot = (void **) ((char *) t + 8);
 	for (unsigned i = 0; i < (sizeof (TKApiTable) - 8) / sizeof (void *); i++) slot[i] = (void *) host_stub;
 	t->version = KAPI_ABI_VERSION;
+	// (v75) the POSIX entries absent here: 0, so kapi.h's wrappers return -KAPI_ENOSYS
+	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) t)[i] = 0;
 	t->open = h_open; t->read = h_read; t->fsize = h_fsize; t->close = h_close;
 	t->get_ticks = h_ticks; t->msleep = h_msleep; t->font_width = h_fw; t->font_height = h_fh;
 	t->sbrk = h_sbrk; t->key_held = h_key_held;

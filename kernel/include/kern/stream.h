@@ -12,6 +12,7 @@
 
 #include <circle/types.h>
 #include <fatfs/ff.h>
+#include <kern/kapi_abi.h>		// KAPI_POLL* (v75)
 
 #define PIPE_CAP	8192		// pipe ring-buffer size (bytes)
 
@@ -31,6 +32,9 @@ public:
 	virtual int Write (const void *pBuf, unsigned nLen) = 0;
 	// Signal "no more data will be written" so readers see EOF.
 	virtual void CloseWrite (void) {}
+	// (v75) The poll bits ready now (KAPI_POLLIN / OUT / HUP...): poll asks it without blocking.
+	// Default: always readable and writable (a file). A pipe answers for itself (WP-FILE/PROC).
+	virtual unsigned PollMask (void) { return KAPI_POLLIN | KAPI_POLLOUT; }
 
 	void AddRef (void)	{ m_nRef++; }
 	void Release (void)	{ if (--m_nRef <= 0) delete this; }

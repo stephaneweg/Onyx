@@ -796,7 +796,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 74`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 75`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -835,7 +835,14 @@ event pump an EL0 app runs on its own side (an EL1 app, as apps were then by def
 `TPIDRRO_EL0` (`kapi__core`); the file / stream / process handles per process and every pointer
 checked (no change for a well-behaved app),
 v74 = **every process at EL0** (the EL1 mode removed), `proc_stats` (a process's system calls:
-`struct kapi_syscall_stats`), the ID register reads emulated; the kernel table's six user-side slots 0.
+`struct kapi_syscall_stats`), the ID register reads emulated; the kernel table's six user-side slots 0,
+v75 = **the POSIX layer's kernel half** ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md)), 43 entries in three
+blocks after `proc_stats`: memory (slots 199–206), files and processes (207–228), sockets and poll
+(229–241), with their structures and the `KAPI_E*` error values (newlib's errno numbers: a v75 call
+returns ≥ 0, or −`KAPI_Exxx`). **The skeleton:** the entries exist (the slot numbers are
+`static_assert`ed in `kapi_abi.h`) and return `-KAPI_ENOSYS` until their work package lands; the
+subsections below say what is implemented. `user/kapi.h`'s wrappers also return `-KAPI_ENOSYS` on an
+older kernel or where a host table (the PC simulator, the Windows / macOS builds) leaves the slot 0.
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -908,6 +915,33 @@ All the functions run **in the kernel (EL1), on the calling process's task**: th
 kernel reads and writes the app's memory in place — **after checking every pointer**
 (`kern/uaccess.h`, §6). A call that waits (a file read in pieces, a socket, `wait`) yields
 there, on that kernel stack, while the compositor and the other apps keep running.
+
+### v75: memory
+
+Work package WP-MEM ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1; `kernel/sys/vm.cpp`,
+`kern/vm.h`). Slots 199–206: `vm_map`, `vm_unmap`, `vm_protect`, `vm_advise`, `vm_query`,
+`vm_stats`, `thread_create_ex`, `thread_info` (`struct kapi_vm_region`, `kapi_vm_stats`,
+`kapi_thread_attr`, `kapi_thread_info`). *Not implemented yet: every entry returns `-KAPI_ENOSYS`.*
+
+### v75: files and processes
+
+Work package WP-FILE/PROC ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.2; `kernel/sys/ofile.cpp`,
+`kernel/sys/procx.cpp`). Slots 207–228: `file_open`, `file_read`, `file_write`, `file_seek`,
+`file_truncate`, `file_sync`, `file_stat`, `file_close`, `path_stat`, `path_unlink`, `path_mkdir`,
+`path_rename`, `path_utime`, `dir_read`, `stream_write_nb`, `spawn_ex`, `proc_wait`, `get_argv`,
+`get_env`, `getpid`, `clock_info`, `sleep_us` (`struct kapi_stat`, `kapi_dirent2`, `kapi_spawn_attr`,
+`kapi_proc_status`, `kapi_clock_info`; handle type `HANDLE_OFILE`). *Not implemented yet: every entry
+returns `-KAPI_ENOSYS`.* (Already in place: a fault records `KAPI_PROC_FAULT` with
+`CAddressSpace::SetTermReason`.)
+
+### v75: sockets and poll
+
+Work package WP-NET ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.3; `kernel/sys/bsdsock.cpp`).
+Slots 229–241: `sock_open`, `sock_connect`, `sock_bind`, `sock_listen`, `sock_accept`, `sock_send`,
+`sock_recv`, `sock_shutdown`, `sock_close`, `sock_getopt`, `sock_setopt`, `sock_name`, `poll`
+(`struct kapi_sockaddr`, `kapi_pollfd`). *Not implemented yet: every entry returns `-KAPI_ENOSYS`.*
+The shared readiness wait they build on is in place: `kern/iowait.h` (`IoGen`, `IoWake`, `IoWait`,
+tick hooks run by the 100 Hz tick next to `WordWaitTick`), and `CStream::PollMask`.
 
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against
