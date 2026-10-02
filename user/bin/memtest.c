@@ -4,8 +4,10 @@
 // docs/02 §4 and §8 "v75: memory"). Freestanding, at the kapi level. Every check prints a PASS or
 // FAIL line; the last line is "memtest: PASS" or "memtest: FAIL (n)", and the exit status 0 / 1.
 //
-//   memtest           every check below (bounded: about 30 MB at most, a few seconds)
-//   memtest oom       ALSO the real out-of-memory kill: a child touches pages until the kernel kills
+//   memtest           every check below (bounded: a child touches 256 MB -- a quarter of the free
+//                     memory at most -- and must give it all back; a few seconds)
+//   memtest oom       ALSO the real out-of-memory kill, twice (each must end where it started): a child
+//                     touches pages until the kernel kills
 //                     it (it takes the whole app pool down to its 16 MB reserve for a moment: other
 //                     apps that fault meanwhile may be killed too -- run it alone)
 //   memtest net       ALSO tcp_recv into fresh lazy memory, over a connection to this Pi's own
@@ -187,6 +189,15 @@ static int child (const char *pWhat)
 	{
 		return recurse (0);
 	}
+	if (pWhat[0] == 't' && pWhat[1] == 'o' && pWhat[2] == 'u' && pWhat[3] == 'c' && pWhat[4] == 'h')
+	{						// "touch <MB>": touch that much, exit normally
+		u64 nMB = 0;
+		for (const char *q = pWhat + 6; *q >= '0' && *q <= '9'; q++) nMB = nMB * 10 + (u64) (*q - '0');
+		long long a = kapi_vm_map (0, nMB << 20, RW, 0);
+		if (a < 0) return 2;
+		for (u64 p = 0; p < (nMB << 20); p += PAGE) *(volatile unsigned *) (a + p) = 1;
+		return 0;
+	}
 	if (ax_streq (pWhat, "oom"))			// touch until the kernel says no more
 	{
 		long long a = kapi_vm_map (0, 24ULL << 30, RW, KAPI_MAP_NORESERVE);
@@ -219,6 +230,26 @@ static int run_child (const char *pWhat, int *pReason)
 	if (r < 0) return 1001;
 	*pReason = St.reason;
 	return St.code;
+}
+
+static unsigned long free_kb (void)
+{
+	unsigned long t, f, a; unsigned pk;
+	kapi_meminfo (&t, &f, &a, &pk);
+	return f;
+}
+
+// After a child: the free memory back to f0 (within 8 MB), waiting up to 5 s for the reaper.
+static void check_back (const char *pWhat, unsigned long f0)
+{
+	unsigned long f1 = free_kb ();
+	for (int w = 0; w < 50 && f1 + 8192 < f0; w++)
+	{
+		kapi_msleep (100);
+		f1 = free_kb ();
+	}
+	if (f1 + 8192 < f0) { ax_puts ("      (KB free before the child: "); put_i ((long long) f0); ax_putln (")"); }
+	check_n (pWhat, f1 + 8192 >= f0, "KB free now ", (long long) f1);
 }
 
 static void check_killed (const char *pWhat, const char *pChild, int nStatus, int nReason)
@@ -742,21 +773,38 @@ int main (void)
 
 	test_appcore ();
 
+	// A child that touches a lot of memory and exits normally gives it all back (the frames, its
+	// page tables): 256 MB, or a quarter of the free memory if less (512 MB with "memtest oom").
+	{
+		unsigned long f0 = free_kb ();
+		unsigned long nMB = ax_streq (Args, "oom") ? 512 : 256;
+		if (nMB > f0 / 1024 / 4) nMB = f0 / 1024 / 4;
+		char What[24] = "touch ";
+		char Num[12]; int k = ax_itoa ((int) nMB, Num); Num[k] = 0;
+		for (int i = 0; Num[i]; i++) What[6 + i] = Num[i];
+		What[6 + k] = 0;
+		int nWhy;
+		int st = run_child (What, &nWhy);
+		check_n ("a child touching memory then exiting normally: status 0", st == 0, "MB ", (long long) nMB);
+		check_back ("  its memory is all back", f0);
+	}
+
 	if (ax_streq (Args, "net")) test_net ();
 	if (ax_streq (Args, "oom"))
 	{
-		unsigned long t, f0, f1, a; unsigned pk;
-		kapi_meminfo (&t, &f0, &a, &pk);
-		check_killed ("a child touching pages until none is left: killed (OOM, -9)", "oom", -9, KAPI_PROC_OOM);
-		for (int w = 0; w < 50; w++)			// (the reaper frees it: up to 5 s)
+		// Twice: the second run must start and end where the first did (a page allocator's
+		// counters left short by a kill showed up here as ~1.1 GB "lost" each time).
+		unsigned long f00 = free_kb ();
+		for (int nRun = 1; nRun <= 2; nRun++)
 		{
-			kapi_msleep (100);
-			kapi_meminfo (&t, &f1, &a, &pk);
-			if (f1 + 8192 >= f0) break;
+			unsigned long f0 = free_kb ();
+			check_killed (nRun == 1 ? "a child touching pages until none is left: killed (OOM, -9)"
+						: "again: killed (OOM, -9)", "oom", -9, KAPI_PROC_OOM);
+			check_back ("  the system lives on, the memory is back", f0);
 		}
-		if (f1 + 8192 < f0) { ax_puts ("      (KB free before the child: "); put_i ((long long) f0); ax_putln (")"); }
 		long long g = kapi_vm_map (0, PAGE, RW, 0);
-		check_n ("  the system lives on, the memory is back", g > 0 && f1 + 8192 >= f0, "KB free now ", (long long) f1);
+		check_n ("after two OOM kills: where it started, memory still mapped", g > 0 && free_kb () + 8192 >= f00,
+			 "KB free at the start ", (long long) f00);
 		if (g > 0) kapi_vm_unmap ((u64) g, PAGE);
 	}
 	else
