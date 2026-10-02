@@ -316,7 +316,13 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    end is a few hundred KB, its window appears at once, and it starts the web view, which then
    attaches to the window as an applet does (to check: how a process draws into another's
    window on Onyx — an existing applet mechanism, or a canvas in v76 shared memory — and how the
-   key and mouse events reach it).
+   key and mouse events reach it). If both are feasible, both are wanted, and **the web view is
+   then a component other programs embed — the Mail client first** (HTML messages): a
+   stand-alone web-view service with a small host interface (load a URL or the HTML given, back /
+   forward / reload, the title and URL changes, a hook on navigations), an optional toolbar (the
+   browser's; Mail has none), and restrictions the host sets (Mail: no remote content until the
+   user allows it, scripts off, a clicked link opened in the browser). The browser's own UI does
+   not go into the web view.
 6. Parity with Jet, then the switch.
 
 ## The patch series
