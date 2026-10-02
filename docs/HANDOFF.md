@@ -119,6 +119,32 @@ answer in French. The docs stay in English.
   clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
   (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
 
+## Program images: loaded once, shared, preloaded (2026-10-02, kapi v77, branch `shared-image`; NOT built for the Pi, NOT in `main`)
+
+- **What**: stages (a), (c), (e) of `docs/ELF-LOADER-PLAN.md` -- the loader streams a program from
+  its file once into an image object (`kernel/proc/image.cpp`, `kern/image.h`); its read-only
+  segments are shared by its processes (mapped not owned), the writable ones copied per process.
+  **The key is the program's canonical path** (`ImageCanonPath`: lower case, `sd:/apps/x.app/main`):
+  a run of a path that has an image does not touch the card. The file kapis drop an image where its
+  file changes (`ImageFileChanged`). kapi v77: `image_preload` / `image_unload` / `image_list`
+  (slots 253..255); `/bin/preload`, `/bin/unload`; `pkg` re-preloads a kept program it replaces; a
+  commented `preload jsc` example in `sdcard/etc/autostart`. docs/02 §7 *Program images* and §8
+  *v77*, docs/03 (the kapi chapter), docs/04 §8.
+- **Tested**: `sh tools/tests/run_image_test.sh` (465 checks: the canonical path, the ELF header
+  checks, load / share / wait / fail / pin / unload / the hook); `run_ipc_test.sh`,
+  `run_ofile_test.sh` (`CIRCLE=<circle tree>`), `run_pkg_test.sh` still pass; the changed kernel
+  files pass `g++ -fsyntax-only` against Circle's headers on the PC.
+- **Not done**: the kernel and the tools were **not compiled for AArch64** (no toolchain in that
+  session) and nothing ran on the Pi; `sdcard/` is not staged, nothing is published; the Word / PDF
+  exports are not regenerated. The user tests on the Pi before any merge into `main`.
+- **To test on the Pi** (`kmsg` shows one `image <path>: loaded|shared in N ms, mapped in N ms`
+  line per start): boot (every program now goes through the new loader); start a program twice
+  (`shared` the second time; `ps`' `PAGES` no longer counts a program's code); `preload jsc`, `preload` (the list),
+  `jsc` (shared: no card read), `unload jsc`; replace a preloaded tool with `pkg` or over FTP and
+  check the next start says `loaded`; `filetest`, `proctest`, `ipctest`, `memtest` as before.
+- **Next**: stage (d) (keep images after exit, evict under memory pressure) and (b) (lazy fill) of
+  the plan, if the measurements ask for them.
+
 ## POSIX layer, IPC, toolchain, WebKit port -- where it stands (2026-10-02)
 
 - **Done, on `main`, validated on the Pi**: kapi **v76** -- demand paging and `vm_*` (v75), real files /

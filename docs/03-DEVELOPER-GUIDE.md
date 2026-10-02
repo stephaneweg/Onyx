@@ -3172,6 +3172,27 @@ takes a handle should accept one received this way (it is an ordinary entry of t
 Tests: `/bin/ipctest` on the Pi, `sh tools/tests/run_ipc_test.sh` (the kernel code on the PC) and the
 posixsim bench.
 
+**Program images (v77, docs/02 §7 *Program images* and §8 "v77: program images"):** a program is
+read from its file **once** and the pages of its read-only segments are shared by all its
+processes; a second process of a running program, or any process of a preloaded one, starts
+without reading the card. For a program's author this means:
+- **its code and constants are really read-only and shared** — a program must not write there (it
+  never could at EL0; a kapi asked to write there fails as before). Keep the linker's layout
+  (`-z max-page-size=0x10000`, `user.ld` / `onyx-posix.ld`): two segments in one 64 KB page are
+  refused at load (`two segments share a page` in the kernel log);
+- **its writable data is private** as always (each process gets its own copy of `.data`, a zero
+  `.bss`);
+- **the image's key is the program's path** (lower-cased, the volume first). Replace a program the
+  way `pkg` does — write the new file beside it, remove the old, rename — or simply overwrite it:
+  the file calls drop the old image (the processes running the old version keep it and go on; the
+  next start reads the new file). While you iterate on a program over FTP nothing more is needed;
+- `kapi_image_preload (path)` / `kapi_image_unload (path)` / `kapi_image_list (path, out, cap)`
+  (`struct kapi_image_info`) are what `/bin/preload`, `/bin/unload` and `pkg` use;
+- the kernel log has one line per start (`kmsg`): `image <path>: loaded in N ms, mapped in N ms
+  (… KB shared, … KB private)` — `loaded` = read from the card, `shared` = already in memory.
+Tests: `sh tools/tests/run_image_test.sh` (the kernel code on the PC); on the Pi, `preload` and the
+log lines.
+
 > **Golden rule:** never change the signature or the order of an existing field. If some
 > semantics must change, add a **new** entry. An app can query
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.

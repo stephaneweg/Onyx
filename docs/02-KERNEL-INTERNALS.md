@@ -247,7 +247,7 @@ Maps a 64 KB page (VA and PA aligned to 64 KB):
 |---|---|---|---|---|---|
 | `KPAGE_ATTR_APP_CODE` (app code, the EL0 code page) | NORMAL | RO_ALL | 1 | 1 | **0** (exec. EL0) |
 | `KPAGE_ATTR_APP_DATA` (data/heap/stacks/canvas/surfaces) | NORMAL | RW_ALL | 1 | 1 | 1 |
-| `KPAGE_ATTR_APP_RODATA` (the EL0 kapi table) | NORMAL | RO_ALL | 1 | 1 | 1 |
+| `KPAGE_ATTR_APP_RODATA` (the EL0 kapi table; v77: a program's read-only segment without `PF_X`) | NORMAL | RO_ALL | 1 | 1 | 1 |
 | `KPAGE_ATTR_APP_RWX` (generated code, v58 `code_alloc`) | NORMAL | RW_ALL | 1 | 1 | **0** (exec. EL0) |
 | `KPAGE_ATTR_APP_SCREEN` (`fullscreen_direct`, the displayed framebuffer) | COHERENT (uncached) | RW_ALL | 1 | 1 | 1 |
 
@@ -336,6 +336,10 @@ When destroying the address space:
    go of the space).
 5. Walks the **user** L2/L3 slots and frees the frames marked
    `PAGE_SW_OWNED` (pages whose zap was deferred included).
+6. (v77) Drops its reference on its program's image (§7): the image's shared frames are mapped
+   **not owned**, so step 5 leaves them; the last process of a program that is not preloaded frees
+   them here, after the tables that named them. (When an app core did not stop, the space is leaked
+   as before, and so is this reference.)
 
 > ⚠️ **Pitfall: never free an L3 table shared with the kernel.** Because each
 > address space **copies** the kernel L2 descriptors, some L2 entries point
@@ -726,17 +730,127 @@ Not closed yet: the powerful kapis (`reboot`, `kill_pid`, `inject_*`, `screen_gr
 
 Source: [`kernel/proc/elf.cpp`](../kernel/proc/elf.cpp),
 [`kernel/include/kern/elf.h`](../kernel/include/kern/elf.h),
+[`kernel/proc/image.cpp`](../kernel/proc/image.cpp),
+[`kernel/include/kern/image.h`](../kernel/include/kern/image.h),
 task model in `kernel.cpp`.
+
+### Program images (v77): loaded once, shared, kept
+
+*The study and the stages: [`docs/ELF-LOADER-PLAN.md`](ELF-LOADER-PLAN.md). Until v77 a start read
+the whole file into the kernel heap, then copied its segments into frames of the process: each
+byte moved twice, an 80 MB program (the WebKit port's) took 80 MB of kernel heap for a moment and
+80 MB of frames **per process**, and every start read the card again.*
+
+**The headers first (`ElfReadPlan`).** The ELF header and the program headers are read on their own
+and checked: the ELF64 magic, `ELFCLASS64`, `EM_AARCH64 = 183`, type `ET_EXEC` / `ET_DYN`; the
+program headers inside the file; for each **`PT_LOAD`** segment with memory, its bytes inside the
+file and its addresses inside the user area (no wrap); at most 16 such segments; **no two segments
+in one 64 KB page** (before v77 the second one silently replaced the first one's page — our
+programs are linked with 64 KB pages, so none did). A file size above the memory size is cut to it,
+as before. A refusal comes with a reason, which the start's error line shows (`cannot load
+SD:/bin/x: segment past end of image`).
+
+**The image object (`TImage`).** One per program in memory:
+
+- for each **read-only** segment (no `PF_W`: `R+X` code, `R` data — 99.8 % of a large program): its
+  64 KB frames, allocated from the app pool, zeroed, and filled **straight from the file** — no
+  whole-file buffer, no second copy, and the file's other sections (symbols, debug information) are
+  never read. Reads are gathered up to 128 KB where the frames follow each other in memory (a read
+  per page where they do not), with a yield every 128 KB, as the old loop did;
+- for each **writable** segment: a copy of its file bytes in the kernel heap (156 KB at most in
+  today's programs), from which every process gets its own pages. A process therefore never needs
+  the file again, which is what lets `pkg` replace a program's file while it runs.
+
+**A process's mapping (`ImageMap`).** The read-only segments' frames are mapped **not owned**
+(`MapPage (..., bOwned = FALSE)`) with `KPAGE_ATTR_APP_CODE` (`PF_X`) or `KPAGE_ATTR_APP_RODATA`;
+the writable ones get fresh owned pages (`MapNewPage`, `APP_DATA`, or `APP_CODE` if `PF_X`, as
+before), the copy's bytes, and a zero bss. The regions are noted as before (`KAPI_VMK_IMAGE`). The
+address space holds one reference on the image (`CAddressSpace::SetImage`), dropped at the very
+end of its destructor. The caller then runs `SyncDataAndInstructionCache()` once, as `LoadELF`
+always did.
+
+**Nothing writes a shared frame after the load.** The loader writes it through the kernel's
+identity mapping before any page table names it; in every process its pages are `AP = RO_ALL` —
+read-only for EL0 **and** for EL1 — so a kapi's copy-out into a program's code or constants
+fails as it always did (`UserWritable` uses `AT S1E0W`), no vm call can change them (`vm_protect`,
+`vm_unmap` and `vm_advise` only work in the mmap arena and the lazy regions), the kernel has no
+debugger stub that patches code, and the teardown frees only the frames flagged `PAGE_SW_OWNED`.
+One difference from before: a read-only segment **without** `PF_X` was mapped read-write; it is
+now really read-only (none of today's programs has one: their constants are in the `R+X` segment).
+
+**The key is the program's full path**, in its canonical form — `ImageCanonPath`, the one function
+that the run, the preload, the unload, the query and the file layer's hook all use:
+
+| Rule | Example |
+|---|---|
+| lower case, the volume included — ASCII letters only | `SD:/Apps/MonApp.App/main` → `sd:/apps/monapp.app/main` |
+| the volume always first: the path's own, else the caller's (`/x`: the root of the working directory's volume; anything else: under the working directory, as `ResolvePath`); no working directory (the kernel's own launches): `SD:/`, which is what FatFs makes of a path without a volume | `ls` in `SD:/bin` → `sd:/bin/ls`; `SD:apps/x.app/main` → `sd:/apps/x.app/main` |
+| the spellings of **one** volume collapse: its name in any case, FatFs's numeric form (`0:` is the first name of `FF_VOLUME_STRS`, `1:` the second…) and the kernel's `SD0:` | `0:/bin/ls`, `SD0:/bin/ls`, `sd:/bin/ls` → `sd:/bin/ls` |
+| two volumes stay two keys: `SD:` (the card's first partition) and `SD1:` … `SD3:` (its others), `USB:`… | `SD1:/apps/x.app/main` → `sd1:/apps/x.app/main` |
+| `/` between the names (`\` too, as FatFs takes it), none doubled, none at the end, no `.` / `..`, a name's trailing dots and spaces dropped (FatFs drops them) | `SD:\apps//x.app/./main.` → `sd:/apps/x.app/main` |
+| at most 255 characters, 64 names deep; beyond: no key (the program is loaded, never shared) | |
+
+Bytes that are not ASCII letters are kept as they are. FAT also folds accented letters, so two
+spellings of one accented name (`É…` / `é…`) are two keys: the file may be in memory twice, and a
+change made through the other spelling is not seen by the hook below — the wrong *file* is never
+run for a path, but an old *version* could be, until `unload`. The same holds for a file reached by
+its 8.3 short name. Onyx's programs have plain ASCII names.
+
+**A start (`CUserProcessTask::Run`, `ProgramImage`).** `ImageOpen (path)`: an image with that key →
+a reference, **the card is not touched** — no open, no directory lookup (the launchers' existence
+check asks the image list first; the user stack's size, `app.txt`'s `stack =`, is kept in the image
+after the first start). None → the file is opened and streamed into a new image. An image **being
+loaded** by another task → the start waits for it (it looks again every 5 ms; the loader yields),
+then shares it; if that load fails, the waiters get its error and nothing is left. A task that is
+loading cannot be killed (it has no address space yet, so no pid).
+
+**Lifetime.** An image lives while a process maps it or while it is **pinned** (a preload).
+Dropping the last reference of an image that is not pinned frees its frames (their `wait_word`
+waiters woken first). `image_unload` — and the file layer's hook — take the **name** and the pin
+away at once: no new process maps it, the processes running it keep it, and its frames go with the
+last of them. Images do not survive a restart.
+
+**Where the file changes, the image loses its name (`ImageFileChanged`).** Since a run of a path
+that has an image never looks at the file, the file kapis tell the image code:
+
+| Operation | Hook |
+|---|---|
+| `remove`, `path_unlink` | the path (a folder: every program under it) |
+| `rename`, `path_rename` | both names; a renamed folder: every program under either name |
+| `file_open` for writing, with `KAPI_O_CREAT` or `KAPI_O_TRUNC`; `file_out` (truncate or append); `save_file` | the path, at the open **and** at the close of the written file (an image made from the half-written file in between is dropped too) |
+| a write to `<folder>/app.txt` | the image of `<folder>/main` stays; it forgets its stack size (read again at its next start) |
+
+Not covered: the accented and short-name spellings above; a card changed on a PC (images do not
+survive a restart, so there is nothing to cover); the kernel's own writes (`lastcrash.txt`, the
+clock file: never programs); `RAM:` and the providers' volumes (`FTP:`): programs are only run from
+FatFs volumes. The hook costs one comparison when no image exists, a path canonicalisation and a
+walk of the image list otherwise; it does no I/O.
+
+**Preload (`image_preload`, `/bin/preload`).** A kernel task (`CPreloadTask`) loads the program's
+image and pins it; the call returns at once. A start during that load waits for it. A preload is
+refused when the image would take the app pool's 16 MB reserve (`VmCommitOK`); a process's own
+start takes what there is, as before. `pkg` asks `image_list (path)` before it replaces a file: a
+kept program is unloaded, replaced, and preloaded again (`user/pkg/pkglib.h` `move`).
+
+**Accounting.** A process's owned pages (`ps`' `PAGES`, `vm_stats.resident`, the crash record) no
+longer include its program's read-only segments: they are counted once, in `meminfo`'s app figure
+(`g_nUserPages + ImagePagesTotal ()`), and listed by `preload`.
+
+**The log.** One line per start, in the kernel log (`kmsg`, docs/04 §8):
+`image SD:/bin/wctest: loaded in 5123 ms, mapped in 3 ms (81856 KB shared, 192 KB private)` —
+`loaded` (read from the card now), `shared` (in memory: no read) or `shared after a wait`; a
+preload logs `image sd:/bin/wctest: loaded in 5123 ms, kept (81856 KB shared)`.
+
+Tests: on the PC `sh tools/tests/run_image_test.sh` (the real `image.cpp` and `elf.cpp`, the
+kernel around them stubbed, ASan: the canonical path, the header checks against crafted files, the
+load, two processes on the same frames, a start waiting for another task's load, a failed load,
+the references and the pin, unload while in use, the hook).
 
 ### `LoadELF(image, size, AS, &entry)`
 
-- Validates the ELF64 header (magic, `ELFCLASS64`, `EM_AARCH64=183`, type `ET_EXEC`/`ET_DYN`).
-- For each **`PT_LOAD`** segment: validates the bounds (file + VA within the user
-  area), chooses the attributes according to `PF_X` (code = `APP_CODE` RO+X, data =
-  `APP_DATA` RW), then `LoadSegment`:
-  - maps all the 64 KB pages covering `[vaddr, vaddr+memsz)` (via `MapNewPage`),
-  - copies `filesz` bytes from the file (the BSS beyond stays zero).
-- `SyncDataAndInstructionCache()` after writing the code, then returns `e_entry`.
+The old entry point, over a whole file in memory. Nothing in the kernel calls it any more; it goes
+through the same code (an image of its own, without a path: never shared), then
+`SyncDataAndInstructionCache()`, and returns `e_entry`.
 
 ### `CUserProcessTask` — one application = one task
 
@@ -746,7 +860,8 @@ the app's folder's `app.txt` asks for it, `stack = 16M` — `AppUserStack`, roun
 8–64 MB):
 1. Creates a fresh `CAddressSpace`.
 2. Installs stdin/stdout, the process handle, argv, cwd.
-3. `LoadELF` into the address space.
+3. Its program's image (v77, *Program images* above): found in memory by its path, else streamed
+   from the file; mapped into the address space (`ImageMap`).
 4. `SetUserData(AS, TASK_USER_DATA_USER)` + `AS->AddTask(this)` (its main task) +
    `Activate()` (switches `TTBR0`/ASID).
 5. Makes the **user stack** below `USER_STACK_TOP` a lazy `STACK` region (8 MB, or `app.txt`'s
@@ -882,7 +997,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 76`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 77`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -934,7 +1049,11 @@ needs), 11 entries after `poll` (slots 242–252): `sock_pair` (local sockets, S
 DGRAM), `sock_sendmsg` / `sock_recvmsg` (handles carried between processes), `shm_create` /
 `shm_open` / `shm_unlink` / `shm_ctl` / `shm_map` (shared memory), `handle_close`, `spawn_ex2` /
 `get_handles` (handles given to a child); `KAPI_SO_RCVBUF` / `SNDBUF` / `PEERPID` / `DOMAIN`,
-`KAPI_VMK_SHM` (*v76: IPC* below).
+`KAPI_VMK_SHM` (*v76: IPC* below),
+v77 = **program images** (§7 *Program images*): a program is streamed from its file once and its
+read-only segments are shared by its processes — no call changes for that —, 3 entries after
+`get_handles` (slots 253–255): `image_preload`, `image_unload`, `image_list`; `struct
+kapi_image_info`, `KAPI_IMG_*` (*v77: program images* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1280,6 +1399,25 @@ Tests: `/bin/ipctest` (`user/bin/ipctest.c`, kapi level), `posixtest ipc` (the P
 `tools/tests/run_ipc_test.sh` (the real `lsock.cpp`, `shm.cpp`, `handle.cpp` with two handle tables,
 ASan) and the posixsim bench (its fake table implements v76 over Linux socketpairs, `SCM_RIGHTS` and
 memfd).
+
+### v77: program images
+
+The loader's image objects (§7 *Program images*: what they are, their key, their lifetime, the
+hook). `kernel/proc/image.cpp`, the three entries in `kernel/sys/kapi.cpp`, the preload task in
+`kernel.cpp`. Slots 253–255; `struct kapi_image_info` (280 bytes: `size` — the bytes of memory
+the image holds, once whatever the processes —, `file_size`, `refs`, `flags`, `path[256]` — its
+key). A path is a program file's, relative to the caller's working directory; every call returns
+≥ 0 or −`KAPI_Exxx`.
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 253 | `image_preload (path)` | the program loaded ahead and **kept**: a kernel task reads the file, the call returns at once; from then on a run of that path maps the image without reading the card, and the image stays when no process runs it. Kept already: 0, nothing done → 0; `ENOENT` (no such file), `ENAMETOOLONG`, `ENOMEM`, `EFAULT`. A load that fails later is in the kernel log |
+| 254 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
+| 255 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
+
+Users: `/bin/preload`, `/bin/unload` (docs/04 §8), `pkg` (`pkglib.h` `move`: a kept program
+unloaded before its file is replaced, preloaded again after). `user/kapi.h`'s wrappers return
+`-KAPI_ENOSYS` on an older kernel. Tests: `sh tools/tests/run_image_test.sh` (§7).
 
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against
@@ -2182,7 +2320,7 @@ full` also fills the volume).
 | `EL0_USTACK_MIN` | 8 MB (an app's user stack, lazy since v75; `app.txt` `stack`, 8–64 MB) | el0.h |
 | `USER_MMAP_BASE` .. `USER_MMAP_END` | 34 GB .. 60 GB (the mmap arena, v75) | layout.h |
 | `USER_THREAD_STACKS` | 32 GB (+ 32 MB a thread) | el0.h |
-| `KAPI_ABI_VERSION` | 75 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 77 | kapi_abi.h |
 | `RAM:` volume | 128 MB by default (≤ ¼ of the free page memory; `system.ini` `ramfs=`), 32 MB reserve, 16384 files + folders, 128 MB a file | ramfs.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | Tasks | no limit (a linked list, §5; Circle's `MAX_TASKS` is not used) | scheduler.h |
