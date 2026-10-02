@@ -218,9 +218,29 @@ the Onyx files). What was found on the way, beyond the study below:
 **Not done / not tested yet in step 2**: the memory on the Pi was not measured, the time only as a whole;
 **the network path is compiled, not exercised** (curl with
 the mbedTLS glue of `MbedTLSHelper.cpp`: a page loaded over HTTPS comes with step 3's network
-process, or a `wctest` with a real loader); **WebCrypto** is digests only (decision below);
+process, or a `wctest` with a real loader);
 the public suffix list is an interim rule (`PublicSuffixStoreOnyx.cpp`); WOFF2 fonts, video and
 audio are off; `PlatformScreenOnyx` answers 1920 × 1080.
+
+**WebCrypto on mbedTLS** (patch `0012`; the user's choice, 2026-10-02: one crypto stack rather than
+OpenSSL's libcrypto beside it). `Source/WebCore/crypto/mbedtls/`, on mbedTLS's classic API: HMAC,
+AES-CBC / CTR / GCM / KW (CFB-8 too, which this WebKit revision refuses from script on every port),
+PBKDF2, HKDF, ECDSA and ECDH on P-256 / P-384 / P-521, RSASSA-PKCS1-v1_5, RSA-OAEP, RSA-PSS; the
+keys' raw, JWK, SPKI and PKCS#8 forms are parsed and written there (mbedTLS's own parser accepts
+more than WebCrypto allows, and it has no PKCS#8 writer). mbedTLS is built without threading and
+its RSA / EC operations write into the context, while WebCrypto runs on work queues: **every
+operation works on a private copy of the key**. RSA key generation runs on a work queue. Nothing
+was added to the mbedTLS port. Not there: Ed25519 / X25519 (as the OpenSSL back end); the wrapping
+of serialised keys passes them through (as the OpenSSL back end). `sh tools/webkit/test-webcrypto.sh`
+runs `tests/crypto1.html` in `wctest` under qemu (`WCTEST_WAIT_TITLE`: the run loop turns until the
+page's title says it is done): **299 checks pass** — published vectors (FIPS 180-4, RFC 2202 / 4231
+/ 3394 / 5869 / 5903 / 6070 / 6979 / 7515 / 7914, SP 800-38A, the GCM specification), values and
+DER encodings checked against OpenSSL (`tests/gen_crypto_vectors.py`, which made the page's
+vectors), and refusals (corrupted tags and signatures, points off the curve, truncated DER). Not
+run on the Pi. **To know**: the keys, nonces and salts generated on the Pi are as good as the
+kernel's random source, today a tick-seeded software generator (`onyx_entropy.c`) — to be made a
+real one before the browser is used for anything that matters; mbedTLS's AES is table-based
+(hardware AES is off in the port): not constant-time with respect to the cache.
 
 ### The design (the study it started from)
 
@@ -272,9 +292,10 @@ What a study of the pinned sources found (read, not compiled: verify when buildi
 - **WebCrypto cannot be switched off** (no option; its sources are unconditional) and its only
   portable back ends are OpenSSL (`crypto/openssl/`, 2700 lines) and gcrypt. **First build: a stub
   back end** (every `platform*` function answers NotSupported; SHA digests through
-  `PAL::CryptoDigest` on mbedTLS). **Open decision for the user, later**: a real back end on mbedTLS
-  (one crypto stack, about 3000 lines of ours to maintain) or OpenSSL's libcrypto ported for it
-  (Apache-2.0, WebKit's code unchanged, a second crypto library on the card).
+  `PAL::CryptoDigest` on mbedTLS). The decision was between a real back end on mbedTLS (one
+  crypto stack, about 3000 lines of ours to maintain) and OpenSSL's libcrypto ported for it
+  (Apache-2.0, WebKit's code unchanged, a second crypto library on the card): **mbedTLS, done**
+  (above).
 - **Others**: libpsl (public suffixes) is required by `Curl.cmake`: a `PublicSuffixStoreOnyx.cpp`
   first, the library (MIT) later — cookies and site isolation need a real list. `USE_WOFF2` OFF
   first (FreeType with brotli, or libwoff2, later). No libwpe: `PasteboardOnyx`,
@@ -343,9 +364,14 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    interpreter; C_LOOP as an alternative). *Done: validated on the Pi, 2026-10-02.*
 2. **WebCore** (Skia CPU raster from WebKit's own copy, no GL, `SkFontMgr_onyx` instead of
    fontconfig, curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2). *Builds, links,
-   renders a page on the bench and on the Pi (2026-10-02); the network path, WebCrypto, WOFF2 and
-   media are still to do.*
+   renders a page on the bench and on the Pi (2026-10-02); WebCrypto on mbedTLS passes its tests
+   on the bench; the network path, WOFF2 and media are still to do.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
+   *Under way (2026-10-02): the port's files and the guard patches are written from
+   `docs/WEBKIT2-STUDY.md` (`Source/WebKit/PlatformOnyx.cmake`, `ONYX_WEBKIT`, the software
+   drawing path behind `USE(NON_COMPOSITED_DRAWING_AREA)`, the launcher of the one multi-call
+   program, the C API with the Onyx view); `sh tools/webkit/build-webkit.sh` configures and
+   builds `libWebKit.a`; the first compile passes are running. Not committed as a patch yet.*
 4. The Onyx view; then, in the order the user asked for (2026-10-02): **the JavaScript JIT before
    video**. The JIT: executable memory for a program's own mappings in the kernel (`PROT_EXEC`
    through `vm_map` / `vm_protect`, W^X, the instruction cache flushed from EL0: a kapi change),

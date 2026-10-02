@@ -5,6 +5,7 @@
 //
 //   wctest <page.html> <out.png> [width height]        (default 800 600)
 //   WCTEST_SCRIPTS=0 wctest ...                         JavaScript off
+//   WCTEST_WAIT_TITLE=done: [WCTEST_TIMEOUT=60] wctest ...   turn the run loop until the title starts with "done:"
 //
 // and prints the document's title, the number of elements and the body's text, which the bench
 // (tools/webkit/test-webcore.sh) checks. No subresources: a page's style sheets, scripts and
@@ -44,8 +45,10 @@
 #include <pal/SessionID.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <wtf/FileSystem.h>
 #include <wtf/MainThread.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
 
@@ -161,6 +164,26 @@ int main(int argc, char** argv)
     documentLoader->writer().begin(URL { "file:///wctest.html"_s });
     documentLoader->writer().addData(SharedBuffer::create(WTF::move(*contents)));
     documentLoader->writer().end();
+
+    // A page whose script goes on after the load (promises, timers, work queues: crypto.subtle)
+    // says when it is done by its title: with WCTEST_WAIT_TITLE=<prefix> the main run loop is
+    // turned until the title starts with that, or WCTEST_TIMEOUT seconds have passed.
+    if (const char* waitTitle = getenv("WCTEST_WAIT_TITLE"); waitTitle && *waitTitle) {
+        const char* timeoutString = getenv("WCTEST_TIMEOUT");
+        double timeout = timeoutString ? atof(timeoutString) : 0;
+        auto deadline = MonotonicTime::now() + Seconds(timeout > 0 ? timeout : 60);
+        auto prefix = String::fromUTF8(waitTitle);
+        auto titleIsThere = [&] {
+            RefPtr current = frame->document();
+            return current && current->title().startsWith(prefix);
+        };
+        while (!titleIsThere() && MonotonicTime::now() < deadline) {
+            RunLoop::cycle();
+            usleep(1000);
+        }
+        if (!titleIsThere())
+            fprintf(stderr, "wctest: the title did not come to start with \"%s\" in time\n", waitTitle);
+    }
 
     RefPtr document = frame->document();
     if (!document) {

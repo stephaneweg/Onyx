@@ -1,0 +1,3556 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 23:58:22 +0200
+Subject: [PATCH 12/12] [Onyx] WebCrypto on mbedTLS; PlatformPasteboard for
+ Onyx
+
+The WebCrypto back end of USE(MBEDTLS), on mbedTLS's classic API: HMAC, AES-CBC / CTR / GCM / KW /
+CFB8, PBKDF2, HKDF, ECDSA and ECDH (P-256, P-384, P-521), RSASSA-PKCS1-v1_5, RSA-OAEP, RSA-PSS
+(HAVE_RSA_PSS), the keys' raw / JWK / SPKI / PKCS#8 forms parsed and written here (mbedTLS's own
+parser accepts more than WebCrypto allows, and it has no PKCS#8 writer). mbedTLS is built without
+threading and its RSA / EC operations write into the context: every operation works on a private
+copy of the key. RSA key generation runs on a work queue. The stubs
+(CryptoNotImplementedMbedTLS.cpp) are gone.
+
+PlatformPasteboard for PLATFORM(ONYX) beside USE(LIBWPE): an in-process clipboard (text and HTML)
+until libonyxposix reaches the system's.
+---
+ Source/WTF/wtf/Platform.h                     |   2 +-
+ Source/WebCore/PlatformOnyx.cmake             |  19 +-
+ .../mbedtls/CryptoAlgorithmAESCBCMbedTLS.cpp  |  91 ++++
+ .../mbedtls/CryptoAlgorithmAESCFBMbedTLS.cpp  |  87 +++
+ .../mbedtls/CryptoAlgorithmAESCTRMbedTLS.cpp  | 120 +++++
+ .../mbedtls/CryptoAlgorithmAESGCMMbedTLS.cpp  | 118 +++++
+ .../mbedtls/CryptoAlgorithmAESKWMbedTLS.cpp   | 106 ++++
+ .../mbedtls/CryptoAlgorithmECDHMbedTLS.cpp    |  57 ++
+ .../mbedtls/CryptoAlgorithmECDSAMbedTLS.cpp   | 107 ++++
+ .../mbedtls/CryptoAlgorithmHKDFMbedTLS.cpp    |  59 +++
+ .../mbedtls/CryptoAlgorithmHMACMbedTLS.cpp    |  74 +++
+ .../mbedtls/CryptoAlgorithmPBKDF2MbedTLS.cpp  |  64 +++
+ ...ryptoAlgorithmRSASSA_PKCS1_v1_5MbedTLS.cpp |  91 ++++
+ .../CryptoAlgorithmRSA_OAEPMbedTLS.cpp        | 100 ++++
+ .../mbedtls/CryptoAlgorithmRSA_PSSMbedTLS.cpp | 103 ++++
+ .../CryptoAlgorithmRegistryMbedTLS.cpp        |  34 +-
+ .../crypto/mbedtls/CryptoKeyECMbedTLS.cpp     | 499 ++++++++++++++++++
+ .../crypto/mbedtls/CryptoKeyRSAMbedTLS.cpp    | 480 +++++++++++++++++
+ .../mbedtls/CryptoNotImplementedMbedTLS.cpp   | 364 -------------
+ .../crypto/mbedtls/MbedTLSUtilities.cpp       | 302 +++++++++++
+ .../WebCore/crypto/mbedtls/MbedTLSUtilities.h | 165 ++++++
+ .../SerializedCryptoKeyWrapMbedTLS.cpp        |  70 +++
+ Source/WebCore/platform/PlatformPasteboard.h  |   6 +-
+ .../platform/onyx/PlatformPasteboardOnyx.cpp  | 180 +++++++
+ 24 files changed, 2926 insertions(+), 372 deletions(-)
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCBCMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCFBMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCTRMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESGCMMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESKWMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDHMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDSAMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmHKDFMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmHMACMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmPBKDF2MbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSASSA_PKCS1_v1_5MbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_OAEPMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_PSSMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoKeyECMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/CryptoKeyRSAMbedTLS.cpp
+ delete mode 100644 Source/WebCore/crypto/mbedtls/CryptoNotImplementedMbedTLS.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/MbedTLSUtilities.cpp
+ create mode 100644 Source/WebCore/crypto/mbedtls/MbedTLSUtilities.h
+ create mode 100644 Source/WebCore/crypto/mbedtls/SerializedCryptoKeyWrapMbedTLS.cpp
+ create mode 100644 Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp
+
+diff --git a/Source/WTF/wtf/Platform.h b/Source/WTF/wtf/Platform.h
+index 0c3ba744..7eb8c7a4 100644
+--- a/Source/WTF/wtf/Platform.h
++++ b/Source/WTF/wtf/Platform.h
+@@ -153,7 +153,7 @@
+ #endif
+ 
+ /* FIXME: The availability of RSA_PSS should not depend on the policy decision to USE(GCRYPT). */
+-#if PLATFORM(MAC) || PLATFORM(IOS) || PLATFORM(MACCATALYST) || PLATFORM(VISION) || USE(GCRYPT) || USE(OPENSSL)
++#if PLATFORM(MAC) || PLATFORM(IOS) || PLATFORM(MACCATALYST) || PLATFORM(VISION) || USE(GCRYPT) || USE(OPENSSL) || USE(MBEDTLS)
+ #define HAVE_RSA_PSS 1
+ #endif
+ 
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+index 091c2e6d..fe4d682a 100644
+--- a/Source/WebCore/PlatformOnyx.cmake
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -19,8 +19,24 @@ list(APPEND WebCore_SOURCES
+     accessibility/onyx/AXObjectCacheOnyx.cpp
+     accessibility/onyx/AccessibilityObjectOnyx.cpp
+ 
++    crypto/mbedtls/CryptoAlgorithmAESCBCMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmAESCFBMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmAESCTRMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmAESGCMMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmAESKWMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmECDHMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmECDSAMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmHKDFMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmHMACMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmPBKDF2MbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmRSASSA_PKCS1_v1_5MbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmRSA_OAEPMbedTLS.cpp
++    crypto/mbedtls/CryptoAlgorithmRSA_PSSMbedTLS.cpp
+     crypto/mbedtls/CryptoAlgorithmRegistryMbedTLS.cpp
+-    crypto/mbedtls/CryptoNotImplementedMbedTLS.cpp
++    crypto/mbedtls/CryptoKeyECMbedTLS.cpp
++    crypto/mbedtls/CryptoKeyRSAMbedTLS.cpp
++    crypto/mbedtls/MbedTLSUtilities.cpp
++    crypto/mbedtls/SerializedCryptoKeyWrapMbedTLS.cpp
+ 
+     editing/libwpe/EditorLibWPE.cpp
+ 
+@@ -41,6 +57,7 @@ list(APPEND WebCore_SOURCES
+ 
+     platform/onyx/MIMETypeRegistryOnyx.cpp
+     platform/onyx/PlatformKeyboardEventOnyx.cpp
++    platform/onyx/PlatformPasteboardOnyx.cpp
+     platform/onyx/PlatformScreenOnyx.cpp
+     platform/onyx/UserAgentOnyx.cpp
+ 
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCBCMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCBCMbedTLS.cpp
+new file mode 100644
+index 00000000..8c8e0b2f
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCBCMbedTLS.cpp
+@@ -0,0 +1,91 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmAESCBC.h"
++
++#include "CryptoAlgorithmAesCbcCfbParams.h"
++#include "CryptoKeyAES.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <array>
++#include <mbedtls/cipher.h>
++
++namespace WebCore {
++
++static constexpr size_t aesBlockSize = 16;
++
++// AES-CBC through mbedTLS's cipher layer, which does the PKCS #7 padding (and checks it, when
++// decrypting, without branching on the padding bytes).
++static std::optional<Vector<uint8_t>> crypt(mbedtls_operation_t operation, const Vector<uint8_t>& key, const Vector<uint8_t>& iv, const Vector<uint8_t>& input, CryptoAlgorithmAESCBC::Padding padding)
++{
++    // WebCrypto always gives 16 bytes (the generic code checks); WebCore's own callers (the
++    // authenticator's PIN protocol) give none and mean a block of zeros.
++    static const std::array<uint8_t, aesBlockSize> zeroIV { };
++    if (!iv.isEmpty() && iv.size() != aesBlockSize)
++        return std::nullopt;
++    const uint8_t* ivData = iv.isEmpty() ? zeroIV.data() : iv.span().data();
++
++    const mbedtls_cipher_info_t* info = mbedtls_cipher_info_from_values(MBEDTLS_CIPHER_ID_AES, key.size() * 8, MBEDTLS_MODE_CBC);
++    if (!info)
++        return std::nullopt;
++
++    mbedtls_cipher_context_t context;
++    mbedtls_cipher_init(&context);
++
++    // (room for the padding block when encrypting; mbedTLS wants a block more when decrypting too)
++    Vector<uint8_t> output(input.size() + aesBlockSize);
++    size_t outputLength = 0;
++    bool succeeded = !mbedtls_cipher_setup(&context, info)
++        && !mbedtls_cipher_setkey(&context, key.span().data(), key.size() * 8, operation)
++        && !mbedtls_cipher_set_padding_mode(&context, padding == CryptoAlgorithmAESCBC::Padding::Yes ? MBEDTLS_PADDING_PKCS7 : MBEDTLS_PADDING_NONE)
++        && !mbedtls_cipher_crypt(&context, ivData, aesBlockSize,MbedTLS::dataOrEmpty(input.span()), input.size(), output.mutableSpan().data(), &outputLength);
++    mbedtls_cipher_free(&context);
++
++    if (!succeeded || outputLength > output.size()) {
++        MbedTLS::zeroize(output);
++        return std::nullopt;
++    }
++    output.shrink(outputLength);
++    return output;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCBC::platformEncrypt(const CryptoAlgorithmAesCbcCfbParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& plainText, Padding padding)
++{
++    auto output = crypt(MBEDTLS_ENCRYPT, key.key(), parameters.ivVector(), plainText, padding);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCBC::platformDecrypt(const CryptoAlgorithmAesCbcCfbParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& cipherText, Padding padding)
++{
++    auto output = crypt(MBEDTLS_DECRYPT, key.key(), parameters.ivVector(), cipherText, padding);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCFBMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCFBMbedTLS.cpp
+new file mode 100644
+index 00000000..c01b591d
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCFBMbedTLS.cpp
+@@ -0,0 +1,87 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmAESCFB.h"
++
++#include "CryptoAlgorithmAesCbcCfbParams.h"
++#include "CryptoKeyAES.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <array>
++#include <mbedtls/aes.h>
++#include <mbedtls/platform_util.h>
++
++namespace WebCore {
++
++static constexpr size_t aesBlockSize = 16;
++
++// AES-CFB8 (WebKit's "AES-CFB-8"): eight bits of feedback, one block encryption per byte.
++static std::optional<Vector<uint8_t>> cfb8(int mode, const Vector<uint8_t>& key, const Vector<uint8_t>& iv, const Vector<uint8_t>& input)
++{
++    if (iv.size() != aesBlockSize)
++        return std::nullopt;
++
++    size_t keySize = key.size() * 8;
++    if (keySize != 128 && keySize != 192 && keySize != 256)
++        return std::nullopt;
++
++    mbedtls_aes_context context;
++    mbedtls_aes_init(&context);
++
++    // (mbedTLS advances the IV it is given; CFB uses the cipher's encryption in both directions)
++    std::array<uint8_t, aesBlockSize> shiftRegister;
++    memcpy(shiftRegister.data(), iv.span().data(), aesBlockSize);
++
++    Vector<uint8_t> output(input.size());
++    bool succeeded = !mbedtls_aes_setkey_enc(&context, key.span().data(), keySize)
++        && !mbedtls_aes_crypt_cfb8(&context, mode, input.size(), shiftRegister.data(), MbedTLS::dataOrEmpty(input.span()), output.mutableSpan().data());
++    mbedtls_aes_free(&context);
++    mbedtls_platform_zeroize(shiftRegister.data(), shiftRegister.size());
++
++    if (!succeeded) {
++        MbedTLS::zeroize(output);
++        return std::nullopt;
++    }
++    return output;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCFB::platformEncrypt(const CryptoAlgorithmAesCbcCfbParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& plainText)
++{
++    auto output = cfb8(MBEDTLS_AES_ENCRYPT, key.key(), parameters.ivVector(), plainText);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCFB::platformDecrypt(const CryptoAlgorithmAesCbcCfbParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& cipherText)
++{
++    auto output = cfb8(MBEDTLS_AES_DECRYPT, key.key(), parameters.ivVector(), cipherText);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCTRMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCTRMbedTLS.cpp
+new file mode 100644
+index 00000000..a3ebabd4
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESCTRMbedTLS.cpp
+@@ -0,0 +1,120 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmAESCTR.h"
++
++#include "CryptoAlgorithmAesCtrParams.h"
++#include "CryptoKeyAES.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <array>
++#include <mbedtls/aes.h>
++#include <mbedtls/platform_util.h>
++
++namespace WebCore {
++
++static constexpr size_t aesBlockSize = 16;
++
++static bool ctr(mbedtls_aes_context& context, const Vector<uint8_t>& counter, std::span<const uint8_t> input, std::span<uint8_t> output)
++{
++    if (counter.size() != aesBlockSize)
++        return false;
++    if (input.empty())
++        return true;
++
++    std::array<uint8_t, aesBlockSize> counterBlock;
++    std::array<uint8_t, aesBlockSize> streamBlock;
++    memcpy(counterBlock.data(), counter.span().data(), aesBlockSize);
++    size_t offset = 0;
++    int result = mbedtls_aes_crypt_ctr(&context, input.size(), &offset, counterBlock.data(), streamBlock.data(), input.data(), output.data());
++    mbedtls_platform_zeroize(streamBlock.data(), streamBlock.size());
++    return !result;
++}
++
++// mbedTLS's CTR mode counts with the whole block, WebCrypto with the block's last `counterLength`
++// bits only (the others are a nonce that must not change). As the OpenSSL back end does, the data
++// is cut where that counter would wrap: before it, counting with the whole block is the same
++// thing (nothing carries out of the counter's bits); after it, the counter starts again from
++// zero under the same nonce.
++static std::optional<Vector<uint8_t>> crypt(const Vector<uint8_t>& key, const Vector<uint8_t>& counter, size_t counterLength, const Vector<uint8_t>& inputText)
++{
++    if (counter.size() != aesBlockSize || !counterLength || counterLength > aesBlockSize * 8)
++        return std::nullopt;
++
++    size_t keySize = key.size() * 8;
++    if (keySize != 128 && keySize != 192 && keySize != 256)
++        return std::nullopt;
++
++    const size_t blocks = inputText.size() / aesBlockSize + (inputText.size() % aesBlockSize ? 1 : 0);
++
++    // Detect loop
++    if (counterLength < sizeof(size_t) * 8 && blocks > (static_cast<size_t>(1) << counterLength))
++        return std::nullopt;
++
++    // Calculate capacity before overflow
++    CryptoAlgorithmAESCTR::CounterBlockHelper counterBlockHelper(counter, counterLength);
++    size_t capacity = counterBlockHelper.countToOverflowSaturating();
++
++    // Divide data into two parts if necessary
++    size_t headSize = inputText.size();
++    if (capacity < blocks)
++        headSize = capacity * aesBlockSize;
++
++    mbedtls_aes_context context;
++    mbedtls_aes_init(&context);
++
++    Vector<uint8_t> outputText(inputText.size());
++    // (CTR uses the cipher's encryption in both directions)
++    bool succeeded = !mbedtls_aes_setkey_enc(&context, key.span().data(), keySize)
++        && ctr(context, counter, inputText.span().first(headSize), outputText.mutableSpan().first(headSize));
++    if (succeeded && capacity < blocks)
++        succeeded = ctr(context, counterBlockHelper.counterVectorAfterOverflow(), inputText.span().subspan(headSize), outputText.mutableSpan().subspan(headSize));
++    mbedtls_aes_free(&context);
++
++    if (!succeeded) {
++        MbedTLS::zeroize(outputText);
++        return std::nullopt;
++    }
++    return outputText;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCTR::platformEncrypt(const CryptoAlgorithmAesCtrParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& plainText)
++{
++    auto output = crypt(key.key(), parameters.counterVector(), parameters.length, plainText);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCTR::platformDecrypt(const CryptoAlgorithmAesCtrParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& cipherText)
++{
++    auto output = crypt(key.key(), parameters.counterVector(), parameters.length, cipherText);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESGCMMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESGCMMbedTLS.cpp
+new file mode 100644
+index 00000000..ffb5bd98
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESGCMMbedTLS.cpp
+@@ -0,0 +1,118 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmAESGCM.h"
++
++#include "CryptoAlgorithmAesGcmParams.h"
++#include "CryptoKeyAES.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <mbedtls/gcm.h>
++
++namespace WebCore {
++
++class GCMContext {
++    WTF_MAKE_NONCOPYABLE(GCMContext);
++public:
++    GCMContext() { mbedtls_gcm_init(&m_context); }
++    ~GCMContext() { mbedtls_gcm_free(&m_context); }
++
++    bool setKey(const Vector<uint8_t>& key)
++    {
++        size_t keySize = key.size() * 8;
++        if (keySize != 128 && keySize != 192 && keySize != 256)
++            return false;
++        return !mbedtls_gcm_setkey(&m_context, MBEDTLS_CIPHER_ID_AES, key.span().data(), keySize);
++    }
++
++    mbedtls_gcm_context* get() LIFETIME_BOUND { return &m_context; }
++
++private:
++    mbedtls_gcm_context m_context;
++};
++
++// The result is the cipher text followed by the tag (tagLength bytes: 4 and 8, then 12 to 16).
++static std::optional<Vector<uint8_t>> cryptEncrypt(const Vector<uint8_t>& key, const Vector<uint8_t>& iv, const Vector<uint8_t>& plainText, const Vector<uint8_t>& additionalData, uint8_t tagLength)
++{
++    GCMContext context;
++    if (!context.setKey(key))
++        return std::nullopt;
++
++    Vector<uint8_t> cipherText(plainText.size() + tagLength);
++    size_t tagOffset = plainText.size();
++
++    // (mbedTLS refuses an empty IV and a tag outside 4 to 16 bytes)
++    if (mbedtls_gcm_crypt_and_tag(context.get(), MBEDTLS_GCM_ENCRYPT, plainText.size(), MbedTLS::dataOrEmpty(iv.span()), iv.size(),
++        MbedTLS::dataOrEmpty(additionalData.span()), additionalData.size(), MbedTLS::dataOrEmpty(plainText.span()), cipherText.mutableSpan().data(),
++        tagLength, cipherText.mutableSpan().subspan(tagOffset).data()))
++        return std::nullopt;
++
++    return cipherText;
++}
++
++static std::optional<Vector<uint8_t>> cryptDecrypt(const Vector<uint8_t>& key, const Vector<uint8_t>& iv, const Vector<uint8_t>& cipherText, const Vector<uint8_t>& additionalData, uint8_t tagLength)
++{
++    if (cipherText.size() < tagLength)
++        return std::nullopt;
++
++    GCMContext context;
++    if (!context.setKey(key))
++        return std::nullopt;
++
++    size_t cipherTextLength = cipherText.size() - tagLength;
++    auto tag = cipherText.span().subspan(cipherTextLength);
++    // (never empty, so that mbedTLS has somewhere to write when there is no text, only a tag)
++    Vector<uint8_t> plainText(cipherTextLength + 1);
++
++    // Decrypts, then compares the tags in constant time; the text is wiped if they differ.
++    if (mbedtls_gcm_auth_decrypt(context.get(), cipherTextLength, MbedTLS::dataOrEmpty(iv.span()), iv.size(),
++        MbedTLS::dataOrEmpty(additionalData.span()), additionalData.size(), tag.data(), tagLength,
++        cipherText.span().data(), plainText.mutableSpan().data())) {
++        MbedTLS::zeroize(plainText);
++        return std::nullopt;
++    }
++
++    plainText.shrink(cipherTextLength);
++    return plainText;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESGCM::platformEncrypt(const CryptoAlgorithmAesGcmParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& plainText)
++{
++    auto output = cryptEncrypt(key.key(), parameters.ivVector(), plainText, parameters.additionalDataVector(), parameters.tagLength.value_or(0) / 8);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESGCM::platformDecrypt(const CryptoAlgorithmAesGcmParams& parameters, const CryptoKeyAES& key, const Vector<uint8_t>& cipherText)
++{
++    auto output = cryptDecrypt(key.key(), parameters.ivVector(), cipherText, parameters.additionalDataVector(), parameters.tagLength.value_or(0) / 8);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESKWMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESKWMbedTLS.cpp
+new file mode 100644
+index 00000000..c6a68a1b
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmAESKWMbedTLS.cpp
+@@ -0,0 +1,106 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmAESKW.h"
++
++#include "CryptoKeyAES.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <mbedtls/nist_kw.h>
++
++namespace WebCore {
++
++static constexpr size_t semiblockSize = 8;
++
++// AES Key Wrap (RFC 3394, NIST SP 800-38F's KW: no padding): the result is 8 bytes longer.
++static std::optional<Vector<uint8_t>> cryptWrapKey(const Vector<uint8_t>& key, const Vector<uint8_t>& data)
++{
++    // (two semiblocks at least)
++    if (data.size() % semiblockSize || data.size() < 2 * semiblockSize)
++        return std::nullopt;
++
++    size_t keySize = key.size() * 8;
++    if (keySize != 128 && keySize != 192 && keySize != 256)
++        return std::nullopt;
++
++    mbedtls_nist_kw_context context;
++    mbedtls_nist_kw_init(&context);
++
++    Vector<uint8_t> cipherText(data.size() + semiblockSize);
++    size_t outputLength = 0;
++    bool succeeded = !mbedtls_nist_kw_setkey(&context, MBEDTLS_CIPHER_ID_AES, key.span().data(), keySize, 1)
++        && !mbedtls_nist_kw_wrap(&context, MBEDTLS_KW_MODE_KW, data.span().data(), data.size(), cipherText.mutableSpan().data(), &outputLength, cipherText.size());
++    mbedtls_nist_kw_free(&context);
++
++    if (!succeeded || outputLength != cipherText.size())
++        return std::nullopt;
++    return cipherText;
++}
++
++static std::optional<Vector<uint8_t>> cryptUnwrapKey(const Vector<uint8_t>& key, const Vector<uint8_t>& data)
++{
++    if (data.size() % semiblockSize || data.size() < 3 * semiblockSize)
++        return std::nullopt;
++
++    size_t keySize = key.size() * 8;
++    if (keySize != 128 && keySize != 192 && keySize != 256)
++        return std::nullopt;
++
++    mbedtls_nist_kw_context context;
++    mbedtls_nist_kw_init(&context);
++
++    // The integrity check value is compared in constant time by mbedTLS, which wipes the output
++    // when it is wrong.
++    Vector<uint8_t> plainText(data.size() - semiblockSize);
++    size_t outputLength = 0;
++    bool succeeded = !mbedtls_nist_kw_setkey(&context, MBEDTLS_CIPHER_ID_AES, key.span().data(), keySize, 0)
++        && !mbedtls_nist_kw_unwrap(&context, MBEDTLS_KW_MODE_KW, data.span().data(), data.size(), plainText.mutableSpan().data(), &outputLength, plainText.size());
++    mbedtls_nist_kw_free(&context);
++
++    if (!succeeded || outputLength != plainText.size()) {
++        MbedTLS::zeroize(plainText);
++        return std::nullopt;
++    }
++    return plainText;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformWrapKey(const CryptoKeyAES& key, const Vector<uint8_t>& data)
++{
++    auto output = cryptWrapKey(key.key(), data);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformUnwrapKey(const CryptoKeyAES& key, const Vector<uint8_t>& data)
++{
++    auto output = cryptUnwrapKey(key.key(), data);
++    if (!output)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*output);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDHMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDHMbedTLS.cpp
+new file mode 100644
+index 00000000..4db7b34a
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDHMbedTLS.cpp
+@@ -0,0 +1,57 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmECDH.h"
++
++#include "CryptoKeyEC.h"
++#include "MbedTLSUtilities.h"
++#include <mbedtls/ecdh.h>
++
++namespace WebCore {
++
++std::optional<Vector<uint8_t>> CryptoAlgorithmECDH::platformDeriveBits(const CryptoKeyEC& baseKey, const CryptoKeyEC& publicKey)
++{
++    if (baseKey.type() != CryptoKeyType::Private || baseKey.namedCurve() != publicKey.namedCurve())
++        return std::nullopt;
++
++    // Copies of both keys: mbedTLS writes into the group it computes with.
++    MbedTLS::ECKeyParts base;
++    MbedTLS::ECKeyParts peer;
++    if (!base.exportFrom(baseKey.platformKey().get()) || !peer.exportFrom(publicKey.platformKey().get()))
++        return std::nullopt;
++
++    // The shared secret is the x coordinate of d * Q. mbedTLS checks that Q is on the curve (it
++    // was checked when the key was imported, too) and blinds the multiplication with the random
++    // numbers it is given.
++    MbedTLS::BigNumber z;
++    if (mbedtls_ecdh_compute_shared(base.group.get(), z.get(), peer.q.get(), base.d.get(), MbedTLS::randomCallback, nullptr))
++        return std::nullopt;
++
++    // As a field element: as long as the curve's prime, zeros in front.
++    return MbedTLS::convertToBytesExpand(z.get(), (baseKey.keySizeInBits() + 7) / 8);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDSAMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDSAMbedTLS.cpp
+new file mode 100644
+index 00000000..cc7e0cbc
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmECDSAMbedTLS.cpp
+@@ -0,0 +1,107 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmECDSA.h"
++
++#include "CryptoAlgorithmEcdsaParams.h"
++#include "CryptoKeyEC.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <mbedtls/ecdsa.h>
++
++namespace WebCore {
++
++// WebCrypto's ECDSA signature is r and s one after the other, each as long as the curve's order
++// (IEEE P1363), not the DER SEQUENCE of X9.62: hence mbedTLS's ecdsa functions that give and take
++// the two numbers, not its pk layer.
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmECDSA::platformSign(const CryptoAlgorithmEcdsaParams& parameters, const CryptoKeyEC& key, const Vector<uint8_t>& data)
++{
++    size_t keySizeInBytes = (key.keySizeInBits() + 7) / 8;
++
++    auto md = MbedTLS::digestAlgorithm(parameters.hashIdentifier);
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    auto digest = MbedTLS::calculateDigest(md, data.span());
++    if (!digest)
++        return Exception { ExceptionCode::OperationError };
++
++    if (key.type() != CryptoKeyType::Private)
++        return Exception { ExceptionCode::OperationError };
++
++    // A copy of the key: mbedTLS writes into the group it computes with.
++    MbedTLS::ECKeyParts parts;
++    if (!parts.exportFrom(key.platformKey().get()))
++        return Exception { ExceptionCode::OperationError };
++
++    // A random nonce (and blinding) from the system's random numbers; mbedTLS takes the digest's
++    // leftmost bits when it is longer than the curve's order.
++    MbedTLS::BigNumber r;
++    MbedTLS::BigNumber s;
++    if (mbedtls_ecdsa_sign(parts.group.get(), r.get(), s.get(), parts.d.get(), digest->span().data(), digest->size(), MbedTLS::randomCallback, nullptr))
++        return Exception { ExceptionCode::OperationError };
++
++    // Concatenate r and s, expanding r and s to keySizeInBytes.
++    auto signature = MbedTLS::convertToBytesExpand(r.get(), keySizeInBytes);
++    auto sBytes = MbedTLS::convertToBytesExpand(s.get(), keySizeInBytes);
++    if (!signature || !sBytes)
++        return Exception { ExceptionCode::OperationError };
++    signature->appendVector(*sBytes);
++    return WTF::move(*signature);
++}
++
++ExceptionOr<bool> CryptoAlgorithmECDSA::platformVerify(const CryptoAlgorithmEcdsaParams& parameters, const CryptoKeyEC& key, const Vector<uint8_t>& signature, const Vector<uint8_t>& data)
++{
++    size_t keySizeInBytes = (key.keySizeInBits() + 7) / 8;
++
++    // Bail if the signature size isn't double the key size (i.e. concatenated r and s components).
++    if (signature.size() != keySizeInBytes * 2)
++        return false;
++
++    MbedTLS::BigNumber r;
++    MbedTLS::BigNumber s;
++    if (mbedtls_mpi_read_binary(r.get(), signature.span().data(), keySizeInBytes)
++        || mbedtls_mpi_read_binary(s.get(), signature.span().subspan(keySizeInBytes).data(), keySizeInBytes))
++        return Exception { ExceptionCode::OperationError };
++
++    auto md = MbedTLS::digestAlgorithm(parameters.hashIdentifier);
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    auto digest = MbedTLS::calculateDigest(md, data.span());
++    if (!digest)
++        return Exception { ExceptionCode::OperationError };
++
++    MbedTLS::ECKeyParts parts;
++    if (!parts.exportFrom(key.platformKey().get()))
++        return Exception { ExceptionCode::OperationError };
++
++    // (r and s outside [1, n - 1] are refused there)
++    return !mbedtls_ecdsa_verify(parts.group.get(), digest->span().data(), digest->size(), parts.q.get(), r.get(), s.get());
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmHKDFMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmHKDFMbedTLS.cpp
+new file mode 100644
+index 00000000..7dff4700
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmHKDFMbedTLS.cpp
+@@ -0,0 +1,59 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmHKDF.h"
++
++#include "CryptoAlgorithmHkdfParams.h"
++#include "CryptoKeyRaw.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <mbedtls/hkdf.h>
++
++namespace WebCore {
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmHKDF::platformDeriveBits(const CryptoAlgorithmHkdfParams& parameters, const CryptoKeyRaw& key, size_t length)
++{
++    const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MbedTLS::digestAlgorithm(parameters.hashIdentifier));
++    if (!info)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    Vector<uint8_t> output(length / 8);
++    if (output.isEmpty())
++        return output;
++
++    // (RFC 5869: extract with the salt, then expand with the info; mbedTLS refuses more than 255
++    // times the digest's size, and takes an absent salt as a digest's size of zeros, as the RFC says)
++    const auto& salt = parameters.saltVector();
++    const auto& infoVector = parameters.infoVector();
++    if (mbedtls_hkdf(info, salt.isEmpty() ? nullptr : salt.span().data(), salt.size(), MbedTLS::dataOrEmpty(key.key().span()), key.key().size(),
++        MbedTLS::dataOrEmpty(infoVector.span()), infoVector.size(), output.mutableSpan().data(), output.size())) {
++        MbedTLS::zeroize(output);
++        return Exception { ExceptionCode::OperationError };
++    }
++    return output;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmHMACMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmHMACMbedTLS.cpp
+new file mode 100644
+index 00000000..7fc55c28
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmHMACMbedTLS.cpp
+@@ -0,0 +1,74 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmHMAC.h"
++
++#include "CryptoKeyHMAC.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <mbedtls/md.h>
++#include <wtf/CryptographicUtilities.h>
++
++namespace WebCore {
++
++static std::optional<Vector<uint8_t>> calculateSignature(mbedtls_md_type_t algorithm, const Vector<uint8_t>& key, const Vector<uint8_t>& data)
++{
++    const mbedtls_md_info_t* info = mbedtls_md_info_from_type(algorithm);
++    if (!info)
++        return std::nullopt;
++
++    Vector<uint8_t> signature(mbedtls_md_get_size(info));
++    if (mbedtls_md_hmac(info, MbedTLS::dataOrEmpty(key.span()), key.size(), MbedTLS::dataOrEmpty(data.span()), data.size(), signature.mutableSpan().data()))
++        return std::nullopt;
++    return signature;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmHMAC::platformSign(const CryptoKeyHMAC& key, const Vector<uint8_t>& data)
++{
++    auto algorithm = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (algorithm == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::OperationError };
++
++    auto result = calculateSignature(algorithm, key.key(), data);
++    if (!result)
++        return Exception { ExceptionCode::OperationError };
++    return WTF::move(*result);
++}
++
++ExceptionOr<bool> CryptoAlgorithmHMAC::platformVerify(const CryptoKeyHMAC& key, const Vector<uint8_t>& signature, const Vector<uint8_t>& data)
++{
++    auto algorithm = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (algorithm == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::OperationError };
++
++    auto expectedSignature = calculateSignature(algorithm, key.key(), data);
++    if (!expectedSignature)
++        return Exception { ExceptionCode::OperationError };
++    // Using a constant time comparison to prevent timing attacks.
++    return signature.size() == expectedSignature->size() && !constantTimeMemcmp(expectedSignature->span(), signature.span());
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmPBKDF2MbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmPBKDF2MbedTLS.cpp
+new file mode 100644
+index 00000000..da7f54d6
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmPBKDF2MbedTLS.cpp
+@@ -0,0 +1,64 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmPBKDF2.h"
++
++#include "CryptoAlgorithmPbkdf2Params.h"
++#include "CryptoKeyRaw.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <limits>
++#include <mbedtls/pkcs5.h>
++
++namespace WebCore {
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmPBKDF2::platformDeriveBits(const CryptoAlgorithmPbkdf2Params& parameters, const CryptoKeyRaw& key, size_t length)
++{
++    auto algorithm = MbedTLS::digestAlgorithm(parameters.hashIdentifier);
++    if (algorithm == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    // iterations must not be zero.
++    if (!parameters.iterations || parameters.iterations > std::numeric_limits<unsigned>::max())
++        return Exception { ExceptionCode::OperationError };
++
++    if (length / 8 > std::numeric_limits<uint32_t>::max())
++        return Exception { ExceptionCode::OperationError };
++
++    Vector<uint8_t> output(length / 8);
++    if (output.isEmpty())
++        return output;
++
++    const auto& salt = parameters.saltVector();
++    if (mbedtls_pkcs5_pbkdf2_hmac_ext(algorithm, MbedTLS::dataOrEmpty(key.key().span()), key.key().size(), MbedTLS::dataOrEmpty(salt.span()), salt.size(),
++        static_cast<unsigned>(parameters.iterations), static_cast<uint32_t>(output.size()), output.mutableSpan().data())) {
++        MbedTLS::zeroize(output);
++        return Exception { ExceptionCode::OperationError };
++    }
++    return output;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSASSA_PKCS1_v1_5MbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSASSA_PKCS1_v1_5MbedTLS.cpp
+new file mode 100644
+index 00000000..9c4529a6
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSASSA_PKCS1_v1_5MbedTLS.cpp
+@@ -0,0 +1,91 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmRSASSA_PKCS1_v1_5.h"
++
++#include "CryptoKeyRSA.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++
++namespace WebCore {
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSASSA_PKCS1_v1_5::platformSign(const CryptoKeyRSA& key, const Vector<uint8_t>& data)
++{
++    auto md = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    auto digest = MbedTLS::calculateDigest(md, data.span());
++    if (!digest)
++        return Exception { ExceptionCode::OperationError };
++
++    if (key.type() != CryptoKeyType::Private)
++        return Exception { ExceptionCode::OperationError };
++
++    // A copy of the key: mbedTLS writes into the context it computes with (see MbedTLSUtilities.h).
++    MbedTLS::RSAContext rsa;
++    if (!rsa.copyFrom(key.platformKey()))
++        return Exception { ExceptionCode::OperationError };
++
++    if (mbedtls_rsa_set_padding(rsa.get(), MBEDTLS_RSA_PKCS_V15, MBEDTLS_MD_NONE))
++        return Exception { ExceptionCode::OperationError };
++
++    // The private operation is blinded with the random numbers given, and its result checked
++    // against the public key before it is given out.
++    Vector<uint8_t> signature(mbedtls_rsa_get_len(rsa.get()));
++    if (signature.isEmpty() || mbedtls_rsa_rsassa_pkcs1_v15_sign(rsa.get(), MbedTLS::randomCallback, nullptr, md, digest->size(), digest->span().data(), signature.mutableSpan().data()))
++        return Exception { ExceptionCode::OperationError };
++
++    return signature;
++}
++
++ExceptionOr<bool> CryptoAlgorithmRSASSA_PKCS1_v1_5::platformVerify(const CryptoKeyRSA& key, const Vector<uint8_t>& signature, const Vector<uint8_t>& data)
++{
++    auto md = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    auto digest = MbedTLS::calculateDigest(md, data.span());
++    if (!digest)
++        return Exception { ExceptionCode::OperationError };
++
++    MbedTLS::RSAContext rsa;
++    if (!rsa.copyFrom(key.platformKey()))
++        return Exception { ExceptionCode::OperationError };
++
++    // mbedTLS reads as many bytes as the modulus has: a signature of another length is wrong.
++    if (signature.size() != mbedtls_rsa_get_len(rsa.get()))
++        return false;
++
++    if (mbedtls_rsa_set_padding(rsa.get(), MBEDTLS_RSA_PKCS_V15, MBEDTLS_MD_NONE))
++        return Exception { ExceptionCode::OperationError };
++
++    // (the expected encoding is built and compared whole, in constant time: no parsing of what
++    // the signature decrypts to)
++    return !mbedtls_rsa_rsassa_pkcs1_v15_verify(rsa.get(), md, digest->size(), digest->span().data(), signature.span().data());
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_OAEPMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_OAEPMbedTLS.cpp
+new file mode 100644
+index 00000000..0744bce3
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_OAEPMbedTLS.cpp
+@@ -0,0 +1,100 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmRSA_OAEP.h"
++
++#include "CryptoAlgorithmRsaOaepParams.h"
++#include "CryptoKeyRSA.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++
++namespace WebCore {
++
++// RSAES-OAEP (RFC 8017), the key's hash for the label's digest and for MGF1 both, as the other
++// back ends have it.
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSA_OAEP::platformEncrypt(const CryptoAlgorithmRsaOaepParams& parameters, const CryptoKeyRSA& key, const Vector<uint8_t>& plainText)
++{
++    auto md = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    // A copy of the key: mbedTLS writes into the context it computes with (see MbedTLSUtilities.h).
++    MbedTLS::RSAContext rsa;
++    if (!rsa.copyFrom(key.platformKey()))
++        return Exception { ExceptionCode::OperationError };
++
++    if (mbedtls_rsa_set_padding(rsa.get(), MBEDTLS_RSA_PKCS_V21, md))
++        return Exception { ExceptionCode::OperationError };
++
++    // (a message longer than the modulus less twice the digest less two bytes is refused there)
++    const auto& label = parameters.labelVector();
++    Vector<uint8_t> cipherText(mbedtls_rsa_get_len(rsa.get()));
++    if (cipherText.isEmpty() || mbedtls_rsa_rsaes_oaep_encrypt(rsa.get(), MbedTLS::randomCallback, nullptr, MbedTLS::dataOrEmpty(label.span()), label.size(),
++        plainText.size(), MbedTLS::dataOrEmpty(plainText.span()), cipherText.mutableSpan().data()))
++        return Exception { ExceptionCode::OperationError };
++
++    return cipherText;
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSA_OAEP::platformDecrypt(const CryptoAlgorithmRsaOaepParams& parameters, const CryptoKeyRSA& key, const Vector<uint8_t>& cipherText)
++{
++    auto md = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    if (key.type() != CryptoKeyType::Private)
++        return Exception { ExceptionCode::OperationError };
++
++    MbedTLS::RSAContext rsa;
++    if (!rsa.copyFrom(key.platformKey()))
++        return Exception { ExceptionCode::OperationError };
++
++    // mbedTLS reads as many bytes as the modulus has.
++    size_t modulusLength = mbedtls_rsa_get_len(rsa.get());
++    if (!modulusLength || cipherText.size() != modulusLength)
++        return Exception { ExceptionCode::OperationError };
++
++    if (mbedtls_rsa_set_padding(rsa.get(), MBEDTLS_RSA_PKCS_V21, md))
++        return Exception { ExceptionCode::OperationError };
++
++    // The private operation is blinded, and the padding checked in constant time; whatever is
++    // wrong, the answer is the one same error.
++    const auto& label = parameters.labelVector();
++    Vector<uint8_t> plainText(modulusLength);
++    size_t plainTextLength = 0;
++    if (mbedtls_rsa_rsaes_oaep_decrypt(rsa.get(), MbedTLS::randomCallback, nullptr, MbedTLS::dataOrEmpty(label.span()), label.size(),
++        &plainTextLength, cipherText.span().data(), plainText.mutableSpan().data(), plainText.size()) || plainTextLength > plainText.size()) {
++        MbedTLS::zeroize(plainText);
++        return Exception { ExceptionCode::OperationError };
++    }
++
++    // (mbedTLS wrote the message's bytes only: what is cut off never held plain text)
++    plainText.shrink(plainTextLength);
++    return plainText;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_PSSMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_PSSMbedTLS.cpp
+new file mode 100644
+index 00000000..2019afb1
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRSA_PSSMbedTLS.cpp
+@@ -0,0 +1,103 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoAlgorithmRSA_PSS.h"
++
++#if HAVE(RSA_PSS)
++
++#include "CryptoAlgorithmRsaPssParams.h"
++#include "CryptoKeyRSA.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include <limits>
++
++namespace WebCore {
++
++// RSASSA-PSS (RFC 8017), the key's hash for the message and for MGF1 both, the salt as long as
++// the parameters say (signing: exactly that many random bytes; verifying: exactly that length
++// expected), as the OpenSSL back end has it.
++
++ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSA_PSS::platformSign(const CryptoAlgorithmRsaPssParams& parameters, const CryptoKeyRSA& key, const Vector<uint8_t>& data)
++{
++    auto md = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    auto digest = MbedTLS::calculateDigest(md, data.span());
++    if (!digest)
++        return Exception { ExceptionCode::OperationError };
++
++    if (key.type() != CryptoKeyType::Private)
++        return Exception { ExceptionCode::OperationError };
++
++    if (parameters.saltLength > static_cast<size_t>(std::numeric_limits<int>::max()))
++        return Exception { ExceptionCode::OperationError };
++
++    // A copy of the key: mbedTLS writes into the context it computes with (see MbedTLSUtilities.h).
++    MbedTLS::RSAContext rsa;
++    if (!rsa.copyFrom(key.platformKey()))
++        return Exception { ExceptionCode::OperationError };
++
++    // (the context's digest is MGF1's)
++    if (mbedtls_rsa_set_padding(rsa.get(), MBEDTLS_RSA_PKCS_V21, md))
++        return Exception { ExceptionCode::OperationError };
++
++    // (a salt too long for the modulus is refused there; the private operation is blinded)
++    Vector<uint8_t> signature(mbedtls_rsa_get_len(rsa.get()));
++    if (signature.isEmpty() || mbedtls_rsa_rsassa_pss_sign_ext(rsa.get(), MbedTLS::randomCallback, nullptr, md, digest->size(), digest->span().data(),
++        static_cast<int>(parameters.saltLength), signature.mutableSpan().data()))
++        return Exception { ExceptionCode::OperationError };
++
++    return signature;
++}
++
++ExceptionOr<bool> CryptoAlgorithmRSA_PSS::platformVerify(const CryptoAlgorithmRsaPssParams& parameters, const CryptoKeyRSA& key, const Vector<uint8_t>& signature, const Vector<uint8_t>& data)
++{
++    auto md = MbedTLS::digestAlgorithm(key.hashAlgorithmIdentifier());
++    if (md == MBEDTLS_MD_NONE)
++        return Exception { ExceptionCode::NotSupportedError };
++
++    auto digest = MbedTLS::calculateDigest(md, data.span());
++    if (!digest)
++        return Exception { ExceptionCode::OperationError };
++
++    MbedTLS::RSAContext rsa;
++    if (!rsa.copyFrom(key.platformKey()))
++        return Exception { ExceptionCode::OperationError };
++
++    // mbedTLS reads as many bytes as the modulus has: a signature of another length is wrong.
++    if (signature.size() != mbedtls_rsa_get_len(rsa.get()))
++        return false;
++
++    if (parameters.saltLength > static_cast<size_t>(std::numeric_limits<int>::max()))
++        return false;
++
++    return !mbedtls_rsa_rsassa_pss_verify_ext(rsa.get(), md, digest->size(), digest->span().data(), md, static_cast<int>(parameters.saltLength), signature.span().data());
++}
++
++} // namespace WebCore
++
++#endif // HAVE(RSA_PSS)
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRegistryMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRegistryMbedTLS.cpp
+index a78b021c..2359f1ad 100644
+--- a/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRegistryMbedTLS.cpp
++++ b/Source/WebCore/crypto/mbedtls/CryptoAlgorithmRegistryMbedTLS.cpp
+@@ -26,6 +26,19 @@
+ #include "config.h"
+ #include "CryptoAlgorithmRegistry.h"
+ 
++#include "CryptoAlgorithmAESCBC.h"
++#include "CryptoAlgorithmAESCFB.h"
++#include "CryptoAlgorithmAESCTR.h"
++#include "CryptoAlgorithmAESGCM.h"
++#include "CryptoAlgorithmAESKW.h"
++#include "CryptoAlgorithmECDH.h"
++#include "CryptoAlgorithmECDSA.h"
++#include "CryptoAlgorithmHKDF.h"
++#include "CryptoAlgorithmHMAC.h"
++#include "CryptoAlgorithmPBKDF2.h"
++#include "CryptoAlgorithmRSASSA_PKCS1_v1_5.h"
++#include "CryptoAlgorithmRSA_OAEP.h"
++#include "CryptoAlgorithmRSA_PSS.h"
+ #include "CryptoAlgorithmSHA1.h"
+ #include "CryptoAlgorithmSHA256.h"
+ #include "CryptoAlgorithmSHA384.h"
+@@ -33,11 +46,26 @@
+ 
+ namespace WebCore {
+ 
+-// The mbedTLS back end has the digests only so far (they run on PAL::CryptoDigest): every other
+-// algorithm is absent from the registry, so crypto.subtle answers NotSupportedError for it
+-// (CryptoNotImplementedMbedTLS.cpp only satisfies the linker).
++// The mbedTLS back end: what the OpenSSL back end registers (the digests run on
++// PAL::CryptoDigest, the rest on the files next to this one). Not here, as there: Ed25519 and
++// X25519 (CryptoKeyOKP), for which crypto.subtle answers NotSupportedError.
+ void CryptoAlgorithmRegistry::platformRegisterAlgorithms()
+ {
++    registerAlgorithm<CryptoAlgorithmAESCBC>();
++    registerAlgorithm<CryptoAlgorithmAESCFB>();
++    registerAlgorithm<CryptoAlgorithmAESCTR>();
++    registerAlgorithm<CryptoAlgorithmAESGCM>();
++    registerAlgorithm<CryptoAlgorithmAESKW>();
++    registerAlgorithm<CryptoAlgorithmECDH>();
++    registerAlgorithm<CryptoAlgorithmECDSA>();
++    registerAlgorithm<CryptoAlgorithmHKDF>();
++    registerAlgorithm<CryptoAlgorithmHMAC>();
++    registerAlgorithm<CryptoAlgorithmPBKDF2>();
++    registerAlgorithm<CryptoAlgorithmRSASSA_PKCS1_v1_5>();
++    registerAlgorithm<CryptoAlgorithmRSA_OAEP>();
++#if HAVE(RSA_PSS)
++    registerAlgorithm<CryptoAlgorithmRSA_PSS>();
++#endif
+     registerAlgorithm<CryptoAlgorithmSHA1>();
+     registerAlgorithm<CryptoAlgorithmSHA256>();
+     registerAlgorithm<CryptoAlgorithmSHA384>();
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoKeyECMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoKeyECMbedTLS.cpp
+new file mode 100644
+index 00000000..0ebc4724
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoKeyECMbedTLS.cpp
+@@ -0,0 +1,499 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoKeyEC.h"
++
++#include "JsonWebKey.h"
++#include "MbedTLSUtilities.h"
++#include <array>
++#include <mbedtls/asn1.h>
++#include <mbedtls/asn1write.h>
++#include <mbedtls/oid.h>
++#include <mbedtls/platform_util.h>
++#include <wtf/text/Base64.h>
++
++// The elliptic-curve keys of WebCrypto's mbedTLS back end (P-256, P-384, P-521): an
++// mbedtls_pk_context of type MBEDTLS_PK_ECKEY, holding the curve, the public point and, in a
++// private key, the private number. A key is made here, checked, and never written again (see
++// "Threads" in MbedTLSUtilities.h).
++//
++// The key formats are read and written here rather than by mbedTLS's pk_parse / pk_write: those
++// accept more than WebCrypto does (PEM, PKCS #1 and SEC 1 keys without their envelope, encrypted
++// PKCS #8, curves given by their parameters, bytes after the key) and cannot write PKCS #8.
++
++namespace WebCore {
++
++static mbedtls_ecp_group_id curveIdentifier(CryptoKeyEC::NamedCurve curve)
++{
++    switch (curve) {
++    case CryptoKeyEC::NamedCurve::P256:
++        return MBEDTLS_ECP_DP_SECP256R1;
++    case CryptoKeyEC::NamedCurve::P384:
++        return MBEDTLS_ECP_DP_SECP384R1;
++    case CryptoKeyEC::NamedCurve::P521:
++        return MBEDTLS_ECP_DP_SECP521R1;
++    }
++
++    ASSERT_NOT_REACHED();
++    return MBEDTLS_ECP_DP_NONE;
++}
++
++static size_t curveSize(CryptoKeyEC::NamedCurve curve)
++{
++    switch (curve) {
++    case CryptoKeyEC::NamedCurve::P256:
++        return 256;
++    case CryptoKeyEC::NamedCurve::P384:
++        return 384;
++    case CryptoKeyEC::NamedCurve::P521:
++        return 521;
++    }
++
++    ASSERT_NOT_REACHED();
++    return 0;
++}
++
++// A point from its SEC 1 encoding (04 x y, or compressed: 02 / 03 x), then checked: not the point
++// at infinity, coordinates below the prime, on the curve (all there is to check: these curves'
++// cofactor is one).
++static bool readPoint(mbedtls_ecp_group_id curve, std::span<const uint8_t> bytes, MbedTLS::ECPoint& point)
++{
++    if (bytes.empty())
++        return false;
++
++    MbedTLS::ECGroup group;
++    if (mbedtls_ecp_group_load(group.get(), curve))
++        return false;
++    if (mbedtls_ecp_point_read_binary(group.get(), point.get(), bytes.data(), bytes.size()))
++        return false;
++    return !mbedtls_ecp_check_pubkey(group.get(), point.get());
++}
++
++// The point of a JWK's x and y: field elements, as long as the prime in a well-formed key;
++// shorter ones and zeros in front are taken, as the other back ends do.
++static bool readPoint(CryptoKeyEC::NamedCurve curve, const Vector<uint8_t>& x, const Vector<uint8_t>& y, MbedTLS::ECPoint& point)
++{
++    size_t fieldSize = (curveSize(curve) + 7) / 8;
++    Vector<uint8_t> encoded;
++    encoded.reserveInitialCapacity(1 + 2 * fieldSize);
++    encoded.append(0x04);
++    for (auto* coordinate : { &x, &y }) {
++        auto bytes = coordinate->span();
++        while (!bytes.empty() && !bytes.front())
++            bytes = bytes.subspan(1);
++        if (bytes.size() > fieldSize)
++            return false;
++        for (size_t i = bytes.size(); i < fieldSize; ++i)
++            encoded.append(0);
++        encoded.append(bytes);
++    }
++    return readPoint(curveIdentifier(curve), encoded.span(), point);
++}
++
++// A public key of a point already checked.
++static MbedTLSPKPtr createPublicKey(mbedtls_ecp_group_id curve, MbedTLS::ECPoint& point)
++{
++    auto key = MbedTLS::createPKContext(MBEDTLS_PK_ECKEY);
++    if (!key)
++        return nullptr;
++    if (mbedtls_ecp_set_public_key(curve, mbedtls_pk_ec(*key), point.get()))
++        return nullptr;
++    return key;
++}
++
++// A private key of its number d (big-endian), which must be in [1, n - 1]. Its public point is
++// computed (d * G); the one the key came with, if any, must be that point.
++static MbedTLSPKPtr createPrivateKey(mbedtls_ecp_group_id curve, std::span<const uint8_t> d, MbedTLS::ECPoint* expectedPublicPoint)
++{
++    if (d.empty())
++        return nullptr;
++
++    auto key = MbedTLS::createPKContext(MBEDTLS_PK_ECKEY);
++    if (!key)
++        return nullptr;
++
++    mbedtls_ecp_keypair* keyPair = mbedtls_pk_ec(*key);
++    if (mbedtls_ecp_read_key(curve, keyPair, d.data(), d.size()))
++        return nullptr;
++    if (mbedtls_ecp_keypair_calc_public(keyPair, MbedTLS::randomCallback, nullptr))
++        return nullptr;
++
++    if (expectedPublicPoint) {
++        MbedTLS::ECKeyParts parts;
++        if (!parts.exportFrom(key.get()))
++            return nullptr;
++        if (mbedtls_ecp_point_cmp(parts.q.get(), expectedPublicPoint->get()))
++            return nullptr;
++    }
++    return key;
++}
++
++size_t CryptoKeyEC::keySizeInBits() const
++{
++    return curveSize(m_curve);
++}
++
++bool CryptoKeyEC::platformSupportedCurve(NamedCurve curve)
++{
++    return curve == NamedCurve::P256 || curve == NamedCurve::P384 || curve == NamedCurve::P521;
++}
++
++std::optional<CryptoKeyPair> CryptoKeyEC::platformGeneratePair(CryptoAlgorithmIdentifier identifier, NamedCurve curve, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    // To generate a key pair, we generate a private key and extract the public key from the private key.
++    auto privateKeyContext = MbedTLS::createPKContext(MBEDTLS_PK_ECKEY);
++    if (!privateKeyContext)
++        return std::nullopt;
++
++    if (mbedtls_ecp_gen_key(curveIdentifier(curve), mbedtls_pk_ec(*privateKeyContext), MbedTLS::randomCallback, nullptr))
++        return std::nullopt;
++
++    MbedTLS::ECKeyParts parts;
++    if (!parts.exportFrom(privateKeyContext.get()))
++        return std::nullopt;
++
++    auto publicKeyContext = createPublicKey(curveIdentifier(curve), parts.q);
++    if (!publicKeyContext)
++        return std::nullopt;
++
++    auto publicKey = CryptoKeyEC::create(identifier, curve, CryptoKeyType::Public, WTF::move(publicKeyContext), true, usages);
++    auto privateKey = CryptoKeyEC::create(identifier, curve, CryptoKeyType::Private, WTF::move(privateKeyContext), extractable, usages);
++    return CryptoKeyPair { WTF::move(publicKey), WTF::move(privateKey) };
++}
++
++RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportRaw(CryptoAlgorithmIdentifier identifier, NamedCurve curve, Vector<uint8_t>&& keyData, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    MbedTLS::ECPoint point;
++    if (!readPoint(curveIdentifier(curve), keyData.span(), point))
++        return nullptr;
++
++    auto key = createPublicKey(curveIdentifier(curve), point);
++    if (!key)
++        return nullptr;
++
++    return create(identifier, curve, CryptoKeyType::Public, WTF::move(key), extractable, usages);
++}
++
++RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportJWKPublic(CryptoAlgorithmIdentifier identifier, NamedCurve curve, Vector<uint8_t>&& x, Vector<uint8_t>&& y, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    MbedTLS::ECPoint point;
++    if (!readPoint(curve, x, y, point))
++        return nullptr;
++
++    auto key = createPublicKey(curveIdentifier(curve), point);
++    if (!key)
++        return nullptr;
++
++    return create(identifier, curve, CryptoKeyType::Public, WTF::move(key), extractable, usages);
++}
++
++RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportJWKPrivate(CryptoAlgorithmIdentifier identifier, NamedCurve curve, Vector<uint8_t>&& x, Vector<uint8_t>&& y, Vector<uint8_t>&& d, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    MbedTLS::ECPoint point;
++    if (!readPoint(curve, x, y, point))
++        return nullptr;
++
++    // (x, y) must be d * G.
++    auto key = createPrivateKey(curveIdentifier(curve), d.span(), &point);
++    MbedTLS::zeroize(d);
++    if (!key)
++        return nullptr;
++
++    return create(identifier, curve, CryptoKeyType::Private, WTF::move(key), extractable, usages);
++}
++
++static bool supportedAlgorithmIdentifier(CryptoAlgorithmIdentifier identifier, std::span<const uint8_t> oid)
++{
++    switch (identifier) {
++    case CryptoAlgorithmIdentifier::ECDSA:
++        // ECDSA only supports id-ecPublicKey algorithms for imported keys.
++        return MbedTLS::oidEquals(oid, MBEDTLS_OID_EC_ALG_UNRESTRICTED, MBEDTLS_OID_SIZE(MBEDTLS_OID_EC_ALG_UNRESTRICTED));
++    case CryptoAlgorithmIdentifier::ECDH:
++        // ECDH supports both id-ecPublicKey and id-ecDH algorithms for imported keys.
++        return MbedTLS::oidEquals(oid, MBEDTLS_OID_EC_ALG_UNRESTRICTED, MBEDTLS_OID_SIZE(MBEDTLS_OID_EC_ALG_UNRESTRICTED))
++            || MbedTLS::oidEquals(oid, MBEDTLS_OID_EC_ALG_ECDH, MBEDTLS_OID_SIZE(MBEDTLS_OID_EC_ALG_ECDH));
++    default:
++        ASSERT_NOT_REACHED();
++        return false;
++    }
++}
++
++// Whether an OBJECT IDENTIFIER's contents name this curve.
++static bool isCurve(std::span<const uint8_t> oid, mbedtls_ecp_group_id curve)
++{
++    mbedtls_asn1_buf buffer;
++    buffer.tag = MBEDTLS_ASN1_OID;
++    buffer.len = oid.size();
++    buffer.p = const_cast<unsigned char*>(oid.data());
++    mbedtls_ecp_group_id found = MBEDTLS_ECP_DP_NONE;
++    return !mbedtls_oid_get_ec_grp(&buffer, &found) && found == curve;
++}
++
++// ECParameters ::= CHOICE { namedCurve OBJECT IDENTIFIER, -- implicitCurve NULL, specifiedCurve SpecifiedECDomain }
++// Only "namedCurve" is supported.
++static bool hasNamedCurve(const MbedTLS::DERAlgorithmIdentifier& algorithm, mbedtls_ecp_group_id curve)
++{
++    return algorithm.hasParameters && algorithm.parametersTag == MBEDTLS_ASN1_OID && isCurve(algorithm.parameters, curve);
++}
++
++RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportSpki(CryptoAlgorithmIdentifier identifier, NamedCurve curve, Vector<uint8_t>&& keyData, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    // The subjectPublicKey is taken after verifying that the algorithm in the SPKI data matches
++    // the given identifier and curve; then a key of the named curve is made of it.
++    auto info = MbedTLS::parseSubjectPublicKeyInfo(keyData.span());
++    if (!info)
++        return nullptr;
++
++    if (!supportedAlgorithmIdentifier(identifier, info->algorithm.oid))
++        return nullptr;
++    if (!hasNamedCurve(info->algorithm, curveIdentifier(curve)))
++        return nullptr;
++
++    MbedTLS::ECPoint point;
++    if (!readPoint(curveIdentifier(curve), info->key, point))
++        return nullptr;
++
++    // (a key of the type MBEDTLS_PK_ECKEY whatever the algorithm was: it is exported as id-ecPublicKey)
++    auto key = createPublicKey(curveIdentifier(curve), point);
++    if (!key)
++        return nullptr;
++
++    return adoptRef(new CryptoKeyEC(identifier, curve, CryptoKeyType::Public, WTF::move(key), extractable, usages));
++}
++
++// ECPrivateKey ::= SEQUENCE {            (RFC 5915, SEC 1)
++//   version        INTEGER { ecPrivkeyVer1(1) },
++//   privateKey     OCTET STRING,
++//   parameters [0] ECParameters {{ NamedCurve }} OPTIONAL,
++//   publicKey  [1] BIT STRING OPTIONAL
++// }
++static MbedTLSPKPtr parseECPrivateKey(std::span<const uint8_t> data, mbedtls_ecp_group_id curve)
++{
++    if (data.empty())
++        return nullptr;
++
++    // (mbedTLS's ASN.1 readers take a non-const pointer and do not write through it)
++    unsigned char* p = const_cast<unsigned char*>(data.data());
++    const unsigned char* end = p + data.size();
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
++        return nullptr;
++    if (p + length != end)
++        return nullptr;
++
++    int version = 0;
++    if (mbedtls_asn1_get_int(&p, end, &version) || version != 1)
++        return nullptr;
++
++    if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_OCTET_STRING))
++        return nullptr;
++    std::span<const uint8_t> d { p, length };
++    p += length;
++
++    // The curve again: the same one, if it is there.
++    if (p != end && *p == (MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED | 0)) {
++        if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED | 0))
++            return nullptr;
++        const unsigned char* parametersEnd = p + length;
++        if (mbedtls_asn1_get_tag(&p, parametersEnd, &length, MBEDTLS_ASN1_OID))
++            return nullptr;
++        if (p + length != parametersEnd || !isCurve(std::span<const uint8_t> { p, length }, curve))
++            return nullptr;
++        p += length;
++    }
++
++    MbedTLS::ECPoint publicPoint;
++    bool hasPublicPoint = false;
++    if (p != end) {
++        if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED | 1))
++            return nullptr;
++        const unsigned char* publicKeyEnd = p + length;
++        if (mbedtls_asn1_get_bitstring_null(&p, publicKeyEnd, &length))
++            return nullptr;
++        if (p + length != publicKeyEnd)
++            return nullptr;
++        if (!readPoint(curve, std::span<const uint8_t> { p, length }, publicPoint))
++            return nullptr;
++        hasPublicPoint = true;
++        p += length;
++    }
++
++    if (p != end)
++        return nullptr;
++
++    return createPrivateKey(curve, d, hasPublicPoint ? &publicPoint : nullptr);
++}
++
++RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportPkcs8(CryptoAlgorithmIdentifier identifier, NamedCurve curve, Vector<uint8_t>&& keyData, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    auto info = MbedTLS::parsePrivateKeyInfo(keyData.span());
++    if (!info)
++        return nullptr;
++
++    if (!supportedAlgorithmIdentifier(identifier, info->algorithm.oid))
++        return nullptr;
++    if (!hasNamedCurve(info->algorithm, curveIdentifier(curve)))
++        return nullptr;
++
++    auto key = parseECPrivateKey(info->key, curveIdentifier(curve));
++    MbedTLS::zeroize(keyData);
++    if (!key)
++        return nullptr;
++
++    return adoptRef(new CryptoKeyEC(identifier, curve, CryptoKeyType::Private, WTF::move(key), extractable, usages));
++}
++
++Vector<uint8_t> CryptoKeyEC::platformExportRaw() const
++{
++    const mbedtls_ecp_keypair* keyPair = MbedTLS::ecKeyPair(platformKey().get());
++    if (!keyPair)
++        return { };
++
++    // 04 x y, x and y as long as the prime.
++    std::array<uint8_t, MBEDTLS_ECP_MAX_PT_LEN> buffer;
++    size_t length = 0;
++    if (mbedtls_ecp_write_public_key(keyPair, MBEDTLS_ECP_PF_UNCOMPRESSED, &length, buffer.data(), buffer.size()))
++        return { };
++    if (length != 1 + 2 * ((keySizeInBits() + 7) / 8))
++        return { };
++
++    return Vector<uint8_t>(std::span<const uint8_t> { buffer.data(), length });
++}
++
++bool CryptoKeyEC::platformAddFieldElements(JsonWebKey& jwk) const
++{
++    size_t keySizeInBytes = (keySizeInBits() + 7) / 8;
++
++    const mbedtls_ecp_keypair* keyPair = MbedTLS::ecKeyPair(platformKey().get());
++    if (!keyPair)
++        return false;
++
++    auto point = platformExportRaw();
++    if (point.size() != 1 + 2 * keySizeInBytes)
++        return false;
++    jwk.x = base64URLEncodeToString(point.span().subspan(1, keySizeInBytes));
++    jwk.y = base64URLEncodeToString(point.span().subspan(1 + keySizeInBytes, keySizeInBytes));
++
++    if (type() == Type::Private) {
++        // (as long as the curve's order, zeros in front: RFC 7518, 6.2.2.1)
++        std::array<uint8_t, MBEDTLS_ECP_MAX_BYTES> d;
++        size_t length = 0;
++        if (mbedtls_ecp_write_key_ext(keyPair, &length, d.data(), d.size()) || length != keySizeInBytes) {
++            mbedtls_platform_zeroize(d.data(), d.size());
++            return false;
++        }
++        jwk.d = base64URLEncodeToString(std::span<const uint8_t> { d.data(), length });
++        mbedtls_platform_zeroize(d.data(), d.size());
++    }
++    return true;
++}
++
++Vector<uint8_t> CryptoKeyEC::platformExportSpki() const
++{
++    if (type() != CryptoKeyType::Public)
++        return { };
++
++    // SubjectPublicKeyInfo: id-ecPublicKey, the curve's name, the point uncompressed. mbedTLS
++    // writes it at the end of the buffer.
++    std::array<uint8_t, MBEDTLS_ECP_MAX_PT_LEN + 64> buffer;
++    int length = mbedtls_pk_write_pubkey_der(platformKey().get(), buffer.data(), buffer.size());
++    if (length <= 0 || static_cast<size_t>(length) > buffer.size())
++        return { };
++
++    return Vector<uint8_t>(std::span<const uint8_t> { buffer }.last(length));
++}
++
++Vector<uint8_t> CryptoKeyEC::platformExportPkcs8() const
++{
++    if (type() != CryptoKeyType::Private)
++        return { };
++
++    const mbedtls_ecp_keypair* keyPair = MbedTLS::ecKeyPair(platformKey().get());
++    if (!keyPair)
++        return { };
++
++    std::array<uint8_t, MBEDTLS_ECP_MAX_PT_LEN> point;
++    size_t pointLength = 0;
++    if (mbedtls_ecp_write_public_key(keyPair, MBEDTLS_ECP_PF_UNCOMPRESSED, &pointLength, point.data(), point.size()))
++        return { };
++
++    const char* curveOID = nullptr;
++    size_t curveOIDLength = 0;
++    if (mbedtls_oid_get_oid_by_ec_grp(curveIdentifier(m_curve), &curveOID, &curveOIDLength))
++        return { };
++
++    // The private number, as long as the curve's order (RFC 5915).
++    std::array<uint8_t, MBEDTLS_ECP_MAX_BYTES> d;
++    size_t dLength = 0;
++
++    // The ECPrivateKey (see parseECPrivateKey), written from the end of the buffer: without its
++    // parameters -- the curve is named by the PKCS #8 envelope --, with the public key, as the
++    // other browsers write it.
++    std::array<uint8_t, MBEDTLS_ECP_MAX_PT_LEN + MBEDTLS_ECP_MAX_BYTES + 32> buffer;
++    unsigned char* start = buffer.data();
++    unsigned char* p = start + buffer.size();
++    size_t length = 0;
++    bool failed = !!mbedtls_ecp_write_key_ext(keyPair, &dLength, d.data(), d.size());
++    auto add = [&](int result) {
++        if (result < 0)
++            failed = true;
++        else
++            length += result;
++    };
++
++    if (!failed)
++        add(mbedtls_asn1_write_bitstring(&p, start, point.data(), pointLength * 8));
++    if (!failed)
++        add(mbedtls_asn1_write_len(&p, start, length));
++    if (!failed)
++        add(mbedtls_asn1_write_tag(&p, start, MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED | 1));
++    if (!failed)
++        add(mbedtls_asn1_write_octet_string(&p, start, d.data(), dLength));
++    if (!failed)
++        add(mbedtls_asn1_write_int(&p, start, 1));
++    if (!failed)
++        add(mbedtls_asn1_write_len(&p, start, length));
++    if (!failed)
++        add(mbedtls_asn1_write_tag(&p, start, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE));
++
++    // The envelope's algorithm: id-ecPublicKey, its parameter the curve's name.
++    std::array<uint8_t, 32> parameters;
++    unsigned char* parametersStart = parameters.data();
++    unsigned char* q = parametersStart + parameters.size();
++    int parametersLength = failed ? -1 : mbedtls_asn1_write_oid(&q, parametersStart, curveOID, curveOIDLength);
++
++    Vector<uint8_t> result;
++    if (!failed && parametersLength > 0) {
++        result = MbedTLS::writePrivateKeyInfo(MBEDTLS_OID_EC_ALG_UNRESTRICTED, MBEDTLS_OID_SIZE(MBEDTLS_OID_EC_ALG_UNRESTRICTED),
++            std::span<const uint8_t> { q, static_cast<size_t>(parametersLength) }, std::span<const uint8_t> { p, length });
++    }
++
++    mbedtls_platform_zeroize(d.data(), d.size());
++    mbedtls_platform_zeroize(buffer.data(), buffer.size());
++    return result;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoKeyRSAMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoKeyRSAMbedTLS.cpp
+new file mode 100644
+index 00000000..69a54bf8
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/CryptoKeyRSAMbedTLS.cpp
+@@ -0,0 +1,480 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoKeyRSA.h"
++
++#include "CryptoAlgorithmRegistry.h"
++#include "CryptoKeyPair.h"
++#include "CryptoKeyRSAComponents.h"
++#include "ExceptionOr.h"
++#include "MbedTLSUtilities.h"
++#include "ScriptExecutionContext.h"
++#include <JavaScriptCore/TypedArrayInlines.h>
++#include <array>
++#include <limits>
++#include <mbedtls/asn1.h>
++#include <mbedtls/oid.h>
++#include <mutex>
++#include <wtf/NeverDestroyed.h>
++#include <wtf/WorkQueue.h>
++
++// The RSA keys of WebCrypto's mbedTLS back end: an mbedtls_pk_context of type MBEDTLS_PK_RSA. A
++// key is made here, completed (mbedTLS computes the CRT numbers itself), checked, and never
++// written again: the operations work on copies (see "Threads" in MbedTLSUtilities.h).
++//
++// The limits are mbedTLS's: a modulus of at most MBEDTLS_MPI_MAX_SIZE bytes (8192 bits); two
++// primes; to generate, a modulus of 1024 bits at least, an even number of them, and a public
++// exponent that fits in an int.
++//
++// The key formats are read here rather than by mbedTLS's pk_parse, which accepts more than
++// WebCrypto does (PEM, PKCS #1 keys without their envelope, encrypted PKCS #8, bytes after the key).
++
++namespace WebCore {
++
++static constexpr std::array<uint8_t, 2> derNull { 0x05, 0x00 };
++
++// A key container of the public numbers n and e (big-endian).
++static MbedTLSPKPtr createPublicKey(std::span<const uint8_t> n, std::span<const uint8_t> e)
++{
++    if (n.empty() || e.empty())
++        return nullptr;
++
++    auto key = MbedTLS::createPKContext(MBEDTLS_PK_RSA);
++    if (!key)
++        return nullptr;
++
++    mbedtls_rsa_context* rsa = mbedtls_pk_rsa(*key);
++    if (mbedtls_rsa_import_raw(rsa, n.data(), n.size(), nullptr, 0, nullptr, 0, nullptr, 0, e.data(), e.size()))
++        return nullptr;
++    if (mbedtls_rsa_complete(rsa))
++        return nullptr;
++    // (a modulus of 128 bits at least, odd; an odd exponent, above one and below the modulus)
++    if (mbedtls_rsa_check_pubkey(rsa))
++        return nullptr;
++    if (mbedtls_rsa_get_len(rsa) > MBEDTLS_MPI_MAX_SIZE)
++        return nullptr;
++    return key;
++}
++
++// A key container of n, e, the private exponent d and the primes p and q (big-endian). The CRT
++// numbers (d mod (p - 1), d mod (q - 1), 1 / q mod p) are computed, not taken from the key.
++static MbedTLSPKPtr createPrivateKey(std::span<const uint8_t> n, std::span<const uint8_t> e, std::span<const uint8_t> d, std::span<const uint8_t> p, std::span<const uint8_t> q)
++{
++    if (n.empty() || e.empty() || d.empty() || p.empty() || q.empty())
++        return nullptr;
++
++    auto key = MbedTLS::createPKContext(MBEDTLS_PK_RSA);
++    if (!key)
++        return nullptr;
++
++    mbedtls_rsa_context* rsa = mbedtls_pk_rsa(*key);
++    if (mbedtls_rsa_import_raw(rsa, n.data(), n.size(), p.data(), p.size(), q.data(), q.size(), d.data(), d.size(), e.data(), e.size()))
++        return nullptr;
++    if (mbedtls_rsa_complete(rsa))
++        return nullptr;
++    // (the public key's checks, and: n = p * q, d * e = 1 modulo p - 1 and modulo q - 1, the CRT
++    // numbers; p and q are not tested for primality)
++    if (mbedtls_rsa_check_privkey(rsa))
++        return nullptr;
++    if (mbedtls_rsa_get_len(rsa) > MBEDTLS_MPI_MAX_SIZE)
++        return nullptr;
++    return key;
++}
++
++RefPtr<CryptoKeyRSA> CryptoKeyRSA::create(CryptoAlgorithmIdentifier identifier, CryptoAlgorithmIdentifier hash, bool hasHash, const CryptoKeyRSAComponents& keyData, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    CryptoKeyType keyType;
++    switch (keyData.type()) {
++    case CryptoKeyRSAComponents::Type::Public:
++        keyType = CryptoKeyType::Public;
++        break;
++    case CryptoKeyRSAComponents::Type::Private:
++        keyType = CryptoKeyType::Private;
++        break;
++    default:
++        return nullptr;
++    }
++
++    // When creating a private key, we require the p and q prime information.
++    if (keyType == CryptoKeyType::Private && !keyData.hasAdditionalPrivateKeyParameters())
++        return nullptr;
++
++    // But we don't currently support creating keys with any additional prime information.
++    if (!keyData.otherPrimeInfos().isEmpty())
++        return nullptr;
++
++    // For both public and private keys, we need the public modulus and exponent.
++    if (keyData.modulus().isEmpty() || keyData.exponent().isEmpty())
++        return nullptr;
++
++    MbedTLSPKPtr key;
++    if (keyType == CryptoKeyType::Private) {
++        // For private keys, we require the private exponent, as well as p and q prime information.
++        if (keyData.privateExponent().isEmpty() || keyData.firstPrimeInfo().primeFactor.isEmpty() || keyData.secondPrimeInfo().primeFactor.isEmpty())
++            return nullptr;
++        key = createPrivateKey(keyData.modulus().span(), keyData.exponent().span(), keyData.privateExponent().span(),
++            keyData.firstPrimeInfo().primeFactor.span(), keyData.secondPrimeInfo().primeFactor.span());
++    } else
++        key = createPublicKey(keyData.modulus().span(), keyData.exponent().span());
++
++    if (!key)
++        return nullptr;
++
++    return adoptRef(new CryptoKeyRSA(identifier, hash, hasHash, keyType, WTF::move(key), extractable, usages));
++}
++
++CryptoKeyRSA::CryptoKeyRSA(CryptoAlgorithmIdentifier identifier, CryptoAlgorithmIdentifier hash, bool hasHash, CryptoKeyType type, PlatformRSAKeyContainer&& platformKey, bool extractable, CryptoKeyUsageBitmap usages)
++    : CryptoKey(identifier, type, extractable, usages)
++    , m_platformKey(WTF::move(platformKey))
++    , m_restrictedToSpecificHash(hasHash)
++    , m_hash(hash)
++{
++}
++
++bool CryptoKeyRSA::isRestrictedToHash(CryptoAlgorithmIdentifier& identifier) const
++{
++    if (!m_restrictedToSpecificHash)
++        return false;
++
++    identifier = m_hash;
++    return true;
++}
++
++size_t CryptoKeyRSA::keySizeInBits() const
++{
++    const mbedtls_rsa_context* rsa = MbedTLS::rsaContext(m_platformKey.get());
++    if (!rsa)
++        return 0;
++
++    return mbedtls_rsa_get_len(rsa) * 8;
++}
++
++// Convert the exponent vector to a 32-bit value, if possible.
++static std::optional<uint32_t> exponentVectorToUInt32(const Vector<uint8_t>& exponent)
++{
++    if (exponent.size() > 4) {
++        if (std::any_of(exponent.begin(), exponent.end() - 4, [](uint8_t element) { return !!element; }))
++            return std::nullopt;
++    }
++
++    uint32_t result = 0;
++    for (size_t size = exponent.size(), i = std::min<size_t>(4, size); i > 0; --i) {
++        result <<= 8;
++        result += exponent[size - i];
++    }
++
++    return result;
++}
++
++static WorkQueue& keyGenerationQueue()
++{
++    static std::once_flag onceFlag;
++    static LazyNeverDestroyed<Ref<WorkQueue>> queue;
++    std::call_once(onceFlag, [] {
++        queue.construct(WorkQueue::create("org.webkit.WebCrypto.RSAKeyGeneration"_s));
++    });
++    return queue.get().get();
++}
++
++// The key pair: the private key generated (two random primes: seconds of computing), the public
++// key made of its n and e.
++static bool generateKeyPair(unsigned modulusLength, int exponent, MbedTLSPKPtr& publicKey, MbedTLSPKPtr& privateKey)
++{
++    privateKey = MbedTLS::createPKContext(MBEDTLS_PK_RSA);
++    if (!privateKey)
++        return false;
++
++    mbedtls_rsa_context* rsa = mbedtls_pk_rsa(*privateKey);
++    if (mbedtls_rsa_gen_key(rsa, MbedTLS::randomCallback, nullptr, modulusLength, exponent))
++        return false;
++    if (mbedtls_rsa_check_privkey(rsa))
++        return false;
++
++    MbedTLS::BigNumber n;
++    MbedTLS::BigNumber e;
++    if (mbedtls_rsa_export(rsa, n.get(), nullptr, nullptr, nullptr, e.get()))
++        return false;
++
++    auto modulus = MbedTLS::convertToBytes(n.get());
++    auto publicExponent = MbedTLS::convertToBytes(e.get());
++    publicKey = createPublicKey(modulus.span(), publicExponent.span());
++    return !!publicKey;
++}
++
++void CryptoKeyRSA::generatePair(CryptoAlgorithmIdentifier algorithm, CryptoAlgorithmIdentifier hash, bool hasHash, unsigned modulusLength, const Vector<uint8_t>& publicExponent, bool extractable, CryptoKeyUsageBitmap usages, KeyPairCallback&& callback, VoidCallback&& failureCallback, ScriptExecutionContext* context)
++{
++    // mbedTLS takes the exponent as an int, and refuses one smaller than three; an even one
++    // would never give a key.
++    auto e = exponentVectorToUInt32(publicExponent);
++    if (!e || *e < 3 || !(*e & 0x1) || *e > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
++        failureCallback();
++        return;
++    }
++
++    // (mbedTLS would refuse these too)
++    if (modulusLength < MBEDTLS_RSA_GEN_KEY_MIN_BITS || (modulusLength % 2) || modulusLength > MBEDTLS_MPI_MAX_SIZE * 8 || !context) {
++        failureCallback();
++        return;
++    }
++
++    // Generating the key takes seconds: on a work queue, as the Cocoa port does it; the key and
++    // the callbacks then go back to the context's thread.
++    keyGenerationQueue().dispatch([algorithm, hash, hasHash, modulusLength, exponent = static_cast<int>(*e), extractable, usages, callback = WTF::move(callback), failureCallback = WTF::move(failureCallback), contextIdentifier = context->identifier()]() mutable {
++        MbedTLSPKPtr publicKeyContext;
++        MbedTLSPKPtr privateKeyContext;
++        if (!generateKeyPair(modulusLength, exponent, publicKeyContext, privateKeyContext)) {
++            ScriptExecutionContext::postTaskTo(contextIdentifier, [callback = WTF::move(callback), failureCallback = WTF::move(failureCallback)](auto&) {
++                failureCallback();
++            });
++            return;
++        }
++
++        ScriptExecutionContext::postTaskTo(contextIdentifier, [algorithm, hash, hasHash, extractable, usages, callback = WTF::move(callback), failureCallback = WTF::move(failureCallback), publicKeyContext = WTF::move(publicKeyContext), privateKeyContext = WTF::move(privateKeyContext)](auto&) mutable {
++            auto publicKey = CryptoKeyRSA::create(algorithm, hash, hasHash, CryptoKeyType::Public, WTF::move(publicKeyContext), true, usages);
++            auto privateKey = CryptoKeyRSA::create(algorithm, hash, hasHash, CryptoKeyType::Private, WTF::move(privateKeyContext), extractable, usages);
++
++            callback(CryptoKeyPair { WTF::move(publicKey), WTF::move(privateKey) });
++        });
++    });
++}
++
++// Only rsaEncryption (as the OpenSSL back end: its d2i functions give a key of the type
++// EVP_PKEY_RSA for that identifier alone), its parameters NULL or, leniently, absent.
++static bool supportedAlgorithmIdentifier(const MbedTLS::DERAlgorithmIdentifier& algorithm)
++{
++    if (!MbedTLS::oidEquals(algorithm.oid, MBEDTLS_OID_PKCS1_RSA, MBEDTLS_OID_SIZE(MBEDTLS_OID_PKCS1_RSA)))
++        return false;
++    if (!algorithm.hasParameters)
++        return true;
++    return algorithm.parametersTag == MBEDTLS_ASN1_NULL && algorithm.parameters.empty();
++}
++
++RefPtr<CryptoKeyRSA> CryptoKeyRSA::importSpki(CryptoAlgorithmIdentifier identifier, std::optional<CryptoAlgorithmIdentifier> hash, Vector<uint8_t>&& keyData, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    auto info = MbedTLS::parseSubjectPublicKeyInfo(keyData.span());
++    if (!info || !supportedAlgorithmIdentifier(info->algorithm) || info->key.empty())
++        return nullptr;
++
++    // RSAPublicKey ::= SEQUENCE { modulus INTEGER, publicExponent INTEGER }
++    // (mbedTLS's ASN.1 readers take a non-const pointer and do not write through it)
++    unsigned char* cursor = const_cast<unsigned char*>(info->key.data());
++    const uint8_t* end = cursor + info->key.size();
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(&cursor, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
++        return nullptr;
++    if (cursor + length != end)
++        return nullptr;
++
++    const uint8_t* p = cursor;
++    std::span<const uint8_t> n;
++    std::span<const uint8_t> e;
++    if (!MbedTLS::readDERInteger(&p, end, n) || !MbedTLS::readDERInteger(&p, end, e) || p != end)
++        return nullptr;
++
++    auto key = createPublicKey(n, e);
++    if (!key)
++        return nullptr;
++
++    return adoptRef(new CryptoKeyRSA(identifier, hash.value_or(CryptoAlgorithmIdentifier::SHA_1), !!hash, CryptoKeyType::Public, WTF::move(key), extractable, usages));
++}
++
++// RSAPrivateKey ::= SEQUENCE {           (RFC 8017, A.1.2)
++//   version INTEGER (0: two primes), modulus INTEGER, publicExponent INTEGER, privateExponent INTEGER,
++//   prime1 INTEGER, prime2 INTEGER, exponent1 INTEGER, exponent2 INTEGER, coefficient INTEGER
++// }
++static MbedTLSPKPtr parseRSAPrivateKey(std::span<const uint8_t> data)
++{
++    if (data.empty())
++        return nullptr;
++
++    unsigned char* cursor = const_cast<unsigned char*>(data.data());
++    const uint8_t* end = cursor + data.size();
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(&cursor, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
++        return nullptr;
++    if (cursor + length != end)
++        return nullptr;
++
++    int version = -1;
++    if (mbedtls_asn1_get_int(&cursor, end, &version) || version)
++        return nullptr;
++
++    const uint8_t* p = cursor;
++    std::array<std::span<const uint8_t>, 8> numbers; // n, e, d, p, q, d mod (p - 1), d mod (q - 1), 1 / q mod p
++    for (auto& number : numbers) {
++        if (!MbedTLS::readDERInteger(&p, end, number))
++            return nullptr;
++    }
++    if (p != end)
++        return nullptr;
++
++    return createPrivateKey(numbers[0], numbers[1], numbers[2], numbers[3], numbers[4]);
++}
++
++RefPtr<CryptoKeyRSA> CryptoKeyRSA::importPkcs8(CryptoAlgorithmIdentifier identifier, std::optional<CryptoAlgorithmIdentifier> hash, Vector<uint8_t>&& keyData, bool extractable, CryptoKeyUsageBitmap usages)
++{
++    auto info = MbedTLS::parsePrivateKeyInfo(keyData.span());
++    if (!info || !supportedAlgorithmIdentifier(info->algorithm))
++        return nullptr;
++
++    auto key = parseRSAPrivateKey(info->key);
++    MbedTLS::zeroize(keyData);
++    if (!key)
++        return nullptr;
++
++    return adoptRef(new CryptoKeyRSA(identifier, hash.value_or(CryptoAlgorithmIdentifier::SHA_1), !!hash, CryptoKeyType::Private, WTF::move(key), extractable, usages));
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportSpki() const
++{
++    if (type() != CryptoKeyType::Public)
++        return Exception { ExceptionCode::InvalidAccessError };
++
++    const mbedtls_rsa_context* rsa = MbedTLS::rsaContext(platformKey());
++    if (!rsa)
++        return Exception { ExceptionCode::OperationError };
++
++    // SubjectPublicKeyInfo: rsaEncryption with a NULL parameter, the RSAPublicKey. mbedTLS writes
++    // it at the end of the buffer.
++    Vector<uint8_t> buffer(2 * mbedtls_rsa_get_len(rsa) + 64);
++    int length = mbedtls_pk_write_pubkey_der(platformKey(), buffer.mutableSpan().data(), buffer.size());
++    if (length <= 0 || static_cast<size_t>(length) > buffer.size())
++        return Exception { ExceptionCode::OperationError };
++
++    return Vector<uint8_t>(buffer.span().last(length));
++}
++
++ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportPkcs8() const
++{
++    if (type() != CryptoKeyType::Private)
++        return Exception { ExceptionCode::InvalidAccessError };
++
++    const mbedtls_rsa_context* rsa = MbedTLS::rsaContext(platformKey());
++    if (!rsa)
++        return Exception { ExceptionCode::OperationError };
++
++    // mbedTLS writes the RSAPrivateKey (PKCS #1), at the end of the buffer; the PKCS #8 envelope
++    // goes around it here.
++    Vector<uint8_t> buffer(5 * mbedtls_rsa_get_len(rsa) + 128);
++    int length = mbedtls_pk_write_key_der(platformKey(), buffer.mutableSpan().data(), buffer.size());
++    if (length <= 0 || static_cast<size_t>(length) > buffer.size()) {
++        MbedTLS::zeroize(buffer);
++        return Exception { ExceptionCode::OperationError };
++    }
++
++    auto keyData = MbedTLS::writePrivateKeyInfo(MBEDTLS_OID_PKCS1_RSA, MBEDTLS_OID_SIZE(MBEDTLS_OID_PKCS1_RSA), std::span<const uint8_t> { derNull }, buffer.span().last(length));
++    MbedTLS::zeroize(buffer);
++    if (keyData.isEmpty())
++        return Exception { ExceptionCode::OperationError };
++
++    return keyData;
++}
++
++auto CryptoKeyRSA::algorithm() const -> KeyAlgorithm
++{
++    const mbedtls_rsa_context* rsa = MbedTLS::rsaContext(platformKey());
++
++    // FIXME: `CryptoRsaKeyAlgorithm` stores `modulusLength` as an `unsigned` requiring us to cast below. We should find a way to remove the need for a cast / ensure the cast is safe and doesn't overflow.
++
++    size_t modulusLength = rsa ? mbedtls_rsa_get_len(rsa) * 8 : 0;
++    Vector<uint8_t> publicExponent;
++
++    if (rsa) {
++        MbedTLS::BigNumber e;
++        if (!mbedtls_rsa_export(rsa, nullptr, nullptr, nullptr, nullptr, e.get()))
++            publicExponent = MbedTLS::convertToBytes(e.get());
++    }
++
++    if (m_restrictedToSpecificHash) {
++        return CryptoRsaHashedKeyAlgorithm {
++            CryptoRsaKeyAlgorithm {
++                CryptoKeyAlgorithm { CryptoAlgorithmRegistry::singleton().name(algorithmIdentifier()) },
++                static_cast<unsigned>(modulusLength),
++                Uint8Array::create(publicExponent.span())
++            },
++            CryptoKeyAlgorithm { CryptoAlgorithmRegistry::singleton().name(m_hash) }
++        };
++    }
++
++    return CryptoRsaKeyAlgorithm {
++        CryptoKeyAlgorithm { CryptoAlgorithmRegistry::singleton().name(algorithmIdentifier()) },
++        static_cast<unsigned>(modulusLength),
++        Uint8Array::create(publicExponent.span())
++    };
++}
++
++std::unique_ptr<CryptoKeyRSAComponents> CryptoKeyRSA::exportData() const
++{
++    const mbedtls_rsa_context* rsa = MbedTLS::rsaContext(platformKey());
++    if (!rsa)
++        return nullptr;
++
++    // (the numbers big-endian, without zeros in front)
++    switch (type()) {
++    case CryptoKeyType::Public: {
++        // We need the public modulus and exponent for the public key.
++        MbedTLS::BigNumber n;
++        MbedTLS::BigNumber e;
++        if (mbedtls_rsa_export(rsa, n.get(), nullptr, nullptr, nullptr, e.get()))
++            return nullptr;
++        return CryptoKeyRSAComponents::createPublic(MbedTLS::convertToBytes(n.get()), MbedTLS::convertToBytes(e.get()));
++    }
++    case CryptoKeyType::Private: {
++        // We need the public modulus, exponent, and private exponent, as well as p and q prime information.
++        MbedTLS::BigNumber n;
++        MbedTLS::BigNumber e;
++        MbedTLS::BigNumber d;
++        MbedTLS::BigNumber p;
++        MbedTLS::BigNumber q;
++        if (mbedtls_rsa_export(rsa, n.get(), p.get(), q.get(), d.get(), e.get()))
++            return nullptr;
++
++        MbedTLS::BigNumber dmp1; // d mod (p - 1)
++        MbedTLS::BigNumber dmq1; // d mod (q - 1)
++        MbedTLS::BigNumber iqmp; // q^(-1) mod p
++        if (mbedtls_rsa_export_crt(rsa, dmp1.get(), dmq1.get(), iqmp.get()))
++            return nullptr;
++
++        CryptoKeyRSAComponents::PrimeInfo firstPrimeInfo;
++        firstPrimeInfo.primeFactor = MbedTLS::convertToBytes(p.get());
++        firstPrimeInfo.factorCRTExponent = MbedTLS::convertToBytes(dmp1.get());
++
++        CryptoKeyRSAComponents::PrimeInfo secondPrimeInfo;
++        secondPrimeInfo.primeFactor = MbedTLS::convertToBytes(q.get());
++        secondPrimeInfo.factorCRTExponent = MbedTLS::convertToBytes(dmq1.get());
++        secondPrimeInfo.factorCRTCoefficient = MbedTLS::convertToBytes(iqmp.get());
++
++        return CryptoKeyRSAComponents::createPrivateWithAdditionalData(
++            MbedTLS::convertToBytes(n.get()), MbedTLS::convertToBytes(e.get()), MbedTLS::convertToBytes(d.get()),
++            WTF::move(firstPrimeInfo), WTF::move(secondPrimeInfo), Vector<CryptoKeyRSAComponents::PrimeInfo> { });
++    }
++    default:
++        ASSERT_NOT_REACHED();
++        return nullptr;
++    }
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/CryptoNotImplementedMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/CryptoNotImplementedMbedTLS.cpp
+deleted file mode 100644
+index e1129863..00000000
+--- a/Source/WebCore/crypto/mbedtls/CryptoNotImplementedMbedTLS.cpp
++++ /dev/null
+@@ -1,364 +0,0 @@
+-/*
+- * Copyright (C) 2026 Onyx contributors. All rights reserved.
+- *
+- * Redistribution and use in source and binary forms, with or without
+- * modification, are permitted provided that the following conditions
+- * are met:
+- * 1. Redistributions of source code must retain the above copyright
+- *    notice, this list of conditions and the following disclaimer.
+- * 2. Redistributions in binary form must reproduce the above copyright
+- *    notice, this list of conditions and the following disclaimer in the
+- *    documentation and/or other materials provided with the distribution.
+- *
+- * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
+- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
+- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+- * THE POSSIBILITY OF SUCH DAMAGE.
+- */
+-
+-#include "config.h"
+-
+-#include "CryptoAlgorithmAESCBC.h"
+-#include "CryptoAlgorithmAESCFB.h"
+-#include "CryptoAlgorithmAESCTR.h"
+-#include "CryptoAlgorithmAESGCM.h"
+-#include "CryptoAlgorithmAESKW.h"
+-#include "CryptoAlgorithmAesCbcCfbParams.h"
+-#include "CryptoAlgorithmAesCtrParams.h"
+-#include "CryptoAlgorithmAesGcmParams.h"
+-#include "CryptoAlgorithmECDH.h"
+-#include "CryptoAlgorithmECDSA.h"
+-#include "CryptoAlgorithmEcdsaParams.h"
+-#include "CryptoAlgorithmHKDF.h"
+-#include "CryptoAlgorithmHMAC.h"
+-#include "CryptoAlgorithmHkdfParams.h"
+-#include "CryptoAlgorithmPBKDF2.h"
+-#include "CryptoAlgorithmPbkdf2Params.h"
+-#include "CryptoAlgorithmRSASSA_PKCS1_v1_5.h"
+-#include "CryptoAlgorithmRSA_OAEP.h"
+-#include "CryptoAlgorithmRSA_PSS.h"
+-#include "CryptoAlgorithmRegistry.h"
+-#include "CryptoAlgorithmRsaOaepParams.h"
+-#include "CryptoAlgorithmRsaPssParams.h"
+-#include "CryptoKeyAES.h"
+-#include "CryptoKeyEC.h"
+-#include "CryptoKeyHMAC.h"
+-#include "CryptoKeyPair.h"
+-#include "CryptoKeyRSA.h"
+-#include "CryptoKeyRSAComponents.h"
+-#include "CryptoKeyRaw.h"
+-#include "ExceptionOr.h"
+-#include "JsonWebKey.h"
+-#include "SerializedCryptoKeyWrap.h"
+-#include "WrappedCryptoKey.h"
+-#include <JavaScriptCore/TypedArrayInlines.h>
+-
+-// WebCrypto's platform functions for the mbedTLS back end, NOT IMPLEMENTED yet: none of these
+-// algorithms is registered (CryptoAlgorithmRegistryMbedTLS.cpp), so script never reaches them;
+-// they are here for the generic code that names them. Each is to be written on mbedTLS (or the
+-// back end replaced) when WebCrypto is done for this configuration.
+-
+-namespace WebCore {
+-
+-static Exception notSupported()
+-{
+-    return Exception { ExceptionCode::NotSupportedError };
+-}
+-
+-// ---- keys
+-
+-RefPtr<CryptoKeyRSA> CryptoKeyRSA::create(CryptoAlgorithmIdentifier, CryptoAlgorithmIdentifier, bool, const CryptoKeyRSAComponents&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-CryptoKeyRSA::CryptoKeyRSA(CryptoAlgorithmIdentifier identifier, CryptoAlgorithmIdentifier hash, bool hasHash, CryptoKeyType type, PlatformRSAKeyContainer&& platformKey, bool extractable, CryptoKeyUsageBitmap usages)
+-    : CryptoKey(identifier, type, extractable, usages)
+-    , m_platformKey(WTF::move(platformKey))
+-    , m_restrictedToSpecificHash(hasHash)
+-    , m_hash(hash)
+-{
+-}
+-
+-bool CryptoKeyRSA::isRestrictedToHash(CryptoAlgorithmIdentifier& identifier) const
+-{
+-    if (!m_restrictedToSpecificHash)
+-        return false;
+-
+-    identifier = m_hash;
+-    return true;
+-}
+-
+-size_t CryptoKeyRSA::keySizeInBits() const
+-{
+-    return 0;
+-}
+-
+-void CryptoKeyRSA::generatePair(CryptoAlgorithmIdentifier, CryptoAlgorithmIdentifier, bool, unsigned, const Vector<uint8_t>&, bool, CryptoKeyUsageBitmap, KeyPairCallback&&, VoidCallback&& failureCallback, ScriptExecutionContext*)
+-{
+-    failureCallback();
+-}
+-
+-RefPtr<CryptoKeyRSA> CryptoKeyRSA::importSpki(CryptoAlgorithmIdentifier, std::optional<CryptoAlgorithmIdentifier>, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-RefPtr<CryptoKeyRSA> CryptoKeyRSA::importPkcs8(CryptoAlgorithmIdentifier, std::optional<CryptoAlgorithmIdentifier>, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportSpki() const
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoKeyRSA::exportPkcs8() const
+-{
+-    return notSupported();
+-}
+-
+-auto CryptoKeyRSA::algorithm() const -> KeyAlgorithm
+-{
+-    Vector<uint8_t> publicExponent;
+-    if (m_restrictedToSpecificHash) {
+-        return CryptoRsaHashedKeyAlgorithm {
+-            CryptoRsaKeyAlgorithm {
+-                CryptoKeyAlgorithm { CryptoAlgorithmRegistry::singleton().name(algorithmIdentifier()) },
+-                0,
+-                Uint8Array::create(publicExponent.span())
+-            },
+-            CryptoKeyAlgorithm { CryptoAlgorithmRegistry::singleton().name(m_hash) }
+-        };
+-    }
+-
+-    return CryptoRsaKeyAlgorithm {
+-        CryptoKeyAlgorithm { CryptoAlgorithmRegistry::singleton().name(algorithmIdentifier()) },
+-        0,
+-        Uint8Array::create(publicExponent.span())
+-    };
+-}
+-
+-std::unique_ptr<CryptoKeyRSAComponents> CryptoKeyRSA::exportData() const
+-{
+-    return nullptr;
+-}
+-
+-size_t CryptoKeyEC::keySizeInBits() const
+-{
+-    switch (m_curve) {
+-    case NamedCurve::P256:
+-        return 256;
+-    case NamedCurve::P384:
+-        return 384;
+-    case NamedCurve::P521:
+-        return 521;
+-    }
+-    return 0;
+-}
+-
+-bool CryptoKeyEC::platformSupportedCurve(NamedCurve)
+-{
+-    return false;
+-}
+-
+-std::optional<CryptoKeyPair> CryptoKeyEC::platformGeneratePair(CryptoAlgorithmIdentifier, NamedCurve, bool, CryptoKeyUsageBitmap)
+-{
+-    return std::nullopt;
+-}
+-
+-RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportRaw(CryptoAlgorithmIdentifier, NamedCurve, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportJWKPublic(CryptoAlgorithmIdentifier, NamedCurve, Vector<uint8_t>&&, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportJWKPrivate(CryptoAlgorithmIdentifier, NamedCurve, Vector<uint8_t>&&, Vector<uint8_t>&&, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportSpki(CryptoAlgorithmIdentifier, NamedCurve, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-RefPtr<CryptoKeyEC> CryptoKeyEC::platformImportPkcs8(CryptoAlgorithmIdentifier, NamedCurve, Vector<uint8_t>&&, bool, CryptoKeyUsageBitmap)
+-{
+-    return nullptr;
+-}
+-
+-Vector<uint8_t> CryptoKeyEC::platformExportRaw() const
+-{
+-    return { };
+-}
+-
+-bool CryptoKeyEC::platformAddFieldElements(JsonWebKey&) const
+-{
+-    return false;
+-}
+-
+-Vector<uint8_t> CryptoKeyEC::platformExportSpki() const
+-{
+-    return { };
+-}
+-
+-Vector<uint8_t> CryptoKeyEC::platformExportPkcs8() const
+-{
+-    return { };
+-}
+-
+-// ---- algorithms
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCBC::platformEncrypt(const CryptoAlgorithmAesCbcCfbParams&, const CryptoKeyAES&, const Vector<uint8_t>&, Padding)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCBC::platformDecrypt(const CryptoAlgorithmAesCbcCfbParams&, const CryptoKeyAES&, const Vector<uint8_t>&, Padding)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCFB::platformEncrypt(const CryptoAlgorithmAesCbcCfbParams&, const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCFB::platformDecrypt(const CryptoAlgorithmAesCbcCfbParams&, const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCTR::platformEncrypt(const CryptoAlgorithmAesCtrParams&, const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESCTR::platformDecrypt(const CryptoAlgorithmAesCtrParams&, const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESGCM::platformEncrypt(const CryptoAlgorithmAesGcmParams&, const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESGCM::platformDecrypt(const CryptoAlgorithmAesGcmParams&, const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformWrapKey(const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmAESKW::platformUnwrapKey(const CryptoKeyAES&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-std::optional<Vector<uint8_t>> CryptoAlgorithmECDH::platformDeriveBits(const CryptoKeyEC&, const CryptoKeyEC&)
+-{
+-    return std::nullopt;
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmECDSA::platformSign(const CryptoAlgorithmEcdsaParams&, const CryptoKeyEC&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<bool> CryptoAlgorithmECDSA::platformVerify(const CryptoAlgorithmEcdsaParams&, const CryptoKeyEC&, const Vector<uint8_t>&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmHKDF::platformDeriveBits(const CryptoAlgorithmHkdfParams&, const CryptoKeyRaw&, size_t)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmHMAC::platformSign(const CryptoKeyHMAC&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<bool> CryptoAlgorithmHMAC::platformVerify(const CryptoKeyHMAC&, const Vector<uint8_t>&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmPBKDF2::platformDeriveBits(const CryptoAlgorithmPbkdf2Params&, const CryptoKeyRaw&, size_t)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSASSA_PKCS1_v1_5::platformSign(const CryptoKeyRSA&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<bool> CryptoAlgorithmRSASSA_PKCS1_v1_5::platformVerify(const CryptoKeyRSA&, const Vector<uint8_t>&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSA_OAEP::platformEncrypt(const CryptoAlgorithmRsaOaepParams&, const CryptoKeyRSA&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSA_OAEP::platformDecrypt(const CryptoAlgorithmRsaOaepParams&, const CryptoKeyRSA&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-#if HAVE(RSA_PSS)
+-ExceptionOr<Vector<uint8_t>> CryptoAlgorithmRSA_PSS::platformSign(const CryptoAlgorithmRsaPssParams&, const CryptoKeyRSA&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-
+-ExceptionOr<bool> CryptoAlgorithmRSA_PSS::platformVerify(const CryptoAlgorithmRsaPssParams&, const CryptoKeyRSA&, const Vector<uint8_t>&, const Vector<uint8_t>&)
+-{
+-    return notSupported();
+-}
+-#endif // HAVE(RSA_PSS)
+-
+-// ---- the wrapping of the keys stored by a page (IndexedDB): no master key, nothing is wrapped
+-
+-std::optional<Vector<uint8_t>> defaultWebCryptoMasterKey()
+-{
+-    return std::nullopt;
+-}
+-
+-bool wrapSerializedCryptoKey(const Vector<uint8_t>&, const Vector<uint8_t>&, Vector<uint8_t>&)
+-{
+-    return false;
+-}
+-
+-std::optional<struct WrappedCryptoKey> readSerializedCryptoKey(const Vector<uint8_t>&)
+-{
+-    return std::nullopt;
+-}
+-
+-std::optional<Vector<uint8_t>> unwrapCryptoKey(const Vector<uint8_t>&, const struct WrappedCryptoKey&)
+-{
+-    return std::nullopt;
+-}
+-
+-} // namespace WebCore
+diff --git a/Source/WebCore/crypto/mbedtls/MbedTLSUtilities.cpp b/Source/WebCore/crypto/mbedtls/MbedTLSUtilities.cpp
+new file mode 100644
+index 00000000..db77db28
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/MbedTLSUtilities.cpp
+@@ -0,0 +1,302 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "MbedTLSUtilities.h"
++
++#if USE(MBEDTLS)
++
++#include <mbedtls/asn1.h>
++#include <mbedtls/asn1write.h>
++#include <mbedtls/platform_util.h>
++#include <wtf/CryptographicallyRandomNumber.h>
++
++namespace WebCore {
++namespace MbedTLS {
++
++mbedtls_md_type_t digestAlgorithm(CryptoAlgorithmIdentifier hashFunction)
++{
++    switch (hashFunction) {
++    case CryptoAlgorithmIdentifier::SHA_1:
++        return MBEDTLS_MD_SHA1;
++    case CryptoAlgorithmIdentifier::SHA_256:
++        return MBEDTLS_MD_SHA256;
++    case CryptoAlgorithmIdentifier::SHA_384:
++        return MBEDTLS_MD_SHA384;
++    case CryptoAlgorithmIdentifier::SHA_512:
++        return MBEDTLS_MD_SHA512;
++    default:
++        return MBEDTLS_MD_NONE;
++    }
++}
++
++std::optional<Vector<uint8_t>> calculateDigest(mbedtls_md_type_t type, std::span<const uint8_t> message)
++{
++    const mbedtls_md_info_t* info = mbedtls_md_info_from_type(type);
++    if (!info)
++        return std::nullopt;
++
++    Vector<uint8_t> digest(mbedtls_md_get_size(info));
++    if (mbedtls_md(info, dataOrEmpty(message), message.size(), digest.mutableSpan().data()))
++        return std::nullopt;
++    return digest;
++}
++
++int randomCallback(void*, unsigned char* output, size_t length)
++{
++    cryptographicallyRandomValues(std::span<uint8_t> { output, length });
++    return 0;
++}
++
++const uint8_t* dataOrEmpty(std::span<const uint8_t> data)
++{
++    static const uint8_t empty = 0;
++    return data.data() ? data.data() : &empty;
++}
++
++void zeroize(Vector<uint8_t>& bytes)
++{
++    if (!bytes.isEmpty())
++        mbedtls_platform_zeroize(bytes.mutableSpan().data(), bytes.size());
++}
++
++Vector<uint8_t> convertToBytes(const mbedtls_mpi* number)
++{
++    size_t size = mbedtls_mpi_size(number);
++    Vector<uint8_t> bytes(size);
++    if (size && mbedtls_mpi_write_binary(number, bytes.mutableSpan().data(), size))
++        return { };
++    return bytes;
++}
++
++std::optional<Vector<uint8_t>> convertToBytesExpand(const mbedtls_mpi* number, size_t size)
++{
++    if (!size || mbedtls_mpi_size(number) > size)
++        return std::nullopt;
++
++    Vector<uint8_t> bytes(size);
++    if (mbedtls_mpi_write_binary(number, bytes.mutableSpan().data(), size))
++        return std::nullopt;
++    return bytes;
++}
++
++bool ECKeyParts::exportFrom(const mbedtls_pk_context* key)
++{
++    const mbedtls_ecp_keypair* keyPair = ecKeyPair(key);
++    if (!keyPair)
++        return false;
++    return !mbedtls_ecp_export(keyPair, group.get(), d.get(), q.get());
++}
++
++bool RSAContext::copyFrom(const mbedtls_pk_context* key)
++{
++    const mbedtls_rsa_context* rsa = rsaContext(key);
++    if (!rsa)
++        return false;
++    return !mbedtls_rsa_copy(&m_context, rsa);
++}
++
++MbedTLSPKPtr createPKContext(mbedtls_pk_type_t type)
++{
++    const mbedtls_pk_info_t* info = mbedtls_pk_info_from_type(type);
++    if (!info)
++        return nullptr;
++
++    MbedTLSPKPtr key(new mbedtls_pk_context);
++    mbedtls_pk_init(key.get());
++    if (mbedtls_pk_setup(key.get(), info))
++        return nullptr;
++    return key;
++}
++
++const mbedtls_rsa_context* rsaContext(const mbedtls_pk_context* key)
++{
++    if (!key || mbedtls_pk_get_type(key) != MBEDTLS_PK_RSA)
++        return nullptr;
++    return mbedtls_pk_rsa(*key);
++}
++
++const mbedtls_ecp_keypair* ecKeyPair(const mbedtls_pk_context* key)
++{
++    if (!key || mbedtls_pk_get_type(key) != MBEDTLS_PK_ECKEY)
++        return nullptr;
++    return mbedtls_pk_ec(*key);
++}
++
++// ---- DER (mbedTLS's ASN.1 readers take a non-const pointer and do not write through it)
++
++static bool parseAlgorithmIdentifier(unsigned char** p, const unsigned char* end, DERAlgorithmIdentifier& algorithm)
++{
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(p, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
++        return false;
++    const unsigned char* algorithmEnd = *p + length;
++
++    if (mbedtls_asn1_get_tag(p, algorithmEnd, &length, MBEDTLS_ASN1_OID) || !length)
++        return false;
++    algorithm.oid = std::span<const uint8_t> { *p, length };
++    *p += length;
++
++    if (*p == algorithmEnd)
++        return true;
++
++    // One parameter, whatever its type; it must end the AlgorithmIdentifier.
++    algorithm.hasParameters = true;
++    algorithm.parametersTag = **p;
++    ++*p;
++    if (mbedtls_asn1_get_len(p, algorithmEnd, &length))
++        return false;
++    algorithm.parameters = std::span<const uint8_t> { *p, length };
++    *p += length;
++    return *p == algorithmEnd;
++}
++
++std::optional<DERKeyInfo> parseSubjectPublicKeyInfo(std::span<const uint8_t> data)
++{
++    if (data.empty())
++        return std::nullopt;
++
++    unsigned char* p = const_cast<unsigned char*>(data.data());
++    const unsigned char* end = p + data.size();
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
++        return std::nullopt;
++    if (p + length != end)
++        return std::nullopt;
++
++    DERKeyInfo info;
++    if (!parseAlgorithmIdentifier(&p, end, info.algorithm))
++        return std::nullopt;
++
++    // (a BIT STRING without unused bits)
++    if (mbedtls_asn1_get_bitstring_null(&p, end, &length))
++        return std::nullopt;
++    if (p + length != end)
++        return std::nullopt;
++    info.key = std::span<const uint8_t> { p, length };
++    return info;
++}
++
++std::optional<DERKeyInfo> parsePrivateKeyInfo(std::span<const uint8_t> data)
++{
++    if (data.empty())
++        return std::nullopt;
++
++    unsigned char* p = const_cast<unsigned char*>(data.data());
++    const unsigned char* end = p + data.size();
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE))
++        return std::nullopt;
++    if (p + length != end)
++        return std::nullopt;
++
++    int version = -1;
++    if (mbedtls_asn1_get_int(&p, end, &version) || version)
++        return std::nullopt;
++
++    DERKeyInfo info;
++    if (!parseAlgorithmIdentifier(&p, end, info.algorithm))
++        return std::nullopt;
++
++    if (mbedtls_asn1_get_tag(&p, end, &length, MBEDTLS_ASN1_OCTET_STRING))
++        return std::nullopt;
++    info.key = std::span<const uint8_t> { p, length };
++    p += length;
++
++    if (p != end) {
++        // attributes [0] IMPLICIT SET OF Attribute: not looked at, but nothing else may follow.
++        if (*p != (MBEDTLS_ASN1_CONTEXT_SPECIFIC | MBEDTLS_ASN1_CONSTRUCTED))
++            return std::nullopt;
++        ++p;
++        if (mbedtls_asn1_get_len(&p, end, &length))
++            return std::nullopt;
++        if (p + length != end)
++            return std::nullopt;
++    }
++    return info;
++}
++
++bool oidEquals(std::span<const uint8_t> oid, const char* expected, size_t expectedLength)
++{
++    return oid.size() == expectedLength && !memcmp(oid.data(), expected, expectedLength);
++}
++
++bool readDERInteger(const uint8_t** p, const uint8_t* end, std::span<const uint8_t>& value)
++{
++    unsigned char* cursor = const_cast<unsigned char*>(*p);
++    size_t length = 0;
++    if (mbedtls_asn1_get_tag(&cursor, end, &length, MBEDTLS_ASN1_INTEGER))
++        return false;
++    if (!length || (cursor[0] & 0x80))
++        return false;
++    value = std::span<const uint8_t> { cursor, length };
++    *p = cursor + length;
++    return true;
++}
++
++Vector<uint8_t> writePrivateKeyInfo(const char* oid, size_t oidLength, std::span<const uint8_t> parameters, std::span<const uint8_t> privateKey)
++{
++    if (parameters.empty() || privateKey.empty())
++        return { };
++
++    // mbedTLS writes DER from the end of the buffer towards its start.
++    Vector<uint8_t> buffer(privateKey.size() + parameters.size() + oidLength + 48);
++    unsigned char* start = buffer.mutableSpan().data();
++    unsigned char* p = start + buffer.size();
++    size_t length = 0;
++    bool failed = false;
++    auto add = [&](int result) {
++        if (result < 0)
++            failed = true;
++        else
++            length += result;
++    };
++
++    add(mbedtls_asn1_write_octet_string(&p, start, privateKey.data(), privateKey.size()));
++    if (!failed) {
++        int parametersLength = mbedtls_asn1_write_raw_buffer(&p, start, parameters.data(), parameters.size());
++        if (parametersLength < 0)
++            failed = true;
++        else // (what it returns counts the parameters)
++            add(mbedtls_asn1_write_algorithm_identifier(&p, start, oid, oidLength, parametersLength));
++    }
++    if (!failed)
++        add(mbedtls_asn1_write_int(&p, start, 0));
++    if (!failed)
++        add(mbedtls_asn1_write_len(&p, start, length));
++    if (!failed)
++        add(mbedtls_asn1_write_tag(&p, start, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE));
++
++    Vector<uint8_t> result;
++    if (!failed)
++        result = Vector<uint8_t>(std::span<const uint8_t> { p, length });
++    zeroize(buffer);
++    return result;
++}
++
++} // namespace MbedTLS
++} // namespace WebCore
++
++#endif // USE(MBEDTLS)
+diff --git a/Source/WebCore/crypto/mbedtls/MbedTLSUtilities.h b/Source/WebCore/crypto/mbedtls/MbedTLSUtilities.h
+new file mode 100644
+index 00000000..6e25dd9a
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/MbedTLSUtilities.h
+@@ -0,0 +1,165 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if USE(MBEDTLS)
++
++#include "CryptoAlgorithmIdentifier.h"
++#include "MbedTLSCryptoUniquePtr.h"
++#include <mbedtls/bignum.h>
++#include <mbedtls/ecp.h>
++#include <mbedtls/md.h>
++#include <mbedtls/rsa.h>
++#include <optional>
++#include <span>
++#include <stdint.h>
++#include <wtf/Noncopyable.h>
++#include <wtf/Vector.h>
++
++// What the files of WebCrypto's mbedTLS back end share: the digests, the random number callback
++// mbedTLS wants, big numbers <-> bytes, the owners of mbedTLS's contexts, and the little DER that
++// mbedTLS has no public function for (the SubjectPublicKeyInfo and PKCS #8 envelopes).
++//
++// Threads: WebCrypto runs its operations on work queues, and a CryptoKey may be used by two of
++// them at once. mbedTLS is built without MBEDTLS_THREADING_C, and its RSA and elliptic-curve
++// operations write into the context they are given (the blinding values, the cached Montgomery
++// constants, the padding mode). So a key's context is never written after the key is made: every
++// operation works on its own copy (RSAContext::copyFrom(), ECKeyParts::exportFrom()).
++
++namespace WebCore {
++namespace MbedTLS {
++
++// MBEDTLS_MD_NONE for what this back end does not do (SHA-224).
++mbedtls_md_type_t digestAlgorithm(CryptoAlgorithmIdentifier);
++std::optional<Vector<uint8_t>> calculateDigest(mbedtls_md_type_t, std::span<const uint8_t> message);
++
++// mbedTLS's f_rng: the system's cryptographic random numbers (WTF::cryptographicallyRandomValues).
++int randomCallback(void*, unsigned char* output, size_t length);
++
++// mbedTLS takes a pointer with a length of zero, but not everywhere a null one.
++const uint8_t* dataOrEmpty(std::span<const uint8_t>);
++
++void zeroize(Vector<uint8_t>&);
++
++class BigNumber {
++    WTF_MAKE_NONCOPYABLE(BigNumber);
++public:
++    BigNumber() { mbedtls_mpi_init(&m_value); }
++    ~BigNumber() { mbedtls_mpi_free(&m_value); } // (it wipes the limbs)
++    mbedtls_mpi* get() LIFETIME_BOUND { return &m_value; }
++    const mbedtls_mpi* get() const LIFETIME_BOUND { return &m_value; }
++private:
++    mbedtls_mpi m_value;
++};
++
++// Big-endian, without leading zeros (nothing for zero).
++Vector<uint8_t> convertToBytes(const mbedtls_mpi*);
++// Big-endian, exactly `size` bytes; nothing if the number does not fit.
++std::optional<Vector<uint8_t>> convertToBytesExpand(const mbedtls_mpi*, size_t size);
++
++class ECGroup {
++    WTF_MAKE_NONCOPYABLE(ECGroup);
++public:
++    ECGroup() { mbedtls_ecp_group_init(&m_group); }
++    ~ECGroup() { mbedtls_ecp_group_free(&m_group); }
++    mbedtls_ecp_group* get() LIFETIME_BOUND { return &m_group; }
++private:
++    mbedtls_ecp_group m_group;
++};
++
++class ECPoint {
++    WTF_MAKE_NONCOPYABLE(ECPoint);
++public:
++    ECPoint() { mbedtls_ecp_point_init(&m_point); }
++    ~ECPoint() { mbedtls_ecp_point_free(&m_point); }
++    mbedtls_ecp_point* get() LIFETIME_BOUND { return &m_point; }
++private:
++    mbedtls_ecp_point m_point;
++};
++
++// An elliptic-curve key taken apart, as copies: the curve, the private number (zero in a public
++// key), the public point.
++struct ECKeyParts {
++    bool exportFrom(const mbedtls_pk_context*);
++
++    ECGroup group;
++    BigNumber d;
++    ECPoint q;
++};
++
++// A private copy of an RSA key, to operate on (see "Threads" above).
++class RSAContext {
++    WTF_MAKE_NONCOPYABLE(RSAContext);
++public:
++    RSAContext() { mbedtls_rsa_init(&m_context); }
++    ~RSAContext() { mbedtls_rsa_free(&m_context); }
++    bool copyFrom(const mbedtls_pk_context*);
++    mbedtls_rsa_context* get() LIFETIME_BOUND { return &m_context; }
++private:
++    mbedtls_rsa_context m_context;
++};
++
++// A new, empty key container of the given type (MBEDTLS_PK_RSA, MBEDTLS_PK_ECKEY); null on failure.
++MbedTLSPKPtr createPKContext(mbedtls_pk_type_t);
++// The RSA / elliptic-curve key inside a container; null if it holds another kind of key.
++const mbedtls_rsa_context* rsaContext(const mbedtls_pk_context*);
++const mbedtls_ecp_keypair* ecKeyPair(const mbedtls_pk_context*);
++
++// ---- DER
++
++// AlgorithmIdentifier ::= SEQUENCE { algorithm OBJECT IDENTIFIER, parameters ANY OPTIONAL }
++struct DERAlgorithmIdentifier {
++    std::span<const uint8_t> oid; // the contents of the OBJECT IDENTIFIER
++    bool hasParameters { false };
++    uint8_t parametersTag { 0 };
++    std::span<const uint8_t> parameters; // the contents of the (one) parameter
++};
++
++struct DERKeyInfo {
++    DERAlgorithmIdentifier algorithm;
++    std::span<const uint8_t> key; // the subjectPublicKey's bytes / the privateKey's bytes
++};
++
++// SubjectPublicKeyInfo ::= SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }
++// Strict: the whole of `data` must be that one structure.
++std::optional<DERKeyInfo> parseSubjectPublicKeyInfo(std::span<const uint8_t> data);
++// PrivateKeyInfo ::= SEQUENCE { version INTEGER (0), privateKeyAlgorithm AlgorithmIdentifier,
++//     privateKey OCTET STRING, attributes [0] IMPLICIT Attributes OPTIONAL }
++std::optional<DERKeyInfo> parsePrivateKeyInfo(std::span<const uint8_t> data);
++
++bool oidEquals(std::span<const uint8_t> oid, const char* expected, size_t expectedLength);
++
++// Reads a non-negative INTEGER at *p (before end); its bytes (which may start with one zero).
++bool readDERInteger(const uint8_t** p, const uint8_t* end, std::span<const uint8_t>& value);
++
++// The PKCS #8 envelope around a private key. `parameters` is the algorithm's parameter, already
++// encoded (a NULL, a curve's OBJECT IDENTIFIER). Nothing on failure.
++Vector<uint8_t> writePrivateKeyInfo(const char* oid, size_t oidLength, std::span<const uint8_t> parameters, std::span<const uint8_t> privateKey);
++
++} // namespace MbedTLS
++} // namespace WebCore
++
++#endif // USE(MBEDTLS)
+diff --git a/Source/WebCore/crypto/mbedtls/SerializedCryptoKeyWrapMbedTLS.cpp b/Source/WebCore/crypto/mbedtls/SerializedCryptoKeyWrapMbedTLS.cpp
+new file mode 100644
+index 00000000..d175246f
+--- /dev/null
++++ b/Source/WebCore/crypto/mbedtls/SerializedCryptoKeyWrapMbedTLS.cpp
+@@ -0,0 +1,70 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "SerializedCryptoKeyWrap.h"
++
++#include "NotImplemented.h"
++#include "WrappedCryptoKey.h"
++
++// The wrapping of the keys a page stores (structured clone: IndexedDB, postMessage), as the
++// OpenSSL back end has it: there is no master key, and nothing is wrapped -- the serialized key
++// goes through as it is.
++
++namespace WebCore {
++
++std::optional<Vector<uint8_t>> defaultWebCryptoMasterKey()
++{
++    notImplemented();
++    return std::nullopt;
++}
++
++// Initially these helper functions were intended to perform KEK wrapping and unwrapping,
++// but this is not required anymore, despite the function names and the Mac implementation
++// still indicating otherwise.
++// See https://bugs.webkit.org/show_bug.cgi?id=173883 for more info.
++bool wrapSerializedCryptoKey(const Vector<uint8_t>& masterKey, const Vector<uint8_t>& key, Vector<uint8_t>& result)
++{
++    UNUSED_PARAM(masterKey);
++
++    // No wrapping performed -- the serialized key data is copied into the `result` variable.
++    result = Vector<uint8_t>(key);
++    return true;
++}
++
++std::optional<struct WrappedCryptoKey> readSerializedCryptoKey(const Vector<uint8_t>& wrappedKey)
++{
++    std::array<uint8_t, 24> a { 0 };
++    std::array<uint8_t, 16> b { 0 };
++    struct WrappedCryptoKey k { a, wrappedKey, b };
++    return k;
++}
++
++std::optional<Vector<uint8_t>> unwrapCryptoKey([[maybe_unused]] const Vector<uint8_t>& masterKey, const struct WrappedCryptoKey& wrappedKey)
++{
++    return wrappedKey.encryptedKey;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/PlatformPasteboard.h b/Source/WebCore/platform/PlatformPasteboard.h
+index e787180b..814999f9 100644
+--- a/Source/WebCore/platform/PlatformPasteboard.h
++++ b/Source/WebCore/platform/PlatformPasteboard.h
+@@ -42,7 +42,7 @@ OBJC_CLASS UIPasteboard;
+ OBJC_PROTOCOL(AbstractPasteboard);
+ #endif
+ 
+-#if USE(LIBWPE)
++#if USE(LIBWPE) || PLATFORM(ONYX)
+ struct wpe_pasteboard;
+ #endif
+ 
+@@ -64,7 +64,7 @@ enum class PasteboardDataLifetime : bool { Persistent, Ephemeral };
+ class PlatformPasteboard {
+ public:
+     WEBCORE_EXPORT explicit PlatformPasteboard(const String& pasteboardName);
+-#if PLATFORM(IOS_FAMILY) || USE(LIBWPE)
++#if PLATFORM(IOS_FAMILY) || USE(LIBWPE) || PLATFORM(ONYX)
+     WEBCORE_EXPORT PlatformPasteboard();
+     WEBCORE_EXPORT void updateSupportedTypeIdentifiers(const Vector<String>& types);
+ #endif
+@@ -134,7 +134,7 @@ private:
+ #if PLATFORM(IOS_FAMILY)
+     RetainPtr<AbstractPasteboard> m_pasteboard;
+ #endif
+-#if USE(LIBWPE)
++#if USE(LIBWPE) || PLATFORM(ONYX)
+     struct wpe_pasteboard* m_pasteboard;
+     int64_t m_changeCount { 0 };
+ #endif
+diff --git a/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp b/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp
+new file mode 100644
+index 00000000..bc33cb00
+--- /dev/null
++++ b/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp
+@@ -0,0 +1,180 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "PlatformPasteboard.h"
++
++#if PLATFORM(ONYX)
++
++#include "Pasteboard.h"
++#include <wtf/Lock.h>
++#include <wtf/NeverDestroyed.h>
++#include <wtf/Vector.h>
++#include <wtf/text/WTFString.h>
++
++// The clipboard of the Onyx port, for now a clipboard of its own: what a page copies is kept in this
++// process (the UI process: the web processes reach it through WebPasteboardProxy) and can be pasted into
++// any page of the same browser, as text or as HTML. It is not Onyx's system clipboard yet: nothing copied
++// here reaches another program, and nothing copied elsewhere can be pasted here.
++//
++// The system clipboard is the kernel's (kapi clipboard_set / clipboard_get, CLIP_TEXT: user/kapi.h of the
++// Onyx tree), and a program built on libonyxposix has no access to it: kapi.h is not in the POSIX
++// sysroot, and libonyxposix exports no clipboard function. What the binding needs: two functions in
++// libonyxposix, declared in a header of the sysroot, over those two kernel calls -- "set the clipboard's
++// plain text (UTF-8, a length)" and "get it (a buffer, its size, the clipboard's serial number)". With
++// them, write() below also gives the plain text to the system clipboard, and readString() / getTypes()
++// compare the system's serial with the one of our last write: when it differs another program has
++// copied something, which then replaces what is kept here (the HTML with it).
++
++namespace WebCore {
++
++namespace {
++
++struct OnyxClipboardEntry {
++    String type;
++    String string;
++};
++
++struct OnyxClipboardStore {
++    Lock lock;
++    Vector<OnyxClipboardEntry> items WTF_GUARDED_BY_LOCK(lock);
++    int64_t changeCount WTF_GUARDED_BY_LOCK(lock) { 0 };
++};
++
++OnyxClipboardStore& onyxClipboardStore()
++{
++    static NeverDestroyed<OnyxClipboardStore> store;
++    return store;
++}
++
++constexpr auto onyxPlainTextType = "text/plain;charset=utf-8"_s;
++constexpr auto onyxHTMLTextType = "text/html"_s;
++
++// "text/plain" and "text/plain;charset=utf-8" name the same thing.
++bool isSameClipboardType(const String& a, const String& b)
++{
++    if (a == b)
++        return true;
++    return a.startsWith("text/plain"_s) && b.startsWith("text/plain"_s);
++}
++
++} // namespace
++
++PlatformPasteboard::PlatformPasteboard(const String&)
++    : m_pasteboard(nullptr)
++{
++}
++
++PlatformPasteboard::PlatformPasteboard()
++    : m_pasteboard(nullptr)
++{
++}
++
++void PlatformPasteboard::performAsDataOwner(DataOwnerType, NOESCAPE const Function<void()>& actions)
++{
++    actions();
++}
++
++int64_t PlatformPasteboard::changeCount() const
++{
++    auto& clipboard = onyxClipboardStore();
++    Locker locker { clipboard.lock };
++    return clipboard.changeCount;
++}
++
++void PlatformPasteboard::getTypes(Vector<String>& types) const
++{
++    auto& clipboard = onyxClipboardStore();
++    Locker locker { clipboard.lock };
++    for (auto& item : clipboard.items)
++        types.append(item.type);
++}
++
++String PlatformPasteboard::readString(size_t, const String& type) const
++{
++    auto& clipboard = onyxClipboardStore();
++    Locker locker { clipboard.lock };
++    for (auto& item : clipboard.items) {
++        if (isSameClipboardType(item.type, type))
++            return item.string;
++    }
++    return String();
++}
++
++void PlatformPasteboard::write(const PasteboardWebContent& content)
++{
++    auto& clipboard = onyxClipboardStore();
++    Locker locker { clipboard.lock };
++    clipboard.items.clear();
++    if (!content.text.isNull())
++        clipboard.items.append(OnyxClipboardEntry { onyxPlainTextType, content.text });
++    if (!content.markup.isNull())
++        clipboard.items.append(OnyxClipboardEntry { onyxHTMLTextType, content.markup });
++    clipboard.changeCount++;
++}
++
++void PlatformPasteboard::write(const String& type, const String& string)
++{
++    auto& clipboard = onyxClipboardStore();
++    Locker locker { clipboard.lock };
++    clipboard.items.clear();
++    clipboard.items.append(OnyxClipboardEntry { type, string });
++    clipboard.changeCount++;
++}
++
++Vector<String> PlatformPasteboard::typesSafeForDOMToReadAndWrite(const String&) const
++{
++    return { };
++}
++
++int64_t PlatformPasteboard::write(const PasteboardCustomData& customData, PasteboardDataLifetime)
++{
++    PasteboardWebContent contents;
++    customData.forEachPlatformStringOrBuffer([&contents] (auto& type, auto& stringOrBuffer) {
++        if (std::holds_alternative<String>(stringOrBuffer)) {
++            if (type.startsWith("text/plain"_s))
++                contents.text = std::get<String>(stringOrBuffer);
++            else if (type == "text/html"_s)
++                contents.markup = std::get<String>(stringOrBuffer);
++        }
++    });
++    if (contents.text.isNull() && contents.markup.isNull())
++        return changeCount();
++
++    write(contents);
++    return changeCount();
++}
++
++int64_t PlatformPasteboard::write(const Vector<PasteboardCustomData>& data, PasteboardDataLifetime)
++{
++    if (data.isEmpty() || data.size() > 1)
++        return changeCount();
++
++    return write(data[0]);
++}
++
++} // namespace WebCore
++
++#endif // PLATFORM(ONYX)
