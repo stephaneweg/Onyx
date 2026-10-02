@@ -59,10 +59,14 @@ stage on the Pi and agrees, merge `webkit-port` into `main` (`git push origin HE
 1. **Give WSL enough resources** — `%UserProfile%\.wslconfig` (Windows side), then `wsl --shutdown`:
    ```ini
    [wsl2]
-   memory=24GB        # WebCore needs ~1.5–2 GB per parallel job; 16 GB is the minimum
-   processors=12      # most of the i7's threads
+   memory=26GB        # the user's PC: i7-11800H (8 cores / 16 threads), 32 GB RAM -- leave ~6 GB to Windows
+   processors=16      # all 16 threads
    swap=16GB
    ```
+   **Parallel jobs**: WebCore's unified sources take ~1.5–2.5 GB per GCC job, so memory, not the
+   cores, is the limit: build with **`ninja -j12`** (or `-j10` if the build gets killed — an "out of
+   memory" kill in `dmesg`), keep `-j16` for the small builds (Onyx itself, the ports). Expect a full
+   WebCore build in roughly 1–2 h the first time, minutes afterwards with ccache.
 2. **Work on the Linux filesystem, never under `/mnt/c/...`** (Windows files from WSL are 5–10× slower
    to build): e.g. `~/src/Onyx`. Keep ~60 GB free there (WebKit sources + build trees).
 3. **Packages** (Ubuntu 22.04/24.04):
