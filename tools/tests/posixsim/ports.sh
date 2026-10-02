@@ -24,8 +24,19 @@ ONYX=$(cd "$HERE/../../.." && pwd)
 : "${POSIXSIM_ROOT:=/tmp/posixsim}"
 : "${POSIXSIM_QEMU:=$(command -v qemu-aarch64-static || command -v qemu-aarch64)}"
 export POSIXSIM_ROOT POSIXSIM_QEMU
-S=$ONYX/out/sysroot
-PB=$ONYX/out/ports/build
+# the toolchain, sysroot and build trees build-all.sh used (tools/onyx-env.sh: ONYX_TOOLCHAIN_PREFIX,
+# else aarch64-onyx-elf when installed, else aarch64-none-elf)
+set --
+ONYX_ROOT=$ONYX ONYX_ENV_QUIET=1 . "$ONYX/tools/onyx-env.sh"
+case $ONYX_TOOLCHAIN_PREFIX in
+aarch64-onyx-elf-) : "${PORTS_OUT:=$ONYX/out/ports-onyx}";;
+*) : "${PORTS_OUT:=$ONYX/out/ports}";;
+esac
+PREFIX=$ONYX_TOOLCHAIN_PREFIX
+export PREFIX
+echo "ports.sh: $ONYX_TOOLCHAIN_PREFIX, sysroot $ONYX_SYSROOT, $PORTS_OUT"
+S=$ONYX_SYSROOT
+PB=$PORTS_OUT/build
 fails=0
 ok () { echo "PASS  $1"; }
 ko () { echo "FAIL  $1 ($2)"; fails=$((fails + 1)); }

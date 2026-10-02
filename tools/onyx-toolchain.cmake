@@ -1,13 +1,13 @@
 # onyx-toolchain.cmake -- CMake toolchain file: build third-party code for Onyx, against the POSIX
 # sysroot (libonyxposix: docs/03 §5.4 and "Building a third-party library for Onyx").
 #
-#   make -C user/libc/posix install                    # the sysroot (default out/sysroot)
+#   make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
 #   cmake -S <src> -B <build> -DCMAKE_TOOLCHAIN_FILE=<onyx>/tools/onyx-toolchain.cmake \
-#         -DBUILD_SHARED_LIBS=OFF [-DONYX_SYSROOT=<dir>]
+#         -DBUILD_SHARED_LIBS=OFF [-DONYX_SYSROOT=<dir>] [-DONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-]
 #
 # What it sets: the system "Onyx" (tools/cmake/Platform/Onyx.cmake: UNIX, static only), the
-# aarch64 compilers (ONYX_TOOLCHAIN_PREFIX, default aarch64-none-elf- -- WP-TC's toolchain:
-# aarch64-onyx-elf-), the flags (Cortex-A72, sections for --gc-sections, the sysroot's headers
+# aarch64 compilers (ONYX_TOOLCHAIN_PREFIX; default WP-TC's aarch64-onyx-elf- when installed,
+# else the interim aarch64-none-elf-; the sysroot follows: out/sysroot-onyx / out/sysroot), the flags (Cortex-A72, sections for --gc-sections, the sysroot's headers
 # first: -isystem), the link (onyx.specs: crt0posix, onyx-posix.ld, libonyxposix + newlib), and
 # the search paths: libraries, headers and CMake packages from the sysroot only, programs from
 # the host. Executables link and are Onyx ELFs (try_run cannot run them: answer its questions
@@ -30,35 +30,47 @@ set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_SYSTEM_VERSION 75)		# the kapi ABI version the sysroot targets
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
-# The sysroot: -DONYX_SYSROOT, else $ONYX_SYSROOT, else <onyx>/out/sysroot.
+# The compilers: -DONYX_TOOLCHAIN_PREFIX, else $ONYX_TOOLCHAIN_PREFIX, else WP-TC's
+# aarch64-onyx-elf- when it is installed (on the PATH or in /opt/toolchains/aarch64-onyx-elf-14.2:
+# native TLS, real C++ threads), else the interim aarch64-none-elf- (docs/03 §1).
+set(ONYX_TOOLCHAIN_DIRS /opt/toolchains/aarch64-onyx-elf-14.2/bin
+	/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin)
+if(NOT ONYX_TOOLCHAIN_PREFIX)
+	if(DEFINED ENV{ONYX_TOOLCHAIN_PREFIX} AND NOT "$ENV{ONYX_TOOLCHAIN_PREFIX}" STREQUAL "")
+		set(ONYX_TOOLCHAIN_PREFIX "$ENV{ONYX_TOOLCHAIN_PREFIX}")
+	else()
+		find_program(ONYX_TC_PROBE aarch64-onyx-elf-gcc PATHS ${ONYX_TOOLCHAIN_DIRS} NO_CMAKE_FIND_ROOT_PATH)
+		if(ONYX_TC_PROBE)
+			set(ONYX_TOOLCHAIN_PREFIX "aarch64-onyx-elf-")
+		else()
+			set(ONYX_TOOLCHAIN_PREFIX "aarch64-none-elf-")
+		endif()
+		unset(ONYX_TC_PROBE CACHE)
+	endif()
+endif()
+set(ONYX_TOOLCHAIN_PREFIX "${ONYX_TOOLCHAIN_PREFIX}" CACHE STRING "The Onyx toolchain's prefix (aarch64-onyx-elf- or aarch64-none-elf-)")
+find_program(ONYX_CC "${ONYX_TOOLCHAIN_PREFIX}gcc" PATHS ${ONYX_TOOLCHAIN_DIRS} NO_CMAKE_FIND_ROOT_PATH)
+if(NOT ONYX_CC)
+	message(FATAL_ERROR "${ONYX_TOOLCHAIN_PREFIX}gcc not found: put the toolchain's bin on the PATH")
+endif()
+
+# The sysroot: -DONYX_SYSROOT, else $ONYX_SYSROOT, else <onyx>/out/sysroot-onyx (aarch64-onyx-elf)
+# or <onyx>/out/sysroot (aarch64-none-elf): the two toolchains' objects are not interchangeable.
 if(NOT ONYX_SYSROOT)
-	if(DEFINED ENV{ONYX_SYSROOT})
+	if(DEFINED ENV{ONYX_SYSROOT} AND NOT "$ENV{ONYX_SYSROOT}" STREQUAL "")
 		set(ONYX_SYSROOT "$ENV{ONYX_SYSROOT}")
+	elseif(ONYX_TOOLCHAIN_PREFIX STREQUAL "aarch64-onyx-elf-")
+		get_filename_component(ONYX_SYSROOT "${CMAKE_CURRENT_LIST_DIR}/../out/sysroot-onyx" ABSOLUTE)
 	else()
 		get_filename_component(ONYX_SYSROOT "${CMAKE_CURRENT_LIST_DIR}/../out/sysroot" ABSOLUTE)
 	endif()
 endif()
 set(ONYX_SYSROOT "${ONYX_SYSROOT}" CACHE PATH "The Onyx POSIX sysroot (make -C user/libc/posix install)")
 if(NOT EXISTS "${ONYX_SYSROOT}/lib/onyx.specs")
-	message(FATAL_ERROR "No Onyx sysroot at ${ONYX_SYSROOT}: run  make -C user/libc/posix install SYSROOT=${ONYX_SYSROOT}")
+	message(FATAL_ERROR "No Onyx sysroot at ${ONYX_SYSROOT}: run  make -C user/libc/posix install PREFIX=${ONYX_TOOLCHAIN_PREFIX} SYSROOT=${ONYX_SYSROOT}")
 endif()
 # (try_compile projects get these too)
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES ONYX_SYSROOT ONYX_TOOLCHAIN_PREFIX)
-
-# The compilers: ONYX_TOOLCHAIN_PREFIX (on the PATH, or the Arm GNU toolchain in /opt/toolchains)
-if(NOT ONYX_TOOLCHAIN_PREFIX)
-	if(DEFINED ENV{ONYX_TOOLCHAIN_PREFIX})
-		set(ONYX_TOOLCHAIN_PREFIX "$ENV{ONYX_TOOLCHAIN_PREFIX}")
-	else()
-		set(ONYX_TOOLCHAIN_PREFIX "aarch64-none-elf-")
-	endif()
-endif()
-find_program(ONYX_CC "${ONYX_TOOLCHAIN_PREFIX}gcc"
-	PATHS /opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin
-	      /opt/toolchains/aarch64-onyx-elf-14.2/bin NO_CMAKE_FIND_ROOT_PATH)
-if(NOT ONYX_CC)
-	message(FATAL_ERROR "${ONYX_TOOLCHAIN_PREFIX}gcc not found: put the toolchain's bin on the PATH")
-endif()
 get_filename_component(ONYX_TOOLCHAIN_BIN "${ONYX_CC}" DIRECTORY)
 set(CMAKE_C_COMPILER "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}gcc")
 set(CMAKE_CXX_COMPILER "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}g++")

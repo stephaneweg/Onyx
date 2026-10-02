@@ -98,6 +98,7 @@ CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic 
 	       -I.. -I../../kernel/include
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
 POSIX_PROGS  = posixtest.elf
+POSIX_CXX_PROGS = posixtest-cxx.elf
 
 # C++ console tools on the V3D QPU builder (../v3d/libv3d.a: shaders generated at run time),
 # with FP on.
@@ -106,7 +107,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(PORT_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(PORT_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -126,16 +127,40 @@ posixlib:
 $(POSIX_PROGS): %.elf: %.c posixlib ../kapi.h
 	$(CC) $(CFLAGS_POSIX) $(LDFLAGS_POSIX) $< -o $@
 
+# C++ on libonyxposix: WP-TC's aarch64-onyx-elf toolchain (real gthreads, native TLS, errno per
+# thread: docs/03 §1, tools/toolchain). Built when that toolchain is installed (on the PATH or in
+# /opt/toolchains/aarch64-onyx-elf-14.2), skipped with a note otherwise; its libonyxposix is
+# ../libc/posix/build-onyx. posixtest-cxx: the C++ conformance test (`posixtest cxx` runs it).
+ONYX_TC_PREFIX ?= aarch64-onyx-elf-
+ONYX_TC_GXX := $(firstword $(shell command -v $(ONYX_TC_PREFIX)g++ 2>/dev/null) \
+		$(wildcard /opt/toolchains/aarch64-onyx-elf-14.2/bin/$(ONYX_TC_PREFIX)g++))
+CXXFLAGS_POSIX_TC = -std=gnu++20 -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-pic -fno-pie \
+	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
+	       -I.. -I../../kernel/include
+LDFLAGS_POSIX_TC = -specs=$(POSIX_DIR)/build-onyx/onyx.specs
+ifneq ($(ONYX_TC_GXX),)
+.PHONY: posixlib-onyx
+posixlib-onyx:
+	@$(MAKE) --no-print-directory -C $(POSIX_DIR) PREFIX=$(ONYX_TC_PREFIX)
+$(POSIX_CXX_PROGS): %.elf: %.cpp posixlib-onyx
+	$(ONYX_TC_GXX) $(CXXFLAGS_POSIX_TC) $(LDFLAGS_POSIX_TC) $< -o $@
+else
+$(POSIX_CXX_PROGS):
+	@echo "  SKIP $@: no $(ONYX_TC_PREFIX)g++ (WP-TC toolchain: sh tools/toolchain/fetch.sh, docs/03 §1)"
+endif
+
 # The C smoke ports of the POSIX layer (SQLite, libxml2, curl + mbedTLS: third_party, built with
 # CMake / the Onyx toolchain file into out/sysroot and out/ports, tools/ports/build-all.sh). OPT-IN
 # (a few minutes): `make ports`, or PORTS=1 with `all`. The tools: sqlite3, xmllint, curl.
 PORTS ?=
 PORT_TOOLS = sqlite3 xmllint curl
-PORT_OUT = ../../out/ports/bin
+# The toolchain: ONYX_TOOLCHAIN_PREFIX (make ports ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-), else
+# aarch64-onyx-elf when installed, else aarch64-none-elf (tools/onyx-env.sh); the tools come from
+# out/ports-onyx/bin or out/ports/bin.
 .PHONY: ports
 ports:
-	sh ../../tools/ports/build-all.sh
-	@for t in $(PORT_TOOLS); do cp $(PORT_OUT)/$$t.elf $$t.elf; done
+	PORTS_COPY_TO=$(CURDIR) $(if $(ONYX_TOOLCHAIN_PREFIX),ONYX_TOOLCHAIN_PREFIX=$(ONYX_TOOLCHAIN_PREFIX)) \
+		sh ../../tools/ports/build-all.sh
 ifneq ($(strip $(PORTS)),)
 PORT_PROGS = ports
 endif

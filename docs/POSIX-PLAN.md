@@ -221,6 +221,83 @@ WP-TC deliverables:
   - `posixtest cxx` passes on the Pi.
 - **Risk:** libstdc++'s cross configure for newlib (`crossconfig.m4`) may not enable the time features → a 1-file patch or `--enable-libstdcxx-time=yes` must be confirmed.
 
+#### WP-TC resolutions (what was built; docs/03 §1.1, §5.4)
+
+1. **The script**: `tools/toolchain/build-onyx-toolchain.sh` (MIT): binutils 2.43, GCC 14.2.0 (GMP
+   6.3.0, MPFR 4.2.1, MPC 1.3.1 built in its tree: no host libraries), newlib 4.4.0.20231231 —
+   pinned URLs + sha256; stages fetch → binutils → GCC stage 1 (C, `--without-headers
+   --disable-threads`) → newlib → the overlay → GCC final → final (strip, `ONYX-TOOLCHAIN.txt`, the
+   patch and the script copied into `share/onyx-toolchain/`, the build trees removed) → check (the
+   acceptance, printed). Stamps in `$WORK/stamps`: resumable. **27 minutes on 4 cores** (no
+   bootstrap: a cross compiler), 240 MB installed, about 10 GB of build space at the peak.
+   Linux and WSL (the build tree on the Linux side). `config.gcc` takes `aarch64-*-elf` with any
+   vendor: no GCC target patch.
+2. **The configuration** (all stages `--target=aarch64-onyx-elf --disable-nls --disable-multilib`):
+   - GCC final: `--enable-languages=c,c++ --enable-threads=posix --enable-tls --disable-shared
+     --with-newlib --with-cpu=cortex-a72 --with-sysroot=$PREFIX/aarch64-onyx-elf
+     --with-native-system-header-dir=/include --enable-libstdcxx-filesystem-ts
+     --disable-libstdcxx-pch --enable-libstdcxx-backtrace=no --without-isl`, and off: libssp,
+     libgomp, libquadmath, libsanitizer, libvtv, libatomic, libitm, libcc1. **The sysroot is
+     needed**: without it GCC looks for the target headers in `sys-include` when it makes its
+     `<limits.h>`, finds none, and installs one that does not chain to newlib's (no `PATH_MAX`).
+     Under the prefix, so the toolchain stays relocatable.
+   - newlib: `--enable-newlib-reent-thread-local --enable-newlib-retargetable-locking
+     --enable-newlib-io-long-long --enable-newlib-io-c99-formats --disable-newlib-supplied-syscalls
+     --enable-newlib-mb --enable-newlib-register-fini` (the last two as Arm's build), target flags
+     `-O2 -g -ffunction-sections -fdata-sections`. **Only `newlib` is built, not libgloss**
+     (`all-target-newlib`): Onyx has no use for semihosting's crt0 / rdimon / nosys, and libgloss's
+     aarch64 rdimon does not compile with a thread-local `_reent`.
+   - `--enable-libstdcxx-time=yes` is **not** usable: it runs link tests, impossible before the
+     target's C library links (newlib without syscalls: `gcc_no_link`, a fatal configure error).
+3. **The one GCC patch** (`tools/toolchain/patches/gcc-14.2.0-libstdcxx-onyx.patch`, applied by the
+   script to `libstdc++-v3/configure` + `configure.ac` + `acinclude.m4`): (a) the `auto` time check
+   states `*-onyx-*` like the BSDs (monotonic and realtime clocks, `nanosleep`, `sched_yield`); (b)
+   the newlib block treats `*-onyx-*` like RTEMS: `HAVE_TLS` and `link`, `readlink`, `symlink`,
+   `truncate`, `sleep`, `usleep`, `setenv`, `aligned_alloc`, `quick_exit`, `strerror_l`,
+   `sockatmark` (all in newlib + libonyxposix).
+4. **The overlay** (installed into `$PREFIX/aarch64-onyx-elf/include` after newlib, before GCC
+   final): libonyxposix's `pthread.h`, `sys/_pthreadtypes.h`, `semaphore.h`, **`sys/dirent.h`**
+   (newlib's is an `#error` stub on this target: without it libstdc++'s directory iterators are not
+   built), and `sys/features.h` = libonyxposix's overlay with its `#include_next` turned into
+   `#include <sys/_newlib_features.h>` (newlib's, renamed) and its own guard (so the sysroot's
+   `sys/features.h`, still first on the path, chains to it). The pthread types are now frozen: a
+   change to those five headers is a new toolchain revision (`ONYX_TC_REVISION`, `onyx1`).
+5. **Acceptance** (`check` stage): `Thread model: posix`; `c++config.h` has `_GLIBCXX_HAS_GTHREADS`,
+   `_GLIBCXX_USE_CLOCK_MONOTONIC`, `_GLIBCXX_USE_CLOCK_REALTIME`, `_GLIBCXX_USE_NANOSLEEP`,
+   `_GLIBCXX_USE_SCHED_YIELD`, `_GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT`, `_GLIBCXX_HAVE_TLS`,
+   `_GLIBCXX_HAVE_DIRENT_H` (also `USE_PTHREAD_MUTEX_CLOCKLOCK`, `USE_PTHREAD_RWLOCK_CLOCKLOCK`,
+   `USE_SC_NPROCESSORS_ONLN`, `HAVE_FDOPENDIR`, `HAVE_OPENAT`, `HAVE_UNLINKAT`, `USE_ST_MTIM`; not
+   `USE_REALPATH` / `USE_UTIMENSAT`: libstdc++ falls back); newlib `_WANT_REENT_THREAD_LOCAL`;
+   `__thread` compiles to `mrs tpidr_el0`; `<limits.h>` has `PATH_MAX`. All pass.
+6. **libonyxposix under it**: the Makefile picks by `$(CC) -dumpmachine` (`build-onyx/`, sysroot
+   `out/sysroot-onyx`, specs without `-u __emutls_get_address`); the sources by newlib's
+   `_WANT_REENT_THREAD_LOCAL` (`ONYX_NATIVE_TLS` in `posix_internal.h`): no emutls override, no
+   `__errno` override (newlib's `_tls_errno` is per thread). The futex `__cxa_guard_*` and the
+   `-u __onyx_pthread_anchor` stay (gthr-posix's weak references must find the thread layer; its
+   "threads active" probe is `pthread_cancel`). The `aarch64-none-elf` path is unchanged.
+   `tools/onyx-env.sh`, `tools/onyx-toolchain.cmake`, `tools/ports/build-all.sh` choose
+   `aarch64-onyx-elf` when it is installed (`ONYX_TOOLCHAIN_PREFIX` overrides), with
+   `out/sysroot-onyx` and `out/ports-onyx`.
+7. **Distribution** (the user's choice: not a GitHub release): the repository
+   `stephaneweg/onyx-toolchain`. `aarch64-onyx-elf-14.2/` holds the `.tar.xz` split in 90 MB parts
+   (`split -b 90M -d -a 2`: `.part-00`, `-01`…; this revision is 38 MB, one part), `SHA256SUMS`
+   (the whole tarball and each part) and `BUILDINFO.txt`; `sources/aarch64-onyx-elf-14.2/` the six
+   upstream tarballs (GCC's, 92 MB, the largest), the patch, the script and the overlay headers —
+   the GPL's corresponding source beside the binaries. `tools/toolchain/fetch.sh` shallow-clones it
+   (sparse: the version's directory only), checks the sha256s, unpacks into `/opt/toolchains`
+   (`PREFIX=` elsewhere; the toolchain is relocatable).
+8. **Linking with it, what changed**: `onyx.specs` gains `-u abort` (libonyxposix's `signal.o` —
+   `signal`, `raise`, `abort` — before newlib's: under the interim toolchain `emutls.o` pulled it
+   in first; without it newlib's `assert` → `abort.o` → `signal.o` clashed). Objects built by the
+   interim toolchain do not link with this newlib (no `__errno`, no `_impure_ptr`: errno and the
+   stdio pointers are thread-local), so the ports' in-tree zlib, nghttp2 and brotli are compiled
+   from their sources under it (`onyx_dep_lib`, `tools/ports/common.sh`).
+9. **Results on the posixsim bench** (`tools/tests/posixsim/tc.sh`, `ports.sh`): with
+   `aarch64-onyx-elf`, posixtest 119 passed / 0 failed (v75; 1 SKIP: no network), 101 / 0 on the v74
+   fallbacks; **posixtest-cxx 82 passed / 0 failed** (v75 and v74); `posixtest cxx` passes; the
+   ports rebuilt with it (sqlite3, xmllint, curl): 13 / 13. The `aarch64-none-elf` path unchanged:
+   posixtest 119 / 0, ports 13 / 13.
+
 ---
 
 ## 3. The design: work packages

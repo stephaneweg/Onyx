@@ -10,7 +10,9 @@
  * initialiser's image, or zeros) and freed when the thread ends (pthread.c). C++ thread_local
  * destructors are libstdc++'s business (__cxa_thread_atexit; single-threaded under (a)).
  *
- * Under WP-TC's aarch64-onyx-elf (--enable-tls) nothing calls this: TLS is native (tls.c).
+ * Under WP-TC's aarch64-onyx-elf (--enable-tls) nothing calls this: TLS is native (tls.c), and
+ * the override is not compiled (ONYX_NATIVE_TLS, posix_internal.h; onyx.specs has no
+ * -u __emutls_get_address): only __onyx_emutls_free remains, a no-op.
  * Code on an app core shares the main thread's copies (posix_internal.h, __onyx_self).
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
@@ -28,6 +30,7 @@
 #include <stdint.h>
 #include "posix_internal.h"
 
+#ifndef ONYX_NATIVE_TLS			/* the interim toolchain: emulated TLS */
 /* libgcc's layout (libgcc/emutls.c) */
 struct __emutls_object
 {
@@ -103,6 +106,8 @@ void __emutls_register_common (void *o, size_t size, size_t align, void *templ)
 	if (templ != 0 && size == obj->size)
 		obj->templ = templ;
 }
+
+#endif /* !ONYX_NATIVE_TLS */
 
 /* A thread ends: its copies go (after its key destructors ran). */
 void __onyx_emutls_free (struct __onyx_thread *t)

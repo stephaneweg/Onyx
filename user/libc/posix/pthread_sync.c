@@ -265,14 +265,14 @@ int pthread_condattr_setclock (pthread_condattr_t *a, clockid_t c)
 	a->__clock = (int) c;
 	return 0;
 }
-int pthread_condattr_getclock (const pthread_condattr_t *a, clockid_t *c) { *c = a->__clock ? a->__clock : CLOCK_REALTIME; return 0; }
+int pthread_condattr_getclock (const pthread_condattr_t *a, clockid_t *c) { *c = a->__clock ? (clockid_t) a->__clock : CLOCK_REALTIME; return 0; }
 int pthread_condattr_setpshared (pthread_condattr_t *a, int p) { a->__pshared = p; return 0; }
 int pthread_condattr_getpshared (const pthread_condattr_t *a, int *p) { *p = a->__pshared; return 0; }
 
 int pthread_cond_init (pthread_cond_t *c, const pthread_condattr_t *a)
 {
 	c->__seq = 0;
-	c->__clock = a ? a->__clock : CLOCK_REALTIME;
+	c->__clock = a ? a->__clock : (int) CLOCK_REALTIME;
 	c->__waiters = 0;
 	c->__pad = 0;
 	return 0;

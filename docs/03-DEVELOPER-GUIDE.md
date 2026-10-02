@@ -27,6 +27,37 @@ be aware of. For the details of how things work internally, see
 
 - **AArch64 bare-metal toolchain**: `aarch64-none-elf-` (GCC), used under **WSL** on
   a Windows development machine.
+- *(Only for POSIX / C++ ports)* **the Onyx toolchain `aarch64-onyx-elf-`** (below).
+
+### 1.1. The two toolchains
+
+| Toolchain | Install | Used for |
+|---|---|---|
+| **`aarch64-none-elf`** — Arm GNU Toolchain 14.2.rel1 (GCC 14.2.1, newlib 4.4; thread model `single`, no TLS) | `/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf` (Arm's download) | **the kernel and every existing app and `/bin` tool** (`onyx_syscalls.c`, §5.1). Unchanged. |
+| **`aarch64-onyx-elf`** — ours (WP-TC, [`tools/toolchain/`](../tools/toolchain/)): GCC 14.2.0 + binutils 2.43 + newlib 4.4, `--enable-threads=posix --enable-tls`, newlib `--enable-newlib-reent-thread-local` | `/opt/toolchains/aarch64-onyx-elf-14.2` | **programs on libonyxposix (§5.4) and the third-party ports (§5.5)**, above all C++: real `std::thread` / `mutex` / `condition_variable`, native `thread_local` (`TPIDR_EL0`), thread-safe statics, `errno` per thread, `steady_clock` on `clock_gettime`. `/bin/posixtest-cxx`. |
+
+Its libgcc and libstdc++ are built against libonyxposix's `<pthread.h>` (a header overlay
+installed into the toolchain): the pthread types are **ABI-frozen** (docs/POSIX-PLAN.md "WP-LIBC
+resolutions" 7). Any change to `pthread.h`, `sys/_pthreadtypes.h`, `semaphore.h`, `sys/dirent.h`
+or `sys/features.h` in `user/libc/posix/include` means a new toolchain revision.
+
+**Getting it** (Linux x86_64, or **WSL** on Windows — in the WSL shell, as for the rest of the build):
+
+```sh
+sh tools/toolchain/fetch.sh                  # the prebuilt one, from stephaneweg/onyx-toolchain (git, sha256 checked)
+# or build it (about 30 min on 4 cores, ~10 GB of build space in ~/.cache/onyx-toolchain):
+sudo apt install build-essential m4 xz-utils curl patch
+sudo mkdir -p /opt/toolchains && sudo chown $(id -u):$(id -g) /opt/toolchains
+sh tools/toolchain/build-onyx-toolchain.sh   # PREFIX=<dir> elsewhere; resumable; prints the checks
+```
+
+Under WSL keep the build directory on the Linux side (the default `~/.cache`), not under
+`/mnt/c` (ten times slower). Nothing selects it for the kernel: `kernel/` and `user/` keep
+`aarch64-none-elf-`. What does select it when it is installed: `tools/onyx-env.sh`,
+`tools/onyx-toolchain.cmake`, `tools/ports/build-all.sh` (`ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-`
+forces the interim one), and `user/bin`'s `posixtest-cxx` (skipped with a note when absent).
+`make -C user/libc/posix PREFIX=aarch64-onyx-elf-` builds libonyxposix for it (`build-onyx/`,
+sysroot `out/sysroot-onyx`).
 - **Circle**, pulled in as a **git submodule** at `circle/` (our fork
   `stephaneweg/circle`, branch `onyx`).
 - `make`, `cp`, `mkdir` (standard Unix tools, via WSL).
@@ -365,13 +396,20 @@ flags — the headers first on the path, and the specs, which bring the start co
 script and the libraries:
 
 ```sh
-aarch64-none-elf-gcc -mcpu=cortex-a72 -O2 -isystem <sysroot>/include -DFD_SETSIZE=1024 \
-    -specs=<sysroot>/lib/onyx.specs prog.c -o prog.elf      # (C++: g++, the same flags)
+aarch64-onyx-elf-g++ -std=gnu++20 -mcpu=cortex-a72 -O2 -isystem <sysroot>/include -DFD_SETSIZE=1024 \
+    -specs=<sysroot>/lib/onyx.specs prog.cpp -o prog.elf    # (C: gcc, the same flags)
 ```
+
+Either toolchain (§1.1) works for C; **C++ with threads needs `aarch64-onyx-elf`**. libonyxposix
+is built per toolchain — `make -C user/libc/posix` with `aarch64-none-elf` (`build/`, sysroot
+`out/sysroot`), `make -C user/libc/posix PREFIX=aarch64-onyx-elf-` (`build-onyx/`, sysroot
+`out/sysroot-onyx`); the Makefile tells them apart by `$(CC) -dumpmachine`, the sources by
+newlib's `_WANT_REENT_THREAD_LOCAL` (`ONYX_NATIVE_TLS`). Objects of the two do not mix.
 
 `main (int argc, char **argv, char **envp)` gets its arguments and environment; `exit` flushes
 stdio. In the tree: the `POSIX_PROGS` rule of [`user/bin/Makefile`](../user/bin/Makefile)
-(`posixtest`).
+(`posixtest`, `aarch64-none-elf`) and `POSIX_CXX_PROGS` (`posixtest-cxx`, `aarch64-onyx-elf`:
+built when that toolchain is installed, else skipped with a note).
 
 **What it provides** (each piece on its v75 kapi; on a kernel without it, the fallback in
 brackets — so a program runs on today's kernel too, with less):
@@ -415,21 +453,34 @@ reaches the file — `:` is not allowed in a FAT name, so no real name is mistak
 after it (AArch64 "variant 1"); libonyxposix's `struct __onyx_thread` sits just below, so
 `pthread_self` costs no system call. `crt0posix` sets the main thread's before any other code; a
 new thread gets it from `thread_create_ex` (and sets it itself under v67). The kernel saves
-`TPIDR_EL0` per task. Under the **interim toolchain** (`aarch64-none-elf`, `--disable-tls`,
-docs/POSIX-PLAN.md §2) `__thread` compiles to *emutls* calls: libonyxposix overrides
-`__emutls_get_address` with a per-thread vector, and `__cxa_guard_*` (C++ function-local statics,
-thread-safe), both pulled in by `onyx.specs` before libgcc / libsupc++. **errno**: the main thread
-keeps newlib's (`_impure_ptr->_errno`), the others have their own — except what newlib sets
-through its reentrancy structure directly (`strtol`'s `ERANGE`, the maths functions), which a
-worker thread does not see (fully per-thread errno needs WP-TC's newlib, `_REENT_THREAD_LOCAL`).
+`TPIDR_EL0` per task. Under **`aarch64-onyx-elf`** TLS is **native**: `__thread` / `thread_local`
+compile to `mrs tpidr_el0` + the linker's local-exec offsets, `onyx-posix.ld` gathers `.tdata` /
+`.tbss` into a `PT_TLS` segment, and `tls.c` copies its image into each thread's block (the main
+thread's is reserved in `.bss`); newlib's `errno` and the rest of its `_reent` are `__thread`
+variables (`--enable-newlib-reent-thread-local`), so **errno is per thread everywhere** (newlib's
+`strtol`, libm included); libgcc's and libstdc++'s gthreads are `gthr-posix.h` over our pthreads
+(weak references: `onyx.specs` pulls the whole thread layer in with `-u __onyx_pthread_anchor`);
+`thread_local` destructors run at the thread's end (libstdc++'s `__cxa_thread_atexit` on a
+pthread key). Function-local statics keep libonyxposix's futex `__cxa_guard_*`. Under the
+**interim toolchain** (`aarch64-none-elf`, `--disable-tls`, docs/POSIX-PLAN.md §2) `__thread`
+compiles to *emutls* calls: libonyxposix overrides `__emutls_get_address` with a per-thread
+vector, and `__cxa_guard_*` (C++ function-local statics, thread-safe), both pulled in by
+`onyx.specs` before libgcc / libsupc++. **errno** there: the main thread keeps newlib's
+(`_impure_ptr->_errno`), the others have their own — except what newlib sets through its
+reentrancy structure directly (`strtol`'s `ERANGE`, the maths functions), which a worker thread
+does not see.
 **Code on an app core** (`kapi_core_run`) shares the main thread's TLS and errno, and its locks
 spin instead of sleeping (no kapi call there); stdio and files from there go through the RPC of
 §5.1 (`onyx_rpc_enable`).
 
 **Limits to know.**
-- C++ `std::thread` / `std::mutex` / `condition_variable` need the threaded libstdc++ of WP-TC
-  (`aarch64-onyx-elf`); under the interim toolchain C code is the target (the SuperTuxKart port's
-  gthreads shim is separate: `user/stk`).
+- C++ `std::thread` / `std::mutex` / `condition_variable` / `std::async` need the threaded
+  libstdc++ of `aarch64-onyx-elf` (§1.1); under the interim toolchain C code is the target (the
+  SuperTuxKart port's gthreads shim is separate: `user/stk`).
+- `std::filesystem` takes Onyx paths: `RAM:/x` is, for libstdc++, a *relative* path whose first
+  component is `RAM:` (no root name on POSIX) — the operations work (the kernel resolves the
+  volume), but `absolute` / `canonical` / `lexically_*` reason as on Unix.
+- `std::thread::hardware_concurrency ()` is 1 (a process's threads all run on core 0).
 - newlib's `struct stat` has a 16-bit `st_ino` / `st_dev`: `st_ino` is the kernel's 64-bit id
   folded to 16 bits.
 - No asynchronous signals, no `fork`, no shared memory between processes (`MAP_SHARED` of a file
@@ -441,8 +492,24 @@ groups `mem thread file io time proc net misc cxx`): one line per check, `PASS`,
 seen)` or `SKIP (kernel ENOSYS)` for a check that needs a v75 piece the kernel does not have yet
 — it first prints which pieces it found —, then a summary; the exit code is the number of
 failures. The `file` group runs in `RAM:/posixtest` and `/tmp/posixtest` (give a directory to run
-it elsewhere, `posixtest file SD:/tmp`); `net` needs the Wi-Fi up; `cxx` waits for WP-TC.
+it elsewhere, `posixtest file SD:/tmp`); `net` needs the Wi-Fi up; `cxx` runs `posixtest-cxx` from the
+same directory (SKIP when it is not there).
 The group `loop` (not in the default run) does TCP / UDP over `127.0.0.1`.
+
+**`/bin/posixtest-cxx [group…] [dir]`** ([`user/bin/posixtest-cxx.cpp`](../user/bin/posixtest-cxx.cpp),
+`aarch64-onyx-elf`, C++20): the C++ part, same output and exit code. Groups `thread` (`std::thread`,
+detach, a move-only argument, a 200 KB frame), `mutex` (`mutex`, `recursive_mutex`, `timed_mutex`
+timeouts, `shared_mutex`, `scoped_lock`), `cond` (`condition_variable` producer / consumer,
+`wait_for` / `wait_until` timeouts on `steady_clock` and `system_clock`, `notify_all`,
+`condition_variable_any`), `tls` (`thread_local` per thread, at `TPIDR_EL0` + offset, objects
+constructed and destroyed per thread), `static` (a function-local static built once under 8
+threads, `call_once`), `fs` (`std::filesystem` in `RAM:` and `SD:/tmp`: directories, iterators,
+`copy_file`, `rename`, `resize_file`, `remove_all`, errors), `time` (`steady_clock`, `sleep_for` /
+`sleep_until`), `future` (`async`, `promise`, `packaged_task`, `shared_future`, exceptions through
+`get`, `broken_promise`), `except` (an `exception_ptr` across threads, 8 threads throwing at once,
+nested exceptions), `errno` (newlib's `ERANGE` in a worker thread, 8 threads each with its own),
+`atomic` (`fetch_add`, `shared_ptr` reference counts across threads, `atomic::wait`), `sync`
+(`latch`, `barrier`, `counting_semaphore`, `jthread`).
 
 **Testing it on the PC: the posixsim bench** ([`tools/tests/posixsim/`](../tools/tests/posixsim/)).
 `sh tools/tests/posixsim/run.sh [group…]` builds libonyxposix with `-DONYX_POSIXSIM` (the counter
@@ -456,14 +523,23 @@ and runs them on real jobs (a SQLite database on `RAM:` and `SD:`, xmllint, curl
 HTTPS from a local Python server). The bench checks the library's logic, not the kernel's: the Pi
 run stays the reference.
 
+With **`aarch64-onyx-elf`** (§1.1): `PREFIX=aarch64-onyx-elf- sh tools/tests/posixsim/run.sh` builds
+posixtest with it (libonyxposix in `build-onyx-sim`); a `.cpp` `PROG` is linked with `g++`
+(`PROG=user/bin/posixtest-cxx.cpp`); **`sh tools/tests/posixsim/tc.sh`** runs the lot — posixtest and
+posixtest-cxx on the v75 calls and on the v74 fallbacks, then `posixtest cxx` (posixtest spawning
+posixtest-cxx) — and `ports.sh` relinks and runs the ports of whichever toolchain built them
+(`tools/onyx-env.sh`'s choice).
+
 ### 5.5. Building a third-party library for Onyx (the sysroot, the CMake toolchain file)
 
-The **sysroot** is libonyxposix installed with what ports add to it: `out/sysroot/` by default
-(git-ignored), `include/`, `lib/` (`libonyxposix.a`, `crt0posix.o`, `onyx-posix.ld`,
-`onyx.specs`, the ports' `.a`), `lib/pkgconfig/`.
+The **sysroot** is libonyxposix installed with what ports add to it — one per toolchain (§1.1),
+their objects do not mix: **`out/sysroot-onyx/`** for `aarch64-onyx-elf`, `out/sysroot/` for the
+interim `aarch64-none-elf` (not versioned): `include/`, `lib/` (`libonyxposix.a`, `crt0posix.o`,
+`onyx-posix.ld`, `onyx.specs`, the ports' `.a`), `lib/pkgconfig/`.
 
 ```sh
-make -C user/libc/posix install                     # SYSROOT=<dir> for another place
+make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # -> out/sysroot-onyx (SYSROOT=<dir> elsewhere)
+make -C user/libc/posix install                            # aarch64-none-elf -> out/sysroot
 ```
 
 **CMake** — [`tools/onyx-toolchain.cmake`](../tools/onyx-toolchain.cmake) (+
@@ -475,27 +551,31 @@ cmake -S <src> -B <build> -G Ninja -DCMAKE_TOOLCHAIN_FILE=<onyx>/tools/onyx-tool
 cmake --build <build> && cmake --install <build>    # installs into the sysroot
 ```
 
-It sets the compilers (`ONYX_TOOLCHAIN_PREFIX`, default `aarch64-none-elf-`; WP-TC:
-`aarch64-onyx-elf-`), the flags (`-mcpu=cortex-a72`, sections, `-isystem <sysroot>/include`,
+It sets the compilers (`ONYX_TOOLCHAIN_PREFIX`; by default `aarch64-onyx-elf-` when it is
+installed, else `aarch64-none-elf-`; the default sysroot follows), the flags (`-mcpu=cortex-a72`, sections, `-isystem <sysroot>/include`,
 `-DFD_SETSIZE=1024`; the link: `-specs=<sysroot>/lib/onyx.specs`), libraries / headers /
 packages searched in the sysroot only, programs on the host, `pkg-config` on the sysroot's `.pc`
 files, the install prefix = the sysroot. Executables link (configure checks that link work) but
 cannot run on the build machine: a `try_run` question is answered with a cache variable.
 Do not let CMake also see `CFLAGS` / `LDFLAGS` from the environment (the specs given twice fail):
 `tools/ports/common.sh`'s `onyx_cmake` runs it under `env -u CFLAGS -u LDFLAGS`. `CMAKE_SYSROOT`
-is deliberately not set: the interim toolchain keeps newlib in its own tree.
+is deliberately not set: the sysroot is an overlay on the compiler's own (newlib is in the
+toolchain's tree; `aarch64-onyx-elf` has its own `--with-sysroot`, `<prefix>/aarch64-onyx-elf`).
 
 **Autotools / plain Makefiles** — [`tools/onyx-env.sh`](../tools/onyx-env.sh) exports `CC`,
 `CXX`, `AR`, `RANLIB`, `CFLAGS`, `LDFLAGS`, `PKG_CONFIG_LIBDIR`, `ONYX_HOST`:
 
 ```sh
-. tools/onyx-env.sh
+. tools/onyx-env.sh            # the same choice of toolchain and sysroot (ONYX_TOOLCHAIN_PREFIX forces one)
 ./configure --host=$ONYX_HOST --prefix=$ONYX_SYSROOT --disable-shared --enable-static
 ```
 
 **The ports** (`tools/ports/<name>/build.sh`, sources vendored and trimmed in `third_party/`
 with a `README.onyx`; `sh tools/ports/build-all.sh`, or `make -C user/bin ports`, which also
-copies the tools to `user/bin/*.elf` — opt-in, a few minutes; `PORTS=1` adds it to `all`):
+copies the tools to `user/bin/*.elf` — opt-in, a few minutes; `PORTS=1` adds it to `all`). They
+are built with `aarch64-onyx-elf` when it is installed (out `out/ports-onyx/`), else with
+`aarch64-none-elf` (`out/ports/`); `make -C user/bin ports ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-`
+forces the interim one:
 
 | Port | Source | Licence | Built as | Tool |
 |---|---|---|---|---|
@@ -505,8 +585,10 @@ copies the tools to `user/bin/*.elf` — opt-in, a few minutes; `PORTS=1` adds i
 | curl 8.16.0 | trimmed release | curl (MIT-like) | `libcurl.a` (mbedTLS, HTTP/2 with nghttp2, zlib, brotli, the threaded resolver; no IPv6) | `curl` (CA bundle `SD:/res/ca-bundle`) |
 
 A new port: a `build.sh` sourcing `tools/ports/common.sh` (it installs the sysroot first;
-`onyx_install_deps` puts the in-tree zlib, nghttp2 and brotli in it; `onyx_cmake` calls CMake
-with the toolchain file; `onyx_tool_done` copies a tool to `out/ports/bin` and runs
+`onyx_install_deps` puts the in-tree zlib, nghttp2 and brotli in it — the prebuilt `.a` of
+`third_party/` under `aarch64-none-elf`, compiled from their sources under `aarch64-onyx-elf`, whose
+newlib has no `__errno` / `_impure_ptr` for objects of the interim one; `onyx_cmake` calls CMake
+with the toolchain file; `onyx_tool_done` copies a tool to `out/ports(-onyx)/bin` and runs
 `tools/el0scan.sh` on it). Licences: docs/LICENSING.md — ask before a library that would force
 its licence on the app.
 
