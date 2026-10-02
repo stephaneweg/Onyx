@@ -114,7 +114,12 @@
 // v72: gpu_render's blending: the compositing presets KAPI_GPU_BLEND_MULCOL .. DSTOUT (5..12:
 //      multiply, screen, plus, subtract, lighten, mask, cut out -- premultiplied, the alpha
 //      apart; user/gpucomp's layer blend modes). An older kernel takes 5..15 as ALPHA.
-#define KAPI_ABI_VERSION	72
+// v73: + pop_event / event_mods / pop_post / pump_sleep -- the event pump's kernel half, for the
+//      user-side pump of a PROTECTED (EL0) process (kern/el0.h): its table's pump_events /
+//      wait_for_exit / pump_wait are EL0 code that pops the window's events and the posted calls
+//      (struct kapi_event, struct kapi_posted) and calls the handlers itself. An EL1 app may call
+//      them too (its pump_events still runs in the kernel).
+#define KAPI_ABI_VERSION	73
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -478,6 +483,24 @@ struct kapi_gpu_batch3
 #define KAPI_GPU_MAX_TEXTURES	1024		// handles in all (v70; 256 before), shared by the programs
 #define KAPI_GPU_MAX_TEXTURES_AS 512		// (v70) of them at most a program (the others' share)
 #define KAPI_GPU_MAX_TEXSIZE	2048
+
+// (v73) An event of the window, as pop_event returns it (the handler is the app's).
+struct kapi_event
+{
+	unsigned long long handler;	// gui_handler (0: none)
+	unsigned long long sender;
+	long long value;		// gui_value
+	int event;			// GUI_EVENT_*
+	unsigned mods;			// GUI_EVENT_KEY: the MOD_* held when the key was typed
+};
+
+// (v73) A call posted to the process (post), as pop_post returns it.
+struct kapi_posted
+{
+	unsigned long long fn;		// void fn (void *ctx, long value)
+	unsigned long long ctx;
+	long long value;
+};
 
 struct TKApiTable
 {
@@ -1110,6 +1133,18 @@ struct TKApiTable
 	// vol_info: the volume of `path` ("SD:", "SD1:/x", "RAM:", a relative path: the current
 	// folder's) -> 0 and *out filled, -1 no such volume (not mounted).
 	int (*vol_info) (const char *path, struct kapi_vol_info *out);
+	// --- v73 ---
+	// The next event of the caller's window -> 1 (*ev filled), 0: none (or no window). The
+	// handler is NOT called: the caller does (ev->handler (ev->sender, ev->event, ev->value)).
+	int (*pop_event) (struct kapi_event *ev);
+	// The modifiers get_modifiers reports while a key event's handler runs (ev->mods), until put
+	// back; returns the previous setting (0xFFFFFFFF: the live state).
+	unsigned (*event_mods) (unsigned mods);
+	// The next call posted to the process (post) -> 1 (*p filled, not run), 0: none.
+	int (*pop_post) (struct kapi_posted *p);
+	// pump_wait without the pump: sleep until a window event, a post or the close box (at most
+	// timeout_ms; 0: no sleep), -> how many are pending (-1: not a process).
+	int (*pump_sleep) (unsigned timeout_ms);
 };
 
 #ifdef __cplusplus

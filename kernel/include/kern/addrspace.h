@@ -26,10 +26,14 @@ class CProcThreads;
 class CAddressSpace
 {
 public:
-	CAddressSpace (void);
+	// bProtected: a protected (EL0) process (kern/el0.h): every page it maps is made EL0-
+	// accessible (MapPage: the KPAGE_ATTR_APP_* presets' AP=*_EL1 become *_ALL, code executable
+	// at EL0 only), and KAPI_TABLE_VA holds the EL0 table, KAPI_STUBS_VA the EL0 code.
+	CAddressSpace (boolean bProtected = FALSE);
 	~CAddressSpace (void);
 
 	boolean IsValid (void) const		{ return m_pL2 != 0; }
+	boolean IsProtected (void) const	{ return m_bProtected; }
 
 	// Map one 64 KB user page (ulVA, ulPA both 64 KB-aligned, ulVA in user range).
 	// bOwned marks the frame as kernel-allocated (palloc'd) for this space, so it
@@ -46,6 +50,13 @@ public:
 	// (a user pointer) or 0 if the arena is exhausted. The frames are owned by the
 	// CSurface, not this space, so teardown drops the mapping but never frees them.
 	void *MapSurface (u64 ulPhys, unsigned nPages);
+
+	// Is the 64 KB page at ulVA mapped?
+	boolean IsMapped (uintptr ulVA);
+
+	// Map fresh zeroed pages (EL0 RW in a protected space, owned) over [ulTop - nSize, ulTop)
+	// where nothing is mapped yet: a user stack (kern/el0.h). FALSE: out of memory.
+	boolean MapStack (u64 ulTop, u64 nSize);
 
 	// Allocate a fresh physical frame and map it at ulVA. Returns the frame's
 	// kernel (identity) address so the caller can fill it, or 0 on failure.
@@ -131,6 +142,7 @@ private:
 
 private:
 	TARMV8MMU_LEVEL2_DESCRIPTOR *m_pL2;	// this process's L2 table (one 64 KB page)
+	boolean			     m_bProtected; // an EL0 process (kern/el0.h)
 	u8			     m_nASID;
 	unsigned		     m_nPid;	// process id (monotonic, for ps/kill)
 	unsigned		     m_nParentPid;	// spawner's pid (0 = none); cascade on death

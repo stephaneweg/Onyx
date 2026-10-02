@@ -13,6 +13,7 @@
 #include <kern/net.h>			// NetCloseByPid (reclaim a dead process's sockets)
 #include <kern/v3d.h>			// V3DReleaseAS (free a dead process's GPU textures)
 #include <kern/thread.h>		// ThreadsFree (its threads' objects)
+#include <kern/el0.h>			// protected mode: the EL0 table + code pages
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -61,8 +62,9 @@ static unsigned s_nNextPid = 1;
 // Total 64 KB frames owned by all user address spaces (see kern/addrspace.h).
 unsigned g_nUserPages = 0;
 
-CAddressSpace::CAddressSpace (void)
+CAddressSpace::CAddressSpace (boolean bProtected)
 :	m_pL2 (0),
+	m_bProtected (bProtected),
 	m_nASID (0),
 	m_nPid (s_nNextPid++),
 	m_nParentPid (0),
@@ -106,7 +108,19 @@ CAddressSpace::CAddressSpace (void)
 	// kernel global (not owned by this space), so teardown frees the L3 we add here
 	// but never the page itself.
 	TKPageAttr ApiAttr = KPAGE_ATTR_APP_RODATA;
-	MapContig (KAPI_TABLE_VA, KApiTablePhys (), 1, ApiAttr);
+	if (!m_bProtected)
+	{
+		MapContig (KAPI_TABLE_VA, KApiTablePhys (), 1, ApiAttr);
+	}
+	else
+	{
+		// A protected process: the EL0 table (its entries point at the EL0 code, not at the
+		// kernel), and the EL0 code page next to it -- both kernel globals, shared, read-only
+		// (MapPage makes them EL0-readable, the code EL0-executable).
+		TKPageAttr CodeAttr = KPAGE_ATTR_APP_CODE;
+		MapContig (KAPI_TABLE_VA, El0TablePhys (), 1, ApiAttr);
+		MapContig (KAPI_STUBS_VA, El0CodePhys (), 1, CodeAttr);
+	}
 
 	DataSyncBarrier ();
 }
@@ -263,7 +277,8 @@ CAddressSpace::~CAddressSpace (void)
 				// aliased read-only into every address space (mapped not-owned, so
 				// this should already be skipped -- but guard explicitly: freeing it
 				// would corrupt the table for every app).
-				if (ulFrame == KApiTablePhys ())
+				if (   ulFrame == KApiTablePhys ()
+				    || (m_bProtected && (ulFrame == El0TablePhys () || ulFrame == El0CodePhys ())))
 				{
 					continue;
 				}
@@ -334,10 +349,24 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 
 	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[L3_INDEX (ulVA)].Page;
 
+	// A protected (EL0) process: the same presets, for EL0 -- the one place every mapping goes
+	// through (the ELF, the heap, the canvases and chrome copies, the surfaces, the sound ring,
+	// the GPU's buffers, the code arena, the screens, the stacks). Readable / writable at EL0 as
+	// they were at EL1; what was executable at EL1 (code, a JIT's pages) is executable at EL0
+	// only (UXN 0); nothing of it at EL1 (PXN 1; an EL0-writable page is PXN anyway).
+	unsigned nAP = Attr.AP, nPXN = Attr.PXN, nUXN = Attr.UXN;
+	if (m_bProtected)
+	{
+		if (nAP == ATTRIB_AP_RW_EL1) nAP = ATTRIB_AP_RW_ALL;
+		else if (nAP == ATTRIB_AP_RO_EL1) nAP = ATTRIB_AP_RO_ALL;
+		if (nPXN == 0) nUXN = 0;
+		nPXN = 1;
+	}
+
 	pPage->Value11	     = 3;
 	pPage->AttrIndx	     = Attr.AttrIndx;
 	pPage->NS	     = 0;
-	pPage->AP	     = Attr.AP;
+	pPage->AP	     = nAP;
 	pPage->SH	     = Attr.SH;
 	pPage->AF	     = 1;
 	pPage->nG	     = Attr.nG;
@@ -345,8 +374,8 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 	pPage->OutputAddress = ARMV8MMUL3PAGEADDR (ulPA);
 	pPage->Reserved0_2   = 0;
 	pPage->Continous     = 0;
-	pPage->PXN	     = Attr.PXN;
-	pPage->UXN	     = Attr.UXN;
+	pPage->PXN	     = nPXN;
+	pPage->UXN	     = nUXN;
 	pPage->Ignored	     = bOwned ? PAGE_SW_OWNED : 0;
 
 	DataSyncBarrier ();
@@ -394,6 +423,29 @@ CMailbox *CAddressSpace::GetOrCreateMailbox (void)
 		m_pMailbox = new CMailbox;
 	}
 	return m_pMailbox;
+}
+
+boolean CAddressSpace::IsMapped (uintptr ulVA)
+{
+	if (!IS_USER_VA (ulVA)) return FALSE;
+	const TARMV8MMU_LEVEL2_TABLE_DESCRIPTOR *pDesc = &m_pL2[L2_INDEX (ulVA)].Table;
+	if (pDesc->Value11 != 3) return FALSE;
+	const TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (const TARMV8MMU_LEVEL3_DESCRIPTOR *)
+		ARMV8MMUL2TABLEPTR ((u64) pDesc->TableAddress);
+	return pL3[L3_INDEX (ulVA)].Page.Value11 == 3;
+}
+
+boolean CAddressSpace::MapStack (u64 ulTop, u64 nSize)
+{
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
+	for (u64 va = KPAGE_ALIGN_DOWN (ulTop - nSize); va < ulTop; va += KPAGE_SIZE)
+	{
+		if (!IsMapped (va) && MapNewPage (va, Attr) == 0)
+		{
+			return FALSE;			// (what is mapped stays: freed at teardown)
+		}
+	}
+	return TRUE;
 }
 
 void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)

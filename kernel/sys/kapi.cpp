@@ -748,6 +748,44 @@ void kapi_pump_events (void)
 	}
 }
 
+// (v73) The kernel half of a user-side pump (a protected process's, kern/el0.h): the next event,
+// its handler NOT called -- the caller calls it.
+int kapi_pop_event (struct kapi_event *pEv)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || pEv == 0)
+	{
+		return 0;
+	}
+	GUIEvent Ev;
+	if (!pWin->PopEvent (&Ev))
+	{
+		return 0;
+	}
+	pEv->handler = Ev.ulHandler;
+	pEv->sender = Ev.ulSender;
+	pEv->value = Ev.lValue;
+	pEv->event = Ev.nEvent;
+	pEv->mods = Ev.nMods;
+	return 1;
+}
+
+// (v73) What kapi_get_modifiers reports while a key handler runs (kapi_pump_events sets it around
+// the call): set by the user-side pump; the previous value back.
+unsigned kapi_event_mods (unsigned nMods)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0)
+	{
+		return 0xFFFFFFFF;
+	}
+	unsigned nPrev = pWin->m_nKeyEventMods;
+	pWin->m_nKeyEventMods = nMods;
+	return nPrev;
+}
+
 int kapi_should_exit (void)
 {
 	CAddressSpace *pAS = CurrentAS ();

@@ -373,6 +373,20 @@ static inline unsigned long long kapi_fsize64 (void *h) { return KT->version >= 
 // the Pi restarts), a path on it -> 0 and *out (total / free / used bytes, its type, KAPI_VOL_RAM),
 // -1 no such volume / an older kernel. (RAM: paths work with every file call above from v71.)
 static inline int kapi_vol_info (const char *path, struct kapi_vol_info *out) { return KT->version >= 71 && KT->vol_info ? KT->vol_info (path, out) : -1; }
+// (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the
+// app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's
+// next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says
+// while a key handler runs (ev->mods), returns the previous value to put back; pop_post: the next
+// kapi_post call -> 1 (*p, not run), 0 none; pump_sleep: kapi_pump_wait without the pump (-> how
+// many are pending). An older kernel: 0 / 0xFFFFFFFF / 0 / 0 (no sleep).
+static inline int kapi_pop_event (struct kapi_event *ev) { return KT->version >= 73 ? KT->pop_event (ev) : 0; }
+static inline unsigned kapi_event_mods (unsigned mods) { return KT->version >= 73 ? KT->event_mods (mods) : 0xFFFFFFFFu; }
+static inline int kapi_pop_post (struct kapi_posted *p) { return KT->version >= 73 ? KT->pop_post (p) : 0; }
+static inline int kapi_pump_sleep (unsigned timeout_ms) { return KT->version >= 73 ? KT->pump_sleep (timeout_ms) : 0; }
+// (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
+// to the table, instead of the kernel's.
+static inline int kapi_is_protected (void)
+{ return KT->version >= 73 && (unsigned long long) KT->memcpy >= KAPI_TABLE_VA && (unsigned long long) KT->memcpy < KAPI_TABLE_VA + 0x20000; }
 // the master volume 0..10 and mute (-1: keep) -> volume | 0x100 if muted (older kernel: 10, not muted)
 static inline int kapi_sound_volume (int volume, int mute) { return KT->version >= 60 ? KT->sound_volume (volume, mute) : 10; }
 // wpa_supplicant.conf read again + DHCP again, no reboot (-1: none / older kernel)
@@ -472,10 +486,16 @@ static inline int kapi__xchg (volatile int *p, int v)
 	return __atomic_exchange_n (p, v, __ATOMIC_ACQUIRE);
 #endif
 }
+// The core this code runs on (0: the main one; 2, 3: an app core). From v73 the kernel publishes it
+// in TPIDRRO_EL0 (readable at EL0: a protected app may not read MPIDR_EL1, kern/el0.h); an older
+// kernel runs every app at EL1, where MPIDR_EL1 is readable.
 static inline unsigned kapi__core (void)
 {
 #if defined(__aarch64__)
-	unsigned long m; __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m)); return (unsigned) (m & 3);
+	unsigned long m;
+	if (KT->version >= 73) __asm__ volatile ("mrs %0, tpidrro_el0" : "=r" (m));
+	else __asm__ volatile ("mrs %0, mpidr_el1" : "=r" (m));
+	return (unsigned) (m & 3);
 #else
 	return 0;
 #endif

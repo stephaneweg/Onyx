@@ -19,6 +19,7 @@
 #include <kern/addrspace.h>
 #include <kern/thread.h>		// ThreadsEndProcess (an app ends with its threads)
 #include <kern/appcore.h>
+#include <kern/el0.h>			// protected mode (EL0 apps)
 #include <fatfs/diskio.h>		// disk_cache_enable (the sector cache: sdcache=)
 #include <kern/applaunch.h>
 #include <kern/stream.h>
@@ -83,8 +84,12 @@ boolean g_bVerbose = FALSE;
 #define APP_STACK_DEFAULT	0x40000			// 256 KB
 #define APP_STACK_MAX		0x4000000		// 64 MB
 
-static unsigned AppStackSize (const char *pPath)
+// The folder's app.txt, for an x.app/main: its "stack" (what the app's task stack was always
+// sized by) and its "mode" (protected mode, kern/el0.h: 1 "protected", 0 "legacy", -1 none or
+// not an app).
+static unsigned ReadAppTxt (const char *pPath, int *pMode)
 {
+	*pMode = -1;
 	if (pPath == 0)
 		return APP_STACK_DEFAULT;
 
@@ -117,24 +122,42 @@ static unsigned AppStackSize (const char *pPath)
 	f_close (&File);
 	Buf[nRead] = '\0';
 
-	// a line "stack = <n>[K|M]" (spaces, '=' or ':'; the key in any case)
+	// a line "stack = <n>[K|M]" (spaces, '=' or ':'; the key in any case), a line
+	// "mode = protected|legacy" (the value in any case)
+	auto lower = [] (char c) { return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; };
+	auto word = [&] (const char *q, const char *w)	// q starts with the word w (any case)
+	{
+		unsigned n = 0;
+		for (; w[n] != '\0'; n++) if (lower (q[n]) != w[n]) return 0u;
+		return n;
+	};
+	auto key = [&] (const char *q, const char *k)	// ... then a separator: its length
+	{
+		unsigned n = word (q, k);
+		return n != 0 && (q[n] == ' ' || q[n] == '\t' || q[n] == '=' || q[n] == ':') ? n : 0u;
+	};
 	u64 nStack = 0;
 	for (const char *p = Buf; *p != '\0'; )
 	{
 		while (*p == ' ' || *p == '\t') p++;
-		if (   (p[0] == 's' || p[0] == 'S') && (p[1] == 't' || p[1] == 'T')
-		    && (p[2] == 'a' || p[2] == 'A') && (p[3] == 'c' || p[3] == 'C')
-		    && (p[4] == 'k' || p[4] == 'K')
-		    && (p[5] == ' ' || p[5] == '\t' || p[5] == '=' || p[5] == ':'))
+		unsigned n;
+		if ((n = key (p, "stack")) != 0)
 		{
-			p += 5;
+			p += n;
 			while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
-			u64 n = 0;
-			while (*p >= '0' && *p <= '9' && n < APP_STACK_MAX)
-				n = n * 10 + (u64) (*p++ - '0');
-			if (*p == 'k' || *p == 'K') n <<= 10;
-			else if (*p == 'm' || *p == 'M') n <<= 20;
-			nStack = n;
+			u64 v = 0;
+			while (*p >= '0' && *p <= '9' && v < APP_STACK_MAX)
+				v = v * 10 + (u64) (*p++ - '0');
+			if (*p == 'k' || *p == 'K') v <<= 10;
+			else if (*p == 'm' || *p == 'M') v <<= 20;
+			nStack = v;
+		}
+		else if ((n = key (p, "mode")) != 0)
+		{
+			p += n;
+			while (*p == ' ' || *p == '\t' || *p == '=' || *p == ':') p++;
+			if (word (p, "protected")) *pMode = 1;
+			else if (word (p, "legacy")) *pMode = 0;
 		}
 		while (*p != '\0' && *p != '\n') p++;	// next line
 		if (*p == '\n') p++;
@@ -144,6 +167,33 @@ static unsigned AppStackSize (const char *pPath)
 	if (nStack > APP_STACK_MAX)
 		nStack = APP_STACK_MAX;
 	return (unsigned) ((nStack + 0xFFFF) & ~(u64) 0xFFFF);
+}
+
+static void NameFromPath (const char *pPath, char *pOut, unsigned nCap);
+
+// The stack of a new process's task, and whether the process runs protected (kern/el0.h). A
+// legacy app runs on its task's stack: app.txt's "stack" (or 256 KB), as always. A protected
+// app's task stack is only its kernel stack (EL0_KSTACK_SIZE); its user stack is mapped in its
+// address space (app.txt's "stack", at least EL0_USTACK_MIN). Called by CUserProcessTask's
+// constructor for its CTask base: the answer waits in s_Launch for the constructor's body (no
+// Yield between them: the kernel is not preempted, and nothing in between waits).
+static struct { boolean bProtected; unsigned nUserStack; } s_Launch;
+
+static unsigned AppTaskStack (const char *pPath)
+{
+	int nMode;
+	unsigned nStack = ReadAppTxt (pPath, &nMode);
+	char Name[40];
+	NameFromPath (pPath != 0 ? pPath : "", Name, sizeof Name);
+	s_Launch.bProtected = El0ShouldProtect (nMode, Name);
+	s_Launch.nUserStack = 0;
+	if (!s_Launch.bProtected)
+	{
+		return nStack;
+	}
+	s_Launch.nUserStack = nStack < EL0_USTACK_MIN ? EL0_USTACK_MIN
+			    : nStack > EL0_USTACK_MAX ? EL0_USTACK_MAX : nStack;
+	return EL0_KSTACK_SIZE;
 }
 
 //
@@ -167,7 +217,9 @@ public:
 	CUserProcessTask (const char *pPath, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
 			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
-	:	CTask (AppStackSize (pPath)),	// 256 KB, or its app.txt's "stack"
+	:	CTask (AppTaskStack (pPath)),	// 256 KB, or its app.txt's "stack" (legacy)
+		m_bProtected (s_Launch.bProtected),
+		m_nUserStack (s_Launch.nUserStack),
 		m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
 		m_nParentPid (nParentPid)
@@ -189,7 +241,7 @@ public:
 
 	void Run (void) override
 	{
-		CAddressSpace *pAS = new CAddressSpace ();
+		CAddressSpace *pAS = new CAddressSpace (m_bProtected);
 		if (pAS == 0 || !pAS->IsValid ())
 		{
 			m_pLogger->Write (GetName (), LogError, "address space creation failed");
@@ -272,6 +324,24 @@ public:
 		pAS->AddTask (this);				// (its main task: the first)
 		pAS->Activate ();
 
+		if (m_bProtected)
+		{
+			// Protected (kern/el0.h): its user stack in its own space, then EL0 -- for good:
+			// the process ends in the kernel (exit, a fault), on this task's stack, now only
+			// its kernel stack.
+			if (!pAS->MapStack (USER_STACK_TOP, m_nUserStack))
+			{
+				m_pLogger->Write (GetName (), LogError, "out of memory for the stack");
+				ThreadsEndProcess ();
+				CScheduler::Get ()->GetCurrentTask ()->Terminate ();
+			}
+			m_pLogger->Write (GetName (), LogNotice,
+					  "running (EL0, protected) entry %lp ASID %u, stack %u KB, kernel stack %u KB",
+					  (void *) ulEntry, (unsigned) pAS->GetASID (), m_nUserStack >> 10,
+					  (unsigned) (GetStack ().Size >> 10));
+			El0Enter (ulEntry, USER_STACK_TOP, 0, El0MainReturnVA ());
+		}
+
 		m_pLogger->Write (GetName (), LogNotice, "running (EL1) entry %lp ASID %u, stack %u KB",
 				  (void *) ulEntry, (unsigned) pAS->GetASID (),
 				  (unsigned) (GetStack ().Size >> 10));
@@ -286,6 +356,8 @@ public:
 
 private:
 	char	    m_Path[256];	// ELF path; loaded in Run() on our own thread
+	boolean	    m_bProtected;	// runs at EL0 (kern/el0.h)
+	unsigned    m_nUserStack;	// (protected) its user stack's size
 	CLogger	   *m_pLogger;
 	CStream	   *m_pStdin;
 	CStream	   *m_pStdout;
@@ -1538,6 +1610,7 @@ public:
 	COnyxCores (void) : CMultiCoreSupport (CMemorySystem::Get ()) {}
 	void Run (unsigned nCore) override
 	{
+		El0CoreInit (nCore);			// (protected mode's EL0 controls, kern/el0.h)
 		if (nCore == 1) SoundCoreMain ();
 		else if (nCore == 3 && g_bNetCore) NetCoreMain ();	// the network core
 		else AppCoreMain (nCore);		// cores 2-3: app cores (kern/appcore.h)
@@ -1831,6 +1904,13 @@ boolean CKernel::Initialize (void)
 		if (!g_bAppFaultKill)
 			m_Logger.Write (FromKernel, LogNotice, "appfault=halt: a fault in an app halts the system");
 
+		// Protected mode (kern/el0.h): the launch policy (cmdline.txt appmode= / protected=,
+		// el0pmu=), then this core's EL0 controls (nothing changes for EL1 code).
+		El0Configure (m_Options.GetAppOptionString ("appmode", "legacy"),
+			      m_Options.GetAppOptionString ("protected", ""));
+		El0ConfigurePmu (m_Options.GetAppOptionDecimal ("el0pmu", 0) != 0);
+		El0CoreInit (0);
+
 		// Per-process address spaces (#5): remember the kernel TTBR0 and switch
 		// TTBR0/ASID on every task switch based on the task's address space.
 		AddrSpaceInit ();
@@ -1840,6 +1920,7 @@ boolean CKernel::Initialize (void)
 		// Publish the kapi ABI table (apps call the kernel through it). Must run
 		// before any address space is built (each one maps the table).
 		KApiTableInit ();
+		El0Init ();			// (the EL0 table + code pages, from the kapi table)
 
 #ifdef ARM_ALLOW_MULTI_CORE
 		// Start cores 1..3 (core 1 = the sound producer). Not fatal if it fails:

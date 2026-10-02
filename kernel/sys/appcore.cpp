@@ -19,6 +19,7 @@
 #include <kern/addrspace.h>
 #include <kern/trapframe.h>
 #include <kern/layout.h>
+#include <kern/el0.h>			// protected mode: a job at EL0
 #include <circle/multicore.h>
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
@@ -62,6 +63,7 @@ struct TAppCore
 	volatile boolean	bLost;		// did not answer a stop: never used again
 	CAddressSpace *volatile	pOwner;		// (core 0 only)
 	volatile u64		ulTTBR0, ulFunc, ulArg, ulStack;
+	volatile boolean	bEl0;		// the job runs at EL0 (a protected owner, kern/el0.h)
 	volatile int		nState;		// CORE_IDLE / CORE_RUNNING / CORE_FAULT
 	volatile boolean	bGo;		// core 0 -> core: start the job
 	volatile boolean	bAbort;		// core 0 -> core: drop it (cleared = done)
@@ -95,6 +97,14 @@ static void __attribute__ ((noreturn)) AppCoreLoop (unsigned nCore)
 			Barrier ();
 			asm volatile ("msr ttbr0_el1, %0; isb" :: "r" (C.ulTTBR0) : "memory");
 			LocalTLBFlush ();			// (an ASID may have been reused)
+			if (C.bEl0)
+			{
+				// A protected owner's job: fn at EL0 on its stack, returning into the blob's
+				// El0CoreReturn, whose system call ends it (AppCoreOnEl0Sync -> AppCoreEl0Done,
+				// on a fresh kernel stack). Its IRQ (the stop IPI) and its faults come through
+				// the EL0 vectors (arch/aarch64/el0.S) to the same AppCoreOnIRQExit / fault path.
+				El0Enter (C.ulFunc, C.ulStack, C.ulArg, El0CoreReturnVA ());
+			}
 			AppCoreCall (C.ulFunc, C.ulArg, C.ulStack);
 			ActivateKernelAddressSpace ();
 			Barrier ();
@@ -118,6 +128,19 @@ extern "C" void __attribute__ ((noreturn)) AppCoreRestart (unsigned nCore)
 	Barrier ();
 	C.bAbort = FALSE;					// = "stopped" for core 0
 	Barrier ();
+	AppCoreLoop (nCore);
+}
+
+// An EL0 job returned (El0CoreReturn): as a job returning from AppCoreCall, but here at EL1t on
+// the core's own kernel stack (the frame was redirected).
+extern "C" void __attribute__ ((noreturn)) AppCoreEl0Done (unsigned nCore)
+{
+	TAppCore &C = s_Core[nCore];
+	ActivateKernelAddressSpace ();
+	Barrier ();
+	if (C.nState == CORE_RUNNING) C.nState = CORE_IDLE;
+	Barrier ();
+	asm volatile ("sev");
 	AppCoreLoop (nCore);
 }
 
@@ -153,6 +176,19 @@ boolean AppCoreOnIRQExit (TTrapFrame *pFrame)
 		Redirect (pFrame, nCore);
 	}
 	return TRUE;
+}
+
+void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone)
+{
+	unsigned nCore = CMultiCoreSupport::ThisCore ();
+	if (nCore < APPCORE_FIRST || nCore >= CORES) return;	// (no EL0 code runs elsewhere)
+	if (!bDone)
+	{
+		AppCoreOnFault (pFrame);		// (a system call there is a fault too: EC 0x15)
+		return;
+	}
+	Redirect (pFrame, nCore);
+	pFrame->elr_el1 = (u64) &AppCoreEl0Done;
 }
 
 boolean AppCoreOnFault (TTrapFrame *pFrame)
@@ -248,6 +284,7 @@ int kapi_core_run (int nCore, void (*pFunc) (void *), void *pArg, void *pStackTo
 	u64 ulStack = (u64) pStackTop & ~15ULL;
 	if (!IS_USER_VA (pFunc) || !IS_USER_VA (ulStack - 16)) return -1;
 	p->ulTTBR0 = pAS->GetTTBR0 ();
+	p->bEl0    = pAS->IsProtected ();
 	p->ulFunc  = (u64) pFunc;
 	p->ulArg   = (u64) pArg;
 	p->ulStack = ulStack;
