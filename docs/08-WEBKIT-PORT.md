@@ -308,6 +308,17 @@ In this order; a later step is not started early:
 3. **The JIT** (executable memory in the kernel first).
 4. **Video** (`MediaPlayerPrivate` on `user/av`, MSE).
 5. **The host window + the web view that attaches to it**, a component the Mail client embeds too.
+   Asked by the user for this step or after it (2026-10-02): **a web-view daemon started at
+   boot**, idle until a window asks for a web view, which then starts the UI, web and network
+   roles for that window. What it buys: it holds the program's shared image (ELF-LOADER-PLAN
+   stage c), so the 5 s SD read is paid once, in the background after the desktop is up, and
+   every web view after that starts without reading the card; it is also the natural owner of
+   one network process shared by all the views (one cookie jar, one connection pool, one cache)
+   and of a spare, already initialised web process (WebKit's process prewarming) handed to the
+   next view. Its price: about 80 MB held from boot — an option to turn off on a 1 GB Pi, where
+   stage d (the image kept after exit) gives the same from the second start on. Onyx has no
+   `fork`, so the daemon cannot clone an initialised engine: it spawns the roles, and it is the
+   shared image and the prewarmed process that make them quick.
 6. **Lazy loading** (the image filled page by page from the file: `docs/ELF-LOADER-PLAN.md`,
    stage b).
 
