@@ -182,8 +182,13 @@ the Pi (2026-10-02).** On the Pi 4, `wctest SD:/docs/page1.html RAM:/page1.png` 
 copied by hand to `SD:/bin`) printed the same title, element count and text as the bench — the
 line written by the page's script included — and wrote the same picture (47 465 bytes, as on the
 bench; opened in the Image Viewer): the kernel's loader takes an 80 MB static image, the card's
-fonts are found, Skia paints on the CPU, JavaScriptCore runs inside WebCore. (How long it takes
-on the Pi was not measured.)
+fonts are found, Skia paints on the CPU, JavaScriptCore runs inside WebCore. **5 to 6 seconds
+from the command to the prompt** (the user's timing): most of it is probably the loader reading
+and copying the 80 MB image from the card (`jsc`, 33 MB, takes 1 to 2 seconds before it runs
+anything); WebCore's own work is one second under qemu on the PC. Not broken down yet: `wctest`
+could print its own times. What it means for step 3: WebKit2 starts several processes of large
+images — the streaming ELF loader and the code pages shared between processes of one executable
+(docs/POSIX-PLAN.md §5, §13) will matter there.
 `libPAL.a` and `libWebCore.a` build (`sh tools/webkit/build-webcore.sh`: 30 minutes on 16 cores
 for a first build, 18 to 22 GB of memory at 14 jobs); `wctest` (`tools/webkit/wctest.cpp`, built by
 `build-wctest.sh`: WebCore alone, the "empty" clients, no window and no network) loads an HTML
@@ -210,7 +215,7 @@ the Onyx files). What was found on the way, beyond the study below:
   both are in `wctest.cpp`, and are WebKit2's job in step 3.
 - The link asked for 36 symbols in all (pasteboard, editor, WebCrypto, one keyboard function).
 
-**Not done / not tested yet in step 2**: the time and the memory on the Pi were not measured;
+**Not done / not tested yet in step 2**: the memory on the Pi was not measured, the time only as a whole;
 **the network path is compiled, not exercised** (curl with
 the mbedTLS glue of `MbedTLSHelper.cpp`: a page loaded over HTTPS comes with step 3's network
 process, or a `wctest` with a real loader); **WebCrypto** is digests only (decision below);
