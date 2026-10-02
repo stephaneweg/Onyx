@@ -977,3 +977,17 @@ Can start at once:
 - `/home/user/Onyx/kernel/sys/uaccess.cpp`: probes with `AT S1E0*`, populate, pins, copy retry.
 - `/home/user/Onyx/kernel/sys/el0.cpp`: the EL0 fault path (demand paging, OOM kill) and unpin after a system call.
 - `/home/user/Onyx/kernel/sys/net.cpp`: socket slots, asynchronous connect, the carry buffer, the readiness snapshot. Also `kernel/sys/kapi.cpp`, `kernel/sys/thread.cpp`, `kernel/sys/appcore.cpp`, `kernel/sys/stream.cpp` and `user/libc/onyx_syscalls.c` as described per WP.
+
+---
+
+## 7. After the minimum: an external yardstick (the user, 2026-10-02)
+
+Once WP-MEM, WP-FILE/PROC, WP-NET and WP-LIBC are merged and pass on the Pi: run the **Open POSIX
+Test Suite** (OPTS, part of LTP) — a selection built against the sysroot as static binaries
+(grouped several tests per binary to save card space, a runner `/bin/optsrun` writing a report
+file to compare across versions). Areas: pthreads (the bulk of OPTS, the most important for WebKit),
+mmap/munmap/mprotect, clock_gettime/nanosleep/sched_yield, open/read/write/lseek/fstat. Expected
+UNSUPPORTED/FAIL by design: everything built on `fork()` (Onyx has posix_spawn; some tests can be
+adapted), real signals, `timer_create`, `mq_*`, named semaphores, real-time scheduling. Each failure
+is triaged as a bug, a deliberate absence, or a Linux assumption. Complement: musl's **libc-test**
+(the libc functions themselves).
