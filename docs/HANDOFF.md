@@ -71,6 +71,8 @@ answer in French. The docs stay in English.
   involved -- only `fullscreen_direct` is Device) would restore it; (2) system calls from its main
   thread per frame (the top slots in `sysstat`); (3) IRQs taken at EL0 on cores 2–3 now build a full
   800-byte frame (the stop IPI only: should be rare); (4) `tlbi`/ASID on each `core_run`.
+  **Jet (NetSurf) may be a little slower too** (the user: not important, a WebKit port is planned);
+  lead (1) and the newlib/umm locks (`sysstat jet`) apply there as well.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (TPIDR_EL0 saved per thread), mmap,
