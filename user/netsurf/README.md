@@ -1,5 +1,14 @@
 # Onyx NetSurf core libraries (brick 7)
 
+> **A bring-up journal (2026-06).** This file records how NetSurf was first built and run on
+> Onyx; much of its "first cut" / "still to do" has long been done (HTTPS with certificate
+> verification, FreeType fonts, CSS3, JavaScript on QuickJS, a non-blocking fetcher, dirty
+> rectangles, video). Today the browser is **Jet Browser** (`apps/jet.app`): its changes are in
+> [`docs/06-JET-BROWSER.md`](../../docs/06-JET-BROWSER.md), its build and tests in
+> [`docs/03-DEVELOPER-GUIDE.md`](../../docs/03-DEVELOPER-GUIDE.md) (*NetSurf*). The library
+> sources and their built `.a` are **vendored** in `third_party/` (not cloned here any more:
+> `make -C user/netsurf` builds from `NS = third_party`).
+
 The portable library stack the **NetSurf** browser is built on -- on Onyx, **Jet Browser**
 (`apps/jet.app`, launched as `jet`; docs/06 §31) --, cross-compiled for Onyx
 (`aarch64-none-elf` + newlib). Same split as `user/tls/` and `user/img/`: the upstream

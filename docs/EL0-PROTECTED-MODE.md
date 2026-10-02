@@ -1,13 +1,14 @@
 # Protected mode for apps (EL0 + system calls) — design note
 
 > **Status (2026-10-02): done — every app runs at EL0, the EL1 ("legacy") mode is removed
-> (branch `ccr-182e4cf6-fxr778`, kapi v74).** Steps 0–5 were tried on the Pi (v73, opt-in): all
-> passed; then the legacy path was removed, the ID register reads emulated, the system calls
-> counted per process (`sysstat`), every app audited (`tools/el0scan.sh`) and rebuilt. What was
-> done: [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. Below, the original study
-> (2026-09-30, kapi v68, 189 entries).
+> (kapi v74; merged into `main`, published as the package `onyx` 2026.10.21).** Steps 0–5 were
+> tried on the Pi (v73, opt-in): all passed; then the legacy path was removed, the ID register
+> reads emulated, the system calls counted per process (`sysstat`), every app audited
+> (`tools/el0scan.sh`) and rebuilt; v74 tried on the Pi: every test passes. What was done:
+> [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. §1–§6 below are the original
+> study (2026-09-30, kapi v68, 189 entries): they describe the system **before** the work.
 
-## 1. Where things stand
+## 1. Where things stood (2026-09-30, before the work)
 
 - Apps run at **EL1t**, in their own `TTBR0`/ASID, and call the kernel through the `kapi` table
   mapped read-only at `KAPI_TABLE_VA` (14 GB): a plain indirect call, no trap
@@ -178,8 +179,8 @@ cores. It gives much of gain 1, none of gains 2–3.
 
 ## 7. Implementation (2026-10-02)
 
-Done in four parts (each built, reviewed, not run on hardware: there is no Pi 4 emulator here).
-The reference description is [docs/02 §6](02-KERNEL-INTERNALS.md#6-exceptions-and-vectors).
+Done in four parts (each built and reviewed here — there is no Pi 4 emulator — then tried on the
+Pi by the user: v73 opt-in, then v74). The reference description is [docs/02 §6](02-KERNEL-INTERNALS.md#6-exceptions-and-vectors).
 
 | Step | What | Where |
 |---|---|---|
@@ -208,5 +209,8 @@ dormant syscall code; added: the ID register emulation, `proc_stats` / `sysstat`
 
 **Still open:** the powerful kapis (§5) need a permission model; the GPU can reach physical memory
 through shaders; the crash record does not capture EL0 kills (kmsg only); the system-call cost is
-not measured; TPIDR_EL0 is not saved per thread (needed for TLS, the POSIX layer). **Next:** the v74 test on
-the Pi; then demand paging (`mmap`/`munmap`/`mprotect`), the first brick of a POSIX layer.
+not measured; TPIDR_EL0 is not saved per thread (needed for TLS, the POSIX layer). The v74 test
+on the Pi passed (2026-10-02: el0test, faulttest, threads, app cores, emulators, Jet, media, office,
+network, BASIC, kills under load); the GameCube emulator, and perhaps Jet, run a little slower
+(leads in docs/HANDOFF.md: the user-side `memcpy` for small copies first). **Next:** that speed;
+then demand paging (`mmap`/`munmap`/`mprotect`), the first brick of a POSIX layer.

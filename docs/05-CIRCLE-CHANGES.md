@@ -76,6 +76,8 @@ layout needs no kernel rebuild — and the kernel carries **no** keyboard tables
 The kernel fills the live keyboard from a `.kmap` file via `SetEntry` (`kapi_set_keymap_data`,
 ABI v27), re-applying it whenever a keyboard (re-)attaches. `MAX_TASKS` goes **20 → 40**: the
 network stack adds long-lived background tasks (net / DHCP / WPA supplicant + NTP + IRC).
+(Onyx's own scheduler has since dropped the fixed table: its tasks are a linked list with no limit,
+docs/02 §5, so `MAX_TASKS` no longer bounds Onyx; the patch stays for Circle's own code.)
 
 ```diff
 --- a/include/circle/input/keymap.h

@@ -54,7 +54,7 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Every app at EL0, the legacy mode removed (2026-10-02, kapi v74; branch `ccr-182e4cf6-fxr778`, tried on the Pi: all tests pass)
+## Every app at EL0, the legacy mode removed (2026-10-02, kapi v74; tried on the Pi: all tests pass; in `main`, published)
 
 - **What**: apps, /bin tools, Koton plugins, Jet run at **EL0** and call the kernel by `svc` through the
   same kapi table (per-process handles, every pointer checked, user-side `memcpy` and event pump); a
@@ -62,8 +62,9 @@ answer in French. The docs stay in English.
   `proc_stats` (v74) → `ps` SYSC/s, the Task Manager, `/bin/sysstat`; `tools/el0scan.sh` checks binaries.
   The story and the design: `docs/EL0-PROTECTED-MODE.md` §7; the reference: docs/02 §5–§6.
 - **On the Pi (the user, 2026-10-02)**: every test of the plan passes (el0test, faulttest, threads,
-  app cores, emulators, Jet, media, office, network, BASIC, kills under load). **Not yet in `main`,
-  packages not published** (the branch was kept apart on purpose: merge it, then `publish.sh`).
+  app cores, emulators, Jet, media, office, network, BASIC, kills under load). Merged into `main`
+  (from `ccr-182e4cf6-fxr778`) and the packages published (`onyx` 2026.10.21, every app rebuilt).
+  The docs (01–04, the READMEs, `ARCHITECTURE.md`'s banner, LICENSING) describe the EL0 system.
 - **Open: the GameCube emulator is slower than before** (the user: "later"). Leads, to measure first
   (`sysstat gcemu`, the GX/machine frame times): (1) the user-side `memcpy`/`memset` (el0blob.S) copy
   < 16 bytes byte by byte and align the destination first -- slower than Circle's for many small
@@ -626,8 +627,8 @@ answer in French. The docs stay in English.
   breadcrumbs (GPU, display), power/temperature, panic line, in 64 KB of RAM kept out of the heap
   (top of the RAM above 4 GB on the user's 8 GB Pi — it survives the watchdog reset); the hardware
   watchdog (`hangreboot=`, 15 s); core 1 writes a report into `SD:/etc/crashdump.txt` sectors when
-  core 0 stops (LED signs); next boot → `SD:/etc/lastcrash.txt`. `hangtest` freezes core 0 on
-  purpose. `SD:/etc/clock` keeps the time across boots (files written before NTP get a date).
+  core 0 stops (LED signs); next boot → `SD:/etc/lastcrash.txt`. `hangtest` froze core 0 on
+  purpose (removed with v74: an app at EL0 can no longer freeze the machine). `SD:/etc/clock` keeps the time across boots (files written before NTP get a date).
 - **Crash record, round 2 (2026-09-29, for the Spreadsheet's freeze: a long hang, then a restart,
   nothing on the card):** a Circle panic (assertion, kernel heap "Out of memory") halted every
   core, core 1 too — no report; now the logger's panic handler has core 1 write it first. The
@@ -826,8 +827,8 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
 - **The freeze at its first start on the Pi (fixed, `73a1eb05`).** Its window was 1060 pixels
   wide; the kernel then made none over 1024 × 768 (`CreateWindow`, `sys/kapi.cpp`; since v66, none
   bigger than the screen) and returns a
-  null canvas, which wtk drew into: an app runs at EL1 with the kernel's identity mapping, so the
-  first frame overwrote the kernel at address 0 — the Pi froze, nothing in `kmsg`, no
+  null canvas, which wtk drew into: an app then ran at EL1 with the kernel's identity mapping, so the
+  first frame overwrote the kernel at address 0 (at EL0 since v74, that is a fault: the app killed) — the Pi froze, nothing in `kmsg`, no
   `lastcrash.txt` (a Pi without RAM above 3 GB keeps no record, and a panic halts core 1 too), the
   watchdog restarted it. Now 1000 pixels; wtk's `Root` stops an app the kernel gives no window;
   the desktop simulator refuses windows over 1024 × 768 (its screen) as the kernel does. How it was found, and
@@ -1538,7 +1539,7 @@ over a cached canvas instead of the whole view redrawn at each tick while playin
 when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel, a 512-frame ring
 ≈ 20 ms) for live MIDI.
 
-## End-user apps roadmap (decided with the user, 2026-09-30; none started)
+## End-user apps roadmap (decided with the user, 2026-09-30; Priority 1 done)
 
 **How (the user, 2026-10-01)**: Screenshot first (laid out as Windows' Snipping Tool:
 docs/screenshot/README.md), then the **Priority 1** apps **in their order**; for each, **mock-ups first**

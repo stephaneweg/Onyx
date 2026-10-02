@@ -5,7 +5,9 @@
 > `tools/pkg/`, the repository **published** (https://github.com/stephaneweg/onyx-packages), the card's
 > database (`sdcard/var/pkg/db`), **`sdcard_lite`**; tested on the PC (`tools/tests/run_pkg_test.sh`,
 > the screenshots), **not yet tried on the Pi**. Still to do: the firmware's *tryboot* (a new kernel
-> that does not start: back to the old one by itself), the Game Library finding its emulators (below).
+> that does not start: back to the old one by itself). (The Game Library finding its emulators from
+> their `app.txt`: done, below.) Published since: `onyx` 2026.10.21, the EL0 kernel (kapi v74) and
+> every app rebuilt.
 > Its use: docs/04 §8 *Packages*, §11 *The Package Manager*; its code: docs/03 *The packages*.
 >
 > **Decided with the user**: the repository **`stephaneweg/onyx-packages`** (GitHub Pages); the applet

@@ -6,6 +6,27 @@
 > search for the symbol when a reference is off. Items marked **(verify)** could not be settled
 > without a Pi 5 on the desk.
 >
+> **Since this plan (2026-10-02): every app runs at EL0 (kapi v74).** What it changes here:
+> - **B1 (§5.1) is half done**: the user side reads the core number from **`TPIDRRO_EL0`**, which
+>   the kernel sets per core (`El0CoreInit`, `kernel/sys/el0.cpp`; `kapi__core` in `user/kapi.h`,
+>   `on_app_core` in `user/libc/onyx_syscalls.c`), and every app was rebuilt: board-independent,
+>   no app change for the Pi 5. Left: the kernel's own `ThisCore ()`
+>   (`kernel/compat/circle/sched/scheduler.h`, `mpidr & 3`) and the `nCore` passed to
+>   `El0CoreInit` — take them from `CMultiCoreSupport::ThisCore ()` (Aff1 on the Pi 5). An app
+>   that reads `MPIDR_EL1` itself is emulated by the kernel (`EmulateMrs`, the real value).
+> - **The EL0 paths are new code to bring up on the A76**: `kernel/arch/aarch64/el0.S` (entry /
+>   exit on the task's kernel stack, `TPIDR_EL1` = its top, per core), `el0blob.S` (the user-side
+>   `memcpy` / event pump), the per-core setup `El0CoreInit` (`CNTKCTL_EL1`, `SCTLR_EL1`
+>   UCI/UCT/DZE/nTWE/nTWI, `TPIDRRO_EL0`, `PMUSERENR_EL0`), the ID register emulation (it decodes both an
+>   undefined instruction and `EC 0x18`, the trap of a core with FEAT_IDST — **(verify)** which
+>   the A76 gives). The EL0 table and code page sit at `KAPI_TABLE_VA` / `KAPI_STUBS_VA` and move
+>   with the user window under policy (B) (§5.2); the threads' user stacks at 32 GB too.
+> - **§10 (PAN / UAO)**: the kernel works in EL0 pages directly (the A72 has no PAN); with PAN on
+>   the Pi 5 the fault-safe copies (`kernel/arch/aarch64/uaccess.S`) and every place that touches
+>   an app buffer would need `LDTR`/`STTR` or PAN toggled. `SCTLR_EL1.UCT` is already set.
+> - **§13**: `hangtest` is gone (an app can no longer freeze the machine); test the crash log with
+>   a kernel fault instead; `el0test` and `faulttest` test the EL0 paths.
+>
 > **Decision already taken:** Onyx may ship **two binary distributions**, one for the Pi 4
 > (`kernel8-rpi4.img`) and one for the Pi 5 (`kernel_2712.img`), each with its own apps build if
 > needed. The kapi ABI stays append-only *within* each distribution.
@@ -562,7 +583,7 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
   `./configure -r 5`), `docs/04-USER-GUIDE.md` (the Pi 5 card, sound outputs, Ethernet, the power
   button), `docs/05-CIRCLE-CHANGES.md` (the high-memory patch reworked, `:588`),
   `docs/02-KERNEL-INTERNALS.md` §15 (V3D 7.1), `docs/daw/PERFORMANCE.md`, the website
-  (`docs/website/index.html`, "Pi 5 not supported"), then `python docs/build_docs.py`.
+  (`docs/website/index.html`, "Pi 5 not supported" — no longer in this tree), then `python docs/build_docs.py`.
 
 ## 13. Test plan
 
@@ -577,7 +598,8 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
 | Network | Ethernet DHCP + FTP deploy speed; Wi-Fi with HDMI connected | `ftp`, `ping`, `netstat` |
 | GPU | the §9.3 ladder | `v3dprog`, `gpudemo`, gcemu |
 | Thermal | 30 min of gcemu with the Active Cooler: clock stays at 2.4 GHz, the fan switches | `CrashLogPower` log |
-| Crash log | a forced fault, watchdog reboot, `lastcrash.txt` kept | `hangtest` |
+| Crash log | a forced fault, watchdog reboot, `lastcrash.txt` kept | (`hangtest`, removed in v74: a kernel-side test is needed) |
+| EL0 | system calls, app faults killed, ID register reads, threads and app cores at EL0 | `el0test`, `faulttest` |
 
 ## 14. Open questions (verify on hardware)
 

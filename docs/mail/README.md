@@ -1,6 +1,6 @@
 # Mail for Onyx — study, first mock-ups
 
-> **Status (2026-10-02): done** -- the app `user/Apps/mail` (docs/04 §12 *Mail*, docs/03 *Mail*), the protocols and the HTML renderer in `user/mail/`; tested on the PC (`sh tools/tests/run_mail_test.sh`, `shots.sh mail`), not yet on the Pi. Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
+> **Status (2026-10-02): done** -- the app `user/Apps/mail` (docs/04 §12 *Mail*, docs/03 *Mail*), the protocols and the HTML renderer in `user/mail/`; tested on the PC (`sh tools/tests/run_mail_test.sh`, `shots.sh mail`) and **on the Pi with Gmail: works well** (2026-10-02; Outlook still to try there). Priority 1 of the end-user apps roadmap (docs/HANDOFF.md): a mail
 > client "as user-friendly as possible". The user (2026-10-02): it must connect to **Gmail, Outlook, IMAP and
 > POP3 / SMTP**; Gmail with an **app password**, Outlook with Microsoft's sign-in **by a code** (an "Onyx Mail"
 > application registered by the user at Microsoft: below). **Contacts** = a Cardfile form (`.card`), opened in

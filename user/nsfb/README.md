@@ -37,7 +37,9 @@ vendored libnsfb is **unpatched**.
   `plot.h` includes it then reads the GCC byte-order builtins). Keeps libnsfb unpatched.
 - `Makefile` — cross-builds `libnsfb.a` (core + RAM + Onyx surfaces + software plotters;
   SDL/X/VNC/Wayland excluded — they need host libs).
-- `libnsfb/` — the upstream source (git clone / submodule, **not** committed here).
+- `libnsfb/` — the upstream source for this opt-in build (a clone, **not** committed
+  here). Jet Browser uses the copy **vendored** in `third_party/libnsfb` (with its built
+  `libnsfb.a`); `make -C user/nsfb NSFB=../../third_party/libnsfb` builds against it.
 
 ## Building
 
@@ -70,8 +72,8 @@ vendored libnsfb is **unpatched**.
 ## Status
 
 Cross-builds and links clean against newlib (no undefined symbols); the `"onyx"`
-registration constructor is verified present in `.init_array`. Runtime rendering on
-hardware is the next check. The cursor is left to the Onyx desktop (no libnsfb soft
+registration constructor is verified present in `.init_array`. It runs on hardware: it is
+the surface Jet Browser draws through (`nsfbdemo` is on the card). The cursor is left to the Onyx desktop (no libnsfb soft
 cursor); dirty-rect updates and window resize are minimal first-pass.
 
 Pinned: **libnsfb 0.2.2** @ `b701cdc`.

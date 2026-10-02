@@ -49,12 +49,16 @@ du protocole et des formats (contenu attendu : §10). Stéphane fait alors le po
   **Circle** comme couche matérielle. GUI fenêtrée (un « CDE modernisé »), Wi-Fi/Ethernet, son,
   carte SD en FAT32.
 - **Une app est un ELF** chargé à `0x200000000` (non PIE), dans son propre espace d'adressage,
-  préemptée, avec des threads disponibles.
+  **à EL0** (protégée : une faute ne tue que l'app, jamais le système), préemptée, avec des
+  threads disponibles. Elle ne doit lire aucun registre système privilégié (`mpidr_el1`…) :
+  `tools/el0scan.sh` vérifie un binaire.
 - **Pas de POSIX, pas d'appels système Linux.** L'app parle au noyau uniquement via une **table de
-  fonctions à adresse fixe** : la *kapi* (`user/kapi.h` → `kernel/include/kern/kapi_abi.h`).
+  fonctions à adresse fixe** : la *kapi* (`user/kapi.h` → `kernel/include/kern/kapi_abi.h`) ;
+  chaque entrée est un petit stub qui fait l'appel système (`svc`), chaque pointeur passé est
+  vérifié par le noyau.
 - **La kapi n'accepte que des ajouts** : on ne retire ni ne réordonne jamais un champ. Un ELF
   compilé aujourd'hui continue donc de tourner sur les noyaux futurs. La version actuelle est
-  **`KAPI_ABI_VERSION` 71**. L'app peut lire `KT->version` et refuser poliment de démarrer sur un
+  **`KAPI_ABI_VERSION` 74**. L'app peut lire `KT->version` et refuser poliment de démarrer sur un
   noyau trop ancien.
 - **newlib** (`printf`, `malloc`, `<string.h>`, `<math.h>`) est disponible pour les apps qui la
   lient (§5). Le C++ s'utilise **sans exceptions ni RTTI**.

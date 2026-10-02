@@ -14,34 +14,26 @@ here: mbedTLS plugged onto our transport primitives (`kapi_tcp_send`/`recv`).
   hook. Used by `http.hpp` when `ONYX_HTTP_TLS` is defined.
 - `Makefile` — cross-builds the upstream mbedTLS library for `aarch64-none-elf` +
   newlib (bare-metal, TLS 1.2).
-- `mbedtls/` — the upstream source (a git submodule, **not** committed here).
+- the upstream source and its built libraries are **vendored** in the repository at
+  `third_party/mbedtls-3.6.3` (the `Makefile`'s `MBEDTLS`). **Keep ≥ 3.6.3**: 3.6.3 added
+  re-assembly of TLS handshake messages fragmented across records, which real servers (incl.
+  Google) do — 3.6.2 fails them with `-0x7080` ("TLS handshake fragmentation not supported").
 
 ## Building
 
-1. Add the mbedTLS source (once), pinned to the tested release. **Use ≥ 3.6.3**:
-   3.6.3 added re-assembly of TLS handshake messages fragmented across records, which
-   real servers (incl. Google) do — 3.6.2 fails them with `-0x7080` ("TLS handshake
-   fragmentation not supported").
-
-   ```sh
-   git submodule add https://github.com/Mbed-TLS/mbedtls user/tls/mbedtls
-   git -C user/tls/mbedtls checkout mbedtls-3.6.3
-   ```
-
-   (A plain `git clone --branch mbedtls-3.6.3` into `user/tls/mbedtls` also works.)
-
-2. Build the libraries (needs `python3` for `scripts/config.py`):
+1. Build the libraries again only after a change to the config (needs `python3` for
+   `scripts/config.py`):
 
    ```sh
    make -C user/tls
    ```
 
-   → `user/tls/mbedtls/library/libmbed{crypto,x509,tls}.a`.
+   → `third_party/mbedtls-3.6.3/library/libmbed{crypto,x509,tls}.a`.
 
-3. Build an HTTPS app, pointing it at the libs:
+2. Build an HTTPS app: the `user/bin` and `user` makefiles already point at them, e.g.
 
    ```sh
-   make -C user/bin MBEDTLS_DIR=../tls/mbedtls httpsget.elf
+   make -C user/bin httpsget.elf
    ```
 
    `httpsget` is a demo; any newlib C++ app can do the same — `#define ONYX_HTTP_TLS`
@@ -65,8 +57,8 @@ This is a **functional** TLS bring-up, **not yet secure**:
   `MBEDTLS_HAVE_TIME_DATE`, so a verify callback checks them); `start()` returns -2 for a
   refused certificate and fills a `Verify` record of the chain. `START_ALPN_H2` /
   `START_ALPN_H1` offer ALPN; `sess_export` / `sess_import` keep the session cache across
-  launches. NetSurf uses all of it (`user/netsurf/onyx_nstls.cpp`, docs/06 §22); the other
-  users (`user/bin` tools, the courier) still connect without verification.
+  launches. Jet Browser (`user/netsurf/onyx_nstls.cpp`, docs/06 §22) and Mail (`user/mail/conn.h`)
+  use it; the other users (`user/bin` tools, Courier) still connect without verification.
 
 ## Config notes
 
