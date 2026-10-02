@@ -39,14 +39,15 @@ int VfsCall (int nOp, const char *pPath, const char *pPath2, long a0, long a1, l
 void VfsOnProcessGone (unsigned nPid);
 
 // ---- file / dir handles backed by a provider (kapi_open / kapi_opendir) --------------
-// kapi_open returns a pointer INTO these static tables for provider paths, so the other
-// file kapis tell them apart from FatFs FIL / DIR objects by address.
+// VfsOpen / VfsOpenDir return a pointer INTO these static tables; the app gets a handle to
+// it (kern/handle.h), its entry recording that it is a provider's.
 boolean VfsIsFile (void *pHandle);
 boolean VfsIsDir (void *pHandle);
 void   *VfsOpen (const char *pPath);
 int     VfsRead (void *pHandle, void *pBuf, unsigned nLen);
 unsigned VfsSize (void *pHandle);
 void    VfsClose (void *pHandle);
+void    VfsDropFile (void *pHandle);	// its slot freed, no request (a dead process's teardown)
 void   *VfsOpenDir (const char *pPath);
 struct kapi_dirent;
 int     VfsReadDir (void *pHandle, struct kapi_dirent *pEnt);

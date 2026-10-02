@@ -148,25 +148,32 @@ CAddressSpace::~CAddressSpace (void)
 	ThreadsFree (this);
 
 	// stdio teardown: signal EOF to whoever reads our stdout, drop our stream refs,
-	// and mark the spawn handle done (so a waiter unblocks). Done first so the
-	// terminal sees the child finish promptly.
+	// and mark the spawn record done (so a waiter unblocks). Done first so the
+	// terminal sees the child finish promptly. A stream's LAST ref is released by the
+	// reaper task a moment later (kern/handle.h): a file stream's last release writes
+	// to the card, not to be done here (the reaper's teardown runs with IRQs masked).
 	if (m_pStdout != 0)
 	{
 		m_pStdout->CloseWrite ();
-		m_pStdout->Release ();
+		HandlesDeferRelease (m_pStdout);
 		m_pStdout = 0;
 	}
 	if (m_pStdin != 0)
 	{
-		m_pStdin->Release ();
+		HandlesDeferRelease (m_pStdin);
 		m_pStdin = 0;
 	}
 	if (m_pProcess != 0)
 	{
 		m_pProcess->nStatus = m_nExitStatus;
 		m_pProcess->bDone = TRUE;
+		ProcessRelease (m_pProcess);		// (the spawner's handle keeps it, if any)
 		m_pProcess = 0;
 	}
+
+	// Its handles still open (kern/handle.h): files and directories closed, streams and
+	// spawn records released -- they leaked before when an app was killed or forgot them.
+	m_Handles.CloseAll (TRUE);
 	if (m_pMailbox != 0)
 	{
 		delete m_pMailbox;

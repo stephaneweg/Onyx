@@ -22,6 +22,7 @@
 #include <fatfs/diskio.h>		// disk_cache_enable (the sector cache: sdcache=)
 #include <kern/applaunch.h>
 #include <kern/stream.h>
+#include <kern/handle.h>		// ProcessRelease, HandlesRunDeferred (kern/handle.h)
 #include <kern/kapitable.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
@@ -195,7 +196,7 @@ public:
 			// The AS never took the streams here, so release the caller's refs ourselves.
 			if (m_pStdin  != 0) m_pStdin->Release ();
 			if (m_pStdout != 0) m_pStdout->Release ();
-			if (m_pProcess != 0) { m_pProcess->nStatus = -1; m_pProcess->bDone = TRUE; }
+			if (m_pProcess != 0) { m_pProcess->nStatus = -1; m_pProcess->bDone = TRUE; ProcessRelease (m_pProcess); }
 			delete pAS;
 			return;
 		}
@@ -550,6 +551,7 @@ public:
 		{
 			TerminateOrphans ();			// kill children of dead parents
 			CScheduler::Get ()->ReapTerminatedTasks ();
+			HandlesRunDeferred ();			// the streams those teardowns left (kern/handle.h)
 			LogStalls ();
 			CrashLogAlive ();			// (the crash record's uptime + the hang watchdog)
 
@@ -1583,9 +1585,10 @@ boolean LaunchAppByName (const char *pName)
 }
 
 // Spawn a console process: load the ELF at pElfPath and run it with the given
-// stdin/stdout streams + argv. Returns a CProcess handle (poll/free with kapi_wait),
-// or 0 on failure. The child address space takes a ref on each stream (the caller
-// keeps its own); the handle's done/status are set when the child exits.
+// stdin/stdout streams + argv. Returns a CProcess record holding two refs -- the caller's
+// (kapi_spawn puts it in a handle) and the child's -- or 0 on failure. The child address
+// space takes a ref on each stream (the caller keeps its own); the record's done/status
+// are set when the child exits.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout, const char *pCwd,
 			unsigned nParentPid)
@@ -1606,6 +1609,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	}
 	pProc->bDone = FALSE;
 	pProc->nStatus = 0;
+	pProc->nRef = 2;			// the caller's handle + the child (kern/handle.h)
 
 	if (pStdin  != 0) pStdin->AddRef ();		// the child AS will release these
 	if (pStdout != 0) pStdout->AddRef ();

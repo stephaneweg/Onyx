@@ -34,6 +34,7 @@ public:
 
 	void AddRef (void)	{ m_nRef++; }
 	void Release (void)	{ if (--m_nRef <= 0) delete this; }
+	int GetRefs (void) const { return m_nRef; }
 
 protected:
 	int m_nRef;
@@ -85,12 +86,15 @@ private:
 	void *m_pFile;
 };
 
-// Spawned-process handle: the child sets bDone/nStatus on exit; the waiter polls it.
-// Outlives the task (the waiter frees it), so it never dangles on the reaped CTask.
+// Spawned-process record: the child sets bDone/nStatus on exit; the waiter polls it.
+// Outlives the task, so it never dangles on the reaped CTask. Refcounted (kern/handle.h):
+// one ref for the spawner's handle, one for the child (its task, then its address space);
+// ProcessRelease frees it with the last, so a spawner that dies first no longer leaks it.
 struct CProcess
 {
 	volatile boolean bDone;
 	int              nStatus;
+	int              nRef;
 };
 
 #endif // _kern_stream_h
