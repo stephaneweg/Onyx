@@ -293,6 +293,20 @@ class Imap(socketserver.StreamRequestHandler):
                     if "PEEK" not in T and sec != "HEADER.FIELDS": m.flags.add("\\Seen")
             self.out(("* %d FETCH (%s)\r\n" % (self.seq(m), " ".join(out))).encode("utf-8", "surrogateescape"))
         self.out("%s OK UID FETCH done\r\n" % tag)
+    def c_fetch(self, tag, rest, data):
+        # by sequence numbers: turned into the uids, then as UID FETCH
+        if not self.need_auth(tag): return
+        if not self.sel: self.out("%s BAD no folder selected\r\n" % tag); return
+        spec, _, items = rest.partition(" ")
+        n = len(self.sel.msgs); seqs = set()
+        for r in spec.split(","):
+            if ":" in r:
+                a, b = r.split(":"); a = n if a == "*" else int(a); b = n if b == "*" else int(b)
+                seqs.update(range(min(a, b), max(a, b) + 1))
+            else: seqs.add(n if r == "*" else int(r))
+        uids = ",".join(str(self.sel.msgs[i - 1].uid) for i in sorted(seqs) if 1 <= i <= n)
+        if not uids: self.out("%s OK FETCH done\r\n" % tag); return
+        self.u_fetch(tag, uids + " " + items)
     def u_store(self, tag, args):
         spec, op, fl = args.split(" ", 2)
         flags = set(re.findall(r"[\\$]?\w+", fl))

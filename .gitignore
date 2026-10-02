@@ -60,6 +60,15 @@ third_party/**/*.o
 third_party/**/*.o.d
 # Remembered FTP logins (ftpfs "Remember password"): never commit them
 sdcard/etc/ftpfs.ini
+# Mail: the user's accounts, their encrypted passwords and tokens, the card's key, the mail itself
+sdcard/etc/mail/accounts.ini
+sdcard/etc/mail/secrets
+sdcard/etc/mail/key
+sdcard/mail/
+sdcard_lite/etc/mail/accounts.ini
+sdcard_lite/etc/mail/secrets
+sdcard_lite/etc/mail/key
+sdcard_lite/mail/
 
 # Lisa's Groq API key: never commit it
 sdcard/apps/lisa.app/config.ini

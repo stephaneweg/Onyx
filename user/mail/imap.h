@@ -495,6 +495,35 @@ struct Imap
 		const char *gm = has ("X-GM-EXT-1") ? " X-GM-THRID" : "";
 		return cmd (on_fetch_env, &F, "UID FETCH %s (UID FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (REFERENCES)]%s)", range, gm);
 	}
+	// the last messages by their numbers (seq from..to, to 0: '*'): a folder's first look (its newest n)
+	bool fetch_envelopes_seq (long from, long to, OnEnvelope cb, void *ctx)
+	{
+		FetchCtx F = { cb, ctx };
+		if (from < 1) from = 1;
+		char range[48]; if (to > 0) snprintf (range, sizeof range, "%ld:%ld", from, to); else snprintf (range, sizeof range, "%ld:*", from);
+		const char *gm = has ("X-GM-EXT-1") ? " X-GM-THRID" : "";
+		return cmd (on_fetch_env, &F, "FETCH %s (UID FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (REFERENCES)]%s)", range, gm);
+	}
+	// the first bytes of one part of several messages (the previews): uids "3,5,9", part "1.1" -> cb (uid, bytes)
+	typedef void (*OnPart) (void *ctx, long uid, const char *data, int n);
+	struct PartCtx { OnPart cb; void *ctx; };
+	static void on_part (void *ctx, Resp &r)
+	{
+		PartCtx &P = *(PartCtx *) ctx;
+		if (r.items () < 3 || !Resp::is (r.item (1), "FETCH")) return;
+		const Val &l = r.item (2); const Val *u = r.after (l, "UID");
+		if (!u) return;
+		for (int i = 0; i + 1 < l.nkid; i++)
+		{
+			const Val &k = r.kid (l, i);
+			if (k.type == V_ATOM && ieqn (k.s, "BODY[", 5)) { const Val &d = r.kid (l, i + 1); if (d.type == V_STR) P.cb (P.ctx, Resp::num (*u), d.s, d.n); }
+		}
+	}
+	bool fetch_parts (const char *uids, const char *part, long max, OnPart cb, void *ctx)
+	{
+		PartCtx P = { cb, ctx };
+		return cmd (on_part, &P, "UID FETCH %s (UID BODY.PEEK[%s]<0.%ld>)", uids, part, max);
+	}
 	// the flags only (a resync: what changed elsewhere)
 	typedef void (*OnFlags) (void *ctx, long uid, unsigned flags);
 	struct FlagsCtx { OnFlags cb; void *ctx; };
