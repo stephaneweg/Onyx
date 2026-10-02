@@ -40,6 +40,8 @@ static int s_task;
 void *RamPlatTask (void) { return &s_task; }
 void RamPlatYield (void) {}
 unsigned RamPlatPid (void) { return s_pid; }
+static s64 s_now = 1790000000;
+s64 RamPlatTime (void) { return s_now; }
 
 static unsigned s_seed;
 static unsigned rnd (void) { s_seed = s_seed * 1103515245u + 12345u; return (s_seed >> 8) & 0xFFFFFF; }
@@ -351,6 +353,112 @@ static void edges (void)
 	       (unsigned long long) u, nf, nd, s_pages.size ());
 }
 
+// (v75) the open files of sys/ofile.cpp: random pread / pwrite / truncate through two nodes of
+// one file against a model, O_APPEND, the open flags, stat, unlink and rename of open files,
+// rmdir, dir_read
+static void posix (unsigned nOps)
+{
+	int e;
+	CHECK (RamFsMkdirEx ("RAM:/px") == 0 && RamFsMkdirEx ("RAM:/px") == -KAPI_EEXIST, "mkdir / EEXIST");
+	CHECK (RamFsMkdirEx ("RAM:/nope/x") == -KAPI_ENOENT, "mkdir ENOENT");
+	CHECK (RamFsNodeOpen ("RAM:/px/f", KAPI_O_RDWR, &e) == 0 && e == -KAPI_ENOENT, "open ENOENT");
+	void *a = RamFsNodeOpen ("RAM:/px/f", KAPI_O_RDWR | KAPI_O_CREAT | KAPI_O_EXCL, &e);
+	CHECK (a != 0, "O_CREAT|O_EXCL");
+	CHECK (RamFsNodeOpen ("RAM:/px/f", KAPI_O_RDWR | KAPI_O_CREAT | KAPI_O_EXCL, &e) == 0 && e == -KAPI_EEXIST, "EXCL: EEXIST");
+	CHECK (RamFsNodeOpen ("RAM:/px", KAPI_O_RDONLY, &e) == 0 && e == -KAPI_EISDIR, "a folder: EISDIR");
+	void *b = RamFsNodeOpen ("RAM:/PX/F", KAPI_O_RDWR, &e);
+	CHECK (b == a, "the same node (case)");
+	std::string m;
+	for (unsigned i = 0; i < nOps; i++)
+	{
+		void *h = (rnd () & 1) ? a : b;
+		unsigned op = rnd () % 10;
+		u64 off = rnd () % (m.size () + 300000);
+		unsigned len = rnd () % 200000;
+		if (op < 4)
+		{
+			std::string d = rand_data (len);
+			s64 r = RamFsPWrite (h, off, d.data (), len, FALSE, 0);
+			CHECK (r == (s64) len, "pwrite %llu+%u: %lld", (unsigned long long) off, len, (long long) r);
+			if (m.size () < off + len) m.resize (off + len, '\0');
+			memcpy (&m[off], d.data (), len);
+		}
+		else if (op < 5)
+		{
+			std::string d = rand_data (len % 5000);
+			u64 end = 0;
+			s64 r = RamFsPWrite (h, 0, d.data (), d.size (), TRUE, &end);
+			m += d;
+			CHECK (r == (s64) d.size () && end == m.size (), "append: %lld, end %llu", (long long) r, (unsigned long long) end);
+		}
+		else if (op < 6)
+		{
+			u64 n = rnd () % (m.size () + 200000);
+			CHECK (RamFsTruncate (h, n) == 0, "truncate");
+			m.resize (n, '\0');
+		}
+		else
+		{
+			std::string got (len, '\x55');
+			s64 r = RamFsPRead (h, off, &got[0], len);
+			u64 want = off >= m.size () ? 0 : (m.size () - off < len ? m.size () - off : len);
+			CHECK (r == (s64) want && memcmp (got.data (), m.data () + (off < m.size () ? off : 0), (size_t) want) == 0,
+			       "pread %llu+%u: %lld (want %llu)", (unsigned long long) off, len, (long long) r, (unsigned long long) want);
+		}
+	}
+	kapi_stat st;
+	s_now += 100;
+	RamFsPWrite (a, 0, "x", 1, FALSE, 0);
+	RamFsNodeStat (a, &st);
+	CHECK (st.size == m.size () && st.mtime == s_now && (st.mode & KAPI_S_IFMT) == KAPI_S_IFREG && st.dev == RAMFS_DEV, "fstat");
+	kapi_stat st2;
+	CHECK (RamFsStat ("ram:/px/f", &st2) == 0 && st2.ino == st.ino && st2.size == st.size, "stat = fstat");
+	CHECK (RamFsStat ("RAM:/px", &st2) == 0 && (st2.mode & KAPI_S_IFMT) == KAPI_S_IFDIR, "stat a folder");
+	CHECK (RamFsStat ("RAM:/", &st2) == 0 && (st2.mode & KAPI_S_IFMT) == KAPI_S_IFDIR, "stat the root");
+	CHECK (RamFsUtime ("RAM:/px/f", 1234) == 0 && RamFsStat ("RAM:/px/f", &st2) == 0 && st2.mtime == 1234, "utime");
+	// O_TRUNC
+	void *c = RamFsNodeOpen ("RAM:/px/f", KAPI_O_WRONLY | KAPI_O_TRUNC, &e);
+	RamFsNodeStat (a, &st);
+	CHECK (c == a && st.size == 0, "O_TRUNC");
+	RamFsNodeClose (c);
+	// rename keeps the number; rename onto an open file replaces it, the old one readable
+	RamFsPWrite (a, 0, "old", 3, FALSE, 0);
+	void *g = RamFsNodeOpen ("RAM:/px/g", KAPI_O_RDWR | KAPI_O_CREAT, &e);
+	RamFsPWrite (g, 0, "new!", 4, FALSE, 0);
+	RamFsNodeStat (g, &st);
+	CHECK (RamFsMkdirEx ("RAM:/px/sub") == 0 && RamFsRenameEx ("RAM:/px/g", "RAM:/px/sub/g2") == 0, "rename across folders");
+	CHECK (RamFsStat ("RAM:/px/sub/g2", &st2) == 0 && st2.ino == st.ino, "the number kept");
+	CHECK (RamFsRenameEx ("RAM:/px/sub/g2", "RAM:/px/f") == 0, "rename onto an open file");
+	char buf[8] = { 0 };
+	CHECK (RamFsPRead (a, 0, buf, 8) == 3 && memcmp (buf, "old", 3) == 0, "the replaced file still readable");
+	CHECK (RamFsStat ("RAM:/px/f", &st2) == 0 && st2.size == 4, "the new one in its place");
+	CHECK (RamFsRenameEx ("RAM:/px/f", "RAM:/px/sub") == -KAPI_EISDIR, "a file onto a folder");
+	CHECK (RamFsRenameEx ("RAM:/px/sub", "RAM:/px/f") == -KAPI_ENOTDIR, "a folder onto a file");
+	CHECK (RamFsRenameEx ("RAM:/px", "RAM:/px/sub/in") == -KAPI_EINVAL, "into itself");
+	// unlink of an open file
+	CHECK (RamFsUnlink ("RAM:/px/f", FALSE) == 0 && RamFsStat ("RAM:/px/f", &st2) == -KAPI_ENOENT, "unlink while open");
+	CHECK (RamFsPRead (g, 0, buf, 8) == 4, "still readable");
+	CHECK (RamFsUnlink ("RAM:/px/sub", FALSE) == -KAPI_EISDIR && RamFsUnlink ("RAM:/px/nope", TRUE) == -KAPI_ENOENT, "unlink errors");
+	CHECK (RamFsUnlink ("RAM:/px", TRUE) == -KAPI_ENOTEMPTY, "rmdir: ENOTEMPTY");
+	// dir_read
+	std::string longn (127, 'L');
+	void *l = RamFsNodeOpen (("RAM:/px/sub/" + longn).c_str (), KAPI_O_WRONLY | KAPI_O_CREAT, &e);
+	RamFsPWrite (l, 0, buf, 5, FALSE, 0);
+	void *dh = RamFsOpenDir ("RAM:/px/sub");
+	kapi_dirent2 d2;
+	CHECK (RamFsReadDir2 (dh, &d2) == 1 && longn == d2.name && d2.size == 5 && (d2.mode & KAPI_S_IFMT) == KAPI_S_IFREG, "dir_read");
+	CHECK (RamFsReadDir2 (dh, &d2) == 0, "dir_read: the end");
+	RamFsCloseDir (dh);
+	RamFsNodeClose (l);
+	RamFsNodeClose (a); RamFsNodeClose (b); RamFsNodeClose (g);
+	CHECK (RamFsUnlink (("RAM:/px/sub/" + longn).c_str (), FALSE) == 0, "unlink");
+	CHECK (RamFsUnlink ("RAM:/px/sub", TRUE) == 0 && RamFsUnlink ("RAM:/px", TRUE) == 0, "rmdir");
+	u64 t, u, f; unsigned nf, nd;
+	RamFsInfo (&t, &u, &f, &nf, &nd);
+	CHECK (u == 0 && nf == 0 && nd == 0 && s_pages.empty (), "posix: everything given back: %llu bytes, %u files, %zu pages",
+	       (unsigned long long) u, nf, s_pages.size ());
+}
+
 int main (int argc, char **argv)
 {
 	unsigned seed = argc > 1 ? (unsigned) atoi (argv[1]) : 1;
@@ -367,6 +475,7 @@ int main (int argc, char **argv)
 	remove_all ("/");
 	RamFsInfo (&t, &u, &f, &nf, &nd);
 	CHECK (u == 0 && nf == 0 && nd == 0 && s_pages.empty (), "all removed: %llu bytes, %u files, %u dirs, %zu pages", (unsigned long long) u, nf, nd, s_pages.size ());
+	posix (nOps / 3);
 	edges ();
 	if (fails) { printf ("seed %u: %d FAILURES\n", seed, fails); return 1; }
 	printf ("seed %u: ok\n", seed);

@@ -1,9 +1,21 @@
 //
 // procx.h -- a process's POSIX side: its argv and environment blocks, spawn_ex / proc_wait,
-// getpid, the clock sample, sleep_us (kapi v75, docs/POSIX-PLAN.md §3.2).
+// getpid, the clock sample, sleep_us (kapi v75, docs/POSIX-PLAN.md §3.2, docs/02 §8 "v75: files
+// and processes").
 //
-// Owner: WP-FILE/PROC. WP-0 (the v75 skeleton) only declared the teardown hook. (The term
-// reason a waiter reads lives in CAddressSpace: SetTermReason / GetTermReason.)
+// Every process gets a TProcInfo when its task is made (kernel.cpp: LaunchApp, ExecPath,
+// SpawnProcess -- in the spawner's context) and installs it into its address space when that
+// exists (CUserProcessTask::Run). The blocks are "a\0b\0\0" strings (argv[0] first), at most
+// PROCX_BLOCK_MAX bytes each, on the kernel heap. The environment a child gets:
+//  - spawn_ex: the one given, or the caller's initial environment;
+//  - spawn / exec / exec_as (kapi_spawn, kapi_exec...): the spawner's initial environment;
+//  - a desktop launch (LaunchApp) or a process the kernel starts (init): the system default,
+//    read at boot from SD:/etc/environment ("KEY=VALUE" lines; without it HOME=SD:/home,
+//    PATH=SD:/bin, TMPDIR=RAM:/tmp, LANG=C.UTF-8).
+// (The term reason a waiter reads lives in CAddressSpace: SetTermReason / GetTermReason; the
+// teardown copies it into the spawn record, CProcess.)
+//
+// Owner: WP-FILE/PROC.
 //
 // ---------------------------------------------------------------------------------------------
 // MIT License
@@ -31,11 +43,29 @@
 
 #include <circle/types.h>
 
-class CAddressSpace;
-struct TProcInfo;			// (WP-FILE/PROC: the env and argv blocks)
+#define PROCX_BLOCK_MAX		(64 * 1024)	// an argv or environment block, its final NUL included
 
-// The space ends (~CAddressSpace, before its spawn record is marked done): its TProcInfo freed
-// (CAddressSpace::m_pProcInfo, 0 if none).
+class CAddressSpace;
+struct TProcInfo;
+
+// A new process's POSIX side, made in the spawner's context: argv = pPath then pArgs split as
+// a shell does (blanks, "double quotes"); the environment: the spawner's initial one if
+// bInherit (and the spawner has one), else the system default. 0: out of memory.
+TProcInfo *ProcInfoNew (const char *pPath, const char *pArgs, boolean bInherit);
+
+// The child's space made (CUserProcessTask::Run): pInfo (0 allowed) is its own from now on, freed
+// by its teardown; its spawn record learns its pid.
+void ProcInfoInstall (CAddressSpace *pAS, TProcInfo *pInfo);
+
+// A TProcInfo never installed (the task could not start).
+void ProcInfoFree (TProcInfo *pInfo);
+
+// The space ends (~CAddressSpace, before its spawn record is marked done): the term reason and
+// the pid copied into the record (a FAULT / KILLED / OOM end: the exit status is the reason's
+// code), the TProcInfo freed (CAddressSpace::m_pProcInfo, 0 if none), the waiters woken.
 void ProcInfoTeardown (CAddressSpace *pAS);
+
+// Boot (CKernel::StartAutostart): the system default environment read from SD:/etc/environment.
+void ProcInfoBootInit (void);
 
 #endif // _kern_procx_h

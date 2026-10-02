@@ -681,6 +681,41 @@ int (*sleep_us) (unsigned long long us);
 - hidden-file cleanup after a crash;
 - time zone in `mtime`.
 
+#### WP-FILE/PROC resolutions (what was implemented; docs/02 §8 "v75: files and processes")
+
+The ABI of slots 207–228 is unchanged. Where the code differs from the text above:
+
+1. **The hidden files** of an unlink while open are `<volume>:/.~onyx-deleted/<n>` (one hidden
+   folder per volume, removed once empty), not `<dir>/.~onyx-deleted-<n>`: the boot cleanup empties
+   one folder per volume (`SD:`–`SD3:`; a volume mounted later at its first hide) instead of walking
+   the whole card. `dir_read` does not list that folder.
+2. **A file renamed or hidden while open** has its `FIL` closed, the entry moved, then re-opened: FatFs
+   keeps the location of the directory entry in the `FIL` (`dir_sect`, exFAT's `c_scl` / `c_ofs`).
+   A folder renamed while files in it are open: their nodes' paths follow.
+3. **`RAM:`'s `ino`** is the node's own number (unique, kept by a rename), not the path's hash.
+4. **`proc_wait` with `KAPI_WAIT_NOHANG`** on a running child returns 0 **and fills `pid`** (`reason`
+   −1); `spawn_ex` returns once the child has its pid (its first time slice, ≤ 1 s). So libc's
+   `posix_spawn` gets the pid with `proc_wait (h, NOHANG | KEEP)` right after `spawn_ex`.
+5. **`IoWait` (WP-0's `sys/iowait.cpp`) sleeps in no-kill slices of ≤ 100 ms.** A task killed while it
+   slept on the shared event stayed on its wait list and the reaper freed it there (the next
+   `IoWake` walked freed memory). The interface is unchanged; WP-NET's `poll` benefits too.
+6. **Shared files touched** (minimal): `sys/kapi.cpp` (`ResolvePath`, `CurCwd`, `ChunkedRead`,
+   `ChunkedWrite` no longer `static`, declared in `kern/ofile.h`; `kapi_opendir` calls
+   `OFileNoteDir` so that `dir_read` knows a FatFs `DIR`'s path for the `ino`; `kapi_kill` /
+   `kapi_kill_pid` set `KAPI_PROC_KILLED`), `sys/handle.cpp` (`HandlesRunDeferred` calls
+   `OFileRunDeferred`: a teardown only queues its open files), `kernel.cpp` (the `TProcInfo` handed to
+   `CUserProcessTask`; `SpawnProcess` got a last `TProcInfo *` parameter; the orphan cascade sets
+   `KAPI_PROC_KILLED`; `StartAutostart` calls `ProcInfoBootInit` and `OFileBootCleanup`),
+   `kern/stream.h` (`CStream::WriteNonBlocking`, `CProcess::nReason` / `nPid`).
+7. **Provider paths** (`FTP:`…): `path_unlink`, `path_mkdir`, `path_rename` go to the provider (as the
+   old calls); `file_open`, `path_stat`, `path_utime` → `-ENOTSUP`.
+8. **An empty argument** cannot be passed in an argv block (it would end the block).
+9. **`kapi_wait`** (the old call) now returns −9 for a killed child and −11 for a crash (it returned 0
+   for a kill), as `proc_wait`'s `code`.
+10. **The tests:** `/bin/filetest` (files and pipes) and `/bin/proctest` (processes and the clock) on
+    the Pi; on the PC `tools/tests/run_ofile_test.sh` (the real `ofile.cpp` over the fork's FatFs,
+    FAT32 and exFAT, and the real `RAM:`) and the extended `run_ramfs_test.sh`.
+
 ---
 
 ### 3.3 WP-NET (kernel): BSD sockets and `poll`

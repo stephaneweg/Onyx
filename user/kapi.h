@@ -411,6 +411,11 @@ static inline int kapi_thread_info (int tid, struct kapi_thread_info *out)
 // v75 WP-FILE/PROC: open files with 64-bit offsets (pread / pwrite), stat, unlink / rename of open
 // files, dir_read (255-character names), non-blocking pipe writes; spawn_ex / proc_wait,
 // argv / environment blocks, getpid, clock_info (CNTPCT + UTC sample), sleep_us.
+// file_read / file_write: off -1 = at the handle's offset (advanced; O_APPEND writes at the end),
+// else a pread / pwrite; a write past the end fills the gap with zeros. A file unlinked or renamed
+// while open stays usable through its handles. proc_wait (h, KAPI_WAIT_NOHANG, &st) on a running
+// child -> 0 with st.pid set and st.reason -1 (spawn_ex returns once the child has its pid).
+// get_argv / get_env (0, 0) -> the block's size. docs/02 §8 "v75: files and processes".
 static inline long long kapi_file_open (const char *path, unsigned flags, unsigned mode)
 	{ return KT->version >= 75 && KT->file_open ? KT->file_open (path, flags, mode) : -KAPI_ENOSYS; }
 static inline long long kapi_file_read (long long h, void *buf, unsigned long long len, long long off)

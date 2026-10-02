@@ -18,9 +18,12 @@ boolean LaunchAppByName (const char *pName);
 // Returns a CProcess* handle, or 0 on failure. Defined in kernel.cpp.
 class CStream;
 struct CProcess;
+struct TProcInfo;
+// pInfo (v75, kern/procx.h: spawn_ex's argv / environment) is the child's from the call on, also
+// on a failure (freed); 0: made from pElfPath + pArgs and the caller's environment.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout, const char *pCwd = 0,
-			unsigned nParentPid = 0);
+			unsigned nParentPid = 0, TProcInfo *pInfo = 0);
 
 // Run an ELF by absolute path with an argv string, fire-and-forget (no stdio, no
 // wait handle). Task name is derived from the path. Defined in kernel.cpp.
