@@ -81,6 +81,14 @@ answer in French. The docs stay in English.
   **Doom slower, ~588 000 system calls/s** (`ps` SYSC/s): a kapi in a tight loop (a clock read --
   `get_ticks`/`clock_us`, readable at EL0 through `cntvct` instead --, newlib's locks, the app-core
   RPC of `user/doom`): `sysstat doom` names the top slots; fix it app-side.
+  **Measured (`sysstat doom`, the user):** `key_held` 77 % (184 169), `pad_state` 7 %, then thread_self,
+  sound_status, msleep, should_exit, get_modifiers, pop_event (~4 300/s each). Cause: `poll_input`
+  (`user/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
+  called ~4 300 times a second (not once a frame). The same per-key polling is in **every emulator**
+  (gb, gba, nes, snes, n64, **gc**), invaders, `user/game.h` and the BASIC runtime (**Arkanoid**) --
+  likely a big part of their slowdown at EL0. Fix: one new kapi at the end of the table returning
+  the whole held-key state (a 256-bit map) in one call, used once per frame by game.h, the
+  emulators, Doom and BASIC; Doom polling once per frame; then the small-`memcpy` fast path.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
