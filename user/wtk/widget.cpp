@@ -143,12 +143,49 @@ bool Widget::handleMouse (int mx, int my, int bl, int br, int bm, int wheel)
 bool Widget::handleKey (long k)
 {
 	// A modal child captures all keys too (route exclusively to the topmost one).
+	// Tab that no one took moves the focus (in a dialog: its controls; in a window: its fields).
 	for (Widget *n = lastChild; n; n = n->prevSib)
-		if (n->modal) return n->handleKey (k);
+		if (n->modal)
+		{
+			if (n->handleKey (k)) return true;
+			return k == KEY_TAB && n->tabFocus ((kapi_get_modifiers () & MOD_SHIFT) != 0, false);
+		}
 	if (!hasFocus) return false;
 	for (Widget *c = firstChild; c; c = c->nextSib)
 		if (!c->hidden && c->hasFocus && c->handleKey (k)) return true;
-	return onKey (k);
+	if (onKey (k)) return true;
+	return k == KEY_TAB && !parent && tabFocus ((kapi_get_modifiers () & MOD_SHIFT) != 0, true);
+}
+
+// ---- Tab ---------------------------------------------------------------------
+static void tab_collect (Widget *w, Widget **list, int &n, int cap, bool fields, Widget *&cur)
+{
+	for (Widget *c = w->firstChild; c; c = c->nextSib)
+	{
+		if (c->hidden || c->disabled || c->modal) continue;
+		if (c->canFocus && (!fields || c->isField ()))
+		{
+			if (c->hasFocus) cur = c;
+			if (n < cap) list[n++] = c;
+		}
+		tab_collect (c, list, n, cap, fields, cur);
+	}
+}
+bool Widget::tabFocus (bool back, bool fields)
+{
+	Widget *list[128]; int n = 0; Widget *cur = 0;
+	tab_collect (this, list, n, 128, fields, cur);
+	if (fields && (!cur || !cur->isField ())) return false;	// (a window: only from a field)
+	if (n == 0) return false;
+	int i = 0;
+	while (i < n && list[i] != cur) i++;
+	if (i == n) i = back ? n - 1 : 0;
+	else i = (i + (back ? n - 1 : 1)) % n;
+	Widget *t = list[i];
+	t->setFocus ();
+	t->onTabFocus ();
+	t->invalidate (true);
+	return true;
 }
 
 // ---- focus -------------------------------------------------------------------

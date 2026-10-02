@@ -106,7 +106,7 @@ struct Model
 			{
 				Folder &f = s.folders[i]; Snap &sn = j->snaps[i];
 				scpy (sn.name, f.name, sizeof sn.name);
-				sn.sync = !f.noselect && (onlyFolder >= 0 ? i == onlyFolder : (f.special == SP_INBOX || f.opened));
+				sn.sync = !f.noselect && (onlyFolder >= 0 ? i == onlyFolder : (f.special == SP_INBOX || f.special == SP_SENT || f.opened));	// (Sent: the conversations show the replies)
 				if (!sn.sync) continue;
 				s.load_index (f);
 				sn.uidvalidity = f.uidvalidity; sn.maxUid = s.max_uid (f); sn.minUid = s.min_uid (f);
@@ -294,6 +294,25 @@ struct Model
 		case SEL_STARRED: for (int a = 0; a < accts.n; a++) for (int f = 0; f < stores[a]->folders.n; f++) { int sp = stores[a]->folders[f].special; if (sp == SP_INBOX || sp == SP_SENT || sp == SP_ARCHIVE || sp == SP_FLAGGED || stores[a]->folders[f].opened) { if (sp == SP_ALL || sp == SP_FLAGGED) continue; add_folder (all, a, f, true); } } break;
 		case SEL_SEARCH: for (int a = 0; a < accts.n; a++) for (int f = 0; f < stores[a]->folders.n; f++) { int sp = stores[a]->folders[f].special; if (sp == SP_ALL || sp == SP_JUNK || sp == SP_TRASH) continue; if (stores[a]->folders[f].loaded) add_folder (all, a, f, false); } break;
 		default: if (sel.acct >= 0 && sel.acct < accts.n && sel.folder >= 0 && sel.folder < stores[sel.acct]->folders.n) add_folder (all, sel.acct, sel.folder, false); break;
+		}
+		// grouped: a conversation's replies from Sent shown with it (as Gmail does) -- not in a folder's own list of Sent
+		if (grouped && all.n && sel.kind != SEL_SEARCH && !(sel.kind == SEL_FOLDER && stores[sel.acct]->folders[sel.folder].special == SP_SENT))
+		{
+			int n0 = all.n;
+			unsigned long long *have = (unsigned long long *) malloc (sizeof (unsigned long long) * n0);
+			for (int i = 0; i < n0; i++) have[i] = conv_key (msg (all[i])) ^ ((unsigned long long) all[i].acct << 56);
+			for (int a = 0; a < accts.n; a++)
+			{
+				Folder *s = stores[a]->special (SP_SENT); if (!s) continue;
+				int fi = stores[a]->index_of (s);
+				stores[a]->load_index (*s);
+				for (int i = 0; i < s->msgs.n; i++)
+				{
+					unsigned long long k = conv_key (s->msgs[i]) ^ ((unsigned long long) a << 56);
+					for (int q = 0; q < n0; q++) if (have[q] == k) { Ref &r = all.push (); r.acct = (short) a; r.folder = (short) fi; r.msg = i; break; }
+				}
+			}
+			free (have);
 		}
 		// grouped: by (account, key); the conversations newest first, their messages oldest first
 		int n = all.n;

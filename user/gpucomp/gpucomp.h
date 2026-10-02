@@ -3,7 +3,8 @@
 // an app uploads layers (ARGB premultiplied pixels) as textures once, then has a list of them
 // assembled into a target -- its window's canvas, or any ARGB buffer -- by the V3D (VideoCore VI):
 // each layer with a 2D affine transform (translate / scale / rotate / skew), a clip rectangle, an
-// opacity, premultiplied source-over blending and bilinear filtering; scrolling a layer = moving
+// opacity, a blend mode (premultiplied source-over, multiply, screen, add, subtract, lighten, mask,
+// cut out) and bilinear filtering; scrolling a layer = moving
 // its source rectangle over the texture (nothing uploaded again). When the GPU is not there (the
 // PC, an older kernel, the GPU left off after a hang) the same calls are done by the CPU, so a
 // caller never breaks: only the time differs.
@@ -75,11 +76,28 @@ typedef struct gpc_layer
 	int clip[4];				// x, y, w, h in the target (w <= 0: none)
 	unsigned opacity;			// 0..255 (the layer's pixels scaled by it)
 	unsigned flags;				// GPC_L_*
+	unsigned blend;				// GPC_B_*: how its pixels mix with those under it
 } gpc_layer;
+// Blend modes (premultiplied s = the layer's pixel at its opacity, d = the target's; sa, da their
+// alphas). Multiply and subtract are exact over a transparent target too (the GPU: two passes).
+// The GPU does them from kapi v72 (gpu_render's presets); before, those layers are the CPU's.
+#define GPC_B_NORMAL	0	// source-over: s + d (1 - sa)
+#define GPC_B_MULTIPLY	1	// s d + s (1 - da) + d (1 - sa): darkens, tints (white leaves d as it is)
+#define GPC_B_SCREEN	2	// s + d - s d: lightens (black leaves d)
+#define GPC_B_ADD	3	// s + d, clamped (a glow)
+#define GPC_B_SUBTRACT	4	// d - s, clamped at 0, + s (1 - da)
+#define GPC_B_LIGHTEN	5	// max (s, d) a channel
+#define GPC_B_MASK	6	// d sa: what is under kept only where the layer is (a stencil; colour and
+				// opacity unused: white or any colour, its alpha decides)
+#define GPC_B_CUTOUT	7	// d (1 - sa): what is under cut away where the layer is
+#define GPC_B_COUNT	8
+// one pixel of a blend, as the CPU path does it (an app's own flattening agrees with the screen):
+// s at its opacity already; alpha: d is premultiplied ARGB (else opaque: da = 1, top byte kept)
+unsigned gpc_blend_pixel (unsigned s, unsigned d, unsigned blend, int alpha);
 #define GPC_L_NEAREST	(1u << 0)	// nearest texel (else bilinear)
 #define GPC_L_OPAQUE	(1u << 1)	// every pixel's alpha is 255: no blending (faster) at opacity 255
 
-void gpc_layer_init (gpc_layer *L, gpc_tex *t);	// the whole texture, identity, no clip, opacity 255
+void gpc_layer_init (gpc_layer *L, gpc_tex *t);	// the whole texture, identity, no clip, opacity 255, normal
 
 // matrices: m = m * op (op applied first, as CSS transform lists read left to right)
 void gpc_matrix_identity (gpc_matrix *m);

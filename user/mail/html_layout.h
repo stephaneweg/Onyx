@@ -480,7 +480,7 @@ struct Layout
 		int open[32]; int nopen = 0;			// the inline boxes open across lines
 		while (i < to)
 		{
-			while (i < to && bits[i].kind == K_SPACE && !keeps_spaces (bits[i])) i++;
+			while (i < to && bits[i].kind == K_SPACE && (!keeps_spaces (bits[i]) || !firstLine)) i++;	// (a wrapped line: its space left at the end of the one before)
 			if (i >= to) break;
 			int l, r; room (bfc, y, slh, x0, x1, &l, &r);
 			if (firstLine) l += indent;

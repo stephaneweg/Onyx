@@ -30,7 +30,7 @@ bool Checkbox::onMouse (int mx, int /*my*/, int bl, int, int, int)
 
 bool Checkbox::onKey (long k)
 {
-	if (disabled || (k != ' ' && k != KEY_ENTER)) return false;
+	if (disabled || k != ' ') return false;		// (Enter: the dialog's default button)
 	checked = !checked;
 	if (cb) cb (*this);
 	invalidate (true);

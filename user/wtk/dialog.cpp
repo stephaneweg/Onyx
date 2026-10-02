@@ -43,6 +43,11 @@ int Modal::run ()
 	if (r == 0) return 0;
 	r->addChild (this);			// becomes the topmost (modal) child of the window
 	done = false; hasFocus = true; invalidate (true);
+	bool focused = false;			// (nothing focused yet: its first text field, ready to type in)
+	for (Widget *c = firstChild; c; c = c->nextSib) if (c->hasFocus) focused = true;
+	if (!focused)
+		for (Widget *c = firstChild; c; c = c->nextSib)
+			if (c->isField () && c->canFocus && !c->hidden && !c->disabled) { c->setFocus (); c->onTabFocus (); break; }
 	while (!done && !wk_quit ())
 	{
 		wk_pump ();

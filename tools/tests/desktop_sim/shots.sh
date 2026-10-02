@@ -73,10 +73,23 @@ build () {
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
+	if [ "$1" = mail ]; then			# (Mail: mbedTLS built for the PC, as the Package Manager's; its demo accounts' maker)
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb"
+		if [ ! -f "$OUT/libmb.a" ]; then
+			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
+			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
+		fi
+		$CXX -Iuser/ft -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
+		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
+	fi
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
 			"$OUT/libwtk.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
+	fi
+	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
+		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
@@ -85,7 +98,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot " in
+	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot fileviewer " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
 	esac
@@ -93,7 +106,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf setup pkgman
+      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail setup pkgman
       config wpaconf padconf soundconf displayconf keyconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -149,20 +162,13 @@ if want terminal; then
 	png terminal
 fi
 if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad; fi
-if want paint; then			# (a picture on three layers: the sky filled, hills and a sun, a house, stars, a heart selected)
-	c () { printf "down %d %d;up %d %d" $1 $2 $1 $2; }
-	r () { printf "rdown %d %d;rup %d %d" $1 $2 $1 $2; }
-	S="wait;$(c 291 25);$(c 824 37);$(c 286 259)"
-	S="$S;menu 23;$(c 422 18);$(c 498 54);$(c 804 17);$(r 804 37);$(stroke 0 475 406 715);$(stroke 286 499 764 727)"
-	S="$S;$(c 764 17);$(r 784 17);$(stroke 549 175 645 271)"
-	S="$S;menu 23;$(c 376 18);$(c 724 37);$(r 784 37);$(stroke 227 403 382 547);$(c 445 18);$(c 724 17);$(r 744 17);$(stroke 209 321 400 407)"
-	S="$S;$(c 376 18);$(r 724 37);$(stroke 286 475 320 547)"
-	S="$S;$(c 376 62);$(c 764 37);$(r 784 17);$(stroke 119 187 167 235);$(stroke 185 241 215 271);$(c 445 62);$(c 744 17);$(r 744 37);$(stroke 465 427 525 487)"
-	sim paint paint "$S;$(c 142 39);$(stroke 451 415 539 499);$W" $P
-	png paint
-	# the pixel grid (the Grid toggle: 400 %, then 800 %), over the heart's edge
-	sim paint paint-grid "$S;$(c 962 22);menu 31;menu 31;$(c 291 57);$(c 465 460);$W" $P
-	png paint-grid
+if want paint; then			# (the Paint mock-ups made real: docs/paint; tools/tests/desktop_sim/paint_scene.py)
+	PP=SIM_POS=4,30
+	sim paint paint "$(python3 $D/paint_scene.py landscape);$W" $PP; png paint
+	sim paint paint-fade "$(python3 $D/paint_scene.py fade);$W" $PP SIM_ARGS=SD:/docs/pictures/sunset-sea.jpg; png paint-fade
+	sim paint paint-brushes "$(python3 $D/paint_scene.py brushes);$W" $PP SIM_ARGS=SD:/docs/pictures/sunny-mountains.jpg; png paint-brushes
+	# the pixel grid (View > Grid: 400 %, then 600 %)
+	sim paint paint-grid "wait;wait;menu 53;menu 49;$W" $PP SIM_ARGS=SD:/docs/pictures/sunset-sea.jpg; png paint-grid
 fi
 if want calendar; then			# (the sample calendar.ics of sd/: the week of Monday 28 September 2026, the
 					#  simulator's today; the month, the day; a weekly event opened -- the wheel down to
@@ -192,7 +198,7 @@ if want irc; then			# (a session canned (SIM_NET): #onyx and its users, #raspber
 	sim irc irc-pm "$W;$W" $P SIM_ARGS="--pm alice" SIM_MBOX='7204:7:1\tstephan\tirc.libera.chat\talice\n7202:7:m\t12:30\talice\thi! I saw your message in #onyx\n7202:7:m\t12:30\talice\tis Onyx open source? I would love to try it on my Pi 4\n7202:7:M\t12:31\tstephan\tyes, it is on GitHub\n7202:7:M\t12:31\tstephan\tyou just copy the files to a FAT32 SD card and boot\n7202:7:m\t12:32\talice\tnice, and does the Wi-Fi work?\n7202:7:M\t12:48\tstephan\tit does -- I am chatting with you from it right now :)\n7202:7:a\t12:49\talice\tis impressed\n7202:7:m\t12:49\talice\tthat is so cool'
 	png irc-pm
 fi
-if want fileviewer; then sim fileviewer fileviewer "wait;down 300 181;up 300 181;wait;down 480 85;up 480 85;$W" $P; png fileviewer; fi
+if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 109;up 480 109;$W" $P; png fileviewer; fi
 if want solitaire; then sim solitaire solitaire "$W" $P; png solitaire; fi
 if want freecell; then sim freecell freecell "$W" $P; png freecell; fi
 if want pipes; then sim pipes pipes "$W" $P; png pipes; fi
@@ -418,6 +424,34 @@ if want pkgman; then			# (the Package Manager: a card of its own -- pkg_sample.p
 		rm -rf "$OUT/pkgw"; mkdir -p "$OUT/pkgw"
 		n=${t%%:*}; applet pkgman $n "wait;wait;wait;wait;wait;${t#*:};$W" $PK SIM_WRITES="$OUT/pkgw"; png $n
 	done
+fi
+if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fakemail.py --demo personal (IMAP, a
+					#  Gmail-like folder tree) and --demo work (POP3); the accounts and the contacts made by Mail's own
+					#  code (mkaccounts); the real network of the PC, local ports only)
+	MB=$(( 33000 + $$ % 500 * 4 ))
+	python3 tools/tests/mail/fakemail.py --imap $MB --pop $((MB+1)) --smtp $((MB+2)) --http $((MB+3)) --demo personal --user me@example.com >"$OUT/mail-srv1.log" 2>&1 &
+	MS1=$!
+	python3 tools/tests/mail/fakemail.py --imap $((MB+100)) --pop $((MB+101)) --smtp $((MB+102)) --http $((MB+103)) --demo work --user steph@atelier-lumen.example >"$OUT/mail-srv2.log" 2>&1 &
+	MS2=$!
+	sleep 2
+	ML="$OUT/mailw0"; rm -rf "$ML"; mkdir -p "$ML"
+	SIM_WRITES="$ML" SIM=exit "$OUT/mkaccounts" "Personal|me@example.com|Stéphane|imap|127.0.0.1|$MB|$((MB+2))|secret|#D93025|gmail" \
+		"Atelier|steph@atelier-lumen.example|Stéphane|pop3|127.0.0.1|$((MB+101))|$((MB+102))|secret|#1A73E8" >>"$OUT/log.txt" 2>&1
+	printf 'client_id = test-client\nhost = 127.0.0.1\nport = %d\ntls = 0\n' $((MB+3)) > "$ML/etc/mail/oauth.ini"
+	W40="$(printf 'wait;%.0s' $(seq 40))"
+	ms () { n=$1; shift; rm -rf "$OUT/mailw"; cp -r "$ML" "$OUT/mailw"; [ "$1" = new ] && { rm -rf "$OUT/mailw/etc/mail/accounts.ini" "$OUT/mailw/etc/mail/secrets"; shift; }
+		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_REALNET=1 SIM_REALCLOCK=1 SIM_POS=10,30 SIM_WRITES="$OUT/mailw" SIM="$W40;$W40;$W40;$1;dump $OUT/$n.elsm;exit" "$OUT/mail" >>"$OUT/log.txt" 2>&1 \
+			|| { echo "shots: mail failed"; kill $MS1 $MS2; exit 1; }
+		png $n; }
+	ms mail "down 380 240;up 380 240;$W40;$W40"
+	ms mail-thread "down 380 430;up 380 430;$W40;$W40"
+	ms mail-html "down 380 330;up 380 330;$W40;$W40"
+	ms mail-compose "down 380 430;up 380 430;$W40;down 870 386;up 870 386;$W40;$(typ 'Sure, I will add them to the quote.');$W40"
+	ms mail-contacts "down 60 537;up 60 537;$W40;down 380 390;up 380 390;$W40"
+	WZ="down 606 414;up 606 414;$W40;$(typ 'Stephane');down 500 260;up 500 260"
+	ms mail-wizard new "$WZ;$(typ 'steph.demo@gmail.com');$W40;down 714 514;up 714 514;$W40"
+	ms mail-outlook new "$WZ;$(typ 'steph.demo@outlook.com');$W40;down 714 514;up 714 514;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
+	kill $MS1 $MS2
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)
 	M=SIM_OVERLAY=$D/milk:$D/sd

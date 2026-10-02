@@ -103,10 +103,11 @@ def blend (base, layer, mode, op = 1.0):
 	out = np.concatenate ([np.where (A > 0, C / np.maximum (A, 1e-9), 0), A], axis = -1)
 	return Image.fromarray ((np.clip (out, 0, 1) * 255 + 0.5).astype ("uint8"), "RGBA")
 LAYERS = None
-def picture (with_mask = True, with_text = False):
+def picture (with_mask = True, with_text = False, extra = None):
 	global LAYERS
 	if LAYERS is None: LAYERS = dict (bg = art_background (), draw = art_drawing (), glow = art_glow (), tint = art_tint (), mask = art_mask ())
 	im = blend (LAYERS["bg"], LAYERS["draw"], "normal")
+	if extra is not None: im = blend (im, extra, "normal")
 	im = blend (im, LAYERS["tint"], "multiply", 0.6)
 	im = blend (im, LAYERS["glow"], "add")
 	if with_text:
@@ -391,12 +392,74 @@ def options_bar (c, x, y, w, kind = "brush"):
 			X += 30
 		X += 8; osep (c, X, Y); X = toggle (c, X, Y, "Smooth edges", True); X = toggle (c, X, Y, "Background (colour 2)", False)
 		X += 8; osep (c, X, Y); c.text_l (X, Y, 24, "Enter: a new line.  Click outside: put it down.", "lab", DIM)
+	elif kind == "fillgrad":
+		icon (c, "fill", X, Y + 1, 22); X += 30
+		c.text_l (X, Y, 24, "Fill with", "lab", DIM); X += 54
+		X = toggle (c, X, Y, "Colour", False); X = toggle (c, X, Y, "Gradient", True); X = toggle (c, X, Y, "Pattern", False); X += 12
+		osep (c, X, Y)
+		c.rect (X, Y, 120, 24, WHITE, r = 4, outline = M.mix (OPT, LINE, 0.9)); grad_bar (c, X + 4, Y + 4, 96, 16, DUSK); chev (c, X + 110, Y + 12); X += 132
+		for i, sh in enumerate (("lin", "bil", "rad", "sq", "con")):
+			c.rect (X, Y, 26, 24, M.mix (OPT, SEL, 0.25) if i == 0 else WHITE, r = 4, outline = M.mix (OPT, SEL, 0.7) if i == 0 else M.mix (OPT, LINE, 0.9))
+			grad_shape_icon (c, X + 4, Y + 3, 18, sh); X += 29
+		X += 10; osep (c, X, Y); X = small_drop (c, X, Y, 92, "No repeat")
+		X = toggle (c, X, Y, "Reverse", False)
+		osep (c, X, Y); X = slider (c, X, Y, 70, 0.12, "Tolerance", "32")
+		X = toggle (c, X, Y, "Contiguous", True)
 	elif kind == "gradient":
 		icon (c, "gradient", X, Y + 1, 22); X += 30
 		X = toggle (c, X, Y, "Linear", True); X = toggle (c, X, Y, "Radial", False); X = toggle (c, X, Y, "Reflected", False); X += 12
 		osep (c, X, Y); X = slider (c, X, Y, 100, 1.0, "Opacity", "100 %")
 		osep (c, X, Y); X = toggle (c, X, Y, "Colour 1 to transparent", False)
 	return y + H
+
+# ---- gradients ----------------------------------------------------------------------------------------------------------
+DUSK = [(0.0, (36, 70, 96), 255), (0.55, (128, 78, 150), 255), (1.0, (246, 166, 112), 255)]
+PRESETS = [("Colour 1 to 2", [(0, (86, 70, 118), 255), (1, (255, 226, 150), 255)]), ("Colour 1 to transparent", [(0, (86, 70, 118), 255), (1, (86, 70, 118), 0)]),
+	   ("Dusk hills", DUSK), ("Sunset", [(0, (52, 60, 120), 255), (0.45, (220, 110, 120), 255), (1, (252, 196, 120), 255)]),
+	   ("Ocean", [(0, (8, 40, 80), 255), (0.6, (20, 130, 170), 255), (1, (190, 236, 240), 255)]),
+	   ("Rainbow", [(0, (230, 40, 40), 255), (0.2, (250, 160, 30), 255), (0.4, (240, 230, 40), 255), (0.6, (50, 180, 80), 255), (0.8, (40, 110, 220), 255), (1, (140, 60, 200), 255)]),
+	   ("Metal", [(0, (90, 94, 100), 255), (0.35, (225, 228, 232), 255), (0.5, (150, 154, 160), 255), (0.8, (240, 242, 244), 255), (1, (110, 114, 120), 255)]),
+	   ("Fire", [(0, (40, 0, 0), 255), (0.4, (200, 30, 10), 255), (0.75, (250, 160, 20), 255), (1, (255, 250, 200), 255)])]
+def grad_at (stops, t):
+	t = min (1, max (0, t))
+	for i in range (len (stops) - 1):
+		a, b = stops[i], stops[i + 1]
+		if t <= b[0]:
+			u = 0 if b[0] == a[0] else (t - a[0]) / (b[0] - a[0])
+			return M.mix (a[1], b[1], u), int (a[2] + (b[2] - a[2]) * u)
+	return stops[-1][1], stops[-1][2]
+def grad_bar (c, x, y, w, h, stops):
+	n = max (2, int (w * K))
+	img = checker (n, int (h * K), 4 * K).convert ("RGBA")
+	g = Image.new ("RGBA", (n, int (h * K)))
+	gd = ImageDraw.Draw (g)
+	for i in range (n):
+		col, a = grad_at (stops, i / (n - 1)); gd.line ([i, 0, i, h * K], fill = col + (a,))
+	img = Image.alpha_composite (img, g)
+	c.img.paste (img.convert ("RGB"), (int (x * K), int (y * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
+	c.rect (x, y, w, h, outline = M.mix (OPT, LINE, 0.6))
+def grad_shape_icon (c, x, y, s, kind):
+	n = int (s * K); im = Image.new ("RGB", (n, n)); px = im.load ()
+	for j in range (n):
+		for i in range (n):
+			u, v = i / (n - 1), j / (n - 1)
+			t = { "lin": u, "bil": abs (u - 0.5) * 2, "rad": min (1, math.hypot (u - 0.5, v - 0.5) * 2), "sq": max (abs (u - 0.5), abs (v - 0.5)) * 2,
+			      "con": (math.atan2 (v - 0.5, u - 0.5) / (2 * math.pi)) % 1 }[kind]
+			px[i, j] = M.mix ((60, 56, 96), (250, 250, 250), t)
+	c.img.paste (im, (int (x * K), int (y * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
+	c.rect (x, y, s, s, outline = M.mix (OPT, LINE, 0.6))
+HILLS = [(0, 330), (120, 280), (230, 320), (360, 290), (500, 330), (640, 300), (640, 352), (0, 352)]
+G0, G1 = (70, 300), (590, 352)
+def grad_fill_layer (stops, p0, p1):
+	import numpy as np
+	m = Image.new ("L", (PW * K, PH * K), 0); ImageDraw.Draw (m).polygon ([(x * K, y * K) for x, y in HILLS], fill = 255)
+	yy, xx = np.mgrid[0:PH * K, 0:PW * K] / K
+	dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+	t = np.clip (((xx - p0[0]) * dx + (yy - p0[1]) * dy) / (dx * dx + dy * dy), 0, 1)
+	lut = np.array ([list (grad_at (stops, i / 255)[0]) + [grad_at (stops, i / 255)[1]] for i in range (256)], dtype = np.uint8)
+	out = lut[(t * 255).astype (int)]
+	out[..., 3] = (out[..., 3].astype (np.uint16) * np.asarray (m) // 255).astype (np.uint8)
+	return Image.fromarray (out, "RGBA")
 
 # ---- the layers' panel ----------------------------------------------------------------------------------------------------
 LAYER_ROWS = [("Vignette", "mask", "Mask", 100, True), ("Title", "text", "Normal", 100, True), ("Light", "glow", "Add", 100, True),
@@ -476,7 +539,7 @@ def status (c, x, y, w, ptr = "412, 238 px", sel = "", zoom = 100, layer = "Warm
 
 # ---- a whole window ---------------------------------------------------------------------------------------------------------
 WX, WY, WW, WH = 14, 36, 1252, 752
-def paint_window (c, tool = "brush", opts = "brush", sel_kind = "rect", cur = 3, with_text = True, zoom_pic = 1.0, open_blend = False, ptr = "412, 238 px", sel = ""):
+def paint_window (c, tool = "brush", opts = "brush", sel_kind = "rect", cur = 3, with_text = True, zoom_pic = 1.0, open_blend = False, ptr = "412, 238 px", sel = "", extra = None):
 	x, y, w, h = M.window (c, WX, WY, WW, WH, "Lac des Cimes.ora - Paint")
 	yy = ribbon (c, x, y, w, tool = tool, sel_kind = sel_kind)
 	yy = options_bar (c, x, yy, w, opts)
@@ -489,7 +552,7 @@ def paint_window (c, tool = "brush", opts = "brush", sel_kind = "rect", cur = 3,
 	c.rect (x + 4, yy + body_h - SB, cw - 24, 8, M.A (WHITE, 40), r = 4); c.rect (x + 60, yy + body_h - SB + 1, cw - 160, 6, M.A (WHITE, 90), r = 3)
 	pw, ph = PW * zoom_pic, PH * zoom_pic
 	px, py = x + (cw - pw) / 2, yy + (body_h - ph) / 2 - 4
-	put_picture (c, px, py, picture (with_mask = True, with_text = with_text), zoom_pic)
+	put_picture (c, px, py, picture (with_mask = True, with_text = with_text, extra = extra), zoom_pic)
 	layers_panel (c, x + cw, yy, PANW, body_h, cur = cur, open_blend = open_blend)
 	nm, _, md, _, _ = LAYER_ROWS[cur]
 	status (c, x, y + h - 28, w, ptr, sel, layer = "%s (%s)" % (nm, md))
@@ -614,5 +677,82 @@ def m_resize ():
 	M.button (c, dx + dw - 196, dy + dh - 46, 86, 30, "OK", default = True); M.button (c, dx + dw - 102, dy + dh - 46, 86, 30, "Cancel")
 	c.save ("paint-resize.png")
 
+def m_gradfill ():
+	"""the paint bucket in gradient mode: the zone of the press (its colour, the tolerance), the line drawn = the direction"""
+	c, _ = screen ()
+	(px, py, z), body = paint_window (c, tool = "fill", opts = "fillgrad", cur = 4, extra = grad_fill_layer (DUSK, G0, G1), ptr = "590, 352 px")
+	ants (c, [(px + a, py + b) for a, b in HILLS])
+	(ax, ay), (bx, by) = (px + G0[0], py + G0[1]), (px + G1[0], py + G1[1])
+	c.line ([(ax, ay), (bx, by)], (0, 0, 0), 3); c.line ([(ax, ay), (bx, by)], WHITE, 1.4)
+	c.ellipse (ax, ay, 6, WHITE, (0, 0, 0), 1.4); c.ellipse (bx, by, 6, WHITE, (0, 0, 0), 1.4)
+	# the stops along the line: draggable there too
+	for t, col, a in DUSK[1:-1]:
+		sx, sy = ax + (bx - ax) * t, ay + (by - ay) * t
+		c.poly ([(sx, sy - 7), (sx + 6, sy), (sx, sy + 7), (sx - 6, sy)], col); c.line ([(sx, sy - 7), (sx + 6, sy), (sx, sy + 7), (sx - 6, sy), (sx, sy - 7)], WHITE, 1.2)
+	icon (c, "fill", bx + 8, by - 26, 22, WHITE)
+	tip = "The zone clicked, filled along the line   ·   Shift: 15° steps   ·   Enter: apply   ·   Esc: cancel"
+	tw = c.tw (tip, "lab") + 20
+	c.rect (px + (PW - tw) / 2, py + PH + 14, tw, 24, M.A ((20, 20, 24), 210), r = 12); c.text_c (px + (PW - tw) / 2, py + PH + 14, tw, 24, tip, "lab", WHITE)
+	# the gradients' list open from the options bar
+	ox, oy = WX + 4 + 12 + 30 + 54 + 3 * 0, WY + 28 + 96 + 32
+	ox = 300; ow = 300
+	hh = len (PRESETS) * 30 + 44
+	c.rect (ox + 2, oy + 4, ow, hh, M.A ((0, 0, 0), 50), r = 8); c.rect (ox, oy, ow, hh, WHITE, r = 8, outline = M.mix (RIB, LINE, 0.9))
+	yy = oy + 6
+	for name, st in PRESETS:
+		if name == "Dusk hills": c.rect (ox + 4, yy, ow - 8, 28, SOFT, r = 4)
+		grad_bar (c, ox + 10, yy + 6, 96, 16, st); c.text_l (ox + 116, yy, 28, name, "lab", TEXT); yy += 30
+	c.hline (ox + 8, ox + ow - 8, yy + 3, LINE2)
+	c.text_l (ox + 14, yy + 6, 28, "Edit gradients...", "lab", TEXT); c.text_r (ox + ow - 12, yy + 6, 28, "GIMP .ggr", "tiny2", FAINT)
+	c.save ("paint-gradient-fill.png")
+
+def m_gradedit ():
+	"""the gradient editor, in the way of GIMP's: stops (colour, opacity), midpoints, the presets"""
+	c, _ = screen ()
+	paint_window (c, tool = "fill", opts = "fillgrad", cur = 4, extra = grad_fill_layer (DUSK, G0, G1))
+	c.rect (0, 0, M.W, M.H, M.A ((0, 0, 0), 50))
+	dw, dh = 660, 430; dx, dy = (M.W - dw) / 2, (M.H - dh) / 2
+	c.rect (dx + 3, dy + 6, dw, dh, M.A ((0, 0, 0), 60), r = 9)
+	c.rect (dx, dy, dw, dh, FACE, r = 8, outline = M.shade (FACE, 0.6))
+	c.grad (dx, dy, dw, 30, M.lighten (M.PEACH[0], 0.2), M.PEACH[1], r = 8, corners = (True, True, False, False))
+	c.text_c (dx, dy, dw, 30, "Gradient Editor", "title")
+	# the presets
+	lx, ly, lw, lh = dx + 14, dy + 44, 206, dh - 100
+	c.rect (lx, ly, lw, lh, WHITE, r = 5, outline = LINE)
+	yy = ly + 4
+	for name, st in PRESETS:
+		if name == "Dusk hills": c.rect (lx + 3, yy, lw - 6, 34, SEL, r = 4)
+		grad_bar (c, lx + 8, yy + 4, 56, 26, st); c.text_l (lx + 72, yy, 34, name, "lab", WHITE if name == "Dusk hills" else TEXT); yy += 36
+	M.button (c, lx, ly + lh + 8, 62, 28, "New"); M.button (c, lx + 67, ly + lh + 8, 62, 28, "Copy"); M.button (c, lx + 134, ly + lh + 8, 62, 28, "Delete")
+	# the bar, its stops below, the midpoints above
+	X, Y, BW = dx + 238, dy + 48, dw - 238 - 18
+	c.text_l (X, Y, 24, "Name", "ui", TEXT); M.field (c, X + 56, Y, BW - 56, 26, "Dusk hills"); Y += 40
+	grad_bar (c, X, Y + 14, BW, 56, DUSK)
+	for t in (0.275, 0.775):								# the midpoints (between two stops)
+		mx = X + BW * t; c.poly ([(mx, Y + 2), (mx + 5, Y + 8), (mx, Y + 13), (mx - 5, Y + 8)], M.A (WHITE, 220)); c.line ([(mx, Y + 2), (mx + 5, Y + 8), (mx, Y + 13), (mx - 5, Y + 8), (mx, Y + 2)], INK, 1)
+	for i, (t, col, a) in enumerate (DUSK):						# the stops
+		sx = X + BW * t; sy = Y + 72
+		selc = i == 1
+		c.poly ([(sx, sy), (sx + 8, sy + 12), (sx + 8, sy + 26), (sx - 8, sy + 26), (sx - 8, sy + 12)], WHITE if not selc else SEL)
+		c.rect (sx - 5, sy + 13, 10, 10, col, outline = INK, width = 1)
+		c.line ([(sx, sy), (sx + 8, sy + 12), (sx + 8, sy + 26), (sx - 8, sy + 26), (sx - 8, sy + 12), (sx, sy)], INK, 1)
+	Y += 112
+	c.text (X, Y, "Click under the bar: a new stop  ·  drag: move it (off the bar: remove it)", "tiny2", DIM)
+	Y += 26
+	M.group (c, X, Y, BW, 118, "The stop")
+	c.text_l (X + 14, Y + 30, 26, "Colour", "ui", TEXT); c.rect (X + 84, Y + 30, 40, 26, DUSK[1][1], r = 4, outline = INK); M.field (c, X + 132, Y + 30, 90, 26, "#804E96")
+	c.text_l (X + 240, Y + 30, 26, "Position", "ui", TEXT); M.field (c, X + 310, Y + 30, 64, 26, "55 %")
+	c.text_l (X + 14, Y + 70, 26, "Opacity", "ui", TEXT)
+	sw = 200; c.rect (X + 84, Y + 81, sw, 4, M.mix (FACE, LINE, 0.9), r = 2); c.rect (X + 84, Y + 81, sw, 4, SEL, r = 2); c.ellipse (X + 84 + sw, Y + 83, 7, WHITE, M.shade (FACE, 0.6), 1.2)
+	c.text_l (X + 300, Y + 70, 26, "100 %", "ui", TEXT)
+	Y += 132
+	for i, b in enumerate (("Reverse", "Space evenly", "Colour 1 / 2")):
+		M.button (c, X + i * 128, Y, 120, 28, b)
+	M.button (c, dx + dw - 196, dy + dh - 44, 86, 30, "OK", default = True); M.button (c, dx + dw - 102, dy + dh - 44, 86, 30, "Cancel")
+	c.save ("paint-gradient-editor.png")
+
 if __name__ == "__main__":
-	m_main (); m_brushes (); m_select (); m_layers (); m_text (); m_resize ()
+	which = sys.argv[1:]
+	for name, f in (("main", m_main), ("brushes", m_brushes), ("select", m_select), ("layers", m_layers), ("text", m_text), ("resize", m_resize),
+			("gradient-fill", m_gradfill), ("gradient-editor", m_gradedit)):
+		if not which or name in which: f ()

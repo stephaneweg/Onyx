@@ -129,12 +129,19 @@ public:
 	void clearFocusTree ();
 	void focusPathUp ();
 	void setFocus ();			// focus me (clear the tree, light up my path)
+	// Tab / Shift+Tab (back): the focus to the next / previous control of this subtree, in the
+	// order they were added (depth first; hidden or disabled ones skipped, the ends wrap). fields:
+	// only the text fields (isField). Done by handleKey when no one takes the Tab: in a dialog
+	// (a modal) every control; in a window, from a text field to the next text field.
+	bool tabFocus (bool back, bool fields);
 
 	// ---- overridables ----------------------------------------------------
 	virtual void onDraw () {}					// paint own content into `canvas`
 	virtual bool onMouse (int, int, int, int, int, int) { return false; }
 	virtual bool onKey (long) { return false; }
 	virtual RadioButton *asRadio () { return 0; }	// (no RTTI) a RadioButton says so
+	virtual bool isField () { return false; }	// a text field (Textbox and kin): a Tab stop in a window
+	virtual void onTabFocus () {}			// focused by Tab (a field: its caret at the end)
 	// The colour behind this widget (its parent's background): what its rounded, anti-aliased
 	// corners blend into. A container with its own background returns it.
 	virtual unsigned bgColor () { return parent ? parent->bgColor () : C_BG; }

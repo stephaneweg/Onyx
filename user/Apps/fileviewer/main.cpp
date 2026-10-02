@@ -42,6 +42,7 @@
 #include "ftpfs.h"			// ftpfs_login (Connect to Server)
 #include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libwtk)
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"
 
 using namespace wtk;
 
@@ -1231,7 +1232,7 @@ public:
 			bool cur = c == g_active, hot = c == g_crumbHot;
 			int tw = wk_text_w (seg, cur ? 2 : 0);
 			if (x + tw > fx + fw - 20) { for (int k = c; k < g_ncol; k++) g_crumbX[k] = fx + fw; break; }
-			canvas.drawFont (x, y, seg, font (), cur ? wk_tone (C_ACCENT, 84) : ink, 1, cur ? 2 : 0);
+			wk_text (canvas, x, y, seg, cur ? wk_tone (C_ACCENT, 84) : ink, cur ? 2 : 0);
 			if (cur) canvas.fillRect (x, y + g_fh + 1, tw, 2, C_ACCENT);
 			else if (hot) canvas.fillRect (x, y + g_fh + 1, tw, 1, ink);
 			x += tw + 10;
@@ -1245,7 +1246,7 @@ public:
 	{
 		canvas.fillRect (0, BC_H, SIDE_W, H - BC_H - ST_H, C_BG);
 		wk_etch_v (canvas, SIDE_W - 2, BC_H + 4, H - BC_H - ST_H - 8, C_BG);
-		int cur = current_place (), maxc = (SIDE_W - 48) / g_fw;
+		int cur = current_place ();
 		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
 		for (int r = 0; r < g_nsrow; r++)
 		{
@@ -1256,7 +1257,7 @@ public:
 			if (sr.place < 0)
 			{
 				wk_glyph (canvas, g_folded[sr.group] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
-				canvas.drawFont (24, y + (SIDE_RH - g_fh) / 2, GROUP_NAME[sr.group], font (), hot ? C_TEXT : dim, 1, 2);
+				wk_text (canvas, 24, y + (SIDE_RH - g_fh) / 2, GROUP_NAME[sr.group], hot ? C_TEXT : dim, 2);
 				continue;
 			}
 			const Place &p = g_pl[sr.place];
@@ -1265,8 +1266,7 @@ public:
 			else if (hot) wk_rbox (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, wk_tone (C_BG, 160), wk_tone (C_BG, 148));
 			unsigned ink = on ? C_SEL_TEXT : C_TEXT;
 			place_glyph (canvas, 18, y + (SIDE_RH - 16) / 2, p.kind, ink);
-			char lab[40]; scopy (lab, p.label, sizeof lab);
-			if (slen (lab) > maxc && maxc > 2) { lab[maxc - 2] = '.'; lab[maxc - 1] = '.'; lab[maxc] = 0; }
+			char lab[64]; wk_text_fit (p.label, SIDE_W - 48, lab, sizeof lab);
 			canvas.text (40, y + (SIDE_RH - g_fh) / 2, lab, p.kind == PL_CONNECT && !on ? dim : ink);
 			if (r == g_dropSide) wk_rline (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, C_ACCENT);	// (a drop target)
 		}
@@ -1281,7 +1281,7 @@ public:
 		int sbw = t.show ? WK_SBW + 4 : 0;
 		int rw = COLW - 10 - sbw;			// a row's highlight (clear of the scroll bar)
 		int chevX = x + COLW - 16 - sbw;		// a folder's arrow: well inside, left of the bar
-		int maxChars = (chevX - 8 - (x + TXT_PAD)) / g_fw;
+		int maxW = chevX - 8 - (x + TXT_PAD);
 		for (int r = 0; r < g_rows; r++)
 		{
 			int idx = k.top + r;
@@ -1290,8 +1290,7 @@ public:
 			int y = COL_Y + ROW_PAD + r * g_rowH;
 			bool sel = idx == k.sel, hot = sel && slot == g_active;
 			if (sel) wk_hilite (canvas, x + 4, y + 1, rw, g_rowH - 2, 5, hot);
-			char name[NAMEL]; scopy (name, e.label, sizeof name);
-			if (slen (name) > maxChars && maxChars > 2) { name[maxChars - 2] = '.'; name[maxChars - 1] = '.'; name[maxChars] = '\0'; }
+			char name[NAMEL + 8]; wk_text_fit (e.label, maxW, name, sizeof name);
 			unsigned col = hot ? C_SEL_TEXT : e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
 			canvas.text (x + TXT_PAD, y + (g_rowH - g_fh) / 2, name, col);
 			if (e.isdir && !e.isapp) wk_glyph (canvas, WKG_CHEV_RIGHT, chevX, y + g_rowH / 2, 8, hot ? C_SEL_TEXT : C_DIMTXT);
@@ -1312,7 +1311,7 @@ public:
 		canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL);
 		const Entry *e = sel_entry (g_ncol - 1);
 		if (!e) return;
-		int y = COL_Y + 8, tx = x + 8, maxChars = (COLW - 16) / g_fw;
+		int y = COL_Y + 8, tx = x + 8, maxW = COLW - 16, maxChars = maxW / 4 < 78 ? maxW / 4 : 78;	// (a line: clipped at the column by its width)
 
 		if ((g_pvKind == PV_APP || g_pvKind == PV_IMAGE) && g_pvImg)
 		{
@@ -1343,14 +1342,12 @@ public:
 			y += dh + 10;
 		}
 
-		char line[80];
-		scopy (line, g_pvKind == PV_APP ? g_pvTitle : e->name, sizeof line);
-		if (slen (line) > maxChars) { line[maxChars - 2] = '.'; line[maxChars - 1] = '.'; line[maxChars] = '\0'; }
+		char line[160];
+		wk_text_fit (g_pvKind == PV_APP ? g_pvTitle : e->name, maxW, line, sizeof line);
 		canvas.text (tx, y, line, C_FILETXT); y += g_fh + 6;
 		if (g_pvKind == PV_APP)					// the bundle's folder name
 		{
-			scopy (line, e->name, sizeof line);
-			if (slen (line) > maxChars) { line[maxChars - 2] = '.'; line[maxChars - 1] = '.'; line[maxChars] = '\0'; }
+			wk_text_fit (e->name, maxW, line, sizeof line);
 			canvas.text (tx, y, line, C_DIMTXT); y += g_fh + 2;
 		}
 
@@ -1396,7 +1393,7 @@ public:
 				int n = 0;
 				while (p[n] && p[n] != '\n' && n < maxChars) { line[n] = p[n] == '\t' ? ' ' : p[n]; if (line[n] == '\r') line[n] = ' '; n++; }
 				line[n] = '\0';
-				canvas.text (tx, y, line, C_FILETXT);
+				wk_text_clip (canvas, tx, y, line, C_FILETXT, 0, tx, y, maxW, g_fh);	// (proportional: clipped at the column)
 				y += g_fh;
 				p += n;
 				while (*p && *p != '\n' && n >= maxChars) p++;	// clip long lines
@@ -1699,8 +1696,8 @@ static void op_pin ()
 
 int main (void)
 {
-	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
-	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
+	ft_wtk_install ("DejaVu Sans", 13);			// (FreeType's text: wk_fw / wk_fh follow it)
+	g_fw = wk_fw (); g_fh = wk_fh ();
 	g_rowH = g_fh + 8;					// (rows with room: a padding above and below)
 	g_rows = (COL_H - 2 * ROW_PAD) / g_rowH; if (g_rows < 1) g_rows = 1;
 

@@ -17,6 +17,7 @@ public:
 	Button (int l, int t, int w, int h, const char *s, Action cb_ = 0);
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	bool onKey (long k) override;		// focused (Tab): Space / Enter press it
 };
 
 } // namespace wtk

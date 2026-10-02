@@ -642,6 +642,14 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > the composite on a thread of the program (kapi v67) — the app goes on meanwhile; the target and
 > the textures are not touched until `gpc_wait` (the texture calls wait by themselves).
 > `gpc_get_stats`: the last composite's µs, its `gpu_render` calls, the layers the CPU drew.
+> **Blend modes** (a layer's `blend`, `gpc_layer_init` sets `GPC_B_NORMAL`): `GPC_B_MULTIPLY`, `SCREEN`,
+> `ADD`, `SUBTRACT`, `LIGHTEN`, `MASK` (the target kept where the layer is opaque: `d · sa`; its opacity
+> unused), `CUTOUT` (`d · (1 − sa)`) — premultiplied maths, exact over a transparent (`GPC_T_ALPHA`) target
+> too. The GPU does them from kapi **v72** (`gpu_render`'s presets `KAPI_GPU_BLEND_MULCOL` … `DSTOUT`;
+> multiply and subtract are two batches over the same vertices, the second `UNDER` adding `s (1 − da)`,
+> left out on an opaque target); with an older kernel such a layer is drawn by the CPU between the GPU
+> runs. `gpc_blend_pixel (s, d, blend, alpha)` is the CPU's own pixel: an app flattening its layers
+> itself (Paint's Export) gets the screen's pixels with it.
 > Tests: `sh tools/tests/run_gpucomp_test.sh` on the PC — the CPU path and the GPU path (on a
 > software V3D, `tools/tests/gpucomp/hostkapi.cpp`: the kernel's `FS_TEX` run in `tools/qpu/qpusim`)
 > against a reference in doubles, then partial updates across tiles, a refused texture, the GPU
@@ -760,17 +768,29 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > `VG=1` valgrind); `tools/tests/writer/conv.cpp` converts a file by the names' extensions (`conv
 > a.docx b.odt`). The samples (`SD:/docs/writer-tour.rtf`, `new-year-letter.rtf`) are made by
 > `tools/gen_writer_sample.py`.
-> **Paint** (`user/Apps/paint/`, a freestanding integer app) — `pdoc.h` (up to 32 layers of
-> 0xAARRGGBB pixels, straight alpha, bottom first; the composite kept and recomputed by rectangles,
-> a floating selection and a shape's preview composed with the current layer; undo: a stroke keeps
-> the 64 × 64 tiles it touches as they were, a change of size or of layers the whole picture),
-> `raster.h` (stamps, Bresenham lines, Zingl's ellipse in a box, polygons filled by pixel centres,
-> the shapes inscribed in their box's ellipse, flood fill, flips, quarter turns, scaling), `pview.h`
-> (the canvas widget: zoom, grid, checkerboard, the tools, the floating selection), `pui.h` (the
-> ribbon — cells laid out in code, their tips set as the pointer moves —, the layers' panel, the
-> status bar, the `VPath` icons), `pfile.h` (OpenRaster in / out, the pictures, the exports). A host
-> check: random strokes, shapes, fills, layer changes, turns and moved selections undone then
-> redone must give back the same pixels.
+> **Paint** (`user/Apps/paint/`, a newlib app: FreeType, gpucomp; its own `paint.elf` rule; the mock-ups
+> and the decisions: `docs/paint/README.md`) — `pdoc.h` (up to 32 layers of 0xAARRGGBB pixels, straight
+> alpha, bottom first, each with its blend mode `GPC_B_*` and `clip` — a Mask / Cut out on the layer below
+> only; what changed since the screen showed it: `D.dirty` for the current layer, `D.dirtyAll`; `comp_px`
+> the CPU's composite of a pixel with `gpc_blend_pixel`, the same as the GPU's; undo: a stroke keeps the
+> 64 × 64 tiles it touches — `rec_orig` reads a pixel as it was before the stroke —, a change of size or
+> of layers the whole picture), `psel.h` (the selection: a rectangle or a 0..255 mask; lasso polygons,
+> colour regions with a tolerance, contiguous or not; add / subtract / invert), `pbrush.h` (the stroke
+> engine: a coverage buffer a stroke — max of the dabs, the airbrush adds —, each pixel = the original
+> with the colour over it at coverage × opacity × selection; the brushes' dab shapes, the patterns),
+> `pgrad.h` (gradients: stops + midpoints, the presets, GIMP's `.ggr` read / written; the shapes and
+> repeats along a line), `ptext.h` (the Text tool: `ft/fonts.h`'s glyphs laid out into the overlay),
+> `padjust.h` (the colours and filters on the selection, the layer or every layer: the originals kept,
+> each setting applied to them), `raster.h` (the shapes, flips, turns, scaling), `pview.h` (the canvas:
+> the layers as gpucomp textures keyed by their pixels' address — the changed rectangles sent with
+> `gpc_tex_update`, premultiplied, the current layer with what floats over it, a layer under a clip mask
+> multiplied by the mask's alpha —, composited at the zoom into a view-sized ARGB target, laid over the
+> checkerboard; the tools; the overlay — a shape, a gradient, a text being placed — put down by
+> `ov_commit`), `picons.h` / `pui.h` (the icons, the ribbon, the options bar — items laid out per tool,
+> sliders dragged in place —, the layers' panel, the status bar), `pfile.h` (OpenRaster with
+> `composite-op` and `onyx:clip`, the pictures, the exports flattened by `comp_px`). The simulator:
+> `sh tools/tests/desktop_sim/shots.sh paint` (`paint_scene.py`: the scripts); the samples
+> `SD:/docs/pictures/*.jpg` by `tools/gen_paint_samples.py` (package `paint-samples`).
 > **Cardfile** (`user/Apps/cardfile/`, one TU: `main.cpp` includes the rest; integer only, no
 > libc) — `model.h` the document: a form (`Field`: display name, column name, type `FT_*`,
 > decimals, choices) and its records (an array of heap strings a record, the empty value shared),
@@ -1199,7 +1219,14 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
 > gives an exFAT file's real size; `kapi_rename` fails across volumes (copy + remove instead).
 > A `Textbox` holds **63 bytes** unless you raise its **`maxLen`** (up to `Textbox::TEXT_CAP - 1`,
-> 511): IRC's chat line takes 400.
+> 511): IRC's chat line takes 400. Its **`cb`** fires on Enter (without one, Enter goes on to the
+> dialog: its OK); **`changed`** after each edit (typed, pasted: a dialog's other field following it).
+> **Tab** (`Widget::tabFocus`, done by `handleKey` when no widget takes the key): in a **dialog** (a
+> `Modal`) Tab / Shift+Tab move the focus to the next / previous control (in the order they were added:
+> `canFocus`, not hidden nor disabled); in a **window**, from a **text field** to the next text field
+> (`isField ()`: `Textbox`, `Combobox`). `Modal::run` focuses the first text field when nothing has the
+> focus. A focused `Button` takes Space and Enter; a `Checkbox` / `RadioButton` Space (Enter is the
+> dialog's). A widget that wants Tab for itself (a text area, a terminal) takes it in its `onKey`.
 > `Combobox (l, t, w, h, text, onEnter, onPick)` — an editable `Textbox` with a drop-down
 > list of suggestions (`addOption`, `clearOptions`, `pick (i)`; arrow click or Down / Up;
 > `onPick` fires with `picked` = the index). Used by the File Viewer's Connect dialog.
@@ -1286,8 +1313,8 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 >   the installed one. The face holds no `fnt::Font *` between two calls (`fnt::trim` is safe).
 > - **Every new app uses the FreeType face** (unless told otherwise): add it to **`FT_APPS`** in
 >   `user/Makefile` — the newlib + `ft/libft.a` rule the Control Panel, its applets (Theme, Panel,
->   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup and
->   the menu bar share (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
+>   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup, the
+>   menu bar and the File Viewer share (Paint, Writer, the Calendar... have rules of their own) (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
 >   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`wk_tw`, `wk_text_fit`),
 >   never in characters, and draw it through the face (`wk_text`, `canvas.text`), not `drawFont`
 >   (the bitmap fonts only).
@@ -1496,7 +1523,7 @@ Key points:
   call). The variant `kapi_create_window_ex(x, y, w, h, title, flags)` is for explicit
   placement and `WIN_FLAG_BORDERLESS`. The client area is **at most the screen's size** (frame
   not counted; 1024 × 768 by default, `width=` / `height=` in `cmdline.txt`; before kernel v66,
-  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so, as Writer and Paint,
+  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so (or size it from `kapi_screen_size`, as Paint), as Writer,
   so that it fits the default screen: over the limit (or out of memory) the call returns **0**. **Check
   it**: an app runs at EL1 with the kernel's identity mapping, so a null canvas is the kernel's
   own memory at address 0 — drawing into it overwrites the kernel and the whole Pi freezes with
@@ -1749,6 +1776,37 @@ PDF written by `pdfwrite.h` (`tools/tests/pdf/writetest.cpp`: two fonts, an imag
 bookmarks, a landscape page) and read back. **The screenshots**: `sh tools/tests/desktop_sim/shots.sh pdf`
 (the manuals of `sdcard/manuals`; `writer` and `sheet` take their export's dialog). The icon: `python3
 tools/icons/pdf_icon.py`.
+
+### Mail, the mail client (`user/Apps/mail`, `user/mail`)
+
+The mail client (the mock-ups, the plan and the user's decisions: `docs/mail/README.md`; its use: docs/04 §12) is a
+**newlib** wtk app (`mail.elf`: FreeType's text, mbedTLS as Courier, wtk's image codecs). **MIT**, all of it. Two
+layers: `user/mail/` (header-only, the protocols and the HTML renderer, reusable by any app) and `user/Apps/mail/`
+(the app).
+
+| File | What |
+|---|---|
+| `mail/util.h` | `Buf`; base64, quoted-printable; the charsets met in mail (UTF-8, Latin-1, Windows-1252, ISO-8859-15) to UTF-8; RFC 2047 words both ways; RFC 5322 dates; address lists (`parse_addrs`: split first, then each name decoded). |
+| `mail/conn.h` | `Conn`: a server's connection over the kapi sockets — TLS at once or after STARTTLS (`tls/onyx_tls.hpp`, the certificate checked against `SD:/res/ca-bundle` unless the account says not to), lines and literals, a time-out (`kapi_clock_us`; `softTimeout` for IDLE), a cancel flag. |
+| `mail/imap.h` | IMAP4rev1: LOGIN / AUTHENTICATE PLAIN / **XOAUTH2** (SASL-IR), CAPABILITY, LIST with SPECIAL-USE (and the usual names), modified UTF-7, SELECT, UID FETCH (ENVELOPE, BODYSTRUCTURE — the part to preview, the attachments —, `X-GM-THRID`, the References), FETCH by number (a folder's newest), sections and partial bodies, UID STORE, UID MOVE (else COPY + \Deleted + EXPUNGE), APPEND (LITERAL+), IDLE. A response is read whole and parsed into a small tree (`Resp`, `Val`). |
+| `mail/pop3.h`, `mail/smtp.h` | POP3 (CAPA, STLS, USER / PASS, AUTH PLAIN / XOAUTH2, STAT, LIST + UIDL, TOP, RETR — the dot-stuffing undone —, DELE, QUIT); SMTP submission (EHLO, STARTTLS, AUTH PLAIN / LOGIN / XOAUTH2, SIZE, MAIL / RCPT / DATA — the dots doubled —, the recipients refused reported). |
+| `mail/mime.h` | `Mime`: a message's parts' tree (multipart, `message/rfc822`, RFC 2231 names), a part decoded and its text in UTF-8, the part to show (HTML or text), the attachments, `cid:`; `build`: a message made (text + HTML as `multipart/alternative`, inline pictures as `related`, attachments base64, UTF-8 headers, a Message-ID). |
+| `mail/oauth.h` | Microsoft's **device code** flow (`start`, `poll`, `refresh`; the client id from `SD:/etc/mail/oauth.ini`), HTTPS POST / GET over `conn.h`, a JSON field reader. |
+| `mail/html_dom.h`, `html_css.h`, `html_layout.h`, `html.h`, `html_ft.h` | **Mail's own HTML renderer** (the user: "simple, not Jet, HTML 4 at least with CSS 2"): a forgiving parser (HTML 4's implied ends, character references), CSS 2 (a UA sheet with HTML's quirks for tables, the presentational attributes, `<style>` with `@media` by width, selectors, specificity, `!important`, `style=`), a layout to a display list (blocks and margins, inline lines, inline boxes and inline-blocks — the mail "buttons" —, floats, lists, tables with the automatic widths, colspan / rowspan, `align=center`), painted by `FtHost` with the card's fonts; the links hit-tested; remote pictures only when the host gives them. |
+| `Apps/mail/accounts.h` | The accounts (`SD:/etc/mail/accounts.ini`), the providers known by their domain, the secrets encrypted (AES-256-GCM, `SD:/etc/mail/key`). |
+| `Apps/mail/store.h` | The cache on the card (`SD:/mail/<id>/`: `folders.tsv`, each folder's `index.tsv`, the `.eml` fetched), the previews. |
+| `Apps/mail/sync.h` | The **worker thread**: jobs (sync, a body, flags, move, delete, send, a draft, a check, OAuth, a picture) one after another, the IMAP sessions kept open, the tokens renewed, each result posted (`kapi_post`). |
+| `Apps/mail/contacts.h` | Contacts: Cardfile's model (`Apps/cardfile/model.h`) on `SD:/Documents/Contacts.card` (Latin-1 there), the addresses written to, the completion. |
+| `Apps/mail/model.h` | The state apart from the window: the jobs from what the user does, the results applied, the lists — a folder, all the inboxes, starred, a search — grouped in conversations (Gmail's thread id, else the References), the replies from Sent joined. |
+| `Apps/mail/ui.h`, `read.h`, `compose.h`, `wizard.h`, `contactsui.h`, `main.cpp` | The window: the toolbar, the folders, the list, the reading pane (an HTML too wide drawn once and averaged down), writing (completion), the wizard and the settings, the contacts. |
+
+**Tests on the PC**: `sh tools/tests/run_mail_test.sh` — `tools/tests/mail/fakemail.py` (a small IMAP + POP3 + SMTP +
+Microsoft-endpoints server; `--demo personal|work`: the screenshots' made-up mailboxes, `demo_mail.py`) and three
+programs on the stand-in kernel (`SIM_REALNET`, `SIM_REALCLOCK`: real sockets and clock): `mailtest.cpp` (the
+protocols, MIME, OAuth, TLS refused / accepted: 98 checks), `htmltest.cpp` (the renderer: 22 checks, PNGs to look
+at), `modeltest.cpp` (accounts, secrets, the worker, conversations, the cache read back: 42 checks). **The
+screenshots**: `sh tools/tests/desktop_sim/shots.sh mail` (two demo servers, `tools/tests/mail/mkaccounts.cpp` writing
+the accounts and the contacts with Mail's own code). The icon: `python3 tools/icons/mail_icon.py`.
 
 ### A large app: Koton, the studio (`user/Apps/koton`)
 

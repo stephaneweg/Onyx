@@ -54,6 +54,27 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Mail, the mail client (2026-10-02; not yet tried on the Pi)
+
+- **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
+  decisions: `docs/mail/README.md`), **MIT**. Gmail (an **app password**), Outlook.com / Hotmail (**Microsoft's
+  device code**: needs the "Onyx Mail" application's id in `SD:/etc/mail/oauth.ini` -- the user registers it at
+  Azure, the steps in the README), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
+  starred, each account's folders; conversations (Gmail's thread id, else References; one's replies from Sent
+  joined); the reading pane with **our own HTML 4 + CSS 2 renderer** (`user/mail/html*.h`: the user, "simple,
+  not Jet"), remote pictures held back, attachments opened / saved; writing with completion (contacts + the
+  addresses written to), drafts, attachments; the wizard and the settings; **Contacts = a Cardfile form**,
+  `SD:/Documents/Contacts.card`. `eml = mail` in `fileassoc.ini`. A worker thread does all the network; the
+  passwords and tokens are encrypted on the card (AES-256-GCM, a key of the card).
+- **Tests**: `sh tools/tests/run_mail_test.sh` (162 checks: protocols against `fakemail.py`, the renderer, the
+  model); the screenshots: `shots.sh mail` (two made-up mailboxes: `fakemail.py --demo`).
+- **On the Pi**: to try with real accounts (Gmail with an app password first). Watch: big mailboxes (the first
+  look takes a folder's newest 100), the TLS handshakes' time, the memory of large HTML mails (a newsletter
+  wider than the pane is drawn once at its width and averaged down).
+- **Next**: Outlook's client id (the user's registration), IDLE for the Inbox (the code is in `imap.h`, the
+  worker polls today), older messages on demand, rich text when writing (bold, lists, links: the HTML part is
+  generated from the text today), "always show pictures from this sender", search on the server, printing / PDF.
+
 ## PDF Viewer and the PDF export (2026-10-01; the viewer tried on the Pi 2026-10-02: works well)
 
 - **What**: `user/Apps/pdf` (docs/03 *PDF Viewer*; docs/04 §12; the mock-ups and the user's decisions:
@@ -74,6 +95,26 @@ answer in French. The docs stay in English.
   18 M pixels at most; MuPDF's store: 96 MB); the export from Writer / the Spreadsheet on the Pi.
 - **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Writer's
   hyperlinks (the export would make them links).
+
+## Paint made "pro" (2026-10-02, kernel v72, not yet tried on the Pi)
+
+- **Asked by the user**: Paint more professional, FreeType, blend modes per layer composited by the GPU (a
+  hidden layer as if absent), Tab between a dialog's fields (wtk), Ctrl+wheel zoom, pattern brushes, the
+  colour selection and the free-form one, the fill's gradient along a line (GIMP-like gradients), Open as
+  Layer / Paste as New Layer, a fade between two pictures, a Colours menu (desaturate, colorize, the
+  channels remapped... on the selection, the layer or everything). The mock-ups the user approved and
+  where it landed: **`docs/paint/README.md`**; the user guide: docs/04 *Paint*; the pieces: docs/03 *Paint*.
+- **Kernel v72**: `gpu_render`'s blend presets 5..12 (`KAPI_GPU_BLEND_MULCOL` ... `DSTOUT`, kern/kapi_abi.h,
+  sys/v3d.cpp's table: colour and alpha factors apart). **gpucomp**: `gpc_layer.blend` (`GPC_B_*`),
+  `gpc_blend_pixel`; tests `sh tools/tests/run_gpucomp_test.sh` (the software V3D has the presets).
+- **wtk**: `Widget::tabFocus` / `isField` / `onTabFocus`, `Textbox::changed`, `Button::onKey`; a `Textbox`
+  without `cb` and a `Checkbox` / `RadioButton` leave Enter to the dialog. Every wtk app was rebuilt for it.
+- **Paint** is a newlib app now (`paint.elf` rule in user/Makefile; its window sized from the screen).
+  Simulator: `sh tools/tests/desktop_sim/shots.sh paint` (`paint_scene.py`). Samples: `SD:/docs/pictures/`
+  (`tools/gen_paint_samples.py`, package `paint-samples`).
+- **To try on the Pi**: the v72 kernel with the blend modes on the GPU (`gpcdemo test` still ALL PASS),
+  Paint's speed on a big picture, the brushes, Ctrl+wheel (it was there before: the user had not tried it),
+  Tab in other apps' dialogs (Ledger keeps its own Tab).
 
 ## Media Player, the music and video library (2026-10-01 music, 2026-10-02 videos; not yet tried on the Pi)
 
@@ -490,7 +531,8 @@ answer in French. The docs stay in English.
 - **The rule now**: every new or redesigned app draws its text with **FreeType** (DejaVu Sans
   through wtk's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
   list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
-  its 8 applets, the Game Library and (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone).
+  its 8 applets, the Game Library, (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone), (2026-10-02)
+  Paint and the File Viewer (names cut to the column's width: `wk_text_fit`; the text preview clipped).
 - **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
@@ -1462,7 +1504,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   MP3, OGG, FLAC, WAV **and MIDI** (`.mid` played through MeltySynth + a SoundFont -- the synth
   is in `user/Apps/koton/synth/`, to share rather than copy); artists / albums / playlists,
   tags and cover art, a now-playing view, file associations.
-- **Mail client**, as user-friendly as possible: IMAP / SMTP over TLS, an account wizard
+- **Mail client** -- **done** (2026-10-02: *Mail*, its section above; not yet tried on the Pi), as user-friendly as possible: IMAP / SMTP over TLS, an account wizard
   (well-known providers pre-filled), threads, attachments, drafts. **Contacts** = a Cardfile
   form: the mail client creates the `.card` structure, reads / writes it (address completion,
   "add sender"), and the file opens in Cardfile too.
