@@ -134,7 +134,8 @@ is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 ## 5. The application model
 
 A Onyx application is a **single `.c` file** compiled into a **freestanding ELF** and
-run in **EL1** in its own page table.
+run at **EL0** in its own page table, calling the kernel by system calls through the kapi
+table (docs/02 §6).
 
 **Runtime** ([`user/crt0.S`](../user/crt0.S)):
 
@@ -2426,13 +2427,11 @@ you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` r
 name     = Text Editor          ; display name shown under the icon
 category = Productivity          ; Productivity, Internet, Graphics, Games, Demos, Settings, Emulators, Shell
 stack    = 8M                    ; optional: the app's stack (bytes, K or M), read by the KERNEL
-mode     = protected             ; optional: run at EL0, isolated from the kernel (legacy: at EL1)
 ```
 
-**`mode`** (kapi v73) is the other key the kernel reads: `protected` runs the app at **EL0**
-(docs/02 §6, *Protected mode*), `legacy` at EL1 as before; without it, `cmdline.txt`
-`protected=<names>` then `appmode=` decide (default `legacy`). A protected app's `stack` is its
-**user** stack (mapped in its own address space, 1 MB at least); its kernel stack is 256 KB.
+Every app runs at **EL0** (docs/02 §6, *Protected mode*): `stack` sizes its **user** stack (mapped
+in its own address space; 1 MB at least, 64 MB at most); its kernel stack is always 256 KB. (A
+`mode =` line, from kapi v73, is ignored.)
 
 **`stack`** is the one key the kernel reads (`AppStackSize`, `kernel/kernel.cpp`, when it
 creates the app's task): an app runs on its kernel task's stack, **256 KB** by default; a
@@ -2776,26 +2775,29 @@ points** to touch (all in the same direction, at the end):
 5. Rebuild (`make`). The apps that want the new function use it; the
    old ones keep working (they ignore the new field).
 
-**Protected mode (v73) — what a new kapi must also do:**
+**Apps at EL0 (v73/v74) — what a new kapi must also do:**
 
 - **Check every pointer an app hands it, at the `kapi_*` entry point** (not in the helpers
   below it, which the kernel calls with its own memory): `kern/uaccess.h` — `CUserStr` for a
   string, `UserCopyIn` / `UserCopyOut` / `UserGet` / `UserPut` for a structure or an out
   parameter, `UserReadable` / `UserWritable` for a buffer the kernel works in directly (a file
   read, a socket) — and fail with the function's usual error value. These accept the user VA
-  range, a legacy app's own stacks, and anything from a kernel caller; a protected app gets the
-  user VA range only. Never dereference an app pointer with plain C before that check.
+  range only (anything from a kernel caller). Never dereference an app pointer with plain C
+  before that check.
 - **Return no kernel pointer as a handle**: put the object in the process's handle table
   (`kern/handle.h`: `HandlesCurrent()->Add (pObj, type, kind)`, `Get`, pinned with
   `CHandleUse` across a call that may yield) so it is checked and closed when the process ends.
 - **At most 8 integer or pointer arguments**, no structure returned by value, nothing in
   floating-point registers: a protected app reaches the kapi by `svc` with x0–x7 only.
-- **No call back into the app from the kernel** (a handler, a callback): a protected app's code
-  cannot run at EL1. Queue it and let the app run it from its event pump, as `pop_event` /
+- **No call back into the app from the kernel** (a handler, a callback): app code cannot run
+  at EL1 (its pages are PXN). Queue it and let the app run it from its event pump, as `pop_event` /
   `pop_post` do.
 - A new pure-computation entry (like `memcpy`) that must not cost a system call needs a
   user-side implementation in `kernel/arch/aarch64/el0blob.S` and its slot added to the refused
   list in `sys/el0.cpp`.
+- Regenerate `user/kapi_names.h` (`python3 tools/gen_kapi_names.py`: the slot names `sysstat`
+  shows), and after a build run `tools/el0scan.sh` on the card: an app must contain no
+  instruction EL0 cannot run.
 
 > **Golden rule:** never change the signature or the order of an existing field. If some
 > semantics must change, add a **new** entry. An app can query

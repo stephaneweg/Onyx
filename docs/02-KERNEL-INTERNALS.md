@@ -231,7 +231,6 @@ Maps a 64 KB page (VA and PA aligned to 64 KB):
 | `KPAGE_ATTR_APP_DATA` (data/stack/canvas) | NORMAL | RW_EL1 | 1 | 1 | 1 |
 | `KPAGE_ATTR_APP_RODATA` (kapi table) | NORMAL | RO_EL1 | 1 | 1 | 1 |
 | `KPAGE_ATTR_APP_RWX` (generated code, v58 `code_alloc`) | NORMAL | RW_EL1 | 1 | **0** (exec. EL1) | 1 |
-| `KPAGE_ATTR_USER_*` (EL0 legacy, dormant) | NORMAL | *_ALL | 1 | … | … |
 
 App pages are **accessible at EL1** (`AP=*_EL1`), executable at EL1 for code
 (`PXN=0`), never executable at EL0 (`UXN=1`), and `nG=1` (ASID-tagged) → isolation
@@ -280,35 +279,20 @@ Source: [`kernel/sched/scheduler.cpp`](../kernel/sched/scheduler.cpp),
 
 The kernel **preempts application code**. A 100 Hz timer tick drives `OnTimerTick`,
 which counts down the running task's time slice (`SCHED_SLICE_TICKS` = 20 ms) and
-sets a reschedule flag when it expires. `KernelIRQExit()` — run at the end of every
-IRQ — then forces a switch, **but only when it is safe**: the interrupted context
-must be an **application running its own code**, i.e. `SPSR_EL1.M == EL1t` **and**
-the return PC (`ELR_EL1`) lies in the **user VA** range (`IS_USER_VA`). An app
-inside a `kapi_*` call has a *kernel*-VA return PC and is **not** preempted — that PC
-test *is* the kernel lock (the call may hold a kernel resource; such kapis yield
-cooperatively anyway). Kernel threads (EL1h, or EL1t with a kernel-VA PC) are never
-preempted.
+sets a reschedule flag when it expires. Every app runs at **EL0** (§6, *Protected mode*):
+an IRQ taken from EL0 enters through `El0IrqEntry`, which builds the app's full frame (all
+registers, FP/SIMD) **on the task's own kernel stack** and runs Circle's interrupt handler
+there; `El0IrqExit` then, when the slice is over, calls `OnPreempt` + `Yield` right on that
+stack — the task is parked **exactly like a voluntary yielder** (one resume path), and is
+resumed by `El0Return`'s `eret` to the interrupted instruction. That is the **only**
+preemption point. (Before kapi v74 apps ran at EL1t on their task's stack, and a
+`PreemptTrampoline` redirected the IRQ's return to switch there; it is gone.)
 
-**The SP_EL0/SP_EL1 problem and the trampoline.** Circle runs all tasks in EL1t (on
-`SP_EL0`), while the IRQ handler runs in EL1h (on `SP_EL1`). A `TaskSwitch` straight
-from the IRQ would swap `SP_EL1`, not the thread's `SP_EL0` → it cannot preempt an
-EL1t thread. So instead of switching inside the IRQ, `KernelIRQExit` **redirects the
-return**: it stashes the app's `ELR_EL1`/`SPSR_EL1` (in `g_PreemptELR`/`g_PreemptSPSR`),
-points `ELR_EL1` at `PreemptTrampoline` and masks IRQ+FIQ. The IRQ's
-`RESTORE_TRAP_ERET` then `eret`s into the trampoline **at EL1t, on the app's own
-stack**, where it saves the app's full register/FP state and calls the ordinary
-cooperative `Yield()` — which now swaps the correct `SP_EL0` and address space. When
-the task is rescheduled, the trampoline restores the app state and `eret`s back to
-the exact interrupted instruction (original `NZCV` + interrupts restored). A
-preempted task is thus parked **exactly like a voluntary yielder** — one resume
-path. (The app runs on its `CTask` kernel stack, which is in the global identity
-region, so it stays mapped across the address-space switch in `Yield`.)
-
-Because only user-VA application code is preempted, the **kernel itself is
-non-preemptive** (the classic Unix model): a long, non-yielding *kernel* loop would
-still block other tasks — drop a `if (IsReschedPending()) Yield();`
-cooperative-preemption point into any such loop if one appears. Tasks also still
-switch **voluntarily** (`Yield`, `MsSleep`, `present`, `wait`, …), unchanged.
+An IRQ taken at EL1 — kernel code, including an app's kapi call — never switches tasks: the
+**kernel is non-preemptive** (the classic Unix model). A long, non-yielding *kernel* loop
+would still block other tasks — drop a `if (IsReschedPending()) Yield();` cooperative
+point into any such loop if one appears. Tasks also still switch **voluntarily** (`Yield`,
+`MsSleep`, `present`, `wait`, …), unchanged.
 
 **Preemption points in file I/O.** The long kernel operations an app can ask for are cut
 into pieces with a `Yield` between them: `kapi_read` / `kapi_save_file` move at most 64 KB
@@ -483,8 +467,8 @@ tick crashes.
 
 `IrqEntry`: `SAVE_TRAP` → **unmasks the FIQ** (`DAIFClr,#1`, required by
 Circle's `EnterCritical`) → calls Circle's `InterruptHandler` (GIC dispatch + periodic
-tick + EOI) → `KernelIRQExit` (**preemptive reschedule** via `PreemptTrampoline` — see
-[§5](#5-scheduling)) → re-masks the FIQ → `RESTORE_TRAP` + `ERET`.
+tick + EOI) → `KernelIRQExit` (the crash-log and stall samples; an app core's stop; **no task
+switch**: an IRQ at EL1 interrupts kernel code — the apps' IRQs come through `El0IrqEntry`, §5) → re-masks the FIQ → `RESTORE_TRAP` + `ERET`.
 
 On cores 2 and 3 (app cores, §14) the same `KVectorTable` is installed: their only IRQ is
 the stop IPI, and `KernelIRQExit` hands it to `AppCoreOnIRQExit`; a synchronous fault there
@@ -505,32 +489,17 @@ The FP/SIMD block is saved on **every** trap so floating-point user code keeps i
 registers across a context switch. The cooperative `TaskSwitch` (Circle) only
 preserves the callee-saved `d8–d15` mandated by the AArch64 PCS — enough for a
 voluntary `Yield()`, but **not** enough when the timer preempts a thread
-mid-computation. Saving the whole register file here (and in `PreemptTrampoline`, see
+mid-computation. Saving the whole register file here (and in `El0IrqEntry`'s frame, see
 § "Preemptive scheduling") keeps hardware float correct under both voluntary switches
 and preemption from the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`CPACR_EL1`,
 `circle/lib/startup64.S`), so the `stp`/`ldp` `q`-register forms never trap.
 
-### A fault in an app's own code (step 0 of protected mode)
+### Faults
 
-`SyncHandlerEL1` no longer halts on every fault. In order: an app-core fault (cores 2–3,
-`AppCoreOnFault`) → `svc` (the old self-test) → **`UAccessFixup`** (a fault inside a fault-safe
-copy routine, below) → **`AppFaultRedirect`** → otherwise the post-mortem console (`DumpAndHalt`).
-
-`AppFaultRedirect` treats the fault as the **app's** when all of these hold: `appfault=kill`
-(the default; `cmdline.txt` `appfault=halt` restores the halt for debugging), a scheduler on this
-core, the fault taken at **EL1t** (`SPSR.M = 0b0100`; EL1h always halts), the faulting PC in the
-user VA range (`IS_USER_VA`) — or, for an instruction abort / PC alignment fault, `x30` in the user
-VA range (a call through a wild pointer) — or the PC inside the kernel's **app copies of
-`memcpy`/`memset`/`memmove`** (`AppMemStart` … `AppMemEnd`, the kapi table's entries) with `x30` in
-the user VA range; the current task has an address space and is not in a no-kill section
-(`CScheduler::InNoKill`). Then the trap frame is rewritten (nothing is logged or yielded on the
-exception stack): `x0..x5` = ESR, FAR, ELR, SPSR, LR, SP; `sp_el0` = the top of the task's own
-`CTask` stack; `elr_el1` = **`AppFaultExit`**; SPSR = EL1t with I+F masked. The `eret` lands in
-`AppFaultExit`, in the faulting task, which unmasks the IRQs, writes two `appfault` lines to kmsg
-(the task, the pid, the decoded fault: undefined instruction, data abort on a read/write with its
-fault type and level, PC alignment, BRK…; the registers) and ends the process through
-`kapi_exit(-11)` (its window off the screen, its threads terminated, its sockets closed; the reaper
-frees the rest). A fault with a kernel PC (inside a kapi) still halts, with the crash record.
+Every app runs at EL0 (§ *Protected mode* below): a fault in an app arrives through the EL0
+vectors and kills that process only. `SyncHandlerEL1` sees kernel faults only: **`UAccessFixup`**
+first (a fault inside a fault-safe copy routine, below: the kapi returns its error), otherwise
+it is a kernel bug → the post-mortem console (`DumpAndHalt`) and the crash record.
 
 ### Fault-safe access to app memory (`kern/uaccess.h`, step 2)
 
@@ -538,9 +507,8 @@ Every kapi checks the pointers it gets from an app **at its entry point** (`kapi
 below them take kernel memory): `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`.
 
 - **Who may point where.** A kernel caller (no scheduler yet, or a task without an address space)
-  is trusted. An app core (2–3): the user VA range only. A **legacy** (EL1) process: the user VA
-  range plus the `CTask` stacks of its own live tasks (its stacks are in the kernel heap). A
-  **protected** (EL0) process: the user VA range only (its `CTask` stack is its kernel stack).
+  is trusted. An app's pointer must lie in the user VA range `[USER_VA_BASE, USER_VA_END)`, full
+  stop (its `CTask` stack is its kernel stack, never accepted).
 - **`UserRange` / `UserRangeAvail`**: `[p, p+n)` inside what the caller may use, computed as "bytes
   left from p", never `p+n` (no wrap). **`UserReadable` / `UserWritable`**: the range, then each
   64 KB page translated with `AT S1E1R/W` — used where the kernel works directly in the app's
@@ -548,8 +516,8 @@ below them take kernel memory): `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`.
 - **Copies**: `UserCopyIn`, `UserCopyOut`, `UserGet`, `UserPut`, `UserStrOut` and `CUserStr` (a
   kernel copy of an app string, 256 bytes inline, the heap beyond; paths over 511 characters are
   refused): leaf assembly routines, word-sized when both pointers are 8-aligned (byte-wise
-  otherwise: the display is Device memory). Plain `LDR`/`STR`, not `LDTR`/`STTR` (the A72 has no
-  UAO: `LDTR` would fault on a legacy app's EL1-only pages).
+  otherwise: the display is Device memory). Plain `LDR`/`STR` after the range check (the A72
+  has neither PAN nor UAO).
 - **The fixup table**: a hand-made `.rodata` list of `{start, end, recovery}`, one per routine;
   `SyncHandlerEL1` looks the faulting ELR up first and resumes at the recovery label (the routine
   returns −1). It works for kapis reached by `svc` from EL0 too (they run at EL1t).
@@ -560,12 +528,9 @@ below them take kernel memory): `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`.
   pointers (handlers, `post`, `thread_create`'s `fn`) are not data and are not checked.
   **A new kapi that takes a pointer must do the same.**
 
-**The NULL page** (`cmdline.txt` `nullguard=1`, off by default): Circle maps the first 64 KB page
-(armstub, spin table) in every address space, so an app's NULL write corrupts it silently. With
-`nullguard=1`, `AddrSpaceInit` builds one shared copy of the kernel's L3 table for 0–512 MB with
-page 0 invalid and every app's L2[0] points at it; the kernel's own page-0 entry is made non-global
-(nG, break-before-make, before the secondary cores start) so a global TLB entry cannot bypass the
-guard. Off until tried on the Pi (an IRQ handler touching page 0 under an app's ASID would fault).
+**The NULL page**: Circle maps every identity page, page 0 included, `AP = RW_EL1, UXN = 1`: an
+app's NULL load, store or call faults at EL0 (the app is killed), and a NULL pointer handed to a
+kapi is refused by the range check.
 
 ### Per-process handles (`kern/handle.h`, step 1)
 
@@ -592,13 +557,14 @@ Source: [`kernel/arch/aarch64/el0.S`](../kernel/arch/aarch64/el0.S),
 [`el0blob.S`](../kernel/arch/aarch64/el0blob.S), [`kernel/sys/el0.cpp`](../kernel/sys/el0.cpp),
 [`kern/el0.h`](../kernel/include/kern/el0.h). Design and history: [EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md).
 
-A process is **legacy** (EL1t, direct calls through the kapi table) or **protected** (EL0t,
-system calls), chosen at launch (`El0Configure`): the app's `app.txt` `mode = protected | legacy`,
-else `cmdline.txt` `protected=<name>,<name>…` (the app's folder name or the tool's file name; a
-BASIC program: `basic`), else `cmdline.txt` `appmode=protected | legacy` (default `legacy`).
+**Every process runs at EL0** (kapi v74; v73 had it opt-in): the apps, the `/bin` tools, Koton's
+plugins, the BASIC runner — anything loaded from an ELF. The kernel and its own tasks run at EL1
+and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / `nullguard=` and
+`app.txt` `mode =` of v73 are gone; old cards that still set them get no effect.)
 
-- **Mappings** (`CAddressSpace(bProtected)`, one change in `MapPage`): `RW_EL1 → RW_ALL`,
-  `RO_EL1 → RO_ALL`; code (and `code_alloc`) `UXN = 0, PXN = 1`; everything else `PXN = UXN = 1`.
+- **Mappings** (the `KPAGE_ATTR_APP_*` presets of `layout.h`): data `RW_ALL`, read-only data
+  `RO_ALL`, code (and `code_alloc`) `UXN = 0, PXN = 1`, everything else `PXN = UXN = 1`; the screen
+  (`fullscreen_direct`) is Device memory: the user-side `memcpy`/`memset` align their stores.
   The identity region 0–4 GB keeps Circle's `AP = RW_EL1, UXN = 1`: EL0 can neither read, write
   nor execute it. There is no PAN on the A72: the kernel reads and writes EL0 pages directly.
 - **Stacks**: the `CTask` stack (256 KB, `EL0_KSTACK_SIZE`) is the task's **kernel** stack; the user
@@ -608,8 +574,8 @@ BASIC program: `basic`), else `cmdline.txt` `appmode=protected | legacy` (defaul
   kernel stack (written by `El0Return` just before each `eret`, so it follows the scheduler with
   no switch hook); the full `TTrapFrame` (x0–x30, `SP_EL0`, ELR, SPSR, q0–q31, FPSR, FPCR) is
   built at `TPIDR_EL1 − 800`, `SP_EL0` pointed at it and `SPSel` set to 0: the handler runs at
-  **EL1t on the task's kernel stack**, as a legacy app's kapi call does, so the kapis that yield
-  work unchanged. **Exit** (`El0Return`): DAIF masked, `SPSel = 1`, `TPIDR_EL1` set, the frame
+  **EL1t on the task's kernel stack**, so the kapis that yield (a file read, a wait) switch tasks
+  as any kernel code does. **Exit** (`El0Return`): DAIF masked, `SPSel = 1`, `TPIDR_EL1` set, the frame
   restored (x0 last), `eret; dsb nsh; isb`. First entry: `El0Enter(entry, user_sp, arg, lr)`
   (a zeroed frame, SPSR `0x300` = EL0t with IRQ/FIQ on).
 - **System calls** (`El0SyncHandler`): `svc #0` with the table slot in `x8`, arguments in x0–x7
@@ -617,8 +583,9 @@ BASIC program: `basic`), else `cmdline.txt` `appmode=protected | legacy` (defaul
   slot 0, out of range, a null kernel slot, and the user-side slots (memcpy, memset, memmove,
   pump_events, wait_for_exit, pump_wait — the kernel's pump would run user handlers at EL1).
 - **IRQ from EL0** (`El0IrqEntry` → `El0IrqExit`): Circle's `InterruptHandler` on the kernel stack;
-  on core 0 the crash-log and stall samples, and at the end of the slice `PreemptDoYield` right
-  there (the `PreemptTrampoline` is for legacy apps only); on cores 2–3 `AppCoreOnIRQExit`.
+  on core 0 the crash-log and stall samples, and at the end of the slice `OnPreempt` + `Yield`
+  right there — **the only preemption point**: an IRQ taken at EL1 (kernel code) never switches
+  tasks; on cores 2–3 `AppCoreOnIRQExit`.
 - **A fault from EL0** (any synchronous exception but `svc`) kills the process: a kmsg line
   `el0: <name> (pid N) killed: …`, a desktop notice (`IpcNotify`), `kapi_exit(-11)`. SError still
   goes to `BadModeEntry`.
@@ -640,8 +607,23 @@ BASIC program: `basic`), else `cmdline.txt` `appmode=protected | legacy` (defaul
   through `El0ThreadReturn`. **App cores**: `core_run` for a protected owner enters `fn` at EL0 on
   the app's stack; the job's end is an `svc` from `El0CoreReturn` (→ `AppCoreEl0Done`); any other
   `svc` or fault → `KAPI_CORE_FAULT`.
-- The old dormant EL0 path (`SyncEL0Entry`, `SyncHandlerEL0`, `SyscallEntry`, `enter_user`) is
-  dead code; `copy_from_user`/`copy_to_user` now use the fault-safe copies.
+- **ID register reads** (v74): on the A72 an `mrs` of an EL1 ID register at EL0 is an undefined
+  instruction; `El0SyncHandler` emulates it (`EmulateMrs`: the instruction decoded, the value
+  written into its register, ELR + 4), as Linux does: `MIDR_EL1`, `REVIDR_EL1` (real),
+  `MPIDR_EL1` (the current core), `ID_AA64PFR0_EL1` (masked to EL0/EL1, FP, AdvSIMD, SVE, DIT,
+  CSV2/3), `ID_AA64DFR0_EL1` (DebugVer only), DFR1/AFR0/AFR1 and the AArch32 ID registers 0, the
+  other `ID_AA64*` (ISAR, MMFR, PFR1, ZFR0) the hardware's (a snapshot of core 0's at boot). Any
+  other system register or an `msr` kills the app. Counted in `proc_stats`' `emulated`.
+- **System-call statistics** (v74): each process counts its `svc`s (a total, a per-second rate
+  over a window of CNTPCT, a saturating count per table slot: 820 bytes); `proc_stats(pid, out)`
+  returns them (§8). `ps` (SYSC/s), the Task Manager and `/bin/sysstat` show them.
+- The kernel's `TKApiTable` is only the system-call dispatch table (never mapped into an app);
+  its `pump_events`, `wait_for_exit`, `pump_wait`, `memset`, `memcpy`, `memmove` slots are 0 (the
+  EL0 table points them at the user-side code).
+- **The tool** `tools/el0scan.sh [file|dir…]` disassembles ELFs and archives and reports any
+  instruction an app cannot run at EL0 (privileged system registers, cache/TLB maintenance other
+  than `dc cvau/cvac/civac/zva` and `ic ivau`, `eret`, `hvc`, `smc`…): run it on the card after a
+  build (`./tools/el0scan.sh sdcard/apps sdcard/bin sdcard/koton`).
 
 Not closed yet: the powerful kapis (`reboot`, `kill_pid`, `inject_*`, `screen_grab`,
 `win_read`…) stay open to every app, and the GPU (an app's V3D shaders can reach physical memory).
@@ -827,7 +809,9 @@ kernel draws 5–15 as `ALPHA` (the service checks the version) — no new call,
 v73 = **protected mode** (§6): `pop_event`, `event_mods`, `pop_post`, `pump_sleep` — the pieces of the
 event pump an EL0 app runs on its own side (an EL1 app never needs them); the core number in
 `TPIDRRO_EL0` (`kapi__core`); the file / stream / process handles per process and every pointer
-checked (no change for a well-behaved app).
+checked (no change for a well-behaved app),
+v74 = **every process at EL0** (the EL1 mode removed), `proc_stats` (a process's system calls:
+`struct kapi_syscall_stats`), the ID register reads emulated; the kernel table's six user-side slots 0.
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -847,6 +831,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
 | App-drawn text | `draw_text`, `font_width`, `font_height` |
+| System-call statistics (v74) | `proc_stats(pid, out)` (pid 0: the caller) → 0 and `struct kapi_syscall_stats { syscalls, emulated; rate, slots; top_slot[8], top_count[8]; reserved[4] }` (104 bytes): the `svc`s since the process started, the ID register reads emulated, the calls per second (the last full window ≥ 1 s), the table's slot count, the 8 slots most called (a slot = the field's index in `TKApiTable` in 8-byte words, `version` = 0; `user/kapi_names.h`, generated by `tools/gen_kapi_names.py`, names them) → −1 no such process / a kernel task, −2 a bad pointer. |
 | Protected mode (v73) | `pop_event(struct kapi_event *ev)` → 1 and the next window event `{ handler, sender, value, event, mods }` (the handler **not** called), 0 none / no window; `event_mods(mods)` sets what `get_modifiers` reports while a key handler runs → the previous value (`0xFFFFFFFF` = live); `pop_post(struct kapi_posted *p)` → 1 and the next posted call `{ fn, ctx, value }` (not run), 0 none; `pump_sleep(timeout_ms)` = `pump_wait` without the pump → what is pending, −1 not a process. The user-side `pump_events` / `wait_for_exit` / `pump_wait` of a protected app (§6) are built on them. `user/kapi.h`: the wrappers (version ≥ 73) and `kapi_is_protected()`. |
 | Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; since v73 a handle is a per-process handle (§6, *Per-process handles*) whose entry records the kind (FatFs, RAM, provider). |
 | Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), `USB:`…, `FD:`, `NVME:` (declared, not mounted yet). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
@@ -1395,7 +1380,7 @@ Headless signs on the green ACT LED (a GPIO set / clear, no lock): **3 s of fast
 core 1 sees the hang, the SD write's own flicker, then **3 s lit** (written) or **3 slow blinks**
 (the write failed) before the restart; no blinking at all = core 1 stuck too (a wedged bus).
 `hangreboot=0` turns it off with the watchdog. `kmsg` tells at boot where the record is
-and whether the dump is armed (`crashlog: ...`). Test: `hangtest` (IRQs masked) / `hangtest irq`.
+and whether the dump is armed (`crashlog: ...`). Test: none from an app any more (an app at EL0 can neither mask the IRQs nor stop the scheduler).
 
 The panic screen is now copied into the displayed frame buffer **by the CPU** (not the DMA:
 the compositor's display DMA may be in flight, and waiting for it hung the panic before its
@@ -1420,8 +1405,9 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   enables IRQs (for the stop IPI only: the GIC routes no peripheral there) and waits in
   `WFE`. A job: load the owner's `TTBR0` (its L2 table + ASID, `CAddressSpace::GetTTBR0`),
   `tlbi vmalle1` on that core only (an ASID may have been reused since its last job), then
-  `AppCoreCall (fn, arg, stack)` — at EL1t, `SP` = the app's stack, like the app itself on
-  core 0. When `fn` returns: back to the kernel address space, state `IDLE`, `SEV`.
+  `El0Enter (fn, stack, arg, El0CoreReturn)` — at **EL0**, `SP_EL0` = the app's stack, like the
+  app itself on core 0; the job's end is an `svc` from `El0CoreReturn` (→ `AppCoreEl0Done`), any
+  other `svc` or a fault stops the job (`KAPI_CORE_FAULT`). When `fn` returns: back to the kernel address space, state `IDLE`, `SEV`.
 - **The kapi side (core 0).** `core_acquire` hands a free, started core to the caller's
   address space; `core_run` checks the owner, that nothing runs, that `fn` and the stack
   are user addresses, fills the job, then `bGo` + `DSB` + `SEV`. Every word shared between

@@ -40,9 +40,9 @@ sources.
 - **Per-process isolation via the MMU.** Each application has its own L2/L3 page
   table (64 KB granule), tagged by **ASID**. One application cannot see another's
   memory.
-- **"Option C" execution model.** Applications run in **EL1** (privileged)
-  and call the kernel's functions directly (no `SVC` trap in the common
-  path). The trade-off: apps are isolated **from one another**, but **not from the kernel**.
+- **Protected apps (EL0).** Applications run at **EL0**, the unprivileged level, and
+  call the kernel by **system calls** (`svc`): they are isolated from one another **and**
+  from the kernel and the hardware. An app that crashes is killed; the system goes on.
   See §5.
 - **Stable fixed-address ABI (`kapi`).** The kernel publishes a **table of function
   pointers** at a fixed virtual address, mapped read-only into each
@@ -78,7 +78,7 @@ sources.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Applications (ELF EL1, isolated by ASID)                        │
+│  Applications (ELF EL0, isolated by ASID)                        │
 │  panel · applist · terminal · fileviewer · tinypad · games · bin │
 │       │  call the kernel through kapi.h (inline wrappers)        │
 ├───────┼──────────────────────────────────────────────────────────┤
@@ -100,22 +100,21 @@ sources.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-## 5. The "Option C" execution model
+## 5. The execution model: apps at EL0
 
-This is the most structurally defining architectural decision. After prototyping
-EL0 processes + system calls (`SVC`), the project switched to **Option C**:
+The most structurally defining architectural decision. Since kapi v74 (2026-10-02):
 
-- Applications run in **EL1** (the same privilege level as the kernel), **each
-  in its own page table** tagged by ASID.
-- They **call the kernel's functions directly** via the `kapi` ABI table — no
-  system trap in the normal path.
-- **Isolation:** applications are isolated **from one another** (a distinct
-  ASID/TTBR0 per app; an app cannot address another's pages). The **kernel is not
-  protected**: an EL1 app can technically touch the kernel's memory. This is the
-  accepted trade-off in exchange for the ergonomics of direct calls.
-- The EL0/`SVC` machinery (vectors, system-call dispatch) **still exists but is
-  inert**; it could be reused if one wanted true EL0 applications isolated from the
-  kernel.
+- Applications run at **EL0**, **each in its own page table** tagged by ASID; the kernel's
+  memory, the devices and the other apps' pages are out of their reach (EL1-only mappings).
+- They **call the kernel through the `kapi` table** at a fixed address, as before — but in an
+  app that table points at small stubs (`mov x8, #slot; svc #0; ret`): every kapi is a
+  **system call**, its pointers checked, its handles per process. `memcpy` / `memset` and the
+  event pump run in the app itself (no system call). Existing binaries kept working unchanged.
+- **A fault in an app kills that app** (a notice on the desktop, a line in `kmsg`), never the
+  machine.
+- History: the project first ran apps at EL1 with direct calls ("Option C", `ARCHITECTURE.md`
+  §11–§12: apps isolated from one another but not from the kernel); the move to EL0 was done in
+  steps ([EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md)) and the EL1 mode removed.
 
 ## 6. Scheduling: preemptive applications, non-preemptive kernel
 
@@ -124,11 +123,9 @@ kernel **preempts the application** and runs the next task. An application stuck
 a loop that never yields no longer freezes the system: the cursor, the desktop and
 the other apps stay responsive, and `taskman` can stop it (the `spin` app tests this).
 
-Preemption from the IRQ is not straightforward in Circle's model: threads run in
-**EL1t** (with `SP_EL0`), while the IRQ handler runs in **EL1h** (with `SP_EL1`), so
-a context switch inside the IRQ would swap the wrong stack. The kernel therefore
-**redirects the IRQ's return** into a small trampoline that runs on the app's own
-stack, saves its full register and FP state, and yields like a voluntary switch.
+An IRQ taken while an app runs (at EL0) arrives on that task's own kernel stack, with the
+app's full register and FP state saved there; when the slice is over the kernel yields right
+there, like a voluntary switch.
 
 Only **application code** is preempted: an app inside a `kapi_*` call, and the
 kernel's own threads, are not (the **kernel is non-preemptive**, the classic Unix
@@ -192,7 +189,8 @@ circle/           upstream Circle clone (not committed; cloned separately)
 6. Framebuffer (`C2DGraphics`) + `GImage` rendering core (ported from the author's
    FreeBASIC `SimpleOS`).
 7. Compositor + window manager; two animated demos running simultaneously.
-8. **Switch to Option C** (EL1 apps + direct call) then **fixed-table ABI**.
+8. **Switch to Option C** (EL1 apps + direct call) then **fixed-table ABI** (2026-10: apps
+   moved to EL0, system calls through the same table).
 9. Onyx desktop (panel + applist), stream/stdio subsystem, terminal + `/bin`,
    file manager.
 10. Modal dialogs, themes, app-drawn wallpaper, PID management, keyboard layouts,

@@ -1,10 +1,10 @@
 # Protected mode for apps (EL0 + system calls) — design note
 
-> **Status (2026-10-02): steps 0–5 implemented on branch `ccr-182e4cf6-fxr778`, kapi v73 —
-> built, not yet tried on the Pi.** Apps still run legacy (EL1) by default; protected (EL0) is
-> opt-in per app (`app.txt` `mode = protected`, `cmdline.txt` `protected=` / `appmode=`). The user's
-> goal: **every app protected, no legacy left** — after the test on the Pi. What was done is in
-> [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. Below, the original study
+> **Status (2026-10-02): done — every app runs at EL0, the EL1 ("legacy") mode is removed
+> (branch `ccr-182e4cf6-fxr778`, kapi v74).** Steps 0–5 were tried on the Pi (v73, opt-in): all
+> passed; then the legacy path was removed, the ID register reads emulated, the system calls
+> counted per process (`sysstat`), every app audited (`tools/el0scan.sh`) and rebuilt. What was
+> done: [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. Below, the original study
 > (2026-09-30, kapi v68, 189 entries).
 
 ## 1. Where things stand
@@ -199,8 +199,14 @@ Findings on the way:
 - The A72 has no PAN and no UAO: the kernel reaches EL0 pages directly, and the copies use plain
   `LDR`/`STR` after the range check.
 
+**v74 (the same day): no legacy left.** Every process at EL0; removed: the launch choice
+(`appmode=`, `protected=`, `app.txt mode`), `PreemptTrampoline`, the EL1 app-fault path and
+`appfault=`, the kernel's app `memcpy` copies, `nullguard` (page 0 is EL1-only anyway), the old
+dormant syscall code; added: the ID register emulation, `proc_stats` / `sysstat`, `tools/el0scan.sh`
+(the card scans clean), the user-side `memcpy`/`memset` aligning their stores (Device framebuffer);
+`hangtest` removed (an app can no longer freeze the machine).
+
 **Still open:** the powerful kapis (§5) need a permission model; the GPU can reach physical memory
 through shaders; the crash record does not capture EL0 kills (kmsg only); the system-call cost is
-not measured; the old dormant EL0 code can be removed. **Next (the user's go):** test on the Pi
-(`faulttest`, `el0test`, `eyes`, `tinycalc` protected), then every app protected, `appmode=protected`
-by default, and the legacy path removed.
+not measured; TPIDR_EL0 is not saved per thread (needed for TLS, the POSIX layer). **Next:** the v74 test on
+the Pi; then demand paging (`mmap`/`munmap`/`mprotect`), the first brick of a POSIX layer.
