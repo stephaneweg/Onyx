@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 19:36:11 +0200
+Subject: [PATCH 7/7] WebAssembly exceptions caught in IPInt in a build without
+ the JIT
+
+What: interpreter/Interpreter.h, Interpreter.cpp: CatchInfo's m_nativeCode and
+m_nativeCodeForDispatchAndCatch exist with ENABLE(WEBASSEMBLY) too, and a WebAssembly handler's
+native code is always copied into them. jit/JITExceptions.cpp (genericUnwind, the !ENABLE(JIT)
+branch): when the handler's catch PC is an IPInt one, the catch routine is the handler's native
+code.
+
+Why: with ENABLE(JIT) off, genericUnwind() only knew bytecode handlers; for a handler in an
+IPInt function it left catchRoutine null and stopped on RELEASE_ASSERT(catchRoutine) (an
+ASSERT said "IPInt does not support no JIT"): any WebAssembly exception caught by WebAssembly
+code (catch, catch_all, try_table, rethrow, delegate) ended the process. But an IPInt
+handler's native code is one of the in-place interpreter's catch entry thunks
+(LLInt::inPlaceInterpreterCatchEntryThunk()...): LLInt assembly, present without the JIT. Not
+specific to Onyx: any ENABLE(WEBASSEMBLY) && !ENABLE(JIT) build (upstream tests JIT-less
+WebAssembly with useJIT=false at run time, on builds that have the JIT).
+---
+ Source/JavaScriptCore/interpreter/Interpreter.cpp |  2 --
+ Source/JavaScriptCore/interpreter/Interpreter.h   |  3 ++-
+ Source/JavaScriptCore/jit/JITExceptions.cpp       | 10 +++++++++-
+ 3 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/Source/JavaScriptCore/interpreter/Interpreter.cpp b/Source/JavaScriptCore/interpreter/Interpreter.cpp
+index ebf37846..b93206d0 100644
+--- a/Source/JavaScriptCore/interpreter/Interpreter.cpp
++++ b/Source/JavaScriptCore/interpreter/Interpreter.cpp
+@@ -773,10 +773,8 @@ CatchInfo::CatchInfo(const Wasm::HandlerInfo* handler, const Wasm::Callee* calle
+     m_valid = !!handler;
+     if (m_valid) {
+         m_type = HandlerType::Catch;
+-#if ENABLE(JIT)
+         m_nativeCode = handler->m_nativeCode;
+         m_nativeCodeForDispatchAndCatch = nullptr;
+-#endif
+         m_catchPCForInterpreter = { static_cast<JSInstruction*>(nullptr) };
+         if (callee->compilationMode() == Wasm::CompilationMode::IPIntMode) {
+             m_catchPCForInterpreter = handler->m_target;
+diff --git a/Source/JavaScriptCore/interpreter/Interpreter.h b/Source/JavaScriptCore/interpreter/Interpreter.h
+index a9b0b63c..d8ccf331 100644
+--- a/Source/JavaScriptCore/interpreter/Interpreter.h
++++ b/Source/JavaScriptCore/interpreter/Interpreter.h
+@@ -120,7 +120,8 @@ using JSOrWasmInstruction = Variant<const JSInstruction*, uintptr_t /* IPIntOffs
+ 
+         bool m_valid { false };
+         HandlerType m_type;
+-#if ENABLE(JIT)
++#if ENABLE(JIT) || ENABLE(WEBASSEMBLY)
++        // (Without the JIT too: IPInt's catch entry points are LLInt assembly, not generated code.)
+         CodePtr<ExceptionHandlerPtrTag> m_nativeCode;
+         CodePtr<ExceptionHandlerPtrTag> m_nativeCodeForDispatchAndCatch;
+ #endif
+diff --git a/Source/JavaScriptCore/jit/JITExceptions.cpp b/Source/JavaScriptCore/jit/JITExceptions.cpp
+index dfd3b50f..12a40df2 100644
+--- a/Source/JavaScriptCore/jit/JITExceptions.cpp
++++ b/Source/JavaScriptCore/jit/JITExceptions.cpp
+@@ -78,9 +78,17 @@ void genericUnwind(VM& vm, CallFrame* callFrame)
+             return LLInt::getCodePtr(pc->opcodeID());
+         };
+ 
+-        ASSERT_WITH_MESSAGE(!std::holds_alternative<uintptr_t>(catchPCForInterpreter), "IPInt does not support no JIT");
+         if (std::holds_alternative<const JSInstruction*>(catchPCForInterpreter))
+             catchRoutine = getCatchRoutine(std::get<const JSInstruction*>(catchPCForInterpreter));
++#if ENABLE(WEBASSEMBLY)
++        else {
++            // A handler in an IPInt function: its catch entry point is one of the in-place
++            // interpreter's thunks (LLInt assembly), usable without the JIT.
++            catchRoutine = handler.m_nativeCode.taggedPtr();
++        }
++#else
++        ASSERT_WITH_MESSAGE(!std::holds_alternative<uintptr_t>(catchPCForInterpreter), "IPInt needs WebAssembly");
++#endif
+ #endif
+     } else
+         catchRoutine = LLInt::handleUncaughtException(vm).code().taggedPtr();

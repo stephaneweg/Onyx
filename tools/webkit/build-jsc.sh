@@ -4,16 +4,17 @@
 # tools/onyx-toolchain.cmake, against the POSIX sysroot (ICU from tools/ports).
 #
 #   sh tools/webkit/fetch.sh                      # the checkout (once)
-#   sh tools/webkit/build-jsc.sh                  # C_LOOP interpreter -> $BUILD/bin/jsc
-#   INTERP=llint sh tools/webkit/build-jsc.sh     # the LLInt (offlineasm's ARM64 back end), no JIT
+#   sh tools/webkit/build-jsc.sh                  # the LLInt (offlineasm's ARM64 back end; no JIT)
+#                                                 # with WebAssembly (its interpreter) -> $BUILD/bin/jsc
+#   INTERP=cloop sh tools/webkit/build-jsc.sh     # the portable C++ interpreter (no WebAssembly)
 #   sh tools/webkit/build-jsc.sh install          # + strip it into user/bin/jsc.elf (make stage
 #                                                 #   copies it to the card as /bin/jsc)
 #
 # Variables: WEBKIT_DIR (the checkout, as fetch.sh), BUILD (default <WEBKIT_DIR>-build/jsc-<interp>),
 # ONYX_SYSROOT (default <onyx>/out/sysroot-onyx), JOBS (default nproc), CMAKE_EXTRA (more -D...).
 # Host tools: cmake >= 3.20, ninja, perl, python3, ruby (offlineasm), gperf (apt install gperf, or
-# build it from source: a host tool), unifdef (USE_SYSTEM_UNIFDEF). About 70 minutes on 4 cores
-# for a first build.
+# build it from source: a host tool), unifdef (USE_SYSTEM_UNIFDEF). A first build: about 8 minutes on
+# 16 cores, 70 on 4.
 #
 # Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
 # hereby granted, free of charge, to any person obtaining a copy of this software and associated
@@ -30,7 +31,7 @@ ONYX=$(cd "$HERE/../.." && pwd)
 if [ -z "${WEBKIT_DIR:-}" ]; then
 	if [ -d /home/user ]; then WEBKIT_DIR=/home/user/webkit; else WEBKIT_DIR=$HOME/webkit; fi
 fi
-: "${INTERP:=cloop}"
+: "${INTERP:=llint}"
 : "${BUILD:=$WEBKIT_DIR-build/jsc-$INTERP}"
 : "${ONYX_SYSROOT:=$ONYX/out/sysroot-onyx}"
 : "${JOBS:=$(nproc)}"
@@ -45,8 +46,8 @@ for t in cmake ninja perl python3 ruby gperf; do
 done
 
 case $INTERP in
-cloop) INTERP_FLAGS="-DENABLE_C_LOOP=ON";;
-llint) INTERP_FLAGS="-DENABLE_C_LOOP=OFF";;
+cloop) INTERP_FLAGS="-DENABLE_C_LOOP=ON -DENABLE_WEBASSEMBLY=OFF";;
+llint) INTERP_FLAGS="-DENABLE_C_LOOP=OFF -DENABLE_WEBASSEMBLY=ON -DENABLE_WEBASSEMBLY_BBQJIT=OFF -DENABLE_WEBASSEMBLY_OMGJIT=OFF";;
 *) echo "build-jsc.sh: INTERP is cloop or llint" >&2; exit 1;;
 esac
 
@@ -57,7 +58,7 @@ if [ ! -f "$BUILD/build.ninja" ]; then
 		-DCMAKE_TOOLCHAIN_FILE="$ONYX/tools/onyx-toolchain.cmake" -DONYX_SYSROOT="$ONYX_SYSROOT" \
 		-DPORT=Onyx -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -g0" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -g0" \
-		-DENABLE_JIT=OFF -DENABLE_WEBASSEMBLY=OFF -DENABLE_SAMPLING_PROFILER=OFF \
+		-DENABLE_JIT=OFF -DENABLE_SAMPLING_PROFILER=OFF \
 		-DUSE_SYSTEM_MALLOC=ON -DENABLE_REMOTE_INSPECTOR=OFF -DDEVELOPER_MODE=OFF \
 		$INTERP_FLAGS $CMAKE_EXTRA
 fi

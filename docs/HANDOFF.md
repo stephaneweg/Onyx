@@ -136,7 +136,8 @@ answer in French. The docs stay in English.
   the input-state page for key_held/pad_state, the PDF Viewer's flicker: later (notes above / plan).
 - **WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`): **done on the
   PC bench** (branch **`webkit-port-step1`**, the user's PC, WSL): WTF and JavaScriptCore build, `jsc`
-  runs with the LLInt (no JIT) and passes WebKit's es6 and default stress tests under qemu
+  runs with the LLInt (no JIT; WebAssembly in its interpreter) and passes WebKit's es6, default
+  stress and WebAssembly tests under qemu
   (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is staged on that branch's card. **Waiting for the
   Pi test** (the plan is in `docs/08-WEBKIT-PORT.md`), then: merge into `main`, publish the package,
   and step 2 (WebCore) on a branch `webkit-port`. To resume: `docs/08-WEBKIT-PORT.md` ("status / how

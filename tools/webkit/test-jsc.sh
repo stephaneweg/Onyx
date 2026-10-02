@@ -6,15 +6,19 @@
 #   stress   a part of WebKit's JSTests/stress: the tests the harness runs with its default
 #            options (no //@ directive, or //@ runDefault alone), one in STRESS_STEP; the few
 #            that cannot pass in this port are expected to fail (STRESS_XFAIL below)
+#   wasm     WebKit's JSTests/wasm (the LLInt build: WebAssembly in its interpreter): the
+#            directories its harness runs as "the WebAssembly suite" (WASM_DIRS below), each test
+#            as a module (-m) from its directory, with its //@ requireOptions; a test with a
+#            //@ skip or another directive of its own is left out
 #   bench    tools/webkit/bench.js (timings under qemu: to compare the interpreters, not the Pi)
 #
-#   sh tools/webkit/test-jsc.sh [smoke] [es6] [stress] [bench]     # default: smoke es6
-#   INTERP=llint sh tools/webkit/test-jsc.sh ...                    # the LLInt build's jsc
+#   sh tools/webkit/test-jsc.sh [smoke] [es6] [stress] [wasm] [bench]   # default: smoke es6
+#   INTERP=cloop sh tools/webkit/test-jsc.sh ...                    # the C_LOOP build's jsc
 #   STRESS_STEP=1 sh tools/webkit/test-jsc.sh stress                # every such test (default 10)
 #
 # Variables: WEBKIT_DIR, BUILD (as build-jsc.sh), JOBS (default nproc), TIMEOUT (seconds a test,
-# default 600:
-# qemu is slow), OUT (the logs, default $POSIXSIM_ROOT/jsc-<interp>). A test passes when jsc exits
+# default 600: qemu
+# is slow), OUT (the logs, default $POSIXSIM_ROOT/jsc-<interp>). A test passes when jsc exits
 # with 0 (an uncaught exception: 3) in time. The failures' names are in $OUT/failed.txt, each
 # test's output in $OUT/log/. The exit status is the number of unexpected results.
 # The bench is not the Pi (its kernel, its memory, its timing): the Pi is the reference.
@@ -26,7 +30,7 @@ ONYX=$(cd "$HERE/../.." && pwd)
 if [ -z "${WEBKIT_DIR:-}" ]; then
 	if [ -d /home/user ]; then WEBKIT_DIR=/home/user/webkit; else WEBKIT_DIR=$HOME/webkit; fi
 fi
-: "${INTERP:=cloop}"
+: "${INTERP:=llint}"
 : "${BUILD:=$WEBKIT_DIR-build/jsc-$INTERP}"
 : "${ONYX_SYSROOT:=$ONYX/out/sysroot-onyx}"
 : "${JOBS:=$(nproc)}"
@@ -46,8 +50,18 @@ NAME=jsc-$INTERP
 # (and its time zone: TZ=US/Pacific, which the Intl tests expect)
 OPTS="--validateOptions=true --useFTLJIT=false --useFunctionDotArguments=true --validateExceptionChecks=true --useDollarVM=true --maxPerThreadStackUsage=1572864"
 # stress tests that cannot pass here: a locale left out of the filtered ICU data
-# (tools/ports/icu/data-filter.json: Swahili, Ewe), WebAssembly (not built: no JIT)
-STRESS_XFAIL="intl-relativetimeformat.js string-localeCompare.js structured-clone.js wasm-gc-structureid-cast-optimization.js"
+# (tools/ports/icu/data-filter.json: Swahili, Ewe); with C_LOOP, the two that use WebAssembly
+STRESS_XFAIL="intl-relativetimeformat.js string-localeCompare.js"
+[ "$INTERP" = cloop ] && STRESS_XFAIL="$STRESS_XFAIL structured-clone.js wasm-gc-structureid-cast-optimization.js"
+# JSTests/wasm: what wasm.yaml runs with runWebAssemblySuite (fuzz and v8 left out: other harnesses)
+WASM_DIRS="stress js-api noJIT function-tests references function-references gc regress self-test branch-hints extended-const"
+# WebAssembly tests that cannot pass in this port:
+# - SIMD: the parser only has it with the B3 JIT (ENABLE(B3_JIT))
+WASM_XFAIL_SIMD="gc/bulk-array-element-types.js gc/struct-new-default-v128.js stress/inline-wasm-simd-into-non-simd.js stress/simd-multimemory.js extended-const/extended-const.js"
+# - shared memories and "signaling" (fast) memories: they need the fault handler, which Onyx
+#   cannot have (no signal for a fault): memories are bounds-checked explicitly
+WASM_XFAIL_SHARED="references/memory_copy_shared.js references/memory_fill_shared.js stress/atomic-multimemory.js stress/multimemory-shared-grow-refreshes-only-its-own-slots.js stress/shared-memory-errors.js stress/shared-wasm-memory-buffer.js stress/wasm-shared-memory-growable.js stress/tail-call-unused-pins.js js-api/memory-toFixedLengthBuffer.js js-api/memory-toResizableBuffer.js js-api/memory64-js-api.js js-api/test_memory.js"
+: "${WASM_XFAIL:=$WASM_XFAIL_SIMD $WASM_XFAIL_SHARED}"
 
 [ -f "$BUILD/lib/libJavaScriptCore.a" ] || { echo "test-jsc.sh: no build in $BUILD: sh tools/webkit/build-jsc.sh" >&2; exit 2; }
 [ -x "$POSIXSIM_QEMU" ] || { echo "test-jsc.sh: no qemu-aarch64" >&2; exit 2; }
@@ -66,13 +80,14 @@ mkdir -p "$OUT/log" "$R/SD/jstests"
 : > "$OUT/results.txt"
 jsc () { POSIXSIM_ARGV0="SD:/bin/$NAME" "$POSIXSIM_QEMU" "$R/SD/bin/$NAME" "$@"; }
 
-# one test: <suite> <file> <pass|fail> -> a line "<PASS|FAIL|XFAIL|XPASS|TIMEOUT> <suite>/<file>"
+# one test: <suite> <file> <pass|fail> [jsc options] -> a line
+# "<PASS|FAIL|XFAIL|XPASS|TIMEOUT> <suite>/<file>" (the suite is its directory in SD:/jstests)
 cat > "$OUT/one.sh" <<EOF
 #!/bin/sh
-suite=\$1; f=\$2; want=\$3
-log="$OUT/log/\$suite-\$f.log"
+suite=\$1; f=\$2; want=\$3; shift 3
+log="$OUT/log/\$(echo "\$suite-\$f" | tr / _).log"
 TZ=US/Pacific POSIXSIM_CWD="SD:/jstests/\$suite" POSIXSIM_ARGV0="SD:/bin/$NAME" \\
-	timeout $TIMEOUT "$POSIXSIM_QEMU" "$R/SD/bin/$NAME" $OPTS "\$f" > "\$log" 2>&1 < /dev/null
+	timeout $TIMEOUT "$POSIXSIM_QEMU" "$R/SD/bin/$NAME" $OPTS "\$@" "\$f" > "\$log" 2>&1 < /dev/null
 st=\$?
 if [ \$st -eq 124 ]; then r=TIMEOUT
 elif [ \$st -eq 0 ]; then [ \$want = pass ] && r=PASS || r=XPASS
@@ -127,13 +142,42 @@ for s in $suites; do
 		echo "stress: $(wc -l < "$OUT/stress.list") tests (one in $STRESS_STEP) in $(( $(date +%s) - start )) s"
 		summary stress
 		;;
+	wasm)
+		[ -d "$T/wasm/stress" ] || { echo "test-jsc.sh: no $T/wasm (TESTS=1 sh tools/webkit/fetch.sh)" >&2; exit 2; }
+		[ "$INTERP" = llint ] || { echo "test-jsc.sh: wasm: the LLInt build only (C_LOOP has no WebAssembly)" >&2; exit 2; }
+		# the harness's modules (assert.js, Builder.js, wasm.json...) beside the directories run
+		rm -rf "$R/SD/jstests/wasm"; mkdir -p "$R/SD/jstests/wasm"
+		for f in "$T"/wasm/*; do [ -f "$f" ] && cp "$f" "$R/SD/jstests/wasm/"; done
+		for d in $WASM_DIRS; do
+			[ -d "$T/wasm/$d" ] || continue
+			cp -r "$T/wasm/$d" "$R/SD/jstests/wasm/$d"
+		done
+		# files some tests load: the .wasm modules, v8's module builder
+		[ -d "$T/wasm/modules" ] && cp -r "$T/wasm/modules" "$R/SD/jstests/wasm/modules"
+		[ -d "$T/wasm/v8/resources" ] && mkdir -p "$R/SD/jstests/wasm/v8" && cp -r "$T/wasm/v8/resources" "$R/SD/jstests/wasm/v8/resources"
+		for d in $WASM_DIRS; do
+			[ -d "$T/wasm/$d" ] || continue
+			( cd "$T/wasm/$d" && for f in *.js; do
+				[ -f "$f" ] || continue
+				grep -q '^//@ *skip' "$f" && continue
+				[ -n "$(grep '^//@' "$f" | grep -v '^//@ *requireOptions')" ] && continue
+				ro=$(grep '^//@ *requireOptions' "$f" | sed 's/^[^(]*(//; s/)[^)]*$//' | tr -d '"\r' | tr ',' ' ' | tr '\n' ' ')
+				case " $WASM_XFAIL " in *" $d/$f "*) w=fail;; *) w=pass;; esac
+				echo "wasm/$d $f $w -m $ro"
+			  done )
+		done | sed 's/ *$//' > "$OUT/wasm.list"	# (xargs -L joins a line ending with a blank to the next)
+		start=$(date +%s)
+		xargs -P "$JOBS" -L 1 sh "$OUT/one.sh" < "$OUT/wasm.list" >> "$OUT/results.txt"
+		echo "wasm: $(wc -l < "$OUT/wasm.list") tests in $(( $(date +%s) - start )) s"
+		summary wasm
+		;;
 	bench)
 		mkdir -p "$R/SD/docs/jsc"
 		cp "$HERE/bench.js" "$R/SD/docs/jsc/"
 		echo "bench ($INTERP, under qemu):"
 		jsc SD:/docs/jsc/bench.js || bad=$((bad + 1))
 		;;
-	*) echo "test-jsc.sh: unknown suite $s (smoke es6 stress bench)" >&2; exit 2;;
+	*) echo "test-jsc.sh: unknown suite $s (smoke es6 stress wasm bench)" >&2; exit 2;;
 	esac
 done
 grep -E '^(FAIL|TIMEOUT|XPASS) ' "$OUT/results.txt" | sort > "$OUT/failed.txt"

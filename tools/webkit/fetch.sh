@@ -6,7 +6,7 @@
 #   sh tools/webkit/fetch.sh                    # -> $WEBKIT_DIR (default /home/user/webkit, else
 #                                               #    $HOME/webkit when /home/user is not there)
 #   WEBKIT_DIR=<dir> sh tools/webkit/fetch.sh   # elsewhere
-#   TESTS=0 sh tools/webkit/fetch.sh            # without JSTests/stress + JSTests/es6
+#   TESTS=0 sh tools/webkit/fetch.sh            # without JSTests/stress, es6 and wasm/*
 #   REAPPLY=1 sh tools/webkit/fetch.sh          # reset the checkout to the pinned revision and
 #                                               # apply the patches again (local changes lost)
 #
@@ -41,7 +41,9 @@ fi
 : "${SPARSE_EXTRA:=}"
 
 PATHS="Source/cmake Source/WTF Source/JavaScriptCore Source/bmalloc Tools/Scripts/webkitperl"
-[ "$TESTS" = 1 ] && PATHS="$PATHS JSTests/stress JSTests/es6 JSTests/resources"
+# (JSTests/wasm: the directories test-jsc.sh runs and the files they load; the whole of it is 190 MB)
+WASM_TESTS="stress js-api noJIT function-tests references function-references gc regress self-test branch-hints extended-const modules v8/resources"
+[ "$TESTS" = 1 ] && PATHS="$PATHS JSTests/stress JSTests/es6 JSTests/resources $(for d in $WASM_TESTS; do printf 'JSTests/wasm/%s ' "$d"; done)"
 PATHS="$PATHS $SPARSE_EXTRA"
 
 if [ ! -d "$WEBKIT_DIR/.git" ]; then

@@ -1,0 +1,142 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 19:36:11 +0200
+Subject: [PATCH 6/7] Onyx: WebAssembly through its interpreter (IPInt), the
+ LLInt the port's default
+
+What:
+- OptionsOnyx.cmake: the port's defaults are now ENABLE_C_LOOP OFF (the LLInt) and
+  ENABLE_WEBASSEMBLY ON, with ENABLE_WEBASSEMBLY_BBQJIT / OMGJIT OFF: WebAssembly runs in its
+  in-place interpreter, no JIT tier. (C_LOOP still builds: ENABLE_C_LOOP=ON with
+  ENABLE_WEBASSEMBLY=OFF, the two conflict.)
+- runtime/Options.cpp: for OS(ONYX), after the options are read, useWasmFaultSignalHandler (and
+  with it useWasmFastMemory) and collectContinuously are forced off.
+- wasm/WasmFaultSignalHandler.cpp: the fault handler only exists with HAVE(MACHINE_CONTEXT).
+- wtf/posix/ThreadingPOSIX.cpp: Thread::suspend() on Onyx says why before it crashes.
+
+Why: WebAssembly's default bounds checking relies on a fault (SIGSEGV / SIGBUS) caught in a
+guard region and on rewriting the faulting thread's program counter. Onyx delivers no signal
+for a fault (the kernel ends the process) and has no machine context, so memories are
+bounds-checked explicitly and null references tested explicitly, which JavaScriptCore already
+supports when the fault handler is off; shared memories, which require the handler, are refused
+by the parser ("shared memory is not enabled"). SIMD stays unavailable: the parser only has it
+with the B3 JIT. Nothing here needs executable memory.
+collectContinuously (a debugging option) asks for collections from a thread of its own, so a
+collection could run while the mutator has no heap access: the collector thread would then
+have to suspend it to scan its stack, which Onyx cannot do (see "the mutator finishes the
+collections before it releases heap access").
+---
+ Source/JavaScriptCore/runtime/Options.cpp          | 11 +++++++++++
+ .../JavaScriptCore/wasm/WasmFaultSignalHandler.cpp |  9 +++++++++
+ Source/WTF/wtf/posix/ThreadingPOSIX.cpp            |  3 ++-
+ Source/cmake/OptionsOnyx.cmake                     | 14 +++++++++-----
+ 4 files changed, 31 insertions(+), 6 deletions(-)
+
+diff --git a/Source/JavaScriptCore/runtime/Options.cpp b/Source/JavaScriptCore/runtime/Options.cpp
+index f548dec9..c4388682 100644
+--- a/Source/JavaScriptCore/runtime/Options.cpp
++++ b/Source/JavaScriptCore/runtime/Options.cpp
+@@ -1031,6 +1031,17 @@ void Options::notifyOptionsChanged()
+     if (!Options::useMachForExceptions() || Options::useJITCage())
+         Options::allowNonSPTagging() = true;
+ 
++#if OS(ONYX)
++    // Whatever the command line says. No fault is delivered to a handler on Onyx (the kernel ends
++    // the process): WebAssembly's memories are bounds-checked explicitly, without the guard-page
++    // reservations (and so without shared memories). And a thread cannot be suspended there: the
++    // collector must never have to scan the stack of a mutator that has no heap access
++    // (Heap::finishCollectionsBeforeReleasingAccess), which collectContinuously's thread, asking
++    // for collections on its own, would make it do.
++    Options::useWasmFaultSignalHandler() = false;
++    Options::collectContinuously() = false;
++#endif
++
+     if (!Options::useWasmFaultSignalHandler())
+         Options::useWasmFastMemory() = false;
+ 
+diff --git a/Source/JavaScriptCore/wasm/WasmFaultSignalHandler.cpp b/Source/JavaScriptCore/wasm/WasmFaultSignalHandler.cpp
+index d6e6699a..546e125b 100644
+--- a/Source/JavaScriptCore/wasm/WasmFaultSignalHandler.cpp
++++ b/Source/JavaScriptCore/wasm/WasmFaultSignalHandler.cpp
+@@ -60,6 +60,10 @@ static constexpr bool verbose = false;
+ }
+ }
+ 
++// Without a machine context (Onyx: no signal is delivered for a fault) there is no fault handler:
++// Options::useWasmFaultSignalHandler() is off there, memories and null references are checked
++// explicitly.
++#if HAVE(MACHINE_CONTEXT)
+ static SignalAction trapHandler(Signal signal, SigInfo& sigInfo, PlatformRegisters& context)
+ {
+     RELEASE_ASSERT(signal == Signal::AccessFault);
+@@ -129,6 +133,7 @@ static SignalAction trapHandler(Signal signal, SigInfo& sigInfo, PlatformRegiste
+     }
+     return SignalAction::NotHandled;
+ }
++#endif // HAVE(MACHINE_CONTEXT)
+ 
+ void activateSignalingMemory()
+ {
+@@ -157,9 +162,13 @@ void prepareSignalingMemory()
+ #if CPU(ARM64E) && HAVE(HARDENED_MACH_EXCEPTIONS)
+         presignedTrampoline = g_wtfConfig.signalHandlers.presignReturnPCForHandler(LLInt::getCodePtr<NoPtrTag>(wasm_throw_from_fault_handler_trampoline_reg_instance));
+ #endif
++#if HAVE(MACHINE_CONTEXT)
+         addSignalHandler(Signal::AccessFault, [] (Signal signal, SigInfo& sigInfo, PlatformRegisters& ucontext) {
+             return trapHandler(signal, sigInfo, ucontext);
+         });
++#else
++        RELEASE_ASSERT_NOT_REACHED();
++#endif
+     });
+ }
+ 
+diff --git a/Source/WTF/wtf/posix/ThreadingPOSIX.cpp b/Source/WTF/wtf/posix/ThreadingPOSIX.cpp
+index 88b20aeb..8f75192c 100644
+--- a/Source/WTF/wtf/posix/ThreadingPOSIX.cpp
++++ b/Source/WTF/wtf/posix/ThreadingPOSIX.cpp
+@@ -587,7 +587,8 @@ auto Thread::suspend(const ThreadSuspendLocker&) -> std::expected<void, Platform
+         return makeUnexpected(result);
+     return { };
+ #elif OS(ONYX)
+-    RELEASE_ASSERT_WITH_MESSAGE(false, "Onyx cannot suspend a thread (no asynchronous signals): a VM shared between threads is not supported.");
++    WTFLogAlways("FATAL: Thread::suspend(): Onyx cannot suspend a thread (no asynchronous signals). A VM shared between threads, or a collection running while the mutator has no heap access, is not supported.");
++    CRASH();
+     return makeUnexpected(ENOSYS);
+ #else
+     if (!m_suspendCount) {
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+index 5ef8ce21..8ce40684 100644
+--- a/Source/cmake/OptionsOnyx.cmake
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -26,7 +26,7 @@
+ # CMake toolchain file (CMAKE_SYSTEM_NAME Onyx). Everything is static (no shared libraries, no
+ # dlopen), the page size is 64 KB, there is no executable memory for a JIT yet, no GLib: the
+ # generic event loop, like the PlayStation and JSCOnly ports. Step 1 builds WTF and
+-# JavaScriptCore (C_LOOP, or LLInt without JIT) and the jsc shell; WebCore and WebKit come next.
++# JavaScriptCore (the LLInt without JIT, or C_LOOP) and the jsc shell; WebCore and WebKit come next.
+ 
+ set(PORT Onyx)
+ 
+@@ -61,13 +61,17 @@ WEBKIT_OPTION_BEGIN()
+ WEBKIT_OPTION_DEFINE(ENABLE_STATIC_JSC "Whether to build JavaScriptCore as a static library." PUBLIC ON)
+ 
+ # No executable memory (the kernel refuses PROT_EXEC outside its own code arena): no JIT tier.
+-# The interpreter: C_LOOP (portable C++) by default; ENABLE_C_LOOP=OFF builds the LLInt from
+-# offlineasm's ARM64 back end (still no JIT, no runtime code generation).
++# The interpreter: the LLInt, assembled at build time from offlineasm's ARM64 back end (no
++# runtime code generation), and with it WebAssembly through its in-place interpreter (IPInt), the
++# WebAssembly JIT tiers off. ENABLE_C_LOOP=ON (with ENABLE_WEBASSEMBLY=OFF: they conflict) builds
++# the portable C++ interpreter instead.
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_JIT PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DFG_JIT PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_FTL_JIT PRIVATE OFF)
+-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_C_LOOP PRIVATE ON)
+-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_C_LOOP PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY PRIVATE ON)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY_BBQJIT PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY_OMGJIT PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SAMPLING_PROFILER PRIVATE OFF)
+ 
+ # The system allocator (newlib's malloc over libonyxposix); no bmalloc / libpas / mimalloc, no

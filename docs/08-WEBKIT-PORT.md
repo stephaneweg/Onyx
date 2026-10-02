@@ -3,7 +3,8 @@
 ## Status / how to resume (2026-10-02, branch `webkit-port-step1`)
 
 **Step 1 (WTF + JavaScriptCore → the `jsc` shell) is done on the PC bench and waits for its test
-on the Pi.** `/bin/jsc` (the LLInt, no JIT; 31.7 MB with ICU's data) is staged in that branch's
+on the Pi.** `/bin/jsc` (the LLInt and WebAssembly's interpreter, no JIT; 33.1 MB with ICU's data) is
+staged in that branch's
 `sdcard/`, with `SD:/docs/jsc/smoke.js` and `bench.js`.
 
 **Pinned WebKit revision:** `b8a7a626127c0010a557c9d6466fefd38d9477c1` (WebKit `main`, 2026-10-02;
@@ -17,10 +18,11 @@ its `Source/ThirdParty/skia` is Skia m154 `588b550a`, the copy already ported in
   about 280 MB: the top-level CMake files, `Source/cmake`, `Source/WTF`, `Source/JavaScriptCore`,
   `Source/bmalloc`, `Tools/Scripts/webkitperl`, `JSTests/stress`, `JSTests/es6`; then `git am` of the
   patch series on a branch `onyx`), `export-patches.sh` (the branch `onyx` → `tools/webkit/patches/`),
-  `build-jsc.sh` (configure + build `jsc`; `INTERP=cloop` (default) or `INTERP=llint`, each in its own
-  build tree `<WEBKIT_DIR>-build/jsc-<interp>`; `install` strips it into `user/bin/jsc.elf`),
+  `build-jsc.sh` (configure + build `jsc`; `INTERP=llint` (default: the LLInt, with WebAssembly) or
+  `INTERP=cloop` (the C++ interpreter, without), each in its own build tree
+  `<WEBKIT_DIR>-build/jsc-<interp>`; `install` strips it into `user/bin/jsc.elf`),
   `test-jsc.sh` (the tests on the posixsim bench, below), `smoke.js`, `bench.js`.
-  `make -C user/bin jsc` = `fetch.sh` + `INTERP=llint build-jsc.sh install`.
+  `make -C user/bin jsc` = `fetch.sh` + `build-jsc.sh install`.
 - **The port** (the patch series, `tools/webkit/patches/`):
   1. `0001` — `PORT=Onyx`: `Source/cmake/OptionsOnyx.cmake` (static libraries; `ENABLE_JIT` OFF,
      `ENABLE_C_LOOP` ON by default, WebAssembly / sampling profiler / remote inspector OFF,
@@ -41,6 +43,12 @@ its `Source/ThirdParty/skia` is Skia m154 `588b550a`, the copy already ported in
      `__builtin___clear_cache` (not reached without a JIT).
   5. `0005` — the collector: the mutator **finishes the collections before it releases heap access**
      (see below).
+  6. `0006` — **WebAssembly** in its in-place interpreter (IPInt), and the LLInt as the port's default:
+     `ENABLE_C_LOOP` OFF, `ENABLE_WEBASSEMBLY` ON, the BBQ / OMG JIT tiers OFF; the fault handler
+     and "fast" memories off for `OS(ONYX)` (explicit bounds checks), `collectContinuously` forced off.
+  7. `0007` — WebAssembly exceptions caught by WebAssembly code in a build without the JIT
+     (`genericUnwind` had no catch routine for an IPInt handler when `ENABLE(JIT)` is off: every
+     `catch` / `try_table` ended the process). Not specific to Onyx: worth sending upstream.
   New WebKit-side files carry WebKit's BSD-2 header with "Onyx contributors"; WebKit's LGPL / BSD
   notices are untouched.
 - **libonyxposix** (commits on the branch): `<uchar.h>`, `onyx-cc.specs` (`__unix__`, `-pthread`
@@ -65,25 +73,35 @@ its `Source/ThirdParty/skia` is Skia m154 `588b550a`, the copy already ported in
   (requests come from the thread holding the VM's lock). Cost: the end of a collection is a pause
   on the mutator when it goes idle; marking stays concurrent and parallel while it runs.
   **Limits: one thread per VM** (a VM shared between threads would need the suspension; workers
-  have their own VM). A kernel call "suspend this thread and give me its registers" would lift
-  both (a kapi addition: not needed so far).
+  have their own VM), and no `--collectContinuously` (a debugging option whose own thread asks for
+  collections while the mutator may have no access: forced off). A kernel call "suspend this
+  thread and give me its registers" would lift both (a kapi addition: not needed so far).
+- **WebAssembly without faults.** JavaScriptCore normally lets an out-of-bounds access fault in a
+  guard region and recovers in a signal handler. Not possible on Onyx: memories are bounds-checked
+  explicitly (an option JavaScriptCore has). What that costs: **no shared memories** (the parser
+  ties them to the fault handler: "shared memory is not enabled") — so no WebAssembly threads —
+  and **no SIMD** (the parser only has it with the B3 JIT). Everything else of WebAssembly runs
+  in IPInt: MVP, exceptions, tail calls, GC, references, multi-memory, memory64.
 
 ### Tests (the PC bench: `sh tools/webkit/test-jsc.sh`, qemu-user on `tools/tests/posixsim`)
 
 `jsc` is relinked against the bench's libonyxposix + fake kapi and run under qemu.
 `INTERP=llint|cloop`, the suites `smoke es6 stress bench`, `STRESS_STEP=1` for every stress test.
 
-| Suite | LLInt | C_LOOP |
+| Suite | LLInt (+ WebAssembly) | C_LOOP |
 |---|---|---|
-| `smoke` (`smoke.js`: 29 checks — the language, ICU, the collector, microtasks; `jsc -e`; exit 3 on an exception) | pass | pass |
+| `smoke` (`smoke.js`: 34 checks with WebAssembly, 29 without — the language, ICU, the collector, WebAssembly, microtasks and timers; `jsc -e`; exit 3 on an exception) | pass | pass |
 | `es6` (WebKit's `JSTests/es6`, 605 tests: 595 expected to pass, 10 to fail) | 595 + 10 as expected | 595 + 10 as expected |
-| `stress` (WebKit's `JSTests/stress`: the 4690 tests the harness runs with its default options) | 4686 pass, 4 fail as expected | 4686 pass, 4 fail as expected |
+| `stress` (WebKit's `JSTests/stress`: the 4690 tests the harness runs with its default options) | 4688 pass, 2 fail as expected | 4686 pass, 4 fail as expected |
+| `wasm` (WebKit's `JSTests/wasm`: the directories of its "WebAssembly suite", 611 tests after the ones with a `//@ skip` or a run command of their own) | 594 pass, 17 fail as expected | — (no WebAssembly) |
 
-The 4 expected stress failures: `intl-relativetimeformat.js` and `string-localeCompare.js` (Swahili
-and Ewe are not in the filtered ICU data, `tools/ports/icu/data-filter.json`), `structured-clone.js`
-and `wasm-gc-structureid-cast-optimization.js` (WebAssembly is not built). The harness's options
-and time zone are reproduced (`--maxPerThreadStackUsage=1572864`, `TZ=US/Pacific`...). The stress
-tests with other `//@` directives (JIT tiers, special options: about 1150) are not run.
+The expected failures, each with its reason in `test-jsc.sh`: in `stress`,
+`intl-relativetimeformat.js` and `string-localeCompare.js` (Swahili and Ewe are not in the filtered
+ICU data, `tools/ports/icu/data-filter.json`), and with C_LOOP the two tests that use WebAssembly;
+in `wasm`, 5 tests that need SIMD and 12 that need shared or "signaling" memories (above). The
+harness's options and time zone are reproduced (`--maxPerThreadStackUsage=1572864`,
+`TZ=US/Pacific`...). The stress tests with other `//@` directives (JIT tiers, special options:
+about 1150) are not run.
 
 `bench.js` under qemu on the PC (not the Pi's timings; qemu flatters the C++ loop):
 
@@ -97,7 +115,7 @@ tests with other `//@` directives (JIT tiers, special options: about 1150) are n
 | regexp, 100k matches | 359 ms | 373 ms |
 
 The LLInt is the one staged: it needs no executable memory at run time (it is assembled at build
-time) and is the faster. `el0scan` on the unstripped `jsc`: clean (libgcc's guarded SME helpers
+time), is the faster, and is the one WebAssembly works with. `el0scan` on the unstripped `jsc`: clean (libgcc's guarded SME helpers
 only, as every program of the toolchain).
 
 ### The Pi test (to do: the user)
@@ -105,14 +123,14 @@ only, as every program of the toolchain).
 On a card made from the branch's `sdcard/` (kernel v76 or later), in the Terminal:
 
 1. `jsc -e "print(6*7)"` → `42`.
-2. `jsc SD:/docs/jsc/smoke.js` → the last line is `smoke: ok (29 checks)`.
+2. `jsc SD:/docs/jsc/smoke.js` → the last line is `smoke: ok (34 checks)` (WebAssembly included).
 3. `jsc SD:/docs/jsc/bench.js` → nine lines of timings (send them back: the first real numbers).
 4. `jsc` alone → a `>>>` prompt: `1+1`, `new Intl.DateTimeFormat("fr-FR", {dateStyle: "full"}).format(new Date())`,
    `quit()`.
 5. `jsc -e "setTimeout(() => print('late'), 2000); let a = []; for (let i = 0; i < 300000; i++) a.push({i})"`
    → `late` after two seconds (the collector while the shell waits).
 6. Memory: the Task Manager's figure for `jsc` while step 3 runs.
-What can differ from the bench: the loader on a 31.7 MB image, the kernel's `vm_*` under the
+What can differ from the bench: the loader on a 33.1 MB image, the kernel's `vm_*` under the
 collector's reservations, the main thread's stack size, timing.
 
 ### Resume
@@ -123,8 +141,8 @@ sh tools/toolchain/fetch.sh                                 # aarch64-onyx-elf i
 make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
 sh tools/ports/build-all.sh icu                             # ICU into the sysroot (webkit: all of them)
 sh tools/webkit/fetch.sh                                    # the checkout at the pin + the patches
-INTERP=llint sh tools/webkit/build-jsc.sh install           # -> user/bin/jsc.elf (6 min on 16 cores)
-INTERP=llint STRESS_STEP=1 sh tools/webkit/test-jsc.sh smoke es6 stress bench
+sh tools/webkit/build-jsc.sh install                        # -> user/bin/jsc.elf (7 min on 16 cores)
+STRESS_STEP=1 sh tools/webkit/test-jsc.sh smoke es6 stress wasm bench   # 20 min
 # a change: commit in the checkout (branch onyx), then: sh tools/webkit/export-patches.sh
 ```
 (`ninja -C <build> -k 0 jsc` lists many errors at once. WebKit's CMake uses ccache when it is
@@ -145,8 +163,8 @@ installed.)
 WebKit replaces Jet (NetSurf) as Onyx's browser engine (docs/POSIX-PLAN.md §8, §9, §15: WebKit2 on
 the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
 
-1. **WTF + JavaScriptCore** → the `jsc` shell (C_LOOP, and the LLInt without JIT). *Done on the
-   bench; the Pi test is pending.*
+1. **WTF + JavaScriptCore** → the `jsc` shell (the LLInt without JIT, WebAssembly in its
+   interpreter; C_LOOP as an alternative). *Done on the bench; the Pi test is pending.*
 2. **WebCore** (Skia CPU raster from WebKit's own copy, `SkFontMgr_onyx` instead of fontconfig,
    curl + mbedTLS networking, ICU, HarfBuzz, libxml2, SQLite, woff2).
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
