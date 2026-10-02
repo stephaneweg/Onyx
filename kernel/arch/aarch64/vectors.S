@@ -146,9 +146,10 @@ KVectorTable:
 	VEC	FIQStub			/* reuse Circle's FIQ path */
 	VEC	BadModeEntry		/* SError */
 
-	/* Lower EL using AArch64 (EL0) -- user processes */
-	VEC	SyncEL0Entry
-	VEC	IrqEntry
+	/* Lower EL using AArch64 (EL0) -- protected processes only (kern/el0.h): their own entry
+	   paths, on the task's kernel stack (arch/aarch64/el0.S). Never taken by legacy (EL1) apps. */
+	VEC	El0SyncEntry
+	VEC	El0IrqEntry
 	VEC	FIQStub
 	VEC	BadModeEntry		/* SError */
 

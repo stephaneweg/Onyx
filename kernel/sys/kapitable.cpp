@@ -93,6 +93,10 @@ int  kapi_gpu_render3 (const struct kapi_gpu_frame *, const float *, unsigned, c
 void *kapi_gpu_vbuf (unsigned);
 int  kapi_gpu_texture_rect (int, int, int, int, int, const unsigned *, int);
 int  kapi_vol_info (const char *, struct kapi_vol_info *);
+int  kapi_pop_event (struct kapi_event *);		// (v73)
+unsigned kapi_event_mods (unsigned);
+int  kapi_pop_post (struct kapi_posted *);
+int  kapi_pump_sleep (unsigned);
 int  kapi_win_minimise (unsigned);
 int  kapi_win_geometry (struct kapi_win_geom *);
 unsigned *kapi_resize_window2 (int, int, int *);
@@ -435,4 +439,8 @@ void KApiTableInit (void)
 	t->set_timezone      = kapi_set_timezone;
 	t->gpu_texture_rect  = kapi_gpu_texture_rect;
 	t->vol_info          = kapi_vol_info;
+	t->pop_event         = kapi_pop_event;
+	t->event_mods        = kapi_event_mods;
+	t->pop_post          = kapi_pop_post;
+	t->pump_sleep        = kapi_pump_sleep;
 }

@@ -40,6 +40,7 @@
 class CAddressSpace;
 class CTask;
 struct TSyncObj;
+struct kapi_posted;
 
 #define THREADS_MAX		32		// threads a process may run besides its main one
 #define THREAD_RECS		(THREADS_MAX * 2)	// ... + the ended ones not joined yet
@@ -118,6 +119,8 @@ int  kapi_barrier_wait (int h);
 int  kapi_sync_close (int h);
 int  kapi_post (void (*pFunc) (void *, long), void *pCtx, long lValue);
 int  kapi_pump_wait (unsigned nTimeoutMs);
+int  kapi_pump_sleep (unsigned nTimeoutMs);		// (v73)
+int  kapi_pop_post (struct kapi_posted *pPost);		// (v73)
 int  kapi_wait_word (volatile unsigned *pWord, unsigned nExpected, unsigned nTimeoutMs);
 int  kapi_wake_word (volatile unsigned *pWord);
 int  kapi_thread_priority (int nTid, int nPrio);

@@ -39,7 +39,10 @@ OBJS = \
 	sys/v3d.o \
 	sys/crashlog.o \
 	sys/thread.o \
+	sys/el0.o \
 	arch/aarch64/vectors.o \
+	arch/aarch64/el0.o \
+	arch/aarch64/el0blob.o \
 	arch/aarch64/exception.o
 
 # Our include dirs must come BEFORE Circle's (Rules.mk appends -I$(CIRCLEHOME)/include),

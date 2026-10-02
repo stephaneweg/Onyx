@@ -29,6 +29,9 @@ class CAddressSpace;
 void AppCoreMain (unsigned nCore);			// cores 2, 3: from COnyxCores::Run
 boolean AppCoreOnIRQExit (TTrapFrame *pFrame);		// secondary-core IRQ exit (TRUE: handled)
 boolean AppCoreOnFault (TTrapFrame *pFrame);		// secondary-core sync exception (TRUE: handled)
+// A synchronous exception from an EL0 job (a protected process's, kern/el0.h): bDone, the job
+// returned (El0CoreReturn's system call); else a fault -- dropped as AppCoreOnFault does.
+void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone);
 
 // Stop and free the cores an address space holds (its teardown). FALSE if a core did not
 // answer (its code masked the interrupts): the space must then NOT be freed.
