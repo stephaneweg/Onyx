@@ -1,5 +1,5 @@
 /*
- * user/av/av_os.h -- the media library's few platform calls: a thread, a lock, a nap, a clock.
+ * user/av/av_os.h -- the media library's few platform calls: a thread, a lock, a nap, a clock, a file.
  *
  * On Onyx (and the PC builds that link a kapi: the NetSurf bench's fakekapi, Windows' winkapi)
  * the kapi's threads (v67) and its user-space lock; with AV_POSIX (the standalone tools:
@@ -12,6 +12,7 @@
 
 #ifdef AV_POSIX
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -43,6 +44,24 @@ static inline int av_thread_start(av_thread_t *t, int (*fn)(void *), void *arg, 
 	return t->ok ? 0 : -1;
 }
 static inline void av_thread_join(av_thread_t *t) { if (t->ok) pthread_join(t->t, 0); t->ok = 0; }
+/* a file read in pieces (the player's file mode) */
+typedef FILE *av_file_t;
+static inline av_file_t av_file_open(const char *path) { return fopen(path, "rb"); }
+static inline int64_t av_file_size(av_file_t f)
+{
+	long n;
+	fseek(f, 0, SEEK_END);
+	n = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	return n;
+}
+static inline long av_file_read_at(av_file_t f, int64_t pos, void *buf, size_t n)
+{
+	if (fseek(f, (long) pos, SEEK_SET) != 0)
+		return -1;
+	return (long) fread(buf, 1, n, f);
+}
+static inline void av_file_close(av_file_t f) { fclose(f); }
 static inline int64_t av_os_now_us(void)
 {
 	struct timespec ts;
@@ -76,6 +95,17 @@ static inline void av_thread_join(av_thread_t *t)
 	if (t->tid >= 2) kapi_thread_join(t->tid, KAPI_WAIT_FOREVER, 0);
 	t->tid = 0;
 }
+/* a file read in pieces through the kapi (any volume; newlib's fopen would load it whole) */
+typedef void *av_file_t;
+static inline av_file_t av_file_open(const char *path) { return kapi_open(path); }
+static inline int64_t av_file_size(av_file_t f) { return (int64_t) kapi_fsize64(f); }
+static inline long av_file_read_at(av_file_t f, int64_t pos, void *buf, size_t n)
+{
+	if (kapi_seek(f, (unsigned long long) pos) != 0)
+		return -1;
+	return kapi_read(f, buf, (unsigned) n);
+}
+static inline void av_file_close(av_file_t f) { kapi_close(f); }
 static inline int64_t av_os_now_us(void)
 {
 #if defined(__aarch64__) && !defined(ONYX_HOST_SIM) && !defined(_WIN32)

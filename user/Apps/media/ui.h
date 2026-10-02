@@ -13,21 +13,6 @@ namespace media {
 
 using namespace wtk;
 
-// ---- a growing list of ints -----------------------------------------------------------------------------
-struct IntList
-{
-	int *v; int n, cap;
-	IntList () : v (0), n (0), cap (0) {}
-	~IntList () { free (v); }
-	void clear () { n = 0; }
-	void push (int x) { if (n == cap) { cap = cap ? cap * 2 : 64; v = (int *) realloc (v, sizeof (int) * cap); } v[n++] = x; }
-	void insert (int at, int x) { push (0); memmove (v + at + 1, v + at, sizeof (int) * (n - 1 - at)); v[at] = x; }
-	void remove (int at) { if (at < 0 || at >= n) return; memmove (v + at, v + at + 1, sizeof (int) * (n - 1 - at)); n--; }
-	void copy (const IntList &o) { clear (); for (int i = 0; i < o.n; i++) push (o.v[i]); }
-	int find (int x) const { for (int i = 0; i < n; i++) if (v[i] == x) return i; return -1; }
-	int &operator[] (int i) { return v[i]; }
-};
-
 // ---- the faces --------------------------------------------------------------------------------------------
 enum { F_UI, F_SMALL, F_MID, F_BIG, F_H2, F_H1, F_N };
 static FtTextFace *g_face[F_N];
@@ -65,7 +50,7 @@ static inline void fmt_long (char *b, int cap, long long ms)
 // ---- the icons --------------------------------------------------------------------------------------------
 enum { I_HOME, I_PERSON, I_DISC, I_NOTE, I_TAG, I_FOLDER, I_HEART, I_HEART_O, I_CLOCK, I_LIST, I_PLUS, I_SEARCH, I_PLAY, I_PAUSE,
        I_PREV, I_NEXT, I_SHUFFLE, I_REPEAT, I_REPEAT1, I_VOLUME, I_MUTE, I_QUEUE, I_MINI, I_MORE, I_BACK, I_FWD, I_DOWN, I_EXPAND,
-       I_CLOSE, I_GRID, I_ROWS, I_STAR };
+       I_CLOSE, I_GRID, I_ROWS, I_STAR, I_FILM, I_TV, I_FULL, I_UNFULL, I_BACK10, I_FWD10, I_CHECK };
 static void icon (Canvas &cv, int id, int x, int y, int s, unsigned c)
 {
 	VPath p;
@@ -127,6 +112,24 @@ static void icon (Canvas &cv, int id, int x, int y, int s, unsigned c)
 	case I_ROWS: for (int k = 0; k < 3; k++) p.rrect (PX (3), PY (4 + k * 7), 18 * u, 3 * u, u); break;
 	case I_STAR:
 		{ int t[20]; for (int k = 0; k < 10; k++) { int rr = k % 2 ? 4 : 10; t[2 * k] = PX (12) + rr * u * wk_cos (k * 36 - 90) / 16384; t[2 * k + 1] = PY (12) + rr * u * wk_sin (k * 36 - 90) / 16384; } p.poly (t, 10); } break;
+	case I_FILM:
+		p.rrect (PX (2), PY (4), 20 * u, 16 * u, 2 * u);
+		for (int k = 0; k < 4; k++) { p.hole (PX (5), PY (7 + k * 3 + (k > 1 ? 1 : 0)), u); p.hole (PX (19), PY (7 + k * 3 + (k > 1 ? 1 : 0)), u); }
+		p.fill (cv, c); { VPath w; w.rect (PX (8), PY (6), 8 * u, 12 * u); w.fill (cv, 0xFFFFFF, 70); } return;
+	case I_TV:
+		p.rect (PX (2), PY (5), 20 * u, 2 * u); p.rect (PX (2), PY (17), 20 * u, 2 * u); p.rect (PX (2), PY (5), 2 * u, 14 * u); p.rect (PX (20), PY (5), 2 * u, 14 * u);
+		p.line (PX (8), PY (1), PX (12), PY (5), 2 * u); p.line (PX (16), PY (1), PX (12), PY (5), 2 * u); p.rect (PX (8), PY (20), 8 * u, 2 * u); break;
+	case I_FULL: case I_UNFULL:
+		for (int k = 0; k < 4; k++)
+		{
+			int cx = k % 2 ? 21 : 3, cy = k / 2 ? 21 : 3, dx = k % 2 ? -1 : 1, dy = k / 2 ? -1 : 1;
+			if (id == I_UNFULL) { cx = k % 2 ? 15 : 9; cy = k / 2 ? 15 : 9; dx = -dx; dy = -dy; }
+			int t[] = { PX (cx), PY (cy + 6 * dy), PX (cx), PY (cy), PX (cx + 6 * dx), PY (cy) }; p.polyline (t, 3, 2 * u + u / 2);
+		}
+		break;
+	case I_BACK10: { int t[] = { PX (12), PY (5), PX (12), PY (19), PX (2), PY (12) }; p.poly (t, 3); int q[] = { PX (22), PY (5), PX (22), PY (19), PX (12), PY (12) }; p.poly (q, 3); } break;
+	case I_FWD10: { int t[] = { PX (2), PY (5), PX (2), PY (19), PX (12), PY (12) }; p.poly (t, 3); int q[] = { PX (12), PY (5), PX (12), PY (19), PX (22), PY (12) }; p.poly (q, 3); } break;
+	case I_CHECK: { int t[] = { PX (4), PY (12), PX (10), PY (18), PX (20), PY (6) }; p.polyline (t, 3, 3 * u); } break;
 	}
 #undef PX
 #undef PY

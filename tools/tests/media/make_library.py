@@ -5,6 +5,8 @@ mockup_music.py: their covers too), in every format the app reads -- MP3 (ID3v2 
 comments, a PICTURE), Ogg Vorbis (comments; the cover as the folder's cover.jpg), WAV (RIFF INFO) -- and two
 albums of MIDI files (a Bach-like aria and an 8-bit game tune: several channels, General MIDI instruments).
 The songs last minutes but are tiny: a quiet tone, 8 kHz mono, a low bit rate. A playlist in Music/Playlists.
+And OUT_DIR/Videos: films, clips and a series' episodes (the made-up frames of the mock-ups, panned) -- VP9 + Opus
+in WebM, AV1 in MP4, and one H.264 MP4 (a codec Onyx does not decode: its badge); a film left half way (videos.tsv).
 
 Needs ffmpeg, Pillow and mutagen (pip install mutagen)."""
 import os, sys, struct, subprocess, random, io
@@ -96,6 +98,33 @@ def midi (path, name, style, seed):
 	for t in tracks: d += b"MTrk" + struct.pack (">I", len (t)) + t
 	open (path, "wb").write (d)
 
+# (path under Videos, the mock-ups' frame, seconds, codec)
+VIDEOS = [("Films/Sunset Harbour.webm", 2, 40, "vp9"), ("Films/Night Train.webm", 1, 24, "vp9"), ("Clips/Mountain Trails.webm", 0, 16, "vp9"),
+	  ("Series/City Nights S01E03.webm", 1, 14, "vp9"), ("Series/City Nights S01E04.webm", 4, 14, "vp9"), ("Clips/Foxy & Friends.mp4", 3, 8, "av1"),
+	  ("Clips/Garden Party.mp4", 0, 6, "h264")]
+
+def video (path, frame, seconds, codec, tmp):
+	png = os.path.join (tmp, "frame%d.png" % frame)
+	if not os.path.exists (png): MM.frame_img (frame, 480, 270).convert ("RGB").resize ((1280, 720), Image.LANCZOS).save (png)
+	fps = 24
+	pan = "zoompan=z='1.0+0.0012*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=%d:s=640x360:fps=%d" % (seconds * fps, fps)
+	src = ["-loop", "1", "-i", png, "-f", "lavfi", "-i", "sine=frequency=330:duration=%d:sample_rate=48000" % seconds, "-filter_complex", "[0:v]" + pan + "[v];[1:a]volume=0.05[a]",
+	       "-map", "[v]", "-map", "[a]", "-t", str (seconds), "-pix_fmt", "yuv420p"]
+	if codec == "vp9": run ("ffmpeg", "-y", *src, "-c:v", "libvpx-vp9", "-b:v", "150k", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus", "-b:a", "24k", path)
+	elif codec == "av1": run ("ffmpeg", "-y", *src, "-c:v", "libaom-av1", "-b:v", "150k", "-cpu-used", "8", "-row-mt", "1", "-c:a", "libopus", "-b:a", "24k", "-strict", "-2", path)
+	else: run ("ffmpeg", "-y", *src, "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "150k", "-c:a", "aac", "-b:a", "32k", path)
+
+def videos (root):
+	out = os.path.join (root, "Videos"); tmp = os.path.join (root, "tmp"); os.makedirs (tmp, exist_ok = True)
+	for rel, frame, sec, codec in VIDEOS:
+		p = os.path.join (out, rel); os.makedirs (os.path.dirname (p), exist_ok = True)
+		if not os.path.exists (p): video (p, frame, sec, codec, tmp)
+	# a film left half way, an episode seen (the app reads its facts again: the size 0 does not match)
+	st = os.path.join (root, "etc", "media"); os.makedirs (st, exist_ok = True)
+	rows = [("Films/Sunset Harbour.webm", 18000, 0, 202610011950), ("Series/City Nights S01E03.webm", 0, 1, 202609301930)]
+	open (os.path.join (st, "videos.tsv"), "w").write ("#onyx-videos 1\n" + "".join ("SD:/Videos/%s\t0\t0\t0\t0\t\t\t1\t0\t0\t0\t%d\t%d\t%d\t%d\t-\t%s\n" %
+		(rel, pos, w, t, t, os.path.splitext (os.path.basename (rel))[0]) for rel, pos, w, t in rows))
+
 def main ():
 	out = os.path.join (sys.argv[1], "Music")
 	os.makedirs (out, exist_ok = True)
@@ -135,7 +164,8 @@ def main ():
 	rows = [(0, 12, 202609281930, 1), (2, 8, 202609291012, 0), (12, 5, 202609301822, 1), (18, 7, 202609302041, 0), (25, 3, 202610011105, 0),
 		(31, 9, 202610011733, 1), (39, 4, 202610011750, 0)]
 	open (os.path.join (st, "stats.tsv"), "w").write ("# path plays lastPlayed favourite\n" + "".join ("%s\t%d\t%d\t%d\n" % (made[i], p, t, f) for i, p, t, f in rows))
-	print ("made", len (made), "songs in", out)
+	videos (sys.argv[1])
+	print ("made", len (made), "songs in", out, "and", len (VIDEOS), "videos")
 
 if __name__ == "__main__":
 	main ()

@@ -98,7 +98,7 @@ struct av_player {
 
 	/* the file mode */
 	av_thread_t rth;
-	FILE *file;
+	av_file_t file;
 	int file_src;
 	int64_t file_size;
 };
@@ -630,14 +630,13 @@ static int reader_main(void *arg)
 			av_store_feed_end(p->store, p->file_src);
 			continue;
 		}
-		if (fseek(p->file, (long) want, SEEK_SET) != 0) {
-			av_store_feed_end(p->store, p->file_src);
-			continue;
-		}
-		n = fread(buf, 1, 65536, p->file);
-		if (n == 0) {
-			av_store_feed_end(p->store, p->file_src);
-			continue;
+		{
+			long got = av_file_read_at(p->file, want, buf, 65536);
+			if (got <= 0) {
+				av_store_feed_end(p->store, p->file_src);
+				continue;
+			}
+			n = (size_t) got;
 		}
 		av_store_feed(p->store, p->file_src, want, buf, n);
 	}
@@ -651,13 +650,14 @@ int av_player_open_file(struct av_player *p, const char *path)
 	size_t n;
 	const char *mime;
 
-	p->file = fopen(path, "rb");
+	p->file = av_file_open(path);
 	if (p->file == NULL)
 		return AV_ERR;
-	n = fread(head, 1, sizeof head, p->file);
-	fseek(p->file, 0, SEEK_END);
-	p->file_size = ftell(p->file);
-	fseek(p->file, 0, SEEK_SET);
+	p->file_size = av_file_size(p->file);
+	{
+		long got = av_file_read_at(p->file, 0, head, sizeof head);
+		n = got > 0 ? (size_t) got : 0;
+	}
 	switch (av_probe(head, n)) {
 	case AV_FMT_MKV: mime = "video/webm"; break;
 	case AV_FMT_MP4: mime = "video/mp4"; break;
@@ -665,13 +665,13 @@ int av_player_open_file(struct av_player *p, const char *path)
 	case AV_FMT_FLAC: mime = "audio/flac"; break;
 	case AV_FMT_MP3: mime = "audio/mpeg"; break;
 	default:
-		fclose(p->file);
+		av_file_close(p->file);
 		p->file = NULL;
 		return AV_EUNSUP;
 	}
 	p->file_src = av_store_add_source(p->store, mime, 64u << 20);
 	if (p->file_src < 0) {
-		fclose(p->file);
+		av_file_close(p->file);
 		p->file = NULL;
 		return AV_ERR;
 	}
@@ -725,7 +725,7 @@ void av_player_free(struct av_player *p)
 	av_thread_join(&p->vth);
 	if (p->file != NULL) {
 		av_thread_join(&p->rth);
-		fclose(p->file);
+		av_file_close(p->file);
 	}
 	av_decoder_free(p->adec);
 	av_decoder_free(p->vdec);

@@ -89,9 +89,9 @@ Two weaknesses, worth fixing:
 | pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Writer, the Spreadsheet | **MIT** (ours) | — |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
 | minimp3 | `third_party/minimp3`, Media Player, Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
-| libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
-| dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser (`user/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
-| libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser (`user/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
+| libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
+| dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser and the Media Player's videos (`user/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
+| libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser and the Media Player's videos (`user/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
 | stb_vorbis | `third_party/stb_vorbis`, Media Player | Public domain / MIT | — |
 | dr_flac, dr_wav | `third_party/dr_libs`, Media Player | Public domain / MIT-0 | — |
 | ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |

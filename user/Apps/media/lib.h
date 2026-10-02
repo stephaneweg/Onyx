@@ -13,6 +13,7 @@
 #define _media_lib_h
 
 #include "tags.h"
+#include "av/av.h"
 
 namespace media {
 
@@ -55,6 +56,27 @@ static void sort_idx (int *a, int n, IdxCmp cmp, const void *ctx)
 	}
 	free (t);
 }
+
+// ---- a growing list of ints -----------------------------------------------------------------------------
+struct IntList
+{
+	int *v; int n, cap;
+	IntList () : v (0), n (0), cap (0) {}
+	~IntList () { free (v); }
+	void clear () { n = 0; }
+	void push (int x) { if (n == cap) { cap = cap ? cap * 2 : 64; v = (int *) realloc (v, sizeof (int) * cap); } v[n++] = x; }
+	void insert (int at, int x) { push (0); memmove (v + at + 1, v + at, sizeof (int) * (n - 1 - at)); v[at] = x; }
+	void remove (int at) { if (at < 0 || at >= n) return; memmove (v + at, v + at + 1, sizeof (int) * (n - 1 - at)); n--; }
+	void copy (const IntList &o) { clear (); for (int i = 0; i < o.n; i++) push (o.v[i]); }
+	int find (int x) const { for (int i = 0; i < n; i++) if (v[i] == x) return i; return -1; }
+	int &operator[] (int i) { return v[i]; }
+};
+
+} // namespace media
+
+#include "videos.h"
+
+namespace media {
 
 struct Song
 {
@@ -303,6 +325,8 @@ struct ScanState
 	char current[160];			// the folder being walked
 	char roots[8][200]; int nroots;
 	Library *old, *fresh;			// what is known; what the scan makes
+	VideoLib *vold, *vfresh;		// the videos: the same
+	volatile int vfound;
 	volatile bool cancel;
 };
 static bool is_cover_name (const char *n)
@@ -337,6 +361,11 @@ static void scan_dir (ScanState *st, const char *dir, int depth)
 	{
 		char p[300]; snprintf (p, sizeof p, "%s/%s", dir, es[i].name);
 		if (es[i].dir) { if (strcasecmp (es[i].name, "Playlists")) scan_dir (st, p, depth + 1); continue; }
+		if (is_video_path (p))
+		{	// (once: a folder watched may be inside another)
+			if (st->vfresh && st->vfresh->find (p) < 0 && scan_video (st->vold, st->vfresh, p, es[i].size)) st->vfound++;
+			continue;
+		}
 		if (format_of (p) < 0) continue;
 		st->found++;
 		int k = st->old ? st->old->find (p) : -1;

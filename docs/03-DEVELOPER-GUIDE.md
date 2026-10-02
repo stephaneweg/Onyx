@@ -1616,10 +1616,13 @@ screenshot` — the simulator's `SIM_GRAB=<file>.elsm` is what `kapi_screen_grab
 desktop.png` made an `.elsm` there), a full-screen app is dumped as its whole buffer, and `SIM_WINS`'
 windows may end with `,title`.
 
-### Media Player, the music library (`user/Apps/media`)
+### Media Player, the music and video library (`user/Apps/media`)
 
-The music library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
-**newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers.
+The music and video library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
+**newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers. Its
+videos are played by **the media library** (`user/av`, below), compiled by the rule into `Apps/media/obj/av/`
+with `av/codecs.mk`'s `AV_CODECS_CF`, and linked with Jet's codec libraries — `libvpx.a`, `libdav1d.a`,
+`libopus.a` (`make -C user/netsurf codecs`; committed in `third_party/`).
 
 | File | What |
 |---|---|
@@ -1628,24 +1631,28 @@ The music library (the mock-ups and the user's decisions: `docs/media/README.md`
 | `midi.h` | `MidiSong` (a Standard MIDI File, formats 0 / 1, RMID too: the tempo map, running status, the events in time order in frames, the notes for the view, the channels' General MIDI instruments), the SoundFont loaded once (`soundfont ()`), `MidiDecoder` (the events fired between `render`s of MeltySynth — Koton's `Apps/koton/synth`, linked from Koton's objects —; a seek replays the programs and controllers, no notes). |
 | `player.h` | `Player`: a thread (`kapi_thread_create`) that opens the song asked for, decodes ahead and feeds `kapi_sound_write` (`kapi_sound_config (1024, 3)`: ~0.1 s queued, so a pause is heard at once), at the volume (a square law); the window asks (play, pause, resume, seek, stop) and reads `state`, `posMs` (what is heard: the frames sent less those queued), `lenMs`, `endedGen`, `errGen` under a `kapi_lock`. No output (the simulator): the song is decoded and timed silently. |
 | `tags.h` | `read_tags`: ID3v2.2–2.4 (Latin-1, UTF-16, UTF-8; `APIC`: the cover's offset and length in the file) then ID3v1, the MP3's length (the Xing / Info / VBRI header, else the bit rate), FLAC's `STREAMINFO`, `VORBIS_COMMENT`, `PICTURE`, Ogg's comment header and the last page's granule, WAV's `fmt`, `data`, `LIST INFO`, MIDI's track name; the path fills the rest (`<artist>/<album>/<nn> - <title>`). |
-| `lib.h` | `Library`: the songs (strings `strdup`'d), grouped by `build ()` into albums (album artist — else artist — and album), artists, genres, folders; `sort_idx` (a merge sort with a context: the scan's thread sorts too); `library.tsv` / `stats.tsv`; the scan (`scan_dir`, `scan_thread`): the folders walked, a known file (same path, same size) copied, the others read; a folder's `cover.jpg` noted. |
+| `lib.h` | `Library`: the songs (strings `strdup`'d), grouped by `build ()` into albums (album artist — else artist — and album), artists, genres, folders; `sort_idx` (a merge sort with a context: the scan's thread sorts too), `IntList`; `library.tsv` / `stats.tsv`; the scan (`scan_dir`, `scan_thread`): the folders walked (and `SD:/Videos`), a known file (same path, same size) copied, the others read; a folder's `cover.jpg` noted; the videos to `scan_video` (the scan reads a copy of the videos known: `VideoLib::clone`). |
 | `covers.h` | `Covers`: a thread decodes the pictures (`img_load_mem` / `img_load`), cropped square at 320 px; each size drawn is made once (box filter, bilinear up) and cached (the oldest dropped); an album without a picture gets one drawn from its name; `round_corners` (polygons over the corners); `tone ()` (a cover's colour: the bands, now playing). |
-| `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`wtk/vpaint.h`), `IntList`. |
-| `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu), `NowBar`, `MiniView` —, the mini player (`kapi_resize_window2` + `kapi_move_window` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name). |
+| `videos.h` | `Video`, `VideoLib`: the videos (their facts, where each was left, watched, when) in `videos.tsv`; `probe_video` (the container's headers through `av_demux_*` — a few MB read at most, from where the demuxer wants: an MP4's `moov` at its end too —: length, size, codecs, `playable` = the build decodes them, `av_codec_list`); `video_names` (the title from the file's name, an episode's `S01E03` / `1x03`, the kind from the folders: *Films*, *Series*, *Clips*; else 40 min and more: a film); `scan_video` (the scan's: a known file — same path, same size — kept, else probed). |
+| `thumbs.h` | `Thumbs`: a thread makes each video's frame — `video_frame_at` (`av_demux_seek` to a tenth of the video, at most a minute in, when the container has an index; else decoded on from the start, 4 s at most; `av_decoder_*`, `av_yuv_to_rgb`), cropped to 16:9 at 384 × 216, kept as `SD:/etc/media/thumbs/<key>.jpg` (`pngsave::jpeg_encode`; the key: the path and the size hashed) —; sizes cached as the covers'; it waits while a video plays (`busy`); a video not decoded here gets a frame drawn from its name. |
+| `watch.h` | `VideoPlay`: a video playing — `av_player_new (AV_PIX_BGRA, 0)` (the kapi's sound) + `av_player_open_file` —, `poll ()` on the window's tick (the frame due copied: the library's is valid until the next poll; `statusGen` when what is shown changes), `draw` (fitted, black bars, a nearest-neighbour scaler: a frame each 33 ms on the Pi). |
+| `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`wtk/vpaint.h`). |
+| `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward; `P_VIDEOS` a kind, `P_WATCH` a video: `page_changed` closes a video left — its position saved — and opens one come back to), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu; the videos' tiles, the home's cards), `NowBar`, `MiniView`, `WatchView` (the video in the whole window: `draw_watch` — the frame, the controls while the pointer moves, loading, the end, an error — shared with **full screen**: `video_full_screen`, `kapi_fullscreen_begin` + `kapi_present_fb`, its own event loop as the PDF Viewer's) —, the sound shared (`video_start`: the music's thread releases the output — `Player::release` — before the video's takes it; a song started closes the video), the positions (`video_save_pos`: every 15 s, at a pause, on leaving; near the end: watched, from the start next time), the mini player (`kapi_resize_window2` + `kapi_move_window` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name; the videos' positions kept). |
 
 **Tests on the PC**: `sh tools/tests/run_media_test.sh` — sample files made by ffmpeg (MP3, Ogg, FLAC, WAV at
 48 kHz, a 22 kHz mono WAV) and `tools/tests/media/make_midi.py`, decoded by `tools/tests/media/dectest.cpp`
 through the simulator's kapi: the length, the level, a seek, each. **The screenshots**: `sh
 tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tests/media/make_library.py`
 (the mock-ups' albums and covers in every format, two MIDI albums, playlists, play counts; needs ffmpeg and
-`pip install mutagen`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
+`pip install mutagen`; and `Videos/`: VP9 + Opus WebM, AV1 MP4, an H.264 MP4, a film left half way — the app
+built with `user/av` and its codecs for the PC by `tools/tests/desktop_sim/av_host.mk`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
 `python3 tools/icons/media_icon.py`.
 
 ### The media library (`user/av`): video and audio for Jet Browser and the Media Player
 
 `user/av` plays media files and streams: containers, decoders, conversions, a store of coded frames
 (Media Source Extensions') and a player with its threads, sound and clock. Jet Browser's `<video>`,
-`<audio>` and MSE are built on it (docs/06 §44); the Media Player's videos are meant to be. Plain C
+`<audio>` and MSE are built on it (docs/06 §44), and the Media Player's videos. Plain C
 (`av.h` is the reference), threads and locks through `av_os.h` (the kapi; pthreads with `-DAV_POSIX`
 for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I kernel/include`
 (`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given --
@@ -1662,7 +1669,7 @@ assembly; `user/netsurf/Makefile codecs` builds `libvpx.a`, `libdav1d.a`, `libop
 | `av_stub.c` | The tests' stand-ins (grey frames, silence) for the codecs not built in: `av_codec_enable_stubs ()`. |
 | `av_yuv.c`, `av_resample.c` | YUV 4:2:0 to RGBA / BGRA (NEON on AArch64), the resampler (any rate / channels to s16 stereo). |
 | `av_store.c` | The coded frames by source and track (MSE's semantics), buffered ranges, removal, quota. |
-| `av_player.c` | The player: audio and video threads, the kapi's sound, the clock, the frame due now. |
+| `av_player.c` | The player: audio and video threads, the kapi's sound, the clock, the frame due now; the file mode's reader thread (the file read in 64 KB pieces where the demuxer wants them, ~30 s ahead: `av_os.h`'s `av_file_*` — the kapi's `kapi_open` / `kapi_seek` / `kapi_read` on Onyx, any volume and any size; newlib's `fopen` would load the whole file —, stdio with `AV_POSIX`). |
 
 **Playing a file** (the Media Player's case):
 
