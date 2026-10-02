@@ -676,7 +676,8 @@ static CSpinLock s_WordLock (IRQ_LEVEL);		// (the tick walks the list in its int
 // its heap, a surface, its stack). (v75) Probed as the app's (kern/uaccess.h: a lazy page filled,
 // the page pinned for the call -- so its frame stays while the caller waits on it), then
 // translated by the MMU (AT S1E0R; S1E1R for a kernel caller). FALSE: not the caller's, not
-// readable, or out of the kernel's identity map (the tick could not read it there).
+// readable, or out of the kernel's identity map (the tick could not read it there; it holds the
+// RAM above 4 GB too, up to USER_VA_BASE -- an app frame of an 8 GB Pi may lie there).
 static boolean WordPhys (const volatile unsigned *pWord, u64 *pPhys)
 {
 	if (!UserReadable ((const void *) pWord, sizeof *pWord))
@@ -699,7 +700,7 @@ static boolean WordPhys (const volatile unsigned *pWord, u64 *pPhys)
 		return FALSE;				// (the translation faulted)
 	}
 	u64 ulPhys = (nPAR & 0x0000FFFFFFFFF000ULL) | ((u64) (uintptr) pWord & 0xFFF);
-	if (ulPhys + sizeof (unsigned) > KERNEL_IDENTITY_END)
+	if (ulPhys + sizeof (unsigned) > USER_VA_BASE)	// (not KERNEL_IDENTITY_END: see above)
 	{
 		return FALSE;
 	}
