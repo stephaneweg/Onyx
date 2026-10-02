@@ -883,7 +883,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Window opacity / session (v40) | `set_window_alpha(0..255)` on the caller's window: `CWindow::DrawTo` blends chrome + client over what is below (`BlendRect`, magenta-keyed if `TRANSPARENT`; 0 = not drawn) — used for fades. `shutdown(mode)`: `f_mount(0)` unmounts/flushes the SD card, then `reboot()` (mode 1) or ACT LED off + `halt()` (mode 0). |
 | Full-screen apps (v41) | `fullscreen_begin(&w, &h)` maps a kernel-owned, screen-sized back buffer (`CWindowManager::EnsureFullscreenBuffer`, 64 KB-aligned) at `USER_FULLSCREEN_CANVAS` (15 GB) and makes the caller's window (created if missing, moved to 0,0) the **full-screen window**: the compositor task skips its frames, `OnMouse`/`OnMouseWheel` send the whole pointer stream to it in screen coordinates and it is the key target. `present_fb()` copies the buffer into the displayed `C2DGraphics` buffer + `UpdateDisplay()`, then yields. `fullscreen_end()` — or the window's removal when the app exits — gives the desktop back. The buffer is made at the first `fullscreen_begin` and made again, bigger, when the screen has grown since (`screen_set`, v66; the old one is left allocated, as the wallpaper's: it may still be mapped) — before, it kept its first size and a full-screen app after a change to a larger resolution wrote past its end, over the kernel heap. `screen_grab` (VNC) returns the full-screen buffer meanwhile. **v55** `fullscreen_direct(&w, &h, &stride)` (after `fullscreen_begin`): maps the framebuffer the display scans out (`CBcmFrameBuffer`, the `C2DGraphics` display, 32 bpp) at `USER_FULLSCREEN_SCREEN` (15.5 GB), normal **uncached** (`KPAGE_ATTR_APP_SCREEN`); `present_fb` then copies nothing (it only yields); `screen_grab` (VNC) reads the screen through the same uncached mapping in the grabber's address space (the kernel's own map of the framebuffer is Device memory, slow to read). What is drawn there shows at once (no double buffering: tearing is possible); the GPU renders there directly (below 1 GB, contiguous), so a full-screen GPU frame costs no copy at all. Returns 0 when not possible (keep the back buffer). |
 | Drag & drop (v42) | `drag_begin(type, data, len, label)` — only while the left button is held — copies the payload (≤ 4 KB: 1 text, 2 `\n`-separated paths) into a kapi-side buffer and calls `CWindowManager::DragBegin(src, label)`. While the session lasts, `OnMouse` sends `GUI_EVENT_DRAG_OVER` (16) to the window under the cursor (`DND_F_LEAVE` when it leaves), and `Composite` draws a label badge next to the cursor (a **+** when Ctrl is held). At the left-button release, `DndFinishLocked` sends `GUI_EVENT_DROP` (15) to the window under the cursor — `(flags << 32) \| (x << 16) \| y`, client coords, `DND_F_COPY` if Ctrl — and `GUI_EVENT_DRAG_DONE` (17) to the source: `(flags << 32) \| target pid` (`CWindow::OwnerPid`, set by `CreateWindow`), flags `DND_F_COPY` / `DND_F_CANCEL` (Esc, via `OnKey`) / `DND_F_DESKTOP` (no window or a backmost one). All three go to the pointer handler; the normal pointer stream still reaches the source (its capture), so its widgets see the button go up. The target reads the payload with `drag_data(&type, buf, cap)`. A window removed mid-drag ends it. **Modifiers**: `get_modifiers()` = `MOD_CTRL` 1 / `MOD_SHIFT` 2 / `MOD_ALT` 4 — from the USB keyboard's raw report (`RegisterKeyStatusHandlerRaw` in **mixed mode**, so the cooked key path is unchanged) or `inject_modifiers()` (vncd, from the RFB Control/Shift/Alt keysyms). **Per key event**: `OnKey` stores the modifiers in each `GUIEvent` (`nMods` = the global state OR the xterm parameter of `ESC[1;<m>X` / `ESC[n;<m>~`, m − 1 = Shift 1 + Alt 2 + Ctrl 4, which Circle's keymap and vncd send for navigation keys); `kapi_pump_events` sets `CWindow::m_nKeyEventMods` around the app's key handler, and `get_modifiers()` returns it while the handler runs — so Shift+arrow selects even when the live state is late or clobbered (VNC, a second keyboard). |
-| Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
+| Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`); since v75 also `udp <handle> bound <local port> <default peer|-> <pid>` (§11). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
 | User-space file systems (v44) | `sys/vfs.cpp`, `kern/vfs.h` — FUSE-like. A **provider** app calls `vfs_register(prefix)` (`/bin/ftpfs`: `FTP:`, `FTPS:`). `kapi_open`/`read`/`fsize`/`close`, `save_file`, `opendir`/`readdir`/`closedir`, `mkdir`/`remove`/`rename` on a path with a registered prefix (`VfsHandles`) become **requests** (`VfsCall`): the calling task fills a slot (op, path, path2, a0–a2, a **kernel copy** of the payload), sets the provider's `CSynchronizationEvent` and waits on the slot's own event (200 ms re-checks: provider alive via `IpcPidAlive`, 120 s timeout). The provider takes it with `vfs_next` (blocking = up to 0.5 s, so it can also poll its mailbox), reads the payload with `vfs_req_data`, answers with `vfs_reply(id, status, data, len)` (copied into a kernel buffer, then into the caller's). Ops: `OPEN` (→ fid + size), `READ` (fid, offset, ≤ 64 KB), `CLOSE`, `LIST` (packed `u32 size, u8 is_dir, name\0` entries), `SAVE`, `MKDIR`, `REMOVE`, `RENAME`. Provider-backed handles live in static tables (`s_File`, `s_Dir`), so the file kapis tell them from FatFs `FIL`/`DIR` by address. `FTP:`/`FTPS:` are **auto-started**: the first use execs `SD:/bin/ftpfs` and waits up to 5 s for it to register. A dying provider is dropped and its pending requests fail (`VfsOnProcessGone`, from `IpcOnProcessGone`). Streams (`kapi_file_in`: `cat`, redirections) go to FatFs (and to the RAM volume on `RAM:`, §16), not to a provider. |
 | Volumes' room, RAM: (v71) | `vol_info(path, out)` → 0 and `struct kapi_vol_info { total, free, used; files, dirs; flags; type[12] }` for the volume of `path` (`"SD:"`, `"SD1:/roms"`, `"RAM:"`, a relative path: the current folder's), −1 no such volume. A FatFs volume: `f_getfree` (its free clusters — FSINFO on FAT32, else counted once by FatFs: the first call on a big card can take a moment), `type` `FAT12`/`FAT16`/`FAT32`/`exFAT`. **`RAM:`** (§16): its size, the pages its files take, what can still be written (also bounded by the free page memory less the reserve), its files and folders, `flags` `KAPI_VOL_RAM` (lost at a restart), `type` `RAM`. `/bin/df` prints it; `/bin/ramtest` uses it to check that the memory comes back. |
 | Wi-Fi scan (v45) | `wlan_scan(out, max)` → `struct kapi_wlan_ap` (ssid, bssid, security `WLAN_SEC_OPEN`/`WEP`/`WPA`/`WPA2`, channel, freq, level dBm, connected), strongest first, one per BSSID. `NetWlanScan` in `sys/net.cpp` — **no Circle patch**: it drives the BCM4343 firmware's *escan* through `CBcm4343Device::Control ("escan 5")`, collects `ReceiveScanResult` messages for ~3.5 s (the firmware's `brcmf_escan_result_le` layout, as in hostap's `driver_circle.cpp`), then `escan 0`. Security from the capability privacy bit + the RSN (48) / WPA vendor (221) IEs; `connected` = the BSSID `GetBSSID()` reports while `CWPASupplicant::IsConnected()`. wpa_supplicant reads the same result queue for its own scans: while it is still looking for its network, a scan here may take its results (it scans again). Used by `/bin/wifiscan` and `wpaconf`. |
@@ -936,12 +936,78 @@ returns `-KAPI_ENOSYS`.* (Already in place: a fault records `KAPI_PROC_FAULT` wi
 
 ### v75: sockets and poll
 
-Work package WP-NET ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.3; `kernel/sys/bsdsock.cpp`).
-Slots 229–241: `sock_open`, `sock_connect`, `sock_bind`, `sock_listen`, `sock_accept`, `sock_send`,
-`sock_recv`, `sock_shutdown`, `sock_close`, `sock_getopt`, `sock_setopt`, `sock_name`, `poll`
-(`struct kapi_sockaddr`, `kapi_pollfd`). *Not implemented yet: every entry returns `-KAPI_ENOSYS`.*
-The shared readiness wait they build on is in place: `kern/iowait.h` (`IoGen`, `IoWake`, `IoWait`,
-tick hooks run by the 100 Hz tick next to `WordWaitTick`), and `CStream::PollMask`.
+Work package WP-NET ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.3; `kernel/sys/bsdsock.cpp`: the
+kapis and `poll`; `kernel/sys/net.cpp`: the socket table and its "slot layer"; `kern/net.h`).
+Slots 229–241 (`struct kapi_sockaddr`: IPv4, the port in host order; `struct kapi_pollfd`). Every
+call returns ≥ 0 or −`KAPI_Exxx`.
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 229 | `sock_open (type, flags)` | `KAPI_SOCK_STREAM` (TCP) / `KAPI_SOCK_DGRAM` (UDP), `KAPI_SOCKF_NONBLOCK` → the socket number; `EPROTONOSUPPORT`, `EINVAL` (flags), `ENETDOWN` (no network yet), `ENFILE` (table full) |
+| 230 | `sock_connect (s, to)` | TCP: blocking → 0 or the error (`ECONNREFUSED`, `ETIMEDOUT` after Circle's retries, about a minute, `EHOSTUNREACH`, `ENETUNREACH`); non-blocking → `EINPROGRESS`, then `poll (POLLOUT)` and `SO_ERROR`; `EALREADY`, `EISCONN`. UDP: sets the default peer (only its datagrams are received) |
+| 231 | `sock_bind (s, addr)` | the address 0.0.0.0 or the Pi's own (`EADDRNOTAVAIL`); port 0: an ephemeral port (TCP 61000–61999, UDP Circle's 60000–60999); `EADDRINUSE` (a bound / listening socket of the same protocol has it), `EINVAL` (bound already) |
+| 232 | `sock_listen (s, backlog)` | backlog clamped 1..32; an unbound socket gets an ephemeral port |
+| 233 | `sock_accept (s, peer, flags)` | a connection waiting → a new socket (`KAPI_SOCKF_NONBLOCK`: non-blocking); none → `EAGAIN` (a non-blocking listener) or a wait (`SO_RCVTIMEO`); `ECONNABORTED` (the peer left before it was accepted), `ENFILE` |
+| 234 | `sock_send (s, buf, len, flags, to)` | → the bytes queued. TCP: all of them when blocking (a wait while Circle's queue holds 64 KB, `SO_SNDTIMEO` → a short count / `EAGAIN`), what fits when non-blocking (`MSG_DONTWAIT`); `EPIPE` (reset, `SHUT_WR`), `ENOTCONN`. UDP: one datagram to `to` or the default peer (`EDESTADDRREQ`), at most 1472 bytes (`EMSGSIZE`); `to` is ignored on TCP |
+| 235 | `sock_recv (s, buf, len, flags, from)` | → the bytes, 0 = the peer's orderly end (or `SHUT_RD`); `EAGAIN` (non-blocking, `MSG_DONTWAIT`, `SO_RCVTIMEO`), `ECONNRESET`, `ETIMEDOUT`, `ENOTCONN`. `MSG_PEEK` (leaves the bytes), `MSG_WAITALL` (TCP: until `len`, the end or an error). UDP: one datagram, cut to `len` (the rest dropped); `from` = its sender (TCP: the peer) |
+| 236 | `sock_shutdown (s, how)` | `SHUT_RD`: `recv` answers 0, `poll` says `POLLIN`; `SHUT_WR`: `send` answers `EPIPE` — **no FIN is sent** (Circle's TCP cannot receive after its own FIN; the connection ends at `close`); `ENOTCONN` |
+| 237 | `sock_close (s)` | 0 / `EBADF`. A socket still connecting or inside a send is closed by its last user |
+| 238 | `sock_getopt (s, opt, &v)` | `SO_ERROR` (the pending error, a positive errno, cleared), `SO_NONBLOCK`, `SO_RCVTIMEO_MS`, `SO_SNDTIMEO_MS`, `SO_BROADCAST`, `SO_NREAD` (bytes in the carry buffer, 1 if more is ready), `SO_TYPE`, `SO_ACCEPTCONN`; else `ENOPROTOOPT` |
+| 239 | `sock_setopt (s, opt, v)` | `SO_NONBLOCK`, `SO_RCVTIMEO_MS` / `SO_SNDTIMEO_MS` (0: none), `SO_BROADCAST` (UDP); else `ENOPROTOOPT` (libc accepts and ignores `TCP_NODELAY`, `SO_KEEPALIVE`, `SO_REUSEADDR`, the buffer sizes) |
+| 240 | `sock_name (s, peer, out)` | `peer` 0: the local address (the Pi's IP once connected, else 0.0.0.0) and port; 1: the peer (`ENOTCONN`) |
+| 241 | `poll (fds, n, timeout_ms)` | `n` ≤ 1024 (`EINVAL`), `timeout_ms` −1 forever, 0 only a look → the number of entries with `revents` ≠ 0. Kinds: `KAPI_PK_SOCKET` (a socket number), `KAPI_PK_STREAM` (a stream handle: `CStream::PollMask`), `KAPI_PK_FILE` (a file / directory / open-file handle: always IN \| OUT); a bad one `POLLNVAL`; kind 0 or `h < 0` ignored. `POLLERR`, `POLLHUP`, `POLLNVAL` are reported whatever `events` asks |
+
+**One table.** The BSD sockets live in the same table as the `tcp_*` handles (`sys/net.cpp`,
+`MAX_SOCKETS` **256** since v75, shared by every process; owner pid, adoption by a descendant,
+`NetCloseByPid`, as in §11). A slot has a type (TCP / UDP), a state (NEW, BOUND, LISTEN,
+CONNECTING, CONNECTED, FAILED), the pending error, the options, the local port and the peer, a
+**carry buffer** (a frame, allocated at the first receive that needs it: a segment bigger than
+the caller's buffer leaves its rest there — so nothing is lost, and `MSG_PEEK` works; `tcp_recv`
+goes through it too, which fixes its data loss with small buffers when `netcore=0`) and a
+readiness snapshot. The `tcp_*` handles are sockets of that table: `poll`, `sock_name`,
+`sock_recv` work on them; a socket number is not a handle (`HANDLE_*`), and it is the same
+number space for every process (another process's socket: `EBADF`, `POLLNVAL`).
+
+**The slot layer never waits.** `net.cpp`'s `Slot*` functions run where the stack runs (core 0,
+or a worker of core 3 with `netcore=1`, through the request slots of §11: a send or receive moves
+at most 32 KB per round trip) and answer `EAGAIN` instead of blocking. Every wait is
+`bsdsock.cpp`'s: a few yields, then `IoWait` on the I/O generation (`kern/iowait.h`), then the
+call again. TCP data goes into Circle with `MSG_DONTWAIT` only while Circle's send queue is under
+its 64 KB threshold (`GetStatus ().bTxReady`). Receiving: `CSocket::Receive (MSG_DONTWAIT)`
+straight into the buffer while a whole frame fits, else through the carry buffer; an empty
+receive with the connection still up (CLOSE-WAIT: the peer's FIN) is the orderly end (0), else
+the connection's error.
+
+**Connect.** A TCP connect is run by a task of its own, so that a blocking connect too only waits
+on `IoWait` (an app killed meanwhile leaves no task inside Circle): with `netcore=0` a one-shot
+kernel task (`CNetConnectTask`, `netconn`) on core 0; with `netcore=1` a **detached** request
+(nobody waits on it; the worker frees it; `NetCloseByPid` leaves it alone). It ends with the slot
+CONNECTED, or FAILED with its error (`SO_ERROR`); a close meanwhile only marks the slot
+(`bCancel`) and the connector frees it. The same marking protects a send in progress (Circle's
+`Send` yields between segments) and a `tcp_accept` waiting in Circle's `Accept`.
+
+**Readiness.** `POLLIN`: data or carry, the peer's end, an error, `SHUT_RD`, a connection to
+accept (`CSocket::AcceptReady`, Circle patch); `POLLOUT`: connected and under the send threshold,
+always for UDP; `POLLERR`: a connect that failed (with `POLLOUT | POLLHUP`, as Linux); `POLLHUP`:
+was connected and no longer is (reset, timeout), or a TCP socket never connected. With
+**`netcore=1`** the net core's main loop recomputes every open slot's snapshot at each turn (and a
+worker after each call on a slot) and bumps a generation word when one changed; a 100 Hz tick hook
+on core 0 (`NetPollTick`, `IoWaitAddTickHook`) turns that into `IoWake`: a wake ≤ 10 ms after the
+change, a waiter's sleep capped at 100 ms anyway. With **`netcore=0`** the readiness is evaluated
+on the spot and nothing announces a change (a connect's end and a close do call `IoWake`), so a
+wait over sockets looks again at every tick (10 ms). A wait over streams and files only sleeps
+until `IoWake` (a pipe's `PollMask` and its wakes are WP-FILE/PROC's).
+
+**Circle patch** (`tools/circle-patches/wp-net.patch`, docs/05): a connection's handle stays its
+socket's until the socket lets it go (`CNetConnection::SetReleased`: before, a reset connection
+was deleted at the next `Process` and its handle reused by the next connection — which the old
+socket then read, wrote and closed); `CSocket::AcceptReady ()` (a backlog connection is connected:
+`Accept` will not block; it also replaces backlog connections that died before being accepted, a
+SYN without its ACK); `CSocket::Accept` lets a failed connection go instead of leaving it
+listening on its own; `CTransportLayer::IsTerminated (h)`.
+
+Test: `/bin/nettest` (`user/bin/nettest.c`; the PC side `tools/tests/nettest_peer.py`): run it with
+`netcore=0` and with `netcore=1`.
 
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against
@@ -1179,6 +1245,11 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
     *done*; a `recv` gathers several segments (up to 8 KB) in one round trip. When every
     worker waits (accepts, connects), the core adds one (up to 24). `net_status` reads the
     state directly.
+  - **BSD sockets (v75).** Their calls are requests too (`NR_S*`), except a connect: a
+    **detached** request (the caller does not wait; the worker frees it; `NetCloseByPid` leaves
+    it alone). The main loop recomputes every open socket's readiness snapshot at each turn and
+    bumps a generation word when one changed; core 0's 100 Hz tick hook (`NetPollTick`) turns it
+    into `IoWake`, which wakes `poll` and the blocking BSD calls (§8 "v75: sockets and poll").
   - **A process that dies** (in a request, or with sockets open): `NetCloseByPid` (its
     teardown, IRQs masked: nothing waits) drops its posted requests, orphans the running
     ones (the worker then closes what they opened), and queues its pid in a ring that the
@@ -1214,7 +1285,12 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   the janitor's reaping, `AddressSpaceTaskTerminate`, which calls it again and finds none
   left), so a process that exits or dies without closing does not hold its connections or
   table slots -- a browser relaunched at once found them still held and its pages waited
-  (10 s). The table has **64 slots** (`MAX_SOCKETS`; 16 before: a browser keeps a dozen open).
+  (10 s). The table has **256 slots** since v75 (`MAX_SOCKETS`; 64 before, 16 before that: a
+  browser keeps a dozen open), and it also holds the **BSD sockets** of v75 (TCP and UDP,
+  non-blocking calls, `poll`: §8 "v75: sockets and poll"); `tcp_recv` reads through a slot's carry
+  buffer (a buffer smaller than a segment lost the rest of it with `netcore=0`). `net_info` lists
+  every socket that has a Circle socket: `tcp <n> listen|conn …` and, since v75, `udp <n> bound
+  <port> <default peer|-> <pid>`.
 - **TCP fixes in our Circle fork** (2026-10-01, `docs/05` §20–22; host test
   `tools/tests/run_circlenet_test.sh`): only a **real duplicate ACK** (no data, no SYN / FIN,
   the window unchanged, data in flight, ACK = SND.UNA: RFC 5681 §2) counts towards a fast
@@ -1236,7 +1312,7 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
 - **Host name.** `system.ini hostname=` (letters, digits, `-`) is handed to `CNetSubSystem` before
   the bring-up task starts (`SetHostname`, an Onyx addition to Circle: docs/05) — the name DHCP
   announces; default Circle's `raspberrypi`. Setup writes it; it takes effect at the next start.
-- **Caveats.** The kernel's sockets are plain TCP (TLS is done in user space: `user/tls`, used
+- **Caveats.** The kernel's sockets are plain TCP and UDP (TLS is done in user space: `user/tls`, used
   by Jet, Mail, `httpsget`, `wget`, the package manager…); the scheduler's task list has no
   limit any more (§5: the old `MAX_TASKS` of 40, raised for the net workers, is gone); the firmware load uses FatFs and is not locked against concurrent app
   file I/O (low risk, one-shot at boot) — with `netcore=1` it is (the atomic volume lock).

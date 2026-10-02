@@ -2143,7 +2143,7 @@ static boolean IsDescendantOf (unsigned nMe, unsigned nAncestor)
 // closed when the caller dies, no longer when that ancestor does): ftpd hands a client's
 // socket number to the session process it spawns. Another process's socket: a bad handle
 // (the net layer checks the owner again for each request).
-static void SocketAdopt (int hSock)
+void SocketAdopt (int hSock)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	unsigned nMe = pAS != 0 ? pAS->GetPid () : 0;

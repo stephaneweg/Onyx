@@ -1,0 +1,180 @@
+diff --git a/include/circle/net/netconnection.h b/include/circle/net/netconnection.h
+index 98852cdc..2512e1f1 100644
+--- a/include/circle/net/netconnection.h
++++ b/include/circle/net/netconnection.h
+@@ -95,6 +95,13 @@ public:
+ 	};
+ 	virtual TStatus GetStatus (void) const = 0;
+ 
++	// Onyx: the socket let it go (CTransportLayer::Disconnect, or a failed Connect). A
++	// terminated connection is deleted only then: its handle stays the socket's until the
++	// socket ends (a reset connection was deleted at once and its handle given to the next
++	// connection, which the old socket then read, wrote and closed).
++	void SetReleased (void)			{ m_bReleased = TRUE; }
++	boolean IsReleased (void) const		{ return m_bReleased; }
++
+ protected:
+ 	CNetConfig    *m_pNetConfig;
+ 	CNetworkLayer *m_pNetworkLayer;
+@@ -106,6 +113,9 @@ protected:
+ 	u16 m_nMSS;
+ 
+ 	CChecksumCalculator m_Checksum;
++
++private:
++	boolean m_bReleased;
+ };
+ 
+ #endif
+diff --git a/include/circle/net/socket.h b/include/circle/net/socket.h
+index 3d3a2671..fffff83e 100644
+--- a/include/circle/net/socket.h
++++ b/include/circle/net/socket.h
+@@ -66,6 +66,12 @@ public:
+ 	/// \return Newly created socket to be used to communicate with the remote host (0 on error)
+ 	CSocket *Accept (CIPAddress *pForeignIP, u16 *pForeignPort);
+ 
++	/// \brief Onyx: is a connection waiting to be accepted? (TCP, after Listen())
++	/// \return TRUE if Accept() will not block (a backlog connection is connected)
++	/// \note Also replaces the backlog connections that died before they were accepted\n
++	/// (a handshake that timed out: a port scan), so the backlog keeps its size.
++	boolean AcceptReady (void);
++
+ 	/// \brief Send a message to a remote host
+ 	/// \param pBuffer Pointer to the message
+ 	/// \param nLength Length of the message
+diff --git a/include/circle/net/transportlayer.h b/include/circle/net/transportlayer.h
+index 74f6ad0e..62a3119a 100644
+--- a/include/circle/net/transportlayer.h
++++ b/include/circle/net/transportlayer.h
+@@ -71,6 +71,7 @@ public:
+ 	int SetOptionDropMembership (const CIPAddress &rGroupAddress, int hConnection);
+ 
+ 	boolean IsConnected (int hConnection) const;
++	boolean IsTerminated (int hConnection) const;		// Onyx: TRUE if gone (or no such)
+ 	const u8 *GetForeignIP (int hConnection) const;		// returns 0 if not connected
+ 	u16 GetOwnPort (int hConnection) const;			// returns 0 if not assigned
+ 	u16 GetMSS (int hConnection) const;
+diff --git a/lib/net/netconnection.cpp b/lib/net/netconnection.cpp
+index 969d378c..ea48300c 100644
+--- a/lib/net/netconnection.cpp
++++ b/lib/net/netconnection.cpp
+@@ -33,7 +33,8 @@ CNetConnection::CNetConnection (CNetConfig	*pNetConfig,
+ 	m_nOwnPort (nOwnPort),
+ 	m_nProtocol (nProtocol),
+ 	m_nMSS (0),
+-	m_Checksum (*pNetConfig->GetIPAddress (), rForeignIP, nProtocol)
++	m_Checksum (*pNetConfig->GetIPAddress (), rForeignIP, nProtocol),
++	m_bReleased (FALSE)
+ {
+ 	assert (m_pNetConfig != 0);
+ 	assert (m_pNetworkLayer != 0);
+@@ -49,7 +50,8 @@ CNetConnection::CNetConnection (CNetConfig	*pNetConfig,
+ 	m_nOwnPort (nOwnPort),
+ 	m_nProtocol (nProtocol),
+ 	m_nMSS (0),
+-	m_Checksum (*pNetConfig->GetIPAddress (), nProtocol)
++	m_Checksum (*pNetConfig->GetIPAddress (), nProtocol),
++	m_bReleased (FALSE)
+ {
+ 	assert (m_pNetConfig != 0);
+ 	assert (m_pNetworkLayer != 0);
+diff --git a/lib/net/socket.cpp b/lib/net/socket.cpp
+index 76e4529b..5d26ab62 100644
+--- a/lib/net/socket.cpp
++++ b/lib/net/socket.cpp
+@@ -235,6 +235,12 @@ CSocket *CSocket::Accept (CIPAddress *pForeignIP, u16 *pForeignPort)
+ 		pNewSocket = new CSocket (*this, hConnection);
+ 		assert (pNewSocket != 0);
+ 	}
++	else
++	{
++		// Onyx: the failed one (a peer gone before it was accepted) let go, not left
++		// listening on its own with no socket to accept it
++		m_pTransportLayer->Disconnect (hConnection);
++	}
+ 
+ 	// replace the returned connection with a new listening one
+ 	m_hListenConnection[nIndex] = m_pTransportLayer->Listen (m_nOwnPort, m_nProtocol);
+@@ -243,6 +249,33 @@ CSocket *CSocket::Accept (CIPAddress *pForeignIP, u16 *pForeignPort)
+ 	return pNewSocket;
+ }
+ 
++boolean CSocket::AcceptReady (void)
++{
++	if (   m_nBackLog == 0
++	    || m_nOwnPort == 0)
++	{
++		return FALSE;
++	}
++
++	assert (m_pTransportLayer != 0);
++	boolean bReady = FALSE;
++	for (unsigned i = 0; i < m_nBackLog; i++)
++	{
++		if (m_pTransportLayer->IsTerminated (m_hListenConnection[i]))
++		{
++			m_pTransportLayer->Disconnect (m_hListenConnection[i]);
++			m_hListenConnection[i] = m_pTransportLayer->Listen (m_nOwnPort, m_nProtocol);
++			assert (m_hListenConnection[i] >= 0);
++		}
++		else if (m_pTransportLayer->IsConnected (m_hListenConnection[i]))
++		{
++			bReady = TRUE;
++		}
++	}
++
++	return bReady;
++}
++
+ int CSocket::Send (const void *pBuffer, unsigned nLength, int nFlags)
+ {
+ 	if (m_hConnection < 0)
+diff --git a/lib/net/transportlayer.cpp b/lib/net/transportlayer.cpp
+index 453d01c8..b2f1e980 100644
+--- a/lib/net/transportlayer.cpp
++++ b/lib/net/transportlayer.cpp
+@@ -120,7 +120,7 @@ void CTransportLayer::Process (void)
+ 			{			
+ 				((CNetConnection *) m_pConnection[i])->Process ();
+ 			}
+-			else
++			else if (((CNetConnection *) m_pConnection[i])->IsReleased ())	// Onyx
+ 			{
+ 				delete (CNetConnection *) m_pConnection[i];
+ 				m_pConnection[i] = 0;
+@@ -265,6 +265,7 @@ int CTransportLayer::Connect (const CIPAddress &rIPAddress, u16 nPort, u16 nOwnP
+ 	int nResult = ((CNetConnection *) m_pConnection[i])->Connect ();
+ 	if (nResult < 0)
+ 	{
++		((CNetConnection *) m_pConnection[i])->SetReleased ();	// Onyx: nobody holds it
+ 		return nResult;
+ 	}
+ 	
+@@ -336,6 +337,7 @@ int CTransportLayer::Disconnect (int hConnection)
+ 		return -NET_ERROR_INVALID_VALUE;
+ 	}
+ 
++	((CNetConnection *) m_pConnection[hConnection])->SetReleased ();	// Onyx: see netconnection.h
+ 	return ((CNetConnection *) m_pConnection[hConnection])->Close ();
+ }
+ 
+@@ -468,6 +470,18 @@ boolean CTransportLayer::IsConnected (int hConnection) const
+ 	return ((CNetConnection *) m_pConnection[hConnection])->IsConnected ();
+ }
+ 
++boolean CTransportLayer::IsTerminated (int hConnection) const
++{
++	assert (hConnection >= 0);
++	if (   hConnection >= (int) m_pConnection.GetCount ()
++	    || m_pConnection[hConnection] == 0)
++	{
++		return TRUE;
++	}
++
++	return ((CNetConnection *) m_pConnection[hConnection])->IsTerminated ();
++}
++
+ const u8 *CTransportLayer::GetForeignIP (int hConnection) const
+ {
+ 	assert (hConnection >= 0);
