@@ -300,10 +300,12 @@ In this order; a later step is not started early:
    (the UI, web and network processes over Onyx's IPC), the Onyx view and the browser's UI, pages
    loaded over HTTPS. The criterion is the time to show the page once the browser is open.
    **One executable for the three roles** (the user's decision): the UI, the web and the network
-   process are the same program, its role chosen at launch. *Proposed to the user, not yet
-   answered:* that this step also includes the kernel's shared read-only image
-   (`docs/ELF-LOADER-PLAN.md`, stages a and c: low risk), which is what makes the single
-   executable pay — three unshared 80 MB process images would take about 15 s to load.
+   process are the same program, its role chosen at launch. **This step includes the kernel's
+   shared read-only image and the preload list** (the user's green light, 2026-10-02:
+   `docs/ELF-LOADER-PLAN.md`, stages a, c and e — `preload` lines in `/etc/autostart`,
+   `/bin/preload`, `/bin/unload`), which is what makes the single executable pay — three unshared
+   80 MB process images would take about 15 s to load. It is done on its own branch
+   (`shared-image`, from `main`) and tested on the Pi before it is merged.
 2. **The compositor on the V3D.**
 3. **The JIT** (executable memory in the kernel first).
 4. **Video** (`MediaPlayerPrivate` on `user/av`, MSE).
