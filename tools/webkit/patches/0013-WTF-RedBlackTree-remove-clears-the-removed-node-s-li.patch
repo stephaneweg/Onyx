@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Sat, 3 Oct 2026 01:50:31 +0200
+Subject: [PATCH 13/14] [WTF] RedBlackTree::remove clears the removed node's
+ links
+
+The removed node kept its m_left / m_right, CheckedPtrs to its former neighbours: while it lived
+on outside the tree, a neighbour could not be deleted without the CheckedPtr crash. The generic
+RunLoop keeps its stopped timers' ScheduledTasks alive (each TimerBase owns one), so destroying a
+timer whose neighbour in the schedule had been unscheduled earlier crashed -- on Onyx, when the
+UI process released a WebProcessProxy or a NetworkProcessProxy (ResponsivenessTimer). insert()
+resets a node before linking it, so nothing relied on the stale links.
+---
+ Source/WTF/wtf/RedBlackTree.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/Source/WTF/wtf/RedBlackTree.h b/Source/WTF/wtf/RedBlackTree.h
+index 3a122a4d..40b9e267 100644
+--- a/Source/WTF/wtf/RedBlackTree.h
++++ b/Source/WTF/wtf/RedBlackTree.h
+@@ -286,6 +286,12 @@ public:
+         } else if (y->color() == Black)
+             removeFixup(x, xParent);
+ 
++        // The removed node keeps no link: its m_left / m_right are CheckedPtrs, and a node they still
++        // pointed to could not be deleted while this one lives on outside the tree (the generic RunLoop's
++        // stopped timers do: a CheckedPtr crash when a neighbour timer was destroyed).
++        z->setLeft(nullptr);
++        z->setRight(nullptr);
++        z->setParent(nullptr);
+         return z;
+     }
+     

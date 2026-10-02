@@ -63,6 +63,7 @@
 #include <kern/vfs.h>
 #include <kern/uaccess.h>
 #include <kern/kapi_abi.h>
+#include <kern/image.h>			// (v77) ImageFileChanged: a program file removed, renamed, written
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -497,6 +498,8 @@ static void CloseNow (TOFile *of)
 					f_unlink (Dir);			// (if it is empty now)
 				}
 			}
+			// (v77) a written file closed: an image made from it while it was written is stale
+			if (n->bWritable) ImageFileChanged (n->Path);
 			for (TFNode **pp = &s_pNodes; *pp != 0; pp = &(*pp)->pNext)
 			{
 				if (*pp == n) { *pp = n->pNext; break; }
@@ -661,6 +664,9 @@ long long kapi_file_open (const char *pUserPath, unsigned nFlags, unsigned nMode
 		of->nKind = OF_FAT;
 		if (VolumeOf (abs) < 0) { delete of; return -KAPI_ENODEV; }
 		if (IsRoot (abs)) { delete of; return -KAPI_EISDIR; }
+		// (v77) Opened for writing, created or truncated: the image of a program at that path
+		// loses its name (kern/image.h: its key is the path, the file is not looked at again).
+		if (bWrite || (nFlags & (KAPI_O_CREAT | KAPI_O_TRUNC))) ImageFileChanged (abs);
 		TLockGuard G (&s_Table);
 		TFNode *n = FindNode (abs);
 		if (n != 0)					// open already: its node
@@ -988,6 +994,7 @@ int kapi_path_unlink (const char *pUserPath, unsigned nFlags)
 	if (RamFsHandles (abs)) return RamFsUnlink (abs, bDir);
 	if (VolumeOf (abs) < 0) return -KAPI_ENODEV;
 	if (IsRoot (abs)) return -KAPI_EBUSY;
+	ImageFileChanged (abs);					// (v77: a program's image loses its name)
 	TLockGuard G (&s_Table);
 	FILINFO Info;
 	FRESULT r = f_stat (abs, &Info);
@@ -1052,6 +1059,8 @@ int kapi_path_rename (const char *pUserFrom, const char *pUserTo)
 	if (vf != vt) return -KAPI_EXDEV;			// (f_rename would stay in the source volume)
 	if (IsRoot (absF) || IsRoot (absT)) return -KAPI_EBUSY;
 	if (strcmp (absF, absT) == 0) return 0;
+	ImageFileChanged (absF);				// (v77: the images of both names, and of
+	ImageFileChanged (absT);				//  the programs under a renamed folder)
 
 	TLockGuard G (&s_Table);
 	FILINFO InfoF, InfoT;

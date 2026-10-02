@@ -516,6 +516,17 @@ static inline long long kapi_spawn_ex2 (const struct kapi_spawn_attr *a, const s
 	{ return KT->version >= 76 && KT->spawn_ex2 ? KT->spawn_ex2 (a, handles, n) : -KAPI_ENOSYS; }
 static inline int kapi_get_handles (struct kapi_handle_xfer *out, unsigned cap)
 	{ return KT->version >= 76 && KT->get_handles ? KT->get_handles (out, cap) : -KAPI_ENOSYS; }
+// (v77) Program images (docs/02 section 7): a program is loaded once and shared by its processes;
+// its key is its canonical path (lower case, the volume first). image_preload: loaded ahead and
+// kept (returns at once; a run of that path then reads nothing from the card); image_unload: its
+// pin and its name taken away (freed with its last process); image_list: the live images (path
+// 0), or the one a run of path would map (1 / 0). -KAPI_ENOSYS on an older kernel.
+static inline int kapi_image_preload (const char *path)
+	{ return KT->version >= 77 && KT->image_preload ? KT->image_preload (path) : -KAPI_ENOSYS; }
+static inline int kapi_image_unload (const char *path)
+	{ return KT->version >= 77 && KT->image_unload ? KT->image_unload (path) : -KAPI_ENOSYS; }
+static inline int kapi_image_list (const char *path, struct kapi_image_info *out, unsigned cap)
+	{ return KT->version >= 77 && KT->image_list ? KT->image_list (path, out, cap) : -KAPI_ENOSYS; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

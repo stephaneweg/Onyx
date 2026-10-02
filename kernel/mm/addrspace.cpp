@@ -15,6 +15,7 @@
 #include <kern/el0.h>			// the EL0 table + code pages, KAPI_STUBS_VA
 #include <kern/vm.h>			// VmTeardown (v75)
 #include <kern/procx.h>		// ProcInfoTeardown (v75)
+#include <kern/image.h>		// ImageRelease (v77)
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -86,6 +87,7 @@ CAddressSpace::CAddressSpace (void)
 	m_pThreads (0),
 	m_pVm (0),
 	m_pProcInfo (0),
+	m_pImage (0),
 	m_nTermReason (KAPI_PROC_EXITED),
 	m_nTermCode (0)
 {
@@ -225,6 +227,8 @@ CAddressSpace::~CAddressSpace (void)
 
 	if (m_pL2 == 0)
 	{
+		ImageRelease (m_pImage);	// (v77; nothing was mapped: no table)
+		m_pImage = 0;
 		return;
 	}
 
@@ -244,7 +248,7 @@ CAddressSpace::~CAddressSpace (void)
 
 	// Now free every frame we own (palloc'd via MapNewPage), then each L3 table,
 	// then the L2. Frames not flagged PAGE_SW_OWNED are owned elsewhere (the window
-	// canvas) and must NOT be freed here.
+	// canvas; v77: the program image's shared frames, kern/image.h) and must NOT be freed here.
 	unsigned nFirst = L2_INDEX (USER_VA_BASE);
 	unsigned nLast  = L2_INDEX (USER_VA_END - 1);
 	for (unsigned i = nFirst; i <= nLast; i++)
@@ -296,6 +300,13 @@ CAddressSpace::~CAddressSpace (void)
 
 	if (g_nUserPages >= m_nOwnedPages) g_nUserPages -= m_nOwnedPages;
 	m_nOwnedPages = 0;
+
+	// (v77) Its program's image let go, now that no page table of this space names its frames
+	// (the TLB was invalidated above): the last process of a program that is not preloaded frees
+	// them here. (Not on the "app core did not stop" path above: its reference is leaked with the
+	// rest, so frames a core may still execute are never freed.)
+	ImageRelease (m_pImage);
+	m_pImage = 0;
 
 	FreeASID (m_nASID);
 }

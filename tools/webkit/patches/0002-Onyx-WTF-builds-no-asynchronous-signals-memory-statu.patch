@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Fri, 2 Oct 2026 17:29:00 +0200
-Subject: [PATCH 02/12] Onyx: WTF builds (no asynchronous signals, memory
+Subject: [PATCH 02/14] Onyx: WTF builds (no asynchronous signals, memory
  status, newlib's feature macros)
 
 What: libWTF.a compiles and links for PORT=Onyx.

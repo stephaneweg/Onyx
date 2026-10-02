@@ -1375,7 +1375,8 @@ static long long f_sock_sendmsg (int s, const struct kapi_msghdr *m, unsigned fl
 	if (!x) return s >= 0 && s < LBASE ? -KAPI_EOPNOTSUPP : -KAPI_EBADF;
 	if (m->iovcnt > KAPI_IPC_IOV_MAX || m->nhandles > XMAX) return -KAPI_EINVAL;
 	for (unsigned i = 0; i < m->nhandles; i++)
-		if (m->handles[i].kind == KAPI_HK_LSOCK && x->pid != 0 && m->handles[i].h == x->pid && lsock (x->pid))
+		if (m->handles[i].kind == KAPI_HK_LSOCK && x->pid != 0 && m->handles[i].h == x->pid && lsock (x->pid)
+		    && lsock (x->pid)->pid == s)	/* (still its peer: the number is reused once the peer is closed) */
 			return -KAPI_EINVAL;		/* (the receiving end over its own connection) */
 	return local_send (x, m->iov, m->iovcnt, m->handles, m->nhandles, flags);
 }

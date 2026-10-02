@@ -109,6 +109,13 @@ GitHub Action). `tools/pkg/keygen.py` makes the key pair once.
   package (`bin/`, the shell's apps) is staged in `SD:/var/pkg/stage/` and moved in by the same commit.
 - **An app running** when updated: the GUI asks to close it (*Close and update* / *Skip*); the daemon
   skips it until its next round.
+- **A preloaded program** (kapi v77, `preload`: docs/04 §8, docs/02 §7 *Program images*): before a
+  file is replaced, `pkglib.h`'s `move` asks the kernel whether that path has a **kept** image
+  (`kapi_image_list`); if so it unloads it (`kapi_image_unload`), replaces the file, and preloads the
+  new one (`kapi_image_preload`). The kernel would drop the old image by itself when the file goes
+  (an image's key is its path, and the file calls take its name away), but would not load the new
+  one. A program merely running (not preloaded) needs nothing: its processes keep the old image, the
+  next start reads the new file.
 
 ## The pieces to write
 

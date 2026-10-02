@@ -29,6 +29,11 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 // wait handle). Task name is derived from the path. Defined in kernel.cpp.
 boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName = 0);	// pName: the process' name (0: from the path)
 
+// (v77) Preload the program at pCanonPath (its canonical path, kern/image.h): a kernel task loads
+// its image and pins it; returns at once. Kept already: 0, nothing done. -> 0 / -KAPI_ENOENT (no
+// such file) / -KAPI_ENOMEM. Defined in kernel.cpp (kapi_image_preload).
+int ProgramPreload (const char *pCanonPath);
+
 // Keyboard layout control (defined in kernel.cpp): switch the live keyboard to a
 // compiled-in country map and read the current layout name. Declared here (a plain
 // C++ header) so sys/kapi.cpp sees C++ linkage, matching the kernel.cpp definitions.

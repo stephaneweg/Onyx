@@ -270,6 +270,10 @@ long long kapi_shm_map (long long h, unsigned long long ulAddr, unsigned long lo
 int kapi_handle_close (long long h);
 long long kapi_spawn_ex2 (const struct kapi_spawn_attr *pA, const struct kapi_handle_xfer *pH, unsigned n);
 int kapi_get_handles (struct kapi_handle_xfer *pOut, unsigned nCap);
+// v77 program images (sys/kapi.cpp over proc/image.cpp)
+int kapi_image_preload (const char *pPath);
+int kapi_image_unload (const char *pPath);
+int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned nCap);
 
 }  // extern "C"
 
@@ -567,4 +571,9 @@ void KApiTableInit (void)
 	t->handle_close      = kapi_handle_close;
 	t->spawn_ex2         = kapi_spawn_ex2;
 	t->get_handles       = kapi_get_handles;
+
+	// --- v77 program images (proc/image.cpp, sys/kapi.cpp) ---
+	t->image_preload     = kapi_image_preload;
+	t->image_unload      = kapi_image_unload;
+	t->image_list        = kapi_image_list;
 }

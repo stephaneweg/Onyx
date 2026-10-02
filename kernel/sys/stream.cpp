@@ -4,6 +4,7 @@
 #include <kern/stream.h>
 #include <kern/ramfs.h>
 #include <kern/iowait.h>		// (v75) a pipe's waits and wakes
+#include <kern/image.h>			// (v77) ImageFileChanged: a program file written
 #include <circle/sched/scheduler.h>
 
 // A pipe's waits: until the generation moves (kern/iowait.h: a pipe written, drained or closed
@@ -121,6 +122,15 @@ CFileStream::CFileStream (const char *pPath, int nMode)
 	BYTE flags = (nMode == 0) ? FA_READ
 		   : (nMode == 2) ? (FA_WRITE | FA_OPEN_APPEND)
 				  : (FA_WRITE | FA_CREATE_ALWAYS);
+	// (v77) A file opened for writing: the image of a program at that path loses its name now
+	// (kern/image.h), and again at the close (one made from the half-written file meanwhile).
+	unsigned n = 0;
+	if (nMode != 0)
+	{
+		for (; pPath[n] != '\0' && n < sizeof m_Written - 1; n++) m_Written[n] = pPath[n];
+		ImageFileChanged (pPath);
+	}
+	m_Written[n] = '\0';
 	if (f_open (&m_File, pPath, flags) == FR_OK)
 	{
 		m_bOpen = TRUE;
@@ -133,6 +143,7 @@ CFileStream::~CFileStream (void)
 	{
 		f_close (&m_File);			// flushes pending writes
 	}
+	if (m_Written[0] != '\0') ImageFileChanged (m_Written);
 }
 
 int CFileStream::Read (void *pBuf, unsigned nLen)

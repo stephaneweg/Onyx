@@ -143,7 +143,13 @@
 //      (size, seals) / shm_map (shared memory objects mapped MAP_SHARED in several spaces) /
 //      handle_close / spawn_ex2 (handles given to the child at chosen descriptors) / get_handles
 //      (slots 242..252). + KAPI_SO_RCVBUF / SNDBUF / PEERPID / DOMAIN, KAPI_VMK_SHM.
-#define KAPI_ABI_VERSION	76
+// v77: program images (kern/image.h, docs/02 section 7): a program is loaded once -- streamed
+//      from its file -- and its read-only segments are shared by its processes; the image's key
+//      is the program's canonical path. + image_preload (a program loaded ahead and kept: a run
+//      of its path reads nothing from the card) / image_unload (its pin and its name taken away)
+//      / image_list (the live images, or the one of a path) (slots 253..255), struct
+//      kapi_image_info, KAPI_IMG_*. No existing call changes.
+#define KAPI_ABI_VERSION	77
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -859,6 +865,21 @@ struct kapi_msghdr				// 48 bytes
 	unsigned long long reserved2[2];	// 32: 0
 };
 
+// (v77) A program image (image_list): a program file held once in memory (kern/image.h).
+#define KAPI_IMG_KEPT		1		// preloaded: stays when no process runs it
+#define KAPI_IMG_LOADING	2		// being read from its file
+#define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
+#define KAPI_IMG_PATH_MAX	256
+
+struct kapi_image_info				// 280 bytes
+{
+	unsigned long long size;		// 0: bytes of memory it holds (once, whatever the processes)
+	unsigned long long file_size;		// 8: its file's size when it was loaded
+	unsigned refs;				// 16: the processes mapping it (+ the tasks loading / waiting)
+	unsigned flags;				// 20: KAPI_IMG_*
+	char path[KAPI_IMG_PATH_MAX];		// 24: its key: the program's canonical path (lower case)
+};
+
 // The v75 structures' layout (the 64-bit ABI: pointers are 8 bytes).
 #define KAPI_CHECK_SIZE(type, size) \
 	KAPI_STATIC_ASSERT (sizeof (struct type) == (size), "sizeof (struct " #type ") is not " #size)
@@ -897,6 +918,8 @@ KAPI_CHECK_FIELD (kapi_handle_xfer, fd, 16);
 KAPI_CHECK_SIZE (kapi_msghdr, 48);
 KAPI_CHECK_FIELD (kapi_msghdr, iovcnt, 16);
 KAPI_CHECK_FIELD (kapi_msghdr, flags, 24);
+KAPI_CHECK_SIZE (kapi_image_info, 280);
+KAPI_CHECK_FIELD (kapi_image_info, path, 24);
 
 struct TKApiTable
 {
@@ -1678,6 +1701,21 @@ struct TKApiTable
 	// get_handles: the handles the spawner gave (h: in this process's table now; fd, kind, tag as
 	// given), up to cap written -> how many there are (0: none).
 	int (*get_handles) (struct kapi_handle_xfer *out, unsigned cap);
+
+	// --- v77: program images (kern/image.h; proc/image.cpp, sys/kapi.cpp) ---
+	// A path here is a program file's (relative: to the caller's working directory); its canonical
+	// form is the image's key (lower case, the volume first: "sd:/apps/x.app/main").
+	// image_preload: the program loaded ahead and kept in memory: returns at once, a kernel task
+	// reads the file; from then on a run of that path maps the image without reading the card.
+	// Kept already (or being loaded for it): 0, nothing done -> 0 / -ENOENT (no such file) /
+	// -ENAMETOOLONG / -ENOMEM / -EFAULT. A load that fails later is in the kernel log.
+	int (*image_preload) (const char *path);
+	// image_unload: the path's image loses its pin and its name at once: no new process maps it;
+	// its memory is freed when the last process running it ends -> 0 / -ENOENT (no image) / -EFAULT.
+	int (*image_unload) (const char *path);
+	// image_list: path 0: the live images, up to cap written -> how many there are. path: the
+	// image a run of that path would map -> 1 (out[0] written if cap > 0) / 0 (none) / -EFAULT.
+	int (*image_list) (const char *path, struct kapi_image_info *out, unsigned cap);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1739,6 +1777,9 @@ KAPI_CHECK_SLOT (shm_map, 249);
 KAPI_CHECK_SLOT (handle_close, 250);
 KAPI_CHECK_SLOT (spawn_ex2, 251);
 KAPI_CHECK_SLOT (get_handles, 252);
+KAPI_CHECK_SLOT (image_preload, 253);
+KAPI_CHECK_SLOT (image_unload, 254);
+KAPI_CHECK_SLOT (image_list, 255);
 
 #ifdef __cplusplus
 }

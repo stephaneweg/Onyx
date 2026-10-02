@@ -5,8 +5,10 @@
 #
 # TLS: mbedTLS (tools/ports/mbedtls/build.sh, built first). HTTP/2: nghttp2; compression: zlib and
 # brotli (all in third_party). The threaded resolver (getaddrinfo on a worker thread: pthreads);
-# no IPv6, no Unix sockets, no LDAP / libpsl / libssh2 / libidn2; the multi interface's wake-up is
-# a pipe (no socketpair on Onyx). The CA bundle: the card's Mozilla bundle, SD:/res/ca-bundle.
+# no IPv6, no Unix sockets, no LDAP / libpsl / libssh2 / libidn2; the multi interface's wake-up
+# (curl_multi_wakeup) is a pipe: HAVE_SOCKETPAIR=0 with CURL_DISABLE_SOCKETPAIR off -- that option
+# on removes the wake-up altogether, and WebKit's request scheduler, which polls without a time
+# limit and is woken when a request is added, then never starts a transfer. The CA bundle: the card's Mozilla bundle, SD:/res/ca-bundle.
 #
 # Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence (this script).
 . "$(dirname "$0")/../common.sh"
@@ -32,7 +34,7 @@ onyx_cmake -S "$SRC" -B "$B" -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DBU
 	-DBROTLIDEC_LIBRARY="$S/lib/libbrotlidec.a" -DCURL_ZSTD=OFF \
 	-DCURL_USE_LIBPSL=OFF -DCURL_USE_LIBSSH2=OFF -DCURL_USE_LIBSSH=OFF -DUSE_LIBIDN2=OFF \
 	-DCURL_USE_GSSAPI=OFF -DCURL_DISABLE_LDAP=ON -DCURL_DISABLE_LDAPS=ON -DENABLE_IPV6=OFF \
-	-DENABLE_UNIX_SOCKETS=OFF -DENABLE_THREADED_RESOLVER=ON -DCURL_DISABLE_SOCKETPAIR=ON \
+	-DENABLE_UNIX_SOCKETS=OFF -DENABLE_THREADED_RESOLVER=ON -DCURL_DISABLE_SOCKETPAIR=OFF \
 	-DCURL_CA_BUNDLE="SD:/res/ca-bundle" -DCURL_CA_PATH=none \
 	-DHAVE_POLL_FINE=1 -DHAVE_SOCKETPAIR=0 -DHAVE_EVENTFD=0 \
 	-DCMAKE_INSTALL_PREFIX="$S" >"$B/configure.log" || { tail -40 "$B/configure.log"; exit 1; }

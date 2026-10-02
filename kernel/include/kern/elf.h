@@ -57,9 +57,40 @@ struct Elf64_Phdr
 #define PF_W		2
 #define PF_R		4
 
+// (v77) What a program file asks to be loaded: read from its headers alone (ElfReadPlan), before
+// any segment -- the streaming loader (kern/image.h) then reads each segment straight into its
+// frames.
+#define ELF_MAX_SEGS	16		// PT_LOAD segments with memory (our programs have 1 or 2)
+
+struct TElfSeg
+{
+	u64	ulVAddr;		// where it goes (anywhere in its first page)
+	u64	ulMemSz;		// its size in memory (> 0)
+	u64	ulFileSz;		// its bytes in the file (<= ulMemSz; the rest is zero: the bss)
+	u64	ulOffset;		// where they are in the file
+	u32	nFlags;			// PF_*
+};
+
+struct TElfPlan
+{
+	u64	 ulEntry;
+	unsigned nSegs;
+	TElfSeg	 Seg[ELF_MAX_SEGS];
+};
+
+struct TImgSource;			// kern/image.h: where the file's bytes come from
+
+// The ELF header and the program headers read from pSrc and checked: an AArch64 ELF64 executable,
+// its headers and every segment's bytes inside the file, every segment in the user VA range, no
+// two segments in one 64 KB page. Segments without memory are left out. -> 0, or -KAPI_E* with
+// *ppWhy a short reason for the log.
+int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy);
+
 // Load all PT_LOAD segments of the ELF image at pImage (nSize bytes) into pAS.
 // On success returns TRUE and writes the entry point to *pEntry. Segments must lie
 // in the user VA range and (with 64 KB-aligned linking) not share a 64 KB page.
+// (v77: the same checks and the same result through the image object, kern/image.h -- an image
+// of its own, never shared, that pAS holds; the kernel's own loader reads the file instead.)
 boolean LoadELF (const void *pImage, size_t nSize, CAddressSpace *pAS, u64 *pEntry);
 
 #endif

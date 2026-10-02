@@ -82,6 +82,10 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 # kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
 PROGS  += nettest.elf
 
+# kapi v77 program images (docs/02 section 7): programs loaded ahead and kept / released
+PROGS  += preload.elf unload.elf
+preload.elf unload.elf: imgname.h
+
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.
 LIBC_PROGS = libctest.elf rdpd.elf

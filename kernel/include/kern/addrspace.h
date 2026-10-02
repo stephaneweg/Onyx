@@ -43,6 +43,7 @@ class CTask;
 class CProcThreads;
 struct TVmSpace;			// (v75) kern/vm.h (WP-MEM)
 struct TProcInfo;			// (v75) kern/procx.h (WP-FILE/PROC)
+struct TImage;				// (v77) kern/image.h
 
 class CAddressSpace
 {
@@ -179,6 +180,12 @@ public:
 	TProcInfo *GetProcInfo (void)		{ return m_pProcInfo; }
 	void SetProcInfo (TProcInfo *p)		{ m_pProcInfo = p; }
 
+	// (v77) Its program's image (kern/image.h): the frames of its read-only segments, shared with
+	// the program's other processes and mapped here NOT owned. One reference, taken by ImageMap
+	// and dropped by the destructor once no page table names those frames any more.
+	TImage *GetImage (void)			{ return m_pImage; }
+	void SetImage (TImage *p)		{ m_pImage = p; }
+
 	// (v75) Why the process ended, as proc_wait reports it: KAPI_PROC_EXITED (the default: it
 	// exited, its status is the code), KAPI_PROC_FAULT (-11), KAPI_PROC_KILLED (-9),
 	// KAPI_PROC_OOM (-9). Set before the end (a fault, a kill, the OOM killer).
@@ -215,6 +222,7 @@ private:
 	TSyscallStats		     m_Syscalls; // system calls counted (sys/el0.cpp)
 	TVmSpace		    *m_pVm;	// (v75) virtual memory (WP-MEM; 0: none yet)
 	TProcInfo		    *m_pProcInfo; // (v75) argv / env blocks (WP-FILE/PROC; 0: none)
+	TImage			    *m_pImage;	// (v77) its program's shared image (0: none yet)
 	int			     m_nTermReason; // (v75) KAPI_PROC_* (proc_wait)
 	int			     m_nTermCode;	// (v75) its code (the exit status for EXITED)
 };

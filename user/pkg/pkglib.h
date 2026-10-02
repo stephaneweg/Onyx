@@ -101,17 +101,27 @@ static inline bool write_file (const char *path, const void *b, u64 n)
 	return ok;
 }
 static inline bool exists (const char *p) { return arc::path_exists (p); }
-// from -> to, replacing to (FAT's rename refuses an existing target); a copy when rename cannot
+// from -> to, replacing to (FAT's rename refuses an existing target); a copy when rename cannot.
+// A preloaded program (kapi v77, `preload`): its image released first, the new file preloaded once
+// it is in place -- the kernel would drop the old image by itself when the file goes (its key is
+// the path), but would not load the new one.
 static inline bool move (const char *from, const char *to)
 {
 	mkparent (to);
+	struct kapi_image_info img;
+	bool kept = kapi_image_list (to, &img, 1) == 1 && (img.flags & KAPI_IMG_KEPT);
+	if (kept) kapi_image_unload (to);
 	kapi_remove (to);
-	if (kapi_rename (from, to) == 0) return true;
-	u64 n; char *b = read_file (from, &n);
-	if (!b) return false;
-	bool ok = write_file (to, b, n);
-	free (b);
-	if (ok) kapi_remove (from);
+	bool ok = kapi_rename (from, to) == 0;
+	if (!ok)
+	{
+		u64 n; char *b = read_file (from, &n);
+		if (!b) return false;
+		ok = write_file (to, b, n);
+		free (b);
+		if (ok) kapi_remove (from);
+	}
+	if (ok && kept) kapi_image_preload (to);
 	return ok;
 }
 // a folder and everything in it

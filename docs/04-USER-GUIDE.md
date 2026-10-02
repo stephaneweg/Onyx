@@ -254,6 +254,10 @@ On power-on:
      the **agenda widget**, **`run notifyd`** the notifications;
    - **`keyb FR`** sets the keyboard layout.
 
+   Optional: a line **`preload <program>`** loads a large program ahead and keeps it in memory, so
+   that it starts without reading the card (§8, `preload`); the file ends with a commented
+   example. Put such lines last: the load runs in the background, after the desktop is up.
+
 ### Setup, the first-run wizard
 
 On a new card Onyx starts with **Setup** alone over the wallpaper: the menu bar, the dock and the
@@ -748,7 +752,9 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 
 | Tool | Usage | Description |
 |---|---|---|
-| `ps` | `ps` | Lists the processes in columns `PID  K  S  PAGES  MEM  SYSC/s  NAME` (SYSC/s: the app's system calls per second) — `K`: `a` (app) / `k` (kernel); `S`: `R` (ready), `S` (sleeping), `B` (blocked), `N` (new); `PAGES` = 64 KB frames owned by the app, `MEM` = that in KB. |
+| `ps` | `ps` | Lists the processes in columns `PID  K  S  PAGES  MEM  SYSC/s  NAME` (SYSC/s: the app's system calls per second) — `K`: `a` (app) / `k` (kernel); `S`: `R` (ready), `S` (sleeping), `B` (blocked), `N` (new); `PAGES` = 64 KB frames owned by the app, `MEM` = that in KB. A program's code and constants are not in it: they are in memory once, shared by all its processes (`preload` lists them). |
+| `preload` | `preload <program>…`, `preload` | **Loads programs ahead and keeps them in memory**: a preloaded program starts **without reading the card** (its code is mapped, shared by all its processes) and stays in memory when none runs. `<program>` is a path (`SD:/bin/jsc`; relative to the current folder), or a bare name: the app of that name (`apps/<name>.app/main`) if there is one, else the `/bin` tool. It returns at once — the load runs in the background (a start meanwhile waits for it); the memory is taken until `unload` or the next restart. With no argument: **lists the program images in memory** — every running program (shared by its processes) and the kept ones: size in KB, `uses` (processes running it), `state` (`loading` / `ready`), `kept` (`yes`: preloaded; `no`: freed when its last process ends; `gone`: unloaded or its file replaced — only its running processes still use it), and its path (lower case: the image's key). At every boot: a `preload <program>` line in `SD:/etc/autostart` (after the desktop's lines). A program whose file is replaced, renamed or removed loses its image by itself; `pkg` preloads the new one again. |
+| `unload` | `unload <program>…` | **Releases a program's image** (see `preload`; the same names): its next start reads the file again; the processes running it go on, and its memory is freed when the last of them ends (at once if none runs). |
 | `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
