@@ -95,6 +95,23 @@ answer in French. The docs stay in English.
   process maps a shared zero page at the same VA (no key held); on a focus change the kernel swaps
   the two PTEs (TLBI by VA + ASID) and clears the state. Key events for typing still go through
   the pump. Then Doom polling once per frame, and the small-`memcpy` fast path.
+- **Later: memory balance on 1 GB Pis (the user, 2026-10-02)**: a 1 GB Pi 4 has no high zone, so all
+  the apps share Circle's low pager (`PAGE_RESERVE`, 256 MB) while the kernel heap keeps ~680 MB it
+  does not need; a colleague's 1 GB Pi runs out of memory on Wikipedia in Jet (~3 000 pages of
+  64 KB = ~190 MB for one page; the footprint grows page after page -- maybe a NetSurf leak, maybe
+  newlib's sbrk-only malloc that never returns memory: WebKit2 with process swap on navigation and
+  a vm_map-based malloc (dlmalloc/mimalloc) will help). To do: a bigger app pool on 1 GB boards
+  (the reserve chosen at boot from the board's RAM, in the Circle fork + kernel), a small-memory
+  profile (smaller `RAM:` -- `ramfs=` --, Jet's caches on the card / capped), and a `vmmap <app>`
+  tool (the regions, resident pages, kinds: heap, stacks, image, canvases) on vm_query/vm_stats.
+- **To do: the PDF Viewer flickers when scrolling fast from page to page (the user, 2026-10-02).**
+  Check first where it comes from (the view cleared / a blank placeholder painted before the
+  worker thread's bitmap arrives; drawing straight into the visible canvas without a back buffer;
+  pages rendered again on every scroll). The fix the user suggests: render into memory buffers
+  once and scroll what is already generated -- keep the rendered pages (at the current zoom) of
+  the visible ones and their neighbours in a cache, render ahead above and below, compose the view
+  from that cache into a back buffer and present it whole (never clear first); while a page is not
+  rendered yet, show its thumbnail or the previous zoom's bitmap scaled, not a blank.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
