@@ -13,6 +13,7 @@
 #define _kern_addrspace_h
 
 #include <kern/layout.h>		// page-table structs (via armv8mmu.h) + attrs
+#include <kern/handle.h>		// CHandleTable (the process's opaque handles)
 #include <circle/types.h>
 
 class CWindow;
@@ -92,9 +93,9 @@ public:
 	// created on first use; freed with the address space. Returns 0 only on OOM.
 	CMailbox *GetOrCreateMailbox (void);
 
-	// stdio: streams owned by this process (released on teardown; stdout gets a
-	// CloseWrite so its reader sees EOF). A spawned process also has a CProcess
-	// handle (its done/status set on teardown) and an argv string.
+	// stdio: streams owned by this process (a ref each, released on teardown; stdout gets
+	// a CloseWrite so its reader sees EOF). A spawned process also has a CProcess record
+	// (a ref: its done/status set and the ref dropped on teardown) and an argv string.
 	void SetStdin (CStream *p)		{ m_pStdin = p; }
 	CStream *GetStdin (void)		{ return m_pStdin; }
 	void SetStdout (CStream *p)		{ m_pStdout = p; }
@@ -121,6 +122,10 @@ public:
 	CProcThreads *GetThreads (void)		{ return m_pThreads; }
 	void SetThreads (CProcThreads *p)	{ m_pThreads = p; }
 
+	// The process's handles (files, directories, streams, spawned processes: kern/handle.h),
+	// shared by its threads; the ones still open are closed by the teardown.
+	CHandleTable *GetHandles (void)		{ return &m_Handles; }
+
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
 
@@ -146,6 +151,7 @@ private:
 	CTask			    *m_pMainTask; // the app's first task (see AddTask)
 	unsigned		     m_nTasks;	// tasks running in this space (main + threads)
 	CProcThreads		    *m_pThreads; // threads / sync objects / posts (lazy)
+	CHandleTable		     m_Handles;	// opaque handles (closed on teardown)
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

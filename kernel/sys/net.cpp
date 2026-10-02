@@ -7,7 +7,10 @@
 // Calls run on the *app's* task: Connect/DNS block cooperatively (yielding to the
 // net stack's own CNetTask), Send blocks with a timeout, Recv is non-blocking.
 // A socket records its owner pid so NetCloseByPid() can reclaim it if the process
-// dies without closing (force-kill / crash), preventing slot + connection leaks.
+// dies without closing (force-kill / crash), preventing slot + connection leaks. Only
+// its owner may use it (send / recv / close / accept: another process's handle fails as a
+// bad one); a descendant of the owner adopts it on first use (kapi.cpp: ftpd hands a
+// client's socket to the session process it spawns).
 //
 // With netcore=1 the whole stack runs on core 3 (see "the network core" at the end):
 // the Do* functions below then run there, on worker tasks, and the Net* entry points
@@ -122,9 +125,11 @@ static boolean ParseDottedIP (const char *s, u8 ip[4])
 	return nOctet == 4;
 }
 
-static CSocket *SockOf (int h)
+// Socket h, if nPid may use it (its owner; nPid 0: the kernel itself), else 0.
+static CSocket *SockOf (int h, unsigned nPid)
 {
 	if (h < 0 || h >= MAX_SOCKETS) return 0;
+	if (nPid != 0 && s_Sockets[h].nOwnerPid != nPid) return 0;	// (not the caller's)
 	return s_Sockets[h].pSocket == SLOT_CONNECTING ? 0 : s_Sockets[h].pSocket;
 }
 
@@ -168,9 +173,9 @@ static int DoConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 	return h;
 }
 
-static int DoSend (int hSock, const void *pBuf, unsigned nLen)
+static int DoSend (int hSock, const void *pBuf, unsigned nLen, unsigned nPid)
 {
-	CSocket *pSock = SockOf (hSock);
+	CSocket *pSock = SockOf (hSock, nPid);
 	if (pSock == 0) return -1;
 	// Blocking (5 s send timeout). The count is the bytes queued: Circle's CSocket::Send
 	// queues MSS-sized chunks, and when a later chunk times out the earlier ones are
@@ -178,16 +183,17 @@ static int DoSend (int hSock, const void *pBuf, unsigned nLen)
 	return pSock->Send (pBuf, nLen, 0);
 }
 
-static int DoRecv (int hSock, void *pBuf, unsigned nLen)
+static int DoRecv (int hSock, void *pBuf, unsigned nLen, unsigned nPid)
 {
-	CSocket *pSock = SockOf (hSock);
+	CSocket *pSock = SockOf (hSock, nPid);
 	if (pSock == 0) return -1;
 	return pSock->Receive (pBuf, nLen, MSG_DONTWAIT);	// >0 data / 0 none / <0 closed
 }
 
-static void DoClose (int hSock)
+static void DoClose (int hSock, unsigned nPid = 0)	// (nPid 0: the kernel's own closes)
 {
 	if (hSock < 0 || hSock >= MAX_SOCKETS) return;
+	if (nPid != 0 && s_Sockets[hSock].nOwnerPid != nPid) return;	// (not the caller's)
 	if (s_Sockets[hSock].pSocket != 0 && s_Sockets[hSock].pSocket != SLOT_CONNECTING)
 	{
 		delete s_Sockets[hSock].pSocket;		// dtor terminates the connection
@@ -232,7 +238,7 @@ static int DoListen (unsigned nPort, unsigned nOwnerPid)
 // peer's dotted IP in pIPOut, or <0 on error.
 static int DoAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid)
 {
-	CSocket *pListen = SockOf (hListen);
+	CSocket *pListen = SockOf (hListen, nOwnerPid);
 	if (pListen == 0) return -1;
 
 	CIPAddress IP;
@@ -623,22 +629,22 @@ static void Execute (TNetReq &r)
 	switch (r.nOp)
 	{
 	case NR_CONNECT: r.nResult = DoConnect (r.szHost, r.n1, r.nPid); break;
-	case NR_SEND:	 r.nResult = DoSend (r.h, r.Buf, r.nData); break;
+	case NR_SEND:	 r.nResult = DoSend (r.h, r.Buf, r.nData, r.nPid); break;
 	case NR_RECV:
 	{
 		// as many segments as fit (one round trip for several)
 		unsigned n = 0;
-		int k = DoRecv (r.h, r.Buf, r.nData);
+		int k = DoRecv (r.h, r.Buf, r.nData, r.nPid);
 		if (k > 0)
 		{
 			n = (unsigned) k;
-			while (n + FRAME_BUFFER_SIZE <= r.nData && (k = DoRecv (r.h, r.Buf + n, r.nData - n)) > 0) n += (unsigned) k;
+			while (n + FRAME_BUFFER_SIZE <= r.nData && (k = DoRecv (r.h, r.Buf + n, r.nData - n, r.nPid)) > 0) n += (unsigned) k;
 			r.nResult = (int) n;
 		}
 		else r.nResult = k;
 		break;
 	}
-	case NR_CLOSE:	 DoClose (r.h); r.nResult = 0; break;
+	case NR_CLOSE:	 DoClose (r.h, r.nPid); r.nResult = 0; break;
 	case NR_LISTEN:	 r.nResult = DoListen (r.n1, r.nPid); break;
 	case NR_ACCEPT:	 r.nResult = DoAccept (r.h, r.szIP, sizeof r.szIP, r.nPid); break;
 	case NR_RESOLVE: r.nResult = DoResolve (r.szHost, r.szIP, sizeof r.szIP); break;
@@ -796,7 +802,7 @@ int NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 
 int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
 {
-	if (!g_bNetCore) return DoSend (hSock, pBuf, nLen);
+	if (!g_bNetCore) return DoSend (hSock, pBuf, nLen, CurrentPid ());
 	int nTotal = 0;
 	const u8 *p = (const u8 *) pBuf;
 	do
@@ -817,7 +823,7 @@ int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
 
 int NetTcpRecv (int hSock, void *pBuf, unsigned nLen)
 {
-	if (!g_bNetCore) return DoRecv (hSock, pBuf, nLen);
+	if (!g_bNetCore) return DoRecv (hSock, pBuf, nLen, CurrentPid ());
 	if (nLen == 0) return 0;
 	TNetReq *r = NewReq (NR_RECV, CurrentPid ()); if (r == 0) return -1;
 	r->h = hSock; r->nData = nLen > NET_REQBUF ? NET_REQBUF : nLen;
@@ -829,7 +835,7 @@ int NetTcpRecv (int hSock, void *pBuf, unsigned nLen)
 
 void NetTcpClose (int hSock)
 {
-	if (!g_bNetCore) { DoClose (hSock); return; }
+	if (!g_bNetCore) { DoClose (hSock, CurrentPid ()); return; }
 	TNetReq *r = NewReq (NR_CLOSE, CurrentPid ()); if (r == 0) return;
 	r->h = hSock;
 	Post (r); Wait (r); Release (r);
@@ -936,6 +942,25 @@ int NetWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 	int n = r->nResult;
 	if (n > 0) memcpy (pOut, r->Buf, (unsigned) n * sizeof (kapi_wlan_ap));
 	Release (r); return n;
+}
+
+// Socket h's owner pid (0: no such socket). Read on core 0 while the net core may change
+// the slot: an answer for a moment; the net core checks the owner again for each request.
+unsigned NetSocketOwner (int h)
+{
+	if (h < 0 || h >= MAX_SOCKETS) return 0;
+	if (__atomic_load_n (&s_Sockets[h].pSocket, __ATOMIC_ACQUIRE) == 0) return 0;
+	return __atomic_load_n (&s_Sockets[h].nOwnerPid, __ATOMIC_ACQUIRE);
+}
+
+// Socket h passes from nFrom to nTo (a descendant of its owner uses it), if it is still
+// nFrom's. TRUE if it is nTo's now.
+boolean NetSocketAdopt (int h, unsigned nFrom, unsigned nTo)
+{
+	if (h < 0 || h >= MAX_SOCKETS || nFrom == 0 || nTo == 0) return FALSE;
+	unsigned nOld = nFrom;
+	return __atomic_compare_exchange_n (&s_Sockets[h].nOwnerPid, &nOld, nTo, FALSE,
+					    __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
 }
 
 // The calling process (its requests are orphaned if it dies while it waits).

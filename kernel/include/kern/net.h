@@ -27,7 +27,8 @@ static inline boolean NetIsUp (void) { return g_pNet != 0 && g_bNetUp; }
 // Thin handle-based TCP wrapper over Circle's CSocket, exposed to apps through
 // the kapi table. Handles are small non-negative ints; negative returns are
 // errors. See kapi_abi.h for the ABI entry points. Each socket records its owner
-// pid so NetCloseByPid() can reclaim leaked connections when a process dies.
+// pid so NetCloseByPid() can reclaim leaked connections when a process dies; send /
+// recv / close / accept work only on the calling process's own sockets.
 int   NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid); // >=0 / <0
 int   NetTcpSend    (int hSock, const void *pBuf, unsigned nLen);
 int   NetTcpRecv    (int hSock, void *pBuf, unsigned nLen);	// non-blocking; 0 = nothing
@@ -40,6 +41,8 @@ int   NetResolve    (const char *pHost, char *pIPOut, unsigned nIPLen);	// 1 / 0
 int   NetPing       (const char *pHost, unsigned nSeq, unsigned nTimeoutMs,
 		     char *pIPOut, unsigned nIPLen);		// RTT us, or <0
 int   NetInfo       (char *pBuf, unsigned nCap);		// netstat text
+unsigned NetSocketOwner (int hSock);				// its owner pid, 0 = none
+boolean  NetSocketAdopt (int hSock, unsigned nFrom, unsigned nTo);	// owner nFrom -> nTo
 
 // Wi-Fi scan (kapi_wlan_scan, ABI v45): ~3 s, fills pOut strongest first; returns the count.
 struct kapi_wlan_ap;

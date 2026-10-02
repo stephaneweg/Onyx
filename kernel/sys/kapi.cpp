@@ -17,6 +17,7 @@
 #include <kern/addrspace.h>
 #include <kern/applaunch.h>
 #include <kern/stream.h>		// CStream / CPipeStream / CFileStream / CProcess
+#include <kern/handle.h>		// the per-process opaque handles (files, dirs, streams, procs)
 #include <kern/kapi_abi.h>		// struct kapi_dirent
 #include <kern/layout.h>
 #include <kern/gui/window.h>
@@ -1126,6 +1127,16 @@ static boolean FindByPid (CTask *pTask, const char *pName, TTaskState State,
 	return TRUE;
 }
 
+// A live process's parent pid (0: none, or no such process).
+static unsigned ParentPidOf (unsigned nPid)
+{
+	if (nPid == 0 || !CScheduler::IsActive ()) return 0;
+	KillByPidCtx Ctx = { nPid, 0 };
+	CScheduler::Get ()->EnumerateTasks (FindByPid, &Ctx);
+	CAddressSpace *pAS = Ctx.pFound != 0 ? (CAddressSpace *) Ctx.pFound->GetUserData (TASK_USER_DATA_USER) : 0;
+	return pAS != 0 ? pAS->GetParentPid () : 0;
+}
+
 // Kill an app by PID. nForce == 0: ask it to close cleanly (raise its window's exit
 // flag, so its pump loop ends and main() returns -- the app gets to clean up); a
 // windowless app with nothing to signal falls through to a hard terminate. nForce:
@@ -1300,15 +1311,81 @@ int kapi_write (int /*fd*/, const void *pBuf, unsigned nLen)
 	return (int) nLen;
 }
 
+// --- handles (kern/handle.h) ----------------------------------------------------
+//
+// The objects an app holds -- an open file (a FatFs FIL, a RAM: or a provider's file), a
+// directory listing, a stream, a spawned process -- are named by an opaque handle of the
+// calling process's table (a small number in the ABI's void *, never 0), not by their kernel
+// address: a kapi looks it up by type and fails cleanly on a bad one, and the process's
+// handles still open when it ends are closed by its teardown.
+
+// Hand pObj (its reference) to the caller as a new handle; 0 (and pObj closed) if the
+// table is full or out of memory.
+static void *HandleNew (void *pObj, unsigned nType, unsigned nKind = HKIND_FATFS)
+{
+	if (pObj == 0)
+	{
+		return 0;
+	}
+	CHandleTable *pTable = HandlesCurrent ();
+	void *h = pTable != 0 ? pTable->Add (pObj, nType, nKind) : 0;
+	if (h == 0)
+	{
+		HandleObjectClose (pObj, nType, nKind, FALSE);
+	}
+	return h;
+}
+
+// A handle's object for the length of one kapi call, pinned: the call may yield (an SD read,
+// a pipe's wait), and another thread of the process closing the handle meanwhile only marks
+// it -- the object is closed when this call is over (CHandleTable::Unpin).
+class CHandleUse
+{
+public:
+	CHandleUse (void *h, unsigned nType)
+	:	m_pTable (HandlesCurrent ()), m_pObj (0), m_nIdx (0), m_nKind (0)
+	{
+		if (m_pTable != 0)
+		{
+			m_pObj = m_pTable->Pin (h, nType, &m_nIdx, &m_nKind);
+		}
+	}
+	~CHandleUse (void)
+	{
+		if (m_pObj != 0)
+		{
+			m_pTable->Unpin (m_nIdx);
+		}
+	}
+	void *Obj (void) const		{ return m_pObj; }
+	unsigned Kind (void) const	{ return m_nKind; }
+
+private:
+	CHandleTable *m_pTable;
+	void	     *m_pObj;
+	unsigned      m_nIdx;
+	unsigned      m_nKind;
+};
+
+static void HandleClose (void *h, unsigned nType)
+{
+	CHandleTable *pTable = HandlesCurrent ();
+	if (pTable != 0)
+	{
+		pTable->Close (h, nType);
+	}
+}
+
 // --- files (the motivation for direct calls) ---------------------------------
 //
-// Handles are heap-allocated FIL objects; apps treat them as opaque void*.
+// A file handle's object: a FatFs FIL (read-only), a RAM: file or a provider's file -- the
+// handle's entry says which (HKIND_*).
 
 void *kapi_open (const char *pPath)
 {
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
-	if (RamFsHandles (abs)) return RamFsOpen (abs);		// RAM: (kern/ramfs.h)
-	if (VfsHandles (pPath)) return VfsOpen (pPath);		// a provider path (FTP:...)
+	if (RamFsHandles (abs)) return HandleNew (RamFsOpen (abs), HANDLE_FILE, HKIND_RAMFS);	// RAM: (kern/ramfs.h)
+	if (VfsHandles (pPath)) return HandleNew (VfsOpen (pPath), HANDLE_FILE, HKIND_VFS);	// a provider path (FTP:...)
 	FIL *pFile = new FIL;
 	if (pFile == 0)
 	{
@@ -1319,7 +1396,7 @@ void *kapi_open (const char *pPath)
 		delete pFile;
 		return 0;
 	}
-	return pFile;
+	return HandleNew (pFile, HANDLE_FILE, HKIND_FATFS);
 }
 
 // Big file transfers go in pieces with a Yield between them (a voluntary preemption point):
@@ -1389,47 +1466,52 @@ static FRESULT ChunkedWrite (FIL *pFile, const void *pBuf, unsigned nLen, UINT *
 
 int kapi_read (void *pHandle, void *pBuf, unsigned nLen)
 {
-	if (pHandle == 0)
+	CHandleUse Use (pHandle, HANDLE_FILE);
+	void *pObj = Use.Obj ();
+	if (pObj == 0)
 	{
 		return -1;
 	}
-	if (RamFsIsFile (pHandle)) return RamFsRead (pHandle, pBuf, nLen);
-	if (VfsIsFile (pHandle)) return VfsRead (pHandle, pBuf, nLen);
+	if (Use.Kind () == HKIND_RAMFS) return RamFsRead (pObj, pBuf, nLen);
+	if (Use.Kind () == HKIND_VFS) return VfsRead (pObj, pBuf, nLen);
 	UINT nRead = 0;
-	if (ChunkedRead ((FIL *) pHandle, pBuf, nLen, &nRead) != FR_OK)
+	if (ChunkedRead ((FIL *) pObj, pBuf, nLen, &nRead) != FR_OK)
 	{
 		return -1;
 	}
 	return (int) nRead;
 }
 
+// The whole size; 0 for a bad handle.
+static u64 FileSize (void *pHandle)
+{
+	CHandleUse Use (pHandle, HANDLE_FILE);		// (RAM:'s lock may yield)
+	void *pObj = Use.Obj ();
+	if (pObj == 0) return 0;
+	if (Use.Kind () == HKIND_RAMFS) return RamFsSize (pObj);
+	if (Use.Kind () == HKIND_VFS) return VfsSize (pObj);
+	return (u64) f_size ((FIL *) pObj);
+}
+
 unsigned kapi_fsize (void *pHandle)
 {
-	if (pHandle == 0)
-	{
-		return 0;
-	}
-	if (RamFsIsFile (pHandle)) { u64 n = RamFsSize (pHandle); return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (unsigned) n; }
-	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
-	FSIZE_t n = f_size ((FIL *) pHandle);
+	u64 n = FileSize (pHandle);
 	return n > 0xFFFFFFFFu ? 0xFFFFFFFFu : (unsigned) n;	// (an exFAT file over 4 GB: fsize64)
 }
 
 // v59: the whole size (exFAT: files over 4 GB)
 unsigned long long kapi_fsize64 (void *pHandle)
 {
-	if (pHandle == 0) return 0;
-	if (RamFsIsFile (pHandle)) return RamFsSize (pHandle);
-	if (VfsIsFile (pHandle)) return VfsSize (pHandle);
-	return (unsigned long long) f_size ((FIL *) pHandle);
+	return FileSize (pHandle);
 }
 
 // v57: the read position (FatFs fast seek: a big file's cluster map made at its first seek)
 int kapi_seek (void *pHandle, unsigned long long ullPos)
 {
-	if (RamFsIsFile (pHandle)) return RamFsSeek (pHandle, ullPos);
-	if (pHandle == 0 || VfsIsFile (pHandle)) return -1;
-	FIL *pFile = (FIL *) pHandle;
+	CHandleUse Use (pHandle, HANDLE_FILE);
+	if (Use.Obj () == 0 || Use.Kind () == HKIND_VFS) return -1;
+	if (Use.Kind () == HKIND_RAMFS) return RamFsSeek (Use.Obj (), ullPos);
+	FIL *pFile = (FIL *) Use.Obj ();
 	if (pFile->cltbl == 0 && f_size (pFile) > 4 * 1024 * 1024)
 	{
 		DWORD *pTbl = new DWORD[64];
@@ -1460,21 +1542,17 @@ void *kapi_code_alloc (unsigned long ulSize)
 
 void kapi_close (void *pHandle)
 {
-	if (RamFsIsFile (pHandle)) { RamFsClose (pHandle); return; }
-	if (VfsIsFile (pHandle)) { VfsClose (pHandle); return; }
-	if (pHandle != 0)
-	{
-		delete [] ((FIL *) pHandle)->cltbl;
-		f_close ((FIL *) pHandle);
-		delete (FIL *) pHandle;
-	}
+	HandleClose (pHandle, HANDLE_FILE);		// (kern/handle.h: HandleObjectClose)
 }
 
 // --- streams / stdio / processes ---------------------------------------------
+//
+// A stream handle holds one reference to its CStream (a pipe, a file stream); a spawned
+// child takes its own on its stdin / stdout, so either side may close first.
 
 void *kapi_pipe (void)
 {
-	return new CPipeStream;
+	return HandleNew (new CPipeStream, HANDLE_STREAM);
 }
 
 void *kapi_file_in (const char *pPath)
@@ -1484,12 +1562,12 @@ void *kapi_file_in (const char *pPath)
 	{
 		CRamStream *pRam = new CRamStream (abs, 0);
 		if (pRam != 0 && !pRam->IsValid ()) { delete pRam; pRam = 0; }
-		return pRam;
+		return HandleNew (pRam, HANDLE_STREAM);
 	}
 	CFileStream *pFile = new CFileStream (abs, 0);
 	if (pFile == 0) return 0;
 	if (!pFile->IsValid ()) { delete pFile; return 0; }
-	return pFile;
+	return HandleNew (pFile, HANDLE_STREAM);
 }
 
 void *kapi_file_out (const char *pPath, int bAppend)
@@ -1499,41 +1577,46 @@ void *kapi_file_out (const char *pPath, int bAppend)
 	{
 		CRamStream *pRam = new CRamStream (abs, bAppend ? 2 : 1);
 		if (pRam != 0 && !pRam->IsValid ()) { delete pRam; pRam = 0; }
-		return pRam;
+		return HandleNew (pRam, HANDLE_STREAM);
 	}
 	CFileStream *pFile = new CFileStream (abs, bAppend ? 2 : 1);
 	if (pFile == 0) return 0;
 	if (!pFile->IsValid ()) { delete pFile; return 0; }
-	return pFile;
+	return HandleNew (pFile, HANDLE_STREAM);
 }
 
 int kapi_stream_read (void *pHandle, void *pBuf, unsigned nLen)
 {
-	return pHandle != 0 ? ((CStream *) pHandle)->Read (pBuf, nLen) : 0;
+	CHandleUse Use (pHandle, HANDLE_STREAM);	// (a pipe's read waits for its writer)
+	return Use.Obj () != 0 ? ((CStream *) Use.Obj ())->Read (pBuf, nLen) : 0;
 }
 
 // Non-blocking read: >0 bytes, 0 = EOF, -1 = would block. For the terminal, which
 // drains a child's stdout without freezing its own UI loop.
 int kapi_stream_read_nb (void *pHandle, void *pBuf, unsigned nLen)
 {
-	return pHandle != 0 ? ((CStream *) pHandle)->ReadNonBlocking (pBuf, nLen) : 0;
+	CHandleUse Use (pHandle, HANDLE_STREAM);	// (a file stream's read may yield)
+	return Use.Obj () != 0 ? ((CStream *) Use.Obj ())->ReadNonBlocking (pBuf, nLen) : 0;
 }
 
 int kapi_stream_write (void *pHandle, const void *pBuf, unsigned nLen)
 {
-	return pHandle != 0 ? ((CStream *) pHandle)->Write (pBuf, nLen) : -1;
+	CHandleUse Use (pHandle, HANDLE_STREAM);	// (a full pipe waits for its reader)
+	return Use.Obj () != 0 ? ((CStream *) Use.Obj ())->Write (pBuf, nLen) : -1;
 }
 
 void kapi_stream_close (void *pHandle)
 {
-	if (pHandle != 0) ((CStream *) pHandle)->Release ();
+	HandleClose (pHandle, HANDLE_STREAM);		// (this handle's ref dropped)
 }
 
 // Signal EOF to readers of this stream (the writer is done). The terminal uses it
 // on its keyboard pipe so a stdin-reading child (e.g. cat) ends on Ctrl-D.
 void kapi_stream_eof (void *pHandle)
 {
-	if (pHandle != 0) ((CStream *) pHandle)->CloseWrite ();
+	CHandleTable *pTable = HandlesCurrent ();
+	CStream *pStream = pTable != 0 ? (CStream *) pTable->Get (pHandle, HANDLE_STREAM) : 0;
+	if (pStream != 0) pStream->CloseWrite ();
 }
 
 // Read from this task's stdin (0 = EOF / no stdin).
@@ -1587,28 +1670,78 @@ int kapi_klog_read (int *pSeverity, char *pSrc, unsigned nSrcCap, char *pMsg, un
 
 // This task's own stdin / stdout stream handles, so a shell (cmd) can wire them into
 // the children it spawns (first stage reads the shell's stdin, last stage's output is
-// drained by the shell). 0 if none.
+// drained by the shell). 0 if none. The handle has its own ref on the stream (the process
+// keeps its stdio ref): made at the first call, the same one returned while it is open --
+// closing it (stream_close) is allowed and no longer drops the process's own ref.
+static void *StdioHandle (CStream *pStream)
+{
+	CHandleTable *pTable = HandlesCurrent ();
+	if (pStream == 0 || pTable == 0)
+	{
+		return 0;
+	}
+	void *h = pTable->Find (pStream, HANDLE_STREAM);
+	if (h != 0)
+	{
+		return h;
+	}
+	pStream->AddRef ();
+	h = pTable->Add (pStream, HANDLE_STREAM);
+	if (h == 0)
+	{
+		pStream->Release ();			// (not the last: the process holds one)
+	}
+	return h;
+}
 void *kapi_stdin (void)
 {
 	CAddressSpace *pAS = CurrentAS ();
-	return pAS != 0 ? (void *) pAS->GetStdin () : 0;
+	return pAS != 0 ? StdioHandle (pAS->GetStdin ()) : 0;
 }
 void *kapi_stdout (void)
 {
 	CAddressSpace *pAS = CurrentAS ();
-	return pAS != 0 ? (void *) pAS->GetStdout () : 0;
+	return pAS != 0 ? StdioHandle (pAS->GetStdout ()) : 0;
 }
 
-// Spawn a console program (ELF at pPath) with stdin/stdout streams + argv. Returns
-// a process handle for kapi_wait, or 0 on failure.
+// Spawn a console program (ELF at pPath) with stdin/stdout streams (stream handles of the
+// caller, or 0) + argv. Returns a process handle for kapi_wait, or 0 on failure (also when
+// pStdin / pStdout is not a stream handle of the caller).
 void *kapi_spawn (const char *pPath, const char *pArgs, void *pStdin, void *pStdout)
 {
+	// (pinned: SpawnProcess may yield -- it looks for the file -- before the child takes
+	// its refs on them)
+	CHandleUse In (pStdin, HANDLE_STREAM), Out (pStdout, HANDLE_STREAM);
+	if ((pStdin != 0 && In.Obj () == 0) || (pStdout != 0 && Out.Obj () == 0))
+	{
+		return 0;
+	}
+	// Its handle first (the table full: no child started that nobody could wait for).
+	CHandleTable *pTable = HandlesCurrent ();
+	void *h = pTable != 0 ? pTable->Reserve () : 0;
+	if (h == 0)
+	{
+		return 0;
+	}
+
 	// Resolve the program path against the caller's cwd, pass that cwd to the child,
 	// and record the spawner as the child's parent (so killing the parent cascades).
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	CAddressSpace *pAS = CurrentAS ();
 	unsigned nParent = pAS != 0 ? pAS->GetPid () : 0;
-	return SpawnProcess (abs, pArgs, (CStream *) pStdin, (CStream *) pStdout, CurCwd (), nParent);
+	CProcess *pProc = SpawnProcess (abs, pArgs, (CStream *) In.Obj (), (CStream *) Out.Obj (),
+					CurCwd (), nParent);
+	if (pProc == 0)
+	{
+		pTable->Close (h, HANDLE_RESERVED);
+		return 0;
+	}
+	if (!pTable->Fill (h, pProc, HANDLE_PROCESS))	// (the record's refs: this handle's + the child's)
+	{
+		ProcessRelease (pProc);			// (not possible: nothing else closes a reserved one)
+		return 0;
+	}
+	return h;
 }
 
 // Change the calling task's working directory: resolve pPath, verify it is a real
@@ -1643,26 +1776,32 @@ int kapi_getcwd (char *pBuf, unsigned nMax)
 }
 
 // Wait (cooperatively) for a spawned process to finish; returns its exit status and
-// frees the handle.
+// closes the handle. -1: not a process handle of the caller.
 int kapi_wait (void *pProc)
 {
-	CProcess *p = (CProcess *) pProc;
-	if (p == 0) return -1;
-	while (!p->bDone)
+	int nStatus;
 	{
-		if (!CScheduler::IsActive ()) break;
-		CScheduler::Get ()->MsSleep (5);
+		CHandleUse Use (pProc, HANDLE_PROCESS);	// (pinned while it sleeps)
+		CProcess *p = (CProcess *) Use.Obj ();
+		if (p == 0) return -1;
+		while (!p->bDone)
+		{
+			if (!CScheduler::IsActive ()) break;
+			CScheduler::Get ()->MsSleep (5);
+		}
+		nStatus = p->nStatus;
 	}
-	int nStatus = p->nStatus;
-	delete p;
+	HandleClose (pProc, HANDLE_PROCESS);		// (nothing if another thread closed it meanwhile)
 	return nStatus;
 }
 
-// Non-blocking poll: 1 if the spawned process has finished (else 0). Does NOT free
-// the handle (kapi_wait does). Lets the terminal detect completion without blocking.
+// Non-blocking poll: 1 if the spawned process has finished (else 0; 1 too for a bad
+// handle, as for 0 before). Does NOT close the handle (kapi_wait does). Lets the
+// terminal detect completion without blocking.
 int kapi_proc_done (void *pProc)
 {
-	CProcess *p = (CProcess *) pProc;
+	CHandleTable *pTable = HandlesCurrent ();
+	CProcess *p = pTable != 0 ? (CProcess *) pTable->Get (pProc, HANDLE_PROCESS) : 0;
 	return (p == 0 || p->bDone) ? 1 : 0;
 }
 
@@ -1690,8 +1829,8 @@ void *kapi_opendir (const char *pPath)
 		return 0;
 	}
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
-	if (RamFsHandles (abs)) return RamFsOpenDir (abs);
-	if (VfsHandles (pPath)) return VfsOpenDir (pPath);
+	if (RamFsHandles (abs)) return HandleNew (RamFsOpenDir (abs), HANDLE_DIR, HKIND_RAMFS);
+	if (VfsHandles (pPath)) return HandleNew (VfsOpenDir (pPath), HANDLE_DIR, HKIND_VFS);
 	DIR *pDir = new DIR;
 	if (pDir == 0)
 	{
@@ -1702,19 +1841,25 @@ void *kapi_opendir (const char *pPath)
 		delete pDir;
 		return 0;
 	}
-	return pDir;
+	return HandleNew (pDir, HANDLE_DIR, HKIND_FATFS);
 }
 
 int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 {
-	if (pHandle == 0 || pEnt == 0)
+	if (pEnt == 0)
 	{
 		return 0;
 	}
-	if (RamFsIsDir (pHandle)) return RamFsReadDir (pHandle, pEnt);
-	if (VfsIsDir (pHandle)) return VfsReadDir (pHandle, pEnt);
+	CHandleUse Use (pHandle, HANDLE_DIR);
+	void *pObj = Use.Obj ();
+	if (pObj == 0)
+	{
+		return 0;
+	}
+	if (Use.Kind () == HKIND_RAMFS) return RamFsReadDir (pObj, pEnt);
+	if (Use.Kind () == HKIND_VFS) return VfsReadDir (pObj, pEnt);
 	FILINFO Info;
-	if (f_readdir ((DIR *) pHandle, &Info) != FR_OK || Info.fname[0] == '\0')
+	if (f_readdir ((DIR *) pObj, &Info) != FR_OK || Info.fname[0] == '\0')
 	{
 		return 0;			// error or end of directory
 	}
@@ -1731,13 +1876,7 @@ int kapi_readdir (void *pHandle, struct kapi_dirent *pEnt)
 
 void kapi_closedir (void *pHandle)
 {
-	if (RamFsIsDir (pHandle)) { RamFsCloseDir (pHandle); return; }
-	if (VfsIsDir (pHandle)) { VfsCloseDir (pHandle); return; }
-	if (pHandle != 0)
-	{
-		f_closedir ((DIR *) pHandle);
-		delete (DIR *) pHandle;
-	}
+	HandleClose (pHandle, HANDLE_DIR);
 }
 
 // --- file operations ---------------------------------------------------------
@@ -1850,9 +1989,40 @@ int kapi_tcp_connect (const char *pHost, unsigned nPort)
 	return NetTcpConnect (pHost, nPort, nPid);
 }
 
-int  kapi_tcp_send  (int hSock, const void *pBuf, unsigned nLen) { return NetTcpSend (hSock, pBuf, nLen); }
-int  kapi_tcp_recv  (int hSock, void *pBuf, unsigned nLen)       { return NetTcpRecv (hSock, pBuf, nLen); }
-void kapi_tcp_close (int hSock)                                  { NetTcpClose (hSock); }
+// Is the calling process (pid nMe) a descendant of process nAncestor? (Its parent chain,
+// as long as the parents live: a few levels at most.)
+static unsigned ParentPidOf (unsigned nPid);
+static boolean IsDescendantOf (unsigned nMe, unsigned nAncestor)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	unsigned nPid = pAS != 0 && pAS->GetPid () == nMe ? pAS->GetParentPid () : 0;
+	for (unsigned nDepth = 0; nPid != 0 && nDepth < 16; nDepth++)
+	{
+		if (nPid == nAncestor) return TRUE;
+		nPid = ParentPidOf (nPid);
+	}
+	return FALSE;
+}
+
+// May the caller use socket h? Its own; or one of an ancestor's, which it adopts (it is
+// closed when the caller dies, no longer when that ancestor does): ftpd hands a client's
+// socket number to the session process it spawns. Another process's socket: a bad handle
+// (the net layer checks the owner again for each request).
+static void SocketAdopt (int hSock)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	unsigned nMe = pAS != 0 ? pAS->GetPid () : 0;
+	unsigned nOwner = NetSocketOwner (hSock);
+	if (nMe == 0 || nOwner == 0 || nOwner == nMe) return;
+	if (IsDescendantOf (nMe, nOwner))
+	{
+		NetSocketAdopt (hSock, nOwner, nMe);
+	}
+}
+
+int  kapi_tcp_send  (int hSock, const void *pBuf, unsigned nLen) { SocketAdopt (hSock); return NetTcpSend (hSock, pBuf, nLen); }
+int  kapi_tcp_recv  (int hSock, void *pBuf, unsigned nLen)       { SocketAdopt (hSock); return NetTcpRecv (hSock, pBuf, nLen); }
+void kapi_tcp_close (int hSock)                                  { SocketAdopt (hSock); NetTcpClose (hSock); }
 
 // --- v37: TCP server side ----------------------------------------------------
 int kapi_tcp_listen (unsigned nPort)
@@ -1863,6 +2033,7 @@ int kapi_tcp_listen (unsigned nPort)
 
 int kapi_tcp_accept (int hListen, char *pIP, unsigned nCap)
 {
+	SocketAdopt (hListen);
 	CAddressSpace *pAS = CurrentAS ();
 	return NetTcpAccept (hListen, pIP, nCap, (pAS != 0) ? pAS->GetPid () : 0);
 }

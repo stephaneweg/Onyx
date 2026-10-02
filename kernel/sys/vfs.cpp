@@ -236,10 +236,12 @@ extern "C" int kapi_vfs_next (struct kapi_vfs_req *pReq, int bBlocking)
 	}
 }
 
+// A request the calling provider took (only its provider may read its data or answer it).
 static TReq *ReqById (unsigned nId)
 {
+	unsigned nPid = MyPid ();
 	for (unsigned i = 0; i < MAX_REQS; i++)
-		if (s_Req[i].nState == REQ_TAKEN && s_Req[i].nId == nId) return &s_Req[i];
+		if (s_Req[i].nState == REQ_TAKEN && s_Req[i].nId == nId && s_Req[i].nProvider == nPid) return &s_Req[i];
 	return 0;
 }
 
@@ -310,6 +312,14 @@ void VfsClose (void *h)
 	if (!f->bUsed) return;
 	VfsCall (VFS_OP_CLOSE, f->Path, 0, f->nFid, 0, 0, 0, 0, 0, 0, 0);
 	f->bUsed = FALSE;
+}
+
+// A dead process's file (its teardown: the interrupts masked, no request may wait): the slot
+// freed; the provider keeps its fid until it closes it itself (a leaked slot, before, until
+// the restart: 16 in all).
+void VfsDropFile (void *h)
+{
+	if (VfsIsFile (h)) ((TVFile *) h)->bUsed = FALSE;
 }
 
 void *VfsOpenDir (const char *pPath)
