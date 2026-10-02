@@ -95,6 +95,16 @@ answer in French. The docs stay in English.
   process maps a shared zero page at the same VA (no key held); on a focus change the kernel swaps
   the two PTEs (TLBI by VA + ASID) and clears the state. Key events for typing still go through
   the pump. Then Doom polling once per frame, and the small-`memcpy` fast path.
+- **Later: memory balance on 1 GB Pis (the user, 2026-10-02)**: a 1 GB Pi 4 has no high zone, so all
+  the apps share Circle's low pager (`PAGE_RESERVE`, 256 MB) while the kernel heap keeps ~680 MB it
+  does not need; a colleague's 1 GB Pi runs out of memory on Wikipedia in Jet (~3 000 pages of
+  64 KB = ~190 MB for one page; the footprint grows page after page -- maybe a NetSurf leak, maybe
+  newlib's sbrk-only malloc that never returns memory: WebKit2 with process swap on navigation and
+  a vm_map-based malloc (dlmalloc/mimalloc) will help). To do: a bigger app pool on 1 GB boards
+  (the reserve chosen at boot from the board's RAM, in the Circle fork + kernel), a small-memory
+  profile (smaller `RAM:` -- `ramfs=` --, Jet's caches on the card / capped), and a `vmmap <app>`
+  tool (the regions, resident pages, kinds: heap, stacks, image, canvases) on vm_query/vm_stats.
+  Meanwhile on 1 GB: `cache_on_card:1` in `SD:/res/Choices`, `ramfs=16` in `SD:/etc/system.ini`.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
   files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
