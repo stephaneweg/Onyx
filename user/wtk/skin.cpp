@@ -96,13 +96,107 @@ int  wk_window_flags () { return s_winFlags; }
 // theme's outline on the rounded shape, a light line along the top, the title buttons (the
 // window menu; minimise, maximise, close), the title in bold; then the corners' outside made
 // see-through (the top byte: kapi_abi.h).
-// The frame keeps the desktop's bitmap font whatever face the app installed (wtk/text.h): every
-// window's title looks the same.
-struct BitmapText { TextFace *keep; BitmapText () : keep (wk_face_) { wk_face_ = 0; } ~BitmapText () { wk_face_ = keep; } };
+// The title's face: SD:/res/fonts/title.aaf -- DejaVu Sans Bold at 13 px, rendered by the apps' FreeType
+// (tools/title_font/gen_title_font.cpp: its format) and kept as anti-aliased bitmaps, read once by every
+// app's frame: the same title in every window, an app with FreeType or not. Without the file: the
+// desktop's bitmap font, whatever face the app installed (wtk/text.h).
+class AafFace : public TextFace
+{
+public:
+	struct G { unsigned short adv; signed char l, t; unsigned char w, h; unsigned off; };
+	bool ok, tried;
+	AafFace () : ok (false), tried (false), m_h (16), m_asc (12), m_n (0), m_nk (0), m_g (0), m_k (0), m_data (0) {}
+	void load ()
+	{
+		if (tried) return;
+		tried = true;
+		void *f = kapi_open ("SD:/res/fonts/title.aaf");
+		if (!f) return;
+		unsigned n = kapi_fsize (f);
+		unsigned char *b = n >= 12 && n < (1u << 20) ? new unsigned char[n] : 0;
+		int r = b ? kapi_read (f, b, n) : -1;
+		kapi_close (f);
+		if (!b || r != (int) n || b[0] != 'A' || b[1] != 'A' || b[2] != 'F' || b[3] != '1') { delete [] b; return; }
+		m_h = b[4] | b[5] << 8; m_asc = b[6] | b[7] << 8; m_n = b[8] | b[9] << 8; m_nk = b[10] | b[11] << 8;
+		unsigned tab = 12, kern = tab + (unsigned) m_n * 10, data = kern + (unsigned) m_nk * 4;
+		if (data > n || m_n <= 0) { delete [] b; return; }
+		m_g = new G[m_n];
+		for (int i = 0; i < m_n; i++)
+		{
+			const unsigned char *q = b + tab + i * 10;
+			G &g = m_g[i];
+			g.adv = (unsigned short) (q[0] | q[1] << 8); g.l = (signed char) q[2]; g.t = (signed char) q[3]; g.w = q[4]; g.h = q[5];
+			g.off = data + (q[6] | q[7] << 8 | q[8] << 16 | (unsigned) q[9] << 24);
+			if (g.off + (unsigned) g.w * g.h > n) g.w = g.h = 0;
+		}
+		m_k = b + kern; m_data = b;
+		ok = true;
+	}
+	int height () override { return m_h; }
+	int ascent () override { return m_asc; }
+	int width (const char *s, int style) override { return widthN (s, 1 << 30, style); }
+	int widthN (const char *s, int n, int) override
+	{
+		long x = 0; unsigned prev = 0;
+		int len = 0; while (len < n && s && s[len]) len++;
+		for (int i = 0; i < len; )
+		{
+			int k; unsigned cp = wk_u8_get (s + i, len - i, &k); i += k;
+			x += kern (prev, cp) + glyph (cp).adv; prev = cp;
+		}
+		return (int) ((x + 32) >> 6);
+	}
+	void draw (Canvas &cv, int x, int yTop, const char *s, unsigned c, int) override
+	{
+		long x64 = (long) x * 64; unsigned prev = 0;
+		int len = 0; while (s && s[len]) len++;
+		int base = yTop + m_asc;
+		for (int i = 0; i < len; )
+		{
+			int k; unsigned cp = wk_u8_get (s + i, len - i, &k); i += k;
+			x64 += kern (prev, cp); prev = cp;
+			const G &g = glyph (cp);
+			int gx = (int) ((x64 + 32) >> 6) + g.l, gy = base - g.t;
+			const unsigned char *b = m_data + g.off;
+			for (int j = 0; j < g.h; j++)
+				for (int i2 = 0; i2 < g.w; i2++)
+					if (b[j * g.w + i2]) wk_blend_px (cv, gx + i2, gy + j, c, b[j * g.w + i2]);
+			x64 += g.adv;
+		}
+	}
+private:
+	int m_h, m_asc, m_n, m_nk; G *m_g; const unsigned char *m_k, *m_data;
+	const G &glyph (unsigned cp) const
+	{
+		int i = (int) cp - 32;
+		if (i < 0 || i >= m_n) i = '?' - 32;
+		return m_g[i];
+	}
+	int kern (unsigned a, unsigned b) const
+	{
+		if (!a || a > 126 || b > 126) return 0;
+		for (int i = 0; i < m_nk; i++) if (m_k[4 * i] == a && m_k[4 * i + 1] == b) return (short) (m_k[4 * i + 2] | m_k[4 * i + 3] << 8);
+		return 0;
+	}
+};
+static AafFace s_titleFace;
+static TextFace *title_face () { s_titleFace.load (); return s_titleFace.ok ? &s_titleFace : 0; }
+// For the time of the frame: the title's face (or the bitmap font), the app's back after it.
+struct TitleText
+{
+	TextFace *keep; int keepFw;
+	TitleText () : keep (wk_face_), keepFw (wk_face_fw_)
+	{
+		TextFace *t = title_face ();
+		wk_face_ = t;
+		if (t) { wk_face_fw_ = t->width ("0", 0); if (wk_face_fw_ < 1) wk_face_fw_ = 1; }
+	}
+	~TitleText () { wk_face_ = keep; wk_face_fw_ = keepFw; }
+};
 
 static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, unsigned fc, bool active)
 {
-	BitmapText bitmap;
+	TitleText titleText;
 	const int R = KAPI_FRAME_RADIUS;
 	Canvas cv; cv.adopt (fb, W, H);
 	// one continuous gradient: the title bar lighter, the borders going on from it (no line
@@ -169,15 +263,10 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 		}
 	}
 	// the title, bold, centred on the window if it can be, else between the buttons
-	char t[48]; int n = 0;
-	for (; title && title[n] && n < 47; n++) t[n] = title[n];
-	t[n] = '\0';
 	int lo = KAPI_FRAME_BTN_EDGE + bw + 8, hi = W - KAPI_FRAME_BTN_EDGE - 2 * KAPI_FRAME_BTN_STEP - bw - 8;
-	int fw = wk_text_w ("M", 2);
-	if (fw < 1) fw = 8;
-	int maxc = (hi - lo) / fw;
-	if (maxc < 0) maxc = 0;
-	if (n > maxc) { n = maxc; if (n >= 2) { t[n - 1] = '.'; t[n - 2] = '.'; } t[n] = '\0'; }
+	char t[160]; t[0] = '\0';
+	if (title && hi > lo) wk_text_fit (title, hi - lo, t, sizeof t, 2);
+	int n = 0; while (t[n]) n++;
 	int tw = wk_text_w (t, 2), tx = (W - tw) / 2;
 	if (tx < lo) tx = lo;
 	if (tx + tw > hi) tx = hi - tw;
