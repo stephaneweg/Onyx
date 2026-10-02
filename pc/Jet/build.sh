@@ -21,9 +21,9 @@ rm -rf "$DIST"
 mkdir -p "$DIST/res" "$DIST/data" "$DIST/fonts" "$DIST/etc"
 cp "$OUT/Jet.exe" "$DIST/Jet.exe"		# (the one with its symbols stays in $OUT: addr2line -e)
 "$STRIP" "$DIST/Jet.exe"
-# res\: the card's (sdcard/res, as netsurf-app.mk stages it: Choices, Messages, the UA style sheets, the
+# res\: the card's (sdcard/res -- but its soundfonts/, the Media Player's 31 MB, Jet does not use --, as netsurf-app.mk stages it: Choices, Messages, the UA style sheets, the
 # trusted roots -- NetSurf's ca-bundle, as on the Pi --, the fonts and their licences)
-(cd "$SD/res" && git -C "$ROOT" ls-files -- sdcard/res | sed 's|^sdcard/res/||' | while read -r f; do
+(cd "$SD/res" && git -C "$ROOT" ls-files -- sdcard/res | sed 's|^sdcard/res/||' | grep -v '^soundfonts/' | while read -r f; do
 	mkdir -p "$DIST/res/$(dirname "$f")"; cp "$f" "$DIST/res/$f"; done)
 # data\: the browser's own folder (on the Pi SD:/apps/jet.app/): the User-Agent file; the rest is made there
 cp "$SD/apps/jet.app/jet.ini" "$DIST/data/"
