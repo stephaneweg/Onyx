@@ -40,7 +40,7 @@ documentation in the same session**, without being asked again:
   `kernel/sys/kapitable.cpp`, `user/kapi.h`) → update the ABI table in
   `docs/02-KERNEL-INTERNALS.md` (+ `docs/03` if dev-facing) and the version history
   (`KAPI_ABI_VERSION`). **The ABI is append-only**: never reorder/remove a field.
-- **Application** (`user/*.c`, `user/bin/*.c`, `sdcard/apps/<name>.app`) → update the catalog
+- **Application** (`user/Apps/<name>/`, `user/bin/*.c`, `sdcard/apps/<name>.app`) → update the catalog
   in `docs/04-USER-GUIDE.md` (controls, files read/written) and `docs/03` if relevant. Add
   the `.elf` to `user/Makefile` (or `user/bin/Makefile`).
 - **If the change is visible on screen** → regenerate the affected screenshot(s) with
