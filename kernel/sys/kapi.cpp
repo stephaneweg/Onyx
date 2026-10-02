@@ -28,6 +28,7 @@
 #include <kern/thread.h>		// (v67) threads, posts: ThreadsEndProcess
 #include <kern/uaccess.h>		// the app's pointers: checked, copied fault-safe
 #include <kern/ofile.h>		// (v75) ResolvePath & co. shared with sys/ofile.cpp, OFileNoteDir
+#include <kern/image.h>		// (v77) program images: the image kapis, ImageFileChanged
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -439,6 +440,52 @@ int kapi_exec_as (const char *pPath, const char *pArgs, const char *pName)
 	if (!Path.OK () || (!Args.OK () && !Args.IsNull ()) || (!Name.OK () && !Name.IsNull ())) return 0;
 	const char *p = Name.OK () && Name.Get ()[0] ? Name.Get () : 0;
 	return ExecPath (Path.Get (), Args.OK () ? Args.Get () : "", p) ? 1 : 0;
+}
+
+// --- v77: program images (kern/image.h) ---------------------------------------
+// A program file is loaded once and its read-only segments shared by its processes; the key is the
+// program's canonical path (ImageCanonPath: relative to the caller's working directory, lower
+// case). These three calls are /bin/preload's, /bin/unload's and pkg's.
+
+// The program loaded ahead and kept: a kernel task reads it, the call returns at once.
+int kapi_image_preload (const char *pPath)
+{
+	CUserStr Path (pPath, UPATH_MAX);
+	if (!Path.OK ()) return -KAPI_EFAULT;
+	char Canon[IMG_PATH_MAX];
+	if (!ImageCanonPath (Path.Get (), CurCwd (), Canon)) return Path.Get ()[0] ? -KAPI_ENAMETOOLONG : -KAPI_ENOENT;
+	return ProgramPreload (Canon);
+}
+
+// Its image loses its pin and its name: freed with its last process.
+int kapi_image_unload (const char *pPath)
+{
+	CUserStr Path (pPath, UPATH_MAX);
+	if (!Path.OK ()) return -KAPI_EFAULT;
+	return ImageUnload (Path.Get (), CurCwd ());
+}
+
+// The live images (pPath 0), or the one a run of pPath would map.
+int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned nCap)
+{
+	if (pPath != 0)
+	{
+		CUserStr Path (pPath, UPATH_MAX);
+		if (!Path.OK ()) return -KAPI_EFAULT;
+		struct kapi_image_info Info;
+		if (ImageList (Path.Get (), CurCwd (), &Info, 1) == 0) return 0;
+		if (nCap > 0 && !UserPut (pOut, Info)) return -KAPI_EFAULT;
+		return 1;
+	}
+	unsigned n = ImageList (0, 0, 0, 0);
+	if (n == 0 || nCap == 0) return (int) n;
+	if (nCap > n) nCap = n;
+	struct kapi_image_info *pList = new struct kapi_image_info[nCap];	// (made here, copied out whole)
+	if (pList == 0) return -KAPI_ENOMEM;
+	n = ImageList (0, 0, pList, nCap);
+	boolean bOK = UserCopyOut (pOut, pList, (u64) (n < nCap ? n : nCap) * sizeof (struct kapi_image_info));
+	delete [] pList;
+	return bOK ? (int) n : -KAPI_EFAULT;
 }
 
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
@@ -2020,6 +2067,7 @@ int kapi_remove (const char *pUserPath)		// file or empty directory
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
 	if (RamFsHandles (abs)) return RamFsRemove (abs);
 	if (VfsHandles (pPath)) return VfsCall (VFS_OP_REMOVE, pPath, 0, 0, 0, 0, 0, 0, 0, 0, 0) == 0 ? 0 : -1;
+	ImageFileChanged (abs);				// (v77: a program's image loses its name)
 	return (f_unlink (abs) == FR_OK) ? 0 : -1;
 }
 
@@ -2046,6 +2094,8 @@ int kapi_rename (const char *pUserFrom, const char *pUserTo)
 	int vf = VolumePrefix (absF), vt = VolumePrefix (absT);
 	if (vf != vt) return -1;
 	for (int i = 0; i < vf; i++) if (absF[i] != absT[i]) return -1;
+	ImageFileChanged (absF);			// (v77: the images of both names, and of the
+	ImageFileChanged (absT);			//  programs under a renamed folder)
 	return (f_rename (absF, absT) == FR_OK) ? 0 : -1;
 }
 
@@ -2091,6 +2141,7 @@ int kapi_save_file (const char *pUserPath, const void *pBuf, unsigned nLen)
 		return n >= 0 ? n : -1;
 	}
 	char abs[300]; ResolvePath (pPath, abs, sizeof abs);
+	ImageFileChanged (abs);				// (v77: a program's image loses its name)
 	FIL File;
 	if (f_open (&File, abs, FA_WRITE | FA_CREATE_ALWAYS) != FR_OK)
 	{
@@ -2099,6 +2150,7 @@ int kapi_save_file (const char *pUserPath, const void *pBuf, unsigned nLen)
 	UINT nWritten = 0;
 	FRESULT Res = ChunkedWrite (&File, pBuf, nLen, &nWritten);
 	f_close (&File);
+	ImageFileChanged (abs);				// (one made from the half-written file meanwhile)
 	return (Res == FR_OK) ? (int) nWritten : -1;
 }
 
@@ -2221,7 +2273,8 @@ int kapi_meminfo (unsigned long *pTotalKB, unsigned long *pFreeKB,
 						 + CMemorySystem::GetPagerFreeListSpace ()
 						 + CMemorySystem::GetPagerHighFreeSpace ()
 						 + CMemorySystem::GetPagerHighFreeListSpace ());
-	unsigned long nApp   = (unsigned long) g_nUserPages * (unsigned long) KPAGE_SIZE;
+	// (v77: + the program images' shared frames, held once whatever the number of processes)
+	unsigned long nApp   = (unsigned long) (g_nUserPages + ImagePagesTotal ()) * (unsigned long) KPAGE_SIZE;
 
 	if (!OutOK (pTotalKB) || !OutOK (pFreeKB) || !OutOK (pAppKB) || !OutOK (pPageKB)) return 0;
 	OutPut (pTotalKB, nTotal / 1024);

@@ -89,6 +89,7 @@ public:
 private:
 	FIL     m_File;
 	boolean m_bOpen;
+	char    m_Written[300];	// (v77) its path when opened for writing ("": read), for ImageFileChanged
 };
 
 // A file of the RAM volume (kern/ramfs.h) as a stream. nMode as CFileStream's.

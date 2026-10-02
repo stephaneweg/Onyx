@@ -1,48 +1,137 @@
 //
 // elf.cpp -- minimal ELF64/AArch64 loader.
 //
+// (v77) The headers are read and checked on their own (ElfReadPlan); the segments are then read
+// straight into their frames by the image object (proc/image.cpp, kern/image.h). LoadELF, the
+// old entry point over a whole file in memory, goes through the same code.
+//
 #include <kern/elf.h>
+#include <kern/image.h>
 #include <kern/addrspace.h>
 #include <kern/layout.h>
-#include <kern/vm.h>			// VmNoteRegion (v75: the image's regions, for vm_query)
-#include <kern/kapi_abi.h>		// KAPI_PROT_*, KAPI_VMK_IMAGE
+#include <kern/kapi_abi.h>		// KAPI_E*
 #include <circle/synchronize.h>		// SyncDataAndInstructionCache
 #include <circle/util.h>		// memcpy
 #include <circle/logger.h>
 
 static const char FromELF[] = "elf";
 
-static u64 Min64 (u64 a, u64 b) { return a < b ? a : b; }
-static u64 Max64 (u64 a, u64 b) { return a > b ? a : b; }
-
-// Map the pages covering [ulVAddr, ulVAddr+ulMemSz) and copy ulFileSz bytes of
-// segment data into them; the remainder (bss) stays zero (MapNewPage zeroes).
-static boolean LoadSegment (CAddressSpace *pAS, u64 ulVAddr, const u8 *pData,
-			    u64 ulFileSz, u64 ulMemSz, const TKPageAttr &Attr)
+static int Refuse (const char **ppWhy, const char *pWhy, int nErr)
 {
-	u64 ulStart = KPAGE_ALIGN_DOWN (ulVAddr);
-	u64 ulEnd   = KPAGE_ALIGN_UP (ulVAddr + ulMemSz);
+	if (ppWhy != 0) *ppWhy = pWhy;
+	return nErr;
+}
 
-	for (u64 va = ulStart; va < ulEnd; va += KPAGE_SIZE)
+// nBytes at ulOffset, all of them (the range is inside the file: checked by the caller).
+static boolean ReadAll (const TImgSource *pSrc, u64 ulOffset, void *pBuffer, unsigned nBytes)
+{
+	return pSrc->pRead (pSrc->pCtx, ulOffset, pBuffer, nBytes) == (int) nBytes;
+}
+
+int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy)
+{
+	pPlan->ulEntry = 0;
+	pPlan->nSegs = 0;
+	if (pSrc == 0 || pSrc->pRead == 0 || pSrc->nSize < sizeof (Elf64_Ehdr))
 	{
-		u8 *pFrame = (u8 *) pAS->MapNewPage (va, Attr);	// zeroed, identity addr
-		if (pFrame == 0)
-		{
-			return FALSE;
-		}
-
-		// Overlap of [ulVAddr, ulVAddr+ulFileSz) with this page [va, va+64K).
-		u64 ulCopyStart = Max64 (va, ulVAddr);
-		u64 ulCopyEnd   = Min64 (va + KPAGE_SIZE, ulVAddr + ulFileSz);
-		if (ulCopyStart < ulCopyEnd)
-		{
-			memcpy (pFrame + (ulCopyStart - va),
-				pData + (ulCopyStart - ulVAddr),
-				(size_t) (ulCopyEnd - ulCopyStart));
-		}
+		return Refuse (ppWhy, "too short for an ELF header", -KAPI_EINVAL);
 	}
 
-	return TRUE;
+	Elf64_Ehdr Ehdr;
+	if (!ReadAll (pSrc, 0, &Ehdr, sizeof Ehdr))
+	{
+		return Refuse (ppWhy, "read failed (the ELF header)", -KAPI_EIO);
+	}
+	if (!(Ehdr.e_ident[0] == 0x7F && Ehdr.e_ident[1] == 'E'
+	   && Ehdr.e_ident[2] == 'L'  && Ehdr.e_ident[3] == 'F'))
+	{
+		return Refuse (ppWhy, "bad ELF magic", -KAPI_EINVAL);
+	}
+	if (Ehdr.e_ident[4] != 2 /* ELFCLASS64 */ || Ehdr.e_machine != EM_AARCH64)
+	{
+		return Refuse (ppWhy, "not AArch64 ELF64", -KAPI_EINVAL);
+	}
+	if (Ehdr.e_type != ET_EXEC && Ehdr.e_type != ET_DYN)
+	{
+		return Refuse (ppWhy, "not an executable ELF", -KAPI_EINVAL);
+	}
+	// The program headers: inside the file (the loader of a whole image in memory never checked).
+	if (Ehdr.e_phnum != 0
+	    && (   Ehdr.e_phentsize < sizeof (Elf64_Phdr)
+		|| Ehdr.e_phoff > pSrc->nSize
+		|| (u64) Ehdr.e_phnum * Ehdr.e_phentsize > pSrc->nSize - Ehdr.e_phoff))
+	{
+		return Refuse (ppWhy, "program headers past end of image", -KAPI_EINVAL);
+	}
+
+	for (unsigned i = 0; i < Ehdr.e_phnum; i++)
+	{
+		Elf64_Phdr Phdr;
+		if (!ReadAll (pSrc, Ehdr.e_phoff + (u64) i * Ehdr.e_phentsize, &Phdr, sizeof Phdr))
+		{
+			return Refuse (ppWhy, "read failed (the program headers)", -KAPI_EIO);
+		}
+		if (Phdr.p_type != PT_LOAD || Phdr.p_memsz == 0)
+		{
+			continue;
+		}
+
+		if (Phdr.p_offset > pSrc->nSize || Phdr.p_filesz > pSrc->nSize - Phdr.p_offset)
+		{
+			return Refuse (ppWhy, "segment past end of image", -KAPI_EINVAL);
+		}
+		if (   !IS_USER_VA (Phdr.p_vaddr)
+		    || Phdr.p_vaddr + Phdr.p_memsz - 1 < Phdr.p_vaddr		// (wraps)
+		    || !IS_USER_VA (Phdr.p_vaddr + Phdr.p_memsz - 1))
+		{
+			return Refuse (ppWhy, "segment out of user range", -KAPI_EINVAL);
+		}
+		if (pPlan->nSegs == ELF_MAX_SEGS)
+		{
+			return Refuse (ppWhy, "too many segments", -KAPI_EINVAL);
+		}
+		// Two segments in one 64 KB page: the second one's page replaced the first one's (its
+		// frame lost, its bytes gone). Our programs are linked with 64 KB pages: refused.
+		u64 ulStart = KPAGE_ALIGN_DOWN (Phdr.p_vaddr);
+		u64 ulEnd   = KPAGE_ALIGN_UP (Phdr.p_vaddr + Phdr.p_memsz);
+		for (unsigned k = 0; k < pPlan->nSegs; k++)
+		{
+			const TElfSeg &O = pPlan->Seg[k];
+			if (   ulStart < KPAGE_ALIGN_UP (O.ulVAddr + O.ulMemSz)
+			    && KPAGE_ALIGN_DOWN (O.ulVAddr) < ulEnd)
+			{
+				return Refuse (ppWhy, "two segments share a page", -KAPI_EINVAL);
+			}
+		}
+
+		TElfSeg &S = pPlan->Seg[pPlan->nSegs++];
+		S.ulVAddr  = Phdr.p_vaddr;
+		S.ulMemSz  = Phdr.p_memsz;
+		// (bytes beyond the memory size were never copied: as before)
+		S.ulFileSz = Phdr.p_filesz < Phdr.p_memsz ? Phdr.p_filesz : Phdr.p_memsz;
+		S.ulOffset = Phdr.p_offset;
+		S.nFlags   = Phdr.p_flags;
+	}
+
+	pPlan->ulEntry = Ehdr.e_entry;
+	return 0;
+}
+
+// ---- the old entry point: a whole file in memory -------------------------------------------------
+
+struct TMemImage
+{
+	const u8 *pBytes;
+	u64	  nSize;
+};
+
+static int MemRead (void *pCtx, u64 ulOffset, void *pBuffer, unsigned nBytes)
+{
+	const TMemImage *pMem = (const TMemImage *) pCtx;
+	if (ulOffset >= pMem->nSize) return 0;
+	if (nBytes > pMem->nSize - ulOffset) nBytes = (unsigned) (pMem->nSize - ulOffset);
+	memcpy (pBuffer, pMem->pBytes + ulOffset, nBytes);
+	return (int) nBytes;
 }
 
 boolean LoadELF (const void *pImage, size_t nSize, CAddressSpace *pAS, u64 *pEntry)
@@ -52,68 +141,24 @@ boolean LoadELF (const void *pImage, size_t nSize, CAddressSpace *pAS, u64 *pEnt
 		return FALSE;
 	}
 
-	const u8 *pBytes = (const u8 *) pImage;
-	const Elf64_Ehdr *pEhdr = (const Elf64_Ehdr *) pImage;
-
-	if (!(pEhdr->e_ident[0] == 0x7F && pEhdr->e_ident[1] == 'E'
-	   && pEhdr->e_ident[2] == 'L'  && pEhdr->e_ident[3] == 'F'))
+	TMemImage Mem = { (const u8 *) pImage, nSize };
+	TImgSource Src = { MemRead, &Mem, nSize };
+	TImage *pObj = 0;
+	const char *pWhy = "";
+	if (ImageOpen (0, 0, &Src, 0, &pObj, 0, &pWhy) < 0)	// (no path: an image of its own)
 	{
-		CLogger::Get ()->Write (FromELF, LogError, "bad ELF magic");
+		CLogger::Get ()->Write (FromELF, LogError, "%s", pWhy);
 		return FALSE;
 	}
-	if (pEhdr->e_ident[4] != 2 /* ELFCLASS64 */ || pEhdr->e_machine != EM_AARCH64)
+	boolean bOK = ImageMap (pObj, pAS, pEntry);
+	ImageRelease (pObj);				// (pAS holds it now)
+	if (!bOK)
 	{
-		CLogger::Get ()->Write (FromELF, LogError, "not AArch64 ELF64");
 		return FALSE;
-	}
-	if (pEhdr->e_type != ET_EXEC && pEhdr->e_type != ET_DYN)
-	{
-		CLogger::Get ()->Write (FromELF, LogError, "not an executable ELF");
-		return FALSE;
-	}
-
-	for (unsigned i = 0; i < pEhdr->e_phnum; i++)
-	{
-		const Elf64_Phdr *pPhdr =
-			(const Elf64_Phdr *) (pBytes + pEhdr->e_phoff + i * pEhdr->e_phentsize);
-
-		if (pPhdr->p_type != PT_LOAD || pPhdr->p_memsz == 0)
-		{
-			continue;
-		}
-
-		if (pPhdr->p_offset + pPhdr->p_filesz > nSize)
-		{
-			CLogger::Get ()->Write (FromELF, LogError, "segment past end of image");
-			return FALSE;
-		}
-		if (!IS_USER_VA (pPhdr->p_vaddr)
-		    || !IS_USER_VA (pPhdr->p_vaddr + pPhdr->p_memsz - 1))
-		{
-			CLogger::Get ()->Write (FromELF, LogError,
-						"segment vaddr %lp out of user range",
-						(void *) pPhdr->p_vaddr);
-			return FALSE;
-		}
-
-		TKPageAttr Code = KPAGE_ATTR_APP_CODE;	// EL0 RX (apps run at EL0)
-		TKPageAttr Data = KPAGE_ATTR_APP_DATA;	// EL0 RW
-		const TKPageAttr &Attr = (pPhdr->p_flags & PF_X) ? Code : Data;
-
-		if (!LoadSegment (pAS, pPhdr->p_vaddr, pBytes + pPhdr->p_offset,
-				  pPhdr->p_filesz, pPhdr->p_memsz, Attr))
-		{
-			return FALSE;
-		}
-		// (v75) An eager region of its own (kern/vm.h): never filled on demand.
-		VmNoteRegion (pAS, pPhdr->p_vaddr, pPhdr->p_vaddr + pPhdr->p_memsz,
-			      (pPhdr->p_flags & PF_X) ? KAPI_PROT_READ | KAPI_PROT_EXEC
-						      : KAPI_PROT_READ | KAPI_PROT_WRITE, KAPI_VMK_IMAGE);
 	}
 
 	// We wrote code via the identity mapping: make it executable at the user VA.
 	SyncDataAndInstructionCache ();
 
-	*pEntry = pEhdr->e_entry;
 	return TRUE;
 }

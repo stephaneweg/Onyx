@@ -122,6 +122,9 @@ int VfsCall (int, const char *, const char *, long, long, long, const void *, un
 int VfsReadDir (void *, struct kapi_dirent *) { return 0; }
 
 const char *CurCwd (void) { return "SD:/"; }
+// (v77) the program images' hook (kern/image.h): its own test is tools/tests/run_image_test.sh
+unsigned g_nImageHooks;
+void ImageFileChanged (const char *) { g_nImageHooks++; }
 
 // (kernel/sys/kapi.cpp's, as it is)
 static unsigned VolumePrefix (const char *p)

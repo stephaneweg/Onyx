@@ -27,6 +27,7 @@
 #include <kern/kapitable.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
+#include <kern/image.h>		// (v77) program images: the streaming loader, the shared image, preload
 #include <kern/gui/gimage.h>
 #include <kern/net.h>
 #include <kern/ipc.h>		// IpcNotify ("Network up")
@@ -152,6 +153,96 @@ static unsigned AppUserStack (const char *pPath)
 }
 
 //
+// (v77) A program's image (kern/image.h) from its file. The image's source over a FatFs file:
+// read where the loader asks (it reads forward: the headers, then each segment).
+//
+static int ProgramFileRead (void *pCtx, u64 ulOffset, void *pBuffer, unsigned nBytes)
+{
+	FIL *pFile = (FIL *) pCtx;
+	if (f_tell (pFile) != ulOffset && f_lseek (pFile, ulOffset) != FR_OK) return -1;
+	UINT nRead = 0;
+	if (f_read (pFile, pBuffer, nBytes, &nRead) != FR_OK) return -1;
+	return (int) nRead;
+}
+
+// The image of the program at pPath, a reference taken (ImageRelease). In memory already -- a
+// process of that path runs, or it is preloaded -- : nothing is read from the card, not even its
+// directory. Else the file is opened and streamed into a new image (the calling task reads,
+// yielding). nFlags: IMG_OPEN_PIN (a preload). -> 0 / -KAPI_E* (*ppWhy: for the log).
+static int ProgramImage (const char *pPath, unsigned nFlags, TImage **ppImage, unsigned *pHow,
+			 const char **ppWhy)
+{
+	int nErr = ImageOpen (pPath, 0, 0, nFlags, ppImage, pHow, ppWhy);
+	if (nErr != -KAPI_ENOENT) return nErr;		// (found, or its load by another task failed)
+
+	FIL File;
+	if (f_open (&File, pPath, FA_READ) != FR_OK)
+	{
+		*ppWhy = "cannot open the file";
+		return -KAPI_ENOENT;
+	}
+	TImgSource Src = { ProgramFileRead, &File, (u64) f_size (&File) };
+	// (the open yielded: another task may have made the image meanwhile -- then that one)
+	nErr = ImageOpen (pPath, 0, &Src, nFlags, ppImage, pHow, ppWhy);
+	f_close (&File);
+	return nErr;
+}
+
+// Is there a program at pPath: in memory (no card access), else on the card.
+static boolean SdFileExists (const char *pPath);
+static boolean ProgramExists (const char *pPath)
+{
+	return ImageList (pPath, 0, 0, 0) != 0 || SdFileExists (pPath);
+}
+
+//
+// A preload (kapi image_preload, /bin/preload): a kernel task loads the program's image and pins
+// it; the caller returned at once. A process started meanwhile waits for this load and shares it.
+//
+class CPreloadTask : public CTask
+{
+public:
+	CPreloadTask (const char *pPath)
+	:	CTask (EL0_KSTACK_SIZE)		// (the stack a process's own load runs on)
+	{
+		SetName ("preload");
+		unsigned n = 0;
+		for (; pPath[n] != '\0' && n < sizeof (m_Path) - 1; n++) m_Path[n] = pPath[n];
+		m_Path[n] = '\0';
+	}
+
+	void Run (void) override
+	{
+		unsigned nT0 = CTimer::GetClockTicks ();
+		TImage *pImage = 0;
+		unsigned nHow = 0;
+		const char *pWhy = "";
+		if (ProgramImage (m_Path, IMG_OPEN_PIN, &pImage, &nHow, &pWhy) < 0)
+		{
+			CLogger::Get ()->Write ("preload", LogError, "cannot load %s: %s", m_Path, pWhy);
+			return;
+		}
+		u64 nShared = 0, nPrivate = 0;
+		ImageSizes (pImage, &nShared, &nPrivate);
+		CLogger::Get ()->Write ("preload", LogNotice, "image %s: %s in %u ms, kept (%u KB shared)", m_Path,
+					nHow == IMG_HOW_LOADED ? "loaded" : "in memory already",
+					(CTimer::GetClockTicks () - nT0) / 1000, (unsigned) (nShared >> 10));
+		ImageRelease (pImage);		// (pinned: it stays)
+	}
+
+private:
+	char m_Path[IMG_PATH_MAX];
+};
+
+int ProgramPreload (const char *pCanonPath)		// (kern/applaunch.h: kapi_image_preload)
+{
+	struct kapi_image_info Info;
+	if (ImageList (pCanonPath, 0, &Info, 1) != 0 && (Info.flags & KAPI_IMG_KEPT)) return 0;	// (kept already)
+	if (!ProgramExists (pCanonPath)) return -KAPI_ENOENT;
+	return new CPreloadTask (pCanonPath) != 0 ? 0 : -KAPI_ENOMEM;
+}
+
+//
 // CUserProcessTask: one process = one task (plus its threads, kern/thread.h). The task builds the
 // process's address space, loads the ELF into it, maps the user stack, then enters the entry
 // point at EL0 (kern/el0.h) -- for good: the process calls the kernel by system calls through
@@ -221,61 +312,60 @@ public:
 		ProcInfoInstall (pAS, m_pInfo);			// (v75: its own now; its record learns its pid)
 		m_pInfo = 0;
 
-		// Load the ELF from SD HERE -- on our own thread, deferred to our first schedule
-		// ("when we are switched to") -- so the launcher/shell wasn't blocked by the read.
-		// Read in chunks, yielding between them, so the compositor + the rest of the UI
-		// keep running while we load (the SD read is the slow part; we're single-core).
-		FIL File;
-		if (f_open (&File, m_Path, FA_READ) != FR_OK)
+		// Its program's image (v77, kern/image.h) HERE -- on our own thread, deferred to our first
+		// schedule ("when we are switched to") -- so the launcher/shell wasn't blocked by the
+		// read. In memory already (another process of the program runs, or it is preloaded): the
+		// card is not touched. Else the file is streamed into a new image, in chunks, yielding
+		// between them, so the compositor + the rest of the UI keep running while we load (the SD
+		// read is the slow part; we're single-core); a start meanwhile waits for this load.
+		unsigned nT0 = CTimer::GetClockTicks ();
+		TImage *pImage = 0;
+		unsigned nHow = 0;
+		const char *pWhy = "";
+		int nErr = ProgramImage (m_Path, 0, &pImage, &nHow, &pWhy);
+		if (nErr < 0)
 		{
-			m_pLogger->Write (GetName (), LogError, "cannot open %s", m_Path);
+			m_pLogger->Write (GetName (), LogError, "cannot load %s: %s", m_Path, pWhy);
 			delete pAS;
 			return;
 		}
-		unsigned nSize = (unsigned) f_size (&File);
-		u8 *pELF = new u8[nSize];
-		if (pELF == 0)
-		{
-			f_close (&File);
-			m_pLogger->Write (GetName (), LogError, "out of memory loading %s", m_Path);
-			delete pAS;
-			return;
-		}
-		unsigned nDone = 0; boolean bRead = TRUE;
-		while (nDone < nSize)
-		{
-			unsigned nChunk = nSize - nDone;
-			if (nChunk > 0x20000) nChunk = 0x20000;		// 128 KB, then yield
-			UINT nRead = 0;
-			if (f_read (&File, pELF + nDone, nChunk, &nRead) != FR_OK || nRead == 0)
-			{
-				bRead = FALSE; break;
-			}
-			nDone += nRead;
-			CScheduler::Get ()->Yield ();			// let the UI/compositor run
-		}
-		f_close (&File);
-		if (!bRead)
-		{
-			delete [] pELF;
-			m_pLogger->Write (GetName (), LogError, "read failed %s", m_Path);
-			delete pAS;
-			return;
-		}
+		unsigned nT1 = CTimer::GetClockTicks ();
 
+		// Mapped: the image's read-only pages (shared, not owned), our own writable ones.
 		u64 ulEntry = 0;
-		boolean bLoaded = LoadELF (pELF, nSize, pAS, &ulEntry);
-
-		// The file image is no longer needed: LoadELF copied the segments into the
-		// app's own frames. Free it now.
-		delete [] pELF;
-
+		boolean bLoaded = ImageMap (pImage, pAS, &ulEntry);
 		if (!bLoaded)
 		{
-			m_pLogger->Write (GetName (), LogError, "ELF load failed");
+			ImageRelease (pImage);			// (ours; pAS drops its own)
+			m_pLogger->Write (GetName (), LogError, "out of memory mapping %s", m_Path);
 			delete pAS;
 			return;
 		}
+		// Code was written via the identity mapping: make it executable at the user VA.
+		SyncDataAndInstructionCache ();
+		unsigned nT2 = CTimer::GetClockTicks ();
+
+		// The user stack's size: app.txt's, read once per image (a start from an image in memory
+		// reads nothing; a changed app.txt takes the image's name away: ImageFileChanged).
+		unsigned nUserStack = ImageStack (pImage);
+		if (nUserStack == 0)
+		{
+			nUserStack = AppUserStack (m_Path);
+			ImageSetStack (pImage, nUserStack);
+		}
+
+		// One line per start (the plan's "measure first"; `kmsg` shows it): where the time went.
+		{
+			u64 nShared = 0, nPrivate = 0;
+			ImageSizes (pImage, &nShared, &nPrivate);
+			m_pLogger->Write (GetName (), LogNotice,
+					  "image %s: %s in %u ms, mapped in %u ms (%u KB shared, %u KB private)",
+					  m_Path,
+					  nHow == IMG_HOW_LOADED ? "loaded" : nHow == IMG_HOW_WAITED ? "shared after a wait" : "shared",
+					  (nT1 - nT0) / 1000, (nT2 - nT1) / 1000,
+					  (unsigned) (nShared >> 10), (unsigned) (nPrivate >> 10));
+		}
+		ImageRelease (pImage);				// (ours: pAS holds the image from now on)
 
 		// Become this address space (kernel stays mapped + EL1-accessible).
 		SetUserData (pAS, TASK_USER_DATA_USER);
@@ -284,7 +374,6 @@ public:
 
 		// Its user stack in its own space, then EL0 -- for good: the process ends in the
 		// kernel (exit, a fault, a kill), on this task's stack, now only its kernel stack.
-		unsigned nUserStack = AppUserStack (m_Path);
 		if (!pAS->MapStack (USER_STACK_TOP, nUserStack))
 		{
 			m_pLogger->Write (GetName (), LogError, "out of memory for the stack");
@@ -1571,8 +1660,9 @@ static boolean LaunchApp (const char *pName, CLogger *pLogger)
 	CString Path;
 	Path.Format ("SD:apps/%s.app/main", pName);
 
-	// Verify the file exists NOW (cheap) so a bad name fails here, not asynchronously.
-	if (!SdFileExists ((const char *) Path))
+	// Verify the program exists NOW (cheap; no card access when its image is in memory) so a bad
+	// name fails here, not asynchronously.
+	if (!ProgramExists ((const char *) Path))
 	{
 		pLogger->Write (FromKernel, LogError, "launch: not found %s", (const char *) Path);
 		return FALSE;
@@ -1614,7 +1704,7 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout, const char *pCwd,
 			unsigned nParentPid, TProcInfo *pInfo)
 {
-	if (pElfPath == 0 || !SdFileExists (pElfPath))	// missing -> immediate failure (shell prints "not found")
+	if (pElfPath == 0 || !ProgramExists (pElfPath))	// missing -> immediate failure (shell prints "not found")
 	{
 		ProcInfoFree (pInfo);
 		return 0;
@@ -1712,7 +1802,7 @@ boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName)
 	char Name[40];
 	if (pName != 0) { unsigned k = 0; for (; pName[k] && k < sizeof Name - 1; k++) Name[k] = pName[k]; Name[k] = '\0'; }
 	else NameFromPath (pElfPath, Name, sizeof (Name));	// ("x.app/main" -> "x")
-	if (!SdFileExists (pElfPath))		// fail now if missing; body read is still deferred
+	if (!ProgramExists (pElfPath))		// fail now if missing; body read is still deferred
 	{
 		return FALSE;
 	}
