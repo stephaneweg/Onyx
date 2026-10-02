@@ -6,9 +6,10 @@ Onyx is a **small multi-process operating system** for the **Raspberry Pi 4**
 (AArch64), built **on top of Circle** ([rsta2/circle](https://github.com/rsta2/circle)),
 which serves as its HAL and driver stack. It loads **ELF programs from the SD
 card** and runs them as **applications isolated from one another**, each in
-its own page table. The whole thing is driven by the **Onyx desktop**
-made up of a software compositor, a taskbar, a launcher, a terminal,
-a file manager, and about thirty applications.
+its own page table. The whole thing is driven by the **Onyx desktop** — a
+compositor, a menu bar, a dock, a terminal, a file manager — and some ninety applications
+and services (`sdcard/apps`), from an office suite and a web browser to emulators.
+Our own code is under the MIT licence ([LICENSING.md](LICENSING.md)).
 
 It **runs on real Raspberry Pi 4 hardware** (not just in emulation).
 
@@ -44,59 +45,74 @@ sources.
   call the kernel by **system calls** (`svc`): they are isolated from one another **and**
   from the kernel and the hardware. An app that crashes is killed; the system goes on.
   See §5.
-- **Stable fixed-address ABI (`kapi`).** The kernel publishes a **table of function
-  pointers** at a fixed virtual address, mapped read-only into each
-  application. Applications call the kernel through this table → **an application
-  binary keeps working without recompilation** when the kernel changes
-  (*append-only* contract, current ABI version: **21**).
+- **Stable fixed-address ABI (`kapi`).** Each application sees a **table of function
+  pointers** at a fixed virtual address (14 GB), mapped read-only; each entry is a small
+  stub that makes the system call. Applications call the kernel through this table →
+  **an application binary keeps working without recompilation** when the kernel changes
+  (*append-only* contract, current ABI version: **74**).
+- **Threads, app cores, RAM volume.** An app may run threads (mutexes, events, a futex,
+  "real time" priority), take a whole CPU core for its own code (the emulators, Doom), and
+  keep files in memory on `RAM:`.
+- **The GPU.** The VideoCore VI's 3D unit (V3D) is driven by the kernel for the apps: 3D
+  (the N64 and GameCube emulators, the BASIC's 3D), and the compositing of layers
+  (`user/gpucomp`: Paint's blend modes, Jet Browser).
 - **Full graphical desktop.** 32-bit software compositor, window manager,
   toolkit of kernel-drawn widgets (buttons, checkboxes, sliders,
   text fields, scroll bars, icons…), windows with themeable decoration,
   wallpaper, mouse cursor.
-- **Onyx shell.** Panel/launcher (panel), app list, interactive terminal
-  with **pipes and redirection** (`|`, `>`, `>>`, `<`), file manager, and a
-  collection of command-line tools in `/bin`.
-- **Application catalog.** Text editor, spreadsheet, scientific calculator,
-  drawing program, fractal browser, calendar, task manager,
-  theme editor, and many games (Tetris, Snake, 2048, Minesweeper, Sokoban, Pong,
-  Game of Life, SameGame).
-- **USB input devices.** Keyboard and mouse (HID), with hot-swappable keyboard
-  layout switching (US, UK, DE, FR, ES, IT, Dvorak).
-- **Networking (WLAN).** TCP/IP stack + on-board Wi-Fi (BCM4343 / `wpa_supplicant`)
-  brought up on the primary core, TCP sockets exposed to apps through the ABI, an
-  **IRC client**, and NTP clock synchronisation.
+- **Onyx shell.** A menu bar (the active app's menus, the clock, the Wi-Fi and volume
+  menus), a dock (drawers of apps, workspaces), notifications, a shared clipboard with a
+  history, an interactive terminal with **pipes and redirection** (`|`, `>`, `>>`, `<`), a
+  column file browser, a Control Panel, a first-run wizard (Setup), and some sixty
+  command-line tools in `/bin`.
+- **Application catalog** ([User guide §12](04-USER-GUIDE.md#12-application-catalog)). Office:
+  Writer (word processor, PDF export), Spreadsheet, Cardfile (a small database), Ledger
+  (accounting), Calendar, PDF Viewer (MuPDF), RTF reader, Archiver. Internet: Jet Browser,
+  Mail, IRC, Courier (HTTP client), Lisa (an AI chat). Media: Paint, Photos, the Media
+  Player (music and video), Screenshot, Koton (a music studio with plugins), FM Tracker.
+  Emulators: Game Boy / Color, GBA, NES, SNES, N64, GameCube, with a Game Library. Games
+  (Doom on Freedoom, Tetris, Solitaire, FreeCell, Invaders, Arkanoid…), a BASIC with its
+  editor (QBasic), the Package Manager, a Task Manager, demos.
+- **USB input devices.** Keyboard and mouse (HID), USB gamepads and MIDI keyboards, with
+  keyboard layouts loaded from the card (US, UK, DE, FR, BE, ES, IT, Dvorak).
+- **Networking (WLAN).** TCP/IP stack + on-board Wi-Fi (BCM4343 / `wpa_supplicant`), on
+  core 3 (`netcore=1`, the shipped card) or core 0; TCP sockets exposed to apps through the
+  ABI, TLS in user space, NTP clock synchronisation, and remote access: a telnet shell, VNC,
+  a window-level remote desktop for Windows (`rdpd` + Onyx Remote), an FTP server.
+- **Packages.** Every app is a signed package of the `onyx-packages` repository: `pkg`, the
+  Package Manager and an update daemon keep a card up to date.
 - **A modern web browser.** **Jet Browser** (`jet`), the Onyx web browser based on
   NetSurf: `http://` and `https://`,
   **CSS3** (`calc()`, `var()`, flexbox, grid, gradients, shadows, rounded corners,
   gradient text, vendor prefixes), web fonts (WOFF/WOFF2, variable fonts) with Chrome's
   Windows fonts stood in by metric-compatible ones, and **JavaScript** on QuickJS
   (ES2023, the DOM, the page laid out again after a script's changes). Details in
-  [Jet Browser, the NetSurf changes](06-JET-BROWSER.md). (A dedicated network core is a
-  planned next step.)
+  [Jet Browser, the NetSurf changes](06-JET-BROWSER.md). Video and audio too
+  (`<video>`, `<audio>`, MSE).
 
 ## 4. The architecture at a glance
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  Applications (ELF EL0, isolated by ASID)                        │
-│  panel · applist · terminal · fileviewer · tinypad · games · bin │
+│  menubar · dock · terminal · fileviewer · writer · jet · bin …   │
 │       │  call the kernel through kapi.h (inline wrappers)        │
 ├───────┼──────────────────────────────────────────────────────────┤
-│       ▼   kapi ABI table  (at 14 GB, read-only in every app)     │   ← stable contract
-├──────────────────────────────────────────────────────────────────┤
-│  ONYX KERNEL (EL1)                                             │
+│       ▼   kapi table at 14 GB (read-only) → stubs: svc #0        │   ← stable contract
+╞═══════╪══════════════════ EL0 / EL1 ═════════════════════════════╡
+│  ONYX KERNEL (EL1)                                               │
 │   • mm/      per-process address spaces, MMU, ASID               │
 │   • sched/   preemptive scheduler (replaces Circle's)            │
-│   • arch/    VBAR_EL1 exception vectors, trap frame              │
+│   • arch/    VBAR_EL1 vectors, trap frame, EL0 entry/exit        │
 │   • proc/    ELF64 loader                                        │
-│   • sys/     kapi impl., stream/stdio, debug console             │
-│   • gui/     GImage (software renderer), compositor+WM, cursor,  │
-│              modal dialogs                                       │
+│   • sys/     kapi impl., system calls, handles, streams, threads,│
+│              network, sound, app cores, GPU (V3D), RAM: volume   │
+│   • gui/     GImage (software renderer), compositor+WM, cursor   │
 ├──────────────────────────────────────────────────────────────────┤
-│  CIRCLE  (HAL + drivers, reused as-is)                           │
-│   palloc · GIC · timer · EMMC+FatFs · USB HID · framebuffer 2D     │
+│  CIRCLE  (HAL + drivers; our fork, a few patches: docs/05)       │
+│   palloc · GIC · timer · EMMC+FatFs · USB · WLAN · TCP/IP · fb   │
 ├──────────────────────────────────────────────────────────────────┤
-│  Raspberry Pi 4  (BCM2711, 4× Cortex-A72, ARMv8-A)                 │
+│  Raspberry Pi 4  (BCM2711, 4× Cortex-A72, ARMv8-A)               │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,29 +163,36 @@ kills them all. The scheduler's task list has no fixed limit.
 - **USB keyboard + mouse**.
 - Optional **serial console** (GPIO14/15, 115200 8N1) for the boot log and
   exception dumps.
-- The RPi 5 is deferred (I/O behind the proprietary RP1 chip via PCIe — heavier
-  bring-up). Multi-core (SMP) is also deferred.
+- **The four cores, used asymmetrically by design** (not a symmetric SMP kernel): **core 0**
+  runs the kernel, the scheduler, the desktop and every process; **core 1** the sound
+  producer (and, on a hang, the crash record); **cores 2 and 3** are **app cores**, each
+  lent whole to one app for its own code (an emulator's machine, Doom's engine); with
+  `netcore=1` **core 3** runs the network stack instead. Nothing of the kernel, Circle's
+  drivers or FatFs has to be multi-core safe. (docs/02 §12, §14, §11.)
+- The RPi 5 is not supported yet (I/O behind the RP1 chip via PCIe — heavier bring-up;
+  the plan: [PI5-PORT.md](PI5-PORT.md)).
 
 ## 8. Repository structure
 
 ```
-ARCHITECTURE.md   original design + build manifest (historical, partly dated)
-README.md         summary (partly dated: describes the "2 demos" state)
-docs/             THIS documentation (overview, internals, dev/user guides)
+README.md         what Onyx is, how to build / stage / test, where the docs are
+ARCHITECTURE.md   the original design + build manifest (historical record)
+docs/             THIS documentation (overview, internals, dev/user guides, plans)
 kernel/           the Onyx kernel (see docs/02-KERNEL-INTERNALS.md)
-user/             the userland: apps (*.c), runtime (crt0.S, user.ld), /bin tools
-sdcard/           ready-to-flash files for an RPi 4 (firmware, config, apps, /bin)
-tools/            host scripts (BMP icon generation)
-circle/           upstream Circle clone (not committed; cloned separately)
+user/             the userland: apps (Apps/<name>/), wtk toolkit, libraries, /bin tools
+                  (bin/), runtime (crt0.S, user.ld, libc/), Jet Browser (netsurf/)
+sdcard/           ready-to-flash files for an RPi 4 (firmware, config, apps, /bin, samples)
+sdcard_lite/      the minimal card (the required packages), the rest from the repository
+third_party/      vendored libraries (NetSurf, FreeType, MuPDF, FFmpeg, QuickJS, …)
+tools/            host scripts and tests (packages, screenshots, desktop simulator, …)
+pc/               the Windows builds (Koton, the emulators, Onyx Remote)
+circle/           Circle, as a git submodule (the fork stephaneweg/circle, branch onyx)
 ```
 
-> **Beware of legacy docs.** `ARCHITECTURE.md`, `README.md`, `kernel/README.md`, and
-> `sdcard/README.md` describe **older states** of the project (EL0 processes,
-> preemptive scheduling, 640×480, "two demos"). Where they contradict this
-> documentation, **these documents here (`docs/`) are authoritative** for the current state.
-> `ARCHITECTURE.md` §11–§12 nevertheless remains the best reference for *why* Option C
-> was chosen (its "cooperative scheduling" has since been replaced by the preemption of
-> §6).
+> **Legacy docs.** `ARCHITECTURE.md` is the historical design record (its banner says what
+> changed since); where it contradicts this documentation, **`docs/` is authoritative**.
+> Its §11–§12 remain the reference for *why* the first execution model ("Option C", apps at
+> EL1) was chosen; apps run at EL0 since kapi v74 (§5).
 
 ## 9. Further reading
 
@@ -178,6 +201,11 @@ circle/           upstream Circle clone (not committed; cloned separately)
 | **[02 — Kernel Internals](02-KERNEL-INTERNALS.md)** | anyone who wants to understand the kernel | boot, memory/MMU, scheduling, exceptions, ABI, GUI, streams |
 | **[03 — Developer Guide](03-DEVELOPER-GUIDE.md)** | anyone who wants to build/compile/extend | toolchain, build, app model, extending the ABI, conventions, debugging |
 | **[04 — User Guide](04-USER-GUIDE.md)** | anyone who wants to use it | SD card, desktop, terminal, files, applications, customization |
+| [05 — Circle Changes](05-CIRCLE-CHANGES.md) | anyone touching `circle/` | the patches of our Circle fork vs upstream `Step51` |
+| [06 — Jet Browser](06-JET-BROWSER.md), [07 — Browser gaps](07-BROWSER-GAPS.md) | the browser | the Onyx changes to NetSurf, libcss, FreeType; what is missing |
+| [EL0 protected mode](EL0-PROTECTED-MODE.md) | the execution model | how apps moved to EL0, the design |
+| [Licensing](LICENSING.md) | distributors | the licences of everything Onyx contains |
+| [Handoff](HANDOFF.md) | the next session | where the work stands, the next tasks |
 
 ## 10. Quick genesis (milestones)
 
@@ -189,11 +217,16 @@ circle/           upstream Circle clone (not committed; cloned separately)
 6. Framebuffer (`C2DGraphics`) + `GImage` rendering core (ported from the author's
    FreeBASIC `SimpleOS`).
 7. Compositor + window manager; two animated demos running simultaneously.
-8. **Switch to Option C** (EL1 apps + direct call) then **fixed-table ABI** (2026-10: apps
-   moved to EL0, system calls through the same table).
+8. **Switch to Option C** (EL1 apps + direct call) then **fixed-table ABI**.
 9. Onyx desktop (panel + applist), stream/stdio subsystem, terminal + `/bin`,
    file manager.
 10. Modal dialogs, themes, app-drawn wallpaper, PID management, keyboard layouts,
     theme editor (ABI v16).
 11. Networking: WLAN bring-up + TCP/IP on the primary core, TCP socket calls
     (ABI v21), an IRC client, a `/bin/net` tool, and NTP clock sync.
+12. The modernised CDE desktop (v64: menu bar, dock, workspaces), the wtk toolkit; the
+    preemptive scheduler; sound on core 1, app cores 2–3 (v51), the GPU (v52);
+    Jet Browser (NetSurf, QuickJS); the office suite, the emulators, Koton; threads (v67);
+    the network on core 3; the `RAM:` volume (v71); the packages.
+13. **Every app at EL0** (v73–v74, 2026-10): system calls through the same table, per-process
+    handles, every kapi pointer checked; a fault kills the app, not the machine.

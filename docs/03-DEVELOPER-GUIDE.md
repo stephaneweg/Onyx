@@ -87,8 +87,10 @@ make           # -> kernel8-rpi4.img, THEN builds the apps (../user)
 
 The default target (`all`):
 1. compiles our sources + links against the Circle libs → **`kernel8-rpi4.img`**;
-2. triggers `make -C ../user`, which builds **all the apps** (`user/*.elf`) and the
-   **`/bin` tools** (`user/bin/*.elf`).
+2. triggers `make -C ../user`, which builds **all the apps** (each from its folder
+   `user/Apps/<name>/`, to `user/<name>.elf`), the **`/bin` tools** (`user/bin/*.elf`), Doom
+   (`user/doom`) and Koton's plugins. Jet Browser has its own makefile
+   (`make -f user/netsurf/netsurf-app.mk stage`, §6 *NetSurf*).
 
 > **Kernel → apps order.** Since the apps go through the **fixed-address ABI table** and are
 > **not** linked against the kernel's addresses, they no longer depend on the kernel
@@ -109,7 +111,10 @@ make stage     # copie l'image + chaque app + chaque outil vers ../sdcard/
 `make stage`:
 - copies `kernel8-rpi4.img` → `sdcard/`;
 - for each `../user/<name>.elf`: creates `sdcard/apps/<name>.app/` and copies the ELF into it as
-  **`main`** (the "Onyx" layout);
+  **`main`** (the "Onyx" layout; an app's other files — `app.txt`, icons, resources — are
+  kept in `sdcard/apps/<name>.app/` itself, committed);
+- Koton's plugins (`user/Apps/kp_<name>/`) → `sdcard/koton/plugins/<name>/main` + `plugin.json`;
+- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`;
 - copies each `../user/bin/<tool>.elf` → `sdcard/bin/<tool>`.
 
 **Executables on the card have no extension**: `.elf` only exists in the build tree
@@ -133,9 +138,11 @@ is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model
 
-A Onyx application is a **single `.c` file** compiled into a **freestanding ELF** and
-run at **EL0** in its own page table, calling the kernel by system calls through the kapi
-table (docs/02 §6).
+An Onyx application is a folder **`user/Apps/<name>/`** whose `main.cpp` (C++ on the **wtk**
+toolkit, §6; a big app has more files beside it) is compiled into an **ELF** — freestanding, or
+against newlib (§5.1) — and run at **EL0** in its own page table, calling the kernel by system
+calls through the kapi table (docs/02 §6). A `/bin` tool is a single C file, `user/bin/<tool>.c`
+(§7).
 
 **Runtime** ([`user/crt0.S`](../user/crt0.S)):
 
@@ -144,7 +151,7 @@ _start:
     stp x29, x30, [sp, #-16]!   /* the stack is already set up by the kernel */
     bl  main                    /* call main() */
     ldp x29, x30, [sp], #16
-    ret                         /* return -> the kernel terminates the task */
+    ret                         /* return -> El0MainReturn (the EL0 code page): exit(0) */
 ```
 
 No argv is passed via the stack: `main()` takes no arguments. An app retrieves its argument
@@ -179,9 +186,10 @@ max-page-size=0x10000`) so that the loader maps them onto distinct pages.
   the rest integer-only.
 - `-I../kernel/include`: to include `<kern/kapi_abi.h>` (the shared ABI structure).
 
-To add an app, create `user/<name>.c` and **add `<name>.elf` to the `PROGS` variable**
-of [`user/Makefile`](../user/Makefile) (and `<tool>.elf` to the `PROGS` of
-[`user/bin/Makefile`](../user/bin/Makefile) for a tool).
+To add an app, create `user/Apps/<name>/main.cpp` and **add `<name>` to the `APPS` list**
+of [`user/Makefile`](../user/Makefile) (`FT_APPS` for a FreeType app, or a rule of its own for a
+newlib app, as `writer.elf`), and declare its package in `tools/pkg/packages.ini`; for a tool,
+add `<tool>.elf` to the `PROGS` of [`user/bin/Makefile`](../user/bin/Makefile).
 
 ### 5.1. Apps using the C library (newlib)
 
@@ -213,10 +221,11 @@ Notes / caveats:
   `_sbrk`→`kapi_sbrk`; do **not** also link `umm.h`. (A wtk app on newlib has two, side by side:
   wtk's C++ objects on umm — `onyxpp.hpp`'s `operator new` — and the C libraries on `malloc`; each
   grows its own arena with `kapi_sbrk`.)
-- **Files are buffered in RAM.** The kapi file API is sequential (no seek), so `_open`
-  slurps the whole file into memory to give `fseek`/`ftell` full semantics, and a
-  writable file is written back with `kapi_save_file()` on `close`. Fine for resource
-  files; a future `kapi_lseek` would remove the whole-file buffering.
+- **Files are buffered in RAM.** `_open` slurps the whole file into memory to give
+  `fseek`/`ftell` full semantics, and a writable file is written back with `kapi_save_file()`
+  on `close`. Fine for resource files; the kapi has had `seek` since v57 (and `file_out` for
+  streamed writes), which `onyx_syscalls.c` does not use yet — a big file is better read with
+  `kapi_open` / `kapi_seek` / `kapi_read` directly (the GameCube discs, the Media Player).
 - **Size.** Static newlib pulls a fair amount of code (`printf` float support etc.).
   Acceptable for big apps; a `nano` variant can be revisited later for small tools.
 - **Threads** (§5.2): newlib's locks are defined in `onyx_syscalls.c` (newlib is built with
@@ -1495,28 +1504,28 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > text box (still, prefer other letters).
 
 
-Minimal skeleton (window with kernel-managed widgets):
+Minimal skeleton with the raw kapi (a real app uses wtk, above: `wtk::Root`, its widgets and
+its `run ()` loop; the kernel draws no widget since v29):
 
 ```c
 #include "kapi.h"
 
-static void on_ok (unsigned long sender, int ev, long value)
+static void on_key (unsigned long sender, int ev, gui_value value)
 {
-    (void) sender; (void) ev; (void) value;
-    kapi_widget_set_text (g_label, "cliqué !");
+    (void) sender; (void) ev;
+    if ((int) value == 27) kapi_exit (0);             /* Esc */
 }
-
-static unsigned long g_label;
 
 int main (void)
 {
-    /* Le canvas est mappé à 12 Go ; fb[y*w + x] = 0x00RRGGBB. */
-    unsigned *fb = kapi_create_window (300, 200, "exemple");
-
-    g_label = kapi_add_label  (10, 10, 200, 16, "prêt");
-    (void)    kapi_add_button (10, 40, 80, 28, "OK", on_ok);
-
-    kapi_wait_for_exit ();   /* pompe les événements à ~60 fps jusqu'à fermeture */
+    /* The canvas is mapped at 12 GB; fb[y*w + x] = 0x00RRGGBB. */
+    unsigned *fb = kapi_create_window (300, 200, "example");
+    if (fb == 0) return 1;                            /* too big, or no memory */
+    for (int i = 0; i < 300 * 200; i++) fb[i] = 0x00E0E0E0;
+    kapi_draw_text (10, 10, "Hello, Onyx", 0x00000000);
+    kapi_set_key_handler (on_key);
+    kapi_present ();
+    kapi_wait_for_exit ();   /* pumps the events until the window is closed */
     return 0;
 }
 ```
@@ -1530,14 +1539,12 @@ Key points:
   not counted; 1024 × 768 by default, `width=` / `height=` in `cmdline.txt`; before kernel v66,
   1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so (or size it from `kapi_screen_size`, as Paint), as Writer,
   so that it fits the default screen: over the limit (or out of memory) the call returns **0**. **Check
-  it**: an app runs at EL1 with the kernel's identity mapping, so a null canvas is the kernel's
-  own memory at address 0 — drawing into it overwrites the kernel and the whole Pi freezes with
-  nothing in `kmsg` (the Spreadsheet's first 1060-pixel window did exactly that). wtk's `Root`
+  it**: drawing into a null canvas faults and the app is killed (`el0: ... killed` in `kmsg`).
+  (Before kapi v74, when apps ran at EL1, address 0 was the kernel's own memory: the
+  Spreadsheet's first 1060-pixel window overwrote it and froze the whole Pi.) wtk's `Root`
   checks it: the app stops with `wtk: the window could not be made` in `kmsg`.
-- **Kernel widgets**: `kapi_add_button/label/checkbox/textbox/progress/slider/textarea/`
-  `scrollbar_v/scrollbar_h/icon(...)` return an `unsigned long` handle. Manipulate them
-  with `kapi_widget_set_text/get_text`, `get_checked`, `get/set_value`, `set_rect`
-  (move/hide by setting `w=h=0`), `set_icon`.
+- **Widgets** are user-side (wtk); the kernel-drawn ones (`kapi_add_button`…) were removed
+  by the v29 compat break.
 - **Event loop**: either `kapi_wait_for_exit()` (blocking, simple), or your
   own loop `while (!kapi_should_exit()) { ...; kapi_pump_events(); kapi_present();
   kapi_msleep(16); }` when you animate the canvas yourself.
@@ -2058,8 +2065,8 @@ plugin killed and started again, the shutdown (`KPLUG_SHOT=prefix` writes the ed
 
 ## 7. Writing a `/bin` tool
 
-A `/bin` tool follows the **same EL1 app model** but reads `stdin`, writes `stdout`, and
-exits (no window). It is composable via the terminal's pipes.
+A `/bin` tool follows the **same app model** (an ELF at EL0, §5) but reads `stdin`, writes
+`stdout`, and exits (no window). It is composable via the terminal's pipes.
 
 ```c
 #include "kapi.h"
@@ -2349,21 +2356,13 @@ kernel's clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or 
 `SIM-CLIPBOARD type=T len=N`. An app that pastes a copied picture reads it as Paint does
 (`clip_get_file` + `img_load`).
 
-And [`user/uikit.h`](../user/uikit.h) — a **retained-mode widget toolkit** drawn
-entirely in the app's canvas, driven by the kernel's **pointer stream** (ABI v22:
-`set_pointer_handler` → `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE/WHEEL` with client coords;
-`GUI_EVENT_PTR_WHEEL` carries a signed notch delta in the `lValue` wheel field, decoded
-with `GUI_PTR_WHEEL` — scrollbars/text areas in both toolkits scroll on it).
-Same memory model as the rest: widgets live in a caller-provided **fixed pool**
-(`ui_widget pool[N]` in the app's `.bss`, freed automatically on exit — no user
-`malloc`, no kernel object behind a widget). `ui_init`, `ui_button`/`ui_label`/
-`ui_checkbox`/`ui_textbox`, `ui_on_event` (fed from the app's pointer + key handlers),
-`ui_draw`. The **textbox** is a single-line editor: caret, Backspace/Delete, arrows,
-Home/End, `Tab` to move focus, an optional password mask (`ui_set_password`), read
-with `ui_get_text`. `tinycalc` (buttons) and `wpaconf` (a form of textboxes) use the
-toolkit. This is the forward path for widgets: new ones are added here, in userland,
-with no kernel/ABI change. The older **kernel-drawn widgets**
-(`add_button`…, §earlier) still work and coexist; apps choose one model per window.
+The widgets are user-side: **wtk** (`user/wtk/`, §6) is drawn entirely in the app's canvas,
+driven by the kernel's **pointer stream** (ABI v22: `set_pointer_handler` →
+`GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE/WHEEL` with client coords; `GUI_EVENT_PTR_WHEEL`
+carries a signed notch delta in the `lValue` wheel field, decoded with `GUI_PTR_WHEEL`). (The
+first C toolkit, `uikit.h`, and the kernel-drawn widgets — `add_button`…, removed by the v29
+compat break — are gone: every graphical app is on wtk.) New widgets are added there, in
+userland, with no kernel/ABI change.
 
 ### Dynamic memory + C++ apps
 
@@ -2386,7 +2385,7 @@ underlying primitive (rarely called directly). `/bin/heaptest` exercises it.
   address space is reclaimed).
 - Classes, inheritance and virtual methods (vtables) work; `new`/`delete` go through
   the user heap. No `std::string`/`std::vector` — write small containers on `umm` as
-  needed. See [`user/cppdemo.cpp`](../user/cppdemo.cpp) for a working example.
+  needed. See [`user/Apps/cppdemo/main.cpp`](../user/Apps/cppdemo/main.cpp) for a working example.
 
 ## 9. Packaging an app: `.app`, icons, `config.ini`
 
@@ -2804,7 +2803,7 @@ points** to touch (all in the same direction, at the end):
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.
 
 If you add a new **GUI event** or a **window flag**, keep the values
-synchronized between `kernel/gui/window.h` and the `#define`s in `user/kapi.h` (commented
+synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `user/kapi.h` (commented
 "must match").
 
 ## 11. Coding conventions
@@ -2812,22 +2811,26 @@ synchronized between `kernel/gui/window.h` and the `#define`s in `user/kapi.h` (
 - **Kernel (C++)**: Circle style. `CXxx` classes, `m_Xxx` members, CamelCase methods,
   `boolean`/`TRUE`/`FALSE` and Circle's `u8/u16/u32/u64` types. No exceptions or RTTI.
   `new`/`delete` go through Circle's heap.
-- **Userland (C)**: freestanding C. `ax_` prefix for the `applib.h` helpers. Globals
-  `g_xxx`. Bounded static buffers (no dynamic allocation on the app side in general).
+- **Userland**: the apps are C++ on wtk (freestanding subset, §8 *Dynamic memory + C++
+  apps*; newlib for the big ones), the `/bin` tools freestanding C. `ax_` prefix for the
+  `applib.h` helpers. Globals `g_xxx`. New code carries the MIT notice (docs/LICENSING.md).
 - **kapi**: `extern "C"` functions named `kapi_xxx` on the kernel side; inline wrappers
   `kapi_xxx` on the app side.
 - Respect the **comment density** and the **idiom** of the file you are modifying.
 - **Git**: commit into the **Onyx repo** explicitly — the current working directory (cwd)
-  drifts; a bare `git` may land in the wrong repo. (Note: `circle/` is not
-  committed in this repo.)
+  drifts; a bare `git` may land in the wrong repo. (`circle/` is a submodule: commit a
+  Circle change in the fork first, then the new pointer here — §1.)
 
 ## 12. Debugging on hardware
 
 Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 
-- **On-screen exception dump**: an EL1 synchronous fault (or an EL0 fault) paints a
-  panic + register dump on the HDMI framebuffer (`PanicToScreen` + Circle's handler).
-  Note the `ELR` (faulting PC).
+- **On-screen exception dump**: a **kernel** fault (EL1) paints a panic + register dump on
+  the HDMI framebuffer (`PanicToScreen` + Circle's handler) and is kept in
+  `SD:/etc/lastcrash.txt` at the next boot (docs/02 §13). Note the `ELR` (faulting PC). An
+  **app** fault (EL0) only kills the app: a line `el0: <name> (pid N) killed: …` in `kmsg`
+  (with the PC and the fault address: `aarch64-none-elf-addr2line -e user/<name>.elf <pc>`)
+  and a notice on the desktop. `/bin/faulttest` and `/bin/el0test` exercise both paths.
 - **`addr2line`**: `aarch64-none-elf-addr2line -e kernel8-rpi4.elf <ELR>` to locate
   the faulting line (keep the unstripped `.elf` next to the `.img`).
 - **Remote shell**: `/bin/telnetd` (autostarted, TCP port 23) serves the `cmd` shell over
@@ -2873,8 +2876,8 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial
   cable.
-- **Post-mortem console**: on an app's exit, the compositor clears and the logger
-  is shown on the framebuffer (see [Kernel internals §11](02-KERNEL-INTERNALS.md#11-post-mortem-debug-console)).
+- **Post-mortem console**: on a kernel panic, the compositor stops and the logger
+  is shown on the framebuffer (see [Kernel internals §13](02-KERNEL-INTERNALS.md#13-post-mortem-debug-console)).
 
 ## 13. Known pitfalls
 
@@ -2921,14 +2924,15 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Hardware float is opt-in.** Apps are integer-only by default
   (`-mgeneral-regs-only`); the kernel now saves the full FP/SIMD state on every trap,
   so an app may opt into `float`/`double` by building without `-mgeneral-regs-only`
-  and with `-mcpu=cortex-a72` (see §5). Preemption saves the full FP state too (the
-  preemption trampoline stores it before yielding); keep it that way if the preemption
-  path changes — the cooperative `TaskSwitch` only keeps `d8–d15`.
+  and with `-mcpu=cortex-a72` (see §5). Preemption saves the full FP state too
+  (`El0IrqEntry` builds the whole frame, q0–q31 included, before yielding); keep it that way
+  if the preemption path changes — the cooperative `TaskSwitch` only keeps `d8–d15`.
 - **L3 tables shared with the kernel.** On the kernel side, never free an L3 table from the
   user area without checking that it is not shared with the kernel's L2 (cf.
   [Kernel internals §4](02-KERNEL-INTERNALS.md#4-memory-management-caddressspace)). Otherwise: global corruption.
-- **Do not free the ABI table page.** It is global to the kernel; the destruction
-  of an address space already skips it.
+- **Do not free the EL0 table and code pages** (the kapi table at 14 GB, the stubs + blob
+  at 14 GB + 64 KB). They are global to the kernel, shared by every process; the destruction
+  of an address space already skips them.
 - **`DEPTH=32` for Circle.** `GImage` renders 32-bit; forgetting `-d DEPTH=32` (or changing
   `DEPTH` without `make clean` in `circle/lib`) gives wrong colors/breakage.
 - **The kernel is not preemptive.** Apps are preempted, but kernel code (a `kapi_*` call,
@@ -2940,6 +2944,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   across a wait (the window's event queue, a dialog, a file handle) is no longer the caller's
   alone. And `CScheduler::EnumerateTasks`'s callback must not yield (the task list is a linked
   list the reaper frees nodes from). An app's tasks are one group (`TerminateTask` on one ends
-  them all; `TerminateGroup`); list the process once (`pAS->GetMainTask ()`).- **Circle LF renormalization.** On Windows, Circle is checked out in CRLF; renormalize
+  them all; `TerminateGroup`); list the process once (`pAS->GetMainTask ()`).
+- **Circle LF renormalization.** On Windows, Circle is checked out in CRLF; renormalize
   once (cf. §2) otherwise the build breaks.
 - **The right Circle.** Patch `Zircon/circle`, not another clone.

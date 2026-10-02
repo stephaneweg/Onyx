@@ -62,11 +62,22 @@ Card contents:
 | `firmware/brcmfmac4345{5,6}-sdio.*` | Wi-Fi chip firmware: `43455` = Pi 4 B, `43456` = **Pi 400** (the Pi 400 has a different Wi-Fi chip, CYW43456) |
 | `config.txt`, `cmdline.txt` | boot configuration (see §3) |
 | `kernel8-rpi4.img` | **the Onyx kernel** |
-| `apps/<name>.app/main` | the **applications** (one per `.app` folder) |
+| `apps/<name>.app/` | the **applications** (one per `.app` folder): `main` (the ELF, no extension; `main.bax` / `main.bas` for a BASIC app), `app.txt` (title, category, icon, stack), icons, resources |
+| `bin/<tool>` | the terminal **command-line tools** (§8), `init` included |
 | `etc/autostart` | commands run automatically at boot (read by `init`) |
-| `etc/quicklaunch.txt` | apps pinned to the panel |
-| `bin/<tool>` | the terminal **command-line tools** |
-| `etc/theme.txt` | the desktop's colours (the Theme app) |
+| `etc/system.ini` | general settings (§3) |
+| `etc/theme.txt`, `etc/wallpaper.ini`, `etc/dock.ini` | the desktop's colours and style, the wallpaper, the dock (the Control Panel writes them) |
+| `etc/keymaps/*.kmap` | the keyboard layouts (§10) |
+| `etc/fileassoc.ini`, `etc/runners.ini` | which app opens which file; which runner runs a `.bas` / `.bax` |
+| `etc/quicklaunch.txt` | apps pinned to the panel (the old shell, no longer started) |
+| `var/pkg/db` | the installed packages (§11, *The Package Manager*) |
+| `res/` | shared resources: the fonts (`res/fonts`: DejaVu, the web stand-ins), icons, the SoundFonts, Jet Browser's files (`default.css`, `ca-bundle`, the pages) |
+| `fonts/`, `wallpapers/` | the bitmap font; the shipped wallpaper pictures |
+| `koton/` | Koton's plugins (`koton/plugins/<name>/main`) and its demo songs |
+| `basic/examples/` | BASIC samples (§13) |
+| `docs/`, `music/`, `courier/`, `manuals/` | sample documents (Writer, the Spreadsheet, Cardfile, Ledger), FM songs, Courier's collections, the Koton and Ledger manuals |
+| `doom/` | Freedoom (`freedoom1.wad`, BSD-licensed) for Doom |
+| `roms/` | the place for your own Game Boy / GBA ROMs (none shipped) |
 
 To regenerate the contents from sources: `cd kernel && make stage` (see the
 [developer guide](03-DEVELOPER-GUIDE.md)).
@@ -158,6 +169,14 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   at a time gets a core of its own (core 2), the next one runs on core 0 as before. `kmsg`
   says `cores 1-3 started (core 1: sound, core 3: network)`. `netcore=0` (or no `netcore=`)
   keeps the network on core 0, as before — the way back if the Wi-Fi misbehaves with it.
+- **`el0pmu`** — and **apps at EL0**: every app runs **protected** — isolated from the kernel, the hardware and the
+  other apps ([EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md), docs/02 §6). An app that does
+  something wrong (a bad pointer, a privileged instruction) is **killed**, with a notice on the
+  desktop and an `el0:` line in `kmsg`; the system goes on. **`el0pmu=1`** lets apps read the
+  CPU's performance counters (gcemu's `--pmu`; off by default). (The options `appmode`,
+  `protected`, `appfault`, `nullguard` of the first version are gone: an old card's are ignored.)
+- `keymap=` is ignored: the keyboard layout is the card's `SD:/etc/keymaps/*.kmap`, loaded by `keyb`
+  from `SD:/etc/autostart` (§10).
 
 **Without a screen**, the green **ACT LED** shows the state: slow blink (1 s) = kernel
 running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachable);
@@ -165,12 +184,6 @@ running, network not up yet; fast blink (0.2 s) = network up (`telnetd` reachabl
 shows EC/ELR/FAR); LED frozen on or off = the kernel hangs. `config.txt` sets `hdmi_force_hotplug=1` so a
 headless Pi still gets a framebuffer (without it, Onyx would start neither the GUI nor
 the userland, `telnetd` included).
-- **Apps at EL0**: every app runs **protected** — isolated from the kernel, the hardware and the
-  other apps ([EL0-PROTECTED-MODE.md](EL0-PROTECTED-MODE.md), docs/02 §6). An app that does
-  something wrong (a bad pointer, a privileged instruction) is **killed**, with a notice on the
-  desktop and an `el0:` line in `kmsg`; the system goes on. **`el0pmu=1`** lets apps read the
-  CPU's performance counters (gcemu's `--pmu`; off by default). (The options `appmode`,
-  `protected`, `appfault`, `nullguard` of the first version are gone: an old card's are ignored.)
 
 ### `system.ini`
 
@@ -707,6 +720,9 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
+| `cmd` | `cmd` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin`, builds the pipelines (`\|`, `<`, `>`, `>>`), spawns `/bin/<cmd>` for each stage; builtins `cd`, `pwd`, `clear`, `exit` (§7). The terminal runs it; `telnetd` serves it over the network. |
+| `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
+| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. |
 
 **Networking and logs**
 
@@ -754,6 +770,8 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `fptest` | `fptest` | Self-test of hardware floating point under the scheduler (Leibniz π in `double`, yielding mid-computation). Prints PASS/FAIL. |
 | `libctest` | `libctest` | Self-test of the newlib C library on Onyx (`printf`/`malloc`/`qsort`/`fopen`+`fseek`/`sin`/`sqrt`). Prints PASS/FAIL. |
 | `imgtest` | `imgtest` | Self-test of the image codecs (zlib + libpng): decodes an embedded PNG and prints its size and top-left pixel. Prints PASS/FAIL. Opt-in build (needs the cross-built codecs — see `user/img/README.md`). |
+| `nstest` | `nstest` | Smoke test of the NetSurf library bricks (libwapcaplet, libparserutils, libcss, libdom + hubbub, zlib, the iconv / dirent / stat shims): a line before and after each step, so the last line printed names the brick that hangs. Built by `make -f user/netsurf/netsurf-app.mk nstest`. |
+| `stkpoc` | `stkpoc` | The SuperTuxKart port's proof of concept (`docs/SUPERTUXKART-PORT.md`, M1): C++ exceptions, threads and condition variables, Bullet physics and an AngelScript script on Onyx. Prints each check, then PASS. |
 | `nsfbdemo` | `nsfbdemo` | Demo of the NetSurf framebuffer library (libnsfb) on Onyx: opens a window and draws shapes with libnsfb's plotters, then follows the cursor (a trail of dots) and drops a marker on left-click. `q` / Esc or the close box to quit. Opt-in build (needs the cross-built libnsfb — see `user/nsfb/README.md`). |
 
 ### Remote shell (`telnetd`)
@@ -1453,6 +1471,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **paint** (Paint) | Drawing on **layers** with **blend modes** (normal, multiply, screen, add, subtract, lighten, mask, cut out; a mask on the layer below only), assembled by the GPU: brushes (pencil, brush, soft, calligraphy, airbrush, marker, crayon, patterns), eraser, fill (a colour, a pattern or a **gradient along a line**), gradients (GIMP's `.ggr`, an editor), text (TrueType fonts), shapes, selections (rectangle, lasso, magic wand), colours (brightness, contrast, hue, desaturate, colorize, the channels remapped, invert, sepia, posterize, threshold — on the selection, the layer or every layer), filters (blur, sharpen, pixelate), colour picker, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX), a picture as a layer; saves OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
 | **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
+| **wifimenu** (Wi-Fi Menu) | The box the menu bar's Wi-Fi icon opens (§5, *The menu bar*): the networks around, strongest first, the current one marked; a click joins one (a password field for a new secured network) without a reboot (`SD:/etc/wpa_supplicant.conf`, then the reconnect); **Wi-Fi Settings...** opens `wpaconf`. Esc closes it. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
@@ -3321,6 +3340,7 @@ disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings 
 | **widgets** (Widget Showcase) | The WPF-style wtk controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The **Studio** group shows the studio controls: a toolbar of transport buttons (**Play** / pause — a toggle —, **Stop**, **Record**, **Loop**), a time display that runs while playing, a segmented choice (Chords / Melody / Drums), three knobs (**Gain**, **Pan**, **Mix**: drag up or down — Shift for fine steps —, the wheel, a double click resets Gain and Pan) and level meters fed by a made-up signal while playing (the Gain and Pan knobs act on it; a click on a meter clears its red clip light). The bottom line reports each event. Reads the icon `SD:/apps/imageview.app/icon.bmp`; writes nothing. |
 | **basicdemo** (BASIC Demo) | An app written in BASIC (`main.bas`, run by `/bin/basic`): a text box and **Say hello** (a notification), a click counter and a progress bar, and concentric circles whose colour (drop-down), size (slider) and fill (check box) follow the controls. Open it in QBasic to read it. |
 | **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
+| **wtkdemo** (Widget Toolkit Demo) | The first wtk test window: labels, buttons, a checkbox, a slider driving a progress bar, a text box and a nested panel with its own button (recursive repaint, mouse routing, focus, clipping). |
 | **spin** | Preemption test: a CPU hog that **never yields**. On a purely cooperative kernel it freezes the whole machine; with preemptive scheduling the rest of the UI (cursor, panel, other apps) stays responsive while it spins. It cannot be closed by its window (it never checks for the close) — **stop it from `taskman`**. |
 
 ![Widget Showcase](../screenshots/widgets.png)
@@ -3525,7 +3545,7 @@ game is written in BASIC).
 - **Black screen after launching an app, with green text.** The app exited (or
   faulted): the **debug console** took over and shows the log. Note the message; in case of
   a fault, the `ELR` address helps locate the problem
-  (cf. [developer guide](03-DEVELOPER-GUIDE.md#12-débogage-sur-matériel)).
+  (cf. [developer guide](03-DEVELOPER-GUIDE.md#12-debugging-on-hardware)).
 - **Keyboard in the wrong layout.** Use `keyb XX`, or the Control Panel's **Keyboard & Mouse**
   applet (it also keeps it in `SD:/etc/autostart`).
 - **Wrong resolution.** Adjust `width=`/`height=` in `cmdline.txt`.

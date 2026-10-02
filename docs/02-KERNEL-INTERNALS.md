@@ -64,7 +64,7 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
 
 1. **Text console**: `m_Screen` (HDMI) then `m_Serial` (115200). The boot log goes
    to the HDMI screen so it is visible **without a serial cable**. A `CLogSwitch` routes the
-   logger's output (see [§11](#11-post-mortem-debug-console)).
+   logger's output (see [§13](#13-post-mortem-debug-console)).
 2. **Interrupts + timer**: `m_Interrupt.Initialize()`, `m_Timer.Initialize()`.
 3. **Exception vectors**: `install_vectors()` installs our `VBAR_EL1`
    (`KVectorTable`) over Circle's.
@@ -164,18 +164,24 @@ VA                        Content                              Attributes
 0x1_0000_0000  ├───────────────────────────────────┤  (4 GB = KERNEL_IDENTITY_END)
    (4 GB)      │ ░░ unmapped hole (guard) ░░        │
 0x2_0000_0000  ├───────────────────────────────────┤  USER_VA_BASE (8 GB)
-   (8 GB)      │ .text / .data / .bss / heap (app)  │  EL1, ASID-tagged (nG=1)
-0x3_0000_0000  │   window canvas                    │  USER_WINDOW_CANVAS (12 GB)
+   (8 GB)      │ .text / .data / .bss (app)         │  EL0 (AP=*_ALL), ASID-tagged (nG=1)
+0x2_8000_0000  │   heap (sbrk)                      │  USER_HEAP_BASE (10 GB)
+0x3_0000_0000  │   window canvas (+ chrome copies)  │  USER_WINDOW_CANVAS (12 GB)
 0x3_4000_0000  │   wallpaper buffer                 │  USER_WALLPAPER_CANVAS (13 GB)
-0x3_8000_0000  │   kapi ABI table (read-only)       │  KAPI_TABLE_VA (14 GB)
-0x3_9000_0000  │   generated code (a JIT, RWX EL1)  │  USER_CODE_BASE (14.25 GB, v58)
+0x3_6000_0000  │   shared surfaces                  │  USER_SURFACE_BASE (13.5 GB)
+0x3_8000_0000  │   EL0 kapi table (read-only)       │  KAPI_TABLE_VA (14 GB)
+0x3_8001_0000  │   EL0 code page: stubs + blob (RX) │  KAPI_STUBS_VA (14 GB + 64 KB)
+0x3_9000_0000  │   generated code (a JIT, RWX EL0)  │  USER_CODE_BASE (14.25 GB, v58)
+0x3_C000_0000  │   full-screen buffer / the screen  │  USER_FULLSCREEN_CANVAS (15 GB)
 0x4_0000_0000  ├───────────────────────────────────┤  USER_STACK_TOP (16 GB)
-   (16 GB)     │ user stack (grows down)            │  1 MB initial
+   (16 GB)     │ user stack (grows down)            │  1 MB (app.txt stack, ≤ 64 MB)
+       ...     │                                    │
+0x8_0000_0000  │ threads' user stacks, 32 MB each   │  USER_THREAD_STACKS (32 GB)
        ...     │                                    │
 0x10_0000_0000 └───────────────────────────────────┘  T0SZ ceiling (64 GB) on RPi 4
 ```
 
-- **64 KB granule, EL1 stage-1 only**, `TTBR1` disabled.
+- **64 KB granule, EL1&0 stage-1 only**, `TTBR1` disabled.
 - 2 levels: one **L2 entry = 512 MB** (points to an L3 table), one **L3 page = 64 KB**.
 - **8-bit ASID** (256 contexts), taken from `TTBR0_EL1[63:48]`.
 - `USER_LOAD_BASE = USER_VA_BASE`: apps are linked at 8 GB (see
@@ -210,9 +216,11 @@ emulators) can run short (`sbrk` / `new` return 0). `memmon` then shows an app p
    the whole L2 page). The kernel entries point to the **same shared L3 tables**;
    the L2 slots covering the user area stay invalid (zero).
 3. **Allocates an ASID** (1..255; 0 is reserved for the kernel/global).
-4. **Maps the `kapi` ABI table** read-only at `KAPI_TABLE_VA` (14 GB) with
-   `KPAGE_ATTR_APP_RODATA`. The physical page is a kernel global (not "owned" by
-   this process → never freed at destruction).
+4. **Maps the EL0 `kapi` table** read-only at `KAPI_TABLE_VA` (14 GB) with
+   `KPAGE_ATTR_APP_RODATA`, and the **EL0 code page** (the system-call stubs and the
+   user-side routines, §6 *Protected mode*) at `KAPI_STUBS_VA` with `KPAGE_ATTR_APP_CODE`.
+   Both physical pages are kernel globals shared by every process (not "owned" by it →
+   never freed at destruction).
 
 ### `MapPage(VA, PA, attrs, bOwned)`
 
@@ -227,14 +235,16 @@ Maps a 64 KB page (VA and PA aligned to 64 KB):
 
 | Use | AttrIndx | AP | nG | PXN | UXN |
 |---|---|---|---|---|---|
-| `KPAGE_ATTR_APP_CODE` (app code) | NORMAL | RO_EL1 | 1 | **0** (exec. EL1) | 1 |
-| `KPAGE_ATTR_APP_DATA` (data/stack/canvas) | NORMAL | RW_EL1 | 1 | 1 | 1 |
-| `KPAGE_ATTR_APP_RODATA` (kapi table) | NORMAL | RO_EL1 | 1 | 1 | 1 |
-| `KPAGE_ATTR_APP_RWX` (generated code, v58 `code_alloc`) | NORMAL | RW_EL1 | 1 | **0** (exec. EL1) | 1 |
+| `KPAGE_ATTR_APP_CODE` (app code, the EL0 code page) | NORMAL | RO_ALL | 1 | 1 | **0** (exec. EL0) |
+| `KPAGE_ATTR_APP_DATA` (data/heap/stacks/canvas/surfaces) | NORMAL | RW_ALL | 1 | 1 | 1 |
+| `KPAGE_ATTR_APP_RODATA` (the EL0 kapi table) | NORMAL | RO_ALL | 1 | 1 | 1 |
+| `KPAGE_ATTR_APP_RWX` (generated code, v58 `code_alloc`) | NORMAL | RW_ALL | 1 | 1 | **0** (exec. EL0) |
+| `KPAGE_ATTR_APP_SCREEN` (`fullscreen_direct`, the displayed framebuffer) | COHERENT (uncached) | RW_ALL | 1 | 1 | 1 |
 
-App pages are **accessible at EL1** (`AP=*_EL1`), executable at EL1 for code
-(`PXN=0`), never executable at EL0 (`UXN=1`), and `nG=1` (ASID-tagged) → isolation
-between applications.
+App pages are **accessible at EL0** (`AP=*_ALL`; the kernel works in them in place: the A72
+has no PAN), executable **at EL0 only** for code (`UXN=0`, `PXN=1` everywhere: the kernel
+never runs app code), and `nG=1` (ASID-tagged) → isolation between applications. The
+identity region keeps Circle's `AP=RW_EL1`: out of the apps' reach (§6, *Protected mode*).
 
 ### Activation and context switch
 
@@ -359,7 +369,7 @@ so the loops crawl. Driver timeouts then expire and the Wi-Fi link drops (the `s
 app took the network down, and VNC/telnet with it). So the scheduler lowers the priority
 of the tasks the timer has to preempt:
 
-- `PreemptDoYield` calls `CScheduler::OnPreempt()`, which bumps the task's
+- The preemption (`El0IrqExit`, `sys/el0.cpp`) calls `CScheduler::OnPreempt()`, which bumps the task's
   **preemption streak** (`m_nPreemptStreak[slot]`). Any voluntary `Yield` (a kapi wait,
   `msleep`, `present`, a kernel task's loop) resets it.
 - A task with a streak ≥ `SCHED_HOG_STREAK` (2) is a **CPU hog**. An app that computes more
@@ -648,19 +658,22 @@ task model in `kernel.cpp`.
 
 ### `CUserProcessTask` — one application = one task
 
-`CUserProcessTask` (subclass of `CTask`, **256 KB** stack — or what the app's folder's
-`app.txt` asks for, `stack = 8M`: `AppStackSize` reads it in the launcher's context before
-the task exists, since `CTask` allocates its stack in its constructor; rounded up to 64 KB,
-at most 64 MB; Jet Browser asks for 8 MB):
+`CUserProcessTask` (subclass of `CTask`; its `CTask` stack is the process's 256 KB kernel
+stack; the app's **user** stack is 1 MB, or what the app's folder's `app.txt` asks for,
+`stack = 8M` — `AppUserStack`, rounded up to 64 KB, 1–64 MB; Jet Browser asks for 8 MB):
 1. Creates a fresh `CAddressSpace`.
 2. Installs stdin/stdout, the process handle, argv, cwd.
 3. `LoadELF` into the address space.
 4. `SetUserData(AS, TASK_USER_DATA_USER)` + `AS->AddTask(this)` (its main task) +
    `Activate()` (switches `TTBR0`/ASID).
-5. **Calls the entry point directly**: `((void(*)())entry)()` — in EL1, in the
-   app's page table + stack. No trap.
-6. On return, `ThreadsEndProcess()` (its other threads end with it) and `Terminate()`; the
-   reaper reaps the tasks and frees the address space with the last one.
+5. Maps the **user stack** below `USER_STACK_TOP` (1 MB, or `app.txt`'s `stack`) and
+   **enters the app at EL0**: `El0Enter (entry, USER_STACK_TOP, 0, El0MainReturnVA ())` — no
+   return; the task's own stack (`EL0_KSTACK_SIZE`, 256 KB) is from then on only the process's
+   **kernel** stack (its traps, the kapis it calls).
+6. `main`'s return goes through the blob's `El0MainReturn` (→ `exit (0)`); `kapi_exit`, a
+   fault or a kill end the process in the kernel: `ThreadsEndProcess()` (its other threads end
+   with it) and `Terminate()`; the reaper reaps the tasks and frees the address space with the
+   last one.
 
 ### Threads (v67)
 
@@ -670,16 +683,17 @@ Source: [`kernel/sys/thread.cpp`](../kernel/sys/thread.cpp),
 A thread is a `CUserThreadTask`: one more `CTask` whose `TASK_USER_DATA_USER` is the app's
 `CAddressSpace` (set in its constructor, before it is first scheduled: no `Yield` in between), so
 the task switch activates the app's page table and every kapi sees the same process — window,
-heap, files, sockets, cwd. It calls `fn (arg)` at EL1 on its own stack (kernel heap: the identity
-region, mapped in every space — like the main task's; 256 KB by default, 16 KB .. 16 MB), and
-the timer preempts it in its own code like any app (§5). `fn`'s return, or `kapi_thread_exit`,
+heap, files, sockets, cwd. It enters `fn (arg)` at **EL0** (`El0Enter`) on its own user stack, mapped in the process
+at `USER_THREAD_STACKS` (32 GB) + (index + 1) × 32 MB with a guard below (256 KB by default,
+16 KB .. 16 MB); its `CTask` stack is its kernel stack. The timer preempts it in its own code
+like any app (§5). `fn`'s return, or `kapi_thread_exit`,
 records its exit code and ends the task; the reaper frees it while the process goes on. A process
 runs at most `THREADS_MAX` (32) threads besides its main one.
 
 - **The process ends with its main task** (return from `main`, `kapi_exit`), or when any thread
   calls `kapi_exit`: `ThreadsEndProcess` → `TerminateGroup` (all but the caller). A kill (task
-  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault anywhere still halts
-  the machine (the post-mortem console, §13), as before.
+  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault in any of its threads
+  kills the whole process (§6, *Protected mode*), never the machine.
 - **The per-process state** — `CProcThreads`, made on first use, freed by `~CAddressSpace`
   (`ThreadsFree`, first): the thread records (tid → task, done, exit code; 64: the ended ones are
   kept until joined, the oldest reused first), the synchronisation objects (256 handles), the
@@ -757,14 +771,20 @@ TKApiTable`) at a **fixed virtual address**:
 
 - `KAPI_TABLE_VA = 14 GB` — stable "forever" (between the canvas at 12 GB and the stack at
   16 GB).
-- The table is a static variable aligned to 64 KB (`s_Table` in `kapitable.cpp`),
-  hence in the identity region (PA == kernel VA). `KApiTableInit()` fills all the
-  pointers + the `version` field.
-- Each `CAddressSpace` maps this page **read-only** at `KAPI_TABLE_VA` (cf.
-  [§4](#4-memory-management-caddressspace)).
+- The kernel's table is a static variable aligned to 64 KB (`s_Table` in `kapitable.cpp`).
+  `KApiTableInit()` fills all the pointers + the `version` field. It is the **system-call
+  dispatch table** only: it is never mapped into an app.
+- What an app sees at `KAPI_TABLE_VA` is the **EL0 table** (`El0Init`, `sys/el0.cpp`), one page
+  shared by every process and mapped **read-only** in each `CAddressSpace` (cf.
+  [§4](#4-memory-management-caddressspace)): the same layout and `version`, but slot *n* points
+  at a stub `mov x8, #n; svc #0; ret` in the EL0 code page (`KAPI_STUBS_VA`), and the user-side
+  slots (`memcpy`, `memset`, `memmove`, `pump_events`, `wait_for_exit`, `pump_wait`) at routines
+  that run in the app itself (`arch/aarch64/el0blob.S`; §6, *Protected mode*).
 - App side, `kapi.h` defines `#define KT ((const struct TKApiTable *) KAPI_TABLE_VA)` and
   one inline function per entry (`kapi_create_window`, `kapi_open`, …) that does nothing but
-  dereference the table.
+  call through the table — a plain indirect call into the stub, which makes the system call.
+  `user/kapi_names.h` (generated by `tools/gen_kapi_names.py` from `kapi_abi.h`) names the slots
+  for `/bin/sysstat`.
 
 **Consequence:** an application binary **embeds no kernel address** and
 keeps working against any kernel that exposes the same ABI → no rebuild
@@ -772,7 +792,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 71`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 74`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -807,7 +827,7 @@ v72 = `gpu_render`'s **compositing blend presets** `KAPI_GPU_BLEND_MULCOL` … `
 layer blend modes of `user/gpucomp` — multiply, screen, plus, subtract, lighten, mask, cut out); an older
 kernel draws 5–15 as `ALPHA` (the service checks the version) — no new call,
 v73 = **protected mode** (§6): `pop_event`, `event_mods`, `pop_post`, `pump_sleep` — the pieces of the
-event pump an EL0 app runs on its own side (an EL1 app never needs them); the core number in
+event pump an EL0 app runs on its own side (an EL1 app, as apps were then by default, never needed them); the core number in
 `TPIDRRO_EL0` (`kapi__core`); the file / stream / process handles per process and every pointer
 checked (no change for a well-behaved app),
 v74 = **every process at EL0** (the EL1 mode removed), `proc_stats` (a process's system calls:
@@ -822,7 +842,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 
 | Category | Examples |
 |---|---|
-| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: at EL1, a null canvas drawn into is the kernel's memory at address 0), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `wk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
+| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `wk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `wtk::Menu`. |
 | Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
@@ -1182,12 +1202,15 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
 - **Host name.** `system.ini hostname=` (letters, digits, `-`) is handed to `CNetSubSystem` before
   the bring-up task starts (`SetHostname`, an Onyx addition to Circle: docs/05) — the name DHCP
   announces; default Circle's `raspberrypi`. Setup writes it; it takes effect at the next start.
-- **Caveats.** Plain-text only (no TLS); `MAX_TASKS` was raised to 40 to fit the net
-  workers; the firmware load uses FatFs and is not locked against concurrent app
+- **Caveats.** The kernel's sockets are plain TCP (TLS is done in user space: `user/tls`, used
+  by Jet, Mail, `httpsget`, `wget`, the package manager…); the scheduler's task list has no
+  limit any more (§5: the old `MAX_TASKS` of 40, raised for the net workers, is gone); the firmware load uses FatFs and is not locked against concurrent app
   file I/O (low risk, one-shot at boot) — with `netcore=1` it is (the atomic volume lock).
 
-The apps that use it: the **irc** client (`user/irc.c`) and the **`net`** `/bin`
-tool (link status / IP).
+The apps that use it: Jet Browser, Mail, the IRC client, Lisa (an LLM), the package manager
+(`pkgman`, `pkgd`, `/bin/pkg`), and the `/bin` network tools (`net`, `ping`, `nslookup`,
+`netstat`, `wget`/`httpget`/`httpsget`, `ftp`, `whois`) and servers (`ftpd`, `telnetd`, `vncd`,
+`rdpd`) — docs/04 §12 and the `/bin` table.
 
 ---
 
@@ -1198,8 +1221,8 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
 - **Multi-core.** Circle is built with `ARM_ALLOW_MULTI_CORE` (fork patch #4,
   [Circle Changes](05-CIRCLE-CHANGES.md)). `CKernel::Initialize` starts cores 1–3 through a
   `CMultiCoreSupport` subclass (`COnyxCores`, kernel.cpp) right after the kapi table is
-  published. **Everything else stays on core 0**: the scheduler, every process, the
-  interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
+  published. **Everything else stays on core 0** (but the network with `netcore=1`, on core 3:
+  §11): the scheduler, every process, the interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
   not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 are **app cores**
   (§14). A failed start is only a warning (no sound producer, no app cores).
 - **The device.** `COnyxSoundDevice` derives from Circle's `CPWMSoundBaseDevice` (PWM + DMA,
@@ -1254,9 +1277,9 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   so nothing an app writes there can make it read elsewhere. Since it is plain memory, **an app
   core fills it** (`kapi_sound_ring_write`), and a core-0 thread can sleep on `rd` with
   `wait_word` (the tick sees core 1 move it) — the DAW's engine writes straight into the kernel's
-  ring, no pump thread in the audio path. Apps run at EL1 without isolation from the kernel, so a
-  former owner that kept its mapping could still write into the page; the kernel stops mixing it
-  at the release. `ringtest` plays a tone from an app core this way.
+  ring, no pump thread in the audio path. A former owner keeps the page mapped in its space (the
+  mapping is dropped only with the process), so it could still write into it; the kernel stops
+  mixing it at the release. `ringtest` plays a tone from an app core this way.
 - **Ownership.** One pid owns the output (`sound_acquire`); every other call from another
   pid returns −1. `sound_release`, or the owner's exit (`SoundOnProcessGone`, called from
   `IpcOnProcessGone`), silences the voices, empties the ring and frees the output. The
@@ -1414,14 +1437,16 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   the cores is plain cacheable memory (inner-shareable, coherent) with `DSB ISH` barriers;
   only core 0 writes the ownership.
 - **Stopping a job** (`core_release`, the app's exit or kill): core 0 raises `bAbort` and
-  sends the core an IPI (`SendIPI`, `IPI_USER`). The IRQ enters our `IrqEntry` on that core;
-  `KernelIRQExit` sees it is not core 0 (no scheduling there) and calls `AppCoreOnIRQExit`,
-  which **rewrites the trap frame** to return into `AppCoreRestart` on the core's own kernel
+  sends the core an IPI (`SendIPI`, `IPI_USER`). The IRQ interrupts the job at EL0 and enters
+  `El0IrqEntry` on that core (`IrqEntry` if the core was in its own kernel code); the exit path
+  (`El0IrqExit` / `KernelIRQExit`) sees it is not core 0 (no scheduling there) and calls
+  `AppCoreOnIRQExit`, which **rewrites the trap frame** to return into `AppCoreRestart` on the core's own kernel
   stack (EL1t, IRQs masked): the job is simply dropped. `AppCoreRestart` goes back to the
   kernel address space and clears `bAbort` — core 0's signal that the core is out of the
   app's memory. Core 0 waits for it at most 200 ms.
-- **Faults.** A synchronous exception on core 2–3 (a bad access in the job) reaches
-  `SyncHandlerEL1`, which hands it to `AppCoreOnFault` instead of the kernel panic: the ESR
+- **Faults.** A synchronous exception from the job at EL0 (a bad access, an undefined
+  instruction, any `svc` but the job's end) reaches `El0SyncHandler`, which hands it to
+  `AppCoreOnEl0Sync` → `AppCoreOnFault` (instead of killing a process): the ESR
   class, PC and fault address are kept, the state becomes `FAULT` and the frame is rewritten
   to `AppCoreRestart` as above. Core 0 logs it once (`appcore: core N: fault EC=... at pc
   ... (address ...)`) when the owner asks the state or releases the core.
@@ -1739,14 +1764,16 @@ full` also fills the volume).
 | `USER_VA_BASE` | 8 GB | layout.h |
 | `USER_WINDOW_CANVAS` | 12 GB | layout.h |
 | `USER_WALLPAPER_CANVAS` | 13 GB | layout.h |
-| `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
+| `KAPI_TABLE_VA` | 14 GB (the EL0 table) | kapi_abi.h |
+| `KAPI_STUBS_VA` | 14 GB + 64 KB (the EL0 code page: stubs, then the blob at +8 KB) | el0.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
-| `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 71 | kapi_abi.h |
+| `USER_STACK_SIZE` | 1 MB (an app's user stack; `app.txt` `stack`, 1–64 MB) | layout.h |
+| `USER_THREAD_STACKS` | 32 GB (+ 32 MB a thread) | el0.h |
+| `KAPI_ABI_VERSION` | 74 | kapi_abi.h |
 | `RAM:` volume | 128 MB by default (≤ ¼ of the free page memory; `system.ini` `ramfs=`), 32 MB reserve, 16384 files + folders, 128 MB a file | ramfs.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
-| `MAX_TASKS` | 40 | sysconfig.h |
+| Tasks | no limit (a linked list, §5; Circle's `MAX_TASKS` is not used) | scheduler.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |
-| Kernel stack of an app task | 256 KB | kernel.cpp |
+| Kernel stack of an app task (`EL0_KSTACK_SIZE`) | 256 KB | el0.h |
 | Screen resolution | 1024×768 by default (`cmdline.txt` `width=` / `height=`; changed while running: `screen_set`, v66) | window.h / cmdline.txt |
 | `GIMAGE_TRANSPARENT` | `0xFF00FF` | gimage.h |
