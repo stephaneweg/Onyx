@@ -1,7 +1,9 @@
 //
 // pfile.h -- Paint's files. Save writes the working format, **OpenRaster** (.ora -- the layered
 // format GIMP, Krita and MyPaint share): a ZIP of each layer as a PNG, stack.xml (the layers from
-// the top: name, visibility, opacity), the merged picture and a thumbnail. Open reads it back, or any
+// the top: name, visibility, opacity, blend mode -- composite-op svg:multiply, svg:screen, svg:plus,
+// svg:lighten, svg:dst-in, svg:dst-out, krita:subtract; a clip mask: onyx:clip="true"), the merged
+// picture and a thumbnail. Open reads it back, or any
 // picture (PNG, JPEG, BMP, GIF, WebP, PCX: one layer). Export writes what is visible, flattened: PNG
 // (its transparency kept), JPEG (quality 90), BMP, GIF (256 colours; the clear pixels transparent) --
 // the format of the file's name.
@@ -36,6 +38,9 @@ static unsigned char *read_all (const char *path, unsigned *len)
 	*len = (unsigned) r;
 	return b;
 }
+
+// The blend modes' names in OpenRaster (as GIMP and Krita write them).
+static const char *const COMPOSITE_OPS[NBLENDS] = { "svg:src-over", "svg:multiply", "svg:screen", "svg:plus", "krita:subtract", "svg:lighten", "svg:dst-in", "svg:dst-out" };
 
 // ---- stack.xml ----------------------------------------------------------------------------------------------
 // An attribute's value in a tag [p, end) (entities &amp; &lt; &gt; &quot; &apos; read); false: none.
@@ -94,7 +99,7 @@ static bool ora_load (const unsigned char *z, unsigned n)
 	int w = xml_attr (img, imgEnd, "w", v, sizeof v) ? parse_int (v) : 0, h = xml_attr (img, imgEnd, "h", v, sizeof v) ? parse_int (v) : 0;
 	if (w <= 0 || h <= 0 || w > 16384 || h > 16384) { delete[] xml; return false; }
 	// the layers, top first in the file: gathered, then put bottom first
-	struct L { char name[32], src[128]; int x, y, op; bool vis; } *ls = new L[MAXLAYERS];
+	struct L { char name[32], src[128]; int x, y, op, blend; bool vis, clip; } *ls = new L[MAXLAYERS];
 	int nl = 0;
 	for (const char *q = imgEnd; q + 6 < xe && nl < MAXLAYERS; q++)
 	{
@@ -107,6 +112,10 @@ static bool ora_load (const unsigned char *z, unsigned n)
 		l.y = xml_attr (q, te, "y", v, sizeof v) ? parse_int (v) : 0;
 		l.op = xml_attr (q, te, "opacity", v, sizeof v) ? parse_opacity (v) : 255;
 		l.vis = !(xml_attr (q, te, "visibility", v, sizeof v) && meq (v, "hidden", 6));
+		l.blend = GPC_B_NORMAL;
+		if (xml_attr (q, te, "composite-op", v, sizeof v))
+			for (int b = 0; b < NBLENDS; b++) if (slen (v) == slen (COMPOSITE_OPS[b]) && meq (v, COMPOSITE_OPS[b], slen (v))) l.blend = b;
+		l.clip = xml_attr (q, te, "onyx:clip", v, sizeof v) && v[0] == 't';
 		nl++;
 		q = te;
 	}
@@ -120,7 +129,7 @@ static bool ora_load (const unsigned char *z, unsigned n)
 		const L &l = ls[i];
 		Layer &dl = D.lay[D.n++];
 		layer_init (dl, l.name, new_px (w, h, 0));
-		dl.visible = l.vis; dl.opacity = l.op;
+		dl.visible = l.vis; dl.opacity = l.op; dl.blend = l.blend; dl.clip = l.clip;
 		pngsave::ZipEntry pe;
 		if (!pngsave::zip_find (z, n, l.src, &pe)) continue;
 		unsigned pl = 0;
@@ -179,16 +188,12 @@ static void xml_escaped (pngsave::Buf &o, const char *s)
 static void put_num (pngsave::Buf &o, int v) { char t[12]; int j = 0; if (v < 0) { o.put ('-'); v = -v; } do { t[j++] = (char) ('0' + v % 10); v /= 10; } while (v); while (j) o.put ((unsigned char) t[--j]); }
 static void put_str (pngsave::Buf &o, const char *s) { o.put (s, (unsigned) slen (s)); }
 
-// The visible layers flattened (a new buffer: the composite without what floats).
+// The visible layers flattened (a new buffer: the picture as it is shown, without what floats), with
+// gpucomp's own blending: the file is what the screen showed.
 static unsigned *flatten ()
 {
-	unsigned *o = new_px (D.w, D.h, 0);
-	for (int k = 0; k < D.n; k++)
-	{
-		const Layer &l = D.lay[k];
-		if (!l.visible) continue;
-		for (int i = 0; i < D.w * D.h; i++) if (l.px[i] >> 24) o[i] = over (o[i], l.px[i], (unsigned) l.opacity);
-	}
+	unsigned *o = new unsigned[(unsigned) D.w * D.h];
+	for (int y = 0; y < D.h; y++) for (int x = 0; x < D.w; x++) o[(unsigned) y * D.w + x] = comp_px (x, y, false);
 	return o;
 }
 
@@ -208,7 +213,10 @@ static unsigned char *ora_save (unsigned *len)
 		put_str (x, "  <layer name=\""); xml_escaped (x, l.name); put_str (x, "\" src=\""); put_str (x, src);
 		put_str (x, "\" x=\"0\" y=\"0\" opacity=\"");
 		int op = l.opacity * 1000 / 255; put_num (x, op / 1000); x.put ('.'); x.put ((unsigned char) ('0' + op / 100 % 10)); x.put ((unsigned char) ('0' + op / 10 % 10)); x.put ((unsigned char) ('0' + op % 10));
-		put_str (x, "\" visibility=\""); put_str (x, l.visible ? "visible" : "hidden"); put_str (x, "\"/>\n");
+		put_str (x, "\" visibility=\""); put_str (x, l.visible ? "visible" : "hidden");
+		put_str (x, "\" composite-op=\""); put_str (x, COMPOSITE_OPS[pclamp (l.blend, 0, NBLENDS - 1)]);
+		if (l.clip) put_str (x, "\" onyx:clip=\"true");
+		put_str (x, "\"/>\n");
 		unsigned pl;
 		unsigned char *png = pngsave::png_encode (l.px, D.w, D.h, true, &pl);
 		z.add (src, png, pl, false);

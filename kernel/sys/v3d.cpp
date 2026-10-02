@@ -894,11 +894,26 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 			      nZ, bZWrite, false, false, false, nBlend != 0, false, false);
 		if (nBlend != 0 && nBlend != nPrevBlend)
 		{
-			// factors: 0 zero, 1 one, 4 dst colour, 6 src alpha, 7 1 - src alpha; mode 0 add
-			static const u8 Fac[5][4] = { { 1, 0, 1, 0 }, { 6, 7, 1, 7 }, { 6, 1, 6, 1 }, { 4, 0, 4, 0 }, { 1, 7, 1, 7 } };
-			const u8 *f = Fac[nBlend <= 4 ? nBlend : 1];
+			// colour src, dst, equation, then alpha's -- factors: 0 zero, 1 one, 3 1 - src colour,
+			// 4 dst colour, 6 src alpha, 7 1 - src alpha, 9 1 - dst alpha; equations: 0 add,
+			// 2 reverse subtract, 4 max. 5..12 (v72): the compositing presets (premultiplied)
+			static const u8 Fac[KAPI_GPU_BLEND_LAST + 1][6] = {
+				{ 1, 0, 0, 1, 0, 0 },			// (none)
+				{ 6, 7, 0, 1, 7, 0 },			// ALPHA
+				{ 6, 1, 0, 6, 1, 0 },			// ADD
+				{ 4, 0, 0, 4, 0, 0 },			// MUL
+				{ 1, 7, 0, 1, 7, 0 },			// PREMUL
+				{ 4, 7, 0, 0, 1, 0 },			// MULCOL: s d + d (1 - sa), alpha kept
+				{ 9, 1, 0, 1, 7, 0 },			// UNDER: s (1 - da) + d, alpha over
+				{ 1, 3, 0, 1, 7, 0 },			// SCREEN: s + d (1 - s)
+				{ 1, 1, 0, 1, 7, 0 },			// PLUS: s + d
+				{ 1, 1, 2, 0, 1, 0 },			// RSUB: d - s, alpha kept
+				{ 1, 1, 4, 1, 7, 0 },			// LIGHTEN: max (s, d)
+				{ 0, 6, 0, 0, 6, 0 },			// DSTIN: d sa
+				{ 0, 7, 0, 0, 7, 0 } };			// DSTOUT: d (1 - sa)
+			const u8 *f = Fac[nBlend <= KAPI_GPU_BLEND_LAST ? nBlend : 1];
 			B << BlendEnables (1);
-			B << BlendCfg (0, f[2], f[3], 0, f[0], f[1], 0xF);
+			B << BlendCfg (f[5], f[3], f[4], f[2], f[0], f[1], 0xF);
 			nPrevBlend = nBlend;
 		}
 		B << GlShaderState (nShaderRec, 4);

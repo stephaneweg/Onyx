@@ -96,6 +96,26 @@ answer in French. The docs stay in English.
 - **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Writer's
   hyperlinks (the export would make them links).
 
+## Paint made "pro" (2026-10-02, kernel v72, not yet tried on the Pi)
+
+- **Asked by the user**: Paint more professional, FreeType, blend modes per layer composited by the GPU (a
+  hidden layer as if absent), Tab between a dialog's fields (wtk), Ctrl+wheel zoom, pattern brushes, the
+  colour selection and the free-form one, the fill's gradient along a line (GIMP-like gradients), Open as
+  Layer / Paste as New Layer, a fade between two pictures, a Colours menu (desaturate, colorize, the
+  channels remapped... on the selection, the layer or everything). The mock-ups the user approved and
+  where it landed: **`docs/paint/README.md`**; the user guide: docs/04 *Paint*; the pieces: docs/03 *Paint*.
+- **Kernel v72**: `gpu_render`'s blend presets 5..12 (`KAPI_GPU_BLEND_MULCOL` ... `DSTOUT`, kern/kapi_abi.h,
+  sys/v3d.cpp's table: colour and alpha factors apart). **gpucomp**: `gpc_layer.blend` (`GPC_B_*`),
+  `gpc_blend_pixel`; tests `sh tools/tests/run_gpucomp_test.sh` (the software V3D has the presets).
+- **wtk**: `Widget::tabFocus` / `isField` / `onTabFocus`, `Textbox::changed`, `Button::onKey`; a `Textbox`
+  without `cb` and a `Checkbox` / `RadioButton` leave Enter to the dialog. Every wtk app was rebuilt for it.
+- **Paint** is a newlib app now (`paint.elf` rule in user/Makefile; its window sized from the screen).
+  Simulator: `sh tools/tests/desktop_sim/shots.sh paint` (`paint_scene.py`). Samples: `SD:/docs/pictures/`
+  (`tools/gen_paint_samples.py`, package `paint-samples`).
+- **To try on the Pi**: the v72 kernel with the blend modes on the GPU (`gpcdemo test` still ALL PASS),
+  Paint's speed on a big picture, the brushes, Ctrl+wheel (it was there before: the user had not tried it),
+  Tab in other apps' dialogs (Ledger keeps its own Tab).
+
 ## Media Player, the music and video library (2026-10-01 music, 2026-10-02 videos; not yet tried on the Pi)
 
 - **What**: `user/Apps/media` (docs/03 *Media Player*; docs/04 §12; the mock-ups and the user's decisions:

@@ -53,7 +53,7 @@ bool RadioButton::onMouse (int mx, int, int bl, int, int, int)
 
 bool RadioButton::onKey (long k)
 {
-	if (k == ' ' || k == KEY_ENTER) { select (); return true; }
+	if (k == ' ') { select (); return true; }		// (Enter: the dialog's default button)
 	return false;
 }
 

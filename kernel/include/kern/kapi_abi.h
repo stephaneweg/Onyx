@@ -111,7 +111,10 @@
 //      volume (kern/ramfs.h): a file system in memory, until the Pi restarts, reached by the same
 //      file calls as the card (open / read / fsize / seek / close, save_file, file_in / file_out,
 //      opendir / readdir / closedir, mkdir / remove / rename, chdir).
-#define KAPI_ABI_VERSION	71
+// v72: gpu_render's blending: the compositing presets KAPI_GPU_BLEND_MULCOL .. DSTOUT (5..12:
+//      multiply, screen, plus, subtract, lighten, mask, cut out -- premultiplied, the alpha
+//      apart; user/gpucomp's layer blend modes). An older kernel takes 5..15 as ALPHA.
+#define KAPI_ABI_VERSION	72
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -356,6 +359,17 @@ struct kapi_gpu_batch
 #define KAPI_GPU_BLEND_ADD	2		// src * a + dst
 #define KAPI_GPU_BLEND_MUL	3		// src * dst
 #define KAPI_GPU_BLEND_PREMUL	4		// src + dst * (1 - a)
+// (v72) the compositing presets, premultiplied colours (s, d; sa, da their alphas) -- what blend
+// modes are made of (user/gpucomp: a layer's multiply = MULCOL then UNDER, subtract = RSUB then UNDER)
+#define KAPI_GPU_BLEND_MULCOL	5		// colour s d + d (1 - sa); alpha kept
+#define KAPI_GPU_BLEND_UNDER	6		// colour s (1 - da) + d; alpha sa + da (1 - sa)
+#define KAPI_GPU_BLEND_SCREEN	7		// colour s + d (1 - s); alpha over
+#define KAPI_GPU_BLEND_PLUS	8		// colour s + d (clamped); alpha over
+#define KAPI_GPU_BLEND_RSUB	9		// colour d - s (clamped at 0); alpha kept
+#define KAPI_GPU_BLEND_LIGHTEN	10		// colour max (s, d); alpha over
+#define KAPI_GPU_BLEND_DSTIN	11		// colour and alpha d sa (a mask: d kept where s is)
+#define KAPI_GPU_BLEND_DSTOUT	12		// colour and alpha d (1 - sa) (d cut out where s is)
+#define KAPI_GPU_BLEND_LAST	12
 #define KAPI_GPU_B_LINEAR	(1u << 12)	// bilinear texture filtering (else nearest)
 #define KAPI_GPU_B_WRAP_S(m)	(((m) & 3) << 13)
 #define KAPI_GPU_B_WRAP_T(m)	(((m) & 3) << 15)

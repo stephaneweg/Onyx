@@ -27,4 +27,11 @@ bool Button::onMouse (int mx, int /*my*/, int bl, int, int, int)
 	return true;
 }
 
+bool Button::onKey (long k)
+{
+	if (disabled || (k != ' ' && k != KEY_ENTER)) return false;
+	if (cb) cb (*this);
+	return true;
+}
+
 } // namespace wtk
