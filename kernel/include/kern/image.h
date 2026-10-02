@@ -117,10 +117,11 @@ void ImageRelease (TImage *pImage);
 int ImageUnload (const char *pPath, const char *pCwd);
 
 // The file layer's hook: the file (or folder) at pAbsPath -- an absolute path, as ResolvePath
-// gives -- is being removed, renamed, replaced or written. The image of that path, the images of
-// the programs under that folder, and (for "<folder>/app.txt", where a program's stack size is)
-// the image of "<folder>/main" lose their name as by ImageUnload. Cheap: nothing is done when no
-// image exists; no I/O, no yield.
+// gives -- is being removed, renamed, replaced or written. The image of that path and the images
+// of the programs under that folder lose their name as by ImageUnload. For "<folder>/app.txt"
+// (where a program's stack size is) the image of "<folder>/main" stays, and forgets its stack
+// size: its next start reads app.txt again. Cheap: nothing is done when no image exists; no I/O,
+// no yield.
 void ImageFileChanged (const char *pAbsPath);
 
 // pPath 0: every live image, up to nCap written to pOut -> how many there are. pPath: the image
@@ -134,7 +135,8 @@ unsigned ImagePagesTotal (void);
 void ImageSizes (const TImage *pImage, u64 *pShared, u64 *pPrivate);
 
 // The user stack's size its processes get (app.txt's "stack =", read once per image by the
-// kernel's loader: a start from an image in memory reads nothing). 0: not set yet.
+// kernel's loader: a start from an image in memory reads nothing). 0: not set yet, or its
+// app.txt changed since (ImageFileChanged).
 unsigned ImageStack (const TImage *pImage);
 void ImageSetStack (TImage *pImage, unsigned nStack);
 

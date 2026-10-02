@@ -934,13 +934,21 @@ static void TestFileChanged (void)
 	ImageFileChanged ("SD:/apps/x.app");
 	CHECK (Images () == 2 && !InfoOf ("SD:/apps/x.app/main", &Info));
 	CHECK (InfoOf ("SD:/apps/xy.app/main", &Info) && InfoOf ("SD1:/apps/x.app/main", &Info));
-	// its app.txt (the stack size is read once per image)
-	ImageFileChanged ("SD:/apps/xy.app/app.txt");
-	CHECK (Images () == 1 && !InfoOf ("SD:/apps/xy.app/main", &Info));
-	ImageFileChanged ("SD:/apps/x.app/app.txt");			// (the other volume's: untouched)
-	CHECK (Images () == 1);
+	// its app.txt (the stack size is read once per image): the image stays, the size is forgotten
+	CHECK (Open ("SD:/apps/xy.app/main", 0, 0, &I) == 0);
+	ImageSetStack (I, 0x800000);
+	ImageFileChanged ("SD:/apps/xy.app/notapp.txt");
+	ImageFileChanged ("SD:/apps/x.app/app.txt");			// (another app's)
+	ImageFileChanged ("SD1:/apps/xy.app/app.txt");			// (another volume's)
+	CHECK (ImageStack (I) == 0x800000);
+	ImageFileChanged ("SD:/Apps/XY.app/App.txt");
+	CHECK (ImageStack (I) == 0);
+	ImageRelease (I);
+	CHECK (Images () == 2 && InfoOf ("SD:/apps/xy.app/main", &Info) && Info.flags == KAPI_IMG_KEPT);
 	// a volume's root
 	ImageFileChanged ("SD1:/");
+	CHECK (Images () == 1);
+	ImageFileChanged ("SD:/apps");
 	CheckClean ();
 
 	// in use: the process keeps its image, new starts load the file again, freed with the process

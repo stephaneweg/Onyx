@@ -346,7 +346,7 @@ public:
 		unsigned nT2 = CTimer::GetClockTicks ();
 
 		// The user stack's size: app.txt's, read once per image (a start from an image in memory
-		// reads nothing; a changed app.txt takes the image's name away: ImageFileChanged).
+		// reads nothing; a changed app.txt makes the image forget it: ImageFileChanged).
 		unsigned nUserStack = ImageStack (pImage);
 		if (nUserStack == 0)
 		{

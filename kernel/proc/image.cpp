@@ -517,17 +517,20 @@ void ImageFileChanged (const char *pAbsPath)
 	char Key[IMG_PATH_MAX];
 	if (!ImageCanonPath (pAbsPath, 0, Key)) return;	// (longer than any key)
 	unsigned n = strlen (Key);
-	// "<folder>/app.txt": the stack size of "<folder>/main" (ImageStack)
+	// "<folder>/app.txt": where the stack size of "<folder>/main" is (ImageStack)
 	boolean bAppTxt = n > 8 && strcmp (Key + n - 8, "/app.txt") == 0;
 	for (TImage *o = s_pImages, *pNext; o != 0; o = pNext)
 	{
 		pNext = o->pNext;
 		if (!o->bNamed) continue;
 		if (   strcmp (o->Path, Key) == 0
-		    || (strncmp (o->Path, Key, n) == 0 && (o->Path[n] == '/' || Key[n - 1] == '/'))
-		    || (bAppTxt && strncmp (o->Path, Key, n - 7) == 0 && strcmp (o->Path + n - 7, "main") == 0))
+		    || (strncmp (o->Path, Key, n) == 0 && (o->Path[n] == '/' || Key[n - 1] == '/')))
 		{
 			Unname (o);
+		}
+		else if (bAppTxt && strncmp (o->Path, Key, n - 7) == 0 && strcmp (o->Path + n - 7, "main") == 0)
+		{
+			o->nStack = 0;			// (the image stays: its next start reads app.txt again)
 		}
 	}
 }
