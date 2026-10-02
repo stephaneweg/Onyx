@@ -54,7 +54,7 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## PDF Viewer and the PDF export (2026-10-01, not yet tried on the Pi)
+## PDF Viewer and the PDF export (2026-10-01; the viewer tried on the Pi 2026-10-02: works well)
 
 - **What**: `user/Apps/pdf` (docs/03 *PDF Viewer*; docs/04 §12; the mock-ups and the user's decisions:
   `docs/pdf/README.md`) on **MuPDF 1.28.5** (`third_party/mupdf-1.28.5`, its fitz + pdf parts, built by
@@ -70,8 +70,8 @@ answer in French. The docs stay in English.
 - **Tests**: `sh tools/tests/run_pdf_test.sh`; the screenshots: `shots.sh pdf writer sheet`.
 - **Licences**: the user, 2026-10-01: **all our own software under MIT** wherever possible (CLAUDE.md,
   docs/LICENSING.md).
-- **To try on the Pi**: a page's drawing time (the A72, at fit width and 400 %), the memory with a big PDF
-  (the bitmaps: 18 M pixels at most; MuPDF's store: 96 MB), the search on a long document, full screen.
+- **On the Pi** (2026-10-02, the user): the viewer works well. Still to watch: very large PDFs (the bitmaps:
+  18 M pixels at most; MuPDF's store: 96 MB); the export from Writer / the Spreadsheet on the Pi.
 - **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Writer's
   hyperlinks (the export would make them links).
 

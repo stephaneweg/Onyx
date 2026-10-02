@@ -2,7 +2,7 @@
 
 > **Status (2026-10-01): done** — the PDF Viewer (`user/Apps/pdf`, on MuPDF; docs/03 *PDF Viewer*, its use: docs/04
 > §12, the real app: `screenshots/pdf*.png`) and *File ▸ Export as PDF* in Writer and the Spreadsheet
-> (`user/pdf/pdfwrite.h`, MIT; `screenshots/writer-pdf.png`, `sheet-pdf.png`); **not yet tried on the Pi**.
+> (`user/pdf/pdfwrite.h`, MIT; `screenshots/writer-pdf.png`, `sheet-pdf.png`); the viewer **tried on the Pi** (2026-10-02): it works well.
 > The mock-ups below were validated. Priority 1 of the end-user apps roadmap
 > (docs/HANDOFF.md): a **PDF viewer** as a polished app, in the way of Acrobat Reader / Edge / Evince /
 > Preview, and the **PDF export** in Writer and the Spreadsheet. Proposed name: **PDF Viewer** (app folder
@@ -53,7 +53,7 @@ search hits are placed from the words' real positions (`pdftotext -bbox-layout`)
 
 ## Next
 
-- Try it on the Pi (the speed of a page drawn on the A72; the memory of large documents).
+- On the Pi: the viewer works (2026-10-02); still to watch: very large documents, the export on the Pi.
 - Annotations (highlight, notes) and forms filled — MuPDF has both (`pdf-annot`, `pdf-form`), saved with
   `pdf_save_document` (incremental).
 - Colour management (lcms2, left out), the CJK fonts (`TOFU_CJK` left out: an embedded font still shows).
