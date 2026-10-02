@@ -46,3 +46,26 @@ The mock-ups (`python3 tools/screenshot/mockup_paint.py` → `mockups/paint-*.pn
   stroke engine (coverage per stroke: no build-up but the airbrush's; soft edges; patterns anchored to the
   picture); a gradient tool; the Text tool; Adjust: brightness / contrast, hue / saturation, invert, black and
   white, sepia, blur, sharpen.
+
+## Where it landed (2026-10-02)
+
+Implemented the same day (`user/Apps/paint/`, docs/04 *Paint*, docs/03 *Paint*), with what the user asked
+for while it was being made:
+
+- **Kernel kapi v72**: `gpu_render`'s compositing presets (docs/02 §8, §15); **gpucomp**: the layers' blend
+  modes, GPU and CPU alike (`tools/tests/run_gpucomp_test.sh`: 54 checks, 28 of them the modes).
+- **wtk**: Tab / Shift+Tab between a dialog's controls and between a window's text fields; the first field
+  focused when a dialog opens; Enter reaches the dialog's OK from a field; `Textbox::changed`.
+- **Paint**: the ribbon and options bar of the mock-ups, the canvas composited by gpucomp, blend modes and
+  the **Mask / Cut out on the layer below only** (a layer mask: the user's fade between two pictures), the
+  brushes, the selections (rectangle, lasso, magic wand), the **fill's gradient along a line** and the
+  gradient editor (GIMP `.ggr`), the Text tool, **Open as Layer** and **Paste as New Layer**, the **Colours**
+  menu (brightness / contrast, hue / saturation, desaturate, colorize, remap the channels, invert, sepia,
+  posterize, threshold) and **Filters** (blur, sharpen, pixelate) on the selection, the layer or every layer.
+- Samples: `SD:/docs/pictures/sunset-sea.jpg`, `sunny-mountains.jpg` (`tools/gen_paint_samples.py`; the
+  package `paint-samples`). Screenshots: `paint.png`, `paint-fade.png`, `paint-brushes.png`, `paint-grid.png`.
+- **To try on the Pi**: the GPU's blend modes (they need the v72 kernel — an older one: the same pictures by
+  the CPU, slower), the canvas's speed on a big picture (each change sends only its rectangle), the brushes'
+  feel (spacing, soft edges), the text's fonts.
+- **Next ideas**: a selection's handles (resize, rotate freely), curves / levels, layer groups, more
+  blend modes (overlay, colour dodge / burn: they need a shader — gpu_render2), a history panel.

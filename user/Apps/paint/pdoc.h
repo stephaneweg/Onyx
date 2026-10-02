@@ -42,6 +42,8 @@ struct Layer
 	bool visible;
 	int opacity;			// 0..255
 	int blend;			// GPC_B_*: how it mixes with the layers under it
+	bool clip;			// a Mask / Cut out on the layer just below only (a layer mask): that
+					// layer shown x this one's alpha (or 1 - it), this one not drawn itself
 };
 enum { NBLENDS = GPC_B_COUNT };
 static const char *const BLEND_NAMES[NBLENDS] = { "Normal", "Multiply", "Screen", "Add", "Subtract", "Lighten", "Mask", "Cut out" };
@@ -98,7 +100,7 @@ static unsigned *new_px (int w, int h, unsigned fill)
 }
 static void layer_init (Layer &l, const char *name, unsigned *px)
 {
-	scpy (l.name, name, sizeof l.name); l.px = px; l.visible = true; l.opacity = 255; l.blend = GPC_B_NORMAL;
+	scpy (l.name, name, sizeof l.name); l.px = px; l.visible = true; l.opacity = 255; l.blend = GPC_B_NORMAL; l.clip = false;
 }
 // A new picture: w x h, its background layer white (or clear).
 static void doc_new (int w, int h, bool white)
@@ -132,7 +134,7 @@ static inline unsigned shown_px (int k, int x, int y)
 	if (y >= D.ov.r.y0 && y < D.ov.r.y1 && x >= D.ov.r.x0 && x < D.ov.r.x1)
 	{
 		unsigned o = D.ov.px[(unsigned) y * D.w + x];
-		if (o >> 24) c = D.ov.eraser ? 0 : over (c, o, 255);
+		if (o >> 24) { if (!D.ov.eraser) c = over (c, o, 255); else { unsigned a = ((c >> 24) * (255 - (o >> 24)) + 127) / 255; c = a ? (c & 0xFFFFFF) | a << 24 : 0; } }
 	}
 	if (D.fl.px && y >= D.fl.y && y < D.fl.y + D.fl.h && x >= D.fl.x && x < D.fl.x + D.fl.w)
 	{
@@ -159,21 +161,38 @@ static inline unsigned unpremul (unsigned c)
 }
 // The picture's pixel (x, y) as the visible layers make it, by the CPU: straight alpha. withExtras:
 // the current layer with what floats over it (the screen's), else the layers alone (a file's).
+// Layer k clipped by the layer above it (a Mask / Cut out "on the layer below only")?
+static inline bool clipped_by_next (int k)
+{
+	return k + 1 < D.n && D.lay[k + 1].clip && D.lay[k + 1].visible && (D.lay[k + 1].blend == GPC_B_MASK || D.lay[k + 1].blend == GPC_B_CUTOUT);
+}
+static inline bool is_clip_mask (int k) { return D.lay[k].clip && k > 0 && (D.lay[k].blend == GPC_B_MASK || D.lay[k].blend == GPC_B_CUTOUT); }
+// Layer k's pixel x its clip mask's alpha (straight: the alpha scaled), as it is composited.
+static inline unsigned clipped_px (int k, unsigned c, int x, int y, bool withExtras)
+{
+	if (!clipped_by_next (k)) return c;
+	unsigned m = (withExtras ? shown_px (k + 1, x, y) : D.lay[k + 1].px[(unsigned) y * D.w + x]) >> 24;
+	m = (m * (unsigned) D.lay[k + 1].opacity + 127) / 255;
+	if (D.lay[k + 1].blend == GPC_B_CUTOUT) m = 255 - m;
+	return (c & 0xFFFFFF) | (((c >> 24) * m + 127) / 255) << 24;
+}
+// The picture's pixel (x, y) as the visible layers make it, by the CPU: straight alpha. withExtras:
+// the current layer with what floats over it (the screen's), else the layers alone (a file's).
 static unsigned comp_px (int x, int y, bool withExtras)
 {
 	unsigned d = 0;						// (premultiplied)
 	for (int k = 0; k < D.n; k++)
 	{
 		const Layer &l = D.lay[k];
-		if (!l.visible) continue;
-		unsigned s = premul (withExtras ? shown_px (k, x, y) : l.px[(unsigned) y * D.w + x]);
+		if (!l.visible || is_clip_mask (k)) continue;
+		unsigned s = premul (clipped_px (k, withExtras ? shown_px (k, x, y) : l.px[(unsigned) y * D.w + x], x, y, withExtras));
 		if (l.blend == GPC_B_MASK) { d = gpc_blend_pixel (s, d, GPC_B_MASK, 1); continue; }
 		if (l.opacity < 255)
 		{
 			unsigned o = (unsigned) l.opacity;
 			s = ((((s >> 24) * o + 127) / 255) << 24) | (((((s >> 16) & 255) * o + 127) / 255) << 16) | (((((s >> 8) & 255) * o + 127) / 255) << 8) | (((s & 255) * o + 127) / 255);
 		}
-		if (!s && l.blend != GPC_B_MASK) continue;
+		if (!s) continue;
 		d = gpc_blend_pixel (s, d, (unsigned) l.blend, 1);
 	}
 	return unpremul (d);

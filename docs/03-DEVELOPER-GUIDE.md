@@ -642,6 +642,14 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > the composite on a thread of the program (kapi v67) — the app goes on meanwhile; the target and
 > the textures are not touched until `gpc_wait` (the texture calls wait by themselves).
 > `gpc_get_stats`: the last composite's µs, its `gpu_render` calls, the layers the CPU drew.
+> **Blend modes** (a layer's `blend`, `gpc_layer_init` sets `GPC_B_NORMAL`): `GPC_B_MULTIPLY`, `SCREEN`,
+> `ADD`, `SUBTRACT`, `LIGHTEN`, `MASK` (the target kept where the layer is opaque: `d · sa`; its opacity
+> unused), `CUTOUT` (`d · (1 − sa)`) — premultiplied maths, exact over a transparent (`GPC_T_ALPHA`) target
+> too. The GPU does them from kapi **v72** (`gpu_render`'s presets `KAPI_GPU_BLEND_MULCOL` … `DSTOUT`;
+> multiply and subtract are two batches over the same vertices, the second `UNDER` adding `s (1 − da)`,
+> left out on an opaque target); with an older kernel such a layer is drawn by the CPU between the GPU
+> runs. `gpc_blend_pixel (s, d, blend, alpha)` is the CPU's own pixel: an app flattening its layers
+> itself (Paint's Export) gets the screen's pixels with it.
 > Tests: `sh tools/tests/run_gpucomp_test.sh` on the PC — the CPU path and the GPU path (on a
 > software V3D, `tools/tests/gpucomp/hostkapi.cpp`: the kernel's `FS_TEX` run in `tools/qpu/qpusim`)
 > against a reference in doubles, then partial updates across tiles, a refused texture, the GPU
@@ -760,17 +768,29 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > `VG=1` valgrind); `tools/tests/writer/conv.cpp` converts a file by the names' extensions (`conv
 > a.docx b.odt`). The samples (`SD:/docs/writer-tour.rtf`, `new-year-letter.rtf`) are made by
 > `tools/gen_writer_sample.py`.
-> **Paint** (`user/Apps/paint/`, a freestanding integer app) — `pdoc.h` (up to 32 layers of
-> 0xAARRGGBB pixels, straight alpha, bottom first; the composite kept and recomputed by rectangles,
-> a floating selection and a shape's preview composed with the current layer; undo: a stroke keeps
-> the 64 × 64 tiles it touches as they were, a change of size or of layers the whole picture),
-> `raster.h` (stamps, Bresenham lines, Zingl's ellipse in a box, polygons filled by pixel centres,
-> the shapes inscribed in their box's ellipse, flood fill, flips, quarter turns, scaling), `pview.h`
-> (the canvas widget: zoom, grid, checkerboard, the tools, the floating selection), `pui.h` (the
-> ribbon — cells laid out in code, their tips set as the pointer moves —, the layers' panel, the
-> status bar, the `VPath` icons), `pfile.h` (OpenRaster in / out, the pictures, the exports). A host
-> check: random strokes, shapes, fills, layer changes, turns and moved selections undone then
-> redone must give back the same pixels.
+> **Paint** (`user/Apps/paint/`, a newlib app: FreeType, gpucomp; its own `paint.elf` rule; the mock-ups
+> and the decisions: `docs/paint/README.md`) — `pdoc.h` (up to 32 layers of 0xAARRGGBB pixels, straight
+> alpha, bottom first, each with its blend mode `GPC_B_*` and `clip` — a Mask / Cut out on the layer below
+> only; what changed since the screen showed it: `D.dirty` for the current layer, `D.dirtyAll`; `comp_px`
+> the CPU's composite of a pixel with `gpc_blend_pixel`, the same as the GPU's; undo: a stroke keeps the
+> 64 × 64 tiles it touches — `rec_orig` reads a pixel as it was before the stroke —, a change of size or
+> of layers the whole picture), `psel.h` (the selection: a rectangle or a 0..255 mask; lasso polygons,
+> colour regions with a tolerance, contiguous or not; add / subtract / invert), `pbrush.h` (the stroke
+> engine: a coverage buffer a stroke — max of the dabs, the airbrush adds —, each pixel = the original
+> with the colour over it at coverage × opacity × selection; the brushes' dab shapes, the patterns),
+> `pgrad.h` (gradients: stops + midpoints, the presets, GIMP's `.ggr` read / written; the shapes and
+> repeats along a line), `ptext.h` (the Text tool: `ft/fonts.h`'s glyphs laid out into the overlay),
+> `padjust.h` (the colours and filters on the selection, the layer or every layer: the originals kept,
+> each setting applied to them), `raster.h` (the shapes, flips, turns, scaling), `pview.h` (the canvas:
+> the layers as gpucomp textures keyed by their pixels' address — the changed rectangles sent with
+> `gpc_tex_update`, premultiplied, the current layer with what floats over it, a layer under a clip mask
+> multiplied by the mask's alpha —, composited at the zoom into a view-sized ARGB target, laid over the
+> checkerboard; the tools; the overlay — a shape, a gradient, a text being placed — put down by
+> `ov_commit`), `picons.h` / `pui.h` (the icons, the ribbon, the options bar — items laid out per tool,
+> sliders dragged in place —, the layers' panel, the status bar), `pfile.h` (OpenRaster with
+> `composite-op` and `onyx:clip`, the pictures, the exports flattened by `comp_px`). The simulator:
+> `sh tools/tests/desktop_sim/shots.sh paint` (`paint_scene.py`: the scripts); the samples
+> `SD:/docs/pictures/*.jpg` by `tools/gen_paint_samples.py` (package `paint-samples`).
 > **Cardfile** (`user/Apps/cardfile/`, one TU: `main.cpp` includes the rest; integer only, no
 > libc) — `model.h` the document: a form (`Field`: display name, column name, type `FT_*`,
 > decimals, choices) and its records (an array of heap strings a record, the empty value shared),
@@ -1199,7 +1219,14 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
 > volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
 > gives an exFAT file's real size; `kapi_rename` fails across volumes (copy + remove instead).
 > A `Textbox` holds **63 bytes** unless you raise its **`maxLen`** (up to `Textbox::TEXT_CAP - 1`,
-> 511): IRC's chat line takes 400.
+> 511): IRC's chat line takes 400. Its **`cb`** fires on Enter (without one, Enter goes on to the
+> dialog: its OK); **`changed`** after each edit (typed, pasted: a dialog's other field following it).
+> **Tab** (`Widget::tabFocus`, done by `handleKey` when no widget takes the key): in a **dialog** (a
+> `Modal`) Tab / Shift+Tab move the focus to the next / previous control (in the order they were added:
+> `canFocus`, not hidden nor disabled); in a **window**, from a **text field** to the next text field
+> (`isField ()`: `Textbox`, `Combobox`). `Modal::run` focuses the first text field when nothing has the
+> focus. A focused `Button` takes Space and Enter; a `Checkbox` / `RadioButton` Space (Enter is the
+> dialog's). A widget that wants Tab for itself (a text area, a terminal) takes it in its `onKey`.
 > `Combobox (l, t, w, h, text, onEnter, onPick)` — an editable `Textbox` with a drop-down
 > list of suggestions (`addOption`, `clearOptions`, `pick (i)`; arrow click or Down / Up;
 > `onPick` fires with `picked` = the index). Used by the File Viewer's Connect dialog.
@@ -1496,7 +1523,7 @@ Key points:
   call). The variant `kapi_create_window_ex(x, y, w, h, title, flags)` is for explicit
   placement and `WIN_FLAG_BORDERLESS`. The client area is **at most the screen's size** (frame
   not counted; 1024 × 768 by default, `width=` / `height=` in `cmdline.txt`; before kernel v66,
-  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so, as Writer and Paint,
+  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so (or size it from `kapi_screen_size`, as Paint), as Writer,
   so that it fits the default screen: over the limit (or out of memory) the call returns **0**. **Check
   it**: an app runs at EL1 with the kernel's identity mapping, so a null canvas is the kernel's
   own memory at address 0 — drawing into it overwrites the kernel and the whole Pi freezes with
