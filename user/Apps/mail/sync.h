@@ -36,7 +36,7 @@ static long long now_utc ()
 }
 
 // ---- jobs and results -----------------------------------------------------------------------------------------------------
-enum { J_SYNC, J_BODY, J_FLAGS, J_MOVE, J_DELETE, J_SEND, J_DRAFT, J_CHECK, J_OAUTH_START, J_OAUTH_POLL, J_OLDER };
+enum { J_SYNC, J_BODY, J_FLAGS, J_MOVE, J_DELETE, J_SEND, J_DRAFT, J_CHECK, J_OAUTH_START, J_OAUTH_POLL, J_OLDER, J_PICTURE };
 struct Snap { char name[200]; long uidvalidity, maxUid, minUid; long *uids; int nuids; bool sync; };
 struct Job
 {
@@ -71,6 +71,7 @@ struct Result
 	char *popKnown;				// POP3: the UIDL list now
 	bool tokens; char access[4096], refresh[4096]; long long expires;
 	DeviceCode dc; int oauthState;		// (J_OAUTH_POLL: 1 signed in, 0 waiting, -1 failed)
+	char *data; int dataLen;		// J_PICTURE: the picture's bytes (its url: Job::uids)
 	Job *job;				// (given back: freed by the window)
 };
 static void result_free (Result *r)
@@ -78,7 +79,7 @@ static void result_free (Result *r)
 	if (!r) return;
 	free (r->folders);
 	for (int i = 0; i < r->nfr; i++) { FolderRes &f = r->fr[i]; for (int k = 0; k < f.added.n; k++) msg_free (f.added[k]); f.added.~Vec (); f.fuid.~Vec (); f.fflags.~Vec (); f.gone.~Vec (); }
-	free (r->fr); free (r->popKnown);
+	free (r->fr); free (r->popKnown); free (r->data);
 	delete r;
 }
 static void job_free (Job *j)
@@ -220,11 +221,16 @@ struct Worker
 			if (!im->list (&r.folders, &r.nfolders)) { scpy (r.err, im->err, sizeof r.err); if (!im->c.open_) drop (s); return; }
 			r.folderList = true;
 			// the first look: no folder known yet -- the Inbox at least
-			bool inbox = false; for (int i = 0; i < j.nsnaps; i++) if (j.snaps[i].sync && ieq (j.snaps[i].name, "INBOX")) inbox = true;
-			if (!inbox)
+			// (and Sent: the conversations show one's replies)
+			const char *want[2] = { "INBOX", 0 };
+			for (int i = 0; i < r.nfolders; i++) if (r.folders[i].special == SP_SENT && !r.folders[i].noselect) want[1] = r.folders[i].name;
+			for (int w = 0; w < 2; w++)
 			{
+				if (!want[w]) continue;
+				bool have = false; for (int i = 0; i < j.nsnaps; i++) if (j.snaps[i].sync && ieq (j.snaps[i].name, want[w])) have = true;
+				if (have) continue;
 				j.snaps = (Snap *) realloc (j.snaps, sizeof (Snap) * (j.nsnaps + 1));
-				Snap &sn = j.snaps[j.nsnaps++]; memset (&sn, 0, sizeof sn); scpy (sn.name, "INBOX", sizeof sn.name); sn.sync = true;
+				Snap &sn = j.snaps[j.nsnaps++]; memset (&sn, 0, sizeof sn); scpy (sn.name, want[w], sizeof sn.name); sn.sync = true;
 			}
 		}
 		r.fr = (FolderRes *) calloc (j.nsnaps ? j.nsnaps : 1, sizeof (FolderRes)); r.nfr = 0;
@@ -398,10 +404,28 @@ struct Worker
 		}
 		r.dc = j.dc;
 		Tokens t; memset (&t, 0, sizeof t);
-		r.oauthState = o.poll (r.dc, t, now_utc ());
+		// asked every interval seconds until the user has signed in, refused, the code expired or the wizard closed
+		unsigned t0 = kapi_get_ticks ();
+		snprintf (current, sizeof current, "Waiting for Microsoft...");
+		for (;;)
+		{
+			r.oauthState = o.poll (r.dc, t, now_utc ());
+			if (r.oauthState != 0 || cancel || quit) break;
+			if ((kapi_get_ticks () - t0) / 100 > (unsigned) r.dc.expiresIn) { r.oauthState = -1; scpy (r.err, "The code has expired: try again.", sizeof r.err); return; }
+			for (int k = 0; k < r.dc.interval * 10 && !cancel && !quit; k++) kapi_msleep (100);
+		}
+		if (cancel || quit) { scpy (r.err, "Cancelled.", sizeof r.err); r.oauthState = -1; return; }
 		if (r.oauthState < 0) { scpy (r.err, o.err, sizeof r.err); return; }
 		if (r.oauthState == 1) { r.tokens = true; scpy (r.access, t.access, sizeof r.access); scpy (r.refresh, t.refresh, sizeof r.refresh); r.expires = t.expires; }
 		r.ok = true;
+	}
+	// a remote picture (the message's sender's server: asked only once the user allowed it)
+	void picture (Job &j, Result &r)
+	{
+		snprintf (current, sizeof current, "Fetching the pictures...");
+		Buf b; int st = http_get (j.uids, b, 6 << 20, r.err, sizeof r.err, &cancel);
+		if (st != 200) { if (st > 0) snprintf (r.err, sizeof r.err, "The picture's server said %d.", st); return; }
+		r.data = b.take (); r.dataLen = b.n; r.ok = true;
 	}
 	void run (Job *j)
 	{
@@ -417,6 +441,7 @@ struct Worker
 		case J_DRAFT: draft (*j, *r); break;
 		case J_CHECK: check (*j, *r); break;
 		case J_OAUTH_START: case J_OAUTH_POLL: oauth (*j, *r); break;
+		case J_PICTURE: picture (*j, *r); break;
 		}
 		busy = 0; current[0] = 0;
 		post (r);

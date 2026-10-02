@@ -92,6 +92,7 @@ def load_store(eml_dir):
 def q(s):
     if s is None: return "NIL"
     if isinstance(s, bytes): s = s.decode("utf-8", "replace")
+    s = s.encode("utf-8", "surrogateescape").decode("utf-8", "replace")   # (the raw header's 8-bit bytes: UTF-8)
     if any(c in s for c in '\r\n') or len(s) > 200 or any(ord(c) > 126 for c in s):
         b = s.encode("utf-8"); return "{%d}\r\n" % len(b) + b.decode("utf-8")
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -105,8 +106,16 @@ def addrs(v):
         out.append("(%s NIL %s %s)" % (q(name) if name else "NIL", q(mb), q(host)))
     return "(" + "".join(out) + ")" if out else "NIL"
 
-def envelope(m):
-    g = lambda k: m.get(k)
+def raw_header(raw, name):
+    # a header from the message's bytes (8-bit UTF-8 kept: what a real server sends)
+    head = raw.split(b"\r\n\r\n", 1)[0].decode("utf-8", "replace").replace("\r\n ", " ").replace("\r\n\t", " ")
+    for l in head.split("\r\n"):
+        k, _, v = l.partition(":")
+        if k.strip().lower() == name.lower(): return v.strip()
+    return None
+
+def envelope(msg):
+    g = lambda k: raw_header(msg.raw, k)
     frm = g("From")
     return "(%s %s %s %s %s %s %s %s %s %s)" % (q(g("Date")), q(g("Subject")), addrs(frm), addrs(g("Sender") or frm), addrs(g("Reply-To") or frm),
                                                addrs(g("To")), addrs(g("Cc")), addrs(g("Bcc")), q(g("In-Reply-To")), q(g("Message-ID")))
@@ -281,7 +290,7 @@ class Imap(socketserver.StreamRequestHandler):
                 if T == "FLAGS": out.append("FLAGS (%s)" % " ".join(sorted(m.flags)))
                 elif T == "INTERNALDATE": out.append('INTERNALDATE "%s"' % time.strftime("%d-%b-%Y %H:%M:%S +0000", time.gmtime(m.date)))
                 elif T == "RFC822.SIZE": out.append("RFC822.SIZE %d" % len(m.raw))
-                elif T == "ENVELOPE": out.append("ENVELOPE " + envelope(m.m))
+                elif T == "ENVELOPE": out.append("ENVELOPE " + envelope(m))
                 elif T == "BODYSTRUCTURE": out.append("BODYSTRUCTURE " + bodystructure(m.m))
                 elif T == "X-GM-THRID": out.append("X-GM-THRID %d" % (1000 + (abs(hash(m.m.get("Subject", "").replace("Re: ", ""))) % 100000)))
                 elif T.startswith("BODY"):
@@ -485,8 +494,19 @@ def main():
     ap.add_argument("--smtp", type=int, default=10587); ap.add_argument("--http", type=int, default=10080)
     ap.add_argument("--imaps", type=int, default=0); ap.add_argument("--cert", default=None)
     ap.add_argument("--eml", default=None); ap.add_argument("--dump-sent", default=None)
+    ap.add_argument("--demo", default=None); ap.add_argument("--user", default=None)
     a = ap.parse_args()
-    load_store(a.eml)
+    global USER
+    if a.user: USER = a.user
+    if a.demo:
+        # the screenshots' mailboxes (demo_mail.py)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import demo_mail
+        box = getattr(demo_mail, a.demo)()
+        for folder, raw, when, flags in sorted(box.msgs, key=lambda m: m[2]):
+            STORE.folders[folder].add(raw, flags, when)
+    else:
+        load_store(a.eml)
     servers = [TS(("127.0.0.1", a.imap), Imap), TS(("127.0.0.1", a.pop), Pop), TS(("127.0.0.1", a.smtp), Smtp), TS(("127.0.0.1", a.http), Http)]
     if a.imaps and a.cert:
         s = TS(("127.0.0.1", a.imaps), Imap)
