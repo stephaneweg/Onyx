@@ -57,8 +57,10 @@
 // A task's kernel stack (its CTask stack: the trap frames, the kapis it calls) -- every app task,
 // main or thread.
 #define EL0_KSTACK_SIZE		0x40000				// 256 KB
-// The main task's user stack: below USER_STACK_TOP (kern/layout.h), app.txt's "stack" or 1 MB.
-#define EL0_USTACK_MIN		0x100000			// 1 MB
+// The main task's user stack: below USER_STACK_TOP (kern/layout.h), app.txt's "stack" or 8 MB.
+// (v75) A lazy region (kern/vm.h): its pages are filled as the stack grows, so the default costs
+// nothing until used; below it nothing is mapped (a guard: an overflow is a "stack overflow" kill).
+#define EL0_USTACK_MIN		0x800000			// 8 MB (the default and the minimum)
 #define EL0_USTACK_MAX		0x4000000			// 64 MB
 // Threads' user stacks: one 32 MB slot per thread record (kern/thread.h THREAD_RECS), the stack
 // at the top of its slot, the rest unmapped (a guard below every stack).

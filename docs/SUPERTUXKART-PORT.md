@@ -50,7 +50,7 @@ the N64 emulator). The honest summary:
 |---|---|---|---|
 | Language | C++ (`-std=gnu++0x`, compiles as C++17), ~110 `throw`, ~180 `try`, ~270 `dynamic_cast`, STL everywhere | Apps: freestanding C++ without exceptions / RTTI / STL; newlib apps (Writer, Sheet) also `-fno-exceptions` | **Solved in M0**: full libstdc++ from the toolchain, `-fexceptions -frtti`, a link script keeping the unwind tables (`stk.ld`) and their registration (`onyx_eh.c`) |
 | Threads | ~30 `std::thread`, ~80 `std::mutex`, `std::condition_variable`, `std::atomic`; Irrlicht: `std::recursive_mutex` | kapi v67 threads (32 a process), newlib locks; the toolchain's libstdc++ is `--disable-threads` (no `std::mutex` at all) | **Solved in M0** (to be tried on the Pi): libstdc++'s gthreads on the kapi (`compat/bits/gthr-default.h`, `onyx_gthreads*.c*`) |
-| TLS | 4 `thread_local` (log prefix, profiler id, RNG, `g_process_type`) | No TLS (`TPIDR_EL0` not switched per task; `errno` shared) | Kernel K1 (save `TPIDR_EL0` per task) + a TLS block per thread — or patch the 4 uses (single process type is enough offline) |
+| TLS | 4 `thread_local` (log prefix, profiler id, RNG, `g_process_type`) | `TPIDR_EL0` is saved per task (Circle's `TaskSwitch`); since kapi v75 a thread starts with `thread_create_ex`'s `tls`; the toolchain's `thread_local` is still emutls (one copy), `errno` shared | A TLS block per thread from the C library (docs/POSIX-PLAN.md, WP-LIBC) — or patch the 4 uses (single process type is enough offline) |
 | Files | Irrlicht's file system (POSIX `opendir` / `stat` / `getcwd`), `fopen`, zip archives | newlib `fopen` (whole file slurped), kapi FatFs listing | **Partly in M0**: `compat/dirent.h`, `onyx_posix.c` (`opendir`, `stat`, `mkdir`, `chdir`, `getcwd`, `access`). Later `kapi_lseek` would avoid slurping big files |
 | Renderer | SP (GL 3.1 / GLES 3) or GE (Vulkan) or the legacy fixed pipeline (GL, GLES 2, D3D9) | V3D kapi: `gpu_program`, `gpu_render2/3`, `gpu_vbuf`, `gpu_texture` (RGBA8, ≤ 256 textures, no mipmaps), app-written QPU shaders | **The main work**: an Irrlicht `IVideoDriver` on the V3D (§4, M4) |
 | Window / input | SDL2 (`CIrrDeviceSDL`; STK's own gamepad code calls ~340 `SDL_` functions in 27 files) | wtk windows, full-screen apps, key / mouse events, `kapi_pad_state` | An SDL2 port with Onyx backends (video, events, joystick, audio, timer, threads) — M3 |
@@ -175,11 +175,14 @@ before any renderer work, and gives a benchmark of the CPU side on the Pi.
 - **Networking.** STK's code paths assume sockets exist; the stubs must fail cleanly everywhere the
   game probes the network (LAN discovery, news, add-ons).
 
-## 7. Kernel / kapi changes wished (none done)
+## 7. Kernel / kapi changes wished (K1's kernel half: in v75)
 
-- **K1 — TLS**: save / restore `TPIDR_EL0` per task (the context switch) and a TLS block per thread
-  (the loader for the main thread's `PT_TLS`, `thread_create` for the others). Also gives per-thread
-  `errno` (HANDOFF's "next" list).
+- **K1 — TLS** (corrected 2026-10-02: the kernel half was never missing): `TPIDR_EL0` is already
+  saved and restored per task (Circle's `TaskSwitch`, which an EL0 preemption goes through too), and
+  kapi v75 gives a new thread its initial value (`thread_create_ex`'s `tls`) and an app-core job its
+  caller's. What remains is user side: a TLS block per thread (the main thread's `PT_TLS` set up by
+  the C library's start-up, the others by its `pthread_create`) -- docs/POSIX-PLAN.md WP-LIBC. Also
+  gives per-thread `errno`.
 - **K2 — GPU textures**: mipmaps in `gpu_texture` (the V3D samples them; the layouts are Mesa's
   `v3d_setup_slices`), more than 256 textures a program, a larger `HEAP_LOW` budget for textures.
 - **K3 — UDP** (optional): datagram sockets for ENet (online / LAN play).

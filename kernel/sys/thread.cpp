@@ -9,6 +9,8 @@
 #include <kern/layout.h>		// KERNEL_IDENTITY_END
 #include <kern/el0.h>			// a thread at EL0: El0Enter, its stacks
 #include <kern/uaccess.h>		// the app's pointers (name, code, word, post)
+#include <kern/vm.h>			// (v75) lazy stacks, the pins, the zapped frames' waiters
+#include <kern/kapi_abi.h>		// (v75) struct kapi_thread_attr / kapi_thread_info, KAPI_E*
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -204,11 +206,14 @@ class CUserThreadTask : public CTask
 public:
 	// fn runs at EL0 (kern/el0.h) on the user stack whose top is ulUserStack, and returns into
 	// the blob's El0ThreadReturn (thread_exit); this task's own stack is the thread's kernel stack.
-	CUserThreadTask (CAddressSpace *pAS, u64 ulFunc, u64 ulArg, u64 ulUserStack)
+	// (v75) TPIDR_EL0 starts as ulTls (its TLS: 0 for kapi_thread_create); the task switch
+	// (Circle's TaskSwitch) keeps whatever the thread writes there.
+	CUserThreadTask (CAddressSpace *pAS, u64 ulFunc, u64 ulArg, u64 ulUserStack, u64 ulTls)
 	:	CTask (EL0_KSTACK_SIZE),
 		m_ulFunc (ulFunc),
 		m_ulArg (ulArg),
-		m_ulUserStack (ulUserStack)
+		m_ulUserStack (ulUserStack),
+		m_ulTls (ulTls)
 	{
 		// (no Yield between the CTask constructor, which made it ready, and here: it
 		// is first scheduled in its process's address space)
@@ -218,12 +223,14 @@ public:
 
 	void Run (void) override
 	{
+		asm volatile ("msr tpidr_el0, %0" :: "r" (m_ulTls) : "memory");
 		El0Enter (m_ulFunc, m_ulUserStack, m_ulArg, El0ThreadReturnVA ());	// (no return)
 	}
 
 private:
 	u64 m_ulFunc, m_ulArg;
 	u64 m_ulUserStack;
+	u64 m_ulTls;
 };
 
 static TThreadRec *RecOf (CProcThreads *pT, CTask *pTask)
@@ -233,13 +240,15 @@ static TThreadRec *RecOf (CProcThreads *pT, CTask *pTask)
 	return 0;
 }
 
-int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, const char *pName)
+// A new thread of the current process (pName: the kernel's copy, may be 0). -> its tid (>= 2), or
+// -KAPI_EAGAIN (THREADS_MAX running), -KAPI_ENOMEM, -KAPI_EINVAL.
+static int CreateThread (u64 ulFunc, u64 ulArg, u64 nStackSize, const char *pName, u64 ulTls,
+			 boolean bDetached, int nPrio)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CProcThreads *pT = ThreadsOf (pAS, TRUE);
-	CUserStr Given (pName, 32, TRUE);		// (its name: 31 characters kept)
-	if (pT == 0 || pFunc == 0 || (!Given.OK () && !Given.IsNull ())) return -1;
-	pName = Given.Get ();
+	if (pT == 0) return -KAPI_ENOMEM;
+	if (ulFunc == 0 || !IS_USER_VA (ulFunc)) return -KAPI_EINVAL;
 
 	unsigned nRunning = 0;
 	TThreadRec *pRec = 0, *pOldest = 0;
@@ -250,42 +259,34 @@ int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, 
 		if (!r->bDone) { nRunning++; continue; }
 		if (pOldest == 0 || (int) (r->nSeq - pOldest->nSeq) < 0) pOldest = r;
 	}
-	if (nRunning >= THREADS_MAX) return -2;		// the per-process limit
+	if (nRunning >= THREADS_MAX) return -KAPI_EAGAIN;	// the per-process limit
 	if (pRec == 0) pRec = pOldest;			// (an ended one never joined: forgotten)
-	if (pRec == 0) return -2;
+	if (pRec == 0) return -KAPI_EAGAIN;
 
-	if (nStackSize == 0) nStackSize = THREAD_STACK_DEFAULT;
-	if (nStackSize < THREAD_STACK_MIN) nStackSize = THREAD_STACK_MIN;
-	if (nStackSize > THREAD_STACK_MAX) nStackSize = THREAD_STACK_MAX;
-	nStackSize = (nStackSize + 15) & ~15u;
-
+	// The thread's user stack (nStackSize) at the top of the slot of its record: a LAZY region
+	// (kern/vm.h: its pages filled on first touch), the rest of the slot unmapped -- the guard
+	// below it. A slot reused at the same size keeps its region (its pages were dropped when the
+	// last thread there ended); another size replaces it. The task's own stack is only its
+	// kernel stack (kern/el0.h).
+	u64 ulTop = USER_THREAD_STACKS + (u64) (pRec - pT->Rec + 1) * USER_THREAD_SLOT;
+	if (VmMapStack (pAS, ulTop, nStackSize, USER_THREAD_SLOT) != 0)
+	{
+		return -KAPI_ENOMEM;
+	}
+	CUserThreadTask *pTask = new CUserThreadTask (pAS, ulFunc, ulArg, ulTop, ulTls);
+	if (pTask == 0)
+	{
+		return -KAPI_ENOMEM;
+	}
 	unsigned nTid = pT->nNextTid++;
 	pRec->nTid = nTid;
 	pRec->bDone = FALSE;
+	pRec->bDetached = bDetached;
 	pRec->nCode = 0;
 	pRec->nSeq = 0;
-
-	// The thread's user stack (nStackSize) in the slot of its record (a slot is reused with its
-	// record: its pages stay mapped), a guard below it; the task's own stack is only its kernel
-	// stack (kern/el0.h).
-	if (!IS_USER_VA (pFunc))
-	{
-		pRec->nTid = 0;
-		return -1;
-	}
-	u64 ulTop = USER_THREAD_STACKS + (u64) (pRec - pT->Rec + 1) * USER_THREAD_SLOT;
-	if (!pAS->MapStack (ulTop, nStackSize))
-	{
-		pRec->nTid = 0;
-		return -1;				// (out of memory)
-	}
-	CUserThreadTask *pTask = new CUserThreadTask (pAS, (u64) pFunc, (u64) pArg, ulTop);
-	if (pTask == 0)
-	{
-		pRec->nTid = 0;
-		return -1;				// (out of memory: its stack stays mapped)
-	}
 	pRec->pTask = pTask;
+	pRec->ulStackLo = KPAGE_ALIGN_DOWN (ulTop - nStackSize);
+	pRec->ulStackHi = ulTop;
 
 	// "<app>:<name>" (or "<app>:<tid>"): the app's name is the caller's, after its last '/'
 	// (a tool's task is named by its path, "SD:/bin/threadtest") and up to a ':' (a thread)
@@ -306,7 +307,82 @@ int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, 
 	}
 	pTask->SetName (Name);
 
+	if (nPrio > 0)
+	{
+		CScheduler::Get ()->SetPriority (pTask, 1);	// ("real time", as thread_priority)
+	}
 	return (int) nTid;
+}
+
+int kapi_thread_create (int (*pFunc) (void *), void *pArg, unsigned nStackSize, const char *pName)
+{
+	CUserStr Given (pName, 32, TRUE);		// (its name: 31 characters kept)
+	if (pFunc == 0 || (!Given.OK () && !Given.IsNull ())) return -1;
+
+	if (nStackSize == 0) nStackSize = THREAD_STACK_DEFAULT;
+	if (nStackSize < THREAD_STACK_MIN) nStackSize = THREAD_STACK_MIN;
+	if (nStackSize > THREAD_STACK_MAX) nStackSize = THREAD_STACK_MAX;
+	nStackSize = (nStackSize + 15) & ~15u;
+
+	int r = CreateThread ((u64) pFunc, (u64) pArg, nStackSize, Given.Get (), 0, FALSE, 0);
+	return r > 0 ? r : (r == -KAPI_EAGAIN ? -2 : -1);	// (the v67 values)
+}
+
+// (v75) A thread with its attributes (struct kapi_thread_attr): its TLS (the initial TPIDR_EL0),
+// an 8 MB lazy stack by default, detached or not, its priority.
+int kapi_thread_create_ex (const struct kapi_thread_attr *pAttr)
+{
+	struct kapi_thread_attr A;
+	if (pAttr == 0 || !UserGet (&A, pAttr)) return -KAPI_EFAULT;
+	if (   A.fn == 0 || (A.flags & ~(unsigned) KAPI_THREAD_DETACHED) != 0
+	    || A.prio < 0 || A.prio > 1 || A.reserved[0] != 0 || A.reserved[1] != 0)
+	{
+		return -KAPI_EINVAL;
+	}
+	u64 nStack = A.stack_size != 0 ? A.stack_size : THREAD_STACK_DEFAULT_EX;
+	if (nStack < THREAD_STACK_MIN || nStack > THREAD_STACK_MAX) return -KAPI_EINVAL;
+	nStack = (nStack + 15) & ~(u64) 15;
+	CUserStr Given (A.name, 32, TRUE);
+	if (!Given.OK () && !Given.IsNull ()) return -KAPI_EFAULT;
+	return CreateThread (A.fn, A.arg, nStack, Given.Get (), A.tls,
+			     (A.flags & KAPI_THREAD_DETACHED) != 0, A.prio);
+}
+
+// (v75) A thread's stack bounds and state (tid 0: the caller, 1: the main thread).
+int kapi_thread_info (int nTid, struct kapi_thread_info *pOut)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0) return -KAPI_ESRCH;
+	CTask *pMe = CurrentTask ();
+	CProcThreads *pT = ThreadsOf (pAS, FALSE);
+	if (nTid == 0)
+	{
+		TThreadRec *r = (pMe != pAS->GetMainTask () && pT != 0) ? RecOf (pT, pMe) : 0;
+		nTid = r != 0 ? (int) r->nTid : 1;
+	}
+	struct kapi_thread_info Out;
+	memset (&Out, 0, sizeof Out);
+	Out.tid = nTid;
+	if (nTid == 1)
+	{
+		TVma V;					// (the main stack: below USER_STACK_TOP)
+		if (!VmRegionAt (pAS, USER_STACK_TOP - 1, &V)) return -KAPI_ESRCH;
+		Out.stack_lo = V.ulStart;
+		Out.stack_hi = V.ulEnd;
+		Out.state = 0;
+	}
+	else
+	{
+		TThreadRec *r = 0;
+		for (unsigned i = 0; pT != 0 && i < THREAD_RECS && r == 0; i++)
+			if (nTid >= 2 && pT->Rec[i].nTid == (unsigned) nTid) r = &pT->Rec[i];
+		if (r == 0) return -KAPI_ESRCH;
+		Out.stack_lo = r->ulStackLo;
+		Out.stack_hi = r->ulStackHi;
+		Out.state = r->bDone ? 1 : 0;
+	}
+	Out.guard = Out.stack_lo - VmRegionEndBelow (pAS, Out.stack_lo);
+	return UserPut (pOut, Out) ? 0 : -KAPI_EFAULT;
 }
 
 void kapi_thread_exit (int nCode)
@@ -319,15 +395,20 @@ void kapi_thread_exit (int nCode)
 	}
 
 	CProcThreads *pT = ThreadsOf (pAS, FALSE);
+	VmUnpinTask (pAS, pMe);				// (v75: its kapi never returns)
 	if (pT != 0)
 	{
 		TThreadRec *r = RecOf (pT, pMe);
 		if (r != 0)
 		{
+			// (v75) Its user stack's pages dropped (the region stays for the slot's next
+			// thread); a detached thread's record is free at once.
+			VmDiscard (pAS, r->ulStackLo, r->ulStackHi);
 			r->bDone = TRUE;
 			r->nCode = nCode;
 			r->pTask = 0;
 			r->nSeq = ++pT->nSeq;
+			if (r->bDetached) r->nTid = 0;
 		}
 		// Its mutexes are abandoned: released, so the other threads do not wait for ever.
 		for (unsigned i = 0; i < SYNC_OBJS_MAX; i++)
@@ -592,13 +673,26 @@ static TWordWaiter *s_pWordWaiters = 0;
 static CSpinLock s_WordLock (IRQ_LEVEL);		// (the tick walks the list in its interrupt)
 
 // The physical address of a word of the calling process (any address it can read: its data,
-// its heap, a surface, its stack), by the MMU itself (AT S1E1R on the current TTBR0). FALSE:
-// unmapped, or out of the kernel's identity map (the tick could not read it there).
+// its heap, a surface, its stack). (v75) Probed as the app's (kern/uaccess.h: a lazy page filled,
+// the page pinned for the call -- so its frame stays while the caller waits on it), then
+// translated by the MMU (AT S1E0R; S1E1R for a kernel caller). FALSE: not the caller's, not
+// readable, or out of the kernel's identity map (the tick could not read it there).
 static boolean WordPhys (const volatile unsigned *pWord, u64 *pPhys)
 {
+	if (!UserReadable ((const void *) pWord, sizeof *pWord))
+	{
+		return FALSE;
+	}
 	u64 nFlags, nPAR;
 	asm volatile ("mrs %0, daif; msr daifset, #3" : "=r" (nFlags) :: "memory");	// (PAR_EL1 kept)
-	asm volatile ("at s1e1r, %1\n\tisb\n\tmrs %0, par_el1" : "=r" (nPAR) : "r" (pWord) : "memory");
+	if (UserIsKernelCaller ())
+	{
+		asm volatile ("at s1e1r, %1\n\tisb\n\tmrs %0, par_el1" : "=r" (nPAR) : "r" (pWord) : "memory");
+	}
+	else
+	{
+		asm volatile ("at s1e0r, %1\n\tisb\n\tmrs %0, par_el1" : "=r" (nPAR) : "r" (pWord) : "memory");
+	}
 	asm volatile ("msr daif, %0" :: "r" (nFlags) : "memory");
 	if (nPAR & 1)
 	{
@@ -723,6 +817,28 @@ void WordWaitTick (void)
 {
 	if (s_pWordWaiters == 0) return;		// (nobody sleeps on a word: nothing to read)
 	WakeWords (0);
+}
+
+// (v75, kern/vm.h) A frame leaves its space: the waiters on a word in it woken (they return,
+// look again: a spurious wake is allowed), so the tick never reads a freed frame for them.
+void WordWaitsZap (u64 ulPhys, u64 nLen)
+{
+	if (s_pWordWaiters == 0) return;
+	s_WordLock.Acquire ();
+	TWordWaiter **pp = &s_pWordWaiters;
+	while (*pp != 0)
+	{
+		TWordWaiter *pW = *pp;
+		if (pW->ulPhys >= ulPhys && pW->ulPhys - ulPhys < nLen)
+		{
+			*pp = pW->pNext;
+			pW->bWoken = TRUE;
+			pW->pEv->Set ();
+			continue;
+		}
+		pp = &pW->pNext;
+	}
+	s_WordLock.Release ();
 }
 
 static void WordWaitsFree (CAddressSpace *pAS)

@@ -494,6 +494,23 @@ Also run `tools/el0scan.sh` (no new instructions in user code).
 - deferred-zap bookkeeping;
 - futex waiters on zapped frames.
 
+#### WP-MEM resolutions (what landed; docs/02 §4 *Demand paging* and §8 "v75: memory")
+
+The ABI above is unchanged. Where the implementation differs from the text above:
+
+1. **`VmFaultIn`** returns an `int`: 1 filled, 0 already present and allowed, −`EFAULT` (no lazy region), −`EACCES` (the protection), −`ENOMEM` (the reserve) — not `boolean` + `*pErr`.
+2. **`TVmSpace`**: one pin per **task** (the union of what its call probed; 40 slots: a task has one call in progress), not 32 ranges. The deferred work is marked **in the PTE** (software bits 56 `ZAP` and 57 `SYNC`, next to the owned bit 55) plus a list of ranges to look at; a range is settled when no pin overlaps it. No `L3Count`: empty L3 tables are not freed (the SHOULD; at most 104 per process). No `nResident`: `vm_stats.resident` is the space's owned pages (frames + its page tables).
+3. **`PROT_NONE` pages that are present** are mapped `AP = RO_EL1` (EL1 read-only, EL0 nothing), not `RW_EL1`: no kernel write can reach them. The probes (`AT S1E0*`) refuse them; a fault-safe **copy-in** from one still succeeds (the copies use plain `LDR`, kern/uaccess.h) — the app's own memory, not a leak.
+4. **Deferral of a protection change** happens only when the page loses its **write** access under another task's pin (a kapi writing there in place); other changes apply at once.
+5. **`vm_unmap`** accepts holes inside the arena (as `munmap`); `-EINVAL` only for an unaligned address or a range outside the arena. **`vm_advise`** with `len` 0 → 0. **`vm_map (POPULATE)`** does not report a fill failure (as Linux).
+6. **The app pool** for the reserve and the overcommit check is the high zone **plus** the low pager (where `palloc_high` falls back); the reserve is 16 MB of the total.
+7. **App cores**: `core_acquire` fills the heap that **already exists** too (not only its later growth: the emulators allocate before they acquire), so `emucore.h` / `onyx_rpc` needed no `WILLNEED`. The **pager task** is made at the first `core_acquire` (not at boot: no `kernel.cpp` change), with its tick hook; one request fills up to 8 pages of the region. No SGI.
+8. **Stacks**: `CAddressSpace::MapStack` itself became lazy (`VmMapStack`), and `EL0_USTACK_MIN` is now 8 MB (the default and the minimum: an `app.txt` `stack` below it gets 8 MB) — so `kernel.cpp` is untouched. An ended thread's stack pages are dropped in `thread_exit` (the SHOULD). `thread_create` keeps its 256 KB default (lazy); `thread_create_ex`'s is 8 MB.
+9. **Regions noted but eager**: `MapContig` (canvases, surfaces, the sound ring, the kapi pages, the full-screen buffers), the code arena and the ELF loader note `FIXED` / `IMAGE` regions, so `vm_query` shows the whole map.
+10. **Descriptors** (`MapPage`, `GetOrCreateL3`) are now built aside and stored as one 64-bit word (an app core may walk the table meanwhile), the zeroed frame or table made visible first (`DSB ISHST`).
+11. **The EL1 safety net** (the SHOULD) is in: `VmKernelFault`, after `UAccessFixup`; its kmsg line is written at the next system call's end (not in the exception).
+12. **`/bin/memtest`** runs the tcp_recv check only with `memtest net` (it needs the network), and the real OOM kill only with `memtest oom` (it takes the whole app pool for a moment): by default it checks the overcommit refusal instead (bounded). The children's term reason is checked through `proc_wait` when WP-FILE/PROC has landed, else their exit status (−11, −9) through `wait`.
+
 ---
 
 ### 3.2 WP-FILE/PROC (kernel): file descriptors, stat, pipes, environment, spawn/wait, clock

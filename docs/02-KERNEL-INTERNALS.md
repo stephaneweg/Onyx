@@ -169,7 +169,7 @@ VA                        Content                              Attributes
    (4 GB)      │ ░░ unmapped hole (guard) ░░        │
 0x2_0000_0000  ├───────────────────────────────────┤  USER_VA_BASE (8 GB)
    (8 GB)      │ .text / .data / .bss (app)         │  EL0 (AP=*_ALL), ASID-tagged (nG=1)
-0x2_8000_0000  │   heap (sbrk)                      │  USER_HEAP_BASE (10 GB)
+0x2_8000_0000  │   heap (sbrk), lazy (v75)          │  USER_HEAP_BASE (10 GB)
 0x3_0000_0000  │   window canvas (+ chrome copies)  │  USER_WINDOW_CANVAS (12 GB)
 0x3_4000_0000  │   wallpaper buffer                 │  USER_WALLPAPER_CANVAS (13 GB)
 0x3_6000_0000  │   shared surfaces                  │  USER_SURFACE_BASE (13.5 GB)
@@ -178,10 +178,12 @@ VA                        Content                              Attributes
 0x3_9000_0000  │   generated code (a JIT, RWX EL0)  │  USER_CODE_BASE (14.25 GB, v58)
 0x3_C000_0000  │   full-screen buffer / the screen  │  USER_FULLSCREEN_CANVAS (15 GB)
 0x4_0000_0000  ├───────────────────────────────────┤  USER_STACK_TOP (16 GB)
-   (16 GB)     │ user stack (grows down)            │  1 MB (app.txt stack, ≤ 64 MB)
+   (16 GB)     │ user stack (grows down), lazy      │  8 MB (app.txt stack, ≤ 64 MB)
+       ...     │   (unused up to 32 GB)             │
+0x8_0000_0000  │ threads' user stacks, 32 MB slots  │  USER_THREAD_STACKS (32 GB), lazy
+0x8_8000_0000  │ mmap arena (vm_map only), lazy     │  USER_MMAP_BASE (34 GB, v75)
        ...     │                                    │
-0x8_0000_0000  │ threads' user stacks, 32 MB each   │  USER_THREAD_STACKS (32 GB)
-       ...     │                                    │
+0xF_0000_0000  ├───────────────────────────────────┤  USER_VA_END = USER_MMAP_END (60 GB)
 0x10_0000_0000 └───────────────────────────────────┘  T0SZ ceiling (64 GB) on RPi 4
 ```
 
@@ -190,6 +192,9 @@ VA                        Content                              Attributes
 - **8-bit ASID** (256 contexts), taken from `TTBR0_EL1[63:48]`.
 - `USER_LOAD_BASE = USER_VA_BASE`: apps are linked at 8 GB (see
   [user.ld](../user/user.ld)).
+- **Lazy** (v75, §4 *Demand paging*): the heap, the stacks and the mmap arena are regions whose
+  pages are filled on first touch; the image, the canvases, surfaces, the kapi pages, the code
+  arena, the full-screen buffers and the sound ring are mapped at once (`FIXED` / `IMAGE`).
 
 ---
 
@@ -203,7 +208,7 @@ window pointer, the stdin/stdout streams, the process handle, the exit code, and
 the argv/cwd string.
 
 **Where the app pages come from, by board RAM.** An app's own frames (ELF segments, heap,
-stack, `code_alloc`) are taken by `MapNewPage` with `palloc_high()`: the **high zone**
+stack, `vm_map`, `code_alloc`) are taken by `MapNewPage` with `palloc_high()`: the **high zone**
 (1–3 GB, plus the RAM reclaimed above 3 GB) on a 2 / 4 / 8 GB Pi 4. A **1 GB** Pi 4 has no
 high zone: `palloc_high()` falls back to the low pager (`PAGE_RESERVE`, 256 MB), which the
 apps then share with every process's page tables. The kernel heap (window canvases, the
@@ -229,11 +234,12 @@ emulators) can run short (`sbrk` / `new` return 0). `memmon` then shows an app p
 ### `MapPage(VA, PA, attrs, bOwned)`
 
 Maps a 64 KB page (VA and PA aligned to 64 KB):
-- `GetOrCreateL3(L2_INDEX(VA))`: if the L2 entry is invalid, allocates a fresh L3 table and
-  writes the L2 table descriptor.
+- `GetOrCreateL3(L2_INDEX(VA))`: if the L2 entry is invalid, allocates a fresh L3 table (zeroed,
+  `DSB ISHST`) and writes the L2 table descriptor.
 - Fills the L3 page descriptor: `AttrIndx`, `AP`, `SH`, `AF=1`, `nG`, output = PA,
-  `PXN`, `UXN`. The software bit `PAGE_SW_OWNED` (the *Ignored* field) marks the frames to
-  free at destruction.
+  `PXN`, `UXN`. The software bit `PAGE_SW_OWNED` (the *Ignored* field, bit 55) marks the frames to
+  free at destruction. Since v75 both descriptors are built aside and **stored as one 64-bit
+  word**: an app core running a job of this space may walk the table at that very moment.
 
 ### Page attribute matrix (`layout.h` presets)
 
@@ -262,6 +268,56 @@ No TLB flush on switch (TLB tagged by ASID). The
 `AddressSpaceTaskSwitch` hook calls `Activate()` for app tasks, or
 `ActivateKernelAddressSpace()` for kernel tasks (which have no address space).
 
+### Demand paging (v75)
+
+Source: [`kernel/sys/vm.cpp`](../kernel/sys/vm.cpp), [`kern/vm.h`](../kernel/include/kern/vm.h);
+the plan: [`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1.
+
+- **Regions.** Each space has a `TVmSpace`: a sorted array of `TVma { start, end, prot, kind }`
+  (binary-searched, at most 4096). Lazy kinds: `ANON` (`vm_map`, only in the mmap arena
+  `[34 GB, 60 GB)`), `HEAP` (`[USER_HEAP_BASE, break rounded up)`), `STACK` (the main stack below
+  16 GB, 8 MB by default; each thread's at the top of its 32 MB slot). Eager kinds, noted for
+  `vm_query` only: `IMAGE` (the ELF loader), `FIXED` (`MapContig`: canvases, surfaces, the sound
+  ring, the kapi pages, the full-screen buffers; the code arena). Nothing is mapped for a lazy
+  region until it is touched.
+- **The fill** (`VmFaultIn`): the region must be lazy and allow the access; a zeroed frame from
+  `palloc_high`, a `DSB ISHST`, the PTE (`AP` from the region: `RW_ALL`, `RO_ALL`, or `RO_EL1` for
+  `PROT_NONE` — the frame kept, the app shut out), `DSB`. A software walk: it never yields and works
+  for any space. **No TLBI** (an invalid entry is never cached). Who fills: an **EL0 translation
+  fault** (`sys/el0.cpp`: the access retried by the `eret`; a permission fault the region now allows
+  — a stale TLB entry — gets a local `TLBI VAE1`); a **kernel probe** (`UserReadable` /
+  `UserWritable`, §6); a **failed fault-safe copy** (retried in C after the fill, never in the
+  exception); the **app-core pager** (§14); `vm_map (POPULATE)` and `MADV_WILLNEED` (a yield every
+  64 pages).
+- **Out of memory.** A fill is refused when the app pool (the high zone + the low pager, whose free
+  lists `ram_detail` reads) is under **16 MB** (`VM_RESERVE`). At EL0 the process is killed: kmsg
+  `vm: <name> (pid N) killed: out of memory (page fault at …, … KB resident)`, the notice
+  "<name> ran out of memory", term reason `KAPI_PROC_OOM`, status −9. In a kapi the call fails with
+  its error value; on an app core the job ends `CORE_FAULT`. **Heuristic overcommit**: one `sbrk`
+  growth or one writable `vm_map` (without `NORESERVE`) larger than the free pool − 16 MB fails
+  (`sbrk` → −1, `vm_map` → −`ENOMEM`); nothing else is counted.
+- **Frames leaving** (`vm_unmap`, `MADV_DONTNEED`/`FREE`, an `sbrk` shrink, an ended thread's
+  stack) and **protections lowered** (`vm_protect`): the PTE written, `DSB ISHST`,
+  `TLBI VAE1IS (va >> 12 | ASID << 48)` per page (`TLBI ASIDE1IS` above 64 pages), `DSB ISH`, `ISB`
+  — inner shareable, so cores 2–3 are told — and only then the frames freed (`pfree`, after waking
+  any `wait_word` sleeper on them). Protection changes need no break-before-make (the output address
+  never changes).
+- **Pins and the deferred zap.** A probe pins its range for the calling task until its system call
+  returns (`Syscall` → `VmUnpinTask`; one union per task, 40 slots). A page under **another**
+  task's pin is not dropped (nor write-protected) at once: its PTE gets a software bit (`ZAP` /
+  `SYNC`, bits 56–57), the range is queued, and the last unpin over it drops it (or gives it its
+  region's protection). The region change itself is immediate. So a kapi working in place (a file
+  read yielding between 64 KB chunks, a blocked pipe read) never sees its buffer vanish, nobody
+  waits, and the kernel never touches a freed frame. A range mapped again before that adopts the
+  pages left, zeroed.
+- **The EL1 safety net**: `SyncHandlerEL1`, after the uaccess fixup, fills a lazy page that kernel
+  code touched outside the helpers (core 0, the current app, a translation fault at a user VA),
+  logs `vm: kernel touched an unpopulated user page at pc …` once, and retries — instead of a panic.
+- **Costs.** A touched page costs 64 KB (a thread's first stack page, a lone `malloc` page); one L3
+  table (64 KB, low pager) per 512 MB slot touched; reservations cost nothing. Zeroing a page takes
+  about 10 µs. `vm_stats` reports a process's resident bytes (page tables included), its lazy and
+  writable VA, its fills and its page tables.
+
 ### Destruction (and an important pitfall)
 
 When destroying the address space:
@@ -270,8 +326,10 @@ When destroying the address space:
    `tlbi aside1is, Xt ; dsb ish ; isb`. (Reusing a page-table frame while the
    walk is still cached would break translations.)
 3. Removes and destroys the window.
-4. Walks the **user** L2/L3 slots and frees the frames marked
-   `PAGE_SW_OWNED`.
+4. (v75) `VmTeardown`: the regions and the pending zaps freed (after the app cores and the GPU let
+   go of the space).
+5. Walks the **user** L2/L3 slots and frees the frames marked
+   `PAGE_SW_OWNED` (pages whose zap was deferred included).
 
 > ⚠️ **Pitfall: never free an L3 table shared with the kernel.** Because each
 > address space **copies** the kernel L2 descriptors, some L2 entries point
@@ -511,9 +569,13 @@ and preemption from the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`C
 ### Faults
 
 Every app runs at EL0 (§ *Protected mode* below): a fault in an app arrives through the EL0
-vectors and kills that process only. `SyncHandlerEL1` sees kernel faults only: **`UAccessFixup`**
-first (a fault inside a fault-safe copy routine, below: the kapi returns its error), otherwise
-it is a kernel bug → the post-mortem console (`DumpAndHalt`) and the crash record.
+vectors and kills that process only — unless it is a translation fault in a lazy region (v75, §4
+*Demand paging*): the page is filled and the access retried. The kill's kmsg says why when the
+regions tell: `(stack overflow)` within 1 MB below a stack, `(PROT_NONE access)`. `SyncHandlerEL1`
+sees kernel faults only: **`UAccessFixup`** first (a fault inside a fault-safe copy routine, below:
+the kapi returns its error, or fills the page and retries), then the v75 safety net (a lazy page
+kernel code touched: filled), otherwise it is a kernel bug → the post-mortem console
+(`DumpAndHalt`) and the crash record.
 
 ### Fault-safe access to app memory (`kern/uaccess.h`, step 2)
 
@@ -525,13 +587,17 @@ below them take kernel memory): `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`.
   stop (its `CTask` stack is its kernel stack, never accepted).
 - **`UserRange` / `UserRangeAvail`**: `[p, p+n)` inside what the caller may use, computed as "bytes
   left from p", never `p+n` (no wrap). **`UserReadable` / `UserWritable`**: the range, then each
-  64 KB page translated with `AT S1E1R/W` — used where the kernel works directly in the app's
-  buffer (file reads, pipes, sockets, GPU pixels); an app's pages are never unmapped while it lives.
+  64 KB page translated with the **app's** permissions, `AT S1E0R/W` (v75; `S1E1R/W` before) —
+  used where the kernel works directly in the app's buffer (file reads, pipes, sockets, GPU
+  pixels). Since v75 a page of a lazy region not there yet is **filled** first, and the range is
+  **pinned** until the system call returns: another thread's `vm_unmap` / `DONTNEED` / `mprotect`
+  over it is deferred (§4 *Demand paging*). A probe never yields.
 - **Copies**: `UserCopyIn`, `UserCopyOut`, `UserGet`, `UserPut`, `UserStrOut` and `CUserStr` (a
   kernel copy of an app string, 256 bytes inline, the heap beyond; paths over 511 characters are
   refused): leaf assembly routines, word-sized when both pointers are 8-aligned (byte-wise
   otherwise: the display is Device memory). Plain `LDR`/`STR` after the range check (the A72
-  has neither PAN nor UAO).
+  has neither PAN nor UAO). (v75) A copy that faulted on an unfilled lazy page (the fixup records
+  `FAR` / `ESR`) has it filled in C, then runs again — one more page each time, so it ends.
 - **The fixup table**: a hand-made `.rodata` list of `{start, end, recovery}`, one per routine;
   `SyncHandlerEL1` looks the faulting ELR up first and resumes at the recovery label (the routine
   returns −1). It works for kapis reached by `svc` from EL0 too (they run at EL1t).
@@ -616,7 +682,10 @@ and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / 
   UCI (`dc cvau`/`ic ivau` for the JITs), nTWE/nTWI (`wfe`/`wfi`), UCT (`ctr_el0`), DZE (`dc zva`);
   **`TPIDRRO_EL0` = the core number** (`kapi__core` in `user/kapi.h` reads it from v73 — apps built
   earlier read `mpidr_el1` and are killed at EL0: rebuild them); `PMUSERENR_EL0.EN` only with
-  `cmdline.txt` `el0pmu=1`.
+  `cmdline.txt` `el0pmu=1`. **`TPIDR_EL0`** (the thread pointer, writable at EL0) is the app's:
+  the kernel never writes it but for a thread's start (v75: `thread_create_ex`'s `tls`, 0 before)
+  and an app-core job's (its caller's value), and Circle's `TaskSwitch` saves and restores it per
+  task — an EL0 preemption goes through it too.
 - **Threads**: `thread_create` in a protected process `eret`s to `fn` on its user stack, returning
   through `El0ThreadReturn`. **App cores**: `core_run` for a protected owner enters `fn` at EL0 on
   the app's stack; the job's end is an `svc` from `El0CoreReturn` (→ `AppCoreEl0Done`); any other
@@ -663,14 +732,16 @@ task model in `kernel.cpp`.
 ### `CUserProcessTask` — one application = one task
 
 `CUserProcessTask` (subclass of `CTask`; its `CTask` stack is the process's 256 KB kernel
-stack; the app's **user** stack is 1 MB, or what the app's folder's `app.txt` asks for,
-`stack = 8M` — `AppUserStack`, rounded up to 64 KB, 1–64 MB; Jet Browser asks for 8 MB):
+stack; the app's **user** stack is 8 MB (v75: lazy, so it costs only what is touched), or more if
+the app's folder's `app.txt` asks for it, `stack = 16M` — `AppUserStack`, rounded up to 64 KB,
+8–64 MB):
 1. Creates a fresh `CAddressSpace`.
 2. Installs stdin/stdout, the process handle, argv, cwd.
 3. `LoadELF` into the address space.
 4. `SetUserData(AS, TASK_USER_DATA_USER)` + `AS->AddTask(this)` (its main task) +
    `Activate()` (switches `TTBR0`/ASID).
-5. Maps the **user stack** below `USER_STACK_TOP` (1 MB, or `app.txt`'s `stack`) and
+5. Makes the **user stack** below `USER_STACK_TOP` a lazy `STACK` region (8 MB, or `app.txt`'s
+   `stack`; nothing below it: an overflow is a "stack overflow" kill) and
    **enters the app at EL0**: `El0Enter (entry, USER_STACK_TOP, 0, El0MainReturnVA ())` — no
    return; the task's own stack (`EL0_KSTACK_SIZE`, 256 KB) is from then on only the process's
    **kernel** stack (its traps, the kapis it calls).
@@ -687,9 +758,13 @@ Source: [`kernel/sys/thread.cpp`](../kernel/sys/thread.cpp),
 A thread is a `CUserThreadTask`: one more `CTask` whose `TASK_USER_DATA_USER` is the app's
 `CAddressSpace` (set in its constructor, before it is first scheduled: no `Yield` in between), so
 the task switch activates the app's page table and every kapi sees the same process — window,
-heap, files, sockets, cwd. It enters `fn (arg)` at **EL0** (`El0Enter`) on its own user stack, mapped in the process
-at `USER_THREAD_STACKS` (32 GB) + (index + 1) × 32 MB with a guard below (256 KB by default,
-16 KB .. 16 MB); its `CTask` stack is its kernel stack. The timer preempts it in its own code
+heap, files, sockets, cwd. It enters `fn (arg)` at **EL0** (`El0Enter`) on its own user stack, a
+lazy `STACK` region (v75) at the top of its record's slot, `USER_THREAD_STACKS` (32 GB) +
+(index + 1) × 32 MB, the rest of the slot unmapped (the guard); 256 KB by default for
+`thread_create` (16 KB .. 16 MB), 8 MB for `thread_create_ex`. A slot reused at the same size keeps
+its region; an ended thread's stack pages are dropped (`thread_exit`). Its `TPIDR_EL0` starts at 0,
+or at `thread_create_ex`'s `tls` (set before `El0Enter`; Circle's `TaskSwitch` saves and restores
+it per task from then on); its `CTask` stack is its kernel stack. The timer preempts it in its own code
 like any app (§5). `fn`'s return, or `kapi_thread_exit`,
 records its exit code and ends the task; the reaper frees it while the process goes on. A process
 runs at most `THREADS_MAX` (32) threads besides its main one.
@@ -718,8 +793,9 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   pulse it) at `WakeEv`, sleeps if nothing is pending, then pumps; `wait_for_exit` sleeps on it
   too (16 ms at most, as before).
 - **Word waits (v68, a futex)** — `wait_word (addr, expected, ms)` / `wake_word (addr)`. The
-  word's **physical** address is the key (`WordPhys`: `AT S1E1R` on the caller's `TTBR0`, then
-  `PAR_EL1`; below 4 GB, the kernel's identity map): the same word of a shared surface, mapped at
+  word's **physical** address is the key (`WordPhys`: since v75 `UserReadable` — a lazy page filled,
+  pinned for the call, so its frame stays while the caller sleeps — then `AT S1E0R` on the caller's
+  `TTBR0` and `PAR_EL1`; below 4 GB, the kernel's identity map): the same word of a shared surface, mapped at
   another address in each process, wakes across processes. A waiter (`TWordWaiter`: the address,
   the value, its process, a `CSynchronizationEvent`) lives on its task's stack, linked in one
   kernel list under an IRQ spin lock; it is linked, then the word read again, then it waits —
@@ -730,7 +806,8 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   sleeping word through the identity map and wakes those whose value moved (nothing to do, and
   nothing read, while nobody sleeps). Spurious wakes are allowed (callers loop). A dying process
   unlinks its waiters first (`ThreadsFree` → `WordWaitsFree`: a killed task's record is on its
-  stack, freed after the batch's handlers). Test: `/bin/futextest`.
+  stack, freed after the batch's handlers). A frame leaving its space (v75: an unmap, `DONTNEED`)
+  wakes its waiters first (`WordWaitsZap`). Test: `/bin/futextest`, `/bin/memtest`.
 - **Priority (v68)**: `thread_priority (tid, 1)` makes a thread "real time" (§5): picked first
   whenever it is ready, as long as it sleeps before its slice ends — for an audio pump.
 - **The lists show a process once**: `list_windows`, `list_tasks` and `list_procs` skip the tasks
@@ -919,9 +996,27 @@ there, on that kernel stack, while the compositor and the other apps keep runnin
 ### v75: memory
 
 Work package WP-MEM ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1; `kernel/sys/vm.cpp`,
-`kern/vm.h`). Slots 199–206: `vm_map`, `vm_unmap`, `vm_protect`, `vm_advise`, `vm_query`,
-`vm_stats`, `thread_create_ex`, `thread_info` (`struct kapi_vm_region`, `kapi_vm_stats`,
-`kapi_thread_attr`, `kapi_thread_info`). *Not implemented yet: every entry returns `-KAPI_ENOSYS`.*
+`kern/vm.h`; the threads' two in `sys/thread.cpp`). The mechanism — lazy regions, pins, the
+deferred zap, the TLB rules, the OOM policy — is §4 *Demand paging*. Every entry returns ≥ 0 or
+−`KAPI_Exxx`. Sizes: 64 KB pages; addresses and lengths are rounded to them where noted.
+
+| Slot | Entry | Does → returns |
+|---|---|---|
+| 199 | `vm_map (addr, len, prot, flags)` | A zero-filled `ANON` region of `len` (rounded up) in the mmap arena `[34 GB, 60 GB)`, filled on first touch (`KAPI_MAP_POPULATE`: now, a yield every 64 pages, a failure not reported). `addr` is a hint (taken if free, else the lowest gap) unless `KAPI_MAP_FIXED` (aligned, inside the arena; replaces what is there) or `KAPI_MAP_FIXED_NOREPLACE` (`-EEXIST` if anything is there). `prot` = `KAPI_PROT_NONE/READ/WRITE` (`EXEC`: `-ENOTSUP`). → the address / `-EINVAL` (len 0, a bad `FIXED`), `-ENOMEM` (no room, 4096 regions, or a writable map larger than the free app pool − 16 MB without `KAPI_MAP_NORESERVE`) |
+| 200 | `vm_unmap (addr, len)` | Inside the arena (holes allowed; regions split): the pages dropped (a pinned one when its kapi ends) → 0 / `-EINVAL` (unaligned, outside the arena) / `-ENOMEM` (a split at 4096 regions) |
+| 201 | `vm_protect (addr, len, prot)` | `ANON` regions covering the range without a hole: their protection (split / merged), the present pages re-protected + TLBI (a write taken from a page under another thread's kapi: when it ends) → 0 / `-EINVAL` / `-ENOMEM` (split cap) / `-ENOTSUP` (`EXEC`) |
+| 202 | `vm_advise (addr, len, advice)` | Lazy regions (`ANON`, `HEAP`, `STACK`) covering the range: `KAPI_MADV_WILLNEED` fills (`-ENOMEM`); `DONTNEED` / `FREE` drop the pages — zeros on the next touch (`ANON` and `HEAP` only); `NORMAL` / `RANDOM` / `SEQUENTIAL` nothing → 0 / `-EINVAL` |
+| 203 | `vm_query (addr, out)` | `struct kapi_vm_region { start, end, prot, kind (KAPI_VMK_ANON/HEAP/STACK/IMAGE/FIXED), resident (pages present), flags (KAPI_VMF_LAZY) }` of the region holding `addr` → 0, or of the next one above → 1; `-ENOMEM` none above, `-EFAULT` |
+| 204 | `vm_stats (pid, out)` | `struct kapi_vm_stats { resident (bytes of owned frames, page tables included), lazy (VA of lazy regions), writable (VA of writable regions), faults (pages filled), pt_bytes, limit (0) }`, `pid` 0 = self → 0 / `-ESRCH` / `-EFAULT` |
+| 205 | `thread_create_ex (attr)` | `struct kapi_thread_attr { fn, arg, stack_size (0 = 8 MB; 16 KB .. 16 MB, lazy), tls (its initial TPIDR_EL0), name, flags (KAPI_THREAD_DETACHED: no join, its record freed when it ends), prio (0, 1 = "real time"), reserved[2] = 0 }` → tid ≥ 2 / `-EAGAIN` (32 running) / `-ENOMEM` / `-EINVAL` / `-EFAULT` |
+| 206 | `thread_info (tid, out)` | `struct kapi_thread_info { stack_lo, stack_hi (its top: the initial SP), tid, state (0 running, 1 ended, joinable), guard (unmapped bytes below stack_lo) }`, `tid` 0 = self, 1 = main → 0 / `-ESRCH` / `-EFAULT` |
+
+What changed for every app, with no call: the main stack (8 MB by default), the threads' stacks and
+the heap are **lazy** (a process's resident memory drops by its untouched stack — 1 MB to 8 MB
+before — and heap); `sbrk` shrinking returns pages; an overflow of a stack is a clean kill with
+"stack overflow" in kmsg; a page fault the app pool cannot serve kills the app (`KAPI_PROC_OOM`,
+−9), not the system. The kernel's probes see the app's permissions (`AT S1E0*`). Test:
+`/bin/memtest` (docs/04).
 
 ### v75: files and processes
 
@@ -1639,6 +1734,20 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   class, PC and fault address are kept, the state becomes `FAULT` and the frame is rewritten
   to `AppCoreRestart` as above. Core 0 logs it once (`appcore: core N: fault EC=... at pc
   ... (address ...)`) when the owner asks the state or releases the core.
+- **Memory (v75, §4 *Demand paging*).** No allocator runs on cores 2–3, so what a job touches is
+  filled beforehand: `core_acquire` fills the owner's heap and makes it **eager** (filled as `sbrk`
+  grows it — the emulators `malloc` on the main thread and touch on the core), `core_run` fills
+  the top 256 KB of the job's stack. Anything else still unfilled (a `vm_map`'ed buffer, deeper in a
+  lazy stack) takes the slow path: the job's translation fault becomes a **page-in request** in its
+  `TAppCore` (`nPageIn = 1`, the address, write or not; `DSB`, `SEV`) and the core waits in `WFE`
+  with its IRQs on (a stop still drops the job). On core 0 an `IoWait` tick hook wakes the
+  **`vmpager`** task (made at the first `core_acquire`), which fills that page and up to 7 more of
+  the region by a software walk of the owner's tables, answers 2 (retry: the `eret` repeats the
+  access, no TLBI needed) or 3 (no region, or out of memory: `FAULT`) and `SEV`s — up to one 10 ms
+  tick per request. Frames leaving or protections lowered on core 0 reach the job's TLB by the
+  inner-shareable `TLBI`.
+- **TLS (v75).** `core_run` reads the caller's `TPIDR_EL0` (the kernel never changes it) and the
+  core writes it before `El0Enter`: a job shares its caller's thread-local data (errno included).
 - **Teardown.** `~CAddressSpace` calls `AppCoreReleaseAS (this)` **before** freeing the
   window and the frames: a job still running uses them. A core that does not answer the
   stop (its code masked the interrupts — never do that) is **retired** (`bLost`, never used
@@ -1658,6 +1767,7 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
 - **Test**: `/bin/coretest` (the same computation on an app core and on core 0, a job
   stopped by its flag, an endless job stopped by `core_release`, a faulting job, both app
   cores at once); `coretest exit` leaves a job spinning and exits (the teardown must stop it).
+  `/bin/memtest` (v75): a job writing 4 MB of unfilled memory (the pager, timed), its TLS.
 - **Bigger programs on an app core**: newlib's syscalls can run on the main thread when
   called from an app core (`libc/onyx_syscalls.c`, `onyx_rpc_*`: the caller posts the call and
   waits in `WFE`, the main thread runs it in `onyx_rpc_serve` and `SEV`s). Doom's engine runs
@@ -1965,9 +2075,10 @@ full` also fills the volume).
 | `KAPI_TABLE_VA` | 14 GB (the EL0 table) | kapi_abi.h |
 | `KAPI_STUBS_VA` | 14 GB + 64 KB (the EL0 code page: stubs, then the blob at +8 KB) | el0.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
-| `USER_STACK_SIZE` | 1 MB (an app's user stack; `app.txt` `stack`, 1–64 MB) | layout.h |
+| `EL0_USTACK_MIN` | 8 MB (an app's user stack, lazy since v75; `app.txt` `stack`, 8–64 MB) | el0.h |
+| `USER_MMAP_BASE` .. `USER_MMAP_END` | 34 GB .. 60 GB (the mmap arena, v75) | layout.h |
 | `USER_THREAD_STACKS` | 32 GB (+ 32 MB a thread) | el0.h |
-| `KAPI_ABI_VERSION` | 74 | kapi_abi.h |
+| `KAPI_ABI_VERSION` | 75 | kapi_abi.h |
 | `RAM:` volume | 128 MB by default (≤ ¼ of the free page memory; `system.ini` `ramfs=`), 32 MB reserve, 16384 files + folders, 128 MB a file | ramfs.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
 | Tasks | no limit (a linked list, §5; Circle's `MAX_TASKS` is not used) | scheduler.h |

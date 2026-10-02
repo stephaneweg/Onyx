@@ -105,6 +105,12 @@
 #define USER_CODE_BASE		(0x390000000ULL)	// 14.25 GB
 #define USER_CODE_END		(15ULL * GIGABYTE)	// 15 GB: 768 MB
 
+// (v75) The mmap arena: only vm_map places mappings here (kern/vm.h), lazy, 26 GB. The threads'
+// stack slots (kern/el0.h USER_THREAD_STACKS: 64 x 32 MB from 32 GB) end exactly at its base;
+// [16 GB, 32 GB) stays unused.
+#define USER_MMAP_BASE		(34ULL * GIGABYTE)	// 0x8_8000_0000
+#define USER_MMAP_END		USER_VA_END		// 60 GB
+
 #define IS_USER_VA(va) \
 	((u64)(va) >= USER_VA_BASE && (u64)(va) < USER_VA_END)
 

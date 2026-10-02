@@ -77,7 +77,7 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  ping.elf nslookup.elf netstat.elf whois.elf ftpd.elf ftp.elf wifiscan.elf tone.elf \
 	  coretest.elf fsbench.elf shutdown.elf reboot.elf volume.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf \
-	  filetest.elf proctest.elf
+	  filetest.elf proctest.elf memtest.elf
 
 # kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
 PROGS  += nettest.elf

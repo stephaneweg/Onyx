@@ -209,7 +209,10 @@ dormant syscall code; added: the ID register emulation, `proc_stats` / `sysstat`
 
 **Still open:** the powerful kapis (§5) need a permission model; the GPU can reach physical memory
 through shaders; the crash record does not capture EL0 kills (kmsg only); the system-call cost is
-not measured; TPIDR_EL0 is not saved per thread (needed for TLS, the POSIX layer). The v74 test
+not measured. (Corrected 2026-10-02: `TPIDR_EL0` **is** saved per task -- Circle's `TaskSwitch`
+saves and restores it, and an EL0 preemption goes through it; what was missing, an initial value for
+a new thread and for an app-core job, came with kapi v75: `thread_create_ex`'s `tls`, the caller's
+value for `core_run`. docs/POSIX-PLAN.md §0.1, docs/02 §8 "v75: memory".) The v74 test
 on the Pi passed (2026-10-02: el0test, faulttest, threads, app cores, emulators, Jet, media, office,
 network, BASIC, kills under load); the GameCube emulator, and perhaps Jet, run a little slower
 (leads in docs/HANDOFF.md: the user-side `memcpy` for small copies first). **Next:** that speed;
