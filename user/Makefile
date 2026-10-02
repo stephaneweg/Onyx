@@ -57,7 +57,9 @@ bin: v3d/libv3d.a gpucomp/libgpucomp.a
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
 # wtk toolkit: compiled once into a static library, linked into every app.
-WTK_HDR = $(wildcard wtk/*.h)
+# (+ the user-side headers wtk includes: an inline of kapi.h -- kapi_lock, kapi__core -- is compiled
+# into the library, which must follow it)
+WTK_HDR = $(wildcard wtk/*.h) kapi.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
 WTK_OBJ = $(patsubst %.cpp,%.o,$(wildcard wtk/*.cpp))
 wtk/%.o: wtk/%.cpp $(WTK_HDR)
 	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
@@ -323,7 +325,7 @@ snes/libsnes.a: $(SNES_OBJS)
 
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
 # (linked into the qbasic editor too), and the runtime /bin/basic (basic/runtime.cpp).
-BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h
+BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h kapi.h
 BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o basic/basbax.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.
@@ -362,6 +364,7 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 
 clean:
 	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf
-	rm -rf Apps/pdf/obj
+	rm -f wtk/*.o wtk/*.a
+	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean

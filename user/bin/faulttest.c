@@ -1,24 +1,37 @@
 //
 // faulttest -- fault on purpose in the app's own code, to check that a crashing app is killed
-// and the system goes on (kernel/arch/aarch64/exception.cpp, AppFaultRedirect): the terminal
-// gets its prompt back, `kmsg` shows an "appfault" report (the name, pid, the decoded fault and
-// its registers). With cmdline.txt appfault=halt the machine halts instead (the old behaviour).
+// and the system goes on. Every app runs at EL0 (protected mode, kern/el0.h): any synchronous
+// exception but a system call kills the process (kernel/sys/el0.cpp) -- the terminal gets its
+// prompt back, kmsg shows "el0: faulttest (pid N) killed: <the fault> at pc ... (address ...,
+// ESR ...)" and the desktop an "Application error" notice. The fault expected is in brackets.
 //
-//   faulttest write | read     a store / a load at an unmapped app address (32 GB)
-//   faulttest ro               a store into the kapi table (read-only)
-//   faulttest jump             a call to an unmapped app address
-//   faulttest wild             a call to a wild address outside the app space (LR is the app's)
-//   faulttest pcalign          a branch to a misaligned address
-//   faulttest udf | brk        an undefined instruction / a BRK (__builtin_trap)
-//   faulttest irqoff           a store at an unmapped address with the IRQs masked
-//   faulttest thread           a second thread faults: the whole process must end
-//   faulttest post             the fault in a call run by the event pump (kernel frames below it)
-//   faulttest memcpy           the kapi table's memcpy given a bad pointer (the app is killed)
-//   faulttest null             a store at address 0: killed with cmdline.txt nullguard=1 only
-//                              (else the kernel's identity map covers page 0 for an EL1 app)
+//   faulttest write | read     a store / a load at an unmapped app address, 32 GB (a data abort)
+//   faulttest ro               a store into the kapi table, read-only at EL0 (a data abort)
+//   faulttest kernel           a load from the kernel's image, 0x80000: the identity map is
+//                              EL1-only (a data abort)
+//   faulttest mmio             a load from a peripheral, the system timer at 0xFE003004: no device
+//                              is reachable from EL0 (a data abort)
+//   faulttest null             a store at address 0: page 0 is the kernel's, EL1-only (a data
+//                              abort, whatever cmdline.txt nullguard says)
+//   faulttest jump             a call to an unmapped app address (an instruction abort)
+//   faulttest wild             a call to a wild address outside the app space (an instruction abort)
+//   faulttest pcalign          a branch to a misaligned address (a misaligned PC)
+//   faulttest udf | brk        an undefined instruction / a BRK, __builtin_trap (an undefined
+//                              instruction / a breakpoint)
+//   faulttest irqoff           an attempt to mask the IRQs, msr daifset: EL0 may not (a privileged
+//                              system register) -- the store after it is never reached
+//   faulttest sysreg           a read of an EL1 register, mrs sctlr_el1 (an undefined instruction)
+//   faulttest thread           a second thread faults: the whole process must end (a data abort)
+//   faulttest post             the fault in a call run by the event pump, user-side at EL0 (a
+//                              data abort)
+//   faulttest memcpy           the kapi table's memcpy given a bad pointer: at EL0 it is user code,
+//                              in the page next to the table, KAPI_STUBS_VA (a data abort, pc there)
 //   faulttest kapi             NOT a fault: bad pointers handed to kapis (kern/uaccess.h) -- each
 //                              call must fail with its error value, the process lives on and
 //                              prints a PASS / FAIL line per check
+//
+// (The functions named *_el0scan_expected hold the privileged instructions on purpose:
+// tools/el0scan.sh does not report them.)
 //
 // MIT licence (Onyx).
 //
@@ -27,16 +40,45 @@
 
 #define BAD_APP_VA	0x800000000UL		// 32 GB: in the app space, never mapped
 #define WILD_VA		0xDEAD00000000UL	// beyond the 64 GB translation range
+#define KERNEL_VA	0x80000UL		// the kernel's image (identity map, EL1-only)
+#define MMIO_VA		0xFE003004UL		// the system timer's counter (identity map, EL1-only)
+
+// (the address through a register: the compiler may not see a constant -- a store to 0 would
+// become a trap of its own)
+static unsigned long Hide (unsigned long ulAddr)
+{
+	asm volatile ("" : "+r" (ulAddr));
+	return ulAddr;
+}
 
 static void Store (unsigned long ulAddr)
 {
-	*(volatile unsigned long *) ulAddr = 0x0BADC0DEUL;
+	*(volatile unsigned long *) Hide (ulAddr) = 0x0BADC0DEUL;
+}
+
+static unsigned long Load (unsigned long ulAddr)
+{
+	return *(volatile unsigned long *) Hide (ulAddr);
 }
 
 static void Call (unsigned long ulAddr)
 {
 	// blr (not a tail call): LR = the app's return address
 	asm volatile ("blr %0" :: "r" (ulAddr) : "x30", "memory");
+}
+
+static void __attribute__ ((noinline)) IrqOff_el0scan_expected (void)
+{
+	asm volatile ("msr daifset, #3" ::: "memory");
+	Store (BAD_APP_VA);				// (never reached: the msr kills the process)
+	asm volatile ("msr daifclr, #3" ::: "memory");
+}
+
+static unsigned long __attribute__ ((noinline)) SysReg_el0scan_expected (void)
+{
+	unsigned long ul;
+	asm volatile ("mrs %0, sctlr_el1" : "=r" (ul));
+	return ul;
 }
 
 static int FaultThread (void *pArg)
@@ -67,8 +109,8 @@ static void Expect (const char *pWhat, int bOK)
 static int KapiChecks (void)
 {
 	const char *pBad = (const char *) BAD_APP_VA;		// in the app range, not mapped
-	const char *pKernel = (const char *) 0x80000UL;	// the kernel's image (not the app's)
-	char Local[64];						// a legacy app's stack: kernel memory
+	const char *pKernel = (const char *) KERNEL_VA;		// the kernel's image (not the app's)
+	char Local[64];						// on the app's own (EL0) stack
 
 	Expect ("open (unmapped path) -> 0", KT->open (pBad) == 0);
 	Expect ("open (kernel path) -> 0", KT->open (pKernel) == 0);
@@ -101,8 +143,11 @@ static int KapiChecks (void)
 static void Fault (const char *m)
 {
 	if (ax_streq (m, "write"))	Store (BAD_APP_VA);
-	else if (ax_streq (m, "read"))	(void) *(volatile unsigned long *) BAD_APP_VA;
+	else if (ax_streq (m, "read"))	(void) Load (BAD_APP_VA);
 	else if (ax_streq (m, "ro"))	Store ((unsigned long) KT);
+	else if (ax_streq (m, "kernel")) (void) Load (KERNEL_VA);
+	else if (ax_streq (m, "mmio"))	(void) Load (MMIO_VA);
+	else if (ax_streq (m, "null"))	Store (0);
 	else if (ax_streq (m, "jump"))	Call (BAD_APP_VA);
 	else if (ax_streq (m, "wild"))	Call (WILD_VA);
 	else if (ax_streq (m, "pcalign"))
@@ -113,12 +158,8 @@ static void Fault (const char *m)
 	}
 	else if (ax_streq (m, "udf"))	asm volatile ("udf #0" ::: "memory");
 	else if (ax_streq (m, "brk"))	__builtin_trap ();
-	else if (ax_streq (m, "irqoff"))
-	{
-		asm volatile ("msr daifset, #3" ::: "memory");
-		Store (BAD_APP_VA);
-		asm volatile ("msr daifclr, #3" ::: "memory");
-	}
+	else if (ax_streq (m, "irqoff")) IrqOff_el0scan_expected ();
+	else if (ax_streq (m, "sysreg")) (void) SysReg_el0scan_expected ();
 	else if (ax_streq (m, "thread"))
 	{
 		if (kapi_thread_create (FaultThread, 0, 0, "faulter") < 2)
@@ -142,7 +183,6 @@ static void Fault (const char *m)
 		static char Src[64];
 		KT->memcpy ((void *) BAD_APP_VA, Src, sizeof Src);
 	}
-	else if (ax_streq (m, "null"))	Store (0);
 }
 
 int main (void)
@@ -158,21 +198,21 @@ int main (void)
 		return KapiChecks ();
 	}
 
-	static const char *const Modes[] = { "write", "read", "ro", "jump", "wild", "pcalign", "udf",
-					     "brk", "irqoff", "thread", "post", "memcpy", "null" };
+	static const char *const Modes[] = { "write", "read", "ro", "kernel", "mmio", "null", "jump", "wild",
+					     "pcalign", "udf", "brk", "irqoff", "sysreg", "thread", "post", "memcpy" };
 	int bKnown = 0;
 	for (unsigned k = 0; k < sizeof Modes / sizeof Modes[0]; k++) bKnown |= ax_streq (m, Modes[k]);
 	if (!bKnown)
 	{
-		ax_putln ("usage: faulttest write|read|ro|jump|wild|pcalign|udf|brk|irqoff|thread|post|memcpy|null");
+		ax_putln ("usage: faulttest write|read|ro|kernel|mmio|null|jump|wild|pcalign|udf|brk|irqoff|sysreg|thread|post|memcpy");
 		ax_putln ("       faulttest kapi   (bad pointers to kapis: each must fail cleanly)");
-		ax_putln ("faults on purpose: this process should be killed (see kmsg), the system go on");
+		ax_putln ("faults on purpose: this process should be killed (kmsg: el0 ... killed), the system go on");
 		return 1;
 	}
 
 	ax_puts ("faulttest: ");
 	ax_puts (m);
-	ax_putln (" -- this process should now be killed (kmsg: appfault)");
+	ax_putln (" -- this process should now be killed (kmsg: el0: faulttest ... killed)");
 	kapi_msleep (300);				// (the line out to the terminal / telnet)
 	Fault (m);
 	ax_putln ("faulttest: BUG: still alive after the fault");
