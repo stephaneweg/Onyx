@@ -11,9 +11,11 @@
 #include "wtk/wtk.h"
 #include "applib.h"
 #include "../../core/client.hpp"
+#include "../../core/auth.hpp"
 #include "transport_onyx.hpp"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 using namespace taatu;
 
@@ -74,6 +76,13 @@ static void mark_dirty (void *) { g_dirty = 1; }
 // ---- the network thread -----------------------------------------------------------------
 static int net_thread (void *)
 {
+    // ensure a session token (TAATU_TOKEN, else REST login with TAATU_PSEUDO/PASSWORD)
+    char tok[600]; tok[0] = 0;
+    const char *envtok = getenv ("TAATU_TOKEN");
+    if (envtok) { strncpy (tok, envtok, sizeof tok - 1); tok[sizeof tok - 1] = 0; }
+    do_login_if_needed (tok, sizeof tok);
+    g_cli.set_token (tok);
+
     OnyxTransport tp (CFG_TLS);
     if (!g_cli.connect (tp)) { g_dirty = 1; return 1; }
     bool joined = false;
@@ -205,8 +214,34 @@ static void on_click (unsigned long, int ev, long value)
     g_dirty = 1;
 }
 
-// platform hook for the core
-namespace taatu { void WsClient::plat_sleep_ms (unsigned ms) { kapi_msleep (ms); } }
+// platform hooks for the core
+namespace taatu {
+    void WsClient::plat_sleep_ms (unsigned ms) { kapi_msleep (ms); }
+    void httpc_sleep_ms (unsigned ms) { kapi_msleep (ms); }
+}
+
+// transport factory for the REST auth flow (a fresh kapi/TLS socket per request)
+static taatu::ITransport *mk_onyx (void *) { return new taatu::OnyxTransport (CFG_TLS); }
+
+// Headless login: if we have no session token but have credentials, run the REST flow.
+// (MFA + a proper on-screen login form are a TODO: for now creds come from the environment
+// / config, and an MFA challenge is reported but not yet prompted in the GUI.)
+static bool do_login_if_needed (char *token_out, int cap)
+{
+    if (token_out[0]) return true;
+    const char *pseudo = getenv ("TAATU_PSEUDO");
+    const char *password = getenv ("TAATU_PASSWORD");
+    if (!pseudo || !pseudo[0] || !password) return false;
+    TaatuAuth auth;
+    auth.set_target (CFG_HOST, CFG_PORT);
+    auth.mk = mk_onyx;
+    char uuid[37]; TaatuAuth::gen_uuid (uuid); strncpy (auth.device_id, uuid, sizeof auth.device_id - 1);
+    int w = WIN_W, h = WIN_H; kapi_screen_size (&w, &h);
+    auth.set_fingerprint ("TaatuOnyx/0.1 (rpi4)", "fr", "onyx", "Europe/Brussels", w, h, 32, 4, 0, 0);
+    int r = auth.login (pseudo, password, true);
+    if (r == LOGIN_OK) { strncpy (token_out, auth.token, cap - 1); token_out[cap - 1] = 0; return true; }
+    return false;   // MFA / failure: GUI login form is the next step
+}
 
 int main (void)
 {
@@ -222,8 +257,8 @@ int main (void)
     g_cli.lock_fn = wlock; g_cli.unlock_fn = wunlock; g_cli.lock_ctx = 0;
     g_cli.on_change = mark_dirty; g_cli.change_ctx = 0;
     g_cli.set_target (CFG_HOST, CFG_PORT, CFG_TLS, CFG_ORIG);
-    // TODO: load the session token from SD:/apps/taatu.app/config.ini (or run a login screen)
-    g_cli.set_token (getenv ("TAATU_TOKEN") ? getenv ("TAATU_TOKEN") : "");
+    // the session token is obtained on the net thread: TAATU_TOKEN, else a REST login with
+    // TAATU_PSEUDO/TAATU_PASSWORD (a proper on-screen login form + config.ini is the next step)
 
     kapi_set_key_handler (on_key);
     kapi_set_click_handler (on_click);

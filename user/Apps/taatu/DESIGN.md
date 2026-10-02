@@ -203,13 +203,31 @@ découle d'un vrai clic/touche kapi récent (sur un client natif, tout input EST
 retient l'horodatage du dernier `GUI_EVENT_PTR_DOWN`/`GUI_EVENT_KEY`). En cas d'échec de
 signature, émettre sans `_ui` (le serveur observe mais n'accuse pas, comme le web).
 
-### 4.5. Auth REST (hors socket)
+### 4.5. Auth REST (hors socket) — confirmé en live
 
-`POST /api/auth/login` (payload à confirmer : pseudo/mot de passe + `device-id`/
-`device-fingerprint` en en-têtes), MFA éventuel via `POST /api/auth/mfa-verify`,
-`GET /api/auth/me` pour rafraîchir. Protégé par `GET /api/csrf`. **Ne jamais stocker le mot
-de passe en clair** ; ne garder que le jeton. Alternative pour démarrer : réutiliser un
-jeton valide existant.
+Implémenté dans `core/httpc.hpp` + `core/auth.hpp`. Flux :
+
+```
+GET  /api/csrf                          -> 200 { token:"<64 hex>" }   (+ Set-Cookie session)
+POST /api/auth/login  { pseudo, password[, remember] }
+        -> 200 { session_token, user:{…} }           (succès)
+        -> 401 { error:"Invalid name or password", success:false }
+        -> 401 { mfa_required:true, challenge_id, … } (2FA)
+POST /api/auth/mfa-verify { challenge_id, code[, remember] }  -> 200 { session_token, user }
+GET  /api/auth/me   (X-Session-Token)   -> { user }           (rafraîchir)
+```
+
+En-têtes sur **chaque** requête : `Content-Type: application/json`, `X-Session-Token` (si
+connecté), `X-Taatu-Device` (UUID v4 persistant, anti multi-compte), `X-Taatu-Fp`
+(empreinte **FNV-1a 32 bits → 8 hex** de `UA|lang|langs|platform|tz|WxHxdepth|cores|
+deviceMemory|maxTouchPoints`). Sur les POST : `X-CSRF-Token` (du `/api/csrf`) + le `Cookie`
+capturé ; si 403 « Token CSRF invalide », re-`GET /api/csrf` et rejouer **une** fois.
+Endpoints « publics » (sans session) : `auth/login`, `auth/mfa-verify`, `auth/register`,
+`auth/forgot-password`, `auth/passkey-login-*`, `csrf`. Passkey (WebAuthn) existe aussi.
+
+`fnv1a` et la crypto du handshake/`_ui` sont **validées sur vecteurs connus** côté PC.
+**Ne jamais stocker le mot de passe** ; ne garder que le `session_token` (config.ini si
+« se souvenir »). Prod = HTTPS (TLS) ; dev = `http://127.0.0.1:3000` (clair).
 
 ### 4.6. Catalogue d'événements observés
 
@@ -315,10 +333,14 @@ Toolchain absente de la machine de dev Windows → voir
 
 - [x] Reverse du client web + capture du protocole de salle (ce document).
 - [x] Squelette app : fenêtre, boucle GUI, câblage threads, `app.txt`, `Makefile`.
-- [ ] `net.hpp` : TLS → WebSocket → Engine.IO v4 → Socket.IO v5 + signature `_ui`.
-- [ ] `proto.hpp` : parse `room-players` / `room-tick` / `chat-message`, émet `join-room` /
+- [x] `core/` : WebSocket → Engine.IO v4 → Socket.IO v5 + signature `_ui` (HMAC-SHA256).
+- [x] Modèle : parse `room-players` / `room-tick` / `chat-message`, émet `join-room` /
       `update-position` / `update-destination` / `chat-message`.
-- [ ] Connexion + auth (jeton), entrée en salle, reconnexion Wi-Fi.
+- [x] **Login REST complet** (`httpc.hpp` + `auth.hpp`) : csrf → login → mfa-verify,
+      `device-id`/`fingerprint` ; crypto + `fnv1a` validés sur vecteurs. (PC compilé+exécuté.)
+- [ ] Transport **TLS côté PC** (pour tester le login/WS prod sans Onyx) — manquant.
+- [ ] Écran de login natif (champs pseudo/mot de passe, invite MFA) + `config.ini`.
+- [ ] Connexion + entrée en salle de bout en bout (prod ou serveur dev), reconnexion Wi-Fi.
 - [ ] Rendu iso : décor + avatars (dots → sprites composés) triés en profondeur ; pseudos.
 - [ ] Clic → pathfinding client → déplacement ; bulles de chat ; saisie du chat.
 - [ ] Téléchargement + cache des assets.

@@ -8,6 +8,7 @@
 //            [--say "hello"] [--seconds 30]
 //
 #include "../../core/client.hpp"
+#include "../../core/auth.hpp"
 #include "transport_tcp.hpp"
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,11 @@ static void nap (unsigned ms) { usleep (ms * 1000); }
 namespace taatu {
     void WsClient::plat_sleep_ms (unsigned ms) { nap (ms); }
     void PcTcpTransport::plat_nap () { nap (1); }
+    void httpc_sleep_ms (unsigned ms) { nap (ms); }
 }
+
+// transport factory for the REST auth flow (a fresh socket per request)
+static taatu::ITransport *mk_tcp (void *) { return new taatu::PcTcpTransport (); }
 static unsigned now_ms ()
 {
 #ifdef _WIN32
@@ -55,6 +60,32 @@ int main (int argc, char **argv)
     int sz = atoi (arg (argc, argv, "--z", "27"));
     const char *say = arg (argc, argv, "--say", "");
     int seconds = atoi (arg (argc, argv, "--seconds", "30"));
+    const char *pseudo = arg (argc, argv, "--pseudo", "");
+    const char *password = arg (argc, argv, "--password", "");
+
+    char tokbuf[600]; tokbuf[0] = 0;
+    if (token && token[0]) { strncpy (tokbuf, token, sizeof tokbuf - 1); tokbuf[sizeof tokbuf - 1] = 0; }
+
+    // REST login if no token was given but a pseudo was
+    if (!tokbuf[0] && pseudo[0])
+    {
+        TaatuAuth auth;
+        auth.set_target (host, port);
+        auth.mk = mk_tcp;
+        char uuid[37]; TaatuAuth::gen_uuid (uuid); strncpy (auth.device_id, uuid, sizeof auth.device_id - 1);
+        auth.set_fingerprint ("TaatuOnyx/0.1 (PC)", "fr", "onyx", "Europe/Brussels", 1000, 700, 32, 1, 0, 0);
+        printf ("[taatu] login as '%s' ...\n", pseudo);
+        int r = auth.login (pseudo, password, true);
+        if (r == LOGIN_MFA)
+        {
+            char code[32];
+            printf ("[taatu] MFA required (challenge %s). Enter code: ", auth.challenge_id);
+            fflush (stdout);
+            if (fgets (code, sizeof code, stdin)) { char *nl = strchr (code, '\n'); if (nl) *nl = 0; r = auth.mfa_verify (auth.challenge_id, code, true); }
+        }
+        if (r == LOGIN_OK) { strncpy (tokbuf, auth.token, sizeof tokbuf - 1); tokbuf[sizeof tokbuf - 1] = 0; printf ("[taatu] login OK, session token acquired (%d chars)\n", (int) strlen (tokbuf)); }
+        else { printf ("[taatu] login FAILED: %s\n", auth.err[0] ? auth.err : "unknown"); return 1; }
+    }
 
     printf ("[taatu] connecting ws://%s:%d  room=%d\n", host, port, room);
 
@@ -62,7 +93,7 @@ int main (int argc, char **argv)
     TaatuClient cli;
     cli.now_ms = now_ms;
     cli.set_target (host, port, false, "https://taatu.world");
-    cli.set_token (token);
+    cli.set_token (tokbuf);
 
     if (!cli.connect (tp)) { printf ("[taatu] connect/handshake FAILED\n"); return 1; }
     printf ("[taatu] websocket + engine.io up, waiting for socket.io connect...\n");

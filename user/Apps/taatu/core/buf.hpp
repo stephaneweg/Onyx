@@ -49,6 +49,21 @@ struct Buf
     char *take () { char *q = p; p = 0; n = cap = 0; return q; }
 };
 
+// append s to out as a JSON string body (escaped; no surrounding quotes).
+inline void json_escape_into (Buf &out, const char *s)
+{
+    for (const char *p = s; p && *p; p++)
+    {
+        unsigned char c = (unsigned char) *p;
+        if (c == '"' || c == '\\') { out.addc ('\\'); out.addc ((char) c); }
+        else if (c == '\n') out.add ("\\n");
+        else if (c == '\r') out.add ("\\r");
+        else if (c == '\t') out.add ("\\t");
+        else if (c < 0x20) { char b[8]; int w = 0; const char *H = "0123456789abcdef"; b[w++]='\\'; b[w++]='u'; b[w++]='0'; b[w++]='0'; b[w++]=H[(c>>4)&15]; b[w++]=H[c&15]; b[w]=0; out.add (b); }
+        else out.addc ((char) c);
+    }
+}
+
 // hex-encode src[len] into out (needs 2*len+1 bytes), lowercase, NUL-terminated.
 inline void hex_encode (const unsigned char *src, int len, char *out)
 {
