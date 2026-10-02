@@ -4,12 +4,16 @@
 // MP3, OGG, FLAC, WAV and MIDI, by artists, albums, songs, genres, folders and playlists; a now-playing
 // view (a MIDI file: its notes scrolling as coloured lines); a mini player at the bottom right of the screen.
 // Closing the window stops the music. Tags are read, never written; covers come from the files and their
-// folders, nothing is downloaded. (The videos come later, in the same app.)
+// folders, nothing is downloaded. The videos (films, clips, episodes: WebM / MKV / MP4 in VP9, VP8, AV1 with
+// Opus...) are played by Onyx's media library (user/av), in the window or full screen, each resumed where it
+// was left.
 //
 // A newlib wtk app with FreeType's text (user/Makefile's media.elf rule): the decoders (codecs.c,
-// vorbis.c), MeltySynth (Apps/koton/synth) for MIDI. Its parts: decode.h, midi.h, player.h (the
-// playback thread), tags.h, lib.h (the library, its scan thread), covers.h (their loader thread), ui.h.
-// Its files: SD:/etc/media/settings.ini, library.tsv, stats.tsv; SD:/Music/Playlists/*.m3u.
+// vorbis.c), MeltySynth (Apps/koton/synth) for MIDI, user/av and its codecs for the videos. Its parts:
+// decode.h, midi.h, player.h (the music's playback thread), tags.h, lib.h (the library, its scan thread),
+// covers.h (their loader thread), videos.h (the videos' facts), thumbs.h (their frames' thread), watch.h
+// (a video playing), ui.h. Its files: SD:/etc/media/settings.ini, library.tsv, stats.tsv, videos.tsv,
+// thumbs/*.jpg; SD:/Music/Playlists/*.m3u.
 //
 #include <string.h>
 #include <strings.h>
@@ -18,6 +22,8 @@
 #include "kapi.h"
 #include "player.h"
 #include "ui.h"
+#include "thumbs.h"
+#include "watch.h"
 #include "fileassoc.h"
 #include "notify.h"
 
@@ -30,6 +36,12 @@ using namespace media;
 static Library *L;				// the library shown
 static Covers g_covers;
 static Player g_player;
+static VideoLib *VL;				// the videos
+static Thumbs g_thumbs;
+static VideoPlay g_vp;				// the video open (in the window or full screen)
+static int g_vidx = -1;				// its index in V, -1 none
+static unsigned g_vpMoveT, g_vpSaveT;		// (the pointer moved last: the controls shown; the position saved)
+static bool g_vpEnded;
 static ScanState *g_scan; static int g_scanTid = -1;
 static char g_folders[8][200]; static int g_nfolders;
 static int g_volume = 80; static bool g_muted, g_shuffle; static int g_repeat;	// 0 off, 1 all, 2 one
@@ -49,16 +61,17 @@ struct Plist { char name[96]; char path[300]; char **paths; int n; };
 static Plist *g_pl; static int g_npl;
 
 // ---- the pages -------------------------------------------------------------------------------------------
-enum { P_HOME, P_ALBUMS, P_ALBUM, P_ARTISTS, P_ARTIST, P_SONGS, P_GENRES, P_GENRE, P_FOLDERS, P_FOLDER, P_PLAYLIST, P_NOW, P_SEARCH, P_WELCOME };
+enum { P_HOME, P_ALBUMS, P_ALBUM, P_ARTISTS, P_ARTIST, P_SONGS, P_GENRES, P_GENRE, P_FOLDERS, P_FOLDER, P_PLAYLIST, P_NOW, P_SEARCH, P_WELCOME,
+       P_VIDEOS, P_WATCH };				// P_VIDEOS: arg a kind (VK_*, -1 all); P_WATCH: arg the video
 enum { PL_FAV = -1, PL_RECENT = -2 };
 struct Page { int kind, arg, scroll, sortCol; bool sortDesc; };
 static Page g_hist[64]; static int g_nhist, g_hpos;	// back / forward
 static Page &page () { return g_hist[g_hpos]; }
 static char g_search[128];
 
-class Sidebar; class TopBar; class Content; class NowBar; class MiniView;
+class Sidebar; class TopBar; class Content; class NowBar; class MiniView; class WatchView;
 static Root *g_root;
-static Sidebar *g_side; static TopBar *g_top; static Content *g_content; static NowBar *g_now; static MiniView *g_mini;
+static Sidebar *g_side; static TopBar *g_top; static Content *g_content; static NowBar *g_now; static MiniView *g_mini; static WatchView *g_watch;
 static bool g_miniMode; static int g_restore[4];	// the window before the mini player (x, y, w, h)
 static unsigned g_tick;
 
@@ -67,6 +80,8 @@ static void play_list (const IntList &ids, int start, bool shuffle);
 static void refresh_all ();
 static void save_settings ();
 static MidiSong *roll_for (int id);
+static void video_close ();
+static void go_back_page ();
 
 // ---- settings -------------------------------------------------------------------------------------------
 static void load_settings ()
@@ -252,6 +267,8 @@ static void count_play ()
 }
 static void start_song (int qpos)
 {
+	if (page ().kind == P_WATCH) go_back_page ();		// (the music takes the sound back from the video)
+	video_close ();
 	if (qpos < 0 || qpos >= g_queue.n) { g_player.stop (); g_playing = -1; g_qpos = -1; refresh_all (); return; }
 	g_qpos = qpos; g_playing = g_queue[qpos];
 	const Song *s = song (g_playing);
@@ -303,8 +320,10 @@ static void play_prev ()
 	count_play ();
 	start_song (g_qpos - 1);
 }
+static void video_toggle ();
 static void toggle_play ()
 {
+	if (page ().kind == P_WATCH && g_vp.active ()) { video_toggle (); return; }
 	if (g_player.state == PS_PLAYING) g_player.pause ();
 	else if (g_player.state == PS_PAUSED) g_player.resume ();
 	else if (g_queue.n) start_song (g_qpos >= 0 ? g_qpos : 0);
@@ -344,7 +363,7 @@ struct HitList
 };
 
 // ---- the sidebar ------------------------------------------------------------------------------------------------
-enum { SB_PAGE = 1, SB_PLAYLIST, SB_NEWPL, SB_FOLDERS };
+enum { SB_PAGE = 1, SB_PLAYLIST, SB_NEWPL, SB_FOLDERS, SB_VIDEOS };
 class Sidebar : public Widget
 {
 public:
@@ -355,6 +374,7 @@ public:
 	{
 		int k = page ().kind, a = page ().arg;
 		if (kind == SB_PLAYLIST) return k == P_PLAYLIST && a == arg;
+		if (kind == SB_VIDEOS) return k == P_VIDEOS && a == arg;
 		if (arg == P_ALBUMS) return k == P_ALBUMS || k == P_ALBUM;
 		if (arg == P_ARTISTS) return k == P_ARTISTS || k == P_ARTIST;
 		if (arg == P_GENRES) return k == P_GENRES || k == P_GENRE;
@@ -386,6 +406,9 @@ public:
 		item (y, "Songs", I_NOTE, SB_PAGE, P_SONGS);
 		item (y, "Genres", I_TAG, SB_PAGE, P_GENRES);
 		item (y, "Folders", I_FOLDER, SB_PAGE, P_FOLDERS);
+		head (y, "VIDEOS");
+		item (y, "Films", I_FILM, SB_VIDEOS, VK_FILM);
+		item (y, "Clips and series", I_TV, SB_VIDEOS, VK_CLIP);
 		head (y, "PLAYLISTS");
 		item (y, "Favourites", I_HEART, SB_PLAYLIST, PL_FAV);
 		item (y, "Recently added", I_CLOCK, SB_PLAYLIST, PL_RECENT);
@@ -397,7 +420,8 @@ public:
 		text_v (canvas, 18, by, 26, "+  New playlist", h ? C_ACCENT : wk_mix (C_TEXT, C_ACCENT, 200), F_UI);
 		hits.add (8, by, width - 16, 26, SB_NEWPL);
 		char st[96];
-		if (g_scan && !g_scan->done) snprintf (st, sizeof st, "Looking for songs...  %d", g_scan->found);
+		if (g_scan && !g_scan->done) snprintf (st, sizeof st, "Looking for songs...  %d", g_scan->found + g_scan->vfound);
+		else if (VL && VL->n) snprintf (st, sizeof st, "%d songs  \xC2\xB7  %d videos", L ? L->n : 0, VL->n);
 		else snprintf (st, sizeof st, "%d songs", L ? L->n : 0);
 		h = hits.n == hot;
 		text_v (canvas, 18, by + 28, 22, st, h ? C_ACCENT : col_dim_bg (), F_SMALL, 0, width - 30);
@@ -415,6 +439,7 @@ public:
 			if (!ht) return true;
 			if (ht->kind == SB_PAGE) navigate (ht->a);
 			else if (ht->kind == SB_PLAYLIST) navigate (P_PLAYLIST, ht->a);
+			else if (ht->kind == SB_VIDEOS) navigate (P_VIDEOS, ht->a);
 			else if (ht->kind == SB_NEWPL) { extern void new_playlist_dialog (const IntList *); new_playlist_dialog (0); }
 			else if (ht->kind == SB_FOLDERS) navigate (P_WELCOME);
 		}
@@ -462,6 +487,8 @@ public:
 		case P_NOW: a = "Now playing"; break;
 		case P_SEARCH: snprintf (t, sizeof t, "Search: \xE2\x80\x9C%s\xE2\x80\x9D", g_search); a = t; break;
 		case P_WELCOME: a = "Music"; b = "Folders to watch"; break;
+		case P_VIDEOS: a = "Videos"; b = p.arg == VK_FILM ? "Films" : p.arg == VK_CLIP ? "Clips and series" : 0; if (b) ak = P_VIDEOS; break;
+		case P_WATCH: a = "Videos"; b = VL && p.arg >= 0 && p.arg < VL->n ? VL->v[p.arg].title : ""; break;
 		}
 		int maxw = search->left - 16 - x;
 		if (b)
@@ -512,7 +539,7 @@ public:
 			extern void go_back (); extern void go_fwd ();
 			if (ht->kind == TB_BACK) go_back ();
 			else if (ht->kind == TB_FWD) go_fwd ();
-			else if (ht->kind == TB_CRUMB) navigate (ht->a);
+			else if (ht->kind == TB_CRUMB) navigate (ht->a, ht->a == P_VIDEOS ? -1 : 0);
 			else if (ht->kind == TB_GRID) { g_albumList = false; save_settings (); refresh_all (); }
 			else if (ht->kind == TB_LIST) { g_albumList = true; save_settings (); refresh_all (); }
 		}
@@ -534,7 +561,7 @@ public:
 
 // ---- the content ----------------------------------------------------------------------------------------------
 enum { H_ALBUM = 1, H_ALBUM_PLAY, H_ARTIST, H_GENRE, H_FOLDER, H_ROW, H_HEAD, H_PLAY, H_SHUFFLE, H_FAVALL, H_MORE, H_SORT, H_QUEUE,
-       H_ADDFOLDER, H_DELFOLDER, H_DONE, H_SEEK, H_TRANSPORT, H_RESUME, H_SEEALL, H_NOWCLOSE, H_SCROLL };
+       H_ADDFOLDER, H_DELFOLDER, H_DONE, H_SEEK, H_TRANSPORT, H_RESUME, H_SEEALL, H_NOWCLOSE, H_SCROLL, H_VIDEO, H_VRESUME, H_OPENVID };
 class Content : public Widget
 {
 public:
@@ -650,37 +677,154 @@ public:
 		return y + ids.n * 32;
 	}
 
+	// a video's frame w wide (16:9), its length, how much was watched; under the pointer: play
+	void video_tile (int x, int y, int w, int vi, bool texts = true)
+	{
+		const Video &v = VL->v[vi];
+		int h = w * 9 / 16;
+		bool hv = hits.n == hot;
+		hits.add (x, y, w, h + (texts ? 44 : 0), H_VIDEO, vi);
+		if (y + h + 44 < 0 || y > height) return;
+		wk_rbox (canvas, x + 2, y + 3, w, h, 7, 0, 0, 40);
+		g_thumbs.draw (canvas, vi, x, y, w, h, 7, C_FIELD);
+		video_badges (x, y, w, h, v);
+		if (hv)
+		{
+			wk_rbox (canvas, x, y, w, h, 7, 0, 0, 50);
+			VPath c; c.circle (V (x + w / 2), V (y + h / 2), V (22)); c.fill (canvas, 0xFFFFFF, 230);
+			icon (canvas, I_PLAY, x + w / 2 - 10, y + h / 2 - 11, 22, 0x202028);
+		}
+		if (!texts) return;
+		text (canvas, x, y + h + 7, v.title, C_FIELD_TEXT, F_UI, 2, w);
+		char k[96]; video_kind_line (v, k, sizeof k);
+		if (!v.playable) { char t[140]; snprintf (t, sizeof t, "%s  \xC2\xB7  %s: not played here", k, codec_label (v.vcodec)); text (canvas, x, y + h + 26, t, col_dim (), F_SMALL, 0, w); }
+		else text (canvas, x, y + h + 26, k, col_dim (), F_SMALL, 0, w);
+	}
+	// over a video's frame: its length, the part watched (a red line), seen to the end, a codec not built in
+	void video_badges (int x, int y, int w, int h, const Video &v)
+	{
+		char t[24]; fmt_time (t, sizeof t, v.durMs);
+		if (v.durMs > 0)
+		{
+			int bw = tw (t, F_SMALL, 2) + 12;
+			wk_rbox (canvas, x + w - bw - 6, y + h - 25, bw, 18, 4, 0x101014, 0x101014, 200);
+			text_c (canvas, x + w - bw - 6, y + h - 25, bw, 18, t, 0xFFFFFF, F_SMALL, 2);
+		}
+		if (v.posMs > 0 && v.durMs > 0)
+		{
+			int bw = w - 14, f = (int) ((long long) v.posMs * bw / v.durMs); if (f > bw) f = bw; if (f < 3) f = 3;
+			wk_rbox (canvas, x + 7, y + h - 6, bw, 3, 1, 0x000000, 0x000000, 120);
+			wk_rbox (canvas, x + 7, y + h - 6, f, 3, 1, 0xE0383C, 0xE0383C);
+		}
+		else if (v.watched)
+		{
+			VPath c; c.circle (V (x + w - 15), V (y + 15), V (10)); c.fill (canvas, 0x101014, 190);
+			icon (canvas, I_CHECK, x + w - 22, y + 8, 14, 0xFFFFFF);
+		}
+		if (!v.playable)
+		{
+			const char *c = codec_label (v.vcodec);
+			int bw = tw (c, F_SMALL, 2) + 12;
+			wk_rbox (canvas, x + 6, y + 6, bw, 18, 4, 0x707078, 0x707078, 220);
+			text_c (canvas, x + 6, y + 6, bw, 18, c, 0xFFFFFF, F_SMALL, 2);
+		}
+	}
+	void small_button (int x, int y, int w, int ic, const char *label, int kind, int a)
+	{
+		bool h = hits.n == hot;
+		wk_rbox (canvas, x, y, w, 26, 5, wk_tone (C_ACCENT, h ? 150 : 140), wk_tone (C_ACCENT, h ? 128 : 118));
+		icon (canvas, ic, x + 9, y + 6, 14, 0xFFFFFF);
+		text_v (canvas, x + 28, y, 26, label, 0xFFFFFF, F_UI, 2);
+		hits.add (x, y, w, 26, kind, a);
+	}
+	// what to go on with: the video left half way -> its card at (x, y), cw wide
+	void resume_video_card (int x, int y, int cw, int vi)
+	{
+		const Video &v = VL->v[vi];
+		wk_rbox (canvas, x, y, cw, 78, 9, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, x, y, cw, 78, 9, wk_tone (C_BG, 110));
+		hits.add (x, y, cw, 78, H_VRESUME, vi);
+		int tw_ = 110, th = 62;
+		g_thumbs.draw (canvas, vi, x + 8, y + 8, tw_, th, 5, 0xFFFFFF);
+		video_badges (x + 8, y + 8, tw_, th, v);
+		int tx = x + 8 + tw_ + 12, tmax = cw - (tx - x) - 10;
+		text (canvas, tx, y + 10, v.title, C_FIELD_TEXT, F_BIG, 2, tmax);
+		char k[64], line[140], left[24]; video_kind_line (v, k, sizeof k);
+		int rest = v.durMs - v.posMs;
+		if (rest < 60000) snprintf (left, sizeof left, "%d s", rest > 0 ? rest / 1000 : 0); else fmt_long (left, sizeof left, rest);
+		snprintf (line, sizeof line, "%s  \xC2\xB7  %s left", k, left);
+		text (canvas, tx, y + 31, line, col_dim (), F_SMALL, 0, tmax);
+		small_button (tx, y + 46, 96, I_PLAY, "Resume", H_VRESUME, vi);
+	}
+	// the song playing (else the last played) -> its card
+	void resume_song_card (int x, int y, int cw, int cur, bool half)
+	{
+		const Song &s = *song (cur);
+		wk_rbox (canvas, x, y, cw, 78, 9, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, x, y, cw, 78, 9, wk_tone (C_BG, 110));
+		if (s.alb >= 0 && cur >= 0) g_covers.draw (canvas, s.alb, x + 9, y + 9, 60, 5, 0xFFFFFF);
+		bool playing = cur == g_playing && g_player.state == PS_PLAYING;
+		int tmax = cw - 82 - (half ? 56 : 160);
+		text (canvas, x + 82, y + 12, s.title, C_FIELD_TEXT, F_BIG, 2, tmax);
+		char line[200];
+		int pos = -1; if (s.alb >= 0 && cur >= 0) for (int i = 0; i < L->al[s.alb].n; i++) if (L->al[s.alb].songs[i] == cur) pos = i;
+		if (half && pos >= 0) snprintf (line, sizeof line, "%s  \xC2\xB7  song %d of %d", L->artist_of (s), pos + 1, L->al[s.alb].n);
+		else snprintf (line, sizeof line, "%s  \xC2\xB7  %s", L->artist_of (s), s.album);
+		text (canvas, x + 82, y + 34, line, col_dim (), F_SMALL, 0, tmax);
+		if (playing) { eq_bars (canvas, x + 82, y + 55, 12, C_ACCENT, g_tick); text (canvas, x + 100, y + 54, "Playing", C_ACCENT, F_SMALL, 2); }
+		else text (canvas, x + 82, y + 54, cur == g_playing ? "Paused" : "Played last", col_dim (), F_SMALL);
+		if (half)
+		{
+			bool h = hits.n == hot;
+			VPath c; c.circle (V (x + cw - 34), V (y + 39), V (18)); c.fill (canvas, h ? wk_tone (C_ACCENT, 150) : C_ACCENT);
+			icon (canvas, playing ? I_PAUSE : I_PLAY, x + cw - 43, y + 30, 18, 0xFFFFFF);
+			hits.add (x + cw - 52, y + 21, 36, 36, H_RESUME, cur);
+		}
+		else { band_button (x + cw - 130, y + 22, 118, playing ? I_PAUSE : I_PLAY, playing ? "Pause" : cur == g_playing ? "Resume" : "Play", true, H_RESUME); hits.h[hits.n - 1].a = cur; }
+	}
+
 	// ---- the pages ----
 	int draw_home (int x, int y, int w)
 	{
 		int hr = 0, mi = 0; kapi_get_datetime (0, 0, 0, &hr, &mi, 0);
 		const char *hello = hr < 5 ? "Good night" : hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
-		char sub[96]; snprintf (sub, sizeof sub, "%d songs  \xC2\xB7  %d albums  \xC2\xB7  %d playlists", L->n, L->nal, g_npl);
+		char sub[120];
+		if (VL->n) snprintf (sub, sizeof sub, "%d songs  \xC2\xB7  %d videos  \xC2\xB7  %d playlists", L->n, VL->n, g_npl);
+		else snprintf (sub, sizeof sub, "%d songs  \xC2\xB7  %d albums  \xC2\xB7  %d playlists", L->n, L->nal, g_npl);
 		section_head (x, y, w, hello, sub, 0, 0);
 		y += 50;
-		// go on with: the song playing, else the last played
+		// go on with: the video left half way; the song playing, else the last played
 		int cur = g_playing >= 0 ? g_playing : -1;
 		if (cur < 0) { unsigned long long best = 0; for (int i = 0; i < L->n; i++) if (L->s[i].lastPlayed > best) { best = L->s[i].lastPlayed; cur = i; } }
-		if (cur >= 0 && song (cur))
+		bool songCard = cur >= 0 && song (cur);
+		int vres = VL->resume_candidate ();
+		if (vres >= 0 && songCard)
 		{
-			const Song &s = *song (cur);
-			wk_rbox (canvas, x, y, w, 78, 9, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, x, y, w, 78, 9, wk_tone (C_BG, 110));
-			if (s.alb >= 0 && cur >= 0) g_covers.draw (canvas, s.alb, x + 9, y + 9, 60, 5, 0xFFFFFF);
-			text (canvas, x + 82, y + 12, s.title, C_FIELD_TEXT, F_BIG, 2, w - 300);
-			char line[200]; snprintf (line, sizeof line, "%s  \xC2\xB7  %s", L->artist_of (s), s.album);
-			text (canvas, x + 82, y + 36, line, col_dim (), F_UI, 0, w - 300);
-			bool playing = cur == g_playing && g_player.state == PS_PLAYING;
-			if (playing) { eq_bars (canvas, x + 82, y + 56, 12, C_ACCENT, g_tick); text (canvas, x + 100, y + 55, "Playing", C_ACCENT, F_SMALL, 2); }
-			else text (canvas, x + 82, y + 55, cur == g_playing ? "Paused" : "Played last", col_dim (), F_SMALL);
-			band_button (x + w - 130, y + 22, 118, playing ? I_PAUSE : I_PLAY, playing ? "Pause" : cur == g_playing ? "Resume" : "Play", true, H_RESUME);
-			hits.h[hits.n - 1].a = cur;
+			int cw = (w - 16) / 2;
+			resume_video_card (x, y, cw, vres);
+			resume_song_card (x + cw + 16, y, w - cw - 16, cur, true);
 			y += 96;
 		}
-		// rows of albums: recently played, recently added
+		else if (vres >= 0) { resume_video_card (x, y, w, vres); y += 96; }
+		else if (songCard) { resume_song_card (x, y, w, cur, false); y += 96; }
+		// rows: the albums played lately, the videos, the albums added lately
 		const int S = 128, G = 18;
 		int cols = (w + G) / (S + G); if (cols < 1) cols = 1;
-		for (int row = 0; row < 2; row++)
+		for (int row = 0; row < 3; row++)
 		{
+			if (row == 1)
+			{
+				IntList vl; VL->recent (vl);
+				if (!vl.n) continue;
+				text (canvas, x, y, "Videos", C_FIELD_TEXT, F_BIG, 2);
+				bool h = hits.n == hot;
+				text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : wk_mix (C_FIELD_TEXT, C_ACCENT, 200));
+				hits.add (x + w - 80, y, 80, 22, H_SEEALL, 2);
+				y += 32;
+				const int VW = 166, VG = 16;
+				int vc = (w + VG) / (VW + VG); if (vc < 1) vc = 1;
+				for (int i = 0; i < vl.n && i < vc; i++) video_tile (x + i * (VW + VG), y, VW, vl.v[i]);
+				y += VW * 9 / 16 + 62;
+				continue;
+			}
 			IntList al;
 			int *o = (int *) malloc (sizeof (int) * (L->nal ? L->nal : 1));
 			if (row == 0)
@@ -698,12 +842,38 @@ public:
 			text (canvas, x, y, row == 0 ? "Recently played" : "Recently added", C_FIELD_TEXT, F_BIG, 2);
 			bool h = hits.n == hot;
 			text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : wk_mix (C_FIELD_TEXT, C_ACCENT, 200));
-			hits.add (x + w - 80, y, 80, 22, H_SEEALL, row);
+			hits.add (x + w - 80, y, 80, 22, H_SEEALL, row == 0 ? 0 : 1);
 			y += 32;
 			for (int i = 0; i < al.n && i < cols; i++) album_tile (x + i * (S + G), y, S, al.v[i]);
 			y += S + 62;
 		}
 		return y;
+	}
+	// the videos of a kind: a grid of their frames
+	int draw_videos (int x, int y, int w)
+	{
+		int kind = page ().arg;
+		IntList vl; VL->list (vl, kind);
+		long long ms = 0; for (int i = 0; i < vl.n; i++) ms += VL->v[vl.v[i]].durMs;
+		char sub[96], d[24]; fmt_long (d, sizeof d, ms);
+		snprintf (sub, sizeof sub, vl.n == 1 ? "%d video  \xC2\xB7  %s" : "%d videos  \xC2\xB7  %s", vl.n, d);
+		section_head (x, y, w, kind == VK_FILM ? "Films" : kind == VK_CLIP ? "Clips and series" : "Videos", sub, 0, 0);
+		y += 54;
+		if (!vl.n)
+		{
+			if (g_scan && !g_scan->done) { char t[64]; snprintf (t, sizeof t, "Looking for videos...  %d", g_scan->vfound); text_c (canvas, x, y + 80, w, 24, t, C_FIELD_TEXT, F_BIG, 2); return y + 120; }
+			VPath c; c.circle (V (x + w / 2), V (y + 70), V (40)); c.fill (canvas, C_ACCENT); icon (canvas, I_FILM, x + w / 2 - 20, y + 50, 40, 0xFFFFFF);
+			text_c (canvas, x, y + 124, w, 24, kind == VK_FILM ? "No films yet." : kind == VK_CLIP ? "No clips or episodes yet." : "No videos yet.", C_FIELD_TEXT, F_BIG, 2);
+			text_c (canvas, x, y + 154, w, 20, "Put them in SD:/Videos (Films, Series, Clips...) or in a folder watched: Media Player finds them at each start.", col_dim ());
+			text_c (canvas, x, y + 174, w, 20, "WebM, MKV and MP4 files, their picture in VP9, VP8 or AV1 (H.264 is not played yet).", col_dim ());
+			band_button (x + w / 2 - 85, y + 210, 170, I_PLAY, "Open a video...", true, H_OPENVID);
+			return y + 260;
+		}
+		const int S = 206, G = 22;
+		int cols = (w + G) / (S + G); if (cols < 1) cols = 1;
+		int gx = x + (w - (cols * S + (cols - 1) * G)) / 2, rowH = S * 9 / 16 + 64;
+		for (int i = 0; i < vl.n; i++) video_tile (gx + (i % cols) * (S + G), y + (i / cols) * rowH, S, vl.v[i]);
+		return y + ((vl.n + cols - 1) / cols) * rowH;
 	}
 	int draw_albums (int x, int y, int w)
 	{
@@ -908,7 +1078,13 @@ public:
 		for (int i = 0; i < L->nal && na < cols; i++)
 			if (matches (L->al[i].title, g_search) || matches (L->al[i].artist, g_search)) { album_tile (x + na * (S + G), y, S, i); na++; }
 		if (na) y += S + 62;
-		if (!rows.n && !na) { text (canvas, x, y, "Nothing found.", col_dim ()); return y + 40; }
+		// the videos that match
+		int nv = 0;
+		const int VW = 166, VG = 16; int vc = (w + VG) / (VW + VG); if (vc < 1) vc = 1;
+		for (int i = 0; i < VL->n && nv < vc; i++)
+			if (!VL->v[i].ext && matches (VL->v[i].title, g_search)) { video_tile (x + nv * (VW + VG), y, VW, i); nv++; }
+		if (nv) y += VW * 9 / 16 + 62;
+		if (!rows.n && !na && !nv) { text (canvas, x, y, "Nothing found.", col_dim ()); return y + 40; }
 		return song_table (x, y, w, rows, true, false);
 	}
 	int draw_welcome (int x, int y, int w)
@@ -921,7 +1097,7 @@ public:
 		y += 120;
 		text_c (canvas, x, y, w, 34, "Your music, all in one place", C_FIELD_TEXT, F_H1, 2);
 		text_c (canvas, x, y + 40, w, 20, "Media Player finds the songs in the folders you give it, and looks again at each start.", col_dim ());
-		text_c (canvas, x, y + 60, w, 20, "MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont).", col_dim ());
+		text_c (canvas, x, y + 60, w, 20, "MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: WebM, MKV and MP4 (VP9, VP8, AV1).", col_dim ());
 		int fw = 460, fx = mx - fw / 2, fy = y + 100;
 		int fh_ = 10 + (g_nfolders ? g_nfolders : 1) * 36;
 		wk_rbox (canvas, fx, fy, fw, fh_, 8, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, fx, fy, fw, fh_, 8, wk_tone (C_BG, 110));
@@ -930,10 +1106,12 @@ public:
 			int ry = fy + 5 + i * 36;
 			icon (canvas, I_FOLDER, fx + 14, ry + 8, 20, 0);
 			text_v (canvas, fx + 44, ry, 36, g_folders[i], 0x202020, F_UI, 2, fw - 200);
-			int cnt = 0; int pl = (int) strlen (g_folders[i]);
+			int cnt = 0, vc = 0; int pl = (int) strlen (g_folders[i]);
 			for (int k = 0; L && k < L->n; k++) if (!strncasecmp (L->s[k].path, g_folders[i], (size_t) pl)) cnt++;
-			char t[48];
-			if (g_scan && !g_scan->done) snprintf (t, sizeof t, "looking...  %d", g_scan->found); else snprintf (t, sizeof t, "%d songs found", cnt);
+			for (int k = 0; VL && k < VL->n; k++) if (!strncasecmp (VL->v[k].path, g_folders[i], (size_t) pl)) vc++;
+			char t[64];
+			if (g_scan && !g_scan->done) snprintf (t, sizeof t, "looking...  %d", g_scan->found + g_scan->vfound);
+			else if (vc) snprintf (t, sizeof t, "%d songs, %d videos", cnt, vc); else snprintf (t, sizeof t, "%d songs found", cnt);
 			text_r (canvas, fx + fw - 44, ry, 36, t, 0x707070, F_SMALL);
 			bool h = hits.n == hot;
 			icon (canvas, I_CLOSE, fx + fw - 30, ry + 11, 14, h ? 0xC04040 : 0x909090);
@@ -1156,6 +1334,8 @@ void Content::onDraw ()
 	case P_NOW: yEnd = draw_now (x, y0, w); contentH = height; return;
 	case P_SEARCH: yEnd = draw_search (x, y0, w); break;
 	case P_WELCOME: yEnd = draw_welcome (x, y0, w); break;
+	case P_VIDEOS: yEnd = draw_videos (x, y0, w); break;
+	case P_WATCH: yEnd = y0; break;
 	}
 	contentH = yEnd + sy_ + 30;
 	// the scroll bar
@@ -1240,18 +1420,36 @@ void new_playlist_dialog (const IntList *ids)
 }
 
 // ---- navigation --------------------------------------------------------------------------------------------
+static bool video_start (int vi, bool fromStart);
+// the page changed: leaving a video closes it (where it was left kept); coming back to one opens it again
+static void page_changed (int oldKind)
+{
+	if (oldKind == P_WATCH && page ().kind != P_WATCH) video_close ();
+	if (page ().kind == P_WATCH && !g_vp.active ())
+	{
+		int vi = page ().arg;
+		if (vi < 0 || vi >= (VL ? VL->n : 0) || !VL->v[vi].playable || !video_start (vi, false)) { page ().kind = P_HOME; page ().arg = 0; }
+	}
+}
 static void navigate (int kind, int arg)
 {
 	Page &cur = page ();
 	if (cur.kind == kind && cur.arg == arg && kind != P_SEARCH) return;
+	int old = cur.kind;
 	if (g_hpos < 63) g_hpos++; else memmove (g_hist, g_hist + 1, sizeof (Page) * 63);
 	g_hist[g_hpos] = Page { kind, arg, 0, kind == P_SONGS ? 2 : 0, false };
 	g_nhist = g_hpos + 1;
 	g_content->rowsValid = false; g_content->reset_selection ();
+	page_changed (old);
 	refresh_all ();
 }
-void go_back () { if (g_hpos > 0) { g_hpos--; g_content->rowsValid = false; g_content->reset_selection (); refresh_all (); } }
-void go_fwd () { if (g_hpos < g_nhist - 1) { g_hpos++; g_content->rowsValid = false; g_content->reset_selection (); refresh_all (); } }
+void go_back () { if (g_hpos > 0) { int old = page ().kind; g_hpos--; g_content->rowsValid = false; g_content->reset_selection (); page_changed (old); refresh_all (); } }
+void go_fwd () { if (g_hpos < g_nhist - 1) { int old = page ().kind; g_hpos++; g_content->rowsValid = false; g_content->reset_selection (); page_changed (old); refresh_all (); } }
+static void go_back_page ()
+{	// (out of a video: back, else home)
+	if (g_hpos > 0) go_back ();
+	else { int old = page ().kind; g_hist[0] = Page { P_HOME, 0, 0, 0, false }; page_changed (old); refresh_all (); }
+}
 
 // ---- the content's events ---------------------------------------------------------------------------------------
 static void context_menu (int mx, int my, IntList &ids, bool inPlaylist)
@@ -1358,6 +1556,11 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	if (br && in && !pressed)
 	{	// a right click: the row's menu (the selection, if it is in it)
 		pressed = true;
+		if (ht && ht->kind == H_VIDEO)
+		{
+			int ax = 0, ay = 0; for (Widget *p = this; p && p != g_root; p = p->parent) { ax += p->left; ay += p->top; }
+			extern void video_menu (int, int, int); video_menu (ax + mx, ay + my, ht->a);
+		}
 		if (ht && ht->kind == H_ROW)
 		{
 			ensure_sel ();
@@ -1416,7 +1619,9 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 			if (ht->a == g_playing) toggle_play ();
 			else { const Song &s = L->s[ht->a]; IntList l; int st = 0; for (int i = 0; s.alb >= 0 && i < L->al[s.alb].n; i++) { if (L->al[s.alb].songs[i] == ht->a) st = i; l.push (L->al[s.alb].songs[i]); } play_list (l, st, false); }
 			break;
-		case H_SEEALL: if (ht->a == 0) navigate (P_SONGS); else navigate (P_PLAYLIST, PL_RECENT); break;
+		case H_SEEALL: if (ht->a == 0) navigate (P_SONGS); else if (ht->a == 2) navigate (P_VIDEOS, -1); else navigate (P_PLAYLIST, PL_RECENT); break;
+		case H_VIDEO: case H_VRESUME: { extern void play_video (int, bool); play_video (ht->a, false); break; }
+		case H_OPENVID: { extern void m_open_video (); m_open_video (); break; }
 		case H_NOWCLOSE: go_back (); break;
 		case H_ADDFOLDER:
 		{
@@ -1628,9 +1833,422 @@ public:
 	}
 };
 
+// ---- the videos: playing one ----------------------------------------------------------------------------------------
+// where it was left (seen to the end: from the start next time, marked watched)
+static void video_save_pos ()
+{
+	if (g_vidx < 0 || g_vidx >= VL->n || !g_vp.active ()) return;
+	Video &x = VL->v[g_vidx];
+	long long pos = g_vp.pos_ms (), len = g_vp.len_ms () > 0 ? g_vp.len_ms () : x.durMs;
+	if (g_vp.st.ended || (len > 0 && pos >= len - (len > 600000 ? 60000 : len / 20))) { x.posMs = 0; if (g_vp.st.ended || pos > 0) x.watched = true; }
+	else x.posMs = pos < 5000 ? 0 : (int) pos;
+	if (len > 0 && !x.durMs) x.durMs = (int) len;
+	VL->save ();
+}
+static void video_close ()
+{
+	if (!g_vp.active ()) { g_vidx = -1; g_thumbs.busy = false; return; }
+	video_save_pos ();
+	g_vp.close ();
+	g_vidx = -1; g_thumbs.busy = false;
+}
+// the video vi opened (the music stopped: it gives the sound output back) -> false: it cannot be
+static bool video_start (int vi, bool fromStart)
+{
+	if (vi < 0 || vi >= VL->n) return false;
+	if (g_player.state != PS_STOPPED || g_player.sound == 1)
+	{	// the music's thread lets the sound go (a video's sound takes it)
+		int r = g_player.released; g_player.release ();
+		for (int i = 0; i < 100 && g_player.released == r; i++) kapi_msleep (5);
+		g_now->invalidate (true);
+	}
+	video_close ();
+	Video &x = VL->v[vi];
+	int r = g_vp.open (x.path, fromStart || x.watched && !x.posMs ? 0 : x.posMs, g_volume, g_muted);
+	if (r != AV_OK)
+	{
+		wk_messagebox ("Media Player", r == AV_EUNSUP ? "This file is not a video Media Player\nreads (WebM, MKV, MP4, MOV are)." : "This video cannot be read.", MB_OK);
+		return false;
+	}
+	g_vidx = vi; g_vpEnded = false;
+	x.lastPlayed = now_stamp ();
+	VL->save ();
+	g_vpMoveT = kapi_get_ticks (); g_vpSaveT = g_vpMoveT;
+	g_thumbs.busy = true;
+	return true;
+}
+void play_video (int vi, bool fromStart)
+{
+	if (vi < 0 || vi >= VL->n) return;
+	const Video &x = VL->v[vi];
+	if (!x.playable)
+	{
+		char m[300], t[28]; scopy (t, x.title, sizeof t);
+		snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D: its picture is %s,\nwhich Onyx does not play yet.\n(VP9, VP8 and AV1 videos play.)", t, codec_label (x.vcodec));
+		wk_messagebox ("Media Player", m, MB_OK);
+		return;
+	}
+	if (!video_start (vi, fromStart)) return;
+	if (page ().kind == P_WATCH) { page ().arg = vi; refresh_all (); }
+	else navigate (P_WATCH, vi);
+}
+static void video_toggle ()
+{
+	if (!g_vp.active ()) return;
+	if (g_vp.st.ended) { g_vp.seek (0); g_vp.play (); g_vpEnded = false; }
+	else if (g_vp.st.paused) g_vp.play ();
+	else { g_vp.pause (); video_save_pos (); }
+	g_vpMoveT = kapi_get_ticks ();
+}
+static void video_seek_by (long long ms) { if (g_vp.active ()) { long long t = g_vp.pos_ms () + ms; g_vp.seek (t < 0 ? 0 : t); g_vpEnded = false; g_vpMoveT = kapi_get_ticks (); } }
+static void video_volume (int v) { g_volume = v < 0 ? 0 : v > 100 ? 100 : v; g_muted = false; g_player.volume = g_volume; g_vp.set_volume (g_volume, g_muted); }
+// the next episode of the series playing, -1 none
+static int next_episode (int vi)
+{
+	if (vi < 0 || vi >= VL->n || !VL->v[vi].episode) return -1;
+	IntList l; VL->list (l, VK_CLIP);
+	int k = l.find (vi);
+	if (k >= 0 && k + 1 < l.n) { const Video &a = VL->v[vi], &b = VL->v[l.v[k + 1]]; if (!strcmp (a.title, b.title) && b.episode) return l.v[k + 1]; }
+	return -1;
+}
+
+// What the view shows (the window's, or the whole screen): the frame, the controls over it while the pointer
+// moves (or paused), what loads, the end (again; the next episode), an error.
+enum { W_BACK = 1, W_PLAY, W_B10, W_F10, W_SEEK, W_MUTE, W_VOL, W_FULL, W_AGAIN, W_NEXTEP, W_BIGPLAY };
+struct WatchUi { HitList hits; int hot, drag; long long dragMs; bool full; };
+static bool watch_controls (const WatchUi &u)
+{
+	return !g_vp.active () || g_vp.st.paused || g_vp.st.ended || g_vp.st.error || u.drag || kapi_get_ticks () - g_vpMoveT < 300;
+}
+static int seek_x0 () { return 24; }
+static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
+{
+	u.hits.clear ();
+	g_vp.draw (cv, 0, 0, W, H);
+	const Video *x = g_vidx >= 0 && g_vidx < VL->n ? &VL->v[g_vidx] : 0;
+	const av_player_status &st = g_vp.st;
+	int cx = W / 2, cy = H / 2;
+	if (!g_vp.frame && x && !st.error)
+	{	// (the first frame not there yet: the video's own, from the library, dimmed)
+		int tw_ = W * 2 / 3, th = tw_ * 9 / 16; if (th > H * 2 / 3) { th = H * 2 / 3; tw_ = th * 16 / 9; }
+		g_thumbs.draw (cv, g_vidx, cx - tw_ / 2, cy - th / 2, tw_, th, 0, 0);
+		wk_rbox (cv, cx - tw_ / 2, cy - th / 2, tw_, th, 0, 0, 0, 120);
+	}
+	bool loading = g_vp.active () && !st.error && !st.ended && (st.seeking || st.waiting || st.ready < AV_HAVE_CURRENT_DATA || !g_vp.frame);
+	if (st.error)
+	{
+		wk_rbox (cv, cx - 260, cy - 60, 520, 120, 12, 0x1C1C22, 0x1C1C22, 230);
+		text_c (cv, cx - 260, cy - 44, 520, 26, "This video cannot be played.", 0xFFFFFF, F_BIG, 2);
+		const char *why = st.error == AV_EUNSUP ? "Its picture or sound is in a format Onyx does not decode yet." : "The file is damaged, or its data could not be read.";
+		text_c (cv, cx - 260, cy - 10, 520, 20, why, 0xC8CCD4);
+		text_c (cv, cx - 260, cy + 12, 520, 20, "(Onyx plays VP9, VP8 and AV1 pictures; Opus, FLAC, MP3 and PCM sound.)", 0x9098A4, F_SMALL);
+	}
+	else if (st.ended)
+	{
+		int ne = next_episode (g_vidx);
+		int bw = ne >= 0 ? 380 : 200;
+		wk_rbox (cv, cx - bw / 2, cy - 34, bw, 68, 12, 0x1C1C22, 0x1C1C22, 210);
+		int bx = cx - bw / 2 + 16;
+		bool h = u.hits.n == u.hot;
+		wk_rbox (cv, bx, cy - 18, 168, 36, 8, h ? 0xFFFFFF : 0xE8E8EE, h ? 0xF0F0F4 : 0xD8D8E0);
+		icon (cv, I_REPEAT, bx + 14, cy - 9, 18, 0x202028); text_v (cv, bx + 42, cy - 18, 36, "Watch again", 0x202028, F_UI, 2);
+		u.hits.add (bx, cy - 18, 168, 36, W_AGAIN);
+		if (ne >= 0)
+		{
+			bx += 180; h = u.hits.n == u.hot;
+			wk_rbox (cv, bx, cy - 18, 168, 36, 8, wk_tone (C_ACCENT, h ? 150 : 140), wk_tone (C_ACCENT, h ? 128 : 118));
+			char t[48]; snprintf (t, sizeof t, "Next: S%d E%d", VL->v[ne].season, VL->v[ne].episode);
+			icon (cv, I_NEXT, bx + 14, cy - 9, 18, 0xFFFFFF); text_v (cv, bx + 42, cy - 18, 36, t, 0xFFFFFF, F_UI, 2);
+			u.hits.add (bx, cy - 18, 168, 36, W_NEXTEP, ne);
+		}
+	}
+	else if (loading)
+	{	// a turning arc
+		int a0 = (int) (kapi_get_ticks () * 9 % 360);
+		VPath r; r.arc (V (cx), V (cy), V (24), a0, a0 + 270, V (4)); r.fill (cv, 0xFFFFFF, 220);
+	}
+	else if (st.paused && g_vp.frame)
+	{
+		bool h = u.hits.n == u.hot;
+		VPath c; c.circle (V (cx), V (cy), V (36)); c.fill (cv, 0x000000, h ? 170 : 130);
+		icon (cv, I_PLAY, cx - 16, cy - 18, 36, 0xFFFFFF);
+		u.hits.add (cx - 36, cy - 36, 72, 72, W_BIGPLAY);
+	}
+	if (!watch_controls (u)) return;
+	// the top: back, the title
+	for (int k = 0; k < 30; k++) wk_rbox (cv, 0, k * 3, W, 3, 0, 0, 0, (30 - k) * (30 - k) * 160 / 900);
+	{
+		bool h = u.hits.n == u.hot;
+		VPath c; c.circle (V (36), V (36), V (18)); c.fill (cv, 0xFFFFFF, h ? 90 : 45);
+		icon (cv, u.full ? I_UNFULL : I_BACK, u.full ? 26 : 25, 26, 20, 0xFFFFFF);
+		u.hits.add (18, 18, 36, 36, W_BACK);
+		if (x)
+		{
+			text (cv, 68, 16, x->title, 0xFFFFFF, F_BIG, 2, W - 100);
+			char k[64], line[200]; video_kind_line (*x, k, sizeof k);
+			if (st.width > 0) snprintf (line, sizeof line, "%s  \xC2\xB7  %d \xC3\x97 %d  \xC2\xB7  %s%s%s", k, st.width, st.height, codec_label (x->vcodec), x->acodec[0] ? " / " : "", x->acodec[0] ? codec_label (x->acodec) : "");
+			else snprintf (line, sizeof line, "%s", k);
+			text (cv, 68, 38, line, 0xC8CCD4, F_SMALL, 0, W - 100);
+		}
+	}
+	// the bottom: the position, the transport, the volume, full screen
+	for (int k = 0; k < 36; k++) wk_rbox (cv, 0, H - 108 + k * 3, W, 3, 0, 0, 0, (k + 1) * (k + 1) * 180 / 1296);
+	long long len = g_vp.len_ms () > 0 ? g_vp.len_ms () : x ? x->durMs : 0;
+	long long pos = u.drag == W_SEEK ? u.dragMs : g_vp.pos_ms ();
+	int sx = seek_x0 (), sw = W - 48, sy = H - 62;
+	{
+		int f = len > 0 ? (int) (pos * sw / len) : 0; if (f > sw) f = sw; if (f < 0) f = 0;
+		bool h = u.hits.n == u.hot || u.drag == W_SEEK;
+		int th = h ? 5 : 4;
+		wk_rbox (cv, sx, sy - th / 2, sw, th, 2, 0xFFFFFF, 0xFFFFFF, 70);
+		if (f > 0) wk_rbox (cv, sx, sy - th / 2, f, th, 2, 0xE0383C, 0xE0383C);
+		VPath k; k.circle (V (sx + f), V (sy) + V (1) / 2, V (h ? 8 : 6)); k.fill (cv, 0xE0383C);
+		u.hits.add (sx - 8, sy - 12, sw + 16, 24, W_SEEK);
+	}
+	int by = H - 44;
+	auto btn = [&] (int bx, int ic, int sz, int kind) { bool h = u.hits.n == u.hot; icon (cv, ic, bx, by + (28 - sz) / 2, sz, h ? 0xFFFFFF : 0xE4E6EC); u.hits.add (bx - 6, by - 4, sz + 12, 36, kind); };
+	btn (sx, g_vp.st.paused || g_vp.st.ended ? I_PLAY : I_PAUSE, 26, W_PLAY);
+	btn (sx + 46, I_BACK10, 22, W_B10);
+	btn (sx + 82, I_FWD10, 22, W_F10);
+	char a[16], b[16], t[40]; fmt_time (a, sizeof a, pos); fmt_time (b, sizeof b, len); snprintf (t, sizeof t, "%s / %s", a, b);
+	text_v (cv, sx + 122, by, 28, t, 0xFFFFFF, F_UI, 0);
+	int rx = W - 24;
+	btn (rx - 22, u.full ? I_UNFULL : I_FULL, 22, W_FULL);
+	int vw = 90, vx = rx - 22 - 22 - vw, vf = g_muted ? 0 : g_volume * vw / 100;
+	wk_rbox (cv, vx, by + 12, vw, 4, 2, 0xFFFFFF, 0xFFFFFF, 70);
+	if (vf) wk_rbox (cv, vx, by + 12, vf, 4, 2, 0xFFFFFF, 0xFFFFFF);
+	{ VPath k; k.circle (V (vx + vf), V (by + 14), V (6)); k.fill (cv, 0xFFFFFF); }
+	u.hits.add (vx - 6, by, vw + 12, 28, W_VOL);
+	btn (vx - 34, g_muted || !g_volume ? I_MUTE : I_VOLUME, 20, W_MUTE);
+}
+static void video_full_screen ();
+// a click (or the end of a drag) on the view's controls; true: handled
+static bool watch_press (WatchUi &u, const Hit *ht, int mx)
+{
+	if (!ht) return false;
+	switch (ht->kind)
+	{
+	case W_BACK: if (u.full) return true; go_back_page (); return true;
+	case W_PLAY: case W_BIGPLAY: video_toggle (); return true;
+	case W_B10: video_seek_by (-10000); return true;
+	case W_F10: video_seek_by (10000); return true;
+	case W_MUTE: g_muted = !g_muted; g_player.volume = g_muted ? 0 : g_volume; g_vp.set_volume (g_volume, g_muted); save_settings (); return true;
+	case W_FULL: if (!u.full) video_full_screen (); return true;
+	case W_AGAIN: g_vp.seek (0); g_vp.play (); g_vpEnded = false; return true;
+	case W_NEXTEP: play_video (ht->a, true); return true;
+	case W_SEEK: case W_VOL: (void) mx; return true;
+	}
+	return false;
+}
+// a drag on the position or the volume: its value from x
+static void watch_drag (WatchUi &u, int mx, int W, bool up)
+{
+	if (u.drag == W_SEEK)
+	{
+		long long len = g_vp.len_ms () > 0 ? g_vp.len_ms () : g_vidx >= 0 ? VL->v[g_vidx].durMs : 0;
+		int sw = W - 48, p = mx - seek_x0 (); if (p < 0) p = 0; if (p > sw) p = sw;
+		u.dragMs = len * p / sw;
+		if (up) { g_vp.seek (u.dragMs); g_vpEnded = false; u.drag = 0; }
+	}
+	else if (u.drag == W_VOL)
+	{
+		int vw = 90, vx = W - 24 - 22 - 22 - vw, p = mx - vx; if (p < 0) p = 0; if (p > vw) p = vw;
+		video_volume (p * 100 / vw);
+		if (up) { u.drag = 0; save_settings (); }
+	}
+	g_vpMoveT = kapi_get_ticks ();
+}
+
+class WatchView : public Widget
+{
+public:
+	WatchUi u; bool shown; unsigned lastClickT;
+	WatchView (int l, int t, int w, int h) : Widget (l, t, w, h), shown (false), lastClickT (0) { u.hot = -1; u.drag = 0; u.dragMs = 0; u.full = false; u.hits.clear (); }
+	unsigned bgColor () override { return 0; }
+	void onDraw () override { shown = watch_controls (u); draw_watch (canvas, width, height, u); }
+	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
+	{
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		if (in && !shown) invalidate (true);
+		if (in) g_vpMoveT = kapi_get_ticks ();
+		if (u.drag) { watch_drag (u, mx, width, !bl); invalidate (true); return true; }
+		if (wheel && in) { video_volume (g_volume + wheel * 5); invalidate (true); return true; }
+		const Hit *ht = in ? u.hits.at (mx, my) : 0;
+		int nh = ht ? (int) (ht - u.hits.h) : -1;
+		if (nh != u.hot) { u.hot = nh; invalidate (true); }
+		if (bl && !pressed)
+		{
+			pressed = true;
+			if (ht && (ht->kind == W_SEEK || ht->kind == W_VOL)) { u.drag = ht->kind; watch_drag (u, mx, width, false); invalidate (true); }
+			return in;
+		}
+		if (!bl && pressed)
+		{
+			pressed = false;
+			if (ht) { watch_press (u, ht, mx); invalidate (true); return true; }
+			if (!in) return false;
+			// on the picture: play / pause; twice: full screen
+			unsigned now = kapi_get_ticks ();
+			video_toggle ();
+			if (now - lastClickT < 45) { lastClickT = 0; video_toggle (); video_full_screen (); }
+			else lastClickT = now;
+			invalidate (true);
+			return true;
+		}
+		return in;
+	}
+};
+
+// the keys of the view (the window's and full screen's): true if taken
+static bool watch_key (long k, bool full)
+{
+	if (!g_vp.active ()) return false;
+	g_vpMoveT = kapi_get_ticks ();
+	switch (k)
+	{
+	case ' ': case 'k': case 'K': video_toggle (); return true;
+	case KEY_LEFT: case 'j': video_seek_by (-10000); return true;
+	case KEY_RIGHT: case 'l': video_seek_by (10000); return true;
+	case KEY_UP: video_volume (g_volume + 5); return true;
+	case KEY_DOWN: video_volume (g_volume - 5); return true;
+	case KEY_HOME: g_vp.seek (0); return true;
+	case 'm': case 'M': g_muted = !g_muted; g_vp.set_volume (g_volume, g_muted); return true;
+	case 'f': case 'F': if (!full) video_full_screen (); return !full;
+	}
+	if (k >= '0' && k <= '9' && g_vp.len_ms () > 0) { g_vp.seek (g_vp.len_ms () * (k - '0') / 10); return true; }
+	return false;
+}
+
+// ---- full screen: the video alone, the controls over it while the pointer moves ---------------------------------------
+static volatile long g_fsKey; static volatile int g_fsX = -1, g_fsY = -1, g_fsBtn, g_fsDown, g_fsUp, g_fsWheel, g_fsMoved;
+static void fs_key (unsigned long, int ev, gui_value v) { if (ev == GUI_EVENT_KEY) g_fsKey = (long) v; }
+static void fs_ptr (unsigned long, int ev, gui_value v)
+{
+	if (ev == GUI_EVENT_PTR_MOVE || ev == GUI_EVENT_PTR_DOWN || ev == GUI_EVENT_PTR_UP) { g_fsX = GUI_PTR_X (v); g_fsY = GUI_PTR_Y (v); g_fsMoved = 1; }
+	if (ev == GUI_EVENT_PTR_DOWN && (GUI_PTR_CHANGED (v) & 1)) { g_fsDown = 1; g_fsBtn = 1; }
+	if (ev == GUI_EVENT_PTR_UP && (GUI_PTR_CHANGED (v) & 1)) { g_fsUp = 1; g_fsBtn = 0; }
+	if (ev == GUI_EVENT_PTR_WHEEL) g_fsWheel += GUI_PTR_WHEEL (v);
+}
+static void video_full_screen ()
+{
+	if (!g_vp.active ()) return;
+	int W, H;
+	unsigned *fb = kapi_fullscreen_begin (&W, &H);
+	if (!fb) return;
+	kapi_set_key_handler (fs_key); kapi_set_pointer_handler (fs_ptr);
+	g_fsKey = 0; g_fsDown = g_fsUp = g_fsWheel = g_fsMoved = 0;
+	Canvas cv; cv.adopt (fb, W, H, W);
+	static WatchUi u; u.hits.clear (); u.hot = -1; u.drag = 0; u.full = true;
+	unsigned serial = ~0u, gen = ~0u, lastClick = 0; bool shown = true, dirty = true;
+	g_vpMoveT = kapi_get_ticks ();
+	for (;;)
+	{
+		kapi_pump_wait (8);
+		if (wk_quit ()) break;
+		bool nf = g_vp.poll ();
+		long k = g_fsKey; g_fsKey = 0;
+		if (k == 27 || k == KEY_F1 + 10 || ((k == 'f' || k == 'F') && !u.drag)) break;
+		if (k && watch_key (k, true)) dirty = true;
+		if (g_fsMoved) { g_fsMoved = 0; g_vpMoveT = kapi_get_ticks (); if (!shown) dirty = true; }
+		if (g_fsWheel) { video_volume (g_volume + g_fsWheel * 5); g_fsWheel = 0; dirty = true; }
+		const Hit *ht = u.hits.at (g_fsX, g_fsY);
+		int nh = ht ? (int) (ht - u.hits.h) : -1;
+		if (nh != u.hot) { u.hot = nh; dirty = true; }
+		if (u.drag) { watch_drag (u, g_fsX, W, g_fsUp != 0); g_fsUp = 0; g_fsDown = 0; dirty = true; }
+		if (g_fsDown) { g_fsDown = 0; if (ht && (ht->kind == W_SEEK || ht->kind == W_VOL)) { u.drag = ht->kind; watch_drag (u, g_fsX, W, false); } dirty = true; }
+		if (g_fsUp)
+		{
+			g_fsUp = 0; dirty = true;
+			if (ht && ht->kind == W_BACK) break;
+			if (ht && ht->kind == W_FULL) break;
+			if (!watch_press (u, ht, g_fsX))
+			{
+				unsigned now = kapi_get_ticks ();
+				video_toggle ();
+				if (now - lastClick < 45) { video_toggle (); break; }
+				lastClick = now;
+			}
+			if (!g_vp.active ()) break;
+		}
+		bool sh = watch_controls (u);
+		if (sh != shown) { shown = sh; dirty = true; }
+		if (nf || g_vp.serial != serial) { serial = g_vp.serial; dirty = true; }
+		if (g_vp.statusGen != gen) { gen = g_vp.statusGen; dirty = true; }
+		bool loading = !g_vp.st.error && !g_vp.st.ended && (g_vp.st.seeking || g_vp.st.waiting || !g_vp.frame);
+		if (loading) dirty = true;
+		if (g_vp.st.ended && !g_vpEnded) { g_vpEnded = true; video_save_pos (); }
+		if (kapi_get_ticks () - g_vpSaveT > 1500) { g_vpSaveT = kapi_get_ticks (); if (!g_vp.st.paused) video_save_pos (); }
+		g_thumbs.busy = !g_vp.st.paused;
+		if (dirty) { draw_watch (cv, W, H, u); kapi_present_fb (); dirty = false; }
+	}
+	kapi_fullscreen_end ();
+	g_root->attach ();
+	g_vpMoveT = kapi_get_ticks ();
+	refresh_all ();
+}
+
+// a video's facts
+class VPropsBox : public Modal
+{
+	char m_lines[12][2][160]; int m_n;
+public:
+	VPropsBox (const Video &x) : Modal (540, 330), m_n (0)
+	{
+		centre (this);
+		char t[160], k[64];
+		add ("Title", x.title);
+		video_kind_line (x, k, sizeof k); add ("Kind", k);
+		fmt_time (t, sizeof t, x.durMs); add ("Length", t);
+		if (x.w) { snprintf (t, sizeof t, "%d \xC3\x97 %d", x.w, x.h); add ("Picture", t); }
+		snprintf (t, sizeof t, "%s%s", codec_label (x.vcodec), x.playable ? "" : "  (not decoded by Onyx yet)"); add ("Video", t);
+		if (x.acodec[0]) add ("Sound", codec_label (x.acodec));
+		snprintf (t, sizeof t, "%s  \xC2\xB7  %.1f MB", ext_of (x.path), x.size / 1048576.0); add ("File", t);
+		add ("Where", x.path);
+		if (x.posMs > 0) { char a[24]; fmt_time (a, sizeof a, x.posMs); snprintf (t, sizeof t, "left at %s", a); add ("Watched", t); }
+		else if (x.watched) add ("Watched", "to the end");
+		Button *b = new Button (width - 102, height - 44, 86, 30, "Close", dlg_btn); b->tag = 1; addChild (b);
+	}
+	void add (const char *k, const char *v) { if (!v || !v[0] || m_n >= 12) return; scopy (m_lines[m_n][0], k, 160); scopy (m_lines[m_n][1], v, 160); m_n++; }
+	void onButton (int tag) override { close (tag); }
+	bool onKey (long k) override { if (k == 27 || k == KEY_ENTER) { close (1); return true; } return false; }
+	void onDraw () override
+	{
+		drawBox ("Properties");
+		for (int i = 0; i < m_n; i++)
+		{
+			int y = titleH () + 14 + i * 22;
+			text (canvas, 16, y, m_lines[i][0], wk_mix (C_FACE, C_TEXT, 150), F_UI);
+			text (canvas, 130, y, m_lines[i][1], C_TEXT, F_UI, 2, width - 146);
+		}
+	}
+};
+void video_menu (int mx, int my, int vi)
+{
+	if (vi < 0 || vi >= VL->n) return;
+	Video &x = VL->v[vi];
+	PopupMenu m (mx, my);
+	m.add (x.posMs > 0 ? "Resume" : "Play", 1, x.playable, "Enter");
+	m.add ("Play from the Start", 2, x.playable && x.posMs > 0);
+	m.separator ();
+	m.add (x.watched || x.posMs ? "Mark as Not Watched" : "Mark as Watched", 3);
+	m.separator ();
+	m.add ("Properties...", 4);
+	m.add ("Show in the File Viewer", 5);
+	switch (m.run ())
+	{
+	case 1: play_video (vi, false); break;
+	case 2: play_video (vi, true); break;
+	case 3: if (x.watched || x.posMs) { x.watched = false; x.posMs = 0; } else { x.watched = true; x.posMs = 0; } VL->save (); break;
+	case 4: { VPropsBox b (x); b.run (); break; }
+	case 5: { char d[300]; scopy (d, x.path, sizeof d); char *sl = strrchr (d, '/'); if (sl) *sl = 0; fa_open (d); break; }
+	}
+	refresh_all ();
+}
+
 static void layout_parts ()
 {
 	int W = g_root->width, H = g_root->height;
+	g_watch->hidden = true;
 	if (g_miniMode)
 	{
 		g_side->hidden = g_top->hidden = g_content->hidden = g_now->hidden = true;
@@ -1638,6 +2256,12 @@ static void layout_parts ()
 		return;
 	}
 	g_mini->hidden = true;
+	if (page ().kind == P_WATCH)
+	{	// a video: the whole window
+		g_side->hidden = g_top->hidden = g_content->hidden = g_now->hidden = true;
+		g_watch->hidden = false; g_watch->left = 0; g_watch->top = 0; g_watch->resizeTo (W, H);
+		return;
+	}
 	g_side->hidden = g_top->hidden = g_content->hidden = g_now->hidden = false;
 	g_side->left = 0; g_side->top = 0; g_side->resizeTo (SIDE_W, H - NOW_H);
 	g_top->left = SIDE_W; g_top->top = 0; g_top->resizeTo (W - SIDE_W, TOP_H);
@@ -1649,7 +2273,7 @@ static void refresh_all ()
 {
 	if (!g_root) return;
 	layout_parts ();
-	g_side->invalidate (true); g_top->invalidate (true); g_content->invalidate (true); g_now->invalidate (true); g_mini->invalidate (true);
+	g_side->invalidate (true); g_top->invalidate (true); g_content->invalidate (true); g_now->invalidate (true); g_mini->invalidate (true); g_watch->invalidate (true);
 	g_root->invalidate (false);
 }
 static void resize_to (int cw, int ch, int x, int y)
@@ -1666,6 +2290,7 @@ static void resize_to (int cw, int ch, int x, int y)
 static void enter_mini (bool on)
 {
 	if (on == g_miniMode) return;
+	if (on && page ().kind == P_WATCH) go_back_page ();		// (the mini player is the music's)
 	struct kapi_win_geom g;
 	if (kapi_win_geometry (&g) != 0) return;
 	if (on)
@@ -1708,28 +2333,46 @@ static void scan_done (void *, long)
 	if (g_playing >= 0) g_playing = remap (g_playing);
 	for (int i = 0; i < g_nhist; i++) remap_page (g_hist[i], o, n);
 	L = n;
+	// the videos: what was done meanwhile kept (where one was left), those opened from outside kept
+	{
+		VideoLib *vn = g_scan->vfresh, *vo = VL;
+		vn->index_paths ();
+		for (int i = 0; i < vn->n; i++) { int k = vo->find (vn->v[i].path); if (k >= 0) { vn->v[i].posMs = vo->v[k].posMs; vn->v[i].watched = vo->v[k].watched; vn->v[i].lastPlayed = vo->v[k].lastPlayed; } }
+		for (int i = 0; i < vo->n; i++) if (vo->v[i].ext && vn->find (vo->v[i].path) < 0) { Video &x = vn->add (); vn->copy_from (x, vo->v[i]); }
+		vn->index_paths ();
+		auto vremap = [&] (int id) { return id >= 0 && id < vo->n ? vn->find (vo->v[id].path) : -1; };
+		if (g_vidx >= 0) g_vidx = vremap (g_vidx);
+		for (int i = 0; i < g_nhist; i++) if (g_hist[i].kind == P_WATCH) { g_hist[i].arg = vremap (g_hist[i].arg); if (g_hist[i].arg < 0) g_hist[i] = Page { P_HOME, 0, 0, 0, false }; }
+		if (g_vidx < 0 && g_vp.active ()) g_vp.close ();
+		VL = vn; g_thumbs.set_library (vn);
+		vn->save ();
+		delete vo; delete g_scan->vold;
+	}
 	g_covers.set_library (n);
 	g_rollFor = -2;
 	n->save ();
 	delete o;
 	delete g_scan; g_scan = 0;
-	if (L->n && page ().kind == P_WELCOME && g_nhist == 1) { g_hist[0] = Page { P_HOME, 0, 0, 0, false }; }
+	if ((L->n || VL->n) && page ().kind == P_WELCOME && g_nhist == 1) { g_hist[0] = Page { P_HOME, 0, 0, 0, false }; }
 	g_content->rowsValid = false; g_content->reset_selection (); g_content->selCap = 0; free (g_content->sel); g_content->sel = 0;
 	refresh_all ();
 }
 static int scan_main (void *p) { scan_thread (p); kapi_post (scan_done, 0, 0); return 0; }
 void start_scan ()
 {
-	if (g_scan) { g_scan->cancel = true; kapi_thread_join (g_scanTid, 5000, 0); delete g_scan->fresh; delete g_scan; g_scan = 0; }
+	if (g_scan) { g_scan->cancel = true; kapi_thread_join (g_scanTid, 5000, 0); delete g_scan->fresh; delete g_scan->vfresh; delete g_scan->vold; delete g_scan; g_scan = 0; }
 	g_scan = new ScanState;
 	memset (g_scan, 0, sizeof *g_scan);
-	for (int i = 0; i < g_nfolders; i++) scopy (g_scan->roots[g_scan->nroots++], g_folders[i], 200);
+	bool videos = false;
+	for (int i = 0; i < g_nfolders; i++) { scopy (g_scan->roots[g_scan->nroots++], g_folders[i], 200); if (!strcasecmp (g_folders[i], VIDEO_DIR)) videos = true; }
+	if (!videos && g_scan->nroots < 8) scopy (g_scan->roots[g_scan->nroots++], VIDEO_DIR, 200);	// (SD:/Videos: always looked at)
 	g_scan->old = L; g_scan->fresh = new Library;
-	L->index_paths ();
+	g_scan->vold = VL->clone (); g_scan->vfresh = new VideoLib;
+	L->index_paths (); VL->index_paths ();
 	g_scanTid = kapi_thread_create (scan_main, g_scan, 512 * 1024, "scan");
 	if (g_scanTid < 0) { scan_thread (g_scan); scan_done (0, 0); }
 }
-static void on_cover () { if (g_content) { g_content->invalidate (true); g_now->invalidate (true); g_mini->invalidate (true); g_root->invalidate (false); } }
+static void on_cover () { if (g_content) { g_content->invalidate (true); g_now->invalidate (true); g_mini->invalidate (true); g_watch->invalidate (true); g_root->invalidate (false); } }
 
 // ---- the window ----------------------------------------------------------------------------------------------
 class MediaRoot : public Root
@@ -1741,6 +2384,18 @@ public:
 	void onTick () override
 	{
 		g_tick = kapi_get_ticks ();
+		if (g_vp.active ())
+		{	// the video: its frame due, its status; where it is, saved now and then
+			static unsigned gen = ~0u;
+			bool nf = g_vp.poll ();
+			bool watching = page ().kind == P_WATCH && !g_miniMode;
+			if (watching && (nf || g_vp.statusGen != gen || g_watch->shown != watch_controls (g_watch->u) || (!g_vp.frame && !g_vp.st.error) || g_vp.st.seeking || g_vp.st.waiting))
+				g_watch->invalidate (true);
+			gen = g_vp.statusGen;
+			if (g_vp.st.ended && !g_vpEnded) { g_vpEnded = true; video_save_pos (); }
+			if (g_tick - g_vpSaveT > 1500) { g_vpSaveT = g_tick; if (!g_vp.st.paused) video_save_pos (); }
+			g_thumbs.busy = !g_vp.st.paused;
+		}
 		if (g_player.endedGen != ended) { ended = g_player.endedGen; play_next (false); }
 		if (g_player.errGen != errs) { errs = g_player.errGen; notify ("Media Player", g_player.err); g_playing = g_player.state == PS_STOPPED && g_playing >= 0 ? g_playing : g_playing; refresh_all (); }
 		int sec = (int) (g_player.posMs / 1000);
@@ -1770,6 +2425,12 @@ public:
 	}
 	bool onKey (long k) override
 	{
+		if (page ().kind == P_WATCH && !g_miniMode)
+		{
+			if (k == 27 || k == KEY_BACKSPACE) { go_back_page (); return true; }
+			if (watch_key (k, false)) { g_watch->invalidate (true); return true; }
+			return false;
+		}
 		if (k == ' ' && !g_top->search->hasFocus) { toggle_play (); return true; }
 		if (k == 27 && page ().kind == P_NOW) { go_back (); return true; }
 		if (k == 27 && g_top->search->text[0]) { g_top->search->setText (""); return true; }
@@ -1794,6 +2455,9 @@ static void m_folders () { navigate (P_WELCOME); }
 static void m_rescan () { start_scan (); refresh_all (); }
 static void m_newpl () { new_playlist_dialog (0); }
 static void m_back () { go_back (); }
+static void m_films () { navigate (P_VIDEOS, VK_FILM); }
+static void m_clips () { navigate (P_VIDEOS, VK_CLIP); }
+static void m_full () { if (page ().kind == P_WATCH) video_full_screen (); }
 static void m_open ()
 {
 	char p[300];
@@ -1801,8 +2465,31 @@ static void m_open ()
 	extern void open_file (const char *);
 	open_file (p);
 }
+void m_open_video ()
+{
+	char p[300];
+	if (!wk_file_open (p, sizeof p, VIDEO_DIR)) return;
+	extern void open_file (const char *);
+	open_file (p);
+}
 void open_file (const char *p)
 {
+	if (is_video_path (p))
+	{	// a video: from the library, else read now (kept for this run)
+		int vi = VL->find (p);
+		if (vi < 0)
+		{
+			Video &x = VL->add ();
+			if (!probe_video (p, &x)) { VL->n--; wk_messagebox ("Media Player", "This file is not a video Media Player\ncan read (WebM, MKV, MP4, MOV).", MB_OK); return; }
+			char t[200]; video_names (p, t, sizeof t, &x.kind, &x.season, &x.episode);
+			if (x.kind < 0) x.kind = x.durMs >= 40 * 60000 ? VK_FILM : VK_CLIP;
+			x.path = sdup (p); x.title = sdup (t); x.ext = true; x.added = now_stamp ();
+			vi = VL->n - 1;
+			VL->index_paths ();
+		}
+		play_video (vi, false);
+		return;
+	}
 	if (!strcasecmp (ext_of (p), "m3u") || !strcasecmp (ext_of (p), "m3u8"))
 	{	// a playlist: its songs that are in the library, in its order
 		Plist pl; scopy (pl.path, p, sizeof pl.path); playlist_read (pl);
@@ -1821,7 +2508,7 @@ void open_file (const char *p)
 		return;
 	}
 	Tags t;
-	if (!read_tags (p, &t)) { wk_messagebox ("Media Player", "This file cannot be played (MP3, OGG, FLAC, WAV and MIDI files are).", MB_OK); return; }
+	if (!read_tags (p, &t)) { wk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV and MIDI files are; WebM,\nMKV and MP4 videos).", MB_OK); return; }
 	int k = g_next < 16 ? g_next++ : 15;
 	Song &x = g_ext[k];
 	if (x.path) { free (x.path); free (x.title); free (x.artist); free (x.albumArtist); free (x.album); free (x.genre); free (x.folderCover); }
@@ -1841,8 +2528,10 @@ int main (void)
 
 	L = new Library;
 	L->load (); L->load_stats (); L->build (); L->index_paths ();
+	VL = new VideoLib;
+	VL->load (); VL->index_paths ();
 	playlists_load ();
-	g_hist[0] = Page { L->n ? P_HOME : P_WELCOME, 0, 0, 0, false }; g_nhist = 1; g_hpos = 0;
+	g_hist[0] = Page { L->n || VL->n ? P_HOME : P_WELCOME, 0, 0, 0, false }; g_nhist = 1; g_hpos = 0;
 
 	MediaRoot root (1000, 640);
 	if (root.canvas.px == 0) return 1;
@@ -1859,13 +2548,16 @@ int main (void)
 	g_content = new Content (SIDE_W, TOP_H, 1000 - SIDE_W, 640 - TOP_H - NOW_H); root.addChild (g_content);
 	g_now = new NowBar (0, 640 - NOW_H, 1000, NOW_H); root.addChild (g_now);
 	g_mini = new MiniView (0, 0, 330, 92); g_mini->hidden = true; root.addChild (g_mini);
+	g_watch = new WatchView (0, 0, 1000, 640); g_watch->hidden = true; root.addChild (g_watch);
 
 	g_covers.lib = L; g_covers.onLoaded = on_cover; g_covers.start ();
+	g_thumbs.lib = VL; g_thumbs.onLoaded = on_cover; g_thumbs.start ();
 	g_player.volume = g_volume; g_player.start ();
 
 	static Menu menu;
 	menu.menu ("File");
 	menu.item ("Open a File...", "^O", WK_CTRL ('O'), m_open);
+	menu.item ("Open a Video...", "", 0, m_open_video);
 	menu.separator ();
 	menu.item ("Folders to Watch...", "", 0, m_folders);
 	menu.item ("Look for New Songs", "", 0, m_rescan);
@@ -1878,11 +2570,15 @@ int main (void)
 	menu.separator ();
 	menu.item ("Shuffle", "^S", WK_CTRL ('S'), m_shuffle);
 	menu.item ("Repeat (all, one, off)", "^T", WK_CTRL ('T'), m_repeat);
+	menu.separator ();
+	menu.item ("Full Screen (a video)", "F", 0, m_full);
 	menu.menu ("View");
 	menu.item ("Home", "", 0, m_home);
 	menu.item ("Albums", "", 0, m_albums);
 	menu.item ("Artists", "", 0, m_artists);
 	menu.item ("Songs", "", 0, m_songs);
+	menu.item ("Films", "", 0, m_films);
+	menu.item ("Clips and Series", "", 0, m_clips);
 	menu.item ("Now Playing", "^L", WK_CTRL ('L'), m_now);
 	menu.separator ();
 	menu.item ("Search", "^E", WK_CTRL ('E'), m_search);
@@ -1904,7 +2600,8 @@ int main (void)
 	root.run ();
 
 	count_play ();
-	g_player.quit (); g_covers.quit ();
+	video_close ();
+	g_player.quit (); g_covers.quit (); g_thumbs.quit ();
 	if (g_scan) { g_scan->cancel = true; kapi_thread_join (g_scanTid, 3000, 0); }
 	return 0;
 }

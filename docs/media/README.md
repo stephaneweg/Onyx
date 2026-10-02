@@ -1,7 +1,8 @@
 # Media Player for Onyx — the music library (study, first mock-ups)
 
-> **Status (2026-10-01): the music is implemented** (`user/Apps/media`, docs/03 *Media Player*; its use: docs/04
-> §12; the real app: `screenshots/media-*.png`), **not yet tried on the Pi**; the videos: to do (below). The
+> **Status (2026-10-02): the music and the videos are implemented** (`user/Apps/media`, docs/03 *Media Player*;
+> its use: docs/04 §12; the real app: `screenshots/media-*.png`), **not yet tried on the Pi**. The videos (below,
+> *The videos — done*) are played by Onyx's media library `user/av`, Jet Browser's. The
 > mock-ups (validated): Priority 1 of the end-user apps roadmap
 > (docs/HANDOFF.md): a **music library** as a polished app, in the way of Windows Media Player / iTunes /
 > Rhythmbox (the user: "a library, as in Media Player"); **MP3, OGG, FLAC, WAV and MIDI**; artists,
@@ -47,14 +48,32 @@ artists and their covers are made up).
 5. **Covers**: only those in the files and their folders, **nothing downloaded**.
 6. The **home** shows the music and the videos.
 
+## The videos — done (2026-10-02)
+
+The user (2026-10-02): *"we have finished integrating video into Jet: look at its library to add a video player to
+the Media Player"*. Built on **`user/av`** (docs/03 "The media library", docs/06 §44): `av_player_open_file` (its
+reader now reads through the kapi: newlib's `fopen` loads a whole file), its threads, the kapi's sound, the frames
+by `av_player_poll`.
+
+- **The library**: the videos of the folders watched and of `SD:/Videos` (always looked at), found by the same
+  scan; their facts from the containers' headers (`probe_video`); **Films** and **Clips and series** in the
+  sidebar (the mock-up's *VIDEOS*), the kind from the folders (*Films*, *Series*, *Clips*), an episode's
+  `S01E03`, else the length; each video's **frame** (a tenth of the way in) kept as a JPEG in
+  `SD:/etc/media/thumbs`; its length, the part watched (red), ✓ seen. The home: *Resume* the video left half
+  way next to the song (the mock-up's two cards), a *Videos* row. The search finds them.
+- **Playing**: in the whole window, from where it was left; the controls over the picture while the pointer
+  moves; ◀◀ / ▶▶ 10 s; the volume (the music's); **full screen** (`kapi_fullscreen_begin`); at the end *Watch
+  again*, an episode's *Next*. The music and a video share the sound: one stops the other.
+- **The codecs**: VP9, VP8, AV1 + Opus, FLAC, MP3, PCM (Jet's). An H.264 / H.265 video, or AAC sound, is listed
+  with its codec and *not played here* (its message says what plays).
+- **Not done** (next): the mini player for a video (a picture in picture), subtitles (WebVTT / SRT next to the
+  file; Matroska's), audio tracks to choose, the rate (`av_player_set_rate` is there), a video's playlists,
+  AAC (a decoder: MP4 files' usual sound; fdk-aac's licence is not free enough — a small one to find),
+  H.264 (openh264, BSD-2; or the Pi's hardware decoder: a driver).
+
 ## Still open
 
 - The SoundFont: one for all the MIDI files (Settings), proposed.
-- **The videos** (the user, 2026-10-01): the playback library is there -- **`user/av`** (docs/03 "The media
-  library", docs/06 §44): `av_player_open_file (player, path)` plays a file (WebM / MKV, MP4 / MOV, WAV,
-  FLAC, MP3) -- a reader thread ~30 s ahead, decoding threads, the sound (the kapi's, master clock), the
-  frames handed over by `av_player_poll` at their time in the window's pixel layout, seeking, rate,
-  volume. The Media Player's videos are built on it.
 - **The videos' formats**: the library's containers are WebM / Matroska and MP4 (the formats of the videos
   people have); its video codecs are **VP9 / VP8** (libvpx), **AV1** (dav1d) and **Opus** audio (libopus), vendored
   and built for the Pi with their NEON / assembly (docs/06 §44 *The codecs*: link `libvpx.a`,

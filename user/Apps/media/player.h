@@ -31,7 +31,7 @@ public:
 	volatile int lk;
 
 	Player () : state (PS_STOPPED), posMs (0), lenMs (0), endedGen (0), errGen (0), rate (0), bits (0), kbps (0), channels (0),
-		sound (0), volume (80), lk (0), m_cmd (CMD_NONE), m_seekMs (0), m_stream (0), m_written (0), m_base (0), m_cap (0), m_quit (false), m_tid (-1), m_t0 (0)
+		sound (0), volume (80), lk (0), released (0), m_cmd (CMD_NONE), m_seekMs (0), m_stream (0), m_written (0), m_base (0), m_cap (0), m_quit (false), m_tid (-1), m_t0 (0)
 	{ err[0] = fmt[0] = 0; m_path[0] = 0; }
 
 	void start () { m_tid = kapi_thread_create (thread_main, this, 256 * 1024, "player"); }
@@ -41,10 +41,13 @@ public:
 	void pause () { kapi_lock (&lk); if (state == PS_PLAYING) m_cmd = CMD_PAUSE; kapi_unlock (&lk); }
 	void resume () { kapi_lock (&lk); if (state == PS_PAUSED) m_cmd = CMD_RESUME; kapi_unlock (&lk); }
 	void stop () { kapi_lock (&lk); m_cmd = CMD_STOP; kapi_unlock (&lk); }
+	// give the sound output back (a video takes it): the song stopped; released bumped once done
+	void release () { kapi_lock (&lk); m_cmd = CMD_RELEASE; kapi_unlock (&lk); }
+	volatile int released;
 	void seek (i64 ms) { kapi_lock (&lk); m_seekMs = ms < 0 ? 0 : ms; if (m_cmd == CMD_NONE || m_cmd == CMD_SEEK) m_cmd = CMD_SEEK; posMs = m_seekMs; kapi_unlock (&lk); }
 
 private:
-	enum { CMD_NONE, CMD_OPEN, CMD_PAUSE, CMD_RESUME, CMD_STOP, CMD_SEEK };
+	enum { CMD_NONE, CMD_OPEN, CMD_PAUSE, CMD_RESUME, CMD_STOP, CMD_SEEK, CMD_RELEASE };
 	enum { CHUNK = 1024 };
 	int m_cmd; i64 m_seekMs; char m_path[300];
 	Stream *m_stream; i64 m_written;		// frames sent since the song's (or the seek's) position 0
@@ -113,6 +116,11 @@ private:
 				kapi_unlock (&lk);
 				break;
 			case CMD_STOP: close_song (); kapi_lock (&lk); state = PS_STOPPED; posMs = 0; kapi_unlock (&lk); break;
+			case CMD_RELEASE:
+				close_song (); kapi_lock (&lk); state = PS_STOPPED; posMs = 0; kapi_unlock (&lk);
+				if (sound == 1) kapi_sound_release ();
+				sound = 0; released++;
+				break;
 			case CMD_SEEK:
 				if (m_stream) { m_stream->seekMs (seekMs); m_base = seekMs * SOUND_RATE / 1000; m_written = 0; m_t0 = kapi_get_ticks (); }
 				break;
