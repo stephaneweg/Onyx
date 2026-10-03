@@ -742,18 +742,22 @@ int main (int argc, char **argv)
 	char url[1024] = "";
 	if (argc > 1) snprintf (url, sizeof url, "%s", argv[1]);
 	else kapi_get_args (url, sizeof url);
-	// The GPU compositor instead of the software path (to compare the two): the argument --gpu
-	// (before the address), or the file SD:/etc/web-gpu.
-	bool gpu = false;
-	if (!strncmp (url, "--gpu", 5) && (url[5] == 0 || url[5] == ' '))
+	// The GPU compositor is the default (the user, 2026-10-03). The software path (the page painted
+	// and copied by the CPU): the argument --nogpu (before the address), or the file
+	// SD:/etc/web-nogpu; --gpu asks for the compositor whatever the file says.
+	bool gpu = access ("SD:/etc/web-nogpu", F_OK) != 0;
+	for (int opt = 0; opt < 2; opt++)
 	{
-		gpu = true;
-		const char *rest = url[5] ? url + 6 : (argc > 2 ? argv[2] : "");
+		const char *name = opt ? "--nogpu" : "--gpu";
+		size_t l = strlen (name);
+		if (strncmp (url, name, l) || (url[l] != 0 && url[l] != ' ')) continue;
+		gpu = opt == 0;
+		const char *rest = url[l] ? url + l + 1 : (argc > 2 ? argv[2] : "");
 		char moved[1024];
 		snprintf (moved, sizeof moved, "%s", rest);
 		snprintf (url, sizeof url, "%s", moved);
+		break;
 	}
-	if (!gpu && access ("SD:/etc/web-gpu", F_OK) == 0) gpu = true;
 	engine_set_compositing (gpu);
 	say (url[0] ? url : "(the start page)");
 

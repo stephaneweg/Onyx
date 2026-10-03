@@ -465,9 +465,10 @@ the port has **its own `GraphicsLayer` on Onyx's `user/gpucomp`** (the model: Wi
   display refresh at most.
 - gpucomp is compiled into the browser's link (`build-web.sh`, with `tools/webkit/onyxsurface.c`,
   the kapi calls behind `Shared/onyx/OnyxSurface.h`).
-- **Off by default**: `web --gpu` (or the file `SD:/etc/web-gpu`) turns it on
-  (`WKPreferencesSetCompositingEnabledOnyx` before the view is made); the software path is
-  unchanged otherwise. Test switches: `SD:/etc/web-gpu-cpu` (gpucomp on the CPU),
+- **The default since Web 1.0.6** (the user, 2026-10-03; it was `web --gpu` or the file
+  `SD:/etc/web-gpu` before): `web --nogpu`, or the file `SD:/etc/web-nogpu`, keeps the software
+  path, which is unchanged (`WKPreferencesSetCompositingEnabledOnyx` before the view is made);
+  Mail's web view (`--applet`) stays on the software path. Test switches: `SD:/etc/web-gpu-cpu` (gpucomp on the CPU),
   `SD:/etc/web-gpu-copy` (composite into a `gpc_target_alloc` buffer, then copy),
   `SD:/etc/web-gpu-debug` (each layer's paints in kmsg).
 

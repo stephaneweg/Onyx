@@ -489,9 +489,8 @@ void engine_set_compositing (bool enabled) { s_compositing = enabled; }
 void engine_new_window (const char *url)
 {
 	const char *self = self_path ();
-	char gpu[] = "--gpu";					// (a window opened by a composited one is composited)
-	char *argv[] = { const_cast<char *> (self), s_compositing ? gpu : const_cast<char *> (url),
-			 s_compositing ? const_cast<char *> (url) : nullptr, nullptr };
+	char gpu[] = "--gpu", nogpu[] = "--nogpu";		// (a window opened by this one paints as this one)
+	char *argv[] = { const_cast<char *> (self), s_compositing ? gpu : nogpu, const_cast<char *> (url), nullptr };
 	pid_t pid;
 	int r = posix_spawn (&pid, self, nullptr, nullptr, argv, environ);
 	say ("new window for %s: %s", url, r ? strerror (r) : "started");
