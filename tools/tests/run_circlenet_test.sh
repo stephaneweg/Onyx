@@ -1,6 +1,6 @@
 #!/bin/sh
-# Host test of our Circle fork's TCP: duplicate ACKs (RFC 5681), the RTO (200 ms minimum, Karn),
-# CSocket::Send's count. Builds circle/lib/net's real tcpconnection.cpp, retranstimeoutcalc.cpp,
+# Host test of our Circle fork's TCP: duplicate ACKs (RFC 5681), the RTO (1 s minimum, Karn),
+# CSocket::Send's count, a connection closed while its retransmission timer runs. Builds circle/lib/net's real tcpconnection.cpp, retranstimeoutcalc.cpp,
 # socket.cpp (+ the buffers, queues, checksum) against stub Circle headers
 # (tools/tests/circlenet/stub: a simulated clock, no tasks, no network). docs/05.
 set -e

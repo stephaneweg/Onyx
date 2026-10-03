@@ -11,6 +11,8 @@
 //  3. three real duplicate ACKs still start a fast retransmit + fast recovery, a full ACK ends it
 //  4. the RTO: its 1 s minimum on a LAN (200 ms was tried: spurious timeouts on Wi-Fi to Windows); Karn's algorithm after a fast retransmit
 //  5. CSocket::Send: a chunk timing out after earlier chunks were queued answers their count
+//  6. a connection closed by the peer's RST (or by the ACK of its FIN) while its retransmission
+//     timer runs, and kept by its socket: the timer is stopped, a late one is ignored (no panic)
 //
 #define private public			// (the test reads the connection's state)
 #define protected public
@@ -67,8 +69,10 @@ void CTimer::Advance (unsigned nTicks)
 }
 
 CLogger *CLogger::Get (void) { static CLogger s; return &s; }
-void CLogger::Write (const char *pSource, TLogSeverity, const char *pMessage, ...)
+static unsigned s_nPanics;		// (LogPanic lines: the kernel would halt)
+void CLogger::Write (const char *pSource, TLogSeverity Severity, const char *pMessage, ...)
 {
+	if (Severity == LogPanic) s_nPanics++;
 	if (!getenv ("CIRCLENET_LOG")) return;
 	__builtin_va_list a; __builtin_va_start (a, pMessage);
 	printf ("  [%s] ", pSource); vprintf (pMessage, a); printf ("\n");
@@ -338,6 +342,77 @@ static void TestSocketSendCount (void)
 	Sock.m_hConnection = -1;		// (the test's connection: deleted by TWorld)
 }
 
+// the retransmission timer is running
+static bool TimerRuns (TWorld &W) { return W.pConn->m_hTimer[TCPTimerRetransmission] != 0; }
+
+static void TestClosedWithTimerRunning (void)
+{
+	printf ("6. a connection closed while its retransmission timer runs (the socket keeps it)\n");
+	{
+		// a telnet client gone while the shell's output flows: its RST finds data in flight
+		TWorld W; W.Open ();
+		W.Queue (6);
+		Check (W.Nxt () != W.Una () && TimerRuns (W), "data in flight, the timer running");
+		s_nPanics = 0;
+		W.Inject (F_RST, W.nPeerSeq, 0);
+		Check (W.pConn->m_State == TCPStateClosed && W.pConn->m_nErrno == -NET_ERROR_CONNECTION_RESET,
+		       "RST: closed, connection reset");
+		Check (!TimerRuns (W), "the timer stopped");
+		W.Timer.Advance (3 * HZ);		// (nobody deletes it: its socket is still open)
+		Check (s_nPanics == 0, "no panic 3 s later");
+		Check (W.pConn->m_nErrno == -NET_ERROR_CONNECTION_RESET && !W.pConn->m_bTimedOut, "the error kept");
+	}
+	{
+		// the timer's handler raced by the RST (another core): it finds a closed connection
+		TWorld W; W.Open ();
+		W.Queue (6);
+		W.pConn->m_State = TCPStateClosed;
+		unsigned nCount = W.pConn->m_nRetransmissionCount;
+		s_nPanics = 0;
+		W.Timer.Advance (3 * HZ);
+		Check (s_nPanics == 0, "a timer on a closed connection: ignored");
+		Check (W.pConn->m_nRetransmissionCount == nCount && !W.pConn->m_bRetransmit && !W.pConn->m_bTimedOut,
+		       "nothing asked of it");
+	}
+	{
+		// the peer closed first (FIN), the shell still writes, the peer answers RST
+		TWorld W; W.Open ();
+		W.Inject (F_FIN | F_ACK, W.nPeerSeq, W.Una ());
+		W.nPeerSeq++;
+		Check (W.pConn->m_State == TCPStateCloseWait, "FIN: CLOSE-WAIT");
+		W.Queue (100);
+		s_nPanics = 0;
+		W.Inject (F_RST, W.nPeerSeq, 0);
+		W.Timer.Advance (3 * HZ);
+		Check (W.pConn->m_State == TCPStateClosed && !TimerRuns (W) && s_nPanics == 0,
+		       "RST in CLOSE-WAIT with data in flight: closed, no panic");
+	}
+	{
+		// LAST-ACK: our FIN acknowledged closes the connection, its timer was the FIN's
+		TWorld W; W.Open ();
+		W.Inject (F_FIN | F_ACK, W.nPeerSeq, W.Una ());
+		W.nPeerSeq++;
+		W.pConn->Close ();
+		W.pConn->Process ();
+		Check (W.pConn->m_State == TCPStateLastAck && TimerRuns (W), "closed by us too: LAST-ACK, the FIN's timer running");
+		s_nPanics = 0;
+		W.Inject (F_ACK, W.nPeerSeq, W.Nxt ());
+		W.Timer.Advance (3 * HZ);
+		Check (W.pConn->m_State == TCPStateClosed && !TimerRuns (W) && s_nPanics == 0,
+		       "the FIN's ACK: closed, the timer stopped, no panic");
+	}
+	{
+		// a connect refused (RST to our SYN), the socket kept a while
+		TWorld W;
+		W.pConn = new CTCPConnection (&W.Net.m_Config, &W.NetLayer, W.Peer, PeerPort, PiPort);
+		s_nPanics = 0;
+		W.Inject (F_RST | F_ACK, 0, W.pConn->m_nISS + 1);
+		W.Timer.Advance (3 * HZ);
+		Check (W.pConn->m_State == TCPStateClosed && W.pConn->m_nErrno == -NET_ERROR_CONNECTION_REFUSED
+		       && !TimerRuns (W) && s_nPanics == 0, "a refused connect: closed, no panic");
+	}
+}
+
 int main (void)
 {
 	TestPeerDataIsNotDupAck ();
@@ -345,6 +420,7 @@ int main (void)
 	TestRealDupAcks ();
 	TestRTO ();
 	TestSocketSendCount ();
+	TestClosedWithTimerRunning ();
 	printf ("%s: %u passed, %u failed\n", s_nFail ? "FAIL" : "PASS", s_nPass, s_nFail);
 	return s_nFail ? 1 : 0;
 }

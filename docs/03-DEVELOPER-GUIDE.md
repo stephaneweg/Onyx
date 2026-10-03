@@ -3333,7 +3333,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   `kernel/sys/ramfs.cpp`, built for the PC under AddressSanitizer: random operations against a
   model, a full volume, files removed while open, the memory given back — run it after touching
   `sys/ramfs.cpp`), `run_circlenet_test.sh` (the Circle fork's TCP: duplicate
-  ACKs, the RTO, `CSocket::Send`'s count -- run it after touching `circle/lib/net`), `run_fs_test.sh` (the Circle fork's FatFs + `diskio.cpp`
+  ACKs, the RTO, `CSocket::Send`'s count, a connection closed while its retransmission timer runs -- run it after touching `circle/lib/net`; on the Pi, `python tools/tests/telnet_rst_test.py <pi-ip>`: telnet clients leaving while the shell's output flows), `run_fs_test.sh` (the Circle fork's FatFs + `diskio.cpp`
   sector cache on a RAM disk: 4000 random file operations checked against a model, cache on
   and off, same disk image — run it after touching `circle/addon/fatfs`), `run_trash_test.sh` (trash.h + fsutil.h against a mock
   kapi with the kernel's return conventions) and `run_ftpd_test.sh` (ftpd over real

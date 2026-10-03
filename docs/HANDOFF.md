@@ -119,6 +119,22 @@ answer in French. The docs stay in English.
   clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
   (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
 
+## TCP: the panic when a client leaves (2026-10-03; host test passes, NOT yet tried on the Pi, NOT in `main`, NOT published)
+
+- **The bug**: a telnet client closing while `kmsg` (or `cat` of a big file) wrote to it panicked the
+  kernel -- `tcp: Unexpected state 0 at line 1922` in `SD:/etc/lastcrash.txt`. The peer's RST closed
+  the connection with its retransmission timer running; since fork patch 23 the connection lives
+  until its socket releases it, so the timer fired on it a second later. Any client of any server
+  on the Pi could do it.
+- **The fix**: Circle fork commit `df307009` (docs/05 patch 25): the closing paths stop the timer,
+  `TimerHandler` ignores it on a connection with nothing to send again, a reset wakes a waiting
+  sender. `tools/tests/run_circlenet_test.sh` test 6 (37/37; 7 fail without the patch).
+- **Where**: branch `claude/bold-gould-4a406c` (the kernel image staged in `sdcard/`; built in WSL,
+  worktree `~/src/Onyx-tcpfix`). **To do**: the user tries it on the Pi --
+  `python tools/tests/telnet_rst_test.py <pi-ip> 30` must end with PASS (on the old kernel it
+  restarts the Pi within a few rounds) -- then merge into `main` and publish the `onyx` package
+  (`tools/pkg/publish.sh`: no signing key was in the session's environment).
+
 ## Program images: loaded once, shared, preloaded (2026-10-03, kapi v77; validated on the Pi, in `main`, published)
 
 - **What**: stages (a), (c), (e) of `docs/ELF-LOADER-PLAN.md` -- the loader streams a program from

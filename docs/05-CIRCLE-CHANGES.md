@@ -49,6 +49,7 @@ git -C circle diff Step51..onyx
 | 20 | **TCP: real duplicate ACKs only** (RFC 5681 §2) — the peer's data segments no longer start a fast retransmit | `lib/net/tcpconnection.cpp` | `libnet` |
 | 21 | **TCP: RTO 1 s initial** (was 3 s; the 1 s minimum kept — 200 ms was tried and undone), Karn after a fast retransmit | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
+| 25 | **TCP: a closed connection's retransmission timer** stopped, a late one ignored — a client leaving with a RST while data was in flight panicked the kernel (`Unexpected state 0`) | `lib/net/tcpconnection.cpp` | `libnet` |
 | 23 | **Wi-Fi: the firmware's `wsec` from the IE's ciphers** (group + pairwise: TKIP 2, AES 4, as Linux's brcmfmac) -- WPA2 was always "aes": a WPA/WPA2 mixed-mode network (pairwise CCMP, group TKIP, common on 2.4 GHz) associated but no broadcast was decoded (no DHCP offer: the link stayed down) | `addon/wlan/ether4330.c` (`iewsec`, `setauth`) | `libwlan` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
@@ -758,6 +759,45 @@ was lost.
 **What.** `lib/pageallocator.cpp`: `m_pNext -= PAGE_SIZE` before that `return 0`.
 
 **Test**: `memtest oom` on the Pi (the OOM kill twice, each run ending where it started).
+
+## 25. TCP: a closed connection's retransmission timer
+
+**Why.** A kernel panic any network client could cause (seen twice on 2026-10-03): a telnet client
+closed its socket while the remote shell ran `kmsg`, and the Pi restarted with, in
+`SD:/etc/lastcrash.txt`, `tcp: sta 0, una 3394, snx 3400, …` then `tcp: Unexpected state 0 at line
+1922`. That line is `CTCPConnection::TimerHandler`: the **retransmission timer** firing on a
+connection in state CLOSED. The client's RST arrived while 6 bytes were unacknowledged (`una` ≠
+`snx`), so the timer was running; `PacketReceived` closed the connection **without stopping it**.
+Upstream that was harmless: `CTransportLayer::Process` deleted a terminated connection at its next
+turn and the destructor stops the timers. Since patch 23 a terminated connection lives until its
+socket releases it (`telnetd` and the shell still hold it), so the timer fired a second later
+(the RTO) on the closed connection and `UNEXPECTED_STATE ()` — a `LogPanic` — halted the machine.
+The same happens for a RST in CLOSE-WAIT (the client's FIN first, then RSTs for what the shell
+still writes — `cat` of a big file), for the ACK of our FIN in LAST-ACK, and for a refused
+`connect` (the SYN's timer) whose socket is not closed within a second.
+
+**What.** `lib/net/tcpconnection.cpp`:
+
+- every path of `PacketReceived` that closes the connection stops the retransmission timer first
+  (a RST or a SYN in a synchronised state, a RST / FIN answering our SYN, LAST-ACK's final ACK);
+- `TimerHandler` **ignores** the retransmission timer in CLOSED, LISTEN, FIN-WAIT-2 and TIME-WAIT
+  (nothing to send again) instead of panicking, and before it touches the RTO or the retry count:
+  the handler runs in the timer interrupt and can race a path that closes the connection, and a
+  late timer must not turn "connection reset" into "timed out";
+- a RST (or a SYN) closing an established connection also sets `m_TxEvent`: a sender waiting for
+  room in the transmit queue sees the reset at once (it used to wait for its send timeout — nobody
+  runs `Process` on a terminated connection).
+
+Segments reaching a CLOSED connection were already answered with a RST (RFC 793), unchanged.
+
+**Test.** `tools/tests/run_circlenet_test.sh`, test 6 (the host test of patches 20–22: the
+fork's real sources, the test plays the peer): a RST with data in flight, a timer firing on a
+closed connection, a RST in CLOSE-WAIT, LAST-ACK's ACK, a refused connect, each followed by 3
+simulated seconds — 37/37; the unpatched sources fail 7 of the 12 new checks. On the Pi:
+`python tools/tests/telnet_rst_test.py <pi-ip> [rounds]` opens a telnet session, starts `kmsg`
+(then other commands in turn), leaves while the output flows — a RST at once (`SO_LINGER` 0), a
+close with output unread, a FIN then a close — and checks after each round that the Pi still
+answers.
 
 ## Contributions to upstream Circle
 
