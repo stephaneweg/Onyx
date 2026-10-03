@@ -8,6 +8,7 @@
 //
 // Environment: WK2TEST_TIMEOUT (seconds, default 60), WK2TEST_SETTLE (milliseconds without a new
 // display before the picture is taken, default 300), WK2TEST_SCROLL (wheel notches before the picture),
+// WK2TEST_SCROLL_DELAY (milliseconds before the wheel), WK2TEST_SCROLL_TO (window.scrollTo's y, after the wheel),
 // WK2TEST_HOLD (milliseconds the page is left to run before the picture, which then does not wait),
 // WK2TEST_GPU=1 (the page drawn by Onyx's compositor instead of the software path: the picture then
 // comes from its surface; on the bench gpucomp composites on the CPU).
@@ -272,6 +273,21 @@ int main(int argc, char** argv)
             turnUntil(next + 1, [next] { return now() > next; });
         }
         printf("scrolled: %d notches\n", notches);
+    }
+
+    // WK2TEST_SCROLL_TO=y: the page then put at that place at once (a script), so that the picture is
+    // of a known place however the wheel's animation went on a slow machine.
+    if (const char* scrollTo = getenv("WK2TEST_SCROLL_TO")) {
+        // (Once the wheel's own scrolling has come to rest: it would go on from the new place.)
+        turnUntil(deadline, [settle] { return s_displays && now() - s_lastDisplay > settle; });
+        std::string source = std::string("window.scrollTo(0, ") + std::to_string(atoi(scrollTo)) + "); String(window.scrollY)";
+        WKStringRef scrollScript = WKStringCreateWithUTF8CString(source.c_str());
+        s_scriptDone = false;
+        WKPageEvaluateJavaScriptInMainFrame(page, scrollScript, nullptr, scriptResult);
+        WKRelease(scrollScript);
+        turnUntil(deadline, [] { return s_scriptDone; });
+        printf("scrolled to: %s\n", s_scriptResult.c_str());
+        s_lastDisplay = now();
     }
 
     // WK2TEST_HOLD=ms: the page left to run that long (animations that never stop), then the picture

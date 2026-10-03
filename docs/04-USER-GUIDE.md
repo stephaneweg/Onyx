@@ -2452,8 +2452,9 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   or later): a GitHub repository's page loads in about 5 s, where the interpreter took about 50.
 - **The GPU compositor (1.0.4, to try)**: `web --gpu`, or an empty file `SD:/etc/web-gpu` (`touch
   SD:/etc/web-gpu`; `rm` it to go back), has the page assembled by the Pi's GPU (the V3D): the page
-  is kept as tiles — a scroll paints only what comes into view —, and CSS animations of opacity and
-  of transforms move layers without painting anything. Off by default (the page is then painted and
+  is kept as tiles — a scroll paints only what comes into view —, CSS animations of opacity and
+  of transforms move layers without painting anything, and (1.0.5) the tiles are painted on the Pi's
+  free cores too (two cores more at most; an emulator running keeps them: one core then, as before). Off by default (the page is then painted and
   copied by the CPU, as before): compare both on your pages. `kmsg` shows `web: gpu: …` lines
   (frames, tiles painted, the time spent) every two seconds while it works.
 - **Not there yet** (the WebKit port's roadmap): video and sound, WebGL.

@@ -509,9 +509,39 @@ tiles painted; a page with fixed and sticky elements scrolled: 0 rectangles repa
   thousand pixels in Skia on the CPU, as in the software path — when a card's layer appears and
   goes (the parent is repainted there), and 4.4 ms for each repaint of its pulsing dot (a
   `box-shadow` animation: not a composited property).
-- *To do*: the tiles painted on other cores (a recording replayed by worker threads, as WebKit's
-  `SkiaPaintingEngine` does), the window's canvas shared with the web process (a kernel addition:
-  no copy at all), 4 × 4 matrices in gpucomp (3D), composited filters and masks, a compositor thread.
+- *To do*: the window's canvas shared with the web process (a kernel addition: no copy at all),
+  4 × 4 matrices in gpucomp (3D), composited filters and masks, a compositor thread.
+
+**The tiles rasterised on the other cores (patch `0020`, Web 1.0.5).** On Onyx every POSIX thread
+runs on core 0: another core is an **app core** (`kapi_core_acquire` / `core_run`, docs/03 *App
+cores*: cores 2 and 3, no kernel call from there). So the compositor paints in two passes — the
+main thread **records** each dirty rectangle once into an `SkPicture`, then jobs of at most
+512 × 256 pixels **replay** it into the tiles' buffers on up to two app cores and on the main
+thread (pure Skia there: no WTF, no WebCore), the uploads and the composite staying on the main
+thread. Under 64k pixels, or without a free core, the direct path. `tools/webkit/onyxcores.c`
+(linked by `build-web.sh`; `Shared/onyx/OnyxCores.h`): the workers with a TLS block of their own,
+libonyxposix's RPC served while a batch runs (`sbrk` — malloc's growth —, file reads: `pread` /
+`pwrite` wrapped onto it), core 0 never asleep on a lock an app core holds (`--wrap` of newlib's
+lock, `sem_wait`, `pthread_mutex_lock`: try, yield, retry), the watch on a core that faults or
+stalls (its jobs done again on the main thread, the process then single-threaded; a worker dead
+with a lock held: the web process exits, WebKit starts another). The cores are given back after
+10 s without raster (the emulators want them). Switches: `SD:/etc/web-gpu-nocores`,
+`web-gpu-mainwaits`, `web-gpu-coretest` (eleven stages on a core — arithmetic, malloc, `new`,
+thread_local, a static's guard, Skia's shapes, gradients and blur, text, a scaled image, a
+picture replayed —, then the page's first 200 jobs one at a time; lines `gpu: core test …`).
+The bench has real concurrent cores now (`POSIXSIM_CORES=2`: host threads that answer a non-zero
+core and **fail the test on any kernel call**).
+- **On the Pi** (kotonstudio.com, one app core free + the main thread): the 12-notch scroll's
+  worst two seconds went from `20 frames, 7 Mpx, paint 1450 ms` to `64–73 frames, 5–7 Mpx, paint
+  200–340 ms`; the self-test's stages all pass.
+- **What this found in Web's link**: `user/img/imgload.hpp` (in wtk) defines *weak* `malloc` /
+  `free` / `calloc` / `realloc` on `operator new[]`, and `onyxpp.hpp` a global `operator new` on
+  `umm.h` (`kapi_sbrk`): in the static link both won over newlib's. So the whole browser — Skia,
+  WebKit — allocated with wtk's allocator, while `malloc_usable_size` and `posix_memalign` were
+  newlib's: **the heap corruption in Skia's glyph painting of Step 3** (a usable size read from a
+  block newlib did not make) has its cause — `skmallocsize.c` was the cure of a symptom, kept. A
+  hosted program now defines `ONYX_HOSTED_NEW` (`build-web.sh`): newlib's malloc everywhere,
+  checked at the link (no weak `malloc`, no `umm__*`).
 
 ## The roadmap from here (the user, 2026-10-02)
 

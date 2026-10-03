@@ -865,9 +865,25 @@ static int f_thread_priority (int tid, int prio) { (void) tid; (void) prio; retu
 static int f_wait_word (volatile unsigned *a, unsigned expected, unsigned ms)
 {
 	if (((unsigned long) a & 3) != 0) return -1;
-	struct l_timespec t = { ms / 1000, (long) (ms % 1000) * 1000000L };
-	long r = sc6 (L_futex, (long) a, 0 /* FUTEX_WAIT */, expected, ms == KAPI_WAIT_FOREVER ? 0 : (long) &t, 0, 0);
-	return r == -110 ? 1 : 0;
+	/* As the kernel: woken by wake_word, or -- a word changed by an app core, which cannot call
+	 * wake_word -- at the next 10 ms tick: the wait is made of 10 ms waits, the word looked at
+	 * after each. (POSIXSIM_NOTICK=1: not looked at, as this bench was: what only an app core's
+	 * unlock would wake sleeps for good.) */
+	static int s_notick = -1;
+	if (s_notick < 0) { const char *v = getenv_ ("POSIXSIM_NOTICK"); s_notick = v && atoi_ (v) != 0; }
+	unsigned long long left = ms;
+	for (;;)
+	{
+		unsigned slice = s_notick ? ms : ms == KAPI_WAIT_FOREVER || left > 10 ? 10 : (unsigned) left;
+		struct l_timespec t = { slice / 1000, (long) (slice % 1000) * 1000000L };
+		long r = sc6 (L_futex, (long) a, 0 /* FUTEX_WAIT */, expected, s_notick && ms == KAPI_WAIT_FOREVER ? 0 : (long) &t, 0, 0);
+		if (r != -110)
+			return 0;
+		if (__atomic_load_n (a, __ATOMIC_SEQ_CST) != expected)
+			return 0;
+		if (ms != KAPI_WAIT_FOREVER && (left -= slice) == 0)
+			return 1;
+	}
 }
 static int f_wake_word (volatile unsigned *a) { return (int) sc6 (L_futex, (long) a, 1, 0x7FFFFFFF, 0, 0, 0); }
 
@@ -1180,9 +1196,13 @@ static long long xmake (const struct xmeta *m, const int *fd)
 static long long local_send (struct handle *x, const struct kapi_iovec *iov, unsigned niov,
 			     const struct kapi_handle_xfer *hx, unsigned nx, unsigned flags)
 {
-	static struct xhdr H;			/* (one flow at a time sends handles here) */
-	static int fds[2 * XMAX];
-	static char cbuf[sizeof (struct l_cmsghdr) + sizeof fds + 8];
+	/* (on the stack: the program's threads really run at once here, and every packet carries H --
+	 * shared, a send with handles and another thread's send spoiled each other's header, and the
+	 * receiver lost the messages: the loads that never started on the software drawing path) */
+	struct xhdr H;
+	int fds[2 * XMAX];
+	char cbuf[sizeof (struct l_cmsghdr) + sizeof fds + 8] __attribute__ ((aligned (8)));
+	memset (&H, 0, sizeof H);
 	if (nx > XMAX) return -KAPI_EINVAL;
 	int nfd = 0;
 	H.n = nx;
@@ -1230,8 +1250,9 @@ static long long local_send (struct handle *x, const struct kapi_iovec *iov, uns
 static long long local_recv (struct handle *x, const struct kapi_iovec *iov, unsigned niov,
 			     struct kapi_handle_xfer *out, unsigned cap, unsigned *pn, unsigned *pfl, unsigned flags)
 {
-	static struct xhdr H;
-	static char cbuf[sizeof (struct l_cmsghdr) + 2 * XMAX * sizeof (int) + 8];
+	struct xhdr H;				/* (on the stack: see local_send) */
+	char cbuf[sizeof (struct l_cmsghdr) + 2 * XMAX * sizeof (int) + 8] __attribute__ ((aligned (8)));
+	memset (&H, 0, sizeof H);
 	unsigned long long total = 0;
 	for (unsigned i = 0; i < niov; i++) total += iov[i].len;
 	char *tmp = 0;
@@ -1869,6 +1890,228 @@ static int f_surface_destroy (int id)
 	return sc3 (L_unlinkat, L_AT_FDCWD, p, 0) == 0;
 }
 
+/* ---- app cores (v51): each a host thread, so that code given to kapi_core_run really runs beside
+ * the main thread (WebKit's tile rasterisation: tools/webkit/onyxcores.c). POSIXSIM_CORES: how many
+ * are free (default 2: cores 2 and 3; 0: none, as when an emulator holds them).
+ *
+ * As on the Pi, the code of an app core knows where it runs and may make no kernel call:
+ * - kapi__core () reads TPIDRRO_EL0, which only a kernel can set. run.sh makes the program read
+ *   TPIDR2_EL0 instead (corereg.py: every "mrs xN, tpidrro_el0" of its code), a register qemu-user
+ *   lets the program write: 0 on the threads, the core's number on a fake core (core_tramp).
+ * - every entry of the kapi table goes through a guard (guard_install): called on a fake core, it
+ *   says which slot, from where (the return addresses, for addr2line), and ends the program with
+ *   status 97 -- or, POSIXSIM_CORE_FAULT=1, does what the Pi's kernel does: the job is stopped,
+ *   the core's state is KAPI_CORE_FAULT, the program goes on (what it does of it is the test). ---- */
+struct fcore
+{
+	volatile int used, running, fault;
+	void (*fn) (void *);
+	void *arg;
+};
+static struct fcore s_core[2];
+static volatile int s_coreLock;
+
+static inline unsigned long this_core (void)
+{
+	unsigned long c;
+	__asm__ volatile ("mrs %0, s3_3_c13_c0_5" : "=r" (c));		/* TPIDR2_EL0 */
+	return c;
+}
+
+#define GUARD_SLOTS	512
+void *posixsim_orig[GUARD_SLOTS];		/* the entries themselves, by slot */
+extern char posixsim_thunks[];
+/* slot n's thunk: x16 = n, then the guard: on a thread the entry itself, on a core posixsim_core_call */
+__asm__ (
+"	.text\n"
+"	.balign	8\n"
+"	.globl	posixsim_thunks\n"
+"posixsim_thunks:\n"
+"	.set	posixsim_n, 0\n"
+"	.rept	512\n"
+"	mov	x16, #posixsim_n\n"
+"	b	posixsim_guard\n"
+"	.set	posixsim_n, posixsim_n + 1\n"
+"	.endr\n"
+"posixsim_guard:\n"
+"	mrs	x17, s3_3_c13_c0_5\n"
+"	cbnz	x17, 1f\n"
+"	adrp	x17, posixsim_orig\n"
+"	add	x17, x17, :lo12:posixsim_orig\n"
+"	ldr	x17, [x17, x16, lsl #3]\n"
+"	br	x17\n"
+"1:	mov	x0, x16\n"
+"	mov	x1, x30\n"
+"	mov	x2, x29\n"
+"	b	posixsim_core_call\n");
+
+static char *put_hex (char *p, unsigned long v)
+{
+	char d[16]; int n = 0;
+	do { d[n++] = "0123456789abcdef"[v & 15]; v >>= 4; } while (v);
+	*p++ = '0'; *p++ = 'x';
+	while (n > 0) *p++ = d[--n];
+	return p;
+}
+static char *put_str (char *p, const char *s) { while (*s) *p++ = *s++; return p; }
+static char *put_dec (char *p, unsigned long v)
+{
+	char d[24]; int n = 0;
+	do { d[n++] = (char) ('0' + v % 10); v /= 10; } while (v);
+	while (n > 0) *p++ = d[--n];
+	return p;
+}
+
+void posixsim_core_call (unsigned long slot, unsigned long lr, unsigned long *fp);
+void posixsim_core_call (unsigned long slot, unsigned long lr, unsigned long *fp)
+{
+	unsigned long core = this_core ();
+	const char *v = getenv_ ("POSIXSIM_CORE_FAULT");
+	int faults = v && atoi_ (v) != 0;
+	char line[700], *p = line;
+	p = put_str (p, "posixsim: appcore: core ");
+	p = put_dec (p, core);
+	p = put_str (p, " made a kernel call: kapi slot ");
+	p = put_dec (p, slot);
+	p = put_str (p, " (table offset ");
+	p = put_dec (p, slot * 8);
+	p = put_str (p, faults ? "), job stopped; from " : "), the program is ended; from ");
+	p = put_hex (p, lr);
+	/* the callers' return addresses (the frame records: x29 -> { the caller's x29, its x30 }) */
+	unsigned long *f = fp;
+	for (int i = 0; i < 24 && f != 0 && ((unsigned long) f & 15) == 0; i++)
+	{
+		unsigned long *next = (unsigned long *) f[0];
+		if (f[1] == 0)
+			break;
+		p = put_str (p, " < ");
+		p = put_hex (p, f[1]);
+		if (next <= f || (unsigned long) next - (unsigned long) f > (4UL << 20))
+			break;
+		f = next;
+	}
+	*p++ = '\n';
+	sc3 (L_write, 2, line, p - line);
+	if (!faults)
+		sc1 (L_exit_group, 97);
+	if (core >= 2 && core <= 3)
+		__atomic_store_n (&s_core[core - 2].fault, 1, __ATOMIC_SEQ_CST);
+	for (;;)
+		sc1 (L_exit, 0);			/* (the host thread only: the core is stopped) */
+}
+
+/* Where a thread is: "kill -USR1 <the thread's Linux id>" (ls /proc/<pid>/task) makes it print its
+ * core, its pc and its callers' return addresses (addr2line -e <the program>) -- a program that hangs
+ * on the bench says where. */
+static void where_handler (int sig, void *info, void *uc)
+{
+	(void) sig; (void) info;
+	unsigned long *regs = (unsigned long *) ((char *) uc + 184);	/* (mcontext's x0 .. x30, sp, pc) */
+	char line[700], *p = line;
+	p = put_str (p, "posixsim: thread ");
+	p = put_dec (p, (unsigned long) sc0 (L_gettid));
+	p = put_str (p, " (core ");
+	p = put_dec (p, this_core ());
+	p = put_str (p, ") is at ");
+	p = put_hex (p, regs[32]);
+	p = put_str (p, " < ");
+	p = put_hex (p, regs[30]);
+	unsigned long *f = (unsigned long *) regs[29];
+	for (int i = 0; i < 24 && f != 0 && ((unsigned long) f & 15) == 0; i++)
+	{
+		unsigned long *next = (unsigned long *) f[0];
+		if (f[1] == 0)
+			break;
+		p = put_str (p, " < ");
+		p = put_hex (p, f[1]);
+		if (next <= f || (unsigned long) next - (unsigned long) f > (4UL << 20))
+			break;
+		f = next;
+	}
+	*p++ = '\n';
+	sc3 (L_write, 2, line, p - line);
+}
+
+static void where_install (void)
+{
+	struct { void *handler; unsigned long flags; unsigned long mask; } sa = { (void *) where_handler, 4 /* SA_SIGINFO */ | 0x10000000 /* SA_RESTART */, 0 };
+	sc4 (134 /* rt_sigaction */, 10 /* SIGUSR1 */, (long) &sa, 0, 8);
+}
+
+/* Every entry of the table (a pointer into the program) is replaced by its thunk. */
+static void guard_install (void)
+{
+	void **t = (void **) KAPI_TABLE_VA;
+	unsigned n = sizeof (struct TKApiTable) / 8;
+	for (unsigned i = 1; i < n && i < GUARD_SLOTS; i++)
+	{
+		unsigned long e = (unsigned long) t[i];
+		if (e < 0x200000000UL || e >= 0x280000000UL)
+			continue;
+		posixsim_orig[i] = t[i];
+		t[i] = posixsim_thunks + 8 * i;
+	}
+}
+
+static int core_tramp (void *p)
+{
+	struct fcore *c = (struct fcore *) p;
+	__asm__ volatile ("msr s3_3_c13_c0_5, %0" :: "r" ((unsigned long) (2 + (c - s_core))));
+	c->fn (c->arg);
+	__atomic_store_n (&c->running, 0, __ATOMIC_SEQ_CST);
+	sc1 (L_exit, 0);
+	return 0;
+}
+
+static int f_core_acquire (void)
+{
+	const char *v = getenv_ ("POSIXSIM_CORES");
+	int n = v ? atoi_ (v) : 2;
+	int got = -1;
+	lock (&s_coreLock);
+	for (int i = 0; i < 2 && i < n; i++)
+		if (!s_core[i].used) { s_core[i].used = 1; got = 2 + i; break; }
+	unlock (&s_coreLock);
+	return got;
+}
+
+static int f_core_run (int core, void (*fn) (void *), void *arg, void *stack_top)
+{
+	if (core < 2 || core > 3 || !s_core[core - 2].used || s_core[core - 2].running || !fn || !stack_top)
+		return -1;
+	struct fcore *c = &s_core[core - 2];
+	c->fn = fn;
+	c->arg = arg;
+	c->running = 1;
+	c->fault = 0;
+	unsigned long tls;		/* (the job starts with its caller's TPIDR_EL0, as v75's) */
+	__asm__ volatile ("mrs %0, tpidr_el0" : "=r" (tls));
+	unsigned long flags = 0x100 | 0x200 | 0x400 | 0x800 | 0x10000 | 0x40000 | 0x80000 /* SETTLS */;
+	long t = posixsim_clone (flags, (void *) ((unsigned long) stack_top & ~15UL), 0, tls, 0, core_tramp, c);
+	if (t < 0) { c->running = 0; return -1; }
+	return 0;
+}
+
+static int f_core_state (int core)
+{
+	if (core < 2 || core > 3 || !s_core[core - 2].used)
+		return KAPI_CORE_NOTYOURS;
+	if (s_core[core - 2].fault)
+		return KAPI_CORE_FAULT;
+	return s_core[core - 2].running ? KAPI_CORE_RUNNING : KAPI_CORE_IDLE;
+}
+
+static void f_core_release (int core)
+{
+	if (core < 2 || core > 3)
+		return;
+	/* (a job that still runs is left to run: its host thread cannot be stopped from here) */
+	if (s_core[core - 2].fault)
+		s_core[core - 2].running = s_core[core - 2].fault = 0;
+	if (!s_core[core - 2].running)
+		s_core[core - 2].used = 0;
+}
+
 /* ---- the table ---- */
 void posixsim_init (long *sp);
 void posixsim_init (long *sp)
@@ -1959,6 +2202,10 @@ void posixsim_init (long *sp)
 	T->thread_priority = f_thread_priority;
 	T->wait_word = f_wait_word;
 	T->wake_word = f_wake_word;
+	T->core_acquire = f_core_acquire;
+	T->core_run = f_core_run;
+	T->core_state = f_core_state;
+	T->core_release = f_core_release;
 	T->screen_size = f_screen_size;
 	T->gpu_info = f_gpu_info;
 	T->surface_create = f_surface_create;
@@ -2026,4 +2273,6 @@ void posixsim_init (long *sp)
 		T->spawn_ex2 = f_spawn_ex2;
 		T->get_handles = f_get_handles;
 	}
+	guard_install ();
+	where_install ();
 }

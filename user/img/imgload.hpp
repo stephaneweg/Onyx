@@ -65,7 +65,10 @@ static void *img_realloc (void *p, unsigned long n)
 }
 
 // The C symbols the codecs reference (no libc linked).
-#ifndef IMG_HOST_TEST			// (a host unit test links the real libc instead)
+// (a host unit test links the real libc instead; so does a hosted program -- ONYX_HOSTED_NEW, the
+// WebKit browser: there these weak ones won over newlib's malloc in a static link, and with
+// libstdc++'s operator new, which calls malloc, they called themselves)
+#if !defined (IMG_HOST_TEST) && !defined (ONYX_HOSTED_NEW)
 extern "C" {
 __attribute__ ((weak)) void *malloc (unsigned long n) { return img_alloc (n); }
 __attribute__ ((weak)) void  free (void *p) { img_dealloc (p); }

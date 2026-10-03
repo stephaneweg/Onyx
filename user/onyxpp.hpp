@@ -12,9 +12,17 @@
 #ifndef ONYX_CPP_HPP
 #define ONYX_CPP_HPP
 
-#include "umm.h"			// umm_malloc / umm_free (heap over kapi_sbrk)
-
 typedef __SIZE_TYPE__ onyx_size_t;
+
+// ONYX_HOSTED_NEW: a hosted program (the POSIX toolchain: libstdc++, newlib's malloc) that
+// includes this header through wtk keeps libstdc++'s operator new / delete. The ones below would
+// replace them for the WHOLE program (they are the app's own definitions), on a second heap that
+// calls kapi_sbrk itself -- a kernel call wherever a new grows it: on an app core (kapi_core_run:
+// no kernel call there) the job is stopped. Web (tools/webkit/build-web.sh) rasterises there.
+#ifdef ONYX_HOSTED_NEW
+#include "kapi.h"
+#else
+#include "umm.h"			// umm_malloc / umm_free (heap over kapi_sbrk)
 
 // __attribute__((used)) forces emission of ALL these operators in the TU that includes
 // this header (an app includes it once, in main.o) -- so a SEPARATELY-COMPILED library
@@ -52,6 +60,7 @@ inline __attribute__ ((used)) void  operator delete   (void *p) noexcept        
 inline __attribute__ ((used)) void  operator delete[] (void *p) noexcept         { umm_free (p); }
 inline __attribute__ ((used)) void  operator delete   (void *p, onyx_size_t) noexcept { umm_free (p); }	// sized
 inline __attribute__ ((used)) void  operator delete[] (void *p, onyx_size_t) noexcept { umm_free (p); }
+#endif // !ONYX_HOSTED_NEW
 inline void *operator new      (onyx_size_t, void *p) noexcept { return p; }	// placement
 inline void *operator new[]    (onyx_size_t, void *p) noexcept { return p; }
 

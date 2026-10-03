@@ -9,7 +9,9 @@
 #                                               # with JavaScriptCore's JIT (docs/08 "The JIT")
 #
 # wtk is compiled again for this toolchain (a hosted C++ program here: libstdc++'s operator new, not
-# onyxpp.hpp's). engine_webkit.cpp is compiled with the command one of WebKit's own sources gets (its
+# onyxpp.hpp's -- -DONYX_HOSTED_NEW says so to that header, which wtk.h includes; without it the whole
+# program, Skia too, allocates on umm.h's heap, whose kapi_sbrk is a kernel call an app core may not
+# make: the link is checked). engine_webkit.cpp is compiled with the command one of WebKit's own sources gets (its
 # forwarding headers, its config.h). Variables: as build-wctest.sh; STAGE=0 leaves sdcard/ alone.
 #
 # Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence (see fetch.sh).
@@ -33,13 +35,13 @@ mkdir -p "$O/wtk" "$BUILD/bin"
 [ -f "$BUILD/lib/libWebKit.a" ] || { echo "build-web.sh: no $BUILD/lib/libWebKit.a: sh tools/webkit/build-webkit.sh" >&2; exit 1; }
 
 CXX="aarch64-onyx-elf-g++ -specs=$S/lib/onyx.specs -std=gnu++17 -O2 -mcpu=cortex-a72 -fno-exceptions -fno-rtti -w \
-	-ffunction-sections -fdata-sections -I$ONYX/user -I$ONYX/kernel/include"
+	-ffunction-sections -fdata-sections -DONYX_HOSTED_NEW -I$ONYX/user -I$ONYX/kernel/include"
 
 # ---- wtk, for this toolchain ----
 echo "web: wtk"
 for f in "$ONYX"/user/wtk/*.cpp; do
 	o="$O/wtk/$(basename "$f" .cpp).o"
-	if [ ! -f "$o" ] || [ "$f" -nt "$o" ]; then echo "$CXX -c $f -o $o"; fi
+	echo "$CXX -c $f -o $o"				# (always: a header of user/ may have changed -- a few seconds)
 done > "$O/wtk.jobs"
 [ -s "$O/wtk.jobs" ] && xargs -P "$JOBS" -I{} sh -c '{}' < "$O/wtk.jobs"
 rm -f "$O/libwtk.a"; aarch64-onyx-elf-ar rcs "$O/libwtk.a" "$O"/wtk/*.o
@@ -77,11 +79,17 @@ SKMS="$O/skmallocsize.o -Wl,--wrap=_Z14sk_malloc_sizePvm"
 [ "${SKMALLOCSIZE:-1}" = 1 ] || SKMS=""
 # The compositor's two C files (WebKit's USE(GRAPHICS_LAYER_ONYX) calls them; they call the kernel through
 # kapi.h): the GPU compositing service, built as user/Makefile builds it, and the kernel surfaces.
-GPC="$O/gpucomp.o $O/onyxsurface.o"
+GPC="$O/gpucomp.o $O/onyxsurface.o $O/onyxcores.o"
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O3 -mcpu=cortex-a72 -ffp-contract=off -fno-math-errno \
 	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$O/gpucomp.o"
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 \
 	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$HERE/onyxsurface.c" -o "$O/onyxsurface.o"
+# The tiles rasterised on Onyx's app cores (onyxcores.c: the workers, and core 0's locks, which must not
+# sleep while an app core may hold them -- the four entries wrapped here; it uses libonyxposix's
+# internals for the workers' TLS).
+aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 \
+	-I"$ONYX/user" -I"$ONYX/user/libc/posix" -I"$ONYX/kernel/include" -c "$HERE/onyxcores.c" -o "$O/onyxcores.o"
+GPC="$GPC -Wl,--wrap=__retarget_lock_acquire -Wl,--wrap=__retarget_lock_acquire_recursive -Wl,--wrap=sem_wait -Wl,--wrap=pthread_mutex_lock -Wl,--wrap=pread -Wl,--wrap=pwrite"
 # HEAPCHECK=1: the checking malloc of heapcheck.c in front of newlib's (a hunt for heap corruption);
 # HEAPCHECK=2: the same with blocks as large as newlib's and a malloc_usable_size that says so, Skia
 # filling them (no skmallocsize.o): what Skia does with the slack, under the canaries
@@ -98,6 +106,20 @@ echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
 	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $GPC $WK $LIBS -o "$BUILD/bin/web"
 aarch64-onyx-elf-size "$BUILD/bin/web"
+# The program's allocator is newlib's malloc alone (its _sbrk goes through the app-core RPC): no umm
+# heap, whose kapi_sbrk on an app core stops the raster job there and hangs the page (onyxcores.c).
+if aarch64-onyx-elf-nm "$BUILD/bin/web" | grep -q ' umm__\| _Z8onyx_newmPv'; then
+	echo "build-web.sh: $BUILD/bin/web has onyxpp.hpp's operator new (umm.h over kapi_sbrk): -DONYX_HOSTED_NEW is missing somewhere" >&2
+	exit 1
+fi
+# ... and malloc & co are newlib's own: a weak definition in a header of user/ (user/img/imgload.hpp's,
+# over operator new) wins over the C library's in a static link.
+weak=$(aarch64-onyx-elf-nm "$BUILD/bin/web" | grep -E ' [WwVv] (malloc|free|calloc|realloc|memalign|_malloc_r|_free_r)$' || true)
+if [ -n "$weak" ]; then
+	echo "build-web.sh: $BUILD/bin/web has a weak malloc / free / calloc / realloc, not newlib's:" >&2
+	echo "$weak" >&2
+	exit 1
+fi
 
 if [ "${STAGE:-1}" = 1 ]; then
 	mkdir -p "$ONYX/sdcard/apps/web.app"

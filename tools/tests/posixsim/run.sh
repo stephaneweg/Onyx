@@ -60,6 +60,8 @@ src=$PROG
 "$LD" $CF $CFLAGS_EXTRA -specs="$P/$SIMB/onyx.specs" -Wl,-e,posixsim_start $src "$B/fakekapi.o" "$B/start.o" \
 	$OBJS -o "$B/$name.elf"
 cp "$B/$name.elf" "$POSIXSIM_ROOT/SD/bin/$name"
+# (the core the code runs on: read where the bench's app cores can say it -- corereg.py)
+python3 "$HERE/corereg.py" "$POSIXSIM_ROOT/SD/bin/$name" >/dev/null
 [ -n "$BUILD_ONLY" ] && exit 0
 
 export POSIXSIM_ROOT POSIXSIM_QEMU

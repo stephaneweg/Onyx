@@ -1,0 +1,1762 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 17:25:17 +0200
+Subject: [PATCH 20/20] [Onyx] The compositor's tiles rasterised on the Pi's
+ other cores
+
+Onyx's POSIX threads all run on core 0; another core is an "app core" (kapi core_acquire /
+core_run), whose code makes no kernel call. The compositor now paints in two passes: the main
+thread records each dirty rectangle once into an SkPicture, and jobs of at most 512 x 256 pixels
+replay it into the tiles' buffers on up to two app cores and on the main thread (pure Skia
+there: no WTF, no WebCore); the uploads and the composite stay on the main thread. Small paints
+(under 64k pixels), or no free core, keep the direct path. Shared/onyx/OnyxCores.h is the
+interface (tools/webkit/onyxcores.c in Onyx: the workers, their own TLS, the RPC served while a
+batch runs, the watch on a core that faults or stalls -- its jobs are done again on the main
+thread and the process goes on single-threaded). The cores are given back after 10 s without
+raster. A self-test (OnyxCoreTest.cpp: eleven stages on a core, then the page's first jobs one
+at a time).
+
+Switches (files in SD:/etc): web-gpu-nocores, web-gpu-mainwaits, web-gpu-coretest.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/WebCore/PlatformOnyx.cmake             |   1 +
+ .../graphics/onyx/GraphicsLayerOnyx.cpp       | 350 +++++++++--
+ .../graphics/onyx/GraphicsLayerOnyx.h         |  50 +-
+ .../platform/graphics/onyx/OnyxCoreTest.cpp   | 554 ++++++++++++++++++
+ Source/WebKit/Shared/onyx/OnyxCores.h         |  60 ++
+ .../CoordinatedGraphics/LayerTreeHostOnyx.cpp | 319 ++++++++--
+ .../CoordinatedGraphics/LayerTreeHostOnyx.h   |  40 +-
+ 7 files changed, 1255 insertions(+), 119 deletions(-)
+ create mode 100644 Source/WebCore/platform/graphics/onyx/OnyxCoreTest.cpp
+ create mode 100644 Source/WebKit/Shared/onyx/OnyxCores.h
+
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+index a7435ccb..3e342329 100644
+--- a/Source/WebCore/PlatformOnyx.cmake
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -56,6 +56,7 @@ list(APPEND WebCore_SOURCES
+     platform/generic/KeyedEncoderGeneric.cpp
+ 
+     platform/graphics/onyx/GraphicsLayerOnyx.cpp
++    platform/graphics/onyx/OnyxCoreTest.cpp
+     platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
+ 
+     # The layers' animations of opacity and transform (USE_GRAPHICS_LAYER_ONYX): the one file of
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+index 56f4ae68..de840842 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+@@ -38,9 +38,13 @@
+ #include <execinfo.h>
+ #include <skia/core/SkCanvas.h>
+ #include <skia/core/SkColorSpace.h>
++#include <skia/core/SkBBHFactory.h>
+ #include <skia/core/SkImageInfo.h>
++#include <skia/core/SkPicture.h>
++#include <skia/core/SkPictureRecorder.h>
+ #include <skia/core/SkSurface.h>
+ #include <stdio.h>
++#include <time.h>
+ #include <unistd.h>
+ #include <wtf/StdLibExtras.h>
+ #endif
+@@ -82,6 +86,60 @@ static void traceInvalidation(const GraphicsLayerOnyx& layer, const IntRect& rec
+     }
+ }
+ 
++// A part of a pending paint to rasterise: what GraphicsLayerOnyx::runRasterJob gets, on any core.
++// Plain data and Skia only.
++struct GraphicsLayerOnyxRasterJob {
++    SkPicture* picture;
++    uint32_t* pixels; // The part's first pixel in the paint's buffer.
++    size_t rowBytes;
++    int x; // The part, in the layer's coordinates (the picture's).
++    int y;
++    int width;
++    int height;
++    bool opaque;
++    SkSurfaceProps properties;
++    uint64_t nanoseconds; // Out: how long the job took.
++    bool traced { false }; // The core test: breadcrumbs are left.
++    unsigned breadcrumb { 0 };
++};
++
++// The core test's breadcrumbs: written at once (the core may stop at the next instruction).
++static inline void leaveBreadcrumb(GraphicsLayerOnyxRasterJob& job, unsigned value)
++{
++    if (job.traced)
++        *static_cast<volatile unsigned*>(&job.breadcrumb) = value;
++}
++
++namespace {
++class OperationCounter final : public SkPicture::AbortCallback {
++public:
++    explicit OperationCounter(GraphicsLayerOnyxRasterJob& job)
++        : m_job(job)
++    {
++    }
++    bool abort() final
++    {
++        leaveBreadcrumb(m_job, 100 + m_count++);
++        return false;
++    }
++private:
++    GraphicsLayerOnyxRasterJob& m_job;
++    unsigned m_count { 0 };
++};
++}
++
++// A rectangle of the layer to paint, planned by planTiles: the new tiles of a run, or what was
++// invalidated in tiles that have their texture.
++struct GraphicsLayerOnyx::PendingPaint {
++    IntRect rect;
++    bool isNewTiles { false };
++    Vector<uint64_t, 4> tileKeys;
++    // When the paint is rasterised from a picture, apart (recordPendingPaints):
++    sk_sp<SkPicture> picture;
++    Vector<uint32_t> pixels; // rect.width() pixels a row.
++    Vector<GraphicsLayerOnyxRasterJob> jobs;
++};
++
+ Ref<GraphicsLayerOnyx> GraphicsLayerOnyx::create(Type type, GraphicsLayerClient& client, GraphicsLayerOnyxHost* host)
+ {
+     return adoptRef(*new GraphicsLayerOnyx(type, client, host));
+@@ -108,6 +166,7 @@ void GraphicsLayerOnyx::detachFromHost()
+     m_host = nullptr;
+     m_tiles.clear();
+     m_dirtyRects.clear();
++    m_pendingPaints.clear();
+     m_animations = nullptr;
+ }
+ 
+@@ -579,14 +638,74 @@ void GraphicsLayerOnyx::invalidateTiles()
+     m_dirtyRects.clear();
+ }
+ 
+-// One scratch buffer for every paint of every layer (the main thread): the pixels live in the
+-// host's textures, not here.
++// One scratch buffer for every paint of every layer made directly (the main thread): the pixels
++// live in the host's textures, not here.
+ static Vector<uint32_t>& scratchPixels()
+ {
+     static NeverDestroyed<Vector<uint32_t>> pixels;
+     return pixels;
+ }
+ 
++static inline uint64_t rasterClockNanoseconds()
++{
++    // (clock_gettime: libonyxposix reads the counter, no kernel call -- it may run on an app core.)
++    struct timespec time;
++    clock_gettime(CLOCK_MONOTONIC, &time);
++    return static_cast<uint64_t>(time.tv_sec) * 1000000000ull + static_cast<uint64_t>(time.tv_nsec);
++}
++
++// On any core, an app core included (the host's raster workers): Skia and plain memory only -- no
++// WTF, no WebCore (their thread-local state is the main thread's).
++void GraphicsLayerOnyx::runRasterJob(void* argument)
++{
++    auto& job = *static_cast<GraphicsLayerOnyxRasterJob*>(argument);
++    auto startTime = rasterClockNanoseconds();
++    leaveBreadcrumb(job, 1);
++    auto info = SkImageInfo::Make(job.width, job.height, kBGRA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
++    if (auto surface = SkSurfaces::WrapPixels(info, job.pixels, job.rowBytes, &job.properties)) {
++        // (The pixels are transparent already: recordPendingPaints.)
++        leaveBreadcrumb(job, 2);
++        auto* canvas = surface->getCanvas();
++        canvas->translate(-job.x, -job.y);
++        leaveBreadcrumb(job, 3);
++        if (job.traced) {
++            OperationCounter counter(job);
++            job.picture->playback(canvas, &counter);
++        } else
++            job.picture->playback(canvas);
++    }
++    leaveBreadcrumb(job, 0xffff);
++    job.nanoseconds = rasterClockNanoseconds() - startTime;
++}
++
++void GraphicsLayerOnyx::setRasterJobTraced(void* argument)
++{
++    static_cast<GraphicsLayerOnyxRasterJob*>(argument)->traced = true;
++}
++
++void GraphicsLayerOnyx::describeRasterJob(void* argument, char* text, size_t size)
++{
++    auto& job = *static_cast<GraphicsLayerOnyxRasterJob*>(argument);
++    unsigned breadcrumb = *static_cast<volatile unsigned*>(&job.breadcrumb);
++    char where[48];
++    if (breadcrumb == 0xffff)
++        snprintf(where, sizeof(where), "done");
++    else if (breadcrumb >= 100)
++        snprintf(where, sizeof(where), "in the picture's operation %u", breadcrumb - 100);
++    else
++        snprintf(where, sizeof(where), "breadcrumb %u", breadcrumb);
++    snprintf(text, size, "%d x %d at %d,%d, %s, a picture of %d operations, %zu bytes: %s", job.width, job.height, job.x, job.y, job.opaque ? "opaque" : "with alpha",
++        job.picture->approximateOpCount(), job.picture->approximateBytesUsed(), where);
++}
++
++void GraphicsLayerOnyx::resetRasterJob(void* argument)
++{
++    auto& job = *static_cast<GraphicsLayerOnyxRasterJob*>(argument);
++    job.traced = false; // (The core test: the breadcrumb stays where the core left it.)
++    for (int y = 0; y < job.height; ++y)
++        memset(reinterpret_cast<uint8_t*>(job.pixels) + y * job.rowBytes, 0, static_cast<size_t>(job.width) * sizeof(uint32_t));
++}
++
+ const uint32_t* GraphicsLayerOnyx::paintRect(const IntRect& rect, TileUpdate& update)
+ {
+     if (rect.isEmpty())
+@@ -623,32 +742,149 @@ const uint32_t* GraphicsLayerOnyx::paintRect(const IntRect& rect, TileUpdate& up
+     return pixels.span().data();
+ }
+ 
+-// New tiles side by side in a row: painted in one go, each given its part.
+-void GraphicsLayerOnyx::paintNewTiles(const Vector<uint64_t, 4>& keys, TileUpdate& update)
++// A paint's pixels (stride pixels a row, the paint's rectangle; null: it could not be painted)
++// given to the host: the new tiles' textures made, the others' rectangles replaced.
++void GraphicsLayerOnyx::uploadPendingPaint(PendingPaint& paint, const uint32_t* pixels, int stride, TileUpdate& update)
+ {
+-    IntRect runRect;
+-    for (auto key : keys)
+-        runRect.unite(m_tiles.find(key)->value.rect);
++    bool painted = false;
++    for (auto key : paint.tileKeys) {
++        auto iterator = m_tiles.find(key);
++        if (iterator == m_tiles.end())
++            continue;
++        auto& tile = iterator->value;
++        auto part = intersection(paint.rect, tile.rect);
++        if (part.isEmpty())
++            continue;
++        auto* partPixels = pixels ? pixels + static_cast<size_t>(part.y() - paint.rect.y()) * stride + (part.x() - paint.rect.x()) : nullptr;
+ 
+-    auto* pixels = paintRect(runRect, update);
+-    if (!pixels)
+-        return;
++        if (paint.isNewTiles) {
++            if (!partPixels || tile.texture)
++                continue;
++            tile.texture = m_host->createTileTexture(tile.rect.size(), partPixels, stride);
++            if (!tile.texture)
++                continue;
++            tile.dirtyRect = { };
++            update.tilesPainted++;
++            continue;
++        }
+ 
+-    for (auto key : keys) {
+-        auto& tile = m_tiles.find(key)->value;
+-        auto* tilePixels = pixels + static_cast<size_t>(tile.rect.y() - runRect.y()) * runRect.width() + (tile.rect.x() - runRect.x());
+-        tile.texture = m_host->createTileTexture(tile.rect.size(), tilePixels, runRect.width());
+         if (!tile.texture)
+             continue;
+-        tile.dirtyRect = { };
+-        update.tilesPainted++;
++        IntRect rectInTile { part.location() - toIntSize(tile.rect.location()), part.size() };
++        if (partPixels && m_host->updateTileTexture(tile.texture, rectInTile, partPixels, stride))
++            painted = true;
++        else
++            tile.dirtyRect.unite(part);
++    }
++    if (painted) {
++        update.rectsPainted++;
++        update.repaintedRects.append(paint.rect);
++    }
++}
++
++// The planned paints painted here and now, one after the other (the main thread; as before there
++// were raster workers).
++void GraphicsLayerOnyx::paintPendingPaints(TileUpdate& update)
++{
++    if (!m_host) {
++        m_pendingPaints.clear();
++        return;
++    }
++    for (auto& paint : std::exchange(m_pendingPaints, { }))
++        uploadPendingPaint(*paint, paintRect(paint->rect, update), paint->rect.width(), update);
++
++    // (One texture of 2048 x 2048 is 16 MB of scratch: not kept.)
++    if (scratchPixels().capacity() > 2048 * 1024)
++        scratchPixels().clear();
++}
++
++// The planned paints recorded (the main thread: WebCore paints each rectangle once, into a Skia
++// picture) and cut into raster jobs for the host to run on its workers (runRasterJob), each a
++// part of the paint's own pixel buffer.
++void GraphicsLayerOnyx::recordPendingPaints(Vector<void*>& jobs, TileUpdate& update)
++{
++    // (Parts of 512 x 256 pixels at most: a row of two new tiles is four jobs.)
++    static constexpr int partWidth = 512;
++    static constexpr int partHeight = 256;
++
++    SkSurfaceProps properties = FontRenderOptions::singleton().createSurfaceProps();
++    bool opaque = contentsOpaque();
++    for (auto& paint : m_pendingPaints) {
++        auto& rect = paint->rect;
++        size_t pixelCount = static_cast<size_t>(rect.width()) * rect.height();
++        if (!paint->pixels.tryGrow(pixelCount))
++            continue;
++        // Transparent, and touched here: the memory's pages are there before another core writes them
++        // (a page fault on an Onyx app core waits for core 0).
++        zeroSpan(paint->pixels.mutableSpan());
++        int partCount = ((rect.width() + partWidth - 1) / partWidth) * ((rect.height() + partHeight - 1) / partHeight);
++
++        auto startTime = MonotonicTime::now();
++        {
++            SkPictureRecorder recorder;
++            // (A bounding box hierarchy when the picture is replayed more than once: each part plays
++            // only what touches it.)
++            SkRTreeFactory hierarchyFactory;
++            auto* canvas = recorder.beginRecording(SkRect::MakeXYWH(rect.x(), rect.y(), rect.width(), rect.height()), partCount > 1 ? &hierarchyFactory : nullptr);
++            if (!canvas)
++                continue;
++            {
++                GraphicsContextSkia context(*canvas, RenderingMode::Unaccelerated, RenderingPurpose::LayerBacking);
++                context.clip(rect);
++                paintGraphicsLayerContents(context, rect);
++            }
++            paint->picture = recorder.finishRecordingAsPicture();
++        }
++        update.recordTime += MonotonicTime::now() - startTime;
++        update.paints++;
++        update.pixelsPainted += pixelCount;
++        if (!paint->picture)
++            continue;
++
++        paint->jobs.reserveInitialCapacity(partCount);
++        for (int y = 0; y < rect.height(); y += partHeight) {
++            for (int x = 0; x < rect.width(); x += partWidth) {
++                paint->jobs.append(GraphicsLayerOnyxRasterJob {
++                    paint->picture.get(),
++                    paint->pixels.mutableSpan().data() + static_cast<size_t>(y) * rect.width() + x,
++                    static_cast<size_t>(rect.width()) * sizeof(uint32_t),
++                    rect.x() + x,
++                    rect.y() + y,
++                    std::min(partWidth, rect.width() - x),
++                    std::min(partHeight, rect.height() - y),
++                    opaque,
++                    properties,
++                    0
++                });
++            }
++        }
++        for (auto& job : paint->jobs)
++            jobs.append(&job);
+     }
+ }
+ 
+-void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, bool allowsPrepainting, unsigned& offscreenBudget, TileUpdate& update)
++// The jobs have run: the pixels are given to the host, the pictures and the buffers let go (here,
++// on the main thread).
++void GraphicsLayerOnyx::uploadPendingPaints(TileUpdate& update)
++{
++    if (!m_host) {
++        m_pendingPaints.clear();
++        return;
++    }
++    for (auto& paint : std::exchange(m_pendingPaints, { })) {
++        uint64_t nanoseconds = 0;
++        for (auto& job : paint->jobs)
++            nanoseconds += job.nanoseconds;
++        update.rasterTime += Seconds::fromNanoseconds(nanoseconds);
++        uploadPendingPaint(*paint, paint->picture ? paint->pixels.span().data() : nullptr, paint->rect.width(), update);
++    }
++}
++
++void GraphicsLayerOnyx::planTiles(const IntRect& passedVisibleRect, bool allowsPrepainting, unsigned& offscreenBudget, TileUpdate& update)
+ {
+     if (!m_host)
+         return;
++    m_pendingPaints.clear();
+ 
+     IntRect layerRect { { }, expandedIntSize(m_size) };
+     auto visibleRect = intersection(passedVisibleRect, layerRect);
+@@ -699,46 +935,47 @@ void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, bool allow
+         return true;
+     });
+ 
+-    // What was invalidated: each rectangle painted once for the visible tiles it touches, and given
+-    // to their textures; kept for later in the tiles out of sight.
++    auto addPaint = [&](const IntRect& rect, bool isNewTiles, Vector<uint64_t, 4>&& keys) {
++        auto paint = makeUniqueWithoutFastMallocCheck<PendingPaint>();
++        paint->rect = rect;
++        paint->isNewTiles = isNewTiles;
++        paint->tileKeys = WTF::move(keys);
++        update.pixelsPlanned += static_cast<uint64_t>(rect.width()) * rect.height();
++        m_pendingPaints.append(WTF::move(paint));
++    };
++
++    // What was invalidated: each rectangle painted once for the visible tiles it touches; kept for
++    // later in the tiles out of sight.
+     for (auto& dirtyRect : std::exchange(m_dirtyRects, { })) {
+         IntRect rectToPaint;
+-        for (auto& tile : m_tiles.values()) {
++        Vector<uint64_t, 4> keys;
++        for (auto& entry : m_tiles) {
++            auto& tile = entry.value;
+             if (!tile.texture)
+                 continue;
+             auto part = intersection(dirtyRect, tile.rect);
+             if (part.isEmpty())
+                 continue;
+-            if (tile.rect.intersects(visibleRect))
++            if (tile.rect.intersects(visibleRect)) {
+                 rectToPaint.unite(part);
+-            else
+-                tile.dirtyRect.unite(part);
+-        }
+-        if (rectToPaint.isEmpty())
+-            continue;
+-
+-        auto* pixels = paintRect(rectToPaint, update);
+-        bool painted = false;
+-        for (auto& tile : m_tiles.values()) {
+-            if (!tile.texture || !tile.rect.intersects(visibleRect))
+-                continue;
+-            auto part = intersection(rectToPaint, tile.rect);
+-            if (part.isEmpty())
+-                continue;
+-            IntRect rectInTile { part.location() - toIntSize(tile.rect.location()), part.size() };
+-            if (pixels && m_host->updateTileTexture(tile.texture, rectInTile, pixels + static_cast<size_t>(part.y() - rectToPaint.y()) * rectToPaint.width() + (part.x() - rectToPaint.x()), rectToPaint.width()))
+-                painted = true;
+-            else
++                keys.append(entry.key);
++            } else
+                 tile.dirtyRect.unite(part);
+         }
+-        if (painted) {
+-            update.rectsPainted++;
+-            update.repaintedRects.append(rectToPaint);
+-        }
++        if (!rectToPaint.isEmpty())
++            addPaint(rectToPaint, false, WTF::move(keys));
+     }
+ 
+     // The new tiles, and the tiles out of sight with something to paint again.
+     Vector<uint64_t, 4> newTiles;
++    auto addNewTiles = [&] {
++        if (newTiles.isEmpty())
++            return;
++        IntRect runRect;
++        for (auto key : newTiles)
++            runRect.unite(m_tiles.find(key)->value.rect);
++        addPaint(runRect, true, std::exchange(newTiles, { }));
++    };
+     for (int y = covered.y(); y < covered.maxY(); ++y) {
+         for (int x = covered.x(); x < covered.maxX(); ++x) {
+             auto rect = rectForTile(x, y);
+@@ -763,36 +1000,19 @@ void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, bool allow
+                 if (!m_host->hasRoomForTileTexture(rect.size()))
+                     continue;
+                 // (A run: the tiles of this row since the last one that was not new, four at most.)
+-                if (!newTiles.isEmpty() && (m_tiles.find(newTiles.last())->value.index != IntPoint { x - 1, y } || newTiles.size() >= 4)) {
+-                    paintNewTiles(newTiles, update);
+-                    newTiles.shrink(0);
+-                }
++                if (!newTiles.isEmpty() && (m_tiles.find(newTiles.last())->value.index != IntPoint { x - 1, y } || newTiles.size() >= 4))
++                    addNewTiles();
+                 newTiles.append(key);
+                 continue;
+             }
+ 
+             auto dirtyRect = intersection(tile.dirtyRect, tile.rect);
+             tile.dirtyRect = { };
+-            auto* pixels = paintRect(dirtyRect, update);
+-            if (!pixels)
+-                continue;
+-            IntRect rectInTile { dirtyRect.location() - toIntSize(tile.rect.location()), dirtyRect.size() };
+-            if (!m_host->updateTileTexture(tile.texture, rectInTile, pixels, dirtyRect.width())) {
+-                tile.dirtyRect = dirtyRect;
+-                continue;
+-            }
+-            update.rectsPainted++;
+-            update.repaintedRects.append(dirtyRect);
+-        }
+-        if (!newTiles.isEmpty()) {
+-            paintNewTiles(newTiles, update);
+-            newTiles.shrink(0);
++            if (!dirtyRect.isEmpty())
++                addPaint(dirtyRect, false, { key });
+         }
++        addNewTiles();
+     }
+-
+-    // (One texture of 2048 x 2048 is 16 MB of scratch: not kept.)
+-    if (scratchPixels().capacity() > 2048 * 1024)
+-        scratchPixels().clear();
+ }
+ 
+ #else // !USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+index 580d5cd3..48ded268 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+@@ -99,6 +99,11 @@ public:
+         Seconds paintTime;
+         Seconds setupTime;
+         Seconds contentsTime;
++        // What planTiles found to paint; and, when the paints are recorded and rasterised apart:
++        // the recording (the main thread), the raster jobs' times added up (over every core).
++        uint64_t pixelsPlanned { 0 };
++        Seconds recordTime;
++        Seconds rasterTime;
+         // What was painted again of tiles already shown, in the layer's coordinates.
+         Vector<IntRect, 8> repaintedRects;
+         // Tiles outside the visible rectangle that the budget left for a later frame.
+@@ -112,12 +117,28 @@ public:
+     WEBCORE_EXPORT void detachFromHost();
+ 
+     // The tiles follow the visible rectangle (the layer's coordinates): they cover that rectangle
+-    // grown (allowsPrepainting) by its height above and twice below, clamped to the layer. What was
+-    // invalidated in the visible tiles is painted again, each rectangle once, and given to the host
+-    // as rectangles of their textures; the visible tiles that are new are painted whole; the tiles
+-    // only covered, new or dirty, while offscreenBudget lasts (it is counted down). The tiles that
+-    // left the coverage are dropped.
+-    WEBCORE_EXPORT void updateTiles(const IntRect& visibleRect, bool allowsPrepainting, unsigned& offscreenBudget, TileUpdate&);
++    // grown (allowsPrepainting) by its height above and twice below, clamped to the layer. The tiles
++    // that left the coverage are dropped, and what there is to paint is planned (nothing is
++    // painted yet): what was invalidated in the visible tiles, each rectangle once; the visible tiles
++    // that are new, whole, side by side in a row as one paint; the tiles only covered, new or dirty,
++    // while offscreenBudget lasts (it is counted down).
++    WEBCORE_EXPORT void planTiles(const IntRect& visibleRect, bool allowsPrepainting, unsigned& offscreenBudget, TileUpdate&);
++    bool hasPendingPaints() const { return !m_pendingPaints.isEmpty(); }
++    // Then either: the planned paints painted at once, here, and given to the host's textures --
++    WEBCORE_EXPORT void paintPendingPaints(TileUpdate&);
++    // -- or: recorded (WebCore paints each rectangle once, into a Skia picture), rasterised by the
++    // host from the jobs appended (runRasterJob for each, on any core -- an Onyx app core too: the
++    // jobs are Skia and plain memory only), and, once every job has run, given to the textures.
++    WEBCORE_EXPORT void recordPendingPaints(Vector<void*>& jobs, TileUpdate&);
++    WEBCORE_EXPORT static void runRasterJob(void*);
++    // A job that did not end (its core faulted) is run again: its pixels made transparent first.
++    WEBCORE_EXPORT static void resetRasterJob(void*);
++    // The app cores' self test (below), its last stage -- the page's own jobs, one at a time: a job
++    // then leaves a breadcrumb (1: started, 2: its surface made, 3: translated, 100 + n: n
++    // operations of its picture replayed, 0xffff: done), and says what it is.
++    WEBCORE_EXPORT static void setRasterJobTraced(void*);
++    WEBCORE_EXPORT static void describeRasterJob(void*, char* text, size_t);
++    WEBCORE_EXPORT void uploadPendingPaints(TileUpdate&);
+     // The host's textures lost their pixels: every tile is painted again.
+     WEBCORE_EXPORT void invalidateTiles();
+     WEBCORE_EXPORT void dropTiles();
+@@ -194,9 +215,10 @@ private:
+     static uint64_t tileKey(int x, int y) { return (static_cast<uint64_t>(x + 1) << 32) | static_cast<uint32_t>(y + 1); }
+     IntRect rectForTile(int x, int y) const;
+     void addDirtyRect(IntRect);
++    struct PendingPaint;
+     // rect painted into the scratch buffer (rect.width() pixels a row) -> its pixels, null: not painted.
+     const uint32_t* paintRect(const IntRect&, TileUpdate&);
+-    void paintNewTiles(const Vector<uint64_t, 4>& keys, TileUpdate&);
++    void uploadPendingPaint(PendingPaint&, const uint32_t* pixels, int stride, TileUpdate&);
+     void destroyTile(Tile&);
+ 
+     GraphicsLayerOnyxHost* m_host { nullptr };
+@@ -206,6 +228,8 @@ private:
+     bool m_singleTextureRefused { false };
+     // What was invalidated since the last updateTiles (the layer's coordinates).
+     Vector<IntRect, 8> m_dirtyRects;
++    // What planTiles planned, until it is painted.
++    Vector<std::unique_ptr<PendingPaint>> m_pendingPaints;
+     IntRect m_lastVisibleRect;
+     Color m_solidColor;
+     bool m_hasUncommittedChanges { false };
+@@ -215,6 +239,18 @@ private:
+     TransformationMatrix m_currentTransform;
+ };
+ 
++// The app cores' self test (OnyxCoreTest.cpp; SD:/etc/web-gpu-coretest): for each stage, the host
++// has onyxCoreTestRun(onyxCoreTestPrepare(stage)) run on an app core, then calls onyxCoreTestCheck,
++// which runs the stage on the main thread and compares (false: the results differ; text: what to
++// log). onyxCoreTestBreadcrumb: how far the stage got on the core (0xffff: to its end).
++WEBCORE_EXPORT unsigned onyxCoreTestStageCount();
++WEBCORE_EXPORT const char* onyxCoreTestStageName(unsigned stage);
++WEBCORE_EXPORT void* onyxCoreTestPrepare(unsigned stage);
++WEBCORE_EXPORT void onyxCoreTestRun(void*);
++WEBCORE_EXPORT void onyxCoreTestStopped(void*); // (The core stopped in the stage: before it is run again.)
++WEBCORE_EXPORT unsigned onyxCoreTestBreadcrumb();
++WEBCORE_EXPORT bool onyxCoreTestCheck(unsigned stage, char* text, size_t);
++
+ } // namespace WebCore
+ 
+ #endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebCore/platform/graphics/onyx/OnyxCoreTest.cpp b/Source/WebCore/platform/graphics/onyx/OnyxCoreTest.cpp
+new file mode 100644
+index 00000000..61ba6e43
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/OnyxCoreTest.cpp
+@@ -0,0 +1,554 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++// The app cores' self test (SD:/etc/web-gpu-coretest, ONYX_WEB_GPU_CORETEST): what a raster job
++// needs of an Onyx app core, one thing a stage, from nothing to a recorded picture replayed. The
++// host (LayerTreeHostOnyx) runs each stage on an app core FIRST -- whatever the stage uses for the
++// first time in the process, it uses it there -- then on the main thread, and compares the two
++// results. A stage leaves a breadcrumb between its steps: what the host prints when the core
++// faults. Declared in GraphicsLayerOnyx.h. A stage is Skia, the C and C++ libraries and plain
++// memory: no WTF, no WebCore (as a raster job).
++
++#include "config.h"
++#include "GraphicsLayerOnyx.h"
++
++#if USE(GRAPHICS_LAYER_ONYX)
++
++#include "FontCache.h"
++#include <errno.h>
++#include <skia/core/SkBitmap.h>
++#include <skia/core/SkBlurTypes.h>
++#include <skia/core/SkCanvas.h>
++#include <skia/core/SkColorSpace.h>
++#include <skia/core/SkFont.h>
++#include <skia/core/SkFontMgr.h>
++#include <skia/core/SkImage.h>
++#include <skia/core/SkMaskFilter.h>
++#include <skia/core/SkPaint.h>
++#include <skia/core/SkPicture.h>
++#include <skia/core/SkPictureRecorder.h>
++#include <skia/core/SkRRect.h>
++#include <skia/core/SkTypeface.h>
++#include <skia/effects/SkGradient.h>
++#include <stdlib.h>
++#include <string.h>
++#include <string>
++#include <vector>
++#if CPU(ARM64)
++#include <arm_neon.h>
++#endif
++
++namespace WebCore {
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN // (Plain C buffers, on purpose: nothing of WTF runs on an app core.)
++
++namespace {
++
++struct Context {
++    unsigned stage { 0 };
++    volatile unsigned breadcrumb { 0 };
++    uint64_t result { 0 };
++    const void* threadLocalAddress { nullptr };
++    bool stopped { false };
++    unsigned breadcrumbWhenStopped { 0 };
++};
++
++Context s_coreContext;
++Context s_mainContext;
++// What the main thread prepares for the stages (prepare).
++SkTypeface* s_typeface;
++SkPicture* s_picture;
++
++inline void crumb(Context& context, unsigned value) { context.breadcrumb = value; }
++
++inline uint64_t mix(uint64_t hash, uint64_t value)
++{
++    hash ^= value;
++    hash *= 0x100000001b3ull;
++    return hash ^ (hash >> 29);
++}
++
++uint64_t hashBytes(const void* data, size_t size)
++{
++    auto* bytes = static_cast<const uint8_t*>(data);
++    uint64_t hash = 0xcbf29ce484222325ull;
++    for (size_t i = 0; i < size; ++i) {
++        hash ^= bytes[i];
++        hash *= 0x100000001b3ull;
++    }
++    return hash;
++}
++
++constexpr int canvasSize = 256;
++
++bool makeCanvasBitmap(SkBitmap& bitmap)
++{
++    return bitmap.tryAllocPixels(SkImageInfo::Make(canvasSize, canvasSize, kBGRA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB()));
++}
++
++uint64_t hashBitmap(const SkBitmap& bitmap)
++{
++    return hashBytes(bitmap.getPixels(), bitmap.computeByteSize());
++}
++
++sk_sp<SkShader> makeGradient(bool radial)
++{
++    static const SkColor4f colors[] = { { 1, 0, 0, 1 }, { 0, 0.5f, 1, 0.75f }, { 1, 1, 0, 1 } };
++    SkGradient gradient(SkGradient::Colors(SkSpan<const SkColor4f>(colors, 3), SkTileMode::kClamp), SkGradient::Interpolation());
++    if (radial)
++        return SkShaders::RadialGradient({ 128, 128 }, 96, gradient);
++    const SkPoint points[2] = { { 10, 10 }, { 240, 200 } };
++    return SkShaders::LinearGradient(points, gradient);
++}
++
++// ---- the stages ----
++
++uint64_t stageReturn(Context&)
++{
++    return 1;
++}
++
++uint64_t stageArithmetic(Context& context)
++{
++    constexpr int count = 4096;
++    static float values[2][count]; // (One a caller: s_coreContext / s_mainContext.)
++    auto* data = values[&context == &s_mainContext];
++    uint64_t hash = 0xcbf29ce484222325ull;
++    for (int i = 0; i < count; ++i)
++        data[i] = i * 0.37f + 1;
++    crumb(context, 1);
++    for (int round = 0; round < 50; ++round) {
++        for (int i = 0; i < count; ++i)
++            data[i] = sqrtf(data[i] * 1.0001f + 3) / (1 + data[(i + 1) & (count - 1)] * 0.01f);
++    }
++    crumb(context, 2);
++    double sum = 0;
++    for (int i = 0; i < count; ++i)
++        sum += static_cast<double>(data[i]) * (i & 7);
++    hash = mix(hash, static_cast<uint64_t>(sum * 1024));
++    crumb(context, 3);
++#if CPU(ARM64)
++    float32x4_t accumulator = vdupq_n_f32(0);
++    uint32x4_t integers = vdupq_n_u32(0x9e3779b9u);
++    for (int i = 0; i < count; i += 4) {
++        float32x4_t v = vld1q_f32(data + i);
++        accumulator = vmlaq_f32(accumulator, v, vdupq_n_f32(1.5f));
++        integers = veorq_u32(vmulq_u32(integers, vdupq_n_u32(2654435761u)), vreinterpretq_u32_f32(v));
++    }
++    float lanes[4];
++    uint32_t words[4];
++    vst1q_f32(lanes, accumulator);
++    vst1q_u32(words, integers);
++    for (int i = 0; i < 4; ++i) {
++        hash = mix(hash, static_cast<uint64_t>(lanes[i] * 16));
++        hash = mix(hash, words[i]);
++    }
++#endif
++    crumb(context, 4);
++    for (uint64_t i = 1; i < 200000; ++i)
++        hash = mix(hash, (hash / (i | 1)) + (hash % (i + 7)));
++    return hash;
++}
++
++uint64_t stageMalloc(Context& context)
++{
++    // Small blocks and blocks of 1 MB, 1000 times; eight large ones are held at a time, and 2000
++    // small ones: the heap grows and is trimmed (sbrk: through the app-core RPC there).
++    constexpr size_t large = 1024 * 1024;
++    void* held[8] = { };
++    void* smalls[2000] = { };
++    uint64_t hash = 0;
++    for (int i = 0; i < 1000; ++i) {
++        crumb(context, 1000 + i);
++        size_t size = 16 + (i * 37) % 900;
++        auto* block = static_cast<uint8_t*>(malloc(size));
++        if (!block)
++            return 0;
++        memset(block, i, size);
++        hash = mix(hash, block[size - 1] + size);
++        free(smalls[(i * 2) % 2000]);
++        smalls[(i * 2) % 2000] = block;
++        smalls[(i * 2 + 1) % 2000] = calloc(1, 64);
++        auto* big = static_cast<uint8_t*>(malloc(large));
++        if (!big)
++            return 0;
++        for (size_t offset = 0; offset < large; offset += 4096)
++            big[offset] = static_cast<uint8_t>(offset >> 12);
++        hash = mix(hash, big[large - 4096]);
++        free(held[i & 7]);
++        held[i & 7] = big;
++    }
++    crumb(context, 3000);
++    for (auto* block : held)
++        free(block);
++    for (auto* block : smalls)
++        free(block);
++    crumb(context, 3001);
++    auto* grown = static_cast<uint8_t*>(malloc(64));
++    for (size_t size = 128; grown && size <= 4 * large; size *= 2)
++        grown = static_cast<uint8_t*>(realloc(grown, size));
++    free(grown);
++    return grown ? hash : 0;
++}
++
++struct TestNode {
++    virtual ~TestNode() = default;
++    virtual uint64_t value() const { return m_value; }
++    uint64_t m_value { 0 };
++    TestNode* next { nullptr };
++};
++struct TestNodeTwice final : TestNode {
++    uint64_t value() const final { return m_value * 2; }
++};
++
++uint64_t stageNew(Context& context)
++{
++    uint64_t hash = 0;
++    TestNode* list = nullptr;
++    for (int i = 0; i < 20000; ++i) {
++        TestNode* node = (i & 1) ? new TestNodeTwice : new TestNode;
++        node->m_value = i;
++        node->next = list;
++        list = node;
++    }
++    crumb(context, 1);
++    while (list) {
++        auto* next = list->next;
++        hash = mix(hash, list->value()); // (A virtual call.)
++        delete list;
++        list = next;
++    }
++    crumb(context, 2);
++    std::vector<uint32_t> numbers;
++    for (uint32_t i = 0; i < 300000; ++i)
++        numbers.push_back(i * 2654435761u);
++    crumb(context, 3);
++    std::string text;
++    for (int i = 0; i < 5000; ++i)
++        text += static_cast<char>('a' + i % 26);
++    hash = mix(hash, hashBytes(numbers.data(), numbers.size() * sizeof(uint32_t)));
++    hash = mix(hash, hashBytes(text.data(), text.size()));
++    crumb(context, 4);
++    auto* array = new uint64_t[50000];
++    for (int i = 0; i < 50000; ++i)
++        array[i] = hash + i;
++    hash = mix(hash, array[49999]);
++    delete[] array;
++    return hash;
++}
++
++thread_local int t_value = 42;
++thread_local uint64_t t_words[32];
++
++uint64_t stageThreadLocal(Context& context)
++{
++    context.threadLocalAddress = &t_value;
++    uint64_t result = t_value == 42 || t_value == 43 ? 1 : 0; // (Its first value, or what this thread left.)
++    crumb(context, 1);
++    t_value = 43;
++    for (int i = 0; i < 32; ++i)
++        t_words[i] += i + 1;
++    crumb(context, 2);
++    errno = 0;
++    crumb(context, 3);
++    errno = EDOM;
++    result = result * 10 + (errno == EDOM);
++    errno = 0;
++    crumb(context, 4);
++    result = result * 10 + (t_value == 43);
++    result = result * 10 + (t_words[31] >= 32 && !(t_words[31] % 32));
++    return result;
++}
++
++struct TestTable {
++    TestTable()
++    {
++        for (int i = 0; i < 4096; ++i)
++            entries.push_back(i * 40503u + 7);
++    }
++    std::vector<uint32_t> entries;
++};
++
++const TestTable& testTable()
++{
++    static const TestTable table; // (__cxa_guard_acquire / release: on the core the first time.)
++    return table;
++}
++
++uint64_t stageStatic(Context& context)
++{
++    crumb(context, 1);
++    auto& table = testTable();
++    crumb(context, 2);
++    return hashBytes(table.entries.data(), table.entries.size() * sizeof(uint32_t));
++}
++
++uint64_t stageCanvas(Context& context)
++{
++    SkBitmap bitmap;
++    if (!makeCanvasBitmap(bitmap))
++        return 0;
++    crumb(context, 1);
++    SkCanvas canvas(bitmap);
++    crumb(context, 2);
++    canvas.drawColor(SK_ColorWHITE);
++    crumb(context, 3);
++    SkPaint paint;
++    paint.setColor(SkColorSetARGB(255, 20, 60, 200));
++    canvas.drawRect(SkRect::MakeXYWH(16, 16, 120, 90), paint);
++    crumb(context, 4);
++    paint.setAntiAlias(true);
++    paint.setColor(SkColorSetARGB(128, 200, 30, 30));
++    canvas.drawRect(SkRect::MakeXYWH(60.5f, 50.25f, 150.5f, 120.75f), paint);
++    crumb(context, 5);
++    canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(30, 150, 180, 80), 14, 14), paint);
++    crumb(context, 6);
++    return hashBitmap(bitmap);
++}
++
++uint64_t stageShaders(Context& context)
++{
++    SkBitmap bitmap;
++    if (!makeCanvasBitmap(bitmap))
++        return 0;
++    SkCanvas canvas(bitmap);
++    canvas.drawColor(SK_ColorWHITE);
++    crumb(context, 1);
++    SkPaint paint;
++    paint.setAntiAlias(true);
++    paint.setShader(makeGradient(false));
++    crumb(context, 2);
++    canvas.drawRect(SkRect::MakeXYWH(8, 8, 240, 110), paint);
++    crumb(context, 3);
++    paint.setShader(makeGradient(true));
++    canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(40, 100, 180, 130), 20, 20), paint);
++    crumb(context, 4);
++    SkPaint shadow;
++    shadow.setAntiAlias(true);
++    shadow.setColor(SkColorSetARGB(160, 0, 0, 0));
++    shadow.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, 6));
++    crumb(context, 5);
++    canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(60, 40, 120, 70), 10, 10), shadow);
++    crumb(context, 6);
++    return hashBitmap(bitmap);
++}
++
++uint64_t stageText(Context& context)
++{
++    if (!s_typeface)
++        return 1; // (No typeface on this card: nothing to draw; said by the host.)
++    SkBitmap bitmap;
++    if (!makeCanvasBitmap(bitmap))
++        return 0;
++    SkCanvas canvas(bitmap);
++    canvas.drawColor(SK_ColorWHITE);
++    SkPaint paint;
++    paint.setAntiAlias(true);
++    paint.setColor(SK_ColorBLACK);
++    static const float sizes[] = { 11, 16, 23, 37 };
++    float y = 20;
++    unsigned step = 1;
++    for (float size : sizes) {
++        crumb(context, step++);
++        SkFont font(sk_ref_sp(s_typeface), size);
++        font.setSubpixel(true);
++        font.setEdging(SkFont::Edging::kAntiAlias);
++        // (Letters no page has drawn yet at these sizes: their glyphs are made here.)
++        canvas.drawString("Onyx core test: Hamburgefonstiv 0123456789", 4, y, font, paint);
++        y += size * 1.6f;
++        canvas.drawString("\303\251\303\250\303\240 qjpgy @#&%", 4, y, font, paint);
++        y += size * 1.6f;
++    }
++    crumb(context, 9);
++    return hashBitmap(bitmap);
++}
++
++uint64_t stageImage(Context& context)
++{
++    SkBitmap source;
++    if (!source.tryAllocPixels(SkImageInfo::Make(64, 48, kBGRA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB())))
++        return 0;
++    for (int y = 0; y < 48; ++y) {
++        auto* row = source.getAddr32(0, y);
++        for (int x = 0; x < 64; ++x)
++            row[x] = 0xff000000u | ((x * 4) << 16) | ((y * 5) << 8) | ((x ^ y) * 3 & 0xff);
++    }
++    crumb(context, 1);
++    source.setImmutable();
++    auto image = SkImages::RasterFromBitmap(source);
++    if (!image)
++        return 0;
++    crumb(context, 2);
++    SkBitmap bitmap;
++    if (!makeCanvasBitmap(bitmap))
++        return 0;
++    SkCanvas canvas(bitmap);
++    canvas.drawColor(SK_ColorWHITE);
++    crumb(context, 3);
++    canvas.drawImageRect(image, SkRect::MakeXYWH(4, 4, 200, 120), SkSamplingOptions(SkFilterMode::kLinear), nullptr);
++    crumb(context, 4);
++    canvas.drawImageRect(image, SkRect::MakeXYWH(100.5f, 130.5f, 31, 23), SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kLinear), nullptr);
++    crumb(context, 5);
++    canvas.drawImageRect(image, SkRect::MakeXYWH(10, 140, 80, 100), SkSamplingOptions(SkCubicResampler::Mitchell()), nullptr);
++    crumb(context, 6);
++    canvas.drawImage(image, 180, 180);
++    return hashBitmap(bitmap);
++}
++
++uint64_t stagePicture(Context& context)
++{
++    if (!s_picture)
++        return 0;
++    SkBitmap bitmap;
++    if (!makeCanvasBitmap(bitmap))
++        return 0;
++    SkCanvas canvas(bitmap);
++    crumb(context, 1);
++    canvas.translate(-8, -8); // (As a raster job: a part of the picture.)
++    crumb(context, 2);
++    s_picture->playback(&canvas);
++    crumb(context, 3);
++    return hashBitmap(bitmap);
++}
++
++sk_sp<SkPicture> recordTestPicture()
++{
++    SkPictureRecorder recorder;
++    auto* canvas = recorder.beginRecording(SkRect::MakeWH(canvasSize + 16, canvasSize + 16));
++    canvas->drawColor(SK_ColorWHITE);
++    SkPaint paint;
++    paint.setAntiAlias(true);
++    paint.setShader(makeGradient(false));
++    canvas->drawRect(SkRect::MakeXYWH(12, 12, 200, 60), paint);
++    paint.setShader(nullptr);
++    canvas->save();
++    canvas->clipRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(30, 80, 200, 150), 16, 16), true);
++    canvas->rotate(4);
++    paint.setColor(SkColorSetARGB(255, 30, 140, 60));
++    canvas->drawRect(SkRect::MakeXYWH(20, 70, 230, 180), paint);
++    if (s_typeface) {
++        SkFont font(sk_ref_sp(s_typeface), 19);
++        paint.setColor(SK_ColorWHITE);
++        canvas->drawString("a recorded picture", 40, 120, font, paint);
++    }
++    canvas->restore();
++    paint.setColor(SkColorSetARGB(120, 0, 0, 0));
++    paint.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, 4));
++    canvas->drawRect(SkRect::MakeXYWH(150, 190, 80, 50), paint);
++    return recorder.finishRecordingAsPicture();
++}
++
++struct Stage {
++    ASCIILiteral name;
++    uint64_t (*run)(Context&);
++};
++
++const Stage stages[] = {
++    { "return at once"_s, stageReturn },
++    { "integer, float and NEON arithmetic"_s, stageArithmetic },
++    { "malloc / free, small blocks and 1 MB, 1000 times"_s, stageMalloc },
++    { "operator new / delete, std::vector, std::string"_s, stageNew },
++    { "thread_local and errno"_s, stageThreadLocal },
++    { "a function's static initialised (__cxa_guard)"_s, stageStatic },
++    { "Skia: a bitmap, a canvas, drawColor, drawRect"_s, stageCanvas },
++    { "Skia: gradient shaders, a blurred shadow"_s, stageShaders },
++    { "Skia: text (the glyph cache, FreeType)"_s, stageText },
++    { "Skia: an image drawn scaled"_s, stageImage },
++    { "Skia: a recorded picture replayed"_s, stagePicture },
++};
++
++} // namespace
++
++unsigned onyxCoreTestStageCount()
++{
++    return std::size(stages);
++}
++
++const char* onyxCoreTestStageName(unsigned stage)
++{
++    return stage < std::size(stages) ? stages[stage].name.characters() : "";
++}
++
++void* onyxCoreTestPrepare(unsigned stage)
++{
++    // (The main thread: what the stages take from WebCore -- the typeface -- and the picture.)
++    if (!s_typeface) {
++        auto& manager = FontCache::forCurrentThread().fontManager();
++        auto typeface = manager.legacyMakeTypeface(nullptr, SkFontStyle());
++        if (!typeface)
++            typeface = manager.matchFamilyStyle("sans-serif", SkFontStyle());
++        s_typeface = typeface.release();
++    }
++    if (!s_picture && stages[stage].run == stagePicture)
++        s_picture = recordTestPicture().release();
++    s_coreContext = { };
++    s_coreContext.stage = stage;
++    return &s_coreContext;
++}
++
++void onyxCoreTestRun(void* argument)
++{
++    auto& context = *static_cast<Context*>(argument);
++    context.breadcrumb = 0;
++    context.result = stages[context.stage].run(context);
++    context.breadcrumb = 0xffff;
++}
++
++void onyxCoreTestStopped(void* argument)
++{
++    auto& context = *static_cast<Context*>(argument);
++    context.breadcrumbWhenStopped = context.breadcrumb;
++    context.stopped = true;
++}
++
++unsigned onyxCoreTestBreadcrumb()
++{
++    return s_coreContext.stopped ? s_coreContext.breadcrumbWhenStopped : s_coreContext.breadcrumb;
++}
++
++bool onyxCoreTestCheck(unsigned stage, char* text, size_t size)
++{
++    s_mainContext = { };
++    s_mainContext.stage = stage;
++    onyxCoreTestRun(&s_mainContext);
++    bool same = s_coreContext.result == s_mainContext.result && s_coreContext.result;
++    const char* note = "";
++    if (stages[stage].run == stageThreadLocal) {
++        same = s_coreContext.result == 1111 && s_mainContext.result == 1111;
++        note = s_coreContext.threadLocalAddress != s_mainContext.threadLocalAddress ? "; the core has its own thread_local data" : "; the core SHARES the main thread's thread_local data";
++    } else if (stages[stage].run == stageText && !s_typeface)
++        note = "; no typeface: nothing drawn";
++    if (same)
++        snprintf(text, size, "result %llx%s", static_cast<unsigned long long>(s_coreContext.result), note);
++    else
++        snprintf(text, size, "result %llx, the main thread's is %llx%s", static_cast<unsigned long long>(s_coreContext.result), static_cast<unsigned long long>(s_mainContext.result), note);
++    return same;
++}
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
++
++} // namespace WebCore
++
++#endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebKit/Shared/onyx/OnyxCores.h b/Source/WebKit/Shared/onyx/OnyxCores.h
+new file mode 100644
+index 00000000..e72338ab
+--- /dev/null
++++ b/Source/WebKit/Shared/onyx/OnyxCores.h
+@@ -0,0 +1,60 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if USE(GRAPHICS_LAYER_ONYX)
++
++// Onyx's app cores (kapi core_acquire / core_run, Onyx's docs/03): whole cores a program takes for
++// code of its own -- the only parallelism Onyx has (its threads all run on core 0, in turns). The
++// compositor rasterises its tiles there. An app core is not a thread (no kernel call, the caller's
++// TLS, locks that spin): what makes Skia's raster run on one is in tools/webkit/onyxcores.c of the
++// Onyx sources, which the program WebKit is linked into brings, as it brings gpucomp. The jobs
++// given here must be Skia and plain memory only: no WTF, no WebCore.
++extern "C" {
++
++// Up to `wanted` app cores taken and their workers started -> how many (0: none is free: an
++// emulator, the network core). Each start has its stop.
++int onyx_cores_start(int wanted);
++void onyx_cores_stop(void);
++// The workers that run now (0 once one has faulted, for the rest of the process's life: the next
++// starts take none).
++int onyx_cores_count(void);
++// function(arguments[i]) for every i < count, on the workers and (mainToo) on the calling thread,
++// which must be the main thread; back when all are done. -1: a worker stopped -- its job faulted
++// (a kernel call made on the core is one), or no job was finished for 2 s: the job it had was run
++// again by the caller, after reset(arguments[i]) had put its output back as it was given; the
++// cores are given back. (A worker that died holding a lock the main thread then needs ends the
++// process: see onyxcores.c.)
++int onyx_cores_run(void (*function)(void*), void (*reset)(void*), void** arguments, int count, int mainToo);
++// What happened to the worker that stopped (null: none did).
++const char* onyx_cores_failure(void);
++// A clock that may be read on an app core (nanoseconds).
++unsigned long long onyx_cores_now_ns(void);
++unsigned onyx_cores_jobs_done(int worker);
++
++}
++
++#endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+index 68c07c03..eaaa3f6c 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+@@ -28,6 +28,7 @@
+ 
+ #if USE(GRAPHICS_LAYER_ONYX)
+ 
++#include "OnyxCores.h"
+ #include "OnyxSurface.h"
+ #include "WebPage.h"
+ #include "WebPageInlines.h"
+@@ -59,6 +60,15 @@ static constexpr Seconds frameInterval { 16_ms };
+ static constexpr Seconds didRefreshTimeout { 500_ms };
+ static constexpr Seconds statisticsInterval { 2_s };
+ static constexpr size_t maximumColorTextures = 32;
++// A frame with less than this to paint is painted by the main thread at once: recording it and
++// handing it to the raster workers would cost more than it saves.
++static constexpr uint64_t minimumPixelsForWorkers = 64 * 1024;
++// The app cores are given back when nothing was rasterised for this long, and asked for again no
++// more often than this when none was free.
++static constexpr Seconds coresIdleInterval { 10_s };
++// The core test's last stage: so many of the page's raster jobs run on an app core one at a time.
++static constexpr unsigned coreTestJobCount = 200;
++static constexpr Seconds coresRetryInterval { 5_s };
+ 
+ // One line, one write, on the standard error: the kernel's log (kmsg) for an Onyx program.
+ static void logLine(const char* format, ...) WTF_ATTRIBUTE_PRINTF(1, 2);
+@@ -97,6 +107,11 @@ static void freeForCompositor(void* memory)
+ //                    are still composited: a style recalculation for each frame, nothing painted);
+ //   web-gpu-nogroups no opacity group: the layers under an opacity are blended one by one;
+ //   web-gpu-nocull   a paint visits every RenderLayer again (RenderLayer::paintList's skip is off);
++//   web-gpu-nocores  every tile is painted by the main thread (no app core is taken);
++//   web-gpu-mainwaits the main thread only waits while the app cores rasterise (it takes no job);
++//   web-gpu-coretest the app cores' self test (runCoreTest): what a raster job needs of a core, a
++//                    stage at a time, each said before it starts and after it returns; then the
++//                    page's first raster jobs, one at a time, as its last stage;
+ //   web-gpu-stage1   no layer but the frames' (and web-gpu-3d: layers for 3D transforms too).
+ static bool testSwitch(const char* variable, const char* file)
+ {
+@@ -109,6 +124,7 @@ LayerTreeHost::LayerTreeHost(WebPage& webPage, FrameCallback&& frameCallback)
+     : m_webPage(webPage)
+     , m_frameCallback(WTF::move(frameCallback))
+     , m_renderTimer(*this, &LayerTreeHost::renderTimerFired)
++    , m_coresIdleTimer(*this, &LayerTreeHost::coresIdleTimerFired)
+ {
+     m_layerTreeContext.contextID = reinterpret_cast<uint64_t>(this);
+ 
+@@ -122,6 +138,12 @@ LayerTreeHost::LayerTreeHost(WebPage& webPage, FrameCallback&& frameCallback)
+     m_usesOpacityGroups = !testSwitch("ONYX_WEB_GPU_NOGROUPS", "SD:/etc/web-gpu-nogroups");
+     GraphicsLayerOnyx::setTracesInvalidations(testSwitch("ONYX_WEB_GPU_TRACE", "SD:/etc/web-gpu-trace"));
+     setOnyxCullsLeafLayersWhenPainting(!testSwitch("ONYX_WEB_GPU_NOCULL", "SD:/etc/web-gpu-nocull"));
++    m_mainThreadRasterises = !testSwitch("ONYX_WEB_GPU_MAINWAITS", "SD:/etc/web-gpu-mainwaits");
++    m_usesCores = !testSwitch("ONYX_WEB_GPU_NOCORES", "SD:/etc/web-gpu-nocores");
++    bool usesCores = m_usesCores;
++    startCoresIfNeeded();
++    if (testSwitch("ONYX_WEB_GPU_CORETEST", "SD:/etc/web-gpu-coretest"))
++        runCoreTest();
+ 
+     auto& size = m_webPage.size();
+     if (m_compositor) {
+@@ -129,6 +151,11 @@ LayerTreeHost::LayerTreeHost(WebPage& webPage, FrameCallback&& frameCallback)
+         logLine("compositing on (%d x %d), backend %s: %s; layers for: the frames%s%s; animations %s, opacity groups %s", size.width(), size.height(), gpc_backend(m_compositor) == GPC_BACKEND_GPU ? "GPU" : "CPU", gpc_info(m_compositor),
+             triggers & ChromeClient::AnimationTrigger ? ", animated opacity / transform" : "", triggers & ChromeClient::ThreeDTransformTrigger ? ", 3D transforms" : "",
+             m_acceleratesAnimations ? "by the compositor" : "on the main thread", m_usesOpacityGroups ? "on" : "off");
++        // The tiles' raster: on the app cores the kernel had free (and the main thread), or as ever.
++        if (m_workerCount)
++            logLine("painting on %u cores (%u app cores%s): pictures recorded by the main thread, rasterised in parts", m_workerCount + (m_mainThreadRasterises ? 1 : 0), m_workerCount, m_mainThreadRasterises ? " + the main thread" : "; the main thread waits");
++        else
++            logLine("painting on 1 core (the main thread: %s)", usesCores ? "no app core is free" : "web-gpu-nocores");
+     }
+     else
+         logLine("compositing on (%d x %d), but no compositor (gpc_create failed): nothing will be shown", size.width(), size.height());
+@@ -145,6 +172,8 @@ LayerTreeHost::LayerTreeHost(WebPage& webPage, FrameCallback&& frameCallback)
+ LayerTreeHost::~LayerTreeHost()
+ {
+     m_renderTimer.stop();
++    m_coresIdleTimer.stop();
++    releaseCores();
+ 
+     // The layers may live longer than this (the render tree's): they draw nothing from now on.
+     for (auto* layer : copyToVector(m_layers))
+@@ -159,7 +188,7 @@ LayerTreeHost::~LayerTreeHost()
+             gpc_target_free(m_compositor, m_groupBuffer);
+         gpc_destroy(m_compositor); // (its textures too)
+     }
+-    logLine("compositing off (in all: %u frames composited, %u tiles painted, %u rects repainted, %u px)", m_totalFramesComposited, m_totalTilesPainted, m_totalRectsPainted, static_cast<unsigned>(m_totalPixelsPainted));
++    logLine("compositing off (in all: %u frames composited, %u tiles painted, %u rects repainted, %u px, %u raster jobs on the cores)", m_totalFramesComposited, m_totalTilesPainted, m_totalRectsPainted, static_cast<unsigned>(m_totalPixelsPainted), m_totalRasterJobs);
+ }
+ 
+ void LayerTreeHost::setLayerTreeStateIsFrozen(bool isFrozen)
+@@ -527,7 +556,7 @@ void LayerTreeHost::destroyGroup(Group& group)
+ // The texture is kept from frame to frame while the subtree draws the same (an opacity animated
+ // over a still subtree composites it once). False: no group can be made (the caller blends the
+ // subtree's layers one by one, as when they do not overlap).
+-bool LayerTreeHost::appendGroup(GraphicsLayerOnyx& layer, const Vector<Quad>& quads, const WalkState& parentState, float opacity, bool repainted)
++bool LayerTreeHost::appendGroup(GraphicsLayerOnyx& layer, const Vector<Quad>& quads, const WalkState& parentState, float opacity)
+ {
+     IntRect groupRect;
+     for (auto& quad : quads)
+@@ -563,7 +592,8 @@ bool LayerTreeHost::appendGroup(GraphicsLayerOnyx& layer, const Vector<Quad>& qu
+     }).iterator->value;
+     group.lastFrame = m_frameNumber;
+ 
+-    bool isCurrent = group.texture && group.size == groupRect.size() && !repainted && layersAreEqual(group.layers, layers);
++    // (Any texture changed since the group was made: it is made again.)
++    bool isCurrent = group.texture && group.size == groupRect.size() && group.paintGeneration == m_paintGeneration && layersAreEqual(group.layers, layers);
+     if (!isCurrent) {
+         if (group.texture && group.size != groupRect.size())
+             destroyGroup(group);
+@@ -596,6 +626,7 @@ bool LayerTreeHost::appendGroup(GraphicsLayerOnyx& layer, const Vector<Quad>& qu
+         }
+         group.size = groupRect.size();
+         group.layers = WTF::move(layers);
++        group.paintGeneration = m_paintGeneration;
+         ++m_groupsRendered;
+         m_frameDamage.unite(groupRect);
+         if (m_logsLayerTree)
+@@ -620,12 +651,17 @@ bool LayerTreeHost::appendGroup(GraphicsLayerOnyx& layer, const Vector<Quad>& qu
+     return true;
+ }
+ 
++// The tree is walked twice a frame. Prepare: each layer's opacity and transform of this frame, its
++// tiles planned (what is to paint is then painted, for every layer at once: renderFrame). Emit:
++// what each layer draws, with the textures as they are after the paints.
+ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentState)
+ {
++    bool prepares = m_walkPhase == WalkPhase::Prepare;
+     // The opacity and the transform of this frame: the layer's, or its animations' now.
+-    m_hasRunningAnimations |= layer.updateAnimations(m_frameTime);
++    if (prepares)
++        m_hasRunningAnimations |= layer.updateAnimations(m_frameTime);
+ 
+-    if (m_logsLayers) {
++    if (m_logsLayers && prepares) {
+         logLine("layer %p: at %.0f,%.0f %.0f x %.0f, bounds origin %.0f,%.0f, opacity %.2f%s%s%s%s%s, %u children, %u tiles", &layer, layer.position().x(), layer.position().y(), layer.size().width(), layer.size().height(),
+             layer.boundsOrigin().x(), layer.boundsOrigin().y(), layer.currentOpacity(), layer.drawsContent() ? ", draws content" : "", layer.contentsAreVisible() ? "" : ", contents hidden",
+             layer.masksToBounds() ? ", masks to bounds" : "", layer.currentTransform().isIdentity() ? "" : ", transform", layer.usesSingleTexture() ? ", one texture" : "",
+@@ -637,13 +673,12 @@ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentS
+     if (opacity <= 0)
+         return;
+ 
+-    if (ownOpacity < 1 && !layer.children().isEmpty() && m_usesOpacityGroups) {
++    if (ownOpacity < 1 && !layer.children().isEmpty() && m_usesOpacityGroups && !prepares) {
+         // The subtree at full opacity, apart: a group if its layers overlap.
+         auto outerQuads = std::exchange(m_quads, { });
+-        auto paintGeneration = m_paintGeneration;
+         walkLayerContents(layer, parentState, 1);
+         auto groupQuads = std::exchange(m_quads, WTF::move(outerQuads));
+-        if (quadsOverlap(groupQuads) && appendGroup(layer, groupQuads, parentState, opacity, m_paintGeneration != paintGeneration))
++        if (quadsOverlap(groupQuads) && appendGroup(layer, groupQuads, parentState, opacity))
+             return;
+ 
+         for (auto& quad : groupQuads) {
+@@ -685,39 +720,29 @@ void LayerTreeHost::walkLayerContents(GraphicsLayerOnyx& layer, const WalkState&
+     }
+ 
+     bool drawsSelf = layer.contentsAreVisible() && (layer.backfaceVisibility() || !state.toTarget.isBackFaceVisible());
+-    if (drawsSelf) {
++    if (m_walkPhase == WalkPhase::Prepare) {
++        if (drawsSelf) {
++            // What is seen of the layer, in its own coordinates: its tiles follow it (a layer that
++            // draws no content keeps none).
++            auto affine = state.toTarget.toAffineTransform();
++            IntRect visibleRect = enclosingIntRect(bounds);
++            if (auto inverse = affine.inverse())
++                visibleRect.intersect(enclosingIntRect(inverse->mapRect(FloatRect { state.clip })));
++            // (Drawn scaled, rotated or between two pixels: in one texture when it fits, from now on.)
++            if (!isIntegerTranslation(affine))
++                layer.setPrefersSingleTexture();
++
++            GraphicsLayerOnyx::TileUpdate update;
++            layer.planTiles(visibleRect, !m_isShortOfTextureMemory, m_offscreenTileBudget, update);
++            m_hasPendingTiles |= update.hasPendingTiles;
++            m_pixelsPlanned += update.pixelsPlanned;
++            if (layer.hasPendingPaints())
++                m_preparedLayers.append({ &layer, affine, state.clip, visibleRect });
++        } else
++            layer.dropTiles();
++    } else if (drawsSelf) {
+         appendColorQuad(layer, layer.backgroundColor(), state.toTarget, bounds, state, opacity);
+ 
+-        // What is seen of the layer, in its own coordinates: its tiles follow it (a layer that draws
+-        // no content keeps none).
+-        auto affine = state.toTarget.toAffineTransform();
+-        IntRect visibleRect = enclosingIntRect(bounds);
+-        if (auto inverse = affine.inverse())
+-            visibleRect.intersect(enclosingIntRect(inverse->mapRect(FloatRect { state.clip })));
+-        // (Drawn scaled, rotated or between two pixels: in one texture when it fits, from now on.)
+-        if (!isIntegerTranslation(affine))
+-            layer.setPrefersSingleTexture();
+-
+-        GraphicsLayerOnyx::TileUpdate update;
+-        layer.updateTiles(visibleRect, !m_isShortOfTextureMemory, m_offscreenTileBudget, update);
+-        m_tilesPainted += update.tilesPainted;
+-        m_rectsPainted += update.rectsPainted;
+-        m_pixelsPainted += update.pixelsPainted;
+-        m_paints += update.paints;
+-        m_paintTime += update.paintTime;
+-        m_paintSetupTime += update.setupTime;
+-        m_paintContentsTime += update.contentsTime;
+-        m_totalTilesPainted += update.tilesPainted;
+-        m_totalRectsPainted += update.rectsPainted;
+-        m_totalPixelsPainted += update.pixelsPainted;
+-        m_hasPendingTiles |= update.hasPendingTiles;
+-        if (m_logsLayerTree && update.pixelsPainted) {
+-            logLine("layer %p (%.0f x %.0f): %u tiles painted, %u rects repainted, %u px in %.1f ms (visible %d,%d %d x %d)", &layer, size.width(), size.height(), update.tilesPainted, update.rectsPainted,
+-                static_cast<unsigned>(update.pixelsPainted), update.paintTime.milliseconds(), visibleRect.x(), visibleRect.y(), visibleRect.width(), visibleRect.height());
+-        }
+-        for (auto& rect : update.repaintedRects)
+-            m_frameDamage.unite(intersection(enclosingIntRect(affine.mapRect(FloatRect { rect })), state.clip));
+-
+         auto kind = layer.usesSingleTexture() ? QuadKind::Texture : QuadKind::Tile;
+         for (auto& tile : layer.tiles().values()) {
+             if (tile.texture)
+@@ -725,8 +750,7 @@ void LayerTreeHost::walkLayerContents(GraphicsLayerOnyx& layer, const WalkState&
+         }
+ 
+         appendColorQuad(layer, layer.solidColor(), state.toTarget, layer.contentsRect(), state, opacity);
+-    } else
+-        layer.dropTiles();
++    }
+ 
+     // Its children's space: the children transform about the same anchor, the bounds origin (what a
+     // scroll container is scrolled by).
+@@ -742,6 +766,198 @@ void LayerTreeHost::walkLayerContents(GraphicsLayerOnyx& layer, const WalkState&
+         walkLayer(static_cast<GraphicsLayerOnyx&>(child.get()), state);
+ }
+ 
++// The app cores are a resource of the whole machine (two of them: an emulator wants one, another
++// window's web process too): taken when there is a frame to rasterise, given back once nothing was
++// rasterised for a while.
++void LayerTreeHost::startCoresIfNeeded()
++{
++    if (!m_usesCores || m_startedCores || m_coresFaulted)
++        return;
++    // (None was free: not asked again at every frame.)
++    auto now = MonotonicTime::now();
++    if (m_lastCoresAttemptTime && now - m_lastCoresAttemptTime < coresRetryInterval)
++        return;
++    m_lastCoresAttemptTime = now;
++
++    m_workerCount = onyx_cores_start(2);
++    m_startedCores = true;
++    if (!m_workerCount) {
++        releaseCores();
++        return;
++    }
++    m_coresIdleTimer.startOneShot(coresIdleInterval);
++    if (m_coresWereReleased)
++        logLine("painting on %u cores again (%u app cores taken)", m_workerCount + (m_mainThreadRasterises ? 1 : 0), m_workerCount);
++}
++
++// SD:/etc/web-gpu-coretest: each stage of WebCore's OnyxCoreTest.cpp as a job of its own on an app
++// core, said before it starts ("starts": the last line of the log if the core takes the kernel
++// down) and after it returns -- "ok in N us", the fault (with the stage's breadcrumb: how far it
++// got) or a result that is not the main thread's. It stops at the first failure. Its last stage
++// is the page's own first raster jobs (paintPreparedLayers).
++void LayerTreeHost::runCoreTest()
++{
++    unsigned count = onyxCoreTestStageCount();
++    if (!m_workerCount) {
++        logLine("core test: no app core is free: nothing is tested");
++        return;
++    }
++    logLine("core test: %u stages on an app core, then the page's first raster jobs one at a time", count);
++    for (unsigned stage = 0; stage < count; ++stage) {
++        auto* name = onyxCoreTestStageName(stage);
++        logLine("core test %u %s: starts", stage + 1, name);
++        void* argument = onyxCoreTestPrepare(stage);
++        auto startTime = onyx_cores_now_ns();
++        int result = onyx_cores_run(onyxCoreTestRun, onyxCoreTestStopped, &argument, 1, 0);
++        auto microseconds = (onyx_cores_now_ns() - startTime) / 1000;
++        if (result < 0) {
++            auto* failure = onyx_cores_failure();
++            logLine("core test %u %s: FAULT at breadcrumb %u (%s); the test stops, painting on 1 core from now on", stage + 1, name, onyxCoreTestBreadcrumb(), failure ? failure : "see the kernel's log");
++            m_coresFaulted = true;
++            releaseCores();
++            return;
++        }
++        char text[160];
++        if (!onyxCoreTestCheck(stage, text, sizeof(text))) {
++            logLine("core test %u %s: WRONG in %llu us: %s; the test stops", stage + 1, name, static_cast<unsigned long long>(microseconds), text);
++            return;
++        }
++        logLine("core test %u %s: ok in %llu us (%s)", stage + 1, name, static_cast<unsigned long long>(microseconds), text);
++    }
++    m_coreTestJobsLeft = coreTestJobCount;
++}
++
++// The core test's last stage: a batch's jobs run on an app core one at a time, each said before
++// and after, with what it is and, for a fault, where in its picture it stopped -> false: a core
++// faulted (the job was done again by the main thread).
++bool LayerTreeHost::runCoreTestJobs(Vector<void*>& jobs)
++{
++    unsigned stage = onyxCoreTestStageCount() + 1;
++    for (size_t i = 0; i < jobs.size(); ++i) {
++        char text[200];
++        GraphicsLayerOnyx::setRasterJobTraced(jobs[i]);
++        GraphicsLayerOnyx::describeRasterJob(jobs[i], text, sizeof(text));
++        logLine("core test %u the page's raster job %zu of %zu: starts (%s)", stage, i + 1, jobs.size(), text);
++        auto startTime = onyx_cores_now_ns();
++        int result = onyx_cores_run(GraphicsLayerOnyx::runRasterJob, GraphicsLayerOnyx::resetRasterJob, &jobs[i], 1, 0);
++        auto microseconds = (onyx_cores_now_ns() - startTime) / 1000;
++        GraphicsLayerOnyx::describeRasterJob(jobs[i], text, sizeof(text));
++        if (result < 0) {
++            auto* failure = onyx_cores_failure();
++            logLine("core test %u the page's raster job %zu of %zu: FAULT (%s) -- %s", stage, i + 1, jobs.size(), failure ? failure : "see the kernel's log", text);
++            m_coreTestJobsLeft = 0;
++            // (The job was done again by the main thread; the others: by it too, the cores are gone.)
++            if (i + 1 < jobs.size())
++                onyx_cores_run(GraphicsLayerOnyx::runRasterJob, GraphicsLayerOnyx::resetRasterJob, jobs.mutableSpan().data() + i + 1, jobs.size() - i - 1, 1);
++            return false;
++        }
++        logLine("core test %u the page's raster job %zu of %zu: ok in %llu us", stage, i + 1, jobs.size(), static_cast<unsigned long long>(microseconds));
++        if (!--m_coreTestJobsLeft) {
++            logLine("core test: %u raster jobs of the page done on an app core: the test is over, the jobs go to the cores together from now on", coreTestJobCount);
++            if (i + 1 < jobs.size())
++                return onyx_cores_run(GraphicsLayerOnyx::runRasterJob, GraphicsLayerOnyx::resetRasterJob, jobs.mutableSpan().data() + i + 1, jobs.size() - i - 1, m_mainThreadRasterises) >= 0;
++            break;
++        }
++    }
++    return true;
++}
++
++void LayerTreeHost::releaseCores()
++{
++    if (!m_startedCores)
++        return;
++    onyx_cores_stop();
++    m_startedCores = false;
++    m_workerCount = 0;
++}
++
++void LayerTreeHost::coresIdleTimerFired()
++{
++    if (!m_workerCount)
++        return;
++    logLine("the app cores are given back (nothing to rasterise for %.0f s)", coresIdleInterval.seconds());
++    releaseCores();
++    m_coresWereReleased = true;
++    m_lastCoresAttemptTime = { };
++}
++
++// What the Prepare walk planned is painted, for every layer of the frame at once: by the main
++// thread directly (no raster worker, or little to paint), or recorded by the main thread into
++// pictures and rasterised in parts by the workers -- Onyx's app cores -- and the main thread;
++// then the pixels are given to the textures (the main thread: a kernel call).
++void LayerTreeHost::paintPreparedLayers()
++{
++    if (m_preparedLayers.isEmpty())
++        return;
++
++    if (m_pixelsPlanned >= minimumPixelsForWorkers)
++        startCoresIfNeeded();
++    bool usesWorkers = m_workerCount && m_pixelsPlanned >= minimumPixelsForWorkers && onyx_cores_count() > 0;
++    if (usesWorkers)
++        m_coresIdleTimer.startOneShot(coresIdleInterval);
++    Vector<GraphicsLayerOnyx::TileUpdate> updates(m_preparedLayers.size());
++
++    if (usesWorkers) {
++        Vector<void*> jobs;
++        for (size_t i = 0; i < m_preparedLayers.size(); ++i)
++            m_preparedLayers[i].layer->recordPendingPaints(jobs, updates[i]);
++
++        auto startTime = MonotonicTime::now();
++        int result;
++        if (m_coreTestJobsLeft)
++            result = runCoreTestJobs(jobs) ? 0 : -1;
++        else
++            result = onyx_cores_run(GraphicsLayerOnyx::runRasterJob, GraphicsLayerOnyx::resetRasterJob, jobs.mutableSpan().data(), jobs.size(), m_mainThreadRasterises);
++        m_rasterWallTime += MonotonicTime::now() - startTime;
++        m_rasterJobs += jobs.size();
++        m_totalRasterJobs += jobs.size();
++        ++m_framesRasterisedByWorkers;
++        if (result < 0) {
++            auto* failure = onyx_cores_failure();
++            logLine("an app core faulted while it rasterised (%s): its job was done again by the main thread, the cores are given back; painting on 1 core from now on", failure ? failure : "see the kernel's log");
++            m_coresFaulted = true;
++            m_coresIdleTimer.stop();
++            releaseCores();
++        }
++
++        for (size_t i = 0; i < m_preparedLayers.size(); ++i)
++            m_preparedLayers[i].layer->uploadPendingPaints(updates[i]);
++    } else {
++        for (size_t i = 0; i < m_preparedLayers.size(); ++i)
++            m_preparedLayers[i].layer->paintPendingPaints(updates[i]);
++    }
++
++    for (size_t i = 0; i < m_preparedLayers.size(); ++i) {
++        auto& prepared = m_preparedLayers[i];
++        auto& update = updates[i];
++        m_tilesPainted += update.tilesPainted;
++        m_rectsPainted += update.rectsPainted;
++        m_pixelsPainted += update.pixelsPainted;
++        m_paints += update.paints;
++        m_paintTime += update.paintTime;
++        m_paintSetupTime += update.setupTime;
++        m_paintContentsTime += update.contentsTime;
++        m_recordTime += update.recordTime;
++        m_rasterCoreTime += update.rasterTime;
++        m_totalTilesPainted += update.tilesPainted;
++        m_totalRectsPainted += update.rectsPainted;
++        m_totalPixelsPainted += update.pixelsPainted;
++        if (m_logsLayerTree && update.pixelsPainted) {
++            auto& size = prepared.layer->size();
++            if (usesWorkers) {
++                logLine("layer %p (%.0f x %.0f): %u tiles painted, %u rects repainted, %u px: recorded in %.1f ms, rasterised in %.1f ms of core time (visible %d,%d %d x %d)", prepared.layer, size.width(), size.height(), update.tilesPainted, update.rectsPainted,
++                    static_cast<unsigned>(update.pixelsPainted), update.recordTime.milliseconds(), update.rasterTime.milliseconds(), prepared.visibleRect.x(), prepared.visibleRect.y(), prepared.visibleRect.width(), prepared.visibleRect.height());
++            } else {
++                logLine("layer %p (%.0f x %.0f): %u tiles painted, %u rects repainted, %u px in %.1f ms (visible %d,%d %d x %d)", prepared.layer, size.width(), size.height(), update.tilesPainted, update.rectsPainted,
++                    static_cast<unsigned>(update.pixelsPainted), update.paintTime.milliseconds(), prepared.visibleRect.x(), prepared.visibleRect.y(), prepared.visibleRect.width(), prepared.visibleRect.height());
++            }
++        }
++        for (auto& rect : update.repaintedRects)
++            m_frameDamage.unite(intersection(enclosingIntRect(prepared.affine.mapRect(FloatRect { rect })), prepared.clip));
++    }
++    m_preparedLayers.shrink(0);
++}
++
+ void LayerTreeHost::texturesWereLost()
+ {
+     // The GPU stopped: gpucomp goes on with the CPU, the textures that were on the GPU are empty
+@@ -906,9 +1122,15 @@ void LayerTreeHost::renderFrame()
+         logLine("the layer tree (view %d x %d, %u layers drawn last):", viewRect.width(), viewRect.height(), static_cast<unsigned>(m_loggedLayerCount));
+     }
+     auto walkStartTime = MonotonicTime::now();
++    m_pixelsPlanned = 0;
++    m_preparedLayers.shrink(0);
++    m_walkPhase = WalkPhase::Prepare;
+     walkLayer(*m_rootLayer, WalkState { { }, viewRect, 1 });
+-    m_walkTime += MonotonicTime::now() - walkStartTime;
+     m_logsLayers = false;
++    paintPreparedLayers();
++    m_walkPhase = WalkPhase::Emit;
++    walkLayer(*m_rootLayer, WalkState { { }, viewRect, 1 });
++    m_walkTime += MonotonicTime::now() - walkStartTime;
+ 
+     // (The opacity groups that were not drawn this frame keep no texture.)
+     m_groups.removeIf([&](auto& entry) {
+@@ -974,17 +1196,17 @@ void LayerTreeHost::logStatisticsIfNeeded()
+         gpc_stats statistics;
+         gpc_get_stats(m_compositor, &statistics);
+         logLine("%.1f s: %u frames (%u without a page update), %u tiles painted, %u rects repainted, %u px, paint %.0f ms, upload %.0f ms, composite %.0f ms; %u textures (%u MB), %u layers, %u groups made (last frame: %u GPU calls, %u layers by the CPU)",
+-            elapsed.seconds(), m_framesComposited, m_framesWithoutRenderingUpdate, m_tilesPainted, m_rectsPainted, static_cast<unsigned>(m_pixelsPainted), m_paintTime.milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
++            elapsed.seconds(), m_framesComposited, m_framesWithoutRenderingUpdate, m_tilesPainted, m_rectsPainted, static_cast<unsigned>(m_pixelsPainted), (m_paintTime + m_recordTime + m_rasterWallTime).milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
+             m_textureCount + static_cast<unsigned>(m_colorTextures.size()), static_cast<unsigned>(m_texturePixels * 4 >> 20), static_cast<unsigned>(m_frameLayers.size()), m_groupsRendered, statistics.last_gpu_calls, statistics.last_cpu_layers);
+     }
+     // (SD:/etc/web-gpu-debug: where a frame's time goes -- the page's own update, the walk of the
+     // layers with its paints, and within the paints: the Skia surface and context made, WebCore's
+     // painting, the two let go.)
+     if (m_logsLayerTree && m_framesRendered) {
+-        logLine("times: %u frames rendered: page update %.1f ms, layer walk %.1f ms (of it %u paints %.1f ms = setup %.2f + WebCore %.2f + end %.2f), composite %.1f ms; per paint %.0f us (setup %.0f, WebCore %.0f)",
++        logLine("times: %u frames rendered: page update %.1f ms, layer walk %.1f ms (of it %u paints: direct %.1f ms = setup %.2f + WebCore %.2f + end %.2f; on the cores, %u frames: record %.1f ms, raster %.1f ms of wall time for %.1f ms of core time in %u jobs), composite %.1f ms",
+             m_framesRendered, m_pageUpdateTime.milliseconds(), m_walkTime.milliseconds(), m_paints, m_paintTime.milliseconds(), m_paintSetupTime.milliseconds(), m_paintContentsTime.milliseconds(),
+-            (m_paintTime - m_paintSetupTime - m_paintContentsTime).milliseconds(), m_compositeTime.milliseconds(),
+-            m_paints ? m_paintTime.microseconds() / m_paints : 0, m_paints ? m_paintSetupTime.microseconds() / m_paints : 0, m_paints ? m_paintContentsTime.microseconds() / m_paints : 0);
++            (m_paintTime - m_paintSetupTime - m_paintContentsTime).milliseconds(), m_framesRasterisedByWorkers, m_recordTime.milliseconds(), m_rasterWallTime.milliseconds(), m_rasterCoreTime.milliseconds(), m_rasterJobs,
++            m_compositeTime.milliseconds());
+     }
+     m_statisticsStartTime = now;
+     m_framesRendered = 0;
+@@ -993,6 +1215,11 @@ void LayerTreeHost::logStatisticsIfNeeded()
+     m_walkTime = { };
+     m_paintSetupTime = { };
+     m_paintContentsTime = { };
++    m_recordTime = { };
++    m_rasterWallTime = { };
++    m_rasterCoreTime = { };
++    m_rasterJobs = 0;
++    m_framesRasterisedByWorkers = 0;
+     m_framesComposited = 0;
+     m_framesWithoutRenderingUpdate = 0;
+     m_tilesPainted = 0;
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+index 1993c63c..a292e61b 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+@@ -40,6 +40,7 @@
+ #endif
+ 
+ #if USE(GRAPHICS_LAYER_ONYX)
++#include <WebCore/AffineTransform.h>
+ #include <WebCore/GraphicsLayerClient.h>
+ #include <WebCore/GraphicsLayerFactory.h>
+ #include <WebCore/GraphicsLayerOnyx.h>
+@@ -150,6 +151,17 @@ private:
+         WebCore::IntSize size;
+         Vector<gpc_layer> layers;
+         unsigned lastFrame { 0 };
++        unsigned paintGeneration { 0 };
++    };
++
++    // The tree is walked twice a frame (walkLayer).
++    enum class WalkPhase : uint8_t { Prepare, Emit };
++    // A layer with something to paint this frame, and what places its repaints in the target.
++    struct PreparedLayer {
++        WebCore::GraphicsLayerOnyx* layer;
++        WebCore::AffineTransform affine;
++        WebCore::IntRect clip;
++        WebCore::IntRect visibleRect;
+     };
+ 
+     // GraphicsLayerClient (the root layer's)
+@@ -177,7 +189,13 @@ private:
+     void appendQuad(WebCore::GraphicsLayerOnyx&, gpc_tex*, QuadKind, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity, bool opaque);
+     void appendColorQuad(WebCore::GraphicsLayerOnyx&, const WebCore::Color&, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity);
+     static bool quadsOverlap(const Vector<Quad>&);
+-    bool appendGroup(WebCore::GraphicsLayerOnyx&, const Vector<Quad>&, const WalkState&, float opacity, bool repainted);
++    bool appendGroup(WebCore::GraphicsLayerOnyx&, const Vector<Quad>&, const WalkState&, float opacity);
++    void paintPreparedLayers();
++    void startCoresIfNeeded();
++    void runCoreTest();
++    bool runCoreTestJobs(Vector<void*>&);
++    void releaseCores();
++    void coresIdleTimerFired();
+     void destroyGroup(Group&);
+     gpc_tex* textureForColor(uint32_t premultipliedARGB);
+     bool compositeFrame(const WebCore::IntRect& damage);
+@@ -223,7 +241,21 @@ private:
+     bool m_groupBufferFailed { false };
+     HashMap<WebCore::GraphicsLayerOnyx*, Group> m_groups;
+ 
++    // The tiles' raster on Onyx's app cores (OnyxCores.h): how many were taken at the start.
++    unsigned m_workerCount { 0 };
++    bool m_usesCores { true };
++    bool m_startedCores { false };
++    bool m_coresFaulted { false };
++    unsigned m_coreTestJobsLeft { 0 };
++    bool m_coresWereReleased { false };
++    bool m_mainThreadRasterises { true };
++    MonotonicTime m_lastCoresAttemptTime;
++    WebCore::Timer m_coresIdleTimer;
++
+     // The frame being built.
++    WalkPhase m_walkPhase { WalkPhase::Prepare };
++    Vector<PreparedLayer> m_preparedLayers;
++    uint64_t m_pixelsPlanned { 0 };
+     Vector<Quad> m_quads;
+     Vector<gpc_layer> m_frameLayers;
+     Vector<gpc_layer> m_previousFrameLayers;
+@@ -259,6 +291,12 @@ private:
+     Seconds m_walkTime;
+     Seconds m_paintSetupTime;
+     Seconds m_paintContentsTime;
++    Seconds m_recordTime;
++    Seconds m_rasterWallTime;
++    Seconds m_rasterCoreTime;
++    unsigned m_rasterJobs { 0 };
++    unsigned m_totalRasterJobs { 0 };
++    unsigned m_framesRasterisedByWorkers { 0 };
+ 
+     // The log's numbers, since the last line.
+     MonotonicTime m_statisticsStartTime;

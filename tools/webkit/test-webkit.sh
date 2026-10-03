@@ -161,6 +161,81 @@ if [ -f "$R/RAM/scrollsw.png" ] && [ -f "$R/RAM/scrollgpu.png" ]; then
 else
 	ko "scroll: the pictures" "missing"
 fi
+# 4d. a page that is costly to rasterise, scrolled quickly: with the compositor its tiles are
+# rasterised from pictures on the app cores (the bench's: host threads, POSIXSIM_CORES of them,
+# 2 by default) and the main thread; the picture must be the software path's.
+# (The wheel, then the page put at a known place, and time for the last tiles: the bench is slow.)
+WK2TEST_SCROLL=40; WK2TEST_SCROLL_TO=5000; WK2TEST_SETTLE=2500; WK2TEST_TIMEOUT=150; export WK2TEST_SCROLL WK2TEST_SCROLL_TO WK2TEST_SETTLE WK2TEST_TIMEOUT
+WK2TEST_GPU=0; export WK2TEST_GPU
+run rastersw /wktest/raster-stress.html
+[ $st -eq 0 ] && ok "raster stress, software: wk2test ran" || ko "raster stress, software: wk2test" "exit $st"
+WK2TEST_GPU=1; export WK2TEST_GPU
+run rastergpu /wktest/raster-stress.html
+rasterout=$out
+[ $st -eq 0 ] && ok "raster stress, compositor: wk2test ran and ended cleanly" || ko "raster stress, compositor: wk2test" "exit $st"
+# (the bench's cores are as the Pi's: a kernel call made on one ends the program, with the slot)
+case "$out" in *"made a kernel call"*) ko "raster stress: no kernel call on an app core" "one was made: see the posixsim: appcore line";; *) ok "raster stress: no kernel call on an app core";; esac
+if [ "${POSIXSIM_CORES:-2}" != 0 ]; then
+	# 4e. a worker that fails in the middle of a batch (ONYX_CORES_TEST, onyxcores.c; the bench's kernel
+	# stops the job as the Pi's does: POSIXSIM_CORE_FAULT=1). A kernel call on the core, a worker stuck in
+	# a loop: the job is done again by the main thread, the picture is right, the cores are given back.
+	# The same with malloc's lock taken: nobody can go on, the web process says so and ends.
+	POSIXSIM_CORE_FAULT=1; export POSIXSIM_CORE_FAULT
+	for how in call stall; do
+		ONYX_CORES_TEST=$how; export ONYX_CORES_TEST
+		run raster$how /wktest/raster-stress.html
+		[ $st -eq 0 ] && ok "a worker fails ($how): wk2test ran and ended cleanly" || ko "a worker fails ($how): wk2test" "exit $st"
+		case "$out" in *"an app core faulted while it rasterised (core "*"painting on 1 core from now on"*) ok "a worker fails ($how): said, the main thread goes on alone";; *) ko "a worker fails ($how): the log" "no 'an app core faulted' line";; esac
+		if [ -f "$R/RAM/rastersw.png" ] && [ -f "$R/RAM/raster$how.png" ]; then
+			python3 "$HERE/tests/checkpng.py" "$R/RAM/raster$how.png" "same=$R/RAM/rastersw.png,24,0.5"
+			fails=$((fails + $?))
+		else
+			ko "a worker fails ($how): the pictures" "missing"
+		fi
+	done
+	ONYX_CORES_TEST=lock; WK2TEST_TIMEOUT=20; export ONYX_CORES_TEST WK2TEST_TIMEOUT
+	run rasterlock /wktest/raster-stress.html
+	case "$out" in *"an app core faulted while it rasterised ("*"and it held malloc's lock"*"this process ends"*) ok "a worker dies with malloc's lock: said, the web process ends (no frozen page)";; *) ko "a worker dies with malloc's lock" "no 'this process ends' line";; esac
+	unset ONYX_CORES_TEST POSIXSIM_CORE_FAULT
+fi
+if [ "${POSIXSIM_CORES:-2}" != 0 ]; then
+	# 4f. the app cores' self test (ONYX_WEB_GPU_CORETEST; SD:/etc/web-gpu-coretest on the Pi): its
+	# stages one by one on a core, then the page's raster jobs one at a time -- and a stage that
+	# faults (ONYX_CORES_TEST=call: the worker's 5th job makes a kernel call) said with its number.
+	ONYX_WEB_GPU_CORETEST=1; export ONYX_WEB_GPU_CORETEST
+	run rastertest /wktest/raster-stress.html
+	[ $st -eq 0 ] && ok "core test: wk2test ran and ended cleanly" || ko "core test: wk2test" "exit $st"
+	n=$(echo "$out" | grep -c 'gpu: core test [0-9]* .*: ok in ')
+	[ "$n" -ge 12 ] && ok "core test: $n stages and jobs ok" || ko "core test: the stages" "$n ok lines"
+	case "$out" in *"core test"*"WRONG"*|*"core test"*"FAULT"*) ko "core test: a stage failed" "see the lines";; *) ok "core test: no stage failed";; esac
+	if [ -f "$R/RAM/rastersw.png" ] && [ -f "$R/RAM/rastertest.png" ]; then
+		python3 "$HERE/tests/checkpng.py" "$R/RAM/rastertest.png" "same=$R/RAM/rastersw.png,24,0.5"
+		fails=$((fails + $?))
+	else
+		ko "core test: the pictures" "missing"
+	fi
+	ONYX_CORES_TEST=call; POSIXSIM_CORE_FAULT=1; export ONYX_CORES_TEST POSIXSIM_CORE_FAULT
+	run rastertestf /wktest/raster-stress.html
+	case "$out" in *": FAULT at breadcrumb "*) ok "core test: a stage that faults is said, with its breadcrumb";; *) ko "core test: a stage that faults" "no FAULT line";; esac
+	[ $st -eq 0 ] && ok "core test, a fault: wk2test ran and ended cleanly" || ko "core test, a fault: wk2test" "exit $st"
+	unset ONYX_WEB_GPU_CORETEST ONYX_CORES_TEST POSIXSIM_CORE_FAULT
+fi
+unset WK2TEST_SCROLL WK2TEST_SCROLL_TO WK2TEST_SETTLE WK2TEST_TIMEOUT
+if [ "${POSIXSIM_CORES:-2}" != 0 ]; then
+	out=$rasterout
+	case "$out" in *"web: gpu: painting on "[23]" cores"*) ok "raster stress: the app cores were taken";; *) ko "raster stress: the app cores" "no 'painting on N cores' line";; esac
+	if echo "$out" | grep -Eq 'compositing off .* [1-9][0-9]+ raster jobs on the cores'; then
+		ok "raster stress: the tiles were rasterised on the cores"
+	else
+		ko "raster stress: raster jobs" "none"
+	fi
+fi
+if [ -f "$R/RAM/rastersw.png" ] && [ -f "$R/RAM/rastergpu.png" ]; then
+	python3 "$HERE/tests/checkpng.py" "$R/RAM/rastergpu.png" "same=$R/RAM/rastersw.png,24,0.5" ink=30,30,700,500
+	fails=$((fails + $?))
+else
+	ko "raster stress: the pictures" "missing"
+fi
 if [ -n "$gpu0" ]; then WK2TEST_GPU=$gpu0; export WK2TEST_GPU; else unset WK2TEST_GPU; fi
 
 echo "test-webkit.sh: $fails failed"
