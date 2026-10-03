@@ -35,12 +35,13 @@ class DatePicker : public Widget
 public:
 	int year, month, day; Action cb; bool open;
 	DatePicker (int l, int t, int w, int h, int y, int m, int d, Action cb_);
+	~DatePicker ();
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;
 	void setOpen (bool o);
 	void format (char *out) const;		// "YYYY-MM-DD"
-	Calendar *cal;
+	Calendar *cal;				// the drop-down: made at the first opening, a child while open
 	int rowH, origW;
 };
 

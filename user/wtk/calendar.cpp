@@ -155,6 +155,9 @@ DatePicker::DatePicker (int l, int t, int w, int h, int y, int m, int d, Action 
   : Widget (l, t, w, h), year (y), month (m), day (d), cb (cb_), open (false), cal (0), rowH (h), origW (w)
 { canFocus = true; transparent = true; }	// magenta around the drop-down calendar = see-through
 
+DatePicker::~DatePicker ()
+{ if (cal && !cal->parent) delete cal; }	// (closed: the calendar is not a child, ours to delete)
+
 void DatePicker::format (char *o) const
 {
 	o[0] = (char) ('0' + year / 1000 % 10); o[1] = (char) ('0' + year / 100 % 10);
@@ -172,15 +175,22 @@ void DatePicker::setOpen (bool o)
 	if (o)
 	{
 		resizeTo (w, rowH + 2 + CAL_H);
-		cal = new Calendar (0, rowH + 2, year, month, day, dp_pick);
-		cal->transparent = true;			// (its rounded corners: see-through)
+		if (!cal)
+		{
+			cal = new Calendar (0, rowH + 2, year, month, day, dp_pick);
+			cal->transparent = true;		// (its rounded corners: see-through)
+		}
+		cal->setDate (year, month, day);
+		cal->pressed = false;
 		addChild (cal);
 		cal->setFocus ();
 		bringToFront ();
 	}
 	else
 	{
-		if (cal) { removeChild (cal); delete cal; cal = 0; }
+		// (the calendar is kept, not deleted: a day picked closes it from inside its own
+		// handleMouse, which still runs -- and ours remembers it as the last one handled)
+		if (cal) removeChild (cal);
 		resizeTo (origW, rowH);
 		setFocus ();
 	}
