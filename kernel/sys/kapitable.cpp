@@ -274,6 +274,8 @@ int kapi_get_handles (struct kapi_handle_xfer *pOut, unsigned nCap);
 int kapi_image_preload (const char *pPath);
 int kapi_image_unload (const char *pPath);
 int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned nCap);
+// v79 what the kernel is (sys/kapi.cpp)
+int kapi_kernel_info (char *pBuf, unsigned nCap);
 
 }  // extern "C"
 
@@ -576,4 +578,7 @@ void KApiTableInit (void)
 	t->image_preload     = kapi_image_preload;
 	t->image_unload      = kapi_image_unload;
 	t->image_list        = kapi_image_list;
+
+	// --- v79 what the kernel is (sys/kapi.cpp) ---
+	t->kernel_info       = kapi_kernel_info;
 }

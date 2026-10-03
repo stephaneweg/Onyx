@@ -77,7 +77,7 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  ping.elf nslookup.elf netstat.elf whois.elf ftpd.elf ftp.elf wifiscan.elf tone.elf \
 	  coretest.elf fsbench.elf shutdown.elf reboot.elf volume.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf \
-	  filetest.elf proctest.elf memtest.elf
+	  filetest.elf proctest.elf memtest.elf uname.elf
 
 # kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
 PROGS  += nettest.elf
@@ -102,7 +102,7 @@ CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic 
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
 	       -I.. -I../../kernel/include
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
-POSIX_PROGS  = posixtest.elf ipctest.elf
+POSIX_PROGS  = posixtest.elf ipctest.elf tcpbench.elf
 POSIX_CXX_PROGS = posixtest-cxx.elf
 # C on libonyxposix with WP-TC's toolchain: malloctest checks that toolchain's newlib (Web's malloc)
 POSIX_TC_PROGS = malloctest.elf

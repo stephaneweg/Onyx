@@ -34,6 +34,7 @@
 #include <circle/timer.h>
 #include <circle/time.h>
 #include <circle/logger.h>
+#include <circle/string.h>
 #include <circle/new.h>
 #include <circle/util.h>
 #include <circle/startup.h>		// reboot() (kapi_reboot)
@@ -486,6 +487,24 @@ int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned n
 	boolean bOK = UserCopyOut (pOut, pList, (u64) (n < nCap ? n : nCap) * sizeof (struct kapi_image_info));
 	delete [] pList;
 	return bOK ? (int) n : -KAPI_EFAULT;
+}
+
+// --- v79: what the kernel is (/bin/uname) --------------------------------------
+// "key value" lines. The build's date and revision are buildstamp.cpp's: compiled again at every
+// link (kernel/Makefile), so they are this image's, whichever file changed.
+extern const char g_BuildStamp[], g_BuildRev[];
+int kapi_kernel_info (char *pBuf, unsigned nCap)
+{
+	CString Text;
+	Text.Format ("name Onyx\nabi %u\nbuilt %s\nrev %s\nmachine aarch64\nmodel %s\nram %u\n",
+		     (unsigned) KAPI_ABI_VERSION, g_BuildStamp, g_BuildRev,
+		     CMachineInfo::Get ()->GetMachineName (), (unsigned) CMachineInfo::Get ()->GetRAMSize ());
+	unsigned n = Text.GetLength ();
+	if (nCap == 0) return (int) n;
+	unsigned k = n < nCap - 1 ? n : nCap - 1;
+	char cEnd = '\0';
+	if (!UserCopyOut (pBuf, (const char *) Text, k) || !UserCopyOut (pBuf + k, &cEnd, 1)) return -KAPI_EFAULT;
+	return (int) n;
 }
 
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).

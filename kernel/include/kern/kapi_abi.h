@@ -152,7 +152,9 @@
 // v78: executable memory for a JIT (roadmap step 3, docs/08): vm_map and vm_protect accept
 //      KAPI_PROT_EXEC for anonymous regions (lazy pages, EL0 execute; vm_protect can take it
 //      away again: W^X); shm_map still refuses it. No new call: a program asks version >= 78.
-#define KAPI_ABI_VERSION	78
+// v79: + kernel_info (slot 256): what the running kernel is, as "key value" lines (name, abi,
+//      built, rev, machine, model, ram) -- /bin/uname.
+#define KAPI_ABI_VERSION	79
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1719,6 +1721,13 @@ struct TKApiTable
 	// image_list: path 0: the live images, up to cap written -> how many there are. path: the
 	// image a run of that path would map -> 1 (out[0] written if cap > 0) / 0 (none) / -EFAULT.
 	int (*image_list) (const char *path, struct kapi_image_info *out, unsigned cap);
+
+	// --- v79: what the kernel is (sys/kapi.cpp, buildstamp.cpp) ---
+	// kernel_info: "key value" lines, one a line: name (Onyx), abi (KAPI_ABI_VERSION), built
+	// (the date and time of the kernel's link), rev (the source's git revision, "+" when it had
+	// changes), machine (aarch64), model (the board's name), ram (MB). Up to cap - 1 bytes
+	// written and a NUL -> the text's whole length / -EFAULT. Keys may be added.
+	int (*kernel_info) (char *buf, unsigned cap);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1783,6 +1792,7 @@ KAPI_CHECK_SLOT (get_handles, 252);
 KAPI_CHECK_SLOT (image_preload, 253);
 KAPI_CHECK_SLOT (image_unload, 254);
 KAPI_CHECK_SLOT (image_list, 255);
+KAPI_CHECK_SLOT (kernel_info, 256);
 
 #ifdef __cplusplus
 }

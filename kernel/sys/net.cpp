@@ -33,6 +33,8 @@
 #include <circle/net/networklayer.h>
 #include <circle/net/checksumcalculator.h>
 #include <circle/sched/scheduler.h>
+#include <circle/multicore.h>					// SendIPI (the net core -> core 0)
+#include <circle/logger.h>
 #include <circle/timer.h>
 #include <circle/string.h>
 #include <circle/new.h>
@@ -41,6 +43,7 @@
 #include <circle/net/dhcpclient.h>				// Restart (kapi_wlan_reconnect)
 #include <circle/netdevice.h>
 #include <kern/kapi_abi.h>
+#include <fatfs/ff.h>						// wpa_supplicant.conf read for the scan's names
 #include <circle/util.h>
 #include <circle/types.h>
 #include <kern/ipc.h>
@@ -1007,9 +1010,68 @@ extern "C"
 	static void ReconfigTimeout (void *, void *) { if (s_pReconfig) s_pReconfig (1, s_pReconfigCtx); }	// (1: SIGHUP)
 }
 
+// ---- the Wi-Fi driver's switches (our Circle fork, addon/wlan/ether4330.c; docs/05 §26) ----------
+extern "C"
+{
+	extern char onyx_scan_ssid[4][33];	// the names a scan probes for beside the wildcard
+	extern int  onyx_scan_nssid;
+	extern int  onyx_scan_5g_bias;		// dB added to a 5 GHz BSS's level in the scan results
+	extern int  onyx_wlpoll;		// the chip polled (the net core) instead of its interrupt awaited
+	extern int  onyx_wlstat;		// the driver's timing lines in the log
+}
+#define WLAN_5G_BIAS	25			// a network on both bands: 5 GHz unless it is 25 dB weaker
+
+static boolean s_bNetStat = FALSE;		// cmdline netstat=1: the net core's and the driver's pace in the log
+
+// The networks named in wpa_supplicant's configuration, for the driver's scan: every `ssid="..."`
+// line (the first four). A scan probes for them by name over both bands, so an access point that
+// leaves its name out of the beacons of one band is still seen as that network; the supplicant's
+// own driver glue (hostap, upstream's) asks for a plain scan and is left as it is.
+void NetWlanNames (const char *pConfigFile)
+{
+	static char Buf[4096];
+	FIL File;
+	UINT n = 0;
+	int nNames = 0;
+	if (f_open (&File, pConfigFile, FA_READ) == FR_OK)
+	{
+		if (f_read (&File, Buf, sizeof Buf - 1, &n) != FR_OK) n = 0;
+		f_close (&File);
+	}
+	Buf[n] = '\0';
+	for (const char *p = Buf; *p != '\0' && nNames < 4; )
+	{
+		while (*p == ' ' || *p == '\t') p++;
+		if (memcmp (p, "ssid=\"", 6) == 0)
+		{
+			p += 6;
+			unsigned k = 0;
+			const char *q = p;
+			while (*q != '\0' && *q != '\n' && *q != '\r') q++;	// the line's end
+			while (q > p && q[-1] != '"') q--;			// its last quote
+			if (q > p) for (q--; p < q && k < 32; ) onyx_scan_ssid[nNames][k++] = *p++;
+			onyx_scan_ssid[nNames][k] = '\0';
+			if (k > 0) nNames++;
+		}
+		while (*p != '\0' && *p != '\n') p++;
+		if (*p == '\n') p++;
+	}
+	onyx_scan_nssid = nNames;
+	onyx_scan_5g_bias = WLAN_5G_BIAS;
+}
+
+// kernel.cpp, before the bring-up: the driver's switches from the command line.
+void NetWlanOptions (boolean bStat)
+{
+	s_bNetStat = bStat;
+	onyx_wlstat = bStat;
+	onyx_wlpoll = g_bNetCore;
+}
+
 static int DoWlanReconnect (void)
 {
 	if (g_pNet == 0 || CNetDevice::GetNetDevice (NetDeviceTypeWLAN) == 0 || s_pReconfig == 0) return -1;
+	NetWlanNames ("SD:/etc/wpa_supplicant.conf");		// (the file changed: the new network's name)
 	if (eloop_register_timeout (0, 0, ReconfigTimeout, 0, 0) != 0) return -1;
 	CDHCPClient::Restart ();
 	return 0;
@@ -1025,7 +1087,8 @@ static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 	static u8 Buf[FRAME_BUFFER_SIZE];
 	unsigned nLen;
 	while (pWLAN->ReceiveScanResult (Buf, &nLen)) {}		// stale messages
-	if (!pWLAN->Control ("escan %u", 5)) return 0;
+	onyx_scan_5g_bias = 0;						// the levels as heard, for the list
+	if (!pWLAN->Control ("escan %u", 6)) { onyx_scan_5g_bias = WLAN_5G_BIAS; return 0; }
 
 	const u8 *pOwn = 0;						// the BSSID we are on
 	u8 Own[6];
@@ -1037,7 +1100,7 @@ static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 
 	int nCount = 0;
 	unsigned nStart = CTimer::Get ()->GetTicks ();
-	while (CTimer::Get ()->GetTicks () - nStart < 3 * HZ + HZ / 2)
+	while (CTimer::Get ()->GetTicks () - nStart < 5 * HZ)		// (both bands: 5 GHz's DFS channels are listened to)
 	{
 		CScheduler::Get ()->MsSleep (50);
 		while (pWLAN->ReceiveScanResult (Buf, &nLen))
@@ -1049,7 +1112,8 @@ static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 			{
 				const TBssInfo *b = (const TBssInfo *) (Buf + off);
 				if (b->length == 0) break;
-				unsigned chan = b->chanspec & 0xFF;
+				unsigned chan = b->chanspec & 0xFF;		// (a wide channel: its centre)
+				if (b->n_cap && b->ctl_ch != 0) chan = b->ctl_ch;	// the control channel
 				int level = (s16) b->RSSI;
 				// One entry per BSSID (keep the strongest reading).
 				int j = 0;
@@ -1080,6 +1144,7 @@ static int DoWlanScan (struct kapi_wlan_ap *pOut, int nMax)
 		}
 	}
 	pWLAN->Control ("escan 0");					// stop
+	onyx_scan_5g_bias = WLAN_5G_BIAS;
 
 	for (int i = 1; i < nCount; i++)				// strongest first
 	{
@@ -1158,13 +1223,27 @@ static void CopyStr (char *d, const char *s, unsigned nCap)
 
 // A slot's readiness may have changed: wake the waiters (core 0: at once; the net core: a
 // generation core 0's tick hook watches).
+static u32 s_bReadyIPI;				// an IPI to core 0 is on its way (the net core sets it, core 0 clears it)
+
 static void Changed (void)
 {
-	if (g_bNetCore) __atomic_add_fetch (&s_nSnapGen, 1, __ATOMIC_RELEASE);
+	if (g_bNetCore)
+	{
+		__atomic_add_fetch (&s_nSnapGen, 1, __ATOMIC_RELEASE);
+		// Core 0 is told at once (an inter-core interrupt), not at its next 100 Hz tick: a
+		// blocking recv / send / poll waited up to 10 ms for each turn -- an echo's round
+		// trip was 10 ms on the LAN, a download a few hundred KB/s. One IPI at a time: core 0
+		// clears the flag before it reads the generation, so a change after that sends another.
+		if (!__atomic_exchange_n (&s_bReadyIPI, 1, __ATOMIC_ACQ_REL))
+		{
+			CMultiCoreSupport::SendIPI (0, IPI_NET_READY);
+		}
+	}
 	else IoWake ();
 }
 
-// Core 0, at each 100 Hz tick (IRQ): the net core changed a snapshot -> wake the waiters.
+// Core 0, at each 100 Hz tick (IRQ) -- the fallback -- and at the net core's IPI: the net core
+// changed a snapshot -> wake the waiters.
 static void NetPollTick (void)
 {
 	u32 nGen = Ld (&s_nSnapGen);
@@ -1173,6 +1252,13 @@ static void NetPollTick (void)
 		s_nSnapSeen = nGen;
 		IoWake ();
 	}
+}
+
+// Core 0's IPI handler (kernel.cpp, COnyxCores::IPIHandler): IRQ context, as the tick hook.
+void NetReadyIPI (void)
+{
+	St (&s_bReadyIPI, 0);
+	NetPollTick ();
 }
 
 // ---- net core side ----
@@ -1258,6 +1344,8 @@ static void Snapshot (void)
 	}
 }
 
+static unsigned s_nRounds, s_nSnapUs, s_nStatStart;
+
 void NetCoreMain (void)
 {
 	while (!s_bGo) asm volatile ("wfe");
@@ -1281,9 +1369,24 @@ void NetCoreMain (void)
 			new CNetWorker;
 			s_nWorkers++; s_nIdle++;
 		}
+		unsigned nT0 = CTimer::Get ()->GetClockTicks ();
 		Snapshot ();
+		s_nSnapUs += CTimer::Get ()->GetClockTicks () - nT0;
 		CScheduler::Get ()->ReapTerminatedTasks ();	// (the bring-up task, once done)
 		CScheduler::Get ()->Yield ();
+		// (cmdline netstat=1: the net core's pace in the log, every 5 s -- how many rounds of its
+		// scheduler a second, what a round and the snapshot cost: the stack's tasks all wait by
+		// yielding, so a round's length is the unit of every wait)
+		s_nRounds++;
+		unsigned nNow = CTimer::Get ()->GetClockTicks ();
+		if (s_bNetStat && nNow - s_nStatStart >= 5000000)
+		{
+			unsigned nUs = nNow - s_nStatStart;
+			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round, snapshot %u us a round, %u tasks' workers (%u idle)",
+						(unsigned) ((u64) s_nRounds * 1000000 / nUs), s_nRounds ? nUs / s_nRounds : 0,
+						s_nRounds ? s_nSnapUs / s_nRounds : 0, s_nWorkers, s_nIdle);
+			s_nRounds = 0; s_nSnapUs = 0; s_nStatStart = nNow;
+		}
 	}
 }
 

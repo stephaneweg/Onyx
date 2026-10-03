@@ -1059,7 +1059,8 @@ read-only segments are shared by its processes — no call changes for that —,
 `get_handles` (slots 253–255): `image_preload`, `image_unload`, `image_list`; `struct
 kapi_image_info`, `KAPI_IMG_*` (*v77: program images* below),
 v78 = **executable memory for a JIT** (WebKit roadmap step 3, docs/08): `vm_map` and `vm_protect`
-accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* below).
+accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* below),
+v79 = **what the kernel is**: `kernel_info` (slot 256), for `/bin/uname` (*v79: kernel_info* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1302,9 +1303,12 @@ accept (`CSocket::AcceptReady`, Circle patch); `POLLOUT`: connected and under th
 always for UDP; `POLLERR`: a connect that failed (with `POLLOUT | POLLHUP`, as Linux); `POLLHUP`:
 was connected and no longer is (reset, timeout), or a TCP socket never connected. With
 **`netcore=1`** the net core's main loop recomputes every open slot's snapshot at each turn (and a
-worker after each call on a slot) and bumps a generation word when one changed; a 100 Hz tick hook
-on core 0 (`NetPollTick`, `IoWaitAddTickHook`) turns that into `IoWake`: a wake ≤ 10 ms after the
-change, a waiter's sleep capped at 100 ms anyway. With **`netcore=0`** the readiness is evaluated
+worker after each call on a slot) and bumps a generation word when one changed, then sends core 0
+an **inter-core interrupt** (`IPI_NET_READY`, one at a time: a flag core 0 clears before it reads
+the generation); core 0's handler (`NetReadyIPI` → `NetPollTick`) turns that into `IoWake` at once.
+The 100 Hz tick hook (`IoWaitAddTickHook`) remains as the fallback; a waiter's sleep is capped at
+100 ms anyway. (Before the IPI the tick alone did it: every blocking `recv` / `send` / `poll` waited
+up to 10 ms a turn — an echo's round trip was 10 ms on the LAN.) With **`netcore=0`** the readiness is evaluated
 on the spot and nothing announces a change (a connect's end and a close do call `IoWake`), so a
 wait over sockets looks again at every tick (10 ms). A wait over streams and files only sleeps
 until `IoWake` (a pipe's `PollMask` and its wakes are WP-FILE/PROC's).
@@ -1444,6 +1448,19 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v79: kernel_info
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 256 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
+
+The date and the revision are `kernel/buildstamp.cpp`'s, an object that depends on every other
+object and library of the kernel (`kernel/Makefile`): it is compiled again at each link, so the
+stamp is the image's — `__DATE__` in a file says when that file was last compiled. The boot log's
+`Built on …` line prints the same. User: `/bin/uname` (docs/04 §8) — a kernel copied to the card
+by hand is told from the package's (`uname -v` against `uname -p`). `user/kapi.h`'s wrapper
+returns `-KAPI_ENOSYS` and an empty text on an older kernel.
 
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against
@@ -1690,8 +1707,15 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   - **BSD sockets (v75).** Their calls are requests too (`NR_S*`), except a connect: a
     **detached** request (the caller does not wait; the worker frees it; `NetCloseByPid` leaves
     it alone). The main loop recomputes every open socket's readiness snapshot at each turn and
-    bumps a generation word when one changed; core 0's 100 Hz tick hook (`NetPollTick`) turns it
-    into `IoWake`, which wakes `poll` and the blocking BSD calls (§8 "v75: sockets and poll").
+    bumps a generation word when one changed, then interrupts core 0 (`IPI_NET_READY`,
+    `COnyxCores::IPIHandler` → `NetReadyIPI`; the 100 Hz tick hook `NetPollTick` as the fallback):
+    `IoWake`, which wakes `poll` and the blocking BSD calls (§8 "v75: sockets and poll").
+  - **The Wi-Fi driver** is polled on this core instead of waiting for its SDIO interrupt, its
+    scans cover both bands and probe for the networks of `wpa_supplicant.conf` by name, and 5 GHz
+    is preferred (`NetWlanOptions`, `NetWlanNames`; our Circle fork, docs/05 §26).
+  - **`netstat=1`** (`cmdline.txt`): every 5 s the log says the net core's pace (`net: core 3: N
+    rounds/s, … us a round` — the stack's tasks all wait by yielding, so a round is the unit of
+    every wait: ~13 µs) and the driver's (frames a second, a frame's read time, the link's rate).
   - **A process that dies** (in a request, or with sockets open): `NetCloseByPid` (its
     teardown, IRQs masked: nothing waits) drops its posted requests, orphans the running
     ones (the worker then closes what they opened), and queues its pid in a ring that the

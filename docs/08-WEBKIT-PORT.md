@@ -612,7 +612,18 @@ was a loop of `Yield`: the receiver stayed ready and took a turn of core 0 at ev
 Pi `ps` showed it `R` with no system call, and `tools/webkit/tests/mbench.c` (malloc, sbrk, page
 faults timed as the heap grows) showed steps of exactly 60 ms in what takes 13: about 80 % of
 core 0 gone. The receive now sleeps on the I/O generation (`IoWait`; `CMailbox::Push` calls
-`IoWake`: `kernel/sys/ipc.cpp`). Measure any slowness of the browser again after this.
+`IoWake`: `kernel/sys/ipc.cpp`; onyx 2026.10.35). With core 0 free, `jsc`'s loops ran six to seven
+times faster on the Pi (a 3 M loop: 33 ms for 216).
+
+**And the collector.** JavaScriptCore's collector is concurrent by default: it marks beside the
+script and, to keep up, takes the processor from it. On Onyx a program's threads share one core:
+`tools/webkit/tests/alloc.js` in `jsc` on the Pi kept 400 000 short strings in 3.9 s, and in 0.2 s
+with `--useConcurrentGC=0` (200 000 objects: 758 ms against 20; `--logGC=1` showed the mutator
+down to 2 % of the time, a cycle of 3.6 s). The port's defaults are now `useConcurrentGC = false`
+and `numberOfGCMarkers = 1` (`Options.cpp`, `overrideDefaults`; patch `0023`; a command line can
+ask for them again): the collection is generational and stops the world for its length. The
+other scripts of that folder: `strhash.js` (is a string-keyed table linear), `strget.js` (its
+reads), `sched.html` (the page's event loop: tasks, timers, frames, and the same loops).
 
 ## The roadmap from here (the user, 2026-10-02)
 

@@ -53,7 +53,8 @@ OBJS = \
 	arch/aarch64/uaccess.o \
 	arch/aarch64/el0.o \
 	arch/aarch64/el0blob.o \
-	arch/aarch64/exception.o
+	arch/aarch64/exception.o \
+	buildstamp.o
 
 # Our include dirs must come BEFORE Circle's (Rules.mk appends -I$(CIRCLEHOME)/include),
 # so <circle/sched/scheduler.h> resolves to our shadow in compat/.
@@ -82,6 +83,11 @@ include $(CIRCLEHOME)/Rules.mk
 # reconfiguration handler wpa_supplicant registers for SIGHUP (Circle's eloop has no signals) is
 # caught here, then run from the supplicant's own eloop -- no change to hostap (upstream's).
 LDFLAGS += --wrap=eloop_register_signal_reconfig
+
+# The build's stamp (buildstamp.cpp: the date, the git revision -- kapi v79 kernel_info, uname):
+# compiled again whenever anything else of the kernel was, so it is the image's.
+buildstamp.o: $(filter-out buildstamp.o,$(OBJS)) $(LIBS)
+buildstamp.o: CPPFLAGS += -DONYX_BUILD_REV=\"$(shell git -C .. rev-parse --short HEAD 2>/dev/null)$(shell git -C .. diff --quiet HEAD -- kernel 2>/dev/null || echo +)\"
 
 # The V3D packets (kern/v3d_cl.h) use default member initialisers on bit-fields: C++20.
 sys/v3d.o: CPPFLAGS += -std=c++20

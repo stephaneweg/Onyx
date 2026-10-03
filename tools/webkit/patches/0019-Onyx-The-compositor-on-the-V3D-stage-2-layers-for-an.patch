@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sat, 3 Oct 2026 13:09:11 +0200
-Subject: [PATCH 19/22] [Onyx] The compositor on the V3D, stage 2: layers for
+Subject: [PATCH 19/23] [Onyx] The compositor on the V3D, stage 2: layers for
  animated opacity / transform, animations by the compositor, scrolling without
  layouts
 

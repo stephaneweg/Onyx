@@ -527,6 +527,10 @@ static inline int kapi_image_unload (const char *path)
 	{ return KT->version >= 77 && KT->image_unload ? KT->image_unload (path) : -KAPI_ENOSYS; }
 static inline int kapi_image_list (const char *path, struct kapi_image_info *out, unsigned cap)
 	{ return KT->version >= 77 && KT->image_list ? KT->image_list (path, out, cap) : -KAPI_ENOSYS; }
+// (v79) What the running kernel is: "key value" lines (name, abi, built, rev, machine, model, ram;
+// keys may be added) -> the text's length; -KAPI_ENOSYS (and "") on an older kernel. /bin/uname.
+static inline int kapi_kernel_info (char *buf, unsigned cap)
+	{ if (KT->version >= 79 && KT->kernel_info) return KT->kernel_info (buf, cap); if (buf && cap) buf[0] = 0; return -KAPI_ENOSYS; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

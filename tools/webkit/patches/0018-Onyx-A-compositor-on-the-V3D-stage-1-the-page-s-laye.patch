@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sat, 3 Oct 2026 11:10:29 +0200
-Subject: [PATCH 18/22] [Onyx] A compositor on the V3D, stage 1: the page's
+Subject: [PATCH 18/23] [Onyx] A compositor on the V3D, stage 1: the page's
  layers as tiles, composited by gpucomp
 
 USE(GRAPHICS_LAYER_ONYX): GraphicsLayerOnyx is a real GraphicsLayer (its properties, a grid of

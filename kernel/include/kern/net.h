@@ -95,5 +95,13 @@ void  NetCoreMain (void);			// core 3 (COnyxCores::Run): waits for the start
 void  NetCoreStart (CTask *(*pfnBringup) (void));	// core 0: bring the stack up on core 3
 void  NetCoreNotify (const char *pTitle, const char *pText);	// net core: a notice for core 0
 void  NetCorePoll (void);			// core 0, now and then: deliver it (IpcNotify)
+// The net core's inter-core interrupt to core 0: a socket's readiness changed (the waiters of the
+// BSD calls are woken at once, not at the next 100 Hz tick). IPI_USER + 0 is the app cores' stop.
+#define IPI_NET_READY	(IPI_USER + 1)
+void  NetReadyIPI (void);			// core 0, IRQ (COnyxCores::IPIHandler)
+// The Wi-Fi driver's switches: the scan's names read from wpa_supplicant's configuration (before
+// the supplicant starts, and at each reconnect), and cmdline netstat=1 (the pace in the log).
+void  NetWlanNames (const char *pConfigFile);
+void  NetWlanOptions (boolean bStat);
 
 #endif

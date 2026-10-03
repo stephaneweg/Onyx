@@ -1372,6 +1372,7 @@ public:
 
 		m_pLogger->Write (FromKernel, LogNotice,
 				  "net: associating (" WLAN_CONFIG_FILE ") ...");
+		NetWlanNames (WLAN_CONFIG_FILE);	// the driver's scan probes for the networks by name
 		if (!m_pWPA->Initialize ())
 		{
 			m_pLogger->Write (FromKernel, LogWarning,
@@ -1648,6 +1649,12 @@ public:
 		else if (nCore == 3 && g_bNetCore) NetCoreMain ();	// the network core
 		else AppCoreMain (nCore);		// cores 2-3: app cores (kern/appcore.h)
 		for (;;) asm volatile ("wfe");
+	}
+	void IPIHandler (unsigned nCore, unsigned nIPI) override
+	{
+		// The network core tells core 0 that a socket's readiness changed (sys/net.cpp).
+		if (nIPI == IPI_NET_READY && nCore == 0) { NetReadyIPI (); return; }
+		CMultiCoreSupport::IPIHandler (nCore, nIPI);
 	}
 };
 static COnyxCores *s_pCores = 0;
@@ -1972,6 +1979,8 @@ boolean CKernel::Initialize (void)
 		// the rest of the system only uses core 0.
 		// netcore=1 (cmdline.txt): the network stack on core 3 (then not an app core)
 		g_bNetCore = m_Options.GetAppOptionDecimal ("netcore", 0) != 0;
+		// netstat=1: the net core's and the Wi-Fi driver's pace in the log, every 5 s
+		NetWlanOptions (m_Options.GetAppOptionDecimal ("netstat", 0) != 0);
 		// (diagnostics) dispdma=0: the compositor's copies to the screen synchronous (the
 		// asynchronous 2D DMA off); gpudirect=0: the GPU renders into its own buffer, copied
 		g_bDisplayDma = m_Options.GetAppOptionDecimal ("dispdma", 1) != 0;
@@ -2098,7 +2107,11 @@ TShutdownMode CKernel::Run (void)
 	m_Logger.Write (FromKernel, LogNotice, "Onyx -- a lean OS on Circle (codename Zircon)");
 	m_Logger.Write (FromKernel, LogNotice,
 			"Multi-process kernel + GUI, apps at EL0 calling the kernel by system calls");
-	m_Logger.Write (FromKernel, LogNotice, "Compiled on " __DATE__ " " __TIME__);
+	{
+		extern const char g_BuildStamp[], g_BuildRev[];		// buildstamp.cpp: this image's
+		m_Logger.Write (FromKernel, LogNotice, "Built on %s (%s), kapi v%u", g_BuildStamp, g_BuildRev,
+				(unsigned) KAPI_ABI_VERSION);
+	}
 
 	CMachineInfo *pInfo = CMachineInfo::Get ();
 	m_Logger.Write (FromKernel, LogNotice, "Running on %s, %lu MB RAM",

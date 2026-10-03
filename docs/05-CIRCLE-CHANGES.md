@@ -50,6 +50,8 @@ git -C circle diff Step51..onyx
 | 21 | **TCP: RTO 1 s initial** (was 3 s; the 1 s minimum kept — 200 ms was tried and undone), Karn after a fast retransmit | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
 | 23 | **Wi-Fi: the firmware's `wsec` from the IE's ciphers** (group + pairwise: TKIP 2, AES 4, as Linux's brcmfmac) -- WPA2 was always "aes": a WPA/WPA2 mixed-mode network (pairwise CCMP, group TKIP, common on 2.4 GHz) associated but no broadcast was decoded (no DHCP offer: the link stayed down) | `addon/wlan/ether4330.c` (`iewsec`, `setauth`) | `libwlan` |
+| 25 | **TCP: a closed connection's retransmission timer** stopped, a late one ignored — it was a kernel panic (`Unexpected state 0`); a reset wakes a waiting sender | `lib/net/tcpconnection.cpp` | `libnet` |
+| 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred** | `addon/wlan/ether4330.c`, `addon/wlan/p9util.cpp` | `libwlan` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -758,6 +760,90 @@ was lost.
 **What.** `lib/pageallocator.cpp`: `m_pNext -= PAGE_SIZE` before that `return 0`.
 
 **Test**: `memtest oom` on the Pi (the OOM kill twice, each run ending where it started).
+
+## 25. TCP: a closed connection's retransmission timer
+
+**Why.** The Pi restarted by itself under network load (a video streamed by the WebKit browser, an
+FTP upload of 100 MB and the remote desktop at once; a telnet client gone while output flowed was
+enough): `SD:/etc/lastcrash.txt` said **`A kernel panic: tcp: Unexpected state 0 at line 1922`**.
+That line is `CTCPConnection::TimerHandler`'s retransmission case: the timer of a connection whose
+state is `Closed`. A peer's RST, the ACK of our FIN in `LAST-ACK` or a refused connect closed the
+connection with the retransmission timer still running; since §23 a terminated connection is kept
+until its socket releases it (upstream deleted it at the next `Process`), so the timer fired on
+the closed connection a second later. Upstream calls that `UNEXPECTED_STATE ()`, which in a build
+without `NDEBUG` — ours — is `LogPanic`: every core halted, for one connection, and any client
+could cause it.
+
+**What.** `lib/net/tcpconnection.cpp`:
+
+- every path of `PacketReceived` that goes to `Closed` (a RST in each state, a SYN in the window,
+  the FIN's acknowledgement in `LAST-ACK`, a refused connect) stops the retransmission timer first;
+- `TimerHandler`, `TCPTimerRetransmission`: in `Closed`, `Listen`, `FinWait2` or `TimeWait` the
+  timer is ignored before the RTO is backed off or the retry count taken (the handler runs from an
+  interrupt, with `netcore=1` on another core than the stack: it can still race those paths);
+- a reset (and the SYN case) also sets `m_TxEvent`: a sender waiting for room in the transmit
+  queue sees the reset at once instead of at its timeout.
+
+**Test**: on the Pi — YouTube playing in Web with an FTP upload of 100 MB and telnet sessions
+opened and dropped: no panic since (it came within minutes before).
+
+## 26. Wi-Fi: the chip polled, a scan over both bands, 5 GHz preferred
+
+Three changes in the BCM4343x driver (`addon/wlan/ether4330.c`), each behind a global the kernel
+sets (`kernel/sys/net.cpp`: `NetWlanOptions`, `NetWlanNames`); with the globals at their defaults
+the polling and the bias are off (the scan over both bands is not conditional). `hostap` — upstream's
+submodule, wpa_supplicant and its Circle driver glue — is **not** changed.
+
+**1. The chip polled (`onyx_wlpoll`).** The receive loop (`rproc`) read frames until the chip had
+none, then slept in `intwait` until the SDIO card interrupt. That interrupt comes late: measured
+on a Pi 4 under a steady stream, **2.5 to 5 ms a wait, 80 % of the reader's time**, with the
+frames already there — the Pi sent 1.1 MB/s and received 1 MB/s on a link good for forty times
+that. With `onyx_wlpoll` set (the kernel does, when the network has a core of its own:
+`netcore=1`), the reader asks the chip itself, in turn with the stack's other tasks — a round of
+that core's scheduler is ~13 µs: `intpoll` reads the chip's interrupt status (function 0's
+`Intpend`, then the backplane's `Intstatus`, acknowledged) and tells whether `FrameInt` is
+pending; the data function is read only then, and until it is empty (as Linux's brcmfmac: no read
+with nothing pending). On the primary core (`netcore=0`) the driver waits for the interrupt as
+before: polling would take the core from everything else.
+
+**2. A scan over both bands, the networks probed by name.** `wlscanstart` listed the fourteen
+2.4 GHz channels with the wildcard SSID alone, so a 5 GHz BSS was never a candidate: a Pi 4 beside
+a dual-band access point joined it on 2.4 GHz channel 1, shared with the neighbours. The escan now
+passes `nchans = 0` (the firmware's own list: every channel of both bands the country allows) and,
+beside the wildcard, up to four names (`onyx_scan_ssid`, `onyx_scan_nssid`): an access point that
+leaves its name out of the beacons of one band (seen on a Livebox: the 5 GHz BSS came with an
+empty SSID) answers a probe by name and is seen as that network. The kernel fills the names from
+the `ssid="…"` lines of `SD:/etc/wpa_supplicant.conf` before wpa_supplicant starts and at each
+`wlan_reconnect`. A scan takes longer (5 GHz's DFS channels are listened to, not probed):
+`wlan_scan` waits 5 s instead of 3.5.
+
+**3. 5 GHz preferred (`onyx_scan_5g_bias`).** wpa_supplicant ranks the BSSs of a network by
+level, and 2.4 GHz is usually heard a few dB louder. `wlscanresult` adds the bias (the kernel:
+25 dB) to the level of each 5 GHz BSS heard at −78 dBm or better before the result is queued
+(kept negative), so a network on both bands is joined on 5 GHz unless that band is much weaker.
+The kernel's own scan (`wlan_scan`, `wifiscan`) clears the bias for its length: its list shows
+the levels as heard. (The glue reads the level unsigned — `res->level = bss->RSSI`, a `u16`: −67
+is 65469 — an upstream bug left as it is: the order stays the same.) `WLC_SET_ASSOC_PREFER` was
+tried first and changes nothing here: the supplicant names the BSSID it joins.
+
+`addon/wlan/p9util.cpp` gains `p9usec` (the microsecond clock) and `p9yield` (a turn of the
+scheduler) for the driver's C code. With `onyx_wlstat` (the kernel: `cmdline.txt netstat=1`) the
+driver logs every 5 s under load its frames a second, a frame's read and write times, the waits,
+and every 10 s what the firmware says of the link (rate, RSSI, chanspec, power save).
+
+**Measured** (a Pi 4, `tcpbench` against a PC on the same access point; with the kernel's
+inter-core interrupt of docs/02 §11, which came first):
+
+| | echo round trip | the Pi sends | the Pi receives |
+|---|---|---|---|
+| before | 10.4 ms | 795 KB/s | 504 KB/s |
+| the IPI (kernel) | 2.8 ms | 1128 KB/s | 1008 KB/s |
+| + the chip polled | 2.8 ms | 3.3 MB/s | 1 MB/s |
+| + 5 GHz (link 263–292 Mbit/s) | 2.2 ms | 4.3 MB/s | 4.4 MB/s |
+
+**What limits it now**: the 64 KB receive window without window scaling (§19), a `recv` of at
+most 32 KB a request, and the SDIO read of a frame (~270 µs: two transfers a frame, no receive
+glomming).
 
 ## Contributions to upstream Circle
 
