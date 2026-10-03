@@ -2489,7 +2489,7 @@ and fills their servers in:
 | *Gmail: an app password* | *Outlook.com: Microsoft's sign-in by a code* |
 
 * **Gmail, iCloud, Yahoo, Fastmail** ask for an **app password** (not your usual one): turn on 2-step
-  verification, make the password on the provider's page (*Open the page in Jet Browser*), type it.
+  verification, make the password on the provider's page (*Open the page in Web* — the WebKit browser; in Jet Browser when Web is not installed), type it.
 * **Outlook.com / Hotmail / Live** do not take passwords from mail apps: Mail shows a **code**; on a phone
   or a PC open `microsoft.com/devicelogin`, type the code, sign in, allow "Onyx Mail" — Mail goes on by
   itself. (Mail carries the "Onyx Mail" application's id, registered at Microsoft; `SD:/etc/mail/oauth.ini` may give another: `docs/mail/README.md`.)
