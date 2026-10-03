@@ -34,11 +34,14 @@
 #include <WebKit/WKPagePrivateOnyx.h>
 #include <WebKit/WKPageUIClient.h>
 #include <WebKit/WKPreferencesRef.h>
+#include <WebKit/WKPreferencesRefPrivate.h>
 #include <WebKit/WKRunLoop.h>
 #include <WebKit/WKString.h>
 #include <WebKit/WKType.h>
 #include <WebKit/WKURL.h>
 #include <WebKit/WKURLRequest.h>
+#include <WebKit/WKUserContentControllerRef.h>
+#include <WebKit/WKUserScriptRef.h>
 #include <WebKit/WKView.h>
 #include <WebKit/WKWebsiteDataStoreRef.h>
 #include <fcntl.h>
@@ -160,7 +163,33 @@ static void keyNotHandled (WKViewRef, WKKeyboardEvent e, const void *);
 
 // A navigation under way (its progress alone stays part-way when it became a download).
 static bool s_navigating;
-static void didStartProvisional (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load started"); s_navigating = true; }
+static void didStartProvisional (WKPageRef, WKNavigationRef, WKTypeRef, const void *)
+{
+	say ("load started");
+	s_navigating = true;
+	if (s_client->console) s_client->console (ENGINE_CONSOLE_CLEAR, "", "");	// (a new page: its console starts empty)
+}
+
+// A message of the page's console (WebKit's Onyx port sends them all: WKPagePrivateOnyx.h), with its
+// place as "file:line:column" -- the file's name alone (the address's last part), the host when none.
+static void consoleMessage (WKPageRef, int level, const char *message, const char *sourceURL, unsigned line, unsigned column)
+{
+	if (!s_client || !s_client->console) return;
+	char where[200] = "";
+	if (sourceURL && *sourceURL)
+	{
+		std::string u (sourceURL);
+		size_t q = u.find_first_of ("?#");
+		if (q != std::string::npos) u.erase (q);
+		while (u.size () > 1 && u[u.size () - 1] == '/') u.erase (u.size () - 1);
+		size_t slash = u.rfind ('/');
+		std::string name = slash == std::string::npos ? u : u.substr (slash + 1);
+		if (name.size () > 60) name = name.substr (0, 28) + "..." + name.substr (name.size () - 28);
+		if (line) snprintf (where, sizeof where, "%s:%u:%u", name.c_str (), line, column);
+		else snprintf (where, sizeof where, "%s", name.c_str ());
+	}
+	s_client->console (level, message ? message : "", where);
+}
 static void didCommit (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load committed"); }
 static void didFinish (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load finished"); s_navigating = false; }
 
@@ -553,8 +582,14 @@ bool engine_init (const EngineClient *client, int w, int h)
 	WKPageConfigurationSetContext (pc, s_context);
 	// The data (cookies, local storage, the caches) in SD:/var/webkit (WebsiteDataStoreOnyx).
 	WKPageConfigurationSetWebsiteDataStore (pc, WKWebsiteDataStoreGetDefaultDataStore ());
-	if (!s_scripts || s_compositing) {
+	// SD:/etc/web-console: the pages' console (their messages, their script errors) in kmsg
+	bool console = access ("SD:/etc/web-console", F_OK) == 0;
+	if (!s_scripts || s_compositing || console) {
 		WKPreferencesRef prefs = WKPreferencesCreate ();
+		if (console) {
+			WKPreferencesSetLogsPageMessagesToSystemConsoleEnabled (prefs, true);
+			say ("the pages' console is logged");
+		}
 		if (!s_scripts)					// (the embedded view, for a mail's HTML)
 			WKPreferencesSetJavaScriptEnabled (prefs, false);
 		if (s_compositing)				// (the web process then logs "web: gpu: ..." lines)
@@ -563,6 +598,21 @@ bool engine_init (const EngineClient *client, int w, int h)
 		WKRelease (prefs);
 	}
 	say ("compositing %s", s_compositing ? "on (the GPU compositor)" : "off (the software path)");
+	// SD:/etc/web-probe.js: a script run in every page (all its frames) before the page's own, to
+	// find what a site's application does (with web-console, what it logs is in kmsg)
+	if (FILE *f = fopen ("SD:/etc/web-probe.js", "rb")) {
+		static char src[32768];
+		size_t n = fread (src, 1, sizeof src - 1, f);
+		fclose (f);
+		src[n] = 0;
+		WKUserContentControllerRef ucc = WKUserContentControllerCreate ();
+		WKStringRef text = WKStringCreateWithUTF8CString (src);
+		WKUserScriptRef script = WKUserScriptCreateWithSource (text, kWKInjectAtDocumentStart, false);
+		WKUserContentControllerAddUserScript (ucc, script);
+		WKPageConfigurationSetUserContentController (pc, ucc);
+		WKRelease (script); WKRelease (text); WKRelease (ucc);
+		say ("the probe script (%u bytes) runs in every page", (unsigned) n);
+	}
 
 	s_view = WKViewCreate (pc);
 	WKRelease (pc);
@@ -586,6 +636,7 @@ bool engine_init (const EngineClient *client, int w, int h)
 	WKViewSetFocus (s_view, true);
 
 	s_page = WKViewGetPage (s_view);
+	WKSetConsoleMessageCallbackOnyx (consoleMessage);
 	WKStringRef app = WKStringCreateWithUTF8CString ("Onyx");
 	WKPageSetApplicationNameForUserAgent (s_page, app);
 	WKRelease (app);
@@ -835,6 +886,11 @@ void engine_key (long k, unsigned mods)
 	int vk = vk_of (k, mods, text);
 	if (!vk) return;
 	uint32_t m = wk_mods (mods);
+	// A character typed with AltGr (@, #, {, the euro sign on a French or Belgian keyboard): the keymap
+	// has already made the character, and Alt (with or without Ctrl) is still held -- sent with those,
+	// WebKit takes it for a shortcut and types nothing. A character goes as itself.
+	if (text[0] && text[0] != '\t' && text[0] != '\r' && (mods & MOD_ALT))
+		m &= ~(uint32_t) (kWKEventModifiersAltKey | kWKEventModifiersControlKey);
 	WKPageHandleKeyboardEvent (s_page, WKKeyboardEventMake (kWKEventKeyDown, vk, text, m, kWKKeyboardEventFlagsNone));
 	WKPageHandleKeyboardEvent (s_page, WKKeyboardEventMake (kWKEventKeyUp, vk, "", m, kWKKeyboardEventFlagsNone));
 }

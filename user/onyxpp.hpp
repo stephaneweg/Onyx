@@ -61,8 +61,12 @@ inline __attribute__ ((used)) void  operator delete[] (void *p) noexcept        
 inline __attribute__ ((used)) void  operator delete   (void *p, onyx_size_t) noexcept { umm_free (p); }	// sized
 inline __attribute__ ((used)) void  operator delete[] (void *p, onyx_size_t) noexcept { umm_free (p); }
 #endif // !ONYX_HOSTED_NEW
+#ifdef ONYX_HOSTED_NEW
+#include <new>				// (placement new is libstdc++'s too: the program may include <string>, <vector>...)
+#else
 inline void *operator new      (onyx_size_t, void *p) noexcept { return p; }	// placement
 inline void *operator new[]    (onyx_size_t, void *p) noexcept { return p; }
+#endif
 
 // These four runtime symbols need a real (emitted, address-takeable) definition, but
 // they are also pulled into any SEPARATELY-COMPILED translation unit that includes this

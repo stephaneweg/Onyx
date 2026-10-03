@@ -102,9 +102,17 @@ if [ "${HEAPCHECK:-0}" != 0 ]; then
 	for f in malloc free realloc calloc memalign aligned_alloc posix_memalign malloc_usable_size; do HC="$HC -Wl,--wrap=$f"; done
 	echo "web: with heapcheck ($HEAPCHECK)"
 fi
+# Onyx's media library and its codecs (user/av: libvpx, dav1d, opus), which WebKit's media engine
+# (MediaPlayerPrivateOnyx, ENABLE_VIDEO) calls: av.mk builds them for this toolchain, what changed only.
+AVL=""
+if aarch64-onyx-elf-nm "$BUILD/lib/libWebCore.a" 2>/dev/null | grep -q ' U av_player_new'; then
+	echo "web: the media library"
+	make -s -f "$HERE/av.mk" ONYX="$ONYX" S="$S" O="$O/av" -j"$JOBS"
+	AVL="$O/av/libonyxav.a"
+fi
 echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
-	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $GPC $WK $LIBS -o "$BUILD/bin/web"
+	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $GPC $WK $AVL $LIBS -o "$BUILD/bin/web"
 aarch64-onyx-elf-size "$BUILD/bin/web"
 # The program's allocator is newlib's malloc alone (its _sbrk goes through the app-core RPC): no umm
 # heap, whose kapi_sbrk on an app core stops the raster job there and hangs the page (onyxcores.c).

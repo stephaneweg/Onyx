@@ -624,6 +624,88 @@ static void test_player_file(const char *dir, const char *name)
 	av_player_free(p);
 }
 
+/* the queue mode (WebKit's: the host parses, keeps the coded frames, and hands the player those to
+ * decode, a little ahead of the playback position): played to the end, then a seek -- the queue
+ * flushed and filled again from the start, as the host does from a random access point */
+#define QMAX 512
+static void test_player_queue(const char *dir, const char *name)
+{
+	size_t n;
+	uint8_t *b = load(dir, name, &n);
+	struct av_demux *d;
+	static struct av_packet pk[QMAX];
+	int npk = 0, i, src, map[8], ntr, next = 0, shown = 0, mono = 1, pass;
+	struct av_player *p;
+	struct av_store *s;
+	struct av_player_status st;
+	av_us last = -1, t0, first = -1;
+
+	if (b == NULL)
+		return;
+	d = av_demux_new(AV_FMT_UNKNOWN);
+	av_demux_append(d, b, n);
+	av_demux_end(d);
+	while (npk < QMAX && av_demux_read(d, &pk[npk]) == AV_OK)
+		npk++;
+	ntr = av_demux_ntracks(d);
+	p = av_player_new(AV_PIX_RGBA, &fake);
+	s = av_player_store(p);
+	src = av_store_add_queue(s);
+	for (i = 0; i < ntr && i < 8; i++)
+		map[i] = av_store_queue_track(s, src, av_demux_track(d, i));
+	CHECK(src >= 0 && ntr == 2 && map[0] >= 0 && map[1] >= 0 && npk > 60, "%s: queue: %d tracks, %d frames to put", name, ntr, npk);
+	av_player_set_duration(p, 2 * AV_US);
+	memset(&st, 0, sizeof st);
+	for (pass = 0; pass < 2; pass++) {
+		if (pass == 1) {
+			/* the seek: the queues flushed, filled again from the first frame (a random access point) */
+			for (i = 0; i < ntr; i++)
+				av_store_queue_flush(s, src, map[i]);
+			next = 0;
+			av_player_seek(p, 1100000);
+			shown = 0;
+			last = -1;
+		}
+		av_player_play(p);
+		t0 = av_now();
+		while (av_now() - t0 < 4 * AV_US) {
+			struct av_video_out v;
+			/* frames put while the track holds less than half a second ahead */
+			while (next < npk && av_store_queue_level(s, src, map[pk[next].track], st.time, NULL) < 500000) {
+				av_store_queue_put(s, src, map[pk[next].track], &pk[next]);
+				next++;
+			}
+			if (next == npk)
+				for (i = 0; i < ntr; i++)
+					av_store_queue_end(s, src, map[i], 1);
+			if (av_player_poll(p, &st, &v)) {
+				if (v.pts <= last)
+					mono = 0;
+				if (last < 0)
+					first = v.pts;
+				last = v.pts;
+				shown++;
+			}
+			if (st.ended)
+				break;
+			av_sleep_ms(4);
+		}
+		if (pass == 0) {
+			CHECK(st.ended && shown >= 45 && mono, "%s: queue: played to the end in %.2f s: %d frames shown in order (dropped %u)",
+				name, (av_now() - t0) / 1e6, shown, st.dropped);
+			CHECK(st.time >= 1990000 && st.time <= 2010000, "%s: queue: ended at %.3f s", name, st.time / 1e6);
+		} else {
+			CHECK(first >= 1040000 && first <= 1120000, "%s: queue: seek 1.1 s: first frame at %.3f s", name, first / 1e6);
+			CHECK(st.ended && shown >= 20, "%s: queue: after the seek, played to the end (%d frames)", name, shown);
+		}
+	}
+	av_player_free(p);
+	for (i = 0; i < npk; i++)
+		av_pkt_free(&pk[i]);
+	av_demux_free(d);
+	free(b);
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir = argc > 1 ? argv[1] : ".";
@@ -648,6 +730,8 @@ int main(int argc, char **argv)
 	test_types();
 	test_player(dir, "mse.webm", "mse.json", "video/webm");
 	test_player(dir, "frag.mp4", "frag.json", "video/mp4");
+	test_player_queue(dir, "mse.webm");
+	test_player_queue(dir, "frag.mp4");
 	test_player_file(dir, "clip.webm");
 	test_player_file(dir, "clip-moovend.mp4");
 	printf("%d passed, %d failed\n", oks, fails);

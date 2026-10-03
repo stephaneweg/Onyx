@@ -2098,7 +2098,14 @@ av_player_set_rate (p, 1.5);  av_player_free (p);
 "video/webm", 0)` then `av_store_feed (store, src, offset, bytes, n)` from where `av_store_want (store,
 src)` says, `av_store_feed_end` at the end. **MSE**: `av_store_append` per SourceBuffer (`av_store_remove`,
 `av_store_set_offset`, `av_store_buffered`, `av_store_reset_parser`, `av_store_change_type`,
-`av_store_set_eos`). **Lower layers alone**: `av_demux_new` / `av_demux_feed` / `av_demux_read` (packets with
+`av_store_set_eos`). **A queue** (Web, the WebKit browser: WebKit does MSE's bookkeeping itself — its
+SourceBuffer parses with `av_demux_append` / `av_demux_read` / `av_demux_reset`, keeps the coded frames, and
+hands over those to decode, in decode order, a few seconds ahead): `av_store_add_queue (store)` is a source
+without a parser; `av_store_queue_track (store, q, track)` defines a track (again at each new initialization
+segment), `av_store_queue_put (store, q, t, packet)` adds a frame, `av_store_queue_level` says how far the
+frames reach after the playback position (the host stops putting past ~3 s), `av_store_queue_flush` empties a
+track (a seek: the host puts again from a random access point, then `av_player_seek`), `av_store_queue_end`
+tells the track's last frame is there; the player drops the frames it has played. **Lower layers alone**: `av_demux_new` / `av_demux_feed` / `av_demux_read` (packets with
 their track, pts / dts in microseconds, key flag), `av_decoder_new (track)` / `av_decoder_send` /
 `av_decoder_receive` (frames: I420 planes or float PCM), `av_yuv_to_rgb`, `av_resampler_new` / `av_resample`.
 

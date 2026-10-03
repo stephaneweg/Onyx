@@ -2436,8 +2436,17 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   is the page's.
 - **The menus**: File (New Window ^N, Open File… ^O, Open Location ^L, Save Page As… ^S, Downloads
   ^J, Close Window ^W), Edit (Cut, Copy, Paste, Select All — the address field's when it has the
-  keyboard, else the page's; Find… ^F), View (Reload ^R, Zoom In / Out, Actual Size), Go (Back
-  Alt+←, Forward Alt+→, Home), Help.
+  keyboard, else the page's; Find… ^F), View (Reload ^R, Zoom In / Out, Actual Size, Console F12),
+  Go (Back Alt+←, Forward Alt+→, Home), Help.
+- **The JavaScript console** (View ▸ Console, or F12): a window of its own beside the browser, not
+  modal, that lists what the page's console takes — `console.log` / `info` / `warn` / `error` /
+  `debug` with all their arguments, the **script errors** nobody caught, WebKit's own warnings —,
+  each with its place at the right (`file.js:120:14`), warnings on yellow, errors on red, long
+  messages wrapped. The messages are kept from the moment the page starts loading, so the window
+  can be opened afterwards; **each new navigation empties it**. **Clear** empties it, **Copy** puts
+  all of it on the clipboard as text; the wheel, the arrows, Page Up / Down, Home / End or the
+  scroll bar move in it (it follows the newest message while it is at the end). The last 1000
+  messages are kept. Closing the browser window leaves the console open with what it holds.
 - **Drop-down lists** (`<select>`): a click opens the list under the box (above it near the bottom),
   with its groups and the choices that cannot be taken greyed; a click, or the arrows, Page Up / Down,
   Home / End and Enter, chooses; Esc or a click outside closes it. Long lists scroll (the wheel).
@@ -2479,6 +2488,10 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   addresses, the errors, the web and network processes started and ended), `web: net start / done
   <status> <time> / FAILED <code> <url>` for each request, and, if a process is killed, `el0: …
   killed` with its `backtrace:` line. Keep `kmsg` running in a telnet session while you try a page.
+  For a page that misbehaves, the **Console** (F12) says what its scripts report. Two files for a
+  developer: `SD:/etc/web-console` (empty) also writes the pages' console to `kmsg`, and
+  `SD:/etc/web-probe.js` is a script run in every page before the page's own (a sample that reports
+  errors, failed resources and the document's state: `tools/webkit/tests/probe.js`).
 
 **Files**: reads the card's fonts (`SD:/res/fonts/`), the certificates (`SD:/res/ca-bundle`);
 writes `SD:/var/webkit/` (cookies, local storage, the caches) and the downloads (`SD:/Downloads/`,

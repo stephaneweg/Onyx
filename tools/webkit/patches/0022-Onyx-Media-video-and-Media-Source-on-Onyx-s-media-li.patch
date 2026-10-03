@@ -1,0 +1,2040 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 22:10:48 +0200
+Subject: [PATCH 22/22] [Onyx] Media: video and Media Source on Onyx's media
+ library (MediaPlayerPrivateOnyx, MediaSourcePrivateOnyx on user/av: files,
+ MSE, MediaCapabilities, the video decoder on an app core)
+
+---
+ Source/WebCore/PlatformOnyx.cmake             |   7 +
+ .../WebCore/platform/graphics/MediaPlayer.cpp |   9 +
+ .../WebCore/platform/graphics/MediaPlayer.h   |   2 +
+ .../platform/graphics/MediaPlayerEnums.h      |   1 +
+ .../graphics/onyx/MediaPlayerPrivateOnyx.cpp  | 972 ++++++++++++++++++
+ .../graphics/onyx/MediaPlayerPrivateOnyx.h    | 199 ++++
+ .../graphics/onyx/MediaSourcePrivateOnyx.cpp  | 528 ++++++++++
+ .../graphics/onyx/MediaSourcePrivateOnyx.h    | 157 +++
+ .../WebCoreArgumentCoders.serialization.in    |   3 +-
+ Source/cmake/OptionsOnyx.cmake                |  14 +-
+ 10 files changed, 1889 insertions(+), 3 deletions(-)
+ create mode 100644 Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
+ create mode 100644 Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h
+ create mode 100644 Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.cpp
+ create mode 100644 Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.h
+
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+index 3e342329..8de2f070 100644
+--- a/Source/WebCore/PlatformOnyx.cmake
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -18,6 +18,11 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+     ${WEBCORE_DIR}/platform/network/onyx
+ )
+ 
++# <av.h>, Onyx's media library (OptionsOnyx.cmake).
++if (ENABLE_VIDEO)
++    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES "${ONYX_AV_INCLUDE_DIR}")
++endif ()
++
+ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+     platform/graphics/onyx/GraphicsLayerOnyx.h
+ 
+@@ -56,6 +61,8 @@ list(APPEND WebCore_SOURCES
+     platform/generic/KeyedEncoderGeneric.cpp
+ 
+     platform/graphics/onyx/GraphicsLayerOnyx.cpp
++    platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
++    platform/graphics/onyx/MediaSourcePrivateOnyx.cpp
+     platform/graphics/onyx/OnyxCoreTest.cpp
+     platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
+ 
+diff --git a/Source/WebCore/platform/graphics/MediaPlayer.cpp b/Source/WebCore/platform/graphics/MediaPlayer.cpp
+index e5884a68..f4a90dd4 100644
+--- a/Source/WebCore/platform/graphics/MediaPlayer.cpp
++++ b/Source/WebCore/platform/graphics/MediaPlayer.cpp
+@@ -87,6 +87,10 @@
+ #include "MediaPlayerPrivateMediaFoundation.h"
+ #endif
+ 
++#if PLATFORM(ONYX)
++#include "MediaPlayerPrivateOnyx.h"
++#endif
++
+ #if PLATFORM(COCOA)
+ 
+ #if USE(AVFOUNDATION)
+@@ -355,6 +359,11 @@ static void buildMediaEnginesVector() WTF_REQUIRES_LOCK(mediaEngineVectorLock)
+     MediaPlayerPrivateMediaFoundation::registerMediaEngine(addMediaEngine);
+ #endif
+ 
++#if PLATFORM(ONYX)
++    // Onyx's own engine, on its media library (files and Media Source): platform/graphics/onyx.
++    MediaPlayerPrivateOnyx::registerMediaEngine(addMediaEngine);
++#endif
++
+ #if USE(EXTERNAL_HOLEPUNCH)
+     MediaPlayerPrivateHolePunch::registerMediaEngine(addMediaEngine);
+ #endif
+diff --git a/Source/WebCore/platform/graphics/MediaPlayer.h b/Source/WebCore/platform/graphics/MediaPlayer.h
+index 2dbe6587..f717b134 100644
+--- a/Source/WebCore/platform/graphics/MediaPlayer.h
++++ b/Source/WebCore/platform/graphics/MediaPlayer.h
+@@ -166,6 +166,7 @@ enum class MediaPlatformType {
+     Mock,
+     AVFObjC,
+     GStreamer,
++    Onyx,
+     Remote
+ };
+ 
+@@ -182,6 +183,7 @@ enum class MediaPlayerType {
+     GStreamerMSE,
+     HolePunch,
+     WirelessPlayback,
++    Onyx,
+     Remote
+ };
+ 
+diff --git a/Source/WebCore/platform/graphics/MediaPlayerEnums.h b/Source/WebCore/platform/graphics/MediaPlayerEnums.h
+index 581158cd..bba3e898 100644
+--- a/Source/WebCore/platform/graphics/MediaPlayerEnums.h
++++ b/Source/WebCore/platform/graphics/MediaPlayerEnums.h
+@@ -95,6 +95,7 @@ enum class MediaPlayerMediaEngineIdentifier : uint8_t {
+     MockMSE,
+     CocoaWebM,
+     WirelessPlayback,
++    Onyx,
+ };
+ 
+ enum class MediaPlayerWirelessPlaybackTargetType : uint8_t {
+diff --git a/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
+new file mode 100644
+index 00000000..333a4e33
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
+@@ -0,0 +1,972 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "MediaPlayerPrivateOnyx.h"
++
++#if ENABLE(VIDEO) && PLATFORM(ONYX)
++
++#include "ColorSpace.h"
++#include "ContentType.h"
++#include "GraphicsContext.h"
++#include "HTTPHeaderNames.h"
++#include "MediaPlayer.h"
++#include "MediaSourcePrivateClient.h"
++#include "MediaSourcePrivateOnyx.h"
++#include "NativeImage.h"
++#include "PlatformMediaCapabilitiesDecodingInfo.h"
++#include "PlatformMediaDecodingConfiguration.h"
++#include "PlatformMediaEngineConfigurationFactory.h"
++#include "PlatformMediaResourceLoader.h"
++#include "ResourceRequest.h"
++#include "ResourceResponse.h"
++#include "SharedBuffer.h"
++#include "VideoPlaybackQualityMetrics.h"
++#include <av.h>
++#include <unistd.h>
++#include <wtf/MainThread.h>
++#include <wtf/NeverDestroyed.h>
++#include <wtf/TZoneMallocInlines.h>
++#include <wtf/text/CString.h>
++#include <wtf/text/MakeString.h>
++#include <wtf/text/StringToIntegerConversion.h>
++
++WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
++#include <skia/core/SkColorSpace.h>
++#include <skia/core/SkImage.h>
++#include <skia/core/SkPixmap.h>
++WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
++
++namespace WebCore {
++
++static constexpr int usPerSecond = 1000000;
++static MediaTime fromUs(av_us t) { return MediaTime(t, usPerSecond); }
++static av_us toUs(const MediaTime& t) { return t.isValid() && t.isFinite() ? static_cast<av_us>(t.toDouble() * usPerSecond) : 0; }
++
++// How far ahead of the playback position a file is fetched: the request stops past the first, and
++// starts again under the second.
++static constexpr av_us fileAheadStop = 30 * AV_US;
++static constexpr av_us fileAheadResume = 15 * AV_US;
++static constexpr size_t fileQuota = 64u << 20;
++static constexpr size_t probeBytes = 4096;
++
++// A line of the kernel log ("web: media: ...": what plays, for whoever reads kmsg).
++static void mediaLog(const String& text)
++{
++    auto line = makeString("web: media: "_s, text, '\n').utf8();
++    auto bytes = line.span();
++    if (::write(2, bytes.data(), bytes.size()) < 0) { }
++}
++
++// ---- the video decoder on an app core ----
++//
++// Onyx's app cores (the Pi's cores the system leaves to programs: one, core 2, when the network has
++// core 3) run the compositor's raster jobs (WebKit/Shared/onyx/OnyxCores.h; the program's
++// onyxcores.c). The same workers take the player's "side job" before a raster job: a video packet
++// decoded and its picture converted, off the main thread's core -- where the page's scripts run.
++// Weak: a program linked without onyxcores.c (a test of WebCore alone) decodes on its own thread.
++extern "C" {
++int onyx_cores_start(int wanted) __attribute__((weak));
++void onyx_cores_stop(void) __attribute__((weak));
++int onyx_cores_offload(void (*job)(void*), void* argument) __attribute__((weak));
++unsigned onyx_cores_side_jobs_done(void) __attribute__((weak));
++}
++
++static unsigned s_playersWithCores;
++
++static void acquireDecoderCore()
++{
++    if (!onyx_cores_start || !onyx_cores_offload)
++        return;
++    if (!s_playersWithCores++) {
++        int cores = onyx_cores_start(1);
++        mediaLog(makeString("the video decoder has "_s, cores > 0 ? "an app core"_s : "no app core (it shares the page's)"_s));
++        av_set_offload(onyx_cores_offload);
++    }
++}
++
++static void releaseDecoderCore()
++{
++    if (!onyx_cores_stop || !s_playersWithCores)
++        return;
++    if (!--s_playersWithCores)
++        onyx_cores_stop();
++}
++
++// ---- the sound output: the system's has one owner -- one player at a time is heard, the others run
++// silent on the wall clock (av_player does that when the output's open says no) ----
++
++static const void* s_soundOwner;
++
++static int soundOpen(void* context, int* rate)
++{
++    if (s_soundOwner && s_soundOwner != context)
++        return 0;
++    auto* out = av_audio_kapi();
++    if (!out->open(out->ctx, rate))
++        return 0;
++    s_soundOwner = context;
++    return 1;
++}
++
++static unsigned soundWrite(void*, const int16_t* frames, unsigned count)
++{
++    auto* out = av_audio_kapi();
++    return out->write(out->ctx, frames, count);
++}
++
++static unsigned soundQueued(void*)
++{
++    auto* out = av_audio_kapi();
++    return out->queued(out->ctx);
++}
++
++static void soundClose(void* context)
++{
++    auto* out = av_audio_kapi();
++    out->close(out->ctx);
++    if (s_soundOwner == context)
++        s_soundOwner = nullptr;
++}
++
++// ---- the engine's registration ----
++
++class MediaPlayerFactoryOnyx final : public MediaPlayerFactory {
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(MediaPlayerFactoryOnyx);
++    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(MediaPlayerFactoryOnyx);
++private:
++    MediaPlayerEnums::MediaEngineIdentifier identifier() const final { return MediaPlayerEnums::MediaEngineIdentifier::Onyx; };
++
++    Ref<MediaPlayerPrivateInterface> createMediaEnginePlayer(MediaPlayer& player) const final { return adoptRef(*new MediaPlayerPrivateOnyx(player)); }
++
++    void getSupportedTypes(HashSet<String>& types) const final
++    {
++        return MediaPlayerPrivateOnyx::getSupportedTypes(types);
++    }
++
++    MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters& parameters) const final
++    {
++        return MediaPlayerPrivateOnyx::supportsType(parameters);
++    }
++};
++
++// navigator.mediaCapabilities.decodingInfo(): what the library decodes, and whether it does so in
++// real time on the Pi at that size and rate (av_type_supported's "smooth": the players -- YouTube --
++// choose their stream with it). Never "power efficient": the decoders are software.
++static void createDecodingConfigurationOnyx(PlatformMediaDecodingConfiguration&& configuration, Function<void(PlatformMediaCapabilitiesDecodingInfo&&)>&& callback)
++{
++    bool mediaSource = configuration.type == PlatformMediaDecodingType::MediaSource;
++    PlatformMediaCapabilitiesDecodingInfo info;
++    info.supported = configuration.video || configuration.audio;
++    info.smooth = true;
++    if (configuration.video) {
++        auto& video = *configuration.video;
++        auto type = makeString(video.contentType, "; width="_s, video.width, "; height="_s, video.height, "; framerate="_s, static_cast<unsigned>(video.framerate + 0.5));
++        int smooth = 0;
++        if (!av_type_supported(reinterpret_cast<const char*>(type.utf8().data()), mediaSource, &smooth))
++            info.supported = false;
++        info.smooth = info.smooth && smooth;
++    }
++    if (configuration.audio) {
++        int smooth = 0;
++        if (!av_type_supported(reinterpret_cast<const char*>(configuration.audio->contentType.utf8().data()), mediaSource, &smooth))
++            info.supported = false;
++    }
++    info.smooth = info.smooth && info.supported;
++    info.powerEfficient = false;
++    info.configuration = WTF::move(configuration);
++    callback(WTF::move(info));
++}
++
++void MediaPlayerPrivateOnyx::registerMediaEngine(MediaEngineRegistrar registrar)
++{
++    registrar(makeUnique<MediaPlayerFactoryOnyx>());
++    static bool installed;
++    if (!std::exchange(installed, true))
++        PlatformMediaEngineConfigurationFactory::installFactory({ &createDecodingConfigurationOnyx, nullptr });
++}
++
++// The containers the library's demuxers read (av_format_of_mime).
++static const HashSet<String>& mimeTypes()
++{
++    static NeverDestroyed types = HashSet<String> {
++        "video/webm"_s, "audio/webm"_s, "video/x-matroska"_s, "audio/x-matroska"_s,
++        "video/mp4"_s, "audio/mp4"_s, "audio/x-m4a"_s,
++        "audio/wav"_s, "audio/x-wav"_s, "audio/wave"_s,
++        "audio/flac"_s, "audio/x-flac"_s,
++        "audio/mpeg"_s, "audio/mp3"_s,
++    };
++    return types;
++}
++
++void MediaPlayerPrivateOnyx::getSupportedTypes(HashSet<String>& types)
++{
++    types = mimeTypes();
++}
++
++MediaPlayer::SupportsType MediaPlayerPrivateOnyx::supportsType(const MediaEngineSupportParameters& parameters)
++{
++    bool mediaSource = parameters.platformType == PlatformMediaDecodingType::MediaSource;
++#if !ENABLE(MEDIA_SOURCE)
++    if (mediaSource)
++        return MediaPlayer::SupportsType::IsNotSupported;
++#endif
++    if (parameters.platformType == PlatformMediaDecodingType::MediaStream)
++        return MediaPlayer::SupportsType::IsNotSupported;
++
++    // No type given (a file by its address alone): the container is read from its first bytes.
++    if (parameters.type.isEmpty())
++        return mediaSource ? MediaPlayer::SupportsType::IsNotSupported : MediaPlayer::SupportsType::MayBeSupported;
++
++    // The library's answer for the type with its codecs (profiles, sizes): 2 "probably", 1 "maybe".
++    int smooth = 0;
++    switch (av_type_supported(reinterpret_cast<const char*>(parameters.type.raw().utf8().data()), mediaSource, &smooth)) {
++    case 2:
++        return MediaPlayer::SupportsType::IsSupported;
++    case 1:
++        return MediaPlayer::SupportsType::MayBeSupported;
++    default:
++        return MediaPlayer::SupportsType::IsNotSupported;
++    }
++}
++
++// ---- the player ----
++
++MediaPlayerPrivateOnyx::MediaPlayerPrivateOnyx(MediaPlayer& player)
++    : m_player(player)
++    , m_pollTimer(RunLoop::mainSingleton(), "MediaPlayerPrivateOnyx::PollTimer"_s, this, &MediaPlayerPrivateOnyx::poll)
++{
++}
++
++MediaPlayerPrivateOnyx::~MediaPlayerPrivateOnyx()
++{
++    m_pollTimer.stop();
++    stopRequest();
++#if ENABLE(MEDIA_SOURCE)
++    if (RefPtr mediaSource = std::exchange(m_mediaSourcePrivate, nullptr))
++        mediaSource->setPlayer(nullptr);
++#endif
++    if (m_av) {
++        av_player_free(m_av);
++        releaseDecoderCore();
++    }
++}
++
++bool MediaPlayerPrivateOnyx::ensurePlayer()
++{
++    if (m_av)
++        return true;
++    // The pictures: B, G, R, A bytes (Skia's N32 in Onyx's build). The sound: the system's output
++    // through the one-owner guard above; the context is this player.
++    static av_audio_out sound = { nullptr, soundOpen, soundWrite, soundQueued, soundClose };
++    auto* out = new av_audio_out(sound); // (lives as long as the process: the player's thread may still hold it while it ends)
++    out->ctx = this;
++    m_av = av_player_new(AV_PIX_BGRA, out);
++    if (!m_av)
++        return false;
++    acquireDecoderCore();
++    applyVolume();
++    av_player_set_rate(m_av, m_rate);
++    return true;
++}
++
++av_store* MediaPlayerPrivateOnyx::store() const
++{
++    return m_av ? av_player_store(m_av) : nullptr;
++}
++
++void MediaPlayerPrivateOnyx::schedulePoll()
++{
++    if (!m_av)
++        return;
++    // Often while pictures may be due (playing, a seek), seldom otherwise (the load's progress).
++    auto interval = (m_playing && !m_ended) || m_seekTime ? 12_ms : 60_ms;
++    if (!m_pollTimer.isActive() || m_pollTimer.secondsUntilFire() > interval)
++        m_pollTimer.startOneShot(interval);
++}
++
++void MediaPlayerPrivateOnyx::setNetworkState(MediaPlayer::NetworkState state)
++{
++    if (m_networkState == state)
++        return;
++    m_networkState = state;
++    if (RefPtr player = m_player.get())
++        player->networkStateChanged();
++}
++
++void MediaPlayerPrivateOnyx::setReadyState(MediaPlayer::ReadyState state)
++{
++    if (m_readyState == state)
++        return;
++    m_readyState = state;
++    if (RefPtr player = m_player.get())
++        player->readyStateChanged();
++}
++
++void MediaPlayerPrivateOnyx::fail(MediaPlayer::NetworkState state)
++{
++    m_loadFailed = true;
++    stopRequest();
++    setNetworkState(state);
++}
++
++// ---- loading: a file ----
++
++class MediaResourceClientOnyx final : public PlatformMediaResourceClient {
++public:
++    static Ref<MediaResourceClientOnyx> create(MediaPlayerPrivateOnyx& parent) { return adoptRef(*new MediaResourceClientOnyx(parent)); }
++    void detach() { m_parent = nullptr; }
++
++private:
++    explicit MediaResourceClientOnyx(MediaPlayerPrivateOnyx& parent)
++        : m_parent(parent)
++    {
++    }
++
++    void responseReceived(PlatformMediaResource&, const ResourceResponse& response, CompletionHandler<void(ShouldContinuePolicyCheck)>&& completionHandler) final
++    {
++        if (RefPtr parent = m_parent.get()) {
++            // "bytes 100-199/5000": the whole size is after the slash.
++            long long total = -1;
++            auto range = response.httpHeaderField(HTTPHeaderName::ContentRange);
++            if (auto slash = range.find('/'); slash != notFound) {
++                if (auto value = parseInteger<long long>(StringView(range).substring(slash + 1)))
++                    total = *value;
++            }
++            parent->resourceResponse(total >= 0 ? total : response.expectedContentLength(), response.httpStatusCode(), total >= 0);
++        }
++        completionHandler(ShouldContinuePolicyCheck::Yes);
++    }
++
++    void dataReceived(PlatformMediaResource&, const SharedBuffer& buffer) final
++    {
++        if (RefPtr parent = m_parent.get())
++            parent->resourceData(buffer.span());
++    }
++
++    void loadFailed(PlatformMediaResource&, const ResourceError&) final
++    {
++        if (RefPtr parent = m_parent.get())
++            parent->resourceFinished(true);
++    }
++
++    void loadFinished(PlatformMediaResource&, const NetworkLoadMetrics&) final
++    {
++        if (RefPtr parent = m_parent.get())
++            parent->resourceFinished(false);
++    }
++
++    WeakPtr<MediaPlayerPrivateOnyx> m_parent;
++};
++
++void MediaPlayerPrivateOnyx::load(const String& url)
++{
++    m_url = URL { url };
++    if (!ensurePlayer()) {
++        fail(MediaPlayer::NetworkState::FormatError);
++        return;
++    }
++    setNetworkState(MediaPlayer::NetworkState::Loading);
++    requestFrom(0);
++    schedulePoll();
++}
++
++void MediaPlayerPrivateOnyx::stopRequest()
++{
++    if (RefPtr resource = std::exchange(m_resource, nullptr)) {
++        if (RefPtr client = resource->client())
++            static_cast<MediaResourceClientOnyx&>(*client).detach();
++        resource->setClient(nullptr);
++        resource->shutdown();
++    }
++}
++
++void MediaPlayerPrivateOnyx::requestFrom(long long offset)
++{
++    stopRequest();
++    RefPtr player = m_player.get();
++    if (!player || m_loadFailed)
++        return;
++
++    ResourceRequest request { URL { m_url } };
++    m_requestIsRanged = offset > 0;
++    if (m_requestIsRanged)
++        request.setHTTPHeaderField(HTTPHeaderName::Range, makeString("bytes="_s, offset, '-'));
++    m_requestOffset = offset;
++    m_offset = offset;
++
++    m_resource = player->mediaResourceLoader()->requestResource(WTF::move(request), 0);
++    if (!m_resource) {
++        fail(MediaPlayer::NetworkState::NetworkError);
++        return;
++    }
++    m_resource->setClient(MediaResourceClientOnyx::create(*this));
++}
++
++void MediaPlayerPrivateOnyx::resourceResponse(long long expectedLength, int httpStatus, bool hasContentRange)
++{
++    if (httpStatus >= 400) {
++        fail(m_fileSource < 0 ? MediaPlayer::NetworkState::FormatError : MediaPlayer::NetworkState::NetworkError);
++        return;
++    }
++    if (m_requestIsRanged && httpStatus != 206 && !hasContentRange) {
++        // The server does not do ranges: the bytes come from the start again. Those before the
++        // offset asked for are fed again where they belong (the store takes them as a restart).
++        m_serverHasRanges = false;
++        m_offset = 0;
++        expectedLength = expectedLength >= 0 ? expectedLength : -1;
++    } else if (!hasContentRange && m_requestIsRanged && expectedLength >= 0)
++        expectedLength += m_requestOffset; // (a 206 without a Content-Range: the length is the rest's)
++
++    if (expectedLength > 0 && m_fileSize < 0) {
++        m_fileSize = expectedLength;
++        if (m_fileSource >= 0)
++            av_store_set_size(store(), m_fileSource, m_fileSize);
++    }
++}
++
++void MediaPlayerPrivateOnyx::resourceData(std::span<const uint8_t> data)
++{
++    if (!m_av || m_loadFailed || data.empty())
++        return;
++    m_loadingProgressed = true;
++
++    if (m_fileSource < 0) {
++        // The container, from the stream's first bytes.
++        m_head.append(data);
++        if (m_head.size() < probeBytes && (m_fileSize < 0 || static_cast<long long>(m_head.size()) < m_fileSize))
++            return;
++        ASCIILiteral mime;
++        switch (av_probe(m_head.span().data(), m_head.size())) {
++        case AV_FMT_MKV:
++            mime = "video/webm"_s;
++            break;
++        case AV_FMT_MP4:
++            mime = "video/mp4"_s;
++            break;
++        case AV_FMT_WAV:
++            mime = "audio/wav"_s;
++            break;
++        case AV_FMT_FLAC:
++            mime = "audio/flac"_s;
++            break;
++        case AV_FMT_MP3:
++            mime = "audio/mpeg"_s;
++            break;
++        default:
++            fail(MediaPlayer::NetworkState::FormatError);
++            return;
++        }
++        m_fileSource = av_store_add_source(store(), mime.characters(), fileQuota);
++        if (m_fileSource < 0) {
++            fail(MediaPlayer::NetworkState::FormatError);
++            return;
++        }
++        if (m_fileSize > 0)
++            av_store_set_size(store(), m_fileSource, m_fileSize);
++        auto head = std::exchange(m_head, { });
++        int result = av_store_feed(store(), m_fileSource, 0, head.span().data(), head.size());
++        m_offset = head.size();
++        if (result == AV_EUNSUP) {
++            fail(MediaPlayer::NetworkState::FormatError);
++            return;
++        }
++    } else {
++        int result = av_store_feed(store(), m_fileSource, m_offset, data.data(), data.size());
++        m_offset += data.size();
++        if (result == AV_EUNSUP) {
++            fail(MediaPlayer::NetworkState::FormatError);
++            return;
++        }
++    }
++
++    // The demuxer wants bytes from elsewhere (an MP4's index at its end, a seek).
++    auto want = av_store_want(store(), m_fileSource);
++    if (want >= 0 && want != m_offset && m_serverHasRanges && (m_fileSize < 0 || want < m_fileSize))
++        requestFrom(want);
++}
++
++void MediaPlayerPrivateOnyx::resourceFinished(bool failed)
++{
++    m_resource = nullptr;
++    if (m_loadFailed || !m_av)
++        return;
++    if (m_fileSource < 0) {
++        // A file shorter than the probe's bytes: known now, or never.
++        if (!m_head.isEmpty() && !failed) {
++            m_fileSize = m_head.size();
++            auto head = m_head;
++            resourceData(head.span());
++        }
++        if (m_fileSource < 0) {
++            fail(failed ? MediaPlayer::NetworkState::NetworkError : MediaPlayer::NetworkState::FormatError);
++            return;
++        }
++    }
++    if (failed) {
++        // What came is played; the rest is asked for again when the playback nears it (pumpFile).
++        if (!m_serverHasRanges)
++            fail(MediaPlayer::NetworkState::NetworkError);
++        return;
++    }
++    if (m_fileSize < 0)
++        m_fileSize = m_offset;
++    pumpFile();
++}
++
++// The file's requests, from the poll: one runs while the store holds less than fileAheadStop after
++// the playback position, from where the demuxer wants bytes; the end is told once it is reached.
++void MediaPlayerPrivateOnyx::pumpFile()
++{
++    if (m_fileSource < 0 || m_fedEnd || m_loadFailed)
++        return;
++    auto want = av_store_want(store(), m_fileSource);
++    if (want < 0)
++        return;
++
++    // How far the buffered media reaches after the playback position.
++    av_us now = toUs(currentTime()), ahead = 0;
++    av_range ranges[32];
++    int count = av_store_buffered(store(), m_fileSource, ranges, 32);
++    for (int i = 0; i < count; i++) {
++        if (ranges[i].start <= now + 200000 && ranges[i].end > now)
++            ahead = ranges[i].end - now;
++    }
++
++    if (m_resource) {
++        if (want != m_offset && m_serverHasRanges && (m_fileSize < 0 || want < m_fileSize))
++            requestFrom(want); // (a seek sent the demuxer elsewhere)
++        else if (ahead > fileAheadStop && m_serverHasRanges && m_fileSize > 0)
++            stopRequest();
++        return;
++    }
++    if (m_fileSize >= 0 && want >= m_fileSize) {
++        av_store_feed_end(store(), m_fileSource);
++        m_fedEnd = true;
++        setNetworkState(MediaPlayer::NetworkState::Loaded);
++        return;
++    }
++    if (ahead < fileAheadResume)
++        requestFrom(want);
++}
++
++#if ENABLE(MEDIA_SOURCE)
++
++// ---- loading: a Media Source ----
++
++void MediaPlayerPrivateOnyx::load(const URL&, const LoadOptions&, MediaSourcePrivateClient& client)
++{
++    if (!ensurePlayer()) {
++        fail(MediaPlayer::NetworkState::FormatError);
++        return;
++    }
++    setNetworkState(MediaPlayer::NetworkState::Loading);
++    if (RefPtr mediaSourcePrivate = downcast<MediaSourcePrivateOnyx>(client.mediaSourcePrivate())) {
++        mediaSourcePrivate->setPlayer(this);
++        m_mediaSourcePrivate = WTF::move(mediaSourcePrivate);
++        client.reOpen();
++    } else
++        m_mediaSourcePrivate = MediaSourcePrivateOnyx::create(*this, client);
++    schedulePoll();
++}
++
++void MediaPlayerPrivateOnyx::readyStateFromMediaSourceChanged()
++{
++    if (RefPtr player = m_player.get())
++        player->readyStateChanged();
++}
++
++void MediaPlayerPrivateOnyx::characteristicsFromMediaSourceChanged()
++{
++    if (RefPtr player = m_player.get())
++        player->characteristicChanged();
++}
++
++void MediaPlayerPrivateOnyx::seekableRangesFromMediaSourceChanged()
++{
++    if (RefPtr player = m_player.get())
++        player->seekableTimeRangesChanged();
++}
++
++void MediaPlayerPrivateOnyx::mediaSourceHasRetrievedAllData()
++{
++    setNetworkState(MediaPlayer::NetworkState::Loaded);
++}
++
++#endif // ENABLE(MEDIA_SOURCE)
++
++void MediaPlayerPrivateOnyx::notifyActiveSourceBuffersChanged()
++{
++    if (RefPtr player = m_player.get())
++        player->activeSourceBuffersChanged();
++}
++
++void MediaPlayerPrivateOnyx::mediaSourceDurationChanged(const MediaTime& duration)
++{
++    if (m_av)
++        av_player_set_duration(m_av, toUs(duration));
++    if (RefPtr player = m_player.get())
++        player->durationChanged();
++}
++
++void MediaPlayerPrivateOnyx::mediaSourceVideoSize(const IntSize& size)
++{
++    if (size.isEmpty() || size == m_size)
++        return;
++    m_size = size;
++    if (RefPtr player = m_player.get())
++        player->sizeChanged();
++}
++
++void MediaPlayerPrivateOnyx::cancelLoad()
++{
++    stopRequest();
++}
++
++// ---- playback ----
++
++void MediaPlayerPrivateOnyx::play()
++{
++    m_playing = true;
++    if (m_av && !m_seekTime)
++        av_player_play(m_av);
++    m_ended = false;
++    schedulePoll();
++}
++
++void MediaPlayerPrivateOnyx::pause()
++{
++    m_playing = false;
++    if (m_av)
++        av_player_pause(m_av);
++    schedulePoll();
++}
++
++void MediaPlayerPrivateOnyx::setRateDouble(double rate)
++{
++    m_rate = rate;
++    if (m_av && rate > 0)
++        av_player_set_rate(m_av, rate);
++}
++
++void MediaPlayerPrivateOnyx::applyVolume()
++{
++    if (m_av)
++        av_player_set_volume(m_av, static_cast<float>(m_volume), m_muted);
++}
++
++void MediaPlayerPrivateOnyx::setVolumeDouble(double volume)
++{
++    m_volume = volume;
++    applyVolume();
++}
++
++void MediaPlayerPrivateOnyx::setMuted(bool muted)
++{
++    m_muted = muted;
++    applyVolume();
++}
++
++Ref<MediaTimePromise> MediaPlayerPrivateOnyx::seekToTarget(const SeekTarget& target)
++{
++    m_seekPromise.emplace(PlatformMediaError::Cancelled);
++    m_seekTime = target.time;
++    m_seekSent = false;
++    m_ended = false;
++    if (!m_av) {
++        if (auto promise = std::exchange(m_seekPromise, std::nullopt))
++            promise->reject(PlatformMediaError::Cancelled);
++        return MediaTimePromise::createAndReject(PlatformMediaError::Cancelled);
++    }
++
++#if ENABLE(MEDIA_SOURCE)
++    if (RefPtr mediaSource = m_mediaSourcePrivate) {
++        // The Media Source says when the target is buffered (and which time it is, within the
++        // target's tolerance); its buffers then give the frames again from the random access
++        // point before it, and the player decodes up to it.
++        mediaSource->waitForTarget(target)->whenSettled(RunLoop::currentSingleton(), [weakThis = WeakPtr { *this }](auto&& result) {
++            RefPtr protectedThis = weakThis.get();
++            if (!protectedThis)
++                return;
++            if (!result) {
++                if (auto promise = std::exchange(protectedThis->m_seekPromise, std::nullopt))
++                    promise->reject(result.error());
++                protectedThis->m_seekTime.reset();
++                return;
++            }
++            auto seekTime = *result;
++            protectedThis->m_seekTime = seekTime;
++            RefPtr mediaSource = protectedThis->m_mediaSourcePrivate;
++            if (!mediaSource)
++                return;
++            mediaSource->reenqueueMediaForTime(seekTime)->whenSettled(RunLoop::currentSingleton(), [weakThis, seekTime](auto&& result) {
++                RefPtr protectedThis = weakThis.get();
++                if (!protectedThis || !result || !protectedThis->m_av)
++                    return;
++                av_player_seek(protectedThis->m_av, toUs(seekTime));
++                if (protectedThis->m_playing)
++                    av_player_play(protectedThis->m_av);
++                protectedThis->m_seekSent = true;
++            });
++        });
++        schedulePoll();
++        return *m_seekPromise;
++    }
++#endif
++
++    av_player_seek(m_av, toUs(target.time));
++    if (m_playing)
++        av_player_play(m_av);
++    m_seekSent = true;
++    schedulePoll();
++    return *m_seekPromise;
++}
++
++// The player's state and the picture due, from the timer.
++void MediaPlayerPrivateOnyx::poll()
++{
++    if (!m_av)
++        return;
++    Ref protectedThis { *this };
++    RefPtr player = m_player.get();
++    if (!player)
++        return;
++
++    av_player_status status;
++    av_video_out picture;
++    bool gotPicture = av_player_poll(m_av, &status, &picture);
++
++    m_time = fromUs(std::max<av_us>(status.time, 0)); // (the clock starts a sound queue's length before 0)
++    m_waiting = status.waiting;
++    m_decoded = status.decoded;
++    m_dropped = status.dropped;
++
++    if (status.error && !m_loadFailed) {
++        fail(status.error == AV_EUNSUP ? MediaPlayer::NetworkState::FormatError : MediaPlayer::NetworkState::DecodeError);
++        return;
++    }
++
++    bool hadVideo = m_hasVideo, hadAudio = m_hasAudio;
++    m_hasVideo = status.has_video;
++    m_hasAudio = status.has_audio;
++    if (hadVideo != m_hasVideo || hadAudio != m_hasAudio)
++        player->characteristicChanged();
++
++    // What plays, in the kernel log, every five seconds while pictures are decoded.
++    if (auto now = MonotonicTime::now(); now - m_lastLog > 5_s && status.decoded != m_loggedDecoded) {
++        mediaLog(makeString("at "_s, status.time / 100000 / 10.0, " s, "_s, status.width, 'x', status.height, ", "_s, status.decoded, " pictures decoded ("_s, status.dropped,
++            " dropped), "_s, static_cast<int>(status.decode_us / 1000), " ms a picture"_s, status.waiting ? ", waiting for data"_s : ""_s, status.sound ? ""_s : ", no sound output"_s,
++            ", "_s, onyx_cores_side_jobs_done ? onyx_cores_side_jobs_done() : 0, " on the app core"_s));
++        m_lastLog = now;
++        m_loggedDecoded = status.decoded;
++    }
++
++    IntSize size { status.width, status.height };
++    if (!size.isEmpty() && size != m_size) {
++        m_size = size;
++        player->sizeChanged();
++    }
++
++    if (gotPicture && picture.pixels && picture.width > 0 && picture.height > 0) {
++        // The player's pixels are its own until the next picture: copied into an image.
++        auto info = SkImageInfo::Make(picture.width, picture.height, kBGRA_8888_SkColorType, kOpaque_SkAlphaType, SkColorSpace::MakeSRGB());
++        SkPixmap pixmap(info, picture.pixels, picture.stride);
++        bool first = !m_image;
++        m_image = NativeImage::create(SkImages::RasterFromPixmapCopy(pixmap));
++        if (first)
++            player->firstVideoFrameAvailable();
++        player->repaint();
++    }
++
++#if ENABLE(MEDIA_SOURCE)
++    bool isMediaSource = !!m_mediaSourcePrivate;
++#else
++    bool isMediaSource = false;
++#endif
++    if (!isMediaSource) {
++        // A file: the duration is the container's, the ready state the player's.
++        auto duration = status.duration > 0 ? fromUs(status.duration) : MediaTime::zeroTime();
++        if (duration != m_duration) {
++            m_duration = duration;
++            player->durationChanged();
++        }
++        switch (status.ready) {
++        case AV_HAVE_METADATA:
++            setReadyState(MediaPlayer::ReadyState::HaveMetadata);
++            break;
++        case AV_HAVE_CURRENT_DATA:
++            setReadyState(MediaPlayer::ReadyState::HaveCurrentData);
++            break;
++        case AV_HAVE_FUTURE_DATA:
++            setReadyState(MediaPlayer::ReadyState::HaveFutureData);
++            break;
++        case AV_HAVE_ENOUGH_DATA:
++            setReadyState(MediaPlayer::ReadyState::HaveEnoughData);
++            break;
++        default:
++            break; // (nothing yet: the state stays what it was)
++        }
++        pumpFile();
++    }
++#if ENABLE(MEDIA_SOURCE)
++    else if (RefPtr mediaSource = m_mediaSourcePrivate)
++        mediaSource->provideMediaDataIfNeeded();
++#endif
++
++    // A seek is over when the player shows its first picture (or has its audio ready).
++    if (m_seekSent && !status.seeking) {
++        m_seekSent = false;
++        m_seekTime.reset();
++        if (auto promise = std::exchange(m_seekPromise, std::nullopt))
++            promise->resolve(m_time);
++    }
++
++    if (status.ended && !m_ended) {
++        m_ended = true;
++        player->timeChanged();
++    } else if (!status.ended) {
++        m_ended = false;
++        // The page still wants it playing (a loop's seek back to the start, after the end).
++        if (m_playing && status.paused && !status.seeking && !m_seekTime)
++            av_player_play(m_av);
++    }
++    schedulePoll();
++}
++
++// ---- what the element asks ----
++
++FloatSize MediaPlayerPrivateOnyx::naturalSize() const
++{
++    return m_size;
++}
++
++bool MediaPlayerPrivateOnyx::hasVideo() const
++{
++#if ENABLE(MEDIA_SOURCE)
++    if (RefPtr mediaSource = m_mediaSourcePrivate)
++        return mediaSource->hasVideo();
++#endif
++    return m_hasVideo;
++}
++
++bool MediaPlayerPrivateOnyx::hasAudio() const
++{
++#if ENABLE(MEDIA_SOURCE)
++    if (RefPtr mediaSource = m_mediaSourcePrivate)
++        return mediaSource->hasAudio();
++#endif
++    return m_hasAudio;
++}
++
++MediaTime MediaPlayerPrivateOnyx::duration() const
++{
++#if ENABLE(MEDIA_SOURCE)
++    if (RefPtr mediaSource = m_mediaSourcePrivate)
++        return mediaSource->duration();
++#endif
++    return m_duration;
++}
++
++MediaTime MediaPlayerPrivateOnyx::currentTime() const
++{
++    return m_seekTime ? *m_seekTime : m_time;
++}
++
++bool MediaPlayerPrivateOnyx::timeIsProgressing() const
++{
++    return m_playing && !m_ended && !m_waiting && !m_seekTime;
++}
++
++MediaPlayer::ReadyState MediaPlayerPrivateOnyx::readyState() const
++{
++#if ENABLE(MEDIA_SOURCE)
++    if (RefPtr mediaSource = m_mediaSourcePrivate)
++        return mediaSource->mediaPlayerReadyState();
++#endif
++    return m_readyState;
++}
++
++MediaTime MediaPlayerPrivateOnyx::maxTimeSeekable() const
++{
++    return duration();
++}
++
++const PlatformTimeRanges& MediaPlayerPrivateOnyx::buffered() const
++{
++    m_buffered.clear();
++    if (m_av && m_fileSource >= 0) {
++        av_range ranges[32];
++        int count = av_store_buffered(store(), m_fileSource, ranges, 32);
++        for (int i = 0; i < count; i++)
++            m_buffered.add(fromUs(ranges[i].start), fromUs(ranges[i].end));
++    }
++    return m_buffered;
++}
++
++bool MediaPlayerPrivateOnyx::didLoadingProgress() const
++{
++    return std::exchange(m_loadingProgressed, false);
++}
++
++MediaPlayer::MovieLoadType MediaPlayerPrivateOnyx::movieLoadType() const
++{
++#if ENABLE(MEDIA_SOURCE)
++    if (m_mediaSourcePrivate)
++        return MediaPlayer::MovieLoadType::StoredStream;
++#endif
++    return MediaPlayer::MovieLoadType::Download;
++}
++
++void MediaPlayerPrivateOnyx::paint(GraphicsContext& context, const FloatRect& rect)
++{
++    if (context.paintingDisabled() || !m_image)
++        return;
++    context.drawNativeImage(*m_image, rect, FloatRect { { }, m_image->size() });
++}
++
++RefPtr<NativeImage> MediaPlayerPrivateOnyx::nativeImageForCurrentTime()
++{
++    return m_image;
++}
++
++ColorSpace MediaPlayerPrivateOnyx::colorSpace()
++{
++    return ColorSpace::SRGB();
++}
++
++std::optional<VideoPlaybackQualityMetrics> MediaPlayerPrivateOnyx::videoPlaybackQualityMetrics()
++{
++    return VideoPlaybackQualityMetrics {
++        m_decoded,
++        m_dropped,
++        0,
++        0,
++        0,
++    };
++}
++
++} // namespace WebCore
++
++#endif // ENABLE(VIDEO) && PLATFORM(ONYX)
+diff --git a/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h
+new file mode 100644
+index 00000000..05459ab9
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h
+@@ -0,0 +1,199 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if ENABLE(VIDEO) && PLATFORM(ONYX)
++
++#include "MediaPlayerPrivate.h"
++#include "PlatformTimeRanges.h"
++#include <wtf/MediaTime.h>
++#include <wtf/MonotonicTime.h>
++#include <wtf/NativePromise.h>
++#include <wtf/RefCounted.h>
++#include <wtf/RunLoop.h>
++#include <wtf/WeakPtr.h>
++
++struct av_player;
++struct av_store;
++
++namespace WebCore {
++
++class MediaSourcePrivateOnyx;
++class NativeImage;
++class PlatformMediaResource;
++
++// Onyx's media engine: <video> and <audio> played by Onyx's own media library (user/av of the Onyx
++// sources: av.h -- its demuxers, its decoders (libvpx, dav1d, opus, FLAC, MP3, PCM), its player with
++// the audio as the clock). One class for the two ways a page gives media:
++//
++//   - a file (src=...): its bytes are fetched through the page's loader (PlatformMediaResourceLoader,
++//     Range requests) and fed to the player's store where its demuxer asks for them, some thirty
++//     seconds ahead of the playback position;
++//   - Media Source Extensions: WebCore keeps the coded frames (SourceBufferPrivate, TrackBuffer);
++//     SourceBufferPrivateOnyx parses the appended bytes with the library's demuxers and puts the
++//     frames WebCore enqueues into a queue of the player's store (av_store_add_queue).
++//
++// The player's threads decode; this object polls it from a timer on the main thread: the state
++// (ready, time, duration, ended), and the picture due now -- 32-bit pixels, kept as an image and
++// painted by paint() (the software path; the page's compositor takes it in its tiles).
++class MediaPlayerPrivateOnyx final
++    : public MediaPlayerPrivateInterface
++    , public RefCounted<MediaPlayerPrivateOnyx>
++    , public CanMakeWeakPtr<MediaPlayerPrivateOnyx> {
++public:
++    void ref() const final { RefCounted::ref(); }
++    void deref() const final { RefCounted::deref(); }
++
++    explicit MediaPlayerPrivateOnyx(MediaPlayer&);
++    virtual ~MediaPlayerPrivateOnyx();
++
++    static void registerMediaEngine(MediaEngineRegistrar);
++    static void getSupportedTypes(HashSet<String>&);
++    static MediaPlayer::SupportsType supportsType(const MediaEngineSupportParameters&);
++
++    constexpr MediaPlayerType mediaPlayerType() const final { return MediaPlayerType::Onyx; }
++
++    // The Media Source's side (MediaSourcePrivateOnyx, SourceBufferPrivateOnyx).
++    av_store* store() const;
++    MediaTime playerTime() const { return m_time; }
++    void mediaSourceDurationChanged(const MediaTime&);
++    void mediaSourceVideoSize(const IntSize&); // an initialization segment's video track
++    void notifyActiveSourceBuffersChanged() final;
++
++    // The file's loader (its client is a class of the .cpp).
++    void resourceResponse(long long expectedLength, int httpStatus, bool hasContentRange);
++    void resourceData(std::span<const uint8_t>);
++    void resourceFinished(bool failed);
++
++private:
++    // MediaPlayerPrivateInterface
++    void load(const String& url) final;
++#if ENABLE(MEDIA_SOURCE)
++    void load(const URL&, const LoadOptions&, MediaSourcePrivateClient&) final;
++    void readyStateFromMediaSourceChanged() final;
++    void characteristicsFromMediaSourceChanged() final;
++    void seekableRangesFromMediaSourceChanged() final;
++    void mediaSourceHasRetrievedAllData() final;
++#endif
++#if ENABLE(MEDIA_STREAM)
++    void load(MediaStreamPrivate&) final { }
++#endif
++    void cancelLoad() final;
++    void play() final;
++    void pause() final;
++    bool paused() const final { return !m_playing; }
++    bool ended() const final { return m_ended; }
++    FloatSize naturalSize() const final;
++    bool hasVideo() const final;
++    bool hasAudio() const final;
++    void setPageIsVisible(bool) final { }
++    MediaTime duration() const final;
++    MediaTime currentTime() const final;
++    bool timeIsProgressing() const final;
++    Ref<MediaTimePromise> seekToTarget(const SeekTarget&) final;
++    void setRateDouble(double) final;
++    double rate() const final { return m_rate; }
++    void setVolumeDouble(double) final;
++    void setMuted(bool) final;
++    MediaPlayer::NetworkState networkState() const final { return m_networkState; }
++    MediaPlayer::ReadyState readyState() const final;
++    MediaTime maxTimeSeekable() const final;
++    const PlatformTimeRanges& buffered() const final;
++    unsigned long long totalBytes() const final { return m_fileSize > 0 ? m_fileSize : 0; }
++    bool didLoadingProgress() const final;
++    void paint(GraphicsContext&, const FloatRect&) final;
++    RefPtr<NativeImage> nativeImageForCurrentTime() final;
++    ColorSpace colorSpace() final;
++    bool hasAvailableVideoFrame() const final { return !!m_image; }
++    MediaPlayer::MovieLoadType movieLoadType() const final;
++    std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
++    String engineDescription() const final { return "Onyx"_s; }
++
++    bool ensurePlayer();
++    void poll();
++    void schedulePoll();
++    void setNetworkState(MediaPlayer::NetworkState);
++    void setReadyState(MediaPlayer::ReadyState);
++    void applyVolume();
++    void fail(MediaPlayer::NetworkState);
++    // the file mode
++    void requestFrom(long long offset);
++    void stopRequest();
++    void pumpFile();
++
++    ThreadSafeWeakPtr<MediaPlayer> m_player;
++    av_player* m_av { nullptr };
++    RunLoop::Timer m_pollTimer;
++
++    MediaPlayer::NetworkState m_networkState { MediaPlayer::NetworkState::Empty };
++    MediaPlayer::ReadyState m_readyState { MediaPlayer::ReadyState::HaveNothing };
++    bool m_playing { false };
++    bool m_ended { false };
++    bool m_waiting { false };
++    bool m_hasVideo { false };
++    bool m_hasAudio { false };
++    bool m_muted { false };
++    double m_volume { 1 };
++    double m_rate { 1 };
++    MediaTime m_time;
++    MediaTime m_duration;
++    IntSize m_size;
++    RefPtr<NativeImage> m_image;
++    unsigned m_decoded { 0 };
++    unsigned m_dropped { 0 };
++    MonotonicTime m_lastLog;
++    unsigned m_loggedDecoded { 0 };
++    std::optional<MediaTimePromise::AutoRejectProducer> m_seekPromise;
++    std::optional<MediaTime> m_seekTime;       // a seek asked for, not yet shown
++    bool m_seekSent { false };                 // the player was told (av_player_seek)
++
++    // the file mode
++    URL m_url;
++    RefPtr<PlatformMediaResource> m_resource;
++    int m_fileSource { -1 };                   // the store's source, once the container is known
++    long long m_fileSize { -1 };
++    long long m_offset { 0 };                  // where the next bytes received go
++    long long m_requestOffset { 0 };           // where the request under way started
++    bool m_requestIsRanged { false };
++    bool m_serverHasRanges { true };
++    bool m_fedEnd { false };
++    bool m_loadFailed { false };
++    mutable bool m_loadingProgressed { false };
++    Vector<uint8_t> m_head;                    // the first bytes, until the container is known
++    mutable PlatformTimeRanges m_buffered;
++
++#if ENABLE(MEDIA_SOURCE)
++    RefPtr<MediaSourcePrivateOnyx> m_mediaSourcePrivate;
++#endif
++};
++
++} // namespace WebCore
++
++SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaPlayerPrivateOnyx)
++static bool isType(const WebCore::MediaPlayerPrivateInterface& player) { return player.mediaPlayerType() == WebCore::MediaPlayerType::Onyx; }
++SPECIALIZE_TYPE_TRAITS_END()
++
++#endif // ENABLE(VIDEO) && PLATFORM(ONYX)
+diff --git a/Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.cpp b/Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.cpp
+new file mode 100644
+index 00000000..f7519079
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.cpp
+@@ -0,0 +1,528 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "MediaSourcePrivateOnyx.h"
++
++#if ENABLE(MEDIA_SOURCE) && PLATFORM(ONYX)
++
++#include "AudioTrackPrivate.h"
++#include "ContentType.h"
++#include "Logging.h"
++#include "MediaDescription.h"
++#include "MediaPlayerPrivateOnyx.h"
++#include "MediaSample.h"
++#include "MediaSourcePrivateClient.h"
++#include "SharedBuffer.h"
++#include "SourceBufferPrivateClient.h"
++#include "VideoTrackPrivate.h"
++#include <av.h>
++#include <unistd.h>
++#include <wtf/NativePromise.h>
++#include <wtf/text/MakeString.h>
++#include <wtf/TZoneMallocInlines.h>
++#include <wtf/text/CString.h>
++
++namespace WebCore {
++
++static constexpr int usPerSecond = 1000000;
++static MediaTime fromUs(av_us t) { return MediaTime(t, usPerSecond); }
++static av_us toUs(const MediaTime& t) { return t.isValid() && t.isFinite() ? static_cast<av_us>(t.toDouble() * usPerSecond) : 0; }
++
++// What a queue holds before it says "no more for now": the media ahead of the playback position,
++// and the bytes.
++static constexpr av_us queueAhead = 3 * AV_US;
++static constexpr size_t queueBytes = 24u << 20;
++
++// A line of the kernel log ("web: media: ...": what plays, for whoever reads kmsg).
++static void mediaLog(const String& text)
++{
++    auto line = makeString("web: media: "_s, text, '\n').utf8();
++    auto bytes = line.span();
++    if (::write(2, bytes.data(), bytes.size()) < 0) { }
++}
++
++// ---- the Media Source ----
++
++Ref<MediaSourcePrivateOnyx> MediaSourcePrivateOnyx::create(MediaPlayerPrivateOnyx& parent, MediaSourcePrivateClient& client)
++{
++    Ref source = adoptRef(*new MediaSourcePrivateOnyx(parent, client));
++    client.setPrivateAndOpen(source.copyRef());
++    return source;
++}
++
++MediaSourcePrivateOnyx::MediaSourcePrivateOnyx(MediaPlayerPrivateOnyx& parent, MediaSourcePrivateClient& client)
++    : MediaSourcePrivate(client)
++    , m_player(parent)
++#if !RELEASE_LOG_DISABLED
++    , m_logger(*client.logger())
++    , m_logIdentifier(0)
++#endif
++{
++}
++
++MediaSourcePrivateOnyx::~MediaSourcePrivateOnyx() = default;
++
++RefPtr<MediaPlayerPrivateInterface> MediaSourcePrivateOnyx::player() const
++{
++    return m_player.get();
++}
++
++void MediaSourcePrivateOnyx::setPlayer(MediaPlayerPrivateInterface* player)
++{
++    m_player = downcast<MediaPlayerPrivateOnyx>(player);
++}
++
++MediaSourcePrivate::AddStatus MediaSourcePrivateOnyx::addSourceBuffer(const ContentType& contentType, const MediaSourceConfiguration&, RefPtr<SourceBufferPrivate>& outPrivate)
++{
++    MediaEngineSupportParameters parameters {
++        .platformType = PlatformMediaDecodingType::MediaSource,
++        .type = contentType
++    };
++    if (MediaPlayerPrivateOnyx::supportsType(parameters) == MediaPlayer::SupportsType::IsNotSupported)
++        return AddStatus::NotSupported;
++
++    {
++        Locker locker { m_lock };
++        m_sourceBuffers.append(SourceBufferPrivateOnyx::create(*this, contentType));
++        outPrivate = m_sourceBuffers.last();
++    }
++    outPrivate->setMediaSourceDuration(duration());
++    return AddStatus::Ok;
++}
++
++void MediaSourcePrivateOnyx::durationChanged(const MediaTime& duration)
++{
++    MediaSourcePrivate::durationChanged(duration);
++    if (RefPtr player = m_player.get())
++        player->mediaSourceDurationChanged(duration);
++}
++
++void MediaSourcePrivateOnyx::notifyActiveSourceBuffersChanged()
++{
++    if (RefPtr player = m_player.get())
++        player->notifyActiveSourceBuffersChanged();
++}
++
++void MediaSourcePrivateOnyx::provideMediaDataIfNeeded()
++{
++    for (auto& sourceBuffer : sourceBuffers())
++        downcast<SourceBufferPrivateOnyx>(sourceBuffer.get()).provideMediaDataIfNeeded();
++}
++
++#if !RELEASE_LOG_DISABLED
++WTFLogChannel& MediaSourcePrivateOnyx::logChannel() const
++{
++    return LogMediaSource;
++}
++#endif
++
++// ---- a coded frame ----
++
++class MediaSampleOnyx final : public MediaSample {
++public:
++    static Ref<MediaSampleOnyx> create(const av_packet& packet, TrackID trackID, const IntSize& size)
++    {
++        return adoptRef(*new MediaSampleOnyx(SharedBuffer::create(std::span<const uint8_t> { packet.data, packet.size }), fromUs(packet.pts),
++            fromUs(packet.dts != AV_NOTIME ? packet.dts : packet.pts), fromUs(packet.dur), packet.key, trackID, size, packet.discard_end));
++    }
++
++    const SharedBuffer& data() const { return m_data.get(); }
++    av_us discardEnd() const { return m_discardEnd; }
++
++private:
++    MediaSampleOnyx(Ref<SharedBuffer>&& data, const MediaTime& presentationTime, const MediaTime& decodeTime, const MediaTime& duration, bool isSync, TrackID trackID, const IntSize& size, av_us discardEnd)
++        : m_data(WTF::move(data))
++        , m_presentationTime(presentationTime)
++        , m_decodeTime(decodeTime)
++        , m_duration(duration)
++        , m_trackID(trackID)
++        , m_size(size)
++        , m_discardEnd(discardEnd)
++        , m_isSync(isSync)
++    {
++    }
++
++    Ref<MediaSampleOnyx> copy() const
++    {
++        Ref sample = adoptRef(*new MediaSampleOnyx(m_data.copyRef(), m_presentationTime, m_decodeTime, m_duration, m_isSync, m_trackID, m_size, m_discardEnd));
++        sample->m_isNonDisplaying = m_isNonDisplaying;
++        return sample;
++    }
++
++    MediaTime presentationTime() const final { return m_presentationTime; }
++    MediaTime decodeTime() const final { return m_decodeTime; }
++    MediaTime duration() const final { return m_duration; }
++    TrackID trackID() const final { return m_trackID; }
++    size_t sizeInBytes() const final { return m_data->size(); }
++    FloatSize presentationSize() const final { return m_size; }
++    void offsetTimestampsBy(const MediaTime& offset) final
++    {
++        m_presentationTime += offset;
++        m_decodeTime += offset;
++    }
++    void setTimestamps(const MediaTime& presentationTime, const MediaTime& decodeTime) final
++    {
++        m_presentationTime = presentationTime;
++        m_decodeTime = decodeTime;
++    }
++    Ref<MediaSample> createNonDisplayingCopy() const final
++    {
++        auto sample = copy();
++        sample->m_isNonDisplaying = true;
++        return sample;
++    }
++    Ref<MediaSample> createCopyWithAdjustedStartTime(const MediaTime& offset) const final
++    {
++        auto clamped = std::max(MediaTime::zeroTime(), std::min(offset, m_duration));
++        auto sample = copy();
++        sample->m_presentationTime = m_presentationTime + clamped;
++        sample->m_decodeTime = m_decodeTime + clamped;
++        sample->m_duration = m_duration - clamped;
++        return sample;
++    }
++    SampleFlags flags() const final
++    {
++        unsigned flags = None;
++        if (m_isSync)
++            flags |= IsSync;
++        if (m_isNonDisplaying)
++            flags |= IsNonDisplaying;
++        return SampleFlags(flags);
++    }
++    PlatformSample platformSample() const final { return PlatformSample { static_cast<const MockSampleBox*>(nullptr) }; }
++    Type type() const final { return Type::None; }
++
++    const Ref<SharedBuffer> m_data;
++    MediaTime m_presentationTime;
++    MediaTime m_decodeTime;
++    MediaTime m_duration;
++    TrackID m_trackID;
++    IntSize m_size;
++    av_us m_discardEnd { 0 };
++    bool m_isSync { false };
++    bool m_isNonDisplaying { false };
++};
++
++// ---- the tracks of an initialization segment ----
++
++class MediaDescriptionOnyx final : public MediaDescription {
++public:
++    static Ref<MediaDescriptionOnyx> create(const av_track& track)
++    {
++        return adoptRef(*new MediaDescriptionOnyx(String::fromUTF8(track.codec_str[0] ? track.codec_str : track.codec_id), track.kind == AV_VIDEO));
++    }
++    bool isVideo() const final { return m_isVideo; }
++    bool isAudio() const final { return !m_isVideo; }
++    bool isText() const final { return false; }
++
++private:
++    MediaDescriptionOnyx(String&& codec, bool isVideo)
++        : MediaDescription(WTF::move(codec).isolatedCopy())
++        , m_isVideo(isVideo)
++    {
++    }
++    const bool m_isVideo;
++};
++
++class VideoTrackPrivateOnyx final : public VideoTrackPrivate {
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(VideoTrackPrivateOnyx);
++public:
++    static Ref<VideoTrackPrivateOnyx> create(TrackID id) { return adoptRef(*new VideoTrackPrivateOnyx(id)); }
++    TrackID id() const final { return m_id; }
++
++private:
++    explicit VideoTrackPrivateOnyx(TrackID id)
++        : m_id(id)
++    {
++    }
++    TrackID m_id;
++};
++
++class AudioTrackPrivateOnyx final : public AudioTrackPrivate {
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(AudioTrackPrivateOnyx);
++public:
++    static Ref<AudioTrackPrivateOnyx> create(TrackID id) { return adoptRef(*new AudioTrackPrivateOnyx(id)); }
++    TrackID id() const final { return m_id; }
++
++private:
++    explicit AudioTrackPrivateOnyx(TrackID id)
++        : m_id(id)
++    {
++    }
++    TrackID m_id;
++};
++
++// ---- a SourceBuffer ----
++
++Ref<SourceBufferPrivateOnyx> SourceBufferPrivateOnyx::create(MediaSourcePrivateOnyx& parent, const ContentType& contentType)
++{
++    return adoptRef(*new SourceBufferPrivateOnyx(parent, contentType));
++}
++
++SourceBufferPrivateOnyx::SourceBufferPrivateOnyx(MediaSourcePrivateOnyx& parent, const ContentType& contentType)
++    : SourceBufferPrivate(parent)
++    , m_format(av_format_of_mime(reinterpret_cast<const char*>(contentType.raw().utf8().data())))
++#if !RELEASE_LOG_DISABLED
++    , m_logger(parent.logger())
++    , m_logIdentifier(parent.nextSourceBufferLogIdentifier())
++#endif
++{
++    m_demux = av_demux_new(m_format);
++}
++
++SourceBufferPrivateOnyx::~SourceBufferPrivateOnyx()
++{
++    if (m_demux)
++        av_demux_free(m_demux);
++}
++
++RefPtr<MediaSourcePrivateOnyx> SourceBufferPrivateOnyx::mediaSourcePrivate() const
++{
++    return dynamicDowncast<MediaSourcePrivateOnyx>(m_mediaSource.get());
++}
++
++av_store* SourceBufferPrivateOnyx::store() const
++{
++    RefPtr mediaSource = mediaSourcePrivate();
++    auto* player = mediaSource ? mediaSource->onyxPlayer() : nullptr;
++    return player ? player->store() : nullptr;
++}
++
++bool SourceBufferPrivateOnyx::ensureQueue()
++{
++    if (m_queue >= 0)
++        return true;
++    if (auto* store = this->store())
++        m_queue = av_store_add_queue(store);
++    return m_queue >= 0;
++}
++
++SourceBufferPrivateOnyx::Track* SourceBufferPrivateOnyx::trackFor(TrackID id)
++{
++    for (auto& track : m_tracks) {
++        if (track.id == id)
++            return &track;
++    }
++    return nullptr;
++}
++
++// The demuxer's tracks, after a (new) initialization segment: told to WebCore, and defined in the
++// player's queue (a track already there keeps its place: its description is replaced).
++void SourceBufferPrivateOnyx::receivedInitializationSegment()
++{
++    SourceBufferPrivateClient::InitializationSegment segment;
++    auto duration = av_demux_duration(m_demux);
++    segment.duration = duration > 0 ? fromUs(duration) : MediaTime::invalidTime();
++
++    bool haveQueue = ensureQueue();
++    for (int i = 0; i < av_demux_ntracks(m_demux); i++) {
++        auto* info = av_demux_track(m_demux, i);
++        if (!info || (info->kind != AV_VIDEO && info->kind != AV_AUDIO))
++            continue;
++        TrackID id = info->number;
++        auto* track = trackFor(id);
++        if (!track) {
++            m_tracks.append(Track { id });
++            track = &m_tracks.last();
++        }
++        track->isVideo = info->kind == AV_VIDEO;
++        track->size = { info->dwidth > 0 ? info->dwidth : info->width, info->dheight > 0 ? info->dheight : info->height };
++        if (haveQueue)
++            track->queueIndex = av_store_queue_track(store(), m_queue, info);
++        mediaLog(makeString("a source buffer's "_s, track->isVideo ? "video"_s : "audio"_s, " track "_s, info->number, ": "_s, String::fromUTF8(info->codec_str[0] ? info->codec_str : info->codec_id),
++            ", "_s, info->width, 'x', info->height, ", "_s, static_cast<int>(info->fps + 0.5), " pictures a second, "_s, info->rate, " Hz x "_s, info->channels));
++        if (track->isVideo) {
++            if (RefPtr mediaSource = mediaSourcePrivate(); mediaSource && mediaSource->onyxPlayer())
++                mediaSource->onyxPlayer()->mediaSourceVideoSize(track->size);
++        }
++
++        if (track->isVideo) {
++            SourceBufferPrivateClient::InitializationSegment::VideoTrackInformation information;
++            information.track = VideoTrackPrivateOnyx::create(id);
++            information.description = MediaDescriptionOnyx::create(*info);
++            segment.videoTracks.append(WTF::move(information));
++        } else {
++            SourceBufferPrivateClient::InitializationSegment::AudioTrackInformation information;
++            information.track = AudioTrackPrivateOnyx::create(id);
++            information.description = MediaDescriptionOnyx::create(*info);
++            segment.audioTracks.append(WTF::move(information));
++        }
++    }
++    didReceiveInitializationSegment(WTF::move(segment));
++}
++
++Ref<MediaPromise> SourceBufferPrivateOnyx::appendInternal(Ref<SharedBuffer>&& data)
++{
++    if (!m_demux)
++        return MediaPromise::createAndReject(PlatformMediaError::ParsingError);
++    auto bytes = data->span();
++    int result = av_demux_append(m_demux, bytes.data(), bytes.size());
++    if (result != AV_OK)
++        return MediaPromise::createAndReject(PlatformMediaError::ParsingError);
++
++    for (;;) {
++        av_packet packet;
++        result = av_demux_read(m_demux, &packet);
++        if (av_demux_take_init(m_demux))
++            receivedInitializationSegment();
++        if (result == AV_AGAIN || result == AV_EOF)
++            break;
++        if (result != AV_OK)
++            return MediaPromise::createAndReject(PlatformMediaError::ParsingError);
++        auto* info = av_demux_track(m_demux, packet.track);
++        if (auto* track = info ? trackFor(info->number) : nullptr) {
++            if (packet.dur <= 0)
++                packet.dur = info->default_dur > 0 ? info->default_dur : (track->isVideo ? 33333 : 20000);
++            didReceiveSample(MediaSampleOnyx::create(packet, track->id, track->size));
++        }
++        av_pkt_free(&packet);
++    }
++    return MediaPromise::createAndResolve();
++}
++
++void SourceBufferPrivateOnyx::resetParserStateInternal()
++{
++    if (m_demux)
++        av_demux_reset(m_demux);
++}
++
++void SourceBufferPrivateOnyx::removedFromMediaSource()
++{
++    if (m_queue >= 0) {
++        if (auto* store = this->store())
++            av_store_remove_source(store, m_queue);
++        m_queue = -1;
++    }
++    SourceBufferPrivate::removedFromMediaSource();
++}
++
++bool SourceBufferPrivateOnyx::canSwitchToType(const ContentType& contentType)
++{
++    MediaEngineSupportParameters parameters {
++        .platformType = PlatformMediaDecodingType::MediaSource,
++        .type = contentType
++    };
++    if (MediaPlayerPrivateOnyx::supportsType(parameters) == MediaPlayer::SupportsType::IsNotSupported)
++        return false;
++    m_pendingFormat = av_format_of_mime(reinterpret_cast<const char*>(contentType.raw().utf8().data()));
++    return m_pendingFormat != AV_FMT_UNKNOWN;
++}
++
++void SourceBufferPrivateOnyx::startChangingType()
++{
++    SourceBufferPrivate::startChangingType();
++    // The next bytes are an initialization segment of the new type: a demuxer for it.
++    if (m_pendingFormat && m_pendingFormat != m_format) {
++        if (m_demux)
++            av_demux_free(m_demux);
++        m_format = m_pendingFormat;
++        m_demux = av_demux_new(m_format);
++    } else if (m_demux)
++        av_demux_reset(m_demux);
++    m_pendingFormat = 0;
++}
++
++void SourceBufferPrivateOnyx::flush(TrackID id)
++{
++    auto* track = trackFor(id);
++    if (track && track->queueIndex >= 0 && m_queue >= 0) {
++        if (auto* store = this->store())
++            av_store_queue_flush(store, m_queue, track->queueIndex);
++    }
++}
++
++void SourceBufferPrivateOnyx::enqueueSample(Ref<MediaSample>&& sample, TrackID id)
++{
++    auto* track = trackFor(id);
++    auto* store = this->store();
++    if (!track || track->queueIndex < 0 || m_queue < 0 || !store || sample->type() != MediaSample::Type::None)
++        return;
++    auto& onyxSample = static_cast<MediaSampleOnyx&>(sample.get());
++    auto bytes = onyxSample.data().span();
++    av_packet packet { };
++    packet.track = track->queueIndex;
++    packet.pts = toUs(sample->presentationTime());
++    packet.dts = toUs(sample->decodeTime());
++    packet.dur = toUs(sample->duration());
++    packet.key = sample->isSync();
++    packet.pos = -1;
++    packet.data = const_cast<uint8_t*>(bytes.data()); // (copied by the queue)
++    packet.size = bytes.size();
++    packet.discard_end = onyxSample.discardEnd();
++    av_store_queue_put(store, m_queue, track->queueIndex, &packet);
++}
++
++void SourceBufferPrivateOnyx::allSamplesInTrackEnqueued(TrackID id)
++{
++    auto* track = trackFor(id);
++    if (track && track->queueIndex >= 0 && m_queue >= 0) {
++        if (auto* store = this->store())
++            av_store_queue_end(store, m_queue, track->queueIndex, 1);
++    }
++}
++
++bool SourceBufferPrivateOnyx::isReadyForMoreSamples(TrackID id)
++{
++    auto* track = trackFor(id);
++    auto* store = this->store();
++    RefPtr mediaSource = mediaSourcePrivate();
++    if (!track || track->queueIndex < 0 || m_queue < 0 || !store || !mediaSource)
++        return false;
++    size_t bytes = 0;
++    auto ahead = av_store_queue_level(store, m_queue, track->queueIndex, toUs(mediaSource->currentTime()), &bytes);
++    return ahead < queueAhead && bytes < queueBytes;
++}
++
++void SourceBufferPrivateOnyx::notifyClientWhenReadyForMoreSamples(TrackID id)
++{
++    if (auto* track = trackFor(id))
++        track->wantsMore = true;
++}
++
++void SourceBufferPrivateOnyx::provideMediaDataIfNeeded()
++{
++    // (provideMediaData may call notifyClientWhenReadyForMoreSamples again: the ids first)
++    Vector<TrackID, 2> ready;
++    for (auto& track : m_tracks) {
++        if (track.wantsMore && isReadyForMoreSamples(track.id)) {
++            track.wantsMore = false;
++            ready.append(track.id);
++        }
++    }
++    for (auto id : ready)
++        provideMediaData(id);
++}
++
++#if !RELEASE_LOG_DISABLED
++WTFLogChannel& SourceBufferPrivateOnyx::logChannel() const
++{
++    return LogMediaSource;
++}
++#endif
++
++} // namespace WebCore
++
++#endif // ENABLE(MEDIA_SOURCE) && PLATFORM(ONYX)
+diff --git a/Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.h b/Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.h
+new file mode 100644
+index 00000000..2173a88c
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/MediaSourcePrivateOnyx.h
+@@ -0,0 +1,157 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if ENABLE(MEDIA_SOURCE) && PLATFORM(ONYX)
++
++#include "MediaSourcePrivate.h"
++#include "SourceBufferPrivate.h"
++#include <wtf/LoggerHelper.h>
++#include <wtf/MediaTime.h>
++#include <wtf/WeakPtr.h>
++
++struct av_demux;
++struct av_store;
++
++namespace WebCore {
++
++class MediaPlayerPrivateOnyx;
++
++// Media Source Extensions on Onyx's media library (MediaPlayerPrivateOnyx.h says how the two fit).
++class MediaSourcePrivateOnyx final
++    : public MediaSourcePrivate
++#if !RELEASE_LOG_DISABLED
++    , private LoggerHelper
++#endif
++{
++public:
++    static Ref<MediaSourcePrivateOnyx> create(MediaPlayerPrivateOnyx&, MediaSourcePrivateClient&);
++    virtual ~MediaSourcePrivateOnyx();
++
++    constexpr MediaPlatformType platformType() const final { return MediaPlatformType::Onyx; }
++
++    RefPtr<MediaPlayerPrivateInterface> player() const final;
++    void setPlayer(MediaPlayerPrivateInterface*) final;
++    MediaPlayerPrivateOnyx* onyxPlayer() const { return m_player.get(); }
++
++    // From the player's timer: the buffers that were told "not ready for more" are asked again.
++    void provideMediaDataIfNeeded();
++
++#if !RELEASE_LOG_DISABLED
++    const Logger& logger() const final { return m_logger.get(); }
++    ASCIILiteral logClassName() const override { return "MediaSourcePrivateOnyx"_s; }
++    uint64_t logIdentifier() const final { return m_logIdentifier; }
++    WTFLogChannel& logChannel() const final;
++    uint64_t nextSourceBufferLogIdentifier() { return childLogIdentifier(m_logIdentifier, ++m_nextSourceBufferID); }
++#endif
++
++private:
++    MediaSourcePrivateOnyx(MediaPlayerPrivateOnyx&, MediaSourcePrivateClient&);
++
++    AddStatus addSourceBuffer(const ContentType&, const MediaSourceConfiguration&, RefPtr<SourceBufferPrivate>&) final;
++    void durationChanged(const MediaTime&) final;
++    void notifyActiveSourceBuffersChanged() final;
++
++    WeakPtr<MediaPlayerPrivateOnyx> m_player;
++#if !RELEASE_LOG_DISABLED
++    const Ref<const Logger> m_logger;
++    const uint64_t m_logIdentifier;
++    uint64_t m_nextSourceBufferID { 0 };
++#endif
++};
++
++// A SourceBuffer: the bytes appended are parsed by one of the library's demuxers into coded frames
++// (MediaSampleOnyx), which WebCore keeps and orders (SourceBufferPrivate); those it enqueues for
++// decoding go into a queue of the player's store, one queue a buffer, a few seconds deep.
++class SourceBufferPrivateOnyx final : public SourceBufferPrivate {
++public:
++    static Ref<SourceBufferPrivateOnyx> create(MediaSourcePrivateOnyx&, const ContentType&);
++    virtual ~SourceBufferPrivateOnyx();
++
++    constexpr MediaPlatformType platformType() const final { return MediaPlatformType::Onyx; }
++
++    void provideMediaDataIfNeeded();
++
++private:
++    SourceBufferPrivateOnyx(MediaSourcePrivateOnyx&, const ContentType&);
++    RefPtr<MediaSourcePrivateOnyx> mediaSourcePrivate() const;
++    av_store* store() const;
++    bool ensureQueue();
++
++    // SourceBufferPrivate
++    Ref<MediaPromise> appendInternal(Ref<SharedBuffer>&&) final;
++    void resetParserStateInternal() final;
++    void removedFromMediaSource() final;
++    bool canSwitchToType(const ContentType&) final;
++    void startChangingType() final;
++    void flush(TrackID) final;
++    void enqueueSample(Ref<MediaSample>&&, TrackID) final;
++    void allSamplesInTrackEnqueued(TrackID) final;
++    bool isReadyForMoreSamples(TrackID) final;
++    void notifyClientWhenReadyForMoreSamples(TrackID) final;
++
++    void receivedInitializationSegment();
++
++#if !RELEASE_LOG_DISABLED
++    const Logger& logger() const final { return m_logger.get(); }
++    ASCIILiteral logClassName() const override { return "SourceBufferPrivateOnyx"_s; }
++    uint64_t logIdentifier() const final { return m_logIdentifier; }
++    WTFLogChannel& logChannel() const final;
++    const Logger& sourceBufferLogger() const final { return m_logger.get(); }
++    uint64_t sourceBufferLogIdentifier() final { return logIdentifier(); }
++#endif
++
++    struct Track {
++        TrackID id { 0 };
++        int queueIndex { -1 };      // the track in the store's queue
++        bool isVideo { false };
++        bool wantsMore { false };   // WebCore waits to be told when the queue takes frames again
++        IntSize size;
++    };
++    Track* trackFor(TrackID);
++
++    av_demux* m_demux { nullptr };
++    int m_format { 0 };             // the demuxer's container (AV_FMT_*)
++    int m_pendingFormat { 0 };      // changeType(): the next bytes' container
++    int m_queue { -1 };             // the queue in the player's store
++    Vector<Track> m_tracks;
++#if !RELEASE_LOG_DISABLED
++    const Ref<const Logger> m_logger;
++    const uint64_t m_logIdentifier;
++#endif
++};
++
++} // namespace WebCore
++
++SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaSourcePrivateOnyx)
++static bool isType(const WebCore::MediaSourcePrivate& mediaSource) { return mediaSource.platformType() == WebCore::MediaPlatformType::Onyx; }
++SPECIALIZE_TYPE_TRAITS_END()
++
++SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::SourceBufferPrivateOnyx)
++static bool isType(const WebCore::SourceBufferPrivate& sourceBuffer) { return sourceBuffer.platformType() == WebCore::MediaPlatformType::Onyx; }
++SPECIALIZE_TYPE_TRAITS_END()
++
++#endif // ENABLE(MEDIA_SOURCE) && PLATFORM(ONYX)
+diff --git a/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in b/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
+index fcab107b..381f6cd5 100644
+--- a/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
++++ b/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in
+@@ -3159,7 +3159,8 @@ enum class WebCore::MediaPlayerMediaEngineIdentifier : uint8_t {
+     MediaFoundation,
+     MockMSE,
+     CocoaWebM,
+-    WirelessPlayback
++    WirelessPlayback,
++    Onyx
+ };
+ 
+ enum class WebCore::MediaPlayerWirelessPlaybackTargetType : uint8_t {
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+index f1c2460f..833fedc6 100644
+--- a/Source/cmake/OptionsOnyx.cmake
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -160,14 +160,16 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOURCE_USAGE PRIVATE OFF)
+ WEBKIT_OPTION_DEFINE(USE_SYSTEM_UNIFDEF "Whether to use a system-provided unifdef" PRIVATE ON)
+ 
+ # WebCore: Skia on the CPU, no GL and no compositor (accelerated compositing is compiled out: no
+-# TextureMapper, no Coordinated Graphics, no EGL), no media yet (Onyx's own player comes later).
++# TextureMapper, no Coordinated Graphics, no EGL). Media: Onyx's own player (platform/graphics/onyx,
++# on the av library), with Media Source; no Web Audio yet.
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_SKIA PRIVATE ${ONYX_WEBCORE})
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_SKIA_ENCODERS PRIVATE ${ONYX_WEBCORE})
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SMOOTH_SCROLLING PRIVATE ON)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ASYNC_SCROLLING PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GPU_PROCESS PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBGL PRIVATE OFF)
+-WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_VIDEO PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_VIDEO PRIVATE ${ONYX_WEBCORE})
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_MEDIA_SOURCE PRIVATE ${ONYX_WEBCORE})
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEB_AUDIO PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_XSLT PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GEOLOCATION PRIVATE OFF)
+@@ -241,6 +243,14 @@ if (ENABLE_WEBKIT)
+     if (NOT EXISTS "${ONYX_GPUCOMP_INCLUDE_DIR}/gpucomp.h")
+         message(FATAL_ERROR "No gpucomp.h in ${ONYX_GPUCOMP_INCLUDE_DIR}: -DONYX_SOURCE_DIR=<the Onyx sources>")
+     endif ()
++
++    # Onyx's media library (user/av of the Onyx sources: demuxers, decoders, a player), which the media
++    # engine (platform/graphics/onyx/MediaPlayerPrivateOnyx) drives: its header here, its code -- with
++    # libvpx, dav1d and opus -- linked with the program (tools/webkit/av.mk of the Onyx sources).
++    set(ONYX_AV_INCLUDE_DIR "${ONYX_SOURCE_DIR}/user/av")
++    if (ENABLE_VIDEO AND NOT EXISTS "${ONYX_AV_INCLUDE_DIR}/av.h")
++        message(FATAL_ERROR "No av.h in ${ONYX_AV_INCLUDE_DIR}: -DONYX_SOURCE_DIR=<the Onyx sources>")
++    endif ()
+ endif ()
+ 
+ SET_AND_EXPOSE_TO_BUILD(USE_GENERIC_EVENT_LOOP 1)

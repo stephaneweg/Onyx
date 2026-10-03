@@ -52,6 +52,11 @@ struct source {
 	unsigned gen;
 	size_t quota, bytes;
 	int file_mode, fed_end;
+	/* a queue (av_store_add_queue): no demuxer, the host defines the tracks and puts the frames */
+	int queue;
+	struct av_track qt[AV_MAX_TRACKS];
+	int nq;
+	int q_end[AV_MAX_TRACKS];	/* the track's frames are all there (the stream's end) */
 };
 
 struct av_store {
@@ -93,7 +98,10 @@ static void source_clear(struct source *so)
 
 	for (k = 0; k < AV_MAX_TRACKS; k++)
 		track_clear(&so->tr[k]);
-	av_demux_free(so->dx);
+	for (k = 0; k < so->nq; k++)
+		free(so->qt[k].extra);
+	if (so->dx != NULL)
+		av_demux_free(so->dx);
 	memset(so, 0, sizeof *so);
 }
 
@@ -144,6 +152,19 @@ int av_store_add_source(struct av_store *s, const char *mime, size_t quota)
 static struct source *get(struct av_store *s, int src)
 {
 	return src >= 0 && src < MAX_SOURCES && s->src[src].used ? &s->src[src] : NULL;
+}
+
+/* a source's tracks: its demuxer's, or the queue's own */
+static int so_ntracks(const struct source *so)
+{
+	return so->queue ? so->nq : av_demux_ntracks(so->dx);
+}
+
+static const struct av_track *so_track(const struct source *so, int k)
+{
+	if (so->queue)
+		return k >= 0 && k < so->nq ? &so->qt[k] : NULL;
+	return av_demux_track(so->dx, k);
 }
 
 void av_store_remove_source(struct av_store *s, int src)
@@ -406,7 +427,7 @@ void av_store_set_size(struct av_store *s, int src, int64_t size)
 	struct source *so;
 
 	av_lock(&s->lock);
-	if ((so = get(s, src)) != NULL)
+	if ((so = get(s, src)) != NULL && so->dx != NULL)
 		av_demux_set_size(so->dx, size);
 	av_unlock(&s->lock);
 }
@@ -422,7 +443,7 @@ int64_t av_store_want(struct av_store *s, int src)
 		pump(s, so);
 		s->serial++;
 	}
-	if (so != NULL && !so->fed_end)
+	if (so != NULL && !so->fed_end && !so->queue)
 		w = av_demux_want(so->dx);
 	av_unlock(&s->lock);
 	return w;
@@ -464,7 +485,7 @@ int av_store_change_type(struct av_store *s, int src, const char *mime)
 		return AV_ENOMEM;
 	av_lock(&s->lock);
 	so = get(s, src);
-	if (so == NULL) {
+	if (so == NULL || so->queue) {
 		av_unlock(&s->lock);
 		av_demux_free(dx);
 		return AV_ERR;
@@ -538,7 +559,7 @@ void av_store_reset_parser(struct av_store *s, int src)
 	int k;
 
 	av_lock(&s->lock);
-	if ((so = get(s, src)) != NULL) {
+	if ((so = get(s, src)) != NULL && !so->queue) {
 		av__demux_reset(so->dx);
 		for (k = 0; k < AV_MAX_TRACKS; k++) {
 			so->tr[k].last_dts = AV_NOTIME;
@@ -645,7 +666,7 @@ static int source_ranges(struct av_store *s, struct source *so, struct av_range 
 	for (k = 0; k < AV_MAX_TRACKS; k++) {
 		struct av_range *r;
 		int m;
-		const struct av_track *info = av_demux_track(so->dx, k);
+		const struct av_track *info = so_track(so, k);
 		if (info == NULL || info->kind == 0 || av_decoder_supported_track(info) == 0)
 			continue;
 		m = track_ranges(&so->tr[k], &r);
@@ -664,7 +685,7 @@ static int source_ranges(struct av_store *s, struct source *so, struct av_range 
 	if (n <= 0)
 		return 0;
 	/* ended: the last range reaches the highest end of any track (MSE's rule) */
-	if ((s->eos || so->fed_end) && cur[n - 1].end < top)
+	if ((s->eos || so->fed_end || (so->queue && av__store_ended(s, (int) (so - s->src)))) && cur[n - 1].end < top)
 		cur[n - 1].end = top;
 	for (i = 0; i < n && i < max; i++)
 		out[i] = cur[i];
@@ -698,13 +719,13 @@ int av_store_has_init(struct av_store *s, int src)
 int av_store_ntracks(struct av_store *s, int src)
 {
 	struct source *so = get(s, src);
-	return so != NULL ? av_demux_ntracks(so->dx) : 0;
+	return so != NULL ? so_ntracks(so) : 0;
 }
 
 const struct av_track *av_store_track(struct av_store *s, int src, int i)
 {
 	struct source *so = get(s, src);
-	return so != NULL ? av_demux_track(so->dx, i) : NULL;
+	return so != NULL ? so_track(so, i) : NULL;
 }
 
 void av_store_set_eos(struct av_store *s, int eos)
@@ -742,7 +763,7 @@ av_us av_store_duration(struct av_store *s)
 
 	av_lock(&s->lock);
 	for (i = 0; i < MAX_SOURCES; i++)
-		if (s->src[i].used && av_demux_duration(s->src[i].dx) > d)
+		if (s->src[i].used && s->src[i].dx != NULL && av_demux_duration(s->src[i].dx) > d)
 			d = av_demux_duration(s->src[i].dx);
 	av_unlock(&s->lock);
 	return d;
@@ -758,8 +779,8 @@ int av__store_pick(struct av_store *s, int kind, int *src, int *track, struct av
 		struct source *so = &s->src[i];
 		if (!so->used || !so->init)
 			continue;
-		for (k = 0; k < av_demux_ntracks(so->dx); k++) {
-			const struct av_track *t = av_demux_track(so->dx, k);
+		for (k = 0; k < so_ntracks(so); k++) {
+			const struct av_track *t = so_track(so, k);
 			if (t->kind == kind) {
 				*src = i;
 				*track = k;
@@ -777,7 +798,7 @@ int av__store_pick(struct av_store *s, int kind, int *src, int *track, struct av
 const struct av_track *av__store_track_info(struct av_store *s, int src, int track)
 {
 	struct source *so = get(s, src);
-	return so != NULL ? av_demux_track(so->dx, track) : NULL;
+	return so != NULL ? so_track(so, track) : NULL;
 }
 
 int av__store_next(struct av_store *s, int src, int track, av_us after, int inclusive, av_us gap,
@@ -793,13 +814,13 @@ int av__store_next(struct av_store *s, int src, int track, av_us after, int incl
 	t = &so->tr[track];
 	i = after == AV_NOTIME ? 0 : lower_dts(t, inclusive ? after : after + 1);
 	if (i >= t->n) {
-		if (s->eos || so->fed_end)
+		if (so->queue ? so->q_end[track] : (s->eos || so->fed_end))
 			return AV_EOF;
 		return AV_AGAIN;
 	}
 	/* a hole after the last frame read: wait for it to be filled (unless the stream ended; a file's holes
 	 * are its own) */
-	if (after != AV_NOTIME && gap > 0 && t->f[i].dts > after + gap && !(s->eos || so->fed_end) && !so->file_mode)
+	if (after != AV_NOTIME && gap > 0 && t->f[i].dts > after + gap && !(s->eos || so->fed_end) && !so->file_mode && !so->queue)
 		return AV_AGAIN;
 	p->track = track;
 	p->pts = t->f[i].pts;
@@ -843,6 +864,15 @@ av_us av__store_rap_before(struct av_store *s, int src, int track, av_us t)
 int av__store_ended(struct av_store *s, int src)
 {
 	struct source *so = get(s, src);
+
+	if (so != NULL && so->queue) {
+		/* a queue ends when each of its tracks was told so */
+		int k;
+		for (k = 0; k < so->nq; k++)
+			if (!so->q_end[k])
+				return 0;
+		return so->nq > 0;
+	}
 	return s->eos || (so != NULL && so->fed_end && !av__demux_busy(so->dx));
 }
 
@@ -879,4 +909,149 @@ void av__store_trim(struct av_store *s, av_us before)
 	for (k = 0; k < MAX_SOURCES; k++)
 		if (s->src[k].used && s->src[k].file_mode)
 			evict(&s->src[k], before, 0);
+		else if (s->src[k].used && s->src[k].queue)
+			/* a queue holds what is to be decoded: what was played goes at once (the host has it) */
+			evict(&s->src[k], before + 9 * AV_US, 0);
+}
+
+/* ---- queues: the frames the host gives itself ------------------------------------------- */
+
+int av_store_add_queue(struct av_store *s)
+{
+	int i, k;
+
+	av_lock(&s->lock);
+	for (i = 0; i < MAX_SOURCES; i++)
+		if (!s->src[i].used)
+			break;
+	if (i == MAX_SOURCES) {
+		av_unlock(&s->lock);
+		return AV_EFULL;
+	}
+	memset(&s->src[i], 0, sizeof s->src[i]);
+	s->src[i].used = 1;
+	s->src[i].queue = 1;
+	s->src[i].win_end = INT64_MAX;
+	s->src[i].group_start = AV_NOTIME;
+	for (k = 0; k < AV_MAX_TRACKS; k++)
+		s->src[i].tr[k].last_dts = AV_NOTIME;
+	s->serial++;
+	av_unlock(&s->lock);
+	return i;
+}
+
+int av_store_queue_track(struct av_store *s, int src, const struct av_track *t)
+{
+	struct source *so;
+	struct av_track *q;
+	int k;
+
+	av_lock(&s->lock);
+	so = get(s, src);
+	if (so == NULL || !so->queue) {
+		av_unlock(&s->lock);
+		return AV_ERR;
+	}
+	/* a track defined again (a new initialization segment): its description replaced */
+	for (k = 0; k < so->nq; k++)
+		if (so->qt[k].number == t->number)
+			break;
+	if (k == AV_MAX_TRACKS) {
+		av_unlock(&s->lock);
+		return AV_EFULL;
+	}
+	q = &so->qt[k];
+	if (k < so->nq)
+		free(q->extra);
+	*q = *t;
+	q->extra = NULL;
+	q->extra_len = 0;
+	if (t->extra != NULL && t->extra_len > 0 && (q->extra = (uint8_t *) malloc(t->extra_len)) != NULL) {
+		memcpy(q->extra, t->extra, t->extra_len);
+		q->extra_len = t->extra_len;
+	}
+	if (k == so->nq)
+		so->nq++;
+	so->tr[k].kind = t->kind;
+	so->init = 1;
+	s->serial++;
+	av_unlock(&s->lock);
+	return k;
+}
+
+int av_store_queue_put(struct av_store *s, int src, int track, const struct av_packet *p)
+{
+	struct source *so;
+	struct strack *t;
+	struct av_packet c;
+	int r;
+
+	c = *p;
+	c.data = (uint8_t *) malloc(p->size ? p->size : 1);
+	if (c.data == NULL)
+		return AV_ENOMEM;
+	memcpy(c.data, p->data, p->size);
+	av_lock(&s->lock);
+	so = get(s, src);
+	if (so == NULL || !so->queue || track < 0 || track >= so->nq) {
+		av_unlock(&s->lock);
+		free(c.data);
+		return AV_ERR;
+	}
+	t = &so->tr[track];
+	so->q_end[track] = 0;
+	r = insert(so, t, &c, p->pts, p->dts != AV_NOTIME ? p->dts : p->pts,
+		p->dur > 0 ? p->dur : (so->qt[track].kind == AV_VIDEO ? 33333 : 20000));
+	if (r != AV_OK)
+		free(c.data);
+	s->serial++;
+	av_unlock(&s->lock);
+	return r;
+}
+
+void av_store_queue_flush(struct av_store *s, int src, int track)
+{
+	struct source *so;
+
+	av_lock(&s->lock);
+	if ((so = get(s, src)) != NULL && so->queue && track >= 0 && track < so->nq) {
+		struct strack *t = &so->tr[track];
+		int kind = t->kind;
+		so->bytes -= t->bytes;
+		track_clear(t);
+		t->kind = kind;
+		so->q_end[track] = 0;
+	}
+	s->serial++;
+	av_unlock(&s->lock);
+}
+
+void av_store_queue_end(struct av_store *s, int src, int track, int ended)
+{
+	struct source *so;
+
+	av_lock(&s->lock);
+	if ((so = get(s, src)) != NULL && so->queue && track >= 0 && track < so->nq)
+		so->q_end[track] = ended;
+	s->serial++;
+	av_unlock(&s->lock);
+}
+
+av_us av_store_queue_level(struct av_store *s, int src, int track, av_us now, size_t *bytes)
+{
+	struct source *so;
+	av_us level = 0;
+
+	if (bytes != NULL)
+		*bytes = 0;
+	av_lock(&s->lock);
+	if ((so = get(s, src)) != NULL && so->queue && track >= 0 && track < so->nq) {
+		const struct strack *t = &so->tr[track];
+		if (t->n > 0 && t->f[t->n - 1].dts + t->f[t->n - 1].dur > now)
+			level = t->f[t->n - 1].dts + t->f[t->n - 1].dur - now;
+		if (bytes != NULL)
+			*bytes = t->bytes;
+	}
+	av_unlock(&s->lock);
+	return level;
 }

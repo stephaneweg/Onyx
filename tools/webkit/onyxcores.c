@@ -131,6 +131,15 @@ static volatile unsigned s_serveLock;
 static void *server_main (void *arg);
 static __thread int t_worker;			// 1 on a worker (its own TLS: see above)
 
+// A side job: one job beside the batches, given by any thread of core 0 (the media player's video
+// thread: a picture decoded and converted), which waits for it. A worker takes it before a batch's
+// next job. While one is posted or runs, core 0's locks do not sleep (as during a batch).
+enum { SIDE_FREE, SIDE_POSTED, SIDE_RUNNING, SIDE_DONE };
+static struct { onyx_job_fn fn; void *arg; volatile int state; volatile int worker; } s_side;
+static volatile unsigned s_sideLock;		// one poster at a time
+static volatile int s_sideActive;
+static volatile unsigned s_sideDone;		// side jobs run on a worker (the log)
+
 static inline unsigned long long now_ns (void)
 {
 	struct timespec ts;
@@ -168,11 +177,25 @@ static void test_failure (void)
 	for (;;) kapi__pause ();
 }
 
+// The side job, if one waits (a worker).
+static void take_side (struct worker *w)
+{
+	int posted = SIDE_POSTED;
+	if (__atomic_load_n (&s_side.state, __ATOMIC_SEQ_CST) != SIDE_POSTED
+	    || !__atomic_compare_exchange_n (&s_side.state, &posted, SIDE_RUNNING, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+		return;
+	__atomic_store_n (&s_side.worker, (int) (w - s_w), __ATOMIC_SEQ_CST);
+	s_side.fn (s_side.arg);
+	__atomic_store_n (&s_side.state, SIDE_DONE, __ATOMIC_SEQ_CST);
+	__atomic_fetch_add (&s_sideDone, 1, __ATOMIC_RELAXED);
+}
+
 // Jobs taken one by one until none is left (the workers and the main thread).
 static void take_jobs (struct batch *b, struct worker *w)
 {
 	for (;;)
 	{
+		if (w) take_side (w);			// (a picture to decode does not wait for the batch's end)
 		int i = __atomic_fetch_add (&b->next, 1, __ATOMIC_SEQ_CST);
 		if (i >= b->count)
 			break;
@@ -200,6 +223,7 @@ static void worker_main (void *arg)		// on the app core
 		// busy is set before the batch is looked at and cleared after: the main thread, which takes
 		// the batch away and then waits for busy to be 0, knows nobody still reads it
 		__atomic_store_n (&w->busy, 1, __ATOMIC_SEQ_CST);
+		take_side (w);
 		struct batch *b = __atomic_load_n (&s_batch, __ATOMIC_SEQ_CST);
 		if (b)
 			take_jobs (b, w);
@@ -210,6 +234,7 @@ static void worker_main (void *arg)		// on the app core
 		{
 			unsigned g = __atomic_load_n (&s_generation, __ATOMIC_SEQ_CST);
 			if (g != seen || __atomic_load_n (&w->stop, __ATOMIC_SEQ_CST)) { seen = g; break; }
+			if (__atomic_load_n (&s_side.state, __ATOMIC_SEQ_CST) == SIDE_POSTED) break;
 			if (kapi__core () != 0)
 				__asm__ volatile ("wfe" ::: "memory");
 			else
@@ -528,6 +553,82 @@ int onyx_cores_run (onyx_job_fn fn, onyx_job_fn reset, void **args, int count, i
 	return 0;
 }
 
+// fn (arg) run on a worker, the caller (a thread of core 0, any) waiting for it -> 0 done; -1 not
+// run: no worker, another side job is there, or none took it in 30 ms (the workers are in long jobs
+// of a batch) -- the caller runs it itself; -2: the worker stopped in it (it faulted, or 2 s passed):
+// what fn was writing is in an unknown state, the cores are given up for the rest of the process's
+// life (as after a batch's failure). The caller serves the workers' kernel calls while it waits.
+int onyx_cores_offload (onyx_job_fn fn, void *arg)
+{
+	if (s_nw == 0 || s_failed || t_worker)
+		return -1;
+	if (__atomic_exchange_n (&s_sideLock, 1, __ATOMIC_ACQUIRE))
+		return -1;
+	s_side.fn = fn;
+	s_side.arg = arg;
+	__atomic_store_n (&s_sideActive, 1, __ATOMIC_SEQ_CST);
+	__atomic_store_n (&s_side.state, SIDE_POSTED, __ATOMIC_SEQ_CST);
+	__atomic_fetch_add (&s_generation, 1, __ATOMIC_SEQ_CST);
+	wake_all ();
+
+	int r = 0;
+	unsigned long long start = now_ns ();
+	for (unsigned turn = 0; ; turn++)
+	{
+		int st = __atomic_load_n (&s_side.state, __ATOMIC_SEQ_CST);
+		if (st == SIDE_DONE)
+			break;
+		serve ();
+		unsigned long long waited = now_ns () - start;
+		if (st == SIDE_POSTED && (waited > 30000000ULL || s_nw == 0 || s_failed))
+		{
+			// nobody took it: taken back (unless a worker takes it just now)
+			int posted = SIDE_POSTED;
+			if (__atomic_compare_exchange_n (&s_side.state, &posted, SIDE_FREE, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+			{
+				r = -1;
+				break;
+			}
+			continue;
+		}
+		if (st == SIDE_RUNNING)
+		{
+			struct worker *w = &s_w[__atomic_load_n (&s_side.worker, __ATOMIC_SEQ_CST)];
+			int core = w->core;
+			int faulted = core > 0 && kapi_core_state (core) == KAPI_CORE_FAULT;
+			if (faulted || core < 0 || waited > STALL_NS)
+			{
+				if (!s_failed)
+				{
+					char *p = add_str (s_why, "core ");
+					p = add_int (p, core);
+					add_str (p, faulted ? ": a side job (a picture's decoding) faulted, see the kernel's log" : ": a side job did not end in 2 s, stopped");
+				}
+				s_failed = 1;
+				if (core > 0)
+				{
+					if (__lock___malloc_recursive_mutex.count > 0 && __lock___malloc_recursive_mutex.owner == -core)
+						lock_lost ("malloc's lock");
+					kapi_core_release (core);	// (which stops it if it still runs)
+					w->core = -1;
+					__atomic_store_n (&w->busy, 0, __ATOMIC_SEQ_CST);
+				}
+				r = -2;
+				break;
+			}
+		}
+		// the first two milliseconds turn by turn with core 0's other threads, then asleep in steps
+		if (waited < 2000000ULL) sched_yield ();
+		else usleep (500);
+	}
+	__atomic_store_n (&s_side.state, SIDE_FREE, __ATOMIC_SEQ_CST);
+	__atomic_store_n (&s_sideActive, 0, __ATOMIC_SEQ_CST);
+	__atomic_store_n (&s_sideLock, 0, __ATOMIC_RELEASE);
+	return r;
+}
+
+unsigned onyx_cores_side_jobs_done (void) { return __atomic_load_n (&s_sideDone, __ATOMIC_RELAXED); }
+
 // How many jobs each worker has run since it started (the log).
 unsigned onyx_cores_jobs_done (int worker) { return worker >= 0 && worker < MAX_WORKERS ? s_w[worker].jobsDone : 0; }
 
@@ -544,14 +645,15 @@ int __real_pthread_mutex_lock (pthread_mutex_t *m);
 // 1: this entry must not sleep (a batch runs, and this is a thread of core 0, not a worker)
 static inline int must_spin (void)
 {
-	return __atomic_load_n (&s_active, __ATOMIC_RELAXED) && !t_worker;
+	return (__atomic_load_n (&s_active, __ATOMIC_RELAXED) || __atomic_load_n (&s_sideActive, __ATOMIC_RELAXED)) && !t_worker;
 }
 
 // One turn of a wait for a lock on core 0 during a batch: the main thread serves the workers'
 // kernel calls (the lock's owner may be waiting for one).
 static inline void spin_turn (void)
 {
-	if (pthread_equal (pthread_self (), s_main))
+	// (during a side job any thread serves: the server thread is not woken for those)
+	if (pthread_equal (pthread_self (), s_main) || __atomic_load_n (&s_sideActive, __ATOMIC_RELAXED))
 		serve ();
 	sched_yield ();
 }

@@ -397,6 +397,11 @@ void av__demux_reset(struct av_demux *d)
 		d->ops->reset(d, d->priv);
 }
 
+void av_demux_reset(struct av_demux *d)
+{
+	av__demux_reset(d);
+}
+
 const char *av_demux_name(const struct av_demux *d)
 {
 	if (d->name[0])

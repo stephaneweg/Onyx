@@ -129,6 +129,9 @@ void av_demux_free(struct av_demux *d);
 int av_demux_feed(struct av_demux *d, int64_t pos, const void *p, size_t n);
 /* MSE: bytes appended continue the stream whatever their file offset (a segment) */
 int av_demux_append(struct av_demux *d, const void *p, size_t n);
+/* MSE's abort() for a host with its own parser: a partial segment dropped, the tracks kept; the
+ * next bytes appended start a segment */
+void av_demux_reset(struct av_demux *d);
 /* no more bytes after those fed: the packets left come out, then AV_EOF */
 void av_demux_end(struct av_demux *d);
 /* the next packet: AV_OK, AV_AGAIN (feed from av_demux_want), AV_EOF, AV_ERR, AV_EUNSUP */
@@ -267,6 +270,23 @@ int64_t av_store_want(struct av_store *s, int src);
 /* the duration the containers give (0 unknown) */
 av_us av_store_duration(struct av_store *s);
 
+/* A queue: a source without a parser, for a host that does MSE's bookkeeping itself (WebKit: its
+ * SourceBuffer keeps the coded frames, and hands over those to decode, in decode order, a few
+ * seconds ahead of the playback position). The host defines the tracks and puts the frames; the
+ * player reads them as any source's, and drops those played. -> the source's id, or AV_EFULL */
+int av_store_add_queue(struct av_store *s);
+/* a track of the queue (t copied, its extra too; one with t's number already there: replaced --
+ * a new initialization segment) -> its index, or AV_E* */
+int av_store_queue_track(struct av_store *s, int src, const struct av_track *t);
+/* a coded frame (p's data copied; times in the presentation's timeline; dur 0: a default) */
+int av_store_queue_put(struct av_store *s, int src, int track, const struct av_packet *p);
+/* the track's frames dropped (a seek: the host puts them again from a random access point) */
+void av_store_queue_flush(struct av_store *s, int src, int track);
+/* ended 1: no frame will follow the track's last one (the stream's end); a put takes it back */
+void av_store_queue_end(struct av_store *s, int src, int track, int ended);
+/* how far the track's frames reach after `now` (0: nothing ahead), *bytes what they weigh */
+av_us av_store_queue_level(struct av_store *s, int src, int track, av_us now, size_t *bytes);
+
 /* ---- 5. the player ------------------------------------------------------------------- */
 
 /* readyState, as HTMLMediaElement's */
@@ -330,6 +350,13 @@ void av_player_kick(struct av_player *p);
 /* The host's turn (its UI thread, every ~10-30 ms while playing): the status, and the video
  * frame to show now if a new one is due (*v filled, returns 1). */
 int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_video_out *v);
+
+/* A host with another processor core for the video decoder: run (fn, arg) runs fn (arg) there and
+ * returns when it is done -> 0; -1: not possible now (the player runs fn itself); -2: it started
+ * and did not finish (the decoder is flushed: pictures are wrong until the next random access
+ * point). fn decodes a packet and converts its picture: it allocates, takes no lock of the
+ * player's, makes no system call. NULL (the default): none -- the video thread does it all. */
+void av_set_offload(int (*run)(void (*fn)(void *), void *arg));
 
 /* the time of the platform's clock (us), monotonic */
 av_us av_now(void);

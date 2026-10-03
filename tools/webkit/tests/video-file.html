@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<!-- video-file.html: <video src>, the engine's file mode (made by mkvideotests.py: edit that, not this) -->
+<html><head><meta charset="utf-8"><title>video file</title>
+<style>body{font:13px sans-serif;margin:10px} video{background:#222;margin:4px;width:288px;height:192px} pre{font:12px monospace}</style>
+</head><body>
+<video id="a" src="vp9.webm" muted playsinline></video>
+<video id="b" src="av1.mp4" muted playsinline></video>
+<video id="c" src="vp9.webm" controls muted></video>
+<pre id="out"></pre>
+<script>
+
+var out = document.getElementById('out'), failed = [];
+function say(s) { console.log('video test: ' + s); out.textContent += s + '\n'; }
+function check(ok, what) { if (!ok) failed.push(what); say((ok ? 'ok   ' : 'FAIL ') + what); }
+function finish() { say(failed.length ? 'FAIL ' + failed.join('; ') : 'PASS'); }
+window.onerror = function (m, f, l) { check(false, 'script error ' + m + ' @' + l); finish(); };
+function watch(v, name) {
+	['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked', 'ended', 'pause', 'stalled', 'durationchange', 'resize'].forEach(function (e) {
+		v.addEventListener(e, function () { say(name + ': ' + e + ' (t ' + v.currentTime.toFixed(2) + ', ready ' + v.readyState + ', ' + v.videoWidth + 'x' + v.videoHeight + ', duration ' + v.duration + ')'); });
+	});
+	v.addEventListener('error', function () { check(false, name + ': error ' + (v.error ? v.error.code + ' ' + v.error.message : '?')); });
+}
+// The picture's middle pixel, through a canvas: something was drawn
+function pixel(v) {
+	var c = document.createElement('canvas'); c.width = 96; c.height = 64;
+	var g = c.getContext('2d'); g.drawImage(v, 0, 0, 96, 64);
+	try { var d = g.getImageData(48, 32, 1, 1).data; return d[0] + ',' + d[1] + ',' + d[2] + ',' + d[3]; } catch (e) { return 'tainted'; }
+}
+function once(v, e) { return new Promise(function (ok) { v.addEventListener(e, function f() { v.removeEventListener(e, f); ok(); }); }); }
+function sleep(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+function within(p, ms, what) { return Promise.race([p, sleep(ms).then(function () { throw new Error('timeout: ' + what); })]); }
+
+say('canPlayType: webm vp9 "' + document.createElement('video').canPlayType('video/webm; codecs="vp9"') + '", mp4 av01 "'
+	+ document.createElement('video').canPlayType('video/mp4; codecs="av01.0.00M.08"') + '", mp4 avc1 "'
+	+ document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"') + '"');
+async function one(id) {
+	var v = document.getElementById(id);
+	watch(v, id);
+	if (v.readyState < 1) await within(once(v, 'loadedmetadata'), 15000, id + ' loadedmetadata');
+	check(v.videoWidth == 96 && v.videoHeight == 64, id + ': the size ' + v.videoWidth + 'x' + v.videoHeight);
+	check(v.duration > 1.9 && v.duration < 2.2, id + ': the duration ' + v.duration);
+	var t0 = performance.now();
+	await v.play();
+	await within(once(v, 'ended'), 15000, id + ' ended');
+	var took = (performance.now() - t0) / 1000;
+	check(took > 1.7 && took < 3.5, id + ': played to the end in ' + took.toFixed(2) + ' s');
+	check(v.buffered.length == 1 && v.buffered.end(0) > 1.9, id + ': buffered ' + (v.buffered.length ? v.buffered.start(0).toFixed(2) + '-' + v.buffered.end(0).toFixed(2) : 'nothing'));
+	var q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+	say(id + ': pictures ' + (q ? q.totalVideoFrames + ' decoded, ' + q.droppedVideoFrames + ' dropped' : '?') + ', the middle pixel ' + pixel(v));
+	v.currentTime = 1;
+	await within(once(v, 'seeked'), 15000, id + ' seeked');
+	check(Math.abs(v.currentTime - 1) < 0.1, id + ': after the seek, at ' + v.currentTime.toFixed(2));
+	await v.play();
+	await sleep(400);
+	v.pause();
+	check(v.currentTime > 1.05 && v.currentTime < 1.8 && v.paused, id + ': played from there, paused at ' + v.currentTime.toFixed(2));
+}
+(async function () {
+	try { await one('a'); await one('b'); } catch (e) { check(false, '' + e); }
+	finish();
+})();
+</script>
+</body></html>

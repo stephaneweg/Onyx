@@ -23,9 +23,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/wait.h>
+#include <string>
+#include <vector>
 
 int downloads_main ();				// downloads.cpp: the downloads' window (its own process)
+int console_main ();				// console.cpp: the JavaScript console's window (its own process)
 
 using namespace wtk;
 
@@ -151,6 +155,7 @@ static void glyph (Canvas &cv, int id, int x, int y, int s, unsigned ink, bool o
 static void draw_title ();
 static void show_pending_popup ();
 static void downloads_tick ();
+static void console_tick ();
 
 class WebRoot : public Root
 {
@@ -161,6 +166,7 @@ public:
 		engine_cycle ();
 		show_pending_popup ();					// (a <select>: shown outside the engine's call)
 		downloads_tick ();
+		console_tick ();
 	}
 	void onResized () override
 	{
@@ -501,6 +507,81 @@ static void on_download (int id, int event, const char *text, long long done, lo
 
 static void op_downloads () { dl_send ("\n", true); }
 
+// ---- the console: the page's messages kept here, shown by the console's window (a process of its own) -------
+//
+// The messages are kept (the last CON_KEEP) whether the window is open or not: View > Console shows
+// what the page said since it started loading. A new navigation empties them (and the window).
+// The lines to the window (console.cpp) wait in g_conOut and leave as its pipe takes them.
+
+enum { CON_KEEP = 1000 };
+static std::vector<std::string> g_conLines;		// each a line of console.cpp's protocol ("m2 where\x02text\n")
+static std::string g_conOut;
+static int g_conTo = -1, g_conFrom = -1, g_conPid;
+
+static void con_close ()
+{
+	if (g_conTo >= 0) close (g_conTo);
+	if (g_conFrom >= 0) close (g_conFrom);
+	g_conTo = g_conFrom = -1;
+	g_conPid = 0;
+	g_conOut.clear ();
+}
+
+static void on_console (int level, const char *text, const char *where)
+{
+	if (level == ENGINE_CONSOLE_CLEAR)
+	{
+		g_conLines.clear ();
+		if (g_conTo >= 0) g_conOut += "c\n";
+		return;
+	}
+	if (level < 0 || level > 4) level = 0;
+	std::string l = "m";
+	l += (char) ('0' + level);
+	l += ' ';
+	for (const char *p = where; *p; p++) if ((unsigned char) *p >= 32) l += *p;
+	l += '\x02';
+	for (const char *p = text; *p; p++)				// (one line in the pipe: the text's line ends are \x01)
+		l += *p == '\n' ? '\x01' : (unsigned char) *p < 32 ? ' ' : *p;
+	l += '\n';
+	if (g_conLines.size () >= CON_KEEP) g_conLines.erase (g_conLines.begin (), g_conLines.begin () + CON_KEEP / 4);
+	g_conLines.push_back (l);
+	if (g_conTo >= 0 && g_conOut.size () < (4u << 20)) g_conOut += l;
+}
+
+static void console_tick ()
+{
+	if (g_conTo < 0) return;
+	int st;
+	if (g_conPid > 1 && waitpid (g_conPid, &st, WNOHANG) == g_conPid) { con_close (); return; }	// (its window closed)
+	char in[64];
+	int n = (int) read (g_conFrom, in, sizeof in - 1);
+	if (n > 0)
+	{
+		in[n] = 0;
+		if (strstr (in, "clear")) g_conLines.clear ();		// (its Clear button)
+	}
+	while (!g_conOut.empty ())
+	{
+		size_t chunk = g_conOut.size () < 2048 ? g_conOut.size () : 2048;
+		int w = (int) write (g_conTo, g_conOut.data (), chunk);
+		if (w > 0) { g_conOut.erase (0, (size_t) w); continue; }
+		if (w < 0 && errno != EAGAIN && errno != EWOULDBLOCK) con_close ();	// (its window was closed)
+		break;							// (the pipe is full: the rest at the next tick)
+	}
+}
+
+// View > Console: the window, with what the page said so far; to the front when it is there.
+static void op_console ()
+{
+	if (g_conTo >= 0) { g_conOut += "\n"; return; }
+	if (!(g_conPid = engine_spawn_self ("--onyx-console", &g_conTo, &g_conFrom))) { g_conTo = g_conFrom = -1; return; }
+	fcntl (g_conTo, F_SETFL, fcntl (g_conTo, F_GETFL) | O_NONBLOCK);
+	fcntl (g_conFrom, F_SETFL, fcntl (g_conFrom, F_GETFL) | O_NONBLOCK);
+	g_conOut.clear ();
+	for (size_t i = 0; i < g_conLines.size (); i++) g_conOut += g_conLines[i];
+}
+
 // ---- the right click's menu ---------------------------------------------------------------------------------
 
 // A link's or an image's address -> a file name for Save As (the last part of its path).
@@ -681,12 +762,13 @@ static void on_key_not_handled (long k, unsigned mods)
 	else if (k == 27 && g_loading) engine_stop ();
 	else if (k == KEY_F1 + 4) op_reload ();				// F5
 	else if (k == KEY_F1 + 5) op_location ();			// F6
+	else if (k == KEY_F1 + 11) op_console ();			// F12
 }
 
 static const EngineClient s_client = {
 	on_needs_display, on_title, on_url, on_loading, on_history, on_status, on_open_window,
 	on_load_failed, on_process_ended, on_alert, on_confirm, on_key_not_handled,
-	on_show_popup, on_hide_popup, on_find_result, on_download,
+	on_show_popup, on_hide_popup, on_find_result, on_download, on_console,
 };
 
 // ---- the commands ------------------------------------------------------------------------------------------
@@ -733,6 +815,8 @@ int main (int argc, char **argv)
 		return engine_auxiliary_main (argc, argv);
 	if (argc > 1 && !strcmp (argv[1], "--onyx-downloads"))	// the downloads' window
 		return downloads_main ();
+	if (argc > 1 && !strcmp (argv[1], "--onyx-console"))	// the JavaScript console's window
+		return console_main ();
 	if (argc > 1 && !strcmp (argv[1], "--applet"))		// a web view in another program's window (Mail)
 	{
 		extern int webview_main (int, char **);
@@ -827,6 +911,8 @@ int main (int argc, char **argv)
 	menu.item ("Zoom In", "", 0, op_zoom_in);
 	menu.item ("Zoom Out", "", 0, op_zoom_out);
 	menu.item ("Actual Size", "", 0, op_zoom_reset);
+	menu.separator ();
+	menu.item ("Console", "F12", 0, op_console);
 	menu.menu ("Go");
 	menu.item ("Back", "Alt+Left", 0, op_back);
 	menu.item ("Forward", "Alt+Right", 0, op_forward);

@@ -12,6 +12,8 @@
 #include <circle/sched/task.h>
 #include <circle/util.h>		// memcpy
 #include <kern/uaccess.h>		// the app's pointers (the kapis below)
+#include <kern/iowait.h>		// a blocking mailbox_recv sleeps on the I/O generation
+#include <kern/kapi_abi.h>		// KAPI_WAIT_FOREVER
 
 // ---- CMailbox --------------------------------------------------------------
 CMailbox::CMailbox (void)
@@ -42,6 +44,7 @@ boolean CMailbox::Push (unsigned nFromPid, int nType, const void *pData, unsigne
 	}
 	m_nHead = nNext;
 	m_Lock.Release ();
+	IoWake ();				// (a receiver asleep in mailbox_recv: kapi_mailbox_recv)
 	return TRUE;
 }
 
@@ -308,6 +311,7 @@ extern "C" int kapi_mailbox_recv (int *pFromPid, int *pType, void *pBuf, unsigne
 	TMailMsg Msg;
 	for (;;)
 	{
+		u32 nGen = IoGen ();			// (taken before the look: a Push after it changes it)
 		if (pMb->Pop (&Msg))
 		{
 			if (pFromPid != 0) UserPut (pFromPid, (int) Msg.from_pid);
@@ -321,6 +325,10 @@ extern "C" int kapi_mailbox_recv (int *pFromPid, int *pType, void *pBuf, unsigne
 		{
 			return -1;			// empty (non-blocking) / no scheduler
 		}
-		CScheduler::Get ()->Yield ();		// block: hand the CPU over until a message lands
+		// Asleep until a message lands (CMailbox::Push wakes the I/O waiters). It was a Yield:
+		// the receiver stayed ready and took a turn of the processor at every round of the
+		// scheduler -- clipd, the one service that waits this way, held most of core 0 for
+		// ever (state R, no system call: seen on the Pi, every program four times slower).
+		IoWait (nGen, KAPI_WAIT_FOREVER);
 	}
 }

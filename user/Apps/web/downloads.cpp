@@ -179,6 +179,7 @@ public:
 int downloads_main ()
 {
 	fcntl (0, F_SETFL, fcntl (0, F_GETFL) | O_NONBLOCK);
+	fcntl (1, F_SETFL, fcntl (1, F_GETFL) | O_NONBLOCK);		// (a browser that no longer reads never holds this window)
 	int sw = 1920, sh = 1080;
 	kapi_screen_size (&sw, &sh);
 	int h = 4 * ROW_H + 2 * PAD;

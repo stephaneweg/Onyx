@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Fri, 2 Oct 2026 22:33:03 +0200
-Subject: [PATCH 11/20] Onyx: PAL and WebCore build (step 2 of the port): Skia
+Subject: [PATCH 11/22] Onyx: PAL and WebCore build (step 2 of the port): Skia
  on the CPU, no GL, curl, the Adwaita theme
 
 What:

@@ -1,0 +1,147 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 22:10:47 +0200
+Subject: [PATCH 21/22] [Onyx] The pages' console for the embedder: every
+ console message sent to the UI process (WKSetConsoleMessageCallbackOnyx), the
+ console API's with all their arguments
+
+---
+ Source/WebCore/page/FrameConsoleClient.cpp    |  7 +++++++
+ .../API/C/onyx/WKPagePrivateOnyx.cpp          | 19 +++++++++++++++++++
+ .../UIProcess/API/C/onyx/WKPagePrivateOnyx.h  |  9 +++++++++
+ Source/WebKit/UIProcess/WebPageProxy.h        |  3 +++
+ .../WebKit/UIProcess/WebPageProxy.messages.in |  4 ++++
+ .../UIProcess/onyx/WebPageProxyOnyx.cpp       |  9 +++++++++
+ .../WebCoreSupport/WebChromeClient.cpp        |  5 +++++
+ 7 files changed, 56 insertions(+)
+
+diff --git a/Source/WebCore/page/FrameConsoleClient.cpp b/Source/WebCore/page/FrameConsoleClient.cpp
+index b7f32f82..241db7b5 100644
+--- a/Source/WebCore/page/FrameConsoleClient.cpp
++++ b/Source/WebCore/page/FrameConsoleClient.cpp
+@@ -239,7 +239,14 @@ void FrameConsoleClient::messageWithTypeAndLevel(MessageType type, MessageLevel
+         return;
+ 
+     if (arguments->argumentCount()) {
++#if PLATFORM(ONYX)
++        // Onyx's console window (the embedder's, fed by the chrome client) shows a message whole:
++        // all its arguments, as a console prints them, not the first one alone.
++        auto allArguments = arguments->getArgumentsAsStrings();
++        page->chrome().client().addMessageToConsole(MessageSource::ConsoleAPI, level, allArguments.size() > 1 ? makeStringByJoining(allArguments.span(), " "_s) : messageText, lineNumber, columnNumber, url);
++#else
+         page->chrome().client().addMessageToConsole(MessageSource::ConsoleAPI, level, messageText, lineNumber, columnNumber, url);
++#endif
+ 
+         if (RefPtr consoleMessageListener = page->consoleMessageListenerForTesting())
+             consoleMessageListener->invoke(messageText);
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
+index 9ecb2a49..6a48102a 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
+@@ -155,6 +155,25 @@ void WKSetClipboardCallbacksOnyx(WKClipboardWriteTextOnyx write, WKClipboardRead
+     WebCore::setOnyxSystemClipboard(write, read, serial);
+ }
+ 
++static WKConsoleMessageOnyx s_consoleMessageCallback;
++
++void WKSetConsoleMessageCallbackOnyx(WKConsoleMessageOnyx callback)
++{
++    s_consoleMessageCallback = callback;
++}
++
++namespace WebKit {
++// (called by WebPageProxy::onyxConsoleMessage, UIProcess/onyx/WebPageProxyOnyx.cpp; level is
++// JSC::MessageLevel, whose values kWKConsole*Onyx repeat)
++void onyxDispatchConsoleMessage(WebPageProxy&, uint8_t level, const String& message, uint32_t lineNumber, uint32_t columnNumber, const String& sourceURL);
++void onyxDispatchConsoleMessage(WebPageProxy& page, uint8_t level, const String& message, uint32_t lineNumber, uint32_t columnNumber, const String& sourceURL)
++{
++    if (!s_consoleMessageCallback)
++        return;
++    s_consoleMessageCallback(toAPI(&page), level, reinterpret_cast<const char*>(message.utf8().data()), reinterpret_cast<const char*>(sourceURL.utf8().data()), lineNumber, columnNumber);
++}
++}
++
+ // The Referer a link followed from the page would carry, by the default policy
+ // (strict-origin-when-cross-origin): the page's address on the same origin, its origin elsewhere, none
+ // from https to http.
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
+index 5a787219..514ef31d 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
+@@ -76,6 +76,15 @@ typedef void (*WKPageDownloadStartedOnyx)(WKDownloadRef download, const void* co
+    the download could not start. */
+ WK_EXPORT void WKPageDownloadURLOnyx(WKPageRef page, WKURLRef url, const void* context, WKPageDownloadStartedOnyx started);
+ 
++/* The pages' console, for the embedder's console window: every message a page's console takes (the
++   console API with all its arguments, the script errors nobody caught, the engine's own warnings),
++   from any frame of the page. level: kWKConsole*Onyx. message and sourceURL: UTF-8, NUL-terminated,
++   valid during the call (a long message comes cut at 4096 characters); sourceURL may be empty and
++   line / column 0 when the message has no place in a source. Called on the UI thread. NULL: none. */
++enum { kWKConsoleLogOnyx = 0, kWKConsoleWarningOnyx = 1, kWKConsoleErrorOnyx = 2, kWKConsoleDebugOnyx = 3, kWKConsoleInfoOnyx = 4 };
++typedef void (*WKConsoleMessageOnyx)(WKPageRef page, int level, const char* message, const char* sourceURL, unsigned line, unsigned column);
++WK_EXPORT void WKSetConsoleMessageCallbackOnyx(WKConsoleMessageOnyx callback);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.h b/Source/WebKit/UIProcess/WebPageProxy.h
+index 36cb7077..4c2e9b44 100644
+--- a/Source/WebKit/UIProcess/WebPageProxy.h
++++ b/Source/WebKit/UIProcess/WebPageProxy.h
+@@ -3127,6 +3127,9 @@ public:
+ private:
+     WebPageProxy(PageClient&, WebProcessProxy&, Ref<API::PageConfiguration>&&);
+     void platformInitialize();
++#if PLATFORM(ONYX)
++    void onyxConsoleMessage(uint8_t level, String&& message, uint32_t lineNumber, uint32_t columnNumber, String&& sourceURL);
++#endif
+ 
+     void sendCORSDisablingPatternsToNetworkProcessIfNecessary();
+ 
+diff --git a/Source/WebKit/UIProcess/WebPageProxy.messages.in b/Source/WebKit/UIProcess/WebPageProxy.messages.in
+index 9e574efd..634e9f67 100644
+--- a/Source/WebKit/UIProcess/WebPageProxy.messages.in
++++ b/Source/WebKit/UIProcess/WebPageProxy.messages.in
+@@ -708,4 +708,8 @@ messages -> WebPageProxy {
+     DidCacheBackForwardItem(WebCore::BackForwardItemIdentifier itemID) -> (bool success)
+     DidEvictBackForwardItem(WebCore::BackForwardItemIdentifier itemID)
+     DidTakeBackForwardItemForRestoration(WebCore::BackForwardItemIdentifier itemID)
++
++#if PLATFORM(ONYX)
++    OnyxConsoleMessage(uint8_t level, String message, uint32_t lineNumber, uint32_t columnNumber, String sourceURL)
++#endif
+ }
+diff --git a/Source/WebKit/UIProcess/onyx/WebPageProxyOnyx.cpp b/Source/WebKit/UIProcess/onyx/WebPageProxyOnyx.cpp
+index 11158124..9e9344fd 100644
+--- a/Source/WebKit/UIProcess/onyx/WebPageProxyOnyx.cpp
++++ b/Source/WebKit/UIProcess/onyx/WebPageProxyOnyx.cpp
+@@ -64,4 +64,13 @@ void WebPageProxy::didUpdateEditorState(const EditorState&, const EditorState&)
+ {
+ }
+ 
++// A message of the page's console (WebChromeClient::addMessageToConsole in the web process), for
++// the embedder's console window: WKSetConsoleMessageCallbackOnyx (WKPagePrivateOnyx.cpp).
++void onyxDispatchConsoleMessage(WebPageProxy&, uint8_t level, const String& message, uint32_t lineNumber, uint32_t columnNumber, const String& sourceURL);
++
++void WebPageProxy::onyxConsoleMessage(uint8_t level, String&& message, uint32_t lineNumber, uint32_t columnNumber, String&& sourceURL)
++{
++    onyxDispatchConsoleMessage(*this, level, message, lineNumber, columnNumber, sourceURL);
++}
++
+ } // namespace WebKit
+diff --git a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp
+index 2e038b58..f1944169 100644
+--- a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp
++++ b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp
+@@ -522,6 +522,11 @@ void WebChromeClient::addMessageToConsole(MessageSource source, MessageLevel lev
+     page->injectedBundleUIClient().willAddMessageToConsole(page.get(), source, level, message, lineNumber, columnNumber, sourceID);
+ #endif
+ 
++#if PLATFORM(ONYX)
++    // The embedder's console window (WKSetConsoleMessageCallbackOnyx): every message, a long one cut.
++    page->send(Messages::WebPageProxy::OnyxConsoleMessage(static_cast<uint8_t>(level), message.left(4096), lineNumber, columnNumber, sourceID.left(1024)));
++#endif
++
+     if (!page->shouldSendConsoleLogsToUIProcessForTesting())
+         return;
+     page->send(Messages::WebPageProxy::AddMessageToConsoleForTesting(message.length() > String::MaxLength / 2 ? "Out of memory"_s : message), IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);

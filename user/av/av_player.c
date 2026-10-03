@@ -108,9 +108,20 @@ av_us av_now(void)
 	return av_os_now_us();
 }
 
+static int (*s_offload)(void (*fn)(void *), void *arg);
+
+void av_set_offload(int (*run)(void (*fn)(void *), void *arg))
+{
+	s_offload = run;
+}
+
 /* ---- the kapi's sound output --------------------------------------------------------------- */
 
-#ifndef AV_POSIX
+/* (AV_KAPI_SOUND: a POSIX program on Onyx -- Web, whose threads are pthreads: the sound is still the kernel's) */
+#if defined(AV_POSIX) && defined(AV_KAPI_SOUND)
+#include "kapi.h"
+#endif
+#if !defined(AV_POSIX) || defined(AV_KAPI_SOUND)
 static unsigned k_cap, k_lat;
 static int k_open(void *c, int *rate)
 {
@@ -510,6 +521,77 @@ static int video_frame(struct av_player *p, const struct av_frame *f, unsigned s
 	return 0;
 }
 
+/* A packet decoded and its first picture converted into a slot reserved for it: the part of the
+ * video thread's work that may run on another core (av_set_offload). No lock, no nap. */
+struct vjob {
+	struct av_player *p;
+	const struct av_packet *pk;
+	struct vslot *slot;
+	av_us skip;			/* pictures before this are not converted (a seek) */
+	int sent, got, converted;
+	struct av_frame f;		/* (its planes are the decoder's: read before the next call) */
+};
+
+static void video_job(void *arg)
+{
+	struct vjob *j = (struct vjob *) arg;
+	struct vslot *v = j->slot;
+
+	j->got = j->converted = 0;
+	j->sent = av_decoder_send(j->p->vdec, j->pk);
+	if (j->sent != AV_OK)
+		return;
+	j->got = av_decoder_receive(j->p->vdec, &j->f) == AV_OK;
+	if (!j->got || j->f.width <= 0 || j->f.height <= 0)
+		return;
+	if (j->f.pts + (j->f.dur > 0 ? j->f.dur : 1) <= j->skip)
+		return;
+	if (v->px == NULL || v->w != j->f.width || v->h != j->f.height) {
+		free(v->px);
+		v->px = (uint8_t *) malloc((size_t) j->f.width * j->f.height * 4);
+		v->w = j->f.width;
+		v->h = j->f.height;
+	}
+	if (v->px == NULL)
+		return;
+	av_yuv_to_rgb(&j->f, v->px, j->f.width * 4, j->p->out_pix);
+	j->converted = 1;
+}
+
+/* the job's picture: shown later (its slot made ready), or dropped (its slot freed) */
+static void video_job_frame(struct av_player *p, struct vjob *j, unsigned seek)
+{
+	struct vslot *v = j->slot;
+	const struct av_frame *f = &j->f;
+	int keep = j->got && j->converted, first;
+	av_us now;
+
+	av_lock(&p->lock);
+	if (keep) {
+		now = clock_now(p);
+		first = !p->shown_since_seek && p->slot[0].state != SLOT_READY && p->slot[1].state != SLOT_READY &&
+			p->slot[2].state != SLOT_READY && p->slot[3].state != SLOT_READY;
+		if (p->clock_running && !first && f->pts + (f->dur > 0 ? f->dur : 33333) < now) {
+			p->dropped++;		/* late */
+			keep = 0;
+		}
+	}
+	if (keep) {
+		v->pts = f->pts;
+		v->dur = f->dur > 0 ? f->dur : 33333;
+		v->serial = ++p->serial;
+		v->seek = seek;
+		v->state = SLOT_READY;
+		if (p->width == 0 || p->width != f->width || p->height != f->height) {
+			p->width = f->width;
+			p->height = f->height;
+		}
+	} else {
+		v->state = SLOT_FREE;
+	}
+	av_unlock(&p->lock);
+}
+
 static int video_main(void *arg)
 {
 	struct av_player *p = (struct av_player *) arg;
@@ -548,7 +630,7 @@ static int video_main(void *arg)
 		r = free_slot(p) >= 0;
 		av_unlock(&p->lock);
 		if (!r) {
-			av_sleep_ms(3);
+			av_sleep_ms(s_offload != NULL ? 1 : 3);
 			continue;
 		}
 		av__store_lock(p->store);
@@ -578,10 +660,53 @@ static int video_main(void *arg)
 		p->v_first = 0;
 		p->v_next = pk.dts;
 		t0 = av_now();
-		r = av_decoder_send(p->vdec, &pk);
-		av_pkt_free(&pk);
-		if (r != AV_OK)
-			continue;
+		{
+			/* the packet decoded and its picture converted into a slot taken now: on the host's
+			 * other core when it has one, else here */
+			struct vjob j;
+			int s, how;
+
+			av_lock(&p->lock);
+			s = free_slot(p);
+			if (s >= 0)
+				p->slot[s].state = SLOT_BUSY;
+			av_unlock(&p->lock);
+			if (s < 0) {		/* (never: this thread alone takes slots) */
+				av_pkt_free(&pk);
+				continue;
+			}
+			memset(&j, 0, sizeof j);
+			j.p = p;
+			j.pk = &pk;
+			j.slot = &p->slot[s];
+			j.skip = p->v_skip;
+			how = s_offload != NULL ? s_offload(video_job, &j) : -1;
+			if (how == -1)
+				video_job(&j);
+			av_pkt_free(&pk);
+			if (how == -2) {
+				/* the other core stopped in it: the decoder starts again (wrong pictures until
+				 * the next random access point) */
+				av_decoder_flush(p->vdec);
+				av_lock(&p->lock);
+				p->slot[s].state = SLOT_FREE;
+				av_unlock(&p->lock);
+				continue;
+			}
+			if (j.got) {
+				av_us dt = av_now() - t0;
+				av_lock(&p->lock);
+				p->decoded++;
+				p->dec_sum += dt;
+				p->dec_n++;
+				av_unlock(&p->lock);
+			}
+			video_job_frame(p, &j, seek);
+			if (j.sent != AV_OK)
+				continue;
+			t0 = av_now();
+		}
+		/* (a packet that holds more pictures than one: the others, here) */
 		while (av_decoder_receive(p->vdec, &f) == AV_OK) {
 			av_us dt = av_now() - t0;
 			av_lock(&p->lock);
@@ -841,7 +966,7 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 {
 	int i, best = -1, shown = -1, got = 0;
 	av_us now, ahead, dur, end;
-	int has_init, ended_store;
+	int has_init, ended_store, v_there, a_there;
 
 	memset(st, 0, sizeof *st);
 	st->want = -1;
@@ -853,9 +978,11 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 		has_init = av__store_pick(p->store, AV_VIDEO, &s, &t, &info) ||
 			av__store_pick(p->store, AV_AUDIO, &s, &t, &info);
 		ended_store = 1;
-		if (av__store_pick(p->store, AV_VIDEO, &s, &t, &info) && !av__store_ended(p->store, s))
+		v_there = av__store_pick(p->store, AV_VIDEO, &s, &t, &info);
+		if (v_there && !av__store_ended(p->store, s))
 			ended_store = 0;
-		if (av__store_pick(p->store, AV_AUDIO, &s, &t, &info) && !av__store_ended(p->store, s))
+		a_there = av__store_pick(p->store, AV_AUDIO, &s, &t, &info);
+		if (a_there && !av__store_ended(p->store, s))
 			ended_store = 0;
 	}
 	av_lock(&p->lock);
@@ -863,8 +990,7 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 	av_unlock(&p->lock);
 	av__store_set_now(p->store, now);
 	ahead = av__store_ahead(p->store, now);
-	if (p->file_src >= 0 || av__store_is_file(p->store, 0))
-		av__store_trim(p->store, now - 10 * AV_US);
+	av__store_trim(p->store, now - 10 * AV_US);	/* (a file's and a queue's frames: MSE's stay) */
 	av__store_unlock(p->store);
 	dur = p->duration_set > 0 ? p->duration_set : av_store_duration(p->store);
 	if (p->file_src < 0 && av__store_is_file(p->store, 0))
@@ -965,7 +1091,8 @@ int av_player_poll(struct av_player *p, struct av_player_status *st, struct av_v
 	st->decode_us = p->dec_n ? p->dec_sum / p->dec_n : 0;
 	st->sync_us = p->sync_n ? p->sync_sum / p->sync_n : 0;
 	st->error = p->error;
-	if (!has_init)
+	/* (a track the threads have not taken yet: nothing is known of it -- its size, whether it decodes) */
+	if (!has_init || (v_there && !p->has_video) || (a_there && !p->has_audio))
 		st->ready = AV_HAVE_NOTHING;
 	else if (p->seeking || (p->has_video && !p->shown_since_seek && !got))
 		st->ready = AV_HAVE_METADATA;

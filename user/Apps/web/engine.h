@@ -36,7 +36,14 @@ struct EngineClient
 	void (*findResult) (int matches);			// after engine_find: the matches (0: none)
 	// A download: ENGINE_DL_* events, its id, its file (path; for FAILED: why), the bytes.
 	void (*download) (int id, int event, const char *text, long long done, long long total);
+	// A message of the page's console: its level (ENGINE_CONSOLE_*), its text (UTF-8, may hold line
+	// ends), its place ("file:line:column", "" none). ENGINE_CONSOLE_CLEAR: a new page starts
+	// loading, the console starts again.
+	void (*console) (int level, const char *text, const char *where);
 };
+
+enum { ENGINE_CONSOLE_CLEAR = -1, ENGINE_CONSOLE_LOG = 0, ENGINE_CONSOLE_WARNING, ENGINE_CONSOLE_ERROR,
+       ENGINE_CONSOLE_DEBUG, ENGINE_CONSOLE_INFO };
 
 enum { ENGINE_ITEM_ENABLED = 1, ENGINE_ITEM_SEPARATOR = 2, ENGINE_ITEM_LABEL = 4 };
 enum { ENGINE_DL_STARTED, ENGINE_DL_PROGRESS, ENGINE_DL_FINISHED, ENGINE_DL_FAILED, ENGINE_DL_CANCELLED };

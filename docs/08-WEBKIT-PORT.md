@@ -404,8 +404,7 @@ write into a pipe whose read end it had given as a child's stdin and then closed
 the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). Web also serves Mail as its HTML view
 (`--applet`, `user/Apps/web/webview.cpp`; docs/03 *Web's web view*).
 
-Not there yet (the next work of step 1): the pointer's shape (no kapi for it), AltGr on the Onyx
-keyboard (to check), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,
+Not there yet (the next work of step 1): the pointer's shape (no kapi for it), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,
 the measurements of where kotonstudio.com's 3.2 s go.
 
 ## The JIT (roadmap step 3, 2026-10-03)
@@ -543,6 +542,77 @@ core and **fail the test on any kernel call**).
   block newlib did not make) has its cause — `skmallocsize.c` was the cure of a symptom, kept. A
   hosted program now defines `ONYX_HOSTED_NEW` (`build-web.sh`): newlib's malloc everywhere,
   checked at the link (no weak `malloc`, no `umm__*`).
+
+## Media: video and sound (roadmap step 4, begun 2026-10-03)
+
+`ENABLE_VIDEO` and `ENABLE_MEDIA_SOURCE` are on (`OptionsOnyx.cmake`; Web Audio is not yet). What
+made it urgent: **YouTube's application stops at its first line without `HTMLVideoElement`**
+(`ReferenceError: Can't find variable: HTMLVideoElement` in its main script — the page stays its grey
+skeleton); with the interface there the pages draw, and the videos play.
+
+**The engine is Onyx's own media library** (`user/av`, docs/03 *The media library*: the demuxers,
+libvpx / dav1d / opus, a player with the sound as the clock), not GStreamer:
+
+- `platform/graphics/onyx/MediaPlayerPrivateOnyx.{h,cpp}` — one class for the two ways a page
+  gives media, registered in `MediaPlayer.cpp` (`MediaEngineIdentifier::Onyx`). It owns an
+  `av_player`, polls it from a main-thread timer (12 ms while pictures may be due, 60 ms otherwise):
+  the state (ready, time, duration, ended, a seek's end), and the picture due now — the player's
+  32-bit pixels (B, G, R, A: Skia's N32 in Onyx's build) copied into an `SkImage`, painted by
+  `paint()` (the software path: the compositor takes it in the element's tiles).
+  - **A file** (`src=`): fetched through the page's `PlatformMediaResourceLoader` and fed to the
+    player's store where its demuxer wants bytes (`av_store_feed` / `av_store_want`), with Range
+    requests: an MP4's index at its end, a seek, and the request stopped 30 s of media ahead of the
+    playback position, started again under 15 s. The container is read from the first 4 KB
+    (`av_probe`), not from the server's type.
+  - **Media Source** (`MediaSourcePrivateOnyx.{h,cpp}`: `MediaSourcePrivateOnyx`,
+    `SourceBufferPrivateOnyx`): WebCore does MSE's bookkeeping (`SourceBufferPrivate`, `TrackBuffer`:
+    the coded frames, the buffered ranges, removal, eviction). The buffer parses what is appended
+    with one of the library's demuxers (`av_demux_append` / `av_demux_read`; an initialization
+    segment → the tracks told to WebCore), wraps each packet in a `MediaSample`, and puts the
+    samples WebCore *enqueues* (in decode order, about 3 s ahead of the playback position:
+    `isReadyForMoreSamples`) into **a queue of the player's store** — `av_store_add_queue`, a
+    source without a parser, added to the library for this (`av_store_queue_track / _put / _flush /
+    _end / _level`; its test: `avtest.c`'s `test_player_queue`). A seek: `waitForTarget`, the
+    queues flushed and filled again from the random access point (`reenqueueMediaForTime`), then
+    `av_player_seek`.
+- **What plays**: VP8, VP9, AV1, Opus, FLAC, MP3, PCM, in WebM, MP4 (fragmented too), WAV, FLAC,
+  MP3 files. **No H.264, no AAC**: the vendored FFmpeg is a GPL build (the Media Player's); Web is
+  LGPL and stays so (`docs/LICENSING.md`) — an LGPL build of FFmpeg's decoders is the way, if wanted.
+  YouTube serves VP9 + Opus when H.264 is refused. `canPlayType`, `MediaSource.isTypeSupported` and
+  `navigator.mediaCapabilities.decodingInfo` (`smooth`) answer with `av_type_supported`: the sizes
+  the Pi decodes in real time (VP9 up to 480p), so that a player picks a stream it can show.
+- **The sound** is the kernel's output (one owner: the first player that plays is heard, the others
+  run silent on the wall clock). **The video decoder runs on an app core** when the system has one
+  free (core 2; the network has core 3): `onyxcores.c` has a *side job* beside the raster batches
+  (`onyx_cores_offload`: one job, taken by a worker before a batch's next job, its poster waiting)
+  and the library a hook for it (`av_set_offload`: a packet decoded and its picture converted in
+  one job); without a core (an emulator runs), on the player's own thread, as before.
+- **Linked**: `tools/webkit/av.mk` builds `libonyxav.a` (user/av, `-DAV_POSIX -DAV_KAPI_SOUND`,
+  with libvpx, dav1d, opus) for the POSIX toolchain; `build-web.sh` adds it.
+- **Tests**: `tools/webkit/tests/video-file.html` and `video-mse.html` (made by
+  `mkvideotests.py` from `tools/tests/av/clips`): each ends with `video test: PASS` in the console.
+  The engine's lines in `kmsg`: `web: media: ...` (a source buffer's tracks; every 5 s, the time,
+  the size, pictures decoded / dropped, the time a picture takes, how many went to the app core).
+- **Not there**: Web Audio, the picture as a compositor layer of its own (a YUV texture: today the
+  frame goes through the tiles), full screen, H.264 / AAC, captions.
+
+**The console.** WebKit's Onyx port sends every console message to the UI process
+(`WebPageProxy::OnyxConsoleMessage`, from `WebChromeClient::addMessageToConsole`; the console API's
+messages with all their arguments: `FrameConsoleClient.cpp`), and the embedder gets them through
+`WKSetConsoleMessageCallbackOnyx` (`WKPagePrivateOnyx.h`). Web keeps the last 1000 and shows them in
+its Console window (View ▸ Console, F12: `user/Apps/web/console.cpp`, a process of its own as the
+downloads' window; emptied at each navigation). Two files for whoever debugs a site:
+`SD:/etc/web-console` (the console in `kmsg` too) and `SD:/etc/web-probe.js` (a script run in every
+page before its own: `tools/webkit/tests/probe.js` reports errors, failed resources and the
+document's state — how the `HTMLVideoElement` error was found).
+
+**A finding on the way: every program ran four times slower.** `clipd` — the clipboard's service —
+waits for its messages with `kapi_mailbox_recv (..., blocking)`, and the kernel's blocking receive
+was a loop of `Yield`: the receiver stayed ready and took a turn of core 0 at every round. On the
+Pi `ps` showed it `R` with no system call, and `tools/webkit/tests/mbench.c` (malloc, sbrk, page
+faults timed as the heap grows) showed steps of exactly 60 ms in what takes 13: about 80 % of
+core 0 gone. The receive now sleeps on the I/O generation (`IoWait`; `CMailbox::Push` calls
+`IoWake`: `kernel/sys/ipc.cpp`). Measure any slowness of the browser again after this.
 
 ## The roadmap from here (the user, 2026-10-02)
 

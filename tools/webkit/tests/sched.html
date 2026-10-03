@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<!-- sched.html: how fast the page's event loop turns and how fast its scripts run -- what a web
+     application made of thousands of small tasks (YouTube) lives on. Each line: the measure, and what
+     a desktop browser gives for it. On the page and in the console ("sched: ..."). -->
+<html><head><meta charset="utf-8"><title>sched</title>
+<style>body{font:14px sans-serif;margin:12px} pre{font:13px monospace}</style></head><body>
+<pre id="out"></pre>
+<script>
+var out = document.getElementById('out');
+function say(s) { console.log('sched: ' + s); out.textContent += s + '\n'; }
+function now() { return performance.now(); }
+function chain(n, post) {			// n tasks one after the other -> the time for all
+	return new Promise(function (ok) {
+		var t0 = now(), i = 0;
+		(function step() { if (++i > n) ok(now() - t0); else post(step); })();
+	});
+}
+function messageChannel() {
+	var c = new MessageChannel(), cb = null;
+	c.port1.onmessage = function () { var f = cb; cb = null; f(); };
+	return function (f) { cb = f; c.port2.postMessage(0); };
+}
+function windowMessage() {
+	var cb = null;
+	addEventListener('message', function (e) { if (e.data === 'sched' && cb) { var f = cb; cb = null; f(); } });
+	return function (f) { cb = f; postMessage('sched', '*'); };
+}
+function cpu() {
+	var t0 = now(), s = 0, o = [];
+	for (var i = 0; i < 3000000; i++) { s += (i * 7) % 13; if ((i & 1023) == 0) o.push({a: i, b: 'x' + i}); }
+	var t1 = now();
+	var json = JSON.stringify(o), big = '';
+	for (var k = 0; k < 40; k++) big += json;
+	var t2 = now();
+	for (var k = 0; k < 5; k++) JSON.parse('[' + json + ',' + json + ',' + json + ']');
+	var t3 = now();
+	var m = new Map(), str = '';
+	for (var i = 0; i < 200000; i++) { m.set('k' + i, i); if (i % 50 == 0) str += i.toString(36); }
+	var hit = 0; for (var i = 0; i < 200000; i++) hit += m.get('k' + i) & 1;
+	var t4 = now();
+	// what a framework does: many small closures and objects, called through
+	function mk(i) { return function (x) { return {v: x + i, f: function () { return this.v * 2; }}; }; }
+	var fs = []; for (var i = 0; i < 2000; i++) fs.push(mk(i));
+	var acc = 0; for (var r = 0; r < 200; r++) for (var i = 0; i < 2000; i++) acc += fs[i](r).f();
+	var t5 = now();
+	var d = document.createElement('div'); document.body.appendChild(d);
+	for (var i = 0; i < 3000; i++) { var e = document.createElement('span'); e.className = 'c' + (i % 7); e.textContent = 'n' + i; d.appendChild(e); }
+	var h = d.offsetHeight; d.remove();
+	var t6 = now();
+	return [t1 - t0, t3 - t2, t4 - t3, t5 - t4, t6 - t5];
+}
+(async function () {
+	say('start at ' + now().toFixed(0) + ' ms after the navigation');
+	var c = cpu();
+	say('cpu: loop 3M ' + c[0].toFixed(0) + ' ms (desktop ~15), JSON.parse ' + c[1].toFixed(0) + ' ms (~8), Map 200k ' + c[2].toFixed(0) + ' ms (~40), closures 400k ' + c[3].toFixed(0) + ' ms (~10), DOM 3000 nodes + layout ' + c[4].toFixed(0) + ' ms (~15)');
+	c = cpu();
+	say('cpu again (compiled): loop ' + c[0].toFixed(0) + ', JSON.parse ' + c[1].toFixed(0) + ', Map ' + c[2].toFixed(0) + ', closures ' + c[3].toFixed(0) + ', DOM ' + c[4].toFixed(0) + ' ms');
+	var t;
+	t = await chain(2000, function (f) { Promise.resolve().then(f); });
+	say('2000 promise microtasks: ' + t.toFixed(1) + ' ms (desktop < 2)');
+	t = await chain(1000, messageChannel());
+	say('1000 MessageChannel tasks: ' + t.toFixed(0) + ' ms, ' + (t / 1000).toFixed(2) + ' ms each (desktop ~0.01-0.05)');
+	t = await chain(1000, windowMessage());
+	say('1000 window.postMessage tasks: ' + t.toFixed(0) + ' ms, ' + (t / 1000).toFixed(2) + ' ms each (desktop ~0.02-0.1)');
+	t = await chain(100, function (f) { setTimeout(f, 0); });
+	say('100 setTimeout(0) in a chain: ' + t.toFixed(0) + ' ms, ' + (t / 100).toFixed(1) + ' ms each (desktop ~4: the nested clamp)');
+	t = await chain(60, function (f) { requestAnimationFrame(f); });
+	say('60 requestAnimationFrame: ' + t.toFixed(0) + ' ms, ' + (t / 60).toFixed(1) + ' ms each (desktop 16.7)');
+	if (window.queueMicrotask) { t = await chain(2000, queueMicrotask); say('2000 queueMicrotask: ' + t.toFixed(1) + ' ms'); }
+	var t0 = now(); var s = document.createElement('script'); s.textContent = 'window.__x = 1;';
+	for (var i = 0; i < 200; i++) { var e = document.createElement('script'); e.textContent = 'window.__x++;'; document.head.appendChild(e); }
+	say('200 inline scripts run: ' + (now() - t0).toFixed(0) + ' ms (desktop ~3)');
+	say('done');
+})();
+</script></body></html>
