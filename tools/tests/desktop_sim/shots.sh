@@ -376,17 +376,17 @@ if want media; then			# (Media Player over a sample library made by tools/tests/
 		n=$1; shift; s=$1; shift
 		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_POS=12,30 "$@" SIM="$s;dump $OUT/$n.elsm;exit" "$OUT/media.bin" >>"$OUT/log.txt" 2>&1 || { echo "shots: media failed"; exit 1; }; }
 	W10="$W;$W;$W;$W"; S0="$W10;$W10;$W10;$W10;$W10"	# (the scan, the covers)
-	ALB="down 100 112;up 100 112;$W10;$W10"				# (Albums)
+	ALB="down 100 164;up 100 164;$W10;$W10"				# (Albums)
 	PLAY="move 520 230;$W;down 470 300;up 470 300;$W10;$W10"	# (the 1st album's page; its Play)
 	mm media-home "$S0;move 900 120;$W10" ; png media-home
 	mm media-albums "$S0;$ALB;move 540 230;$W10;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$ALB;move 760 420;$W10"; png media-albums
 	mm media-album "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$W10;move 400 360;$W"; png media-album
-	mm media-songs "$S0;down 100 142;up 100 142;$W10;down 300 333;up 300 333;mods 2;down 300 397;up 300 397;mods 0;$W;rdown 300 365;rup 300 365;$W;move 380 400;$W;$W"; png media-songs
+	mm media-songs "$S0;down 100 194;up 100 194;$W10;down 300 333;up 300 333;mods 2;down 300 397;up 300 397;mods 0;$W;rdown 300 365;rup 300 365;$W;move 380 400;$W;$W"; png media-songs
 	mm media-nowplaying "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 40 585;up 40 585;$W10;$W10"; png media-nowplaying
-	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
+	mm media-midi "$S0;down 100 194;up 100 194;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
 	mm media-welcome "$S0;menu 1;$W10"; png media-welcome
 	mm media-mini "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 841 581;up 841 581;$W10;$W10"; png media-mini
-	VID="down 100 290;up 100 290;$W10;$W10;$W10"				# (Clips and series: their frames decoded)
+	VID="down 100 342;up 100 342;$W10;$W10;$W10"				# (Clips and series: their frames decoded)
 	mm media-videos "$S0;$VID;move 600 210;$W10"; png media-videos
 	mm media-watch "$S0;down 414 183;up 414 183;$W10;$W10;$W10;$W10;move 500 300;$W"; png media-watch
 	mm media-episode "$S0;$VID;down 366 185;up 366 185;$W10;key 9;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-episode

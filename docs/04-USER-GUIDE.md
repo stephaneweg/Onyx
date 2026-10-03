@@ -1979,9 +1979,11 @@ at each start it looks again at the folders (the sidebar says *Looking for songs
 knew at once. Start it from the dock or the app list (*Multimedia*), or open a music or video file in the
 File Viewer.
 
-**The window**: the **sidebar** at the left (Home, the library, the playlists; *+ New playlist*; at its
-bottom the songs counted — a click shows the folders watched), the **bar on top** (back, forward, where
-you are, the **search** — titles, artists and albums at once —, the albums' grid or list), the page,
+**The window**: the **bar on top**, across the window (back, forward, where you are — a path bar as the
+File Viewer's: the page shown underlined in the accent colour, the level above it a link —, the
+**search** — titles, artists and albums at once —, the albums' grid or list); under it the **sidebar**
+at the left (Home, the library, the playlists; *+ New playlist*; at its bottom the songs counted — a
+click shows the folders watched) and the page,
 and at the bottom, always, **the bar of what plays**: the cover (a click: *Now playing*), the song and
 its ♥ (a favourite), **shuffle**, **previous**, **play / pause**, **next**, **repeat** (all, one, off),
 the position (drag it), the queue, the **mini player**, the volume (drag it, or the wheel; a click on

@@ -60,7 +60,7 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		if (!text[0] && !hasFocus && hint[0]) text_v (canvas, 9, 0, height, hint, wk_mix (C_FIELD, C_FIELD_TEXT, 110), F_UI, 0, width - 16);
+		if (!text[0] && !hasFocus && hint[0]) text_v (canvas, 9, 0, height, hint, wk_mix (C_FIELD, C_FIELD_TEXT, 110), F_UI, 0, width - 16 - padR);
 	}
 };
 

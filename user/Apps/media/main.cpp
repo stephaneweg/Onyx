@@ -469,7 +469,9 @@ public:
 		VPath o; o.arc (V (x + 15), V (y + 15), V (15), 0, 360, 14); o.fill (canvas, wk_tone (C_BG, 96));
 		icon (canvas, ic, x + 8, y + 8, 14, on ? C_TEXT : wk_mix (C_BG, C_TEXT, 90));
 	}
-	void crumbs (int x, int y)
+	// Where we are, as the File Viewer's path bar: an entry-like field, the levels in it as links -- the page
+	// shown in the accent, underlined; the one pointed at underlined.
+	void crumbs (int bx, int by, int bw, int bh)
 	{
 		const char *a = 0, *b = 0; int ak = -1;
 		const Page &p = page ();
@@ -493,18 +495,24 @@ public:
 		case P_VIDEOS: a = "Videos"; b = p.arg == VK_FILM ? "Films" : p.arg == VK_CLIP ? "Clips and series" : 0; if (b) ak = P_VIDEOS; break;
 		case P_WATCH: a = "Videos"; b = VL && p.arg >= 0 && p.arg < VL->n ? VL->v[p.arg].title : ""; break;
 		}
-		int maxw = search->left - 16 - x;
-		if (b)
+		unsigned field = wk_mix (C_BG, C_FIELD, 170), ink = wk_ink_on (field), dim = wk_mix (field, ink, 120);
+		wk_rbox (canvas, bx, by, bw, bh, 8, wk_tone (field, 136), field);
+		wk_rline (canvas, bx, by, bw, bh, 8, wk_tone (C_BG, 88), 190);
+		const char *seg[2] = { a, b };
+		int n = b ? 2 : 1, x = bx + 14, y = by + (bh - fh ()) / 2, right = bx + bw - 14;
+		for (int i = 0; i < n; i++)
 		{
-			int aw = tw (a);
-			bool h = hits.n == hot && ak >= 0;
-			text_v (canvas, x, y, 30, a, ak >= 0 ? (h ? C_ACCENT : wk_mix (C_TEXT, C_ACCENT, 210)) : C_TEXT, F_UI);
-			if (ak >= 0) hits.add (x, y, aw, 30, TB_CRUMB, ak);
-			x += aw + 8;
-			text_v (canvas, x, y, 30, "\xE2\x80\xBA", col_dim_bg ()); x += 14;
-			text_v (canvas, x, y, 30, b, C_TEXT, F_UI, 2, maxw - aw - 22);
+			if (i) { wk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, by + bh / 2, 9, dim); x += 18; }
+			bool cur = i == n - 1, link = !cur && ak >= 0, h = link && hits.n == hot;
+			int w = tw (seg[i], F_UI, cur ? 2 : 0);
+			if (w > right - x) w = right - x;
+			if (w <= 0) break;
+			text (canvas, x, y, seg[i], cur ? wk_tone (C_ACCENT, 84) : ink, F_UI, cur ? 2 : 0, w);
+			if (cur) canvas.fillRect (x, y + fh () + 1, w, 2, C_ACCENT);
+			else if (h) canvas.fillRect (x, y + fh () + 1, w, 1, ink);
+			if (link) hits.add (x, by, w, bh, TB_CRUMB, ak);
+			x += w + 10;
 		}
-		else text_v (canvas, x, y, 30, a, C_TEXT, F_UI, 2, maxw);
 	}
 	void onDraw () override
 	{
@@ -514,7 +522,7 @@ public:
 		bool canB = g_hpos > 0, canF = g_hpos < g_nhist - 1;
 		round (12, 11, I_BACK, canB, hot == hits.n); hits.add (12, 11, 30, 30, TB_BACK);
 		round (48, 11, I_FWD, canF, hot == hits.n); hits.add (48, 11, 30, 30, TB_FWD);
-		crumbs (92, 11);
+		crumbs (92, 10, search->left - 12 - 92, 32);
 		// the search's magnifier, inside the field's left (the field draws over the rest)
 		int vx = width - 58;
 		bool grid = page ().kind == P_ALBUMS;
@@ -553,7 +561,7 @@ public:
 class SearchBox : public Textbox
 {
 public:
-	SearchBox (int l, int t, int w, int h) : Textbox (l, t, w, h, "", 0) { maxLen = 100; }
+	SearchBox (int l, int t, int w, int h) : Textbox (l, t, w, h, "", 0) { maxLen = 100; padR = 22; }
 	void onDraw () override
 	{
 		Textbox::onDraw ();
@@ -2265,8 +2273,8 @@ static void layout_parts ()
 		return;
 	}
 	g_side->hidden = g_top->hidden = g_content->hidden = g_now->hidden = false;
-	g_side->left = 0; g_side->top = 0; g_side->resizeTo (SIDE_W, H - NOW_H);
-	g_top->left = SIDE_W; g_top->top = 0; g_top->resizeTo (W - SIDE_W, TOP_H);
+	g_top->left = 0; g_top->top = 0; g_top->resizeTo (W, TOP_H);			// (the bar across the window, the sidebar under it)
+	g_side->left = 0; g_side->top = TOP_H; g_side->resizeTo (SIDE_W, H - TOP_H - NOW_H);
 	g_top->search->left = g_top->width - 300 - (page ().kind == P_ALBUMS ? 0 : -60); g_top->search->top = 12;
 	g_content->left = SIDE_W; g_content->top = TOP_H; g_content->resizeTo (W - SIDE_W, H - TOP_H - NOW_H);
 	g_now->left = 0; g_now->top = H - NOW_H; g_now->resizeTo (W, NOW_H);
@@ -2541,8 +2549,8 @@ int main (void)
 	root.setResizable (true);
 	root.setBg (C_BG);
 
-	g_side = new Sidebar (0, 0, SIDE_W, 640 - NOW_H); root.addChild (g_side);
-	g_top = new TopBar (SIDE_W, 0, 1000 - SIDE_W, TOP_H); root.addChild (g_top);
+	g_side = new Sidebar (0, TOP_H, SIDE_W, 640 - TOP_H - NOW_H); root.addChild (g_side);
+	g_top = new TopBar (0, 0, 1000, TOP_H); root.addChild (g_top);
 	{	// the search field: the one with a placeholder
 		g_top->removeChild (g_top->search); delete g_top->search;
 		g_top->search = new SearchBox (g_top->width - 300, 12, 230, 28); g_top->addChild (g_top->search);

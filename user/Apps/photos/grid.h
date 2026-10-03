@@ -45,7 +45,12 @@ static int album_cover (int a)
 class SearchBox : public HintBox
 {
 public:
-	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, "Search: a name, a date...") { maxLen = 190; }
+	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, "Search: a name, a date...") { maxLen = 190; padR = 22; }
+	void onDraw () override			// (the magnifier, inside the field's right)
+	{
+		HintBox::onDraw ();
+		icon (canvas, I_SEARCH, width - 24, (height - 16) / 2, 16, wk_mix (C_FIELD, C_FIELD_TEXT, 120));
+	}
 	bool onKey (long k) override { if (k == 27) { setText (""); return true; } return HintBox::onKey (k); }
 };
 class ToolBar : public Widget
@@ -102,7 +107,6 @@ public:
 			icon (canvas, I_BIGPIC, tx + tl + 8, 14, 20, dim);
 			hits.add (tx - 8, 10, tl + 16, 30, T_SIZE);
 		}
-		icon (canvas, I_SEARCH, search->left + search->width - 26, 17, 16, wk_mix (C_FIELD, C_FIELD_TEXT, 120));
 	}
 	void size_at (int mx)
 	{
