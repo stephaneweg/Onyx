@@ -28,7 +28,7 @@ static unsigned soft_ink (void) { return wk_mix (C_FIELD_TEXT, C_FIELD, 130); }
 static unsigned grid_line (void) { return wk_mix (C_FIELD, C_FIELD_TEXT, 30); }
 static unsigned face_soft (void) { return wk_mix (C_TEXT, C_BG, 110); }
 static unsigned ev_fill (unsigned c, bool past) { return wk_mix (C_FIELD, c, past ? 34 : 58); }
-static unsigned ev_ink (unsigned c, bool past) { unsigned k = wk_mix (c, 0x00000000, 120); return past ? wk_mix (k, C_FIELD, 90) : k; }
+static unsigned ev_ink (unsigned c, bool past) { unsigned k = wk_mix (c, wk_bright (C_FIELD) < 110 ? 0x00FFFFFFu : 0x00000000u, 120);	/* (a dark theme: lighter) */ return past ? wk_mix (k, C_FIELD, 90) : k; }
 static const unsigned RED = 0x00E0453A;
 
 // A disc of colour c (s px across), anti-aliased.

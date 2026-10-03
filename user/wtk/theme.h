@@ -5,10 +5,11 @@
 // is computed from those (wtk/paint.h: the grey profile). Read once by wtk::init () from
 // SD:/etc/theme.txt:
 //
-//     theme    = Peach        a named theme: Peach, Steel, Sage, Brick, Slate (the frame of the
-//                             window in front; the ones behind: Grey) -- or Milk (soft greys,
-//                             OS X's coloured beads for the title buttons, the frame melting
-//                             into the window: no line between them)
+//     theme    = Peach        a named theme. Two kinds: CDE's framed title buttons -- Peach, Steel,
+//                             Sage, Brick, Slate (the frame of the window in front; the ones
+//                             behind: Grey) --, or OS X's coloured beads, the frame melting into
+//                             the window (no line between them) -- Milk (soft greys) and Dark
+//                             Coffee (black coffee's browns, a caramel accent)
 //     style    = cde          the frames' look, if not the theme's: cde or milk
 //     active   = 0xF0B07A     or the colours themselves (they override the theme's)
 //     inactive = 0xACACB0
@@ -56,11 +57,14 @@ extern unsigned C_MENUBAR;		// the menu bar's face (the window's by default)
 enum { WK_STYLE_CDE = 0, WK_STYLE_MILK = 1 };
 extern int	WK_STYLE;
 // A style's own colours: what a theme of it takes when theme.txt does not say.
-struct WkPalette { unsigned face, accent, inactive, dock; };
+// (button, field: 0xFF000000 = from the window's, WK_AUTO below; outline: 0 none, 1 dark, 2 black.)
+struct WkPalette { unsigned face, accent, inactive, dock, button, field; int outline; };
 const WkPalette &wk_style_palette (int style);
 
-// The named themes (the active frame's colour, the frames' style).
-struct WkNamedTheme { const char *name; unsigned frame; int style; };
+// The named themes (the active frame's colour, the frames' style; pal: a theme with colours of its
+// own -- Dark Coffee --, 0: its style's).
+struct WkNamedTheme { const char *name; unsigned frame; int style; const WkPalette *pal; };
+const WkPalette &wk_theme_palette (int theme);	// a named theme's colours (its own, else its style's)
 extern const WkNamedTheme wk_themes[];	// ..., { 0, 0, 0 }
 static const unsigned WK_GREY = 0x00ACACB0;	// the inactive frames
 
@@ -82,6 +86,9 @@ struct WkTheme
 // the accent, the frames behind, the dock -- become the new style's (what the user set otherwise
 // is kept); the buttons, the fields and the menu bar follow the window's.
 void wk_theme_take_style (WkTheme &t, int style);
+// A named theme chosen (wk_themes[theme]): its frame, its style, and -- when its colours are not
+// those of the theme left -- its window, accent, frames behind, dock, buttons, fields, outline.
+void wk_theme_take (WkTheme &t, int theme);
 void wk_theme_defaults (WkTheme &t);
 void wk_theme_parse (const char *text, WkTheme &t);	// theme.txt's keys over t
 void wk_theme_get (WkTheme &t);			// the palette in use

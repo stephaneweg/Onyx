@@ -207,9 +207,9 @@ static void draw_frame (unsigned *fb, int W, int H, int T, const char *title, un
 	unsigned tbg = wk_tone (fc, 140);						// (under the title)
 	if (WK_STYLE == WK_STYLE_MILK)
 	{
-		unsigned top = wk_tone (fc, 230);
+		unsigned top = wk_bright (fc) < 110 ? fc : wk_tone (fc, 230);	// (a dark frame: darker at the top)
 		wk_rbox (cv, 0, 0, W, T, 0, top, C_BG);
-		cv.fillRect (0, T, W, H - T, C_BG);
+		cv.fillRect (0, T, W, H - T, wk_bright (C_BG) < 110 ? 0x00000000u : C_BG);	// (a dark window: black borders)
 		tbg = wk_mix (top, C_BG, 128);
 	}
 	else

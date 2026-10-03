@@ -225,19 +225,23 @@ void wk_sunken (Canvas &cv, int x, int y, int w, int h, int r, unsigned bg, bool
 	if (focus) wk_rline (cv, x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 0, C_ACCENT, 110);
 }
 
+// (a groove's two lines on a face: dark over light -- on a dark face both darker than it)
+static inline unsigned etch_dark (unsigned face) { return wk_tone (face, wk_bright (face) < 110 ? 40 : 88); }
+static inline unsigned etch_light (unsigned face) { return wk_tone (face, wk_bright (face) < 110 ? 96 : 196); }
+
 void wk_etch_h (Canvas &cv, int x, int y, int w, unsigned face)
 {
-	for (int i = 0; i < w; i++) { blend_px (cv, x + i, y, wk_tone (face, 88), 255); blend_px (cv, x + i, y + 1, wk_tone (face, 196), 255); }
+	for (int i = 0; i < w; i++) { blend_px (cv, x + i, y, etch_dark (face), 255); blend_px (cv, x + i, y + 1, etch_light (face), 255); }
 }
 void wk_etch_v (Canvas &cv, int x, int y, int h, unsigned face)
 {
-	for (int j = 0; j < h; j++) { blend_px (cv, x, y + j, wk_tone (face, 88), 255); blend_px (cv, x + 1, y + j, wk_tone (face, 196), 255); }
+	for (int j = 0; j < h; j++) { blend_px (cv, x, y + j, etch_dark (face), 255); blend_px (cv, x + 1, y + j, etch_light (face), 255); }
 }
 
 void wk_etch_box (Canvas &cv, int x, int y, int w, int h, int r, unsigned face)
 {
-	wk_rline (cv, x + 1, y + 1, w - 1, h - 1, r, wk_tone (face, 200), 255);
-	wk_rline (cv, x, y, w - 1, h - 1, r, wk_tone (face, 88), 255);
+	wk_rline (cv, x + 1, y + 1, w - 1, h - 1, r, wk_bright (face) < 110 ? etch_light (face) : wk_tone (face, 200), 255);
+	wk_rline (cv, x, y, w - 1, h - 1, r, etch_dark (face), 255);
 }
 
 // ---- the controls' marks ----------------------------------------------------------------------------------
@@ -418,7 +422,7 @@ void wk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int 
 {
 	unsigned f = C_FRAME_ACTIVE, top = wk_tone (f, 164), bot = wk_tone (f, 115), mid = wk_tone (f, 140);
 	if (WK_STYLE == WK_STYLE_MILK)					// (as the frames' title bars: Milk's
-	{ top = wk_tone (f, 230); bot = C_FACE; mid = wk_mix (top, bot, 128); }	//  melts into the box's face)
+	{ top = wk_bright (f) < 110 ? f : wk_tone (f, 230); bot = C_FACE; mid = wk_mix (top, bot, 128); }	//  melts into the box's face)
 	wk_rbox (cv, x, y, w, h, r, top, bot, 255, WK_TL | WK_TR);
 	for (int i = x + (r > 1 ? r : 1); i < x + w - (r > 1 ? r : 1); i++) blend_px (cv, i, y + 1, 0x00FFFFFF, 110);
 	if (s) wk_text_c (cv, x, y, w, h, s, wk_ink_on (mid), 2);

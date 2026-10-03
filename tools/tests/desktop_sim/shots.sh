@@ -98,14 +98,14 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger " in
+	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
 	esac
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
-      invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
+      fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
@@ -199,6 +199,10 @@ if want irc; then			# (a session canned (SIM_NET): #onyx and its users, #raspber
 	png irc-pm
 fi
 if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 109;up 480 109;$W" $P; png fileviewer; fi
+if want fmtracker; then			# (a song of SD:/music/fms; a block chosen; the instrument dialog: a click on a channel's name)
+	sim fmtracker fmtracker "wait;wait;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;down 600 250;move 700 300;up 700 300;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker
+	sim fmtracker fmtracker-instrument "wait;wait;down 330 64;up 330 64;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker-instrument
+fi
 if want solitaire; then sim solitaire solitaire "$W" $P; png solitaire; fi
 if want freecell; then sim freecell freecell "$W" $P; png freecell; fi
 if want pipes; then sim pipes pipes "$W" $P; png pipes; fi

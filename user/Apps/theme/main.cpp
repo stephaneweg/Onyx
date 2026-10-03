@@ -35,7 +35,7 @@ using namespace wtk;
 #define H	470
 #define PVW	320			// the preview (a 1024 x 768 desktop, small)
 #define PVH	240
-#define NTHEMES	6			// (wk_themes: Peach .. Slate, Milk)
+#define NTHEMES	7			// (wk_themes: Peach .. Slate -- the Classic theme's schemes --, Milk, Dark Coffee: the Modern one's)
 
 enum { IT_ACTIVE, IT_INACTIVE, IT_WINDOW, IT_BUTTON, IT_FIELD, IT_ACCENT, IT_MENUBAR, IT_DOCK, IT_DESKTOP, IT_N };
 static const char *const ITEM_NAME[IT_N] = { "Window in front: frame", "Windows behind: frame", "Windows: content",
@@ -321,7 +321,7 @@ class Swatch : public Widget
 {
 public:
 	int idx;
-	Swatch (int l, int t, int i) : Widget (l, t, 56, 48), idx (i) { canFocus = true; }
+	Swatch (int l, int t, int w, int i) : Widget (l, t, w, 48), idx (i) { canFocus = true; }
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
@@ -329,8 +329,8 @@ public:
 		bool on = g_t.theme == idx, milk = wk_themes[idx].style == WK_STYLE_MILK;
 		int x = (width - 42) / 2;
 		if (on) { wk_rline (canvas, x - 3, 0, 48, 32, 9, C_ACCENT, 255); wk_rline (canvas, x - 2, 1, 46, 30, 8, C_ACCENT, 160); }
-		wk_rbox (canvas, x, 3, 42, 26, 6, wk_tone (c, milk ? 230 : 166),	// (Milk's: down to its windows' grey)
-			 milk ? wk_style_palette (WK_STYLE_MILK).face : wk_tone (c, 112));
+		wk_rbox (canvas, x, 3, 42, 26, 6, !milk ? wk_tone (c, 166) : wk_bright (c) < 110 ? c : wk_tone (c, 230),	// (the Modern ones: down to
+			 milk ? wk_theme_palette (idx).face : wk_tone (c, 112));						//  their windows' colour)
 		wk_rline (canvas, x, 3, 42, 26, 6, wk_tone (c, 64), 190);
 		if (milk)						// (its beads)
 		{
@@ -379,6 +379,7 @@ public:
 
 static Preview   *g_preview;
 static Swatch    *g_sw[NTHEMES];
+static SegmentedControl *g_segTheme;		// Classic (CDE's framed title buttons) / Modern (the beads)
 static Palette   *g_pal;
 static Current   *g_curbox;
 static Dropdown  *g_ddItem, *g_ddOutline, *g_ddMode, *g_ddDir, *g_ddStyle;
@@ -395,7 +396,9 @@ static void refresh (bool wall = false)
 {
 	if (wall) g_wallOk = false;
 	g_preview->invalidate (true);
-	for (int i = 0; i < NTHEMES; i++) g_sw[i]->invalidate (true);
+	for (int i = 0; i < NTHEMES; i++) { g_sw[i]->hidden = wk_themes[i].style != g_t.style; g_sw[i]->invalidate (true); }	// (the theme's schemes)
+	g_segTheme->select (g_t.style == WK_STYLE_MILK ? 1 : 0);
+	g_ddOutline->sel = g_t.outline; g_ddOutline->invalidate (true);
 	g_pal->invalidate (true);
 	g_curbox->invalidate (true);
 	bool a = can_auto (g_item);
@@ -426,6 +429,15 @@ static void set_item_colour (unsigned c)
 	refresh ();
 }
 
+static void pick_item (int it);
+// Theme: Classic / Modern -- the first scheme of the kind chosen (unless a scheme of it is the one in use).
+static void on_theme_kind (Widget &w)
+{
+	int style = ((SegmentedControl &) w).selected == 1 ? WK_STYLE_MILK : WK_STYLE_CDE;
+	if (style == g_t.style) return;
+	for (int i = 0; wk_themes[i].name; i++) if (wk_themes[i].style == style) { wk_theme_take (g_t, i); break; }
+	pick_item (IT_ACTIVE);
+}
 static void pick_item (int it)
 {
 	g_item = it;
@@ -454,8 +466,7 @@ bool Swatch::onMouse (int mx, int, int bl, int, int, int)
 	if (bl && !pressed)
 	{
 		pressed = true;
-		g_t.theme = idx; g_t.active = wk_themes[idx].frame;
-		wk_theme_take_style (g_t, wk_themes[idx].style);	// (Milk / CDE: that style's colours)
+		wk_theme_take (g_t, idx);				// (its frame; its own colours when they differ)
 		pick_item (IT_ACTIVE);
 	}
 	else if (!bl) pressed = false;
@@ -597,8 +608,17 @@ int main (void)
 	root.addChild (g_preview);
 
 	int rx = X + 346;
-	root.addChild (new Label (rx, 8, 120, 20, "Scheme", C_TEXT, root.bg));
-	for (int i = 0; i < NTHEMES; i++) { g_sw[i] = new Swatch (rx - 6 + i * 58, 28, i); root.addChild (g_sw[i]); }
+	// the theme (the frames' kind), then its schemes: only the chosen theme's are shown
+	root.addChild (new Label (rx, 7, 60, 20, "Theme", C_TEXT, root.bg));
+	static const char *const THEMES[2] = { "Classic", "Modern" };
+	g_segTheme = new SegmentedControl (rx + 64, 3, 200, 26, THEMES, 2, g_t.style == WK_STYLE_MILK ? 1 : 0, on_theme_kind);
+	root.addChild (g_segTheme);
+	root.addChild (new Label (rx, 46, 60, 20, "Scheme", C_TEXT, root.bg));
+	for (int i = 0, n[2] = { 0, 0 }; i < NTHEMES; i++)
+	{
+		int k = wk_themes[i].style == WK_STYLE_MILK ? 1 : 0, w = k ? 96 : 56;
+		g_sw[i] = new Swatch (rx + 62 + n[k]++ * w, 33, w, i); root.addChild (g_sw[i]);
+	}
 	root.addChild (new Label (rx, 86, 60, 24, "Item", C_TEXT, root.bg));
 	root.addChild (new Label (rx, 124, 60, 24, "Colour", C_TEXT, root.bg));
 	g_curbox = new Current (rx + 64, 122); root.addChild (g_curbox);

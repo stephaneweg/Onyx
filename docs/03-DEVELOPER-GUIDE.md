@@ -1695,15 +1695,18 @@ its licence on the app.
 >   `C_MENUBAR`, `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by
 >   `wtk::init ()` (the `Root`'s constructor calls it): use them in drawing code, never copy them
 >   into a `static const` or a global initialised at start-up (that runs before the theme is
->   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate / Milk (the window in front's
+>   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate / Milk / Dark Coffee (the window in front's
 >   frame; `active` = any colour instead), `style` = cde / milk (**the style**, `WK_STYLE`: CDE's
 >   framed title buttons, or Milk's — Xfce's Milk theme, as OS X — the title buttons coloured
 >   beads, `wk_bead`, close red, minimise amber, maximise green, grey behind or for a button the
 >   window cannot use, and the frame melting into the window: the title's gradient from a light
 >   tone of the frame's colour down to the content's own, `C_BG`, the borders that colour,
 >   nothing between them — `wk_title_strip` likewise, down to `C_FACE`; a colour the file leaves
->   out is the style's own, `wk_style_palette`; a scheme of another style chosen:
->   `wk_theme_take_style (t, style)`),
+>   out is the style's own, `wk_style_palette` — or the named theme's when it has colours of its
+>   own (`WkNamedTheme::pal`, `wk_theme_palette (i)`: **Dark Coffee**, Milk's dark sister — a dark
+>   frame's title goes from the frame's colour down to `C_BG`, its borders are black, a dark face's
+>   fields are darker than it and its grooves, `wk_etch_*`, darker too); a named theme chosen:
+>   `wk_theme_take (t, i)` (a style alone: `wk_theme_take_style (t, style)`)),
 >   `inactive`, `window` (the content: the face; `face` still
 >   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
 >   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes

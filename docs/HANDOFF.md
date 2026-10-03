@@ -782,7 +782,13 @@ answer in French. The docs stay in English.
   rewritten, every app's hard-coded dark colours converted. Then (2026-10-01) a sixth theme,
   **Milk** (Xfce's Milk / Mac OS X: soft greys, the title buttons as coloured beads, the frame
   melting into the window with no line between them, `WK_STYLE`, `wk_bead`), chosen in the
-  Theme app (and in Setup) like the others.
+  Theme app (and in Setup) like the others. Then (2026-10-03) the Theme applet's **Theme: Classic /
+  Modern** over its schemes (Classic: Peach … Slate; Modern: Milk and the new **Dark Coffee**, a named
+  theme with a palette of its own: `WkNamedTheme::pal`, `wk_theme_take`), Koton in the desktop's theme
+  (its arrangement's lanes alone dark), **FM Tracker** made again (FreeType; a transport bar, the
+  patterns' list, M / S / meters, blocks, undo, a piano, an instrument dialog with the waves, the
+  envelopes and the sound's wave drawn), Ledger in FreeType, the Package Manager's tabs a
+  `SegmentedControl`, a **System** category.
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,

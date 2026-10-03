@@ -179,8 +179,8 @@ static const char *aspect (int w, int h)
 struct Scheme { const char *name; unsigned c; int style; };	// (as wk_themes, in its order)
 static const Scheme SCHEMES[] = { { "Peach", 0x00F0B07A, WK_STYLE_CDE }, { "Steel", 0x007A98C0, WK_STYLE_CDE },
 	{ "Sage", 0x0080AA76, WK_STYLE_CDE }, { "Brick", 0x00C45450, WK_STYLE_CDE }, { "Slate", 0x003A4458, WK_STYLE_CDE },
-	{ "Milk", 0x00D4D4D6, WK_STYLE_MILK } };
-#define NSCHEMES	6
+	{ "Milk", 0x00D4D4D6, WK_STYLE_MILK }, { "Dark Coffee", 0x004A3E37, WK_STYLE_MILK } };
+#define NSCHEMES	7
 static const char *const WALLS[] = { 0, "hexagons", "low-poly", "waves", "dunes", "bokeh", "silk", "contours" };
 #define NWALLS	8
 
@@ -759,7 +759,7 @@ public:
 		unsigned tbg = frame;
 		if (milk)					// (Milk: the title bar melts into the window)
 		{
-			unsigned top = wk_tone (frame, 230);
+			unsigned top = wk_bright (frame) < 110 ? frame : wk_tone (frame, 230);
 			wk_rbox (canvas, x, y, w, h, 6, face, face);
 			wk_rbox (canvas, x, y, w, 20, 6, top, face, 255, WK_TL | WK_TR);
 			tbg = wk_mix (top, face, 128);
@@ -783,8 +783,8 @@ public:
 		{ WkFaceScope sc (g_small); wk_text_l (canvas, 10, 1, 18, "Onyx   File   Edit   View", C_TEXT); wk_text_l (canvas, width - 44, 1, 18, "12:34", C_TEXT, 2); }
 		// (the chosen scheme's colours at once -- apply_look comes a moment later: another style's own)
 		int st = SCHEMES[g_scheme].style;
-		const WkPalette &pal = wk_style_palette (st);
-		unsigned face = st == WK_STYLE ? C_BG : pal.face, dock = st == WK_STYLE ? C_DOCK : pal.dock;
+		const WkPalette &pal = wk_theme_palette (g_scheme); (void) st;
+		unsigned face = pal.face, dock = pal.dock;
 		win (40, 28, 200, 84, pal.inactive, face, "Calendar", false);
 		win (180, 40, 250, 86, SCHEMES[g_scheme].c, face, "Text Editor", true);
 		int dw = 240, dx = (width - dw) / 2, dy = height - 30;
@@ -804,25 +804,26 @@ public:
 		canvas.clear (C_FIELD);
 		for (int i = 0; i < NSCHEMES; i++)
 		{
-			int x = 4 + i * 86, y = 4; bool s = i == g_scheme; unsigned c = SCHEMES[i].c;
+			int step = (width - 8) / NSCHEMES, bw = step - 10;
+			int x = 4 + i * step, y = 4; bool s = i == g_scheme; unsigned c = SCHEMES[i].c;
 			bool milk = SCHEMES[i].style == WK_STYLE_MILK;
-			if (s) { wk_rline (canvas, x - 3, y - 3, 82, 42, 10, C_ACCENT); wk_rline (canvas, x - 4, y - 4, 84, 44, 11, C_ACCENT); }
-			wk_rbox (canvas, x, y, 76, 36, 8, wk_tone (c, milk ? 230 : 164),	// (Milk's: down to its windows' grey)
-				 milk ? wk_style_palette (WK_STYLE_MILK).face : wk_tone (c, 118));
-			wk_rline (canvas, x, y, 76, 36, 8, wk_tone (c, 70), 170);
+			if (s) { wk_rline (canvas, x - 3, y - 3, bw + 6, 42, 10, C_ACCENT); wk_rline (canvas, x - 4, y - 4, bw + 8, 44, 11, C_ACCENT); }
+			wk_rbox (canvas, x, y, bw, 36, 8, !milk ? wk_tone (c, 164) : wk_bright (c) < 110 ? c : wk_tone (c, 230),	// (the beads' ones: down to
+				 milk ? wk_theme_palette (i).face : wk_tone (c, 118));							//  their windows' colour)
+			wk_rline (canvas, x, y, bw, 36, 8, wk_tone (c, 70), 170);
 			if (milk)					// (its beads)
 			{
 				static const unsigned bead[3] = { 0x00F0B43A, 0x004CB653, 0x00E8564E };
-				for (int k = 0; k < 3; k++) wk_bead (canvas, x + 76 - 40 + k * 11, y + 6, 9, bead[k]);
+				for (int k = 0; k < 3; k++) wk_bead (canvas, x + bw - 40 + k * 11, y + 6, 9, bead[k]);
 			}
-			if (s) wk_glyph (canvas, WKG_CHECK, x + 38, y + (milk ? 24 : 18), 12, wk_ink_on (c));
-			wk_text_c (canvas, x, y + 42, 76, 20, SCHEMES[i].name, C_FIELD_TEXT, s ? 2 : 0);
+			if (s) wk_glyph (canvas, WKG_CHECK, x + bw / 2, y + (milk ? 24 : 18), 12, wk_ink_on (c));
+			wk_text_c (canvas, x - 4, y + 42, bw + 8, 20, SCHEMES[i].name, C_FIELD_TEXT, s ? 2 : 0);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		if (mx < 0) return false;
-		if (bl && !pressed) { int i = (mx - 4) / 86; if (i >= 0 && i < NSCHEMES && my < 66) { g_scheme = i; invalidate (true); if (cb) cb (*this); } }
+		if (bl && !pressed) { int i = (mx - 4) / ((width - 8) / NSCHEMES); if (i >= 0 && i < NSCHEMES && my < 66) { g_scheme = i; invalidate (true); if (cb) cb (*this); } }
 		pressed = bl; return true;
 	}
 };
@@ -1170,8 +1171,7 @@ static void apply_look ()
 {
 	g_lookDirty = false;
 	WkTheme t; wk_theme_get (t);
-	t.theme = g_scheme; t.active = SCHEMES[g_scheme].c;
-	wk_theme_take_style (t, SCHEMES[g_scheme].style);	// (Milk: its own colours too)
+	wk_theme_take (t, g_scheme);				// (its frame; its own colours when they differ)
 	wk_theme_set (t);					// (this window's frame in the new colour)
 	wk_decorate_window ();
 	g_root->invalidate (true);
