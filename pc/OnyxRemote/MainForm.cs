@@ -145,11 +145,13 @@ namespace OnyxRemote
 		readonly ToolStripButton go = new ToolStripButton ("Connect");
 		readonly ToolStripButton console = new ToolStripButton ("Console") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
 		readonly ToolStripButton full = new ToolStripButton ("Full screen") { CheckOnClick = true, ToolTipText = "The Onyx session over the whole screen, without this tool bar (F11 toggles it)" };
+		readonly ToolStripSplitButton shot = new ToolStripSplitButton ("Screenshot") { ToolTipText = "Save the Pi's screen as a PNG (Ctrl+Shift+S: straight to Pictures\\Onyx; the arrow: more)" };
 		readonly ToolStripLabel status = new ToolStripLabel ("Not connected");
 		readonly ToolStrip ts;
 		readonly ScrollArea scroller;			// (the scrolling area)
 		readonly DeskView desk;					// (the Pi's screen in it)
 		bool isFull; Rectangle fullRestore; FormBorderStyle fullBorder; bool fullMaxBox; FormWindowState fullState;	// (before the full screen)
+		Toast toast; string shotDir;				// (the screenshots: the confirmation, the Save As dialog's folder)
 		FullBar fullBar; readonly Timer fullTimer = new Timer { Interval = 100 }; DateTime fullAway;	// (the full screen's bar)
 		public Connection Conn;
 		public readonly BarView Bar = new BarView ();
@@ -172,7 +174,16 @@ namespace OnyxRemote
 			ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
 			host.Width = 130; port.Width = 45; port.Text = "3390";
 			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go, console,
-				new ToolStripSeparator (), bits16, desktop, frames, full, new ToolStripSeparator (), status });
+				new ToolStripSeparator (), bits16, desktop, frames, full, new ToolStripSeparator (), shot, new ToolStripSeparator (), status });
+			shot.ButtonClick += (s, e) => SaveShot (false, true);
+			shot.DropDownItems.AddRange (new ToolStripItem[] {
+				new ToolStripMenuItem ("Save screen as...", null, (s, e) => SaveShot (false, true)),
+				new ToolStripMenuItem ("Save window as...", null, (s, e) => SaveShot (true, true)) { ToolTipText = "The Onyx window that has the keyboard (else the front one), with its Onyx frame" },
+				new ToolStripSeparator (),
+				new ToolStripMenuItem ("Quick save screen", null, (s, e) => SaveShot (false, false)) { ShortcutKeyDisplayString = "Ctrl+Shift+S" },
+				new ToolStripMenuItem ("Quick save window", null, (s, e) => SaveShot (true, false)) { ShortcutKeyDisplayString = "Ctrl+Shift+W" },
+				new ToolStripSeparator (),
+				new ToolStripMenuItem ("Open the screenshots folder", null, (s, e) => Screenshot.ShowInExplorer (null)) });
 			scroller = new ScrollArea { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.Black };
 			desk = new DeskView (this) { Location = Point.Empty, Size = new Size (1024, 768), Visible = false };
 			scroller.Controls.Add (desk);
@@ -300,10 +311,13 @@ namespace OnyxRemote
 			else if (onEdge || lost || fullBar.Visible) fullBar.ShowOn (scr, name);
 		}
 
-		// F11: the full screen on and off (the keys go to the Pi otherwise)
+		// F11: the full screen on and off; Ctrl+Shift+S / Ctrl+Shift+W: a quick screenshot of the
+		// screen / of the active window (the keys go to the Pi otherwise)
 		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
 		{
 			if (keyData == Keys.F11) { full.Checked = !full.Checked; if (Conn == null) FullScreen (false); return true; }
+			if (keyData == (Keys.Control | Keys.Shift | Keys.S)) { SaveShot (false, false); return true; }
+			if (keyData == (Keys.Control | Keys.Shift | Keys.W)) { SaveShot (true, false); return true; }
 			return base.ProcessCmdKey (ref msg, keyData);
 		}
 
@@ -324,7 +338,7 @@ namespace OnyxRemote
 				isFull = true;
 				if (fullBar == null)
 					fullBar = new FullBar (this, () => WindowState = FormWindowState.Minimized,
-							       () => full.Checked = false, () => Disconnect ("Disconnected"));
+							       () => full.Checked = false, () => Disconnect ("Disconnected"), () => SaveShot (false, false));
 				fullAway = DateTime.Now;
 				fullTimer.Start ();
 				Activate ();
@@ -357,6 +371,58 @@ namespace OnyxRemote
 			ClientSize = new Size (Math.Min (cw, maxW), Math.Min (ch, maxH));
 			if (Right > area.Right) Left = Math.Max (area.Left, area.Right - Width);
 			if (Bottom > area.Bottom) Top = Math.Max (area.Top, area.Bottom - Height);
+		}
+
+		// A screenshot: the whole Pi screen, or the active Onyx window (the one with the keyboard,
+		// else the front one), from the pixels the client has. ask: a Save As dialog (the last
+		// folder used, first Pictures\Onyx); else straight to Pictures\Onyx, a short confirmation.
+		void SaveShot (bool window, bool ask)
+		{
+			var c = Conn;
+			if (c == null) { status.Text = "Not connected: nothing to capture"; return; }
+			Bitmap b = null; string what = "screen";
+			lock (c.Lock)
+			{
+				if (window)
+				{
+					RemoteWindow rw = null;
+					foreach (var w in wins.Values) if (w.ContainsFocus) rw = w;
+					if (rw == null && winOrder.Count > 0) rw = winOrder[winOrder.Count - 1];
+					if (rw != null && c.Windows.TryGetValue (rw.Id, out WinModel m)) { b = Screenshot.Window (m); what = "\"" + m.Title + "\""; }
+				}
+				else b = Screenshot.Screen (c);
+			}
+			if (b == null) { Notify (window ? "No Onyx window to capture" : "Nothing to capture yet", null); return; }
+			using (b)
+			{
+				string path;
+				if (ask)
+				{
+					using (var dlg = new SaveFileDialog { Title = "Save the " + (window ? "window" : "screen") + " as", Filter = "PNG image (*.png)|*.png", DefaultExt = "png", AddExtension = true, OverwritePrompt = true })
+					{
+						string dir = shotDir ?? Screenshot.Folder;
+						try { Directory.CreateDirectory (dir); } catch { }
+						dlg.InitialDirectory = dir;
+						dlg.FileName = Path.GetFileName (Screenshot.NewPath (dir));
+						if (dlg.ShowDialog (this) != DialogResult.OK) return;
+						path = dlg.FileName;
+					}
+				}
+				else path = Screenshot.NewPath (Screenshot.Folder);
+				try { Screenshot.Save (b, path); }
+				catch (Exception e) { Notify ("Screenshot not saved: " + e.Message, null); return; }
+				if (ask) shotDir = Path.GetDirectoryName (path);
+				Notify ("Saved the " + (window ? "window " + what : "screen") + ": " + (ask ? path : Path.Combine ("Pictures", "Onyx", Path.GetFileName (path))), path);
+			}
+		}
+
+		// in the status line, and a short toast (the full screen: no tool bar; a quick save from a key)
+		void Notify (string message, string path)
+		{
+			status.Text = message;
+			if (toast == null) toast = new Toast (this);
+			var area = isFull ? Screen.FromControl (this).Bounds : RectangleToScreen (ClientRectangle);
+			toast.ShowOn (area, message, path);
 		}
 
 		void SaveSettings ()

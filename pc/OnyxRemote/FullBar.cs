@@ -1,6 +1,6 @@
 // FullBar.cs -- the full screen's connection bar (as mstsc's): at the top of the screen, in its
 // middle, when the pointer touches the screen's top edge; hidden again ~1 s after the pointer left
-// it, unless pinned. A pin, the Pi's name, Minimise, Leave full screen, Disconnect -- dark, its
+// it, unless pinned. A pin, the Pi's name, Screenshot, Minimise, Leave full screen, Disconnect -- dark, its
 // bottom corners rounded. It never takes the focus (the keys stay with the Onyx window:
 // WS_EX_NOACTIVATE); above the overlays (TopMost).
 using System;
@@ -71,7 +71,7 @@ namespace OnyxRemote
 		public bool Pinned { get { return pin.Checked; } }
 		const int R = 8;						// (the bottom corners' radius)
 
-		public FullBar (Form owner, Action minimise, Action leave, Action disconnect)
+		public FullBar (Form owner, Action minimise, Action leave, Action disconnect, Action screenshot)
 		{
 			FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual;
 			ControlBox = false; MinimizeBox = false; MaximizeBox = false; Text = "";
@@ -89,12 +89,14 @@ namespace OnyxRemote
 			var min = new ToolStripButton ("Minimise") { Alignment = ToolStripItemAlignment.Right };
 			var restore = new ToolStripButton ("Leave full screen") { ToolTipText = "F11", Alignment = ToolStripItemAlignment.Right };
 			var disc = new ToolStripButton ("Disconnect") { Alignment = ToolStripItemAlignment.Right };
+			var shot = new ToolStripButton ("Screenshot") { ToolTipText = "Save the screen to Pictures\\Onyx (Ctrl+Shift+S)", Alignment = ToolStripItemAlignment.Right };
 			name.Font = new Font ("Segoe UI Semibold", 9.5f);
 			min.Click += (s, e) => minimise ();
 			restore.Click += (s, e) => leave ();
 			disc.Click += (s, e) => disconnect ();
+			shot.Click += (s, e) => screenshot ();
 			// (right-aligned items are laid out from the right: the last added is the leftmost)
-			ts.Items.AddRange (new ToolStripItem[] { pin, new ToolStripSeparator (), name, disc, restore, min });
+			ts.Items.AddRange (new ToolStripItem[] { pin, new ToolStripSeparator (), name, disc, restore, min, shot });
 			foreach (ToolStripItem it in ts.Items) { it.ForeColor = Color.White; it.Margin = new Padding (2, 1, 2, 1); }
 			Controls.Add (ts);
 			Fit ();

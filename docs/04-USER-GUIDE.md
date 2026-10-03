@@ -860,7 +860,7 @@ bar's button, or **F11** at any time) takes the whole PC screen without a frame 
 the Onyx menu bar at the top, the Onyx windows pixel for pixel where they are on the Pi — a Pi
 screen the size of the PC's (e.g. both 1920 × 1080) fills it exactly (a smaller one sits in the
 middle, black around it; a bigger one scrolls). The pointer on the screen's **top edge** shows a
-bar there, as Windows' Remote Desktop: the Pi's name, **Pin** (the bar stays), **Minimise**,
+bar there, as Windows' Remote Desktop: the Pi's name, **Pin** (the bar stays), **Screenshot**, **Minimise**,
 **Leave full screen**, **Disconnect**. F11 again (or **Disconnect**) gives the window back;
 the choice is kept and applied at the next connection. While the connection is being made
 again (see below) the bar stays shown, the Pi's name followed by *(reconnecting...)*.
@@ -912,6 +912,21 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   replayed later; keys and buttons left held on the Pi are released when the old session ends.
   An older rdpd (the SD card not updated) still works, lock-step; an older Onyx Remote with the
   new rdpd too.
+- **Screenshot** saves what Onyx Remote shows as a **PNG** on the PC, made from the pixels it
+  already has (nothing is asked of the Pi): **the screen** — the whole Pi screen as the Pi
+  composites it (the menu bar, the windows with their Onyx frames, the dock, the see-through
+  parts; the wallpaper and the widgets when **Desktop** is on, else a dark background), whatever
+  the window's size, scrolling or full screen — or **the window**: the Onyx window that has the
+  keyboard (else the front one), with its Onyx frame, its rounded corners see-through. The tool
+  bar's **Screenshot** button opens a **Save As** dialog for the screen; its arrow offers **Save
+  screen as...**, **Save window as...**, **Quick save screen**, **Quick save window** and **Open
+  the screenshots folder**. **Ctrl+Shift+S** (the screen) and **Ctrl+Shift+W** (the window) save
+  at once, also in full screen (these two keys stay with Onyx Remote: they are not sent to the
+  Pi); so does the full screen bar's **Screenshot** button (the screen). A quick save goes to
+  **`Pictures\Onyx`** (made when needed), named **`Onyx-YYYYMMDD-HHMMSS.png`** (`-2`, `-3`... in
+  the same second); a small box at the top of the screen confirms it for a moment (a click on it
+  shows the file in Explorer), and the status says it. The Save As dialog starts in
+  `Pictures\Onyx` with that name, then in the last folder used.
 - **Console** opens a **telnet console** on the Pi in a window of its own (the Onyx shell served
   by `telnetd`, port 23 — type `address:port` in the address box for another port; it works
   without Connect): the output in a text box you can **scroll, select and copy** (right click:
