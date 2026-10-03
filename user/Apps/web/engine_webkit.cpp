@@ -480,10 +480,18 @@ static const char *self_path ()
 	return "SD:/apps/web.app/main";
 }
 
+// The GPU compositor (WebKit's USE(GRAPHICS_LAYER_ONYX): docs/08), asked for before engine_init: the
+// page's layers kept in tiles and assembled by the V3D, so that scrolling paints nothing again.
+static bool s_compositing;
+
+void engine_set_compositing (bool enabled) { s_compositing = enabled; }
+
 void engine_new_window (const char *url)
 {
 	const char *self = self_path ();
-	char *argv[] = { const_cast<char *> (self), const_cast<char *> (url), nullptr };
+	char gpu[] = "--gpu";					// (a window opened by a composited one is composited)
+	char *argv[] = { const_cast<char *> (self), s_compositing ? gpu : const_cast<char *> (url),
+			 s_compositing ? const_cast<char *> (url) : nullptr, nullptr };
 	pid_t pid;
 	int r = posix_spawn (&pid, self, nullptr, nullptr, argv, environ);
 	say ("new window for %s: %s", url, r ? strerror (r) : "started");
@@ -546,12 +554,16 @@ bool engine_init (const EngineClient *client, int w, int h)
 	WKPageConfigurationSetContext (pc, s_context);
 	// The data (cookies, local storage, the caches) in SD:/var/webkit (WebsiteDataStoreOnyx).
 	WKPageConfigurationSetWebsiteDataStore (pc, WKWebsiteDataStoreGetDefaultDataStore ());
-	if (!s_scripts) {					// (the embedded view, for a mail's HTML)
+	if (!s_scripts || s_compositing) {
 		WKPreferencesRef prefs = WKPreferencesCreate ();
-		WKPreferencesSetJavaScriptEnabled (prefs, false);
+		if (!s_scripts)					// (the embedded view, for a mail's HTML)
+			WKPreferencesSetJavaScriptEnabled (prefs, false);
+		if (s_compositing)				// (the web process then logs "web: gpu: ..." lines)
+			WKPreferencesSetCompositingEnabledOnyx (prefs, true);
 		WKPageConfigurationSetPreferences (pc, prefs);
 		WKRelease (prefs);
 	}
+	say ("compositing %s", s_compositing ? "on (the GPU compositor)" : "off (the software path)");
 
 	s_view = WKViewCreate (pc);
 	WKRelease (pc);

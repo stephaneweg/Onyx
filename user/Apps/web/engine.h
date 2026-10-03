@@ -46,6 +46,9 @@ enum { ENGINE_DL_STARTED, ENGINE_DL_PROGRESS, ENGINE_DL_FINISHED, ENGINE_DL_FAIL
 bool engine_is_auxiliary (int argc, char **argv);
 int  engine_auxiliary_main (int argc, char **argv);
 
+// Before engine_init: the page composited by the GPU (its layers in tiles, assembled by the V3D through
+// user/gpucomp: scrolling paints nothing again) instead of painted into one bitmap. Off by default.
+void engine_set_compositing (bool enabled);
 bool engine_init (const EngineClient *client, int w, int h);	// the page area's size
 void engine_new_window (const char *url);			// this program started again on url
 void engine_cycle ();						// the engine's work (from the window's loop)

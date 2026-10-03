@@ -7,7 +7,9 @@
 //   wk2test <url | /path/page.html> <out.png> [width height]
 //
 // Environment: WK2TEST_TIMEOUT (seconds, default 60), WK2TEST_SETTLE (milliseconds without a new
-// display before the picture is taken, default 300).
+// display before the picture is taken, default 300), WK2TEST_SCROLL (wheel notches before the picture),
+// WK2TEST_GPU=1 (the page drawn by Onyx's compositor instead of the software path: the picture then
+// comes from its surface; on the bench gpucomp composites on the CPU).
 // Built by tools/webkit/build-wk2test.sh against libWebKit.a (build-webkit.sh); run on the bench by
 // tools/webkit/test-webkit.sh.
 //
@@ -191,6 +193,13 @@ int main(int argc, char** argv)
     // Nothing kept on the card by a test.
     WKWebsiteDataStoreRef dataStore = WKWebsiteDataStoreCreateNonPersistentDataStore();
     WKPageConfigurationSetWebsiteDataStore(pageConfiguration, dataStore);
+    if (const char* gpu = getenv("WK2TEST_GPU"); gpu && atoi(gpu)) {
+        WKPreferencesRef preferences = WKPreferencesCreate();
+        WKPreferencesSetCompositingEnabledOnyx(preferences, true);
+        WKPageConfigurationSetPreferences(pageConfiguration, preferences);
+        WKRelease(preferences);
+        printf("compositing: on\n");
+    }
 
     WKViewRef view = WKViewCreate(pageConfiguration);
     WKViewClientV0 viewClient;

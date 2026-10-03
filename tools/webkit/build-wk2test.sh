@@ -44,14 +44,24 @@ for l in skia harfbuzz-icu harfbuzz freetype png16 jpeg webpmux webpdemux webp s
 	LIBS="$LIBS $S/lib/lib$l.a"
 done
 mkdir -p "$BUILD/bin"
+# The compositor's two C files (as build-web.sh: WebKit's USE(GRAPHICS_LAYER_ONYX) calls them).
+GPC="$BUILD/wk2test-gpucomp.o $BUILD/wk2test-onyxsurface.o"
+aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O3 -mcpu=cortex-a72 -ffp-contract=off -fno-math-errno \
+	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$BUILD/wk2test-gpucomp.o"
+aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 \
+	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$HERE/onyxsurface.c" -o "$BUILD/wk2test-onyxsurface.o"
 echo "wk2test: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
-	"$BUILD/wk2test.o" $WK $LIBS -o "$BUILD/bin/wk2test"
+	"$BUILD/wk2test.o" $GPC $WK $LIBS -o "$BUILD/bin/wk2test"
 aarch64-onyx-elf-size "$BUILD/bin/wk2test"
 
 if [ "${BENCH:-0}" = 1 ]; then
 	echo "wk2test: relink for the bench"
+	# (gpucomp without its clock: qemu-user gives a program no physical counter)
+	aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O3 -mcpu=cortex-a72 -ffp-contract=off -fno-math-errno -DGPC_NO_CLOCK \
+		-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$BUILD/wk2test-gpucomp-bench.o"
+	GPC="$BUILD/wk2test-gpucomp-bench.o $BUILD/wk2test-onyxsurface.o"
 	BUILD_ONLY=1 PROG=none NAME=wk2test SIM_CXX=1 PREFIX=aarch64-onyx-elf- CFLAGS_EXTRA="-Wl,--gc-sections" \
-		OBJS="$BUILD/wk2test.o $WK $LIBS" sh "$ONYX/tools/tests/posixsim/run.sh"
+		OBJS="$BUILD/wk2test.o $GPC $WK $LIBS" sh "$ONYX/tools/tests/posixsim/run.sh"
 	ls -l "$POSIXSIM_ROOT/SD/bin/wk2test"
 fi

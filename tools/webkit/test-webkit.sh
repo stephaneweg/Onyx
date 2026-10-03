@@ -11,6 +11,8 @@
 # the number of failures. The bench is not the Pi: the Pi is the reference.
 #
 #   BENCH=1 sh tools/webkit/build-wk2test.sh && sh tools/webkit/test-webkit.sh
+#   WK2TEST_GPU=1 sh tools/webkit/test-webkit.sh    # the same pages through the compositor (the bench has
+#                                                   # no GPU: gpucomp's CPU path, the kernel surfaces as files)
 #
 # Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence (see fetch.sh).
 set -u
@@ -25,6 +27,7 @@ R=$POSIXSIM_ROOT
 
 # The pages in SD:/wktest ("/tmp" is RAM:/tmp for an Onyx program); the card's fonts.
 mkdir -p "$R/SD/wktest" "$R/RAM" "$R/SD/res/fonts"
+rm -f "$R"/.shm/surface-*				# (the compositor's surfaces of earlier runs)
 cp "$HERE"/tests/*.html "$R/SD/wktest/"
 cp "$ONYX"/sdcard/res/fonts/*.ttf "$R/SD/res/fonts/"
 

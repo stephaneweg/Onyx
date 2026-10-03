@@ -1,0 +1,2309 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 11:10:29 +0200
+Subject: [PATCH 18/18] [Onyx] A compositor on the V3D, stage 1: the page's
+ layers as tiles, composited by gpucomp
+
+USE(GRAPHICS_LAYER_ONYX): GraphicsLayerOnyx is a real GraphicsLayer (its properties, a grid of
+512-pixel tiles kept over a window around what is seen, painted by Skia on the CPU), and
+LayerTreeHostOnyx, in the web process, flushes the tree, paints the tiles that are new or dirty,
+gives them to Onyx's gpucomp as textures and composites the layers (translations, rectangular
+clips, opacity) straight into a kernel surface the UI process made and maps; a frame is told to
+the UI process (DrawingAreaProxy::OnyxCompositedFrame), which copies what changed into the
+window. A scroll paints only the rows that come into the window around the view.
+
+Off by default: WKPreferencesSetCompositingEnabledOnyx before the view is made. The software
+path is unchanged when it is off. Not yet: layers for CSS animations (only the root is composited;
+an animation repaints its tile), groups, masks, rounded clips, 3D.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/WebCore/PlatformOnyx.cmake             |  10 +-
+ .../graphics/onyx/GraphicsLayerOnyx.cpp       | 487 +++++++++++-
+ .../graphics/onyx/GraphicsLayerOnyx.h         | 158 ++++
+ .../WebCore/rendering/RenderLayerBacking.cpp  |   4 +-
+ Source/WebKit/PlatformOnyx.cmake              |  13 +-
+ Source/WebKit/Shared/onyx/OnyxSurface.h       |  49 ++
+ .../API/C/onyx/WKPagePrivateOnyx.cpp          |  16 +
+ .../UIProcess/API/C/onyx/WKPagePrivateOnyx.h  |   7 +
+ .../DrawingAreaProxyCoordinatedGraphics.cpp   |  20 +
+ .../DrawingAreaProxyCoordinatedGraphics.h     |  23 +
+ Source/WebKit/UIProcess/DrawingAreaProxy.h    |   3 +
+ .../UIProcess/DrawingAreaProxy.messages.in    |   4 +
+ ...rawingAreaProxyCoordinatedGraphicsOnyx.cpp | 194 +++++
+ .../UIProcess/onyx/WebPreferencesOnyx.cpp     |   5 +-
+ .../WebCoreSupport/WebChromeClient.h          |   8 +
+ .../DrawingAreaCoordinatedGraphics.cpp        |  23 +
+ .../DrawingAreaCoordinatedGraphics.h          |   3 +
+ .../CoordinatedGraphics/LayerTreeHostOnyx.cpp | 705 ++++++++++++++++++
+ .../CoordinatedGraphics/LayerTreeHostOnyx.h   | 162 ++++
+ .../WebKit/WebProcess/WebPage/DrawingArea.h   |   3 +
+ .../WebPage/DrawingArea.messages.in           |   4 +
+ Source/cmake/OptionsOnyx.cmake                |  14 +
+ 22 files changed, 1902 insertions(+), 13 deletions(-)
+ create mode 100644 Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+ create mode 100644 Source/WebKit/Shared/onyx/OnyxSurface.h
+ create mode 100644 Source/WebKit/UIProcess/onyx/DrawingAreaProxyCoordinatedGraphicsOnyx.cpp
+ create mode 100644 Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+index 6b26e28f..2120f7b6 100644
+--- a/Source/WebCore/PlatformOnyx.cmake
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -1,6 +1,7 @@
+-# The Onyx port of WebCore: curl networking (with mbedTLS), Skia on the CPU -- no GL, no
+-# compositor: pages are painted into a bitmap --, WebKit's own image decoders, the generic and
+-# Unix platform files, and Onyx's own (platform/onyx, platform/graphics/onyx, ...).
++# The Onyx port of WebCore: curl networking (with mbedTLS), Skia on the CPU -- no GL: pages are
++# painted into a bitmap, or (USE_GRAPHICS_LAYER_ONYX, a page asked to composite) into the tiles of
++# GraphicsLayerOnyx --, WebKit's own image decoders, the generic and Unix platform files, and
++# Onyx's own (platform/onyx, platform/graphics/onyx, ...).
+ 
+ include(platform/Adwaita.cmake)
+ include(platform/Curl.cmake)
+@@ -10,12 +11,15 @@ include(platform/Skia.cmake)
+ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+     ${WEBCORE_DIR}/platform
+     ${WEBCORE_DIR}/platform/generic
++    ${WEBCORE_DIR}/platform/graphics/onyx
+     ${WEBCORE_DIR}/platform/mediacapabilities
+     ${WEBCORE_DIR}/platform/video-codecs
+     ${WEBCORE_DIR}/platform/network/onyx
+ )
+ 
+ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
++    platform/graphics/onyx/GraphicsLayerOnyx.h
++
+     platform/onyx/PlatformPasteboardOnyx.h
+ )
+ 
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+index b0235902..b63537ba 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+@@ -28,13 +28,483 @@
+ 
+ #include "GraphicsLayerFactory.h"
+ 
+-// Onyx has no compositor yet (no GL: Skia paints on the CPU): accelerated compositing stays off
+-// (Settings::acceleratedCompositingEnabled), pages are painted by their frame view into one
+-// bitmap. WebCore still creates a few layers of its own (the page overlays' root...): a layer
+-// that keeps the tree and its properties, and draws nothing.
++#if USE(GRAPHICS_LAYER_ONYX)
++#include "FontRenderOptions.h"
++#include "GraphicsContextSkia.h"
++#include "GraphicsLayerOnyx.h"
++#include <skia/core/SkCanvas.h>
++#include <skia/core/SkColorSpace.h>
++#include <skia/core/SkImageInfo.h>
++#include <skia/core/SkSurface.h>
++#include <wtf/StdLibExtras.h>
++#endif
++
++// Onyx has no GL: Skia paints on the CPU. Without a host (accelerated compositing off, the
++// default: Settings::acceleratedCompositingEnabled) pages are painted by their frame view into one
++// bitmap; WebCore still creates a few layers of its own (the page overlays' root...): a layer then
++// keeps the tree and its properties, and draws nothing.
++//
++// With a host (USE(GRAPHICS_LAYER_ONYX), WebKit's LayerTreeHost on Onyx: the page asked to
++// composite), a layer that draws content keeps it in tiles of 512 pixels painted here by Skia and
++// handed to the host as textures; the host walks the tree and has them assembled by the GPU
++// (user/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again.
++// Animations stay on the main thread (addAnimation answers false).
+ 
+ namespace WebCore {
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++
++Ref<GraphicsLayerOnyx> GraphicsLayerOnyx::create(Type type, GraphicsLayerClient& client, GraphicsLayerOnyxHost* host)
++{
++    return adoptRef(*new GraphicsLayerOnyx(type, client, host));
++}
++
++GraphicsLayerOnyx::GraphicsLayerOnyx(Type type, GraphicsLayerClient& client, GraphicsLayerOnyxHost* host)
++    : GraphicsLayer(type, client)
++    , m_host(host)
++{
++    if (m_host)
++        m_host->layerCreated(*this);
++}
++
++GraphicsLayerOnyx::~GraphicsLayerOnyx()
++{
++    dropTiles();
++    if (m_host)
++        m_host->layerDestroyed(*this);
++    willBeDestroyed();
++}
++
++void GraphicsLayerOnyx::detachFromHost()
++{
++    m_host = nullptr;
++    m_tiles.clear();
++}
++
++void GraphicsLayerOnyx::noteLayerPropertyChanged(ScheduleFlush scheduleFlush)
++{
++    if (!m_host || beingDestroyed())
++        return;
++    // (A change that asks for no flush is seen by the host's next walk anyway.)
++    if (scheduleFlush == ScheduleFlush::No)
++        return;
++    // (Nor one made during a flush: the walk comes right after it.)
++    if (m_hasUncommittedChanges || client().isFlushingLayers())
++        return;
++    m_hasUncommittedChanges = true;
++    client().notifyFlushRequired(this);
++}
++
++void GraphicsLayerOnyx::setNeedsDisplay()
++{
++    setNeedsDisplayInRect({ { }, m_size }, ShouldClipToLayer::Clip);
++}
++
++void GraphicsLayerOnyx::setNeedsDisplayInRect(const FloatRect& rect, ShouldClipToLayer)
++{
++    if (!m_host || !drawsContent())
++        return;
++
++    auto dirtyRect = enclosingIntRect(rect);
++    for (auto& tile : m_tiles.values())
++        tile.dirtyRect.unite(intersection(dirtyRect, tile.rect));
++    noteLayerPropertyChanged();
++    addRepaintRect(rect);
++}
++
++bool GraphicsLayerOnyx::setChildren(Vector<Ref<GraphicsLayer>>&& children)
++{
++    bool childrenChanged = GraphicsLayer::setChildren(WTF::move(children));
++    if (childrenChanged)
++        noteLayerPropertyChanged();
++    return childrenChanged;
++}
++
++void GraphicsLayerOnyx::addChild(Ref<GraphicsLayer>&& childLayer)
++{
++    GraphicsLayer::addChild(WTF::move(childLayer));
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::addChildAtIndex(Ref<GraphicsLayer>&& childLayer, int index)
++{
++    GraphicsLayer::addChildAtIndex(WTF::move(childLayer), index);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::addChildAbove(Ref<GraphicsLayer>&& childLayer, GraphicsLayer* sibling)
++{
++    GraphicsLayer::addChildAbove(WTF::move(childLayer), sibling);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::addChildBelow(Ref<GraphicsLayer>&& childLayer, GraphicsLayer* sibling)
++{
++    GraphicsLayer::addChildBelow(WTF::move(childLayer), sibling);
++    noteLayerPropertyChanged();
++}
++
++bool GraphicsLayerOnyx::replaceChild(GraphicsLayer* oldChild, Ref<GraphicsLayer>&& newChild)
++{
++    if (!GraphicsLayer::replaceChild(oldChild, WTF::move(newChild)))
++        return false;
++    noteLayerPropertyChanged();
++    return true;
++}
++
++void GraphicsLayerOnyx::willModifyChildren()
++{
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setMaskLayer(RefPtr<GraphicsLayer>&& layer)
++{
++    if (layer == m_maskLayer)
++        return;
++    GraphicsLayer::setMaskLayer(WTF::move(layer));
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setPosition(const FloatPoint& point)
++{
++    bool changed = point != m_position;
++    GraphicsLayer::setPosition(point);
++    if (changed)
++        noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::syncPosition(const FloatPoint& point)
++{
++    bool changed = point != m_position;
++    GraphicsLayer::syncPosition(point);
++    if (changed)
++        noteLayerPropertyChanged(ScheduleFlush::No);
++}
++
++void GraphicsLayerOnyx::setAnchorPoint(const FloatPoint3D& point)
++{
++    if (point == m_anchorPoint)
++        return;
++    GraphicsLayer::setAnchorPoint(point);
++    noteLayerPropertyChanged();
++}
++
++IntRect GraphicsLayerOnyx::rectForTile(int x, int y) const
++{
++    auto layerSize = expandedIntSize(m_size);
++    int x1 = x * tileSize;
++    int y1 = y * tileSize;
++    int x2 = std::min(x1 + tileSize, layerSize.width());
++    int y2 = std::min(y1 + tileSize, layerSize.height());
++    if (x2 <= x1 || y2 <= y1)
++        return { };
++    return { x1, y1, x2 - x1, y2 - y1 };
++}
++
++void GraphicsLayerOnyx::setSize(const FloatSize& size)
++{
++    if (size == m_size)
++        return;
++    GraphicsLayer::setSize(size);
++
++    // The tiles whose rectangle is still the same keep their pixels (a page that grows keeps all but
++    // its last row); the others are made again.
++    m_tiles.removeIf([&](auto& entry) {
++        auto& tile = entry.value;
++        if (rectForTile(tile.rect.x() / tileSize, tile.rect.y() / tileSize) == tile.rect)
++            return false;
++        destroyTile(tile);
++        return true;
++    });
++    noteLayerPropertyChanged();
++}
++
++bool GraphicsLayerOnyx::shouldRepaintOnSizeChange() const
++{
++    // A tiled layer (as GraphicsLayerCA's): the tiles in place keep their pixels, what changed in
++    // them is invalidated by the render tree, the new ones are painted whole (setSize).
++    if (m_host)
++        return false;
++    return GraphicsLayer::shouldRepaintOnSizeChange();
++}
++
++void GraphicsLayerOnyx::setBoundsOrigin(const FloatPoint& origin)
++{
++    if (origin == m_boundsOrigin)
++        return;
++    GraphicsLayer::setBoundsOrigin(origin);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::syncBoundsOrigin(const FloatPoint& origin)
++{
++    if (origin == m_boundsOrigin)
++        return;
++    GraphicsLayer::syncBoundsOrigin(origin);
++    noteLayerPropertyChanged(ScheduleFlush::No);
++}
++
++void GraphicsLayerOnyx::setTransform(const TransformationMatrix& matrix)
++{
++    if (matrix == transform())
++        return;
++    GraphicsLayer::setTransform(matrix);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setChildrenTransform(const TransformationMatrix& matrix)
++{
++    if (matrix == childrenTransform())
++        return;
++    GraphicsLayer::setChildrenTransform(matrix);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setPreserves3D(bool value)
++{
++    if (value == preserves3D())
++        return;
++    GraphicsLayer::setPreserves3D(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setMasksToBounds(bool value)
++{
++    if (value == masksToBounds())
++        return;
++    GraphicsLayer::setMasksToBounds(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setDrawsContent(bool value)
++{
++    if (value == drawsContent())
++        return;
++    GraphicsLayer::setDrawsContent(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setContentsVisible(bool value)
++{
++    if (value == contentsAreVisible())
++        return;
++    GraphicsLayer::setContentsVisible(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setContentsOpaque(bool value)
++{
++    if (value == contentsOpaque())
++        return;
++    GraphicsLayer::setContentsOpaque(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setBackfaceVisibility(bool value)
++{
++    if (value == backfaceVisibility())
++        return;
++    GraphicsLayer::setBackfaceVisibility(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setBackgroundColor(const Color& value)
++{
++    if (value == backgroundColor())
++        return;
++    GraphicsLayer::setBackgroundColor(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setOpacity(float value)
++{
++    if (value == opacity())
++        return;
++    GraphicsLayer::setOpacity(value);
++    noteLayerPropertyChanged();
++}
++
++bool GraphicsLayerOnyx::setFilters(const FilterOperations& filters)
++{
++    if (!m_host)
++        return GraphicsLayer::setFilters(filters);
++    // Not composited: the layer's own painting applies them.
++    if (GraphicsLayer::filters().size()) {
++        clearFilters();
++        noteLayerPropertyChanged();
++    }
++    return false;
++}
++
++bool GraphicsLayerOnyx::setBackdropFilters(const FilterOperations& filters)
++{
++    if (!m_host)
++        return GraphicsLayer::setBackdropFilters(filters);
++    clearBackdropFilters();
++    return false;
++}
++
++void GraphicsLayerOnyx::setContentsRect(const FloatRect& value)
++{
++    if (value == contentsRect())
++        return;
++    GraphicsLayer::setContentsRect(value);
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::setContentsToSolidColor(const Color& color)
++{
++    if (color == m_solidColor)
++        return;
++    m_solidColor = color;
++    noteLayerPropertyChanged();
++}
++
++void GraphicsLayerOnyx::flushCompositingState(const FloatRect& visibleRect)
++{
++    // The host reads the layers' properties where they are when it walks the tree (the same thread):
++    // a flush only says that it has seen them. Every layer of a tree is a GraphicsLayerOnyx
++    // (GraphicsLayer::create makes nothing else).
++    flushCompositingStateForThisLayerOnly();
++    if (auto* mask = maskLayer())
++        mask->flushCompositingState(visibleRect);
++    for (auto& child : children())
++        child->flushCompositingState(visibleRect);
++}
++
++void GraphicsLayerOnyx::flushCompositingStateForThisLayerOnly()
++{
++    m_hasUncommittedChanges = false;
++}
++
++void GraphicsLayerOnyx::destroyTile(Tile& tile)
++{
++    if (tile.texture && m_host)
++        m_host->destroyTileTexture(tile.texture);
++    tile.texture = nullptr;
++}
++
++void GraphicsLayerOnyx::dropTiles()
++{
++    for (auto& tile : m_tiles.values())
++        destroyTile(tile);
++    m_tiles.clear();
++}
++
++void GraphicsLayerOnyx::invalidateTiles()
++{
++    for (auto& tile : m_tiles.values())
++        tile.dirtyRect = tile.rect;
++}
++
++bool GraphicsLayerOnyx::paintTile(Tile& tile, TileUpdate& update)
++{
++    // One scratch buffer for every tile of every layer (the main thread): the pixels live in the
++    // host's textures, not here.
++    static NeverDestroyed<Vector<uint32_t>> scratch;
++
++    bool isNew = !tile.texture;
++    auto dirtyRect = isNew ? tile.rect : intersection(tile.dirtyRect, tile.rect);
++    if (dirtyRect.isEmpty()) {
++        tile.dirtyRect = { };
++        return true;
++    }
++
++    size_t pixelCount = static_cast<size_t>(dirtyRect.width()) * dirtyRect.height();
++    auto& pixels = scratch.get();
++    if (pixels.size() < pixelCount)
++        pixels.grow(pixelCount);
++    zeroSpan(pixels.mutableSpan().first(pixelCount));
++
++    auto startTime = MonotonicTime::now();
++    {
++        // 0xAARRGGBB words, premultiplied: gpucomp's texels.
++        auto info = SkImageInfo::Make(dirtyRect.width(), dirtyRect.height(), kBGRA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
++        SkSurfaceProps properties = FontRenderOptions::singleton().createSurfaceProps();
++        auto surface = SkSurfaces::WrapPixels(info, pixels.mutableSpan().data(), info.minRowBytes(), &properties);
++        if (!surface || !surface->getCanvas())
++            return false;
++        GraphicsContextSkia context(*surface->getCanvas(), RenderingMode::Unaccelerated, RenderingPurpose::LayerBacking);
++        context.translate(-dirtyRect.x(), -dirtyRect.y());
++        paintGraphicsLayerContents(context, dirtyRect);
++    }
++    update.paintTime += MonotonicTime::now() - startTime;
++    update.tilesPainted++;
++
++    if (isNew) {
++        tile.texture = m_host->createTileTexture(tile.rect.size(), pixels.span().data(), dirtyRect.width());
++        if (!tile.texture)
++            return false;
++    } else {
++        IntRect rectInTile { dirtyRect.location() - toIntSize(tile.rect.location()), dirtyRect.size() };
++        if (!m_host->updateTileTexture(tile.texture, rectInTile, pixels.span().data(), dirtyRect.width()))
++            return false;
++        update.repaintedRects.append(dirtyRect);
++    }
++    tile.dirtyRect = { };
++    return true;
++}
++
++void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, unsigned& offscreenBudget, TileUpdate& update)
++{
++    if (!m_host)
++        return;
++
++    IntRect layerRect { { }, expandedIntSize(m_size) };
++    auto visibleRect = intersection(passedVisibleRect, layerRect);
++    if (!drawsContent() || !contentsAreVisible() || visibleRect.isEmpty()) {
++        // (A layer out of sight keeps nothing: its tiles are painted when it comes back.)
++        dropTiles();
++        return;
++    }
++
++    // One viewport above, two below: where a page is scrolled next.
++    auto coverageRect = visibleRect;
++    coverageRect.setY(visibleRect.y() - visibleRect.height());
++    coverageRect.setHeight(visibleRect.height() * 4);
++    coverageRect.intersect(layerRect);
++
++    auto tileRange = [](const IntRect& rect) {
++        int x = rect.x() / tileSize;
++        int y = rect.y() / tileSize;
++        int maxX = (rect.maxX() + tileSize - 1) / tileSize;
++        int maxY = (rect.maxY() + tileSize - 1) / tileSize;
++        return IntRect { x, y, maxX - x, maxY - y };
++    };
++    auto covered = tileRange(coverageRect);
++
++    m_tiles.removeIf([&](auto& entry) {
++        auto& tile = entry.value;
++        if (covered.contains(IntPoint { tile.rect.x() / tileSize, tile.rect.y() / tileSize }))
++            return false;
++        destroyTile(tile);
++        return true;
++    });
++
++    for (int y = covered.y(); y < covered.maxY(); ++y) {
++        for (int x = covered.x(); x < covered.maxX(); ++x) {
++            auto rect = rectForTile(x, y);
++            if (rect.isEmpty())
++                continue;
++            auto& tile = m_tiles.ensure(tileKey(x, y), [&] {
++                return Tile { rect, rect, nullptr };
++            }).iterator->value;
++            if (tile.texture && tile.dirtyRect.isEmpty())
++                continue;
++            if (!tile.rect.intersects(visibleRect)) {
++                if (!offscreenBudget) {
++                    update.hasPendingTiles = true;
++                    continue;
++                }
++                --offscreenBudget;
++            }
++            paintTile(tile, update);
++        }
++    }
++}
++
++#else // !USE(GRAPHICS_LAYER_ONYX)
++
+ class GraphicsLayerOnyx final : public GraphicsLayer {
+ public:
+     GraphicsLayerOnyx(Type type, GraphicsLayerClient& client)
+@@ -51,10 +521,17 @@ public:
+     void setNeedsDisplayInRect(const FloatRect&, ShouldClipToLayer) final { }
+ };
+ 
++#endif // USE(GRAPHICS_LAYER_ONYX)
++
+ Ref<GraphicsLayer> GraphicsLayer::create(GraphicsLayerFactory* factory, GraphicsLayerClient& client, Type layerType)
+ {
+-    if (!factory)
++    if (!factory) {
++#if USE(GRAPHICS_LAYER_ONYX)
++        return GraphicsLayerOnyx::create(layerType, client, nullptr);
++#else
+         return adoptRef(*new GraphicsLayerOnyx(layerType, client));
++#endif
++    }
+ 
+     return factory->createGraphicsLayer(layerType, client);
+ }
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+new file mode 100644
+index 00000000..4855a7bb
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+@@ -0,0 +1,158 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if USE(GRAPHICS_LAYER_ONYX)
++
++#include "Color.h"
++#include "GraphicsLayer.h"
++#include "IntRect.h"
++#include <wtf/HashMap.h>
++#include <wtf/MonotonicTime.h>
++#include <wtf/Vector.h>
++
++namespace WebCore {
++
++class GraphicsLayerOnyx;
++
++// The compositor a GraphicsLayerOnyx belongs to (WebKit's LayerTreeHost on Onyx): it keeps the
++// tiles' pixels as textures (user/gpucomp: the V3D, or the CPU) and assembles them. A layer made
++// without one (no factory: accelerated compositing off) keeps the tree and its properties and
++// draws nothing, as before there was a compositor.
++class GraphicsLayerOnyxHost {
++public:
++    using Texture = void*;
++
++    virtual ~GraphicsLayerOnyxHost() = default;
++
++    virtual void layerCreated(GraphicsLayerOnyx&) = 0;
++    virtual void layerDestroyed(GraphicsLayerOnyx&) = 0;
++
++    // Pixels: 0xAARRGGBB words, premultiplied (Skia's kBGRA_8888); stride in pixels.
++    // A null texture: none can be made now (the texture budget); the tile stays dirty.
++    virtual Texture createTileTexture(const IntSize&, const uint32_t* pixels, int stride) = 0;
++    // The rectangle is in the texture's coordinates. False: the pixels did not get there.
++    virtual bool updateTileTexture(Texture, const IntRect&, const uint32_t* pixels, int stride) = 0;
++    virtual void destroyTileTexture(Texture) = 0;
++};
++
++class GraphicsLayerOnyx final : public GraphicsLayer {
++public:
++    static constexpr int tileSize = 512;
++
++    struct Tile {
++        IntRect rect; // In the layer's coordinates, clipped to the layer.
++        IntRect dirtyRect;
++        GraphicsLayerOnyxHost::Texture texture { nullptr };
++    };
++
++    struct TileUpdate {
++        unsigned tilesPainted { 0 };
++        Seconds paintTime;
++        // What was painted again of tiles already shown, in the layer's coordinates.
++        Vector<IntRect, 8> repaintedRects;
++        // Tiles outside the visible rectangle that the budget left for a later frame.
++        bool hasPendingTiles { false };
++    };
++
++    WEBCORE_EXPORT static Ref<GraphicsLayerOnyx> create(Type, GraphicsLayerClient&, GraphicsLayerOnyxHost*);
++    WEBCORE_EXPORT ~GraphicsLayerOnyx();
++
++    // The host goes away before the layer: nothing is drawn any more (its textures went with it).
++    WEBCORE_EXPORT void detachFromHost();
++
++    // The tile grid follows the visible rectangle (the layer's coordinates): its coverage is that
++    // rectangle grown by its height above and twice below, clamped to the layer. The visible tiles
++    // that are new or dirty are painted and given to the host; those only covered, while
++    // offscreenBudget lasts (it is counted down). The tiles that left the coverage are dropped.
++    WEBCORE_EXPORT void updateTiles(const IntRect& visibleRect, unsigned& offscreenBudget, TileUpdate&);
++    // The host's textures lost their pixels: every tile is painted again.
++    WEBCORE_EXPORT void invalidateTiles();
++    WEBCORE_EXPORT void dropTiles();
++
++    const HashMap<uint64_t, Tile>& tiles() const LIFETIME_BOUND { return m_tiles; }
++    const Color& solidColor() const LIFETIME_BOUND { return m_solidColor; }
++
++    // GraphicsLayer
++    void setNeedsDisplay() final;
++    void setNeedsDisplayInRect(const FloatRect&, ShouldClipToLayer = ShouldClipToLayer::Clip) final;
++
++    bool setChildren(Vector<Ref<GraphicsLayer>>&&) final;
++    void addChild(Ref<GraphicsLayer>&&) final;
++    void addChildAtIndex(Ref<GraphicsLayer>&&, int index) final;
++    void addChildAbove(Ref<GraphicsLayer>&&, GraphicsLayer* sibling) final;
++    void addChildBelow(Ref<GraphicsLayer>&&, GraphicsLayer* sibling) final;
++    bool replaceChild(GraphicsLayer* oldChild, Ref<GraphicsLayer>&& newChild) final;
++    void willModifyChildren() final;
++    void setMaskLayer(RefPtr<GraphicsLayer>&&) final;
++
++    void setPosition(const FloatPoint&) final;
++    void syncPosition(const FloatPoint&) final;
++    void setAnchorPoint(const FloatPoint3D&) final;
++    void setSize(const FloatSize&) final;
++    void setBoundsOrigin(const FloatPoint&) final;
++    void syncBoundsOrigin(const FloatPoint&) final;
++    void setTransform(const TransformationMatrix&) final;
++    void setChildrenTransform(const TransformationMatrix&) final;
++    void setPreserves3D(bool) final;
++    void setMasksToBounds(bool) final;
++    void setDrawsContent(bool) final;
++    void setContentsVisible(bool) final;
++    void setContentsOpaque(bool) final;
++    void setBackfaceVisibility(bool) final;
++    void setBackgroundColor(const Color&) final;
++    void setOpacity(float) final;
++    bool setFilters(const FilterOperations&) final;
++    bool setBackdropFilters(const FilterOperations&) final;
++    void setContentsRect(const FloatRect&) final;
++    void setContentsToSolidColor(const Color&) final;
++    bool canDirectlyCompositeNativeImage() const final { return !m_host; }
++
++    void flushCompositingState(const FloatRect&) final;
++    void flushCompositingStateForThisLayerOnly() final;
++
++private:
++    GraphicsLayerOnyx(Type, GraphicsLayerClient&, GraphicsLayerOnyxHost*);
++
++    bool shouldRepaintOnSizeChange() const final;
++
++    enum class ScheduleFlush : bool { No, Yes };
++    void noteLayerPropertyChanged(ScheduleFlush = ScheduleFlush::Yes);
++
++    static uint64_t tileKey(int x, int y) { return (static_cast<uint64_t>(x + 1) << 32) | static_cast<uint32_t>(y + 1); }
++    IntRect rectForTile(int x, int y) const;
++    bool paintTile(Tile&, TileUpdate&);
++    void destroyTile(Tile&);
++
++    GraphicsLayerOnyxHost* m_host { nullptr };
++    HashMap<uint64_t, Tile> m_tiles;
++    Color m_solidColor;
++    bool m_hasUncommittedChanges { false };
++};
++
++} // namespace WebCore
++
++#endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebCore/rendering/RenderLayerBacking.cpp b/Source/WebCore/rendering/RenderLayerBacking.cpp
+index 8ea877b1..457e28b6 100644
+--- a/Source/WebCore/rendering/RenderLayerBacking.cpp
++++ b/Source/WebCore/rendering/RenderLayerBacking.cpp
+@@ -4216,7 +4216,9 @@ bool RenderLayerBacking::paintsIntoWindow() const
+         return false;
+ 
+     if (m_owningLayer.isRenderViewLayer()) {
+-#if PLATFORM(IOS_FAMILY) || USE(COORDINATED_GRAPHICS)
++#if PLATFORM(IOS_FAMILY) || USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_ONYX)
++        // (Onyx's compositor: the page's own contents are a layer with its tiles, so that scrolling
++        // moves them; there is no window painted under the layers.)
+         if (compositor().inForcedCompositingMode())
+             return false;
+ #endif
+diff --git a/Source/WebKit/PlatformOnyx.cmake b/Source/WebKit/PlatformOnyx.cmake
+index da34742c..64b2858a 100644
+--- a/Source/WebKit/PlatformOnyx.cmake
++++ b/Source/WebKit/PlatformOnyx.cmake
+@@ -1,6 +1,7 @@
+ # The Onyx port of WebKit (the multi-process layer): the Unix IPC files, the curl network
+-# process, Skia on the CPU and the software drawing path -- no compositor, no GL / EGL, no libwpe,
+-# no GLib, no GPU process, no WebDriver. The view (UIProcess/onyx) is exposed to embedders through
++# process, Skia on the CPU and the software drawing path -- beside it Onyx's own compositor
++# (USE_GRAPHICS_LAYER_ONYX: LayerTreeHostOnyx, on the V3D through user/gpucomp), no GL / EGL, no
++# libwpe, no GLib, no GPU process, no WebDriver. The view (UIProcess/onyx) is exposed to embedders through
+ # a small C API (UIProcess/API/C/onyx, Shared/API/c/onyx) beside WebKit's generic WK* API.
+ 
+ include(Headers.cmake)
+@@ -66,6 +67,7 @@ list(APPEND WebKit_SOURCES
+     # Only WebCore::PlatformPasteboard calls, nothing of libwpe (platform/onyx/PlatformPasteboardOnyx.cpp).
+     UIProcess/libwpe/WebPasteboardProxyLibWPE.cpp
+ 
++    UIProcess/onyx/DrawingAreaProxyCoordinatedGraphicsOnyx.cpp
+     UIProcess/onyx/OnyxWebView.cpp
+     UIProcess/onyx/PageClientImpl.cpp
+     UIProcess/onyx/WebPageProxyOnyx.cpp
+@@ -78,6 +80,8 @@ list(APPEND WebKit_SOURCES
+     WebProcess/InjectedBundle/onyx/InjectedBundleOnyx.cpp
+ 
+     WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
++    # The compositor (USE_GRAPHICS_LAYER_ONYX), for the pages that ask for it.
++    WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+ 
+     WebProcess/WebPage/onyx/WebPageOnyx.cpp
+ 
+@@ -98,6 +102,11 @@ list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES
+     "${WEBKIT_DIR}/WebProcess/WebPage/CoordinatedGraphics"
+ )
+ 
++if (USE_GRAPHICS_LAYER_ONYX)
++    # <gpucomp.h>, Onyx's GPU compositing service (OptionsOnyx.cmake).
++    list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES "${ONYX_GPUCOMP_INCLUDE_DIR}")
++endif ()
++
+ # Onyx specific
+ list(APPEND WebKit_PUBLIC_FRAMEWORK_HEADERS
+     Shared/API/c/onyx/WKBaseOnyx.h
+diff --git a/Source/WebKit/Shared/onyx/OnyxSurface.h b/Source/WebKit/Shared/onyx/OnyxSurface.h
+new file mode 100644
+index 00000000..5ae185f8
+--- /dev/null
++++ b/Source/WebKit/Shared/onyx/OnyxSurface.h
+@@ -0,0 +1,49 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if USE(GRAPHICS_LAYER_ONYX)
++
++// The kernel's shared surfaces (kapi surface_create / surface_map, Onyx's docs/02): pixel buffers,
++// physically contiguous, that several processes map -- where the web process's compositor leaves a
++// page's picture and the UI process reads it. The kernel's calls are reached through the Onyx
++// sources' kapi.h, which is not a header for these files: the program WebKit is linked into brings
++// these few functions (tools/webkit/onyxsurface.c of the Onyx sources), as it brings gpucomp.
++extern "C" {
++
++// The screen's size now (a surface is never larger).
++void onyx_screen_size(int* width, int* height);
++// A surface owned by this process -> its id (> 0), 0 none. The kernel frees it once the owner has
++// destroyed it (or ended) and the processes that mapped it have ended.
++int onyx_surface_create(int width, int height);
++// Its pixels in this process (0x00RRGGBB words, a row is its width) and its size -> null: no such
++// surface. Mapped once a process, however often it is asked.
++unsigned* onyx_surface_map(int surfaceID, int* width, int* height);
++void onyx_surface_destroy(int surfaceID);
++
++}
++
++#endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
+index 3dfaa1bc..9ecb2a49 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
+@@ -36,6 +36,7 @@
+ #include "WKAPICast.h"
+ #include "WebEventFactoryOnyx.h"
+ #include "WebPageProxy.h"
++#include "WebPreferences.h"
+ #include <WebCore/Color.h>
+ #include <WebCore/PlatformPasteboardOnyx.h>
+ #include <WebCore/Region.h>
+@@ -132,6 +133,21 @@ void WKPagePaint(WKPageRef pageRef, unsigned char* surfaceData, WKSize wkSurface
+     canvas->restore();
+ }
+ 
++void WKPreferencesSetCompositingEnabledOnyx(WKPreferencesRef preferencesRef, bool enabled)
++{
++    // What DrawingAreaCoordinatedGraphics reads when the page is made in the web process: both on,
++    // the page is in accelerated compositing mode from its start, and for good (m_alwaysUseCompositing).
++    // (With USE(GRAPHICS_LAYER_ONYX) off there is no compositor: the preferences stay off.)
++#if USE(GRAPHICS_LAYER_ONYX)
++    Ref preferences = *WebKit::toImpl(preferencesRef);
++    preferences->setAcceleratedCompositingEnabled(enabled);
++    preferences->setForceCompositingMode(enabled);
++#else
++    UNUSED_PARAM(preferencesRef);
++    UNUSED_PARAM(enabled);
++#endif
++}
++
+ void WKSetClipboardCallbacksOnyx(WKClipboardWriteTextOnyx write, WKClipboardReadTextOnyx read, WKClipboardSerialOnyx serial)
+ {
+     // WebCore::PlatformPasteboard lives in this (the UI) process: the web processes reach it through
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
+index 4e83da94..5a787219 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
+@@ -52,6 +52,13 @@ WK_EXPORT void WKPageHandleWheelEvent(WKPageRef, WKWheelEvent);
+ // when it has none).
+ WK_EXPORT void WKPagePaint(WKPageRef, unsigned char* pixels, WKSize surfaceSize, uint32_t stride, WKRect paintRect);
+ 
++/* Onyx's compositor, off by default: the pages made with these preferences (set them on the page
++   configuration, before WKViewCreate) are drawn by it -- the web process keeps the page's layers in
++   tiles and has them assembled by the GPU (Onyx's gpucomp) into a kernel surface, so that scrolling
++   paints nothing again; WKPagePaint then copies from that surface. Without it: the software path (the
++   web process paints what changed into a bitmap, this process keeps a backing store). */
++WK_EXPORT void WKPreferencesSetCompositingEnabledOnyx(WKPreferencesRef, bool enabled);
++
+ /* Onyx's system clipboard, which only the embedder reaches (its kernel calls). write: the plain text
+    copied in a page (UTF-8, a length, no NUL needed). read: copies up to capacity bytes of the system's
+    text into buffer and returns the text's full length (called again with a bigger buffer when it did not
+diff --git a/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp b/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
+index 3e8ccda6..bb6767fe 100644
+--- a/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
++++ b/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
+@@ -60,6 +60,9 @@ DrawingAreaProxyCoordinatedGraphics::DrawingAreaProxyCoordinatedGraphics(WebPage
+ #if !PLATFORM(WPE) && !PLATFORM(GTK)
+     , m_discardBackingStoreTimer(RunLoop::currentSingleton(), "DrawingAreaProxyCoordinatedGraphics::DiscardBackingStoreTimer"_s, this, &DrawingAreaProxyCoordinatedGraphics::discardBackingStore)
+ #endif
++#if USE(GRAPHICS_LAYER_ONYX)
++    , m_onyxFrameShownTimer(RunLoop::currentSingleton(), "DrawingAreaProxyCoordinatedGraphics::OnyxFrameShownTimer"_s, this, &DrawingAreaProxyCoordinatedGraphics::onyxFrameWasShown)
++#endif
+ {
+ }
+ 
+@@ -68,6 +71,9 @@ DrawingAreaProxyCoordinatedGraphics::~DrawingAreaProxyCoordinatedGraphics()
+     // Make sure to exit accelerated compositing mode.
+     if (isInAcceleratedCompositingMode())
+         exitAcceleratedCompositingMode();
++#if USE(GRAPHICS_LAYER_ONYX)
++    releaseOnyxCompositingSurface();
++#endif
+ }
+ 
+ #if !PLATFORM(WPE) && !PLATFORM(GTK)
+@@ -75,6 +81,10 @@ void DrawingAreaProxyCoordinatedGraphics::paint(PlatformPaintContextPtr cr, cons
+ {
+     unpaintedRegion = rect;
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++    if (isInAcceleratedCompositingMode())
++        paintOnyxCompositedFrame(cr, rect, unpaintedRegion);
++#endif
+     if (isInAcceleratedCompositingMode())
+         return;
+ 
+@@ -160,6 +170,12 @@ void DrawingAreaProxyCoordinatedGraphics::sizeDidChange()
+     if (!page() || !page()->hasRunningProcess())
+         return;
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++    // (A view that outgrew its surface -- the screen's resolution changed -- gets another.)
++    if (isInAcceleratedCompositingMode())
++        sendOnyxCompositingSurface(true);
++#endif
++
+     if (m_isWaitingForDidUpdateGeometry)
+         return;
+ 
+@@ -243,6 +259,10 @@ bool DrawingAreaProxyCoordinatedGraphics::alwaysUseCompositing() const
+ 
+ void DrawingAreaProxyCoordinatedGraphics::enterAcceleratedCompositingMode(const LayerTreeContext& layerTreeContext)
+ {
++#if USE(GRAPHICS_LAYER_ONYX)
++    // The web process's compositor waits for the surface to composite into.
++    sendOnyxCompositingSurface();
++#endif
+     // Under Site Isolation, a process swap within an iframe may send EnterAcceleratedCompositingMode
+     // while the drawing area is already compositing (from the previous process). Treat it as an update.
+     if (isInAcceleratedCompositingMode()) {
+diff --git a/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.h b/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.h
+index 605aaabe..e0fe6311 100644
+--- a/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.h
++++ b/Source/WebKit/UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.h
+@@ -87,6 +87,9 @@ private:
+     void exitAcceleratedCompositingMode(uint64_t backingStoreStateID, UpdateInfo&&) override;
+ #endif
+     void updateAcceleratedCompositingMode(uint64_t backingStoreStateID, const LayerTreeContext&) override;
++#if USE(GRAPHICS_LAYER_ONYX)
++    void onyxCompositedFrame(const WebCore::IntSize&, const WebCore::IntRect& damage) override;
++#endif
+     void dispatchPresentationCallbacksAfterFlushingLayers(IPC::Connection&, Vector<IPC::AsyncReplyID>&&) override;
+ 
+     bool shouldSendWheelEventsToEventDispatcher() const override { return true; }
+@@ -106,6 +109,15 @@ private:
+     void discardBackingStore();
+ #endif
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++    // Onyx's compositor (UIProcess/onyx/DrawingAreaProxyCoordinatedGraphicsOnyx.cpp): the web
++    // process composites the page into a kernel surface of this process's, which paint() copies from.
++    void sendOnyxCompositingSurface(bool onlyIfReplaced = false);
++    void releaseOnyxCompositingSurface();
++    void paintOnyxCompositedFrame(PlatformPaintContextPtr, const WebCore::IntRect&, WebCore::Region& unpaintedRegion);
++    void onyxFrameWasShown();
++#endif
++
+     class DrawingMonitor {
+         WTF_MAKE_TZONE_ALLOCATED(DrawingMonitor);
+         WTF_MAKE_NONCOPYABLE(DrawingMonitor);
+@@ -137,6 +149,17 @@ private:
+     bool m_inForceUpdate { false };
+     std::unique_ptr<BackingStore> m_backingStore;
+     RunLoop::Timer m_discardBackingStoreTimer;
++#endif
++#if USE(GRAPHICS_LAYER_ONYX)
++    // The surface (its id, its pixels here, its size) and the size of the frame it holds.
++    int m_onyxSurfaceID { 0 };
++    unsigned* m_onyxSurfacePixels { nullptr };
++    WebCore::IntSize m_onyxSurfaceSize;
++    WebCore::IntSize m_onyxFrameSize;
++    // A frame the web process waits to hear was shown (DisplayDidRefresh): at the next paint, or
++    // when the timer fires (nothing painted: a hidden view).
++    bool m_onyxFrameIsPending { false };
++    RunLoop::Timer m_onyxFrameShownTimer;
+ #endif
+     const std::unique_ptr<DrawingMonitor> m_drawingMonitor;
+ };
+diff --git a/Source/WebKit/UIProcess/DrawingAreaProxy.h b/Source/WebKit/UIProcess/DrawingAreaProxy.h
+index 543abcec..b16d7b26 100644
+--- a/Source/WebKit/UIProcess/DrawingAreaProxy.h
++++ b/Source/WebKit/UIProcess/DrawingAreaProxy.h
+@@ -173,6 +173,9 @@ private:
+     virtual void update(uint64_t /* backingStoreStateID */, UpdateInfo&&) { }
+     virtual void exitAcceleratedCompositingMode(uint64_t /* backingStoreStateID */, UpdateInfo&&) { }
+ #endif
++#if USE(GRAPHICS_LAYER_ONYX)
++    virtual void onyxCompositedFrame(const WebCore::IntSize&, const WebCore::IntRect& /* damage */) { }
++#endif
+ 
+     WeakPtr<WebPageProxy> m_webPageProxy;
+     const Ref<WebProcessProxy> m_webProcessProxy;
+diff --git a/Source/WebKit/UIProcess/DrawingAreaProxy.messages.in b/Source/WebKit/UIProcess/DrawingAreaProxy.messages.in
+index 2e28c12f..cf2e233b 100644
+--- a/Source/WebKit/UIProcess/DrawingAreaProxy.messages.in
++++ b/Source/WebKit/UIProcess/DrawingAreaProxy.messages.in
+@@ -35,4 +35,8 @@ messages -> DrawingAreaProxy {
+     Update(uint64_t stateID, struct WebKit::UpdateInfo updateInfo) CanDispatchOutOfOrder
+     ExitAcceleratedCompositingMode(uint64_t backingStoreStateID, struct WebKit::UpdateInfo updateInfo)
+ #endif
++
++#if USE(GRAPHICS_LAYER_ONYX)
++    OnyxCompositedFrame(WebCore::IntSize size, WebCore::IntRect damage)
++#endif
+ }
+diff --git a/Source/WebKit/UIProcess/onyx/DrawingAreaProxyCoordinatedGraphicsOnyx.cpp b/Source/WebKit/UIProcess/onyx/DrawingAreaProxyCoordinatedGraphicsOnyx.cpp
+new file mode 100644
+index 00000000..ce09d2bb
+--- /dev/null
++++ b/Source/WebKit/UIProcess/onyx/DrawingAreaProxyCoordinatedGraphicsOnyx.cpp
+@@ -0,0 +1,194 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "DrawingAreaProxyCoordinatedGraphics.h"
++
++#if USE(GRAPHICS_LAYER_ONYX)
++
++#include "DrawingAreaMessages.h"
++#include "MessageSenderInlines.h"
++#include "OnyxSurface.h"
++#include "WebPageProxy.h"
++#include <WebCore/Region.h>
++#include <skia/core/SkCanvas.h>
++#include <skia/core/SkPixmap.h>
++#include <stdio.h>
++#include <unistd.h>
++#include <wtf/NeverDestroyed.h>
++#include <wtf/Vector.h>
++
++// The UI process's side of Onyx's compositor (the web process's: LayerTreeHostOnyx). The page's
++// picture is in a kernel surface, shared memory that the web process's compositor (the GPU)
++// writes: this process makes the surface -- the screen's size, so that a view is resized without
++// another -- gives its id to the web process when that enters accelerated compositing mode, hears
++// of each frame (OnyxCompositedFrame: the view's size in the surface, what changed), has the view
++// painted and copies the rectangles asked for from the surface in paint(). The web process
++// composites its next frame once this one was painted (DisplayDidRefresh).
++//
++// The kernel keeps a surface's memory while its owner lives and a place in the address space for
++// each mapping, never given back: the surfaces are made once and reused by the drawing areas that
++// follow one another in this process (a page gets a new one with each web process).
++
++namespace WebKit {
++using namespace WebCore;
++
++struct OnyxSurface {
++    int surfaceID { 0 };
++    unsigned* pixels { nullptr };
++    IntSize size;
++};
++
++static Vector<OnyxSurface>& freeOnyxSurfaces()
++{
++    static NeverDestroyed<Vector<OnyxSurface>> surfaces;
++    return surfaces;
++}
++
++// A view the page never painted is given up after this long (the web process goes on).
++static constexpr Seconds frameShownTimeout { 100_ms };
++
++static void logLine(const char* message, int surfaceID, const IntSize& size)
++{
++    // One line, one write, on the standard error: the kernel's log (kmsg) for an Onyx program.
++    char line[160];
++    int length = snprintf(line, sizeof(line), "web: gpu: %s %d (%d x %d)\n", message, surfaceID, size.width(), size.height());
++    if (length > static_cast<int>(sizeof(line)) - 1)
++        length = sizeof(line) - 1;
++    if (length > 0)
++        (void)!write(STDERR_FILENO, line, length);
++}
++
++void DrawingAreaProxyCoordinatedGraphics::sendOnyxCompositingSurface(bool onlyIfReplaced)
++{
++    IntRect viewRect { { }, size() };
++    int screenWidth = 0;
++    int screenHeight = 0;
++    onyx_screen_size(&screenWidth, &screenHeight);
++
++    // A surface is as large as the screen at most (the kernel's rule): a view larger than its surface
++    // gets another only if the screen grew (its resolution changed); else what fits is shown.
++    bool needsSurface = !m_onyxSurfacePixels
++        || (!IntRect({ }, m_onyxSurfaceSize).contains(viewRect) && (screenWidth > m_onyxSurfaceSize.width() || screenHeight > m_onyxSurfaceSize.height()));
++    if (!needsSurface && onlyIfReplaced)
++        return;
++
++    if (needsSurface) {
++        releaseOnyxCompositingSurface();
++
++        auto& freeSurfaces = freeOnyxSurfaces();
++        for (size_t i = 0; i < freeSurfaces.size(); ++i) {
++            if (freeSurfaces[i].size.width() < screenWidth || freeSurfaces[i].size.height() < screenHeight)
++                continue;
++            m_onyxSurfaceID = freeSurfaces[i].surfaceID;
++            m_onyxSurfacePixels = freeSurfaces[i].pixels;
++            m_onyxSurfaceSize = freeSurfaces[i].size;
++            freeSurfaces.removeAt(i);
++            break;
++        }
++
++        if (!m_onyxSurfacePixels) {
++            int surfaceID = onyx_surface_create(std::max(screenWidth, viewRect.width()), std::max(screenHeight, viewRect.height()));
++            int width = 0;
++            int height = 0;
++            auto* pixels = surfaceID ? onyx_surface_map(surfaceID, &width, &height) : nullptr;
++            if (!pixels) {
++                logLine("the UI process has no surface for the page: nothing will be shown; id", surfaceID, viewRect.size());
++                if (surfaceID)
++                    onyx_surface_destroy(surfaceID);
++                return;
++            }
++            m_onyxSurfaceID = surfaceID;
++            m_onyxSurfacePixels = pixels;
++            m_onyxSurfaceSize = { width, height };
++            logLine("the UI process made surface", surfaceID, m_onyxSurfaceSize);
++        }
++        m_onyxFrameSize = { };
++    }
++
++    send(Messages::DrawingArea::SetOnyxCompositingSurface(m_onyxSurfaceID));
++}
++
++void DrawingAreaProxyCoordinatedGraphics::releaseOnyxCompositingSurface()
++{
++    m_onyxFrameShownTimer.stop();
++    m_onyxFrameIsPending = false;
++    if (m_onyxSurfacePixels)
++        freeOnyxSurfaces().append({ m_onyxSurfaceID, m_onyxSurfacePixels, m_onyxSurfaceSize });
++    m_onyxSurfaceID = 0;
++    m_onyxSurfacePixels = nullptr;
++    m_onyxSurfaceSize = { };
++    m_onyxFrameSize = { };
++}
++
++void DrawingAreaProxyCoordinatedGraphics::onyxCompositedFrame(const IntSize& frameSize, const IntRect& damage)
++{
++    if (!m_onyxSurfacePixels || !isInAcceleratedCompositingMode()) {
++        send(Messages::DrawingArea::DisplayDidRefresh(MonotonicTime::now()));
++        return;
++    }
++
++    bool sizeChanged = frameSize != m_onyxFrameSize;
++    m_onyxFrameSize = frameSize.shrunkTo(m_onyxSurfaceSize);
++
++    m_onyxFrameIsPending = true;
++    m_onyxFrameShownTimer.startOneShot(frameShownTimeout);
++
++    if (RefPtr page = this->page())
++        page->setViewNeedsDisplay(sizeChanged ? IntRect { { }, page->viewSize() } : damage);
++}
++
++void DrawingAreaProxyCoordinatedGraphics::onyxFrameWasShown()
++{
++    m_onyxFrameShownTimer.stop();
++    if (!std::exchange(m_onyxFrameIsPending, false))
++        return;
++    send(Messages::DrawingArea::DisplayDidRefresh(MonotonicTime::now()));
++}
++
++void DrawingAreaProxyCoordinatedGraphics::paintOnyxCompositedFrame(PlatformPaintContextPtr canvas, const IntRect& rect, Region& unpaintedRegion)
++{
++    SkPixmap pixmap;
++    if (m_onyxSurfacePixels && !m_onyxFrameSize.isEmpty() && canvas && canvas->peekPixels(&pixmap) && pixmap.info().bytesPerPixel() == 4) {
++        // The surface's pixels are 0x00RRGGBB (what the GPU leaves there); the embedder's are
++        // 0xAARRGGBB, opaque.
++        auto paintRect = intersection(rect, IntRect { { }, m_onyxFrameSize });
++        paintRect.intersect(IntRect { 0, 0, pixmap.width(), pixmap.height() });
++        for (int y = paintRect.y(); y < paintRect.maxY(); ++y) {
++            const unsigned* source = m_onyxSurfacePixels + static_cast<size_t>(y) * m_onyxSurfaceSize.width() + paintRect.x();
++            uint32_t* destination = pixmap.writable_addr32(paintRect.x(), y);
++            for (int x = 0; x < paintRect.width(); ++x)
++                destination[x] = source[x] | 0xFF000000u;
++        }
++        if (!paintRect.isEmpty())
++            unpaintedRegion.subtract(paintRect);
++    }
++
++    onyxFrameWasShown();
++}
++
++} // namespace WebKit
++
++#endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebKit/UIProcess/onyx/WebPreferencesOnyx.cpp b/Source/WebKit/UIProcess/onyx/WebPreferencesOnyx.cpp
+index 066f03d6..f71adaea 100644
+--- a/Source/WebKit/UIProcess/onyx/WebPreferencesOnyx.cpp
++++ b/Source/WebKit/UIProcess/onyx/WebPreferencesOnyx.cpp
+@@ -28,8 +28,9 @@
+ 
+ namespace WebKit {
+ 
+-// Onyx paints on the CPU (Skia raster, no GL and no compositor): a page never enters accelerated
+-// compositing, and scrolling stays on the main thread.
++// Onyx paints on the CPU (Skia raster, no GL): by default a page never enters accelerated
++// compositing (the embedder asks for Onyx's compositor, page by page, with
++// WKPreferencesSetCompositingEnabledOnyx), and scrolling stays on the main thread.
+ void WebPreferences::platformInitializeStore()
+ {
+     setAcceleratedCompositingEnabled(false);
+diff --git a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
+index 11fb5d82..43e7c26a 100644
+--- a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
++++ b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
+@@ -310,6 +310,13 @@ private:
+ 
+     CompositingTriggerFlags allowedCompositingTriggers() const final
+     {
++#if USE(GRAPHICS_LAYER_ONYX)
++        // Onyx's compositor, for now: the frame's own layers (so that scrolling paints nothing
++        // again), none for 3D transforms, canvases, animations. No trigger at all would switch
++        // compositing off (RenderLayerCompositor::cacheAcceleratedCompositingFlags): the plugins'
++        // is given, there are no plugins.
++        return static_cast<CompositingTriggerFlags>(PluginTrigger);
++#else
+         return static_cast<CompositingTriggerFlags>(
+             ThreeDTransformTrigger |
+             VideoTrigger |
+@@ -322,6 +329,7 @@ private:
+             AnimatedOpacityTrigger | // Allow opacity animations to trigger compositing mode for iPhone: <rdar://problem/7830677>
+ #endif
+             AnimationTrigger);
++#endif
+     }
+ 
+     bool layerTreeStateIsFrozen() const final;
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
+index ee01235a..cf4fedb1 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
+@@ -383,6 +383,11 @@ void DrawingAreaCoordinatedGraphics::displayDidRefresh(MonotonicTime)
+ {
+     // We might get didUpdate messages from the UI process even after we've
+     // entered accelerated compositing mode. Ignore them.
++#if USE(GRAPHICS_LAYER_ONYX)
++    // (Onyx's compositor is paced by them: the UI process has shown its last frame.)
++    if (m_layerTreeHost)
++        m_layerTreeHost->displayDidRefresh();
++#endif
+     if (m_layerTreeHost)
+         return;
+ 
+@@ -452,6 +457,16 @@ void DrawingAreaCoordinatedGraphics::enterAcceleratedCompositingMode(GraphicsLay
+     m_layerTreeHost = makeUnique<LayerTreeHost>(m_webPage);
+ #elif USE(COORDINATED_GRAPHICS)
+     m_layerTreeHost = makeUnique<LayerTreeHost>(m_webPage, std::numeric_limits<uint32_t>::max() - m_identifier.toUInt64());
++#elif USE(GRAPHICS_LAYER_ONYX)
++    // Onyx's compositor is for the pages whose preferences ask for it (forceCompositingMode); the
++    // others keep the software path, whatever asks for a layer (a page overlay's...).
++    if (!m_alwaysUseCompositing) {
++        m_layerTreeHost = nullptr;
++        return;
++    }
++    m_layerTreeHost = makeUnique<LayerTreeHost>(m_webPage.get(), [this](const IntSize& size, const IntRect& damage) {
++        send(Messages::DrawingAreaProxy::OnyxCompositedFrame(size, damage));
++    });
+ #else
+     m_layerTreeHost = nullptr;
+     return;
+@@ -699,6 +714,14 @@ void DrawingAreaCoordinatedGraphics::didDiscardBackingStore()
+     m_dirtyRegion = m_webPage->bounds();
+ }
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++void DrawingAreaCoordinatedGraphics::setOnyxCompositingSurface(uint32_t surfaceID)
++{
++    if (m_layerTreeHost)
++        m_layerTreeHost->setSurface(surfaceID);
++}
++#endif
++
+ #if ENABLE(DAMAGE_TRACKING)
+ void DrawingAreaCoordinatedGraphics::resetDamageHistoryForTesting()
+ {
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.h
+index b587157a..b807496f 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.h
+@@ -89,6 +89,9 @@ private:
+     void setDeviceScaleFactor(float, CompletionHandler<void()>&&) override;
+     void forceUpdate() override;
+     void didDiscardBackingStore() override;
++#if USE(GRAPHICS_LAYER_ONYX)
++    void setOnyxCompositingSurface(uint32_t surfaceID) override;
++#endif
+ 
+ #if ENABLE(DAMAGE_TRACKING)
+     void resetDamageHistoryForTesting() override;
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+new file mode 100644
+index 00000000..ee5ef4c6
+--- /dev/null
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+@@ -0,0 +1,705 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "LayerTreeHostOnyx.h"
++
++#if USE(GRAPHICS_LAYER_ONYX)
++
++#include "OnyxSurface.h"
++#include "WebPage.h"
++#include "WebPageInlines.h"
++#include <WebCore/AffineTransform.h>
++#include <WebCore/Color.h>
++#include <WebCore/GraphicsLayer.h>
++#include <WebCore/Page.h>
++#include <stdarg.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <wtf/TZoneMallocInlines.h>
++
++namespace WebKit {
++using namespace WebCore;
++
++WTF_MAKE_TZONE_ALLOCATED_IMPL(LayerTreeHost);
++
++// The kernel gives a program 512 textures (kapi v70); a few are left for the colours.
++static constexpr unsigned maximumTileTextures = 480;
++// The tiles around the visible ones are painted a few a frame: what is seen comes first.
++static constexpr unsigned offscreenTilesPerFrame = 4;
++static constexpr Seconds frameInterval { 16_ms };
++// A frame the UI process never answered (a hidden window...) does not stop the next for ever.
++static constexpr Seconds didRefreshTimeout { 500_ms };
++static constexpr Seconds statisticsInterval { 2_s };
++static constexpr size_t maximumColorTextures = 32;
++
++// One line, one write, on the standard error: the kernel's log (kmsg) for an Onyx program.
++static void logLine(const char* format, ...) WTF_ATTRIBUTE_PRINTF(1, 2);
++static void logLine(const char* format, ...)
++{
++    char message[400];
++    char line[440];
++    va_list arguments;
++    va_start(arguments, format);
++    vsnprintf(message, sizeof(message), format, arguments);
++    va_end(arguments);
++    int length = snprintf(line, sizeof(line), "web: gpu: %s\n", message);
++    if (length > static_cast<int>(sizeof(line)) - 1)
++        length = sizeof(line) - 1;
++    if (length > 0)
++        (void)!write(STDERR_FILENO, line, length);
++}
++
++static void* allocateForCompositor(unsigned long bytes)
++{
++    return malloc(bytes);
++}
++
++static void freeForCompositor(void* memory)
++{
++    free(memory);
++}
++
++// For comparisons on the machine: SD:/etc/web-gpu-cpu has gpucomp's CPU path composite,
++// SD:/etc/web-gpu-copy has the frame composited into a buffer of gpucomp's and copied into the
++// surface (the environment variables ONYX_WEB_GPU_CPU / ONYX_WEB_GPU_COPY say the same).
++static bool testSwitch(const char* variable, const char* file)
++{
++    if (const char* value = getenv(variable); value && *value && *value != '0')
++        return true;
++    return !access(file, F_OK);
++}
++
++LayerTreeHost::LayerTreeHost(WebPage& webPage, FrameCallback&& frameCallback)
++    : m_webPage(webPage)
++    , m_frameCallback(WTF::move(frameCallback))
++    , m_renderTimer(*this, &LayerTreeHost::renderTimerFired)
++{
++    m_layerTreeContext.contextID = reinterpret_cast<uint64_t>(this);
++
++    gpc_config configuration = { allocateForCompositor, freeForCompositor, 0 };
++    if (testSwitch("ONYX_WEB_GPU_CPU", "SD:/etc/web-gpu-cpu"))
++        configuration.flags |= GPC_F_CPU;
++    m_compositor = gpc_create(&configuration);
++    m_compositesIntoSurface = !testSwitch("ONYX_WEB_GPU_COPY", "SD:/etc/web-gpu-copy");
++    m_logsLayerTree = testSwitch("ONYX_WEB_GPU_DEBUG", "SD:/etc/web-gpu-debug");
++
++    auto& size = m_webPage.size();
++    if (m_compositor)
++        logLine("compositing on (%d x %d), backend %s: %s", size.width(), size.height(), gpc_backend(m_compositor) == GPC_BACKEND_GPU ? "GPU" : "CPU", gpc_info(m_compositor));
++    else
++        logLine("compositing on (%d x %d), but no compositor (gpc_create failed): nothing will be shown", size.width(), size.height());
++
++    m_rootLayer = GraphicsLayerOnyx::create(GraphicsLayer::Type::Normal, *this, this);
++#ifndef NDEBUG
++    m_rootLayer->setName(MAKE_STATIC_STRING_IMPL("LayerTreeHost root layer"));
++#endif
++    m_rootLayer->setSize(size);
++
++    m_statisticsStartTime = MonotonicTime::now();
++}
++
++LayerTreeHost::~LayerTreeHost()
++{
++    m_renderTimer.stop();
++
++    // The layers may live longer than this (the render tree's): they draw nothing from now on.
++    for (auto* layer : copyToVector(m_layers))
++        layer->detachFromHost();
++    m_layers.clear();
++    m_rootLayer = nullptr;
++
++    if (m_compositor) {
++        if (m_copyTarget)
++            gpc_target_free(m_compositor, m_copyTarget);
++        gpc_destroy(m_compositor); // (its textures too)
++    }
++    logLine("compositing off (%u frames composited in all)", m_totalFramesComposited);
++}
++
++void LayerTreeHost::setLayerTreeStateIsFrozen(bool isFrozen)
++{
++    if (m_layerTreeStateIsFrozen == isFrozen)
++        return;
++    m_layerTreeStateIsFrozen = isFrozen;
++    if (!isFrozen)
++        scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::scheduleRenderingUpdate()
++{
++    if (m_isSuspended || m_layerTreeStateIsFrozen)
++        return;
++
++    auto now = MonotonicTime::now();
++    if (m_isWaitingForDidRefresh) {
++        if (now - m_lastFrameTime < didRefreshTimeout) {
++            m_scheduledWhileWaitingForDidRefresh = true;
++            return;
++        }
++        m_isWaitingForDidRefresh = false;
++    }
++
++    if (m_renderTimer.isActive())
++        return;
++
++    // One composite at most for a refresh of the display.
++    auto sinceLastFrame = now - m_lastFrameTime;
++    m_renderTimer.startOneShot(sinceLastFrame < frameInterval ? frameInterval - sinceLastFrame : 0_s);
++}
++
++void LayerTreeHost::displayDidRefresh()
++{
++    m_isWaitingForDidRefresh = false;
++    if (!std::exchange(m_scheduledWhileWaitingForDidRefresh, false))
++        return;
++    scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::setRootCompositingLayer(GraphicsLayer* graphicsLayer)
++{
++    if (m_rootCompositingLayer == graphicsLayer)
++        return;
++
++    m_rootCompositingLayer = graphicsLayer;
++    m_rootLayer->removeAllChildren();
++    if (m_rootCompositingLayer)
++        m_rootLayer->addChild(Ref { *m_rootCompositingLayer });
++    if (m_overlayCompositingLayer)
++        m_rootLayer->addChild(Ref { *m_overlayCompositingLayer });
++    logLine(graphicsLayer ? "the page's root layer is attached" : "the page's root layer is detached");
++    m_needsFullFrame = true;
++    scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::setViewOverlayRootLayer(GraphicsLayer* graphicsLayer)
++{
++    if (m_overlayCompositingLayer == graphicsLayer)
++        return;
++
++    m_overlayCompositingLayer = graphicsLayer;
++    m_rootLayer->removeAllChildren();
++    if (m_rootCompositingLayer)
++        m_rootLayer->addChild(Ref { *m_rootCompositingLayer });
++    if (m_overlayCompositingLayer)
++        m_rootLayer->addChild(Ref { *m_overlayCompositingLayer });
++    m_needsFullFrame = true;
++    scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::updateRenderingWithForcedRepaint()
++{
++    m_needsFullFrame = true;
++    m_renderTimer.stop();
++    renderFrame();
++}
++
++void LayerTreeHost::updateRenderingWithForcedRepaintAsync(CompletionHandler<void()>&& completionHandler)
++{
++    updateRenderingWithForcedRepaint();
++    completionHandler();
++}
++
++void LayerTreeHost::sizeDidChange()
++{
++    m_rootLayer->setSize(m_webPage.size());
++    m_needsFullFrame = true;
++    scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::pauseRendering()
++{
++    m_isSuspended = true;
++    m_renderTimer.stop();
++}
++
++void LayerTreeHost::resumeRendering()
++{
++    m_isSuspended = false;
++    m_needsFullFrame = true;
++    scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::backgroundColorDidChange()
++{
++    m_needsFullFrame = true;
++    scheduleRenderingUpdate();
++}
++
++void LayerTreeHost::setSurface(uint32_t surfaceID)
++{
++    int width = 0;
++    int height = 0;
++    auto* pixels = onyx_surface_map(surfaceID, &width, &height);
++    if (!pixels) {
++        logLine("surface %u cannot be mapped: nothing will be shown", surfaceID);
++        return;
++    }
++
++    if (m_copyTarget && IntSize { width, height } != m_surfaceSize) {
++        gpc_target_free(m_compositor, m_copyTarget);
++        m_copyTarget = nullptr;
++    }
++    if (surfaceID != m_surfaceID)
++        logLine("target: surface %u (%d x %d)", surfaceID, width, height);
++    m_surfaceID = surfaceID;
++    m_surfacePixels = pixels;
++    m_surfaceSize = { width, height };
++    m_targetPathLogged = false;
++
++    // (A frame the UI process had of another surface is not waited for.)
++    m_isWaitingForDidRefresh = false;
++    m_needsFullFrame = true;
++    scheduleRenderingUpdate();
++}
++
++Ref<GraphicsLayer> LayerTreeHost::createGraphicsLayer(GraphicsLayerType type, GraphicsLayerClient& client)
++{
++    return GraphicsLayerOnyx::create(type, client, this);
++}
++
++void LayerTreeHost::layerCreated(GraphicsLayerOnyx& layer)
++{
++    m_layers.add(&layer);
++}
++
++void LayerTreeHost::layerDestroyed(GraphicsLayerOnyx& layer)
++{
++    m_layers.remove(&layer);
++}
++
++GraphicsLayerOnyxHost::Texture LayerTreeHost::createTileTexture(const IntSize& size, const uint32_t* pixels, int stride)
++{
++    if (!m_compositor)
++        return nullptr;
++    if (m_textureCount >= maximumTileTextures) {
++        if (!m_textureBudgetLogged) {
++            m_textureBudgetLogged = true;
++            logLine("the texture budget is reached (%u tiles): the tiles past it are not drawn", m_textureCount);
++        }
++        return nullptr;
++    }
++
++    auto startTime = MonotonicTime::now();
++    auto* texture = gpc_tex_create(m_compositor, size.width(), size.height(), pixels, stride);
++    m_uploadTime += MonotonicTime::now() - startTime;
++    if (texture)
++        ++m_textureCount;
++    return texture;
++}
++
++bool LayerTreeHost::updateTileTexture(Texture texture, const IntRect& rect, const uint32_t* pixels, int stride)
++{
++    if (!m_compositor)
++        return false;
++
++    auto startTime = MonotonicTime::now();
++    int result = gpc_tex_update(m_compositor, static_cast<gpc_tex*>(texture), rect.x(), rect.y(), rect.width(), rect.height(), pixels, stride);
++    m_uploadTime += MonotonicTime::now() - startTime;
++    if (result == GPC_LOST)
++        m_texturesWereLost = true;
++    return result == GPC_OK;
++}
++
++void LayerTreeHost::destroyTileTexture(Texture texture)
++{
++    if (!m_compositor || !texture)
++        return;
++    gpc_tex_destroy(m_compositor, static_cast<gpc_tex*>(texture));
++    if (m_textureCount)
++        --m_textureCount;
++}
++
++gpc_tex* LayerTreeHost::textureForColor(uint32_t premultipliedARGB)
++{
++    for (auto& entry : m_colorTextures) {
++        if (entry.first == premultipliedARGB)
++            return entry.second;
++    }
++    auto* texture = gpc_tex_create(m_compositor, 1, 1, &premultipliedARGB, 1);
++    if (texture)
++        m_colorTextures.append({ premultipliedARGB, texture });
++    return texture;
++}
++
++void LayerTreeHost::appendQuad(gpc_tex* texture, const TransformationMatrix& layerToTarget, const FloatRect& rect, const WalkState& state, float opacity, bool opaque)
++{
++    int textureWidth = 0;
++    int textureHeight = 0;
++    gpc_tex_size(texture, &textureWidth, &textureHeight);
++    if (textureWidth <= 0 || textureHeight <= 0 || rect.isEmpty())
++        return;
++
++    // gpucomp's layer space is the texture's rectangle: texels -> the layer's rectangle -> the target.
++    // (Of a transform that is not affine, its 2D affine part.)
++    auto transform = layerToTarget.toAffineTransform();
++    transform.translate(rect.x(), rect.y());
++    bool isScaled = rect.width() != textureWidth || rect.height() != textureHeight;
++    if (isScaled)
++        transform.scale(rect.width() / textureWidth, rect.height() / textureHeight);
++
++    auto targetRect = enclosingIntRect(transform.mapRect(FloatRect { 0, 0, static_cast<float>(textureWidth), static_cast<float>(textureHeight) }));
++    if (!targetRect.intersects(state.clip))
++        return;
++
++    unsigned alpha = clampTo<unsigned>(lroundf(opacity * 255), 0, 255);
++    if (!alpha)
++        return;
++
++    gpc_layer layer;
++    memset(&layer, 0, sizeof(layer));
++    gpc_layer_init(&layer, texture);
++    layer.m = { static_cast<float>(transform.a()), static_cast<float>(transform.b()), static_cast<float>(transform.c()), static_cast<float>(transform.d()), static_cast<float>(transform.e()), static_cast<float>(transform.f()) };
++    bool isTranslation = transform.a() == 1 && !transform.b() && !transform.c() && transform.d() == 1;
++    if (isTranslation) {
++        // A scrolled page: whole pixels, the texels as they are.
++        layer.m.e = roundf(layer.m.e);
++        layer.m.f = roundf(layer.m.f);
++    }
++    if (isTranslation || isScaled)
++        layer.flags |= GPC_L_NEAREST;
++    if (opaque && alpha == 255)
++        layer.flags |= GPC_L_OPAQUE;
++    layer.opacity = alpha;
++    if (!state.clip.contains(targetRect)) {
++        layer.clip[0] = state.clip.x();
++        layer.clip[1] = state.clip.y();
++        layer.clip[2] = state.clip.width();
++        layer.clip[3] = state.clip.height();
++    }
++    m_frameLayers.append(layer);
++}
++
++void LayerTreeHost::appendColorQuad(const Color& color, const TransformationMatrix& layerToTarget, const FloatRect& rect, const WalkState& state, float opacity)
++{
++    if (!color.isVisible() || rect.isEmpty())
++        return;
++
++    auto components = color.toColorTypeLossy<SRGBA<uint8_t>>().resolved();
++    unsigned alpha = components.alpha;
++    auto premultiply = [alpha](unsigned component) {
++        return (component * alpha + 127) / 255;
++    };
++    uint32_t pixel = (alpha << 24) | (premultiply(components.red) << 16) | (premultiply(components.green) << 8) | premultiply(components.blue);
++    if (auto* texture = textureForColor(pixel))
++        appendQuad(texture, layerToTarget, rect, state, opacity, alpha == 255);
++}
++
++void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentState)
++{
++    if (m_logsLayers) {
++        logLine("layer %p: at %.0f,%.0f %.0f x %.0f, bounds origin %.0f,%.0f, opacity %.2f%s%s%s%s, %u children, %u tiles", &layer, layer.position().x(), layer.position().y(), layer.size().width(), layer.size().height(),
++            layer.boundsOrigin().x(), layer.boundsOrigin().y(), layer.opacity(), layer.drawsContent() ? ", draws content" : "", layer.contentsAreVisible() ? "" : ", contents hidden",
++            layer.masksToBounds() ? ", masks to bounds" : "", layer.hasNonIdentityTransform() ? ", transform" : "", static_cast<unsigned>(layer.children().size()), static_cast<unsigned>(layer.tiles().size()));
++    }
++
++    float opacity = parentState.opacity * clampTo<float>(layer.opacity(), 0, 1);
++    if (opacity <= 0)
++        return;
++
++    // The layer's own space -> the target: its place in its parent, its transform about its anchor.
++    auto& size = layer.size();
++    FloatPoint3D anchor = layer.anchorPoint();
++    anchor.scale(size.width(), size.height(), 1);
++
++    WalkState state { parentState.toTarget, parentState.clip, opacity };
++    state.toTarget.translate(layer.position().x(), layer.position().y());
++    if (layer.hasNonIdentityTransform()) {
++        state.toTarget.translate3d(anchor.x(), anchor.y(), anchor.z());
++        state.toTarget.multiply(layer.transform());
++        state.toTarget.translate3d(-anchor.x(), -anchor.y(), -anchor.z());
++    }
++
++    FloatRect bounds { { }, size };
++    if (layer.masksToBounds()) {
++        // (The clip is a rectangle of the target: of a rotated layer, its bounding box.)
++        state.clip.intersect(enclosingIntRect(state.toTarget.mapRect(bounds)));
++        if (state.clip.isEmpty())
++            return;
++    }
++
++    bool drawsSelf = layer.contentsAreVisible() && (layer.backfaceVisibility() || !state.toTarget.isBackFaceVisible());
++    if (drawsSelf) {
++        appendColorQuad(layer.backgroundColor(), state.toTarget, bounds, state, opacity);
++
++        // What is seen of the layer, in its own coordinates: its tiles follow it (a layer that draws
++        // no content keeps none).
++        auto affine = state.toTarget.toAffineTransform();
++        IntRect visibleRect = enclosingIntRect(bounds);
++        if (auto inverse = affine.inverse())
++            visibleRect.intersect(enclosingIntRect(inverse->mapRect(FloatRect { state.clip })));
++
++        GraphicsLayerOnyx::TileUpdate update;
++        layer.updateTiles(visibleRect, m_offscreenTileBudget, update);
++        m_tilesPainted += update.tilesPainted;
++        m_paintTime += update.paintTime;
++        m_hasPendingTiles |= update.hasPendingTiles;
++        if (m_logsLayerTree && update.tilesPainted) {
++            logLine("layer %p (%.0f x %.0f): %u tiles painted, %u of them again (visible %d,%d %d x %d)", &layer, size.width(), size.height(), update.tilesPainted, static_cast<unsigned>(update.repaintedRects.size()),
++                visibleRect.x(), visibleRect.y(), visibleRect.width(), visibleRect.height());
++        }
++        for (auto& rect : update.repaintedRects)
++            m_frameDamage.unite(intersection(enclosingIntRect(affine.mapRect(FloatRect { rect })), state.clip));
++
++        for (auto& tile : layer.tiles().values()) {
++            if (tile.texture)
++                appendQuad(static_cast<gpc_tex*>(tile.texture), state.toTarget, tile.rect, state, opacity, layer.contentsOpaque());
++        }
++
++        appendColorQuad(layer.solidColor(), state.toTarget, layer.contentsRect(), state, opacity);
++    } else
++        layer.dropTiles();
++
++    // Its children's space: the children transform about the same anchor, the bounds origin (what a
++    // scroll container is scrolled by).
++    if (layer.hasNonIdentityChildrenTransform()) {
++        state.toTarget.translate3d(anchor.x(), anchor.y(), anchor.z());
++        state.toTarget.multiply(layer.childrenTransform());
++        state.toTarget.translate3d(-anchor.x(), -anchor.y(), -anchor.z());
++    }
++    state.toTarget.translate(-layer.boundsOrigin().x(), -layer.boundsOrigin().y());
++
++    // (Every layer of the tree is a GraphicsLayerOnyx: GraphicsLayer::create makes nothing else.)
++    for (auto& child : layer.children())
++        walkLayer(static_cast<GraphicsLayerOnyx&>(child.get()), state);
++}
++
++static bool layersAreEqual(const Vector<gpc_layer>& a, const Vector<gpc_layer>& b)
++{
++    if (a.size() != b.size())
++        return false;
++    for (size_t i = 0; i < a.size(); ++i) {
++        auto& first = a[i];
++        auto& second = b[i];
++        if (first.tex != second.tex || first.opacity != second.opacity || first.flags != second.flags || first.blend != second.blend
++            || first.src_x != second.src_x || first.src_y != second.src_y || first.src_w != second.src_w || first.src_h != second.src_h
++            || first.m.a != second.m.a || first.m.b != second.m.b || first.m.c != second.m.c || first.m.d != second.m.d || first.m.e != second.m.e || first.m.f != second.m.f
++            || first.clip[0] != second.clip[0] || first.clip[1] != second.clip[1] || first.clip[2] != second.clip[2] || first.clip[3] != second.clip[3])
++            return false;
++    }
++    return true;
++}
++
++void LayerTreeHost::texturesWereLost()
++{
++    // The GPU stopped: gpucomp goes on with the CPU, the textures that were on the GPU are empty
++    // until given again, whole.
++    logLine("the GPU's textures were lost (now %s): every tile is painted again", m_compositor ? gpc_info(m_compositor) : "-");
++    m_texturesWereLost = false;
++    for (auto* layer : m_layers)
++        layer->invalidateTiles();
++    for (auto& entry : m_colorTextures)
++        gpc_tex_destroy(m_compositor, entry.second);
++    m_colorTextures.clear();
++    m_previousFrameLayers.clear();
++    m_targetPathLogged = false;
++    m_needsFullFrame = true;
++}
++
++bool LayerTreeHost::compositeFrame(const IntRect& damage)
++{
++    unsigned* pixels = m_surfacePixels;
++    int stride = m_surfaceSize.width();
++    if (!m_compositesIntoSurface) {
++        if (!m_copyTarget)
++            m_copyTarget = gpc_target_alloc(m_compositor, m_surfaceSize.width(), m_surfaceSize.height(), &m_copyTargetStride);
++        if (!m_copyTarget) {
++            logLine("no buffer to composite into (%d x %d)", m_surfaceSize.width(), m_surfaceSize.height());
++            return false;
++        }
++        pixels = m_copyTarget;
++        stride = m_copyTargetStride;
++    }
++
++    // The damaged rectangle only: a target of that rectangle, the layers moved by its corner.
++    gpc_target target = { pixels + static_cast<size_t>(damage.y()) * stride + damage.x(), damage.width(), damage.height(), stride, 0 };
++    const gpc_layer* layers = m_frameLayers.span().data();
++    Vector<gpc_layer> movedLayers;
++    if (damage.x() || damage.y()) {
++        movedLayers = m_frameLayers;
++        for (auto& layer : movedLayers) {
++            layer.m.e -= damage.x();
++            layer.m.f -= damage.y();
++            if (layer.clip[2] > 0) {
++                layer.clip[0] -= damage.x();
++                layer.clip[1] -= damage.y();
++            }
++        }
++        layers = movedLayers.span().data();
++    }
++
++    unsigned clearColor = 0xFFFFFF;
++    if (auto& backgroundColor = m_webPage.backgroundColor(); backgroundColor && backgroundColor->isVisible()) {
++        auto components = backgroundColor->toColorTypeLossy<SRGBA<uint8_t>>().resolved();
++        clearColor = (components.red << 16) | (components.green << 8) | components.blue;
++    }
++
++    auto startTime = MonotonicTime::now();
++    int result = gpc_composite(m_compositor, &target, layers, m_frameLayers.size(), clearColor, GPC_C_CLEAR);
++    m_compositeTime += MonotonicTime::now() - startTime;
++
++    if (result < 0) {
++        if (m_compositesIntoSurface) {
++            logLine("compositing into the surface failed (%d): through a buffer of gpucomp's from now on", result);
++            m_compositesIntoSurface = false;
++            m_targetPathLogged = false;
++            return compositeFrame(damage);
++        }
++        logLine("compositing failed (%d)", result);
++        return false;
++    }
++    if (result == GPC_LOST) {
++        m_texturesWereLost = true;
++        return false;
++    }
++
++    if (!m_compositesIntoSurface) {
++        for (int y = damage.y(); y < damage.maxY(); ++y)
++            memcpy(m_surfacePixels + static_cast<size_t>(y) * m_surfaceSize.width() + damage.x(), m_copyTarget + static_cast<size_t>(y) * m_copyTargetStride + damage.x(), damage.width() * sizeof(unsigned));
++    }
++
++    if (!m_targetPathLogged) {
++        m_targetPathLogged = true;
++        gpc_stats statistics;
++        gpc_get_stats(m_compositor, &statistics);
++        logLine("target path: %s; the first frame: %u layers, %u GPU calls, %u layers by the CPU, %u us", m_compositesIntoSurface ? "straight into the surface" : "a gpucomp buffer copied into the surface",
++            static_cast<unsigned>(m_frameLayers.size()), statistics.last_gpu_calls, statistics.last_cpu_layers, statistics.last_us);
++    }
++    return true;
++}
++
++void LayerTreeHost::renderTimerFired()
++{
++    renderFrame();
++}
++
++void LayerTreeHost::renderFrame()
++{
++    if (m_isSuspended || m_layerTreeStateIsFrozen)
++        return;
++
++    m_lastFrameTime = MonotonicTime::now();
++
++    Ref webPage = m_webPage;
++    webPage->updateRendering();
++    // (The frames' layers are flushed there: Page::finalizeRenderingUpdate.)
++    webPage->finalizeRenderingUpdate({ });
++    webPage->flushPendingEditorStateUpdate();
++
++    m_rootLayer->flushCompositingStateForThisLayerOnly();
++    if (m_overlayCompositingLayer)
++        m_overlayCompositingLayer->flushCompositingState(FloatRect { { }, m_rootLayer->size() });
++
++    IntRect viewRect { { }, webPage->size() };
++    viewRect.intersect(IntRect { { }, m_surfaceSize });
++    if (!m_compositor || !m_surfacePixels || viewRect.isEmpty()) {
++        webPage->didUpdateRendering();
++        return;
++    }
++
++    if (m_colorTextures.size() > maximumColorTextures) {
++        for (auto& entry : m_colorTextures)
++            gpc_tex_destroy(m_compositor, entry.second);
++        m_colorTextures.clear();
++        m_previousFrameLayers.clear();
++    }
++
++    m_frameLayers.shrink(0);
++    m_frameDamage = { };
++    m_hasPendingTiles = false;
++    m_offscreenTileBudget = offscreenTilesPerFrame;
++    // (SD:/etc/web-gpu-debug: the layer tree in the log, for the first walks and whenever the number
++    // of layers drawn changed.)
++    m_logsLayers = m_logsLayerTree && (m_loggedLayerCount != m_previousFrameLayers.size() || m_loggedWalks < 5);
++    if (m_logsLayers) {
++        ++m_loggedWalks;
++        m_loggedLayerCount = m_previousFrameLayers.size();
++        logLine("the layer tree (view %d x %d, %u layers drawn last):", viewRect.width(), viewRect.height(), static_cast<unsigned>(m_loggedLayerCount));
++    }
++    walkLayer(*m_rootLayer, WalkState { { }, viewRect, 1 });
++    m_logsLayers = false;
++
++    if (m_texturesWereLost) {
++        texturesWereLost();
++        webPage->didUpdateRendering();
++        scheduleRenderingUpdate();
++        return;
++    }
++
++    if (m_needsFullFrame || !layersAreEqual(m_frameLayers, m_previousFrameLayers))
++        m_frameDamage = viewRect;
++    m_frameDamage.intersect(viewRect);
++
++    if (!m_frameDamage.isEmpty()) {
++        if (compositeFrame(m_frameDamage)) {
++            m_needsFullFrame = false;
++            m_previousFrameLayers = m_frameLayers;
++            ++m_framesComposited;
++            ++m_totalFramesComposited;
++            m_isWaitingForDidRefresh = true;
++            m_scheduledWhileWaitingForDidRefresh = false;
++            m_frameCallback(viewRect.size(), m_frameDamage);
++        } else if (m_texturesWereLost) {
++            texturesWereLost();
++            scheduleRenderingUpdate();
++        }
++    }
++
++    webPage->didUpdateRendering();
++
++    // The tiles around the visible ones that are still to paint: in the next frames.
++    if (m_hasPendingTiles)
++        scheduleRenderingUpdate();
++
++    logStatisticsIfNeeded();
++}
++
++void LayerTreeHost::logStatisticsIfNeeded()
++{
++    auto now = MonotonicTime::now();
++    auto elapsed = now - m_statisticsStartTime;
++    if (elapsed < statisticsInterval)
++        return;
++
++    if (m_framesComposited || m_tilesPainted) {
++        gpc_stats statistics;
++        gpc_get_stats(m_compositor, &statistics);
++        logLine("%.1f s: %u frames, %u tiles painted, paint %.0f ms, upload %.0f ms, composite %.0f ms; %u textures, %u layers (last frame: %u GPU calls, %u layers by the CPU)",
++            elapsed.seconds(), m_framesComposited, m_tilesPainted, m_paintTime.milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
++            m_textureCount + static_cast<unsigned>(m_colorTextures.size()), static_cast<unsigned>(m_frameLayers.size()), statistics.last_gpu_calls, statistics.last_cpu_layers);
++    }
++    m_statisticsStartTime = now;
++    m_framesComposited = 0;
++    m_tilesPainted = 0;
++    m_paintTime = { };
++    m_uploadTime = { };
++    m_compositeTime = { };
++}
++
++} // namespace WebKit
++
++#endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+index 4d02ce71..b323beea 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+@@ -39,6 +39,22 @@
+ #include <WebCore/Region.h>
+ #endif
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++#include <WebCore/GraphicsLayerClient.h>
++#include <WebCore/GraphicsLayerFactory.h>
++#include <WebCore/GraphicsLayerOnyx.h>
++#include <WebCore/IntRect.h>
++#include <WebCore/Timer.h>
++#include <WebCore/TransformationMatrix.h>
++#include <gpucomp.h>
++#include <wtf/CheckedRef.h>
++#include <wtf/Function.h>
++#include <wtf/HashSet.h>
++#include <wtf/MonotonicTime.h>
++#include <wtf/TZoneMalloc.h>
++#include <wtf/Vector.h>
++#endif
++
+ namespace WebCore {
+ class GraphicsLayer;
+ class GraphicsLayerFactory;
+@@ -46,6 +62,150 @@ class GraphicsLayerFactory;
+ 
+ namespace WebKit {
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++
++class WebPage;
++
++// Onyx's compositor, for a page whose preferences ask for it (forceCompositingMode: the drawing
++// area's software path stays the default). The page's layers are GraphicsLayerOnyx (this is their
++// factory and their host): their tiles are textures of Onyx's GPU compositing service (gpucomp:
++// the V3D, or the CPU when the GPU is not there). A rendering update flushes the layers, walks
++// the tree -- each layer's place (its 2D affine transform), the rectangle clips and the opacity
++// accumulated, the new and dirty tiles painted and uploaded on the way -- into a list of gpucomp
++// layers, has it composited into a kernel surface that the UI process gave, and tells the UI
++// process what changed there. One frame at most for each of the UI process's answers
++// (displayDidRefresh), and 16 ms apart.
++class LayerTreeHost final : public WebCore::GraphicsLayerClient, public WebCore::GraphicsLayerFactory, public WebCore::GraphicsLayerOnyxHost, public CanMakeCheckedPtr<LayerTreeHost> {
++    WTF_MAKE_TZONE_ALLOCATED(LayerTreeHost);
++    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(LayerTreeHost);
++    WTF_MAKE_NONCOPYABLE(LayerTreeHost);
++public:
++    // What the drawing area sends to the UI process: the view's size in the surface, what changed.
++    using FrameCallback = Function<void(const WebCore::IntSize&, const WebCore::IntRect&)>;
++
++    LayerTreeHost(WebPage&, FrameCallback&&);
++    ~LayerTreeHost();
++
++    const LayerTreeContext& layerTreeContext() const LIFETIME_BOUND { return m_layerTreeContext; }
++    void setLayerTreeStateIsFrozen(bool);
++
++    void scheduleRenderingUpdate();
++    void setRootCompositingLayer(WebCore::GraphicsLayer*);
++    void setViewOverlayRootLayer(WebCore::GraphicsLayer*);
++
++    void updateRenderingWithForcedRepaint();
++    void updateRenderingWithForcedRepaintAsync(CompletionHandler<void()>&&);
++    void sizeDidChange();
++
++    void pauseRendering();
++    void resumeRendering();
++
++    WebCore::GraphicsLayerFactory* graphicsLayerFactory() { return this; }
++
++    void backgroundColorDidChange();
++
++    // The kernel surface to composite into (the UI process's, DrawingArea::SetOnyxCompositingSurface).
++    void setSurface(uint32_t surfaceID);
++    // The UI process has shown the last frame.
++    void displayDidRefresh();
++
++#if !HAVE(DISPLAY_LINK)
++    RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID) { return nullptr; }
++    WebCore::PlatformDisplayID displayID() const { return 0; }
++#endif
++
++#if ENABLE(DAMAGE_TRACKING)
++    void resetDamageHistoryForTesting() { }
++    void foreachRegionInDamageHistoryForTesting(NOESCAPE const Function<void(const WebCore::Region&)>&) { }
++#endif
++
++private:
++    struct WalkState {
++        WebCore::TransformationMatrix toTarget;
++        WebCore::IntRect clip;
++        float opacity { 1 };
++    };
++
++    // GraphicsLayerClient (the root layer's)
++    float deviceScaleFactor() const final { return 1; }
++
++    // GraphicsLayerFactory
++    Ref<WebCore::GraphicsLayer> createGraphicsLayer(WebCore::GraphicsLayerType, WebCore::GraphicsLayerClient&) final;
++
++    // GraphicsLayerOnyxHost
++    void layerCreated(WebCore::GraphicsLayerOnyx&) final;
++    void layerDestroyed(WebCore::GraphicsLayerOnyx&) final;
++    Texture createTileTexture(const WebCore::IntSize&, const uint32_t* pixels, int stride) final;
++    bool updateTileTexture(Texture, const WebCore::IntRect&, const uint32_t* pixels, int stride) final;
++    void destroyTileTexture(Texture) final;
++
++    void renderTimerFired();
++    void renderFrame();
++    void walkLayer(WebCore::GraphicsLayerOnyx&, const WalkState&);
++    void appendQuad(gpc_tex*, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity, bool opaque);
++    void appendColorQuad(const WebCore::Color&, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity);
++    gpc_tex* textureForColor(uint32_t premultipliedARGB);
++    bool compositeFrame(const WebCore::IntRect& damage);
++    void texturesWereLost();
++    void logStatisticsIfNeeded();
++
++    WebPage& m_webPage;
++    FrameCallback m_frameCallback;
++    LayerTreeContext m_layerTreeContext;
++    RefPtr<WebCore::GraphicsLayerOnyx> m_rootLayer;
++    WebCore::GraphicsLayer* m_rootCompositingLayer { nullptr };
++    WebCore::GraphicsLayer* m_overlayCompositingLayer { nullptr };
++    HashSet<WebCore::GraphicsLayerOnyx*> m_layers;
++    WebCore::Timer m_renderTimer;
++
++    gpc_ctx* m_compositor { nullptr };
++    unsigned m_textureCount { 0 };
++    bool m_textureBudgetLogged { false };
++    Vector<std::pair<uint32_t, gpc_tex*>> m_colorTextures;
++
++    // The target: the UI process's surface, or (when compositing straight into it fails) a buffer of
++    // gpucomp's copied there.
++    uint32_t m_surfaceID { 0 };
++    unsigned* m_surfacePixels { nullptr };
++    WebCore::IntSize m_surfaceSize;
++    bool m_compositesIntoSurface { true };
++    unsigned* m_copyTarget { nullptr };
++    int m_copyTargetStride { 0 };
++    bool m_targetPathLogged { false };
++
++    // The frame being built.
++    Vector<gpc_layer> m_frameLayers;
++    Vector<gpc_layer> m_previousFrameLayers;
++    WebCore::IntRect m_frameDamage;
++    unsigned m_offscreenTileBudget { 0 };
++    bool m_hasPendingTiles { false };
++
++    bool m_needsFullFrame { true };
++    bool m_texturesWereLost { false };
++    bool m_layerTreeStateIsFrozen { false };
++    bool m_isSuspended { false };
++    bool m_isWaitingForDidRefresh { false };
++    bool m_scheduledWhileWaitingForDidRefresh { false };
++    MonotonicTime m_lastFrameTime;
++
++    // SD:/etc/web-gpu-debug: the layer tree in the log.
++    bool m_logsLayerTree { false };
++    bool m_logsLayers { false };
++    size_t m_loggedLayerCount { 0 };
++    unsigned m_loggedWalks { 0 };
++    unsigned m_totalFramesComposited { 0 };
++
++    // The log's numbers, since the last line.
++    MonotonicTime m_statisticsStartTime;
++    unsigned m_framesComposited { 0 };
++    unsigned m_tilesPainted { 0 };
++    Seconds m_paintTime;
++    Seconds m_uploadTime;
++    Seconds m_compositeTime;
++};
++
++#else // !USE(GRAPHICS_LAYER_ONYX)
++
+ // The layer tree host of a port with no compositor (no Coordinated Graphics, no TextureMapper):
+ // DrawingAreaCoordinatedGraphics is compiled for its software path only (the dirty region painted
+ // into a ShareableBitmap and sent as an UpdateInfo). The class gives the drawing area's
+@@ -88,6 +248,8 @@ private:
+     LayerTreeContext m_layerTreeContext;
+ };
+ 
++#endif // USE(GRAPHICS_LAYER_ONYX)
++
+ } // namespace WebKit
+ 
+ #endif // USE(NON_COMPOSITED_DRAWING_AREA)
+diff --git a/Source/WebKit/WebProcess/WebPage/DrawingArea.h b/Source/WebKit/WebProcess/WebPage/DrawingArea.h
+index 32ed6a73..f6c629ee 100644
+--- a/Source/WebKit/WebProcess/WebPage/DrawingArea.h
++++ b/Source/WebKit/WebProcess/WebPage/DrawingArea.h
+@@ -232,6 +232,9 @@ private:
+     virtual void forceUpdate() { }
+     virtual void didDiscardBackingStore() { }
+ #endif
++#if USE(GRAPHICS_LAYER_ONYX)
++    virtual void setOnyxCompositingSurface(uint32_t /* surfaceID */) { }
++#endif
+ 
+     virtual void setDeviceScaleFactor(float, CompletionHandler<void()>&& completionHandler) { completionHandler(); }
+     virtual void displayDidRefresh(MonotonicTime) { }
+diff --git a/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in b/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
+index 43f7c4b3..1dad687c 100644
+--- a/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
++++ b/Source/WebKit/WebProcess/WebPage/DrawingArea.messages.in
+@@ -53,6 +53,10 @@ messages -> DrawingArea {
+     DispatchAfterEnsuringDrawing() -> () CallWithReplyID
+ #endif
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++    SetOnyxCompositingSurface(uint32_t surfaceID)
++#endif
++
+ #if USE(GRAPHICS_LAYER_WC)
+     UpdateGeometryWC(uint64_t backingStoreStateID, WebCore::IntSize viewSize, float deviceScaleFactor, float intrinsicDeviceScaleFactor)
+ #endif
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+index 8e4cdb0e..f1c2460f 100644
+--- a/Source/cmake/OptionsOnyx.cmake
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -227,6 +227,20 @@ if (ENABLE_WEBKIT)
+     # USE(COORDINATED_GRAPHICS) || USE(TEXTURE_MAPPER) although it needs neither. This flag opens
+     # it for a port with no compositor at all; the layer tree host is then never created.
+     SET_AND_EXPOSE_TO_BUILD(USE_NON_COMPOSITED_DRAWING_AREA ON)
++
++    # Onyx's compositor, beside the software path and off until a page's preferences ask for it
++    # (WKPreferencesSetCompositingEnabledOnyx): WebCore's layers keep their content in tiles
++    # (GraphicsLayerOnyx), the web process's LayerTreeHost has them assembled by the V3D through
++    # Onyx's GPU compositing service (user/gpucomp of the Onyx sources: its header is used here, its
++    # code is linked with the program) into a kernel surface that the UI process shows.
++    SET_AND_EXPOSE_TO_BUILD(USE_GRAPHICS_LAYER_ONYX ON)
++    if (NOT ONYX_SOURCE_DIR)
++        get_filename_component(ONYX_SOURCE_DIR "${ONYX_SYSROOT}/../.." ABSOLUTE)
++    endif ()
++    set(ONYX_GPUCOMP_INCLUDE_DIR "${ONYX_SOURCE_DIR}/user/gpucomp")
++    if (NOT EXISTS "${ONYX_GPUCOMP_INCLUDE_DIR}/gpucomp.h")
++        message(FATAL_ERROR "No gpucomp.h in ${ONYX_GPUCOMP_INCLUDE_DIR}: -DONYX_SOURCE_DIR=<the Onyx sources>")
++    endif ()
+ endif ()
+ 
+ SET_AND_EXPOSE_TO_BUILD(USE_GENERIC_EVENT_LOOP 1)

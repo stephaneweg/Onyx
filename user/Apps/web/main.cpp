@@ -742,6 +742,19 @@ int main (int argc, char **argv)
 	char url[1024] = "";
 	if (argc > 1) snprintf (url, sizeof url, "%s", argv[1]);
 	else kapi_get_args (url, sizeof url);
+	// The GPU compositor instead of the software path (to compare the two): the argument --gpu
+	// (before the address), or the file SD:/etc/web-gpu.
+	bool gpu = false;
+	if (!strncmp (url, "--gpu", 5) && (url[5] == 0 || url[5] == ' '))
+	{
+		gpu = true;
+		const char *rest = url[5] ? url + 6 : (argc > 2 ? argv[2] : "");
+		char moved[1024];
+		snprintf (moved, sizeof moved, "%s", rest);
+		snprintf (url, sizeof url, "%s", moved);
+	}
+	if (!gpu && access ("SD:/etc/web-gpu", F_OK) == 0) gpu = true;
+	engine_set_compositing (gpu);
 	say (url[0] ? url : "(the start page)");
 
 	WebRoot root;

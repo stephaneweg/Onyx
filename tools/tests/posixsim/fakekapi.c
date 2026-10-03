@@ -1794,6 +1794,81 @@ static int f_poll (struct kapi_pollfd *fds, unsigned n, int ms)
 	return c;
 }
 
+/* ---- the screen, shared surfaces, no GPU (WebKit's compositor: tools/webkit/test-webkit.sh GPU=1) ----
+ * A surface is a file $ROOT/.shm/surface-<id>: a header (w, h) in its first 64 KB, then the pixels,
+ * mapped shared by every process that asks; its id is made of the owner's pid, so ids are unique
+ * across the bench's processes. The GPU is "not there": user/gpucomp composites on the CPU. */
+#define SURF_HDR	0x10000L
+static int s_surfN;
+
+static void f_screen_size (int *w, int *h) { if (w) *w = 1280; if (h) *h = 800; }
+static int f_gpu_info (char *b, unsigned cap) { if (b && cap > 8) strcpy (b, "posixsim"); else if (b && cap) b[0] = 0; return 0; }
+
+static int surf_path (int id, char *out)
+{
+	char name[32] = "surface-";
+	int n = 8;
+	char d[12]; int k = 0;
+	if (id <= 0) return -1;
+	while (id) { d[k++] = (char) ('0' + id % 10); id /= 10; }
+	while (k) name[n++] = d[--k];
+	name[n] = 0;
+	return shm_path (name, out);
+}
+
+static int f_surface_create (int w, int h)
+{
+	if (w <= 0 || h <= 0) return 0;
+	if (w > 1280) w = 1280;				/* (capped to the screen, as the kernel's) */
+	if (h > 800) h = 800;
+	int id = (int) ((sc0 (L_getpid) & 0x3FFFFF) << 8) | (++s_surfN & 0xFF);
+	char p[512];
+	if (surf_path (id, p) < 0) return 0;
+	long fd = l_open (p, L_O_RDWR | L_O_CREAT | L_O_TRUNC | L_O_CLOEXEC, 0600);
+	if (fd < 0) return 0;
+	int hdr[2] = { w, h };
+	if (sc2 (L_ftruncate, fd, SURF_HDR + (long) w * h * 4) < 0 || sc4 (L_pwrite64, fd, hdr, sizeof hdr, 0) != sizeof hdr)
+		id = 0;
+	sc1 (L_close, fd);
+	return id;
+}
+
+static int f_surface_size (int id, int *w, int *h)
+{
+	char p[512];
+	int hdr[2] = { 0, 0 };
+	if (surf_path (id, p) < 0) return 0;
+	long fd = l_open (p, L_O_RDONLY | L_O_CLOEXEC, 0);
+	if (fd < 0) return 0;
+	long r = sc4 (L_pread64, fd, hdr, sizeof hdr, 0);
+	sc1 (L_close, fd);
+	if (r != sizeof hdr || hdr[0] <= 0 || hdr[1] <= 0) return 0;
+	if (w) *w = hdr[0];
+	if (h) *h = hdr[1];
+	return 1;
+}
+
+static unsigned *f_surface_map (int id)
+{
+	char p[512];
+	int w, h;
+	if (!f_surface_size (id, &w, &h) || surf_path (id, p) < 0) return 0;
+	long fd = l_open (p, L_O_RDWR | L_O_CLOEXEC, 0);
+	if (fd < 0) return 0;
+	long m = sc6 (L_mmap, 0, (long) w * h * 4, 3, 0x01, fd, SURF_HDR);	/* MAP_SHARED */
+	sc1 (L_close, fd);
+	return m < 0 && m > -4096 ? 0 : (unsigned *) m;
+}
+
+static void f_surface_present (int id) { (void) id; sc0 (L_sched_yield); }
+
+static int f_surface_destroy (int id)
+{
+	char p[512];
+	if (surf_path (id, p) < 0) return 0;
+	return sc3 (L_unlinkat, L_AT_FDCWD, p, 0) == 0;
+}
+
 /* ---- the table ---- */
 void posixsim_init (long *sp);
 void posixsim_init (long *sp)
@@ -1884,6 +1959,13 @@ void posixsim_init (long *sp)
 	T->thread_priority = f_thread_priority;
 	T->wait_word = f_wait_word;
 	T->wake_word = f_wake_word;
+	T->screen_size = f_screen_size;
+	T->gpu_info = f_gpu_info;
+	T->surface_create = f_surface_create;
+	T->surface_map = f_surface_map;
+	T->surface_size = f_surface_size;
+	T->surface_present = f_surface_present;
+	T->surface_destroy = f_surface_destroy;
 	if (s_level >= 75)
 	{
 		T->vm_map = f_vm_map;

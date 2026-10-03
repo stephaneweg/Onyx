@@ -421,6 +421,46 @@ a launch that followed a browser killed while loading (a lock left in `SD:/var/w
 
 **Next**: the FTL (B3 on ARM64) and WebAssembly's BBQ when the browser needs them.
 
+## The compositor on the V3D (roadmap step 2, begun 2026-10-03)
+
+**The route.** In the pinned revision WebKit's own compositor (Coordinated Graphics) is tied to GL
+and to Skia's Ganesh from end to end (its tiles are GL textures, its compositor a GL context:
+`ThreadedCompositor`, `AcceleratedSurface`, `SkiaCompositingLayer`), and TextureMapper is GLSL. So
+the port has **its own `GraphicsLayer` on Onyx's `user/gpucomp`** (the model: Windows'
+`GraphicsLayerWC` and its tile grid), as Jet does (docs/06 §25) — patch `0018`:
+
+- `WebCore/platform/graphics/onyx/GraphicsLayerOnyx`: a layer's properties and a grid of 512-pixel
+  tiles kept over a window around what is seen (one view above, two below), painted by Skia on
+  the CPU.
+- `WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx` (the web process): flushes the
+  tree, paints the new or dirty tiles, hands them to gpucomp as textures (`gpc_tex_create` /
+  `gpc_tex_update`), walks the tree into a list of `gpc_layer` (translations, rectangular clips,
+  opacity) and composites **straight into a kernel surface** (`surface_create`: below 1 GB, so the
+  V3D stores its tiles there without a copy) that the UI process made, sized as the screen, and
+  maps; each frame is told to the UI process (`DrawingAreaProxy::OnyxCompositedFrame`: size,
+  damage), which copies what changed into the window's canvas (`WKPagePaint`). One composite a
+  display refresh at most.
+- gpucomp is compiled into the browser's link (`build-web.sh`, with `tools/webkit/onyxsurface.c`,
+  the kapi calls behind `Shared/onyx/OnyxSurface.h`).
+- **Off by default**: `web --gpu` (or the file `SD:/etc/web-gpu`) turns it on
+  (`WKPreferencesSetCompositingEnabledOnyx` before the view is made); the software path is
+  unchanged otherwise. Test switches: `SD:/etc/web-gpu-cpu` (gpucomp on the CPU),
+  `SD:/etc/web-gpu-copy` (composite into a `gpc_target_alloc` buffer, then copy),
+  `SD:/etc/web-gpu-debug` (each layer's paints in kmsg).
+
+**Stage 1 on the Pi** (kotonstudio.com, a 1000 × 638 view): `gpu: compositing on, backend GPU: V3D
+4.2`, `target path: straight into the surface`; the picture and the scrolling are right; a
+composite takes about 0.65 ms; `gpu: 2.0 s: N frames, M tiles painted, paint / upload / composite
+ms` every two seconds. What it shows: only the root is composited at this stage, so the page's CSS
+animation repaints a tile at every frame (4.4 ms), and its reveal-on-scroll effects repaint tiles
+while scrolling (35 ms a tile) — **stage 2: layers for animated opacity / transform, composited
+without a paint**, the partial repaint of a tile, groups for opacity. On the bench
+(`WK2TEST_GPU=1 sh tools/webkit/test-webkit.sh`, gpucomp on the CPU): the 49 checks pass on both
+paths, a scrolled page matches the software picture.
+
+**Later**: the window's canvas shared with the web process (a kernel addition: no copy at all),
+4 × 4 matrices in gpucomp (3D), filters and masks by re-uploaded groups, a compositor thread.
+
 ## The roadmap from here (the user, 2026-10-02)
 
 In this order; a later step is not started early:

@@ -50,6 +50,7 @@ void engine_paint (unsigned *px, int stride, int x, int y, int w, int h)
 }
 
 void engine_set_active (bool) {}
+void engine_set_compositing (bool) {}
 void engine_load (const char *) { s_told = false; }
 void engine_back () {}
 void engine_forward () {}

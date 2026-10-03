@@ -71,6 +71,13 @@ done
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -c "$HERE/skmallocsize.c" -o "$O/skmallocsize.o"
 SKMS="$O/skmallocsize.o -Wl,--wrap=_Z14sk_malloc_sizePvm"
 [ "${SKMALLOCSIZE:-1}" = 1 ] || SKMS=""
+# The compositor's two C files (WebKit's USE(GRAPHICS_LAYER_ONYX) calls them; they call the kernel through
+# kapi.h): the GPU compositing service, built as user/Makefile builds it, and the kernel surfaces.
+GPC="$O/gpucomp.o $O/onyxsurface.o"
+aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O3 -mcpu=cortex-a72 -ffp-contract=off -fno-math-errno \
+	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$O/gpucomp.o"
+aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 \
+	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$HERE/onyxsurface.c" -o "$O/onyxsurface.o"
 # HEAPCHECK=1: the checking malloc of heapcheck.c in front of newlib's (a hunt for heap corruption)
 HC=""
 if [ "${HEAPCHECK:-0}" = 1 ]; then
@@ -81,7 +88,7 @@ if [ "${HEAPCHECK:-0}" = 1 ]; then
 fi
 echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
-	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $WK $LIBS -o "$BUILD/bin/web"
+	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $GPC $WK $LIBS -o "$BUILD/bin/web"
 aarch64-onyx-elf-size "$BUILD/bin/web"
 
 if [ "${STAGE:-1}" = 1 ]; then

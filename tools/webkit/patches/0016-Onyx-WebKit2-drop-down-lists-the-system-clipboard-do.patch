@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sat, 3 Oct 2026 07:25:35 +0200
-Subject: [PATCH 16/17] [Onyx] WebKit2: drop-down lists, the system clipboard,
+Subject: [PATCH 16/18] [Onyx] WebKit2: drop-down lists, the system clipboard,
  downloads by URL, download progress over curl
 
 The pages' <select> lists: WebPopupMenuProxyOnyx hands the items to the embedder through the
