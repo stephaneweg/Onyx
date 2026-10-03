@@ -680,8 +680,11 @@ and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / 
   right there — **the only preemption point**: an IRQ taken at EL1 (kernel code) never switches
   tasks; on cores 2–3 `AppCoreOnIRQExit`.
 - **A fault from EL0** (any synchronous exception but `svc`) kills the process: a kmsg line
-  `el0: <name> (pid N) killed: …`, a desktop notice (`IpcNotify`), `kapi_exit(-11)`. SError still
-  goes to `BadModeEntry`.
+  `el0: <name> (pid N) killed: …`, then (2026-10-03) `el0: <name> backtrace: <lr> <lr> …` — up to 16
+  return addresses read along the frame-pointer chain (x29 → {next x29, lr}, `UAccessCopy`, the chain
+  must climb), the callers to give to `addr2line` (a program built with frame pointers: the POSIX
+  ports and WebKit are) —, a desktop notice (`IpcNotify`), `kapi_exit(-11)`. SError still goes to
+  `BadModeEntry`.
 - **The per-process kapi table**: at boot `El0Init` fills two pages shared by every protected
   process: the **EL0 table**, mapped read-only at `KAPI_TABLE_VA` (14 GB), and the **EL0 code
   page** at `KAPI_STUBS_VA` (14 GB + 64 KB). Slot *n* points at the stub `movz x8,#n; svc #0;

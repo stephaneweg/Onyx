@@ -3224,8 +3224,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   the HDMI framebuffer (`PanicToScreen` + Circle's handler) and is kept in
   `SD:/etc/lastcrash.txt` at the next boot (docs/02 §13). Note the `ELR` (faulting PC). An
   **app** fault (EL0) only kills the app: a line `el0: <name> (pid N) killed: …` in `kmsg`
-  (with the PC and the fault address: `aarch64-none-elf-addr2line -e user/<name>.elf <pc>`)
-  and a notice on the desktop. `/bin/faulttest` and `/bin/el0test` exercise both paths.
+  (with the PC and the fault address: `aarch64-none-elf-addr2line -e user/<name>.elf <pc>`),
+  then a line `el0: <name> backtrace: …` with the callers' return addresses (give them to
+  `addr2line -f -C` with the unstripped program), and a notice on the desktop. `/bin/faulttest` and `/bin/el0test` exercise both paths.
 - **`addr2line`**: `aarch64-none-elf-addr2line -e kernel8-rpi4.elf <ELR>` to locate
   the faulting line (keep the unstripped `.elf` next to the `.img`).
 - **Remote shell**: `/bin/telnetd` (autostarted, TCP port 23) serves the `cmd` shell over

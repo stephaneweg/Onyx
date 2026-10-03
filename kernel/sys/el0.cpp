@@ -416,6 +416,31 @@ static void __attribute__ ((noreturn)) Fault (TTrapFrame *pFrame, unsigned nEC, 
 				(unsigned long) ulESR, (unsigned long) pFrame->sp_el0,
 				(unsigned long) pFrame->x[30]);
 
+	// The return addresses along the frame-pointer chain (x29 -> {next x29, lr}): the program's
+	// callers, to symbolise with addr2line. Read with the fault-safe copy; the chain must climb.
+	{
+		CString Trace, Item;
+		u64 ulFP = pFrame->x[29];
+		for (unsigned i = 0; i < 16; i++)
+		{
+			u64 Pair[2];
+			if (   (ulFP & 7) != 0 || !IS_USER_VA (ulFP) || !IS_USER_VA (ulFP + 15)
+			    || UAccessCopy (Pair, (const void *) (uintptr) ulFP, sizeof Pair) != 0
+			    || Pair[1] == 0)
+			{
+				break;
+			}
+			Item.Format (" %lx", (unsigned long) Pair[1]);
+			Trace.Append (Item);
+			if (Pair[0] <= ulFP) break;
+			ulFP = Pair[0];
+		}
+		if (Trace.GetLength () != 0)
+		{
+			CLogger::Get ()->Write ("el0", LogError, "%s backtrace:%s", pTask->GetName (), (const char *) Trace);
+		}
+	}
+
 	CString Text;
 	Text.Format ("%s stopped: %s at %lx", pTask->GetName (), FaultName (nEC),
 		     (unsigned long) pFrame->elr_el1);
