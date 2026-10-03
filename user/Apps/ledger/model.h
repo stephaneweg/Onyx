@@ -34,6 +34,7 @@
 
 namespace lg {
 
+#undef NAME_MAX						// (the libc's <limits.h> has one -- a file name's: ours is a party's name)
 enum { CODE_MAX = 11, NAME_MAX = 72, ACC_NAME_MAX = 128, PCODE_MAX = 16 };
 
 // ---- VAT (the codes: vat.h) -----------------------------------------------------------------------------------------

@@ -23,6 +23,7 @@
 // (SD:/apps/ledger.app/last.txt), else it welcomes: a new company, a file, the demo company.
 //
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "docguard.h"
 #include "ui.h"
 #include "pick.h"
@@ -607,6 +608,7 @@ using namespace lg;
 
 int main (void)
 {
+	ft_wtk_install ("DejaVu Sans", 13);	// (FreeType's text: wk_fw / wk_fh follow it)
 	wk_lang_init ();			// the words in the language chosen (before the window and its pages)
 	LedgerRoot root;
 	if (root.canvas.px == 0) return 1;

@@ -293,41 +293,26 @@ static void badge (Canvas &cv, int x, int y, const char *s, unsigned bg)
 }
 
 // ---- the tabs ---------------------------------------------------------------------------------------------------
-class Tabs : public Widget
+// wtk's segmented control (as the Calendar's Day / Week / Month), each segment its number of packages.
+static SegmentedControl *g_tabs;
+static void tabs_labels ()
 {
-public:
-	int hot, xs[4];
-	Tabs (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1) {}
-	void onDraw () override
+	static const char *const names[] = { "Updates", "Installed", "Available" };
+	static char lab[3][32]; const char *p[3];
+	bool same = g_tabs->count () == 3;
+	for (int i = 0; i < 3; i++)
 	{
-		canvas.fillRect (0, 0, width, height, C_BG);
-		static const char *const names[] = { "Updates", "Installed", "Available" };
-		int x = 0;
-		for (int i = 0; i < 3; i++)
-		{
-			char n[8]; snprintf (n, sizeof n, "%d", count (i));
-			int w = wk_tw (names[i], 2) + 20 + small_w (n, 2) + 14;
-			bool on = i == g_tab;
-			if (on) wk_rbox (canvas, x, 0, w, height, height / 2, wk_tone (C_ACCENT, 150), C_ACCENT);
-			else if (i == hot) wk_rbox (canvas, x, 0, w, height, height / 2, wk_tone (C_BG, 150), wk_tone (C_BG, 140));
-			wk_text_l (canvas, x + 12, 0, height, names[i], on ? C_SEL_TEXT : C_TEXT, 2);
-			int bx = x + 12 + wk_tw (names[i], 2) + 6, bw = small_w (n, 2) + 10;
-			unsigned bb = on ? 0xFFFFFF : (i == T_UPDATES && count (i) ? 0xC84A40 : wk_tone (C_BG, 100));
-			wk_rbox (canvas, bx, (height - 16) / 2, bw, 16, 8, bb, bb);
-			small (canvas, bx + 5, (height - 16) / 2 + 1, n, on ? C_ACCENT : 0xFFFFFF, 2);
-			xs[i] = x; x += w + 6;
-		}
-		xs[3] = x;
+		snprintf (lab[i], sizeof lab[i], "%s (%d)", names[i], count (i)); p[i] = lab[i];
+		if (same && strcmp (lab[i], g_tabs->label (i))) same = false;
 	}
-	int at (int mx) { for (int i = 0; i < 3; i++) if (mx >= xs[i] && mx < xs[i + 1] - 6) return i; return -1; }
-	bool onMouse (int mx, int my, int bl, int, int, int) override
-	{
-		int h = (mx < 0 || my < 0 || my >= height) ? -1 : at (mx);
-		if (h != hot) { hot = h; invalidate (true); }
-		if (bl && h >= 0 && h != g_tab) { g_tab = h; refilter (); invalidate (true); extern void app_tab_changed (); app_tab_changed (); }
-		return h >= 0;
-	}
-};
+	if (!same) g_tabs->setLabels (p, 3);
+}
+static void on_tab (Widget &)
+{
+	if (g_tabs->selected < 0 || g_tabs->selected == g_tab) return;
+	g_tab = g_tabs->selected; refilter ();
+	extern void app_tab_changed (); app_tab_changed ();
+}
 
 // ---- the list ---------------------------------------------------------------------------------------------------
 class PkgList : public Widget
@@ -472,7 +457,7 @@ public:
 	}
 };
 
-static Tabs *g_tabs; static PkgList *g_list; static Textbox *g_find;
+static PkgList *g_list; static Textbox *g_find;
 static Button *g_btnCheck, *g_btnMain;
 static Label *g_lblStatus;
 
@@ -555,7 +540,7 @@ public:
 	App (int w, int h) : Root (w, h, "Onyx Package Manager") {}
 	void onTick () override
 	{
-		if (strcmp (g_search, g_find->text)) { cpy (g_search, g_find->text, sizeof g_search); refilter (); g_list->top = 0; g_list->invalidate (true); }
+		if (strcmp (g_search, g_find->text)) { cpy (g_search, g_find->text, sizeof g_search); refilter (); tabs_labels (); g_list->top = 0; g_list->invalidate (true); }
 		if (!g_job.running) return;
 		if (g_job.done)
 		{
@@ -580,7 +565,7 @@ public:
 			else if (rc == OK) set_status (any_staged () ? "Done. The system update waits for the restart." : "Done: the apps open with their new version next time.");
 			else if (rc == E_CANCEL) set_status ("Cancelled.");
 			else set_status (msg[0] ? msg : "It did not work.");
-			g_tabs->invalidate (true); g_list->invalidate (true); update_main_button ();
+			tabs_labels (); g_list->invalidate (true); update_main_button ();
 			return;
 		}
 		// the progress
@@ -617,7 +602,7 @@ int main (void)
 	App root (W, H);
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
-	g_tabs = new Tabs (X + 12, 10, 420, TABH); root.addChild (g_tabs);
+	g_tabs = new SegmentedControl (X + 12, 10, 420, TABH, 0, 0, g_tab, on_tab); tabs_labels (); g_tabs->select (g_tab); root.addChild (g_tabs);
 	g_find = new Textbox (X + W - 12 - 210, 10, 210, TABH, "", 0); root.addChild (g_find);
 	g_list = new PkgList (X + 12, 10 + TABH + 8, W - 24, H - (10 + TABH + 8) - FOOT); root.addChild (g_list);
 	g_lblStatus = new Label (X + 14, H - FOOT + 12, W - 24 - 300, 22, "", C_DIS, root.bg); root.addChild (g_lblStatus);

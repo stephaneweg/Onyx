@@ -316,7 +316,7 @@ at the bottom; everything can be changed later in the Control Panel.
 *The summary; Start Onyx.*
 
 You then get the desktop — a **modernised CDE** (the look of the classic Unix desktop, redrawn
-with rounded corners, soft gradients and the user's framed buttons): the wallpaper, the menu
+with rounded corners, soft gradients, the push buttons raised faces as the drop-downs'): the wallpaper, the menu
 bar at the top, the **dock** at the bottom, the agenda widget at the top left. (The former
 Shelf strip and left panel are no longer started: the dock replaces them; `run shelf` /
 `run panel` still bring them back.)
@@ -369,7 +369,8 @@ does not change it.
   (or press on a title and release on an item). Click the title again or anywhere else to close
   the menu.
 - The first menu, **Onyx**, is always there: Terminal, **Control Panel**, File Viewer, Task
-  Manager; then **the apps by category** — Productivity, Internet, Graphics, Games, Demos
+  Manager; then **the apps by category** — Productivity, Internet, Graphics, Games, Demos,
+  **System** (the File Viewer, the Memory Monitor, the Task Manager, the Terminal)
   (and any other category an app declares; the `category` of its `app.txt`, "Other"
   without one) — each opening a sub-menu of its apps, by their friendly name (the `name`
   of `app.txt`), where a click launches the app, or brings it to the front if it is already
@@ -1274,7 +1275,8 @@ the Game Library and Setup do.
 The **Packages** applet installs, updates and removes the system and the apps from the **package
 repository** (`stephaneweg/onyx-packages`; the same as the `pkg` command, §8 *Packages*). When it
 opens it shows what it knew, then reads the repository again (**Check Now** does it again): the
-repository's index is **signed**, and checked before it is used. Three tabs, and a **search** field
+repository's index is **signed**, and checked before it is used. Three tabs — a segmented control, each segment with
+its number of packages —, and a **search** field
 on the right that filters them (a name, a category, a word of the summary):
 
 - **Updates** — the packages with a newer version: a box each, ticked (untick those to keep),

@@ -1,6 +1,6 @@
 //
 // wtk/paint.cpp -- the procedural painter (wtk/paint.h): shades, gradients, rounded boxes from
-// per-radius corner tables, the framed button, raised / sunken faces, glyphs. Integer only.
+// per-radius corner tables, the push button, raised / sunken faces, glyphs. Integer only.
 //
 #include "wtk/paint.h"
 #include "wtk/theme.h"
@@ -191,40 +191,13 @@ void wk_rline (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int al
 void wk_framed (Canvas &cv, int x, int y, int w, int h, unsigned face, int state,
 		int *bx, int *by, int *bw, int *bh)
 {
-	int st = state & 15;
-	int m = h < 18 || w < 18 ? 0 : h < 26 ? 1 : 2;		// the frame's size: small, medium, large
-	static const int R0[3] = { 3, 5, 7 }, I1[3] = { 1, 2, 3 }, R1[3] = { 2, 4, 5 }, I2[3] = { 2, 3, 5 }, R2[3] = { 2, 3, 4 };
-	// the frame: raised
-	wk_rbox (cv, x, y, w, h, R0[m], wk_tone (face, 185), wk_tone (face, 110));
-	wk_rline (cv, x, y, w, h, R0[m], wk_tone (face, 79), 200);
-	// the well: sunken (dark at the top)
-	int i1 = I1[m], i2 = I2[m];
-	wk_rbox (cv, x + i1, y + i1, w - 2 * i1, h - 2 * i1, R1[m], wk_tone (face, 90), wk_tone (face, 172));
-	// the button in it
-	int X = x + i2, Y = y + i2, Wd = w - 2 * i2, Ht = h - 2 * i2;
-	switch (st)
-	{
-	case WK_PRESSED:
-		wk_rbox (cv, X, Y, Wd, Ht, R2[m], wk_tone (face, 108), wk_tone (face, 118));
-		break;
-	case WK_DISABLED:
-		wk_rbox (cv, X, Y, Wd, Ht, R2[m], wk_tone (face, 150), wk_tone (face, 128));
-		break;
-	case WK_HOT:
-		wk_rbox (cv, X, Y, Wd, Ht, R2[m], wk_tone (face, 212), wk_tone (face, 136));
-		wk_rline (cv, X, Y, Wd, Ht, R2[m], 0x00FFFFFF, 110);
-		break;
-	default:
-		wk_rbox (cv, X, Y, Wd, Ht, R2[m], wk_tone (face, 198), wk_tone (face, 122));
-		wk_rline (cv, X, Y, Wd, Ht, R2[m], 0x00FFFFFF, 90);
-		break;
-	}
-	if (state & WK_FOCUS) wk_rline (cv, x + i1, y + i1, w - 2 * i1, h - 2 * i1, R1[m], C_ACCENT, 255);
-	int d = st == WK_PRESSED ? 1 : 0;
-	if (bx) *bx = X + d;
-	if (by) *by = Y + d;
-	if (bw) *bw = Wd;
-	if (bh) *bh = Ht;
+	// (no frame, no well any more: the drop-down's raised face, the whole box the button's)
+	wk_raised (cv, x, y, w, h, h < 18 || w < 18 ? 3 : 5, face, state);
+	int d = (state & 15) == WK_PRESSED ? 1 : 0;
+	if (bx) *bx = x + d;
+	if (by) *by = y + d;
+	if (bw) *bw = w;
+	if (bh) *bh = h;
 }
 
 void wk_raised (Canvas &cv, int x, int y, int w, int h, int r, unsigned face, int state)

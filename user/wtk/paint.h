@@ -10,8 +10,8 @@
 //     corner's rows' first pixel and the opacities of its partly covered pixels (the anti-
 //     aliasing); a row is then a straight span plus a few pixels blended over what the canvas
 //     holds -- so a widget first fills its canvas with its parent's background.
-//   * The user's framed button: a raised frame, a sunken well, the button set in it (raised;
-//     pressed: flush with the well, a shade darker).
+//   * The push button: a raised face (a gradient, a light top edge, an outline; pressed: a shade
+//     darker), the same as a drop-down's box -- no frame round it.
 //   * Small glyphs (a check, arrows, a cross...) from their geometry, anti-aliased by coverage.
 //
 #ifndef _wtk_paint_h
@@ -57,8 +57,9 @@ void wk_rline (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int al
 
 // ---- the look's pieces ------------------------------------------------------------------------------
 enum { WK_NORMAL = 0, WK_HOT = 1, WK_PRESSED = 2, WK_DISABLED = 3, WK_FOCUS = 0x10 };
-// The framed button in the box, from its face colour; returns the button's own box in *bx..*bh
-// (the label's: already 1 px lower right when pressed) if the pointers are given.
+// The push button in the box, from its face colour: a raised face as a drop-down's (wk_raised;
+// it had a frame and a well round it: the name); returns the label's box in *bx..*bh (already
+// 1 px lower right when pressed) if the pointers are given.
 void wk_framed (Canvas &cv, int x, int y, int w, int h, unsigned face, int state,
 		int *bx = 0, int *by = 0, int *bw = 0, int *bh = 0);
 // A raised face (a header, a tab, a handle, a scroll bar's thumb): a gradient, a light top edge,

@@ -1717,9 +1717,9 @@ its licence on the app.
 >   around it follows the theme.
 > - **The painter** (`wtk/paint.h`, integer only): `wk_tone (c, level)` (a shade: 128 = `c`,
 >   255 = white, 0 = black), `wk_mix`, `wk_rbox` (a rounded box with a vertical gradient, its
->   corners anti-aliased: per-radius tables), `wk_rline` (its outline), `wk_framed` (the framed
->   push button: a raised frame, a sunken well, the button in it — the gradients computed at its
->   size), `wk_raised`, `wk_sunken` (a field), `wk_etch_h / _v / _box`, `wk_check_mark`,
+>   corners anti-aliased: per-radius tables), `wk_rline` (its outline), `wk_framed` (the push
+>   button: a raised face, the same as a drop-down's box — it had a frame and a well round it,
+>   hence its name), `wk_raised`, `wk_sunken` (a field), `wk_etch_h / _v / _box`, `wk_check_mark`,
 >   `wk_radio_mark`, `wk_switch_mark`, `wk_scroll_bar`, `wk_slider_mark`, `wk_progress_bar`,
 >   `wk_popup` (a floating panel, its corners keyed), `wk_hilite` / `wk_hilite_ink` (a selected
 >   row and its text), `wk_title_strip`, `wk_glyph` (`WKG_CHECK`, arrows, chevrons, close,
@@ -2800,7 +2800,7 @@ you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` r
 
 ```ini
 name     = Text Editor          ; display name shown under the icon
-category = Productivity          ; Productivity, Internet, Graphics, Games, Demos, Settings, Emulators, Shell
+category = Productivity          ; Productivity, Internet, Graphics, Games, Demos, System, Settings, Emulators, Shell
 stack    = 8M                    ; optional: the app's stack (bytes, K or M), read by the KERNEL
 ```
 

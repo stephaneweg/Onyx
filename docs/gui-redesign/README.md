@@ -67,7 +67,8 @@ The user's decisions:
    rounded corners; a light gradient; **no drop shadows** (they would cost the compositor: see
    §4) — a crisp outline instead: a 1-px outline round them, the theme's choice (none, dark —
    the default — or black).
-4. **The user's framed button**, for every push button (the windows' and the apps'): the user
+4. **The user's framed button** (*replaced on 2026-10-03, at the user's request, by a plain raised
+   face — the drop-down's: `wk_framed` now draws `wk_raised`*), for every push button (the windows' and the apps'): the user
    drew it (216 × 92, three greys #E1E1E1, #B9B9B9, #7F7F7F) — a raised 2-px frame, 2 px of
    face, a sunken 2-px well, the button in it raised by 1 px (or 2, "more marked"), flush with
    the well when pressed; in the modern look, rounded (a keycap in its bezel). `framed ()` in

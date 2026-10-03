@@ -772,7 +772,8 @@ answer in French. The docs stay in English.
   (`sh tools/tests/desktop_sim/shots.sh`).
   In short: wtk's procedural painter (`user/wtk/paint.h`) and the theme's colours as variables
   (`theme.txt`: theme Peach / Steel / Sage / Brick / Slate or a colour, inactive, face, accent,
-  outline, dock), every wtk widget restyled (the user's framed button), the window frames drawn
+  outline, dock), every wtk widget restyled (the user's framed button; since 2026-10-03 the push button is a plain
+  raised face, as the drop-down's: `wk_framed` draws `wk_raised`, no frame nor well), the window frames drawn
   by wtk (title 28, border 4, rounded corners r 8, the window menu / minimise / maximise / close
   buttons), kapi **v64** (`win_minimise`, `win_geometry`, `resize_window2`), the **dock**
   (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
@@ -816,7 +817,9 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   painted by `voronoy`), Panel (`dockconf`), Sound (`soundconf`), Keyboard & Mouse (`keyconf`),
   Gamepad, Wi-Fi, App Settings (`config`). Kernel surfaces are now counted per user (an applet's
   surface outlives its host or itself safely).
-- **The categories**: the System group gone (its apps in Productivity / Graphics / Settings),
+- **The categories**: the System group gone (its apps in Productivity / Graphics / Settings) --
+  back on 2026-10-03 for the File Viewer, the Memory Monitor, the Task Manager and the Terminal
+  (the Onyx menu's last category; no drawer of the dock by default) --,
   `Settings` and `Emulators` left out of the menus (the emulators through the Game Library).
 - **The File Viewer**: a sidebar (Personal: pinned folders under a name, the Trash; Computer:
   the partitions; Network: the FTP servers connected once, under a name — a click reconnects),

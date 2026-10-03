@@ -187,7 +187,7 @@ static void build_onyx_menu (MenuDef &m)
 	add (-2, 0, -1);
 	// the categories: the usual ones first, then any other, "Other" last
 	g_nsubs = 0;
-	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Games", "BASIC", "Demos", 0 };
+	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Games", "BASIC", "Demos", "System", 0 };
 	char cats[MAXSUBS][20]; int nc = 0;
 	for (int i = 0; order[i]; i++) scopy (cats[nc++], order[i], 20);
 	for (int a = 0; a < g_napps && nc < MAXSUBS - 2; a++)

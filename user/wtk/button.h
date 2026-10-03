@@ -1,5 +1,5 @@
 //
-// wtk/button.h -- a push button (the theme's framed button: wtk/paint.h); fires cb on
+// wtk/button.h -- a push button (the theme's raised face, as a drop-down's: wtk/paint.h); fires cb on
 // release-over.
 //
 #ifndef _wtk_button_h
