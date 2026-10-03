@@ -3,7 +3,8 @@
 ## Status / how to resume (2026-10-03)
 
 **Now: Web, the browser on WebKit2, runs on the Pi** (see "Step 3" below: kotonstudio.com over
-HTTPS in about 3.2 s). What follows was written at step 1 and stays true for `jsc`.
+HTTPS in about 3.2 s), and **the JavaScriptCore JIT runs there** (the Baseline JIT and the DFG on
+kapi v78's `PROT_EXEC`: "The JIT" below). What follows was written at step 1 and stays true for `jsc`.
 
 **Step 1 (WTF + JavaScriptCore → the `jsc` shell) is done: it passes on the PC bench and on the
 Pi** (the five steps of the Pi test below), and is in `main`. Step 2 (WebCore) is next, on a branch
@@ -406,6 +407,42 @@ the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). Web also serves Mai
 Not there yet (the next work of step 1): the pointer's shape (no kapi for it), AltGr on the Onyx
 keyboard (to check), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,
 the measurements of where kotonstudio.com's 3.2 s go.
+
+## The JIT (roadmap step 3, 2026-10-03)
+
+**What it needed from Onyx**: executable memory. Kernel v78 gives `PROT_EXEC` to anonymous
+regions (lazy pages mapped `UXN = 0`; `vm_protect` sets or takes it away: W^X possible; docs/02
+*v78: PROT_EXEC*); libonyxposix's `mmap` / `mprotect` pass the kernel's answer on; the caches are
+made coherent from EL0 (`__builtin___clear_cache`: `DC CVAU` / `IC IVAU`, allowed since SCTLR_EL1.UCI
+/ UCT were set for the GameCube emulator). JavaScriptCore's executable allocator reserves its pool
+`RWX` as on Linux (its default there): nothing in WebKit had to change for it — the port already
+had the `OS(ONYX)` cache flush, and no signal-based VM traps (`HAVE(MACHINE_CONTEXT)` is off: the
+traps are polled). One upstream build fix: WebAssembly's `AddressType` used B3's types whenever the
+JIT was on, but B3 exists only with the FTL (`0017`).
+
+**The build**: `INTERP=jit sh tools/webkit/build-jsc.sh` (`-DENABLE_JIT=ON -DENABLE_DFG_JIT=ON`;
+not yet the FTL — B3 — nor WebAssembly's BBQ / OMG JITs; WebAssembly keeps its interpreter).
+
+**The tests** (`INTERP=jit sh tools/webkit/test-jsc.sh smoke es6 stress wasm`, the PC bench):
+smoke ok; es6 595 passed, the 10 expected failures; stress (one test in 10) 469 / 469; wasm 594
+passed, the 17 expected failures — the same results as the LLInt build. On the Pi: smoke ok.
+
+**On the Pi** (`bench.js`, the LLInt build → the JIT build, ms): fib(30) 2040 → 351 (×5.8); 20M
+additions 5533 → 706 (×7.8); 1M allocations 2410 → 919; 300k-number sort 4902 → 1781; 100k regexp
+1405 → 563; a Map's 500k set / get 4211 → 2199; 5M typed-array doubles 17981 → 493 (×36); strings
+2374 → 2525 (the same: C++). *Open*: the JSON case of `bench.js` is slower with the DFG in that
+script (983 → about 8000 ms) and normal without OSR entry into the DFG (`--useOSREntryToDFG=false`:
+1187 ms) or alone (`json.js`-like scripts: the same as the LLInt) — to understand.
+
+**The browser with the JIT (Web 1.0.3)**: a second WebKit tree, `~/webkit-build/webkit-jit`
+(`BUILD=… CMAKE_EXTRA="-DONYX_WEBKIT=ON -DENABLE_JIT=ON -DENABLE_DFG_JIT=ON -DENABLE_FTL_JIT=OFF"
+TARGET=WebKit sh tools/webkit/build-webcore.sh`: 44 minutes on 16 cores), and `BUILD=… sh
+tools/webkit/build-web.sh` (102 MB). On the Pi: kotonstudio.com as before (about 3.5 s: its time is
+the network's and the painting's), **a GitHub repository's page in 5.4 s from the launch to the
+load's end** (about 50 s in the interpreter). Seen once, not again: 57 s before the first request of
+a launch that followed a browser killed while loading (a lock left in `SD:/var/webkit`? to watch).
+
+**Next**: the FTL (B3 on ARM64) and WebAssembly's BBQ when the browser needs them.
 
 ## The roadmap from here (the user, 2026-10-02)
 

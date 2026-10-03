@@ -15,6 +15,7 @@
 #   sh tools/webkit/test-jsc.sh [smoke] [es6] [stress] [wasm] [bench]   # default: smoke es6
 #   INTERP=cloop sh tools/webkit/test-jsc.sh ...                    # the C_LOOP build's jsc
 #   STRESS_STEP=1 sh tools/webkit/test-jsc.sh stress                # every such test (default 10)
+#   INTERP=jit sh tools/webkit/test-jsc.sh ...                      # the JIT build's jsc (Baseline + DFG)
 #
 # Variables: WEBKIT_DIR, BUILD (as build-jsc.sh), JOBS (default nproc), TIMEOUT (seconds a test,
 # default 600: qemu
@@ -144,7 +145,7 @@ for s in $suites; do
 		;;
 	wasm)
 		[ -d "$T/wasm/stress" ] || { echo "test-jsc.sh: no $T/wasm (TESTS=1 sh tools/webkit/fetch.sh)" >&2; exit 2; }
-		[ "$INTERP" = llint ] || { echo "test-jsc.sh: wasm: the LLInt build only (C_LOOP has no WebAssembly)" >&2; exit 2; }
+		[ "$INTERP" != cloop ] || { echo "test-jsc.sh: wasm: not with C_LOOP (it has no WebAssembly)" >&2; exit 2; }
 		# the harness's modules (assert.js, Builder.js, wasm.json...) beside the directories run
 		rm -rf "$R/SD/jstests/wasm"; mkdir -p "$R/SD/jstests/wasm"
 		for f in "$T"/wasm/*; do [ -f "$f" ] && cp "$f" "$R/SD/jstests/wasm/"; done

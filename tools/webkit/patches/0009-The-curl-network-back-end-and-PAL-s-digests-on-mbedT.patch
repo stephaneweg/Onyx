@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Fri, 2 Oct 2026 22:33:01 +0200
-Subject: [PATCH 09/16] The curl network back end and PAL's digests on mbedTLS
+Subject: [PATCH 09/17] The curl network back end and PAL's digests on mbedTLS
  (USE(MBEDTLS))
 
 What:

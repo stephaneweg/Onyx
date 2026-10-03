@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Fri, 2 Oct 2026 18:01:33 +0200
-Subject: [PATCH 05/16] Onyx: the mutator finishes the collections before it
+Subject: [PATCH 05/17] Onyx: the mutator finishes the collections before it
  releases heap access
 
 What: heap/Heap.h, heap/Heap.cpp: for OS(ONYX), Heap::releaseAccess() first calls

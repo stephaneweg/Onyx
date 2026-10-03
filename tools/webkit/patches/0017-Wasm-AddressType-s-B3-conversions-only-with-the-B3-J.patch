@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 08:45:55 +0200
+Subject: [PATCH 17/17] [Wasm] AddressType's B3 conversions only with the B3
+ JIT
+
+WasmAddressType's constructor from a B3::Type and asB3TypeKind() were compiled whenever the JIT
+was (outside PlayStation), but B3 exists only with ENABLE(B3_JIT) -- the FTL's. A port with the
+Baseline JIT and the DFG and WebAssembly, without FTL (Onyx, roadmap step 3), did not build
+("'type' has incomplete type", "'Int32' is not a member of 'JSC::B3::TypeKind'"). The guard is
+now ENABLE(B3_JIT), which also covers PlayStation's case.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/JavaScriptCore/wasm/WasmAddressType.cpp | 4 ++--
+ Source/JavaScriptCore/wasm/WasmAddressType.h   | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Source/JavaScriptCore/wasm/WasmAddressType.cpp b/Source/JavaScriptCore/wasm/WasmAddressType.cpp
+index 14a0f747..1a884dbf 100644
+--- a/Source/JavaScriptCore/wasm/WasmAddressType.cpp
++++ b/Source/JavaScriptCore/wasm/WasmAddressType.cpp
+@@ -48,7 +48,7 @@ AddressType::AddressType(TypeKind typeKind)
+     }
+ }
+ 
+-#if !PLATFORM(PLAYSTATION) && ENABLE(JIT)
++#if ENABLE(B3_JIT)
+ AddressType::AddressType(B3::Type type)
+ {
+     switch (type.kind()) {
+@@ -88,7 +88,7 @@ Wasm::Type AddressType::asWasmType() const
+     RELEASE_ASSERT_NOT_REACHED(invalidAddressTypeConversion);
+ }
+ 
+-#if !PLATFORM(PLAYSTATION) && ENABLE(JIT)
++#if ENABLE(B3_JIT)
+ B3::TypeKind AddressType::asB3TypeKind() const
+ {
+     switch (m_type) {
+diff --git a/Source/JavaScriptCore/wasm/WasmAddressType.h b/Source/JavaScriptCore/wasm/WasmAddressType.h
+index 23adbdd2..82e79c89 100644
+--- a/Source/JavaScriptCore/wasm/WasmAddressType.h
++++ b/Source/JavaScriptCore/wasm/WasmAddressType.h
+@@ -48,7 +48,7 @@ public:
+     constexpr AddressType(AddressType::Kind addressType)
+         : m_type(addressType)
+     { }
+-#if !PLATFORM(PLAYSTATION) && ENABLE(JIT)
++#if ENABLE(B3_JIT)
+     AddressType(B3::Type);
+ #endif
+     explicit constexpr AddressType(bool is64Bit)
