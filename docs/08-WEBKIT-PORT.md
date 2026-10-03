@@ -351,9 +351,32 @@ What was found on the way, and fixed:
   field held a pointer). Found with two tools written for it: the kernel now prints a killed
   program's **backtrace** (the frame-pointer chain, `el0: … backtrace:`), and `tools/webkit/heapcheck.c`
   (a checking malloc in front of newlib's: canaries, a quarantine filled and checked;
-  `HEAPCHECK=1 sh build-web.sh`). The cure: Skia no longer grows its containers to newlib's
-  `malloc_usable_size` (`tools/webkit/skmallocsize.c`, linked by `build-web.sh`): newlib's answer
-  is not trusted that far on Onyx. *Why newlib's usable size is wrong here is not understood yet.*
+  `HEAPCHECK=1 sh build-web.sh`). What stopped it: Skia no longer grows its containers to newlib's
+  `malloc_usable_size` (`tools/webkit/skmallocsize.c`, linked by `build-web.sh`).
+  **newlib's usable size is not the fault** (checked 2026-10-03 with `/bin/malloctest`, docs/03 §5.4:
+  blocks from `malloc` / `calloc` / `memalign` / `posix_memalign` / `aligned_alloc` / `realloc` filled to
+  `malloc_usable_size` and re-read, next to the top of the heap while newlib trims it with a negative
+  `sbrk`, across the program's own `sbrk` calls (the fenceposts), at random and in four threads: no
+  byte of a block changed, no header damaged, on the bench and on the Pi with the real
+  `CAddressSpace::Sbrk`; the same test told a usable size 8 bytes too large is caught at the first
+  block). Read against the source (newlib 4.4 `_mallocr.c`, `MALLOC_ALIGNMENT` 16, `SIZE_SZ` 8): the
+  usable size is the chunk less one size word, as in every dlmalloc; `memalign`'s leading and trailing
+  splits, `malloc_extend_top`'s fenceposts and `malloc_trim` keep it true. So there is nothing to
+  correct in libonyxposix, in the kernel's `Sbrk` or in the toolchain for it, **and the cause of the
+  crash is still unknown**: the workaround changed what Skia writes and where every block lies, which
+  hides a corruption as well as it cures one — it stays linked until the cause is found. What the
+  crash suggests (an inference, not observed): `malloc` had just handed the block out (every path of newlib's `malloc` writes or
+  uses the size word before it returns), so the word was overwritten — with a pointer to the block's
+  own neighbourhood, as the `bk` link of a free chunk 16 bytes lower would be — between `malloc`'s
+  return and Skia's next instruction or by `malloc`'s own unlinking of a damaged bin: a free list
+  already damaged (a write after free, a block freed twice, an overflow into a freed neighbour), not
+  a size reported wrong. Earlier `HEAPCHECK=1` runs do not rule that out: they kept the workaround, so
+  Skia never used its slack under the canaries. To resume: `SKMALLOCSIZE=0 sh tools/webkit/build-web.sh`
+  (Web as it crashed) and `HEAPCHECK=2 sh tools/webkit/build-web.sh` (heapcheck with blocks as large
+  as newlib's and a `malloc_usable_size` that says so, Skia filling them: an overflow of the usable
+  size, a write after free or a double free is then reported with the callers that allocated and freed
+  the block). Fixed in `heapcheck.c` on the way: the program's first blocks (the first 4 KB of the
+  heap) were taken for newlib's own and freed to it by their inner address.
 - On the bench: a reused socket number was taken for a connection's own peer (posixsim's fake kapi).
 - `/tmp` is `RAM:/tmp` for an Onyx program (libonyxposix): test pages live in `SD:/wktest`.
 

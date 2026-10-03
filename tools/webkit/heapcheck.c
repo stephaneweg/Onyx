@@ -10,6 +10,14 @@
  * offset of the first byte changed, the allocation's and the free's return addresses (frame
  * pointers), then a deliberate fault makes the kernel print the backtrace of where it was found.
  * Pointers newlib allocated itself (strdup, FILE buffers) have no header: freed to newlib as they are.
+ * The other way round is not handled: a block newlib takes with malloc() and gives back with its own
+ * _free_r (setvbuf with no buffer, then fclose or exit) has our header and wrecks newlib's heap.
+ *
+ * -DHEAPCHECK_SLACK (HEAPCHECK=2 sh build-web.sh, which also leaves Skia's sk_malloc_size alone): a
+ * block is as large as newlib would make it and malloc_usable_size says so (the size asked + 8, up to
+ * a multiple of 16, less 8; at least 24), the canary after that -- for a program that fills its blocks
+ * to the usable size (Skia's containers), which the plain build never lets it do. An overflow of the
+ * size asked that stays within the usable size is then not seen.
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence (see fetch.sh).
  */
@@ -78,6 +86,10 @@ static void report (const char *what, struct hdr *h, void *p, long off)
 static void *make (size_t align, size_t n)
 {
 	if (align < 16) align = 16;
+#ifdef HEAPCHECK_SLACK
+	n = ((n + 8 + 15) & ~(size_t) 15) - 8;	/* (newlib's chunk for n, less its size word) */
+	if (n < 24) n = 24;
+#endif
 	size_t lead = align > HDR ? align : HDR;
 	unsigned char *base = align > 16 ? (unsigned char *) __real_memalign (align, lead + n + CANARY)
 					 : (unsigned char *) __real_malloc (lead + n + CANARY);
@@ -96,8 +108,9 @@ static void *make (size_t align, size_t n)
 
 static int ours (void *p)
 {
-	/* (the header is read before p: not below the heap's start, 10 GB -- kern/layout.h) */
-	if (((uintptr_t) p & 15) != 0 || (uintptr_t) p < 0x280000000ull + 4096) return 0;
+	/* (the header is read before p: not below the heap's start, 10 GB -- kern/layout.h; no further
+	   than the header: the program's first blocks are ours too, freed to newlib they wreck its heap) */
+	if (((uintptr_t) p & 15) != 0 || (uintptr_t) p < 0x280000000ull + HDR) return 0;
 	struct hdr *h = (struct hdr *) ((unsigned char *) p - HDR);
 	return h->magic == MAGIC_LIVE || h->magic == MAGIC_FREE;
 }

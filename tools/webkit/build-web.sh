@@ -67,17 +67,23 @@ for l in skia harfbuzz-icu harfbuzz freetype png16 jpeg webpmux webpdemux webp s
 	nghttp2 brotlidec xml2 sqlite3 z icui18n icuuc icudata; do
 	LIBS="$LIBS $S/lib/lib$l.a"
 done
-# Skia keeps to the sizes it asks for (skmallocsize.c: newlib's malloc_usable_size is not trusted)
+# Skia keeps to the sizes it asks for (skmallocsize.c; SKMALLOCSIZE=0: Skia's own sk_malloc_size, newlib's
+# malloc_usable_size -- which /bin/malloctest shows to be right: what crashed Web on the Pi with it is
+# not known yet, docs/08-WEBKIT-PORT.md "Step 3")
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -c "$HERE/skmallocsize.c" -o "$O/skmallocsize.o"
 SKMS="$O/skmallocsize.o -Wl,--wrap=_Z14sk_malloc_sizePvm"
 [ "${SKMALLOCSIZE:-1}" = 1 ] || SKMS=""
-# HEAPCHECK=1: the checking malloc of heapcheck.c in front of newlib's (a hunt for heap corruption)
+# HEAPCHECK=1: the checking malloc of heapcheck.c in front of newlib's (a hunt for heap corruption);
+# HEAPCHECK=2: the same with blocks as large as newlib's and a malloc_usable_size that says so, Skia
+# filling them (no skmallocsize.o): what Skia does with the slack, under the canaries
 HC=""
-if [ "${HEAPCHECK:-0}" = 1 ]; then
-	aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -fno-omit-frame-pointer -c "$HERE/heapcheck.c" -o "$O/heapcheck.o"
+if [ "${HEAPCHECK:-0}" != 0 ]; then
+	HCD=""
+	if [ "$HEAPCHECK" = 2 ]; then HCD=-DHEAPCHECK_SLACK; SKMS=""; fi
+	aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -fno-omit-frame-pointer $HCD -c "$HERE/heapcheck.c" -o "$O/heapcheck.o"
 	HC="$O/heapcheck.o"
 	for f in malloc free realloc calloc memalign aligned_alloc posix_memalign malloc_usable_size; do HC="$HC -Wl,--wrap=$f"; done
-	echo "web: with heapcheck"
+	echo "web: with heapcheck ($HEAPCHECK)"
 fi
 echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
