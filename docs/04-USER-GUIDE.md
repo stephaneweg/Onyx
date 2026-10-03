@@ -2444,8 +2444,10 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   it, inside Mail's window (the same program run as an applet, `web --applet ...`: no window of its own,
   JavaScript off, nothing from the internet until Mail's *Show the pictures*; a link clicked goes back to
   Mail, which asks, then opens it in a Web window). Its lines in `kmsg` start `webview:`.
-- **Not there yet** (the WebKit port's roadmap): video and sound, WebGL, the JavaScript JIT (pages
-  run in the interpreter: heavy sites are slow), the GPU (pages are painted by the CPU).
+- **JavaScript is compiled** (1.0.3: JavaScriptCore's Baseline JIT and DFG; the system 2026.10.30
+  or later): a GitHub repository's page loads in about 5 s, where the interpreter took about 50.
+- **Not there yet** (the WebKit port's roadmap): video and sound, WebGL, the GPU (pages are painted
+  by the CPU: the compositor on the V3D is being written).
 - **When something goes wrong**: `kmsg` shows its lines — `web: [time] …` (the loads, the
   addresses, the errors, the web and network processes started and ended), `web: net start / done
   <status> <time> / FAILED <code> <url>` for each request, and, if a process is killed, `el0: …

@@ -411,9 +411,15 @@ additions 5533 → 706 (×7.8); 1M allocations 2410 → 919; 300k-number sort 49
 script (983 → about 8000 ms) and normal without OSR entry into the DFG (`--useOSREntryToDFG=false`:
 1187 ms) or alone (`json.js`-like scripts: the same as the LLInt) — to understand.
 
-**Next**: the browser with the JIT (a WebKit tree configured with the same options: Web's three
-processes; the web process runs the pages' JavaScript), then the FTL (B3 on ARM64) and
-WebAssembly's BBQ when the browser needs them.
+**The browser with the JIT (Web 1.0.3)**: a second WebKit tree, `~/webkit-build/webkit-jit`
+(`BUILD=… CMAKE_EXTRA="-DONYX_WEBKIT=ON -DENABLE_JIT=ON -DENABLE_DFG_JIT=ON -DENABLE_FTL_JIT=OFF"
+TARGET=WebKit sh tools/webkit/build-webcore.sh`: 44 minutes on 16 cores), and `BUILD=… sh
+tools/webkit/build-web.sh` (102 MB). On the Pi: kotonstudio.com as before (about 3.5 s: its time is
+the network's and the painting's), **a GitHub repository's page in 5.4 s from the launch to the
+load's end** (about 50 s in the interpreter). Seen once, not again: 57 s before the first request of
+a launch that followed a browser killed while loading (a lock left in `SD:/var/webkit`? to watch).
+
+**Next**: the FTL (B3 on ARM64) and WebAssembly's BBQ when the browser needs them.
 
 ## The roadmap from here (the user, 2026-10-02)
 
