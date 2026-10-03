@@ -92,6 +92,10 @@ sdcard/apps/jet.app/jscache/
 sdcard/apps/jet.app/cache/
 # (the browser's former folder, before its rename: only old user data can be left there)
 sdcard/apps/netsurf.app/
+# Web, the WebKit browser: its 93 MB program is built by tools/webkit/build-web.sh and carried by
+# its package only (too big for git); and WebKit's data on the card (cookies, storage, caches)
+sdcard/apps/web.app/main
+sdcard/var/webkit/
 
 # The PC tools' build folders (pc/build.sh; the result, pc/dist/, is kept)
 pc/OnyxBasic/bin/

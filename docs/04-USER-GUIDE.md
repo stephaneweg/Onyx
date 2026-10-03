@@ -2384,6 +2384,38 @@ added), `SD:/res/wallpaper.<ext>` (a wallpaper copied); the photos it edits, rot
 `RAM:/photos-mail`). Keys: ← → Home End, Page
 Up / Down, Enter, Esc, Del, F, E, R, I, + − 0 1, Ctrl+A, Ctrl+F (search), F5 (slideshow).
 
+### Web, the WebKit browser (`web`)
+
+**Web** is the browser on **WebKit** (the engine of Safari; `docs/08-WEBKIT-PORT.md`), beside Jet
+until it does all Jet does. Its own package (`pkg install web`; 93 MB): one program that is the
+window and, started again by WebKit, its **web process** (the page, JavaScript) and its **network
+process** (HTTP / HTTPS through curl and mbedTLS) — three processes, one program file shared in
+memory. **One page per window** (no tabs): a link that opens a new window (`target=_blank`,
+`window.open`) starts Web again on it. `web [url]`, or the dock; no URL: the start page.
+
+- **The toolbar**: Back, Forward, Reload (Stop while a page loads), Home (the start page,
+  `SD:/apps/web.app/start.html`), the **address field**: an address (`https://` added), a path on
+  the card (`/docs/x.html`, `SD:/x.html`), or words (a DuckDuckGo search) — Enter goes.
+- **The status bar**: the link under the pointer, the load's progress, "Done" or why a page did not
+  load. The window's title is the page's.
+- **The menus**: File (New Window ^N, Open File… ^O, Open Location ^L, Close Window ^W), Edit (Cut,
+  Copy, Paste, Select All — the address field's when it has the keyboard, else the page's), View
+  (Reload ^R, Zoom In / Out, Actual Size), Go (Back Alt+←, Forward Alt+→, Home), Help.
+- **Keys**: in the page, what the page does with them (text fields, scrolling: arrows, Page Up /
+  Down, Space); Backspace or Alt+← back, Alt+→ forward, F5 reload, F6 the address, Esc stops a load.
+  The wheel scrolls. A file or a link dropped on the window is opened.
+- **Start it at once**: add `preload web` to `SD:/etc/autostart` (after the dock's line): the 93 MB
+  program is read from the card at boot, and every window then opens without reading it again.
+- **Not there yet** (the WebKit port's roadmap): the drop-down lists of the pages (`<select>`), the
+  copies to and from the other apps (the clipboard stays inside Web), downloads, video and sound,
+  WebGL, the JavaScript JIT (pages run in the interpreter: heavy sites are slow).
+- **When something goes wrong**: `kmsg` shows its lines (`web: …`, and WebKit's own) — what was
+  loaded, the errors, the processes started and ended.
+
+**Files**: reads the card's fonts (`SD:/res/fonts/`), the certificates (`SD:/res/ca-bundle`);
+writes `SD:/var/webkit/` (cookies, local storage, the caches). Licence: WebKit's LGPL-2.1
+(`docs/LICENSING.md`).
+
 ### Mail, the mail client (`mail`)
 
 ![Mail](../screenshots/mail.png)
