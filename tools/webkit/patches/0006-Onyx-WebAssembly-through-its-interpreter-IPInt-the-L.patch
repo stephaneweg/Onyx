@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Fri, 2 Oct 2026 19:36:11 +0200
-Subject: [PATCH 06/14] Onyx: WebAssembly through its interpreter (IPInt), the
+Subject: [PATCH 06/15] Onyx: WebAssembly through its interpreter (IPInt), the
  LLInt the port's default
 
 What:

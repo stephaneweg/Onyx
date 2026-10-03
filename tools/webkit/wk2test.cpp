@@ -246,6 +246,18 @@ int main(int argc, char** argv)
         printf("text: %s\n", s_scriptResult.substr(newline + 1).c_str());
     }
 
+    // WK2TEST_SCROLL=n: n wheel notches down over the page's middle, one every 100 ms (the scrolling path).
+    if (const char* scroll = getenv("WK2TEST_SCROLL")) {
+        int notches = atoi(scroll);
+        for (int i = 0; i < notches; i++) {
+            WKPoint p = WKPointMake(width / 2, height / 2);
+            WKPageHandleWheelEvent(page, WKWheelEventMake(p, p, WKSizeMake(0, -120), WKSizeMake(0, -1), 0));
+            double next = now() + 0.1;
+            turnUntil(next + 1, [next] { return now() > next; });
+        }
+        printf("scrolled: %d notches\n", notches);
+    }
+
     // The picture once the page has stopped drawing for a moment.
     if (!turnUntil(deadline, [settle] { return s_displays && now() - s_lastDisplay > settle; })) {
         fprintf(stderr, "wk2test: nothing was displayed (%u display requests)\n", s_displays);

@@ -1,6 +1,9 @@
 # Onyx: the WebKit port
 
-## Status / how to resume (2026-10-02)
+## Status / how to resume (2026-10-03)
+
+**Now: Web, the browser on WebKit2, runs on the Pi** (see "Step 3" below: kotonstudio.com over
+HTTPS in about 3.2 s). What follows was written at step 1 and stays true for `jsc`.
 
 **Step 1 (WTF + JavaScriptCore → the `jsc` shell) is done: it passes on the PC bench and on the
 Pi** (the five steps of the Pi test below), and is in `main`. Step 2 (WebCore) is next, on a branch
@@ -313,6 +316,58 @@ CMake patches, then `ninja -k 0` on WebCore and the errors in families (as step 
 the real implementations (TLS glue, pasteboard, theme) once it links. The target of step 2 on the
 PC: WebCore links into a test program that loads a page from a file and paints it into a PNG.
 
+## Step 3: WebKit2 and Web, the browser (2026-10-03)
+
+**Web runs on the Pi** (`user/Apps/web`, package `web` 93 MB; docs/04 *Web*): the window on wtk, the
+page drawn by WebKit2's three processes — **one program** (`apps/web.app/main`) that is the UI and,
+started again with `--onyx-webkit-process=web|network`, the web and the network process; the kernel
+maps the program's image once for all (`image …: shared in 0 ms` in kmsg). Tried there (overnight,
+over telnet and VNC, the user's Pi 4 8 GB): the start page (a `file:` page, 1.3 s from the start);
+**kotonstudio.com over HTTPS** with its redirection, web fonts, images, CSS animations — about
+**3.2 s from the address typed to the load's end** (`web: [t]` lines), its title in the window's
+frame; the wheel scrolling to the end and back; Back / Forward; typing an address; a
+`target=_blank` link opening a **new window** (a new launch, the user's choice); GitHub's React
+pages (about 50 s for a repository's page: the network answers in 1–3 s a file, the rest is
+JavaScript in the interpreter — the JIT is roadmap step 3).
+
+What was written: patches `0013` (WTF), `0014` (the port: `PlatformOnyx.cmake`, `ONYX_WEBKIT`, the
+software drawing path behind `USE(NON_COMPOSITED_DRAWING_AREA)`, the IPC monitor thread, the
+launcher, the C API with the Onyx view — `docs/WEBKIT2-STUDY.md` was the plan), `0015`; the browser
+(`main.cpp` the window, `engine_webkit.cpp` on the C API, `engine_mock.cpp` for the desktop
+simulator, where the window is photographed); `tools/webkit/build-webkit.sh`, `build-web.sh`,
+`wk2test.cpp` + `build-wk2test.sh` + `test-webkit.sh` (the bench: the three processes load a page
+by `data:`, `file:` and `http:` and paint it — all checks pass).
+
+What was found on the way, and fixed:
+- **WTF's RedBlackTree::remove left the removed node's links** (CheckedPtrs): the generic RunLoop's
+  stopped timers kept counts on their neighbours, whose destruction then crashed (`0013`).
+- **curl was built without its multi wake-up** (`CURL_DISABLE_SOCKETPAIR`): WebKit's request
+  scheduler polls without a limit and waits to be woken — no request ever started
+  (`tools/ports/curl/build.sh`: the wake-up is a pipe).
+- **The IPC monitor thread read on its own thread** (PlayStation's design) beside the connection's
+  queue: it now only waits for data and has the queue read it (`0015`).
+- **A heap corruption in Skia's glyph painting, on the Pi only** (the web process killed while
+  scrolling kotonstudio.com: `_malloc_usable_size_r` from `SkContainerAllocator`, a chunk whose size
+  field held a pointer). Found with two tools written for it: the kernel now prints a killed
+  program's **backtrace** (the frame-pointer chain, `el0: … backtrace:`), and `tools/webkit/heapcheck.c`
+  (a checking malloc in front of newlib's: canaries, a quarantine filled and checked;
+  `HEAPCHECK=1 sh build-web.sh`). The cure: Skia no longer grows its containers to newlib's
+  `malloc_usable_size` (`tools/webkit/skmallocsize.c`, linked by `build-web.sh`): newlib's answer
+  is not trusted that far on Onyx. *Why newlib's usable size is wrong here is not understood yet.*
+- On the bench: a reused socket number was taken for a connection's own peer (posixsim's fake kapi).
+- `/tmp` is `RAM:/tmp` for an Onyx program (libonyxposix): test pages live in `SD:/wktest`.
+
+Found and **not fixed** (Onyx, outside WebKit):
+- **A kernel panic in Circle's TCP** (`tcp: Unexpected state 0 at line 1922`, `SD:/etc/lastcrash.txt`)
+  when a telnet client closed its connection while `kmsg` was writing to it: a network client can
+  restart the Pi. Probably also the restart seen while `cat` joined a big file over telnet.
+- `ps` shows absurd `PAGES` numbers (2485159040) for the web processes (with shared images).
+
+Not there yet (the next work of step 1): the pages' drop-down lists (`<select>`: no popup), the
+clipboard with the other apps (in-process only), downloads, the pointer's shape (no kapi for it),
+AltGr on the Onyx keyboard (to check), the window's title in the dock (the kernel keeps the
+program's), WOFF2 fonts, the measurements of where kotonstudio.com's 3.2 s go.
+
 ## The roadmap from here (the user, 2026-10-02)
 
 In this order; a later step is not started early:
@@ -367,11 +422,8 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    renders a page on the bench and on the Pi (2026-10-02); WebCrypto on mbedTLS passes its tests
    on the bench; the network path, WOFF2 and media are still to do.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
-   *Under way (2026-10-02): the port's files and the guard patches are written from
-   `docs/WEBKIT2-STUDY.md` (`Source/WebKit/PlatformOnyx.cmake`, `ONYX_WEBKIT`, the software
-   drawing path behind `USE(NON_COMPOSITED_DRAWING_AREA)`, the launcher of the one multi-call
-   program, the C API with the Onyx view); `sh tools/webkit/build-webkit.sh` configures and
-   builds `libWebKit.a`; the first compile passes are running. Not committed as a patch yet.*
+   *Done and running on the Pi (2026-10-03): patches `0013`–`0015` (see "Step 3" below), the
+   browser **Web** (`user/Apps/web`, package `web`).*
 4. The Onyx view; then, in the order the user asked for (2026-10-02): **the JavaScript JIT before
    video**. The JIT: executable memory for a program's own mappings in the kernel (`PROT_EXEC`
    through `vm_map` / `vm_protect`, W^X, the instruction cache flushed from EL0: a kapi change),

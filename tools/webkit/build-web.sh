@@ -61,9 +61,21 @@ for l in skia harfbuzz-icu harfbuzz freetype png16 jpeg webpmux webpdemux webp s
 	nghttp2 brotlidec xml2 sqlite3 z icui18n icuuc icudata; do
 	LIBS="$LIBS $S/lib/lib$l.a"
 done
+# Skia keeps to the sizes it asks for (skmallocsize.c: newlib's malloc_usable_size is not trusted)
+aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -c "$HERE/skmallocsize.c" -o "$O/skmallocsize.o"
+SKMS="$O/skmallocsize.o -Wl,--wrap=_Z14sk_malloc_sizePvm"
+[ "${SKMALLOCSIZE:-1}" = 1 ] || SKMS=""
+# HEAPCHECK=1: the checking malloc of heapcheck.c in front of newlib's (a hunt for heap corruption)
+HC=""
+if [ "${HEAPCHECK:-0}" = 1 ]; then
+	aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -fno-omit-frame-pointer -c "$HERE/heapcheck.c" -o "$O/heapcheck.o"
+	HC="$O/heapcheck.o"
+	for f in malloc free realloc calloc memalign aligned_alloc posix_memalign malloc_usable_size; do HC="$HC -Wl,--wrap=$f"; done
+	echo "web: with heapcheck"
+fi
 echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
-	"$O/main.o" "$O/engine_webkit.o" "$O/libwtk.a" $WK $LIBS -o "$BUILD/bin/web"
+	"$O/main.o" "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $WK $LIBS -o "$BUILD/bin/web"
 aarch64-onyx-elf-size "$BUILD/bin/web"
 
 if [ "${STAGE:-1}" = 1 ]; then

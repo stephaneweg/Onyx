@@ -81,14 +81,17 @@ static double now ()
 	return ts.tv_sec + ts.tv_nsec / 1e9;
 }
 
+// One line of the kernel log: one write (the log makes a line of each write).
 static void say (const char *fmt, ...)
 {
-	char b[512];
+	char m[480], b[560];
 	va_list ap;
 	va_start (ap, fmt);
-	vsnprintf (b, sizeof b, fmt, ap);
+	vsnprintf (m, sizeof m, fmt, ap);
 	va_end (ap);
-	fprintf (stderr, "web: [%.2f s] %s\n", now () - s_start, b);
+	int n = snprintf (b, sizeof b, "web: [%.2f s] %s\n", now () - s_start, m);
+	if (n > (int) sizeof b - 1) n = (int) sizeof b - 1;
+	write (2, b, (size_t) n);
 }
 
 static std::string str (WKStringRef s)
@@ -120,9 +123,9 @@ bool engine_is_auxiliary (int argc, char **argv) { return WKIsAuxiliaryProcessOn
 int engine_auxiliary_main (int argc, char **argv)
 {
 	s_start = now ();
-	fprintf (stderr, "web: %s process starts\n", argc > 1 ? argv[1] : "?");
+	say ("%s process starts", argc > 1 ? argv[1] : "?");
 	int r = WKAuxiliaryProcessMainOnyx (argc, argv);
-	fprintf (stderr, "web: %s process ends (%d)\n", argc > 1 ? argv[1] : "?", r);
+	say ("%s process ends (%d)", argc > 1 ? argv[1] : "?", r);
 	return r;
 }
 

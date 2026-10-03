@@ -13,7 +13,8 @@
 // Supported: USER PASS SYST FEAT OPTS PWD CWD CDUP TYPE MODE STRU PASV EPSV PORT LIST
 // NLST MLSD RETR STOR APPE DELE MKD RMD RNFR RNTO SIZE NOOP QUIT (+ X* aliases). A user
 // only sees its root folder ("/" = homedir; ".." cannot climb above it). Uploads are
-// buffered in memory (<= 32 MB) and written in one go (kapi_save_file).
+// written to the file as they arrive (kernel v75+: any size; into "<name>.part", renamed at the
+// end); on an older kernel, buffered in memory (<= 32 MB) and written in one go.
 //
 #include "kapi.h"
 #include "applib.h"
@@ -186,6 +187,53 @@ static void cmd_retr (const char *arg)
 	reply (ok ? "226 Transfer complete." : "426 Connection closed; transfer aborted.");
 }
 
+// (kernel v75+) The upload written to the file as it arrives: no size limit, little memory. Into
+// "<name>.part", renamed over the name at the end: a stalled or broken upload leaves the old file.
+static int stor_stream (int h, const char *real, int append)
+{
+	char part[420];
+	scpy (part, real, sizeof part); cat (part, sizeof part, ".part");
+	if (append)							// APPE: from the existing file
+	{
+		void *f = kapi_open (real);
+		long long out = kapi_file_open (part, KAPI_O_WRONLY | KAPI_O_CREAT | KAPI_O_TRUNC, 0644);
+		if (out < 0) { if (f) kapi_close (f); return out == -KAPI_ENOSYS ? -2 : 0; }
+		static char cb[64 * 1024];
+		int n;
+		while (f && (n = kapi_read (f, cb, sizeof cb)) > 0)
+			if (kapi_file_write (out, cb, (unsigned long long) n, -1) != n) { kapi_close (f); kapi_file_close (out); return 0; }
+		if (f) kapi_close (f);
+		kapi_file_close (out);
+	}
+	long long out = kapi_file_open (part, KAPI_O_WRONLY | KAPI_O_CREAT | (append ? KAPI_O_APPEND : KAPI_O_TRUNC), 0644);
+	if (out == -KAPI_ENOSYS) return -2;				// (an older kernel: the buffered way)
+	if (out < 0) return 0;
+	static char buf[256 * 1024];
+	unsigned fill = 0, idle = kapi_get_ticks ();
+	int ok = 1;
+	for (;;)
+	{
+		int r = kapi_tcp_recv (h, buf + fill, sizeof buf - fill);
+		if (r < 0) break;						// the client closed: end of file
+		if (r > 0) { fill += (unsigned) r; idle = kapi_get_ticks (); }
+		else
+		{
+			if (kapi_get_ticks () - idle > 3000) { ok = 0; break; }	// 30 s stall
+			kapi_msleep (2);
+		}
+		if (fill > sizeof buf - 2048)
+		{
+			if (kapi_file_write (out, buf, fill, -1) != (long long) fill) { ok = 0; break; }
+			fill = 0;
+		}
+	}
+	if (ok && fill && kapi_file_write (out, buf, fill, -1) != (long long) fill) ok = 0;
+	kapi_file_close (out);
+	if (!ok) { kapi_path_unlink (part, 0); return 0; }
+	kapi_path_unlink (real, 0);
+	return kapi_path_rename (part, real) == 0;
+}
+
 static void cmd_stor (const char *arg, int append)
 {
 	char cp[256], real[400];
@@ -193,6 +241,13 @@ static void cmd_stor (const char *arg, int append)
 	reply ("150 Ok to send data.");
 	int h = data_open ();
 	if (h < 0) { reply ("425 Cannot open the data connection."); return; }
+	int s = stor_stream (h, real, append);
+	if (s != -2)
+	{
+		kapi_tcp_close (h);
+		reply (s ? "226 Transfer complete." : "451 Upload failed (stalled or not writable).");
+		return;
+	}
 	unsigned cap = 256 * 1024, len = 0;
 	char *buf = (char *) umm_malloc (cap);
 	if (append && buf)					// APPE: start from the existing file

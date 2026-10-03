@@ -970,8 +970,9 @@ Defaults: `SD:/`, user `onyx`, password `onyx`. There is **no configuration file
   folder" and exits, so you add users on the fly (e.g. `ftpd SD:/apps dev secret`).
 - A user sees only its root folder (`/` = `homedir`; `..` cannot climb above it).
 - Several clients can be connected at once (each connection is served by its own process).
-- Passive (PASV / EPSV) and active (PORT) modes; listing, download, upload (≤ 32 MB per
-  file), resume-less append (APPE), delete, rename, create / remove folders.
+- Passive (PASV / EPSV) and active (PORT) modes; listing, download, upload (any size: written to
+  the card as it arrives, into `<name>.part` renamed at the end — a broken upload leaves the old
+  file), append (APPE), delete, rename, create / remove folders.
 - Add `ftpd SD:/ me mypassword` to `SD:/etc/autostart` to have it at every boot.
 
 > ⚠️ Plain FTP: the password and the files travel unencrypted — keep it on a trusted network.
@@ -2409,8 +2410,10 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
 - **Not there yet** (the WebKit port's roadmap): the drop-down lists of the pages (`<select>`), the
   copies to and from the other apps (the clipboard stays inside Web), downloads, video and sound,
   WebGL, the JavaScript JIT (pages run in the interpreter: heavy sites are slow).
-- **When something goes wrong**: `kmsg` shows its lines (`web: …`, and WebKit's own) — what was
-  loaded, the errors, the processes started and ended.
+- **When something goes wrong**: `kmsg` shows its lines — `web: [time] …` (the loads, the
+  addresses, the errors, the web and network processes started and ended), `web: net start / done
+  <status> <time> / FAILED <code> <url>` for each request, and, if a process is killed, `el0: …
+  killed` with its `backtrace:` line. Keep `kmsg` running in a telnet session while you try a page.
 
 **Files**: reads the card's fonts (`SD:/res/fonts/`), the certificates (`SD:/res/ca-bundle`);
 writes `SD:/var/webkit/` (cookies, local storage, the caches). Licence: WebKit's LGPL-2.1

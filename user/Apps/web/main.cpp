@@ -28,7 +28,14 @@ using namespace wtk;
 #define SB_H	22		// the status bar
 #define HOME	"file:///apps/web.app/start.html"
 
-static void say (const char *s) { fprintf (stderr, "web: %s\n", s); }
+static void say (const char *s)		// (one write: one line of the kernel log)
+{
+	char b[600];
+	int n = snprintf (b, sizeof b, "web: %s\n", s);
+	if (n > (int) sizeof b - 1) n = (int) sizeof b - 1;
+	fwrite (b, 1, (size_t) n, stderr);
+	fflush (stderr);
+}
 
 // ---- the page -------------------------------------------------------------------------------------------
 
@@ -89,8 +96,28 @@ public:
 
 // ---- the window ------------------------------------------------------------------------------------------
 
+// The address field: a click into it (when it has not the keyboard yet) empties it for a new address, as
+// a browser selects it all; Esc gives the page's address back and the keyboard back to the page.
+static char g_pageUrl[Textbox::TEXT_CAP];
+static void focus_page ();
+class UrlField : public Textbox
+{
+public:
+	UrlField (int l, int t, int w, int h, Action enter) : Textbox (l, t, w, h, "", enter) {}
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
+	{
+		if (bl && !hasFocus) { setText (""); caret = 0; }
+		return Textbox::onMouse (mx, my, bl, br, bm, wheel);
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27) { setText (g_pageUrl); focus_page (); return true; }
+		return Textbox::onKey (k);
+	}
+};
+
 static PageView   *g_page;
-static Textbox    *g_url;
+static UrlField   *g_url;
 static Label      *g_status;
 static ToolButton *g_back, *g_fwd, *g_reload;
 static char        g_title[256];
@@ -155,15 +182,41 @@ static void show_status ()
 // ---- the engine's calls ------------------------------------------------------------------------------------
 
 static void on_needs_display (int x, int y, int w, int h) { g_page->damage (x, y, w, h); }
+// The title's face has Latin-1's letters: the typographic punctuation pages use made plain.
+static void plain_title (const char *t, char *o, int cap)
+{
+	static const struct { const char *u8, *ascii; } map[] = {
+		{ "\xE2\x80\x94", " - " }, { "\xE2\x80\x93", "-" }, { "\xE2\x80\x98", "'" }, { "\xE2\x80\x99", "'" },
+		{ "\xE2\x80\x9C", "\"" }, { "\xE2\x80\x9D", "\"" }, { "\xE2\x80\xA6", "..." }, { "\xC2\xA0", " " },
+		{ "\xE2\x80\xA2", "-" }, { "\xC2\xB7", "-" }, { "\xE2\x80\xAF", " " } };
+	int n = 0;
+	while (*t && n < cap - 4)
+	{
+		bool done = false;
+		for (unsigned i = 0; i < sizeof map / sizeof map[0] && !done; i++)
+		{
+			int l = (int) strlen (map[i].u8);
+			if (!strncmp (t, map[i].u8, l))
+			{
+				for (const char *a = map[i].ascii; *a && n < cap - 1; a++) o[n++] = *a;
+				t += l; done = true;
+			}
+		}
+		if (!done) o[n++] = *t++;
+	}
+	o[n] = 0;
+}
 static void on_title (const char *t)
 {
-	snprintf (g_title, sizeof g_title, "%s", t);
+	plain_title (t, g_title, sizeof g_title);
 	draw_title ();
 }
 static void on_url (const char *u)
 {
+	snprintf (g_pageUrl, sizeof g_pageUrl, "%s", u);
 	if (!g_url->hasFocus) g_url->setText (u);
 }
+static void focus_page () { g_page->setFocus (); g_url->invalidate (true); }
 static void on_loading (bool loading, double p)
 {
 	g_loading = loading; g_progress = p;
@@ -222,7 +275,7 @@ static void op_back () { engine_back (); g_page->setFocus (); }
 static void op_forward () { engine_forward (); g_page->setFocus (); }
 static void op_reload () { if (g_loading) engine_stop (); else engine_reload (); }
 static void op_home () { engine_load (HOME); g_page->setFocus (); }
-static void op_location () { g_url->setFocus (); g_url->caret = (int) strlen (g_url->text); g_url->invalidate (true); }
+static void op_location () { g_url->setText (""); g_url->setFocus (); g_url->caret = 0; g_url->invalidate (true); }
 static void op_go (Widget &) { engine_load (g_url->text); g_page->setFocus (); }
 static void op_new_window () { engine_new_window (HOME); }
 static void op_open_file ()
@@ -278,7 +331,7 @@ int main (int argc, char **argv)
 	g_fwd->setDisabled (true);
 	root.addChild (tb);
 	int ux = tb->next () + 8;
-	g_url = new Textbox (ux, 7, W0 - ux - 10, 26, "", op_go);
+	g_url = new UrlField (ux, 7, W0 - ux - 10, 26, op_go);
 	g_url->maxLen = Textbox::TEXT_CAP - 1;
 	g_url->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	root.addChild (g_url);

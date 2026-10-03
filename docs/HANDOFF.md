@@ -169,11 +169,13 @@ answer in French. The docs stay in English.
   page on the bench and on the Pi** (2026-10-02: `tools/webkit/build-webcore.sh`, `wctest`,
   `test-webcore.sh`; Skia on the CPU, no GL; the network path still to do), in `main`. WebCrypto
   on mbedTLS is done on the branch `webkit-port` (`test-webcrypto.sh`: 299 checks on the bench).
-  **Under way on `webkit-port`: step 3 (WebKit2)** — the port's files are written from
-  `docs/WEBKIT2-STUDY.md`, `tools/webkit/build-webkit.sh` builds them; the roadmap and the user's
-  decisions (one executable for the three roles, no tabs, the order of the steps) are in docs/08.
-  The kernel side of the browser's start-up (the shared program image, `preload` / `unload`: kapi
-  v77, `docs/ELF-LOADER-PLAN.md`) is on the branch `shared-image`, waiting for its Pi test. To resume: `docs/08-WEBKIT-PORT.md` ("status / how
+  **Step 3 (WebKit2) and Web, the browser, run on the Pi (2026-10-03, in `main`, package `web`)**:
+  kotonstudio.com over HTTPS in about 3.2 s, GitHub's pages, new windows for `target=_blank`; what
+  was fixed (a heap corruption in Skia's glyph painting, curl's wake-up, the IPC monitor thread,
+  WTF's RedBlackTree) and what is open (the Circle TCP panic a telnet client can trigger, `<select>`,
+  the clipboard, downloads) are in docs/08 "Step 3". The roadmap and the user's decisions (one
+  executable for the three roles, no tabs, the order of the steps) are in docs/08; the program
+  images and `preload` / `unload` (kapi v77, `docs/ELF-LOADER-PLAN.md`) are in `main`. To resume: `docs/08-WEBKIT-PORT.md` ("status / how
   to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain
   (`sh tools/toolchain/fetch.sh`), WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
   checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), the build
