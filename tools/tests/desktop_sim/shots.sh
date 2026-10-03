@@ -180,7 +180,10 @@ if want calendar; then			# (the sample calendar.ics of sd/: the week of Monday 2
 fi
 if want mandelbrot; then sim mandelbrot mandelbrot "$W" $P; png mandelbrot; fi
 if want eyes; then sim eyes eyes "$W" $P SIM_CURSOR=260,-40; png eyes; fi
-if want taskman; then sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;$W" $P; png taskman; fi
+if want taskman; then			# (its two tabs: the processes -- a row chosen --, the memory after a few samples)
+	sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;$W" $P; png taskman
+	sim taskman taskman-memory "$W;down 180 24;up 180 24;$W;$W;$W;$W;$W;$W;$W;$W" $P; png taskman-memory
+fi
 if want 2048; then
 	m=""; for k in 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x102 0x100 0x103 0x100; do m="$m;key $k;wait"; done
 	sim 2048 2048 "wait$m;$W" $P; png 2048

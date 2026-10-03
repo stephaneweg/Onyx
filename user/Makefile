@@ -34,7 +34,7 @@ APPS = tinycalc tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        mandelbrot minesweeper \
-       eyes voronoy irc memmon spin wtkdemo shell notifyd shutdown plasma shelf ask agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
+       eyes voronoy irc spin wtkdemo shell notifyd shutdown plasma shelf ask agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
 
 # The apps whose text is FreeType's (DejaVu Sans through wtk's face, ft/wtkface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").

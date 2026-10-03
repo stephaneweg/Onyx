@@ -215,7 +215,7 @@ apps then share with every process's page tables. The kernel heap (window canvas
 wallpaper, the full-screen buffer, the GPU's memory, ~680 MB) is the same on every board. So
 Onyx runs on 1 GB — the desktop and the small apps take a few MB each — but the apps all
 together have ~250 MB instead of ~2 GB or more: the big ones (Jet Browser, the N64 / GameCube
-emulators) can run short (`sbrk` / `new` return 0). `memmon` then shows an app pool of 0
+emulators) can run short (`sbrk` / `new` return 0). the Task Manager's Memory tab then shows an app pool of 0
 (`ram_detail`: the high zone only).
 
 ### Construction

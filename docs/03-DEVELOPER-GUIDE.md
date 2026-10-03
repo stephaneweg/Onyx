@@ -2749,7 +2749,7 @@ the app's address space). For dynamic memory, include [`user/umm.h`](../user/umm
 a small user allocator (size-class free lists + a `kapi_sbrk` arena). `umm_malloc` /
 `umm_free` / `umm_calloc` / `umm_realloc`. The heap lives at `USER_HEAP_BASE` (10 GB);
 its pages are owned by the address space, so they are **freed automatically when the
-app exits** and show up in the app's page count (`ps` / `memmon`). `kapi_sbrk` is the
+app exits** and show up in the app's page count (`ps`, the Task Manager). `kapi_sbrk` is the
 underlying primitive (rarely called directly). `/bin/heaptest` exercises it.
 
 **Memory is filled on first touch (kernel v75).** The heap, the stacks (the main one: 8 MB by

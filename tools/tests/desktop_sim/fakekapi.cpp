@@ -1163,7 +1163,7 @@ static int random_fill (void *b, unsigned n) { for (unsigned i = 0; i < n; i++) 
 // (the Task Manager's system calls per second: made up from the pid)
 static int proc_stats (int pid, struct kapi_syscall_stats *o) { memset (o, 0, sizeof *o); o->rate = (unsigned) (pid * 137 % 900); return 0; }
 static int list_procs (char *b, unsigned n)
-{ if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n12 a R 64 memmon\n"); return 6; }
+{ if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n2 k S 0 usb\n3 k S 0 net\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n10 a S 21 agenda\n11 a S 12 notifyd\n12 a R 1850 web\n13 a S 722 koton\n14 a S 608 media\n15 a S 228 mail\n16 a R 96 taskman\n"); return 14; }
 static int meminfo (unsigned long *t, unsigned long *f, unsigned long *a, unsigned *pk)
 { if (t) *t = 3145728; if (f) *f = 2097152; if (a) *a = 409600; if (pk) *pk = 64; return 1; }
 static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int blocking)

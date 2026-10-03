@@ -788,7 +788,11 @@ answer in French. The docs stay in English.
   (its arrangement's lanes alone dark), **FM Tracker** made again (FreeType; a transport bar, the
   patterns' list, M / S / meters, blocks, undo, a piano, an instrument dialog with the waves, the
   envelopes and the sound's wave drawn), Ledger in FreeType, the Package Manager's tabs a
-  `SegmentedControl`, a **System** category.
+  `SegmentedControl`, a **System** category. Then the **Task Manager in tabs** (Processes: a sortable grid with the
+  memory and the calls per second; Memory: what `memmon` showed, drawn — `memmon` is gone); its Processor and
+  Network tabs wait for kernel counters (per-core time in `CScheduler::Yield`, the sound and app cores' busy
+  time; bytes per process in `NetTcpSend/Recv`, `NetSockSend/Recv`: `TSyscallStats`' neighbours in
+  `CAddressSpace`, new slots after `image_list`).
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,
