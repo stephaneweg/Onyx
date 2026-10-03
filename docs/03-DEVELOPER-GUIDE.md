@@ -1707,6 +1707,10 @@ its licence on the app.
 >   frame's title goes from the frame's colour down to `C_BG`, its borders are black, a dark face's
 >   fields are darker than it and its grooves, `wk_etch_*`, darker too); a named theme chosen:
 >   `wk_theme_take (t, i)` (a style alone: `wk_theme_take_style (t, style)`)),
+> - **A list that draws its own scroll bar** (`wk_thumb`, `wk_draw_vscroll`: `wtk/widget.h`) must also give it
+>   the mouse: a `WkBarDrag` member, `if (bar.mouse (mx, my, bl, barX, barW, trackY, trackH, total, view, &pos))
+>   { ...repaint; return true; }` at the top of its `onMouse` — the thumb drags, the groove turns a page, and the
+>   row under the bar never gets the click.
 >   `inactive`, `window` (the content: the face; `face` still
 >   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
 >   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes

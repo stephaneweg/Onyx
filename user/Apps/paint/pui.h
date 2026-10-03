@@ -575,6 +575,11 @@ public:
 			if (!bl) { m_drag = false; catchOutside = false; pressed = false; }
 			return true;
 		}
+		{							// the list's scroll bar: the bar's own, never the layer's under it
+			long p = m_top;
+			if (m_bar.mouse (in ? mx : -1, my, bl, width - WK_SBW - 12, WK_SBW + 4, y0 + 4, listH () - 8, D.n, rows, &p))
+			{ m_top = (int) p; invalidate (true); return true; }
+		}
 		if (wheel && in && my >= y0) { m_top = pclamp (m_top - wheel, 0, pmax (0, D.n - rows)); invalidate (true); return true; }
 		int bw = (width - 20) / 7, by = height - 38;
 		int hb = in && my >= by && my < by + 30 && mx >= 10 && mx < 10 + 7 * bw ? (mx - 10) / bw : -1;
@@ -614,6 +619,7 @@ public:
 	}
 private:
 	int m_hot, m_hotBtn, m_top; unsigned m_last; int m_lastRow; bool m_drag, m_hotBlend;
+	WkBarDrag m_bar;
 	static const char *const BTN_TIPS[7];
 	// A layer's thumbnail: its pixels (the nearest ones) over a checkerboard, the picture's proportions.
 	void thumb (int li, int x, int y)

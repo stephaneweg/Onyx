@@ -1,33 +1,42 @@
 //
-// taskman -- task manager. Lists every task (state + app/kernel), refreshing
-// periodically. Up/Down select; k or Del kills the selected app (kernel tasks are
-// protected); Enter raises an app's window; r refreshes now. An app's row shows its system
-// calls per second (kapi v74 proc_stats; the pid found by name in kapi_list_procs).
+// taskman -- the Task Manager: every task in a grid that scrolls (wtk's DataGrid: its state, its
+// name, an app or a kernel task, an app's system calls per second -- kapi v74 proc_stats, the pid
+// found by name in kapi_list_procs), refreshed twice a second. Up / Down select; Enter (a double
+// click, Bring to Front) raises an app's window; k or Delete (End Task) kills the selected app
+// (kernel tasks are protected); r refreshes now. The window resizes: the grid follows.
 //
 #include "kapi.h"
 #include "wtk/wtk.h"
+#include "ft/wtkface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "applib.h"
+#include <stdio.h>
+#include <string.h>
 
-#define W	340
-#define H	300
-#define LISTY	30
-#define MAXT	40
+using namespace wtk;
+
+#define W	460
+#define H	400
+#define FOOT	44
+#define MAXT	160
 #define NAMEL	32
-
-static unsigned *fb;
-static wtk::Canvas g_cv;		// the window's canvas (the painter draws on it)
-static int g_fw = 8, g_fh = 16, g_rows = 1;
 
 static char g_name[MAXT][NAMEL];
 static char g_state[MAXT];		// R/S/B/N
 static char g_kernel[MAXT];		// 1 = kernel task (not killable)
 static int  g_rate[MAXT];		// system calls per second, -1 unknown
-static int  g_count = 0, g_sel = 0;
-static int  g_frames = 0;
+static int  g_count = 0;
+
+static DataGrid *g_grid;
+static Button *g_btRaise, *g_btKill;
+static Label *g_lbCount;
+static Root *g_root;
 
 static void refresh (void)
 {
-	static char buf[2048];
+	char keep[NAMEL] = "";				// the selection: kept by its name
+	if (g_grid->sel >= 0 && g_grid->sel < g_count) strcpy (keep, g_name[g_grid->sel]);
+
+	static char buf[8192];
 	kapi_list_tasks (buf, sizeof (buf));
 	g_count = 0;
 	int i = 0;
@@ -40,17 +49,15 @@ static void refresh (void)
 			g_state[g_count] = buf[ls];
 			g_kernel[g_count] = (buf[ls + 1] == 'k');
 			int p = 0;
-			for (int k = ls + 3; k < le && p < NAMEL - 1; k++) g_name[g_count][k - ls - 3] = buf[k], p++;
+			for (int k = ls + 3; k < le && p < NAMEL - 1; k++) g_name[g_count][p++] = buf[k];
 			g_name[g_count][p] = '\0';
 			g_count++;
 		}
 	}
-	if (g_sel >= g_count) g_sel = g_count - 1;
-	if (g_sel < 0) g_sel = 0;
 
 	// The system calls per second: each app row's pid from kapi_list_procs ("<pid> <a|k> <state>
 	// <pages> <name>" a line), by its name.
-	static char procs[4096];
+	static char procs[8192];
 	kapi_list_procs (procs, sizeof (procs));
 	for (int t = 0; t < g_count; t++)
 	{
@@ -76,87 +83,89 @@ static void refresh (void)
 			}
 		}
 	}
+
+	g_grid->setRows (g_count);
+	int s = -1;
+	for (int t = 0; t < g_count && keep[0]; t++) if (!strcmp (g_name[t], keep)) { s = t; break; }
+	if (s < 0 && g_count) s = g_grid->sel >= 0 && g_grid->sel < g_count ? g_grid->sel : 0;
+	if (s != g_grid->sel) g_grid->sel = s;
+	g_grid->invalidate (true);
+	bool app = s >= 0 && !g_kernel[s];
+	if (g_btRaise->disabled == app) { g_btRaise->disabled = g_btKill->disabled = !app; g_btRaise->invalidate (true); g_btKill->invalidate (true); }
+	char t[40]; snprintf (t, sizeof t, "%d task%s", g_count, g_count == 1 ? "" : "s");
+	if (strcmp (t, g_lbCount->text)) g_lbCount->setText (t);
 }
 
-static void on_key (unsigned long s, int ev, long key)
+static const char *cell (DataGrid &, int row, int col, char *buf, int cap)
 {
-	(void) s;
-	if (ev != GUI_EVENT_KEY) return;
-	switch (key)
+	if (row < 0 || row >= g_count) return "";
+	switch (col)
 	{
-	case KEY_UP:   if (g_sel > 0) g_sel--; break;
-	case KEY_DOWN: if (g_sel < g_count - 1) g_sel++; break;
-	case KEY_ENTER:
-		if (g_sel < g_count && !g_kernel[g_sel]) kapi_raise_app (g_name[g_sel]);
-		break;
-	case 'k': case 'K': case KEY_DEL:
-		if (g_sel < g_count && !g_kernel[g_sel]) { kapi_kill (g_name[g_sel]); refresh (); }
-		break;
-	case 'r': case 'R': refresh (); break;
+	case 0: return g_name[row];
+	case 1: return g_state[row] == 'R' ? "Running" : g_state[row] == 'S' ? "Sleeping" : g_state[row] == 'B' ? "Waiting" : g_state[row] == 'N' ? "New" : "?";
+	case 2: return g_kernel[row] ? "Kernel" : "App";
+	default: if (g_rate[row] < 0) return ""; snprintf (buf, (size_t) cap, "%d", g_rate[row]); return buf;
 	}
 }
 
-static void on_click (unsigned long s, int ev, long val)
-{
-	(void) s;
-	if (ev != GUI_EVENT_CANVAS_CLICK) return;
-	int row = ((int) (val & 0xFFFF) - LISTY) / g_fh;
-	if (row >= 0 && row < g_count) g_sel = row;
-}
+static void do_raise (void) { int s = g_grid->sel; if (s >= 0 && s < g_count && !g_kernel[s]) kapi_raise_app (g_name[s]); }
+static void do_kill (void) { int s = g_grid->sel; if (s >= 0 && s < g_count && !g_kernel[s]) { kapi_kill (g_name[s]); refresh (); } }
+static void on_raise (Widget &) { do_raise (); g_grid->setFocus (); }
+static void on_kill (Widget &) { do_kill (); g_grid->setFocus (); }
+static void on_select (Widget &) { refresh (); }
 
-// The theme's look (wtk/paint.h): a header strip of the face, the list in a sunken field,
-// the selection in the accent. The rows stay at LISTY + i * g_fh (the clicks' mapping).
-static void redraw (void)
+class TaskRoot : public Root
 {
-	using namespace wtk;
-	g_cv.clear (C_BG);
-	wk_rbox (g_cv, 0, 0, W, LISTY - 4, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-	wk_etch_h (g_cv, 0, LISTY - 4, W, C_FACE);
-	char hdr[40]; int p = ax_itoa (g_count, hdr);
-	const char *t = " tasks  k:kill ent:raise"; for (int i = 0; t[i]; i++) hdr[p++] = t[i];
-	hdr[p] = '\0';
-	wk_text_l (g_cv, 8, 0, LISTY - 4, hdr, C_TEXT);
-
-	wk_sunken (g_cv, 3, LISTY - 2, W - 6, H - LISTY - 1, 4, C_FIELD);
-	unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130), ink = wk_hilite_ink (true);
-	for (int i = 0; i < g_count && i < g_rows; i++)
+public:
+	int frames;
+	TaskRoot () : Root (W, H, "Task Manager"), frames (0) {}
+	void onTick () override { if (++frames >= 30) { frames = 0; refresh (); } }	// ~twice a second
+	bool onKey (long k) override
 	{
-		int y = LISTY + i * g_fh;
-		bool sel = i == g_sel;
-		if (sel) wk_hilite (g_cv, 6, y, W - 12, g_fh, 4, true);
-		char st[2] = { g_state[i], 0 };
-		g_cv.text (12, y, st, sel ? ink : wk_tone (C_ACCENT, 84));	// state char
-		g_cv.text (30, y, g_name[i], sel ? ink : g_kernel[i] ? dim : C_FIELD_TEXT);
-		if (g_kernel[i]) g_cv.text (W - 62, y, "kernel", sel ? ink : dim);
-		else if (g_rate[i] >= 0)
+		switch (k)
 		{
-			char r[16]; int n = ax_itoa (g_rate[i], r); r[n++] = '/'; r[n++] = 's'; r[n] = '\0';
-			g_cv.text (W - 14 - n * g_fw, y, r, sel ? ink : dim);	// system calls per second
+		case 'k': case 'K': case KEY_DEL: do_kill (); return true;
+		case 'r': case 'R': refresh (); return true;
+		case KEY_ENTER: do_raise (); return true;
 		}
+		return ((Widget *) g_grid)->onKey (k);
 	}
-}
+};
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "taskman");
-	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
-	g_cv.adopt (fb, W, H);
-	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
-	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
-	g_rows = (H - LISTY) / g_fh; if (g_rows < 1) g_rows = 1;
+	ft_wtk_install ("DejaVu Sans", 13);		// (FreeType's text: wk_fw / wk_fh follow it)
+	TaskRoot root;
+	if (root.canvas.px == 0) return 1;
+	g_root = &root;
 
-	kapi_set_key_handler (on_key);
-	kapi_set_click_handler (on_click);
+	g_grid = new DataGrid (8, 8, W - 16, H - FOOT - 8);
+	g_grid->anchor = ANCHOR_FILL;
+	g_grid->setColumns (4);
+	g_grid->setColumn (0, "Task", 190);
+	g_grid->setColumn (1, "State", 84);
+	g_grid->setColumn (2, "Kind", 64);
+	g_grid->setColumn (3, "Calls / s", 90, GRID_RIGHT);
+	g_grid->cellText = cell;
+	g_grid->sortable = false;
+	g_grid->onSelect = on_select;
+	g_grid->onActivate = on_raise;
+	g_grid->emptyText = "No task";
+	root.addChild (g_grid);
+
+	g_lbCount = new Label (10, H - FOOT + 12, 140, 22, "", C_DIS, root.bg);
+	g_lbCount->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM;
+	root.addChild (g_lbCount);
+	g_btRaise = new Button (W - 8 - 2 * 124 - 6, H - FOOT + 7, 124, 30, "Bring to Front", on_raise);
+	g_btRaise->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_btRaise->tip = "The app's window in front (Enter, a double click)";
+	root.addChild (g_btRaise);
+	g_btKill = new Button (W - 8 - 124, H - FOOT + 7, 124, 30, "End Task", on_kill);
+	g_btKill->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_btKill->tip = "Stop the app (k, Delete); a kernel task cannot be stopped";
+	root.addChild (g_btKill);
+
+	root.setResizable (true);
 	refresh ();
-
-	while (!should_exit ())
-	{
-		pump_events ();
-		if (++g_frames >= 25) { refresh (); g_frames = 0; }	// ~every 400 ms
-		redraw ();
-		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
-		msleep (16);
-	}
+	g_grid->setFocus ();
+	root.run ();
 	return 0;
 }

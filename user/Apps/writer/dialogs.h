@@ -668,6 +668,7 @@ public:
 	Dropdown *blk;
 	unsigned cps[512]; int n, top, sel;
 	int fam; unsigned last;
+	WkBarDrag m_bar;
 	SymbolDialog () : Dialog (COLS * CELL + 150, ROWS * CELL + 124, "Special Character"), n (0), top (0), sel (0), last (0)
 	{
 		for (int i = 0; i < 12; i++) BLOCK_NAMES[i] = BLOCKS[i].name;
@@ -732,6 +733,11 @@ public:
 	{
 		int x0 = gx (), y0 = gy ();
 		bool inGrid = mx >= x0 && my >= y0 && mx < x0 + COLS * CELL && my < y0 + ROWS * CELL;
+		{							// the grid's scroll bar
+			long p = top;
+			if (m_bar.mouse (mx, my, bl, x0 + COLS * CELL + 1, WK_SBW + 4, y0, ROWS * CELL, (n + COLS - 1) / COLS, ROWS, &p))
+			{ top = (int) p; invalidate (true); return true; }
+		}
 		if (wheel && inGrid) { int rows = (n + COLS - 1) / COLS; top = wclamp (top - wheel, 0, wmax (0, rows - ROWS)); invalidate (true); return true; }
 		if (inGrid && bl && !pressed)
 		{

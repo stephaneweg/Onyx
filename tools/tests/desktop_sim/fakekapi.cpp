@@ -1160,6 +1160,8 @@ static int random_fill (void *b, unsigned n) { for (unsigned i = 0; i < n; i++) 
 
 // memmon's figures; SIM_NOTE="Title|Text": one notification in the mailbox (notifyd); SIM_PAD=1:
 // a gamepad in slot 1 (an Xbox-like pad, two buttons held: padconf)
+// (the Task Manager's system calls per second: made up from the pid)
+static int proc_stats (int pid, struct kapi_syscall_stats *o) { memset (o, 0, sizeof *o); o->rate = (unsigned) (pid * 137 % 900); return 0; }
 static int list_procs (char *b, unsigned n)
 { if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n12 a R 64 memmon\n"); return 6; }
 static int meminfo (unsigned long *t, unsigned long *f, unsigned long *a, unsigned *pk)
@@ -1273,7 +1275,7 @@ static void setup (void)
 	T->vol_info = vol_info;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
-	T->list_procs = list_procs; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
+	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->net_resolve = net_resolve;

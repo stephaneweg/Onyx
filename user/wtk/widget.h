@@ -68,6 +68,41 @@ static inline void wk_draw_vscroll (Canvas &cv, int x, int y, int w, int trackH,
 	wk_scroll_bar (cv, x, y, w, trackH, true, t.y, t.h < trackH ? t.h : 0, bg, hot ? WK_HOT : WK_NORMAL);
 }
 
+// A list's own scroll bar under the mouse (a widget that draws wk_draw_vscroll): its thumb dragged,
+// a press on its groove a page up / down. The bar: barW px from barX, its track trackH px from ty;
+// total / view / *pos in the list's units (rows, px). Called from onMouse before the rows are looked
+// at: true = the bar took the event (*pos may have moved: repaint, and leave the rows alone). The
+// thumb held goes on following the pointer outside the bar (mx < 0: the pointer left, it is let go).
+struct WkBarDrag
+{
+	bool held, wasDown;
+	WkBarDrag () : held (false), wasDown (false) {}
+	bool mouse (int mx, int my, int bl, int barX, int barW, int ty, int trackH, long total, long view, long *pos)
+	{
+		bool down = bl != 0, press = down && !wasDown;
+		wasDown = down;
+		if (held)
+		{
+			if (!down || mx < 0) held = false;
+			else { WkThumb t = wk_thumb (total, view, *pos, trackH); *pos = wk_thumb_pos (my - ty, trackH, total, view, t.h); }
+			return true;
+		}
+		if (total <= view || mx < barX || mx >= barX + barW || my < ty || my >= ty + trackH) return false;
+		if (press)
+		{
+			WkThumb t = wk_thumb (total, view, *pos, trackH);
+			int cy = my - ty;
+			if (cy >= t.y && cy < t.y + t.h) held = true;
+			else
+			{
+				long p = *pos + (cy < t.y ? -view : view), most = total - view;
+				*pos = p < 0 ? 0 : p > most ? most : p;
+			}
+		}
+		return true;
+	}
+};
+
 class Widget;
 class RadioButton;
 typedef void (*Action) (Widget &);		// fired on click/toggle/change; gets the widget

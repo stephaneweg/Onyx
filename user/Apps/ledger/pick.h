@@ -204,6 +204,12 @@ public:
 	{
 		if (hidden) return false;
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		if (m_bar.held || in)					// its scroll bar: the bar's own, never the row's under it
+		{
+			long p = first;
+			if (m_bar.mouse (in ? mx : -1, my, bl, width - WK_SBW - 6, WK_SBW + 6, 4, height - 8, n, ROWS, &p))
+			{ first = (int) p; m_down = false; invalidate (true); return true; }
+		}
 		if (!in)
 		{
 			// a press elsewhere (but on the field): closed, the press going on to what is there
@@ -228,6 +234,7 @@ public:
 	void close () { if (!hidden) { hidden = true; if (parent) parent->invalidate (true); } }
 private:
 	bool m_down;
+	WkBarDrag m_bar;
 };
 
 // Where a widget is within an ancestor (its parents' scroll counted).

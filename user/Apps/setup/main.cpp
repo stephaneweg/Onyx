@@ -375,6 +375,7 @@ class CountryList : public Widget
 {
 public:
 	int sel, top; Action cb; static const int RH = 30;
+	WkBarDrag m_bar;
 	CountryList (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), sel (g_country), top (0), cb (cb_) { canFocus = true; }
 	int rows () const { return (height - 8) / RH; }
 	void show (int i) { if (i < top) top = i; if (i >= top + rows ()) top = i - rows () + 1; }
@@ -396,6 +397,11 @@ public:
 	void pick (int i) { if (i < 0 || i >= NCOUNTRIES) return; sel = i; show (i); invalidate (true); if (cb) cb (*this); }
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
+		{							// its scroll bar: the bar's own, never the row's under it
+			long p = top;
+			if (m_bar.mouse (mx, my, bl, width - 16, 16, 6, height - 12, NCOUNTRIES, rows (), &p))
+			{ top = (int) p; pressed = bl; invalidate (true); return true; }
+		}
 		if (mx < 0) return false;
 		if (wheel) { top -= wheel; int m = NCOUNTRIES - rows (); if (top > m) top = m; if (top < 0) top = 0; invalidate (true); }
 		if (bl && !pressed) { setFocus (); pick (top + (my - 4) / RH); }
