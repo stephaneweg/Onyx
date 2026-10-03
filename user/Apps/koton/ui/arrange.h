@@ -115,13 +115,14 @@ public:
 		Canvas &cv = canvas;
 		const Project &p = g_doc.p;
 		if (m_rev != g_doc.revision) rebuildThumbs ();
-		cv.clear (BG);
+		cv.clear (ALANE_BG);
+		cv.fillRect (0, 0, HEADER_W, height, SIDE);
 		int fh = th ();
 		int bb = p.barBeats ();
 		double lastBeat = scrollBeat + laneW () / ppb;
 		double songEnd = dmax (p.totalBeats (), 16);
 		// ---- the header column's top
-		cv.fillRect (0, 0, HEADER_W, lanesTop (), PANEL);
+		cv.fillRect (0, 0, HEADER_W, lanesTop (), SIDE);
 		hline (cv, 0, HEADER_W, lanesTop () - 1, LINE);
 		textL (cv, 12, 0, RULER_H, "ARRANGEMENT", DIM, 2);
 		textL (cv, 12, RULER_H, MARK_H, "Sections", DIM);
@@ -149,7 +150,7 @@ public:
 			if (e > a) blendRect (cv, a, 0, e - a, 6, loopOn ? ACC : FAINT, loopOn ? 170 : 120);
 		}
 		// ---- the markers lane
-		cv.fillRect (lx, RULER_H, width - lx, MARK_H, LANE2);
+		cv.fillRect (lx, RULER_H, width - lx, MARK_H, ALANE2);
 		for (int i = 0; i < p.markers.size (); i++)
 		{
 			int x = xAtBeat (p.markers[i].beat);
@@ -161,7 +162,7 @@ public:
 		}
 		// ---- the tempo lane: its line, the changes
 		int ty = RULER_H + MARK_H;
-		cv.fillRect (lx, ty, width - lx, TEMPO_H, LANE);
+		cv.fillRect (lx, ty, width - lx, TEMPO_H, ALANE);
 		{
 			double lo = 1e9, hi = -1e9;
 			for (int i = 0; i < p.tempo.size (); i++) { lo = dmin (lo, p.tempo[i].bpm); hi = dmax (hi, p.tempo[i].bpm); }
@@ -195,7 +196,7 @@ public:
 		{
 			int ch = contentH (), vh = chordTop () - lanesTop ();
 			WkThumb tb = wk_thumb (ch, vh, scrollY, vh);
-			if (tb.show) wk_scroll_bar (cv, width - 10, lanesTop (), 10, vh, true, tb.y, tb.h, BG, WK_NORMAL);
+			if (tb.show) wk_scroll_bar (cv, width - 10, lanesTop (), 10, vh, true, tb.y, tb.h, ALANE_BG, WK_NORMAL);
 			double total = dmax (songEnd + 16, lastBeat - scrollBeat);
 			WkThumb hb = wk_thumb ((long) (total * 16), (long) ((lastBeat - scrollBeat) * 16), (long) (scrollBeat * 16), lw);
 			cv.fillRect (0, height - 12, width, 12, PANEL);
@@ -206,7 +207,7 @@ public:
 		int px = xAtBeat (ph);
 		if (px >= lx && px <= lx + lw)
 		{
-			vline (cv, px, 0, height - 12, g_audio.isPlaying () ? PLAY : mixc (PLAY, BG, 110));
+			vline (cv, px, 0, height - 12, g_audio.isPlaying () ? PLAY : mixc (PLAY, ALANE_BG, 110));
 			for (int i = 0; i < 6; i++) hline (cv, px - 6 + i, px + 7 - i, i, PLAY);
 		}
 		m_lastPlayX = px;
@@ -217,7 +218,7 @@ public:
 		const Track &tr = g_doc.p.tracks[t];
 		bool sel = g_doc.selTrack == t;
 		unsigned col = tr.type == TRACK_CHORD ? FUNC_T : trackColour (t);
-		cv.fillRect (0, y, HEADER_W, h, sel ? PANEL2 : PANEL);
+		cv.fillRect (0, y, HEADER_W, h, sel ? PANEL2 : SIDE);
 		hline (cv, 0, HEADER_W, y + h - 1, LINE);
 		cv.fillRect (0, y, 5, h - 1, col);
 		int fh = th ();
@@ -285,12 +286,12 @@ public:
 		Canvas sub; sub.adopt (cv.px + (long) cy0 * cv.stride, cv.w, cy1 - cy0, cv.stride);
 		int oy = y - cy0;			// the track's top in the sub canvas
 		drawHeader (sub, t, oy, h);
-		sub.fillRect (lx, oy, width - lx, h, (t & 1) ? LANE2 : LANE);
-		hline (sub, lx, width, oy + h - 1, LINE);
+		sub.fillRect (lx, oy, width - lx, h, (t & 1) ? ALANE2 : ALANE);
+		hline (sub, 0, lx, oy + h - 1, LINE); hline (sub, lx, width, oy + h - 1, ALANE_LINE);
 		for (int bar = (int) (scrollBeat / bb); bar * bb <= scrollBeat + lw / ppb + bb; bar++)
 		{
 			int x = xAtBeat (bar * bb);
-			if (x >= lx && x <= lx + lw) vline (sub, x, oy, oy + h - 1, GRID_BEAT);
+			if (x >= lx && x <= lx + lw) vline (sub, x, oy, oy + h - 1, ALANE_BAR);
 		}
 		unsigned col = trackColour (t);
 		double c = 0;
@@ -333,7 +334,7 @@ public:
 		int lx = laneX (), lw = laneW ();
 		drawHeader (cv, t, y, CHORD_H);
 		hline (cv, 0, width, y, ACC);
-		cv.fillRect (lx, y + 1, width - lx, CHORD_H - 1, 0x16191F);
+		cv.fillRect (lx, y + 1, width - lx, CHORD_H - 1, ALANE_CHORD);
 		double c = 0;
 		char name[32], roman[24];
 		for (int i = 0; i < tr.items.size (); i++)

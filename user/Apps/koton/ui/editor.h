@@ -226,7 +226,7 @@ public:
 		for (int i = 0; i < nW; i++)
 		{
 			int midi = lowC + 12 * (i / 7) + white[i % 7];
-			box (cv, i * kw, 0, kw - 1, height, 3, on (midi) ? litColour : 0xD6DAE0);
+			box (cv, i * kw, 0, kw - 1, height, 3, on (midi) ? litColour : 0xFFFFFF);
 			if (white[i % 7] == 0) { char b[8]; snprintf (b, sizeof b, "C%d", midi / 12 - 1); textC (cv, i * kw, height - 16, kw, 14, b, 0x505A64); }
 		}
 		static const int blackAfter[5] = { 0, 1, 3, 4, 5 };

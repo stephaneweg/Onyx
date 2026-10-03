@@ -1,8 +1,8 @@
 //
-// ui/palette.h -- Koton's look: a dark studio inside Onyx's frame (docs/daw/mockups). The wtk widgets
-// get it through the theme (wk_theme_set: the window, buttons, fields, accent -- the text colours
-// follow by brightness); the hand-drawn views (the lanes, the grids, the rings) use the colours
-// below and the small drawing helpers here (fills with opacity, rounded boxes, text).
+// ui/palette.h -- Koton's look: the desktop's theme (it was a dark studio of its own: docs/daw/mockups).
+// The wtk widgets draw with the theme as in any app; the hand-drawn views (the grids, the rings, the
+// panels) use the shades below, made from the theme's colours by applyTheme (), and the small drawing
+// helpers here (fills with opacity, rounded boxes, text). The arrangement's lanes alone stay dark.
 //
 #ifndef _koton_palette_h
 #define _koton_palette_h
@@ -18,30 +18,21 @@ namespace kui {
 using namespace wtk;
 
 // ---- the colours (0x00RRGGBB) ---------------------------------------------------------------------------------
+// the studio's shades: the desktop theme's (applyTheme makes them from its window, field, accent)
+static unsigned BG, PANEL, PANEL2, SIDE, FACE, LINE, LANE, LANE2, TEXT, DIM, FAINT, ACC, ACC2, FIELD,
+	GRID_BEAT, GRID_BAR, GRID_SUB, NOTE, NOTE_SEL, PAD_ON, BLUE_NOTE;
+// the arrangement's lanes stay the dark studio's whatever the theme (the user, 2026-10-03): the
+// coloured blocks read best on them
 static const unsigned
-	BG = 0x181B21,
-	PANEL = 0x21252D,
-	PANEL2 = 0x2A2F39,
-	FACE = 0x363C48,
-	LINE = 0x3A404C,
-	LANE = 0x1C1F26,
-	LANE2 = 0x1F232A,
-	TEXT = 0xDADFE7,
-	DIM = 0x8C96A5,
-	FAINT = 0x5C6472,
-	ACC = 0x49B0C4,
-	ACC2 = 0x348092,
+	ALANE = 0x1C1F26,
+	ALANE2 = 0x1F232A,
+	ALANE_BG = 0x181B21,
+	ALANE_LINE = 0x3A404C,
+	ALANE_BAR = 0x2E343E,
+	ALANE_CHORD = 0x16191F,
 	PLAY = 0xFFC646,
 	REC = 0xE2504C,
-	FIELD = 0x14171C,
-	GRID_BEAT = 0x2E343E,
-	GRID_BAR = 0x46505E,
-	GRID_SUB = 0x252A32,
-	NOTE = 0x3CD6E2,
-	NOTE_SEL = 0xFFD66E,
-	PAD_ON = 0x2FC7D4,		// a note in the piano roll (Koton Studio's teal)
 	GREEN = 0x56CE96,
-	BLUE_NOTE = 0x78BEEC,
 	FUNC_T = 0x4888E2,
 	FUNC_S = 0x46AA84,
 	FUNC_D = 0xE28844,
@@ -56,13 +47,18 @@ static inline unsigned mixc (unsigned a, unsigned b, int t256) { return wk_mix (
 static inline unsigned lighter (unsigned c, int t256) { return wk_mix (c, 0xFFFFFF, t256); }
 static inline unsigned darker (unsigned c, int t256) { return wk_mix (c, 0x000000, t256); }
 
-// The studio as a wtk theme: every widget of the app draws dark.
+// The studio in the desktop's theme: its shades from the theme's colours (the side panels as the
+// Media Player's: the window's colour toward the fields').
 static inline void applyTheme ()
 {
-	WkTheme t;
-	wk_theme_get (t);
-	t.window = PANEL; t.button = FACE; t.field = FIELD; t.accent = ACC; t.menubar = WK_AUTO;
-	wk_theme_set (t);
+	bool dark = wk_bright (C_BG) < 110;
+	PANEL = C_BG; SIDE = wk_mix (C_BG, C_FIELD, 70); PANEL2 = wk_tone (C_BG, dark ? 150 : 116);
+	BG = wk_tone (C_BG, dark ? 100 : 112); FACE = C_BUTTON; LINE = wk_tone (C_BG, dark ? 160 : 100);
+	LANE = C_FIELD; LANE2 = wk_mix (C_FIELD, C_BG, 90); FIELD = C_FIELD;
+	TEXT = C_TEXT; DIM = wk_mix (C_BG, C_TEXT, 150); FAINT = wk_mix (C_BG, C_TEXT, 90);
+	ACC = C_ACCENT; ACC2 = wk_tone (C_ACCENT, 104);
+	GRID_SUB = wk_mix (C_FIELD, C_FIELD_TEXT, 16); GRID_BEAT = wk_mix (C_FIELD, C_FIELD_TEXT, 34); GRID_BAR = wk_mix (C_FIELD, C_FIELD_TEXT, 80);
+	NOTE = C_ACCENT; PAD_ON = C_ACCENT; NOTE_SEL = 0xE8A21E; BLUE_NOTE = wk_tone (C_ACCENT, dark ? 170 : 110);
 }
 
 // ---- drawing ---------------------------------------------------------------------------------------------------------

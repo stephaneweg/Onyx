@@ -3190,7 +3190,9 @@ next-chord co-pilot's cards, the track's sound chain at the right.*
 > its menus are the window's menu bar, the sound goes to Windows' default output, every MIDI input of
 > Windows plays. Its `README.txt` says the rest.
 
-Koton is Onyx's music studio: **Koton Studio** (a DAW for Windows) made again for Onyx. A song is
+Koton is Onyx's music studio: **Koton Studio** (a DAW for Windows) made again for Onyx. It draws in the
+desktop's theme (its side panels — the tracks' headers, the generators — in the panels' colour, as the
+Media Player's); only the arrangement's lanes stay dark, where the coloured blocks read best. A song is
 thought **in harmony**: a silent **chord track**, pinned at the bottom, holds the chords — by their
 **degree** in the key, so they follow a change of key — and every other part reads it:
 accompaniments that play its chords in a style or a grid you draw, melodic lines whose pitches the

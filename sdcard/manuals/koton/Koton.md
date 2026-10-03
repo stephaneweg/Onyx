@@ -411,7 +411,7 @@ The drum kit is the **track's**: choose it in the track's header.
 
 The rows are the 47 General MIDI percussion sounds — kick, snare, hi-hats, toms, cymbals, then the Latin
 percussion —, coloured by family. The grid looks as in Koton Studio for Windows: **a square pad per step**,
-in its row's colour (dark when empty, the beat's first step lighter; bright when it plays). **A click puts
+in its row's colour (pale when empty, the beat's first step stronger; bright when it plays). **A click puts
 a hit, a click on a hit removes it.** **Customise** draws the groove on the coarsest grid that keeps every
 hit in its place — 4 steps a beat for a groove of sixteenths; **Resolution** changes it (24 / beat for the
 finest placing). **Save motif…** (it then appears under *Custom (drawn)*), **Clear**.

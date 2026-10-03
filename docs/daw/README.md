@@ -278,7 +278,9 @@ memory, the last save). A Home tab (recent songs, templates, "Compose with AI") 
 
 ### 5.3 The look
 
-A dark studio inside Onyx's frame (the Slate theme), the colours of the mock-ups as `theme`
+*(Since 2026-10-03 Koton draws with the desktop's theme — Peach, Milk… —, its side panels in the Media
+Player's panel colour; only the arrangement's lanes stay dark: `ui/palette.h`, `applyTheme ()`.)*
+At first: a dark studio inside Onyx's frame (the Slate theme), the colours of the mock-ups as `theme`
 tokens of the app (`BG, PANEL, FACE, LINE, TEXT, DIM, ACC`, track colours, function colours:
 tonic blue, subdominant green, dominant orange). The chords always show their **roman numeral and
 function** — the app's signature ("one thinks in harmony"). Anti-aliased text (W2) makes most of

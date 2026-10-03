@@ -79,7 +79,7 @@ public:
 	void onDraw () override
 	{
 		Canvas &cv = canvas;
-		cv.clear (pads ? 0x1C1C22 : LANE);
+		cv.clear (LANE);
 		int gw = gridW (), gh = gridH ();
 		int beat = imax (1, spb), bar = beat * imax (1, beatsPerBar);
 		int firstRow = m_sy / rowH, lastRow = imin (rows - 1, (m_sy + gh) / rowH + 1);
@@ -92,7 +92,7 @@ public:
 			for (int c = c0; c < c1; c++)
 			{
 				int x = colX (c);
-				unsigned bg = (c / beat) & 1 ? 0x262B34 : 0x2A303A;
+				unsigned bg = (c / beat) & 1 ? mixc (LANE, TEXT, 10) : mixc (LANE, TEXT, 20);
 				if (pads) bg = padColour (r, c);
 				if (rowShade) { unsigned s = rowShade (*this, r, c); if (s) bg = s; }
 				if (pads) { box (cv, x + 1, y + 1, pxPerCol - 2, rowH - 2, pxPerCol >= 10 ? 3 : 0, bg); continue; }
@@ -156,7 +156,7 @@ public:
 				bool black = pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
 				static const char *const nm[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 				char b[8]; snprintf (b, sizeof b, "%s%d", nm[pc], (r + 12) / 12 - 1);
-				textL (cv, 6, y, rowH, b, pc == 0 ? 0xF2F2FF : black ? 0x808088 : 0xBBBBBB, pc == 0 ? 2 : 0);
+				textL (cv, 6, y, rowH, b, pc == 0 ? TEXT : black ? FAINT : DIM, pc == 0 ? 2 : 0);
 			}
 			else if (keyboard)
 			{
@@ -166,7 +166,7 @@ public:
 				hline (cv, 0, labelW, y, 0x7C8086);
 				if (rowLabel) { const char *s = rowLabel (*this, r); if (s && s[0]) textR (cv, labelW - 4, y, rowH, s, black ? 0xC8C8CD : 0x28282C); }
 			}
-			else if (pads) { if (rowLabel) textL (cv, 8, y, rowH, rowLabel (*this, r), 0xBBBBBB); }
+			else if (pads) { if (rowLabel) textL (cv, 8, y, rowH, rowLabel (*this, r), DIM); }
 			else
 			{
 				hline (cv, 0, labelW, y + rowH - 1, LINE);
@@ -193,12 +193,12 @@ public:
 	// (rows with their own colour -- the drum lanes' families: that colour, dark, behind)
 	unsigned padColour (int row, int col)
 	{
-		if (!keyboard && rowColour) { unsigned c = rowColour (*this, row); if (c) return mixc (0x232429, c, col % imax (1, spb) == 0 ? 56 : 28); }
+		if (!keyboard && rowColour) { unsigned c = rowColour (*this, row); if (c) return mixc (LANE2, c, col % imax (1, spb) == 0 ? 56 : 28); }
 		int pc = keyboard ? (row + 12) % 12 : 2;
 		bool down = col % imax (1, spb) == 0;
-		if (pc == 0) return down ? 0x41414F : 0x343440;
-		if (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10) return down ? 0x2E2E38 : 0x22222A;
-		return down ? 0x393946 : 0x2C2C36;
+		if (pc == 0) return mixc (LANE, ACC, down ? 56 : 36);
+		if (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10) return mixc (LANE, TEXT, down ? 40 : 28);
+		return mixc (LANE, TEXT, down ? 18 : 8);
 	}
 
 	int noteAt (int col, int row) const
