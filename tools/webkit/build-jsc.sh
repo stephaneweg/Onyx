@@ -7,6 +7,7 @@
 #   sh tools/webkit/build-jsc.sh                  # the LLInt (offlineasm's ARM64 back end; no JIT)
 #                                                 # with WebAssembly (its interpreter) -> $BUILD/bin/jsc
 #   INTERP=cloop sh tools/webkit/build-jsc.sh     # the portable C++ interpreter (no WebAssembly)
+#   INTERP=jit sh tools/webkit/build-jsc.sh       # + the Baseline JIT and the DFG (kernel v78: PROT_EXEC)
 #   sh tools/webkit/build-jsc.sh install          # + strip it into user/bin/jsc.elf (make stage
 #                                                 #   copies it to the card as /bin/jsc)
 #
@@ -46,9 +47,11 @@ for t in cmake ninja perl python3 ruby gperf; do
 done
 
 case $INTERP in
-cloop) INTERP_FLAGS="-DENABLE_C_LOOP=ON -DENABLE_WEBASSEMBLY=OFF";;
-llint) INTERP_FLAGS="-DENABLE_C_LOOP=OFF -DENABLE_WEBASSEMBLY=ON -DENABLE_WEBASSEMBLY_BBQJIT=OFF -DENABLE_WEBASSEMBLY_OMGJIT=OFF";;
-*) echo "build-jsc.sh: INTERP is cloop or llint" >&2; exit 1;;
+cloop) INTERP_FLAGS="-DENABLE_JIT=OFF -DENABLE_C_LOOP=ON -DENABLE_WEBASSEMBLY=OFF";;
+llint) INTERP_FLAGS="-DENABLE_JIT=OFF -DENABLE_C_LOOP=OFF -DENABLE_WEBASSEMBLY=ON -DENABLE_WEBASSEMBLY_BBQJIT=OFF -DENABLE_WEBASSEMBLY_OMGJIT=OFF";;
+# (kernel v78: PROT_EXEC) the LLInt, then the Baseline JIT and the DFG; not yet FTL nor WebAssembly's JITs
+jit) INTERP_FLAGS="-DENABLE_JIT=ON -DENABLE_DFG_JIT=ON -DENABLE_FTL_JIT=OFF -DENABLE_C_LOOP=OFF -DENABLE_WEBASSEMBLY=ON -DENABLE_WEBASSEMBLY_BBQJIT=OFF -DENABLE_WEBASSEMBLY_OMGJIT=OFF";;
+*) echo "build-jsc.sh: INTERP is cloop, llint or jit" >&2; exit 1;;
 esac
 
 if [ ! -f "$BUILD/build.ninja" ]; then
@@ -58,7 +61,7 @@ if [ ! -f "$BUILD/build.ninja" ]; then
 		-DCMAKE_TOOLCHAIN_FILE="$ONYX/tools/onyx-toolchain.cmake" -DONYX_SYSROOT="$ONYX_SYSROOT" \
 		-DPORT=Onyx -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -g0" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -g0" \
-		-DENABLE_JIT=OFF -DENABLE_SAMPLING_PROFILER=OFF \
+		-DENABLE_SAMPLING_PROFILER=OFF \
 		-DUSE_SYSTEM_MALLOC=ON -DENABLE_REMOTE_INSPECTOR=OFF -DDEVELOPER_MODE=OFF \
 		$INTERP_FLAGS $CMAKE_EXTRA
 fi
