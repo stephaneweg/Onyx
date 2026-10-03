@@ -62,3 +62,14 @@ void engine_mouse (int, int, int, int, unsigned) {}
 void engine_wheel (int, int, int, unsigned) {}
 void engine_key (long, unsigned) {}
 void engine_mouse_leave () {}
+void engine_popup_select (int) {}
+void engine_find (const char *, bool) { s_client->findResult (3); }
+void engine_find_done () {}
+void engine_hit (char *link, int, char *image, int) { strcpy (link, "https://kotonstudio.com/fr/#features"); image[0] = 0; }
+void engine_download_url (const char *, const char *) {}
+void engine_download_cancel (int) {}
+void engine_set_clipboard (void (*) (const char *, unsigned long), unsigned long (*) (char *, unsigned long), unsigned (*) ()) {}
+void engine_load_html (const char *, const char *) { s_told = false; }
+void engine_set_scripts (bool) {}
+void engine_set_link_handler (void (*) (const char *)) {}
+int  engine_spawn_self (const char *, int *, int *) { return 0; }

@@ -172,8 +172,13 @@ answer in French. The docs stay in English.
   **Step 3 (WebKit2) and Web, the browser, run on the Pi (2026-10-03, in `main`, package `web`)**:
   kotonstudio.com over HTTPS in about 3.2 s, GitHub's pages, new windows for `target=_blank`; what
   was fixed (a heap corruption in Skia's glyph painting, curl's wake-up, the IPC monitor thread,
-  WTF's RedBlackTree) and what is open (the Circle TCP panic a telnet client can trigger, `<select>`,
-  the clipboard, downloads) are in docs/08 "Step 3". The roadmap and the user's decisions (one
+  WTF's RedBlackTree) and what is open (the Circle TCP panic a telnet client can trigger) are in
+  docs/08 "Step 3". Then (patch `0016`, Web 1.0.2): `<select>` lists, the system clipboard, find
+  in the page, the right button's menu (Save Link / Image / Page As), downloads into `SD:/Downloads`
+  with the Downloads window (its own process: progress, Cancel) and the status bar; Mail draws its
+  HTML messages with Web as an applet (`web --applet`); kapi **v78**: `PROT_EXEC` for a JIT (memtest,
+  posixtest pass on the Pi) — **next: the JavaScriptCore JIT** (roadmap step 3), then the V3D
+  compositor. The roadmap and the user's decisions (one
   executable for the three roles, no tabs, the order of the steps) are in docs/08; the program
   images and `preload` / `unload` (kapi v77, `docs/ELF-LOADER-PLAN.md`) are in `main`. To resume: `docs/08-WEBKIT-PORT.md` ("status / how
   to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain

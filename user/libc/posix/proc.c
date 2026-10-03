@@ -8,7 +8,11 @@
  * (kapi file_in / file_out); stderr is the child's stdout. (v76) Every other descriptor without
  * FD_CLOEXEC is given to the child at its number (kapi spawn_ex2: files, pipe ends, streams, local
  * and IP sockets, shared memory objects; the child's libc installs them at start), and so is a
- * dup2 onto 3 or more; addclose keeps a descriptor from it.
+ * dup2 onto 3 or more; addclose keeps a descriptor from it. A pipe's read end given as the child's
+ * stdin marks the pipe read elsewhere: closing our read end then leaves its writes working (the
+ * reader counts are this process's own; the child's end is not one of them). A write end given as
+ * its stdout marks it written elsewhere: closing ours sends no end of file (the kernel does not
+ * count a child's stdout as a writer; the child's exit ends the stream).
  * The pid posix_spawn returns is the child's process id when the kernel reports it (proc_wait,
  * KAPI_WAIT_NOHANG | KAPI_WAIT_KEEP), else the value of its process handle; waitpid knows both.
  * waitpid's status: an exit -> code << 8 (WIFEXITED); a fault -> SIGSEGV, killed or out of
@@ -78,6 +82,8 @@ static volatile unsigned s_childLock;
 struct onyx_spawn_actions			/* posix_spawn_file_actions_t points at one */
 {
 	void *in, *out;				/* stream handles for the child's 0 / 1 (0: inherited) */
+	struct __onyx_pipe *in_pipe;		/* in: a pipe's read end (the child becomes a reader) */
+	struct __onyx_pipe *out_pipe;		/* out: a pipe's write end (the child becomes a writer) */
 	int in_owned, out_owned;		/* opened here (file_in / file_out): closed after spawn */
 	char *cwd;
 	int ndup;				/* (v76) dup2 (from, to) with to >= 3 */
@@ -138,9 +144,21 @@ int posix_spawn_file_actions_adddup2 (posix_spawn_file_actions_t *fa, int fd, in
 		if (h == 0)
 			return EBADF;
 		if (newfd == 0)
+		{
 			a->in = h;
+			struct __onyx_ofd *d = __onyx_fd_get (fd);
+			a->in_pipe = d && d->type == ONYX_FD_PIPE_R && !d->pipe->remote ? d->pipe : 0;
+			if (d)
+				__onyx_fd_put (d);
+		}
 		else if (newfd == 1)
+		{
 			a->out = h;
+			struct __onyx_ofd *d = __onyx_fd_get (fd);
+			a->out_pipe = d && d->type == ONYX_FD_PIPE_W && !d->pipe->remote ? d->pipe : 0;
+			if (d)
+				__onyx_fd_put (d);
+		}
 		/* (2: the child's stderr is its stdout) */
 	}
 	else if (newfd > 2 && newfd < ONYX_FD_MAX)	/* (v76: spawn_ex2 gives it at newfd) */
@@ -349,6 +367,10 @@ static int do_spawn (pid_t *pid, const char *path, const posix_spawn_file_action
 	}
 	c->h = (void *) (unsigned long) h;
 	c->pid = (int) (h & 0x7FFFFFFF);
+	if (a && a->in_pipe)				/* (our read end may be closed now: the child reads) */
+		a->in_pipe->child_reader = 1;
+	if (a && a->out_pipe)				/* (our write end too: the child writes, its exit ends it) */
+		a->out_pipe->child_writer = 1;
 	if (!c->legacy)
 	{
 		struct kapi_proc_status st;

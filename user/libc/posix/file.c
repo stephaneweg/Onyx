@@ -336,7 +336,7 @@ static ssize_t pipe_read (struct __onyx_ofd *d, void *buf, size_t n)
 static ssize_t pipe_write (struct __onyx_ofd *d, const void *buf, size_t n)
 {
 	void *h = d->type == ONYX_FD_STREAM ? d->stream : d->pipe->h;
-	if (d->pipe && d->pipe->readers == 0)
+	if (d->pipe && d->pipe->readers == 0 && !d->pipe->child_reader)
 		return ONYX_ERR (EPIPE);		/* (no SIGPIPE on Onyx) */
 	size_t done = 0;
 	while (done < n)
@@ -559,7 +559,7 @@ int __onyx_ofd_release (struct __onyx_ofd *d)
 			readers = __atomic_sub_fetch (&p->readers, 1, __ATOMIC_ACQ_REL), writers = p->writers;
 		else
 			writers = __atomic_sub_fetch (&p->writers, 1, __ATOMIC_ACQ_REL), readers = p->readers;
-		if (writers == 0 && !p->eof_sent)
+		if (writers == 0 && !p->eof_sent && !p->child_writer)
 		{
 			p->eof_sent = 1;
 			kapi_stream_eof (p->h);		/* the readers see the end */

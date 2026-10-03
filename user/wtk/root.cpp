@@ -15,6 +15,8 @@ static int s_apHost, s_apW, s_apH;
 static unsigned *s_apPx;
 static bool s_apClosed, s_apBye;
 static unsigned s_apCheck;
+static char s_apService[24] = AP_SERVICE;	// the host's IPC service (its liveness: "control", or the 4th word)
+static void (*s_apOther) (int, const void *, int);	// the host's other messages (wk_applet_on_message)
 
 static int ap_num (const char *&p)
 {
@@ -29,13 +31,20 @@ bool wk_applet ()
 	if (s_apSurf < 0)
 	{
 		s_apSurf = 0;
-		char a[96]; a[0] = 0;
+		char a[128]; a[0] = 0;
 		kapi_get_args (a, sizeof a);
 		const char *key = "--applet ";
 		int k = 0; while (key[k] && a[k] == key[k]) k++;
 		if (key[k] != 0) return false;
 		const char *p = a + k;
 		int sid = ap_num (p), host = ap_num (p), w = 0, h = 0;
+		while (*p == ' ') p++;				// (a host other than the Control Panel: its service's name)
+		if (*p && *p != '-')
+		{
+			int n = 0;
+			while (p[n] && p[n] != ' ' && n < (int) sizeof s_apService - 1) { s_apService[n] = p[n]; n++; }
+			s_apService[n] = 0;
+		}
 		unsigned *px = sid > 0 && host > 0 ? kapi_surface_map (sid) : 0;
 		if (px == 0 || !kapi_surface_size (sid, &w, &h) || w <= 0 || h <= 0) return false;
 		s_apSurf = sid; s_apHost = host; s_apPx = px; s_apW = w; s_apH = h;
@@ -49,10 +58,12 @@ bool wk_applet ()
 static void ap_pump ()
 {
 	int from = 0, type = 0, n;
-	unsigned char buf[64];
-	while ((n = kapi_mailbox_recv (&from, &type, buf, sizeof buf, 0)) >= 0)
+	unsigned char buf[513];				// (a mailbox's message: 512 bytes at most)
+	while ((n = kapi_mailbox_recv (&from, &type, buf, sizeof buf - 1, 0)) >= 0)
 	{
 		if (from != s_apHost) continue;
+		if (n > (int) sizeof buf - 1) n = (int) sizeof buf - 1;
+		buf[n] = 0;
 		if (type == AP_PTR && n >= (int) sizeof (ApPtr))
 		{
 			ApPtr e; unsigned char *d = (unsigned char *) &e;
@@ -69,14 +80,17 @@ static void ap_pump ()
 			Root::keyEvent (0, GUI_EVENT_KEY, k.key);
 		}
 		else if (type == AP_CLOSE) s_apClosed = true;
+		else if (s_apOther) s_apOther (type, buf, n);	// (the host's and the applet's own words)
 	}
 	unsigned now = kapi_get_ticks ();
 	if (now - s_apCheck >= 50)
 	{
 		s_apCheck = now;
-		if (kapi_ipc_lookup (AP_SERVICE) != s_apHost) s_apClosed = true;	// (the host is gone)
+		if (kapi_ipc_lookup (s_apService) != s_apHost) s_apClosed = true;	// (the host is gone)
 	}
 }
+
+void wk_applet_on_message (void (*fn) (int type, const void *data, int len)) { s_apOther = fn; }
 
 void wk_pump ()
 {
@@ -95,7 +109,7 @@ void wk_present ()
 
 bool wk_applet_send (int type, const void *data, unsigned len)
 {
-	return wk_applet () && kapi_mailbox_send (s_apHost, type, data, len) >= 0;
+	return wk_applet () && kapi_mailbox_send (s_apHost, type, data, len) > 0;	// (1 sent, 0 not)
 }
 
 bool wk_quit ()

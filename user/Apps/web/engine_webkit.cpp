@@ -16,7 +16,14 @@
 #include <WebKit/WKContext.h>
 #include <WebKit/WKContextConfigurationOnyx.h>
 #include <WebKit/WKContextConfigurationRef.h>
+#include <WebKit/WKDownloadClient.h>
+#include <WebKit/WKDownloadRef.h>
 #include <WebKit/WKErrorRef.h>
+#include <WebKit/WKFindOptions.h>
+#include <WebKit/WKFramePolicyListener.h>
+#include <WebKit/WKNavigationResponseRef.h>
+#include <WebKit/WKPageFindClient.h>
+#include <WebKit/WKURLResponse.h>
 #include <WebKit/WKEventOnyx.h>
 #include <WebKit/WKGeometry.h>
 #include <WebKit/WKHitTestResult.h>
@@ -34,9 +41,12 @@
 #include <WebKit/WKURLRequest.h>
 #include <WebKit/WKView.h>
 #include <WebKit/WKWebsiteDataStoreRef.h>
+#include <fcntl.h>
 #include <spawn.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -148,9 +158,11 @@ static void processRelaunched (WKViewRef, const void *) { say ("a new web proces
 
 static void keyNotHandled (WKViewRef, WKKeyboardEvent e, const void *);
 
-static void didStartProvisional (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load started"); }
+// A navigation under way (its progress alone stays part-way when it became a download).
+static bool s_navigating;
+static void didStartProvisional (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load started"); s_navigating = true; }
 static void didCommit (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load committed"); }
-static void didFinish (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load finished"); }
+static void didFinish (WKPageRef, WKNavigationRef, WKTypeRef, const void *) { say ("load finished"); s_navigating = false; }
 
 static void loadError (const char *when, WKErrorRef e)
 {
@@ -160,6 +172,7 @@ static void loadError (const char *when, WKErrorRef e)
 	std::string why = str (d), url = url_str (u);
 	int code = e ? WKErrorGetErrorCode (e) : 0;
 	say ("load failed (%s): %s %d: %s -- %s", when, str (dom).c_str (), code, why.c_str (), url.c_str ());
+	s_navigating = false;
 	// A load the user stopped, or a navigation that became a download: no error page.
 	if (code != -999 && code != 102 && s_client->loadFailed)
 		s_client->loadFailed (url.c_str (), why.c_str ());
@@ -187,13 +200,258 @@ static WKPageRef createNewPage (WKPageRef, WKPageConfigurationRef, WKNavigationA
 	return nullptr;
 }
 
+static std::string s_hoverLink, s_hoverImage;		// (engine_hit: the right click's menu)
+
 static void mouseOverElement (WKPageRef, WKHitTestResultRef hit, WKEventModifiers, WKTypeRef, const void *)
 {
 	WKURLRef u = hit ? WKHitTestResultCopyAbsoluteLinkURL (hit) : nullptr;
 	std::string url = url_str (u);
 	if (u) WKRelease (u);
+	WKURLRef im = hit ? WKHitTestResultCopyAbsoluteImageURL (hit) : nullptr;
+	s_hoverImage = url_str (im);
+	if (im) WKRelease (im);
+	s_hoverLink = url;
 	if (s_client->statusText)
 		s_client->statusText (url.c_str ());
+}
+
+void engine_hit (char *link, int linkCap, char *image, int imageCap)
+{
+	snprintf (link, (size_t) linkCap, "%s", s_hoverLink.c_str ());
+	snprintf (image, (size_t) imageCap, "%s", s_hoverImage.c_str ());
+}
+
+// ---- downloads -------------------------------------------------------------------------------------------
+// Each download known by an id; its file chosen here (SD:/Downloads/<its name>, made unique) unless the
+// window chose one (Save As); its events told to the window (the downloads' window shows them).
+
+struct Download
+{
+	WKDownloadRef d;
+	int id;
+	std::string path;			// "" until decided (or the one asked)
+	long long done, total;
+	double lastTell;
+	bool cancelled;
+};
+static std::vector<Download *> s_downloads;
+static int s_nextDownload = 1;
+
+static void tell (Download *dl, int event, const char *text)
+{
+	if (s_client->download) s_client->download (dl->id, event, text, dl->done, dl->total);
+}
+
+static std::string unique_path (const std::string &dir, std::string name)
+{
+	for (char &c : name)
+		if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') c = '_';
+	if (name.empty ()) name = "download";
+	std::string path = dir + "/" + name;
+	size_t dot = name.rfind ('.');
+	std::string stem = dot == std::string::npos || dot == 0 ? name : name.substr (0, dot);
+	std::string ext = dot == std::string::npos || dot == 0 ? "" : name.substr (dot);
+	for (int i = 1; access (path.c_str (), F_OK) == 0 && i < 1000; i++)
+		path = dir + "/" + stem + " (" + std::to_string (i) + ")" + ext;
+	return path;
+}
+
+static WKStringRef dlDecide (WKDownloadRef, WKURLResponseRef, WKStringRef suggested, const void *info)
+{
+	Download *dl = (Download *) const_cast<void *> (info);
+	if (dl->path.empty ()) {
+		mkdir ("/Downloads", 0755);
+		dl->path = unique_path ("/Downloads", str (suggested));
+	} else
+		unlink (dl->path.c_str ());		// (a name chosen in Save As: replaced -- WebKit opens it O_EXCL)
+	say ("download %d to %s", dl->id, dl->path.c_str ());
+	tell (dl, ENGINE_DL_STARTED, dl->path.c_str ());
+	return WKStringCreateWithUTF8CString (dl->path.c_str ());
+}
+
+static void dlData (WKDownloadRef, long long, long long written, long long expected, const void *info)
+{
+	Download *dl = (Download *) const_cast<void *> (info);
+	dl->done = written;
+	dl->total = expected > 0 ? expected : 0;
+	double t = now ();
+	if (t - dl->lastTell > 0.25) {
+		dl->lastTell = t;
+		tell (dl, ENGINE_DL_PROGRESS, dl->path.c_str ());
+	}
+}
+
+static void forget (Download *dl)
+{
+	for (size_t i = 0; i < s_downloads.size (); i++)
+		if (s_downloads[i] == dl) { s_downloads.erase (s_downloads.begin () + (long) i); break; }
+	WKRelease (dl->d);
+	delete dl;
+}
+
+static void dlFinish (WKDownloadRef, const void *info)
+{
+	Download *dl = (Download *) const_cast<void *> (info);
+	if (dl->total < dl->done) dl->total = dl->done;
+	say ("download %d done: %lld bytes", dl->id, dl->done);
+	tell (dl, ENGINE_DL_FINISHED, dl->path.c_str ());
+	forget (dl);
+}
+
+static void dlFail (WKDownloadRef, WKErrorRef e, WKDataRef, const void *info)
+{
+	Download *dl = (Download *) const_cast<void *> (info);
+	WKStringRef d = e ? WKErrorCopyLocalizedDescription (e) : nullptr;
+	std::string why = str (d);
+	if (d) WKRelease (d);
+	say ("download %d %s: %s", dl->id, dl->cancelled ? "cancelled" : "failed", why.c_str ());
+	tell (dl, dl->cancelled ? ENGINE_DL_CANCELLED : ENGINE_DL_FAILED, dl->cancelled ? dl->path.c_str () : why.c_str ());
+	forget (dl);
+}
+
+static void attach (WKDownloadRef d, const std::string &path)
+{
+	Download *dl = new Download { d, s_nextDownload++, path, 0, 0, 0, false };
+	WKRetain (d);
+	s_downloads.push_back (dl);
+	WKDownloadClientV0 c;
+	memset (&c, 0, sizeof c);
+	c.base.version = 0;
+	c.base.clientInfo = dl;
+	c.decideDestinationWithResponse = dlDecide;
+	c.didWriteData = dlData;
+	c.didFinish = dlFinish;
+	c.didFailWithError = dlFail;
+	WKDownloadSetClient (d, &c.base);
+	say ("download %d begins", dl->id);
+}
+
+static void responseBecameDownload (WKPageRef, WKNavigationResponseRef, WKDownloadRef d, const void *) { attach (d, ""); }
+static void actionBecameDownload (WKPageRef, WKNavigationActionRef, WKDownloadRef d, const void *) { attach (d, ""); }
+
+// A response the page cannot show (a zip, an installer), or one sent as an attachment: downloaded.
+static void decideResponse (WKPageRef, WKNavigationResponseRef r, WKFramePolicyListenerRef listener, WKTypeRef, const void *)
+{
+	WKURLResponseRef resp = WKNavigationResponseCopyResponse (r);
+	bool attachment = resp && WKURLResponseIsAttachment (resp);
+	if (resp) WKRelease (resp);
+	if (attachment || !WKNavigationResponseCanShowMIMEType (r))
+		WKFramePolicyListenerDownload (listener);
+	else
+		WKFramePolicyListenerUse (listener);
+}
+
+static void downloadStarted (WKDownloadRef d, const void *context)
+{
+	std::string *path = (std::string *) const_cast<void *> (context);
+	if (d) attach (d, *path);
+	delete path;
+}
+
+void engine_download_url (const char *url, const char *path)
+{
+	if (!s_page) return;
+	say ("save %s as %s", url, path && *path ? path : "(the downloads folder)");
+	WKURLRef u = WKURLCreateWithUTF8CString (url);
+	WKPageDownloadURLOnyx (s_page, u, new std::string (path ? path : ""), downloadStarted);
+	WKRelease (u);
+}
+
+// A download cancelled through the API ends here, not in didFailWithError: the part written removed.
+static void cancelled (WKDataRef, const void *info)
+{
+	int id = (int) (long) info;
+	for (Download *dl : s_downloads)
+		if (dl->id == id) {
+			say ("download %d cancelled", dl->id);
+			if (!dl->path.empty ()) unlink (dl->path.c_str ());
+			tell (dl, ENGINE_DL_CANCELLED, dl->path.c_str ());
+			forget (dl);
+			return;
+		}
+}
+
+void engine_download_cancel (int id)
+{
+	for (Download *dl : s_downloads)
+		if (dl->id == id && !dl->cancelled) {
+			dl->cancelled = true;
+			WKDownloadCancel (dl->d, (const void *) (long) id, cancelled);
+			return;
+		}
+}
+
+// ---- the embedded web view: given HTML, scripts, links -------------------------------------------------
+
+static bool s_scripts = true;
+static void (*s_linkHandler) (const char *);
+
+void engine_set_scripts (bool enabled) { s_scripts = enabled; }
+void engine_set_link_handler (void (*clicked) (const char *)) { s_linkHandler = clicked; }
+
+void engine_load_html (const char *html, const char *baseUrl)
+{
+	if (!s_page) return;
+	WKStringRef h = WKStringCreateWithUTF8CString (html ? html : "");
+	WKURLRef b = baseUrl && *baseUrl ? WKURLCreateWithUTF8CString (baseUrl) : nullptr;
+	WKPageLoadHTMLString (s_page, h, b);
+	WKRelease (h);
+	if (b) WKRelease (b);
+}
+
+// With a link handler (the embedded view): a link the user clicks is the host's, not followed here.
+static void decideAction (WKPageRef, WKNavigationActionRef action, WKFramePolicyListenerRef listener, WKTypeRef, const void *)
+{
+	if (s_linkHandler && WKNavigationActionGetNavigationType (action) == kWKFrameNavigationTypeLinkClicked) {
+		WKURLRequestRef req = WKNavigationActionCopyRequest (action);
+		WKURLRef u = req ? WKURLRequestCopyURL (req) : nullptr;
+		std::string url = url_str (u);
+		if (u) WKRelease (u);
+		if (req) WKRelease (req);
+		WKFramePolicyListenerIgnore (listener);
+		s_linkHandler (url.c_str ());
+		return;
+	}
+	WKFramePolicyListenerUse (listener);
+}
+
+// ---- the <select> lists, find, the clipboard -----------------------------------------------------------
+
+static void showPopupMenu (WKViewRef, const WKPopupMenuItemOnyx *items, int count, int selected, WKRect r, const void *)
+{
+	if (!s_client->showPopup || count <= 0) { WKViewSelectPopupMenuItem (s_view, -1); return; }
+	std::vector<const char *> texts ((size_t) count);
+	std::vector<unsigned char> flags ((size_t) count);
+	for (int i = 0; i < count; i++) {
+		texts[(size_t) i] = items[i].text ? items[i].text : "";
+		flags[(size_t) i] = (unsigned char) ((items[i].enabled ? ENGINE_ITEM_ENABLED : 0) | (items[i].isSeparator ? ENGINE_ITEM_SEPARATOR : 0)
+			| (items[i].isLabel ? ENGINE_ITEM_LABEL : 0));
+	}
+	s_client->showPopup (texts.data (), flags.data (), count, selected, (int) r.origin.x, (int) r.origin.y, (int) r.size.width, (int) r.size.height);
+}
+
+static void hidePopupMenu (WKViewRef, const void *) { if (s_client->hidePopup) s_client->hidePopup (); }
+
+void engine_popup_select (int index) { if (s_view) WKViewSelectPopupMenuItem (s_view, index); }
+
+static void didFind (WKPageRef, WKStringRef, unsigned matches, const void *) { if (s_client->findResult) s_client->findResult ((int) matches); }
+static void didNotFind (WKPageRef, WKStringRef, const void *) { if (s_client->findResult) s_client->findResult (0); }
+
+void engine_find (const char *text, bool backwards)
+{
+	if (!s_page || !text || !*text) return;
+	WKStringRef s = WKStringCreateWithUTF8CString (text);
+	WKFindOptions o = kWKFindOptionsCaseInsensitive | kWKFindOptionsWrapAround | kWKFindOptionsShowHighlight
+		| kWKFindOptionsShowFindIndicator | (backwards ? kWKFindOptionsBackwards : 0);
+	WKPageFindString (s_page, s, o, 1000);
+	WKRelease (s);
+}
+
+void engine_find_done () { if (s_page) WKPageHideFindUI (s_page); }
+
+void engine_set_clipboard (void (*write) (const char *, unsigned long), unsigned long (*read) (char *, unsigned long), unsigned (*serial) ())
+{
+	WKSetClipboardCallbacksOnyx ((WKClipboardWriteTextOnyx) write, (WKClipboardReadTextOnyx) read, (WKClipboardSerialOnyx) serial);
 }
 
 static void runAlert (WKPageRef, WKStringRef text, WKFrameRef, WKSecurityOriginRef, WKPageRunJavaScriptAlertResultListenerRef listener, const void *)
@@ -231,6 +489,39 @@ void engine_new_window (const char *url)
 	say ("new window for %s: %s", url, r ? strerror (r) : "started");
 }
 
+// This program started again in a helper role (argv[1]), its standard input and output two pipes:
+// *toChild written by us, *fromChild read (non-blocking).
+int engine_spawn_self (const char *role, int *toChild, int *fromChild)
+{
+	int a[2], b[2];
+	if (pipe (a)) return 0;
+	if (pipe (b)) { close (a[0]); close (a[1]); return 0; }
+	posix_spawn_file_actions_t fa;
+	posix_spawn_file_actions_init (&fa);
+	posix_spawn_file_actions_adddup2 (&fa, a[0], 0);
+	posix_spawn_file_actions_adddup2 (&fa, b[1], 1);
+	posix_spawn_file_actions_addclose (&fa, a[1]);
+	posix_spawn_file_actions_addclose (&fa, b[0]);
+	const char *self = self_path ();
+	char *argv[] = { const_cast<char *> (self), const_cast<char *> (role), nullptr };
+	pid_t pid = 0;
+	int r = posix_spawn (&pid, self, &fa, nullptr, argv, environ);
+	posix_spawn_file_actions_destroy (&fa);
+	close (a[0]);
+	close (b[1]);
+	if (r) {
+		say ("%s: %s", role, strerror (r));
+		close (a[1]); close (b[0]);
+		return 0;
+	}
+	fcntl (b[0], F_SETFL, fcntl (b[0], F_GETFL) | O_NONBLOCK);
+	fcntl (a[1], F_SETFL, fcntl (a[1], F_GETFL) | O_NONBLOCK);	// (a helper that stopped reading never blocks us)
+	*toChild = a[1];
+	*fromChild = b[0];
+	say ("%s started (pid %d)", role, (int) pid);
+	return (int) pid ? (int) pid : 1;
+}
+
 // ---- init, the loop ------------------------------------------------------------------------------------
 
 bool engine_init (const EngineClient *client, int w, int h)
@@ -255,6 +546,12 @@ bool engine_init (const EngineClient *client, int w, int h)
 	WKPageConfigurationSetContext (pc, s_context);
 	// The data (cookies, local storage, the caches) in SD:/var/webkit (WebsiteDataStoreOnyx).
 	WKPageConfigurationSetWebsiteDataStore (pc, WKWebsiteDataStoreGetDefaultDataStore ());
+	if (!s_scripts) {					// (the embedded view, for a mail's HTML)
+		WKPreferencesRef prefs = WKPreferencesCreate ();
+		WKPreferencesSetJavaScriptEnabled (prefs, false);
+		WKPageConfigurationSetPreferences (pc, prefs);
+		WKRelease (prefs);
+	}
 
 	s_view = WKViewCreate (pc);
 	WKRelease (pc);
@@ -262,13 +559,15 @@ bool engine_init (const EngineClient *client, int w, int h)
 		say ("no view");
 		return false;
 	}
-	WKViewClientV0 vc;
+	WKViewClientV1 vc;
 	memset (&vc, 0, sizeof vc);
-	vc.base.version = 0;
+	vc.base.version = 1;
 	vc.setViewNeedsDisplay = needsDisplay;
 	vc.didNotHandleKeyEvent = keyNotHandled;
 	vc.webProcessCrashed = processCrashed;
 	vc.webProcessDidRelaunch = processRelaunched;
+	vc.showPopupMenu = showPopupMenu;
+	vc.hidePopupMenu = hidePopupMenu;
 	WKViewSetViewClient (s_view, &vc.base);
 	WKViewSetSize (s_view, WKSizeMake (w, h));
 	WKViewSetVisible (s_view, true);
@@ -280,9 +579,13 @@ bool engine_init (const EngineClient *client, int w, int h)
 	WKPageSetApplicationNameForUserAgent (s_page, app);
 	WKRelease (app);
 
-	WKPageNavigationClientV0 nc;
+	WKPageNavigationClientV3 nc;
 	memset (&nc, 0, sizeof nc);
-	nc.base.version = 0;
+	nc.base.version = 3;
+	nc.decidePolicyForNavigationAction = decideAction;
+	nc.decidePolicyForNavigationResponse = decideResponse;
+	nc.navigationActionDidBecomeDownload = actionBecameDownload;
+	nc.navigationResponseDidBecomeDownload = responseBecameDownload;
 	nc.didStartProvisionalNavigation = didStartProvisional;
 	nc.didCommitNavigation = didCommit;
 	nc.didFinishNavigation = didFinish;
@@ -299,6 +602,13 @@ bool engine_init (const EngineClient *client, int w, int h)
 	uc.runJavaScriptAlert = runAlert;
 	uc.runJavaScriptConfirm = runConfirm;
 	WKPageSetPageUIClient (s_page, &uc.base);
+
+	WKPageFindClientV0 fc;
+	memset (&fc, 0, sizeof fc);
+	fc.base.version = 0;
+	fc.didFindString = didFind;
+	fc.didFailToFindString = didNotFind;
+	WKPageSetPageFindClient (s_page, &fc.base);
 	say ("WebKit ready");
 	return true;
 }
@@ -326,7 +636,7 @@ void engine_cycle ()
 		if (s_client->urlChanged) s_client->urlChanged (url.c_str ());
 	}
 	double p = WKPageGetEstimatedProgress (s_page);
-	bool loading = p > 0 && p < 1;
+	bool loading = s_navigating && p > 0 && p < 1;
 	if (loading != s_loading || (loading && p - s_progress > 0.05)) {
 		s_loading = loading; s_progress = p;
 		if (s_client->loadingChanged) s_client->loadingChanged (loading, p);

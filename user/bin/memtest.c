@@ -261,6 +261,36 @@ static void check_killed (const char *pWhat, const char *pChild, int nStatus, in
 
 // ---- 1. regions ------------------------------------------------------------------------------------
 
+// (v78) Generated code, as a JIT makes it: written, the caches made coherent over it (DC CVAU,
+// IC IVAU: allowed at EL0), run; then made read + execute (W^X) and run again.
+static void sync_code (u64 a, u64 n)
+{
+	for (u64 p = a & ~63ULL; p < a + n; p += 64) asm volatile ("dc cvau, %0" :: "r" (p) : "memory");
+	asm volatile ("dsb ish" ::: "memory");
+	for (u64 p = a & ~63ULL; p < a + n; p += 64) asm volatile ("ic ivau, %0" :: "r" (p) : "memory");
+	asm volatile ("dsb ish; isb" ::: "memory");
+}
+
+static void test_exec (void)
+{
+	long long c = kapi_vm_map (0, PAGE, RW | KAPI_PROT_EXEC, 0);
+	check ("vm_map RW + EXEC -> mapped", c > 0);
+	if (c <= 0) return;
+	volatile unsigned *code = (volatile unsigned *) c;
+	code[0] = 0x52800540;			// mov w0, #42
+	code[1] = 0xD65F03C0;			// ret
+	sync_code ((u64) c, 8);
+	int (*fn) (void) = (int (*) (void)) c;
+	check ("generated code runs -> 42", fn () == 42);
+	check ("vm_protect READ + EXEC (W^X)", kapi_vm_protect ((u64) c, PAGE, KAPI_PROT_READ | KAPI_PROT_EXEC) == 0);
+	check ("runs again, read + execute", fn () == 42);
+	check ("vm_protect RW + EXEC again", kapi_vm_protect ((u64) c, PAGE, RW | KAPI_PROT_EXEC) == 0);
+	code[0] = 0x52800E00;			// mov w0, #112
+	sync_code ((u64) c, 8);
+	check ("rewritten code runs -> 112", fn () == 112);
+	kapi_vm_unmap ((u64) c, PAGE);
+}
+
 static void test_regions (void)
 {
 	// lazy vm_map: nothing resident until touched
@@ -350,7 +380,7 @@ static void test_regions (void)
 	check ("vm_map FIXED outside the arena (8 GB) -> -EINVAL",
 	       kapi_vm_map (8ULL << 30, PAGE, RW, KAPI_MAP_FIXED) == -KAPI_EINVAL);
 	check ("vm_map length 0 -> -EINVAL", kapi_vm_map (0, 0, RW, 0) == -KAPI_EINVAL);
-	check ("vm_map PROT_EXEC -> -ENOTSUP", kapi_vm_map (0, PAGE, RW | KAPI_PROT_EXEC, 0) == -KAPI_ENOTSUP);
+	test_exec ();
 	check ("vm_unmap of the heap -> -EINVAL", kapi_vm_unmap (10ULL << 30, PAGE) == -KAPI_EINVAL);
 	check ("vm_protect of a hole -> -EINVAL", kapi_vm_protect (59ULL << 30, PAGE, RW) == -KAPI_EINVAL);
 	check ("vm_query (bad pointer) -> -EFAULT", kapi_vm_query (8ULL << 30, (struct kapi_vm_region *) 0x80000) == -KAPI_EFAULT);

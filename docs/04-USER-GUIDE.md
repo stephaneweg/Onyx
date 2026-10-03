@@ -2413,25 +2413,47 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   `SD:/apps/web.app/start.html`), the **address field**: an address (`https://` added), a path on
   the card (`/docs/x.html`, `SD:/x.html`), or words (a DuckDuckGo search) — Enter goes.
 - **The status bar**: the link under the pointer, the load's progress, "Done" or why a page did not
-  load. The window's title is the page's.
-- **The menus**: File (New Window ^N, Open File… ^O, Open Location ^L, Close Window ^W), Edit (Cut,
-  Copy, Paste, Select All — the address field's when it has the keyboard, else the page's), View
-  (Reload ^R, Zoom In / Out, Actual Size), Go (Back Alt+←, Forward Alt+→, Home), Help.
+  load, and a download's progress ("Downloading x: 42 %", then "Downloaded x"). The window's title
+  is the page's.
+- **The menus**: File (New Window ^N, Open File… ^O, Open Location ^L, Save Page As… ^S, Downloads
+  ^J, Close Window ^W), Edit (Cut, Copy, Paste, Select All — the address field's when it has the
+  keyboard, else the page's; Find… ^F), View (Reload ^R, Zoom In / Out, Actual Size), Go (Back
+  Alt+←, Forward Alt+→, Home), Help.
+- **Drop-down lists** (`<select>`): a click opens the list under the box (above it near the bottom),
+  with its groups and the choices that cannot be taken greyed; a click, or the arrows, Page Up / Down,
+  Home / End and Enter, chooses; Esc or a click outside closes it. Long lists scroll (the wheel).
+- **The clipboard** is the system's: what is copied in a page (^C, Edit ▸ Copy, the menu of the right
+  button) can be pasted in the other apps, and the other apps' text in the page's fields (^V).
+- **Find in the page** (^F): a bar above the status bar; each letter typed finds again, every match
+  is marked and the count shown; Enter (or ▼) the next, Shift+Enter (or ▲) the previous; Esc or ✕
+  closes it.
+- **The right button**: on a link, *Open Link in New Window*, *Copy Link Address*, *Save Link As…*;
+  on a picture, *Open Image in New Window*, *Copy Image Address*, *Save Image As…*; then Back,
+  Forward, Reload, Copy, Select All, *Save Page As…*. *Save … As* asks where (in `SD:/Downloads` first).
+- **Downloads**: a file the page cannot show (an archive, a program, a file sent as an attachment)
+  is downloaded into **`SD:/Downloads`** (a name already there gets ` (1)`, ` (2)`…). The **Downloads**
+  window opens beside the browser — a window of its own, not modal (File ▸ Downloads ^J brings it
+  back): each file with its progress bar, its size and a **Cancel** button; finished, failed and
+  cancelled ones stay listed. The status bar tells it too.
 - **Keys**: in the page, what the page does with them (text fields, scrolling: arrows, Page Up /
   Down, Space); Backspace or Alt+← back, Alt+→ forward, F5 reload, F6 the address, Esc stops a load.
   The wheel scrolls. A file or a link dropped on the window is opened.
 - **Start it at once**: add `preload web` to `SD:/etc/autostart` (after the dock's line): the 93 MB
   program is read from the card at boot, and every window then opens without reading it again.
-- **Not there yet** (the WebKit port's roadmap): the drop-down lists of the pages (`<select>`), the
-  copies to and from the other apps (the clipboard stays inside Web), downloads, video and sound,
-  WebGL, the JavaScript JIT (pages run in the interpreter: heavy sites are slow).
+- **Web also serves Mail as its HTML view**: when Web is installed, Mail's HTML messages are drawn by
+  it, inside Mail's window (the same program run as an applet, `web --applet ...`: no window of its own,
+  JavaScript off, nothing from the internet until Mail's *Show the pictures*; a link clicked goes back to
+  Mail, which asks, then opens it in a Web window). Its lines in `kmsg` start `webview:`.
+- **Not there yet** (the WebKit port's roadmap): video and sound, WebGL, the JavaScript JIT (pages
+  run in the interpreter: heavy sites are slow), the GPU (pages are painted by the CPU).
 - **When something goes wrong**: `kmsg` shows its lines — `web: [time] …` (the loads, the
   addresses, the errors, the web and network processes started and ended), `web: net start / done
   <status> <time> / FAILED <code> <url>` for each request, and, if a process is killed, `el0: …
   killed` with its `backtrace:` line. Keep `kmsg` running in a telnet session while you try a page.
 
 **Files**: reads the card's fonts (`SD:/res/fonts/`), the certificates (`SD:/res/ca-bundle`);
-writes `SD:/var/webkit/` (cookies, local storage, the caches). Licence: WebKit's LGPL-2.1
+writes `SD:/var/webkit/` (cookies, local storage, the caches) and the downloads (`SD:/Downloads/`,
+or where *Save … As* was told). Licence: WebKit's LGPL-2.1
 (`docs/LICENSING.md`).
 
 ### Mail, the mail client (`mail`)
@@ -2479,11 +2501,18 @@ Archive, Delete, Junk, Star, the **search** (who, subject, text, in every accoun
 | *A conversation: the earlier messages folded* | *An HTML newsletter, its web pictures held back* |
 
 **Reading**: a conversation shows its messages oldest first, the read ones folded (a click opens one);
-your own replies (from Sent) are in it, as Gmail shows them. Messages in **HTML** are drawn by Mail's own
-renderer (HTML 4 and CSS 2: tables, colours, fonts, buttons; a newsletter wider than the pane is shrunk to
-fit); nothing runs in them, and their **pictures from the web are hidden** until you click *Show the
-pictures* (they would tell the sender you read the message). A **link** asks before opening Jet Browser
-(a `mailto:` link starts a message). **Attachments**: a click — *Open* (in the app that opens that kind:
+your own replies (from Sent) are in it, as Gmail shows them. Messages in **HTML** are drawn by
+**WebKit** when **Web** is installed (`pkg install web`): the browser's program runs inside Mail's
+reading pane as its *web view* — the message in a box filling the pane, scrolled with the wheel over it;
+a click in it gives it the keys (arrows, Page Up / Down, Space; Ctrl+C copies the selected text, Ctrl+A
+selects it all), a click elsewhere gives them back to Mail. Without Web (or if it cannot start), Mail's own
+renderer draws them (HTML 4 and CSS 2: tables, colours, fonts, buttons; a newsletter wider than the pane
+is shrunk to fit). Either way nothing runs in them (no JavaScript), and their **pictures — and styles and
+fonts — from the web are hidden** until you click *Show the pictures* (they would tell the sender you read
+the message); the pictures sent in the message itself (`cid:`) are shown. The first HTML message after Mail
+starts takes a moment (*Opening the message...*: the web view starting); the next ones are quick. A **link**
+asks before opening — in **Web** when it is installed, else Jet Browser (a `mailto:` link starts a
+message); in the web view, the address of the link under the pointer shows at the box's bottom. **Attachments**: a click — *Open* (in the app that opens that kind:
 a PDF in the PDF Viewer, a picture in the Image Viewer) or *Save as...*; *Save all* puts them in
 `SD:/Downloads`. A click on the sender: write to them, add them to the contacts, copy the address. The
 **quick reply** at the bottom sends at once. A right click on a conversation: reply, forward, read /
@@ -2513,7 +2542,8 @@ the server).
 passwords and Microsoft's tokens, **encrypted** — AES-256 — with a key of this card, `SD:/etc/mail/key`:
 not readable as text, but whoever has the card has them), `SD:/etc/mail/oauth.ini` (optional: another
 Outlook application id), `SD:/mail/<account>/` (the folders, the messages' list, the messages opened, as `.eml`),
-`SD:/mail/recipients.tsv` (the addresses written to), `SD:/Documents/Contacts.card`. Keys: ^N new, F5
+`SD:/mail/recipients.tsv` (the addresses written to), `SD:/Documents/Contacts.card`; with Web, the HTML
+message handed to the web view, `RAM:/mailview-<pid>.html` (removed when Mail ends). Keys: ^N new, F5
 check, ^R reply, ^L forward, ^S star, ^U unread, Del delete, ^F search, Up / Down the conversations,
 Ctrl+Enter send.
 

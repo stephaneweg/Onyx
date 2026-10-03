@@ -4,7 +4,7 @@
  * Anonymous mappings (private; MAP_SHARED anonymous is private too: there is no fork), PROT_NONE
  * reservations committed later with mprotect, MAP_FIXED inside the mmap arena, madvise
  * (DONTNEED: zero-filled at the next touch). A MAP_PRIVATE file is read into an anonymous mapping
- * (an eager copy); MAP_SHARED with PROT_WRITE on a file is ENOTSUP. No PROT_EXEC (no JIT).
+ * (an eager copy); MAP_SHARED with PROT_WRITE on a file is ENOTSUP. PROT_EXEC on anonymous memory from kernel v78 (a JIT).
  * The page size is 64 KB (getpagesize, sysconf (_SC_PAGESIZE)).
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is

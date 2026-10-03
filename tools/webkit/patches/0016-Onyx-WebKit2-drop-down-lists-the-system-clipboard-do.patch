@@ -1,0 +1,915 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 07:25:35 +0200
+Subject: [PATCH 16/16] [Onyx] WebKit2: drop-down lists, the system clipboard,
+ downloads by URL, download progress over curl
+
+The pages' <select> lists: WebPopupMenuProxyOnyx hands the items to the embedder through the
+view client (WKViewClientV1: showPopupMenu / hidePopupMenu; WKViewSelectPopupMenuItem answers;
+an answer after the list closed or was replaced is ignored; a client without the callbacks gets
+the list closed at once).
+
+The clipboard: WKSetClipboardCallbacksOnyx gives WebCore's PlatformPasteboard of the UI process
+three functions (write the text, read it, the system clipboard's serial); the system's text is
+read again when its serial changed, and replaces the in-process content.
+
+WKPageDownloadURLOnyx: a download of a URL for the page (Save Link As...), with the page's
+Referer (strict-origin-when-cross-origin) and User-Agent, its cookies; the started callback may
+get NULL (the download destroyed before it started).
+
+NetworkDataTaskCurl: a download's didReceiveData now carries the running total and the expected
+length (it gave 0, 0: no embedder could show a progress).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/WebCore/PlatformOnyx.cmake             |   4 +
+ .../platform/onyx/PlatformPasteboardOnyx.cpp  | 111 ++++++++++++++++--
+ .../platform/onyx/PlatformPasteboardOnyx.h    |  39 ++++++
+ .../curl/NetworkDataTaskCurl.cpp              |   4 +-
+ .../NetworkProcess/curl/NetworkDataTaskCurl.h |   1 +
+ Source/WebKit/PlatformOnyx.cmake              |   1 +
+ .../API/C/onyx/WKPagePrivateOnyx.cpp          |  49 ++++++++
+ .../UIProcess/API/C/onyx/WKPagePrivateOnyx.h  |  18 +++
+ Source/WebKit/UIProcess/API/C/onyx/WKView.cpp |  40 ++++++-
+ Source/WebKit/UIProcess/API/C/onyx/WKView.h   |   3 +
+ .../UIProcess/API/C/onyx/WKViewClient.h       |  35 ++++++
+ .../WebKit/UIProcess/API/onyx/APIViewClient.h |   8 ++
+ Source/WebKit/UIProcess/onyx/OnyxWebView.cpp  |  42 ++++++-
+ Source/WebKit/UIProcess/onyx/OnyxWebView.h    |  11 ++
+ .../WebKit/UIProcess/onyx/PageClientImpl.cpp  |  14 +--
+ .../UIProcess/onyx/WebPopupMenuProxyOnyx.cpp  |  89 ++++++++++++++
+ .../UIProcess/onyx/WebPopupMenuProxyOnyx.h    |  62 ++++++++++
+ 17 files changed, 507 insertions(+), 24 deletions(-)
+ create mode 100644 Source/WebCore/platform/onyx/PlatformPasteboardOnyx.h
+ create mode 100644 Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.cpp
+ create mode 100644 Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.h
+
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+index fe4d682a..6b26e28f 100644
+--- a/Source/WebCore/PlatformOnyx.cmake
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -15,6 +15,10 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+     ${WEBCORE_DIR}/platform/network/onyx
+ )
+ 
++list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
++    platform/onyx/PlatformPasteboardOnyx.h
++)
++
+ list(APPEND WebCore_SOURCES
+     accessibility/onyx/AXObjectCacheOnyx.cpp
+     accessibility/onyx/AccessibilityObjectOnyx.cpp
+diff --git a/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp b/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp
+index bc33cb00..7ab0fe7e 100644
+--- a/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp
++++ b/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.cpp
+@@ -29,24 +29,22 @@
+ #if PLATFORM(ONYX)
+ 
+ #include "Pasteboard.h"
++#include "PlatformPasteboardOnyx.h"
+ #include <wtf/Lock.h>
+ #include <wtf/NeverDestroyed.h>
+ #include <wtf/Vector.h>
++#include <wtf/text/CString.h>
+ #include <wtf/text/WTFString.h>
+ 
+-// The clipboard of the Onyx port, for now a clipboard of its own: what a page copies is kept in this
+-// process (the UI process: the web processes reach it through WebPasteboardProxy) and can be pasted into
+-// any page of the same browser, as text or as HTML. It is not Onyx's system clipboard yet: nothing copied
+-// here reaches another program, and nothing copied elsewhere can be pasted here.
++// The clipboard of the Onyx port: what a page copies is kept in this process (the UI process: the web
++// processes reach it through WebPasteboardProxy) and can be pasted into any page of the same browser, as
++// text or as HTML.
+ //
+-// The system clipboard is the kernel's (kapi clipboard_set / clipboard_get, CLIP_TEXT: user/kapi.h of the
+-// Onyx tree), and a program built on libonyxposix has no access to it: kapi.h is not in the POSIX
+-// sysroot, and libonyxposix exports no clipboard function. What the binding needs: two functions in
+-// libonyxposix, declared in a header of the sysroot, over those two kernel calls -- "set the clipboard's
+-// plain text (UTF-8, a length)" and "get it (a buffer, its size, the clipboard's serial number)". With
+-// them, write() below also gives the plain text to the system clipboard, and readString() / getTypes()
+-// compare the system's serial with the one of our last write: when it differs another program has
+-// copied something, which then replaces what is kept here (the HTML with it).
++// Onyx's system clipboard is the kernel's (kapi clipboard_set / clipboard_get), which only the embedder
++// reaches: it gives three functions with setOnyxSystemClipboard (WKSetClipboardCallbacksOnyx in WebKit's
++// C API). With them, a write that has plain text also gives that text to the system clipboard, and every
++// read first compares the system's serial with the one seen after our last write: when it differs,
++// another program has copied something, whose text then replaces what is kept here (the HTML with it).
+ 
+ namespace WebCore {
+ 
+@@ -57,10 +55,20 @@ struct OnyxClipboardEntry {
+     String string;
+ };
+ 
++struct OnyxSystemClipboard {
++    void (*write)(const char*, size_t) { nullptr };
++    size_t (*read)(char*, size_t) { nullptr };
++    unsigned (*serial)() { nullptr };
++};
++
+ struct OnyxClipboardStore {
+     Lock lock;
+     Vector<OnyxClipboardEntry> items WTF_GUARDED_BY_LOCK(lock);
+     int64_t changeCount WTF_GUARDED_BY_LOCK(lock) { 0 };
++    OnyxSystemClipboard system WTF_GUARDED_BY_LOCK(lock);
++    // The system's serial when its text was last the same as ours (after our write, or after reading it);
++    // none: the system's text has not been read yet.
++    std::optional<unsigned> systemSerial WTF_GUARDED_BY_LOCK(lock);
+ };
+ 
+ OnyxClipboardStore& onyxClipboardStore()
+@@ -72,16 +80,88 @@ OnyxClipboardStore& onyxClipboardStore()
+ constexpr auto onyxPlainTextType = "text/plain;charset=utf-8"_s;
+ constexpr auto onyxHTMLTextType = "text/html"_s;
+ 
++bool isPlainTextType(const String& type)
++{
++    return type.startsWith("text/plain"_s);
++}
++
+ // "text/plain" and "text/plain;charset=utf-8" name the same thing.
+ bool isSameClipboardType(const String& a, const String& b)
+ {
+     if (a == b)
+         return true;
+-    return a.startsWith("text/plain"_s) && b.startsWith("text/plain"_s);
++    return isPlainTextType(a) && isPlainTextType(b);
++}
++
++String readSystemText(const OnyxSystemClipboard& system)
++{
++    // read() gives the text's full length, and copies what fits.
++    Vector<char> buffer(4096);
++    for (unsigned attempt = 0; attempt < 4; ++attempt) {
++        size_t length = system.read(buffer.mutableSpan().data(), buffer.size());
++        if (length < buffer.size()) {
++            auto bytes = buffer.span().first(length);
++            // (A text ends at its first NUL, if the embedder copies one.)
++            size_t end = bytes.size();
++            for (size_t i = 0; i < bytes.size(); ++i) {
++                if (!bytes[i]) {
++                    end = i;
++                    break;
++                }
++            }
++            // (Not UTF-8: read as Latin-1, rather than nothing.)
++            return String::fromUTF8WithLatin1Fallback(bytes.first(end));
++        }
++        // Too small (the text may have grown in between: try again).
++        buffer.grow(length + 1);
++    }
++    return String();
++}
++
++// Another program has copied since our last look: its text replaces ours.
++void synchronizeWithSystemClipboard(OnyxClipboardStore& clipboard) WTF_REQUIRES_LOCK(clipboard.lock)
++{
++    auto& system = clipboard.system;
++    if (!system.read || !system.serial)
++        return;
++
++    unsigned serial = system.serial();
++    if (clipboard.systemSerial && *clipboard.systemSerial == serial)
++        return;
++
++    auto text = readSystemText(system);
++    clipboard.systemSerial = serial;
++    clipboard.items.clear();
++    if (!text.isEmpty())
++        clipboard.items.append(OnyxClipboardEntry { onyxPlainTextType, WTF::move(text) });
++    clipboard.changeCount++;
++}
++
++// Our write gives its plain text to the system clipboard too. A write with no plain text (null) leaves
++// the system's text as it is, but what is kept here is now the newest: the system's present serial is
++// noted, so that its older text does not replace ours.
++void writeToSystemClipboard(OnyxClipboardStore& clipboard, const String& text) WTF_REQUIRES_LOCK(clipboard.lock)
++{
++    auto& system = clipboard.system;
++    if (system.write && !text.isNull()) {
++        auto utf8 = text.utf8();
++        auto characters = byteCast<char>(utf8.span());
++        system.write(characters.data(), characters.size());
++    }
++    if (system.serial)
++        clipboard.systemSerial = system.serial();
+ }
+ 
+ } // namespace
+ 
++void setOnyxSystemClipboard(void (*write)(const char* utf8, size_t length), size_t (*read)(char* buffer, size_t capacity), unsigned (*serial)(void))
++{
++    auto& clipboard = onyxClipboardStore();
++    Locker locker { clipboard.lock };
++    clipboard.system = { write, read, serial };
++    clipboard.systemSerial = std::nullopt;
++}
++
+ PlatformPasteboard::PlatformPasteboard(const String&)
+     : m_pasteboard(nullptr)
+ {
+@@ -101,6 +181,7 @@ int64_t PlatformPasteboard::changeCount() const
+ {
+     auto& clipboard = onyxClipboardStore();
+     Locker locker { clipboard.lock };
++    synchronizeWithSystemClipboard(clipboard);
+     return clipboard.changeCount;
+ }
+ 
+@@ -108,6 +189,7 @@ void PlatformPasteboard::getTypes(Vector<String>& types) const
+ {
+     auto& clipboard = onyxClipboardStore();
+     Locker locker { clipboard.lock };
++    synchronizeWithSystemClipboard(clipboard);
+     for (auto& item : clipboard.items)
+         types.append(item.type);
+ }
+@@ -116,6 +198,7 @@ String PlatformPasteboard::readString(size_t, const String& type) const
+ {
+     auto& clipboard = onyxClipboardStore();
+     Locker locker { clipboard.lock };
++    synchronizeWithSystemClipboard(clipboard);
+     for (auto& item : clipboard.items) {
+         if (isSameClipboardType(item.type, type))
+             return item.string;
+@@ -133,6 +216,7 @@ void PlatformPasteboard::write(const PasteboardWebContent& content)
+     if (!content.markup.isNull())
+         clipboard.items.append(OnyxClipboardEntry { onyxHTMLTextType, content.markup });
+     clipboard.changeCount++;
++    writeToSystemClipboard(clipboard, content.text);
+ }
+ 
+ void PlatformPasteboard::write(const String& type, const String& string)
+@@ -142,6 +226,7 @@ void PlatformPasteboard::write(const String& type, const String& string)
+     clipboard.items.clear();
+     clipboard.items.append(OnyxClipboardEntry { type, string });
+     clipboard.changeCount++;
++    writeToSystemClipboard(clipboard, isPlainTextType(type) ? string : String());
+ }
+ 
+ Vector<String> PlatformPasteboard::typesSafeForDOMToReadAndWrite(const String&) const
+diff --git a/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.h b/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.h
+new file mode 100644
+index 00000000..4eca09a9
+--- /dev/null
++++ b/Source/WebCore/platform/onyx/PlatformPasteboardOnyx.h
+@@ -0,0 +1,39 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#include <cstddef>
++
++namespace WebCore {
++
++// Onyx's system clipboard, which only the embedder reaches (its kernel calls): the plain text written
++// to the clipboard also goes to write(); read() gives the system's text (its full length; called again
++// with a big enough buffer); serial() changes when any program copies. Set once, in the UI process
++// (PlatformPasteboard lives there, behind WebPasteboardProxy), before any page. Null functions: the
++// clipboard stays in-process.
++WEBCORE_EXPORT void setOnyxSystemClipboard(void (*write)(const char* utf8, size_t length), size_t (*read)(char* buffer, size_t capacity), unsigned (*serial)(void));
++
++} // namespace WebCore
+diff --git a/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp b/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp
+index 7699bf28..c50f9387 100644
+--- a/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp
++++ b/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp
+@@ -226,7 +226,9 @@ void NetworkDataTaskCurl::curlDidReceiveData(CurlRequest&, Ref<SharedBuffer>&& b
+ 
+             bytesWritten += segment.segment->size();
+         }
+-        download->didReceiveData(bytesWritten, 0, 0);
++        m_downloadBytesWritten += bytesWritten;
++        long long expected = m_response.expectedContentLength();
++        download->didReceiveData(bytesWritten, m_downloadBytesWritten, expected > 0 ? static_cast<uint64_t>(expected) : 0);
+         return;
+     }
+ 
+diff --git a/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.h b/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.h
+index 34a4d1cd..508e6799 100644
+--- a/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.h
++++ b/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.h
+@@ -113,6 +113,7 @@ private:
+ 
+     bool m_allowOverwriteDownload { false };
+     FileSystem::FileHandle m_downloadDestinationFile;
++    uint64_t m_downloadBytesWritten { 0 }; // (Onyx: the total and the expected length go with each write)
+ 
+     bool m_blockingCookies { false };
+ 
+diff --git a/Source/WebKit/PlatformOnyx.cmake b/Source/WebKit/PlatformOnyx.cmake
+index da8e49f6..da34742c 100644
+--- a/Source/WebKit/PlatformOnyx.cmake
++++ b/Source/WebKit/PlatformOnyx.cmake
+@@ -69,6 +69,7 @@ list(APPEND WebKit_SOURCES
+     UIProcess/onyx/OnyxWebView.cpp
+     UIProcess/onyx/PageClientImpl.cpp
+     UIProcess/onyx/WebPageProxyOnyx.cpp
++    UIProcess/onyx/WebPopupMenuProxyOnyx.cpp
+     UIProcess/onyx/WebPreferencesOnyx.cpp
+     UIProcess/onyx/WebProcessPoolOnyx.cpp
+ 
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
+index 11e7df02..3dfaa1bc 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.cpp
+@@ -26,6 +26,8 @@
+ #include "config.h"
+ #include "WKPagePrivateOnyx.h"
+ 
++#include "APIURL.h"
++#include "DownloadProxy.h"
+ #include "DrawingAreaProxy.h"
+ #include "DrawingAreaProxyCoordinatedGraphics.h"
+ #include "NativeWebKeyboardEvent.h"
+@@ -35,7 +37,9 @@
+ #include "WebEventFactoryOnyx.h"
+ #include "WebPageProxy.h"
+ #include <WebCore/Color.h>
++#include <WebCore/PlatformPasteboardOnyx.h>
+ #include <WebCore/Region.h>
++#include <WebCore/ResourceRequest.h>
+ #include <skia/core/SkCanvas.h>
+ #include <skia/core/SkColorSpace.h>
+ #include <skia/core/SkImageInfo.h>
+@@ -127,3 +131,48 @@ void WKPagePaint(WKPageRef pageRef, unsigned char* surfaceData, WKSize wkSurface
+ 
+     canvas->restore();
+ }
++
++void WKSetClipboardCallbacksOnyx(WKClipboardWriteTextOnyx write, WKClipboardReadTextOnyx read, WKClipboardSerialOnyx serial)
++{
++    // WebCore::PlatformPasteboard lives in this (the UI) process: the web processes reach it through
++    // WebPasteboardProxy (UIProcess/libwpe/WebPasteboardProxyLibWPE.cpp).
++    WebCore::setOnyxSystemClipboard(write, read, serial);
++}
++
++// The Referer a link followed from the page would carry, by the default policy
++// (strict-origin-when-cross-origin): the page's address on the same origin, its origin elsewhere, none
++// from https to http.
++static String referrerForDownload(const URL& pageURL, const URL& url)
++{
++    if (!pageURL.isValid() || !pageURL.protocolIsInHTTPFamily())
++        return { };
++    if (pageURL.protocolIs("https"_s) && !url.protocolIs("https"_s))
++        return { };
++    if (protocolHostAndPortAreEqual(pageURL, url)) {
++        auto referrer = pageURL;
++        referrer.removeCredentials();
++        referrer.removeFragmentIdentifier();
++        return referrer.string();
++    }
++    return makeString(pageURL.protocolHostAndPort(), '/');
++}
++
++void WKPageDownloadURLOnyx(WKPageRef pageRef, WKURLRef urlRef, const void* context, WKPageDownloadStartedOnyx started)
++{
++    Ref page = *WebKit::toImpl(pageRef);
++    URL url { WebKit::toImpl(urlRef)->string() };
++
++    WebCore::ResourceRequest request { URL { url } };
++    auto referrer = referrerForDownload(URL { page->currentURL() }, url);
++    if (!referrer.isEmpty())
++        request.setHTTPReferrer(referrer);
++    // The web process gives a page's loads their User-Agent; this one starts in the network process.
++    if (!page->userAgent().isEmpty())
++        request.setHTTPUserAgent(page->userAgent());
++
++    // The cookies come with the page's session (its website data store) in the network process.
++    page->downloadRequest(WTF::move(request), [context, started] (WebKit::DownloadProxy* download) {
++        if (started)
++            started(WebKit::toAPI(download), context);
++    });
++}
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
+index 28571bb9..4e83da94 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKPagePrivateOnyx.h
+@@ -28,6 +28,7 @@
+ #include <WebKit/WKBase.h>
+ #include <WebKit/WKEventOnyx.h>
+ #include <WebKit/WKGeometry.h>
++#include <stddef.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -51,6 +52,23 @@ WK_EXPORT void WKPageHandleWheelEvent(WKPageRef, WKWheelEvent);
+ // when it has none).
+ WK_EXPORT void WKPagePaint(WKPageRef, unsigned char* pixels, WKSize surfaceSize, uint32_t stride, WKRect paintRect);
+ 
++/* Onyx's system clipboard, which only the embedder reaches (its kernel calls). write: the plain text
++   copied in a page (UTF-8, a length, no NUL needed). read: copies up to capacity bytes of the system's
++   text into buffer and returns the text's full length (called again with a bigger buffer when it did not
++   fit). serial: a number that changes whenever any program copies. Called once, in the UI process, before
++   any page; the functions are then called on the UI thread. NULL functions: the clipboard stays inside
++   the browser. */
++typedef void (*WKClipboardWriteTextOnyx)(const char* utf8, size_t length);
++typedef size_t (*WKClipboardReadTextOnyx)(char* buffer, size_t capacity); /* -> the text's full length */
++typedef unsigned (*WKClipboardSerialOnyx)(void);
++WK_EXPORT void WKSetClipboardCallbacksOnyx(WKClipboardWriteTextOnyx write, WKClipboardReadTextOnyx read, WKClipboardSerialOnyx serial);
++
++typedef void (*WKPageDownloadStartedOnyx)(WKDownloadRef download, const void* context);
++/* Starts downloading url as the page would (its cookies, its referrer); started is called with the
++   download (the embedder then sets its WKDownloadClient: destination, progress, end), or with NULL when
++   the download could not start. */
++WK_EXPORT void WKPageDownloadURLOnyx(WKPageRef page, WKURLRef url, const void* context, WKPageDownloadStartedOnyx started);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKView.cpp b/Source/WebKit/UIProcess/API/C/onyx/WKView.cpp
+index c0b3cac6..c7f44381 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKView.cpp
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKView.cpp
+@@ -33,13 +33,14 @@
+ #include "OnyxWebView.h"
+ #include "WKAPICast.h"
+ #include "WKSharedAPICast.h"
++#include "WebPopupItem.h"
+ #include <WebCore/Cursor.h>
+ #include <WebCore/Region.h>
+ #include <wtf/text/CString.h>
+ 
+ namespace API {
+ template<> struct ClientTraits<WKViewClientBase> {
+-    typedef std::tuple<WKViewClientV0> Versions;
++    typedef std::tuple<WKViewClientV0, WKViewClientV1> Versions;
+ };
+ }
+ 
+@@ -193,6 +194,11 @@ bool WKViewIsFullScreen(WKViewRef view)
+ #endif
+ }
+ 
++void WKViewSelectPopupMenuItem(WKViewRef view, int index)
++{
++    WebKit::toImpl(view)->selectPopupMenuItem(index);
++}
++
+ void WKViewSetViewClient(WKViewRef view, const WKViewClientBase* client)
+ {
+     class ViewClient final : public API::Client<WKViewClientBase>, public API::ViewClient {
+@@ -295,6 +301,38 @@ void WKViewSetViewClient(WKViewRef view, const WKViewClientBase* client)
+             m_client.beganExitFullScreen(WebKit::toAPI(&view), WebKit::toAPI(initialFrame), WebKit::toAPI(finalFrame), m_client.base.clientInfo);
+             completionHandler();
+         }
++
++        bool showPopupMenu(WebKit::OnyxWebView& view, const Vector<WebKit::WebPopupItem>& items, int32_t selectedIndex, const WebCore::IntRect& rect) final
++        {
++            if (!m_client.showPopupMenu)
++                return false;
++
++            // The texts live until the call returns.
++            Vector<UTF8CString> texts;
++            texts.reserveInitialCapacity(items.size());
++            Vector<WKPopupMenuItemOnyx> menuItems;
++            menuItems.reserveInitialCapacity(items.size());
++            for (auto& item : items) {
++                bool isSeparator = item.m_type == WebKit::WebPopupItem::Type::Separator;
++                // (A CString's characters stay where they are when the vector grows: it holds a buffer.)
++                texts.append(isSeparator ? emptyString().utf8() : item.m_text.utf8());
++                WKPopupMenuItemOnyx menuItem;
++                menuItem.text = texts.last().legacyCStringPointer();
++                menuItem.enabled = !isSeparator && item.m_isEnabled;
++                menuItem.isSeparator = isSeparator;
++                menuItem.isLabel = !isSeparator && item.m_isLabel;
++                menuItems.append(menuItem);
++            }
++            m_client.showPopupMenu(WebKit::toAPI(&view), menuItems.span().data(), static_cast<int>(menuItems.size()), selectedIndex, WebKit::toAPI(rect), m_client.base.clientInfo);
++            return true;
++        }
++
++        void hidePopupMenu(WebKit::OnyxWebView& view) final
++        {
++            if (!m_client.hidePopupMenu)
++                return;
++            m_client.hidePopupMenu(WebKit::toAPI(&view), m_client.base.clientInfo);
++        }
+     };
+ 
+     WebKit::toImpl(view)->setClient(makeUnique<ViewClient>(client));
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKView.h b/Source/WebKit/UIProcess/API/C/onyx/WKView.h
+index 5f91c8fa..b4b51216 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKView.h
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKView.h
+@@ -55,6 +55,9 @@ WK_EXPORT void WKViewDidExitFullScreen(WKViewRef) WK_C_API_DEPRECATED;
+ WK_EXPORT void WKViewRequestExitFullScreen(WKViewRef);
+ WK_EXPORT bool WKViewIsFullScreen(WKViewRef);
+ 
++/* The embedder's answer to showPopupMenu: the item chosen, or -1 (cancelled). */
++WK_EXPORT void WKViewSelectPopupMenuItem(WKViewRef view, int index);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/Source/WebKit/UIProcess/API/C/onyx/WKViewClient.h b/Source/WebKit/UIProcess/API/C/onyx/WKViewClient.h
+index bac808ce..bba28b71 100644
+--- a/Source/WebKit/UIProcess/API/C/onyx/WKViewClient.h
++++ b/Source/WebKit/UIProcess/API/C/onyx/WKViewClient.h
+@@ -76,6 +76,20 @@ typedef void(*WKViewCloseFullScreen)(WKViewRef view, const void* clientInfo);
+ typedef void(*WKViewBeganEnterFullScreen)(WKViewRef view, const WKRect initialFrame, const WKRect finalFrame, const void* clientInfo);
+ typedef void(*WKViewBeganExitFullScreen)(WKViewRef view, const WKRect initialFrame, const WKRect finalFrame, const void* clientInfo);
+ 
++/* An item of a <select>'s list. */
++typedef struct WKPopupMenuItemOnyx {
++    const char* text;      /* UTF-8, valid during the call only */
++    int enabled;
++    int isSeparator;
++    int isLabel;           /* an <optgroup> label: shown, not choosable */
++} WKPopupMenuItemOnyx;
++/* rect: the <select>'s box in the view's coordinates; selectedIndex: -1 none.
++   The embedder shows its menu and answers with WKViewSelectPopupMenuItem (WKView.h), from the UI
++   thread, during the call or later. */
++typedef void(*WKViewShowPopupMenuCallback)(WKViewRef view, const WKPopupMenuItemOnyx* items, int count, int selectedIndex, WKRect rect, const void* clientInfo);
++/* The page closed the list itself: the embedder removes its menu; an answer after this is ignored. */
++typedef void(*WKViewHidePopupMenuCallback)(WKViewRef view, const void* clientInfo);
++
+ typedef struct WKViewClientBase {
+     int version;
+     const void* clientInfo;
+@@ -98,6 +112,27 @@ typedef struct WKViewClientV0 {
+     WKViewBeganExitFullScreen beganExitFullScreen;
+ } WKViewClientV0;
+ 
++typedef struct WKViewClientV1 {
++    WKViewClientBase base;
++
++    /* version 0: the same fields in the same order as WKViewClientV0 */
++    WKViewSetViewNeedsDisplayCallback setViewNeedsDisplay;
++    WKViewSetCursorCallback setCursor;
++    WKViewToolTipChangedCallback toolTipChanged;
++    WKViewDidNotHandleKeyEventCallback didNotHandleKeyEvent;
++    WKViewWebProcessCrashedCallback webProcessCrashed;
++    WKViewWebProcessDidRelaunchCallback webProcessDidRelaunch;
++    WKViewEnterFullScreen enterFullScreen;
++    WKViewExitFullScreen exitFullScreen;
++    WKViewCloseFullScreen closeFullScreen;
++    WKViewBeganEnterFullScreen beganEnterFullScreen;
++    WKViewBeganExitFullScreen beganExitFullScreen;
++
++    /* version 1 */
++    WKViewShowPopupMenuCallback showPopupMenu;
++    WKViewHidePopupMenuCallback hidePopupMenu;
++} WKViewClientV1;
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/Source/WebKit/UIProcess/API/onyx/APIViewClient.h b/Source/WebKit/UIProcess/API/onyx/APIViewClient.h
+index 50ef37b6..4c84d33e 100644
+--- a/Source/WebKit/UIProcess/API/onyx/APIViewClient.h
++++ b/Source/WebKit/UIProcess/API/onyx/APIViewClient.h
+@@ -38,6 +38,7 @@ class Region;
+ namespace WebKit {
+ class NativeWebKeyboardEvent;
+ class OnyxWebView;
++struct WebPopupItem;
+ }
+ 
+ namespace API {
+@@ -61,6 +62,13 @@ public:
+     virtual void closeFullScreen(WebKit::OnyxWebView&) { }
+     virtual void beganEnterFullScreen(WebKit::OnyxWebView&, const WebCore::IntRect&, const WebCore::IntRect&, CompletionHandler<void(bool)>&& completionHandler) { completionHandler(false); }
+     virtual void beganExitFullScreen(WebKit::OnyxWebView&, const WebCore::IntRect&, const WebCore::IntRect&, CompletionHandler<void()>&& completionHandler) { completionHandler(); }
++
++    // A <select>'s list to show (rect: the element's box in the view's coordinates). False: the embedder
++    // shows no menu, the list closes at once. Otherwise the embedder answers with
++    // OnyxWebView::selectPopupMenuItem (WKViewSelectPopupMenuItem), at once or later.
++    virtual bool showPopupMenu(WebKit::OnyxWebView&, const Vector<WebKit::WebPopupItem>&, int32_t /* selectedIndex */, const WebCore::IntRect&) { return false; }
++    // The page closed the list itself: the embedder's menu goes.
++    virtual void hidePopupMenu(WebKit::OnyxWebView&) { }
+ };
+ 
+ } // namespace API
+diff --git a/Source/WebKit/UIProcess/onyx/OnyxWebView.cpp b/Source/WebKit/UIProcess/onyx/OnyxWebView.cpp
+index 1948f599..ad7b1b9b 100644
+--- a/Source/WebKit/UIProcess/onyx/OnyxWebView.cpp
++++ b/Source/WebKit/UIProcess/onyx/OnyxWebView.cpp
+@@ -29,6 +29,7 @@
+ #include "APIPageConfiguration.h"
+ #include "DrawingAreaProxy.h"
+ #include "NativeWebKeyboardEvent.h"
++#include "WebPopupMenuProxyOnyx.h"
+ #include "WebProcessPool.h"
+ #include <WebCore/Cursor.h>
+ #include <WebCore/Region.h>
+@@ -59,7 +60,12 @@ OnyxWebView::OnyxWebView(const API::PageConfiguration& conf)
+     m_page->initializeWebPage(pageConfiguration.openedSite(), pageConfiguration.initialSandboxFlags(), pageConfiguration.initialReferrerPolicy());
+ }
+ 
+-OnyxWebView::~OnyxWebView() = default;
++OnyxWebView::~OnyxWebView()
++{
++    // The page (and its open list) may outlive the view.
++    if (RefPtr popupMenu = std::exchange(m_activePopupMenu, nullptr))
++        popupMenu->detachView();
++}
+ 
+ void OnyxWebView::setClient(std::unique_ptr<API::ViewClient>&& client)
+ {
+@@ -115,8 +121,42 @@ void OnyxWebView::didNotHandleKeyEvent(const NativeWebKeyboardEvent& event)
+         m_client->didNotHandleKeyEvent(*this, event);
+ }
+ 
++bool OnyxWebView::showPopupMenu(WebPopupMenuProxyOnyx& popupMenu, const Vector<WebPopupItem>& items, int32_t selectedIndex, const WebCore::IntRect& rect)
++{
++    if (!m_client)
++        return false;
++
++    // Set first: the embedder may answer from inside the call.
++    m_activePopupMenu = &popupMenu;
++    if (!m_client->showPopupMenu(*this, items, selectedIndex, rect)) {
++        if (m_activePopupMenu == &popupMenu)
++            m_activePopupMenu = nullptr;
++        return false;
++    }
++    return true;
++}
++
++void OnyxWebView::hidePopupMenu(WebPopupMenuProxyOnyx& popupMenu)
++{
++    if (m_activePopupMenu != &popupMenu)
++        return;
++    m_activePopupMenu = nullptr;
++    if (m_client)
++        m_client->hidePopupMenu(*this);
++}
++
++void OnyxWebView::selectPopupMenuItem(int32_t index)
++{
++    if (RefPtr popupMenu = std::exchange(m_activePopupMenu, nullptr))
++        popupMenu->didSelectItem(index);
++}
++
+ void OnyxWebView::webProcessCrashed()
+ {
++    // The page forgets its list without closing it: the embedder's menu goes too.
++    if (RefPtr popupMenu = m_activePopupMenu)
++        popupMenu->hidePopupMenu();
++
+     if (m_client)
+         m_client->webProcessCrashed(*this);
+ }
+diff --git a/Source/WebKit/UIProcess/onyx/OnyxWebView.h b/Source/WebKit/UIProcess/onyx/OnyxWebView.h
+index 5c4e3044..678ce5ed 100644
+--- a/Source/WebKit/UIProcess/onyx/OnyxWebView.h
++++ b/Source/WebKit/UIProcess/onyx/OnyxWebView.h
+@@ -35,6 +35,8 @@
+ namespace WebKit {
+ 
+ class NativeWebKeyboardEvent;
++class WebPopupMenuProxyOnyx;
++struct WebPopupItem;
+ 
+ // The web view of the Onyx port: it owns the page (WebPageProxy), keeps the size and the activity state
+ // the embedder gives it, and passes what the page asks of its view (repaint, cursor, tool tip, unused
+@@ -61,6 +63,14 @@ public:
+     void requestExitFullScreen();
+ #endif
+ 
++    // The embedder's answer to the view client's showPopupMenu: an item's index, or -1 (cancelled).
++    // Ignored when no list is open (the page closed it in between).
++    void selectPopupMenuItem(int32_t index);
++
++    // Functions called by WebPopupMenuProxyOnyx
++    bool showPopupMenu(WebPopupMenuProxyOnyx&, const Vector<WebPopupItem>&, int32_t selectedIndex, const WebCore::IntRect&);
++    void hidePopupMenu(WebPopupMenuProxyOnyx&);
++
+     // Functions called by PageClientImpl
+     void setViewNeedsDisplay(const WebCore::Region&);
+     void setCursor(const WebCore::Cursor&);
+@@ -86,6 +96,7 @@ private:
+     OptionSet<WebCore::ActivityState> m_viewStateFlags;
+ 
+     WebCore::IntSize m_viewSize;
++    RefPtr<WebPopupMenuProxyOnyx> m_activePopupMenu;
+ #if ENABLE(FULLSCREEN_API)
+     bool m_isFullScreen { false };
+ #endif
+diff --git a/Source/WebKit/UIProcess/onyx/PageClientImpl.cpp b/Source/WebKit/UIProcess/onyx/PageClientImpl.cpp
+index c6a19372..d8e29e37 100644
+--- a/Source/WebKit/UIProcess/onyx/PageClientImpl.cpp
++++ b/Source/WebKit/UIProcess/onyx/PageClientImpl.cpp
+@@ -31,7 +31,7 @@
+ #include "OnyxWebView.h"
+ #include "WebEditCommandProxy.h"
+ #include "WebPageProxy.h"
+-#include "WebPopupMenuProxy.h"
++#include "WebPopupMenuProxyOnyx.h"
+ #include <WebCore/DOMPasteAccess.h>
+ #include <WebCore/NotImplemented.h>
+ #include <WebCore/Region.h>
+@@ -171,7 +171,7 @@ WebCore::FloatRect PageClientImpl::convertToUserSpace(const WebCore::FloatRect&
+ 
+ // The view does not know where it is on the screen yet (the embedder gives a mouse event's position in
+ // both coordinate systems itself): the two conversions are the identity for now. What depends on them:
+-// window.screenX / screenY, and the place of a popup menu once WebPopupMenuProxyOnyx exists. To do
++// window.screenX / screenY (a <select>'s list is placed by the embedder, in the view's coordinates). To do
+ // with it: a view origin set by the embedder (WKViewSetScreenPosition).
+ WebCore::IntPoint PageClientImpl::screenToRootView(const WebCore::IntPoint& point)
+ {
+@@ -212,13 +212,11 @@ void PageClientImpl::doneWithTouchEvent(const WebTouchEvent&, bool)
+ }
+ #endif // ENABLE(TOUCH_EVENTS)
+ 
+-RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
++RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy& page)
+ {
+-    // No popup menu yet, as the PlayStation port: a <select> list does not open. To come:
+-    // UIProcess/onyx/WebPopupMenuProxyOnyx.{h,cpp} (showPopupMenu / hidePopupMenu, answering through
+-    // WebPopupMenuProxy::Client::valueChangedForPopupMenu).
+-    notImplemented();
+-    return nullptr;
++    // A <select>'s list: the embedder shows it (the view client's showPopupMenu) and answers with
++    // WKViewSelectPopupMenuItem.
++    return WebPopupMenuProxyOnyx::create(m_view, page.popupMenuClient());
+ }
+ 
+ // The page never enters accelerated compositing on Onyx (WebPreferencesOnyx.cpp turns it off, and the
+diff --git a/Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.cpp b/Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.cpp
+new file mode 100644
+index 00000000..77b0bb0e
+--- /dev/null
++++ b/Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.cpp
+@@ -0,0 +1,89 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "WebPopupMenuProxyOnyx.h"
++
++#include "OnyxWebView.h"
++#include "WebPopupItem.h"
++#include <WebCore/IntRect.h>
++
++namespace WebKit {
++
++WebPopupMenuProxyOnyx::WebPopupMenuProxyOnyx(OnyxWebView& view, WebPopupMenuProxy::Client& client)
++    : WebPopupMenuProxy(client)
++    , m_view(&view)
++{
++}
++
++WebPopupMenuProxyOnyx::~WebPopupMenuProxyOnyx() = default;
++
++void WebPopupMenuProxyOnyx::showPopupMenu(const WebCore::IntRect& rect, WebCore::TextDirection, double, const Vector<WebPopupItem>& items, const PlatformPopupMenuData&, int32_t selectedIndex)
++{
++    // The rectangle is in the main frame view's coordinates, which are the view's on Onyx (the view
++    // itself never scrolls: the page does, inside it). The page scale factor is not applied, as GTK.
++    m_itemCount = items.size();
++    m_isShown = true;
++    if (!m_view || !m_view->showPopupMenu(*this, items, selectedIndex, rect)) {
++        // No embedder menu: WebCore must not stay with a list it thinks is open.
++        didSelectItem(-1);
++    }
++}
++
++void WebPopupMenuProxyOnyx::didSelectItem(int32_t index)
++{
++    if (!m_isShown)
++        return;
++    m_isShown = false;
++
++    if (index < 0 || static_cast<size_t>(index) >= m_itemCount)
++        index = -1;
++
++    Ref protectedThis { *this };
++    if (CheckedPtr client = this->client()) {
++        if (index >= 0)
++            client->setTextFromItemForPopupMenu(this, index);
++        // -1: the list closes with no change (WebPopupMenu::didChangeSelectedIndex).
++        client->valueChangedForPopupMenu(this, index);
++    }
++}
++
++void WebPopupMenuProxyOnyx::hidePopupMenu()
++{
++    // The page closes the list itself (or opens another): the embedder's menu goes, and an answer
++    // that arrives after this is ignored.
++    if (!m_isShown)
++        return;
++    m_isShown = false;
++    if (m_view)
++        m_view->hidePopupMenu(*this);
++}
++
++void WebPopupMenuProxyOnyx::cancelTracking()
++{
++    hidePopupMenu();
++}
++
++} // namespace WebKit
+diff --git a/Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.h b/Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.h
+new file mode 100644
+index 00000000..41e1376e
+--- /dev/null
++++ b/Source/WebKit/UIProcess/onyx/WebPopupMenuProxyOnyx.h
+@@ -0,0 +1,62 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#include "WebPopupMenuProxy.h"
++
++namespace WebKit {
++
++class OnyxWebView;
++
++// The list of a <select>: Onyx's view draws no menu itself. The items go to the embedder (the view
++// client's showPopupMenu), which shows its own menu and answers later, from its loop, with
++// WKViewSelectPopupMenuItem (OnyxWebView::selectPopupMenuItem -> didSelectItem).
++class WebPopupMenuProxyOnyx final : public WebPopupMenuProxy {
++public:
++    static Ref<WebPopupMenuProxyOnyx> create(OnyxWebView& view, WebPopupMenuProxy::Client& client)
++    {
++        return adoptRef(*new WebPopupMenuProxyOnyx(view, client));
++    }
++    ~WebPopupMenuProxyOnyx();
++
++    void showPopupMenu(const WebCore::IntRect&, WebCore::TextDirection, double pageScaleFactor, const Vector<WebPopupItem>&, const PlatformPopupMenuData&, int32_t selectedIndex) final;
++    void hidePopupMenu() final;
++    void cancelTracking() final;
++
++    // The embedder's answer: an item's index, or -1 (cancelled).
++    void didSelectItem(int32_t index);
++    // The view is going away (the page may outlive it).
++    void detachView() { m_view = nullptr; }
++
++private:
++    WebPopupMenuProxyOnyx(OnyxWebView&, WebPopupMenuProxy::Client&);
++
++    OnyxWebView* m_view;
++    size_t m_itemCount { 0 };
++    bool m_isShown { false };
++};
++
++} // namespace WebKit

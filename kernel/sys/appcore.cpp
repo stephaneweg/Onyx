@@ -203,13 +203,15 @@ static boolean PageIn (unsigned nCore)
 	asm volatile ("mrs %0, esr_el1" : "=r" (ulESR));
 	asm volatile ("mrs %0, far_el1" : "=r" (ulFAR));
 	unsigned nEC = (unsigned) (ulESR >> 26) & 0x3F;
-	if (   nEC != 0x24					// a data abort from EL0
+	if (   (nEC != 0x24 && nEC != 0x20)			// a data abort from EL0, (v78) an instruction abort
 	    || (ulESR & (1ULL << 10)) != 0			// (FnV: no address)
 	    || (ulESR & 0x3C) != 0x04			// a translation fault
 	    || !IS_USER_VA (ulFAR))
 	{
 		return FALSE;
 	}
+	// (an instruction abort: the page filled as read; where the region is not executable the
+	// retried fetch then takes a permission fault, which is the program's end)
 	TAppCore &C = s_Core[nCore];
 	C.ulPageInVA = ulFAR & ~(u64) KPAGE_MASK;
 	C.bPageInWrite = (ulESR & (1ULL << 6)) != 0;

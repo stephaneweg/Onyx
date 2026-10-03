@@ -187,6 +187,10 @@ struct __onyx_pipe
 	volatile int readers, writers;
 	int eof_sent;
 	int remote;			/* (v76) an end received from another process: its own stream handle */
+	int child_reader;		/* the read end given to a child as its stdin (posix_spawn): a
+					   reader elsewhere, so a write is not EPIPE when ours are closed */
+	int child_writer;		/* the write end given to a child as its stdout: closing ours
+					   sends no end of file (the child's exit ends its stream) */
 };
 
 struct __onyx_ofd

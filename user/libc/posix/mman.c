@@ -9,6 +9,8 @@
  *    MAP_SHARED with PROT_WRITE on a file -> ENOTSUP;
  *  - (v76) a shared memory object (memfd_create, shm_open: ipc.c): MAP_SHARED -> shm_map (the
  *    object's own pages, seen by every process mapping it); MAP_PRIVATE -> an anonymous copy;
+ *  - PROT_EXEC (a JIT): what the kernel says -- v78 gives it to anonymous memory (and to a
+ *    file's private copy), refuses it for shared objects; an older kernel: ENOTSUP;
  *  - munmap (partial: the kernel splits), mprotect, madvise (DONTNEED / FREE: zero at the next
  *    touch), mincore (from vm_query), msync / mlock: no-ops.
  * On a kernel without vm_map (ENOSYS) an anonymous mapping is 64 KB-aligned heap memory
@@ -115,6 +117,11 @@ static void *anon_map (void *addr, unsigned long len, int prot, int flags)
 		}
 		s_novm = 1;
 	}
+	if (prot & PROT_EXEC)				/* (heap memory never runs) */
+	{
+		errno = ENOTSUP;
+		return MAP_FAILED;
+	}
 	if (flags & (MAP_FIXED | MAP_FIXED_NOREPLACE))
 	{
 		errno = ENOMEM;
@@ -173,11 +180,7 @@ void *mmap (void *addr, size_t len, int prot, int flags, int fd, off_t off)
 		errno = EINVAL;
 		return MAP_FAILED;
 	}
-	if (prot & PROT_EXEC)
-	{
-		errno = ENOTSUP;			/* (no JIT on Onyx) */
-		return MAP_FAILED;
-	}
+	/* PROT_EXEC: the kernel's answer (v78: anonymous memory only -- a JIT; before: ENOTSUP) */
 	if (kapi__core () != 0)
 	{
 		errno = ENOSYS;
@@ -257,7 +260,7 @@ int mprotect (void *addr, size_t len, int prot)
 	unsigned long a = (unsigned long) addr;
 	if ((a & (ONYX_PAGE - 1)) != 0)
 		return ONYX_ERR (EINVAL);
-	if (prot & PROT_EXEC)
+	if ((prot & PROT_EXEC) && s_novm)
 		return ONYX_ERR (ENOTSUP);
 	if (!s_novm)
 	{

@@ -149,7 +149,10 @@
 //      of its path reads nothing from the card) / image_unload (its pin and its name taken away)
 //      / image_list (the live images, or the one of a path) (slots 253..255), struct
 //      kapi_image_info, KAPI_IMG_*. No existing call changes.
-#define KAPI_ABI_VERSION	77
+// v78: executable memory for a JIT (roadmap step 3, docs/08): vm_map and vm_protect accept
+//      KAPI_PROT_EXEC for anonymous regions (lazy pages, EL0 execute; vm_protect can take it
+//      away again: W^X); shm_map still refuses it. No new call: a program asks version >= 78.
+#define KAPI_ABI_VERSION	78
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -615,7 +618,7 @@ struct kapi_syscall_stats
 #define KAPI_PROT_NONE		0
 #define KAPI_PROT_READ		1
 #define KAPI_PROT_WRITE		2
-#define KAPI_PROT_EXEC		4		// refused: -KAPI_ENOTSUP
+#define KAPI_PROT_EXEC		4		// (v78) anonymous regions only; before: -KAPI_ENOTSUP
 #define KAPI_MAP_FIXED		0x10
 #define KAPI_MAP_NORESERVE	0x4000
 #define KAPI_MAP_POPULATE	0x8000

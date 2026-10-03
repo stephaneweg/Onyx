@@ -17,8 +17,11 @@
 //                    AP_KEY      struct ApKey: a key typed (a character or a KEY_* code)
 //                    AP_CLOSE    please end (the user went back to the applets' list)
 //
-// The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. The
-// surface's frames live as long as either process maps it (kernel v65: its users).
+// The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another
+// host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id>
+// <host pid> <service>"; its own message types go to the applet's wk_applet_on_message (wtk/root.h;
+// Web's web view: Apps/web/webview_proto.h, types 60..79). The surface's frames live as long as
+// either process maps it (kernel v65: its users).
 //
 #ifndef _applet_proto_h
 #define _applet_proto_h

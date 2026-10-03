@@ -488,13 +488,21 @@ spin instead of sleeping (no kapi call there); stdio and files from there go thr
 - `std::thread::hardware_concurrency ()` is 1 (a process's threads all run on core 0).
 - newlib's `struct stat` has a 16-bit `st_ino` / `st_dev`: `st_ino` is the kernel's 64-bit id
   folded to 16 bits.
-- No asynchronous signals, no `fork`, no `PROT_EXEC`. Shared memory between processes is a shm
+- No asynchronous signals, no `fork`. `PROT_EXEC` (kernel v78) on anonymous memory only — a JIT's:
+  write the code, `__builtin___clear_cache` over it, run it; a file's private copy too, never a
+  shared object. Shared memory between processes is a shm
   object (v76: `memfd_create`, `shm_open`); `MAP_SHARED` of a *file* for writing stays `ENOTSUP`, and
   an anonymous `MAP_SHARED` is private (there is no `fork` to share it with).
 - (v76) A pipe end passed to another process (`SCM_RIGHTS`, `posix_spawn`): the pipe's end-of-file
   waits for every holder of a write end (the kernel counts them: `KAPI_HXF_WRITER`), as on Unix —
   so mark the descriptors a child must not keep `FD_CLOEXEC`. No named `AF_UNIX` sockets; reference
   cycles of local sockets queued on themselves through other connections are not collected.
+- A pipe's end given as a child's stdin or stdout (`posix_spawn_file_actions_adddup2 (fa, p[0], 0)`,
+  `(fa, q[1], 1)`): the parent may close its own copy at once. Writing into the stdin pipe keeps
+  working (no `EPIPE`: the pipe is read elsewhere), and closing the stdout pipe's write end sends no
+  end of file (the child still writes there). The other side: no `EPIPE` when the child has ended
+  either — watch it with `waitpid (WNOHANG)`, and make the write end `O_NONBLOCK` if the child may
+  stop reading (Web's downloads window does both).
 - `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/tls/README.md).
 
 **Testing it: `/bin/posixtest [group…] [dir]`** ([`user/bin/posixtest.c`](../user/bin/posixtest.c);
@@ -1769,6 +1777,25 @@ its licence on the app.
 >   `SD:/apps/control.app/applets/` (`name`, `icon`, `target`, `text`: the user guide §11) and
 >   give its `app.txt` `category = Settings` (the menu bar leaves those out). Examples: `theme`,
 >   `dockconf`, `soundconf`, `keyconf`, `config`, `padconf`, `wpaconf`.
+>   **Other hosts** (2026-10-03: Mail, showing Web as its HTML view): the host registers an IPC
+>   service of its own and adds its name — `--applet <surface> <host pid> <service>` — (the
+>   applet ends when that service is gone; without it: `"control"`, `AP_SERVICE`); its own message
+>   types (beyond `AP_*`, up to 512 bytes) reach the applet through **`wk_applet_on_message (fn)`**
+>   (called from `wk_pump`, the payload NUL-terminated). The surface may be bigger than the area the
+>   host shows: the applet shrinks its Root with `setBounds (w, h)` (the surface's stride kept).
+> - **Web's web view** (`user/Apps/web/webview.cpp`, `webview_proto.h`; docs/08 step 5): the browser's
+>   one program as an applet — `SD:/apps/web.app/main --applet <surface> <host pid> <service>` —, the
+>   page alone (JavaScript off, a link clicked told to the host, not followed). The host makes the
+>   surface once, as big as the work area, and talks to it with: `WV_SIZE` (60, `int w, h`: the page's
+>   size in the surface's top-left), `WV_HTML` (61, a path: an HTML file the host wrote — Mail:
+>   `RAM:/mailview-<pid>.html` —, read once), `WV_URL` (62, an address), `WV_COMMAND` (63, `"Copy"`,
+>   `"SelectAll"`), `WV_PING` (64: the host's send fails when the view is gone); the view answers
+>   `WV_LINK` (70, the URL clicked), `WV_STATUS` (71, the link under the pointer), `WV_LOADED` (72: the
+>   page is drawn), `WV_ENDED` (73: the engine did not start or its web process ended: show it your own
+>   way), plus the applet protocol's `AP_HELLO` / `AP_PRESENT` / `AP_EXIT`; the host sends `AP_PTR` /
+>   `AP_KEY` / `AP_CLOSE`. Mail's side: `user/Apps/mail/webview.h` (the HTML wrapped in a
+>   Content-Security-Policy, the `cid:` pictures as `data:` URLs; its own renderer when the program is
+>   absent, Mail cannot register its service — the desktop simulator —, or the view fails).
 > - **Shared settings headers**: `dockconf.h` (the dock's drawers, launchers and workspaces:
 >   `SD:/etc/dock.ini`, read / written by the dock and the Panel applet; `DOCK_MSG_RELOAD` to the
 >   IPC service `"dock"`), `wallpaper.h` (the wallpaper's modes and their painter:

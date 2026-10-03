@@ -656,7 +656,8 @@ and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / 
 `app.txt` `mode =` of v73 are gone; old cards that still set them get no effect.)
 
 - **Mappings** (the `KPAGE_ATTR_APP_*` presets of `layout.h`): data `RW_ALL`, read-only data
-  `RO_ALL`, code (and `code_alloc`) `UXN = 0, PXN = 1`, everything else `PXN = UXN = 1`; the screen
+  `RO_ALL`, code (and `code_alloc`, and v78 `PROT_EXEC` regions) `UXN = 0, PXN = 1`, everything
+  else `PXN = UXN = 1`; the screen
   (`fullscreen_direct`) is Device memory: the user-side `memcpy`/`memset` align their stores.
   The identity region 0–4 GB keeps Circle's `AP = RW_EL1, UXN = 1`: EL0 can neither read, write
   nor execute it. There is no PAN on the A72: the kernel reads and writes EL0 pages directly.
@@ -1056,7 +1057,9 @@ DGRAM), `sock_sendmsg` / `sock_recvmsg` (handles carried between processes), `sh
 v77 = **program images** (§7 *Program images*): a program is streamed from its file once and its
 read-only segments are shared by its processes — no call changes for that —, 3 entries after
 `get_handles` (slots 253–255): `image_preload`, `image_unload`, `image_list`; `struct
-kapi_image_info`, `KAPI_IMG_*` (*v77: program images* below).
+kapi_image_info`, `KAPI_IMG_*` (*v77: program images* below),
+v78 = **executable memory for a JIT** (WebKit roadmap step 3, docs/08): `vm_map` and `vm_protect`
+accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1139,9 +1142,9 @@ deferred zap, the TLB rules, the OOM policy — is §4 *Demand paging*. Every en
 
 | Slot | Entry | Does → returns |
 |---|---|---|
-| 199 | `vm_map (addr, len, prot, flags)` | A zero-filled `ANON` region of `len` (rounded up) in the mmap arena `[34 GB, 60 GB)`, filled on first touch (`KAPI_MAP_POPULATE`: now, a yield every 64 pages, a failure not reported). `addr` is a hint (taken if free, else the lowest gap) unless `KAPI_MAP_FIXED` (aligned, inside the arena; replaces what is there) or `KAPI_MAP_FIXED_NOREPLACE` (`-EEXIST` if anything is there). `prot` = `KAPI_PROT_NONE/READ/WRITE` (`EXEC`: `-ENOTSUP`). → the address / `-EINVAL` (len 0, a bad `FIXED`), `-ENOMEM` (no room, 4096 regions, or a writable map larger than the free app pool − 16 MB without `KAPI_MAP_NORESERVE`) |
+| 199 | `vm_map (addr, len, prot, flags)` | A zero-filled `ANON` region of `len` (rounded up) in the mmap arena `[34 GB, 60 GB)`, filled on first touch (`KAPI_MAP_POPULATE`: now, a yield every 64 pages, a failure not reported). `addr` is a hint (taken if free, else the lowest gap) unless `KAPI_MAP_FIXED` (aligned, inside the arena; replaces what is there) or `KAPI_MAP_FIXED_NOREPLACE` (`-EEXIST` if anything is there). `prot` = `KAPI_PROT_NONE/READ/WRITE`, v78 `EXEC` (executable at EL0: a JIT; before v78: `-ENOTSUP`). → the address / `-EINVAL` (len 0, a bad `FIXED`), `-ENOMEM` (no room, 4096 regions, or a writable map larger than the free app pool − 16 MB without `KAPI_MAP_NORESERVE`) |
 | 200 | `vm_unmap (addr, len)` | Inside the arena (holes allowed; regions split): the pages dropped (a pinned one when its kapi ends) → 0 / `-EINVAL` (unaligned, outside the arena) / `-ENOMEM` (a split at 4096 regions) |
-| 201 | `vm_protect (addr, len, prot)` | `ANON` regions covering the range without a hole: their protection (split / merged), the present pages re-protected + TLBI (a write taken from a page under another thread's kapi: when it ends) → 0 / `-EINVAL` / `-ENOMEM` (split cap) / `-ENOTSUP` (`EXEC`) |
+| 201 | `vm_protect (addr, len, prot)` | `ANON` regions covering the range without a hole: their protection (split / merged), the present pages re-protected + TLBI (a write taken from a page under another thread's kapi: when it ends) → 0 / `-EINVAL` / `-ENOMEM` (split cap) / `-ENOTSUP` (`EXEC` over an SHM region; before v78: any `EXEC`) |
 | 202 | `vm_advise (addr, len, advice)` | Lazy regions (`ANON`, `HEAP`, `STACK`) covering the range: `KAPI_MADV_WILLNEED` fills (`-ENOMEM`); `DONTNEED` / `FREE` drop the pages — zeros on the next touch (`ANON` and `HEAP` only); `NORMAL` / `RANDOM` / `SEQUENTIAL` nothing → 0 / `-EINVAL` |
 | 203 | `vm_query (addr, out)` | `struct kapi_vm_region { start, end, prot, kind (KAPI_VMK_ANON/HEAP/STACK/IMAGE/FIXED), resident (pages present), flags (KAPI_VMF_LAZY) }` of the region holding `addr` → 0, or of the next one above → 1; `-ENOMEM` none above, `-EFAULT` |
 | 204 | `vm_stats (pid, out)` | `struct kapi_vm_stats { resident (bytes of owned frames, page tables included), lazy (VA of lazy regions), writable (VA of writable regions), faults (pages filled), pt_bytes, limit (0) }`, `pid` 0 = self → 0 / `-ESRCH` / `-EFAULT` |
@@ -1421,6 +1424,24 @@ key). A path is a program file's, relative to the caller's working directory; ev
 Users: `/bin/preload`, `/bin/unload` (docs/04 §8), `pkg` (`pkglib.h` `move`: a kept program
 unloaded before its file is replaced, preloaded again after). `user/kapi.h`'s wrappers return
 `-KAPI_ENOSYS` on an older kernel. Tests: `sh tools/tests/run_image_test.sh` (§7).
+
+### v78: PROT_EXEC
+
+A JIT's memory, as on Unix: `vm_map (addr, len, READ | WRITE | EXEC, flags)` gives a **lazy**
+anonymous region whose pages are mapped `UXN = 0` (executable at EL0; `PXN` stays 1: the kernel
+never runs an app's code), and `vm_protect` sets or takes away `EXEC` on anonymous regions — so a
+JIT may keep its code `RWX` (JavaScriptCore's default on Linux) or switch `RW` / `RX` (W^X). A
+shared object's pages never run: `shm_map` with `EXEC`, or `vm_protect` adding it over an SHM
+region → `-KAPI_ENOTSUP`. `kernel/sys/vm.cpp`: a region's protection becomes its PTE's AP **and**
+UXN bits (`PteProt`) wherever pages are filled, adopted, settled or reprotected. An instruction
+abort in a region not filled yet is paged in where the region is executable (`el0.cpp`
+`PageFault`, `VmProtAt`; an app core asks core 0 as for a data abort, the retried fetch then faults
+if the region does not allow it). The program writes its code, then makes the caches coherent over
+it from EL0 (`DC CVAU`, `DSB ISH`, `IC IVAU`, `DSB ISH`, `ISB`: SCTLR_EL1.UCI / UCT, `el0.cpp`;
+libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region in the code arena)
+stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
+`mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
+rewritten), `posixtest` (`mmap PROT_EXEC`).
 
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against

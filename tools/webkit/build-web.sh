@@ -44,7 +44,13 @@ rm -f "$O/libwtk.a"; aarch64-onyx-elf-ar rcs "$O/libwtk.a" "$O"/wtk/*.o
 
 # ---- the window ----
 echo "web: the window"
-$CXX -c "$APP/main.cpp" -o "$O/main.o"
+WIN=""
+for f in "$APP"/*.cpp; do				# (all but the engines: main, downloads, ...)
+	case $(basename "$f") in engine_*) continue ;; esac
+	o="$O/$(basename "$f" .cpp).o"
+	$CXX -c "$f" -o "$o"
+	WIN="$WIN $o"
+done
 
 # ---- the engine: the command of one of WebKit's own sources, the file swapped ----
 ref=UIProcess/API/C/onyx/WKRunLoop.cpp
@@ -75,7 +81,7 @@ if [ "${HEAPCHECK:-0}" = 1 ]; then
 fi
 echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
-	"$O/main.o" "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $WK $LIBS -o "$BUILD/bin/web"
+	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $WK $LIBS -o "$BUILD/bin/web"
 aarch64-onyx-elf-size "$BUILD/bin/web"
 
 if [ "${STAGE:-1}" = 1 ]; then

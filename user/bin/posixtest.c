@@ -156,9 +156,18 @@ static void group_mem (void)
 		CHECK ("munmap", munmap (p, n) == 0, "errno %d", errno);
 	}
 
-	errno = 0;
-	void *x = mmap (0, 65536, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	CHECK ("mmap PROT_EXEC refused (no JIT)", x == MAP_FAILED, "mapped at %p", x);
+	errno = 0;					/* (v78) executable memory: a JIT's */
+	unsigned *x = (unsigned *) mmap (0, 65536, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	CHECK ("mmap PROT_EXEC (a JIT's memory)", x != MAP_FAILED, "errno %d", errno);
+	if (x != MAP_FAILED)
+	{
+		x[0] = 0x52800540;			/* mov w0, #42 */
+		x[1] = 0xD65F03C0;			/* ret */
+		__builtin___clear_cache ((char *) x, (char *) (x + 2));
+		CHECK ("generated code runs", ((int (*) (void)) x) () == 42, "wrong result");
+		CHECK ("mprotect PROT_READ | PROT_EXEC", mprotect (x, 65536, PROT_READ | PROT_EXEC) == 0, "errno %d", errno);
+		munmap (x, 65536);
+	}
 
 	void *al = 0;
 	CHECK ("posix_memalign 64 KB", posix_memalign (&al, 65536, 100000) == 0 && ((unsigned long) al & 0xFFFF) == 0, "failed");

@@ -80,6 +80,7 @@ a Microsoft account:
 | `tools/tests/mail/mailtest.cpp` | 98 checks against it (`sh tools/tests/run_mail_test.sh`) |
 | `tools/tests/mail/htmltest.cpp` | the renderer on a newsletter, styles, plain text, broken HTML: 22 checks, PNGs to look at |
 | `user/Apps/mail/*` | the app: accounts (encrypted secrets), the cache, the worker thread, contacts (Cardfile's model), the model, the window |
+| `user/Apps/mail/webview.h` | (2026-10-03) the HTML messages drawn by **WebKit**: Web's web view (`user/Apps/web/webview.cpp`, the browser's program run as an applet in the reading pane: `webview_proto.h`, docs/03 *Web's web view*) when `SD:/apps/web.app/main` is on the card; the HTML given to it after a **Content-Security-Policy** meta (`default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'; font-src data:` — with *Show the pictures*: `https:` / `http:` pictures, styles and fonts too), the `cid:` pictures put in as `data:` URLs, written to `RAM:/mailview-<pid>.html`; a link clicked comes back to Mail (asked, then opened in Web; `mailto:` writes). The renderer above stays: when Web is absent, Mail cannot be an IPC service (the desktop simulator: the screenshots), or the view does not start / its engine ends. |
 | `tools/tests/mail/modeltest.cpp` | the model and the worker against `fakemail.py`: 42 checks |
 | `tools/tests/mail/demo_mail.py`, `mkaccounts.cpp` | the screenshots' made-up mailboxes and accounts (`shots.sh mail`) |
 

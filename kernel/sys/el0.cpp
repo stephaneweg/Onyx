@@ -487,10 +487,20 @@ static void __attribute__ ((noreturn)) OutOfMemory (u64 ulFAR)
 // real fault. Core 0 (an app core's job: sys/appcore.cpp).
 static boolean PageFault (unsigned nEC, u64 ulESR, u64 ulFAR)
 {
+	if (nEC == EC_IABORT_LOW)		// (v78) code not filled yet in an executable lazy region
+	{
+		if (DFSC_KIND (ulESR) != DFSC_TRANSLATION || (ulESR & ESR_FNV) != 0) return FALSE;
+		CAddressSpace *pAS = CurrentAS ();
+		if (pAS == 0 || (VmProtAt (pAS, ulFAR) & KAPI_PROT_EXEC) == 0) return FALSE;
+		asm volatile ("msr daifclr, #3" ::: "memory");
+		int r = VmFaultIn (pAS, ulFAR, FALSE);
+		if (r == -KAPI_ENOMEM) OutOfMemory (ulFAR);
+		return r >= 0;
+	}
 	if (   nEC != EC_DABORT_LOW || (ulESR & ESR_FNV) != 0
 	    || (DFSC_KIND (ulESR) != DFSC_TRANSLATION && DFSC_KIND (ulESR) != DFSC_PERMISSION))
 	{
-		return FALSE;			// (an instruction abort: EXEC is never given)
+		return FALSE;
 	}
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS == 0) return FALSE;

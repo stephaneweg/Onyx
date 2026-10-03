@@ -57,7 +57,7 @@ static short ready_now (struct __onyx_ofd *d, short ev)
 		break;
 	}
 	case ONYX_FD_PIPE_W:
-		r = d->pipe->readers > 0 ? POLLOUT : POLLERR;
+		r = d->pipe->readers > 0 || d->pipe->child_reader ? POLLOUT : POLLERR;
 		break;
 	case ONYX_FD_CONSOLE:
 		if (d->console != 0)

@@ -874,8 +874,7 @@ static int f_wake_word (volatile unsigned *a) { return (int) sc6 (L_futex, (long
 /* ---- v75: memory ---- */
 static long long f_vm_map (unsigned long long addr, unsigned long long len, unsigned prot, unsigned flags)
 {
-	if (prot & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
-	if (len == 0) return -KAPI_EINVAL;
+	if (len == 0) return -KAPI_EINVAL;		/* (v78: PROT_EXEC given, as the kernel does) */
 	len = (len + 0xFFFF) & ~0xFFFFULL;
 	long lf = 0x22 | (flags & (KAPI_MAP_FIXED | KAPI_MAP_NORESERVE | KAPI_MAP_POPULATE | KAPI_MAP_FIXED_NOREPLACE));
 	if (flags & (KAPI_MAP_FIXED | KAPI_MAP_FIXED_NOREPLACE))
@@ -896,7 +895,6 @@ static long long f_vm_map (unsigned long long addr, unsigned long long len, unsi
 static int f_vm_unmap (unsigned long long a, unsigned long long l) { return (int) kret (sc2 (L_munmap, a, l)); }
 static int f_vm_protect (unsigned long long a, unsigned long long l, unsigned p)
 {
-	if (p & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
 	return (int) kret (sc3 (L_mprotect, a, l, p));
 }
 static int f_vm_advise (unsigned long long a, unsigned long long l, int adv) { return (int) kret (sc3 (L_madvise, a, l, adv)); }

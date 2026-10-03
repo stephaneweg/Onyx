@@ -126,7 +126,7 @@ courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/ony
 # Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Writer (FreeType's text through wtk), its
 # protocols and its HTML renderer in mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (wtk's imgload).
 MAIL_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h \
+mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h applet_proto.h Apps/web/webview_proto.h \
 	  img/imgload.hpp ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@

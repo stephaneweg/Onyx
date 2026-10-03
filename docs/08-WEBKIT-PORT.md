@@ -363,10 +363,26 @@ Found and **not fixed** (Onyx, outside WebKit):
   restart the Pi. Probably also the restart seen while `cat` joined a big file over telnet.
 - `ps` shows absurd `PAGES` numbers (2485159040) for the web processes (with shared images).
 
-Not there yet (the next work of step 1): the pages' drop-down lists (`<select>`: no popup), the
-clipboard with the other apps (in-process only), downloads, the pointer's shape (no kapi for it),
-AltGr on the Onyx keyboard (to check), the window's title in the dock (the kernel keeps the
-program's), WOFF2 fonts, the measurements of where kotonstudio.com's 3.2 s go.
+**Then (2026-10-03, patch `0016`)**, tried on the Pi over VNC: the pages' **drop-down lists** (the C
+API's `WKViewClientV1` `showPopupMenu` / `hidePopupMenu` and `WKViewSelectPopupMenuItem`, from
+`UIProcess/onyx/WebPopupMenuProxyOnyx`; Web shows the list in a wtk popup and answers — the
+`change` event fires), the **system clipboard** both ways (`WKSetClipboardCallbacksOnyx`: WebCore's
+`PlatformPasteboard` of the UI process calls Web's three functions, `clipboard.h` underneath; the
+system's text is read again when its serial changed), **find in the page** (`WKPageFindString`, the
+matches counted and marked), the menu of the right button and **downloads**: a response the page cannot
+show, or an attachment, becomes a download (`WKFramePolicyListenerDownload`), *Save … As* starts one
+(`WKPageDownloadURLOnyx`: the page's Referer and User-Agent, its cookies); the file goes to
+`SD:/Downloads` (Web makes the folder and a unique name: WebKit opens it `O_EXCL`), the progress to
+the downloads' window — the same program run with `--onyx-downloads`, its stdin / stdout two pipes.
+Two fixes on the way: curl's download path told WebKit no running total nor expected length (no
+progress could be shown: `NetworkDataTaskCurl`, in `0016`), and libonyxposix answered `EPIPE` to a
+write into a pipe whose read end it had given as a child's stdin and then closed (its counts are
+the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). Web also serves Mail as its HTML view
+(`--applet`, `user/Apps/web/webview.cpp`; docs/03 *Web's web view*).
+
+Not there yet (the next work of step 1): the pointer's shape (no kapi for it), AltGr on the Onyx
+keyboard (to check), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,
+the measurements of where kotonstudio.com's 3.2 s go.
 
 ## The roadmap from here (the user, 2026-10-02)
 

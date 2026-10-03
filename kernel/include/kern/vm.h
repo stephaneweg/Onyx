@@ -138,6 +138,10 @@ void VmTeardown (CAddressSpace *pAS);
 //    protection forbids it, -KAPI_ENOMEM the app pool is under VM_RESERVE.
 int VmFaultIn (CAddressSpace *pAS, u64 ulVA, boolean bWrite);
 
+// (v78) The protection of the lazy region holding ulVA (KAPI_PROT_*), 0 if none: an instruction
+// abort is paged in only where the region is executable.
+unsigned VmProtAt (CAddressSpace *pAS, u64 ulVA);
+
 // Fill what is not present of [ulStart, ulEnd) in the lazy regions there (others skipped), a
 // yield every VM_POPULATE_BATCH pages when bYield. -> 0, or -KAPI_ENOMEM (stopped there).
 int VmPopulate (CAddressSpace *pAS, u64 ulStart, u64 ulEnd, boolean bYield);

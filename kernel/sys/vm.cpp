@@ -312,6 +312,8 @@ boolean VmCommitOK (u64 nBytes)
 #define PTE_FRAME(v)		((v) & 0x0000FFFFFFFF0000ULL)
 #define PTE_AP_SHIFT		6
 #define PTE_AP_MASK		(3ULL << PTE_AP_SHIFT)
+#define PTE_UXN			(1ULL << 54)		// (v78) not executable at EL0
+#define PTE_PROT_MASK		(PTE_AP_MASK | PTE_UXN)
 
 static inline volatile u64 *PteOf (CAddressSpace *pAS, u64 ulVA)
 {
@@ -331,6 +333,13 @@ static unsigned ApForProt (unsigned nProt)
 	if (nProt & KAPI_PROT_WRITE) return ATTRIB_AP_RW_ALL;
 	if (nProt & KAPI_PROT_READ) return ATTRIB_AP_RO_ALL;
 	return ATTRIB_AP_RO_EL1;
+}
+
+// (v78) A region's protection as PTE bits: its AP, and UXN unless it is executable (PROT_EXEC: a
+// JIT's code; PXN stays set, the kernel never runs an app's code).
+static inline u64 PteProt (unsigned nProt)
+{
+	return ((u64) ApForProt (nProt) << PTE_AP_SHIFT) | ((nProt & KAPI_PROT_EXEC) ? 0 : PTE_UXN);
 }
 
 static inline boolean ApAllows (unsigned nAP, boolean bWrite)
@@ -496,8 +505,7 @@ static void Settle (CAddressSpace *pAS, TVmSpace *pVm, u64 s, u64 e, CVmBatch &B
 			int i = (v & VM_PTE_SW_ZAP) ? -1 : VmaFind (pVm, va);
 			if (i >= 0 && IsLazy (pVm->pVma[i].nKind))
 			{
-				*p = (v & ~(PTE_AP_MASK | VM_PTE_SW_SYNC))
-				   | ((u64) ApForProt (pVm->pVma[i].nProt) << PTE_AP_SHIFT);
+				*p = (v & ~(PTE_PROT_MASK | VM_PTE_SW_SYNC)) | PteProt (pVm->pVma[i].nProt);
 				Batch.Add (va, 0);
 			}
 			else
@@ -645,12 +653,13 @@ static void Reprotect (CAddressSpace *pAS, TVmSpace *pVm, u64 s, u64 e, unsigned
 {
 	CVmBatch Batch (pAS);
 	unsigned nAP = ApForProt (nProt);
+	u64 ulBits = PteProt (nProt);
 	for (u64 va = s; va < e; )
 	{
 		volatile u64 *p = PteOf (pAS, va);
 		if (p == 0) { va = NextSlot (va); continue; }
 		u64 v = *p;
-		if (PTE_IS_VALID (v) && (PteAP (v) != nAP || (v & VM_PTE_SW_SYNC)))
+		if (PTE_IS_VALID (v) && ((v & PTE_PROT_MASK) != ulBits || (v & VM_PTE_SW_SYNC)))
 		{
 			boolean bLosesWrite = PteAP (v) == ATTRIB_AP_RW_ALL && nAP != ATTRIB_AP_RW_ALL;
 			if (bLosesWrite && PinnedByOther (pVm, va, va + KPAGE_SIZE, pSelf))
@@ -660,7 +669,7 @@ static void Reprotect (CAddressSpace *pAS, TVmSpace *pVm, u64 s, u64 e, unsigned
 			}
 			else
 			{
-				*p = (v & ~(PTE_AP_MASK | VM_PTE_SW_SYNC)) | ((u64) nAP << PTE_AP_SHIFT);
+				*p = (v & ~(PTE_PROT_MASK | VM_PTE_SW_SYNC)) | ulBits;
 				Batch.Add (va, 0);
 			}
 		}
@@ -672,7 +681,7 @@ static void Reprotect (CAddressSpace *pAS, TVmSpace *pVm, u64 s, u64 e, unsigned
 static void Adopt (CAddressSpace *pAS, u64 s, u64 e, unsigned nProt)
 {
 	CVmBatch Batch (pAS);
-	unsigned nAP = ApForProt (nProt);
+	u64 ulBits = PteProt (nProt);
 	for (u64 va = s; va < e; )
 	{
 		volatile u64 *p = PteOf (pAS, va);
@@ -684,7 +693,7 @@ static void Adopt (CAddressSpace *pAS, u64 s, u64 e, unsigned nProt)
 			{
 				memset ((void *) (uintptr) PTE_FRAME (v), 0, KPAGE_SIZE);
 				asm volatile ("dsb ishst" ::: "memory");
-				*p = (v & ~(PTE_AP_MASK | VM_PTE_SW_ZAP | VM_PTE_SW_SYNC)) | ((u64) nAP << PTE_AP_SHIFT);
+				*p = (v & ~(PTE_PROT_MASK | VM_PTE_SW_ZAP | VM_PTE_SW_SYNC)) | ulBits;
 				Batch.Add (va, 0);
 			}
 			else
@@ -712,6 +721,14 @@ static unsigned CountResident (CAddressSpace *pAS, u64 s, u64 e)
 }
 
 // ---- demand paging -------------------------------------------------------------------------------
+
+unsigned VmProtAt (CAddressSpace *pAS, u64 ulVA)
+{
+	TVmSpace *pVm = pAS != 0 ? pAS->GetVm () : 0;
+	if (pVm == 0 || !IS_USER_VA (ulVA)) return 0;
+	int i = VmaFind (pVm, ulVA & ~(u64) KPAGE_MASK);
+	return i >= 0 && IsLazy (pVm->pVma[i].nKind) ? pVm->pVma[i].nProt : 0;
+}
 
 int VmFaultIn (CAddressSpace *pAS, u64 ulVA, boolean bWrite)
 {
@@ -749,6 +766,7 @@ int VmFaultIn (CAddressSpace *pAS, u64 ulVA, boolean bWrite)
 	}
 	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
 	Attr.AP = ApForProt (nProt);
+	Attr.UXN = (nProt & KAPI_PROT_EXEC) ? 0 : 1;	// (v78: a JIT's code)
 	if (pAS->MapNewPage (ulVA, Attr) == 0)		// zeroed, DSB before and after its PTE
 	{
 		return -KAPI_ENOMEM;
@@ -976,7 +994,6 @@ long long kapi_vm_map (unsigned long long ulAddr, unsigned long long ulLen, unsi
 {
 	CAddressSpace *pAS = CurrentAS ();
 	if (pAS == 0 || ulLen == 0 || (nProt & ~PROT_ALL) != 0) return -KAPI_EINVAL;
-	if (nProt & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
 	if (ulLen > USER_MMAP_END - USER_MMAP_BASE) return -KAPI_ENOMEM;
 	u64 nLen = (ulLen + KPAGE_MASK) & ~(u64) KPAGE_MASK;
 	TVmSpace *pVm = VmOf (pAS, TRUE);
@@ -1109,8 +1126,11 @@ int kapi_vm_protect (unsigned long long ulAddr, unsigned long long ulLen, unsign
 	TVmSpace *pVm = VmOf (pAS, TRUE);
 	u64 e;
 	if (pVm == 0 || (nProt & ~PROT_ALL) != 0 || !PageRange (ulAddr, ulLen, &e)) return -KAPI_EINVAL;
-	if (nProt & KAPI_PROT_EXEC) return -KAPI_ENOTSUP;
 	if (!VmaCovered (pVm, ulAddr, e, KINDS_ARENA)) return -KAPI_EINVAL;
+	if ((nProt & KAPI_PROT_EXEC) && !VmaCovered (pVm, ulAddr, e, KIND_BIT (KAPI_VMK_ANON)))
+	{
+		return -KAPI_ENOTSUP;				// (v78: a shared object's pages never run)
+	}
 	if (nProt & KAPI_PROT_WRITE)				// (v76: a shared object's write rights)
 	{
 		for (unsigned i = VmaLowerBound (pVm, ulAddr); i < pVm->nVma && pVm->pVma[i].ulStart < e; i++)

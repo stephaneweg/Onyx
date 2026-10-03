@@ -12,8 +12,9 @@
 // The tool bar: New message, Reply, Reply all, Forward, Archive, Delete, Junk, Star, the search, Check now. New
 // mail is looked for every few minutes (each account's setting) and told by a notification. The messages, the
 // folders, the accounts live on the card (store.h, accounts.h; the passwords and tokens encrypted); the servers are
-// talked to by a worker thread (sync.h) while the window stays live. HTML messages are drawn by Mail's own renderer
-// (user/mail/html.h: HTML 4, CSS 2; no scripts, the remote pictures held back until asked).
+// talked to by a worker thread (sync.h) while the window stays live. HTML messages are drawn by WebKit -- the browser
+// Web run as an applet in the reading pane (webview.h; no scripts, nothing from the internet until asked) -- when Web
+// is on the card, else by Mail's own renderer (user/mail/html.h: HTML 4, CSS 2; the remote pictures held back too).
 // "mail SD:/x.eml" shows a message file (fileassoc.ini: eml = mail).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
@@ -941,6 +942,7 @@ public:
 		g_m.tick ();
 		g_compose->tick ();
 		g_contacts->tick ();
+		wv_tick ();					// (the web view: its pictures, its links)
 		static char lastQ[200]; static unsigned qT;
 		if (strcmp (lastQ, g_tb->search->text)) { scpy (lastQ, g_tb->search->text, sizeof lastQ); qT = g_tick; }
 		if (qT && g_tick - qT > 30) { qT = 0; search_changed (); }
@@ -1068,6 +1070,7 @@ int main (void)
 
 	root.run ();
 
+	wv_end ();
 	g_m.worker.stop ();
 	return 0;
 }
