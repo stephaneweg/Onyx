@@ -481,8 +481,37 @@ without a paint**, the partial repaint of a tile, groups for opacity. On the ben
 (`WK2TEST_GPU=1 sh tools/webkit/test-webkit.sh`, gpucomp on the CPU): the 49 checks pass on both
 paths, a scrolled page matches the software picture.
 
-**Later**: the window's canvas shared with the web process (a kernel addition: no copy at all),
-4 × 4 matrices in gpucomp (3D), filters and masks by re-uploaded groups, a compositor thread.
+**Stage 2 (patch `0019`)**: layers for CSS animations and transitions of **opacity and transform**
+(the `Animation` and `AnimatedOpacity` compositing triggers); `addAnimation` is taken and the
+animation evaluated at composite time (WebCore's `TextureMapperAnimation`, GL-free), so an animated
+frame paints nothing and needs no page update; a layer drawn scaled, rotated or at a fractional
+place is one bilinear texture (≤ 2048); **opacity groups** (overlapping composited descendants: a
+gpucomp alpha target uploaded again as a texture); a budget (440 textures, 96 MB); a dirty tile
+repainted only where it is dirty. And three fixes in WebCore that scrolling needed:
+- a page's **sticky** elements are layers when the frame is composited (without a scrolling
+  coordinator they were not);
+- a composited fixed or sticky element is **not laid out again** when the layout viewport moves
+  (its layer's place is updated): each scroll step laid them all out and repainted their blocks;
+- `RenderLayer::paintList` skips a child subtree whose repaint rectangles do not touch what is
+  painted (a 300-pixel repaint walked every layer of the page).
+Switches, files in `SD:/etc`: `web-gpu-debug` (each layer's paints, a `times:` line), `web-gpu-trace`,
+`web-gpu-noanim`, `web-gpu-nogroups`, `web-gpu-nocull`, `web-gpu-3d`, `web-gpu-stage1`. The bench:
+65 checks on both paths (animations paused: the software picture within 2 levels; running: 0
+tiles painted; a page with fixed and sticky elements scrolled: 0 rectangles repainted).
+
+**Stage 2 on the Pi** (the V3D, a 1000 × 638 view):
+- Wikipedia's Raspberry Pi article, 30 notches of the wheel: stage 1 repainted the whole view at
+  every step (13.5 Mpx in 2 s, 16 frames); now 36 frames in 2.1 s for 580 ms of work in all (page
+  update 280 ms, the layers 300 ms, of it 218 ms of painting: the new tiles) — the compositor is no
+  longer what limits the scrolling.
+- kotonstudio.com: its reveal effects are composited (each card a layer painted once); what is
+  left is the page's own painting — blurred shadows, a large scaled picture: 0.2 to 0.7 ms a
+  thousand pixels in Skia on the CPU, as in the software path — when a card's layer appears and
+  goes (the parent is repainted there), and 4.4 ms for each repaint of its pulsing dot (a
+  `box-shadow` animation: not a composited property).
+- *To do*: the tiles painted on other cores (a recording replayed by worker threads, as WebKit's
+  `SkiaPaintingEngine` does), the window's canvas shared with the web process (a kernel addition:
+  no copy at all), 4 × 4 matrices in gpucomp (3D), composited filters and masks, a compositor thread.
 
 ## The roadmap from here (the user, 2026-10-02)
 

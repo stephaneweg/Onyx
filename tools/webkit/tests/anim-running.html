@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Onyx compositor test: running animations</title>
+<!-- tools/webkit/test-webkit.sh: an opacity animation and a transform animation that run for ever.
+     With the compositor each element is a layer: the frames are composited, nothing is painted. -->
+<style>
+body { margin: 0; background: #f4f4f0; font: 20px sans-serif; }
+.box { position: absolute; width: 120px; height: 80px; }
+@keyframes pulse { from { opacity: 0.2; } to { opacity: 1; } }
+@keyframes slide { from { transform: translate(0, 0) rotate(0deg); } to { transform: translate(300px, 0) rotate(90deg); } }
+#pulse { left: 20px; top: 20px; background: #0050c8; animation: pulse 0.7s ease-in-out infinite alternate; }
+#slide { left: 20px; top: 150px; background: #c83200; animation: slide 1.3s ease-in-out infinite alternate; }
+#fading { left: 20px; top: 300px; background: #008040; opacity: 1; transition: opacity 3s linear, transform 3s linear; }
+#fading.gone { opacity: 0.1; transform: translate(400px, 0); }
+</style></head>
+<body>
+<div id="pulse" class="box">pulse</div>
+<div id="slide" class="box">slide</div>
+<div id="fading" class="box">transition</div>
+<p style="position: absolute; top: 420px; left: 20px">Still text: the quick brown fox jumps over the lazy dog.</p>
+<script>
+// (A transition too, started once the page is shown.)
+setTimeout(function () { document.getElementById('fading').className = 'box gone'; }, 300);
+</script>
+</body></html>

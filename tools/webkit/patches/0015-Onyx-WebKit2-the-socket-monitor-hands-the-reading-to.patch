@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Sat, 3 Oct 2026 04:01:17 +0200
-Subject: [PATCH 15/18] [Onyx] WebKit2: the socket monitor hands the reading to
+Subject: [PATCH 15/19] [Onyx] WebKit2: the socket monitor hands the reading to
  the connection's queue; a log line per request
 
 ConnectionUnix: on Onyx the monitor thread only waits for data (select) and then has the connection's

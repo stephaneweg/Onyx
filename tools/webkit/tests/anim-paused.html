@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Onyx compositor test: paused animations</title>
+<!-- tools/webkit/test-webkit.sh: animations of opacity and of transforms stopped at a known time (a
+     negative delay, paused), so that the compositor's picture -- each element a layer of its own,
+     drawn at the animation's value -- can be compared with the software path's. -->
+<style>
+body { margin: 0; background: #f4f4f0; font: 20px sans-serif; }
+.box { position: absolute; width: 120px; height: 80px; }
+@keyframes fade { from { opacity: 0.2; } to { opacity: 1; } }
+@keyframes move { from { transform: translate(0, 0); } to { transform: translate(200px, 40px); } }
+@keyframes grow { from { transform: scale(1); } to { transform: scale(3); } }
+@keyframes turn { from { transform: rotate(0deg); } to { transform: rotate(180deg); } }
+@keyframes both { from { opacity: 1; transform: translate(0, 0); } to { opacity: 0; transform: translate(0, 100px); } }
+.paused { animation-duration: 10s; animation-timing-function: linear; animation-play-state: paused; animation-fill-mode: both; }
+#fade { left: 20px; top: 20px; background: #0050c8; animation-name: fade; animation-delay: -5s; }
+#move { left: 20px; top: 130px; background: #c83200; animation-name: move; animation-delay: -5s; }
+#grow { left: 500px; top: 60px; width: 40px; height: 40px; background: #008040; animation-name: grow; animation-delay: -5s; }
+#turn { left: 600px; top: 250px; width: 100px; height: 60px; background: #800080; animation-name: turn; animation-delay: -5s; }
+#both { left: 20px; top: 260px; background: #404040; color: white; animation-name: both; animation-delay: -4s; }
+/* An opacity over a subtree whose layers overlap (the child is a layer too): one group. */
+#group { left: 250px; top: 300px; width: 240px; height: 200px; background: #ffd000; animation-name: fade; animation-delay: -3s; }
+#inner { left: 60px; top: 50px; background: #d00000; animation-name: move; animation-delay: -1s; }
+#still { position: absolute; left: 20px; top: 520px; }
+</style></head>
+<body>
+<div id="fade" class="box paused">fade</div>
+<div id="move" class="box paused">move</div>
+<div id="grow" class="box paused"></div>
+<div id="turn" class="box paused"></div>
+<div id="both" class="box paused">both</div>
+<div id="group" class="box paused">group<div id="inner" class="box paused">inner</div></div>
+<div id="still">Still text under the layers: the quick brown fox jumps over the lazy dog.</div>
+</body></html>

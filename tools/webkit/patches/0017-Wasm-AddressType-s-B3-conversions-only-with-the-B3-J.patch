@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sat, 3 Oct 2026 08:45:55 +0200
-Subject: [PATCH 17/18] [Wasm] AddressType's B3 conversions only with the B3
+Subject: [PATCH 17/19] [Wasm] AddressType's B3 conversions only with the B3
  JIT
 
 WasmAddressType's constructor from a B3::Type and asB3TypeKind() were compiled whenever the JIT

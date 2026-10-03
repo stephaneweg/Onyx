@@ -8,6 +8,7 @@
 //
 // Environment: WK2TEST_TIMEOUT (seconds, default 60), WK2TEST_SETTLE (milliseconds without a new
 // display before the picture is taken, default 300), WK2TEST_SCROLL (wheel notches before the picture),
+// WK2TEST_HOLD (milliseconds the page is left to run before the picture, which then does not wait),
 // WK2TEST_GPU=1 (the page drawn by Onyx's compositor instead of the software path: the picture then
 // comes from its surface; on the bench gpucomp composites on the CPU).
 // Built by tools/webkit/build-wk2test.sh against libWebKit.a (build-webkit.sh); run on the bench by
@@ -258,6 +259,12 @@ int main(int argc, char** argv)
     // WK2TEST_SCROLL=n: n wheel notches down over the page's middle, one every 100 ms (the scrolling path).
     if (const char* scroll = getenv("WK2TEST_SCROLL")) {
         int notches = atoi(scroll);
+        // (WK2TEST_SCROLL_DELAY=ms: the page left alone that long first, so that what the load
+        // painted and what the scroll paints are told apart in the compositor's log.)
+        if (const char* delay = getenv("WK2TEST_SCROLL_DELAY")) {
+            double until = now() + atof(delay) / 1000;
+            turnUntil(until + 1, [until] { return now() > until; });
+        }
         for (int i = 0; i < notches; i++) {
             WKPoint p = WKPointMake(width / 2, height / 2);
             WKPageHandleWheelEvent(page, WKWheelEventMake(p, p, WKSizeMake(0, -120), WKSizeMake(0, -1), 0));
@@ -265,6 +272,16 @@ int main(int argc, char** argv)
             turnUntil(next + 1, [next] { return now() > next; });
         }
         printf("scrolled: %d notches\n", notches);
+    }
+
+    // WK2TEST_HOLD=ms: the page left to run that long (animations that never stop), then the picture
+    // whatever it is drawing.
+    if (const char* hold = getenv("WK2TEST_HOLD")) {
+        double until = now() + atof(hold) / 1000;
+        unsigned before = s_displays;
+        turnUntil(until + 1, [until] { return now() > until; });
+        printf("held: %s ms, %u display requests\n", hold, s_displays - before);
+        settle = 0;
     }
 
     // The picture once the page has stopped drawing for a moment.

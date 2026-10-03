@@ -95,5 +95,73 @@ run http "http://127.0.0.1:$PORT/page1.html"
 kill $srv 2>/dev/null
 check_page1 http
 
+# 4. the compositor (WK2TEST_GPU=1: the page's layers composited; here by gpucomp's CPU path)
+gpu0=${WK2TEST_GPU:-}
+# 4a. animations paused at a known time: the software path's picture, the compositor's, compared.
+# (Edges drawn through a transform are filtered by one and painted by the other: a few pixels differ.)
+WK2TEST_GPU=0; export WK2TEST_GPU
+run animsw /wktest/anim-paused.html
+[ $st -eq 0 ] && ok "paused animations, software: wk2test ran" || ko "paused animations, software: wk2test" "exit $st"
+WK2TEST_GPU=1; export WK2TEST_GPU
+run animgpu /wktest/anim-paused.html
+[ $st -eq 0 ] && ok "paused animations, compositor: wk2test ran" || ko "paused animations, compositor: wk2test" "exit $st"
+case "$out" in *"web: gpu: compositing on"*) ok "paused animations: the compositor drew the page";; *) ko "paused animations: the compositor" "no 'compositing on' line";; esac
+if [ -f "$R/RAM/animsw.png" ] && [ -f "$R/RAM/animgpu.png" ]; then
+	# (the software picture is not blank where the layers are; then the two pictures)
+	python3 "$HERE/tests/checkpng.py" "$R/RAM/animsw.png" 60,80=98,146,216 270,470=249,228,134 ink=20,520,500,40
+	fails=$((fails + $?))
+	python3 "$HERE/tests/checkpng.py" "$R/RAM/animgpu.png" "same=$R/RAM/animsw.png,24,1.5" ink=20,520,500,40
+	fails=$((fails + $?))
+else
+	ko "paused animations: the pictures" "missing"
+fi
+# 4b. animations that run: frames are composited, nothing is painted for them (the 2 s lines of the
+# log), and most frames need no update of the page (the layers keep the animations)
+WK2TEST_HOLD=7000; export WK2TEST_HOLD
+run animrun /wktest/anim-running.html
+unset WK2TEST_HOLD
+[ $st -eq 0 ] && ok "running animations: wk2test ran and ended cleanly" || ko "running animations: wk2test" "exit $st"
+lines=$(echo "$out" | grep -E 'web: gpu: [0-9.]+ s: [0-9]+ frames')
+# (ten frames at least in a line: the bench's UI process answers a frame every 100 ms)
+if echo "$lines" | grep -Eq ' [1-9][0-9]+ frames \([0-9]+ without a page update\), 0 tiles painted, 0 rects repainted, 0 px'; then
+	ok "running animations: frames composited with nothing painted"
+else
+	ko "running animations: frames with nothing painted" "no such line"
+fi
+if echo "$lines" | grep -Eq ' frames \([1-9][0-9]+ without a page update\)'; then
+	ok "running animations: frames without an update of the page"
+else
+	ko "running animations: frames without an update of the page" "no such line"
+fi
+# 4c. scrolling under a fixed header, a sticky side bar and a fixed button: the three are layers that
+# are moved; the scroll paints the tiles that come into view and nothing again in those already
+# painted. (The page waits 2.5 s before the scroll: the log's first 2 s line is the load's.)
+WK2TEST_SCROLL=20; WK2TEST_SCROLL_DELAY=2500; export WK2TEST_SCROLL WK2TEST_SCROLL_DELAY
+WK2TEST_GPU=0; export WK2TEST_GPU
+run scrollsw /wktest/scroll-fixed.html
+[ $st -eq 0 ] && ok "scroll, software: wk2test ran" || ko "scroll, software: wk2test" "exit $st"
+WK2TEST_GPU=1; export WK2TEST_GPU
+run scrollgpu /wktest/scroll-fixed.html
+unset WK2TEST_SCROLL WK2TEST_SCROLL_DELAY
+[ $st -eq 0 ] && ok "scroll, compositor: wk2test ran" || ko "scroll, compositor: wk2test" "exit $st"
+lines=$(echo "$out" | grep -E 'web: gpu: [0-9.]+ s: [0-9]+ frames' | tail -n +2)
+if [ -n "$lines" ] && ! echo "$lines" | grep -qv ', 0 rects repainted,'; then
+	ok "scroll: nothing painted again in the tiles already painted"
+else
+	ko "scroll: nothing painted again" "$(echo "$lines" | grep -v ', 0 rects repainted,' | head -n 1 | cut -c1-120)"
+fi
+if echo "$lines" | grep -Eq ' [1-9][0-9]* tiles painted,'; then
+	ok "scroll: the tiles that came into view were painted"
+else
+	ko "scroll: new tiles" "none painted"
+fi
+if [ -f "$R/RAM/scrollsw.png" ] && [ -f "$R/RAM/scrollgpu.png" ]; then
+	python3 "$HERE/tests/checkpng.py" "$R/RAM/scrollgpu.png" "same=$R/RAM/scrollsw.png,24,0.5"
+	fails=$((fails + $?))
+else
+	ko "scroll: the pictures" "missing"
+fi
+if [ -n "$gpu0" ]; then WK2TEST_GPU=$gpu0; export WK2TEST_GPU; else unset WK2TEST_GPU; fi
+
 echo "test-webkit.sh: $fails failed"
 exit $fails

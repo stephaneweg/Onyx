@@ -2450,9 +2450,13 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   Mail, which asks, then opens it in a Web window). Its lines in `kmsg` start `webview:`.
 - **JavaScript is compiled** (1.0.3: JavaScriptCore's Baseline JIT and DFG; the system 2026.10.30
   or later): a GitHub repository's page loads in about 5 s, where the interpreter took about 50.
-- **Not there yet** (the WebKit port's roadmap): video and sound, WebGL, the GPU (pages are painted
-  by the CPU; the compositor on the V3D is being written — from the build that has it, `web --gpu`,
-  or an empty file `SD:/etc/web-gpu`, turns it on: `docs/08-WEBKIT-PORT.md`).
+- **The GPU compositor (1.0.4, to try)**: `web --gpu`, or an empty file `SD:/etc/web-gpu` (`touch
+  SD:/etc/web-gpu`; `rm` it to go back), has the page assembled by the Pi's GPU (the V3D): the page
+  is kept as tiles — a scroll paints only what comes into view —, and CSS animations of opacity and
+  of transforms move layers without painting anything. Off by default (the page is then painted and
+  copied by the CPU, as before): compare both on your pages. `kmsg` shows `web: gpu: …` lines
+  (frames, tiles painted, the time spent) every two seconds while it works.
+- **Not there yet** (the WebKit port's roadmap): video and sound, WebGL.
 - **When something goes wrong**: `kmsg` shows its lines — `web: [time] …` (the loads, the
   addresses, the errors, the web and network processes started and ended), `web: net start / done
   <status> <time> / FAILED <code> <url>` for each request, and, if a process is killed, `el0: …

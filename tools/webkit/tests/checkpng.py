@@ -2,6 +2,8 @@
 # checkpng.py -- read pixels of a PNG (8-bit RGB / RGBA, not interlaced) and check them:
 #   checkpng.py <file.png> <x>,<y>=<r>,<g>,<b> ...      each pixel within TOLERANCE (default 3)
 #   checkpng.py <file.png> ink=<x>,<y>,<w>,<h>          the box holds pixels that are not white
+#   checkpng.py <file.png> same=<other.png>,<t>,<p>     at most p % of the pixels differ from the other
+#                                                       picture's by more than t in a channel
 # Prints PASS / FAIL lines; the exit status is the number of failures. No library needed
 # (tools/webkit/test-webcore.sh: the picture painted by wctest).
 #
@@ -57,6 +59,21 @@ def main():
                       if min(rows[j][i * channels:i * channels + 3]) < 200)
             ok = ink >= 20
             print("%s  ink in %s: %d pixels" % ("PASS" if ok else "FAIL", want, ink))
+        elif what == "same":
+            path, tol, percent = want.rsplit(",", 2)
+            w2, h2, c2, rows2 = read_png(path)
+            ok = (w2, h2) == (width, height)
+            far = worst = 0
+            if ok:
+                for j in range(height):
+                    a, b = rows[j], rows2[j]
+                    for i in range(width):
+                        d = max(abs(a[i * channels + k] - b[i * c2 + k]) for k in range(3))
+                        worst = max(worst, d)
+                        far += d > int(tol)
+                ok = far * 100.0 <= float(percent) * width * height
+            print("%s  same picture as %s: %d pixels differ by more than %s (%.2f %%, %s %% allowed), the most %d"
+                  % ("PASS" if ok else "FAIL", path.split("/")[-1], far, tol, far * 100.0 / (width * height), percent, worst))
         else:
             x, y = map(int, what.split(","))
             rgb = tuple(rows[y][x * channels:x * channels + 3])

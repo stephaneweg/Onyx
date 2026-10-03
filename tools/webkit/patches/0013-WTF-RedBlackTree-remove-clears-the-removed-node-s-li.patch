@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Onyx contributors <onyx@localhost>
 Date: Sat, 3 Oct 2026 01:50:31 +0200
-Subject: [PATCH 13/18] [WTF] RedBlackTree::remove clears the removed node's
+Subject: [PATCH 13/19] [WTF] RedBlackTree::remove clears the removed node's
  links
 
 The removed node kept its m_left / m_right, CheckedPtrs to its former neighbours: while it lived

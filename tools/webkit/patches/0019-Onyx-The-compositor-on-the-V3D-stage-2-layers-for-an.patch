@@ -1,0 +1,1876 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 13:09:11 +0200
+Subject: [PATCH 19/19] [Onyx] The compositor on the V3D, stage 2: layers for
+ animated opacity / transform, animations by the compositor, scrolling without
+ layouts
+
+Layers for CSS animations and transitions of opacity and transform (the Animation and
+AnimatedOpacity triggers): GraphicsLayerOnyx takes them (addAnimation, evaluated at composite
+time with TextureMapperAnimation, which is GL-free: its guards widened), so an animated frame
+paints nothing and needs no page update. A layer drawn scaled, rotated or at a fractional place
+is one bilinear texture when it fits 2048; opacity over overlapping composited descendants goes
+through a group (a gpucomp alpha target, uploaded again as a texture). A budget of textures and
+pixels (440, 96 MB). A dirty tile is repainted only where it is dirty (up to 8 rectangles a
+layer).
+
+Scrolling: a page's sticky elements are layers when the frame is composited
+(RenderLayerCompositor), and a composited fixed or sticky element is not laid out again when the
+layout viewport moves (LocalFrameView: its layer's place is updated instead) -- a scroll step
+laid out every such element and repainted its block. RenderLayer::paintList skips a child
+subtree none of whose repaint rectangles touches what is painted, when a composited layer's
+content is painted (a small repaint walked every layer of the page).
+
+Switches (files in SD:/etc): web-gpu-debug, web-gpu-trace, web-gpu-3d, web-gpu-noanim,
+web-gpu-nogroups, web-gpu-nocull, web-gpu-stage1.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/WebCore/PlatformOnyx.cmake             |   5 +
+ Source/WebCore/page/LocalFrameView.cpp        |  29 +
+ .../graphics/onyx/GraphicsLayerOnyx.cpp       | 404 ++++++++++++--
+ .../graphics/onyx/GraphicsLayerOnyx.h         |  80 ++-
+ .../texmap/TextureMapperAnimation.cpp         |   4 +-
+ .../graphics/texmap/TextureMapperAnimation.h  |   4 +-
+ Source/WebCore/rendering/RenderLayer.cpp      |  59 +++
+ .../rendering/RenderLayerCompositor.cpp       |   8 +
+ .../WebCoreSupport/WebChromeClient.h          |   9 +-
+ .../CoordinatedGraphics/LayerTreeHostOnyx.cpp | 501 +++++++++++++++---
+ .../CoordinatedGraphics/LayerTreeHostOnyx.h   |  77 ++-
+ 11 files changed, 1017 insertions(+), 163 deletions(-)
+
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+index 2120f7b6..a7435ccb 100644
+--- a/Source/WebCore/PlatformOnyx.cmake
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -12,6 +12,7 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
+     ${WEBCORE_DIR}/platform
+     ${WEBCORE_DIR}/platform/generic
+     ${WEBCORE_DIR}/platform/graphics/onyx
++    ${WEBCORE_DIR}/platform/graphics/texmap
+     ${WEBCORE_DIR}/platform/mediacapabilities
+     ${WEBCORE_DIR}/platform/video-codecs
+     ${WEBCORE_DIR}/platform/network/onyx
+@@ -57,6 +58,10 @@ list(APPEND WebCore_SOURCES
+     platform/graphics/onyx/GraphicsLayerOnyx.cpp
+     platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
+ 
++    # The layers' animations of opacity and transform (USE_GRAPHICS_LAYER_ONYX): the one file of
++    # the TextureMapper that has nothing of GL.
++    platform/graphics/texmap/TextureMapperAnimation.cpp
++
+     platform/network/onyx/CurlSSLHandleOnyx.cpp
+     platform/network/onyx/NetworkStateNotifierOnyx.cpp
+     platform/network/onyx/PublicSuffixStoreOnyx.cpp
+diff --git a/Source/WebCore/page/LocalFrameView.cpp b/Source/WebCore/page/LocalFrameView.cpp
+index 0954cd67..69644951 100644
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -1943,6 +1943,35 @@ void LocalFrameView::setBaseLayoutViewportOrigin(LayoutPoint origin, TriggerLayo
+         return;
+ 
+     m_layoutViewportOrigin = origin;
++#if USE(GRAPHICS_LAYER_ONYX)
++    // Onyx's compositor scrolls on the main thread: each step of a scroll moves the layout viewport.
++    // A fixed element that is a layer of its own is only moved by that (its size depends on the
++    // viewport's size, which has not changed): a movement-only layout, after which a composited
++    // layer is not painted again (RenderLayer::shouldRepaintAfterLayout) -- a full layout would
++    // repaint the whole layer at every step. A sticky element that is a layer needs no layout at all:
++    // its offset is computed when its layer's position is (RenderLayer::updateLayerPosition), from
++    // the layout viewport -- a layout would lay out its containing block again and repaint the
++    // lines beside it, at every step. Its layer's position is asked for again, now that the layout
++    // viewport has moved: by the layout that is due (a fixed element's), else at once.
++    if (layoutTriggering == TriggerLayoutOrNot::Yes && hasViewportConstrainedObjects()) {
++        bool hasStickyLayerToMove = false;
++        for (CheckedRef renderer : *m_viewportConstrainedObjects) {
++            if (renderer->isStickilyPositioned() && renderer->isComposited() && !renderer->needsLayout()) {
++                downcast<RenderBoxModelObject>(renderer).layer()->setSelfAndDescendantsNeedPositionUpdate();
++                hasStickyLayerToMove = true;
++            } else if (renderer->isFixedPositioned() && renderer->isComposited() && !renderer->needsLayout())
++                renderer->setNeedsOutOfFlowMovementLayout(nullptr);
++            else
++                renderer->setNeedsLayout();
++            if (renderer->hasLayer())
++                downcast<RenderBoxModelObject>(renderer).layer()->setNeedsCompositingGeometryUpdate();
++        }
++        if (hasStickyLayerToMove && !needsLayout() && layoutContext().layoutPhase() == LocalFrameViewLayoutContext::LayoutPhase::OutsideLayout) {
++            updateLayerPositionsAfterScrolling();
++            updateCompositingLayersAfterScrolling();
++        }
++    } else
++#endif
+     if (layoutTriggering == TriggerLayoutOrNot::Yes)
+         setViewportConstrainedObjectsNeedLayout();
+     
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+index b63537ba..56f4ae68 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+@@ -31,11 +31,17 @@
+ #if USE(GRAPHICS_LAYER_ONYX)
+ #include "FontRenderOptions.h"
+ #include "GraphicsContextSkia.h"
++#include "GraphicsLayerAnimation.h"
++#include "GraphicsLayerKeyframeValueList.h"
+ #include "GraphicsLayerOnyx.h"
++#include "TextureMapperAnimation.h"
++#include <execinfo.h>
+ #include <skia/core/SkCanvas.h>
+ #include <skia/core/SkColorSpace.h>
+ #include <skia/core/SkImageInfo.h>
+ #include <skia/core/SkSurface.h>
++#include <stdio.h>
++#include <unistd.h>
+ #include <wtf/StdLibExtras.h>
+ #endif
+ 
+@@ -47,13 +53,35 @@
+ // With a host (USE(GRAPHICS_LAYER_ONYX), WebKit's LayerTreeHost on Onyx: the page asked to
+ // composite), a layer that draws content keeps it in tiles of 512 pixels painted here by Skia and
+ // handed to the host as textures; the host walks the tree and has them assembled by the GPU
+-// (user/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again.
+-// Animations stay on the main thread (addAnimation answers false).
++// (user/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again; what
++// is invalidated is painted again as rectangles of the tiles' textures. A layer drawn scaled or
++// rotated keeps its content in one texture when it fits. Animations of opacity and transform
++// are kept here (WebCore's TextureMapperAnimation, which has nothing of GL) and sampled by the
++// host when it composites a frame: nothing is painted, no style is recalculated for a frame.
+ 
+ namespace WebCore {
+ 
+ #if USE(GRAPHICS_LAYER_ONYX)
+ 
++static bool s_tracesInvalidations;
++
++// One line, one write, on the standard error (the kernel's log for an Onyx program): the rectangle
++// and the return addresses of who invalidated it (the frame-pointer chain; the program's symbols
++// give the names: addr2line -f -e <the program>).
++static void traceInvalidation(const GraphicsLayerOnyx& layer, const IntRect& rect)
++{
++    char line[400];
++    int length = snprintf(line, sizeof(line), "web: gpu: invalidate layer %p (%.0f x %.0f): %d,%d %d x %d from", &layer, layer.size().width(), layer.size().height(), rect.x(), rect.y(), rect.width(), rect.height());
++    void* frames[14];
++    int count = backtrace(frames, 14);
++    for (int i = 2; i < count && length > 0 && length < static_cast<int>(sizeof(line)) - 24; ++i)
++        length += snprintf(line + length, sizeof(line) - length, " %p", frames[i]);
++    if (length > 0 && length < static_cast<int>(sizeof(line)) - 1) {
++        line[length++] = '\n';
++        (void)!write(STDERR_FILENO, line, length);
++    }
++}
++
+ Ref<GraphicsLayerOnyx> GraphicsLayerOnyx::create(Type type, GraphicsLayerClient& client, GraphicsLayerOnyxHost* host)
+ {
+     return adoptRef(*new GraphicsLayerOnyx(type, client, host));
+@@ -79,6 +107,89 @@ void GraphicsLayerOnyx::detachFromHost()
+ {
+     m_host = nullptr;
+     m_tiles.clear();
++    m_dirtyRects.clear();
++    m_animations = nullptr;
++}
++
++// ---- animations
++
++bool GraphicsLayerOnyx::addAnimation(const GraphicsLayerKeyframeValueList& valueList, const GraphicsLayerAnimation* animation, const String& animationName, double timeOffset)
++{
++    if (!m_host || !m_host->acceleratesAnimations())
++        return false;
++
++    // What TextureMapperAnimation samples as WebCore would; the rest stays on the main thread.
++    if (!animation || !animation->timingFunction() || !animation->duration() || *animation->duration() <= 0 || valueList.size() < 2 || animation->playbackRate() != 1)
++        return false;
++    // (Before its start an animation that does not fill backwards shows the layer's own value.)
++    if (timeOffset < 0 && !animation->fillsBackwards())
++        return false;
++
++    switch (valueList.property()) {
++    case AnimatedProperty::Opacity:
++    case AnimatedProperty::Translate:
++    case AnimatedProperty::Rotate:
++    case AnimatedProperty::Scale:
++    case AnimatedProperty::Transform:
++        break;
++    default:
++        return false;
++    }
++
++    if (!m_animations)
++        m_animations = makeUniqueWithoutFastMallocCheck<TextureMapperAnimations>();
++    m_animations->add(TextureMapperAnimation(animationName, valueList, *animation, MonotonicTime::now() - Seconds(timeOffset), 0_s, TextureMapperAnimation::State::Playing));
++    m_host->layerAnimationsChanged();
++    return true;
++}
++
++void GraphicsLayerOnyx::pauseAnimation(const String& animationName, double timeOffset)
++{
++    if (!m_animations)
++        return;
++    m_animations->pause(animationName, Seconds(timeOffset));
++    if (m_host)
++        m_host->layerAnimationsChanged();
++}
++
++void GraphicsLayerOnyx::removeAnimation(const String& animationName, std::optional<AnimatedProperty> property)
++{
++    if (!m_animations)
++        return;
++    if (property)
++        m_animations->remove(animationName, *property);
++    else
++        m_animations->remove(animationName);
++    if (m_animations->isEmpty())
++        m_animations = nullptr;
++    if (m_host)
++        m_host->layerAnimationsChanged();
++}
++
++bool GraphicsLayerOnyx::updateAnimations(MonotonicTime time)
++{
++    m_currentOpacity = opacity();
++    m_currentTransform = transform();
++    if (!m_animations || m_animations->isEmpty())
++        return false;
++
++    // The transform is translate, rotate, scale and transform, in that order: the ones that are not
++    // animated come from the style.
++    if (m_animations->hasActiveAnimationsOfType(AnimatedProperty::Translate) || m_animations->hasActiveAnimationsOfType(AnimatedProperty::Rotate)
++        || m_animations->hasActiveAnimationsOfType(AnimatedProperty::Scale) || m_animations->hasActiveAnimationsOfType(AnimatedProperty::Transform)) {
++        m_animations->setTranslate(client().transformMatrixForProperty(AnimatedProperty::Translate));
++        m_animations->setRotate(client().transformMatrixForProperty(AnimatedProperty::Rotate));
++        m_animations->setScale(client().transformMatrixForProperty(AnimatedProperty::Scale));
++        m_animations->setTransform(client().transformMatrixForProperty(AnimatedProperty::Transform));
++    }
++
++    TextureMapperAnimation::ApplicationResult result;
++    m_animations->apply(result, time);
++    if (result.opacity)
++        m_currentOpacity = *result.opacity;
++    if (result.transform)
++        m_currentTransform = *result.transform;
++    return result.hasRunningAnimations;
+ }
+ 
+ void GraphicsLayerOnyx::noteLayerPropertyChanged(ScheduleFlush scheduleFlush)
+@@ -105,13 +216,71 @@ void GraphicsLayerOnyx::setNeedsDisplayInRect(const FloatRect& rect, ShouldClipT
+     if (!m_host || !drawsContent())
+         return;
+ 
+-    auto dirtyRect = enclosingIntRect(rect);
+-    for (auto& tile : m_tiles.values())
+-        tile.dirtyRect.unite(intersection(dirtyRect, tile.rect));
++    auto dirtyRect = intersection(enclosingIntRect(rect), IntRect { { }, expandedIntSize(m_size) });
++    if (s_tracesInvalidations)
++        traceInvalidation(*this, dirtyRect);
++    // (Without tiles there is nothing to paint again: a new tile is painted whole.)
++    if (!dirtyRect.isEmpty() && !m_tiles.isEmpty())
++        addDirtyRect(dirtyRect);
+     noteLayerPropertyChanged();
+     addRepaintRect(rect);
+ }
+ 
++void GraphicsLayerOnyx::addDirtyRect(IntRect rect)
++{
++    // A paint has a cost of its own (the render tree walked) besides its pixels': rectangles that
++    // touch or nearly are painted as one, far ones each for itself, eight at most.
++    static constexpr uint64_t acceptableWaste = 64 * 64;
++    static constexpr size_t maximumRects = 8;
++
++    auto area = [](const IntRect& r) {
++        return static_cast<uint64_t>(r.width()) * r.height();
++    };
++    auto waste = [&](const IntRect& a, const IntRect& b) {
++        auto united = area(unionRect(a, b));
++        auto separate = area(a) + area(b);
++        return united > separate ? united - separate : 0;
++    };
++
++    for (bool merged = true; merged;) {
++        merged = false;
++        for (size_t i = 0; i < m_dirtyRects.size(); ++i) {
++            if (m_dirtyRects[i].contains(rect))
++                return;
++            if (waste(m_dirtyRects[i], rect) <= acceptableWaste) {
++                rect.unite(m_dirtyRects[i]);
++                m_dirtyRects.removeAt(i);
++                merged = true;
++                break;
++            }
++        }
++    }
++    m_dirtyRects.append(rect);
++
++    while (m_dirtyRects.size() > maximumRects) {
++        size_t bestFirst = 0;
++        size_t bestSecond = 1;
++        uint64_t bestWaste = std::numeric_limits<uint64_t>::max();
++        for (size_t i = 0; i < m_dirtyRects.size(); ++i) {
++            for (size_t j = i + 1; j < m_dirtyRects.size(); ++j) {
++                auto pairWaste = waste(m_dirtyRects[i], m_dirtyRects[j]);
++                if (pairWaste < bestWaste) {
++                    bestWaste = pairWaste;
++                    bestFirst = i;
++                    bestSecond = j;
++                }
++            }
++        }
++        m_dirtyRects[bestFirst].unite(m_dirtyRects[bestSecond]);
++        m_dirtyRects.removeAt(bestSecond);
++    }
++}
++
++void GraphicsLayerOnyx::setTracesInvalidations(bool traces)
++{
++    s_tracesInvalidations = traces;
++}
++
+ bool GraphicsLayerOnyx::setChildren(Vector<Ref<GraphicsLayer>>&& children)
+ {
+     bool childrenChanged = GraphicsLayer::setChildren(WTF::move(children));
+@@ -192,10 +361,10 @@ void GraphicsLayerOnyx::setAnchorPoint(const FloatPoint3D& point)
+ IntRect GraphicsLayerOnyx::rectForTile(int x, int y) const
+ {
+     auto layerSize = expandedIntSize(m_size);
+-    int x1 = x * tileSize;
+-    int y1 = y * tileSize;
+-    int x2 = std::min(x1 + tileSize, layerSize.width());
+-    int y2 = std::min(y1 + tileSize, layerSize.height());
++    int x1 = x * m_tileSize;
++    int y1 = y * m_tileSize;
++    int x2 = std::min(x1 + m_tileSize, layerSize.width());
++    int y2 = std::min(y1 + m_tileSize, layerSize.height());
+     if (x2 <= x1 || y2 <= y1)
+         return { };
+     return { x1, y1, x2 - x1, y2 - y1 };
+@@ -211,7 +380,7 @@ void GraphicsLayerOnyx::setSize(const FloatSize& size)
+     // its last row); the others are made again.
+     m_tiles.removeIf([&](auto& entry) {
+         auto& tile = entry.value;
+-        if (rectForTile(tile.rect.x() / tileSize, tile.rect.y() / tileSize) == tile.rect)
++        if (rectForTile(tile.index.x(), tile.index.y()) == tile.rect)
+             return false;
+         destroyTile(tile);
+         return true;
+@@ -389,105 +558,195 @@ void GraphicsLayerOnyx::dropTiles()
+     for (auto& tile : m_tiles.values())
+         destroyTile(tile);
+     m_tiles.clear();
++    m_dirtyRects.clear();
++}
++
++void GraphicsLayerOnyx::dropOffscreenTiles()
++{
++    m_tiles.removeIf([&](auto& entry) {
++        auto& tile = entry.value;
++        if (tile.rect.intersects(m_lastVisibleRect))
++            return false;
++        destroyTile(tile);
++        return true;
++    });
+ }
+ 
+ void GraphicsLayerOnyx::invalidateTiles()
+ {
+     for (auto& tile : m_tiles.values())
+         tile.dirtyRect = tile.rect;
++    m_dirtyRects.clear();
+ }
+ 
+-bool GraphicsLayerOnyx::paintTile(Tile& tile, TileUpdate& update)
++// One scratch buffer for every paint of every layer (the main thread): the pixels live in the
++// host's textures, not here.
++static Vector<uint32_t>& scratchPixels()
+ {
+-    // One scratch buffer for every tile of every layer (the main thread): the pixels live in the
+-    // host's textures, not here.
+-    static NeverDestroyed<Vector<uint32_t>> scratch;
++    static NeverDestroyed<Vector<uint32_t>> pixels;
++    return pixels;
++}
+ 
+-    bool isNew = !tile.texture;
+-    auto dirtyRect = isNew ? tile.rect : intersection(tile.dirtyRect, tile.rect);
+-    if (dirtyRect.isEmpty()) {
+-        tile.dirtyRect = { };
+-        return true;
+-    }
++const uint32_t* GraphicsLayerOnyx::paintRect(const IntRect& rect, TileUpdate& update)
++{
++    if (rect.isEmpty())
++        return nullptr;
+ 
+-    size_t pixelCount = static_cast<size_t>(dirtyRect.width()) * dirtyRect.height();
+-    auto& pixels = scratch.get();
++    size_t pixelCount = static_cast<size_t>(rect.width()) * rect.height();
++    auto& pixels = scratchPixels();
+     if (pixels.size() < pixelCount)
+         pixels.grow(pixelCount);
+-    zeroSpan(pixels.mutableSpan().first(pixelCount));
++    // (An opaque layer paints every pixel of the rectangle.)
++    if (!contentsOpaque())
++        zeroSpan(pixels.mutableSpan().first(pixelCount));
+ 
+     auto startTime = MonotonicTime::now();
+     {
+-        // 0xAARRGGBB words, premultiplied: gpucomp's texels.
+-        auto info = SkImageInfo::Make(dirtyRect.width(), dirtyRect.height(), kBGRA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
++        // 0xAARRGGBB words, premultiplied: gpucomp's texels. The surface is the rectangle: nothing is
++        // drawn outside it, and WebCore is told the rectangle so that it skips what does not touch it.
++        auto info = SkImageInfo::Make(rect.width(), rect.height(), kBGRA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
+         SkSurfaceProps properties = FontRenderOptions::singleton().createSurfaceProps();
+         auto surface = SkSurfaces::WrapPixels(info, pixels.mutableSpan().data(), info.minRowBytes(), &properties);
+         if (!surface || !surface->getCanvas())
+-            return false;
++            return nullptr;
+         GraphicsContextSkia context(*surface->getCanvas(), RenderingMode::Unaccelerated, RenderingPurpose::LayerBacking);
+-        context.translate(-dirtyRect.x(), -dirtyRect.y());
+-        paintGraphicsLayerContents(context, dirtyRect);
++        context.translate(-rect.x(), -rect.y());
++        context.clip(rect);
++        auto contentsStartTime = MonotonicTime::now();
++        update.setupTime += contentsStartTime - startTime;
++        paintGraphicsLayerContents(context, rect);
++        update.contentsTime += MonotonicTime::now() - contentsStartTime;
+     }
+     update.paintTime += MonotonicTime::now() - startTime;
+-    update.tilesPainted++;
++    update.paints++;
++    update.pixelsPainted += pixelCount;
++    return pixels.span().data();
++}
++
++// New tiles side by side in a row: painted in one go, each given its part.
++void GraphicsLayerOnyx::paintNewTiles(const Vector<uint64_t, 4>& keys, TileUpdate& update)
++{
++    IntRect runRect;
++    for (auto key : keys)
++        runRect.unite(m_tiles.find(key)->value.rect);
+ 
+-    if (isNew) {
+-        tile.texture = m_host->createTileTexture(tile.rect.size(), pixels.span().data(), dirtyRect.width());
++    auto* pixels = paintRect(runRect, update);
++    if (!pixels)
++        return;
++
++    for (auto key : keys) {
++        auto& tile = m_tiles.find(key)->value;
++        auto* tilePixels = pixels + static_cast<size_t>(tile.rect.y() - runRect.y()) * runRect.width() + (tile.rect.x() - runRect.x());
++        tile.texture = m_host->createTileTexture(tile.rect.size(), tilePixels, runRect.width());
+         if (!tile.texture)
+-            return false;
+-    } else {
+-        IntRect rectInTile { dirtyRect.location() - toIntSize(tile.rect.location()), dirtyRect.size() };
+-        if (!m_host->updateTileTexture(tile.texture, rectInTile, pixels.span().data(), dirtyRect.width()))
+-            return false;
+-        update.repaintedRects.append(dirtyRect);
++            continue;
++        tile.dirtyRect = { };
++        update.tilesPainted++;
+     }
+-    tile.dirtyRect = { };
+-    return true;
+ }
+ 
+-void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, unsigned& offscreenBudget, TileUpdate& update)
++void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, bool allowsPrepainting, unsigned& offscreenBudget, TileUpdate& update)
+ {
+     if (!m_host)
+         return;
+ 
+     IntRect layerRect { { }, expandedIntSize(m_size) };
+     auto visibleRect = intersection(passedVisibleRect, layerRect);
++    m_lastVisibleRect = visibleRect;
+     if (!drawsContent() || !contentsAreVisible() || visibleRect.isEmpty()) {
+         // (A layer out of sight keeps nothing: its tiles are painted when it comes back.)
+         dropTiles();
+         return;
+     }
+ 
++    // Tiles, or one texture: a layer drawn filtered that fits one.
++    bool singleTexture = m_prefersSingleTexture && !m_singleTextureRefused && layerRect.width() <= singleTextureSize && layerRect.height() <= singleTextureSize;
++    // (No room for the whole layer in one texture: tiles, of which only the visible ones are kept.)
++    if (singleTexture && layerRect.width() * layerRect.height() > tileSize * tileSize && !(m_tileSize == singleTextureSize && !m_tiles.isEmpty()) && !m_host->hasRoomForTileTexture(layerRect.size())) {
++        m_singleTextureRefused = true;
++        singleTexture = false;
++    }
++    int wantedTileSize = singleTexture ? singleTextureSize : tileSize;
++    if (wantedTileSize != m_tileSize) {
++        dropTiles();
++        m_tileSize = wantedTileSize;
++    }
++
+     // One viewport above, two below: where a page is scrolled next.
+     auto coverageRect = visibleRect;
+-    coverageRect.setY(visibleRect.y() - visibleRect.height());
+-    coverageRect.setHeight(visibleRect.height() * 4);
+-    coverageRect.intersect(layerRect);
+-
+-    auto tileRange = [](const IntRect& rect) {
+-        int x = rect.x() / tileSize;
+-        int y = rect.y() / tileSize;
+-        int maxX = (rect.maxX() + tileSize - 1) / tileSize;
+-        int maxY = (rect.maxY() + tileSize - 1) / tileSize;
+-        return IntRect { x, y, maxX - x, maxY - y };
+-    };
+-    auto covered = tileRange(coverageRect);
++    if (singleTexture)
++        coverageRect = layerRect;
++    else if (allowsPrepainting) {
++        coverageRect.setY(visibleRect.y() - visibleRect.height());
++        coverageRect.setHeight(visibleRect.height() * 4);
++        coverageRect.intersect(layerRect);
++    }
++
++    IntRect covered;
++    {
++        int x = coverageRect.x() / m_tileSize;
++        int y = coverageRect.y() / m_tileSize;
++        int maxX = (coverageRect.maxX() + m_tileSize - 1) / m_tileSize;
++        int maxY = (coverageRect.maxY() + m_tileSize - 1) / m_tileSize;
++        covered = { x, y, maxX - x, maxY - y };
++    }
+ 
+     m_tiles.removeIf([&](auto& entry) {
+         auto& tile = entry.value;
+-        if (covered.contains(IntPoint { tile.rect.x() / tileSize, tile.rect.y() / tileSize }))
++        if (covered.contains(tile.index))
+             return false;
+         destroyTile(tile);
+         return true;
+     });
+ 
++    // What was invalidated: each rectangle painted once for the visible tiles it touches, and given
++    // to their textures; kept for later in the tiles out of sight.
++    for (auto& dirtyRect : std::exchange(m_dirtyRects, { })) {
++        IntRect rectToPaint;
++        for (auto& tile : m_tiles.values()) {
++            if (!tile.texture)
++                continue;
++            auto part = intersection(dirtyRect, tile.rect);
++            if (part.isEmpty())
++                continue;
++            if (tile.rect.intersects(visibleRect))
++                rectToPaint.unite(part);
++            else
++                tile.dirtyRect.unite(part);
++        }
++        if (rectToPaint.isEmpty())
++            continue;
++
++        auto* pixels = paintRect(rectToPaint, update);
++        bool painted = false;
++        for (auto& tile : m_tiles.values()) {
++            if (!tile.texture || !tile.rect.intersects(visibleRect))
++                continue;
++            auto part = intersection(rectToPaint, tile.rect);
++            if (part.isEmpty())
++                continue;
++            IntRect rectInTile { part.location() - toIntSize(tile.rect.location()), part.size() };
++            if (pixels && m_host->updateTileTexture(tile.texture, rectInTile, pixels + static_cast<size_t>(part.y() - rectToPaint.y()) * rectToPaint.width() + (part.x() - rectToPaint.x()), rectToPaint.width()))
++                painted = true;
++            else
++                tile.dirtyRect.unite(part);
++        }
++        if (painted) {
++            update.rectsPainted++;
++            update.repaintedRects.append(rectToPaint);
++        }
++    }
++
++    // The new tiles, and the tiles out of sight with something to paint again.
++    Vector<uint64_t, 4> newTiles;
+     for (int y = covered.y(); y < covered.maxY(); ++y) {
+         for (int x = covered.x(); x < covered.maxX(); ++x) {
+             auto rect = rectForTile(x, y);
+             if (rect.isEmpty())
+                 continue;
+-            auto& tile = m_tiles.ensure(tileKey(x, y), [&] {
+-                return Tile { rect, rect, nullptr };
++            auto key = tileKey(x, y);
++            auto& tile = m_tiles.ensure(key, [&] {
++                return Tile { { x, y }, rect, { }, nullptr };
+             }).iterator->value;
+             if (tile.texture && tile.dirtyRect.isEmpty())
+                 continue;
+@@ -498,9 +757,42 @@ void GraphicsLayerOnyx::updateTiles(const IntRect& passedVisibleRect, unsigned&
+                 }
+                 --offscreenBudget;
+             }
+-            paintTile(tile, update);
++
++            if (!tile.texture) {
++                // (No room for its texture: not painted for nothing; the tile is not drawn.)
++                if (!m_host->hasRoomForTileTexture(rect.size()))
++                    continue;
++                // (A run: the tiles of this row since the last one that was not new, four at most.)
++                if (!newTiles.isEmpty() && (m_tiles.find(newTiles.last())->value.index != IntPoint { x - 1, y } || newTiles.size() >= 4)) {
++                    paintNewTiles(newTiles, update);
++                    newTiles.shrink(0);
++                }
++                newTiles.append(key);
++                continue;
++            }
++
++            auto dirtyRect = intersection(tile.dirtyRect, tile.rect);
++            tile.dirtyRect = { };
++            auto* pixels = paintRect(dirtyRect, update);
++            if (!pixels)
++                continue;
++            IntRect rectInTile { dirtyRect.location() - toIntSize(tile.rect.location()), dirtyRect.size() };
++            if (!m_host->updateTileTexture(tile.texture, rectInTile, pixels, dirtyRect.width())) {
++                tile.dirtyRect = dirtyRect;
++                continue;
++            }
++            update.rectsPainted++;
++            update.repaintedRects.append(dirtyRect);
++        }
++        if (!newTiles.isEmpty()) {
++            paintNewTiles(newTiles, update);
++            newTiles.shrink(0);
+         }
+     }
++
++    // (One texture of 2048 x 2048 is 16 MB of scratch: not kept.)
++    if (scratchPixels().capacity() > 2048 * 1024)
++        scratchPixels().clear();
+ }
+ 
+ #else // !USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+index 4855a7bb..580d5cd3 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+@@ -30,6 +30,7 @@
+ #include "Color.h"
+ #include "GraphicsLayer.h"
+ #include "IntRect.h"
++#include "TransformationMatrix.h"
+ #include <wtf/HashMap.h>
+ #include <wtf/MonotonicTime.h>
+ #include <wtf/Vector.h>
+@@ -37,6 +38,11 @@
+ namespace WebCore {
+ 
+ class GraphicsLayerOnyx;
++class TextureMapperAnimations;
++
++// RenderLayer::paintList (rendering/RenderLayer.cpp): when a composited layer's content is painted,
++// the child RenderLayers that cannot touch the rectangle painted are skipped (on by default).
++WEBCORE_EXPORT void setOnyxCullsLeafLayersWhenPainting(bool);
+ 
+ // The compositor a GraphicsLayerOnyx belongs to (WebKit's LayerTreeHost on Onyx): it keeps the
+ // tiles' pixels as textures (user/gpucomp: the V3D, or the CPU) and assembles them. A layer made
+@@ -51,27 +57,48 @@ public:
+     virtual void layerCreated(GraphicsLayerOnyx&) = 0;
+     virtual void layerDestroyed(GraphicsLayerOnyx&) = 0;
+ 
++    // False: the texture budget is spent (the tile is not painted, not drawn). Asked before a tile is
++    // painted; the host may have other layers drop their tiles out of sight to make room.
++    virtual bool hasRoomForTileTexture(const IntSize&) = 0;
+     // Pixels: 0xAARRGGBB words, premultiplied (Skia's kBGRA_8888); stride in pixels.
+-    // A null texture: none can be made now (the texture budget); the tile stays dirty.
++    // A null texture: none could be made.
+     virtual Texture createTileTexture(const IntSize&, const uint32_t* pixels, int stride) = 0;
+     // The rectangle is in the texture's coordinates. False: the pixels did not get there.
+     virtual bool updateTileTexture(Texture, const IntRect&, const uint32_t* pixels, int stride) = 0;
+     virtual void destroyTileTexture(Texture) = 0;
++
++    // Opacity and transform animations sampled when a frame is composited (no style recalculation
++    // for each frame): false keeps them all on the main thread.
++    virtual bool acceleratesAnimations() const = 0;
++    // A layer's animations changed: a frame is due.
++    virtual void layerAnimationsChanged() = 0;
+ };
+ 
+ class GraphicsLayerOnyx final : public GraphicsLayer {
+ public:
++    // A layer's content is kept in tiles of 512 pixels, or -- a layer that is drawn scaled, rotated or
++    // between two pixels, and fits -- in one texture (2048 pixels a side at most: the GPU's), so that
++    // the filtering sees no seam.
+     static constexpr int tileSize = 512;
++    static constexpr int singleTextureSize = 2048;
+ 
+     struct Tile {
++        IntPoint index;
+         IntRect rect; // In the layer's coordinates, clipped to the layer.
+-        IntRect dirtyRect;
++        IntRect dirtyRect; // What is still to paint again (a tile out of sight waits for its turn).
+         GraphicsLayerOnyxHost::Texture texture { nullptr };
+     };
+ 
+     struct TileUpdate {
+-        unsigned tilesPainted { 0 };
++        unsigned tilesPainted { 0 }; // Tiles painted whole (new ones).
++        unsigned rectsPainted { 0 }; // Rectangles painted again in tiles already shown.
++        uint64_t pixelsPainted { 0 };
++        unsigned paints { 0 }; // Calls into WebCore's painting (a rectangle each).
++        // The whole of the paints; of it, making the Skia surface and the context, and WebCore's
++        // painting itself (the rest: the context and the surface let go).
+         Seconds paintTime;
++        Seconds setupTime;
++        Seconds contentsTime;
+         // What was painted again of tiles already shown, in the layer's coordinates.
+         Vector<IntRect, 8> repaintedRects;
+         // Tiles outside the visible rectangle that the budget left for a later frame.
+@@ -84,18 +111,36 @@ public:
+     // The host goes away before the layer: nothing is drawn any more (its textures went with it).
+     WEBCORE_EXPORT void detachFromHost();
+ 
+-    // The tile grid follows the visible rectangle (the layer's coordinates): its coverage is that
+-    // rectangle grown by its height above and twice below, clamped to the layer. The visible tiles
+-    // that are new or dirty are painted and given to the host; those only covered, while
+-    // offscreenBudget lasts (it is counted down). The tiles that left the coverage are dropped.
+-    WEBCORE_EXPORT void updateTiles(const IntRect& visibleRect, unsigned& offscreenBudget, TileUpdate&);
++    // The tiles follow the visible rectangle (the layer's coordinates): they cover that rectangle
++    // grown (allowsPrepainting) by its height above and twice below, clamped to the layer. What was
++    // invalidated in the visible tiles is painted again, each rectangle once, and given to the host
++    // as rectangles of their textures; the visible tiles that are new are painted whole; the tiles
++    // only covered, new or dirty, while offscreenBudget lasts (it is counted down). The tiles that
++    // left the coverage are dropped.
++    WEBCORE_EXPORT void updateTiles(const IntRect& visibleRect, bool allowsPrepainting, unsigned& offscreenBudget, TileUpdate&);
+     // The host's textures lost their pixels: every tile is painted again.
+     WEBCORE_EXPORT void invalidateTiles();
+     WEBCORE_EXPORT void dropTiles();
++    // The tiles that are not seen now are dropped (the host is short of texture memory).
++    WEBCORE_EXPORT void dropOffscreenTiles();
++
++    // The layer is drawn filtered (scaled, rotated, between two pixels): one texture when it fits,
++    // from now on.
++    void setPrefersSingleTexture() { m_prefersSingleTexture = true; }
++    bool usesSingleTexture() const { return m_tileSize == singleTextureSize; }
++
++    // The opacity and the transform to draw with at that time: the layer's own, or its accelerated
++    // animations' (addAnimation). True: an animation is running (another frame is due).
++    WEBCORE_EXPORT bool updateAnimations(MonotonicTime);
++    float currentOpacity() const { return m_currentOpacity; }
++    const TransformationMatrix& currentTransform() const LIFETIME_BOUND { return m_currentTransform; }
+ 
+     const HashMap<uint64_t, Tile>& tiles() const LIFETIME_BOUND { return m_tiles; }
+     const Color& solidColor() const LIFETIME_BOUND { return m_solidColor; }
+ 
++    // In the log (the standard error), each invalidation with where it came from (return addresses).
++    WEBCORE_EXPORT static void setTracesInvalidations(bool);
++
+     // GraphicsLayer
+     void setNeedsDisplay() final;
+     void setNeedsDisplayInRect(const FloatRect&, ShouldClipToLayer = ShouldClipToLayer::Clip) final;
+@@ -131,6 +176,10 @@ public:
+     void setContentsToSolidColor(const Color&) final;
+     bool canDirectlyCompositeNativeImage() const final { return !m_host; }
+ 
++    bool addAnimation(const GraphicsLayerKeyframeValueList&, const GraphicsLayerAnimation*, const String& animationName, double timeOffset) final;
++    void pauseAnimation(const String& animationName, double timeOffset) final;
++    void removeAnimation(const String& animationName, std::optional<AnimatedProperty>) final;
++
+     void flushCompositingState(const FloatRect&) final;
+     void flushCompositingStateForThisLayerOnly() final;
+ 
+@@ -144,13 +193,26 @@ private:
+ 
+     static uint64_t tileKey(int x, int y) { return (static_cast<uint64_t>(x + 1) << 32) | static_cast<uint32_t>(y + 1); }
+     IntRect rectForTile(int x, int y) const;
+-    bool paintTile(Tile&, TileUpdate&);
++    void addDirtyRect(IntRect);
++    // rect painted into the scratch buffer (rect.width() pixels a row) -> its pixels, null: not painted.
++    const uint32_t* paintRect(const IntRect&, TileUpdate&);
++    void paintNewTiles(const Vector<uint64_t, 4>& keys, TileUpdate&);
+     void destroyTile(Tile&);
+ 
+     GraphicsLayerOnyxHost* m_host { nullptr };
+     HashMap<uint64_t, Tile> m_tiles;
++    int m_tileSize { tileSize };
++    bool m_prefersSingleTexture { false };
++    bool m_singleTextureRefused { false };
++    // What was invalidated since the last updateTiles (the layer's coordinates).
++    Vector<IntRect, 8> m_dirtyRects;
++    IntRect m_lastVisibleRect;
+     Color m_solidColor;
+     bool m_hasUncommittedChanges { false };
++
++    std::unique_ptr<TextureMapperAnimations> m_animations;
++    float m_currentOpacity { 1 };
++    TransformationMatrix m_currentTransform;
+ };
+ 
+ } // namespace WebCore
+diff --git a/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.cpp b/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.cpp
+index be56a86e..2da795bd 100644
+--- a/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.cpp
++++ b/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.cpp
+@@ -20,7 +20,7 @@
+ #include "config.h"
+ #include "TextureMapperAnimation.h"
+ 
+-#if USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS)
++#if USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_ONYX)
+ 
+ #include "AnimationUtilities.h"
+ #include "GraphicsLayerAnimationValue.h"
+@@ -452,4 +452,4 @@ bool TextureMapperAnimations::hasRunningTransformAnimations() const
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS)
++#endif // USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.h b/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.h
+index 8bf556a6..9616d5ed 100644
+--- a/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.h
++++ b/Source/WebCore/platform/graphics/texmap/TextureMapperAnimation.h
+@@ -19,7 +19,7 @@
+ 
+ #pragma once
+ 
+-#if USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS)
++#if USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_ONYX)
+ #include "GraphicsLayer.h"
+ #include "GraphicsLayerAnimation.h"
+ #include "GraphicsLayerKeyframeValueList.h"
+@@ -117,4 +117,4 @@ private:
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS)
++#endif // USE(TEXTURE_MAPPER) || USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebCore/rendering/RenderLayer.cpp b/Source/WebCore/rendering/RenderLayer.cpp
+index 5ed828cf..a67400e7 100644
+--- a/Source/WebCore/rendering/RenderLayer.cpp
++++ b/Source/WebCore/rendering/RenderLayer.cpp
+@@ -186,6 +186,17 @@ namespace WebCore {
+ 
+ using namespace HTMLNames;
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++// RenderLayer::paintList: the child layers that cannot touch the rectangle painted are skipped
++// (declared in platform/graphics/onyx/GraphicsLayerOnyx.h; the host's switch SD:/etc/web-gpu-nocull).
++static bool s_onyxCullsLeafLayersWhenPainting = true;
++
++void setOnyxCullsLeafLayersWhenPainting(bool culls)
++{
++    s_onyxCullsLeafLayersWhenPainting = culls;
++}
++#endif
++
+ class ClipRects : public RefCounted<ClipRects> {
+     WTF_MAKE_TZONE_ALLOCATED_INLINE(ClipRects);
+ public:
+@@ -4064,7 +4075,55 @@ void RenderLayer::paintList(LayerList layerIterator, GraphicsContext& context, c
+     LayerListMutationDetector mutationChecker(*this);
+ #endif
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++    // Onyx's compositor paints small rectangles of big layers (what a page invalidates, tile by
++    // tile). A paint visits every RenderLayer under the one it paints and computes each one's
++    // clip rectangles before it knows whether the layer touches the rectangle: in a page with a
++    // thousand layers that walk is what a few pixels cost. A child is skipped here when neither it
++    // nor any layer under it can touch the rectangle painted: by the rectangle each would repaint,
++    // kept up to date by the layout, in the coordinates of the composited layer being painted. A
++    // subtree with anything unusual in it (a composited, transformed, filtered, reflected or
++    // paginated layer, one without a valid rectangle, more than a few layers) is painted as ever.
++    // Only for the plain painting of a composited layer's own content.
++    bool mayCullLeafLayers = s_onyxCullsLeafLayersWhenPainting
++        && paintingInfo.rootLayer->isComposited()
++        && !paintingInfo.subtreePaintRoot
++        && !paintingInfo.regionContext
++        && !context.performingPaintInvalidation()
++        && !context.detectingContentfulPaint()
++        && !paintingInfo.paintBehavior.containsAny({ PaintBehavior::FlattenCompositingLayers, PaintBehavior::Snapshotting, PaintBehavior::SelectionOnly, PaintBehavior::SelectionAndBackgroundsOnly, PaintBehavior::ForceBlackText, PaintBehavior::ForceWhiteText })
++        && !paintFlags.containsAny({ PaintLayerFlag::PaintingOverlayScrollbars, PaintLayerFlag::CollectingEventRegion, PaintLayerFlag::PaintingReflection, PaintLayerFlag::TemporaryClipRects });
++    LayoutRect cullRect = paintingInfo.paintDirtyRect;
++    cullRect.inflate(2);
++    auto* rootRenderer = &paintingInfo.rootLayer->renderer();
++    auto subtreeCannotTouchCullRect = [&](auto& self, const RenderLayer& layer, unsigned& budget) -> bool {
++        if (!budget--)
++            return false;
++        if (layer.isComposited() || layer.paintsIntoProvidedBacking() || layer.isTransformed() || layer.hasFilter() || layer.hasReflection())
++            return false;
++        // (A layer that does not paint itself is painted by the layer around it.)
++        if (layer.isSelfPaintingLayer()) {
++            if (!layer.m_repaintRectsValid || layer.m_repaintContainer.get() != rootRenderer)
++                return false;
++            if (layer.m_repaintRects.clippedOverflowRect.intersects(cullRect))
++                return false;
++        }
++        for (auto* child = layer.firstChild(); child; child = child->nextSibling()) {
++            if (!self(self, *child, budget))
++                return false;
++        }
++        return true;
++    };
++#endif
++
+     for (auto* childLayer : layerIterator) {
++#if USE(GRAPHICS_LAYER_ONYX)
++        if (mayCullLeafLayers && !childLayer->enclosingPaginationLayer(IncludeCompositedPaginatedLayers)) {
++            unsigned budget = 32;
++            if (subtreeCannotTouchCullRect(subtreeCannotTouchCullRect, *childLayer, budget))
++                continue;
++        }
++#endif
+         if (paintFlags.contains(PaintLayerFlag::PaintingSkipDescendantViewTransition)) {
+             if (childLayer->renderer().effectiveCapturedInViewTransition())
+                 continue;
+diff --git a/Source/WebCore/rendering/RenderLayerCompositor.cpp b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+index ba69206e..92b87079 100644
+--- a/Source/WebCore/rendering/RenderLayerCompositor.cpp
++++ b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+@@ -4282,6 +4282,14 @@ bool RenderLayerCompositor::isAsyncScrollableStickyLayer(const RenderLayer& laye
+     if (hasCoordinatedScrolling())
+         return true;
+ 
++#if USE(GRAPHICS_LAYER_ONYX)
++    // Onyx's compositor scrolls on the main thread, and re-positions the viewport-constrained layers
++    // at each step (updateCompositingLayers, OnScroll): a sticky element of a composited frame is a
++    // layer as a fixed one is, moved and not painted again while the page scrolls.
++    if (usesCompositing())
++        return true;
++#endif
++
+ #if PLATFORM(IOS_FAMILY)
+     // iOS WK1 has fixed/sticky support in the main frame via WebFixedPositionContent.
+     return isMainFrameCompositor();
+diff --git a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
+index 43e7c26a..f162fb61 100644
+--- a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
++++ b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
+@@ -311,11 +311,10 @@ private:
+     CompositingTriggerFlags allowedCompositingTriggers() const final
+     {
+ #if USE(GRAPHICS_LAYER_ONYX)
+-        // Onyx's compositor, for now: the frame's own layers (so that scrolling paints nothing
+-        // again), none for 3D transforms, canvases, animations. No trigger at all would switch
+-        // compositing off (RenderLayerCompositor::cacheAcceleratedCompositingFlags): the plugins'
+-        // is given, there are no plugins.
+-        return static_cast<CompositingTriggerFlags>(PluginTrigger);
++        // Onyx's compositor: what gives an element a layer of its own is said in one place,
++        // LayerTreeHostOnyx.cpp (the frames' own layers, animated opacity and transforms).
++        unsigned onyxCompositingTriggers();
++        return static_cast<CompositingTriggerFlags>(onyxCompositingTriggers());
+ #else
+         return static_cast<CompositingTriggerFlags>(
+             ThreeDTransformTrigger |
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+index ee5ef4c6..68c07c03 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+@@ -32,6 +32,7 @@
+ #include "WebPage.h"
+ #include "WebPageInlines.h"
+ #include <WebCore/AffineTransform.h>
++#include <WebCore/ChromeClient.h>
+ #include <WebCore/Color.h>
+ #include <WebCore/GraphicsLayer.h>
+ #include <WebCore/Page.h>
+@@ -47,8 +48,10 @@ using namespace WebCore;
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(LayerTreeHost);
+ 
+-// The kernel gives a program 512 textures (kapi v70); a few are left for the colours.
+-static constexpr unsigned maximumTileTextures = 480;
++// The kernel gives a program 512 textures (kapi v70): the tiles', the layers' in one texture, the
++// opacity groups'; a margin is left for the colours. And 96 MB of texels at most.
++static constexpr unsigned maximumTextures = 440;
++static constexpr uint64_t maximumTexturePixels = 24 * 1024 * 1024;
+ // The tiles around the visible ones are painted a few a frame: what is seen comes first.
+ static constexpr unsigned offscreenTilesPerFrame = 4;
+ static constexpr Seconds frameInterval { 16_ms };
+@@ -84,9 +87,17 @@ static void freeForCompositor(void* memory)
+     free(memory);
+ }
+ 
+-// For comparisons on the machine: SD:/etc/web-gpu-cpu has gpucomp's CPU path composite,
+-// SD:/etc/web-gpu-copy has the frame composited into a buffer of gpucomp's and copied into the
+-// surface (the environment variables ONYX_WEB_GPU_CPU / ONYX_WEB_GPU_COPY say the same).
++// For comparisons on the machine, files whose presence is a switch (an environment variable says
++// the same: ONYX_WEB_GPU_CPU for SD:/etc/web-gpu-cpu, and so on):
++//   web-gpu-cpu      gpucomp's CPU path composites;
++//   web-gpu-copy     the frame is composited into a buffer of gpucomp's and copied into the surface;
++//   web-gpu-debug    the layer tree and each layer's paints in the log;
++//   web-gpu-trace    each invalidation in the log, with who asked for it (return addresses);
++//   web-gpu-noanim   the animations of opacity and transform stay on the main thread (the layers
++//                    are still composited: a style recalculation for each frame, nothing painted);
++//   web-gpu-nogroups no opacity group: the layers under an opacity are blended one by one;
++//   web-gpu-nocull   a paint visits every RenderLayer again (RenderLayer::paintList's skip is off);
++//   web-gpu-stage1   no layer but the frames' (and web-gpu-3d: layers for 3D transforms too).
+ static bool testSwitch(const char* variable, const char* file)
+ {
+     if (const char* value = getenv(variable); value && *value && *value != '0')
+@@ -107,10 +118,18 @@ LayerTreeHost::LayerTreeHost(WebPage& webPage, FrameCallback&& frameCallback)
+     m_compositor = gpc_create(&configuration);
+     m_compositesIntoSurface = !testSwitch("ONYX_WEB_GPU_COPY", "SD:/etc/web-gpu-copy");
+     m_logsLayerTree = testSwitch("ONYX_WEB_GPU_DEBUG", "SD:/etc/web-gpu-debug");
++    m_acceleratesAnimations = !testSwitch("ONYX_WEB_GPU_NOANIM", "SD:/etc/web-gpu-noanim");
++    m_usesOpacityGroups = !testSwitch("ONYX_WEB_GPU_NOGROUPS", "SD:/etc/web-gpu-nogroups");
++    GraphicsLayerOnyx::setTracesInvalidations(testSwitch("ONYX_WEB_GPU_TRACE", "SD:/etc/web-gpu-trace"));
++    setOnyxCullsLeafLayersWhenPainting(!testSwitch("ONYX_WEB_GPU_NOCULL", "SD:/etc/web-gpu-nocull"));
+ 
+     auto& size = m_webPage.size();
+-    if (m_compositor)
+-        logLine("compositing on (%d x %d), backend %s: %s", size.width(), size.height(), gpc_backend(m_compositor) == GPC_BACKEND_GPU ? "GPU" : "CPU", gpc_info(m_compositor));
++    if (m_compositor) {
++        auto triggers = onyxCompositingTriggers();
++        logLine("compositing on (%d x %d), backend %s: %s; layers for: the frames%s%s; animations %s, opacity groups %s", size.width(), size.height(), gpc_backend(m_compositor) == GPC_BACKEND_GPU ? "GPU" : "CPU", gpc_info(m_compositor),
++            triggers & ChromeClient::AnimationTrigger ? ", animated opacity / transform" : "", triggers & ChromeClient::ThreeDTransformTrigger ? ", 3D transforms" : "",
++            m_acceleratesAnimations ? "by the compositor" : "on the main thread", m_usesOpacityGroups ? "on" : "off");
++    }
+     else
+         logLine("compositing on (%d x %d), but no compositor (gpc_create failed): nothing will be shown", size.width(), size.height());
+ 
+@@ -136,9 +155,11 @@ LayerTreeHost::~LayerTreeHost()
+     if (m_compositor) {
+         if (m_copyTarget)
+             gpc_target_free(m_compositor, m_copyTarget);
++        if (m_groupBuffer)
++            gpc_target_free(m_compositor, m_groupBuffer);
+         gpc_destroy(m_compositor); // (its textures too)
+     }
+-    logLine("compositing off (%u frames composited in all)", m_totalFramesComposited);
++    logLine("compositing off (in all: %u frames composited, %u tiles painted, %u rects repainted, %u px)", m_totalFramesComposited, m_totalTilesPainted, m_totalRectsPainted, static_cast<unsigned>(m_totalPixelsPainted));
+ }
+ 
+ void LayerTreeHost::setLayerTreeStateIsFrozen(bool isFrozen)
+@@ -151,6 +172,13 @@ void LayerTreeHost::setLayerTreeStateIsFrozen(bool isFrozen)
+ }
+ 
+ void LayerTreeHost::scheduleRenderingUpdate()
++{
++    // The page asks for a frame: its own update comes first in it (renderFrame).
++    m_renderingUpdateRequested = true;
++    scheduleFrame();
++}
++
++void LayerTreeHost::scheduleFrame()
+ {
+     if (m_isSuspended || m_layerTreeStateIsFrozen)
+         return;
+@@ -177,7 +205,7 @@ void LayerTreeHost::displayDidRefresh()
+     m_isWaitingForDidRefresh = false;
+     if (!std::exchange(m_scheduledWhileWaitingForDidRefresh, false))
+         return;
+-    scheduleRenderingUpdate();
++    scheduleFrame();
+ }
+ 
+ void LayerTreeHost::setRootCompositingLayer(GraphicsLayer* graphicsLayer)
+@@ -214,6 +242,7 @@ void LayerTreeHost::setViewOverlayRootLayer(GraphicsLayer* graphicsLayer)
+ void LayerTreeHost::updateRenderingWithForcedRepaint()
+ {
+     m_needsFullFrame = true;
++    m_renderingUpdateRequested = true;
+     m_renderTimer.stop();
+     renderFrame();
+ }
+@@ -290,25 +319,42 @@ void LayerTreeHost::layerCreated(GraphicsLayerOnyx& layer)
+ void LayerTreeHost::layerDestroyed(GraphicsLayerOnyx& layer)
+ {
+     m_layers.remove(&layer);
++    if (auto group = m_groups.take(&layer); group.texture && m_compositor) {
++        destroyGroup(group);
++        m_previousFrameLayers.clear();
++    }
++}
++
++bool LayerTreeHost::hasRoomForTileTexture(const IntSize& size)
++{
++    uint64_t pixels = static_cast<uint64_t>(size.width()) * size.height();
++    if (m_textureCount < maximumTextures && m_texturePixels + pixels <= maximumTexturePixels)
++        return true;
++
++    // The tiles that are not seen go first (at the next frame: this one's list may draw them), and
++    // no tile is painted ahead while memory is short; what still does not fit is not drawn.
++    m_needsEviction = true;
++    if (!m_textureBudgetLogged) {
++        m_textureBudgetLogged = true;
++        logLine("the texture budget is reached (%u textures, %u MB): the tiles out of sight are dropped, none is painted ahead; the tiles past it are not drawn",
++            m_textureCount, static_cast<unsigned>(m_texturePixels * 4 >> 20));
++    }
++    return false;
+ }
+ 
+ GraphicsLayerOnyxHost::Texture LayerTreeHost::createTileTexture(const IntSize& size, const uint32_t* pixels, int stride)
+ {
+-    if (!m_compositor)
+-        return nullptr;
+-    if (m_textureCount >= maximumTileTextures) {
+-        if (!m_textureBudgetLogged) {
+-            m_textureBudgetLogged = true;
+-            logLine("the texture budget is reached (%u tiles): the tiles past it are not drawn", m_textureCount);
+-        }
++    if (!m_compositor || m_textureCount >= maximumTextures)
+         return nullptr;
+-    }
+ 
+     auto startTime = MonotonicTime::now();
+     auto* texture = gpc_tex_create(m_compositor, size.width(), size.height(), pixels, stride);
+     m_uploadTime += MonotonicTime::now() - startTime;
+-    if (texture)
++    if (texture) {
+         ++m_textureCount;
++        m_texturePixels += static_cast<uint64_t>(size.width()) * size.height();
++        ++m_paintGeneration;
++    }
+     return texture;
+ }
+ 
+@@ -320,6 +366,7 @@ bool LayerTreeHost::updateTileTexture(Texture texture, const IntRect& rect, cons
+     auto startTime = MonotonicTime::now();
+     int result = gpc_tex_update(m_compositor, static_cast<gpc_tex*>(texture), rect.x(), rect.y(), rect.width(), rect.height(), pixels, stride);
+     m_uploadTime += MonotonicTime::now() - startTime;
++    ++m_paintGeneration;
+     if (result == GPC_LOST)
+         m_texturesWereLost = true;
+     return result == GPC_OK;
+@@ -329,9 +376,20 @@ void LayerTreeHost::destroyTileTexture(Texture texture)
+ {
+     if (!m_compositor || !texture)
+         return;
++    int width = 0;
++    int height = 0;
++    gpc_tex_size(static_cast<gpc_tex*>(texture), &width, &height);
++    uint64_t pixels = static_cast<uint64_t>(width) * height;
++    m_texturePixels -= std::min(m_texturePixels, pixels);
+     gpc_tex_destroy(m_compositor, static_cast<gpc_tex*>(texture));
+     if (m_textureCount)
+         --m_textureCount;
++    ++m_paintGeneration;
++}
++
++void LayerTreeHost::layerAnimationsChanged()
++{
++    scheduleFrame();
+ }
+ 
+ gpc_tex* LayerTreeHost::textureForColor(uint32_t premultipliedARGB)
+@@ -346,7 +404,15 @@ gpc_tex* LayerTreeHost::textureForColor(uint32_t premultipliedARGB)
+     return texture;
+ }
+ 
+-void LayerTreeHost::appendQuad(gpc_tex* texture, const TransformationMatrix& layerToTarget, const FloatRect& rect, const WalkState& state, float opacity, bool opaque)
++static bool isIntegerTranslation(const AffineTransform& transform)
++{
++    auto isWhole = [](double value) {
++        return std::abs(value - std::round(value)) < 0.01;
++    };
++    return transform.a() == 1 && !transform.b() && !transform.c() && transform.d() == 1 && isWhole(transform.e()) && isWhole(transform.f());
++}
++
++void LayerTreeHost::appendQuad(GraphicsLayerOnyx& owner, gpc_tex* texture, QuadKind kind, const TransformationMatrix& layerToTarget, const FloatRect& rect, const WalkState& state, float opacity, bool opaque)
+ {
+     int textureWidth = 0;
+     int textureHeight = 0;
+@@ -358,12 +424,14 @@ void LayerTreeHost::appendQuad(gpc_tex* texture, const TransformationMatrix& lay
+     // (Of a transform that is not affine, its 2D affine part.)
+     auto transform = layerToTarget.toAffineTransform();
+     transform.translate(rect.x(), rect.y());
+-    bool isScaled = rect.width() != textureWidth || rect.height() != textureHeight;
+-    if (isScaled)
++    bool isTranslation = transform.a() == 1 && !transform.b() && !transform.c() && transform.d() == 1;
++    bool isWholeTranslation = isIntegerTranslation(transform);
++    if (rect.width() != textureWidth || rect.height() != textureHeight)
+         transform.scale(rect.width() / textureWidth, rect.height() / textureHeight);
+ 
+     auto targetRect = enclosingIntRect(transform.mapRect(FloatRect { 0, 0, static_cast<float>(textureWidth), static_cast<float>(textureHeight) }));
+-    if (!targetRect.intersects(state.clip))
++    targetRect.intersect(state.clip);
++    if (targetRect.isEmpty())
+         return;
+ 
+     unsigned alpha = clampTo<unsigned>(lroundf(opacity * 255), 0, 255);
+@@ -374,27 +442,29 @@ void LayerTreeHost::appendQuad(gpc_tex* texture, const TransformationMatrix& lay
+     memset(&layer, 0, sizeof(layer));
+     gpc_layer_init(&layer, texture);
+     layer.m = { static_cast<float>(transform.a()), static_cast<float>(transform.b()), static_cast<float>(transform.c()), static_cast<float>(transform.d()), static_cast<float>(transform.e()), static_cast<float>(transform.f()) };
+-    bool isTranslation = transform.a() == 1 && !transform.b() && !transform.c() && transform.d() == 1;
+-    if (isTranslation) {
+-        // A scrolled page: whole pixels, the texels as they are.
++    // The texels as they are (nearest) for a colour, and for content that is only moved: by whole
++    // pixels -- a scrolled page --, or, when it is in tiles, to the nearest pixel (filtered, the
++    // tiles' edges would show). Bilinear for the rest: content in one texture between two pixels,
++    // scaled or rotated content.
++    if (kind == QuadKind::Color)
++        layer.flags |= GPC_L_NEAREST;
++    else if (isTranslation && (isWholeTranslation || kind == QuadKind::Tile)) {
+         layer.m.e = roundf(layer.m.e);
+         layer.m.f = roundf(layer.m.f);
+-    }
+-    if (isTranslation || isScaled)
+         layer.flags |= GPC_L_NEAREST;
++    }
+     if (opaque && alpha == 255)
+         layer.flags |= GPC_L_OPAQUE;
+     layer.opacity = alpha;
+-    if (!state.clip.contains(targetRect)) {
+-        layer.clip[0] = state.clip.x();
+-        layer.clip[1] = state.clip.y();
+-        layer.clip[2] = state.clip.width();
+-        layer.clip[3] = state.clip.height();
+-    }
+-    m_frameLayers.append(layer);
++    // (The clip always: a rectangle to compare is simpler than a quad that may stick out.)
++    layer.clip[0] = state.clip.x();
++    layer.clip[1] = state.clip.y();
++    layer.clip[2] = state.clip.width();
++    layer.clip[3] = state.clip.height();
++    m_quads.append({ layer, &owner, targetRect });
+ }
+ 
+-void LayerTreeHost::appendColorQuad(const Color& color, const TransformationMatrix& layerToTarget, const FloatRect& rect, const WalkState& state, float opacity)
++void LayerTreeHost::appendColorQuad(GraphicsLayerOnyx& owner, const Color& color, const TransformationMatrix& layerToTarget, const FloatRect& rect, const WalkState& state, float opacity)
+ {
+     if (!color.isVisible() || rect.isEmpty())
+         return;
+@@ -406,21 +476,193 @@ void LayerTreeHost::appendColorQuad(const Color& color, const TransformationMatr
+     };
+     uint32_t pixel = (alpha << 24) | (premultiply(components.red) << 16) | (premultiply(components.green) << 8) | premultiply(components.blue);
+     if (auto* texture = textureForColor(pixel))
+-        appendQuad(texture, layerToTarget, rect, state, opacity, alpha == 255);
++        appendQuad(owner, texture, QuadKind::Color, layerToTarget, rect, state, opacity, alpha == 255);
++}
++
++static bool layersAreEqual(const Vector<gpc_layer>& a, const Vector<gpc_layer>& b)
++{
++    if (a.size() != b.size())
++        return false;
++    for (size_t i = 0; i < a.size(); ++i) {
++        auto& first = a[i];
++        auto& second = b[i];
++        if (first.tex != second.tex || first.opacity != second.opacity || first.flags != second.flags || first.blend != second.blend
++            || first.src_x != second.src_x || first.src_y != second.src_y || first.src_w != second.src_w || first.src_h != second.src_h
++            || first.m.a != second.m.a || first.m.b != second.m.b || first.m.c != second.m.c || first.m.d != second.m.d || first.m.e != second.m.e || first.m.f != second.m.f
++            || first.clip[0] != second.clip[0] || first.clip[1] != second.clip[1] || first.clip[2] != second.clip[2] || first.clip[3] != second.clip[3])
++            return false;
++    }
++    return true;
++}
++
++// Whether what was drawn by different layers overlaps somewhere: then, at an opacity under one, the
++// layers blended one by one would show through one another.
++bool LayerTreeHost::quadsOverlap(const Vector<Quad>& quads)
++{
++    // (Past that many, the answer is taken to be yes.)
++    if (quads.size() > 256)
++        return true;
++    for (size_t i = 0; i < quads.size(); ++i) {
++        for (size_t j = i + 1; j < quads.size(); ++j) {
++            if (quads[i].owner != quads[j].owner && quads[i].rect.intersects(quads[j].rect))
++                return true;
++        }
++    }
++    return false;
++}
++
++void LayerTreeHost::destroyGroup(Group& group)
++{
++    if (!group.texture)
++        return;
++    m_texturePixels -= std::min(m_texturePixels, static_cast<uint64_t>(group.size.width()) * group.size.height());
++    gpc_tex_destroy(m_compositor, group.texture);
++    group.texture = nullptr;
++    if (m_textureCount)
++        --m_textureCount;
++}
++
++// A layer under full opacity whose subtree's layers overlap: the subtree is composited at full
++// opacity into a buffer of its own (with its alpha), which becomes a texture, drawn at the opacity.
++// The texture is kept from frame to frame while the subtree draws the same (an opacity animated
++// over a still subtree composites it once). False: no group can be made (the caller blends the
++// subtree's layers one by one, as when they do not overlap).
++bool LayerTreeHost::appendGroup(GraphicsLayerOnyx& layer, const Vector<Quad>& quads, const WalkState& parentState, float opacity, bool repainted)
++{
++    IntRect groupRect;
++    for (auto& quad : quads)
++        groupRect.unite(quad.rect);
++    groupRect.intersect(parentState.clip);
++    if (groupRect.isEmpty())
++        return true;
++
++    if (!m_groupBuffer && !m_groupBufferFailed) {
++        m_groupBufferSize = m_surfaceSize;
++        m_groupBuffer = gpc_target_alloc(m_compositor, m_groupBufferSize.width(), m_groupBufferSize.height(), &m_groupBufferStride);
++        if (!m_groupBuffer) {
++            m_groupBufferFailed = true;
++            logLine("no buffer for opacity groups (%d x %d): a group's layers are blended one by one", m_groupBufferSize.width(), m_groupBufferSize.height());
++        }
++    }
++    if (!m_groupBuffer || groupRect.width() > m_groupBufferSize.width() || groupRect.height() > m_groupBufferSize.height())
++        return false;
++
++    Vector<gpc_layer> layers;
++    layers.reserveInitialCapacity(quads.size());
++    for (auto& quad : quads) {
++        auto moved = quad.layer;
++        moved.m.e -= groupRect.x();
++        moved.m.f -= groupRect.y();
++        moved.clip[0] -= groupRect.x();
++        moved.clip[1] -= groupRect.y();
++        layers.append(moved);
++    }
++
++    auto& group = m_groups.ensure(&layer, [] {
++        return Group { };
++    }).iterator->value;
++    group.lastFrame = m_frameNumber;
++
++    bool isCurrent = group.texture && group.size == groupRect.size() && !repainted && layersAreEqual(group.layers, layers);
++    if (!isCurrent) {
++        if (group.texture && group.size != groupRect.size())
++            destroyGroup(group);
++        if (!group.texture && !hasRoomForTileTexture(groupRect.size()))
++            return false;
++
++        gpc_target target = { m_groupBuffer, groupRect.width(), groupRect.height(), m_groupBufferStride, GPC_T_ALPHA };
++        auto startTime = MonotonicTime::now();
++        int result = gpc_composite(m_compositor, &target, layers.span().data(), layers.size(), 0, GPC_C_CLEAR);
++        if (result == GPC_OK) {
++            if (group.texture)
++                result = gpc_tex_update(m_compositor, group.texture, 0, 0, groupRect.width(), groupRect.height(), m_groupBuffer, m_groupBufferStride);
++            else {
++                group.texture = gpc_tex_create(m_compositor, groupRect.width(), groupRect.height(), m_groupBuffer, m_groupBufferStride);
++                if (group.texture) {
++                    ++m_textureCount;
++                    m_texturePixels += static_cast<uint64_t>(groupRect.width()) * groupRect.height();
++                } else
++                    result = GPC_ENOMEM;
++            }
++        }
++        m_compositeTime += MonotonicTime::now() - startTime;
++        if (result == GPC_LOST) {
++            m_texturesWereLost = true;
++            return true;
++        }
++        if (result != GPC_OK) {
++            group.layers.clear();
++            return false;
++        }
++        group.size = groupRect.size();
++        group.layers = WTF::move(layers);
++        ++m_groupsRendered;
++        m_frameDamage.unite(groupRect);
++        if (m_logsLayerTree)
++            logLine("layer %p: an opacity group of %u layers, %d x %d at %d,%d", &layer, static_cast<unsigned>(quads.size()), groupRect.width(), groupRect.height(), groupRect.x(), groupRect.y());
++    }
++
++    unsigned alpha = clampTo<unsigned>(lroundf(opacity * 255), 0, 255);
++    if (!alpha)
++        return true;
++    gpc_layer groupLayer;
++    memset(&groupLayer, 0, sizeof(groupLayer));
++    gpc_layer_init(&groupLayer, group.texture);
++    groupLayer.m.e = groupRect.x();
++    groupLayer.m.f = groupRect.y();
++    groupLayer.flags |= GPC_L_NEAREST;
++    groupLayer.opacity = alpha;
++    groupLayer.clip[0] = parentState.clip.x();
++    groupLayer.clip[1] = parentState.clip.y();
++    groupLayer.clip[2] = parentState.clip.width();
++    groupLayer.clip[3] = parentState.clip.height();
++    m_quads.append({ groupLayer, &layer, groupRect });
++    return true;
+ }
+ 
+ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentState)
+ {
++    // The opacity and the transform of this frame: the layer's, or its animations' now.
++    m_hasRunningAnimations |= layer.updateAnimations(m_frameTime);
++
+     if (m_logsLayers) {
+-        logLine("layer %p: at %.0f,%.0f %.0f x %.0f, bounds origin %.0f,%.0f, opacity %.2f%s%s%s%s, %u children, %u tiles", &layer, layer.position().x(), layer.position().y(), layer.size().width(), layer.size().height(),
+-            layer.boundsOrigin().x(), layer.boundsOrigin().y(), layer.opacity(), layer.drawsContent() ? ", draws content" : "", layer.contentsAreVisible() ? "" : ", contents hidden",
+-            layer.masksToBounds() ? ", masks to bounds" : "", layer.hasNonIdentityTransform() ? ", transform" : "", static_cast<unsigned>(layer.children().size()), static_cast<unsigned>(layer.tiles().size()));
++        logLine("layer %p: at %.0f,%.0f %.0f x %.0f, bounds origin %.0f,%.0f, opacity %.2f%s%s%s%s%s, %u children, %u tiles", &layer, layer.position().x(), layer.position().y(), layer.size().width(), layer.size().height(),
++            layer.boundsOrigin().x(), layer.boundsOrigin().y(), layer.currentOpacity(), layer.drawsContent() ? ", draws content" : "", layer.contentsAreVisible() ? "" : ", contents hidden",
++            layer.masksToBounds() ? ", masks to bounds" : "", layer.currentTransform().isIdentity() ? "" : ", transform", layer.usesSingleTexture() ? ", one texture" : "",
++            static_cast<unsigned>(layer.children().size()), static_cast<unsigned>(layer.tiles().size()));
+     }
+ 
+-    float opacity = parentState.opacity * clampTo<float>(layer.opacity(), 0, 1);
++    float ownOpacity = clampTo<float>(layer.currentOpacity(), 0, 1);
++    float opacity = parentState.opacity * ownOpacity;
+     if (opacity <= 0)
+         return;
+ 
++    if (ownOpacity < 1 && !layer.children().isEmpty() && m_usesOpacityGroups) {
++        // The subtree at full opacity, apart: a group if its layers overlap.
++        auto outerQuads = std::exchange(m_quads, { });
++        auto paintGeneration = m_paintGeneration;
++        walkLayerContents(layer, parentState, 1);
++        auto groupQuads = std::exchange(m_quads, WTF::move(outerQuads));
++        if (quadsOverlap(groupQuads) && appendGroup(layer, groupQuads, parentState, opacity, m_paintGeneration != paintGeneration))
++            return;
++
++        for (auto& quad : groupQuads) {
++            unsigned alpha = clampTo<unsigned>(lroundf(quad.layer.opacity * opacity), 0, 255);
++            if (!alpha)
++                continue;
++            quad.layer.opacity = alpha;
++            if (alpha < 255)
++                quad.layer.flags &= ~GPC_L_OPAQUE;
++            m_quads.append(quad);
++        }
++        return;
++    }
++
++    walkLayerContents(layer, parentState, opacity);
++}
++
++void LayerTreeHost::walkLayerContents(GraphicsLayerOnyx& layer, const WalkState& parentState, float opacity)
++{
+     // The layer's own space -> the target: its place in its parent, its transform about its anchor.
+     auto& size = layer.size();
+     FloatPoint3D anchor = layer.anchorPoint();
+@@ -428,9 +670,9 @@ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentS
+ 
+     WalkState state { parentState.toTarget, parentState.clip, opacity };
+     state.toTarget.translate(layer.position().x(), layer.position().y());
+-    if (layer.hasNonIdentityTransform()) {
++    if (!layer.currentTransform().isIdentity()) {
+         state.toTarget.translate3d(anchor.x(), anchor.y(), anchor.z());
+-        state.toTarget.multiply(layer.transform());
++        state.toTarget.multiply(layer.currentTransform());
+         state.toTarget.translate3d(-anchor.x(), -anchor.y(), -anchor.z());
+     }
+ 
+@@ -444,7 +686,7 @@ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentS
+ 
+     bool drawsSelf = layer.contentsAreVisible() && (layer.backfaceVisibility() || !state.toTarget.isBackFaceVisible());
+     if (drawsSelf) {
+-        appendColorQuad(layer.backgroundColor(), state.toTarget, bounds, state, opacity);
++        appendColorQuad(layer, layer.backgroundColor(), state.toTarget, bounds, state, opacity);
+ 
+         // What is seen of the layer, in its own coordinates: its tiles follow it (a layer that draws
+         // no content keeps none).
+@@ -452,25 +694,37 @@ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentS
+         IntRect visibleRect = enclosingIntRect(bounds);
+         if (auto inverse = affine.inverse())
+             visibleRect.intersect(enclosingIntRect(inverse->mapRect(FloatRect { state.clip })));
++        // (Drawn scaled, rotated or between two pixels: in one texture when it fits, from now on.)
++        if (!isIntegerTranslation(affine))
++            layer.setPrefersSingleTexture();
+ 
+         GraphicsLayerOnyx::TileUpdate update;
+-        layer.updateTiles(visibleRect, m_offscreenTileBudget, update);
++        layer.updateTiles(visibleRect, !m_isShortOfTextureMemory, m_offscreenTileBudget, update);
+         m_tilesPainted += update.tilesPainted;
++        m_rectsPainted += update.rectsPainted;
++        m_pixelsPainted += update.pixelsPainted;
++        m_paints += update.paints;
+         m_paintTime += update.paintTime;
++        m_paintSetupTime += update.setupTime;
++        m_paintContentsTime += update.contentsTime;
++        m_totalTilesPainted += update.tilesPainted;
++        m_totalRectsPainted += update.rectsPainted;
++        m_totalPixelsPainted += update.pixelsPainted;
+         m_hasPendingTiles |= update.hasPendingTiles;
+-        if (m_logsLayerTree && update.tilesPainted) {
+-            logLine("layer %p (%.0f x %.0f): %u tiles painted, %u of them again (visible %d,%d %d x %d)", &layer, size.width(), size.height(), update.tilesPainted, static_cast<unsigned>(update.repaintedRects.size()),
+-                visibleRect.x(), visibleRect.y(), visibleRect.width(), visibleRect.height());
++        if (m_logsLayerTree && update.pixelsPainted) {
++            logLine("layer %p (%.0f x %.0f): %u tiles painted, %u rects repainted, %u px in %.1f ms (visible %d,%d %d x %d)", &layer, size.width(), size.height(), update.tilesPainted, update.rectsPainted,
++                static_cast<unsigned>(update.pixelsPainted), update.paintTime.milliseconds(), visibleRect.x(), visibleRect.y(), visibleRect.width(), visibleRect.height());
+         }
+         for (auto& rect : update.repaintedRects)
+             m_frameDamage.unite(intersection(enclosingIntRect(affine.mapRect(FloatRect { rect })), state.clip));
+ 
++        auto kind = layer.usesSingleTexture() ? QuadKind::Texture : QuadKind::Tile;
+         for (auto& tile : layer.tiles().values()) {
+             if (tile.texture)
+-                appendQuad(static_cast<gpc_tex*>(tile.texture), state.toTarget, tile.rect, state, opacity, layer.contentsOpaque());
++                appendQuad(layer, static_cast<gpc_tex*>(tile.texture), kind, state.toTarget, tile.rect, state, opacity, layer.contentsOpaque());
+         }
+ 
+-        appendColorQuad(layer.solidColor(), state.toTarget, layer.contentsRect(), state, opacity);
++        appendColorQuad(layer, layer.solidColor(), state.toTarget, layer.contentsRect(), state, opacity);
+     } else
+         layer.dropTiles();
+ 
+@@ -488,22 +742,6 @@ void LayerTreeHost::walkLayer(GraphicsLayerOnyx& layer, const WalkState& parentS
+         walkLayer(static_cast<GraphicsLayerOnyx&>(child.get()), state);
+ }
+ 
+-static bool layersAreEqual(const Vector<gpc_layer>& a, const Vector<gpc_layer>& b)
+-{
+-    if (a.size() != b.size())
+-        return false;
+-    for (size_t i = 0; i < a.size(); ++i) {
+-        auto& first = a[i];
+-        auto& second = b[i];
+-        if (first.tex != second.tex || first.opacity != second.opacity || first.flags != second.flags || first.blend != second.blend
+-            || first.src_x != second.src_x || first.src_y != second.src_y || first.src_w != second.src_w || first.src_h != second.src_h
+-            || first.m.a != second.m.a || first.m.b != second.m.b || first.m.c != second.m.c || first.m.d != second.m.d || first.m.e != second.m.e || first.m.f != second.m.f
+-            || first.clip[0] != second.clip[0] || first.clip[1] != second.clip[1] || first.clip[2] != second.clip[2] || first.clip[3] != second.clip[3])
+-            return false;
+-    }
+-    return true;
+-}
+-
+ void LayerTreeHost::texturesWereLost()
+ {
+     // The GPU stopped: gpucomp goes on with the CPU, the textures that were on the GPU are empty
+@@ -515,6 +753,9 @@ void LayerTreeHost::texturesWereLost()
+     for (auto& entry : m_colorTextures)
+         gpc_tex_destroy(m_compositor, entry.second);
+     m_colorTextures.clear();
++    for (auto& group : m_groups.values())
++        destroyGroup(group);
++    m_groups.clear();
+     m_previousFrameLayers.clear();
+     m_targetPathLogged = false;
+     m_needsFullFrame = true;
+@@ -603,21 +844,31 @@ void LayerTreeHost::renderFrame()
+         return;
+ 
+     m_lastFrameTime = MonotonicTime::now();
++    m_frameTime = m_lastFrameTime;
++    ++m_frameNumber;
+ 
++    // The page's own update (style, layout, the layers' flush) when it asked for a frame; a frame
++    // that is only due to an animation kept by the layers, or to tiles painted ahead, does without.
+     Ref webPage = m_webPage;
+-    webPage->updateRendering();
+-    // (The frames' layers are flushed there: Page::finalizeRenderingUpdate.)
+-    webPage->finalizeRenderingUpdate({ });
+-    webPage->flushPendingEditorStateUpdate();
+-
+-    m_rootLayer->flushCompositingStateForThisLayerOnly();
+-    if (m_overlayCompositingLayer)
+-        m_overlayCompositingLayer->flushCompositingState(FloatRect { { }, m_rootLayer->size() });
++    bool updatesRendering = std::exchange(m_renderingUpdateRequested, false);
++    ++m_framesRendered;
++    if (updatesRendering) {
++        webPage->updateRendering();
++        // (The frames' layers are flushed there: Page::finalizeRenderingUpdate.)
++        webPage->finalizeRenderingUpdate({ });
++        webPage->flushPendingEditorStateUpdate();
++
++        m_rootLayer->flushCompositingStateForThisLayerOnly();
++        if (m_overlayCompositingLayer)
++            m_overlayCompositingLayer->flushCompositingState(FloatRect { { }, m_rootLayer->size() });
++        m_pageUpdateTime += MonotonicTime::now() - m_frameTime;
++    }
+ 
+     IntRect viewRect { { }, webPage->size() };
+     viewRect.intersect(IntRect { { }, m_surfaceSize });
+     if (!m_compositor || !m_surfacePixels || viewRect.isEmpty()) {
+-        webPage->didUpdateRendering();
++        if (updatesRendering)
++            webPage->didUpdateRendering();
+         return;
+     }
+ 
+@@ -626,12 +877,26 @@ void LayerTreeHost::renderFrame()
+             gpc_tex_destroy(m_compositor, entry.second);
+         m_colorTextures.clear();
+         m_previousFrameLayers.clear();
++        for (auto& group : m_groups.values())
++            group.layers.clear();
+     }
+ 
+-    m_frameLayers.shrink(0);
++    // Short of texture memory: the tiles out of sight go, and none is painted ahead until half the
++    // budget is free again.
++    if (std::exchange(m_needsEviction, false)) {
++        m_isShortOfTextureMemory = true;
++        for (auto* layer : m_layers)
++            layer->dropOffscreenTiles();
++    } else if (m_isShortOfTextureMemory && m_textureCount < maximumTextures / 2 && m_texturePixels < maximumTexturePixels / 2) {
++        m_isShortOfTextureMemory = false;
++        m_textureBudgetLogged = false;
++    }
++
++    m_quads.shrink(0);
+     m_frameDamage = { };
+     m_hasPendingTiles = false;
+-    m_offscreenTileBudget = offscreenTilesPerFrame;
++    m_hasRunningAnimations = false;
++    m_offscreenTileBudget = m_isShortOfTextureMemory ? 0 : offscreenTilesPerFrame;
+     // (SD:/etc/web-gpu-debug: the layer tree in the log, for the first walks and whenever the number
+     // of layers drawn changed.)
+     m_logsLayers = m_logsLayerTree && (m_loggedLayerCount != m_previousFrameLayers.size() || m_loggedWalks < 5);
+@@ -640,16 +905,32 @@ void LayerTreeHost::renderFrame()
+         m_loggedLayerCount = m_previousFrameLayers.size();
+         logLine("the layer tree (view %d x %d, %u layers drawn last):", viewRect.width(), viewRect.height(), static_cast<unsigned>(m_loggedLayerCount));
+     }
++    auto walkStartTime = MonotonicTime::now();
+     walkLayer(*m_rootLayer, WalkState { { }, viewRect, 1 });
++    m_walkTime += MonotonicTime::now() - walkStartTime;
+     m_logsLayers = false;
+ 
++    // (The opacity groups that were not drawn this frame keep no texture.)
++    m_groups.removeIf([&](auto& entry) {
++        if (entry.value.lastFrame == m_frameNumber)
++            return false;
++        destroyGroup(entry.value);
++        return true;
++    });
++
+     if (m_texturesWereLost) {
+         texturesWereLost();
+-        webPage->didUpdateRendering();
+-        scheduleRenderingUpdate();
++        if (updatesRendering)
++            webPage->didUpdateRendering();
++        scheduleFrame();
+         return;
+     }
+ 
++    m_frameLayers.shrink(0);
++    m_frameLayers.reserveCapacity(m_quads.size());
++    for (auto& quad : m_quads)
++        m_frameLayers.append(quad.layer);
++
+     if (m_needsFullFrame || !layersAreEqual(m_frameLayers, m_previousFrameLayers))
+         m_frameDamage = viewRect;
+     m_frameDamage.intersect(viewRect);
+@@ -660,20 +941,24 @@ void LayerTreeHost::renderFrame()
+             m_previousFrameLayers = m_frameLayers;
+             ++m_framesComposited;
+             ++m_totalFramesComposited;
++            if (!updatesRendering)
++                ++m_framesWithoutRenderingUpdate;
+             m_isWaitingForDidRefresh = true;
+             m_scheduledWhileWaitingForDidRefresh = false;
+             m_frameCallback(viewRect.size(), m_frameDamage);
+         } else if (m_texturesWereLost) {
+             texturesWereLost();
+-            scheduleRenderingUpdate();
++            scheduleFrame();
+         }
+     }
+ 
+-    webPage->didUpdateRendering();
++    if (updatesRendering)
++        webPage->didUpdateRendering();
+ 
+-    // The tiles around the visible ones that are still to paint: in the next frames.
+-    if (m_hasPendingTiles)
+-        scheduleRenderingUpdate();
++    // Another frame for the layers' running animations, for the tiles around the visible ones that
++    // are still to paint, after tiles were dropped for memory.
++    if (m_hasRunningAnimations || m_hasPendingTiles || m_needsEviction)
++        scheduleFrame();
+ 
+     logStatisticsIfNeeded();
+ }
+@@ -685,21 +970,63 @@ void LayerTreeHost::logStatisticsIfNeeded()
+     if (elapsed < statisticsInterval)
+         return;
+ 
+-    if (m_framesComposited || m_tilesPainted) {
++    if (m_framesComposited || m_pixelsPainted) {
+         gpc_stats statistics;
+         gpc_get_stats(m_compositor, &statistics);
+-        logLine("%.1f s: %u frames, %u tiles painted, paint %.0f ms, upload %.0f ms, composite %.0f ms; %u textures, %u layers (last frame: %u GPU calls, %u layers by the CPU)",
+-            elapsed.seconds(), m_framesComposited, m_tilesPainted, m_paintTime.milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
+-            m_textureCount + static_cast<unsigned>(m_colorTextures.size()), static_cast<unsigned>(m_frameLayers.size()), statistics.last_gpu_calls, statistics.last_cpu_layers);
++        logLine("%.1f s: %u frames (%u without a page update), %u tiles painted, %u rects repainted, %u px, paint %.0f ms, upload %.0f ms, composite %.0f ms; %u textures (%u MB), %u layers, %u groups made (last frame: %u GPU calls, %u layers by the CPU)",
++            elapsed.seconds(), m_framesComposited, m_framesWithoutRenderingUpdate, m_tilesPainted, m_rectsPainted, static_cast<unsigned>(m_pixelsPainted), m_paintTime.milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
++            m_textureCount + static_cast<unsigned>(m_colorTextures.size()), static_cast<unsigned>(m_texturePixels * 4 >> 20), static_cast<unsigned>(m_frameLayers.size()), m_groupsRendered, statistics.last_gpu_calls, statistics.last_cpu_layers);
++    }
++    // (SD:/etc/web-gpu-debug: where a frame's time goes -- the page's own update, the walk of the
++    // layers with its paints, and within the paints: the Skia surface and context made, WebCore's
++    // painting, the two let go.)
++    if (m_logsLayerTree && m_framesRendered) {
++        logLine("times: %u frames rendered: page update %.1f ms, layer walk %.1f ms (of it %u paints %.1f ms = setup %.2f + WebCore %.2f + end %.2f), composite %.1f ms; per paint %.0f us (setup %.0f, WebCore %.0f)",
++            m_framesRendered, m_pageUpdateTime.milliseconds(), m_walkTime.milliseconds(), m_paints, m_paintTime.milliseconds(), m_paintSetupTime.milliseconds(), m_paintContentsTime.milliseconds(),
++            (m_paintTime - m_paintSetupTime - m_paintContentsTime).milliseconds(), m_compositeTime.milliseconds(),
++            m_paints ? m_paintTime.microseconds() / m_paints : 0, m_paints ? m_paintSetupTime.microseconds() / m_paints : 0, m_paints ? m_paintContentsTime.microseconds() / m_paints : 0);
+     }
+     m_statisticsStartTime = now;
++    m_framesRendered = 0;
++    m_paints = 0;
++    m_pageUpdateTime = { };
++    m_walkTime = { };
++    m_paintSetupTime = { };
++    m_paintContentsTime = { };
+     m_framesComposited = 0;
++    m_framesWithoutRenderingUpdate = 0;
+     m_tilesPainted = 0;
++    m_rectsPainted = 0;
++    m_pixelsPainted = 0;
++    m_groupsRendered = 0;
+     m_paintTime = { };
+     m_uploadTime = { };
+     m_compositeTime = { };
+ }
+ 
++// The conditions that give an element a layer of its own (WebChromeClient). The frames' own layers
++// always (so that scrolling paints nothing again); an element with an animation or a transition of
++// opacity or of a transform (then moved or faded by the compositor, not painted again). Not the
++// elements with a 3D transform, unless SD:/etc/web-gpu-3d exists (many pages give one to many
++// elements; a layer is drawn by its transform's 2D affine part); no canvas, no video.
++// SD:/etc/web-gpu-stage1: none of them (the frames' layers only).
++unsigned onyxCompositingTriggers()
++{
++    static unsigned triggers;
++    static std::once_flag once;
++    std::call_once(once, [] {
++        // (No trigger at all would switch compositing off -- RenderLayerCompositor::
++        // cacheAcceleratedCompositingFlags --: the plugins' is given, there are no plugins.)
++        triggers = ChromeClient::PluginTrigger;
++        if (testSwitch("ONYX_WEB_GPU_STAGE1", "SD:/etc/web-gpu-stage1"))
++            return;
++        triggers |= ChromeClient::AnimationTrigger | ChromeClient::AnimatedOpacityTrigger;
++        if (testSwitch("ONYX_WEB_GPU_3D", "SD:/etc/web-gpu-3d"))
++            triggers |= ChromeClient::ThreeDTransformTrigger;
++    });
++    return triggers;
++}
++
+ } // namespace WebKit
+ 
+ #endif // USE(GRAPHICS_LAYER_ONYX)
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+index b323beea..1993c63c 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+@@ -49,6 +49,7 @@
+ #include <gpucomp.h>
+ #include <wtf/CheckedRef.h>
+ #include <wtf/Function.h>
++#include <wtf/HashMap.h>
+ #include <wtf/HashSet.h>
+ #include <wtf/MonotonicTime.h>
+ #include <wtf/TZoneMalloc.h>
+@@ -75,6 +76,14 @@ class WebPage;
+ // layers, has it composited into a kernel surface that the UI process gave, and tells the UI
+ // process what changed there. One frame at most for each of the UI process's answers
+ // (displayDidRefresh), and 16 ms apart.
++//
++// Besides the frames' own layers, an element with an animation or a transition of opacity or of a
++// transform is a layer (onyxCompositingTriggers): the animation is kept by the layer
++// (GraphicsLayerOnyx::addAnimation) and sampled here at each frame -- nothing is painted, and a
++// frame that is only due to animations does without the page's own rendering update. A layer
++// drawn scaled or rotated keeps its content in one texture (bilinear, no seam). A layer under full
++// opacity whose subtree's layers overlap is composited apart first, into a texture drawn at that
++// opacity (appendGroup). The textures have a budget (hasRoomForTileTexture).
+ class LayerTreeHost final : public WebCore::GraphicsLayerClient, public WebCore::GraphicsLayerFactory, public WebCore::GraphicsLayerOnyxHost, public CanMakeCheckedPtr<LayerTreeHost> {
+     WTF_MAKE_TZONE_ALLOCATED(LayerTreeHost);
+     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(LayerTreeHost);
+@@ -126,6 +135,23 @@ private:
+         float opacity { 1 };
+     };
+ 
++    // What a layer draws: a gpucomp layer, with the layer it is of and where it lands in the target
++    // (clipped), for the opacity groups.
++    struct Quad {
++        gpc_layer layer;
++        WebCore::GraphicsLayerOnyx* owner;
++        WebCore::IntRect rect;
++    };
++    enum class QuadKind : uint8_t { Color, Tile, Texture };
++
++    // An opacity group's texture (appendGroup), and what it was made of.
++    struct Group {
++        gpc_tex* texture { nullptr };
++        WebCore::IntSize size;
++        Vector<gpc_layer> layers;
++        unsigned lastFrame { 0 };
++    };
++
+     // GraphicsLayerClient (the root layer's)
+     float deviceScaleFactor() const final { return 1; }
+ 
+@@ -135,15 +161,24 @@ private:
+     // GraphicsLayerOnyxHost
+     void layerCreated(WebCore::GraphicsLayerOnyx&) final;
+     void layerDestroyed(WebCore::GraphicsLayerOnyx&) final;
++    bool hasRoomForTileTexture(const WebCore::IntSize&) final;
+     Texture createTileTexture(const WebCore::IntSize&, const uint32_t* pixels, int stride) final;
+     bool updateTileTexture(Texture, const WebCore::IntRect&, const uint32_t* pixels, int stride) final;
+     void destroyTileTexture(Texture) final;
++    bool acceleratesAnimations() const final { return m_acceleratesAnimations; }
++    void layerAnimationsChanged() final;
+ 
++    // A frame without asking the page for its own update first (scheduleRenderingUpdate asks).
++    void scheduleFrame();
+     void renderTimerFired();
+     void renderFrame();
+     void walkLayer(WebCore::GraphicsLayerOnyx&, const WalkState&);
+-    void appendQuad(gpc_tex*, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity, bool opaque);
+-    void appendColorQuad(const WebCore::Color&, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity);
++    void walkLayerContents(WebCore::GraphicsLayerOnyx&, const WalkState&, float opacity);
++    void appendQuad(WebCore::GraphicsLayerOnyx&, gpc_tex*, QuadKind, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity, bool opaque);
++    void appendColorQuad(WebCore::GraphicsLayerOnyx&, const WebCore::Color&, const WebCore::TransformationMatrix&, const WebCore::FloatRect&, const WalkState&, float opacity);
++    static bool quadsOverlap(const Vector<Quad>&);
++    bool appendGroup(WebCore::GraphicsLayerOnyx&, const Vector<Quad>&, const WalkState&, float opacity, bool repainted);
++    void destroyGroup(Group&);
+     gpc_tex* textureForColor(uint32_t premultipliedARGB);
+     bool compositeFrame(const WebCore::IntRect& damage);
+     void texturesWereLost();
+@@ -159,8 +194,14 @@ private:
+     WebCore::Timer m_renderTimer;
+ 
+     gpc_ctx* m_compositor { nullptr };
++    // The texture budget: how many, how many texels (tiles, layers in one texture, opacity groups).
+     unsigned m_textureCount { 0 };
++    uint64_t m_texturePixels { 0 };
+     bool m_textureBudgetLogged { false };
++    bool m_needsEviction { false };
++    bool m_isShortOfTextureMemory { false };
++    // Counts every change of a tile's texture: an opacity group knows by it that its content changed.
++    unsigned m_paintGeneration { 0 };
+     Vector<std::pair<uint32_t, gpc_tex*>> m_colorTextures;
+ 
+     // The target: the UI process's surface, or (when compositing straight into it fails) a buffer of
+@@ -173,13 +214,28 @@ private:
+     int m_copyTargetStride { 0 };
+     bool m_targetPathLogged { false };
+ 
++    // The opacity groups: one buffer they are composited into in turn (gpucomp's, never given back
++    // to the system: made once), a texture each.
++    bool m_usesOpacityGroups { true };
++    unsigned* m_groupBuffer { nullptr };
++    int m_groupBufferStride { 0 };
++    WebCore::IntSize m_groupBufferSize;
++    bool m_groupBufferFailed { false };
++    HashMap<WebCore::GraphicsLayerOnyx*, Group> m_groups;
++
+     // The frame being built.
++    Vector<Quad> m_quads;
+     Vector<gpc_layer> m_frameLayers;
+     Vector<gpc_layer> m_previousFrameLayers;
+     WebCore::IntRect m_frameDamage;
+     unsigned m_offscreenTileBudget { 0 };
++    unsigned m_frameNumber { 0 };
++    MonotonicTime m_frameTime;
+     bool m_hasPendingTiles { false };
++    bool m_hasRunningAnimations { false };
+ 
++    bool m_acceleratesAnimations { true };
++    bool m_renderingUpdateRequested { true };
+     bool m_needsFullFrame { true };
+     bool m_texturesWereLost { false };
+     bool m_layerTreeStateIsFrozen { false };
+@@ -194,16 +250,33 @@ private:
+     size_t m_loggedLayerCount { 0 };
+     unsigned m_loggedWalks { 0 };
+     unsigned m_totalFramesComposited { 0 };
++    unsigned m_totalTilesPainted { 0 };
++    unsigned m_totalRectsPainted { 0 };
++    uint64_t m_totalPixelsPainted { 0 };
++    unsigned m_framesRendered { 0 };
++    unsigned m_paints { 0 };
++    Seconds m_pageUpdateTime;
++    Seconds m_walkTime;
++    Seconds m_paintSetupTime;
++    Seconds m_paintContentsTime;
+ 
+     // The log's numbers, since the last line.
+     MonotonicTime m_statisticsStartTime;
+     unsigned m_framesComposited { 0 };
++    unsigned m_framesWithoutRenderingUpdate { 0 };
+     unsigned m_tilesPainted { 0 };
++    unsigned m_rectsPainted { 0 };
++    uint64_t m_pixelsPainted { 0 };
++    unsigned m_groupsRendered { 0 };
+     Seconds m_paintTime;
+     Seconds m_uploadTime;
+     Seconds m_compositeTime;
+ };
+ 
++// The compositing triggers WebChromeClient answers with (LayerTreeHostOnyx.cpp).
++unsigned onyxCompositingTriggers();
++
++
+ #else // !USE(GRAPHICS_LAYER_ONYX)
+ 
+ // The layer tree host of a port with no compositor (no Coordinated Graphics, no TextureMapper):

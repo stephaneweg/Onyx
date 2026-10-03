@@ -5,6 +5,8 @@
 #
 #   sh tools/webkit/build-webkit.sh             # libWebKit.a first
 #   sh tools/webkit/build-web.sh                # -> $BUILD/bin/web, stripped into sdcard/apps/web.app/main
+#   BUILD=$HOME/webkit-build/webkit-jit sh tools/webkit/build-web.sh     # the package's program: the tree
+#                                               # with JavaScriptCore's JIT (docs/08 "The JIT")
 #
 # wtk is compiled again for this toolchain (a hosted C++ program here: libstdc++'s operator new, not
 # onyxpp.hpp's). engine_webkit.cpp is compiled with the command one of WebKit's own sources gets (its
