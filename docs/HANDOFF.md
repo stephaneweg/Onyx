@@ -155,8 +155,8 @@ answer in French. The docs stay in English.
   repo `stephaneweg/onyx-toolchain`; install: `sh tools/toolchain/fetch.sh`, rebuild:
   `tools/toolchain/build-onyx-toolchain.sh`); ports: SQLite, libxml2, curl+mbedTLS, ICU 78.3, HarfBuzz,
   Skia m154 (WebKit's copy), libjpeg-turbo (`tools/ports/`, `make -C user/bin ports`). Tests on the Pi:
-  memtest, filetest, proctest, nettest, ipctest, posixtest (all groups), posixtest-cxx, icutest,
-  hbtest, skiatest, skiademo -- all pass. The plan and every decision: **`docs/POSIX-PLAN.md`**.
+  memtest, filetest, proctest, nettest, ipctest, posixtest (all groups), posixtest-cxx, malloctest,
+  icutest, hbtest, skiatest, skiademo -- all pass. The plan and every decision: **`docs/POSIX-PLAN.md`**.
 - **Decisions (the user)**: WebKit2 replaces Jet (§8–§9), on the PlayStation port's model (no GLib,
   curl, Skia CPU, our compositor on the V3D later); static binaries (§13); the WebKit browser under
   **LGPL-2.1+** (§15); fork/vfork, symlinks on FAT, self-hosting, Mesa (GPU), 1 GB memory balance,
@@ -173,7 +173,9 @@ answer in French. The docs stay in English.
   kotonstudio.com over HTTPS in about 3.2 s, GitHub's pages, new windows for `target=_blank`; what
   was fixed (a heap corruption in Skia's glyph painting, curl's wake-up, the IPC monitor thread,
   WTF's RedBlackTree) and what is open (the Circle TCP panic a telnet client can trigger) are in
-  docs/08 "Step 3". Then (patch `0016`, Web 1.0.2): `<select>` lists, the system clipboard, find
+  docs/08 "Step 3". **The heap corruption's cause is still open**: newlib's `malloc_usable_size` was
+  checked and is right (`/bin/malloctest`, bench and Pi), so Skia's workaround (`skmallocsize.c`)
+  hides something else; resume with `HEAPCHECK=2 sh tools/webkit/build-web.sh` (docs/08 "Step 3"). Then (patch `0016`, Web 1.0.2): `<select>` lists, the system clipboard, find
   in the page, the right button's menu (Save Link / Image / Page As), downloads into `SD:/Downloads`
   with the Downloads window (its own process: progress, Cancel) and the status bar; Mail draws its
   HTML messages with Web as an applet (`web --applet`); kapi **v78**: `PROT_EXEC` for a JIT (memtest,

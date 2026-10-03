@@ -103,6 +103,8 @@ CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic 
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
 POSIX_PROGS  = posixtest.elf ipctest.elf
 POSIX_CXX_PROGS = posixtest-cxx.elf
+# C on libonyxposix with WP-TC's toolchain: malloctest checks that toolchain's newlib (Web's malloc)
+POSIX_TC_PROGS = malloctest.elf
 
 # C++ console tools on the V3D QPU builder (../v3d/libv3d.a: shaders generated at run time),
 # with FP on.
@@ -111,7 +113,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(PORT_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS) $(PORT_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -148,8 +150,10 @@ posixlib-onyx:
 	@$(MAKE) --no-print-directory -C $(POSIX_DIR) PREFIX=$(ONYX_TC_PREFIX)
 $(POSIX_CXX_PROGS): %.elf: %.cpp posixlib-onyx
 	$(ONYX_TC_GXX) $(CXXFLAGS_POSIX_TC) $(LDFLAGS_POSIX_TC) $< -o $@
+$(POSIX_TC_PROGS): %.elf: %.c posixlib-onyx
+	$(dir $(ONYX_TC_GXX))$(ONYX_TC_PREFIX)gcc $(CFLAGS_POSIX) $(LDFLAGS_POSIX_TC) $< -o $@
 else
-$(POSIX_CXX_PROGS):
+$(POSIX_CXX_PROGS) $(POSIX_TC_PROGS):
 	@echo "  SKIP $@: no $(ONYX_TC_PREFIX)g++ (WP-TC toolchain: sh tools/toolchain/fetch.sh, docs/03 §1)"
 endif
 

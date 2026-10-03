@@ -528,6 +528,21 @@ read after its writer exited, a futex across processes, 8 MB through a stream, 2
 message, `MSG_CTRUNC`, seals, `shm_open`, a child killed touching beyond its object, the free memory
 back after 64 MB of shared pages (`meminfo`) and after a queued message is discarded.
 
+**`/bin/malloctest [phase…] [-s seed] [-n rounds] [-t threads]`**
+([`user/bin/malloctest.c`](../user/bin/malloctest.c), libonyxposix, built with `aarch64-onyx-elf`: the
+newlib Web links): is every byte `malloc_usable_size` promises the block's own? Each block is filled
+to its usable size with a pattern of its own; after every phase, and every 1024 operations of the
+random ones, every live block must still hold its pattern and report the same usable size. Phases
+`sizes` (every size 0..1024 and around the powers of two up to 4 MB), `align` (`memalign` /
+`posix_memalign` / `aligned_alloc`, 16 bytes..1 MB), `realloc`, `top` (blocks next to the top of the
+heap while it grows and newlib trims it: `sbrk` with a negative increment, the kernel drops the
+pages), `sbrk` (the program's own `sbrk` between allocations: newlib's fenceposts), `mix` (all of it at
+random) and `threads` (the mix in several threads). A finding prints the block, the first byte
+changed and the last operations; the exit status is the number of findings. It passes on the bench
+(`PROG=user/bin/malloctest.c PREFIX=aarch64-onyx-elf- sh tools/tests/posixsim/run.sh`) and on the Pi
+(about three minutes); it also runs under `tools/webkit/heapcheck.c` (`OBJS=heapcheck.o`,
+`CFLAGS_EXTRA` with the `--wrap` options of `build-web.sh`), which is how that tool is tested.
+
 **`/bin/posixtest-cxx [group…] [dir]`** ([`user/bin/posixtest-cxx.cpp`](../user/bin/posixtest-cxx.cpp),
 `aarch64-onyx-elf`, C++20): the C++ part, same output and exit code. Groups `thread` (`std::thread`,
 detach, a move-only argument, a 200 KB frame), `mutex` (`mutex`, `recursive_mutex`, `timed_mutex`
