@@ -1276,8 +1276,13 @@ The **Packages** applet installs, updates and removes the system and the apps fr
 repository** (`stephaneweg/onyx-packages`; the same as the `pkg` command, §8 *Packages*). When it
 opens it shows what it knew, then reads the repository again (**Check Now** does it again): the
 repository's index is **signed**, and checked before it is used. Three tabs — a segmented control, each segment with
-its number of packages —, and a **search** field
-on the right that filters them (a name, a category, a word of the summary):
+its number of packages —, an **All / None** button, and a **search** field
+on the right that filters them (a name, a category, a word of the summary). In each tab a package has a
+**box**: tick those you want (**All** ticks every package shown, **None** unticks them), then the button at
+the bottom right does it for all of them at once — **Install N Updates**, **Remove N Packages**, **Install N
+Packages**. With the keyboard, once the list is clicked: **Up / Down** (Page Up / Down, Home, End) choose the
+row, **Space** ticks its box. The list's scroll bar is dragged by its thumb; a click above or below it turns
+a page.
 
 - **Updates** — the packages with a newer version: a box each, ticked (untick those to keep),
   **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
@@ -1286,9 +1291,10 @@ on the right that filters them (a name, a category, a word of the summary):
 - **Installed** — every package: its version, its category, its **updates mode** — **Manual** (the
   default: you are asked), **Auto** (the update daemon installs its updates by itself), **Never**
   (this version kept) — and **Remove** (not for the system; asked first; a setting you changed is
-  kept). A package another one needs is not removed (said in the footer).
+  kept); several at once: tick them, **Remove N Packages**. A package another one needs is not removed (said in the footer).
 - **Available** — the repository's packages not installed (and those with an update): **Install**
-  (with what it needs: an emulator brings the Game Library, Writer brings Cardfile).
+  (with what it needs: an emulator brings the Game Library, Writer brings Cardfile); several at once: tick
+  them, **Install N Packages**.
 
 A **system update** (`onyx`, `pi-firmware`) is **staged**: a banner offers to **Restart**; at the next
 boot it is moved in before the desktop starts (the previous kernel kept as `kernel8-rpi4.img.old`),

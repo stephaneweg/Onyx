@@ -41,6 +41,7 @@ struct Row
 	char name[40], title[48], summary[120], category[24], inst[24], avail[24], mode[8];
 	u64 size, installed;
 	bool isInst, hasUpdate, required, restart, staged, checked;
+	bool markInst, markAvail;		// ticked in Installed (to remove) / in Available (to install); checked: in Updates
 	int state, pct;				// during a job
 	unsigned *icon; int iw, ih;
 };
@@ -139,11 +140,30 @@ static void refilter (void)
 		for (int i = 1; i < g_nvis; i++) for (int j = i; j > 0 && g_rows[g_vis[j]].required && !g_rows[g_vis[j - 1]].required; j--) { int t = g_vis[j]; g_vis[j] = g_vis[j - 1]; g_vis[j - 1] = t; }
 }
 static int count (int tab) { int t = g_tab; g_tab = tab; int n = 0; for (int i = 0; i < g_nrows; i++) if (shown (g_rows[i])) n++; g_tab = t; return n; }
-static int checked_count (u64 *bytes)
+// The row's box in the tab shown: the updates to install, the packages to remove, those to install.
+static bool can_mark (const Row &r) { return g_tab == T_INSTALLED ? !r.required : r.state == ST_NONE; }
+static bool &mark_of (Row &r) { return g_tab == T_UPDATES ? r.checked : g_tab == T_INSTALLED ? r.markInst : r.markAvail; }
+// The packages ticked in the tab shown (those the search hides too) -> their number.
+static int marked (const char **names, int cap)
 {
-	int n = 0; if (bytes) *bytes = 0;
-	for (int i = 0; i < g_nrows; i++) if (g_rows[i].hasUpdate && g_rows[i].checked) { n++; if (bytes) *bytes += g_rows[i].size; }
-	return n;
+	int n = 0;
+	for (int i = 0; i < g_nrows; i++)
+	{
+		const Row &r = g_rows[i];
+		bool on = g_tab == T_UPDATES ? r.hasUpdate && r.checked
+			: g_tab == T_INSTALLED ? r.isInst && !r.required && r.markInst
+			: r.markAvail && r.avail[0] && (!r.isInst || r.hasUpdate);
+		if (!on) continue;
+		if (names && n < cap) names[n] = r.name;
+		n++;
+	}
+	return names && n > cap ? cap : n;
+}
+static bool all_marked (void)				// every row shown that has a box is ticked
+{
+	int can = 0;
+	for (int i = 0; i < g_nvis; i++) { Row &r = g_rows[g_vis[i]]; if (!can_mark (r)) continue; can++; if (!mark_of (r)) return false; }
+	return can > 0;
 }
 static bool any_staged (void) { for (int i = 0; i < g_nrows; i++) if (g_rows[i].staged) return true; return false; }
 static Row *row_of (const char *name) { for (int i = 0; i < g_nrows; i++) if (eq (g_rows[i].name, name)) return &g_rows[i]; return 0; }
@@ -232,8 +252,12 @@ static int job_thread (void *)
 	}
 	else if (g_job.kind == J_REMOVE)
 	{
-		cpy (g_job.cur, g_job.names[0], sizeof g_job.cur);
-		rc = m.remove (g_job.names[0], false, r);
+		for (int i = 0; i < g_job.n && !g_job.cancel; i++)		// (the ticked ones: each in turn)
+		{
+			cpy (g_job.cur, g_job.names[i], sizeof g_job.cur);
+			int x = m.remove (g_job.names[i], false, r);
+			if (x != OK) rc = x;
+		}
 	}
 	else if (g_job.kind == J_MODE)
 	{
@@ -319,7 +343,10 @@ class PkgList : public Widget
 {
 public:
 	int top, hotRow, hotPart; bool wasDown; int pressRow, pressPart;
-	PkgList (int l, int t, int w, int h) : Widget (l, t, w, h), top (0), hotRow (-1), hotPart (0), wasDown (false), pressRow (-1), pressPart (0) {}
+	int sel; bool drag;			// the row chosen (the keys move it); the scroll bar's thumb held
+	PkgList (int l, int t, int w, int h) : Widget (l, t, w, h), top (0), hotRow (-1), hotPart (0), wasDown (false), pressRow (-1), pressPart (0),
+		sel (-1), drag (false) { canFocus = true; }
+	void show (int vi) { int y = banner () + vi * ROWH; if (y < top) top = y; if (y + ROWH + 8 > top + height) top = y + ROWH + 8 - height; clamp (); }
 	unsigned bgColor () override { return C_FIELD; }
 	int banner () { return any_staged () && g_tab == T_UPDATES ? 64 : 0; }
 	int rows_h () { return banner () + g_nvis * ROWH + 8; }
@@ -329,7 +356,7 @@ public:
 	{
 		const Row &r = g_rows[g_vis[vi]];
 		int rw = width - 14;
-		if (g_tab == T_UPDATES && x >= 8 && x < 34) return 1;
+		if (x >= 8 && x < 34) return 1;
 		if (g_tab == T_INSTALLED)
 		{
 			int bx = rw - 92; if (!r.required && x >= bx && x < bx + 84 && y >= 14 && y < 44) return 2;
@@ -342,6 +369,7 @@ public:
 	void onDraw () override
 	{
 		clamp ();
+		if (sel >= g_nvis) sel = g_nvis - 1;
 		canvas.fillRect (0, 0, width, height, C_FIELD);
 		int y = 4 - top;
 		int rw = width - 14;
@@ -363,17 +391,19 @@ public:
 		for (int vi = 0; vi < g_nvis; vi++, y += ROWH)
 		{
 			if (y + ROWH < 0 || y > height) continue;
-			const Row &r = g_rows[g_vis[vi]];
+			Row &r = g_rows[g_vis[vi]];
 			bool hot = vi == hotRow;
-			if (hot) wk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, wk_mix (C_FIELD, C_ACCENT, 26), wk_mix (C_FIELD, C_ACCENT, 26));
+			if (vi == sel)					// the row chosen: the accent's tint, its ring when the list has the keys
+			{
+				wk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, wk_mix (C_FIELD, C_ACCENT, 48), wk_mix (C_FIELD, C_ACCENT, 48));
+				if (hasFocus) wk_rline (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, C_ACCENT, 255);
+			}
+			else if (hot) wk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, wk_mix (C_FIELD, C_ACCENT, 26), wk_mix (C_FIELD, C_ACCENT, 26));
 			if (vi + 1 < g_nvis) canvas.fillRect (12, y + ROWH - 1, rw - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 30));
 			int x = 10;
 			unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 150);
-			if (g_tab == T_UPDATES)
-			{
-				if (r.state == ST_NONE) wk_check_mark (canvas, x, y + (ROWH - 16) / 2, 16, r.checked, hot && hotPart == 1 ? WK_HOT : WK_NORMAL);
-				x += 26;
-			}
+			if (can_mark (r)) wk_check_mark (canvas, x, y + (ROWH - 16) / 2, 16, mark_of (r), hot && hotPart == 1 ? WK_HOT : WK_NORMAL);
+			x += 26;
 			blit_icon (canvas, r, x, y + (ROWH - ICON) / 2, ICON);
 			x += ICON + 10;
 			// the title, the versions
@@ -438,42 +468,89 @@ public:
 		if (total > height)
 		{
 			WkThumb t = wk_thumb (total, height, top, height - 4);
-			wk_draw_vscroll (canvas, width - 12, 2, 10, height - 4, t, C_FIELD);
+			wk_draw_vscroll (canvas, width - 12, 2, 10, height - 4, t, C_FIELD, drag);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
+		if (drag)						// the thumb held: the list follows the pointer
+		{
+			if (!bl || mx < 0) { drag = false; invalidate (true); }
+			else { int total = rows_h (); WkThumb t = wk_thumb (total, height, top, height - 4); top = (int) wk_thumb_pos (my - 2, height - 4, total, height, t.h); clamp (); invalidate (true); }
+			wasDown = bl != 0;
+			return true;
+		}
 		if (mx < 0 || my < 0 || mx >= width || my >= height) { if (hotRow != -1) { hotRow = -1; invalidate (true); } wasDown = false; return false; }
 		if (wheel) { top -= wheel * ROWH; clamp (); invalidate (true); return true; }
+		if (mx >= width - 14 && rows_h () > height)		// the scroll bar: its own, never the row's under it
+		{
+			if (hotRow != -1) { hotRow = -1; invalidate (true); }
+			if (bl && !wasDown)
+			{
+				WkThumb t = wk_thumb (rows_h (), height, top, height - 4);
+				int cy = my - 2;
+				if (cy >= t.y && cy < t.y + t.h) drag = true;			// the thumb: dragged
+				else { top += cy < t.y ? -(height - ROWH) : height - ROWH; clamp (); }	// the groove: a page
+				pressRow = -1; setFocus ();
+				invalidate (true);
+			}
+			wasDown = bl != 0;
+			return true;
+		}
 		int y = my + top - 4, b = banner ();
 		int row = -1, part = 0;
 		if (b && y >= 0 && y < 56) { int rw = width - 14; if (mx >= rw - 100 && mx < rw - 10 && y >= 14 && y < 42) row = -2; }
 		else { int k = (y - b) / ROWH; if (y >= b && k < g_nvis) { row = k; part = partAt (k, mx, (y - b) % ROWH); } }
 		if (row != hotRow || part != hotPart) { hotRow = row; hotPart = part; invalidate (true); }
-		if (bl && !wasDown) { pressRow = row; pressPart = part; }
+		if (bl && !wasDown) { pressRow = row; pressPart = part; setFocus (); if (row >= 0) sel = row; invalidate (true); }
 		if (!bl && wasDown && row == pressRow && part == pressPart) { extern void app_click (int, int); app_click (row, part); }
 		wasDown = bl != 0;
+		return true;
+	}
+	// Up / Down (Page Up / Down, Home, End): the row chosen; Space: its box.
+	bool onKey (long k) override
+	{
+		if (!g_nvis) return false;
+		int s = sel, page = height / ROWH;
+		switch (k)
+		{
+		case KEY_UP:   s = sel < 0 ? 0 : sel - 1; break;
+		case KEY_DOWN: s = sel < 0 ? 0 : sel + 1; break;
+		case KEY_PGUP: s = sel < 0 ? 0 : sel - page; break;
+		case KEY_PGDN: s = sel < 0 ? 0 : sel + page; break;
+		case KEY_HOME: s = 0; break;
+		case KEY_END:  s = g_nvis - 1; break;
+		case ' ': if (sel >= 0) { extern void app_click (int, int); app_click (sel, 1); } return true;
+		default: return false;
+		}
+		if (s < 0) s = 0;
+		if (s >= g_nvis) s = g_nvis - 1;
+		sel = s; show (s);
+		invalidate (true);
 		return true;
 	}
 };
 
 static PkgList *g_list; static Textbox *g_find;
-static Button *g_btnCheck, *g_btnMain;
+static Button *g_btnCheck, *g_btnMain, *g_btnAll;
 static Label *g_lblStatus;
 
 void app_tab_changed ()
 {
-	g_list->top = 0;
-	g_btnMain->hidden = g_tab != T_UPDATES;
-	g_btnMain->invalidate (true);
+	g_list->top = 0; g_list->sel = -1;
+	extern void update_buttons (void); update_buttons ();
 	g_list->invalidate (true);
 	if (g_btnMain->parent) g_btnMain->parent->invalidate (true);
 }
 static void update_main_button (void)
 {
-	u64 b; int n = checked_count (&b);
+	int n = marked (0, 0);
 	static char t[48];
-	snprintf (t, sizeof t, n ? "Install %d Update%s" : "Install Updates", n, n == 1 ? "" : "s");
+	if (g_tab == T_UPDATES) snprintf (t, sizeof t, n ? "Install %d Update%s" : "Install Updates", n, n == 1 ? "" : "s");
+	else if (g_tab == T_INSTALLED) snprintf (t, sizeof t, n ? "Remove %d Package%s" : "Remove", n, n == 1 ? "" : "s");
+	else snprintf (t, sizeof t, n ? "Install %d Package%s" : "Install", n, n == 1 ? "" : "s");
+	cpy (g_btnAll->text, all_marked () ? "None" : "All", sizeof g_btnAll->text);
+	g_btnAll->disabled = g_job.running; g_btnAll->invalidate (true);
 	cpy (g_btnMain->text, t, sizeof g_btnMain->text);
 	g_btnMain->disabled = !n || g_job.running;
 	g_btnMain->invalidate (true);
@@ -498,6 +575,8 @@ static void install_names (const char *const *names, int n)
 {
 	if (start_job (J_INSTALL, names, n)) { set_status ("Installing..."); update_main_button (); g_list->invalidate (true); }
 }
+void update_buttons (void) { update_main_button (); }
+
 void app_click (int row, int part)
 {
 	if (row == -2)
@@ -507,7 +586,8 @@ void app_click (int row, int part)
 	}
 	if (row < 0 || row >= g_nvis || g_job.running) return;
 	Row &r = g_rows[g_vis[row]];
-	if (g_tab == T_UPDATES && (part == 1 || part == 3)) { r.checked = !r.checked; update_main_button (); g_list->invalidate (true); return; }
+	if (part == 1 || (g_tab == T_UPDATES && part == 3))		// its box (an update: the whole row)
+	{ if (can_mark (r)) { mark_of (r) = !mark_of (r); update_main_button (); } g_list->invalidate (true); return; }
 	if (g_tab == T_AVAILABLE && part == 2) { const char *n[1] = { r.name }; install_names (n, 1); return; }
 	if (g_tab == T_INSTALLED && part >= 10 && part <= 12)
 	{
@@ -528,9 +608,19 @@ void app_click (int row, int part)
 static void on_check (Widget &) { if (start_job (J_CHECK, 0, 0)) { set_status ("Reading the repository..."); update_main_button (); } }
 static void on_install (Widget &)
 {
-	const char *names[64]; int n = 0;
-	for (int i = 0; i < g_nrows && n < 64; i++) if (g_rows[i].hasUpdate && g_rows[i].checked) names[n++] = g_rows[i].name;
-	if (n) install_names (names, n);
+	const char *names[64]; int n = marked (names, 64);	// the tab's ticked packages: installed, or removed
+	if (!n) return;
+	if (g_tab != T_INSTALLED) { install_names (names, n); return; }
+	char q[160]; snprintf (q, sizeof q, "Remove %d package%s? (the settings you changed are kept)", n, n == 1 ? "" : "s");
+	if (!wk_messagebox ("Remove", q, MB_YESNO)) return;
+	if (start_job (J_REMOVE, names, n)) { set_status ("Removing..."); update_main_button (); g_list->invalidate (true); }
+}
+// All / None: every row shown ticked -- or none when they all are.
+static void on_all (Widget &)
+{
+	bool on = !all_marked ();
+	for (int i = 0; i < g_nvis; i++) { Row &r = g_rows[g_vis[i]]; if (can_mark (r)) mark_of (r) = on; }
+	update_main_button (); g_list->invalidate (true);
 }
 
 // ---- the window: the job's progress each frame, the search ------------------------------------------------------
@@ -540,7 +630,7 @@ public:
 	App (int w, int h) : Root (w, h, "Onyx Package Manager") {}
 	void onTick () override
 	{
-		if (strcmp (g_search, g_find->text)) { cpy (g_search, g_find->text, sizeof g_search); refilter (); tabs_labels (); g_list->top = 0; g_list->invalidate (true); }
+		if (strcmp (g_search, g_find->text)) { cpy (g_search, g_find->text, sizeof g_search); refilter (); tabs_labels (); g_list->top = 0; g_list->sel = -1; update_main_button (); g_list->invalidate (true); }
 		if (!g_job.running) return;
 		if (g_job.done)
 		{
@@ -602,13 +692,14 @@ int main (void)
 	App root (W, H);
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
-	g_tabs = new SegmentedControl (X + 12, 10, 420, TABH, 0, 0, g_tab, on_tab); tabs_labels (); g_tabs->select (g_tab); root.addChild (g_tabs);
+	g_tabs = new SegmentedControl (X + 12, 10, 372, TABH, 0, 0, g_tab, on_tab); tabs_labels (); g_tabs->select (g_tab); root.addChild (g_tabs);
+	g_btnAll = new Button (X + 394, 10, 64, TABH, "All", on_all); root.addChild (g_btnAll);
+	g_btnAll->tip = "Tick every package shown -- or none";
 	g_find = new Textbox (X + W - 12 - 210, 10, 210, TABH, "", 0); root.addChild (g_find);
 	g_list = new PkgList (X + 12, 10 + TABH + 8, W - 24, H - (10 + TABH + 8) - FOOT); root.addChild (g_list);
 	g_lblStatus = new Label (X + 14, H - FOOT + 12, W - 24 - 300, 22, "", C_DIS, root.bg); root.addChild (g_lblStatus);
 	g_btnCheck = new Button (X + W - 12 - 290, H - FOOT + 8, 110, 30, "Check Now", on_check); root.addChild (g_btnCheck);
 	g_btnMain = new Button (X + W - 12 - 172, H - FOOT + 8, 172, 30, "Install Updates", on_install); root.addChild (g_btnMain);
-	g_btnMain->hidden = g_tab != T_UPDATES;
 	status_idle (); update_main_button ();
 	on_check (*g_btnCheck);					// the repository read again at once
 	root.run ();
