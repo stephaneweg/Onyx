@@ -38,7 +38,7 @@ APPS = tinycalc tinypad applist panel cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through wtk's face, ft/wtkface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar fileviewer
+FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar fileviewer
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)

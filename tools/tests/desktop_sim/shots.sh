@@ -98,7 +98,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot fileviewer photos " in
+	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
 	esac
@@ -107,7 +107,7 @@ build () {
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
-      config wpaconf padconf soundconf displayconf keyconf"
+      config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
 $CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
@@ -291,7 +291,7 @@ if want theme; then			# (the wallpaper a pattern: SD:/wallpapers' hexagons, colo
 fi
 if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 # (the other Control Panel applets, each in the Control Panel's window)
-for a in displayconf soundconf keyconf wpaconf config; do
+for a in displayconf soundconf keyconf preloadconf wpaconf config; do
 	if want $a; then applet $a $a "$W"; png $a; fi
 done
 if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)

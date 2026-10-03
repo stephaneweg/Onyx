@@ -85,6 +85,7 @@ PROGS  += nettest.elf
 # kapi v77 program images (docs/02 section 7): programs loaded ahead and kept / released
 PROGS  += preload.elf unload.elf
 preload.elf unload.elf: imgname.h
+preload.elf: ../preloadini.h
 
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.

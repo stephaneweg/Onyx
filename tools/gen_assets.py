@@ -697,6 +697,17 @@ def icon_soundconf():		# a speaker and its waves
             prect(px, x, y, x + 1, y + 1, c)
     return px
 
+def icon_preloadconf():	# a memory chip, a program coming down into it
+    px = blank()
+    dark = (52, 60, 76); teal = (73, 146, 167)
+    prect(px, 9, 20, 30, 33, dark)				# the chip
+    prect(px, 12, 23, 27, 30, (96, 110, 128))
+    for i in range(5):					# its pins
+        prect(px, 11 + i * 4, 17, 12 + i * 4, 19, dark); prect(px, 11 + i * 4, 34, 12 + i * 4, 36, dark)
+    prect(px, 18, 3, 21, 11, teal)				# the arrow
+    for k in range(5): prect(px, 15 + k, 11 + k, 24 - k, 11 + k, teal)
+    return px
+
 def icon_keyconf():		# a keyboard and a mouse
     px = blank()
     prect(px, 2, 12, 29, 28, (86, 92, 104)); pframe(px, 2, 12, 29, 28, (40, 44, 52))
@@ -817,7 +828,7 @@ ICONS = {
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
-    "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
+    "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf, "preloadconf": icon_preloadconf,
     "cardfile": icon_cardfile, "ledger": icon_ledger, "courier": icon_courier, "clipboard": icon_clipboard, "clipd": icon_clipboard,
 }
 

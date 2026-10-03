@@ -4,7 +4,9 @@
 // and stays in memory when none runs. The load itself runs in the kernel: preload returns at once.
 //   usage: preload <program>...     a path, an app's name (apps/<name>.app/main) or a /bin tool's
 //          preload                  list the program images in memory
-// In /etc/autostart: a line "preload <program>" (after the desktop's lines: the boot is not
+//          preload /boot            the programs SD:/etc/preload.ini lists (preloadini.h; the Control
+//                                   Panel's Preload applet writes it)
+// In /etc/autostart: the last line, "preload /boot" (after the desktop's lines: the boot is not
 // longer for it). `unload <program>` releases one.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
@@ -19,6 +21,7 @@
 #include "kapi.h"
 #include "applib.h"
 #include "imgname.h"
+#include "preloadini.h"
 
 #define MAX_IMAGES	64
 static struct kapi_image_info g_img[MAX_IMAGES];
@@ -55,26 +58,46 @@ static int list (void)
 	return 0;
 }
 
+// One program (a path, an app's name, a /bin tool's) -> 0, 1: not preloaded (said)
+static int preload_one (const char *word)
+{
+	char path[300];
+	img_program (word, path, sizeof path, 0);
+	int r = kapi_image_preload (path);
+	if (r == 0) return 0;
+	ax_puts ("preload: ");
+	ax_puts (path);
+	ax_putln (r == -KAPI_ENOENT ? ": no such program"
+		: r == -KAPI_ENOSYS ? ": this kernel has no program images (kapi v77)"
+		: r == -KAPI_ENOMEM ? ": out of memory"
+		: ": cannot preload it");
+	return 1;
+}
+
+static int streq (const char *a, const char *b)
+{
+	while (*a && *a == *b) { a++; b++; }
+	return *a == *b;
+}
+
 int main (void)
 {
 	static char args[1024];
 	kapi_get_args (args, sizeof (args));
 
 	int pos = 0, any = 0, rc = 0;
-	char word[256], path[300];
+	char word[256];
 	while (img_next_arg (args, &pos, word, sizeof word))
 	{
 		any = 1;
-		img_program (word, path, sizeof path, 0);
-		int r = kapi_image_preload (path);
-		if (r == 0) continue;
-		rc = 1;
-		ax_puts ("preload: ");
-		ax_puts (path);
-		ax_putln (r == -KAPI_ENOENT ? ": no such program"
-			: r == -KAPI_ENOSYS ? ": this kernel has no program images (kapi v77)"
-			: r == -KAPI_ENOMEM ? ": out of memory"
-			: ": cannot preload it");
+		if (streq (word, "/boot"))			// the list of SD:/etc/preload.ini (none: nothing to do)
+		{
+			static struct PreloadList l;
+			preload_ini_load (&l);
+			for (int i = 0; i < l.n; i++) rc |= preload_one (l.prog[i]);
+			continue;
+		}
+		rc |= preload_one (word);
 	}
 	if (!any) return list ();
 	return rc;

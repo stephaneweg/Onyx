@@ -1421,7 +1421,9 @@ key). A path is a program file's, relative to the caller's working directory; ev
 | 254 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
 | 255 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
 
-Users: `/bin/preload`, `/bin/unload` (docs/04 §8), `pkg` (`pkglib.h` `move`: a kept program
+Users: `/bin/preload` (`preload /boot`, the last line of `/etc/autostart`: the list of
+`SD:/etc/preload.ini`, `user/preloadini.h`, edited by the Control Panel's Preload applet,
+`user/Apps/preloadconf`), `/bin/unload` (docs/04 §8), `pkg` (`pkglib.h` `move`: a kept program
 unloaded before its file is replaced, preloaded again after). `user/kapi.h`'s wrappers return
 `-KAPI_ENOSYS` on an older kernel. Tests: `sh tools/tests/run_image_test.sh` (§7).
 
