@@ -33,6 +33,7 @@ using namespace qs;
 enum { TB_H = 36, LEFT_W = 210, RIGHT_W = 244, TABS_H = 28, CODEBAR_H = 34, MSG_H = 112, ST_H = 24, HEAD_H = 22, TREE_H = 190 };
 static const char *LAST = "SD:/apps/qbstudio.app/last.txt";
 static const char *SAMPLE = "SD:/projects/converter";
+static const char *SETTINGS = "SD:/apps/qbstudio.app/settings.ini";
 
 // ---- the project ---------------------------------------------------------------------------------------------------
 enum { DOC_FORM, DOC_CODE, DOC_GEN, DOC_TEXT };
@@ -1059,6 +1060,18 @@ static void cmd_design () { g_view = 0; g_seg->select (0); Doc *f = main_form ()
 static void cmd_split () { g_view = 1; g_seg->select (1); Doc *f = main_form (); if (f) show_doc ((int) (f - &g_p.docs[0])); }
 static void cmd_form_text () { g_view = 2; g_seg->select (2); Doc *f = main_form (); if (f) show_doc ((int) (f - &g_p.docs[0])); }
 static void cmd_generated () { Doc *f = main_form (); if (f && f->gen >= 0) show_doc (f->gen); }
+// View > Grid, Snap to Grid: kept in settings.ini
+static void save_settings () { char t[64]; snprintf (t, sizeof t, "grid = %d\nsnap = %d\n", g_showGrid ? 1 : 0, g_snap ? 1 : 0); write_file (SETTINGS, t); }
+static void load_settings ()
+{
+	char *t = read_file (SETTINGS); if (!t) return;
+	char v[8] = "";
+	ini_get (t, "grid", v, sizeof v); if (v[0]) g_showGrid = v[0] != '0';
+	v[0] = 0; ini_get (t, "snap", v, sizeof v); if (v[0]) g_snap = v[0] != '0';
+	free (t);
+}
+static void cmd_grid () { g_showGrid = !g_showGrid; save_settings (); g_des->rebuild (); status (g_showGrid ? "The grid shown (dots every 5 px)" : "The grid hidden"); }
+static void cmd_snap () { g_snap = !g_snap; save_settings (); status (g_snap ? "Snap to the grid: on (Alt while dragging: off)" : "Snap to the grid: off"); }
 static void cmd_help () { kapi_exec ("SD:/apps/tinypad.app/main", "SD:/apps/qbstudio.app/help.txt"); }
 static void cmd_about () { wk_messagebox ("About QBStudio", "QBStudio: desktop apps in Onyx BASIC -- a window drawn, its code written, run, made an app.", MB_OK); }
 static void cmd_quit () { confirm_close (); kapi_exit (0); }
@@ -1204,6 +1217,7 @@ int main (void)
 	root.attach ();
 	wtk::init ();
 	load_words ();
+	load_settings ();
 	g_isKeyword = is_keyword; g_isWord = is_word0; g_textW = text_w_face;
 	g_complete = complete;
 	g_onSelect = on_select; g_onFormEdited = form_edited; g_onElementOpen = on_element_open; g_onDesignHint = status;
@@ -1280,6 +1294,9 @@ int main (void)
 	menu.item ("The Form's Text", "", 0, cmd_form_text);
 	menu.item ("Code / Form", "F7", 0, cmd_view_code);
 	menu.item ("Generated Code", "", 0, cmd_generated);
+	menu.separator ();
+	menu.item ("Grid", "", 0, cmd_grid);
+	menu.item ("Snap to Grid", "", 0, cmd_snap);
 	menu.menu ("Project");
 	menu.item ("Add Module...", "", 0, cmd_add_module);
 	menu.item ("Settings...", "", 0, cmd_project_settings);

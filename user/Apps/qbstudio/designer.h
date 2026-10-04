@@ -23,6 +23,11 @@ static void (*g_onElementOpen) (El *e);		// a double click: its event's SUB
 static void (*g_onDesignHint) (const char *s);		// a line for the status bar
 
 static const unsigned C_BLUEPRINT = 0x003C8CD8, C_DROP = 0x00E0307A;
+// The grid: dots every GRID px in the window (View > Grid); the sizes dragged (a control's width and height, the
+// window's) are multiples of it and a Canvas's children are placed on it (View > Snap to Grid; Alt held: not)
+static const int GRID = 5;
+static bool g_showGrid = true, g_snap = true;
+static inline int snap (int v) { return g_snap && !(kapi_get_modifiers () & MOD_ALT) ? (v + GRID / 2) / GRID * GRID : v; }
 
 // ---- elements: made, named, found ------------------------------------------------------------------------------------
 static const char *default_base (int k)
@@ -124,6 +129,22 @@ public:
 	}
 };
 
+// The window's client area in the designer: its background, the grid's dots under the controls
+class GridPanel : public Panel
+{
+public:
+	GridPanel (int l, int t, int w, int h) : Panel (l, t, w, h, C_BG) {}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		if (!g_showGrid) return;
+		unsigned dot = wk_mix (C_BG, C_TEXT, 38), strong = wk_mix (C_BG, C_TEXT, 80);
+		for (int y = 0; y < height; y += GRID)
+			for (int x = 0; x < width; x += GRID)
+				canvas.fillRect (x, y, 1, 1, x % (GRID * 10) == 0 && y % (GRID * 10) == 0 ? strong : dot);
+	}
+};
+
 // ---- the designer ---------------------------------------------------------------------------------------------------------
 class Designer;
 class Overlay : public Widget
@@ -146,7 +167,7 @@ public:
 	int sx, sy;					// the scroll
 	// a drag
 	enum { DR_NONE, DR_PRESS, DR_MOVE, DR_NEW, DR_SIZE_WIN, DR_SIZE_W, DR_SIZE_H };
-	int drag, newKind, px, py, startW, startH;
+	int drag, newKind, px, py, startW, startH, startX, startY, grabX, grabY;
 	El *dropPar; int dropIdx; int dropLine[4]; bool dropOk; int dropAtX, dropAtY;
 	int hoverX, hoverY;
 	Panel *client;
@@ -156,7 +177,7 @@ public:
 	unsigned lastClick;
 
 	Designer (int l, int t, int w, int h) : Widget (l, t, w, h), form (0), sel (0), ox (0), oy (0), winW (0), winH (0), sx (0), sy (0),
-		drag (DR_NONE), newKind (-1), px (0), py (0), startW (0), startH (0), dropPar (0), dropIdx (0), dropOk (false), dropAtX (0), dropAtY (0),
+		drag (DR_NONE), newKind (-1), px (0), py (0), startW (0), startH (0), startX (0), startY (0), grabX (0), grabY (0), dropPar (0), dropIdx (0), dropOk (false), dropAtX (0), dropAtY (0),
 		hoverX (-1), hoverY (-1), client (0), lastClick (0)
 	{
 		ov = new Overlay (this, w, h); addChild (ov);
@@ -179,7 +200,7 @@ public:
 		form_layout (*form, winW, winH + mh, true);
 		ox = imax (24, (width - winW) / 2) - sx; oy = 24 + TITLE_H - sy;
 		if (width - winW < 48) ox = 24 - sx;
-		client = new Panel (ox, oy, winW, winH + mh, C_BG);
+		client = new GridPanel (ox, oy, winW, winH + mh);
 		make (form->root);
 		removeChild (ov); addChild (client); addChild (ov);
 		redraw ();
@@ -288,7 +309,7 @@ public:
 		int pad = pad_of (c);
 		if (c->kind == K_CANVAS)
 		{
-			dropIdx = c->kids.n; dropAtX = imax (0, cx - c->x); dropAtY = imax (0, cy - c->y);
+			dropIdx = c->kids.n; dropAtX = imax (0, snap (cx - c->x - (moving ? grabX : 0))); dropAtY = imax (0, snap (cy - c->y - (moving ? grabY : 0)));
 			dropLine[0] = cx; dropLine[1] = cy; dropLine[2] = 8; dropLine[3] = 8;
 			dropOk = true; return true;
 		}
@@ -489,13 +510,14 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 		pressed = true; catchOutside = true; setFocus ();
 		D->px = mx; D->py = my;
 		if (onCorner) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; return true; }
-		if (onRight) { D->drag = Designer::DR_SIZE_W; D->startW = s->w; return true; }
-		if (onBottom) { D->drag = Designer::DR_SIZE_H; D->startH = s->h; return true; }
+		if (onRight) { D->drag = Designer::DR_SIZE_W; D->startW = s->w; D->startX = s->x; return true; }
+		if (onBottom) { D->drag = Designer::DR_SIZE_H; D->startH = s->h; D->startY = s->y; return true; }
 		El *e = D->at (mx, my);
 		unsigned now = kapi_get_ticks ();
 		bool dbl = e && e == D->sel && now - D->lastClick < 35;
 		D->lastClick = now;
 		D->select (e);
+		if (e) { D->grabX = cx - e->x; D->grabY = cy - e->y; }
 		if (dbl && g_onElementOpen) { D->lastClick = 0; g_onElementOpen (e); return true; }
 		D->drag = e && e != D->form->root ? Designer::DR_PRESS : Designer::DR_NONE;
 		return true;
@@ -516,12 +538,12 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 			break;
 		case Designer::DR_SIZE_WIN:
 		{
-			char t[24]; snprintf (t, sizeof t, "%dx%d", imax (120, D->startW + dx), imax (60, D->startH + dy));
+			char t[24]; snprintf (t, sizeof t, "%dx%d", imax (120, snap (D->startW + dx)), imax (60, snap (D->startH + dy)));
 			D->form->root->set ("size", t); D->rebuild ();
 			break;
 		}
-		case Designer::DR_SIZE_W: if (s) { s->setNum ("width", imax (8, D->startW + dx)); s->setFlag ("fill", false); D->rebuild (); } break;
-		case Designer::DR_SIZE_H: if (s) { s->setNum ("height", imax (8, D->startH + dy)); D->rebuild (); } break;
+		case Designer::DR_SIZE_W: if (s) { s->setNum ("width", imax (GRID, snap (D->startW + dx))); s->setFlag ("fill", false); D->rebuild (); } break;
+		case Designer::DR_SIZE_H: if (s) { s->setNum ("height", imax (GRID, snap (D->startH + dy))); D->rebuild (); } break;
 		}
 		return true;
 	}
@@ -539,6 +561,17 @@ inline bool Overlay::onKey (long k)
 {
 	if (k == KEY_DEL || k == KEY_BACKSPACE) { d->removeSelected (); return true; }
 	if (k == 27) { if (d->sel && d->sel->parent) d->select (d->sel->parent); return true; }
+	El *s = d->sel;
+	if ((k == KEY_LEFT || k == KEY_RIGHT || k == KEY_UP || k == KEY_DOWN) && s && s->parent && s->parent->kind == K_CANVAS)
+	{
+		int step = (kapi_get_modifiers () & MOD_SHIFT) ? 1 : GRID, x = 0, y = 0;
+		s->size2 ("at", &x, &y);
+		if (k == KEY_LEFT) x -= step; else if (k == KEY_RIGHT) x += step; else if (k == KEY_UP) y -= step; else y += step;
+		if (step > 1) { x = x / GRID * GRID; y = y / GRID * GRID; }
+		char t[24]; snprintf (t, sizeof t, "%d,%d", imax (0, x), imax (0, y)); s->set ("at", t);
+		if (g_onFormEdited) g_onFormEdited ();
+		return true;
+	}
 	return false;
 }
 

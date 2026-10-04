@@ -22,6 +22,9 @@ THE DESIGNER
   the same way (or double-click it: added after the element chosen).
   The window's bottom-right corner sizes the window; a control's right and
   bottom edges give it a width / a height.
+  The grid: dots every 5 px. Sizes dragged are multiples of 5; a Canvas's
+  controls go on the grid (dragged, or the arrow keys: 5 px, Shift: 1 px).
+  Alt held while dragging: no snapping. View > Grid, View > Snap to Grid.
   Double-click a control: its event's SUB (Click, Change), written if needed.
   Ctrl+C / Ctrl+V copy and paste elements (as the form's lines).
 
