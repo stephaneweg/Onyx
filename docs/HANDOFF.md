@@ -54,6 +54,15 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Study: the GUI in user space, wtk as a shared library (2026-10-04; a study only, nothing built)
+
+`docs/GUI-USERSPACE-STUDY.md`: the window manager / compositor can leave the kernel (a `wsd` process,
+the GUI kapi slots redirected into a shared client library so no app is rebuilt); wtk inside the server
+or in a process of its own is ruled out (304 `onDraw` overrides, 418 derived classes in the apps);
+recommended first: **fixed-address shared libraries** on the v77 program images (several images per
+address space, `--just-symbols`, no `ld.so`), `libwtk` + FreeType first. Awaiting the user's decisions
+(listed at its end).
+
 ## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
 
 **Where to read**: `docs/05-CIRCLE-CHANGES.md` §25–§27 (every change, its measure), `docs/02` §11
