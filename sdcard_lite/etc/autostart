@@ -30,6 +30,9 @@ run notifyd
 run pkgd
 # The shared clipboard's service (its history of 10 copies: docs/clipboard/README.md)
 run clipd
+# The print service: the queue of the jobs the apps print (docs/03 "Printing"; the printers: the Control
+# Panel's Printers applet). Started here for the jobs left in the queue when the Pi was turned off.
+run printd
 # The dock along the bottom (the drawers of apps, the workspaces, the Terminal, the File Viewer,
 # the Trash, lock / Control Panel / power: SD:/etc/dock.ini). It replaces the Shelf ("run shelf" brings
 # the old strip back) and the panel.
