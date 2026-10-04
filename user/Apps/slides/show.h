@@ -33,7 +33,15 @@ static inline float ease (float t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return t < 0
 // ---- the effects' timeline -----------------------------------------------------------------------------------------
 // The effects of a slide in steps (a click starts one; With / After previous follow in it); each effect's start
 // and end in ms from its step's start.
-struct FxTime { int step; int t0, t1; };
+struct FxTime { int step; int t0, t1; int np; int pstep[24], pt0[24], pt1[24]; };	// np: a text by paragraph, its paragraphs' times
+// A text animated by paragraph: how many paragraphs (the non-empty ones; 0: as a whole)
+static int fx_paras (const Slide &s, const Anim &a)
+{
+	if (!a.byPara || a.cls == AC_EMPHASIS) return 0;
+	const Object *o = s.by_id (a.obj); if (!o || o->tb.p.n < 2) return 0;
+	int n = 0; for (int i = 0; i < o->tb.p.n; i++) if (o->tb.p[i]->len) n++;
+	return n > 1 ? imin (n, 24) : 0;
+}
 static int fx_plan (const Slide &s, FxTime *ft)
 {
 	int step = 0, prevStart = 0, prevEnd = 0, n = 0;
@@ -43,11 +51,47 @@ static int fx_plan (const Slide &s, FxTime *ft)
 		if (a.start == ST_CLICK && i > 0) { step++; prevStart = prevEnd = 0; }
 		int t0 = a.start == ST_AFTER ? prevEnd + a.delay : a.start == ST_WITH ? prevStart + a.delay : a.delay;
 		if (a.start == ST_CLICK) t0 = a.delay;
-		ft[i].step = step; ft[i].t0 = t0; ft[i].t1 = t0 + (a.fx == FX_APPEAR ? 1 : imax (1, a.dur));
-		prevStart = t0; if (ft[i].t1 > prevEnd) prevEnd = ft[i].t1;
+		int dur = a.fx == FX_APPEAR ? 1 : imax (1, a.dur);
+		int np = fx_paras (s, a);
+		ft[i].np = np;
+		ft[i].step = step; ft[i].t0 = t0; ft[i].t1 = t0 + dur;
+		if (np)
+		{
+			// paragraph by paragraph: each on a click (the effect started on one), else each after the one before
+			for (int k = 0; k < np; k++)
+			{
+				if (k)
+				{
+					if (a.start == ST_CLICK) { step++; prevStart = prevEnd = 0; t0 = 0; }
+					else t0 = prevEnd;
+				}
+				ft[i].pstep[k] = step; ft[i].pt0[k] = t0; ft[i].pt1[k] = t0 + dur;
+				prevStart = t0; if (t0 + dur > prevEnd) prevEnd = t0 + dur;
+			}
+			ft[i].t1 = ft[i].pt1[np - 1];
+		}
+		else { prevStart = t0; if (ft[i].t1 > prevEnd) prevEnd = ft[i].t1; }
 		n = step + 1;
 	}
 	// the first effect "On click"? then step 0 waits for a click; else it plays at once
+	return n;
+}
+// The progress of a part of an effect at (step, ms): -1 not begun, 0..1 playing, 2 done
+static inline float fx_progress (int st, int t0, int t1, int step, int ms)
+{
+	if (st > step) return -1;
+	if (st < step) return 2;
+	return ms < t0 ? -1 : ms >= t1 ? 2 : (float) (ms - t0) / (t1 - t0);
+}
+// A text's non-empty paragraphs: their tops and bottoms (hmm, on the slide)
+static int fx_bands (const Object *o, float *top, float *bot, int max)
+{
+	TextLayout L;
+	layout_object (g_deck, *const_cast<Object *> (o), L);
+	float y0 = o->y + o->tb.inset[1] + text_top (*o, L);
+	int n = 0;
+	for (int i = 0; i < L.npp && n < max; i++)
+		if (o->tb.p[i]->len) { top[n] = y0 + L.pp[i].top; bot[n] = y0 + L.pp[i].bottom; n++; }
 	return n;
 }
 // an object's top-left in px at scale sc (the slide's own px)
@@ -69,6 +113,36 @@ static int fx_moves (const Slide &s, const FxTime *ft, int step, int ms, float s
 		Move m = move_of (o->id);
 		bool found = false;
 		for (int k = 0; k < n; k++) if (mv[k].id == o->id) { m = mv[k]; found = true; break; }
+		if (ft[i].np)
+		{
+			// by paragraph: the text shown (an entrance) or hidden (an exit) a paragraph after the other, each one
+			// wiped from its top to its bottom
+			float top[24], bot[24]; int nb = imin (fx_bands (o, top, bot, 24), ft[i].np);
+			float X = sx + vx_of (o, sc), Y = sy + vy_of (o, sc), W = o->w * sc, H = o->h * sc;
+			float edge = (float) o->y; bool begun = false, all = nb > 0;
+			for (int k = 0; k < nb; k++)
+			{
+				float tk = fx_progress (ft[i].pstep[k], ft[i].pt0[k], ft[i].pt1[k], step, ms);
+				if (tk > 1) { edge = bot[k]; begun = true; continue; }
+				all = false;
+				if (tk >= 0) { edge = top[k] + (bot[k] - top[k]) * ease (tk); begun = true; }
+				break;
+			}
+			float cut = Y + (edge - o->y) * sc;
+			if (a.cls == AC_ENTRANCE)
+			{
+				if (!begun) m.alpha = 0;
+				else if (!all) { m.clip[0] = (int) X - 4; m.clip[1] = (int) Y - 4; m.clip[2] = (int) W + 8; m.clip[3] = imax (1, (int) (cut - Y) + 4); }
+			}
+			else
+			{
+				if (all) m.alpha = 0;
+				else if (begun) { m.clip[0] = (int) X - 4; m.clip[1] = (int) cut; m.clip[2] = (int) W + 8; m.clip[3] = imax (1, (int) (Y + H - cut) + 4); }
+			}
+			if (found) { for (int k = 0; k < n; k++) if (mv[k].id == o->id) mv[k] = m; }
+			else mv[n++] = m;
+			continue;
+		}
 		if (a.cls == AC_ENTRANCE)
 		{
 			if (t < 0) m.alpha = 0;
@@ -381,7 +455,7 @@ struct Show
 			}
 			// the step playing: its end
 			int stepEnd = 0;
-			if (step >= 0 && step < steps) for (int i = 0; i < g_deck.slides[slide]->anim.n; i++) if (ft[i].step == step && ft[i].t1 > stepEnd) stepEnd = ft[i].t1;
+			if (step >= 0 && step < steps) for (int i = 0; i < g_deck.slides[slide]->anim.n; i++) { if (ft[i].step == step && ft[i].t1 > stepEnd && !ft[i].np) stepEnd = ft[i].t1; for (int k = 0; k < ft[i].np; k++) if (ft[i].pstep[k] == step && ft[i].pt1[k] > stepEnd) stepEnd = ft[i].pt1[k]; }
 			bool playing = step >= 0 && step < steps && ms < stepEnd + 20;
 			if (next)
 			{
@@ -432,7 +506,7 @@ struct Show
 		gpc_target_free (C.g, tgt);
 		kapi_fullscreen_end ();
 	}
-	static int first_of (const Slide &s, const FxTime *ft, int step) { for (int i = 0; i < s.anim.n; i++) if (ft[i].step == step) return i; return 0; }
+	static int first_of (const Slide &s, const FxTime *ft, int step) { for (int i = 0; i < s.anim.n; i++) { for (int k = 1; k < ft[i].np; k++) if (ft[i].pstep[k] == step) return i; if (ft[i].step == step) return i; } return 0; }
 	// From one slide (as it ends) to the next (as it begins): its transition played.
 	void go_to (int from, int step, int to, int *steps, FxTime *ft)
 	{

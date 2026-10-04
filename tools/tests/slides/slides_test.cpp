@@ -11,9 +11,15 @@
 #include "wtk/wtk.h"
 #include "Apps/slides/pptx.h"
 #include "Apps/slides/master.h"
+#include "Apps/slides/find.h"
+#include "Apps/slides/sidebar.h"
+#include "Apps/slides/show.h"
 #include <stdio.h>
 
 using namespace sl;
+// (the sidebar's actions are main.cpp's: none here)
+void sl::Sidebar::act (const SRow &, int, double) {}
+void sl::Sidebar::pick_list (SRow &, int, int, int) {}
 
 static int g_fail, g_checks;
 static void check (bool ok, const char *what) { g_checks++; if (!ok) { g_fail++; printf ("FAIL %s\n", what); } }
@@ -235,6 +241,43 @@ int main (int argc, char **argv)
 		cmd_undo ();
 		check (g_deck.style[TS_TITLE].cf.size == size0 && g_deck.layout[LY_CONTENT].find (PH_BODY)->y == bodyY && g_deck.slides.n == nslides, "one Undo: the master view's changes undone");
 		deck_copy (g_deck, *keep); delete keep; undo_clear (); g_onDone = 0; g_accepts = 0;
+	}
+	// an effect by paragraph (slide 5's list): a paragraph a click, the text shown down to the one playing
+	if (d.slides.n == 8)
+	{
+		Slide &s5 = *d.slides[4];
+		int ai = -1; for (int i = 0; i < s5.anim.n; i++) if (s5.anim[i].byPara) ai = i;
+		FxTime ft[128]; int steps = fx_plan (s5, ft);
+		check (ai >= 0 && ft[ai].np == 4 && steps == 4 && ft[ai].pstep[3] == 3, "by paragraph: four paragraphs, four clicks");
+		if (ai >= 0)
+		{
+			Move mv[128];
+			int n1 = fx_moves (s5, ft, 1, 100000, 0.05f, 0, 0, mv, 128), n0 = fx_moves (s5, ft, 0, 100000, 0.05f, 0, 0, mv + 64, 64);
+			const Object *o = s5.by_id (s5.anim[ai].obj);
+			int h1 = -1, h0 = -1; for (int k = 0; k < n1; k++) if (mv[k].id == o->id) h1 = mv[k].clip[3]; for (int k = 0; k < n0; k++) if (mv[64 + k].id == o->id) h0 = mv[64 + k].clip[3];
+			check (h0 > 0 && h1 > h0 && h1 < o->h * 0.05f, "by paragraph: the second click shows more of the list, not all of it");
+		}
+	}
+	// Find and Replace: a match found from slide 1 (in a table's cell too), every one replaced, one Undo
+	{
+		Deck *keep = new Deck; deck_copy (*keep, g_deck);
+		unsigned w[16], r[16]; int n = 0, rn = 0;
+		for (const char *c = "TERRACE"; *c; c++) w[n++] = (unsigned char) *c;
+		for (const char *c = "garden"; *c; c++) r[rn++] = (unsigned char) *c;
+		FindAt a; a.slide = 0; a.obj = 0; a.r = -1; a.c = -1; a.p = 0; a.o = 0;
+		check (find_next (w, n, false, a) && a.slide == 1, "find: 'terrace' first on slide 2 (any case)");
+		check (!find_next (w, n, true, a), "find: 'TERRACE' with the case: none");
+		unsigned lw[8]; int ln = 0; for (const char *c = "Chai"; *c; c++) lw[ln++] = (unsigned char) *c;
+		FindAt b; b.slide = 0; b.obj = 0; b.r = -1; b.c = -1; b.p = 0; b.o = 0;
+		check (find_next (lw, ln, true, b) && b.r >= 0, "find: in a table's cell");
+		int count = replace_all (w, n, r, rn, false);
+		FindAt c2; c2.slide = 0; c2.obj = 0; c2.r = -1; c2.c = -1; c2.p = 0; c2.o = 0;
+		bool left = find_next (w, n, false, c2); if (count < 2 || left) printf ("count %d left %d at %d/%d\n", count, left, c2.slide, c2.obj);
+		check (count >= 2 && !left, "replace all: every 'terrace' replaced");
+		cmd_undo ();
+		FindAt d2; d2.slide = 0; d2.obj = 0; d2.r = -1; d2.c = -1; d2.p = 0; d2.o = 0;
+		check (find_next (w, n, false, d2), "replace all: one Undo");
+		deck_copy (g_deck, *keep); delete keep; undo_clear ();
 	}
 	// .pptx files of LibreOffice's: ours resaved, the sample converted
 	for (int k = 3; k < argc && k < 5; k++)

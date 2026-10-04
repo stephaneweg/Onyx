@@ -1261,8 +1261,9 @@ its licence on the app.
 > faded, rotated, clipped — with `gpc_composite`; the CPU path for thumbnails and exports: `flatten_slide`),
 > `editor.h` (selection, commands, undo as deck snapshots), `view.h` (`SlideView`: the slide composited by the
 > GPU, handles, guides, the caret; a drag only moves the layers), `panes.h` (thumbnails, sorter, notes, status bar),
-> `sidebar.h`, `show.h` (the full-screen show: `fx_plan` / `fx_moves`, the transitions as two textures, the
-> presenter's console), `odp.h` (OpenDocument read and written: styles, gradients, list styles, table-cell styles;
+> `sidebar.h`, `show.h` (the full-screen show: `fx_plan` / `fx_moves` -- a text by paragraph: its paragraphs' steps
+> in `FxTime`, shown through a clip down to the one playing --, the transitions as two textures, the presenter's
+> console), `find.h` (Find and Replace: `find_next`, `replace_all`), `odp.h` (OpenDocument read and written: styles, gradients, list styles, table-cell styles;
 > what ODF cannot say kept in `onyx:` attributes and `onyx.xml`, so a deck comes back the same), `master.h` (the master
 > view: `g_deck.slides` swapped for the master and the layouts as slides, edited with every tool; `master_sync`
 > after each change -- `done_change`'s `g_onDone` -- folds the samples' formats into the styles and writes the

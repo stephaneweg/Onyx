@@ -196,7 +196,7 @@ int main (int argc, char **argv)
 	static const char *ter[4] = { "Opened on 12 June", "40 seats, facing the sea", "+22 % takings in summer", "Open until 23:00 in July and August" };
 	for (int k = 0; k < 4; k++) add_para (pb2, ter[k], F (AUTO, 200), AL_INHERIT, 0, BU_INHERIT);
 	s->tr.type = TR_COVER; s->tr.dir = DIR_LEFT; s->tr.dur = 700;
-	s->anim.push (fx (pb2->id, AC_ENTRANCE, FX_FLOAT, ST_CLICK, 600));
+	{ Anim f = fx (pb2->id, AC_ENTRANCE, FX_FLOAT, ST_CLICK, 600); f.byPara = true; s->anim.push (f); }	// (the list: a paragraph a click)
 	notes (s, "The terrace paid for itself in one summer.");
 
 	// 6. plans for 2027: a timeline

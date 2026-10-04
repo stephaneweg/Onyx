@@ -215,7 +215,7 @@ public:
 		section ("Layout");
 		pick (I_LAYOUT, "", LAYOUT_NAMES[s.layout]);
 		button (I_RESET, "Reset to the layout");
-		button (I_MASTER_VIEW, "Edit the master and layouts...");
+		button (I_MASTER_VIEW, "Master and layouts...");
 		section ("Theme");
 		add (R_THEMES, I_THEME, "");
 		pick (I_FONT_MAJOR, "Headings", g_deck.theme.major);
