@@ -69,6 +69,28 @@ struct ThumbCache
 		flatten_slide (C, g_deck, *g_deck.slides[index], index, th.px, th.w, th.h, th.w);
 		C.sweep (0);
 		th.hash = hs;
+		// the master view's layouts: their placeholders outlined (empty, they draw nothing)
+		if (g_master && index > 0)
+		{
+			const Slide &s = *g_deck.slides[index];
+			float k = (float) th.w / g_deck.sw;
+			for (int i = 0; i < s.obj.n; i++)
+			{
+				const Object &o = *s.obj[i];
+				if (o.ph == PH_NONE || !o.tb.empty ()) continue;
+				int x0 = imax (0, (int) (o.x * k)), y0 = imax (0, (int) (o.y * k)), x1 = imin (th.w - 1, (int) ((o.x + o.w) * k)), y1 = imin (th.h - 1, (int) ((o.y + o.h) * k));
+				for (int y = y0; y <= y1; y++)
+					for (int x = x0; x <= x1; x++)
+					{
+						unsigned &p = th.px[y * th.w + x];
+						bool edge = x == x0 || x == x1 || y == y0 || y == y1;
+						if (edge) { if (((x + y) & 3) < 2) p = 0xFF8A949C; }
+						else if (o.ph == PH_TITLE && y < y0 + (y1 - y0) / 2 && y > y0 + (y1 - y0) / 4 && x < x0 + (x1 - x0) * 2 / 3) p = 0xFFC8CED3;
+						else if (o.ph != PH_TITLE && o.ph != PH_PICTURE && (y - y0) % 6 == 3 && x < x1 - (x1 - x0) / 4) p = 0xFFD5DADE;
+						else if (o.ph == PH_PICTURE) p = 0xFFE6EAEE;
+					}
+			}
+		}
 	}
 	void prune ()		// the slides gone
 	{

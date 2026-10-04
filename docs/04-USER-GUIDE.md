@@ -3233,6 +3233,20 @@ direction, duration, an automatic advance after a time) and the selected object'
 exit (appear, fade, fly in, wipe, zoom, float, grow, pulse, spin, colour), started on click, with or after the
 previous one, their delay and duration —, the slide's list of effects (reordered, removed).
 
+**The master and the layouts.** **View ▸ Master and Layouts** (or the Slide tab's *Edit the master and layouts...*)
+shows, instead of the slides, the **master** then the **eight layouts**, edited with every tool of the normal view.
+On the master: its **objects** — shapes, pictures, lines, a logo — are on every slide (the slides' *The master's
+objects* shows or hides them); its **background**; and two samples, the title and the text's five levels: the
+**formats given to them are the text styles** (a size, a colour, a font, bold, the alignment, the spacing, the
+bullets) that every slide's text follows at once. Moving the master's title or text box moves the layouts' that
+sat at the same place. On a layout: its **placeholders** (moved, resized, their box's anchor and autofit), its
+name; *Add a title / text / picture placeholder*; a text box drawn on a layout becomes a text placeholder, a picture
+a picture placeholder (shapes for every slide go on the master). **Close master** (the button at the top right, or
+the menu again) shows the slides again: a slide's placeholder that sat where its layout's did follows it, one you
+moved yourself stays; one **Undo** undoes the whole visit. Saving, the show and the exports work from the view too.
+
+![The master view](../screenshots/slides-master.png)
+
 ![The slide sorter](../screenshots/slides-sorter.png)
 
 **Views.** View ▸ **Normal**, **Slide Sorter** (the whole deck, section by section; drag to reorder, double click to
@@ -3265,7 +3279,7 @@ Slides does not have is left out (SmartArt, videos, the layouts' own decorations
 **Export as PDF...** writes a page per shown slide (each slide's picture, at 1600 pixels wide); **Export Slide as
 PNG...** the current slide. A double click on an `.odp` or a `.pptx` in the File Viewer opens it here
 (`fileassoc.ini`); closed with unsaved changes, the deck is kept in `SD:/apps/slides.app/recovered.odp` and offered
-back the next time. Not yet: editing the master, groups, find and replace.
+back the next time. Not yet: groups, find and replace.
 
 **Keys.** Ctrl+N / O / S, Ctrl+Z / Y (undo / redo), Ctrl+X / C / V, Ctrl+D (duplicate), Ctrl+A, Delete, Ctrl+M (new
 slide), Ctrl+B / I / U, F5 / Shift+F5, Page Up / Down (the previous / next slide).

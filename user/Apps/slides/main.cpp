@@ -24,6 +24,7 @@
 #include "docguard.h"
 #include "sidebar.h"
 #include "show.h"
+#include "master.h"
 #include "pptx.h"
 #include "pdf/pdfwrite.h"
 
@@ -46,6 +47,7 @@ static ToolBar *g_tb1, *g_tb2;
 static PickBox *g_fontBox, *g_sizeBox, *g_zoomBox;
 static ToolButton *g_btn[400];
 static unsigned g_textColor = 0xC00000;
+static Widget *g_showBtn;
 
 static void refresh ();
 static void focus_view () { if (g_viewMode == VIEW_SORTER) g_sorter->setFocus (); else g_view->setFocus (); }
@@ -87,6 +89,7 @@ static void deck_loaded ()
 }
 static bool load_path (const char *path)
 {
+	if (g_master) master_close ();
 	unsigned n = 0;
 	unsigned char *b = read_all (path, &n);
 	if (!b) { wk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
@@ -100,7 +103,15 @@ static bool load_path (const char *path)
 static bool write_path (const char *path, bool asCopy = false)
 {
 	unsigned n = 0;
-	unsigned char *b = has_ext (path, ".pptx") ? pptx_save (g_deck, &n) : odp_save (g_deck, &n);
+	unsigned char *b;
+	if (g_master)
+	{
+		// the master view open: the deck as it will be (its slides, the view's changes)
+		Deck *d = new Deck; master_real_deck (*d);
+		b = has_ext (path, ".pptx") ? pptx_save (*d, &n) : odp_save (*d, &n);
+		delete d;
+	}
+	else b = has_ext (path, ".pptx") ? pptx_save (g_deck, &n) : odp_save (g_deck, &n);
 	bool ok = b && kapi_save_file (path, b, n) >= 0;
 	delete[] b;
 	if (!ok) { wk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
@@ -124,6 +135,7 @@ static void cmd_save () { if (!g_path[0] || (!has_ext (g_path, ".odp") && !has_e
 static void save_for_guard () { cmd_save (); }
 static void cmd_new ()
 {
+	if (g_master) master_close ();
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	deck_new (g_deck, theme_find (g_deck.theme.name) >= 0 ? theme_find (g_deck.theme.name) : 0);
 	g_path[0] = 0;
@@ -141,6 +153,7 @@ static void cmd_open ()
 // title from the file's name.
 static void cmd_export_pdf ()
 {
+	if (g_master) { master_close (); g_thumbs.clear (); }
 	char def[120], path[200];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled", sizeof def);
 	{ int n = (int) strlen (def), dot = n; while (dot > 0 && def[dot - 1] != '.') dot--; if (dot > 0) def[dot - 1] = 0; n = (int) strlen (def); scpy (def + n, ".pdf", (int) sizeof def - n); }
@@ -175,6 +188,7 @@ static void cmd_export_pdf ()
 }
 static void cmd_export_png ()
 {
+	if (g_master) { master_close (); g_thumbs.clear (); }
 	char def[120], path[200];
 	snprintf (def, sizeof def, "Slide %d.png", g_cur + 1);
 	if (!wk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
@@ -725,11 +739,20 @@ static void pick_size (PickBox &b)
 static void relayout ();
 static void set_view (int v) { g_viewMode = v; end_edit (); relayout (); after (); focus_view (); }
 static void cmd_normal () { set_view (VIEW_NORMAL); }
-static void cmd_sorter () { g_sorterSel.clear (); set_view (VIEW_SORTER); }
+static void cmd_sorter () { if (g_master) return; g_sorterSel.clear (); set_view (VIEW_SORTER); }
+// View > Master: the master and its layouts edited as slides (master.h)
+static void cmd_master ()
+{
+	if (g_master) master_close (); else master_open ();
+	g_thumbs.clear (); g_view->C.drop_all ();
+	g_list->m_top = 0;
+	set_view (VIEW_NORMAL);
+}
 static void cmd_notes () { g_showNotes = !g_showNotes; relayout (); after (); }
 static void open_slide (int i) { go_slide (i); set_view (VIEW_NORMAL); }
 static void show (int from, bool presenter)
 {
+	if (g_master) { master_close (); g_thumbs.clear (); from = presenter || from ? g_cur : 0; }
 	end_edit (); g_notes->sync ();
 	Show s;
 	s.run (from, presenter);
@@ -844,8 +867,25 @@ void Sidebar::pick_list (SRow &r, int x, int y, int w)
 		else { begin_change (); scpy (r.id == I_FONT_MAJOR ? g_deck.theme.major : g_deck.theme.minor, fnt::name (k), 48); done_change (); notify_slides (); }
 		break;
 	}
+	case I_LAYOUT_NAME:
+	{
+		char n[32]; scpy (n, g_deck.layout[g_cur - 1].name, sizeof n);
+		if (g_master && g_cur > 0 && ask_line ("Layout", "The layout's name:", n, sizeof n) && n[0]) { begin_change (); scpy (g_deck.layout[g_cur - 1].name, n, 32); done_change (); }
+		break;
+	}
 	case I_BG_TYPE:
 	{
+		if (master_slide ())
+		{
+			static const char *T2[2] = { "Solid colour", "Gradient" };
+			k = list (x, y, w, T2, 2, g_deck.masterBg.type == FILL_GRADIENT);
+			if (k < 0) break;
+			begin_change ();
+			s->bg = g_deck.masterBg; s->bg.type = k ? FILL_GRADIENT : FILL_SOLID;
+			if (k && s->bg.c2 == s->bg.c1) s->bg.c2 = THEME | TC_LT2;
+			done_change (); notify_slides ();
+			break;
+		}
 		static const char *T[3] = { "The theme's", "Solid colour", "Gradient" };
 		k = list (x, y, w, T, 3, s->bg.type == FILL_INHERIT ? 0 : s->bg.type == FILL_GRADIENT ? 2 : 1);
 		if (k < 0) break;
@@ -999,14 +1039,19 @@ void Sidebar::act (const SRow &r, int sub, double v)
 		done_change (); notify_slides ();
 		break;
 	}
+	case I_MASTER_VIEW: cmd_master (); return;
+	case I_PH_TITLE: master_add_placeholder (PH_TITLE); break;
+	case I_PH_TEXT: master_add_placeholder (PH_BODY); break;
+	case I_PH_PIC: master_add_placeholder (PH_PICTURE); break;
 	case I_BG_C1: case I_BG_C2:
 		begin_change ();
+		if (master_slide ()) s->bg = g_deck.masterBg;
 		if (s->bg.type == FILL_INHERIT) { s->bg = g_deck.masterBg; s->bg.type = FILL_SOLID; }
 		if (sub == 1) s->bg.type = FILL_INHERIT;
 		else if (r.id == I_BG_C1) s->bg.c1 = r.color; else s->bg.c2 = r.color;
 		done_change (); notify_slides ();
 		break;
-	case I_BG_ANGLE: begin_change (); s->bg.angle = (short) v; done_change (); notify_slides (); break;
+	case I_BG_ANGLE: begin_change (); if (master_slide ()) s->bg = g_deck.masterBg; s->bg.angle = (short) v; done_change (); notify_slides (); break;
 	case I_MASTER_OBJ: begin_change (); s->masterObjects = v != 0; done_change (); notify_slides (); break;
 	case I_NUMBER: begin_change (); g_deck.number = v != 0; done_change (); notify_slides (); break;
 	case I_FOOTER: if (v != 0 && !g_deck.footerText[0]) cmd_footer (); else { begin_change (); g_deck.footer = v != 0; done_change (); notify_slides (); } break;
@@ -1089,10 +1134,16 @@ static void refresh ()
 	// the status bar
 	char l[200];
 	const char *sec = s ? section_of (g_cur) : "";
-	snprintf (l, sizeof l, "Slide %d of %d%s%s%s     Theme: %s%s", g_cur + 1, g_deck.slides.n, sec[0] ? "     " : "", sec, s && s->hidden ? "  (hidden)" : "", g_deck.theme.name, changed_doc () ? "     (modified)" : "");
+	if (g_master)
+	{
+		if (g_cur == 0) snprintf (l, sizeof l, "Master view: the master     Theme: %s%s", g_deck.theme.name, changed_doc () ? "     (modified)" : "");
+		else snprintf (l, sizeof l, "Master view: layout %d of %d, %s     Theme: %s%s", g_cur, LY_COUNT, g_deck.layout[g_cur - 1].name, g_deck.theme.name, changed_doc () ? "     (modified)" : "");
+	}
+	else snprintf (l, sizeof l, "Slide %d of %d%s%s%s     Theme: %s%s", g_cur + 1, g_deck.slides.n, sec[0] ? "     " : "", sec, s && s->hidden ? "  (hidden)" : "", g_deck.theme.name, changed_doc () ? "     (modified)" : "");
 	scpy (g_status->text, L1 (l), sizeof g_status->text);
 	g_status->zoom = g_view->zoom_pct ();
 	g_status->invalidate (true);
+	if (g_showBtn) g_showBtn->invalidate (true);
 	g_sidebar->build (); g_sidebar->invalidate (true);
 	g_list->invalidate (true); g_sorter->invalidate (true);
 	g_view->invalidate (true);
@@ -1147,6 +1198,7 @@ public:
 		if (m_hot >= 0) { a = wk_mix (a, 0xFFFFFF, 30); }
 		wk_rbox (canvas, 0, 1, width, height - 2, 5, a, b);
 		wk_rline (canvas, 0, 1, width, height - 2, 5, 0x1E4E5C);
+		if (g_master) { wk_text_c (canvas, 0, 1, width, height - 2, "Close master", 0xFFFFFF, 1); return; }
 		slides_icon (canvas, SL_SHOW, 4, 4, 0xFFFFFF, false);
 		wk_text_l (canvas, 26, 1, height - 2, "Start show", 0xFFFFFF, 1);
 		canvas.fillRect (width - 18, 6, 1, height - 12, 0x8FC0CC);
@@ -1160,6 +1212,7 @@ public:
 		else if (!bl && pressed)
 		{
 			pressed = false;
+			if (g_master && part >= 0) { cmd_master (); return true; }
 			if (part == 0) cmd_show_start ();
 			else if (part == 1)
 			{
@@ -1270,7 +1323,7 @@ int main (void)
 	g_zoomBox = new PickBox (96, "Zoom", zoom_value, pick_zoom);
 	g_tb1->add (g_zoomBox, 2);
 	button (g_tb1, wr::IC_ZOOMIN, "Zoom in", cmd_zoom_in, 2);
-	ShowButton *sb = new ShowButton ();
+	ShowButton *sb = new ShowButton (); g_showBtn = sb;
 	sb->left = W - sb->width - 8; sb->top = (ss::TB_H - sb->height) / 2; sb->anchor = ANCHOR_TOP | ANCHOR_RIGHT;
 	g_tb1->addChild (sb);
 
@@ -1320,6 +1373,7 @@ int main (void)
 	root.setBg (C_BG);
 
 	g_onChange = refresh; g_onSlides = on_slides;
+	g_onDone = master_sync; g_accepts = master_accepts; g_onRefuse = [] (const char *m) { wk_messagebox ("Master view", m, MB_OK); };
 	g_onContext = view_menu; g_onSlideMenu = slide_menu; g_onPictureWanted = picture_into;
 	g_onStatus = on_status; g_onOpenSlide = open_slide; g_onTool = refresh;
 	SlideView::g_onWheelSlide = on_wheel_slide; SlideView::g_onZoom = on_zoom;
@@ -1348,6 +1402,7 @@ int main (void)
 	menu.item ("Normal", "", 0, cmd_normal);
 	menu.item ("Slide Sorter", "", 0, cmd_sorter);
 	menu.item ("Notes", "", 0, cmd_notes);
+	menu.item ("Master and Layouts", "", 0, cmd_master);
 	menu.separator ();
 	menu.item ("Fit the Window", "", 0, cmd_zoom_fit);
 	menu.item ("Zoom In", "", 0, cmd_zoom_in);
@@ -1414,6 +1469,7 @@ int main (void)
 	g_view->setFocus ();
 	root.run ();
 
+	if (g_master) master_close ();
 	if (changed_doc ())
 	{
 		unsigned n = 0; unsigned char *b = odp_save (g_deck, &n);

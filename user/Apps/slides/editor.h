@@ -28,6 +28,9 @@ static char g_path[200];
 static unsigned g_saved;
 static void (*g_onChange) ();			// the window shows the change (main.cpp)
 static void (*g_onSlides) ();			// the slides' list changed (the thumbnails)
+static bool g_master;				// the master view (master.h): g_deck.slides holds the master and its layouts
+static void (*g_onDone) ();			// after every change (the master view writes it back)
+static bool (*g_accepts) (Object *o);		// may this object be added here? (the master view's layouts)
 
 static Slide *cur_slide () { return g_deck.slides.n ? g_deck.slides[iclamp (g_cur, 0, g_deck.slides.n - 1)] : 0; }
 static Object *obj_of (int id) { Slide *s = cur_slide (); return s ? s->by_id (id) : 0; }
@@ -98,7 +101,7 @@ static void begin_change (int kind = UK_OTHER)
 	for (int i = 0; i < g_redo.n; i++) snap_free (g_redo[i]);
 	g_redo.clear ();
 }
-static void done_change () { g_deck.changes++; notify (); }
+static void done_change () { g_deck.changes++; if (g_onDone) g_onDone (); notify (); }
 static void restore (Vec<Snap> &from, Vec<Snap> &to)
 {
 	if (!from.n) return;
@@ -130,6 +133,7 @@ static void go_slide (int i)
 }
 static void cmd_new_slide (int layout = -1)
 {
+	if (g_master) return;
 	begin_change ();
 	Slide *c = cur_slide ();
 	if (layout < 0) layout = c ? (c->layout == LY_TITLE ? LY_CONTENT : c->layout) : LY_CONTENT;
@@ -142,6 +146,7 @@ static void cmd_new_slide (int layout = -1)
 }
 static void cmd_duplicate_slide ()
 {
+	if (g_master) return;
 	Slide *c = cur_slide (); if (!c) return;
 	begin_change ();
 	Slide *s = slide_copy (c);
@@ -158,6 +163,7 @@ static void cmd_duplicate_slide ()
 }
 static void cmd_delete_slide ()
 {
+	if (g_master) return;
 	if (g_deck.slides.n <= 1) { if (cur_slide ()) { begin_change (); Slide *s = slide_new (g_deck, LY_TITLE); delete g_deck.slides[0]; g_deck.slides[0] = s; end_edit (); g_sel.clear (); done_change (); notify_slides (); } return; }
 	begin_change ();
 	Slide *s = g_deck.slides[g_cur];
@@ -170,6 +176,7 @@ static void cmd_delete_slide ()
 }
 static void move_slide (int from, int to)
 {
+	if (g_master) return;
 	if (from == to || from < 0 || to < 0 || from >= g_deck.slides.n || to >= g_deck.slides.n) return;
 	begin_change ();
 	Slide *s = g_deck.slides[from];
@@ -177,9 +184,10 @@ static void move_slide (int from, int to)
 	g_cur = to;
 	done_change (); notify_slides ();
 }
-static void cmd_hide_slide () { Slide *s = cur_slide (); if (!s) return; begin_change (); s->hidden = !s->hidden; done_change (); notify_slides (); }
+static void cmd_hide_slide () { if (g_master) return; Slide *s = cur_slide (); if (!s) return; begin_change (); s->hidden = !s->hidden; done_change (); notify_slides (); }
 static void set_layout (int l)
 {
+	if (g_master) return;
 	Slide *s = cur_slide (); if (!s) return;
 	begin_change ();
 	end_edit (); g_sel.clear ();
@@ -198,6 +206,7 @@ static Object *new_object (int kind)
 static void add_object (Object *o, bool editNow = false)
 {
 	Slide *s = cur_slide (); if (!s) { delete o; return; }
+	if (g_accepts && !g_accepts (o)) { delete o; return; }
 	begin_change ();
 	s->obj.push (o);
 	end_edit (); g_sel.clear (); g_sel.push (o->id);

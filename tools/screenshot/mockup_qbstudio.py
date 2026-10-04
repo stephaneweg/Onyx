@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""mockup_studio.py -- the first mock-ups of Studio, Onyx's IDE for desktop apps in BASIC (in the way of Visual
+"""mockup_qbstudio.py -- the first mock-ups of QBStudio, Onyx's IDE for desktop apps in BASIC (in the way of Visual
 Studio's WPF designer and of Visual Basic): a form designer whose layout is a light text format (.form: a control
 a line, its parent given by the indentation), the BASIC code of the events beside it, the code of the window
-generated. See docs/studio/README.md.
+generated. See docs/qbstudio/README.md.
 
-    python3 tools/screenshot/mockup_studio.py  -> docs/studio/mockups/studio-*.png
+    python3 tools/screenshot/mockup_qbstudio.py  -> docs/qbstudio/mockups/qbstudio-*.png
 
 On the real desktop (screenshots/desktop.png, 1024 x 768); the drawing helpers are mockup_archiver.py's, the
 toolbar icons Letters' (as Slides' mock-ups did). The project shown: "Converter", a temperature converter -- the
@@ -19,7 +19,7 @@ HERE = os.path.dirname (os.path.abspath (__file__))
 sys.path.insert (0, HERE)
 import mockup_slides as S
 M = S.M
-M.OUT = os.path.join (M.ROOT, "docs", "studio", "mockups")
+M.OUT = os.path.join (M.ROOT, "docs", "qbstudio", "mockups")
 K = M.K
 TEXT, DIM, FACE, SEL, WHITE, LINE, LINE2, FAINT = M.TEXT, M.DIM, M.FACE, M.SEL, (255, 255, 255), M.LINE, M.LINE2, M.FAINT
 PANEL = S.PANEL
@@ -44,7 +44,7 @@ def screen (menus = ("File", "Edit", "View", "Project", "Run", "Debug", "Help"))
 	c.img.paste (S.DESK.resize ((M.W * K, M.H * K), Image.LANCZOS), (0, 0)); c.d = ImageDraw.Draw (c.img, "RGBA")
 	c.rect (0, 0, 640, 27, (230, 222, 217))
 	x = 18; c.text_l (x, 0, 27, "Onyx", "menu"); x += c.tw ("Onyx", "menu") + 18
-	c.text_l (x, 0, 27, "Studio", "menub"); x += c.tw ("Studio", "menub") + 20
+	c.text_l (x, 0, 27, "QBStudio", "menub"); x += c.tw ("QBStudio", "menub") + 20
 	for m in menus: c.text_l (x, 0, 27, m, "menu", TEXT); x += c.tw (m, "menu") + 18
 	return c, {}
 
@@ -189,7 +189,7 @@ def toolbox (c, x, y, w, h, hot = None):
 	return y
 
 # ---- the form being designed: Converter's main window -----------------------------------------------------------
-FORM = """# Main.form -- the converter's window (Studio writes it; it reads as you see it)
+FORM = """# Main.form -- the converter's window (QBStudio writes it; it reads as you see it)
 Window Main "Temperature converter" size=380x260 min=320x220 resizable
   Menu
     "&File"
@@ -435,7 +435,7 @@ def statusbar (c, x, y, w, left, right):
 	rx = x + w - 10
 	for s in right: c.text_r (rx, y, 22, s, "combo"); rx -= c.tw (s, "combo") + 24
 
-def ide (c, title = "Studio — Converter", debug = False):
+def ide (c, title = "QBStudio — Converter", debug = False):
 	cx, cy, cw, ch = M.window (c, WX, WY, WW, WH, title)
 	y = toolbar (c, cx, cy, cw, debug = debug)
 	return cx, cy, cw, ch, y
@@ -462,7 +462,7 @@ def mock_designer ():
 	props_pane (c, cx + cw - RW, y, RW, body)
 	c.vline (cx + cw - RW - 1, y, y + body, M.shade (FACE, 0.8))
 	statusbar (c, cx, cy + ch - 22, cw, ["Main.form", "Button convert", "Main › Column › Row › convert"], ["Saved", "Ln 22, Col 7"])
-	c.save ("studio-designer.png")
+	c.save ("qbstudio-designer.png")
 
 # ---- 2. the code --------------------------------------------------------------------------------------------------
 MAIN_BAS = """' Main.bas -- what the converter does (the window itself: Main.form)
@@ -581,12 +581,12 @@ def mock_code ():
 	c.text (tx + 10, tyy + 28, "The box's text (TextBox fahrenheit,", "small", DIM)
 	c.text (tx + 10, tyy + 44, "Main.form line 15: readonly)", "small", DIM)
 	statusbar (c, cx, cy + ch - 22, cw, ["Main.bas", "SUB mnuCopy_Click"], ["UTF-8 · BASIC", "Ln 27, Col 28"])
-	c.save ("studio-code.png")
+	c.save ("qbstudio-code.png")
 
 # ---- 3. running, debugging -------------------------------------------------------------------------------------------
 def mock_debug ():
 	c, _ = screen ()
-	cx, cy, cw, ch, y = ide (c, "Studio — Converter  [paused]", debug = True)
+	cx, cy, cw, ch, y = ide (c, "QBStudio — Converter  [paused]", debug = True)
 	views (c, cx + cw - 8, cy + 6, "Code")
 	body = cy + ch - 22 - y
 	panel_h = 196
@@ -625,7 +625,7 @@ def mock_debug ():
 			yy += 22
 		px += w; c.vline (px, py, py + panel_h, LINE2)
 	statusbar (c, cx, cy + ch - 22, cw, ["Paused at Main.bas 11 (a breakpoint)", "F5 continue · F10 over · F11 into"], ["Converter running", "Ln 11"])
-	c.save ("studio-debug.png")
+	c.save ("qbstudio-debug.png")
 
 # ---- 4. a new project -----------------------------------------------------------------------------------------------
 def template_card (c, x, y, w, h, title, desc, kind, sel = False):
@@ -665,11 +665,11 @@ def template_card (c, x, y, w, h, title, desc, kind, sel = False):
 
 def mock_new ():
 	c, _ = screen ()
-	cx, cy, cw, ch, y = ide (c, "Studio")
+	cx, cy, cw, ch, y = ide (c, "QBStudio")
 	body = cy + ch - 22 - y
 	# the start page behind
 	c.rect (cx, y, cw, body, M.lighten (FACE, 0.25))
-	c.text (cx + 30, y + 26, "Studio", "huge", M.shade (FACE, 0.6))
+	c.text (cx + 30, y + 26, "QBStudio", "huge", M.shade (FACE, 0.6))
 	c.text (cx + 30, y + 70, "Recent projects", "smallb", DIM)
 	for k, s in enumerate (("Converter  ·  SD:/projects/converter", "Notes  ·  SD:/projects/notes", "Snake  ·  SD:/projects/snake")):
 		c.text (cx + 30, y + 92 + k * 20, s, "small", M.LINK)
@@ -698,10 +698,10 @@ def mock_new ():
 	c.text_l (ix + 18, fy, 26, "Category", "ui"); M.dropdown (c, ix + 110, fy, 200, 26, "Productivity")
 	M.checkbox (c, ix + 330, fy + 5, "Compiled (main.bax)", True)
 	M.button (c, ix + iw - 212, iy + ih - 44, 92, 30, "Cancel"); M.button (c, ix + iw - 110, iy + ih - 44, 92, 30, "Create", accent = True)
-	c.save ("studio-new.png")
+	c.save ("qbstudio-new.png")
 
 # ---- 5. the form as text, the code generated ----------------------------------------------------------------------
-GEN = """' Main.form.bas -- made by Studio from Main.form: do not edit (it is made again)
+GEN = """' Main.form.bas -- made by QBStudio from Main.form: do not edit (it is made again)
 DIM SHARED Main AS Window, celsius AS TextBox, fahrenheit AS TextBox
 DIM SHARED live AS CheckBox, scale AS Slider, clear AS Button
 DIM SHARED convert AS Button, status AS StatusBar
@@ -769,7 +769,7 @@ def mock_generated ():
 	c.line ([(cx + half - 30, ya), (cx + half + 30, yb)], GUIDE_C, 2)
 	c.ellipse (cx + half - 30, ya, 3.5, GUIDE_C); c.poly ([(cx + half + 30, yb), (cx + half + 21, yb - 7), (cx + half + 19, yb + 2)], GUIDE_C)
 	statusbar (c, cx, cy + ch - 22, cw, ["Main.form → Main.form.bas: made again at each change of the form"], ["read-only", "Ln 24"])
-	c.save ("studio-generated.png")
+	c.save ("qbstudio-generated.png")
 
 if __name__ == "__main__":
 	which = sys.argv[1:]

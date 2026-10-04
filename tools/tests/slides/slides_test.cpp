@@ -10,6 +10,7 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 #include "wtk/wtk.h"
 #include "Apps/slides/pptx.h"
+#include "Apps/slides/master.h"
 #include <stdio.h>
 
 using namespace sl;
@@ -198,6 +199,42 @@ int main (int argc, char **argv)
 			snprintf (p, sizeof p, "%s/sb.txt", getenv ("DESC_DIR")); g = fopen (p, "w"); if (g) { fputs (B.str (), g); fclose (g); }
 		}
 		delete[] pz; delete x; delete y;
+	}
+	// the master view: a style through its sample, a layout's placeholder moved (the slides that sat there follow,
+	// one moved by hand stays), a text box on a layout -> a placeholder, a shape refused; one Undo for the visit
+	{
+		Deck *keep = new Deck; deck_copy (*keep, g_deck);
+		g_onDone = master_sync; g_accepts = master_accepts;
+		Slide *a = slide_new (g_deck, LY_CONTENT), *b2 = slide_new (g_deck, LY_CONTENT);
+		g_deck.slides.push (a); g_deck.slides.push (b2);
+		Object *bb = 0; for (int i = 0; i < b2->obj.n; i++) if (b2->obj[i]->ph == PH_BODY) bb = b2->obj[i];
+		if (bb) bb->y += 77;
+		int nslides = g_deck.slides.n, size0 = g_deck.style[TS_TITLE].cf.size;
+		int bodyY = g_deck.layout[LY_CONTENT].find (PH_BODY)->y;
+		master_open ();
+		check (g_master && g_deck.slides.n == 1 + LY_COUNT, "master view: the master and its 8 layouts");
+		Object *t = g_deck.slides[0]->by_id (g_mTitle);
+		begin_change (); for (int k = 0; t && k < t->tb.p[0]->len; k++) t->tb.p[0]->cf[k].size = 520; done_change ();
+		check (g_deck.style[TS_TITLE].cf.size == 520 && t && t->tb.p[0]->cf[0].size == 0, "master view: the title's style from its sample");
+		Slide *ls = g_deck.slides[1 + LY_CONTENT]; Object *lb = 0; for (int i = 0; i < ls->obj.n; i++) if (ls->obj[i]->ph == PH_BODY) lb = ls->obj[i];
+		g_cur = 1 + LY_CONTENT;
+		begin_change (); if (lb) lb->y += 1000; done_change ();
+		check (g_deck.layout[LY_CONTENT].find (PH_BODY)->y == bodyY + 1000, "master view: a layout's placeholder moved");
+		g_cur = 1 + LY_TITLE_ONLY; int n0 = cur_slide ()->obj.n;
+		add_object (make_text_box (1000, 5000, 8000, 3000));
+		check (cur_slide ()->obj.n == n0 + 1 && cur_slide ()->obj[n0]->ph == PH_BODY && g_deck.layout[LY_TITLE_ONLY].find (PH_BODY), "master view: a text box on a layout -> a text placeholder");
+		g_cur = 1 + LY_BLANK; n0 = cur_slide ()->obj.n;
+		add_object (make_shape (SH_STAR5, 1000, 1000, 3000, 3000));
+		check (cur_slide ()->obj.n == n0, "master view: a shape on a layout refused");
+		master_close ();
+		check (!g_master && g_deck.slides.n == nslides, "master view closed: the slides back");
+		Object *fa = 0, *fb = 0;
+		for (int i = 0; i < a->obj.n; i++) if (a->obj[i]->ph == PH_BODY) fa = a->obj[i];
+		for (int i = 0; i < b2->obj.n; i++) if (b2->obj[i]->ph == PH_BODY) fb = b2->obj[i];
+		check (fa && fa->y == bodyY + 1000 && fb && fb->y == bodyY + 77, "the slides follow their layout (one moved by hand stays)");
+		cmd_undo ();
+		check (g_deck.style[TS_TITLE].cf.size == size0 && g_deck.layout[LY_CONTENT].find (PH_BODY)->y == bodyY && g_deck.slides.n == nslides, "one Undo: the master view's changes undone");
+		deck_copy (g_deck, *keep); delete keep; undo_clear (); g_onDone = 0; g_accepts = 0;
 	}
 	// .pptx files of LibreOffice's: ours resaved, the sample converted
 	for (int k = 3; k < argc && k < 5; k++)
