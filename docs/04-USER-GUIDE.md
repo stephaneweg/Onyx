@@ -2492,6 +2492,11 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   on a Pi 4, at its full frame rate with the GPU compositor: the pictures are a layer of their
   own). **No H.264, no AAC**: a site that only has those shows its "cannot play" message. One
   page's sound at a time. No full screen yet.
+- **YouTube and Google as on a phone** (1.0.8): their desktop pages are heavy for a Pi 4, so Web asks
+  for them as a phone would (Android's Chrome) and gets their lighter pages — YouTube's (`m.youtube.com`)
+  loads in about 6 s where the desktop one took 12 to 14. Every other site gets Web's own user agent.
+  An empty file `SD:/etc/web-desktop-ua` (`touch SD:/etc/web-desktop-ua`) turns this off;
+  `SD:/etc/web-mobile-ua` asks for every site as a phone.
 - **Not there yet** (the WebKit port's roadmap): WebGL, Web Audio.
 - **When something goes wrong**: `kmsg` shows its lines — `web: [time] …` (the loads, the
   addresses, the errors, the web and network processes started and ended), `web: net start / done

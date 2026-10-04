@@ -613,6 +613,17 @@ libvpx / dav1d / opus, a player with the sound as the clock), not GStreamer:
 - **Not there**: Web Audio, the picture as a YUV texture (it is converted to 32 bits on the app
   core), full screen, H.264 / AAC, captions.
 
+**A site's own user agent (Web 1.0.8, patch `0025`).** YouTube's and Google's desktop pages are
+heavy for a Pi 4; the browser asks for them as Android's Chrome (`engine_webkit.cpp`:
+`site_user_agent`, `apply_site_user_agent` — `WKPageSetCustomUserAgent` where a typed address is
+loaded, and in the navigation policy for the main frame: when the user agent changes there, a
+plain GET navigation is started again so that its request carries the new one). Not an iPhone's:
+it would be given HLS / H.264, which the media engine does not play; Chrome on Android gets Media
+Source with VP9. YouTube then serves `m.youtube.com` (loaded in 6.4 s; the desktop page: 12–14 s).
+The port's `standardUserAgentForURL` returns an empty string: it returned the standard user agent
+for every URL, and `WebPage::userAgent()` takes that before the page's own — the custom user agent
+was never sent. Switches: `SD:/etc/web-desktop-ua` (none), `SD:/etc/web-mobile-ua` (every site).
+
 **The console.** WebKit's Onyx port sends every console message to the UI process
 (`WebPageProxy::OnyxConsoleMessage`, from `WebChromeClient::addMessageToConsole`; the console API's
 messages with all their arguments: `FrameConsoleClient.cpp`), and the embedder gets them through

@@ -20,6 +20,7 @@
 #include <WebKit/WKDownloadRef.h>
 #include <WebKit/WKErrorRef.h>
 #include <WebKit/WKFindOptions.h>
+#include <WebKit/WKFrameInfoRef.h>
 #include <WebKit/WKFramePolicyListener.h>
 #include <WebKit/WKNavigationResponseRef.h>
 #include <WebKit/WKPageFindClient.h>
@@ -428,18 +429,93 @@ void engine_load_html (const char *html, const char *baseUrl)
 	if (b) WKRelease (b);
 }
 
+// ---- a site's own user agent ------------------------------------------------------------------------------
+// YouTube and Google in their desktop form are heavy for a Pi 4 (YouTube's page: megabytes of script,
+// twenty seconds before the first picture); to a phone they serve a lighter one. Their pages are asked
+// for as Android's Chrome -- not as an iPhone, which would be given HLS / H.264, that the media engine
+// does not play: Chrome on Android gets Media Source with VP9 / AV1, which it does. Every other site
+// gets WebKit's own user agent. SD:/etc/web-desktop-ua (a file, empty): no site gets another one;
+// SD:/etc/web-mobile-ua: every site gets the phone's.
+static const char MOBILE_UA[] = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+static const char *s_siteUA;					// what the page sends now (nullptr: WebKit's own)
+
+static bool host_is (const std::string &host, const char *domain)	// the domain or a name under it
+{
+	size_t n = strlen (domain);
+	if (host.size () < n || host.compare (host.size () - n, n, domain) != 0) return false;
+	return host.size () == n || host[host.size () - n - 1] == '.';
+}
+
+static const char *site_user_agent (const std::string &url)
+{
+	static int off = -1, all = -1;
+	if (off < 0) off = access ("SD:/etc/web-desktop-ua", F_OK) == 0;
+	if (off) return nullptr;
+	if (all < 0) all = access ("SD:/etc/web-mobile-ua", F_OK) == 0;
+	if (all && (url.compare (0, 7, "http://") == 0 || url.compare (0, 8, "https://") == 0)) return MOBILE_UA;
+	size_t a = url.find ("://");
+	if (a == std::string::npos || (url.compare (0, 7, "http://") != 0 && url.compare (0, 8, "https://") != 0)) return nullptr;
+	a += 3;
+	size_t b = url.find_first_of ("/?#", a);
+	std::string host = url.substr (a, b == std::string::npos ? std::string::npos : b - a);
+	size_t at = host.rfind ('@'); if (at != std::string::npos) host.erase (0, at + 1);
+	size_t colon = host.find (':'); if (colon != std::string::npos) host.erase (colon);
+	for (auto &c : host) if (c >= 'A' && c <= 'Z') c = (char) (c + 32);
+	if (host_is (host, "youtube.com") || host_is (host, "youtu.be")) return MOBILE_UA;
+	// Google's search (www.google.com, google.fr, www.google.co.uk...): not its other services
+	if (host.compare (0, 11, "www.google.") == 0 || host.compare (0, 7, "google.") == 0) return MOBILE_UA;
+	return nullptr;
+}
+
+// The page's user agent made the one of url's site -> true when it changed.
+static bool apply_site_user_agent (const std::string &url)
+{
+	const char *ua = site_user_agent (url);
+	if (ua == s_siteUA) return false;
+	s_siteUA = ua;
+	WKStringRef w = WKStringCreateWithUTF8CString (ua ? ua : "");
+	WKPageSetCustomUserAgent (s_page, w);
+	WKRelease (w);
+	say ("user agent: %s (%s)", ua ? "a phone's" : "WebKit's own", url.substr (0, 60).c_str ());
+	return true;
+}
+
 // With a link handler (the embedded view): a link the user clicks is the host's, not followed here.
 static void decideAction (WKPageRef, WKNavigationActionRef action, WKFramePolicyListenerRef listener, WKTypeRef, const void *)
 {
-	if (s_linkHandler && WKNavigationActionGetNavigationType (action) == kWKFrameNavigationTypeLinkClicked) {
-		WKURLRequestRef req = WKNavigationActionCopyRequest (action);
-		WKURLRef u = req ? WKURLRequestCopyURL (req) : nullptr;
-		std::string url = url_str (u);
-		if (u) WKRelease (u);
-		if (req) WKRelease (req);
+	WKURLRequestRef req = WKNavigationActionCopyRequest (action);
+	WKURLRef u = req ? WKURLRequestCopyURL (req) : nullptr;
+	std::string url = url_str (u);
+	WKStringRef m = req ? WKURLRequestCopyHTTPMethod (req) : nullptr;
+	bool get = !m || str (m) == "GET";
+	if (m) WKRelease (m);
+	if (u) WKRelease (u);
+	if (req) WKRelease (req);
+	WKFrameNavigationType type = WKNavigationActionGetNavigationType (action);
+
+	if (s_linkHandler && type == kWKFrameNavigationTypeLinkClicked) {
 		WKFramePolicyListenerIgnore (listener);
 		s_linkHandler (url.c_str ());
 		return;
+	}
+
+	// The page's user agent follows the site of its main frame. This request was made with the one
+	// before: when it changes, the navigation is started again (a plain GET that is not a move in
+	// the history: those go on as they are, and the next request has the right one).
+	WKFrameInfoRef frame = WKNavigationActionCopyTargetFrameInfo (action);
+	bool mainFrame = frame && WKFrameInfoGetIsMainFrame (frame);
+	if (frame) WKRelease (frame);
+	if (mainFrame && !s_linkHandler) {
+		if (apply_site_user_agent (url)) {
+			if (get && type != kWKFrameNavigationTypeBackForward && type != kWKFrameNavigationTypeReload
+			    && type != kWKFrameNavigationTypeFormSubmitted && type != kWKFrameNavigationTypeFormResubmitted) {
+				WKFramePolicyListenerIgnore (listener);
+				WKURLRef again = WKURLCreateWithUTF8CString (url.c_str ());
+				WKPageLoadURL (s_page, again);
+				WKRelease (again);
+				return;
+			}
+		}
 	}
 	WKFramePolicyListenerUse (listener);
 }
@@ -766,6 +842,7 @@ void engine_load (const char *typed)
 	if (!s_page) return;
 	std::string url = to_url (typed);
 	say ("load %s", url.c_str ());
+	if (!s_linkHandler) apply_site_user_agent (url);	// (the request is made with it)
 	WKURLRef u = WKURLCreateWithUTF8CString (url.c_str ());
 	WKPageLoadURL (s_page, u);
 	WKRelease (u);

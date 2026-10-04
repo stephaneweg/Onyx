@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sun, 4 Oct 2026 02:12:11 +0200
-Subject: [PATCH 24/24] [Onyx] A video's pictures as a layer of the compositor:
+Subject: [PATCH 24/25] [Onyx] A video's pictures as a layer of the compositor:
  a texture updated for each picture, nothing painted
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

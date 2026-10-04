@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sun, 4 Oct 2026 08:51:28 +0200
+Subject: [PATCH 25/25] [Onyx] No user agent of the port's own for a URL: the
+ embedder's custom user agent was never sent
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ Source/WebCore/platform/onyx/UserAgentOnyx.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/Source/WebCore/platform/onyx/UserAgentOnyx.cpp b/Source/WebCore/platform/onyx/UserAgentOnyx.cpp
+index e4b66f8e..9160202d 100644
+--- a/Source/WebCore/platform/onyx/UserAgentOnyx.cpp
++++ b/Source/WebCore/platform/onyx/UserAgentOnyx.cpp
+@@ -57,9 +57,13 @@ String standardUserAgent(const String& applicationName, const String& applicatio
+     return makeString(standardUserAgentStatic(), ' ', applicationName, '/', applicationVersion.isEmpty() ? versionForUAString() : applicationVersion);
+ }
+ 
++// The user agent for one site, when the port itself has one (the quirks of the GLib ports): none on
++// Onyx. An empty string, not the standard one: WebPage::userAgent() takes what this returns before the
++// page's own, so the embedder's custom user agent (WKPageSetCustomUserAgent: the browser's phone
++// user agent for YouTube and Google) was never sent.
+ String standardUserAgentForURL(const URL&)
+ {
+-    return standardUserAgentStatic();
++    return emptyString();
+ }
+ 
+ } // namespace WebCore
