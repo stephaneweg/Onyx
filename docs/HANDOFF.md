@@ -54,7 +54,7 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Study: the GUI in user space, wtk as a shared library (2026-10-04; a study only, nothing built)
+## Shared libraries (decided 2026-10-04: `docs/SHARED-LIBS-PLAN.md`, step 0 done) and the GUI in user space (a study)
 
 `docs/GUI-USERSPACE-STUDY.md`: the window manager / compositor can leave the kernel (a `wsd` process,
 the GUI kapi slots redirected into a shared client library so no app is rebuilt); wtk inside the server
@@ -63,6 +63,11 @@ recommended first, **the user's design**: shared **PIC libraries that publish th
 table filled at load time** (the `kapi` model; no link-time fixed address, no `ld.so`), one physical copy
 on the v77 program images, `kapi_lib_open` → the table; FreeType first (a C library), then wtk with its
 C++ layouts and virtual order frozen (generated thunks). Open decisions listed at its end.
+**The design is decided** — the plan to implement, with the tests to automate on the Pi:
+`docs/SHARED-LIBS-PLAN.md` (the user's decisions D1–D8, the defaults P1–P6, the kernel's changes for
+kapi v83 `lib_open`, the C++ rules for wtk, the tests). Step 0 is done: `tools/tests/shlib/check_pic.sh`
+(the toolchain makes a PIC library with only `RELATIVE` relocations, the entry = its table). The user
+carries it on locally.
 
 ## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
 

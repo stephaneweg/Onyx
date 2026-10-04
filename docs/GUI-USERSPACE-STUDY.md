@@ -7,7 +7,7 @@ user-space window manager (the apps then talk IPC), by putting wtk in a process 
 loading shared libraries (ideally one physical copy, mapped into every process that uses it).
 **Revised the same day**: the user ruled out libraries at a link-time fixed address; §3.3 is now the
 user's design — PIC libraries that publish their entry points in a table filled at load time, read by
-the apps as they read `kapi`'s.*
+the apps as they read `kapi`'s. **Decided**: the plan to implement is `docs/SHARED-LIBS-PLAN.md`.*
 
 ## Summary
 
