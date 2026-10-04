@@ -1,8 +1,8 @@
 # Slides, the presentation program — study, first mock-ups
 
 > **Status (2026-10-04): mock-ups, to be validated by the user.** Asked by the user (2026-10-04): a presentation
-> program, "pro and fairly complete", in the same vein as Writer and Sheet (the third app of the office suite). Proposed
-> name: **Slides** (app folder `slides`). Nothing is built yet.
+> program, "pro and fairly complete", in the same vein as Writer and Sheet (the third app of the office suite). The
+> name: **Slides** (app folder `slides`), chosen by the user. Nothing is built yet.
 
 The mock-ups are made by `python3 tools/screenshot/mockup_slides.py` → `docs/slides/mockups/slides-*.png` (1024 × 768,
 the real desktop behind; the drawing helpers are `mockup_archiver.py`'s). **The toolbar icons Writer and Sheet already
@@ -57,8 +57,7 @@ suite; the new icons (a slide, a layout, a text box, the shapes, the show) are d
 
 ## Open questions for the user
 
-1. The name: **Slides**? (other ideas: *Show*, *Stage*, *Impress* is LibreOffice's.)
-2. The native format: `.odp` (proposed: an open standard, and LibreOffice reads it) with `.pptx` read and written —
+1. The native format: `.odp` (proposed: an open standard, and LibreOffice reads it) with `.pptx` read and written —
    or our own simpler format?
 
-Decided by the user (2026-10-04): **a presentation program in the way of PowerPoint**, not desktop publishing (Publisher).
+Decided by the user (2026-10-04): the name **Slides**; **a presentation program in the way of PowerPoint**, not desktop publishing (Publisher).
