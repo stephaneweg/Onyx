@@ -60,6 +60,5 @@ suite; the new icons (a slide, a layout, a text box, the shapes, the show) are d
 1. The name: **Slides**? (other ideas: *Show*, *Stage*, *Impress* is LibreOffice's.)
 2. The native format: `.odp` (proposed: an open standard, and LibreOffice reads it) with `.pptx` read and written —
    or our own simpler format?
-3. "Like Publisher": a presentation program (PowerPoint, the mock-ups) — or also desktop publishing (Publisher:
-   leaflets, posters, newsletters on pages)? The same engine could serve both later (a "page" size instead of 16:9,
-   text flowing between linked boxes).
+
+Decided by the user (2026-10-04): **a presentation program in the way of PowerPoint**, not desktop publishing (Publisher).
