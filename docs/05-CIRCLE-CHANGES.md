@@ -51,7 +51,8 @@ git -C circle diff Step51..onyx
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
 | 23 | **Wi-Fi: the firmware's `wsec` from the IE's ciphers** (group + pairwise: TKIP 2, AES 4, as Linux's brcmfmac) -- WPA2 was always "aes": a WPA/WPA2 mixed-mode network (pairwise CCMP, group TKIP, common on 2.4 GHz) associated but no broadcast was decoded (no DHCP offer: the link stayed down) | `addon/wlan/ether4330.c` (`iewsec`, `setauth`) | `libwlan` |
 | 25 | **TCP: a closed connection's retransmission timer** stopped, a late one ignored — it was a kernel panic (`Unexpected state 0`); a reset wakes a waiting sender | `lib/net/tcpconnection.cpp` | `libnet` |
-| 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred** | `addon/wlan/ether4330.c`, `addon/wlan/p9util.cpp` | `libwlan` |
+| 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred**, **a frame in one SDIO command**, the frames' locks without a yield, **the SDIO bus at 50 MHz** | `addon/wlan/ether4330.c`, `addon/wlan/emmc.c`, `addon/wlan/p9util.cpp` | `libwlan` |
+| 27 | **TCP: window scaling** (RFC 7323), **a receive window that follows the receive queue** (it was a constant), a 256 KB transmit threshold | `lib/net/tcpconnection.cpp`, `include/circle/net/tcpconnection.h`, `include/circle/net/sizes.h` | `libnet` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -831,19 +832,82 @@ scheduler) for the driver's C code. With `onyx_wlstat` (the kernel: `cmdline.txt
 driver logs every 5 s under load its frames a second, a frame's read and write times, the waits,
 and every 10 s what the firmware says of the link (rate, RSSI, chanspec, power save).
 
+**4. The frames' path (`onyx_wlfast`, a bit each; the kernel sets 15).** With the chip polled and
+5 GHz joined, a frame's read still took ~270 µs — 3700 frames a second at best:
+
+- *bit 1 — one command a transfer* (`packetrw`): `sdiorwext` sent a length over a block (512) as
+  its whole blocks in one CMD53 and the rest in a second, byte-mode one: a 1500-byte frame was the
+  header (12 bytes), two blocks, then 464 bytes — three commands. A length over a block is now
+  rounded up to whole blocks (the "roundup" of Linux's brcmfmac: past a frame's end the chip pads
+  a read and ignores what is written).
+- *bit 2 — the next frame read whole* (`wlreadpkt`): a frame's header tells the next frame's
+  length (`nextlen`, 16-byte units) when the chip has one queued; that frame is then read in one
+  command instead of its header first. A hint too short is completed by a second read.
+- *bit 4 — the frames' locks without a yield* (`fqlock` / `fqunlock`, `emmcio`): `qlock` and
+  `qunlock` each call the scheduler, free or not, and `tsleep` yields before it looks at its
+  condition — a frame cost eleven turns of the scheduler (the packet lock, the SDIO lock around
+  each command, the wait for each transfer's end), each a round of all the stack's tasks. On the
+  frames' path a free lock is taken and released at once, a transfer already ended is not waited
+  for, and the reader yields once a frame. (Doing this in `p9proc.cpp` for every lock and sleep of
+  the driver cut the Wi-Fi at boot — not found why; only this path is changed.)
+- *bit 8 — the bus at 50 MHz* (`emmc.c`): the driver switches the card to High Speed (function
+  0's register 0x13) but the host stayed at 25 MHz; when the bus goes to four lines the host now
+  takes High Speed timing and 50 MHz, as Linux runs this chip on a Pi 4.
+
+A frame's read: **117 µs** (was 270).
+
 **Measured** (a Pi 4, `tcpbench` against a PC on the same access point; with the kernel's
-inter-core interrupt of docs/02 §11, which came first):
+inter-core interrupt of docs/02 §11, which came first, and §27's TCP changes, which came last):
 
 | | echo round trip | the Pi sends | the Pi receives |
 |---|---|---|---|
 | before | 10.4 ms | 795 KB/s | 504 KB/s |
 | the IPI (kernel) | 2.8 ms | 1128 KB/s | 1008 KB/s |
 | + the chip polled | 2.8 ms | 3.3 MB/s | 1 MB/s |
-| + 5 GHz (link 263–292 Mbit/s) | 2.2 ms | 4.3 MB/s | 4.4 MB/s |
+| + 5 GHz (VHT, 80 MHz, link 195–292 Mbit/s) | 2.2 ms | 4.3 MB/s | 4.4 MB/s |
+| + TCP window scaling (§27) | 2.3 ms | 6.6 MB/s | 4.6 MB/s |
+| + one command a frame, the locks | 2.3 ms | 6.4 MB/s | 5.5 MB/s |
+| + the bus at 50 MHz | 2.2 ms | 7.5–8.1 MB/s | 6–7 MB/s |
 
-**What limits it now**: the 64 KB receive window without window scaling (§19), a `recv` of at
-most 32 KB a request, and the SDIO read of a frame (~270 µs: two transfers a frame, no receive
-glomming).
+From the internet (the Pi's `curl`): 8 MB from Cloudflare at 6.0 MB/s (was 0.8, then 2.2–2.8 with
+the first four rows); YouTube's 3 MB player script in 0.6 s (was 4 to 23 s).
+
+**What limits it now** (`netstat=1`): 4600 frames a second at 117 µs each is half the reader's
+time, and the Pi acknowledges every segment (5000 frames sent a second while it receives). Next:
+receive glomming (`bus:rxglom`: several frames in one command — the driver must then split the
+superframe, which it does not know how to), delayed acknowledgements, a read buffer aligned for
+the DMA (it goes through a bounce buffer). The bus is on four lines (`Busifc` 2) and the link is
+VHT (`vhtmode 1`, chanspec `e02a`): neither is the limit.
+
+**Trying such a change** on a Pi that is only reachable by its Wi-Fi: the kernel's one-boot trial
+file (docs/02 §11 *A trial*): each of the bits above was tried alone that way before it became
+the default.
+
+## 27. TCP: window scaling, a receive window that follows the queue
+
+**Why.** The receive window was a constant — 64240 bytes (§19), never scaled, never smaller: (1)
+a connection carried at most 64 KB a round trip — 2.5 MB/s at 25 ms from the internet, and
+4.5 MB/s on the LAN, where the queueing makes the round trip 14 ms; the Pi's own sends were held
+to 64 KB too (the peer's window read without its scale, a 64 KB transmit threshold); (2) a reader
+that stopped reading did not stop the peer: the receive queue grew without a limit (a paused
+download, a video's loader that waits).
+
+**What.** `lib/net/tcpconnection.cpp` (the switch `onyx_tcp_ws`, set by the kernel; 0: as before):
+
+- **the option**: our SYN carries window scale 3 (after the MSS: NOP, kind 3, length 3); a
+  SYN+ACK carries it when the peer's SYN did. `ScanOptions` takes the peer's shift (in a SYN, in
+  `SYN-SENT` or `LISTEN`); with both, the peer's window field is shifted left by its shift (never
+  in a SYN), ours right by 3, and the receive limit is 180 segments (262800 bytes).
+  `TCP_MSS_HEADER_LEN` is 28 (the buffer's headroom).
+- **the window** sent is the room left in the receive queue (`ReceiveWindow`: the limit less
+  the bytes queued), in every segment; `Receive` — the reader made room — sends a window update
+  once that opens the window by a quarter of the limit over what the peer was last told.
+- the transmit threshold (when `Send` waits, when a socket is writable) is 256 KB, the initial
+  slow-start threshold 1 MB with a scaled peer (it was 65535: linear growth past 64 KB).
+- `ScanOptions` stops at an option of length under 2 (it looped for ever).
+
+**Measured**: the table of §26 (the Pi sends 4.3 → 6.6 MB/s by this alone); the download from
+Cloudflare 2.2–2.8 → 6.0 MB/s with §26's fast path.
 
 ## Contributions to upstream Circle
 

@@ -1711,8 +1711,17 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
     `COnyxCores::IPIHandler` → `NetReadyIPI`; the 100 Hz tick hook `NetPollTick` as the fallback):
     `IoWake`, which wakes `poll` and the blocking BSD calls (§8 "v75: sockets and poll").
   - **The Wi-Fi driver** is polled on this core instead of waiting for its SDIO interrupt, its
-    scans cover both bands and probe for the networks of `wpa_supplicant.conf` by name, and 5 GHz
-    is preferred (`NetWlanOptions`, `NetWlanNames`; our Circle fork, docs/05 §26).
+    scans cover both bands and probe for the networks of `wpa_supplicant.conf` by name, 5 GHz
+    is preferred, a frame is one SDIO command on a 50 MHz bus (`onyx_wlfast = 15`), and TCP scales
+    its window (`onyx_tcp_ws = 1`) (`NetWlanOptions`, `NetWlanNames`; our Circle fork, docs/05 §26
+    and §27).
+  - **A trial.** A Pi is often reachable by its Wi-Fi only: a driver change that keeps the Wi-Fi
+    from coming up cannot be taken back from the PC. `SD:/etc/net-trial.txt` holds `name=value`
+    words — `wlfast=` (the driver's fast path bits), `tcpws=`, `netstat=1`, `secs=` (default
+    180) —; the bring-up reads it, **deletes it**, applies it for this boot (`NetTrialLoad`), and
+    core 0's main task restarts the Pi after `secs` (`NetTrialPoll`) unless
+    `SD:/etc/net-trial.keep` exists by then: the next boot is without the trial. A new switch is
+    added there, tried, and only then made the default.
   - **`netstat=1`** (`cmdline.txt`): every 5 s the log says the net core's pace (`net: core 3: N
     rounds/s, … us a round` — the stack's tasks all wait by yielding, so a round is the unit of
     every wait: ~13 µs) and the driver's (frames a second, a frame's read time, the link's rate).

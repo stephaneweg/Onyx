@@ -593,8 +593,25 @@ libvpx / dav1d / opus, a player with the sound as the clock), not GStreamer:
   `mkvideotests.py` from `tools/tests/av/clips`): each ends with `video test: PASS` in the console.
   The engine's lines in `kmsg`: `web: media: ...` (a source buffer's tracks; every 5 s, the time,
   the size, pictures decoded / dropped, the time a picture takes, how many went to the app core).
-- **Not there**: Web Audio, the picture as a compositor layer of its own (a YUV texture: today the
-  frame goes through the tiles), full screen, H.264 / AAC, captions.
+- **The pictures are a layer of the compositor** (patch `0024`). Painted into the page's tiles —
+  the element invalidated for each picture, the picture scaled by Skia on the main thread —, a
+  480p picture cost ~190 ms and five in six were dropped. Now the player owns a
+  `GraphicsLayerOnyxContents` (`GraphicsLayerOnyx.h`; it is the port's `PlatformLayer`:
+  `platformLayer()`, `supportsAcceleratedRendering()`), a video element is a layer
+  (`ChromeClient::VideoTrigger` in `onyxCompositingTriggers`), and `RenderLayerBacking` gives the
+  contents to the element's `GraphicsLayerOnyx` (`setContentsToPlatformLayer`). For each picture
+  the player calls `setPicture` (its pixels, not copied) and the host schedules a frame *without*
+  the page's update; the frame's walk copies the pixels into the layer's own texture
+  (`LayerTreeHost::prepareContents`: `gpc_tex_update`, the texture made again when the size
+  changes), damages the contents rectangle only, and draws the texture scaled to it over the
+  layer's own content. Nothing is painted: `web: gpu:` lines say `N video pictures`, `0 tiles
+  painted`. Without the compositor (`web --nogpu`, Mail's view) no layer takes the contents and
+  the player paints as before (an image is made of the pixels only then: `ensureImage`).
+  `SD:/etc/web-gpu-novideo`: no video layers. **Measured on the Pi 4**: YouTube, VP9 480p: 59–61
+  pictures shown every 2 s, one dropped every few seconds (84 % were); the two test pages: no
+  picture dropped.
+- **Not there**: Web Audio, the picture as a YUV texture (it is converted to 32 bits on the app
+  core), full screen, H.264 / AAC, captions.
 
 **The console.** WebKit's Onyx port sends every console message to the UI process
 (`WebPageProxy::OnyxConsoleMessage`, from `WebChromeClient::addMessageToConsole`; the console API's

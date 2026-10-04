@@ -1018,6 +1018,9 @@ extern "C"
 	extern int  onyx_scan_5g_bias;		// dB added to a 5 GHz BSS's level in the scan results
 	extern int  onyx_wlpoll;		// the chip polled (the net core) instead of its interrupt awaited
 	extern int  onyx_wlstat;		// the driver's timing lines in the log
+	extern int  onyx_wlfast;		// 1: SDIO lengths rounded up to blocks; 2: the next frame read whole; 4: its locks without a yield
+	extern int  onyx_tcp_ws;		// TCP: window scaling, a receive window that follows the queue (docs/05 §27)
+	void kapi_reboot (void);
 }
 #define WLAN_5G_BIAS	25			// a network on both bands: 5 GHz unless it is 25 dB weaker
 
@@ -1060,12 +1063,75 @@ void NetWlanNames (const char *pConfigFile)
 	onyx_scan_5g_bias = WLAN_5G_BIAS;
 }
 
+// ---- a trial of the driver's switches, for one boot -----------------------------------------------
+// SD:/etc/net-trial.txt holds "name=value" words (wlfast, tcpws, netstat, secs). The bring-up reads it,
+// DELETES it, applies it; after `secs` seconds (default 180) the Pi restarts -- without the trial,
+// the file being gone -- unless SD:/etc/net-trial.keep exists by then. A switch that keeps the
+// Wi-Fi from coming up thus costs one restart, not a card taken out: the way to try a change of
+// the driver on a Pi that is only reachable by its network.
+#define NET_TRIAL_FILE	"SD:/etc/net-trial.txt"
+#define NET_TRIAL_KEEP	"SD:/etc/net-trial.keep"
+static u32 s_nTrialEnd;				// CTimer ticks; 0: no trial
+
+static int TrialValue (const char *pText, const char *pKey, int nDefault)
+{
+	unsigned nLen = strlen (pKey);
+	for (const char *p = pText; *p != '\0'; p++)
+	{
+		if ((p == pText || p[-1] == ' ' || p[-1] == '\n' || p[-1] == '\r' || p[-1] == '\t')
+		    && memcmp (p, pKey, nLen) == 0 && p[nLen] == '=')
+		{
+			int n = 0;
+			for (p += nLen + 1; *p >= '0' && *p <= '9'; p++) n = n * 10 + (*p - '0');
+			return n;
+		}
+	}
+	return nDefault;
+}
+
+void NetTrialLoad (void)
+{
+	char Buf[256];
+	FIL File;
+	UINT n = 0;
+	if (f_open (&File, NET_TRIAL_FILE, FA_READ) != FR_OK) return;
+	if (f_read (&File, Buf, sizeof Buf - 1, &n) != FR_OK) n = 0;
+	f_close (&File);
+	Buf[n] = '\0';
+	f_unlink (NET_TRIAL_KEEP);
+	if (f_unlink (NET_TRIAL_FILE) != FR_OK) return;		// (it must not come back at the next boot)
+	onyx_wlfast = TrialValue (Buf, "wlfast", onyx_wlfast);
+	onyx_tcp_ws = TrialValue (Buf, "tcpws", onyx_tcp_ws);
+	if (TrialValue (Buf, "netstat", 0)) { s_bNetStat = TRUE; onyx_wlstat = 1; }
+	unsigned nSecs = (unsigned) TrialValue (Buf, "secs", 180);
+	s_nTrialEnd = CTimer::Get ()->GetTicks () + nSecs * HZ;
+	if (s_nTrialEnd == 0) s_nTrialEnd = 1;
+	CLogger::Get ()->Write ("net", LogWarning, "a trial for %u s: wlfast=%d tcpws=%d (then a restart, unless " NET_TRIAL_KEEP " exists)",
+				nSecs, onyx_wlfast, onyx_tcp_ws);
+}
+
+// Core 0's main task, every 250 ms.
+void NetTrialPoll (void)
+{
+	if (s_nTrialEnd == 0 || (int) (CTimer::Get ()->GetTicks () - s_nTrialEnd) < 0) return;
+	s_nTrialEnd = 0;
+	FILINFO Info;
+	if (f_stat (NET_TRIAL_KEEP, &Info) == FR_OK) return;
+	CLogger::Get ()->Write ("net", LogWarning, "the trial is over: restarting");
+	kapi_reboot ();
+}
+
 // kernel.cpp, before the bring-up: the driver's switches from the command line.
 void NetWlanOptions (boolean bStat)
 {
 	s_bNetStat = bStat;
 	onyx_wlstat = bStat;
 	onyx_wlpoll = g_bNetCore;
+	// The frames' path of the driver (one SDIO command a frame, its locks without a turn of the
+	// scheduler, the bus at 50 MHz) and TCP's window scaling: on (docs/05 sections 26 and 27;
+	// each was tried alone by the trial file below, which can still turn them off for a boot).
+	onyx_wlfast = 15;
+	onyx_tcp_ws = 1;
 }
 
 static int DoWlanReconnect (void)

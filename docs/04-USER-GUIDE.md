@@ -2487,7 +2487,12 @@ memory. **One page per window** (no tabs): a link that opens a new window (`targ
   free cores too (two cores more at most; an emulator running keeps them: one core then, as before).
   Without a GPU the same layers are assembled by the CPU. `kmsg` shows `web: gpu: …` lines
   (frames, tiles painted, the time spent) every two seconds while it works.
-- **Not there yet** (the WebKit port's roadmap): video and sound, WebGL.
+- **Video and sound** (1.0.7): `<video>` and `<audio>` play — VP8, VP9, AV1, Opus, FLAC, MP3, PCM,
+  as files (WebM, MP4, WAV…) and as streams (Media Source: **YouTube** plays, in VP9 up to 480p
+  on a Pi 4, at its full frame rate with the GPU compositor: the pictures are a layer of their
+  own). **No H.264, no AAC**: a site that only has those shows its "cannot play" message. One
+  page's sound at a time. No full screen yet.
+- **Not there yet** (the WebKit port's roadmap): WebGL, Web Audio.
 - **When something goes wrong**: `kmsg` shows its lines — `web: [time] …` (the loads, the
   addresses, the errors, the web and network processes started and ended), `web: net start / done
   <status> <time> / FAILED <code> <url>` for each request, and, if a process is killed, `el0: …

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sat, 3 Oct 2026 22:31:41 +0200
-Subject: [PATCH 23/23] [Onyx] The collector neither concurrent nor parallel by
+Subject: [PATCH 23/24] [Onyx] The collector neither concurrent nor parallel by
  default: a program has one core
 
 ---

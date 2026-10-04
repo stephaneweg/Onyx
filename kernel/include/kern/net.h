@@ -103,5 +103,9 @@ void  NetReadyIPI (void);			// core 0, IRQ (COnyxCores::IPIHandler)
 // the supplicant starts, and at each reconnect), and cmdline netstat=1 (the pace in the log).
 void  NetWlanNames (const char *pConfigFile);
 void  NetWlanOptions (boolean bStat);
+// A one-boot trial of the driver's switches (SD:/etc/net-trial.txt, deleted when read), ended by
+// a restart: NetTrialLoad from the bring-up task, NetTrialPoll from core 0's main task.
+void  NetTrialLoad (void);
+void  NetTrialPoll (void);
 
 #endif

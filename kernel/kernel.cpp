@@ -1354,6 +1354,7 @@ public:
 	void Run (void) override
 	{
 		g_pNet = m_pNet;		// publish (still down until associated)
+		NetTrialLoad ();		// (a one-boot trial of the driver's switches, sys/net.cpp)
 
 		m_pLogger->Write (FromKernel, LogNotice,
 				  "net: bringing up WLAN (firmware " WLAN_FIRMWARE_PATH ")");
@@ -2235,6 +2236,7 @@ TShutdownMode CKernel::Run (void)
 		m_Scheduler.MsSleep (50);
 		PrintScreenPoll ();			// (Print Screen: the Screenshot app)
 		if (nTick % 5 == 4) NetCorePoll ();	// the network core's notices (IpcNotify), every 250 ms
+		if (nTick % 5 == 4) NetTrialPoll ();	// (a trial of the Wi-Fi driver's switches ends by a restart)
 	}
 
 	return ShutdownHalt;
