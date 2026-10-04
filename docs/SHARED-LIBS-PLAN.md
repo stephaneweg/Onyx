@@ -380,4 +380,29 @@ to update when each one becomes a library.
 
 ## 10. Results, and what is still not verified
 
-RESULTS_PLACEHOLDER
+**On the Pi 4 (2026-10-05, kernel kapi 83, wtk 683 entries, ft 135):**
+
+- `libtest 200`: **17 checks passed** (section 6, step 1a: every point).
+- `pi_apps.py`: **84 apps started one by one, 0 failed** — every app of the card built on the libraries
+  (the desktop's own processes run on them since the boot: menubar, dock, notifyd, agenda; Doom, the
+  BASIC apps through `/bin/basic`, the emulators, Koton, Letters, the Spreadsheet, Slides, Mail, Paint,
+  Photos, the Media Player, the PDF Viewer, the Control Panel and its applets; Jet, static, beside them).
+- **The compatibility test (D5): 7 checks passed.** A program built against wtk N, **not rebuilt**, on
+  the library N+1: (a) a fix in a library function reaches it; (b) a function appended and (c) a
+  reserved virtual slot given a meaning and a reserved field written by `Widget`'s constructor do not
+  disturb it (its widgets, its derived class, its callback, the same layout); a program built against
+  N+1 uses them; (d) the program built against N+1 is refused by the library N, with *needs the shared
+  library "wtkc" (version 684 or later): the one installed is older*.
+- Sizes: `wtk.so` 320 KB of code shared + 64 KB of data per process, `ft.so` 192 KB + 64 KB. An app's
+  file: Calendar 862 KB → 246 KB, wtkdemo 229 KB → 195 KB; `sdcard/apps` as a whole 74 MB → 58 MB.
+
+**Found on the way:** `user.ld` did not order the constructors' priorities across files (a static
+`Menu` of the Control Panel ran before the bind constructor: a fault at its start) — fixed, with
+`lib.ld`. `bin/Makefile`'s default goal. The telnet shell no longer stops `kmsg` on Ctrl+C (the tests
+keep a second session in it).
+
+**Not verified / not done:** resident memory with 15 GUI apps open, before / after (not measured);
+the screenshots were looked at, not compared pixel by pixel with the static builds; the inline code
+of wtk's headers is still compiled into the apps (section 0); `docs/exports` were not regenerated (no
+pandoc on this machine: `python docs/build_docs.py`).
+

@@ -5,7 +5,7 @@ that each one comes up on the shared libraries (docs/SHARED-LIBS-PLAN.md section
 the process is there a few seconds after its start (or ended by itself with nothing in the kernel
 log), no fault, no "needs the shared library" line. Each app is then closed (kill).
 
-    python tools/tests/shlib/pi_apps.py <pi-ip> [--shots DIR] [--only a,b,c] [--wait S]
+    python tools/tests/shlib/pi_apps.py <pi-ip> [--shots DIR] [--only a,b,c] [--from name] [--wait S]
 
 --shots DIR: a screenshot of each app there (needs vncdotool: python -m pip install vncdotool).
 Prints PASS / FAIL per app and a summary; exit status 0 only if none failed.
@@ -70,30 +70,36 @@ def main ():
 	args = sys.argv[1:]
 	if not args: sys.exit (__doc__)
 	host = args.pop (0)
-	shots, only, wait = None, None, 4.0
+	shots, only, wait, first = None, None, 4.0, ""
 	while args:
 		o = args.pop (0)
 		if o == "--shots": shots = args.pop (0)
 		elif o == "--only": only = set (args.pop (0).split (","))
 		elif o == "--wait": wait = float (args.pop (0))
+		elif o == "--from": first = args.pop (0)
 	if shots: os.makedirs (shots, exist_ok = True)
 	pi = Pi (host)
 	names = sorted (n[:-4] for n in re.findall (r"(\S+\.app)/?", pi.cmd ("ls SD:/apps", 1.5)) if n.endswith (".app"))
-	names = [n for n in names if (only is None and n not in SKIP) or (only is not None and n in only)]
-	pi.cmd ("kmsg", 1.5); pi.ctrl_c ()				# the log emptied
+	names = [n for n in names if ((only is None and n not in SKIP) or (only is not None and n in only)) and n >= first]
+	log_pi = Pi (host)						# a second session stays in kmsg: the kernel log as it comes
+	log_pi.cmd ("kmsg", 2.0)					# (its backlog read and dropped)
 	failed, ended = [], []
 	for n in names:
 		before = procs (pi)
 		pi.cmd ("run " + n, 0.5)
 		time.sleep (wait)
 		after = procs (pi)
-		new = [p for p in after if p not in before and after[p] not in ("SD:/bin/ps", "SD:/bin/cmd", "SD:/bin/run")]
-		log = pi.cmd ("kmsg", 1.2); pi.ctrl_c ()
+		# (only the app itself: never another process that came meanwhile -- a telnet session's...)
+		new = [p for p in after if p not in before and (after[p] == n or after[p].endswith ("/%s.app/main" % n))]
+		log = log_pi.read (1.0)
 		bad = [l.strip () for l in log.splitlines ()
-		       if re.search (r"killed|fault|needs the shared library|cannot load|out of memory|PANIC", l, re.I)]
+		       if re.search (r"killed|fault|data abort|needs the shared library|cannot load|out of memory|PANIC", l, re.I)]
 		if shots and new:
-			subprocess.run ([sys.executable, "-m", "vncdotool.command", "-s", host, "capture", os.path.join (shots, n + ".png")],
-					capture_output = True)
+			try:
+				subprocess.run ([sys.executable, "-m", "vncdotool.command", "-s", host, "capture", os.path.join (shots, n + ".png")],
+						capture_output = True, timeout = 25)
+			except subprocess.TimeoutExpired:
+				pass						# (a full-screen app: vncd shows nothing)
 		for p in new:
 			pi.cmd ("kill %d" % p, 0.4)
 		libs = sorted (set (re.findall (r"lib: sd:/lib/(\w+)\.so", log)))
@@ -106,6 +112,8 @@ def main ():
 		time.sleep (0.5)
 	print ("%d apps started, %d failed%s" % (len (names), len (failed), ": " + " ".join (failed) if failed else ""))
 	if ended: print ("ended by themselves (look at them by hand): " + " ".join (ended))
+	for p, n in procs (pi).items ():				# the log session's kmsg (and its shell) ended
+		if n == "SD:/bin/kmsg": pi.cmd ("kill %d" % p, 0.4)
 	try: pi.cmd ("exit", 0.3)
 	except Exception: pass
 	sys.exit (1 if failed else 0)
