@@ -10,7 +10,7 @@ O=${TMPDIR:-/tmp}/onyx-shlib-check; mkdir -p "$O"
 ${P}g++ -O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti \
 	-fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -c demolib.cpp -o "$O/demolib.o"
 ${P}ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv \
-	-T lib.ld --version-script lib.map -e onyx_lib_table -o "$O/demo.so" "$O/demolib.o"
+	-T lib.ld --version-script lib.vers -e onyx_lib_table -o "$O/demo.so" "$O/demolib.o"
 R=${P}readelf
 fail () { echo "FAIL: $*"; exit 1; }
 $R -h "$O/demo.so" | grep -q 'DYN (Shared object file)' || fail "not ET_DYN"

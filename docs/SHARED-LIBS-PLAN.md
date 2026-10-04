@@ -39,14 +39,14 @@ Built and checked with the Arm GNU Toolchain 14.2.rel1 `aarch64-none-elf` (the o
 aarch64-none-elf-g++ -O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti \
     -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -c lib.cpp -o lib.o
 aarch64-none-elf-ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv \
-    -T lib.ld --version-script lib.map -e onyx_lib_table -o name.so lib.o
+    -T lib.ld --version-script lib.vers -e onyx_lib_table -o name.so lib.o
 ```
 
 - `lib.ld` (`tools/tests/shlib/lib.ld`, to move to `user/lib.ld`): linked at 0; **two `PT_LOAD`**, as
   `user.ld` — RX (headers, `.dynsym`, `.rela.dyn`, `.text`, `.rodata`) and RW (`.data.rel.ro`,
   `.init_array`, `.dynamic`, `.got`, `.data`, `.bss`) on separate 64 KB pages — + `PT_DYNAMIC`;
   `__lib_init_array_start/end` for the library's constructors; `.eh_frame` discarded.
-- `lib.map`: `{ global: onyx_lib_table; local: *; };` — **one exported symbol**, the table.
+- `lib.vers`: `{ global: onyx_lib_table; local: *; };` — **one exported symbol**, the table.
 - **`-e onyx_lib_table`: the ELF entry point is the table's offset.** The kernel finds the table with
   no symbol table at all.
 - `-z text`: the link fails if code needs patching. `--no-undefined`: the library imports nothing by
