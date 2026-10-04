@@ -54,6 +54,38 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
+
+**Where to read**: `docs/05-CIRCLE-CHANGES.md` §25–§27 (every change, its measure), `docs/02` §11
+(the net core's IPI, the trial file), `docs/08` *Media* (the video layer, the user agent).
+
+- **Speed** (a Pi 4 on the user's Livebox, 5 GHz): 0.5–0.8 MB/s at the start of the day; now the
+  Pi receives 4–6.5 MB/s and sends 3–4. What did it: the net core's inter-core interrupt, the
+  Wi-Fi chip polled, both bands scanned and 5 GHz preferred, one SDIO command a frame, the bus at
+  50 MHz, the controller's registers without a wait, TCP window scaling.
+- **Reliability — the finding to keep**: with A-MPDU aggregation of the frames *sent*, half of
+  what the Pi sent during a download was lost (the remote desktop froze for seconds). The kernel
+  sets `ampdu_tx` 0, frame bursting, and TCP acknowledges one segment in eight. With aggregation
+  the raw rates were 8–9 MB/s each way: **do not turn it back on without the test** — the PC pings
+  the Pi (`ping -i 0.2`) while the Pi's `curl --limit-rate 1M` downloads; 0 % lost is the pass mark.
+- **Trying a driver / TCP change on the Pi**: never as a test kernel's default (one cut the Pi off
+  the network: a card had to be copied by hand). `SD:/etc/net-trial.txt` — `name=value` words,
+  read and deleted at boot, a restart at the end (`secs=`), the kernel log's tail kept in
+  `SD:/etc/net-trial.log`: docs/02 §11 *A trial*. `tcpbench` + `tools/tests/net/tcpbench.py`
+  measure; `uname -v` says which kernel runs.
+- **Open**: the Pi's sending rate without aggregation (3–4 MB/s); a rare 1 s pause left (TCP's
+  minimum retransmission timeout is 1 s); whether a newer Wi-Fi firmware aggregates soundly;
+  receive glomming does nothing with this firmware (tried, removed).
+- **Web**: video and Media Source on `user/av`, the pictures as a compositor layer (YouTube 480p
+  at its frame rate), the JavaScript console (F12), YouTube and Google asked for as a phone.
+  **Not verified on the Pi by hand yet**: the Console window, AltGr characters (`@`), closing the
+  Downloads window after a cancelled download. **Still to do, in the user's order**: full screen
+  video, Web Audio, H.264 / AAC (needs an LGPL FFmpeg build: ask the user); then — once the user
+  says the video work is done — delete Jet / NetSurf and what only they use, and rename Web to Jet
+  (keeping WebKit's user agent).
+- **Dock**: its window no longer moves when a launcher's name is shown (a pointer on a drawer's
+  strip was taken to be on the launcher under it).
+
 ## Every app at EL0, the legacy mode removed (2026-10-02, kapi v74; tried on the Pi: all tests pass; in `main`, published)
 
 - **What**: apps, /bin tools, Koton plugins, Jet run at **EL0** and call the kernel by `svc` through the
