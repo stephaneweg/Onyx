@@ -476,6 +476,21 @@ int print_printer_add (const char *name, const char *address, char *err, int cap
 int print_printer_remove (const char *name) { return simple (PD_REMOVE, name, 0, 0, 0, 0, 5000); }
 int print_printer_default (const char *name) { return simple (PD_DEFAULT, name, 0, 0, 0, 0, 5000); }
 int print_printer_status (const char *name, char *text, int cap) { return simple (PD_REFRESH, name, 0, 0, text, cap, 30000); }
+int print_printers_find (PrintFound *out, int max)
+{
+	PdReq rq;
+	for (unsigned i = 0; i < sizeof rq; i++) ((char *) &rq)[i] = 0;
+	PdFound *f = new PdFound[16]; unsigned got = 0;
+	int n = 0;
+	if (print__request (PD_SCAN, rq, f, 16 * sizeof (PdFound), &got, 30000))
+		for (unsigned i = 0; i < got / sizeof (PdFound) && n < max; i++, n++)
+		{
+			scpy (out[n].address, sizeof out[n].address, f[i].address); scpy (out[n].name, sizeof out[n].name, f[i].name);
+			scpy (out[n].model, sizeof out[n].model, f[i].model); out[n].usable = f[i].usable;
+		}
+	delete[] f;
+	return n;
+}
 int print_job_cancel (unsigned id) { return simple (PD_CANCEL, 0, 0, id, 0, 0, 5000); }
 void print_jobs_forget (void) { simple (PD_FORGET, 0, 0, 0, 0, 0, 5000); }
 int print_jobs (PrintJobInfo *out, int max)

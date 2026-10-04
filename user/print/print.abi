@@ -35,3 +35,4 @@
 29 print_setup_paper
 30 print_text
 31 print_text_width
+32 print_printers_find
