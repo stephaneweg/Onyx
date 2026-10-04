@@ -117,9 +117,18 @@ static void layout_text (const Deck &d, const TextBody &tb, int ph, float w, int
 			else if (lvl % 3 == 2) { roman (numbers[lvl], P.num, false); strcat (P.num, "."); }
 			else snprintf (P.num, sizeof P.num, "%d.", numbers[lvl]);
 		}
-		else for (int k = 0; k < 5; k++) numbers[k] = 0;
-		P.left = P.bulletX + (P.pf.bullet != BU_NONE ? step * (P.pf.bullet == BU_NUMBER ? 0.9f : 0.7f) * eff_size (P.bf, scale) / 240.0f + 0.0f : 0.0f);
-		if (P.pf.bullet != BU_NONE && P.left < P.bulletX + 500) P.left = P.bulletX + 500;
+		else for (int k = lvl; k < 5; k++) numbers[k] = 0;	// (a plain paragraph: the lists at its level and deeper start again)
+		P.left = P.bulletX;
+		if (P.pf.bullet != BU_NONE)
+		{
+			// the hang: the bullet's (the number's) width and half an em, at least the level's step x 0.6
+			fnt::Font *bf = fnt::get (family_of (P.bullet ? "DejaVu Sans" : d.font_name (P.bf.font)), fstyle (P.bf.flags), eff_size (P.bf, scale) * 4 * 64 / 10);
+			float bw = 0;
+			if (P.pf.bullet == BU_BULLET) bw = fnt::advance (bf, P.bullet ? P.bullet : 0x2022) / 64.0f * REF_HMM_PER_PX;
+			else for (const char *c = P.num; *c; c++) bw += fnt::advance (bf, (unsigned char) *c) / 64.0f * REF_HMM_PER_PX;
+			float em = eff_size (P.bf, scale) * 3.5277778f;
+			P.left = P.bulletX + fmaxf (step * 0.6f, bw + em * 0.45f);
+		}
 		// the characters' advances
 		float x = 0;
 		for (int i = 0; i < q->len; i++)

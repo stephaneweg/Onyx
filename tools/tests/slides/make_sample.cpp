@@ -136,7 +136,7 @@ int main (int argc, char **argv)
 	Object *co = shape (s, SH_ROUND, W * 69 / 100, H * 25 / 100, W * 25 / 100, H * 58 / 100, fill_solid (PALE));
 	co->radius = 80; co->tb.anchor = AN_TOP; co->tb.inset[0] = 600; co->tb.inset[1] = 500; scpy (co->name, "Callout", sizeof co->name);
 	co->tb.clear ();
-	add_para (co, "84,455 €", F (DARK, 400, CF_BOLD), AL_LEFT, 0, BU_NONE);
+	add_para (co, "84,455 €", F (DARK, 360, CF_BOLD), AL_LEFT, 0, BU_NONE);
 	add_para (co, "takings in 2026", F (MUTED, 160), AL_LEFT, 0, BU_NONE, 0);
 	add_para (co, "▲ +31.2 %", F (0x288246, 240, CF_BOLD), AL_LEFT, 0, BU_NONE, 200);
 	add_para (co, "over 2025", F (MUTED, 160), AL_LEFT, 0, BU_NONE, 0);
@@ -211,6 +211,7 @@ int main (int argc, char **argv)
 		int cx = W * (15 + k * 23) / 100, cy = H * 52 / 100;
 		Object *dot = shape (s, SH_ELLIPSE, cx - 1000, cy - 1000, 2000, 2000, fill_solid (k % 2 ? PEACH : TEAL));
 		put (dot, steps[k][0], F (WHITE, 200, CF_BOLD), AL_CENTER); scpy (dot->name, steps[k][0], sizeof dot->name);
+		for (int i = 0; i < 4; i++) dot->tb.inset[i] = 0;
 		int ty = k % 2 ? H * 62 / 100 : H * 24 / 100;
 		Object *card = shape (s, SH_ROUND, cx - 3300, ty, 6600, 3200, fill_solid (PALE)); card->radius = 140;
 		card->tb.clear (); add_para (card, steps[k][1], F (AUTO, 200, CF_BOLD), AL_CENTER, 0, BU_NONE); add_para (card, steps[k][2], F (MUTED, 150), AL_CENTER, 0, BU_NONE, 60);

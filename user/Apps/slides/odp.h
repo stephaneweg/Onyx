@@ -130,7 +130,17 @@ struct OdpOut
 	Vec<int> pics;				// the pictures written (Pictures/)
 	pngsave::ZipOut *zip;
 	int nextChart;
-	OdpOut (Deck &d_) : d (d_), ngr (0), nP (0), nT (0), ndp (0), zip (0), nextChart (1) {}
+	Buf grads; int ngrad;			// the gradients (draw:gradient, styles.xml's office:styles)
+	bool hdr;				// a table's heading row being written: its text white and bold (as Slides draws it)
+	OdpOut (Deck &d_) : d (d_), ngr (0), nP (0), nT (0), ndp (0), zip (0), nextChart (1), ngrad (0), hdr (false) {}
+	// A gradient's name (its definition kept for styles.xml); ODF's angle: tenths of a degree, 0 = top to bottom, counter-clockwise
+	void gradient (const Fill &f, char *name)
+	{
+		snprintf (name, 16, "Gr%d", ++ngrad);
+		grads.puts ("<draw:gradient"); attr (grads, "draw:name", name); grads.puts (" draw:style=\"linear\" draw:start-color=\""); put_hex (grads, col (f.c1));
+		grads.puts ("\" draw:end-color=\""); put_hex (grads, col (f.c2)); grads.puts ("\" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:border=\"0%\"");
+		attri (grads, "draw:angle", (((90 - f.angle) * 10) % 3600 + 3600) % 3600); grads.puts ("/>");
+	}
 
 	unsigned col (unsigned c) { return d.rgb (c); }
 	// A graphic style for an object's fill, line, text box -> its name
@@ -140,7 +150,7 @@ struct OdpOut
 		Buf &s = autoStyles;
 		s.puts ("<style:style style:family=\"graphic\""); attr (s, "style:name", name); s.puts ("><style:graphic-properties");
 		if (o.fill.type == FILL_SOLID) { s.puts (" draw:fill=\"solid\" draw:fill-color=\""); put_hex (s, col (o.fill.c1)); s.puts ("\""); }
-		else if (o.fill.type == FILL_GRADIENT) { s.puts (" draw:fill=\"solid\" draw:fill-color=\""); put_hex (s, col (o.fill.c1)); s.puts ("\""); }
+		else if (o.fill.type == FILL_GRADIENT) { char g[16]; gradient (o.fill, g); s.puts (" draw:fill=\"gradient\""); attr (s, "draw:fill-gradient-name", g); }
 		else s.puts (" draw:fill=\"none\"");
 		if (o.fill.type != FILL_NONE && o.fill.alpha < 255) { char t[32]; snprintf (t, sizeof t, " draw:opacity=\"%d%%\"", o.fill.alpha * 100 / 255); s.puts (t); }
 		if (o.line.type == LN_NONE) s.puts (" draw:stroke=\"none\"");
@@ -176,6 +186,7 @@ struct OdpOut
 	{
 		snprintf (name, 16, "T%d", ++nT);
 		CharFmt r = cf_resolve (d, ph, lvl, f);
+		if (hdr) { if (f.color == AUTO) r.color = THEME | TC_LT1; if (!(f.set & CF_BOLD)) r.flags |= CF_BOLD; }
 		Buf &s = autoStyles;
 		s.puts ("<style:style style:family=\"text\""); attr (s, "style:name", name); s.puts ("><style:text-properties");
 		char t[32]; snprintf (t, sizeof t, "%.1fpt", r.size / 10.0); attr (s, "fo:font-size", t);
@@ -258,7 +269,7 @@ struct OdpOut
 		attri (o, "onyx:id", ob.id); attri (o, "onyx:kind", ob.kind); attri (o, "onyx:shape", ob.shape); attri (o, "onyx:ph", ob.ph);
 		attri (o, "onyx:rot", ob.rot); attri (o, "onyx:radius", ob.radius);
 		o.puts (" onyx:fill=\""); fill_code (o, ob.fill); o.puts ("\" onyx:line=\""); line_code (o, ob.line); o.puts ("\"");
-		char t[96]; snprintf (t, sizeof t, "%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d", ob.x, ob.y, ob.w, ob.h, ob.flipH, ob.flipV, ob.shadow, ob.tb.anchor, ob.tb.fit, ob.tb.wrap, ob.tb.inset[0], ob.tb.inset[1], ob.tb.inset[2], ob.tb.inset[3]);
+		char t[240]; snprintf (t, sizeof t, "%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d", ob.x, ob.y, ob.w, ob.h, ob.flipH, ob.flipV, ob.shadow, ob.tb.anchor, ob.tb.fit, ob.tb.wrap, ob.tb.inset[0], ob.tb.inset[1], ob.tb.inset[2], ob.tb.inset[3]);
 		attr (o, "onyx:box", t);
 		if (ob.name[0]) attr (o, "draw:name", ob.name);
 		if (ob.kind == OB_PICTURE) { snprintf (t, sizeof t, "%d|%d|%d|%d", ob.crop[0], ob.crop[1], ob.crop[2], ob.crop[3]); attr (o, "onyx:crop", t); }
@@ -318,8 +329,14 @@ struct OdpOut
 				{
 					o.puts ("<table:table-cell office:value-type=\"string\"");
 					const Fill &cf = t.cfill[r * t.cols + c];
+					{
+						unsigned bg = cf.type == FILL_SOLID ? col (cf.c1) : cf.type == FILL_NONE ? 0xFFFFFF : t.header && r == 0 ? col (THEME | TC_ACC1) : t.banded && (r & 1) == (t.header ? 0 : 1) ? col (THEME | TC_LT2) : 0xFFFFFF;
+						char cs[24]; snprintf (cs, sizeof cs, "ce%06x", bg);
+						if (!strstr (autoStyles.str (), cs)) { autoStyles.puts ("<style:style style:family=\"table-cell\""); attr (autoStyles, "style:name", cs); autoStyles.puts ("><style:graphic-properties draw:fill=\"solid\" draw:fill-color=\""); put_hex (autoStyles, bg); autoStyles.puts ("\"/></style:style>"); }
+						attr (o, "table:style-name", cs);
+					}
 					if (cf.type != FILL_INHERIT) { o.puts (" onyx:fill=\""); fill_code (o, cf); o.puts ("\""); }
-					o.put ('>'); text (o, t.at (r, c), PH_NONE); o.puts ("</table:table-cell>");
+					o.put ('>'); hdr = t.header && r == 0; text (o, t.at (r, c), PH_NONE); hdr = false; o.puts ("</table:table-cell>");
 				}
 				o.puts ("</table:table-row>");
 			}
@@ -369,7 +386,8 @@ struct OdpOut
 		snprintf (name, 16, "dp%d", ++ndp);
 		Buf &o = autoStyles;
 		o.puts ("<style:style style:family=\"drawing-page\""); attr (o, "style:name", name); o.puts ("><style:drawing-page-properties");
-		if (s.bg.type != FILL_INHERIT)
+		if (s.bg.type == FILL_GRADIENT) { char g[16]; gradient (s.bg, g); o.puts (" draw:fill=\"gradient\""); attr (o, "draw:fill-gradient-name", g); o.puts (" draw:background-size=\"full\""); }
+		else if (s.bg.type != FILL_INHERIT)
 		{
 			o.puts (" draw:fill=\"solid\" draw:fill-color=\""); put_hex (o, col (s.bg.c1)); o.puts ("\"");
 			o.puts (" draw:background-size=\"full\"");
@@ -473,7 +491,7 @@ static void list_styles (Buf &o, const Deck &d)
 	o.puts ("<text:list-style style:name=\"LB\">");
 	for (int l = 0; l < 5; l++)
 	{
-		char t[160];
+		char t[400];
 		snprintf (t, sizeof t, "<text:list-level-style-bullet text:level=\"%d\" text:bullet-char=\"", l + 1); o.puts (t);
 		o.putu (d.style[TS_BODY1 + l].bullet ? d.style[TS_BODY1 + l].bullet : 0x2022);
 		snprintf (t, sizeof t, "\"><style:list-level-properties text:space-before=\"%.2fcm\" text:min-label-width=\"0.7cm\"/></text:list-level-style-bullet>", l * d.style[TS_BODY1].indent / 1000.0);
@@ -482,7 +500,7 @@ static void list_styles (Buf &o, const Deck &d)
 	o.puts ("</text:list-style><text:list-style style:name=\"LN\">");
 	for (int l = 0; l < 5; l++)
 	{
-		char t[200];
+		char t[400];
 		snprintf (t, sizeof t, "<text:list-level-style-number text:level=\"%d\" style:num-suffix=\".\" style:num-format=\"%s\"><style:list-level-properties text:space-before=\"%.2fcm\" text:min-label-width=\"0.8cm\"/></text:list-level-style-number>",
 			  l + 1, l % 3 == 1 ? "a" : l % 3 == 2 ? "i" : "1", l * d.style[TS_BODY1].indent / 1000.0);
 		o.puts (t);
@@ -513,13 +531,13 @@ static unsigned char *odp_save (Deck &d, unsigned *len)
 	c.puts (body.str ());
 	c.puts ("</office:presentation></office:body></office:document-content>\n");
 	z.add ("content.xml", c.b, (unsigned) c.n, true);
-	// styles.xml: the page's size, the master page and its background, its objects
+	// styles.xml: the page's size, the master page and its background, its objects (content.xml's gradients kept: styles.xml has them all)
 	w.autoStyles.clear ();
 	Buf mo;
 	for (int i = 0; i < d.decor.n; i++) w.object (mo, *d.decor[i], true);
 	Buf s;
 	s.puts ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles"); s.puts (ODF_NS); s.puts (">");
-	s.puts ("<office:styles><style:default-style style:family=\"graphic\"><style:text-properties");
+	s.puts ("<office:styles>"); s.puts (w.grads.str ()); s.puts ("<style:default-style style:family=\"graphic\"><style:text-properties");
 	attr (s, "fo:font-family", d.theme.minor); s.puts (" fo:font-size=\"18pt\"/></style:default-style></office:styles>");
 	s.puts ("<office:automatic-styles><style:page-layout style:name=\"PM1\"><style:page-layout-properties fo:margin-top=\"0cm\" fo:margin-bottom=\"0cm\" fo:margin-left=\"0cm\" fo:margin-right=\"0cm\"");
 	attrcm (s, "fo:page-width", d.sw); attrcm (s, "fo:page-height", d.sh); s.puts (" style:print-orientation=\"landscape\"/></style:page-layout>");
@@ -559,9 +577,11 @@ static unsigned char *odp_save (Deck &d, unsigned *len)
 // ---- reading -------------------------------------------------------------------------------------------------------
 // The styles of an ODF document: each one's properties (as attributes' text), its parent's name.
 struct OStyle { char name[48], parent[48]; char family[16]; Buf props; char listStyle[32]; };
+struct OGrad { char name[48]; unsigned c1, c2; int angle; };
 struct OdpIn
 {
 	Deck &d;
+	Vec<OGrad> grads;
 	const unsigned char *z; unsigned zn;
 	Vec<OStyle *> styles;
 	char fonts[32][2][48]; int nfonts;		// style:font-face: its name -> its family
@@ -586,7 +606,16 @@ struct OdpIn
 		OStyle *cur = 0;
 		while (r.next () != X_EOF)
 		{
-			if (r.ev == X_START && r.is ("font-face"))
+			if (r.ev == X_START && r.isq ("draw:gradient"))
+			{
+				OGrad g; Buf v; g.name[0] = 0;
+				if (r.attr ("draw:name", v)) scpy (g.name, v.str (), 48);
+				g.c1 = r.attr ("draw:start-color", v) ? colour_of (v.str (), 0) : 0; g.c2 = r.attr ("draw:end-color", v) ? colour_of (v.str (), 0xFFFFFF) : 0xFFFFFF;
+				int a = r.attr ("draw:angle", v) ? atoi (v.str ()) : 0; if (strstr (v.str (), "deg")) a *= 10;
+				g.angle = ((90 - a / 10) % 360 + 360) % 360;
+				grads.push (g);
+			}
+			else if (r.ev == X_START && r.is ("font-face"))
 			{
 				Buf a, b; r.attr ("style:name", a); r.attr ("svg:font-family", b);
 				if (nfonts < 32) { scpy (fonts[nfonts][0], a.str (), 48); const char *f = b.str (); if (*f == '\'') f++; scpy (fonts[nfonts][1], f, 48); int l = (int) strlen (fonts[nfonts][1]); if (l && fonts[nfonts][1][l - 1] == '\'') fonts[nfonts][1][l - 1] = 0; nfonts++; }
@@ -670,6 +699,13 @@ struct OdpIn
 		if (prop (ps, "fo:line-height", v) && strchr (v.str (), '%')) p.spacing = (short) atoi (v.str ());
 		return p;
 	}
+	Fill gradient_of (const char *st)
+	{
+		Buf g; Fill f = fill_solid (0x729FCF);
+		if (!prop (st, "draw:fill-gradient-name", g)) return f;
+		for (int i = 0; i < grads.n; i++) if (!strcmp (grads[i].name, g.str ())) { f.type = FILL_GRADIENT; f.c1 = grads[i].c1; f.c2 = grads[i].c2; f.angle = (short) grads[i].angle; }
+		return f;
+	}
 	// The object's fill and line from its graphic style
 	void graphic_from (Object &o, const char *gs)
 	{
@@ -677,6 +713,7 @@ struct OdpIn
 		if (prop (gs, "draw:fill", v))
 		{
 			if (!strcmp (v.str (), "none")) o.fill = fill_none ();
+			else if (!strcmp (v.str (), "gradient")) o.fill = gradient_of (gs);
 			else { Buf c; o.fill = fill_solid (prop (gs, "draw:fill-color", c) ? colour_of (c.str (), 0x729FCF) : 0x729FCF); }
 		}
 		if (prop (gs, "draw:opacity", v)) o.fill.alpha = (unsigned char) (atoi (v.str ()) * 255 / 100);
@@ -904,7 +941,10 @@ struct OdpIn
 					if (r.attr ("xlink:href", h))
 					{
 						int n = 0; char *b = entry (h.str (), &n);
-						if (b) { int k = pic_add (h.str () + (strncmp (h.str (), "Pictures/", 9) ? 0 : 9), (unsigned char *) b, (unsigned) n); free (b); o->img = k; if (!hasOnyx || o->kind == OB_TEXT) o->kind = OB_PICTURE; }
+						const char *e = strrchr (h.str (), '.');
+						bool replacement = o->tbl || (e && (!strcmp (e, ".svm") || !strcmp (e, ".wmf") || !strcmp (e, ".emf")));	// (a table's preview, a metafile)
+						if (b && !replacement) { int k = pic_add (h.str () + (strncmp (h.str (), "Pictures/", 9) ? 0 : 9), (unsigned char *) b, (unsigned) n); o->img = k; if (!hasOnyx || o->kind == OB_TEXT) o->kind = OB_PICTURE; }
+						free (b);
 					}
 					r.skip ();
 					continue;
@@ -917,6 +957,7 @@ struct OdpIn
 		}
 		if (isChart && !o->chart) { o->chart = new Chart; }
 		if (o->chart) o->kind = OB_CHART;
+		if (o->tbl) { o->kind = OB_TABLE; o->img = -1; if (!hasOnyx) { o->fill = fill_none (); o->line = line_none (); } }
 		o->tb.ensure ();
 		return o;
 	}
@@ -1073,7 +1114,7 @@ struct OdpIn
 				if (r.attr ("onyx:transition", v)) { int a[4] = { 0, 1, 700, -1 }; sscanf (v.str (), "%d|%d|%d|%d", &a[0], &a[1], &a[2], &a[3]); s->tr.type = (signed char) a[0]; s->tr.dir = (signed char) a[1]; s->tr.dur = (short) a[2]; s->tr.after = a[3]; }
 				else if (r.attr ("draw:style-name", v)) transition_from (*s, v.str ());
 				if (r.attr ("onyx:bg", v)) s->bg = fill_parse (v.str ());
-				else if (r.attr ("draw:style-name", v)) { Buf c, f; if (prop (v.str (), "draw:fill", f) && !strcmp (f.str (), "solid") && prop (v.str (), "draw:fill-color", c)) s->bg = fill_solid (colour_of (c.str (), 0xFFFFFF)); }
+				else if (r.attr ("draw:style-name", v)) { Buf c, f; if (prop (v.str (), "draw:fill", f)) { if (!strcmp (f.str (), "solid") && prop (v.str (), "draw:fill-color", c)) s->bg = fill_solid (colour_of (c.str (), 0xFFFFFF)); else if (!strcmp (f.str (), "gradient")) s->bg = gradient_of (v.str ()); } }
 				if (r.attr ("onyx:master", v)) s->masterObjects = atoi (v.str ());
 				if (r.attr ("onyx:hidden", v)) s->hidden = atoi (v.str ()); else if (r.attr ("presentation:visibility", v)) s->hidden = !strcmp (v.str (), "hidden");
 				if (r.attr ("onyx:section", v)) scpy (s->section, v.str (), sizeof s->section);
@@ -1096,7 +1137,7 @@ struct OdpIn
 					if (r.ev == X_START)
 					{
 						Buf v;
-						if (r.is ("frame") && r.attr ("presentation:class", v) && !strcmp (v.str (), "notes"))
+						if (r.is ("frame") && !(r.attr ("presentation:class", v) && strcmp (v.str (), "notes")))	// (the notes' frame: its class said, or not)
 						{
 							int dd = 0;
 							while (r.next () != X_EOF) { if (r.ev == X_START && r.is ("text-box")) { if (r.empty) r.skip (); else read_text (r, s->notes, 0, 0); } else if (r.ev == X_START) dd++; else if (r.ev == X_END) { if (dd == 0) break; dd--; } }
@@ -1217,19 +1258,26 @@ static bool odp_load (Deck &d, const unsigned char *b, unsigned n)
 		in.read_styles (st, len);
 		if (!in.own)
 		{
-			// the page's size, the master's background
-			XmlReader r (st, len);
-			while (r.next () != X_EOF)
+			// the page's size: the page layout of the first master page (the others: the notes', the handouts')
+			char layouts[8][32]; int lw[8], lh[8], nl = 0; char useLayout[32] = "";
 			{
-				if (r.ev == X_START && r.is ("page-layout-properties"))
+				XmlReader r (st, len); char cur[32] = "";
+				while (r.next () != X_EOF)
 				{
+					if (r.ev != X_START) continue;
 					Buf v;
-					if (r.attr ("fo:page-width", v)) d.sw = (int) len_hmm (v.str ());
-					if (r.attr ("fo:page-height", v)) d.sh = (int) len_hmm (v.str ());
-					if (d.sw > 0 && d.sh > 0) { master_default (d, 0); }
-					break;
+					if (r.is ("page-layout")) { cur[0] = 0; if (r.attr ("style:name", v)) scpy (cur, v.str (), 32); }
+					else if (r.is ("page-layout-properties") && nl < 8)
+					{
+						scpy (layouts[nl], cur, 32);
+						lw[nl] = r.attr ("fo:page-width", v) ? (int) len_hmm (v.str ()) : 0; lh[nl] = r.attr ("fo:page-height", v) ? (int) len_hmm (v.str ()) : 0;
+						nl++;
+					}
+					else if (r.is ("master-page") && !useLayout[0] && r.attr ("style:page-layout-name", v)) scpy (useLayout, v.str (), 32);
 				}
 			}
+			for (int i = 0; i < nl; i++)
+				if (!strcmp (layouts[i], useLayout) && lw[i] > 0 && lh[i] > 0) { d.sw = lw[i]; d.sh = lh[i]; master_default (d, 0); }
 			for (int i = 0; i < in.styles.n; i++)
 				if (!strcmp (in.styles[i]->family, "drawing-page") && in.styles[i]->name[0] == 'M')
 				{ Buf f, c; if (in.prop (in.styles[i]->name, "draw:fill", f) && !strcmp (f.str (), "solid") && in.prop (in.styles[i]->name, "draw:fill-color", c)) d.masterBg = fill_solid (colour_of (c.str (), 0xFFFFFF)); }

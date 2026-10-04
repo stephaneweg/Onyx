@@ -1,8 +1,11 @@
 # Slides, the presentation program — study, first mock-ups
 
-> **Status (2026-10-04): mock-ups, to be validated by the user.** Asked by the user (2026-10-04): a presentation
-> program, "pro and fairly complete", in the same vein as Letters and Sheet (the third app of the office suite). The
-> name: **Slides** (app folder `slides`), chosen by the user. Nothing is built yet.
+> **Status (2026-10-04): built — the first version is in `user/Apps/slides/`** (the user guide's *Slides, the
+> presentation program*; the developer guide's **Slides**). Asked by the user (2026-10-04): a presentation program,
+> "pro and fairly complete", in the same vein as Letters and Sheet (the third app of the office suite), in the way of
+> PowerPoint; the name **Slides** (app folder `slides`). The native format is **`.odp`**; the layers (text boxes,
+> pictures, shapes) are composited by the GPU (the user). Not yet: `.pptx`, editing the master, groups, effects by
+> paragraph, find and replace, handouts. This page keeps the study and the mock-ups it was built from.
 
 The mock-ups are made by `python3 tools/screenshot/mockup_slides.py` → `docs/slides/mockups/slides-*.png` (1024 × 768,
 the real desktop behind; the drawing helpers are `mockup_archiver.py`'s). **The toolbar icons Letters and Sheet already

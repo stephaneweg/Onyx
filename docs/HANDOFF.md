@@ -666,7 +666,7 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **Next ideas**: drag an app onto a drawer to add it; the applets' own help; a wallpaper
   slideshow; the workspaces' windows moved by drag & drop onto the pager.
 
-## Writer renamed Letters; Slides, the presentation program, mock-ups (2026-10-04)
+## Writer renamed Letters; Slides, the presentation program (2026-10-04)
 
 - **Writer is now called Letters** (the user: a name for the document, as Sheet and Slides, not for the trade),
   everywhere: `app.txt`, the window, the messages of Letters, Cardfile, Ledger (and its French strings), the RTF
@@ -678,8 +678,15 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   `update_for` / `drop_replaced`): a card that has `writer` sees `letters` as its update, installs it, then
   `writer` is removed (its mode kept; a file the new one took over, a sample, is not removed nor written `.new`).
 - **Slides** (the presentation program, in the way of PowerPoint): the study and seven mock-ups,
-  `docs/slides/README.md` (`tools/screenshot/mockup_slides.py`); not built yet. Next: the user's word on the
-  mock-ups and the native format (`.odp` proposed, `.pptx` read and written).
+  `docs/slides/README.md` (`tools/screenshot/mockup_slides.py`), then **built** (`user/Apps/slides/`, the package
+  `slides` and `slides-samples`): themes, layouts, text boxes with lists and autofit, 28 shapes, pictures, tables,
+  charts, sections, notes, the sorter, transitions and effects, the full-screen show and the presenter view; every
+  object a layer, **composited by the GPU** (`gpucomp`: the editor's view and the show; the CPU path for the
+  thumbnails and the exports); `.odp` read and written (LibreOffice opens ours, its own are read; `onyx:` attributes
+  and `onyx.xml` for an exact round trip); PDF and PNG export. Test: `sh tools/tests/run_slides_test.sh`; sample
+  `SD:/docs/cafe-2026.odp`; screenshots `slides*.png`. **Next**: `.pptx` read and written, a master / layout
+  editing view, effects by paragraph, groups, find and replace, handouts and notes pages in the PDF, a vector PDF
+  (the text as text).
 
 ## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
 

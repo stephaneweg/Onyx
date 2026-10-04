@@ -66,7 +66,7 @@ sources.
   column file browser, a Control Panel, a first-run wizard (Setup), and some sixty
   command-line tools in `/bin`.
 - **Application catalog** ([User guide §12](04-USER-GUIDE.md#12-application-catalog)). Office:
-  Letters (word processor, PDF export), Spreadsheet, Cardfile (a small database), Ledger
+  Letters (word processor, PDF export), Spreadsheet, Slides (presentations), Cardfile (a small database), Ledger
   (accounting), Calendar, PDF Viewer (MuPDF), RTF reader, Archiver. Internet: Jet Browser,
   Mail, IRC, Courier (HTTP client), Lisa (an AI chat). Media: Paint, Photos, the Media
   Player (music and video), Screenshot, Koton (a music studio with plugins), FM Tracker.

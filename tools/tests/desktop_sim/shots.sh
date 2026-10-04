@@ -91,6 +91,10 @@ build () {
 		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
+		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
@@ -106,7 +110,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu letters sheet ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -256,6 +260,14 @@ if want archiver; then			# (a sample archive of Onyx's sources in RAM:, arc_samp
 	png archiver-drop
 	sim archiver archiver-welcome "$W" $P SIM_RAM="$OUT/arc"; png archiver-welcome
 	rm -rf "$OUT/arc" "$OUT/writes/apps/archiver.app"
+fi
+if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
+	SL=SIM_ARGS=SD:/docs/cafe-2026.odp
+	sim slides slides "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 853 90;up 853 90;$W" $P $SL; png slides
+	sim slides slides-sorter "wait;wait;down 871 687;up 871 687;$W" $P $SL; png slides-sorter
+	sim slides slides-animate "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 964 90;up 964 90;$W" $P $SL; png slides-animate
+	sim slides slides-text "wait;wait;key 0x101;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 908 90;up 908 90;$W" $P $SL; png slides-text
+	sim slides slides-show "wait;wait;key 0x101;key 0x101;wait;key 0x114;wait;wait;wait;wait;key 32;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait" $P $SL; png slides-show
 fi
 if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
 	sim cardfile cardfile "$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile

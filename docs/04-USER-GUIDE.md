@@ -1555,6 +1555,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Letters**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Letters**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Letters keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **Spreadsheet** (`sheet`) | A **spreadsheet** in the way of LibreOffice Calc and Gnumeric: workbooks of several sheets (1 048 576 rows × 16 384 columns), **formulas** as Excel writes them (237 functions: mathematics, statistics, logic, text, lookups, dates, finance; references to other sheets, ranges, whole columns; arrays), number formats, fonts, colours, borders, merged cells, frozen panes, the fill handle's series, sort, Find and Replace, **charts** (column, bar, line, area, pie, scatter), **conditional formatting** (rules, colour scales, data bars), the **AutoFilter**, **defined names**, Undo / Redo. Reads and writes Excel's **`.xlsx`** and **CSV**, reads LibreOffice's **`.ods`**. See *The Spreadsheet* below. |
+| **Slides** (`slides`) | A **presentation program** in the way of PowerPoint and LibreOffice Impress: slides on a **theme** (six: Café, Peach, Steel, Sage, Brick, Slate — their colours and fonts) and **layouts** (title, title and content, section, two contents, comparison, title only, blank), **text boxes** (fonts, sizes, colours, bullets and numbering on five levels, autofit), **shapes** (28, with gradients, lines, shadows, rotation), pictures, **tables**, **charts** (column, bar, line, pie, area), **sections**, the speaker's **notes**, the slide sorter, **transitions** and **animation effects** played full screen by the GPU, a **presenter view**. Reads / writes OpenDocument **`.odp`** (LibreOffice opens it, and its own are read); exports **PDF** and a slide as **PNG**. See *Slides, the presentation program* below. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib), in the desktop's theme. **The window**: a transport bar — **Play** from the cursor (^P), **from the start**, **Stop** (Esc), **Loop** (the pattern again and again, ^L), a display of the position (pattern : row) and the time, **Undo / Redo**, **Cut / Copy / Paste**, **Follow** (the view goes with the position while it plays) —; on the left the song's **patterns** (a click shows one; **+** new, duplicate, move earlier / later, delete), **this pattern**'s **Rows** and **Speed** (a slice lasts speed / 20 s), the **typing**'s **Octave** and **Step** (the rows the cursor goes down after a note), the song's title and author; the **grid**; a **piano** under it. **The grid**: a column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel; every 4th and 16th row is shaded. A channel's **header**: its colour, its instrument — **click it for the instrument dialog** —, **M** (mute the channel in this pattern; a right click too), **S** (solo: heard alone, while the app runs), a level meter. **Keys**: **C D E F G A B** a note (Shift = sharp; you hear it), **0–7** the octave, **Space** a silence, **Delete** `---` (a block chosen: cleared), **Backspace** clears the slice above, **#** toggles the sharp, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; **Shift + those** or a **drag** choose a **block**: **^X ^C ^V** cut, copy, paste it (at the cursor), **^A** the whole pattern, **Ctrl+↑ / Ctrl+↓** move its notes a semitone (with Shift: an octave); **^Z / ^Y** undo and redo (the pattern's notes, 48 steps). A **click on the piano** enters that note; its keys light in the channels' colours as they sound. **The instrument dialog**: the name, a **preset** (`SD:/apps/fmtracker.app/ins`), **Load / Save** `.FMI`; the **algorithm** — **FM** (operator 1 bends operator 2's sound: the timbre) or **Additive** (both are heard), drawn — and the **feedback**; then each of the two operators: its **wave** (four drawn: sine, half sine, absolute sine, pulses — click one), its **envelope drawn** as the sliders move (**Attack, Decay, Sustain, Release**), its **Volume**, its frequency's **Multiplier**, its **Key scale**, its switches (held, tremolo, vibrato, key scale rate); below, **the sound's wave** (what the two operators make together); **Test** plays the instrument and the wave moves with the note; every change is heard at once. A song is a list of **patterns** played in order (Pattern menu: New, Duplicate, Move Earlier / Later, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
@@ -3194,6 +3195,72 @@ changes; **closed with unsaved changes**, the workbook is kept in
 kept: fonts' exotic effects, pictures, pivot tables, macros, comments, validation lists (the rest
 of an Excel file is read). Sample: **`SD:/docs/cafe-2026.xlsx`** (its three sheets: the sales, a
 summary with lookups and a pie chart, the espresso machine's loan).
+
+### Slides, the presentation program (`slides`)
+
+![Slides](../screenshots/slides.png)
+
+The third app of the office suite, with **Letters** and the **Spreadsheet** (their toolbars, their icons): a
+presentation program in the way of PowerPoint. **The window**: two toolbars (New slide, Layout, Duplicate, Delete;
+Text box, Picture, Table, Chart, Shapes, Line, Arrow; the zoom; **Show** — and below, Letters' text bar: font, size,
+B I U S, colours, alignment, the box's vertical alignment, bullets, numbering, indents, line spacing, the order of
+the objects); at the left the **slides** as thumbnails, grouped in **sections** (a section's arrow folds it; a
+thumbnail dragged reorders, a right click: new, duplicate, delete, hide, a section); in the middle the slide; under
+it the **speaker's notes**; at the right the **sidebar** and its four tabs; the status bar (slide n of m, the
+section, the theme, the zoom).
+
+**Objects.** Insert ▸ **Text Box** (then a drag on the slide), **Picture...** (BMP, PNG, JPEG, GIF, WebP),
+**Table...** (rows × columns: a heading row, banded rows in the theme's colours), **Chart...** (column, bar, line,
+pie, area; its data typed in a small grid: up to eight categories and four series), **Arrow**, **Line**; the **Shapes**
+button lists 28 shapes (rectangles, ellipse, triangles, polygons, stars, heart, arrows, chevrons, callout, cloud,
+flowchart). A click selects (Shift+click: several; a drag on the empty slide: a rubber band), the handles resize
+(Shift keeps the ratio), the round handle above **rotates** (Shift: 15° steps), a drag moves (snapped to the slide's
+centre and edges and to the other objects, a guide drawn; Shift: along one axis), the arrows nudge (Ctrl: finely),
+Tab selects the next object. A **double click** or
+**Enter** / **F2** edits the text of a box, a shape, a table's cell (Tab: the next cell; in a list, Tab /
+Shift+Tab change the level); **Esc** ends it. The placeholders of a layout show their prompt ("Click to add a
+title") until typed in.
+
+**The sidebar.** **Slide**: its layout, its **background** (the theme's, a colour, a gradient, a picture; apply to
+every slide), the master's objects shown or not, hidden in the show; the deck: the theme (colours and fonts), the
+slide size (16:9, 4:3), the footer, the slide numbers. **Shape**: the fill (none, colour, gradient and its angle,
+transparency), the line (colour, width, solid / dashes / dots, the arrow heads), corners, shadow, the position and
+size in cm, the rotation, flipped; a table's heading row and banded rows; a chart's type, legend and values. **Text**:
+the character (font, size, colour, bold, italic, underline, strikethrough), the paragraph (alignment, level, bullets
+or numbers, line spacing, before / after), the box (vertical alignment, wrap, **autofit**: shrink the text or grow
+the box). **Animate**: the slide's **transition** (fade, push, wipe, cover, uncover, split, zoom, dissolve; its
+direction, duration, an automatic advance after a time) and the selected object's **effects** — entrance, emphasis,
+exit (appear, fade, fly in, wipe, zoom, float, grow, pulse, spin, colour), started on click, with or after the
+previous one, their delay and duration —, the slide's list of effects (reordered, removed).
+
+![The slide sorter](../screenshots/slides-sorter.png)
+
+**Views.** View ▸ **Normal**, **Slide Sorter** (the whole deck, section by section; drag to reorder, double click to
+edit a slide), **Notes** (the notes' pane larger); Fit the Window, Zoom In / Out (also the status bar's zoom).
+
+![The show](../screenshots/slides-show.png)
+
+**The show.** **F5** (Show ▸ From the Beginning) or **Shift+F5** (From This Slide) plays the deck **full screen**:
+each slide rendered once, its layers composited by the **GPU** with its transition and its effects. A click, Space,
+Enter, → / ↓ / Page Down or N: the next effect or slide; ← / ↑ / Page Up / Backspace or P: back; Home / End; a
+number then Enter: that slide; **B** / **.** black screen, **W** / **,** white screen; **Esc** ends the show. Hidden
+slides are skipped. Show ▸ **Presenter View**: on the one screen, the slide shown, the next one, the notes, the
+clock and the time elapsed.
+
+**Files.** **File ▸ Save** (Ctrl+S) writes OpenDocument's **`.odp`**: the slides, the master and its text styles,
+the theme, the objects (text, shapes, gradients, pictures, tables, charts — with a picture of the chart for other
+programs), the notes, the sections, transitions and effects; LibreOffice Impress opens it, and Slides reads it back
+the same. **File ▸ Open** (Ctrl+O) reads `.odp` written by Slides or by LibreOffice (their text, shapes, pictures,
+tables, backgrounds, notes, transitions). **Export as PDF...** writes a page per shown slide (each slide's picture, at
+1600 pixels wide); **Export Slide as PNG...** the current slide. A double click on an `.odp` in the File Viewer opens
+it here (`fileassoc.ini`); closed with unsaved changes, the deck is kept in `SD:/apps/slides.app/recovered.odp` and
+offered back the next time. Not yet: PowerPoint's `.pptx`, editing the master, groups, find and replace.
+
+**Keys.** Ctrl+N / O / S, Ctrl+Z / Y (undo / redo), Ctrl+X / C / V, Ctrl+D (duplicate), Ctrl+A, Delete, Ctrl+M (new
+slide), Ctrl+B / I / U, F5 / Shift+F5, Page Up / Down (the previous / next slide).
+
+Sample: **`SD:/docs/cafe-2026.odp`** (*Onyx Café — 2026, the year in review*: eight slides in three sections, the
+Spreadsheet sample's figures as a chart and a table, a picture, notes, transitions and effects).
 
 ### Koton, the studio (`koton`)
 

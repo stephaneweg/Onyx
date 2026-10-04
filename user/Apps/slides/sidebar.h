@@ -27,7 +27,7 @@ static void (*g_onSidebarCmd) (int cmd);	// a command of main.cpp's (insert a ro
 // The app's icons (ss::ToolButton draws them from 200 on: ui_base.h's g_appIcon)
 enum { SL_NEWSLIDE = 200, SL_LAYOUT, SL_DUPSLIDE, SL_DELSLIDE, SL_TEXTBOX, SL_SHAPES, SL_LINE, SL_ARROW, SL_PICTURE, SL_TABLE,
        SL_CHART, SL_SHOW, SL_FORWARD, SL_BACKWARD, SL_FRONT, SL_BACK, SL_AL_LEFT, SL_AL_CENTER, SL_AL_RIGHT, SL_AL_TOP,
-       SL_AL_MIDDLE, SL_AL_BOTTOM, SL_SPACING, SL_ANCHOR_T, SL_ANCHOR_M, SL_ANCHOR_B, SL_DIST_H, SL_DIST_V };
+       SL_AL_MIDDLE, SL_AL_BOTTOM, SL_SPACING, SL_ANCHOR_T, SL_ANCHOR_M, SL_ANCHOR_B, SL_DIST_H, SL_DIST_V, SL_REMOVE, SL_UP, SL_DOWN };
 static void slides_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off)
 {
 	unsigned dim = wk_mix (ink, C_BG, 150);
@@ -109,6 +109,10 @@ static void slides_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off
 	}
 	case SL_DIST_H: case SL_DIST_V:
 		for (int i = 0; i < 3; i++) { p.clear (); if (k == SL_DIST_H) p.rect (X + V (1 + i * 7), Y + V (5), V (4), V (10)); else p.rect (X + V (5), Y + V (1 + i * 7), V (10), V (4)); p.fill (cv, i == 1 ? peach : blue, A); }
+		break;
+	case SL_REMOVE: p.clear (); p.line (X + V (5), Y + V (5), X + V (15), Y + V (15), 40); p.line (X + V (15), Y + V (5), X + V (5), Y + V (15), 40); p.fill (cv, red); break;
+	case SL_UP: case SL_DOWN:
+		p.clear (); p.line (X + V (10), Y + V (k == SL_UP ? 16 : 4), X + V (10), Y + V (k == SL_UP ? 8 : 12), 34); p.arrowHead (X + V (10), Y + V (k == SL_UP ? 3 : 17), k == SL_UP ? 90 : -90, V (7), V (5)); p.fill (cv, ink);
 		break;
 	case SL_SPACING:
 		for (int i = 0; i < 3; i++) { p.clear (); p.rect (X + V (8), Y + V (3 + i * 6), V (11), 26); p.fill (cv, ink); }
@@ -327,7 +331,7 @@ public:
 		section ("Effects on this slide");
 		add (R_EFFECTS, I_FX_LIST, "");
 		pick (I_FX_ADD, "", g_sel.n ? "Add an effect..." : "(select an object to add one)");
-		static const int tools[3] = { 310, 311, 312 };
+		static const int tools[3] = { SL_REMOVE, SL_UP, SL_DOWN };
 		buttons (I_FX_TOOLS, "", tools, 3);
 		if (g_animSel >= 0 && g_animSel < s.anim.n)
 		{

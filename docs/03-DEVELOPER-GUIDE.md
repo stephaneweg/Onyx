@@ -1250,6 +1250,24 @@ its licence on the app.
 > round trips; with LibreOffice installed, its `.ods` and `.xlsx` of the same workbook read back
 > alike); ASan + UBSan. The sample `sdcard/docs/cafe-2026.xlsx` is made by
 > `tools/tests/sheet/make_sample.cpp` (built with the engine itself: see its header).
+> **Slides** (`user/Apps/slides/`, a **newlib** wtk app — FreeType, `gpucomp`, Letters' PDF writer —, built
+> as Letters and the Spreadsheet, their toolbar icons shared through `sheet/ui_base.h`'s `g_appIcon`): `model.h`
+> (the deck: slides, objects — text, shape, line, picture, table, chart —, text bodies of paragraphs and character
+> runs in hmm and tenths of a point, the theme, the master's text styles and layouts, effects, transitions; a
+> format inherits from the master: `cf_resolve`, `pf_resolve`), `text.h` (a box's text laid out — lists, autofit
+> shrinking —, drawn with FreeType into a premultiplied layer, the caret, the edits), `render.h` (each object drawn
+> into its own **layer**: VPath shapes, gradients, blurred shadows, pictures, tables, charts; the `Compositor`
+> keeps them as GPU textures, cached by a hash of the object, and `composite_frame` places them — moved,
+> faded, rotated, clipped — with `gpc_composite`; the CPU path for thumbnails and exports: `flatten_slide`),
+> `editor.h` (selection, commands, undo as deck snapshots), `view.h` (`SlideView`: the slide composited by the
+> GPU, handles, guides, the caret; a drag only moves the layers), `panes.h` (thumbnails, sorter, notes, status bar),
+> `sidebar.h`, `show.h` (the full-screen show: `fx_plan` / `fx_moves`, the transitions as two textures, the
+> presenter's console), `odp.h` (OpenDocument read and written: styles, gradients, list styles, table-cell styles;
+> what ODF cannot say kept in `onyx:` attributes and `onyx.xml`, so a deck comes back the same), `main.cpp`.
+> **Host test**: `sh tools/tests/run_slides_test.sh` — `tools/tests/slides/slides_test.cpp` (the sample read and
+> checked, the round trip; with LibreOffice installed, its conversion of the deck read). The sample
+> `sdcard/docs/cafe-2026.odp` is made by `tools/tests/slides/make_sample.cpp` (`MAKE=1 sh
+> tools/tests/run_slides_test.sh`); the icon by `tools/icons/slides_icon.py`.
 > **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),

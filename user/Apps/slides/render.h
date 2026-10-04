@@ -524,7 +524,7 @@ static void render_object (const Deck &d, Object &o, float sc, Layer &L, bool ed
 		path_into (L, p, f, d, 0, 0, 0, 0, (int) (90 * sc + 1), (int) (130 * sc + 1), 0x000000, (int) (60 * sc + 1));
 	}
 	// the fill
-	if (o.fill.type == FILL_SOLID || o.fill.type == FILL_GRADIENT)
+	if ((o.fill.type == FILL_SOLID || o.fill.type == FILL_GRADIENT) && o.kind != OB_TABLE)
 	{
 		VPath p; shape_path (p, sh, pad, pad, W, H, o.radius, 0, true);
 		path_into (L, p, o.fill, d, pad, pad, W, H);
