@@ -93,6 +93,18 @@ generator, writing and using a library), **`user/wtk/abi.h` (the rules — read 
 - **Open**: the inline code with logic of wtk's headers was not moved into the library; `kmsg` is not
   stopped by Ctrl+C over telnet since the shell's rework (the tests keep a second session in it).
 
+## The sound's output: the jack, USB or HDMI (2026-10-05, kapi v84; published: onyx 2026.10.51)
+
+`COnyxSoundDevice` (`kernel/sys/sound.cpp`; docs/02 §13 and *v84: sound_output*): one producer, three
+outputs over Circle's devices, `SD:/etc/sound.ini` `output = auto | jack | usb | hdmi`, the Sound
+applet's **Play on**, `volume output`. **Checked on the Pi 4**: the outputs switched while tones
+played (jack → HDMI → USB with no device → jack), the log's `sound: output: …` lines, the applet.
+**To do with the user's ears and hardware — nothing of it was heard**: HDMI on the screen; a real USB
+headset (48 kHz, 16 or 24 bits; its volume through its own control: `ApplyVolume`'s dB mapping;
+unplugged = silence, plugged again = back by itself); the Pi 400 (no jack: `auto` gives HDMI). Left
+from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear interpolation
+(44.1 → 48 kHz): good enough to start, a better filter if it is heard.
+
 ## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
 
 **Where to read**: `docs/05-CIRCLE-CHANGES.md` §25–§27 (every change, its measure), `docs/02` §11
