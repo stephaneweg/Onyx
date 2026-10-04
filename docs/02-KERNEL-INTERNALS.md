@@ -1463,7 +1463,9 @@ counts the time its tasks ran, the idle task apart: `CScheduler::Yield` adds wha
 ran (`m_nBusyUs`; `GetBusyUs` adds the running task's time so far, so a read from another core is
 live). Core 0's idle task sleeps in `wfi`, so its figure is the machine's real load; the interrupt
 handlers that wake it are counted as idle. The **network core**'s tasks all wait by yielding (it
-polls the Wi-Fi chip): it never idles and reads 100 % — that is what the core does, not a fault.
+polls the Wi-Fi chip), so while the network works it reads 100 %; once the network has been quiet
+for 50 ms it sleeps between two questions to the chip (*The network core sleeps*, below) and that
+sleep is taken off its busy time (`CScheduler::NoteSleptUs`): a few per cent.
 **Core 1** counts the time it renders sound (`sys/sound.cpp`, around `Render`); an **app core** the
 time its jobs ran, from the entry at EL0 to the job's end or drop (`sys/appcore.cpp`; a job that
 waits in `wfe` still counts).
@@ -1746,13 +1748,29 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   - **A trial.** A Pi is often reachable by its Wi-Fi only: a driver change that keeps the Wi-Fi
     from coming up cannot be taken back from the PC. `SD:/etc/net-trial.txt` holds `name=value`
     words — `wlfast=` (the driver's fast path bits), `tcpws=`, `tcpwin=`, `ackn=`, `ampdutx=`,
-    `ampdurx=`, `bawsize=`, `rxbawsize=`, `ampdurts=`, `bw5=`, `frameburst=`, `netstat=1` (the statistics, the
+    `ampdurx=`, `bawsize=`, `rxbawsize=`, `ampdurts=`, `bw5=`, `frameburst=`, `netsleep=`, `netsleepus=`, `netstat=1` (the statistics, the
     firmware's counters, TCP's timeouts in the log), `secs=` (default 180) —; the bring-up reads it, **deletes it**, applies it for this boot (`NetTrialLoad`), and
     core 0's main task restarts the Pi after `secs` (`NetTrialPoll`) unless
     `SD:/etc/net-trial.keep` exists by then: the next boot is without the trial. Before the
     restart the kernel log's tail (24 KB) is written to `SD:/etc/net-trial.log`: what the driver
     said during a trial that cut the network is read after it. A new switch is
     added there, tried, and only then made the default.
+  - **The network core sleeps when the network is quiet** (2026-10-04). Its tasks wait by
+    yielding, so the core used to turn all the time: 130 000 rounds of its scheduler a second, each
+    asking the chip whether it has a frame. Now `NetCoreMain`, after each round, sleeps (`wfe`)
+    when all of this holds: no frame read from the chip or written to it for 50 ms
+    (`onyx_wl_lastact`, the driver's), no request posted by core 0 for 50 ms, none waiting, and the
+    driver has asked the chip once, whole, since the last sleep and it had nothing
+    (`onyx_wl_polls`: a question is several SDIO commands and each waits a round — sleeping
+    between the rounds made a ping take six sleeps). The sleep ends after 1 ms — the timer's event
+    stream ends a `wfe` every 1.2 ms at most (`CNTKCTL_EL1`, set on that core) — or at once when
+    core 0 posts a request (its `sev`); a `wfe` also ends at every spin lock released on any core
+    (Circle's unlock sends the event), so it is asked again until the time has passed. The first
+    frame or request brings the full pace back. Measured (Pi 4, 150 pings of a quiet Pi): 4.1 ms
+    on average without the sleep, 4.4 ms with it, the core asleep 93 % of the time; the bench, the
+    pings during a download and the echoes are the same with and without. Trial words:
+    `netsleep=<ms>` (0: never sleep), `netsleepus=<us>` (the sleep's length). The chip's SDIO
+    interrupt is not used yet (it would end the sleep at once: the next step).
   - **`netstat=1`** (`cmdline.txt`): every 5 s the log says the net core's pace (`net: core 3: N
     rounds/s, … us a round` — the stack's tasks all wait by yielding, so a round is the unit of
     every wait: ~13 µs) and the driver's (frames a second, a frame's read time, the link's rate).

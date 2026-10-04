@@ -105,6 +105,7 @@ CScheduler::CScheduler (void)
 	m_bPrioPreempt (FALSE),
 	m_nLastYield (0),
 	m_nBusyUs (0),
+	m_nSleptUs (0),
 	m_nLastSample (0),
 	m_nStallIn (0),
 	m_nStallOut (0),
@@ -228,7 +229,8 @@ u64 CScheduler::GetBusyUs (void) const
 		unsigned nRun = CTimer::Get ()->GetClockTicks () - nLast;
 		if (nRun < 0x80000000u) n += nRun;		// (read on another core: it may have yielded since)
 	}
-	return n;
+	u64 nSlept = m_nSleptUs;
+	return n > nSlept ? n - nSlept : 0;
 }
 
 void CScheduler::StallSample (u64 ulPC, u64 ulLR)

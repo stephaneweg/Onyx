@@ -883,7 +883,7 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_CORE_SYSTEM	0		// the scheduler's: the kernel and every process (core 0)
 #define KAPI_CORE_SOUND		1		// renders the sound (core 1)
 #define KAPI_CORE_APP		2		// an app core (kapi_core_acquire): pid = its owner, 0 when free
-#define KAPI_CORE_NETWORK	3		// the network stack (netcore=1: core 3); it polls: always busy
+#define KAPI_CORE_NETWORK	3		// the network stack (netcore=1: core 3)
 #define KAPI_CPU_CORES		8
 
 struct kapi_cpu_core				// 16 bytes

@@ -221,6 +221,11 @@ public:
 		return nCore < SCHED_CORES ? s_pThis[nCore] : 0;
 	}
 	u64 GetBusyUs (void) const;
+	// A task of this core slept (wfe) that long without yielding: not busy time (the network core).
+	void NoteSleptUs (unsigned nUs)
+	{
+		m_nSleptUs = m_nSleptUs + nUs;
+	}
 
 	static unsigned ThisCore (void)
 	{
@@ -275,6 +280,7 @@ private:
 	// Stall watchdog
 	unsigned m_nLastYield;		// clock ticks (us) of the last Yield() entry
 	volatile u64 m_nBusyUs;		// (v80) the time the tasks ran, the idle task apart
+	volatile u64 m_nSleptUs;	// ... of which a task slept (NoteSleptUs)
 	unsigned m_nLastSample;		// ... of the last StallSample() taken
 	TStallReport m_Stall;		// the stall in progress (m_Stall.nSamples samples)
 #define STALL_RING	4

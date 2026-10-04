@@ -87,6 +87,14 @@ static TSocketSlot s_Sockets[MAX_SOCKETS];		// zero-initialised (BSS)
 
 static inline u32 Ld (u32 *p)		{ return __atomic_load_n (p, __ATOMIC_ACQUIRE); }
 static inline void St (u32 *p, u32 v)	{ __atomic_store_n (p, v, __ATOMIC_RELEASE); }
+
+// The network core sleeps between its rounds once the network has been quiet this long (us); 0:
+// never, it polls on (NetCoreMain). The trial word netsleep=<ms>.
+static unsigned s_nSleepIdleUs = 50000;
+static unsigned s_nSleepUs = 1000;		// the sleep between two rounds of the quiet network (netsleepus=)
+static u32 s_nLastPostUs;			// when core 0 last posted a request (atomic)
+extern "C" unsigned onyx_wl_lastact;		// ether4330.c: when a frame was last read or written
+extern "C" unsigned onyx_wl_polls;		// ... the times the chip was asked and had nothing
 static inline boolean Cas (u32 *p, u32 nFrom, u32 nTo)
 {
 	return __atomic_compare_exchange_n (p, &nFrom, nTo, FALSE, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
@@ -1118,12 +1126,14 @@ void NetTrialLoad (void)
 	onyx_wl_hostreorder = TrialValue (Buf, "hostreorder", onyx_wl_hostreorder);
 	onyx_wl_rx_ba_wsize = TrialValue (Buf, "rxbawsize", onyx_wl_rx_ba_wsize);
 	onyx_wl_bw5 = TrialValue (Buf, "bw5", onyx_wl_bw5);
+	s_nSleepIdleUs = (unsigned) TrialValue (Buf, "netsleep", (int) (s_nSleepIdleUs / 1000)) * 1000;
+	s_nSleepUs = (unsigned) TrialValue (Buf, "netsleepus", (int) s_nSleepUs);
 	if (TrialValue (Buf, "netstat", 0)) { s_bNetStat = TRUE; onyx_wlstat = 1; onyx_tcp_trace = 1; }
 	unsigned nSecs = (unsigned) TrialValue (Buf, "secs", 180);
 	s_nTrialEnd = CTimer::Get ()->GetTicks () + nSecs * HZ;
 	if (s_nTrialEnd == 0) s_nTrialEnd = 1;
-	CLogger::Get ()->Write ("net", LogWarning, "a trial for %u s: wlfast=%d tcpws=%d (then a restart, unless " NET_TRIAL_KEEP " exists)",
-				nSecs, onyx_wlfast, onyx_tcp_ws);
+	CLogger::Get ()->Write ("net", LogWarning, "a trial for %u s: wlfast=%d tcpws=%d netsleep=%u ms / %u us (then a restart, unless " NET_TRIAL_KEEP " exists)",
+				nSecs, onyx_wlfast, onyx_tcp_ws, s_nSleepIdleUs / 1000, s_nSleepUs);
 }
 
 // Core 0's main task, every 250 ms.
@@ -1444,13 +1454,15 @@ static void Snapshot (void)
 	}
 }
 
-static unsigned s_nRounds, s_nSnapUs, s_nStatStart, s_nRoundLast, s_nRoundMax;
+static unsigned s_nRounds, s_nSnapUs, s_nStatStart, s_nRoundLast, s_nRoundMax, s_nSleeps, s_nSleptUs;
 
 void NetCoreMain (void)
 {
 	while (!s_bGo) asm volatile ("wfe");
 	asm volatile ("dmb ish" ::: "memory");
 	new CScheduler;					// this core's; this context is its "main" task
+	unsigned nEventFor = 0;				// the sleep the event stream is set for
+	unsigned nPollsAtSleep = 0;			// onyx_wl_polls at the last sleep
 	if (s_pfnBringup != 0) (*s_pfnBringup) ();	// the bring-up task (created here: runs here)
 	for (unsigned i = 0; i < NET_WORKERS; i++) new CNetWorker;
 	s_nWorkers = s_nIdle = NET_WORKERS;
@@ -1481,13 +1493,58 @@ void NetCoreMain (void)
 		unsigned nNow = CTimer::Get ()->GetClockTicks ();
 		if (s_nRoundLast != 0 && nNow - s_nRoundLast > s_nRoundMax) s_nRoundMax = nNow - s_nRoundLast;
 		s_nRoundLast = nNow;
+		// (Between two sleeps the chip is asked once, whole: that takes several rounds -- each
+		// of its SDIO commands waits one --, so the rounds go on until the driver has counted an
+		// empty answer.)
+		// The quiet network: no frame read or written and no request from core 0 for a while --
+		// the core sleeps a millisecond (less when a request is posted: its SEV; the event stream
+		// ends a WFE every ~1.2 ms at most), then does one round: the chip is asked a thousand
+		// times a second instead of all the time. The first frame or request brings the polling back at once.
+		if (   s_nSleepIdleUs != 0
+		    && nNow - onyx_wl_lastact > s_nSleepIdleUs
+		    && nNow - Ld (&s_nLastPostUs) > s_nSleepIdleUs
+		    && onyx_wl_polls != nPollsAtSleep
+		    && s_nCloseOut == Ld (&s_nCloseIn)
+		    && !AnyPosted ())
+		{
+			// (a WFE also ends at every spin lock released, on any core -- Circle's unlock sends
+			// the event --, this core's own included: asked again until the time has passed)
+			if (nEventFor != s_nSleepUs)
+			{
+				// the timer's event stream on this core: a WFE ends at least every
+				// 2^(bit + 1) counter ticks -- the bit chosen so that this is the sleep's
+				// length or a little less (54 MHz: bit 15 is ~1.2 ms, bit 12 ~150 us)
+				nEventFor = s_nSleepUs;
+				u64 f; asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+				u64 nTicks = f / 1000000 * s_nSleepUs;
+				unsigned nBit = 15;
+				while (nBit > 4 && (2ull << nBit) > nTicks) nBit--;
+				u64 v; asm volatile ("mrs %0, cntkctl_el1" : "=r" (v));
+				v = (v & ~0xF0ul) | ((u64) nBit << 4) | (1ul << 2);
+				asm volatile ("msr cntkctl_el1, %0; isb" :: "r" (v));
+			}
+			nPollsAtSleep = onyx_wl_polls;
+			unsigned nWoke;
+			do
+			{
+				asm volatile ("wfe");
+				nWoke = CTimer::Get ()->GetClockTicks ();
+			}
+			while (   nWoke - nNow < s_nSleepUs
+			       && s_nCloseOut == Ld (&s_nCloseIn)
+			       && !AnyPosted ());
+			CScheduler::Get ()->NoteSleptUs (nWoke - nNow);
+			s_nSleeps++; s_nSleptUs += nWoke - nNow;
+			s_nRoundLast = nWoke;			// (the sleep is not a round's length)
+		}
 		if (s_bNetStat && nNow - s_nStatStart >= 5000000)
 		{
 			unsigned nUs = nNow - s_nStatStart;
-			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round (the longest %u us), snapshot %u us a round, %u tasks' workers (%u idle)",
+			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round (the longest %u us), snapshot %u us a round, %u tasks' workers (%u idle); asleep %u %% of the time (%u sleeps)",
 						(unsigned) ((u64) s_nRounds * 1000000 / nUs), s_nRounds ? nUs / s_nRounds : 0, s_nRoundMax,
-						s_nRounds ? s_nSnapUs / s_nRounds : 0, s_nWorkers, s_nIdle);
-			s_nRounds = 0; s_nSnapUs = 0; s_nStatStart = nNow; s_nRoundMax = 0;
+						s_nRounds ? s_nSnapUs / s_nRounds : 0, s_nWorkers, s_nIdle,
+						(unsigned) ((u64) s_nSleptUs * 100 / nUs), s_nSleeps);
+			s_nRounds = 0; s_nSnapUs = 0; s_nStatStart = nNow; s_nRoundMax = 0; s_nSleeps = 0; s_nSleptUs = 0;
 		}
 	}
 }
@@ -1541,7 +1598,12 @@ static TNetReq *NewReq (unsigned nOp, unsigned nPid)
 	}
 }
 
-static void Post (TNetReq *r) { St (&r->nState, RQ_POSTED); asm volatile ("sev"); }
+static void Post (TNetReq *r)
+{
+	St (&s_nLastPostUs, CTimer::Get ()->GetClockTicks ());	// (the net core stays awake a while)
+	St (&r->nState, RQ_POSTED);
+	asm volatile ("sev");
+}
 
 // Wait for the answer; the caller reads its outputs, then Release (). Most answers take
 // microseconds (recv, send, close): spin. Then yield to the other tasks for a while (a

@@ -510,7 +510,8 @@ int kapi_kernel_info (char *pBuf, unsigned nCap)
 
 // (v80) The cores: what each does and how long it was busy. Core 0 (and the network's, netcore=1)
 // have a scheduler: the time its tasks ran, the idle task apart -- the network core's tasks wait by
-// yielding (it polls the Wi-Fi chip), so that one is always busy. Core 1: the time it rendered sound.
+// yielding (it polls the Wi-Fi chip): busy while the network works, asleep between two questions to
+// the chip once it is quiet (sys/net.cpp, NetCoreMain: that sleep is taken off). Core 1: the time it rendered sound.
 // An app core: the time its jobs ran.
 #ifdef ARM_ALLOW_MULTI_CORE
 extern "C++" { u64 SoundCoreBusyUs (void); }			// (sys/sound.cpp: core 1's rendering time)

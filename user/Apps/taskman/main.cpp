@@ -367,7 +367,7 @@ public:
 			{
 			case KAPI_CORE_SYSTEM:	snprintf (what, sizeof what, "the system and every app"); break;
 			case KAPI_CORE_SOUND:	snprintf (what, sizeof what, "the sound"); break;
-			case KAPI_CORE_NETWORK:	snprintf (what, sizeof what, "the network (it polls)"); break;
+			case KAPI_CORE_NETWORK:	snprintf (what, sizeof what, "the network"); break;
 			default:
 			{
 				const char *owner = 0;

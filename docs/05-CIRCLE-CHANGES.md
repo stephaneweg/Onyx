@@ -929,6 +929,14 @@ trial file. **To do**: whether a newer firmware aggregates soundly (the sending 
 file (docs/02 §11 *A trial*): each of the bits above was tried alone that way before it became
 the default.
 
+### The driver tells when the chip was last busy
+
+`ether4330.c` keeps two figures for the kernel's network core, which sleeps between two questions to
+the chip once the network is quiet (docs/02, *The network core sleeps when the network is quiet*):
+`onyx_wl_lastact`, the clock when the chip last said it had something, when a frame was last read
+from it or written to it; `onyx_wl_polls`, the times the polling reader asked the chip and it had
+nothing. No change of behaviour in the driver itself.
+
 ## 27. TCP: window scaling, a receive window that follows the queue
 
 **Why.** The receive window was a constant — 64240 bytes (§19), never scaled, never smaller: (1)
