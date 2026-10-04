@@ -1,0 +1,51 @@
+-1 
+circle: 0 sides, a circle of radius 3 - a shape at 1  2 
+a circle of radius 3 - a shape at 11  12 
+-1 -1  0 -1 -1  0 
+a circle of radius 7 - a shape at 11  12 
+-1 -1 
+ 0 -1 
+circle: 0 sides, a circle of radius 7 - a shape at 11  12 
+draw circle 7 
+area 153 
+square: 4 sides, a shape at 0  0 
+draw square 5 
+area 25 
+big square: 4 sides, a shape at 0  0 
+BIG draw square 9 
+area 81 
+ 3 nothing
+big square
+draw circle 7 
+draw circle 7 
+draw square 2 
+draw square 2 
+circle
+circle
+ 0 
+ 16  9  4  1 
+ 4 
+ 99 
+ 1  2  500  500 
+(animal made)
+ 4 woof
+(animal made)
+woof-1 
+drop dog
+(dog gone)
+(animal gone: woof)
+dropped
+still one reference
+(animal made)
+(dog gone)
+(animal gone: woof)
+end of destructors
+(animal made)
+in scope
+(dog gone)
+(animal gone: woof)
+after scope
+error:  13 
+error:  91 
+error:  91 
+done

@@ -102,7 +102,12 @@ public:
 	Vec<Sym> gsyms, lsyms; int nlocals;
 	struct Const { char name[48]; int ty; double n; int sidx; bool dbl; };
 	Vec<Const> consts;
-	struct PDecl { char name[48]; bool isFunc; int retTy; int retNt; int np; char pname[16][48]; int pty[16]; int pnt[16]; bool parr[16]; bool defFn; };
+	// cls: a method's TYPE / CLASS / INTERFACE (-1); mod: PM_*; vslot: a virtual method's place in its
+	// class's table (-1); islot: an interface method's place in its interface.
+	struct PDecl { char name[48]; bool isFunc; int retTy; int retNt; int np; char pname[16][48]; int pty[16]; int pnt[16]; bool parr[16]; bool defFn; int cls, mod, vslot, islot, tok; };
+	enum { PM_VIRTUAL = 1, PM_OVERRIDE = 2, PM_ABSTRACT = 4, PM_IFACE = 8 };
+	struct CInfo { int ifaces[8]; int nif; bool done, abstr; int tok; };	// parallel to P->types (a class: what it implements, flattened)
+	Vec<CInfo> cinfo;
 	// A type spec (AS ...): the value type, numeric sub-type, fixed string length.
 	struct TSpec { int ty; int nt; int flen; };
 	struct FName { char name[48]; int ty; int nt; int flen; };
@@ -403,7 +408,10 @@ public:
 		return -1;
 	}
 	static int ntSize (int nt) { return nt == NT_INT ? 2 : nt == NT_DBL ? 8 : 4; }
-	int specSize (const TSpec &t) { return t.ty >= TY_REC ? P->types[t.ty - TY_REC].size : t.ty == TY_STR ? t.flen : ntSize (t.nt); }
+	int specSize (const TSpec &t) { return t.ty >= TY_REC ? (tkind (t.ty) ? 4 : P->types[t.ty - TY_REC].size) : t.ty == TY_STR ? t.flen : ntSize (t.nt); }
+	// TK_TYPE (also for numbers and strings), TK_CLASS or TK_IFACE; isObj: a reference (an object, NOTHING).
+	int tkind (int ty) { return ty >= TY_REC ? P->types[ty - TY_REC].kind : TK_TYPE; }
+	bool isObj (int ty) { return ty == TY_NIL || tkind (ty) != TK_TYPE; }
 	// AS <type> at pos p of the token array (prescan) or the current token: fills ts.
 	bool typeName (const char *w, TSpec &ts)
 	{
@@ -417,43 +425,208 @@ public:
 		if (t >= 0) { ts.ty = TY_REC + t; return true; }
 		return false;
 	}
-	// TYPE name / field AS type ... / END TYPE -- collected before the code (prescan).
+	// TYPE name / field AS type ... / END TYPE -- collected before the code (prescan). And the classes:
+	// CLASS name [EXTENDS parent] [IMPLEMENTS i1, i2] / fields / END CLASS (the parent's fields first),
+	// INTERFACE name / SUB ... / FUNCTION ... / END INTERFACE (its methods: prescan).
+	bool stmtStart (int i) { return i == 0 || toks[i - 1].t == T_NL || (toks[i - 1].t == T_OP && toks[i - 1].op == ':'); }
+	// "CLASS name" / "INTERFACE name" opening a block at token i (the words are not reserved).
+	bool classHeader (int i)
+	{
+		if (i + 2 >= toks.n || toks[i].t != T_ID || toks[i + 1].t != T_ID) return false;
+		bool cls = bseq (toks[i].id, "CLASS");
+		if (!cls && !bseq (toks[i].id, "INTERFACE")) return false;
+		const Tok &a = toks[i + 2];
+		return a.t == T_NL || (a.t == T_OP && a.op == ':') || (cls && a.t == T_ID && (bseq (a.id, "EXTENDS") || bseq (a.id, "IMPLEMENTS")));
+	}
+	// The fields from token p to END <endWord> (p left after it), added to P->fields; false on an error.
+	bool scanFields (int &p, const char *endWord, int open, int first, int &nf, int &size)
+	{
+		for (;;)
+		{
+			while (toks[p].t == T_NL || (toks[p].t == T_OP && toks[p].op == ':')) p++;
+			if (toks[p].t == T_EOF) { pos = open; fail (bseq (endWord, "TYPE") ? "TYPE without END TYPE" : "CLASS without END CLASS"); return false; }
+			if (toks[p].t == T_ID && bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, endWord)) { p += 2; return true; }
+			if (toks[p].t != T_ID || toks[p + 1].t != T_ID || !bseq (toks[p + 1].id, "AS") || toks[p + 2].t != T_ID)
+			{ pos = p; fail ("TYPE field: name AS type expected"); return false; }
+			if (bseq (toks[p + 2].id, "SUB") || bseq (toks[p + 2].id, "FUNCTION"))
+			{	// a method's declaration: the SUB Type.name / FUNCTION Type.name defines it
+				while (toks[p].t != T_NL && toks[p].t != T_EOF && !(toks[p].t == T_OP && toks[p].op == ':')) p++;
+				continue;
+			}
+			FName fnm; bscpy (fnm.name, toks[p].id, 48);
+			if (bseq (endWord, "CLASS"))
+				for (int i = first; i < P->fields.n; i++)
+					if (bseq (fnames[i].name, fnm.name)) { pos = p; fail2 ("Duplicate definition: ", fnm.name); return false; }
+			TSpec ts;
+			if (!typeName (toks[p + 2].id, ts)) { pos = p + 2; fail2 ("Unknown type: ", toks[p + 2].id); return false; }
+			p += 3;
+			if (ts.ty == TY_STR && toks[p].t == T_OP && toks[p].op == '*' && toks[p + 1].t == T_NUM) { ts.flen = (int) toks[p + 1].num; p += 2; }
+			fnm.ty = ts.ty; fnm.nt = ts.nt; fnm.flen = ts.flen;
+			FieldInfo fi;
+			fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ts.nt == NT_INT ? FK_INT : ts.nt == NT_LNG ? FK_LNG : ts.nt == NT_DBL ? FK_DBL : FK_SNG;
+			fi.len = ts.flen; fi.sub = ts.ty >= TY_REC ? ts.ty - TY_REC : 0;
+			size += specSize (ts);
+			P->fields.push (fi); fnames.push (fnm); nf++;
+		}
+	}
 	void prescanTypes ()
 	{
+		// the classes and interfaces first, by name: a field may be of a class defined further down
 		for (int i = 0; i < toks.n && !failed; i++)
 		{
-			bool atStart = i == 0 || toks[i - 1].t == T_NL || (toks[i - 1].t == T_OP && toks[i - 1].op == ':');
-			if (!atStart || toks[i].t != T_ID || !bseq (toks[i].id, "TYPE") || toks[i + 1].t != T_ID) continue;
-			if (i > 0 && toks[i - 1].t == T_ID) continue;			// END TYPE
+			if (!stmtStart (i) || !classHeader (i)) continue;
+			if (findType (toks[i + 1].id) >= 0) { pos = i + 1; fail2 ("Duplicate definition: ", toks[i + 1].id); return; }
+			TypeInfo ti; bscpy (ti.name, toks[i + 1].id, 48); ti.kind = bseq (toks[i].id, "CLASS") ? TK_CLASS : TK_IFACE;
+			P->types.push (ti);
+			CInfo ci; ci.nif = 0; ci.done = ti.kind == TK_IFACE; ci.abstr = false; ci.tok = i; cinfo.push (ci);
+		}
+		for (int i = 0; i < toks.n && !failed; i++)
+		{
+			if (!stmtStart (i) || toks[i].t != T_ID) continue;
+			if (classHeader (i))
+			{
+				int t = findType (toks[i + 1].id), p = i + 2;
+				if (P->types[t].kind == TK_IFACE)
+				{
+					while (toks[p].t != T_EOF && !(toks[p].t == T_ID && bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, "INTERFACE"))) p++;
+					if (toks[p].t == T_EOF) { pos = i; fail ("INTERFACE without its END"); return; }
+					i = p + 1;
+					continue;
+				}
+				int parent = -1;
+				if (toks[p].t == T_ID && bseq (toks[p].id, "EXTENDS"))
+				{
+					parent = toks[p + 1].t == T_ID ? findType (toks[p + 1].id) : -1;
+					pos = p + 1;
+					if (parent < 0 || P->types[parent].kind != TK_CLASS) { fail ("EXTENDS: a class is expected"); return; }
+					if (!cinfo[parent].done) { fail2 ("The parent class must be defined before its children: ", P->types[parent].name); return; }
+					p += 2;
+				}
+				if (toks[p].t == T_ID && bseq (toks[p].id, "IMPLEMENTS"))
+				{
+					p++;
+					for (;;)
+					{
+						int it = toks[p].t == T_ID ? findType (toks[p].id) : -1;
+						pos = p;
+						if (it < 0 || P->types[it].kind != TK_IFACE) { fail ("IMPLEMENTS: an interface is expected"); return; }
+						if (cinfo[t].nif >= 8) { fail ("A class implements at most 8 interfaces"); return; }
+						cinfo[t].ifaces[cinfo[t].nif++] = it;
+						p++;
+						if (toks[p].t == T_OP && toks[p].op == ',') p++; else break;
+					}
+				}
+				if (toks[p].t != T_NL && !(toks[p].t == T_OP && toks[p].op == ':')) { pos = p; fail ("Syntax error in CLASS"); return; }
+				int first = P->fields.n, nf = 0, size = 0;
+				if (parent >= 0)				// the parent's fields come first: the same places
+				{
+					int pf = P->types[parent].first, pn = P->types[parent].nf;
+					for (int k = 0; k < pn; k++) { FieldInfo fi = P->fields[pf + k]; FName fn = fnames[pf + k]; P->fields.push (fi); fnames.push (fn); }
+					nf = pn; size = P->types[parent].size;
+				}
+				if (!scanFields (p, "CLASS", i, first, nf, size)) return;
+				P->types[t].first = first; P->types[t].nf = nf; P->types[t].size = size; P->types[t].parent = parent;
+				cinfo[t].done = true;
+				i = p - 1;
+				continue;
+			}
+			if (!bseq (toks[i].id, "TYPE") || toks[i + 1].t != T_ID) continue;
 			if (findType (toks[i + 1].id) >= 0) { pos = i + 1; fail2 ("Duplicate definition: ", toks[i + 1].id); return; }
 			TypeInfo ti; bscpy (ti.name, toks[i + 1].id, 48); ti.first = P->fields.n; ti.nf = 0; ti.size = 0;
 			int p = i + 2;
-			for (;;)
+			if (!scanFields (p, "TYPE", i, ti.first, ti.nf, ti.size)) return;
+			P->types.push (ti);
+			CInfo ci; ci.nif = 0; ci.done = true; ci.abstr = false; ci.tok = i; cinfo.push (ci);
+			i = p - 1;
+		}
+	}
+	// After prescan: every class's table of virtual methods (its parent's, the overrides in place, its own
+	// after), the tables of the interfaces it implements, its destructor.
+	static const char *afterDot (const char *n) { const char *d = last_dot (n); return d ? d + 1 : n; }
+	bool sameSig (const PDecl &a, const PDecl &b)
+	{
+		if (a.isFunc != b.isFunc || a.np != b.np || a.retTy != b.retTy || (a.retTy == TY_NUM && a.retNt != b.retNt)) return false;
+		for (int i = 1; i < a.np; i++)
+			if (a.pty[i] != b.pty[i] || a.parr[i] != b.parr[i] || (a.pty[i] == TY_NUM && a.pnt[i] != b.pnt[i])) return false;
+		return true;
+	}
+	void buildClasses ()
+	{
+		for (int t = 0; t < P->types.n && !failed; t++)
+		{
+			if (P->types[t].kind != TK_CLASS)
 			{
-				while (toks[p].t == T_NL || (toks[p].t == T_OP && toks[p].op == ':')) p++;
-				if (toks[p].t == T_EOF) { pos = i; fail ("TYPE without END TYPE"); return; }
-				if (toks[p].t == T_ID && bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, "TYPE")) { p += 2; break; }
-				if (toks[p].t != T_ID || toks[p + 1].t != T_ID || !bseq (toks[p + 1].id, "AS") || toks[p + 2].t != T_ID)
-				{ pos = p; fail ("TYPE field: name AS type expected"); return; }
-				if (bseq (toks[p + 2].id, "SUB") || bseq (toks[p + 2].id, "FUNCTION"))
-				{	// a method's declaration: the SUB Type.name / FUNCTION Type.name defines it
-					while (toks[p].t != T_NL && toks[p].t != T_EOF && !(toks[p].t == T_OP && toks[p].op == ':')) p++;
+				for (int pi = 0; pi < pdecls.n; pi++)
+					if (pdecls[pi].cls == t && (pdecls[pi].mod & (PM_VIRTUAL | PM_OVERRIDE | PM_ABSTRACT)))
+					{ pos = pdecls[pi].tok; fail2 ("VIRTUAL / OVERRIDE / ABSTRACT are for a CLASS's methods: ", pdecls[pi].name); return; }
+				continue;
+			}
+			int parent = P->types[t].parent, vt = P->vtab.n, nvt = 0;
+			if (parent >= 0)
+				for (int k = 0; k < P->types[parent].nvt; k++) { int v = P->vtab[P->types[parent].vt + k]; P->vtab.push (v); nvt++; }
+			for (int pi = 0; pi < pdecls.n; pi++)
+			{
+				PDecl &d = pdecls[pi];
+				if (d.cls != t) continue;
+				pos = d.tok;
+				const char *m = afterDot (d.name);
+				if (bseq (m, "NEW") || bseq (m, "DELETE"))
+				{
+					if (d.mod || d.isFunc) { fail2 ("A constructor / destructor is a plain SUB: ", d.name); return; }
+					if (bseq (m, "DELETE")) { if (d.np != 1) { fail2 ("A destructor has no parameters: ", d.name); return; } P->types[t].dtor = pi; }
 					continue;
 				}
-				FName fnm; bscpy (fnm.name, toks[p].id, 48);
-				TSpec ts;
-				if (!typeName (toks[p + 2].id, ts)) { pos = p + 2; fail2 ("Unknown type: ", toks[p + 2].id); return; }
-				p += 3;
-				if (ts.ty == TY_STR && toks[p].t == T_OP && toks[p].op == '*' && toks[p + 1].t == T_NUM) { ts.flen = (int) toks[p + 1].num; p += 2; }
-				fnm.ty = ts.ty; fnm.nt = ts.nt; fnm.flen = ts.flen;
-				FieldInfo fi;
-				fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ts.nt == NT_INT ? FK_INT : ts.nt == NT_LNG ? FK_LNG : ts.nt == NT_DBL ? FK_DBL : FK_SNG;
-				fi.len = ts.flen; fi.sub = ts.ty >= TY_REC ? ts.ty - TY_REC : 0;
-				ti.size += specSize (ts);
-				P->fields.push (fi); fnames.push (fnm); ti.nf++;
+				int slot = -1;
+				for (int k = 0; k < nvt; k++) if (bseq (afterDot (pdecls[P->vtab[vt + k]].name), m)) slot = k;
+				if (slot >= 0)
+				{
+					if (!(d.mod & PM_OVERRIDE)) { fail2 ("OVERRIDE is needed (the parent's method is virtual): ", d.name); return; }
+					if (!sameSig (d, pdecls[P->vtab[vt + slot]])) { fail2 ("OVERRIDE: not the parameters / result of the parent's method: ", d.name); return; }
+					P->vtab[vt + slot] = pi; d.vslot = slot;
+				}
+				else if (d.mod & PM_OVERRIDE) { fail2 ("OVERRIDE: no virtual method of this name in the parents: ", d.name); return; }
+				else if (d.mod & (PM_VIRTUAL | PM_ABSTRACT)) { d.vslot = nvt++; P->vtab.push (pi); }
 			}
-			P->types.push (ti);
-			i = p - 1;
+			P->types[t].vt = vt; P->types[t].nvt = nvt;
+			for (int k = 0; k < nvt; k++) if (pdecls[P->vtab[vt + k]].mod & PM_ABSTRACT) cinfo[t].abstr = true;
+			// the interfaces: the parent's, then its own
+			CInfo own = cinfo[t];
+			cinfo[t].nif = 0;
+			for (int pass = 0; pass < 2; pass++)
+			{
+				if (pass == 0 && parent < 0) continue;
+				CInfo src = pass == 0 ? cinfo[parent] : own;
+				for (int k = 0; k < src.nif; k++)
+				{
+					bool have = false;
+					for (int j = 0; j < cinfo[t].nif; j++) if (cinfo[t].ifaces[j] == src.ifaces[k]) have = true;
+					if (have) continue;
+					if (cinfo[t].nif >= 8) { pos = cinfo[t].tok; fail2 ("A class implements at most 8 interfaces: ", P->types[t].name); return; }
+					cinfo[t].ifaces[cinfo[t].nif++] = src.ifaces[k];
+				}
+			}
+			P->types[t].it = P->itab.n; P->types[t].nit = cinfo[t].nif;
+			for (int k = 0; k < cinfo[t].nif; k++) { P->itab.push (cinfo[t].ifaces[k]); P->itab.push (0); }
+			for (int k = 0; k < cinfo[t].nif; k++)
+			{
+				int it = cinfo[t].ifaces[k];
+				P->itab[P->types[t].it + 2 * k + 1] = P->vtab.n;
+				for (int qi = 0; qi < pdecls.n; qi++)
+				{
+					if (pdecls[qi].cls != it) continue;
+					int pi = findMethod (TY_REC + t, afterDot (pdecls[qi].name));
+					if (pi < 0 || !sameSig (pdecls[pi], pdecls[qi]))
+					{
+						char m[120]; int n = 0;
+						for (const char *c = P->types[t].name; *c && n < 40; c++) m[n++] = *c;
+						for (const char *c = pi < 0 ? " does not implement " : " implements with other parameters: "; *c; c++) m[n++] = *c;
+						for (const char *c = pdecls[qi].name; *c && n < 118; c++) m[n++] = *c;
+						m[n] = 0; pos = cinfo[t].tok; fail (m); return;
+					}
+					if (pdecls[pi].mod & PM_ABSTRACT) cinfo[t].abstr = true;
+					P->vtab.push (pi);
+				}
+			}
 		}
 	}
 
@@ -469,13 +642,18 @@ public:
 	int findMethod (int ty, const char *m)
 	{
 		if (ty < TY_REC) return -1;
-		char n[100]; int k = 0;
-		for (const char *p = P->types[ty - TY_REC].name; *p && k < 47; p++) n[k++] = *p;
-		n[k++] = '.';
-		for (const char *p = m; *p && k < 98; p++) n[k++] = *p;
-		n[k] = 0;
-		if (k > 47) return -1;
-		return findProc (n);
+		for (int t = ty - TY_REC; t >= 0; t = P->types[t].parent)	// (a class: its own, else its parents')
+		{
+			char n[100]; int k = 0;
+			for (const char *p = P->types[t].name; *p && k < 47; p++) n[k++] = *p;
+			n[k++] = '.';
+			for (const char *p = m; *p && k < 98; p++) n[k++] = *p;
+			n[k] = 0;
+			if (k > 47) return -1;
+			int pi = findProc (n);
+			if (pi >= 0) return pi;
+		}
+		return -1;
 	}
 	int findConst (const char *n) { for (int i = 0; i < consts.n; i++) if (bseq (consts[i].name, n)) return i; return -1; }
 	int findProc (const char *n) { for (int i = 0; i < pdecls.n; i++) if (bseq (pdecls[i].name, n)) return i; return -1; }
@@ -505,69 +683,107 @@ public:
 		if (bseq (w, "DEFSTR")) { ts.ty = TY_STR; return true; }
 		return false;
 	}
+	// A SUB / FUNCTION / DEF FN header whose name is at token p: its PDecl. iface >= 0: a method declared
+	// in INTERFACE iface (named Interface.Name).
+	void procHeader (int p, bool isFn, bool isDef, int mod, int iface, int islot)
+	{
+		if (toks[p].t != T_ID) { pos = p; fail ("Expected a name after SUB / FUNCTION"); return; }
+		char name[48]; bscpy (name, toks[p].id, 48);
+		if (isDef && bseq (name, "FN") && toks[p + 1].t == T_ID)		// DEF FN name
+		{
+			int n = 2; for (int k = 0; toks[p + 1].id[k] && n < 46; k++) name[n++] = toks[p + 1].id[k];
+			name[n] = 0; p++;
+		}
+		if (iface >= 0)
+		{
+			char full[100]; int n = 0;
+			for (const char *c = P->types[iface].name; *c; c++) full[n++] = *c;
+			full[n++] = '.';
+			for (const char *c = name; *c; c++) full[n++] = *c;
+			full[n] = 0;
+			if (n > 47 || last_dot (name)) { pos = p; fail ("Bad method name in INTERFACE"); return; }
+			bscpy (name, full, 48);
+		}
+		if (findProc (name) >= 0) { pos = p; fail2 ("Duplicate definition: ", name); return; }
+		PDecl d; bscpy (d.name, name, 48); d.isFunc = isFn || isDef; d.defFn = isDef;
+		TSpec rs = nameSpec (d.name); d.retTy = rs.ty; d.retNt = rs.nt; d.np = 0;
+		int mt = isDef ? -1 : methodType (name);
+		d.cls = mt; d.mod = mod; d.vslot = -1; d.islot = islot; d.tok = p;
+		if (mod && mt < 0) { pos = p; fail2 ("VIRTUAL / OVERRIDE / ABSTRACT are for a CLASS's methods: ", name); return; }
+		if (mt >= 0 && iface < 0 && P->types[mt].kind == TK_IFACE) { pos = p; fail2 ("An interface's methods are declared in its INTERFACE block: ", name); return; }
+		if (mt >= 0)				// SUB Type.name: a method; THIS = the object
+		{
+			bscpy (d.pname[0], "THIS", 48); d.pty[0] = TY_REC + mt; d.pnt[0] = NT_SNG; d.parr[0] = false; d.np = 1;
+		}
+		p++;
+		if (toks[p].t == T_OP && toks[p].op == '(')
+		{
+			p++;
+			while (!(toks[p].t == T_OP && toks[p].op == ')') && toks[p].t != T_NL && toks[p].t != T_EOF)
+			{
+				if (toks[p].t == T_ID && bseq (toks[p].id, "BYVAL")) p++;
+				if (toks[p].t != T_ID || d.np >= 16) { pos = p; fail ("Bad parameter list"); return; }
+				bscpy (d.pname[d.np], toks[p].id, 48);
+				TSpec ps = nameSpec (toks[p].id);
+				d.parr[d.np] = false;
+				p++;
+				if (toks[p].t == T_OP && toks[p].op == '(' && toks[p + 1].t == T_OP && toks[p + 1].op == ')') { d.parr[d.np] = true; p += 2; }
+				if (toks[p].t == T_ID && bseq (toks[p].id, "AS"))
+				{
+					p++;
+					if (toks[p].t == T_ID)
+					{
+						if (!typeName (toks[p].id, ps)) { pos = p; fail2 ("Unknown type: ", toks[p].id); return; }
+						p++;
+					}
+				}
+				d.pty[d.np] = ps.ty; d.pnt[d.np] = ps.nt;
+				d.np++;
+				if (toks[p].t == T_OP && toks[p].op == ',') p++;
+			}
+		}
+		if (toks[p].t == T_OP && toks[p].op == ')') p++;
+		if (isFn && toks[p].t == T_ID && bseq (toks[p].id, "AS") && toks[p + 1].t == T_ID)
+		{
+			TSpec ts; if (typeName (toks[p + 1].id, ts)) { d.retTy = ts.ty; d.retNt = ts.nt; }
+		}
+		pdecls.push (d);
+		ProcInfo pi; bscpy (pi.name, d.name, 48); pi.isFunc = d.isFunc; pi.retTy = d.retTy; pi.nparams = d.np; pi.entry = -1; pi.nlocals = 0; pi.kindOff = 0;
+		P->procs.push (pi);
+	}
+	// VIRTUAL / OVERRIDE / ABSTRACT before SUB / FUNCTION at token i: its PM_*, else 0.
+	int procModifier (int i)
+	{
+		if (i + 1 >= toks.n || toks[i].t != T_ID || toks[i + 1].t != T_ID || !(bseq (toks[i + 1].id, "SUB") || bseq (toks[i + 1].id, "FUNCTION"))) return 0;
+		return bseq (toks[i].id, "VIRTUAL") ? PM_VIRTUAL : bseq (toks[i].id, "OVERRIDE") ? PM_OVERRIDE : bseq (toks[i].id, "ABSTRACT") ? PM_ABSTRACT : 0;
+	}
 	void prescan ()
 	{
 		for (int i = 0; i < toks.n && !failed; i++)
 		{
-			bool atStart = i == 0 || toks[i - 1].t == T_NL || (toks[i - 1].t == T_OP && toks[i - 1].op == ':');
-			if (!atStart || toks[i].t != T_ID) continue;
+			if (!stmtStart (i) || toks[i].t != T_ID) continue;
 			TSpec dts;
 			if (deftypeWord (toks[i].id, dts)) { applyDeftype (i + 1, dts); continue; }
-			bool isSub = bseq (toks[i].id, "SUB"), isFn = bseq (toks[i].id, "FUNCTION");
-			bool isDef = bseq (toks[i].id, "DEF") && toks[i + 1].t == T_ID && toks[i + 1].id[0] == 'F' && toks[i + 1].id[1] == 'N';
-			if (!isSub && !isFn && !isDef) continue;
-			if (i > 0 && toks[i - 1].t == T_ID) continue;		// "END SUB", "EXIT SUB", "DECLARE SUB"
-			int p = i + 1;
-			if (toks[p].t != T_ID) { pos = p; fail ("Expected a name after SUB / FUNCTION"); return; }
-			char name[48]; bscpy (name, toks[p].id, 48);
-			if (isDef && bseq (name, "FN") && toks[p + 1].t == T_ID)		// DEF FN name
+			if (classHeader (i) && bseq (toks[i].id, "INTERFACE"))		// its methods: SUB Name (...) / FUNCTION Name (...) AS type
 			{
-				int n = 2; for (int k = 0; toks[p + 1].id[k] && n < 46; k++) name[n++] = toks[p + 1].id[k];
-				name[n] = 0; p++;
-			}
-			if (findProc (name) >= 0) { pos = p; fail2 ("Duplicate definition: ", name); return; }
-			PDecl d; bscpy (d.name, name, 48); d.isFunc = isFn || isDef; d.defFn = isDef;
-			TSpec rs = nameSpec (d.name); d.retTy = rs.ty; d.retNt = rs.nt; d.np = 0;
-			int mt = isDef ? -1 : methodType (name);
-			if (mt >= 0)				// SUB Type.name: a method; THIS = the object
-			{
-				bscpy (d.pname[0], "THIS", 48); d.pty[0] = TY_REC + mt; d.pnt[0] = NT_SNG; d.parr[0] = false; d.np = 1;
-			}
-			p++;
-			if (toks[p].t == T_OP && toks[p].op == '(')
-			{
-				p++;
-				while (!(toks[p].t == T_OP && toks[p].op == ')') && toks[p].t != T_NL && toks[p].t != T_EOF)
+				int it = findType (toks[i + 1].id), n = 0, p = i + 2;
+				for (; !failed; p++)
 				{
-					if (toks[p].t == T_ID && bseq (toks[p].id, "BYVAL")) p++;
-					if (toks[p].t != T_ID || d.np >= 16) { pos = p; fail ("Bad parameter list"); return; }
-					bscpy (d.pname[d.np], toks[p].id, 48);
-					TSpec ps = nameSpec (toks[p].id);
-					d.parr[d.np] = false;
-					p++;
-					if (toks[p].t == T_OP && toks[p].op == '(' && toks[p + 1].t == T_OP && toks[p + 1].op == ')') { d.parr[d.np] = true; p += 2; }
-					if (toks[p].t == T_ID && bseq (toks[p].id, "AS"))
-					{
-						p++;
-						if (toks[p].t == T_ID)
-						{
-							if (!typeName (toks[p].id, ps)) { pos = p; fail2 ("Unknown type: ", toks[p].id); return; }
-							p++;
-						}
-					}
-					d.pty[d.np] = ps.ty; d.pnt[d.np] = ps.nt;
-					d.np++;
-					if (toks[p].t == T_OP && toks[p].op == ',') p++;
+					if (toks[p].t == T_NL || (toks[p].t == T_OP && toks[p].op == ':')) continue;
+					if (toks[p].t == T_ID && bseq (toks[p].id, "END")) break;
+					bool fn = toks[p].t == T_ID && bseq (toks[p].id, "FUNCTION");
+					if (!fn && !(toks[p].t == T_ID && bseq (toks[p].id, "SUB"))) { pos = p; fail ("INTERFACE: SUB / FUNCTION declarations are expected"); return; }
+					procHeader (p + 1, fn, false, PM_IFACE, it, n++);
+					while (toks[p + 1].t != T_NL && toks[p + 1].t != T_EOF && !(toks[p + 1].t == T_OP && toks[p + 1].op == ':')) p++;
 				}
+				i = p + 1;
+				continue;
 			}
-			if (d.isFunc && toks[p].t == T_OP && toks[p].op == ')') p++;
-			if (isFn && toks[p].t == T_ID && bseq (toks[p].id, "AS") && toks[p + 1].t == T_ID)
-			{
-				TSpec ts; if (typeName (toks[p + 1].id, ts)) { d.retTy = ts.ty; d.retNt = ts.nt; }
-			}
-			pdecls.push (d);
-			ProcInfo pi; bscpy (pi.name, d.name, 48); pi.isFunc = d.isFunc; pi.retTy = d.retTy; pi.nparams = d.np; pi.entry = -1; pi.nlocals = 0;
-			P->procs.push (pi);
+			int mod = procModifier (i), j = mod ? i + 1 : i;
+			bool isSub = bseq (toks[j].id, "SUB"), isFn = bseq (toks[j].id, "FUNCTION");
+			bool isDef = !mod && bseq (toks[i].id, "DEF") && toks[i + 1].t == T_ID && toks[i + 1].id[0] == 'F' && toks[i + 1].id[1] == 'N';
+			if (!isSub && !isFn && !isDef) continue;
+			procHeader (j + 1, isFn, isDef, mod, -1, -1);
 		}
 		resetDeftypes ();			// the main pass re-applies them in order
 	}
@@ -596,12 +812,25 @@ public:
 	int eRel ()
 	{
 		int t = eAdd ();
+		if (!failed && isObj (t) && isKw ("IS"))		// x IS Class / x IS NOTHING / a IS b (the same object)
+		{
+			next ();
+			int ty = cur ().t == T_ID ? findType (cur ().id) : -1;
+			if (ty >= 0 && P->types[ty].kind != TK_TYPE && !varExists (cur ().id, false)) { next (); emit2 (OP_ISTYPE, ty); }
+			else
+			{
+				if (!isObj (eAdd ())) { fail ("IS: a class, NOTHING or an object is expected"); return TY_NUM; }
+				emit (OP_SAMEOBJ);
+			}
+			t = TY_NUM;
+		}
 		for (;;)
 		{
 			int op = relop ();
 			if (!op || failed) break;
 			next ();
 			int t2 = eAdd ();
+			if (isObj (t) || isObj (t2)) { fail ("Objects are compared with IS"); return TY_NUM; }
 			if (t != t2) { fail ("Type mismatch in comparison"); return TY_NUM; }
 			int o = 0;
 			switch (op)
@@ -704,7 +933,7 @@ public:
 			if (curProc == pi && !peekIsOp ('('))
 			{ next (); emit2 (OP_LDL, 0); return pdecls[pi].retTy; }
 			next ();
-			return callProc (pi, true);
+			return postfix (callProc (pi, true));
 		}
 		if (pi >= 0) { fail2 ("A SUB has no value: ", name); return TY_NUM; }
 		int ci = findConst (name);
@@ -715,6 +944,15 @@ public:
 			return consts[ci].ty;
 		}
 		if (bseq (name, "NEW") && peek ().t == T_ID && findType (peek ().id) >= 0) return newObject ();
+		if (bseq (name, "NOTHING") && !varExists (name, false)) { next (); emit (OP_NIL); return TY_NIL; }
+		if (isBaseCall ())					// BASE.Method (args): the parent's
+		{
+			int bm = baseMethod ();
+			if (bm < 0) return TY_NUM;
+			if (!pdecls[bm].isFunc) { fail2 ("A SUB has no value: ", pdecls[bm].name); return TY_NUM; }
+			if (pdecls[bm].retTy == TY_NUM && pdecls[bm].retNt == NT_DBL) dblSeen = true;
+			return postfix (callMethod (bm, true, true));
+		}
 		if (isKeyword (name)) { fail2 ("Syntax error near ", name); return TY_NUM; }
 		Ref r;
 		if (!parseRef (r)) return TY_NUM;
@@ -722,11 +960,39 @@ public:
 		{
 			if (!pdecls[r.method].isFunc) { fail2 ("A SUB has no value: ", pdecls[r.method].name); return TY_NUM; }
 			if (pdecls[r.method].retTy == TY_NUM && pdecls[r.method].retNt == NT_DBL) dblSeen = true;
-			emitAddr (r);
-			return callMethod (r.method, true);
+			emitThis (r);
+			return postfix (callMethod (r.method, true));
 		}
 		emitLoad (r);
 		return r.ty;
+	}
+	// After a call that left a record / an object: ".field", ".Method (args)" on it (Make ().Name$).
+	int postfix (int t)
+	{
+		while (!failed && t >= TY_REC && isOp ('.') && peek ().t == T_ID)
+		{
+			next ();
+			char id[48]; bscpy (id, cur ().id, 48); next ();
+			const char *c = id;
+			while (*c && !failed)
+			{
+				char part[48]; int n = 0;
+				while (*c && *c != '.') part[n++] = *c++;
+				part[n] = 0;
+				if (*c == '.') c++;
+				if (t < TY_REC) { fail2 ("Not a record: .", part); return TY_NUM; }
+				int f = findField (t - TY_REC, part);
+				if (f >= 0) { emit2 (OP_FLD, f - P->types[t - TY_REC].first); t = fnames[f].ty; if (t == TY_NUM && fnames[f].nt == NT_DBL) dblSeen = true; continue; }
+				int m = findMethod (t, part);
+				if (m < 0) { fail2 ("No such field or method: ", part); return TY_NUM; }
+				if (!tkind (t)) { fail2 ("A TYPE's method needs a variable: ", part); return TY_NUM; }
+				if (*c) { fail2 ("A method call ends the name: ", part); return TY_NUM; }
+				if (!pdecls[m].isFunc) { fail2 ("A SUB has no value: ", pdecls[m].name); return TY_NUM; }
+				if (pdecls[m].retTy == TY_NUM && pdecls[m].retNt == NT_DBL) dblSeen = true;
+				t = callMethod (m, true);
+			}
+		}
+		return t;
 	}
 
 	// ---- variable references: name [(indices)] [.field ...] --------------------------------------
@@ -840,6 +1106,56 @@ public:
 		else emit2 (r.global ? OP_REFG : OP_REFL, r.slot);
 		for (int i = 0; i < r.nfld; i++) emit2 (OP_FADDR, r.fld[i]);
 	}
+	// THIS for a method call on r: a TYPE's record by reference, an object (a class, an interface) itself.
+	void emitThis (const Ref &r) { if (tkind (r.ty)) emitLoad (r); else emitAddr (r); }
+	// "BASE.Name" in a class's method: the parent's method, called on THIS without looking at the object's class.
+	bool isBaseCall ()
+	{
+		if (cur ().t != T_ID || curProc < 0 || pdecls[curProc].cls < 0 || P->types[pdecls[curProc].cls].kind != TK_CLASS) return false;
+		const char *id = cur ().id;
+		return id[0] == 'B' && id[1] == 'A' && id[2] == 'S' && id[3] == 'E' && id[4] == '.' && id[5];
+	}
+	// At "BASE.Name": the method (the name consumed, THIS pushed), or -1.
+	int baseMethod ()
+	{
+		int parent = P->types[pdecls[curProc].cls].parent;
+		if (parent < 0) { fail2 ("BASE: this class has no parent: ", P->types[pdecls[curProc].cls].name); return -1; }
+		int m = findMethod (TY_REC + parent, cur ().id + 5);
+		if (m < 0) { fail2 ("No such method in the parent class: ", cur ().id + 5); return -1; }
+		if (pdecls[m].mod & PM_ABSTRACT) { fail2 ("BASE: the parent's method is abstract: ", pdecls[m].name); return -1; }
+		next ();
+		emit2 (OP_LDL, pdecls[curProc].isFunc ? 1 : 0);
+		return m;
+	}
+	// At '(' : is the whole rest of the statement in these parentheses ("Name (a, b)" = "CALL Name (a, b)")?
+	bool restInParens ()
+	{
+		if (!isOp ('(')) return false;
+		int depth = 0, p = pos;
+		for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+		{
+			if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+			else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+		}
+		Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+		return depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+	}
+	// A value of type `from` for a variable / parameter / result of type `to`: the same type, or an object
+	// of a class for its parent's or its interface's type; towards a child class or from / to an interface
+	// it is checked when the program runs (OP_CAST).
+	bool conv (int from, int to, const char *what)
+	{
+		if (from == to && from != TY_NIL) return true;
+		if (from == TY_NIL && tkind (to)) return true;
+		if (tkind (from) && tkind (to))
+		{
+			int a = from - TY_REC, b = to - TY_REC;
+			if (P->isA (a, b)) return true;
+			if (P->types[a].kind == TK_IFACE || P->types[b].kind == TK_IFACE || P->isA (b, a)) { emit2 (OP_CAST, b); return true; }
+		}
+		fail (what);
+		return false;
+	}
 	// A reference (address) of an lvalue, for MID$ / LSET / RSET / GET / PUT / FIELD.
 	bool refAddr (Ref &r) { if (!parseRef (r)) return false; if (r.method >= 0) { fail ("A variable is expected"); return false; } emitAddr (r); return true; }
 
@@ -927,6 +1243,8 @@ public:
 	{
 		next ();
 		int t = findType (cur ().id); next ();
+		bool cls = P->types[t].kind != TK_TYPE;
+		if (!checkCreate (t)) return TY_NUM;
 		TSpec ts; ts.ty = TY_REC + t; ts.nt = NT_SNG; ts.flen = 0;
 		char nm[24] = "~N"; int n = 2, v = ++tmpN; char dg[12]; int k = 0;
 		while (v) { dg[k++] = (char) ('0' + v % 10); v /= 10; }
@@ -938,15 +1256,25 @@ public:
 		int ci = findMethod (TY_REC + t, "NEW");
 		if (ci >= 0 && (isOp ('(') || pdecls[ci].np == 1))
 		{
-			emit2 (tmp.global ? OP_REFG : OP_REFL, tmp.slot);
-			callMethod (ci, true);
+			if (cls) loadVar (tmp); else emit2 (tmp.global ? OP_REFG : OP_REFL, tmp.slot);
+			callMethod (ci, true, true);
 		}
+		else if (cls && isOp ('(') && peekIsOp (')')) { next (); next (); }
 		else if (isOp ('(')) { fail2 ("No constructor (SUB Type.new) for ", P->types[t].name); return TY_NUM; }
 		loadVar (tmp);
+		if (cls) { emit (OP_NIL); storeVar (tmp); }		// (the temporary must not keep the object alive)
 		return TY_REC + t;
 	}
+	// NEW t / DIM v AS t (args): not an interface, not a class with an abstract method left.
+	bool checkCreate (int t)
+	{
+		if (P->types[t].kind == TK_IFACE) { fail2 ("An interface cannot be created: ", P->types[t].name); return false; }
+		if (cinfo[t].abstr) { fail2 ("A class with an ABSTRACT method cannot be created: ", P->types[t].name); return false; }
+		return true;
+	}
 	// Call a method: THIS (the object's reference) is already pushed; then the arguments.
-	int callMethod (int pi, bool parens)
+	// direct: the method named, whatever the object's class (BASE.Name, a constructor).
+	int callMethod (int pi, bool parens, bool direct = false)
 	{
 		const PDecl &d = pdecls[pi];
 		int argc = 1;
@@ -962,7 +1290,9 @@ public:
 			}
 		if (open) expectOp (')');
 		if (argc != d.np) { fail2 ("Wrong number of arguments to ", d.name); return d.retTy; }
-		emit3 (OP_CALL, pi, argc);
+		if (!direct && (d.mod & PM_IFACE)) { emit (OP_ICALL); emit3 (d.cls, d.islot, argc); }
+		else if (!direct && d.vslot >= 0) emit3 (OP_VCALL, d.vslot, argc);
+		else emit3 (OP_CALL, pi, argc);
 		return d.retTy;
 	}
 	// A method call as a statement: obj.Name args / obj.Name (args) / a(i).Name ... True if it was one.
@@ -986,7 +1316,7 @@ public:
 		Ref r;
 		if (parseRef (r) && r.method >= 0)
 		{
-			emitAddr (r);
+			emitThis (r);
 			if (isOp ('='))					// "obj.Name = v": the property's setter
 			{
 				const char *dot = last_dot (pdecls[r.method].name);
@@ -1054,7 +1384,9 @@ public:
 		}
 		// A variable, array element or record field of the same type -> by reference
 		// (QBasic's rule; a DEF FN takes its arguments by value).
-		if (!d.defFn && k.t == T_ID && !findBuiltin (k.id) && findProc (k.id) < 0 && findConst (k.id) < 0 && !isKeyword (k.id))
+		// (an object: its reference by value -- assigning the parameter leaves the caller's variable)
+		if (!d.defFn && !tkind (d.pty[i]) && k.t == T_ID && !findBuiltin (k.id) && findProc (k.id) < 0 && findConst (k.id) < 0 && !isKeyword (k.id)
+		    && !(bseq (k.id, "NOTHING") && !varExists (k.id, false)) && !isBaseCall ())
 		{
 			int at = pc (), savePos = pos; bool dSave = dblSeen;
 			Ref r;
@@ -1067,8 +1399,8 @@ public:
 			P->code.n = at; pos = savePos; dblSeen = dSave;
 		}
 		int t = expr ();
-		if (t != d.pty[i]) { fail ("Type mismatch (argument)"); return; }
-		convFor (t, d.pnt[i], 0);
+		if (failed || !conv (t, d.pty[i], "Type mismatch (argument)")) return;
+		convFor (d.pty[i], d.pnt[i], 0);
 	}
 
 	// ---- constant expressions (CONST) ------------------------------------------------------------
@@ -1200,6 +1532,18 @@ public:
 		return false;
 	}
 
+	// "obj.Name" where obj is a record / an object variable: a method call ("obj.Draw: ..."), not a label.
+	bool recordDotted (const char *id)
+	{
+		for (int i = 1; id[i]; i++)
+			if (id[i] == '.')
+			{
+				char base[48]; bscpy (base, id, i + 1);
+				Var v;
+				return (findVar (base, false, v) && v.ty >= TY_REC) || isBaseCall ();
+			}
+		return false;
+	}
 	// Statements until a terminator in mask (left current) or EOF.
 	void block (int mask)
 	{
@@ -1212,7 +1556,7 @@ public:
 			if (lineStart)				// labels: "10 PRINT", "loop1:"
 			{
 				if (cur ().t == T_NUM) { char nm[32]; formatNum (cur ().num, nm); defineLabel (nm); next (); continue; }
-				if (cur ().t == T_ID && peekIsOp (':') && !isKeyword (cur ().id) && findProc (cur ().id) < 0 && !findBuiltin (cur ().id))
+				if (cur ().t == T_ID && peekIsOp (':') && !isKeyword (cur ().id) && findProc (cur ().id) < 0 && !findBuiltin (cur ().id) && !recordDotted (cur ().id))
 				{ defineLabel (cur ().id); next (); next (); continue; }
 			}
 			if (atTerm (mask)) return;
@@ -1266,7 +1610,13 @@ public:
 		if (bseq (w, "COMMON")) { next (); stCommon (); return; }
 		if (bseq (w, "ERASE")) { next (); stErase (); return; }
 		if (bseq (w, "CONST")) { next (); stConst (); return; }
-		if (bseq (w, "TYPE")) { stType (); return; }
+		if (bseq (w, "TYPE")) { stType ("TYPE"); return; }
+		if (classHeader (pos)) { stType (bseq (w, "CLASS") ? "CLASS" : "INTERFACE"); return; }
+		{
+			int mod = procModifier (pos);
+			if (mod == PM_ABSTRACT) { while (!(cur ().t == T_NL || cur ().t == T_EOF)) next (); return; }	// (no body)
+			if (mod) { next (); stProc (); return; }
+		}
 		if (bseq (w, "INPUT")) { next (); stInput (); return; }
 		if (bseq (w, "LINE") && peekKw (1, "INPUT")) { next (); next (); stLineInput (); return; }
 		if (bseq (w, "LINE")) { next (); stLine (); return; }
@@ -1371,6 +1721,14 @@ public:
 			return;
 		}
 		if (pi >= 0 && pdecls[pi].isFunc && curProc != pi) { fail2 ("A FUNCTION's value must be used: ", w); return; }
+		if (isBaseCall ())					// BASE.Name args: the parent's method
+		{
+			int bm = baseMethod ();
+			if (bm < 0) return;
+			callMethod (bm, restInParens (), true);
+			if (pdecls[bm].isFunc) emit (OP_POP);
+			return;
+		}
 		if (methodStatement ()) return;
 		stAssign ();
 	}
@@ -1400,7 +1758,7 @@ public:
 		if (curProc < 0 || !pdecls[curProc].isFunc) { fail ("RETURN with a value outside a FUNCTION"); return; }
 		const PDecl &d = pdecls[curProc];
 		int t = expr ();
-		if (t != d.retTy) { fail ("Type mismatch (RETURN)"); return; }
+		if (failed || !conv (t, d.retTy, "Type mismatch (RETURN)")) return;
 		convFor (d.retTy, d.retNt, 0);
 		emit2 (OP_STL, 0);
 		emit (OP_RETF);
@@ -1412,11 +1770,11 @@ public:
 		labelRef (OP_RESUME, true, 2);
 	}
 	// TYPE ... END TYPE: collected by prescanTypes; skipped here.
-	void stType ()
+	void stType (const char *word)
 	{
 		while (!failed && cur ().t != T_EOF)
 		{
-			if (isKw ("END") && peekKw (1, "TYPE")) { next (); next (); return; }
+			if (isKw ("END") && peekKw (1, word)) { next (); next (); return; }
 			next ();
 		}
 	}
@@ -1496,7 +1854,7 @@ public:
 		if (!lvalue (lv)) return;
 		if (!acceptOp ('=')) { fail ("Syntax error (= expected)"); return; }
 		int t = expr ();
-		if (t != lv.ty) { fail ("Type mismatch in assignment"); return; }
+		if (failed || !conv (t, lv.ty, "Type mismatch in assignment")) return;
 		storeLV (lv);
 	}
 
@@ -1917,10 +2275,16 @@ public:
 				if (!failed && has && ts.ty >= TY_REC && isOp ('('))	// DIM v AS Type (args): SUB Type.new
 				{
 					int ci = findMethod (ts.ty, "NEW");
-					if (ci < 0) { fail2 ("No constructor (SUB Type.new) for ", P->types[ts.ty - TY_REC].name); return; }
+					bool cls = tkind (ts.ty) != TK_TYPE;
+					if (!checkCreate (ts.ty - TY_REC)) return;
+					if (ci < 0 && !(cls && peekIsOp (')'))) { fail2 ("No constructor (SUB Type.new) for ", P->types[ts.ty - TY_REC].name); return; }
 					emit2 (OP_NEWREC, ts.ty - TY_REC); storeVar (v);	// (a fresh object each time)
-					emit2 (v.global ? OP_REFG : OP_REFL, v.slot);
-					callMethod (ci, true);
+					if (ci < 0) { next (); next (); }
+					else
+					{
+						if (cls) loadVar (v); else emit2 (v.global ? OP_REFG : OP_REFL, v.slot);
+						callMethod (ci, true, true);
+					}
 				}
 			}
 			if (failed || !acceptOp (',')) break;
@@ -2113,6 +2477,7 @@ public:
 			{
 				Ref r; if (!refAddr (r)) return;
 				emit (get ? OP_FGET : OP_FPUT); emit (1);
+				if (tkind (r.ty)) { fail ("GET / PUT: not for an object (a CLASS)"); return; }
 				int kind = r.ty >= TY_REC ? LK_REC : r.ty == TY_STR ? (r.flen > 0 ? LK_FSTR : LK_VSTR)
 					 : r.nt == NT_INT ? LK_INT : r.nt == NT_LNG ? LK_LNG : r.nt == NT_DBL ? LK_DBL : LK_SNG;
 				emit (kind); emit (r.ty >= TY_REC ? r.ty - TY_REC : r.flen);
@@ -2327,7 +2692,8 @@ public:
 		{
 			int at = pc (), savePos = pos;
 			Ref r;
-			if (parseRef (r) && r.method >= 0) { emitAddr (r); callMethod (r.method, true); if (pdecls[r.method].isFunc) emit (OP_POP); return; }
+			if (isBaseCall ()) { int bm = baseMethod (); if (bm >= 0) { callMethod (bm, true, true); if (pdecls[bm].isFunc) emit (OP_POP); } return; }
+			if (parseRef (r) && r.method >= 0) { emitThis (r); callMethod (r.method, true); if (pdecls[r.method].isFunc) emit (OP_POP); return; }
 			failed = false; P->code.n = at; pos = savePos;
 			fail2 ("SUB not defined: ", cur ().id); return;
 		}
@@ -2371,6 +2737,23 @@ public:
 		curProc = -1;
 		patch (jover, pc ());
 	}
+	// SUB Child.new without a BASE.new call: the parent's constructor is called first when it has no
+	// parameters; with parameters, BASE.new (args) must be written.
+	void baseConstructor (int pi)
+	{
+		const PDecl &d = pdecls[pi];
+		if (d.cls < 0 || P->types[d.cls].kind != TK_CLASS || P->types[d.cls].parent < 0 || !bseq (afterDot (d.name), "NEW")) return;
+		int bp = findMethod (TY_REC + P->types[d.cls].parent, "NEW");
+		if (bp < 0) return;
+		for (int p = pos; toks[p].t != T_EOF; p++)
+		{
+			if (toks[p].t != T_ID) continue;
+			if (bseq (toks[p].id, "BASE.NEW")) return;
+			if (bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, "SUB")) break;
+		}
+		if (pdecls[bp].np != 1) { fail2 ("The constructor must call BASE.new (the parent's has parameters): ", d.name); return; }
+		emit2 (OP_LDL, 0); emit3 (OP_CALL, bp, 1);
+	}
 	// SUB / FUNCTION definition (at the module level).
 	void stProc ()
 	{
@@ -2383,6 +2766,7 @@ public:
 		while (!(cur ().t == T_NL || cur ().t == T_EOF)) next ();	// the header (parsed by prescan)
 		int jover;
 		beginProc (pi, jover);
+		baseConstructor (pi);
 		block (isFn ? TM_ENDFUNC : TM_ENDSUB);
 		if (failed) return;
 		if (!(isKw ("END") && (peekKw (1, "SUB") || peekKw (1, "FUNCTION")))) { fail (isFn ? "FUNCTION without END FUNCTION" : "SUB without END SUB", l0); return; }
@@ -2469,6 +2853,7 @@ public:
 		if (!failed) rewriteProperties ();
 		if (!failed) prescanTypes ();
 		if (!failed) prescan ();
+		if (!failed) buildClasses ();
 		pos = 0;
 		if (!failed) block (0);
 		if (!failed && cur ().t != T_EOF) fail ("Syntax error");
@@ -2479,7 +2864,7 @@ public:
 			for (int i = 0; i < gsyms.n; i++) { P->gkind[gsyms[i].slot] = slotKind (gsyms[i]); P->gext[gsyms[i].slot] = slotExt (gsyms[i]); }
 		}
 		for (int i = 0; i < P->procs.n && !failed; i++)
-			if (P->procs[i].entry < 0) { fail2 ("SUB / FUNCTION without a body: ", P->procs[i].name); }
+			if (P->procs[i].entry < 0 && !(pdecls[i].mod & (PM_ABSTRACT | PM_IFACE))) { fail2 ("SUB / FUNCTION without a body: ", P->procs[i].name); }
 		if (failed) { delete P; return 0; }
 		return P;
 	}
@@ -2502,6 +2887,9 @@ int bas::wordList (char *buf, int cap)
 	int n = 0;
 	auto add = [&] (const char *w) { if (n && n < cap - 1) buf[n++] = ' '; for (; *w && n < cap - 1; w++) buf[n++] = *w; };
 	for (int i = 0; KEYWORDS[i]; i++) add (KEYWORDS[i]);
+	// (the words of the classes: not reserved, known by their place)
+	static const char *const CLASSWORDS[] = { "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING", 0 };
+	for (int i = 0; CLASSWORDS[i]; i++) add (CLASSWORDS[i]);
 	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
 	if (cap > 0) buf[n] = 0;
 	return n;

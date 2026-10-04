@@ -144,7 +144,10 @@ namespace OnyxBasic
 		}
 
 		// ---- modules: split / compose (the same as Onyx's qbasic) ------------------------------------------------
-		static readonly Regex Header = new Regex (@"^\s*(SUB|FUNCTION)\s+([A-Za-z][A-Za-z0-9_.]*[$%&!#]?)", RegexOptions.IgnoreCase);
+		static readonly Regex Header = new Regex (@"^\s*(?:(?:VIRTUAL|OVERRIDE)\s+)?(SUB|FUNCTION)\s+([A-Za-z][A-Za-z0-9_.]*[$%&!#]?)", RegexOptions.IgnoreCase);
+		// (INTERFACE ... END INTERFACE: its SUB / FUNCTION lines are declarations, they stay in the main module)
+		static readonly Regex IfaceOpen = new Regex (@"^\s*INTERFACE\s+[A-Za-z]", RegexOptions.IgnoreCase);
+		static readonly Regex IfaceEnd = new Regex (@"^\s*END\s+INTERFACE\b", RegexOptions.IgnoreCase);
 		static readonly Regex EndOf = new Regex (@"^\s*END\s+(SUB|FUNCTION)\b", RegexOptions.IgnoreCase);
 
 		void Split (string src)
@@ -152,10 +155,13 @@ namespace OnyxBasic
 			mods.Clear ();
 			var main = new StringBuilder ();
 			var lines = src.Replace ("\r\n", "\n").Replace ('\r', '\n').Split ('\n');
+			bool iface = false;
 			for (int i = 0; i < lines.Length; i++)
 			{
+				if (IfaceOpen.IsMatch (lines[i])) iface = true;
+				else if (IfaceEnd.IsMatch (lines[i])) iface = false;
 				var h = Header.Match (lines[i]);
-				if (h.Success)
+				if (h.Success && !iface)
 				{
 					int kind = h.Groups[1].Value.ToUpperInvariant () == "SUB" ? 1 : 2;
 					var b = new StringBuilder (lines[i]);

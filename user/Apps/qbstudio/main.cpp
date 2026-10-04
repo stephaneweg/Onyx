@@ -578,7 +578,8 @@ static void refresh_outline ()
 	for (const char *p = t; *p; )
 	{
 		const char *q = p; while (*q == ' ' || *q == '\t') q++;
-		if (!strncasecmp (q, "SUB ", 4) || !strncasecmp (q, "FUNCTION ", 9) || !strncasecmp (q, "PROPERTY ", 9) || !strncasecmp (q, "TYPE ", 5))
+		if (!strncasecmp (q, "SUB ", 4) || !strncasecmp (q, "FUNCTION ", 9) || !strncasecmp (q, "PROPERTY ", 9) || !strncasecmp (q, "TYPE ", 5)
+		    || !strncasecmp (q, "CLASS ", 6) || !strncasecmp (q, "INTERFACE ", 10) || !strncasecmp (q, "VIRTUAL ", 8) || !strncasecmp (q, "OVERRIDE ", 9) || !strncasecmp (q, "ABSTRACT ", 9))
 		{
 			char s[64]; int k = 0; while (q[k] && q[k] != '\n' && q[k] != '(' && k < 60) { s[k] = q[k]; k++; }
 			s[k] = 0; g_outline->add (s); g_outLines.push (ln);

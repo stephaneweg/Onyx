@@ -31,6 +31,22 @@ VALUES
     RETURN this.x + a). Call: p.Test 3, y = p.F (2), t(i).Test 1, CALL p.Test (3).
   Constructor: SUB Point.new (params): DIM p AS Point (1, 2) calls it; DIM p AS Point
     (no parentheses) does not; p = NEW Point (1, 2) makes a new one.
+  Classes (Onyx): a TYPE is a value (a = b copies); a CLASS is a reference (a = b: the
+    same object; NOTHING = no object).
+      CLASS Ball EXTENDS Sprite IMPLEMENTS Drawable / r AS SINGLE / END CLASS
+      INTERFACE Drawable / SUB Draw () / FUNCTION Area () AS SINGLE / END INTERFACE
+    Methods outside, like a TYPE's: SUB Ball.Draw () ... END SUB. Before SUB / FUNCTION:
+      VIRTUAL (a child may redefine it), OVERRIDE (redefines the parent's virtual
+      method), ABSTRACT (no body, one line: children must define it; no NEW of the class).
+    BASE.Name args: the parent's method; BASE.new args: the parent's constructor (called
+      by itself first when it has no parameters). SUB Ball.delete (): the destructor,
+      when the last reference to the object goes.
+    s = NEW Ball (1, 2, 3); DIM s AS Ball (1, 2, 3); a parent's or an interface's variable
+      holds any child: DIM s AS Sprite: s = NEW Ball (...): s.Draw calls Ball's.
+    x IS Ball, x IS Drawable, x IS NOTHING, a IS b (the same object). ball = sprite is
+      checked when it runs (Type mismatch). Using NOTHING: "Object is NOTHING" (ERR 91).
+    Objects in arrays, fields (nxt AS Node), parameters, FUNCTION results. Example:
+      SD:/basic/examples/classes.bas.
   Properties (Onyx): PROPERTY Point.Name AS STRING ... RETURN v ... END PROPERTY (the getter)
     and PROPERTY Point.Name (v AS STRING) ... END PROPERTY (the setter): then
     p.Name = "x" calls the setter, a$ = p.Name the getter (EXIT PROPERTY leaves one).

@@ -22,12 +22,12 @@
 
 namespace bas {
 
-enum { VN = 0, VS, VA, VR, VT };
+enum { VN = 0, VS, VA, VR, VT, VO };		// (VT: a TYPE's record, a value; VO: an object, a reference -- p = 0: NOTHING)
 
 struct Str { int ref; int len; char d[1]; };
 struct V { int t; double n; void *p; };
 struct Arr { int ref; int nd; int lo[4]; int cnt[4]; int total; int ek; int ext; V *e; };	// ek 0 num, 1 str, 2 record
-struct Rec { int ref; int type; int nf; V f[1]; };
+struct Rec { int ref; int type; int nf; int fl; V f[1]; };	// fl: the destructors already run (rrel)
 
 static Str *snew (const char *s, int len)
 {
@@ -50,7 +50,7 @@ static inline void vclear (V &v)
 {
 	if (v.t == VS) srel ((Str *) v.p);
 	else if (v.t == VA) arel ((Arr *) v.p);
-	else if (v.t == VT) rrel ((Rec *) v.p);
+	else if (v.t == VT || v.t == VO) rrel ((Rec *) v.p);
 	v.t = VN; v.n = 0; v.p = 0;
 }
 static void arel (Arr *a)
@@ -59,9 +59,20 @@ static void arel (Arr *a)
 	for (int i = 0; i < a->total; i++) vclear (a->e[i]);
 	delete [] a->e; delete a;
 }
+// An object whose last reference goes: its destructors (SUB Class.delete, the class's then its
+// ancestors') are run by the VM's loop before it is freed -- it waits in dtorQ, kept by one reference;
+// fl = the class whose destructor was queued + 1.
+static const Program *dtorProg;
+static Vec<Rec *> dtorQ;
 static void rrel (Rec *r)
 {
 	if (!r || --r->ref > 0) return;
+	if (dtorProg && r->type < dtorProg->types.n)
+	{
+		int t = r->fl ? dtorProg->types[r->fl - 1].parent : r->type;
+		while (t >= 0 && dtorProg->types[t].dtor < 0) t = dtorProg->types[t].parent;
+		if (t >= 0) { r->fl = t + 1; r->ref = 1; dtorQ.push (r); return; }
+	}
 	for (int i = 0; i < r->nf; i++) vclear (r->f[i]);
 	delete [] (char *) r;
 }
@@ -69,7 +80,7 @@ static inline void vretain (const V &v)
 {
 	if (v.t == VS && v.p) ((Str *) v.p)->ref++;
 	else if (v.t == VA) ((Arr *) v.p)->ref++;
-	else if (v.t == VT) ((Rec *) v.p)->ref++;
+	else if ((v.t == VT || v.t == VO) && v.p) ((Rec *) v.p)->ref++;
 }
 static inline const char *sdata (const V &v, int *len)
 {
@@ -79,7 +90,7 @@ static inline const char *sdata (const V &v, int *len)
 static Rec *recAlloc (int type, int nf)
 {
 	Rec *r = (Rec *) new char[sizeof (Rec) + (nf > 1 ? nf - 1 : 0) * sizeof (V)];
-	r->ref = 1; r->type = type; r->nf = nf;
+	r->ref = 1; r->type = type; r->nf = nf; r->fl = 0;
 	for (int i = 0; i < nf; i++) { r->f[i].t = VN; r->f[i].n = 0; r->f[i].p = 0; }
 	return r;
 }
@@ -139,7 +150,7 @@ static int errCodeOf (const char *msg)
 		{ "File already open", 55 }, { "Input past end of file", 62 }, { "Too many files", 67 }, { "Path/File access error", 75 },
 		{ "Cannot write the file", 75 }, { "Path not found", 76 }, { "FIELD overflow", 50 }, { "Bad record number", 63 },
 		{ "Bad record length", 59 }, { "RESUME without error", 20 }, { "Duplicate definition", 10 },
-		{ "The audio output", 5 }, { "No such app", 53 }, { "Cannot run", 53 }, { 0, 0 } };
+		{ "Object is NOTHING", 91 }, { "The audio output", 5 }, { "No such app", 53 }, { "Cannot run", 53 }, { 0, 0 } };
 	for (int i = 0; M[i].pre; i++) if (startsWith (msg, M[i].pre)) return M[i].code;
 	return 51;
 }
@@ -240,7 +251,7 @@ public:
 			V &v = r->f[i];
 			if (f.kind == FK_VSTR) v.t = VS;
 			else if (f.kind == FK_FSTR) { v.t = VS; v.p = sfill (f.len, ' '); }
-			else if (f.kind == FK_REC) { v.t = VT; v.p = newRec (f.sub); }
+			else if (f.kind == FK_REC) { if (P->types[f.sub].kind) v.t = VO; else { v.t = VT; v.p = newRec (f.sub); } }
 		}
 		return r;
 	}
@@ -248,7 +259,7 @@ public:
 	{
 		v.t = VN; v.n = 0; v.p = 0;
 		if (kind == K_STR) { v.t = VS; if (ext > 0) v.p = sfill (ext, ' '); }
-		else if (kind == K_REC) { v.t = VT; v.p = newRec (ext); }
+		else if (kind == K_REC) { if (P->types[ext].kind) v.t = VO; else { v.t = VT; v.p = newRec (ext); } }
 	}
 
 	// ---- errors --------------------------------------------------------------------------------
@@ -343,7 +354,7 @@ public:
 		{
 			V &v = a->e[i]; v.t = VN; v.n = 0; v.p = 0;
 			if (ek == 1) { v.t = VS; if (ext > 0) v.p = sfill (ext, ' '); }
-			else if (ek == 2) { v.t = VT; v.p = newRec (ext); }
+			else if (ek == 2) { if (P->types[ext].kind) v.t = VO; else { v.t = VT; v.p = newRec (ext); } }
 		}
 		return a;
 	}
@@ -373,7 +384,33 @@ public:
 		}
 		return &a->e[off];
 	}
-	void store (V &d, V v) { own (v); vclear (d); d = v; }
+	void store (V &d, V v) { own (v); V old = d; d = v; vclear (old); }
+	// The object a value (or the variable a reference designates) holds, or 0.
+	static Rec *objectOf (const V &v)
+	{
+		const V *x = &v;
+		if (x->t == VR) x = (const V *) x->p;
+		return x->t == VO ? (Rec *) x->p : 0;
+	}
+	// Enter SUB / FUNCTION pi: its argc arguments are on the stack.
+	void enter (int pi, int argc)
+	{
+		const ProcInfo &pr = P->procs[pi];
+		if (nf >= MAXFRAMES) { fail ("Out of stack space (too deep recursion)"); return; }
+		Frame &f = frames[nf];
+		f.ret = pc; f.proc = pi; f.nloc = pr.nlocals > 0 ? pr.nlocals : 1;
+		f.loc = new V[f.nloc];
+		for (int i = 0; i < f.nloc; i++)
+		{
+			f.loc[i].t = VN; f.loc[i].n = 0; f.loc[i].p = 0;
+			if (i < pr.nlocals) initSlot (f.loc[i], P->lkind[pr.kindOff + i], P->lext[pr.kindOff + i]);
+		}
+		int first = pr.isFunc ? 1 : 0;
+		for (int i = argc - 1; i >= 0; i--) { V v = pop (); own (v); vclear (f.loc[first + i]); f.loc[first + i] = v; }
+		f.sp0 = sp;
+		nf++;
+		pc = pr.entry;
+	}
 
 	void popFrame ()
 	{
@@ -1860,6 +1897,7 @@ public:
 	{
 		const int *code = P->code.d;
 		unsigned count = 0;
+		dtorProg = P; dtorQ.n = 0;
 		while (!ended)
 		{
 			if (failed) { if (!trap ()) break; continue; }
@@ -1870,6 +1908,15 @@ public:
 			{
 				int l = P->lineAt (pc);
 				if (l != traceLine) { traceLine = l; char b[16]; int n = 0; b[n++] = '['; n += formatNum (l, b + n); b[n++] = ']'; H.out (b, n); }
+			}
+			if (dtorQ.n)					// an object's last reference went: SUB Class.delete (THIS)
+			{
+				Rec *r = dtorQ[--dtorQ.n];
+				V v; v.t = VO; v.n = 0; v.p = r;
+				opPc = pc;
+				push (v);
+				if (!failed) enter (P->types[r->fl - 1].dtor, 1);
+				continue;
 			}
 			opPc = pc;
 			int op = code[pc++];
@@ -1925,7 +1972,8 @@ public:
 			{
 				int i = code[pc++];
 				V *r = popRef (); if (!r) break;
-				if (r->t != VT) { fail ("Type mismatch (not a record)"); break; }
+				if (r->t == VO) { if (!r->p) { fail ("Object is NOTHING"); break; } }
+				else if (r->t != VT) { fail ("Type mismatch (not a record)"); break; }
 				own (*r);
 				pushRef (&((Rec *) r->p)->f[i]);
 				break;
@@ -1934,7 +1982,8 @@ public:
 			{
 				int i = code[pc++];
 				V rv = pop ();
-				if (rv.t != VT) { vclear (rv); fail ("Type mismatch (not a record)"); break; }
+				if (rv.t == VO && !rv.p) { fail ("Object is NOTHING"); break; }
+				if (rv.t != VT && rv.t != VO) { vclear (rv); fail ("Type mismatch (not a record)"); break; }
 				V f = ((Rec *) rv.p)->f[i]; vretain (f);
 				vclear (rv); push (f);
 				break;
@@ -2042,24 +2091,46 @@ public:
 			case OP_JMP: pc = code[pc]; break;
 			case OP_JZ:  { int t = code[pc++]; if (popN () == 0) pc = t; break; }
 			case OP_JNZ: { int t = code[pc++]; if (popN () != 0) pc = t; break; }
-			case OP_CALL:
+			case OP_CALL: { int pi = code[pc++], argc = code[pc++]; enter (pi, argc); break; }
+			case OP_VCALL: case OP_ICALL:
 			{
-				int pi = code[pc++], argc = code[pc++];
-				const ProcInfo &pr = P->procs[pi];
-				if (nf >= MAXFRAMES) { fail ("Out of stack space (too deep recursion)"); break; }
-				Frame &f = frames[nf];
-				f.ret = pc; f.proc = pi; f.nloc = pr.nlocals > 0 ? pr.nlocals : 1;
-				f.loc = new V[f.nloc];
-				for (int i = 0; i < f.nloc; i++)
-				{
-					f.loc[i].t = VN; f.loc[i].n = 0; f.loc[i].p = 0;
-					if (i < pr.nlocals) initSlot (f.loc[i], P->lkind[pr.kindOff + i], P->lext[pr.kindOff + i]);
-				}
-				int first = pr.isFunc ? 1 : 0;
-				for (int i = argc - 1; i >= 0; i--) { V v = pop (); own (v); vclear (f.loc[first + i]); f.loc[first + i] = v; }
-				f.sp0 = sp;
-				nf++;
-				pc = pr.entry;
+				int iface = op == OP_ICALL ? code[pc++] : -1;
+				int ms = code[pc++], argc = code[pc++];
+				Rec *o = sp >= argc ? objectOf (stack[sp - argc]) : 0;
+				if (!o) { fail ("Object is NOTHING"); break; }
+				const TypeInfo &t = P->types[o->type];
+				int pi = -1;
+				if (iface < 0) { if (ms < t.nvt) pi = P->vtab[t.vt + ms]; }
+				else for (int i = 0; i < t.nit; i++) if (P->itab[t.it + 2 * i] == iface) { pi = P->vtab[P->itab[t.it + 2 * i + 1] + ms]; break; }
+				if (pi < 0 || P->procs[pi].entry < 0) { fail ("Type mismatch (the object has no such method)"); break; }
+				enter (pi, argc);
+				break;
+			}
+			case OP_NIL: { V v; v.t = VO; v.n = 0; v.p = 0; push (v); break; }
+			case OP_ISTYPE:
+			{
+				int want = code[pc++];
+				V v = pop ();
+				if (v.t != VO) { vclear (v); fail ("Type mismatch (not an object)"); break; }
+				bool r = want < 0 ? !v.p : (v.p && P->isA (((Rec *) v.p)->type, want));
+				vclear (v); pushN (r ? -1 : 0);
+				break;
+			}
+			case OP_SAMEOBJ:
+			{
+				V b = pop (), a = pop ();
+				bool ok = a.t == VO && b.t == VO, r = a.p == b.p;
+				vclear (a); vclear (b);
+				if (!ok) { fail ("Type mismatch (not an object)"); break; }
+				pushN (r ? -1 : 0);
+				break;
+			}
+			case OP_CAST:
+			{
+				int want = code[pc++];
+				if (sp <= 0 || stack[sp - 1].t != VO) { fail ("Type mismatch (not an object)"); break; }
+				Rec *o = (Rec *) stack[sp - 1].p;
+				if (o && !P->isA (o->type, want)) fail ("Type mismatch (the object is not of this class)");
 				break;
 			}
 			case OP_RET: if (nf == 0) { fail ("RETURN outside a SUB"); break; } pc = frames[nf - 1].ret; popFrame (); break;
@@ -2081,7 +2152,7 @@ public:
 				popGosub ();
 				break;
 			case OP_POP: { V v = pop (); vclear (v); break; }
-			case OP_NEWREC: { V v; v.t = VT; v.n = 0; v.p = newRec (code[pc++]); push (v); break; }
+			case OP_NEWREC: { int ty = code[pc++]; V v; v.t = P->types[ty].kind ? VO : VT; v.n = 0; v.p = newRec (ty); push (v); break; }
 			case OP_BI: { int id = code[pc++], argc = code[pc++]; builtin (id, argc); break; }
 			case OP_ST: { int id = code[pc++], argc = code[pc++]; statement (id, argc); evKick = true; break; }
 			case OP_PRINT: { int w = code[pc++]; V v = pop (); printValue (v, (w & 1) != 0, (w & 2) != 0); vclear (v); break; }
@@ -2303,6 +2374,8 @@ public:
 			default: fail ("Bad bytecode", 51); break;
 			}
 		}
+		dtorProg = 0;						// (what is still alive is freed without its destructor)
+		while (dtorQ.n) { V v; v.t = VO; v.n = 0; v.p = dtorQ[--dtorQ.n]; vclear (v); }
 		bool wasFailed = failed;
 		failed = false;
 		chan = 0;

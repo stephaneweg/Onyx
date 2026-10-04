@@ -4,6 +4,26 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Onyx BASIC: classes (2026-10-05; tested on the PC, not yet on the Pi) -- then a native back end
+
+- **Done (phase A)**: objects in BASIC, on the VM. The user's choices: `TYPE` stays a value; a new
+  **`CLASS`** is a reference (C#'s struct / class); methods are written outside the block
+  (`VIRTUAL` / `OVERRIDE` / `ABSTRACT SUB Class.Name`); `ABSTRACT` and a destructor
+  (`SUB Class.delete`) are in, `PRIVATE` is not. `CLASS B EXTENDS A IMPLEMENTS I, J`,
+  `INTERFACE ... END INTERFACE`, `BASE.Name`, `NEW`, `NOTHING`, `x IS Class`. The language: docs/04
+  §13 (*Classes*); the internals: docs/03 (*Onyx BASIC*, *Classes*). New opcodes at the end of
+  `enum Op` (`OP_NIL` ... `OP_CAST`, then `OP_COUNT_`), `.bax` format 2 (format 1 still loads).
+  The class words are not reserved. Tests: `tools/tests/basic/progs/t20_classes`, `t21_cls_*`,
+  `t22_classwords`; the example `sdcard/basic/examples/classes.bas`. `qbasic`, `qbstudio`,
+  `pc/OnyxBasic` know the modifiers and leave an INTERFACE block in the main module.
+- **Not done**: `PRIVATE`, interfaces extending interfaces, a cycle collector, `obj.Method` on an
+  expression other than a call's result.
+- **Next (phase B, asked by the user)**: a compiled, native AArch64 execution beside the VM --
+  first measure the time spent in the VM against the runtime's primitives (IDEAS.md, *JIT pour la
+  VM BASIC*), propose the strategy and the form of the deliverable to the user, then one demo,
+  then Arkanoid. Another session was adding AudioKit statements to BASIC at the same time (the
+  end of `enum Builtin`): merge `origin/main` before touching `basint.h`.
+
 ## Printing (2026-10-05)
 
 A generic print system, done and tested on the Pi with the user's HP DeskJet 2700 (192.168.0.14, IPP

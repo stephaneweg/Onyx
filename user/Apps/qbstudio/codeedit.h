@@ -522,7 +522,7 @@ private:
 			for (int q = 0; C[q]; q++) if (!strcmp (w, C[q])) return true;
 			return false;
 		}
-		static const char *const B[] = { "SUB", "FUNCTION", "FOR", "DO", "WHILE", "SELECT", "TYPE", "ELSE", "ELSEIF", "CASE", "PROPERTY", 0 };
+		static const char *const B[] = { "SUB", "FUNCTION", "FOR", "DO", "WHILE", "SELECT", "TYPE", "ELSE", "ELSEIF", "CASE", "PROPERTY", "CLASS", "INTERFACE", "VIRTUAL", "OVERRIDE", 0 };
 		for (int q = 0; B[q]; q++) if (!strcmp (w, B[q])) return true;
 		if (!strcmp (w, "IF"))			// a block IF: THEN ends the line
 		{

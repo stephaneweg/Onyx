@@ -41,7 +41,7 @@ private:
 };
 
 // Value types at compile time: TY_NUM, TY_STR, or a user TYPE (TY_REC + its index).
-enum { TY_NUM = 0, TY_STR = 1, TY_REC = 16 };
+enum { TY_NUM = 0, TY_STR = 1, TY_NIL = 2, TY_REC = 16 };		// (TY_NIL: the literal NOTHING)
 // Numeric sub-types (the storage of a variable): single (the default), INTEGER, LONG, DOUBLE.
 enum { NT_SNG = 0, NT_INT, NT_LNG, NT_DBL };
 
@@ -83,7 +83,15 @@ enum Op
 	OP_EVSTATE,						// kind state(0 off 1 on 2 stop)
 	OP_CHAIN, OP_RUN, OP_CLEAR, OP_TRON,			// CHAIN file / RUN mode target / CLEAR / TRON on
 	OP_FREADY,						// (reserved)
-	OP_NEWREC						// type: push a fresh record (NEW Type)
+	OP_NEWREC,						// type: push a fresh record (NEW Type) / object (NEW Class)
+	// --- classes ---
+	OP_NIL,							// push NOTHING
+	OP_VCALL,						// slot argc: a virtual method, by the object's class (the object under the arguments)
+	OP_ICALL,						// interface slot argc: an interface's method, by the object's class
+	OP_ISTYPE,						// type (-1: NOTHING): object -> -1 / 0 (x IS Class, x IS NOTHING)
+	OP_SAMEOBJ,						// a IS b: the same object
+	OP_CAST,						// type: the object must be NOTHING or of this class / interface
+	OP_COUNT_						// (the number of opcodes + 1: the .bax header)
 };
 
 // GET / PUT # layout of a variable: a scalar kind, or a record (ext = its type).
@@ -131,7 +139,17 @@ enum { K_NUM = 0, K_STR = 1, K_NUMARR = 2, K_STRARR = 3, K_REC = 4, K_RECARR = 5
 // User TYPEs at run time: the field layout (GET / PUT, LEN, new records).
 enum { FK_SNG = LK_SNG, FK_INT = LK_INT, FK_LNG = LK_LNG, FK_DBL = LK_DBL, FK_VSTR = LK_VSTR, FK_FSTR = LK_FSTR, FK_REC = LK_REC };
 struct FieldInfo { int kind; int len; int sub; };	// len: FSTR length / REC type (sub)
-struct TypeInfo { char name[48]; int first, nf, size; };
+// A TYPE (a value), a CLASS (a reference: kind TK_CLASS) or an INTERFACE. A class: its parent (-1), its
+// virtual methods' procedures at vtab[vt .. vt + nvt) (-1: abstract), the interfaces it implements at
+// itab[it .. it + 2 * nit) (pairs: the interface, where its methods' procedures start in vtab), its own
+// destructor (SUB Class.delete; -1).
+enum { TK_TYPE = 0, TK_CLASS, TK_IFACE };
+struct TypeInfo
+{
+	char name[48]; int first, nf, size;
+	int kind, parent, vt, nvt, it, nit, dtor;
+	TypeInfo () : first (0), nf (0), size (0), kind (TK_TYPE), parent (-1), vt (0), nvt (0), it (0), nit (0), dtor (-1) { name[0] = 0; }
+};
 struct StmtRange { int start, end; };
 struct NumLabel { int pc; int value; };
 struct ProcInfo { char name[48]; bool isFunc; int retTy; int nparams; int entry; int nlocals; int kindOff; };
@@ -152,6 +170,7 @@ struct Program
 	Vec<StmtRange> stmts;			// every statement's code range (RESUME)
 	Vec<NumLabel> numLabels;		// line-number labels (ERL)
 	Vec<int> common;			// COMMON global slots, in order (CHAIN)
+	Vec<int> vtab, itab;			// the classes' method tables (TypeInfo)
 	int nglobals;
 	Program () : nglobals (0) {}
 	~Program ()
@@ -164,6 +183,17 @@ struct Program
 		int best = 0;
 		for (int i = 0; i < lines.n; i++) { if (lines[i].pc > pc) break; best = lines[i].line; }
 		return best;
+	}
+	// An object of class t: is it a `want` (its class, an ancestor, an interface it implements)?
+	bool isA (int t, int want) const
+	{
+		if (types[want].kind == TK_IFACE)
+		{
+			for (int i = 0; i < types[t].nit; i++) if (itab[types[t].it + 2 * i] == want) return true;
+			return false;
+		}
+		for (; t >= 0; t = types[t].parent) if (t == want) return true;
+		return false;
 	}
 };
 
