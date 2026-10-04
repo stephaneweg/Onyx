@@ -54,6 +54,29 @@ static void t (const char *line, const char *want)
 	}
 }
 
+/* a line's commands: each in { }, followed by its operator (; & |) -- cmd_next */
+static void l (const char *line, const char *want)
+{
+	char got[8192] = "", seg[CMD_LINE];
+	int pos = 0, op;
+	while (cmd_next (line, &pos, seg, sizeof seg, &op))
+	{
+		strcat (got, "{"); strcat (got, seg); strcat (got, "}");
+		if (op) { char o[2] = { (char) op, 0 }; strcat (got, o); }
+	}
+	checks++;
+	if (strcmp (got, want) != 0) { fails++; printf ("FAIL list: %s\n   got:  %s\n   want: %s\n", line, got, want); }
+}
+
+/* a command with its $ variables replaced -- cmd_expand */
+static void x (const struct CmdVars *v, const char *line, const char *want)
+{
+	char got[CMD_LINE];
+	checks++;
+	if (cmd_expand (line, got, sizeof got, v) < 0 || strcmp (got, want) != 0)
+	{ fails++; printf ("FAIL expand: %s\n   got:  %s\n   want: %s\n", line, got, want); }
+}
+
 int main (void)
 {
 	/* the old, unquoted usage */
@@ -126,6 +149,39 @@ int main (void)
 		checks++;
 		if (r != 1 || st[0].argc != 3 || strlen (cmd_arg (&st[0], 2)) != sizeof big - 3 - 8)
 		{ fails++; printf ("FAIL: a %zu-character line\n", strlen (big)); }
+	}
+
+	/* command lists: ; && || and comments */
+	l ("ls", "{ls}");
+	l ("a ; b", "{a };{ b}");
+	l ("a;b;", "{a};{b};");
+	l ("a && b || c", "{a }&{ b }|{ c}");
+	l ("ls | sort || echo no", "{ls | sort }|{ echo no}");
+	l ("jsc -e \"a; b && c || d\" ; x", "{jsc -e \"a; b && c || d\" };{ x}");
+	l ("echo 'a;b' ; echo c\\;d", "{echo 'a;b' };{ echo c\\;d}");
+	l ("echo \"a\\\";b\" ; c", "{echo \"a\\\";b\" };{ c}");
+	l ("ls # a comment ; rm x", "{ls }");
+	l ("# only a comment", "{}");
+	l ("echo a#b c #d", "{echo a#b c }");
+	l ("echo '#' \"#x\" ; ls", "{echo '#' \"#x\" };{ ls}");
+	l ("wget http://h/?a=1&b=2", "{wget http://h/?a=1&b=2}");
+
+	/* script variables */
+	{
+		static const char *const av[] = { "run.sh", "one", "two words", "3" };
+		struct CmdVars v = { 4, av, 7 };
+		x (&v, "echo $1 $2 $3 $4.", "echo one two words 3 .");
+		x (&v, "echo $0 $# $?", "echo run.sh 3 7");
+		x (&v, "echo $*", "echo one two words 3");
+		x (&v, "echo \"$1\" '$1' \\$1", "echo \"one\" '$1' $1");
+		x (&v, "grep \"end$\" f ; echo $ $x 5$", "grep \"end$\" f ; echo $ $x 5$");
+		x (&v, "echo \"it's $1\" 'a\"$1'", "echo \"it's one\" 'a\"$1'");
+		x (&v, "echo a\\ b \"c\\\"$1\"", "echo a\\ b \"c\\\"one\"");
+		struct CmdVars none = { 0, 0, -9 };
+		x (&none, "echo [$1] $# $? [$*]", "echo [] 0 -9 []");
+		char small[8];
+		checks++;
+		if (cmd_expand ("echo $1$1$1", small, sizeof small, &v) != -1) { fails++; printf ("FAIL: an expansion too long accepted\n"); }
 	}
 
 	printf ("%d checks, %d failed\n", checks, fails);

@@ -222,6 +222,20 @@ of [`user/Makefile`](../user/Makefile) (`FT_APPS` for a FreeType app, or a rule 
 newlib app, as `letters.elf`), and declare its package in `tools/pkg/packages.ini`; for a tool,
 add `<tool>.elf` to the `PROGS` of [`user/bin/Makefile`](../user/bin/Makefile).
 
+**A text tool** (a filter as `head`, `sed`, `sort`: `TEXT_PROGS` in that Makefile) is written on
+[`user/bin/tool.h`](../user/bin/tool.h): it defines `TOOL_NAME` and `int tool_main (int argc, char
+**argv)`, and gets its argv, a buffered stdout (`t_puts`, `t_putnum`…), files and stdin read by
+lines (`t_open`, `t_getline`, `t_slurp`), memory (`t_malloc`) and the exit code (`tool_main`'s,
+through `kapi_exit`: what the shell's `&&`, `||` and `$?` read — a tool on `crt0.S` alone must call
+`kapi_exit` itself). The regular expressions of `grep`, `sed` and `ed` are
+[`regex.h`](../user/bin/regex.h) and [`subst.h`](../user/bin/subst.h). The same sources build on
+the PC with `-DTOOL_HOST` (the libc behind the same calls): **`sh tools/tests/run_tools_test.sh`**
+runs every tool against expected outputs, under the address sanitizer — add a tool's cases there.
+The shell's parser, command lists and script variables
+([`cmdparse.h`](../user/bin/cmdparse.h)) and the consoles' line editor with its history
+([`user/lineedit.h`](../user/lineedit.h), shared by the terminal and `telnetd`) are tested by
+**`sh tools/tests/run_cmd_test.sh`**.
+
 ### 5.1. Apps using the C library (newlib)
 
 The `aarch64-none-elf` toolchain ships **newlib** (`libc` + `libm`). An app can be

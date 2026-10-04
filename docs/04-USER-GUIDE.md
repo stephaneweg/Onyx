@@ -611,12 +611,32 @@ commands, executed by **programs in `SD:/bin/`**.
 - The prompt shows the **current working directory** followed by `$` (e.g. `SD:/ $`). The
   terminal has a **current working directory (cwd)**; **relative** paths given to commands
   are resolved against it.
-- Type a command then press **Enter**. **Backspace** deletes the last character;
-  **Page Up/Down** scroll through the output history (scrollback, 100 lines).
+- Type a command then press **Enter**. **Page Up/Down** (and the wheel) scroll through the
+  output (scrollback, 200 lines).
+
+### Editing the line, and the history
+
+The line can be corrected **before it is sent**, and the lines sent before come back:
+
+| Key | Effect |
+|---|---|
+| **Left** / **Right** | move the cursor in the line; a character typed is **inserted** at the cursor. |
+| **Home** / **End** (or `Ctrl-A` / `Ctrl-E`) | the cursor to the start / the end of the line. |
+| **Backspace** / **Delete** | delete the character before the cursor / under it. |
+| `Ctrl-U` / `Ctrl-K` | empty the line / cut it from the cursor to its end. |
+| **Up** / **Down** | the **history**: the previous / the next line sent. A recalled line can be edited and sent again; **Down** past the newest one gives back the line that was being typed. |
+| **Enter** | sends the line (wherever the cursor is). |
+| `Ctrl-C` | **stops the running command** (and the script it belongs to); the line being typed is dropped. |
+| `Ctrl-D` | ends the input of a program that reads the keyboard (`cat`, `ed`, `sort`…). |
+
+The history holds the last lines sent (about a hundred: 4 KB of text; an empty line or the same
+line twice in a row is not added). Each terminal window — and each remote session (`telnetd`) —
+has its own; it is not kept when the window closes. What is typed to a program (`ed`, `ftp`…) is
+in it too. A line longer than the window wraps onto the next rows and is edited the same way.
 
 ### Built-in commands (builtins)
 
-Three commands are executed by the terminal **itself** (they change its own state),
+A few commands are executed by the shell **itself** (they change its own state),
 not by a program in `/bin`:
 
 | Command | Effect |
@@ -624,6 +644,8 @@ not by a program in `/bin`:
 | `cd [path]` | changes the current working directory (no argument: `SD:/`). The cwd is **inherited** by commands launched afterwards. |
 | `pwd` | prints the current working directory. |
 | `clear` | clears the screen (empties the scrollback). |
+| `exit [code]` | ends the shell (the terminal closes; a script stops there), with that exit code. |
+| `source <script> [args]` (or `. <script>`) | runs a script's lines **in this shell**: its `cd` stays (see *Scripts*). |
 
 ### Launching a program
 
@@ -643,16 +665,36 @@ The terminal composes commands in the Unix style:
 | `cmd >> file` | same, but **appends** to the end of `file`. |
 | `cmd < file` | the input (`stdin`) of the **first** stage comes from `file`. |
 
+### Several commands on a line, exit codes
+
+| Syntax | Effect |
+|---|---|
+| `a ; b` | runs `a`, then `b`. |
+| `a && b` | runs `b` **only if `a` succeeded** (its exit code is 0). |
+| `a \|\| b` | runs `b` **only if `a` failed** (its exit code is not 0). |
+| `# text` | a **comment**: from a `#` at the start of a word to the end of the line. |
+
+Every program ends with an **exit code**: 0 when all went well, another number otherwise (`grep`:
+1 when no line matched; a command not found: 127; a command stopped by Ctrl-C: 130). `$?` is the
+exit code of the last command (`grep -q todo notes.txt ; echo $?`). A pipeline's code is its last
+stage's.
+
+```sh
+mkdir RAM:/tmp ; cd RAM:/tmp                 # two commands
+grep -q error log.txt && echo "errors found" # only when grep found a line
+cp a.txt b.txt || echo "the copy failed"
+```
+
 ### Quotes and escapes
 
-Blanks separate the arguments, and `|`, `<`, `>` are the pipe and the redirections — unless
-they are **quoted**:
+Blanks separate the arguments, `|`, `<`, `>` are the pipe and the redirections, `;`, `&&`, `||`
+separate commands and `#` starts a comment — unless they are **quoted**:
 
 | Syntax | Effect |
 |---|---|
 | `"text"` | one argument, exactly `text`: blanks, `\|`, `<`, `>`, `>>` and `'` are ordinary characters inside. `\"` is a literal `"`, `\\` a literal `\`; any other backslash stays as it is (`"a\nb"` reaches the program as `a\nb`). |
 | `'text'` | one argument, exactly `text`, with **no** escape at all (a `'` cannot appear inside: use double quotes for it). |
-| `\x` (outside quotes) | a literal `x`, for `x` one of `"` `'` `\` `<` `>` `\|` or a blank (`my\ file.txt`). A backslash before any other character stays (`SD:\dir` is unchanged). |
+| `\x` (outside quotes) | a literal `x`, for `x` one of `"` `'` `\` `<` `>` `\|` `;` `&` `#` or a blank (`my\ file.txt`). A backslash before any other character stays (`SD:\dir` is unchanged). `\$` is a literal `$` (see *Scripts*). |
 
 Quoted parts join the unquoted text next to them into one word (`ab"c d"'e'` is the single
 argument `abc de`); quotes can also hold a redirection's file name (`> "my notes.txt"`). An
@@ -680,7 +722,8 @@ absolute path (`SD:/notes.txt`) is taken as-is.
 
 **Default input and output.** Without `<`, the **first** stage reads what you **type**:
 each line confirmed with Enter is sent to its `stdin`, and **`Ctrl-D`** signals end of
-input (EOF). Without `>`, the **last** stage displays its output in the scrollback.
+input (EOF); **`Ctrl-C`** stops the whole pipeline. Without `>`, the **last** stage displays its
+output in the scrollback.
 
 Examples (with the cwd being `SD:/` here):
 
@@ -698,7 +741,55 @@ ps                      # list the processes
 run mandelbrot          # launch a graphical application
 ```
 
+### Scripts
+
+A **script** is a text file of command lines, run one after the other — exactly what you would
+type (pipes, redirections, `;` `&&` `||`, comments). Write it with `ed` (§8), the text editor
+(`run tinypad`) or on the PC. Three ways to run it:
+
+| Command | Effect |
+|---|---|
+| `textlist.sh [args]` | a command word ending with **`.sh`** is a script: looked for in the **current folder**, then in **`SD:/bin`** (a path works too: `SD:/scripts/textlist.sh`). It runs in a shell of its own: its `cd` does not change yours. Usable in a pipe (`report.sh \| grep total > out.txt`). |
+| `cmd <file> [args]` | the same for a file of any name. `cmd -c "line"` runs one command line. |
+| `source <file> [args]` | runs it **inside the current shell**: its `cd` stays when it ends. |
+
+In a script (and on any command line):
+
+| Syntax | Replaced by |
+|---|---|
+| `$1` … `$9` | the script's arguments (nothing when there are fewer); `$0` is the script's name. |
+| `$#` | how many arguments it got. |
+| `$*` | all of them, separated by a blank. |
+| `$?` | the exit code of the last command. |
+
+Nothing is replaced inside `'…'`; in `"…"` it is, and the result stays one word (`"$1"` keeps an
+argument that holds blanks whole). `\$` is a plain `$`. A `$` followed by anything else is left
+alone (`grep "end$"`).
+
+`exit [code]` ends the script there, with that exit code (without it: the last command's). The
+programs a script starts read the **keyboard** as usual; **Ctrl-C** stops the running program
+**and the rest of the script**. A line is at most 2047 characters. There are no variables of
+your own, no `if` / `for` blocks: `&&` and `||` are the conditions.
+
+```sh
+# SD:/bin/textlist.sh -- textlist.sh <folder>: the list of its text files, sorted, in RAM:/list.txt
+cd $1 || exit 1
+find . -name "*.txt" | sort > RAM:/list.txt
+grep -q . RAM:/list.txt || echo "no text file in $1"
+wc -l RAM:/list.txt
+echo "done at" ; date +%H:%M
+```
+
+```sh
+textlist.sh SD:/docs        # run it
+textlist.sh SD:/docs && echo ok || echo "failed: $?"
+```
+
+`SD:/etc/autostart` is **not** such a script: `init` runs its lines itself, without waiting
+for each (to run a script at boot, put `cmd SD:/bin/mine.sh` there).
+
 **Under the hood.** The shell (`/bin/cmd`, which the terminal runs) splits the line into
+commands (`;` `&&` `||`), replaces the `$` variables, then splits each command into
 words and stages (quotes and escapes applied, `|` outside quotes), creates a memory pipe
 (`pipe`) between each stage — and a file stream for `<`/`>` —, then launches (`spawn_ex`) each
 `SD:/bin/<cmd>` with its argument list and its (`stdin`, `stdout`) pair. The stages run **concurrently**
@@ -725,6 +816,7 @@ the terminal's **current working directory**.
 | `mkdir` | `mkdir <path…>` | Creates one or more directories. |
 | `touch` | `touch <path…>` | Creates **empty** files if they do not exist (no timestamp). |
 | `uname` | `uname [-a] [-s] [-n] [-r] [-v] [-m] [-p]` | **What system this is**: `-s` its name (Onyx, the default), `-n` the host name, `-r` the kernel's release (its kapi version: `kapi 79`), `-v` the kernel's build (the git revision — `+` when built from changed sources — and the date of the image), `-m` the machine (`aarch64`), `-p` the system package installed (`onyx 2026.10.36`), `-a` all of them and the board with its memory. A kernel copied onto the card by hand shows in `-v` (its date) while `-p` still says the package's version. |
+| `find` | `find [folder…] [-name PATTERN] [-type f\|d] [-maxdepth N]` | **Walks a folder and its sub-folders** (default: the current one) and prints each entry's path. `-name "*.txt"`: only the entries whose name matches (`*` any characters, `?` one; upper / lower case alike — quote the pattern); `-type f` files only, `-type d` folders only; `-maxdepth N` no deeper than N levels. `find SD:/docs -name "*.md"`, `find . -type d`. |
 | `df` | `df [volume…]` | The volumes' room: for each (default: `SD:`, `SD1:`…`SD3:` when present, `RAM:`) its type (`FAT32`, `exFAT`, `RAM`), size, used and free space; for `RAM:` (the volume in memory, §2) its files and folders too. The first `df` of a big card can take a moment (its free space is counted once). |
 
 **Archives** (ZIP; the Archiver's engine, §9)
@@ -763,14 +855,59 @@ Exit codes: `0` done, `1` nothing to do, `2` an error, `3` a bad command line.
 All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls RAM:`, `cd RAM:/tmp`,
 `cp SD:/doc.txt RAM:/doc.txt`, `rm RAM:/doc.txt`, `cat RAM:/log`, `echo hi > RAM:/log`.
 
-**Text and streams**
+**Text and streams** — filters: they read the files named, or `stdin` when there is none (so they
+chain with `|`), and write to `stdout`.
 
 | Tool | Usage | Description |
 |---|---|---|
-| `echo` | `echo <text>` | Writes its arguments followed by a newline. |
-| `grep` | `grep <pattern>` | Reads `stdin`, prints only the lines containing `<pattern>` (substring, **case-sensitive**; only the first word is used as the pattern). |
-| `wc` | `wc` | Counts and prints "lines words bytes" of `stdin`. |
+| `echo` | `echo [-n] <text…>` | Writes its arguments, separated by a blank, followed by a newline (`-n`: none). |
+| `cat` | `cat [file…]` | (above) prints files; with no argument copies `stdin`. |
+| `head` | `head [-n N \| -N] [-c N] [file…]` | The **first 10 lines** (or N: `head -n 3`, `head -3`); `-c N` the first N bytes. Several files: a `==> name <==` line before each. |
+| `tail` | `tail [-n N \| -N \| -n +N] [-c N] [-f] [file]` | The **last 10 lines** (or N); `-n +N` from line N to the end; `-c N` the last N bytes. **`-f`** then keeps printing what is **added to the file** (a log being written) until **Ctrl-C**. |
+| `grep` | `grep [-i] [-v] [-n] [-c] [-q] [-F] <pattern> [file…]` | Prints the **lines that match** the pattern, a *regular expression* (below); `-F`: a plain text. `-i` ignores case, `-v` keeps the lines that do **not** match, `-n` numbers them, `-c` only counts them, `-q` prints nothing (the exit code says it). Several files: each line preceded by its file's name. Exit code 0 a line matched, 1 none, 2 an error. |
+| `sed` | `sed [-n] [-i] [-e script]… [script] [file…]` | The **stream editor**: applies a script to each line. Commands, separated by `;`: `s/re/new/flags` substitutes (flags `g` every match, a number N the Nth, `p` print if changed, `i` ignore case; `&` = the match, `\1`…`\9` = the groups, `\n` a line feed; another delimiter than `/` may be used: `s,/bin,/usr,`), `d` deletes the line, `p` prints it, `q` quits, `=` prints its number, `y/abc/xyz/` replaces characters, `a text` / `i text` / `c text` add a line after / insert one before / replace. Before a command, the lines it applies to: `N` (line N), `$` (the last), `/re/` (the lines matching), `first,last` (a range), then `!` for all the others. `-n`: print only what `p` asks; `-i`: **rewrite the files in place**. `sed 's/colour/color/g' a.txt`, `sed -n '10,20p' log`, `sed -i '/^#/d' conf`, `sed '$!d'`. Not there: the hold space, `{ }` blocks, branches. |
+| `ed` | `ed [-p prompt] [file]` | The **line editor**: edits a text file from the console (below). |
+| `sort` | `sort [-r] [-n] [-f] [-u] [file…]` | Sorts the lines: `-r` in reverse, `-n` by the number at the start of each line, `-f` ignoring case, `-u` equal lines once. Several files are sorted together. |
+| `uniq` | `uniq [-c] [-d] [-u] [-i] [file]` | Drops the **repeated lines that follow each other** (`sort` first to drop them all): `-c` each preceded by its count, `-d` only the repeated ones, `-u` only those not repeated, `-i` ignoring case. `sort names \| uniq -c \| sort -n -r`. |
+| `cut` | `cut -f LIST [-d C] [-s] [file…]`, `cut -c LIST [file…]` | Keeps some **columns**: `-f` fields separated by a tab (`-d C`: by the character C; a line without it is printed whole, or dropped with `-s`), `-c` characters. LIST: `2`, `1,3`, `2-4`, `3-`, `-2`. `cut -d : -f 1`, `cut -c 1-20`. |
+| `tr` | `tr <set1> <set2>`, `tr -d <set1>`, `tr -s <set1>` | Translates the **characters** of `stdin`: each of set1 replaced by its match in set2; `-d` deletes them; `-s` squeezes runs of the same one. Sets hold characters, ranges (`a-z`) and `\n` `\t` `\r` `\\`. `tr a-z A-Z`, `tr -d '\r'`, `tr -s ' '`. |
+| `wc` | `wc [-l] [-w] [-c] [file…]` | Counts **lines, words and bytes** (`-l`, `-w`, `-c`: only those). Several files: one line each and a `total`. |
+| `nl` | `nl [-b a] [file…]` | **Numbers the lines** (the empty ones too with `-b a`). |
+| `tee` | `tee [-a] <file…>` | Copies `stdin` to `stdout` **and** into the files (`-a`: added at their end): keeps what a pipeline shows. `ls \| tee list.txt \| wc -l`. |
+| `diff` | `diff [-q] <file1> <file2>` | **Compares two text files** line by line: `3c3` (line 3 changed), `5a6,7` (lines added after 5), `8,9d7` (lines deleted), the lines of file1 after `<`, those of file2 after `>`. Nothing printed: the same. `-q` only says whether they differ. Exit code 0 the same, 1 different, 2 an error. |
+| `hexdump` | `hexdump [-s OFFSET] [-n COUNT] [file]` | The **bytes** of a file: the offset, 16 bytes in hexadecimal, the same as text. `-s` skips bytes first, `-n` stops after COUNT. |
 | `page` | `page` | Copies `stdin`→`stdout` (the actual paging is the terminal's scrollback via Page Up/Down); handy as the end of a pipe. |
+| `date` | `date [+FORMAT]` | The **date and time** (`2026-10-04 21:47:03`). In FORMAT: `%Y` `%m` `%d` `%H` `%M` `%S`, `%y`, `%F` (= `%Y-%m-%d`), `%T` (= `%H:%M:%S`), `%n`, `%%`. `date +%H:%M`. |
+| `sleep` | `sleep <seconds>` | Waits (`sleep 0.5` works): a pause in a script. |
+
+**Regular expressions** (`grep`, `sed`, `ed`): `c` that character · `.` any character · `[abc]`
+`[a-z]` `[^0-9]` one of / a range / none of · `x*` x zero or more times, `x\+` one or more, `x\?`
+zero or one (x: a character, `.` or a `[set]`) · `^` the start of the line, `$` its end ·
+`\(…\)` a group, reused as `\1`…`\9` · `\.` `\*` `\[` `\\` `\/` those characters themselves, `\t` a
+tab. No alternation (`|`), no repeated group. Quote a pattern in `'…'` so that the shell leaves
+it alone: `grep '^[A-Z].*\.$' notes.txt`.
+
+**`ed`, the line editor.** `ed notes.txt` reads the file (it prints its size) and waits for
+commands, one a line; nothing is written until `w`. The text is a list of numbered lines, one of
+them the *current line*. A command is `[lines]letter`: lines are `N`, `.` (the current one), `$`
+(the last), `+N` / `-N`, `/re/` (the next line matching) or `?re?` (the previous one), and a pair
+`first,last` — `,` alone is the whole text.
+
+| Command | Effect |
+|---|---|
+| `,p` · `3,8n` · `5` | print the whole text · lines 3 to 8 with their numbers · go to line 5 and print it (an empty line: the next one). |
+| `a` · `i` · `c` | **add** lines after the current one · **insert** before it · **change** it (or a range): type the lines, then a line holding only **`.`** ends the input. `0a` adds at the top, `$a` at the end. |
+| `d` · `j` | delete the line(s) · join them into one. |
+| `s/re/new/` | substitute on the line(s) (`g` every match, `p` print the result): `,s/teh/the/g`. `&` and `\1` as in `sed`. |
+| `m N` · `t N` | move · copy the line(s) after line N. |
+| `g/re/command` · `v/re/command` | run the command on every line matching · not matching: `g/TODO/p`, `g/^#/d`. |
+| `u` | **undo** the last change (again: redo). |
+| `w [file]` · `r file` · `e file` · `f` | write · read a file in after the current line · edit another file · the file's name. |
+| `q` · `Q` · `wq` | quit (after a change `q` answers `?` once: `q` again quits without saving) · quit at once · write and quit. |
+| `h` · `H` | explain the last `?` · explain every error from now on. |
+
+An error prints `?`. `ed -p '*' file` shows a `*` when it waits for a command. A script can drive
+it: `ed notes.txt < edits.txt`.
 
 **Processes, launching, keyboard**
 
@@ -782,7 +919,7 @@ All of these work on **`RAM:`** (the volume in memory, §2) as on the card: `ls 
 | `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
-| `cmd` | `cmd` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit` (§7). The terminal runs it; `telnetd` serves it over the network. |
+| `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
 | `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
 | `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. |
 
@@ -862,8 +999,10 @@ computer, in a text terminal. Get the Pi's address with `net`, then connect with
 - or any **telnet client**: `telnet <pi-ip>`, or PuTTY with *Connection type: Telnet*.
 
 Each connection gets its own `cmd`, exactly like the terminal app: same commands,
-pipes and redirections, `clear` clears the remote screen. Echo and line editing are done
-by the Pi (Backspace works; no history/arrows). **Ctrl-C** is passed to the running
+pipes and redirections, scripts, `clear` clears the remote screen. Echo and line editing are done
+by the Pi, as in the terminal (§7): the **arrows** move the cursor in the line and recall the
+**history**, Home / End / Delete, `Ctrl-A` `Ctrl-E` `Ctrl-U` `Ctrl-K` (a line longer than the
+client's window is not redrawn well: keep the window wide). **Ctrl-C** stops the running
 command, **`exit`** or **Ctrl-D** on an empty line ends the session (in
 `onyx-telnet.py`, **Ctrl-]** disconnects locally). One client at a time: a second
 connection waits until the first ends.

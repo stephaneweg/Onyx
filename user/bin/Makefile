@@ -71,6 +71,15 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf \
 	  filetest.elf proctest.elf memtest.elf uname.elf
 
+# The text tools (tool.h: argv, a buffered stdout, files and stdin by lines; regex.h and subst.h:
+# the regular expressions of grep, sed and ed). Tested on the PC: tools/tests/run_tools_test.sh.
+TEXT_PROGS = grep.elf wc.elf head.elf tail.elf sed.elf ed.elf sort.elf uniq.elf cut.elf tr.elf \
+	     tee.elf nl.elf find.elf date.elf sleep.elf hexdump.elf diff.elf
+PROGS  += $(filter-out grep.elf wc.elf,$(TEXT_PROGS))
+$(TEXT_PROGS): tool.h regex.h subst.h
+cmd.elf: cmdparse.h
+telnetd.elf: ../lineedit.h
+
 # kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
 PROGS  += nettest.elf
 

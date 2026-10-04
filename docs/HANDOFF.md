@@ -1236,6 +1236,29 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).
 
+## The shell made useful: text tools, scripts, the line editor (2026-10-04, branch `term_updates`: not merged, not staged, not published)
+
+- **Tools** (`user/bin`, on `tool.h`; docs/04 §8): new `head tail sed ed sort uniq cut tr tee nl find
+  date sleep hexdump diff`; `grep` (regular expressions, `-i -v -n -c -q -F`, files), `wc` (`-l -w -c`,
+  files) and `echo` (the argv, `-n`) rewritten. `regex.h`: basic expressions, no alternation.
+- **`cmd`**: `;` `&&` `||`, `#` comments, exit codes (`$?`), scripts (`cmd file [args]`, `cmd -c`,
+  `source`, a command word ending with `.sh`: the current folder then `SD:/bin`), `$1`…`$9 $# $* $0`.
+  Ctrl-C stops the stages (the programs after 40 ms, a child `cmd` after 2 s: it stops its own first)
+  and the rest of the script; a stage that cannot start no longer leaves the others waiting; the end
+  of cmd's own stdin is handed to the first stage. `cmd` exits through `kapi_exit` (main's return
+  value is not the exit code).
+- **Line editor** (`user/lineedit.h`): the cursor in the line, the history (Up / Down), in the
+  terminal (the typed line is drawn after the prompt, wrapped; it enters the scrollback when sent) and
+  in `telnetd` (ANSI escape sequences read; `tools/onyx-telnet.py` sends them on Windows).
+- **Tested**: `run_cmd_test.sh`, `run_tools_test.sh` (PC); on the Pi through telnet, the binaries
+  under other names (`cmd2`, `telnetd2` on another port…): the tools, scripts, exit codes, Ctrl-C,
+  Ctrl-D, the arrows. The terminal: in the desktop simulator only. **Not tried**: a `.sh` command
+  word and Ctrl-C on a nested script with the real `cmd` in place (they need `SD:/bin/cmd` replaced).
+- **To do after the merge**: `make` + `make stage`, then publish (`onyx`: `bin/`, the terminal);
+  `python docs/build_docs.py` (no pandoc on this PC). Ideas: a pager (`more`), `if` / `for` and
+  variables in scripts, alternation in `regex.h`, a history kept across sessions, the redraw of a
+  line longer than the telnet client's window (needs its width: NAWS).
+
 ## Other open items
 
 ### To do -- left open by the session of 2026-10-04 (Jet on WebKit, the network, the desktop)

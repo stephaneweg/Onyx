@@ -7,7 +7,10 @@
 // kernel: one client at a time, in the main thread): each connection gets its own
 // /bin/cmd, wired exactly like the terminal does it -- two pipes, the client's keystrokes
 // go to cmd's stdin and cmd's stdout goes back to the client. Line editing and echo are
-// done here (the client is put in character mode with IAC WILL ECHO / WILL SGA), so any
+// done here (the client is put in character mode with IAC WILL ECHO / WILL SGA; lineedit.h:
+// the arrows move the cursor in the line and recall the lines sent before -- the client's
+// ANSI escape sequences are read, the line is redrawn with backspaces and "erase to the end
+// of the line"; a line longer than the client's window is not redrawn well), so any
 // telnet client works: `telnet <ip>`, PuTTY (Telnet), or tools/onyx-telnet.py. Incoming
 // telnet option negotiation is parsed and ignored. A session whose cmd is stuck (a tool
 // waiting on its stdin after the client left) no longer holds the others up.
@@ -17,6 +20,7 @@
 //
 #include "kapi.h"
 #include "applib.h"
+#include "lineedit.h"
 
 #define IAC	255
 #define WILL	251
@@ -41,8 +45,9 @@ struct Session
 	int  outlen;
 	int  state;			// telnet parser state (S_*)
 	int  skip_lf;			// swallow the LF / NUL that follows a CR
-	char line[2048];				// (cmd takes 2047)
-	int  linelen;
+	struct LineEdit le;		// the line being typed (cmd takes 2047 characters), the history
+	int  shown;			// where the client's cursor is in that line
+	int  esc, escnum;		// an escape sequence being read (E_*), its number
 	int  quit;			// Ctrl-D on an empty line -> end cmd
 	unsigned char in[512];
 	char buf[512];
@@ -87,38 +92,103 @@ static void out_from_cmd (struct Session *s, const char *b, int n)
 
 enum { S_DATA, S_IAC, S_OPT, S_SB, S_SB_IAC };
 
+enum { E_NONE, E_ESC, E_CSI, E_SS3 };
+
+// The line shown again after an edit: back to its start, the text, the rest of the client's
+// line erased, the cursor put back.
+static void redraw (struct Session *s)
+{
+	for (int i = 0; i < s->shown; i++) out_byte (s, '\b');
+	for (int i = 0; i < s->le.len; i++) out_byte (s, s->le.buf[i]);
+	out_str (s, "\x1b[K");
+	for (int i = s->le.len; i > s->le.cur; i--) out_byte (s, '\b');
+	s->shown = s->le.cur;
+}
+
+// only the cursor moved: backspaces to go left, the line's own characters to go right
+static void move (struct Session *s)
+{
+	while (s->shown > s->le.cur) { out_byte (s, '\b'); s->shown--; }
+	while (s->shown < s->le.cur) out_byte (s, s->le.buf[s->shown++]);
+}
+
 static void submit_line (struct Session *s)
 {
 	out_str (s, "\r\n");
-	kapi_stream_write (s->to_cmd, s->line, (unsigned) s->linelen);
+	kapi_stream_write (s->to_cmd, s->le.buf, (unsigned) s->le.len);
 	kapi_stream_write (s->to_cmd, "\n", 1);
-	s->linelen = 0;
+	le_commit (&s->le, 1);
+	s->shown = 0;
+}
+
+// the end of an escape sequence: an arrow, Home / End / Delete
+static void escape_key (struct Session *s, unsigned char c)
+{
+	int ch = 0;					// (the text changed: the line is drawn again)
+	switch (c)
+	{
+	case 'A': ch = le_up (&s->le); break;
+	case 'B': ch = le_down (&s->le); break;
+	case 'C': le_right (&s->le); break;
+	case 'D': le_left (&s->le); break;
+	case 'H': le_home (&s->le); break;
+	case 'F': le_end (&s->le); break;
+	case '~':
+		if (s->escnum == 1 || s->escnum == 7) le_home (&s->le);
+		else if (s->escnum == 4 || s->escnum == 8) le_end (&s->le);
+		else if (s->escnum == 3) ch = le_delete (&s->le);
+		break;
+	}
+	if (ch) redraw (s); else move (s);
 }
 
 static void key (struct Session *s, unsigned char c)
 {
 	if (s->skip_lf) { s->skip_lf = 0; if (c == '\n' || c == 0) return; }
 
-	if (c == '\r')		 { s->skip_lf = 1; submit_line (s); }
+	if (s->esc == E_ESC)					// ESC [ ... or ESC O x
+	{
+		s->esc = c == '[' ? E_CSI : c == 'O' ? E_SS3 : E_NONE;
+		s->escnum = 0;
+		if (s->esc != E_NONE) return;
+	}
+	else if (s->esc == E_CSI)
+	{
+		if (c >= '0' && c <= '9') { s->escnum = s->escnum * 10 + (c - '0'); return; }
+		if (c == ';') { s->escnum = 0; return; }
+		s->esc = E_NONE;
+		escape_key (s, c);
+		return;
+	}
+	else if (s->esc == E_SS3) { s->esc = E_NONE; s->escnum = 0; escape_key (s, c); return; }
+
+	if (c == 27)		 s->esc = E_ESC;
+	else if (c == '\r')	 { s->skip_lf = 1; submit_line (s); }
 	else if (c == '\n')	 submit_line (s);		// raw clients (nc) send bare LF
 	else if (c == 8 || c == 127)				// Backspace / DEL
 	{
-		if (s->linelen > 0) { s->linelen--; out_str (s, "\b \b"); }
+		if (le_backspace (&s->le)) redraw (s);
 	}
+	else if (c == 1)	 { le_home (&s->le); move (s); }		// Ctrl-A
+	else if (c == 5)	 { le_end (&s->le); move (s); }			// Ctrl-E
+	else if (c == 11)	 { if (le_kill (&s->le)) redraw (s); }		// Ctrl-K
+	else if (c == 21)	 { if (le_clear (&s->le)) redraw (s); }		// Ctrl-U
 	else if (c == 3)					// Ctrl-C: drop the line, tell cmd
 	{
-		s->linelen = 0;
+		le_commit (&s->le, 0); s->shown = 0;
 		out_str (s, "^C\r\n");
 		kapi_stream_write (s->to_cmd, "\x03", 1);
 	}
 	else if (c == 4)					// Ctrl-D: EOF on an empty line
 	{
-		if (s->linelen == 0) { kapi_stream_write (s->to_cmd, "\x04", 1); s->quit = 1; }
+		if (s->le.len == 0) { kapi_stream_write (s->to_cmd, "\x04", 1); s->quit = 1; }
 	}
-	else if (c >= ' ' && c < 127 && s->linelen < (int) sizeof s->line - 1)
+	else if (c >= ' ' && c < 127)
 	{
-		s->line[s->linelen++] = (char) c;
-		out_byte (s, (char) c);				// server-side echo
+		int at_end = s->le.cur == s->le.len;
+		if (!le_insert (&s->le, (char) c)) return;
+		if (at_end) { out_byte (s, (char) c); s->shown++; }	// server-side echo
+		else redraw (s);
 	}
 }
 
@@ -147,7 +217,8 @@ static void from_client (struct Session *s, const unsigned char *b, int n)
 
 static void session (struct Session *s)
 {
-	s->state = S_DATA; s->skip_lf = 0; s->linelen = 0; s->quit = 0; s->outlen = 0;
+	s->state = S_DATA; s->skip_lf = 0; s->quit = 0; s->outlen = 0;
+	le_init (&s->le); s->shown = 0; s->esc = E_NONE; s->escnum = 0;
 
 	static const unsigned char nego[] = { IAC, WILL, OPT_ECHO, IAC, WILL, OPT_SGA, IAC, DO, OPT_SGA };
 	kapi_tcp_send (s->sock, nego, sizeof nego);

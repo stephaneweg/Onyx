@@ -5,7 +5,8 @@
 
 Any telnet client works too (`telnet <ip>`, PuTTY in Telnet mode); this one just needs
 nothing but Python (Windows or Linux/macOS). The server does the echo and the line
-editing, so the local terminal is switched to raw mode: every key is sent as typed.
+editing (the arrows: the history, the cursor in the line), so the local terminal is
+switched to raw mode: every key is sent as typed.
 Ctrl-C is sent to the remote shell; quit with `exit`, Ctrl-D on an empty line, or
 Ctrl-] (local escape).
 """
@@ -16,6 +17,10 @@ import threading
 
 IAC = 255
 ESCAPE = "\x1d"          # Ctrl-]
+# Windows console scan codes (after "\x00" / "\xe0") -> what a terminal sends: the arrows
+# (the history, the cursor in the line), Home, End, Delete
+WIN_KEYS = {"H": b"\x1b[A", "P": b"\x1b[B", "M": b"\x1b[C", "K": b"\x1b[D",
+            "G": b"\x1b[H", "O": b"\x1b[F", "S": b"\x1b[3~"}
 
 
 def strip_telnet(data, state):
@@ -88,8 +93,10 @@ def main():
                     done.wait(0.02)
                     continue
                 ch = msvcrt.getwch()
-                if ch in ("\x00", "\xe0"):  # arrow / function key: ignore
-                    msvcrt.getwch()
+                if ch in ("\x00", "\xe0"):  # arrow / editing key: its ANSI sequence
+                    seq = WIN_KEYS.get(msvcrt.getwch())
+                    if seq:
+                        sock.sendall(seq)
                     continue
                 if not send(ch):
                     break

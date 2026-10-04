@@ -3,8 +3,9 @@
 // only; the actual shell is a separate program, /bin/cmd. At startup the terminal
 // spawns cmd wired to two pipes: keystrokes go to cmd's stdin, and cmd's stdout is
 // drained into the scrollback. So all command parsing / pipelines / builtins live in
-// cmd, not here. The terminal does local line editing + echo (Backspace edits, Enter
-// sends the line, Ctrl-D sends EOF); cmd prints the prompt.
+// cmd, not here. The terminal does local line editing + echo (lineedit.h: the cursor moves
+// in the line with Left / Right / Home / End, Up / Down recall the lines sent before, Enter
+// sends the line, Ctrl-C stops the running command, Ctrl-D sends EOF); cmd prints the prompt.
 //
 // It runs in TWO modes (same scrollback + rendering):
 //   - embedded in the activity shell as a SECONDARY app: it registers, gets a surface
@@ -17,6 +18,7 @@
 #include "wtk/wtk.h"		// recursive widget toolkit (TermView draws into a Canvas)
 #include "applib.h"		// should_exit, pump_events, msleep
 #include "embed.h"		// run embedded in the activity shell (surface + mailbox)
+#include "lineedit.h"		// the line being typed: its cursor, the history
 
 #define W		620		// standalone window size
 #define H		400
@@ -27,8 +29,9 @@
 
 static int g_fw = 8, g_fh = 16, g_vrows = 1, g_cols = COLS;	// g_cols = columns that fit the view
 
-// Scrollback ring of finalized lines + the line currently being built (prompt + echo
-// + the program output not yet newline-terminated).
+// Scrollback ring of finalized lines + the line currently being built (the program output
+// not yet newline-terminated: the prompt). The line being typed is not in there: it is drawn
+// after g_cur (wrapped), and enters the scrollback when it is sent.
 static char g_ring[SCROLLBACK][COLS + 1];
 static int  g_rfirst = 0, g_rcount = 0;
 static char g_cur[COLS + 1];
@@ -40,8 +43,8 @@ static void *g_to_cmd = 0;		// terminal writes keystrokes -> cmd stdin
 static void *g_from_cmd = 0;		// cmd stdout -> terminal reads
 static void *g_cmd = 0;
 
-static char g_input[2048];		// the line being typed (for editing + sending; cmd takes 2047)
-static int  g_inlen = 0;
+static LineEdit g_le;			// the line being typed (cmd takes 2047 characters) + the history
+static char g_live[COLS + LE_LINE + 1];	// g_cur + the line being typed, as drawn
 
 // ---- scrollback / output ----------------------------------------------------
 
@@ -104,30 +107,38 @@ static int drain_cmd (void)
 // and the standalone window (TermView::onKey).
 static void term_key (int key)
 {
+	if (key == KEY_PGUP) { g_scroll += g_vrows - 2; return; }	// the scrollback
+	if (key == KEY_PGDN) { g_scroll -= g_vrows - 2; if (g_scroll < 0) g_scroll = 0; return; }
+	g_scroll = 0;					// (typing shows the live line again)
 	switch (key)
 	{
 	case KEY_ENTER:
 		if (g_to_cmd)
 		{
-			kapi_stream_write (g_to_cmd, g_input, (unsigned) g_inlen);
+			kapi_stream_write (g_to_cmd, g_le.buf, (unsigned) g_le.len);
 			kapi_stream_write (g_to_cmd, "\n", 1);
 		}
-		term_putc ('\n');				// echo the newline locally
-		g_inlen = 0; g_input[0] = '\0';
+		term_puts (g_le.buf); term_putc ('\n');		// the line enters the scrollback
+		le_commit (&g_le, 1);
 		break;
-	case KEY_BACKSPACE:
-		if (g_inlen > 0) { g_inlen--; g_input[g_inlen] = '\0'; term_putc ('\b'); }
+	case KEY_BACKSPACE: le_backspace (&g_le); break;
+	case KEY_DEL:	le_delete (&g_le); break;
+	case KEY_LEFT:	le_left (&g_le); break;
+	case KEY_RIGHT:	le_right (&g_le); break;
+	case KEY_HOME:	case 1: /* Ctrl-A */ le_home (&g_le); break;
+	case KEY_END:	case 5: /* Ctrl-E */ le_end (&g_le); break;
+	case KEY_UP:	le_up (&g_le); break;		// the history
+	case KEY_DOWN:	le_down (&g_le); break;
+	case 11: /* Ctrl-K */ le_kill (&g_le); break;
+	case 21: /* Ctrl-U */ le_clear (&g_le); break;
+	case 3:	/* Ctrl-C: the line typed is dropped, the running command stopped */
+		term_puts (g_le.buf); term_puts ("^C\n");
+		le_commit (&g_le, 0);
+		if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x03", 1);
 		break;
-	case 3:	/* Ctrl-C */ if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x03", 1); break;
 	case 4:	/* Ctrl-D */ if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x04", 1); break;
-	case KEY_PGUP: g_scroll += g_vrows - 2; break;
-	case KEY_PGDN: g_scroll -= g_vrows - 2; if (g_scroll < 0) g_scroll = 0; break;
 	default:
-		if (key >= ' ' && key < 0x7f && g_inlen < (int) sizeof g_input - 1)
-		{
-			g_input[g_inlen++] = (char) key; g_input[g_inlen] = '\0';
-			term_putc ((char) key);				// local echo
-		}
+		if (key >= ' ' && key < 0x7f) le_insert (&g_le, (char) key);
 		break;
 	}
 }
@@ -154,7 +165,16 @@ public:
 		recompute ();
 		canvas.clear (TERM_BG);
 
-		int total = g_rcount + 1;			// + the current line
+		// the live line: the unfinished output (the prompt), then the line being typed --
+		// wrapped over as many rows as it takes
+		int live = 0;
+		for (int i = 0; i < g_curlen; i++) g_live[live++] = g_cur[i];
+		for (int i = 0; i < g_le.len; i++) g_live[live++] = g_le.buf[i];
+		g_live[live] = 0;
+		int caret = g_curlen + g_le.cur;
+		int liverows = live / g_cols + 1;
+
+		int total = g_rcount + liverows;
 		int maxscroll = total - g_vrows; if (maxscroll < 0) maxscroll = 0;
 		if (g_scroll > maxscroll) g_scroll = maxscroll;
 		int first = total - g_vrows - g_scroll; if (first < 0) first = 0;
@@ -163,13 +183,14 @@ public:
 		{
 			int idx = first + r;
 			if (idx < 0 || idx >= total) continue;
-			const char *line = (idx < g_rcount) ? ring_line (idx) : g_cur;
-			canvas.text (4, 4 + r * g_fh, line, TERM_FG);
-			if (idx == g_rcount && g_scroll == 0)		// caret at the end of the live line
-			{
-				int cx = 4 + g_curlen * g_fw;
-				canvas.fillRect (cx, 4 + r * g_fh, 2, g_fh, wk_tone (C_ACCENT, 180));	// (the accent, lit)
-			}
+			if (idx < g_rcount) { canvas.text (4, 4 + r * g_fh, ring_line (idx), TERM_FG); continue; }
+			int k = idx - g_rcount;				// a row of the live line
+			char row[COLS + 1]; int n = 0;
+			for (int i = k * g_cols; i < live && n < g_cols; i++) row[n++] = g_live[i];
+			row[n] = 0;
+			canvas.text (4, 4 + r * g_fh, row, TERM_FG);
+			if (caret / g_cols == k)			// the caret, at the cursor
+				canvas.fillRect (4 + (caret % g_cols) * g_fw, 4 + r * g_fh, 2, g_fh, wk_tone (C_ACCENT, 180));	// (the accent, lit)
 		}
 	}
 
