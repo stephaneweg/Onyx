@@ -10,7 +10,7 @@
 // field), the table of contents (its entries), the master page (the page's size and margins, its
 // header and footer -- the first page's own), the mail merge's data (a user field).
 //
-// Written: all of Writer's document -- its styles as LibreOffice names them (Standard, Heading 1...),
+// Written: all of Letters' document -- its styles as LibreOffice names them (Standard, Heading 1...),
 // each paragraph and span with an automatic style, lists as lists, tables, frames for the images
 // (Pictures/), fields, the table of contents as an index, the master page with the headers and footers.
 //
@@ -1188,7 +1188,7 @@ static bool odt_save (Doc &d, unsigned char **out, unsigned *len)
 		   "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>"
 		   "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>");
 	meta.puts ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta"); meta.puts (O_NS);
-	meta.puts ("><office:meta><meta:generator>Onyx Writer</meta:generator></office:meta></office:document-meta>");
+	meta.puts ("><office:meta><meta:generator>Onyx Letters</meta:generator></office:meta></office:document-meta>");
 	pngsave::ZipOut zip;
 	static const char *MT = "application/vnd.oasis.opendocument.text";
 	zip.add ("mimetype", MT, (unsigned) strlen (MT), false);

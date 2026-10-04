@@ -30,7 +30,7 @@ want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 
 for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
-# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Writer's
+# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Letters'
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 mkdir -p "$OUT/ft"
@@ -266,7 +266,7 @@ if want cardfile; then			# (the sample: a record; the list sorted by title, a ro
 fi
 if want ledger; then			# (the demo company: its overview, its sales, an invoice, the quotes and orders, a quote, the bank's
 					#  CODA statement imported, the general ledger, the VAT; a quote printed: Ledger writes the merge's data
-					#  and request, Writer makes the document from its template)
+					#  and request, Letters makes the document from its template)
 	L=SIM_ARGS=SD:/docs/demo-company.ledger
 	sim ledger ledger "$W" $P $L; png ledger
 	sim ledger ledger-sales "wait;down 60 172;up 60 172;$W" $P $L; png ledger-sales

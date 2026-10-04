@@ -30,7 +30,7 @@ screenshots still say *Zircon* — renaming them is a separate, pending task.
   shared clipboard with history, drag & drop, themes (CDE and Milk styles), a first-run wizard,
   a Control Panel, a package manager with automatic updates.
 - **Applications** (~95 apps and services on the card, ~65 `/bin` tools):
-  - *Office*: Writer (word processor, PDF export), Spreadsheet, Cardfile (a database), Ledger
+  - *Office*: Letters (word processor, PDF export), Spreadsheet, Cardfile (a database), Ledger
     (accounting), Calendar, PDF Viewer (MuPDF), RTF Reader, Archiver, text editor, calculators.
   - *Internet*: **Jet Browser** (on WebKit: JavaScript with a JIT, GPU compositing, video),
     Mail (Gmail, Outlook, IMAP / POP3 / SMTP), IRC, Courier (an HTTP client), Lisa (AI chat).

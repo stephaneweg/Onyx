@@ -240,7 +240,7 @@ add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`
 the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
 tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 
-A **wtk app** can be a newlib app too (Doom, **Writer**, the **Spreadsheet** — FreeType
+A **wtk app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** — FreeType
 wants a libc): the `writer.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
 `NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
 `libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries
@@ -387,7 +387,7 @@ It is the kernel's v75 POSIX ABI (docs/02 §8, "v75") seen from C, and v76's IPC
 WebKit2's processes use). MIT, ours.
 
 A program links **libonyxposix or `onyx_syscalls.c`, never both**: the existing newlib apps (§5.1:
-Writer, Doom, the TLS tools, `pkg`, `rdpd`, the SuperTuxKart port…) keep `onyx_syscalls.c` and are
+Letters, Doom, the TLS tools, `pkg`, `rdpd`, the SuperTuxKart port…) keep `onyx_syscalls.c` and are
 unchanged; new ports and tools use libonyxposix.
 
 **Building with it.** `make -C user/libc/posix` builds `build/libonyxposix.a`, `crt0posix.o`,
@@ -690,7 +690,7 @@ its licence on the app.
 > `clip_set_files (paths, cut)`, `clip_get_file`, `clip_clear`, `clip_set_image (px, w, h)`,
 > `clip_get_image (&w, &h)`, and for several formats of one copy `clip_put (fmts, datas, lens, n)` /
 > `clip_get (fmts, nf, got, cap, &data, &len)` (formats: `text`, `rtf`, `image`, `files`, `files-cut`,
-> `url`, `x-<app>`; Writer would give `rtf` + `text`). **The shared clipboard** (`docs/clipboard/README.md`):
+> `url`, `x-<app>`; Letters would give `rtf` + `text`). **The shared clipboard** (`docs/clipboard/README.md`):
 > the service `clipd` keeps the last 10 copies in its memory, a cursor on the one Ctrl+V pastes (the
 > cursor's item in a format the app takes, else the newest that has one); every copy shows a
 > notification; the dock's clipboard button opens its widget (`apps/clipboard`). The protocol
@@ -739,7 +739,7 @@ its licence on the app.
 > codecs are compiled once into `libwtk.a` (`wtk/imgload.cpp`, with FP/SIMD like
 > `wtk/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
 > `fileviewer` (preview), `wtk::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
-> already in memory (Writer's RTF pictures, Paint's OpenRaster layers); `img_inflate (data, len, zlib,
+> already in memory (Letters' RTF pictures, Paint's OpenRaster layers); `img_inflate (data, len, zlib,
 > &n)` inflates a deflate stream (stb's: a ZIP entry, a zlib stream).
 > **Writing images** (`user/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
 > `pngsave::deflate` (LZ77 over 32 KB with hash chains, the fixed Huffman codes; zlib's wrapper or
@@ -753,7 +753,7 @@ its licence on the app.
 > (`ft/onyx_ftoption.h`, `ft/onyx_ftmodule.h`: TrueType fonts only — truetype + sfnt —, anti-aliased
 > — smooth —, hinted by the auto-hinter only — autofit, no bytecode interpreter —, their kerning read
 > — GPOS too —; no compressed, web, bitmap, colour or variable fonts, no PostScript names). FreeType wants a C library: an app using it is a **newlib** app (§5.1;
-> Writer's rule in `user/Makefile` is the model). `#include "ft/fonts.h"` (header-only, one TU):
+> Letters' rule in `user/Makefile` is the model). `#include "ft/fonts.h"` (header-only, one TU):
 > `fnt::init ()` finds the families of `SD:/res/fonts` and `SD:/fonts` (each file's family name and
 > style read from its own `name` / `head` / `OS/2` tables — no FreeType, three small reads), sorted;
 > `fnt::count / name / find / styles`; `fnt::get (family, fnt::BOLD | fnt::ITALIC, size in 1/64 px)`
@@ -769,7 +769,7 @@ its licence on the app.
 > `poly`, `rect`, `rrect`, `circle`, `ellipse`, `hole` (a disc cut out), strokes `line`, `polyline`,
 > `arc` (round ends and joins), `arrowHead` — in 1/16 px (`V (px)`), then `fill (cv, colour, alpha)`
 > paints their union (the non-zero rule: every outline turned the same way, a hole the other way),
-> anti-aliased (four sub-rows a pixel, the spans' ends to 1/16 px). Writer's toolbar icons are drawn
+> anti-aliased (four sub-rows a pixel, the spans' ends to 1/16 px). Letters' toolbar icons are drawn
 > with it (`user/Apps/writer/icons.h`). `wk_sin / wk_cos (degrees)` × 16384.
 > **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
 > app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
@@ -1059,8 +1059,8 @@ its licence on the app.
 > **Rich Text Format** (`user/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
 > a `RichTextBox` (styles, colour table → the 16-colour palette, `\'hh` / `\uN` → Latin-1,
 > skipped destinations), `rtf::save (box, out, cap)` writes it back; `rtf::is_rtf`. Used by
-> `rtfview` (Writer reads and writes RTF itself, with everything: `Apps/writer/fileio.h`).
-> **Writer** (`user/Apps/writer/`, one TU: `main.cpp` includes the rest) — `doc.h` the document
+> `rtfview` (Letters reads and writes RTF itself, with everything: `Apps/writer/fileio.h`).
+> **Letters** (`user/Apps/writer/`, one TU: `main.cpp` includes the rest) — `doc.h` the document
 > (paragraphs of code points, each with an index into the table of character formats — font of the
 > font table, size in half-points, flags, colour, highlight, a field (`FIELD_CHAR` U+FFF9 whose
 > format names a `Field`: page, pages, date / time with its picture, a merge field) or an image (the
@@ -1153,7 +1153,7 @@ its licence on the app.
 > written before each change (100 steps, 24 MB at most; one control's edits coalesced into one
 > step). **Record ▸ Mail Merge** (`MergeBox`, `cmd_mail_merge`): the records to merge written as a
 > `.card` (`SD:/apps/cardfile.app/merge.card`), a job file beside it, then `kapi_exec` of
-> `writer --merge JOB` — Writer's `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
+> `writer --merge JOB` — Letters' `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
 > **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; **in English or French**: its words
@@ -1186,7 +1186,7 @@ its licence on the app.
 > document's template: the fields, the lines, the VAT's detail with the legal mentions in French, Dutch
 > or English — a party's language —, then `writer --merge`), `export.h` (a `Report` as RTF — A4,
 > landscape when wide, a header and page numbers, tables — or `.xlsx` — `img/pngsave.hpp`'s `ZipOut` —
-> or CSV, opened in Writer or the Spreadsheet). **The window**: `ui.h` (the `Page` a view is — its
+> or CSV, opened in Letters or the Spreadsheet). **The window**: `ui.h` (the `Page` a view is — its
 > header, `sync` when the books or the year shown change —, the icons as `VPath`s, `FlatButton`,
 > `HeadRow`, `Segmented`, pills, tiles, `TickGrid`, `AskBox`, `FormBox`), `pick.h` (`PickEdit`: a
 > party, an account, a VAT code found as typed, its suggestions below), `editgrid.h` (`EditGrid`: a
@@ -1205,7 +1205,7 @@ its licence on the app.
 > through the engine itself — `sdcard/docs/demo-company.ledger` — and its next CODA statement,
 > `demo-bank-statement.cod`: see its header), `tools/ledger/gen_templates.py` (the documents'
 > templates in French, Dutch, English, and `templates/fields.card`), `tools/ledger/gen_pcmn.py`.
-> **Spreadsheet** (`user/Apps/sheet/`, a **newlib** wtk app — FreeType and `libm` — built as Writer
+> **Spreadsheet** (`user/Apps/sheet/`, a **newlib** wtk app — FreeType and `libm` — built as Letters
 > is; one TU: `main.cpp` includes the rest, a chain of headers each including the one before, all in
 > `namespace ss`; `app.txt` asks for a **4 MB stack**: the formulas are evaluated recursively). **The
 > engine** is plain C++ over libc, the same code on the PC: `core.h` (a growing `Buf`, UTF-8 — the
@@ -1237,7 +1237,7 @@ its licence on the app.
 > through kapi, on the PC through stdio), `ods.h` (LibreOffice's `.ods`, read: OpenFormula turned
 > into Excel's syntax, the number styles into format codes), CSV in `main.cpp`. **The window**:
 > `condfmt.h` (the rules' look for a cell — their figures over the range computed once a
-> recalculation), `ui_base.h` (Writer's toolbar look, the icons Writer lacks), `render.h` (a cell
+> recalculation), `ui_base.h` (Letters' toolbar look, the icons Letters lacks), `render.h` (a cell
 > drawn: FreeType fonts — the Office families mapped to the card's —, the formatted value, wrap and
 > overflow, fill, borders, merges), `chart.h`, `grid.h` (`GridView`: headers, up to four panes, the
 > selection, the fill handle, the charts, the in-place editor with its coloured references,
@@ -1645,7 +1645,7 @@ its licence on the app.
 >   **`WkFaceScope sc (face);`** draws with another face until the end of the scope (a widget's
 >   captions, a display's large digits).
 > - **FreeType's face** (`user/ft/wtkface.h`, header-only, one translation unit; a **newlib** app
->   linking `ft/libft.a`, as Writer — §5.1): **`ft_wtk_install ("DejaVu Sans", 13)`** at the start
+>   linking `ft/libft.a`, as Letters — §5.1): **`ft_wtk_install ("DejaVu Sans", 13)`** at the start
 >   of `main` (before the `Root` and the widgets) makes an `FtTextFace` on `ft/fonts.h` (the card's
 >   TrueType families of `SD:/res/fonts` / `SD:/fonts`, anti-aliased, quarter-pixel positioned,
 >   kerned, a small width cache; bold / italic from the family's files or made) and installs it;
@@ -1656,7 +1656,7 @@ its licence on the app.
 > - **Every new app uses the FreeType face** (unless told otherwise): add it to **`FT_APPS`** in
 >   `user/Makefile` — the newlib + `ft/libft.a` rule the Control Panel, its applets (Theme, Panel,
 >   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup, the
->   menu bar and the File Viewer share (Paint, Writer, the Calendar... have rules of their own) (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
+>   menu bar and the File Viewer share (Paint, Letters, the Calendar... have rules of their own) (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
 >   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`wk_tw`, `wk_text_fit`),
 >   never in characters, and draw it through the face (`wk_text`, `canvas.text`), not `drawFont`
 >   (the bitmap fonts only).
@@ -1667,7 +1667,7 @@ its licence on the app.
 
 > **Studio controls** (for Koton's DAW, usable anywhere; drawn from the theme's colours — a light
 > theme and a dark one alike —, anti-aliased with `wtk/vpaint.h`). All in `wtk/wtk.h` but the
-> toolbar: **`#include "wtk/toolbar.h"`** yourself (Writer, the Spreadsheet and Cardfile have their
+> toolbar: **`#include "wtk/toolbar.h"`** yourself (Letters, the Spreadsheet and Cardfile have their
 > own `ToolBar` / `ToolButton` next to `using namespace wtk`, so `wtk.h` leaves it out). See them in
 > the Widget Showcase (`user/Apps/widgets`, its Studio group) and `gallery/studio.cpp`.
 >
@@ -1676,7 +1676,7 @@ its licence on the app.
 > | **`Knob`** (`wtk/knob.h`) | `Knob (l, t, w, h, min, max, value, onChange)`; `setLabel ("Gain")`, `showValue`, `format (v, out, cap)`, `setDefault (v)`, `bipolar`, `arcColor`, `step`, `face` (captions) | A rotary control: a 270° track, the value's arc in the accent (from the start, or from 0 when `bipolar`: a pan), a cap with a pointer, the label and the value under it. Drag up / down (the range in 200 px; Shift: 1000 px), the wheel, a double click → the default; keys Up / Down / Left / Right, Page Up / Down, Home / End, Delete (the default). The dial is the width, less the captions' lines (about 24 … 64 px). `setValue (v, fire)`, `setRange`, `valueText`. |
 > | **`VuMeter`** (`wtk/vumeter.h`) | `VuMeter (l, t, w, h, vertical = true, stereo = true)`; `floorDb` / `topDb` (−48 / +6), `amberDb` / `redDb` (−12 / −3), `segPx` (3; 0 = continuous), `holdTicks`, `fallDb`, `peakFallDb`, `showPeak`, `showClip` | A level meter: segments on a dark well, green → amber → red along a dB scale, the peak held then falling, a clip light (a level over 0 dBFS; a click clears it). **`setQ16 (l, r)`** — linear, 65536 = 0 dBFS —, `setCdb (l, r)` (1/100 dB), `set (float l, float r)` in an FP-enabled unit only (wtk itself is integer-only). Call it at the UI's rate, silence included (the falls are timed by `kapi_get_ticks`); it repaints only when a lit segment or a peak moves. `wk_q16_to_cdb (v)`. |
 > | **`SegmentedControl`** (`wtk/segmented.h`) | `SegmentedControl (l, t, w, h, labels, n, selected, onChange)`; `equalWidths` (false: by the texts), `setLabels`, `setEnabled (i, on)` | Mutually exclusive segments drawn as one pill, the chosen one in the accent (bold). A click, the wheel, Left / Right. `selected`, `select (i, fire)`, `label (i)`, `count ()`. Labels copied (12 × 31 chars). |
-> | **`ToolBar`** + **`ToolButton`** (`wtk/toolbar.h`) | `ToolBar (l, t, w, h = 34)`: `add (w, gap)`, `addRight (w, gap)` (anchored right), `sep ()`, `space (px)`, `line`, `bg`; `ToolButton (w, h, tip, onClick)` then `->setGlyph (WKT_PLAY)`, `->setIcon (fn, id)` (the app's drawer), `->setText ("Loop")`, `->setToggle (true, on)`, `->setSplit (arrowCb)`, `->fitWidth ()`; `filled`, `raised`, `onColor`, `iconColor` | A strip of small buttons: an icon, a label beside it or alone, a toggle (on: the accent's tint, or `filled` — a play button), a split arrow (a palette, a menu), a tooltip. Flat until pointed (`raised`: always a face). The icons: `WKT_NEW OPEN SAVE UNDO REDO CUT COPY PASTE PLAY PAUSE STOP RECORD TO_START TO_END REWIND FORWARD LOOP METRONOME PLUS MINUS SEARCH MIXER SPARK GEAR`, drawn at any size by `wk_tool_glyph (cv, kind, x, y, size, ink)`. Generalised from Writer's (which keeps its own). |
+> | **`ToolBar`** + **`ToolButton`** (`wtk/toolbar.h`) | `ToolBar (l, t, w, h = 34)`: `add (w, gap)`, `addRight (w, gap)` (anchored right), `sep ()`, `space (px)`, `line`, `bg`; `ToolButton (w, h, tip, onClick)` then `->setGlyph (WKT_PLAY)`, `->setIcon (fn, id)` (the app's drawer), `->setText ("Loop")`, `->setToggle (true, on)`, `->setSplit (arrowCb)`, `->fitWidth ()`; `filled`, `raised`, `onColor`, `iconColor` | A strip of small buttons: an icon, a label beside it or alone, a toggle (on: the accent's tint, or `filled` — a play button), a split arrow (a palette, a menu), a tooltip. Flat until pointed (`raised`: always a face). The icons: `WKT_NEW OPEN SAVE UNDO REDO CUT COPY PASTE PLAY PAUSE STOP RECORD TO_START TO_END REWIND FORWARD LOOP METRONOME PLUS MINUS SEARCH MIXER SPARK GEAR`, drawn at any size by `wk_tool_glyph (cv, kind, x, y, size, ink)`. Generalised from Letters' (which keeps its own). |
 > | **`LcdDisplay`** (`wtk/lcd.h`) | `LcdDisplay (l, t, w, h, text, caption)`; `setText`, `setCaption`, `setSub` (repainted only on a change), `face` / `smallFace`, `scale`, `ink`, `centred` | A time / position display: a sunken well (dark in a dark theme, the accent's pale tint in a light one), large digits in the accent — the `face` given (an `FtTextFace` at 24 px), else the bitmap font scaled as large as fits —, a small caption over a second line at its right ("BAR.BEAT.16" / "0:14.83"). |
 
 > **The look: the modernised CDE (kapi v64).** Every control, and every window's frame, is
@@ -1891,7 +1891,7 @@ Key points:
   call). The variant `kapi_create_window_ex(x, y, w, h, title, flags)` is for explicit
   placement and `WIN_FLAG_BORDERLESS`. The client area is **at most the screen's size** (frame
   not counted; 1024 × 768 by default, `width=` / `height=` in `cmdline.txt`; before kernel v66,
-  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so (or size it from `kapi_screen_size`, as Paint), as Writer,
+  1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so (or size it from `kapi_screen_size`, as Paint), as Letters,
   so that it fits the default screen: over the limit (or out of memory) the call returns **0**. **Check
   it**: drawing into a null canvas faults and the app is killed (`el0: ... killed` in `kmsg`).
   (Before kapi v74, when apps ran at EL1, address 0 was the kernel's own memory: the
@@ -1951,7 +1951,7 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 
 | Part | What |
 |---|---|
-| `tools/pkg/packages.ini` | Which files of `sdcard/` make each package: `[onyx]` (the kernel, `bin/`, `etc/` as settings, the fonts, the Shell and Settings apps, the terminal, the File Viewer, the Task Manager, Tinypad, voronoy and imageview; `required`, `restart`), `[pi-firmware]`, `[demos]`, the samples each with its app (`[basic-samples]`, `[writer-samples]`... `needs` their app; their files are the user's: `config`), then `[*apps]`: every other app its own package (`[app.<name>]`: its files outside its bundle, its `needs` — the emulators `gamelib`, Writer / Sheet / Ledger `cardfile` —, its `config`). |
+| `tools/pkg/packages.ini` | Which files of `sdcard/` make each package: `[onyx]` (the kernel, `bin/`, `etc/` as settings, the fonts, the Shell and Settings apps, the terminal, the File Viewer, the Task Manager, Tinypad, voronoy and imageview; `required`, `restart`), `[pi-firmware]`, `[demos]`, the samples each with its app (`[basic-samples]`, `[writer-samples]`... `needs` their app; their files are the user's: `config`), then `[*apps]`: every other app its own package (`[app.<name>]`: its files outside its bundle, its `needs` — the emulators `gamelib`, Letters / Sheet / Ledger `cardfile` —, its `config`). |
 | `tools/pkg/versions.ini` | Each package's version, raised by `mkrepo.py --bump` (a package whose files changed at the same version is refused). |
 | `tools/pkg/mkrepo.py` | `--out <onyx-packages checkout> --key <private key>`: the `.opk` of each package (a deterministic ZIP: the card's tree + `PKG/manifest.ini`), the icons, `index.txt` (version, size, SHA-256, needs — `kapi >= KAPI_ABI_VERSION` added —, the content's hash) signed into `index.sig` (ECDSA P-256 / SHA-256). `--db`: `sdcard/var/pkg/db/*.ini`, the card made "installed". `--lite sdcard_lite`: the card of the required packages only. |
 | `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
@@ -2132,13 +2132,13 @@ CJK fonts left out). **The app is AGPL-3.0**, MuPDF's licence (docs/LICENSING.md
 | `main.cpp` | The tabs (`Tab`: a document and how it is shown — layout, zoom, rotation, scroll, the selection, the search's hits), the bitmaps kept (`Bmp`: a page or, past 2600 × 2600 px, the part seen on a 256-px grid; another scale's shown, scaled, until the right one comes; 18 M pixels at most, the least used dropped), the layout (`lay_out`: continuous, one page, two pages with the first alone), the widgets — `TabBar`, `ToolBar` (`SearchBox`, the page's field), `SidePanel` (Pages, Contents, Find), `View` (the pages, the hits and the selection over them, the links, the scroll bars), `Home` (the recent documents, the folders) —, the dialogs (the password, `PropsBox`), full screen (`kapi_fullscreen_begin`: the next page drawn ahead), the settings and `recent.tsv`. |
 
 **The PDF writer** — `user/pdf/pdfwrite.h`, header-only, **MIT** (Onyx's own code: docs/LICENSING.md), used by
-Writer's and the Spreadsheet's *File ▸ Export as PDF*: `pdfw::Writer` writes PDF 1.7 — pages of rectangles, text
+Letters' and the Spreadsheet's *File ▸ Export as PDF*: `pdfw::Writer` writes PDF 1.7 — pages of rectangles, text
 as **glyphs** of TrueType fonts (Type 0 / CIDFontType2, `Identity-H`: the codes are the glyphs' numbers; a
 **subset** of each font embedded — the glyphs used, and those their composites take, keep their numbers, the
 others are left empty, `loca` rewritten long —; a **ToUnicode** map so the text can be selected and found; a
 made bold as fill + stroke, a made italic slanted), images (Flate with a soft mask for their transparency, or
 JPEG through `img/pngsave.hpp`), links (the web, a page), bookmarks (by level), the document's facts. Its
-streams are deflated with `pngsave::deflate`. The apps **draw their pages again into it**: Writer's
+streams are deflated with `pngsave::deflate`. The apps **draw their pages again into it**: Letters'
 `PageView::paintPage` (the screen's drawing, its three primitives — `fillClip`, `glyph`, `drawImage` — sent to
 `g_pdf` when it is set; 100 %: a px is 0.75 point), the Spreadsheet's `paint_pane` (`out_rect`, `out_glyph`,
 the lines' runs; the used cells cut into page bands, the charts drawn twice as large into images).
@@ -2628,7 +2628,7 @@ followed with their cookies, timed with `kapi_clock_us`. Its data are Postman's 
 XML formatting), `widgets.h` (LineEdit with `{{variable}}` pills, CodeEdit — a code editor with
 colours, undo, selection —, KVTable with Bulk Edit, TabBar, DocTabs, Btn, Choice), `views.h`,
 `rail.h` (the sidebar), `dialogs.h`, `main.cpp`. Built by `user/Makefile`'s `courier.elf`
-rule: a newlib app as Writer (FreeType's text through wtk) linking mbedTLS
+rule: a newlib app as Letters (FreeType's text through wtk) linking mbedTLS
 (`COURIER_MBEDTLS`, default `third_party/mbedtls-3.6.3`). On the PC it builds with
 `-DCOURIER_NO_TLS` (`shots.sh courier`).
 
@@ -2820,7 +2820,7 @@ barwidth = 40
   **The Pi's own binary on the PC**: `sh tools/tests/desktop_sim/elfrun.sh <app> [stack bytes]`
   (the same `SIM` script) runs `user/<app>.elf` — newlib and the code the Pi's compiler made —
   under `qemu-aarch64` with the simulator's kapi (`elfrun.cpp`: the ELF's segments at their
-  addresses, the stack with a guard page); needs `g++-aarch64-linux-gnu` and `qemu-user`. Writer's and the Spreadsheet's are built with the apps' FreeType (the same
+  addresses, the stack with a guard page); needs `g++-aarch64-linux-gnu` and `qemu-user`. Letters' and the Spreadsheet's are built with the apps' FreeType (the same
   sources, for the PC).
   (`nintendoemu.png` and `arkanoid.png` — an emulator, a BASIC program — still come from the
   older, simulated renderer [`tools/screenshot/render.py`](../tools/screenshot/render.py).)
@@ -2831,7 +2831,7 @@ barwidth = 40
   picture alone in its paragraph, an italic line after it its caption), the one
   [`tools/manuals/build_manuals.py`](../tools/manuals/build_manuals.py) documents at its top. Its
   pictures: a script per manual, [`tools/manuals/ledger_shots.sh`](../tools/manuals/ledger_shots.sh)
-  (as `shots.sh`, the demo's data, the stand-in kernel's fixed day: the same pictures every time; Writer
+  (as `shots.sh`, the demo's data, the stand-in kernel's fixed day: the same pictures every time; Letters
   run on what Ledger printed), [`annotate.py`](../tools/manuals/annotate.py) adding numbered callouts in
   margins. The PDF: `python tools/manuals/build_manuals.py [its .md]` — Python only; a headless Chrome,
   Chromium or Edge prints it (`$CHROME` to choose one), A4, the docs' colours, Selawik
@@ -2979,16 +2979,16 @@ barwidth = 40
   `apps/<app>.app` -- Ledger's templates -- copied there at the first start); read from the user's
   folder else the bundle's, written in the user's (the demo company, saved, lands in Documents);
   `HOME:/` is `~`, `MAC:/` the Mac's `/` (a file the Finder gives: `MAC:/Users/...`). **Programs**:
-  `SD:/apps/writer.app/main` is `Ledger.app/Contents/Helpers/Writer.app` (`ONYX_HELPERS`), the arguments
+  `SD:/apps/writer.app/main` is `Ledger.app/Contents/Helpers/Letters.app` (`ONYX_HELPERS`), the arguments
   passed whole in `ONYX_ARGS`; one the Mac lacks (the Spreadsheet, the File Viewer) has its file or
   folder shown by `open` (Numbers / Excel, the Finder). **Keys**: Cmd+letter is the Onyx Ctrl+letter
   (the real Ctrl too), Cmd+Left / Right Home / End, Cmd+Up / Down Ctrl+Home / End (each event carries
   its modifiers: `get_modifiers` answers the event's while it is handled), Option is Alt, the text
   through `NSTextInputClient` (dead keys). One thing in the shared sources exists for it: wtk's file
   dialog lists `SD:`, `HOME:`, `MAC:` on `__APPLE__`. Checked on Linux by **`sh pc/macOS/check.sh`**:
-  the same `hostkapi.cpp` under Ledger and Writer with a screen-less half (`pc/macOS/headless.cpp`,
+  the same `hostkapi.cpp` under Ledger and Letters with a screen-less half (`pc/macOS/headless.cpp`,
   a script of events, the window written as a picture) -- the demo company opened from the bundle's
-  card, a quote printed (Writer started from `Helpers/`, its `.rtf` in the user's `SD:/docs/Quotes`), a
+  card, a quote printed (Letters started from `Helpers/`, its `.rtf` in the user's `SD:/docs/Quotes`), a
   document saved (the books written in the user's folder, the bundle's untouched), the templates copied,
   a host path opened as `MAC:/...`; `cocoa.mm` syntax-checked against GNUstep's headers (the Mac-only
   calls aside). `pc/macOS/README.txt` is the user's page.

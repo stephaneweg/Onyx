@@ -1,5 +1,5 @@
 //
-// dialogs.h -- Writer's dialogs (wtk Modals over the window): Font (the family, the style, the size,
+// dialogs.h -- Letters' dialogs (wtk Modals over the window): Font (the family, the style, the size,
 // the effects, the colours, a preview drawn with the chosen font), Paragraph (the alignment, the
 // indents -- a first line's or a hanging one --, the spacing, the line spacing, a page break before,
 // kept with the next, lines kept together, no widow / orphan; a preview), Tabs (the stops: their

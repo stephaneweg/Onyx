@@ -1,7 +1,7 @@
 //
 // rtf.h -- Rich Text Format for wtk::RichTextBox: rtf_load parses an RTF document into the
 // box (text + bold / italic / underline / strike / colour / highlight / size), rtf_save
-// writes the box back as RTF. Used by the RTF reader (rtfview) and Writer (.rtf files).
+// writes the box back as RTF. Used by the RTF reader (rtfview) and Letters (.rtf files).
 //
 // Reading: groups, control words and symbols; the colour table (colours map to the
 // box's 16-colour palette, nearest match); \fs (half-points) -> size x1..x4; \par \line

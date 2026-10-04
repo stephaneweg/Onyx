@@ -43,7 +43,7 @@ waarmee de Belgische administratie en de banken werken:
   heffing naar de medecontractant, niet-aftrekbare btw, de 50 % van de bedrijfswagen;
 - **offertes**, **bestellingen**, **leveringsbonnen** en **bestelbonnen** voor leveranciers, telkens
   omgezet in het volgende document en ten slotte in de factuur;
-- documenten **afgedrukt vanuit sjablonen** door Writer, in het Nederlands, Frans of Engels, met uw
+- documenten **afgedrukt vanuit sjablonen** door Letters, in het Nederlands, Frans of Engels, met uw
   briefhoofd;
 - **bank- en kasuittreksels**, ingevoerd of **geïmporteerd uit de CODA-bestanden van uw bank**, waarbij
   de facturen die ze betalen voor u worden gevonden en afgepunt;
@@ -52,7 +52,7 @@ waarmee de Belgische administratie en de banken werken:
   **intracommunautaire opgave**;
 - **rapporten**: dagboeken, grootboek, proef- en saldibalans, balans, resultatenrekening, saldi van
   klanten en leveranciers, vorderingen en schulden volgens ouderdom — op het scherm, als
-  Writer-documenten of als rekenbladen;
+  Letters-documenten of als rekenbladen;
 - de **jaarafsluiting**, met overdracht van het resultaat.
 
 U voert **documenten** in — een factuur, een rekeninguittreksel —, nooit losse boekingen: Ledger maakt
@@ -74,7 +74,7 @@ maar u moet de basis van het dubbel boekhouden kennen: paragraaf 1.5 herhaalt di
 ### 1.3 Wat u nodig hebt
 
 - Onyx, op een Raspberry Pi 4 (of de Onyx-desktopsimulator op een pc).
-- **Writer**, met Onyx geïnstalleerd: het drukt uw offertes, facturen en rapporten af.
+- **Letters**, met Onyx geïnstalleerd: het drukt uw offertes, facturen en rapporten af.
 - Het **rekenblad** (**Spreadsheet**, facultatief): het opent rapporten als werkmappen.
 - Om uittreksels te importeren: de **CODA**-bestanden van uw bank (uit uw online bankieren, meestal
   `.cod`- of `.txt`-bestanden), gekopieerd naar de SD-kaart.
@@ -521,7 +521,7 @@ De factuur krijgt het volgende nummer van het dagboek (*VKP 2026/0062*). Ze staa
 rekening van de klant, in de btw-aangifte van haar periode en in alle rapporten.
 
 ![Een opgeslagen factuur, achterstallig](images/invoice.png)
-*Een opgeslagen factuur: "Open, overdue since 24/09/2026" (open, achterstallig sinds 24/09/2026), haar gestructureerde mededeling; Print maakt ze in Writer.*
+*Een opgeslagen factuur: "Open, overdue since 24/09/2026" (open, achterstallig sinds 24/09/2026), haar gestructureerde mededeling; Print maakt ze in Letters.*
 
 ### 6.3 De btw-codes van de verkopen
 
@@ -547,10 +547,10 @@ Bijlage A geeft alle codes.
 ### 6.4 Een factuur afdrukken
 
 Klik op een opgeslagen factuur op **Print** — of klik er in de lijst met de rechtermuisknop op en kies
-**Print**. Ledger geeft haar gegevens door aan **Writer**, dat de factuur uit haar sjabloon maakt en
+**Print**. Ledger geeft haar gegevens door aan **Letters**, dat de factuur uit haar sjabloon maakt en
 toont: druk ze af, of sla ze opnieuw op als `.docx` of `.odt`. Zie hoofdstuk 12.
 
-![Een factuur afgedrukt door Writer](images/invoice-printed.png)
+![Een factuur afgedrukt door Letters](images/invoice-printed.png)
 *Dezelfde factuur afgedrukt: in het Nederlands, de taal van de klant — "FACTUUR".*
 
 ### 6.5 Creditnota's
@@ -800,9 +800,9 @@ Klik op **New quote** (of **Other...** voor een bestelling, een leveringsbon of 
    **toestand** en de **referentie** van de klant.
 2. De lijnen: een **omschrijving**, de **hoeveelheid** (`2,5` uur), de **eenheidsprijs** zonder btw en de
    **btw-code**; het **totaal** wordt berekend.
-3. **Save**, en dan **Print** om ze in Writer te maken (hoofdstuk 12).
+3. **Save**, en dan **Print** om ze in Letters te maken (hoofdstuk 12).
 
-![Een offerte afgedrukt door Writer](images/quote-printed.png)
+![Een offerte afgedrukt door Letters](images/quote-printed.png)
 *De offerte afgedrukt vanuit haar Franse sjabloon: het briefhoofd, de klant, de lijnen, de totalen.*
 
 ### 11.3 De volgende stap
@@ -829,8 +829,8 @@ nummer van de leverancier.
 ### 12.1 Hoe het werkt
 
 **Print** — op een offerte, een bestelling, een leveringsbon, een bestelbon, een verkoopfactuur of
--creditnota — schrijft de gegevens van het document en vraagt **Writer** het document te maken vanuit zijn
-**sjabloon**. Writer toont het daarna: druk het af, of sla het opnieuw op als `.docx` of `.odt`.
+-creditnota — schrijft de gegevens van het document en vraagt **Letters** het document te maken vanuit zijn
+**sjabloon**. Letters toont het daarna: druk het af, of sla het opnieuw op als `.docx` of `.odt`.
 
 De gemaakte documenten worden bewaard in `SD:/docs`, een map per soort — **Quotes**, **Orders**,
 **Delivery notes**, **Purchase orders**, **Invoices**, **Credit notes** —, genoemd naar hun nummer en hun
@@ -844,7 +844,7 @@ nemen de taal van zijn fiche, anders die van de vennootschap (die van haar reken
 
 ### 12.3 Uw eigen sjablonen
 
-Een sjabloon is een gewoon Writer-document — `.rtf`, `.docx` of `.odt` — waarvan Ledger de
+Een sjabloon is een gewoon Letters-document — `.rtf`, `.docx` of `.odt` — waarvan Ledger de
 **samenvoegvelden** invult. Ze staan in `SD:/apps/ledger.app/templates`: de Franse in die map, de
 Nederlandse in `nl`, de Engelse in `en`, een per soort: `quote` (offerte), `order` (bestelling),
 `delivery` (levering), `porder` (bestelbon), `invoice` (factuur), `creditnote` (creditnota).
@@ -852,12 +852,12 @@ Nederlandse in `nl`, de Engelse in `en`, een per soort: `quote` (offerte), `orde
 ![Settings, afdrukken](images/settings-printing.png)
 *De sjablonen van elke taal: een eigen sjabloon, of het Franse dat in de plaats wordt gebruikt.*
 
-Kies in **Settings ▸ Printing** de taal en het document en klik op **Edit in Writer**. Wijzig de opmaak,
-de woorden, de voorwaarden; voeg uw logo toe (**Insert ▸ Image...** in Writer); verplaats de velden. Als
+Kies in **Settings ▸ Printing** de taal en het document en klik op **Edit in Letters**. Wijzig de opmaak,
+de woorden, de voorwaarden; voeg uw logo toe (**Insert ▸ Image...** in Letters); verplaats de velden. Als
 een taal geen eigen sjabloon heeft (**French one**), stelt Ledger voor het uit het Franse te maken.
 **Open the folder** toont de sjablonen in de File Viewer.
 
-Om een veld toe te voegen, gebruikt u **Tools ▸ Mail Merge** in Writer: het toont alle velden van
+Om een veld toe te voegen, gebruikt u **Tools ▸ Mail Merge** in Letters: het toont alle velden van
 Ledger, met de waarden van een voorbeeld. Een **tabelrij** die lijnvelden bevat (**LineText**,
 **LineQty**...) wordt herhaald voor elke lijn van het document. Bijlage B geeft alle velden.
 
@@ -869,9 +869,9 @@ Ledger, met de waarden van een voorbeeld. Een **tabelrij** die lijnvelden bevat 
 
 ### 13.1 Een rapport kiezen
 
-**Reports** toont een rapport op het scherm; **Writer** opent het als een document om af te drukken (A4,
+**Reports** toont een rapport op het scherm; **Letters** opent het als een document om af te drukken (A4,
 liggend als het breed is, met titel en paginanummers), **Spreadsheet** als een werkmap, en **Save
-as...** schrijft het als Writer-document (`.rtf`), werkmap (`.xlsx`) of CSV-bestand — standaard in
+as...** schrijft het als Letters-document (`.rtf`), werkmap (`.xlsx`) of CSV-bestand — standaard in
 `SD:/docs/Reports`.
 
 ![Een rapport kiezen](images/reports-list.png)
@@ -907,8 +907,8 @@ Dubbelklik op een lijn om haar document, haar rekening of haar derde te openen.
 ![Vorderingen volgens ouderdom](images/receivables.png)
 *Wat de klanten verschuldigd zijn, volgens ouderdom.*
 
-![Een rapport in Writer](images/report-writer.png)
-*De balans geopend in Writer, klaar om af te drukken.*
+![Een rapport in Letters](images/report-writer.png)
+*De balans geopend in Letters, klaar om af te drukken.*
 
 ## 14. Btw
 
@@ -1025,12 +1025,12 @@ verwijder ze als het resultaat verandert, en sluit opnieuw af.
 | `SD:/docs/<vennootschap>.ledger` | De boekhouding van de vennootschap: alles in één bestand (u kiest naam en plaats) |
 | `<vennootschap>.ledger.bak` | De vorige versie van de boekhouding, bij elke wijziging bewaard |
 | `SD:/docs/Quotes`, `Orders`, `Delivery notes`, `Purchase orders`, `Invoices`, `Credit notes` | De afgedrukte documenten |
-| `SD:/docs/Reports` | De rapporten geopend in Writer of het rekenblad |
+| `SD:/docs/Reports` | De rapporten geopend in Letters of het rekenblad |
 | `SD:/docs/VAT` | De btw-aangiften en listings (XML) |
 | `SD:/docs/Payments` | De SEPA-betalingsbestanden |
 | `SD:/apps/ledger.app/templates` | De sjablonen (`nl`, `en`: de Nederlandse en Engelse) |
 | `SD:/apps/ledger.app/last.txt` | De laatst geopende boekhouding |
-| `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job` | De gegevens van het laatst afgedrukte document, voor Writer |
+| `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job` | De gegevens van het laatst afgedrukte document, voor Letters |
 
 **Maak** regelmatig een **back-up** van uw `.ledger`-bestand — minstens na elke btw-aangifte — op een
 USB-stick of een andere computer: het is uw hele boekhouding. **File ▸ Save a Copy As...** schrijft een
@@ -1074,11 +1074,11 @@ aard van zijn rekening) en kijk opnieuw.
 **Het btw-nummer van een klant toont "Its check digits are wrong".** Controleer het op de Europese
 VIES-site; Ledger behoudt het als u aandringt, maar Intervat zal het weigeren in de listings.
 
-**Writer meldt "No template for this kind of document".** Er ontbreekt een sjabloon in
+**Letters meldt "No template for this kind of document".** Er ontbreekt een sjabloon in
 `SD:/apps/ledger.app/templates`: kopieer het terug van een nieuwe Onyx-kaart.
 
 **Waar staat mijn factuur als bestand?** In `SD:/docs/Invoices`, genoemd naar haar nummer en klant.
-Writer kan ze opnieuw opslaan als `.docx` of `.odt`.
+Letters kan ze opnieuw opslaan als `.docx` of `.odt`.
 
 **De stip onderaan de zijbalk is rood.** De boekhouding kon niet worden geschreven (kaart vol of tegen
 schrijven beveiligd). Maak plaats vrij, en dan **File ▸ Save a Copy As...**.
@@ -1159,7 +1159,7 @@ Rooster 81, 82 of 83 is de aard van de aankooprekening: handelsgoederen, dienste
 
 ## Bijlage B. De samenvoegvelden
 
-De velden die een sjabloon kan bevatten — in Writer getypt als samenvoegvelden (**Tools ▸ Mail Merge**).
+De velden die een sjabloon kan bevatten — in Letters getypt als samenvoegvelden (**Tools ▸ Mail Merge**).
 De velden die eindigen op **Line**, **Address**, **Contact** en **Text** zijn gemaakt om zo te worden
 afgedrukt: een label en zijn waarde, in de taal van het document, of helemaal niets als er geen waarde
 is.

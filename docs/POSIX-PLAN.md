@@ -560,7 +560,7 @@ Also run `tools/el0scan.sh` (no new instructions in user code).
 
 **On the Pi:**
 - `memtest`, `threadtest`, `futextest`, `coretest`, `el0test`, `faulttest`;
-- every emulator that uses an app core (gb, gba, nes, snes, n64, gc), Doom (the RPC on an app core), Jet, Writer/Spreadsheet, Media, Mail, Photos;
+- every emulator that uses an app core (gb, gba, nes, snes, n64, gc), Doom (the RPC on an app core), Jet, Letters/Spreadsheet, Media, Mail, Photos;
 - `ps`/`memmon`: page counts should **drop** (lazy stacks: 1–64 MB less per app);
 - a kill under load.
 
@@ -767,7 +767,7 @@ int (*sleep_us) (unsigned long long us);
 **On the Pi:**
 - `filetest`, then a reboot (no `.~onyx-deleted-*` left);
 - `fsbench` unchanged;
-- the terminal's pipes and redirections, cp/mv/rm, the file manager, Writer save/load (old kapis);
+- the terminal's pipes and redirections, cp/mv/rm, the file manager, Letters save/load (old kapis);
 - a USB stick if present.
 
 **Risks:**

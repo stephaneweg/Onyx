@@ -21,7 +21,7 @@
 using namespace ss;
 using namespace wtk;
 
-#define W 1000						// (fits a 1024 x 768 screen: as Writer)
+#define W 1000						// (fits a 1024 x 768 screen: as Letters)
 #define H 700
 
 static Book g_b;

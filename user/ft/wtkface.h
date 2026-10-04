@@ -2,7 +2,7 @@
 // ft/wtkface.h -- FreeType's anti-aliased text for every wtk widget: a wtk::TextFace (wtk/text.h)
 // built on ft/fonts.h (the card's TrueType families, FreeType's glyphs cached per quarter-pixel
 // position). Header-only, like ft/fonts.h: include it once, in the app's one translation unit, and
-// link ft/libft.a -- a newlib app (Writer's rule in user/Makefile is the model).
+// link ft/libft.a -- a newlib app (Letters' rule in user/Makefile is the model).
 //
 //   #include "ft/wtkface.h"
 //   int main () {

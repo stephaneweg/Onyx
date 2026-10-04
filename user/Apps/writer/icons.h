@@ -1,5 +1,5 @@
 //
-// icons.h -- Writer's toolbar icons, drawn from their geometry (wtk/vpaint.h: anti-aliased, 20 x 20
+// icons.h -- Letters' toolbar icons, drawn from their geometry (wtk/vpaint.h: anti-aliased, 20 x 20
 // px) or from the fonts (the letters B, I, U, S, x², A...): a page, a folder, a floppy, the undo
 // arrows, scissors, pages, a clipboard, a magnifier, the alignments' lines, the lists, the indents,
 // a table.

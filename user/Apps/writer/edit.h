@@ -1,5 +1,5 @@
 //
-// edit.h -- Writer's editing: the selection (a caret and an anchor), typing, deleting, the
+// edit.h -- Letters' editing: the selection (a caret and an anchor), typing, deleting, the
 // paragraph break, the formats applied to the selection (or to what is typed next), the
 // clipboard (the system's plain text, and the document's own piece kept alongside), undo / redo,
 // find and replace; the stories (the header and the footer edited in place of the body); the tables

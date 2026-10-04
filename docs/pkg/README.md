@@ -19,9 +19,9 @@
 > app its own package**, the **demos** in one (`demos`); the **samples each with their app**
 > (`basic-samples`, `writer-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
 > `koton-samples`, `fmtracker-samples`, each needing its app); **each emulator its own package**,
-> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Writer, the
+> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Letters, the
 > Spreadsheet and Ledger need `cardfile` (installed first; not removable while they are there). A
-> mere link to another app ("Open in Writer", Cardfile's mail merge, the agenda reading the
+> mere link to another app ("Open in Letters", Cardfile's mail merge, the agenda reading the
 > Calendar's file) is not a need.
 >
 > **Published** (2026-10-01): https://github.com/stephaneweg/onyx-packages — 52 packages

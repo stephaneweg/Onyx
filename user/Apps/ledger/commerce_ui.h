@@ -3,7 +3,7 @@
 // notes and purchase orders of the year shown (a kind at a time, or all; their state: draft, sent,
 // accepted, refused, done -- a quote past its date: expired); CDocPage types one -- its party, dates,
 // reference, description, lines (a description, a quantity, a unit price, a VAT code), its totals -- prints
-// it (print.h: a Writer document from its template) and makes the next one: an order from a quote, a
+// it (print.h: a Letters document from its template) and makes the next one: an order from a quote, a
 // delivery note from an order, the invoice from any (the invoice's page, filled: Save posts it and marks
 // the document done).
 //
@@ -51,7 +51,7 @@ public:
 		bNext = new FlatButton (TR ("Next step"), s_next, FB_SECONDARY, NI_NEXT); x -= bNext->width; bNext->left = x; bNext->top = bSave->top; bNext->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 		bNext->tip = TR ("An order from a quote, a delivery note from an order, the invoice"); addChild (bNext); x -= 8;
 		bPrint = new FlatButton (TR ("Print"), s_print, FB_SECONDARY, NI_PRINT); x -= bPrint->width; bPrint->left = x; bPrint->top = bSave->top; bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		bPrint->tip = TR ("The document made by Writer from its template"); addChild (bPrint);
+		bPrint->tip = TR ("The document made by Letters from its template"); addChild (bPrint);
 		int W = width, rx = W - 330;
 		party = new PickEdit (130, 72, rx - 130 - 60, SK_PARTY, PK_CUSTOMER); party->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		party->onPick = on_party; party->onChange = mark_dirty; addChild (party);
@@ -289,7 +289,7 @@ public:
 		int k = pk_of (d.kind);
 		char t[160]; scpy (t, TR ("Its template: "), sizeof t); scat (t, PK_FILE[k], sizeof t); scat (t, ".rtf", sizeof t); scat (t, TR (" (Settings > Printing)"), sizeof t);
 		text_fit_l (canvas, 20, fy + 22, tx - 40, 18, t, dim_ink (C_BG));
-		scpy (t, TR ("Made by Writer in "), sizeof t); scat (t, "SD:/docs/", sizeof t); scat (t, PK_FOLDER[k], sizeof t);
+		scpy (t, TR ("Made by Letters in "), sizeof t); scat (t, "SD:/docs/", sizeof t); scat (t, PK_FOLDER[k], sizeof t);
 		text_fit_l (canvas, 20, fy + 40, tx - 40, 18, t, dim_ink (C_BG));
 	}
 	static void on_party (Widget &)

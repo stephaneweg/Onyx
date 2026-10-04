@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# gen_writer_sample.py -- Writer's sample documents, written as Rich Text Format by hand:
-#   sdcard/docs/writer-tour.rtf: two pages of what Writer does (styles, fonts, colours, highlights,
+# gen_writer_sample.py -- Letters' sample documents, written as Rich Text Format by hand:
+#   sdcard/docs/writer-tour.rtf: two pages of what Letters does (styles, fonts, colours, highlights,
 #     lists, super/subscript, a quotation, an image -- a PNG drawn here with Pillow + numpy, in
 #     \pict\pngblip --, a table of contents, a header and a footer with the page's number -- the
 #     first page's own --, a table with a heading row and shading). The documentation's screenshot
@@ -47,7 +47,7 @@ def esc (s):
 	return "".join (o)
 
 def field (inst, result, fmt):
-	"""A field (PAGE, NUMPAGES, DATE, MERGEFIELD) as Writer writes it: its result in the same format."""
+	"""A field (PAGE, NUMPAGES, DATE, MERGEFIELD) as Letters writes it: its result in the same format."""
 	return "{%s {\\field{\\*\\fldinst {%s }}{\\fldrslt {%s %s}}}}" % (fmt, inst, fmt, result)
 
 def save (name, R):
@@ -74,7 +74,7 @@ def tour ():
 		  "\\sectd\\headery567\\footery567\\titlepg\n")
 	# the header (not on the title page), the footer (on every page): "Page 1 of 2"
 	HF = "\\f1\\fs18\\cf4"
-	R.append ("{\\header\\pard\\plain\\s12\\qr{\\f1\\fs18\\b\\cf1 Onyx Writer}{%s  \\u8212? a tour}\\par}\n" % HF)
+	R.append ("{\\header\\pard\\plain\\s12\\qr{\\f1\\fs18\\b\\cf1 Onyx Letters}{%s  \\u8212? a tour}\\par}\n" % HF)
 	foot = "\\pard\\plain\\s13\\qc{%s Page }%s{%s  of }%s\\par" % (HF, field ("PAGE", "1", HF), HF, field ("NUMPAGES", "2", HF))
 	R.append ("{\\footer%s}\n{\\footerf%s}\n" % (foot, foot))
 	def para (style, text, extra = ""):
@@ -83,17 +83,17 @@ def tour ():
 		R.append ("\\pard\\plain\\s%d%s%s %s\\par\n" % (style, defaults.get (style, ""), extra, text))
 	N = "{\\f0\\fs24 %s}"
 	MONO = "{\\f2\\fs20 %s}"
-	para (4, "{\\f1\\fs56\\b %s}" % esc ("Onyx Writer"))
+	para (4, "{\\f1\\fs56\\b %s}" % esc ("Onyx Letters"))
 	para (5, "{\\f1\\fs32\\cf4 %s}" % esc ("A word processor for Onyx, in the way of AbiWord"))
 	para (0, "{\\f0\\fs24 %s}" % pict, "\\qc")
 	# the table of contents (Insert > Table of Contents makes it; Tools > Update Table of Contents, its pages)
 	para (11, "{\\f1\\fs32\\b Contents}")
 	R.append ("{\\field{\\*\\fldinst {TOC \\\\o \"1-3\" }}{\\fldrslt\n")
-	for style, title, page in [ (8, "What Writer does", 1), (8, "A few keys", 1), (8, "Tables, pages and fields", 2), (9, "A mail merge", 2) ]:
+	for style, title, page in [ (8, "What Letters does", 1), (8, "A few keys", 1), (8, "Tables, pages and fields", 2), (9, "A mail merge", 2) ]:
 		R.append ("\\pard\\plain\\s%d\\ql%s\\sa60\\tqr\\tldot\\tx9638{\\f0\\fs24 %s\\tab %d}\\par\n" % (style, "\\sb120" if style == 8 else "\\li240", esc (title), page))
 	R.append ("}}\n")
-	para (1, "{\\f1\\fs36\\b %s}" % esc ("What Writer does"))
-	para (0, (N % esc ("Writer lays its pages out itself and draws every letter with ")) + "{\\f0\\fs24\\b FreeType}" +
+	para (1, "{\\f1\\fs36\\b %s}" % esc ("What Letters does"))
+	para (0, (N % esc ("Letters lays its pages out itself and draws every letter with ")) + "{\\f0\\fs24\\b FreeType}" +
 	      (N % esc (", from the TrueType fonts of the card, at any zoom: ")) + "{\\f1\\fs24 Liberation Sans}" + (N % ", ") +
 	      "{\\f3\\fs24 Gelasio}" + (N % ", ") + "{\\f4\\fs24 Selawik}" + (N % esc (" or ")) + "{\\f2\\fs22 DejaVu Sans Mono}" +
 	      (N % esc (", in every size. The paragraphs are justified, centred or aligned; the page is A4 with its margins, numbered at its foot.")), "\\qj")
@@ -122,7 +122,7 @@ def tour ():
 			   "their count, the date and the time as ")) + "{\\f0\\fs24\\b fields}" +
 	      (N % esc (", page breaks, and a table of contents made from the headings (Insert > Table of Contents; Tools > Update Table of "
 			"Contents). Tables have a heading row repeated on each page, merged cells, shading and borders; their columns are dragged "
-			"on the ruler. The files Writer reads and writes:")), "\\qj")
+			"on the ruler. The files Letters reads and writes:")), "\\qj")
 	rows = [ ("File", "Extension", "Read", "Written"), ("Rich Text Format", ".rtf", "yes", "yes"), ("Microsoft Word", ".docx", "yes", "yes"),
 		 ("OpenDocument Text", ".odt", "yes", "yes"), ("Plain text", ".txt", "yes", "yes"), ("Web page", ".html", "—", "exported") ]
 	widths = [ 3200, 1700, 1500, 1500 ]
@@ -157,7 +157,7 @@ def letter ():
 	HF = "\\f1\\fs18\\cf1"
 	R.append ("{\\header\n\\pard\\plain\\s12\\ql{\\f1\\fs20\\b\\cf2 The Onyx household}\\par\n"
 		  "\\pard\\plain\\s12\\qr{%s Lyon, }%s\\par\n}\n" % (HF, field ("DATE \\\\@ \"d MMMM yyyy\"", "1 January 2027", HF)))
-	R.append ("{\\footer\n\\pard\\plain\\s13\\qc{%s %s}\\par\n}\n" % (HF, esc ("Written with Onyx Writer — a mail merge of Cardfile's Contacts")))
+	R.append ("{\\footer\n\\pard\\plain\\s13\\qc{%s %s}\\par\n}\n" % (HF, esc ("Written with Onyx Letters — a mail merge of Cardfile's Contacts")))
 	M = lambda name, fmt = "\\f0\\fs24": field ("MERGEFIELD " + name, "\\'ab" + name + "\\'bb", fmt)
 	N = "{\\f0\\fs24 %s}"
 	B = "\\pard\\plain\\s0\\qj\\sa120\\sl276\\slmult1"

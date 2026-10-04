@@ -43,14 +43,14 @@ Belgian VAT rules, and it produces the files the Belgian administration and bank
   non-deductible VAT, the company car's 50 %;
 - **quotes**, **orders**, **delivery notes** and **purchase orders**, each one turned into the next and
   finally into the invoice;
-- documents **printed from templates** by Writer, in French, Dutch or English, with your letterhead;
+- documents **printed from templates** by Letters, in French, Dutch or English, with your letterhead;
 - **bank and cash statements**, typed or **imported from your bank's CODA files**, the invoices they
   pay found and matched for you;
 - **payments to your suppliers** as a **SEPA** credit transfer file for your bank;
 - the periodic **VAT return** as an **Intervat** XML file, the **annual customer listing** and the
   **intra-Community listing**;
 - **reports**: journals, general ledger, trial balance, balance sheet, income statement, customers'
-  and suppliers' balances, receivables and payables by age — on screen, as Writer documents or as
+  and suppliers' balances, receivables and payables by age — on screen, as Letters documents or as
   spreadsheets;
 - the **year-end closing**, the year's result carried forward.
 
@@ -73,7 +73,7 @@ section 1.5 recalls them.
 ### 1.3 What you need
 
 - Onyx, on a Raspberry Pi 4 (or the Onyx desktop simulator on a PC).
-- **Writer**, installed with Onyx: it prints your quotes, invoices and reports.
+- **Letters**, installed with Onyx: it prints your quotes, invoices and reports.
 - The **Spreadsheet** (optional): it opens reports as workbooks.
 - To import bank statements: the **CODA** files your bank provides (from your online banking, usually
   `.cod` or `.txt` files), copied to the SD card.
@@ -492,7 +492,7 @@ The invoice gets the journal's next number (*VEN 2026/0062*). It now shows in th
 in the VAT return of its period and in every report.
 
 ![A saved invoice, overdue](images/invoice.png)
-*A saved invoice: "Open, overdue since 24/09/2026", its structured communication; Print makes it in Writer.*
+*A saved invoice: "Open, overdue since 24/09/2026", its structured communication; Print makes it in Letters.*
 
 ### 6.3 The VAT codes of sales
 
@@ -518,10 +518,10 @@ code.
 ### 6.4 Printing an invoice
 
 On a saved invoice, click **Print** — or right-click it in the list and choose **Print**. Ledger hands
-its data to **Writer**, which makes the invoice from its template and shows it: print it, or save it
+its data to **Letters**, which makes the invoice from its template and shows it: print it, or save it
 again as `.docx` or `.odt`. See section 12.
 
-![An invoice printed by Writer](images/invoice-printed.png)
+![An invoice printed by Letters](images/invoice-printed.png)
 *The same invoice printed: in Dutch, the customer's language — "FACTUUR".*
 
 ### 6.5 Credit notes
@@ -754,9 +754,9 @@ Click **New quote** (or **Other...** for an order, a delivery note or a purchase
    customer's **reference**.
 2. The lines: a **description**, the **quantity** (`2,5` hours), the **unit price** excluding VAT and the
    **VAT code**; the **total** is computed.
-3. **Save**, then **Print** to make it in Writer (section 12).
+3. **Save**, then **Print** to make it in Letters (section 12).
 
-![A quote printed by Writer](images/quote-printed.png)
+![A quote printed by Letters](images/quote-printed.png)
 *The quote printed from its French template: the letterhead, the customer, the lines, the totals.*
 
 ### 11.3 The next step
@@ -782,7 +782,7 @@ makes the purchase invoice, to be completed with the supplier's number.
 ### 12.1 How it works
 
 **Print** — on a quote, an order, a delivery note, a purchase order, a sales invoice or credit note —
-writes the document's data and asks **Writer** to make the document from its **template**. Writer then
+writes the document's data and asks **Letters** to make the document from its **template**. Letters then
 shows it: print it, or save it again as `.docx` or `.odt`.
 
 The documents made are kept in `SD:/docs`, a folder per kind — **Quotes**, **Orders**, **Delivery
@@ -797,7 +797,7 @@ the legal mentions follow.
 
 ### 12.3 Your own templates
 
-A template is an ordinary Writer document — `.rtf`, `.docx` or `.odt` — whose **merge fields** Ledger
+A template is an ordinary Letters document — `.rtf`, `.docx` or `.odt` — whose **merge fields** Ledger
 fills. They are in `SD:/apps/ledger.app/templates`: the French ones in that folder, the Dutch ones in
 `nl`, the English ones in `en`, one per kind: `quote`, `order`, `delivery`, `porder`, `invoice`,
 `creditnote`.
@@ -805,12 +805,12 @@ fills. They are in `SD:/apps/ledger.app/templates`: the French ones in that fold
 ![Settings, printing](images/settings-printing.png)
 *The templates of each language: their own, or the French one used in their place.*
 
-In **Settings ▸ Printing**, choose the language and the document and click **Edit in Writer**. Change
-the look, the words, the conditions; add your logo (**Insert ▸ Image...** in Writer); move the fields.
+In **Settings ▸ Printing**, choose the language and the document and click **Edit in Letters**. Change
+the look, the words, the conditions; add your logo (**Insert ▸ Image...** in Letters); move the fields.
 When a language has no template of its own (**French one**), Ledger offers to make it from the French
 one. **Open the folder** shows the templates in the File Viewer.
 
-To add a field, use **Tools ▸ Mail Merge** in Writer: it lists all of Ledger's fields, with a sample's
+To add a field, use **Tools ▸ Mail Merge** in Letters: it lists all of Ledger's fields, with a sample's
 values. A **table row** that holds line fields (**LineText**, **LineQty**...) is repeated for each line
 of the document. Appendix B lists every field.
 
@@ -821,9 +821,9 @@ of the document. Appendix B lists every field.
 
 ### 13.1 Choosing a report
 
-**Reports** shows a report on screen; **Writer** opens it as a document to print (A4, landscape when it
+**Reports** shows a report on screen; **Letters** opens it as a document to print (A4, landscape when it
 is wide, with its title and page numbers), **Spreadsheet** as a workbook, and **Save as...** writes it
-as a Writer document (`.rtf`), a workbook (`.xlsx`) or a CSV file — in `SD:/docs/Reports` by default.
+as a Letters document (`.rtf`), a workbook (`.xlsx`) or a CSV file — in `SD:/docs/Reports` by default.
 
 ![Choosing a report](images/reports-list.png)
 *The reports.*
@@ -858,8 +858,8 @@ its account or its party.
 ![Receivables by age](images/receivables.png)
 *What the customers owe, by age.*
 
-![A report in Writer](images/report-writer.png)
-*The balance sheet opened in Writer, ready to print.*
+![A report in Letters](images/report-writer.png)
+*The balance sheet opened in Letters, ready to print.*
 
 ## 14. VAT
 
@@ -970,12 +970,12 @@ changes, and close the year again.
 | `SD:/docs/<company>.ledger` | The company's books: everything, in one file (you choose its name and place) |
 | `<company>.ledger.bak` | The previous version of the books, kept at each change |
 | `SD:/docs/Quotes`, `Orders`, `Delivery notes`, `Purchase orders`, `Invoices`, `Credit notes` | The documents printed |
-| `SD:/docs/Reports` | The reports opened in Writer or the Spreadsheet |
+| `SD:/docs/Reports` | The reports opened in Letters or the Spreadsheet |
 | `SD:/docs/VAT` | The VAT returns and listings (XML) |
 | `SD:/docs/Payments` | The SEPA payment files |
 | `SD:/apps/ledger.app/templates` | The templates (`nl`, `en`: the Dutch and English ones) |
 | `SD:/apps/ledger.app/last.txt` | The books opened last |
-| `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job` | The data of the last document printed, for Writer |
+| `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job` | The data of the last document printed, for Letters |
 
 **Back up** your `.ledger` file regularly — at least after each VAT return — to a USB stick or another
 computer: it is your whole accounting. **File ▸ Save a Copy As...** writes a copy wherever you want.
@@ -1014,10 +1014,10 @@ account's nature), and look again.
 **A customer's VAT number shows "Its check digits are wrong".** Check it on the European VIES site;
 Ledger keeps it anyway if you insist, but Intervat will refuse it in the listings.
 
-**Writer shows "No template for this kind of document".** A template is missing in
+**Letters shows "No template for this kind of document".** A template is missing in
 `SD:/apps/ledger.app/templates`: copy it back from a fresh Onyx card.
 
-**Where is my invoice as a file?** In `SD:/docs/Invoices`, named after its number and customer. Writer
+**Where is my invoice as a file?** In `SD:/docs/Invoices`, named after its number and customer. Letters
 can save it again as `.docx` or `.odt`.
 
 **The dot at the foot of the side bar is red.** The books could not be written (the card full or
@@ -1095,7 +1095,7 @@ Grid 81, 82 or 83 is the purchase account's nature: goods, services or investmen
 
 ## Appendix B. The merge fields
 
-The fields a template can hold — typed in Writer as merge fields (**Tools ▸ Mail Merge**). The fields
+The fields a template can hold — typed in Letters as merge fields (**Tools ▸ Mail Merge**). The fields
 ending in **Line**, **Address**, **Contact** and **Text** are made to be printed as they are: a label
 and its value, in the document's language, or nothing at all when there is no value.
 

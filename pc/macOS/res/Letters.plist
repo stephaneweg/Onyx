@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>			<string>Writer</string>
-	<key>CFBundleDisplayName</key>		<string>Writer</string>
-	<key>CFBundleExecutable</key>		<string>Writer</string>
+	<key>CFBundleName</key>			<string>Letters</string>
+	<key>CFBundleDisplayName</key>		<string>Letters</string>
+	<key>CFBundleExecutable</key>		<string>Letters</string>
 	<key>CFBundleIdentifier</key>		<string>io.github.stephaneweg.onyx.ledger.writer</string>
-	<key>CFBundleIconFile</key>		<string>Writer</string>
+	<key>CFBundleIconFile</key>		<string>Letters</string>
 	<key>CFBundlePackageType</key>		<string>APPL</string>
 	<key>CFBundleSignature</key>		<string>????</string>
 	<key>CFBundleInfoDictionaryVersion</key>	<string>6.0</string>
@@ -16,7 +16,7 @@
 	<key>LSMinimumSystemVersion</key>	<string>@MINOS@</string>
 	<key>NSHighResolutionCapable</key>	<true/>
 	<key>NSPrincipalClass</key>		<string>NSApplication</string>
-	<key>NSHumanReadableCopyright</key>	<string>Onyx Writer -- prints Ledger's documents</string>
-	<key>NSDocumentsFolderUsageDescription</key>	<string>Writer makes Ledger's documents in Documents/Onyx Ledger.</string>
+	<key>NSHumanReadableCopyright</key>	<string>Onyx Letters -- prints Ledger's documents</string>
+	<key>NSDocumentsFolderUsageDescription</key>	<string>Letters makes Ledger's documents in Documents/Onyx Ledger.</string>
 </dict>
 </plist>

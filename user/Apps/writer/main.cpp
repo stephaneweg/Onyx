@@ -1,6 +1,6 @@
 //
 // writer -- Onyx's word processor, in the way of AbiWord / Word: the document laid out on pages (A4
-// by default) and drawn by Writer itself with FreeType's glyphs from the TrueType fonts of the card
+// by default) and drawn by Letters itself with FreeType's glyphs from the TrueType fonts of the card
 // (user/ft/fonts.h), at any zoom; two toolbars (the file, the edits, a table, the zoom -- the style,
 // the font, the size, bold / italic / underline / strike-through, superscript / subscript, the text's
 // colour and its highlight, the alignments, the lists, the indents), a ruler (the margins, the
@@ -277,7 +277,7 @@ static void cmd_export_pdf ()
 	int from = o.pages == 0 ? 0 : o.from, to = o.pages == 0 ? L.npages - 1 : o.to;
 	if (from >= L.npages) from = L.npages - 1; if (to >= L.npages) to = L.npages - 1;
 	pdfw::Writer w;
-	w.info (o.title, o.author, 0, "Writer (Onyx)");
+	w.info (o.title, o.author, 0, "Letters (Onyx)");
 	g_pdfJpeg = o.jpeg;
 	g_view->exportPages (w, from, to);
 	if (o.marks)
@@ -367,7 +367,7 @@ static void cmd_image ()
 	char path[200];
 	if (wk_file_open (path, sizeof path, "SD:/"))
 	{
-		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) wk_messagebox ("Insert Image", "That file is not an image Writer can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
+		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) wk_messagebox ("Insert Image", "That file is not an image Letters can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
 	}
 	after_edit ();
 }
@@ -637,7 +637,7 @@ static void refresh ()
 class WriterRoot : public Root
 {
 public:
-	WriterRoot () : Root (W, H, "Writer") {}
+	WriterRoot () : Root (W, H, "Letters") {}
 	void onTick () override
 	{
 		if (g_view) g_view->tick ();
@@ -695,7 +695,7 @@ int main (void)
 	wtk::init ();
 	if (!fnt::init ())
 	{
-		wk_messagebox ("Writer", "No TrueType fonts in SD:/res/fonts: Writer cannot draw its pages.", MB_OK);
+		wk_messagebox ("Letters", "No TrueType fonts in SD:/res/fonts: Letters cannot draw its pages.", MB_OK);
 		return 1;
 	}
 	make_palettes ();
@@ -871,7 +871,7 @@ int main (void)
 		char *b; int n;
 		if (read_file (RECOVER, &b, &n))
 		{
-			if (n > 0 && rtf_is (b, n) && wk_messagebox ("Writer", "Writer was closed with unsaved changes. Open the recovered document?", MB_YESNO) == 1)
+			if (n > 0 && rtf_is (b, n) && wk_messagebox ("Letters", "Letters was closed with unsaved changes. Open the recovered document?", MB_YESNO) == 1)
 			{
 				rtf_load (g_doc, b, n);
 				if (g_doc.n == 0) doc_new (g_doc);

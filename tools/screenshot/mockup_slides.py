@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """mockup_slides.py -- the first mock-ups of Onyx's presentation program (in the way of PowerPoint /
-LibreOffice Impress), the third of the office suite after Writer and Sheet. See docs/slides/README.md.
+LibreOffice Impress), the third of the office suite after Letters and Sheet. See docs/slides/README.md.
 
     python3 tools/screenshot/mockup_slides.py  -> docs/slides/mockups/slides-*.png
 
 On the real desktop (screenshots/desktop.png, 1024 x 768); the drawing helpers are mockup_archiver.py's.
-The toolbar icons that Writer and Sheet already have are taken from their real screenshots
+The toolbar icons that Letters and Sheet already have are taken from their real screenshots
 (screenshots/writer.png, sheet.png), so the three apps look like one suite; the new ones (a slide, a
 layout, a text box, the shapes, the show...) are drawn here in the same style. The deck shown is
 "Onyx Cafe -- 2026, the year in review", made from Sheet's sample (sdcard/docs/cafe-2026.xlsx) and a
@@ -25,7 +25,7 @@ DESK = Image.open (os.path.join (M.ROOT, "screenshots", "desktop.png")).convert 
 WRITER = Image.open (os.path.join (M.ROOT, "screenshots", "writer.png")).convert ("RGB")
 SHEET = Image.open (os.path.join (M.ROOT, "screenshots", "sheet.png")).convert ("RGB")
 TEXT, DIM, FACE, SEL, WHITE, LIST, LINE, LINE2, FAINT = M.TEXT, M.DIM, M.FACE, M.SEL, (255, 255, 255), M.LIST, M.LINE, M.LINE2, M.FAINT
-DESKGREY = (138, 134, 132)		# behind the slide: Writer's grey round its page
+DESKGREY = (138, 134, 132)		# behind the slide: Letters' grey round its page
 PANEL = (226, 216, 209)
 GUIDE = (226, 60, 140)			# the smart guides
 M.F["mid"] = M._f ("DejaVuSans.ttf", 15)
@@ -247,7 +247,7 @@ def screen (menus = ("File", "Edit", "View", "Insert", "Format", "Slide", "Show"
 
 WX, WY, WW, WH = 8, 32, 1008, 640
 
-# icons taken from Writer and Sheet (screenshot px: x0, y0, x1, y1)
+# icons taken from Letters and Sheet (screenshot px: x0, y0, x1, y1)
 CROPS = dict (
 	file = (WRITER, (8, 30, 336, 60)),		# new open save | undo redo | cut copy paste | find pilcrow
 	table = (WRITER, (375, 30, 401, 60)), symbol = (WRITER, (419, 30, 440, 60)), image = (WRITER, (445, 30, 472, 60)),
@@ -263,7 +263,7 @@ def crop (c, name, x, y):
 	paste (c, im, x, y, im.size[0], im.size[1], Image.NEAREST)
 	return x + im.size[0]
 
-# ---- the new icons, 20 px, in the style of Writer's ---------------------------------------------------------
+# ---- the new icons, 20 px, in the style of Letters' ---------------------------------------------------------
 def ic_newslide (c, x, y, s = 20):
 	c.rect (x + 1, y + 3, s - 4, s * 0.62, WHITE, r = 1, outline = (90, 90, 96))
 	c.rect (x + 3, y + 5, s * 0.4, 2, TEAL); c.rect (x + 3, y + 9, s * 0.55, 1.5, FAINT); c.rect (x + 3, y + 12, s * 0.45, 1.5, FAINT)
@@ -327,7 +327,7 @@ def tb_btn (c, x, y, icon, on = False, arrow = False, w = 29):
 	return x + w
 
 def combo (c, x, y, w, s):
-	"""Writer's combo: white field, the bitmap-like font, a small button at the right."""
+	"""Letters' combo: white field, the bitmap-like font, a small button at the right."""
 	c.rect (x, y, w, 25, (247, 245, 244), r = 3, outline = (150, 140, 134))
 	c.text_l (x + 6, y, 25, s, "combo", TEXT)
 	bx = x + w - 19
@@ -335,7 +335,7 @@ def combo (c, x, y, w, s):
 	c.line ([(bx + 4, y + 11), (bx + 8, y + 15), (bx + 12, y + 11)], TEXT, 1.6)
 
 def toolbars (c, x, y, w, hot = None, font = "Liberation Sans", size = "40"):
-	"""Two rows, as Writer's and Sheet's: the file and the slide's objects; then the text."""
+	"""Two rows, as Letters' and Sheet's: the file and the slide's objects; then the text."""
 	c.rect (x, y, w, 70, FACE)
 	r1 = y + 2
 	bx = crop (c, "file", x + 2, r1)

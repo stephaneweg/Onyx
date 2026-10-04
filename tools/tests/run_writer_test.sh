@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_writer_test.sh -- Writer's files (user/Apps/writer/) on the PC: a document with all Writer knows
+# run_writer_test.sh -- Letters' files (user/Apps/writer/) on the PC: a document with all Letters knows
 # (styles, lists, a table with merged cells, fields, headers and footers, an image, the mail merge's data)
 # through RTF, .docx and .odt, each read back the same (with LibreOffice installed: its conversions of
 # ours too). UBSan (not ASan: the simulator's kapi table sits at a fixed address, in ASan's shadow gap);

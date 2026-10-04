@@ -1,5 +1,5 @@
 //
-// fileio.h -- Writer's files: Rich Text Format read and written (the fonts, the colours, the styles
+// fileio.h -- Letters' files: Rich Text Format read and written (the fonts, the colours, the styles
 // -- "Normal", "heading 1", "toc 1"... --, bold / italic / underline / strike-through / superscript /
 // subscript, the sizes, the highlights, the paragraphs' alignment, indents, spacing, tab stops, keep
 // options, lists (Word's \listtext / \pntext), page breaks; the tables -- their rows, their cells'
@@ -9,7 +9,7 @@
 // export. The .docx and .odt files: docx.h, odt.h (their tables built by TableBuild, here).
 //
 // Reading RTF: groups and their state, control words, \'hh (Windows-1252), \uN (and its \ucN
-// fallback skipped), the destinations Writer has no use for skipped (\info, \*\...).
+// fallback skipped), the destinations Letters has no use for skipped (\info, \*\...).
 //
 #ifndef _writer_fileio_h
 #define _writer_fileio_h
@@ -80,7 +80,7 @@ static bool *formats_used (const Doc &d, bool *tablesUsed = 0)
 }
 
 // ---- fields' instructions (RTF, Word) --------------------------------------------------------------------------
-// "PAGE", "NUMPAGES", "DATE \@ "dd/MM/yyyy"", "MERGEFIELD Name": its kind (FK_NONE: not one of Writer's)
+// "PAGE", "NUMPAGES", "DATE \@ "dd/MM/yyyy"", "MERGEFIELD Name": its kind (FK_NONE: not one of Letters')
 // and its argument.
 static int field_parse (const char *s, char *arg, int cap)
 {
@@ -585,7 +585,7 @@ static bool rtf_load (Doc &d, const char *b, int n)
 			inst[instLen] = 0;
 			char arg[64]; int kind = field_parse (inst, arg, sizeof arg);
 			instLen = 0;
-			if (kind != FK_NONE && s.dest == DS_TEXT && !s.hidden)		// (one of Writer's: its result not kept)
+			if (kind != FK_NONE && s.dest == DS_TEXT && !s.hidden)		// (one of Letters': its result not kept)
 			{
 				unsigned short fi = fmtIndex (s); CharFmt f = d.fmt[fi];
 				f.fld = doc_field (d, kind, arg);
@@ -984,7 +984,7 @@ static int rtf_save (Doc &d, Out &o)
 	static const char *const snames[ST_COUNT] = { "Normal", "heading 1", "heading 2", "heading 3", "Title", "Subtitle", "Quote", "Plain Text",
 						       "toc 1", "toc 2", "toc 3", "TOC Heading", "header", "footer" };
 	for (int i = 0; i < ST_COUNT; i++) { o.puts ("{\\s"); o.num (i); o.put (' '); o.puts (snames[i]); o.puts (";}"); }
-	o.puts ("}\n{\\*\\generator Onyx Writer;}\n");
+	o.puts ("}\n{\\*\\generator Onyx Letters;}\n");
 	if (d.mergeSrc[0])
 	{
 		o.puts ("{\\*\\docvar {OnyxMergeSource}{");

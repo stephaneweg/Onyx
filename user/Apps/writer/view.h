@@ -1,6 +1,6 @@
 //
-// view.h -- Writer's page view: the pages laid out on a grey desk, one under the other (the
-// document drawn by Writer itself -- FreeType's glyphs, the highlights, the selection, the lists'
+// view.h -- Letters' page view: the pages laid out on a grey desk, one under the other (the
+// document drawn by Letters itself -- FreeType's glyphs, the highlights, the selection, the lists'
 // markers, the tables' shading and lines, the fields shaded, the tab stops' leaders, each page's
 // header and footer), the caret blinking, the scroll bars; the mouse (a click places the caret, a
 // drag selects, a double click a word, a triple click the paragraph, Shift+click extends; a double

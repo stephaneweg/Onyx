@@ -1,7 +1,7 @@
 #!/bin/sh
 # tools/manuals/ledger_shots.sh -- the Ledger manual's pictures (sdcard/manuals/ledger/images/*.png), taken
 # from the REAL app run on the PC against the stand-in kernel (as tools/tests/desktop_sim/shots.sh does):
-# Ledger (and Writer, for the printed documents and a report) built for the host, driven by a script of
+# Ledger (and Letters, for the printed documents and a report) built for the host, driven by a script of
 # events over the demo company (SD:/docs/demo-company.ledger), their windows dumped and made PNGs; two of
 # them then marked with numbered callouts (annotate.py). The stand-in kernel's day is 28/09/2026: the
 # pictures come out the same each time.
@@ -22,7 +22,7 @@ export SIM_WRITES="$OUT/writes"
 CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-# ---- the building: wtk, the stand-in kernel, FreeType (Writer's), Ledger and Writer ----------------------
+# ---- the building: wtk, the stand-in kernel, FreeType (Letters'), Ledger and Letters ----------------------
 for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
@@ -67,7 +67,7 @@ OFF=$(c 496 148)			# (a click on a document's Description: its lines' grid left,
 S_YEARS=$(c 365 84); S_JOURNALS=$(c 472 84); S_ACCOUNTS=$(c 562 84); S_PRINTING=$(c 652 84)
 report () { printf "%s;wait;%s" "$(c 328 82)" "$(c 300 $((113 + 24 * $1)))"; }	# 0 Journals, 1 General ledger, 2 Trial balance,
 									# 3 Balance sheet, 4 Income statement, 7 Receivables by age
-# Writer's window made the screen's, the page's width shown (its menu's item 16; 17: the whole page)
+# Letters' window made the screen's, the page's width shown (its menu's item 16; 17: the whole page)
 WRITER="wait;wait;winctl 2;wait;wait;menu 17;wait;wait"
 
 # ---- getting started (no books open: the welcome, a new company) -------------------------------------------

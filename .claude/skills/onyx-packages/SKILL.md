@@ -38,8 +38,8 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
 - **Files outside its bundle** (`res/…`, `koton/…`, `manuals/<app>/…`): `[app.<name>]` `files = …`
   — a file belongs to the first section that names it; mkrepo prints the files left in no package:
   **there must be none**.
-- **Needs**: an app it cannot work without (an emulator → `gamelib`; Writer / Sheet / Ledger →
-  `cardfile`): `[app.<name>]` `needs = gamelib`. A mere link ("Open in Writer") is not a need.
+- **Needs**: an app it cannot work without (an emulator → `gamelib`; Letters / Sheet / Ledger →
+  `cardfile`): `[app.<name>]` `needs = gamelib`. A mere link ("Open in Letters") is not a need.
   Something the system itself needs (the wallpaper's painter, the text editor other apps open) goes
   into `[onyx]`'s `files` instead.
 - **The user's files** (a `config.ini` shipped with defaults, documents): `config = <paths>` — never

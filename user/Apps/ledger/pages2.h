@@ -3,8 +3,8 @@
 //   * ReportsPage: a report chosen (the journals, the general ledger, the trial balance, the balance sheet,
 //     the income statement, the customers' and suppliers' balances and open items by age, a party's
 //     account, the VAT detail), its period (a quarter, the year: a click) and its options; shown as a
-//     table (a double click on a line opens its document, its account, its party), exported (a Writer
-//     document, a workbook, CSV) and opened in Writer or the Spreadsheet;
+//     table (a double click on a line opens its document, its account, its party), exported (a Letters
+//     document, a workbook, CSV) and opened in Letters or the Spreadsheet;
 //   * VatPage: the VAT returns of a year, a period a tile (filed, due, late; what it comes to); the
 //     period chosen's return as the form has it (II the operations, III the purchases, IV the VAT due, V
 //     the VAT deductible, VI the balance), the checks Intervat makes; the XML file for Intervat, the
@@ -45,9 +45,9 @@ public:
 		rpt_init (p);
 		resizeTo (800, 660);
 		HeadRow h (this);
-		bExport = h.add (TR ("Save as..."), s_export, FB_SECONDARY, NI_EXPORT, TR ("The report written in a file: a Writer document, a workbook, CSV"));
+		bExport = h.add (TR ("Save as..."), s_export, FB_SECONDARY, NI_EXPORT, TR ("The report written in a file: a Letters document, a workbook, CSV"));
 		bSheet = h.add (TR ("Spreadsheet"), s_sheet, FB_SECONDARY, NI_REPORT, TR ("The report opened in the Spreadsheet (a workbook)"));
-		bWriter = h.add ("Writer", s_writer, FB_PRIMARY, NI_DOC, TR ("The report opened in Writer (a document to print)"));
+		bWriter = h.add ("Letters", s_writer, FB_PRIMARY, NI_DOC, TR ("The report opened in Letters (a document to print)"));
 		which = new ChoiceBox (16, 70, 210); { const char *rn[R_COUNT]; for (int i = 0; i < R_COUNT; i++) rn[i] = TR (R_NAME[i]); which->setOptions (rn, R_COUNT); } which->sel = kind; which->onChange = on_param; addChild (which);
 		from = new DateEdit (290, 70, 130); from->onChange = on_date; addChild (from);
 		to = new DateEdit (452, 70, 130); to->onChange = on_date; addChild (to);
@@ -258,7 +258,7 @@ public:
 		if (!g_rp || !g_rp->p.nr) return;
 		int x, y; abs_pos (g_rp->bExport, &x, &y);
 		PopupMenu m (x, y + g_rp->bExport->height + 2);
-		m.add (TR ("Writer document (.rtf)..."), 1);
+		m.add (TR ("Letters document (.rtf)..."), 1);
 		m.add (TR ("Spreadsheet workbook (.xlsx)..."), 2);
 		m.add (TR ("CSV file (;)..."), 3);
 		int r = m.run ();
@@ -807,7 +807,7 @@ public:
 		tpl->setColumn (0, TR ("Document"), 140); tpl->setColumn (1, TR ("Its template"), 290); tpl->setColumn (2, "", 110);
 		tpl->cellText = t_text; tpl->cellDraw = t_draw; tpl->onActivate = on_tplEdit; tpl->setRows (PK_KINDS); tpl->setSel (0);
 		by = 52;
-		{ FlatButton *f = new FlatButton (TR ("Edit in Writer"), s_tplEdit, FB_PRIMARY, NI_EDIT); f->left = 592; f->top = by; pp->addChild (f); by += 40; }
+		{ FlatButton *f = new FlatButton (TR ("Edit in Letters"), s_tplEdit, FB_PRIMARY, NI_EDIT); f->left = 592; f->top = by; pp->addChild (f); by += 40; }
 		{ FlatButton *f = new FlatButton (TR ("Open the folder"), s_tplFolder, FB_SECONDARY, -1); f->left = 592; f->top = by; pp->addChild (f); }
 	}
 	const char *title () override { return TR ("Settings"); }
@@ -989,10 +989,10 @@ public:
 		scat (l3, "\xAB" "LineText\xBB, \xAB" "LineQty\xBB, \xAB" "LinePrice\xBB, \xAB" "LineTotal\xBB", sizeof l3);
 		scat (l3, TR (" is repeated for each line."), sizeof l3);
 		const char *L[] = {
-			TR ("A document is printed by Writer from its template, a Writer document (.rtf, .docx, .odt)"),
+			TR ("A document is printed by Letters from its template, a Letters document (.rtf, .docx, .odt)"),
 			l2,
 			l3,
-			TR ("In Writer, Tools > Mail Merge lists all the fields (their sample: templates/fields.card)."),
+			TR ("In Letters, Tools > Mail Merge lists all the fields (their sample: templates/fields.card)."),
 			TR ("A party's documents take its language (its card), else the company's (its chart's)."),
 			TR ("The documents made go to SD:/docs/Quotes, Orders, Delivery notes, Invoices...") };
 		for (unsigned i = 0; i < sizeof L / sizeof L[0]; i++) wk_text_l (p.canvas, 20, y + (int) i * 20, 20, L[i], dim_ink (C_BG));
@@ -1032,7 +1032,7 @@ public:
 		if (!template_find (k, lang, p, sizeof p, true))
 		{
 			char fr[200];
-			if (!template_find (k, 0, fr, sizeof fr)) { warn (TR ("Printing"), TR ("There is no template for this document: put one (a Writer document) in SD:/apps/ledger.app/templates.")); return; }
+			if (!template_find (k, 0, fr, sizeof fr)) { warn (TR ("Printing"), TR ("There is no template for this document: put one (a Letters document) in SD:/apps/ledger.app/templates.")); return; }
 			if (lang == 0) scpy (p, fr, sizeof p);
 			else
 			{
@@ -1050,8 +1050,8 @@ public:
 				tpl->invalidate (true);
 			}
 		}
-		if (!kapi_exec ("SD:/apps/writer.app/main", p)) warn (TR ("Printing"), TR ("Writer could not be started."));
-		else { char m[240]; scpy (m, TR ("Writer opens "), sizeof m); scat (m, p, sizeof m); status (m); }
+		if (!kapi_exec ("SD:/apps/writer.app/main", p)) warn (TR ("Printing"), TR ("Letters could not be started."));
+		else { char m[240]; scpy (m, TR ("Letters opens "), sizeof m); scat (m, p, sizeof m); status (m); }
 	}
 	static void on_tplLang (int) { if (g_sp) g_sp->tpl->invalidate (true); }
 	static void on_tplEdit (Widget &) { if (g_sp) g_sp->tplEdit (); }

@@ -104,7 +104,7 @@ Trap frame, vectors, FP/NEON save, the syscall path and the preemption trampolin
 TLBI, teardown — only the VA *constants* depend on the RAM), the scheduler logic, threads, futex
 tick, IPC, VFS, streams, the ELF loader, the window manager and wtk, the kapi table mechanism, USB
 HID / gamepads / MIDI, TCP/IP, NTP, FatFs and the Onyx FatFs patches, the FTP / telnet / VNC / rdpd
-daemons, BASIC, NetSurf, Writer, Ledger, the emulators' CPU cores **and the GameCube JIT** (plain
+daemons, BASIC, NetSurf, Letters, Ledger, the emulators' CPU cores **and the GameCube JIT** (plain
 ARMv8.0 code; it flushes with `dc cvau`/`ic ivau` using `CTR_EL0` line sizes). **Every timing path
 reads `CNTFRQ_EL0`** (no 54 MHz or 1.5 GHz constant in code). **A72-tuned binaries run unchanged
 on the A76.** Onyx uses no FIQ (it only masks it). The panic screen, ACT LED, watchdog and

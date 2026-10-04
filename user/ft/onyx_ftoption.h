@@ -1,5 +1,5 @@
 /*
- * onyx_ftoption.h -- FreeType's build options for the apps' text (user/ft/: Writer's pages):
+ * onyx_ftoption.h -- FreeType's build options for the apps' text (user/ft/: Letters' pages):
  * upstream's include/freetype/config/ftoption.h (2.14.3) cut down to TrueType fonts on the card
  * (SD:/res/fonts), anti-aliased, hinted by the auto-hinter only (no bytecode interpreter), their
  * kerning read (GPOS too) -- no compressed / web / Mac / bitmap / colour / variable fonts, no

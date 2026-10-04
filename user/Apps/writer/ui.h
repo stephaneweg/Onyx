@@ -1,5 +1,5 @@
 //
-// ui.h -- Writer's controls around the page: the toolbar's buttons (an icon; toggled: lit; split:
+// ui.h -- Letters' controls around the page: the toolbar's buttons (an icon; toggled: lit; split:
 // an arrow part opening a palette), the toolbars, the pick boxes (a value shown -- a font's name in
 // that font, a style in its look -- and a list dropping from it, over the window), the editable
 // size box, the colour palettes, the ruler (the text's width on the page, the indents' markers

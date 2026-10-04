@@ -1,5 +1,5 @@
 //
-// layout.h -- Writer's layout: the paragraphs broken into lines at the zoom (1/64 px, the fonts'
+// layout.h -- Letters' layout: the paragraphs broken into lines at the zoom (1/64 px, the fonts'
 // design advances -- a line breaks at the same word at every zoom), aligned (left, centred, right,
 // justified), the tab stops (left, centred, right, decimal; their leaders), the fields shown as their
 // text of the moment, the lists' markers; the tables (their columns, their cells' paragraphs laid out

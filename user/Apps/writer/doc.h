@@ -1,5 +1,5 @@
 //
-// doc.h -- Writer's document: paragraphs of characters (Unicode code points), each character with
+// doc.h -- Letters' document: paragraphs of characters (Unicode code points), each character with
 // a character format -- an index into the document's table of them (a font of its font table, a
 // size, bold / italic / underline / strike-through / superscript / subscript, a colour, a
 // highlight; an image, a field) -- and each paragraph with its paragraph format (a style, the

@@ -11,7 +11,7 @@
 // first number, the mail merge's data (a document variable). Text boxes, footnotes, comments and
 // tracked deletions left out.
 //
-// Written: all of Writer's document -- its styles as Word's (Normal, heading 1...), each paragraph's
+// Written: all of Letters' document -- its styles as Word's (Normal, heading 1...), each paragraph's
 // and run's format in full, the lists, the tables, the headers and footers, the fields (a table of
 // contents as Word's TOC field), the images (PNG / JPEG parts).
 //
@@ -690,7 +690,7 @@ struct DocxIn
 			X.skip ();
 		}
 	}
-	// A simple field (X at w:fldSimple's start): one of Writer's, in its result's format; else its result.
+	// A simple field (X at w:fldSimple's start): one of Letters', in its result's format; else its result.
 	void simple (XmlReader &X)
 	{
 		char in[256]; X.attrs ("instr", in, sizeof in);

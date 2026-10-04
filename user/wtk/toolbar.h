@@ -1,10 +1,10 @@
 //
-// wtk/toolbar.h -- ToolBar + ToolButton: a strip of small buttons (generalised from Writer's): an
+// wtk/toolbar.h -- ToolBar + ToolButton: a strip of small buttons (generalised from Letters'): an
 // icon (one of the WKT_* set below, drawn from its geometry at any size, or the app's own drawer),
 // a text label beside it or alone, a toggle state (lit: the accent's tint, or filled -- a play
 // button), a split part (an arrow opening a palette or a menu), a tooltip; separators and gaps.
 //
-//   #include "wtk/toolbar.h"       (NOT in wtk/wtk.h: Writer, the Spreadsheet and Cardfile have
+//   #include "wtk/toolbar.h"       (NOT in wtk/wtk.h: Letters, the Spreadsheet and Cardfile have
 //                                   their own ToolBar / ToolButton and `using namespace wtk`)
 //   ToolBar *tb = new ToolBar (0, 0, W, 38);
 //   tb->add ((new ToolButton (30, 28, "Save (Ctrl+S)", onSave))->setGlyph (WKT_SAVE));

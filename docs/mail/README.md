@@ -35,7 +35,7 @@ providers' marks are drawn in their colours, not their logos).
 | The cache | — | `SD:/mail/<account>/`: the folders' lists, the messages' headers (an index), the bodies fetched once, the attachments on demand; a worker thread syncs while the window stays live (kapi threads, as Media Player). |
 | Secrets | — | the passwords and tokens **encrypted** on the card (a key of the card; the future key vault, HANDOFF's priority 5, takes them over). |
 | Notifications | notifyd | "3 new messages" (who, the subject); the dock's badge. |
-| Contacts | Cardfile's `model.h` (Writer's mail merge reads it) | the form made at first use, read / written; completion. |
+| Contacts | Cardfile's `model.h` (Letters' mail merge reads it) | the form made at first use, read / written; completion. |
 | File associations | `fileassoc.ini` | `.eml` = mail (a message file opened); `mailto:` from Jet. |
 
 ## Outlook: registering "Onyx Mail" at Microsoft (once, by the user)

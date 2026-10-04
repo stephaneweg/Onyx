@@ -1,10 +1,10 @@
 //
-// merge.h -- Writer's mail merge: a letter (the document, its merge fields -- «Name» --) filled with the
+// merge.h -- Letters' mail merge: a letter (the document, its merge fields -- «Name» --) filled with the
 // records of a Cardfile form (a .card file: its fields' values as Cardfile shows them -- a date
 // 29/09/2026, Yes / No, a multi-line text's lines), one document per record: all of them one after the
 // other in a new document (each on a page of its own), or each a file of its own in a folder (named
 // after a field, or numbered). Tools > Mail Merge: the data chosen, its fields inserted, the records'
-// values previewed in the letter (one record at a time), the merge (a new document: another Writer
+// values previewed in the letter (one record at a time), the merge (a new document: another Letters
 // shows it, asked as Cardfile asks -- below). The document remembers its data (RTF: a \docvar, Word: a
 // document variable, OpenDocument: a user field).
 //
@@ -528,7 +528,7 @@ public:
 			if (which->sel == 1) r0 = r1 = g_mrec;
 			if (g_doc.cur != SY_BODY) ed_story (SY_BODY);
 			Out o; rtf_save (g_doc, o);				// (the letter, as it is now)
-			if (tag == 6)						// (another Writer shows the documents made)
+			if (tag == 6)						// (another Letters shows the documents made)
 			{
 				static const char *LETTER = "SD:/apps/writer.app/merge-letter.rtf", *JOB = "SD:/apps/writer.app/merge.job";
 				bool ok = kapi_save_file (LETTER, o.b, (unsigned) o.n) >= 0;
@@ -541,7 +541,7 @@ public:
 				add ("\noutput = open\n");
 				if (ok) ok = kapi_save_file (JOB, job, (unsigned) slen (job)) >= 0;
 				char args[240]; scpy (args, "--merge ", sizeof args); int m = slen (args); scpy (args + m, JOB, (int) sizeof args - m);
-				if (!ok || kapi_exec ("SD:/apps/writer.app/main", args) < 0) wk_messagebox ("Mail Merge", "Writer could not be started for the documents made.", MB_OK);
+				if (!ok || kapi_exec ("SD:/apps/writer.app/main", args) < 0) wk_messagebox ("Mail Merge", "Letters could not be started for the documents made.", MB_OK);
 				return;
 			}
 			char path[200];

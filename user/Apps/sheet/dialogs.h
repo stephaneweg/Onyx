@@ -14,7 +14,7 @@
 
 namespace ss {
 
-// ---- a dialog's frame (as Writer's) --------------------------------------------------------------------------
+// ---- a dialog's frame (as Letters') --------------------------------------------------------------------------
 class Dialog : public Modal
 {
 public:

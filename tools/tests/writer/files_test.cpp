@@ -1,4 +1,4 @@
-// files_test.cpp -- Writer's files on the PC: a document with all Writer knows (styles, formats, tab stops,
+// files_test.cpp -- Letters' files on the PC: a document with all Letters knows (styles, formats, tab stops,
 // lists, a table with merged cells, fields, headers and footers -- the first page's own --, an image, the
 // mail merge's data) written as RTF, .docx and .odt and read back the same (each through the others
 // too); with LibreOffice (when installed: soffice), our .docx and .odt converted by it (to .docx, .odt)
@@ -57,7 +57,7 @@ static void make (Doc &d)
 	unsigned short MONO = fmt (d, "DejaVu Sans Mono", 20, 0), BIG = fmt (d, "Liberation Sans", 32, CF_BOLD | CF_ITALIC, 0x2F5496);
 	unsigned short HF = fmt (d, "Liberation Serif", 20, 0);
 	// headers and footers
-	Para *h = para (d, SY_HEADER, ST_HEADER, "Onyx Writer ", HF); h->pf.align = AL_RIGHT; add (h, "-- the header", HF);
+	Para *h = para (d, SY_HEADER, ST_HEADER, "Onyx Letters ", HF); h->pf.align = AL_RIGHT; add (h, "-- the header", HF);
 	Para *f = para (d, SY_FOOTER, ST_FOOTER, "Page ", HF); f->pf.align = AL_CENTER; field (d, f, FK_PAGE, "", HF); add (f, " of ", HF); field (d, f, FK_PAGES, "", HF);
 	para (d, SY_FOOTER1, ST_FOOTER, "The first page's footer", HF)->pf.align = AL_CENTER;
 	// the body

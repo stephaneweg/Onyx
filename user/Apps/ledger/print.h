@@ -1,10 +1,10 @@
 //
 // print.h -- a document printed from a template: a quote, an order, a delivery note, a purchase order, an
-// invoice, a credit note. Its template is a Writer document (.docx, .odt or .rtf -- the first found) in
+// invoice, a credit note. Its template is a Letters document (.docx, .odt or .rtf -- the first found) in
 // SD:/apps/ledger.app/templates/, named after its kind (quote, order, delivery, porder, invoice,
 // creditnote): the French ones there, the Dutch and English ones in its nl/ and en/ folders -- the
 // party's language chosen (its card's), else the company's (its chart's); a language without its own
-// template takes the French one. Writer fills its merge fields (Writer's merge.h) with the document's (a
+// template takes the French one. Letters fills its merge fields (Letters' merge.h) with the document's (a
 // Cardfile form of one record: merge.card):
 //   Kind Number Date Until DueDate UntilLine Reference ReferenceLine Text Communication Terms TermsText
 //   FromDocument FromLine FileName
@@ -19,7 +19,7 @@
 // line: the table row holding them repeated) --
 //   LineNo LineText LineQty LinePrice LineVAT LineTotal LineTax LineGross
 // The document made is written in SD:/docs/<its kind>/ (named after its number and its party) and shown
-// in Writer, which can save it again in any of its formats.
+// in Letters, which can save it again in any of its formats.
 //
 #ifndef _ledger_print_h
 #define _ledger_print_h
@@ -91,7 +91,7 @@ static void ms_head (MergeSet &m, const char *name, const char *value)
 {
 	if (m.hr < 0) m.hr = cf::doc_add_record (m.h, -1);
 	bool multi = false; for (const char *q = value; q && *q; q++) if (*q == '\n') multi = true;
-	cf::Field f; cf::field_init (f, name, name, multi ? FT_MEMO : FT_TEXT);		// (a memo's lines: Writer's line breaks)
+	cf::Field f; cf::field_init (f, name, name, multi ? FT_MEMO : FT_TEXT);		// (a memo's lines: Letters' line breaks)
 	int k = cf::doc_insert_field (m.h, m.h.nf, f);
 	if (k >= 0) sset (m.h.r[m.hr][k], value ? value : "");
 }
@@ -263,11 +263,11 @@ static bool template_of (int kind, int lang, char *path, int cap)
 {
 	if (template_find (kind, lang, path, cap)) return true;
 	char m[200]; scpy (m, TR ("No template for this kind of document ("), sizeof m); scat (m, TEMPLATES, sizeof m); scat (m, "/", sizeof m); scat (m, PK_FILE[kind], sizeof m);
-	scat (m, TR (".rtf). Choose a Writer document to use?"), sizeof m);
+	scat (m, TR (".rtf). Choose a Letters document to use?"), sizeof m);
 	if (ask (TR ("Print"), m, MB_YESNO, 1) != 1) return false;
 	return wk_file_open (path, (unsigned) cap, TEMPLATES);
 }
-// The data written, Writer asked to make the document.
+// The data written, Letters asked to make the document.
 static void ms_print (MergeSet &m, int kind, int lang, const char *fileName)
 {
 	char tpl[200];
@@ -283,8 +283,8 @@ static void ms_print (MergeSet &m, int kind, int lang, const char *fileName)
 	j.puts ("\nrecords = 1\noutput = files\nfolder = "); j.puts (folder); j.puts ("\nname = FileName\n");
 	if (ok) ok = kapi_save_file (MERGE_JOB, j.b, (unsigned) j.n) >= 0;
 	char args[240] = "--merge "; scat (args, MERGE_JOB, sizeof args);
-	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) { warn (TR ("Print"), TR ("Writer could not be started.")); return; }
-	char s[200]; scpy (s, TR ("Writer makes the document in "), sizeof s); scat (s, folder, sizeof s); status (s);
+	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) { warn (TR ("Print"), TR ("Letters could not be started.")); return; }
+	char s[200]; scpy (s, TR ("Letters makes the document in "), sizeof s); scat (s, folder, sizeof s); status (s);
 }
 // A commercial document's title in a language: "Devis 2026/0003".
 static void cdoc_title (const CDoc &d, int lang, char *out, int cap)
