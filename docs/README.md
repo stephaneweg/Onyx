@@ -22,9 +22,7 @@ of the **Circle** bare-metal framework.
 | 03 | **[Developer Guide](03-DEVELOPER-GUIDE.md)** | to build / extend | toolchain, build, app model, writing an app/tool, wtk, the big apps' code, extending the ABI, conventions, debugging, pitfalls |
 | 04 | **[User Guide](04-USER-GUIDE.md)** | to use it | SD card, boot options, Onyx desktop, terminal, `/bin` tools, files, Control Panel, app catalog, BASIC |
 | 05 | **[Circle Changes](05-CIRCLE-CHANGES.md)** | HAL maintainers | the patches in our Circle fork vs upstream `Step51` |
-| 06 | **[Jet Browser](06-JET-BROWSER.md)** | the browser | the Onyx changes to NetSurf, libcss, FreeType, QuickJS; the fonts; the media |
-| 07 | **[Browser Gaps](07-BROWSER-GAPS.md)** | the browser | what Jet lacks next to Ladybird / Chromium / WebKit, the plan |
-| 08 | **[WebKit Port](08-WEBKIT-PORT.md)** | the browser to come | the port of WebKit (replacing Jet): where it stands and how to resume, the plan, the patch series, `jsc` |
+| 08 | **[Jet Browser: the WebKit port](08-WEBKIT-PORT.md)** | the browser | the port of WebKit to Onyx (Jet Browser since 2026-10-04; the NetSurf Jet and its documents 06 and 07 were removed): where it stands, the patch series, the builds, the media engine, the compositor |
 | | **[EL0 protected mode](EL0-PROTECTED-MODE.md)** | the execution model | how the apps moved from EL1 to EL0 (system calls), the design, the steps |
 | | **[Licensing](LICENSING.md)** | distributors | the licences of everything Onyx contains; under which licence it can be distributed |
 | | **[Handoff](HANDOFF.md)** | the next session | where the work stands, the conventions, the next tasks |

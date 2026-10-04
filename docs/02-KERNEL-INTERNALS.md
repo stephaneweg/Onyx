@@ -1757,7 +1757,7 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   fit in its 32 KB request buffer, `NET_REQBUF`); `tcp_close` drops it. A connect **takes its
   slot before it blocks** (`SLOT_CONNECTING`, invisible to the other calls): the net core's
   workers run other connects during a DNS lookup or a handshake, and two of them once got the
-  same slot (both fetches then read one connection: NetSurf's style sheets failed). **DNS
+  same slot (both fetches then read one connection: a browser's style sheets failed). **DNS
   cache**: 32 names kept 5 minutes (`ResolveName`, used by `tcp_connect`, `net_resolve`,
   `net_ping`) in front of Circle's `CDNSClient` -- which answers in milliseconds now (it slept
   1 s per query: docs/05 §18). Each socket records its **owner pid**; `kapi_exit` calls
@@ -2292,12 +2292,12 @@ host test [`tools/tests/run_ramfs_test.sh`](../tools/tests/run_ramfs_test.sh); P
 too: `cp`, `cat`, the shell's redirections), `opendir` / `readdir` / `closedir`, `mkdir`, `remove`,
 `rename` (within `RAM:`; across volumes −1, the caller copies then removes, as between `SD:` and
 `SD1:`), `chdir` (`cd RAM:/x`, relative paths there), and `vol_info` (v71). newlib's `fopen` /
-`fread` / `fwrite` / `remove` and NetSurf's `opendir` sit on these, so a program needs nothing new
+`fread` / `fwrite` / `remove` and newlib's `opendir` sit on these, so a program needs nothing new
 to use it. Its files live **until the Pi restarts**: never written anywhere, not tied to any app (an
 app that ends leaves its files; its open handles are closed, `RamFsOnProcessGone` from
-`IpcOnProcessGone`). Programs cannot be started from it (`exec`, `spawn`: the card only). Jet
+`IpcOnProcessGone`). Programs cannot be started from it (`exec`, `spawn`: the card only).
 Browser keeps its disk cache and its JS code cache there (`RAM:/jet/cache`, `RAM:/jet/jscache`,
-docs/06 §33): no browsing data on the card, and no SD write freezing core 0.
+docs/08): no browsing data on the card, and no SD write freezing core 0.
 
 **The tree.** Folders and files are `TNode` records on the kernel heap — one size, so a freed one is
 reused as is (Circle's heap keeps freed blocks by size, it never merges them): a name of up to

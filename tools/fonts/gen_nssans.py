@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # gen_nssans.py -- generate an Onyx ".fnt" font family from NetSurf's "ns-sans" master
-# font (third_party/netsurf/.../res/fonts/glyph_data, MIT, (c) Tim Tyler / Michael
+# font (third_party/fonts/ns-sans/glyph_data MIT, (c) Tim Tyler / Michael
 # Drake). That source is plain-text ASCII-art: one block per Unicode codepoint, each
 # block holding 16 rows x 4 style columns (Regular / Italic / Bold / Bold+Italic),
 # '#' = ink, '.' = paper, fixed 8-px-wide columns at fixed offsets.
@@ -26,7 +26,7 @@ import os, re, struct
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
 ROOT   = os.path.abspath(os.path.join(HERE, '..', '..'))
-SRC    = os.path.join(ROOT, 'third_party', 'netsurf', 'frontends', 'framebuffer', 'res', 'fonts', 'glyph_data')
+SRC    = os.path.join(ROOT, 'third_party', 'fonts', 'ns-sans', 'glyph_data')
 OUTDIR = os.path.join(ROOT, 'sdcard', 'fonts')
 OUT    = os.path.join(OUTDIR, 'ns-sans.fnt')
 

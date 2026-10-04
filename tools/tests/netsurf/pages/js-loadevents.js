@@ -1,1 +1,0 @@
-window.sjs=42;

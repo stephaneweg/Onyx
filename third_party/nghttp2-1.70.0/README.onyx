@@ -12,8 +12,8 @@ Added: lib/config.h (Onyx) -- the configuration autotools / CMake would write: o
 library's <arpa/inet.h>; on the Pi (newlib, no <arpa/inet.h>, little-endian) htonl / ntohl /
 htons / ntohs as __builtin_bswap32 / 16. No change to nghttp2's own sources.
 
-Built by user/netsurf/Makefile into libnghttp2.a (committed, as the other libraries) with
--DHAVE_CONFIG_H -DNGHTTP2_STATICLIB; the PC bench (tools/tests/netsurf/host.mk) compiles the
+Built by user/av/Makefile into libnghttp2.a (committed, as the other libraries) with
+-DHAVE_CONFIG_H -DNGHTTP2_STATICLIB; the POSIX ports (tools/ports/common.sh) compile the
 same files. About 115 KB of code on the Pi.
 
-Used by user/netsurf/onyx_fetch.c: HTTP/2 over TLS when ALPN chooses "h2" (docs/06 section 22).
+Used by curl (tools/ports/curl: Jet's network process, /bin/curl): HTTP/2 over TLS when ALPN chooses "h2".

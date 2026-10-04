@@ -1,10 +1,10 @@
 #!/bin/sh
-# build-web.sh -- build Web, the WebKit browser (user/Apps/web: its window on wtk, engine_webkit.cpp on
+# build-web.sh -- build Jet, the browser on WebKit (user/Apps/jet: its window on wtk, engine_webkit.cpp on
 # WebKit2's C API), against the build of build-webkit.sh, with the POSIX toolchain (aarch64-onyx-elf):
 # ONE program that is the window and, started again by WebKit, its web and network processes.
 #
 #   sh tools/webkit/build-webkit.sh             # libWebKit.a first
-#   sh tools/webkit/build-web.sh                # -> $BUILD/bin/web, stripped into sdcard/apps/web.app/main
+#   sh tools/webkit/build-web.sh                # -> $BUILD/bin/web, stripped into sdcard/apps/jet.app/main
 #   BUILD=$HOME/webkit-build/webkit-jit sh tools/webkit/build-web.sh     # the package's program: the tree
 #                                               # with JavaScriptCore's JIT (docs/08 "The JIT")
 #
@@ -28,7 +28,7 @@ fi
 PATH=/opt/toolchains/aarch64-onyx-elf-14.2/bin:$PATH
 export PATH
 S=$ONYX_SYSROOT
-APP=$ONYX/user/Apps/web
+APP=$ONYX/user/Apps/jet
 O=$BUILD/web
 mkdir -p "$O/wtk" "$BUILD/bin"
 
@@ -130,8 +130,8 @@ if [ -n "$weak" ]; then
 fi
 
 if [ "${STAGE:-1}" = 1 ]; then
-	mkdir -p "$ONYX/sdcard/apps/web.app"
-	aarch64-onyx-elf-strip -o "$ONYX/sdcard/apps/web.app/main" "$BUILD/bin/web"
-	cp "$APP/app.txt" "$APP/start.html" "$ONYX/sdcard/apps/web.app/"
-	ls -l "$ONYX/sdcard/apps/web.app/main"
+	mkdir -p "$ONYX/sdcard/apps/jet.app"
+	aarch64-onyx-elf-strip -o "$ONYX/sdcard/apps/jet.app/main" "$BUILD/bin/web"
+	cp "$APP/app.txt" "$APP/start.html" "$ONYX/sdcard/apps/jet.app/"
+	ls -l "$ONYX/sdcard/apps/jet.app/main"
 fi

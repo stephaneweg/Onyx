@@ -126,7 +126,7 @@ courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/ony
 # Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Writer (FreeType's text through wtk), its
 # protocols and its HTML renderer in mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (wtk's imgload).
 MAIL_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h applet_proto.h Apps/web/webview_proto.h \
+mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h applet_proto.h Apps/jet/webview_proto.h \
 	  img/imgload.hpp ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
@@ -216,8 +216,8 @@ pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clip
 # Media Player, the music and video library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through
 # wtk), its music decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built
 # with the FPU), Koton's MeltySynth for the MIDI files (Koton's objects, shared), and for the videos Onyx's media library
-# (user/av, compiled here into Apps/media/obj/av/) with its codecs -- libvpx, dav1d, libopus, the libraries Jet links
-# (built by `make -C netsurf codecs`; their sources and flags: av/codecs.mk) -- and FFmpeg 7.1 (every decoder and
+# (user/av, compiled here into Apps/media/obj/av/) with its codecs -- libvpx, dav1d, libopus
+# (built by `make -C av`; their sources and flags: av/codecs.mk) -- and FFmpeg 7.1 (every decoder and
 # demuxer: H.264, H.265, AAC, AVI, MPEG-TS...; GPL-2.0+: the Media Player is distributed under the GPL-2.0), its
 # libraries built by third_party/ffmpeg-7.1.2/onyx/build.sh pi (committed).
 MEDIA_OBJ = Apps/media/obj/codecs.o Apps/media/obj/vorbis.o
@@ -314,7 +314,7 @@ v3d/libv3d.a: $(V3D_OBJS)
 # The GPU compositing service (gpucomp/: layers composited by the V3D, kapi v70, or by the CPU):
 # pure C without libc, FP/SIMD on and -O3 (the CPU path's row loops become NEON code), no fused
 # multiply-adds (-ffp-contract=off: the same pixels as the PC's build, tools/tests/run_gpucomp_test.sh).
-# Linked by freestanding apps (gpcdemo) and newlib ones (NetSurf, stage 2) alike.
+# Linked by freestanding apps (gpcdemo) and newlib ones alike.
 gpucomp/gpucomp.o: gpucomp/gpucomp.c gpucomp/gpucomp.h kapi.h ../kernel/include/kern/kapi_abi.h
 	$(CC) $(filter-out -mgeneral-regs-only -O2,$(CFLAGS)) -mcpu=cortex-a72 -O3 -ffp-contract=off -fno-math-errno -I. -c $< -o $@
 gpucomp/libgpucomp.a: gpucomp/gpucomp.o

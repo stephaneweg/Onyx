@@ -120,8 +120,8 @@ The default target (`all`):
 1. compiles our sources + links against the Circle libs → **`kernel8-rpi4.img`**;
 2. triggers `make -C ../user`, which builds **all the apps** (each from its folder
    `user/Apps/<name>/`, to `user/<name>.elf`), the **`/bin` tools** (`user/bin/*.elf`), Doom
-   (`user/doom`) and Koton's plugins. Jet Browser has its own makefile
-   (`make -f user/netsurf/netsurf-app.mk stage`, §6 *NetSurf*).
+   (`user/doom`) and Koton's plugins. Jet Browser, on WebKit, is built apart
+   (`sh tools/webkit/build-web.sh`, docs/08).
 
 > **Kernel → apps order.** Since the apps go through the **fixed-address ABI table** and are
 > **not** linked against the kernel's addresses, they no longer depend on the kernel
@@ -228,7 +228,7 @@ The `aarch64-none-elf` toolchain ships **newlib** (`libc` + `libm`). An app can 
 built against it to use the real `<stdio.h>` (`printf`, `FILE*`, `fopen`/`fseek`),
 `<stdlib.h>` (`malloc`/`qsort`/`strtod`), `<string.h>`, and `<math.h>` instead of the
 freestanding helpers (`applib.h`/`umm.h`). This is the foundation for porting large C
-codebases (e.g. NetSurf).
+codebases.
 
 How it works: [`user/libc/onyx_syscalls.c`](../user/libc/onyx_syscalls.c) implements
 the handful of POSIX stubs newlib bottoms out in (`_sbrk`, `_read`, `_write`, `_open`,
@@ -240,7 +240,7 @@ add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`
 the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
 tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 
-A **wtk app** can be a newlib app too (Doom, NetSurf, **Writer**, the **Spreadsheet** — FreeType
+A **wtk app** can be a newlib app too (Doom, **Writer**, the **Spreadsheet** — FreeType
 wants a libc): the `writer.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
 `NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
 `libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries
@@ -355,8 +355,7 @@ card** — `kapi_open` / `kapi_read` / `kapi_fsize` / `kapi_seek` / `kapi_close`
 `kapi_file_in` / `kapi_file_out` (append too), `kapi_opendir` / `kapi_readdir`, `kapi_mkdir`,
 `kapi_remove`, `kapi_rename`, `kapi_chdir` — so newlib's `fopen` / `fwrite` / `remove` do too. Use it
 for what may be lost and should not wear or wait on the card: caches, temporary files, a
-download being unpacked. Jet Browser keeps its disk cache and its JS code cache there
-(`RAM:/jet/cache`, `RAM:/jet/jscache`; docs/06 §33).
+download being unpacked.
 
 - **Until the Pi restarts.** Not tied to your app: what it leaves there is still there when it runs
   again (the same boot), gone after a restart — check for a file before trusting it, rebuild it if
@@ -375,7 +374,7 @@ download being unpacked. Jet Browser keeps its disk cache and its JS code cache 
   `>>`) and **`df`** (the volumes' room). `/bin/ramtest` exercises it on the Pi.
 - **On the PC** (the desktop simulator, `tools/tests/desktop_sim/fakekapi.cpp`): `RAM:` is the
   folder **`SIM_RAM`** — the same folder for several runs is several launches within one boot
-  (`tools/tests/netsurf/httptest.sh` does that); unset, each run gets a fresh temporary folder,
+  unset, each run gets a fresh temporary folder,
   deleted at its end (a boot of its own). `vol_info` answers 128 MB.
 
 ### 5.4. The POSIX layer (`libonyxposix`)
@@ -750,8 +749,7 @@ its licence on the app.
 > `third_party/freetype-2.14.3` built lean by `user/Makefile` into `ft/libft.a`
 > (`ft/onyx_ftoption.h`, `ft/onyx_ftmodule.h`: TrueType fonts only — truetype + sfnt —, anti-aliased
 > — smooth —, hinted by the auto-hinter only — autofit, no bytecode interpreter —, their kerning read
-> — GPOS too —; no compressed, web, bitmap, colour or variable fonts, no PostScript names; NetSurf
-> keeps its own fuller build). FreeType wants a C library: an app using it is a **newlib** app (§5.1;
+> — GPOS too —; no compressed, web, bitmap, colour or variable fonts, no PostScript names). FreeType wants a C library: an app using it is a **newlib** app (§5.1;
 > Writer's rule in `user/Makefile` is the model). `#include "ft/fonts.h"` (header-only, one TU):
 > `fnt::init ()` finds the families of `SD:/res/fonts` and `SD:/fonts` (each file's family name and
 > style read from its own `name` / `head` / `OS/2` tables — no FreeType, three small reads), sorted;
@@ -1003,15 +1001,8 @@ its licence on the app.
 > `A64_GCC=`) and `qemu-aarch64`, the CPU path built for the Pi (NEON loops) must give the PC's
 > pixels bit for bit. On the Pi: `/bin/gpcdemo test` (the GPU's pictures against the CPU's),
 > `/bin/gpcdemo bench` (ms a frame at 1920 × 1080, GPU then CPU), `/bin/gpcdemo` (a window).
-> **Jet Browser** (NetSurf) composites its view with it (docs/06 §25: the page in a band, opacity / transform
-> groups as retained layers, one composite a frame; Choices' `gpu_compositing`): `netsurf-app.mk`
-> links `$(ZUSER)/gpucomp/libgpucomp.a` (made by `make -C user gpucomp/libgpucomp.a` when
-> missing), and the `"onyx"` libnsfb surface (`user/nsfb/onyx_surface.c`, inside `libnsfb.a`:
-> `make -C user/nsfb NSFB=../../third_party/libnsfb` after changing it) leaves the composited
-> part of the canvas alone (`onyx_surface_hole`). On the PC: `sh tools/tests/netsurf/gputest.sh`
-> (the composited frames against the CPU painting, composite-only frames, the software V3D:
-> `host.mk SOFTGPU=1` links `hostkapi.cpp`'s V3D into the desktop simulator, `GPC_SOFTGPU=1`
-> uses it; `NS_GPU=0 / 1 / cpu` chooses the mode).
+> **Jet Browser** composites its pages with it (WebKit's `LayerTreeHost` for Onyx: docs/08 *The
+> compositor on the V3D* — tiles, layers for animations and videos, one composite a frame).
 > **App cores (ABI v51)**: an app may take a whole core (2 or 3) for a function of its own —
 > `int c = kapi_core_acquire ();` (−1: none free), `kapi_core_run (c, fn, arg, stack_top)` (the
 > stack is the app's memory, 16-byte aligned), poll `kapi_core_state (c)` (`KAPI_CORE_IDLE` once
@@ -1805,8 +1796,8 @@ its licence on the app.
 >   types (beyond `AP_*`, up to 512 bytes) reach the applet through **`wk_applet_on_message (fn)`**
 >   (called from `wk_pump`, the payload NUL-terminated). The surface may be bigger than the area the
 >   host shows: the applet shrinks its Root with `setBounds (w, h)` (the surface's stride kept).
-> - **Web's web view** (`user/Apps/web/webview.cpp`, `webview_proto.h`; docs/08 step 5): the browser's
->   one program as an applet — `SD:/apps/web.app/main --applet <surface> <host pid> <service>` —, the
+> - **Jet's web view** (`user/Apps/jet/webview.cpp`, `webview_proto.h`; docs/08 step 5): the browser's
+>   one program as an applet — `SD:/apps/jet.app/main --applet <surface> <host pid> <service>` —, the
 >   page alone (JavaScript off, a link clicked told to the host, not followed). The host makes the
 >   surface once, as big as the work area, and talks to it with: `WV_SIZE` (60, `int w, h`: the page's
 >   size in the surface's top-left), `WV_HTML` (61, a path: an HTML file the host wrote — Mail:
@@ -2020,8 +2011,8 @@ windows may end with `,title`.
 The music and video library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
 **newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers. Its
 videos are played by **the media library** (`user/av`, below), compiled by the rule into `Apps/media/obj/av/`
-with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with Jet's codec libraries — `libvpx.a`,
-`libdav1d.a`, `libopus.a` (`make -C user/netsurf codecs`; committed in `third_party/`) — and **FFmpeg 7.1.2**'s
+with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with the codec libraries — `libvpx.a`,
+`libdav1d.a`, `libopus.a` (`make -C user/av`; committed in `third_party/`) — and **FFmpeg 7.1.2**'s
 (`third_party/ffmpeg-7.1.2/onyx/aarch64/lib{avformat,avcodec,swscale,swresample,avutil}.a`, committed; made by
 `sh third_party/ffmpeg-7.1.2/onyx/build.sh pi`: every decoder and demuxer, `--enable-gpl`, no threads, no programs).
 **The Media Player is therefore GPL-2.0-or-later** (its files stay MIT; docs/LICENSING.md). The app is ~16 MB
@@ -2055,13 +2046,13 @@ built with `user/av` and its codecs for the PC by `tools/tests/desktop_sim/av_ho
 
 `user/av` plays media files and streams: containers, decoders, conversions, a store of coded frames
 (Media Source Extensions') and a player with its threads, sound and clock. Jet Browser's `<video>`,
-`<audio>` and MSE are built on it (docs/06 §44), and the Media Player's videos. Plain C
+`<audio>` and MSE are built on it (WebKit's media engine for Onyx: docs/08 *Media*), and the Media Player's videos. Plain C
 (`av.h` is the reference), threads and locks through `av_os.h` (the kapi; pthreads with `-DAV_POSIX`
 for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I kernel/include`
 (`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given --
 `user/av/codecs.mk` has their libraries' sources and flags and `AV_CODECS_CF` (the `-DAV_WITH_*` and
 include paths): include it with `TP` = `third_party` and `AV_ARCH` = `aarch64` (the Pi: NEON, dav1d's
-assembly; `user/netsurf/Makefile codecs` builds `libvpx.a`, `libdav1d.a`, `libopus.a`) or `generic` (C).
+assembly; `make -C user/av` builds `libvpx.a`, `libdav1d.a`, `libopus.a`) or `generic` (C).
 
 | File | What |
 |---|---|
@@ -2111,7 +2102,7 @@ their track, pts / dts in microseconds, key flag), `av_decoder_new (track)` / `a
 
 What decodes: VP9, VP8, AV1, Opus (with `codecs.mk`'s libraries), FLAC, MP3, PCM (WAV), the tests' I420, and
 with FFmpeg (the Media Player) nearly everything else -- `av_codec_list ()` says, `av_decoder_supported_track
-(track)` for a track. A file whose codec is not there plays nothing: `st.error == AV_EUNSUP` (Jet: MediaError 4).
+(track)` for a track. A file whose codec is not there plays nothing: `st.error == AV_EUNSUP` (in a page: MediaError 4).
 **Decode times**: Matroska keeps none (its blocks are in decode order, their times are the pictures'): its video
 packets come with `dts = AV_NOTIME` and the store makes them (after the last one: H.264 / H.265 with B-frames).
 In the file mode a jump forward in the times is the stream's own (a variable frame rate, Theora's repeated
@@ -2119,7 +2110,7 @@ frames left out), neither a discontinuity nor a hole to wait for. **Tests**: `sh
 the `ffmpeg` command, `tools/tests/av/fftest.c`: FFmpeg for the PC -- `third_party/ffmpeg-7.1.2/onyx/build.sh host`
 -- and clips made in H.264 / AAC (MP4, TS), H.265, Xvid AVI, MPEG-2, WMV, FLV, Theora OGV, AC-3, 10-bit 4:2:2:
 each read and decoded whole, played in the file mode, a seek),
-`sh tools/tests/netsurf/mediatest.sh` (in Jet Browser; the VP9 / AV1 / Opus clips of `tools/tests/av/clips`,
+`tools/webkit/tests/video-file.html` and `video-mse.html` (in Jet Browser, on the Pi; the VP9 / AV1 / Opus clips of `tools/tests/av/clips`,
 made by `mkcodec.py` with PyAV), `sh tools/tests/av/bench.sh <clips>` (the decoders' speed, PC and AArch64
 under qemu, the frames' checksum the same on both).
 
@@ -2613,8 +2604,7 @@ TLS). TLS is provided by [`user/tls/onyx_tls.hpp`](../user/tls/onyx_tls.hpp) —
 ≥3.6.3** over the kapi sockets, with a **buffered** BIO (Circle's `CSocket::Receive`
 discards the remainder of a TCP segment on a short read, so we read whole segments) and
 **software-only crypto** (the Pi 4's Cortex-A72 has no ARMv8 crypto extensions).
-**Verified end-to-end on real hardware** — `httpsget` downloads real pages. Same model
-NetSurf uses (HTTPS from an external stack, libcurl+OpenSSL). To enable it in a **newlib**
+**Verified end-to-end on real hardware** — `httpsget` downloads real pages. To enable it in a **newlib**
 app: `#define ONYX_HTTP_TLS` before `#include "http.hpp"` and link the cross-built mbedTLS
 libs — `make -C user/tls` then `make -C user/bin MBEDTLS_DIR=../tls/mbedtls` (see
 [`user/tls/README.md`](../user/tls/README.md)). The freestanding default (no
@@ -2648,88 +2638,22 @@ canvas ignores when blitting). Same split as TLS: the libraries are cross-built 
 zlib 1.3.1, libpng 1.6.44, libjpeg IJG v9f), the Onyx glue is header-only. It is a
 **newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/bin
 IMG_DIR=../img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
-size). This is the same model NetSurf uses — link libpng/libjpeg/zlib, decode behind one
-wrapper. Note: `image.hpp` is for full-colour web images; keep
+size). Note: `image.hpp` is for full-colour web images; keep
 [`user/bmp.hpp`](../user/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
 
-For a **NetSurf-style framebuffer GUI** there is an Onyx **libnsfb** surface backend,
-[`user/nsfb/onyx_surface.c`](../user/nsfb/onyx_surface.c). libnsfb is NetSurf's framebuffer
-abstraction (its software plotters draw into a surface buffer); this backend makes an Onyx
-window **content canvas** that surface: `initialise` → `kapi_create_window` (the
-`0x00RRGGBB` canvas *is* the framebuffer), `update` → `kapi_present`, and `input` bridges
-Onyx's callback-driven pointer/key events (`kapi_set_pointer/key_handler` + `pump_events`)
-into libnsfb's poll-style event queue. The format is `NSFB_FMT_XRGB8888` — on little-endian
-the plotter packs `0x00RRGGBB`, exactly the canvas layout (no R/B swap). The vendored
-libnsfb is **unpatched**: the backend registers under the name `"onyx"` (resolved with
-`nsfb_type_from_name("onyx")`) via a constructor that Onyx's `crt0` runs from `.init_array`.
-Cross-built once (`make -C user/nsfb`, pinned in [`user/nsfb/README.md`](../user/nsfb/README.md)),
-then OPT-IN: `make -C user/bin NSFB_DIR=../nsfb` builds the `/bin/nsfbdemo` demo (draws
-shapes through libnsfb and tracks the cursor). `libnsfb.a` is linked `--whole-archive` so
-the surface's registration constructor is not dropped.
+**The browser** is Jet, on WebKit: the port's own document is [`08-WEBKIT-PORT.md`](08-WEBKIT-PORT.md)
+(the POSIX layer it stands on, the patch series, the builds, its media engine and compositor).
+Until 2026-10-04 Jet was a port of NetSurf (`user/netsurf`, `third_party/netsurf` and its
+libraries — libcss, libdom, libhubbub, QuickJS, wasm3 —, `user/nsfb`, the PC bench
+`tools/tests/netsurf`, a Windows build): all of it left the tree when the WebKit browser took its
+name; the history has it (`git log -- user/netsurf`, the commit before the removal:
+`git show 3e2eb270:docs/06-JET-BROWSER.md`).
 
-The **NetSurf core library stack** also cross-builds for Onyx — `user/netsurf/` builds
-libwapcaplet, libparserutils, libnsutils, libnsgif, libnsbmp, libhubbub (HTML), libcss
-(CSS) and libdom (DOM) against newlib (`make -C user/netsurf`, versions pinned in
-[`user/netsurf/README.md`](../user/netsurf/README.md)). The whole stack **links clean** —
-no undefined symbols — against `crt0libc` + `onyx_syscalls` + newlib. Three Onyx-side fixes
-made it self-contained: libparserutils is built `-DWITHOUT_ICONV_FILTER` (use its own
-charset codecs; newlib has no `iconv`), everything is built `-fcommon` (the code predates
-GCC 10's `-fno-common`), and `pread`/`pwrite` were added to `onyx_syscalls.c`. Code that the
-upstream buildsystem normally generates with host tools is reproduced in the Makefile: perl
-for the libparserutils charset aliases and libhubbub entities, a host-compiled `gen_parser`
-for the libcss property parsers, and a gperf-free element-type table for libhubbub
-([`user/netsurf/gen/`](../user/netsurf/gen/)). This is NetSurf brick 7. Brick 8 — an Onyx
-**fetch scheme handler** ([`user/netsurf/onyx_fetch.c`](../user/netsurf/onyx_fetch.c)) —
-drives the NetSurf fetch API over the Onyx TCP kapis (+ gzip via zlib), the curl-fetcher's
-role without libcurl. Brick 9 wires the whole **NetSurf core + its framebuffer frontend** to
-the `user/nsfb` `"onyx"` libnsfb surface + the `user/img` decoders: `make -f
-user/netsurf/netsurf-app.mk stage` builds `netsurf.elf` (182 TUs + the libs) and installs it
-as a desktop app -- since 2026-10-01 **Jet Browser** (`apps/jet.app`, launched as `jet`;
-docs/06 §31). **It runs on Onyx** — the window opens and real web pages render
-through the full HTML/CSS engine (currently slow; the `onyx_main.c` entry shim passes
-`-f onyx` to select the window surface). A console `nstest` (`netsurf-app.mk nstest`) smoke-
-tests each library brick. See [`user/netsurf/README.md`](../user/netsurf/README.md).
-The NetSurf code Jet does not use was removed from the tree and the builds in 2026-10
-(docs/06 §39, [`JET-DEAD-CODE.md`](JET-DEAD-CODE.md)): only the framebuffer frontend is left, the
-three makefiles no longer generate the internal bitmap font, and a NetSurf file dropped from the
-tree drops out of the builds' `$(wildcard ...)` lists by itself.
-NetSurf has since been changed a great deal for Onyx — its fonts (FreeType, web fonts,
-metric-compatible stand-ins), CSS3 in libcss, flexbox / grid / baseline layout, anti-aliased
-CSS3 painting, the native window: [`06-JET-BROWSER.md`](06-JET-BROWSER.md) lists the
-changes. The network (docs/06 §24) links two more vendored libraries, built by
-`make -C user/netsurf` like the others: `third_party/zstd-1.5.7` (the decompressor only,
-`libzstddec.a`) and `third_party/nghttp2-1.70.0` (`libnghttp2.a`, its `config.h` written by
-hand for newlib); expat (`third_party/expat-2.7.1`, `libexpat.a`: the XML documents, docs/06 §43); the disk cache is `user/netsurf/onyx_cache.c`. A change is checked on the PC first: `sh tools/tests/netsurf/shot.sh <url|file>
-<out.png> [WxH]` renders a page with NetSurf built for the PC (the desktop simulator), and
-`sh tools/tests/netsurf/chrome.sh <url|file> <out.png> [w] [h]` the same page in Chromium. The
-scripts' engine is QuickJS (`third_party/quickjs-ng-0.17.0`, `libquickjs.a`), with
-WebAssembly on wasm3 (`third_party/wasm3-0.9.2`, `libm3.a`: both made by `make -C
-user/netsurf`, committed) and Web Crypto on the mbedTLS the app links for TLS (docs/06 §27);
-`sh tools/tests/netsurf/jstest.sh` runs their regression pages on the PC, `quadtest.sh` the
-micro-benchmarks of what must stay linear in a page's size (docs/06 §36). The engine's speed
-(docs/06 §30) is measured without the browser: `tools/tests/netsurf/jit/` builds QuickJS alone
-(`build.sh`: `qjsrun` for the PC and AArch64 under `qemu-aarch64`), runs Octane and React
-(`bench.sh`, `COUNT=1`: callgrind's instruction counts), test262 against another build
-(`test262.py --bin2`), and counts AArch64 instructions exactly (`icount.sh`: the JIT, which is
-AArch64 only -- `QJS_JIT=n` turns it on in `qjsrun`). A change to `quickjs.c` (or
-`quickjs-jit.c`) means `libquickjs.a` made again: delete `third_party/quickjs-ng-0.17.0/*.o`
-first. The scripts' compiled code is cached on the card (`SD:/apps/jet.app/jscache/`,
-keyed by the engine's build: a new `libquickjs.a` starts it afresh).
-The browser's page zoom, status bar and downloads (docs/06 §38) are checked by
-`sh tools/tests/netsurf/dltest.sh` (the zoom keys and buttons, what the scripts see, the bar's texts,
-the Save dialog's names and the bytes saved in the simulator's `SIM_WRITES/Downloads`); the core
-calls the frontend back through `third_party/netsurf/include/netsurf/onyx_jet.h`'s hooks (the
-zoom of a new page's site, a fetch's error, a script's bytes to save), the downloads are
-`frontends/framebuffer/onyx_download.c` (a writer thread per file). The desktop simulator's
+Two things that work came with the browsers' benches and stay in the desktop simulator: its
 stand-in kernel implements `kapi_file_out` (a file written in pieces, in `SIM_WRITES`) and lets
-`kapi_remove` delete what an app wrote there (never the card). wtk's `FileDialog` takes Enter
-(Open / Save) and Esc (Cancel), its name box focused in save mode; `fileName ()` reads the box.
-Find in page, copy and paste and the page's context menu (docs/06 §40) are checked by
-`sh tools/tests/netsurf/findtest.sh`; the frontend's side is `frontends/framebuffer/onyx_edit.c`
-(the search, the context menu's commands, Copy Image as a PNG in `RAM:/jet/clip/` + `CLIP_FILES`)
-and `clipboard.c` (the kernel's clipboard, UTF-8); the core's search is
-`content/textsearch.c` (an array of matches, binary-searched when painting). The stand-in
-kernel's clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or `files:PATH` for
+`kapi_remove` delete what an app wrote there (never the card) — wtk's `FileDialog` takes Enter
+(Open / Save) and Esc (Cancel), its name box focused in save mode; `fileName ()` reads the box —
+and its clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or `files:PATH` for
 `CLIP_FILES`), **`SIM_CLIPFILE`** receives each copy's bytes, and every set logs
 `SIM-CLIPBOARD type=T len=N`. An app that pastes a copied picture reads it as Paint does
 (`clip_get_file` + `img_load`).
@@ -3034,17 +2958,6 @@ barwidth = 40
   `xdotool`): the demo song, playback, the editors, the plugins (a generator, an effect, an instrument:
   processes, editors, their sound), Compose with AI (`llm.exe` over HTTPS), the file dialog, closing.
   `pc/Koton/README.txt` is the user's page (copied into the folder).
-- **Jet Browser for Windows** (`pc/Jet`, built on Linux by `sh pc/Jet/build.sh` into `pc/dist/Jet/` and
-  `pc/dist/Jet.zip`, committed; `pc/build.sh` runs it too): the browser's Onyx sources (NetSurf, its
-  libraries, `user/netsurf`, wtk) built with MinGW-w64 by `pc/Jet/jet.mk` (every library from its source,
-  as `tools/tests/netsurf/host.mk`; static) over [`pc/Jet/winkapi.cpp`](../pc/Jet/winkapi.cpp), Koton's
-  Win32 table grown for it: Winsock `tcp_*` / `net_resolve` (thread-safe), mutexes / events / barriers,
-  `vol_info` (`RAM:` = `data\ram`), no GPU (`gpu_info` 0: the CPU compositor), a window resize told as the
-  frame's maximise button (Jet's loop is not `Root::run`), the log in `data\jet.log` or a console, the
-  switches `--perf` / `--jsdebug` / `--netdebug` (or empty files beside the exe). The C library's file
-  calls are wrapped at the link (`-Wl,--wrap=fopen`...) to take the Pi's paths (`/res/...`, `/data/...`,
-  `RAM:/...`). The details, what was changed for it and how it was tested: docs/06 §34;
-  `pc/Jet/README.txt` is the user's page.
 - **Ledger for macOS** (`pc/macOS`, built **on a Mac** by `sh pc/macOS/build.sh` into
   `pc/dist/macOS/Ledger.app` + `Ledger-macOS-arm64.zip` -- the Xcode command-line tools only; not built
   here, so not committed). As Koton for Windows, **the Onyx sources unchanged** -- `user/Apps/ledger`,

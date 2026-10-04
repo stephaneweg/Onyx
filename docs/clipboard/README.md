@@ -93,7 +93,7 @@ used — or answer for clipd when it is not running (a fallback, one text). Noth
 
 ## Still to do
 
-- **Jet Browser** writes and reads the kernel's clipboard itself (`user/netsurf/onyx_chrome.cpp`
+- **Jet Browser** writes and reads the kernel's clipboard itself (WebKit's pasteboard for Onyx, `user/Apps/jet/engine_webkit.cpp`
   `clip_copy` and its ^V): switch it to `clipboard.h` (`clip_set_text_n`, `clip_get_text`) in a Jet
   session — until then its copies are not in the history, and its paste gets the last text copied.
 - The apps' own formats: Paint and Screenshot `clip_set_image`, Writer `rtf` + `text`, the Spreadsheet's

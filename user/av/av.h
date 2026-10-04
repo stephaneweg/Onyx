@@ -14,7 +14,7 @@
  *   2. Codecs (av_decoder_*): a packet in, frames out. Video frames are planar YUV (I420) or
  *      RGBA; audio frames are interleaved float PCM. The decoders built in are listed by
  *      av_codec_list (); the big ones (VP9, AV1, H.264, Opus, AAC...) are glue to libraries that
- *      are compiled in only when present (AV_WITH_* -- docs/06 §44; AV_WITH_FFMPEG: FFmpeg's decoders
+ *      are compiled in only when present (AV_WITH_* -- docs/03 "The media library"; AV_WITH_FFMPEG: FFmpeg's decoders
  *      and, AV_FMT_LAVF, its demuxers -- AVI, MPEG-TS, WMV... -- GPL-2.0+: the Media Player's build).
  *   3. Conversion: av_yuv_to_rgb (NEON on AArch64), av_resampler (any rate / channels -> s16
  *      stereo at the output's rate, with a volume).

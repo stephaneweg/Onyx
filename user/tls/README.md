@@ -57,7 +57,7 @@ This is a **functional** TLS bring-up, **not yet secure**:
   `MBEDTLS_HAVE_TIME_DATE`, so a verify callback checks them); `start()` returns -2 for a
   refused certificate and fills a `Verify` record of the chain. `START_ALPN_H2` /
   `START_ALPN_H1` offer ALPN; `sess_export` / `sess_import` keep the session cache across
-  launches. Jet Browser (`user/netsurf/onyx_nstls.cpp`, docs/06 §22) and Mail (`user/mail/conn.h`)
+  launches. Mail (`user/mail/conn.h`)
   use it; the other users (`user/bin` tools, Courier) still connect without verification.
 
 ## Config notes

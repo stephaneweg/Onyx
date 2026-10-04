@@ -731,7 +731,7 @@ static int list_tasks (char *b, unsigned n)
 // Sound: none, unless SIM_SOUND=1 -- then a stand-in output: the PCM stream is "played" at
 // 44100 frames a second of real time from a 0.5 s queue (sound_write takes what fits,
 // sound_status gives the free frames), with SIM_SOUNDOUT=<file> the frames played written to
-// the file (s16 L R) -- the media tests (tools/tests/netsurf/mediatest.sh) hear with it.
+// the file (s16 L R) -- the media tests hear with it.
 static pthread_mutex_t g_sndLock = PTHREAD_MUTEX_INITIALIZER;
 static bool g_sndOwned;
 static double g_sndStart;		// when the queue's frame 0 plays (s)

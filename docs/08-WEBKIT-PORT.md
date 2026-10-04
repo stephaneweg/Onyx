@@ -1,4 +1,12 @@
-# Onyx: the WebKit port
+# Onyx: Jet Browser, the WebKit port
+
+> **2026-10-04: this browser is Jet.** The WebKit browser was first called **Web** (`user/Apps/jet`,
+> the package `web`, `SD:/apps/web.app`) beside the NetSurf port named Jet. NetSurf's Jet, its
+> libraries, its PC bench and its Windows build were removed, and this browser took the name:
+> **`user/Apps/jet`, the package `jet` (2.0), `SD:/apps/jet.app`, `run jet`**. Below, "Web" is
+> its name at the time each part was written; what keeps the old name on purpose: its lines in the
+> kernel log (`web: …`, `webview: …`), the switch files (`SD:/etc/web-*`), the script
+> `tools/webkit/build-web.sh` and its output `$BUILD/bin/web`. The user agent is WebKit's own.
 
 ## Status / how to resume (2026-10-03)
 
@@ -319,8 +327,8 @@ PC: WebCore links into a test program that loads a page from a file and paints i
 
 ## Step 3: WebKit2 and Web, the browser (2026-10-03)
 
-**Web runs on the Pi** (`user/Apps/web`, package `web` 93 MB; docs/04 *Web*): the window on wtk, the
-page drawn by WebKit2's three processes — **one program** (`apps/web.app/main`) that is the UI and,
+**Web runs on the Pi** (`user/Apps/jet`, package `web` 93 MB; docs/04 *Web*): the window on wtk, the
+page drawn by WebKit2's three processes — **one program** (`apps/jet.app/main`) that is the UI and,
 started again with `--onyx-webkit-process=web|network`, the web and the network process; the kernel
 maps the program's image once for all (`image …: shared in 0 ms` in kmsg). Tried there (overnight,
 over telnet and VNC, the user's Pi 4 8 GB): the start page (a `file:` page, 1.3 s from the start);
@@ -402,7 +410,7 @@ Two fixes on the way: curl's download path told WebKit no running total nor expe
 progress could be shown: `NetworkDataTaskCurl`, in `0016`), and libonyxposix answered `EPIPE` to a
 write into a pipe whose read end it had given as a child's stdin and then closed (its counts are
 the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). Web also serves Mail as its HTML view
-(`--applet`, `user/Apps/web/webview.cpp`; docs/03 *Web's web view*).
+(`--applet`, `user/Apps/jet/webview.cpp`; docs/03 *Web's web view*).
 
 Not there yet (the next work of step 1): the pointer's shape (no kapi for it), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,
 the measurements of where kotonstudio.com's 3.2 s go.
@@ -449,7 +457,7 @@ a launch that followed a browser killed while loading (a lock left in `SD:/var/w
 and to Skia's Ganesh from end to end (its tiles are GL textures, its compositor a GL context:
 `ThreadedCompositor`, `AcceleratedSurface`, `SkiaCompositingLayer`), and TextureMapper is GLSL. So
 the port has **its own `GraphicsLayer` on Onyx's `user/gpucomp`** (the model: Windows'
-`GraphicsLayerWC` and its tile grid), as Jet does (docs/06 §25) — patch `0018`:
+`GraphicsLayerWC` and its tile grid), as Jet does (the removed docs/06) — patch `0018`:
 
 - `WebCore/platform/graphics/onyx/GraphicsLayerOnyx`: a layer's properties and a grid of 512-pixel
   tiles kept over a window around what is seen (one view above, two below), painted by Skia on
@@ -628,7 +636,7 @@ was never sent. Switches: `SD:/etc/web-desktop-ua` (none), `SD:/etc/web-mobile-u
 (`WebPageProxy::OnyxConsoleMessage`, from `WebChromeClient::addMessageToConsole`; the console API's
 messages with all their arguments: `FrameConsoleClient.cpp`), and the embedder gets them through
 `WKSetConsoleMessageCallbackOnyx` (`WKPagePrivateOnyx.h`). Web keeps the last 1000 and shows them in
-its Console window (View ▸ Console, F12: `user/Apps/web/console.cpp`, a process of its own as the
+its Console window (View ▸ Console, F12: `user/Apps/jet/console.cpp`, a process of its own as the
 downloads' window; emptied at each navigation). Two files for whoever debugs a site:
 `SD:/etc/web-console` (the console in `kmsg` too) and `SD:/etc/web-probe.js` (a script run in every
 page before its own: `tools/webkit/tests/probe.js` reports errors, failed resources and the
@@ -708,7 +716,7 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    on the bench; the network path, WOFF2 and media are still to do.*
 3. **WebKit2** (UI, web and network processes over WP-IPC: AF_UNIX socketpairs, SCM_RIGHTS, shm).
    *Done and running on the Pi (2026-10-03): patches `0013`–`0015` (see "Step 3" below), the
-   browser **Web** (`user/Apps/web`, package `web`).*
+   browser **Web** (`user/Apps/jet`, package `web`).*
 4. The Onyx view; then, in the order the user asked for (2026-10-02): **the JavaScript JIT before
    video**. The JIT: executable memory for a program's own mappings in the kernel (`PROT_EXEC`
    through `vm_map` / `vm_protect`, W^X, the instruction cache flushed from EL0: a kapi change),

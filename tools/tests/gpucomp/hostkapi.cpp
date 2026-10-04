@@ -296,7 +296,7 @@ extern "C" void hostkapi_hang (void) { g_hang = 1; g_frames = 0; }
 extern "C" void hostkapi_refuse (int n) { g_refuse = n; }
 extern "C" int hostkapi_textures (void) { return (int) g_tex.size (); }
 
-// NetSurf on the desktop simulator (tools/tests/netsurf/host.mk SOFTGPU=1, -DHOSTKAPI_GPU_ONLY): fakekapi.cpp
+// A program on the desktop simulator with the software V3D (-DHOSTKAPI_GPU_ONLY): fakekapi.cpp
 // makes the table, then this puts the software V3D's calls into it (GPC_SOFTGPU=1 at run time)
 extern "C" void hostkapi_install_gpu (TKApiTable *t)
 {

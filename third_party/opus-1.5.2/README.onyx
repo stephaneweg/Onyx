@@ -14,7 +14,7 @@ onyx/config.h (Onyx's, by hand in place of configure): the floating-point build,
 only (no intrinsics, no run-time CPU detection) -- decoding Opus costs a few % of a core.
 
 No change to the sources. The source list and the flags are in user/av/codecs.mk: built by
-user/netsurf/Makefile into libopus.a, compiled by tools/tests/netsurf/host.mk, pc/Jet/jet.mk and
+user/av/Makefile into libopus.a, compiled by tools/tests/av/bench.mk and
 tools/tests/av/bench.mk. The encoder's files are compiled too (the linker keeps the decoder's
 alone on the Pi).
 

@@ -1016,7 +1016,7 @@ public:
 		for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
 			for (u8 nPhy = 0; nPhy <= PHY_MAX_CODE; nPhy++)
 				g_KeyMap[nPhy][nTable] = pMap[nPhy * (K_CTRLTAB + 1) + nTable];
-		// Ctrl with the keys of - = + 0 (a browser's zoom: Jet Browser, docs/06 §38): Circle's
+		// Ctrl with the keys of - = + 0 (a browser's zoom: Jet Browser, docs/08): Circle's
 		// keymap uses the Ctrl column for any key but a letter, and the layouts leave it empty
 		// there -- nothing came. The empty Ctrl entry of the key whose own character (or, for
 		// '0', its Shift one: AZERTY) is one of them gets the keypad's key of that character,

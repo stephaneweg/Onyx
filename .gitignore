@@ -43,7 +43,7 @@ __pycache__/
 # ============================================================================
 
 # The complete SD card image is committed (binaries included): the kernel .img, every
-# app .elf, the NetSurf/GPL resources, skins, keymaps AND the Pi/WLAN firmware blobs, so
+# app .elf, the resources, skins, keymaps AND the Pi/WLAN firmware blobs, so
 # the repo is a ready-to-flash card. EXCEPT sdcard/etc/wpa_supplicant.conf (the user's Wi-Fi
 # network and key): never tracked (ignored below), never packaged (tools/pkg/mkrepo.py) -- the
 # Wi-Fi settings (wpaconf) or the menu bar's Wi-Fi menu write it on the card.
@@ -54,8 +54,8 @@ __pycache__/
 !/sdcard_lite/**
 
 # Vendored third-party dependencies (sources + prebuilt .a) so the build is self-contained:
-# NetSurf + its library stack (libcss/libdom/libhubbub/...), mbedTLS, libwebp, libpng,
-# libjpeg, zlib. The build points here by default (see user/netsurf/netsurf-app.mk etc.).
+# FreeType, mbedTLS, libwebp, libpng, the codecs, FFmpeg, MuPDF, Skia, ICU...,
+# libjpeg, zlib. The builds point here by default.
 !/third_party/
 !/third_party/**
 # ...but NEVER the intermediate object files under third_party -- keep only the sources +
@@ -63,7 +63,7 @@ __pycache__/
 # (Only *.o: patterns like *.d/*.map would wrongly catch source such as mbedtls/ChangeLog.d/
 # or zlib's version-script zlib.map.)
 third_party/**/*.o
-# (their header lists, user/netsurf/Makefile's -MMD: named <obj>.o.d -- no source is)
+# (their header lists, -MMD: named <obj>.o.d -- no source is)
 third_party/**/*.o.d
 # Remembered FTP logins (ftpfs "Remember password"): never commit them
 sdcard/etc/ftpfs.ini
@@ -80,21 +80,9 @@ sdcard_lite/mail/
 # Lisa's Groq API key: never commit it
 sdcard/apps/lisa.app/config.ini
 
-# Jet Browser's user data on the card: the pages visited and the cookies (your logins): never
-# commit them
-sdcard/apps/jet.app/History
-sdcard/apps/jet.app/Cookies
-sdcard/apps/jet.app/desktop-sites
-sdcard/apps/jet.app/TLSSessions
-sdcard/apps/jet.app/HTTP1Hosts
-# (and the caches: the visited sites' scripts, compiled; the disc cache)
-sdcard/apps/jet.app/jscache/
-sdcard/apps/jet.app/cache/
-# (the browser's former folder, before its rename: only old user data can be left there)
-sdcard/apps/netsurf.app/
-# Web, the WebKit browser: its 93 MB program is built by tools/webkit/build-web.sh and carried by
+# Jet, the browser on WebKit: its 100 MB program is built by tools/webkit/build-web.sh and carried by
 # its package only (too big for git); and WebKit's data on the card (cookies, storage, caches)
-sdcard/apps/web.app/main
+sdcard/apps/jet.app/main
 sdcard/var/webkit/
 
 # The PC tools' build folders (pc/build.sh; the result, pc/dist/, is kept)

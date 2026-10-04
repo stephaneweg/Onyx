@@ -1,5 +1,0 @@
-# Onyx application metadata
-name = Web
-category = Internet
-stack = 8M
-opens = html htm

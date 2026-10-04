@@ -4,8 +4,7 @@
  * (SD:/res/fonts), anti-aliased, hinted by the auto-hinter only (no bytecode interpreter), their
  * kerning read (GPOS too) -- no compressed / web / Mac / bitmap / colour / variable fonts, no
  * PostScript glyph names, no environment. Selected by -DFT_CONFIG_OPTIONS_H="<onyx_ftoption.h>"
- * (user/Makefile, FT_OBJ; tools/tests/desktop_sim/shots.sh). NetSurf keeps its own, fuller one
- * (user/netsurf/freetype/).
+ * (user/Makefile, FT_OBJ; tools/tests/desktop_sim/shots.sh).
  */
 /****************************************************************************
  *

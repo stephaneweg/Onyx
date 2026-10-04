@@ -2,7 +2,7 @@
 
 > **Status (2026-10-02): the music and the videos are implemented** (`user/Apps/media`, docs/03 *Media Player*;
 > its use: docs/04 §12; the real app: `screenshots/media-*.png`), **not yet tried on the Pi**. The videos (below,
-> *The videos — done*) are played by Onyx's media library `user/av`, Jet Browser's. The
+> *The videos — done*) are played by Onyx's media library `user/av`, which Jet Browser's media engine uses too. The
 > mock-ups (validated): Priority 1 of the end-user apps roadmap
 > (docs/HANDOFF.md): a **music library** as a polished app, in the way of Windows Media Player / iTunes /
 > Rhythmbox (the user: "a library, as in Media Player"); **MP3, OGG, FLAC, WAV and MIDI**; artists,
@@ -51,7 +51,7 @@ artists and their covers are made up).
 ## The videos — done (2026-10-02)
 
 The user (2026-10-02): *"we have finished integrating video into Jet: look at its library to add a video player to
-the Media Player"*. Built on **`user/av`** (docs/03 "The media library", docs/06 §44): `av_player_open_file` (its
+the Media Player"*. Built on **`user/av`** (docs/03 "The media library"): `av_player_open_file` (its
 reader now reads through the kapi: newlib's `fopen` loads a whole file), its threads, the kapi's sound, the frames
 by `av_player_poll`.
 
@@ -79,7 +79,7 @@ by `av_player_poll`.
 - The SoundFont: one for all the MIDI files (Settings), proposed.
 - **The videos' formats**: the library's containers are WebM / Matroska and MP4 (the formats of the videos
   people have); its video codecs are **VP9 / VP8** (libvpx), **AV1** (dav1d) and **Opus** audio (libopus), vendored
-  and built for the Pi with their NEON / assembly (docs/06 §44 *The codecs*: link `libvpx.a`,
+  and built for the Pi with their NEON / assembly (docs/03 *The media library*: link `libvpx.a`,
   `libdav1d.a`, `libopus.a` and compile `user/av` with `user/av/codecs.mk`'s `AV_CODECS_CF`); H.264 has
   none yet (openh264, BSD, would be the one). In software on the Pi 4: VP9 up to 480p at 30 fps, AV1 up to
   360p (480p likely: to measure on a Pi), 720p is too much for one core. MPEG-1 (`pl_mpeg`, MIT) would be the lightest, if

@@ -7,8 +7,8 @@ paths like `Zircon/circle` as-is; no relation to Google/Fuchsia's Zircon).
 
 **Continuing the work? Read `docs/HANDOFF.md` first** (where things stand, the conventions, the
 next tasks: after the desktop redesign — a modernised CDE, `docs/gui-redesign/README.md`, done
-and in `main` — its next ideas, the GameCube emulator, and Jet Browser (NetSurf) "as in Chrome": its section
-says where the code is, how to test on the PC, how to build, what is next).
+and in `main` — its next ideas, the GameCube emulator, and Jet Browser, the WebKit port: its section
+says where the code is, how to build, what is next).
 
 The reference documentation is in **`docs/`** and is written in **English**:
 
@@ -17,9 +17,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/03-DEVELOPER-GUIDE.md`
 - `docs/04-USER-GUIDE.md`
 - `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
-- `docs/06-JET-BROWSER.md` (Jet Browser, the Onyx web browser based on NetSurf: the Onyx changes to NetSurf, libcss, FreeType; the fonts)
-- `docs/07-BROWSER-GAPS.md` (what the browser lacks next to Ladybird / Chromium / WebKit, the plan)
-- `docs/08-WEBKIT-PORT.md` (the WebKit port replacing Jet: its status and how to resume, the plan, the patch series in `tools/webkit/patches/`, `jsc`)
+- `docs/08-WEBKIT-PORT.md` (Jet Browser, the Onyx web browser: the WebKit port — its status and how to resume, the plan, the patch series in `tools/webkit/patches/`, `jsc`; the NetSurf Jet and its documents 06 and 07 were removed on 2026-10-04)
 - `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 - `docs/LOCAL-AGENT-WEBKIT.md` (briefing for a local agent continuing the WebKit port on the user's PC: setup, branches, plan)
 
@@ -73,7 +71,7 @@ it, say so to the user and do not publish. Never generate another key.
 
 Everything of ours that can be is under the **MIT licence** (the user, 2026-10-01): new code carries the MIT
 notice; a programme that links a copyleft library keeps its files MIT but is distributed under that licence (the
-kernel GPL-3.0 with Circle, Jet GPL-2.0 with NetSurf, the Media Player GPL-2.0 with FFmpeg, the PDF Viewer AGPL-3.0
+kernel GPL-3.0 with Circle, Jet LGPL-2.1 with WebKit, the Media Player GPL-2.0 with FFmpeg, the PDF Viewer AGPL-3.0
 with MuPDF, Doom GPL). Never pull a
 library that would force another licence on an app without asking the user. Details: `docs/LICENSING.md`.
 

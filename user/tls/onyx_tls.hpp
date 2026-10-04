@@ -18,7 +18,7 @@
 //     and passes START_VERIFY to start () gets the chain checked against them, the host name
 //     (SNI + the certificate's SAN / CN) and the validity dates against the Onyx clock
 //     (mbedTLS is built without MBEDTLS_HAVE_TIME_DATE: the dates are checked here, and only
-//     when the clock is set -- a year >= 2025). NetSurf does (user/netsurf/onyx_nstls.cpp).
+//     when the clock is set -- a year >= 2025). A caller that verifies sets the clock first.
 //
 // Built for mbedTLS 3.6.x configured bare-metal (no NET/FS/TIMING; TLS 1.2 and 1.3 -- 1.3 on
 // PSA crypto, its random generator ours: mbedtls_psa_external_get_random below). See

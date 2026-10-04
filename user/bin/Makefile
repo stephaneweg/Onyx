@@ -62,14 +62,6 @@ ifneq ($(strip $(ZLIB_DIR)),)
 ZLIB_PROGS = vncd.elf
 endif
 
-# libnsfb demo needs the cross-built libnsfb (see ../nsfb/README.md). OPT-IN via NSFB_DIR:
-#   make NSFB_DIR=../nsfb  (after: make -C ../nsfb)
-NSFB_DIR ?=
-NSFB_PROGS =
-ifneq ($(strip $(NSFB_DIR)),)
-NSFB_PROGS = nsfbdemo.elf
-endif
-
 PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  rm.elf mkdir.elf touch.elf cp.elf mv.elf ps.elf kill.elf \
 	  run.elf keyb.elf cmd.elf kmsg.elf netlog.elf verbose.elf net.elf wget.elf heaptest.elf \
@@ -114,7 +106,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(NSFB_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS) $(PORT_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS) $(PORT_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
@@ -240,14 +232,6 @@ $(ZLIB_PROGS): %.elf: %.c $(LIBC_DEP)
 	$(CC) $(CFLAGS_LIBC) -I$(ZLIB_DIR) $(LDFLAGS) $(LIBC_SRC) $< -L$(ZLIB_DIR) -lz -lm -o $@
 endif
 
-# libnsfb demo (newlib C + libnsfb). Built only when NSFB_DIR is set. The Onyx surface
-# registers via a constructor, so libnsfb.a is pulled with --whole-archive (otherwise the
-# linker would drop the un-referenced surface object and "onyx" would never register).
-ifneq ($(strip $(NSFB_DIR)),)
-$(NSFB_PROGS): %.elf: %.c $(LIBC_DEP) ../nsfb/onyx_surface.c
-	$(CC) $(CFLAGS_LIBC) -I$(NSFB_DIR)/libnsfb/include $(LDFLAGS) $(LIBC_SRC) $< \
-	  -Wl,--whole-archive -L$(NSFB_DIR)/libnsfb -lnsfb -Wl,--no-whole-archive -lm -o $@
-endif
 
 clean:
 	rm -f *.elf *.o

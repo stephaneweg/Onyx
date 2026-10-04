@@ -6,7 +6,7 @@
  * libvpx's I420 planes (valid until the next decode). Profile 0 (8 bits, 4:2:0) only.
  * Smooth on a Pi 4: 854 x 480 at 30 fps advertised (tools/tests/av/bench.sh: a 480p clip at
  * YouTube's rate decodes in ~16 ms a frame under qemu, a third of that or less on a Cortex-A72 --
- * docs/06 §44 has the measures and the estimate).
+ * docs/03 "The media library").
  */
 #ifdef AV_WITH_VPX
 #include "av_int.h"

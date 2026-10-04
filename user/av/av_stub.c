@@ -4,7 +4,7 @@
  * playback is visible) and silence, at the packets' times and the tracks' sizes. With them a
  * site's whole media path -- YouTube's player choosing formats, fetching segments, appending
  * them, buffering, playing, seeking -- runs on its real streams where the real decoders are not
- * vendored (docs/06 §44). Never on in a real build unless asked (av_codec_enable_stubs).
+ * vendored (docs/03 "The media library"). Never on in a real build unless asked (av_codec_enable_stubs).
  */
 #include "av_int.h"
 

@@ -5,7 +5,7 @@
  * share core 0; on the Pi dav1d's pthreads are a stand-in that never starts one).
  * Smooth on a Pi 4: 640 x 360 at 30 fps advertised -- AV1 costs about 1.5 x VP9 (a 480p clip at
  * YouTube's rate: ~25 ms a frame under qemu, its key frames several times that), so 480p would
- * share one core too tightly with the page (docs/06 §44).
+ * share one core too tightly with the page (docs/03 "The media library").
  */
 #ifdef AV_WITH_DAV1D
 #include "av_int.h"

@@ -21,7 +21,7 @@ vp8_rtcd.h, vp9_rtcd.h, vpx_scale_rtcd.h; onyx/vpx_version.h. (onyx/generic/vpx_
 HAVE_PTHREAD_H set to 0 by hand -- no threads, and MinGW's would not be wanted.)
 
 No change to the sources. The source list and the flags are in user/av/codecs.mk: built by
-user/netsurf/Makefile into libvpx.a (-O3), compiled by tools/tests/netsurf/host.mk (the PC
-bench), pc/Jet/jet.mk (Windows) and tools/tests/av/bench.mk (avbench).
+user/av/Makefile into libvpx.a (-O3), compiled by tools/tests/av/bench.mk (the PC
+bench) and tools/tests/av/bench.mk (avbench).
 
 Used by user/av/av_vpx.c (AV_WITH_VPX): one decoding thread, 8-bit 4:2:0 frames.

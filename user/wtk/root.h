@@ -19,8 +19,8 @@ void wk_pump ();				// the events: the window's (pump_events), an applet's host'
 void wk_present ();			// what was drawn shown: kapi_present, or told to the host
 bool wk_quit ();				// time to end: the close box, or the host's AP_CLOSE / its end
 bool wk_applet_send (int type, const void *data = 0, unsigned len = 0);	// a message to the host
-// The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own protocol: Web's web view,
-// Apps/web/webview_proto.h) given to fn (data NUL-terminated after its len bytes), from wk_pump.
+// The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own protocol: Jet's web view,
+// Apps/jet/webview_proto.h) given to fn (data NUL-terminated after its len bytes), from wk_pump.
 // A host other than the Control Panel names its IPC service: "--applet <surface> <host> <service>"
 // (the applet ends when that service is gone).
 void wk_applet_on_message (void (*fn) (int type, const void *data, int len));

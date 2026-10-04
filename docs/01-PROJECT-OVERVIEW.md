@@ -81,14 +81,10 @@ sources.
   a window-level remote desktop for Windows (`rdpd` + Onyx Remote), an FTP server.
 - **Packages.** Every app is a signed package of the `onyx-packages` repository: `pkg`, the
   Package Manager and an update daemon keep a card up to date.
-- **A modern web browser.** **Jet Browser** (`jet`), the Onyx web browser based on
-  NetSurf: `http://` and `https://`,
-  **CSS3** (`calc()`, `var()`, flexbox, grid, gradients, shadows, rounded corners,
-  gradient text, vendor prefixes), web fonts (WOFF/WOFF2, variable fonts) with Chrome's
-  Windows fonts stood in by metric-compatible ones, and **JavaScript** on QuickJS
-  (ES2023, the DOM, the page laid out again after a script's changes). Details in
-  [Jet Browser, the NetSurf changes](06-JET-BROWSER.md). Video and audio too
-  (`<video>`, `<audio>`, MSE).
+- **A modern web browser.** **Jet Browser** (`jet`), on **WebKit** (the engine of Safari): its own
+  port to Onyx — `http://` and `https://`, JavaScript compiled by JavaScriptCore's JIT, the page
+  assembled by the Pi's GPU, `<video>` and `<audio>` (VP9, AV1, Opus; YouTube plays), one page per
+  window, three processes (the window, the page, the network): [the WebKit port](08-WEBKIT-PORT.md).
 
 ## 4. The architecture at a glance
 
@@ -180,10 +176,10 @@ ARCHITECTURE.md   the original design + build manifest (historical record)
 docs/             THIS documentation (overview, internals, dev/user guides, plans)
 kernel/           the Onyx kernel (see docs/02-KERNEL-INTERNALS.md)
 user/             the userland: apps (Apps/<name>/), wtk toolkit, libraries, /bin tools
-                  (bin/), runtime (crt0.S, user.ld, libc/), Jet Browser (netsurf/)
+                  (bin/), runtime (crt0.S, user.ld, libc/), the media library (av/)
 sdcard/           ready-to-flash files for an RPi 4 (firmware, config, apps, /bin, samples)
 sdcard_lite/      the minimal card (the required packages), the rest from the repository
-third_party/      vendored libraries (NetSurf, FreeType, MuPDF, FFmpeg, QuickJS, …)
+third_party/      vendored libraries (FreeType, MuPDF, FFmpeg, ICU, Skia, curl, …)
 tools/            host scripts and tests (packages, screenshots, desktop simulator, …)
 pc/               the Windows builds (Koton, the emulators, Onyx Remote)
 circle/           Circle, as a git submodule (the fork stephaneweg/circle, branch onyx)
@@ -202,7 +198,7 @@ circle/           Circle, as a git submodule (the fork stephaneweg/circle, branc
 | **[03 — Developer Guide](03-DEVELOPER-GUIDE.md)** | anyone who wants to build/compile/extend | toolchain, build, app model, extending the ABI, conventions, debugging |
 | **[04 — User Guide](04-USER-GUIDE.md)** | anyone who wants to use it | SD card, desktop, terminal, files, applications, customization |
 | [05 — Circle Changes](05-CIRCLE-CHANGES.md) | anyone touching `circle/` | the patches of our Circle fork vs upstream `Step51` |
-| [06 — Jet Browser](06-JET-BROWSER.md), [07 — Browser gaps](07-BROWSER-GAPS.md) | the browser | the Onyx changes to NetSurf, libcss, FreeType; what is missing |
+| [08 — Jet Browser, the WebKit port](08-WEBKIT-PORT.md) | the browser | the port of WebKit to Onyx: its status, the patch series, how to build |
 | [EL0 protected mode](EL0-PROTECTED-MODE.md) | the execution model | how apps moved to EL0, the design |
 | [Licensing](LICENSING.md) | distributors | the licences of everything Onyx contains |
 | [Handoff](HANDOFF.md) | the next session | where the work stands, the next tasks |
@@ -226,7 +222,7 @@ circle/           Circle, as a git submodule (the fork stephaneweg/circle, branc
     (ABI v21), an IRC client, a `/bin/net` tool, and NTP clock sync.
 12. The modernised CDE desktop (v64: menu bar, dock, workspaces), the wtk toolkit; the
     preemptive scheduler; sound on core 1, app cores 2–3 (v51), the GPU (v52);
-    Jet Browser (NetSurf, QuickJS); the office suite, the emulators, Koton; threads (v67);
+    Jet Browser (WebKit); the office suite, the emulators, Koton; threads (v67);
     the network on core 3; the `RAM:` volume (v71); the packages.
 13. **Every app at EL0** (v73–v74, 2026-10): system calls through the same table, per-process
     handles, every kapi pointer checked; a fault kills the app, not the machine.

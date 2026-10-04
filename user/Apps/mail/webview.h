@@ -1,6 +1,6 @@
 //
-// Apps/mail/webview.h -- an HTML message shown by WebKit: Web's web view (Apps/web/webview.cpp, the browser's one
-// program, SD:/apps/web.app/main, run as an applet: applet_proto.h, Apps/web/webview_proto.h) draws the message's
+// Apps/mail/webview.h -- an HTML message shown by WebKit: Jet's web view (Apps/jet/webview.cpp, the browser's one
+// program, SD:/apps/jet.app/main, run as an applet: applet_proto.h, Apps/jet/webview_proto.h) draws the message's
 // body into a surface Mail shows in its reading pane, where its own renderer (mail/html.h) draws it otherwise. Mail
 // does not link WebKit: one process more, started at the first HTML message, kept while Mail runs (the kernel
 // shares the program's image with the browser's windows).
@@ -20,7 +20,7 @@
 
 #include "Apps/mail/app.h"
 #include "applet_proto.h"
-#include "Apps/web/webview_proto.h"
+#include "Apps/jet/webview_proto.h"
 
 namespace mailapp {
 

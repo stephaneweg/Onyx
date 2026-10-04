@@ -3,7 +3,7 @@
 # (aarch64-onyx-elf): libonyxav.a, what Web's media engine (WebKit's MediaPlayerPrivateOnyx) links.
 # build-web.sh runs it:   make -f tools/webkit/av.mk ONYX=<the sources> S=<the sysroot> O=<objects' directory>
 #
-# The same sources and flags as Jet Browser's build (user/netsurf/Makefile, through user/av/codecs.mk):
+# The same sources and flags as the Pi's newlib build (user/av/Makefile, through user/av/codecs.mk):
 # libvpx (VP8, VP9: NEON), dav1d (AV1: its AArch64 assembly, one thread -- its own pthread stand-in),
 # libopus; user/av with -DAV_POSIX (its threads are pthreads here) and -DAV_KAPI_SOUND (the sound
 # output is still the kernel's, through kapi.h). No FFmpeg: Web stays LGPL (docs/LICENSING.md).

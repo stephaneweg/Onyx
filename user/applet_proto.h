@@ -20,7 +20,7 @@
 // The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another
 // host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id>
 // <host pid> <service>"; its own message types go to the applet's wk_applet_on_message (wtk/root.h;
-// Web's web view: Apps/web/webview_proto.h, types 60..79). The surface's frames live as long as
+// Jet's web view: Apps/jet/webview_proto.h, types 60..79). The surface's frames live as long as
 // either process maps it (kernel v65: its users).
 //
 #ifndef _applet_proto_h

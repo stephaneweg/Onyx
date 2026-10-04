@@ -1,5 +1,5 @@
 //
-// gpucomp.h -- the GPU compositing service (stage 1 of the browser's GPU compositing, docs/07 §6):
+// gpucomp.h -- the GPU compositing service (stage 1 of the browser's GPU compositing, docs/08):
 // an app uploads layers (ARGB premultiplied pixels) as textures once, then has a list of them
 // assembled into a target -- its window's canvas, or any ARGB buffer -- by the V3D (VideoCore VI):
 // each layer with a 2D affine transform (translate / scale / rotate / skew), a clip rectangle, an

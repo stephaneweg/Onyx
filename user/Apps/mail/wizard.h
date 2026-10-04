@@ -1,7 +1,7 @@
 //
 // Apps/mail/wizard.h -- adding an account, step by step: the name and the address; the provider recognised by the
 // address's domain (accounts.h) -- Gmail, iCloud, Yahoo: an app password, the page that makes it opened in Web
-// (WebKit; Jet Browser when Web is not on the card); Outlook.com / Hotmail: Microsoft's sign-in by a code (on a phone or a PC); another one: its password, its
+// (Jet); Outlook.com / Hotmail: Microsoft's sign-in by a code (on a phone or a PC); another one: its password, its
 // servers guessed or typed by hand (IMAP or POP3, the security, the ports); then the settings tried (the worker:
 // J_CHECK) and the account kept. And the settings of the accounts there are (the name, the signature, how often to
 // look for mail, the password, removal).
@@ -15,9 +15,8 @@
 
 namespace mailapp {
 
-// The browser a page is opened in: Web (WebKit) when it is on the card, else Jet.
-#define WIZ_WEB		"SD:/apps/web.app/main"
-static bool wiz_has_web (void) { void *f = kapi_open (WIZ_WEB); if (f) kapi_close (f); return f != 0; }
+// The browser a page is opened in: Jet.
+#define WIZ_WEB		"SD:/apps/jet.app/main"
 
 class Wizard;
 static Wizard *g_wizard;			// open: the worker's answers go to it (on_result)
@@ -61,7 +60,7 @@ public:
 			break;
 		case P_APPPW: case P_PASSWORD:
 			tPw = field (PAD + 150, page == P_APPPW ? y0 + 190 : y0 + 90, W - 2 * PAD - 150, a.inSecret, true); tPw->setFocus ();
-			if (page == P_APPPW) bExtra = button (PAD, y0 + 140, 250, wiz_has_web () ? "Open the page in Web" : "Open the page in Jet Browser", 10);
+			if (page == P_APPPW) bExtra = button (PAD, y0 + 140, 250, "Open the page in Jet", 10);
 			else bExtra = button (PAD, y0 + 150, 200, "Settings by hand...", 11);
 			break;
 		case P_OUTLOOK:
@@ -122,7 +121,7 @@ public:
 		read_fields ();
 		if (tag == 1) { g_m.worker.cancel = 1; close (0); return; }
 		if (tag == 2) { go (page == P_MANUAL ? (prevPage == P_MANUAL ? P_START : prevPage) : P_START); return; }
-		if (tag == 10) { const char *url = (a.provider == PV_GMAIL ? "https://myaccount.google.com/apppasswords" : a.provider == PV_ICLOUD ? "https://account.apple.com" : a.provider == PV_YAHOO ? "https://login.yahoo.com/account/security" : "https://www.fastmail.com/settings/security/devicekeys"); kapi_exec (wiz_has_web () ? WIZ_WEB : "SD:apps/jet.app/main", url); return; }
+		if (tag == 10) { const char *url = (a.provider == PV_GMAIL ? "https://myaccount.google.com/apppasswords" : a.provider == PV_ICLOUD ? "https://account.apple.com" : a.provider == PV_YAHOO ? "https://login.yahoo.com/account/security" : "https://www.fastmail.com/settings/security/devicekeys"); kapi_exec (WIZ_WEB, url); return; }
 		if (tag == 11) { go (P_MANUAL); return; }
 		if (tag == 12) { waiting = true; Job *j = new Job; memset (j, 0, sizeof *j); j->kind = J_OAUTH_START; j->acct = a; g_m.worker.cancel = 0; g_m.worker.push (j); invalidate (true); return; }
 		if (tag == 20) { int k = dKind->sel; bool pop = k == 1; if (pop != (a.kind == K_POP3)) { a.kind = pop ? K_POP3 : K_IMAP; char host[120]; const char *at = strrchr (a.email, '@'); snprintf (host, sizeof host, pop ? "pop.%s" : "imap.%s", at ? at + 1 : ""); if (provider < 0) { scpy (a.inHost, host, sizeof a.inHost); } a.inPort = pop ? 995 : 993; a.inSec = SEC_TLS; build (); } return; }
@@ -229,8 +228,7 @@ public:
 			char t[120]; snprintf (t, sizeof t, "%s: an app password", v.label);
 			text (canvas, PAD, y0, t, C_TEXT, F_H2, 1);
 			para (PAD, y0 + 32, w, v.note, C_TEXT);
-			para (PAD, y0 + 84, w, wiz_has_web () ? "Make one on the page below (in Web), then type its letters here. Mail keeps it encrypted on this card."
-				       : "Make one on the page below (in Jet Browser), then type its letters here. Mail keeps it encrypted on this card.", dim, F_SMALL);
+			para (PAD, y0 + 84, w, "Make one on the page below (in Jet), then type its letters here. Mail keeps it encrypted on this card.", dim, F_SMALL);
 			text_v (canvas, PAD, y0 + 190, 30, "App password", C_TEXT);
 			break;
 		}

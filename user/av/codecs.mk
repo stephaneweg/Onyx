@@ -1,10 +1,11 @@
 #
-# user/av/codecs.mk -- the media library's vendored codecs (docs/06 §44, docs/media/README.md):
-# their sources and flags, for the three builds that include this file with TP set to
-# third_party/:
-#   - the Pi (user/netsurf/Makefile: libvpx.a, libdav1d.a, libopus.a; AV_ARCH = aarch64:
-#     libvpx's NEON intrinsics, dav1d's AArch64 assembly);
-#   - the PC bench (tools/tests/netsurf/host.mk) and Windows (pc/Jet/jet.mk): the C code alone.
+# user/av/codecs.mk -- the media library's vendored codecs (docs/03 "The media library",
+# docs/media/README.md): their sources and flags, for the builds that include this file with TP
+# set to third_party/:
+#   - the Pi (user/av/Makefile: libvpx.a, libdav1d.a, libopus.a; AV_ARCH = aarch64: libvpx's NEON
+#     intrinsics, dav1d's AArch64 assembly), the Media Player (user/Makefile) and Jet's media
+#     engine (tools/webkit/av.mk);
+#   - the PC benches (tools/tests/av/bench.mk, tools/tests/desktop_sim/av_host.mk): the C code alone.
 #
 #   libvpx 1.15.2 (BSD)  VP8 + VP9 decoders, 8 bits, no threads, no post-processing; the
 #                        configure's headers in onyx/generic and onyx/arm64 (README.onyx)

@@ -239,4 +239,4 @@ extension) and run `stkpoc` in a terminal. Expected: every line `ok`, `the ball 
    `SERVER_ONLY` STK (Irrlicht, Bullet, AngelScript, ENet, mcpp, zlib, mbedTLS); run the headless
    AI race with the smallest track and two karts.
 3. Then M3 → M5 as above. Keep this document as the port's log (what compiled, what ran, what next),
-   the way `docs/06-JET-BROWSER.md` records NetSurf's changes.
+   the way `docs/05-CIRCLE-CHANGES.md` records Circle's changes.

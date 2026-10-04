@@ -488,11 +488,10 @@ public:
 		}
 		if (istarts (href, "http://") || istarts (href, "https://"))
 		{
-			// asked first: a link in a mail may not go where it says. In Web (WebKit) when it is on the card, else Jet
-			void *f = kapi_open (WV_PROGRAM); bool web = f != 0; if (f) kapi_close (f);
-			char q[700]; snprintf (q, sizeof q, "Open this link in %s?\n\n%.600s", web ? "Web" : "Jet Browser", href);
+			// asked first: a link in a mail may not go where it says
+			char q[700]; snprintf (q, sizeof q, "Open this link in Jet?\n\n%.600s", href);
 			if (wk_messagebox ("Mail", q, MB_YESNO) != 1) return;
-			kapi_exec (web ? WV_PROGRAM : "SD:apps/jet.app/main", href);
+			kapi_exec (WV_PROGRAM, href);
 		}
 	}
 	void act (const Hit &h, int mx, int my)

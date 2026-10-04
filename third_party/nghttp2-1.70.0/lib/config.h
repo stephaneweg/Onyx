@@ -1,7 +1,7 @@
 /*
  * config.h -- Onyx: nghttp2's configuration, written by hand (no autotools / CMake run): the
- * library alone, built by user/netsurf/Makefile for the Pi (aarch64-none-elf + newlib) and by
- * tools/tests/netsurf/host.mk for the PC bench (glibc).
+ * library alone, built by tools/ports/common.sh for the POSIX ports (the Onyx toolchain).
+ *
  */
 #ifndef ONYX_NGHTTP2_CONFIG_H
 #define ONYX_NGHTTP2_CONFIG_H
