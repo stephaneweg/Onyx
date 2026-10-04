@@ -1109,6 +1109,7 @@ public:
 			Detect ();		// (cheap: a few name lookups; a keyboard plugged later is taken too)
 			DetectPads ();
 			DetectMidi ();
+			SoundPoll ();		// (v84: a USB audio device plugged / unplugged)
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}

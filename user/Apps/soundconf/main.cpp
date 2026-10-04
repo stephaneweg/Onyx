@@ -1,6 +1,7 @@
 //
 // soundconf -- the Control Panel's Sound applet (applet_proto.h; alone, a window of its own): the
-// master volume (0..10) and mute (kapi v60 sound_volume), applied at once to everything played and
+// output (kapi v84 sound_output: Automatic, the jack, a USB headset, HDMI -- the ones that are there),
+// the master volume (0..10) and mute (kapi v60 sound_volume), applied at once to everything played and
 // kept in SD:/etc/sound.ini (volume.h: the menu bar applies it at start); a test sound (a short
 // chime, when no app holds the sound output). The menu bar's speaker changes the same volume: the
 // applet follows it.
@@ -20,6 +21,62 @@ static Slider   *g_vol;
 static Checkbox *g_mute;
 static Label    *g_value, *g_status;
 static Root     *g_root;
+
+// The output (kapi v84): the choices shown are the ones present (Automatic always).
+static Dropdown *g_out;
+static Label    *g_outNow;
+static const char *g_outOpt[4];
+static int g_outVal[4], g_outN, g_outLast = -2;
+
+static const char *out_title (int o)
+{
+	return o == KAPI_SND_OUT_JACK ? "Headphone jack (3.5 mm)" : o == KAPI_SND_OUT_USB ? "USB headset / DAC"
+	     : o == KAPI_SND_OUT_HDMI ? "HDMI (the screen)" : "Automatic";
+}
+
+// The list and the line under it, from the kernel (every half second: a USB device comes and goes).
+static void read_output (void)
+{
+	int o = kapi_sound_output (-1);
+	if (o == g_outLast) return;
+	g_outLast = o;
+	if (o < 0)					// an older kernel: the jack only
+	{
+		g_outOpt[0] = out_title (KAPI_SND_OUT_JACK); g_outVal[0] = KAPI_SND_OUT_JACK; g_outN = 1;
+		g_out->setOptions (g_outOpt, 1, 0);
+		g_outNow->setText ("");
+		return;
+	}
+	int asked = KAPI_SND_OUT_ASKED (o), sel = 0;
+	g_outN = 0;
+	for (int i = KAPI_SND_OUT_AUTO; i <= KAPI_SND_OUT_HDMI; i++)
+	{
+		if (i != KAPI_SND_OUT_AUTO && i != asked && !KAPI_SND_OUT_HAS (o, i)) continue;
+		if (i == asked) sel = g_outN;
+		g_outOpt[g_outN] = out_title (i); g_outVal[g_outN++] = i;
+	}
+	g_out->setOptions (g_outOpt, g_outN, sel);
+	g_out->invalidate (true);
+	static char line[96];
+	int now = KAPI_SND_OUT_NOW (o), n = 0;
+	const char *a = now == 0 ? (asked == KAPI_SND_OUT_USB || asked == KAPI_SND_OUT_AUTO
+				    ? "Not playing yet (the sound starts with the first app that plays; a USB device must be plugged in)."
+				    : "Not playing yet: the sound starts with the first app that plays.")
+			       : "Playing on: ";
+	for (int i = 0; a[i] && n < 94; i++) line[n++] = a[i];
+	if (now != 0) { const char *t = out_title (now); for (int i = 0; t[i] && n < 94; i++) line[n++] = t[i]; }
+	line[n] = 0;
+	g_outNow->setText (line);
+}
+
+static void on_output (Widget &w)
+{
+	int k = ((Dropdown &) w).sel;
+	if (k < 0 || k >= g_outN) return;
+	volume_set_output (g_outVal[k]);		// (applied at once, kept in sound.ini)
+	g_outLast = -2;
+	read_output ();
+}
 
 static void show_value (int v)
 {
@@ -79,7 +136,7 @@ public:
 	void onTick () override
 	{
 		unsigned now = kapi_get_ticks ();
-		if (now - last >= 50) { last = now; read_volume (); }	// (the menu bar may change it)
+		if (now - last >= 50) { last = now; read_volume (); read_output (); }	// (the menu bar may change it; a USB device)
 	}
 };
 
@@ -93,8 +150,11 @@ int main (void)
 	GroupBox *go = new GroupBox (X + 10, 8, W - 20, 90, "Output");
 	root.addChild (go);
 	int ct = go->contentTop () + 6;
-	go->addChild (new Label (14, ct, W - 60, 20, "The Raspberry Pi's headphone jack (3.5 mm): the apps' music, sounds and", C_TEXT, go->bg));
-	go->addChild (new Label (14, ct + 22, W - 60, 20, "emulators, mixed.", C_TEXT, go->bg));
+	go->addChild (new Label (14, ct + 4, 90, 20, "Play on", C_TEXT, go->bg));
+	g_outOpt[0] = out_title (KAPI_SND_OUT_AUTO); g_outVal[0] = KAPI_SND_OUT_AUTO; g_outN = 1;
+	// (on the window, not in the group box: a parent clips its children, the open list needs the room)
+	int outL = go->left + 110, outT = go->top + ct;
+	g_outNow = new Label (14, ct + 34, W - 60, 20, "", C_DIS, go->bg); go->addChild (g_outNow);
 
 	GroupBox *gv = new GroupBox (X + 10, 108, W - 20, 150, "Volume");
 	root.addChild (gv);
@@ -108,7 +168,10 @@ int main (void)
 	g_status = new Label (X + 12, 270, W - 24, 22, "", C_DIS, root.bg);
 	root.addChild (g_status);
 	root.addChild (new Label (X + 12, H - 60, W - 24, 20, "Kept in SD:/etc/sound.ini. The menu bar's speaker changes it too.", C_DIS, root.bg));
+	g_out = new Dropdown (outL, outT, 300, 26, g_outOpt, 1, 0, on_output);
+	root.addChild (g_out);				// (last: over the groups when its list is open)
 	read_volume ();
+	read_output ();
 	root.run ();
 	return 0;
 }
