@@ -1243,6 +1243,12 @@ public:
 		case B_EVENT: { int e = H.event (false); if (e == -1) ended = true; pushN (e); break; }
 		case B_WAITEVENT: { int e = H.event (true); if (e == -1) ended = true; pushN (e); break; }
 		case B_MENUITEM: { char t[128], m[128], k[32] = ""; cstr (a[0], t, sizeof t); cstr (a[1], m, sizeof m); if (argc > 2) cstr (a[2], k, sizeof k); pushN (H.menuItem (t, m, k)); break; }
+		// AudioKit: the file played in the background, the notes
+		case B_FILEPLAYING: pushN (H.akQuery (0)); break;
+		case B_FILEPOS: pushN (H.akQuery (1)); break;
+		case B_FILELENGTH: pushN (H.akQuery (2)); break;
+		case B_NOTEFREQ: pushN (H.akNoteHz ((int) a[0].n)); break;
+		case B_NOTENUMBER: { char t[16]; cstr (a[0], t, sizeof t); pushN (H.akNoteKey (t)); break; }
 		case B_WINDOWWIDTH: case B_WINDOWHEIGHT: { int w = 0, h = 0; H.screenSize (&w, &h); pushN (id == B_WINDOWWIDTH ? w : h); break; }
 		case B_MSGBOX:
 		{
@@ -1642,6 +1648,27 @@ public:
 		case S_PLAY: { int n; const char *s = sdata (a[0], &n); play (s, n); break; }
 		case S_RANDOMIZE: rnd = argc ? (unsigned) (long long) a[0].n : H.seed (); break;
 		case S_WINDOW: cstr (a[0], t1, sizeof t1); H.window (t1, N (1, 0), N (2, 0)); if (argc > 3) H.windowFlags (N (3, 0)); H.screenSize (&scrW, &scrH); break;
+		// AudioKit (audiokit.h): PLAYFILE file$ [, loop] -- an MP3, FLAC, WAV, Ogg or MIDI file played while
+		// the program goes on --, STOPFILE, PAUSEFILE [0 | 1], FILEVOLUME 0..100; MIDINOTE channel, key
+		// [, velocity] (0: the note off), MIDIPROGRAM channel, instrument, MIDICONTROL channel, controller,
+		// value, MIDIOFF: notes on the General MIDI synthesizer (16 channels, 9: the drums).
+		case S_PLAYFILE:
+			cstr (a[0], t1, sizeof t1);
+			if (H.akPlay (t1, argc > 1 ? N (1, 0) : 0) != 0) fail (H.akError ()[0] ? H.akError () : "PLAYFILE: no sound library on this system");
+			break;
+		case S_STOPFILE: H.akCommand (0, 0); break;
+		case S_PAUSEFILE: H.akCommand (1, argc > 0 ? N (0, 1) : 1); break;
+		case S_FILEVOLUME: H.akCommand (2, N (0, 100)); break;
+		case S_MIDINOTE:
+		{
+			int vel = argc > 2 ? N (2, 100) : 100;
+			if (H.akMidi (vel > 0 ? 0x90 : 0x80, N (0, 0), N (1, 60), vel) != 0)
+				fail (H.akError ()[0] ? H.akError () : "MIDINOTE: no sound library on this system");
+			break;
+		}
+		case S_MIDIPROGRAM: H.akMidi (0xC0, N (0, 0), N (1, 0), 0); break;
+		case S_MIDICONTROL: H.akMidi (0xB0, N (0, 0), N (1, 0), N (2, 0)); break;
+		case S_MIDIOFF: H.akCommand (3, 0); break;
 		case S_MOVECONTROL: H.moveControl (N (0, 0), N (1, 0), N (2, 0), N (3, 0), N (4, 0)); break;
 		case S_SHOWCONTROL: H.showControl (N (0, 0), N (1, 0) != 0); break;
 		case S_ENABLECONTROL: H.enableControl (N (0, 0), N (1, 0) != 0); break;

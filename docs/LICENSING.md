@@ -95,13 +95,14 @@ Two weaknesses, worth fixing:
 | pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
 | The print system (Onyx) | `user/print/` (`SD:/lib/print.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
 | python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |
-| MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
-| minimp3 | `third_party/minimp3`, Media Player, Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
+| **AudioKit** (Onyx) | `user/audiokit/` (`SD:/lib/audiokit.so`): the files, the background player, mixing, notes, WAV — with MeltySynth and the four decoders below inside it | **MIT** (ours); what it contains: MIT, CC0, public domain — nothing that binds the programs using it. FFmpeg (GPL) is **not** in it and must never be | Keep the notices |
+| MeltySynth (C++ port) | `user/Apps/koton/synth` (in AudioKit: Koton, Media Player, BASIC) | MIT | Keep the notice |
+| minimp3 | `third_party/minimp3`, AudioKit (the Media Player, `/bin/play`, BASIC), Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
 | libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
 | dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser and the Media Player's videos (`user/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
 | libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser and the Media Player's videos (`user/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
-| stb_vorbis | `third_party/stb_vorbis`, Media Player | Public domain / MIT | — |
-| dr_flac, dr_wav | `third_party/dr_libs`, Media Player | Public domain / MIT-0 | — |
+| stb_vorbis | `third_party/stb_vorbis`, AudioKit | Public domain / MIT | — |
+| dr_flac, dr_wav | `third_party/dr_libs`, AudioKit | Public domain / MIT-0 | — |
 | ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
 | Mesa (V3D / QPU headers) | `tools/qpu/mesa` | MIT | Keep the notices |
 | libonyxposix (the POSIX layer) and its sysroot files | `user/libc/posix`, `tools/onyx-toolchain.cmake`, `tools/cmake`, `tools/ports`, `/bin/posixtest`, `/bin/posixtest-cxx` | **MIT** (ours) | — |

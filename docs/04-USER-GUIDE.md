@@ -1032,6 +1032,7 @@ it: `ed notes.txt < edits.txt`.
 | `ramtest` | `ramtest`, `ramtest full` | Self-test of **`RAM:`**, the volume in memory (§2): folders (nested, names in any case), files saved whole and read back (whole, in pieces, after a seek), streams written and appended, a listing, a rename, the current folder there, a file removed while open, a 16 MB file (its write and read times), and at the end the memory given back (`df`'s numbers as before; run it while Jet Browser is closed for that last check). `ramtest full` also fills the volume: the file that does not fit must not be left half-written. Works in `RAM:/ramtest` (removed after). One line per check, then `ALL PASS`. |
 | `coretest` | `coretest`, `coretest exit` | Tests the **app cores** (cores 2 and 3, which an app can take for itself): the same computation on an app core and on the main core (their times), a job stopped cleanly, an endless job stopped by releasing the core, a job that crashes (reported in `kmsg`, the system stays up), both app cores at once. `coretest exit` leaves a job running and quits: Onyx must stop it by itself. |
 | `tone` | `tone [Hz [ms [wave]]]`, `tone scale` | Plays a note on the audio output (the 3.5 mm jack) — default 440 Hz, 500 ms, sine; wave `square`, `sine`, `triangle`, `saw`, `noise`; `scale` plays a C major scale. Tests the sound system. |
+| `play` | `play <file> [volume 0..100]`, `play --info <file>`, `play --notes` | **Plays a sound file**: MP3, FLAC, WAV, Ogg Vorbis, or a MIDI file (through the SoundFont of `SD:/res/soundfonts`: the first MIDI file takes a few seconds, the time to load it). It plays to its end; a key stops it. `--info`: what the file is (its kind, rate, channels, length) and whether it decodes. `--notes`: a scale and a chord on the General MIDI synthesizer — the self-test of the sound library **AudioKit** (`SD:/lib/audiokit.so`, the package `audiokit`), which Koton, the Media Player and BASIC use too. |
 | `v3dprog` | `v3dprog` | Checks the **programmable GPU** (kapi v61): draws small frames with shaders generated at run time — a colour from the uniforms, varyings (two halves, a gradient, 12-float vertices), a texture, the scissor, blending, the colour write mask, the depth test, the near-plane clipping, 64 batches — then the GameCube's **TEV** as generated shaders (a MODULATE material and 8 random configurations of 1 to 16 stages and up to 8 texture lookups, checked against the CPU's reference) — and compares the pixels with the expected ones. One `PASS` / `FAIL` line a test (a failure shows the first wrong pixel and its expected colour), then `ALL PASS: n/n` and the time. Reads and writes no file. |
 | `gpcdemo` | `gpcdemo [cpu]`, `gpcdemo bench [w h [frames]]`, `gpcdemo test [w h]` | The **GPU compositing service** (`user/gpucomp`, kapi v70) shown, timed and checked. Without arguments: a 960 × 540 window where a web page (1920 × 2600) scrolls smoothly under a rotating picture, a translucent card that sways and fades, a banner and a clipped zoom — the layers assembled by the GPU straight into the window (`cpu`: by the processor); a line a second on the terminal (`GPU  3.10 ms a composite, 60 frames/s`); close the window to stop. `bench`: the same scene at 1920 × 1080 (60 frames): the uploads (the four textures, a 256 × 256 rectangle, a 1920 × 64 band), then milliseconds a frame for the page alone and for the five layers, GPU then CPU. `test`: the GPU's pictures against the processor's (640 × 360; several moments of the scene, each layer alone, over the target's pixels, an ARGB target, a rectangle updated across two textures, a composite on a thread): one `PASS` / `FAIL` line each (the largest difference, the pixels off by more than 4), then `ALL PASS: n/n`. Without a GPU it says so and compares the processor with itself. Reads and writes no file. |
 | `volume` | `volume`, `volume 0..10`, `volume mute` / `unmute` / `toggle`, `volume output [auto\|jack\|usb\|hdmi]` | The master volume of all the sound (0 silent … 10 full) and mute; without an argument, shows it. Kept in `SD:/etc/sound.ini` (applied at boot); the menu bar's speaker follows. **`volume output`**: which output plays, what is asked and which ones are there (`output: asked auto, playing on jack; there: jack hdmi`); with a word, chooses it — applied at once, kept in `sound.ini` (see the Sound applet, §11). |
@@ -4019,6 +4020,25 @@ files (`OPEN ... FOR INPUT / OUTPUT / APPEND`), the string and math functions, `
 (`F` fills), `INKEY$`, `TIMER`, `RND`, **sound**: `PLAY "T140 O3 L8 CDEFG>C"` (QBasic's music
 language), `SOUND freq, ticks`, `BEEP`, and Onyx's `NOTEON voice, freq[, wave, volume]` /
 `NOTEOFF [voice]` (a note that plays until stopped, 16 voices).
+
+**Sound files and MIDI notes (AudioKit).** `PLAYFILE file$ [, loop]` plays an MP3, FLAC, WAV, Ogg
+or MIDI file **while the program goes on** (`loop` 1: again and again); `STOPFILE`, `PAUSEFILE 1` /
+`PAUSEFILE 0`, `FILEVOLUME 0..100`. `FILEPLAYING` is 1 while it plays (0 stopped, 2 paused, 3
+waiting: another program holds the sound), `FILEPOS` and `FILELENGTH` its place and length in
+seconds. `MIDINOTE channel, key [, velocity]` plays a note on the **General MIDI synthesizer** (16
+channels, 0–15; channel 9 is the drums; key 60 is middle C; velocity 1–127, **0 stops the note**),
+`MIDIPROGRAM channel, instrument` chooses the instrument (0–127: 0 a piano, 24 a guitar, 40 a
+violin, 56 a trumpet, 73 a flute …), `MIDICONTROL channel, controller, value` (7 the volume, 10 the
+pan, 64 the pedal), `MIDIOFF` silences everything. `NOTEFREQ (key)` is a key's frequency in Hz,
+`NOTENUMBER ("C4")` a note name's key. They mix with `PLAY` / `SOUND`, and with each other:
+
+```basic
+MIDIPROGRAM 0, 0                 ' a piano
+PLAYFILE "SD:/music/theme.mid", 1
+FOR k = 60 TO 72 STEP 4
+  MIDINOTE 0, k, 100: PAUSE 250: MIDINOTE 0, k, 0
+NEXT k
+```
 
 And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
 
