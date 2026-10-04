@@ -1,10 +1,63 @@
 # Onyx: shared libraries behind an export table — the decided design and the plan
 
-*Status (2026-10-04): **design decided with the user, nothing built in the kernel or the apps yet.**
-Step 0 (the toolchain makes the library format the kernel will load) is **done and checked**:
-`tools/tests/shlib/check_pic.sh`. This page is the reference for the implementation, to be carried
-on locally with tests automated on the Pi. The study that led here, and the user-space GUI it
-prepares: `docs/GUI-USERSPACE-STUDY.md` (§3.3). Answer the user in French; this page stays in English.*
+*Status (2026-10-05): **built, on the Pi.** The kernel loads shared libraries (kapi v83
+`lib_open`), `SD:/lib/ft.so` (FreeType) and `SD:/lib/wtk.so` (the toolkit) exist, and **every app of
+`user/` is built against them** (`lib/wtk.imp.a`, `lib/ft.imp.a`). What was built, where it departs
+from the plan below, and what is tested: **section 0**. The reference documentation is docs/02 §7
+*Shared libraries* (the kernel) and docs/03 §5.6 *Shared libraries* (writing and using one); the rules
+that keep old programs working are in `user/wtk/abi.h`. The study that led here, and the user-space
+GUI it prepares: `docs/GUI-USERSPACE-STUDY.md` (§3.3). Answer the user in French; this page stays in
+English.*
+
+## 0. As built (2026-10-04 / 05)
+
+| Step | What | Where |
+|---|---|---|
+| 1a | The kernel: a library is an image (`ET_DYN` at 0, `ELF_KIND_LIB`), placed once in the arena 16 GB..32 GB (`LibPlace`), its `R_AARCH64_RELATIVE` relocations applied once to the data's copy (`LibRelocate`), up to 16 per address space (`ImageMapLib`), `kapi_lib_open` (slot 261), `KAPI_IMG_LIB`, preload of a library | `kernel/proc/elf.cpp`, `proc/image.cpp`, `kernel.cpp` `LibraryOpen`, `sys/kapi.cpp` |
+| 1a | The user side: `user/lib.h` (`TLibImports`, `TLibHeader`, `lib_bind`), `user/librt.cpp` (a library's runtime), `user/lib.ld`, `lib.vers`; the test library `user/demo`, `/bin/libtest` | |
+| 1b | The generator `tools/libgen/libgen.py`; `ft.so` (FreeType's public API: 135 entries, `user/ft/ft.abi`; `user/ft/ftso.c`) | `user/Makefile` |
+| 1c | `wtk.so` (683 entries, `user/wtk/wtk.abi`), the globals shared with the programs (`wtk/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`wtk/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`wtk/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/doom/Makefile` |
+| | Packages `wtk` and `ft` (required), `needs = wtk >= 1.683, ft` on `onyx` and on every app | `tools/pkg/packages.ini` |
+
+**Where it departs from the plan below — the mechanism of sections 4.3 and 5.1–5.2 (the defaults
+"reasoned, not compiled", not the user's decisions D1–D8).** The plan had the generator write, from a
+hand-kept list, header thunks (`WTK->...`) and `init_` / `fini_` bodies for every constructor. What
+was built instead needs **no change to the apps' sources nor to wtk's headers**:
+
+- **Import stubs, not header thunks.** The table's entries are the library's global functions *under
+  their own (mangled) names*; the program side is one four-instruction stub per entry, with the same
+  name, that jumps through the table (`adrp x16, onyx_wtk_table; ldr; ldr x16, [x16, #slot]; br x16`).
+  The linker binds the app's calls — `wtk::Widget::invalidate`, `FT_Load_Glyph`, a constructor — to
+  the stubs. Still D3 (a table of pointers filled at load, called as `KT`), D4 (append-only,
+  versioned), D6 (no ELF dynamic linker: nothing is looked up by name at run time; the apps stay
+  non-PIC and static).
+- **The list is generated**: `<lib>.abi` is kept in git but written by the tool from the objects'
+  symbols (`nm`), append-only (a slot number on each line: a line moved or removed fails the build).
+  The table's **version is its number of entries**.
+- **Whole constructors are entries** (not `init_` / `fini_` bodies): the library's constructor builds
+  the bases and the members with the library's layout, which is the same text — and the reserve is
+  initialised by it, so a later library can use it in objects made by old programs.
+- **Vtables**: a class whose vtable is emitted only with its key function (Root, Modal, Panel,
+  Checkbox, Splitter…) is referenced by the apps: the program side gets a **copy** of each vtable
+  (`--vtables`), its slots resolved by the stubs.
+- **Globals** are the *program's* variables, handed to the library by address (`TLibImports.data`):
+  the apps' code is unchanged (`C_BG` is a plain variable for them); in the library they are
+  references bound at `init`. (The plan had them in the library, reached by macros in the apps.)
+- **P3**: `TLibImports` has `alloc` / `free` (no `realloc`: FreeType's is made of them in
+  `ftso.c`) and `data` / `ndata`.
+
+**Tested** — PC: `sh tools/tests/run_image_test.sh` (554 checks; the loader on the real `demo.so`),
+`sh tools/tests/shlib/check_pic.sh`. Pi 4 (2026-10-04): `/bin/libtest` (17 checks: section 6, step
+1a, all of its ten points); the apps started one by one on the libraries
+(`python tools/tests/shlib/pi_apps.py <pi-ip>`); **the compatibility test of D5**
+(`sh tools/tests/shlib/compat.sh` + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat`):
+a program built against wtk N, not rebuilt, on N+1 — see section 10 for the results.
+
+**Not done** (sections 5.3 and 5.5's refinements): the inline code with logic of wtk's headers was
+*not* moved into the library — it is compiled into the apps as before, so a fix to it needs the apps
+rebuilt (the rule is written in `wtk/abi.h`; move a piece when it has to change). Spare slots exist
+in `Widget` and `Root` only (a new overridable goes there). Jet's hosted build stays static (P6).
+`sdcard/etc/preload.ini` is unchanged: the desktop's own processes keep both libraries in memory.
 
 ## 1. What the user decided (2026-10-04)
 
@@ -325,9 +378,6 @@ to update when each one becomes a library.
   segment in `lib.ld`, identical in every process thanks to P1.
 - Full ELF dynamic linking (`ld.so`), only if unmodified ports need `.so` files as they are.
 
-## 10. Not verified
+## 10. Results, and what is still not verified
 
-Everything on the Pi. The relocation and placement code does not exist yet. The C++ rules of §5 (the
-body-only constructors, the thunks in vtables, the spare slots) are reasoned, not yet compiled at the
-scale of wtk: build the demo of §6 (step 1a, item 3) and a two-class probe of §5.2 first. The size of
-the wtk table (~330 method declarations and 22 globals counted in the headers) is an estimate.
+RESULTS_PLACEHOLDER

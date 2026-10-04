@@ -19,6 +19,7 @@
 #define _wtk_text_h
 
 #include "wtk/canvas.h"
+#include "wtk/global.h"
 
 namespace wtk {
 
@@ -35,8 +36,8 @@ struct TextFace
 	virtual ~TextFace () {}
 };
 
-extern TextFace *wk_face_;			// (the face in use: wk_textface ())
-extern int	 wk_face_fw_;			// (its digit's width: wk_fw () while installed)
+WTK_VAR (TextFace *, wk_face_);			// (the face in use: wk_textface ())
+WTK_VAR (int, wk_face_fw_);			// (its digit's width: wk_fw () while installed)
 void wk_set_textface (TextFace *f);		// install a face; 0: back to the bitmap fonts
 static inline TextFace *wk_textface () { return wk_face_; }
 

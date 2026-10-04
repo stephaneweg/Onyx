@@ -1085,6 +1085,25 @@ it: `ed notes.txt < edits.txt`.
 | `imgtest` | `imgtest` | Self-test of the image codecs (zlib + libpng): decodes an embedded PNG and prints its size and top-left pixel. Prints PASS/FAIL. Opt-in build (needs the cross-built codecs — see `user/img/README.md`). |
 | `stkpoc` | `stkpoc` | The SuperTuxKart port's proof of concept (`docs/SUPERTUXKART-PORT.md`, M1): C++ exceptions, threads and condition variables, Bullet physics and an AngelScript script on Onyx. Prints each check, then PASS. |
 
+### Shared libraries (`SD:/lib`)
+
+The apps do not each carry a copy of the toolkit and of the text renderer: they share
+**`SD:/lib/wtk.so`** (the widgets, the windows' frames, the theme) and **`SD:/lib/ft.so`**
+(FreeType: the TrueType text). Each is loaded **once** — the first app that needs it reads it from
+the card, the others map the copy already in memory — and stays while an app uses it; `preload`
+(no argument) lists them, marked `(library)`. They come with the packages **wtk** and **ft**
+(required; the Package Manager updates them like any other): a fix in a library reaches every app
+at once, without the apps being updated.
+
+- **An app says *this program needs the shared library "wtk" (version N or later)*** (in `kmsg` for a
+  windowed app; its window does not open): the library is missing from `SD:/lib`, or older than the
+  app — update the packages (`pkg update`, or the Package Manager), the library first.
+- *this kernel has no shared libraries*: the system is older than the app (kernel kapi 83 is
+  needed) — update the **onyx** package and restart.
+- After a library's file is replaced, the apps already running keep the old one until they are
+  closed; the ones started after use the new one. A restart renews the desktop itself.
+- `SD:/lib/demo.so` and `demo2.so` are the test libraries of `libtest` (§8).
+
 ### Remote shell (`telnetd`)
 
 `telnetd` (started by `SD:/etc/autostart`) lets you use the Onyx shell from another

@@ -32,13 +32,19 @@ SECTIONS
 	.rodata : {
 		*(.rodata*)
 		/* C++ global constructors / destructors (empty for C apps). crt0.S walks
-		 * [__init_array_start, __init_array_end) before main. */
+		 * [__init_array_start, __init_array_end) before main. The constructors with a
+		 * priority first, in its order, THEN the others (two statements: in one, ld takes
+		 * each file's sections together and a priority would not order across files) --
+		 * the shared libraries' bind constructors (priority 101, user/lib.h) must run
+		 * before any constructor of the app, which may already use the library. */
 		. = ALIGN(8);
 		__init_array_start = .;
-		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) .init_array))
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP(*(.init_array))
 		__init_array_end = .;
 		__fini_array_start = .;
-		KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*) .fini_array))
+		KEEP(*(.fini_array))
+		KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
 		__fini_array_end = .;
 	} :text
 

@@ -29,33 +29,35 @@
 #ifndef _wtk_theme_h
 #define _wtk_theme_h
 
+#include "wtk/global.h"
+
 namespace wtk {
 
 // The palette (0x00RRGGBB), set by wk_theme_load (); the names are the toolkit's since its start.
-extern unsigned C_BG;			// an app's background (its face)
-extern unsigned C_FACE;			// a control's face (a button, a handle)
-extern unsigned C_FACE_HI;		// ... under the pointer
-extern unsigned C_FACE_DN;		// ... pressed
-extern unsigned C_BORDER;		// a control's outline
-extern unsigned C_TEXT;			// text on the face
-extern unsigned C_ACCENT;		// focus, selection, checks, carets
-extern unsigned C_DIS;			// disabled text
-extern unsigned C_FIELD;		// a text field's, a list's background
-extern unsigned C_FIELD_TEXT;		// text in a field
-extern unsigned C_SEL_TEXT;		// text on the accent (a selected row)
-extern unsigned C_FRAME_ACTIVE;		// the window in front's frame
-extern unsigned C_FRAME_INACTIVE;	// the other windows' frames
-extern int	WK_OUTLINE;		// the frames' 1-px outline: 0 none, 1 dark, 2 black
-extern unsigned C_DOCK;			// the dock's face (and the drawers' frame)
-extern unsigned C_BUTTON;		// a push button's / a drop-down's face (the window's by default)
-extern unsigned C_BUTTON_TEXT;		// ... its text
-extern unsigned C_MENUBAR;		// the menu bar's face (the window's by default)
+WTK_VAR (unsigned, C_BG);			// an app's background (its face)
+WTK_VAR (unsigned, C_FACE);			// a control's face (a button, a handle)
+WTK_VAR (unsigned, C_FACE_HI);		// ... under the pointer
+WTK_VAR (unsigned, C_FACE_DN);		// ... pressed
+WTK_VAR (unsigned, C_BORDER);		// a control's outline
+WTK_VAR (unsigned, C_TEXT);			// text on the face
+WTK_VAR (unsigned, C_ACCENT);		// focus, selection, checks, carets
+WTK_VAR (unsigned, C_DIS);			// disabled text
+WTK_VAR (unsigned, C_FIELD);		// a text field's, a list's background
+WTK_VAR (unsigned, C_FIELD_TEXT);		// text in a field
+WTK_VAR (unsigned, C_SEL_TEXT);		// text on the accent (a selected row)
+WTK_VAR (unsigned, C_FRAME_ACTIVE);		// the window in front's frame
+WTK_VAR (unsigned, C_FRAME_INACTIVE);	// the other windows' frames
+WTK_VAR (int, WK_OUTLINE);		// the frames' 1-px outline: 0 none, 1 dark, 2 black
+WTK_VAR (unsigned, C_DOCK);			// the dock's face (and the drawers' frame)
+WTK_VAR (unsigned, C_BUTTON);		// a push button's / a drop-down's face (the window's by default)
+WTK_VAR (unsigned, C_BUTTON_TEXT);		// ... its text
+WTK_VAR (unsigned, C_MENUBAR);		// the menu bar's face (the window's by default)
 
 // The frames' look: CDE's (framed title buttons) or Milk's (Xfce's Milk theme, as OS X: the title
 // buttons coloured beads -- close red, minimise amber, maximise green --, the title's gradient
 // down to the window's colour, C_BG, the borders that colour: the frame melts into the window).
 enum { WK_STYLE_CDE = 0, WK_STYLE_MILK = 1 };
-extern int	WK_STYLE;
+WTK_VAR (int, WK_STYLE);
 // A style's own colours: what a theme of it takes when theme.txt does not say.
 // (button, field: 0xFF000000 = from the window's, WK_AUTO below; outline: 0 none, 1 dark, 2 black.)
 struct WkPalette { unsigned face, accent, inactive, dock, button, field; int outline; };

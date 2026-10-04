@@ -109,6 +109,8 @@ def plan (sd, ini):
 				d = dict (x) if x else {}
 				d.setdefault ("title", at.get ("name", a)); d.setdefault ("category", at.get ("category", "Other"))
 				d.setdefault ("icon", "apps/%s.app/icon.bmp" % a)
+				if sec.get ("needs", "").strip ():		# [*apps] needs: what every app needs (the shared libraries)
+					d["needs"] = ", ".join (n for n in (sec.get ("needs"), d.get ("needs", "")) if n.strip ())
 				make (a, d, pats)
 			continue
 		pats = split (sec.get ("files", ""))

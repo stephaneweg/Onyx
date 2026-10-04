@@ -70,13 +70,98 @@ lib/demo2.o: demo/demolib.cpp demo/demo.h $(LIB_DEP)
 	$(CXX) $(LIB_CXXFLAGS) -DDEMO_BUILD=2 -c $< -o $@
 lib/demo.so lib/demo2.so: lib/%.so: lib/%.o lib/librt.o
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^
-SHLIBS = lib/demo.so lib/demo2.so
+# A library's interface, both halves, from its objects and its append-only list <lib>.abi
+# (tools/libgen/libgen.py): lib/<lib>_table.S (the library's export table), lib/<lib>_stubs.S and
+# lib/<lib>_bind.cpp (the program's import stubs and the constructor that opens the library) --
+# the last two make lib/<lib>.imp.a, which a program links where it linked the static library.
+LIBGEN = python3 ../tools/libgen/libgen.py --nm $(PREFIX)nm
+IMP_CXXFLAGS = $(CXXFLAGS) -I.
+lib/%_table.o: lib/%_table.S
+	$(CC) -c $< -o $@
+lib/%_stubs.o: lib/%_stubs.S
+	$(CC) -c $< -o $@
+lib/%_bind.o: lib/%_bind.cpp lib.h kapi.h
+	$(CXX) $(IMP_CXXFLAGS) -c $< -o $@
+lib/ft.imp.a: lib/ft_stubs.o lib/ft_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+.PRECIOUS: lib/%_table.S lib/%_stubs.S lib/%_bind.cpp lib/%_table.o lib/%_stubs.o lib/%_bind.o
+
+# ---- ft.so: FreeType (the apps' TrueType-only build: ft/onyx_ftoption.h, ft/onyx_ftmodule.h) as a
+# shared library. Its table: FreeType's public API (the functions its public headers declare: the list
+# lib/ft.exports), in ft/ft.abi's order. ft/ftso.c: its memory through the importer's allocator; the
+# string functions, qsort and setjmp from the toolchain's newlib, linked in.
+FT_SRC = ../third_party/freetype-2.14.3
+FT_SO_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections \
+	       -I. -I../kernel/include
+FT_SO_OBJ = $(addprefix lib/ft/,ftsystem.o ftinit.o ftdebug.o ftbase.o ftbitmap.o ftsynth.o autofit.o truetype.o sfnt.o smooth.o)
+lib/ft/%.o: %.c ft/onyx_ftoption.h ft/onyx_ftmodule.h
+	@mkdir -p lib/ft
+	$(CC) $(FT_SO_CFLAGS) -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
+	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -Ift -I$(FT_SRC)/include -c $< -o $@
+lib/ft/ftso.o: ft/ftso.c lib.h kapi.h
+	@mkdir -p lib/ft
+	$(CC) $(FT_SO_CFLAGS) -Wall -c $< -o $@
+lib/ft.exports: $(wildcard $(FT_SRC)/include/freetype/*.h)
+	@mkdir -p lib
+	@grep -hoE "^  FT_[A-Za-z0-9_]+\(" $^ | sed 's/^  //; s/($$//' | sort -u > $@
+lib/ft_table.S: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft.exports ../tools/libgen/libgen.py
+	$(LIBGEN) --name ft --abi ft/ft.abi --init ft_lib_init --export-file lib/ft.exports --allow-data . \
+		--table lib/ft_table.S --stubs lib/ft_stubs.S --bind lib/ft_bind.cpp $(FT_SO_OBJ)
+lib/ft_stubs.S lib/ft_bind.cpp: lib/ft_table.S ;
+LIBC_A   := $(shell $(CC) -mcpu=cortex-a72 -print-file-name=libc.a)
+LIBGCC_A := $(shell $(CC) -mcpu=cortex-a72 -print-libgcc-file-name)
+lib/ft.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft_table.o lib/librt.o
+	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
+
+WTK_HDR = $(wildcard wtk/*.h) kapi.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
+# ---- wtk.so: the toolkit as a shared library. Its table: every global function of wtk's objects
+# (wtk/wtk.abi, append-only), the programs' copies of its vtables (--vtables); its global variables
+# are the program's (wtk/globals.cpp, compiled into the import library too: --data). globals.o is
+# linked first: its initialisers bind the library's references before any other constructor.
+WTK_SO_SRC = $(sort $(filter-out wtk/globals.cpp,$(wildcard wtk/*.cpp)) wtk/layout_lock.cpp)
+WTK_SO_OBJ = lib/wtk/globals.o $(patsubst wtk/%.cpp,lib/wtk/%.o,$(WTK_SO_SRC))
+LIB_CXXFLAGS_NEON = $(filter-out -mgeneral-regs-only,$(LIB_CXXFLAGS)) -mcpu=cortex-a72
+lib/wtk/%.o: wtk/%.cpp $(WTK_HDR) wtk/globals.inc $(LIB_DEP)
+	@mkdir -p lib/wtk
+	$(CXX) $(LIB_CXXFLAGS) -DONYX_LIB_BUILD -c $< -o $@
+lib/wtk/canvas.o: wtk/canvas.cpp $(WTK_HDR) $(LIB_DEP)
+	@mkdir -p lib/wtk
+	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -c $< -o $@
+lib/wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h $(LIB_DEP)
+	@mkdir -p lib/wtk
+	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
+# The layout lock (wtk/abi.h): the classes' sizes and the base classes' offsets, as static_asserts
+# compiled with the library. Made once from the headers; `make wtk-layout-update` only for a class added.
+WTK_LAYOUT = python3 ../tools/libgen/layout.py --cxx $(CXX) --flags "$(LIB_CXXFLAGS) -DONYX_LIB_BUILD" --umbrella wtk/wtk.h 	--ns wtk --headers 'wtk/*.h' --out wtk/layout_lock.cpp --offsets 	Widget:canvas,left,tag,anchor,transparent,tip,parent,prevHandled,ext,reserved_ Canvas:px,w,stride,owns,capH,ext Root:bg
+wtk/layout_lock.cpp:
+	$(WTK_LAYOUT)
+.PHONY: wtk-layout-update
+wtk-layout-update:
+	$(WTK_LAYOUT) --update
+lib/wtk_table.S: $(WTK_SO_OBJ) wtk/wtk.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name wtk --abi wtk/wtk.abi --init wtk_lib_init --vtables --data onyx_wtk_data \
+		--allow-data '^_ZN3wtk' --table lib/wtk_table.S --stubs lib/wtk_stubs.S --bind lib/wtk_bind.cpp $(WTK_SO_OBJ)
+wtk/wtk.abi:
+	@touch $@
+lib/wtk_stubs.S lib/wtk_bind.cpp: lib/wtk_table.S ;
+lib/wtk.so: $(WTK_SO_OBJ) lib/wtk_table.o lib/librt.o
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+# The program side: the stubs, the bind constructor, and the variables (wtk/globals.cpp).
+lib/wtk_globals.o: wtk/globals.cpp wtk/globals.inc $(WTK_HDR)
+	@mkdir -p lib
+	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
+lib/wtk.imp.a: lib/wtk_stubs.o lib/wtk_bind.o lib/wtk_globals.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/wtk.so
 .PHONY: libs
-libs: $(SHLIBS)
+libs: $(SHLIBS) lib/ft.imp.a lib/wtk.imp.a
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
-doom: wtk/libwtk.a
+doom: lib/wtk.imp.a
 	@$(MAKE) --no-print-directory -C doom
 
 # /bin console tools live in bin/ (their own Makefile).
@@ -105,13 +190,17 @@ wtk/imgload.o: wtk/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
 	$(CXX) $(CXXFLAGS_NEON) -Wno-unused-parameter -Wno-sign-compare -I. -c $< -o $@
 wtk/libwtk.a: $(WTK_OBJ)
 	$(AR) rcs $@ $^
+# (wtk/libwtk.a, the static build: no app of this Makefile links it any more -- they link the shared
+# library's import library, lib/wtk.imp.a --; Jet's hosted build and the PC builds make their own.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/wtk.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/wtk.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
 # interpreter, no compressed / web / bitmap fonts --, the upstream sources of third_party).
+# FreeType is the shared library SD:/lib/ft.so (above): the apps link its import library
+# lib/ft.imp.a. (ft/libft.a, the static build, is still made by `make ft/libft.a`: nothing links it.)
 NL_CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	     -ffunction-sections -fdata-sections -I. -I../kernel/include
 NL_CXXFLAGS = $(NL_CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
@@ -134,55 +223,55 @@ libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 # Letters: its model, layout and files in Apps/letters/*.h (the mail merge reads Cardfile's forms: its model.h;
 # .docx / .odt: the PNG writer's zip / deflate).
-letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h ft/libft.a \
-	    wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
+letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h lib/ft.imp.a \
+	    lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 # The spreadsheet: a newlib app as Letters (FreeType, stdio, doubles) -- its engine and files in
 # Apps/sheet/*.h, Letters' icons, the PNG writer's zip / deflate for the .xlsx.
-sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h ft/libft.a \
-	   wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
+sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h lib/ft.imp.a \
+	   lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # Slides, the presentation program (Apps/slides: docs/slides/README.md): a newlib app as Letters (FreeType), its
 # slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
 # .odp's zip (img/pngsave.hpp), the PDF writer.
 slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
-	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h ft/libft.a wtk/libwtk.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
+	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/ft.imp.a lib/wtk.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
 	    user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a gpucomp/libgpucomp.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
 
 # QBStudio, the IDE for desktop apps in BASIC (Apps/qbstudio: docs/qbstudio/README.md): a newlib app as Letters
 # (FreeType's text through wtk, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
 # problems as you type, Make App's .bax).
 qbstudio.elf: Apps/qbstudio/main.cpp $(wildcard Apps/qbstudio/*.h) basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp \
-	      basic/bas.h basic/basint.h basic/basnum.h ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h clipboard.h notify.h
+	      basic/bas.h basic/basint.h basic/basnum.h lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h clipboard.h notify.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp wtk/libwtk.a ft/libft.a -lm -o $@
+	       basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Letters (FreeType's text through
 # wtk), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/bin's
 # TLS tools link them).
 COURIER_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       wtk/libwtk.a ft/libft.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       lib/wtk.imp.a lib/ft.imp.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Letters (FreeType's text through wtk), its
 # protocols and its HTML renderer in mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (wtk's imgload).
 MAIL_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h applet_proto.h Apps/jet/webview_proto.h \
-	  img/imgload.hpp ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	  img/imgload.hpp lib/ft.imp.a ft/fonts.h ft/wtkface.h lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # wtk), the image codecs (wtk's imgload), the JPEG / PNG writers (img/pngsave.hpp), the PDF writer (pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) img/imgload.hpp img/pngsave.hpp pdf/pdfwrite.h clipboard.h notify.h trash.h wallpaper.h \
-	  ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	  lib/ft.imp.a ft/fonts.h ft/wtkface.h lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Letters (FreeType's text
 # through wtk), its engine and widgets headers included by main.cpp; zlib (Deflate) built from third_party into
@@ -194,27 +283,27 @@ zlib/%.o: $(ZLIB_SRC)/%.c
 	$(CC) $(NL_CFLAGS) -w -c $< -o $@
 zlib/libz.a: $(ZLIB_OBJ)
 	$(AR) rcs $@ $^
-archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) fileassoc.h ft/libft.a ft/wtkface.h wtk/libwtk.a zlib/libz.a \
+archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) fileassoc.h lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a zlib/libz.a \
 	      libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -IApps/archiver -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a zlib/libz.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a zlib/libz.a -lm -o $@
 
 # The shared clipboard (docs/clipboard/README.md): clipd, its service (no window, newlib), and clipboard, its widget
 # (the dock's button; FreeType's text). The apps reach clipd through clipboard.h (clipproto.h).
 clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h clipproto.h notify.h libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -IApps/clipd $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< -o $@
-clipboard.elf: Apps/clipboard/main.cpp clipboard.h clipproto.h ft/libft.a ft/wtkface.h wtk/libwtk.a \
+clipboard.elf: Apps/clipboard/main.cpp clipboard.h clipproto.h lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a \
 	       libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
 # update daemon (no window) -- on pkg/pkglib.h as bin/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
 PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 PKG_DEPS = pkg/pkglib.h http.hpp tls/onyx_tls.hpp $(wildcard Apps/archiver/*.h) zlib/libz.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) bmp.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a
+pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) bmp.hpp lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
-	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< wtk/libwtk.a ft/libft.a zlib/libz.a \
+	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< lib/wtk.imp.a lib/ft.imp.a zlib/libz.a \
 	       -L$(PKG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
@@ -225,14 +314,14 @@ pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
 # through wtk), the PNG / JPEG / BMP writers of img/pngsave.hpp, the clipboard (clipd) and notifyd.
 # Paint: a newlib app (FreeType's text, its Text tool), its canvas composited by the GPU (gpucomp: the
 # layers as textures, their blend modes); its pieces in Apps/paint/*.h.
-paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) clipboard.h docguard.h img/imgload.hpp img/pngsave.hpp ft/libft.a \
-	   ft/wtkface.h wtk/libwtk.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) clipboard.h docguard.h img/imgload.hpp img/pngsave.hpp lib/ft.imp.a \
+	   ft/wtkface.h lib/wtk.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a gpucomp/libgpucomp.a ft/libft.a -lm -o $@
-screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h ft/libft.a ft/wtkface.h wtk/libwtk.a \
+	       lib/wtk.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
+screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a \
 		libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Letters (FreeType text through wtk's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
@@ -243,21 +332,21 @@ KOTON_HDR = $(wildcard Apps/koton/engine/*.h) $(wildcard Apps/koton/synth/*.h) $
 Apps/koton/obj/%.o: Apps/koton/%.cpp $(KOTON_HDR)
 	@mkdir -p $(dir $@)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -c $< -o $@
-koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) ft/libft.a ft/wtkface.h wtk/libwtk.a \
+koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a \
 	   libc/crt0libc.o libc/onyx_syscalls.o user.ld $(KOTON_HDR)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       $(KOTON_OBJ) wtk/libwtk.a ft/libft.a -lm -o $@
+	       $(KOTON_OBJ) lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # PDF Viewer (Apps/pdf: docs/pdf/README.md): a newlib app as Letters, on MuPDF -- its fitz + pdf parts, jbig2dec, openjpeg,
 # zlib, libjpeg and a FreeType with the PDF fonts' drivers, built by Apps/pdf/mupdf.mk into Apps/pdf/obj/libmupdf.a (that
-# FreeType serves the app's own text too: no ft/libft.a). The app is AGPL-3.0, MuPDF's licence (docs/LICENSING.md).
+# FreeType serves the app's own text too: no lib/ft.imp.a). The app is AGPL-3.0, MuPDF's licence (docs/LICENSING.md).
 MU_NL_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections
 Apps/pdf/obj/libmupdf.a: Apps/pdf/mupdf.mk $(wildcard Apps/pdf/mu/*)
 	@$(MAKE) --no-print-directory -f Apps/pdf/mupdf.mk MU_ROOT=.. MU_ONYX=1 MU_CC=$(CC) MU_AR=$(AR) MU_OUT=Apps/pdf/obj MU_CFLAGS="$(MU_NL_CFLAGS)"
 pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clipboard.h docguard.h ft/wtkface.h \
-	 wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	 lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I../third_party/mupdf-1.28.5/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a Apps/pdf/obj/libmupdf.a -lm -o $@
+	       lib/wtk.imp.a Apps/pdf/obj/libmupdf.a -lm -o $@
 
 # Media Player, the music and video library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through
 # wtk), its music decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built
@@ -283,9 +372,9 @@ Apps/media/obj/av/%.o: av/%.c $(wildcard av/*.h) kapi.h
 	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
 MEDIA_SYNTH = $(filter Apps/koton/obj/synth/%,$(KOTON_OBJ))
 media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_OBJ) $(MEDIA_AV_OBJ) $(MEDIA_SYNTH) img/imgload.hpp img/pngsave.hpp fileassoc.h notify.h \
-	   ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h $(wildcard av/*.h)
+	   lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h $(wildcard av/*.h)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       $(MEDIA_OBJ) $(MEDIA_AV_OBJ) $(MEDIA_SYNTH) wtk/libwtk.a ft/libft.a $(MEDIA_AV_LIBS) -lm -o $@
+	       $(MEDIA_OBJ) $(MEDIA_AV_OBJ) $(MEDIA_SYNTH) lib/wtk.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
 
 # Koton's plugins (user/kplug.h, the protocol user/kplug_proto.h; the host: Apps/koton/plug): each
 # Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to
@@ -296,8 +385,8 @@ KPLUG_DIRS = $(wildcard Apps/kp_*)
 KPLUG_ELFS = $(foreach d,$(KPLUG_DIRS),$(d)/$(notdir $(d)).elf)
 KPLUG_HDR = kplug.h kplug_proto.h applet_proto.h json.hpp kapi.h Apps/koton/engine/kbase.h
 define KPLUG_RULE
-$(1)/$(notdir $(1)).elf: $(1)/main.cpp $$(KPLUG_HDR) wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld
-	$$(CXX) $$(NL_CXXFLAGS) -fno-math-errno -Wall $$(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $$< wtk/libwtk.a -lm -o $$@
+$(1)/$(notdir $(1)).elf: $(1)/main.cpp $$(KPLUG_HDR) lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld
+	$$(CXX) $$(NL_CXXFLAGS) -fno-math-errno -Wall $$(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $$< lib/wtk.imp.a -lm -o $$@
 endef
 $(foreach d,$(KPLUG_DIRS),$(eval $(call KPLUG_RULE,$(d))))
 .PHONY: plugins
@@ -387,17 +476,17 @@ graphcalc.elf: Apps/graphcalc/expr.h
 cardfile.elf: $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h
 # The Calendar: a newlib app as Letters (FreeType's text through wtk's face); its model (iCalendar), views
 # and dialogs in Apps/calendar/*.h.
-calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h applib.h ft/libft.a ft/wtkface.h \
-	      wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h applib.h lib/ft.imp.a ft/wtkface.h \
+	      lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       wtk/libwtk.a ft/libft.a -lm -o $@
+	       lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 agenda.elf: notify.h
 setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
-# The FreeType apps (FT_APPS): newlib + ft/libft.a, as the Calendar. The Game Library also links the
+# The FreeType apps (FT_APPS): newlib + lib/ft.imp.a, as the Calendar. The Game Library also links the
 # emulators it takes the covers and the save states' pictures from.
 FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
-$(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) wtk/libwtk.a ft/libft.a -lm -o $@
+$(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
 # the reports' .xlsx: the PNG writer's zip / deflate).
 ledger.elf: $(wildcard Apps/ledger/*.h) $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h img/pngsave.hpp
@@ -405,8 +494,8 @@ basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
 basic/libbasic.a: $(BAS_OBJ)
 	$(AR) rcs $@ $^
-bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld kapi.h $(BAS_HDR)
-	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a wtk/libwtk.a -o $@
+bin/basic.elf: basic/runtime.cpp basic/libbasic.a lib/wtk.imp.a crt0.S user.ld kapi.h $(BAS_HDR)
+	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a lib/wtk.imp.a -o $@
 
 clean:
 	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf

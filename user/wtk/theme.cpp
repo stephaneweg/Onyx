@@ -7,21 +7,7 @@
 
 namespace wtk {
 
-// The modernised CDE's defaults: CDE's beige face, a teal accent, the Peach frame in front.
-unsigned C_BG, C_FACE, C_FACE_HI, C_FACE_DN, C_BORDER, C_TEXT, C_ACCENT = 0x004992A7, C_DIS,
-	 C_FIELD, C_FIELD_TEXT, C_SEL_TEXT, C_FRAME_ACTIVE = 0x00F0B07A, C_FRAME_INACTIVE = WK_GREY;
-int	 WK_OUTLINE = 1, WK_STYLE = WK_STYLE_CDE;
-unsigned C_DOCK = 0x00A4BACE, C_BUTTON, C_BUTTON_TEXT, C_MENUBAR;
-
-// Dark Coffee: black coffee's browns under Milk's beads, a caramel accent, a black outline.
-static const WkPalette s_coffee = { 0x001F1A17, 0x00C8813F, 0x00322A26, 0x00151210, 0x00352C27, 0x00151210, 2 };
-
-const WkNamedTheme wk_themes[] = {
-	{ "Peach", 0x00F0B07A, WK_STYLE_CDE }, { "Steel", 0x007A98C0, WK_STYLE_CDE },
-	{ "Sage", 0x0080AA76, WK_STYLE_CDE }, { "Brick", 0x00C45450, WK_STYLE_CDE },
-	{ "Slate", 0x003A4458, WK_STYLE_CDE }, { "Milk", 0x00D4D4D6, WK_STYLE_MILK },
-	{ "Dark Coffee", 0x004A3E37, WK_STYLE_MILK, &s_coffee }, { 0, 0, 0 }
-};
+// (The palette's variables and the named themes, wk_themes: wtk/globals.cpp.)
 
 // Each style's own colours: the window's (the apps' face), the accent, the frames behind, the dock.
 static const WkPalette s_palettes[2] = {

@@ -73,6 +73,16 @@ public:
 	// window: maximised, to the whole work area again (the size it goes back to kept inside it);
 	// else a window past the work area is moved into it, shrunk if it is resizable.
 	virtual void onDisplayResize (int w, int h) { (void) w; (void) h; }
+	// The reserve of virtual functions for the window (wtk/abi.h; Widget's own come before): a
+	// virtual added to Root by a later version of the library takes one of these.
+	virtual void wk_rootReserved0 () {}
+	virtual void wk_rootReserved1 () {}
+	virtual void wk_rootReserved2 () {}
+	virtual void wk_rootReserved3 () {}
+	virtual void wk_rootReserved4 () {}
+	virtual void wk_rootReserved5 () {}
+	virtual void wk_rootReserved6 () {}
+	virtual void wk_rootReserved7 () {}
 	void windowMenu ();
 
 	// Tooltips (Widget::tip): after the pointer rests ~0.6 s over a widget with a tip,
@@ -96,6 +106,8 @@ private:
 	void init (unsigned *fb);		// shared ctor tail (adopt canvas + decorate + register)
 	void initApplet ();			// ... an applet's: the host's surface, no window
 	static Root *&active ();		// single active window per app (reachable from C callbacks)
+	void	*m_ext = 0;			// the reserve (wtk/abi.h): the window's later fields
+	unsigned long m_reserved[4] = { 0, 0, 0, 0 };
 public:
 	static void ptrEvent (unsigned long, int ev, gui_value v);	// (the kernel's event streams; an
 	static void keyEvent (unsigned long, int ev, gui_value v);	// applet's host's, re-packed alike)

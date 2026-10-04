@@ -261,8 +261,8 @@ tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 A **wtk app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** — FreeType
 wants a libc): the `letters.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
 `NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
-`libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries
-(`ft/libft.a`) and `-lm`. Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
+`libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `lib/wtk.imp.a`, then its libraries
+(`lib/ft.imp.a`) and `-lm` (the import libraries of the shared wtk and FreeType: §5.6). Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
 `make stage` stages it as any.
 
 Notes / caveats:
@@ -698,6 +698,87 @@ newlib has no `__errno` / `_impure_ptr` for objects of the interim one; `onyx_cm
 with the toolchain file; `onyx_tool_done` copies a tool to `out/ports(-onyx)/bin` and runs
 `tools/el0scan.sh` on it). Licences: docs/LICENSING.md — ask before a library that would force
 its licence on the app.
+
+### 5.6. Shared libraries (kapi v83): `SD:/lib/<name>.so`
+
+*(The design and its reasons: [`SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md). The kernel side: docs/02
+§7 *Shared libraries*.)*
+
+Since kapi v83 the apps no longer carry a copy of the toolkit and of FreeType: **wtk** and
+**FreeType** are shared libraries — `SD:/lib/wtk.so`, `SD:/lib/ft.so` —, loaded once for the whole
+system, their code mapped into every process that uses them, their data private to each. A fix in
+a library reaches every app **without rebuilding any app**.
+
+**What a library is.** Position-independent code (`-fPIC`, linked at 0 by `user/lib.ld`; the kernel
+places it) that publishes its entry points in an **export table**: a struct of function pointers,
+filled when the library is loaded. A program calls through the table — exactly as it calls the
+kernel through `KT`. There is no ELF dynamic linker, no symbol looked up by name at run time: an
+app stays a static, non-PIC program at 8 GB. The table is **append-only and versioned as the kapi
+table is**: an entry is never moved, removed or changed; a new one is appended and the version (the
+number of entries) goes up.
+
+**The two halves are generated** (`tools/libgen/libgen.py`, run by `user/Makefile`) from the
+library's objects and its list **`user/<lib>/<lib>.abi`** (kept in git; one `<slot> <symbol>` line
+per entry; the tool only ever appends):
+
+| File (in `user/lib/`, the build folder) | Side | What it is |
+|---|---|---|
+| `<lib>_table.S` | library | `onyx_lib_table`: version, size, `init`, then one pointer per entry. The ELF entry point of the `.so` (`ld -e onyx_lib_table`): the kernel finds it without a symbol table. |
+| `<lib>_stubs.S` | program | one **import stub** per entry, under the entry's own (mangled) name: `adrp x16, onyx_<lib>_table; ldr x16, […]; ldr x16, [x16, #slot]; br x16`. The app's source and the library's headers do not change: a call to `FT_Load_Glyph` or `wtk::Widget::invalidate` is bound by the linker to its stub. Stubs are weak (an app's own definition of a name wins, as over a static library). With `--vtables`: a **copy of each of the library's vtables** (a class whose vtable the compiler emits only with its key function is referenced by the apps that construct or derive it) — the same slots, resolved by the stubs; no library address is ever in a program. |
+| `<lib>_bind.cpp` | program | a constructor of **priority 101** (before the app's own: a `static Menu menu;` may use the library) that calls `lib_bind ("<lib>", <version>, imports)` (`user/lib.h`) and sets `onyx_<lib>_table`. |
+
+`lib/<lib>.imp.a` (the stubs, the bind constructor) is the **import library**: an app links it
+where it linked `wtk/libwtk.a` or `ft/libft.a`. `make stage` copies `user/lib/*.so` to `sdcard/lib/`.
+
+**At run time.** The bind constructor calls `kapi_lib_open` (the file read once for the system,
+then shared), checks the version — the app was built against version N of the table: an older
+library is refused — and calls the table's `init` with the **imports** (`TLibImports`): the app's
+allocator (`operator new` / `delete`: one heap in the process, so an object made on one side can be
+freed on the other) and, for wtk, the addresses of the variables the two share. A library that is
+missing or too old ends the app with a line on its output (the kernel log for a windowed app):
+*this program needs the shared library "wtk" (version 667 or later): the one installed is older —
+update its package*; exit status 126.
+
+**Writing a library.** Sources compiled with `LIB_CXXFLAGS` (`-fPIC -fvisibility=hidden
+-DONYX_LIB_BUILD`), linked with `lib/librt.o` (`user/librt.cpp`: the imports, the static
+constructors, `operator new` / `delete` over the importer's allocator, `memcpy` & co. over the
+kapi) and the generated table; an `init` function (`return onyx_lib_init (imp) < 0 ? -1 : 0;`).
+`-z text --no-undefined`: no relocation in the code, nothing imported by name — the library reaches
+the kernel through `KT`, the app through its imports. What the kernel accepts is checked by
+`sh tools/tests/shlib/check_pic.sh user/lib/<name>.so`. Rules:
+
+- **Functions** — every global function is an entry (`--export` / `--export-file` restrict them:
+  `ft.so` exports FreeType's public API only). Never remove one, never change a signature.
+- **Global data cannot be imported** by a program (it is linked at a fixed address; the library is
+  not). The generator refuses a library with global variables unless `--allow-data` says they are
+  handled. wtk's (the palette `C_BG`…, the text face) are **the app's variables**: `wtk/globals.inc`
+  lists them (append-only), `wtk/globals.cpp` — compiled into the import library — defines them and
+  the table of their addresses the bind constructor hands over (`--data onyx_wtk_data`,
+  `TLibImports.data`); in the library each one is a reference bound at `init` (`wtk/global.h`
+  `WTK_VAR`). The app's code — and the toolkit's inline code compiled into it — reads them directly.
+- **C++ classes** (`wtk/abi.h`): the apps allocate, derive and read the classes of the headers, so
+  their **layout** and their **virtual functions' order** are part of the interface, append-only
+  too. Never add a field or a virtual in a class: a new field takes the **reserve**
+  (`Widget::reserved_`, `Widget::ext`, `Canvas`'s, `Root`'s), a new virtual one of the **reserved
+  slots** (`Widget::wk_reserved0..7`, `Root::wk_rootReserved0..7`: renamed, same place).
+  `wtk/layout_lock.cpp` (generated once by `tools/libgen/layout.py`) holds every class's size and
+  the base classes' offsets as `static_assert`s: the library's build fails when one moves
+  (`make -C user wtk-layout-update` only for a class added). **Inline code** of the headers is
+  compiled into the apps: a later change to it reaches only the apps rebuilt after it — code that
+  may have to be fixed belongs in the `.cpp` files.
+- A change that cannot keep these rules is **another library** (`wtk2.so`), beside the old one.
+
+**Using one from an app's Makefile rule:** link `lib/wtk.imp.a` (and `lib/ft.imp.a`) in place of
+the static archives; the package declares `needs = wtk` (and `ft`). Jet's hosted build
+(`tools/webkit/build-web.sh`) and the PC builds (the simulator, Koton for Windows, macOS) still
+compile wtk statically (`user/wtk/*.cpp`: the same sources — `wtk/globals.cpp` then simply defines
+the variables).
+
+**Tests.** `sh tools/tests/run_image_test.sh` (the loader, on the PC), `/bin/libtest` (the loader,
+on the Pi), `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app of the card started on the
+libraries, over telnet), `sh tools/tests/shlib/compat.sh` (an app built against version N on the
+library N+1: a fix reaches it, an added function and a used reserve keep it running; an app built
+against N+1 is refused by the library N).
 
 ## 6. Writing a graphical application
 

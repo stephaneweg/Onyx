@@ -19,7 +19,9 @@ typedef __SIZE_TYPE__ onyx_size_t;
 // replace them for the WHOLE program (they are the app's own definitions), on a second heap that
 // calls kapi_sbrk itself -- a kernel call wherever a new grows it: on an app core (kapi_core_run:
 // no kernel call there) the job is stopped. Web (tools/webkit/build-web.sh) rasterises there.
-#ifdef ONYX_HOSTED_NEW
+// ONYX_LIB_BUILD: a shared library (SD:/lib/<name>.so, docs/SHARED-LIBS-PLAN.md) has no heap of its
+// own: its operator new / delete are librt.cpp's, over the allocator of the program that opened it.
+#if defined (ONYX_HOSTED_NEW) || defined (ONYX_LIB_BUILD)
 #include "kapi.h"
 #else
 #include "umm.h"			// umm_malloc / umm_free (heap over kapi_sbrk)
@@ -60,7 +62,7 @@ inline __attribute__ ((used)) void  operator delete   (void *p) noexcept        
 inline __attribute__ ((used)) void  operator delete[] (void *p) noexcept         { umm_free (p); }
 inline __attribute__ ((used)) void  operator delete   (void *p, onyx_size_t) noexcept { umm_free (p); }	// sized
 inline __attribute__ ((used)) void  operator delete[] (void *p, onyx_size_t) noexcept { umm_free (p); }
-#endif // !ONYX_HOSTED_NEW
+#endif // !ONYX_HOSTED_NEW && !ONYX_LIB_BUILD
 #ifdef ONYX_HOSTED_NEW
 #include <new>				// (placement new is libstdc++'s too: the program may include <string>, <vector>...)
 #else

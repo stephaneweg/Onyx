@@ -28,7 +28,8 @@ SECTIONS
 	.data.rel.ro	: { *(.data.rel.ro*) } :data
 	.init_array	: {
 		__lib_init_array_start = .;
-		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*) .init_array))
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP(*(.init_array))
 		__lib_init_array_end = .;
 	} :data
 	.dynamic	: { *(.dynamic) } :data :dynamic

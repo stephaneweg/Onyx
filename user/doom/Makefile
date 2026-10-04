@@ -29,8 +29,8 @@ OBJS = $(addprefix $(OUT)/, $(addsuffix .o, $(DG_SRC))) $(OUT)/doom_onyx.o $(OUT
 
 all: ../doom.elf
 
-../doom.elf: $(OBJS) ../wtk/libwtk.a ../user.ld
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) ../wtk/libwtk.a -lm -o $@
+../doom.elf: $(OBJS) ../lib/wtk.imp.a ../user.ld
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) ../lib/wtk.imp.a -lm -o $@
 
 $(OUT)/%.o: $(DG)/%.c | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@

@@ -7,6 +7,7 @@
 #ifndef _wtk_widget_h
 #define _wtk_widget_h
 
+#include "wtk/abi.h"		// wtk as a shared library: the rules that keep old programs working
 #include "wtk/canvas.h"
 #include "kapi.h"		// kapi_font_width/height (wk_fw/wk_fh)
 #include "wtk/theme.h"		// the palette
@@ -147,6 +148,12 @@ public:
 
 	Widget	*parent, *firstChild, *lastChild, *prevSib, *nextSib;
 	Widget	*prevHandled;			// last child that took the mouse (for mouse-leave)
+	// The reserve (wtk is a shared library: wtk/abi.h). Programs allocate and derive widgets with
+	// the layout they were built with: a field added by a later version of the library goes HERE
+	// (or behind `ext`, which the library may allocate) -- never in the middle of a class, never
+	// at the end of a derived one.
+	void	*ext = 0;
+	unsigned long reserved_[4] = { 0, 0, 0, 0 };
 
 	Widget (int l, int t, int w, int h);
 	virtual ~Widget ();
@@ -191,6 +198,18 @@ public:
 	// children's ANCHOR_* (passive resize); layout containers (Splitter, StackPanel,
 	// UniformGridLayout, TabHost) override with explicit placement. Never call directly.
 	virtual void layout ();
+	// The reserve of virtual functions (wtk/abi.h): a program's vtables are built by its compiler
+	// with the slots of the headers it was built with. A virtual added to Widget by a later version
+	// of the library TAKES ONE OF THESE (renamed, same place): an older program's widgets then
+	// answer with this empty default. Never add a virtual anywhere else in an exposed class.
+	virtual void wk_reserved0 () {}
+	virtual void wk_reserved1 () {}
+	virtual void wk_reserved2 () {}
+	virtual void wk_reserved3 () {}
+	virtual void wk_reserved4 () {}
+	virtual void wk_reserved5 () {}
+	virtual void wk_reserved6 () {}
+	virtual void wk_reserved7 () {}
 };
 
 } // namespace wtk

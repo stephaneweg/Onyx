@@ -30,12 +30,16 @@ static int s_state;				// 0: not yet, 1: done
 int onyx_lib_init (const struct TLibImports *imp)
 {
 	if (s_state != 0) return 0;
-	if (imp == 0 || imp->size < sizeof (struct TLibImports) || imp->alloc == 0 || imp->free == 0) return -1;
-	s_imp = *imp;
+	if (imp == 0 || imp->size < __builtin_offsetof (struct TLibImports, data) || imp->alloc == 0 || imp->free == 0) return -1;
+	s_imp.size = imp->size; s_imp.alloc = imp->alloc; s_imp.free = imp->free;
+	if (imp->size >= sizeof (struct TLibImports)) { s_imp.ndata = imp->ndata; s_imp.data = imp->data; }
 	s_state = 1;
 	for (lib_ctor_fn *f = __lib_init_array_start; f < __lib_init_array_end; f++) (*f) ();
 	return 1;
 }
+
+// The importer's i-th shared variable (TLibImports.data) -> 0: it has none there (an older program).
+void *onyx_lib_data (unsigned i)	{ return i < s_imp.ndata && s_imp.data != 0 ? s_imp.data[i] : 0; }
 
 void *onyx_lib_alloc (lib_size_t n)	{ return s_imp.alloc (n); }
 void onyx_lib_free (void *p)		{ if (p != 0) s_imp.free (p); }

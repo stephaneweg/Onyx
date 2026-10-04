@@ -22,6 +22,10 @@ class Canvas
 public:
 	unsigned *px; int w, h, stride; bool owns;
 	int capH;					// allocated rows (stride = allocated row width)
+	// The reserve (wtk is a shared library: wtk/abi.h): a program allocates a Canvas with the size
+	// it was built with, so a later version of the library can only use what is kept here.
+	void *ext = 0;
+	unsigned long reserved_[2] = { 0, 0 };
 
 	Canvas ();
 	~Canvas ();

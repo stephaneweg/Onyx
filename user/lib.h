@@ -52,9 +52,13 @@ typedef __SIZE_TYPE__ lib_size_t;
 struct TLibImports
 {
 	unsigned size;				// sizeof (struct TLibImports) of the importer
-	unsigned reserved;			// 0
+	unsigned ndata;				// the entries of data (0: none)
 	void *(*alloc) (lib_size_t n);		// the process's allocator (a C++ program: operator new)
 	void  (*free) (void *p);
+	// The variables the library shares with the program: they are the PROGRAM's (it is linked at a
+	// fixed address: its code reads them directly), the library reaches them through these
+	// addresses. What they are is the library's business (wtk: wtk/globals.inc); append-only.
+	void *const *data;
 };
 
 // The first fields of every library's export table.
@@ -69,15 +73,16 @@ struct TLibHeader
 
 #define LIB_EXIT_STATUS		126		// a program that could not bind a library ends with it
 
-static inline void lib__say (const char *s)
+static inline int lib__cat (char *b, int n, int cap, const char *s)
 {
-	unsigned n = 0;
-	while (s[n] != '\0') n++;
-	kapi_write (1, s, n);
+	while (*s != '\0' && n < cap - 1) b[n++] = *s++;
+	b[n] = '\0';
+	return n;
 }
 
-// The library `name` opened and initialised -> its table. A failure is said on the program's
-// output (the kernel log for a windowed app) and the program ends: it cannot run without it.
+// The library `name` opened and initialised -> its table. A failure ends the program -- it cannot
+// run without it -- after saying why: on its output if it has one (a command), in the kernel log
+// (`kmsg`), and as a desktop notification when the notification service runs.
 static inline const void *lib_bind (const char *name, unsigned min_version, const struct TLibImports *imp)
 {
 	int err = 0;
@@ -90,16 +95,42 @@ static inline const void *lib_bind (const char *name, unsigned min_version, cons
 	char ver[12]; int j = 0;
 	while (k > 0) ver[j++] = num[--k];
 	ver[j] = '\0';
-	lib__say ("this program needs the shared library \"");
-	lib__say (name);
-	lib__say ("\" (version ");
-	lib__say (ver);
-	lib__say (t != 0 ? " or later): its start failed\n"
-		: err == -KAPI_ENOSYS ? " or later): this kernel has no shared libraries (kapi v83) -- update the system\n"
-		: err == -KAPI_ENOENT ? " or later): it is not in SD:/lib -- install its package\n"
-		: err == -KAPI_ENOTSUP ? " or later): the one installed is older -- update its package\n"
-		: err == -KAPI_ENOMEM ? " or later): out of memory\n"
-		: " or later): it cannot be loaded (see the kernel log)\n");
+	char what[96], why[96], msg[200];
+	int n = lib__cat (what, 0, sizeof what, "needs the shared library \"");
+	n = lib__cat (what, n, sizeof what, name);
+	n = lib__cat (what, n, sizeof what, "\" (version ");
+	n = lib__cat (what, n, sizeof what, ver);
+	lib__cat (what, n, sizeof what, " or later)");
+	lib__cat (why, 0, sizeof why,
+		  t != 0 ? "its start failed"
+		  : err == -KAPI_ENOSYS ? "this kernel has no shared libraries (kapi 83): update the system"
+		  : err == -KAPI_ENOENT ? "it is not in SD:/lib: install its package"
+		  : err == -KAPI_ENOTSUP ? "the one installed is older: update its package"
+		  : err == -KAPI_ENOMEM ? "out of memory"
+		  : "it cannot be loaded (see the kernel log)");
+	n = lib__cat (msg, 0, sizeof msg, "this program ");
+	n = lib__cat (msg, n, sizeof msg, what);
+	n = lib__cat (msg, n, sizeof msg, ": ");
+	n = lib__cat (msg, n, sizeof msg, why);
+	n = lib__cat (msg, n, sizeof msg, "\n");
+	if (kapi_stdout () != 0) kapi_stdout_write (msg, (unsigned) n);
+	{	// the kernel log: a line each (128 characters at most)
+		int l = 0; while (what[l]) l++;
+		kapi_write (1, what, (unsigned) l);
+		l = 0; while (why[l]) l++;
+		kapi_write (1, why, (unsigned) l);
+	}
+	int pid = kapi_ipc_lookup ("notify");		// (notifyd, if it runs: never started from here)
+	if (pid != 0)
+	{
+		char note[300];
+		int m = lib__cat (note, 0, 80, "A program cannot start") + 1;
+		int e = lib__cat (note + m, 0, 200, "It ");
+		e = lib__cat (note + m, e, 200, what);
+		e = lib__cat (note + m, e, 200, ": ");
+		e = lib__cat (note + m, e, 200, why);
+		kapi_mailbox_send (pid, 1, note, (unsigned) (m + e + 1));	// (notify.h: NOTIFY_MSG_SHOW, title, text)
+	}
 	kapi_exit (LIB_EXIT_STATUS);
 	for (;;) {}
 }
@@ -112,7 +143,15 @@ static inline void *lib__cxx_alloc (lib_size_t n)	{ return ::operator new (n); }
 static inline void  lib__cxx_free (void *p)		{ ::operator delete (p); }
 static inline const struct TLibImports *lib_cxx_imports (void)
 {
-	static const struct TLibImports imp = { sizeof (struct TLibImports), 0, lib__cxx_alloc, lib__cxx_free };
+	static const struct TLibImports imp = { sizeof (struct TLibImports), 0, lib__cxx_alloc, lib__cxx_free, 0 };
+	return &imp;
+}
+// ... with the variables the program shares with the library (the bind object of such a library).
+static inline const struct TLibImports *lib_cxx_imports_data (void *const *data, unsigned ndata)
+{
+	static struct TLibImports imp;
+	imp.size = sizeof (struct TLibImports); imp.ndata = ndata;
+	imp.alloc = lib__cxx_alloc; imp.free = lib__cxx_free; imp.data = data;
 	return &imp;
 }
 #endif

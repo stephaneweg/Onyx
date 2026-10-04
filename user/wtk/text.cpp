@@ -10,8 +10,7 @@
 
 namespace wtk {
 
-TextFace *wk_face_ = 0;
-int	  wk_face_fw_ = 8;
+// (wk_face_, wk_face_fw_: wtk/globals.cpp)
 
 int TextFace::widthN (const char *s, int n, int style)
 {
