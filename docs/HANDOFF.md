@@ -54,7 +54,11 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Several users: studied, not started (2026-10-05) — `docs/MULTI-USER-PLAN.md`
+## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
+
+**The user's decision: Onyx stays a simple, single-user system — no multi-user.** The study is kept
+as an idea (`IDEAS.md`); do not start it nor bring it up again unasked. What the paragraph below
+describes is the study, not a task.
 
 The user asked to "see how" Onyx becomes multi-user (accounts and a login screen, the desktop started
 by the session, `/home/<user>`, rights on FAT through an index in `/etc` enforced by the kernel, remote
