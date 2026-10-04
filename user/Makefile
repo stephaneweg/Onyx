@@ -43,7 +43,36 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+
+# ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
+# lib.ld at 0 -- the kernel places it --, ONE exported symbol (lib.vers), the export table, which is
+# the ELF entry. -z text and --no-undefined: no relocation in the code, nothing imported by name; what
+# is left for the kernel is R_AARCH64_RELATIVE relocations in the data. Built into lib/<name>.so,
+# staged as SD:/lib/<name>.so. librt.o is every library's runtime (the importer's allocator, the
+# constructors).
+LIB_CXXFLAGS = -ffreestanding -nostdlib -fPIC -fvisibility=hidden -mgeneral-regs-only -O2 -Wall -Wextra \
+	       -fno-stack-protector -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
+	       -I. -I../kernel/include
+LIB_LD      = $(PREFIX)ld
+LIB_LDFLAGS = -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv \
+	      --build-id=none -T lib.ld --version-script lib.vers -e onyx_lib_table
+LIB_DEP     = lib.ld lib.vers lib.h kapi.h ../kernel/include/kern/kapi_abi.h
+lib/librt.o: librt.cpp $(LIB_DEP)
+	@mkdir -p lib
+	$(CXX) $(LIB_CXXFLAGS) -c $< -o $@
+# The loader's test library (bin/libtest runs it) and its "other build".
+lib/demo.o: demo/demolib.cpp demo/demo.h $(LIB_DEP)
+	@mkdir -p lib
+	$(CXX) $(LIB_CXXFLAGS) -c $< -o $@
+lib/demo2.o: demo/demolib.cpp demo/demo.h $(LIB_DEP)
+	@mkdir -p lib
+	$(CXX) $(LIB_CXXFLAGS) -DDEMO_BUILD=2 -c $< -o $@
+lib/demo.so lib/demo2.so: lib/%.so: lib/%.o lib/librt.o
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^
+SHLIBS = lib/demo.so lib/demo2.so
+.PHONY: libs
+libs: $(SHLIBS)
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -382,6 +411,7 @@ bin/basic.elf: basic/runtime.cpp basic/libbasic.a wtk/libwtk.a crt0.S user.ld ka
 clean:
 	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf
 	rm -f wtk/*.o wtk/*.a
+	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
 	@$(MAKE) --no-print-directory -C bin clean
 	@$(MAKE) --no-print-directory -C doom clean

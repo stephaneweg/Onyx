@@ -49,7 +49,8 @@ static int list (void)
 		put_num (p->refs, 6);
 		ax_puts ((p->flags & KAPI_IMG_LOADING) ? "  loading  " : "  ready    ");
 		ax_puts ((p->flags & KAPI_IMG_KEPT) ? "yes   " : (p->flags & KAPI_IMG_UNNAMED) ? "gone  " : "no    ");
-		ax_putln (p->path[0] != '\0' ? p->path : "(no path)");
+		ax_puts (p->path[0] != '\0' ? p->path : "(no path)");
+		ax_putln ((p->flags & KAPI_IMG_LIB) ? "  (library)" : "");
 		total += p->size;
 	}
 	char b[12];

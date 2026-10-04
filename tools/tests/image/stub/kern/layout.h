@@ -10,6 +10,8 @@
 #define GIGABYTE		0x40000000ULL
 #define USER_VA_BASE		(8ULL  * GIGABYTE)
 #define USER_VA_END		(60ULL * GIGABYTE)
+#define USER_LIB_BASE		(16ULL * GIGABYTE)
+#define USER_LIB_END		(32ULL * GIGABYTE)
 #define IS_USER_VA(va)		((u64) (va) >= USER_VA_BASE && (u64) (va) < USER_VA_END)
 
 #define ATTRIB_AP_RW_ALL	1

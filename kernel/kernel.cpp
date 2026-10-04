@@ -217,7 +217,7 @@ public:
 		TImage *pImage = 0;
 		unsigned nHow = 0;
 		const char *pWhy = "";
-		if (ProgramImage (m_Path, IMG_OPEN_PIN, &pImage, &nHow, &pWhy) < 0)
+		if (ProgramImage (m_Path, IMG_OPEN_PIN | IMG_OPEN_ANY, &pImage, &nHow, &pWhy) < 0)	// (a program or a library)
 		{
 			CLogger::Get ()->Write ("preload", LogError, "cannot load %s: %s", m_Path, pWhy);
 			return;
@@ -240,6 +240,51 @@ int ProgramPreload (const char *pCanonPath)		// (kern/applaunch.h: kapi_image_pr
 	if (ImageList (pCanonPath, 0, &Info, 1) != 0 && (Info.flags & KAPI_IMG_KEPT)) return 0;	// (kept already)
 	if (!ProgramExists (pCanonPath)) return -KAPI_ENOENT;
 	return new CPreloadTask (pCanonPath) != 0 ? 0 : -KAPI_ENOMEM;
+}
+
+// (v83) A shared library for pAS (kern/applaunch.h: kapi_lib_open), on the calling task: in
+// memory already -- a process has it, or it is preloaded -- nothing is read from the card.
+int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable)
+{
+	unsigned nT0 = CTimer::GetClockTicks ();
+	TImage *pImage = 0;
+	unsigned nHow = 0;
+	const char *pWhy = "";
+	int nErr = ProgramImage (pCanonPath, IMG_OPEN_LIB, &pImage, &nHow, &pWhy);
+	if (nErr < 0)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "cannot load %s: %s", pCanonPath, pWhy);
+		return nErr;
+	}
+	u64 ulBase = 0;
+	unsigned nRelocs = 0, nVersion = 0;
+	ImageLibInfo (pImage, &ulBase, &nRelocs, &nVersion);
+	if (nVersion < nMinVersion)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "%s is version %u: version %u or later is asked for",
+					pCanonPath, nVersion, nMinVersion);
+		ImageRelease (pImage);
+		return -KAPI_ENOTSUP;
+	}
+	int nMapped = ImageMapLib (pImage, pAS, pTable);
+	if (nMapped == 1)
+	{
+		SyncDataAndInstructionCache ();		// (code written through the identity mapping)
+		u64 nShared = 0, nPrivate = 0;
+		ImageSizes (pImage, &nShared, &nPrivate);
+		CLogger::Get ()->Write ("lib", LogNotice,
+					"%s: %s in %u ms at 0x%lx, version %u, %u relocations, %u KB shared, %u KB private",
+					pCanonPath,
+					nHow == IMG_HOW_LOADED ? "loaded" : nHow == IMG_HOW_WAITED ? "shared after a wait" : "shared",
+					(CTimer::GetClockTicks () - nT0) / 1000, (unsigned long) ulBase, nVersion, nRelocs,
+					(unsigned) (nShared >> 10), (unsigned) (nPrivate >> 10));
+	}
+	else if (nMapped < 0)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "cannot map %s (%d)", pCanonPath, nMapped);
+	}
+	ImageRelease (pImage);				// (ours: pAS holds the library from now on)
+	return nMapped < 0 ? nMapped : 0;
 }
 
 //

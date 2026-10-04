@@ -44,6 +44,7 @@ class CProcThreads;
 struct TVmSpace;			// (v75) kern/vm.h (WP-MEM)
 struct TProcInfo;			// (v75) kern/procx.h (WP-FILE/PROC)
 struct TImage;				// (v77) kern/image.h
+#define AS_LIB_MAX		16	// (v83) shared libraries in one process
 
 class CAddressSpace
 {
@@ -186,6 +187,27 @@ public:
 	TImage *GetImage (void)			{ return m_pImage; }
 	void SetImage (TImage *p)		{ m_pImage = p; }
 
+	// (v83) The shared libraries mapped here (kern/image.h ImageMapLib): one reference each,
+	// dropped by the destructor as the program's. Ready: wholly mapped (a mapping that ran out of
+	// memory stays recorded -- its pages are there -- and is never handed out).
+	int FindLib (const TImage *p) const
+	{
+		for (unsigned i = 0; i < m_nLibs; i++) if (m_pLib[i] == p) return (int) i;
+		return -1;
+	}
+	boolean LibReady (int n) const		{ return (m_nLibReady >> n) & 1; }
+	boolean AddLib (TImage *p)
+	{
+		if (m_nLibs == AS_LIB_MAX) return FALSE;
+		m_pLib[m_nLibs++] = p;
+		return TRUE;
+	}
+	void SetLibReady (const TImage *p)
+	{
+		int n = FindLib (p);
+		if (n >= 0) m_nLibReady |= 1u << n;
+	}
+
 	// (v75) Why the process ended, as proc_wait reports it: KAPI_PROC_EXITED (the default: it
 	// exited, its status is the code), KAPI_PROC_FAULT (-11), KAPI_PROC_KILLED (-9),
 	// KAPI_PROC_OOM (-9). Set before the end (a fault, a kill, the OOM killer).
@@ -223,6 +245,9 @@ private:
 	TVmSpace		    *m_pVm;	// (v75) virtual memory (WP-MEM; 0: none yet)
 	TProcInfo		    *m_pProcInfo; // (v75) argv / env blocks (WP-FILE/PROC; 0: none)
 	TImage			    *m_pImage;	// (v77) its program's shared image (0: none yet)
+	TImage			    *m_pLib[AS_LIB_MAX]; // (v83) the shared libraries mapped here
+	unsigned		     m_nLibs;
+	unsigned		     m_nLibReady; // bit n: m_pLib[n] is wholly mapped
 	int			     m_nTermReason; // (v75) KAPI_PROC_* (proc_wait)
 	int			     m_nTermCode;	// (v75) its code (the exit status for EXITED)
 };

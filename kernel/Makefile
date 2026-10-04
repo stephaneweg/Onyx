@@ -145,6 +145,12 @@ stage: sizecheck apps $(BASC)
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
 	done
+	@# The shared libraries (kapi v83): ../user/lib/<name>.so -> SD:/lib/
+	@mkdir -p $(SDCARD)/lib
+	@for so in ../user/lib/*.so; do \
+		[ -e "$$so" ] || continue; \
+		cp $$so $(SDCARD)/lib/; \
+	done
 	@# Koton's plugins (../user/Apps/kp_<name>/kp_<name>.elf + plugin.json): SD:/koton/plugins/<name>/,
 	@# out of SD:/apps (not an app of the dock)
 	@for d in ../user/Apps/kp_*; do \
@@ -158,6 +164,6 @@ stage: sizecheck apps $(BASC)
 		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main; \
 		$(BASC) $$src $(SDCARD)/apps/$$name.app/main.bax || exit 1; \
 	done
-	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + koton/plugins/* -> $(SDCARD)/"
+	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + lib/*.so + koton/plugins/* -> $(SDCARD)/"
 
 -include $(DEPS)

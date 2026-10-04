@@ -34,6 +34,13 @@ boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName = 0
 // such file) / -KAPI_ENOMEM. Defined in kernel.cpp (kapi_image_preload).
 int ProgramPreload (const char *pCanonPath);
 
+// (v83) The shared library at pCanonPath (its canonical path) mapped in pAS -- loaded now by the
+// calling task if no process has it and it is not preloaded -> 0 and *pTable (its export table in
+// pAS), or -KAPI_E* (-KAPI_ENOTSUP: its table's version is below nMinVersion). Defined in
+// kernel.cpp (kapi_lib_open).
+class CAddressSpace;
+int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable);
+
 // Keyboard layout control (defined in kernel.cpp): switch the live keyboard to a
 // compiled-in country map and read the current layout name. Declared here (a plain
 // C++ header) so sys/kapi.cpp sees C++ linkage, matching the kernel.cpp definitions.

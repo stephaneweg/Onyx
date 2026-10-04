@@ -179,7 +179,8 @@ VA                        Content                              Attributes
 0x3_C000_0000  │   full-screen buffer / the screen  │  USER_FULLSCREEN_CANVAS (15 GB)
 0x4_0000_0000  ├───────────────────────────────────┤  USER_STACK_TOP (16 GB)
    (16 GB)     │ user stack (grows down), lazy      │  8 MB (app.txt stack, ≤ 64 MB)
-       ...     │   (unused up to 32 GB)             │
+0x4_0000_0000  │ shared libraries (v83), placed by  │  USER_LIB_BASE (16 GB) .. USER_LIB_END
+       ...     │   the kernel, the same everywhere  │  (32 GB): SD:/lib/<name>.so
 0x8_0000_0000  │ threads' user stacks, 32 MB slots  │  USER_THREAD_STACKS (32 GB), lazy
 0x8_8000_0000  │ mmap arena (vm_map only), lazy     │  USER_MMAP_BASE (34 GB, v75)
        ...     │                                    │
@@ -845,6 +846,77 @@ longer include its program's read-only segments: they are counted once, in `memi
 `loaded` (read from the card now), `shared` (in memory: no read) or `shared after a wait`; a
 preload logs `image sd:/bin/wctest: loaded in 5123 ms, kept (81856 KB shared)`.
 
+### Shared libraries (v83): one copy of the code, placed by the kernel
+
+*(The design and its reasons: [`docs/SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md). Writing and using a
+library: docs/03 *Shared libraries*.)*
+
+A shared library is **an image** — the same object as a program's (`TImage`, `proc/image.cpp`): read
+once, its read-only frames mapped *not owned* into every process that uses it, its writable bytes
+kept in the object and copied into private pages per process, reference counted, preloadable,
+unnamed when its file changes. What is different:
+
+- **The file.** `SD:/lib/<name>.so`: an `ET_DYN` linked **at 0** by `user/lib.ld` — position-independent
+  code (`-fPIC`), **two `PT_LOAD`** (read + execute: the headers, `.rela.dyn`, the code, the read-only
+  data; read + write: `.data.rel.ro`, `.init_array`, `.dynamic`, `.got`, `.data`, `.bss`) on separate
+  64 KB pages, one `PT_DYNAMIC` inside the writable one. **The ELF entry is the library's export
+  table** (`ld -e onyx_lib_table`): the kernel needs no symbol table. `ElfReadPlan (..., ELF_KIND_LIB)`
+  checks that shape and nothing else is accepted; a program is refused as a library, and a library
+  as a program (`ELF_KIND_ANY`, a preload's: whichever the file is).
+- **Its place.** The kernel places a library **once for the whole system**, when it loads its file
+  (`LibPlace`): the lowest free range of the **library arena**, `USER_LIB_BASE` (16 GB) ..
+  `USER_LIB_END` (32 GB) of every user space, a page left between two libraries. The live images are
+  the allocator's state: the range is taken before the load's first yield and comes back when the
+  image is freed. So a library has the same address in every process — but **not a link-time
+  address**: another build, another boot, another order of loading gives another place. A process
+  still running an old build of a library whose file was replaced keeps that build's range; the new
+  build is placed elsewhere.
+- **Its relocations, once.** After the segments are read (`LibRelocate`): the dynamic section's
+  `DT_RELA` / `DT_RELASZ` / `DT_RELAENT` are walked, and for each entry `base + addend` is written
+  into the image's **copy of the writable segment** (`TImgSeg::pInit`). Only
+  `R_AARCH64_RELATIVE` (1027) is applied (`R_AARCH64_NONE` is skipped); any other type fails the
+  load with its number in the log, as do `DT_TEXTREL` / `DF_TEXTREL`, `DT_REL`, `DT_JMPREL`, and an
+  offset outside the writable segment's file bytes. The code frames are never patched: they are
+  shared as they are in the file. Every process then copies **already relocated** data (the vtables,
+  the export table, the pointer tables): no relocation work per process.
+- **Several per address space.** `CAddressSpace` keeps its program's image and up to 16 libraries
+  (`m_pLib[AS_LIB_MAX]`, a reference each, dropped by the destructor as the program's — after the TLB
+  invalidation). `ImageMapLib` maps the segments at `base + p_vaddr` (`MapSegs`, shared with
+  `ImageMap`), notes the regions (`KAPI_VMK_IMAGE`), and returns `base + e_entry`. A mapping that ran
+  out of memory stays recorded (its pages are there) and is never handed out.
+- **`lib_open`** (`kapi_lib_open` → `LibraryOpen`, `kernel.cpp`): the name made a canonical path, the
+  image found in memory (no card access) or streamed by the calling task as a program's start does,
+  the version checked against `min_version` (the table's first `u32`, read in the relocated copy),
+  the library mapped, the caches synchronised. One line in the kernel log per mapping:
+  `lib: sd:/lib/wtk.so: loaded in 41 ms at 0x400000000, version 3, 5120 relocations, 640 KB shared,
+  128 KB private` (`loaded` / `shared` / `shared after a wait`).
+
+**The export table.** A struct of function pointers in the library's data, relocated with it. Its
+first fields are every library's (`user/lib.h` `TLibHeader`): `unsigned version, size; int (*init)
+(const TLibImports *)`. `init` is called once by each process (the data is per process) with what the
+library takes from its importer — the allocator, so that the process has one heap; it runs the
+library's static constructors (`.init_array`, between `__lib_init_array_start` / `_end`: `user/librt.cpp`).
+The table is **append-only and versioned as the kapi table is**: an entry is never moved, removed or
+changed; a new one goes to the end and the version goes up. The kernel knows nothing of what follows
+the header.
+
+**What is shared, what is not.** The read + execute segment is one set of frames for the whole
+system (`image_list`: the library once, `refs` = the processes mapping it, `size` = its frames + its
+data's copy). The read + write segment is private pages in every process: a library's globals are
+per process.
+
+**Preload, unload, the file hook.** As a program's: `preload SD:/lib/wtk.so` (or the line in
+`SD:/etc/preload.ini`) keeps a library in memory with no process; `unload` and a write, rename or
+removal of the file take its name away — processes that map it keep it, new ones load the file again.
+
+Tests: `sh tools/tests/run_image_test.sh` builds the test library (`user/demo`) with the cross
+toolchain and runs the real loader on it (placement, the relocated table, two address spaces on the
+same code frames with their own data, a second library placed after the first, the file replaced
+while mapped, the range coming back, out of memory while mapping, 16 libraries, a relocation that is
+not `RELATIVE` / outside the data / text relocations refused); `sh tools/tests/shlib/check_pic.sh
+[file.so...]` checks a library's format. On the Pi: **`/bin/libtest`** (docs/04) — 17 checks against
+`SD:/lib/demo.so`, passed on the Pi 4 on 2026-10-04.
+
 Tests: on the PC `sh tools/tests/run_image_test.sh` (the real `image.cpp` and `elf.cpp`, the
 kernel around them stubbed, ASan: the canonical path, the header checks against crafted files, the
 load, two processes on the same frames, a start waiting for another task's load, a failed load,
@@ -1065,7 +1137,9 @@ v80 = **the cores' load and the network's bytes by process**: `cpu_stats`, `net_
 258), for the Task Manager's Processor and Network tabs (*v80: cpu_stats, net_stats* below),
 v81 = **the pointer's shape**: `set_cursor` (slot 259) (*v81: set_cursor* below),
 v82 = **a window resized by its frame**: `win_resizable` (slot 260), `GUI_EVENT_WINRESIZE`
-(*v82: win_resizable* below).
+(*v82: win_resizable* below),
+v83 = **shared libraries** (§7 *Shared libraries*; [`docs/SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md)):
+`lib_open` (slot 261), `KAPI_IMG_LIB` in `kapi_image_info.flags` (*v83: lib_open* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1453,6 +1527,18 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v83: lib_open
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 261 | `lib_open (name, min_version, err)` | the shared library `name` mapped into the caller → its export table, or 0 with `*err` (if not 0) = −`KAPI_E*`. `name`: a bare name (`"wtk"` is `SD:/lib/wtk.so`) or a path (anything with a `/`, a `\` or a `:`; relative: to the working directory). Mapped in the caller already: the same table. The table's first `unsigned` (its version) must be ≥ `min_version`, else `-ENOTSUP`. Other errors: `-ENOENT` (no such file), `-EINVAL` (not a library of `user/lib.ld`'s shape, a program, a relocation other than `R_AARCH64_RELATIVE`), `-ENOMEM` (memory, or no room in the arena), `-EMFILE` (16 libraries in the process), `-EIO`, `-ENAMETOOLONG`, `-EFAULT`. No `lib_close`: a library stays mapped until the process ends. |
+
+What a library is, how the kernel places and relocates it, and its lifetime: §7 *Shared libraries
+(v83)*. `user/kapi.h`'s wrapper returns 0 with `-KAPI_ENOSYS` on an older kernel; a program does not
+call it by hand — the library's bind object does, before `main` (`user/lib.h`, docs/03 *Shared
+libraries*). `image_list` reports a library with `KAPI_IMG_LIB` (8); `image_preload` and
+`image_unload` take a library's path as they take a program's.
 
 ### v82: win_resizable
 

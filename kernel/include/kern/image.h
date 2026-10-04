@@ -86,6 +86,8 @@ boolean ImageCanonPath (const char *pIn, const char *pCwd, char *pOut);
 
 // ImageOpen's flags
 #define IMG_OPEN_PIN		1		// keep it (a preload): pinned from now on
+#define IMG_OPEN_LIB		2		// (v83) a shared library (else: a program)
+#define IMG_OPEN_ANY		4		// (v83) whichever the file is (a preload)
 
 // How ImageOpen got the image (*pHow): for the start's log line
 #define IMG_HOW_LOADED		1		// read from the file now
@@ -107,6 +109,18 @@ int ImageOpen (const char *pPath, const char *pCwd, const TImgSource *pSrc, unsi
 // (FALSE: out of memory; the caller deletes pAS). No yield. The caller then synchronises the
 // caches (SyncDataAndInstructionCache), as LoadELF always did.
 boolean ImageMap (TImage *pImage, CAddressSpace *pAS, u64 *pEntry);
+
+// (v83) A shared library (an image opened with IMG_OPEN_LIB) mapped in pAS at its place -- the same
+// in every process: the kernel chose it in the library arena (kern/layout.h USER_LIB_BASE) when it
+// loaded the file, and relocated the copy of its data once. *pTable: its export table there.
+// -> 1 (mapped now: the caller synchronises the caches), 0 (pAS had it already: the same table),
+// -KAPI_ENOMEM (pAS keeps its reference and what was mapped; the library is not usable in it),
+// -KAPI_EMFILE (AS_LIB_MAX libraries in pAS), -KAPI_EINVAL (not a library). No yield.
+int ImageMapLib (TImage *pImage, CAddressSpace *pAS, u64 *pTable);
+
+// A library's place, the relocations applied at its load, its export table's version -> FALSE:
+// not a library.
+boolean ImageLibInfo (const TImage *pImage, u64 *pBase, unsigned *pRelocs, unsigned *pVersion);
 
 // A reference dropped. The last one frees the image's frames unless it is pinned. No yield, no
 // I/O (the address space's teardown calls it).

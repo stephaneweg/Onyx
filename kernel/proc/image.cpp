@@ -3,6 +3,11 @@
 // streaming loader, the shared image object keyed by the program's canonical path, its references,
 // the pin of a preload, the file layer's hook.
 //
+// (v83) A shared library (docs/SHARED-LIBS-PLAN.md) is an image too: position-independent, linked
+// at 0, placed once for the whole system in the library arena (kern/layout.h) when it is loaded,
+// its relocations applied once to the copy of its data -- so every process maps the same code
+// frames at the same address and copies data that is already relocated.
+//
 // An image (TImage) is, per PT_LOAD segment of the program (kern/elf.h's plan):
 //  - a read-only one (no PF_W): its 64 KB frames, allocated from the app pool and filled straight
 //    from the file -- mapped in every process of the program, never owned by an address space, so
@@ -82,6 +87,12 @@ struct TImage
 	u64	 nInitBytes;			// the private segments' copies, together
 	u64	 nFileSize;
 	unsigned nStack;			// (ImageStack)
+	// (v83) a shared library (docs/SHARED-LIBS-PLAN.md): placed once for the whole system
+	boolean	 bLib;
+	u64	 ulBase;			// where every process maps it (in the library arena)
+	u64	 ulSpan;			// the bytes it takes there, from ulBase (0: not placed)
+	unsigned nRelocs;			// the relocations applied to its data's copy at the load
+	unsigned nVersion;			// its export table's version
 	char	 Path[IMG_PATH_MAX];		// canonical ("": none)
 	TImage	*pNext;
 };
@@ -332,12 +343,140 @@ static int LoadPrivate (TImage *o, TImgSeg &S, u64 ulOffset, const TImgSource *p
 	return 0;
 }
 
+// ---- a shared library: its place, its relocations (v83) ---------------------------------------------
+
+// A range of the library arena for o (ulSpan set): the lowest one that no other library holds, a
+// page left free between two. The live images are the allocator's state: a library being loaded
+// or still mapped by a process running an old build keeps its range. No yield.
+static boolean LibPlace (TImage *o)
+{
+	u64 ulBase = USER_LIB_BASE;
+	for (const TImage *p = s_pImages; p != 0; )
+	{
+		if (   p != o && p->bLib && p->ulSpan != 0
+		    && ulBase < p->ulBase + p->ulSpan + KPAGE_SIZE && p->ulBase < ulBase + o->ulSpan + KPAGE_SIZE)
+		{
+			ulBase = p->ulBase + p->ulSpan + KPAGE_SIZE;	// (past it: look at them all again)
+			p = s_pImages;
+			continue;
+		}
+		p = p->pNext;
+	}
+	if (ulBase >= USER_LIB_END || o->ulSpan > USER_LIB_END - ulBase) return FALSE;
+	o->ulBase = ulBase;
+	return TRUE;
+}
+
+// n bytes of the loaded library at its link address ulVAddr (its frames, or its data's copy; the
+// bss reads zero) -> FALSE: outside its segments.
+static boolean LibPeek (const TImage *o, u64 ulVAddr, void *pOut, u64 n)
+{
+	u8 *pDst = (u8 *) pOut;
+	while (n != 0)
+	{
+		const TImgSeg *pSeg = 0;
+		for (unsigned i = 0; i < o->nSegs; i++)
+		{
+			if (ulVAddr >= o->Seg[i].ulVAddr && ulVAddr - o->Seg[i].ulVAddr < o->Seg[i].ulMemSz) pSeg = &o->Seg[i];
+		}
+		if (pSeg == 0) return FALSE;
+		u64 nRun = Min64 (n, pSeg->ulMemSz - (ulVAddr - pSeg->ulVAddr));
+		if (pSeg->bShared)
+		{
+			u64 ulStart = KPAGE_ALIGN_DOWN (pSeg->ulVAddr);
+			u64 nPage = (ulVAddr - ulStart) / KPAGE_SIZE, nOff = (ulVAddr - ulStart) % KPAGE_SIZE;
+			nRun = Min64 (nRun, KPAGE_SIZE - nOff);
+			memcpy (pDst, (const u8 *) (uintptr) o->pFrame[pSeg->nFirst + nPage] + nOff, (size_t) nRun);
+		}
+		else
+		{
+			u64 nOff = ulVAddr - pSeg->ulVAddr;
+			if (nOff < pSeg->ulFileSz)
+			{
+				nRun = Min64 (nRun, pSeg->ulFileSz - nOff);
+				memcpy (pDst, pSeg->pInit + nOff, (size_t) nRun);
+			}
+			else
+			{
+				memset (pDst, 0, (size_t) nRun);
+			}
+		}
+		pDst += nRun; ulVAddr += nRun; n -= nRun;
+	}
+	return TRUE;
+}
+
+static char s_RelocWhy[64];			// "relocation type N ..." (the log's reason)
+
+// The library's relocations applied to its data's copy -- once: every process then copies bytes
+// that already name the library's place. Only R_AARCH64_RELATIVE, only in the writable segment's
+// file bytes (the code is shared as it is in the file: never patched).
+static int LibRelocate (TImage *o, const TElfPlan &Plan, const char **ppWhy)
+{
+	TImgSeg &D = o->Seg[1];
+	u64 ulRela = 0, nRelaSz = 0, nRelaEnt = sizeof (Elf64_Rela);
+	for (u64 i = 0; i + sizeof (Elf64_Dyn) <= Plan.ulDynSize; i += sizeof (Elf64_Dyn))
+	{
+		Elf64_Dyn Dyn;
+		memcpy (&Dyn, D.pInit + (Plan.ulDynVAddr - D.ulVAddr) + i, sizeof Dyn);
+		if (Dyn.d_tag == DT_NULL) break;
+		switch (Dyn.d_tag)
+		{
+		case DT_RELA:	 ulRela = Dyn.d_val;	break;
+		case DT_RELASZ:	 nRelaSz = Dyn.d_val;	break;
+		case DT_RELAENT: nRelaEnt = Dyn.d_val;	break;
+		case DT_TEXTREL: return Refuse (ppWhy, "the library has text relocations", -KAPI_EINVAL);
+		case DT_FLAGS:
+			if (Dyn.d_val & DF_TEXTREL) return Refuse (ppWhy, "the library has text relocations", -KAPI_EINVAL);
+			break;
+		case DT_REL:
+		case DT_JMPREL:	 return Refuse (ppWhy, "the library has relocations the kernel does not apply (REL / PLT)", -KAPI_EINVAL);
+		}
+	}
+	if (nRelaSz == 0) return 0;
+	if (nRelaEnt != sizeof (Elf64_Rela) || nRelaSz % nRelaEnt != 0)
+	{
+		return Refuse (ppWhy, "bad relocation table", -KAPI_EINVAL);
+	}
+	for (u64 i = 0; i < nRelaSz; i += nRelaEnt)
+	{
+		Elf64_Rela Rela;
+		if (ulRela + i < ulRela || !LibPeek (o, ulRela + i, &Rela, sizeof Rela))
+		{
+			return Refuse (ppWhy, "relocation table outside the library", -KAPI_EINVAL);
+		}
+		u32 nType = ELF64_R_TYPE (Rela.r_info);
+		if (nType == R_AARCH64_NONE) continue;
+		if (nType != R_AARCH64_RELATIVE)
+		{
+			static const char Msg[] = "relocation type ";
+			unsigned k = sizeof Msg - 1;
+			memcpy (s_RelocWhy, Msg, k);
+			char Digits[12]; unsigned nD = 0;
+			do { Digits[nD++] = (char) ('0' + nType % 10); nType /= 10; } while (nType != 0);
+			while (nD != 0) s_RelocWhy[k++] = Digits[--nD];
+			static const char Tail[] = " (only RELATIVE is applied)";
+			memcpy (s_RelocWhy + k, Tail, sizeof Tail);
+			return Refuse (ppWhy, s_RelocWhy, -KAPI_EINVAL);
+		}
+		if (D.ulFileSz < 8 || Rela.r_offset < D.ulVAddr || Rela.r_offset - D.ulVAddr > D.ulFileSz - 8)
+		{
+			return Refuse (ppWhy, "relocation outside the library's data", -KAPI_EINVAL);
+		}
+		u64 ulValue = o->ulBase + Rela.r_addend;
+		memcpy (D.pInit + (Rela.r_offset - D.ulVAddr), &ulValue, sizeof ulValue);
+		o->nRelocs++;
+	}
+	return 0;
+}
+
 // The file streamed into o -> 0 / -errno (what was allocated stays in o: the caller frees it).
-static int Load (TImage *o, const TImgSource *pSrc, const char **ppWhy)
+static int Load (TImage *o, const TImgSource *pSrc, unsigned nKind, const char **ppWhy)
 {
 	TElfPlan Plan;
-	int r = ElfReadPlan (pSrc, &Plan, ppWhy);
+	int r = ElfReadPlan (pSrc, &Plan, ppWhy, nKind);
 	if (r < 0) return r;
+	o->bLib = Plan.bLib;
 
 	u64 nShared = 0;
 	for (unsigned i = 0; i < Plan.nSegs; i++)
@@ -357,6 +496,15 @@ static int Load (TImage *o, const TImgSource *pSrc, const char **ppWhy)
 	o->nSegs = Plan.nSegs;
 	o->ulEntry = Plan.ulEntry;
 	o->nFileSize = pSrc->nSize;
+	if (o->bLib)				// its place, before the first yield: no other load takes it
+	{
+		o->ulSpan = KPAGE_ALIGN_UP (Plan.Seg[1].ulVAddr + Plan.Seg[1].ulMemSz);
+		if (!LibPlace (o))
+		{
+			o->ulSpan = 0;
+			return Refuse (ppWhy, "no room in the library arena", -KAPI_ENOMEM);
+		}
+	}
 
 	// A preload must not take the app pool's reserve (a process's own start is as before v77: it
 	// takes what there is).
@@ -379,6 +527,13 @@ static int Load (TImage *o, const TImgSource *pSrc, const char **ppWhy)
 				      : LoadPrivate (o, o->Seg[i], Plan.Seg[i].ulOffset, pSrc, &nSince);
 	}
 	if (r < 0) return Refuse (ppWhy, r == -KAPI_ENOMEM ? "out of memory" : "read failed", r);
+	if (o->bLib)
+	{
+		r = LibRelocate (o, Plan, ppWhy);
+		if (r < 0) return r;
+		const TImgSeg &D = o->Seg[1];	// (the table is in its file bytes: ElfReadPlan)
+		memcpy (&o->nVersion, D.pInit + (o->ulEntry - D.ulVAddr), sizeof o->nVersion);
+	}
 	return 0;
 }
 
@@ -407,6 +562,13 @@ int ImageOpen (const char *pPath, const char *pCwd, const TImgSource *pSrc, unsi
 			ImageRelease (o);
 			return Refuse (ppWhy, "its load by another task failed", nErr);
 		}
+		if (!(nFlags & IMG_OPEN_ANY) && o->bLib != ((nFlags & IMG_OPEN_LIB) != 0))
+		{
+			boolean bLib = o->bLib;
+			ImageRelease (o);
+			return Refuse (ppWhy, bLib ? "a shared library, not a program" : "a program, not a shared library",
+				       -KAPI_EINVAL);
+		}
 		*ppImage = o;
 		if (pHow != 0) *pHow = nHow;
 		return 0;
@@ -425,10 +587,12 @@ int ImageOpen (const char *pPath, const char *pCwd, const TImgSource *pSrc, unsi
 	o->pNext = s_pImages;
 	s_pImages = o;
 
-	int r = Load (o, pSrc, ppWhy);			// (yields: found, waited for, unnamed meanwhile)
+	int r = Load (o, pSrc, nFlags & IMG_OPEN_ANY ? ELF_KIND_ANY : nFlags & IMG_OPEN_LIB ? ELF_KIND_LIB : ELF_KIND_PROGRAM,
+		      ppWhy);				// (yields: found, waited for, unnamed meanwhile)
 	if (r < 0)
 	{
 		FreeMemory (o);
+		o->ulSpan = 0;				// (its place in the arena given back)
 		o->nState = IMG_ST_FAILED;		// (its waiters see it, and let it go)
 		o->nErr = r;
 		o->bNamed = FALSE;
@@ -444,12 +608,9 @@ int ImageOpen (const char *pPath, const char *pCwd, const TImgSource *pSrc, unsi
 
 // ---- a process's mapping ----------------------------------------------------------------------------
 
-boolean ImageMap (TImage *o, CAddressSpace *pAS, u64 *pEntry)
+// o's segments mapped in pAS, ulBase added to their addresses (a program: 0).
+static boolean MapSegs (TImage *o, CAddressSpace *pAS, u64 ulBase)
 {
-	if (!Is (o) || o->nState != IMG_ST_READY || pAS == 0 || pAS->GetImage () != 0) return FALSE;
-	o->nRefs++;					// pAS's own (dropped by its destructor)
-	pAS->SetImage (o);
-
 	TKPageAttr Code = KPAGE_ATTR_APP_CODE;		// EL0 RX (apps run at EL0)
 	TKPageAttr Data = KPAGE_ATTR_APP_DATA;		// EL0 RW
 	TKPageAttr RoData = KPAGE_ATTR_APP_RODATA;	// EL0 R
@@ -464,7 +625,7 @@ boolean ImageMap (TImage *o, CAddressSpace *pAS, u64 *pEntry)
 			const TKPageAttr &Attr = bExec ? Code : RoData;
 			for (u64 k = 0; k < S.nPages; k++)
 			{
-				if (!pAS->MapPage (ulStart + k * KPAGE_SIZE, o->pFrame[S.nFirst + k], Attr, FALSE))
+				if (!pAS->MapPage (ulBase + ulStart + k * KPAGE_SIZE, o->pFrame[S.nFirst + k], Attr, FALSE))
 				{
 					return FALSE;
 				}
@@ -478,7 +639,7 @@ boolean ImageMap (TImage *o, CAddressSpace *pAS, u64 *pEntry)
 			for (u64 k = 0; k < S.nPages; k++)
 			{
 				u64 va = ulStart + k * KPAGE_SIZE;
-				u8 *pFrame = (u8 *) pAS->MapNewPage (va, Attr);	// zeroed, identity addr
+				u8 *pFrame = (u8 *) pAS->MapNewPage (ulBase + va, Attr);	// zeroed, identity addr
 				if (pFrame == 0) return FALSE;
 				u64 ulCopyStart = Max64 (va, S.ulVAddr);
 				u64 ulCopyEnd   = Min64 (va + KPAGE_SIZE, ulFileEnd);
@@ -490,13 +651,40 @@ boolean ImageMap (TImage *o, CAddressSpace *pAS, u64 *pEntry)
 			}
 		}
 		// (v75) An eager region of its own (kern/vm.h): never filled on demand.
-		VmNoteRegion (pAS, S.ulVAddr, S.ulVAddr + S.ulMemSz,
+		VmNoteRegion (pAS, ulBase + S.ulVAddr, ulBase + S.ulVAddr + S.ulMemSz,
 			      bExec ? KAPI_PROT_READ | KAPI_PROT_EXEC
 				    : S.bShared ? KAPI_PROT_READ : KAPI_PROT_READ | KAPI_PROT_WRITE,
 			      KAPI_VMK_IMAGE);
 	}
+	return TRUE;
+}
+
+boolean ImageMap (TImage *o, CAddressSpace *pAS, u64 *pEntry)
+{
+	if (!Is (o) || o->nState != IMG_ST_READY || o->bLib || pAS == 0 || pAS->GetImage () != 0) return FALSE;
+	o->nRefs++;					// pAS's own (dropped by its destructor)
+	pAS->SetImage (o);
+	if (!MapSegs (o, pAS, 0)) return FALSE;
 	*pEntry = o->ulEntry;
 	return TRUE;
+}
+
+int ImageMapLib (TImage *o, CAddressSpace *pAS, u64 *pTable)
+{
+	if (!Is (o) || o->nState != IMG_ST_READY || !o->bLib || pAS == 0) return -KAPI_EINVAL;
+	int n = pAS->FindLib (o);
+	if (n >= 0)					// mapped already: the same table
+	{
+		if (!pAS->LibReady (n)) return -KAPI_ENOMEM;	// (its mapping failed half-way: not again)
+		*pTable = o->ulBase + o->ulEntry;
+		return 0;
+	}
+	if (!pAS->AddLib (o)) return -KAPI_EMFILE;	// (AS_LIB_MAX libraries in one process)
+	o->nRefs++;					// pAS's own (dropped by its destructor)
+	if (!MapSegs (o, pAS, o->ulBase)) return -KAPI_ENOMEM;
+	pAS->SetLibReady (o);
+	*pTable = o->ulBase + o->ulEntry;
+	return 1;
 }
 
 // ---- unload, the file layer's hook, the list ---------------------------------------------------------
@@ -542,7 +730,7 @@ static void Describe (const TImage *o, struct kapi_image_info *pOut)
 	pOut->file_size = o->nFileSize;
 	pOut->refs = (unsigned) o->nRefs;
 	pOut->flags = (o->bPinned ? KAPI_IMG_KEPT : 0) | (o->nState == IMG_ST_LOADING ? KAPI_IMG_LOADING : 0)
-		    | (o->bNamed ? 0 : KAPI_IMG_UNNAMED);
+		    | (o->bNamed ? 0 : KAPI_IMG_UNNAMED) | (o->bLib ? KAPI_IMG_LIB : 0);
 	strcpy (pOut->path, o->Path);
 }
 
@@ -580,6 +768,15 @@ void ImageSizes (const TImage *o, u64 *pShared, u64 *pPrivate)
 	}
 	*pShared = o->nFrames * KPAGE_SIZE;
 	*pPrivate = nPrivate;
+}
+
+boolean ImageLibInfo (const TImage *o, u64 *pBase, unsigned *pRelocs, unsigned *pVersion)
+{
+	if (!Is (o) || !o->bLib) return FALSE;
+	if (pBase != 0) *pBase = o->ulBase;
+	if (pRelocs != 0) *pRelocs = o->nRelocs;
+	if (pVersion != 0) *pVersion = o->nVersion;
+	return TRUE;
 }
 
 unsigned ImageStack (const TImage *o)

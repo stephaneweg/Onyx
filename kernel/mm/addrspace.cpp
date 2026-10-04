@@ -88,6 +88,8 @@ CAddressSpace::CAddressSpace (void)
 	m_pVm (0),
 	m_pProcInfo (0),
 	m_pImage (0),
+	m_nLibs (0),
+	m_nLibReady (0),
 	m_nTermReason (KAPI_PROC_EXITED),
 	m_nTermCode (0)
 {
@@ -229,6 +231,7 @@ CAddressSpace::~CAddressSpace (void)
 	{
 		ImageRelease (m_pImage);	// (v77; nothing was mapped: no table)
 		m_pImage = 0;
+		while (m_nLibs != 0) ImageRelease (m_pLib[--m_nLibs]);
 		return;
 	}
 
@@ -307,6 +310,7 @@ CAddressSpace::~CAddressSpace (void)
 	// rest, so frames a core may still execute are never freed.)
 	ImageRelease (m_pImage);
 	m_pImage = 0;
+	while (m_nLibs != 0) ImageRelease (m_pLib[--m_nLibs]);	// (v83: its shared libraries, the same way)
 
 	FreeASID (m_nASID);
 }

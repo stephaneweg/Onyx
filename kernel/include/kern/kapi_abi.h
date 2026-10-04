@@ -164,7 +164,12 @@
 //      an edge or a corner shows the two arrows, a drag shows the new outline, and at the release the
 //      window gets GUI_EVENT_WINRESIZE (20) with its new place and client size, which it applies
 //      (resize_window2, move_window). wtk: Root::setResizable.
-#define KAPI_ABI_VERSION	82
+// v83: shared libraries (docs/SHARED-LIBS-PLAN.md, docs/02 section 7): + lib_open (slot 261): a
+//      position-independent library (SD:/lib/<name>.so, user/lib.ld's shape) loaded once for the
+//      whole system, placed by the kernel in the library arena (16 GB..32 GB), its data relocated
+//      once, mapped into the caller -> its export table (version, size, init, then its entries:
+//      append-only, as this table). + KAPI_IMG_LIB in kapi_image_info.flags. No existing call changes.
+#define KAPI_ABI_VERSION	83
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -884,6 +889,7 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_KEPT		1		// preloaded: stays when no process runs it
 #define KAPI_IMG_LOADING	2		// being read from its file
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
+#define KAPI_IMG_LIB		8		// (v83) a shared library (lib_open), not a program
 #define KAPI_IMG_PATH_MAX	256
 
 // (v81) set_cursor: the pointer's shapes (kernel/gui/cursors.inc, drawn by tools/gui/gen_cursors.py).
@@ -1809,6 +1815,21 @@ struct TKApiTable
 	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
 	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
 	int (*win_resizable) (int on, int min_w, int min_h);
+
+	// --- v83: shared libraries (kern/image.h; proc/image.cpp, kernel.cpp; docs/SHARED-LIBS-PLAN.md) ---
+	// lib_open: the shared library `name` mapped into the caller -> its export table, or 0 with
+	// *err (if not 0) = -KAPI_E*. name: a bare name ("wtk": SD:/lib/wtk.so) or a path (relative: to
+	// the working directory). The library's file is read once for the whole system (the calling
+	// task reads it, as a program's start), placed by the kernel, its data relocated once; every
+	// process maps the same code at the same address and gets its own copy of the data. Mapped in
+	// the caller already: the same table. It stays mapped until the process ends (no lib_close).
+	// The table starts with `unsigned version, size; int (*init) (const void *imports);` -- the
+	// caller calls init once (user/lib.h's lib_bind does) -- and is append-only, as this one.
+	// min_version: the table's version must be >= it, else -ENOTSUP. Other errors: -ENOENT (no
+	// such file), -EINVAL (not a library of user/lib.ld's shape; a relocation other than
+	// R_AARCH64_RELATIVE), -ENOMEM (memory, or no room in the arena), -EMFILE (16 libraries in the
+	// process), -EIO, -ENAMETOOLONG, -EFAULT.
+	const void *(*lib_open) (const char *name, unsigned min_version, int *err);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1878,6 +1899,7 @@ KAPI_CHECK_SLOT (cpu_stats, 257);
 KAPI_CHECK_SLOT (net_stats, 258);
 KAPI_CHECK_SLOT (set_cursor, 259);
 KAPI_CHECK_SLOT (win_resizable, 260);
+KAPI_CHECK_SLOT (lib_open, 261);
 
 #ifdef __cplusplus
 }

@@ -490,6 +490,32 @@ int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned n
 	return bOK ? (int) n : -KAPI_EFAULT;
 }
 
+// --- v83: shared libraries (kern/image.h, docs/SHARED-LIBS-PLAN.md) -------------
+// The library mapped into the caller -> its export table (0: *pErr says why). A bare name is
+// SD:/lib/<name>.so; anything with a '/', a '\\' or a ':' is a path.
+const void *kapi_lib_open (const char *pName, unsigned nMinVersion, int *pErr)
+{
+	int nErr = 0;
+	u64 ulTable = 0;
+	CUserStr Name (pName, UPATH_MAX);
+	CAddressSpace *pAS = CurrentAS ();
+	if (!Name.OK ()) nErr = -KAPI_EFAULT;
+	else if (pAS == 0 || Name.Get ()[0] == '\0') nErr = -KAPI_EINVAL;
+	else
+	{
+		const char *p = Name.Get ();
+		boolean bPath = FALSE;
+		for (const char *q = p; *q != '\0'; q++) if (*q == '/' || *q == '\\' || *q == ':') bPath = TRUE;
+		CString Path;
+		if (bPath) Path = p; else Path.Format ("SD:/lib/%s.so", p);
+		char Canon[IMG_PATH_MAX];
+		if (!ImageCanonPath (Path, CurCwd (), Canon)) nErr = -KAPI_ENAMETOOLONG;
+		else nErr = LibraryOpen (Canon, nMinVersion, pAS, &ulTable);
+	}
+	if (pErr != 0 && !UserPut (pErr, nErr)) return 0;
+	return nErr < 0 ? 0 : (const void *) (uintptr) ulTable;
+}
+
 // --- v79: what the kernel is (/bin/uname) --------------------------------------
 // "key value" lines. The build's date and revision are buildstamp.cpp's: compiled again at every
 // link (kernel/Makefile), so they are this image's, whichever file changed.

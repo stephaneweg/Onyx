@@ -98,6 +98,7 @@ CAddressSpace::~CAddressSpace (void)		// (as mm/addrspace.cpp: the owned frames,
 {
 	for (auto &it : m_Pages) if (it.second.bOwned) pfree ((void *) (uintptr) it.second.ulFrame);
 	ImageRelease (m_pImage);
+	while (m_nLibs != 0) ImageRelease (m_pLib[--m_nLibs]);
 }
 
 // ---- cooperative tasks: one runs at a time, a yield passes the turn ----------------------------------
@@ -1005,6 +1006,164 @@ static void TestLoadELF (void)
 	CheckClean ();
 }
 
+// ---- shared libraries (v83): a real library, built by the cross toolchain (user/demo) -----------------
+
+static u64 Peek64 (CAddressSpace &AS, u64 ulVA)
+{
+	u64 v = 0;
+	for (int i = 7; i >= 0; i--) v = (v << 8) | (u8) Peek (AS, ulVA + i);
+	return v;
+}
+
+static void TestLib (void)
+{
+	const char *pSo = getenv ("ONYX_DEMO_SO");
+	if (pSo == 0 || pSo[0] == '\0')
+	{
+		printf ("shared libraries: SKIPPED (no cross toolchain: ONYX_DEMO_SO is not set)\n");
+		return;
+	}
+	printf ("shared libraries\n");
+	TFile F;
+	{
+		FILE *fp = fopen (pSo, "rb");
+		CHECK (fp != 0);
+		if (fp == 0) return;
+		u8 Buf[4096]; size_t n;
+		while ((n = fread (Buf, 1, sizeof Buf, fp)) > 0) F.Data.insert (F.Data.end (), Buf, Buf + n);
+		fclose (fp);
+	}
+	const char *pWhy = "";
+	TElfPlan P, Q;
+	TImgSource S = SourceOf (F);
+	// a library is a library, not a program -- and the other way round
+	CHECK (ElfReadPlan (&S, &P, &pWhy, ELF_KIND_LIB) == 0 && P.bLib && P.nSegs == 2 && P.ulDynSize != 0);
+	CHECK (ElfReadPlan (&S, &Q, &pWhy, ELF_KIND_PROGRAM) == -KAPI_EINVAL);
+	CHECK (ElfReadPlan (&S, &Q, &pWhy, ELF_KIND_ANY) == 0 && Q.bLib);
+	TFile Prog = MakeElf (s_Usual);
+	TImgSource S2 = SourceOf (Prog);
+	CHECK (ElfReadPlan (&S2, &Q, &pWhy, ELF_KIND_LIB) == -KAPI_EINVAL);
+	CHECK (ElfReadPlan (&S2, &Q, &pWhy, ELF_KIND_ANY) == 0 && !Q.bLib);
+	const u64 ulEntry = P.ulEntry;
+	const u64 nSpan = KPAGE_ALIGN_UP (P.Seg[1].ulVAddr + P.Seg[1].ulMemSz);
+	const u64 nDataOff = P.Seg[1].ulOffset - P.Seg[1].ulVAddr;	// a data address -> its place in the file
+
+	// loaded: placed at the arena's base, relocated once
+	TImage *pI = 0;
+	CHECK (Open ("SD:/lib/demo.so", &F, IMG_OPEN_LIB, &pI) == 0);
+	u64 ulBase = 0; unsigned nRelocs = 0, nVersion = 0;
+	CHECK (ImageLibInfo (pI, &ulBase, &nRelocs, &nVersion) && ulBase == USER_LIB_BASE && nRelocs > 4 && nVersion == 2);
+	{
+		CAddressSpace A, B, C;
+		u64 tA = 0, tB = 0, e = 0;
+		CHECK (ImageMapLib (pI, &A, &tA) == 1 && ImageMapLib (pI, &B, &tB) == 1 && tA == tB);
+		CHECK (ImageMapLib (pI, &A, &tA) == 0 && tA == ulBase + ulEntry);	// again: the same table
+		CHECK (!ImageMap (pI, &C, &e));						// not a program
+		// the code: the same frames in both, not owned, never writable; the data: each its own
+		CHECK (A.m_Pages[ulBase].ulFrame == B.m_Pages[ulBase].ulFrame && !A.m_Pages[ulBase].bOwned);
+		CHECK (A.m_Pages[ulBase].nAP == ATTRIB_AP_RO_ALL && A.m_Pages[ulBase].nUXN == 0);
+		u64 ulData = KPAGE_ALIGN_DOWN (tA);
+		CHECK (A.m_Pages[ulData].ulFrame != B.m_Pages[ulData].ulFrame && A.m_Pages[ulData].bOwned);
+		CHECK (A.m_Pages[ulData].nAP == ATTRIB_AP_RW_ALL && A.m_Pages[ulData].nUXN == 1);
+		// the table as a process reads it: its version, and init = the base + what the file holds
+		CHECK ((u32) Peek64 (A, tA) == 2);
+		u64 ulRaw = 0;
+		memcpy (&ulRaw, F.Data.data () + nDataOff + ulEntry + 8, 8);
+		CHECK (ulRaw != 0 && ulRaw < P.Seg[0].ulMemSz);
+		CHECK (Peek64 (A, tA + 8) == ulBase + ulRaw && Peek64 (B, tA + 8) == ulBase + ulRaw);
+		struct kapi_image_info Info;
+		CHECK (InfoOf ("SD:/lib/demo.so", &Info) && (Info.flags & KAPI_IMG_LIB) && Info.refs == 3);
+		// found by its path: only as what it is
+		TImage *pX = 0;
+		CHECK (Open ("SD:/lib/demo.so", 0, 0, &pX) == -KAPI_EINVAL);
+		CHECK (Open ("SD:/lib/demo.so", 0, IMG_OPEN_ANY, &pX) == 0 && pX == pI);
+		ImageRelease (pX);
+
+		// a second library: the next place (a page between), both in one process
+		TImage *p2 = 0;
+		CHECK (Open ("SD:/lib/demo2.so", &F, IMG_OPEN_LIB, &p2) == 0);
+		u64 ulBase2 = 0, t2 = 0;
+		CHECK (ImageLibInfo (p2, &ulBase2, 0, 0) && ulBase2 == ulBase + nSpan + KPAGE_SIZE);
+		CHECK (ImageMapLib (p2, &A, &t2) == 1 && t2 == ulBase2 + ulEntry);
+		CHECK (Peek64 (A, t2 + 8) == ulBase2 + ulRaw);
+		ImageRelease (p2);
+
+		// its file replaced: the processes keep the old one where it is, a new load goes elsewhere
+		ImageFileChanged ("SD:/lib/demo.so");
+		TImage *p3 = 0;
+		CHECK (Open ("SD:/lib/demo.so", &F, IMG_OPEN_LIB, &p3) == 0 && p3 != pI);
+		u64 ulBase3 = 0;
+		CHECK (ImageLibInfo (p3, &ulBase3, 0, 0) && ulBase3 == ulBase2 + nSpan + KPAGE_SIZE);
+		CHECK (Peek64 (A, tA + 8) == ulBase + ulRaw);
+		ImageRelease (p3);
+		ImageRelease (pI);
+	}
+	CheckClean ();
+	// the arena's range came back
+	CHECK (Open ("SD:/lib/demo.so", &F, IMG_OPEN_LIB, &pI) == 0);
+	CHECK (ImageLibInfo (pI, &ulBase, 0, 0) && ulBase == USER_LIB_BASE);
+	{
+		// out of memory while mapping: not usable in that process, never handed out, all freed
+		CAddressSpace A;
+		u64 t = 0;
+		A.m_nBudget = 1;
+		CHECK (ImageMapLib (pI, &A, &t) == -KAPI_ENOMEM);
+		A.m_nBudget = -1;
+		CHECK (ImageMapLib (pI, &A, &t) == -KAPI_ENOMEM);
+		// 16 libraries in one process at most
+		CAddressSpace B;
+		TImage *Many[AS_LIB_MAX + 1];
+		for (unsigned i = 0; i <= AS_LIB_MAX; i++)
+		{
+			char Name[32];
+			snprintf (Name, sizeof Name, "SD:/lib/many%u.so", i);
+			CHECK (Open (Name, &F, IMG_OPEN_LIB, &Many[i]) == 0);
+			CHECK (ImageMapLib (Many[i], &B, &t) == (i < AS_LIB_MAX ? 1 : -KAPI_EMFILE));
+			ImageRelease (Many[i]);
+		}
+	}
+	ImageRelease (pI);
+	CheckClean ();
+
+	// refused: a relocation that is not RELATIVE, one outside the data, text relocations
+	u64 ulRela = 0, ulRelaEntTag = 0;
+	for (u64 o = nDataOff + P.ulDynVAddr; o < nDataOff + P.ulDynVAddr + P.ulDynSize; o += sizeof (Elf64_Dyn))
+	{
+		Elf64_Dyn D;
+		memcpy (&D, F.Data.data () + o, sizeof D);
+		if (D.d_tag == DT_RELA) ulRela = D.d_val;	// (in the code segment: its file offset too)
+		if (D.d_tag == DT_RELAENT) ulRelaEntTag = o;
+	}
+	CHECK (ulRela != 0 && ulRelaEntTag != 0);
+	{
+		TFile G = F;
+		((Elf64_Rela *) (G.Data.data () + ulRela))[1].r_info = 1026;	// R_AARCH64_JUMP_SLOT
+		CHECK (Open ("SD:/lib/bad.so", &G, IMG_OPEN_LIB, &pI, 0, &pWhy) == -KAPI_EINVAL);
+		CHECK (strstr (pWhy, "relocation type 1026") != 0);
+		G = F;
+		((Elf64_Rela *) (G.Data.data () + ulRela))[0].r_offset = 0x100;	// in the code
+		CHECK (Open ("SD:/lib/bad.so", &G, IMG_OPEN_LIB, &pI, 0, &pWhy) == -KAPI_EINVAL);
+		CHECK (strstr (pWhy, "outside the library's data") != 0);
+		G = F;
+		u64 nTag = DT_TEXTREL;
+		memcpy (G.Data.data () + ulRelaEntTag, &nTag, 8);
+		CHECK (Open ("SD:/lib/bad.so", &G, IMG_OPEN_LIB, &pI, 0, &pWhy) == -KAPI_EINVAL);
+		CHECK (strstr (pWhy, "text relocations") != 0);
+		G = F;
+		EhdrOf (G)->e_entry = 0x40;					// the table must be in the data
+		CHECK (Open ("SD:/lib/bad.so", &G, IMG_OPEN_LIB, &pI, 0, &pWhy) == -KAPI_EINVAL);
+		G = F;
+		G.nFailAfter = 3;						// a read error half-way
+		CHECK (Open ("SD:/lib/bad.so", &G, IMG_OPEN_LIB, &pI, 0, &pWhy) < 0);
+	}
+	CheckClean ();
+	// after the failures the arena is whole
+	CHECK (Open ("SD:/lib/demo.so", &F, IMG_OPEN_LIB, &pI) == 0);
+	CHECK (ImageLibInfo (pI, &ulBase, 0, 0) && ulBase == USER_LIB_BASE);
+	ImageRelease (pI);
+	CheckClean ();
+}
+
 int main (void)
 {
 	TestCanon ();
@@ -1017,6 +1176,7 @@ int main (void)
 	TestPin ();
 	TestFileChanged ();
 	TestLoadELF ();
+	TestLib ();
 	printf ("%d checks, %d failed\n", s_nChecks, s_nFailed);
 	return s_nFailed == 0 ? 0 : 1;
 }

@@ -562,6 +562,17 @@ static inline int kapi_set_cursor (int shape)
 #define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
 static inline int kapi_win_resizable (int on, int min_w, int min_h)
 	{ return KT->version >= 82 && KT->win_resizable ? KT->win_resizable (on, min_w, min_h) : -1; }
+// (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "wtk" is SD:/lib/wtk.so, anything with a '/'
+// or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *);
+// then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP:
+// the library is older than min_version; -KAPI_ENOSYS on an older kernel). Apps do not call this:
+// the library's bind object does, before main (user/lib.h).
+static inline const void *kapi_lib_open (const char *name, unsigned min_version, int *err)
+{
+	if (KT->version >= 83 && KT->lib_open) return KT->lib_open (name, min_version, err);
+	if (err) *err = -KAPI_ENOSYS;
+	return 0;
+}
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

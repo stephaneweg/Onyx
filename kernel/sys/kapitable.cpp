@@ -283,6 +283,8 @@ int kapi_net_stats (int nPid, struct kapi_net_stats *pOut);
 int kapi_set_cursor (int nShape);
 // v82 a window resized by its frame (sys/kapi.cpp)
 int kapi_win_resizable (int bOn, int nMinW, int nMinH);
+// v83 shared libraries (sys/kapi.cpp over proc/image.cpp)
+const void *kapi_lib_open (const char *pName, unsigned nMinVersion, int *pErr);
 
 }  // extern "C"
 
@@ -592,4 +594,5 @@ void KApiTableInit (void)
 	t->net_stats         = kapi_net_stats;
 	t->set_cursor        = kapi_set_cursor;		// (v81)
 	t->win_resizable     = kapi_win_resizable;	// (v82)
+	t->lib_open          = kapi_lib_open;		// (v83)
 }

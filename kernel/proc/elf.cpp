@@ -28,10 +28,13 @@ static boolean ReadAll (const TImgSource *pSrc, u64 ulOffset, void *pBuffer, uns
 	return pSrc->pRead (pSrc->pCtx, ulOffset, pBuffer, nBytes) == (int) nBytes;
 }
 
-int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy)
+int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy, unsigned nKind)
 {
 	pPlan->ulEntry = 0;
 	pPlan->nSegs = 0;
+	pPlan->bLib = FALSE;
+	pPlan->ulDynVAddr = 0;
+	pPlan->ulDynSize = 0;
 	if (pSrc == 0 || pSrc->pRead == 0 || pSrc->nSize < sizeof (Elf64_Ehdr))
 	{
 		return Refuse (ppWhy, "too short for an ELF header", -KAPI_EINVAL);
@@ -64,12 +67,43 @@ int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy)
 		return Refuse (ppWhy, "program headers past end of image", -KAPI_EINVAL);
 	}
 
+	// (v83) A library or a program? A library is an ET_DYN whose first segment with memory lies
+	// below the user range (lib.ld links it at 0).
+	boolean bLib = nKind == ELF_KIND_LIB;
+	if (nKind == ELF_KIND_ANY && Ehdr.e_type == ET_DYN)
+	{
+		for (unsigned i = 0; i < Ehdr.e_phnum; i++)
+		{
+			Elf64_Phdr Phdr;
+			if (!ReadAll (pSrc, Ehdr.e_phoff + (u64) i * Ehdr.e_phentsize, &Phdr, sizeof Phdr))
+			{
+				return Refuse (ppWhy, "read failed (the program headers)", -KAPI_EIO);
+			}
+			if (Phdr.p_type != PT_LOAD || Phdr.p_memsz == 0) continue;
+			bLib = !IS_USER_VA (Phdr.p_vaddr);
+			break;
+		}
+	}
+	if (bLib && Ehdr.e_type != ET_DYN)
+	{
+		return Refuse (ppWhy, "not a shared library (a program)", -KAPI_EINVAL);
+	}
+	pPlan->bLib = bLib;
+	unsigned nDyn = 0;
+
 	for (unsigned i = 0; i < Ehdr.e_phnum; i++)
 	{
 		Elf64_Phdr Phdr;
 		if (!ReadAll (pSrc, Ehdr.e_phoff + (u64) i * Ehdr.e_phentsize, &Phdr, sizeof Phdr))
 		{
 			return Refuse (ppWhy, "read failed (the program headers)", -KAPI_EIO);
+		}
+		if (bLib && Phdr.p_type == PT_DYNAMIC)
+		{
+			nDyn++;
+			pPlan->ulDynVAddr = Phdr.p_vaddr;
+			pPlan->ulDynSize = Phdr.p_filesz;
+			continue;
 		}
 		if (Phdr.p_type != PT_LOAD || Phdr.p_memsz == 0)
 		{
@@ -80,11 +114,21 @@ int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy)
 		{
 			return Refuse (ppWhy, "segment past end of image", -KAPI_EINVAL);
 		}
-		if (   !IS_USER_VA (Phdr.p_vaddr)
-		    || Phdr.p_vaddr + Phdr.p_memsz - 1 < Phdr.p_vaddr		// (wraps)
-		    || !IS_USER_VA (Phdr.p_vaddr + Phdr.p_memsz - 1))
+		if (bLib)
 		{
-			return Refuse (ppWhy, "segment out of user range", -KAPI_EINVAL);
+			// Linked at 0: the kernel places it (its whole span is checked against the arena then).
+			if (Phdr.p_vaddr >= ELF_LIB_MAX_SPAN || Phdr.p_memsz > ELF_LIB_MAX_SPAN - Phdr.p_vaddr)
+			{
+				return Refuse (ppWhy, "library segment out of range", -KAPI_EINVAL);
+			}
+		}
+		else if (   !IS_USER_VA (Phdr.p_vaddr)
+			 || Phdr.p_vaddr + Phdr.p_memsz - 1 < Phdr.p_vaddr		// (wraps)
+			 || !IS_USER_VA (Phdr.p_vaddr + Phdr.p_memsz - 1))
+		{
+			return Refuse (ppWhy, Ehdr.e_type == ET_DYN && Phdr.p_vaddr < USER_VA_BASE
+					      ? "segment out of user range (a shared library, not a program)"
+					      : "segment out of user range", -KAPI_EINVAL);
 		}
 		if (pPlan->nSegs == ELF_MAX_SEGS)
 		{
@@ -114,6 +158,27 @@ int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy)
 	}
 
 	pPlan->ulEntry = Ehdr.e_entry;
+	if (!bLib) return 0;
+
+	// The shape of user/lib.ld: the code (read-only, from 0), then the data the kernel relocates.
+	if (pPlan->nSegs != 2 || (pPlan->Seg[0].nFlags & PF_W) != 0 || (pPlan->Seg[1].nFlags & PF_W) == 0
+	    || (pPlan->Seg[1].nFlags & PF_X) != 0 || KPAGE_ALIGN_DOWN (pPlan->Seg[0].ulVAddr) != 0
+	    || pPlan->Seg[1].ulVAddr < pPlan->Seg[0].ulVAddr)
+	{
+		return Refuse (ppWhy, "not a library's two segments (code, then data)", -KAPI_EINVAL);
+	}
+	const TElfSeg &D = pPlan->Seg[1];
+	if (   nDyn != 1 || pPlan->ulDynSize < sizeof (Elf64_Dyn) || pPlan->ulDynVAddr < D.ulVAddr
+	    || pPlan->ulDynSize > D.ulFileSz || pPlan->ulDynVAddr - D.ulVAddr > D.ulFileSz - pPlan->ulDynSize)
+	{
+		return Refuse (ppWhy, "no dynamic section in the library's data", -KAPI_EINVAL);
+	}
+	// The export table starts with its version and its size (two u32) and init's pointer.
+	if (D.ulFileSz < 16 || pPlan->ulEntry < D.ulVAddr || pPlan->ulEntry - D.ulVAddr > D.ulFileSz - 16
+	    || (pPlan->ulEntry & 7) != 0)
+	{
+		return Refuse (ppWhy, "the library's export table (the ELF entry) is not in its data", -KAPI_EINVAL);
+	}
 	return 0;
 }
 
