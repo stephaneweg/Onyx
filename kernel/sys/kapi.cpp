@@ -2764,6 +2764,7 @@ int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 	return r;
 }
 int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
+int  kapi_sound_output (int nOut) { return SoundOutput (nOut); }	// (v84) which output plays
 int kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns)
 {
 	struct kapi_fm_instrument In;

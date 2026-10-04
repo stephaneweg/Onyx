@@ -1740,6 +1740,14 @@ against N+1 is refused by the library N).
 > open, then 1 / 0. `ask_text_begin (title, msg, ok, cancel, text)` asks for a line of text
 > the same way (for an app that never has the keyboard: the dock); `ask_text_poll (out, cap)`
 > returns -1, then 1 (the text in `out`) / 0.
+>
+> **The output (kapi v84).** An app never chooses a device: it plays into the one producer
+> (44.1 kHz stereo), and the kernel's output — the jack, a USB audio device or HDMI — adapts (the
+> rate, the sample format, the volume). `kapi_sound_output (-1)` says where the sound plays and
+> which outputs are there (`KAPI_SND_OUT_NOW` / `_ASKED` / `_HAS`), `kapi_sound_output
+> (KAPI_SND_OUT_USB)` chooses one; `volume_set_output` (`volume.h`) also keeps it in
+> `SD:/etc/sound.ini`. That is the Sound applet's and `/bin/volume`'s business: an app has no
+> reason to call it. `sound_status`' rate stays 44100 whatever the output.
 
 > **An app in another language** (`wtk/lang.h`). The sources keep their English words, wrapped:
 > **`TR ("Save")`** is the word in the language the user chose, else the English itself (a `const char *`
