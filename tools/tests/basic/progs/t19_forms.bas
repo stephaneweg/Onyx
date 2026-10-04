@@ -1,9 +1,9 @@
-' t19_forms.bas -- what QBStudio's code needs: PROPERTY (get / set) in a TYPE, the controls moved / shown / enabled /
+' t19_forms.bas -- what QBStudio's code needs: PROPERTY (get / set) in a CLASS, the controls moved / shown / enabled /
 ' focused, a resizable window and its -2 (resized) event, WINDOWWIDTH / WINDOWHEIGHT, menu items (their ids)
-TYPE Control
+CLASS Control
   id AS INTEGER
   Text AS FUNCTION
-END TYPE
+END CLASS
 PROPERTY Control.Text AS STRING
   RETURN "text of" + STR$(this.id)
 END PROPERTY
@@ -21,7 +21,7 @@ SUB Control.Move (x, y, w, h)
 END SUB
 
 WINDOW "Forms", 380, 260, 1
-DIM SHARED b AS Control, t AS Control
+DIM SHARED b AS Control (), t AS Control ()
 b.id = BUTTON(10, 10, 80, 28, "Go")
 t.id = TEXTBOX(10, 50, 200, 26, "")
 mQuit = MENUITEM("&File", "&Quit", "Ctrl+Q")

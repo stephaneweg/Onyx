@@ -4047,12 +4047,10 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
 - **Types**: `%` INTEGER, `&` LONG, `!` SINGLE, `#` DOUBLE (or `AS INTEGER` …, `DEFINT A-Z` …,
   `DEFSTR`); INTEGER / LONG round when stored and raise *Overflow*; DOUBLEs print 15 digits;
   fixed strings `STRING * n`. **User types**: `TYPE … END TYPE` records (nested, in arrays,
-  passed to SUBs, copied by `=`), `LEN (var)` their size, with **methods** (Onyx, in the way
-  of FreeBASIC): `test AS SUB (a AS INTEGER)` declared in the `TYPE`, defined by
-  `SUB Point.Test (a)` where `this` is the object (`this.x = a`, `RETURN this.x + a` in a
-  FUNCTION), called as `p.Test 3`, `y = p.F (2)`, `t(i).Test 1`; a **constructor**
-  `SUB Point.new (…)`: `DIM p AS Point (1, 2)` calls it (`DIM p AS Point` does not), and
-  `p = NEW Point (1, 2)` makes a new object. `DEF FN`, `RETURN value` in a
+  passed to SUBs, copied by `=`), `LEN (var)` their size; a TYPE **only holds data** — methods
+  are for a `CLASS` (below; since 2026-10-05 `SUB Point.Test` on a TYPE is an error: write
+  `CLASS Point … END CLASS` and make the objects with `NEW Point` or `DIM p AS Point ()`).
+  `DEF FN`, `RETURN value` in a
   FUNCTION, `MID$ (…) = …`, `LSET` / `RSET`, `PRINT USING` (all the `#` `,` `.` `+` `-` `**`
   `$$` `^^^^` `!` `\ \` `&` `_` fields).
 - **Classes** (Onyx; the example `classes.bas`): a `TYPE` is a **value** (`b = a` copies it); a
@@ -4110,15 +4108,19 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
     `IMPLEMENTS A, B` (up to 8): the class must have every method of the interface, with the same
     parameters; a variable or a parameter `AS` an interface accepts any object whose class
     implements it.
-  - **Methods** are written outside the block, like a TYPE's: `SUB Class.Name`, `this` is the
-    object. A plain method is called as written for the variable's class; a **`VIRTUAL`** one is
+  - **Methods** are written outside the block: `SUB Class.Name (…)` / `FUNCTION Class.Name (…)`,
+    where `this` is the object (`this.x = a`, `RETURN this.x + a`); they are called as
+    `p.Test 3`, `CALL p.Test (3)`, `y = p.F (2)`, `list(i).Test 1`. **Properties**:
+    `PROPERTY Class.Name AS type … END PROPERTY` (the getter) and `PROPERTY Class.Name (v AS
+    type) … END PROPERTY` (the setter): `p.Name = v`, `a = p.Name`. A plain method is called as written for the variable's class; a **`VIRTUAL`** one is
     looked up in the **object's own class** when the program runs, and a child redefines it with
     **`OVERRIDE`** (same parameters and result; forgetting the word is an error). **`ABSTRACT`**
     declares a virtual method without a body (one line, no `END SUB`): the class cannot be
     created with `NEW` until a child has defined them all. **`BASE.Name`** calls the parent's
     version.
   - **Constructor** `SUB Class.new (…)`: called by `NEW Class (args)` and `DIM v AS Class (args)`
-    (`DIM v AS Class` alone leaves `NOTHING`). A child without a constructor uses its parent's;
+    (`DIM v AS Class` alone leaves `NOTHING`; `DIM v AS Class ()` makes an object, with or without
+    a constructor). A child without a constructor uses its parent's;
     a child's constructor calls **`BASE.new args`** — if it does not, the parent's constructor is
     called first by itself when it has no parameters (with parameters, `BASE.new` is required).
     **Destructor** `SUB Class.delete ()`: called when the last reference to the object goes (a
@@ -4219,7 +4221,7 @@ Layout: `MOVECONTROL id, x, y, w, h`, `SHOWCONTROL id, shown`, `ENABLECONTROL id
 `FOCUSCONTROL id`; `WINDOW title$, w, h, 1` makes the window **resizable** (`WAITEVENT` then
 gives **-2** after a resize, `WINDOWWIDTH` / `WINDOWHEIGHT` its new client size); menus:
 `id = MENUITEM("&File", "&Quit", "Ctrl+Q")` (an item `"-"` is a separator; `WAITEVENT` gives
-`id` when it is chosen). Records may have **properties**: `PROPERTY T.Name AS STRING ... END
+`id` when it is chosen). A CLASS may have **properties**: `PROPERTY T.Name AS STRING ... END
 PROPERTY` (the getter, `RETURN` its value) and `PROPERTY T.Name (v AS STRING) ... END PROPERTY`
 (the setter), then `x.Name = "a"` and `a$ = x.Name` — what QBStudio's generated code uses.
 System: `NOTIFY`, `MSGBOX`, `CLIPBOARD$` / `SETCLIPBOARD`, `OPENFILE$` / `SAVEFILE$` (the file

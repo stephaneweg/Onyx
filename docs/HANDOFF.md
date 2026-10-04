@@ -9,7 +9,8 @@ answer in French. The docs stay in English.
 - **Done (phase A)**: objects in BASIC, on the VM. The user's choices: `TYPE` stays a value; a new
   **`CLASS`** is a reference (C#'s struct / class); methods are written outside the block
   (`VIRTUAL` / `OVERRIDE` / `ABSTRACT SUB Class.Name`); `ABSTRACT` and a destructor
-  (`SUB Class.delete`) are in, `PRIVATE` is not. `CLASS B EXTENDS A IMPLEMENTS I, J`,
+  (`SUB Class.delete`) are in, `PRIVATE` is not; **a TYPE no longer has methods** (asked the same
+  day: a `SUB Type.Name` is a compile error; QBStudio's `Control` / `Window` became classes). `CLASS B EXTENDS A IMPLEMENTS I, J`,
   `INTERFACE ... END INTERFACE`, `BASE.Name`, `NEW`, `NOTHING`, `x IS Class`. The language: docs/04
   §13 (*Classes*); the internals: docs/03 (*Onyx BASIC*, *Classes*). New opcodes at the end of
   `enum Op` (`OP_NIL` ... `OP_CAST`, then `OP_COUNT_`), `.bax` format 2 (format 1 still loads).

@@ -451,7 +451,8 @@ public:
 			if (toks[p].t != T_ID || toks[p + 1].t != T_ID || !bseq (toks[p + 1].id, "AS") || toks[p + 2].t != T_ID)
 			{ pos = p; fail ("TYPE field: name AS type expected"); return false; }
 			if (bseq (toks[p + 2].id, "SUB") || bseq (toks[p + 2].id, "FUNCTION"))
-			{	// a method's declaration: the SUB Type.name / FUNCTION Type.name defines it
+			{	// a method's declaration (optional): the SUB Class.name / FUNCTION Class.name defines it
+				if (bseq (endWord, "TYPE")) { pos = p; fail2 ("A TYPE only holds data -- methods are for a CLASS: ", toks[p].id); return false; }
 				while (toks[p].t != T_NL && toks[p].t != T_EOF && !(toks[p].t == T_OP && toks[p].op == ':')) p++;
 				continue;
 			}
@@ -713,7 +714,8 @@ public:
 		d.cls = mt; d.mod = mod; d.vslot = -1; d.islot = islot; d.tok = p;
 		if (mod && mt < 0) { pos = p; fail2 ("VIRTUAL / OVERRIDE / ABSTRACT are for a CLASS's methods: ", name); return; }
 		if (mt >= 0 && iface < 0 && P->types[mt].kind == TK_IFACE) { pos = p; fail2 ("An interface's methods are declared in its INTERFACE block: ", name); return; }
-		if (mt >= 0)				// SUB Type.name: a method; THIS = the object
+		if (mt >= 0 && P->types[mt].kind == TK_TYPE) { pos = p; fail2 ("A TYPE only holds data -- methods are for a CLASS: ", name); return; }
+		if (mt >= 0)				// SUB Class.name: a method; THIS = the object
 		{
 			bscpy (d.pname[0], "THIS", 48); d.pty[0] = TY_REC + mt; d.pnt[0] = NT_SNG; d.parr[0] = false; d.np = 1;
 		}
@@ -987,7 +989,6 @@ public:
 				if (f >= 0) { emit2 (OP_FLD, f - P->types[t - TY_REC].first); t = fnames[f].ty; if (t == TY_NUM && fnames[f].nt == NT_DBL) dblSeen = true; continue; }
 				int m = findMethod (t, part);
 				if (m < 0) { fail2 ("No such field or method: ", part); return TY_NUM; }
-				if (!tkind (t)) { fail2 ("A TYPE's method needs a variable: ", part); return TY_NUM; }
 				if (*c) { fail2 ("A method call ends the name: ", part); return TY_NUM; }
 				if (!pdecls[m].isFunc) { fail2 ("A SUB has no value: ", pdecls[m].name); return TY_NUM; }
 				if (pdecls[m].retTy == TY_NUM && pdecls[m].retNt == NT_DBL) dblSeen = true;
@@ -1108,8 +1109,8 @@ public:
 		else emit2 (r.global ? OP_REFG : OP_REFL, r.slot);
 		for (int i = 0; i < r.nfld; i++) emit2 (OP_FADDR, r.fld[i]);
 	}
-	// THIS for a method call on r: a TYPE's record by reference, an object (a class, an interface) itself.
-	void emitThis (const Ref &r) { if (tkind (r.ty)) emitLoad (r); else emitAddr (r); }
+	// THIS for a method call on r: the object (only a CLASS or an INTERFACE has methods).
+	void emitThis (const Ref &r) { emitLoad (r); }
 	// "BASE.Name" in a class's method: the parent's method, called on THIS without looking at the object's class.
 	bool isBaseCall ()
 	{
@@ -1258,7 +1259,7 @@ public:
 		int ci = findMethod (TY_REC + t, "NEW");
 		if (ci >= 0 && (isOp ('(') || pdecls[ci].np == 1))
 		{
-			if (cls) loadVar (tmp); else emit2 (tmp.global ? OP_REFG : OP_REFL, tmp.slot);
+			loadVar (tmp);
 			callMethod (ci, true, true);
 		}
 		else if (cls && isOp ('(') && peekIsOp (')')) { next (); next (); }
@@ -2287,7 +2288,7 @@ public:
 					if (ci < 0) { next (); next (); }
 					else
 					{
-						if (cls) loadVar (v); else emit2 (v.global ? OP_REFG : OP_REFL, v.slot);
+						loadVar (v);
 						callMethod (ci, true, true);
 					}
 				}

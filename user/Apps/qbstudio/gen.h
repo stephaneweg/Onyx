@@ -22,11 +22,11 @@ namespace qs {
 // The controls' library: the objects the generated code and yours use
 static const char *const LIBRARY =
 "' QBStudio's controls (made by QBStudio: the objects of a window's controls)\n"
-"TYPE Control\n"
+"CLASS Control\n"
 "  id AS INTEGER\n"
 "  off AS INTEGER\n"
 "  hide AS INTEGER\n"
-"END TYPE\n"
+"END CLASS\n"
 "PROPERTY Control.Text AS STRING\n"
 "  RETURN GETTEXT$ (this.id)\n"
 "END PROPERTY\n"
@@ -68,9 +68,9 @@ static const char *const LIBRARY =
 "SUB Control.AddItem (s AS STRING)\n"
 "  SETTEXT this.id, s\n"
 "END SUB\n"
-"TYPE Window\n"
+"CLASS Window\n"
 "  id AS INTEGER\n"
-"END TYPE\n"
+"END CLASS\n"
 "PROPERTY Window.Width AS INTEGER\n"
 "  RETURN WINDOWWIDTH\n"
 "END PROPERTY\n"
@@ -142,8 +142,8 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 	for (int i = 0; i < ctl.n; i++) { El *e = ctl[i].e; a.push (e->x); a.push (e->y); a.push (e->w); a.push (e->h); }
 
 	o.printf ("' %s.form.bas -- made by QBStudio from %s.form: do not edit (it is made again at each change of the form)\n", form, form);
-	o.printf ("DIM SHARED %s AS Window\n", form);
-	for (int i = 0; i < ctl.n; i++) o.printf ("DIM SHARED %s AS Control\n", ctl[i].var);
+	o.printf ("DIM SHARED %s AS Window ()\n", form);			// (objects: made here)
+	for (int i = 0; i < ctl.n; i++) o.printf ("DIM SHARED %s AS Control ()\n", ctl[i].var);
 	o.puts ("\n");
 	// _Create
 	o.printf ("SUB %s_Create\n  WINDOW ", form); bstr_keep (o, win->hasText ? win->text : form); o.printf (", %d, %d%s\n", W0, H0, win->flag ("resizable") ? ", 1" : "");

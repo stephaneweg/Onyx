@@ -3156,7 +3156,7 @@ barwidth = 40
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
 - **QBStudio** `apps/qbstudio` (`user/Apps/qbstudio/`, a newlib app: the `qbstudio.elf` rule compiles the core's
   sources into it): `form.h` (the `.form` text read / written, the layout engine: `form_layout` places every
-  element for a size), `gen.h` (the controls' library -- `TYPE Control` with PROPERTYs --, `generate ()`: the
+  element for a size), `gen.h` (the controls' library -- `CLASS Control` with PROPERTYs, each control's object made by `DIM SHARED name AS Control ()` --, `generate ()`: the
   window's code, each place an affine function of the window's size, found by laying the form out at two sizes;
   the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (the
   code editor), `designer.h` (the window drawn with real wtk widgets under a transparent `Overlay` that takes the
@@ -3201,11 +3201,13 @@ barwidth = 40
   `.bax` and `.bas` to `/bin/basic` (an app's `main.bax` before its `main.bas`). The tests run every program a second time
   through a `.bax` (`BAX=1`). **Add opcodes / builtins / statements at the end** of their
   enums: the counts in the header change, old `.bax` files are then refused cleanly.
-- **Methods**: `SUB Type.Name` (the part before the last dot is a TYPE) is a procedure
-  `TYPE.NAME` whose first parameter is `THIS`, the record by reference; `fieldPath ()` turns
-  an unknown last part of a record path into `Ref.method`, and the call pushes the record's
-  address (`emitAddr`) then the arguments (`callMethod`). `SUB Type.new` is the constructor:
-  `DIM v AS Type (args)` and `NEW Type (args)` (`OP_NEWREC`: a fresh record) call it.
+- **Methods**: `SUB Class.Name` (the part before the last dot is a CLASS) is a procedure
+  `CLASS.NAME` whose first parameter is `THIS`, the object; `fieldPath ()` turns an unknown last
+  part of a path into `Ref.method`, and the call pushes the object (`emitThis`) then the
+  arguments (`callMethod`). `SUB Class.new` is the constructor: `DIM v AS Class (args)` and
+  `NEW Class (args)` (`OP_NEWREC`: a fresh object) call it. A TYPE only holds data: a method
+  on a TYPE is refused (the user's decision, 2026-10-05; before, a TYPE had methods with `THIS`
+  by reference).
   Errors: `trap ()` keeps the SUB frames (each remembers its value-stack depth, `sp0`), so
   `RESUME [NEXT]` continues inside the procedure, as in QBasic.
 - **Classes** (`CLASS` / `INTERFACE`; the language: docs/04 §13): a class and an interface are
@@ -3222,7 +3224,7 @@ barwidth = 40
   same parameters, every interface method present, abstract classes). `findMethod ()` walks up the
   parents; `callMethod ()` emits `OP_CALL` (a plain method, `BASE.Name`, a constructor), `OP_VCALL
   slot argc` or `OP_ICALL interface slot argc`. `THIS` of a class's method is the **object by
-  value** (`emitThis`: `emitLoad` for an object, `emitAddr` for a TYPE's record), and an object
+  value** (`emitThis`), and an object
   argument is never passed by reference. `conv ()` is the assignment rule (up: nothing; down or
   through an interface: `OP_CAST type`). The class words are not in `KEYWORDS`: they are known by
   their place (`classHeader`, `procModifier`, `isBaseCall`, `NOTHING` when no variable has the
