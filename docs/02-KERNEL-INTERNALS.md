@@ -1139,7 +1139,9 @@ v81 = **the pointer's shape**: `set_cursor` (slot 259) (*v81: set_cursor* below)
 v82 = **a window resized by its frame**: `win_resizable` (slot 260), `GUI_EVENT_WINRESIZE`
 (*v82: win_resizable* below),
 v83 = **shared libraries** (§7 *Shared libraries*; [`docs/SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md)):
-`lib_open` (slot 261), `KAPI_IMG_LIB` in `kapi_image_info.flags` (*v83: lib_open* below).
+`lib_open` (slot 261), `KAPI_IMG_LIB` in `kapi_image_info.flags` (*v83: lib_open* below),
+v84 = **the sound's output**: `sound_output` (slot 262), `KAPI_SND_OUT_*` — the jack, a USB audio
+device or HDMI behind the same producer (*v84: sound_output* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1527,6 +1529,19 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v84: sound_output
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 262 | `sound_output (out)` | `out` = `KAPI_SND_OUT_AUTO` (0) / `_JACK` (1) / `_USB` (2) / `_HDMI` (3): that output from now on — the running sound switches at once; an output that is not there plays nothing until it is. `out` = −1: nothing changed. → what plays now (`KAPI_SND_OUT_NOW`: 0 nothing yet, or no device), what is asked (`KAPI_SND_OUT_ASKED`) and the outputs present (`KAPI_SND_OUT_HAS (r, o)`: the jack unless the board has none, USB when a device is plugged, HDMI), or −1 (a bad value). |
+
+The kernel does not keep the choice across a restart: the Sound applet and `/bin/volume` write
+`SD:/etc/sound.ini` (`output = usb`, beside `volume` and `mute`: `user/volume.h`), which the kernel
+reads when the sound first starts. No other sound call changes: see §13 *The output:
+`COnyxSoundDevice`*. Tests: `sh tools/tests/run_sound_resample_test.sh` (the rate converter, on
+the PC); on the Pi `volume output [auto|jack|usb|hdmi]` then `tone`, and the kernel log's `sound:
+output: …` lines.
 
 ### v83: lib_open
 
@@ -1992,10 +2007,34 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   §11): the scheduler, every process, the interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
   not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 are **app cores**
   (§14). A failed start is only a warning (no sound producer, no app cores).
-- **The device.** `COnyxSoundDevice` derives from Circle's `CPWMSoundBaseDevice` (PWM + DMA,
-  the 3.5 mm jack; 44.1 kHz, 1024-frame chunks) and overrides `GetChunk` — the "producer" —
-  which is called from the DMA completion interrupt. It is created and started on the first
-  `sound_acquire` (not at boot).
+- **The output: `COnyxSoundDevice` (v84).** One producer, several outputs, one running at a time
+  (`sys/sound.cpp`): the **jack** (`COutJack`, Circle's `CPWMSoundBaseDevice`: PWM + DMA, 44.1 kHz,
+  the producer's chunks as they are), a **USB audio device** (`COutUSB`, `CUSBSoundBaseDevice`: a
+  headset, a DAC; 48 kHz, 16-bit samples or 24-bit ones packed in three bytes) and **HDMI**
+  (`COutHDMI`, `CHDMISoundBaseDevice`: the screen; 48 kHz, each sample framed for IEC958,
+  576-frame chunks). Each class overrides Circle's `GetChunk` — called from the output's
+  completion interrupt — and takes the producer's frames (`SourceTake` / `SourceDone`). **The
+  output adapts, the producer and the apps do not change**: the 48 kHz outputs pull through a
+  rate converter (`sys/sound_resample.h`: linear interpolation, integer, a fraction `nFrac /
+  48000` that never drifts), in the device's sample format. Which output: `SD:/etc/sound.ini`'s
+  `output = auto | jack | usb | hdmi` (read when the sound first starts, or when an app first
+  asks), changed at once by `sound_output` (`OutputUpdate`: the running device cancelled, waited
+  for, deleted, the new one made). `auto`: a USB audio device if there is one (Circle's
+  `uaudio1-1`), else the jack, else HDMI on a board without a jack (the Pi 400). The sound is
+  started on the first `sound_acquire` (not at boot), and runs whether or not an output could be
+  started.
+- **No output: the drain.** A USB device unplugged — or an output asked for that is not there,
+  or that could not start — plays nothing, and **no other output takes over**: a kernel timer
+  (every tick, `DrainTimer`) drops the producer's chunks at the rate they would have played, so
+  the apps' streams go on as if they were heard. `SoundPoll` (every 100 ms, from the kernel's
+  input task, beside the USB plug-and-play) makes the USB output again when a device is back —
+  the same one or another —, without a restart. In `auto`, once a USB device was chosen it stays
+  the output (unplugged: silence), until another output is asked for.
+- **The volume.** The master volume (0..10, mute: v60) is one interface for the whole system;
+  the output applies it — through the device's own control when it has one (`CSoundController`:
+  `ControlVolume` in dB below the control's maximum, the level's squared curve: a USB headset),
+  else by the software gain (`s_Gain`, in `GetChunk`); the mute is always the software's. It is
+  applied again at each change of output and when a USB device comes back.
 - **Core 1 = the producer.** It sleeps in `WFE` until the device starts, then keeps
   `SND_AHEAD` (4) chunks rendered ahead in a ring; `GetChunk` only copies the next chunk
   (zeros if core 1 fell behind) and `SEV`s core 1. Without `ARM_ALLOW_MULTI_CORE` the same

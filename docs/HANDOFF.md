@@ -54,20 +54,44 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Shared libraries (decided 2026-10-04: `docs/SHARED-LIBS-PLAN.md`, step 0 done) and the GUI in user space (a study)
+## Several users: studied, not started (2026-10-05) — `docs/MULTI-USER-PLAN.md`
 
-`docs/GUI-USERSPACE-STUDY.md`: the window manager / compositor can leave the kernel (a `wsd` process,
-the GUI kapi slots redirected into a shared client library so no app is rebuilt); wtk inside the server
-or in a process of its own is ruled out (304 `onDraw` overrides, 418 derived classes in the apps);
-recommended first, **the user's design**: shared **PIC libraries that publish their entry points in a
-table filled at load time** (the `kapi` model; no link-time fixed address, no `ld.so`), one physical copy
-on the v77 program images, `kapi_lib_open` → the table; FreeType first (a C library), then wtk with its
-C++ layouts and virtual order frozen (generated thunks). Open decisions listed at its end.
-**The design is decided** — the plan to implement, with the tests to automate on the Pi:
-`docs/SHARED-LIBS-PLAN.md` (the user's decisions D1–D8, the defaults P1–P6, the kernel's changes for
-kapi v83 `lib_open`, the C++ rules for wtk, the tests). Step 0 is done: `tools/tests/shlib/check_pic.sh`
-(the toolchain makes a PIC library with only `RELATIVE` relocations, the entry = its table). The user
-carries it on locally.
+The user asked to "see how" Onyx becomes multi-user (accounts and a login screen, the desktop started
+by the session, `/home/<user>`, rights on FAT through an index in `/etc` enforced by the kernel, remote
+access per user). The study, the proposed design and seven steps are in `docs/MULTI-USER-PLAN.md`.
+**Nothing is built, and no decision is taken**: its section 2 lists fourteen (D1–D14), each with a
+recommendation — get the user's answers before writing any code, then record them in that section.
+Step 0 (a real random generator behind `kapi_random`, PBKDF2 in the kernel) changes nothing visible and
+can go first. The printing work (`printd`, another session) is taken into account in its section 9.
+
+## Shared libraries: built (2026-10-05) — `SD:/lib/wtk.so`, `SD:/lib/ft.so`, every app on them
+
+**Where to read**: `docs/SHARED-LIBS-PLAN.md` section 0 (what was built, where it departs from the
+plan, the results), docs/02 §7 *Shared libraries* (the kernel: kapi v83 `lib_open`), docs/03 §5.6 (the
+generator, writing and using a library), **`user/wtk/abi.h` (the rules — read it before changing wtk)**.
+
+- **Changing wtk now**: a fix in a `.cpp` → rebuild `lib/wtk.so` only (`make -C user libs`), stage
+  `sdcard/lib/wtk.so`, publish the `wtk` package: every app gets it, none is rebuilt. A new function:
+  the same (the build appends it to `user/wtk/wtk.abi`: commit that file). **Never** add a field or a
+  virtual to a class of the headers: use the reserve (`Widget::reserved_` / `ext`, `wk_reserved0..7`,
+  `Root`'s) — `wtk/layout_lock.cpp` fails the library's build otherwise. A change in a header's
+  **inline** code reaches only the apps rebuilt after it. When the apps are rebuilt against a table
+  that grew: raise `wtk >= 1.<entries>` in `tools/pkg/packages.ini` (`[onyx]` and `[*apps]`) and the
+  `wtk` version in `versions.ini`.
+- **A new app**: link `lib/wtk.imp.a` (and `lib/ft.imp.a`) — the generic rules of `user/Makefile` do.
+  A static constructor of an app may use wtk: the bind constructors run first (priority 101; `user.ld`
+  now orders the priorities across files — it did not before).
+- **Still static**: Jet (the hosted build, `tools/webkit/build-web.sh`), the PC builds (the simulator,
+  Koton for Windows, macOS) — they compile `user/wtk/*.cpp` as before.
+- **Tests**: `sh tools/tests/run_image_test.sh` (PC), on the Pi `libtest`, then from the PC
+  `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app started) and `sh tools/tests/shlib/compat.sh`
+  + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat` (wtk N's program on wtk N+1).
+- **Next on this mechanism** (not started): other libraries as wanted — the user asked for an
+  **`audiokit.so`** (the study's result is in `IDEAS.md`: MeltySynth, the music decoders, a resampler, a
+  MIDI file reader, a sound output helper; MIT; to expose to BASIC too) —, then `libgui` and the
+  user-space window server `wsd` (`docs/GUI-USERSPACE-STUDY.md`), mbedTLS, newlib.
+- **Open**: the inline code with logic of wtk's headers was not moved into the library; `kmsg` is not
+  stopped by Ctrl+C over telnet since the shell's rework (the tests keep a second session in it).
 
 ## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
 

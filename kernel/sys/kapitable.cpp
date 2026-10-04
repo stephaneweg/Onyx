@@ -285,6 +285,8 @@ int kapi_set_cursor (int nShape);
 int kapi_win_resizable (int bOn, int nMinW, int nMinH);
 // v83 shared libraries (sys/kapi.cpp over proc/image.cpp)
 const void *kapi_lib_open (const char *pName, unsigned nMinVersion, int *pErr);
+// v84 the sound's output (sys/kapi.cpp over sys/sound.cpp)
+int kapi_sound_output (int nOut);
 
 }  // extern "C"
 
@@ -595,4 +597,5 @@ void KApiTableInit (void)
 	t->set_cursor        = kapi_set_cursor;		// (v81)
 	t->win_resizable     = kapi_win_resizable;	// (v82)
 	t->lib_open          = kapi_lib_open;		// (v83)
+	t->sound_output      = kapi_sound_output;	// (v84)
 }

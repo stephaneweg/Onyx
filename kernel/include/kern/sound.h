@@ -33,6 +33,8 @@ int  SoundWrite (unsigned nPid, const s16 *pFrames, unsigned nFrames);	// frames
 int  SoundStatus (unsigned *pRate, unsigned *pFreeFrames, unsigned *pOwnerPid);
 void SoundOnProcessGone (unsigned nPid);
 int  SoundVolume (int nVolume, int nMute);		// 0..10, mute 0 / 1 (-1: keep) -> volume | 0x100 if muted
+int  SoundOutput (int nOut);				// (v84) KAPI_SND_OUT_* (-1: ask) -> running | asked << 8 | present << 16
+void SoundPoll (void);					// every 100 ms (the kernel's input task): the USB output follows its device
 int  SoundConfig (unsigned nPid, int nChunkFrames, int nAhead);	// -> latency in frames, -1 not the owner
 #define SND_RING_PAGE	0x10000				// the mapped ring's page (one 64 KB app page)
 struct kapi_sound_ring;

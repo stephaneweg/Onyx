@@ -169,7 +169,12 @@
 //      whole system, placed by the kernel in the library arena (16 GB..32 GB), its data relocated
 //      once, mapped into the caller -> its export table (version, size, init, then its entries:
 //      append-only, as this table). + KAPI_IMG_LIB in kapi_image_info.flags. No existing call changes.
-#define KAPI_ABI_VERSION	83
+// v84: the sound's output (sys/sound.cpp, COnyxSoundDevice): + sound_output (slot 262): which output
+//      plays -- the jack (PWM), a USB audio device, HDMI, or auto (USB if there is one, else the jack,
+//      else HDMI on a board without a jack) --, what runs and which ones are there (KAPI_SND_OUT_*).
+//      The producer, the streams and every other sound call are unchanged: the output adapts (the
+//      rate 44.1 -> 48 kHz, the sample format, the volume by the device's own control when it has one).
+#define KAPI_ABI_VERSION	84
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -890,6 +895,15 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_LOADING	2		// being read from its file
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
 #define KAPI_IMG_LIB		8		// (v83) a shared library (lib_open), not a program
+
+// (v84) The sound's outputs (sound_output; SD:/etc/sound.ini "output = auto | jack | usb | hdmi").
+#define KAPI_SND_OUT_AUTO	0		// a USB audio device if there is one, else the jack, else HDMI
+#define KAPI_SND_OUT_JACK	1		// the 3.5 mm jack (PWM)
+#define KAPI_SND_OUT_USB	2		// a USB headset / DAC
+#define KAPI_SND_OUT_HDMI	3		// the screen (HDMI 0)
+#define KAPI_SND_OUT_NOW(r)	((r) & 0xFF)		// sound_output's result: what plays now (0: nothing)
+#define KAPI_SND_OUT_ASKED(r)	(((r) >> 8) & 0xFF)	// ... what is asked for
+#define KAPI_SND_OUT_HAS(r, o)	((((r) >> 16) >> (o)) & 1)	// ... is output o there
 #define KAPI_IMG_PATH_MAX	256
 
 // (v81) set_cursor: the pointer's shapes (kernel/gui/cursors.inc, drawn by tools/gui/gen_cursors.py).
@@ -1830,6 +1844,15 @@ struct TKApiTable
 	// R_AARCH64_RELATIVE), -ENOMEM (memory, or no room in the arena), -EMFILE (16 libraries in the
 	// process), -EIO, -ENAMETOOLONG, -EFAULT.
 	const void *(*lib_open) (const char *name, unsigned min_version, int *err);
+
+	// --- v84: the sound's output (sys/sound.cpp) ---
+	// sound_output: out = KAPI_SND_OUT_AUTO / _JACK / _USB / _HDMI: that output from now on (the
+	// running sound switches at once; an output that is not there -- no USB device -- plays nothing
+	// until it is); out = -1: nothing changed -> what plays now (KAPI_SND_OUT_NOW, 0: nothing yet or
+	// no device), what is asked (KAPI_SND_OUT_ASKED) and the outputs present (KAPI_SND_OUT_HAS), or -1
+	// (a bad value). Not kept across a restart by the kernel: the Sound applet writes SD:/etc/sound.ini
+	// ("output = usb"), read when the sound first starts.
+	int (*sound_output) (int out);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1900,6 +1923,7 @@ KAPI_CHECK_SLOT (net_stats, 258);
 KAPI_CHECK_SLOT (set_cursor, 259);
 KAPI_CHECK_SLOT (win_resizable, 260);
 KAPI_CHECK_SLOT (lib_open, 261);
+KAPI_CHECK_SLOT (sound_output, 262);
 
 #ifdef __cplusplus
 }
