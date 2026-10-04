@@ -1,38 +1,56 @@
 //
-// ls -- list a directory. Usage: ls [path]   (default: the current directory).
-// One entry per line; directories get a trailing '/'. Writes to stdout.
+// ls -- list folders and files.
+//   usage: ls [-l] [path ...]          (default: the current folder)
+// A folder: its entries, one per line, the folders with a trailing '/'. A file: its name (so
+// that a pattern works: ls *.txt). -l: each entry's size in bytes before its name. Several
+// paths: the files first, then each folder under a "name:" line.
 //
-#include "kapi.h"
-#include "applib.h"
+#define TOOL_NAME "ls"
+#include "tool.h"
 
-int main (void)
+static int o_long;
+
+static void entry (const char *name, int is_dir, long long size)
 {
-	char args[128];
-	kapi_get_args (args, sizeof (args));
+	if (o_long) { if (is_dir) t_puts ("         -"); else t_putnumw (size, 10); t_putc (' '); }
+	t_puts (name);
+	if (is_dir) t_putc ('/');
+	t_putc ('\n');
+}
 
-	// First whitespace-delimited token = the path (default root).
-	char path[128];
-	int i = 0, p = 0;
-	while (args[i] == ' ') i++;
-	while (args[i] && args[i] != ' ' && p < (int) sizeof (path) - 1) path[p++] = args[i++];
-	path[p] = '\0';
-	if (p == 0) { path[0] = '.'; path[1] = '\0'; }		// "." resolves to the cwd
-
-	void *d = kapi_opendir (path);
-	if (d == 0)
-	{
-		ax_puts ("ls: cannot open ");
-		ax_putln (path);
-		return 1;
-	}
-
-	struct kapi_dirent ent;
-	while (kapi_readdir (d, &ent))
-	{
-		ax_puts (ent.name);
-		if (ent.is_dir) ax_puts ("/");
-		kapi_stdout_write ("\n", 1);
-	}
-	kapi_closedir (d);
+static int list (const char *path)
+{
+	void *d = t_opendir (path);
+	if (d == 0) { t_err ("cannot open", path); return 1; }
+	struct t_dirent e;
+	while (t_readdir (d, path, &e)) entry (e.name, e.is_dir, e.size);
+	t_closedir (d);
 	return 0;
+}
+
+int tool_main (int argc, char **argv)
+{
+	int a = 1, rc = 0;
+	if (a < argc && t_streq (argv[a], "-l")) { o_long = 1; a++; }
+	if (a >= argc) return list (".");
+	if (argc - a == 1 && t_stat (argv[a], 0) != 1) return list (argv[a]);	// one folder: its entries alone
+
+	int nfiles = 0;
+	for (int i = a; i < argc; i++)				// the files, then the folders
+	{
+		long long size = 0;
+		int kind = t_stat (argv[i], &size);
+		if (kind == 1) { entry (argv[i], 0, size); nfiles++; }
+		else if (kind == 0) { t_err ("cannot open", argv[i]); rc = 1; }
+	}
+	int first = nfiles == 0;
+	for (int i = a; i < argc; i++)
+	{
+		if (t_stat (argv[i], 0) != 2) continue;
+		if (!first) t_putc ('\n');
+		first = 0;
+		t_puts (argv[i]); t_puts (":\n");
+		rc |= list (argv[i]);
+	}
+	return rc;
 }

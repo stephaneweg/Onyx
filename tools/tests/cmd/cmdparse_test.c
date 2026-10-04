@@ -68,13 +68,22 @@ static void l (const char *line, const char *want)
 	if (strcmp (got, want) != 0) { fails++; printf ("FAIL list: %s\n   got:  %s\n   want: %s\n", line, got, want); }
 }
 
-/* a command with its $ variables replaced -- cmd_expand */
-static void x (const struct CmdVars *v, const char *line, const char *want)
+/* file patterns: a stand-in for the shell's (the folder holds a.txt, b.txt, notes.md) */
+static int fake_glob (const char *pat, char *out, int cap, int *count)
 {
-	char got[CMD_LINE];
-	checks++;
-	if (cmd_expand (line, got, sizeof got, v) < 0 || strcmp (got, want) != 0)
-	{ fails++; printf ("FAIL expand: %s\n   got:  %s\n   want: %s\n", line, got, want); }
+	static const char *const names[] = { "a.txt", "b.txt", "notes.md" };
+	int o = 0;
+	*count = 0;
+	for (int i = 0; i < 3; i++)
+	{
+		const char *n = names[i];
+		size_t pl = strlen (pat), nl = strlen (n);
+		int hit = !strcmp (pat, "*") || (pat[0] == '*' && nl >= pl - 1 && !strcmp (n + nl - (pl - 1), pat + 1))
+			  || (!strcmp (pat, "?.txt") && nl == 5 && !strcmp (n + 1, ".txt"));
+		if (!hit || o + (int) nl + 1 > cap) continue;
+		memcpy (out + o, n, nl + 1); o += (int) nl + 1; (*count)++;
+	}
+	return o;
 }
 
 int main (void)
@@ -166,23 +175,16 @@ int main (void)
 	l ("echo '#' \"#x\" ; ls", "{echo '#' \"#x\" };{ ls}");
 	l ("wget http://h/?a=1&b=2", "{wget http://h/?a=1&b=2}");
 
-	/* script variables */
-	{
-		static const char *const av[] = { "run.sh", "one", "two words", "3" };
-		struct CmdVars v = { 4, av, 7 };
-		x (&v, "echo $1 $2 $3 $4.", "echo one two words 3 .");
-		x (&v, "echo $0 $# $?", "echo run.sh 3 7");
-		x (&v, "echo $*", "echo one two words 3");
-		x (&v, "echo \"$1\" '$1' \\$1", "echo \"one\" '$1' $1");
-		x (&v, "grep \"end$\" f ; echo $ $x 5$", "grep \"end$\" f ; echo $ $x 5$");
-		x (&v, "echo \"it's $1\" 'a\"$1'", "echo \"it's one\" 'a\"$1'");
-		x (&v, "echo a\\ b \"c\\\"$1\"", "echo a\\ b \"c\\\"one\"");
-		struct CmdVars none = { 0, 0, -9 };
-		x (&none, "echo [$1] $# $? [$*]", "echo [] 0 -9 []");
-		char small[8];
-		checks++;
-		if (cmd_expand ("echo $1$1$1", small, sizeof small, &v) != -1) { fails++; printf ("FAIL: an expansion too long accepted\n"); }
-	}
+	/* file patterns */
+	cmd_glob_hook = fake_glob;
+	t ("ls *.txt", "[ls][a.txt][b.txt]");
+	t ("cat ?.txt *.md > all", "[cat][a.txt][b.txt][notes.md] >all");
+	t ("echo * | wc", "[echo][a.txt][b.txt][notes.md] | [wc]");
+	t ("echo *.zip what?", "[echo][*.zip][what?]");
+	t ("echo '*.txt' \"*\" \\*.txt \\?","[echo][*.txt][*][*.txt][?]");
+	t ("grep 'a*b' *.md", "[grep][a*b][notes.md]");
+	cmd_glob_hook = 0;
+	t ("ls *.txt", "[ls][*.txt]");
 
 	printf ("%d checks, %d failed\n", checks, fails);
 	return fails != 0;

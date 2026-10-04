@@ -7,7 +7,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-${TMPDIR:-/tmp}/onyx_toolstest}
 rm -rf "$OUT"; mkdir -p "$OUT/w/sub/deep"
 export ASAN_OPTIONS=detect_leaks=0		# (a tool's memory goes with its process)
-TOOLS="grep wc head tail sed ed sort uniq cut tr tee nl find date sleep hexdump diff"
+TOOLS="ls cat grep wc head tail sed ed sort uniq cut tr tee nl find date sleep hexdump diff"
 for t in $TOOLS; do
 	gcc -std=gnu11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DTOOL_HOST \
 		"$ROOT/user/bin/$t.c" -o "$OUT/$t" || { echo "BUILD FAILED: $t"; exit 1; }
@@ -330,6 +330,30 @@ sub/deep
 [0]"	"find sub -maxdepth 1 | sort"
 t "find name ?"		"sub/deep/c.dat
 [0]"	"find sub -type f -name '?.d*'"
+# ---- ls / cat
+t "ls folder"		"a.txt
+deep/
+[0]"	"ls sub | sort"
+t "ls files"		"g
+nonl
+[0]"	"ls g nonl"
+t "ls -l"		"        31 g
+[0]"	"ls -l g"
+t "ls files and folder"	"g
+
+sub/deep:
+[0]"	"ls g sub/deep | head -3"
+t "ls missing"		"ls: cannot open nofile
+[1]"	"ls nofile"
+t "cat files"		"alpha
+no newline[0]"	"cat g nonl | head -1; cat g nonl | tail -c 10"
+t "cat stdin"		"5
+[0]"	"cat < g | wc -l"
+t "cat -n"		"     2	beta
+[0]"	"cat -n g | sed -n 2p"
+t "cat missing"		"cat: cannot open nofile
+[1]"	"cat nofile"
+
 t "find missing"	"find: cannot open nodir
 [1]"	"find nodir -type f"
 t "find a file"		"g

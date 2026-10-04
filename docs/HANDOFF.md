@@ -1236,7 +1236,21 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).
 
-## The shell made useful: text tools, scripts, the line editor (2026-10-04, branch `term_updates`: not merged, not staged, not published)
+## The shell made useful: text tools, scripts, the line editor (2026-10-04, branch `term_updates`; its second commit, the script language, is not merged; nothing staged, nothing published)
+
+- **The script language** (`user/bin/cmdscript.h`, at least a DOS `.bat`'s level; docs/04 §7 *Scripts*):
+  variables (`name=value`, `$name`; handed to the children as their environment, read back by a
+  child `cmd`), `$(command)`, `$((arithmetic))`, file patterns (`*.txt`: `cmd_glob_hook` in
+  `cmdparse.h`), `if` / `elif` / `else` / `fi`, `while` / `until` / `for … in` / `done`, `break`,
+  `continue`, `! command`; builtins `test` / `[ ]`, `echo`, `read`, `set`, `unset`, `shift`, `true`,
+  `false`. A block typed at the prompt is read up to its end (`> `). Ctrl-C stops a loop of builtins
+  too (the keyboard is polled between two commands; what was typed ahead is kept for the next
+  reader). `ls` (files, several paths, `-l`) and `cat` (`-n`) rewritten on `tool.h` for the patterns.
+  Tested: `cmdscript_test.c` (116 checks) and on the Pi as `cmd2` (a script with every construct, a
+  child script reading a parent's variable, a block at the prompt, `read`, Ctrl-C in an endless loop).
+  Not there: functions, `case`, here-documents, a block piped or redirected as a whole, background
+  jobs; `rm` / `cp` / `mv` / `mkdir` / `touch` still read the old argument line (a name with a blank
+  from a pattern breaks them).
 
 - **Tools** (`user/bin`, on `tool.h`; docs/04 §8): new `head tail sed ed sort uniq cut tr tee nl find
   date sleep hexdump diff`; `grep` (regular expressions, `-i -v -n -c -q -F`, files), `wc` (`-l -w -c`,
@@ -1255,8 +1269,7 @@ the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ft
   Ctrl-D, the arrows. The terminal: in the desktop simulator only. **Not tried**: a `.sh` command
   word and Ctrl-C on a nested script with the real `cmd` in place (they need `SD:/bin/cmd` replaced).
 - **To do after the merge**: `make` + `make stage`, then publish (`onyx`: `bin/`, the terminal);
-  `python docs/build_docs.py` (no pandoc on this PC). Ideas: a pager (`more`), `if` / `for` and
-  variables in scripts, alternation in `regex.h`, a history kept across sessions, the redraw of a
+  `python docs/build_docs.py` (no pandoc on this PC). Ideas: a pager (`more`), alternation in `regex.h`, a history kept across sessions, the redraw of a
   line longer than the telnet client's window (needs its width: NAWS).
 
 ## Other open items

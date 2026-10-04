@@ -645,7 +645,13 @@ not by a program in `/bin`:
 | `pwd` | prints the current working directory. |
 | `clear` | clears the screen (empties the scrollback). |
 | `exit [code]` | ends the shell (the terminal closes; a script stops there), with that exit code. |
-| `source <script> [args]` (or `. <script>`) | runs a script's lines **in this shell**: its `cd` stays (see *Scripts*). |
+| `source <script> [args]` (or `. <script>`) | runs a script's lines **in this shell**: its `cd` and its variables stay (see *Scripts*). |
+| `echo [-n] <text…>` | writes its arguments (`-n`: without the final newline). |
+| `test <expression>` (or `[ <expression> ]`) | a condition: exit code 0 when it is true (see *Scripts*). |
+| `read [name]` | waits for a line typed and puts it in the variable (without a name: a pause until Enter). |
+| `set` · `unset <name>…` | lists the variables · removes some. |
+| `shift [n]` | drops the script's first argument(s): `$2` becomes `$1`… |
+| `true` · `false` | exit code 0 · 1. |
 
 ### Launching a program
 
@@ -688,13 +694,14 @@ cp a.txt b.txt || echo "the copy failed"
 ### Quotes and escapes
 
 Blanks separate the arguments, `|`, `<`, `>` are the pipe and the redirections, `;`, `&&`, `||`
-separate commands and `#` starts a comment — unless they are **quoted**:
+separate commands, `#` starts a comment, `$` is replaced (see *Scripts*) and a word with `*` or
+`?` is a **file pattern** (below) — unless they are **quoted**:
 
 | Syntax | Effect |
 |---|---|
 | `"text"` | one argument, exactly `text`: blanks, `\|`, `<`, `>`, `>>` and `'` are ordinary characters inside. `\"` is a literal `"`, `\\` a literal `\`; any other backslash stays as it is (`"a\nb"` reaches the program as `a\nb`). |
 | `'text'` | one argument, exactly `text`, with **no** escape at all (a `'` cannot appear inside: use double quotes for it). |
-| `\x` (outside quotes) | a literal `x`, for `x` one of `"` `'` `\` `<` `>` `\|` `;` `&` `#` or a blank (`my\ file.txt`). A backslash before any other character stays (`SD:\dir` is unchanged). `\$` is a literal `$` (see *Scripts*). |
+| `\x` (outside quotes) | a literal `x`, for `x` one of `"` `'` `\` `<` `>` `\|` `;` `&` `#` `*` `?` or a blank (`my\ file.txt`). A backslash before any other character stays (`SD:\dir` is unchanged). `\$` is a literal `$` (see *Scripts*). |
 
 Quoted parts join the unquoted text next to them into one word (`ab"c d"'e'` is the single
 argument `abc de`); quotes can also hold a redirection's file name (`> "my notes.txt"`). An
@@ -741,6 +748,22 @@ ps                      # list the processes
 run mandelbrot          # launch a graphical application
 ```
 
+### File patterns
+
+A word holding `*` (any characters) or `?` (one character) outside quotes is replaced by the
+**names that match** in the folder, sorted — upper and lower case alike, as the card's names:
+
+```sh
+ls *.txt                  # the text files of the current folder
+cat SD:/docs/chap?.md > book.md
+wc -l *.c | tail -n 1
+grep -n TODO SD:/notes/*.txt
+```
+
+Only the last part of a path may hold a pattern (`SD:/docs/*.md`, not `SD:/*/a.md`). When no name
+matches, the word stays as written (`find . -name *.zip` still works when the folder has no
+`.zip`; quote the pattern — `"*.zip"` — to be sure the tool gets it).
+
 ### Scripts
 
 A **script** is a text file of command lines, run one after the other — exactly what you would
@@ -749,48 +772,121 @@ type (pipes, redirections, `;` `&&` `||`, comments). Write it with `ed` (§8), t
 
 | Command | Effect |
 |---|---|
-| `textlist.sh [args]` | a command word ending with **`.sh`** is a script: looked for in the **current folder**, then in **`SD:/bin`** (a path works too: `SD:/scripts/textlist.sh`). It runs in a shell of its own: its `cd` does not change yours. Usable in a pipe (`report.sh \| grep total > out.txt`). |
+| `report.sh [args]` | a command word ending with **`.sh`** is a script: looked for in the **current folder**, then in **`SD:/bin`** (a path works too: `SD:/scripts/report.sh`). It runs in a shell of its own: its `cd` does not change yours. Usable in a pipe (`report.sh \| grep total > out.txt`). |
 | `cmd <file> [args]` | the same for a file of any name. `cmd -c "line"` runs one command line. |
 | `source <file> [args]` | runs it **inside the current shell**: its `cd` stays when it ends. |
 
-In a script (and on any command line):
+The programs a script starts read the **keyboard** as usual; **Ctrl-C** stops the running
+program **and the rest of the script** (a loop too). `exit [code]` ends the script there, with
+that exit code (without it: the last command's). A line is at most 2047 characters.
 
-| Syntax | Replaced by |
+**Variables and what replaces a `$`** (in a script and on any command line):
+
+| Syntax | Meaning |
 |---|---|
-| `$1` … `$9` | the script's arguments (nothing when there are fewer); `$0` is the script's name. |
-| `$#` | how many arguments it got. |
-| `$*` | all of them, separated by a blank. |
+| `name=value` | sets a **variable** (no blank around `=`; the value is the rest of the line: `msg=hello world`, `n=5`, `dir="SD:/My Files"`). The programs and scripts started afterwards receive the variables (their environment). |
+| `$name` or `${name}` | its value (nothing when it is not set). `set` lists them: `HOME`, `PATH`… are there from the start. |
+| `$1` … `$9` | the script's arguments (nothing when there are fewer); `$0` is the script's name; `shift` drops the first. |
+| `$#` · `$*` | how many arguments · all of them, separated by a blank. |
 | `$?` | the exit code of the last command. |
+| `$(command)` | **what the command prints** (its final line feeds removed): `today=$(date +%F)`, `n=$(wc -l < notes.txt)`. |
+| `$((expression))` | **arithmetic** on whole numbers: `+ - * / %`, parentheses, the comparisons `== != < <= > >=` (1 or 0), `&& \|\| !`, the bit operators `& \| ^ ~ << >>`; a name in it is a variable (`i=$((i + 1))`). |
 
-Nothing is replaced inside `'…'`; in `"…"` it is, and the result stays one word (`"$1"` keeps an
-argument that holds blanks whole). `\$` is a plain `$`. A `$` followed by anything else is left
-alone (`grep "end$"`).
+Nothing is replaced inside `'…'`. Inside `"…"` it is, and the result stays **one word**: write
+`"$1"`, `"$name"` when the value may hold blanks. Outside quotes a value's blanks separate words
+(`for w in $list`). `\$` is a plain `$`; a `$` followed by anything else is left alone
+(`grep "end$"`).
 
-`exit [code]` ends the script there, with that exit code (without it: the last command's). The
-programs a script starts read the **keyboard** as usual; **Ctrl-C** stops the running program
-**and the rest of the script**. A line is at most 2047 characters. There are no variables of
-your own, no `if` / `for` blocks: `&&` and `||` are the conditions.
+**Conditions.** `if`, `while` and `until` run a command and look at its **exit code**: any
+command will do (`if grep -q todo notes.txt`), and `test` — also written `[ … ]`, with blanks
+around the brackets — compares:
+
+| Test | True when |
+|---|---|
+| `[ -e path ]` · `[ -f path ]` · `[ -d path ]` | it exists · it is a file · it is a folder. |
+| `[ -z "$a" ]` · `[ -n "$a" ]` | the text is empty · it is not. |
+| `[ "$a" = "$b" ]` · `[ "$a" != "$b" ]` | the same text · not the same. |
+| `[ $a -eq $b ]` · `-ne` · `-lt` · `-le` · `-gt` · `-ge` | numbers: equal · not equal · less · less or equal · greater · greater or equal. |
+| `[ ! … ]` · `[ … -a … ]` · `[ … -o … ]` | not · and · or. `! command` inverts any command's exit code. |
+
+**Blocks.** Each keyword starts its own line (`; then` and `; do` may end an `if` / `while` /
+`for` line, as in a Unix shell; they are optional):
+
+| Block | Effect |
+|---|---|
+| `if <command>` … `elif <command>` … `else` … `fi` | runs the lines after the first command that succeeds, or those after `else`. |
+| `while <command>` … `done` | runs the lines **as long as** the command succeeds. `until`: as long as it fails. |
+| `for name in words` … `done` | runs the lines **once per word**, the variable holding it — the words after `$` and file patterns: `for f in *.txt`, `for a in $*`, `for x in $(cat list.txt)`. |
+| `break` · `continue` | leave the loop · go to its next turn. |
+
+Blocks nest, and work at the prompt too: the shell shows `> ` until the block's `fi` / `done`,
+then runs it.
 
 ```sh
-# SD:/bin/textlist.sh -- textlist.sh <folder>: the list of its text files, sorted, in RAM:/list.txt
-cd $1 || exit 1
-find . -name "*.txt" | sort > RAM:/list.txt
-grep -q . RAM:/list.txt || echo "no text file in $1"
-wc -l RAM:/list.txt
-echo "done at" ; date +%H:%M
+# SD:/bin/report.sh -- report.sh <folder>: its text files, their sizes in lines, the longest
+if [ $# -lt 1 ]
+  echo "usage: report.sh <folder>"
+  exit 2
+fi
+if [ ! -d "$1" ]
+  echo "$1: no such folder" ; exit 1
+fi
+
+total=0 ; longest=0 ; name=none ; count=0
+for f in $1/*.txt
+  if [ ! -f $f ]            # (no .txt there: the pattern stayed as written)
+    continue
+  fi
+  lines=$(wc -l < $f)
+  total=$((total + lines))
+  count=$((count + 1))
+  if [ $lines -gt $longest ]
+    longest=$lines
+    name=$f
+  fi
+done
+echo "$count text files, $total lines; the longest: $name ($longest lines)"
+
+i=3                         # a counted loop
+while [ $i -gt 0 ]
+  echo "again in $i..." ; sleep 1
+  i=$((i - 1))
+done
+
+echo -n "keep the report? (y/n) "
+read answer
+if [ "$answer" = y ]
+  echo "$count files, $total lines" > RAM:/report.txt
+  echo "saved in RAM:/report.txt, $(date +%H:%M)"
+fi
 ```
 
-```sh
-textlist.sh SD:/docs        # run it
-textlist.sh SD:/docs && echo ok || echo "failed: $?"
-```
+**Coming from DOS `.bat` files:**
+
+| `.bat` | Here |
+|---|---|
+| `rem text` · `echo off` | `# text` · not needed (commands are not echoed). |
+| `set name=value` · `%name%` · `%1` · `shift` | `name=value` · `$name` · `$1` · `shift`. |
+| `set /a n=n+1` | `n=$((n + 1))`. |
+| `set /p name=Question` · `pause` | `echo -n "Question "` then `read name` · `read`. |
+| `if exist file …` · `if not exist` | `if [ -e file ]` · `if [ ! -e file ]`. |
+| `if "%a%"=="x" … else …` | `if [ "$a" = x ]` … `else` … `fi`. |
+| `if errorlevel 1 …` · `%errorlevel%` | `if [ $? -ge 1 ]` (or `command \|\| …`) · `$?`. |
+| `for %%f in (*.txt) do …` | `for f in *.txt` … `done`. |
+| `for /l %%i in (1,1,10) do …` | `i=1` · `while [ $i -le 10 ]` … `i=$((i + 1))` · `done`. |
+| `goto label` loops | `while` / `until`, `break`, `continue`. |
+| `call other.bat` | `other.sh args` (a shell of its own) or `source other.sh` (this one). |
+| `exit /b 2` | `exit 2`. |
+
+Not there: functions, `case`, arrays, `<<` here-documents, a block's output piped or redirected
+as a whole (`done > file`), running a command in the background.
 
 `SD:/etc/autostart` is **not** such a script: `init` runs its lines itself, without waiting
 for each (to run a script at boot, put `cmd SD:/bin/mine.sh` there).
 
 **Under the hood.** The shell (`/bin/cmd`, which the terminal runs) splits the line into
-commands (`;` `&&` `||`), replaces the `$` variables, then splits each command into
-words and stages (quotes and escapes applied, `|` outside quotes), creates a memory pipe
+commands (`;` `&&` `||`), replaces what starts with `$`, then splits each command into
+words and stages (quotes and escapes applied, file patterns replaced, `|` outside quotes), creates a memory pipe
 (`pipe`) between each stage — and a file stream for `<`/`>` —, then launches (`spawn_ex`) each
 `SD:/bin/<cmd>` with its argument list and its (`stdin`, `stdout`) pair. The stages run **concurrently**
 (cooperatively); the terminal continuously drains the final output pipe (non-blocking
@@ -808,8 +904,8 @@ the terminal's **current working directory**.
 
 | Tool | Usage | Description |
 |---|---|---|
-| `ls` | `ls [path]` | Lists a directory (default: the **current working directory**). One entry per line; folders get a trailing `/`. |
-| `cat` | `cat [file…]` | Prints the file(s) to `stdout`; **with no argument**, copies `stdin`→`stdout` (useful at the end of a pipe). |
+| `ls` | `ls [-l] [path…]` | Lists a folder (default: the **current working directory**): one entry per line, folders with a trailing `/`. A **file** is listed by its name, so a pattern works (`ls *.txt`); `-l` puts each entry's size in bytes before it. Several paths: the files, then each folder under a `name:` line. |
+| `cat` | `cat [-n] [file…]` | Prints the file(s) to `stdout` (`cat *.txt > all.txt`); **with no argument**, copies `stdin`→`stdout` (useful at the end of a pipe). `-n` numbers the lines. |
 | `cp` | `cp <src> <dst>` | Copies a file (by stream: any size). |
 | `mv` | `mv <src> <dst>` | Renames / moves a file or folder (same volume). |
 | `rm` | `rm <path…>` | Deletes files (or **empty** folders); accepts multiple paths. |
@@ -860,7 +956,7 @@ chain with `|`), and write to `stdout`.
 
 | Tool | Usage | Description |
 |---|---|---|
-| `echo` | `echo [-n] <text…>` | Writes its arguments, separated by a blank, followed by a newline (`-n`: none). |
+| `echo` | `echo [-n] <text…>` | Writes its arguments, separated by a blank, followed by a newline (`-n`: none). The shell does it itself (a builtin, §7); `/bin/echo` is the same, for the other programs. |
 | `cat` | `cat [file…]` | (above) prints files; with no argument copies `stdin`. |
 | `head` | `head [-n N \| -N] [-c N] [file…]` | The **first 10 lines** (or N: `head -n 3`, `head -3`); `-c N` the first N bytes. Several files: a `==> name <==` line before each. |
 | `tail` | `tail [-n N \| -N \| -n +N] [-c N] [-f] [file]` | The **last 10 lines** (or N); `-n +N` from line N to the end; `-c N` the last N bytes. **`-f`** then keeps printing what is **added to the file** (a log being written) until **Ctrl-C**. |
@@ -919,7 +1015,7 @@ it: `ed notes.txt < edits.txt`.
 | `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
-| `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
+| `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`; variables, `if` / `while` / `for`: the script language of §7), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source`, `test`, `echo`, `read`, `set`, `unset`, `shift` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
 | `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
 | `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. |
 
