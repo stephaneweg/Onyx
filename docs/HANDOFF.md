@@ -54,6 +54,16 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Several users: studied, not started (2026-10-05) — `docs/MULTI-USER-PLAN.md`
+
+The user asked to "see how" Onyx becomes multi-user (accounts and a login screen, the desktop started
+by the session, `/home/<user>`, rights on FAT through an index in `/etc` enforced by the kernel, remote
+access per user). The study, the proposed design and seven steps are in `docs/MULTI-USER-PLAN.md`.
+**Nothing is built, and no decision is taken**: its section 2 lists fourteen (D1–D14), each with a
+recommendation — get the user's answers before writing any code, then record them in that section.
+Step 0 (a real random generator behind `kapi_random`, PBKDF2 in the kernel) changes nothing visible and
+can go first. The printing work (`printd`, another session) is taken into account in its section 9.
+
 ## Shared libraries: built (2026-10-05) — `SD:/lib/wtk.so`, `SD:/lib/ft.so`, every app on them
 
 **Where to read**: `docs/SHARED-LIBS-PLAN.md` section 0 (what was built, where it departs from the
