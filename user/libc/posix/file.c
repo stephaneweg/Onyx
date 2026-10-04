@@ -405,6 +405,21 @@ ssize_t __onyx_read (struct __onyx_ofd *d, void *buf, size_t n)
 			return (ssize_t) __onyx_carry_take (d, buf, n, 0);
 		if (d->eof)
 			return 0;
+		/* stdin a pipe from the program that started us: its read never waits (kapi_stdin_read does) */
+		if (d->flags & O_NONBLOCK)
+		{
+			if (d->stream == 0)
+				d->stream = kapi_stdin ();
+			if (d->stream != 0)
+			{
+				int r = kapi_stream_read_nb (d->stream, buf, n > CHUNK_MAX ? CHUNK_MAX : (unsigned) n);
+				if (r < 0)
+					return ONYX_ERR (EAGAIN);
+				if (r == 0)
+					d->eof = 1;
+				return r;
+			}
+		}
 		return console_read (buf, n);
 	}
 	return ONYX_ERR (EBADF);

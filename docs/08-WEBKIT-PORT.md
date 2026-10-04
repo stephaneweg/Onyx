@@ -409,7 +409,10 @@ the downloads' window — the same program run with `--onyx-downloads`, its stdi
 Two fixes on the way: curl's download path told WebKit no running total nor expected length (no
 progress could be shown: `NetworkDataTaskCurl`, in `0016`), and libonyxposix answered `EPIPE` to a
 write into a pipe whose read end it had given as a child's stdin and then closed (its counts are
-the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). Web also serves Mail as its HTML view
+the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). A third, 2026-10-04: the downloads' window
+(and the console's) froze once the browser had nothing more to tell it — after a Cancel, its close
+button did nothing: `read (0)` waited although the descriptor was `O_NONBLOCK` (libonyxposix's console
+descriptor ignored the flag: `user/libc/posix/file.c`). Web also serves Mail as its HTML view
 (`--applet`, `user/Apps/jet/webview.cpp`; docs/03 *Web's web view*).
 
 Not there yet (the next work of step 1): the pointer's shape (no kapi for it), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,

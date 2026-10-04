@@ -501,7 +501,10 @@ spin instead of sleeping (no kapi call there); stdio and files from there go thr
   working (no `EPIPE`: the pipe is read elsewhere), and closing the stdout pipe's write end sends no
   end of file (the child still writes there). The other side: no `EPIPE` when the child has ended
   either — watch it with `waitpid (WNOHANG)`, and make the write end `O_NONBLOCK` if the child may
-  stop reading (Web's downloads window does both).
+  stop reading (Jet's downloads window does both). In the child, `fcntl (0, F_SETFL, O_NONBLOCK)`
+  makes `read (0)` answer `EAGAIN` when the pipe is empty (descriptor 0 is the console's: until
+  2026-10-04 its read waited whatever the flag, and a window that read its stdin each tick froze as
+  soon as its parent had nothing to say).
 - `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/tls/README.md).
 
 **Testing it: `/bin/posixtest [group…] [dir]`** ([`user/bin/posixtest.c`](../user/bin/posixtest.c);
