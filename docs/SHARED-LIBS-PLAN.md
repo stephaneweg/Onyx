@@ -17,6 +17,7 @@ English.*
 | 1a | The user side: `user/lib.h` (`TLibImports`, `TLibHeader`, `lib_bind`), `user/librt.cpp` (a library's runtime), `user/lib.ld`, `lib.vers`; the test library `user/demo`, `/bin/libtest` | |
 | 1b | The generator `tools/libgen/libgen.py`; `ft.so` (FreeType's public API: 135 entries, `user/ft/ft.abi`; `user/ft/ftso.c`) | `user/Makefile` |
 | 1c | `wtk.so` (683 entries, `user/wtk/wtk.abi`), the globals shared with the programs (`wtk/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`wtk/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`wtk/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/doom/Makefile` |
+| + | `print.so` (32 entries, `user/print/print.abi`): printing (docs/03 §5.7) — the first library that uses others (`ft.so`, `wtk.so`: their import stubs linked in, opened on demand; wtk's variables through the importer's table) | `user/Makefile` |
 | | Packages `wtk` and `ft` (required), `needs = wtk >= 1.683, ft` on `onyx` and on every app | `tools/pkg/packages.ini` |
 
 **Where it departs from the plan below — the mechanism of sections 4.3 and 5.1–5.2 (the defaults

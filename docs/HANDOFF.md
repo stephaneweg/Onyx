@@ -4,6 +4,31 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Printing (2026-10-05)
+
+A generic print system, done and tested on the Pi with the user's HP DeskJet 2700 (192.168.0.14, IPP
+Everywhere: no PDF, PWG Raster at 300 dpi) and the PDF printer. Read `docs/03` §5.7 (the design, the API,
+an example) and `docs/04` §11 *Printing*.
+
+- **`SD:/lib/print.so`** (`user/print/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `print/print.abi`,
+  32 entries): the Print dialog and the jobs. The first library that uses others (`ft.so`, `wtk.so`: their
+  stubs linked in, opened on demand; wtk's variables through `--data onyx_wtk_data`).
+- **`printd`** (`user/Apps/printd`): the queue (`SD:/var/spool/print`), the printers (`SD:/etc/printers.ini`),
+  a job replayed as a PDF (`print/pdfsink.h`) or rendered (`print/raster.h`, our own MIT rasteriser — the
+  user's choice, no MuPDF in the chain) and streamed as PWG Raster over IPP (`print/ipp.h`).
+- **Printers** applet (`user/Apps/printconf`), `/bin/ipp`; the Control Panel's list scrolls now.
+- **File ▸ Print… (Ctrl+P)** in Letters, Sheet, Slides (through `print/pdfprint.h`: their PDF export code),
+  Paint, Photos, the PDF Viewer (`print_image`).
+- Tests: `sh tools/tests/run_print_test.sh` (`IPP_PRINTER=192.168.0.14` asks the real printer).
+- **Next / not done**: the screenshots (`printconf`, the Print dialog, `control` with its 11 applets:
+  `shots.sh` has no scenario for them — the library is not built for the simulator yet); the Word / PDF
+  exports (`docs/build_docs.py`: no pandoc on this PC); printer discovery (mDNS / DNS-SD: no multicast in the
+  kapi); IPPS (TLS), a password; Apple Raster / PCLm printers that take neither PWG Raster nor PDF; two-sided
+  printing; a job kept and retried when the printer is off (it fails with a notification today); print from
+  Mail, Cardfile, Jet; a command-line `lp`. On the Pi, only Letters' print (dialog, PDF) and the applet were
+  driven by me; the user printed Letters' current page on the HP, in colour ("instant, clean"); Sheet, Slides, Paint, Photos and the PDF
+  Viewer were deployed but their Print not exercised.
+
 ## Working conventions (keep them)
 
 - **Git (the user's rule, 2026-10-01)**: before each new development and each commit, fetch and
@@ -54,7 +79,11 @@ answer in French. The docs stay in English.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Several users: studied, not started (2026-10-05) — `docs/MULTI-USER-PLAN.md`
+## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
+
+**The user's decision: Onyx stays a simple, single-user system — no multi-user.** The study is kept
+as an idea (`IDEAS.md`); do not start it nor bring it up again unasked. What the paragraph below
+describes is the study, not a task.
 
 The user asked to "see how" Onyx becomes multi-user (accounts and a login screen, the desktop started
 by the session, `/home/<user>`, rights on FAT through an index in `/etc` enforced by the kernel, remote

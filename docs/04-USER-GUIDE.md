@@ -1053,6 +1053,7 @@ it: `ed notes.txt < edits.txt`.
 | `notifytest` | `notifytest [-t <title>] <message>` | Sends a **notification** (bubble under the menu bar) — handy to test `notifyd` from the terminal or telnet, e.g. `notifytest -t Build "Kernel staged"`. The title defaults to "Test". |
 | `tcpbench` | `tcpbench [port]`, `tcpbench udp [port]` | The **network's speed** without a disk and without the internet: a server on the Pi (port **5001**) that `python tools/tests/net/tcpbench.py <pi's address> [MB]` on the PC talks to — an echo's round trip, then the Pi sending and receiving that many megabytes; each connection's line says the bytes, the time, the rate and the sizes of the reads / writes. `tcpbench udp` counts the datagrams received (`tools/tests/net/udpflood.py`). Runs until killed. |
 | `netlog` | `netlog` | The network's start into `SD:/netlog.txt` (the Wi-Fi settings checked, the kernel log, the link's result, the access points if it failed): started at boot by `netlog=1` in `cmdline.txt` (§3), for a Pi without a screen. |
+| `ipp` | `ipp <address> [validate]` | Asks a **network printer** what it can do (IPP, port 631): its model, the formats it takes, whether Onyx prints on it (it takes PWG Raster — IPP Everywhere, AirPrint — or PDF), colour, quality, copies, its papers, its margins, its state and ink levels. `<address>`: an IP address or `ipp://host:631/ipp/print`. `validate`: also asks whether it would take a job from Onyx (nothing is printed). Exit status 0: Onyx can print on it. |
 | `kmsg` | `kmsg` | Streams the kernel log live (boot messages, app lifecycle when `verbose` is on, network events, `stall:` lines when a task kept the CPU more than 100 ms). **Ctrl-C** to quit. |
 | `verbose` | `verbose [on\|off]` | Shows or toggles the kernel's verbose logging (app start/stop/kill); persists the choice to `SD:system.ini`. |
 | `heaptest` | `heaptest` | Self-test of the user-space allocator (`umm.h` over `kapi_sbrk`): alloc/verify/free across size classes + realloc. Prints PASS/FAIL and how much heap it mapped. |
@@ -1089,7 +1090,8 @@ it: `ed notes.txt < edits.txt`.
 
 The apps do not each carry a copy of the toolkit and of the text renderer: they share
 **`SD:/lib/wtk.so`** (the widgets, the windows' frames, the theme) and **`SD:/lib/ft.so`**
-(FreeType: the TrueType text). Each is loaded **once** — the first app that needs it reads it from
+(FreeType: the TrueType text); **`SD:/lib/print.so`** (package **print**) is the Print dialog and the
+apps' print jobs. Each is loaded **once** — the first app that needs it reads it from
 the card, the others map the copy already in memory — and stays while an app uses it; `preload`
 (no argument) lists them, marked `(library)`. They come with the packages **wtk** and **ft**
 (required; the Package Manager updates them like any other): a fix in a library reaches every app
@@ -1506,7 +1508,8 @@ Panel** (the menu bar's **Onyx ▸ Control Panel**, just below Terminal, or the 
 Its home lists the **applets**, an icon, a name and a line of help each; **click one** to open it
 **inside the Control Panel's window**. The path bar at the top reads *Control Panel ▸ Theme*…:
 click **Control Panel** (or the menu's **All Settings**) to go back to the list. One Control
-Panel at a time (started again, it brings the open one to the front).
+Panel at a time (started again, it brings the open one to the front). When the applets do not all fit,
+the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 
 | Applet | What it sets |
 |---|---|
@@ -1515,6 +1518,7 @@ Panel at a time (started again, it brings the open one to the front).
 | **Panel** (`dockconf`) | The dock: its **drawers** (left to right: each a **group** of apps — the `category` of their `app.txt` — and its **main app**, whose icon the drawer shows; **Add** / **Remove** / move them, pick the group and the main app in the lists beside), the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini` and starts the dock again: it takes it at once (a new group, a new launcher). |
 | **Sound** (`soundconf`) | **Play on**: where the sound goes — **Automatic** (a USB headset or DAC if one is plugged in, else the headphone jack, else HDMI on a Pi without a jack: the Pi 400), **Headphone jack (3.5 mm)**, **USB headset / DAC**, **HDMI (the screen)**; only the outputs that are there are listed, the line under the list says where it plays now. The choice is applied at once (the music goes on) and kept in `SD:/etc/sound.ini` (`output = auto \| jack \| usb \| hdmi`). A USB headset unplugged: the sound is off — nothing else takes over — and comes back by itself when it (or another one) is plugged in again. The master **volume** (0–10) and **Mute**, applied at once to everything played and kept in the same file (the menu bar's speaker changes the same volume; a USB headset with a volume of its own is driven through it); **Play a test sound**. |
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
+| **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
@@ -1546,6 +1550,45 @@ the Game Library and Setup do.
 
 ![The Wi-Fi applet](../screenshots/wpaconf.png)
 *Wi-Fi: the network's name (scanned), its password, the country.*
+
+### Printing (`printconf`, `printd`)
+
+Onyx prints on **network printers** (Wi-Fi or cable) that speak **IPP Everywhere / AirPrint** — most
+printers since 2012, no driver to install — and into **PDF files** (the **PDF** printer, always there).
+
+**Add a printer**: Control Panel ▸ **Printers**. Type its **address** (its IP address, as `192.168.0.14`:
+the printer's network page or screen shows it; or `ipp://host:631/ipp/print`), a **name** if you want
+another than its own, **Add**: the printer is asked what it can do (its papers, colour, quality, margins)
+and joins the list; the first one added becomes the **default**. **Default** makes the selected printer
+the one the Print dialog proposes, **Check** asks it again (its state, its ink levels), **Test page**
+prints a page of text, colours, greys and fine lines with the edge of what it prints, **Remove** forgets
+it. Kept in `SD:/etc/printers.ini`. In a terminal, `ipp <address>` shows a printer's answer (§8).
+
+**Print** — **File ▸ Print…** (**Ctrl+P**) in Letters, the Spreadsheet, Slides, Paint, Photos and the PDF
+Viewer opens the same **Print dialog**:
+
+| | |
+|---|---|
+| **Printer** | The printers of the list; the rest of the dialog follows the one chosen. |
+| **Pages** | **All**, the **Current page** (where the app has one), or **From … to …**. |
+| **Copies** | 1 to what the printer allows. |
+| **Colour** | **Colour** or **Black and white** (a colour printer). |
+| **Quality** | **Draft**, **Normal**, **High** — those the printer has. |
+| **Paper**, **Orientation** | The printer's papers (A4, Letter, envelopes, photo sizes…), **Portrait** or **Landscape** — for the Spreadsheet, Paint and Photos. Letters, Slides and the PDF Viewer print the document's own pages, fitted on the printer's default paper (a lying page is turned). |
+
+The **PDF** printer shows only the pages, then asks for the file to write. What each app prints: Letters
+its pages as laid out (File ▸ Page Setup); the Spreadsheet the current sheet's used cells, in pages, with
+its charts and a footer; Slides one slide a page; Paint the picture, centred (made smaller if it does not
+fit); Photos the selected photos (or the one shown), one a page, as large as the paper takes; the PDF
+Viewer the document's pages (a document that forbids printing is refused; to the PDF printer with all
+the pages, the file is copied).
+
+**The queue.** **Print** returns at once: the job goes to the **print service** (`printd`), which prints
+the jobs one after the other and shows a **notification** when one is printed — or says why it was not
+(the printer does not answer, no paper…). The Printers applet's **Print queue** lists them (waiting,
+preparing and sending with the page reached, printing, done, failed); **Cancel job** stops one, **Clear
+done** empties the finished ones. A job waiting when the Pi is turned off is printed at the next start
+(`SD:/var/spool/print`).
 
 ### The Package Manager (`pkgman`)
 
@@ -1852,6 +1895,8 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the master volume, mute, a test sound (see §11). Writes `SD:/etc/sound.ini`. |
+| **printconf** (Printers) | The Control Panel's Printers applet: the printers, the default one, a test page, the print queue (see §11 *Printing*). Talks to `printd`; `SD:/etc/printers.ini`. |
+| **printd** (Print Service) | The print queue's service, no window (started at boot by `SD:/etc/autostart` and when an app prints): prints the jobs of `SD:/var/spool/print` — PDF files, network printers (IPP) — and notifies. Reads and writes `SD:/etc/printers.ini`. |
 | **preloadconf** (Preload) | The Control Panel's Preload applet: the programs loaded at boot and kept in memory (see §11). Reads the apps' `app.txt` and `SD:/bin`; writes `SD:/etc/preload.ini`. |
 | **keyconf** (Keyboard & Mouse) | The Control Panel's Keyboard & Mouse applet: the layout (kept in `SD:/etc/autostart`), the wheel's speed (kept in `SD:/etc/theme.txt`) (see §11). |
 | **config** (App Settings) | The Control Panel's App Settings applet: an app's `config.ini`, key by key (see §11). |

@@ -173,6 +173,7 @@ static void m_mail () { if (!g_view->hidden) act_mail (g_view->pi); else act_mai
 static void m_delete () { if (!g_view->hidden) act_delete (g_view->pi); else act_delete (); }
 static void m_rotate () { if (!g_view->hidden) act_rotate (g_view->pi); else act_rotate (); }
 static void m_edit () { if (!g_view->hidden) open_editor (g_view->pi); else { Vec<int> c; if (chosen (c) == 1) open_editor (c[0]); free (c.a); } }
+static void m_print () { if (!g_view->hidden) act_print (g_view->pi); else act_print (); }
 static void m_pdf () { act_pdf (g_src == SRC_ALBUM && !g_selN ? g_srcArg : -1); }
 static void m_all () { show_source (SRC_ALL); }
 static void m_favs () { show_source (SRC_FAV); }
@@ -217,6 +218,7 @@ int main (void)
 	menu.separator ();
 	menu.item ("Send by Mail...", "", 0, m_mail);
 	menu.item ("Export as a PDF...", "", 0, m_pdf);
+	menu.item ("Print...", "^P", WK_CTRL ('P'), m_print);
 	menu.menu ("Edit");
 	menu.item ("Find...", "^F", WK_CTRL ('F'), m_find);
 	menu.item ("Select All", "^A", WK_CTRL ('A'), m_selall);

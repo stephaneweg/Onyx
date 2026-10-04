@@ -8,7 +8,7 @@
 // zoom). Tables (rows, columns, merged cells, lines, shading, a heading row), headers and footers (the
 // first page's own), page numbers and fields, tab stops with leaders, a table of contents, the pages
 // kept whole (widows, orphans, headings with their text), a mail merge (a Cardfile's records into a
-// letter). No printing yet.
+// letter). File > Print: the pages to the print service (print/print.h).
 //
 // The pieces: doc.h (the document, its formats, tables, fields, stories, undo), layout.h (lines,
 // tables, pages), edit.h (the selection, the edits, the tables' changes, the clipboard, find), view.h
@@ -255,6 +255,22 @@ static int utf8_put (char *o, unsigned c)
 	if (c < 0x800) { o[0] = (char) (0xC0 | c >> 6); o[1] = (char) (0x80 | (c & 63)); return 2; }
 	if (c < 0x10000) { o[0] = (char) (0xE0 | c >> 12); o[1] = (char) (0x80 | (c >> 6 & 63)); o[2] = (char) (0x80 | (c & 63)); return 3; }
 	o[0] = (char) (0xF0 | c >> 18); o[1] = (char) (0x80 | (c >> 12 & 63)); o[2] = (char) (0x80 | (c >> 6 & 63)); o[3] = (char) (0x80 | (c & 63)); return 4;
+}
+// File > Print: the Print dialog (the library's, the same in every app), then the pages drawn into the job
+// by the code that draws them into a PDF (print/pdfprint.h) -- the print service does the rest.
+static void cmd_print ()
+{
+	char name[200]; scpy (name, g_path[0] ? base_name (g_path) : "Untitled", sizeof name);
+	PrintJob *j = print_ask (name, L.npages, g_view->pageAt (g_view->viewH () / 2) + 1, L.d->page.w / 20.0f, L.d->page.h / 20.0f);
+	if (!j) { focus_view (); return; }
+	int zoom = L.zoom;					// (the pages at 100 %, as the PDF's)
+	set_zoom (100); g_relayout = true; g_view->relayout ();
+	g_pdfJpeg = false;
+	{ PrintWriter w (j); g_view->exportPages (w, 0, L.npages - 1); }
+	int id = print_end (j);
+	set_zoom (zoom); g_relayout = true; g_view->relayout (); g_view->invalidate (true);
+	if (id < 0) wk_messagebox ("Print", "The document could not be put in the print queue.", MB_OK);
+	focus_view ();
 }
 static void cmd_export_pdf ()
 {
@@ -787,6 +803,7 @@ int main (void)
 	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
 	menu.separator ();
 	menu.item ("Page Setup...", "", 0, cmd_page_setup);
+	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
 	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
 	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);

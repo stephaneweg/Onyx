@@ -22,6 +22,7 @@
 #include "ui.h"
 #include "clipboard.h"
 #include "docguard.h"
+#include "print/print.h"
 
 using namespace wtk;
 using namespace pdfv;
@@ -1622,6 +1623,40 @@ static void save_copy ()
 	if (a) kapi_close (a); if (b) kapi_stream_close (b);
 	if (!ok) wk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
 }
+// File > Print: the Print dialog (the library's: print/print.h), then the pages drawn by MuPDF at the
+// printer's 300 dots an inch, each a picture of the job's page (the document's own page size: fitted on the
+// paper). To the PDF printer with every page: the file itself is copied -- it is already what is asked for.
+static void print_doc ()
+{
+	Tab &t = tab (); if (!t.doc) return;
+	Doc *D = t.doc;
+	if (!doc_allows (g_mu, D, FZ_PERMISSION_PRINT)) { wk_messagebox ("PDF Viewer", "This document does not allow printing.", MB_OK); return; }
+	PrintSetup ps; print_setup_default (&ps);
+	PrintDialogInfo di = { sizeof di, D->name, D->npages, t.cur + 1, PRINT_DLG_OWN_PAPER, D->pw[t.cur], D->ph[t.cur] };
+	if (!print_dialog (&ps, &di)) return;
+	if (!strcmp (ps.printer, "PDF") && ps.from <= 0)
+	{
+		void *a = kapi_open (D->path); void *b = a ? kapi_file_out (ps.output, 0) : 0;
+		bool ok = a && b;
+		if (ok) { static char buf[32768]; int n; while ((n = kapi_read (a, buf, sizeof buf)) > 0) if (kapi_stream_write (b, buf, n) != n) { ok = false; break; } }
+		if (a) kapi_close (a); if (b) kapi_stream_close (b);
+		if (!ok) wk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
+		return;
+	}
+	PrintJob *j = print_begin (&ps, D->name);
+	for (int pg = 0; j && pg < D->npages; pg++)
+	{
+		if (!print_page (j, D->pw[pg], D->ph[pg])) continue;		// (not in the pages to print: not rendered)
+		float s = 300.0f / 72.0f;
+		if (D->pw[pg] * s > 3600 || D->ph[pg] * s > 3600) s = 3600 / (D->pw[pg] > D->ph[pg] ? D->pw[pg] : D->ph[pg]);	// (a poster: fewer dots)
+		int w, h; page_px (D, pg, s, 0, &w, &h);
+		unsigned *px = render_page (g_mu, D, pg, s, 0, 0, 0, w, h);
+		if (!px) continue;
+		print_image (j, px, w, h, 0, 0, D->pw[pg], D->ph[pg], 0);
+		free (px);
+	}
+	if (!j || print_end (j) < 0) wk_messagebox ("PDF Viewer", "The document could not be put in the print queue.", MB_OK);
+}
 static void show_in_files ()
 {
 	Tab &t = tab (); if (!t.doc) return;
@@ -1920,6 +1955,7 @@ int main (void)
 	menu.item ("Close the Tab", "^W", WK_CTRL ('W'), m_close);
 	menu.separator ();
 	menu.item ("Save a Copy...", "", 0, m_savecopy);
+	menu.item ("Print...", "^P", WK_CTRL ('P'), print_doc);
 	menu.item ("Show in the File Viewer", "", 0, show_in_files);
 	menu.separator ();
 	menu.item ("Properties...", "^D", WK_CTRL ('D'), m_props);

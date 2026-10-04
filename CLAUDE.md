@@ -21,7 +21,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 - `docs/BLUETOOTH-AUDIO-STUDY.md` (Bluetooth audio output: the feasibility study -- the chip, the stack options and their licences, the plan B0-B6; nothing built)
 - `docs/SHARED-LIBS-PLAN.md` (shared libraries behind an export table — the user's decided design, the plan and the Pi tests; the study before it: `docs/GUI-USERSPACE-STUDY.md`)
-- `docs/MULTI-USER-PLAN.md` (several users: accounts, login and sessions, `/home`, rights on FAT enforced by the kernel, remote access per user — a study and a plan, nothing built; its section 2 lists the decisions the user has to take)
+- `docs/MULTI-USER-PLAN.md` (several users: accounts, login and sessions, `/home`, rights on FAT enforced by the kernel, remote access per user — a study only: **set aside by the user on 2026-10-05, Onyx stays single-user** — do not start it unasked)
 - `docs/LOCAL-AGENT-WEBKIT.md` (briefing for a local agent continuing the WebKit port on the user's PC: setup, branches, plan)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by

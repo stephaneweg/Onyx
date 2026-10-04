@@ -136,7 +136,7 @@ static void cmd_export_csv ()
 }
 
 // ---- File > Export as PDF: the used cells of a sheet (or all), cut into pages (pdf/pdfwrite.h) ---------------------------
-struct PdfOpts { bool all, landscape, fit, grid, jpeg, open; };
+struct PdfOpts { bool all, landscape, fit, grid, jpeg, open; float pw, ph, margin; };	// (pw, ph, margin: a printer's paper; 0: A4, 36 points)
 class PdfDialog : public Dialog
 {
 public:
@@ -186,6 +186,8 @@ static void pdf_sheet (pdfw::Writer &w, Sheet *s, const PdfOpts &o, int &pageNo,
 	}
 	if (maxR < 0 || maxC < 0) return;
 	float PW = o.landscape ? 841.89f : 595.28f, PH = o.landscape ? 595.28f : 841.89f, M = 36, FOOT = 18;
+	if (o.pw > 0 && o.ph > 0) { PW = o.pw; PH = o.ph; }
+	if (o.margin > 0) M = o.margin;
 	float scale = 0.75f;
 	long long usedW = col_x (s, maxC + 1);
 	if (o.fit && usedW * scale > PW - 2 * M) scale = (PW - 2 * M) / usedW;
@@ -276,6 +278,37 @@ static void cmd_export_pdf ()
 	delete[] pdf;
 	if (!ok) message ("The file cannot be written.");
 	else if (o.open) kapi_exec ("SD:apps/pdf.app/main", path);
+}
+
+// File > Print: the Print dialog (the library's: the printer, its paper, the pages...), then the sheet's
+// pages drawn into the job by the PDF export's code (print/pdfprint.h).
+static void cmd_print ()
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	char name[256]; snprintf (name, sizeof name, "%s", g_path[0] ? base_name (g_path) : "Book1");
+	Sheet *s0 = S (); sheet_bounds (s0);
+	long long uw = col_x (s0, s0->maxC + 1), uh = row_y (s0, s0->maxR + 1);
+	for (int i = 0; i < s0->ncharts; i++) { Chart *c = s0->charts[i]; if (c->x + c->w > uw) uw = c->x + c->w; if (c->y + c->h > uh) uh = c->y + c->h; }
+	PrintSetup ps; print_setup_default (&ps);
+	if (uw > uh && uw > 700) print_setup_paper (&ps, 0, PRINT_LANDSCAPE);	// (a wide sheet: the paper lying, first)
+	PrintDialogInfo di = { sizeof di, name, 0, 0, 0, 0, 0 };
+	if (!print_dialog (&ps, &di)) return;
+	PrintJob *j = print_begin (&ps, name);
+	if (!j) { message ("The print queue cannot be written."); return; }
+	PdfOpts o; memset (&o, 0, sizeof o);
+	o.pw = ps.paper_w; o.ph = ps.paper_h;
+	// the margin: half an inch, and clear of what the printer cannot print on (the footer is under it)
+	float m = ps.margin_l; if (ps.margin_t > m) m = ps.margin_t; if (ps.margin_r > m) m = ps.margin_r; if (ps.margin_b > m) m = ps.margin_b;
+	o.margin = m + 12 > 36 ? m + 12 : 36;
+	int pageNo = 0;
+	{
+		PrintWriter w (j); Canvas dummy;
+		g_pdf = &w;
+		pdf_sheet (w, s0, o, pageNo, dummy);
+		g_pdf = 0; g_pdfS = 0.75f; g_pdfX = g_pdfY = 0;
+	}
+	if (!pageNo) { print_abort (j); message ("There is nothing in the sheet to print."); return; }
+	if (print_end (j) < 0) message ("The sheet could not be put in the print queue.");
 }
 
 // ---- after a change ----------------------------------------------------------------------------------------
@@ -1676,6 +1709,8 @@ int main (void)
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as CSV...", "", 0, cmd_export_csv);
 	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
+	menu.separator ();
+	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
 	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
 	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);

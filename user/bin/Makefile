@@ -100,6 +100,9 @@ CXX_PROGS = httpget.elf
 # kapi v83 shared libraries (docs/SHARED-LIBS-PLAN.md): the loader's tests, against ../lib/demo.so
 CXX_PROGS += libtest.elf
 libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
+# ipp: a network printer asked what it can do (../print/ipp.h; docs/03 "Printing")
+CXX_PROGS += ipp.elf
+ipp.elf: ../print/ipp.h ../print/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
 
 # Console tools on libonyxposix, the POSIX layer (../libc/posix, docs/03 §5.4): newlib + pthreads,
 # BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and
