@@ -1240,8 +1240,10 @@ public:
 		}
 		case B_GETTEXT: { char t[1024]; int n = H.getText ((int) a[0].n, t, sizeof t); pushL1 (t, n); break; }
 		case B_VALUE: pushN (H.getValue ((int) a[0].n)); break;
-		case B_EVENT: { int e = H.event (false); if (e < 0) ended = true; pushN (e); break; }
-		case B_WAITEVENT: { int e = H.event (true); if (e < 0) ended = true; pushN (e); break; }
+		case B_EVENT: { int e = H.event (false); if (e == -1) ended = true; pushN (e); break; }
+		case B_WAITEVENT: { int e = H.event (true); if (e == -1) ended = true; pushN (e); break; }
+		case B_MENUITEM: { char t[128], m[128], k[32] = ""; cstr (a[0], t, sizeof t); cstr (a[1], m, sizeof m); if (argc > 2) cstr (a[2], k, sizeof k); pushN (H.menuItem (t, m, k)); break; }
+		case B_WINDOWWIDTH: case B_WINDOWHEIGHT: { int w = 0, h = 0; H.screenSize (&w, &h); pushN (id == B_WINDOWWIDTH ? w : h); break; }
 		case B_MSGBOX:
 		{
 			char t[128], m[512]; cstr (a[0], t, sizeof t); cstr (a[1], m, sizeof m);
@@ -1639,7 +1641,11 @@ public:
 			break;
 		case S_PLAY: { int n; const char *s = sdata (a[0], &n); play (s, n); break; }
 		case S_RANDOMIZE: rnd = argc ? (unsigned) (long long) a[0].n : H.seed (); break;
-		case S_WINDOW: cstr (a[0], t1, sizeof t1); H.window (t1, N (1, 0), N (2, 0)); H.screenSize (&scrW, &scrH); break;
+		case S_WINDOW: cstr (a[0], t1, sizeof t1); H.window (t1, N (1, 0), N (2, 0)); if (argc > 3) H.windowFlags (N (3, 0)); H.screenSize (&scrW, &scrH); break;
+		case S_MOVECONTROL: H.moveControl (N (0, 0), N (1, 0), N (2, 0), N (3, 0), N (4, 0)); break;
+		case S_SHOWCONTROL: H.showControl (N (0, 0), N (1, 0) != 0); break;
+		case S_ENABLECONTROL: H.enableControl (N (0, 0), N (1, 0) != 0); break;
+		case S_FOCUSCONTROL: H.focusControl (N (0, 0)); break;
 		case S_SETTEXT: cstr (a[1], t1, sizeof t1); H.setText (N (0, 0), t1); break;
 		case S_SETVALUE: H.setValue (N (0, 0), N (1, 0)); break;
 		case S_NOTIFY: cstr (a[0], t1, sizeof t1); cstr (a[1], t2, sizeof t2); H.notify (t1, t2); break;

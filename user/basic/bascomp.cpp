@@ -36,11 +36,13 @@ static const char *const KEYWORDS[] = {
 	"BINARY", "RANDOM", "USING", "TAB", "SPC",
 	"TYPE", "RESUME", "FIELD", "LSET", "RSET", "COMMON", "CHAIN", "RUN", "CLEAR", "TRON", "TROFF", "KEY",
 	"PAINT", "DRAW", "VIEW", "PALETTE", "PCOPY", "GET", "PUT", "RESET", "FILES", "CHDIR", "SHELL", "ENVIRON",
-	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", "FULLSCREEN",
+	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", "FULLSCREEN", "PROPERTY", "MOVECONTROL", "SHOWCONTROL", "ENABLECONTROL",
+	"FOCUSCONTROL",
 	"SCENE3D", "RENDER3D", "CAMERA3D", "LIGHT3D", "IDENTITY3D", "TRANSLATE3D", "ROTATE3D", "SCALE3D", "PUSH3D",
 	"POP3D", "COLOR3D", "TEXTURE3D", "BLEND3D", "DEPTH3D", "CULL3D", "VERTEX3D", "CUBE3D", "SPHERE3D",
 	"CYLINDER3D", "PLANE3D", 0 };
 
+static const char *last_dot (const char *s) { const char *d = 0; for (; *s; s++) if (*s == '.') d = s; return d; }
 struct BFn { const char *name; int id; int ret; const char *args; };
 static const BFn BFNS[] = {
 	{ "LEN", B_LEN, TY_NUM, "S" }, { "ASC", B_ASC, TY_NUM, "S" }, { "CHR$", B_CHR, TY_STR, "N" },
@@ -78,6 +80,7 @@ static const BFn BFNS[] = {
 	{ "PLAY", B_PLAYN, TY_NUM, "N" },
 	{ "STICK", B_STICK, TY_NUM, "N" }, { "STRIG", B_STRIG, TY_NUM, "N" }, { "PAD", B_PAD, TY_NUM, "[N" },
 	{ "GRAB3D", B_GRAB3D, TY_NUM, "NNNN" }, { "GPU3D", B_GPU3D, TY_NUM, "" },
+	{ "MENUITEM", B_MENUITEM, TY_NUM, "SS[S" }, { "WINDOWWIDTH", B_WINDOWWIDTH, TY_NUM, "" }, { "WINDOWHEIGHT", B_WINDOWHEIGHT, TY_NUM, "" },
 	{ 0, 0, 0, 0 } };
 
 // Block terminators (what ends a statement block).
@@ -984,6 +987,16 @@ public:
 		if (parseRef (r) && r.method >= 0)
 		{
 			emitAddr (r);
+			if (isOp ('='))					// "obj.Name = v": the property's setter
+			{
+				const char *dot = last_dot (pdecls[r.method].name);
+				char sn[48] = "SETPROP_"; int k = 8; for (const char *c = dot ? dot + 1 : ""; *c && k < 47; c++) sn[k++] = *c; sn[k] = 0;
+				int si = findMethod (r.ty, sn);
+				if (si < 0) { fail2 ("A property without a setter: ", dot ? dot + 1 : ""); return true; }
+				next ();
+				callMethod (si, false);
+				return true;
+			}
 			bool parens = false;
 			if (isOp ('('))					// "obj.Name (a, b)": the whole rest in parentheses
 			{
@@ -1436,7 +1449,7 @@ public:
 			{ "CHDIR", S_CHDIR, "S" }, { "ENVIRON", S_ENVIRON, "S" }, { "SHELL", S_SHELL, "[S" },
 			{ "DRAWTEXT", S_DRAWTEXT, "NNS[N" }, { "SLEEP", S_SLEEP, "[N" }, { "PAUSE", S_PAUSE, "N" },
 			{ "BEEP", S_BEEP, "" }, { "SOUND", S_SOUND, "NN" }, { "RANDOMIZE", S_RANDOMIZE, "[N" },
-			{ "WINDOW", S_WINDOW, "S[NN" }, { "SETTEXT", S_SETTEXT, "NS" }, { "SETVALUE", S_SETVALUE, "NN" },
+			{ "WINDOW", S_WINDOW, "S[NNN" }, { "SETTEXT", S_SETTEXT, "NS" }, { "SETVALUE", S_SETVALUE, "NN" },
 			{ "NOTIFY", S_NOTIFY, "SS" }, { "SETCLIPBOARD", S_SETCLIPBOARD, "S" }, { "EXEC", S_EXEC, "S[S" },
 			{ "LAUNCH", S_LAUNCH, "S" }, { "KILL", S_KILL, "S" }, { "MKDIR", S_MKDIR, "S" }, { "RMDIR", S_RMDIR, "S" },
 			{ "WIDTH", S_WIDTH, "[NN" }, { "PLAY", S_PLAY, "S" }, { "NOTEON", S_NOTEON, "NN[NN" },
@@ -1447,7 +1460,9 @@ public:
 			{ "POP3D", S_POP3D, "" }, { "COLOR3D", S_COLOR3D, "N[N" }, { "TEXTURE3D", S_TEXTURE3D, "N[NN" },
 			{ "BLEND3D", S_BLEND3D, "N" }, { "DEPTH3D", S_DEPTH3D, "N[N" }, { "CULL3D", S_CULL3D, "N" },
 			{ "VERTEX3D", S_VERTEX3D, "NNN[NN" }, { "CUBE3D", S_CUBE3D, "[N" }, { "SPHERE3D", S_SPHERE3D, "[NN" },
-			{ "CYLINDER3D", S_CYLINDER3D, "[NNN" }, { "PLANE3D", S_PLANE3D, "[NN" }, { 0, 0, 0 } };
+			{ "CYLINDER3D", S_CYLINDER3D, "[NNN" }, { "PLANE3D", S_PLANE3D, "[NN" },
+			{ "MOVECONTROL", S_MOVECONTROL, "NNNNN" }, { "SHOWCONTROL", S_SHOWCONTROL, "NN" }, { "ENABLECONTROL", S_ENABLECONTROL, "NN" },
+			{ "FOCUSCONTROL", S_FOCUSCONTROL, "N" }, { 0, 0, 0 } };
 		for (int i = 0; S[i].name; i++)
 		{
 			if (!bseq (S[i].name, w)) continue;
@@ -2413,11 +2428,45 @@ public:
 	}
 
 	// ---- driver ----------------------------------------------------------------------------------
+	// PROPERTY Type.Name [()] AS type ... END PROPERTY: the getter, a FUNCTION Type.Name; PROPERTY Type.Name (v AS type)
+	// ... END PROPERTY: the setter, a SUB Type.SETPROP_Name (obj.Name = v calls it). The tokens rewritten so.
+	void rewriteProperties ()
+	{
+		int stack[32]; int sp = 0;				// what each open PROPERTY became: 1 SUB, 2 FUNCTION
+		for (int i = 0; i < toks.n; i++)
+		{
+			if (toks[i].t != T_ID) continue;
+			bool atStart = i == 0 || toks[i - 1].t == T_NL || (toks[i - 1].t == T_OP && toks[i - 1].op == ':');
+			if (bseq (toks[i].id, "PROPERTY") && i > 0 && toks[i - 1].t == T_ID && (bseq (toks[i - 1].id, "END") || bseq (toks[i - 1].id, "EXIT")))
+			{
+				int kind = sp ? stack[sp - 1] : 1;
+				bscpy (toks[i].id, kind == 2 ? "FUNCTION" : "SUB", 48);
+				if (bseq (toks[i - 1].id, "END") && sp) sp--;
+				continue;
+			}
+			if (!atStart || !bseq (toks[i].id, "PROPERTY")) continue;
+			if (i + 1 >= toks.n || toks[i + 1].t != T_ID || !last_dot (toks[i + 1].id)) { pos = i; fail ("Expected Type.Name after PROPERTY"); return; }
+			bool setter = i + 2 < toks.n && toks[i + 2].t == T_OP && toks[i + 2].op == '(' && !(toks[i + 3].t == T_OP && toks[i + 3].op == ')');
+			if (setter)
+			{
+				char n[48]; const char *dot = last_dot (toks[i + 1].id);
+				int k = 0;
+				for (const char *c = toks[i + 1].id; c <= dot; c++) n[k++] = *c;
+				for (const char *c = "SETPROP_"; *c; c++) n[k++] = *c;
+				for (const char *c = dot + 1; *c; c++) { if (k >= 47) { pos = i + 1; fail ("Property name too long"); return; } n[k++] = *c; }
+				n[k] = 0;
+				bscpy (toks[i + 1].id, n, 48);
+			}
+			bscpy (toks[i].id, setter ? "SUB" : "FUNCTION", 48);
+			if (sp < 32) stack[sp++] = setter ? 1 : 2;
+		}
+	}
 	Program *compile (const char *src, Error *e)
 	{
 		err = e; e->line = 0; e->msg[0] = 0;
 		P = new Program;
 		lex (src);
+		if (!failed) rewriteProperties ();
 		if (!failed) prescanTypes ();
 		if (!failed) prescan ();
 		pos = 0;

@@ -94,7 +94,14 @@ struct Host
 	virtual int  getText (int id, char *buf, int cap) { (void) id; (void) cap; buf[0] = 0; return 0; }
 	virtual int  getValue (int id) { (void) id; return 0; }
 	virtual void setValue (int id, int v) { (void) id; (void) v; }
-	virtual int  event (bool wait) { (void) wait; return 0; }	// control id; -1 closed; 0 none
+	virtual int  event (bool wait) { (void) wait; return 0; }	// control id; -1 closed; -2 resized; 0 none
+	// The controls' place and state, the window's flags (1: resizable), its menus (QBStudio's code).
+	virtual void moveControl (int id, int x, int y, int w, int h) { (void) id; (void) x; (void) y; (void) w; (void) h; }
+	virtual void showControl (int id, bool on) { (void) id; (void) on; }
+	virtual void enableControl (int id, bool on) { (void) id; (void) on; }
+	virtual void focusControl (int id) { (void) id; }
+	virtual void windowFlags (int flags) { (void) flags; }
+	virtual int  menuItem (const char *title, const char *item, const char *key) { (void) title; (void) item; (void) key; return 0; }
 	// System.
 	virtual void notify (const char *title, const char *text) { (void) title; (void) text; }
 	virtual int  msgbox (const char *title, const char *text, int buttons) { (void) title; (void) text; (void) buttons; return 1; }

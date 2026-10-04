@@ -3786,6 +3786,13 @@ LOOP
 
 Controls: `BUTTON`, `LABEL`, `TEXTBOX`, `CHECKBOX`, `LISTBOX`, `DROPDOWN` (items `"a|b|c"`),
 `PROGRESS`, `SLIDER`; `SETTEXT` / `GETTEXT$`, `SETVALUE` / `VALUE`, `WAITEVENT` / `EVENT`.
+Layout: `MOVECONTROL id, x, y, w, h`, `SHOWCONTROL id, shown`, `ENABLECONTROL id, enabled`,
+`FOCUSCONTROL id`; `WINDOW title$, w, h, 1` makes the window **resizable** (`WAITEVENT` then
+gives **-2** after a resize, `WINDOWWIDTH` / `WINDOWHEIGHT` its new client size); menus:
+`id = MENUITEM("&File", "&Quit", "Ctrl+Q")` (an item `"-"` is a separator; `WAITEVENT` gives
+`id` when it is chosen). Records may have **properties**: `PROPERTY T.Name AS STRING ... END
+PROPERTY` (the getter, `RETURN` its value) and `PROPERTY T.Name (v AS STRING) ... END PROPERTY`
+(the setter), then `x.Name = "a"` and `a$ = x.Name` — what QBStudio's generated code uses.
 System: `NOTIFY`, `MSGBOX`, `CLIPBOARD$` / `SETCLIPBOARD`, `OPENFILE$` / `SAVEFILE$` (the file
 dialogs), `EXEC`, `LAUNCH`, `DRAWTEXT`, `MOUSEX` / `MOUSEY` / `MOUSEB`, `PAUSE ms`.
 

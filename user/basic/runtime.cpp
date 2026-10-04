@@ -53,6 +53,7 @@ public:
 		}
 	}
 	bool onKey (long k) override { host_key (k); return true; }
+	void onResized () override;			// (a resizable window: the program's pages follow)
 	bool onMouse (int x, int y, int bl, int br, int bm, int) override
 	{
 		int b = (bl ? 1 : 0) | (br ? 2 : 0) | (bm ? 4 : 0);
@@ -320,6 +321,22 @@ public:
 		return id;
 	}
 	Widget *get (int id) { return id > 0 && id <= nctl ? ctl[id] : 0; }
+	// ---- the controls' place and state, the window's flags, the menus (QBStudio's code) ------------------------
+	void moveControl (int id, int x, int y, int w, int h) override
+	{
+		Widget *wd = get (id); if (!wd) return;
+		wd->left = x; wd->top = y; wd->resizeTo (w > 1 ? w : 1, h > 1 ? h : 1);
+		root->invalidate (true); dirty ();
+	}
+	void showControl (int id, bool on) override { Widget *wd = get (id); if (!wd) return; wd->hidden = !on; root->invalidate (true); dirty (); }
+	void enableControl (int id, bool on) override { Widget *wd = get (id); if (!wd) return; wd->disabled = !on; wd->invalidate (true); dirty (); }
+	void focusControl (int id) override { Widget *wd = get (id); if (wd) wd->setFocus (); }
+	void windowFlags (int flags) override { if (ensureWindow () && (flags & 1)) root->setResizable (true); }
+	enum { MAXMENU = 48 };
+	struct MenuItem { char title[32], item[64], key[16]; int id; };
+	MenuItem menus[MAXMENU]; int nmenu = 0;
+	Menu *menuBar = 0;
+	int menuItem (const char *title, const char *item, const char *key) override;
 	void setText (int id, const char *s) override
 	{
 		Widget *w = get (id); if (!w) return;
@@ -476,6 +493,49 @@ static void host_key (long k) { if (g_host) g_host->pushKey (k); }
 static void host_mouse (int x, int y, int b) { if (g_host) g_host->setMouse (x, y, b); }
 
 static void on_control (Widget &w) { if (g_host) g_host->pushEvent (w.tag); }
+void ScreenRoot::onResized () { if (g_host) g_host->userResized (width, height); }
+
+static bool ci_same (const char *a, const char *b)
+{
+	for (; *a && *b; a++, b++) { char x = *a >= 'a' && *a <= 'z' ? (char) (*a - 32) : *a, y = *b >= 'a' && *b <= 'z' ? (char) (*b - 32) : *b; if (x != y) return false; }
+	return *a == *b;
+}
+// The menus' items: a callback each (Menu's take no argument), their ids in a table
+static int g_menuIds[OnyxHost::MAXMENU];
+template <int N> static void menu_thunk () { if (g_host) g_host->pushEvent (g_menuIds[N]); }
+template <int N> struct MenuThunks { static void fill (MenuAction *t) { t[N - 1] = menu_thunk<N - 1>; MenuThunks<N - 1>::fill (t); } };
+template <> struct MenuThunks<0> { static void fill (MenuAction *) {} };
+// MENUITEM (title$, item$[, key$]): the item added to its menu (made at its first item); its id, as a control's
+int OnyxHost::menuItem (const char *title, const char *item, const char *key)
+{
+	if (!ensureWindow () || nmenu >= MAXMENU || nctl >= MAXCTL - 1) return 0;
+	int id = nctl + 1; nctl++;
+	ctl[id] = 0; ctlKind[id] = 0;
+	MenuItem &m = menus[nmenu++];
+	scpy (m.title, title, sizeof m.title); scpy (m.item, item, sizeof m.item); scpy (m.key, key ? key : "", sizeof m.key); m.id = id;
+	// the bar made again: the menus in the order of their first items, "-" a separator; "Ctrl+X" a shortcut
+	static MenuAction thunks[MAXMENU];
+	static bool filled; if (!filled) { MenuThunks<MAXMENU>::fill (thunks); filled = true; }
+	delete menuBar; menuBar = new Menu;
+	bool done[MAXMENU] = { false };
+	for (int i = 0; i < nmenu; i++)
+	{
+		if (done[i]) continue;
+		menuBar->menu (menus[i].title);
+		for (int j = i; j < nmenu; j++)
+		{
+			if (done[j] || !ci_same (menus[j].title, menus[i].title)) continue;
+			done[j] = true;
+			if (menus[j].item[0] == '-' && !menus[j].item[1]) { menuBar->separator (); continue; }
+			g_menuIds[j] = menus[j].id;
+			const char *k = menus[j].key; long code = 0; char shown[16] = "";
+			if (ci_same (k, "") == false && (k[0] == 'C' || k[0] == 'c') && (k[1] == 't' || k[1] == 'T') && (k[2] == 'r' || k[2] == 'R') && (k[3] == 'l' || k[3] == 'L') && k[4] == '+' && k[5]) { char c = k[5] >= 'a' && k[5] <= 'z' ? (char) (k[5] - 32) : k[5]; code = WK_CTRL (c); shown[0] = '^'; shown[1] = c; shown[2] = 0; }
+			menuBar->item (menus[j].item, shown, code, thunks[j]);
+		}
+	}
+	menuBar->publish ();
+	return id;
+}
 
 int main (void)
 {

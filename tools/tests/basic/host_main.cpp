@@ -77,7 +77,21 @@ struct ConsoleHost : bas::Host
 	int control (int k, int x, int y, int w, int h, const char *t, int v) override
 	{ printf ("[control %d %d %d %d %d \"%s\" %d -> %d]\n", k, x, y, w, h, t, v, nextId); return nextId++; }
 	void setText (int id, const char *s) override { printf ("[settext %d \"%s\"]\n", id, s); }
-	int  event (bool) override { static int n = 0; return ++n <= 2 ? 1 : -1; }
+	// the events: $EVENTS ("1 -2 3": then -1, the window closed; <prog>.events), else 1, 1, -1
+	int  event (bool) override
+	{
+		static int n = 0; n++;
+		const char *e = getenv ("EVENTS");
+		if (!e) return n <= 2 ? 1 : -1;
+		for (int k = 1; *e; k++) { long v = strtol (e, (char **) &e, 10); if (k == n) return (int) v; while (*e == ' ') e++; }
+		return -1;
+	}
+	void moveControl (int id, int x, int y, int w, int h) override { printf ("[move %d %d %d %d %d]\n", id, x, y, w, h); }
+	void showControl (int id, bool on) override { printf ("[show %d %d]\n", id, on); }
+	void enableControl (int id, bool on) override { printf ("[enable %d %d]\n", id, on); }
+	void focusControl (int id) override { printf ("[focus %d]\n", id); }
+	void windowFlags (int f) override { printf ("[windowflags %d]\n", f); }
+	int  menuItem (const char *t, const char *i, const char *k) override { printf ("[menu %s / %s %s -> %d]\n", t, i, k, nextId); return nextId++; }
 	void notify (const char *t, const char *m) override { printf ("[notify %s: %s]\n", t, m); }
 	double timer () override { return 3600.5 + vms / 1000.0; }
 	void date (char *o) override { strcpy (o, "01-02-2026"); }

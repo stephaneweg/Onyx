@@ -178,6 +178,17 @@ public:
 		mb = b;
 	}
 	void pushEvent (int id) { int n = (et + 1) % EVQ; if (n != eh) { evq[et] = id; et = n; } }
+	// The user resized a (resizable) window to w x h: the pages follow, the program hears -2 (WAITEVENT)
+	void userResized (int w, int h)
+	{
+		if (!win || w < 1 || h < 1 || (w == W * sx && h == H * sy)) return;
+		W = w / sx; H = h / sy;
+		allocPages ();
+		pageChanged ();
+		fillRect (0, 0, W, H, rgb (bg, 0));
+		dirty ();
+		pushEvent (-2);
+	}
 	bool stopped () { return stopKey || stopRequested (); }
 
 	// ---- pages -------------------------------------------------------------------------------------
