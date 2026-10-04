@@ -59,9 +59,10 @@ answer in French. The docs stay in English.
 `docs/GUI-USERSPACE-STUDY.md`: the window manager / compositor can leave the kernel (a `wsd` process,
 the GUI kapi slots redirected into a shared client library so no app is rebuilt); wtk inside the server
 or in a process of its own is ruled out (304 `onDraw` overrides, 418 derived classes in the apps);
-recommended first: **fixed-address shared libraries** on the v77 program images (several images per
-address space, `--just-symbols`, no `ld.so`), `libwtk` + FreeType first. Awaiting the user's decisions
-(listed at its end).
+recommended first, **the user's design**: shared **PIC libraries that publish their entry points in a
+table filled at load time** (the `kapi` model; no link-time fixed address, no `ld.so`), one physical copy
+on the v77 program images, `kapi_lib_open` → the table; FreeType first (a C library), then wtk with its
+C++ layouts and virtual order frozen (generated thunks). Open decisions listed at its end.
 
 ## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
 

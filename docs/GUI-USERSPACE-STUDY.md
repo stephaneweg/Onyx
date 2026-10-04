@@ -4,7 +4,10 @@
 user's: listed at the end. Asked: (1) can the window manager / compositor leave the kernel for a
 user-space process; (2) can the apps stop carrying a static copy of wtk — by putting wtk in the
 user-space window manager (the apps then talk IPC), by putting wtk in a process of its own, or by
-loading shared libraries (ideally one physical copy, mapped into every process that uses it).*
+loading shared libraries (ideally one physical copy, mapped into every process that uses it).
+**Revised the same day**: the user ruled out libraries at a link-time fixed address; §3.3 is now the
+user's design — PIC libraries that publish their entry points in a table filled at load time, read by
+the apps as they read `kapi`'s.*
 
 ## Summary
 
@@ -13,12 +16,13 @@ loading shared libraries (ideally one physical copy, mapped into every process t
 | **GUI (WM + compositor) in user space** | **Yes** — the apps already draw everything themselves; the kernel keeps the window list, the input routing and the composition | large: ~4–5 k lines moved or written, a new protocol, every app to re-test | **yes, in a second step**, on top of the shared libraries |
 | **wtk inside the window server** (server-side widgets, X11 / Win32 style) | technically, but not for Onyx's apps | a rewrite of most of the 88 wtk apps | **no** |
 | **wtk in a process of its own** | same objection, worse (three parties) | same | **no** (except as a *common-dialogs* service, below) |
-| **Shared libraries, fixed address, one physical copy** | **Yes**, most of the machinery exists (v77 program images) | small: ~300 kernel lines, link changes, no ld.so, no toolchain rebuild | **yes, first** |
-| **Full dynamic linking** (PIC, `ld.so`, `dlopen`) | yes | large: an `ld.so`, PIC builds of newlib / libgcc / libstdc++, kernel `PT_INTERP` | later, only if `dlopen` plugins are wanted |
+| **Shared PIC libraries behind an export table** (the user's design: one physical copy, the table filled at load, apps not bound to a build) | **Yes**, the loading on the v77 program images; no `ld.so` | medium: ~400 kernel lines, a table generator, wtk's layouts and virtual order frozen (C++) | **yes, first** |
+| *Libraries at a link-time fixed address* | yes | small | **ruled out by the user** (apps bound to one build) |
+| **Full dynamic linking** (`ld.so`, symbol lookup, `dlopen`) | yes | large: an `ld.so`, PIC builds of newlib / libgcc / libstdc++, kernel `PT_INTERP` | not needed; only for unmodified ports expecting ELF shared objects |
 
-The order matters: the shared-library step is cheap, and it is also the vehicle that makes the user-space
+The order matters: the shared-library step comes first, and it is also the vehicle that makes the user-space
 GUI compatible with every existing binary (the GUI kapi slots can point into a shared client library
-instead of `svc`, see §4.3).
+instead of `svc`, see §2.4 and §3.3.2).
 
 ---
 
@@ -167,9 +171,10 @@ shared and some slots already point into user-side code (`pump_events`, `memcpy`
   translates each call into the protocol: `create_window` → connect + `CREATE` + map the canvas at
   `USER_WINDOW_CANVAS` as today; `present` → `PRESENT`; `pump_events` → read the socket, call the
   handlers as today; `win_list`, `desk`, `raise_app`... → requests to `wsd`;
-- the per-process state of `libgui` (socket, handlers, mods) needs a small private data page at a
-  fixed address — exactly what a fixed-address shared library gives (§4.3): **`libgui` is the first
-  shared library**.
+- `libgui` is a shared library (§3.3) loaded into **every** process at start; since the kernel places
+  a library once for the system and knows its export table, it writes `libgui`'s entry addresses into
+  the GUI slots of the `kapi` table page; `libgui`'s per-process state (socket, handlers, mods) is its
+  private RW segment. **`libgui` is the first system library.**
 - the 64 KB code page of the EL0 blob is too small for it; the shared-library mechanism removes that
   limit.
 
@@ -225,75 +230,133 @@ round trips, the same rewrite. What *does* make sense as separate processes are 
 gets back a result (the pattern of `ask` and of the applets). That saves some code in the apps and
 gives one look, but it does not remove wtk from them.
 
-### 3.3 Shared libraries — recommended, at a fixed address first
+### 3.3 Shared libraries — recommended: PIC libraries reached through an export table
 
-#### Variant A: fixed-address shared libraries (no `ld.so`, no PIC)
+**The user's decision (2026-10-04): no library at a link-time fixed address.** A library is PIC code
+that **publishes its entry points in a table of pointers**, filled when it is loaded; an app does not
+link against any binary of the library: it asks for the library's table and calls through it — the
+model of `kapi` (`TKApiTable` at `KAPI_TABLE_VA`, the `KT->x (...)` wrappers of `user/kapi.h`), applied
+to user-space libraries. A new build of the library, at whatever addresses, serves every app built
+before it, as long as the table only grows.
 
-The model of a.out shared libraries / Windows DLLs at their preferred base:
+#### 3.3.1 The library
 
-- **`libwtk` is linked once, as a static ELF, at a fixed address** in the unused [16 GB, 32 GB)
-  (e.g. one 256 MB slot per library and major version: 16 GB `libgui`, 16.25 GB `libwtk.1`,
-  16.5 GB `libft.1`...), with its own `user.ld` (RX segment + RW segment, as apps).
-- **The apps link against its symbols without its code**: `-Wl,--just-symbols=libwtk.1.elf` (or `-R`):
-  calls are plain `bl` / `adrp` to absolute addresses — no PLT, no GOT, **no run-time cost**.
-- **The kernel maps it**: the app carries a note (a `PT_NOTE` or a `.onyx.needs` section: the library
-  paths) read by `ElfReadPlan`; `ImageMap` accepts a **list** of images per address space instead of
-  one (`m_pImage` → a small array): each library is a `TImage` like a program — **its read-only pages
-  one physical copy for every process**, its RW segment a private copy per process, preloadable,
-  reference counted, dropped when its file changes. This is the existing v77 code, generalised:
-  ~300 lines + host tests, **no new fault path, no toolchain rebuild**.
-- **Initialisation**: crt0 walks the libraries' `init_array` before the app's (the library exports
-  `__lib_init_array_start/end`; or the kernel passes their addresses).
-- **What wtk needs from the app**: today `operator new` / `delete` come from the app (freestanding:
-  `umm`, newlib: `malloc`). A fixed-address library cannot reference app symbols, and a widget made by
-  the app and deleted by wtk must use one allocator. Two answers: (1) an **import table** in the
-  library's RW data that crt0 fills (`new`, `delete`, `malloc`, `free`) — 4 function pointers; or (2)
-  one allocator for everybody, in a `libonyx` (the kapi wrappers + `umm`) that newlib's `malloc` also
-  uses. (1) is a day's work; (2) is cleaner later.
-- `memcpy` / `memset` emitted by GCC already resolve to the kapi table's slots (fixed VA): unchanged.
-- The header-only parts (`ft/fonts.h`, `ft/wtkface.h`, inlines of `widget.h`) stay compiled into the
-  apps unless moved into `.cpp` files.
+- **Built PIC**: `-fPIC -fvisibility=hidden`, linked as a position-independent image with no
+  imports (`-shared -Bsymbolic`, or `-static-pie --no-dynamic-linker`): its code reaches its own
+  functions and data PC-relatively (`adrp` + `add`), so **its text needs no patching and is shared as
+  is**. The only relocations left are **`R_AARCH64_RELATIVE`** (base + addend) in its data: the
+  export table itself, the C++ vtables, function-pointer arrays, pointers to strings. The loader
+  refuses anything else (no symbol lookup at all: nothing like `ld.so`).
+- **Its export table**, the library's only exported symbol, versioned like `kapi`:
 
-**The real limit is the ABI, not the loader.** A fixed address freezes *where* every function and
-global is, and C++ freezes the class layouts: a field or a virtual added to `Widget` changes 418 app
-classes. So:
+  ```c
+  struct TWtkTable {                 // wtk/wtk_abi.h -- append-only, never reorder / remove
+      unsigned version, size;        // what this build provides
+      int  (*init) (const TLibImports *imp);  // the app's allocator, once per process
+      void (*widget_ctor) (Widget *, int, int, int, int);
+      void (*widget_invalidate) (Widget *, bool);
+      ...                            // ~350 entries for today's wtk (§3.3.3), generated
+  };
+  ```
 
-- **versions side by side**: `libwtk.1` and `libwtk.2` at two addresses, each app naming the one it
-  was linked with; a version costs memory only while an app uses it. The packages carry the
-  libraries; `pkg` resolves the needs (`packages.ini` already has `needs`).
-- **compatible updates** (bug fixes, new non-virtual functions, new classes) keep the same major only
-  if every existing symbol keeps its address: link the library with a **jump table / fixed symbol
-  order** (an ordered `.text.export` section, or a table of entry points like `TKApiTable`), and new
-  globals only at the end of the RW segment. That is discipline the kapi ABI already follows
-  (append-only).
-- **class layouts**: reserve fields and virtual slots in `Widget` / `Root` / `Modal` at the next
-  major, and move new state behind a pointer (`Widget::ext`), so additions do not change the layout.
+- **Its imports go through the same kind of table, the other way**: the kernel through `KT` (already a
+  fixed table, nothing to resolve); the app's allocator (`operator new` / `delete`, `malloc` / `free`:
+  a widget made by the app and freed by wtk must use one allocator) passed to `init` as a
+  `TLibImports` table; another library (FreeType for wtk) by asking for *its* table.
+- **Its constructors** (`init_array`) run inside `init`, once per process.
 
-Given today's churn (every wtk change touched headers, every app rebuilt), the first months would be
-"a new major at each wtk change, every app rebuilt" — as now — with the gain in memory and on the
-card; the update-without-rebuild benefit comes once the API settles.
+#### 3.3.2 The loading
 
-#### Variant B: real dynamic linking (PIC, `ld.so`, `dlopen`)
+- **Kernel** (on the v77 program images, ~400 lines + host tests): a library is a `TImage` like a
+  program — its read-only segment read once, **one physical copy** mapped *not owned* into every process
+  that uses it, its RW segment a private copy per process; reference counted, preloadable
+  (`/etc/preload.ini`), dropped when its file changes (the existing hook). What changes: an address space
+  holds **a list of images** instead of one (`image.cpp:449`), a library arena (the unused
+  [16 GB, 32 GB)), `ET_DYN` accepted with its `PT_DYNAMIC` read for the `RELATIVE` relocations.
+- **Where it goes**: the kernel picks the library's address **when it loads the image**, once for the
+  system (a free slot in the arena), and applies the `RELATIVE` relocations **once, to the image's copy
+  of the RW bytes** — so a process start copies already-relocated data, as for a program today, with
+  no relocation work per process. This is not a link-time address: the next build of the library, or
+  the same file on another boot, may get another place. (The relocated read-only-after-relocation part
+  — vtables, the table, `.data.rel.ro` — is then identical in every process and can be *shared* too,
+  read-only.) A per-process place stays possible (PIC allows it: then each process relocates its copy),
+  but nothing needs it; one place per system is also what lets the kernel point `kapi` slots into a
+  library (`libgui`, §2.4).
+- **How an app finds it**: `kapi_lib_open ("wtk", min_version)` (a new kapi call) maps the library into
+  the caller (loading it if no process has), returns its table — or 0 / an error when the library is
+  missing or older than `min_version` (the app says so and exits, as with an old kernel). The app-side
+  header keeps the table in a global, as `KT`: `#define WTK (wtk_table)`. Optionally the app names its
+  libraries in an ELF note and the kernel maps them before `_start` (no start-up call; same table).
+- **A running process keeps the image it opened** (reference count): a package update replaces the file,
+  the new processes get the new build, the old ones finish on the old one.
 
-- An `ld.so` in user space (`R_AARCH64_RELATIVE`, `GLOB_DAT`, `JUMP_SLOT`, `ABS64`, the TLS
-  relocations of the POSIX toolchain), symbol lookup, versioning; the kernel loads `PT_INTERP`; libc's
-  stubbed `dlopen` becomes real.
-- **The toolchain's libraries rebuilt PIC**: newlib, libgcc, libstdc++ (both toolchains are built
-  `--disable-shared`), every library `-fPIC`.
-- Cost at run time: GOT indirections (a few % in calls / globals), relocation at start (small for wtk,
-  large for WebKit-size libraries), one more private page or two per library (GOT, data).
-- Gains over A: no address slots to manage, symbol versioning, **`dlopen`** (plugins in-process:
-  Koton's plugins, codecs) — Onyx's plugins are processes today, by design (a plugin's crash is not
-  the host's).
-- Weeks, not days. **Worth it only if in-process plugins are wanted**; A's kernel part (images per
-  address space) is the base it would build on anyway.
+#### 3.3.3 wtk behind a table: what C++ adds
 
-#### What it saves
+The table solves *where the functions are*. It does not solve what C++ exposes **besides** functions,
+and wtk is C++ that the apps subclass (418 derived classes, 304 `onDraw` overrides) and whose fields
+they read and write (`left`, `width`, `canvas.px`, `valid`, `hidden`...):
+
+1. **Every non-inline method becomes a table entry**, called by an inline thunk in the header that
+   stays in the app: `void Widget::invalidate (bool r) { WTK->widget_invalidate (this, r); }`. About
+   **330 method declarations + 22 `extern` globals** in today's headers: the table, the thunks and the
+   library's side are **generated** from one list (a script, as `kapi_names.h` is), never written by
+   hand. Globals (the theme colours `C_BG`..., the text face) become one struct reached through the
+   table (`WTK->theme->bg`, the old names kept as macros or inline references).
+2. **The vtables**: an app's class derived from `Button` has *its* vtable in the app; the slots it does
+   not override point to the app-side thunks of the base methods (no address of the library needed in
+   the app). The library calls `w->onDraw ()` through the object's own vtable — the app's for an
+   app-made widget, the library's for one it made (a dialog's buttons). Both work **as long as the slot
+   order is the same**: **the order of the virtuals of `Widget`, `Root`, `Modal`... is ABI.**
+3. **The layouts**: objects made by the app are sized by the app's header, the library writes their
+   fields: **the size and the field offsets of every exposed class are ABI.**
+
+So the ABI of a wtk library is: **the table (append-only) + the layouts + the virtual order**. The rule
+that keeps old apps working with new builds, as for `kapi`:
+
+- new functions, new classes: **appended** to the table — always compatible;
+- **reserved space now**, before the first release: a few spare virtual slots at the end of `Widget`,
+  `Root`, `Modal` (25 virtuals today) and spare bytes plus an `ext` pointer in each exposed class; new
+  state goes into the reserve or behind `ext` (allocated by the library), new virtuals into a spare
+  slot;
+- a change that breaks a layout anyway is a **new library name** (`wtk2`), living beside the old one
+  (memory paid only while an app uses it) — the escape hatch, not the rule;
+- a build-time check (a host test with `offsetof` / `sizeof` and the virtual order written in the ABI
+  header, as `kapi_abi.h`'s `static_assert`s would) refuses an accidental change.
+
+What remains compiled into the apps: the header inlines (`widget.h`'s thumb arithmetic, `WkFaceScope`,
+`ft/fonts.h`, `ft/wtkface.h`) — small, and they call the table where they need the library. Moving the
+header-only FreeType code into the library (`libft` behind its own table, or inside wtk's) is part of
+the work if FreeType is to be shared.
+
+*The cleaner alternative* — a C API with opaque handles (Win32 / GTK style) and a header-only C++
+wrapper — frees the layouts entirely, but every app that touches a field (most of them) changes: a
+rewrite of the apps' UI code, not a recompilation. Not proposed.
+
+#### 3.3.4 The rest of the build
+
+- The apps stay **non-PIC at 8 GB** (`user.ld` unchanged): only the libraries are PIC. An app's calls to
+  the library are indirect (`ldr` + `blr` through the table: one load more than a `bl`, as for every
+  `kapi` call today).
+- The freestanding and the newlib apps share one wtk library (wtk uses no libc; its allocator comes
+  from the importer). Jet's hosted build of wtk can stay static, or use the library — to decide when the
+  rest works.
+- **To verify with the toolchain** (not installed in this session): that `aarch64-none-elf` `ld`
+  produces the PIC image (binutils' `aarch64elf` emulation has the shared and PIE scripts), and that the
+  few `libgcc` helpers wtk pulls in link PIC (AArch64's non-PIC code is mostly PC-relative already).
+- `pkg`: a library is a package (`needs = wtk`), installed under `SD:/lib/`; preloaded at boot like the
+  WebKit programs.
+- The same mechanism serves FreeType, mbedTLS, newlib, FFmpeg later — each behind its own generated
+  table (a C library's table is easy: no layouts beyond the structs it already publishes). **Full
+  dynamic linking** (`ld.so`, symbol lookup, `dlopen`) is not needed for any of it; it would only matter
+  for unmodified third-party code expecting ELF shared objects (the POSIX ports): it could be added later
+  on the same kernel images.
+
+#### 3.3.5 What it saves
 
 Measured on the binaries: **40–150 KB of wtk + ~92 KB of FreeType per app**. With 64 KB pages, that is
 **one to four pages a process** of RAM — with fifteen GUI processes running, **1–4 MB**: modest on a
 1 GB Pi, real on the card (~10 MB with FreeType over the ~90 apps) and in package downloads (a wtk fix
-no longer republishes 90 apps once the ABI is stable). The larger wins are elsewhere and come with the
+no longer republishes 90 apps: they read the new build's table). The larger wins are elsewhere and come with the
 same mechanism: **newlib, FreeType, mbedTLS (Mail, Courier, Jet, pkg, curl...), FFmpeg (Media, Jet),
 libstdc++ / ICU for the POSIX ports** — mbedTLS and FFmpeg weigh hundreds of KB to several MB each in
 several binaries. Licences: a shared FFmpeg / MuPDF does not change what is linked with what (LGPL
@@ -303,25 +366,37 @@ even prefers dynamic linking: docs/LICENSING.md to update).
 
 ## 4. Recommended path
 
-1. **Images per address space + fixed-address libraries (variant A)** — kernel (`image.cpp`, `elf.cpp`,
-   the address space's image list, the needs note), a `lib.ld`, crt0 calling the libraries'
-   constructors, the import table, `make` rules (`libwtk.1.elf`, apps with `--just-symbols`), `pkg`
-   needs. **First library: `libwtk` + FreeType** (the measurable case), then mbedTLS. Host tests as for
-   v77. A kapi call only if the libraries' list is queried (`image_list` shows them).
+1. **Shared PIC libraries behind an export table (§3.3)**, in this order:
+   a. the kernel: several images per address space, the library arena, `ET_DYN` + `RELATIVE`
+      relocations applied once to the image, `kapi_lib_open` (kapi v83); host tests as for v77; a
+      trivial C library (`libdemo`: a table of three functions) and an app that opens it, on the Pi;
+   b. the generator (one list → the table header, the app-side thunks, the library's table) and a
+      **C library first: FreeType** (`libft`: no layouts to freeze);
+   c. **wtk**: its ABI frozen (reserved fields and virtual slots, `ext`, the globals in one struct, the
+      `offsetof` / virtual-order check), the generated thunks, every app rebuilt once on it; then a wtk
+      change that does not touch the layouts is shipped **without rebuilding any app**;
+   d. then mbedTLS, newlib, FFmpeg as wanted.
 2. **The GUI's kernel pieces**, usable on their own: named local sockets, contiguous shm, privileges on
    `screen_grab` / `inject_*`, the display and input devices for one process, a hardware cursor trial.
 3. **`wsd` + `libgui`**: the window manager moved out, the GUI kapi slots redirected into `libgui`
    (the first library mapped into *every* process), the kernel compositor kept as the fallback; the
    whole test pass on the Pi; then the kernel WM removed.
-4. Optional: **common dialogs** as a service; **variant B** if in-process plugins are ever wanted.
+4. Optional: **common dialogs** as a service; full dynamic linking only if unmodified ports need it.
 
 ## For the user to decide
 
 - Whether to do step 1 now (cheap, safe) and the GUI move (step 3) later — or not at all: the GUI in
   the kernel works, and the gain of step 3 is robustness and freedom more than speed.
-- Fixed addresses (A) or full dynamic linking (B); with A, the address slots and the versioning rule
-  (a new major at each layout change; every app rebuilt then, as today).
-- The allocator answer for libraries: an import table now, or one shared `libonyx` allocator.
+- ~~Fixed addresses or dynamic linking~~ — **decided (2026-10-04): PIC libraries behind an export table
+  filled at load (§3.3)**.
+- One place per library for the whole system (recommended: no relocation per process, the relocated
+  vtables shared, `kapi` slots can point into `libgui`) or a place per process.
+- The libraries found by a call (`kapi_lib_open`) or named in the app's ELF note and mapped before
+  `_start` (or both).
+- How much reserve to freeze into `Widget`, `Root`, `Modal` (spare virtual slots, spare bytes, `ext`),
+  and the name rule for a breaking change (`wtk2` beside `wtk`).
+- The allocator for libraries: the importer's (`TLibImports`, proposed) or one shared `libonyx`
+  allocator.
 - Which libraries after wtk / FreeType: mbedTLS, newlib, FFmpeg.
 - For the GUI: one process (`wsd` absorbing the menubar / dock policy) or `wsd` + the existing desktop
   apps; a hardware cursor; `wsd` on a core of its own.
