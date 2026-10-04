@@ -53,9 +53,11 @@ enum
 	PD_DEFAULT,		// PdReq: name -> PdAnswer
 	PD_FORGET,		// PdReq: the finished jobs dropped from the list -> PdAnswer
 	PD_REFRESH,		// PdReq: name -> PdAnswer (the printer asked again; text: its state)
+	PD_SCAN,		// PdReq -> PdFound[] (the local network searched for printers)
 };
 struct PdReq { unsigned token; unsigned id; char name[64]; char uri[160]; };
 struct PdAnswer { int ok; char text[160]; };
+struct PdFound { char address[32], name[64], model[64]; int usable; };	// usable: Onyx can print on it
 enum { PJ_QUEUED = 0, PJ_PREPARING, PJ_SENDING, PJ_PRINTING, PJ_DONE, PJ_FAILED, PJ_CANCELED };
 struct PdJob { unsigned id; int state, pages, page; char printer[64], title[80], message[96]; };
 

@@ -139,11 +139,58 @@ static bool probe (const char *address, const char *name, Printer &p, char *why,
 	delete c;
 	return ok;
 }
+// The local network searched for printers, the way AirPrint finds them (mDNS / DNS-SD): one question -- who
+// offers "_ipp._tcp.local"? -- sent to the multicast address 224.0.0.251:5353 from an ordinary port: every
+// printer answers to that port (RFC 6762, a "one-shot" query: the answers come to us alone, no multicast
+// group to join). Whoever answers is then asked who it is, over IPP. One datagram sent, twice: nothing
+// the network notices -- unlike trying every address, which the Pi's network stack does not stand (it
+// restarted the Pi: 2026-10-05).
+static void scan (unsigned token)
+{
+	PdFound *found = new PdFound[16]; int nf = 0;
+	unsigned char who[16][4]; int nwho = 0;
+	int u = kapi_net_status (0, 0) ? kapi_sock_open (KAPI_SOCK_DGRAM, 0) : -1;
+	if (u >= 0)
+	{
+		static const unsigned char Q[] = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+			4, '_', 'i', 'p', 'p', 4, '_', 't', 'c', 'p', 5, 'l', 'o', 'c', 'a', 'l', 0, 0, 12, 0x80, 1 };	// PTR, IN, unicast answer
+		struct kapi_sockaddr to; memset (&to, 0, sizeof to);
+		to.family = KAPI_AF_INET; to.port = 5353; to.addr[0] = 224; to.addr[3] = 251;
+		kapi_sock_setopt (u, KAPI_SO_RCVTIMEO_MS, 250);
+		for (int round = 0; round < 2; round++)
+		{
+			if (kapi_sock_send (u, Q, sizeof Q, 0, &to) != (long long) sizeof Q) break;
+			for (int k = 0; k < 6; k++)					// (a second and a half of answers)
+			{
+				static unsigned char ans[1500]; struct kapi_sockaddr from; memset (&from, 0, sizeof from);
+				long long r = kapi_sock_recv (u, ans, sizeof ans, 0, &from);
+				if (r < 12 || !(ans[2] & 0x80)) continue;		// (not an answer)
+				bool have = false;
+				for (int i = 0; i < nwho; i++) if (!memcmp (who[i], from.addr, 4)) have = true;
+				if (!have && nwho < 16) memcpy (who[nwho++], from.addr, 4);
+			}
+		}
+		kapi_sock_close (u);
+	}
+	ipp::Caps *cp = new ipp::Caps;
+	for (int i = 0; i < nwho && nf < 16; i++)
+	{
+		char addr[32], why[96]; snprintf (addr, sizeof addr, "%d.%d.%d.%d", who[i][0], who[i][1], who[i][2], who[i][3]);
+		if (!ipp::get_caps (&ipp::KAPI_NET, addr, *cp, why, sizeof why)) continue;
+		PdFound &f = found[nf++]; memset (&f, 0, sizeof f);
+		scpy (f.address, sizeof f.address, addr); scpy (f.name, sizeof f.name, cp->name[0] ? cp->name : cp->model);
+		scpy (f.model, sizeof f.model, cp->model); f.usable = cp->pwg || cp->pdf;
+	}
+	delete cp;
+	answer (token, found, (unsigned) nf * sizeof (PdFound));
+	delete[] found;
+}
 static void handle (int type, const PdReq &rq)
 {
 	switch (type)
 	{
 	case PD_SUBMIT: answer_ok (rq.token, enqueue (rq.id), 0); break;
+	case PD_SCAN: scan (rq.token); break;
 	case PD_LIST:
 	{
 		PdJob *o = new PdJob[MAXJOB]; int n = 0;

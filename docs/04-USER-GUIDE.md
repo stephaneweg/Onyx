@@ -1556,9 +1556,10 @@ the Game Library and Setup do.
 Onyx prints on **network printers** (Wi-Fi or cable) that speak **IPP Everywhere / AirPrint** — most
 printers since 2012, no driver to install — and into **PDF files** (the **PDF** printer, always there).
 
-**Add a printer**: Control Panel ▸ **Printers**. Type its **address** (its IP address, as `192.168.0.14`:
-the printer's network page or screen shows it; or `ipp://host:631/ipp/print`), a **name** if you want
-another than its own, **Add**: the printer is asked what it can do (its papers, colour, quality, margins)
+**Add a printer**: Control Panel ▸ **Printers**. **Find** searches the network (a few seconds: the printers
+answer by themselves, as for AirPrint) and lists those found — click one: its address and name fill the
+fields. Or type the **address** yourself (its IP address, as `192.168.0.14`: the printer's network page or
+screen shows it; or `ipp://host:631/ipp/print`) and a **name** if you want another than its own. **Add**: the printer is asked what it can do (its papers, colour, quality, margins)
 and joins the list; the first one added becomes the **default**. **Default** makes the selected printer
 the one the Print dialog proposes, **Check** asks it again (its state, its ink levels), **Test page**
 prints a page of text, colours, greys and fine lines with the edge of what it prints, **Remove** forgets

@@ -34,6 +34,7 @@ static Label   *g_model, *g_addr, *g_state, *g_status;
 static Textbox *g_newAddr, *g_newName;
 static PrintPrinter g_pr[12]; static int g_npr;
 static PrintJobInfo g_job[32]; static int g_njob;
+static ListBox *g_found; static PrintFound g_fnd[16]; static int g_nfnd;
 
 static void status (const char *s) { g_status->setText (s); }
 // the window shown now (a request to the printer takes a moment)
@@ -146,6 +147,31 @@ static void on_add (Widget &)
 	}
 	else { char s[200]; snprintf (s, sizeof s, "Not added: %s.", err); status (s); }
 }
+// Find: the network searched (the print service asks who prints, by mDNS, as AirPrint does); a printer found,
+// clicked: its address and name in the fields -- Add adds it.
+static void on_find (Widget &)
+{
+	status ("Searching the network for printers..."); show_now ();
+	g_nfnd = print_printers_find (g_fnd, 16);
+	g_found->clear ();
+	for (int i = 0; i < g_nfnd; i++)
+	{
+		char t[64]; snprintf (t, sizeof t, "%.30s  %s%s", g_fnd[i].model, g_fnd[i].address, g_fnd[i].usable ? "" : "  (not usable)");
+		g_found->add (t);
+	}
+	char s[96];
+	if (!g_nfnd) snprintf (s, sizeof s, "No printer found on the network: is it on, and on the same network?");
+	else snprintf (s, sizeof s, "%d printer%s found: click one, then Add.", g_nfnd, g_nfnd == 1 ? "" : "s");
+	status (s);
+	if (g_nfnd == 1) { g_found->setSel (0); g_newAddr->setText (g_fnd[0].address); g_newName->setText (g_fnd[0].name); }
+}
+static void on_found (Widget &)
+{
+	int i = g_found->sel;
+	if (i < 0 || i >= g_nfnd) return;
+	g_newAddr->setText (g_fnd[i].address); g_newName->setText (g_fnd[i].name);
+	status (g_fnd[i].usable ? "Add adds this printer." : "This printer takes neither PWG Raster nor PDF: Onyx cannot print on it.");
+}
 static void on_cancel_job (Widget &)
 {
 	int i = g_jobs->sel;
@@ -239,8 +265,8 @@ int main (void)
 
 	GroupBox *ga = new GroupBox (X + 350, 8, W - 360, 250, "Add a network printer");
 	root.addChild (ga);
-	ga->addChild (new Label (10, ct, W - 380, 20, "A printer on the network (Wi-Fi or cable) that", C_TEXT, ga->bg));
-	ga->addChild (new Label (10, ct + 20, W - 380, 20, "speaks IPP Everywhere or AirPrint: most do.", C_TEXT, ga->bg));
+	ga->addChild (new Label (10, ct, W - 380, 20, "Find searches the network; or type a printer's", C_TEXT, ga->bg));
+	ga->addChild (new Label (10, ct + 20, W - 380, 20, "address (IPP Everywhere / AirPrint: no driver).", C_TEXT, ga->bg));
 	ga->addChild (new Label (10, ct + 52, 70, 20, "Address", C_TEXT, ga->bg));
 	g_newAddr = new Textbox (84, ct + 48, W - 380 - 74, 26, ""); ga->addChild (g_newAddr);
 	g_newAddr->tip = "The printer's IP address (192.168.0.14; its network page or its screen shows it), or ipp://host:631/ipp/print";
@@ -248,9 +274,9 @@ int main (void)
 	g_newName = new Textbox (84, ct + 82, W - 380 - 74, 26, ""); ga->addChild (g_newName);
 	g_newName->tip = "The name shown in the Print dialog (empty: the printer's own name)";
 	ga->addChild (new Button (84, ct + 118, 86, 28, "Add", on_add));
-	ga->addChild (new Label (10, ct + 156, W - 380, 20, "No driver: the printer says what it can do", C_DIS, ga->bg));
-	ga->addChild (new Label (10, ct + 176, W - 380, 20, "(papers, colour, quality). In a terminal,", C_DIS, ga->bg));
-	ga->addChild (new Label (10, ct + 196, W - 380, 20, "`ipp <address>` shows its answer.", C_DIS, ga->bg));
+	ga->addChild (new Button (176, ct + 118, 86, 28, "Find", on_find));
+	g_found = new ListBox (10, ct + 154, W - 380, 62, on_found); ga->addChild (g_found);
+	g_found->tip = "Find searches the network: the printers found are listed here";
 
 	GroupBox *gq = new GroupBox (X + 10, 264, W - 20, 170, "Print queue");
 	root.addChild (gq);

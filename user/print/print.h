@@ -129,6 +129,9 @@ int  print_printers (PrintPrinter *out, int max);		// -> how many
 int  print_printer_media (const char *printer, int i, char *name, int ncap, char *label, int lcap);
 // a network printer asked what it can do, and added (address: "192.168.0.14", "ipp://host:631/ipp/print")
 int  print_printer_add (const char *name, const char *address, char *err, int cap);	// 1 / 0 (err: why)
+// the local network searched for printers (mDNS / DNS-SD, as AirPrint: a few seconds) -> how many; usable 0: it answers but takes neither PWG Raster nor PDF
+typedef struct PrintFound { char address[32], name[64], model[64]; int usable; } PrintFound;
+int  print_printers_find (PrintFound *out, int max);
 int  print_printer_remove (const char *name);
 int  print_printer_default (const char *name);
 int  print_printer_status (const char *name, char *text, int cap);	// asked now: 1 ready (text: ink...), 0 (text: why)
