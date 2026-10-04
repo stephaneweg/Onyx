@@ -263,6 +263,9 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 		r->m_dispPending = true; r->m_dispT = kapi_get_ticks ();
 		r->onDisplayResize (GUI_DISPLAY_W (v), GUI_DISPLAY_H (v));
 		return;
+	case GUI_EVENT_WINRESIZE:		// the frame dragged to a new size (v82)
+		r->frameResize (GUI_WINRESIZE_X (v), GUI_WINRESIZE_Y (v), GUI_WINRESIZE_W (v), GUI_WINRESIZE_H (v));
+		return;
 	case GUI_EVENT_WINCTL:			// a title button (v64): the window menu, maximise
 		if (v == KAPI_FRAME_MENU) r->windowMenu ();
 		else if (v == KAPI_FRAME_MAXIMISE) r->maximise (!r->maximised ());
@@ -291,6 +294,38 @@ void Root::setResizable (bool on)
 	if (m_winFlags & WIN_FLAG_FIXED) return;		// (a fixed window: no buttons, never resized)
 	wk_window_state (WK_WIN_MENU | (m_resizable ? WK_WIN_RESIZABLE : 0) | (m_maxed ? WK_WIN_MAXIMISED : 0));
 	wk_decorate_window ();
+	// (v82) the frame's edges and corners drag: never smaller than the smallest size
+	if (m_minW <= 0) { m_minW = width / 2; if (m_minW < 160) m_minW = 160; if (m_minW > width) m_minW = width; }
+	if (m_minH <= 0) { m_minH = height / 2; if (m_minH < 100) m_minH = 100; if (m_minH > height) m_minH = height; }
+	kapi_win_resizable (m_resizable, m_minW, m_minH);
+}
+
+void Root::setMinSize (int w, int h)
+{
+	m_minW = w; m_minH = h;
+	if (m_resizable && !(m_winFlags & WIN_FLAG_FIXED)) kapi_win_resizable (1, m_minW, m_minH);
+}
+
+// The frame was dragged to a new place and size (the kernel showed its outline): the canvas made
+// again at that size, the window moved, the views laid out -- as maximise does.
+void Root::frameResize (int x, int y, int cw, int ch)
+{
+	if (!m_resizable || cw < 1 || ch < 1) return;
+	if (cw != width || ch != height)
+	{
+		int stride = cw;
+		unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+		if (fb == 0) return;
+		canvas.adopt (fb, cw, ch, stride);
+		width = cw; height = ch;
+	}
+	kapi_move_window (x, y);
+	m_maxed = false;				// (no longer the work area's size)
+	layout ();
+	invalidate (true);
+	wk_window_state (WK_WIN_MENU | (m_resizable ? WK_WIN_RESIZABLE : 0));
+	wk_decorate_window ();
+	onResized ();
 }
 
 void Root::maximise (bool on)

@@ -93,6 +93,9 @@ answer in French. The docs stay in English.
   fault kills the app only; the EL1 "legacy" mode and its options are gone; ID register reads emulated;
   `proc_stats` (v74) → `ps` SYSC/s, the Task Manager, `/bin/sysstat`; `tools/el0scan.sh` checks binaries.
   `cpu_stats` / `net_stats` (v80) → the Task Manager's Processor and Network tabs.
+  `win_resizable` (v82) → a window's edges and corners drag (an outline, then `GUI_EVENT_WINRESIZE`:
+  `Root::frameResize`); every `setResizable (true)` window has it. Not done: a live resize, a size kept
+  from one run to the next.
   `set_cursor` (v81) → the pointer's shapes (a hand on links, the I bar on text, arrows on what drags, Sheet's
   cross): `wk_cursor` in a widget's `onMouse`; drawn by `tools/gui/gen_cursors.py`. Not done yet: Mail's HTML
   view (its page is drawn by another process: the shape has to come back through `webview_proto.h`), Slides

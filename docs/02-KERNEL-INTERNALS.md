@@ -1063,7 +1063,9 @@ accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* be
 v79 = **what the kernel is**: `kernel_info` (slot 256), for `/bin/uname` (*v79: kernel_info* below),
 v80 = **the cores' load and the network's bytes by process**: `cpu_stats`, `net_stats` (slots 257,
 258), for the Task Manager's Processor and Network tabs (*v80: cpu_stats, net_stats* below),
-v81 = **the pointer's shape**: `set_cursor` (slot 259) (*v81: set_cursor* below).
+v81 = **the pointer's shape**: `set_cursor` (slot 259) (*v81: set_cursor* below),
+v82 = **a window resized by its frame**: `win_resizable` (slot 260), `GUI_EVENT_WINRESIZE`
+(*v82: win_resizable* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1451,6 +1453,27 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v82: win_resizable
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 260 | `win_resizable (on, min_w, min_h)` | the caller's window's edges and corners can be dragged (`on` 0: no longer); its client area is never made smaller than `min_w` x `min_h` (64 x 32 at least) → 0 / -1 (no window, a borderless or fixed one). |
+
+The kernel does not resize the window: it shows where its frame would be, and the app applies it.
+An edge is the 6 pixels inside the frame's outer edge (`WIN_EDGE_BAND`), a corner reaches 18 along
+it (`WIN_EDGE_CORNER`); a title button under the pointer wins (`CWindow::HitResizeEdge`). On an
+edge the pointer shows the two arrows (v81's shapes: `_SIZE_H`, `_SIZE_V`, `_SIZE_NWSE`,
+`_SIZE_NESW`). A press there starts a resize (`m_pSizeWindow`): the window gets no pointer event
+meanwhile, and each move draws the **outline** of the frame to be — three lines, black, white,
+black, drawn by `Composite` over the windows, only its four sides made dirty
+(`SizeOutlineDirty`) — kept above the menu bar and never smaller than the smallest client area
+plus the frame (`SizeDragLocked`). At the release (`SizeEndLocked`) the window's pointer handler
+gets **`GUI_EVENT_WINRESIZE`** (20): `lValue = (x << 48) | (y << 32) | (client_w << 16) |
+client_h`, x and y the frame's new top left on the screen (16 bits signed). The app then calls
+`resize_window2` and `move_window` — what `Root::frameResize` does (docs/03). An outline rather
+than a live resize: the window's canvas is made again once, not at every move (a page of Jet
+would be laid out again each time).
 
 ### v81: set_cursor
 

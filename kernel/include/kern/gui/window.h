@@ -131,6 +131,8 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_WINCTL	18	// (v64) a title button for the app: lValue = KAPI_FRAME_MENU
 					// (the window menu) or KAPI_FRAME_MAXIMISE (also a double
 					// click on the title bar)
+#define GUI_EVENT_WINRESIZE	20	// (v82) the frame was dragged to a new size: lValue = (x << 48) |
+					// (y << 32) | (client w << 16) | client h -- the app applies it
 #define GUI_EVENT_DISPLAY_RESIZE 19	// (v66) the screen's size changed (kapi_screen_set): lValue =
 					// (width << 16) | height -- to every window's pointer handler
 #define DND_F_COPY		1	// Ctrl held at the drop (copy instead of move)
@@ -298,6 +300,18 @@ public:
 	// (kapi v81) the pointer's shape over this window's client area (KAPI_CURSOR_*)
 	unsigned CursorShape (void) const	{ return m_nCursorShape; }
 	void SetCursorShape (unsigned nShape)	{ m_nCursorShape = nShape; }
+	// (kapi v82) resized by its frame: the edges under a point of the screen (WIN_EDGE_* bits, 0:
+	// none -- not resizable, or not on an edge), the smallest client area
+	boolean Resizable (void) const		{ return m_bResizable; }
+	void SetResizable (boolean bOn, int nMinW, int nMinH)
+	{
+		m_bResizable = bOn;
+		m_nMinW = nMinW < 64 ? 64 : nMinW;
+		m_nMinH = nMinH < 32 ? 32 : nMinH;
+	}
+	int MinClientW (void) const		{ return m_nMinW; }
+	int MinClientH (void) const		{ return m_nMinH; }
+	unsigned HitResizeEdge (int sx, int sy) const;
 	void Touch (void) const		{ m_nGen++; }
 	unsigned ChromeGen (void) const	{ return m_nChromeGen; }
 	void ChromeTouch (void)		{ m_nChromeGen++; }
@@ -386,6 +400,8 @@ private:
 	unsigned	m_nId;		// (Id)
 	mutable volatile unsigned m_nGen;	// (Gen)
 	unsigned m_nCursorShape;	// (v81) KAPI_CURSOR_*: the pointer's shape over the client area
+	boolean	 m_bResizable;		// (v82) its frame can be dragged
+	int	 m_nMinW, m_nMinH;	// ... the smallest client area
 	volatile unsigned m_nChromeGen;	// (ChromeGen)
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
@@ -435,6 +451,13 @@ private:
 
 #define HELD_KEYS	0x110		// logical key codes tracked as "held" (< KEY_DEL + 8)
 #define HELD_WORDS	((HELD_KEYS + 31) / 32)
+
+#define WIN_EDGE_L	1		// (v82) HitResizeEdge: the frame's edges (a corner: two of them)
+#define WIN_EDGE_R	2
+#define WIN_EDGE_T	4
+#define WIN_EDGE_B	8
+#define WIN_EDGE_BAND	6		// how far inside the frame an edge is taken
+#define WIN_EDGE_CORNER	18		// ... and how far along an edge its corner reaches
 
 class CWindowManager
 {
@@ -618,6 +641,15 @@ private:
 	int	   m_nShapeHotX[WM_CURSOR_SHAPES], m_nShapeHotY[WM_CURSOR_SHAPES];
 	unsigned   m_nShape;		// the shape shown now
 	void ShowShapeLocked (unsigned nShape);		// change it (the pointer's place made dirty)
+	// (v82) a window being resized by its frame: which edges, the pointer and the frame at the
+	// press, the frame as dragged (the outline Composite draws)
+	CWindow	  *m_pSizeWindow;
+	unsigned   m_nSizeEdge;
+	int	   m_nSizePX, m_nSizePY, m_nSizeX0, m_nSizeY0, m_nSizeW0, m_nSizeH0;
+	int	   m_nSizeX, m_nSizeY, m_nSizeW, m_nSizeH;
+	void SizeDragLocked (int x, int y);
+	void SizeEndLocked (void);
+	void SizeOutlineDirty (void);
 	void PickShapeLocked (void);			// ... to what is under the pointer now
 
 	// App-writable wallpaper (mapped into a writer app; kernel-owned frames).

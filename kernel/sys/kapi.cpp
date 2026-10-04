@@ -564,6 +564,17 @@ int kapi_set_cursor (int nShape)
 	return nWas;
 }
 
+// (v82) The caller's window can be resized by its frame (the window manager shows the outline, the
+// app applies the size it is told: GUI_EVENT_WINRESIZE).
+int kapi_win_resizable (int bOn, int nMinW, int nMinH)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || pWin->Borderless () || pWin->Fixed ()) return -1;
+	pWin->SetResizable (bOn != 0, nMinW, nMinH);
+	return 0;
+}
+
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
 void kapi_screen_size (int *pW, int *pH)
 {

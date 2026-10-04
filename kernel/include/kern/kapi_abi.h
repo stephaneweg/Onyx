@@ -160,7 +160,11 @@
 // v81: + set_cursor (slot 259): the pointer's shape over the caller's window (KAPI_CURSOR_*: the
 //      arrow, a hand, the text bar, the arrows that move and resize, the cell's cross, a crosshair,
 //      the hourglass, "no"). The kernel shows the four arrows while a window is dragged.
-#define KAPI_ABI_VERSION	81
+// v82: + win_resizable (slot 260): the caller's window can be resized by its frame -- the pointer on
+//      an edge or a corner shows the two arrows, a drag shows the new outline, and at the release the
+//      window gets GUI_EVENT_WINRESIZE (20) with its new place and client size, which it applies
+//      (resize_window2, move_window). wtk: Root::setResizable.
+#define KAPI_ABI_VERSION	82
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1797,6 +1801,14 @@ struct TKApiTable
 	// unknown shape). Kept until changed; the frame, the title bar and the other windows show
 	// their own. An app sets it as the pointer moves (wtk: wk_cursor, from a widget's onMouse).
 	int (*set_cursor) (int shape);
+
+	// --- v82: a window resized by its frame (gui/window.cpp) ---
+	// win_resizable: on != 0, the caller's window's edges and corners can be dragged; its client
+	// area is never made smaller than min_w x min_h -> 0 / -1 (no window, a borderless or fixed
+	// one). The kernel only shows the outline: at the release the window's pointer handler gets
+	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
+	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
+	int (*win_resizable) (int on, int min_w, int min_h);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1865,6 +1877,7 @@ KAPI_CHECK_SLOT (kernel_info, 256);
 KAPI_CHECK_SLOT (cpu_stats, 257);
 KAPI_CHECK_SLOT (net_stats, 258);
 KAPI_CHECK_SLOT (set_cursor, 259);
+KAPI_CHECK_SLOT (win_resizable, 260);
 
 #ifdef __cplusplus
 }

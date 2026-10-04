@@ -57,6 +57,9 @@ public:
 	// size: width, height). The window menu (its button, top left): Restore / Maximise,
 	// Minimise, Close.
 	void setResizable (bool on);
+	// The smallest client area the frame can be dragged to (kapi v82). Without it: half the size
+	// the window has when it becomes resizable (160 x 100 at least). Before or after setResizable.
+	void setMinSize (int w, int h);
 	bool resizable () const { return m_resizable; }
 	bool maximised () const { return m_maxed; }
 	void maximise (bool on);
@@ -83,6 +86,8 @@ private:
 	unsigned m_moveT;			// ticks of the last pointer event
 	bool     m_tipDone;			// already shown for this rest
 	bool     m_resizable, m_maxed;		// (setResizable, maximise)
+	int      m_minW = 0, m_minH = 0;	// (setMinSize; 0: chosen by setResizable)
+	void frameResize (int x, int y, int cw, int ch);	// the frame was dragged (GUI_EVENT_WINRESIZE)
 	int      m_rx, m_ry, m_rw, m_rh;	// the window's place and size before it was maximised
 	bool     m_dispPending;			// (GUI_EVENT_DISPLAY_RESIZE: displayTick fits the window)
 	unsigned m_winFlags;			// (its WIN_FLAG_*: a borderless one places itself)

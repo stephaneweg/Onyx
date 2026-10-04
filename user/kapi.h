@@ -551,6 +551,17 @@ static inline int kapi_net_stats (int pid, struct kapi_net_stats *out)
 // kernel (the arrow stays). wtk: wk_cursor, from a widget's onMouse.
 static inline int kapi_set_cursor (int shape)
 	{ return KT->version >= 81 && KT->set_cursor ? KT->set_cursor (shape) : -1; }
+// (v82) This window can be resized by its frame (min_w x min_h: its smallest client area) -> 0; -1
+// on an older kernel, or for a borderless / fixed window. At the release of a drag the pointer
+// handler gets GUI_EVENT_WINRESIZE: GUI_WINRESIZE_X / _Y (the frame's new top left), _W / _H (the
+// client area's new size) of its value; the app applies them. wtk: Root::setResizable.
+#define GUI_EVENT_WINRESIZE	20
+#define GUI_WINRESIZE_X(v)	((int) (short) ((unsigned long long) (v) >> 48))
+#define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
+#define GUI_WINRESIZE_W(v)	((int) (((unsigned long long) (v) >> 16) & 0xFFFF))
+#define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
+static inline int kapi_win_resizable (int on, int min_w, int min_h)
+	{ return KT->version >= 82 && KT->win_resizable ? KT->win_resizable (on, min_w, min_h) : -1; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

@@ -561,8 +561,8 @@ The pointer tells what a click or a drag would do where it is:
 | a **hand** | a link: in a page of Jet, in a message of Mail |
 | the **I bar** | text that can be typed or selected: a text field, Letters' page, a page's text in Jet |
 | **four arrows** | a window dragged by its title bar; a chart in Sheet; a picture panned in Paint |
-| **two arrows**, left and right or up and down | an edge that drags: a column's edge in a list or in Sheet, a row's edge, the bar between two panes |
-| two arrows on a slant | a corner that sizes: an image in Letters, a chart in Sheet |
+| **two arrows**, left and right or up and down | an edge that drags: a window's edge, a column's edge in a list or in Sheet, a row's edge, the bar between two panes |
+| two arrows on a slant | a corner that sizes: a window's corner, an image in Letters, a chart in Sheet |
 | a **thick cross** | Sheet's cells |
 | a **thin cross** | Paint's picture; Sheet's fill handle |
 | an hourglass, a barred circle | a page of Jet that asks for them (busy, not allowed) |
@@ -588,6 +588,10 @@ remove it); no shadow. Its **title bar** holds:
 - **close** (×).
 
 - **Move**: drag the **title bar**.
+- **Resize**: drag an **edge** or a **corner** of the frame — the pointer shows two arrows there.
+  An outline shows the size to be while you drag; the window takes it when you let go. Never
+  smaller than a size the app sets, never under the menu bar. For the windows that can be
+  maximised (the others keep their size: the pointer stays an arrow on their edges).
 - **Foreground / focus**: click inside a window — it comes to the top and becomes
   *active* (its frame in the theme's colour; the others grey).
 - **Borderless** windows (the menu bar, the dock, the agenda, notifications, popups) cannot be

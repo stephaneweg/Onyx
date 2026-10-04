@@ -1786,7 +1786,12 @@ its licence on the app.
 >   layout containers, or its own `layout ()`) calls **`root.setResizable (true)`**: its maximise
 >   button (and a double click on the title) fills the work area — between the menu bar and the
 >   dock — and restores it (`Root::maximise`: `kapi_resize_window2`, the canvas re-adopted, the
->   frame redrawn), then **`virtual void onResized ()`**. Otherwise the button is greyed. The
+>   frame redrawn), then **`virtual void onResized ()`**. Otherwise the button is greyed.
+>   The same call lets the user **drag the frame's edges and corners** (kapi v82: the kernel shows
+>   the outline, then `GUI_EVENT_WINRESIZE` → `Root::frameResize`: the canvas at the new size,
+>   the window moved, `layout ()`, `onResized ()`). The client area is never dragged smaller than
+>   **`root.setMinSize (w, h)`** — without it, half the size the window had when it became
+>   resizable (160 x 100 at least): give the size below which your layout breaks. The
 >   window menu (its button, top left): Restore / Maximise, Minimise, Move to *workspace* / On
 >   All Workspaces (the names: `SD:/etc/dock.ini`'s `desk =` lines), Close (`Root::windowMenu`).
 >   **`root.fitWorkArea ()`** (after the children are anchored): a window taller or wider than

@@ -23,6 +23,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
 	m_nCursorShape = 0;				// (the arrow)
+	m_bResizable = FALSE; m_nMinW = 64; m_nMinH = 32;
 	m_pRetired[0] = m_pRetired[1] = m_pRetired[2] = 0;
 	static unsigned s_nNextId = 0;
 	m_nId = ++s_nNextId;
@@ -617,6 +618,7 @@ CWindowManager::CWindowManager (void)
 	m_nDesk (0), m_nDesks (4), m_nDeskGen (0)
 {
 	for (unsigned i = 0; i < WM_CURSOR_SHAPES; i++) { m_pShape[i] = 0; m_nShapeHotX[i] = m_nShapeHotY[i] = 0; }
+	m_pSizeWindow = 0; m_nSizeEdge = 0;
 	m_DndLabel[0] = '\0';
 	for (unsigned i = 0; i < HELD_WORDS; i++) m_UsbHeld[i] = m_VncHeld[i] = 0;
 	assert (s_pThis == 0);
@@ -671,6 +673,7 @@ void CWindowManager::Remove (CWindow *pWindow)
 	m_SpinLock.Acquire ();
 	// Drop any references into this window (it may be freed right after).
 	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
+	if (m_pSizeWindow == pWindow)		{ m_pSizeWindow = 0; ScreenDirty (); }
 	if (m_pPtrOverWindow == pWindow)	{ m_pPtrOverWindow = 0; }
 	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
 	if (m_pFullscreen == pWindow)		{ m_pFullscreen = 0; }	// its app quit: desktop back
@@ -854,6 +857,7 @@ void CWindowManager::MinimiseLocked (CWindow *pWindow)
 	}
 	if (m_pPtrCaptureWindow == pWindow)	{ m_pPtrCaptureWindow = 0; }
 	if (m_pDragWindow == pWindow)		{ m_pDragWindow = 0; }
+	if (m_pSizeWindow == pWindow)		{ m_pSizeWindow = 0; ScreenDirty (); }
 	if (m_pFullscreen == pWindow)		{ return; }
 	pWindow->SetMinimised (TRUE);
 }
@@ -875,6 +879,7 @@ void CWindowManager::ForgetHiddenLocked (void)
 		m_pPtrOverWindow = 0;
 	}
 	if (m_pPtrCaptureWindow != 0 && m_pPtrCaptureWindow->Hidden ())	{ m_pPtrCaptureWindow = 0; }
+	if (m_pSizeWindow != 0 && m_pSizeWindow->Hidden ())		{ m_pSizeWindow = 0; ScreenDirty (); }
 	if (m_pDragWindow != 0 && m_pDragWindow->Hidden ())		{ m_pDragWindow = 0; }
 	if (m_pBtnDown != 0 && m_pBtnDown->Hidden ())			{ m_pBtnDown = 0; }
 	if (m_pTitleClick != 0 && m_pTitleClick->Hidden ())		{ m_pTitleClick = 0; }
@@ -1093,6 +1098,15 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 		pScreen->FillRectangle (bx, by, bx + bw - 1, by + bh - 1, 0x00303D4D);
 		pScreen->DrawRectangle (bx, by, bx + bw - 1, by + bh - 1, 0x0090C0FF);
 		pScreen->DrawText (bx + 6, by + 3, DndLabel, 0x00FFFFFF);
+	}
+
+	// (v82) A window being resized: the outline of its frame to be (white between two black lines).
+	if (m_pSizeWindow != 0)
+	{
+		int x0 = m_nSizeX, y0 = m_nSizeY, x1 = m_nSizeX + m_nSizeW - 1, y1 = m_nSizeY + m_nSizeH - 1;
+		pScreen->DrawRectangle (x0, y0, x1, y1, 0x00000000);
+		pScreen->DrawRectangle (x0 + 1, y0 + 1, x1 - 1, y1 - 1, 0x00FFFFFF);
+		pScreen->DrawRectangle (x0 + 2, y0 + 2, x1 - 2, y1 - 2, 0x00000000);
 	}
 
 	// Cursor, drawn last so it floats above everything. Prefer the cursor
@@ -1673,7 +1687,16 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 			CWindow *pWin = m_pWindows[nHit];
 			RaiseLocked (pWin);
 			int nBtn = pWin->HitTitleButton (x, y);
-			if (nBtn == KAPI_FRAME_MENU)
+			unsigned nEdge = nBtn < 0 ? pWin->HitResizeEdge (x, y) : 0;
+			if (nEdge != 0)					// (v82) an edge, a corner: resized
+			{
+				m_pSizeWindow = pWin; m_nSizeEdge = nEdge;
+				m_nSizePX = x; m_nSizePY = y;
+				m_nSizeX = m_nSizeX0 = pWin->X (); m_nSizeY = m_nSizeY0 = pWin->Y ();
+				m_nSizeW = m_nSizeW0 = pWin->OuterWidth (); m_nSizeH = m_nSizeH0 = pWin->OuterHeight ();
+				SizeOutlineDirty ();
+			}
+			else if (nBtn == KAPI_FRAME_MENU)
 			{
 				EmitWinCtl (pWin, KAPI_FRAME_MENU);	// (a menu opens at the press)
 			}
@@ -1714,7 +1737,8 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	}
 	else if (bLeftNow && bLeftWas)
 	{
-		if (m_pDragWindow != 0)
+		if (m_pSizeWindow != 0) SizeDragLocked (x, y);
+		else if (m_pDragWindow != 0)
 		{
 			int ny = y - m_nDragDY, nInset = TopInsetLocked ();
 			if (!m_pDragWindow->Topmost () && ny < nInset) ny = nInset;	// not under the bar
@@ -1724,6 +1748,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	else if (!bLeftNow && bLeftWas)
 	{
 		m_pDragWindow = 0;
+		if (m_pSizeWindow != 0) SizeEndLocked ();
 		if (m_pBtnDown != 0)				// a title button's release: over it, it acts
 		{
 			CWindow *pWin = m_pBtnDown;
@@ -1783,6 +1808,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 			if (pW->PointerHandler () != 0 && !bOnTitleP && !pW->HitCloseBox (x, y))
 				pOver = pW;
 		}
+		if (m_pSizeWindow != 0) pOver = 0;		// (the frame is being dragged: not the app's)
 		if (m_pPtrCaptureWindow == 0 && pOver != m_pPtrOverWindow)
 		{
 			if (m_pPtrOverWindow != 0)
@@ -1844,17 +1870,117 @@ void CWindowManager::ShowShapeLocked (unsigned nShape)
 				 WM_CURSOR_BOX + WM_CURSOR_REACH, WM_CURSOR_BOX + WM_CURSOR_REACH);
 }
 
+// ---- a window resized by its frame (kapi v82) --------------------------------------------
+// The frame's edges under a point of the screen: within WIN_EDGE_BAND of the outer edge; near a
+// corner, the two edges. 0: the window is not resizable, or the point is elsewhere.
+unsigned CWindow::HitResizeEdge (int sx, int sy) const
+{
+	if (!m_bResizable || Borderless () || Fixed ()) return 0;
+	int rx = sx - m_nX, ry = sy - m_nY, W = OuterWidth (), H = OuterHeight ();
+	if (rx < 0 || ry < 0 || rx >= W || ry >= H) return 0;
+	unsigned e = 0;
+	if (rx < WIN_EDGE_BAND) e |= WIN_EDGE_L; else if (rx >= W - WIN_EDGE_BAND) e |= WIN_EDGE_R;
+	if (ry < WIN_EDGE_BAND) e |= WIN_EDGE_T; else if (ry >= H - WIN_EDGE_BAND) e |= WIN_EDGE_B;
+	if (e == 0) return 0;
+	if (e & (WIN_EDGE_L | WIN_EDGE_R))
+	{
+		if (ry < WIN_EDGE_CORNER) e |= WIN_EDGE_T; else if (ry >= H - WIN_EDGE_CORNER) e |= WIN_EDGE_B;
+	}
+	if (e & (WIN_EDGE_T | WIN_EDGE_B))
+	{
+		if (rx < WIN_EDGE_CORNER) e |= WIN_EDGE_L; else if (rx >= W - WIN_EDGE_CORNER) e |= WIN_EDGE_R;
+	}
+	return e;
+}
+
+static unsigned EdgeShape (unsigned nEdge)
+{
+	boolean bH = (nEdge & (WIN_EDGE_L | WIN_EDGE_R)) != 0, bV = (nEdge & (WIN_EDGE_T | WIN_EDGE_B)) != 0;
+	if (bH && bV)
+	{
+		boolean bNWSE = (nEdge & (WIN_EDGE_L | WIN_EDGE_T)) == (WIN_EDGE_L | WIN_EDGE_T)
+			     || (nEdge & (WIN_EDGE_R | WIN_EDGE_B)) == (WIN_EDGE_R | WIN_EDGE_B);
+		return bNWSE ? KAPI_CURSOR_SIZE_NWSE : KAPI_CURSOR_SIZE_NESW;
+	}
+	return bH ? KAPI_CURSOR_SIZE_H : bV ? KAPI_CURSOR_SIZE_V : 0;
+}
+
+// The outline's four sides (3 pixels thick) made dirty: where it was, where it is.
+void CWindowManager::SizeOutlineDirty (void)
+{
+	int x = m_nSizeX, y = m_nSizeY, w = m_nSizeW, h = m_nSizeH;
+	ScreenDirtyRect (x, y, w, 3); ScreenDirtyRect (x, y + h - 3, w, 3);
+	ScreenDirtyRect (x, y, 3, h); ScreenDirtyRect (x + w - 3, y, 3, h);
+}
+
+// The pointer moved with the button down: the frame as it would be, from where it was at the press
+// -- never smaller than the window's smallest client area, its top never under the menu bar.
+void CWindowManager::SizeDragLocked (int x, int y)
+{
+	CWindow *pWin = m_pSizeWindow;
+	int dx = x - m_nSizePX, dy = y - m_nSizePY;
+	int nX = m_nSizeX0, nY = m_nSizeY0, nW = m_nSizeW0, nH = m_nSizeH0;
+	int nMinW = pWin->MinClientW () + pWin->ChromeL () + pWin->ChromeR ();
+	int nMinH = pWin->MinClientH () + pWin->ChromeT () + pWin->ChromeB ();
+	if (m_nSizeEdge & WIN_EDGE_R) nW += dx;
+	if (m_nSizeEdge & WIN_EDGE_B) nH += dy;
+	if (m_nSizeEdge & WIN_EDGE_L) { nX += dx; nW -= dx; }
+	if (m_nSizeEdge & WIN_EDGE_T)
+	{
+		int nTop = TopInsetLocked ();
+		if (nY + dy < nTop) dy = nTop - nY;
+		nY += dy; nH -= dy;
+	}
+	if (nW > g_nScreenWidth) nW = g_nScreenWidth;
+	if (nH > g_nScreenHeight) nH = g_nScreenHeight;
+	if (nW < nMinW) { if (m_nSizeEdge & WIN_EDGE_L) nX -= nMinW - nW; nW = nMinW; }
+	if (nH < nMinH) { if (m_nSizeEdge & WIN_EDGE_T) nY -= nMinH - nH; nH = nMinH; }
+	if (nX == m_nSizeX && nY == m_nSizeY && nW == m_nSizeW && nH == m_nSizeH) return;
+	SizeOutlineDirty ();
+	m_nSizeX = nX; m_nSizeY = nY; m_nSizeW = nW; m_nSizeH = nH;
+	SizeOutlineDirty ();
+}
+
+// The release: the outline goes, the window is told its new frame (it resizes and moves itself).
+void CWindowManager::SizeEndLocked (void)
+{
+	CWindow *pWin = m_pSizeWindow;
+	SizeOutlineDirty ();
+	m_pSizeWindow = 0;
+	if (pWin == 0 || pWin->PointerHandler () == 0) return;
+	if (m_nSizeX == m_nSizeX0 && m_nSizeY == m_nSizeY0 && m_nSizeW == m_nSizeW0 && m_nSizeH == m_nSizeH0) return;
+	int cw = m_nSizeW - pWin->ChromeL () - pWin->ChromeR (), ch = m_nSizeH - pWin->ChromeT () - pWin->ChromeB ();
+	GUIEvent Ev;
+	Ev.ulHandler = pWin->PointerHandler ();
+	Ev.ulSender  = 0;
+	Ev.nEvent    = GUI_EVENT_WINRESIZE;
+	Ev.lValue    = (long) (((u64) (u16) (s16) m_nSizeX << 48) | ((u64) (u16) (s16) m_nSizeY << 32)
+			       | ((u64) (u16) cw << 16) | (u64) (u16) ch);
+	pWin->PushEvent (Ev);
+}
+
 // What is under the pointer: a window being dragged by its title shows the four arrows; the
 // window that holds the pointer (a button down) or the one whose client area it is over, its own
 // shape; anything else (a frame, a title bar, the desktop, a drag & drop) the arrow.
 void CWindowManager::PickShapeLocked (void)
 {
 	unsigned nShape = 0;
-	if (m_pDragWindow != 0) nShape = KAPI_CURSOR_MOVE;
+	if (m_pSizeWindow != 0) nShape = EdgeShape (m_nSizeEdge);
+	else if (m_pDragWindow != 0) nShape = KAPI_CURSOR_MOVE;
 	else if (!m_bDnd)
 	{
-		CWindow *pWin = m_pPtrCaptureWindow != 0 ? m_pPtrCaptureWindow : m_pPtrOverWindow;
-		if (pWin != 0) nShape = pWin->CursorShape ();
+		if (m_pPtrCaptureWindow == 0)			// (v82) on a frame's edge: the arrows that size it
+		{
+			boolean bOnTitle = FALSE;
+			unsigned nHit = HitTest (m_nCursorX, m_nCursorY, &bOnTitle);
+			if (nHit != ~0u && m_pWindows[nHit]->HitTitleButton (m_nCursorX, m_nCursorY) < 0)
+				nShape = EdgeShape (m_pWindows[nHit]->HitResizeEdge (m_nCursorX, m_nCursorY));
+		}
+		if (nShape == 0)
+		{
+			CWindow *pWin = m_pPtrCaptureWindow != 0 ? m_pPtrCaptureWindow : m_pPtrOverWindow;
+			if (pWin != 0) nShape = pWin->CursorShape ();
+		}
 	}
 	ShowShapeLocked (nShape);
 }
