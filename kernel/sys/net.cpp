@@ -1071,6 +1071,7 @@ void NetWlanNames (const char *pConfigFile)
 // the driver on a Pi that is only reachable by its network.
 #define NET_TRIAL_FILE	"SD:/etc/net-trial.txt"
 #define NET_TRIAL_KEEP	"SD:/etc/net-trial.keep"
+#define NET_TRIAL_LOG	"SD:/etc/net-trial.log"
 static u32 s_nTrialEnd;				// CTimer ticks; 0: no trial
 
 static int TrialValue (const char *pText, const char *pKey, int nDefault)
@@ -1118,6 +1119,17 @@ void NetTrialPoll (void)
 	FILINFO Info;
 	if (f_stat (NET_TRIAL_KEEP, &Info) == FR_OK) return;
 	CLogger::Get ()->Write ("net", LogWarning, "the trial is over: restarting");
+	// The kernel log's tail into SD:/etc/net-trial.log: what the driver said during a trial that
+	// cut the network is read from the PC after the restart.
+	static char Log[24 * 1024];
+	int nLog = CLogger::Get ()->Read (Log, sizeof Log, FALSE);
+	FIL File;
+	UINT nDone;
+	if (nLog > 0 && f_open (&File, NET_TRIAL_LOG, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK)
+	{
+		f_write (&File, Log, (UINT) nLog, &nDone);
+		f_close (&File);
+	}
 	kapi_reboot ();
 }
 
@@ -1128,9 +1140,10 @@ void NetWlanOptions (boolean bStat)
 	onyx_wlstat = bStat;
 	onyx_wlpoll = g_bNetCore;
 	// The frames' path of the driver (one SDIO command a frame, its locks without a turn of the
-	// scheduler, the bus at 50 MHz) and TCP's window scaling: on (docs/05 sections 26 and 27;
+	// scheduler, the bus at 50 MHz, the controller's registers written without a wait) and TCP's
+	// window scaling: on (docs/05 sections 26 and 27;
 	// each was tried alone by the trial file below, which can still turn them off for a boot).
-	onyx_wlfast = 15;
+	onyx_wlfast = 31;
 	onyx_tcp_ws = 1;
 }
 

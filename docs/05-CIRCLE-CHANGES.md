@@ -832,7 +832,7 @@ scheduler) for the driver's C code. With `onyx_wlstat` (the kernel: `cmdline.txt
 driver logs every 5 s under load its frames a second, a frame's read and write times, the waits,
 and every 10 s what the firmware says of the link (rate, RSSI, chanspec, power save).
 
-**4. The frames' path (`onyx_wlfast`, a bit each; the kernel sets 15).** With the chip polled and
+**4. The frames' path (`onyx_wlfast`, a bit each; the kernel sets 31).** With the chip polled and
 5 GHz joined, a frame's read still took ~270 µs — 3700 frames a second at best:
 
 - *bit 1 — one command a transfer* (`packetrw`): `sdiorwext` sent a length over a block (512) as
@@ -852,9 +852,20 @@ and every 10 s what the firmware says of the link (rate, RSSI, chanspec, power s
   the driver cut the Wi-Fi at boot — not found why; only this path is changed.)
 - *bit 8 — the bus at 50 MHz* (`emmc.c`): the driver switches the card to High Speed (function
   0's register 0x13) but the host stayed at 25 MHz; when the bus goes to four lines the host now
-  takes High Speed timing and 50 MHz, as Linux runs this chip on a Pi 4.
+  takes High Speed timing and 50 MHz, as Linux runs this chip on a Pi 4. (The controller's base
+  clock is 250 MHz there: the divider gives 41.7 MHz. The next step, 62.5 MHz, was tried: the
+  chip does not answer.)
+- *bit 16 — the controller's registers written without a wait* (`emmc.c`, `WR`): each write
+  waited 2 µs first — two periods of the SD clock, which is 2 µs at 1 MHz and 40 ns at 50 —, and
+  a command writes eight registers.
 
-A frame's read: **117 µs** (was 270).
+A frame's read: **93 µs** (was 270), a frame's write 16 µs (was 36).
+
+**Receive glomming was tried and taken out.** `bus:rxglom` is accepted by the firmware, which
+then expects the glom header on what it is *sent* too (brcmfmac's `txglom`: 8 bytes between the
+length words and the software header — without it the chip stops answering commands); with both
+done the Wi-Fi works, but this firmware (the 43455's) never sent a superframe in 50 MB received,
+and the rates were a little lower.
 
 **Measured** (a Pi 4, `tcpbench` against a PC on the same access point; with the kernel's
 inter-core interrupt of docs/02 §11, which came first, and §27's TCP changes, which came last):
@@ -868,15 +879,15 @@ inter-core interrupt of docs/02 §11, which came first, and §27's TCP changes, 
 | + TCP window scaling (§27) | 2.3 ms | 6.6 MB/s | 4.6 MB/s |
 | + one command a frame, the locks | 2.3 ms | 6.4 MB/s | 5.5 MB/s |
 | + the bus at 50 MHz | 2.2 ms | 7.5–8.1 MB/s | 6–7 MB/s |
+| + the registers written without a wait | 2.1 ms | 8–9.5 MB/s | **8.7 MB/s** |
 
-From the internet (the Pi's `curl`): 8 MB from Cloudflare at 6.0 MB/s (was 0.8, then 2.2–2.8 with
-the first four rows); YouTube's 3 MB player script in 0.6 s (was 4 to 23 s).
+From the internet (the Pi's `curl`): 30 MB from Cloudflare at 7.1–8.5 MB/s (it was 0.8, then
+2.2–2.8 with the first four rows); YouTube's 3 MB player script in 0.6 s (was 4 to 23 s). No
+error of the driver in 4 × 64 MB each way.
 
-**What limits it now** (`netstat=1`): 4600 frames a second at 117 µs each is half the reader's
-time, and the Pi acknowledges every segment (5000 frames sent a second while it receives). Next:
-receive glomming (`bus:rxglom`: several frames in one command — the driver must then split the
-superframe, which it does not know how to), delayed acknowledgements, a read buffer aligned for
-the DMA (it goes through a bounce buffer). The bus is on four lines (`Busifc` 2) and the link is
+**What limits it now** (`netstat=1`): 6000 frames a second at 93 µs each is over half the
+reader's time — 61 µs of it is the frame's data on the bus —, and the Pi acknowledges every
+segment (6000 frames sent a second while it receives). What is left: delayed acknowledgements. The bus is on four lines (`Busifc` 2) and the link is
 VHT (`vhtmode 1`, chanspec `e02a`): neither is the limit.
 
 **Trying such a change** on a Pi that is only reachable by its Wi-Fi: the kernel's one-boot trial
