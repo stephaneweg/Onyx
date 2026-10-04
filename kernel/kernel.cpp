@@ -533,7 +533,9 @@ public:
 			}
 			if (m_pWM->FullscreenWindow () != 0)
 			{
-				// A full-screen app owns the display (kapi_present_fb): pause.
+				// A full-screen app owns the display (kapi_present_fb): pause. Still alive for the
+				// watchdog (a show left on one slide presents nothing: not a stalled compositor).
+				m_pWM->CompositorAlive ();
 				CScheduler::Get ()->MsSleep (16);
 				continue;
 			}
@@ -727,8 +729,8 @@ public:
 //     task, to see who holds the CPU or what the compositor waits on), and when an app
 //     stops pumping its window's events for 2 s while some are queued (a frozen app);
 //   * the app watchdog: that frozen app watched (where its task is, the return addresses on
-//     its stack) and a report rewritten every 2 s into SD:/etc/apphang.txt -- the compositor
-//     stalled too -- kept in SD:/etc/lastcrash.txt if the Pi restarts meanwhile (crashlog.h).
+//     its stack) and a report rewritten every 2 s into SD:/etc/apphang.txt, kept in
+//     SD:/etc/lastcrash.txt if the Pi restarts meanwhile (crashlog.h).
 // Each warning fires once per episode, with a matching "recovered" line.
 //
 struct TaskStateScan
@@ -795,15 +797,9 @@ public:
 				CLogger::Get ()->Write (From, LogWarning,
 					"compositor STALLED: no frame for %u s; tasks: %s", nStallSec, Tasks);
 			}
-			if (bStalled && nStallSec % 2 == 0 && nStallSec < 12 && !DebugConsoleActive ())
-			{
-				CrashLogAppHang ("the compositor produced no frame", 0, nStallSec, 0);	// (SD:/etc/apphang.txt)
-			}
-			if (nStallSec == 12 && !DebugConsoleActive ())	// (its tasks' states logged at 2 s)
-			{
-				CrashLogRequest ("the compositor produced no frame for 12 s");
-			}
-			else if (nStallSec == 0 && bStalled)
+			// (A warning only, since 2026-10-04: no report, no restart -- a slide show left on one
+			// slide was restarted as "no frame for 12 s". A frozen kernel is the hang watchdog's.)
+			if (nStallSec == 0 && bStalled)
 			{
 				bStalled = FALSE;
 				CLogger::Get ()->Write (From, LogWarning, "compositor recovered");

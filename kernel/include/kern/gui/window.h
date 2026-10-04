@@ -562,6 +562,9 @@ public:
 	// OnKey, and a snapshot of the window list (bottom -> top). Window pointers stay
 	// valid after Remove (see Composite), so the caller may inspect them unlocked.
 	unsigned FrameCount (void) const	{ return m_nFrames; }
+	// The compositor paused under a full-screen app: alive all the same (the watchdog reads
+	// FrameCount -- a full-screen app that presents nothing is not a stalled compositor).
+	void CompositorAlive (void)		{ m_nFrames++; }
 	unsigned MouseCount (void) const	{ return m_nMouseEvents; }
 	unsigned KeyCount (void) const		{ return m_nKeyEvents; }
 	unsigned Snapshot (CWindow **ppOut, unsigned nMax);

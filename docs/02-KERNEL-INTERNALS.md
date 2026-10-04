@@ -2131,9 +2131,12 @@ locks; core 1 takes the sound lock only with `TryAcquire`, so a core 0 frozen wh
 does not stop the watch. Its progress is kept in the RAM record (`nDumpStep`: started, text
 ready, written, the write failed): when the SD write cannot finish (a wedged bus), the hardware
 watchdog restarts the Pi and the RAM report (the record of an 8 GB Pi sits at the top of the RAM
-above 4 GB) says how far core 1 got. **A stuck GUI with the scheduler alive** (the compositor
-without a frame for 12 s, the GUI watchdog task) asks for the same report
-(`CrashLogRequest`: core 0 masks its IRQs and waits, core 1 writes it, then the restart).
+above 4 GB) says how far core 1 got. `CrashLogRequest` asks for the same report from a task (core 0
+masks its IRQs and waits, core 1 writes it, then the restart); the GUI watchdog task used it for a
+compositor without a frame for 12 s and no longer does (2026-10-04): the compositor is paused under
+a full-screen app, so a slide show left on one slide, or a full-screen game, restarted the Pi. It
+now only warns in the log (`compositor STALLED`), and the paused compositor counts as alive
+(`CWindowManager::CompositorAlive`).
 **A Circle panic** (an assertion, the kernel heap's "Out of memory", ...) used to leave nothing:
 Circle's logger halts **every** core after the panic line (`CMultiCoreSupport::HaltAll`), core 1
 too, so the Pi stayed frozen ~15 s and the hardware watchdog restarted it without a report. The
@@ -2147,8 +2150,7 @@ window's events (2 s, some queued), it watches that app (`CrashLogWatchPid`: cor
 where its task is and, every 8th time, scan its stack) and, every 2 s while it lasts, has the
 `apphang` task (its own: never the GUI watchdog stuck on the card) rewrite `SD:/etc/apphang.txt`:
 the app, its tasks' states (running / ready / blocked / sleeping) and pages, then the whole record
-(the free memory, core 0's samples, the app's samples and stack) and the log's last 12 KB. The
-compositor without a frame does the same (every 2 s, before the 12 s report). Recovered (the app
+(the free memory, core 0's samples, the app's samples and stack) and the log's last 12 KB. Recovered (the app
 takes its events again, or is closed / killed): renamed `SD:/etc/lasthang.txt`; a clean shutdown /
 reboot renames it too. Still there at the next boot (the session never ended cleanly — the
 freeze grew into a restart): appended to `SD:/etc/lastcrash.txt` (`MergeAppHang`), or written as

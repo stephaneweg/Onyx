@@ -930,12 +930,12 @@ static void cmd_master ()
 }
 static void cmd_notes () { g_showNotes = !g_showNotes; relayout (); after (); }
 static void open_slide (int i) { go_slide (i); set_view (VIEW_NORMAL); }
+static Show g_show;		// (one: its compositor and its screen-sized target serve every show)
 static void show (int from, bool presenter)
 {
 	if (g_master) { master_close (); g_thumbs.clear (); from = presenter || from ? g_cur : 0; }
 	end_edit (); g_notes->sync ();
-	Show s;
-	s.run (from, presenter);
+	g_show.run (from, presenter);
 	g_root->attach ();
 	g_root->invalidate (true);
 	g_view->C.drop_all ();

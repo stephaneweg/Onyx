@@ -220,7 +220,7 @@ struct Show
 {
 	Compositor C;
 	unsigned *fb; int W, H;
-	unsigned *tgt; int tstride;
+	unsigned *tgt; int tstride, tgtW, tgtH;	// (kept from a show to the next: a gpu_vbuf is never given back)
 	float sc, sx, sy;
 	bool presenter;
 	unsigned startT;
@@ -411,13 +411,13 @@ struct Show
 		kapi_set_key_handler (sh_key); kapi_set_pointer_handler (sh_ptr);
 		g_shKn = 0; g_shClick = g_shRClick = g_shMoved = 0;
 		C.init ();
-		tgt = gpc_target_alloc (C.g, W, H, &tstride);
+		if (!tgt || tgtW != W || tgtH != H) { if (tgt) gpc_target_free (C.g, tgt); tgt = gpc_target_alloc (C.g, W, H, &tstride); tgtW = W; tgtH = H; }
 		if (!tgt) { kapi_fullscreen_end (); return; }
 		place (W, H);
 		startT = kapi_get_ticks ();
 		int slide = from; if (g_deck.slides[slide]->hidden) slide = next_shown (slide, 1);
 		if (slide < 0 || slide >= g_deck.slides.n) slide = next_shown (-1, 1);
-		if (slide < 0 || slide >= g_deck.slides.n) { gpc_target_free (C.g, tgt); kapi_fullscreen_end (); return; }
+		if (slide < 0 || slide >= g_deck.slides.n) { kapi_fullscreen_end (); return; }
 		FxTime ft[128]; int steps = fx_plan (*g_deck.slides[slide], ft);
 		bool firstAuto = g_deck.slides[slide]->anim.n && g_deck.slides[slide]->anim[0].start != ST_CLICK;
 		int step = firstAuto ? 0 : -1;			// -1: the slide shown, its first click's effects not begun
@@ -503,7 +503,6 @@ struct Show
 			}
 		}
 		C.drop_all ();
-		gpc_target_free (C.g, tgt);
 		kapi_fullscreen_end ();
 	}
 	static int first_of (const Slide &s, const FxTime *ft, int step) { for (int i = 0; i < s.anim.n; i++) { for (int k = 1; k < ft[i].np; k++) if (ft[i].pstep[k] == step) return i; if (ft[i].step == step) return i; } return 0; }
