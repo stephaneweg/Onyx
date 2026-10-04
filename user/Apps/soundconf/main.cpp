@@ -152,7 +152,8 @@ int main (void)
 	int ct = go->contentTop () + 6;
 	go->addChild (new Label (14, ct + 4, 90, 20, "Play on", C_TEXT, go->bg));
 	g_outOpt[0] = out_title (KAPI_SND_OUT_AUTO); g_outVal[0] = KAPI_SND_OUT_AUTO; g_outN = 1;
-	g_out = new Dropdown (110, ct, 300, 26, g_outOpt, 1, 0, on_output); go->addChild (g_out);
+	// (on the window, not in the group box: a parent clips its children, the open list needs the room)
+	int outL = go->left + 110, outT = go->top + ct;
 	g_outNow = new Label (14, ct + 34, W - 60, 20, "", C_DIS, go->bg); go->addChild (g_outNow);
 
 	GroupBox *gv = new GroupBox (X + 10, 108, W - 20, 150, "Volume");
@@ -167,6 +168,8 @@ int main (void)
 	g_status = new Label (X + 12, 270, W - 24, 22, "", C_DIS, root.bg);
 	root.addChild (g_status);
 	root.addChild (new Label (X + 12, H - 60, W - 24, 20, "Kept in SD:/etc/sound.ini. The menu bar's speaker changes it too.", C_DIS, root.bg));
+	g_out = new Dropdown (outL, outT, 300, 26, g_outOpt, 1, 0, on_output);
+	root.addChild (g_out);				// (last: over the groups when its list is open)
 	read_volume ();
 	read_output ();
 	root.run ();
