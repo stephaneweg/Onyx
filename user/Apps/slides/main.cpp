@@ -10,10 +10,12 @@
 //
 // The pieces: model.h (the deck), text.h (the text's layout and drawing), render.h (the layers, the GPU),
 // editor.h (the state, the commands, undo), view.h (the slide edited), panes.h (thumbnails, sorter, notes,
-// status bar), sidebar.h (the four tabs), show.h (the show), odp.h (OpenDocument: read and written).
+// status bar), sidebar.h (the four tabs), show.h (the show), odp.h (OpenDocument), pptx.h (PowerPoint): read and
+// written.
 //
-// Files: .odp (OpenDocument presentation: Slides' own; Impress reads it); File > Export as PDF (a page a
-// slide) and Export Slide as PNG. "slides SD:/docs/a.odp" opens it. Closed with unsaved changes, the deck is
+// Files: .odp (OpenDocument presentation: Slides' own; Impress reads it) and .pptx (PowerPoint's; saved as such
+// when the file's name says so); File > Export as PDF (a page a slide) and Export Slide as PNG. "slides
+// SD:/docs/a.odp" (or a.pptx) opens it. Closed with unsaved changes, the deck is
 // kept in SD:/apps/slides.app/recovered.odp and offered back at the next start.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
@@ -22,7 +24,7 @@
 #include "docguard.h"
 #include "sidebar.h"
 #include "show.h"
-#include "odp.h"
+#include "pptx.h"
 #include "pdf/pdfwrite.h"
 
 using namespace wtk;
@@ -88,9 +90,9 @@ static bool load_path (const char *path)
 	unsigned n = 0;
 	unsigned char *b = read_all (path, &n);
 	if (!b) { wk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
-	bool ok = odp_load (g_deck, b, n);
+	bool ok = deck_load (g_deck, b, n);
 	free (b);
-	if (!ok) { deck_new (g_deck); wk_messagebox ("Open", "That is not a presentation Slides can read (.odp).", MB_OK); }
+	if (!ok) { deck_new (g_deck); wk_messagebox ("Open", "That is not a presentation Slides can read (.odp, .pptx).", MB_OK); }
 	scpy (g_path, ok ? path : "", sizeof g_path);
 	deck_loaded ();
 	return ok;
@@ -98,7 +100,7 @@ static bool load_path (const char *path)
 static bool write_path (const char *path, bool asCopy = false)
 {
 	unsigned n = 0;
-	unsigned char *b = odp_save (g_deck, &n);
+	unsigned char *b = has_ext (path, ".pptx") ? pptx_save (g_deck, &n) : odp_save (g_deck, &n);
 	bool ok = b && kapi_save_file (path, b, n) >= 0;
 	delete[] b;
 	if (!ok) { wk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
@@ -112,12 +114,13 @@ static void cmd_save_as ()
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled.odp", sizeof def);
 	if (wk_file_save (path, sizeof path, "SD:/docs", def))
 	{
-		if (!has_ext (path, ".odp")) { int k = (int) strlen (path); scpy (path + k, ".odp", (int) sizeof path - k); }
+		// (.odp, or .pptx when the name says so -- or the file was one)
+		if (!has_ext (path, ".odp") && !has_ext (path, ".pptx")) { int k = (int) strlen (path); scpy (path + k, has_ext (g_path, ".pptx") ? ".pptx" : ".odp", (int) sizeof path - k); }
 		write_path (path);
 	}
 	focus_view ();
 }
-static void cmd_save () { if (!g_path[0] || !has_ext (g_path, ".odp")) { cmd_save_as (); return; } write_path (g_path); focus_view (); }
+static void cmd_save () { if (!g_path[0] || (!has_ext (g_path, ".odp") && !has_ext (g_path, ".pptx"))) { cmd_save_as (); return; } write_path (g_path); focus_view (); }
 static void save_for_guard () { cmd_save (); }
 static void cmd_new ()
 {
@@ -1195,7 +1198,7 @@ public:
 		if (type == DND_TEXT) { unsigned *u = (unsigned *) malloc (sizeof (unsigned) * (len + 1)); int m = 0; for (int i = 0; i < len; ) { int l; u[m++] = ss::u8_dec (data + i, len - i, &l); i += l > 0 ? l : 1; } if (g_edit) g_view->type (u, m); free (u); after (); return; }
 		char path[200];
 		if (type != DND_FILES || !doc_first_path (data, path, sizeof path)) return;
-		if (has_ext (path, ".odp"))
+		if (has_ext (path, ".odp") || has_ext (path, ".pptx"))
 		{
 			if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) return;
 			load_path (path); return;

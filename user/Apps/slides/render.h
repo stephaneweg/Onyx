@@ -22,7 +22,7 @@ using namespace wtk;
 // ---- the shapes' outlines -----------------------------------------------------------------------------------------
 // The shape's outline in px (x, y, w, h: its box), as polygons into p (1/16 px). closed: a filled shape.
 static inline int Q (float v) { return (int) (v * 16.0f + (v >= 0 ? 0.5f : -0.5f)); }
-struct PolyB { int xy[2 * 96]; int n; void add (float x, float y) { if (n < 96) { xy[2 * n] = Q (x); xy[2 * n + 1] = Q (y); n++; } } };
+struct PolyB { int xy[2 * 96]; int n = 0; void add (float x, float y) { if (n < 96) { xy[2 * n] = Q (x); xy[2 * n + 1] = Q (y); n++; } } };
 static void reg_poly (PolyB &b, float cx, float cy, float rx, float ry, int n, float rot0, float inner = 0)
 {
 	int m = inner > 0 ? 2 * n : n;

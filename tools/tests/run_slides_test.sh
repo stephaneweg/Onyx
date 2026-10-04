@@ -1,7 +1,9 @@
 #!/bin/sh
 # run_slides_test.sh -- Slides' files (user/Apps/slides/odp.h) on the PC: the sample deck made
-# (tools/tests/slides/make_sample.cpp -> a scratch file; MAKE=1 also writes sdcard/docs/cafe-2026.odp), read and
-# checked, written again and read back the same; with LibreOffice installed, its conversion of the deck read too.
+# (tools/tests/slides/make_sample.cpp -> a scratch file; MAKE=1 also writes sdcard/docs/cafe-2026.odp and, as
+# Slides writes it, cafe-2026.pptx), read and
+# checked, written again and read back the same (.odp, .pptx); with LibreOffice installed, its conversions of the deck
+# (.odp, .pptx; our .pptx resaved) read too.
 # Linked with the desktop simulator's wtk (the image codecs), its kapi, FreeType (the text's layout) and gpucomp
 # (the CPU's path: a chart's picture).
 #
@@ -30,8 +32,16 @@ cd "$ROOT"
 SAMPLE="$OUT/cafe-2026.odp"; [ -n "$MAKE" ] && SAMPLE=sdcard/docs/cafe-2026.odp
 SIM_SD=sdcard "$OUT/make_sample" "$SAMPLE"
 OTHER=""
+export PPTX_OUT="$OUT/ours.pptx"; [ -n "$MAKE" ] && PPTX_OUT=sdcard/docs/cafe-2026.pptx
 if command -v soffice >/dev/null 2>&1; then
-	rm -rf "$OUT/lo"; mkdir -p "$OUT/lo"
-	if timeout 300 soffice --headless --convert-to odp --outdir "$OUT/lo" "$SAMPLE" >/dev/null 2>&1; then OTHER="$OUT/lo/$(basename "$SAMPLE")"; fi
+	# LibreOffice: the sample resaved (.odp), our .pptx resaved, the sample as .pptx
+	SIM_SD=sdcard "$OUT/slides_test" "$SAMPLE" >/dev/null 2>&1 || true
+	rm -rf "$OUT/lo" "$OUT/lox"; mkdir -p "$OUT/lo" "$OUT/lox"
+	B=$(basename "$SAMPLE" .odp)
+	timeout 300 soffice --headless --convert-to odp --outdir "$OUT/lo" "$SAMPLE" >/dev/null 2>&1 && OTHER="$OUT/lo/$B.odp"
+	if [ -n "$OTHER" ]; then
+		timeout 300 soffice --headless --convert-to pptx --outdir "$OUT/lox" "$PPTX_OUT" >/dev/null 2>&1 && OTHER="$OTHER $OUT/lox/$(basename "$PPTX_OUT")"
+		timeout 300 soffice --headless --convert-to pptx --outdir "$OUT/lo" "$SAMPLE" >/dev/null 2>&1 && OTHER="$OTHER $OUT/lo/$B.pptx"
+	fi
 fi
 SIM_SD=sdcard "$OUT/slides_test" "$SAMPLE" $OTHER

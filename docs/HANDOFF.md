@@ -684,9 +684,23 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   object a layer, **composited by the GPU** (`gpucomp`: the editor's view and the show; the CPU path for the
   thumbnails and the exports); `.odp` read and written (LibreOffice opens ours, its own are read; `onyx:` attributes
   and `onyx.xml` for an exact round trip); PDF and PNG export. Test: `sh tools/tests/run_slides_test.sh`; sample
-  `SD:/docs/cafe-2026.odp`; screenshots `slides*.png`. **Next**: `.pptx` read and written, a master / layout
-  editing view, effects by paragraph, groups, find and replace, handouts and notes pages in the PDF, a vector PDF
-  (the text as text).
+  `SD:/docs/cafe-2026.odp`; screenshots `slides*.png`.
+- **PowerPoint's `.pptx`** (asked by the user, same day): `user/Apps/slides/pptx.h`, read and written. Written the
+  way PowerPoint writes it, each Slides feature in its native form (the theme, a master, a layout per Slides layout,
+  placeholders by type/idx, tables in PowerPoint's default style, real charts with cached data, footers as slide
+  placeholders, `p14:dur` transitions, `p:timing` effects through a preset table both ways, `p14` sections): our
+  files round-trip exactly (a stress deck in the test: every shape, effect, transition, chart kind) and pass the
+  `pptx` skill's OOXML schema validator; LibreOffice renders them faithfully. Read generically: PowerPoint's
+  placeholders inherit position and text formats from layout and master, theme colour modifiers (tint/shade in
+  linear light), style references, groups flattened, `mc:AlternateContent`, every master's layouts (LibreOffice
+  writes one master per layout). Known: LibreOffice swaps the direction of push / cover transitions when it resaves
+  (ours follow PowerPoint: `dir` is the motion), and drops sections; percentage spacing (`spcPct` before/after)
+  is not read. `SD:/docs/cafe-2026.pptx` ships in `slides-samples`; `tools/tests/slides/powerpoint.pptx`
+  (python-pptx, PowerPoint's template) feeds the reader test and `screenshots/slides-pptx.png`. Also fixed: an
+  uninitialised point count in `render.h`'s `PolyB` (an ellipse's outline could hang the renderer). The host
+  harness note: the simulator's heap sits at a fixed address, so a one-off test binary may need `setarch -R`.
+  **Next**: a master / layout editing view, effects by paragraph in the show, groups, find and replace, handouts
+  and notes pages in the PDF, a vector PDF (the text as text).
 
 ## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
 

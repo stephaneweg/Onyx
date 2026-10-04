@@ -2,11 +2,14 @@
 // objects, texts, notes, effects checked; written again and read back (the round trip: the same deck); a
 // file of LibreOffice's (when given) read and described.
 //
-//   slides_test SAMPLE.odp [OTHER.odp]        (sh tools/tests/run_slides_test.sh)
+//   slides_test SAMPLE.odp [OTHER.odp [OURS-BY-LO.pptx [LO.pptx]]]        (sh tools/tests/run_slides_test.sh)
+//
+// The same deck as .pptx: written, read back the same; written by Slides and resaved by LibreOffice, and the sample
+// converted to .pptx by LibreOffice: read and described.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 #include "wtk/wtk.h"
-#include "Apps/slides/odp.h"
+#include "Apps/slides/pptx.h"
 #include <stdio.h>
 
 using namespace sl;
@@ -101,6 +104,25 @@ int main (int argc, char **argv)
 		printf ("--- before: %.400s\n--- after:  %.400s\n", a.str () + s0, c.str () + s0);
 	}
 	delete[] z; delete d2;
+	// .pptx: written, read back: the same description
+	{
+		unsigned pn; unsigned char *pz = pptx_save (d, &pn);
+		check (pz != 0, "pptx written");
+		FILE *f = fopen (getenv ("PPTX_OUT") ? getenv ("PPTX_OUT") : "/tmp/onyx_slides_test.pptx", "wb"); if (f) { fwrite (pz, 1, pn, f); fclose (f); }
+		Deck *d3 = new Deck;
+		check (pptx_load (*d3, pz, pn), "pptx read back");
+		Buf e; describe (*d3, e);
+		bool same2 = a.n == e.n && !memcmp (a.str (), e.str (), a.n);
+		check (same2, "the pptx round trip: the same deck");
+		if (!same2)
+		{
+			int i = 0; while (i < a.n && i < e.n && a.b[i] == e.b[i]) i++;
+			int s0 = i > 300 ? i - 300 : 0;
+			printf ("--- odp:  %.600s\n--- pptx: %.600s\n", a.str () + s0, e.str () + s0);
+			if (getenv ("DESC_DIR")) { char p[300]; snprintf (p, sizeof p, "%s/a.txt", getenv ("DESC_DIR")); FILE *f = fopen (p, "w"); if (f) { fputs (a.str (), f); fclose (f); } snprintf (p, sizeof p, "%s/b.txt", getenv ("DESC_DIR")); f = fopen (p, "w"); if (f) { fputs (e.str (), f); fclose (f); } }
+		}
+		delete[] pz; delete d3;
+	}
 	// a file of LibreOffice's: read, described
 	if (argc > 2)
 	{
@@ -114,6 +136,80 @@ int main (int argc, char **argv)
 			check (e->slides.n == 8 && e->sh < e->sw, "LibreOffice's: 8 slides, landscape");
 			delete e;
 		}
+	}
+	// every shape, effect, transition, chart kind: .pptx written, read back the same
+	{
+		Deck *x = new Deck; deck_copy (*x, d);
+		x->date = true;
+		Slide *s = slide_new (*x, LY_BLANK); x->slides.push (s);
+		int k = 0;
+		for (int sh = 0; sh < SH_COUNT; sh++)
+		{
+			Object *o = new Object; o->id = x->nextId++; o->kind = OB_SHAPE; o->shape = (signed char) sh;
+			o->x = 500 + (sh % 7) * 3800; o->y = 500 + (sh / 7) * 3600; o->w = 3000; o->h = 2600; o->rot = (short) (sh * 13 % 360); o->flipH = sh & 1; o->flipV = (sh & 2) != 0;
+			o->fill = sh % 3 ? fill_solid (sh % 2 ? (THEME | (TC_ACC1 + sh % 6)) : 0x123456) : fill_none ();
+			if (sh % 5 == 0) { o->fill.type = FILL_GRADIENT; o->fill.c1 = THEME | TC_ACC2; o->fill.c2 = 0xFFEEDD; o->fill.angle = (short) (sh * 30 % 360); }
+			o->fill.alpha = (unsigned char) (sh % 4 ? 255 : 128);
+			o->line = sh % 4 ? line_solid (sh % 2 ? 0x804020 : (THEME | TC_DK2), 20 + sh) : line_none ();
+			if (sh % 4 == 3) { o->line.type = LN_DASH; o->line.head0 = AH_ARROW; o->line.head1 = AH_DOT; } else if (sh % 4 == 2) o->line.type = LN_DOT;
+			o->shadow = sh % 3 == 0; o->radius = (short) (sh == SH_ROUND ? 250 : 160);
+			o->tb.anchor = (signed char) (sh % 3); o->tb.fit = (signed char) (sh % 3); o->tb.wrap = sh % 2;
+			CharFmt f = cf_inherit (); f.size = (short) (100 + sh * 10); f.flags = (unsigned short) (sh & 63); f.set = (unsigned short) (sh % 2 ? 63 : 15); if (f.set == 15) f.flags &= 15;
+			if (sh % 3 == 1) f.color = THEME | TC_LT1; if (sh % 4 == 1) f.font = FONT_MAJOR; if (sh % 4 == 2) f.font = (short) x->font_index ("DejaVu Serif");
+			ParaFmt pf = pf_inherit (); pf.align = (signed char) (sh % 4); pf.bullet = (signed char) (sh % 3); pf.level = (signed char) (sh % 5); pf.before = (short) (sh * 5); pf.spacing = (short) (90 + sh);
+			o->tb.set_text (sh % 2 ? "One\nTwo\nThree" : "Shape", f, &pf);
+			s->obj.push (o);
+			Anim a; a.obj = o->id; a.cls = (signed char) (k % 3); a.fx = (signed char) (k % FX_COUNT); a.start = (signed char) (k % 3); a.dir = (signed char) (k % 5);
+			a.byPara = (sh % 2) && a.cls != AC_EMPHASIS; a.delay = (short) (k * 100 % 1500); a.dur = (short) (a.fx == FX_APPEAR ? 500 : 200 + k * 100 % 2000);	/* (Appear: no duration in the file) */
+			s->anim.push (a); k++;
+		}
+		static const int CT[4] = { CH_BAR, CH_LINE, CH_PIE, CH_AREA };
+		for (int c = 0; c < 4; c++)
+		{
+			Object *o = new Object; o->id = x->nextId++; o->kind = OB_CHART; o->x = 1000 + c * 6000; o->y = 11000; o->w = 5500; o->h = 4000;
+			Chart *ch = new Chart; ch->type = CT[c]; ch->ncat = 3; ch->nser = CT[c] == CH_PIE ? 1 : 2; ch->legend = c % 2; ch->labels = c > 1;
+			if (c) snprintf (ch->title, sizeof ch->title, "Chart %d & co", c);
+			for (int i = 0; i < 3; i++) { snprintf (ch->cat[i], 24, "C<%d>", i); for (int j = 0; j < 2; j++) ch->val[j][i] = i * 1.5 + j; }
+			snprintf (ch->ser[0], 32, "S \"one\""); snprintf (ch->ser[1], 32, "S two");
+			o->chart = ch; o->tb.ensure (); s->obj.push (o);
+		}
+		for (int i = 0; i < x->slides.n; i++) { Slide *q = x->slides[i]; q->tr.type = (signed char) (i % TR_COUNT); q->tr.dir = (signed char) (q->tr.type == TR_PUSH || q->tr.type == TR_WIPE || q->tr.type == TR_COVER || q->tr.type == TR_UNCOVER ? 1 + i % 4 : DIR_LEFT);	/* (the others: no direction in the file) */ q->tr.dur = (short) (300 + i * 100); q->tr.after = i % 3 ? -1 : i * 1000; }
+		x->slides[1]->hidden = true;
+		x->slides[2]->bg.type = FILL_GRADIENT; x->slides[2]->bg.c1 = 0x102030; x->slides[2]->bg.c2 = THEME | TC_ACC3; x->slides[2]->bg.angle = 45;
+		Buf A; describe (*x, A);
+		unsigned pn; unsigned char *pz = pptx_save (*x, &pn);
+		FILE *f = fopen (getenv ("PPTX_STRESS") ? getenv ("PPTX_STRESS") : "/tmp/onyx_slides_stress.pptx", "wb"); if (f) { fwrite (pz, 1, pn, f); fclose (f); }
+		Deck *y = new Deck;
+		check (pptx_load (*y, pz, pn), "the stress deck read back");
+		Buf B; describe (*y, B);
+		// its effects too
+		for (int i = 0; i < x->slides.n && i < y->slides.n; i++)
+			for (int j = 0; j < x->slides[i]->anim.n; j++)
+			{
+				const Anim &a = x->slides[i]->anim[j];
+				char t[96]; snprintf (t, sizeof t, "fx %d/%d %d %d %d %d %d %d %d\n", i, j, a.cls, a.fx, a.start, a.dir, a.byPara, a.delay, a.dur); A.puts (t);
+				if (j < y->slides[i]->anim.n) { const Anim &b2 = y->slides[i]->anim[j]; snprintf (t, sizeof t, "fx %d/%d %d %d %d %d %d %d %d\n", i, j, b2.cls, b2.fx, b2.start, b2.dir, b2.byPara, b2.delay, b2.dur); B.puts (t); }
+			}
+		bool same = A.n == B.n && !memcmp (A.str (), B.str (), A.n);
+		check (same, "the stress deck: the same");
+		if (!same && getenv ("DESC_DIR"))
+		{
+			char p[300]; snprintf (p, sizeof p, "%s/sa.txt", getenv ("DESC_DIR")); FILE *g = fopen (p, "w"); if (g) { fputs (A.str (), g); fclose (g); }
+			snprintf (p, sizeof p, "%s/sb.txt", getenv ("DESC_DIR")); g = fopen (p, "w"); if (g) { fputs (B.str (), g); fclose (g); }
+		}
+		delete[] pz; delete x; delete y;
+	}
+	// .pptx files of LibreOffice's: ours resaved, the sample converted
+	for (int k = 3; k < argc && k < 5; k++)
+	{
+		if (!read_file (argv[k], &b, &n)) continue;
+		Deck *e = new Deck;
+		check (pptx_load (*e, b, n), k == 3 ? "LibreOffice's resave of our pptx read" : "LibreOffice's pptx read");
+		free (b);
+		Buf t; describe (*e, t, true);
+		printf ("%s", t.str ());
+		check (e->slides.n == 8 && e->sh < e->sw, "LibreOffice's pptx: 8 slides, landscape");
+		delete e;
 	}
 	printf ("%d checks, %d failed\n", g_checks, g_fail);
 	return g_fail ? 1 : 0;

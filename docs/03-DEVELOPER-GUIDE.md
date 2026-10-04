@@ -1263,11 +1263,24 @@ its licence on the app.
 > GPU, handles, guides, the caret; a drag only moves the layers), `panes.h` (thumbnails, sorter, notes, status bar),
 > `sidebar.h`, `show.h` (the full-screen show: `fx_plan` / `fx_moves`, the transitions as two textures, the
 > presenter's console), `odp.h` (OpenDocument read and written: styles, gradients, list styles, table-cell styles;
-> what ODF cannot say kept in `onyx:` attributes and `onyx.xml`, so a deck comes back the same), `main.cpp`.
+> what ODF cannot say kept in `onyx:` attributes and `onyx.xml`, so a deck comes back the same), `pptx.h`
+> (PowerPoint's format, written as PowerPoint writes it — every part Slides needs has its native word: the theme,
+> one master and a layout per Slides layout (placeholders by type and idx), `p:sp` / `p:cxnSp` / `p:pic` /
+> `p:graphicFrame` (tables in PowerPoint's default style, charts as `ppt/charts` parts with their data cached), the
+> footers as the slides' placeholders, `p:transition` with `p14:dur`, `p:timing` from a table of PowerPoint's
+> presets both ways (`FX_PRESET`), sections as `p14:sectionLst` — so a deck comes back the same; read generically:
+> relationships followed, `mc:AlternateContent`'s Fallback (a `p14` Choice for transitions), the colour map and
+> theme colour modifiers, a placeholder's position and formats from its layout and master, style references,
+> groups flattened, every master's layouts — LibreOffice writes a master per layout), `main.cpp` (`deck_load`: by
+> what the archive holds; Save writes `.pptx` when the name says so).
 > **Host test**: `sh tools/tests/run_slides_test.sh` — `tools/tests/slides/slides_test.cpp` (the sample read and
-> checked, the round trip; with LibreOffice installed, its conversion of the deck read). The sample
-> `sdcard/docs/cafe-2026.odp` is made by `tools/tests/slides/make_sample.cpp` (`MAKE=1 sh
-> tools/tests/run_slides_test.sh`); the icon by `tools/icons/slides_icon.py`.
+> checked, the `.odp` and `.pptx` round trips, a stress deck — every shape, effect, transition, chart kind — written
+> as `.pptx` and read back the same; with LibreOffice installed, its conversions read: the sample as `.odp` and as
+> `.pptx`, our `.pptx` resaved). `tools/tests/slides/make_pptx.py` makes `powerpoint.pptx`, a deck from
+> PowerPoint's template (python-pptx), for the reader and the screenshot. The `.pptx` written also passes the
+> OOXML schema validator of the `pptx` skill (`scripts/office/validate.py`). The sample
+> `sdcard/docs/cafe-2026.odp` is made by `tools/tests/slides/make_sample.cpp`, and `cafe-2026.pptx` from it by
+> Slides' writer (`MAKE=1 sh tools/tests/run_slides_test.sh`); the icon by `tools/icons/slides_icon.py`.
 > **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),

@@ -621,7 +621,7 @@ public:
 		return m_o.take (len);
 	}
 private:
-	enum { MAXE = 256 };
+	enum { MAXE = 1024 };
 	struct E { char *name; int nlen; unsigned crc, csize, usize, offset, method; };
 	E m_e[MAXE]; int m_n;
 	Buf m_o;

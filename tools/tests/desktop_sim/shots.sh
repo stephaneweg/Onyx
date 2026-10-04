@@ -267,6 +267,10 @@ if want slides; then			# (the sample deck: slide 3, its callout chosen; the sort
 	sim slides slides-sorter "wait;wait;down 871 687;up 871 687;$W" $P $SL; png slides-sorter
 	sim slides slides-animate "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 964 90;up 964 90;$W" $P $SL; png slides-animate
 	sim slides slides-text "wait;wait;key 0x101;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 908 90;up 908 90;$W" $P $SL; png slides-text
+	# a PowerPoint deck (tools/tests/slides/powerpoint.pptx): its chart's slide
+	mkdir -p "$OUT/pp"; cp tools/tests/slides/powerpoint.pptx "$OUT/pp/"
+	sim slides slides-pptx "wait;wait;key 0x101;key 0x101;wait;$W" $P SIM_RAM="$OUT/pp" SIM_ARGS=RAM:/powerpoint.pptx; png slides-pptx
+	rm -rf "$OUT/pp"
 	sim slides slides-show "wait;wait;key 0x101;key 0x101;wait;key 0x114;wait;wait;wait;wait;key 32;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait" $P $SL; png slides-show
 fi
 if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
