@@ -30,9 +30,12 @@ enum { SI_WRAP = 100, SI_MERGE, SI_CURRENCY, SI_PERCENT, SI_THOUSANDS, SI_DECPLU
        SI_SORTASC, SI_SORTDESC, SI_CHART, SI_FUNC, SI_SUM, SI_FREEZE, SI_INSROW, SI_INSCOL, SI_DELROW, SI_DELCOL,
        SI_ACCEPT, SI_CANCEL, SI_VTOP, SI_VMID, SI_VBOT, SI_CLEAR, SI_FILL, SI_FILTER, SI_SHEETADD };
 
+// From 200: an app's own icons (Slides: its drawer set here).
+static void (*g_appIcon) (Canvas &cv, int k, int x, int y, unsigned ink, bool off);
 static void sheet_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off)
 {
 	if (k < 100) { wr::draw_icon (cv, k, x, y, ink, off); return; }
+	if (k >= 200) { if (g_appIcon) g_appIcon (cv, k, x, y, ink, off); return; }
 	if (wr::g_icFam < 0) { wr::g_icFam = fnt::find ("DejaVu Sans"); wr::g_icFamSerif = fnt::find ("DejaVu Serif"); if (wr::g_icFamSerif < 0) wr::g_icFamSerif = wr::g_icFam; }
 	unsigned dim = wk_mix (ink, C_BG, 150);
 	if (off) ink = dim;

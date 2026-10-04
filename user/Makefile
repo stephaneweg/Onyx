@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -115,6 +115,15 @@ sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h i
 	   wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
+
+# Slides, the presentation program (Apps/slides: docs/slides/README.md): a newlib app as Letters (FreeType), its
+# slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
+# .odp's zip (img/pngsave.hpp), the PDF writer.
+slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
+	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h ft/libft.a wtk/libwtk.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
+	    user.ld kapi.h docguard.h clipboard.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a gpucomp/libgpucomp.a ft/libft.a -lm -o $@
 
 # Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Letters (FreeType's text through
 # wtk), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/bin's
