@@ -723,7 +723,17 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   the designer (layout containers, the `.form` text kept in step), the code (event SUBs, controls as objects,
   completion), debugging, a new project, the generated `Main.form.bas`. The BASIC additions it needs are listed
   there (objects and properties, `Move`, menus, resize, `$INCLUDE`, a debug channel). **Approved by the user**, who
-  named it **QBStudio** (`qbstudio`); to build next.
+  named it **QBStudio** (`qbstudio`).
+- **Built (2026-10-04)**, the first version: the BASIC additions (`PROPERTY`, `MOVECONTROL` / `SHOWCONTROL` /
+  `ENABLECONTROL` / `FOCUSCONTROL`, a resizable `WINDOW` and its -2 event, `WINDOWWIDTH` / `WINDOWHEIGHT`,
+  `MENUITEM`; `/bin/basic -s <service>`), the core (`form.h`, `gen.h`; `run_qbstudio_test.sh`: 17 checks; BASIC's
+  `t19_forms`), the app (`user/Apps/qbstudio/`: the designer with the toolbox's drag and drop, the properties and
+  events, the form's text kept in step, the code editor with colours, completion and problems as you type, the
+  object / event lists, Run, Check, Make App, New Project's three templates), the example `SD:/projects/converter`.
+  Screenshots `qbstudio.png`, `qbstudio-code.png`; docs 04 §13 *QBStudio*, 03 (*Onyx BASIC*).
+  **Next**: the debugger (the mock-up: breakpoints, stepping, variables -- a debug channel in `/bin/basic`), several
+  windows in a project, a Timer and a ToolBar's icons, `'$INCLUDE`, the PC runtime (`pc/`: rebuild `obcore.dll`
+  for the new statements -- their `Host` virtuals default to nothing).
 
 ## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
 

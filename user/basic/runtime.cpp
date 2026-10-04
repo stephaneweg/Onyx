@@ -543,13 +543,21 @@ int main (void)
 	kapi_get_args (argbuf, sizeof argbuf);
 	char path[256], cwd[256] = ""; int i = 0, n = 0;
 	bool ide = false, compileOnly = false;
+	static char service[32] = "qbasic";
 	// Options: -d <dir> (current directory, default: the program's folder), -i (report a
-	// syntax / runtime error to the qbasic editor over IPC: service "qbasic"), -c (compile
+	// syntax / runtime error to the qbasic editor over IPC: service "qbasic"; -s <name>: to the service
+	// <name>, QBStudio's "qbstudio"), -c (compile
 	// only: write the program's .bax -- basic -c prog.bas -> prog.bax -- and stop).
 	for (;;)
 	{
 		while (argbuf[i] == ' ') i++;
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'i' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { ide = true; i += 2; continue; }
+		if (argbuf[i] == '-' && argbuf[i + 1] == 's' && argbuf[i + 2] == ' ')	// -s <service>: as -i, to another editor (QBStudio)
+		{
+			i += 3; while (argbuf[i] == ' ') i++;
+			int k = 0; while (argbuf[i] && argbuf[i] != ' ' && k < 31) service[k++] = argbuf[i++];
+			service[k] = 0; ide = true; continue;
+		}
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'c' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { compileOnly = true; i += 2; continue; }
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'd' && argbuf[i + 2] == ' ')
 		{
@@ -636,7 +644,7 @@ int main (void)
 		msg[k] = 0;
 		if (ide)						// tell the editor: line \0 message
 		{
-			int pid = kapi_ipc_lookup ("qbasic");
+			int pid = kapi_ipc_lookup (service);
 			if (pid)
 			{
 				char m[180]; int q = bas::formatNum (err.line, m); m[q++] = 0;

@@ -95,6 +95,10 @@ build () {
 		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/basic/bascomp.cpp user/basic/basvm.cpp \
+			user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" "$OUT/libft.a"; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
@@ -110,7 +114,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu letters sheet slides ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -260,6 +264,11 @@ if want archiver; then			# (a sample archive of Onyx's sources in RAM:, arc_samp
 	png archiver-drop
 	sim archiver archiver-welcome "$W" $P SIM_RAM="$OUT/arc"; png archiver-welcome
 	rm -rf "$OUT/arc" "$OUT/writes/apps/archiver.app"
+fi
+if want qbstudio; then			# (the example project: the designer, Convert chosen; the code and its completion)
+	sim qbstudio qbstudio "wait;wait;down 618 347;up 618 347;wait;wait" $P; png qbstudio
+	sim qbstudio qbstudio-code "wait;wait;down 391 51;up 391 51;wait;down 600 300;up 600 300;key 0x105;key 13;key 115;key 116;key 97;key 116;key 117;key 115;key 46;wait;wait" $P
+	png qbstudio-code
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp

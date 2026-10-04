@@ -1,6 +1,7 @@
 # QBStudio, the IDE for desktop apps in BASIC — study, first mock-ups
 
-> **Status (2026-10-04): mock-ups approved by the user; to build.** Asked by the user (2026-10-04): an IDE to write
+> **Status (2026-10-04): built -- the first version** (the designer, the code, Run, Make App; the user guide's §13
+> *QBStudio*); the debugger is next. The study below was approved by the user before. Asked by the user (2026-10-04): an IDE to write
 > programs in Onyx's QBasic-style BASIC, aimed at **desktop apps**, *without touching what exists* (the `qbasic`
 > editor stays as it is). It has a **GUI designer** in the way of Visual Studio's WPF designer: the designer mostly
 > defines the **layout** of the window, and the IDE **generates the window's code**. The user's idea for the format:

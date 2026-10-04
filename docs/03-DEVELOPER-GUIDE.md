@@ -2919,8 +2919,23 @@ barwidth = 40
   `Host::poll`, `Root::attach ()`). A windowed app (`WINDOW`) asks the platform its colours
   (`ScreenHost::windowColours`: Onyx = the theme's `C_BG` / `C_TEXT`, the PC none) and takes
   them as its background, text and drawing colours unless the program set `COLOR` first. Options `-d <dir>`, `-i` (report errors to the editor:
-  mailbox to the IPC service `qbasic`, payload `line\0message\0`).
+  mailbox to the IPC service `qbasic`, payload `line\0message\0`), `-s <service>` (the same to another service:
+  QBStudio's `qbstudio`). A resizable window (`WINDOW t$, w, h, 1`: `Host::windowFlags`) reallocates its pages on
+  a resize (`ScreenHost::userResized`) and queues the event **-2**; `MOVECONTROL` / `SHOWCONTROL` / `ENABLECONTROL`
+  / `FOCUSCONTROL` and `MENUITEM` (a wtk `Menu` rebuilt, its items' callbacks template thunks) are `Host` virtuals.
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
+- **QBStudio** `apps/qbstudio` (`user/Apps/qbstudio/`, a newlib app: the `qbstudio.elf` rule compiles the core's
+  sources into it): `form.h` (the `.form` text read / written, the layout engine: `form_layout` places every
+  element for a size), `gen.h` (the controls' library -- `TYPE Control` with PROPERTYs --, `generate ()`: the
+  window's code, each place an affine function of the window's size, found by laying the form out at two sizes;
+  the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (the
+  code editor), `designer.h` (the window drawn with real wtk widgets under a transparent `Overlay` that takes the
+  mouse; the toolbox), `props.h` (the properties). Host test: `sh tools/tests/run_qbstudio_test.sh` (the example
+  project read, written back, laid out, generated, compiled and run on a scripted host).
+- **Properties** (`PROPERTY T.Name AS type ... END PROPERTY` the getter, `PROPERTY T.Name (v AS type)` the
+  setter): `rewriteProperties ()` (bascomp.cpp) turns them, before the pre-scan, into a `FUNCTION T.Name` and a
+  `SUB T.SETPROP_Name`; `methodStatement` sends `x.Name = v` to the setter, and a read of `x.Name` finds the getter
+  as a method.
 - **Adding a function**: an entry in `BFNS[]` (bascomp.cpp: name, id, result type, argument
   spec `N`/`S`/`?`, `[` = optional from here), a `B_*` id (basint.h), its case in
   `VM::builtin` (basvm.cpp); something the VM cannot do itself goes through a new

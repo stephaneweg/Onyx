@@ -1,0 +1,74 @@
+QBSTUDIO -- desktop apps in Onyx BASIC
+=====================================
+
+A project is a folder: SD:/projects/<name>/ with its project.ini, its window
+(Main.form) and its code (Main.bas). File > New Project... makes one from a
+template; File > Open Project... opens one (choose any of its files); File >
+Open the Example opens SD:/projects/converter.
+
+THE WINDOW
+  Toolbar: New, Open, Save all | Undo, Redo | Cut, Copy, Paste | Find |
+  Run (F5), Check, Make App | Design / Split / Code (the form's views).
+  Left: the project's files, the toolbox (in the code: the outline, its SUBs).
+  Middle: the open files' tabs; the designer and the form's text; the code.
+  Right: the properties of the element chosen, and its events.
+  Bottom: the problems (a click shows the place) and the status bar.
+
+THE DESIGNER
+  The window drawn as Onyx draws it, its layout's boxes dashed over it.
+  Click an element to choose it (Esc: its container; Del: removes it).
+  Drag it to move it: a pink line shows where it goes -- in a Column above or
+  under the others, in a Row before or after. Drag a control from the toolbox
+  the same way (or double-click it: added after the element chosen).
+  The window's bottom-right corner sizes the window; a control's right and
+  bottom edges give it a width / a height.
+  Double-click a control: its event's SUB (Click, Change), written if needed.
+  Ctrl+C / Ctrl+V copy and paste elements (as the form's lines).
+
+THE FORM (Main.form)
+  A control a line, the indentation giving its parent; then its name, its
+  "text", its key=value properties, its flags. # starts a comment.
+    Window Main "Title" size=380x260 min=320x220 resizable
+      Menu
+        "&File"
+          "&Quit" name=mnuQuit key=Ctrl+Q
+      Column padding=14 gap=10
+        Row gap=8
+          Label "Celsius:" width=90
+          TextBox celsius "20" fill
+        Spacer
+        Row align=right
+          Button convert "Convert" default
+      StatusBar status "Ready"
+  Containers: Column (down), Row (across), Grid cols=n (cell=c,r), Group
+  "title", Canvas (at=x,y), Spacer (the free room), ToolBar.
+  Controls: Label, Button, TextBox, CheckBox, ListBox / DropDown
+  (items="a|b|c"), Slider (max=), Progress (value=), StatusBar.
+  A child's size: its text's, width= / height=, or fill (the room left),
+  grow=n (its share); align=left/center/right. Flags: fill readonly checked
+  resizable default cancel hidden disabled.
+  The text and the designer are one form: what is typed is drawn.
+
+THE CODE (Main.bas)
+  The controls are objects: celsius.Text, live.Checked, scale.Value,
+  Enabled, Visible; their methods Focus, Move x, y, w, h, AddItem s$. The
+  window: Main.Width, Main.Height, Main.Close.
+  Events: a SUB named <control>_Click (buttons, check boxes, menu items) or
+  <control>_Change (text boxes, lists, sliders); Main_Load, Main_Resize,
+  Main_Close. The lists above the code write them for you.
+  After a control's name and a dot: its properties and methods (Enter or
+  Tab takes one). Ctrl+Space: the names. BASIC's words are capitalised.
+  Problems are found as you type (a red dot, the line underlined).
+
+THE GENERATED CODE (Main.form.bas, read-only)
+  Made again at each change of the form: DIM SHARED the controls, Main_Create,
+  Main_Layout (w, h) -- each control's place for a size -- and Main_Run, the
+  event loop calling your SUBs. Plain BASIC: the app runs without QBStudio.
+
+RUN, MAKE APP
+  Run (F5) saves, builds the program (the controls' library, the window's
+  code, your files, then Main_Run) and starts it; an error, at the start or
+  while it runs, is shown in its file at its line.
+  Make App writes SD:/apps/<name>.app: main.bax (compiled; Project >
+  Settings: or main.bas), app.txt (its title, its category) and icon.bmp
+  (the project's icon.bmp, else BASIC's).

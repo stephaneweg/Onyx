@@ -1573,6 +1573,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **Spreadsheet** (`sheet`) | A **spreadsheet** in the way of LibreOffice Calc and Gnumeric: workbooks of several sheets (1 048 576 rows × 16 384 columns), **formulas** as Excel writes them (237 functions: mathematics, statistics, logic, text, lookups, dates, finance; references to other sheets, ranges, whole columns; arrays), number formats, fonts, colours, borders, merged cells, frozen panes, the fill handle's series, sort, Find and Replace, **charts** (column, bar, line, area, pie, scatter), **conditional formatting** (rules, colour scales, data bars), the **AutoFilter**, **defined names**, Undo / Redo. Reads and writes Excel's **`.xlsx`** and **CSV**, reads LibreOffice's **`.ods`**. See *The Spreadsheet* below. |
 | **Slides** (`slides`) | A **presentation program** in the way of PowerPoint and LibreOffice Impress: slides on a **theme** (six: Café, Peach, Steel, Sage, Brick, Slate — their colours and fonts) and **layouts** (title, title and content, two contents, comparison, section, title only, picture and text, blank), **text boxes** (fonts, sizes, colours, bullets and numbering on five levels, autofit), **shapes** (28, with gradients, lines, shadows, rotation), pictures, **tables**, **charts** (column, bar, line, pie, area), **sections**, the speaker's **notes**, the slide sorter, the **master and layouts** edited, find and replace, **transitions** and **animation effects** (by paragraph too) played full screen by the GPU, a **presenter view**. Reads / writes OpenDocument **`.odp`** and PowerPoint's **`.pptx`** (PowerPoint and LibreOffice open them; theirs are read); exports **PDF** (the slides, notes pages, handouts) and a slide as **PNG**. See *Slides, the presentation program* below. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
+| **QBStudio** (`qbstudio`) | The **IDE for desktop apps in BASIC**, in the way of Visual Studio's designers: a project's window **drawn** (the controls dragged from the toolbox into its layout — columns, rows, grids, groups —, moved, sized; their **properties** and **events** at the right) and kept in step with its text, **`Main.form`** (a control a line, the parent by the indentation); its code, **`Main.bas`**, an event a SUB (`convert_Click`), the controls as objects (`celsius.Text`), with BASIC's colours, **completion** and the **problems as you type**; the window's code generated (`Main.form.bas`, read-only). **Run** (F5) starts it; **Make App** writes it as an app. Reads / writes `SD:/projects/<name>/` (`project.ini`, `*.form`, `*.bas`, `Main.form.bas`), `SD:/tmp/qbstudio/<name>.bas` (the program run), `SD:/apps/<name>.app/` (Make App), `SD:/apps/qbstudio.app/last.txt` (the last project). Opens `.form` files. See *QBStudio* in §13. |
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib), in the desktop's theme. **The window**: a transport bar — **Play** from the cursor (^P), **from the start**, **Stop** (Esc), **Loop** (the pattern again and again, ^L), a display of the position (pattern : row) and the time, **Undo / Redo**, **Cut / Copy / Paste**, **Follow** (the view goes with the position while it plays) —; on the left the song's **patterns** (a click shows one; **+** new, duplicate, move earlier / later, delete), **this pattern**'s **Rows** and **Speed** (a slice lasts speed / 20 s), the **typing**'s **Octave** and **Step** (the rows the cursor goes down after a note), the song's title and author; the **grid**; a **piano** under it. **The grid**: a column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel; every 4th and 16th row is shaded. A channel's **header**: its colour, its instrument — **click it for the instrument dialog** —, **M** (mute the channel in this pattern; a right click too), **S** (solo: heard alone, while the app runs), a level meter. **Keys**: **C D E F G A B** a note (Shift = sharp; you hear it), **0–7** the octave, **Space** a silence, **Delete** `---` (a block chosen: cleared), **Backspace** clears the slice above, **#** toggles the sharp, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; **Shift + those** or a **drag** choose a **block**: **^X ^C ^V** cut, copy, paste it (at the cursor), **^A** the whole pattern, **Ctrl+↑ / Ctrl+↓** move its notes a semitone (with Shift: an octave); **^Z / ^Y** undo and redo (the pattern's notes, 48 steps). A **click on the piano** enters that note; its keys light in the channels' colours as they sound. **The instrument dialog**: the name, a **preset** (`SD:/apps/fmtracker.app/ins`), **Load / Save** `.FMI`; the **algorithm** — **FM** (operator 1 bends operator 2's sound: the timbre) or **Additive** (both are heard), drawn — and the **feedback**; then each of the two operators: its **wave** (four drawn: sine, half sine, absolute sine, pulses — click one), its **envelope drawn** as the sliders move (**Attack, Decay, Sustain, Release**), its **Volume**, its frequency's **Multiplier**, its **Key scale**, its switches (held, tremolo, vibrato, key scale rate); below, **the sound's wave** (what the two operators make together); **Test** plays the instrument and the wave moves with the note; every change is heard at once. A song is a list of **patterns** played in order (Pattern menu: New, Duplicate, Move Earlier / Later, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
 | **paint** (Paint) | Drawing on **layers** with **blend modes** (normal, multiply, screen, add, subtract, lighten, mask, cut out; a mask on the layer below only), assembled by the GPU: brushes (pencil, brush, soft, calligraphy, airbrush, marker, crayon, patterns), eraser, fill (a colour, a pattern or a **gradient along a line**), gradients (GIMP's `.ggr`, an editor), text (TrueType fonts), shapes, selections (rectangle, lasso, magic wand), colours (brightness, contrast, hue, desaturate, colorize, the channels remapped, invert, sepia, posterize, threshold — on the selection, the layer or every layer), filters (blur, sharpen, pixelate), colour picker, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX), a picture as a layer; saves OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
@@ -3833,6 +3834,88 @@ one from the current program (it asks for the folder name and the title, and whe
 compile it). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Planets 3D** and **Arkanoid**
 (`arkanoid`: `main.bax`, compiled at build time from `SD:/basic/examples/arkanoid.bas` — the
 game is written in BASIC).
+
+### QBStudio, desktop apps in BASIC (`qbstudio`)
+
+**QBStudio** makes **windowed apps** in Onyx BASIC the way Visual Studio's designers do: the window is **drawn**,
+the IDE **writes its code**, you write only what the app does — a SUB per event. The `qbasic` editor stays as it
+is, for programs.
+
+![QBStudio: the designer](../screenshots/qbstudio.png)
+*The example project (`SD:/projects/converter`): the window drawn as Onyx draws it, its layout's boxes dashed, the
+Convert button chosen (its Row named above it), its properties at the right; under it the form's text, the
+Button's line under the caret.*
+
+**A project** is a folder, `SD:/projects/<name>/`: its `project.ini` (its name, its title, its files, its category,
+compiled or not), its window **`Main.form`**, its code **`Main.bas`** (and other modules: Project ▸ Add Module...).
+**File ▸ New Project...** makes one from a template — a window of controls in a column, a document app (a menu, a
+list, a status bar: New / Open / Save written), an empty window —; **File ▸ Open Project...** opens one (choose any
+of its files); **File ▸ Open the Example** opens *Converter*. QBStudio opens the last project at its start.
+
+**The window.** The toolbar: New, Open, Save all, Undo / Redo, Cut / Copy / Paste, Find, **Run** (F5), **Check**
+(compiled, not run), **Make App**, and the form's views — **Design**, **Split** (the designer over the form's text),
+**Code** (the text alone). At the left the project's files and the **toolbox** (in the code: the **outline**, its
+SUBs); in the middle the open files' tabs; at the right the **properties**; at the bottom the **problems** (a click
+shows the place) and the status bar.
+
+**The designer.** A click chooses an element (Esc: its container; Delete removes it); a **drag** moves it — a pink
+line shows where it will go, in a Column above or under the others, in a Row before or after them, into another
+container —; a control is **dragged from the toolbox** the same way (no x, no y to give), or double-clicked there
+(added after the element chosen). The window's bottom-right corner sizes the window; a control's right and bottom
+edges give it a width and a height. A double click on a control opens its event's SUB (written if it is not).
+Ctrl+C / Ctrl+V copy and paste elements. The **properties**: its name (the object in the code), its text, its
+look (default, cancel, checked, read-only, disabled, hidden, its items, its maximum...), its layout (width, height,
+fill, grow, align; a container's padding and gap); the **Events** tab: each event's SUB — a click writes it.
+
+**The form** (`Main.form`): a control a line, the **indentation giving its parent**, then its name, its `"text"`,
+its `key=value` properties and its flags:
+
+```
+Window Main "Temperature converter" size=380x260 min=320x220 resizable
+  Menu
+    "&File"
+      "&Quit" name=mnuQuit key=Ctrl+Q
+  Column padding=14 gap=10
+    Row gap=8
+      Label "Celsius:" width=90
+      TextBox celsius "20" fill
+    Spacer
+    Row gap=8 align=right
+      Button convert "Convert" default
+  StatusBar status "Ready"
+```
+
+Containers: **Column** (its children down), **Row** (across), **Grid** (`cols=`, a child's `cell=c,r`), **Group**
+(a frame and its title), **Canvas** (`at=x,y`), **Spacer** (the free room), **ToolBar**. Controls: Label, Button,
+TextBox, CheckBox, ListBox and DropDown (`items="a|b|c"`), Slider (`max=`), Progress (`value=`), StatusBar; a Menu
+(its titles, their items indented, `-` a separator, `key=` the shortcut). A child's size: its text's, `width=` /
+`height=`, or **`fill`** (the room left, shared by `grow=n`); `align=` left, center, right. The window can be
+resized: the layout follows. What is typed is drawn; an error is marked in the text (the designer keeps the last
+good form).
+
+![QBStudio: the code](../screenshots/qbstudio-code.png)
+*The code: the controls as objects, the completion after `status.` (its properties and methods), the outline at the
+left, the object and event lists above.*
+
+**The code** (`Main.bas`): the controls are objects — `celsius.Text`, `live.Checked`, `scale.Value`, `Enabled`,
+`Visible`, and `Focus`, `Move x, y, w, h`, `AddItem s$` —, the window `Main.Width`, `Main.Height`, `Main.Close`.
+An event is a SUB named **`<control>_Click`** (buttons, check boxes, menu items) or **`<control>_Change`** (text
+boxes, lists, sliders), and **`Main_Load`**, **`Main_Resize`**, **`Main_Close`**; the **object and event lists**
+above the code write them. After a control's name and a dot, **completion** offers its properties and methods
+(Enter or Tab takes one); Ctrl+Space offers the names. BASIC's words are written in capitals as you type; the
+**problems** are found as you type (a red dot in the margin, the line underlined, the list under the code).
+
+**The generated code** (`Main.form.bas`, read-only, under *Generated*): made again at each change of the form —
+`DIM SHARED` the controls, `Main_Create`, `Main_Layout (w, h)` (each control's place for a size: the layout's
+rules made arithmetic) and `Main_Run`, the event loop that calls your SUBs. Plain BASIC: the app runs without
+QBStudio.
+
+**Run** (F5) saves, puts the program together — the controls' library, the window's code, your files, then
+`Main_Run` — and starts it with `SD:/bin/basic`; an error, when it is compiled or while it runs, is shown in its
+file at its line. **Make App** writes `SD:/apps/<name>.app/`: `main.bax` (compiled; Project ▸ Settings...: or
+`main.bas`), `app.txt` (its title, its category) and `icon.bmp` (the project's `icon.bmp`, else BASIC's) — the
+app is listed, launched and packaged like any other. Help: `SD:/apps/qbstudio.app/help.txt` (Help ▸ QBStudio Help).
+Not yet: the debugger (breakpoints, stepping, the variables), several windows in a project, a Timer.
 
 ## 14. Troubleshooting
 
