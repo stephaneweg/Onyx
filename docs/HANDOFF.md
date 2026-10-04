@@ -92,6 +92,7 @@ answer in French. The docs stay in English.
   same kapi table (per-process handles, every pointer checked, user-side `memcpy` and event pump); a
   fault kills the app only; the EL1 "legacy" mode and its options are gone; ID register reads emulated;
   `proc_stats` (v74) → `ps` SYSC/s, the Task Manager, `/bin/sysstat`; `tools/el0scan.sh` checks binaries.
+  `cpu_stats` / `net_stats` (v80) → the Task Manager's Processor and Network tabs.
   The story and the design: `docs/EL0-PROTECTED-MODE.md` §7; the reference: docs/02 §5–§6.
 - **On the Pi (the user, 2026-10-02)**: every test of the plan passes (el0test, faulttest, threads,
   app cores, emulators, Jet, media, office, network, BASIC, kills under load). Merged into `main`
@@ -601,9 +602,10 @@ answer in French. The docs stay in English.
   envelopes and the sound's wave drawn), Ledger in FreeType, the Package Manager's tabs a
   `SegmentedControl`, a **System** category. Then the **Task Manager in tabs** (Processes: a sortable grid with the
   memory and the calls per second; Memory: what `memmon` showed, drawn — `memmon` is gone); its Processor and
-  Network tabs wait for kernel counters (per-core time in `CScheduler::Yield`, the sound and app cores' busy
-  time; bytes per process in `NetTcpSend/Recv`, `NetSockSend/Recv`: `TSyscallStats`' neighbours in
-  `CAddressSpace`, new slots after `image_list`).
+  Network tabs came on 2026-10-04 with **kapi v80** (`cpu_stats`: per-core time in `CScheduler::Yield`, the
+  sound and app cores' busy time; `net_stats`: bytes per process in `NetTcpSend/Recv`, `NetSockSend/Recv` —
+  docs/02 *v80*). Not there yet: a process's own processor time (a CPU column in Processes), the bytes on the
+  air (the driver's counters) next to the sockets' payload.
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,

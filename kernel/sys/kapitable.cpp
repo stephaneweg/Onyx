@@ -276,6 +276,9 @@ int kapi_image_unload (const char *pPath);
 int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned nCap);
 // v79 what the kernel is (sys/kapi.cpp)
 int kapi_kernel_info (char *pBuf, unsigned nCap);
+// v80 the cores' load, the network's bytes (sys/kapi.cpp)
+int kapi_cpu_stats (struct kapi_cpu_stats *pOut);
+int kapi_net_stats (int nPid, struct kapi_net_stats *pOut);
 
 }  // extern "C"
 
@@ -581,4 +584,6 @@ void KApiTableInit (void)
 
 	// --- v79 what the kernel is (sys/kapi.cpp) ---
 	t->kernel_info       = kapi_kernel_info;
+	t->cpu_stats         = kapi_cpu_stats;		// (v80)
+	t->net_stats         = kapi_net_stats;
 }

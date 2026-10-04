@@ -7,9 +7,13 @@
 //              are protected); r refreshes now.
 //   Memory     what the Memory Monitor showed, drawn: the memory in use, free, the apps', the
 //              system's; the use over the last minute; what uses it (the system, the largest apps).
-//   Processor, Network: to come with the kernel's counters (the cores' load, the bytes by app).
+//   Processor  a panel a core: what it does (the system's, the sound's, an app core and the app that
+//              holds it, the network's), its load now and over the last minute (kapi v80 cpu_stats).
+//   Network    the bytes received and sent, the two rates now and over the last minute, then the
+//              apps that use the network: their bytes, their rates (kapi v80 net_stats).
 // Everything from kapi_list_procs ("<pid> <a|k> <state> <pages> <name>" a line), kapi_meminfo and
-// kapi_ram_detail, read twice a second. The window resizes: the views follow.
+// kapi_ram_detail, read twice a second; the loads and the rates are a second's. The window resizes:
+// the views follow. On a kernel older than v80 the last two tabs stay grey.
 //
 #include "kapi.h"
 #include "wtk/wtk.h"
@@ -28,7 +32,7 @@ using namespace wtk;
 #define NAMEL	32
 #define HIST	60			// the memory's samples kept: one a second
 
-struct Proc { int pid; char kind, state; int pages, rate; char name[NAMEL]; };
+struct Proc { int pid; char kind, state; int pages, rate; char name[NAMEL]; unsigned long long rx, tx; int rxRate, txRate; };
 static Proc g_p[MAXP]; static int g_np = 0;
 static int  g_order[MAXP];		// the grid's rows -> g_p, sorted
 static int  g_sortCol = 3; static bool g_sortDesc = true;	// (the memory, the largest first)
@@ -36,10 +40,23 @@ static unsigned long g_total, g_free, g_apps, g_detected, g_pool, g_poolFree, g_
 static unsigned g_pageKb = 64, g_segs;
 static int  g_hist[HIST], g_nhist = 0;	// the memory in use, per thousand of the total
 static int  g_tab = 0;
+// the cores (kapi v80): the load over the last second, per thousand; a minute of them
+static bool g_cpuOk, g_netOk;
+static struct kapi_cpu_stats g_cpu, g_cpuPrev;
+static int  g_load[KAPI_CPU_CORES], g_cpuHist[KAPI_CPU_CORES][HIST], g_ncpuHist = 0;
+// the network: the totals, the rates over the last second (bytes a second); a minute of them
+static struct kapi_net_stats g_net, g_netPrev;
+static unsigned long long g_netPrevUs;
+static int  g_rxRate, g_txRate, g_rxHist[HIST], g_txHist[HIST], g_nnetHist = 0;
+static struct { int pid; unsigned long long rx, tx; int rxRate, txRate; } g_pn[MAXP];	// by process, a second ago
+static int  g_npn = 0;
+static char g_netLine[96];
 
-class MemView;
+class MemView; class CpuView; class NetView;
 static DataGrid *g_grid;
 static MemView *g_mem;
+static CpuView *g_cpuView;
+static NetView *g_netView;
 static SegmentedControl *g_tabs;
 static Button *g_btRaise, *g_btKill;
 static Label *g_lbInfo;
@@ -96,11 +113,92 @@ static void read_data (void)
 		p.rate = -1;
 		struct kapi_syscall_stats ss;
 		if (p.kind == 'a' && p.pid > 0 && kapi_proc_stats (p.pid, &ss) == 0) p.rate = (int) ss.rate;
+		p.rx = p.tx = 0; p.rxRate = p.txRate = 0;
+		struct kapi_net_stats ns;
+		if (g_netOk && p.kind == 'a' && p.pid > 0 && kapi_net_stats (p.pid, &ns) == 0) { p.rx = ns.rx_bytes; p.tx = ns.tx_bytes; }
+		for (int k = 0; k < g_npn; k++) if (g_pn[k].pid == p.pid) { p.rxRate = g_pn[k].rxRate; p.txRate = g_pn[k].txRate; break; }
 		if (n) g_np++;
 	}
 	kapi_meminfo (&g_total, &g_free, &g_apps, &g_pageKb);
 	if (!g_pageKb) g_pageKb = 64;
 	kapi_ram_detail (&g_detected, &g_pool, &g_poolFree, &g_above4g, &g_segs);
+}
+// Once a second: the cores' load and the network's rates, from the counters a second ago.
+static void push (int *h, int &n, int v) { if (n == HIST) { memmove (h, h + 1, (HIST - 1) * sizeof (int)); n--; } h[n++] = v; }
+static int rate_of (unsigned long long now, unsigned long long was, unsigned long long us)
+{
+	if (now <= was || !us) return 0;
+	unsigned long long r = (now - was) * 1000000ULL / us;
+	return r > 0x7FFFFFFF ? 0x7FFFFFFF : (int) r;
+}
+static void sample_stats (void)
+{
+	if (g_cpuOk && kapi_cpu_stats (&g_cpu) == 0)
+	{
+		unsigned long long us = g_cpuPrev.now_us && g_cpu.now_us > g_cpuPrev.now_us ? g_cpu.now_us - g_cpuPrev.now_us : 0;
+		int nh = g_ncpuHist;
+		for (unsigned c = 0; c < g_cpu.cores && c < KAPI_CPU_CORES; c++)
+		{
+			unsigned long long b = g_cpu.core[c].busy_us, w = g_cpuPrev.core[c].busy_us;
+			int v = us && b > w ? (int) ((b - w) * 1000 / us) : 0;
+			g_load[c] = v > 1000 ? 1000 : v;
+			if (us) { nh = g_ncpuHist; push (g_cpuHist[c], nh, g_load[c]); }
+		}
+		g_ncpuHist = nh;
+		g_cpuPrev = g_cpu;
+	}
+	if (g_netOk && kapi_net_stats (0, &g_net) == 0)
+	{
+		unsigned long long now = g_cpu.now_us, us = g_netPrevUs && now > g_netPrevUs ? now - g_netPrevUs : 0;
+		if (us)
+		{
+			g_rxRate = rate_of (g_net.rx_bytes, g_netPrev.rx_bytes, us);
+			g_txRate = rate_of (g_net.tx_bytes, g_netPrev.tx_bytes, us);
+			int n = g_nnetHist; push (g_rxHist, n, g_rxRate);
+			push (g_txHist, g_nnetHist, g_txRate);
+		}
+		for (int i = 0; i < g_np; i++)			// each app: its rates, from its bytes a second ago
+		{
+			Proc &p = g_p[i];
+			p.rxRate = p.txRate = 0;
+			for (int k = 0; k < g_npn && us; k++)
+				if (g_pn[k].pid == p.pid) { p.rxRate = rate_of (p.rx, g_pn[k].rx, us); p.txRate = rate_of (p.tx, g_pn[k].tx, us); break; }
+		}
+		g_npn = 0;
+		for (int i = 0; i < g_np; i++)
+			if (g_p[i].rx || g_p[i].tx) { g_pn[g_npn].pid = g_p[i].pid; g_pn[g_npn].rx = g_p[i].rx; g_pn[g_npn].tx = g_p[i].tx; g_pn[g_npn].rxRate = g_p[i].rxRate; g_pn[g_npn].txRate = g_p[i].txRate; g_npn++; }
+		g_netPrev = g_net; g_netPrevUs = now;
+		// the address and the name, for the foot
+		static char info[2048];
+		char ip[24] = "", host[40] = "";
+		int n = kapi_net_info (info, sizeof info);
+		if (n < 0) n = 0;
+		info[n < (int) sizeof info ? n : (int) sizeof info - 1] = 0;
+		for (char *l = info; l && *l; )
+		{
+			char *e = strchr (l, '\n'); if (e) *e = 0;
+			if (!strncmp (l, "ip ", 3)) snprintf (ip, sizeof ip, "%s", l + 3);
+			else if (!strncmp (l, "hostname ", 9)) snprintf (host, sizeof host, "%s", l + 9);
+			l = e ? e + 1 : 0;
+		}
+		if (ip[0]) snprintf (g_netLine, sizeof g_netLine, "%s  -  %s  -  %u socket%s open", ip, host, g_net.sockets, g_net.sockets == 1 ? "" : "s");
+		else snprintf (g_netLine, sizeof g_netLine, "The network is down");
+	}
+}
+static void bytes_text (char *o, int cap, unsigned long long b)		// "812 bytes", "34.2 KB", "118 MB", "2.31 GB"
+{
+	if (b < 1024) snprintf (o, (size_t) cap, "%u bytes", (unsigned) b);
+	else if (b < 1024 * 1024) snprintf (o, (size_t) cap, "%u.%u KB", (unsigned) (b / 1024), (unsigned) (b % 1024 * 10 / 1024));
+	else if (b < 100ULL * 1024 * 1024) snprintf (o, (size_t) cap, "%u.%u MB", (unsigned) (b >> 20), (unsigned) ((b & 0xFFFFF) * 10 >> 20));
+	else if (b < 1024ULL * 1024 * 1024) snprintf (o, (size_t) cap, "%u MB", (unsigned) (b >> 20));
+	else snprintf (o, (size_t) cap, "%u.%02u GB", (unsigned) (b >> 30), (unsigned) ((b & 0x3FFFFFFF) * 100 >> 30));
+}
+static void rate_text (char *o, int cap, int r)				// "0", "850 B/s", "12.4 KB/s", "1.2 MB/s"
+{
+	if (r <= 0) snprintf (o, (size_t) cap, "0");
+	else if (r < 1024) snprintf (o, (size_t) cap, "%d B/s", r);
+	else if (r < 1024 * 1024) snprintf (o, (size_t) cap, "%d.%d KB/s", r / 1024, r % 1024 * 10 / 1024);
+	else snprintf (o, (size_t) cap, "%d.%d MB/s", r >> 20, (r & 0xFFFFF) * 10 >> 20);
 }
 static unsigned long used_kb (void) { return g_total > g_free ? g_total - g_free : 0; }
 static void mb (char *o, int cap, unsigned long kb)		// "118.4 MB" (a whole number from 100 MB)
@@ -218,11 +316,159 @@ public:
 	}
 };
 
+// A minute of samples as a line over its filled area, in the box (x, y, w, h) already drawn: the newest
+// at the right, `top` the value of the box's top.
+static void plot (Canvas &cv, int x, int y, int w, int h, const int *hist, int n, int top, unsigned col, bool fill)
+{
+	if (n < 2 || top <= 0) return;
+	int iw = w - 12, ih = h - 12, px = 0, py = 0;
+	for (int i = 0; i < n; i++)
+	{
+		int v = hist[i] > top ? top : hist[i];
+		int xx = x + 6 + (HIST - n + i) * iw / (HIST - 1), yy = y + 6 + ih - (int) ((long long) v * ih / top);
+		if (fill) cv.fillRect (xx - 1, yy, 3, y + 6 + ih - yy, wk_mix (C_FIELD, col, 46));
+		if (i) { VPath p; p.line (V (px), V (py), V (xx), V (yy), V (2)); p.fill (cv, col, 255); }
+		px = xx; py = yy;
+	}
+}
+static void plot_box (Canvas &cv, int x, int y, int w, int h)
+{
+	wk_sunken (cv, x, y, w, h, 5, C_FIELD);
+	unsigned line = wk_mix (C_FIELD, C_FIELD_TEXT, 22);
+	for (int k = 1; k < 4; k++) cv.fillRect (x + 4, y + h * k / 4, w - 8, 1, line);
+}
+static void text_r (Canvas &cv, int right, int y, int h, const char *t, unsigned c, int style = 0)
+{
+	wk_text_l (cv, right - wk_text_w (t, style), y, h, t, c, style);
+}
+
+// ---- Processor ---------------------------------------------------------------------------------------------
+class CpuView : public Widget
+{
+public:
+	CpuView (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	void onDraw () override
+	{
+		unsigned bg = bgColor (), dim = wk_mix (bg, C_TEXT, 150);
+		canvas.clear (bg);
+		int n = (int) g_cpu.cores; if (n > KAPI_CPU_CORES) n = KAPI_CPU_CORES;
+		if (n <= 0) { wk_text_c (canvas, 0, 0, width, height, "No core to show", dim); return; }
+		int cols = n > 1 ? 2 : 1, rows = (n + cols - 1) / cols, gap = 10;
+		int cw = (width - (cols - 1) * gap) / cols, ch = (height - (rows - 1) * gap) / rows;
+		if (ch < 96) ch = 96;
+		for (int c = 0; c < n; c++)
+		{
+			int x = (c % cols) * (cw + gap), y = (c / cols) * (ch + gap);
+			const struct kapi_cpu_core &k = g_cpu.core[c];
+			char t[24], what[80];
+			snprintf (t, sizeof t, "Core %d", c);
+			wk_text_l (canvas, x + 2, y, 20, t, C_TEXT, 2);
+			switch (k.role)
+			{
+			case KAPI_CORE_SYSTEM:	snprintf (what, sizeof what, "the system and every app"); break;
+			case KAPI_CORE_SOUND:	snprintf (what, sizeof what, "the sound"); break;
+			case KAPI_CORE_NETWORK:	snprintf (what, sizeof what, "the network (it polls)"); break;
+			default:
+			{
+				const char *owner = 0;
+				for (int i = 0; i < g_np && k.pid; i++) if (g_p[i].pid == (int) k.pid) { owner = g_p[i].name; break; }
+				if (owner) snprintf (what, sizeof what, "an app core: %.40s", owner);
+				else snprintf (what, sizeof what, k.pid ? "an app core: in use" : "an app core: free");
+			}
+			}
+			wk_text_l (canvas, x + 2 + wk_text_w (t, 2) + 10, y + 1, 18, what, dim);
+			char pct[16]; snprintf (pct, sizeof pct, "%d %%", (g_load[c] + 5) / 10);
+			text_r (canvas, x + cw - 2, y, 20, pct, C_TEXT, 2);
+			int gy = y + 24, gh = ch - 24;
+			plot_box (canvas, x, gy, cw, gh);
+			plot (canvas, x, gy, cw, gh, g_cpuHist[c], g_ncpuHist, 1000, k.role == KAPI_CORE_NETWORK ? wk_mix (C_FIELD, C_ACCENT, 120) : C_ACCENT, true);
+		}
+	}
+};
+
+// ---- Network -----------------------------------------------------------------------------------------------
+#define C_SENT	0x00D08A30		// what is sent: its line, its figures' mark
+
+class NetView : public Widget
+{
+public:
+	NetView (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	void tile (int x, int y, int w, const char *label, const char *value, const char *sub, unsigned mark)
+	{
+		wk_rbox (canvas, x, y, w, 62, 6, C_FIELD, C_FIELD);
+		wk_rline (canvas, x, y, w, 62, 6, wk_tone (C_BG, 72), 200);
+		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130);
+		wk_text_l (canvas, x + 10, y + 5, 18, label, dim);
+		if (mark) wk_rbox (canvas, x + w - 20, y + 9, 10, 10, 2, mark, mark);
+		wk_text_l (canvas, x + 10, y + 22, 20, value, C_FIELD_TEXT, 2);
+		if (sub) wk_text_l (canvas, x + 10, y + 41, 18, sub, dim);
+	}
+	void onDraw () override
+	{
+		unsigned bg = bgColor (), dim = wk_mix (bg, C_TEXT, 150);
+		canvas.clear (bg);
+		char a[24], b[24];
+		int gap = 10, tw = (width - 3 * gap) / 4;
+		rate_text (a, sizeof a, g_rxRate); tile (0, 0, tw, "Receiving", a, 0, C_ACCENT);
+		rate_text (a, sizeof a, g_txRate); tile (tw + gap, 0, tw, "Sending", a, 0, C_SENT);
+		bytes_text (a, sizeof a, g_net.rx_bytes); tile (2 * (tw + gap), 0, tw, "Received", a, "since the start", 0);
+		bytes_text (a, sizeof a, g_net.tx_bytes); tile (3 * (tw + gap), 0, width - 3 * (tw + gap), "Sent", a, "since the start", 0);
+		// the two rates over the last minute, to the largest of them (64 KB/s at least)
+		int y = 74;
+		int top = 64 * 1024;
+		for (int i = 0; i < g_nnetHist; i++) { if (g_rxHist[i] > top) top = g_rxHist[i]; if (g_txHist[i] > top) top = g_txHist[i]; }
+		wk_text_l (canvas, 2, y, 18, "THE LAST MINUTE", dim, 2);
+		rate_text (a, sizeof a, top); snprintf (b, sizeof b, "top: %s", a);
+		text_r (canvas, width - 2, y, 18, b, dim);
+		y += 22;
+		// the apps: as many rows as fit under a graph of 70 pixels at least
+		int ord[MAXP], no = 0;
+		for (int i = 0; i < g_np; i++) if (g_p[i].rx || g_p[i].tx) ord[no++] = i;
+		for (int i = 1; i < no; i++)				// the busiest now first, then the most bytes
+			for (int j = i; j > 0; j--)
+			{
+				const Proc &p = g_p[ord[j - 1]], &q = g_p[ord[j]];
+				long long pr = (long long) p.rxRate + p.txRate, qr = (long long) q.rxRate + q.txRate;
+				if (pr > qr || (pr == qr && p.rx + p.tx >= q.rx + q.tx)) break;
+				int t = ord[j]; ord[j] = ord[j - 1]; ord[j - 1] = t;
+			}
+		int rowH = 20, listH = 22 + 20 + (no ? no : 1) * rowH;
+		int gh = height - y - 10 - listH;
+		if (gh < 70) { gh = 70; }
+		plot_box (canvas, 0, y, width, gh);
+		plot (canvas, 0, y, width, gh, g_rxHist, g_nnetHist, top, C_ACCENT, true);
+		plot (canvas, 0, y, width, gh, g_txHist, g_nnetHist, top, C_SENT, false);
+		y += gh + 10;
+		wk_text_l (canvas, 2, y, 18, "BY APP", dim, 2); y += 22;
+		int c4 = width - 2, c3 = c4 - 92, c2 = c3 - 92, c1 = c2 - 92;		// the columns' right edges
+		if (c1 < 150) { c1 = c2; }						// (a narrow window: no "Received" column)
+		wk_text_l (canvas, 2, y, 18, "App", dim);
+		if (c1 != c2) text_r (canvas, c1, y, 18, "Received", dim);
+		text_r (canvas, c2, y, 18, c1 != c2 ? "Sent" : "Received", dim);
+		text_r (canvas, c3, y, 18, "Receiving", dim);
+		text_r (canvas, c4, y, 18, "Sending", dim);
+		y += 20;
+		canvas.fillRect (0, y - 2, width, 1, wk_tone (bg, 100));
+		if (!no) { wk_text_l (canvas, 2, y, 18, "No app has used the network", dim); return; }
+		for (int i = 0; i < no && y + rowH <= height; i++, y += rowH)
+		{
+			const Proc &p = g_p[ord[i]];
+			wk_text_l (canvas, 2, y, 18, p.name, C_TEXT);
+			if (c1 != c2) { bytes_text (a, sizeof a, p.rx); text_r (canvas, c1, y, 18, a, C_TEXT); bytes_text (a, sizeof a, p.tx); }
+			else bytes_text (a, sizeof a, p.rx);
+			text_r (canvas, c2, y, 18, a, C_TEXT);
+			rate_text (a, sizeof a, p.rxRate); text_r (canvas, c3, y, 18, a, p.rxRate ? C_TEXT : dim);
+			rate_text (a, sizeof a, p.txRate); text_r (canvas, c4, y, 18, a, p.txRate ? C_TEXT : dim);
+		}
+	}
+};
+
 // ---- the window --------------------------------------------------------------------------------------------
 static void show_tab (void)
 {
 	bool procs = g_tab == 0;
-	g_grid->hidden = !procs; ((Widget *) g_mem)->hidden = procs;
+	g_grid->hidden = !procs; ((Widget *) g_mem)->hidden = g_tab != 1;
+	((Widget *) g_cpuView)->hidden = g_tab != 2; ((Widget *) g_netView)->hidden = g_tab != 3;
 	g_btRaise->hidden = g_btKill->hidden = !procs;
 	if (g_grid->parent) g_grid->parent->invalidate (true);
 }
@@ -238,6 +484,7 @@ static void refresh (bool sample)
 		if (g_nhist == HIST) { memmove (g_hist, g_hist + 1, (HIST - 1) * sizeof (int)); g_nhist--; }
 		g_hist[g_nhist++] = (int) (used_kb () * 1000 / g_total);
 	}
+	if (sample) sample_stats ();
 	g_grid->setRows (g_np);
 	int s = -1;
 	for (int r = 0; r < g_np; r++) { const Proc *p = row_proc (r); if (p->pid == keep && !strcmp (p->name, keepName)) { s = r; break; } }
@@ -245,12 +492,16 @@ static void refresh (bool sample)
 	g_grid->sortCol = g_sortCol; g_grid->sortDesc = g_sortDesc;
 	g_grid->invalidate (true);
 	((Widget *) g_mem)->invalidate (true);
+	((Widget *) g_cpuView)->invalidate (true);
+	((Widget *) g_netView)->invalidate (true);
 	const Proc *p = row_proc (s);
 	bool app = p && p->kind == 'a';
 	g_btRaise->disabled = g_btKill->disabled = !app;
 	g_btRaise->invalidate (true); g_btKill->invalidate (true);
 	char t[96];
 	if (g_tab == 0) snprintf (t, sizeof t, "%d task%s", g_np, g_np == 1 ? "" : "s");
+	else if (g_tab == 2) snprintf (t, sizeof t, "%u cores  -  the load over the last second, and the last minute", g_cpu.cores);
+	else if (g_tab == 3) snprintf (t, sizeof t, "%s", g_netLine);
 	else snprintf (t, sizeof t, "Detected %lu MB  -  the apps' pool %lu MB, %lu free  -  pages of %u KB", g_detected / 1024, g_pool / 1024, g_poolFree / 1024, g_pageKb);
 	if (strcmp (t, g_lbInfo->text)) g_lbInfo->setText (t);
 }
@@ -295,7 +546,9 @@ int main (void)
 
 	static const char *const TABS[4] = { "Processes", "Memory", "Processor", "Network" };
 	g_tabs = new SegmentedControl (10, 10, 400, 28, TABS, 4, 0, on_tab);
-	g_tabs->setEnabled (2, false); g_tabs->setEnabled (3, false);	// (with the kernel's counters)
+	g_cpuOk = kapi_cpu_stats (&g_cpu) == 0; g_cpuPrev = g_cpu;	// (kapi v80: an older kernel has neither)
+	g_netOk = kapi_net_stats (0, &g_net) == 0; g_netPrev = g_net; g_netPrevUs = g_cpu.now_us;
+	g_tabs->setEnabled (2, g_cpuOk); g_tabs->setEnabled (3, g_netOk);
 	root.addChild (g_tabs);
 
 	g_grid = new DataGrid (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
@@ -316,6 +569,13 @@ int main (void)
 	g_mem = new MemView (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
 	g_mem->anchor = ANCHOR_FILL;
 	root.addChild (g_mem);
+
+	g_cpuView = new CpuView (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
+	g_cpuView->anchor = ANCHOR_FILL;
+	root.addChild (g_cpuView);
+	g_netView = new NetView (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
+	g_netView->anchor = ANCHOR_FILL;
+	root.addChild (g_netView);
 
 	g_lbInfo = new Label (12, H - FOOT + 12, W - 24, 22, "", C_DIS, root.bg);
 	g_lbInfo->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM | ANCHOR_RIGHT;

@@ -154,7 +154,10 @@
 //      away again: W^X); shm_map still refuses it. No new call: a program asks version >= 78.
 // v79: + kernel_info (slot 256): what the running kernel is, as "key value" lines (name, abi,
 //      built, rev, machine, model, ram) -- /bin/uname.
-#define KAPI_ABI_VERSION	79
+// v80: + cpu_stats (slot 257): each core's role (the system's, the sound's, an app core and its
+//      owner, the network's) and the microseconds it was busy; + net_stats (slot 258): the bytes a
+//      process's sockets sent and received (pid 0: all of them). The Task Manager's two tabs.
+#define KAPI_ABI_VERSION	80
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -875,6 +878,39 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_LOADING	2		// being read from its file
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
 #define KAPI_IMG_PATH_MAX	256
+
+// (v80) cpu_stats: a core's role, the microseconds it was busy since the boot, its owner.
+#define KAPI_CORE_SYSTEM	0		// the scheduler's: the kernel and every process (core 0)
+#define KAPI_CORE_SOUND		1		// renders the sound (core 1)
+#define KAPI_CORE_APP		2		// an app core (kapi_core_acquire): pid = its owner, 0 when free
+#define KAPI_CORE_NETWORK	3		// the network stack (netcore=1: core 3); it polls: always busy
+#define KAPI_CPU_CORES		8
+
+struct kapi_cpu_core				// 16 bytes
+{
+	unsigned long long busy_us;		// 0: system/network: its tasks ran (not the idle one); sound:
+						//    rendering; app: its jobs ran
+	unsigned role;				// 8: KAPI_CORE_*
+	unsigned pid;				// 12: an app core's owner (0: free; the other roles: 0)
+};
+
+struct kapi_cpu_stats				// 144 bytes
+{
+	unsigned long long now_us;		// 0: the clock when these were read (two reads: a load)
+	unsigned cores;				// 8: how many of core[] are filled
+	unsigned reserved;			// 12: 0
+	struct kapi_cpu_core core[KAPI_CPU_CORES];	// 16
+};
+
+// (v80) net_stats: the payload bytes through a process's sockets (TCP and UDP) since it started
+// (pid 0: through every process's since the boot), its sockets open now.
+struct kapi_net_stats				// 24 bytes
+{
+	unsigned long long rx_bytes;		// 0
+	unsigned long long tx_bytes;		// 8
+	unsigned sockets;			// 16
+	unsigned reserved;			// 20: 0
+};
 
 struct kapi_image_info				// 280 bytes
 {
@@ -1728,6 +1764,14 @@ struct TKApiTable
 	// changes), machine (aarch64), model (the board's name), ram (MB). Up to cap - 1 bytes
 	// written and a NUL -> the text's whole length / -EFAULT. Keys may be added.
 	int (*kernel_info) (char *buf, unsigned cap);
+
+	// --- v80: the cores' load, the network's bytes by process (sys/kapi.cpp) ---
+	// cpu_stats: every core's role, busy time and owner -> 0 / -EFAULT. The load between two
+	// reads: (busy_us' - busy_us) / (now_us' - now_us).
+	int (*cpu_stats) (struct kapi_cpu_stats *out);
+	// net_stats: pid's bytes received and sent, its open sockets (pid 0: all) -> 0 / -EFAULT. A
+	// process that used no socket: zeros.
+	int (*net_stats) (int pid, struct kapi_net_stats *out);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1793,6 +1837,8 @@ KAPI_CHECK_SLOT (image_preload, 253);
 KAPI_CHECK_SLOT (image_unload, 254);
 KAPI_CHECK_SLOT (image_list, 255);
 KAPI_CHECK_SLOT (kernel_info, 256);
+KAPI_CHECK_SLOT (cpu_stats, 257);
+KAPI_CHECK_SLOT (net_stats, 258);
 
 #ifdef __cplusplus
 }

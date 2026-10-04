@@ -214,6 +214,14 @@ public:
 		return s_pThis[ThisCore ()] != 0 ? TRUE : FALSE;
 	}
 
+	// (kapi v80 cpu_stats) The scheduler of a core, 0 if it has none; the microseconds its tasks
+	// ran -- every task but the idle one, the task running now included. Read from any core.
+	static CScheduler *OfCore (unsigned nCore)
+	{
+		return nCore < SCHED_CORES ? s_pThis[nCore] : 0;
+	}
+	u64 GetBusyUs (void) const;
+
 	static unsigned ThisCore (void)
 	{
 		u64 nMPIDR;
@@ -266,6 +274,7 @@ private:
 
 	// Stall watchdog
 	unsigned m_nLastYield;		// clock ticks (us) of the last Yield() entry
+	volatile u64 m_nBusyUs;		// (v80) the time the tasks ran, the idle task apart
 	unsigned m_nLastSample;		// ... of the last StallSample() taken
 	TStallReport m_Stall;		// the stall in progress (m_Stall.nSamples samples)
 #define STALL_RING	4

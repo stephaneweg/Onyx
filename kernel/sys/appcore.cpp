@@ -70,6 +70,8 @@ struct TAppCore
 	volatile unsigned	nPageIn;	// (v75) 0 none, 1 asked, 2 filled (retry), 3 refused
 	volatile u64		ulPageInVA;	// (v75) the page asked for
 	volatile boolean	bPageInWrite;
+	volatile u64		ulBusyUs;	// (v80 cpu_stats) the time its jobs ran
+	volatile u64		ulJobStart;	// the running job's start (0: none)
 };
 
 #define PAGEIN_NONE	0
@@ -80,6 +82,37 @@ struct TAppCore
 #define JOB_STACK_FILL	0x40000		// core_run fills the top 256 KB of the job's stack
 
 static TAppCore s_Core[CORES];
+
+// The clock in microseconds, 64 bits (the counter: readable on every core).
+static inline u64 ClockUs64 (void)
+{
+	u64 c, f;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (c));
+	asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+	return f != 0 ? c / f * 1000000 + c % f * 1000000 / f : 0;
+}
+
+static void JobTimeEnd (TAppCore &C)
+{
+	u64 ulStart = C.ulJobStart;
+	if (ulStart != 0)
+	{
+		C.ulJobStart = 0;
+		C.ulBusyUs = C.ulBusyUs + (ClockUs64 () - ulStart);
+	}
+}
+
+u64 AppCoreBusyUs (unsigned nCore, unsigned *pOwnerPid)
+{
+	if (pOwnerPid != 0) *pOwnerPid = 0;
+	if (nCore < APPCORE_FIRST || nCore > APPCORE_LAST || nCore >= CORES) return 0;
+	TAppCore &C = s_Core[nCore];
+	CAddressSpace *pOwner = C.pOwner;
+	if (pOwnerPid != 0 && pOwner != 0) *pOwnerPid = pOwner->GetPid ();
+	u64 n = C.ulBusyUs, ulStart = C.ulJobStart, ulNow = ClockUs64 ();
+	if (ulStart != 0 && ulNow > ulStart) n += ulNow - ulStart;
+	return n;
+}
 
 static inline void Barrier (void)	{ asm volatile ("dsb ish" ::: "memory"); }
 static inline void LocalTLBFlush (void)	{ asm volatile ("tlbi vmalle1; dsb nsh; isb" ::: "memory"); }
@@ -104,6 +137,7 @@ static void __attribute__ ((noreturn)) AppCoreLoop (unsigned nCore)
 			asm volatile ("msr ttbr0_el1, %0; isb" :: "r" (C.ulTTBR0) : "memory");
 			LocalTLBFlush ();			// (an ASID may have been reused)
 			asm volatile ("msr tpidr_el0, %0" :: "r" (C.ulTls) : "memory");	// (v75: its TLS)
+			C.ulJobStart = ClockUs64 ();		// (v80: the job's time, until it ends or is dropped)
 			// fn at EL0 on the app's stack, returning into the blob's El0CoreReturn, whose
 			// system call ends it (AppCoreOnEl0Sync -> AppCoreEl0Done, on a fresh kernel stack).
 			// Its IRQ (the stop IPI) and its faults come through the EL0 vectors
@@ -120,6 +154,7 @@ extern "C" void __attribute__ ((noreturn)) AppCoreRestart (unsigned nCore)
 	TAppCore &C = s_Core[nCore];
 	ActivateKernelAddressSpace ();				// out of the app's space first
 	LocalTLBFlush ();
+	JobTimeEnd (C);
 	if (C.nState == CORE_RUNNING) C.nState = CORE_IDLE;	// (CORE_FAULT stays)
 	C.bGo = FALSE;
 	C.nPageIn = PAGEIN_NONE;				// (a page-in it waited for: dropped)
@@ -135,6 +170,7 @@ extern "C" void __attribute__ ((noreturn)) AppCoreEl0Done (unsigned nCore)
 {
 	TAppCore &C = s_Core[nCore];
 	ActivateKernelAddressSpace ();
+	JobTimeEnd (C);
 	Barrier ();
 	if (C.nState == CORE_RUNNING) C.nState = CORE_IDLE;
 	Barrier ();

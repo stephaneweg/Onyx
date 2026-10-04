@@ -22,6 +22,7 @@
 #include <kern/layout.h>
 #include <kern/gui/window.h>
 #include <kern/gui/surface.h>		// CSurface / CSurfaceManager (shell surfaces)
+#include <kern/appcore.h>		// AppCoreBusyUs (v80 cpu_stats)
 #include <kern/net.h>		// NetTcpConnect/Send/Recv/Close/Status (socket backend)
 #include <kern/debugcon.h>
 #include <kern/gui/gimage.h>
@@ -505,6 +506,50 @@ int kapi_kernel_info (char *pBuf, unsigned nCap)
 	char cEnd = '\0';
 	if (!UserCopyOut (pBuf, (const char *) Text, k) || !UserCopyOut (pBuf + k, &cEnd, 1)) return -KAPI_EFAULT;
 	return (int) n;
+}
+
+// (v80) The cores: what each does and how long it was busy. Core 0 (and the network's, netcore=1)
+// have a scheduler: the time its tasks ran, the idle task apart -- the network core's tasks wait by
+// yielding (it polls the Wi-Fi chip), so that one is always busy. Core 1: the time it rendered sound.
+// An app core: the time its jobs ran.
+#ifdef ARM_ALLOW_MULTI_CORE
+extern "C++" { u64 SoundCoreBusyUs (void); }			// (sys/sound.cpp: core 1's rendering time)
+#endif
+int kapi_cpu_stats (struct kapi_cpu_stats *pOut)
+{
+	struct kapi_cpu_stats Out;
+	memset (&Out, 0, sizeof Out);
+	u64 c, f;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (c));
+	asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+	Out.now_us = f != 0 ? c / f * 1000000 + c % f * 1000000 / f : 0;
+#ifdef ARM_ALLOW_MULTI_CORE
+	Out.cores = CORES < KAPI_CPU_CORES ? CORES : KAPI_CPU_CORES;
+#else
+	Out.cores = 1;
+#endif
+	for (unsigned n = 0; n < Out.cores; n++)
+	{
+		struct kapi_cpu_core &C = Out.core[n];
+		CScheduler *pSched = CScheduler::OfCore (n);
+		if (n == 0) { C.role = KAPI_CORE_SYSTEM; C.busy_us = pSched != 0 ? pSched->GetBusyUs () : 0; }
+#ifdef ARM_ALLOW_MULTI_CORE
+		else if (n == 1) { C.role = KAPI_CORE_SOUND; C.busy_us = SoundCoreBusyUs (); }
+		else if (pSched != 0) { C.role = KAPI_CORE_NETWORK; C.busy_us = pSched->GetBusyUs (); }
+		else { C.role = KAPI_CORE_APP; C.busy_us = AppCoreBusyUs (n, &C.pid); }
+#endif
+	}
+	return UserCopyOut (pOut, &Out, sizeof Out) ? 0 : -KAPI_EFAULT;
+}
+
+int kapi_net_stats (int nPid, struct kapi_net_stats *pOut)
+{
+	struct kapi_net_stats Out;
+	memset (&Out, 0, sizeof Out);
+	u64 ulRx = 0, ulTx = 0;
+	NetStats (nPid > 0 ? (unsigned) nPid : 0, &ulRx, &ulTx, &Out.sockets);
+	Out.rx_bytes = ulRx; Out.tx_bytes = ulTx;
+	return UserCopyOut (pOut, &Out, sizeof Out) ? 0 : -KAPI_EFAULT;
 }
 
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).

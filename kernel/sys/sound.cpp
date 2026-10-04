@@ -374,6 +374,18 @@ static COnyxSoundDevice *s_pDevice = 0;
 
 #ifdef ARM_ALLOW_MULTI_CORE
 // Core 1: wait until the audio is started, then keep the ring SND_AHEAD chunks ahead.
+static volatile u64 s_ulRenderUs;				// (kapi v80 cpu_stats)
+u64 SoundCoreBusyUs (void) { return s_ulRenderUs; }
+
+// The clock in microseconds, 64 bits (the counter: readable on every core).
+static inline u64 ClockUs64 (void)
+{
+	u64 c, f;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (c));
+	asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+	return f != 0 ? c / f * 1000000 + c % f * 1000000 / f : 0;
+}
+
 void SoundCoreMain (void)
 {
 	CrashLogCoreInit ();					// (woken every ~1 ms: core 0 watched)
@@ -384,7 +396,9 @@ void SoundCoreMain (void)
 		if (!s_Lock.TryAcquire ()) continue;		// (never stuck behind core 0: the crash watch goes on)
 		unsigned nSlot = s_nAheadWr % SND_AHEAD;
 		unsigned nFrames = s_nChunkFrames;		// (read under the lock: SoundConfig takes it)
+		u64 ulT0 = ClockUs64 ();
 		Render (s_Ahead[nSlot], nFrames);
+		s_ulRenderUs = s_ulRenderUs + (ClockUs64 () - ulT0);
 		s_nAheadLen[nSlot] = nFrames;
 		s_Lock.Release ();
 		DataMemBarrier ();

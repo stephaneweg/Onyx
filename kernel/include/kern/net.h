@@ -36,6 +36,8 @@ void  NetTcpClose   (int hSock);
 int   NetTcpListen  (unsigned nPort, unsigned nOwnerPid);	// listening handle >=0 / <0
 int   NetTcpAccept  (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid); // blocks
 int   NetStatus     (char *pIPOut, unsigned nIPLen);		// 1 up / 0 down; fills dotted IP
+// (kapi v80) The bytes a process's sockets sent and received, its open sockets; pid 0: every process.
+int   NetStats (unsigned nPid, u64 *pRx, u64 *pTx, unsigned *pSockets);
 void  NetCloseByPid (unsigned nPid);				// reclaim a dead process's sockets
 int   NetResolve    (const char *pHost, char *pIPOut, unsigned nIPLen);	// 1 / 0
 int   NetPing       (const char *pHost, unsigned nSeq, unsigned nTimeoutMs,

@@ -531,6 +531,22 @@ static inline int kapi_image_list (const char *path, struct kapi_image_info *out
 // keys may be added) -> the text's length; -KAPI_ENOSYS (and "") on an older kernel. /bin/uname.
 static inline int kapi_kernel_info (char *buf, unsigned cap)
 	{ if (KT->version >= 79 && KT->kernel_info) return KT->kernel_info (buf, cap); if (buf && cap) buf[0] = 0; return -KAPI_ENOSYS; }
+// (v80) The cores: each one's role (KAPI_CORE_*), the microseconds it was busy, an app core's owner
+// -> 0; -KAPI_ENOSYS (out zeroed) on an older kernel. Two reads make a load.
+static inline int kapi_cpu_stats (struct kapi_cpu_stats *out)
+{
+	if (KT->version >= 80 && KT->cpu_stats) return KT->cpu_stats (out);
+	if (out) __builtin_memset (out, 0, sizeof *out);
+	return -KAPI_ENOSYS;
+}
+// (v80) The bytes pid's sockets received and sent, its open sockets (pid 0: every process's) -> 0;
+// -KAPI_ENOSYS (out zeroed) on an older kernel.
+static inline int kapi_net_stats (int pid, struct kapi_net_stats *out)
+{
+	if (KT->version >= 80 && KT->net_stats) return KT->net_stats (pid, out);
+	if (out) __builtin_memset (out, 0, sizeof *out);
+	return -KAPI_ENOSYS;
+}
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

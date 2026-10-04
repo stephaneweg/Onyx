@@ -1060,7 +1060,9 @@ read-only segments are shared by its processes — no call changes for that —,
 kapi_image_info`, `KAPI_IMG_*` (*v77: program images* below),
 v78 = **executable memory for a JIT** (WebKit roadmap step 3, docs/08): `vm_map` and `vm_protect`
 accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* below),
-v79 = **what the kernel is**: `kernel_info` (slot 256), for `/bin/uname` (*v79: kernel_info* below).
+v79 = **what the kernel is**: `kernel_info` (slot 256), for `/bin/uname` (*v79: kernel_info* below),
+v80 = **the cores' load and the network's bytes by process**: `cpu_stats`, `net_stats` (slots 257,
+258), for the Task Manager's Processor and Network tabs (*v80: cpu_stats, net_stats* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1448,6 +1450,30 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v80: cpu_stats, net_stats
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 257 | `cpu_stats (out)` | `struct kapi_cpu_stats` (144 bytes): `now_us` (the clock of the read), `cores`, then a `kapi_cpu_core` a core — `busy_us` (the microseconds it was busy since the boot), `role` (`KAPI_CORE_SYSTEM` 0, `KAPI_CORE_SOUND` 1, `KAPI_CORE_APP` 2, `KAPI_CORE_NETWORK` 3), `pid` (an app core's owner, 0 when free) → 0 / `-EFAULT`. Two reads make a load: `(busy_us' - busy_us) / (now_us' - now_us)`. |
+| 258 | `net_stats (pid, out)` | `struct kapi_net_stats` (24 bytes): the payload bytes `pid`'s sockets received and sent (`rx_bytes`, `tx_bytes`: TCP and UDP, the old `tcp_*` calls and the BSD sockets) since it started, its `sockets` open now; `pid` 0: every process's since the boot → 0 / `-EFAULT`. A process that used no socket: zeros. |
+
+What "busy" is, core by core. A core with a **scheduler** — core 0, and core 3 with `netcore=1` —
+counts the time its tasks ran, the idle task apart: `CScheduler::Yield` adds what the leaving task
+ran (`m_nBusyUs`; `GetBusyUs` adds the running task's time so far, so a read from another core is
+live). Core 0's idle task sleeps in `wfi`, so its figure is the machine's real load; the interrupt
+handlers that wake it are counted as idle. The **network core**'s tasks all wait by yielding (it
+polls the Wi-Fi chip): it never idles and reads 100 % — that is what the core does, not a fault.
+**Core 1** counts the time it renders sound (`sys/sound.cpp`, around `Render`); an **app core** the
+time its jobs ran, from the entry at EL0 to the job's end or drop (`sys/appcore.cpp`; a job that
+waits in `wfe` still counts).
+
+The network's bytes are counted where the calls return, on core 0 (`NetTcpSend` / `NetTcpRecv`,
+`NetSockSend` / `NetSockRecv` in `sys/net.cpp`: a process's tasks all run there, so the table needs
+no lock): one line a process (64 at most; beyond, the totals only), freed when the process ends
+(`NetCloseByPid`). A byte read with `MSG_PEEK` is counted when it is really read. They are the
+sockets' payload, not the frames on the air: no header, no retransmission, nothing of the kernel's
+own traffic (DHCP, DNS, NTP).
 
 ### v79: kernel_info
 

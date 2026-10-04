@@ -36,6 +36,10 @@ void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone);
 // answer (its code masked the interrupts): the space must then NOT be freed.
 boolean AppCoreReleaseAS (CAddressSpace *pAS);
 
+// (v80 cpu_stats) The microseconds this app core ran jobs (the one running included); its owner's
+// pid (0: free).
+u64 AppCoreBusyUs (unsigned nCore, unsigned *pOwnerPid);
+
 // kapi (C linkage, like every kapi_* entry of the table)
 extern "C" {
 int  kapi_core_acquire (void);

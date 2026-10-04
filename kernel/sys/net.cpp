@@ -1561,6 +1561,7 @@ static void Wait (TNetReq *r)
 static void Release (TNetReq *r) { St (&r->nState, RQ_FREE); }
 
 static unsigned CurrentPid (void);
+static void NetCount (unsigned nPid, int nRx, int nTx);		// (v80 net_stats, below)
 
 int NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 {
@@ -1574,7 +1575,7 @@ int NetTcpConnect (const char *pHost, unsigned nPort, unsigned nOwnerPid)
 
 int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
 {
-	if (!g_bNetCore) return DoSend (hSock, pBuf, nLen, CurrentPid ());
+	if (!g_bNetCore) { int k = DoSend (hSock, pBuf, nLen, CurrentPid ()); NetCount (CurrentPid (), 0, k); return k; }
 	int nTotal = 0;
 	const u8 *p = (const u8 *) pBuf;
 	do
@@ -1586,6 +1587,7 @@ int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
 		Post (r); Wait (r);
 		int n = r->nResult; Release (r);
 		if (n < 0) return nTotal > 0 ? nTotal : n;	// (the requests before: queued)
+		NetCount (CurrentPid (), 0, n);
 		nTotal += n; p += n; nLen -= (unsigned) n;
 		if ((unsigned) n < k) break;			// short: the bytes queued, then a timeout
 	}
@@ -1595,13 +1597,14 @@ int NetTcpSend (int hSock, const void *pBuf, unsigned nLen)
 
 int NetTcpRecv (int hSock, void *pBuf, unsigned nLen)
 {
-	if (!g_bNetCore) return DoRecv (hSock, pBuf, nLen, CurrentPid ());
+	if (!g_bNetCore) { int k = DoRecv (hSock, pBuf, nLen, CurrentPid ()); NetCount (CurrentPid (), k, 0); return k; }
 	if (nLen == 0) return 0;
 	TNetReq *r = NewReq (NR_RECV, CurrentPid ()); if (r == 0) return -1;
 	r->h = hSock; r->nData = nLen > NET_REQBUF ? NET_REQBUF : nLen;
 	Post (r); Wait (r);
 	int n = r->nResult;
 	if (n > 0) memcpy (pBuf, r->Buf, (unsigned) n);
+	NetCount (CurrentPid (), n, 0);
 	Release (r); return n;
 }
 
@@ -1634,8 +1637,51 @@ int NetTcpAccept (int hListen, char *pIPOut, unsigned nIPLen, unsigned nOwnerPid
 	Release (r); return n;
 }
 
+// ---- (kapi v80 net_stats) the bytes a process sent and received through its sockets ----
+// Counted where the calls return, on core 0 (a process's tasks all run there): no lock. A
+// process's line is freed when it ends (NetCloseByPid); the totals stay.
+#define NET_PIDS	64
+static struct { unsigned nPid; u64 ulRx, ulTx; } s_PidNet[NET_PIDS];
+static u64 s_ulRxTotal, s_ulTxTotal;
+
+static void NetCount (unsigned nPid, int nRx, int nTx)
+{
+	if (nRx <= 0 && nTx <= 0) return;
+	if (nRx > 0) s_ulRxTotal += (unsigned) nRx;
+	if (nTx > 0) s_ulTxTotal += (unsigned) nTx;
+	if (nPid == 0) return;
+	int nFree = -1;
+	for (int i = 0; i < NET_PIDS; i++)
+	{
+		if (s_PidNet[i].nPid == nPid)
+		{
+			if (nRx > 0) s_PidNet[i].ulRx += (unsigned) nRx;
+			if (nTx > 0) s_PidNet[i].ulTx += (unsigned) nTx;
+			return;
+		}
+		if (nFree < 0 && s_PidNet[i].nPid == 0) nFree = i;
+	}
+	if (nFree < 0) return;					// (64 processes with sockets: the totals only)
+	s_PidNet[nFree].ulRx = nRx > 0 ? (unsigned) nRx : 0;
+	s_PidNet[nFree].ulTx = nTx > 0 ? (unsigned) nTx : 0;
+	s_PidNet[nFree].nPid = nPid;
+}
+
+int NetStats (unsigned nPid, u64 *pRx, u64 *pTx, unsigned *pSockets)
+{
+	*pRx = *pTx = 0; *pSockets = 0;
+	for (int h = 0; h < MAX_SOCKETS; h++)
+		if (s_Sockets[h].pSocket != 0 && (nPid == 0 || s_Sockets[h].nOwnerPid == nPid)) (*pSockets)++;
+	if (nPid == 0) { *pRx = s_ulRxTotal; *pTx = s_ulTxTotal; return 0; }
+	for (int i = 0; i < NET_PIDS; i++)
+		if (s_PidNet[i].nPid == nPid) { *pRx = s_PidNet[i].ulRx; *pTx = s_PidNet[i].ulTx; return 0; }
+	return 0;						// (no socket used yet: zeros)
+}
+
 void NetCloseByPid (unsigned nPid)
 {
+	for (int i = 0; i < NET_PIDS; i++)			// (v80: its line of the counts)
+		if (nPid != 0 && s_PidNet[i].nPid == nPid) s_PidNet[i].nPid = 0;
 	if (!g_bNetCore) { DoCloseByPid (nPid); return; }
 	if (nPid == 0 || !s_bReady) return;
 	// (from the teardown, IRQs masked: nothing here waits)
@@ -1935,25 +1981,33 @@ int NetSockAccept (int h, unsigned nPid, boolean bNonBlock, u8 *pIP, u16 *pPort)
 
 int NetSockSend (int h, unsigned nPid, const void *pBuf, unsigned nLen, const u8 *pIP, unsigned nPort)
 {
-	if (!g_bNetCore) return SlotSend (h, nPid, (const u8 *) pBuf, nLen, pIP, nPort);
+	if (!g_bNetCore) { int k = SlotSend (h, nPid, (const u8 *) pBuf, nLen, pIP, nPort); NetCount (nPid, 0, k); return k; }
 	if (nLen > NET_REQBUF) nLen = NET_REQBUF;
 	TNetReq *r = NewReq (NR_SSEND, nPid); if (r == 0) return -KAPI_ENETDOWN;
 	r->h = h; r->nData = nLen;
 	if (pIP != 0) { memcpy (r->Addr, pIP, 4); r->nPort = (u16) nPort; r->n2 = 1; }
 	memcpy (r->Buf, pBuf, nLen);				// (the app's memory: mapped here, on core 0)
 	Post (r); Wait (r);
-	int n = r->nResult; Release (r); return n;
+	int n = r->nResult; Release (r);
+	NetCount (nPid, 0, n);
+	return n;
 }
 
 int NetSockRecv (int h, unsigned nPid, void *pBuf, unsigned nLen, unsigned nFlags, u8 *pIP, u16 *pPort)
 {
-	if (!g_bNetCore) return SlotRecv (h, nPid, (u8 *) pBuf, nLen, nFlags, pIP, pPort);
+	if (!g_bNetCore)
+	{
+		int k = SlotRecv (h, nPid, (u8 *) pBuf, nLen, nFlags, pIP, pPort);
+		if (!(nFlags & KAPI_MSG_PEEK)) NetCount (nPid, k, 0);
+		return k;
+	}
 	if (nLen > NET_REQBUF) nLen = NET_REQBUF;
 	TNetReq *r = NewReq (NR_SRECV, nPid); if (r == 0) return -KAPI_ENETDOWN;
 	r->h = h; r->nData = nLen; r->n1 = nFlags;
 	Post (r); Wait (r);
 	int n = r->nResult;
 	if (n > 0) memcpy (pBuf, r->Buf, (unsigned) n);
+	if (!(nFlags & KAPI_MSG_PEEK)) NetCount (nPid, n, 0);	// (a peeked byte is counted when it is read)
 	if (n >= 0) { memcpy (pIP, r->Addr, 4); *pPort = r->nPort; }
 	Release (r); return n;
 }
