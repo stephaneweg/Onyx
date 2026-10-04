@@ -707,18 +707,23 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   its program** (this checkout had no `sdcard/apps/jet.app/main`, not in git) -- republished at once as 2.0.5 with
   it (taken from 2.0.3's package); `tools/pkg/publish.sh` now takes Jet's program back from the last package
   itself, or stops.
-  **Next**: a master / layout editing view, effects by paragraph in the show, groups, find and replace, handouts
-  and notes pages in the PDF, a vector PDF (the text as text).
+- **The master view** (`master.h`, View ▸ Master and Layouts): the master and the 8 layouts as slides, edited with
+  the normal tools; the samples' formats become the text styles; layouts' placeholders; the slides follow the
+  layouts' new places (unless moved by hand); one undo step. Test in `slides_test.cpp`; `screenshots/slides-master.png`.
+- **Find and Replace** (`find.h`, Edit menu, Ctrl+F), **effects by paragraph** in the show (`show.h`: the sample's
+  slide 5 list), **notes pages and handouts** (2, 3 with lines, 6) in Export as PDF. All tested
+  (`slides_test.cpp`: 41 checks).
+  **Next**: groups (a model change: render, ODP, PPTX, the editor), a vector PDF (the text as text).
 
-## Studio, the IDE for desktop apps in BASIC: mock-ups (2026-10-04)
+## QBStudio, the IDE for desktop apps in BASIC: mock-ups (2026-10-04)
 
 - Asked by the user: an IDE for Onyx BASIC aimed at desktop apps, without touching `qbasic`; a GUI designer in the
   way of Visual Studio's WPF one, a light layout format (a control a line, the indentation for the parent), the
-  window's code generated. **Study and five mock-ups**: `docs/studio/README.md` (`tools/screenshot/mockup_studio.py`):
+  window's code generated. **Study and five mock-ups**: `docs/qbstudio/README.md` (`tools/screenshot/mockup_qbstudio.py`):
   the designer (layout containers, the `.form` text kept in step), the code (event SUBs, controls as objects,
   completion), debugging, a new project, the generated `Main.form.bas`. The BASIC additions it needs are listed
-  there (objects and properties, `Move`, menus, resize, `$INCLUDE`, a debug channel). **Waiting for the user's
-  word** (the open questions at the end of the page). Nothing built.
+  there (objects and properties, `Move`, menus, resize, `$INCLUDE`, a debug channel). **Approved by the user**, who
+  named it **QBStudio** (`qbstudio`); to build next.
 
 ## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
 

@@ -1,23 +1,24 @@
-# Studio, the IDE for desktop apps in BASIC — study, first mock-ups
+# QBStudio, the IDE for desktop apps in BASIC — study, first mock-ups
 
-> **Status (2026-10-04): mock-ups, to be validated by the user.** Asked by the user (2026-10-04): an IDE to write
+> **Status (2026-10-04): mock-ups approved by the user; to build.** Asked by the user (2026-10-04): an IDE to write
 > programs in Onyx's QBasic-style BASIC, aimed at **desktop apps**, *without touching what exists* (the `qbasic`
 > editor stays as it is). It has a **GUI designer** in the way of Visual Studio's WPF designer: the designer mostly
 > defines the **layout** of the window, and the IDE **generates the window's code**. The user's idea for the format:
 > "like XAML but lighter, not necessarily XML: **a control a line, the indentation giving the parent**" (or, failing
-> that, WinForms-style absolute positions). Working name: **Studio** (app folder `studio`). Nothing is built yet.
+> that, WinForms-style absolute positions). The name: **QBStudio** (app folder `qbstudio`), chosen by the user, who
+> approved the mock-ups and the choices below (2026-10-04).
 
-The mock-ups are made by `python3 tools/screenshot/mockup_studio.py` → `docs/studio/mockups/studio-*.png` (1024 × 768,
+The mock-ups are made by `python3 tools/screenshot/mockup_qbstudio.py` → `docs/qbstudio/mockups/qbstudio-*.png` (1024 × 768,
 the real desktop behind; the drawing helpers are `mockup_archiver.py`'s, the toolbar icons Letters', as for Slides).
 The project shown, *Converter*, is the example `SD:/basic/examples/gui.bas` grown into a real app.
 
 | | |
 |---|---|
-| ![](mockups/studio-designer.png) | **The designer** (the Split view). At the left the **project** (its forms, its code, the generated files, the resources: the icon, `app.txt`) and the **toolbox**: the layout containers (Column, Row, Grid, Group, Tabs, Scroll, Spacer), the controls (the runtime's, and Picture / Canvas), the window's parts (Menu, ToolBar, StatusBar, Timer). In the middle the **window as Onyx draws it**, its layout's boxes over it (the Column, its Rows: dashed, named), the selected Button with its handles; a CheckBox dragged from the toolbox shows **where it will go in the Column** (the pink line) — no x, no y to give. Under it, **the form's text**, kept in step with the drawing (each can be edited; the other follows). At the right the **properties** of the selection (common, layout, its events: a click on *Click* opens its SUB). |
-| ![](mockups/studio-code.png) | **The code** (`Main.bas`): only what the app does, one SUB per event — `convert_Click`, `celsius_Change` — and the controls as objects (`celsius.Text`, `live.Checked`, `scale.Value`). Above the text, the **object and its event** (as Visual Basic's two lists): choosing them writes the SUB. **Completion** after a control's name (its properties and methods, their types, a tip from the form), the language's colours, the indentation's guides. At the left the **outline**: each control and its event SUBs (an event not handled yet is shown). Under the text, **problems** found as you type, the output of the build. |
-| ![](mockups/studio-debug.png) | **Running, debugging.** Run (F5) builds and starts the app in its own window; **Debug** stops at **breakpoints** (a click in the margin), the line about to run in yellow, the value of a variable under the pointer; **Continue, Step over, Step into, Step out, Stop**; the **variables** of the SUB (the controls' properties too), a **watch** list of expressions, the **call stack** (back to the event that started it). |
-| ![](mockups/studio-new.png) | **A new project**: a window (controls in a column), a **document app** (menu, toolbar, status bar, New / Open / Save already done), a dialog, a list and its details, a game (`SCREEN 13`, the loop, the keys and pads), a console tool. The name, the title, the folder, the category; compiled or not. Each runs at once. |
-| ![](mockups/studio-generated.png) | **What Studio makes of the form**: `Main.form.bas`, the window's code, **generated and read-only** (made again at each change of the form, as Visual Studio's `.designer.cs`): the controls as `DIM SHARED` objects, `Main_Create`, `Main_Layout (w, h)` — where each control goes for a size, computed from the Column and its Rows (so the window can be resized) — and `Main_Run`, the event loop that calls your SUBs. Plain BASIC: it can be read, stepped into, and the app runs without Studio. |
+| ![](mockups/qbstudio-designer.png) | **The designer** (the Split view). At the left the **project** (its forms, its code, the generated files, the resources: the icon, `app.txt`) and the **toolbox**: the layout containers (Column, Row, Grid, Group, Tabs, Scroll, Spacer), the controls (the runtime's, and Picture / Canvas), the window's parts (Menu, ToolBar, StatusBar, Timer). In the middle the **window as Onyx draws it**, its layout's boxes over it (the Column, its Rows: dashed, named), the selected Button with its handles; a CheckBox dragged from the toolbox shows **where it will go in the Column** (the pink line) — no x, no y to give. Under it, **the form's text**, kept in step with the drawing (each can be edited; the other follows). At the right the **properties** of the selection (common, layout, its events: a click on *Click* opens its SUB). |
+| ![](mockups/qbstudio-code.png) | **The code** (`Main.bas`): only what the app does, one SUB per event — `convert_Click`, `celsius_Change` — and the controls as objects (`celsius.Text`, `live.Checked`, `scale.Value`). Above the text, the **object and its event** (as Visual Basic's two lists): choosing them writes the SUB. **Completion** after a control's name (its properties and methods, their types, a tip from the form), the language's colours, the indentation's guides. At the left the **outline**: each control and its event SUBs (an event not handled yet is shown). Under the text, **problems** found as you type, the output of the build. |
+| ![](mockups/qbstudio-debug.png) | **Running, debugging.** Run (F5) builds and starts the app in its own window; **Debug** stops at **breakpoints** (a click in the margin), the line about to run in yellow, the value of a variable under the pointer; **Continue, Step over, Step into, Step out, Stop**; the **variables** of the SUB (the controls' properties too), a **watch** list of expressions, the **call stack** (back to the event that started it). |
+| ![](mockups/qbstudio-new.png) | **A new project**: a window (controls in a column), a **document app** (menu, toolbar, status bar, New / Open / Save already done), a dialog, a list and its details, a game (`SCREEN 13`, the loop, the keys and pads), a console tool. The name, the title, the folder, the category; compiled or not. Each runs at once. |
+| ![](mockups/qbstudio-generated.png) | **What QBStudio makes of the form**: `Main.form.bas`, the window's code, **generated and read-only** (made again at each change of the form, as Visual Studio's `.designer.cs`): the controls as `DIM SHARED` objects, `Main_Create`, `Main_Layout (w, h)` — where each control goes for a size, computed from the Column and its Rows (so the window can be resized) — and `Main_Run`, the event loop that calls your SUBs. Plain BASIC: it can be read, stepped into, and the app runs without QBStudio. |
 
 ## The format: `.form`
 
@@ -69,10 +70,10 @@ Window Main "Temperature converter" size=380x260 min=320x220 resizable
 
 | File | Who writes it | What it holds |
 |---|---|---|
-| `Main.form` | Studio's designer, or you | the window: its controls, their layout, their properties |
-| `Main.form.bas` | **Studio** (read-only, made again) | `DIM SHARED` the controls; `Main_Create`; `Main_Layout (w, h)`; `Main_Run` (the event loop → your SUBs) |
+| `Main.form` | QBStudio's designer, or you | the window: its controls, their layout, their properties |
+| `Main.form.bas` | **QBStudio** (read-only, made again) | `DIM SHARED` the controls; `Main_Create`; `Main_Layout (w, h)`; `Main_Run` (the event loop → your SUBs) |
 | `Main.bas` | **you** | the event SUBs (`convert_Click`...), `Main_Load`, your own SUBs and FUNCTIONs |
-| `main.bas` (the app's) | Studio, once | `'$INCLUDE` the files, then `Main_Run` |
+| `main.bas` (the app's) | QBStudio, once | `'$INCLUDE` the files, then `Main_Run` |
 
 **File ▸ Make App** (as `qbasic`'s) writes `SD:/apps/<name>.app/` — `main.bas` or the compiled `main.bax`,
 `app.txt`, `icon.bmp` — so the app is listed, launched, packaged like any other. A project is a folder
@@ -81,7 +82,7 @@ Window Main "Temperature converter" size=380x260 min=320x220 resizable
 ## What the BASIC needs (additions; existing programs unchanged)
 
 The runtime already has the controls (`BUTTON(x, y, w, h, text$)`...), `WINDOW`, `WAITEVENT`, `MSGBOX`, the file
-dialogs, `TYPE` with methods and `NEW`. Studio's generated code needs, in the compiler and in the runtime (both of
+dialogs, `TYPE` with methods and `NEW`. QBStudio's generated code needs, in the compiler and in the runtime (both of
 Onyx's: `/bin/basic` and the Windows runtime, `pc/`):
 
 1. **Controls as objects**: `DIM x AS TextBox`, `x = NEW TextBox (window, text$)`, and **properties** —
@@ -94,7 +95,7 @@ Onyx's: `/bin/basic` and the Windows runtime, `pc/`):
    a **toolbar**, a **status bar**, a **timer** event in the loop.
 4. **`'$INCLUDE: 'file.bas'`** (QBasic's metacommand) to join the files of a project.
 5. For the debugger: the bytecode's **line table**, **breakpoints**, **stepping**, reading the variables — a
-   debug channel between Studio and the running program (`/bin/basic --debug`).
+   debug channel between QBStudio and the running program (`/bin/basic --debug`).
 
 ## How it would be built (a first plan)
 
@@ -111,10 +112,10 @@ Onyx's: `/bin/basic` and the Windows runtime, `pc/`):
 
 ## Open questions for the user
 
-1. The name: **Studio**? (or *BASIC Studio*, *Forge*...)
+1. The name: **QBStudio** — decided by the user (2026-10-04).
 2. The format as above — **layout containers first** (WPF), **Canvas** for absolute positions (WinForms) when
    wanted — and the generated code apart, read-only (`Main.form.bas`)?
 3. The BASIC additions (objects and properties, `Move`, menus, resize, `$INCLUDE`, the debug channel): in the
    compiler and both runtimes, keeping every existing program working — agreed?
 4. The first version: the designer, the code editor, Run and Make App first; the **debugger** second?
-5. Studio for Windows too (`pc/`, as Onyx BASIC for Windows), or Onyx only?
+5. QBStudio for Windows too (`pc/`, as Onyx BASIC for Windows), or Onyx only?

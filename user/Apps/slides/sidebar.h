@@ -148,7 +148,7 @@ enum {
 	I_X, I_Y, I_W, I_H, I_ROT, I_ORDER, I_ALIGN, I_TBL_HEAD, I_TBL_BAND, I_TBL_ROWS, I_CHART_TYPE, I_CHART_DATA, I_CHART_LEGEND, I_CHART_LABELS, I_CHART_TITLE,
 	I_FONT, I_SIZE_T, I_STYLE, I_COLOR, I_ALIGN_T, I_BULLET, I_LEVEL, I_SPACING, I_BEFORE, I_AFTER, I_ANCHOR, I_FIT, I_WRAP, I_FLIP,
 	I_TR_TYPE, I_TR_DIR, I_TR_DUR, I_TR_ADV, I_TR_AFTER, I_TR_ALL, I_FX_LIST, I_FX_ADD, I_FX_TOOLS, I_FX_EFFECT, I_FX_START, I_FX_DELAY, I_FX_DUR, I_FX_DIR, I_FX_PARA, I_FX_PLAY,
-	I_CROP
+	I_CROP, I_MASTER_VIEW, I_PH_TITLE, I_PH_TEXT, I_PH_PIC, I_LAYOUT_NAME
 };
 static const char *const FILL_NAMES[] = { "None", "Solid", "Gradient" };
 static const char *const LINE_NAMES[] = { "None", "Solid", "Dashes", "Dots" };
@@ -211,9 +211,11 @@ public:
 	}
 	void build_slide (Slide &s)
 	{
+		if (g_master) { build_master (s); return; }
 		section ("Layout");
 		pick (I_LAYOUT, "", LAYOUT_NAMES[s.layout]);
 		button (I_RESET, "Reset to the layout");
+		button (I_MASTER_VIEW, "Master and layouts...");
 		section ("Theme");
 		add (R_THEMES, I_THEME, "");
 		pick (I_FONT_MAJOR, "Headings", g_deck.theme.major);
@@ -235,6 +237,44 @@ public:
 		section ("Slide size");
 		int k = 0; for (int i = 0; i < 4; i++) if (g_deck.sw == SIZE_W[i] && g_deck.sh == SIZE_H[i]) k = i;
 		pick (I_SIZE, "", SIZE_NAMES[k]);
+	}
+	// The master view's Slide tab: the master (its background, the theme) or a layout (its name, its placeholders)
+	void build_master (Slide &s)
+	{
+		(void) s;
+		if (g_cur == 0)
+		{
+			section ("The master");
+			info ("Its objects: on every slide.");
+			info ("The samples' formats are");
+			info ("the styles all text follows.");
+		}
+		else
+		{
+			section ("Layout");
+			pick (I_LAYOUT_NAME, "Name", g_deck.layout[g_cur - 1].name);
+			info ("A text box drawn here, or");
+			info ("a picture: a placeholder.");
+			button (I_PH_TITLE, "Add a title placeholder");
+			button (I_PH_TEXT, "Add a text placeholder");
+			button (I_PH_PIC, "Add a picture placeholder");
+		}
+		button (I_MASTER_VIEW, "Close the master view");
+		section ("Theme");
+		add (R_THEMES, I_THEME, "");
+		pick (I_FONT_MAJOR, "Headings", g_deck.theme.major);
+		pick (I_FONT_MINOR, "Body", g_deck.theme.minor);
+		if (g_cur == 0)
+		{
+			section ("Background");
+			const Fill &bg = g_deck.masterBg;
+			pick (I_BG_TYPE, "", bg.type == FILL_GRADIENT ? "Gradient" : "Solid colour");
+			color (I_BG_C1, bg.type == FILL_GRADIENT ? "From" : "Colour", bg.c1);
+			if (bg.type == FILL_GRADIENT) { color (I_BG_C2, "To", bg.c2, true); spin (I_BG_ANGLE, "Angle", bg.angle, 15, 0, 359, 0, "\xB0"); }
+		}
+		section ("On every slide");
+		check (I_NUMBER, "Slide number", g_deck.number);
+		check (I_FOOTER, "Footer", g_deck.footer && g_deck.footerText[0]);
 	}
 	void build_shape ()
 	{
