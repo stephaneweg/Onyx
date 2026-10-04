@@ -430,6 +430,7 @@ public:
 	Hit dropHot = { H_NONE, -1 };		// what a drag hovers
 	bool trashFull = false;
 	unsigned lastPoll = 0, lastTrash = 0, lastMini = 0;
+	unsigned settleUntil = 0;				// (placeWindow)
 	int lastDeskInfo = -1;
 	const char *tip = 0;			// the name shown above the dock (the pointer's launcher)
 
@@ -437,13 +438,17 @@ public:
 	  : Root (x, y, w, h, "dock", WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA),
 	    wx (x), wy (y) {}
 
-	// The window for what is shown: the dock (+ the name above it), or the screen (a drawer).
+	// The window for what is shown: the dock and the room for a name above it, or the screen (a
+	// drawer). The room for the name is always there (see-through, the clicks go through it): the
+	// window grew and moved up when a name came -- the pointer's moves already on their way were
+	// then read 30 pixels off, and a pointer on a drawer's strip was taken to be on the launcher
+	// under it.
 	void placeWindow ()
 	{
-		int x = g_DX, y = g_DY, w = g_DW, h = DH + GAP;
+		int x = g_DX, y = g_DY - LABEL_H, w = g_DW, h = DH + GAP + LABEL_H;
 		if (g_open >= 0 || g_menuUp) { x = 0; y = g_top; w = g_sw; h = g_sh - g_top; }
-		else if (tip) { y -= LABEL_H; h += LABEL_H; }
 		if (x == wx && y == wy && w == width && h == height) return;
+		settleUntil = kapi_get_ticks () + 6;		// (onMouse: the moves sent for the old place)
 		int stride = w;
 		unsigned *fb = kapi_resize_window2 (w, h, &stride);
 		if (fb == 0) return;
@@ -697,7 +702,7 @@ public:
 		if (h.what == hot.what && h.index == hot.index) return;
 		hot = h;
 		const char *t = g_open < 0 && !g_menuUp ? hit_tip (h) : 0;
-		if (t != tip) { tip = t; placeWindow (); }
+		tip = t;
 		invalidate (true);
 	}
 
@@ -755,6 +760,13 @@ public:
 			Hit none = { H_NONE, -1 };
 			if (!pressed) setHot (none);
 			return false;
+		}
+		// (the window has just changed place -- a drawer opened or closed: the moves that were sent
+		// for where it was are not read with the new origin)
+		if ((int) (kapi_get_ticks () - settleUntil) < 0)
+		{
+			if (!bl && pressed) { pressed = false; down.what = H_NONE; invalidate (true); }
+			return true;
 		}
 		int sx = mx + wx, sy = my + wy;
 		Hit h = hit_test (sx, sy);
@@ -819,8 +831,11 @@ int main (void)
 	scan_apps ();
 	build ();
 	layout ();
+	// (made at the dock's own height, then grown by the name's room: the kernel's work area leaves
+	// out a bottom window's smallest height -- the dock, not the room above it)
 	DockRoot root (g_DX, g_DY, g_DW, DH + GAP);
 	if (root.canvas.px == 0) return 1;
+	root.placeWindow ();
 	struct kapi_win_geom g;
 	if (kapi_win_geometry (&g) == 0 && g.ay > 0) g_top = g.ay;
 	root.trashFull = trash_count () > 0;

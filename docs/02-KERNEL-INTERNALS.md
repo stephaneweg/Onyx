@@ -1712,13 +1712,16 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
     `IoWake`, which wakes `poll` and the blocking BSD calls (§8 "v75: sockets and poll").
   - **The Wi-Fi driver** is polled on this core instead of waiting for its SDIO interrupt, its
     scans cover both bands and probe for the networks of `wpa_supplicant.conf` by name, 5 GHz
-    is preferred, a frame is one SDIO command on a 50 MHz bus (`onyx_wlfast = 31`), and TCP scales
-    its window (`onyx_tcp_ws = 1`) (`NetWlanOptions`, `NetWlanNames`; our Circle fork, docs/05 §26
-    and §27).
+    is preferred, a frame is one SDIO command on a 50 MHz bus (`onyx_wlfast = 31`), the frames
+    sent are not aggregated (`onyx_wl_ampdu_tx = 0`: aggregated, half of what the Pi sent during a
+    download was lost — the remote desktop froze), and TCP scales its window and delays its
+    acknowledgements (`onyx_tcp_ws = 3`, `onyx_tcp_ackn = 8`) (`NetWlanOptions`, `NetWlanNames`;
+    our Circle fork, docs/05 §26 and §27).
   - **A trial.** A Pi is often reachable by its Wi-Fi only: a driver change that keeps the Wi-Fi
     from coming up cannot be taken back from the PC. `SD:/etc/net-trial.txt` holds `name=value`
-    words — `wlfast=` (the driver's fast path bits), `tcpws=`, `netstat=1`, `secs=` (default
-    180) —; the bring-up reads it, **deletes it**, applies it for this boot (`NetTrialLoad`), and
+    words — `wlfast=` (the driver's fast path bits), `tcpws=`, `tcpwin=`, `ackn=`, `ampdutx=`,
+    `ampdurx=`, `bawsize=`, `rxbawsize=`, `ampdurts=`, `bw5=`, `netstat=1` (the statistics, the
+    firmware's counters, TCP's timeouts in the log), `secs=` (default 180) —; the bring-up reads it, **deletes it**, applies it for this boot (`NetTrialLoad`), and
     core 0's main task restarts the Pi after `secs` (`NetTrialPoll`) unless
     `SD:/etc/net-trial.keep` exists by then: the next boot is without the trial. Before the
     restart the kernel log's tail (24 KB) is written to `SD:/etc/net-trial.log`: what the driver

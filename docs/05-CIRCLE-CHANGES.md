@@ -51,8 +51,8 @@ git -C circle diff Step51..onyx
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
 | 23 | **Wi-Fi: the firmware's `wsec` from the IE's ciphers** (group + pairwise: TKIP 2, AES 4, as Linux's brcmfmac) -- WPA2 was always "aes": a WPA/WPA2 mixed-mode network (pairwise CCMP, group TKIP, common on 2.4 GHz) associated but no broadcast was decoded (no DHCP offer: the link stayed down) | `addon/wlan/ether4330.c` (`iewsec`, `setauth`) | `libwlan` |
 | 25 | **TCP: a closed connection's retransmission timer** stopped, a late one ignored — it was a kernel panic (`Unexpected state 0`); a reset wakes a waiting sender | `lib/net/tcpconnection.cpp` | `libnet` |
-| 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred**, **a frame in one SDIO command**, the frames' locks without a yield, **the SDIO bus at 50 MHz** | `addon/wlan/ether4330.c`, `addon/wlan/emmc.c`, `addon/wlan/p9util.cpp` | `libwlan` |
-| 27 | **TCP: window scaling** (RFC 7323), **a receive window that follows the receive queue** (it was a constant), a 256 KB transmit threshold | `lib/net/tcpconnection.cpp`, `include/circle/net/tcpconnection.h`, `include/circle/net/sizes.h` | `libnet` |
+| 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred**, **a frame in one SDIO command**, the frames' locks without a yield, **the SDIO bus at 50 MHz**, **no A-MPDU for the frames sent** (half of them were lost during a download) | `addon/wlan/ether4330.c`, `addon/wlan/emmc.c`, `addon/wlan/p9util.cpp` | `libwlan` |
+| 27 | **TCP: window scaling** (RFC 7323), **a receive window that follows the receive queue** (it was a constant), a 256 KB transmit threshold, **delayed acknowledgements** (one for eight segments) | `lib/net/tcpconnection.cpp`, `include/circle/net/tcpconnection.h`, `include/circle/net/sizes.h` | `libnet` |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -890,6 +890,40 @@ reader's time — 61 µs of it is the frame's data on the bus —, and the Pi ac
 segment (6000 frames sent a second while it receives). What is left: delayed acknowledgements. The bus is on four lines (`Busifc` 2) and the link is
 VHT (`vhtmode 1`, chanspec `e02a`): neither is the limit.
 
+**5. The frames sent are not aggregated (`onyx_wl_ampdu_tx = 0`: the firmware's `ampdu_tx`).**
+The symptom was the user's: *while the browser loads a page, the remote desktop freezes*. Measured:
+during a download from the internet the PC's pings of the Pi lost 20 % of their answers, and
+**50 to 75 % during a download limited to 1 MB/s** (none when idle); an echo on another TCP
+connection came back after 1, 3, 7 seconds (the Pi's retransmission timeouts: its minimum is
+1 s), a telnet session stalled for a minute. Where the packets went, step by step:
+
+- the Pi's network core is never held (its longest scheduler round in 5 s: 0.65 ms);
+- the Pi **receives every request and writes every answer to the chip** (the driver's counts of
+  ICMP frames handed up and taken down: 150 / 150), never keeping a frame more than 19 ms;
+- the PC receives a third of them (Windows' counters: no damaged packet, just fewer), and the
+  Pi's own pings to the gateway are lost alike at that time (8 answered of 25): it is **what the
+  Pi sends** that disappears, whatever its destination — its TCP acknowledgements too, which a
+  download does not notice (they are cumulative);
+- the firmware counts them as sent and acknowledged (its `counters`: `txfail` 2 in 3453 frames).
+
+So the frames are lost after the access point's block acknowledgement — in the firmware's or the
+access point's handling of the aggregates (an Orange Livebox, 5 GHz, VHT 80 MHz, −70 dBm). What
+changes it: **`ampdu_tx` 0 — none lost** (`wlinit`: the interface taken down, the setting, up
+again; it is refused while up). What does not: a 40 MHz channel (`bw_cap`), a block
+acknowledgement window of 8 (`ampdu_ba_wsize`), no RTS (`ampdu_rts`), no A-MSDU, a receive
+window of 8. The price is the Pi's own sending rate — each frame is a transmission of its own —
+and the acknowledgements of what it receives: hence §27's delayed acknowledgements.
+
+| the kernel's defaults now | the Pi receives | the Pi sends | from the internet | the PC's pings lost during a download | an echo during a download |
+|---|---|---|---|---|---|
+| A-MPDU on what is sent (the table above's last row) | 8.7 MB/s | 8–9.5 MB/s | 7–9 MB/s | 20–75 % | up to 7 s |
+| **no A-MPDU on what is sent, an acknowledgement for 8 segments** | 3.8–4.8 MB/s | 1.3–1.7 MB/s | 5.6–5.9 MB/s | **0 %** | **77 ms at worst** |
+
+The settings are the driver's globals (`onyx_wl_ampdu_tx`, `_ampdu_rx`, `_ba_wsize`,
+`_ampdu_rts`, `_rx_ba_wsize`, `_bw5`; −1: the firmware's own), each a word of the trial file.
+**To do**: the Pi's sending rate without aggregation (1.5 MB/s is 1000 frames a second: slower
+than the air allows — not looked at yet), and whether a newer firmware aggregates soundly.
+
 **Trying such a change** on a Pi that is only reachable by its Wi-Fi: the kernel's one-boot trial
 file (docs/02 §11 *A trial*): each of the bits above was tried alone that way before it became
 the default.
@@ -916,6 +950,16 @@ download, a video's loader that waits).
 - the transmit threshold (when `Send` waits, when a socket is writable) is 256 KB, the initial
   slow-start threshold 1 MB with a scaled peer (it was 65535: linear growth past 64 KB).
 - `ScanOptions` stops at an option of length under 2 (it looped for ever).
+- **delayed acknowledgements** (`onyx_tcp_ws` bit 2, `onyx_tcp_ackn`: the kernel sets 8): every
+  data segment was acknowledged by a segment of its own — 6000 frames a second sent while
+  receiving 9 MB/s, each a transmission on the radio once they are no longer aggregated (§26, 5).
+  A full segment (1000 bytes or more) in order, without PUSH or FIN, that fills no hole, is
+  counted; the acknowledgement goes with the eighth, or from `Process` 10 to 20 ms after the
+  first (`m_nAckPending`, `m_nAckPendingTicks`); a short segment (a request, a keystroke), a
+  PUSH, an out-of-order segment are acknowledged at once, as before. Any segment sent with ACK
+  clears the count.
+- (`onyx_tcp_trace`, the trial's `netstat=1`: a line at each retransmission timeout — the
+  connection, its sequence state, how long ago the peer's last segment came.)
 
 **Measured**: the table of §26 (the Pi sends 4.3 → 6.6 MB/s by this alone); the download from
 Cloudflare 2.2–2.8 → 6.0 MB/s with §26's fast path.

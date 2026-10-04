@@ -1019,6 +1019,10 @@ extern "C"
 	extern int  onyx_wlpoll;		// the chip polled (the net core) instead of its interrupt awaited
 	extern int  onyx_wlstat;		// the driver's timing lines in the log
 	extern int  onyx_wlfast;		// 1: SDIO lengths rounded up to blocks; 2: the next frame read whole; 4: its locks without a yield
+	extern int  onyx_wl_ampdu_tx, onyx_wl_ampdu_rx, onyx_wl_ba_wsize, onyx_wl_ampdu_mpdu, onyx_wl_frameburst, onyx_wl_ampdu_rts, onyx_wl_hostreorder, onyx_wl_rx_ba_wsize, onyx_wl_bw5;	// the firmware's aggregation (-1: its own)
+	extern int  onyx_tcp_ackn;		// TCP: full segments for one delayed acknowledgement
+	extern int  onyx_tcp_trace;		// TCP: a line in the log at each retransmission timeout
+	extern int  onyx_tcp_window;		// TCP: the scaled receive window, in segments
 	extern int  onyx_tcp_ws;		// TCP: window scaling, a receive window that follows the queue (docs/05 §27)
 	void kapi_reboot (void);
 }
@@ -1103,7 +1107,18 @@ void NetTrialLoad (void)
 	if (f_unlink (NET_TRIAL_FILE) != FR_OK) return;		// (it must not come back at the next boot)
 	onyx_wlfast = TrialValue (Buf, "wlfast", onyx_wlfast);
 	onyx_tcp_ws = TrialValue (Buf, "tcpws", onyx_tcp_ws);
-	if (TrialValue (Buf, "netstat", 0)) { s_bNetStat = TRUE; onyx_wlstat = 1; }
+	onyx_tcp_window = TrialValue (Buf, "tcpwin", onyx_tcp_window);
+	onyx_tcp_ackn = TrialValue (Buf, "ackn", onyx_tcp_ackn);
+	onyx_wl_ampdu_tx = TrialValue (Buf, "ampdutx", onyx_wl_ampdu_tx);
+	onyx_wl_ampdu_rx = TrialValue (Buf, "ampdurx", onyx_wl_ampdu_rx);
+	onyx_wl_ba_wsize = TrialValue (Buf, "bawsize", onyx_wl_ba_wsize);
+	onyx_wl_ampdu_mpdu = TrialValue (Buf, "ampdumpdu", onyx_wl_ampdu_mpdu);
+	onyx_wl_frameburst = TrialValue (Buf, "frameburst", onyx_wl_frameburst);
+	onyx_wl_ampdu_rts = TrialValue (Buf, "ampdurts", onyx_wl_ampdu_rts);
+	onyx_wl_hostreorder = TrialValue (Buf, "hostreorder", onyx_wl_hostreorder);
+	onyx_wl_rx_ba_wsize = TrialValue (Buf, "rxbawsize", onyx_wl_rx_ba_wsize);
+	onyx_wl_bw5 = TrialValue (Buf, "bw5", onyx_wl_bw5);
+	if (TrialValue (Buf, "netstat", 0)) { s_bNetStat = TRUE; onyx_wlstat = 1; onyx_tcp_trace = 1; }
 	unsigned nSecs = (unsigned) TrialValue (Buf, "secs", 180);
 	s_nTrialEnd = CTimer::Get ()->GetTicks () + nSecs * HZ;
 	if (s_nTrialEnd == 0) s_nTrialEnd = 1;
@@ -1144,7 +1159,12 @@ void NetWlanOptions (boolean bStat)
 	// window scaling: on (docs/05 sections 26 and 27;
 	// each was tried alone by the trial file below, which can still turn them off for a boot).
 	onyx_wlfast = 31;
-	onyx_tcp_ws = 1;
+	// The frames sent are not aggregated (A-MPDU): aggregated, half of what the Pi sent during a
+	// download was lost (docs/05 section 26, 5). TCP then acknowledges one segment in eight (a
+	// frame each on the radio, now), within 10 to 20 ms (onyx_tcp_ws bit 2, docs/05 section 27).
+	onyx_wl_ampdu_tx = 0;
+	onyx_tcp_ws = 3;
+	onyx_tcp_ackn = 8;
 }
 
 static int DoWlanReconnect (void)
@@ -1423,7 +1443,7 @@ static void Snapshot (void)
 	}
 }
 
-static unsigned s_nRounds, s_nSnapUs, s_nStatStart;
+static unsigned s_nRounds, s_nSnapUs, s_nStatStart, s_nRoundLast, s_nRoundMax;
 
 void NetCoreMain (void)
 {
@@ -1458,13 +1478,15 @@ void NetCoreMain (void)
 		// yielding, so a round's length is the unit of every wait)
 		s_nRounds++;
 		unsigned nNow = CTimer::Get ()->GetClockTicks ();
+		if (s_nRoundLast != 0 && nNow - s_nRoundLast > s_nRoundMax) s_nRoundMax = nNow - s_nRoundLast;
+		s_nRoundLast = nNow;
 		if (s_bNetStat && nNow - s_nStatStart >= 5000000)
 		{
 			unsigned nUs = nNow - s_nStatStart;
-			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round, snapshot %u us a round, %u tasks' workers (%u idle)",
-						(unsigned) ((u64) s_nRounds * 1000000 / nUs), s_nRounds ? nUs / s_nRounds : 0,
+			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round (the longest %u us), snapshot %u us a round, %u tasks' workers (%u idle)",
+						(unsigned) ((u64) s_nRounds * 1000000 / nUs), s_nRounds ? nUs / s_nRounds : 0, s_nRoundMax,
 						s_nRounds ? s_nSnapUs / s_nRounds : 0, s_nWorkers, s_nIdle);
-			s_nRounds = 0; s_nSnapUs = 0; s_nStatStart = nNow;
+			s_nRounds = 0; s_nSnapUs = 0; s_nStatStart = nNow; s_nRoundMax = 0;
 		}
 	}
 }
