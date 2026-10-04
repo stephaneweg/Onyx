@@ -35,7 +35,7 @@ user's decisions: [gui-redesign](gui-redesign/README.md) (the modernised CDE des
 [pkg](pkg/README.md) (packages and updates), [mail](mail/README.md), [pdf](pdf/README.md),
 [photos](photos/README.md), [paint](paint/README.md), [media](media/README.md),
 [screenshot](screenshot/README.md), [clipboard](clipboard/README.md), [archiver](archiver/README.md),
-[daw](daw/README.md) (Koton, and its [performance notes](daw/PERFORMANCE.md)),
+[daw](daw/README.md) (Koton, and its [performance notes](daw/PERFORMANCE.md)), [slides](slides/README.md) (the presentation program),
 [circle-upstream](circle-upstream/README.md) (the fork's changes offered to upstream Circle).
 
 ## Formats
