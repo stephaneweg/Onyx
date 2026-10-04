@@ -1238,6 +1238,55 @@ the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ft
 
 ## Other open items
 
+### To do -- left open by the session of 2026-10-04 (Jet on WebKit, the network, the desktop)
+
+Nothing below is started unless it says so. The user's order for the browser is in the first group.
+
+**Jet (the WebKit port, docs/08)** -- in the user's order:
+- [ ] The **host + web view** as a reusable component (a small host window, the web view attached),
+      then the **web-view daemon** started at boot and the **lazy loading** of the program.
+- [ ] **Web Audio**.
+- [ ] **H.264 / AAC**: needs FFmpeg under the LGPL in Jet -- a licence decision that is the user's
+      (CLAUDE.md, the licences rule): ask before pulling it.
+- [ ] **Full-screen video**: put off by the user (2026-10-04), lower priority -- not to be started unasked.
+- [ ] **WebGL**: later (our own ANGLE back end, Mesa's compiler only).
+- [ ] **Mail's HTML view** (Jet's program run inside Mail's window): not tried on the Pi since Web
+      became Jet; it has no pointer shapes yet (the page is drawn by another process: the shape has to
+      come back through `webview_proto.h`).
+- [ ] The user to check by hand: Jet's **Console** (F12).
+
+**Network (docs/02 *The network*, docs/05 §26-27)**:
+- [ ] The Pi **sends** at 3-4 MB/s without aggregation (A-MPDU TX lost frames during downloads: it stays
+      off -- the test to pass before turning it on again: PC pings at 5 a second during a download
+      limited to 1 MB/s, none lost).
+- [ ] A rare **pause of one second** in a transfer: TCP's smallest retransmission timeout.
+- [ ] A **newer Wi-Fi firmware**: does it aggregate soundly?
+- [ ] One trial with **55 % of the pings lost** ("destination unreachable"), the network core's sleep
+      off, on 2026-10-04: seen once, not reproduced, not explained. The signal was weak that afternoon
+      (-74 dBm, 97-130 Mbit/s instead of 195-292).
+- [ ] rdpd / OnyxRemote over **UDP**: asked once by the user; probably no longer needed (no more
+      freezes during a page load or a video, the user's check of 2026-10-04) -- ask before doing it.
+
+**Desktop**:
+- [ ] Task Manager: a **CPU column** by process; the network's bytes are the sockets' payload, not what
+      goes on the air (the driver's counters).
+- [ ] Pointer shapes (kapi v81): the **terminal**, **Slides** and **QBStudio** (another session's apps),
+      an **hourglass** while an app is busy.
+- [ ] Windows resized by their frame (kapi v82): no **live resize** (an outline only), the size is **not
+      kept** from one run to the next; a window can be dragged under the dock. The user to try by hand:
+      every edge and corner, the smallest size, the stop under the menu bar, other apps than the Task
+      Manager (Jet, Letters, the terminal); and the pointer shapes not checked on screen (the four
+      arrows while a window moves, the hand on a link of Mail, the I bar in Letters, the cross in Paint,
+      splitters, a list's column edges).
+- [ ] The shell's `rm` cannot name a file with **spaces** (quotes are not understood: `rm "SD:/Downloads/a (1).dat"`
+      fails), and `rm SD:/cookie.jar.db` failed without a word -- both had to be deleted through ftpd.
+- [ ] The in-OS strings that still say **"Zircon"**: to rename to Onyx (CLAUDE.md's note).
+
+**Publishing**: Jet's program (`sdcard/apps/jet.app/main`, 105 MB) is ignored by git and exists only
+in the clone where Jet is built: `tools/pkg/publish.sh` run from another clone publishes a `jet` package
+without its program (it happened: jet 2.0.2 was 2.6 KB). After a publish, look at
+`pkgs/jet-*.opk`'s size (~43 MB).
+
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
   after the GUI work). Leads: the game draws the eyes and eyebrows after the hair with their own
   depth compare so they show through it, and uses the EFB's alpha around them -- a draw left out
