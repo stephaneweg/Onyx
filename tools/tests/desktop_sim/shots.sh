@@ -30,7 +30,7 @@ want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 
 for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
-# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Writer's
+# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Letters'
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 mkdir -p "$OUT/ft"
@@ -91,6 +91,10 @@ build () {
 		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
+		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
@@ -98,7 +102,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
+	case " letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
 	esac
@@ -106,7 +110,7 @@ build () {
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
@@ -213,16 +217,16 @@ if want invaders; then sim invaders invaders "$W;$W;$W;key 32;$W;$W;$W;$W" $P; p
 if want graphcalc; then sim graphcalc graphcalc "$W" $P; png graphcalc; fi
 if want iconedit; then sim iconedit iconedit "$W" $P SIM_ARGS=SD:/apps/invaders.app/icon.bmp; png iconedit; fi
 if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sample.rtf; png rtfview; fi
-if want writer; then			# (the sample document, a word of its contents chosen: the toolbar follows it; its second
+if want letters; then			# (the sample document, a word of its contents chosen: the toolbar follows it; its second
 					#  page: the header, the table, the caret in a cell; the mail merge: the letter's fields shown
 					#  with a record of the Contacts)
-	sim writer writer "wait;down 232 550;up 232 550;down 232 550;up 232 550;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf
-	png writer
-	sim writer writer-table "wait;wheel 500 400 -10;wait;wheel 500 400 -10;wait;wheel 500 400 -9;wait;down 479 481;up 479 481;$W" $P \
-		SIM_ARGS=SD:/docs/writer-tour.rtf
-	png writer-table
-	sim writer writer-merge "wait;menu 60;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png writer-merge
-	sim writer writer-pdf "wait;menu 6;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf; png writer-pdf	# (File > Export as PDF)
+	sim letters letters "wait;down 232 550;up 232 550;down 232 550;up 232 550;$W" $P SIM_ARGS=SD:/docs/letters-tour.rtf
+	png letters
+	sim letters letters-table "wait;wheel 500 400 -10;wait;wheel 500 400 -10;wait;wheel 500 400 -9;wait;down 479 481;up 479 481;$W" $P \
+		SIM_ARGS=SD:/docs/letters-tour.rtf
+	png letters-table
+	sim letters letters-merge "wait;menu 60;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png letters-merge
+	sim letters letters-pdf "wait;menu 6;$W" $P SIM_ARGS=SD:/docs/letters-tour.rtf; png letters-pdf	# (File > Export as PDF)
 fi
 if want sheet; then			# (the sample workbook: the Total column chosen -- its sum below --; a filter's drop-down; the loan's names)
 	sim sheet sheet "wait;down 450 405;move 450 300;move 450 218;up 450 218;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet
@@ -257,6 +261,14 @@ if want archiver; then			# (a sample archive of Onyx's sources in RAM:, arc_samp
 	sim archiver archiver-welcome "$W" $P SIM_RAM="$OUT/arc"; png archiver-welcome
 	rm -rf "$OUT/arc" "$OUT/writes/apps/archiver.app"
 fi
+if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
+	SL=SIM_ARGS=SD:/docs/cafe-2026.odp
+	sim slides slides "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 853 90;up 853 90;$W" $P $SL; png slides
+	sim slides slides-sorter "wait;wait;down 871 687;up 871 687;$W" $P $SL; png slides-sorter
+	sim slides slides-animate "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 964 90;up 964 90;$W" $P $SL; png slides-animate
+	sim slides slides-text "wait;wait;key 0x101;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 908 90;up 908 90;$W" $P $SL; png slides-text
+	sim slides slides-show "wait;wait;key 0x101;key 0x101;wait;key 0x114;wait;wait;wait;wait;key 32;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait" $P $SL; png slides-show
+fi
 if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
 	sim cardfile cardfile "$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile
 	sim cardfile cardfile-list "wait;key 0x115;wait;down 60 62;up 60 62;wait;down 300 161;up 300 161;$W" $P SIM_ARGS=SD:/docs/books.card
@@ -266,7 +278,7 @@ if want cardfile; then			# (the sample: a record; the list sorted by title, a ro
 fi
 if want ledger; then			# (the demo company: its overview, its sales, an invoice, the quotes and orders, a quote, the bank's
 					#  CODA statement imported, the general ledger, the VAT; a quote printed: Ledger writes the merge's data
-					#  and request, Writer makes the document from its template)
+					#  and request, Letters makes the document from its template)
 	L=SIM_ARGS=SD:/docs/demo-company.ledger
 	sim ledger ledger "$W" $P $L; png ledger
 	sim ledger ledger-sales "wait;down 60 172;up 60 172;$W" $P $L; png ledger-sales
@@ -278,7 +290,7 @@ if want ledger; then			# (the demo company: its overview, its sales, an invoice,
 	sim ledger ledger-reports "wait;down 60 485;up 60 485;$W" $P $L; png ledger-reports
 	sim ledger ledger-vat "wait;down 60 515;up 60 515;$W" $P $L; png ledger-vat
 	sim ledger ledger-print0 "wait;down 60 316;up 60 316;wait;down 400 218;up 400 218;wait;key 13;wait;down 592 28;up 592 28;$W" $P $L
-	sim writer ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
+	sim letters ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	png ledger-print
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi

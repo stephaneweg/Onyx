@@ -38,7 +38,7 @@ int main ()
 	seed ("text", "ls /bin | grep e", 16, "terminal", 11, 40);
 	seed ("url", "https://github.com/stephaneweg/onyx", 34, "jet", 11, 58, "text");
 	seed ("text", "static int g_folder;", 20, "tinypad", 12, 12);
-	seed ("rtf", "Onyx -- a homemade OS for the Pi 4", 34, "writer", 12, 20, "text");
+	seed ("rtf", "Onyx -- a homemade OS for the Pi 4", 34, "letters", 12, 20, "text");
 	seed ("files-cut", "SD:/kernel/sys/kapi.cpp\nSD:/kernel/include/kapi_abi.h", 53, "fileviewer", 12, 28, "text");
 	seed ("image", img, 8, "screenshot", 12, 31);
 	seed ("text", "Dentist at 17:30 -- call them before", 36, "calendar", 12, 34);

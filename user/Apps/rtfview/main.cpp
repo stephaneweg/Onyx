@@ -3,7 +3,7 @@
 // bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped
 // (user/rtf.h parses it into a read-only RichTextBox). Plain text files open too.
 // File > Open... (^O) or drop a file on the window; Edit > Copy (^C) / Select All (^A);
-// File > Edit in Writer hands the document to Writer (which reads and writes .rtf).
+// File > Edit in Letters hands the document to Letters (which reads and writes .rtf).
 // Double-clicking a .rtf file in the File Viewer opens it here (fileassoc.ini).
 //
 #include "kapi.h"
@@ -53,7 +53,7 @@ static void on_open ()
 	if (wk_file_open (p, sizeof p, "SD:/")) open_file (p);
 	g_rtb->setFocus ();
 }
-static void on_writer () { if (g_path[0]) kapi_exec ("SD:/apps/writer.app/main", g_path); }
+static void on_writer () { if (g_path[0]) kapi_exec ("SD:/apps/letters.app/main", g_path); }
 static void on_copy ()
 {
 	static char b[65536];
@@ -88,7 +88,7 @@ int main (void)
 	static Menu menu;
 	menu.menu ("File");
 	menu.item ("Open...",        "^O", WK_CTRL ('O'), on_open);
-	menu.item ("Edit in Writer", "",   0,             on_writer);
+	menu.item ("Edit in Letters", "",   0,             on_writer);
 	menu.menu ("Edit");
 	menu.item ("Copy",           "^C", WK_CTRL ('C'), on_copy);
 	menu.item ("Select All",     "^A", WK_CTRL ('A'), on_all);

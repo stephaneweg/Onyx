@@ -12,7 +12,7 @@
 #
 # Unlike the other Onyx apps this is FULL C++: -fexceptions -frtti, libstdc++, and the link script
 # stk.ld (keeps the unwind tables) + onyx_eh.c (registers them), and libstdc++'s threads on the
-# kapi threads (compat/bits/gthr-default.h, onyx_gthreads*.c*). newlib as Writer / Doom
+# kapi threads (compat/bits/gthr-default.h, onyx_gthreads*.c*). newlib as Letters / Doom
 # (../libc/crt0libc.S + ../libc/onyx_syscalls.c).
 #
 # STK's source is NOT in the Onyx repository (yet): a shallow clone next to it,

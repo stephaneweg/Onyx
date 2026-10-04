@@ -38,14 +38,14 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
 - **Files outside its bundle** (`res/…`, `koton/…`, `manuals/<app>/…`): `[app.<name>]` `files = …`
   — a file belongs to the first section that names it; mkrepo prints the files left in no package:
   **there must be none**.
-- **Needs**: an app it cannot work without (an emulator → `gamelib`; Writer / Sheet / Ledger →
-  `cardfile`): `[app.<name>]` `needs = gamelib`. A mere link ("Open in Writer") is not a need.
+- **Needs**: an app it cannot work without (an emulator → `gamelib`; Letters / Sheet / Ledger →
+  `cardfile`): `[app.<name>]` `needs = gamelib`. A mere link ("Open in Letters") is not a need.
   Something the system itself needs (the wallpaper's painter, the text editor other apps open) goes
   into `[onyx]`'s `files` instead.
 - **The user's files** (a `config.ini` shipped with defaults, documents): `config = <paths>` — never
   overwritten once the user changed them (the new one written beside as `.new`).
 - **Samples** (documents to try the app with): a section `[<app>-samples]` (`files`, the same paths
-  as `config`, `needs = <app>`), as `writer-samples`, `basic-samples`.
+  as `config`, `needs = <app>`), as `letters-samples`, `basic-samples`.
 - **An emulator**: its `app.txt` says what it plays — `category = Emulators`,
   `games = <System>: <ext> <ext>; <System>: <ext>`, `order = <n>` (and `opens = <ext>` for files that
   are not games) — and `needs = gamelib`. The Game Library and `launch.h` find it from there; never

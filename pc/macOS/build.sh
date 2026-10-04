@@ -1,8 +1,8 @@
 #!/bin/sh
 # pc/macOS/build.sh -- Ledger for macOS (Apple silicon), built ON A MAC from the Onyx sources, unchanged:
-# user/Apps/ledger (the accounting), user/Apps/writer (it prints Ledger's quotes, orders and invoices from
+# user/Apps/ledger (the accounting), user/Apps/letters (it prints Ledger's quotes, orders and invoices from
 # their templates), user/wtk and FreeType, over pc/macOS/hostkapi.cpp + cocoa.mm (the Onyx kernel's table
-# on macOS). Result: pc/dist/macOS/Ledger.app (Writer.app in its Contents/Helpers, the card's files it
+# on macOS). Result: pc/dist/macOS/Ledger.app (Letters.app in its Contents/Helpers, the card's files it
 # reads in its Contents/Resources/sd) and pc/dist/macOS/Ledger-macOS-arm64.zip.
 #   sh pc/macOS/build.sh
 # Needs the Xcode command-line tools (xcode-select --install): clang, codesign, ditto. Nothing else.
@@ -44,7 +44,7 @@ $CXX $CXXF -x objective-c++ -fobjc-arc -c "$HERE/cocoa.mm" -o "$OUT/kapi/cocoa.o
 # ---- wtk ---------------------------------------------------------------------------------------------------
 for f in "$U"/wtk/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/wtk/$(basename "$f" .cpp).o"; done; done_bg
 rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/wtk/*.o
-# ---- FreeType (Onyx's configuration: Writer's fonts) ----------------------------------------------------------
+# ---- FreeType (Onyx's configuration: Letters' fonts) ----------------------------------------------------------
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
 	bg $CC $FLAGS -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
@@ -53,22 +53,22 @@ done; done_bg
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # ---- the programs (hostkapi.o first: the table placed before the apps' constructors run) ------------------------
 bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libwtk.a" -framework Cocoa
-bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Writer" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/writer/main.cpp" \
+bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/letters/main.cpp" \
 	"$OUT/libwtk.a" "$OUT/libft.a" -framework Cocoa
 done_bg
 
 # ---- Ledger.app ------------------------------------------------------------------------------------------------------
 plist () { sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" -e "s/@MINOS@/$MINOS/" "$1" > "$2"; }
 rm -rf "$APP"
-W="$APP/Contents/Helpers/Writer.app"
+W="$APP/Contents/Helpers/Letters.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$W/Contents/MacOS" "$W/Contents/Resources"
 cp "$OUT/Ledger" "$APP/Contents/MacOS/Ledger"
-cp "$OUT/Writer" "$W/Contents/MacOS/Writer"
+cp "$OUT/Letters" "$W/Contents/MacOS/Letters"
 plist "$HERE/res/Ledger.plist" "$APP/Contents/Info.plist"
-plist "$HERE/res/Writer.plist" "$W/Contents/Info.plist"
+plist "$HERE/res/Letters.plist" "$W/Contents/Info.plist"
 cp "$HERE/res/PkgInfo" "$APP/Contents/PkgInfo"; cp "$HERE/res/PkgInfo" "$W/Contents/PkgInfo"
 cp "$HERE/res/Ledger.icns" "$APP/Contents/Resources/"
-cp "$HERE/res/Writer.icns" "$W/Contents/Resources/"
+cp "$HERE/res/Letters.icns" "$W/Contents/Resources/"
 sh "$HERE/card.sh" "$APP/Contents/Resources/sd"
 cp "$HERE/README.txt" "$DIST/README.txt"
 xattr -cr "$APP" 2>/dev/null || true				# (Finder's details, quarantine: codesign refuses them)

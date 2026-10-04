@@ -44,7 +44,7 @@ belges :
   l'autoliquidation du cocontractant, la TVA non déductible, les 50 % de la voiture de société ;
 - les **devis**, **commandes**, **bons de livraison** et **bons de commande fournisseur**, chacun
   transformé en suivant, puis en facture ;
-- des documents **imprimés à partir de modèles** par Writer, en français, en néerlandais ou en anglais,
+- des documents **imprimés à partir de modèles** par Letters, en français, en néerlandais ou en anglais,
   avec votre en-tête ;
 - les **extraits de banque et de caisse**, encodés ou **importés des fichiers CODA de votre banque**,
   les factures qu'ils paient retrouvées et lettrées pour vous ;
@@ -52,7 +52,7 @@ belges :
 - la **déclaration TVA** périodique en fichier XML **Intervat**, le **listing clients annuel** et le
   **relevé intracommunautaire** ;
 - les **rapports** : journaux, grand livre, balance des comptes, bilan, compte de résultats, soldes
-  clients et fournisseurs, créances et dettes par ancienneté — à l'écran, en documents Writer ou en
+  clients et fournisseurs, créances et dettes par ancienneté — à l'écran, en documents Letters ou en
   classeurs ;
 - la **clôture de l'exercice**, son résultat reporté.
 
@@ -76,7 +76,7 @@ de la comptabilité en partie double : la section 1.5 les rappelle.
 ### 1.3 Ce qu'il faut
 
 - Onyx, sur un Raspberry Pi 4 (ou le simulateur de bureau Onyx sur un PC).
-- **Writer**, installé avec Onyx : il imprime vos devis, vos factures et vos rapports.
+- **Letters**, installé avec Onyx : il imprime vos devis, vos factures et vos rapports.
 - Le **tableur** (facultatif) : il ouvre les rapports en classeurs.
 - Pour importer vos extraits : les fichiers **CODA** fournis par votre banque (depuis votre banque en
   ligne, en général des fichiers `.cod` ou `.txt`), copiés sur la carte SD.
@@ -526,7 +526,7 @@ La facture reçoit le numéro suivant du journal (*VEN 2026/0062*). Elle appara�
 du client, dans la déclaration TVA de sa période et dans tous les rapports.
 
 ![Une facture enregistrée, en retard](images/invoice.png)
-*Une facture enregistrée : « Open, overdue since 24/09/2026 » (ouverte, en retard depuis le 24/09/2026), sa communication structurée ; Print la fait dans Writer.*
+*Une facture enregistrée : « Open, overdue since 24/09/2026 » (ouverte, en retard depuis le 24/09/2026), sa communication structurée ; Print la fait dans Letters.*
 
 ### 6.3 Les codes TVA des ventes
 
@@ -553,10 +553,10 @@ liste tous les codes.
 ### 6.4 Imprimer une facture
 
 Sur une facture enregistrée, cliquez sur **Print** — ou cliquez-la du bouton droit dans la liste et
-choisissez **Print**. Ledger passe ses données à **Writer**, qui fait la facture à partir de son modèle
+choisissez **Print**. Ledger passe ses données à **Letters**, qui fait la facture à partir de son modèle
 et l'affiche : imprimez-la, ou enregistrez-la à nouveau en `.docx` ou `.odt`. Voir la section 12.
 
-![Une facture imprimée par Writer](images/invoice-printed.png)
+![Une facture imprimée par Letters](images/invoice-printed.png)
 *La même facture imprimée : en néerlandais, la langue du client — « FACTUUR ».*
 
 ### 6.5 Les notes de crédit
@@ -806,9 +806,9 @@ fournisseur ; ou le menu **Documents**).
    la **référence** du client.
 2. Les lignes : un **libellé**, la **quantité** (`2,5` heures), le **prix unitaire** hors TVA et le
    **code TVA** ; le **total** est calculé.
-3. **Save**, puis **Print** pour le faire dans Writer (section 12).
+3. **Save**, puis **Print** pour le faire dans Letters (section 12).
 
-![Un devis imprimé par Writer](images/quote-printed.png)
+![Un devis imprimé par Letters](images/quote-printed.png)
 *Le devis imprimé depuis son modèle français : l'en-tête, le client, les lignes, les totaux.*
 
 ### 11.3 L'étape suivante
@@ -834,8 +834,8 @@ d'un **bon de commande fournisseur** fait la facture d'achat, à compléter du n
 ### 12.1 Le principe
 
 **Print** — sur un devis, une commande, un bon de livraison, un bon de commande, une facture ou une note
-de crédit de vente — écrit les données du document et demande à **Writer** de faire le document à partir
-de son **modèle**. Writer l'affiche ensuite : imprimez-le, ou enregistrez-le à nouveau en `.docx` ou
+de crédit de vente — écrit les données du document et demande à **Letters** de faire le document à partir
+de son **modèle**. Letters l'affiche ensuite : imprimez-le, ou enregistrez-le à nouveau en `.docx` ou
 `.odt`.
 
 Les documents faits sont gardés dans `SD:/docs`, un dossier par type — **Quotes**, **Orders**,
@@ -850,7 +850,7 @@ prennent la langue de sa fiche, sinon celle de la société (celle de son plan).
 
 ### 12.3 Vos propres modèles
 
-Un modèle est un document Writer ordinaire — `.rtf`, `.docx` ou `.odt` — dont Ledger remplit les
+Un modèle est un document Letters ordinaire — `.rtf`, `.docx` ou `.odt` — dont Ledger remplit les
 **champs de fusion**. Ils se trouvent dans `SD:/apps/ledger.app/templates` : les français dans ce
 dossier, les néerlandais dans `nl`, les anglais dans `en`, un par type : `quote` (devis), `order`
 (commande), `delivery` (livraison), `porder` (bon de commande), `invoice` (facture), `creditnote` (note
@@ -859,12 +859,12 @@ de crédit).
 ![Settings, l'impression](images/settings-printing.png)
 *Les modèles de chaque langue : les siens, ou le français utilisé à sa place.*
 
-Dans **Settings ▸ Printing**, choisissez la langue et le document et cliquez sur **Edit in Writer**.
+Dans **Settings ▸ Printing**, choisissez la langue et le document et cliquez sur **Edit in Letters**.
 Changez la mise en page, les mots, les conditions ; ajoutez votre logo (**Insert ▸ Image...** dans
-Writer) ; déplacez les champs. Quand une langue n'a pas de modèle propre (**French one**), Ledger propose
+Letters) ; déplacez les champs. Quand une langue n'a pas de modèle propre (**French one**), Ledger propose
 de le faire à partir du français. **Open the folder** montre les modèles dans le File Viewer.
 
-Pour ajouter un champ, utilisez **Tools ▸ Mail Merge** dans Writer : il liste tous les champs de Ledger,
+Pour ajouter un champ, utilisez **Tools ▸ Mail Merge** dans Letters : il liste tous les champs de Ledger,
 avec les valeurs d'un exemple. Une **ligne de tableau** qui contient des champs de ligne (**LineText**,
 **LineQty**...) est répétée pour chaque ligne du document. L'annexe B liste tous les champs.
 
@@ -875,9 +875,9 @@ avec les valeurs d'un exemple. Une **ligne de tableau** qui contient des champs 
 
 ### 13.1 Choisir un rapport
 
-**Reports** montre un rapport à l'écran ; **Writer** l'ouvre en document à imprimer (A4, à l'italienne
+**Reports** montre un rapport à l'écran ; **Letters** l'ouvre en document à imprimer (A4, à l'italienne
 s'il est large, avec son titre et ses numéros de page), **Spreadsheet** en classeur, et **Save as...**
-l'écrit en document Writer (`.rtf`), en classeur (`.xlsx`) ou en fichier CSV — dans
+l'écrit en document Letters (`.rtf`), en classeur (`.xlsx`) ou en fichier CSV — dans
 `SD:/docs/Reports` par défaut.
 
 ![Choisir un rapport](images/reports-list.png)
@@ -913,8 +913,8 @@ trimestres), **Month** (le mois en cours), ou des dates tapées dans **From** et
 ![Les créances par ancienneté](images/receivables.png)
 *Ce que doivent les clients, par ancienneté.*
 
-![Un rapport dans Writer](images/report-writer.png)
-*Le bilan ouvert dans Writer, prêt à imprimer.*
+![Un rapport dans Letters](images/report-letters.png)
+*Le bilan ouvert dans Letters, prêt à imprimer.*
 
 ## 14. La TVA
 
@@ -1033,12 +1033,12 @@ le résultat change, et clôturez à nouveau.
 | `SD:/docs/<société>.ledger` | La comptabilité de la société : tout, dans un seul fichier (vous choisissez son nom et sa place) |
 | `<société>.ledger.bak` | La version précédente de la comptabilité, gardée à chaque changement |
 | `SD:/docs/Quotes`, `Orders`, `Delivery notes`, `Purchase orders`, `Invoices`, `Credit notes` | Les documents imprimés |
-| `SD:/docs/Reports` | Les rapports ouverts dans Writer ou le tableur |
+| `SD:/docs/Reports` | Les rapports ouverts dans Letters ou le tableur |
 | `SD:/docs/VAT` | Les déclarations et listings TVA (XML) |
 | `SD:/docs/Payments` | Les fichiers de paiements SEPA |
 | `SD:/apps/ledger.app/templates` | Les modèles (`nl`, `en` : les néerlandais et les anglais) |
 | `SD:/apps/ledger.app/last.txt` | La comptabilité ouverte en dernier |
-| `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job` | Les données du dernier document imprimé, pour Writer |
+| `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job` | Les données du dernier document imprimé, pour Letters |
 
 **Sauvegardez** régulièrement votre fichier `.ledger` — au moins après chaque déclaration TVA — sur une
 clé USB ou un autre ordinateur : c'est toute votre comptabilité. **File ▸ Save a Copy As...** en écrit
@@ -1081,11 +1081,11 @@ code TVA, la nature de son compte) et regardez à nouveau.
 **Le numéro de TVA d'un client affiche « Its check digits are wrong ».** Vérifiez-le sur le site
 européen VIES ; Ledger le garde si vous insistez, mais Intervat le refusera dans les listings.
 
-**Writer affiche « No template for this kind of document ».** Un modèle manque dans
+**Letters affiche « No template for this kind of document ».** Un modèle manque dans
 `SD:/apps/ledger.app/templates` : recopiez-le depuis une carte Onyx neuve.
 
 **Où est ma facture en fichier ?** Dans `SD:/docs/Invoices`, nommée d'après son numéro et son client.
-Writer peut l'enregistrer à nouveau en `.docx` ou `.odt`.
+Letters peut l'enregistrer à nouveau en `.docx` ou `.odt`.
 
 **Le point au pied de la barre latérale est rouge.** La comptabilité n'a pas pu être écrite (carte
 pleine ou protégée en écriture). Libérez de la place, puis **File ▸ Save a Copy As...**.
@@ -1166,7 +1166,7 @@ La grille 81, 82 ou 83 est la nature du compte d'achat : marchandises, services 
 
 ## Annexe B. Les champs de fusion
 
-Les champs qu'un modèle peut contenir — tapés dans Writer comme champs de fusion (**Tools ▸ Mail
+Les champs qu'un modèle peut contenir — tapés dans Letters comme champs de fusion (**Tools ▸ Mail
 Merge**). Les champs finissant par **Line**, **Address**, **Contact** et **Text** sont faits pour être
 imprimés tels quels : une étiquette et sa valeur, dans la langue du document, ou rien du tout s'il n'y a
 pas de valeur.

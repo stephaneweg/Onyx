@@ -34,7 +34,7 @@ licence.** That is every app and tool that links only permissive libraries (the 
 app*), and our own code everywhere — MIT is compatible with the GPL and the AGPL, so the kernel's,
 Jet's, Doom's and the PDF Viewer's Onyx files stay MIT as files, while the program built from them
 is distributed under its GPL / AGPL. New code is written MIT (e.g. `user/pdf/pdfwrite.h`, the PDF
-export of Writer and the Spreadsheet, carries the MIT notice); a library that would force another
+export of Letters and the Spreadsheet, carries the MIT notice); a library that would force another
 licence on an app is chosen only with the user (as MuPDF was).
 
 ### Distributing the whole: an aggregate, as Linux distributions do
@@ -92,7 +92,7 @@ Two weaknesses, worth fixing:
 | MuPDF 1.28.5 (fitz, pdf; the URW base-14 fonts) | `third_party/mupdf-1.28.5`, the PDF Viewer | **AGPL-3.0** (Artifex) | The PDF Viewer under AGPL-3.0, its source available (the repository); keep `COPYING` |
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
-| pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Writer, the Spreadsheet | **MIT** (ours) | — |
+| pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
 | minimp3 | `third_party/minimp3`, Media Player, Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
 | libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |

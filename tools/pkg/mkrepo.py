@@ -92,7 +92,8 @@ def plan (sd, ini):
 		      "summary": sec.get ("summary", ""), "author": sec.get ("author", "Onyx"),
 		      "needs": [n.strip () for n in sec.get ("needs", "").split (",") if n.strip ()],
 		      "required": sec.get ("required", "0"), "restart": sec.get ("restart", "0"),
-		      "config_pats": split (sec.get ("config", "")), "icon": sec.get ("icon", "") }
+		      "config_pats": split (sec.get ("config", "")), "icon": sec.get ("icon", ""),
+		      "replaces": [n.strip () for n in sec.get ("replaces", "").split (",") if n.strip ()] }
 		p.update (extra)
 		p["files"] = take (name, pats)
 		pkgs.append (p)
@@ -131,6 +132,7 @@ def manifest_text (p, version, kapi):
 		 "category = " + p["category"], "author = " + p["author"], "summary = " + p["summary"],
 		 "needs = " + ", ".join (needs), "required = " + p["required"], "restart = " + p["restart"],
 		 "installed = %d" % p["bytes"], "config = " + " ".join (cfgfiles)]
+	if p["replaces"]: lines.append ("replaces = " + ", ".join (p["replaces"]))
 	return "\n".join (lines) + "\n", needs, cfgfiles
 
 def write_opk (path, sd, p, manifest):
@@ -202,6 +204,7 @@ def main ():
 		p["bytes"] = sum (os.path.getsize (os.path.join (a.sd, f)) for f in p["files"])
 		# the content: the files and what the manifest says of them (a new need is a new version)
 		desc = "needs %s\nconfig %s\nrequired %s\nrestart %s\n" % (p["needs"], p["config_pats"], p["required"], p["restart"])
+		if p["replaces"]: desc += "replaces %s\n" % p["replaces"]
 		p["content"] = hashlib.sha256 ((desc + "".join ("%s %s\n" % h for h in hashes)).encode ()).hexdigest ()
 		ver = V.get (p["name"], "2026.10.0" if p["name"] == "onyx" else "1.0.0")
 		if old.has_section (p["name"]) and old[p["name"]].get ("content") != p["content"] and vkey (ver) <= vkey (old[p["name"]].get ("version", "0")):
@@ -229,7 +232,7 @@ def main ():
 			"author = " + p["author"], "summary = " + p["summary"], "size = %d" % os.path.getsize (path),
 			"installed = %d" % p["bytes"], "sha256 = " + sha256_file (path), "file = " + fn,
 			"icon = icons/%s.bmp" % p["name"], "needs = " + ", ".join (needs), "required = " + p["required"],
-			"restart = " + p["restart"], "content = " + p["content"], ""]
+			"restart = " + p["restart"]] + (["replaces = " + ", ".join (p["replaces"])] if p["replaces"] else []) + ["content = " + p["content"], ""]
 	keep = set ("%s-%s.opk" % (p["name"], p["version"]) for p in pkgs)	# the old versions' archives dropped
 	for f in os.listdir (os.path.join (a.out, "pkgs")):
 		if f.endswith (".opk") and f not in keep: os.remove (os.path.join (a.out, "pkgs", f))

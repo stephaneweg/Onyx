@@ -74,7 +74,7 @@ Card contents:
 | `fonts/`, `wallpapers/` | the bitmap font; the shipped wallpaper pictures |
 | `koton/` | Koton's plugins (`koton/plugins/<name>/main`) and its demo songs |
 | `basic/examples/` | BASIC samples (§13) |
-| `docs/`, `music/`, `courier/`, `manuals/` | sample documents (Writer, the Spreadsheet, Cardfile, Ledger), FM songs, Courier's collections, the Koton and Ledger manuals |
+| `docs/`, `music/`, `courier/`, `manuals/` | sample documents (Letters, the Spreadsheet, Cardfile, Ledger), FM songs, Courier's collections, the Koton and Ledger manuals |
 | `doom/` | Freedoom (`freedoom1.wad`, BSD-licensed) for Doom |
 | `roms/` | the place for your own Game Boy / GBA ROMs (none shipped) |
 
@@ -387,7 +387,7 @@ does not change it.
 - The next menu (the app's name) always has **Quit** (**Ctrl-Q**), like the close box.
 - Items show their **keyboard shortcut** on the right (e.g. `^O` = Ctrl-O); the shortcuts
   work whether the menu is open or not.
-- **Clipboard**: one system clipboard shared by all apps — Edit ▸ Cut/Copy/Paste in Writer
+- **Clipboard**: one system clipboard shared by all apps — Edit ▸ Cut/Copy/Paste in Letters
   (on the selection), tinypad (Copy All / Paste) and the File Viewer (files and folders).
 - **Notifications**: apps (and the system, e.g. "Network — Connected. IP address …") show
   a bubble in the top-right corner, below the bar; it fades in, stays about 4 s and fades
@@ -398,7 +398,7 @@ does not change it.
 ![Menu bar](../screenshots/menubar.png)
 *The menu bar with tinypad active and its File menu open.*
 
-Applications with menus: **tinypad** (File), **Writer** (File, Edit, View, Insert, Format, Table, Tools),
+Applications with menus: **tinypad** (File), **Letters** (File, Edit, View, Insert, Format, Table, Tools),
 **Paint** (File, Edit, Image, Layers, Colours, Filters, View) and the **File Viewer** (File, Edit) — see §12.
 
 ### The dock (`dock`)
@@ -531,10 +531,10 @@ Files are dragged with the **left button**: press on an item, move a few pixels 
 follows the cursor. Hold **Ctrl** while dropping to **copy** instead of move (the label
 shows a **+**); **Esc** cancels. Drop targets: File Viewer columns and folders (and its
 sidebar's places), the dock's launchers (their app opens the files), the Trash, and document
-apps (tinypad, Writer, paint, Cardfile open the dropped file; dropped text goes in at the caret).
+apps (tinypad, Letters, paint, Cardfile open the dropped file; dropped text goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
-per line (`txt = tinypad`, `png = imageview`, `docx = writer`, `card = cardfile`, `mp3` / `ogg` / `flac` / `wav` / `mid` / `m3u = media`, …): opening the file runs
+per line (`txt = tinypad`, `png = imageview`, `docx = letters`, `card = cardfile`, `mp3` / `ogg` / `flac` / `wav` / `mid` / `m3u = media`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock (files
 dropped on a launcher). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
 a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
@@ -567,7 +567,7 @@ remove it); no shadow. Its **title bar** holds:
 - **maximise** (a square): the window fills the screen between the menu bar and the dock; the
   button then shows two squares (**restore**: back to its size and place). A **double click**
   on the title bar does the same. For the apps whose content flows to any size — **tinypad**,
-  **Writer**, the **RTF Reader**, **QBasic**, the **terminal** and the **Game Library**;
+  **Letters**, the **RTF Reader**, **QBasic**, the **terminal** and the **Game Library**;
   greyed for the others, whose layout has a fixed size (a game's board, the calculator);
 - **close** (×).
 
@@ -1016,7 +1016,7 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
   shelf and the path bar never show it). Or `run fileviewer FTP:host/dir`. Then browse, preview (files ≤ 1 MB), open (double-click —
   tinypad, Image Viewer…), drag files between the card and the server (a move across them
   = copy + delete), new folder, rename, delete.
-- **tinypad / Writer / paint** open and **save** `FTP:` files directly; the dock's **shelf** keeps them.
+- **tinypad / Letters / paint** open and **save** `FTP:` files directly; the dock's **shelf** keeps them.
 - **Logins**: in the path (`FTP:me:secret@host/…`), or once per host with
   `ftpfs login <host> <user> <password> [save]`; otherwise `anonymous`. A login is kept in
   memory by the running ftpfs (one per server); with **Remember password** (or `save`) it is
@@ -1094,7 +1094,7 @@ the Trash — the dock's Trash does so).
   anywhere in a column for that column's folder (the target is outlined) — to **move** it
   there; hold **Ctrl** to **copy**. Works between File Viewer windows, onto the sidebar's
   places, onto the dock's Trash, and in the Trash view (a drop there moves to the Trash).
-  Dropping a file on an app window (tinypad, Writer, paint) opens it there, on a dock launcher
+  Dropping a file on an app window (tinypad, Letters, paint) opens it there, on a dock launcher
   its app opens it.
 
 ![File Viewer](../screenshots/fileviewer.png)
@@ -1295,7 +1295,7 @@ a page.
   (this version kept) — and **Remove** (not for the system; asked first; a setting you changed is
   kept); several at once: tick them, **Remove N Packages**. A package another one needs is not removed (said in the footer).
 - **Available** — the repository's packages not installed (and those with an update): **Install**
-  (with what it needs: an emulator brings the Game Library, Writer brings Cardfile); several at once: tick
+  (with what it needs: an emulator brings the Game Library, Letters brings Cardfile); several at once: tick
   them, **Install N Packages**.
 
 A **system update** (`onyx`, `pi-firmware`) is **staged**: a banner offers to **Restart**; at the next
@@ -1474,7 +1474,7 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 *A manual open in the PDF Viewer: its pages' thumbnails at the left, the page fitted to the window's width.*
 
 The PDF Viewer shows **PDF documents** in the way of Acrobat Reader or Edge: Onyx's own manuals
-(`SD:/manuals`), what you download, what Writer and the Spreadsheet export. Start it from the dock or the
+(`SD:/manuals`), what you download, what Letters and the Spreadsheet export. Start it from the dock or the
 app list (*Productivity*), double click a `.pdf` in the File Viewer, or drop PDF files on its window.
 **Each document opens in its own tab** (the `+` tab: the home; a middle click or × closes a tab;
 Ctrl+Tab goes to the next one).
@@ -1545,16 +1545,17 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
 | **PDF Viewer** (`pdf`) | The **reader of PDF documents** (MuPDF): a tab a document, the pages' thumbnails, the contents, a search with its hits by page, the zoom (fit the page / the width, 50 to 400 %), one page / continuous / two pages, rotation, full screen; text selected and copied, links followed, passwords, Properties; the home's recent documents reopened at their page. See *PDF Viewer* above. |
-| **Writer** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Writer, the word processor* below. |
+| **Letters** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Letters, the word processor* below. |
 | **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
-| **Ledger** (`ledger`) | **Accounting** for a Belgian company or self-employed person, in the way of BOB 50 and GnuCash: the **PCMN** (French or Dutch), customers and suppliers, sales and purchase **invoices** and credit notes, **bank and cash** statements (a bank's **CODA** file imported: parties and invoices found), miscellaneous operations, **quotes, orders, delivery notes, purchase orders** (each becomes the next, then the invoice), documents **printed by Writer** from templates (French, Dutch, English), the suppliers **paid** by a SEPA file, the **VAT returns** as Intervat XML with the customer and intra-Community listings, **reports** (journals, general ledger, trial balance, balance sheet, income statement, ages) to Writer or the Spreadsheet, the fiscal years closed. Reads / writes `.ledger` files. See *Ledger, the accounts* below. |
+| **Ledger** (`ledger`) | **Accounting** for a Belgian company or self-employed person, in the way of BOB 50 and GnuCash: the **PCMN** (French or Dutch), customers and suppliers, sales and purchase **invoices** and credit notes, **bank and cash** statements (a bank's **CODA** file imported: parties and invoices found), miscellaneous operations, **quotes, orders, delivery notes, purchase orders** (each becomes the next, then the invoice), documents **printed by Letters** from templates (French, Dutch, English), the suppliers **paid** by a SEPA file, the **VAT returns** as Intervat XML with the customer and intra-Community listings, **reports** (journals, general ledger, trial balance, balance sheet, income statement, ages) to Letters or the Spreadsheet, the fiscal years closed. Reads / writes `.ledger` files. See *Ledger, the accounts* below. |
 | **Courier** (`courier`) | An **HTTP client** in the way of **Postman**: requests (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) with their query params, headers, authorization (Bearer, Basic, API key, inherited from the folder or the collection) and body (raw JSON / XML / HTML / text / JavaScript, x-www-form-urlencoded, multipart form-data with files, a binary file); `{{variables}}` from **environments**, the collection and the globals; **collections** with folders; the **history**; the cookie jar; the response pretty-printed, previewed, its headers, cookies, tests; **tests and captures**; the request as **code** (cURL, HTTP, Python, JavaScript); Postman's collections and environments **imported and exported**, a cURL command imported. `http://` and `https://`. Reads / writes `SD:/courier/`. See *Courier, the HTTP client* below. |
 | **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
 | **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
-| **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Writer**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Writer**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Writer keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
+| **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Letters**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Letters**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Letters keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **Spreadsheet** (`sheet`) | A **spreadsheet** in the way of LibreOffice Calc and Gnumeric: workbooks of several sheets (1 048 576 rows × 16 384 columns), **formulas** as Excel writes them (237 functions: mathematics, statistics, logic, text, lookups, dates, finance; references to other sheets, ranges, whole columns; arrays), number formats, fonts, colours, borders, merged cells, frozen panes, the fill handle's series, sort, Find and Replace, **charts** (column, bar, line, area, pie, scatter), **conditional formatting** (rules, colour scales, data bars), the **AutoFilter**, **defined names**, Undo / Redo. Reads and writes Excel's **`.xlsx`** and **CSV**, reads LibreOffice's **`.ods`**. See *The Spreadsheet* below. |
+| **Slides** (`slides`) | A **presentation program** in the way of PowerPoint and LibreOffice Impress: slides on a **theme** (six: Café, Peach, Steel, Sage, Brick, Slate — their colours and fonts) and **layouts** (title, title and content, section, two contents, comparison, title only, blank), **text boxes** (fonts, sizes, colours, bullets and numbering on five levels, autofit), **shapes** (28, with gradients, lines, shadows, rotation), pictures, **tables**, **charts** (column, bar, line, pie, area), **sections**, the speaker's **notes**, the slide sorter, **transitions** and **animation effects** played full screen by the GPU, a **presenter view**. Reads / writes OpenDocument **`.odp`** (LibreOffice opens it, and its own are read); exports **PDF** and a slide as **PNG**. See *Slides, the presentation program* below. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib), in the desktop's theme. **The window**: a transport bar — **Play** from the cursor (^P), **from the start**, **Stop** (Esc), **Loop** (the pattern again and again, ^L), a display of the position (pattern : row) and the time, **Undo / Redo**, **Cut / Copy / Paste**, **Follow** (the view goes with the position while it plays) —; on the left the song's **patterns** (a click shows one; **+** new, duplicate, move earlier / later, delete), **this pattern**'s **Rows** and **Speed** (a slice lasts speed / 20 s), the **typing**'s **Octave** and **Step** (the rows the cursor goes down after a note), the song's title and author; the **grid**; a **piano** under it. **The grid**: a column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel; every 4th and 16th row is shaded. A channel's **header**: its colour, its instrument — **click it for the instrument dialog** —, **M** (mute the channel in this pattern; a right click too), **S** (solo: heard alone, while the app runs), a level meter. **Keys**: **C D E F G A B** a note (Shift = sharp; you hear it), **0–7** the octave, **Space** a silence, **Delete** `---` (a block chosen: cleared), **Backspace** clears the slice above, **#** toggles the sharp, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; **Shift + those** or a **drag** choose a **block**: **^X ^C ^V** cut, copy, paste it (at the cursor), **^A** the whole pattern, **Ctrl+↑ / Ctrl+↓** move its notes a semitone (with Shift: an octave); **^Z / ^Y** undo and redo (the pattern's notes, 48 steps). A **click on the piano** enters that note; its keys light in the channels' colours as they sound. **The instrument dialog**: the name, a **preset** (`SD:/apps/fmtracker.app/ins`), **Load / Save** `.FMI`; the **algorithm** — **FM** (operator 1 bends operator 2's sound: the timbre) or **Additive** (both are heard), drawn — and the **feedback**; then each of the two operators: its **wave** (four drawn: sine, half sine, absolute sine, pulses — click one), its **envelope drawn** as the sliders move (**Attack, Decay, Sustain, Release**), its **Volume**, its frequency's **Multiplier**, its **Key scale**, its switches (held, tremolo, vibrato, key scale rate); below, **the sound's wave** (what the two operators make together); **Test** plays the instrument and the wave moves with the note; every change is heard at once. A song is a list of **patterns** played in order (Pattern menu: New, Duplicate, Move Earlier / Later, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. |
@@ -1594,12 +1595,13 @@ drop `.fms` files on it; the folder's songs make the playlist (double-click one)
 Pause, Stop, Previous / Next, Loop song; it shows the title, author, comment, position and
 each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 
-### Writer, the word processor (`writer`)
+### Letters, the word processor (`letters`)
 
-![Writer](../screenshots/writer.png)
-*Writer with its sample document (`SD:/docs/writer-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
+![Letters](../screenshots/letters.png)
+*Letters with its sample document (`SD:/docs/letters-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
 
-Writer is Onyx's word processor, in the way of AbiWord and Word. The document is laid out on
+Letters is Onyx's word processor, in the way of AbiWord and Word (it was called *Writer* until
+2026-10-04: a card that had Writer gets Letters as its update). The document is laid out on
 **pages** — A4 by default, 2 cm margins — shown one under the other on a grey desk, each with its
 **header** and **footer**, and every letter is drawn by **FreeType** from the TrueType fonts of the
 card (`SD:/res/fonts`; a `.ttf` added to `SD:/fonts` shows up too): **Liberation Serif** and
@@ -1669,7 +1671,7 @@ Table of Contents, **Mail Merge...**).
 
 **Tables**
 
-![A table](../screenshots/writer-table.png)
+![A table](../screenshots/letters-table.png)
 *The sample's second page: its header, a table with a heading row and shaded rows, the caret in a cell — the ruler shows its columns.*
 
 **Insert ▸ Table...** asks the number of columns and rows (and whether the heading row is repeated
@@ -1703,7 +1705,7 @@ across pages between its rows — a row, and the rows its merged cells span, kep
   Viewer afterwards. What is only for the screen (the fields' shading, the crop marks, a table's grid
   without lines, the formatting marks) is left out.
 
-  ![Export as PDF](../screenshots/writer-pdf.png)
+  ![Export as PDF](../screenshots/letters-pdf.png)
 - **File ▸ Page Setup...**: the paper (A4, A5, A3, Letter, Legal), portrait or landscape, the four
   margins, the header's distance from the page's top and the footer's from its foot, **Different
   first page** (a title page with its own header and footer), the **first page's number**; a
@@ -1728,25 +1730,25 @@ menu) makes it again after the document changed — its titles and its pages.
 
 **The mail merge**
 
-![Mail Merge](../screenshots/writer-merge.png)
+![Mail Merge](../screenshots/letters-merge.png)
 *Tools ▸ Mail Merge over the sample letter (`SD:/docs/new-year-letter.rtf`): the Contacts form's fields, the first record's values shown in the letter.*
 
-A **letter** (any Writer document) gets **merge fields** — the columns of a **Cardfile** form —
+A **letter** (any Letters document) gets **merge fields** — the columns of a **Cardfile** form —
 that the mail merge fills with the form's **records**: one letter per record. **Tools ▸ Mail
 Merge...** opens the dialog: **Records** — the Cardfile form (`.card`) the letter's fields come
 from (**Choose...**; the letter remembers it); **Its fields** — a double click (or **Insert the
 Field**) puts one at the caret, shown «name» in the letter; **Preview the values** shows a
 record's values instead, **‹ ›** go through the records; **Merge**: **All the records** or **The
 record previewed**; **Merge to a New Document** opens the letters, each on a new page, as a new
-document in another Writer; **Merge to Files...** writes each letter in a file of its own — the
+document in another Letters; **Merge to Files...** writes each letter in a file of its own — the
 name and the folder chosen give the folder and the format (`.rtf`, `.docx`, `.odt`), the files
 named after a field (**Files**: "Named after: Name" → `Alice Martin.odt`) or numbered
 (`letter-1.odt`...). Cardfile does the same from a form: **Record ▸ Mail Merge...** (see
 *Cardfile*); so does **Ledger**, printing its quotes, orders and invoices from templates — a table's
 row holding a document's lines' fields («LineText», «LineQty», «LineTotal»...) is repeated for each
 line (see *Ledger*); one document written opens at once. A multi-line value (an address) keeps its lines; a date shows as in Cardfile
-(29/09/2026), yes / no as Yes / No. Files written: the documents chosen; `SD:/apps/writer.app/
-merge-letter.rtf` and `merge.job` (the request to the other Writer).
+(29/09/2026), yes / no as Yes / No. Files written: the documents chosen; `SD:/apps/letters.app/
+merge-letter.rtf` and `merge.job` (the request to the other Letters).
 
 **Files**: **`.rtf`** (Rich Text Format), **`.docx`** (Word 2007 and later) and **`.odt`**
 (OpenDocument Text: LibreOffice, OpenOffice), read and written with **everything** — the fonts,
@@ -1754,19 +1756,19 @@ sizes, colours, highlights, styles, alignments, indents, spacing, tab stops, lis
 images, tables (merged cells, lines, shading, the heading row), the headers and footers (the first
 page's own), the fields (page, pages, date, time, the merge fields), the table of contents, the
 page's size and margins; documents from Word, WordPad, LibreOffice or AbiWord open with theirs (a
-feature Writer lacks is left out: text boxes and shapes, comments; tracked changes are read
+feature Letters lacks is left out: text boxes and shapes, comments; tracked changes are read
 accepted). **`.txt`**: plain text (UTF-8 when a character needs it, else Latin-1 like
 the rest of Onyx). **Save** writes the format of the file's name (a new document: Save As...,
 `.rtf` by default — type `.docx` or `.odt` for those; saving formats as `.txt` asks first);
 **File ▸ Export** writes an **HTML** page (its images inside it) or a text file, the document
 staying where it was. A `.rtf`, `.doc`, `.docx` or `.odt` double-clicked in the File Viewer opens
-in Writer (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Writer), as does `writer
+in Letters (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Letters), as does `letters
 <file>`; **drop** a file on the window to open it, or text to insert it at the caret. New, Open
 and a drop first ask to **save unsaved changes**; **closed with unsaved changes** (the close box,
-Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offered back when Writer
-starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste within Writer
+Quit), the document is kept in `SD:/apps/letters.app/recovered.rtf` and offered back when Letters
+starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste within Letters
 keep the formats (and the images); the other apps get the text. Documents
-usually start in `SD:/docs`; the samples: `SD:/docs/writer-tour.rtf`, `SD:/docs/new-year-letter.rtf`
+usually start in `SD:/docs`; the samples: `SD:/docs/letters-tour.rtf`, `SD:/docs/new-year-letter.rtf`
 (the letter of the Contacts form: `SD:/docs/contacts.card`).
 
 ### Paint (`paint`)
@@ -1947,7 +1949,7 @@ switches the mode (the screen icon takes the whole screen at once) or cancels (�
 
 **After the capture** the window comes back, as large as the picture wants (the picture is never
 enlarged: its zoom is at the right of the status bar). The picture is **copied to the clipboard at
-once** (an *image* item of the shared clipboard: Ctrl+V pastes it in Paint, Writer...) and a
+once** (an *image* item of the shared clipboard: Ctrl+V pastes it in Paint, Letters...) and a
 notification says so. Draw on it: hold **Shift** for a straight line; the strokes are smoothed. Copy
 again to copy it with the drawing. It is **saved only with Save As**: in `SD:/Pictures/Screenshots` at
 first (then the folder used last), named `Screenshot <date> <time>.png`; the extension chooses the
@@ -2178,17 +2180,17 @@ stays (the form shows it at the end of the list).
 ![Cardfile's mail merge](../screenshots/cardfile-merge.png)
 *Record ▸ Mail Merge... on the Contacts form: its letter, this record or all of them, one document or a file each.*
 
-**The mail merge** (**Record ▸ Mail Merge...**): a **Writer** letter whose **merge fields** are the
-form's columns (made in Writer: Tools ▸ Mail Merge, see *Writer*) is filled with the records — a
+**The mail merge** (**Record ▸ Mail Merge...**): a **Letters** letter whose **merge fields** are the
+form's columns (made in Letters: Tools ▸ Mail Merge, see *Letters*) is filled with the records — a
 letter per record. The dialog: the **Letter** (`.rtf`, `.docx` or `.odt`; **Choose...**; the form
 remembers it), the **Records** — **this record** or **all the records shown** (the search and the
-sort applied) —, the **Documents** — **one document in Writer**, each letter on a new page (to read,
+sort applied) —, the **Documents** — **one document in Letters**, each letter on a new page (to read,
 change, save as one file), or **files** in a folder (`SD:/docs/Letters` by default; made if needed)
 named after a field (**Named after: Name** → `Alice Martin.rtf`; two alike: the second numbered)
 or numbered after the letter (`new-year-letter-1.rtf`...), in the letter's format or as RTF, Word
-or OpenDocument. **Merge** hands it to Writer, which opens the document (or, for files, says how
+or OpenDocument. **Merge** hands it to Letters, which opens the document (or, for files, says how
 many it wrote and opens the first one). Cardfile writes the records to merge in
-`SD:/apps/cardfile.app/merge.card` and the request in `merge.job` (Writer's `writer --merge JOB`).
+`SD:/apps/cardfile.app/merge.card` and the request in `merge.job` (Letters' `letters --merge JOB`).
 Try it with the Contacts form (`SD:/docs/contacts.card`) and its letter
 `SD:/docs/new-year-letter.rtf`.
 
@@ -2657,7 +2659,7 @@ overdue.*
 > printing's fields, questions and answers. What follows is its summary.
 
 > **Ledger for macOS.** The same Ledger runs on a Mac with Apple silicon (macOS 11 Big Sur to 26
-> Tahoe): `Ledger.app`, built on a Mac by `sh pc/macOS/build.sh` (`pc/dist/macOS/`), Writer inside it
+> Tahoe): `Ledger.app`, built on a Mac by `sh pc/macOS/build.sh` (`pc/dist/macOS/`), Letters inside it
 > for the printed documents. Your books and what Ledger makes (quotes, invoices, reports, VAT files) are
 > in **Documents/Onyx Ledger** — the manual's `SD:/docs` —, its settings and templates in
 > Library/Application Support/Onyx Ledger; the file dialogs show `SD:`, `HOME:` (your home folder) and
@@ -2740,7 +2742,7 @@ art. 44); purchases **A21** / **A12** / **A6** / **A0**, **A21D50** (a car: half
 invoice says otherwise: shown in blue), the total. Below: **the entry it makes** (the party's account,
 the accounts, the VAT due or deductible — with the reverse charges' both sides —, debit and credit)
 and the totals by VAT code. **Save** posts it (**Save & New**: and the next one); a document whose
-VAT return is filed (or whose year is closed) is **locked**. **Print** makes the invoice in Writer
+VAT return is filed (or whose year is closed) is **locked**. **Print** makes the invoice in Letters
 (*Printing* below).
 
 #### Bank and cash
@@ -2801,25 +2803,25 @@ quote) a **delivery note**, any of them **the invoice** — the invoice's page o
 "2,5 x Design...", the quantity times the price, on the party's usual account), **Save** posts it and
 marks the document **Invoiced**; a quote can be marked **Accepted** or **Refused**. A document made
 from another says so (*From Quote 2026/0001*) and marks it done when saved. **Print** makes it in
-Writer.
+Letters.
 
 #### Printing: documents from templates
 
 ![A quote printed](../screenshots/ledger-print.png)
-*A quote printed: Writer fills the template's fields — the company, the customer, the lines (a table
+*A quote printed: Letters fills the template's fields — the company, the customer, the lines (a table
 row repeated for each), the totals, the VAT's detail, the conditions.*
 
 **Print** (a quote, an order, a delivery note, a purchase order, a sales invoice or credit note)
-writes the document's data and asks **Writer** to make it from its **template** — a Writer document
+writes the document's data and asks **Letters** to make it from its **template** — a Letters document
 (`.rtf`, `.docx` or `.odt`) in `SD:/apps/ledger.app/templates/`: `quote`, `order`, `delivery`,
 `porder`, `invoice`, `creditnote`. The templates come in **French** (in that folder), **Dutch**
 (`templates/nl/`) and **English** (`templates/en/`): a party's documents take **its language** (its
 card: **Language**), else the company's (its chart's). The document made is written in
 `SD:/docs/Quotes`, `Orders`, `Delivery notes`, `Purchase orders`, `Invoices` or `Credit notes`
-(named after its number and party: `Quote 2026-0003 Brouwerij De Klok NV.rtf`) and shown in Writer —
+(named after its number and party: `Quote 2026-0003 Brouwerij De Klok NV.rtf`) and shown in Letters —
 save it again as `.docx` or `.odt` there.
 
-A template is an ordinary Writer document whose **merge fields** Ledger fills: the document's —
+A template is an ordinary Letters document whose **merge fields** Ledger fills: the document's —
 «Kind», «Number», «Date», «Until», «DueDate», «Reference», «Text», «Communication», «Terms», «TotalNet»,
 «TotalVAT», «Total», «VATDetail» (the VAT by rate, with the legal mentions of reverse charges and
 exemptions) —, the company's — «CompanyName», «CompanyAddress», «CompanyVAT», «CompanyIBAN»,
@@ -2829,11 +2831,11 @@ exemptions) —, the company's — «CompanyName», «CompanyAddress», «Compan
 «ReferenceLine», «FromLine», «TermsText», «CompanyVATLine», «CompanyContact», «CompanyBankLine»,
 «CompanyLegalLine», «PartyVATLine». A **table row** holding the lines' fields — «LineNo»,
 «LineText», «LineQty», «LinePrice», «LineVAT», «LineTotal», «LineTax», «LineGross» — is **repeated
-for each line**. **Settings ▸ Printing** lists the templates of a language, **Edit in Writer** opens
+for each line**. **Settings ▸ Printing** lists the templates of a language, **Edit in Letters** opens
 one (a language without its own: made from the French one), **Open the folder** shows them; in
-Writer, **Tools ▸ Mail Merge** lists every field with a sample's values
+Letters, **Tools ▸ Mail Merge** lists every field with a sample's values
 (`templates/fields.card`) — change the look, the words, add a logo. The files Ledger writes for
-Writer: `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job`.
+Letters: `SD:/apps/ledger.app/merge.card`, `merge-lines.card`, `merge.job`.
 
 #### Customers, suppliers, the chart
 
@@ -2873,7 +2875,7 @@ balance and the balance brought forward), the **trial balance**, the **balance s
 statement** (the PCMN's headings, the year's result), the **customers' and suppliers' balances**,
 **receivables and payables by age**, **a party's account**, the **VAT detail** — for a period (**Year**,
 **Q1**–**Q4**, **Month**, or dates typed), a range of accounts, with the **zero balances** or not.
-**Writer** opens the report as a document to print (A4, landscape when it is wide, its header and page
+**Letters** opens the report as a document to print (A4, landscape when it is wide, its header and page
 numbers), **Spreadsheet** as a workbook, **Save as...** writes it (`.rtf`, `.xlsx`, `.csv`) — in
 `SD:/docs/Reports` by default.
 
@@ -3193,6 +3195,72 @@ changes; **closed with unsaved changes**, the workbook is kept in
 kept: fonts' exotic effects, pictures, pivot tables, macros, comments, validation lists (the rest
 of an Excel file is read). Sample: **`SD:/docs/cafe-2026.xlsx`** (its three sheets: the sales, a
 summary with lookups and a pie chart, the espresso machine's loan).
+
+### Slides, the presentation program (`slides`)
+
+![Slides](../screenshots/slides.png)
+
+The third app of the office suite, with **Letters** and the **Spreadsheet** (their toolbars, their icons): a
+presentation program in the way of PowerPoint. **The window**: two toolbars (New slide, Layout, Duplicate, Delete;
+Text box, Picture, Table, Chart, Shapes, Line, Arrow; the zoom; **Show** — and below, Letters' text bar: font, size,
+B I U S, colours, alignment, the box's vertical alignment, bullets, numbering, indents, line spacing, the order of
+the objects); at the left the **slides** as thumbnails, grouped in **sections** (a section's arrow folds it; a
+thumbnail dragged reorders, a right click: new, duplicate, delete, hide, a section); in the middle the slide; under
+it the **speaker's notes**; at the right the **sidebar** and its four tabs; the status bar (slide n of m, the
+section, the theme, the zoom).
+
+**Objects.** Insert ▸ **Text Box** (then a drag on the slide), **Picture...** (BMP, PNG, JPEG, GIF, WebP),
+**Table...** (rows × columns: a heading row, banded rows in the theme's colours), **Chart...** (column, bar, line,
+pie, area; its data typed in a small grid: up to eight categories and four series), **Arrow**, **Line**; the **Shapes**
+button lists 28 shapes (rectangles, ellipse, triangles, polygons, stars, heart, arrows, chevrons, callout, cloud,
+flowchart). A click selects (Shift+click: several; a drag on the empty slide: a rubber band), the handles resize
+(Shift keeps the ratio), the round handle above **rotates** (Shift: 15° steps), a drag moves (snapped to the slide's
+centre and edges and to the other objects, a guide drawn; Shift: along one axis), the arrows nudge (Ctrl: finely),
+Tab selects the next object. A **double click** or
+**Enter** / **F2** edits the text of a box, a shape, a table's cell (Tab: the next cell; in a list, Tab /
+Shift+Tab change the level); **Esc** ends it. The placeholders of a layout show their prompt ("Click to add a
+title") until typed in.
+
+**The sidebar.** **Slide**: its layout, its **background** (the theme's, a colour, a gradient, a picture; apply to
+every slide), the master's objects shown or not, hidden in the show; the deck: the theme (colours and fonts), the
+slide size (16:9, 4:3), the footer, the slide numbers. **Shape**: the fill (none, colour, gradient and its angle,
+transparency), the line (colour, width, solid / dashes / dots, the arrow heads), corners, shadow, the position and
+size in cm, the rotation, flipped; a table's heading row and banded rows; a chart's type, legend and values. **Text**:
+the character (font, size, colour, bold, italic, underline, strikethrough), the paragraph (alignment, level, bullets
+or numbers, line spacing, before / after), the box (vertical alignment, wrap, **autofit**: shrink the text or grow
+the box). **Animate**: the slide's **transition** (fade, push, wipe, cover, uncover, split, zoom, dissolve; its
+direction, duration, an automatic advance after a time) and the selected object's **effects** — entrance, emphasis,
+exit (appear, fade, fly in, wipe, zoom, float, grow, pulse, spin, colour), started on click, with or after the
+previous one, their delay and duration —, the slide's list of effects (reordered, removed).
+
+![The slide sorter](../screenshots/slides-sorter.png)
+
+**Views.** View ▸ **Normal**, **Slide Sorter** (the whole deck, section by section; drag to reorder, double click to
+edit a slide), **Notes** (the notes' pane larger); Fit the Window, Zoom In / Out (also the status bar's zoom).
+
+![The show](../screenshots/slides-show.png)
+
+**The show.** **F5** (Show ▸ From the Beginning) or **Shift+F5** (From This Slide) plays the deck **full screen**:
+each slide rendered once, its layers composited by the **GPU** with its transition and its effects. A click, Space,
+Enter, → / ↓ / Page Down or N: the next effect or slide; ← / ↑ / Page Up / Backspace or P: back; Home / End; a
+number then Enter: that slide; **B** / **.** black screen, **W** / **,** white screen; **Esc** ends the show. Hidden
+slides are skipped. Show ▸ **Presenter View**: on the one screen, the slide shown, the next one, the notes, the
+clock and the time elapsed.
+
+**Files.** **File ▸ Save** (Ctrl+S) writes OpenDocument's **`.odp`**: the slides, the master and its text styles,
+the theme, the objects (text, shapes, gradients, pictures, tables, charts — with a picture of the chart for other
+programs), the notes, the sections, transitions and effects; LibreOffice Impress opens it, and Slides reads it back
+the same. **File ▸ Open** (Ctrl+O) reads `.odp` written by Slides or by LibreOffice (their text, shapes, pictures,
+tables, backgrounds, notes, transitions). **Export as PDF...** writes a page per shown slide (each slide's picture, at
+1600 pixels wide); **Export Slide as PNG...** the current slide. A double click on an `.odp` in the File Viewer opens
+it here (`fileassoc.ini`); closed with unsaved changes, the deck is kept in `SD:/apps/slides.app/recovered.odp` and
+offered back the next time. Not yet: PowerPoint's `.pptx`, editing the master, groups, find and replace.
+
+**Keys.** Ctrl+N / O / S, Ctrl+Z / Y (undo / redo), Ctrl+X / C / V, Ctrl+D (duplicate), Ctrl+A, Delete, Ctrl+M (new
+slide), Ctrl+B / I / U, F5 / Shift+F5, Page Up / Down (the previous / next slide).
+
+Sample: **`SD:/docs/cafe-2026.odp`** (*Onyx Café — 2026, the year in review*: eight slides in three sections, the
+Spreadsheet sample's figures as a chart and a table, a picture, notes, transitions and effects).
 
 ### Koton, the studio (`koton`)
 

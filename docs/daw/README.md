@@ -88,9 +88,9 @@ A minimum that plays and thinks in harmony: ~8 k C# of engine → ~7 k C++, plus
 
 | Need | In Onyx today | Gap |
 |---|---|---|
-| Windows, widgets | wtk: Button, Dropdown, Combobox, Textbox, Slider, NumericUpDown, ListBox, TreeView, DataGrid, TabHost, splitters, stack/grid layouts, Checkbox, ToggleSwitch, dialogs (Modal, FileDialog, MessageBox), the global menu bar (`Menu`), tooltips, drag and drop | a **Knob**, a **VU meter**, a **segmented control**, a **toolbar** (exists only inside Writer / the spreadsheet), an LCD label; a zoomable time view helper |
+| Windows, widgets | wtk: Button, Dropdown, Combobox, Textbox, Slider, NumericUpDown, ListBox, TreeView, DataGrid, TabHost, splitters, stack/grid layouts, Checkbox, ToggleSwitch, dialogs (Modal, FileDialog, MessageBox), the global menu bar (`Menu`), tooltips, drag and drop | a **Knob**, a **VU meter**, a **segmented control**, a **toolbar** (exists only inside Letters / the spreadsheet), an LCD label; a zoomable time view helper |
 | Hand-drawn areas | `Widget::onDraw` into its `Canvas` (0x00RRGGBB), `paint.h` (blend, rounded boxes, gradients), `vpaint.h` (anti-aliased paths, arcs — a knob's base) | nothing blocking; the lane / grid canvases are ours to write |
-| Text | bitmap `.fnt` fonts (8 × 16 kernel font, 4 styles); FreeType only in Writer / the spreadsheet | anti-aliased UI text for the "pro" look (§5.3) |
+| Text | bitmap `.fnt` fonts (8 × 16 kernel font, 4 styles); FreeType only in Letters / the spreadsheet | anti-aliased UI text for the "pro" look (§5.3) |
 | Sound out | `kapi_sound_acquire / write / status`, 44.1 kHz s16 stereo, a 0.5 s ring, **core 1** renders the kernel side, 1024-frame chunks, 4 ahead (≈ 90–115 ms) | low latency; one owner at a time; the 3.5 mm PWM jack only (≈ 11-bit, hiss) |
 | Sound in, MIDI | — | **USB MIDI** (keyboards); audio input later |
 | Threads, cores | `kapi_thread_*` (v67; all threads on core 0, preemptive), mutex / event / barrier, `kapi_post`; **app cores** (`kapi_core_acquire / run`, v51): code with no kapi call and no malloc, `emucore.h` as the pattern; **core 2 is free** (core 3 = the network, `netcore=1`) | a futex-like wait on a word in shared memory (§4.3), thread priorities; threads not yet tried on the Pi |
@@ -242,7 +242,7 @@ one malloc per node — a leak waiting to happen):
 | B4 | `kapi_shm_create (bytes)` (a surface of w × 1 does it today) | clearer plugin code | tiny | M5 |
 | B5 | Threads on other cores with kapi calls (SMP scheduling) | long term | large | — |
 | **C1** | **TLS certificate verification** (a CA bundle on the card) | an API key goes over it | medium | M4 |
-| **W1** | wtk: **Knob**, **VuMeter**, **SegmentedControl**, **ToolBar / ToolButton** promoted from Writer, an LCD label, a `TimeView` helper (horizontal zoom / scroll in beats, shared by the lanes and the grids) | the "pro" look, reused by other apps | medium | M0–M1 |
+| **W1** | wtk: **Knob**, **VuMeter**, **SegmentedControl**, **ToolBar / ToolButton** promoted from Letters, an LCD label, a `TimeView` helper (horizontal zoom / scroll in beats, shared by the lanes and the grids) | the "pro" look, reused by other apps | medium | M0–M1 |
 | W2 | wtk: **anti-aliased text** (`.aaf` fonts of `elegant.h`, on `archive/elegant-ui-2026-09-28`) as an opt-in per widget / app | the look of the mock-ups | medium | M1–M2 |
 | L1 | `user/json.hpp` (§3.5) | everything | small | M0 |
 | L2 | `umm` debug statistics: live blocks / bytes, a high-water mark; `umm_check ()` | leak hunting on the Pi | small | M0 |

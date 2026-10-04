@@ -30,13 +30,13 @@ as the IPC service **`clipboard`** (`kapi_ipc_register`). It holds:
   | Format | Bytes | Who copies it |
   |---|---|---|
   | `text` | UTF-8 | every text field, tinypad, the terminal |
-  | `rich` | RTF | Writer (with `text` beside it) |
+  | `rich` | RTF | Letters (with `text` beside it) |
   | `image` | w, h, then ARGB pixels | Screenshot, Paint, the image viewer |
   | `files` / `files-cut` | `\n`-separated paths | the File Viewer, the Archiver |
   | `url` | a URL (with `text`) | Jet Browser |
   | `x-<app>` | the app's own | Sheet's cells, Koton's notes, Cardfile's records... (with `text` too) |
 
-  An item copied from Writer is `rich` + `text`: Writer pastes the RTF, tinypad the text. An image
+  An item copied from Letters is `rich` + `text`: Letters pastes the RTF, tinypad the text. An image
   could also be given as a PNG file the File Viewer can paste.
 - **The cursor**: the item Ctrl+V pastes. A new copy puts it on the new item (what one expects); the
   front end moves it.
@@ -66,7 +66,7 @@ share their buffers): the sender writes into one, the receiver maps it by its id
 `clip_get_file`, `clip_clear`) and adds `clip_set_image`, `clip_get_image`, `clip_set (formats...)`,
 `clip_get (formats...)` — now over IPC to clipd. wtk's text fields (`textbox.cpp`, `textarea.cpp`) and
 the apps that use the header get the history without a change; an app then adds its own formats
-(Writer's RTF, Paint's image, Sheet's cells).
+(Letters' RTF, Paint's image, Sheet's cells).
 
 **The kernel**: `kapi_clipboard_set / _get` (v40) stay in the ABI (it only grows) but are no longer
 used — or answer for clipd when it is not running (a fallback, one text). Nothing else is kept there.
@@ -96,5 +96,5 @@ used — or answer for clipd when it is not running (a fallback, one text). Noth
 - **Jet Browser** writes and reads the kernel's clipboard itself (WebKit's pasteboard for Onyx, `user/Apps/jet/engine_webkit.cpp`
   `clip_copy` and its ^V): switch it to `clipboard.h` (`clip_set_text_n`, `clip_get_text`) in a Jet
   session — until then its copies are not in the history, and its paste gets the last text copied.
-- The apps' own formats: Paint and Screenshot `clip_set_image`, Writer `rtf` + `text`, the Spreadsheet's
+- The apps' own formats: Paint and Screenshot `clip_set_image`, Letters `rtf` + `text`, the Spreadsheet's
   cells (`x-sheet` + `text`).

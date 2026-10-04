@@ -48,14 +48,14 @@ the N64 emulator). The honest summary:
 
 | Need (STK) | Detail | Onyx today | Gap |
 |---|---|---|---|
-| Language | C++ (`-std=gnu++0x`, compiles as C++17), ~110 `throw`, ~180 `try`, ~270 `dynamic_cast`, STL everywhere | Apps: freestanding C++ without exceptions / RTTI / STL; newlib apps (Writer, Sheet) also `-fno-exceptions` | **Solved in M0**: full libstdc++ from the toolchain, `-fexceptions -frtti`, a link script keeping the unwind tables (`stk.ld`) and their registration (`onyx_eh.c`) |
+| Language | C++ (`-std=gnu++0x`, compiles as C++17), ~110 `throw`, ~180 `try`, ~270 `dynamic_cast`, STL everywhere | Apps: freestanding C++ without exceptions / RTTI / STL; newlib apps (Letters, Sheet) also `-fno-exceptions` | **Solved in M0**: full libstdc++ from the toolchain, `-fexceptions -frtti`, a link script keeping the unwind tables (`stk.ld`) and their registration (`onyx_eh.c`) |
 | Threads | ~30 `std::thread`, ~80 `std::mutex`, `std::condition_variable`, `std::atomic`; Irrlicht: `std::recursive_mutex` | kapi v67 threads (32 a process), newlib locks; the toolchain's libstdc++ is `--disable-threads` (no `std::mutex` at all) | **Solved in M0** (to be tried on the Pi): libstdc++'s gthreads on the kapi (`compat/bits/gthr-default.h`, `onyx_gthreads*.c*`) |
 | TLS | 4 `thread_local` (log prefix, profiler id, RNG, `g_process_type`) | `TPIDR_EL0` is saved per task (Circle's `TaskSwitch`); since kapi v75 a thread starts with `thread_create_ex`'s `tls`; the toolchain's `thread_local` is still emutls (one copy), `errno` shared | A TLS block per thread from the C library (docs/POSIX-PLAN.md, WP-LIBC) — or patch the 4 uses (single process type is enough offline) |
 | Files | Irrlicht's file system (POSIX `opendir` / `stat` / `getcwd`), `fopen`, zip archives | newlib `fopen` (whole file slurped), kapi FatFs listing | **Partly in M0**: `compat/dirent.h`, `onyx_posix.c` (`opendir`, `stat`, `mkdir`, `chdir`, `getcwd`, `access`). Later `kapi_lseek` would avoid slurping big files |
 | Renderer | SP (GL 3.1 / GLES 3) or GE (Vulkan) or the legacy fixed pipeline (GL, GLES 2, D3D9) | V3D kapi: `gpu_program`, `gpu_render2/3`, `gpu_vbuf`, `gpu_texture` (RGBA8, ≤ 256 textures, no mipmaps), app-written QPU shaders | **The main work**: an Irrlicht `IVideoDriver` on the V3D (§4, M4) |
 | Window / input | SDL2 (`CIrrDeviceSDL`; STK's own gamepad code calls ~340 `SDL_` functions in 27 files) | wtk windows, full-screen apps, key / mouse events, `kapi_pad_state` | An SDL2 port with Onyx backends (video, events, joystick, audio, timer, threads) — M3 |
 | Sound | OpenAL (or MojoAL = OpenAL over SDL2 audio, bundled in `lib/mojoal`) + libogg/libvorbis; MojoAL wants libsamplerate | `sound_write`: s16 stereo 44.1 kHz PCM ring | MojoAL over the SDL2 Onyx audio backend; port libogg/libvorbis (or stb_vorbis behind the 7 `ov_*` calls); libsamplerate or a linear resampler |
-| Text | FreeType, HarfBuzz, SheenBidi (bundled), tinygettext (bundled) | FreeType 2.14.3 in `third_party` (Writer) | Port HarfBuzz (amalgamated `harfbuzz.cc`, C++ without exceptions — a known-portable build) |
+| Text | FreeType, HarfBuzz, SheenBidi (bundled), tinygettext (bundled) | FreeType 2.14.3 in `third_party` (Letters) | Port HarfBuzz (amalgamated `harfbuzz.cc`, C++ without exceptions — a known-portable build) |
 | Images | libpng, libjpeg, zlib (Irrlicht loaders) | All three in `third_party` (NetSurf) | Build them with the port's flags |
 | Scripting | AngelScript 2.35.1 (bundled) | — | **Built in M0** (`AS_MAX_PORTABILITY`, as STK does on AArch64) |
 | Physics | Bullet 2.79 (STK's fork, bundled) | — | **Built in M0** |
@@ -126,7 +126,7 @@ texture memory.
 | SDL2 | **port** with Onyx backends (video: a framebuffer window; events; joystick on `kapi_pad_state`; audio on `sound_write`; timer; threads on kapi) | alternative: a small `SDL_*` shim for STK's gamepad code + a native Irrlicht device |
 | OpenAL | **MojoAL** (bundled) over SDL2 audio | needs libsamplerate (port, ~C only) or a linear-resampler patch |
 | libogg / libvorbis | **port** (C) | or stb_vorbis behind the 7 `ov_*` calls |
-| FreeType | **reuse** `third_party/freetype-2.14.3` | STK wants the SFNT/TrueType modules, as Writer |
+| FreeType | **reuse** `third_party/freetype-2.14.3` | STK wants the SFNT/TrueType modules, as Letters |
 | HarfBuzz | **port** (amalgamated build) | could be stubbed to one-glyph-per-codepoint for Latin only |
 | SheenBidi, tinygettext, mcpp, libsquish | **port** (bundled) | libsquish only if compressed textures are kept |
 | libpng, libjpeg, zlib | **reuse** `third_party` | |

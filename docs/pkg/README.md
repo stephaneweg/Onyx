@@ -17,11 +17,11 @@
 > the wallpaper's painters voronoy and imageview), **the package manager** in its own (`pkgman`: `bin/pkg`,
 > the applet, the daemon — required, updated without the system, which needs it), **the firmware** in another (`pi-firmware`), **every
 > app its own package**, the **demos** in one (`demos`); the **samples each with their app**
-> (`basic-samples`, `writer-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
+> (`basic-samples`, `letters-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
 > `koton-samples`, `fmtracker-samples`, each needing its app); **each emulator its own package**,
-> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Writer, the
+> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Letters, the
 > Spreadsheet and Ledger need `cardfile` (installed first; not removable while they are there). A
-> mere link to another app ("Open in Writer", Cardfile's mail merge, the agenda reading the
+> mere link to another app ("Open in Letters", Cardfile's mail merge, the agenda reading the
 > Calendar's file) is not a need.
 >
 > **Published** (2026-10-01): https://github.com/stephaneweg/onyx-packages — 52 packages
@@ -58,6 +58,7 @@ summary  = Open, explore and make ZIP archives
 needs    = onyx >= 2026.10, kapi >= 71   ; other packages, the kernel's ABI
 restart  = 0                     ; 1: installed at the next boot (the system)
 config   = apps/archiver.app/config.ini  ; the user's files: never overwritten once changed
+replaces = zipper                ; (rare) packages it takes the place of: one renamed
 ```
 
 Installing = check, then extract to `SD:/` (the files listed `config`: written only if absent, or
@@ -67,6 +68,13 @@ a removal removes exactly them, and a file the user changed is seen).
 
 Removing = deleting the files listed (not the changed `config` files, unless asked), then the empty
 folders. The packages `needs`-ing it: refused (said).
+
+Renaming a package (`writer` became `letters`, 2026-10-04): the new one says `replaces = writer`
+(`packages.ini`, then the index and its manifest). On a card that has `writer`, `update_for` gives
+`letters` as its update (pkg, pkgd, the applet); once it is installed (`drop_replaced`), `writer` is
+removed — without the needs' check, its files the new one took over kept — and its mode (auto, manual,
+never) passed on. A `config` file the old one wrote, unchanged, is taken over as is (not written
+`.new`).
 
 ## The repository
 

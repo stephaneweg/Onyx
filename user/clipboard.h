@@ -6,7 +6,7 @@
 //   clip_set_text ("hello");            char b[256]; clip_get_text (b, sizeof b);
 //   clip_set_files ("SD:/a.txt", cut);  int cut; clip_get_file (b, sizeof b, &cut);
 //   clip_set_image (px, w, h);          int w, h; unsigned *px = clip_get_image (&w, &h); delete[] px;
-//   clip_put (fmts, datas, lens, n);    several formats of one copy (Writer: "rtf" and "text")
+//   clip_put (fmts, datas, lens, n);    several formats of one copy (Letters: "rtf" and "text")
 //   clip_get (fmts, nf, got, cap, &data, &len)   the first format of fmts the item has (data: new[])
 //
 // A copy is also kept by the kernel's clipboard (one text or one path: v40), which is what is
@@ -35,7 +35,7 @@ static inline int clip_service_ (void)
 	}
 	return pid;
 }
-// the app's name ("SD:apps/writer.app/" -> "writer")
+// the app's name ("SD:apps/letters.app/" -> "letters")
 static inline void clip_source_ (char *out, int cap)
 {
 	char d[128]; int n = kapi_app_dir (d, sizeof d);

@@ -1,6 +1,6 @@
 //
 // pc/macOS/hostkapi.cpp -- the Onyx kernel's ABI table (kern/kapi_abi.h) on a POSIX host, so that Ledger
-// (user/Apps/ledger), Writer (user/Apps/writer, which prints Ledger's documents), wtk and FreeType build
+// (user/Apps/ledger), Letters (user/Apps/letters, which prints Ledger's documents), wtk and FreeType build
 // for macOS from the Onyx sources, unchanged: the table is put where the apps look for it (KAPI_TABLE_VA)
 // before any constructor of theirs runs, and filled with host equivalents of what they call. This file is
 // the POSIX half (it also builds on Linux: pc/macOS/check.sh); the window's half is cocoa.mm.
@@ -13,12 +13,12 @@
 //               changed). A file is read from the user's folder, else the bundle's, and written in the
 //               user's; a folder lists both. "HOME:/..." is the user's home folder, "MAC:/..." the whole
 //               Mac ("MAC:/Volumes/USB/...").
-//   programs    "SD:/apps/writer.app/main" is Ledger.app/Contents/Helpers/Writer.app; its arguments go
+//   programs    "SD:/apps/letters.app/main" is Ledger.app/Contents/Helpers/Letters.app; its arguments go
 //               in ONYX_ARGS (a path with spaces stays whole). A program the bundle does not have (the
 //               Spreadsheet, the File Viewer) -> the file or folder named is shown by macOS instead
 //               (Numbers / Excel, the Finder).
 //   threads     pthreads; wait_word: a condition variable, re-checked every millisecond.
-//   the rest    no sound, MIDI, network or other processes' services (Ledger and Writer use none).
+//   the rest    no sound, MIDI, network or other processes' services (Ledger and Letters use none).
 //
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -118,7 +118,7 @@ static void init_paths ()
 	const char *h = getenv ("HOME");
 	g_home = h && h[0] ? h : "/tmp";
 	std::string exe = exe_path ();
-	// the app's name: ".../Ledger.app/Contents/MacOS/Ledger" -> "ledger"; the bundle: Ledger.app (Writer.app
+	// the app's name: ".../Ledger.app/Contents/MacOS/Ledger" -> "ledger"; the bundle: Ledger.app (Letters.app
 	// is in its Contents/Helpers)
 	size_t a = exe.rfind (".app/Contents/MacOS/"), hp = exe.find ("/Contents/Helpers/");
 	if (a != std::string::npos) { size_t s = exe.rfind ('/', a); g_app = exe.substr (s + 1, a - s - 1); }
@@ -468,8 +468,8 @@ static bool reap (Proc *p)			// (its end noted) -> true: it ended
 	return p->done;
 }
 static bool executable (const std::string &p) { struct stat s; return !p.empty () && stat (p.c_str (), &s) == 0 && S_ISREG (s.st_mode) && (s.st_mode & 0111); }
-// an Onyx program -> its executable ("" when the Mac has none): "SD:/apps/writer.app/main" is the helper
-// Ledger.app/Contents/Helpers/Writer.app (its Contents/MacOS/Writer)
+// an Onyx program -> its executable ("" when the Mac has none): "SD:/apps/letters.app/main" is the helper
+// Ledger.app/Contents/Helpers/Letters.app (its Contents/MacOS/Letters)
 static std::string program (const char *path)
 {
 	std::string h = host_path (path);
@@ -512,7 +512,7 @@ static Proc *start (const char *path, const char *args, const char *name, int in
 	else
 	{
 		std::string s = path ? path : "";
-		size_t k = s.rfind (".app/"); if (k != std::string::npos) s.erase (k);	// ("SD:/apps/writer.app/main" -> "writer")
+		size_t k = s.rfind (".app/"); if (k != std::string::npos) s.erase (k);	// ("SD:/apps/letters.app/main" -> "letters")
 		k = s.find_last_of ("/:"); p->name = k == std::string::npos ? s : s.substr (k + 1);
 	}
 	pthread_mutex_lock (&g_procLock); g_procs.push_back (p); pthread_mutex_unlock (&g_procLock);

@@ -1,7 +1,7 @@
 #!/bin/sh
 # tools/manuals/ledger_shots.sh -- the Ledger manual's pictures (sdcard/manuals/ledger/images/*.png), taken
 # from the REAL app run on the PC against the stand-in kernel (as tools/tests/desktop_sim/shots.sh does):
-# Ledger (and Writer, for the printed documents and a report) built for the host, driven by a script of
+# Ledger (and Letters, for the printed documents and a report) built for the host, driven by a script of
 # events over the demo company (SD:/docs/demo-company.ledger), their windows dumped and made PNGs; two of
 # them then marked with numbered callouts (annotate.py). The stand-in kernel's day is 28/09/2026: the
 # pictures come out the same each time.
@@ -22,7 +22,7 @@ export SIM_WRITES="$OUT/writes"
 CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-# ---- the building: wtk, the stand-in kernel, FreeType (Writer's), Ledger and Writer ----------------------
+# ---- the building: wtk, the stand-in kernel, FreeType (Letters'), Ledger and Letters ----------------------
 for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
@@ -32,7 +32,7 @@ for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<o
 	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 $CXX -Iuser/ft -I$FT/include -o "$OUT/ledger" "$OUT/fakekapi.o" user/Apps/ledger/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" &
-$CXX -Iuser/ft -I$FT/include -o "$OUT/writer" "$OUT/fakekapi.o" user/Apps/writer/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" &
+$CXX -Iuser/ft -I$FT/include -o "$OUT/letters" "$OUT/fakekapi.o" user/Apps/letters/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" &
 wait
 
 # ---- the running --------------------------------------------------------------------------------------------
@@ -67,7 +67,7 @@ OFF=$(c 496 148)			# (a click on a document's Description: its lines' grid left,
 S_YEARS=$(c 365 84); S_JOURNALS=$(c 472 84); S_ACCOUNTS=$(c 562 84); S_PRINTING=$(c 652 84)
 report () { printf "%s;wait;%s" "$(c 328 82)" "$(c 300 $((113 + 24 * $1)))"; }	# 0 Journals, 1 General ledger, 2 Trial balance,
 									# 3 Balance sheet, 4 Income statement, 7 Receivables by age
-# Writer's window made the screen's, the page's width shown (its menu's item 16; 17: the whole page)
+# Letters' window made the screen's, the page's width shown (its menu's item 16; 17: the whole page)
 WRITER="wait;wait;winctl 2;wait;wait;menu 17;wait;wait"
 
 # ---- getting started (no books open: the welcome, a new company) -------------------------------------------
@@ -102,7 +102,7 @@ fi
 if want invoice; then sim ledger invoice "$SALES;wait;$(c 400 $(row 7));wait;$ENTER;wait;$OFF" $L; fi
 if want invoice-printed; then
 	sim ledger invoice-print0 "$SALES;wait;$(c 400 $(row 7));wait;$ENTER;wait;$(c 604 28)" $L
-	sim writer invoice-printed "$WRITER" SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
+	sim letters invoice-printed "$WRITER" SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	rm -f "$IMG/invoice-print0.png"
 fi
 # purchases, paying them
@@ -126,7 +126,7 @@ if want quote; then sim ledger quote "$DOCS;wait;$(c 400 $(row 3));wait;$ENTER;w
 if want quote-next; then sim ledger quote-next "$DOCS;wait;$(c 400 $(row 3));wait;$ENTER;wait;$OFF;wait;$(c 702 28)" $L; fi
 if want quote-printed; then
 	sim ledger quote-print0 "$DOCS;wait;$(c 400 $(row 3));wait;$ENTER;wait;$(c 600 28)" $L
-	sim writer quote-printed "$WRITER" SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
+	sim letters quote-printed "$WRITER" SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	rm -f "$IMG/quote-print0.png"
 fi
 # reports
@@ -135,10 +135,10 @@ if want reports-list; then sim ledger reports-list "$REPORTS;wait;$(c 328 82)" $
 if want balance-sheet; then sim ledger balance-sheet "$REPORTS;wait;$(report 3)" $L; fi
 if want income-statement; then sim ledger income-statement "$REPORTS;wait;$(report 4)" $L; fi
 if want receivables; then sim ledger receivables "$REPORTS;wait;$(report 7)" $L; fi
-if want report-writer; then
-	sim ledger report-writer0 "$REPORTS;wait;$(report 3);wait;$(c 656 28)" $L
-	sim writer report-writer "$WRITER" SIM_ARGS="SD:/docs/Reports/Balance sheet abbreviated scheme 2026.rtf"
-	rm -f "$IMG/report-writer0.png"
+if want report-letters; then
+	sim ledger report-letters0 "$REPORTS;wait;$(report 3);wait;$(c 656 28)" $L
+	sim letters report-letters "$WRITER" SIM_ARGS="SD:/docs/Reports/Balance sheet abbreviated scheme 2026.rtf"
+	rm -f "$IMG/report-letters0.png"
 fi
 # VAT
 if want vat; then sim ledger vat "$VAT" $L; fi

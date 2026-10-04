@@ -274,15 +274,15 @@ answer in French. The docs stay in English.
   their page: `SD:/etc/pdf/recent.tsv`), `pdf = pdf` in `fileassoc.ini`. A worker thread draws the display
   lists and searches; the files go through the kapi (`KStream`).
 - **The export**: `user/pdf/pdfwrite.h` (**MIT**, ours): PDF 1.7, TrueType fonts embedded as subsets (Identity-H,
-  ToUnicode), images, links, bookmarks. Writer's *File ▸ Export as PDF* (its pages drawn again into it:
+  ToUnicode), images, links, bookmarks. Letters' *File ▸ Export as PDF* (its pages drawn again into it:
   `PageView::paintPage`, `g_pdf`; the headings as bookmarks) and the Spreadsheet's (the used cells cut into
   A4 pages, fitted to the width, the charts as images).
 - **Tests**: `sh tools/tests/run_pdf_test.sh`; the screenshots: `shots.sh pdf writer sheet`.
 - **Licences**: the user, 2026-10-01: **all our own software under MIT** wherever possible (CLAUDE.md,
   docs/LICENSING.md).
 - **On the Pi** (2026-10-02, the user): the viewer works well. Still to watch: very large PDFs (the bitmaps:
-  18 M pixels at most; MuPDF's store: 96 MB); the export from Writer / the Spreadsheet on the Pi.
-- **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Writer's
+  18 M pixels at most; MuPDF's store: 96 MB); the export from Letters / the Spreadsheet on the Pi.
+- **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Letters'
   hyperlinks (the export would make them links).
 
 ## Paint made "pro" (2026-10-02, kernel v72, not yet tried on the Pi)
@@ -666,31 +666,53 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **Next ideas**: drag an app onto a drawer to add it; the applets' own help; a wallpaper
   slideshow; the workspaces' windows moved by drag & drop onto the pager.
 
-## Writer, a word processor (2026-09-29, same branch, pushed to `main`)
+## Writer renamed Letters; Slides, the presentation program (2026-10-04)
 
-Asked by the user: Writer "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
-Writer itself (no RichTextBox). Done:
+- **Writer is now called Letters** (the user: a name for the document, as Sheet and Slides, not for the trade),
+  everywhere: `app.txt`, the window, the messages of Letters, Cardfile, Ledger (and its French strings), the RTF
+  viewer; the folder `SD:/apps/letters.app`, the package **`letters`** (and `letters-samples`), the sources
+  `user/Apps/letters/`, `letters.elf`, `fileassoc.ini`, the samples (`tools/gen_letters_sample.py`,
+  `SD:/docs/letters-tour.rtf`), the tests (`tools/tests/run_letters_test.sh`), the screenshots `letters*.png`,
+  the docs, the Ledger manuals; on the Mac, Ledger.app's helper `Letters.app`. The packages `writer` and
+  `writer-samples` left the repository: **`pkg` learnt `replaces =`** (`packages.ini`, the index, `pkglib.h`'s
+  `update_for` / `drop_replaced`): a card that has `writer` sees `letters` as its update, installs it, then
+  `writer` is removed (its mode kept; a file the new one took over, a sample, is not removed nor written `.new`).
+- **Slides** (the presentation program, in the way of PowerPoint): the study and seven mock-ups,
+  `docs/slides/README.md` (`tools/screenshot/mockup_slides.py`), then **built** (`user/Apps/slides/`, the package
+  `slides` and `slides-samples`): themes, layouts, text boxes with lists and autofit, 28 shapes, pictures, tables,
+  charts, sections, notes, the sorter, transitions and effects, the full-screen show and the presenter view; every
+  object a layer, **composited by the GPU** (`gpucomp`: the editor's view and the show; the CPU path for the
+  thumbnails and the exports); `.odp` read and written (LibreOffice opens ours, its own are read; `onyx:` attributes
+  and `onyx.xml` for an exact round trip); PDF and PNG export. Test: `sh tools/tests/run_slides_test.sh`; sample
+  `SD:/docs/cafe-2026.odp`; screenshots `slides*.png`. **Next**: `.pptx` read and written, a master / layout
+  editing view, effects by paragraph, groups, find and replace, handouts and notes pages in the PDF, a vector PDF
+  (the text as text).
+
+## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
+
+Asked by the user: Letters "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
+Letters itself (no RichTextBox). Done:
 
 - **The apps' FreeType** (`user/ft/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
   `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `ft/fonts.h`: the card's families
   (`SD:/res/fonts`, `SD:/fonts`), sized fonts, a glyph cache at quarter pixels, the drawing.
-- **Writer** (`user/Apps/writer/`, a newlib app now: `writer.elf` rule): pages (A4, margins,
+- **Letters** (`user/Apps/letters/`, a newlib app now: `letters.elf` rule): pages (A4, margins,
   page numbers), styles, fonts, sizes, B/I/U/S, super/subscript, colours, highlights,
   alignments, indents (the ruler's markers dragged), spacing, lists, page breaks, images (PNG /
   JPEG / BMP / GIF / WebP, resized with a handle), undo / redo, rich copy / paste, Find and
   Replace, Special Character, Date and Time, Word Count, Page Setup, zoom, formatting marks;
   RTF read / written with all of it, text, HTML export; a recovered document after a close with
-  unsaved changes. `.rtf` files now open in Writer (`sdcard/etc/fileassoc.ini`). The docs:
-  `docs/04` *Writer, the word processor*, `docs/03` (TrueType text, `VPath`, Writer's pieces).
+  unsaved changes. `.rtf` files now open in Letters (`sdcard/etc/fileassoc.ini`). The docs:
+  `docs/04` *Letters, the word processor*, `docs/03` (TrueType text, `VPath`, Letters' pieces).
 - **wtk**: `wtk/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
-- **Sample**: `sdcard/docs/writer-tour.rtf` (`tools/gen_writer_sample.py`); the screenshot
-  `screenshots/writer.png`. The desktop simulator's script has `mods N` (modifier keys).
+- **Sample**: `sdcard/docs/letters-tour.rtf` (`tools/gen_letters_sample.py`); the screenshot
+  `screenshots/letters.png`. The desktop simulator's script has `mods N` (modifier keys).
 - **Next ideas**: done since — tables, headers / footers, fields, tab stops, a table of contents,
-  `.docx` / `.odt`, the mail merge: see *Writer as Word* below.
+  `.docx` / `.odt`, the mail merge: see *Letters as Word* below.
 
 ## Paint, as Windows 11's, with layers (2026-09-29, same branch, pushed to `main`)
 
-Asked by the user right after Writer. `user/Apps/paint/` rewritten (still a freestanding integer
+Asked by the user right after Letters. `user/Apps/paint/` rewritten (still a freestanding integer
 app): the ribbon (Edit, Image — select, crop, resize / canvas size, rotate / flip —, Tools — pencil,
 fill, eraser, colour picker, magnifier, brush —, fifteen Shapes inscribed in their box's ellipse
 with outline / fill, Size, Colours — 1 and 2, twenty, ten custom, Edit —, View — the pixel **Grid**
@@ -777,11 +799,11 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   writing over the kernel), and stop a faulting app instead of the kernel panic (any app fault
   takes the whole Pi down today).
 
-## Writer as Word: tables, pages, fields, .docx / .odt; Cardfile's mail merge (2026-09-29, `claude/happy-wright-wg38ez`, pushed to `main`)
+## Letters as Word: tables, pages, fields, .docx / .odt; Cardfile's mail merge (2026-09-29, `claude/happy-wright-wg38ez`, pushed to `main`)
 
-Asked by the user: Writer pushed further (".odt, .docx, tables, a table of contents, headers and
-footers, pagination") and, in Cardfile, a mail merge with a Writer letter (one record → one
-document; all the records → a series of documents). Done (the user guide: docs/04 *Writer* —
+Asked by the user: Letters pushed further (".odt, .docx, tables, a table of contents, headers and
+footers, pagination") and, in Cardfile, a mail merge with a Letters letter (one record → one
+document; all the records → a series of documents). Done (the user guide: docs/04 *Letters* —
 *Tables*, *Pages*, *The mail merge* — and *Cardfile*; the pieces: docs/03):
 
 - **The model** (`doc.h`): stories (the body, the header, the footer, the first page's own; one
@@ -798,23 +820,23 @@ document; all the records → a series of documents). Done (the user guide: docs
   Update Table of Contents, Format ▸ Tabs.
 - **Files**: RTF extended (tables, headers, fields, tabs, the TOC's field); **`docx.h`**
   (WordprocessingML) and **`odt.h`** (ODF) read and written, over `xml.h` (a pull reader on a zip
-  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_writer_test.sh`
+  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_letters_test.sh`
   (14936 checks: a document with all of it through RTF, .docx and .odt, and LibreOffice's
   conversions of ours when `soffice` is installed — `apt install libreoffice-writer` in the cloud
-  container; valgrind clean with `VG=1`). `tools/tests/writer/conv.cpp` converts a file.
-- **The mail merge**: Writer's `merge.h` (the data read with Cardfile's own `model.h`; Tools ▸ Mail
+  container; valgrind clean with `VG=1`). `tools/tests/letters/conv.cpp` converts a file.
+- **The mail merge**: Letters' `merge.h` (the data read with Cardfile's own `model.h`; Tools ▸ Mail
   Merge: fields inserted, values previewed, merged to a new document or to files named after a
   field) and `writer --merge JOB` for Cardfile's **Record ▸ Mail Merge** (`MergeBox`: this record or
   all those shown; one document or files; the form's `merge` key remembers the letter).
-- **Fixed on the way**: a question asked at an app's start (the recovered document of Writer,
+- **Fixed on the way**: a question asked at an app's start (the recovered document of Letters,
   Cardfile, Paint, the Spreadsheet; a merge's end) got no click nor key — `Root::run` hooked the
   pointer and the keys; they are hooked (`root.attach ()`) right after the `Root` now. **Keep it
   so in a new app that asks something before `run ()`**: the kernel drops a window's events while
   it has no handler. `xml.h`: `XBuf::str ()` of an empty value was not ended (valgrind).
-- **Samples**: `SD:/docs/writer-tour.rtf` (two pages: a TOC, a header / footer — the title page's
+- **Samples**: `SD:/docs/letters-tour.rtf` (two pages: a TOC, a header / footer — the title page's
   own —, a table) and `SD:/docs/new-year-letter.rtf` (the Contacts form's letter; `contacts.card`
-  names it), both by `tools/gen_writer_sample.py`; `.docx` / `.odt` open in Writer
-  (`fileassoc.ini`). Screenshots `writer.png`, `writer-table.png`, `writer-merge.png`,
+  names it), both by `tools/gen_letters_sample.py`; `.docx` / `.odt` open in Letters
+  (`fileassoc.ini`). Screenshots `letters.png`, `letters-table.png`, `letters-merge.png`,
   `cardfile-merge.png`.
 - **Next ideas**: a table's rows split across pages (a row taller than a page runs over its foot
   today); text boxes and shapes (dropped when read); comments, tracked changes (read accepted);
@@ -827,7 +849,7 @@ Asked by the user: "un logiciel de comptabilité soigné, professionnel et utili
 un indépendant, avec le PCMN belge et la déclaration TVA XML (Intervat)" — customers / suppliers,
 purchases / sales, misc. operations, general ledger and journal; GnuCash as the reference for the
 look, BOB 50 for the features; then documents from templates (quotes, orders, delivery notes) and the
-general ledger, income statement and balance sheet in Writer or the Spreadsheet. Done (the user
+general ledger, income statement and balance sheet in Letters or the Spreadsheet. Done (the user
 guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
 
 - **`user/Apps/ledger/`** (integer only; the engine plain C++, tested on the PC): the PCMN (French /
@@ -838,14 +860,14 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   (closed: the result appropriated), the VAT grids and Intervat's checks, the return's XML, the
   settlement (451200 / 411200), the customer and intra-Community listings, reports (journals, general
   ledger, trial balance, balance sheet, income statement, balances, ages, a party's account, VAT
-  detail) to Writer (RTF), the Spreadsheet (.xlsx) or CSV.
+  detail) to Letters (RTF), the Spreadsheet (.xlsx) or CSV.
 - **Quotes, orders, delivery notes, purchase orders** (`commerce.h`, `commerce_ui.h`): numbered by
   kind and year, each becomes the next, then the invoice (posted, the document marked invoiced).
 - **Printing from templates** (`print.h`): the data written as Cardfile forms (the document's, its
-  lines'), then `writer --merge`: Writer's merge job has a new key, **`lines`** — the template's table
+  lines'), then `writer --merge`: Letters' merge job has a new key, **`lines`** — the template's table
   row holding `Line...` fields repeated per line (`merge.h`, `merge_lines`). The templates (French,
   `nl/`, `en/`, and `fields.card`) by `tools/ledger/gen_templates.py`; Settings ▸ Printing edits them.
-  Writer's RTF reader now tells a table's lines apart (rows only → `TB_ROWS`; test added).
+  Letters' RTF reader now tells a table's lines apart (rows only → `TB_ROWS`; test added).
 - **CODA import** (`coda.h`): the bank's statements, their parties and invoices found; the statements
   shown one after the other to complete (`main.cpp`'s queue, `StatementPage::loadImport`).
 - **SEPA payments** (`sepa.h`, `payui.h`): pain.001.001.09 (hybrid addresses, as Febelfin asks from
@@ -853,7 +875,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
 - **Demo** `SD:/docs/demo-company.ledger` + `SD:/docs/demo-bank-statement.cod` (made by
   `tools/ledger/make_demo.cpp` through the engine: 2025 closed, 2026 to September, quotes and orders);
   `ledger = ledger` in `fileassoc.ini`; the icon (`tools/gen_assets.py ledger`); screenshots
-  `ledger*.png` (the `ledger` scenario of `shots.sh`, `ledger-print` through Writer); host test
+  `ledger*.png` (the `ledger` scenario of `shots.sh`, `ledger-print` through Letters); host test
   `sh tools/tests/run_ledger_test.sh` (200 checks; the XML validated when `xmllint` is installed).
 - **The manual** (asked: "un manuel pour le logiciel de comptabilité, avec captures, en .md et en pdf;
   tout gros logiciel fera l'objet d'un manuel"): `sdcard/manuals/ledger/Ledger.md` + `Ledger.pdf` (55
@@ -863,7 +885,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   statement's movements show what they paid, a new statement proposes the bank's next number, the
   reports' and VAT page's columns fit, the demo's "Flémalle" in Latin-1. Then (asked) the manual in
   French and Dutch too: `Ledger.fr.md` / `.pdf` (59 pages), `Ledger.nl.md` / `.pdf` (60). **Next**: a manual reader app
-  on Onyx (the same Markdown subset), then a manual for each big app (Writer, the Spreadsheet...).
+  on Onyx (the same Markdown subset), then a manual for each big app (Letters, the Spreadsheet...).
 - **Next ideas**: **e-invoicing** — Belgium requires structured B2B invoices through **Peppol** from
   2026: a sales invoice as UBL (Peppol BIS Billing 3.0) and a purchase UBL read would be the most
   useful next step; CAMT.053 statements (the XML successor of CODA); payment reminders from the
@@ -1085,7 +1107,7 @@ sources unchanged over `pc/Koton/winkapi.cpp`, the kernel's table on Win32 -- do
 Windows*. Checked under Wine (no sound card there: the silent drain); to try on a real Windows: the
 sound (WASAPI), a USB MIDI keyboard, the window's resize by hand.
 
-**Ledger for macOS (2026-10-01):** `pc/macOS` -- Ledger (and Writer, its printing) for Apple silicon,
+**Ledger for macOS (2026-10-01):** `pc/macOS` -- Ledger (and Letters, its printing) for Apple silicon,
 the Onyx sources unchanged over `pc/macOS/hostkapi.cpp` (POSIX) + `cocoa.mm` (the window, menus, keys,
 clipboard): docs/03 *Ledger for macOS*. Built **on a Mac** by `sh pc/macOS/build.sh` -> `pc/dist/macOS/
 Ledger.app` + zip (not built here: no macOS SDK on Linux; nothing committed in pc/dist/macOS). Checked on
@@ -1098,7 +1120,7 @@ in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 
 `sdcard/res/lang/fr.txt` (in the `onyx` package); EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
 Pi binary rebuilt (`sdcard/apps/ledger.app/main`, Arm GNU 13.3); the other apps not restaged (their old
 wtk has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
-To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Writer's own words.
+To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Letters' own words.
 
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
 (`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by
@@ -1129,7 +1151,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   (well-known providers pre-filled), threads, attachments, drafts. **Contacts** = a Cardfile
   form: the mail client creates the `.card` structure, reads / writes it (address completion,
   "add sender"), and the file opens in Cardfile too.
-- **PDF viewer** + **PDF export** in Writer and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
+- **PDF viewer** + **PDF export** in Letters and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
 - **Screenshot** tool (screen / window / area; Print Screen key). **Done** (2026-10-01: its section above).
 - **Photos** (the user's pick among the ideas of 2026-10-02: weather, EPUB reader, RSS, SSH, a KeePass-compatible
   vault, GPIO lab, home automation, backup, WebDAV, CalDAV / CardDAV, internet radio and podcasts, a code editor,
@@ -1140,7 +1162,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   time zone next to the layout (the time itself stays set by NTP automatically).
 - **About / System**: a fuller successor to memmon (version, kernel, CPU, temperature, RAM,
   uptime, network, processes).
-- **Presentations** (as Impress), to complete Writer / Sheet / Cardfile.
+- **Presentations** (as Impress), to complete Letters / Sheet / Cardfile.
 - **Quick notes** with a desktop widget that can be shown or hidden.
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 

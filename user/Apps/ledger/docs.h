@@ -189,7 +189,7 @@ public:
 		resizeTo (800, 660);
 		buttons (s_save, s_saveNew, s_cancel, s_del);
 		bPrint = new FlatButton (TR ("Print"), s_print, FB_SECONDARY, NI_PRINT); bPrint->left = bDelete->left - 8 - bPrint->width; bPrint->top = bSave->top;
-		bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP; bPrint->tip = TR ("The invoice made by Writer from its template"); addChild (bPrint);
+		bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP; bPrint->tip = TR ("The invoice made by Letters from its template"); addChild (bPrint);
 		int W = width, rx = W - 330;
 		party = new PickEdit (130, 72, rx - 130 - 60, SK_PARTY, PK_CUSTOMER); party->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		party->placeholder = TR ("Type a name, a code, a VAT number"); party->onPick = on_party; party->onChange = mark_dirty; addChild (party);

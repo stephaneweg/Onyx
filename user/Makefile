@@ -43,7 +43,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: $(APP_ELFS) $(FT_APP_ELFS) writer.elf sheet.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
+all: $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf plugins bin bin/basic.elf doom
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -80,7 +80,7 @@ wtk/libwtk.a: $(WTK_OBJ)
 $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
 	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< wtk/libwtk.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
-# ---- Writer: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
+# ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
 # interpreter, no compressed / web / bitmap fonts --, the upstream sources of third_party).
 NL_CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
@@ -103,27 +103,36 @@ libc/crt0libc.o: libc/crt0libc.S
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
-# Writer: its model, layout and files in Apps/writer/*.h (the mail merge reads Cardfile's forms: its model.h;
+# Letters: its model, layout and files in Apps/letters/*.h (the mail merge reads Cardfile's forms: its model.h;
 # .docx / .odt: the PNG writer's zip / deflate).
-writer.elf: Apps/writer/main.cpp $(wildcard Apps/writer/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h ft/libft.a \
+letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h ft/libft.a \
 	    wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
-# The spreadsheet: a newlib app as Writer (FreeType, stdio, doubles) -- its engine and files in
-# Apps/sheet/*.h, Writer's icons, the PNG writer's zip / deflate for the .xlsx.
-sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/writer/icons.h img/pngsave.hpp ft/fonts.h ft/libft.a \
+# The spreadsheet: a newlib app as Letters (FreeType, stdio, doubles) -- its engine and files in
+# Apps/sheet/*.h, Letters' icons, the PNG writer's zip / deflate for the .xlsx.
+sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h ft/libft.a \
 	   wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 
-# Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Writer (FreeType's text through
+# Slides, the presentation program (Apps/slides: docs/slides/README.md): a newlib app as Letters (FreeType), its
+# slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
+# .odp's zip (img/pngsave.hpp), the PDF writer.
+slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
+	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h ft/libft.a wtk/libwtk.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
+	    user.ld kapi.h docguard.h clipboard.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       wtk/libwtk.a gpucomp/libgpucomp.a ft/libft.a -lm -o $@
+
+# Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Letters (FreeType's text through
 # wtk), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/bin's
 # TLS tools link them).
 COURIER_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp ft/libft.a ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       wtk/libwtk.a ft/libft.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
-# Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Writer (FreeType's text through wtk), its
+# Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Letters (FreeType's text through wtk), its
 # protocols and its HTML renderer in mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (wtk's imgload).
 MAIL_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h applet_proto.h Apps/jet/webview_proto.h \
@@ -131,14 +140,14 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
-# Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Writer (FreeType's text through
+# Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # wtk), the image codecs (wtk's imgload), the JPEG / PNG writers (img/pngsave.hpp), the PDF writer (pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) img/imgload.hpp img/pngsave.hpp pdf/pdfwrite.h clipboard.h notify.h trash.h wallpaper.h \
 	  ft/libft.a ft/fonts.h ft/wtkface.h wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 
-# Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Writer (FreeType's text
+# Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Letters (FreeType's text
 # through wtk), its engine and widgets headers included by main.cpp; zlib (Deflate) built from third_party into
 # zlib/libz.a.
 ZLIB_SRC = ../third_party/zlib-1.3.1
@@ -188,7 +197,7 @@ screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       wtk/libwtk.a ft/libft.a -lm -o $@
 
-# Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Writer (FreeType text through wtk's
+# Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Letters (FreeType text through wtk's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
 # the audio engine) and MeltySynth are separate objects; the UI is headers included by main.cpp.
 KOTON_SRC = $(wildcard Apps/koton/engine/*.cpp) $(wildcard Apps/koton/synth/*.cpp) $(wildcard Apps/koton/plug/*.cpp)
@@ -202,7 +211,7 @@ koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) ft/lib
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       $(KOTON_OBJ) wtk/libwtk.a ft/libft.a -lm -o $@
 
-# PDF Viewer (Apps/pdf: docs/pdf/README.md): a newlib app as Writer, on MuPDF -- its fitz + pdf parts, jbig2dec, openjpeg,
+# PDF Viewer (Apps/pdf: docs/pdf/README.md): a newlib app as Letters, on MuPDF -- its fitz + pdf parts, jbig2dec, openjpeg,
 # zlib, libjpeg and a FreeType with the PDF fonts' drivers, built by Apps/pdf/mupdf.mk into Apps/pdf/obj/libmupdf.a (that
 # FreeType serves the app's own text too: no ft/libft.a). The app is AGPL-3.0, MuPDF's licence (docs/LICENSING.md).
 MU_NL_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections
@@ -339,7 +348,7 @@ gcemu.elf: CXXFLAGS := $(CXXFLAGS_FP)
 gcemu.elf: Apps/gcemu/gxv3d.h v3d/gxtev.h v3d/shaders.h
 graphcalc.elf: Apps/graphcalc/expr.h
 cardfile.elf: $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h
-# The Calendar: a newlib app as Writer (FreeType's text through wtk's face); its model (iCalendar), views
+# The Calendar: a newlib app as Letters (FreeType's text through wtk's face); its model (iCalendar), views
 # and dialogs in Apps/calendar/*.h.
 calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h applib.h ft/libft.a ft/wtkface.h \
 	      wtk/libwtk.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h

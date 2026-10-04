@@ -166,9 +166,9 @@ public:
 	}
 };
 
-// Mail Merge: Writer's letter (its fields the form's) filled with this record, or each record shown --
-// one document in Writer (each letter on a new page), or each written in a folder (named after a
-// field, or numbered). Writer does it: "writer --merge JOB" (Writer's merge.h), JOB and the records
+// Mail Merge: Letters' letter (its fields the form's) filled with this record, or each record shown --
+// one document in Letters (each letter on a new page), or each written in a folder (named after a
+// field, or numbered). Letters does it: "writer --merge JOB" (Letters' merge.h), JOB and the records
 // written in SD:/apps/cardfile.app/.
 static const char *MERGE_DATA = "SD:/apps/cardfile.app/merge.card", *MERGE_JOB = "SD:/apps/cardfile.app/merge.job";
 static const char *const MM_FMT[4] = { "As the letter", "RTF (.rtf)", "Word (.docx)", "OpenDocument (.odt)" };
@@ -184,7 +184,7 @@ public:
 		Root *r = Root::current ();
 		if (r) { left = (r->width - width) / 2; top = imax (0, (r->height - height) / 2); }
 		int y = titleH () + 18;
-		letter = new LineEdit (120, y, 330); letter->setText (g_doc.merge); letter->placeholder = "Writer's letter (.rtf, .docx, .odt)"; addChild (letter);
+		letter = new LineEdit (120, y, 330); letter->setText (g_doc.merge); letter->placeholder = "The letter: a Letters document (.rtf, .docx, .odt)"; addChild (letter);
 		button (460, y - 1, 104, "Choose...", 2);
 		y += 46;
 		char t[64] = "This record: "; scat (t, recName[0] ? recName : "(empty)", sizeof t);
@@ -192,7 +192,7 @@ public:
 		char u[64] = "All the records shown ("; scat_num (u, shown, sizeof u); scat (u, ")", sizeof u);
 		all = new RadioButton (120, y + 28, 440, 24, u, 1, false, 0, C_FACE); addChild (all);
 		y += 74;
-		open = new RadioButton (120, y, 440, 24, "One document in Writer, each letter on a new page", 2, true, onKind, C_FACE); addChild (open);
+		open = new RadioButton (120, y, 440, 24, "One document in Letters, each letter on a new page", 2, true, onKind, C_FACE); addChild (open);
 		files = new RadioButton (120, y + 28, 150, 24, "Files, in:", 2, false, onKind, C_FACE); addChild (files);
 		folder = new LineEdit (270, y + 28, 294); folder->setText ("SD:/docs/Letters"); addChild (folder);
 		y += 66;
@@ -222,7 +222,7 @@ public:
 			if (wk_file_open (path, sizeof path, "SD:/docs")) letter->setText (path);
 			return;
 		}
-		if (tag == 1 && !letter->text ()[0]) { ask ("Mail Merge", "Choose the letter first: a Writer document whose fields are the form's (Writer: Tools > Mail Merge).", MB_OK, 1); return; }
+		if (tag == 1 && !letter->text ()[0]) { ask ("Mail Merge", "Choose the letter first: a Letters document whose fields are the form's (Letters: Tools > Mail Merge).", MB_OK, 1); return; }
 		close (tag);
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
@@ -235,7 +235,7 @@ public:
 		wk_text_l (canvas, 20, y + 120, 24, "Documents:", C_TEXT);
 		wk_text_l (canvas, 150, y + 186, 26, "Their names:", files->checked ? C_TEXT : wk_mix (C_FACE, C_TEXT, 120));
 		wk_text_l (canvas, 150, y + 220, 26, "Their format:", files->checked ? C_TEXT : wk_mix (C_FACE, C_TEXT, 120));
-		wk_text_l (canvas, 20, height - 78, 20, "Writer fills the letter's fields with the records' values.", wk_mix (C_FACE, C_TEXT, 170));
+		wk_text_l (canvas, 20, height - 78, 20, "Letters fills the letter's fields with the records' values.", wk_mix (C_FACE, C_TEXT, 170));
 	}
 };
 
@@ -728,7 +728,7 @@ static void cmd_export_csv ()
 	}
 	focus_view ();
 }
-// Mail Merge (MergeBox): the records to merge written in MERGE_DATA, the job in MERGE_JOB, Writer started.
+// Mail Merge (MergeBox): the records to merge written in MERGE_DATA, the job in MERGE_JOB, Letters started.
 static void cmd_mail_merge ()
 {
 	if (!commit_edits ()) return;
@@ -762,8 +762,8 @@ static void cmd_mail_merge ()
 	else j.puts ("output = open\n");
 	if (ok) ok = kapi_save_file (MERGE_JOB, j.b, (unsigned) j.n) >= 0;
 	char args[240] = "--merge "; scat (args, MERGE_JOB, sizeof args);
-	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) ask ("Mail Merge", "Writer could not be started.", MB_OK, 2);
-	else { char s[96] = "Mail merge: "; scat_num (s, n, sizeof s); scat (s, n == 1 ? " record sent to Writer" : " records sent to Writer", sizeof s); status (s); }
+	if (!ok || !kapi_exec ("SD:/apps/letters.app/main", args)) ask ("Mail Merge", "Letters could not be started.", MB_OK, 2);
+	else { char s[96] = "Mail merge: "; scat_num (s, n, sizeof s); scat (s, n == 1 ? " record sent to Letters" : " records sent to Letters", sizeof s); status (s); }
 	refresh ();
 	focus_view ();
 }

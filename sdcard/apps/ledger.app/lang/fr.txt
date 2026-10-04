@@ -64,7 +64,7 @@
 , credit 	, crédit 
 , not the new balance typed: 	, pas le nouveau solde tapé : 
 , out 	, sorties 
-.rtf). Choose a Writer document to use?	.rtf). Choisir un document Writer à utiliser ?
+.rtf). Choose a Letters document to use?	.rtf). Choisir un document Letters à utiliser ?
 1-30 days	1-30 jours
 31-60 days	31-60 jours
 6 digits	6 chiffres
@@ -80,7 +80,7 @@ A code of 1 to 5 letters or digits.	Un code de 1 à 5 lettres ou chiffres.
 A credit is positive: type the debit in its column.	Un crédit est positif : tapez le débit dans sa colonne.
 A customer or a supplier	Un client ou un fournisseur
 A debit is positive: type the credit in its column.	Un débit est positif : tapez le crédit dans sa colonne.
-A document is printed by Writer from its template, a Writer document (.rtf, .docx, .odt)	Un document est imprimé par Writer à partir de son modèle, un document Writer (.rtf, .docx, .odt)
+A document is printed by Letters from its template, a Letters document (.rtf, .docx, .odt)	Un document est imprimé par Letters à partir de son modèle, un document Letters (.rtf, .docx, .odt)
 A fiscal year lasts 24 months at most.	Un exercice dure au plus 24 mois.
 A heading of the PCMN: its accounts are edited	Une rubrique du PCMN : ce sont ses comptes qui se modifient
 A journal posts to this account.	Un journal comptabilise sur ce compte.
@@ -294,7 +294,7 @@ Dutch	Néerlandais
 E-mail	E-mail
 Each role needs an account of the chart.	Chaque rôle demande un compte du plan comptable.
 Edit	Modifier
-Edit in Writer	Modifier dans Writer
+Edit in Letters	Modifier dans Letters
 Edit...	Modifier...
 English	Anglais
 EQUITY	CAPITAUX PROPRES
@@ -366,7 +366,7 @@ in 	entrées
 In 	Entrées 
 In a file	Dans un fichier
 In the year: debit 	Dans l'exercice : débit 
-In Writer, Tools > Mail Merge lists all the fields (their sample: templates/fields.card).	Dans Writer, Tools > Mail Merge liste tous les champs (leur exemple : templates/fields.card).
+In Letters, Tools > Mail Merge lists all the fields (their sample: templates/fields.card).	Dans Letters, Tools > Mail Merge liste tous les champs (leur exemple : templates/fields.card).
 Income	Produits
 Income statement	Compte de résultats
 Income statement (abbreviated scheme)	Compte de résultats (schéma abrégé)
@@ -437,7 +437,7 @@ Listings	Listings
 Locked: 	Verrouillée : 
 Loss carried forward	Perte reportée
 Loss of the years before, not appropriated	Perte des exercices antérieurs, non affectée
-Made by Writer in 	Produit par Writer dans 
+Made by Letters in 	Produit par Letters dans 
 Made from the name	Tiré du nom
 Made when saved	Générée à l'enregistrement
 Make a credit note for it	En faire une note de crédit
@@ -766,7 +766,7 @@ The date is in no fiscal year (Settings > Fiscal years).	La date n'est dans aucu
 The demo company's file (SD:/docs/demo-company.ledger) is not on the card.	Le fichier de la société de démo (SD:/docs/demo-company.ledger) n'est pas sur la carte.
 The difference put on the active line	La différence reportée sur la ligne active
 The document has no line.	Le document n'a aucune ligne.
-The document made by Writer from its template	Le document produit par Writer à partir de son modèle
+The document made by Letters from its template	Le document produit par Letters à partir de son modèle
 The documents made go to SD:/docs/Quotes, Orders, Delivery notes, Invoices...	Les documents créés vont dans SD:/docs/Quotes, Orders, Delivery notes, Invoices...
 The due date is before the invoice's date.	L'échéance précède la date de la facture.
 The entry does not balance: its debits and credits differ.	L'écriture n'est pas équilibrée : ses débits et ses crédits diffèrent.
@@ -786,7 +786,7 @@ The fiscal year the pages show	L'exercice que les pages affichent
 The French template could not be read.	Le modèle français n'a pas pu être lu.
 The IBAN is not a valid one. Keep it anyway?	L'IBAN n'est pas valide. Le garder quand même ?
 The invoice has no amount.	La facture n'a pas de montant.
-The invoice made by Writer from its template	La facture produite par Writer à partir de son modèle
+The invoice made by Letters from its template	La facture produite par Letters à partir de son modèle
 The invoice's total is zero.	Le total de la facture est nul.
 The journal's account is not in the chart (Settings > Journals).	Le compte du journal n'est pas dans le plan comptable (Paramètres > Journaux).
 The language changes when Ledger starts again	La langue change au prochain démarrage de Ledger
@@ -800,8 +800,8 @@ The period marked filed: its VAT entries locked	La période marquée déposée :
 The period reopened: its entries can be changed again	La période rouverte : ses écritures peuvent à nouveau être modifiées
 The purchases' account by default	Le compte d'achats par défaut
 The report opened in the Spreadsheet (a workbook)	Le rapport ouvert dans le Tableur (un classeur)
-The report opened in Writer (a document to print)	Le rapport ouvert dans Writer (un document à imprimer)
-The report written in a file: a Writer document, a workbook, CSV	Le rapport enregistré dans un fichier : un document Writer, un classeur, CSV
+The report opened in Letters (a document to print)	Le rapport ouvert dans Letters (un document à imprimer)
+The report written in a file: a Letters document, a workbook, CSV	Le rapport enregistré dans un fichier : un document Letters, un classeur, CSV
 The return's file for Intervat (the SPF Finances' site)	Le fichier de la déclaration pour Intervat (le site du SPF Finances)
 The sales' account by default	Le compte de ventes par défaut
 The small business franchise: no VAT return to file (the customer listing still is)	Régime de la franchise : pas de déclaration TVA à déposer (le listing clients bien)
@@ -818,7 +818,7 @@ The VAT return of its period has been filed.	La déclaration TVA de sa période 
 The VAT return of that period has been filed (VAT > the period: reopen it).	La déclaration TVA de cette période a été déposée (TVA > la période : rouvrez-la).
 Their number	Leur numéro
 Their reference, an order number	Leur référence, un numéro de commande
-There is no template for this document: put one (a Writer document) in SD:/apps/ledger.app/templates.	Il n'y a pas de modèle pour ce document : placez-en un (un document Writer) dans SD:/apps/ledger.app/templates.
+There is no template for this document: put one (a Letters document) in SD:/apps/ledger.app/templates.	Il n'y a pas de modèle pour ce document : placez-en un (un document Letters) dans SD:/apps/ledger.app/templates.
 These statements are in the books already.	Ces extraits sont déjà dans la comptabilité.
 This account has lines in the books: hide it instead (Edit > Hidden).	Ce compte a des lignes dans la comptabilité : masquez-le plutôt (Modifier > Masqué).
 This company files no periodic VAT return (Settings > Company: its VAT situation).	Cette société ne dépose pas de déclaration TVA périodique (Paramètres > Société : sa situation TVA).
@@ -921,10 +921,10 @@ With a balance	Avec un solde
 With movements	Avec mouvements
 With VAT	Avec TVA
 Words of a party, a description, a number, an amount (Ctrl+F)	Mots d'un tiers, d'une description, un numéro, un montant (Ctrl+F)
-Writer could not be started.	Writer n'a pas pu être lancé.
-Writer document (.rtf)...	Document Writer (.rtf)...
-Writer makes the document in 	Writer crée le document dans 
-Writer opens 	Writer ouvre 
+Letters could not be started.	Letters n'a pas pu être lancé.
+Letters document (.rtf)...	Document Letters (.rtf)...
+Letters makes the document in 	Letters crée le document dans 
+Letters opens 	Letters ouvre 
 Written: 	Écrit : 
 Wrong check digits	Chiffres de contrôle erronés
 Year closed	Exercice clôturé
