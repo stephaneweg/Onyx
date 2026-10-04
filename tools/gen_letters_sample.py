@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# gen_writer_sample.py -- Letters' sample documents, written as Rich Text Format by hand:
-#   sdcard/docs/writer-tour.rtf: two pages of what Letters does (styles, fonts, colours, highlights,
+# gen_letters_sample.py -- Letters' sample documents, written as Rich Text Format by hand:
+#   sdcard/docs/letters-tour.rtf: two pages of what Letters does (styles, fonts, colours, highlights,
 #     lists, super/subscript, a quotation, an image -- a PNG drawn here with Pillow + numpy, in
 #     \pict\pngblip --, a table of contents, a header and a footer with the page's number -- the
 #     first page's own --, a table with a heading row and shading). The documentation's screenshot
@@ -8,7 +8,7 @@
 #   sdcard/docs/new-year-letter.rtf: a mail merge's letter for the Contacts form (SD:/docs/
 #     contacts.card, whose "merge" key names it): the fields name, address, group, birthday.
 #
-#   python3 tools/gen_writer_sample.py
+#   python3 tools/gen_letters_sample.py
 import io, os
 import numpy as np
 from PIL import Image
@@ -143,7 +143,7 @@ def tour ():
 			   "document or each in a file of its own (RTF, .docx or .odt). From Cardfile: Record > Mail Merge. Try it with ")) +
 	      (MONO % "SD:/docs/new-year-letter.rtf") + (N % esc (" and the Contacts form.")), "\\qj")
 	R.append ("}\n")
-	save ("writer-tour.rtf", R)
+	save ("letters-tour.rtf", R)
 
 def letter ():
 	R = []

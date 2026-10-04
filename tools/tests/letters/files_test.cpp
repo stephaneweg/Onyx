@@ -10,9 +10,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "Apps/writer/fileio.h"
-#include "Apps/writer/docx.h"
-#include "Apps/writer/odt.h"
+#include "Apps/letters/fileio.h"
+#include "Apps/letters/docx.h"
+#include "Apps/letters/odt.h"
 using namespace wr;
 
 static int g_fail, g_checks;

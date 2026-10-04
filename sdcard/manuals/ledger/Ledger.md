@@ -858,7 +858,7 @@ its account or its party.
 ![Receivables by age](images/receivables.png)
 *What the customers owe, by age.*
 
-![A report in Letters](images/report-writer.png)
+![A report in Letters](images/report-letters.png)
 *The balance sheet opened in Letters, ready to print.*
 
 ## 14. VAT

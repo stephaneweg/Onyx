@@ -534,7 +534,7 @@ sidebar's places), the dock's launchers (their app opens the files), the Trash, 
 apps (tinypad, Letters, paint, Cardfile open the dropped file; dropped text goes in at the caret).
 
 **`SD:/etc/fileassoc.ini`** says which app opens which file type — one `extension = app`
-per line (`txt = tinypad`, `png = imageview`, `docx = writer`, `card = cardfile`, `mp3` / `ogg` / `flac` / `wav` / `mid` / `m3u = media`, …): opening the file runs
+per line (`txt = tinypad`, `png = imageview`, `docx = letters`, `card = cardfile`, `mp3` / `ogg` / `flac` / `wav` / `mid` / `m3u = media`, …): opening the file runs
 `SD:apps/<app>.app/main <path>`. Used by the File Viewer (double-click) and the dock (files
 dropped on a launcher). Folders open in the File Viewer, `.app` bundles and programs run. Files that need
 a program to run are in **`SD:/etc/runners.ini`** (`extension = program`): `.bas` / `.bax`
@@ -1594,13 +1594,13 @@ drop `.fms` files on it; the folder's songs make the playlist (double-click one)
 Pause, Stop, Previous / Next, Loop song; it shows the title, author, comment, position and
 each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 
-### Letters, the word processor (`writer`)
+### Letters, the word processor (`letters`)
 
-![Letters](../screenshots/writer.png)
-*Letters with its sample document (`SD:/docs/writer-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
+![Letters](../screenshots/letters.png)
+*Letters with its sample document (`SD:/docs/letters-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
 
 Letters is Onyx's word processor, in the way of AbiWord and Word (it was called *Writer* until
-2026-10-04; its folder on the card is still `SD:/apps/writer.app`). The document is laid out on
+2026-10-04: a card that had Writer gets Letters as its update). The document is laid out on
 **pages** — A4 by default, 2 cm margins — shown one under the other on a grey desk, each with its
 **header** and **footer**, and every letter is drawn by **FreeType** from the TrueType fonts of the
 card (`SD:/res/fonts`; a `.ttf` added to `SD:/fonts` shows up too): **Liberation Serif** and
@@ -1670,7 +1670,7 @@ Table of Contents, **Mail Merge...**).
 
 **Tables**
 
-![A table](../screenshots/writer-table.png)
+![A table](../screenshots/letters-table.png)
 *The sample's second page: its header, a table with a heading row and shaded rows, the caret in a cell — the ruler shows its columns.*
 
 **Insert ▸ Table...** asks the number of columns and rows (and whether the heading row is repeated
@@ -1704,7 +1704,7 @@ across pages between its rows — a row, and the rows its merged cells span, kep
   Viewer afterwards. What is only for the screen (the fields' shading, the crop marks, a table's grid
   without lines, the formatting marks) is left out.
 
-  ![Export as PDF](../screenshots/writer-pdf.png)
+  ![Export as PDF](../screenshots/letters-pdf.png)
 - **File ▸ Page Setup...**: the paper (A4, A5, A3, Letter, Legal), portrait or landscape, the four
   margins, the header's distance from the page's top and the footer's from its foot, **Different
   first page** (a title page with its own header and footer), the **first page's number**; a
@@ -1729,7 +1729,7 @@ menu) makes it again after the document changed — its titles and its pages.
 
 **The mail merge**
 
-![Mail Merge](../screenshots/writer-merge.png)
+![Mail Merge](../screenshots/letters-merge.png)
 *Tools ▸ Mail Merge over the sample letter (`SD:/docs/new-year-letter.rtf`): the Contacts form's fields, the first record's values shown in the letter.*
 
 A **letter** (any Letters document) gets **merge fields** — the columns of a **Cardfile** form —
@@ -1746,7 +1746,7 @@ named after a field (**Files**: "Named after: Name" → `Alice Martin.odt`) or n
 *Cardfile*); so does **Ledger**, printing its quotes, orders and invoices from templates — a table's
 row holding a document's lines' fields («LineText», «LineQty», «LineTotal»...) is repeated for each
 line (see *Ledger*); one document written opens at once. A multi-line value (an address) keeps its lines; a date shows as in Cardfile
-(29/09/2026), yes / no as Yes / No. Files written: the documents chosen; `SD:/apps/writer.app/
+(29/09/2026), yes / no as Yes / No. Files written: the documents chosen; `SD:/apps/letters.app/
 merge-letter.rtf` and `merge.job` (the request to the other Letters).
 
 **Files**: **`.rtf`** (Rich Text Format), **`.docx`** (Word 2007 and later) and **`.odt`**
@@ -1761,13 +1761,13 @@ the rest of Onyx). **Save** writes the format of the file's name (a new document
 `.rtf` by default — type `.docx` or `.odt` for those; saving formats as `.txt` asks first);
 **File ▸ Export** writes an **HTML** page (its images inside it) or a text file, the document
 staying where it was. A `.rtf`, `.doc`, `.docx` or `.odt` double-clicked in the File Viewer opens
-in Letters (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Letters), as does `writer
+in Letters (`fileassoc.ini`; so does the RTF Reader's File ▸ Edit in Letters), as does `letters
 <file>`; **drop** a file on the window to open it, or text to insert it at the caret. New, Open
 and a drop first ask to **save unsaved changes**; **closed with unsaved changes** (the close box,
-Quit), the document is kept in `SD:/apps/writer.app/recovered.rtf` and offered back when Letters
+Quit), the document is kept in `SD:/apps/letters.app/recovered.rtf` and offered back when Letters
 starts again. **Undo** keeps the last 200 edits (a word typed is one). Copy and paste within Letters
 keep the formats (and the images); the other apps get the text. Documents
-usually start in `SD:/docs`; the samples: `SD:/docs/writer-tour.rtf`, `SD:/docs/new-year-letter.rtf`
+usually start in `SD:/docs`; the samples: `SD:/docs/letters-tour.rtf`, `SD:/docs/new-year-letter.rtf`
 (the letter of the Contacts form: `SD:/docs/contacts.card`).
 
 ### Paint (`paint`)
@@ -2189,7 +2189,7 @@ named after a field (**Named after: Name** → `Alice Martin.rtf`; two alike: th
 or numbered after the letter (`new-year-letter-1.rtf`...), in the letter's format or as RTF, Word
 or OpenDocument. **Merge** hands it to Letters, which opens the document (or, for files, says how
 many it wrote and opens the first one). Cardfile writes the records to merge in
-`SD:/apps/cardfile.app/merge.card` and the request in `merge.job` (Letters' `writer --merge JOB`).
+`SD:/apps/cardfile.app/merge.card` and the request in `merge.job` (Letters' `letters --merge JOB`).
 Try it with the Contacts form (`SD:/docs/contacts.card`) and its letter
 `SD:/docs/new-year-letter.rtf`.
 

@@ -913,7 +913,7 @@ trimestres), **Month** (le mois en cours), ou des dates tapées dans **From** et
 ![Les créances par ancienneté](images/receivables.png)
 *Ce que doivent les clients, par ancienneté.*
 
-![Un rapport dans Letters](images/report-writer.png)
+![Un rapport dans Letters](images/report-letters.png)
 *Le bilan ouvert dans Letters, prêt à imprimer.*
 
 ## 14. La TVA

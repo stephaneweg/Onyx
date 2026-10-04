@@ -907,7 +907,7 @@ Dubbelklik op een lijn om haar document, haar rekening of haar derde te openen.
 ![Vorderingen volgens ouderdom](images/receivables.png)
 *Wat de klanten verschuldigd zijn, volgens ouderdom.*
 
-![Een rapport in Letters](images/report-writer.png)
+![Een rapport in Letters](images/report-letters.png)
 *De balans geopend in Letters, klaar om af te drukken.*
 
 ## 14. Btw

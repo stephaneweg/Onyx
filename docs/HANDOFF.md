@@ -668,13 +668,15 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 
 ## Writer renamed Letters; Slides, the presentation program, mock-ups (2026-10-04)
 
-- **Writer is now called Letters** (the user: a name for the document, as Sheet and Slides, not for the trade). Only
-  what is shown changed: `app.txt`'s name, the window, the messages of Letters, Cardfile, Ledger (and its French
-  strings), the RTF viewer; the samples (`tools/gen_writer_sample.py`), the docs, the Ledger manuals, the
-  screenshots; on the Mac, Ledger.app's helper is `Letters.app` (`pc/macOS/hostkapi.cpp` maps `writer.app` to it).
-  **Kept on purpose**: the folder `SD:/apps/writer.app`, the package `writer` (the cards update it in place; `pkg`
-  has no "renamed / replaces" yet), the sources `user/Apps/writer/`, `writer.elf`, the screenshots' file names.
-  Renaming those too would need a `replaces =` in `pkg` first.
+- **Writer is now called Letters** (the user: a name for the document, as Sheet and Slides, not for the trade),
+  everywhere: `app.txt`, the window, the messages of Letters, Cardfile, Ledger (and its French strings), the RTF
+  viewer; the folder `SD:/apps/letters.app`, the package **`letters`** (and `letters-samples`), the sources
+  `user/Apps/letters/`, `letters.elf`, `fileassoc.ini`, the samples (`tools/gen_letters_sample.py`,
+  `SD:/docs/letters-tour.rtf`), the tests (`tools/tests/run_letters_test.sh`), the screenshots `letters*.png`,
+  the docs, the Ledger manuals; on the Mac, Ledger.app's helper `Letters.app`. The packages `writer` and
+  `writer-samples` left the repository: **`pkg` learnt `replaces =`** (`packages.ini`, the index, `pkglib.h`'s
+  `update_for` / `drop_replaced`): a card that has `writer` sees `letters` as its update, installs it, then
+  `writer` is removed (its mode kept; a file the new one took over, a sample, is not removed nor written `.new`).
 - **Slides** (the presentation program, in the way of PowerPoint): the study and seven mock-ups,
   `docs/slides/README.md` (`tools/screenshot/mockup_slides.py`); not built yet. Next: the user's word on the
   mock-ups and the native format (`.odp` proposed, `.pptx` read and written).
@@ -687,7 +689,7 @@ Letters itself (no RichTextBox). Done:
 - **The apps' FreeType** (`user/ft/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
   `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `ft/fonts.h`: the card's families
   (`SD:/res/fonts`, `SD:/fonts`), sized fonts, a glyph cache at quarter pixels, the drawing.
-- **Letters** (`user/Apps/writer/`, a newlib app now: `writer.elf` rule): pages (A4, margins,
+- **Letters** (`user/Apps/letters/`, a newlib app now: `letters.elf` rule): pages (A4, margins,
   page numbers), styles, fonts, sizes, B/I/U/S, super/subscript, colours, highlights,
   alignments, indents (the ruler's markers dragged), spacing, lists, page breaks, images (PNG /
   JPEG / BMP / GIF / WebP, resized with a handle), undo / redo, rich copy / paste, Find and
@@ -696,8 +698,8 @@ Letters itself (no RichTextBox). Done:
   unsaved changes. `.rtf` files now open in Letters (`sdcard/etc/fileassoc.ini`). The docs:
   `docs/04` *Letters, the word processor*, `docs/03` (TrueType text, `VPath`, Letters' pieces).
 - **wtk**: `wtk/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
-- **Sample**: `sdcard/docs/writer-tour.rtf` (`tools/gen_writer_sample.py`); the screenshot
-  `screenshots/writer.png`. The desktop simulator's script has `mods N` (modifier keys).
+- **Sample**: `sdcard/docs/letters-tour.rtf` (`tools/gen_letters_sample.py`); the screenshot
+  `screenshots/letters.png`. The desktop simulator's script has `mods N` (modifier keys).
 - **Next ideas**: done since — tables, headers / footers, fields, tab stops, a table of contents,
   `.docx` / `.odt`, the mail merge: see *Letters as Word* below.
 
@@ -811,10 +813,10 @@ document; all the records → a series of documents). Done (the user guide: docs
   Update Table of Contents, Format ▸ Tabs.
 - **Files**: RTF extended (tables, headers, fields, tabs, the TOC's field); **`docx.h`**
   (WordprocessingML) and **`odt.h`** (ODF) read and written, over `xml.h` (a pull reader on a zip
-  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_writer_test.sh`
+  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_letters_test.sh`
   (14936 checks: a document with all of it through RTF, .docx and .odt, and LibreOffice's
   conversions of ours when `soffice` is installed — `apt install libreoffice-writer` in the cloud
-  container; valgrind clean with `VG=1`). `tools/tests/writer/conv.cpp` converts a file.
+  container; valgrind clean with `VG=1`). `tools/tests/letters/conv.cpp` converts a file.
 - **The mail merge**: Letters' `merge.h` (the data read with Cardfile's own `model.h`; Tools ▸ Mail
   Merge: fields inserted, values previewed, merged to a new document or to files named after a
   field) and `writer --merge JOB` for Cardfile's **Record ▸ Mail Merge** (`MergeBox`: this record or
@@ -824,10 +826,10 @@ document; all the records → a series of documents). Done (the user guide: docs
   pointer and the keys; they are hooked (`root.attach ()`) right after the `Root` now. **Keep it
   so in a new app that asks something before `run ()`**: the kernel drops a window's events while
   it has no handler. `xml.h`: `XBuf::str ()` of an empty value was not ended (valgrind).
-- **Samples**: `SD:/docs/writer-tour.rtf` (two pages: a TOC, a header / footer — the title page's
+- **Samples**: `SD:/docs/letters-tour.rtf` (two pages: a TOC, a header / footer — the title page's
   own —, a table) and `SD:/docs/new-year-letter.rtf` (the Contacts form's letter; `contacts.card`
-  names it), both by `tools/gen_writer_sample.py`; `.docx` / `.odt` open in Letters
-  (`fileassoc.ini`). Screenshots `writer.png`, `writer-table.png`, `writer-merge.png`,
+  names it), both by `tools/gen_letters_sample.py`; `.docx` / `.odt` open in Letters
+  (`fileassoc.ini`). Screenshots `letters.png`, `letters-table.png`, `letters-merge.png`,
   `cardfile-merge.png`.
 - **Next ideas**: a table's rows split across pages (a row taller than a page runs over its foot
   today); text boxes and shapes (dropped when read); comments, tracked changes (read accepted);

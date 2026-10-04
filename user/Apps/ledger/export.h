@@ -261,7 +261,7 @@ static void open_report (const Report &p, int fmt)
 	export_name (p, fmt, name, sizeof name);
 	scpy (path, "SD:/docs/Reports/", sizeof path); scat (path, name, sizeof path);
 	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }
-	const char *app = fmt == XF_RTF ? "SD:/apps/writer.app/main" : "SD:/apps/sheet.app/main";
+	const char *app = fmt == XF_RTF ? "SD:/apps/letters.app/main" : "SD:/apps/sheet.app/main";
 	if (!kapi_exec (app, path)) { warn (TR ("Export"), fmt == XF_RTF ? TR ("Letters could not be started.") : TR ("The Spreadsheet could not be started.")); return; }
 	char m[240]; scpy (m, TR ("Opened: "), sizeof m); scat (m, path, sizeof m); status (m);
 }

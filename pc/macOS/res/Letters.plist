@@ -5,7 +5,7 @@
 	<key>CFBundleName</key>			<string>Letters</string>
 	<key>CFBundleDisplayName</key>		<string>Letters</string>
 	<key>CFBundleExecutable</key>		<string>Letters</string>
-	<key>CFBundleIdentifier</key>		<string>io.github.stephaneweg.onyx.ledger.writer</string>
+	<key>CFBundleIdentifier</key>		<string>io.github.stephaneweg.onyx.ledger.letters</string>
 	<key>CFBundleIconFile</key>		<string>Letters</string>
 	<key>CFBundlePackageType</key>		<string>APPL</string>
 	<key>CFBundleSignature</key>		<string>????</string>

@@ -2,7 +2,7 @@
 
 > **Status (2026-10-01): done** — the PDF Viewer (`user/Apps/pdf`, on MuPDF; docs/03 *PDF Viewer*, its use: docs/04
 > §12, the real app: `screenshots/pdf*.png`) and *File ▸ Export as PDF* in Letters and the Spreadsheet
-> (`user/pdf/pdfwrite.h`, MIT; `screenshots/writer-pdf.png`, `sheet-pdf.png`); the viewer **tried on the Pi** (2026-10-02): it works well.
+> (`user/pdf/pdfwrite.h`, MIT; `screenshots/letters-pdf.png`, `sheet-pdf.png`); the viewer **tried on the Pi** (2026-10-02): it works well.
 > The mock-ups below were validated. Priority 1 of the end-user apps roadmap
 > (docs/HANDOFF.md): a **PDF viewer** as a polished app, in the way of Acrobat Reader / Edge / Evince /
 > Preview, and the **PDF export** in Letters and the Spreadsheet. Proposed name: **PDF Viewer** (app folder

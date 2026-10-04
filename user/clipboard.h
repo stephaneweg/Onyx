@@ -35,7 +35,7 @@ static inline int clip_service_ (void)
 	}
 	return pid;
 }
-// the app's name ("SD:apps/writer.app/" -> "writer")
+// the app's name ("SD:apps/letters.app/" -> "letters")
 static inline void clip_source_ (char *out, int cap)
 {
 	char d[128]; int n = kapi_app_dir (d, sizeof d);

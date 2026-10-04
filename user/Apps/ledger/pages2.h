@@ -1050,7 +1050,7 @@ public:
 				tpl->invalidate (true);
 			}
 		}
-		if (!kapi_exec ("SD:/apps/writer.app/main", p)) warn (TR ("Printing"), TR ("Letters could not be started."));
+		if (!kapi_exec ("SD:/apps/letters.app/main", p)) warn (TR ("Printing"), TR ("Letters could not be started."));
 		else { char m[240]; scpy (m, TR ("Letters opens "), sizeof m); scat (m, p, sizeof m); status (m); }
 	}
 	static void on_tplLang (int) { if (g_sp) g_sp->tpl->invalidate (true); }

@@ -219,7 +219,7 @@ max-page-size=0x10000`) so that the loader maps them onto distinct pages.
 
 To add an app, create `user/Apps/<name>/main.cpp` and **add `<name>` to the `APPS` list**
 of [`user/Makefile`](../user/Makefile) (`FT_APPS` for a FreeType app, or a rule of its own for a
-newlib app, as `writer.elf`), and declare its package in `tools/pkg/packages.ini`; for a tool,
+newlib app, as `letters.elf`), and declare its package in `tools/pkg/packages.ini`; for a tool,
 add `<tool>.elf` to the `PROGS` of [`user/bin/Makefile`](../user/bin/Makefile).
 
 ### 5.1. Apps using the C library (newlib)
@@ -241,7 +241,7 @@ the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the pro
 tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 
 A **wtk app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** — FreeType
-wants a libc): the `writer.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
+wants a libc): the `letters.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
 `NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
 `libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `wtk/libwtk.a`, then its libraries
 (`ft/libft.a`) and `-lm`. Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
@@ -770,7 +770,7 @@ its licence on the app.
 > `arc` (round ends and joins), `arrowHead` — in 1/16 px (`V (px)`), then `fill (cv, colour, alpha)`
 > paints their union (the non-zero rule: every outline turned the same way, a hole the other way),
 > anti-aliased (four sub-rows a pixel, the spans' ends to 1/16 px). Letters' toolbar icons are drawn
-> with it (`user/Apps/writer/icons.h`). `wk_sin / wk_cos (degrees)` × 16384.
+> with it (`user/Apps/letters/icons.h`). `wk_sin / wk_cos (degrees)` × 16384.
 > **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
 > app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
 > request (`req.op` = `VFS_OP_OPEN` / `READ` / `CLOSE` / `LIST` / `SAVE` / `MKDIR` / `REMOVE`
@@ -1059,8 +1059,8 @@ its licence on the app.
 > **Rich Text Format** (`user/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
 > a `RichTextBox` (styles, colour table → the 16-colour palette, `\'hh` / `\uN` → Latin-1,
 > skipped destinations), `rtf::save (box, out, cap)` writes it back; `rtf::is_rtf`. Used by
-> `rtfview` (Letters reads and writes RTF itself, with everything: `Apps/writer/fileio.h`).
-> **Letters** (`user/Apps/writer/`, one TU: `main.cpp` includes the rest) — `doc.h` the document
+> `rtfview` (Letters reads and writes RTF itself, with everything: `Apps/letters/fileio.h`).
+> **Letters** (`user/Apps/letters/`, one TU: `main.cpp` includes the rest) — `doc.h` the document
 > (paragraphs of code points, each with an index into the table of character formats — font of the
 > font table, size in half-points, flags, colour, highlight, a field (`FIELD_CHAR` U+FFF9 whose
 > format names a `Field`: page, pages, date / time with its picture, a merge field) or an image (the
@@ -1096,16 +1096,16 @@ its licence on the app.
 > data), `odt.h` (ODF: named and automatic styles, lists, tables — spanned and covered cells —,
 > frames, fields with their data styles, the TOC, the master page), `merge.h` (the **mail merge**:
 > the data is a Cardfile form read with Cardfile's own `model.h`; the fields filled per record into a
-> copy of the letter read back from its bytes; `writer --merge JOB` — the job file's keys at the top
+> copy of the letter read back from its bytes; `letters --merge JOB` — the job file's keys at the top
 > of `merge.h` — makes a merge's documents for Cardfile and Ledger: a job's `lines` form — a record a
 > line of a document — has the letter's table row holding `Line...` fields repeated for each of its
 > records, `merge_lines`; one file written is shown without a message), `dialogs.h`. **Host test**:
-> `sh tools/tests/run_writer_test.sh` (`tools/tests/writer/files_test.cpp`: a document with all of it
+> `sh tools/tests/run_letters_test.sh` (`tools/tests/letters/files_test.cpp`: a document with all of it
 > written as RTF, `.docx` and `.odt` and read back the same — each through the others too —, and with
 > LibreOffice installed — `soffice` — our `.docx` and `.odt` converted by it and read back; UBSan,
-> `VG=1` valgrind); `tools/tests/writer/conv.cpp` converts a file by the names' extensions (`conv
-> a.docx b.odt`). The samples (`SD:/docs/writer-tour.rtf`, `new-year-letter.rtf`) are made by
-> `tools/gen_writer_sample.py`.
+> `VG=1` valgrind); `tools/tests/letters/conv.cpp` converts a file by the names' extensions (`conv
+> a.docx b.odt`). The samples (`SD:/docs/letters-tour.rtf`, `new-year-letter.rtf`) are made by
+> `tools/gen_letters_sample.py`.
 > **Paint** (`user/Apps/paint/`, a newlib app: FreeType, gpucomp; its own `paint.elf` rule; the mock-ups
 > and the decisions: `docs/paint/README.md`) — `pdoc.h` (up to 32 layers of 0xAARRGGBB pixels, straight
 > alpha, bottom first, each with its blend mode `GPC_B_*` and `clip` — a Mask / Cut out on the layer below
@@ -1153,7 +1153,7 @@ its licence on the app.
 > written before each change (100 steps, 24 MB at most; one control's edits coalesced into one
 > step). **Record ▸ Mail Merge** (`MergeBox`, `cmd_mail_merge`): the records to merge written as a
 > `.card` (`SD:/apps/cardfile.app/merge.card`), a job file beside it, then `kapi_exec` of
-> `writer --merge JOB` — Letters' `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
+> `letters --merge JOB` — Letters' `merge.h` reads both; the form's `merge` key keeps the letter. **Host test**: `sh tools/tests/run_cardfile_test.sh` (the values as typed, a round trip
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
 > **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; **in English or French**: its words
@@ -1184,7 +1184,7 @@ its licence on the app.
 > and the tests), `sepa.h` (the suppliers' open lines, **pain.001.001.09** written: hybrid addresses,
 > the EPC's Latin set, a structured communication as `SCOR` / `BBA`), `print.h` (the merge's data for a
 > document's template: the fields, the lines, the VAT's detail with the legal mentions in French, Dutch
-> or English — a party's language —, then `writer --merge`), `export.h` (a `Report` as RTF — A4,
+> or English — a party's language —, then `letters --merge`), `export.h` (a `Report` as RTF — A4,
 > landscape when wide, a header and page numbers, tables — or `.xlsx` — `img/pngsave.hpp`'s `ZipOut` —
 > or CSV, opened in Letters or the Spreadsheet). **The window**: `ui.h` (the `Page` a view is — its
 > header, `sync` when the books or the year shown change —, the icons as `VPath`s, `FlatButton`,
@@ -1951,7 +1951,7 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 
 | Part | What |
 |---|---|
-| `tools/pkg/packages.ini` | Which files of `sdcard/` make each package: `[onyx]` (the kernel, `bin/`, `etc/` as settings, the fonts, the Shell and Settings apps, the terminal, the File Viewer, the Task Manager, Tinypad, voronoy and imageview; `required`, `restart`), `[pi-firmware]`, `[demos]`, the samples each with its app (`[basic-samples]`, `[writer-samples]`... `needs` their app; their files are the user's: `config`), then `[*apps]`: every other app its own package (`[app.<name>]`: its files outside its bundle, its `needs` — the emulators `gamelib`, Letters / Sheet / Ledger `cardfile` —, its `config`). |
+| `tools/pkg/packages.ini` | Which files of `sdcard/` make each package: `[onyx]` (the kernel, `bin/`, `etc/` as settings, the fonts, the Shell and Settings apps, the terminal, the File Viewer, the Task Manager, Tinypad, voronoy and imageview; `required`, `restart`), `[pi-firmware]`, `[demos]`, the samples each with its app (`[basic-samples]`, `[letters-samples]`... `needs` their app; their files are the user's: `config`), then `[*apps]`: every other app its own package (`[app.<name>]`: its files outside its bundle, its `needs` — the emulators `gamelib`, Letters / Sheet / Ledger `cardfile` —, its `config`). |
 | `tools/pkg/versions.ini` | Each package's version, raised by `mkrepo.py --bump` (a package whose files changed at the same version is refused). |
 | `tools/pkg/mkrepo.py` | `--out <onyx-packages checkout> --key <private key>`: the `.opk` of each package (a deterministic ZIP: the card's tree + `PKG/manifest.ini`), the icons, `index.txt` (version, size, SHA-256, needs — `kapi >= KAPI_ABI_VERSION` added —, the content's hash) signed into `index.sig` (ECDSA P-256 / SHA-256). `--db`: `sdcard/var/pkg/db/*.ini`, the card made "installed". `--lite sdcard_lite`: the card of the required packages only. |
 | `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
@@ -2147,7 +2147,7 @@ the lines' runs; the used cells cut into page bands, the charts drawn twice as l
 (`tools/tests/pdf/mutest.c`: the pages, a page drawn, its text, a word found, the outline, the links), then a
 PDF written by `pdfwrite.h` (`tools/tests/pdf/writetest.cpp`: two fonts, an image with transparency, links,
 bookmarks, a landscape page) and read back. **The screenshots**: `sh tools/tests/desktop_sim/shots.sh pdf`
-(the manuals of `sdcard/manuals`; `writer` and `sheet` take their export's dialog). The icon: `python3
+(the manuals of `sdcard/manuals`; `letters` and `sheet` take their export's dialog). The icon: `python3
 tools/icons/pdf_icon.py`.
 
 ### Mail, the mail client (`user/Apps/mail`, `user/mail`)
@@ -2964,7 +2964,7 @@ barwidth = 40
 - **Ledger for macOS** (`pc/macOS`, built **on a Mac** by `sh pc/macOS/build.sh` into
   `pc/dist/macOS/Ledger.app` + `Ledger-macOS-arm64.zip` -- the Xcode command-line tools only; not built
   here, so not committed). As Koton for Windows, **the Onyx sources unchanged** -- `user/Apps/ledger`,
-  `user/Apps/writer` (it prints Ledger's documents from their templates), `user/wtk`, FreeType -- over the
+  `user/Apps/letters` (it prints Ledger's documents from their templates), `user/wtk`, FreeType -- over the
   kernel's ABI table on macOS, in two halves: [`pc/macOS/hostkapi.cpp`](../pc/macOS/hostkapi.cpp) (POSIX:
   the table at `KAPI_TABLE_VA` by `mach_vm_allocate (VM_FLAGS_FIXED)` -- taken only if free --, files,
   time, threads, `wait_word`, processes, arguments) and [`pc/macOS/cocoa.mm`](../pc/macOS/cocoa.mm) (an
@@ -2979,7 +2979,7 @@ barwidth = 40
   `apps/<app>.app` -- Ledger's templates -- copied there at the first start); read from the user's
   folder else the bundle's, written in the user's (the demo company, saved, lands in Documents);
   `HOME:/` is `~`, `MAC:/` the Mac's `/` (a file the Finder gives: `MAC:/Users/...`). **Programs**:
-  `SD:/apps/writer.app/main` is `Ledger.app/Contents/Helpers/Letters.app` (`ONYX_HELPERS`), the arguments
+  `SD:/apps/letters.app/main` is `Ledger.app/Contents/Helpers/Letters.app` (`ONYX_HELPERS`), the arguments
   passed whole in `ONYX_ARGS`; one the Mac lacks (the Spreadsheet, the File Viewer) has its file or
   folder shown by `open` (Numbers / Excel, the Finder). **Keys**: Cmd+letter is the Onyx Ctrl+letter
   (the real Ctrl too), Cmd+Left / Right Home / End, Cmd+Up / Down Ctrl+Home / End (each event carries

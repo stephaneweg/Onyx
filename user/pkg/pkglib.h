@@ -258,7 +258,7 @@ static inline int kapi_level () { return (int) KT->version; }
 // ---- the repository's index ---------------------------------------------------------------------------------
 struct Pkg
 {
-	const char *name, *title, *version, *category, *author, *summary, *file, *sha256, *icon, *needs;
+	const char *name, *title, *version, *category, *author, *summary, *file, *sha256, *icon, *needs, *replaces;
 	u64 size, installed; bool required, restart;
 };
 struct Index
@@ -278,7 +278,7 @@ struct Index
 			k.name = s; k.title = ini.get (s, "title", s); k.version = ini.get (s, "version");
 			k.category = ini.get (s, "category", "Other"); k.author = ini.get (s, "author", "");
 			k.summary = ini.get (s, "summary"); k.file = ini.get (s, "file"); k.sha256 = ini.get (s, "sha256");
-			k.icon = ini.get (s, "icon"); k.needs = ini.get (s, "needs");
+			k.icon = ini.get (s, "icon"); k.needs = ini.get (s, "needs"); k.replaces = ini.get (s, "replaces");
 			k.size = strtoull (ini.get (s, "size", "0"), 0, 10); k.installed = strtoull (ini.get (s, "installed", "0"), 0, 10);
 			k.required = eq (ini.get (s, "required", "0"), "1"); k.restart = eq (ini.get (s, "restart", "0"), "1");
 		}
@@ -286,6 +286,20 @@ struct Index
 	}
 	const Pkg *find (const char *name) const { for (int i = 0; i < n; i++) if (eq (p[i].name, name)) return &p[i]; return 0; }
 };
+
+// "a, b, c" holds name? (a package's replaces: the packages it takes the place of -- one renamed)
+static inline bool in_list (const char *list, const char *name)
+{
+	size_t l = strlen (name);
+	for (const char *s = list; s && *s; )
+	{
+		while (*s == ' ' || *s == ',') s++;
+		const char *e = s; while (*e && *e != ',' && *e != ' ') e++;
+		if ((size_t) (e - s) == l && !strncmp (s, name, l)) return true;
+		s = e;
+	}
+	return false;
+}
 
 // ---- the packages installed (SD:/var/pkg/db) ------------------------------------------------------------------
 struct Inst
@@ -528,7 +542,22 @@ public:
 		if (!w) { r.sayf ("%s: cannot write %s", p.name, opk); return E_IO; }
 		int rc = install_file (opk, &p, old, r);
 		kapi_remove (opk);
+		if (rc == OK && p.replaces && *p.replaces) drop_replaced (p, r);
 		return rc;
+	}
+
+	// The packages p replaces (a package renamed: "writer" became "letters"), gone once p is in: their
+	// files p has now kept, their mode (auto / manual / never) given to p.
+	void drop_replaced (const Pkg &p, Report &r)
+	{
+		char names[8][40]; int n = 0;
+		for (int i = 0; i < db.n && n < 8; i++) if (in_list (p.replaces, db.v[i]->name)) cpy (names[n++], db.v[i]->name, 40);
+		for (int k = 0; k < n; k++)
+		{
+			Inst *was = db.find (names[k]); if (!was) continue;
+			char mode[16]; cpy (mode, was->mode (), sizeof mode);
+			if (remove (names[k], false, r, true, true) == OK) { r.sayf ("%s replaces %s", p.name, names[k]); set_mode (p.name, mode); }
+		}
 	}
 
 	// Install the .opk at path (p: its index entry, checked against its manifest; 0: a local package)
@@ -579,6 +608,8 @@ public:
 			if (isCfg && exists (card))
 			{
 				char now[65]; const char *was = old ? old->hash (rel) : 0;
+				const char *repl = man.get ("", "replaces");		// (a renamed package: its predecessor's hash)
+				for (int k = 0; !was && *repl && k < db.n; k++) if (in_list (repl, db.v[k]->name)) was = db.v[k]->hash (rel);
 				if (!sha_file (card, now) || !was || !eq (now, was)) { strncat (target, ".new", sizeof target - strlen (target) - 1); kept++; }
 			}
 			char dest[300], tmp[310];
@@ -678,12 +709,12 @@ public:
 	}
 
 	// Remove a package: its files (a setting the user changed kept, unless purge)
-	int remove (const char *name, bool purge, Report &r, bool force = false)
+	int remove (const char *name, bool purge, Report &r, bool force = false, bool replaced = false)
 	{
 		Inst *in = db.find (name);
 		if (!in) { r.sayf ("%s is not installed", name); return E_NOTINST; }
 		if (in->required () && !force) { r.sayf ("%s is part of the system: it cannot be removed", name); return E_REQUIRED; }
-		for (int i = 0; i < db.n; i++)
+		for (int i = 0; i < db.n && !replaced; i++)
 		{
 			Need nd[16]; int nn = parse_needs (db.v[i]->needs (), nd, 16);
 			for (int k = 0; k < nn; k++) if (eq (nd[k].name, name)) { r.sayf ("%s needs it: remove %s first", db.v[i]->name, db.v[i]->name); return E_USED; }
@@ -694,6 +725,7 @@ public:
 		for (int i = 0; i < in->ini.n; i++)
 		{
 			if (!eq (in->ini.kv[i].sec, "files")) continue;
+			if (db.owned_elsewhere (in->ini.kv[i].key, name)) continue;	// (taken over by another package)
 			char card[300]; snprintf (card, sizeof card, "SD:/%s", in->ini.kv[i].key);
 			char hh[65];
 			if (!purge && in->is_config (in->ini.kv[i].key) && sha_file (card, hh) && !eq (hh, in->ini.kv[i].val)) { kept++; continue; }
@@ -780,10 +812,13 @@ public:
 		return ok;
 	}
 	// an update for this one? -> the index's entry
+	// (a package the repository no longer has, another replacing it: that one -- installed, it removes this one)
 	const Pkg *update_for (const Inst &in) const
 	{
 		const Pkg *p = index.find (in.name);
-		return p && vcmp (p->version, in.version ()) > 0 ? p : 0;
+		if (p) return vcmp (p->version, in.version ()) > 0 ? p : 0;
+		for (int i = 0; i < index.n; i++) if (index.p[i].replaces && in_list (index.p[i].replaces, in.name)) return &index.p[i];
+		return 0;
 	}
 };
 

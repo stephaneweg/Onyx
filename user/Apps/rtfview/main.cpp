@@ -53,7 +53,7 @@ static void on_open ()
 	if (wk_file_open (p, sizeof p, "SD:/")) open_file (p);
 	g_rtb->setFocus ();
 }
-static void on_writer () { if (g_path[0]) kapi_exec ("SD:/apps/writer.app/main", g_path); }
+static void on_writer () { if (g_path[0]) kapi_exec ("SD:/apps/letters.app/main", g_path); }
 static void on_copy ()
 {
 	static char b[65536];

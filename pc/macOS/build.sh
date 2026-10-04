@@ -1,6 +1,6 @@
 #!/bin/sh
 # pc/macOS/build.sh -- Ledger for macOS (Apple silicon), built ON A MAC from the Onyx sources, unchanged:
-# user/Apps/ledger (the accounting), user/Apps/writer (it prints Ledger's quotes, orders and invoices from
+# user/Apps/ledger (the accounting), user/Apps/letters (it prints Ledger's quotes, orders and invoices from
 # their templates), user/wtk and FreeType, over pc/macOS/hostkapi.cpp + cocoa.mm (the Onyx kernel's table
 # on macOS). Result: pc/dist/macOS/Ledger.app (Letters.app in its Contents/Helpers, the card's files it
 # reads in its Contents/Resources/sd) and pc/dist/macOS/Ledger-macOS-arm64.zip.
@@ -53,7 +53,7 @@ done; done_bg
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # ---- the programs (hostkapi.o first: the table placed before the apps' constructors run) ------------------------
 bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libwtk.a" -framework Cocoa
-bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/writer/main.cpp" \
+bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/letters/main.cpp" \
 	"$OUT/libwtk.a" "$OUT/libft.a" -framework Cocoa
 done_bg
 

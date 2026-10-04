@@ -1,5 +1,5 @@
 //
-// writer -- Onyx's word processor, in the way of AbiWord / Word: the document laid out on pages (A4
+// letters -- Onyx's word processor, in the way of AbiWord / Word: the document laid out on pages (A4
 // by default) and drawn by Letters itself with FreeType's glyphs from the TrueType fonts of the card
 // (user/ft/fonts.h), at any zoom; two toolbars (the file, the edits, a table, the zoom -- the style,
 // the font, the size, bold / italic / underline / strike-through, superscript / subscript, the text's
@@ -20,9 +20,9 @@
 //
 // Files: .rtf (the default), .docx (Word), .odt (OpenDocument): read and written with the formats;
 // .txt (plain text); anything else read as text; File > Export writes HTML or text. A file dropped on
-// the window is opened, dropped text inserted; "writer SD:/docs/a.odt" opens it; "writer --merge
+// the window is opened, dropped text inserted; "letters SD:/docs/a.odt" opens it; "letters --merge
 // JOB" makes a mail merge's documents (Cardfile asks it: merge.h). Closed with unsaved changes, the
-// document is kept in SD:/apps/writer.app/recovered.rtf and offered back at the next start.
+// document is kept in SD:/apps/letters.app/recovered.rtf and offered back at the next start.
 //
 #include "wtk/wtk.h"
 #include "docguard.h"
@@ -39,8 +39,8 @@ using namespace wr;
 
 #define W 1000
 #define H 700
-static const char *RECOVER = "SD:/apps/writer.app/recovered.rtf";
-static const char *RECOVER_NAME = "SD:/apps/writer.app/recovered.txt";
+static const char *RECOVER = "SD:/apps/letters.app/recovered.rtf";
+static const char *RECOVER_NAME = "SD:/apps/letters.app/recovered.txt";
 
 static PageView *g_view;
 static Ruler *g_ruler;

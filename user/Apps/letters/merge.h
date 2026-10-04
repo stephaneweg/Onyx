@@ -530,7 +530,7 @@ public:
 			Out o; rtf_save (g_doc, o);				// (the letter, as it is now)
 			if (tag == 6)						// (another Letters shows the documents made)
 			{
-				static const char *LETTER = "SD:/apps/writer.app/merge-letter.rtf", *JOB = "SD:/apps/writer.app/merge.job";
+				static const char *LETTER = "SD:/apps/letters.app/merge-letter.rtf", *JOB = "SD:/apps/letters.app/merge.job";
 				bool ok = kapi_save_file (LETTER, o.b, (unsigned) o.n) >= 0;
 				o.free ();
 				char job[600]; scpy (job, "template = ", sizeof job);
@@ -541,7 +541,7 @@ public:
 				add ("\noutput = open\n");
 				if (ok) ok = kapi_save_file (JOB, job, (unsigned) slen (job)) >= 0;
 				char args[240]; scpy (args, "--merge ", sizeof args); int m = slen (args); scpy (args + m, JOB, (int) sizeof args - m);
-				if (!ok || kapi_exec ("SD:/apps/writer.app/main", args) < 0) wk_messagebox ("Mail Merge", "Letters could not be started for the documents made.", MB_OK);
+				if (!ok || kapi_exec ("SD:/apps/letters.app/main", args) < 0) wk_messagebox ("Mail Merge", "Letters could not be started for the documents made.", MB_OK);
 				return;
 			}
 			char path[200];

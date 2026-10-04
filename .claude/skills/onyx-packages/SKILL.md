@@ -45,7 +45,7 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
 - **The user's files** (a `config.ini` shipped with defaults, documents): `config = <paths>` — never
   overwritten once the user changed them (the new one written beside as `.new`).
 - **Samples** (documents to try the app with): a section `[<app>-samples]` (`files`, the same paths
-  as `config`, `needs = <app>`), as `writer-samples`, `basic-samples`.
+  as `config`, `needs = <app>`), as `letters-samples`, `basic-samples`.
 - **An emulator**: its `app.txt` says what it plays — `category = Emulators`,
   `games = <System>: <ext> <ext>; <System>: <ext>`, `order = <n>` (and `opens = <ext>` for files that
   are not games) — and `needs = gamelib`. The Game Library and `launch.h` find it from there; never

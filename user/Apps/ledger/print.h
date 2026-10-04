@@ -283,7 +283,7 @@ static void ms_print (MergeSet &m, int kind, int lang, const char *fileName)
 	j.puts ("\nrecords = 1\noutput = files\nfolder = "); j.puts (folder); j.puts ("\nname = FileName\n");
 	if (ok) ok = kapi_save_file (MERGE_JOB, j.b, (unsigned) j.n) >= 0;
 	char args[240] = "--merge "; scat (args, MERGE_JOB, sizeof args);
-	if (!ok || !kapi_exec ("SD:/apps/writer.app/main", args)) { warn (TR ("Print"), TR ("Letters could not be started.")); return; }
+	if (!ok || !kapi_exec ("SD:/apps/letters.app/main", args)) { warn (TR ("Print"), TR ("Letters could not be started.")); return; }
 	char s[200]; scpy (s, TR ("Letters makes the document in "), sizeof s); scat (s, folder, sizeof s); status (s);
 }
 // A commercial document's title in a language: "Devis 2026/0003".

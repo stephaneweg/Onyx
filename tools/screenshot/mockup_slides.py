@@ -6,7 +6,7 @@ LibreOffice Impress), the third of the office suite after Letters and Sheet. See
 
 On the real desktop (screenshots/desktop.png, 1024 x 768); the drawing helpers are mockup_archiver.py's.
 The toolbar icons that Letters and Sheet already have are taken from their real screenshots
-(screenshots/writer.png, sheet.png), so the three apps look like one suite; the new ones (a slide, a
+(screenshots/letters.png, sheet.png), so the three apps look like one suite; the new ones (a slide, a
 layout, a text box, the shapes, the show...) are drawn here in the same style. The deck shown is
 "Onyx Cafe -- 2026, the year in review", made from Sheet's sample (sdcard/docs/cafe-2026.xlsx) and a
 picture of sdcard/docs/pictures.
@@ -22,7 +22,7 @@ M.W, M.H = 1024, 768
 M.OUT = os.path.join (M.ROOT, "docs", "slides", "mockups")
 K = M.K
 DESK = Image.open (os.path.join (M.ROOT, "screenshots", "desktop.png")).convert ("RGB")
-WRITER = Image.open (os.path.join (M.ROOT, "screenshots", "writer.png")).convert ("RGB")
+WRITER = Image.open (os.path.join (M.ROOT, "screenshots", "letters.png")).convert ("RGB")
 SHEET = Image.open (os.path.join (M.ROOT, "screenshots", "sheet.png")).convert ("RGB")
 TEXT, DIM, FACE, SEL, WHITE, LIST, LINE, LINE2, FAINT = M.TEXT, M.DIM, M.FACE, M.SEL, (255, 255, 255), M.LIST, M.LINE, M.LINE2, M.FAINT
 DESKGREY = (138, 134, 132)		# behind the slide: Letters' grey round its page

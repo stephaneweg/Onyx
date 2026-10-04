@@ -7,7 +7,7 @@
 #ifndef _sheet_ui_base_h
 #define _sheet_ui_base_h
 
-#include "Apps/writer/icons.h"
+#include "Apps/letters/icons.h"
 
 namespace ss {
 

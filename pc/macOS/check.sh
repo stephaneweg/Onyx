@@ -24,7 +24,7 @@ $CXX -c "$HERE/hostkapi.cpp" -o "$OUT/hostkapi.o"
 $CXX -c "$HERE/headless.cpp" -o "$OUT/headless.o"
 # (hostkapi.o first: its table is placed before the apps' constructors run)
 $CXX -o "$OUT/ledger" "$OUT/hostkapi.o" "$OUT/headless.o" "$U/Apps/ledger/main.cpp" "$OUT/libwtk.a" -lpthread
-$CXX -I"$U/ft" -I"$FT/include" -o "$OUT/helpers/Letters.app/Contents/MacOS/Letters" "$OUT/hostkapi.o" "$OUT/headless.o" "$U/Apps/writer/main.cpp" \
+$CXX -I"$U/ft" -I"$FT/include" -o "$OUT/helpers/Letters.app/Contents/MacOS/Letters" "$OUT/hostkapi.o" "$OUT/headless.o" "$U/Apps/letters/main.cpp" \
 	"$OUT/libwtk.a" "$OUT/libft.a" -lpthread
 sh "$HERE/card.sh" "$OUT/base"
 export ONYX_SD="$OUT/user" ONYX_DOCS="$OUT/docs" ONYX_SD_BASE="$OUT/base" ONYX_HELPERS="$OUT/helpers"

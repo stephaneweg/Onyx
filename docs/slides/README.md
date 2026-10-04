@@ -6,7 +6,7 @@
 
 The mock-ups are made by `python3 tools/screenshot/mockup_slides.py` → `docs/slides/mockups/slides-*.png` (1024 × 768,
 the real desktop behind; the drawing helpers are `mockup_archiver.py`'s). **The toolbar icons Letters and Sheet already
-have are cut from their real screenshots** (`screenshots/writer.png`, `sheet.png`), so the three apps read as one
+have are cut from their real screenshots** (`screenshots/letters.png`, `sheet.png`), so the three apps read as one
 suite; the new icons (a slide, a layout, a text box, the shapes, the show) are drawn in the same style. The deck shown,
 *Onyx Café — 2026, the year in review*, uses Sheet's sample figures (`sdcard/docs/cafe-2026.xlsx`) and a picture of
 `sdcard/docs/pictures`.
@@ -44,7 +44,7 @@ suite; the new icons (a slide, a layout, a text box, the shapes, the show) are d
 
 | Need | Onyx today | To add |
 |---|---|---|
-| The window, the toolbars, dialogs | wtk, Letters' toolbars and icons (`user/Apps/writer/icons.h`, shared by Sheet) | the new icons; the sidebar (shared later with Letters / Sheet) |
+| The window, the toolbars, dialogs | wtk, Letters' toolbars and icons (`user/Apps/letters/icons.h`, shared by Sheet) | the new icons; the sidebar (shared later with Letters / Sheet) |
 | Text in boxes | Letters' layout engine (`layout.h`: paragraphs, runs, lists), FreeType | text in a rectangle (no pages), autofit, vertical anchoring |
 | Tables, charts | Letters' tables; Sheet's charts (`chart.h`) and its formulas | an embedded small sheet for a chart's data |
 | Drawing | wtk's `vpaint.h` (anti-aliased paths) | shapes' geometry (OOXML's preset shapes, as needed), gradients, rounded picture masks |
