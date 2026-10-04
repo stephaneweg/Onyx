@@ -212,6 +212,9 @@ public:
 	{
 		if (mx < 0 && m_drag == 0) { if (m_barHot) { m_barHot = 0; invalidate (true); } m_bl = false; return false; }
 		m_mx = mx; m_my = my;
+		if (m_drag == 5) wk_cursor (KAPI_CURSOR_SIZE_H);		// (a column's border)
+		else if (m_drag == 4) wk_cursor (KAPI_CURSOR_SIZE_NWSE);	// (an image's corner)
+		else if (m_drag == 0 && mx >= 0 && mx < viewW () && my < viewH ()) wk_cursor (KAPI_CURSOR_TEXT);
 		if (wheel)
 		{
 			sy -= wheel * 40;

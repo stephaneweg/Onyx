@@ -279,6 +279,8 @@ int kapi_kernel_info (char *pBuf, unsigned nCap);
 // v80 the cores' load, the network's bytes (sys/kapi.cpp)
 int kapi_cpu_stats (struct kapi_cpu_stats *pOut);
 int kapi_net_stats (int nPid, struct kapi_net_stats *pOut);
+// v81 the pointer's shape (sys/kapi.cpp)
+int kapi_set_cursor (int nShape);
 
 }  // extern "C"
 
@@ -586,4 +588,5 @@ void KApiTableInit (void)
 	t->kernel_info       = kapi_kernel_info;
 	t->cpu_stats         = kapi_cpu_stats;		// (v80)
 	t->net_stats         = kapi_net_stats;
+	t->set_cursor        = kapi_set_cursor;		// (v81)
 }

@@ -88,6 +88,7 @@ public:
 	{
 		int b = (bl ? 1 : 0) | (br ? 2 : 0) | (bm ? 4 : 0);
 		unsigned mods = kapi_get_modifiers ();
+		if (mx >= 0) wk_cursor (engine_cursor ());		// (a link's hand, the text bar...: what the page asked last)
 		if (wheel) engine_wheel (mx, my, wheel, mods);
 		int changed = b ^ buttons;
 		if ((changed & 2) && (b & 2))				// a right click: the browser's menu

@@ -553,6 +553,17 @@ int kapi_net_stats (int nPid, struct kapi_net_stats *pOut)
 	return UserCopyOut (pOut, &Out, sizeof Out) ? 0 : -KAPI_EFAULT;
 }
 
+// (v81) The pointer's shape over the caller's window.
+int kapi_set_cursor (int nShape)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (pWin == 0 || nShape < 0 || nShape >= KAPI_CURSOR_COUNT) return -1;
+	int nWas = (int) pWin->CursorShape ();
+	if (nWas != nShape) CWindowManager::Get ()->SetWindowCursor (pWin, (unsigned) nShape);
+	return nWas;
+}
+
 // Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
 void kapi_screen_size (int *pW, int *pH)
 {

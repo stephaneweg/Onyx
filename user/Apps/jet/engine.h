@@ -97,5 +97,11 @@ void engine_mouse (int x, int y, int buttons, int changed, unsigned mods);
 void engine_wheel (int x, int y, int notches, unsigned mods);	// + towards the top
 void engine_key (long key, unsigned mods);			// a wtk / kapi key code (KEY_*, or the character)
 void engine_mouse_leave ();
+// The pointer's shape the page asks for: kapi's KAPI_CURSOR_* values (kern/kapi_abi.h), named here for
+// the engine's side, which does not see kapi's header.
+enum { ENGINE_CUR_ARROW = 0, ENGINE_CUR_HAND = 1, ENGINE_CUR_TEXT = 2, ENGINE_CUR_MOVE = 3, ENGINE_CUR_SIZE_H = 4,
+       ENGINE_CUR_SIZE_V = 5, ENGINE_CUR_SIZE_NWSE = 6, ENGINE_CUR_SIZE_NESW = 7, ENGINE_CUR_CROSSHAIR = 9,
+       ENGINE_CUR_WAIT = 10, ENGINE_CUR_NO = 11 };
+int  engine_cursor ();
 
 #endif

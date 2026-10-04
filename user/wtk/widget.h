@@ -103,6 +103,13 @@ struct WkBarDrag
 	}
 };
 
+// The pointer's shape (kapi v81, KAPI_CURSOR_*). A widget asks for its shape from its onMouse, each time
+// the pointer moves over it: wk_cursor (KAPI_CURSOR_TEXT) in a text field, _HAND over a link, _SIZE_H
+// on a column's edge... Root::ptrEvent (root.cpp) starts each pointer event with the arrow and tells the kernel
+// when what the widgets asked for has changed -- so a widget that asks nothing shows the arrow, and
+// nobody has to put it back.
+void wk_cursor (int shape);
+
 class Widget;
 class RadioButton;
 typedef void (*Action) (Widget &);		// fired on click/toggle/change; gets the widget

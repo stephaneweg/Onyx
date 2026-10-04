@@ -35,6 +35,7 @@ public:
 			return false;
 		}
 		bool wasHover = hover; hover = true;
+		wk_cursor (sp->vertical ? KAPI_CURSOR_SIZE_V : KAPI_CURSOR_SIZE_H);
 		if (bl)
 		{
 			pressed = true; catchOutside = true;	// capture for the whole drag

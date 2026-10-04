@@ -197,6 +197,7 @@ bool Textarea::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
 	if (mx < 0) { pressed = false; if (barDrag) { barDrag = false; invalidate (true); } return false; }
 	if (disabled) return true;
+	if (!barDrag && mx < width - WK_SBW) wk_cursor (KAPI_CURSOR_TEXT);
 	int fh = wk_fh ();
 	int lines = 1; for (int i = 0; i < len; i++) if (buf[i] == '\n') lines++;
 	int mt = lines - rows; if (mt < 0) mt = 0;

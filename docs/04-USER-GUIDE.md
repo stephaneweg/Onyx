@@ -551,6 +551,22 @@ run in the BASIC runtime — or an app says itself what it opens, in its `app.tx
 - **Close**: the **×** button of the title bar, **Ctrl-Q**, the window menu's **Close**, or
   the task manager (`taskman`) / `kill`.
 
+### The pointer's shapes
+
+The pointer tells what a click or a drag would do where it is:
+
+| Shape | Where |
+|---|---|
+| the **arrow** | everywhere else |
+| a **hand** | a link: in a page of Jet, in a message of Mail |
+| the **I bar** | text that can be typed or selected: a text field, Letters' page, a page's text in Jet |
+| **four arrows** | a window dragged by its title bar; a chart in Sheet; a picture panned in Paint |
+| **two arrows**, left and right or up and down | an edge that drags: a column's edge in a list or in Sheet, a row's edge, the bar between two panes |
+| two arrows on a slant | a corner that sizes: an image in Letters, a chart in Sheet |
+| a **thick cross** | Sheet's cells |
+| a **thin cross** | Paint's picture; Sheet's fill handle |
+| an hourglass, a barred circle | a page of Jet that asks for them (busy, not allowed) |
+
 ## 6. Working with windows
 
 Each window has a **frame** in the theme's colour when it is in front (Peach by default), grey

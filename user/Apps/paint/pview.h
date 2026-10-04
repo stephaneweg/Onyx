@@ -385,6 +385,8 @@ public:
 		int btn = bl ? 1 : br ? 2 : 0;
 		int hot = mx >= viewW () && my < viewH () ? 1 : my >= viewH () && mx < viewW () ? 2 : 0;
 		if (!m_btn && !m_drag && hot != m_barHot) { m_barHot = hot; invalidate (true); }
+		if (m_drag == 3) wk_cursor (KAPI_CURSOR_MOVE);			// (a pan)
+		else if (!hot && m_drag != 1 && m_drag != 2 && mx >= 0 && mx < viewW () && my < viewH ()) wk_cursor (KAPI_CURSOR_CROSSHAIR);
 		if (m_drag == 1 || m_drag == 2)
 		{
 			if (m_drag == 1) sy = (int) wk_thumb_pos (my, viewH (), docH (), viewH (), wk_thumb (docH (), viewH (), sy, viewH ()).h);
