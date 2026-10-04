@@ -20,7 +20,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/08-WEBKIT-PORT.md` (Jet Browser, the Onyx web browser: the WebKit port — its status and how to resume, the plan, the patch series in `tools/webkit/patches/`, `jsc`; the NetSurf Jet and its documents 06 and 07 were removed on 2026-10-04)
 - `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 - `docs/SHARED-LIBS-PLAN.md` (shared libraries behind an export table — the user's decided design, the plan and the Pi tests; the study before it: `docs/GUI-USERSPACE-STUDY.md`)
-- `docs/MULTI-USER-PLAN.md` (several users: accounts, login and sessions, `/home`, rights on FAT enforced by the kernel, remote access per user — a study and a plan, nothing built; its section 2 lists the decisions the user has to take)
+- `docs/MULTI-USER-PLAN.md` (several users: accounts, login and sessions, `/home`, rights on FAT enforced by the kernel, remote access per user — a study only: **set aside by the user on 2026-10-05, Onyx stays single-user** — do not start it unasked)
 - `docs/LOCAL-AGENT-WEBKIT.md` (briefing for a local agent continuing the WebKit port on the user's PC: setup, branches, plan)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by

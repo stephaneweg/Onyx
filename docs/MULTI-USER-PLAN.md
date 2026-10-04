@@ -1,6 +1,13 @@
 # Onyx: several users — accounts, sessions, `/home`, rights on FAT, protected remote access
 
-*Status (2026-10-05): **a study and a plan — nothing is built.** The user asked to "see how" Onyx can
+*Status (2026-10-05): **set aside by the user, as an idea.** After reading this study the user decided
+that Onyx stays a **simple, single-user system: no multi-user** — do not start any of it unasked, and
+do not propose it again. The page is kept as a record (its findings on the code — section 1 — remain
+true: no caller check on the kapi, remote services without a password, `kapi_random` not
+cryptographic). What follows is the study as written: nothing is built, no decision of section 2 was
+taken.*
+
+*The study: the user asked to "see how" Onyx can
 become multi-user. This page gives the findings (section 1), a proposed design (sections 3–10), the
 **decisions the user has to take** (section 2: none is taken yet — every "recommended" below is a
 proposal), the steps (section 11) and the tests on the Pi (in each step). No system code is to be
