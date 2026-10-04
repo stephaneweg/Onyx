@@ -173,8 +173,9 @@ static void on_test (Widget &)
 	print_line (j, m, y, m + w, y, 1.5f, 0x4992A7); y += 22;
 	char t[200];
 	snprintf (t, sizeof t, "Printer: %s (%s)", g_pr[i].name, g_pr[i].model); print_text (j, f, 11, m, y, t, 0); y += 16;
-	snprintf (t, sizeof t, "Paper: %s, %d x %d points; the grey frame is the edge of what this printer prints.", s.media, (int) s.paper_w, (int) s.paper_h);
-	print_text (j, f, 11, m, y, t, 0); y += 30;
+	snprintf (t, sizeof t, "Paper: %s, %d x %d points.", s.media, (int) s.paper_w, (int) s.paper_h);
+	print_text (j, f, 11, m, y, t, 0); y += 16;
+	print_text (j, f, 11, m, y, "The grey frame is the edge of what this printer prints.", 0); y += 30;
 	static const float SZ[5] = { 8, 10, 12, 16, 24 };
 	for (int k = 0; k < 5; k++) { y += SZ[k] * 1.1f; snprintf (t, sizeof t, "%d pt - The quick brown fox jumps over the lazy dog", (int) SZ[k]); print_text (j, f, SZ[k], m, y, t, 0); y += SZ[k] * 0.4f; }
 	y += 20; print_text (j, fs, 14, m, y, "Serif italic: Portez ce vieux whisky au juge blond qui fume.", 0x303030); y += 30;
@@ -238,8 +239,8 @@ int main (void)
 
 	GroupBox *ga = new GroupBox (X + 350, 8, W - 360, 250, "Add a network printer");
 	root.addChild (ga);
-	ga->addChild (new Label (10, ct, W - 380, 20, "A printer of the network (Wi-Fi or cable) that speaks", C_TEXT, ga->bg));
-	ga->addChild (new Label (10, ct + 20, W - 380, 20, "IPP Everywhere or AirPrint: most printers since 2012.", C_TEXT, ga->bg));
+	ga->addChild (new Label (10, ct, W - 380, 20, "A printer on the network (Wi-Fi or cable) that", C_TEXT, ga->bg));
+	ga->addChild (new Label (10, ct + 20, W - 380, 20, "speaks IPP Everywhere or AirPrint: most do.", C_TEXT, ga->bg));
 	ga->addChild (new Label (10, ct + 52, 70, 20, "Address", C_TEXT, ga->bg));
 	g_newAddr = new Textbox (84, ct + 48, W - 380 - 74, 26, ""); ga->addChild (g_newAddr);
 	g_newAddr->tip = "The printer's IP address (192.168.0.14; its network page or its screen shows it), or ipp://host:631/ipp/print";
@@ -247,9 +248,9 @@ int main (void)
 	g_newName = new Textbox (84, ct + 82, W - 380 - 74, 26, ""); ga->addChild (g_newName);
 	g_newName->tip = "The name shown in the Print dialog (empty: the printer's own name)";
 	ga->addChild (new Button (84, ct + 118, 86, 28, "Add", on_add));
-	ga->addChild (new Label (10, ct + 156, W - 380, 20, "No driver to install: the printer says what it can do", C_DIS, ga->bg));
-	ga->addChild (new Label (10, ct + 176, W - 380, 20, "(papers, colour, quality). `ipp <address>` in a terminal", C_DIS, ga->bg));
-	ga->addChild (new Label (10, ct + 196, W - 380, 20, "shows its answer.", C_DIS, ga->bg));
+	ga->addChild (new Label (10, ct + 156, W - 380, 20, "No driver: the printer says what it can do", C_DIS, ga->bg));
+	ga->addChild (new Label (10, ct + 176, W - 380, 20, "(papers, colour, quality). In a terminal,", C_DIS, ga->bg));
+	ga->addChild (new Label (10, ct + 196, W - 380, 20, "`ipp <address>` shows its answer.", C_DIS, ga->bg));
 
 	GroupBox *gq = new GroupBox (X + 10, 264, W - 20, 170, "Print queue");
 	root.addChild (gq);

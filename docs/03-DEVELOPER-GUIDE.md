@@ -780,6 +780,79 @@ libraries, over telnet), `sh tools/tests/shlib/compat.sh` (an app built against 
 library N+1: a fix reaches it, an added function and a used reserve keep it running; an app built
 against N+1 is refused by the library N).
 
+### 5.7. Printing (`SD:/lib/print.so`, the print service `printd`)
+
+An app prints by **drawing its pages once**; the system does the rest. Three parts, all MIT:
+
+| Part | Where | What it does |
+|---|---|---|
+| **The library** | `user/print/print.h` → `SD:/lib/print.so` (`print.cpp`, `dialog.cpp`; its table `print/print.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`print/job.h`), with its ticket `<id>.job`; the printers' list. |
+| **The service** | `user/Apps/printd` (IPC service `print`; started at boot and on demand) | The **queue**. Replays a job for its printer: a **PDF** (`print/pdfsink.h` → `pdf/pdfwrite.h`) for the PDF printer; for a network printer, pages **rendered at its resolution** (`print/raster.h`: FreeType glyphs from the job's own fonts, images scaled, paths filled with smoothed edges) and **streamed as PWG Raster over IPP** (`print/ipp.h`, HTTP chunked on port 631) while they are made — or the PDF itself to a printer that takes PDF. Follows the job at the printer, tells the user (notifyd). |
+| **The printers** | `SD:/etc/printers.ini` (`print/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. |
+
+A job does not depend on the printer: the same recorded pages become a PDF or a raster. `print.so` is
+the first library that **uses other libraries**: FreeType (`ft.so`, for `print_text`) and wtk (`wtk.so`,
+for the dialog), through their import stubs linked into it; `print.cpp` opens them when first needed
+(`kapi_lib_open`), and wtk's variables are the program's (wtk's library build of `globals.o`, `--data
+onyx_wtk_data` in the bind object) — so a program that links `lib/print.imp.a` also links
+`lib/wtk.imp.a`.
+
+**Printing from an app** — link `lib/print.imp.a` (before `lib/wtk.imp.a`), include `print/print.h`.
+Lengths are **points** (1/72 inch), y goes down from the page's top-left corner, colours are `0xRRGGBB`:
+
+```c
+#include "print/print.h"
+
+static void cmd_print (void)
+{
+	PrintSetup s; print_setup_default (&s);                   // the default printer, its paper
+	PrintDialogInfo di = { sizeof di, "My document", 2, 0, 0, 0, 0 };
+	if (!print_dialog (&s, &di)) return;                      // the user chose: printer, pages, copies, paper...
+	PrintJob *j = print_begin (&s, "My document");
+	int f = print_font (j, "DejaVu Sans", 0), fb = print_font (j, "DejaVu Sans", PRINT_BOLD);
+	for (int page = 1; page <= 2; page++)
+	{
+		if (!print_page (j, 0, 0)) continue;                  // 0, 0: the paper chosen; 0: not in the range asked
+		print_text (j, fb, 18, 72, 90, "Hello, printer", 0x202020);
+		print_line (j, 72, 100, s.paper_w - 72, 100, 0.75f, 0x808080);
+		print_text (j, f, 11, 72, 130, "A line of text at 11 points.", 0x000000);
+		print_image (j, pixels, pw, ph, 72, 160, 200, 150, PRINT_IMG_PHOTO);
+	}
+	print_end (j);                                            // queued: printd prints it and tells the user
+}
+```
+
+| Call | |
+|---|---|
+| `print_setup_default (&s)`, `print_dialog (&s, &info)`, `print_setup_paper (&s, media, orientation)` | The setup: the printer, the paper (`paper_w`, `paper_h`, and `margin_*`: what the printer cannot print on), the pages, the copies, colour, quality. `PrintDialogInfo.flags = PRINT_DLG_OWN_PAPER`: the document has its own page size (a slide, a PDF): no paper choice, each page is **fitted on the paper** (turned if it lies, scaled, centred). |
+| `print_begin`, `print_page (j, w, h)`, `print_end`, `print_abort` | The job. `print_page` returns 0 for a page outside the range chosen: skip its drawing. |
+| `print_rect`, `print_line`, `print_frame`, `print_path_move / line / curve / close`, `print_path_fill`, `print_path_stroke` | Shapes. |
+| `print_image (j, px, pw, ph, x, y, w, h, flags)` | `PRINT_IMG_ALPHA`: the pixels carry alpha; `PRINT_IMG_PHOTO`: kept as a JPEG. More pixels than 300 an inch are averaged down. |
+| `print_font (j, family, style)`, `print_text`, `print_text_width`, `print_font_metrics` | Text by family (the fonts of `SD:/res/fonts`, `SD:/fonts`; a missing bold / italic face is made from the regular one). |
+| `print_font_data`, `print_glyph` | For an app with its own text layout: its font's bytes, a glyph at its pen position. |
+| `print_printers`, `print_printer_media`, `print_printer_add / remove / default / status`, `print_jobs`, `print_job_cancel`, `print_jobs_forget` | The printers and the queue (what the Printers applet uses). |
+
+**An app that already exports PDF** prints with the same code: `print/pdfprint.h`'s **`PrintWriter`** is a
+`pdfw::Writer` whose pages go to a job (the writer's drawing calls are virtual), and `print_ask (title,
+pages, current, pageW, pageH)` is the dialog + `print_begin` in one call:
+
+```c
+PrintJob *j = print_ask (name, npages, current, pageW, pageH);
+if (j) { { PrintWriter w (j); export_pages (w); } print_end (j); }
+```
+
+That is how Letters, the Spreadsheet, Slides print; Paint, Photos and the PDF Viewer (its pages rendered by
+MuPDF at 300 dots an inch) use `print_image`; the Printers applet's test page uses the text and shape calls.
+
+**Another kind of printer** is a branch of `printd`'s `run ()` (`kind` in `printers.ini`): replay the job
+into a `pjob::Sink` (`print/job.h`: `font`, `begin_page`, `rect`, `glyphs`, `image`, `path`, `end_page`) —
+`pjob::PdfSink` and `praster::Raster` are the two there are — and send the result.
+
+**Tests.** `sh tools/tests/run_print_test.sh` (on the PC: a job recorded, replayed as a PDF and as 300 dpi
+pages, the PWG Raster stream read back pixel for pixel; the IPP messages; with `IPP_PRINTER=<address>`, a real
+printer asked and a `Validate-Job` — nothing is printed). On the Pi: `ipp <address> validate`, the applet's
+**Test page**.
+
 ## 6. Writing a graphical application
 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then

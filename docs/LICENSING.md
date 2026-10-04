@@ -93,6 +93,7 @@ Two weaknesses, worth fixing:
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
 | pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
+| The print system (Onyx) | `user/print/` (`SD:/lib/print.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
 | python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
 | minimp3 | `third_party/minimp3`, Media Player, Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
