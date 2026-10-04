@@ -145,6 +145,30 @@ int engine_auxiliary_main (int argc, char **argv)
 
 // ---- the page's calls ------------------------------------------------------------------------------------
 
+// The pointer's shape the page asks for (a link's hand, the text bar, a resize's arrows): kept, the
+// window shows it while the pointer is over the page (main.cpp, PageView::onMouse).
+static int s_cursor = ENGINE_CUR_ARROW;
+static void setCursor (WKViewRef, WKCursorType type, const void *)
+{
+	switch (type)
+	{
+	case kWKCursorTypeHand:				s_cursor = ENGINE_CUR_HAND; break;
+	case kWKCursorTypeIBeam:			s_cursor = ENGINE_CUR_TEXT; break;
+	case kWKCursorTypeCross:			s_cursor = ENGINE_CUR_CROSSHAIR; break;
+	case kWKCursorTypeWait:				s_cursor = ENGINE_CUR_WAIT; break;
+	case kWKCursorTypeMove:				s_cursor = ENGINE_CUR_MOVE; break;
+	case kWKCursorTypeEastWestResize:
+	case kWKCursorTypeColumnResize:			s_cursor = ENGINE_CUR_SIZE_H; break;
+	case kWKCursorTypeNorthSouthResize:
+	case kWKCursorTypeRowResize:			s_cursor = ENGINE_CUR_SIZE_V; break;
+	case kWKCursorTypeNorthEastSouthWestResize:	s_cursor = ENGINE_CUR_SIZE_NESW; break;
+	case kWKCursorTypeNorthWestSouthEastResize:	s_cursor = ENGINE_CUR_SIZE_NWSE; break;
+	case kWKCursorTypeNotAllowed:			s_cursor = ENGINE_CUR_NO; break;
+	default:					s_cursor = ENGINE_CUR_ARROW; break;
+	}
+}
+int engine_cursor () { return s_cursor; }
+
 static void needsDisplay (WKViewRef, WKRect r, const void *)
 {
 	if (s_client->needsDisplay)
@@ -700,6 +724,7 @@ bool engine_init (const EngineClient *client, int w, int h)
 	memset (&vc, 0, sizeof vc);
 	vc.base.version = 1;
 	vc.setViewNeedsDisplay = needsDisplay;
+	vc.setCursor = setCursor;
 	vc.didNotHandleKeyEvent = keyNotHandled;
 	vc.webProcessCrashed = processCrashed;
 	vc.webProcessDidRelaunch = processRelaunched;

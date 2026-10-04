@@ -295,6 +295,9 @@ public:
 	// whenever the window changes (Damage: drawn, moved, resized...; Touch: full screen).
 	unsigned Id (void) const	{ return m_nId; }
 	unsigned Gen (void) const	{ return m_nGen; }
+	// (kapi v81) the pointer's shape over this window's client area (KAPI_CURSOR_*)
+	unsigned CursorShape (void) const	{ return m_nCursorShape; }
+	void SetCursorShape (unsigned nShape)	{ m_nCursorShape = nShape; }
 	void Touch (void) const		{ m_nGen++; }
 	unsigned ChromeGen (void) const	{ return m_nChromeGen; }
 	void ChromeTouch (void)		{ m_nChromeGen++; }
@@ -382,6 +385,7 @@ private:
 
 	unsigned	m_nId;		// (Id)
 	mutable volatile unsigned m_nGen;	// (Gen)
+	unsigned m_nCursorShape;	// (v81) KAPI_CURSOR_*: the pointer's shape over the client area
 	volatile unsigned m_nChromeGen;	// (ChromeGen)
 	int		m_nX;		// outer position (title bar top-left)
 	int		m_nY;
@@ -459,6 +463,10 @@ public:
 	// Install the mouse-cursor image (a transparent GImage; takes ownership). If
 	// unset, the compositor falls back to a drawn arrow.
 	void SetCursor (GImage *pImage)	{ m_pCursor = pImage; }
+	// (kapi v81) The pointer's other shapes: an image and its hot spot for each KAPI_CURSOR_* but
+	// the arrow (kernel.cpp builds them from gui/cursors.inc); a window's shape changed.
+	void SetCursorImage (unsigned nShape, GImage *pImage, int nHotX, int nHotY);
+	void SetWindowCursor (CWindow *pWindow, unsigned nShape);
 
 	// Shared wallpaper buffer for a wallpaper-writer app. EnsureWallpaperBuffer
 	// allocates (once) a frame-backed, page-aligned screen-sized buffer and returns
@@ -603,6 +611,14 @@ private:
 
 	GImage	  *m_pWallpaper;	// desktop background (owned), or 0 for the solid colour
 	GImage	  *m_pCursor;		// mouse cursor bitmap (owned), or 0 for a drawn arrow
+#define WM_CURSOR_SHAPES 12		// (KAPI_CURSOR_COUNT)
+#define WM_CURSOR_REACH	 12		// a shape's hot spot is at most this far from its top left
+#define WM_CURSOR_BOX	 24		// ... and a shape at most this wide and high
+	GImage	  *m_pShape[WM_CURSOR_SHAPES];	// (v81) the other shapes (owned), 0: the arrow instead
+	int	   m_nShapeHotX[WM_CURSOR_SHAPES], m_nShapeHotY[WM_CURSOR_SHAPES];
+	unsigned   m_nShape;		// the shape shown now
+	void ShowShapeLocked (unsigned nShape);		// change it (the pointer's place made dirty)
+	void PickShapeLocked (void);			// ... to what is under the pointer now
 
 	// App-writable wallpaper (mapped into a writer app; kernel-owned frames).
 	u8	  *m_pWallRaw;		// raw allocation backing the buffer (0 = none yet)

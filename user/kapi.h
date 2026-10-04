@@ -547,6 +547,10 @@ static inline int kapi_net_stats (int pid, struct kapi_net_stats *out)
 	if (out) __builtin_memset (out, 0, sizeof *out);
 	return -KAPI_ENOSYS;
 }
+// (v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had; -1 on an older
+// kernel (the arrow stays). wtk: wk_cursor, from a widget's onMouse.
+static inline int kapi_set_cursor (int shape)
+	{ return KT->version >= 81 && KT->set_cursor ? KT->set_cursor (shape) : -1; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

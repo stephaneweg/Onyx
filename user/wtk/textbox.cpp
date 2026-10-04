@@ -92,6 +92,7 @@ bool Textbox::onMouse (int mx, int /*my*/, int bl, int, int, int)
 {
 	if (mx < 0) { pressed = false; return false; }
 	if (disabled) return true;
+	wk_cursor (KAPI_CURSOR_TEXT);
 	if (bl && !pressed)
 	{
 		pressed = true; setFocus ();

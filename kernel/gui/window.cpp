@@ -22,6 +22,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE),
 	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
+	m_nCursorShape = 0;				// (the arrow)
 	m_pRetired[0] = m_pRetired[1] = m_pRetired[2] = 0;
 	static unsigned s_nNextId = 0;
 	m_nId = ++s_nNextId;
@@ -602,6 +603,7 @@ u32 g_WinTitleTextColor = 0x00FFFFFF;
 CWindowManager::CWindowManager (void)
 :	m_nWindows (0), m_pWallpaper (0), m_pCursor (0),
 	m_pWallRaw (0), m_ulWallPhys (0), m_nWallPages (0), m_bLiveWall (FALSE), m_nWallGen (0),
+	m_nShape (0),
 	m_nCursorX (SCREEN_WIDTH / 2), m_nCursorY (SCREEN_HEIGHT / 2),
 	m_nPrevX (0), m_nPrevY (0),
 	m_bCursorShown (FALSE), m_nLastButtons (0),
@@ -614,6 +616,7 @@ CWindowManager::CWindowManager (void)
 	m_bDnd (FALSE), m_pDndSrc (0), m_pDndOver (0), m_nModifiers (0),
 	m_nDesk (0), m_nDesks (4), m_nDeskGen (0)
 {
+	for (unsigned i = 0; i < WM_CURSOR_SHAPES; i++) { m_pShape[i] = 0; m_nShapeHotX[i] = m_nShapeHotY[i] = 0; }
 	m_DndLabel[0] = '\0';
 	for (unsigned i = 0; i < HELD_WORDS; i++) m_UsbHeld[i] = m_VncHeld[i] = 0;
 	assert (s_pThis == 0);
@@ -1099,7 +1102,12 @@ void CWindowManager::Composite (GImage *pScreen, boolean bCountFrame)
 	{
 		int cx = m_nCursorX;
 		int cy = m_nCursorY;
-		if (m_pCursor != 0 && m_pCursor->IsValid ())
+		GImage *pShape = m_nShape < WM_CURSOR_SHAPES ? m_pShape[m_nShape] : 0;
+		if (pShape != 0 && pShape->IsValid ())		// (v81: a hand, the text bar, ...)
+		{
+			pScreen->PutOther (pShape, cx - m_nShapeHotX[m_nShape], cy - m_nShapeHotY[m_nShape], TRUE);
+		}
+		else if (m_pCursor != 0 && m_pCursor->IsValid ())
 		{
 			pScreen->PutOther (m_pCursor, cx, cy, TRUE);
 		}
@@ -1601,16 +1609,17 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	if (x != m_nCursorX || y != m_nCursorY || !m_bCursorShown)
 	{
 		// the cursor's old and new places (the drag badge, next to it, too)
-		int cw = 17, ch = 17;
-		if (m_pCursor != 0 && m_pCursor->IsValid ()) { cw = m_pCursor->Width (); ch = m_pCursor->Height (); }
+		// (any shape: its box around the hot spot, v81)
+		int cw = WM_CURSOR_BOX, ch = WM_CURSOR_BOX;
 		if (m_bDnd)
 		{
 			int bw = 16 + GImage::TextWidth (m_DndLabel) + GImage::FontWidth () + 16, bh = 18 + GImage::FontHeight () + 10;
 			if (bw > cw) cw = bw;
 			if (bh > ch) ch = bh;
 		}
-		if (m_bCursorShown) ScreenDirtyRect (m_nCursorX, m_nCursorY, cw, ch);
-		ScreenDirtyRect (x, y, cw, ch);
+		const int R = WM_CURSOR_REACH;
+		if (m_bCursorShown) ScreenDirtyRect (m_nCursorX - R, m_nCursorY - R, cw + R, ch + R);
+		ScreenDirtyRect (x - R, y - R, cw + R, ch + R);
 	}
 	m_nCursorX = x; m_nCursorY = y; m_bCursorShown = TRUE;
 
@@ -1626,6 +1635,7 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 		}
 		if (x != m_nPrevX || y != m_nPrevY) EmitPointer (pFs, GUI_EVENT_PTR_MOVE, x, y, nButtons, 0);
 		m_nPrevX = x; m_nPrevY = y; m_nLastButtons = nButtons;
+		ShowShapeLocked (pFs->CursorShape ());
 		m_SpinLock.Release ();
 		return;
 	}
@@ -1811,6 +1821,50 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 	}
 
 	m_nPrevX = x; m_nPrevY = y; m_nLastButtons = nButtons;
+	PickShapeLocked ();
+	m_SpinLock.Release ();
+}
+
+// ---- the pointer's shape (kapi v81) ---------------------------------------------------
+void CWindowManager::SetCursorImage (unsigned nShape, GImage *pImage, int nHotX, int nHotY)
+{
+	if (nShape >= WM_CURSOR_SHAPES) return;
+	m_pShape[nShape] = pImage;
+	m_nShapeHotX[nShape] = nHotX;
+	m_nShapeHotY[nShape] = nHotY;
+}
+
+void CWindowManager::ShowShapeLocked (unsigned nShape)
+{
+	if (nShape >= WM_CURSOR_SHAPES || m_pShape[nShape] == 0) nShape = 0;
+	if (nShape == m_nShape) return;
+	m_nShape = nShape;
+	if (m_bCursorShown)
+		ScreenDirtyRect (m_nCursorX - WM_CURSOR_REACH, m_nCursorY - WM_CURSOR_REACH,
+				 WM_CURSOR_BOX + WM_CURSOR_REACH, WM_CURSOR_BOX + WM_CURSOR_REACH);
+}
+
+// What is under the pointer: a window being dragged by its title shows the four arrows; the
+// window that holds the pointer (a button down) or the one whose client area it is over, its own
+// shape; anything else (a frame, a title bar, the desktop, a drag & drop) the arrow.
+void CWindowManager::PickShapeLocked (void)
+{
+	unsigned nShape = 0;
+	if (m_pDragWindow != 0) nShape = KAPI_CURSOR_MOVE;
+	else if (!m_bDnd)
+	{
+		CWindow *pWin = m_pPtrCaptureWindow != 0 ? m_pPtrCaptureWindow : m_pPtrOverWindow;
+		if (pWin != 0) nShape = pWin->CursorShape ();
+	}
+	ShowShapeLocked (nShape);
+}
+
+void CWindowManager::SetWindowCursor (CWindow *pWindow, unsigned nShape)
+{
+	m_SpinLock.Acquire ();
+	pWindow->SetCursorShape (nShape);
+	if (m_pFullscreen == pWindow) ShowShapeLocked (nShape);
+	else if (m_pFullscreen == 0) PickShapeLocked ();
 	m_SpinLock.Release ();
 }
 

@@ -539,6 +539,7 @@ bool RichTextBox::onMouse (int mx, int my, int bl, int br, int bm, int wheel)
 	(void) br; (void) bm;
 	if (mx < 0) { pressed = false; if (barDrag) { barDrag = false; invalidate (true); } return false; }
 	if (disabled) return true;
+	if (!barDrag && mx < width - WK_SBW) wk_cursor (KAPI_CURSOR_TEXT);
 	if (wheel) { setTopRow (top - wheel); return true; }
 
 	ensureLayout ();

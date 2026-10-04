@@ -69,6 +69,7 @@ void engine_find_done () {}
 void engine_hit (char *link, int, char *image, int) { strcpy (link, "https://kotonstudio.com/fr/#features"); image[0] = 0; }
 void engine_download_url (const char *, const char *) {}
 void engine_download_cancel (int) {}
+int engine_cursor () { return 0; }
 void engine_set_clipboard (void (*) (const char *, unsigned long), unsigned long (*) (char *, unsigned long), unsigned (*) ()) {}
 void engine_load_html (const char *, const char *) { s_told = false; }
 void engine_set_scripts (bool) {}

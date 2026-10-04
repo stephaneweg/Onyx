@@ -1062,7 +1062,8 @@ v78 = **executable memory for a JIT** (WebKit roadmap step 3, docs/08): `vm_map`
 accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* below),
 v79 = **what the kernel is**: `kernel_info` (slot 256), for `/bin/uname` (*v79: kernel_info* below),
 v80 = **the cores' load and the network's bytes by process**: `cpu_stats`, `net_stats` (slots 257,
-258), for the Task Manager's Processor and Network tabs (*v80: cpu_stats, net_stats* below).
+258), for the Task Manager's Processor and Network tabs (*v80: cpu_stats, net_stats* below),
+v81 = **the pointer's shape**: `set_cursor` (slot 259) (*v81: set_cursor* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1450,6 +1451,25 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v81: set_cursor
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 259 | `set_cursor (shape)` | the pointer's shape while it is over the caller's window's client area, or while that window holds the pointer (a button down): `KAPI_CURSOR_ARROW` 0, `_HAND` 1 (a link), `_TEXT` 2 (the I bar), `_MOVE` 3 (four arrows), `_SIZE_H` 4, `_SIZE_V` 5, `_SIZE_NWSE` 6, `_SIZE_NESW` 7 (two arrows: an edge, a corner dragged), `_CELL` 8 (a thick cross: a spreadsheet's cells), `_CROSSHAIR` 9, `_WAIT` 10 (an hourglass), `_NO` 11 (a barred circle) → the shape it had / -1 (no window, an unknown shape). |
+
+The shape is the window's (`CWindow::CursorShape`), kept until changed. The window manager picks
+what it shows after each pointer event and each `set_cursor` (`CWindowManager::PickShapeLocked`):
+the four arrows while a window is dragged by its title; else the shape of the window that holds
+the pointer, or of the one whose client area it is over; the arrow on a frame, a title bar, the
+desktop, a window that never asked, and during a drag & drop. The shapes are images built at boot
+(`kernel.cpp`, `BuiltinCursorShapes`) from `kernel/gui/cursors.inc`, which
+`tools/gui/gen_cursors.py` writes: each shape is drawn there as a set of black pixels, its white
+edge added around, its hot spot given (`--show` prints them). Black with a white edge, as the
+arrow, which stays `kernel.cpp`'s own. A shape is at most 24 x 24 with its hot spot within 12 of
+its top left (`WM_CURSOR_BOX`, `WM_CURSOR_REACH`): the screen's part made dirty when the pointer
+moves or changes is that box around it. Apps do not call this themselves: wtk does (docs/03,
+`wk_cursor`).
 
 ### v80: cpu_stats, net_stats
 

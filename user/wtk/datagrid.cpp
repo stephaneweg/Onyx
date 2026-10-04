@@ -292,6 +292,7 @@ bool DataGrid::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	bool inHead = my >= 1 && my < 1 + headH && mx >= 1 && mx < width - 1;
 	int by = my - 1 - headH;
 	bool inBody = mx >= 1 && mx < 1 + bw && by >= 0 && by < bh;
+	if (m_drag == G_EDGE || (m_drag == G_NONE && inHead && edgeAt (mx) >= 0)) wk_cursor (KAPI_CURSOR_SIZE_H);	// a column's edge
 	// a drag going on
 	if (m_drag != G_NONE)
 	{

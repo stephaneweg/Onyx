@@ -437,6 +437,20 @@ public:
 		}
 	}
 	void scroll_to (int v) { int mx = contentH - viewH (); if (v > mx) v = mx; if (v < 0) v = 0; if (v != sy) { sy = v; invalidate (true); } }
+	// The link of a message's text under a point of the pane, 0 when there is none.
+	const char *link_under (int mx, int my)
+	{
+		for (int i = 0; i < nsh; i++)
+		{
+			Shown &s = sh[i]; if (!s.html || !s.open) continue;
+			int dy = s.bodyY - sy;
+			int lx = mx - PAD, ly = my - dy;
+			if (s.zpx && s.zw > 0) { lx = (int) ((long long) lx * s.html->width () / s.zw); ly = (int) ((long long) ly * s.html->width () / s.zw); }
+			const char *href = s.html->link_at (lx, ly);
+			if (href) return href;
+		}
+		return 0;
+	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
 		static bool was;
@@ -460,6 +474,7 @@ public:
 			int vh = viewH (); WkThumb t = wk_thumb (contentH, vh, sy, vh);
 			scroll_to ((int) wk_thumb_pos (my, vh, contentH, vh, t.h)); return true;
 		}
+		if (my < viewH () && mx < width - WK_SBW && link_under (mx, my)) wk_cursor (KAPI_CURSOR_HAND);
 		if (!down) return my < viewH ();
 		if (mx >= width - WK_SBW && my < viewH ()) { barDrag = true; int vh = viewH (); WkThumb t = wk_thumb (contentH, vh, sy, vh); scroll_to ((int) wk_thumb_pos (my, vh, contentH, vh, t.h)); return true; }
 		if (my >= viewH ()) return false;

@@ -1039,6 +1039,39 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 	int mods = kapi_get_modifiers ();
 	int RW = rowHeadW ();
+	// the pointer's shape: what is dragged, else what a press here would do
+	if (m_drag == D_COLSIZE) wk_cursor (KAPI_CURSOR_SIZE_H);
+	else if (m_drag == D_ROWSIZE) wk_cursor (KAPI_CURSOR_SIZE_V);
+	else if (m_drag == D_CHART) wk_cursor (KAPI_CURSOR_MOVE);
+	else if (m_drag == D_CHARTSIZE) wk_cursor (KAPI_CURSOR_SIZE_NWSE);
+	else if (m_drag == D_FILL) wk_cursor (KAPI_CURSOR_CROSSHAIR);
+	else if (m_drag == D_SELECT || m_drag == D_POINT) wk_cursor (KAPI_CURSOR_CELL);
+	else if (m_drag == D_NONE && in)
+	{
+		if (my < HEAD_H && mx >= RW)				// a column's edge
+		{
+			PaneView pv[4]; panes (pv);
+			for (int p = 2; p <= 3; p++)
+				for (int i = 0; i < pv[p].nc; i++)
+					if (abs (mx - (pv[p].col[i].at + pv[p].col[i].len)) <= 3) wk_cursor (KAPI_CURSOR_SIZE_H);
+		}
+		else if (mx < RW && my >= HEAD_H)			// a row's edge
+		{
+			PaneView pv[4]; panes (pv);
+			for (int p = 1; p <= 3; p += 2)
+				for (int i = 0; i < pv[p].nr; i++)
+					if (abs (my - (pv[p].row[i].at + pv[p].row[i].len)) <= 2) wk_cursor (KAPI_CURSOR_SIZE_V);
+		}
+		else if (mx >= RW && my >= HEAD_H && mx < width - SB && my < height - SB)
+		{
+			Rect sl = sel ();				// the fill handle, a chart, else the cells
+			int x0, y0, w0, h0;
+			if (!m_wholeCols && !m_wholeRows && cellBox (sl.r1, sl.c1, &x0, &y0, &w0, &h0)
+			    && abs (mx - (x0 + w0 - 1)) <= 4 && abs (my - (y0 + h0 - 1)) <= 4) wk_cursor (KAPI_CURSOR_CROSSHAIR);
+			else if (chartAt (mx, my) >= 0) wk_cursor (KAPI_CURSOR_MOVE);
+			else wk_cursor (KAPI_CURSOR_CELL);
+		}
+	}
 	if (wheel && in)
 	{
 		if (mods & MOD_CTRL) { if (onZoom) onZoom (wheel > 0 ? 1 : -1); return true; }

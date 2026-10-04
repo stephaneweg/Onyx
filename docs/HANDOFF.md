@@ -93,6 +93,10 @@ answer in French. The docs stay in English.
   fault kills the app only; the EL1 "legacy" mode and its options are gone; ID register reads emulated;
   `proc_stats` (v74) → `ps` SYSC/s, the Task Manager, `/bin/sysstat`; `tools/el0scan.sh` checks binaries.
   `cpu_stats` / `net_stats` (v80) → the Task Manager's Processor and Network tabs.
+  `set_cursor` (v81) → the pointer's shapes (a hand on links, the I bar on text, arrows on what drags, Sheet's
+  cross): `wk_cursor` in a widget's `onMouse`; drawn by `tools/gui/gen_cursors.py`. Not done yet: Mail's HTML
+  view (its page is drawn by another process: the shape has to come back through `webview_proto.h`), Slides
+  and Studio (another session's), the terminal, a busy app's hourglass.
   The story and the design: `docs/EL0-PROTECTED-MODE.md` §7; the reference: docs/02 §5–§6.
 - **On the Pi (the user, 2026-10-02)**: every test of the plan passes (el0test, faulttest, threads,
   app cores, emulators, Jet, media, office, network, BASIC, kills under load). Merged into `main`

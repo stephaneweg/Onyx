@@ -195,6 +195,17 @@ void Root::run ()
 	}
 }
 
+// ---- the pointer's shape ---------------------------------------------------------------------------
+static int s_curWant = 0, s_curShown = 0;
+void wk_cursor (int shape) { s_curWant = shape; }
+static void cursor_begin () { s_curWant = KAPI_CURSOR_ARROW; }
+static void cursor_end ()
+{
+	if (s_curWant == s_curShown) return;
+	s_curShown = s_curWant;
+	kapi_set_cursor (s_curShown);
+}
+
 Root *&Root::active () { static Root *p = 0; return p; }
 Root *Root::current () { return active (); }
 
@@ -228,7 +239,9 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 		r->handleMouse (-1, -1, 0, 0, 0, 0);
 		return;
 	case GUI_EVENT_PTR_WHEEL:		// route a scroll notch to the widget under the cursor
+		cursor_begin ();
 		r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v));
+		cursor_end ();
 		return;
 	case GUI_EVENT_DROP:			// drag & drop (ABI v42)
 	{
@@ -257,7 +270,9 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 	default:
 		break;
 	}
+	cursor_begin ();
 	r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, 0);
+	cursor_end ();
 }
 
 void Root::keyEvent (unsigned long, int ev, gui_value v)

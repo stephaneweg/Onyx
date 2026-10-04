@@ -1625,6 +1625,14 @@ its licence on the app.
 > `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,
 > `copy` / `cut` / `paste` (system clipboard; ^C / ^X / ^V work by themselves when the app's
 > menu does not take them).
+> **The pointer's shape** (kapi v81): a widget calls **`wk_cursor (KAPI_CURSOR_…)`** from its
+> `onMouse`, each time the pointer moves over it — `_TEXT` over text, `_HAND` over a link,
+> `_SIZE_H` / `_SIZE_V` on an edge that drags, `_MOVE`, `_CELL`, `_CROSSHAIR`, `_WAIT`, `_NO`
+> (`wtk/widget.h`). `Root` starts every pointer event with the arrow and tells the kernel when what
+> was asked has changed: a widget that asks nothing shows the arrow, and nothing has to be put
+> back. A widget that keeps the pointer during a drag (`catchOutside`) asks at each move of the
+> drag. Already done by `Textbox`, `Textarea`, `RichTextBox` (the I bar), a `Splitter`'s grip and a
+> `DataGrid`'s column edges (the two arrows).
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,

@@ -1550,6 +1550,30 @@ static GImage *BuiltinCursor (void)
 	return pImg;
 }
 
+// The pointer's other shapes (kapi v81 set_cursor): gui/cursors.inc, drawn by tools/gui/gen_cursors.py.
+#include "gui/cursors.inc"
+
+static void BuiltinCursorShapes (CWindowManager *pWM)
+{
+	for (unsigned n = 1; n < sizeof s_CursorArt / sizeof s_CursorArt[0] && n < KAPI_CURSOR_COUNT; n++)
+	{
+		const TCursorArt &A = s_CursorArt[n];
+		GImage *pImg = new GImage;
+		if (pImg == 0) return;
+		pImg->SetSize (A.nW, A.nH);
+		if (!pImg->IsValid ()) { delete pImg; return; }
+		for (int y = 0; y < A.nH; y++)
+		{
+			for (int x = 0; x < A.nW; x++)
+			{
+				char c = A.pRows[y * A.nW + x];
+				pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
+			}
+		}
+		pWM->SetCursorImage (n, pImg, A.nHotX, A.nHotY);
+	}
+}
+
 static boolean KeyEq (const char *s, const char *e, const char *pLit)
 {
 	while (s < e && *pLit != '\0' && *s == *pLit) { s++; pLit++; }
@@ -2049,6 +2073,7 @@ boolean CKernel::Initialize (void)
 
 			// Mouse cursor: built in (BuiltinCursor), a GImage the compositor blits.
 			m_WindowManager.SetCursor (BuiltinCursor ());
+			BuiltinCursorShapes (&m_WindowManager);
 		}
 		else
 		{

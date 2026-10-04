@@ -157,7 +157,10 @@
 // v80: + cpu_stats (slot 257): each core's role (the system's, the sound's, an app core and its
 //      owner, the network's) and the microseconds it was busy; + net_stats (slot 258): the bytes a
 //      process's sockets sent and received (pid 0: all of them). The Task Manager's two tabs.
-#define KAPI_ABI_VERSION	80
+// v81: + set_cursor (slot 259): the pointer's shape over the caller's window (KAPI_CURSOR_*: the
+//      arrow, a hand, the text bar, the arrows that move and resize, the cell's cross, a crosshair,
+//      the hourglass, "no"). The kernel shows the four arrows while a window is dragged.
+#define KAPI_ABI_VERSION	81
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -878,6 +881,21 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_LOADING	2		// being read from its file
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
 #define KAPI_IMG_PATH_MAX	256
+
+// (v81) set_cursor: the pointer's shapes (kernel/gui/cursors.inc, drawn by tools/gui/gen_cursors.py).
+#define KAPI_CURSOR_ARROW	0
+#define KAPI_CURSOR_HAND	1		// a link, something to click
+#define KAPI_CURSOR_TEXT	2		// text that can be selected or typed (the I bar)
+#define KAPI_CURSOR_MOVE	3		// four arrows: something moved
+#define KAPI_CURSOR_SIZE_H	4		// two arrows, left and right (a column's edge, a splitter)
+#define KAPI_CURSOR_SIZE_V	5		// up and down
+#define KAPI_CURSOR_SIZE_NWSE	6		// a corner dragged: top left / bottom right
+#define KAPI_CURSOR_SIZE_NESW	7		// top right / bottom left
+#define KAPI_CURSOR_CELL	8		// a thick cross: a spreadsheet's cells
+#define KAPI_CURSOR_CROSSHAIR	9		// a thin cross: a precise point (drawing)
+#define KAPI_CURSOR_WAIT	10		// an hourglass: the app is busy
+#define KAPI_CURSOR_NO		11		// a barred circle: not here
+#define KAPI_CURSOR_COUNT	12
 
 // (v80) cpu_stats: a core's role, the microseconds it was busy since the boot, its owner.
 #define KAPI_CORE_SYSTEM	0		// the scheduler's: the kernel and every process (core 0)
@@ -1772,6 +1790,13 @@ struct TKApiTable
 	// net_stats: pid's bytes received and sent, its open sockets (pid 0: all) -> 0 / -EFAULT. A
 	// process that used no socket: zeros.
 	int (*net_stats) (int pid, struct kapi_net_stats *out);
+
+	// --- v81: the pointer's shape (gui/window.cpp) ---
+	// set_cursor: the shape shown while the pointer is over the caller's window's client area (or
+	// while that window holds the pointer: a button down) -> the shape it had / -1 (no window, an
+	// unknown shape). Kept until changed; the frame, the title bar and the other windows show
+	// their own. An app sets it as the pointer moves (wtk: wk_cursor, from a widget's onMouse).
+	int (*set_cursor) (int shape);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1839,6 +1864,7 @@ KAPI_CHECK_SLOT (image_list, 255);
 KAPI_CHECK_SLOT (kernel_info, 256);
 KAPI_CHECK_SLOT (cpu_stats, 257);
 KAPI_CHECK_SLOT (net_stats, 258);
+KAPI_CHECK_SLOT (set_cursor, 259);
 
 #ifdef __cplusplus
 }
