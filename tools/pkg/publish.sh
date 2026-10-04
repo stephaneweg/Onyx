@@ -54,6 +54,21 @@ if git -C "$REPO" rev-parse -q --verify origin/main >/dev/null; then
 	git -C "$REPO" merge -q --ff-only origin/main
 fi
 
+# ---- Jet's program: not in git (100 MB), carried by its package only. A checkout without it would publish
+# a Jet without its program (2.0.2 and 2.0.4 were): taken back from the last package, else nothing published.
+if [ ! -f sdcard/apps/jet.app/main ]; then
+	LAST=$(ls -v "$REPO"/pkgs/jet-*.opk 2>/dev/null | tail -1)
+	if [ -n "$LAST" ] && python3 -c "
+import sys, zipfile
+z = zipfile.ZipFile (sys.argv[1]); open ('sdcard/apps/jet.app/main', 'wb').write (z.read ('apps/jet.app/main'))" "$LAST" 2>/dev/null; then
+		echo "publish: Jet's program taken back from $(basename "$LAST")"
+	else
+		rm -f sdcard/apps/jet.app/main
+		echo "publish: sdcard/apps/jet.app/main is missing (build it: tools/webkit/build-web.sh): nothing published" >&2
+		exit 2
+	fi
+fi
+
 # ---- the packages ----
 python3 tools/pkg/mkrepo.py --out "$REPO" --key "$KEY" --db --lite sdcard_lite --bump
 

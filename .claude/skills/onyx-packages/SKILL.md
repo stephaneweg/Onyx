@@ -78,6 +78,10 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
    Pages serves the new index a minute or two later:
    `curl -s https://stephaneweg.github.io/onyx-packages/index.txt | grep -A2 '^\[<name>\]'`.
 
+- **Jet's program** (`sdcard/apps/jet.app/main`, 100 MB) is not in git: a fresh checkout lacks it.
+   `publish.sh` takes it back from the last `jet-*.opk` of the repository before packaging (else it stops),
+   so `jet` is never published without its program again (2.0.2 and 2.0.4 were).
+
 ## Never
 
 - Never run `tools/pkg/keygen.py` to "fix" a missing key, never sign with another key: every card

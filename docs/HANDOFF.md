@@ -699,6 +699,10 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   (python-pptx, PowerPoint's template) feeds the reader test and `screenshots/slides-pptx.png`. Also fixed: an
   uninitialised point count in `render.h`'s `PolyB` (an ellipse's outline could hang the renderer). The host
   harness note: the simulator's heap sits at a fixed address, so a one-off test binary may need `setarch -R`.
+  **Packages**: `slides` / `slides-samples` 1.0.1 (the `.pptx` sample); the same publish made **`jet` 2.0.4 without
+  its program** (this checkout had no `sdcard/apps/jet.app/main`, not in git) -- republished at once as 2.0.5 with
+  it (taken from 2.0.3's package); `tools/pkg/publish.sh` now takes Jet's program back from the last package
+  itself, or stops.
   **Next**: a master / layout editing view, effects by paragraph in the show, groups, find and replace, handouts
   and notes pages in the PDF, a vector PDF (the text as text).
 
