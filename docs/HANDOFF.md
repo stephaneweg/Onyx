@@ -706,6 +706,16 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   **Next**: a master / layout editing view, effects by paragraph in the show, groups, find and replace, handouts
   and notes pages in the PDF, a vector PDF (the text as text).
 
+## Studio, the IDE for desktop apps in BASIC: mock-ups (2026-10-04)
+
+- Asked by the user: an IDE for Onyx BASIC aimed at desktop apps, without touching `qbasic`; a GUI designer in the
+  way of Visual Studio's WPF one, a light layout format (a control a line, the indentation for the parent), the
+  window's code generated. **Study and five mock-ups**: `docs/studio/README.md` (`tools/screenshot/mockup_studio.py`):
+  the designer (layout containers, the `.form` text kept in step), the code (event SUBs, controls as objects,
+  completion), debugging, a new project, the generated `Main.form.bas`. The BASIC additions it needs are listed
+  there (objects and properties, `Move`, menus, resize, `$INCLUDE`, a debug channel). **Waiting for the user's
+  word** (the open questions at the end of the page). Nothing built.
+
 ## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
 
 Asked by the user: Letters "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
