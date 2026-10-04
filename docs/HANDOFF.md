@@ -38,8 +38,7 @@ an example) and `docs/04` §11 *Printing*.
   user's choice, no MuPDF in the chain) and streamed as PWG Raster over IPP (`print/ipp.h`).
 - **Printers** applet (`user/Apps/printconf`), `/bin/ipp`; the Control Panel's list scrolls now. **Find**
   (the user's request): a one-shot mDNS query from printd (`scan ()`); from the PC the HP answers it; on the
-  Pi it was started once without harm but **its result was not seen** (the user was using the screen) —
-  to check. A first version tried every address of the /24 with 12 non-blocking connects at a time: **it
+  Pi the user ran it: the HP is found, quickly (2026-10-05). A first version tried every address of the /24 with 12 non-blocking connects at a time: **it
   restarted the Pi** (the network stack; not investigated) — removed. The Pi also restarted once earlier in
   the session, right after `ipp ... validate` and stopping `ftpd` with Ctrl-C: cause unknown, to watch.
 - **File ▸ Print… (Ctrl+P)** in Letters, Sheet, Slides (through `print/pdfprint.h`: their PDF export code),
@@ -50,7 +49,8 @@ an example) and `docs/04` §11 *Printing*.
   exports (`docs/build_docs.py`: no pandoc on this PC); IPPS (TLS), a password; Apple Raster / PCLm printers that take neither PWG Raster nor PDF; two-sided
   printing; a job kept and retried when the printer is off (it fails with a notification today); print from
   Mail, Cardfile, Jet; a command-line `lp`. On the Pi, only Letters' print (dialog, PDF) and the applet were
-  driven by me; the user printed Letters' current page on the HP, in colour ("instant, clean"); Sheet, Slides, Paint, Photos and the PDF
+  driven by me; the user printed Letters' current page on the HP, in colour ("instant, clean"); the user also printed
+  from the Spreadsheet: as on the screen, the same colours and gradients. Slides, Paint, Photos and the PDF
   Viewer were deployed but their Print not exercised.
 
 ## Working conventions (keep them)

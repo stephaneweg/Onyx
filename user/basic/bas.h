@@ -86,6 +86,18 @@ struct Host
 	// program goes on; false = no background player (the VM plays it in the foreground).
 	virtual bool bgNote (double freq, int onMs, int offMs, int wave) { (void) freq; (void) onMs; (void) offMs; (void) wave; return false; }
 	virtual int  bgNotes () { return 0; }			// PLAY(n): notes still queued
+	// AudioKit (audiokit/audiokit.h; the Onyx runtime): a sound file played in the background --
+	// akPlay 0 / -1 (akError: why); akCommand 0 stop, 1 pause (v), 2 volume (v: 0..100), 3 every
+	// note off; akQuery 0 its state (0 stopped, 1 playing, 2 paused, 3 waiting for the output),
+	// 1 its place in seconds, 2 its length --, and notes on the General MIDI synthesizer (akMidi: a
+	// MIDI command, 0x90 note on, 0x80 off, 0xC0 program, 0xB0 controller -> 0 / -1).
+	virtual int  akPlay (const char *path, int loop) { (void) path; (void) loop; return -1; }
+	virtual void akCommand (int what, int v) { (void) what; (void) v; }
+	virtual double akQuery (int what) { (void) what; return 0; }
+	virtual int  akMidi (int cmd, int ch, int d1, int d2) { (void) cmd; (void) ch; (void) d1; (void) d2; return -1; }
+	virtual const char *akError () { return ""; }
+	virtual double akNoteHz (int key) { (void) key; return 0; }		// a MIDI key's frequency
+	virtual int  akNoteKey (const char *name) { (void) name; return -1; }	// "C4", "F#3" -> the key
 	// GUI (Onyx): WINDOW, controls and their events.
 	virtual void window (const char *title, int w, int h) { (void) title; (void) w; (void) h; }
 	virtual int  control (int kind, int x, int y, int w, int h, const char *text, int val)

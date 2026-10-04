@@ -100,6 +100,12 @@ CXX_PROGS = httpget.elf
 # kapi v83 shared libraries (docs/SHARED-LIBS-PLAN.md): the loader's tests, against ../lib/demo.so
 CXX_PROGS += libtest.elf
 libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
+
+# play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
+# off (it only uses the library's integer entries); links the library's import archive.
+play.elf: play.cpp ../crt0.S ../user.ld ../kapi.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
+AK_PROGS = play.elf
 # ipp: a network printer asked what it can do (../print/ipp.h; docs/03 "Printing")
 CXX_PROGS += ipp.elf
 ipp.elf: ../print/ipp.h ../print/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
@@ -124,7 +130,7 @@ V3D_PROGS = v3dprog.elf
 # C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
-all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS) $(PORT_PROGS)
+all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS) $(PORT_PROGS) $(AK_PROGS)
 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
