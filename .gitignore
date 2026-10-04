@@ -119,3 +119,6 @@ pc/dist/Koton/koton/settings.json
 /sdcard_lite/etc/wpa_supplicant.conf
 sdcard/res/wallpaper.*
 sdcard_lite/res/wallpaper.*
+
+# tools/pkg/publish.sh: the Jet package its program was taken back from
+.jet-from-package

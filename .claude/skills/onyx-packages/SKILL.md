@@ -80,7 +80,10 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
 
 - **Jet's program** (`sdcard/apps/jet.app/main`, 100 MB) is not in git: a fresh checkout lacks it.
    `publish.sh` takes it back from the last `jet-*.opk` of the repository before packaging (else it stops),
-   so `jet` is never published without its program again (2.0.2 and 2.0.4 were).
+   so `jet` is never published without its program again (2.0.2 and 2.0.4 were). It notes the package it took
+   it from in `.jet-from-package` (not in git) and takes it again when a newer `jet-*.opk` came since -- unless
+   the program was built here after (2.0.7 was published with 2.0.5's program, left on the disk by an earlier
+   publish; 2.0.8 put 2.0.6's back).
 
 ## Never
 
