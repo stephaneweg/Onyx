@@ -86,6 +86,10 @@ LIBC_PROGS = libctest.elf rdpd.elf
 # Freestanding C++ console tools (built from <name>.cpp).
 CXX_PROGS = httpget.elf
 
+# kapi v83 shared libraries (docs/SHARED-LIBS-PLAN.md): the loader's tests, against ../lib/demo.so
+CXX_PROGS += libtest.elf
+libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
+
 # Console tools on libonyxposix, the POSIX layer (../libc/posix, docs/03 §5.4): newlib + pthreads,
 # BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and
 # library come from ../libc/posix/build/onyx.specs (made first: the posixlib target).
