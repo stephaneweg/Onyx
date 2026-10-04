@@ -2404,6 +2404,8 @@ Up / Down, Enter, Esc, Del, F, E, R, I, + − 0 1, Ctrl+A, Ctrl+F (search), F5 (
 
 ### Jet Browser (`jet`)
 
+![Jet Browser, on the Pi](../screenshots/jet.png)
+
 **Jet** is Onyx's browser, on **WebKit** (the engine of Safari; `docs/08-WEBKIT-PORT.md`). Until
 2026-10-04 the name was a NetSurf port's; the WebKit browser, then called *Jet*, took it over and
 the NetSurf one was removed. Its own package (`pkg install jet`; 100 MB): one program that is the
