@@ -21,6 +21,7 @@
 #include "gamepad.h"
 #include "wtk/wtk.h"
 #include "basic/basscreen.h"
+#include "audiokit/audiokit.h"		// AudioKit: PLAYFILE, MIDINOTE ... (lib/audiokit.imp.a)
 
 using namespace wtk;
 
@@ -274,7 +275,43 @@ public:
 		if (!soundReady ()) return -1;
 		return kapi_sound_start (voice, (unsigned) (freq * 1000), wave, vol) == 0 ? 0 : -1;
 	}
-	void endSound () override { if (audio == 1) { kapi_sound_stop (-1); kapi_msleep (20); kapi_sound_release (); audio = 0; } }
+	void endSound () override
+	{
+		if (akUsed) { ak_play_stop (); ak_notes_off (); }
+		if (audio == 1) { kapi_sound_stop (-1); kapi_msleep (20); kapi_sound_release (); audio = 0; }
+	}
+
+	// ---- AudioKit (SD:/lib/audiokit.so): PLAYFILE, MIDINOTE ... ---------------------------------------------
+	// (its player shares the output with SOUND / PLAY's voices -- the same process holds it --: it keeps
+	// it for as long as the program runs)
+	bool akUsed = false;
+	void akStart () { if (!akUsed) { akUsed = true; ak_play_keep_output (1); } }
+	int akPlay (const char *path, int loop) override { akStart (); return ak_play (path, loop); }
+	void akCommand (int what, int v) override
+	{
+		akStart ();
+		if (what == 0) ak_play_stop ();
+		else if (what == 1) ak_play_pause (v);
+		else if (what == 2) ak_play_volume (v < 0 ? 0 : v);
+		else if (what == 3) ak_notes_off ();
+	}
+	double akQuery (int what) override
+	{
+		if (!akUsed) return 0;
+		return what == 0 ? ak_play_state () : what == 1 ? ak_play_pos_ms () / 1000.0 : ak_play_len_ms () / 1000.0;
+	}
+	int akMidi (int cmd, int ch, int d1, int d2) override
+	{
+		akStart ();
+		if (cmd == 0x90) return ak_note_on (ch, d1, d2);
+		if (cmd == 0x80) ak_note_off (ch, d1);
+		else if (cmd == 0xC0) ak_program (ch, d1);
+		else if (cmd == 0xB0) ak_control (ch, d1, d2);
+		return 0;
+	}
+	const char *akError () override { return ak_play_error (); }
+	double akNoteHz (int key) override { return ak_note_mhz (key) / 1000.0; }
+	int akNoteKey (const char *name) override { return ak_note_parse (name); }
 
 	// ---- GUI controls (wtk) -------------------------------------------------------------------------------
 	int control (int kind, int x, int y, int w, int h, const char *text, int val) override

@@ -177,9 +177,47 @@ lib/print.imp.a: lib/print_stubs.o lib/print_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/wtk.so lib/print.so
+# ---- audiokit.so: AudioKit, the shared sound library (audiokit/audiokit.h; docs/03 "AudioKit"). In it:
+# MeltySynth, Koton's SoundFont synthesizer (Apps/koton/synth: its C++ interface exported as it is), the
+# audio decoders (Apps/media/codecs.c, vorbis.c: minimp3, dr_flac, dr_wav, stb_vorbis -- their C
+# interfaces as they are), and AudioKit's own functions (audiokit/akcore.cpp: the files, the background
+# player, the output, mixing, notes, WAV). Built with the FPU; newlib's libm and libc linked in. Exported:
+# ms::Synthesizer and ms::soundfont_* (not the synthesizer's inner classes), the decoders' functions, ak_*.
+AK_FLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections \
+	   -fno-math-errno -DONYX_LIB_BUILD -I. -I../kernel/include
+AK_CXXFLAGS = $(AK_FLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
+AK_SYNTH_SRC = $(wildcard Apps/koton/synth/*.cpp)
+AK_OBJ = $(patsubst Apps/koton/synth/%.cpp,lib/ak/synth_%.o,$(AK_SYNTH_SRC)) lib/ak/codecs.o lib/ak/vorbis.o lib/ak/akcore.o
+lib/ak/synth_%.o: Apps/koton/synth/%.cpp $(wildcard Apps/koton/synth/*.h)
+	@mkdir -p lib/ak
+	$(CXX) $(AK_CXXFLAGS) -IApps/koton -c $< -o $@
+lib/ak/codecs.o lib/ak/vorbis.o: lib/ak/%.o: Apps/media/%.c Apps/media/codecs.h
+	@mkdir -p lib/ak
+	$(CC) $(AK_FLAGS) -w -I../third_party -IApps/media -c $< -o $@
+lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
+		 Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
+	@mkdir -p lib/ak
+	$(CXX) $(AK_CXXFLAGS) -Wall -I../third_party -IApps/media -IApps/koton -c $< -o $@
+lib/ak/akso.o: audiokit/akso.c lib.h kapi.h
+	@mkdir -p lib/ak
+	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
+audiokit/audiokit.abi:
+	@touch $@
+lib/audiokit_table.S: $(AK_OBJ) lib/ak/akso.o audiokit/audiokit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name audiokit --abi audiokit/audiokit.abi --init ak_lib_init --allow-data . \
+		--export '^(_ZNK?2ms(11Synthesizer|[0-9]+soundfont_)|mp3dec_|drflac_|drwav_|stb_vorbis_|ak_)' \
+		--table lib/audiokit_table.S --stubs lib/audiokit_stubs.S --bind lib/audiokit_bind.cpp $(AK_OBJ)
+lib/audiokit_stubs.S lib/audiokit_bind.cpp: lib/audiokit_table.S ;
+LIBM_A := $(shell $(CC) -mcpu=cortex-a72 -print-file-name=libm.a)
+lib/audiokit.so: $(AK_OBJ) lib/ak/akso.o lib/audiokit_table.o lib/librt.o
+	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBM_A) $(LIBC_A) $(LIBGCC_A)
+lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/wtk.so lib/print.so lib/audiokit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/ft.imp.a lib/wtk.imp.a lib/print.imp.a
+libs: $(SHLIBS) lib/ft.imp.a lib/wtk.imp.a lib/print.imp.a lib/audiokit.imp.a
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -352,16 +390,17 @@ screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h
 # Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Letters (FreeType text through wtk's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
 # the audio engine) and MeltySynth are separate objects; the UI is headers included by main.cpp.
-KOTON_SRC = $(wildcard Apps/koton/engine/*.cpp) $(wildcard Apps/koton/synth/*.cpp) $(wildcard Apps/koton/plug/*.cpp)
+# (its synthesizer, Apps/koton/synth, is in the shared library AudioKit: lib/audiokit.imp.a)
+KOTON_SRC = $(wildcard Apps/koton/engine/*.cpp) $(wildcard Apps/koton/plug/*.cpp)
 KOTON_OBJ = $(patsubst Apps/koton/%.cpp,Apps/koton/obj/%.o,$(KOTON_SRC))
 KOTON_HDR = $(wildcard Apps/koton/engine/*.h) $(wildcard Apps/koton/synth/*.h) $(wildcard Apps/koton/plug/*.h) kplug_proto.h json.hpp kapi.h
 Apps/koton/obj/%.o: Apps/koton/%.cpp $(KOTON_HDR)
 	@mkdir -p $(dir $@)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -c $< -o $@
-koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a \
+koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a lib/audiokit.imp.a \
 	   libc/crt0libc.o libc/onyx_syscalls.o user.ld $(KOTON_HDR)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       $(KOTON_OBJ) lib/wtk.imp.a lib/ft.imp.a -lm -o $@
+	       $(KOTON_OBJ) lib/audiokit.imp.a lib/wtk.imp.a lib/ft.imp.a -lm -o $@
 
 # PDF Viewer (Apps/pdf: docs/pdf/README.md): a newlib app as Letters, on MuPDF -- its fitz + pdf parts, jbig2dec, openjpeg,
 # zlib, libjpeg and a FreeType with the PDF fonts' drivers, built by Apps/pdf/mupdf.mk into Apps/pdf/obj/libmupdf.a (that
@@ -381,10 +420,8 @@ pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clip
 # (built by `make -C av`; their sources and flags: av/codecs.mk) -- and FFmpeg 7.1 (every decoder and
 # demuxer: H.264, H.265, AAC, AVI, MPEG-TS...; GPL-2.0+: the Media Player is distributed under the GPL-2.0), its
 # libraries built by third_party/ffmpeg-7.1.2/onyx/build.sh pi (committed).
-MEDIA_OBJ = Apps/media/obj/codecs.o Apps/media/obj/vorbis.o
-Apps/media/obj/%.o: Apps/media/%.c Apps/media/codecs.h
-	@mkdir -p $(dir $@)
-	$(CC) $(NL_CFLAGS) -w -I../third_party -c $< -o $@
+# (Its music decoders -- codecs.c, vorbis.c -- and the MIDI synthesizer are in the shared library AudioKit:
+# lib/audiokit.imp.a; decode.h and midi.h call them through it.)
 TP := ../third_party
 AV_ARCH := aarch64
 include av/codecs.mk
@@ -396,11 +433,10 @@ MEDIA_AV_LIBS = $(VPX)/libvpx.a $(DAV1D)/libdav1d.a $(OPUS)/libopus.a \
 Apps/media/obj/av/%.o: av/%.c $(wildcard av/*.h) kapi.h
 	@mkdir -p $(dir $@)
 	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
-MEDIA_SYNTH = $(filter Apps/koton/obj/synth/%,$(KOTON_OBJ))
-media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_OBJ) $(MEDIA_AV_OBJ) $(MEDIA_SYNTH) img/imgload.hpp img/pngsave.hpp fileassoc.h notify.h \
+media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_AV_OBJ) lib/audiokit.imp.a img/imgload.hpp img/pngsave.hpp fileassoc.h notify.h \
 	   lib/ft.imp.a ft/wtkface.h lib/wtk.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h $(wildcard av/*.h)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       $(MEDIA_OBJ) $(MEDIA_AV_OBJ) $(MEDIA_SYNTH) lib/wtk.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
+	       $(MEDIA_AV_OBJ) lib/audiokit.imp.a lib/wtk.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
 
 # Koton's plugins (user/kplug.h, the protocol user/kplug_proto.h; the host: Apps/koton/plug): each
 # Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to
@@ -522,8 +558,8 @@ basic/%.o: basic/%.cpp $(BAS_HDR)
 	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
 basic/libbasic.a: $(BAS_OBJ)
 	$(AR) rcs $@ $^
-bin/basic.elf: basic/runtime.cpp basic/libbasic.a lib/wtk.imp.a crt0.S user.ld kapi.h $(BAS_HDR)
-	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a lib/wtk.imp.a -o $@
+bin/basic.elf: basic/runtime.cpp basic/libbasic.a lib/wtk.imp.a lib/audiokit.imp.a audiokit/audiokit.h crt0.S user.ld kapi.h $(BAS_HDR)
+	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a lib/audiokit.imp.a lib/wtk.imp.a -o $@
 
 clean:
 	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf
