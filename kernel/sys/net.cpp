@@ -91,10 +91,14 @@ static inline void St (u32 *p, u32 v)	{ __atomic_store_n (p, v, __ATOMIC_RELEASE
 // The network core sleeps between its rounds once the network has been quiet this long (us); 0:
 // never, it polls on (NetCoreMain). The trial word netsleep=<ms>.
 static unsigned s_nSleepIdleUs = 50000;
-static unsigned s_nSleepUs = 1000;		// the sleep between two rounds of the quiet network (netsleepus=)
+static unsigned s_nSleepUs = 10000;		// the sleep between two rounds of the quiet network (netsleepus=)
 static u32 s_nLastPostUs;			// when core 0 last posted a request (atomic)
 extern "C" unsigned onyx_wl_lastact;		// ether4330.c: when a frame was last read or written
 extern "C" unsigned onyx_wl_polls;		// ... the times the chip was asked and had nothing
+extern "C" int sdiocardintrpending (int arm);	// emmc.c: the card's interrupt flag; arm: its interrupt enabled
+extern "C" unsigned sdiodebugreg (int which);
+static boolean s_bSleepIrq = TRUE;		// the card's interrupt ends the sleep (netirq=0: the time alone)
+static unsigned s_nIrqWakes, s_nIrqBusy;	// sleeps it ended; sleeps not taken because it was pending
 static inline boolean Cas (u32 *p, u32 nFrom, u32 nTo)
 {
 	return __atomic_compare_exchange_n (p, &nFrom, nTo, FALSE, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
@@ -1128,6 +1132,7 @@ void NetTrialLoad (void)
 	onyx_wl_bw5 = TrialValue (Buf, "bw5", onyx_wl_bw5);
 	s_nSleepIdleUs = (unsigned) TrialValue (Buf, "netsleep", (int) (s_nSleepIdleUs / 1000)) * 1000;
 	s_nSleepUs = (unsigned) TrialValue (Buf, "netsleepus", (int) s_nSleepUs);
+	s_bSleepIrq = TrialValue (Buf, "netirq", s_bSleepIrq ? 1 : 0) != 0;
 	if (TrialValue (Buf, "netstat", 0)) { s_bNetStat = TRUE; onyx_wlstat = 1; onyx_tcp_trace = 1; }
 	unsigned nSecs = (unsigned) TrialValue (Buf, "secs", 180);
 	s_nTrialEnd = CTimer::Get ()->GetTicks () + nSecs * HZ;
@@ -1497,9 +1502,9 @@ void NetCoreMain (void)
 		// of its SDIO commands waits one --, so the rounds go on until the driver has counted an
 		// empty answer.)
 		// The quiet network: no frame read or written and no request from core 0 for a while --
-		// the core sleeps a millisecond (less when a request is posted: its SEV; the event stream
-		// ends a WFE every ~1.2 ms at most), then does one round: the chip is asked a thousand
-		// times a second instead of all the time. The first frame or request brings the polling back at once.
+		// the core sleeps 10 ms, or until a request is posted (its SEV) or the card's interrupt
+		// comes (below), then asks the chip once: a hundred times a second instead of all the
+		// time. (The event stream ends a WFE every ~1.2 ms: the conditions are looked at again.) The first frame or request brings the polling back at once.
 		if (   s_nSleepIdleUs != 0
 		    && nNow - onyx_wl_lastact > s_nSleepIdleUs
 		    && nNow - Ld (&s_nLastPostUs) > s_nSleepIdleUs
@@ -1507,6 +1512,16 @@ void NetCoreMain (void)
 		    && s_nCloseOut == Ld (&s_nCloseIn)
 		    && !AnyPosted ())
 		{
+			// (netirq=1) The card's interrupt: pending now -- no sleep, the driver's next
+			// question finds what the chip has; else enabled, and its handler on core 0 ends
+			// the sleep with an event.
+			if (s_bSleepIrq && sdiocardintrpending (1))
+			{
+				s_nIrqBusy++;
+				nPollsAtSleep = onyx_wl_polls;
+			}
+			else
+			{
 			// (a WFE also ends at every spin lock released, on any core -- Circle's unlock sends
 			// the event --, this core's own included: asked again until the time has passed)
 			if (nEventFor != s_nSleepUs)
@@ -1532,18 +1547,27 @@ void NetCoreMain (void)
 			}
 			while (   nWoke - nNow < s_nSleepUs
 			       && s_nCloseOut == Ld (&s_nCloseIn)
-			       && !AnyPosted ());
+			       && !AnyPosted ()
+			       && !(s_bSleepIrq && sdiocardintrpending (0)));
+			if (s_bSleepIrq && nWoke - nNow < s_nSleepUs && sdiocardintrpending (0)) s_nIrqWakes++;
 			CScheduler::Get ()->NoteSleptUs (nWoke - nNow);
 			s_nSleeps++; s_nSleptUs += nWoke - nNow;
 			s_nRoundLast = nWoke;			// (the sleep is not a round's length)
+			}
 		}
 		if (s_bNetStat && nNow - s_nStatStart >= 5000000)
 		{
 			unsigned nUs = nNow - s_nStatStart;
-			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round (the longest %u us), snapshot %u us a round, %u tasks' workers (%u idle); asleep %u %% of the time (%u sleeps)",
+			CLogger::Get ()->Write ("net", LogNotice, "core 3: %u rounds/s, %u us a round (the longest %u us), snapshot %u us a round, %u tasks' workers (%u idle); asleep %u %% of the time (%u sleeps, %u ended by the card's interrupt, %u not taken: it was pending)",
 						(unsigned) ((u64) s_nRounds * 1000000 / nUs), s_nRounds ? nUs / s_nRounds : 0, s_nRoundMax,
 						s_nRounds ? s_nSnapUs / s_nRounds : 0, s_nWorkers, s_nIdle,
-						(unsigned) ((u64) s_nSleptUs * 100 / nUs), s_nSleeps);
+						(unsigned) ((u64) s_nSleptUs * 100 / nUs), s_nSleeps, s_nIrqWakes, s_nIrqBusy);
+			if (s_bSleepIrq)
+			{
+				CLogger::Get ()->Write ("net", LogNotice, "emmc: interrupt %08x status %08x control0 %08x mask %08x enable %08x",
+							sdiodebugreg (0), sdiodebugreg (1), sdiodebugreg (2), sdiodebugreg (3), sdiodebugreg (4));
+			}
+			s_nIrqWakes = 0; s_nIrqBusy = 0;
 			s_nRounds = 0; s_nSnapUs = 0; s_nStatStart = nNow; s_nRoundMax = 0; s_nSleeps = 0; s_nSleptUs = 0;
 		}
 	}

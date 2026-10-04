@@ -937,6 +937,16 @@ the chip once the network is quiet (docs/02, *The network core sleeps when the n
 from it or written to it; `onyx_wl_polls`, the times the polling reader asked the chip and it had
 nothing. No change of behaviour in the driver itself.
 
+`emmc.c`: **`sdiocardintrpending (arm)`** tells whether the card's interrupt is pending, from the
+controller's flag (no command) and, when it is not and `arm` is set, enables that interrupt — its
+handler then sends an event (`sev`) that ends the network core's sleep. Two things had to be put
+right for it. The flag is the line's level only while its status is enabled: written alone it
+stays set after the data lines moved during the last commands (it read "pending" for ever) —
+its status is disabled, then enabled again, and it is sampled anew, as Linux's SDHCI driver does.
+And the interrupt enable register is changed from two cores, the driver's tasks setting bits and
+the handler clearing those that came: every such change is now made under one lock (`irpenable`,
+`mmcinterrupt`). `sdiodebugreg` gives the controller's registers to the kernel's statistics line.
+
 ## 27. TCP: window scaling, a receive window that follows the queue
 
 **Why.** The receive window was a constant — 64240 bytes (§19), never scaled, never smaller: (1)

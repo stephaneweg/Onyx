@@ -1748,7 +1748,7 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   - **A trial.** A Pi is often reachable by its Wi-Fi only: a driver change that keeps the Wi-Fi
     from coming up cannot be taken back from the PC. `SD:/etc/net-trial.txt` holds `name=value`
     words — `wlfast=` (the driver's fast path bits), `tcpws=`, `tcpwin=`, `ackn=`, `ampdutx=`,
-    `ampdurx=`, `bawsize=`, `rxbawsize=`, `ampdurts=`, `bw5=`, `frameburst=`, `netsleep=`, `netsleepus=`, `netstat=1` (the statistics, the
+    `ampdurx=`, `bawsize=`, `rxbawsize=`, `ampdurts=`, `bw5=`, `frameburst=`, `netsleep=`, `netsleepus=`, `netirq=`, `netstat=1` (the statistics, the
     firmware's counters, TCP's timeouts in the log), `secs=` (default 180) —; the bring-up reads it, **deletes it**, applies it for this boot (`NetTrialLoad`), and
     core 0's main task restarts the Pi after `secs` (`NetTrialPoll`) unless
     `SD:/etc/net-trial.keep` exists by then: the next boot is without the trial. Before the
@@ -1762,15 +1762,19 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
     (`onyx_wl_lastact`, the driver's), no request posted by core 0 for 50 ms, none waiting, and the
     driver has asked the chip once, whole, since the last sleep and it had nothing
     (`onyx_wl_polls`: a question is several SDIO commands and each waits a round — sleeping
-    between the rounds made a ping take six sleeps). The sleep ends after 1 ms — the timer's event
-    stream ends a `wfe` every 1.2 ms at most (`CNTKCTL_EL1`, set on that core) — or at once when
-    core 0 posts a request (its `sev`); a `wfe` also ends at every spin lock released on any core
-    (Circle's unlock sends the event), so it is asked again until the time has passed. The first
-    frame or request brings the full pace back. Measured (Pi 4, 150 pings of a quiet Pi): 4.1 ms
-    on average without the sleep, 4.4 ms with it, the core asleep 93 % of the time; the bench, the
-    pings during a download and the echoes are the same with and without. Trial words:
-    `netsleep=<ms>` (0: never sleep), `netsleepus=<us>` (the sleep's length). The chip's SDIO
-    interrupt is not used yet (it would end the sleep at once: the next step).
+    between the rounds made a ping take six sleeps). The sleep ends after 10 ms, or at once when
+    core 0 posts a request (its `sev`) or when **the card's interrupt** comes: before it sleeps
+    the core asks the controller whether the card's interrupt is pending (`sdiocardintrpending`,
+    `emmc.c`: a register read, no SDIO command) — pending: no sleep; else that interrupt is
+    enabled, and its handler, on core 0, sends the event. A `wfe` also ends every 1.2 ms (the
+    timer's event stream, `CNTKCTL_EL1`, set on that core) and at every spin lock released on any
+    core (Circle's unlock sends the event): the conditions are looked at again each time. The
+    first frame or request brings the full pace back. Measured (Pi 4, a quiet Pi pinged 150
+    times): 4.1 ms on average without any sleep; 4.4 ms with a sleep of 1 ms and no interrupt (the
+    core asleep 93 % of the time); 4.0 ms with the interrupt and a sleep of 10 ms (asleep
+    98–99 %); 500 pings during a download limited to 1 MB/s: none lost. Trial words:
+    `netsleep=<ms>` (0: never sleep), `netsleepus=<us>` (the sleep's length), `netirq=0` (the
+    time alone ends the sleep).
   - **`netstat=1`** (`cmdline.txt`): every 5 s the log says the net core's pace (`net: core 3: N
     rounds/s, … us a round` — the stack's tasks all wait by yielding, so a round is the unit of
     every wait: ~13 µs) and the driver's (frames a second, a frame's read time, the link's rate).
