@@ -1163,6 +1163,7 @@ void NetWlanOptions (boolean bStat)
 	// download was lost (docs/05 section 26, 5). TCP then acknowledges one segment in eight (a
 	// frame each on the radio, now), within 10 to 20 ms (onyx_tcp_ws bit 2, docs/05 section 27).
 	onyx_wl_ampdu_tx = 0;
+	onyx_wl_frameburst = 1;		// (several frames in one transmit opportunity: what is sent without A-MPDU goes twice as fast)
 	onyx_tcp_ws = 3;
 	onyx_tcp_ackn = 8;
 }

@@ -917,12 +917,13 @@ and the acknowledgements of what it receives: hence §27's delayed acknowledgeme
 | the kernel's defaults now | the Pi receives | the Pi sends | from the internet | the PC's pings lost during a download | an echo during a download |
 |---|---|---|---|---|---|
 | A-MPDU on what is sent (the table above's last row) | 8.7 MB/s | 8–9.5 MB/s | 7–9 MB/s | 20–75 % | up to 7 s |
-| **no A-MPDU on what is sent, an acknowledgement for 8 segments** | 3.8–4.8 MB/s | 1.3–1.7 MB/s | 5.6–5.9 MB/s | **0 %** | **77 ms at worst** |
+| no A-MPDU on what is sent, an acknowledgement for 8 segments | 3.8–4.8 MB/s | 1.3–1.7 MB/s | 5.6–5.9 MB/s | **0 %** | **77 ms at worst** |
+| **+ frame bursting** (`onyx_wl_frameburst = 1`: the firmware's command 219, which Linux's brcmfmac sets too — several frames in one transmit opportunity) | 4 MB/s | **3.1 MB/s** | 6.5 MB/s | **0 %** | 0.3 s at worst |
 
 The settings are the driver's globals (`onyx_wl_ampdu_tx`, `_ampdu_rx`, `_ba_wsize`,
-`_ampdu_rts`, `_rx_ba_wsize`, `_bw5`; −1: the firmware's own), each a word of the trial file.
-**To do**: the Pi's sending rate without aggregation (1.5 MB/s is 1000 frames a second: slower
-than the air allows — not looked at yet), and whether a newer firmware aggregates soundly.
+`_ampdu_rts`, `_rx_ba_wsize`, `_bw5`, `_frameburst`; −1: the firmware's own), each a word of the
+trial file. **To do**: whether a newer firmware aggregates soundly (the sending rate would be
+6 to 9 MB/s again).
 
 **Trying such a change** on a Pi that is only reachable by its Wi-Fi: the kernel's one-boot trial
 file (docs/02 §11 *A trial*): each of the bits above was tried alone that way before it became
