@@ -708,6 +708,18 @@ def icon_preloadconf():	# a memory chip, a program coming down into it
     for k in range(5): prect(px, 15 + k, 11 + k, 24 - k, 11 + k, teal)
     return px
 
+def icon_printconf():		# a printer: the sheet going in, the printed one coming out
+    px = blank()
+    dark = (52, 60, 76); teal = (73, 146, 167); paper = (240, 240, 236); grey = (150, 158, 170)
+    prect(px, 12, 4, 27, 14, paper); prect(px, 12, 4, 27, 4, grey); prect(px, 12, 4, 12, 14, grey); prect(px, 27, 4, 27, 14, grey)
+    prect(px, 5, 14, 34, 27, dark)				# the body
+    prect(px, 6, 15, 33, 16, (96, 110, 128))
+    prect(px, 29, 18, 31, 19, (120, 220, 130))		# its light
+    prect(px, 9, 23, 30, 24, (30, 34, 44))			# the slot
+    prect(px, 10, 24, 29, 36, paper); prect(px, 10, 36, 29, 36, grey); prect(px, 10, 24, 10, 36, grey); prect(px, 29, 24, 29, 36, grey)
+    prect(px, 13, 27, 26, 27, teal); prect(px, 13, 30, 26, 30, grey); prect(px, 13, 33, 22, 33, grey)
+    return px
+
 def icon_keyconf():		# a keyboard and a mouse
     px = blank()
     prect(px, 2, 12, 29, 28, (86, 92, 104)); pframe(px, 2, 12, 29, 28, (40, 44, 52))
@@ -830,6 +842,7 @@ ICONS = {
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
     "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf, "preloadconf": icon_preloadconf,
     "cardfile": icon_cardfile, "ledger": icon_ledger, "courier": icon_courier, "clipboard": icon_clipboard, "clipd": icon_clipboard,
+    "printconf": icon_printconf, "printd": icon_printconf,
 }
 
 

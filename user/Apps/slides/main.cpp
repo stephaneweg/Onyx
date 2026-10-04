@@ -28,6 +28,7 @@
 #include "find.h"
 #include "pptx.h"
 #include "pdf/pdfwrite.h"
+#include "print/pdfprint.h"
 
 using namespace wtk;
 using namespace sl;
@@ -201,11 +202,10 @@ static float pdf_para (pdfw::Writer &w, float x, float y, float cw, const unsign
 	if (!n) y += lh;
 	return y;
 }
-static void export_pdf (const char *path, const char *title, int mode)
+// the deck's pages into w (a PDF, or a print job: wide the slides' pictures' width in pixels)
+static void deck_pages (pdfw::Writer &w, const char *title, int mode, int wide)
 {
-	pdfw::Writer w;
-	w.info (title, "", 0, "Slides (Onyx)");
-	int pw = mode == PDF_SLIDES ? 1600 : 1200, ph = pw * g_deck.sh / g_deck.sw;
+	int pw = wide, ph = pw * g_deck.sh / g_deck.sw;
 	unsigned *px = (unsigned *) malloc ((size_t) pw * ph * 4);
 	Compositor C; C.init (true);
 	float ptW = g_deck.sw / 35.277778f, ptH = g_deck.sh / 35.277778f;
@@ -217,11 +217,16 @@ static void export_pdf (const char *path, const char *title, int mode)
 		Slide &s = *g_deck.slides[i];
 		if (s.hidden) continue;
 		shown++;
+		if (mode == PDF_SLIDES)
+		{	// (a slide outside the pages to print is not rendered)
+			w.begin_page (ptW, ptH);
+			if (!w.page_wanted ()) { w.end_page (); continue; }
+		}
 		C.frame++;
 		flatten_slide (C, g_deck, s, i, px, pw, ph, pw);
 		C.sweep (0);
 		for (int k = 0; k < pw * ph; k++) px[k] |= 0xFF000000u;
-		if (mode == PDF_SLIDES) { w.begin_page (ptW, ptH); w.image (px, pw, ph, 0, 0, ptW, ptH, true, 92); w.end_page (); continue; }
+		if (mode == PDF_SLIDES) { w.image (px, pw, ph, 0, 0, ptW, ptH, true, 92); w.end_page (); continue; }
 		if (mode == PDF_NOTES)
 		{
 			w.begin_page (A4W, A4H);
@@ -252,6 +257,12 @@ static void export_pdf (const char *path, const char *title, int mode)
 	if (onPage) { foot (); w.end_page (); }
 	C.drop_all ();
 	free (px);
+}
+static void export_pdf (const char *path, const char *title, int mode)
+{
+	pdfw::Writer w;
+	w.info (title, "", 0, "Slides (Onyx)");
+	deck_pages (w, title, mode, mode == PDF_SLIDES ? 1600 : 1200);
 	unsigned len = 0; unsigned char *pdf = w.finish (&len);
 	int r = pdf ? kapi_save_file (path, pdf, len) : -1;
 	delete[] pdf;
@@ -314,6 +325,20 @@ public:
 	void drawBody () override { label (16, titleH () + 12, "The pages:"); }
 	int mode () { for (int i = 0; i < 5; i++) if (r[i]->checked) return i; return 0; }
 };
+// File > Print: the Print dialog (the library's), then the slides, one a page (fitted on the paper, lying),
+// into the job by the PDF export's code. Notes pages and handouts: Export as PDF, then print the PDF.
+static void cmd_print ()
+{
+	if (g_master) { master_close (); g_thumbs.clear (); }
+	char title[120]; scpy (title, g_path[0] ? base_name (g_path) : "Untitled", sizeof title);
+	int shown = 0;
+	for (int i = 0; i < g_deck.slides.n; i++) if (!g_deck.slides[i]->hidden) shown++;
+	PrintJob *j = print_ask (title, shown, 0, g_deck.sw / 35.277778f, g_deck.sh / 35.277778f);
+	if (!j) { focus_view (); return; }
+	{ PrintWriter w (j); deck_pages (w, title, PDF_SLIDES, 2400); }		// (about 200 pixels an inch on A4)
+	if (print_end (j) < 0) wk_messagebox ("Print", "The slides could not be put in the print queue.", MB_OK);
+	focus_view ();
+}
 static void cmd_export_pdf ()
 {
 	if (g_master) { master_close (); g_thumbs.clear (); }
@@ -1568,6 +1593,8 @@ int main (void)
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
 	menu.item ("Export Slide as PNG...", "", 0, cmd_export_png);
+	menu.separator ();
+	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
 	menu.item ("Undo", "^Z", WK_CTRL ('Z'), ui_undo);
 	menu.item ("Redo", "^Y", WK_CTRL ('Y'), ui_redo);

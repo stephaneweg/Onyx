@@ -16,6 +16,7 @@
 
 #include "edit.h"
 #include "pdf/pdfwrite.h"
+#include "print/pdfprint.h"
 
 namespace wr {
 

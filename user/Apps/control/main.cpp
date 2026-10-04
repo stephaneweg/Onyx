@@ -32,7 +32,7 @@ using namespace wtk;
 #define PH	470			// the applets' pane (below it)
 #define H	(HDR + PH)
 #define LINKS	"SD:/apps/control.app/applets"
-#define MAXL	16
+#define MAXL	32
 #define ROWH	78
 #define COLW2	(W / 2)
 
@@ -168,6 +168,22 @@ class ControlRoot : public Root
 {
 public:
 	int hot = -1, down = -1;		// the list: the link under the pointer / pressed
+	int scroll = 0;				// the list scrolled (px): more applets than the pane shows
+	WkBarDrag bar;				// ... its scroll bar
+	int listH () const { return 24 + ((g_nl + 1) / 2) * ROWH; }
+	void scrollTo (int v)
+	{
+		int most = listH () - PH;
+		if (v > most) v = most;
+		if (v < 0) v = 0;
+		if (v != scroll) { scroll = v; invalidate (true); }
+	}
+	void reveal (int i)			// the i-th applet's card wholly in the pane
+	{
+		int y = 12 + (i / 2) * ROWH;
+		if (y - 12 < scroll) scrollTo (y - 12);
+		else if (y + ROWH + 4 > scroll + PH) scrollTo (y + ROWH + 4 - PH);
+	}
 	bool crumbHot = false;
 	int ptrButtons = 0;			// the pane: the buttons held (the events sent)
 	bool inPane = false;
@@ -213,7 +229,8 @@ public:
 		for (int i = 0; i < g_nl; i++)
 		{
 			const Link &l = g_link[i];
-			int x = 14 + (i % 2) * COLW2, y = HDR + 12 + (i / 2) * ROWH, w = COLW2 - 28, h = ROWH - 8;
+			int x = 14 + (i % 2) * COLW2, y = HDR + 12 + (i / 2) * ROWH - scroll, w = COLW2 - 28, h = ROWH - 8;
+			if (y + h <= HDR || y >= H) continue;			// (scrolled out of the pane)
 			bool on = i == hot;
 			if (on) wk_hilite (canvas, x, y, w, h, 8, down == i);
 			else wk_rbox (canvas, x, y, w, h, 8, wk_tone (C_BG, 150), wk_tone (C_BG, 136), 120);
@@ -222,7 +239,8 @@ public:
 					for (int k = 0; k < l.iw && k < 40; k++)
 					{
 						unsigned c = l.icon[j * l.iw + k] & 0xFFFFFF;
-						if (c != 0xFF00FF) canvas.pixel (x + 12 + k, y + (h - 40) / 2 + j, c);
+						int py = y + (h - 40) / 2 + j;
+						if (c != 0xFF00FF && py >= HDR && py < H) canvas.pixel (x + 12 + k, py, c);
 					}
 			unsigned ink = on ? wk_hilite_ink (down == i) : C_TEXT;
 			wk_text (canvas, x + 64, y + 10, l.name, ink, 2);
@@ -243,6 +261,8 @@ public:
 				line++;
 			}
 		}
+		if (listH () > PH)
+			wk_draw_vscroll (canvas, W - WK_SBW - 2, HDR + 2, WK_SBW, PH - 4, wk_thumb (listH (), PH, scroll, PH - 4), C_BG, bar.held);
 	}
 
 	void drawPane ()
@@ -264,8 +284,8 @@ public:
 
 	void onDraw () override
 	{
-		drawBar ();
 		if (g_cur < 0) drawList (); else drawPane ();
+		drawBar ();					// (after the list: a card scrolled under the bar is covered)
 	}
 
 	// ---- each frame: the applet's messages ---------------------------------------------------
@@ -343,11 +363,23 @@ public:
 		bool onCrumb = my < HDR && mx >= 16 && mx < 24 + wk_text_w ("Control Panel", 2) && g_cur >= 0;
 		if (onCrumb != crumbHot) { crumbHot = onCrumb; invalidate (true); }
 		int h = -1;
+		if (g_cur < 0 && listH () > PH)
+		{	// the list's wheel and scroll bar
+			if (wheel) scrollTo (scroll - wheel * (ROWH / 2));
+			long pos = scroll;
+			if (bar.mouse (mx, my, bl, W - WK_SBW - 4, WK_SBW + 4, HDR + 2, PH - 4, listH (), PH, &pos))
+			{
+				scrollTo ((int) pos);
+				if (hot >= 0) { hot = -1; invalidate (true); }
+				pressed = bl != 0; down = -1;
+				return true;
+			}
+		}
 		if (g_cur < 0 && my >= HDR)
 		{
-			int col = mx / COLW2, row = (my - HDR - 12) / ROWH, i = row * 2 + col;
-			int x = 14 + col * COLW2, y = HDR + 12 + row * ROWH;
-			if (my >= HDR + 12 && mx >= x && mx < x + COLW2 - 28 && my < y + ROWH - 8 && i >= 0 && i < g_nl) h = i;
+			int col = mx / COLW2, row = (my - HDR - 12 + scroll) / ROWH, i = row * 2 + col;
+			int x = 14 + col * COLW2, y = HDR + 12 + row * ROWH - scroll;
+			if (my + scroll >= HDR + 12 && mx >= x && mx < x + COLW2 - 28 && my < y + ROWH - 8 && i >= 0 && i < g_nl) h = i;
 		}
 		if (h != hot) { hot = h; invalidate (true); }
 		if (bl && !pressed) { pressed = true; down = h; if (onCrumb) down = -2; invalidate (true); }
@@ -381,7 +413,7 @@ public:
 			else return false;
 			if (h < 0) h = 0;
 			if (h >= g_nl) h = g_nl - 1;
-			hot = h; invalidate (true);
+			hot = h; reveal (h); invalidate (true);
 			return true;
 		}
 		return false;
@@ -397,7 +429,10 @@ static void on_l2 () { if (g_root) g_root->show (2); }  static void on_l3 () { i
 static void on_l4 () { if (g_root) g_root->show (4); }  static void on_l5 () { if (g_root) g_root->show (5); }
 static void on_l6 () { if (g_root) g_root->show (6); }  static void on_l7 () { if (g_root) g_root->show (7); }
 static void on_l8 () { if (g_root) g_root->show (8); }  static void on_l9 () { if (g_root) g_root->show (9); }
-static const MenuAction ON_L[10] = { on_l0, on_l1, on_l2, on_l3, on_l4, on_l5, on_l6, on_l7, on_l8, on_l9 };
+static void on_l10 () { if (g_root) g_root->show (10); } static void on_l11 () { if (g_root) g_root->show (11); }
+static void on_l12 () { if (g_root) g_root->show (12); } static void on_l13 () { if (g_root) g_root->show (13); }
+static void on_l14 () { if (g_root) g_root->show (14); } static void on_l15 () { if (g_root) g_root->show (15); }
+static const MenuAction ON_L[16] = { on_l0, on_l1, on_l2, on_l3, on_l4, on_l5, on_l6, on_l7, on_l8, on_l9, on_l10, on_l11, on_l12, on_l13, on_l14, on_l15 };
 
 // Another Control Panel runs (perhaps on another workspace): bring it to the front.
 static void raise_other (void)
@@ -425,7 +460,7 @@ int main (void)
 	g_menu.menu ("Settings");
 	g_menu.item ("All Settings", "", 0, on_home);
 	g_menu.separator ();
-	for (int i = 0; i < g_nl && i < 10; i++) g_menu.item (g_link[i].name, "", 0, ON_L[i]);
+	for (int i = 0; i < g_nl && i < 16; i++) g_menu.item (g_link[i].name, "", 0, ON_L[i]);
 	g_menu.separator ();
 	g_menu.item ("Quit", "^Q", WK_CTRL ('Q'), on_quit);
 	g_menu.publish ();

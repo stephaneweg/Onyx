@@ -13,6 +13,7 @@
 #include "Apps/photos/editor.h"
 #include "wallpaper.h"
 #include "pdf/pdfwrite.h"
+#include "print/print.h"
 
 namespace photos {
 
@@ -350,6 +351,43 @@ static void act_pdf (int album)
 	delete[] pdf;
 	if (ok < 0) wk_messagebox ("Photos", "The PDF could not be written.", MB_OK);
 	else { char s[300]; snprintf (s, sizeof s, "Saved: %s", base_name (out)); status_note (s); }
+}
+
+// ---- printing: each photo a page, as large as what the printer prints of the paper takes it, centred ----------------------------------
+// (one: the photo shown in the viewer; else the photos selected). The Print dialog is the library's (print/print.h).
+static void act_print (int one = -1)
+{
+	Vec<int> c;
+	if (one >= 0) c.push (one); else chosen (c);
+	if (!c.n) { free (c.a); wk_messagebox ("Photos", "Select the photos to print first.", MB_OK); return; }
+	char title[160];
+	if (c.n == 1) scpy (title, base_name (g_lib.ph[c[0]].path), sizeof title); else snprintf (title, sizeof title, "%d photos", c.n);
+	PrintSetup ps; print_setup_default (&ps);
+	{ const Photo &p = g_lib.ph[c[0]]; bool turn = p.orient >= 5; if ((turn ? p.h : p.w) > (turn ? p.w : p.h)) print_setup_paper (&ps, 0, PRINT_LANDSCAPE); }
+	PrintDialogInfo di = { sizeof di, title, c.n, 0, 0, 0, 0 };
+	if (!print_dialog (&ps, &di)) { free (c.a); return; }
+	PrintJob *j = print_begin (&ps, title);
+	if (j)
+	{
+		status_note ("Preparing the pages...");
+		float l = ps.margin_l > 18 ? ps.margin_l : 18, t = ps.margin_t > 18 ? ps.margin_t : 18;
+		float r = ps.margin_r > 18 ? ps.margin_r : 18, b = ps.margin_b > 18 ? ps.margin_b : 18;
+		float aw = ps.paper_w - l - r, ah = ps.paper_h - t - b;
+		for (int i = 0; i < c.n; i++)
+		{
+			if (!print_page (j, 0, 0)) continue;			// (not one of the pages to print: not even read)
+			const Photo &p = g_lib.ph[c[i]];
+			Pix full; if (!Thumbs::load_full (p.path, p.orient, full)) continue;
+			opaque (full);
+			float k = aw / full.w < ah / full.h ? aw / full.w : ah / full.h;
+			float w = full.w * k, h = full.h * k;
+			print_image (j, full.px, full.w, full.h, l + (aw - w) / 2, t + (ah - h) / 2, w, h, PRINT_IMG_ALPHA | PRINT_IMG_PHOTO);
+			full.free_ ();
+		}
+	}
+	free (c.a);
+	if (!j || print_end (j) < 0) wk_messagebox ("Photos", "The photos could not be put in the print queue.", MB_OK);
+	else status_note ("In the print queue.");
 }
 
 // ---- the slideshow ---------------------------------------------------------------------------------------------------------------------------

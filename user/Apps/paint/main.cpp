@@ -20,6 +20,7 @@
 // MIT licence (Onyx).
 //
 #include <math.h>
+#include "print/print.h"
 #include "kapi.h"
 #include "wtk/wtk.h"
 #include "ft/wtkface.h"
@@ -128,6 +129,34 @@ static void export_as (const char *ext)
 		unsigned n; unsigned char *b = export_bytes (path, &n);
 		if (kapi_save_file (path, b, n) < 0) wk_messagebox ("Export", "The file could not be written.", MB_OK);
 		delete[] b;
+	}
+	focus_view ();
+}
+// File > Print: the Print dialog (print/print.h: the printer, the paper...), then the picture -- as the
+// screen shows it, its layers flattened -- on one page: at its size (96 pixels an inch), made smaller if
+// it does not fit in what the printer prints, centred.
+static void cmd_print ()
+{
+	settle ();
+	const char *name = g_path[0] ? base_name (g_path) : "Untitled";
+	PrintSetup ps; print_setup_default (&ps);
+	if (D.w > D.h) print_setup_paper (&ps, 0, PRINT_LANDSCAPE);
+	PrintDialogInfo di = { sizeof di, name, 1, 0, 0, 0, 0 };
+	if (print_dialog (&ps, &di))
+	{
+		PrintJob *j = print_begin (&ps, name);
+		if (j && print_page (j, 0, 0))
+		{
+			float l = ps.margin_l > 18 ? ps.margin_l : 18, t = ps.margin_t > 18 ? ps.margin_t : 18;
+			float r = ps.margin_r > 18 ? ps.margin_r : 18, b = ps.margin_b > 18 ? ps.margin_b : 18;
+			float aw = ps.paper_w - l - r, ah = ps.paper_h - t - b, w = D.w * 0.75f, h = D.h * 0.75f;
+			float k = aw / w < ah / h ? aw / w : ah / h;
+			if (k < 1) { w *= k; h *= k; }
+			unsigned *flat = flatten ();
+			print_image (j, flat, D.w, D.h, l + (aw - w) / 2, t + (ah - h) / 2, w, h, PRINT_IMG_ALPHA);
+			delete[] flat;
+		}
+		if (!j || print_end (j) < 0) wk_messagebox ("Print", "The picture could not be put in the print queue.", MB_OK);
 	}
 	focus_view ();
 }
@@ -1348,6 +1377,8 @@ int main (void)
 	menu.item ("Export as JPEG...", "", 0, cmd_export_jpg);
 	menu.item ("Export as BMP...", "", 0, cmd_export_bmp);
 	menu.item ("Export as GIF...", "", 0, cmd_export_gif);
+	menu.separator ();
+	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
 	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
 	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);

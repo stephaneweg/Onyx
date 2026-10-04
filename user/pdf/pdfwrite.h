@@ -15,6 +15,9 @@
 //   w.outline (level, "Title", page, y);  w.info ("Title", "Author", 0, "Writer (Onyx)");
 //   unsigned n; unsigned char *pdf = w.finish (&n);    ... delete[] pdf
 //
+// The drawing calls are virtual: print/pdfprint.h's PrintWriter is a Writer whose pages go to a printer
+// (an app's "Export as PDF" code prints as it is).
+//
 // ---------------------------------------------------------------------------------------------------------------
 // MIT License
 //
@@ -112,7 +115,7 @@ public:
 	Writer () : m_fonts (0), m_nfont (0), m_pages (0), m_npage (0), m_imgs (0), m_nimg (0), m_links (0), m_nlink (0), m_marks (0), m_nmark (0),
 		    m_inPage (false), m_curFont (-1), m_curSize (-1), m_curFill (0xFFFFFFFF), m_inText (false)
 	{ for (int i = 0; i < 4; i++) m_info[i] = 0; }
-	~Writer ()
+	virtual ~Writer ()
 	{
 		for (int i = 0; i < m_nfont; i++) { delete[] m_fonts[i].used; delete[] m_fonts[i].uni; }
 		delete[] m_fonts;
@@ -128,7 +131,7 @@ public:
 	}
 
 	// a TrueType font (its bytes stay the caller's until finish) -> its number, -1 not a TrueType font
-	int add_font (const unsigned char *ttf, unsigned len)
+	virtual int add_font (const unsigned char *ttf, unsigned len)
 	{
 		for (int i = 0; i < m_nfont; i++) if (m_fonts[i].ttf == ttf) return i;
 		Font f; for (unsigned i = 0; i < sizeof f; i++) ((unsigned char *) &f)[i] = 0;
@@ -146,13 +149,13 @@ public:
 		for (int i = 0; i < 4; i++) { delete[] m_info[i]; m_info[i] = 0; if (v[i] && v[i][0]) { int n = slen (v[i]); m_info[i] = new char[n + 1]; for (int k = 0; k <= n; k++) m_info[i][k] = v[i][k]; } }
 	}
 
-	void begin_page (float w, float h)
+	virtual void begin_page (float w, float h)
 	{
 		if (m_inPage) end_page ();
 		m_pw = w; m_ph = h; m_inPage = true; m_curFont = -1; m_curSize = -1; m_curFill = m_curStroke = 0xFFFFFFFF; m_inText = false; m_curRender = 0;
 		m_c.n = 0; m_pageImgs.n = 0;
 	}
-	void fill_rect (float x, float y, float w, float h, unsigned rgb)
+	virtual void fill_rect (float x, float y, float w, float h, unsigned rgb)
 	{
 		if (w <= 0 || h <= 0) return;
 		text_end ();
@@ -160,7 +163,7 @@ public:
 		put_num (m_c, x); m_c.put (' '); put_num (m_c, m_ph - y - h); m_c.put (' '); put_num (m_c, w); m_c.put (' '); put_num (m_c, h); put_s (m_c, " re f\n");
 	}
 	// a glyph of font f at size (points), its pen at (x, baseline); bold: a made bold (thickened), italic: slanted
-	void glyph (int f, float size, float x, float y, unsigned gid, unsigned unicode, unsigned rgb, bool bold = false, bool italic = false)
+	virtual void glyph (int f, float size, float x, float y, unsigned gid, unsigned unicode, unsigned rgb, bool bold = false, bool italic = false)
 	{
 		if (f < 0 || f >= m_nfont) return;
 		Font &F = m_fonts[f];
@@ -180,7 +183,7 @@ public:
 		put_s (m_c, italic ? "1 0 0.21 1 " : "1 0 0 1 "); put_num (m_c, x); m_c.put (' '); put_num (m_c, m_ph - y); put_s (m_c, " Tm <"); put_hex4 (m_c, gid); put_s (m_c, "> Tj\n");
 	}
 	// an image (0xAARRGGBB) drawn at (x, y, w, h); jpeg: kept as a JPEG (a photo: smaller), its quality 1..100
-	void image (const unsigned *px, int pw, int ph, float x, float y, float w, float h, bool jpeg = false, int quality = 85)
+	virtual void image (const unsigned *px, int pw, int ph, float x, float y, float w, float h, bool jpeg = false, int quality = 85)
 	{
 		if (!px || pw <= 0 || ph <= 0 || w <= 0 || h <= 0) return;
 		text_end ();
@@ -210,9 +213,49 @@ public:
 		put_s (m_c, "q "); put_num (m_c, w); put_s (m_c, " 0 0 "); put_num (m_c, h); m_c.put (' '); put_num (m_c, x); m_c.put (' '); put_num (m_c, m_ph - y - h);
 		put_s (m_c, " cm /Im"); put_int (m_c, k); put_s (m_c, " Do Q\n");
 	}
+	// a JPEG file's bytes as they are (baseline, RGB or grey: pw x ph pixels), drawn at (x, y, w, h)
+	void image_jpeg (const unsigned char *jpg, unsigned len, int pw, int ph, float x, float y, float w, float h)
+	{
+		if (!jpg || !len || pw <= 0 || ph <= 0 || w <= 0 || h <= 0) return;
+		text_end ();
+		Image im; im.w = pw; im.h = ph; im.jpeg = true; im.alpha = 0; im.alen = 0; im.obj = 0; im.len = len;
+		im.data = new unsigned char[len];
+		for (unsigned i = 0; i < len; i++) im.data[i] = jpg[i];
+		Image *n = new Image[m_nimg + 1];
+		for (int i = 0; i < m_nimg; i++) n[i] = m_imgs[i];
+		n[m_nimg] = im; delete[] m_imgs; m_imgs = n;
+		int k = m_nimg++;
+		m_pageImgs.put (&k, sizeof k);
+		put_s (m_c, "q "); put_num (m_c, w); put_s (m_c, " 0 0 "); put_num (m_c, h); m_c.put (' '); put_num (m_c, x); m_c.put (' '); put_num (m_c, m_ph - y - h);
+		put_s (m_c, " cm /Im"); put_int (m_c, k); put_s (m_c, " Do Q\n");
+	}
+	// a path: n points, each with its verb (0 move to, 1 line to, 2 a Bezier curve's three points, 3 close);
+	// filled (strokeW 0: the non-zero rule) or stroked with a line strokeW wide (square ends, mitred corners)
+	void path (const float *xy, const unsigned char *verb, int n, unsigned rgb, float strokeW)
+	{
+		if (n < 2) return;
+		text_end ();
+		if (strokeW > 0)
+		{
+			if (m_curStroke != rgb) { put_rgb (m_c, rgb, "RG"); m_curStroke = rgb; }
+			put_num (m_c, strokeW); put_s (m_c, " w 2 J\n");
+		}
+		else fill (rgb);
+		for (int i = 0; i < n; i++)
+		{
+			if (verb[i] == 3) { put_s (m_c, "h\n"); continue; }
+			if (verb[i] == 2 && i + 2 < n)
+			{
+				for (int k = 0; k < 3; k++) { put_num (m_c, xy[(i + k) * 2]); m_c.put (' '); put_num (m_c, m_ph - xy[(i + k) * 2 + 1]); m_c.put (' '); }
+				put_s (m_c, "c\n"); i += 2; continue;
+			}
+			put_num (m_c, xy[i * 2]); m_c.put (' '); put_num (m_c, m_ph - xy[i * 2 + 1]); put_s (m_c, verb[i] == 0 ? " m\n" : " l\n");
+		}
+		put_s (m_c, strokeW > 0 ? "S\n" : "f\n");
+	}
 	void link_uri (float x, float y, float w, float h, const char *uri) { add_link (x, y, w, h, uri, -1, 0); }
 	void link_page (float x, float y, float w, float h, int page, float ty) { add_link (x, y, w, h, 0, page, ty); }
-	void end_page ()
+	virtual void end_page ()
 	{
 		if (!m_inPage) return;
 		text_end ();
@@ -226,6 +269,8 @@ public:
 		m_inPage = false;
 	}
 	int pages () const { return m_npage + (m_inPage ? 1 : 0); }
+	// the page begun will be kept (a Writer that prints only some pages says no: its drawing can be skipped)
+	virtual bool page_wanted () const { return true; }
 	// a bookmark: level 0 (a chapter), 1 (its sections)...; page from 0; y: from the page's top (points)
 	void outline (int level, const char *title, int page, float y)
 	{
