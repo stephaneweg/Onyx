@@ -131,11 +131,15 @@ ak_resampler *ak_resampler_new (int in_rate, int out_rate);
 int ak_resample (ak_resampler *r, const short *in, int in_frames, short *out, int out_cap, int *used);
 void ak_resampler_free (ak_resampler *r);
 
-// (FPU programs) Two float channels (-1..1) -> 16-bit stereo, a soft limiter instead of clipping.
+// (FPU programs) Two float channels (-1..1) -> 16-bit stereo, through the soft limiter (Koton's:
+// straight up to 0.75, then a knee that never passes 1) instead of clipping.
 void ak_f32_to_s16 (const float *left, const float *right, short *out, int frames, float gain);
+float ak_soft_clip (float x);
 
 // ---- notes -----------------------------------------------------------------------------------
 int ak_note_mhz (int key);				// a MIDI key's frequency, milli-Hz (69 = A4 = 440000)
+int ak_note_key (int note, int octave);			// a note (0 = C .. 11 = B) and an octave -> the key (C4 = 60)
+int ak_note_octave_mhz (int note, int octave);		// ... its frequency, milli-Hz
 void ak_note_name (int key, char *out8);		// "C4", "F#3" (60 = C4)
 int ak_note_parse (const char *name);			// "C4", "f#3", "Bb2" -> the key, -1
 
@@ -143,17 +147,53 @@ int ak_note_parse (const char *name);			// "C4", "f#3", "Bb2" -> the key, -1
 // The 44-byte header of a 16-bit PCM file of data_bytes bytes of samples -> 44.
 int ak_wav_header (unsigned char *out44, int rate, int channels, unsigned data_bytes);
 int ak_wav_save (const char *path, const short *frames, int n, int rate);	// stereo -> 0 / -1
+// A long file written as it is made (an export): its length first, then its frames, then the end.
+typedef struct ak_wav ak_wav;
+ak_wav *ak_wav_begin (const char *path, int rate, int channels, long long frames);	// 0: not created
+int ak_wav_write (ak_wav *w, const short *frames, int n);	// -> the frames taken
+int ak_wav_end (ak_wav *w);					// 0 / -1
 
 // ---- the synthesizer, for C and BASIC (C++: meltysynth.h's ms::Synthesizer is exported too) ----
 // The default SoundFont: the first .sf2 of SD:/res/soundfonts (the package GeneralUser GS), loaded
 // once per process -> an ms::SoundFont *, 0: err says why.
 void *ak_soundfont_default (char *err, int cap);
 const char *ak_soundfont_name (void);			// its name ("": none loaded)
+// A SoundFont's file: `preferred` if it exists, else the first .sf2 of SD:/res/soundfonts,
+// SD:/koton/soundfonts, SD:/music/soundfonts, SD:/music, SD:/apps/koton.app -> 1 (out: its path) / 0.
+int ak_soundfont_find (const char *preferred, char *out, int cap);
+void *ak_soundfont_load (const char *path, char *err, int cap);	// -> an ms::SoundFont * of the caller's (0: err)
+void ak_soundfont_free (void *sf);
+// The file the default SoundFont is to be (a program's setting; before the first MIDI sound). "": none.
+void ak_soundfont_prefer (const char *path);
 typedef struct ak_synth ak_synth;
 ak_synth *ak_synth_new (void);				// on the default SoundFont, at AUDIOKIT_RATE -> 0: none
 void ak_synth_free (ak_synth *s);
 void ak_synth_midi (ak_synth *s, int channel, int command, int data1, int data2);	// 0x90 note on, 0x80 off, 0xC0 program...
 void ak_synth_render (ak_synth *s, short *out, int frames);	// never allocates, never calls the kernel
+
+// ---- the FM synthesizer (the kernel's, in the library: the same 16 voices, the same sound) --------
+// The voices are played by the player's thread, mixed with the file and the MIDI notes. `wave` and
+// the instrument are the kapi's (SOUND_SQUARE ... SOUND_FM, struct kapi_fm_instrument). The kernel's
+// own voices (kapi_sound_start) stay for the programs that use them.
+struct kapi_fm_instrument;
+int ak_fm_instrument (int voice, const struct kapi_fm_instrument *ins);	// 0 / -1
+int ak_fm_start (int voice, unsigned milli_hz, int wave, int volume);		// voice 0..15, volume 0..255
+void ak_fm_stop (int voice);							// -1: all
+void ak_fm_render (short *out, int frames);	// the voices' next frames written to out (off line: an export)
+void ak_fm_live (int on);	// 0: the player leaves the voices alone -- the program renders them (ak_fm_render); 1 (at first): heard
+
+// ---- effects (FPU programs): MeltySynth's reverb (Freeverb) and chorus ----------------------------
+typedef struct ak_reverb ak_reverb;
+ak_reverb *ak_reverb_new (int rate);
+void ak_reverb_set (ak_reverb *r, float room, float damp, float wet, float width);	// < 0: unchanged
+void ak_reverb_process (ak_reverb *r, const float *in, float *left, float *right, int frames);	// mono in, stereo out
+void ak_reverb_mute (ak_reverb *r);
+void ak_reverb_free (ak_reverb *r);
+typedef struct ak_chorus ak_chorus;
+ak_chorus *ak_chorus_new (int rate, float delay_s, float depth_s, float hz);	// (MeltySynth's own: 0.002, 0.0019, 0.4)
+void ak_chorus_process (ak_chorus *c, const float *inL, const float *inR, float *outL, float *outR, int frames);
+void ak_chorus_mute (ak_chorus *c);
+void ak_chorus_free (ak_chorus *c);
 
 #ifdef __cplusplus
 }

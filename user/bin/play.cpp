@@ -3,6 +3,7 @@
 // audiokit/audiokit.h): MP3, FLAC, WAV, Ogg Vorbis, MIDI (through the SoundFont).
 //   play <file> [volume 0..100]     plays it to its end (Ctrl+C / a key on stdin: stop)
 //   play --info <file>              what the file is
+//   play --fm                       a scale on the FM synthesizer, rendered off line then heard (self-test)
 //   play --notes                    a scale on the General MIDI synthesizer (the library's self-test)
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
@@ -68,13 +69,43 @@ static int notes (void)
 	return 0;
 }
 
+static int fm (void)
+{
+	struct kapi_fm_instrument k;
+	for (unsigned i = 0; i < sizeof k; i++) ((volatile unsigned char *) &k)[i] = 0;
+	for (int o = 0; o < 2; o++) { k.op[o].attack = 15; k.op[o].decay = 4; k.op[o].sustain = 2; k.op[o].release = 6; k.op[o].mult = 1; }
+	k.op[0].level = 24; k.op[0].mult = 2; k.feedback = 3;
+	if (ak_fm_instrument (0, &k) != 0) { ax_putln ("play: the FM instrument was refused"); return 1; }
+	// off line first: the voice rendered by this program, its loudest sample
+	static short buf[2 * 4096];
+	ak_fm_live (0);
+	ak_fm_start (0, (unsigned) ak_note_octave_mhz (9, 4), SOUND_FM, 220);
+	ak_fm_render (buf, 4096);
+	ak_fm_stop (0);
+	int peak = 0;
+	for (int i = 0; i < 2 * 4096; i++) { int v = buf[i] < 0 ? -buf[i] : buf[i]; if (v > peak) peak = v; }
+	ax_puts ("off line: A4 "); putn (ak_note_octave_mhz (9, 4) / 1000); ax_puts (" Hz, peak "); putn (peak); ax_putln (peak > 500 ? "  ok" : "  SILENT");
+	ak_fm_live (1);
+	static const int scale[8] = { 0, 2, 4, 5, 7, 9, 11, 12 };
+	for (int i = 0; i < 8; i++)
+	{
+		ak_fm_start (0, (unsigned) ak_note_octave_mhz (scale[i], 4), SOUND_FM, 220);
+		kapi_msleep (220);
+		ak_fm_stop (0);
+		kapi_msleep (30);
+	}
+	kapi_msleep (800);
+	return peak > 500 ? 0 : 1;
+}
+
 int main (void)
 {
 	static char a[512];
 	kapi_get_args (a, sizeof a);
 	char *p = a; while (*p == ' ') p++;
-	if (!*p) { ax_putln ("usage: play <file> [volume 0..100] | play --info <file> | play --notes"); return 1; }
+	if (!*p) { ax_putln ("usage: play <file> [volume 0..100] | play --info <file> | play --notes | play --fm"); return 1; }
 	if (p[0] == '-' && p[1] == '-' && p[2] == 'n') return notes ();
+	if (p[0] == '-' && p[1] == '-' && p[2] == 'f') return fm ();
 	if (p[0] == '-' && p[1] == '-' && p[2] == 'i') { p += 6; while (*p == ' ') p++; return info (p); }
 	// the file's name, then a volume (a name with spaces: in quotes by the shell)
 	int vol = -1;

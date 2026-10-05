@@ -17,6 +17,7 @@
 //     window, the input and the sound stay on this thread, and a slow picture no longer
 //     slows the game down. Without a free core it runs here, as before.
 //
+#include "audiokit/audiokit.h"
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
@@ -191,7 +192,7 @@ static void on_pocket () { palette (PAL_POCKET); }
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; ak_out_close (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
@@ -347,7 +348,7 @@ int main (void)
 	if (wantFull) full_screen (true);
 
 	static short pcm[4096 * 2];
-	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0;
+	unsigned freeFrames = 0;
 	g_m->setAudioRate (SOUND_RATE);
 	if (!ec_init (&g_ec, gb::W, gb::H, gb_frame)) return 1;
 	g_loading = false;
@@ -362,16 +363,16 @@ int main (void)
 		pump_events ();
 		g_ec.btn = buttons ();
 		if (g_paused) { root.invalidate (true); show_frame (); kapi_msleep (20); continue; }	// (no frame asked: it waits)
-		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		if (g_sound && g_audio == 0) { g_audio = ak_out_open (0, 0) == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		bool audio = g_sound && g_audio == 1;
 		if (audio)
 		{
 			// keep ~3 frames of sound queued: the audio clock paces the game
-			kapi_sound_status (&rate, &freeFrames, &owner);
+			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			unsigned queued = cap - freeFrames;
 			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
-			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			unsigned have = queued + ec_audio_count (&g_ec) + ec_pending (&g_ec) * perFrame;
 			while (have < 2400 && ec_pending (&g_ec) < 3) { ec_request (&g_ec, 1); have += perFrame; }
 			stQueued = queued;

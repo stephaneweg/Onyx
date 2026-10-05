@@ -187,7 +187,8 @@ AK_FLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -
 	   -fno-math-errno -DONYX_LIB_BUILD -I. -I../kernel/include
 AK_CXXFLAGS = $(AK_FLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 AK_SYNTH_SRC = $(wildcard Apps/koton/synth/*.cpp)
-AK_OBJ = $(patsubst Apps/koton/synth/%.cpp,lib/ak/synth_%.o,$(AK_SYNTH_SRC)) lib/ak/codecs.o lib/ak/vorbis.o lib/ak/akcore.o
+AK_OBJ = $(patsubst Apps/koton/synth/%.cpp,lib/ak/synth_%.o,$(AK_SYNTH_SRC)) lib/ak/codecs.o lib/ak/vorbis.o lib/ak/akcore.o \
+	 lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o lib/ak/akfm.o
 lib/ak/synth_%.o: Apps/koton/synth/%.cpp $(wildcard Apps/koton/synth/*.h)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -IApps/koton -c $< -o $@
@@ -198,6 +199,13 @@ lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h Apps/media/decode.h App
 		 Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -I../third_party -IApps/media -IApps/koton -c $< -o $@
+lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o: lib/ak/%.o: audiokit/%.cpp audiokit/audiokit.h Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
+	@mkdir -p lib/ak
+	$(CXX) $(AK_CXXFLAGS) -Wall -IApps/koton -c $< -o $@
+# (the FM synthesizer: the kernel's own source, in its host mode)
+lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h ../kernel/sys/sound.cpp ../kernel/sys/sound_tables.h kapi.h $(LIB_DEP)
+	@mkdir -p lib/ak
+	$(CXX) $(AK_CXXFLAGS) -w -c $< -o $@
 lib/ak/akso.o: audiokit/akso.c lib.h kapi.h
 	@mkdir -p lib/ak
 	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
@@ -253,8 +261,8 @@ uikit/libuikit.a: $(UIKIT_OBJ)
 # (uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build and the PC builds make their own.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
@@ -547,6 +555,8 @@ setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
 # The FreeType apps (FT_APPS): newlib + lib/ft.imp.a, as the Calendar. The Game Library also links the
 # emulators it takes the covers and the save states' pictures from.
 FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
+FT_EXTRA_fmtracker = lib/audiokit.imp.a
+fmtracker.elf: lib/audiokit.imp.a audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h

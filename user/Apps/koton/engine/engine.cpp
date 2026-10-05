@@ -5,6 +5,7 @@
 // soft-clip. No allocation, no lock, no system call in render ().
 //
 #include "engine.h"
+#include "../../../audiokit/audiokit.h"
 #include <math.h>
 #include <string.h>
 
@@ -13,24 +14,9 @@ namespace kt {
 static inline unsigned ldAcq (volatile unsigned *p) { return __atomic_load_n (p, __ATOMIC_ACQUIRE); }
 static inline void stRel (volatile unsigned *p, unsigned v) { __atomic_store_n (p, v, __ATOMIC_RELEASE); }
 
-float softClip (float x)
-{
-	const float T = 0.75f;
-	if (x > T) return T + (1.0f - T) * tanhf ((x - T) / (1.0f - T));
-	if (x < -T) return -T + (1.0f - T) * tanhf ((x + T) / (1.0f - T));
-	return x;
-}
-
-void toS16 (const float *l, const float *r, short *out, int n, float gain)
-{
-	for (int i = 0; i < n; i++)
-	{
-		float a = softClip (l[i] * gain), b = softClip (r[i] * gain);
-		int x = (int) (a * 32767.0f), y = (int) (b * 32767.0f);
-		out[2 * i] = (short) (x > 32767 ? 32767 : x < -32768 ? -32768 : x);
-		out[2 * i + 1] = (short) (y > 32767 ? 32767 : y < -32768 ? -32768 : y);
-	}
-}
+// (the soft limiter and the conversion to 16 bits are AudioKit's: audiokit/akmix.cpp)
+float softClip (float x)						{ return ak_soft_clip (x); }
+void toS16 (const float *l, const float *r, short *out, int n, float gain)	{ ak_f32_to_s16 (l, r, out, n, gain); }
 
 Engine::Engine () : masterGain (1), position (0), playing (0), masterPeakL (0), masterPeakR (0), activeVoices (0), renderUs (0),
 	renders (0), streamClock (0), pluginUnderruns (0), extLead (0), pdcFrames (0),

@@ -872,11 +872,13 @@ always 16-bit stereo at `AUDIOKIT_RATE` (44100 Hz, the system output's).
 | **Files** | `ak_open`, `ak_read`, `ak_seek_ms`, `ak_info_of`, `ak_close` | A sound file of any kind — **MP3, FLAC, WAV, Ogg Vorbis, MIDI** (through the SoundFont) — read as frames at the output's rate, whatever its own rate and channels. |
 | **The player** | `ak_play (path, loop)`, `ak_play_stop`, `_pause`, `_state`, `_pos_ms`, `_len_ms`, `_seek_ms`, `_volume`, `_wait`, `_error`, `_keep_output` | A file played **in the background** by a thread of the library, on the system's output (it takes the output when it has something to play and lets it go after ~0.6 s of silence; another program playing: `AK_BUSY` until it can). One line to make a sound. |
 | **Live notes** | `ak_note_on (channel, key, velocity)`, `ak_note_off`, `ak_program`, `ak_control`, `ak_pitch_bend`, `ak_notes_off` | Notes on a **General MIDI synthesizer** (16 channels, 9 the drums), mixed with the file by the same thread. |
-| **The output** | `ak_out_open`, `ak_out_write`, `ak_out_free`, `ak_out_queued`, `ak_out_close` | The system's output for a program that makes its own frames: the acquire / status / write loop every player and emulator wrote for itself. |
-| **Mixing** | `ak_gain_s16`, `ak_mix_s16` (saturated), `ak_mono_to_stereo`, `ak_volume_gain`, `ak_resampler_new` / `ak_resample`, `ak_f32_to_s16` (a soft limiter) | Gains are 16.16 (65536 = 1). |
-| **Notes** | `ak_note_mhz`, `ak_note_name`, `ak_note_parse` | A MIDI key's frequency (69 = A4 = 440 Hz), its name (`C4`, `F#3`), a name's key. |
-| **WAV** | `ak_wav_header`, `ak_wav_save` | A 16-bit PCM file written. |
-| **The synthesizer** | `ak_soundfont_default`, `ak_soundfont_name`, `ak_synth_new` / `_midi` / `_render` / `_free` | The SoundFont synthesizer for C; `render` never allocates and never calls the kernel (it may run on an app core). |
+| **The output** | `ak_out_open`, `ak_out_write`, `ak_out_free`, `ak_out_queued`, `ak_out_close` | The system's output for a program that makes its own frames: the acquire / status / write loop every player and emulator wrote for itself (`ak_out_open (0, 0)`: the output as it is configured). **The Media Player and the six emulators play through it.** |
+| **The FM synthesizer** | `ak_fm_instrument (voice, ins)`, `ak_fm_start (voice, milli_hz, wave, volume)`, `ak_fm_stop`, `ak_fm_render`, `ak_fm_live` | The kernel's synthesizer **in user space** (16 voices, two-operator FM instruments, the plain waves; `struct kapi_fm_instrument`, `SOUND_FM`...): the voices are played by the player's thread, mixed with the file and the MIDI notes — or, after `ak_fm_live (0)`, rendered by the program itself (`ak_fm_render`: an export to a file). **FM Tracker plays through it.** |
+| **Mixing** | `ak_gain_s16`, `ak_mix_s16` (saturated), `ak_mono_to_stereo`, `ak_volume_gain`, `ak_resampler_new` / `ak_resample`, `ak_f32_to_s16`, `ak_soft_clip` | Gains are 16.16 (65536 = 1). `ak_soft_clip` is the soft limiter (straight up to 0.75, then a `tanh` knee that never passes 1 — Koton's); `ak_f32_to_s16` goes through it. |
+| **Effects** | `ak_reverb_new (rate)` / `_set (room, damp, wet, width)` / `_process (in, left, right, n)` / `_mute` / `_free`; `ak_chorus_new (rate, delay_s, depth_s, hz)` / `_process` / `_mute` / `_free` | MeltySynth's **reverb** (Freeverb: mono in, stereo out) and **chorus**, as effects of their own on float buffers. |
+| **Notes** | `ak_note_mhz`, `ak_note_key (note, octave)`, `ak_note_octave_mhz (note, octave)`, `ak_note_name`, `ak_note_parse` | A MIDI key's frequency (69 = A4 = 440 Hz); a note (0 = C .. 11 = B) and an octave's key (C4 = 60) and frequency — **the one table of notes** (FM Tracker's `fms_note_mhz` uses it); a key's name (`C4`, `F#3`), a name's key. |
+| **WAV** | `ak_wav_header`, `ak_wav_save`, `ak_wav_begin (path, rate, channels, frames)` / `ak_wav_write` / `ak_wav_end` | A 16-bit PCM file written: a buffer at once, or a long one as it is made (its length said first — **Koton's export**). |
+| **The synthesizer** | `ak_soundfont_default`, `ak_soundfont_name`, `ak_soundfont_prefer (path)`, `ak_soundfont_find (preferred, out, cap)`, `ak_soundfont_load` / `_free`, `ak_synth_new` / `_midi` / `_render` / `_free` | The SoundFont: **one search for everybody** (the preferred file, else the first `.sf2` of `SD:/res/soundfonts`, `SD:/koton/soundfonts`, `SD:/music/soundfonts`, `SD:/music`, `SD:/apps/koton.app`), its load into MeltySynth (Koton's own copy: `_load`; the process's default: `_default`, after `_prefer` — the Media Player's setting). The synthesizer for C; `render` never allocates and never calls the kernel (it may run on an app core). |
 
 Also exported **as they are**, for the programs that want them raw: **MeltySynth**'s C++ interface
 (`Apps/koton/synth/meltysynth.h`: `ms::Synthesizer`, `ms::soundfont_*` — Koton's engine and the
@@ -889,20 +891,28 @@ the library, and Koton and the Media Player no longer carry them.
   `render`) are for programs built with the FPU (the newlib apps, `/bin/basic`, `CXXFLAGS_FP`); all
   the file, player, output, note and 16-bit mixing calls are integer — `/bin/play` is built
   `-mgeneral-regs-only`.
-- **The SoundFont**: the first `.sf2` of `SD:/res/soundfonts` (the package `generaluser-gs`), loaded
+- **The SoundFont**: the first `.sf2` of the folders above (`SD:/res/soundfonts`: the package `generaluser-gs`), loaded
   once per process at the first MIDI file or note (a few seconds for its 32 MB); without one,
   `ak_play` of a MIDI file and `ak_note_on` fail with the reason in `ak_play_error ()`.
-- **Inside**: `audiokit/akcore.cpp` compiles the Media Player's own `decode.h` / `midi.h` (the
-  decoder classes, the Standard MIDI File reader, the rate converter) behind the C interface;
+- **Inside**: `audiokit/akcore.cpp` (the files, the player, the output, the effects) compiles the Media
+  Player's `decode.h` / `midi.h` (the decoder classes, the Standard MIDI File reader, the rate converter)
+  behind the C interface; `akmix.cpp` is the pure part (mixing, the soft limiter, the notes, the WAV
+  header), `aksf.cpp` the SoundFont, `akwav.cpp` the WAV files, `akfm.cpp` the FM synthesizer — **the
+  kernel's own source** (`kernel/sys/sound.cpp` compiled in its host mode: one source, the same sound);
   `audiokit/akso.c` gives the library its `malloc` over the importer's allocator; newlib's `libm`
   and `libc` are linked in. The table: `audiokit/audiokit.abi` (append-only).
 - **Not in it** (and why): FFmpeg and the video side of `user/av` (GPL, and video: the Media
-  Player's), Koton's engine and plugin host (its own classes), the kernel's FM voices (already
-  shared through the kapi: `kapi_sound_start`), the per-sample inline DSP of `kplug.h`.
-- **Tests**: `play --notes` (a scale on the synthesizer), `play --info <file>`, `play <file>`
+  Player's), Koton's engine and plugin host (its own classes), the per-sample inline DSP of `kplug.h`. The kernel
+  keeps its own voices (`kapi_sound_start`: the kapi is append-only; BASIC's `SOUND` / `PLAY`, the games
+  and `tone` use them) — a new program takes `ak_fm_*`.
+- **The PC builds** (no shared library there): Koton compiles `akmix.cpp`, `aksf.cpp` and `akwav.cpp`
+  into itself (`Apps/koton/engine/akhost.cpp`, `ui/audio.h`); the simulator (`tools/tests/desktop_sim/shots.sh`)
+  makes a `libaudiokit.a` of the library's sources for the Media Player, FM Tracker and BASIC.
+- **Tests**: `play --notes` (a scale on the synthesizer), `play --fm` (the FM synthesizer: a note rendered
+  off line and checked, then a scale heard), `play --info <file>`, `play <file>`
   (docs/04 §8); a BASIC program (`PLAYFILE`, `MIDINOTE`: docs/04 *Onyx BASIC*).
-- **To come** (IDEAS.md): a tags reader (the Media Player's `tags.h`), the reverb and the chorus as
-  effects of their own, the emulators and Doom on `ak_out_*`, the Media Player on `ak_open`.
+- **To come** (IDEAS.md): a tags reader (the Media Player's `tags.h`), Doom on `ak_out_*`, FM Tracker's
+  WAV export (`ak_fm_live (0)` + `ak_fm_render` + `ak_wav_*`).
 
 ## 6. Writing a graphical application
 

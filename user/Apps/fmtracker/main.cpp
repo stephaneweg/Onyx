@@ -22,6 +22,7 @@
 //   * Play (^P) plays from the cursor, follows the position and highlights it; Esc stops.
 //     A song is a list of patterns (each with its own length and speed), played in order.
 //
+#include "audiokit/audiokit.h"
 #include "kapi.h"
 #include "applib.h"
 #include "fsutil.h"
@@ -123,27 +124,25 @@ static void upload (int ch)
 	if (g_audio != 1) return;
 	struct kapi_fm_instrument k;
 	fms_to_kapi (&g_song.ins[ch], &k);
-	kapi_sound_instrument (ch, &k);
+	ak_fm_instrument (ch, &k);
 }
-static bool audio ()
+static bool audio ()				// (AudioKit's FM synthesizer: its player takes the output when a note sounds)
 {
 	if (g_audio == 1) return true;
-	int r = kapi_sound_acquire ();
-	g_audio = r == 1 ? 1 : -1;
-	if (g_audio != 1) { set_status (r < 0 ? "No audio output." : "The audio output is used by another program."); return false; }
+	g_audio = 1;
 	for (int c = 0; c < FMS_CH; c++) upload (c);
 	return true;
 }
 static void note_on (int voice, unsigned char v)
 {
 	if (voice >= 0 && voice < FMS_CH) { g_vu[voice] = 100; g_snd[voice] = v; }
-	if (audio ()) kapi_sound_start (voice, fms_note_mhz (v), SOUND_FM, 220);
+	if (audio ()) ak_fm_start (voice, fms_note_mhz (v), SOUND_FM, 220);
 }
 static void note_off (int voice)
 {
 	if (voice < 0) for (int c = 0; c < FMS_CH; c++) g_snd[c] = 0;
 	else if (voice < FMS_CH) g_snd[voice] = 0;
-	if (g_audio == 1) kapi_sound_stop (voice);
+	if (g_audio == 1) ak_fm_stop (voice);
 }
 static bool silenced (int c) { return pat ().mute[c] || (g_solo >= 0 && g_solo != c); }
 static void preview (int ch, unsigned char v)			// hear a note just entered
@@ -432,8 +431,8 @@ public:
 		collect ();
 		if (!audio ()) return;
 		struct kapi_fm_instrument k; fms_to_kapi (&ins, &k);
-		kapi_sound_instrument (TEST_VOICE, &k);
-		kapi_sound_start (TEST_VOICE, fms_note_mhz (fms_make_note (1, 0, g_oct)), SOUND_FM, 220);
+		ak_fm_instrument (TEST_VOICE, &k);
+		ak_fm_start (TEST_VOICE, fms_note_mhz (fms_make_note (1, 0, g_oct)), SOUND_FM, 220);
 		g_previewVoice = TEST_VOICE; g_previewEnd = kapi_get_ticks () + 70;
 	}
 	void play () { test (); anim = true; animStart = animShown = kapi_get_ticks (); }	// ... and the wave moves with it
@@ -612,7 +611,7 @@ static void edit_instrument (int ch)
 		upload (ch);
 		g_dirty = true;
 	}
-	if (g_audio == 1) kapi_sound_stop (TEST_VOICE);
+	if (g_audio == 1) ak_fm_stop (TEST_VOICE);
 	redraw ();
 }
 static void op_instrument () { edit_instrument (g_ch); }
