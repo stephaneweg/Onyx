@@ -440,6 +440,17 @@ void CAddressSpace::MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPa
 	VmNoteRegion (this, ulVA, ulVA + (u64) nPages * KPAGE_SIZE, ProtOf (Attr), KAPI_VMK_FIXED);
 }
 
+void CAddressSpace::UnmapContig (u64 ulVA, unsigned nPages)
+{
+	for (unsigned i = 0; i < nPages; i++)
+	{
+		TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pDesc = PageDesc (ulVA + (u64) i * KPAGE_SIZE);
+		if (pDesc != 0) *(volatile u64 *) pDesc = 0;		// (one 64-bit word: kern/vm.h)
+	}
+	DataSyncBarrier ();
+	FlushTLB ();
+}
+
 void *CAddressSpace::MapSurface (u64 ulPhys, unsigned nPages)
 {
 	if (nPages == 0)

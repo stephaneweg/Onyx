@@ -10,6 +10,13 @@
 #include <circle/sched/synchronizationevent.h>	// m_pWake (the owner's pump)
 #include <assert.h>
 
+// A window's pixels (kern/gui/window.h): the heap's here; the graphics server (WIN_PIXELS_HOOK) gives
+// its own -- memory shared with the window's program.
+#ifndef WIN_PIXELS_HOOK
+void *WinPixelsAlloc (int, unsigned nBytes)	{ return new u8[nBytes]; }
+void WinPixelsFree (void *pRaw)			{ delete [] (u8 *) pRaw; }
+#endif
+
 CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 		  unsigned nFlags)
 :	m_nGen (0), m_nChromeGen (0), m_nX (x), m_nY (y), m_nFlags (nFlags),
@@ -52,7 +59,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 		m_nCanvasPages = 1;
 	}
 
-	m_pRawAlloc = new u8[m_nCanvasPages * KPAGE_SIZE + KPAGE_SIZE];
+	m_pRawAlloc = WinPixelsAlloc (0, m_nCanvasPages * KPAGE_SIZE + KPAGE_SIZE);
 	if (m_pRawAlloc == 0)
 	{
 		return;
@@ -92,7 +99,7 @@ boolean CWindow::AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhy
 	pRaw[0] = pRaw[1] = 0; ulPhys[0] = ulPhys[1] = 0; nPages[0] = nPages[1] = 0;
 	for (int i = 0; i < 2; i++)
 	{
-		pRaw[i] = new u8[n * KPAGE_SIZE + KPAGE_SIZE];
+		pRaw[i] = WinPixelsAlloc (1 + i, n * KPAGE_SIZE + KPAGE_SIZE);
 		if (pRaw[i] == 0)
 		{
 			break;
@@ -104,7 +111,7 @@ boolean CWindow::AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhy
 	}
 	if (ulPhys[1] == 0)				// (the inactive copy is mapped too: never half)
 	{
-		if (pRaw[0] != 0) delete [] (u8 *) pRaw[0];
+		if (pRaw[0] != 0) WinPixelsFree (pRaw[0]);
 		pRaw[0] = 0; ulPhys[0] = 0; nPages[0] = 0;
 		return FALSE;
 	}
@@ -115,18 +122,18 @@ CWindow::~CWindow (void)
 {
 	for (int i = 0; i < 3; i++)
 	{
-		if (m_pRetired[i] != 0) { delete [] (u8 *) m_pRetired[i]; m_pRetired[i] = 0; }
+		if (m_pRetired[i] != 0) { WinPixelsFree (m_pRetired[i]); m_pRetired[i] = 0; }
 	}
 	if (m_pRawAlloc != 0)
 	{
-		delete [] (u8 *) m_pRawAlloc;
+		WinPixelsFree (m_pRawAlloc);
 		m_pRawAlloc = 0;
 	}
 	for (int i = 0; i < 2; i++)
 	{
 		if (m_pChromeRaw[i] != 0)
 		{
-			delete [] (u8 *) m_pChromeRaw[i];
+			WinPixelsFree (m_pChromeRaw[i]);
 			m_pChromeRaw[i] = 0;
 		}
 	}
@@ -441,7 +448,7 @@ boolean CWindow::Grow (int w, int h)
 	}
 	unsigned nBytes = (unsigned) (w * h) * sizeof (u32);
 	unsigned nPages = (nBytes + KPAGE_MASK) / KPAGE_SIZE;
-	void *pRaw = new u8[nPages * KPAGE_SIZE + KPAGE_SIZE];
+	void *pRaw = WinPixelsAlloc (0, nPages * KPAGE_SIZE + KPAGE_SIZE);
 	if (pRaw == 0)
 	{
 		return FALSE;
@@ -450,9 +457,9 @@ boolean CWindow::Grow (int w, int h)
 	if (!Borderless ()
 	    && !AllocChrome (w + 2 * WIN_BORDER, h + WIN_TITLEBAR_H + WIN_BORDER, pChRaw, ulChPhys, nChPages))
 	{
-		if (pChRaw[1] != 0) delete [] (u8 *) pChRaw[1];
-		if (pChRaw[0] != 0) delete [] (u8 *) pChRaw[0];
-		delete [] (u8 *) pRaw;
+		if (pChRaw[1] != 0) WinPixelsFree (pChRaw[1]);
+		if (pChRaw[0] != 0) WinPixelsFree (pChRaw[0]);
+		WinPixelsFree (pRaw);
 		return FALSE;
 	}
 	uintptr ulAligned = ((uintptr) pRaw + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
@@ -488,7 +495,7 @@ void CWindow::FreeRetired (void)
 	}
 	for (int i = 0; i < 3; i++)
 	{
-		if (m_pRetired[i] != 0) { delete [] (u8 *) m_pRetired[i]; m_pRetired[i] = 0; }
+		if (m_pRetired[i] != 0) { WinPixelsFree (m_pRetired[i]); m_pRetired[i] = 0; }
 	}
 }
 

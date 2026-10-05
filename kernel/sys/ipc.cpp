@@ -115,6 +115,7 @@ static CAddressSpace *FindASByPid (unsigned nPid)
 }
 
 boolean IpcPidAlive (unsigned nPid) { return FindASByPid (nPid) != 0; }
+CAddressSpace *IpcFindAS (unsigned nPid) { return FindASByPid (nPid); }
 
 void IpcOnProcessGone (unsigned nPid)
 {

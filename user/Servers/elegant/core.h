@@ -37,6 +37,44 @@ void el_core_window_present (int id);		// its client area changed
 int el_core_window_closing (int id);		// its close button was used
 void el_core_window_remove (int id);
 
+// ---- a program's window (its pixels are memory shared with the program) -------------------------
+
+// The pixels of the windows made or grown from now on are `pid`'s: shared with that program (0:
+// Elegant's own memory -- its demonstration's windows).
+void el_core_owner (unsigned pid);
+// Shared memory for a window's pixels, given by the server's kernel side (server.cpp): `bytes` for
+// `pid`'s window, part 0 its canvas / 1, 2 its frame's active and inactive copies -> its address
+// here (64 KB aligned, zeroed), 0: none; freed by that address. el_shared_is: is p such memory?
+void *el_shared_alloc (unsigned pid, int part, unsigned long bytes);
+void el_shared_free (void *p);
+int el_shared_is (const void *p);
+
+int el_core_window_of (unsigned pid);		// a program's window, -1: none
+unsigned el_core_window_pid (int id);		// a window's program (0: no such window)
+struct el_core_frame				// (the protocol's struct el_frame, appkit/elegant.h)
+{
+	int	 content_w, content_h;
+	int	 frame_w, frame_h;
+	int	 inset_l, inset_r, inset_t, inset_b;
+	char	 title[48];
+};
+int el_core_window_frame_info (int id, struct el_core_frame *out);	// (the frame taken as about to be drawn)
+void el_core_window_handler (int id, int kind, unsigned long long fn);	// kind: 0 key, 1 click, 2 pointer
+void el_core_window_move (int id, int x, int y);
+struct el_core_event				// an event for the window's program (the kernel's struct kapi_event)
+{
+	unsigned long long handler, sender;
+	long long value;
+	int	 event;
+	unsigned mods;
+};
+int el_core_window_event_peek (int id, struct el_core_event *out);	// the next one, left queued -> 1, 0 none
+void el_core_window_event_drop (int id);				// ... taken
+
+// The keyboard's cooked string (characters, VT100 escapes), to the window that has the keys.
+void el_core_key (const char *keys);
+void el_core_modifiers (unsigned mods);
+
 // The pointer, in screen coordinates: buttons bit 0 left, 1 right, 2 middle; wheel in notches.
 void el_core_pointer (int x, int y, unsigned buttons, int wheel);
 

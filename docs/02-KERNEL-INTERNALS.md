@@ -1204,7 +1204,32 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
   (`WsWatch`, the compositor's loop): the display and the input are the kernel's again and the whole
   screen is drawn.
 
-Nothing changes unless Elegant takes the display (`elegant --display`, a demonstration at this stage).
+- **the programs' windows** (stage 2b) —
+  - *attached programs* (`KAPI_WS_ATTACH`): a program whose windows are the server's keeps, in the kernel,
+    what its pump reads: an event queue, the exit request, the wake of `pump_wait`. They are a window's
+    (`CWindow`), so an attached program has a kernel window that is only that — never given to the
+    kernel's window manager, one page of pixels. `pop_event`, `should_exit`, `event_mods`, `pump_sleep`
+    and `kill`'s clean close work on it unchanged; the server queues events into it (`KAPI_WS_POST`) and
+    asks the program to end (`KAPI_WS_EXIT`);
+  - *shared buffers* (`KAPI_WS_BUF_MAP` / `_FREE`): physically contiguous (the GPU may render into a
+    canvas), mapped in the program at the addresses its canvas and frame always had
+    (`USER_WINDOW_CANVAS`, `_CHROME`, `_CHROME_INACTIVE` = `KAPI_WS_VA_*`) and in the server at
+    `USER_WS_BASE` + number × 64 MB (128 slots at the top of the mmap arena, `kern/layout.h`). A buffer
+    lives until the server frees it **and** its program no longer has it (ended, or the slot given
+    another buffer); a server that dies leaves the programs their buffers. `CAddressSpace::UnmapContig`
+    is new;
+  - *requests* (`KAPI_WS_CALL`, a program's; `KAPI_WS_NEXT` / `_REPLY`, the server's): the caller sleeps
+    until the server answers (the user-space file systems' pattern, `sys/vfs.cpp`): an operation, four
+    numbers, up to 4 096 bytes each way; the kernel stamps the caller's pid. 16 in flight; 10 s, or the
+    server gone: `-KAPI_ESRCH`;
+  - *the ring's other events*: `KAPI_WS_IN_KICK` (a program's `KAPI_WS_KICK`: its pixels changed) and
+    `KAPI_WS_IN_GONE` (an attached program ended);
+  - `kernel/gui/window.cpp` takes its windows' pixels from two functions (`WinPixelsAlloc` / `_Free`:
+    the heap's in the kernel; Elegant, built with `WIN_PIXELS_HOOK`, gives the shared buffers).
+
+Nothing changes unless Elegant takes the display (`elegant --display` / `--serve`). The programs' window
+calls do not use it yet: `wstest` (a test) talks the protocol by hand (`user/Kits/appkit/elegant.h`,
+private to AppKit and Elegant).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1598,7 +1623,7 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 | Slot | Entry | What it does |
 |---|---|---|
 | 263 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
-| 265 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT`. AppKit: `kapi_ws_ctl`. |
+| 265 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
 | 264 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
 No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8

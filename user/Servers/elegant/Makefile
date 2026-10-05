@@ -10,12 +10,12 @@ CXX     = $(PREFIX)g++
 KGUI     = ../../../kernel/gui
 CXXFLAGS = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only -O2 -Wall -Wextra \
 	   -fno-stack-protector -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
-	   -Iport -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../../kernel/include
+	   -DWIN_PIXELS_HOOK -Iport -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../../kernel/include
 LDFLAGS  = -Wl,-T,../../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../../lib/appkit_stubs.o \
 	   -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy -Wl,--defsym,memmove=kapi_memmove
 
-OBJS = obj/main.o obj/core.o obj/window.o obj/gimage.o
-HDRS = core.h $(wildcard port/*.h port/circle/*.h port/circle/sched/*.h port/kern/*.h) \
+OBJS = obj/main.o obj/server.o obj/core.o obj/window.o obj/gimage.o
+HDRS = core.h kws.h ../../Kits/appkit/elegant.h $(wildcard port/*.h port/circle/*.h port/circle/sched/*.h port/kern/*.h) \
        $(wildcard ../../../kernel/include/kern/gui/*.h) ../../../kernel/include/kern/kapi_abi.h \
        ../../Kits/appkit/appkit.h ../../Runtime/onyxpp.hpp ../../Runtime/umm.h
 

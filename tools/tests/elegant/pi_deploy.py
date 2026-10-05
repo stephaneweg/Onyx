@@ -7,6 +7,7 @@ Run from the repository's root, after the builds (docs/HANDOFF.md, Elegant's sec
     kernel/kernel8-rpi4.img            -> SD:/kernel8-rpi4.img
     user/lib/appkit.so                 -> SD:/lib/appkit.so
     user/Servers/elegant/elegant.elf   -> SD:/bin/elegant
+    user/BinUtils/wstest.elf           -> SD:/bin/wstest   (if it is built)
 
 It starts ftpd on the Pi over telnet (ftpd's default account), saves the Pi's present kernel and
 AppKit into tools/tests/elegant/backup/ (once: an existing save is kept), uploads, checks the sizes,
@@ -32,6 +33,7 @@ BACKUP = os.path.join(HERE, "backup")
 FILES = [("kernel/kernel8-rpi4.img", "kernel8-rpi4.img"),
          ("user/lib/appkit.so", "lib/appkit.so"),
          ("user/Servers/elegant/elegant.elf", "bin/elegant")]
+OPTIONAL = [("user/BinUtils/wstest.elf", "bin/wstest")]         # the tests, when they are built
 SAVED = ["kernel8-rpi4.img", "lib/appkit.so"]
 
 
@@ -121,7 +123,7 @@ def main():
             with open(local, "wb") as h:
                 f.retrbinary("RETR " + remote, h.write)
             print("  save %-22s %8d bytes" % (remote, os.path.getsize(local)))
-        for local, remote in FILES:
+        for local, remote in FILES + [o for o in OPTIONAL if os.path.exists(o[0])]:
             put(f, local, remote)
     f.quit()
     if "--no-reboot" in args:

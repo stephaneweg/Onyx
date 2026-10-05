@@ -115,6 +115,13 @@
 // (v75) The mmap arena: only vm_map places mappings here (kern/vm.h), lazy, 26 GB. The threads'
 // stack slots (kern/el0.h USER_THREAD_STACKS: 64 x 32 MB from 32 GB) end exactly at its base;
 // [16 GB, 32 GB) is the libraries' arena.
+// (v89) The graphics server's view of the windows' buffers (kern/wsrv.h): USER_WS_SLOTS slots of
+// USER_WS_SLOT bytes at the top of the mmap arena, in the server's address space only (it maps
+// nothing with vm_map). A buffer's slot is its number.
+#define USER_WS_SLOT		0x4000000ULL		// 64 MB: a buffer's largest size
+#define USER_WS_SLOTS		128
+#define USER_WS_BASE		(USER_VA_END - USER_WS_SLOTS * USER_WS_SLOT)	// 52 GB
+
 #define USER_MMAP_BASE		(34ULL * GIGABYTE)	// 0x8_8000_0000
 #define USER_MMAP_END		USER_VA_END		// 60 GB
 

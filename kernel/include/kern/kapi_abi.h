@@ -953,7 +953,65 @@ struct kapi_sound_client
 #define KAPI_WS_PRESENT		3	// (const struct kapi_ws_present *) -> 0: the rectangle shown
 #define KAPI_WS_INPUT		4	// (struct kapi_ws_input *out, max) -> how many events taken
 #define KAPI_WS_WAIT		5	// (timeout ms, at most 1000) -> KAPI_WS_PENDING_* bits
-#define KAPI_WS_PENDING_INPUT	1
+#define KAPI_WS_PENDING_INPUT	1	// events to take (KAPI_WS_INPUT)
+#define KAPI_WS_PENDING_CALL	2	// a program's request to take (KAPI_WS_NEXT)
+// The programs' windows (the server's own, but KAPI_WS_CALL and KAPI_WS_KICK: a program's, through AppKit):
+#define KAPI_WS_ATTACH		6	// (pid) -> 0: the process's windows are the server's -- the kernel
+					// keeps its event queue (pop_event, should_exit, pump_wait as before)
+#define KAPI_WS_POST		7	// (pid, const struct kapi_event *) -> 1 queued for its pump, 0 full
+#define KAPI_WS_EXIT		8	// (pid) -> 0: asked to end (its kapi_should_exit answers 1)
+#define KAPI_WS_BUF_MAP		9	// (struct kapi_ws_buf *) -> 0: a buffer made, in the program and here
+#define KAPI_WS_BUF_FREE	10	// (id) -> 0: unmapped from both, freed
+#define KAPI_WS_NEXT		11	// (struct kapi_ws_req *out) -> 1 a request taken, 0 none
+#define KAPI_WS_REPLY		12	// (const struct kapi_ws_reply *) -> 0: its caller goes on
+#define KAPI_WS_CALL		13	// (struct kapi_ws_call *) -> the server's status (>= 0, or its
+					// own negative codes); -KAPI_ESRCH: no server owns the display
+#define KAPI_WS_KICK		14	// () -> 0: the server told this program's pixels changed
+#define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
+#define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
+#define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
+#define KAPI_WS_SLOT_FRAME_OFF	2	// its frame's inactive copy
+#define KAPI_WS_SLOTS		3
+// ... and where each is in the program's memory (kern/layout.h USER_WINDOW_*: where a window's canvas
+// and frame always were)
+#define KAPI_WS_VA_CANVAS	0x300000000ULL
+#define KAPI_WS_VA_FRAME		0x320000000ULL
+#define KAPI_WS_VA_FRAME_OFF	0x330000000ULL
+struct kapi_ws_buf
+{
+	unsigned pid;			// in: the program
+	int	 slot;			// in: KAPI_WS_SLOT_* (a buffer already there is replaced)
+	unsigned long long bytes;	// in: its size
+	unsigned id;			// out: its number (KAPI_WS_BUF_FREE)
+	unsigned reserved;
+	unsigned long long addr;	// out: where it is in the server (64 KB aligned, zeroed)
+};
+struct kapi_ws_call			// a program's request (AppKit's window calls)
+{
+	int	 op;			// the server's own numbering
+	unsigned in_len;		// bytes sent (<= KAPI_WS_DATA_MAX)
+	const void *in;
+	void	*out;			// the answer's bytes, up to out_cap
+	unsigned out_cap;
+	unsigned out_len;		// out: the answer's whole length
+	long	 a[4];
+};
+struct kapi_ws_reply			// the server's answer
+{
+	unsigned id;			// the request's
+	unsigned len;			// the answer's bytes (<= KAPI_WS_DATA_MAX)
+	long	 status;		// what the program's call returns
+	const void *data;
+};
+struct kapi_ws_req			// ... as the server takes it
+{
+	unsigned id;			// (KAPI_WS_REPLY)
+	unsigned pid;			// who asks: stamped by the kernel
+	int	 op;
+	unsigned in_len;
+	long	 a[4];
+	unsigned char data[KAPI_WS_DATA_MAX];
+};
 struct kapi_ws_display
 {
 	int	 w, h;			// the screen
@@ -971,6 +1029,8 @@ struct kapi_ws_present
 #define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt)
 #define KAPI_WS_IN_HELD_USB	4	// keys[0..5]: the USB keyboards' report (usage codes held)
 #define KAPI_WS_IN_HELD		5	// a = a logical key code, buttons = 1 down / 0 up (injected: vncd, rdpd)
+#define KAPI_WS_IN_GONE		6	// a = the pid of an attached program that ended
+#define KAPI_WS_IN_KICK		7	// a = the pid of a program whose pixels changed (KAPI_WS_KICK)
 struct kapi_ws_input
 {
 	unsigned type;			// KAPI_WS_IN_*

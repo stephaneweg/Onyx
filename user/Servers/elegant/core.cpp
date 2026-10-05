@@ -11,12 +11,39 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include <kern/gui/window.h>
+#include <kern/layout.h>
+#include <circle/util.h>
 #include "core.h"
 
 static CWindowManager *s_pWM = 0;
 static CWindow *s_Win[EL_WINDOWS_MAX];
 static unsigned s_nLastGen = 0;
 static boolean s_bFirst = TRUE;
+
+static unsigned s_nOwner = 0;			// (el_core_owner)
+
+// A window's pixels (kern/gui/window.h, WIN_PIXELS_HOOK): a program's are shared with it. The
+// window asks for a spare page to align its start; shared memory is aligned already.
+void *WinPixelsAlloc (int nPart, unsigned nBytes)
+{
+	if (s_nOwner != 0) return el_shared_alloc (s_nOwner, nPart, nBytes > KPAGE_SIZE ? nBytes - KPAGE_SIZE : nBytes);
+	return new u8[nBytes];
+}
+
+void WinPixelsFree (void *pRaw)
+{
+	if (el_shared_is (pRaw)) el_shared_free (pRaw);
+	else delete [] (u8 *) pRaw;
+}
+
+void el_core_owner (unsigned pid)
+{
+	s_nOwner = pid;
+}
+
+// (peek, then drop: the kernel's queue of the program may be full -- the event then waits here)
+static GUIEvent s_Peek[EL_WINDOWS_MAX];
+static boolean s_bPeek[EL_WINDOWS_MAX];
 
 static CWindow *Win (int id)
 {
@@ -90,7 +117,85 @@ void el_core_window_remove (int id)
 	if (pWin == 0) return;
 	s_pWM->Remove (pWin);
 	s_Win[id] = 0;
+	s_bPeek[id] = FALSE;
 	delete pWin;						// (one thread: no composition is reading it)
+}
+
+int el_core_window_of (unsigned pid)
+{
+	for (int id = 0; id < EL_WINDOWS_MAX; id++)
+		if (s_Win[id] != 0 && s_Win[id]->OwnerPid () == pid) return id;
+	return -1;
+}
+
+unsigned el_core_window_pid (int id)
+{
+	CWindow *pWin = Win (id);
+	return pWin != 0 ? pWin->OwnerPid () : 0;
+}
+
+int el_core_window_frame_info (int id, struct el_core_frame *out)
+{
+	CWindow *pWin = Win (id);
+	if (pWin == 0 || out == 0) return 0;
+	memset (out, 0, sizeof *out);
+	pWin->Damage (); pWin->ChromeTouch ();			// (kapi_get_chrome: the frame is about to be drawn)
+	out->content_w = pWin->ClientWidth (); out->content_h = pWin->ClientHeight ();
+	if (pWin->HasChrome ())
+	{
+		out->frame_w = pWin->OuterW (); out->frame_h = pWin->OuterH ();
+		out->inset_l = pWin->ChromeL (); out->inset_r = pWin->ChromeR ();
+		out->inset_t = pWin->ChromeT (); out->inset_b = pWin->ChromeB ();
+	}
+	const char *pTitle = pWin->Title ();
+	unsigned i = 0;
+	for (; i + 1 < sizeof out->title && pTitle[i] != '\0'; i++) out->title[i] = pTitle[i];
+	out->title[i] = '\0';
+	return 1;
+}
+
+void el_core_window_handler (int id, int kind, unsigned long long fn)
+{
+	CWindow *pWin = Win (id);
+	if (pWin == 0) return;
+	if (kind == 0) pWin->SetKeyHandler (fn);
+	else if (kind == 1) pWin->SetClickHandler (fn);
+	else if (kind == 2) pWin->SetPointerHandler (fn);
+}
+
+void el_core_window_move (int id, int x, int y)
+{
+	CWindow *pWin = Win (id);
+	if (pWin != 0) pWin->Move (x, y);
+}
+
+int el_core_window_event_peek (int id, struct el_core_event *out)
+{
+	CWindow *pWin = Win (id);
+	if (pWin == 0 || out == 0) return 0;
+	if (!s_bPeek[id])
+	{
+		if (!pWin->PopEvent (&s_Peek[id])) return 0;
+		s_bPeek[id] = TRUE;
+	}
+	out->handler = s_Peek[id].ulHandler; out->sender = s_Peek[id].ulSender;
+	out->value = s_Peek[id].lValue; out->event = s_Peek[id].nEvent; out->mods = s_Peek[id].nMods;
+	return 1;
+}
+
+void el_core_window_event_drop (int id)
+{
+	if (id >= 0 && id < EL_WINDOWS_MAX) s_bPeek[id] = FALSE;
+}
+
+void el_core_key (const char *keys)
+{
+	if (s_pWM != 0 && keys != 0) s_pWM->OnKey (keys);
+}
+
+void el_core_modifiers (unsigned mods)
+{
+	if (s_pWM != 0) s_pWM->SetModifiers (mods);
 }
 
 void el_core_pointer (int x, int y, unsigned buttons, int wheel)

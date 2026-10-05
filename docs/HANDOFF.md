@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1 and 2a done and tried on the Pi; next: 2b
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2a and 2b done and tried on the Pi; next: 3
 
 **The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
 `UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
@@ -83,12 +83,26 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
    sizecheck`, copy the image to `kernel/` here --, `user/lib/appkit.so`, `elegant.elf`; it saves the
    Pi's own kernel and AppKit first, `--restore` puts them back). **The Pi runs this test kernel (v89)
    now, with the packages' programs: `pkg update` of `onyx` would put the published v88 back.**
-   **2b, to write**: the window buffers (contiguous, mapped in the program and in Elegant), the
-   requests (a program's call waits for Elegant's answer -- the pattern of `kernel/sys/vfs.cpp`, the
-   user-space file systems: the caller's pid stamped by the kernel; no named sockets needed), the
-   per-process event queue Elegant pushes into (`pop_event` / `should_exit` / `pump_sleep` read it
-   when the process's windows are Elegant's), a process's end told to Elegant, the role given by the
-   kernel to the process it starts itself.
+   **2b done, tried on the Pi** (docs/02 §8, v89, *the programs' windows*): attached programs (the
+   kernel keeps their event queue as a kernel window that is only that: `pop_event`, `should_exit`,
+   `pump_wait`, `kill` unchanged), shared buffers (contiguous; in the program at the addresses its
+   canvas and frame always had, in Elegant at 52 GB + number x 64 MB), requests (the caller sleeps
+   until Elegant answers: `sys/vfs.cpp`'s pattern, the pid stamped by the kernel -- no named sockets),
+   the ring's `KICK` (a program's pixels changed) and `GONE` (it ended). `kernel/gui/window.cpp` takes
+   its pixels from `WinPixelsAlloc` / `_Free` (Elegant: the shared buffers). The protocol:
+   `user/Kits/appkit/elegant.h` (private; CREATE, FRAME, HANDLER, MOVE so far). Elegant:
+   `server.cpp` (the loop: input, requests, events forwarded, composition), `kws.h` (its kernel
+   calls), `elegant --serve` (no demonstration, no end); it writes one line every 5 s to the kernel's
+   log while it works (`elegant 5s: input.., requests.., events sent.., frames..`).
+   **The test: `python tools/tests/elegant/pi_wstest.py`** (`user/BinUtils/wstest.c` talks the
+   protocol by hand): its window shown, two clicks counted by its handler, the window dragged, its
+   close button ending the program -- **all passed on the Pi (2026-10-05)**.
+   Learnt while testing: a VNC capture waits for the screen to CHANGE and hangs on a still one (the
+   test only sends through VNC and reads the Pi's own log); a telnet session left in `kmsg` stays
+   for ever (kill it), a few of them and telnetd answers no more; each `vncdotool` command starts
+   with its pointer at 0, 0.
+   Not done in 2b: the role given by the kernel to the process it starts (stage 3, with the trial);
+   a restarted Elegant taking the orphan buffers again.
 3. Elegant serving the programs' windows + AppKit's client side, behind the one-boot trial; `vncd` /
    `rdpd` unchanged through AppKit, then the capture channel. PC test first: Elegant's core and the
    client joined to `tools/tests/desktop_sim/fakekapi.cpp`.

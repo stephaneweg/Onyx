@@ -66,6 +66,10 @@ public:
 	// Map nPages consecutive 64 KB pages [ulVA..] -> [ulPhys..] (e.g. a window canvas).
 	void MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr);
 
+	// (v89) nPages pages from ulVA mapped no more (frames owned elsewhere: MapContig's), the TLB
+	// flushed. What is not mapped is skipped.
+	void UnmapContig (u64 ulVA, unsigned nPages);
+
 	// Map a shell surface (its physical frames) into this space at a fresh VA in the
 	// per-process surface arena [USER_SURFACE_BASE, USER_SURFACE_END). Returns the VA
 	// (a user pointer) or 0 if the arena is exhausted. The frames are owned by the

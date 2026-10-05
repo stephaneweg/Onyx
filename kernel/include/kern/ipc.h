@@ -55,6 +55,8 @@ void IpcOnProcessGone (unsigned nPid);
 
 // Is process nPid still alive? (a live task owning an address space with that pid)
 boolean IpcPidAlive (unsigned nPid);
+class CAddressSpace;
+CAddressSpace *IpcFindAS (unsigned nPid);	// a live process's address space, 0: none (task context)
 
 // Kernel-side notification: post {title '\0' text '\0'} (type 1) to the "notify"
 // service (the notifyd app) if it is running, from pid 0. Safe from any task context.

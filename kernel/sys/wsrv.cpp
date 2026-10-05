@@ -17,7 +17,10 @@
 #include <kern/iowait.h>
 #include <kern/ipc.h>			// IpcPidAlive
 #include <kern/uaccess.h>
+#include <kern/layout.h>
 #include <circle/2dgraphics.h>
+#include <circle/new.h>
+#include <circle/sched/synchronizationevent.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
 #include <circle/spinlock.h>
@@ -72,18 +75,6 @@ void WsWatch (void)
 	if (!s_bOwned) return;
 	if (CTimer::Get ()->GetTicks () - s_nLastCall > WS_SILENT_MS * HZ / 1000)
 		Release ("the graphics server is silent");
-}
-
-void WsOnProcessGone (unsigned nPid)
-{
-	if (nPid == 0 || nPid != s_nServerPid) return;
-	s_nServerPid = 0;
-	if (s_bOwned)				// (no log here: interrupts are masked)
-	{
-		s_bOwned = FALSE;
-		s_nHead = s_nTail = 0;
-		ScreenDirty ();
-	}
 }
 
 // ---- the raw input ------------------------------------------------------------------------------
@@ -257,7 +248,9 @@ static long Input (struct kapi_ws_input *pOut, long nMax)
 	return n;
 }
 
-// Until an event is there, or the timeout. The wait is on the system's I/O generation, which moves
+static boolean ReqPending (void);
+
+// Until an event or a program's request is there, or the timeout. The wait is on the system's I/O generation, which moves
 // for everyone's I/O (the network's, the pipes'): what is not for the server is slept through here,
 // not returned to it.
 static long Wait (unsigned nTimeoutMs)
@@ -267,13 +260,350 @@ static long Wait (unsigned nTimeoutMs)
 	while (s_bOwned)
 	{
 		u32 nGen = IoGen ();		// (taken before the look: a push after it changes it)
-		if (s_nHead != s_nTail) break;
+		if (s_nHead != s_nTail || ReqPending ()) break;
 		unsigned nGoneMs = (CTimer::Get ()->GetClockTicks () - nStart) / 1000;
 		if (nGoneMs >= nTimeoutMs) break;
 		IoWait (nGen, nTimeoutMs - nGoneMs);
 	}
 	s_nLastCall = CTimer::Get ()->GetTicks ();
-	return s_nHead != s_nTail ? KAPI_WS_PENDING_INPUT : 0;
+	return (s_nHead != s_nTail ? KAPI_WS_PENDING_INPUT : 0) | (ReqPending () ? KAPI_WS_PENDING_CALL : 0);
+}
+
+// ---- the programs' windows: the attached programs, their event queues ---------------------------
+//
+// An attached program's windows are the server's. The kernel keeps what its pump reads: an event
+// queue, the exit request, the wake of kapi_pump_wait. They are a window's (CWindow) -- so an
+// attached program has a kernel window that is only that: never given to the kernel's window
+// manager, never drawn (one page of pixels). kapi_pop_event, kapi_should_exit, kapi_event_mods,
+// kapi_pump_sleep and kapi_kill's clean close work on it as on any window.
+
+#define WS_CLIENTS	64
+
+static unsigned s_Client[WS_CLIENTS];		// the attached programs' pids (0: free)
+
+static int ClientSlot (unsigned nPid)
+{
+	if (nPid == 0) return -1;
+	for (int i = 0; i < WS_CLIENTS; i++) if (s_Client[i] == nPid) return i;
+	return -1;
+}
+
+static long Attach (unsigned nPid)
+{
+	CAddressSpace *pAS = IpcFindAS (nPid);
+	if (pAS == 0) return -KAPI_ESRCH;
+	if (ClientSlot (nPid) >= 0) return 0;
+	if (pAS->GetWindow () != 0) return -KAPI_EBUSY;		// (a window of the kernel's window manager)
+	int nFree = -1;
+	for (int i = 0; i < WS_CLIENTS && nFree < 0; i++) if (s_Client[i] == 0) nFree = i;
+	if (nFree < 0) return -KAPI_ENOMEM;
+	CWindow *pWin = new CWindow (0, 0, 1, 1, "ws", WIN_FLAG_BORDERLESS);
+	if (pWin == 0 || !pWin->IsValid ()) { delete pWin; return -KAPI_ENOMEM; }
+	pWin->SetOwnerPid (nPid);
+	pAS->SetWindow (pWin);
+	s_Client[nFree] = nPid;
+	return 0;
+}
+
+static CWindow *ClientWindow (unsigned nPid)
+{
+	if (ClientSlot (nPid) < 0) return 0;
+	CAddressSpace *pAS = IpcFindAS (nPid);
+	return pAS != 0 ? pAS->GetWindow () : 0;
+}
+
+static long Post (unsigned nPid, const struct kapi_event *pUser)
+{
+	struct kapi_event E;
+	if (!UserGet (&E, pUser)) return -KAPI_EFAULT;
+	CWindow *pWin = ClientWindow (nPid);
+	if (pWin == 0) return -KAPI_ESRCH;
+	if (pWin->QueuedEvents () >= WIN_EVENT_QUEUE - 1) return 0;	// (full: the server keeps it)
+	GUIEvent Ev;
+	Ev.ulHandler = E.handler; Ev.ulSender = E.sender; Ev.nEvent = E.event; Ev.lValue = (long) E.value;
+	Ev.nMods = E.mods;
+	pWin->PushEvent (Ev);
+	return 1;
+}
+
+static long ExitRequest (unsigned nPid)
+{
+	CWindow *pWin = ClientWindow (nPid);
+	if (pWin == 0) return -KAPI_ESRCH;
+	pWin->RequestExit ();
+	return 0;
+}
+
+// ---- the windows' buffers ------------------------------------------------------------------------
+//
+// A buffer is physically contiguous (the GPU may render into a window's canvas: sys/v3d.cpp) and is
+// mapped twice: in its program at the slot's fixed address (the addresses a program's canvas and
+// frame always had), in the server at USER_WS_BASE + its number * USER_WS_SLOT. It lives until the
+// server frees it AND its program no longer has it (the program ended, or the server gave the slot
+// another buffer); a server that dies leaves its programs their buffers (their memory is not
+// pulled from under them): freed as each one ends.
+
+struct TWsBuf
+{
+	void	*pRaw;			// the heap block, 0: free
+	u64	 ulPhys;		// its 64 KB aligned start (== kernel VA)
+	unsigned nPages;
+	unsigned nPid;			// its program
+	int	 nSlot;
+	boolean	 bProgram;		// mapped in its program
+	boolean	 bServer;		// mapped in the server
+};
+
+static TWsBuf s_Buf[USER_WS_SLOTS];
+
+static const u64 s_SlotVA[KAPI_WS_SLOTS] = { USER_WINDOW_CANVAS, USER_WINDOW_CHROME, USER_WINDOW_CHROME_INACTIVE };
+static_assert (KAPI_WS_VA_CANVAS == USER_WINDOW_CANVAS && KAPI_WS_VA_FRAME == USER_WINDOW_CHROME
+	       && KAPI_WS_VA_FRAME_OFF == USER_WINDOW_CHROME_INACTIVE, "the windows' addresses (kern/kapi_abi.h)");
+
+static void BufFreeIfUnused (TWsBuf *b)
+{
+	if (b->pRaw == 0 || b->bProgram || b->bServer) return;
+	delete [] (u8 *) b->pRaw;
+	b->pRaw = 0;
+}
+
+static long BufMap (struct kapi_ws_buf *pUser)
+{
+	struct kapi_ws_buf B;
+	if (!UserGet (&B, pUser)) return -KAPI_EFAULT;
+	if (B.slot < 0 || B.slot >= KAPI_WS_SLOTS || B.bytes == 0 || B.bytes > USER_WS_SLOT) return -KAPI_EINVAL;
+	if (ClientSlot (B.pid) < 0) return -KAPI_ESRCH;
+	CAddressSpace *pProg = IpcFindAS (B.pid);
+	CAddressSpace *pSrv = IpcFindAS (s_nServerPid);
+	if (pProg == 0 || pSrv == 0) return -KAPI_ESRCH;
+	int n = -1;
+	for (int i = 0; i < USER_WS_SLOTS && n < 0; i++) if (s_Buf[i].pRaw == 0) n = i;
+	if (n < 0) return -KAPI_ENOMEM;
+	TWsBuf *b = &s_Buf[n];
+	unsigned nPages = (unsigned) ((B.bytes + KPAGE_MASK) / KPAGE_SIZE);
+	void *pRaw = new u8[(size_t) nPages * KPAGE_SIZE + KPAGE_SIZE];
+	if (pRaw == 0) return -KAPI_ENOMEM;
+	u64 ulPhys = ((u64) (uintptr) pRaw + KPAGE_MASK) & ~(u64) KPAGE_MASK;
+	memset ((void *) (uintptr) ulPhys, 0, (size_t) nPages * KPAGE_SIZE);
+
+	// the slot's buffer so far leaves the program (its pages past the new one's end too)
+	for (int i = 0; i < USER_WS_SLOTS; i++)
+	{
+		TWsBuf *o = &s_Buf[i];
+		if (o->pRaw == 0 || !o->bProgram || o->nPid != B.pid || o->nSlot != B.slot) continue;
+		pProg->UnmapContig (s_SlotVA[B.slot], o->nPages);
+		o->bProgram = FALSE;
+		BufFreeIfUnused (o);
+	}
+	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
+	pProg->MapContig (s_SlotVA[B.slot], ulPhys, nPages, Attr);
+	pProg->FlushTLB ();
+	u64 ulSrvVA = USER_WS_BASE + (u64) n * USER_WS_SLOT;
+	pSrv->MapContig (ulSrvVA, ulPhys, nPages, Attr);
+	pSrv->FlushTLB ();
+	b->pRaw = pRaw; b->ulPhys = ulPhys; b->nPages = nPages; b->nPid = B.pid; b->nSlot = B.slot;
+	b->bProgram = TRUE; b->bServer = TRUE;
+	B.id = (unsigned) n + 1; B.addr = ulSrvVA;
+	if (!UserPut (pUser, B)) return -KAPI_EFAULT;		// (the buffer stays: the server may free it by its address)
+	return 0;
+}
+
+static long BufFree (unsigned nId)
+{
+	if (nId == 0 || nId > USER_WS_SLOTS) return -KAPI_EINVAL;
+	TWsBuf *b = &s_Buf[nId - 1];
+	if (b->pRaw == 0 || !b->bServer) return -KAPI_EINVAL;
+	CAddressSpace *pSrv = IpcFindAS (s_nServerPid);
+	if (pSrv != 0) pSrv->UnmapContig (USER_WS_BASE + (u64) (nId - 1) * USER_WS_SLOT, b->nPages);
+	b->bServer = FALSE;
+	if (b->bProgram)
+	{
+		CAddressSpace *pProg = IpcFindAS (b->nPid);
+		if (pProg != 0) pProg->UnmapContig (s_SlotVA[b->nSlot], b->nPages);
+		b->bProgram = FALSE;
+	}
+	BufFreeIfUnused (b);
+	return 0;
+}
+
+// ---- the programs' requests ----------------------------------------------------------------------
+// (the user-space file systems' pattern, sys/vfs.cpp: the caller sleeps until the server answers)
+
+#define WS_REQS		16
+#define WS_REQ_TIMEOUT_US	(10 * 1000000u)
+
+enum { WREQ_FREE, WREQ_PENDING, WREQ_TAKEN, WREQ_DONE };
+
+struct TWsReq
+{
+	volatile int nState;
+	unsigned nId, nPid;
+	int	 nOp;
+	long	 a[4];
+	u8	 In[KAPI_WS_DATA_MAX];  unsigned nInLen;
+	u8	 Out[KAPI_WS_DATA_MAX]; unsigned nOutLen;
+	long	 nStatus;
+	CSynchronizationEvent *pDone;
+};
+
+static TWsReq *s_pReq = 0;			// WS_REQS of them, made at the first request
+static unsigned s_nNextReq = 1;
+
+static boolean ReqPending (void)
+{
+	if (s_pReq == 0) return FALSE;
+	for (unsigned i = 0; i < WS_REQS; i++) if (s_pReq[i].nState == WREQ_PENDING) return TRUE;
+	return FALSE;
+}
+
+static long Call (struct kapi_ws_call *pUser)
+{
+	struct kapi_ws_call C;
+	unsigned nPid = MyPid ();
+	if (nPid == 0 || !UserGet (&C, pUser)) return -KAPI_EFAULT;
+	if (!s_bOwned || s_nServerPid == 0 || nPid == s_nServerPid) return -KAPI_ESRCH;
+	if (C.in_len > KAPI_WS_DATA_MAX) return -KAPI_EINVAL;
+	if (s_pReq == 0)
+	{
+		s_pReq = new TWsReq[WS_REQS];
+		if (s_pReq == 0) return -KAPI_ENOMEM;
+		memset (s_pReq, 0, sizeof (TWsReq) * WS_REQS);
+	}
+	TWsReq *r = 0;
+	for (unsigned i = 0; i < WS_REQS && r == 0; i++) if (s_pReq[i].nState == WREQ_FREE) r = &s_pReq[i];
+	if (r == 0) return -KAPI_EAGAIN;
+	if (C.in_len > 0 && !UserCopyIn (r->In, C.in, C.in_len)) return -KAPI_EFAULT;
+	r->nInLen = C.in_len; r->nOutLen = 0; r->nStatus = -KAPI_EIO;
+	r->nId = s_nNextReq++; if (s_nNextReq == 0) s_nNextReq = 1;
+	r->nPid = nPid; r->nOp = C.op;
+	for (int i = 0; i < 4; i++) r->a[i] = C.a[i];
+	if (r->pDone == 0) r->pDone = new CSynchronizationEvent;
+	r->pDone->Clear ();
+	unsigned nId = r->nId, nServer = s_nServerPid;
+	r->nState = WREQ_PENDING;
+	IoWake ();						// (the server's KAPI_WS_WAIT)
+
+	unsigned nStart = CTimer::Get ()->GetClockTicks ();
+	while (r->nState != WREQ_DONE || r->nId != nId)
+	{
+		r->pDone->WaitWithTimeout (100000);		// 100 ms, then look again
+		r->pDone->Clear ();
+		if (r->nState == WREQ_DONE && r->nId == nId) break;
+		if (   r->nId != nId || s_nServerPid != nServer || !s_bOwned
+		    || CTimer::Get ()->GetClockTicks () - nStart > WS_REQ_TIMEOUT_US)
+		{
+			if (r->nId == nId) r->nState = WREQ_FREE;	// (the server gone, or too slow)
+			return -KAPI_ESRCH;
+		}
+	}
+	long nStatus = r->nStatus;
+	unsigned nOut = r->nOutLen;
+	boolean bOK = TRUE;
+	if (nOut > 0 && C.out != 0 && C.out_cap > 0)
+		bOK = UserCopyOut (C.out, r->Out, nOut < C.out_cap ? nOut : C.out_cap);
+	r->nState = WREQ_FREE;
+	C.out_len = nOut;
+	if (!bOK || !UserPut (pUser, C)) return -KAPI_EFAULT;
+	return nStatus;
+}
+
+static long Next (struct kapi_ws_req *pUser)
+{
+	if (s_pReq == 0 || pUser == 0 || !UserRange (pUser, sizeof *pUser)) return 0;
+	for (unsigned i = 0; i < WS_REQS; i++)
+	{
+		TWsReq *r = &s_pReq[i];
+		if (r->nState != WREQ_PENDING) continue;
+		// (the head, then the bytes sent: not the whole 4 KB each time)
+		struct { unsigned id, pid; int op; unsigned in_len; long a[4]; } Head;
+		Head.id = r->nId; Head.pid = r->nPid; Head.op = r->nOp; Head.in_len = r->nInLen;
+		for (int k = 0; k < 4; k++) Head.a[k] = r->a[k];
+		if (!UserCopyOut (pUser, &Head, sizeof Head)) return -KAPI_EFAULT;
+		if (r->nInLen > 0 && !UserCopyOut (pUser->data, r->In, r->nInLen)) return -KAPI_EFAULT;
+		r->nState = WREQ_TAKEN;
+		return 1;
+	}
+	return 0;
+}
+
+static long Reply (const struct kapi_ws_reply *pUser)
+{
+	struct kapi_ws_reply R;
+	if (!UserGet (&R, pUser)) return -KAPI_EFAULT;
+	unsigned nId = R.id, nLen = R.len;
+	long nStatus = R.status;
+	const void *pData = R.data;
+	if (s_pReq == 0) return -KAPI_EINVAL;
+	for (unsigned i = 0; i < WS_REQS; i++)
+	{
+		TWsReq *r = &s_pReq[i];
+		if (r->nState != WREQ_TAKEN || r->nId != nId) continue;
+		r->nOutLen = 0;
+		r->nStatus = nStatus;
+		if (pData != 0 && nLen > 0)
+		{
+			if (nLen > KAPI_WS_DATA_MAX || !UserCopyIn (r->Out, pData, nLen)) r->nStatus = -KAPI_EIO;
+			else r->nOutLen = nLen;
+		}
+		r->nState = WREQ_DONE;
+		r->pDone->Set ();
+		return 0;
+	}
+	return -KAPI_EINVAL;				// (its caller is gone)
+}
+
+// A program's pixels changed: an event for the server (one waiting already is enough).
+static long Kick (void)
+{
+	unsigned nPid = MyPid ();
+	if (!s_bOwned || ClientSlot (nPid) < 0) return -KAPI_ESRCH;
+	struct kapi_ws_input Ev;
+	memset (&Ev, 0, sizeof Ev);
+	Ev.type = KAPI_WS_IN_KICK; Ev.a = (int) nPid;
+	Push (Ev);
+	CScheduler::Get ()->Yield ();			// (the server composes now)
+	return 0;
+}
+
+// A process is gone (its teardown: interrupts masked, nothing may wait).
+void WsOnProcessGone (unsigned nPid)
+{
+	if (nPid == 0) return;
+	if (nPid == s_nServerPid)
+	{
+		s_nServerPid = 0;
+		if (s_bOwned)				// (no log here)
+		{
+			s_bOwned = FALSE;
+			s_nHead = s_nTail = 0;
+			ScreenDirty ();
+		}
+		for (int i = 0; i < USER_WS_SLOTS; i++)	// its programs keep their buffers
+		{
+			s_Buf[i].bServer = FALSE;
+			BufFreeIfUnused (&s_Buf[i]);
+		}
+		if (s_pReq != 0)			// its callers fail
+			for (unsigned i = 0; i < WS_REQS; i++)
+				if (s_pReq[i].nState != WREQ_FREE && s_pReq[i].pDone != 0) s_pReq[i].pDone->Set ();
+		return;
+	}
+	int nSlot = ClientSlot (nPid);
+	if (nSlot < 0) return;
+	s_Client[nSlot] = 0;
+	for (int i = 0; i < USER_WS_SLOTS; i++)
+	{
+		if (s_Buf[i].pRaw == 0 || s_Buf[i].nPid != nPid) continue;
+		s_Buf[i].bProgram = FALSE;		// (its address space goes with it)
+		BufFreeIfUnused (&s_Buf[i]);
+	}
+	if (s_pReq != 0)				// a request it was waiting for: nobody to answer
+		for (unsigned i = 0; i < WS_REQS; i++)
+			if (s_pReq[i].nPid == nPid && s_pReq[i].nState == WREQ_PENDING) s_pReq[i].nState = WREQ_FREE;
+	struct kapi_ws_input Ev;
+	memset (&Ev, 0, sizeof Ev);
+	Ev.type = KAPI_WS_IN_GONE; Ev.a = (int) nPid;
+	Push (Ev);
 }
 
 extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
@@ -281,6 +611,8 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	(void) a2;
 	if (nOp == KAPI_WS_ACTIVE) return s_bOwned ? (long) s_nServerPid : 0;
 	if (nOp == KAPI_WS_REGISTER) return Register ();
+	if (nOp == KAPI_WS_CALL) return Call ((struct kapi_ws_call *) a0);
+	if (nOp == KAPI_WS_KICK) return Kick ();
 	if (!IsServer ()) return -KAPI_EPERM;
 	s_nLastCall = CTimer::Get ()->GetTicks ();
 	switch (nOp)
@@ -289,6 +621,13 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	case KAPI_WS_PRESENT:	return Present ((const struct kapi_ws_present *) a0);
 	case KAPI_WS_INPUT:	return Input ((struct kapi_ws_input *) a0, a1);
 	case KAPI_WS_WAIT:	return Wait ((unsigned) a0);
+	case KAPI_WS_ATTACH:	return Attach ((unsigned) a0);
+	case KAPI_WS_POST:	return Post ((unsigned) a0, (const struct kapi_event *) a1);
+	case KAPI_WS_EXIT:	return ExitRequest ((unsigned) a0);
+	case KAPI_WS_BUF_MAP:	return BufMap ((struct kapi_ws_buf *) a0);
+	case KAPI_WS_BUF_FREE:	return BufFree ((unsigned) a0);
+	case KAPI_WS_NEXT:	return Next ((struct kapi_ws_req *) a0);
+	case KAPI_WS_REPLY:	return Reply ((const struct kapi_ws_reply *) a0);
 	}
 	return -KAPI_ENOSYS;
 }
