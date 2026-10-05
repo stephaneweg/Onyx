@@ -57,7 +57,7 @@ a program built against uikit N, not rebuilt, on N+1 — see section 10 for the 
 **Not done** (sections 5.3 and 5.5's refinements): the inline code with logic of uikit's headers was
 *not* moved into the library — it is compiled into the apps as before, so a fix to it needs the apps
 rebuilt (the rule is written in `uikit/abi.h`; move a piece when it has to change). Spare slots exist
-in `Widget` and `Root` only (a new overridable goes there). Jet's hosted build stays static (P6).
+in `Widget` and `Root` only (a new overridable goes there). Jet's hosted build stayed static at first (P6); since 2026-10-05 it links the library's import side too.
 `sdcard/etc/preload.ini` is unchanged: the desktop's own processes keep both libraries in memory.
 
 ## 1. What the user decided (2026-10-04)
@@ -83,7 +83,7 @@ user does):**
 | P3 | **The importer's allocator**: the app passes `alloc` / `free` to the library's `init` in a `TLibImports` table; the library's `operator new` / `delete` (and `malloc` if it needs one) go through it. | one allocator per process, whether the app is freestanding (`umm`) or newlib (`malloc`) |
 | P4 | Libraries live in **`SD:/lib/<name>.so`** (ELF `ET_DYN` — not loadable as a program); one package per library (`needs = uikit`). | |
 | P5 | A layout break of a C++ library = **a new name** (`uikit2`), beside the old one. | the escape hatch, not the rule |
-| P6 | Jet's hosted build of uikit (`tools/webkit/build-web.sh`, `-DONYX_HOSTED_NEW`) **stays static** for now. | another toolchain, another runtime |
+| P6 | Jet's hosted build of uikit (`tools/webkit/build-web.sh`, `-DONYX_HOSTED_NEW`) **stayed static** at first; **done 2026-10-05**: the script compiles the import side (`lib/uikit_stubs.S`, `lib/uikit_bind.cpp`, `uikit/globals.cpp`) with the POSIX toolchain and Jet opens `SD:/lib/uikit.so` like every app (its allocations through the program's `operator new`: newlib's malloc). | another toolchain, another runtime |
 
 ## 2. The library format (step 0: done, `tools/tests/shlib/`)
 

@@ -277,26 +277,24 @@ public:
 	}
 	unsigned seed () override { return kapi_get_ticks () * 2654435761u; }
 
-	// ---- sound (ABI v46): the output is acquired on first use, released at exit ----------------------
-	int audio = 0;					// 0 not asked, 1 ours, -1 unavailable
-	bool soundReady () override { if (audio == 0) audio = kapi_sound_acquire () == 1 ? 1 : -1; return audio == 1; }
+	// ---- sound: SOUND / PLAY's voices are AudioKit's synthesizer (ak_fm_*; the kernel's until 2026-10-05) ----
+	int audio = 0;					// 1: a voice was played
+	bool soundReady () override { return true; }
 	int note (int voice, double freq, int wave, int vol) override
 	{
-		if (freq <= 0) { if (audio == 1) kapi_sound_stop (voice); return 0; }
-		if (!soundReady ()) return -1;
-		return kapi_sound_start (voice, (unsigned) (freq * 1000), wave, vol) == 0 ? 0 : -1;
+		if (freq <= 0) { if (audio == 1) ak_fm_stop (voice); return 0; }
+		audio = 1;
+		return ak_fm_start (voice, (unsigned) (freq * 1000), wave, vol) == 0 ? 0 : -1;
 	}
 	void endSound () override
 	{
 		if (akUsed) { ak_play_stop (); ak_notes_off (); }
-		if (audio == 1) { kapi_sound_stop (-1); kapi_msleep (20); kapi_sound_release (); audio = 0; }
+		if (audio == 1) { ak_fm_silence (); audio = 0; }
 	}
 
 	// ---- AudioKit (SD:/lib/audiokit.so): PLAYFILE, MIDINOTE ... ---------------------------------------------
-	// (its player shares the output with SOUND / PLAY's voices -- the same process holds it --: it keeps
-	// it for as long as the program runs)
 	bool akUsed = false;
-	void akStart () { if (!akUsed) { akUsed = true; ak_play_keep_output (1); } }
+	void akStart () { akUsed = true; }
 	int akPlay (const char *path, int loop) override { akStart (); return ak_play (path, loop); }
 	void akCommand (int what, int v) override
 	{

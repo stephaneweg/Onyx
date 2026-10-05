@@ -470,11 +470,13 @@ class CCompositorTask : public CTask
 		// heavy GPU load (Ocarina of Time, n64emu) one got lost now and then, and the compositor
 		// waited for ever (the screen, the apps presenting, the sound feeder behind them: all stuck)
 		CrashLogCrumb (CRUMB_PRESENT, 2);
+		s_bPresenting = TRUE;				// (DisplayPresentIdle: the frame buffer's DMA is ours)
 		if (m_p2D->UpdateDisplayStart (x, y, w, h))
 		{
 			CrashLogCrumb (CRUMB_PRESENT, 3);
 			while (!m_p2D->UpdateDisplayPoll ()) CScheduler::Get ()->Yield ();
 		}
+		s_bPresenting = FALSE;
 		CrashLogCrumb (CRUMB_PRESENT, 0);
 	}
 
@@ -516,6 +518,7 @@ public:
 public:
 	static volatile int s_nResizeW, s_nResizeH, s_nResizeResult;
 	static volatile unsigned s_nResizeSeq, s_nResizeDone;
+	static volatile boolean s_bPresenting;		// a display DMA started by Present is not over
 
 	void Run (void) override
 	{
@@ -582,7 +585,19 @@ private:
 
 volatile int CCompositorTask::s_nResizeW = 0, CCompositorTask::s_nResizeH = 0, CCompositorTask::s_nResizeResult = 0;
 volatile unsigned CCompositorTask::s_nResizeSeq = 0, CCompositorTask::s_nResizeDone = 0;
+volatile boolean CCompositorTask::s_bPresenting = FALSE;
 static boolean s_bCompositor = FALSE;		// (the compositor runs: a resize can be asked for)
+
+// The compositor yields while its display DMA runs, holding the frame buffer's DMA (Circle's
+// CBcmFrameBuffer waits for it in a loop that never yields). A task that sent a frame by itself
+// meanwhile -- an app that takes the full screen while the desktop's last frame is still on its
+// way, kapi_present_fb -- waited there for ever, the compositor never run again to free it: core 0
+// stopped, the hang watchdog restarted the Pi. Such a task waits here first, yielding. Holds
+// nothing: a task killed while it waits just ends.
+void DisplayPresentIdle (void)
+{
+	while (CCompositorTask::s_bPresenting && CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
+}
 
 int ScreenResizeRequest (int nW, int nH)
 {

@@ -174,7 +174,13 @@
 //      else HDMI on a board without a jack) --, what runs and which ones are there (KAPI_SND_OUT_*).
 //      The producer, the streams and every other sound call are unchanged: the output adapts (the
 //      rate 44.1 -> 48 kHz, the sample format, the volume by the device's own control when it has one).
-#define KAPI_ABI_VERSION	84
+// v85: the sound is a MIXER: every program that plays has a channel of its own (sound_acquire gives
+//      one, up to 8: two programs are heard together) with its volume and its mute, remembered by
+//      the program's name (SD:/etc/mixer.ini at the start). + sound_clients (slot 263): the channels
+//      (struct kapi_sound_client: pid, name, volume, mute, its level now); + sound_client_volume
+//      (slot 264). sound_status's free frames are the caller's own channel's, its owner the caller
+//      (0: no channel). The mapped ring stays one (the first program that maps it).
+#define KAPI_ABI_VERSION	85
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -896,6 +902,19 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
 #define KAPI_IMG_LIB		8		// (v83) a shared library (lib_open), not a program
 
+// (v85) A channel of the sound's mixer (sound_clients).
+#define KAPI_SOUND_NAME	24
+struct kapi_sound_client
+{
+	unsigned pid;			// the program
+	int	 volume;		// 0..100
+	int	 mute;			// 0 / 1
+	int	 peak;			// its level now, 0..32767 (a meter)
+	int	 queued;		// frames waiting in its stream
+	char	 name[KAPI_SOUND_NAME];	// the program's name ("media", "koton", "basic")
+	int	 reserved[4];
+};
+
 // (v84) The sound's outputs (sound_output; SD:/etc/sound.ini "output = auto | jack | usb | hdmi").
 #define KAPI_SND_OUT_AUTO	0		// a USB audio device if there is one, else the jack, else HDMI
 #define KAPI_SND_OUT_JACK	1		// the 3.5 mm jack (PWM)
@@ -1399,6 +1418,8 @@ struct TKApiTable
 	// the ring, owner pid (0 = free). Calls from a non-owner return -1.
 	int  (*sound_acquire) (void);
 	void (*sound_release) (void);
+	// (sound_start / sound_stop / sound_instrument: RETIRED 2026-10-05 -- the synthesizer left the
+	// kernel for AudioKit, ak_fm_*; the slots stay and answer -1)
 	int  (*sound_start) (int voice, unsigned millihz, int wave, int volume);
 	int  (*sound_stop) (int voice);
 	int  (*sound_write) (const short *frames, unsigned nframes);
@@ -1853,6 +1874,14 @@ struct TKApiTable
 	// (a bad value). Not kept across a restart by the kernel: the Sound applet writes SD:/etc/sound.ini
 	// ("output = usb"), read when the sound first starts.
 	int (*sound_output) (int out);
+
+	// --- v85: the sound's mixer (sys/sound.cpp) ---
+	// sound_clients: the programs that have a channel now -> how many (out: up to max of them; 0 / 0:
+	// only the count). sound_client_volume: a channel's volume 0..100 (-1: kept) and mute 0 / 1 (-1:
+	// kept), remembered for the program's name until the restart (the Sound applet writes
+	// SD:/etc/mixer.ini: "media = 60", "media.mute = 1") -> volume | 0x100 if muted, -1: no such channel.
+	int (*sound_clients) (struct kapi_sound_client *out, int max);
+	int (*sound_client_volume) (unsigned pid, int volume, int mute);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1924,6 +1953,8 @@ KAPI_CHECK_SLOT (set_cursor, 259);
 KAPI_CHECK_SLOT (win_resizable, 260);
 KAPI_CHECK_SLOT (lib_open, 261);
 KAPI_CHECK_SLOT (sound_output, 262);
+KAPI_CHECK_SLOT (sound_clients, 263);
+KAPI_CHECK_SLOT (sound_client_volume, 264);
 
 #ifdef __cplusplus
 }

@@ -29,14 +29,14 @@ OBJS = $(addprefix $(OUT)/, $(addsuffix .o, $(DG_SRC))) $(OUT)/doom_onyx.o $(OUT
 
 all: ../doom.elf
 
-../doom.elf: $(OBJS) ../lib/uikit.imp.a ../user.ld
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) ../lib/uikit.imp.a -lm -o $@
+../doom.elf: $(OBJS) ../lib/uikit.imp.a ../lib/audiokit.imp.a ../user.ld
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) ../lib/uikit.imp.a ../lib/audiokit.imp.a -lm -o $@
 
 $(OUT)/%.o: $(DG)/%.c | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/doom_onyx.o: doom_onyx.c ../kapi.h ../gamepad.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_sound.o: doom_sound.c ../kapi.h | $(OUT)
+$(OUT)/doom_sound.o: doom_sound.c ../kapi.h ../audiokit/audiokit.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/doom_uikit.o: doom_uikit.cpp ../kapi.h | $(OUT)
 	$(CXX) $(CXXFLAGS) -c $< -o $@

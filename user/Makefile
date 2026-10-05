@@ -195,15 +195,15 @@ lib/ak/synth_%.o: Apps/koton/synth/%.cpp $(wildcard Apps/koton/synth/*.h)
 lib/ak/codecs.o lib/ak/vorbis.o: lib/ak/%.o: Apps/media/%.c Apps/media/codecs.h
 	@mkdir -p lib/ak
 	$(CC) $(AK_FLAGS) -w -I../third_party -IApps/media -c $< -o $@
-lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
+lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h audiokit/fmsynth.h audiokit/fm_tables.h Apps/fmtracker/fms.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
 		 Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -I../third_party -IApps/media -IApps/koton -c $< -o $@
 lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o: lib/ak/%.o: audiokit/%.cpp audiokit/audiokit.h Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -IApps/koton -c $< -o $@
-# (the FM synthesizer: the kernel's own source, in its host mode)
-lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h ../kernel/sys/sound.cpp ../kernel/sys/sound_tables.h kapi.h $(LIB_DEP)
+# (the FM synthesizer: audiokit/fmsynth.h)
+lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h audiokit/fmsynth.h audiokit/fm_tables.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -w -c $< -o $@
 lib/ak/akso.o: audiokit/akso.c lib.h kapi.h
@@ -259,7 +259,7 @@ uikit/imgload.o: uikit/imgload.cpp img/imgload.hpp img/stb_image.h img/simpleweb
 uikit/libuikit.a: $(UIKIT_OBJ)
 	$(AR) rcs $@ $^
 # (uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
-# library's import library, lib/uikit.imp.a --; Jet's hosted build and the PC builds make their own.)
+# library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
 $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
 	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
@@ -556,6 +556,8 @@ setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
 # emulators it takes the covers and the save states' pictures from.
 FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
+FT_EXTRA_soundconf = lib/audiokit.imp.a
+soundconf.elf: lib/audiokit.imp.a audiokit/audiokit.h
 fmtracker.elf: lib/audiokit.imp.a audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a printerkit/printerkit.h

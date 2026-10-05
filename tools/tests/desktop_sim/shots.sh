@@ -38,7 +38,7 @@ for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<o
 	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # AudioKit for the PC (on Onyx: SD:/lib/audiokit.so): its own sources, the decoders, MeltySynth -- made
-# when an app that uses it is built (the Media Player, FM Tracker)
+# (the Media Player, FM Tracker, BASIC, and every program that plays a note: the voices are its FM synthesizer)
 audiokit () {
 	[ -f "$OUT/libaudiokit.a" ] && return 0
 	mkdir -p "$OUT/ak"
@@ -49,9 +49,10 @@ audiokit () {
 	done
 	ar rcs "$OUT/libaudiokit.a" "$OUT"/ak/*.o
 }
+audiokit || exit 1
+AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
-	[ "$1" = fmtracker ] && { audiokit || return 1; extra="$OUT/libaudiokit.a -lpthread -lm"; }
 	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -118,9 +119,9 @@ build () {
 	fi
 	case " letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" $extra; return ;;
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
-	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a"
+	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" $AK
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme

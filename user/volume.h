@@ -48,6 +48,48 @@ static inline int volume_set_output (int out)
 	return o;
 }
 
+// ---- the mixer (kapi v85): a program's own volume ------------------------------------------------
+// Every program that plays has a channel (kapi_sound_clients); its volume (0..100) and its mute are
+// remembered by its name in SD:/etc/mixer.ini ("media = 60", "media.mute = 1"), which the kernel
+// reads when the sound first starts.
+#define MIXER_INI	"SD:/etc/mixer.ini"
+
+// The channel's volume and mute set now (-1: kept) and written to the file -> volume | 0x100 muted, -1.
+static inline int mixer_set (const struct kapi_sound_client *c, int volume, int mute)
+{
+	int r = kapi_sound_client_volume (c->pid, volume, mute);
+	if (r < 0) return r;
+	static char old[4096], out[4400];
+	int n = 0, o = 0;
+	void *f = kapi_open (MIXER_INI);
+	if (f != 0) { n = kapi_read (f, old, sizeof old - 1); kapi_close (f); if (n < 0) n = 0; }
+	old[n] = 0;
+	int nl = ax_strlen (c->name);
+	if (n == 0)
+	{
+		const char *h = "; the mixer: each program's own volume (0..100) and mute -- the Sound applet, /bin/volume\n";
+		for (int i = 0; h[i]; i++) out[o++] = h[i];
+	}
+	for (int i = 0; i < n; )				// the other programs' lines kept
+	{
+		int e = i; while (e < n && old[e] != '\n') e++;
+		int same = e - i > nl && (old[i + nl] == ' ' || old[i + nl] == '=' || old[i + nl] == '.');
+		for (int k = 0; same && k < nl; k++) if (old[i + k] != c->name[k]) same = 0;
+		if (!same && e > i && o + (e - i) + 1 < (int) sizeof out - 120) { for (int k = i; k < e; k++) out[o++] = old[k]; out[o++] = '\n'; }
+		i = e + 1;
+	}
+	char num[16];
+	for (int k = 0; k < nl; k++) out[o++] = c->name[k];
+	out[o++] = ' '; out[o++] = '='; out[o++] = ' ';
+	ax_itoa (r & 0xFF, num); for (int k = 0; num[k]; k++) out[o++] = num[k];
+	out[o++] = '\n';
+	for (int k = 0; k < nl; k++) out[o++] = c->name[k];
+	const char *m = ".mute = "; for (int k = 0; m[k]; k++) out[o++] = m[k];
+	out[o++] = (r & 0x100) ? '1' : '0'; out[o++] = '\n';
+	kapi_save_file (MIXER_INI, out, (unsigned) o);
+	return r;
+}
+
 // the saved volume -> the kernel (no file: full, not muted)
 static inline void volume_restore (void)
 {

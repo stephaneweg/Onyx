@@ -34,9 +34,12 @@ int kapi_sound_status (unsigned *rate, unsigned *freeFrames, unsigned *owner)
 	return 1;
 }
 int kapi_sound_write (const short *f, unsigned n) { fwrite (f, 4, n, s_pcm); s_pcmFrames += n; s_queued += n; return (int) n; }
-int kapi_sound_instrument (int v, const struct kapi_fm_instrument *i) { (void) v; (void) i; s_instr++; return 0; }
-int kapi_sound_start (int v, unsigned mhz, int wave, int vol) { (void) mhz; (void) wave; (void) vol; s_notes++; if (v > s_maxVoice) s_maxVoice = v; return 0; }
-int kapi_sound_stop (int v) { (void) v; return 0; }
+int ak_fm_instrument (int v, const struct kapi_fm_instrument *i) { (void) v; (void) i; s_instr++; return 0; }
+int ak_fm_start (int v, unsigned mhz, int wave, int vol) { (void) mhz; (void) wave; (void) vol; s_notes++; if (v > s_maxVoice) s_maxVoice = v; return 0; }
+void ak_fm_stop (int v) { (void) v; }
+void ak_fm_live (int on) { (void) on; }
+void ak_fm_render (short *out, int n) { memset (out, 0, (size_t) n * 4); }	/* (AudioKit's voices: silent here) */
+void ak_mix_s16 (short *d, const short *s, int n, int g) { (void) g; for (int i = 0; i < 2 * n; i++) d[i] = (short) (d[i] + s[i]); }
 
 void DG_DrawFrame (void)
 {

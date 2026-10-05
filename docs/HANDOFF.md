@@ -44,10 +44,17 @@ answer in French. The docs stay in English.
 - **Next**: (1) strings, GOSUB, virtual calls in machine code; faster SIN / COS; (2) done the same day: **form (c)**, the standalone app --
   "Make App" > Standalone writes `apps/<name>.app/main` = the card's `/bin/basic` with the `.bax`
   attached (`bas::attachBax`; tried on the Pi with Planets 3D's program: it starts and runs); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
-  **Seen on the Pi while testing (not understood)**: the Pi restarted three times a little after a
-  graphical BASIC program (Arkanoid in play, Planets 3D) was ended by `kill` from telnet -- the first
-  time with a runtime that had no machine code at all; other kills went well. A hang at the kill
-  of a full-screen / GPU app and the watchdog? To look at before blaming BASIC.
+  **The Pi restarting around a `kill` of a graphical BASIC program: found and fixed (2026-10-05).** Not
+  the kill (`kill <pid>` only asks the window to close) and not BASIC: the *start* of a full-screen
+  program. The compositor yields while its display DMA runs and holds the frame buffer's DMA; an app
+  that takes the full screen and sends its first frame meanwhile (`kapi_present_fb` ->
+  `CBcmFrameBuffer::SetArea`) waited for that DMA without yielding: core 0 stopped, the hang watchdog
+  restarted the Pi 15 s later. Seen in `SD:/etc/lastcrash.txt` (core 0 in `SetArea` under `basicp`,
+  "display: waiting for the display DMA"), reproduced with `tools/tests/fsrace/` (the old kernel
+  froze before 40 rounds; with the fix 600 rounds pass). The fix: `DisplayPresentIdle` (kernel.cpp),
+  called by `kapi_present_fb` -- docs/02, *Full-screen apps*. Read `SD:/etc/lastcrash.txt` first after
+  any unexplained restart; a restart that leaves it unchanged was a clean one (`reboot`, a system
+  update, another session putting its kernel on the Pi).
   Another session was adding AudioKit statements to BASIC at the same time (the end of
   `enum Builtin`): merge `origin/main` before touching `basint.h`.
 
@@ -161,7 +168,8 @@ generator, writing and using a library), **`user/uikit/abi.h` (the rules — rea
 - **A new app**: link `lib/uikit.imp.a` (and `lib/ft.imp.a`) — the generic rules of `user/Makefile` do.
   A static constructor of an app may use uikit: the bind constructors run first (priority 101; `user.ld`
   now orders the priorities across files — it did not before).
-- **Still static**: Jet (the hosted build, `tools/webkit/build-web.sh`), the PC builds (the simulator,
+- **Jet** links `uikit.so` too since 2026-10-05 (`tools/webkit/build-web.sh` compiles the import side for
+  the POSIX toolchain; `make -C user lib/uikit.imp.a` first). **Still static**: the PC builds (the simulator,
   Koton for Windows, macOS) — they compile `user/uikit/*.cpp` as before.
 - **Tests**: `sh tools/tests/run_image_test.sh` (PC), on the Pi `libtest`, then from the PC
   `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app started) and `sh tools/tests/shlib/compat.sh`

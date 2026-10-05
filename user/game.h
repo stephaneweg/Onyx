@@ -14,6 +14,7 @@
 #ifndef _onyx_game_h
 #define _onyx_game_h
 
+#include "audiokit/audiokit.h"	// (the effects: AudioKit's voices, ak_fm_*)
 #include "kapi.h"
 #include "uikit/uikit.h"
 
@@ -45,7 +46,7 @@ static int      g_sfx_qn;
 static inline bool sfx_ready (void)
 {
 	if (g_sfx_mute) return false;
-	if (g_sfx_state == 0) g_sfx_state = kapi_sound_acquire () == 1 ? 1 : -1;
+	g_sfx_state = 1;				// (AudioKit's voices: its player takes the output when a note sounds)
 	return g_sfx_state == 1;
 }
 // Play hz (Hz) for ms milliseconds now, on the next free effect voice.
@@ -53,7 +54,7 @@ static inline void sfx (unsigned hz, unsigned ms, int wave = SOUND_SQUARE, int v
 {
 	if (!sfx_ready () || hz == 0) return;
 	int v = g_sfx_next; g_sfx_next = (g_sfx_next + 1) % SFX_NV;
-	kapi_sound_start (SFX_V0 + v, hz * 1000u, wave, vol);
+	ak_fm_start (SFX_V0 + v, hz * 1000u, wave, vol);
 	g_sfx_end[v] = gms () + ms;
 }
 // Queue a note to start delay ms from now (a jingle = several of these).
@@ -76,12 +77,12 @@ static inline void sfx_tick (void)
 		}
 		else i++;
 	for (int v = 0; v < SFX_NV; v++)
-		if (g_sfx_end[v] && (int) (now - g_sfx_end[v]) >= 0) { kapi_sound_stop (SFX_V0 + v); g_sfx_end[v] = 0; }
+		if (g_sfx_end[v] && (int) (now - g_sfx_end[v]) >= 0) { ak_fm_stop (SFX_V0 + v); g_sfx_end[v] = 0; }
 }
 static inline void sfx_set_mute (bool m)
 {
 	g_sfx_mute = m;
-	if (m && g_sfx_state == 1) { for (int v = 0; v < SFX_NV; v++) kapi_sound_stop (SFX_V0 + v); g_sfx_qn = 0; }
+	if (m && g_sfx_state == 1) { for (int v = 0; v < SFX_NV; v++) ak_fm_stop (SFX_V0 + v); g_sfx_qn = 0; }
 }
 // Two stock jingles.
 static inline void sfx_win (void)

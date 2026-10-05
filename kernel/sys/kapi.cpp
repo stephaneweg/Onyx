@@ -2581,14 +2581,22 @@ void kapi_present_fb (void)
 	else if (pAS != 0 && pWM != 0 && g_pGraphics != 0 && pWM->FullscreenWindow () != 0
 	    && pWM->FullscreenWindow () == pAS->GetWindow () && pWM->FullscreenBuffer () != 0)
 	{
-		unsigned nW = g_pGraphics->GetWidth (), nH = g_pGraphics->GetHeight ();
-		if ((int) nW == g_nScreenWidth && (int) nH == g_nScreenHeight)
+		// The desktop's last frame may still be on its way (the compositor yields during its
+		// display DMA; the full screen was taken meanwhile): wait for it, then check again --
+		// the wait yields (the window closed, the full screen given back by another thread).
+		DisplayPresentIdle ();
+		if (pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ()
+		    && pWM->FullscreenBuffer () != 0)
 		{
-			memcpy (g_pGraphics->GetBuffer (), pWM->FullscreenBuffer (), (size_t) nW * nH * 4);
+			unsigned nW = g_pGraphics->GetWidth (), nH = g_pGraphics->GetHeight ();
+			if ((int) nW == g_nScreenWidth && (int) nH == g_nScreenHeight)
+			{
+				memcpy (g_pGraphics->GetBuffer (), pWM->FullscreenBuffer (), (size_t) nW * nH * 4);
+			}
+			g_pGraphics->UpdateDisplay ();
+			ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
+			pAS->GetWindow ()->Touch ();		// (rdpd)
 		}
-		g_pGraphics->UpdateDisplay ();
-		ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
-		pAS->GetWindow ()->Touch ();		// (rdpd)
 	}
 	if (CScheduler::IsActive ())
 	{
@@ -2743,10 +2751,21 @@ int kapi_wlan_reconnect (void) { return NetWlanReconnect (); }
 
 // --- v46: sound (kern/sound.h) ---
 static unsigned CallerPid (void) { CAddressSpace *pAS = CurrentAS (); return pAS != 0 ? pAS->GetPid () : 0; }
-int  kapi_sound_acquire (void) { return SoundAcquire (CallerPid ()); }
+// (v85: a channel of the mixer, named after the program -- its main task's name without the folder)
+int  kapi_sound_acquire (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	const char *pName = "app";
+	if (pAS != 0 && pAS->GetMainTask () != 0) pName = pAS->GetMainTask ()->GetName ();
+	const char *pBase = pName;
+	for (const char *p = pName; *p != '\0'; p++) if (*p == '/' || *p == ':') pBase = p + 1;
+	return SoundAcquire (CallerPid (), pBase);
+}
 void kapi_sound_release (void) { SoundRelease (CallerPid ()); }
-int  kapi_sound_start (int nVoice, unsigned nMilliHz, int nWave, int nVolume) { return SoundStart (CallerPid (), nVoice, nMilliHz, nWave, nVolume); }
-int  kapi_sound_stop (int nVoice) { return SoundStop (CallerPid (), nVoice); }
+// (retired 2026-10-05: the synthesizer left the kernel -- AudioKit: ak_fm_start / ak_fm_stop /
+// ak_fm_instrument, user/audiokit --; the three slots stay in the table and answer -1)
+int  kapi_sound_start (int, unsigned, int, int) { return -1; }
+int  kapi_sound_stop (int) { return -1; }
 int kapi_sound_write (const short *pFrames, unsigned nFrames)
 {
 	// (the ring holds half a second: no call takes more frames than that -- what is read)
@@ -2757,7 +2776,7 @@ int kapi_sound_write (const short *pFrames, unsigned nFrames)
 int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 {
 	unsigned nRate = 0, nFree = 0, nOwner = 0;		// (written under its lock: kernel memory)
-	int r = SoundStatus (&nRate, &nFree, &nOwner);
+	int r = SoundStatus (CallerPid (), &nRate, &nFree, &nOwner);
 	if (OutOK (pRate)) OutPut (pRate, nRate);
 	if (OutOK (pFree)) OutPut (pFree, nFree);
 	if (OutOK (pOwner)) OutPut (pOwner, nOwner);
@@ -2765,12 +2784,20 @@ int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 }
 int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
 int  kapi_sound_output (int nOut) { return SoundOutput (nOut); }	// (v84) which output plays
-int kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns)
+// (v85) the mixer: its channels, a channel's volume
+int kapi_sound_clients (struct kapi_sound_client *pOut, int nMax)
 {
-	struct kapi_fm_instrument In;
-	if (pIns == 0 || !UserGet (&In, pIns)) return -1;
-	return SoundInstrument (CallerPid (), nVoice, &In);
+	if (pOut == 0 || nMax <= 0) return SoundClients (0, 0);
+	if (nMax > 16) nMax = 16;
+	struct kapi_sound_client List[16];
+	int n = SoundClients (List, nMax);
+	int k = n < nMax ? n : nMax;
+	if (!UserWritable (pOut, (u64) k * sizeof (struct kapi_sound_client))) return -1;
+	memcpy (pOut, List, (size_t) k * sizeof (struct kapi_sound_client));
+	return n;
 }
+int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute) { return SoundClientVolume (nPid, nVolume, nMute); }
+int kapi_sound_instrument (int, const struct kapi_fm_instrument *) { return -1; }	// (retired: see kapi_sound_start)
 
 // --- v68: low-latency sound ---
 int kapi_sound_config (int nChunkFrames, int nAhead) { return SoundConfig (CallerPid (), nChunkFrames, nAhead); }

@@ -103,6 +103,9 @@ libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
 
 # play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
 # off (it only uses the library's integer entries); links the library's import archive.
+# tone: AudioKit's voices (the FM synthesizer: ak_fm_*)
+tone.elf: tone.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../audiokit/audiokit.h ../lib/audiokit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
 play.elf: play.cpp ../crt0.S ../user.ld ../kapi.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf

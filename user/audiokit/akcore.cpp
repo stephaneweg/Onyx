@@ -46,11 +46,114 @@ static int read_full (Stream *s, short *out, int n)
 	return got;
 }
 
+// ---- an FM Song (.fms: FM Tracker's) as a sound file ---------------------------------------------------------
+// Its eight channels played on a synthesizer of its own (this file's copy of fmsynth.h: not the live
+// voices of ak_fm_*), a row every speed / 20 s. One FM Song read at a time per process.
+namespace fmsdec {
+#include "fmsynth.h"
+}
+#include "Apps/fmtracker/fms.h"
+
+class FmsDecoder : public Decoder
+{
+	FmsSong m_song; bool m_loaded;
+	int m_pat, m_row; i64 m_rowLeft, m_pos, m_tail;	// where the song is; frames left in the row; the release's
+	enum { TAIL = 44100 };
+	static i64 row_frames (const FmsPattern &p) { return (i64) p.speed * (44100 / 20); }
+	void play_row ()
+	{
+		const FmsPattern &p = m_song.pat[m_pat];
+		for (int c = 0; c < FMS_CH; c++)
+		{
+			unsigned char v = p.n[c * p.rows + m_row];
+			if (v & 128) fmsdec::fmsynth::stop (c);
+			else if ((v & 7) == 0) continue;
+			else if (p.mute[c]) fmsdec::fmsynth::stop (c);
+			else fmsdec::fmsynth::start (c, fms_note_mhz (v), SOUND_FM, 220);
+		}
+	}
+	void restart ()
+	{
+		fmsdec::fmsynth::silence ();
+		for (int c = 0; c < FMS_CH; c++) { struct kapi_fm_instrument k; fms_to_kapi (&m_song.ins[c], &k); fmsdec::fmsynth::instrument (c, &k); }
+		m_pat = 0; m_row = 0; m_rowLeft = 0; m_pos = 0; m_tail = TAIL;
+	}
+public:
+	FmsDecoder () : m_loaded (false), m_pat (0), m_row (0), m_rowLeft (0), m_pos (0), m_tail (0) { m_song.npat = 0; snprintf (format, sizeof format, "FMS"); }
+	~FmsDecoder () { if (m_loaded) fms_clear (&m_song); }
+	bool open (const char *path)
+	{
+		Src s;
+		if (!s.open (path) || s.size < 100 || s.size > (4u << 20)) return false;
+		unsigned char *b = new unsigned char[(size_t) s.size];
+		bool ok = s.read (b, (size_t) s.size) == s.size && fms_parse (b, (int) s.size, &m_song);
+		delete[] b;
+		if (!ok) { fms_clear (&m_song); return false; }
+		m_loaded = true;
+		rate = 44100; channels = 1; bits = 0; kbps = 0;
+		frames = TAIL;
+		for (int p = 0; p < m_song.npat; p++) frames += (i64) m_song.pat[p].rows * row_frames (m_song.pat[p]);
+		restart ();
+		return true;
+	}
+	int read (short *out, int n) override
+	{
+		int done = 0;
+		while (done < n)
+		{
+			if (m_pat >= m_song.npat)			// the end: the releases
+			{
+				if (m_tail <= 0) break;
+				int k = n - done; if (k > m_tail) k = (int) m_tail;
+				fmsdec::fmsynth::render (out + 2 * done, (unsigned) k);
+				m_tail -= k; done += k;
+				continue;
+			}
+			if (m_rowLeft == 0) { play_row (); m_rowLeft = row_frames (m_song.pat[m_pat]); }
+			int k = n - done; if (k > m_rowLeft) k = (int) m_rowLeft;
+			fmsdec::fmsynth::render (out + 2 * done, (unsigned) k);
+			done += k; m_rowLeft -= k;
+			if (m_rowLeft == 0 && ++m_row >= m_song.pat[m_pat].rows) { m_row = 0; if (++m_pat >= m_song.npat) fmsdec::fmsynth::stop (-1); }
+		}
+		m_pos += done;
+		return done;
+	}
+	bool seek (i64 frame) override				// to the row that holds it (the notes held before it are lost)
+	{
+		restart ();
+		i64 at = 0;
+		while (m_pat < m_song.npat)
+		{
+			i64 rf = row_frames (m_song.pat[m_pat]);
+			if (at + rf > frame) break;
+			at += rf;
+			if (++m_row >= m_song.pat[m_pat].rows) { m_row = 0; m_pat++; }
+		}
+		m_pos = at;
+		return true;
+	}
+};
+
+static Decoder *open_any (const char *path, char *err, int cap)
+{
+	unsigned char head[16] = { 0 };
+	{ Src s; if (s.open (path)) s.read (head, 15); }
+	if (ext_is (path, "fms") || !memcmp (head, "fm-song-project", 15))
+	{
+		FmsDecoder *f = new FmsDecoder;
+		if (f->open (path)) return f;
+		delete f;
+		snprintf (err, cap, "This file cannot be played (FMS: damaged, or a kind not known).");
+		return 0;
+	}
+	return decoder_open (path, err, cap);
+}
+
 extern "C" ak_stream *ak_open (const char *path, char *err, int cap)
 {
 	char e[128];
 	if (err == 0 || cap <= 0) { err = e; cap = (int) sizeof e; }
-	Decoder *d = decoder_open (path, err, cap);
+	Decoder *d = open_any (path, err, cap);
 	if (d == 0) return 0;
 	ak_stream *a = new ak_stream;
 	a->s = new Stream (d);
@@ -153,6 +256,7 @@ extern "C" void ak_out_close (void)				{ if (s_out == 1) { s_out = 0; kapi_sound
 
 #define P_CHUNK		512				// frames a pass
 #define P_AHEAD		4096				// frames kept queued (~93 ms)
+#define P_AHEAD_LIVE	1024				// ... when only notes play (a game's effects: ~23 ms)
 
 static volatile int s_lk;				// the player's state, between its thread and the callers
 static Stream *s_file;
@@ -194,7 +298,7 @@ static int player_main (void *)
 			}
 			if (s_state == AK_BUSY) s_state = AK_PLAYING;
 		}
-		if (ak_out_queued () > P_AHEAD) { kapi_msleep (4); continue; }
+		if (ak_out_queued () > (bFile ? P_AHEAD : P_AHEAD_LIVE)) { kapi_msleep (4); continue; }
 
 		memset (buf, 0, sizeof buf);
 		kapi_lock (&s_lk);
@@ -218,7 +322,7 @@ static int player_main (void *)
 			else s_liveQuiet = 0;
 		}
 		kapi_unlock (&s_lk);
-		if (akfm_active ()) { memset (tmp, 0, sizeof tmp); ak_fm_render (tmp, P_CHUNK); ak_mix_s16 (buf, tmp, P_CHUNK, nGain); }
+		if (akfm_active ()) { memset (tmp, 0, sizeof tmp); ak_fm_render (tmp, P_CHUNK); ak_mix_s16 (buf, tmp, P_CHUNK, 65536); }
 		ak_out_write (buf, P_CHUNK);
 	}
 	return 0;

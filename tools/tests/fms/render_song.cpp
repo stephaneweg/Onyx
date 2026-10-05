@@ -11,12 +11,10 @@ typedef int16_t s16; typedef uint16_t u16; typedef uint32_t u32; typedef int32_t
 typedef uint64_t u64; typedef int64_t s64; typedef bool boolean;
 #define TRUE true
 #define FALSE false
-#define IRQ_LEVEL 0
-struct CSpinLock { CSpinLock (int) {} void Acquire () {} void Release () {} };
-#define SND_RATE	44100
-#define SND_VOICES	16
-#define SOUND_HOST_TEST
-#include "../../../kernel/sys/sound.cpp"
+#define SND_RATE	FMSYNTH_RATE
+#include "../../../user/audiokit/fmsynth.h"
+using namespace fmsynth;
+#include "../../../user/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
 #include "../../../user/Apps/fmtracker/fms.h"
 
 int main (int argc, char **argv)
@@ -25,8 +23,7 @@ int main (int argc, char **argv)
 	static unsigned char d[1 << 20]; int n = (int) fread (d, 1, sizeof d, f); fclose (f);
 	static FmsSong s; s.npat = 0;
 	if (!fms_parse (d, n, &s)) { printf ("not an FMS\n"); return 1; }
-	SoundAcquire (1);
-	for (int c = 0; c < FMS_CH; c++) { kapi_fm_instrument k; fms_to_kapi (&s.ins[c], &k); SoundInstrument (1, c, &k); }
+	for (int c = 0; c < FMS_CH; c++) { kapi_fm_instrument k; fms_to_kapi (&s.ins[c], &k); instrument (c, &k); }
 	long total = 0; for (int p = 0; p < s.npat; p++) total += (long) s.pat[p].rows * s.pat[p].speed * (SND_RATE / 20);
 	total += SND_RATE;					// + 1 s of release
 	s16 *out = (s16 *) calloc (total * 2, sizeof (s16)); long pos = 0; int notes = 0;
@@ -36,15 +33,15 @@ int main (int argc, char **argv)
 			for (int c = 0; c < FMS_CH; c++)
 			{
 				unsigned char v = s.pat[p].n[c * s.pat[p].rows + r];
-				if (v & 128) SoundStop (1, c);
+				if (v & 128) stop (c);
 				else if ((v & 7) == 0) continue;
-				else if (s.pat[p].mute[c]) SoundStop (1, c);
-				else { SoundStart (1, c, fms_note_mhz (v), SOUND_FM, 220); notes++; }
+				else if (s.pat[p].mute[c]) stop (c);
+				else { start (c, fms_note_mhz (v), SOUND_FM, 220); notes++; }
 			}
 			int fr = s.pat[p].speed * (SND_RATE / 20);
-			Render (out + pos * 2, fr); pos += fr;
+			render (out + pos * 2, fr); pos += fr;
 		}
-	SoundStop (1, -1); Render (out + pos * 2, SND_RATE); pos += SND_RATE;
+	stop (-1); render (out + pos * 2, SND_RATE); pos += SND_RATE;
 	double sum = 0; int peak = 0, clip = 0;
 	for (long i = 0; i < pos * 2; i++) { int x = out[i]; sum += (double) x * x; if (abs (x) > peak) peak = abs (x); if (abs (x) >= 32767) clip++; }
 	printf ("%s: %d patterns, %d notes, %.1f s, peak %d, rms %.0f, clipped %d\n", argv[1], s.npat, notes, pos / 44100.0, peak, __builtin_sqrt (sum / (pos * 2)), clip);

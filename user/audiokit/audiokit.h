@@ -67,12 +67,13 @@ struct ak_info
 	int bits;				// its sample size (0: not known)
 	int kbps;				// its bit rate (0: not known)
 	long long length_ms;			// its length (0: not known)
-	char format[8];				// "MP3", "FLAC", "WAV", "OGG", "MIDI"
+	char format[8];				// "MP3", "FLAC", "WAV", "OGG", "MIDI", "FMS"
 };
 typedef struct ak_stream ak_stream;
 
 // The file opened (its kind from its extension, then its first bytes) -> 0: err (cap bytes) says why.
-// A MIDI file plays through the default SoundFont (ak_soundfont_default).
+// A MIDI file plays through the default SoundFont (ak_soundfont_default); an FM Song (.fms, FM
+// Tracker's) on the FM synthesizer (one read at a time per process).
 ak_stream *ak_open (const char *path, char *err, int cap);
 // Up to `frames` frames at AUDIOKIT_RATE into out (2 shorts each) -> how many (0: the end).
 int ak_read (ak_stream *s, short *out, int frames);
@@ -171,14 +172,15 @@ void ak_synth_free (ak_synth *s);
 void ak_synth_midi (ak_synth *s, int channel, int command, int data1, int data2);	// 0x90 note on, 0x80 off, 0xC0 program...
 void ak_synth_render (ak_synth *s, short *out, int frames);	// never allocates, never calls the kernel
 
-// ---- the FM synthesizer (the kernel's, in the library: the same 16 voices, the same sound) --------
-// The voices are played by the player's thread, mixed with the file and the MIDI notes. `wave` and
-// the instrument are the kapi's (SOUND_SQUARE ... SOUND_FM, struct kapi_fm_instrument). The kernel's
-// own voices (kapi_sound_start) stay for the programs that use them.
+// ---- the FM synthesizer: the system's voices (fmsynth.h; they were the kernel's until 2026-10-05) --
+// 16 voices, each a plain wave or a two-operator FM instrument, played by the player's thread, mixed
+// with the file and the MIDI notes. `wave` and the instrument are the kapi's names (SOUND_SQUARE ...
+// SOUND_FM, struct kapi_fm_instrument). A note sounds until it is stopped.
 struct kapi_fm_instrument;
 int ak_fm_instrument (int voice, const struct kapi_fm_instrument *ins);	// 0 / -1
 int ak_fm_start (int voice, unsigned milli_hz, int wave, int volume);		// voice 0..15, volume 0..255
-void ak_fm_stop (int voice);							// -1: all
+void ak_fm_stop (int voice);							// -1: all (the releases are heard)
+void ak_fm_silence (void);							// all silent at once
 void ak_fm_render (short *out, int frames);	// the voices' next frames written to out (off line: an export)
 void ak_fm_live (int on);	// 0: the player leaves the voices alone -- the program renders them (ak_fm_render); 1 (at first): heard
 

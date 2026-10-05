@@ -313,6 +313,8 @@ static inline int kapi_wlan_scan (struct kapi_wlan_ap *out, int max) { return KT
 //                     returns the frames taken (0 = full, retry later) -- audio players.
 static inline int  kapi_sound_acquire (void) { return KT->sound_acquire (); }
 static inline void kapi_sound_release (void) { KT->sound_release (); }
+// (RETIRED 2026-10-05: the voices are AudioKit's -- ak_fm_start / ak_fm_stop / ak_fm_instrument,
+// audiokit/audiokit.h --; these three answer -1)
 static inline int  kapi_sound_start (int voice, unsigned millihz, int wave, int volume) { return KT->sound_start (voice, millihz, wave, volume); }
 static inline int  kapi_sound_stop (int voice) { return KT->sound_stop (voice); }
 static inline int  kapi_sound_write (const short *frames, unsigned n) { return KT->sound_write (frames, n); }
@@ -578,6 +580,11 @@ static inline const void *kapi_lib_open (const char *name, unsigned min_version,
 // -KAPI_ENOSYS on an older kernel (the jack only). The Sound applet; kept in SD:/etc/sound.ini.
 static inline int kapi_sound_output (int out)
 	{ return KT->version >= 84 && KT->sound_output ? KT->sound_output (out) : -KAPI_ENOSYS; }
+// (v85) the sound's mixer: the programs that play (each has a channel), a channel's volume and mute
+static inline int kapi_sound_clients (struct kapi_sound_client *out, int max)
+	{ return KT->version >= 85 && KT->sound_clients ? KT->sound_clients (out, max) : -KAPI_ENOSYS; }
+static inline int kapi_sound_client_volume (unsigned pid, int volume, int mute)
+	{ return KT->version >= 85 && KT->sound_client_volume ? KT->sound_client_volume (pid, volume, mute) : -KAPI_ENOSYS; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)
