@@ -40,6 +40,12 @@ extern int g_nScreenHeight;
 #define SCREEN_MAX_H	1600
 int ScreenResizeRequest (int nW, int nH);
 
+// Before a task other than the compositor sends a frame to the display by itself
+// (C2DGraphics::UpdateDisplay): waits, yielding, until the compositor's own display DMA is over
+// -- else that task waits for the DMA without yielding and the compositor never ends it: core 0
+// stopped. Task context only (it yields). (kernel.cpp)
+void DisplayPresentIdle (void);
+
 // Screen damage: everything that changes what the compositor would draw (an app's present,
 // a window added / removed / raised / moved / resized / faded, the cursor, the wallpaper)
 // says WHERE: ScreenDirtyRect (a part) or ScreenDirty (all of it). The compositor redraws

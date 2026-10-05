@@ -40,10 +40,17 @@ answer in French. The docs stay in English.
   call to the VM: recursion gains little), strings; (2) done the same day: **form (c)**, the standalone app --
   "Make App" > Standalone writes `apps/<name>.app/main` = the card's `/bin/basic` with the `.bax`
   attached (`bas::attachBax`; tried on the Pi with Planets 3D's program: it starts and runs); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
-  **Seen on the Pi while testing (not understood)**: the Pi restarted three times a little after a
-  graphical BASIC program (Arkanoid in play, Planets 3D) was ended by `kill` from telnet -- the first
-  time with a runtime that had no machine code at all; other kills went well. A hang at the kill
-  of a full-screen / GPU app and the watchdog? To look at before blaming BASIC.
+  **The Pi restarting around a `kill` of a graphical BASIC program: found and fixed (2026-10-05).** Not
+  the kill (`kill <pid>` only asks the window to close) and not BASIC: the *start* of a full-screen
+  program. The compositor yields while its display DMA runs and holds the frame buffer's DMA; an app
+  that takes the full screen and sends its first frame meanwhile (`kapi_present_fb` ->
+  `CBcmFrameBuffer::SetArea`) waited for that DMA without yielding: core 0 stopped, the hang watchdog
+  restarted the Pi 15 s later. Seen in `SD:/etc/lastcrash.txt` (core 0 in `SetArea` under `basicp`,
+  "display: waiting for the display DMA"), reproduced with `tools/tests/fsrace/` (the old kernel
+  froze before 40 rounds; with the fix 600 rounds pass). The fix: `DisplayPresentIdle` (kernel.cpp),
+  called by `kapi_present_fb` -- docs/02, *Full-screen apps*. Read `SD:/etc/lastcrash.txt` first after
+  any unexplained restart; a restart that leaves it unchanged was a clean one (`reboot`, a system
+  update, another session putting its kernel on the Pi).
   Another session was adding AudioKit statements to BASIC at the same time (the end of
   `enum Builtin`): merge `origin/main` before touching `basint.h`.
 
