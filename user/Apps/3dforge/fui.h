@@ -317,7 +317,7 @@ public:
 class Props : public Widget
 {
 public:
-	enum { MAXB = 10, MAXL = 28 };
+	enum { MAXB = 12, MAXL = 32 };
 	struct Bind { Textbox *tb; double *val; int typed; bool mag; char *name; } b[MAXB]; int nb;
 	struct Lab { int x, y; char s[72]; unsigned col; int style; bool small; } lab[MAXL]; int nl;
 	int opY, swY, headIcon; char title[40], sub[2][24]; int subAt;
@@ -450,7 +450,17 @@ public:
 			if (making) { infoY = y; info[0] = "Straight edges and edges on"; info[1] = "a circle can be rounded; the"; info[2] = "others show in grey."; info[3] = 0; y += 70; }
 			break;
 		}
-		case F_MOVE: field (y, "Along X", &f.mv.x, "mm", 0); y += 32; field (y, "Along Y", &f.mv.y, "mm", 1); y += 32; field (y, "Along Z", &f.mv.z, "mm", 2); y += 40; break;
+		case F_MOVE:
+		{
+			label (12, y, "Move", UK_AUTO, 2); y += 22;
+			Textbox *x = field (y, "Along X", &f.mv.x, "mm", 0); y += 30; field (y, "Along Y", &f.mv.y, "mm", 1); y += 30; field (y, "Along Z", &f.mv.z, "mm", 2); y += 38;
+			label (12, y, "Turn, about its centre", UK_AUTO, 2); y += 22;
+			field (y, "Around X", &f.rot.x, "\xC2\xB0", -1); y += 30; field (y, "Around Y", &f.rot.y, "\xC2\xB0", -1); y += 30; field (y, "Around Z", &f.rot.z, "\xC2\xB0", -1); y += 38;
+			label (12, y, "Scale (1: as it is)", UK_AUTO, 2); y += 22;
+			field (y, "Along X", &f.sc.x, "\xC3\x97", -1); y += 30; field (y, "Along Y", &f.sc.y, "\xC3\x97", -1); y += 30; field (y, "Along Z", &f.sc.z, "\xC3\x97", -1); y += 36;
+			if (making && A.step == 1) x->setFocus ();
+			break;
+		}
 		case F_COMBINE: { char t[64]; snprintf (t, sizeof t, "%s, with another body", OP_NAME[f.op]); label (12, y, t, dim_col ()); y += 30; break; }
 		case F_SKETCH: { char t[64]; describe (A.doc, f, t, sizeof t); label (12, y, t, dim_col ()); y += 30; break; }
 		}

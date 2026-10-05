@@ -113,6 +113,15 @@ int main (int argc, char **argv)
 	f = &add (d, F_COMBINE); f->target = 0; f->tool = id2; f->op = OP_SUB;
 	d.rebuild ();
 	check (d.bodies.size () == 1 && !d.feats.back ().failed, "moved, then cut from the first");
+	// a body turned and scaled about its centre, then moved
+	{
+		Doc s; Feature *g = &add (s, F_BOX); g->centred = false; g->w = 10; g->d = 20; g->h = 30; s.rebuild ();
+		g = &add (s, F_MOVE); g->target = 0; g->rot = V3 (0, 0, 90); g->sc = V3 (2, 2, 2); g->mv = V3 (100, 0, 0); s.rebuild ();
+		V3 sz = s.bodies[0].mesh.hi - s.bodies[0].mesh.lo, mid = (s.bodies[0].mesh.hi + s.bodies[0].mesh.lo) * 0.5;
+		check (!s.feats[1].failed && fabs (s.bodies[0].m.Volume () - 48000) < 1e-3 && fabs (sz.x - 40) < 1e-6 && fabs (sz.y - 20) < 1e-6 && fabs (sz.z - 60) < 1e-6
+		       && fabs (mid.x - 105) < 1e-6 && fabs (mid.y - 10) < 1e-6 && fabs (mid.z - 15) < 1e-6, "a body turned a quarter, doubled, moved: about its centre");
+		Doc s2; check (s2.load (s.save ().c_str ()) && fabs (s2.bodies[0].m.Volume () - 48000) < 1e-3, "... saved and loaded");
+	}
 	// the other shapes: a pyramid, a prism and a tapered prism of N sides, a torus
 	{
 		Doc s; auto area = [] (int n, double r) { return 0.5 * n * r * r * sin (2 * PI / n); };

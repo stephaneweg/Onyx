@@ -114,9 +114,12 @@ struct Feature
 	std::vector<V3> edges;		// fillet, chamfer: a point on each edge
 	double r;			// ... the radius, the chamfer's size
 	V3 mv; int tool;		// move: by how much -- combine: the body used (it is consumed)
+	V3 rot, sc;			// move: turned around X, Y, Z (degrees, about the body's centre), scaled along each (1: as it is)
 	bool failed; char err[72];	// (set by the replay)
 	Feature () : kind (F_BOX), op (OP_NEW), target (-1), x (0), y (0), w (0), d (0), h (0), n (4), centred (true), through (false),
-		     sketch (-1), r (2), tool (-1), failed (false) { name[0] = 0; err[0] = 0; }
+		     sketch (-1), r (2), tool (-1), sc (1, 1, 1), failed (false) { name[0] = 0; err[0] = 0; }
+	bool turned () const { return fabs (rot.x) > 1e-9 || fabs (rot.y) > 1e-9 || fabs (rot.z) > 1e-9; }
+	bool scaled () const { return fabs (sc.x - 1) > 1e-9 || fabs (sc.y - 1) > 1e-9 || fabs (sc.z - 1) > 1e-9; }
 };
 
 // ---- a body's mesh, as the view and the tools want it ----------------------------------------------------------------
@@ -549,6 +552,19 @@ struct Body
 	int id; Manifold m; RMesh mesh;
 	Body () : id (-1) {}
 };
+// A body as a Move step leaves it: scaled and turned about its centre (the middle of its box), then moved.
+static Manifold moved (const Body &b, const Feature &f)
+{
+	Manifold m = b.m;
+	if (f.turned () || f.scaled ())
+	{
+		V3 c = (b.mesh.lo + b.mesh.hi) * 0.5; m = m.Translate ({-c.x, -c.y, -c.z});
+		if (f.scaled ()) m = m.Scale ({f.sc.x, f.sc.y, f.sc.z});
+		if (f.turned ()) m = m.Rotate (f.rot.x, f.rot.y, f.rot.z);
+		m = m.Translate ({c.x, c.y, c.z});
+	}
+	return m.Translate ({f.mv.x, f.mv.y, f.mv.z});
+}
 struct BodyProp { int id; char name[24]; unsigned colour; bool visible; };
 static const unsigned BODY_COLOURS[5] = { 0x92AACC, 0xC4C8D0, 0xD6AA78, 0x96BE96, 0xD4847C };
 
@@ -698,7 +714,10 @@ struct Doc
 		{
 			Body *t = body (f.target);
 			if (!t) { fail ("Its body is missing"); return; }
-			t->m = t->m.Translate ({f.mv.x, f.mv.y, f.mv.z}); build_mesh (t->m, t->mesh);
+			if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { fail ("A scale of 0 would leave nothing"); return; }
+			Manifold res = moved (*t, f);
+			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail ("The operation failed"); return; }
+			t->m = res; build_mesh (t->m, t->mesh);
 			return;
 		}
 		if (f.kind == F_COMBINE)
@@ -740,6 +759,7 @@ struct Doc
 				  KIND_KEY[f.kind], f.op, f.target, f.x, f.y, f.w, f.d, f.h, f.centred ? 1 : 0, f.through ? 1 : 0, f.sketch, f.r,
 				  f.mv.x, f.mv.y, f.mv.z, f.tool, f.name); s += b;
 			if (f.kind >= F_PYRAMID) { snprintf (b, sizeof b, "sides %.9g\n", f.n); s += b; }
+			if (f.kind == F_MOVE && (f.turned () || f.scaled ())) { snprintf (b, sizeof b, "turn %.9g %.9g %.9g scale %.9g %.9g %.9g\n", f.rot.x, f.rot.y, f.rot.z, f.sc.x, f.sc.y, f.sc.z); s += b; }
 			snprintf (b, sizeof b, "plane %.9g %.9g %.9g  %.9g %.9g %.9g  %.9g %.9g %.9g\n", f.pl.o.x, f.pl.o.y, f.pl.o.z, f.pl.u.x, f.pl.u.y, f.pl.u.z, f.pl.n.x, f.pl.n.y, f.pl.n.z); s += b;
 			for (const SkEl &e : f.els)
 			{
@@ -778,6 +798,8 @@ struct Doc
 				feats.push_back (f);
 			}
 			else if (!strncmp (line, "sides ", 6) && !feats.empty ()) feats.back ().n = atof (line + 6);
+			else if (!strncmp (line, "turn ", 5) && !feats.empty ())
+			{ Feature &g = feats.back (); sscanf (line + 5, "%lf %lf %lf scale %lf %lf %lf", &g.rot.x, &g.rot.y, &g.rot.z, &g.sc.x, &g.sc.y, &g.sc.z); }
 			else if (!strncmp (line, "plane ", 6) && !feats.empty ())
 			{
 				Plane &pl = feats.back ().pl;
@@ -877,7 +899,7 @@ static void describe (const Doc &d, const Feature &f, char *out, int cap)
 	case F_EXTRUDE: num (fabs (f.h), a); if (f.through) snprintf (out, cap, "through%s", op); else snprintf (out, cap, "%s%s", a, op); break;
 	case F_FILLET: num (f.r, a); snprintf (out, cap, "R %s \xC2\xB7 %d edge%s", a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
 	case F_CHAMFER: num (f.r, a); snprintf (out, cap, "%s \xC2\xB7 %d edge%s", a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
-	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s", a, b, c); break;
+	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? " \xC2\xB7 turned" : "", f.scaled () ? " \xC2\xB7 scaled" : ""); break;
 	case F_COMBINE: snprintf (out, cap, "%s", OP_NAME[f.op]); break;
 	default: out[0] = 0;
 	}

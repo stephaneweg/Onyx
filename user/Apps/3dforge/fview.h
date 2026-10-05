@@ -14,7 +14,8 @@
 //   Sketch    click a flat face (or the ground): the view turns to it, the tools become Line, Rectangle, Circle, Arc
 //   Extrude   the sketch (the one selected, else the last), then its height
 //   Fillet, Chamfer   click edges (straight ones, circles), give the size
-//   Move      click a body, move, click      Union, Subtract, Intersect   click a body, then the other
+//   Move      click a body, move, click; its fields also turn it (around X, Y, Z, about its centre) and scale it
+//   Union, Subtract, Intersect   click a body, then the other
 //
 // Every value is also a field at the right (fui.h): typed there, the pointer no longer changes it.
 //
@@ -111,6 +112,13 @@ static void preview_update ()
 		Manifold all; for (Manifold &m : adds) all += m; for (Manifold &m : cuts) all += m;
 		build_mesh (all, A.prev); A.hasPrev = true; return;
 	}
+	if (f.kind == F_MOVE)				// (the body where it would be: a ghost)
+	{
+		Body *b = A.doc.body (f.target);
+		if (!b || A.step < 1) return;
+		if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { A.prevErr = "A scale of 0 would leave nothing"; return; }
+		build_mesh (moved (*b, f), A.prev); A.hasPrev = true; return;
+	}
 	if (makes_solid (f.kind) && (A.step >= height_step () || (A.step == 0 && f.kind != F_EXTRUDE)))
 	{
 		Manifold m;
@@ -161,7 +169,7 @@ static void tool_hint ()
 	case T_SKETCH: set_hint ("Click the flat face to draw on, or the ground."); break;
 	case T_EXTRUDE: set_hint ("Move to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
 	case T_FILLET: case T_CHAMFER: set_hint ("Click the edges, then drag the arrow or type the size. Enter to finish."); break;
-	case T_MOVE: set_hint (A.step == 0 ? "Click the body to move." : "Move it and click \xE2\x80\x94 or type the distances and press Enter."); break;
+	case T_MOVE: set_hint (A.step == 0 ? "Click the body to move, turn or scale." : "Move it and click \xE2\x80\x94 or type its move, its turns and its scale at the right, then Enter."); break;
 	case T_UNION: case T_SUB: case T_INT: set_hint (A.step == 0 ? "Click the body to keep." : A.tool == T_SUB ? "Click the body to cut out of it." : "Click the other body."); break;
 	case T_MEASURE: set_hint (A.mN == 2 ? "Click again to measure something else." : A.mN == 1 ? "Click the second point." : "Click two points to measure between them."); break;
 	case T_LINE: set_hint (A.curStep == 0 ? "Line: click where it starts." : "Line: click where it ends \xE2\x80\x94 or type its length and angle. Esc ends the run."); break;
@@ -488,7 +496,7 @@ public:
 			if (A.tool == T_MOVE && A.step == 1 && A.cam.onPlane (mx, my, plane_of (A.mA, V3 (0, 0, 1)), &p))
 			{
 				if (!A.typed[0]) f.mv.x = snapv (p.x - A.mA.x); if (!A.typed[1]) f.mv.y = snapv (p.y - A.mA.y);
-				ui (R_FIELDS); invalidate (true);
+				preview_update (); ui (R_FIELDS); invalidate (true);
 			}
 			break;
 		}
@@ -573,7 +581,7 @@ public:
 			if (A.step == 0)
 			{
 				if (!pick (A.doc, A.cam, mx, my, &h)) break;
-				f.target = A.doc.bodies[h.body].id; A.mA = h.p; A.hasPend = true; A.step = 1; A.selBody = f.target;
+				f.target = A.doc.bodies[h.body].id; A.mA = h.p; A.hasPend = true; A.step = 1; A.selBody = f.target; preview_update ();
 				tool_hint (); caption_set (); ui (R_ALL);
 			}
 			else commit_pend ();
