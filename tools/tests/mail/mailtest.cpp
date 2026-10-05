@@ -1,5 +1,5 @@
 //
-// mailtest.cpp -- Mail's protocol layer (user/mail/) against fakemail.py, on the PC: MIME and the text tools alone,
+// mailtest.cpp -- Mail's protocol layer (user/Libs/mail/) against fakemail.py, on the PC: MIME and the text tools alone,
 // then IMAP (login, folders, envelopes, structure, bodies, flags, move, append, IDLE + SMTP's delivery), POP3, SMTP,
 // OAuth's device code flow and XOAUTH2. Run by tools/tests/run_mail_test.sh.
 //

@@ -14,7 +14,7 @@
 // folders, the accounts live on the card (store.h, accounts.h; the passwords and tokens encrypted); the servers are
 // talked to by a worker thread (sync.h) while the window stays live. HTML messages are drawn by WebKit -- the browser
 // Web run as an applet in the reading pane (webview.h; no scripts, nothing from the internet until asked) -- when Web
-// is on the card, else by Mail's own renderer (user/mail/html.h: HTML 4, CSS 2; the remote pictures held back too).
+// is on the card, else by Mail's own renderer (user/Libs/mail/html.h: HTML 4, CSS 2; the remote pictures held back too).
 // "mail SD:/x.eml" shows a message file (fileassoc.ini: eml = mail).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.

@@ -129,9 +129,9 @@ SDCARD = ../sdcard
 # apps/<name>.app/main.bax -- "name=source.bas" pairs.
 BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas planets3d=$(SDCARD)/basic/examples/planets3d.bas
 BASC = ../tools/basc/basc
-BASC_SRC = ../tools/basc/basc.cpp ../user/basic/bascomp.cpp ../user/basic/basnum.cpp ../user/basic/basbax.cpp ../user/basic/basvm.cpp
-$(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h ../user/basic/bas3d.h ../user/basic/bas3dscene.h
-	@g++ -std=c++17 -O1 -I../user -I../user/Kits -o $@ $(BASC_SRC)
+BASC_SRC = ../tools/basc/basc.cpp ../user/Libs/basic/bascomp.cpp ../user/Libs/basic/basnum.cpp ../user/Libs/basic/basbax.cpp ../user/Libs/basic/basvm.cpp
+$(BASC): $(BASC_SRC) ../user/Libs/basic/bas.h ../user/Libs/basic/basint.h ../user/Libs/basic/bas3d.h ../user/Libs/basic/bas3dscene.h
+	@g++ -std=c++17 -O1 -I../user -I../user/Kits -I../user/Runtime -I../user/Include -I../user/Libs -I../user/Emulators -I../user/Ports -o $@ $(BASC_SRC)
 .PHONY: stage
 stage: sizecheck apps $(BASC)
 	@cp $(TARGET).img $(SDCARD)/

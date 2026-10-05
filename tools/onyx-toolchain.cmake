@@ -1,7 +1,7 @@
 # onyx-toolchain.cmake -- CMake toolchain file: build third-party code for Onyx, against the POSIX
 # sysroot (libonyxposix: docs/03 §5.4 and "Building a third-party library for Onyx").
 #
-#   make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
+#   make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
 #   cmake -S <src> -B <build> -DCMAKE_TOOLCHAIN_FILE=<onyx>/tools/onyx-toolchain.cmake \
 #         -DBUILD_SHARED_LIBS=OFF [-DONYX_SYSROOT=<dir>] [-DONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-]
 #
@@ -65,9 +65,9 @@ if(NOT ONYX_SYSROOT)
 		get_filename_component(ONYX_SYSROOT "${CMAKE_CURRENT_LIST_DIR}/../out/sysroot" ABSOLUTE)
 	endif()
 endif()
-set(ONYX_SYSROOT "${ONYX_SYSROOT}" CACHE PATH "The Onyx POSIX sysroot (make -C user/libc/posix install)")
+set(ONYX_SYSROOT "${ONYX_SYSROOT}" CACHE PATH "The Onyx POSIX sysroot (make -C user/Runtime/libc/posix install)")
 if(NOT EXISTS "${ONYX_SYSROOT}/lib/onyx.specs")
-	message(FATAL_ERROR "No Onyx sysroot at ${ONYX_SYSROOT}: run  make -C user/libc/posix install PREFIX=${ONYX_TOOLCHAIN_PREFIX} SYSROOT=${ONYX_SYSROOT}")
+	message(FATAL_ERROR "No Onyx sysroot at ${ONYX_SYSROOT}: run  make -C user/Runtime/libc/posix install PREFIX=${ONYX_TOOLCHAIN_PREFIX} SYSROOT=${ONYX_SYSROOT}")
 endif()
 # (try_compile projects get these too)
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES ONYX_SYSROOT ONYX_TOOLCHAIN_PREFIX)

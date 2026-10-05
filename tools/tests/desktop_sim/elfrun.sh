@@ -11,7 +11,7 @@ ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 cd "$ROOT"
 OUT=${TMPDIR:-/tmp}/onyx_elfrun
 mkdir -p "$OUT"
-CXX="aarch64-linux-gnu-g++ -std=gnu++17 -O1 -g -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="aarch64-linux-gnu-g++ -std=gnu++17 -O1 -g -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 $CXX -c tools/tests/desktop_sim/fakekapi.cpp -o "$OUT/fakekapi.o"
 $CXX -static -o "$OUT/elfrun" tools/tests/desktop_sim/elfrun.cpp "$OUT/fakekapi.o"
 elf=user/$1.elf

@@ -2,7 +2,7 @@
 // net.h -- Courier's HTTP engine: a request prepared (its variables resolved, its auth, its body made:
 // raw, x-www-form-urlencoded, multipart form-data with files, a binary file; the cookies of the jar),
 // sent on a thread of its own (kapi v67; the UI keeps running, Cancel works) over the kapi TCP
-// sockets, or TLS (mbedTLS: user/tls/onyx_tls.hpp) for https://; the response read whole (any size,
+// sockets, or TLS (mbedTLS: user/Libs/tls/onyx_tls.hpp) for https://; the response read whole (any size,
 // up to a limit), chunked and gzip / deflate decoded, the redirects followed (the cookies they set
 // kept), timed (connect, first byte, total).
 //

@@ -1,5 +1,5 @@
 //
-// kp_chorus -- a Koton effect plugin (user/kplug.h): a chorus. One to three voices per channel read a
+// kp_chorus -- a Koton effect plugin (user/Include/kplug.h): a chorus. One to three voices per channel read a
 // short delay line whose length a sine LFO sweeps (their phases spread; the right channel's LFOs
 // shifted by `spread`); feedback makes it a flanger, the mix blends it with the dry sound.
 //

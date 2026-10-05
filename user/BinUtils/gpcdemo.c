@@ -1,5 +1,5 @@
 //
-// gpcdemo -- the GPU compositing service (user/gpucomp/gpucomp.h) shown, checked and timed: a web
+// gpcdemo -- the GPU compositing service (user/Libs/gpucomp/gpucomp.h) shown, checked and timed: a web
 // page of 1920 x 2600 (two GPU textures high) scrolling smoothly under a rotating picture, a
 // translucent card that sways and fades, a banner and a clipped zoom -- composited by the V3D
 // straight into the window, or by the CPU.

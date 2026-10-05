@@ -1,5 +1,5 @@
 //
-// host_doom -- Doom (doomgeneric + user/doom/doom_sound.c) on the PC, headless, on a
+// host_doom -- Doom (doomgeneric + user/Ports/doom/doom_sound.c) on the PC, headless, on a
 // virtual clock: the picture to PPM files, the sound effects to a raw PCM file, the music's
 // FM notes counted -- to check the Onyx port without the Pi.
 //   host_doom <iwad> <seconds> [keys "t:key,t:key,..." (Doom key codes, held 0.2 s)]

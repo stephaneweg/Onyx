@@ -2,7 +2,7 @@
 
 Status: **paused** (2026-09-30, the user's call: to resume later). Study done, milestone M0 built
 (2026-09-29), **M1 done: `stkpoc` PASS on the Pi** (2026-09-30; `SD:/bin/stkpoc`). Next when it
-resumes: M2 (see §5). The code of the port lives in [`user/stk/`](../user/stk/); SuperTuxKart's
+resumes: M2 (see §5). The code of the port lives in [`user/Ports/stk/`](../user/Ports/stk/); SuperTuxKart's
 own source is a shallow clone **outside** the repository (see *Building M0*).
 
 Studied: `supertuxkart/stk-code` at `7644e908` (2026-09-24, the 1.5 development line) — the code
@@ -17,7 +17,7 @@ the N64 emulator). The honest summary:
   OpenGL ES 3.0 with GLSL 1.40 / GLSL ES 3.00 shaders (deferred shading, shadows, SSAO, GPU
   skinning, instancing, UBOs, texture arrays); the newer "GE" renderer is Vulkan 1.1. Onyx has no GL
   and no GLSL compiler: its V3D kapi takes QPU code that apps generate themselves
-  (`user/v3d/qpu.h`). Writing a GLES 3 implementation (or porting Mesa's `v3d` + its GLSL/NIR
+  (`user/Libs/v3d/qpu.h`). Writing a GLES 3 implementation (or porting Mesa's `v3d` + its GLSL/NIR
   compiler) would be a project many times the size of the game port. **Not recommended.**
 - **But STK still has a fixed-function path, and it is not tied to GL.** When the driver is not
   OpenGL 3.1+ (`CentralVideoSettings::isGLSL()` false) STK draws everything through Irrlicht's
@@ -29,7 +29,7 @@ the N64 emulator). The honest summary:
 - **So the smallest credible path is a native Irrlicht video driver for the V3D** — "the DirectX 9
   driver, but on `gpu_render3`", with its fixed-function combinations turned into QPU programs by a
   small generator, exactly as gcemu turns the GameCube's TEV configurations into shaders
-  (`user/v3d/gxtev.*`). No GL API, no shader compiler, no Mesa.
+  (`user/Libs/v3d/gxtev.*`). No GL API, no shader compiler, no Mesa.
 - **Everything else is portable C/C++** and M0 already shows the toughest runtime part works at build
   time: full C++ (exceptions, RTTI, the STL, `std::thread` / `std::mutex` /
   `std::condition_variable` on the kapi v67 threads) and three of STK's libraries (Bullet,
@@ -139,7 +139,7 @@ NetSurf's port.
 
 | # | Milestone | What proves it | Size |
 |---|---|---|---|
-| **M0** | **Toolchain + first libraries** — *done in this session* | `user/stk`: `libbullet.a`, `libangelscript.a`, `libirrlicht.a` (server-only) and `stkpoc.elf` link | ~700 lines, done |
+| **M0** | **Toolchain + first libraries** — *done in this session* | `user/Ports/stk`: `libbullet.a`, `libangelscript.a`, `libirrlicht.a` (server-only) and `stkpoc.elf` link | ~700 lines, done |
 | M1 | **Run `stkpoc` on the Pi**; decide TLS (K1 or patch the 4 `thread_local`) | `stkpoc` prints PASS: exceptions unwind, threads / condvars work, Bullet and a script run | **done 2026-09-30: PASS on the Pi 4** (every line ok, the ball at y = 0.500, `main () = 6765`); TLS still to decide |
 | M2 | **Headless game**: STK built `SERVER_ONLY` (no graphics, no sound), the stub sockets, curl replaced, the POSIX layer completed, the `data/` + one track + the karts on the card; `supertuxkart --no-graphics --profile-laps=1 --track=<t> --numkarts=4` | an AI race runs to the end on Onyx and prints its timings: game logic, XML, track and kart loading, Bullet, AngelScript all proven, CPU cost measured | 2–3 sessions, ~2–3 k lines (mostly stubs and build glue) |
 | M3 | **Platform layer**: SDL2 with Onyx backends (or the native device + SDL shim), MojoAL + libogg/vorbis, HarfBuzz, libpng/jpeg; the client build (not `SERVER_ONLY`) links with the **null** video driver | the menus' logic, input and sound work; music plays over a black screen | 2–3 sessions, ~3–4 k lines |
@@ -190,11 +190,11 @@ before any renderer work, and gives a benchmark of the CPU side on the Pi.
 
 ## 8. Milestone M0 — what was built
 
-Folder [`user/stk/`](../user/stk/) (new; nothing else in Onyx changed):
+Folder [`user/Ports/stk/`](../user/Ports/stk/) (new; nothing else in Onyx changed):
 
 | File | What |
 |---|---|
-| `Makefile` | builds the libraries from STK's tree (`STK=` path, default the clone next to the repository) and `stkpoc.elf`, into `user/stk/build/` (ignored by git) |
+| `Makefile` | builds the libraries from STK's tree (`STK=` path, default the clone next to the repository) and `stkpoc.elf`, into `user/Ports/stk/build/` (ignored by git) |
 | `stk.ld` | `user.ld` + `.eh_frame` / `.gcc_except_table` kept, `.eh_frame` terminated, `__onyx_eh_frame_start` |
 | `onyx_eh.c` | registers the unwind tables with libgcc (`__register_frame_info`) in a priority-101 constructor (we link `-nostartfiles`: no `crtbegin.o`) |
 | `compat/bits/gthr-default.h` | libstdc++'s gthreads on Onyx, shadowing the toolchain's `gthr-single.h`; with `-D_GLIBCXX_HAS_GTHREADS=1` libstdc++'s `<mutex>`, `<condition_variable>`, `<thread>` come alive |
@@ -222,12 +222,12 @@ Folder [`user/stk/`](../user/stk/) (new; nothing else in Onyx changed):
 
 ```sh
 git clone --depth 1 https://github.com/supertuxkart/stk-code C:/Users/troll/stk-port/stk-code
-MSYS_NO_PATHCONV=1 wsl -e sh -c 'export PATH=$HOME/tc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:$HOME/local/usr/bin:$PATH; make -C /mnt/c/Users/troll/source/repos/Zircon/user/stk -j8'
+MSYS_NO_PATHCONV=1 wsl -e sh -c 'export PATH=$HOME/tc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:$HOME/local/usr/bin:$PATH; make -C /mnt/c/Users/troll/source/repos/Zircon/user/Ports/stk -j8'
 ```
 
 (`make STK=<path>` for another checkout; ~3 minutes, Irrlicht being most of it.)
 
-**To try it (M1):** copy `user/stk/build/stkpoc.elf` to the card as e.g. `SD:/bin/stkpoc` (no
+**To try it (M1):** copy `user/Ports/stk/build/stkpoc.elf` to the card as e.g. `SD:/bin/stkpoc` (no
 extension) and run `stkpoc` in a terminal. Expected: every line `ok`, `the ball at y = 0.500`,
 `main () = 6765, report (88)`, then `PASS`.
 

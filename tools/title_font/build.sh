@@ -10,7 +10,7 @@ for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitma
 	gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
 		-Iuser/ft -I$FT/include $FT/src/$f -o "$T/$(basename $f .c).o"
 done
-CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$T/w_$(basename "$f" .cpp).o"; done
 $CXX -c tools/tests/desktop_sim/fakekapi.cpp -o "$T/fakekapi.o"
 $CXX -Iuser/ft -I$FT/include tools/title_font/gen_title_font.cpp "$T/fakekapi.o" "$T"/w_*.o "$T"/ft*.o "$T"/autofit.o "$T"/truetype.o "$T"/sfnt.o "$T"/smooth.o -lpthread -o "$T/gen"

@@ -9,9 +9,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${NEMU_ROMS:?set NEMU_ROMS to a folder of ROMs}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/nemu/nemutest.cpp" "$ROOT/pc/NintendoEMU/core/nemucore.cpp" "$ROOT/pc/NintendoEMU/core/gxgl.cpp" \
-	"$ROOT/user/gb/gb.cpp" "$ROOT"/user/gba/*.cpp "$ROOT"/user/nes/*.cpp "$ROOT"/user/snes/*.cpp \
-	"$ROOT"/user/n64/*.cpp "$ROOT"/user/gc/*.cpp -o "$T/onyx_nemutest"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" "$HERE/nemu/nemutest.cpp" "$ROOT/pc/NintendoEMU/core/nemucore.cpp" "$ROOT/pc/NintendoEMU/core/gxgl.cpp" \
+	"$ROOT/user/Emulators/gb/gb.cpp" "$ROOT"/user/Emulators/gba/*.cpp "$ROOT"/user/Emulators/nes/*.cpp "$ROOT"/user/Emulators/snes/*.cpp \
+	"$ROOT"/user/Emulators/n64/*.cpp "$ROOT"/user/Emulators/gc/*.cpp -o "$T/onyx_nemutest"
 fail=0
 find "$R" -type f \( -iname '*.gb' -o -iname '*.gbc' -o -iname '*.gba' -o -iname '*.nes' -o -iname '*.sfc' -o -iname '*.smc' \
 	-o -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' -o -iname '*.dol' \) | sort > "$T/onyx_nemu.list"

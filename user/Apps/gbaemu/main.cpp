@@ -1,11 +1,11 @@
 //
-// gbaemu -- the Onyx Game Boy Advance emulator (the core: user/gba).
+// gbaemu -- the Onyx Game Boy Advance emulator (the core: user/Emulators/gba).
 //
 //   gbaemu <rom.gba> [--fullscreen]   (without a ROM: opens the Game Library)
 //                               (its app.txt "games": opening a .gba file starts it; the Game Library
 //                               app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, A = L, S = R, Enter = Start, Backspace = Select
-//     (held keys, kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A,
+//     (held keys, kapi_key_held); a USB gamepad too (user/Include/gamepad.h: right / top button = A,
 //     bottom / left = B, the shoulders L / R, Start, Select); F11 or View > Full Screen: the
 //     whole display, stretched with the proportions kept and centred (Esc / F11 back).
 //   * View > Zoom 1x / 2x / 3x / 4x, Sound on / off.
@@ -13,7 +13,7 @@
 //     ROM: read at start, written every few seconds after a change and when the emulator closes.
 //   * The pace: the sound output (the frames are made as the audio queue drains), or the
 //     clock when there is no sound; 59.73 frames a second.
-//   * The machine runs on an app core (core 2 or 3, user/emucore.h) when one is free: the
+//   * The machine runs on an app core (core 2 or 3, user/Emulators/emucore.h) when one is free: the
 //     window, the input and the sound stay on this thread, and a slow picture no longer
 //     slows the game down. Without a free core it runs here, as before.
 //
@@ -214,7 +214,7 @@ static int buttons (void)
 	if (kapi_key_held (KEY_BACKSPACE)) b |= gba::BTN_SELECT;
 	if (kapi_key_held ('a')) b |= gba::BTN_L;
 	if (kapi_key_held ('s')) b |= gba::BTN_R;
-	// USB gamepads (user/gamepad.h): by place, as on Nintendo's pads -- the right face
+	// USB gamepads (user/Include/gamepad.h): by place, as on Nintendo's pads -- the right face
 	// button is A, the bottom one B (and the top / left ones the same), the shoulders L / R
 	unsigned p = pad_buttons (-1);
 	if (p & PAD_RIGHT) b |= gba::BTN_RIGHT;

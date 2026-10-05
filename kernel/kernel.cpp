@@ -1950,7 +1950,7 @@ static void NameFromPath (const char *pPath, char *pOut, unsigned nCap)
 // stdio streams and no CProcess handle (nothing to wait on / free), so the task
 // just terminates and the reaper reclaims it. Returns TRUE if the ELF loaded.
 // (Only ELFs: the formats a runner executes -- .bas, .bax... -- are resolved in user space,
-// SD:/etc/runners.ini + user/launch.h, which starts the runner under the app's name.)
+// SD:/etc/runners.ini + user/Include/launch.h, which starts the runner under the app's name.)
 boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName)
 {
 	if (pElfPath == 0 || pElfPath[0] == '\0')

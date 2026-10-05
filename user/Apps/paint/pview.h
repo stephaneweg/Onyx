@@ -1,5 +1,5 @@
 //
-// pview.h -- Paint's canvas. The picture is composited by the GPU (user/gpucomp): each shown layer is
+// pview.h -- Paint's canvas. The picture is composited by the GPU (user/Libs/gpucomp): each shown layer is
 // a texture (premultiplied; only the rectangles that changed are sent again), drawn at the zoom (the
 // nearest texel from 100 %, bilinear below) with its opacity and blend mode into a buffer the size of
 // the view, then laid over the checkerboard on a dark neutral desk. A hidden layer is left out; a

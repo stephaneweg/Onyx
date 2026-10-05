@@ -1,5 +1,5 @@
 //
-// htmltest.cpp -- Mail's HTML renderer (user/mail/html.h) on the PC: a few messages' HTML (a newsletter in tables, a
+// htmltest.cpp -- Mail's HTML renderer (user/Libs/mail/html.h) on the PC: a few messages' HTML (a newsletter in tables, a
 // receipt, text styles and lists, a plain text) laid out and drawn with the card's fonts into PPM files (the test
 // script turns them into PNGs to look at), with checks on the layout (the tables' columns, the centring, the lines,
 // the links, the hidden parts). Run by tools/tests/run_mail_test.sh.

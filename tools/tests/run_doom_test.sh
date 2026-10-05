@@ -1,6 +1,6 @@
 #!/bin/sh
 # run_doom_test.sh -- Doom's Onyx port on the PC, headless (tools/tests/doom/host_doom.c on a
-# virtual clock): doomgeneric + user/doom/doom_sound.c with a stand-in kapi. Plays the IWAD's
+# virtual clock): doomgeneric + user/Ports/doom/doom_sound.c with a stand-in kapi. Plays the IWAD's
 # demos for a while (a key press starts a new game), then saves the last frame (doom_last.ppm)
 # (Enter x 4: a new game, then Ctrl: shots) and the sound effects (doom_sfx.raw, s16 stereo 44100 Hz) and counts the music's FM notes.
 #   sh tools/tests/run_doom_test.sh [SD:/doom iwad, default sdcard/doom/freedoom1.wad]
@@ -22,5 +22,5 @@ for f in dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_
 	SRC="$SRC $DG/$f.c"
 done
 gcc -O1 -g -w -DONYX -DFEATURE_SOUND -DNORMALUNIX -D_DEFAULT_SOURCE -DDOOMGENERIC_RESX=640 -DDOOMGENERIC_RESY=400 \
-	-I"$HERE/doom" -I"$ROOT/kernel/include" -I"$DG" $SRC "$ROOT/user/doom/doom_sound.c" "$HERE/doom/host_doom.c" -lm -o "$T/host_doom"
+	-I"$HERE/doom" -I"$ROOT/user/Kits" -I"$ROOT/kernel/include" -I"$DG" $SRC "$ROOT/user/Ports/doom/doom_sound.c" "$HERE/doom/host_doom.c" -lm -o "$T/host_doom"
 cd "$T" && "$T/host_doom" "$IWAD" 40 "8:13,9:13,10:13,11:13,20:163,25:163,30:163"

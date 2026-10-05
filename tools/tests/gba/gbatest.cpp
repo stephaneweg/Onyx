@@ -1,5 +1,5 @@
 //
-// gbatest -- run a Game Boy Advance ROM on the PC with the Onyx core (user/gba):
+// gbatest -- run a Game Boy Advance ROM on the PC with the Onyx core (user/Emulators/gba):
 //   gbatest <rom> <seconds> [out.ppm] [keys]
 // prints the title / save type and how fast it ran, saves the last frame (GBA_AUDIO=file:
 // the sound too, raw s16 stereo 32768 Hz; GBA_SAVE=file: the save memory at the end; GBA_LOAD=file: a save to start with;

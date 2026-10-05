@@ -1,6 +1,6 @@
 //
 // v3dprog -- checks the programmable GPU (kapi v61 gpu_program / gpu_render2) on the Pi: draws
-// small frames with shaders generated at run time (user/v3d/shaders.h) and compares the pixels
+// small frames with shaders generated at run time (user/Libs/v3d/shaders.h) and compares the pixels
 // with what they must be. One line a test (PASS / FAIL, with the first wrong pixel), then the
 // total. Run it from the terminal or telnet: `v3dprog`.
 //
@@ -113,7 +113,7 @@ static bool check (const char *name, int r)
 }
 
 
-// ---- the GameCube's TEV (user/v3d/gxtev): generated shaders against the CPU's reference --------------------
+// ---- the GameCube's TEV (user/Libs/v3d/gxtev): generated shaders against the CPU's reference --------------------
 // Each configuration draws 64 quads (8 x 8 pixels), each with its own rasterized colours and texels
 // (constant over the quad: the texel centres), and its quad's centre must be what gxtev_ref.h says.
 static unsigned s_Seed = 12345;

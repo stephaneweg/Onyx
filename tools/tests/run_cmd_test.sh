@@ -3,7 +3,7 @@
 # PC: words, "..." and '...' quotes, backslash escapes, pipes and redirections, the syntax errors,
 # a 2 KB line, the command lists (; && ||, comments), the file patterns; the script language
 # (user/BinUtils/cmdscript.h: variables, $(...), $((...)), test, if / while / for); and
-# the consoles' line editor (user/lineedit.h: the cursor, the history). docs/04 *Terminal & shell*.
+# the consoles' line editor (user/Include/lineedit.h: the cursor, the history). docs/04 *Terminal & shell*.
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-${TMPDIR:-/tmp}/onyx_cmdtest}

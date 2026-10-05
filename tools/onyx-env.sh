@@ -46,7 +46,7 @@ if [ -z "$ONYX_SYSROOT" ]; then
 	*) ONYX_SYSROOT=$_onyx_here/out/sysroot;;
 	esac
 fi
-[ -f "$ONYX_SYSROOT/lib/onyx.specs" ] || [ -n "$ONYX_ENV_QUIET" ] || echo "onyx-env: no sysroot at $ONYX_SYSROOT -- make -C user/libc/posix install PREFIX=$ONYX_TOOLCHAIN_PREFIX SYSROOT=$ONYX_SYSROOT" >&2
+[ -f "$ONYX_SYSROOT/lib/onyx.specs" ] || [ -n "$ONYX_ENV_QUIET" ] || echo "onyx-env: no sysroot at $ONYX_SYSROOT -- make -C user/Runtime/libc/posix install PREFIX=$ONYX_TOOLCHAIN_PREFIX SYSROOT=$ONYX_SYSROOT" >&2
 
 ONYX_HOST=${ONYX_TOOLCHAIN_PREFIX%-}
 CC=${ONYX_TOOLCHAIN_PREFIX}gcc

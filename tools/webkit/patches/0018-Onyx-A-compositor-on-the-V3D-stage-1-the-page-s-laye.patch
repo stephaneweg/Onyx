@@ -108,7 +108,7 @@ index b0235902..b63537ba 100644
 +// With a host (USE(GRAPHICS_LAYER_ONYX), WebKit's LayerTreeHost on Onyx: the page asked to
 +// composite), a layer that draws content keeps it in tiles of 512 pixels painted here by Skia and
 +// handed to the host as textures; the host walks the tree and has them assembled by the GPU
-+// (user/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again.
++// (user/Libs/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again.
 +// Animations stay on the main thread (addAnimation answers false).
  
  namespace WebCore {
@@ -635,7 +635,7 @@ index 00000000..4855a7bb
 +class GraphicsLayerOnyx;
 +
 +// The compositor a GraphicsLayerOnyx belongs to (WebKit's LayerTreeHost on Onyx): it keeps the
-+// tiles' pixels as textures (user/gpucomp: the V3D, or the CPU) and assembles them. A layer made
++// tiles' pixels as textures (user/Libs/gpucomp: the V3D, or the CPU) and assembles them. A layer made
 +// without one (no factory: accelerated compositing off) keeps the tree and its properties and
 +// draws nothing, as before there was a compositor.
 +class GraphicsLayerOnyxHost {
@@ -776,7 +776,7 @@ index da34742c..64b2858a 100644
 -# process, Skia on the CPU and the software drawing path -- no compositor, no GL / EGL, no libwpe,
 -# no GLib, no GPU process, no WebDriver. The view (UIProcess/onyx) is exposed to embedders through
 +# process, Skia on the CPU and the software drawing path -- beside it Onyx's own compositor
-+# (USE_GRAPHICS_LAYER_ONYX: LayerTreeHostOnyx, on the V3D through user/gpucomp), no GL / EGL, no
++# (USE_GRAPHICS_LAYER_ONYX: LayerTreeHostOnyx, on the V3D through user/Libs/gpucomp), no GL / EGL, no
 +# libwpe, no GLib, no GPU process, no WebDriver. The view (UIProcess/onyx) is exposed to embedders through
  # a small C API (UIProcess/API/C/onyx, Shared/API/c/onyx) beside WebKit's generic WK* API.
  
@@ -2294,13 +2294,13 @@ index 8e4cdb0e..f1c2460f 100644
 +    # Onyx's compositor, beside the software path and off until a page's preferences ask for it
 +    # (WKPreferencesSetCompositingEnabledOnyx): WebCore's layers keep their content in tiles
 +    # (GraphicsLayerOnyx), the web process's LayerTreeHost has them assembled by the V3D through
-+    # Onyx's GPU compositing service (user/gpucomp of the Onyx sources: its header is used here, its
++    # Onyx's GPU compositing service (user/Libs/gpucomp of the Onyx sources: its header is used here, its
 +    # code is linked with the program) into a kernel surface that the UI process shows.
 +    SET_AND_EXPOSE_TO_BUILD(USE_GRAPHICS_LAYER_ONYX ON)
 +    if (NOT ONYX_SOURCE_DIR)
 +        get_filename_component(ONYX_SOURCE_DIR "${ONYX_SYSROOT}/../.." ABSOLUTE)
 +    endif ()
-+    set(ONYX_GPUCOMP_INCLUDE_DIR "${ONYX_SOURCE_DIR}/user/gpucomp")
++    set(ONYX_GPUCOMP_INCLUDE_DIR "${ONYX_SOURCE_DIR}/user/Libs/gpucomp")
 +    if (NOT EXISTS "${ONYX_GPUCOMP_INCLUDE_DIR}/gpucomp.h")
 +        message(FATAL_ERROR "No gpucomp.h in ${ONYX_GPUCOMP_INCLUDE_DIR}: -DONYX_SOURCE_DIR=<the Onyx sources>")
 +    endif ()

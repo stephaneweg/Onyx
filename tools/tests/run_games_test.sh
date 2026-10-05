@@ -11,8 +11,8 @@ UIKIT=$(ls "$ROOT"/user/Kits/uikit/*.cpp | grep -v imgload)
 for g in ${@:-INVADERS PIPES SOLITAIRE FREECELL GRAPHCALC ICONEDIT RTF BASICRT MENUBAR}; do
 	BIN=$OUT/game_$g
 	g++ -std=c++17 -O1 -g -w -fsanitize=undefined -fno-sanitize=alignment -DGAME_$g \
-	    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
-	    -I"$HERE/uikithost/inc" -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/kernel/include" \
+	    "$ROOT/user/Libs/basic/basnum.cpp" "$ROOT/user/Libs/basic/bascomp.cpp" "$ROOT/user/Libs/basic/basvm.cpp" "$ROOT/user/Libs/basic/basbax.cpp" \
+	    -I"$HERE/uikithost/inc" -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" -I"$ROOT/kernel/include" \
 	    "$HERE/uikithost/game_host.cpp" $UIKIT -o "$BIN"
 	(cd "$OUT" && "$BIN" "$ROOT/sdcard")
 done

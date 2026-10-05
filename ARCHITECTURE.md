@@ -362,7 +362,7 @@ Chosen after #1–#11: instead of isolated EL0 processes + syscalls, apps run in
   app's context (kernel mapped, args are plain pointers in the active AS — no
   copy_from_user).
 - **Link-time resolution:** the kernel build runs `nm` over the kernel ELF and
-  writes `user/kernel_syms.ld` (`kapi_x = 0xADDR;`); `user/user.ld` `INCLUDE`s it.
+  writes `user/kernel_syms.ld` (`kapi_x = 0xADDR;`); `user/Runtime/user.ld` `INCLUDE`s it.
   Apps `bl kapi_*`; since the app is at 8 GB and the kernel at <4 GB, `ld` inserts
   long-branch veneers automatically. **Consequence:** apps can't be embedded (they
   depend on the linked kernel) — they live on the **SD card** as distinct ELFs, and

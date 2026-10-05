@@ -101,7 +101,7 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
   `mail/*`, `media/*`, `pdf/*`, `photos`, `web-*` (Jet); the data folders `SD:/mail`, `SD:/courier`,
   `SD:/koton`, `SD:/lisa-chat.txt`; the documents `SD:/docs` (≈ 48 literals), `SD:/Documents`,
   `SD:/Downloads`, `SD:/pictures`, `SD:/music`, `SD:/videos`, `SD:/basic`, `SD:/projects`; the Trash
-  `SD:/.Trash` (`user/trash.h`); **state written inside the app bundles** (`SD:/apps/<x>.app/`
+  `SD:/.Trash` (`user/Include/trash.h`); **state written inside the app bundles** (`SD:/apps/<x>.app/`
   `config.ini`, `recovered.*`, `last.txt`, `agenda.txt`, `servers.txt`, `settings.ini`… — 15 apps).
 - What is **the system's**: `system.ini`, `wpa_supplicant.conf` (Wi-Fi passwords in clear),
   `autostart`, `keymaps/`, `fileassoc.ini`, `runners.ini`, `preload.ini`, `gamepad.ini`, `pkg/`,
@@ -129,7 +129,7 @@ login screen. `tools/onyx-telnet.py` and the test scripts (`tools/tests/shlib/pi
 - mbedTLS 3.6.3 (`third_party/`), linked **statically into apps** (not in the kernel, not a shared
   library). Enabled: PBKDF2 (`PKCS5_C`), SHA-256 / 512, HMAC, HKDF, **the TLS server** (`SSL_SRV_C`,
   TLS 1.2 / 1.3), ECDH / ECDSA / Curve25519, certificate writing (`X509_CRT_WRITE_C`). Our glue
-  (`user/tls/onyx_tls.hpp`) is client-only. No scrypt / argon2 / bcrypt.
+  (`user/Libs/tls/onyx_tls.hpp`) is client-only. No scrypt / argon2 / bcrypt.
 - **`kapi_random` is not cryptographic** (a timer-seeded splitmix64; the hardware RNG200 freezes the
   bus — comment at `kernel/sys/kapi.cpp:1438`). Salts, challenges and TLS server keys need better:
   **a prerequisite** (step 0).
@@ -380,7 +380,7 @@ volume (`SD1:/home/alice`: a big exFAT partition) with nothing else to change.
 ```
 Documents/  Downloads/  Pictures/  Music/  Videos/  Projects/      (made at the first login)
 .config/                the user's settings (and the redirected files, §6.2)
-.Trash/                 the user's Trash (user/trash.h: one per home; one per volume for other volumes)
+.Trash/                 the user's Trash (user/Include/trash.h: one per home; one per volume for other volumes)
 ```
 
 - **`~` is understood by the kernel**: `ResolvePath` turns a leading `~/` into the caller's home. One
@@ -471,7 +471,7 @@ What becomes of each kind:
 
 ### 8.2 The channel: TLS, recommended
 
-mbedTLS's server side is already compiled. One small shared piece (`user/tls/onyx_tls_server.hpp`,
+mbedTLS's server side is already compiled. One small shared piece (`user/Libs/tls/onyx_tls_server.hpp`,
 then an `mbedtls.so` — it is on the shared-library list anyway):
 
 - **The Pi's identity**: an ECDSA P-256 key and a self-signed certificate made at first boot
@@ -681,7 +681,7 @@ in the same session (CLAUDE.md). Kapi version numbers are indicative (v84 onward
   `telnetd` on 992 + `tools/onyx-telnet.py` + the test scripts; `ftpd` on accounts + `AUTH TLS`;
   `vncd` VeNCrypt, off by default; `remote.ini`, the Remote Access applet; the attach rules (§8.3).
 - *kapi*: `user_scram` (v89) if SCRAM is kept for a client without TLS.
-- *Files*: `user/BinUtils/{rdpd,telnetd,ftpd,vncd}.c`, `user/tls/`, `pc/OnyxRemote/{Connection,MainForm,
+- *Files*: `user/BinUtils/{rdpd,telnetd,ftpd,vncd}.c`, `user/Libs/tls/`, `pc/OnyxRemote/{Connection,MainForm,
   TelnetForm}.cs` (+ `pc/dist`), `tools/onyx-telnet.py`, `tools/tests/**` that telnet.
 - *Risk*: **losing the remote hand** — the rules of §8.6 (new beside old, one-boot trial); TLS's cost
   on the remote desktop's rate (measure; HANDOFF's network figures are the reference).

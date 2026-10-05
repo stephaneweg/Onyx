@@ -189,7 +189,7 @@ def sign (data, keyfile):
 def write_assoc (sd, pkgs):
 	"""sdcard/etc/fileassoc.ini and runners.ini made from what the packages say they open and run (one source:
 	packages.ini). On a card, pkg adds a package's lines when it is installed and never touches a line of the user's."""
-	head = { "fileassoc.ini": ["# Onyx file associations -- read by the File Viewer and the dock (user/fileassoc.h).",
+	head = { "fileassoc.ini": ["# Onyx file associations -- read by the File Viewer and the dock (user/Include/fileassoc.h).",
 				   "# One \"extension = app\" per line: opening a file launches SD:apps/<app>.app/main with",
 				   "# the file's path as its argument. Folders open in the File Viewer, .app bundles and",
 				   "# programs run. Extensions are case-insensitive; '#' starts a comment.",
@@ -197,7 +197,7 @@ def write_assoc (sd, pkgs):
 				   "# package's lines when it is installed, and never changes a line that is here already -- change",
 				   "# one freely; \"ext =\" with nothing after it: opened by nothing."],
 		 "runners.ini": ["# runners.ini -- the programs that run files the kernel cannot load itself (it loads ELF",
-				 "# programs only). One \"extension = program\" per line, read by user/launch.h: opening such a",
+				 "# programs only). One \"extension = program\" per line, read by user/Include/launch.h: opening such a",
 				 "# file (File Viewer, dock, `run`), or launching an app whose bundle holds main.<extension>",
 				 "# instead of an ELF `main`, starts the program with the file's path as its first argument.",
 				 "# The order counts for app bundles: the first main.<extension> found is run.",

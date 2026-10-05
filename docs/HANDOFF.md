@@ -131,7 +131,7 @@ an example) and `docs/04` §11 *Printing*.
   Windows: MSYS2 (or WSL) with MinGW-w64 + the .NET SDK. The script rebuilds every exe; restore
   the unchanged ones (`git checkout pc/dist/<file>`) before committing.
 - **Host tests:** `tools/tests/run_*.sh` (fs, v3d clip, gamepad, gc, nemu...). N64 headless:
-  `g++ -std=c++17 -O2 [-DN64_TRACE] -I user -I user/Kits -I user/basic tools/tests/n64/n64test.cpp user/n64/*.cpp`
+  `g++ -std=c++17 -O2 [-DN64_TRACE] -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I user/Libs/basic tools/tests/n64/n64test.cpp user/Emulators/n64/*.cpp`
   then `n64test <rom> <frames>` with `N64_SAV`, `N64_INPUT="f0-f1:hex;..."`, `N64_SNAP=1`,
   `N64_GFX=prefix N64_GFXEVERY=n`, `N64_FRAMELOG=f`, `N64_CIMG=f` (see the file's header). With
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
@@ -215,7 +215,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 - **Open**: the Pi's sending rate without aggregation (3–4 MB/s); a rare 1 s pause left (TCP's
   minimum retransmission timeout is 1 s); whether a newer Wi-Fi firmware aggregates soundly;
   receive glomming does nothing with this firmware (tried, removed).
-- **Web**: video and Media Source on `user/av`, the pictures as a compositor layer (YouTube 480p
+- **Web**: video and Media Source on `user/Libs/av`, the pictures as a compositor layer (YouTube 480p
   at its frame rate), the JavaScript console (F12), YouTube and Google asked for as a phone.
   **Not verified on the Pi by hand yet**: the Console window, AltGr characters (`@`), closing the
   Downloads window after a cancelled download. **Still to do, in the user's order**: full screen
@@ -259,12 +259,12 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   destination aligned first, for the Device framebuffer -- and `present_fb`/`fullscreen_direct`);
   **Doom slower, ~588 000 system calls/s** (`ps` SYSC/s): a kapi in a tight loop (a clock read --
   `get_ticks`/`clock_us`, readable at EL0 through `cntvct` instead --, newlib's locks, the app-core
-  RPC of `user/doom`): `sysstat doom` names the top slots; fix it app-side.
+  RPC of `user/Ports/doom`): `sysstat doom` names the top slots; fix it app-side.
   **Measured (`sysstat doom`, the user):** `key_held` 77 % (184 169), `pad_state` 7 %, then thread_self,
   sound_status, msleep, should_exit, get_modifiers, pop_event (~4 300/s each). Cause: `poll_input`
-  (`user/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
+  (`user/Ports/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
   called ~4 300 times a second (not once a frame). The same per-key polling is in **every emulator**
-  (gb, gba, nes, snes, n64, **gc**), invaders, `user/game.h` and the BASIC runtime (**Arkanoid**) --
+  (gb, gba, nes, snes, n64, **gc**), invaders, `user/Include/game.h` and the BASIC runtime (**Arkanoid**) --
   likely a big part of their slowdown at EL0. **The fix (the user's design, 2026-10-02):** `key_held` must not be
   a system call. The kernel keeps **one input-state page** (a 256-bit held-key map, the modifiers,
   the pads' state -- removing `pad_state`'s 7 % too), mapped **read-only at a fixed VA** next to the
@@ -329,7 +329,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 
 - **Done, on `main`, validated on the Pi**: kapi **v76** -- demand paging and `vm_*` (v75), real files /
   processes / BSD sockets + `poll` (v75), IPC for WebKit2 (v76: AF_UNIX socketpair, SCM_RIGHTS-like
-  handle passing, memfd/shm shared memory, spawn with handles); **libonyxposix** (`user/libc/posix/`);
+  handle passing, memfd/shm shared memory, spawn with handles); **libonyxposix** (`user/Runtime/libc/posix/`);
   the **`aarch64-onyx-elf`** toolchain (GCC 14.2, posix threads, native TLS; prebuilt + sources in the
   repo `stephaneweg/onyx-toolchain`; install: `sh tools/toolchain/fetch.sh`, rebuild:
   `tools/toolchain/build-onyx-toolchain.sh`); ports: SQLite, libxml2, curl+mbedTLS, ICU 78.3, HarfBuzz,
@@ -370,12 +370,12 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 
 ## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
 
-- **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
+- **What**: `user/Apps/mail` + `user/Libs/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
   decisions: `docs/mail/README.md`), **MIT**. Gmail (an **app password**), Outlook.com / Hotmail (**Microsoft's
   device code**: the "Onyx Mail" application registered by the user at Microsoft Entra, its id
-  `85ccaf6e-81ff-4a62-9194-930fc36429ad` built in -- `oauth_defaults`, user/mail/oauth.h; `SD:/etc/mail/oauth.ini` overrides it), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
+  `85ccaf6e-81ff-4a62-9194-930fc36429ad` built in -- `oauth_defaults`, user/Libs/mail/oauth.h; `SD:/etc/mail/oauth.ini` overrides it), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
   starred, each account's folders; conversations (Gmail's thread id, else References; one's replies from Sent
-  joined); the reading pane with **our own HTML 4 + CSS 2 renderer** (`user/mail/html*.h`: the user, "simple,
+  joined); the reading pane with **our own HTML 4 + CSS 2 renderer** (`user/Libs/mail/html*.h`: the user, "simple,
   not Jet"), remote pictures held back, attachments opened / saved; writing with completion (contacts + the
   addresses written to), drafts, attachments; the wizard and the settings; **Contacts = a Cardfile form**,
   `SD:/Documents/Contacts.card`. `eml = mail` in `fileassoc.ini`. A worker thread does all the network; the
@@ -419,7 +419,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   (the web: Jet), passwords, Properties (facts, fonts, security), the home's recent documents (reopened at
   their page: `SD:/etc/pdf/recent.tsv`), `pdf = pdf` in `fileassoc.ini`. A worker thread draws the display
   lists and searches; the files go through the kapi (`KStream`).
-- **The export**: `user/pdf/pdfwrite.h` (**MIT**, ours): PDF 1.7, TrueType fonts embedded as subsets (Identity-H,
+- **The export**: `user/Libs/pdf/pdfwrite.h` (**MIT**, ours): PDF 1.7, TrueType fonts embedded as subsets (Identity-H,
   ToUnicode), images, links, bookmarks. Letters' *File ▸ Export as PDF* (its pages drawn again into it:
   `PageView::paintPage`, `g_pdf`; the headings as bookmarks) and the Spreadsheet's (the used cells cut into
   A4 pages, fitted to the width, the charts as images).
@@ -460,15 +460,15 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   pages, search, a songs' table with its menu, now playing (a MIDI file: its notes as coloured lines),
   the mini player (the window reduced at the screen's bottom right). Tags read only; covers from the
   files and folders; closing stops the music.
-- **The videos (2026-10-02)**: on Jet's media library `user/av` (VP9, VP8, AV1 + Opus...; `av_player_open_file`,
+- **The videos (2026-10-02)**: on Jet's media library `user/Libs/av` (VP9, VP8, AV1 + Opus...; `av_player_open_file`,
   its reader now through the kapi): `videos.h` (the facts, `videos.tsv`, the kinds: Films / Clips and series,
   episodes), `thumbs.h` (a frame a tenth in, `SD:/etc/media/thumbs/*.jpg`), `watch.h` + `WatchView` (the
   whole window, controls over the picture, full screen, resumed where left, *Next* episode); the sound
   handed between the music's thread and the video's (`Player::release`). `media.elf` links `libvpx.a`,
   `libdav1d.a`, `libopus.a` and **FFmpeg 7.1.2** (the user, 2026-10-02: "FFmpeg complet", the Media Player
-  GPL-2.0): every decoder (H.264, H.265, AAC...) and container (AVI, TS, WMV, FLV, OGV...) through `user/av`'s
+  GPL-2.0): every decoder (H.264, H.265, AAC...) and container (AVI, TS, WMV, FLV, OGV...) through `user/Libs/av`'s
   `av_ffmpeg.c` / `av_lavf.c` (`third_party/ffmpeg-7.1.2/onyx/build.sh`; test videos: `Samples/Videos`). PC: `shots.sh media` (the sample library's `Videos/`: `make_library.py`; the
-  simulator's build of `user/av`: `tools/tests/desktop_sim/av_host.mk`); `tools/tests/av/run.sh` checks the
+  simulator's build of `user/Libs/av`: `tools/tests/desktop_sim/av_host.mk`); `tools/tests/av/run.sh` checks the
   file mode now.
 - **To try on the Pi**: the sound (`kapi_sound_write` from the player's thread: a song heard whole,
   pause / seek at once), the scan of a big `SD:/Music` (its time; the next start from `library.tsv`), a
@@ -591,15 +591,15 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 - **Users**: NetSurf's downloads (a thread each: `user/netsurf/onyx_fetch.c`, docs/06 §1 --
   the connects one at a time: several at once all failed, a page's style sheet among them);
   `telnetd` (a session per thread, 8 at once); SuperTuxKart's `stkpoc` (`std::thread` on them:
-  `user/stk`, docs/SUPERTUXKART-PORT.md -- PASS on the Pi).
+  `user/Ports/stk`, docs/SUPERTUXKART-PORT.md -- PASS on the Pi).
 - **Next**: asynchronous kapi calls (a file read, a connect) with a completion posted
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
 ## The shared clipboard (2026-10-01, not yet tried on the Pi)
 
-- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/clipboard.h`**
-  (the apps' side, its old functions kept + images and formats), **`user/clipproto.h`** (messages by mailbox,
+- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/Include/clipboard.h`**
+  (the apps' side, its old functions kept + images and formats), **`user/Include/clipproto.h`** (messages by mailbox,
   bytes by `RAM:/clip` files), **`user/Apps/clipboard`** (the widget, the dock's new button; the dock's small
   buttons now: lock / gear at the left, power / clipboard at the right). Every uikit app gets it through
   `textbox.cpp` / `textarea.cpp`: all the apps were rebuilt and staged. `autostart` runs clipd.
@@ -617,7 +617,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   new copy swapped in (add, delete, rename, new folder). Files **dropped** from the File Viewer go
   straight into the folder under the pointer; rows dragged out are extracted to `RAM:` and handed
   over; a file opened (extracted to `RAM:`) and saved is put back. Jobs on a **thread**. A newlib
-  app (FreeType) with zlib (`user/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
+  app (FreeType) with zlib (`user/Libs/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
 - **Tested on the PC**: `sh tools/tests/run_archiver_test.sh` (the engine, 51 checks against
   `zipfile` and `unzip -t`) and the app in the desktop simulator (which now has `kapi_file_in /
   file_out` streams, remove / rename of the files an app wrote, and the script's `dragover` / `drop`).
@@ -667,7 +667,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 
 ## GPU compositing, stage 1 -- the service (2026-09-30, kernel v70, not yet tried on the Pi)
 
-- `user/gpucomp/gpucomp.{h,c}` (+ `libgpucomp.a`): layers (premultiplied ARGB textures, tiled past
+- `user/Libs/gpucomp/gpucomp.{h,c}` (+ `libgpucomp.a`): layers (premultiplied ARGB textures, tiled past
   2048) composited by the V3D into a canvas -- affine matrix, clip, opacity, source-over, bilinear,
   scrolling by the source rectangle -- or by the CPU (NEON loops) with the same API and pixels.
   Kernel v70: `gpu_texture_rect` (damaged rectangles only), `KAPI_GPU_F_ALPHA` (ARGB targets), fair
@@ -777,12 +777,12 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **The dock** rewritten (`user/Apps/dock`): drawers = a group + its main app (the icon starts
   the app, the strip above opens the drawer, as Xfce), launchers, the pager, lock / gear
   (Control Panel) / power, the Trash (a click opens it in the File Viewer: `fileviewer trash`;
-  a drop trashes). The Shelf's switcher is gone. `SD:/etc/dock.ini` (`user/dockconf.h`).
+  a drop trashes). The Shelf's switcher is gone. `SD:/etc/dock.ini` (`user/Include/dockconf.h`).
 - **The Control Panel** (`user/Apps/control`): applets drawn inside its window through a shared
-  surface (`user/applet_proto.h`; uikit's `Root` has an applet mode: `uk_applet ()`, `uk_pump`,
+  surface (`user/Include/applet_proto.h`; uikit's `Root` has an applet mode: `uk_applet ()`, `uk_pump`,
   `uk_present`, `uk_quit`), listed by link files (`sdcard/apps/control.app/applets/*.lnk`).
   Applets: Theme (rewritten: a Windows-98-like desktop preview, a colour per part — frames,
-  content, buttons, fields, selection, menu bar, dock — the wallpaper's modes, `user/wallpaper.h`
+  content, buttons, fields, selection, menu bar, dock — the wallpaper's modes, `user/Include/wallpaper.h`
   painted by `voronoy`), Panel (`dockconf`), Sound (`soundconf`), Keyboard & Mouse (`keyconf`),
   Gamepad, Wi-Fi, App Settings (`config`). Kernel surfaces are now counted per user (an applet's
   surface outlives its host or itself safely).
@@ -909,7 +909,7 @@ toggle, Fit), transparent **layers** (eye, opacity, add, duplicate, delete, move
 a floating selection (moved, nudged, turned, flipped; a click outside puts it down), zoom 12 % –
 3200 %, undo by tiles. **Save** = OpenRaster (`.ora`, the layers; GIMP / Krita read it); **Open**:
 `.ora`, PNG, JPEG, BMP, GIF (WebP, PCX); **Export**: PNG, JPEG, BMP, GIF (flattened) — the writers
-in `user/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
+in `user/Libs/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
 closed-unsaved picture is recovered. Screenshots `paint.png`, `paint-grid.png`; docs 04 *Paint*,
 03. **Next ideas**: a text tool (it would make Paint a newlib app: `ft/fonts.h`), free-form
 selection, a selection resized by handles, brushes with soft edges, a gradient fill.
@@ -1089,11 +1089,11 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   - **Kernel ABI v61** `gpu_program` / `gpu_render2` (`kernel/sys/v3d.cpp`): the app's own
     vertex / coordinate / fragment shaders, batches with uniform ranges, up to 8 textures, blend
     factors, write mask, scissor; generic CPU clipping (`V3DClipTriangleN`).
-  - **QPU toolchain**: `user/v3d/qpu.h` (C++ instruction builder over Mesa's packer),
-    `user/v3d/shaders.h` (pass-through VS / CS, simple FS), `tools/qpu/qpulib` (instruction
+  - **QPU toolchain**: `user/Libs/v3d/qpu.h` (C++ instruction builder over Mesa's packer),
+    `user/Libs/v3d/shaders.h` (pass-through VS / CS, simple FS), `tools/qpu/qpulib` (instruction
     restrictions checker), `tools/qpu/qpusim` (fragment-shader simulator).
-  - **TEV generator** `user/v3d/gxtev.{h,cpp}`: a TEV configuration -> fragment shader in
-    integers as the hardware; `user/v3d/gxtev_ref.h` = gxgl.cpp's GLSL TEV in C++. Checked:
+  - **TEV generator** `user/Libs/v3d/gxtev.{h,cpp}`: a TEV configuration -> fragment shader in
+    integers as the hardware; `user/Libs/v3d/gxtev_ref.h` = gxgl.cpp's GLSL TEV in C++. Checked:
     `tools/tests/run_qpu_test.sh` (thousands of random configs in the simulator, exact) and on
     the Pi: `/bin/v3dprog` -> **ALL PASS 24/24** (incl. 11 TEV configs, Wind Waker's first two).
   - **gcemu backend** `user/Apps/gcemu/gxv3d.h` (`Rec`: gc::GxGpu on the app core -- vertices
@@ -1250,7 +1250,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   |---|---|---|---|
   | 1 | A fan / heatsink on the Pi (kmsg `power: SoC 80-83 C ... soft temp limit NOW`: the cores ~1.3-1.4 GHz instead of 1.5) | +7-15 % on every core | none (hardware) |
   | 2 | Then an overclock (`arm_freq` 1750-2000 + `over_voltage` in config.txt, with the cooling) | +15-30 % more | the user's call (boot config) |
-  | 3 | The display's last traffic: the XFB framing in the vertex / coordinate shaders (`user/v3d/shaders.cpp`: 4 more uniforms, 2 fmul + fadd a coordinate) so the kernel only reads the positions -- or the recorder flagging the batches wholly inside (it has the positions; a conservative guard band) so the kernel skips them. The display still costs the machine ~9 % (`--nodraw`: 26.8 against 29.3 M cycles) | -3-5 % (the kernel's pass 3.5 -> < 1 ms a frame) | medium (QPU code, v3dprog) |
+  | 3 | The display's last traffic: the XFB framing in the vertex / coordinate shaders (`user/Libs/v3d/shaders.cpp`: 4 more uniforms, 2 fmul + fadd a coordinate) so the kernel only reads the positions -- or the recorder flagging the batches wholly inside (it has the positions; a conservative guard band) so the kernel skips them. The display still costs the machine ~9 % (`--nodraw`: 26.8 against 29.3 M cycles) | -3-5 % (the kernel's pass 3.5 -> < 1 ms a frame) | medium (QPU code, v3dprog) |
   | 4 | JIT, small: the call landing's cycle check (its return checked them: -2 instructions a call), `and` / `orr` immediates on blr / bctrl (-1 each), the CR field from an NZCV table (`mrs nzcv` + `ldrb`: 7 -> 5 instructions a materialized compare, the same results), fcmpo / fcmpu fused with their branch like the integer compares (14.4 host instructions each, ~4 % of the hot code) | -2-4 % | small, fuzz + calltest under qemu |
   | 5 | JIT: mtmsr / mfmsr native (OSDisable / RestoreInterrupts: ~550 of the ~2000 exits to C a field; each one also empties the call / return pairs): exit only when EE comes on with an interrupt pending, or IR / DR change | -1-2 % | small-medium |
   | 6 | Fewer run ends: a VI line (~310 a field) only when a VI interrupt can fire on it; the audio DMA's ~80 | -0.5-1 % | small |
@@ -1399,7 +1399,7 @@ the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ft
   and the rest of the script; a stage that cannot start no longer leaves the others waiting; the end
   of cmd's own stdin is handed to the first stage. `cmd` exits through `kapi_exit` (main's return
   value is not the exit code).
-- **Line editor** (`user/lineedit.h`): the cursor in the line, the history (Up / Down), in the
+- **Line editor** (`user/Include/lineedit.h`): the cursor in the line, the history (Up / Down), in the
   terminal (the typed line is drawn after the prompt, wrapped; it enters the scrollback when sent) and
   in `telnetd` (ANSI escape sequences read; `tools/onyx-telnet.py` sends them on Windows).
 - **Tested**: `run_cmd_test.sh`, `run_tools_test.sh`, `run_telnetd_test.sh` (PC); on the Pi through telnet, the binaries

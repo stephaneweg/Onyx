@@ -1,5 +1,5 @@
 /*
- * tools/tests/av/avtest.c -- the media library (user/av) on its own: containers, decoders,
+ * tools/tests/av/avtest.c -- the media library (user/Libs/av) on its own: containers, decoders,
  * the store (MSE), conversions, the player, against the clips tools/tests/av/mkmedia.py makes.
  * Built with AV_POSIX (pthreads) for the PC, and for AArch64 Linux (run under qemu-aarch64:
  * the NEON paths checked against the C ones). tools/tests/av/run.sh builds and runs it.

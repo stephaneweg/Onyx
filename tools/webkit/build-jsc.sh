@@ -41,7 +41,7 @@ PATH=/opt/toolchains/aarch64-onyx-elf-14.2/bin:$PATH
 export PATH
 
 [ -f "$WEBKIT_DIR/Source/cmake/OptionsOnyx.cmake" ] || { echo "build-jsc.sh: no Onyx WebKit checkout at $WEBKIT_DIR: sh tools/webkit/fetch.sh" >&2; exit 1; }
-[ -f "$ONYX_SYSROOT/lib/libicuuc.a" ] || { echo "build-jsc.sh: no ICU in $ONYX_SYSROOT: make -C user/libc/posix install PREFIX=aarch64-onyx-elf- && sh tools/ports/build-all.sh webkit" >&2; exit 1; }
+[ -f "$ONYX_SYSROOT/lib/libicuuc.a" ] || { echo "build-jsc.sh: no ICU in $ONYX_SYSROOT: make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf- && sh tools/ports/build-all.sh webkit" >&2; exit 1; }
 for t in cmake ninja perl python3 ruby gperf; do
 	command -v $t >/dev/null 2>&1 || { echo "build-jsc.sh: the host tool $t is missing" >&2; exit 1; }
 done

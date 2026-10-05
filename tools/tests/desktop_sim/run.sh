@@ -16,7 +16,7 @@ g++ -std=gnu++17 -O1 -g -w -I $D/kstub -I kernel/include -o "$OUT/wmtest" $D/wmt
 "$OUT/wmtest" "$OUT"
 
 # the apps (uikit) on the PC
-CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti"
 UIKIT="$D/imgstub.cpp $(ls user/Kits/uikit/*.cpp | grep -v imgload)"	# (stb's allocator would shadow the host's)
 $CXX -o "$OUT/gallery" $D/fakekapi.cpp $D/gallery/main.cpp $UIKIT
 SIM_POS=100,100 SIM="wait;wait;dump $OUT/gallery.elsm;exit" "$OUT/gallery"

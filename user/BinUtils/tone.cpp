@@ -4,7 +4,7 @@
 //   wave: square, sine, triangle, saw, noise.   "tone scale": a C major scale.
 //
 #include "appkit/appkit.h"
-#include "../onyxpp.hpp"		// (operator new / delete: the library's binding)
+#include "onyxpp.hpp"		// (operator new / delete: the library's binding)
 #include "../Kits/audiokit/audiokit.h"
 
 static int num (const char *s) { int v = 0; while (*s >= '0' && *s <= '9') v = v * 10 + (*s++ - '0'); return v; }

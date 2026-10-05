@@ -1,5 +1,5 @@
 //
-// kp_eq3 -- a Koton effect plugin (user/kplug.h): a three-band equaliser. A low shelf, a peaking middle
+// kp_eq3 -- a Koton effect plugin (user/Include/kplug.h): a three-band equaliser. A low shelf, a peaking middle
 // (its frequency and width), a high shelf -- the RBJ cookbook's biquads -- and an output gain.
 //
 #include "kplug.h"

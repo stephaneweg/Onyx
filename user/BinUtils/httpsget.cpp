@@ -3,7 +3,7 @@
 // enabled (ONYX_HTTP_TLS -> ../tls/onyx_tls.hpp -> mbedTLS). A newlib app (mbedTLS
 // uses libc), so it prints with stdio.
 //
-// Build needs the cross-built mbedTLS (see user/tls/README); the bin/Makefile builds
+// Build needs the cross-built mbedTLS (see user/Libs/tls/README); the bin/Makefile builds
 // it only when MBEDTLS_DIR is set:  make MBEDTLS_DIR=../tls/mbedtls
 //
 // Usage:  httpsget https://example.com/

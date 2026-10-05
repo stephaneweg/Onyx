@@ -19,7 +19,7 @@
 //              (Apps/media/codecs.h) are exported as they are, for a program that wants them raw
 //
 // A program links lib/audiokit.imp.a (user/Makefile) and calls these as plain functions: the
-// library is opened before main (user/lib.h). The interface is append-only (audiokit/audiokit.abi).
+// library is opened before main (user/Runtime/lib.h). The interface is append-only (audiokit/audiokit.abi).
 // Frames are always interleaved 16-bit stereo (left, right) unless said; "the rate" is
 // AUDIOKIT_RATE, the system output's (44100 Hz).
 //

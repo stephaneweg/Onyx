@@ -14,9 +14,9 @@ English.*
 | Step | What | Where |
 |---|---|---|
 | 1a | The kernel: a library is an image (`ET_DYN` at 0, `ELF_KIND_LIB`), placed once in the arena 16 GB..32 GB (`LibPlace`), its `R_AARCH64_RELATIVE` relocations applied once to the data's copy (`LibRelocate`), up to 16 per address space (`ImageMapLib`), `kapi_lib_open` (slot 261), `KAPI_IMG_LIB`, preload of a library | `kernel/proc/elf.cpp`, `proc/image.cpp`, `kernel.cpp` `LibraryOpen`, `sys/kapi.cpp` |
-| 1a | The user side: `user/lib.h` (`TLibImports`, `TLibHeader`, `lib_bind`), `user/librt.cpp` (a library's runtime), `user/lib.ld`, `lib.vers`; the test library `user/demo`, `/bin/libtest` | |
+| 1a | The user side: `user/Runtime/lib.h` (`TLibImports`, `TLibHeader`, `lib_bind`), `user/Runtime/librt.cpp` (a library's runtime), `user/Runtime/lib.ld`, `lib.vers`; the test library `user/Libs/demo`, `/bin/libtest` | |
 | 1b | The generator `tools/libgen/libgen.py`; `ft.so` (FreeType's public API: 135 entries, `user/ft/ft.abi`; `user/ft/ftso.c`) | `user/Makefile` |
-| 1c | `uikit.so` (683 entries, `user/Kits/uikit/uikit.abi`), the globals shared with the programs (`uikit/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`uikit/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`uikit/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/doom/Makefile` |
+| 1c | `uikit.so` (683 entries, `user/Kits/uikit/uikit.abi`), the globals shared with the programs (`uikit/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`uikit/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`uikit/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/Ports/doom/Makefile` |
 | + | `printerkit.so` (33 entries, `user/Kits/printerkit/printerkit.abi`): printing (docs/03 §5.7) — the first library that uses others (`ft.so`, `uikit.so`: their import stubs linked in, opened on demand; uikit's variables through the importer's table) | `user/Makefile` |
 | | Packages `uikit` and `ft` (required), `needs = uikit >= 1.683, ft` on `onyx` and on every app | `tools/pkg/packages.ini` |
 
@@ -69,7 +69,7 @@ in `Widget` and `Root` only (a new overridable goes there). Jet's hosted build s
 | D3 | **A library is PIC code that publishes its entry points in a table of pointers, filled when it is loaded; an app finds the table and calls through it — exactly as it uses `kapi` (`KT->x (...)`).** | the user's design |
 | D4 | **The table is append-only, versioned like `kapi`** (`version`, `size` first; never reorder, never remove, never change a signature: a new entry `foo2` instead). | as `kern/kapi_abi.h` |
 | D5 | **A bug fix or an added function in a library ships without rebuilding any app.** This is the point of the work; the rules of §5 exist to keep it true. | asked and confirmed by the user |
-| D6 | **No ELF dynamic linker** (`ld.so`, symbol lookup by name, PLT/GOT in the apps). The apps stay non-PIC, static, at 8 GB (`user/user.ld` unchanged). | table-based dynamic linking (the AmigaOS `OpenLibrary` model), not ELF's |
+| D6 | **No ELF dynamic linker** (`ld.so`, symbol lookup by name, PLT/GOT in the apps). The apps stay non-PIC, static, at 8 GB (`user/Runtime/user.ld` unchanged). | table-based dynamic linking (the AmigaOS `OpenLibrary` model), not ELF's |
 | D7 | **Not** uikit inside the window server, **not** uikit in a process of its own (304 `onDraw` overrides, 418 classes derived in the apps). | study §3.1–3.2 |
 | D8 | Order: the kernel and a demo library → **FreeType** (a C library: no class layouts) → **uikit** → others (mbedTLS, newlib, FFmpeg) as wanted. The user-space GUI (`wsd`, `libgui`) comes after, on this mechanism. | |
 
@@ -96,7 +96,7 @@ aarch64-none-elf-ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-und
     -T lib.ld --version-script lib.vers -e onyx_lib_table -o name.so lib.o
 ```
 
-- `lib.ld` (`tools/tests/shlib/lib.ld`, to move to `user/lib.ld`): linked at 0; **two `PT_LOAD`**, as
+- `lib.ld` (`tools/tests/shlib/lib.ld`, to move to `user/Runtime/lib.ld`): linked at 0; **two `PT_LOAD`**, as
   `user.ld` — RX (headers, `.dynsym`, `.rela.dyn`, `.text`, `.rodata`) and RW (`.data.rel.ro`,
   `.init_array`, `.dynamic`, `.got`, `.data`, `.bss`) on separate 64 KB pages — + `PT_DYNAMIC`;
   `__lib_init_array_start/end` for the library's constructors; `.eh_frame` discarded.
@@ -167,7 +167,7 @@ pages per process, reference counted, preloadable, dropped when its file changes
 
 ### 4.1 Headers
 
-- `user/lib.h` (new, MIT): `TLibImports { unsigned size; void *(*alloc) (size_t); void (*free) (void *);
+- `user/Runtime/lib.h` (new, MIT): `TLibImports { unsigned size; void *(*alloc) (size_t); void (*free) (void *);
   void *(*realloc) (void *, size_t); }`, the `kapi_lib_open` wrapper, and a helper
   `lib_bind (name, min_version, &table)` that opens, calls `table->init (&imports)`, and on failure
   shows *"<app> needs library <name> version ≥ N"* (kmsg + `ask`-style box if a window exists) then

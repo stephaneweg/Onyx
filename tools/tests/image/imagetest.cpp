@@ -1006,7 +1006,7 @@ static void TestLoadELF (void)
 	CheckClean ();
 }
 
-// ---- shared libraries (v83): a real library, built by the cross toolchain (user/demo) -----------------
+// ---- shared libraries (v83): a real library, built by the cross toolchain (user/Libs/demo) -----------------
 
 static u64 Peek64 (CAddressSpace &AS, u64 ulVA)
 {

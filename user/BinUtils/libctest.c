@@ -1,6 +1,6 @@
 //
 // libctest -- proof that newlib (libc + libm) works on Onyx via the kapi syscall
-// layer (user/libc/onyx_syscalls.c). Exercises stdio (printf + FILE* with fseek),
+// layer (user/Runtime/libc/onyx_syscalls.c). Exercises stdio (printf + FILE* with fseek),
 // stdlib (malloc/realloc/qsort), string.h, and libm (sqrt/sin/pow), with kapi_msleep
 // yields interleaved so the work crosses cooperative context switches. Prints a
 // final PASS/FAIL line.

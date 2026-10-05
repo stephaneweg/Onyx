@@ -160,7 +160,7 @@ int ElfReadPlan (const TImgSource *pSrc, TElfPlan *pPlan, const char **ppWhy, un
 	pPlan->ulEntry = Ehdr.e_entry;
 	if (!bLib) return 0;
 
-	// The shape of user/lib.ld: the code (read-only, from 0), then the data the kernel relocates.
+	// The shape of user/Runtime/lib.ld: the code (read-only, from 0), then the data the kernel relocates.
 	if (pPlan->nSegs != 2 || (pPlan->Seg[0].nFlags & PF_W) != 0 || (pPlan->Seg[1].nFlags & PF_W) == 0
 	    || (pPlan->Seg[1].nFlags & PF_X) != 0 || KPAGE_ALIGN_DOWN (pPlan->Seg[0].ulVAddr) != 0
 	    || pPlan->Seg[1].ulVAddr < pPlan->Seg[0].ulVAddr)

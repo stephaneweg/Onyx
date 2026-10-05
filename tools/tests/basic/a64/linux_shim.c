@@ -1,7 +1,7 @@
 /*
  * linux_shim.c -- lets a program built with the bare-metal toolchain (aarch64-none-elf, newlib) run as a
  * Linux process under qemu-aarch64: its own _start and newlib's system calls done by Linux ones. So the
- * BASIC host test (host_main.cpp) runs in AArch64 -- the native translator (user/basic/basjit.h) with it
+ * BASIC host test (host_main.cpp) runs in AArch64 -- the native translator (user/Libs/basic/basjit.h) with it
  * -- without a Linux cross compiler (tools/tests/run_basic_native_test.sh).
  *
  * MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (docs/LICENSING.md).

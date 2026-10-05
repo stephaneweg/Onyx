@@ -17,7 +17,7 @@ if [ ! -f "$OUT/libft.a" ]; then
 	done; wait
 	ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 fi
-CXX="g++ -std=gnu++17 -O2 -g -Wall -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/kernel/include -I$ROOT/user/ft -I$FT/include -fno-exceptions -fno-rtti -DPRINT_HOST -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O2 -g -Wall -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/user/Runtime -I$ROOT/user/Include -I$ROOT/user/Libs -I$ROOT/user/Emulators -I$ROOT/user/Ports -I$ROOT/kernel/include -I$ROOT/user/ft -I$FT/include -fno-exceptions -fno-rtti -DPRINT_HOST -DIMG_HOST_TEST"
 $CXX -Wno-unused-function -Wno-sign-compare -Wno-unused-parameter "$HERE/print/print_test.cpp" "$OUT/libft.a" -o "$OUT/print_test"
 "$OUT/print_test" "$ROOT/sdcard/res/fonts/DejaVuSans.ttf" "$OUT"
 if [ -f "$HERE/print/ipp_test.cpp" ]; then

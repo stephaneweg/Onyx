@@ -20,7 +20,7 @@ if [ -x "$A64" ]; then
 	for f in user/Apps/koton/synth/*.cpp; do
 		"$A64" -std=gnu++17 -mcpu=cortex-a72 -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics \
 			-fno-use-cxa-atexit -ffunction-sections -fdata-sections -Wall -Wextra -Werror \
-			-I user -I user/Kits -I kernel/include -c "$f" -o "${TMPDIR:-/tmp}/koton_synth_a64.o"
+			-I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -c "$f" -o "${TMPDIR:-/tmp}/koton_synth_a64.o"
 	done
 	echo "aarch64 compile check: OK (no warnings)"
 fi

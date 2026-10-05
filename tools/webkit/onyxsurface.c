@@ -2,7 +2,7 @@
 // (USE(GRAPHICS_LAYER_ONYX): Source/WebKit/Shared/onyx/OnyxSurface.h declares these functions; the
 // web process composites a page into a surface, the UI process shows it). WebKit's own files do
 // not include appkit.h (the newlib apps' header): this file does, and is linked with the program
-// beside user/gpucomp/gpucomp.c (build-web.sh, build-wk2test.sh).
+// beside user/Libs/gpucomp/gpucomp.c (build-web.sh, build-wk2test.sh).
 //
 // A surface is mapped once a process: the kernel gives a new place in the address space at every
 // kapi_surface_map and never takes one back (kern/layout.h: USER_SURFACE_BASE).

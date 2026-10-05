@@ -1,6 +1,6 @@
 //
 // gxgl.cpp -- the GameCube's GX on the PC's GPU (OpenGL 3.3): gc::GxGpu for gc::Machine::gpu
-// (user/gc/gc_gxgpu.cpp hands it the draws as the game gave them, while the machine runs).
+// (user/Emulators/gc/gc_gxgpu.cpp hands it the draws as the game gave them, while the machine runs).
 //
 // The EFB is a framebuffer of ours (colour RGBA8 + depth 24 bits, at `scale` times 640 x 528), its
 // rows the EFB's (row 0 at the top: GL's row 0). A draw: its vertices in model space, the XF memory

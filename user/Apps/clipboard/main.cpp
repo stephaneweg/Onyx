@@ -4,7 +4,7 @@
 // bottom: the dock is outside it, however wide). It lists clipd's ring, newest first -- each item an
 // icon of its kind, a line of it (an image: only its size), its time --; a click puts the cursor there
 // (Ctrl+V pastes that one), the x of the row under the pointer deletes it, the bin clears them all.
-// It goes when another window takes the keyboard, or Esc. A client of clipd (user/clipproto.h):
+// It goes when another window takes the keyboard, or Esc. A client of clipd (user/Include/clipproto.h):
 // CLIP_LIST, CLIP_SUBSCRIBE (re-listed at each change), CLIP_CURSOR, CLIP_DELETE, CLIP_CLEAR.
 //
 #include "appkit/appkit.h"

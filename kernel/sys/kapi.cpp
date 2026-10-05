@@ -1433,7 +1433,7 @@ int kapi_set_keymap_data (const char *pName, const void *pData, unsigned nLen)
 }
 
 // kapi_random: random bytes for cryptographic seeding (the TLS entropy source in
-// user/tls/onyx_tls.hpp feeds mbedTLS's CTR_DRBG from here).
+// user/Libs/tls/onyx_tls.hpp feeds mbedTLS's CTR_DRBG from here).
 //
 // This is a SOFTWARE PRNG (splitmix64) seeded from the high-resolution timer. It
 // deliberately does NOT touch the Pi 4 hardware RNG: the BCM2711 RNG200 (at
@@ -2436,7 +2436,7 @@ int kapi_get_wheel_speed (void)
 }
 
 // Grow/shrink the calling process's heap by nIncrement bytes (Unix sbrk). Returns
-// the previous break, or (void*)-1 on failure. The user-space allocator (user/umm.h)
+// the previous break, or (void*)-1 on failure. The user-space allocator (user/Runtime/umm.h)
 // builds malloc/free + operator new/delete on top of this.
 void *kapi_sbrk (long nIncrement)
 {

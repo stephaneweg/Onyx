@@ -19,7 +19,7 @@
 | **Media Player** (`media.app`) | **GPL-2.0-or-later** | It links **FFmpeg** built with `--enable-gpl` (GPL-2.0-or-later): H.264, H.265, AAC, AVI, MPEG-TS... Decided with the user (2026-10-02: "on passera le Media Player en GPL-2"). Its own files stay MIT; its source is the repository's. |
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Photos** (`photos.app`) | **MIT** (ours) | Its EXIF reader, library, editing and slideshow are ours; it links FreeType (FTL), stb_image and simplewebp (public domain, BSD-3), our PNG / JPEG / PDF writers (MIT): all permissive. |
-| **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
+| **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/Libs/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
 | **Every other app, the tools** | **MIT** (ours; the user's decision, below) | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |
@@ -33,7 +33,7 @@ because of Circle.
 licence.** That is every app and tool that links only permissive libraries (the table's *Every other
 app*), and our own code everywhere — MIT is compatible with the GPL and the AGPL, so the kernel's,
 Jet's, Doom's and the PDF Viewer's Onyx files stay MIT as files, while the program built from them
-is distributed under its GPL / AGPL. New code is written MIT (e.g. `user/pdf/pdfwrite.h`, the PDF
+is distributed under its GPL / AGPL. New code is written MIT (e.g. `user/Libs/pdf/pdfwrite.h`, the PDF
 export of Letters and the Spreadsheet, carries the MIT notice); a library that would force another
 licence on an app is chosen only with the user (as MuPDF was).
 
@@ -71,7 +71,7 @@ Two weaknesses, worth fixing:
    kernel."* You can grant it for your own kernel code; Circle's author grants nothing, but your
    code is the only part the apps call.
 2. `user/Kits/appkit/appkit.h` (included by every app) must be under a licence every app's licence can take: put it
-   (and `user/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
+   (and `user/Runtime/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
 
 ## 3. The inventory
 
@@ -79,7 +79,7 @@ Two weaknesses, worth fixing:
 |---|---|---|---|
 | Circle (fork, branch `onyx`) | `circle/` (submodule), the kernel | GPL-3.0-or-later | The kernel's source (ours + the fork) available; the GPL's text |
 | doomgeneric | `third_party/doomgeneric` | GPL-2.0-or-later | Source available |
-| FFmpeg 7.1.2 (libavcodec, libavformat, libavutil, libswscale, libswresample; `--enable-gpl`, no external library) | `third_party/ffmpeg-7.1.2`, the Media Player (`user/av/av_ffmpeg.c`, `av_lavf.c`) | **GPL-2.0-or-later** | The Media Player under GPL-2.0-or-later, its source available (the repository: `onyx/build.sh` makes the libraries); keep `COPYING.GPLv2`, `LICENSE.md`. Some formats it decodes are patented in some countries (H.264, H.265, AAC...): FFmpeg's own note in `LICENSE.md` |
+| FFmpeg 7.1.2 (libavcodec, libavformat, libavutil, libswscale, libswresample; `--enable-gpl`, no external library) | `third_party/ffmpeg-7.1.2`, the Media Player (`user/Libs/av/av_ffmpeg.c`, `av_lavf.c`) | **GPL-2.0-or-later** | The Media Player under GPL-2.0-or-later, its source available (the repository: `onyx/build.sh` makes the libraries); keep `COPYING.GPLv2`, `LICENSE.md`. Some formats it decodes are patented in some countries (H.264, H.265, AAC...): FFmpeg's own note in `LICENSE.md` |
 | mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` | Apache-2.0 **or** GPL-2.0-or-later | Taken under Apache-2.0 |
 | FreeType 2.14.3 | `third_party/freetype-2.14.3` | FTL **or** GPL-2.0-or-later | FTL: a credit in the docs ("Portions of this software are copyright © The FreeType Project") |
 | zlib, libpng | `third_party/` | zlib / libpng licence | — |
@@ -87,27 +87,27 @@ Two weaknesses, worth fixing:
 | libwebp, brotli | `third_party/` | BSD-3 / MIT | Keep the notices |
 | nghttp2 (curl's HTTP/2) | `third_party/nghttp2-1.70.0` | MIT | Keep the notice |
 | ns-sans glyphs (the system's bitmap font is generated from them: `tools/fonts/gen_nssans.py`) | `third_party/fonts/ns-sans` (from NetSurf's framebuffer front end; Tim Tyler, Michael Drake) | MIT | Keep the notice |
-| stb_image | `user/img` | Public domain / MIT | — |
-| simplewebp | `user/img` | BSD | Keep the notice |
+| stb_image | `user/Libs/img` | Public domain / MIT | — |
+| simplewebp | `user/Libs/img` | BSD | Keep the notice |
 | MuPDF 1.28.5 (fitz, pdf; the URW base-14 fonts) | `third_party/mupdf-1.28.5`, the PDF Viewer | **AGPL-3.0** (Artifex) | The PDF Viewer under AGPL-3.0, its source available (the repository); keep `COPYING` |
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
-| pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
+| pdfwrite (Onyx) | `user/Libs/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
 | The print system (Onyx) | `user/Kits/printerkit/` (`SD:/lib/printerkit.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
 | python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |
 | **ImageKit** (Onyx) | `user/Kits/imagekit/` (`SD:/lib/imagekit.so`): pictures read, written, transformed, adjusted — with stb_image, simplewebp and the PCX reader (as in UIKit) inside | MIT (stb_image: public domain / MIT; simplewebp: BSD-3) | Keep the notices |
 | **FileKit** (Onyx) | `user/Kits/filekit/` (`SD:/lib/filekit.so`): compression, ZIP archives, files and trees, paths — with zlib and the Archiver's ZIP engine (Onyx, MIT) inside | MIT (zlib: the zlib licence, below) | Keep the notices |
 | **AudioKit** (Onyx) | `user/Kits/audiokit/` (`SD:/lib/audiokit.so`): the files, the background player, mixing, notes, WAV — with MeltySynth and the four decoders below inside it | **MIT** (ours); what it contains: MIT, CC0, public domain — nothing that binds the programs using it. FFmpeg (GPL) is **not** in it and must never be | Keep the notices |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (in AudioKit: Koton, Media Player, BASIC) | MIT | Keep the notice |
-| minimp3 | `third_party/minimp3`, AudioKit (the Media Player, `/bin/play`, BASIC), Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
-| libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
-| dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser and the Media Player's videos (`user/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
-| libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser and the Media Player's videos (`user/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
+| minimp3 | `third_party/minimp3`, AudioKit (the Media Player, `/bin/play`, BASIC), Jet Browser (`user/Libs/av/av_mp3.c`) | CC0 (public domain) | — |
+| libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/Libs/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
+| dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser and the Media Player's videos (`user/Libs/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
+| libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser and the Media Player's videos (`user/Libs/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
 | stb_vorbis | `third_party/stb_vorbis`, AudioKit | Public domain / MIT | — |
 | dr_flac, dr_wav | `third_party/dr_libs`, AudioKit | Public domain / MIT-0 | — |
-| ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
+| ares (PI DMA, ported) | `user/Emulators/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
 | Mesa (V3D / QPU headers) | `tools/qpu/mesa` | MIT | Keep the notices |
-| libonyxposix (the POSIX layer) and its sysroot files | `user/libc/posix`, `tools/onyx-toolchain.cmake`, `tools/cmake`, `tools/ports`, `/bin/posixtest`, `/bin/posixtest-cxx` | **MIT** (ours) | — |
+| libonyxposix (the POSIX layer) and its sysroot files | `user/Runtime/libc/posix`, `tools/onyx-toolchain.cmake`, `tools/cmake`, `tools/ports`, `/bin/posixtest`, `/bin/posixtest-cxx` | **MIT** (ours) | — |
 | SQLite 3.50.4 (the amalgamation and its shell) | `third_party/sqlite-3.50.4`, `/bin/sqlite3` (the POSIX ports, not on the card yet) | Public domain | — |
 | libxml2 2.13.8 | `third_party/libxml2-2.13.8`, `/bin/xmllint` (the POSIX ports) | MIT | Keep `Copyright` |
 | curl 8.16.0 (libcurl and the tool) | `third_party/curl-8.16.0`, `/bin/curl` (the POSIX ports; with mbedTLS taken under Apache-2.0, nghttp2, zlib, brotli) | curl licence (MIT-like) | Keep `COPYING` |
@@ -181,7 +181,7 @@ the repository on 2026-10-04: Jet is the WebKit port.
    The new files already carry the MIT notice — the EL0 work (`kernel/arch/aarch64/el0.S`,
    `el0blob.S`, `kernel/sys/el0.cpp`, `sys/uaccess.cpp`, `kern/handle.h`, `kern/uaccess.h`,
    `tools/el0scan.sh`, `tools/gen_kapi_names.py`, `/bin/sysstat`, `el0test`, `faulttest`), Mail
-   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/Kits/appkit/appkit.h`, `user/BinUtils/kapi_names.h` (generated)
+   (`user/Libs/mail/`), Photos, `user/Libs/pdf/pdfwrite.h`…; `user/Kits/appkit/appkit.h`, `user/BinUtils/kapi_names.h` (generated)
    and most older files do not yet.
 6. The FM Song covers out of the public distribution.
 

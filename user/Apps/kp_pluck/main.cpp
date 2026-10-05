@@ -1,5 +1,5 @@
 //
-// kp_pluck -- a Koton instrument plugin (user/kplug.h): plucked strings, Karplus-Strong. A burst of
+// kp_pluck -- a Koton instrument plugin (user/Include/kplug.h): plucked strings, Karplus-Strong. A burst of
 // noise (its brightness, the pick's position: a comb) is loaded into a delay line one period long;
 // the line feeds back through a one-zero low-pass (the damping) and an all-pass (the fine tuning)
 // with the gain that makes it fall 60 dB in the decay time -- a kora, a harp, a guitar. A released

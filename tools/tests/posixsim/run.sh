@@ -48,10 +48,10 @@ esac
 LD="${PREFIX}gcc"
 [ -n "$SIM_CXX" ] && LD="${PREFIX}g++"
 
-P=$ONYX/user/libc/posix
+P=$ONYX/user/Runtime/libc/posix
 # the library built for the bench (-DONYX_POSIXSIM: the virtual counter, which qemu-user lets EL0 read)
 make -s --no-print-directory -C "$P" PREFIX="$PREFIX" B=$SIMB EXTRA_CFLAGS=-DONYX_POSIXSIM >/dev/null
-CF="-mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem $P/include -DFD_SETSIZE=1024 -I$ONYX/user -I$ONYX/user/Kits -I$ONYX/kernel/include"
+CF="-mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem $P/include -DFD_SETSIZE=1024 -I$ONYX/user -I$ONYX/user/Kits -I$ONYX/user/Runtime -I$ONYX/user/Include -I$ONYX/user/Libs -I$ONYX/user/Emulators -I$ONYX/user/Ports -I$ONYX/kernel/include"
 "${PREFIX}gcc" $CF -c "$HERE/fakekapi.c" -o "$B/fakekapi.o"
 "${PREFIX}gcc" -c "$HERE/start.S" -o "$B/start.o"
 src=$PROG

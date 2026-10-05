@@ -4,6 +4,6 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 BIN=${TMPDIR:-/tmp}/onyx_graphcalc_test
-g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" \
-    "$HERE/graphcalc/expr_test.cpp" "$ROOT/user/basic/basnum.cpp" -o "$BIN"
+g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" \
+    "$HERE/graphcalc/expr_test.cpp" "$ROOT/user/Libs/basic/basnum.cpp" -o "$BIN"
 "$BIN"

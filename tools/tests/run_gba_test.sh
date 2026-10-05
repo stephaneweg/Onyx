@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_gba_test.sh -- the Game Boy Advance core (user/gba) on the PC, against jsmolka's
+# run_gba_test.sh -- the Game Boy Advance core (user/Emulators/gba) on the PC, against jsmolka's
 # gba-tests (github.com/jsmolka/gba-tests, cloned or unzipped; not kept in the repo):
 #   GBA_TEST_ROMS=/path/to/gba-tests tools/tests/run_gba_test.sh
 # arm, thumb, memory, bios, nes (the prefetch pipeline), unsafe and the saves (none, SRAM,
@@ -10,7 +10,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${GBA_TEST_ROMS:?set GBA_TEST_ROMS to the gba-tests folder}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/gba/gbatest.cpp" "$ROOT"/user/gba/*.cpp -o "$T/onyx_gbatest"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" "$HERE/gba/gbatest.cpp" "$ROOT"/user/Emulators/gba/*.cpp -o "$T/onyx_gbatest"
 fail=0
 for t in arm/arm thumb/thumb memory/memory bios/bios nes/nes unsafe/unsafe save/none save/sram save/flash64 save/flash128; do
 	out=$(GBA_REGS=1 "$T/onyx_gbatest" "$R/$t.gba" 3 "$T/onyx_gba.ppm")

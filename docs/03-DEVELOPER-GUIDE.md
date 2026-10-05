@@ -39,7 +39,7 @@ be aware of. For the details of how things work internally, see
 Its libgcc and libstdc++ are built against libonyxposix's `<pthread.h>` (a header overlay
 installed into the toolchain): the pthread types are **ABI-frozen** (docs/POSIX-PLAN.md "WP-LIBC
 resolutions" 7). Any change to `pthread.h`, `sys/_pthreadtypes.h`, `semaphore.h`, `sys/dirent.h`
-or `sys/features.h` in `user/libc/posix/include` means a new toolchain revision.
+or `sys/features.h` in `user/Runtime/libc/posix/include` means a new toolchain revision.
 
 **Getting it** (Linux x86_64, or **WSL** on Windows — in the WSL shell, as for the rest of the build):
 
@@ -56,7 +56,7 @@ Under WSL keep the build directory on the Linux side (the default `~/.cache`), n
 `aarch64-none-elf-`. What does select it when it is installed: `tools/onyx-env.sh`,
 `tools/onyx-toolchain.cmake`, `tools/ports/build-all.sh` (`ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-`
 forces the interim one), and `user/BinUtils`'s `posixtest-cxx` (skipped with a note when absent).
-`make -C user/libc/posix PREFIX=aarch64-onyx-elf-` builds libonyxposix for it (`build-onyx/`,
+`make -C user/Runtime/libc/posix PREFIX=aarch64-onyx-elf-` builds libonyxposix for it (`build-onyx/`,
 sysroot `out/sysroot-onyx`).
 - **Circle**, pulled in as a **git submodule** at `circle/` (our fork
   `stephaneweg/circle`, branch `onyx`).
@@ -120,7 +120,7 @@ The default target (`all`):
 1. compiles our sources + links against the Circle libs → **`kernel8-rpi4.img`**;
 2. triggers `make -C ../user`, which builds **all the apps** (each from its folder
    `user/Apps/<name>/`, to `user/<name>.elf`), the **`/bin` tools** (`user/BinUtils/*.elf`), Doom
-   (`user/doom`) and Koton's plugins. Jet Browser, on WebKit, is built apart
+   (`user/Ports/doom`) and Koton's plugins. Jet Browser, on WebKit, is built apart
    (`sh tools/webkit/build-web.sh`, docs/08).
 
 > **Kernel → apps order.** Since the apps go through the **fixed-address ABI table** and are
@@ -169,12 +169,26 @@ is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model
 
-The sources of user space are in three folders of `user/`: **`Apps/<name>/`** the graphical
-applications, **`BinUtils/`** the console programs (the card's `SD:/bin`), **`Kits/<kit>/`** the shared
-libraries (AppKit, UIKit, AudioKit, FileKit, ImageKit, PrinterKit: §5.6 to §5.10). `user/Kits` is on
-every include path, so a source includes a kit's header as `"appkit/appkit.h"`, `"uikit/uikit.h"`,
-`"audiokit/audiokit.h"`… whatever its own folder; a build of our sources elsewhere (a PC test) passes
-`-I user -I user/Kits -I kernel/include`.
+The sources of user space are sorted by their use, in `user/`:
+
+| Folder | What is in it |
+|---|---|
+| `Apps/<name>/` | the graphical applications |
+| `BinUtils/` | the console programs (the card's `SD:/bin`) |
+| `Kits/<kit>/` | the shared libraries: AppKit, UIKit, AudioKit, FileKit, ImageKit, PrinterKit, FontKit (§5.6 to §5.10) |
+| `Runtime/` | what every program is linked with: `crt0.S`, `user.ld`, the libraries' `lib.ld` / `lib.h` / `librt.cpp`, `umm.h`, `onyxpp.hpp`, and `libc/` (newlib's glue, the POSIX library) |
+| `Libs/` | the libraries linked into the programs: `av`, `img`, `zlib`, `tls`, `v3d`, `gpucomp`, `pdf`, `mail`, `pkg`, `basic` (and `demo`, the loader's test library) |
+| `Emulators/` | the emulators' cores (`gb`, `gba`, `nes`, `snes`, `n64`, `gc`, `emucore.h`); their windows are apps |
+| `Ports/` | third-party programs ported: `doom`, `stk` |
+| `Include/` | the small headers several programs share (`clipboard.h`, `notify.h`, `gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`…) |
+| `lib/` | the build's outputs for the libraries (not in git) |
+
+`user` and these folders (`Kits`, `Runtime`, `Include`, `Libs`, `Emulators`, `Ports`) are on every include
+path, so a source includes a header the same way whatever its own folder: `"appkit/appkit.h"`,
+`"uikit/uikit.h"`, `"umm.h"`, `"clipboard.h"`, `"tls/onyx_tls.hpp"`, `"gb/gb.h"`. A build of our sources
+elsewhere (a PC test) passes `-I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs
+-I user/Emulators -I user/Ports -I kernel/include`. A header that one program uses is beside that
+program.
 
 An Onyx application is a folder **`user/Apps/<name>/`** whose `main.cpp` (C++ on the **uikit**
 toolkit, §6; a big app has more files beside it) is compiled into an **ELF** — freestanding, or
@@ -182,7 +196,7 @@ against newlib (§5.1) — and run at **EL0** in its own page table, calling the
 calls through the kapi table (docs/02 §6). A `/bin` tool is a single C file, `user/BinUtils/<tool>.c`
 (§7).
 
-**Runtime** ([`user/crt0.S`](../user/crt0.S)):
+**Runtime** ([`user/Runtime/crt0.S`](../user/Runtime/crt0.S)):
 
 ```asm
 _start:
@@ -195,7 +209,7 @@ _start:
 No argv is passed via the stack: `main()` takes no arguments. An app retrieves its argument
 line via `kapi_get_args(buf, size)`, and exits early with `kapi_exit(status)`.
 
-**Linking** ([`user/user.ld`](../user/user.ld)): everything is linked at
+**Linking** ([`user/Runtime/user.ld`](../user/Runtime/user.ld)): everything is linked at
 **`USER_VA_BASE` = 8 GB** (`. = 0x200000000;`). This is **not PIE**. The RX
 (`.text`/`.rodata`) and RW (`.data`/`.bss`) sections are aligned on **64 KB** (`-z
 max-page-size=0x10000`) so that the loader maps them onto distinct pages.
@@ -244,7 +258,7 @@ The shell's parser, command lists and file patterns
 ([`cmdscript.h`](../user/BinUtils/cmdscript.h): variables, `$(…)`, `$((…))`, `test`, `if` / `while` /
 `for` — no kapi in it: `cmd.c` gives it the pipelines, the variables and Ctrl-C through `struct
 CsHost`, the test gives it a stand-in) and the consoles' line editor with its history
-([`user/lineedit.h`](../user/lineedit.h), shared by the terminal and `telnetd`) are tested by
+([`user/Include/lineedit.h`](../user/Include/lineedit.h), shared by the terminal and `telnetd`) are tested by
 **`sh tools/tests/run_cmd_test.sh`**. The end of a remote session — `telnetd.c` itself and
 [`user/BinUtils/shellend.h`](../user/BinUtils/shellend.h) against a mock kapi (a clock, the kernel's 8 KB
 pipes, a scripted client, a model of `cmd`): a client that closes or vanishes, at the prompt or
@@ -258,10 +272,10 @@ built against it to use the real `<stdio.h>` (`printf`, `FILE*`, `fopen`/`fseek`
 freestanding helpers (AppKit's `ax_*` / `umm.h`). This is the foundation for porting large C
 codebases.
 
-How it works: [`user/libc/onyx_syscalls.c`](../user/libc/onyx_syscalls.c) implements
+How it works: [`user/Runtime/libc/onyx_syscalls.c`](../user/Runtime/libc/onyx_syscalls.c) implements
 the handful of POSIX stubs newlib bottoms out in (`_sbrk`, `_read`, `_write`, `_open`,
 `_close`, `_lseek`, `_fstat`, `_gettimeofday`, …) on top of the kapi ABI.
-[`user/libc/crt0libc.S`](../user/libc/crt0libc.S) is the entry point — like `crt0.S`
+[`user/Runtime/libc/crt0libc.S`](../user/Runtime/libc/crt0libc.S) is the entry point — like `crt0.S`
 but it calls `exit(main())` so stdio is flushed on the way out. Build flags drop
 `-ffreestanding`/`-nostdlib` and use `-nostartfiles` (keep our entry, keep `libc`);
 add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`. See
@@ -407,7 +421,7 @@ download being unpacked.
 
 ### 5.4. The POSIX layer (`libonyxposix`)
 
-`user/libc/posix/` is a **POSIX C library layer** over newlib and the kapi (docs/POSIX-PLAN.md
+`user/Runtime/libc/posix/` is a **POSIX C library layer** over newlib and the kapi (docs/POSIX-PLAN.md
 §3.4): what large portable code (SQLite, libxml2, curl, and later ICU, Skia, WebKit) expects —
 real file descriptors, pthreads, BSD sockets, `poll`, `mmap`, `clock_gettime`, `posix_spawn`.
 It is the kernel's v75 POSIX ABI (docs/02 §8, "v75") seen from C, and v76's IPC between processes
@@ -418,8 +432,8 @@ A program links **libonyxposix or `onyx_syscalls.c`, never both**: the existing 
 Letters, Doom, the TLS tools, `pkg`, `rdpd`, the SuperTuxKart port…) keep `onyx_syscalls.c` and are
 unchanged; new ports and tools use libonyxposix.
 
-**Building with it.** `make -C user/libc/posix` builds `build/libonyxposix.a`, `crt0posix.o`,
-`onyx-posix.ld` and `build/onyx.specs` (in-tree programs); `make -C user/libc/posix install
+**Building with it.** `make -C user/Runtime/libc/posix` builds `build/libonyxposix.a`, `crt0posix.o`,
+`onyx-posix.ld` and `build/onyx.specs` (in-tree programs); `make -C user/Runtime/libc/posix install
 SYSROOT=<dir>` makes the **sysroot** third-party code builds against (§5.5). A program needs two
 flags — the headers first on the path, and the specs, which bring the start code, the link
 script and the libraries:
@@ -430,8 +444,8 @@ aarch64-onyx-elf-g++ -std=gnu++20 -mcpu=cortex-a72 -O2 -isystem <sysroot>/includ
 ```
 
 Either toolchain (§1.1) works for C; **C++ with threads needs `aarch64-onyx-elf`**. libonyxposix
-is built per toolchain — `make -C user/libc/posix` with `aarch64-none-elf` (`build/`, sysroot
-`out/sysroot`), `make -C user/libc/posix PREFIX=aarch64-onyx-elf-` (`build-onyx/`, sysroot
+is built per toolchain — `make -C user/Runtime/libc/posix` with `aarch64-none-elf` (`build/`, sysroot
+`out/sysroot`), `make -C user/Runtime/libc/posix PREFIX=aarch64-onyx-elf-` (`build-onyx/`, sysroot
 `out/sysroot-onyx`); the Makefile tells them apart by `$(CC) -dumpmachine`, the sources by
 newlib's `_WANT_REENT_THREAD_LOCAL` (`ONYX_NATIVE_TLS`). Objects of the two do not mix.
 
@@ -463,7 +477,7 @@ brackets — so a program runs on today's kernel too, with less):
 | Signals | `sigaction`/`signal` (a table), `raise`, `kill (getpid (), sig)` and `pthread_kill (self)` run the handler at once; `abort` (status 134); masks kept; `SIGPIPE` never raised (`EPIPE`); `kill` of another pid: `SIGKILL`/`SIGTERM` → `kill_pid`, 0 → exists | — | — |
 | Misc. | `sysconf` (page 65536, **1** processor: a process's threads all run on core 0), `pathconf`, `uname` (`Onyx`, `aarch64`), `gethostname`, `getrandom`/`getentropy`, `/dev/null`, `/dev/zero`, `/dev/urandom`, `isatty`/`ttyname`, `ioctl` (`FIONBIO`, `FIONREAD`, `TIOCGWINSZ`), `getrlimit`/`setrlimit`, `getrusage`, one user `onyx` (`getpwuid`…), `basename`/`dirname`, `err`/`warn`, `syslog` (→ kmsg); stubs: `dlopen` (fails: static programs), `backtrace` (the frame-pointer chain), `iconv_open` (`EINVAL`), `getifaddrs` | | |
 
-**Headers** (`user/libc/posix/include/`, first on the path with `-isystem`): `pthread.h` and
+**Headers** (`user/Runtime/libc/posix/include/`, first on the path with `-isystem`): `pthread.h` and
 `sys/_pthreadtypes.h` (the types, frozen once WP-TC's toolchain is built on them), `semaphore.h`,
 `sys/mman.h`, `poll.h`, `sys/socket.h`, `netinet/in.h`, `netinet/tcp.h`, `arpa/inet.h`, `netdb.h`,
 `sys/uio.h`, `sys/un.h`, `sys/utsname.h`, `sys/ioctl.h`, `net/if.h`, `ifaddrs.h`, `sys/random.h`,
@@ -508,7 +522,7 @@ spin instead of sleeping (no kapi call there); stdio and files from there go thr
 **Limits to know.**
 - C++ `std::thread` / `std::mutex` / `condition_variable` / `std::async` need the threaded
   libstdc++ of `aarch64-onyx-elf` (§1.1); under the interim toolchain C code is the target (the
-  SuperTuxKart port's gthreads shim is separate: `user/stk`).
+  SuperTuxKart port's gthreads shim is separate: `user/Ports/stk`).
 - `std::filesystem` takes Onyx paths: `RAM:/x` is, for libstdc++, a *relative* path whose first
   component is `RAM:` (no root name on POSIX) — the operations work (the kernel resolves the
   volume), but `absolute` / `canonical` / `lexically_*` reason as on Unix.
@@ -533,7 +547,7 @@ spin instead of sleeping (no kapi call there); stdio and files from there go thr
   makes `read (0)` answer `EAGAIN` when the pipe is empty (descriptor 0 is the console's: until
   2026-10-04 its read waited whatever the flag, and a window that read its stdin each tick froze as
   soon as its parent had nothing to say).
-- `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/tls/README.md).
+- `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/Libs/tls/README.md).
 
 **Testing it: `/bin/posixtest [group…] [dir]`** ([`user/BinUtils/posixtest.c`](../user/BinUtils/posixtest.c);
 groups `mem thread file io time proc ipc net misc cxx`): one line per check, `PASS`, `FAIL (what was
@@ -619,8 +633,8 @@ interim `aarch64-none-elf` (not versioned): `include/`, `lib/` (`libonyxposix.a`
 `onyx-posix.ld`, `onyx.specs`, the ports' `.a`), `lib/pkgconfig/`.
 
 ```sh
-make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # -> out/sysroot-onyx (SYSROOT=<dir> elsewhere)
-make -C user/libc/posix install                            # aarch64-none-elf -> out/sysroot
+make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf-   # -> out/sysroot-onyx (SYSROOT=<dir> elsewhere)
+make -C user/Runtime/libc/posix install                            # aarch64-none-elf -> out/sysroot
 ```
 
 **CMake** — [`tools/onyx-toolchain.cmake`](../tools/onyx-toolchain.cmake) (+
@@ -725,7 +739,7 @@ Since kapi v83 the apps no longer carry a copy of the toolkit and of FreeType: *
 system, their code mapped into every process that uses them, their data private to each. A fix in
 a library reaches every app **without rebuilding any app**.
 
-**What a library is.** Position-independent code (`-fPIC`, linked at 0 by `user/lib.ld`; the kernel
+**What a library is.** Position-independent code (`-fPIC`, linked at 0 by `user/Runtime/lib.ld`; the kernel
 places it) that publishes its entry points in an **export table**: a struct of function pointers,
 filled when the library is loaded. A program calls through the table — exactly as it calls the
 kernel through `KT`. There is no ELF dynamic linker, no symbol looked up by name at run time: an
@@ -741,7 +755,7 @@ per entry; the tool only ever appends):
 |---|---|---|
 | `<lib>_table.S` | library | `onyx_lib_table`: version, size, `init`, then one pointer per entry. The ELF entry point of the `.so` (`ld -e onyx_lib_table`): the kernel finds it without a symbol table. |
 | `<lib>_stubs.S` | program | one **import stub** per entry, under the entry's own (mangled) name: `adrp x16, onyx_<lib>_table; ldr x16, […]; ldr x16, [x16, #slot]; br x16`. The app's source and the library's headers do not change: a call to `FT_Load_Glyph` or `uikit::Widget::invalidate` is bound by the linker to its stub. Stubs are weak (an app's own definition of a name wins, as over a static library). With `--vtables`: a **copy of each of the library's vtables** (a class whose vtable the compiler emits only with its key function is referenced by the apps that construct or derive it) — the same slots, resolved by the stubs; no library address is ever in a program. |
-| `<lib>_bind.cpp` | program | a constructor of **priority 101** (before the app's own: a `static Menu menu;` may use the library) that calls `lib_bind ("<lib>", <version>, imports)` (`user/lib.h`) and sets `onyx_<lib>_table`. |
+| `<lib>_bind.cpp` | program | a constructor of **priority 101** (before the app's own: a `static Menu menu;` may use the library) that calls `lib_bind ("<lib>", <version>, imports)` (`user/Runtime/lib.h`) and sets `onyx_<lib>_table`. |
 
 `lib/<lib>.imp.a` (the stubs, the bind constructor) is the **import library**: an app links it
 where it linked `uikit/libuikit.a` or `ft/libft.a`. `make stage` copies `user/lib/*.so` to `sdcard/lib/`.
@@ -756,7 +770,7 @@ missing or too old ends the app with a line on its output (the kernel log for a 
 update its package*; exit status 126.
 
 **Writing a library.** Sources compiled with `LIB_CXXFLAGS` (`-fPIC -fvisibility=hidden
--DONYX_LIB_BUILD`), linked with `lib/librt.o` (`user/librt.cpp`: the imports, the static
+-DONYX_LIB_BUILD`), linked with `lib/librt.o` (`user/Runtime/librt.cpp`: the imports, the static
 constructors, `operator new` / `delete` over the importer's allocator, `memcpy` & co. over the
 kapi) and the generated table; an `init` function (`return onyx_lib_init (imp) < 0 ? -1 : 0;`).
 `-z text --no-undefined`: no relocation in the code, nothing imported by name — the library reaches
@@ -914,7 +928,7 @@ the library, and Koton and the Media Player no longer carry them.
   the PC tools');
   `audiokit/akso.c` gives the library its `malloc` over the importer's allocator; newlib's `libm`
   and `libc` are linked in. The table: `audiokit/audiokit.abi` (append-only).
-- **Not in it** (and why): FFmpeg and the video side of `user/av` (GPL, and video: the Media
+- **Not in it** (and why): FFmpeg and the video side of `user/Libs/av` (GPL, and video: the Media
   Player's), Koton's engine and plugin host (its own classes), the per-sample inline DSP of `kplug.h`.
 - **The PC builds** (no shared library there): Koton compiles `akmix.cpp`, `aksf.cpp` and `akwav.cpp`
   into itself (`Apps/koton/engine/akhost.cpp`, `ui/audio.h`); the simulator (`tools/tests/desktop_sim/shots.sh`)
@@ -1116,7 +1130,7 @@ alone**.
 > `fileviewer` (preview), `uikit::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
 > already in memory (Letters' RTF pictures, Paint's OpenRaster layers); `img_inflate (data, len, zlib,
 > &n)` inflates a deflate stream (stb's: a ZIP entry, a zlib stream).
-> **Writing images** (`user/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
+> **Writing images** (`user/Libs/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
 > `pngsave::deflate` (LZ77 over 32 KB with hash chains, the fixed Huffman codes; zlib's wrapper or
 > raw), `png_encode (px, w, h, alpha)` (RGBA / RGB, each row's best filter), `jpeg_encode (px, w, h,
 > quality)` (baseline 4:2:0, the standard tables, an integer DCT), `gif_encode` (GIF89a: the exact
@@ -1231,7 +1245,7 @@ alone**.
 > `KAPI_GPU_B_ALPHATEST(t)` discards the fragments whose alpha is below `t` / 255 (cut-out
 > foliage, fences, text) without blending or depth sorting.
 > **ABI v61 — your own shaders**: `kapi_gpu_program (-1, &prog)` uploads a vertex, a coordinate
-> and a fragment shader (V3D 4.2 QPU words, generated at run time with `user/v3d/qpu.h`:
+> and a fragment shader (V3D 4.2 QPU words, generated at run time with `user/Libs/v3d/qpu.h`:
 > `qpu::Prog p; p << qpu::I ().a (V3D_QPU_A_FADD, rf (3), r1, r5).ldvary (r0); …`; every app
 > links `v3d/libv3d.a`; test them on the PC with `tools/qpu/qpusim` —
 > `tools/tests/run_qpu_test.sh`), then `kapi_gpu_render2 (&frame, verts, nv, stride, batches,
@@ -1242,14 +1256,14 @@ alone**.
 > point: x × w/2 × 256 …) Zs 1/Wc then the varyings; the coordinate shader Xc Yc Zc Wc Xs Ys;
 > the fragment shader ends with its TLB writes after the last thread switch — see the v53
 > shaders in `kernel/sys/v3d_shaders.qasm` for the recipes, or take the ready-made ones of
-> `user/v3d/shaders.h` (`passVS` / `passCS`: the position as it is, the other floats handed on as
+> `user/Libs/v3d/shaders.h` (`passVS` / `passCS`: the position as it is, the other floats handed on as
 > varyings; `flatFS`, `varyFS`, `texFS`; `viewUniforms (w, h)`). `/bin/v3dprog` checks them on
 > the Pi (PASS / FAIL); `tools/tests/run_qpu_test.sh` checks the same programs on the PC (the
 > instruction restrictions, then the fragment shaders in the simulator). The GameCube's TEV is
-> generated by `user/v3d/gxtev.h` (`gxtev::build (config, shader)`: the stages in integers as the
+> generated by `user/Libs/v3d/gxtev.h` (`gxtev::build (config, shader)`: the stages in integers as the
 > hardware, the texture lookups, the alpha test, the EFB format -> QPU code + the uniforms and
 > varyings the draw must give); `tools/tests/v3d/gxtev_test.cpp` checks thousands of random
-> configurations in the simulator against `user/v3d/gxtev_ref.h` (the GLSL TEV of `gxgl.cpp` in
+> configurations in the simulator against `user/Libs/v3d/gxtev_ref.h` (the GLSL TEV of `gxgl.cpp` in
 > C++), `/bin/v3dprog` a few on the GPU. `gcemu` draws with them: `user/Apps/gcemu/gxv3d.h` is its
 > `gc::GxGpu` -- the app core records each draw (the vertex stage of `gxgl.cpp` in C++, the TEV
 > program by its configuration, the uniforms, the state), the main thread gives the frame to
@@ -1339,7 +1353,7 @@ alone**.
 > after editing, `cd tools/qpu && make` re-assembles and checks them into `v3d_shaders.inc`
 > (committed; the kernel build does not need the tool). docs/02 §15.
 >
-> **GPU compositing (`user/gpucomp`, ABI v70)**: to assemble layers (a browser's, a desktop's)
+> **GPU compositing (`user/Libs/gpucomp`, ABI v70)**: to assemble layers (a browser's, a desktop's)
 > link `gpucomp/libgpucomp.a` (built by `user/Makefile`; pure C without libc, FP on — freestanding
 > or newlib apps alike) and include `gpucomp/gpucomp.h`:
 > ```c
@@ -1402,7 +1416,7 @@ alone**.
 > `ec_request (&ec, n)`, `ec_pump` (frames made here when there is no core), `ec_take` /
 > `ec_front` (the latest picture: a triple buffer, nobody waits), `ec_audio_pop`, `ec_hold` /
 > `ec_resume` around anything that touches the machine (reset, battery save), `ec_shutdown`.
-> Two rules the app core imposes: **its code allocates nothing** (the heap, `user/umm.h`, is not
+> Two rules the app core imposes: **its code allocates nothing** (the heap, `user/Runtime/umm.h`, is not
 > shared safely between two cores, and `kapi_sbrk` from an app core grows the heap of whatever
 > task core 0 is running — make every buffer before, as gc::Machine's texture pool of
 > `TEX_POOL` texels); and **take the new picture before asking for the next frame** (in the main
@@ -1426,12 +1440,12 @@ alone**.
 > last second's time a field, is further than 12 ms — a yield in a loop kept core 0 busy
 > (heat: the Pi 4 throttles its clock above ~80 °C, kmsg's `power:` lines).
 > See `gbemu` / `gbaemu` / `nesemu` / `snesemu`; `/bin/coretest` exercises the raw kapi.
-> **Game kit** (`user/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
+> **Game kit** (`user/Include/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
 > sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
 > `sfx_win` / `sfx_lose`, `sfx_set_mute`; the output is acquired on first use), `rng` / `rng_n`,
 > text helpers (`gtext`, `gtext_c` centred with a shadow, `gitoa`, `gcat`). Cards
-> (`user/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
+> (`user/Include/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
 > victory animation (`win_start` / `win_step`). Used by invaders, pipes, solitaire, freecell
 > (Arkanoid is now the BASIC game). **Host test**: `sh tools/tests/run_games_test.sh [INVADERS …]` builds each game on
 > the PC against a fake kapi table (`tools/tests/uikithost/host_kapi.h`: every slot a stub,
@@ -1667,7 +1681,7 @@ alone**.
 > OOXML schema validator of the `pptx` skill (`scripts/office/validate.py`). The sample
 > `sdcard/docs/cafe-2026.odp` is made by `tools/tests/slides/make_sample.cpp`, and `cafe-2026.pptx` from it by
 > Slides' writer (`MAKE=1 sh tools/tests/run_slides_test.sh`); the icon by `tools/icons/slides_icon.py`.
-> **Game Boy / Color core** (`user/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
+> **Game Boy / Color core** (`user/Emulators/gb/gb.h`, `gb/libgb.a`, linked into every app): `gb::Machine`
 > — `load (rom, size)` (CGB mode from the header), `runFrame ()` → `fb` (160×144, 0x00RRGGBB),
 > `setButtons (gb::BTN_* mask)`, `setAudioRate (hz)` + `audioRead (lr, n)` (s16 stereo),
 > `setSaveRam` / `sram` / `sramDirty` (battery saves), `setDmgPalette`. The SM83 CPU with
@@ -1679,7 +1693,7 @@ alone**.
 > **Host test**: `GB_TEST_ROMS=<unzipped c-sp game-boy-test-roms> sh tools/tests/run_gb_test.sh`
 > (Blargg cpu_instrs / instr_timing / halt_bug, dmg-acid2, cgb-acid2 pixel-exact);
 > `tools/tests/gb/gbtest.cpp <rom> <seconds> [out.ppm] ["t:mask,..."]` runs any ROM headless.
-> **Game Boy Advance core** (`user/gba/gba.h`, `gba/libgba.a`): `gba::Machine` — the same shape as
+> **Game Boy Advance core** (`user/Emulators/gba/gba.h`, `gba/libgba.a`): `gba::Machine` — the same shape as
 > `gb::Machine` (`load`, `runFrame` → `fb` 240×160, `setButtons (gba::BTN_*)`, `setAudioRate`,
 > `audioRead`, `setSaveRam` / `save` / `saveSize` / `saveDirty` / `saveType`). The ARM7TDMI (ARM +
 > Thumb, the two prefetched opcodes kept: self-modifying code sees them), the memory map with
@@ -1692,7 +1706,7 @@ alone**.
 > nes, unsafe, saves); `tools/tests/gba/gbatest.cpp <rom> <seconds> [out.ppm] [keys]` runs a
 > game headless (`GBA_SHOTS`, `GBA_AUDIO`, `GBA_SAVE`, `GBA_LOAD`, `GBA_REGS`; built with
 > `-DGBA_DEBUG`, `GBA_WATCH=<addr>` prints every write there).
-> **NES core** (`user/nes/nes.h`, `nes/libnes.a`): `nes::Machine` — the same shape (`load` an
+> **NES core** (`user/Emulators/nes/nes.h`, `nes/libnes.a`): `nes::Machine` — the same shape (`load` an
 > iNES / NES 2.0 file, `runFrame` → `fb` 256×240, `setButtons (nes::BTN_*)`, `setAudioRate`,
 > `audioRead`, `setSaveRam` / `sram` (8 KB) / `battery` / `sramDirty`, `setPal`). The 6502 (official
 > + stable unofficial opcodes, from the generated table `nes_optable.inc`), stepped an instruction
@@ -1706,7 +1720,7 @@ alone**.
 > its trace, blargg all_instrs / instr_timing, apu_test 1-8, mmc3_test 1-3 and 5);
 > `tools/tests/nes/nestest.cpp run <rom> <seconds> [out.ppm] [keys]` runs a game headless
 > (`NES_PAL=1`, `NES_AUDIO=<file>`).
-> **Super Nintendo core** (`user/snes/snes.h`, `snes/libsnes.a`): `snes::Machine` — the same
+> **Super Nintendo core** (`user/Emulators/snes/snes.h`, `snes/libsnes.a`): `snes::Machine` — the same
 > shape (`load` a `.sfc` / `.smc`, a copier header skipped; `runFrame` → `fb` 256 × `height` (224,
 > 239 with overscan); `setButtons (snes::BTN_*)`, the pad's 12 buttons as the joypad word;
 > `setAudioRate`, `audioRead`; `setSaveRam` / `sram` / `sramSize` / `sramDirty`; `setPal`; `title`,
@@ -1726,7 +1740,7 @@ alone**.
 > ROMs against their reference pictures; `SNES_CPUTEST=` gilyon's cputest-full.sfc, 649 tests);
 > `tools/tests/snes/snestest.cpp <rom> <seconds> [out.ppm] [keys]` runs a game headless
 > (`SNES_SHOTS`, `SNES_AUDIO`).
-> **Nintendo 64** (`user/n64/`, in progress): `n64_cpu.cpp` the R4300i interpreter (MIPS III, COP0
+> **Nintendo 64** (`user/Emulators/n64/`, in progress): `n64_cpu.cpp` the R4300i interpreter (MIPS III, COP0
 > with the TLB / exceptions / Count-Compare, COP1), `n64_bus.cpp` the RCP interfaces (MI, VI,
 > AI, PI DMA as ares does it, SI + PIF, SP / DP registers) and the boot (the IPL3's work done
 > directly, CIC 6101-6106), `n64_gfx.cpp` the graphics tasks at a high level (F3DEX2: matrices,
@@ -1748,7 +1762,7 @@ alone**.
 > game headless (`N64_GFX=out.ppm`: the last graphics frame drawn by the BASIC 3D's software
 > renderer; `N64_STATE`, `N64_THREADS` (libultra's threads found in RDRAM), `N64_WHO`, `N64_MEM`,
 > `N64_WAV=out.wav`: the sound, 32 kHz stereo).
-> **GameCube** (`user/gc/`, in progress): `gc_cpu.cpp` the Gekko (PowerPC 750CL) interpreter:
+> **GameCube** (`user/Emulators/gc/`, in progress): `gc_cpu.cpp` the Gekko (PowerPC 750CL) interpreter:
 > integer, branch, the SPRs (BATs, HIDs, GQRs, the locked-cache DMA, timebase, decrementer), the
 > exceptions, the FPU (exact single <-> double conversions, 25-bit multiplicands), the paired
 > singles and the quantized loads / stores; `gc_mem.cpp` MEM1 (big-endian), the locked cache,
@@ -1912,10 +1926,10 @@ alone**.
 > (10485 result words identical), `pstest.S` the paired singles against the manual, `hwtest.c`
 > and `gxtest.c` bare-metal programs (built with `tools/gc/elf2dol.py`): the VI's picture and
 > interrupts, the FIFO / PE, a textured quad and a shaded triangle drawn by the GX path.
-> **Doom** (`user/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
+> **Doom** (`user/Ports/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
 > sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
 > `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),
-> by `user/doom/Makefile` (called from `user/Makefile`) into `user/doom.elf`. `doom_onyx.c`: the
+> by `user/Ports/doom/Makefile` (called from `user/Makefile`) into `user/doom.elf`. `doom_onyx.c`: the
 > `DG_*` platform functions — the window canvas *is* `DG_ScreenBuffer` (640 × 400, no copy),
 > full screen at 4:3, keys from `kapi_key_held` + modifiers + key events (Tab, F-keys…),
 > `gamepad.h`, `rename`/`mkdir` on the kapi; `doom_uikit.cpp`: window chrome + menu (uikit from C);
@@ -2212,7 +2226,7 @@ alone**.
 >   `kapi_list_windows` and `kapi_raise_app` see the current desk only; `kapi_win_list` sees all,
 >   `KAPI_WIN_OFFDESK` and `KAPI_WIN_DESK (state)` in their state. The dock is the pager
 >   (`dockconf.h`: the desks' number and names).
-> - **Control Panel applets** (`user/applet_proto.h`): any uikit app can be shown **inside** the
+> - **Control Panel applets** (`user/Include/applet_proto.h`): any uikit app can be shown **inside** the
 >   Control Panel (`apps/control`) instead of in a window of its own. Started with `--applet
 >   <surface> <host pid>`, `uikit::Root`'s constructor sees it (**`uk_applet ()`**) and adopts the
 >   host's shared surface as its canvas (the pane's size, 700 × 470: lay out for it, or centre
@@ -2352,7 +2366,7 @@ apps `tinypad.c`, `paint.c`, `mandelbrot.c` for complete examples.
 
 The archive manager (the plan and the user's decisions: `docs/archiver/README.md`; its use:
 docs/04 §9) is a **newlib** uikit app with FreeType text (`archiver.elf` in `user/Makefile`, with
-**zlib** built from `third_party/zlib-1.3.1` into `user/zlib/libz.a`), one translation unit:
+**zlib** built from `third_party/zlib-1.3.1` into `user/Libs/zlib/libz.a`), one translation unit:
 
 | File | What |
 |---|---|
@@ -2377,7 +2391,7 @@ then `/bin/zip` and `/bin/unzip` built for the PC, driven by `cli_test.py`.
 The screenshots: `sh tools/tests/desktop_sim/shots.sh archiver` (a sample archive made by
 `arc_sample.py`).
 
-### The packages: `pkg`, `user/pkg/pkglib.h`, `tools/pkg`
+### The packages: `pkg`, `user/Libs/pkg/pkglib.h`, `tools/pkg`
 
 The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 
@@ -2388,7 +2402,7 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 | `tools/pkg/mkrepo.py` | `--out <onyx-packages checkout> --key <private key>`: the `.opk` of each package (a deterministic ZIP: the card's tree + `PKG/manifest.ini`), the icons, `index.txt` (version, size, SHA-256, needs — `kapi >= KAPI_ABI_VERSION` added —, the content's hash) signed into `index.sig` (ECDSA P-256 / SHA-256). `--db`: `sdcard/var/pkg/db/*.ini`, the card made "installed". `--lite sdcard_lite`: the card of the required packages only. |
 | `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
 | `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
-| `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed — unless another installed package has them, `owned_elsewhere`, as when `bin/pkg` moved from `onyx` into `pkgman`), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`, `refresh_desktop` (an app's files installed or removed: the dock killed and started again, called by `pkg`, `pkgman`, `pkgd` at the end of their job). |
+| `user/Libs/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed — unless another installed package has them, `owned_elsewhere`, as when `bin/pkg` moved from `onyx` into `pkgman`), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`, `refresh_desktop` (an app's files installed or removed: the dock killed and started again, called by `pkg`, `pkgman`, `pkgd` at the end of their job). |
 | `user/BinUtils/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/BinUtils/Makefile` (newlib + mbedTLS + zlib). |
 | `user/Apps/pkgman` | The **Package Manager**, the Control Panel's applet (`70-pkgman.lnk`; FreeType): a snapshot of the index and the database (`Row`s, rebuilt after each job) drawn by its own widgets (`Tabs`, `PkgList`: the rows, the boxes, the mode pills, the buttons, the restart banner); a job (check, install, remove, mode) in a thread (`kapi_thread_create`), its progress read each frame (`onTick`: the package being done, its percentage — `http.hpp`'s new `progress ()` callback and the extraction —, the packages finished). Built by `pkgman.elf` in `user/Makefile` (newlib + FreeType + mbedTLS + zlib, `-DPKG_NET -DONYX_HTTP_TLS`). |
 | `user/Apps/pkgd` | The **update daemon** (no window; `run pkgd` in `etc/autostart`): waits for the network and the time, then once a day (`SD:/var/pkg/lastcheck`) `refresh`, the "auto" packages installed (their new needs first; the system staged), `notify_action` for the others; `--once`: one round; `check = never` in `pkg.ini`: it ends. |
@@ -2445,9 +2459,9 @@ windows may end with `,title`.
 
 The music and video library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
 **newlib** uikit app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers. Its
-videos are played by **the media library** (`user/av`, below), compiled by the rule into `Apps/media/obj/av/`
+videos are played by **the media library** (`user/Libs/av`, below), compiled by the rule into `Apps/media/obj/av/`
 with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with the codec libraries — `libvpx.a`,
-`libdav1d.a`, `libopus.a` (`make -C user/av`; committed in `third_party/`) — and **FFmpeg 7.1.2**'s
+`libdav1d.a`, `libopus.a` (`make -C user/Libs/av`; committed in `third_party/`) — and **FFmpeg 7.1.2**'s
 (`third_party/ffmpeg-7.1.2/onyx/aarch64/lib{avformat,avcodec,swscale,swresample,avutil}.a`, committed; made by
 `sh third_party/ffmpeg-7.1.2/onyx/build.sh pi`: every decoder and demuxer, `--enable-gpl`, no threads, no programs).
 **The Media Player is therefore GPL-2.0-or-later** (its files stay MIT; docs/LICENSING.md). The app is ~16 MB
@@ -2474,27 +2488,27 @@ through the simulator's kapi: the length, the level, a seek, each. **The screens
 tools/tests/desktop_sim/shots.sh media` over a sample library made by `tools/tests/media/make_library.py`
 (the mock-ups' albums and covers in every format, two MIDI albums, playlists, play counts; needs ffmpeg and
 `pip install mutagen`; and `Videos/`: VP9 + Opus WebM, AV1 MP4, an H.264 MP4, a film left half way — the app
-built with `user/av` and its codecs for the PC by `tools/tests/desktop_sim/av_host.mk`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
+built with `user/Libs/av` and its codecs for the PC by `tools/tests/desktop_sim/av_host.mk`); the simulator got events (`event_create / set / reset / wait`, pthreads). The icon:
 `python3 tools/icons/media_icon.py`.
 
-### The media library (`user/av`): video and audio for Jet Browser and the Media Player
+### The media library (`user/Libs/av`): video and audio for Jet Browser and the Media Player
 
-`user/av` plays media files and streams: containers, decoders, conversions, a store of coded frames
+`user/Libs/av` plays media files and streams: containers, decoders, conversions, a store of coded frames
 (Media Source Extensions') and a player with its threads, sound and clock. Jet Browser's `<video>`,
 `<audio>` and MSE are built on it (WebKit's media engine for Onyx: docs/08 *Media*), and the Media Player's videos. Plain C
 (`av.h` is the reference), threads and locks through `av_os.h` (the kapi; pthreads with `-DAV_POSIX`
-for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I user/Kits -I kernel/include`
+for the PC tools). Compile every `user/Libs/av/*.c` with `-I user/Libs/av -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include`
 (`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given --
-`user/av/codecs.mk` has their libraries' sources and flags and `AV_CODECS_CF` (the `-DAV_WITH_*` and
+`user/Libs/av/codecs.mk` has their libraries' sources and flags and `AV_CODECS_CF` (the `-DAV_WITH_*` and
 include paths): include it with `TP` = `third_party` and `AV_ARCH` = `aarch64` (the Pi: NEON, dav1d's
-assembly; `make -C user/av` builds `libvpx.a`, `libdav1d.a`, `libopus.a`) or `generic` (C).
+assembly; `make -C user/Libs/av` builds `libvpx.a`, `libdav1d.a`, `libopus.a`) or `generic` (C).
 
 | File | What |
 |---|---|
 | `av.h` | The API (below). |
 | `av_demux.c`, `av_mkv.c`, `av_mp4.c`, `av_riff.c`, `av_flac.c`, `av_mp3.c` | The containers: WebM / Matroska, MP4 / MOV / fragmented MP4, WAV, FLAC, MPEG audio. |
 | `av_codec.c`, `av_flac.c`, `av_mp3.c` | The codecs' table, PCM / A-law / mu-law / uncompressed I420, FLAC (built in), MP3 (minimp3); `av_type_supported` (canPlayType, isTypeSupported, MediaCapabilities). |
-| `av_vpx.c`, `av_dav1d.c`, `av_opus.c` | VP8 / VP9, AV1, Opus on libvpx 1.15.2 / dav1d 1.5.1 / libopus 1.5.2 (`third_party/`, `user/av/codecs.mk`): with `-DAV_WITH_VPX` / `AV_WITH_DAV1D` / `AV_WITH_OPUS` and the library. One decoding thread each; 8-bit 4:2:0 video. |
+| `av_vpx.c`, `av_dav1d.c`, `av_opus.c` | VP8 / VP9, AV1, Opus on libvpx 1.15.2 / dav1d 1.5.1 / libopus 1.5.2 (`third_party/`, `user/Libs/av/codecs.mk`): with `-DAV_WITH_VPX` / `AV_WITH_DAV1D` / `AV_WITH_OPUS` and the library. One decoding thread each; 8-bit 4:2:0 video. |
 | `av_ffmpeg.c` | With `-DAV_WITH_FFMPEG` (the Media Player; GPL-2.0+): **every codec libavcodec decodes** that Onyx's own do not (H.264, H.265, AAC, MPEG-4 Part 2, MPEG-2, WMV / VC-1, Theora, AC-3, DTS, Vorbis, WMA, ALAC...): a track's `ff_id` (libavformat's tracks, `AV_C_FFMPEG`) or its codec (H.264, H.265, AAC, Vorbis, MJPEG); the frames brought to 8-bit 4:2:0 (libswscale for 10-bit, 4:2:2, RGB...), the sound to interleaved float; `av__ff_identify` (the Matroska / MP4 codecs Onyx's parsers do not know: `A_AC3`, `V_MS/VFW/FOURCC`, `mp4v`, `ac-3`, an esds object type...). FFmpeg is built without threads: its first-time initialisations are not guarded, so the opens go one at a time under `av__ff_lock`. Our `av_packet_free` was renamed **`av_pkt_free`** (FFmpeg has the name). |
 | `av_lavf.c` | With `-DAV_WITH_FFMPEG`: **`AV_FMT_LAVF`**, every other container through **libavformat** (AVI, MPEG-TS / PS, ASF / WMV, FLV, Ogg, RealMedia...: `av_probe` asks FFmpeg's probe after Onyx's, from 4 KB). libavformat pulls its bytes, the library pushes them: it runs on **a thread of its own**, its AVIOContext's read waiting for the bytes it needs (`av_demux_want` answers that offset; -1 when nothing is wanted now: its thread works on what it has), the parser's read copying the window into its cache and handing over the packets it queued; a seek is asked of the thread (`avformat_seek_file` on its index); the times start at 0 (MPEG-TS's start time taken off). The parser is **busy** (`av_fmt_ops.busy`) while packets may still come: the store takes them when asked where to feed (`av_store_want`), and is not "ended" before. `av_demux_set_size` / `av_store_set_size`: the file's size (its demuxers seek from the end). |
 | `av_stub.c` | The tests' stand-ins (grey frames, silence) for the codecs not built in: `av_codec_enable_stubs ()`. |
@@ -2549,7 +2563,7 @@ each read and decoded whole, played in the file mode, a seek),
 made by `mkcodec.py` with PyAV), `sh tools/tests/av/bench.sh <clips>` (the decoders' speed, PC and AArch64
 under qemu, the frames' checksum the same on both).
 
-### PDF Viewer, and the PDF export (`user/Apps/pdf`, `user/pdf/pdfwrite.h`)
+### PDF Viewer, and the PDF export (`user/Apps/pdf`, `user/Libs/pdf/pdfwrite.h`)
 
 The reader of PDF documents (the mock-ups and the user's decisions: `docs/pdf/README.md`; its use: docs/04 §12)
 is a **newlib** uikit app on **MuPDF 1.28.5** (`third_party/mupdf-1.28.5`: only its `fitz` and `pdf` parts, the
@@ -2563,7 +2577,7 @@ CJK fonts left out). **The app is AGPL-3.0**, MuPDF's licence (docs/LICENSING.md
 | `ui.h` | The faces, text cut to fit, the hit lists, the icons (`uikit/vpaint.h`). |
 | `main.cpp` | The tabs (`Tab`: a document and how it is shown — layout, zoom, rotation, scroll, the selection, the search's hits), the bitmaps kept (`Bmp`: a page or, past 2600 × 2600 px, the part seen on a 256-px grid; another scale's shown, scaled, until the right one comes; 18 M pixels at most, the least used dropped), the layout (`lay_out`: continuous, one page, two pages with the first alone), the widgets — `TabBar`, `ToolBar` (`SearchBox`, the page's field), `SidePanel` (Pages, Contents, Find), `View` (the pages, the hits and the selection over them, the links, the scroll bars), `Home` (the recent documents, the folders) —, the dialogs (the password, `PropsBox`), full screen (`kapi_fullscreen_begin`: the next page drawn ahead), the settings and `recent.tsv`. |
 
-**The PDF writer** — `user/pdf/pdfwrite.h`, header-only, **MIT** (Onyx's own code: docs/LICENSING.md), used by
+**The PDF writer** — `user/Libs/pdf/pdfwrite.h`, header-only, **MIT** (Onyx's own code: docs/LICENSING.md), used by
 Letters' and the Spreadsheet's *File ▸ Export as PDF*: `pdfw::Writer` writes PDF 1.7 — pages of rectangles, text
 as **glyphs** of TrueType fonts (Type 0 / CIDFontType2, `Identity-H`: the codes are the glyphs' numbers; a
 **subset** of each font embedded — the glyphs used, and those their composites take, keep their numbers, the
@@ -2582,11 +2596,11 @@ bookmarks, a landscape page) and read back. **The screenshots**: `sh tools/tests
 (the manuals of `sdcard/manuals`; `letters` and `sheet` take their export's dialog). The icon: `python3
 tools/icons/pdf_icon.py`.
 
-### Mail, the mail client (`user/Apps/mail`, `user/mail`)
+### Mail, the mail client (`user/Apps/mail`, `user/Libs/mail`)
 
 The mail client (the mock-ups, the plan and the user's decisions: `docs/mail/README.md`; its use: docs/04 §12) is a
 **newlib** uikit app (`mail.elf`: FreeType's text, mbedTLS as Courier, uikit's image codecs). **MIT**, all of it. Two
-layers: `user/mail/` (header-only, the protocols and the HTML renderer, reusable by any app) and `user/Apps/mail/`
+layers: `user/Libs/mail/` (header-only, the protocols and the HTML renderer, reusable by any app) and `user/Apps/mail/`
 (the app).
 
 | File | What |
@@ -2674,8 +2688,8 @@ its own — the way the Control Panel hosts its applets: a crash in one never ta
 
 | File | What |
 |---|---|
-| [`user/kplug_proto.h`](../user/kplug_proto.h) | The protocol (plain C, **append-only** like the kapi ABI: a message number or a field never moves; `KP_PROTO_VERSION` grows): the shared region (`KpShm`), the rings, the mailbox messages. |
-| [`user/kplug.h`](../user/kplug.h) | The plugin's side: a plugin is its parameters, a few callbacks and `KPLUG_MAIN (desc)`; the runtime does the rest (the region, the handshake, the render thread, the parameters, the state, a generator's requests, the editor). Small DSP helpers (`KpAdsr`, `KpSvf`, `KpBiquad`, `KpNoise`, `kp_sin`, `kp_mtof`, `kp_db`). |
+| [`user/Include/kplug_proto.h`](../user/Include/kplug_proto.h) | The protocol (plain C, **append-only** like the kapi ABI: a message number or a field never moves; `KP_PROTO_VERSION` grows): the shared region (`KpShm`), the rings, the mailbox messages. |
+| [`user/Include/kplug.h`](../user/Include/kplug.h) | The plugin's side: a plugin is its parameters, a few callbacks and `KPLUG_MAIN (desc)`; the runtime does the rest (the region, the handshake, the render thread, the parameters, the state, a generator's requests, the editor). Small DSP helpers (`KpAdsr`, `KpSvf`, `KpBiquad`, `KpNoise`, `kp_sin`, `kp_mtof`, `kp_db`). |
 | `user/Apps/kp_<name>/` | A plugin: `main.cpp` + `plugin.json` (fm2, subsynth, pluck; delay, reverb, chorus, eq3, drive; arp, euclid, automaton — the catalogue: [docs/04](04-USER-GUIDE.md), *Koton's plugins*). |
 | [`Apps/koton/plug/plughost.h`](../user/Apps/koton/plug/plughost.h) | The host: the catalogue, the processes, the engine's side of each, parameters, states, generators, editors, crashes. |
 | `Apps/koton/plug/plugshm.h` | The engine's side of a plugin — `ShmSource` (a `kt::ExternalSource`), `ShmEffect` (a `kt::Effect`) — pure memory (they run on the app core). |
@@ -3031,7 +3045,7 @@ the recommended pattern for application-level protocols: build them in a user li
 on top of the kernel's transport kapis, rather than adding them to the ABI.
 
 For **REST / web-API** clients there is a reusable C++ class,
-[`user/http.hpp`](../user/http.hpp) (`HttpClient`/`HttpResponse`) — a header-only,
+[`user/Include/http.hpp`](../user/Include/http.hpp) (`HttpClient`/`HttpResponse`) — a header-only,
 freestanding **HTTP/1.1** client that works in any app (integer-only or newlib). It
 adds, over `httpc.h`: custom default headers (chainable `.bearer(token)`,
 `.accept(type)`, `.header(name,value)`), JSON helpers (`post_json`/`put_json`),
@@ -3041,14 +3055,14 @@ points into it, NUL-terminated). Errors are a negative `r.status` (`HttpError`).
 Example: `HttpClient api; api.bearer(tok).accept("application/json"); auto r =
 api.get(url, buf, sizeof buf); if (r.ok()) …`. See `/bin/httpget` for a working demo.
 **HTTPS:** the class has a transport seam (`http://` = plain kapi TCP; `https://` =
-TLS). TLS is provided by [`user/tls/onyx_tls.hpp`](../user/tls/onyx_tls.hpp) — **mbedTLS
+TLS). TLS is provided by [`user/Libs/tls/onyx_tls.hpp`](../user/Libs/tls/onyx_tls.hpp) — **mbedTLS
 ≥3.6.3** over the kapi sockets, with a **buffered** BIO (Circle's `CSocket::Receive`
 discards the remainder of a TCP segment on a short read, so we read whole segments) and
 **software-only crypto** (the Pi 4's Cortex-A72 has no ARMv8 crypto extensions).
 **Verified end-to-end on real hardware** — `httpsget` downloads real pages. To enable it in a **newlib**
 app: `#define ONYX_HTTP_TLS` before `#include "http.hpp"` and link the cross-built mbedTLS
-libs — `make -C user/tls` then `make -C user/BinUtils MBEDTLS_DIR=../tls/mbedtls` (see
-[`user/tls/README.md`](../user/tls/README.md)). The freestanding default (no
+libs — `make -C user/Libs/tls` then `make -C user/BinUtils MBEDTLS_DIR=../tls/mbedtls` (see
+[`user/Libs/tls/README.md`](../user/Libs/tls/README.md)). The freestanding default (no
 `ONYX_HTTP_TLS`) keeps `http://` only and returns `HTTP_ERR_HTTPS` for `https://`. Demo:
 `/bin/httpsget`. **Not yet secure:** the RNG is a software PRNG (not the HW RNG, which
 stalls on the Pi 4) and certificate verification is OFF — see the TLS README.
@@ -3070,17 +3084,17 @@ rule: a newlib app as Letters (FreeType's text through uikit) linking mbedTLS
 (`COURIER_MBEDTLS`, default `third_party/mbedtls-3.6.3`). On the PC it builds with
 `-DCOURIER_NO_TLS` (`shots.sh courier`).
 
-For **images** there is a reusable decoder, [`user/img/image.hpp`](../user/img/image.hpp)
+For **images** there is a reusable decoder, [`user/Libs/img/image.hpp`](../user/Libs/img/image.hpp)
 (`onyximg::decode(data, len, &w, &h)`) — built on the cross-compiled **zlib + libpng +
 libjpeg**. It sniffs the format (PNG signature / JPEG SOI) and decodes a byte buffer into
 a freshly `malloc`'d array of `0xAARRGGBB` pixels (8-bit alpha in the top byte, which the
 canvas ignores when blitting). Same split as TLS: the libraries are cross-built once
-(`make -C user/img`, sources pinned in [`user/img/README.md`](../user/img/README.md) —
+(`make -C user/Libs/img`, sources pinned in [`user/Libs/img/README.md`](../user/Libs/img/README.md) —
 zlib 1.3.1, libpng 1.6.44, libjpeg IJG v9f), the Onyx glue is header-only. It is a
 **newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/BinUtils
 IMG_DIR=../img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
 size). Note: `image.hpp` is for full-colour web images; keep
-[`user/bmp.hpp`](../user/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
+[`user/Include/bmp.hpp`](../user/Include/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
 
 **The browser** is Jet, on WebKit: the port's own document is [`08-WEBKIT-PORT.md`](08-WEBKIT-PORT.md)
 (the POSIX layer it stands on, the patch series, the builds, its media engine and compositor).
@@ -3110,7 +3124,7 @@ userland, with no kernel/ABI change.
 ### Dynamic memory + C++ apps
 
 Apps have **no `malloc` by default** — they use static buffers + the stack (both in
-the app's address space). For dynamic memory, include [`user/umm.h`](../user/umm.h):
+the app's address space). For dynamic memory, include [`user/Runtime/umm.h`](../user/Runtime/umm.h):
 a small user allocator (size-class free lists + a `kapi_sbrk` arena). `umm_malloc` /
 `umm_free` / `umm_calloc` / `umm_realloc`. The heap lives at `USER_HEAP_BASE` (10 GB);
 its pages are owned by the address space, so they are **freed automatically when the
@@ -3133,7 +3147,7 @@ untouched memory a job writes is filled through core 0 (slow: up to 10 ms a requ
 
 - Name the source `*.cpp`; the user `Makefile` builds it with `g++`
   (`-fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit`).
-- Include [`user/onyxpp.hpp`](../user/onyxpp.hpp): it defines `operator new`/`delete`
+- Include [`user/Runtime/onyxpp.hpp`](../user/Runtime/onyxpp.hpp): it defines `operator new`/`delete`
   (on `umm`) and the runtime stubs (`__cxa_pure_virtual`, `__dso_handle`,
   `__cxa_atexit`/`atexit` no-ops). Global constructors run via `crt0.S` (the
   `.init_array` walk); static destructors are **not** run (the app exits and its
@@ -3155,7 +3169,7 @@ SD:apps/<nom>.app/
 ```
 
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
-`main`. The kernel only loads ELFs: **`user/launch.h`** resolves the rest from
+`main`. The kernel only loads ELFs: **`user/Include/launch.h`** resolves the rest from
 **`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`), then from the
 **apps' own `app.txt`** (`lx_app_for`: an emulator's `games = Game Boy Color: gbc; Game Boy: gb` —
 the extensions after each system's name —, any app's `opens = wad`; the app's `main` must be there),
@@ -3289,7 +3303,7 @@ barwidth = 40
 
 ### Onyx BASIC (the interpreter)
 
-- **Core** (`user/basic/`): `bas.h` (API: `bas::compile`, `bas::run`, the `bas::Host`
+- **Core** (`user/Libs/basic/`): `bas.h` (API: `bas::compile`, `bas::run`, the `bas::Host`
   interface), `bascomp.cpp` (lexer + one-pass compiler to bytecode, with a pre-scan of the
   SUB / FUNCTION / DEF FN headers and of the TYPEs), `basvm.cpp` (the stack VM: tagged values,
   ref-counted strings, arrays and records -- a record shared at a store is copied first, so
@@ -3344,7 +3358,7 @@ barwidth = 40
   scales the visible page (aspect kept; whole-number zoom when it covers >= 85 %).
   `PLAY "MB"` notes go to a 32-note queue that `bgTick ()` plays from `pump ()`;
   `KEYDOWN` maps its key to a `KEY_*` code for `kapi_key_held`. `PAD` / `STICK` / `STRIG` call
-  `Host::padButtons` / `padAxis` (Onyx: `user/gamepad.h`; the PC: winmm `joyGetPosEx`).
+  `Host::padButtons` / `padAxis` (Onyx: `user/Include/gamepad.h`; the PC: winmm `joyGetPosEx`).
 - **3D** (`basic/bas3d.h`, `basic/bas3dscene.h`): the VM's `Scene3D` turns the 3D statements
   into vertices + batches in the layout of kapi v53 (`G3Vertex` = `kapi_gpu_vertex3`,
   `G3Batch` = `kapi_gpu_batch`, same flag bits): the vertices stay in model space, each
@@ -3356,7 +3370,7 @@ barwidth = 40
   (the same semantics in software: near-plane clipping, perspective-correct, depth, culling,
   blending). Host test: `sh tools/tests/run_basic3d_test.sh` (a window-less `ScreenHost`
   saves each `RENDER3D` as a PPM and checks some pixels).
-- **Machine code** (`user/basic/basjit.h`, AArch64 only, included by `basvm.cpp`; the user's
+- **Machine code** (`user/Libs/basic/basjit.h`, AArch64 only, included by `basvm.cpp`; the user's
   decisions: on by default, the VM for what is not translated, `-m` / "Managed" for the VM). At
   the start of `VM::run ()` `nativeTranslate ()` turns the whole bytecode into AArch64 in memory
   from `Host::codeAlloc ()` (`kapi_code_alloc`, v58; no memory, another CPU, `Host::managed` or
@@ -3457,7 +3471,7 @@ barwidth = 40
   format 2 adds the classes' fields of `TypeInfo`, `vtab` and `itab` after the tables of format 1,
   format 3 the program's flags (managed); older files still load. Tests: `t20_classes`, `t21_cls_*` (the compile errors),
   `t22_classwords` (the words stay free).
-- **Character set**: BASIC text is code page 437. `user/basic/basfont.h` (generated by
+- **Character set**: BASIC text is code page 437. `user/Libs/basic/basfont.h` (generated by
   `tools/gen_basfont.py` from Debian console-setup's VGA fonts) holds the 8 × 8 / 14 / 16
   glyphs that `glyph ()` plots, and the Latin-1 <-> CP437 tables: the lexer translates string
   literals and `DATA`, the host translates keys, and the VM's `cstr ()` / `pushL1 ()`
@@ -3530,7 +3544,7 @@ barwidth = 40
   document saved (the books written in the user's folder, the bundle's untouched), the templates copied,
   a host path opened as `MAC:/...`; `cocoa.mm` syntax-checked against GNUstep's headers (the Mac-only
   calls aside). `pc/macOS/README.txt` is the user's page.
-- **Volume and Wi-Fi from the menu bar** (ABI v60): `user/volume.h` (`volume_save` /
+- **Volume and Wi-Fi from the menu bar** (ABI v60): `user/Include/volume.h` (`volume_save` /
   `volume_restore`: `SD:/etc/sound.ini`) for the menu bar's volume box and `/bin/volume`
   (`kapi_sound_volume (vol, mute)`, −1 keeps). The Wi-Fi menu is its own app,
   `Apps/wifimenu` (a borderless window: it takes the keyboard for the password, unlike the
@@ -3539,7 +3553,7 @@ barwidth = 40
   `kapi_wlan_reconnect`; it closes when another window has the keys (`kapi_win_list`,
   `KAPI_WIN_KEYS`).
 - **NintendoEMU** (`pc/NintendoEMU`): `nemucore.dll` (`core/nemucore.cpp`, mingw-w64) builds the
-  emulator cores **unchanged** (`user/gb`, `gba`, `nes`, `snes`, `n64`, `gc`) behind a C API —
+  emulator cores **unchanged** (`user/Emulators/gb`, `gba`, `nes`, `snes`, `n64`, `gc`) behind a C API —
   `ne_open` (the system from the extension; a GameCube disc read on demand through `discRead`),
   `ne_set_keys` (the Windows key states) + XInput pad 0, mapped per system exactly as the Onyx
   apps do, `ne_run_frame (h, draw)`, `ne_audio`, `ne_video` (the last picture, double-buffered
@@ -3551,7 +3565,7 @@ barwidth = 40
   control, GLSL 1.20 — colour = texel × colour + colour2, alpha test, the batch's matrix, blending
   / depth / cull / wrap from the flags, as `kapi_gpu_render`; the machine's dirty textures uploaded;
   a CPU-drawn framebuffer as a textured quad), else `bas::swTriangles` + `g3raster` in bands of 16
-  rows on every core (`user/basic/bas3d.h`) at `ne_set_scale` × their size. A GameCube game with
+  rows on every core (`user/Libs/basic/bas3d.h`) at `ne_set_scale` × their size. A GameCube game with
   OpenGL 3.3 gets **`core/gxgl.cpp`** as its `Machine::gpu` (the GX's real pipeline on the GPU):
   the EFB is a framebuffer (RGBA8 + depth 24, `ne_set_scale` × 640 × 528, its rows the EFB's); a
   draw's vertices, the XF memory and the `GxState` go to three ring buffers (persistently mapped,

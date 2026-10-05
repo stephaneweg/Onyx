@@ -1,7 +1,7 @@
 #!/bin/sh
 # build.sh -- mbedTLS for the POSIX sysroot (third_party/mbedtls-3.6.3, Apache-2.0): curl's TLS.
 #
-# A configuration of its own, made from the in-tree one (user/tls/Makefile's: no hardware AES /
+# A configuration of its own, made from the in-tree one (user/Libs/tls/Makefile's: no hardware AES /
 # SHA -- the Pi 4's A72 has no crypto extensions --, TLS 1.2 + 1.3) with what POSIX now gives:
 # MBEDTLS_FS_IO (CA bundle files), MBEDTLS_HAVE_TIME / HAVE_TIME_DATE (certificate dates), PSA's
 # random from the entropy module, fed by getrandom (MBEDTLS_ENTROPY_HARDWARE_ALT,

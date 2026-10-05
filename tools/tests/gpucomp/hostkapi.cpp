@@ -1,5 +1,5 @@
 //
-// hostkapi.cpp -- a stand-in kernel for the GPU compositing service (user/gpucomp) on the PC: the
+// hostkapi.cpp -- a stand-in kernel for the GPU compositing service (user/Libs/gpucomp) on the PC: the
 // kapi table at its fixed address with what gpucomp and gpcdemo call, and -- GPC_SOFTGPU=1 -- a
 // software V3D behind gpu_info / gpu_texture / gpu_texture_rect / gpu_render / gpu_vbuf, made as
 // the kernel's (sys/v3d.cpp) v53 frame is: the viewport of its binning list (x y scaled by the

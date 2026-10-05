@@ -8,6 +8,13 @@
 > kernel log (`web: …`, `webview: …`), the switch files (`SD:/etc/web-*`), the script
 > `tools/webkit/build-web.sh` and its output `$BUILD/bin/web`. The user agent is WebKit's own.
 
+> **2026-10-05 -- the layout of `user/` changed** (docs/03 section 5): `user/gpucomp` is `user/Libs/gpucomp`,
+> `user/av` is `user/Libs/av`, `user/libc/posix` is `user/Runtime/libc/posix`, the kits are in `user/Kits`.
+> The patch series says the new paths (`ONYX_GPUCOMP_INCLUDE_DIR`, `ONYX_AV_INCLUDE_DIR` in WebKit's CMake).
+> **A WebKit tree patched before that date, built against an Onyx clone you then update, must have these two
+> CMake lines follow** (edit them in the tree, or re-apply the series), and the sysroot's POSIX library is
+> reinstalled from its new place: `make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf- SYSROOT=...`.
+
 ## Status / how to resume (2026-10-03)
 
 **Now: Web, the browser on WebKit2, runs on the Pi** (see "Step 3" below: kotonstudio.com over
@@ -171,7 +178,7 @@ collector's reservations, the main thread's stack size, timing.
 ```sh
 sudo apt-get install -y gperf unifdef cmake ninja-build ruby ccache   # host tools (docs/LOCAL-AGENT-WEBKIT.md)
 sh tools/toolchain/fetch.sh                                 # aarch64-onyx-elf into /opt/toolchains
-make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
+make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
 sh tools/ports/build-all.sh icu                             # ICU into the sysroot (webkit: all of them)
 sh tools/webkit/fetch.sh                                    # the checkout at the pin + the patches
 sh tools/webkit/build-jsc.sh install                        # -> user/BinUtils/jsc.elf (7 min on 16 cores)
@@ -258,7 +265,7 @@ real one before the browser is used for anything that matters; mbedTLS's AES is 
 
 **Decided (the user, 2026-10-02): the graphics, in this order** — (1) a browser rendered on the
 **CPU, without GL** (Skia raster); (2) once that has worked well for a few days, a **compositor on
-the V3D** (Onyx's own kernel driver, as Jet with `user/gpucomp`); (3) **WebGL is a goal for later**,
+the V3D** (Onyx's own kernel driver, as Jet with `user/Libs/gpucomp`); (3) **WebGL is a goal for later**,
 and its route is chosen: **an ANGLE back end of our own that drives Onyx's V3D kernel driver
 directly, with only Mesa's shader compiler library (SPIR-V → NIR → QPU) behind it** — not a port of
 the whole of Mesa (no Gallium `v3d` driver, no emulation of Linux's DRM interface, no Mesa EGL):
@@ -409,10 +416,10 @@ the downloads' window — the same program run with `--onyx-downloads`, its stdi
 Two fixes on the way: curl's download path told WebKit no running total nor expected length (no
 progress could be shown: `NetworkDataTaskCurl`, in `0016`), and libonyxposix answered `EPIPE` to a
 write into a pipe whose read end it had given as a child's stdin and then closed (its counts are
-the process's own: `user/libc/posix/proc.c`, docs/03 §5.4). A third, 2026-10-04: the downloads' window
+the process's own: `user/Runtime/libc/posix/proc.c`, docs/03 §5.4). A third, 2026-10-04: the downloads' window
 (and the console's) froze once the browser had nothing more to tell it — after a Cancel, its close
 button did nothing: `read (0)` waited although the descriptor was `O_NONBLOCK` (libonyxposix's console
-descriptor ignored the flag: `user/libc/posix/file.c`). Web also serves Mail as its HTML view
+descriptor ignored the flag: `user/Runtime/libc/posix/file.c`). Web also serves Mail as its HTML view
 (`--applet`, `user/Apps/jet/webview.cpp`; docs/03 *Web's web view*).
 
 Not there yet (the next work of step 1): the pointer's shape (no kapi for it), the window's title in the dock (the kernel keeps the program's), WOFF2 fonts,
@@ -459,7 +466,7 @@ a launch that followed a browser killed while loading (a lock left in `SD:/var/w
 **The route.** In the pinned revision WebKit's own compositor (Coordinated Graphics) is tied to GL
 and to Skia's Ganesh from end to end (its tiles are GL textures, its compositor a GL context:
 `ThreadedCompositor`, `AcceleratedSurface`, `SkiaCompositingLayer`), and TextureMapper is GLSL. So
-the port has **its own `GraphicsLayer` on Onyx's `user/gpucomp`** (the model: Windows'
+the port has **its own `GraphicsLayer` on Onyx's `user/Libs/gpucomp`** (the model: Windows'
 `GraphicsLayerWC` and its tile grid), as Jet does (the removed docs/06) — patch `0018`:
 
 - `WebCore/platform/graphics/onyx/GraphicsLayerOnyx`: a layer's properties and a grid of 512-pixel
@@ -545,7 +552,7 @@ core and **fail the test on any kernel call**).
 - **On the Pi** (kotonstudio.com, one app core free + the main thread): the 12-notch scroll's
   worst two seconds went from `20 frames, 7 Mpx, paint 1450 ms` to `64–73 frames, 5–7 Mpx, paint
   200–340 ms`; the self-test's stages all pass.
-- **What this found in Web's link**: `user/img/imgload.hpp` (in uikit) defines *weak* `malloc` /
+- **What this found in Web's link**: `user/Libs/img/imgload.hpp` (in uikit) defines *weak* `malloc` /
   `free` / `calloc` / `realloc` on `operator new[]`, and `onyxpp.hpp` a global `operator new` on
   `umm.h` (`kapi_sbrk`): in the static link both won over newlib's. So the whole browser — Skia,
   WebKit — allocated with uikit's allocator, while `malloc_usable_size` and `posix_memalign` were
@@ -561,7 +568,7 @@ made it urgent: **YouTube's application stops at its first line without `HTMLVid
 (`ReferenceError: Can't find variable: HTMLVideoElement` in its main script — the page stays its grey
 skeleton); with the interface there the pages draw, and the videos play.
 
-**The engine is Onyx's own media library** (`user/av`, docs/03 *The media library*: the demuxers,
+**The engine is Onyx's own media library** (`user/Libs/av`, docs/03 *The media library*: the demuxers,
 libvpx / dav1d / opus, a player with the sound as the clock), not GStreamer:
 
 - `platform/graphics/onyx/MediaPlayerPrivateOnyx.{h,cpp}` — one class for the two ways a page
@@ -598,7 +605,7 @@ libvpx / dav1d / opus, a player with the sound as the clock), not GStreamer:
   (`onyx_cores_offload`: one job, taken by a worker before a batch's next job, its poster waiting)
   and the library a hook for it (`av_set_offload`: a packet decoded and its picture converted in
   one job); without a core (an emulator runs), on the player's own thread, as before.
-- **Linked**: `tools/webkit/av.mk` builds `libonyxav.a` (user/av, `-DAV_POSIX -DAV_KAPI_SOUND`,
+- **Linked**: `tools/webkit/av.mk` builds `libonyxav.a` (user/Libs/av, `-DAV_POSIX -DAV_KAPI_SOUND`,
   with libvpx, dav1d, opus) for the POSIX toolchain; `build-web.sh` adds it.
 - **Tests**: `tools/webkit/tests/video-file.html` and `video-mse.html` (made by
   `mkvideotests.py` from `tools/tests/av/clips`): each ends with `video test: PASS` in the console.
@@ -680,7 +687,7 @@ In this order; a later step is not started early:
    (`shared-image`, from `main`) and tested on the Pi before it is merged.
 2. **The compositor on the V3D.**
 3. **The JIT** (executable memory in the kernel first).
-4. **Video** (`MediaPlayerPrivate` on `user/av`, MSE).
+4. **Video** (`MediaPlayerPrivate` on `user/Libs/av`, MSE).
 5. **The host window + the web view that attaches to it**, a component the Mail client embeds too.
    Asked by the user for this step or after it (2026-10-02): **a web-view daemon started at
    boot**, idle until a window asks for a web view, which then starts the UI, web and network
@@ -725,7 +732,7 @@ the PlayStation port's model, static binaries, distributed under LGPL-2.1+):
    through `vm_map` / `vm_protect`, W^X, the instruction cache flushed from EL0: a kapi change),
    then `ENABLE_JIT` (the Baseline tier first) with JavaScriptCore's executable allocator on it —
    and a check of what the JIT tiers ask of thread suspension and signals, which Onyx lacks
-   (above). Then media (`MediaPlayerPrivate` on `user/av`, MSE: Jet's decoders — VP9, AV1, Opus —
+   (above). Then media (`MediaPlayerPrivate` on `user/Libs/av`, MSE: Jet's decoders — VP9, AV1, Opus —
    are there), and the compositor on the V3D once the CPU rendering has proved itself. YouTube is
    the reference site: its pages need the JIT to feel fast, its videos need MSE.
 5. The browser (Jet's UI reused). **No tabs** (the user, 2026-10-02): one page per browser

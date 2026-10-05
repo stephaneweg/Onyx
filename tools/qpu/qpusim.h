@@ -1,6 +1,6 @@
 //
 // qpusim.h -- a functional V3D 4.2 QPU simulator (PC only), for testing the shaders the apps
-// generate (user/v3d, the GameCube's TEV) without a Raspberry Pi: 16 lanes (pixels) run one
+// generate (user/Libs/v3d, the GameCube's TEV) without a Raspberry Pi: 16 lanes (pixels) run one
 // fragment shader, as a QPU does. The instructions are decoded by Mesa (tools/qpu/mesa).
 //
 // What is modelled: the accumulators r0..r5 and the register file (64), both ALUs reading before

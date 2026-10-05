@@ -1,7 +1,7 @@
 # Packages and updates — the package manager
 
 > **Status (2026-10-01)**: **done** — `pkg` (the command), the **Package Manager** `pkgman` (the Control
-> Panel's applet, docs/04 §11), the update daemon **`pkgd`**, the library `user/pkg/pkglib.h`, the PC side
+> Panel's applet, docs/04 §11), the update daemon **`pkgd`**, the library `user/Libs/pkg/pkglib.h`, the PC side
 > `tools/pkg/`, the repository **published** (https://github.com/stephaneweg/onyx-packages), the card's
 > database (`sdcard/var/pkg/db`), **`sdcard_lite`**; tested on the PC (`tools/tests/run_pkg_test.sh`,
 > the screenshots), **not yet tried on the Pi**. Still to do: the firmware's *tryboot* (a new kernel
@@ -129,7 +129,7 @@ GitHub Action). `tools/pkg/keygen.py` makes the key pair once.
 
 | Piece | Where | What |
 |---|---|---|
-| The library | `user/pkg/pkglib.h` | the index (read, signature, compare), the database, the download to a file (`http.hpp` to stream the body to a file: today it keeps it whole in a buffer), SHA-256 (mbedTLS), install / remove / stage / commit with the Archiver's ZIP engine (`Apps/archiver/zip.h`) |
+| The library | `user/Libs/pkg/pkglib.h` | the index (read, signature, compare), the database, the download to a file (`http.hpp` to stream the body to a file: today it keeps it whole in a buffer), SHA-256 (mbedTLS), install / remove / stage / commit with the Archiver's ZIP engine (`Apps/archiver/zip.h`) |
 | The command | `user/BinUtils/pkg.cpp` | `pkg add / delete / update [-a] / upgrade / list [-a] [filter] / info` (newlib + mbedTLS, as `httpsget`) |
 | The applet | `user/Apps/software` | the Control Panel's **Software** applet (`applet_proto.h`), FreeType; the three tabs of the mock-ups; the work in a thread |
 | The daemon | `user/Apps/pkgd` | no window; started by `autostart`; once the network and the time (NTP) are there, then every day: the index, the **automatic** ones updated, a notification for the others; `pkg upgrade` and the applet's *Check Now* run one round |
@@ -202,7 +202,7 @@ manager keeps `SD:/etc/fileassoc.ini` and `SD:/etc/runners.ini` in step.
   `runners = bax bas: SD:/bin/basic`.
 - **Carried** by the package: `assoc = zip=archiver tar=archiver …` and `runners = bas=SD:/bin/basic …` in its
   manifest (`PKG/manifest.ini`), in the index and in its entry of `SD:/var/pkg/db`.
-- **Applied** by `user/pkg/pkglib.h`: at an install (and at the commit of a staged package) the pairs the file
+- **Applied** by `user/Libs/pkg/pkglib.h`: at an install (and at the commit of a staged package) the pairs the file
   does not have are appended (`merge_pairs`); at a removal the lines that still say what the package had put
   are taken away (`drop_pairs`). **A line that is there is never changed**: the user's choice wins, and
   `ext =` with nothing after it means "opened by nothing". `pkg assoc` and the update service at its start

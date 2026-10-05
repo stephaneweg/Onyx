@@ -15,7 +15,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${TMPDIR:-/tmp}/onyx_slides_test
 FT=$ROOT/third_party/freetype-2.14.3
 mkdir -p "$OUT/obj" "$OUT/ft"
-CXX="g++ -std=gnu++17 -O1 -g -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -g -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/user/Runtime -I$ROOT/user/Include -I$ROOT/user/Libs -I$ROOT/user/Emulators -I$ROOT/user/Ports -I$ROOT/kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 for f in "$ROOT"/user/Kits/uikit/*.cpp; do $CXX -w -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -w -c "$HERE/desktop_sim/fakekapi.cpp" -o "$OUT/fakekapi.o"
@@ -24,7 +24,7 @@ for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitma
 		-I"$ROOT/user/ft" -I"$FT/include" "$FT/src/$f" -o "$OUT/ft/$(basename $f .c).o" &
 done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
-gcc -O2 -w -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/kernel/include" -c "$ROOT/user/gpucomp/gpucomp.c" -o "$OUT/gpucomp.o"
+gcc -O2 -w -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" -I"$ROOT/kernel/include" -c "$ROOT/user/Libs/gpucomp/gpucomp.c" -o "$OUT/gpucomp.o"
 L="$OUT/fakekapi.o $OUT/gpucomp.o $OUT/libuikit.a $OUT/libft.a"
 $CXX -w -I"$ROOT/user/ft" -I"$FT/include" "$HERE/slides/make_sample.cpp" $L -o "$OUT/make_sample"
 $CXX -w -I"$ROOT/user/ft" -I"$FT/include" "$HERE/slides/slides_test.cpp" $L -o "$OUT/slides_test"

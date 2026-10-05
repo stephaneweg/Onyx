@@ -41,7 +41,7 @@
 //   Outside a batch (the workers asleep in wfe) the four are the real ones.
 //
 // - No other allocator. The program's operator new must be libstdc++'s (malloc): a program that
-//   includes user/onyxpp.hpp gets operators over umm.h, a heap that calls kapi_sbrk itself -- the
+//   includes user/Runtime/onyxpp.hpp gets operators over umm.h, a heap that calls kapi_sbrk itself -- the
 //   first new of Skia's that grows it on an app core is a kernel call there, the job is stopped
 //   (the Pi's "appcore: core 2: fault EC=0x15"), and the main thread waits for good on umm's lock.
 //   build-web.sh compiles the window with -DONYX_HOSTED_NEW and checks the linked program.

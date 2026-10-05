@@ -18,7 +18,7 @@
 #                  to the stub. Stubs are weak: a program's own definition of a name wins, as it won
 #                  over a static library's member.
 #   --bind         the program side: a constructor (priority 101: before the program's own) that
-#                  opens the library and sets the pointer the stubs go through (user/lib.h lib_bind).
+#                  opens the library and sets the pointer the stubs go through (user/Runtime/lib.h lib_bind).
 #
 # What a library exports: its objects' global functions (nm `T`) matching --export (a regular
 # expression; default: all of them), less --exclude. Inline functions (weak) are not exported: each
@@ -251,7 +251,7 @@ write (a.stubs, "\n".join (s))
 b = """// %(name)s_bind.cpp -- %(gen)s.
 // Opens SD:/lib/%(name)s.so before the program's own constructors (priority 101) and sets the pointer
 // the import stubs go through. The program was built against version %(version)d of the table: an older
-// library is refused (user/lib.h lib_bind says so and ends the program).
+// library is refused (user/Runtime/lib.h lib_bind says so and ends the program).
 #include "lib.h"
 
 extern "C" { const void *%(var)s; }

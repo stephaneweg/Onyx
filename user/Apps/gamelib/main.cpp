@@ -21,7 +21,7 @@
 //   * The folders: SD:/roms by default; Folders > Add Folder... / Remove <folder> (any volume: SD:, SD1: ..,
 //     e.g. an exFAT partition of the card), kept in config.ini, one `folder = SD1:/games` line each.
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
-//     user/gb, user/gba, user/nes, user/snes) and its screen kept -- made in the background, a little every
+//     user/Emulators/gb, user/Emulators/gba, user/Emulators/nes, user/Emulators/snes) and its screen kept -- made in the background, a little every
 //     frame, the games shown first, and cached in SD:/apps/gamelib.app/thumbs/ (Library > Refresh finds
 //     new ROMs). A Nintendo 64 game gets a label with the name from its header, a GameCube disc its banner.
 //   * The emulators are in no menu of the desktop: they are reached from here (one started

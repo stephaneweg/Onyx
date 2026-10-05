@@ -1,11 +1,11 @@
 //
-// snesemu -- the Onyx Super Nintendo / Super Famicom emulator (the core: user/snes).
+// snesemu -- the Onyx Super Nintendo / Super Famicom emulator (the core: user/Emulators/snes).
 //
 //   snesemu <rom.sfc | rom.smc> [--fullscreen]   (without a ROM: opens the Game Library)
 //                               (its app.txt "games": opening a .sfc / .smc file starts it; the Game
 //                               Library app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start,
-//     Backspace = Select (held keys, kapi_key_held); a USB gamepad too (user/gamepad.h, by
+//     Backspace = Select (held keys, kapi_key_held); a USB gamepad too (user/Include/gamepad.h, by
 //     place as on a Super Nintendo pad: right = A, bottom = B, top = X, left = Y, L, R, Start,
 //     Select); F11 or View > Full Screen: the whole display, stretched with the proportions
 //     kept and centred (Esc / F11 back).
@@ -15,7 +15,7 @@
 //     few seconds after a change and when the emulator closes.
 //   * The pace: the sound output (the frames are made as the audio queue drains), or the
 //     clock when there is no sound; 60.10 (NTSC) or 50.01 (PAL) frames a second.
-//   * The machine runs on an app core (core 2 or 3, user/emucore.h) when one is free: the
+//   * The machine runs on an app core (core 2 or 3, user/Emulators/emucore.h) when one is free: the
 //     window, the input and the sound stay on this thread. Without a free core it runs here.
 //   * No enhancement chip (Super FX, SA-1, DSP-1...): those games are refused with a message.
 //
@@ -226,7 +226,7 @@ static int buttons (void)
 	if (kapi_key_held ('w')) b |= snes::BTN_R;
 	if (kapi_key_held (KEY_ENTER)) b |= snes::BTN_START;
 	if (kapi_key_held (KEY_BACKSPACE)) b |= snes::BTN_SELECT;
-	// USB gamepads (user/gamepad.h): by place, as on the Super Nintendo's pad -- right A,
+	// USB gamepads (user/Include/gamepad.h): by place, as on the Super Nintendo's pad -- right A,
 	// bottom B, top X, left Y
 	unsigned p = pad_buttons (-1);
 	if (p & PAD_RIGHT) b |= snes::BTN_RIGHT;

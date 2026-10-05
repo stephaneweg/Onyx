@@ -1,5 +1,5 @@
 //
-// kp_reverb -- a Koton effect plugin (user/kplug.h): Freeverb (Jezar at Dreampoint's public-domain
+// kp_reverb -- a Koton effect plugin (user/Include/kplug.h): Freeverb (Jezar at Dreampoint's public-domain
 // reverb): eight damped comb filters in parallel then four all-passes in series, per channel, the
 // right's delays 23 samples longer (the stereo); a room size, a damping, a width, a pre-delay, the wet
 // and dry levels.

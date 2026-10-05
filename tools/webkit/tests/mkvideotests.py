@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 tools/webkit/tests/mkvideotests.py -- the media engine's test pages (WebKit's MediaPlayerPrivateOnyx on
-user/av), made from the tiny clips of tools/tests/av/clips (96 x 64, 2 s, 25 pictures a second):
+user/Libs/av), made from the tiny clips of tools/tests/av/clips (96 x 64, 2 s, 25 pictures a second):
 
   video-file.html   <video src=...>: the files next to the page (vp9.webm, av1.mp4), fetched by the
                     engine's own loader; each plays, loops once by a seek to 0, and is paused

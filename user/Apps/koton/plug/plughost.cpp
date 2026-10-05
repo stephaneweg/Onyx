@@ -5,7 +5,7 @@
 #include "plughost.h"
 #include "appkit/appkit.h"
 #include "applet_proto.h"
-#include "../../../json.hpp"
+#include "json.hpp"
 
 namespace kt {
 

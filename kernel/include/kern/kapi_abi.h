@@ -57,7 +57,7 @@
 //      executes (.bas, .bax...) are chosen in user space (SD:/etc/runners.ini, launch.h).
 // v50: + pad_state -- USB gamepads (Circle's drivers: Xbox 360 / One, PS3 / PS4, Switch Pro
 //      and standard HID pads): the raw buttons / axes / hats of pad 0..3; the button
-//      mapping is done in user space (user/gamepad.h, SD:/etc/gamepad.ini).
+//      mapping is done in user space (user/Include/gamepad.h, SD:/etc/gamepad.ini).
 // v51: + core_acquire/core_run/core_state/core_release -- app cores: an app acquires core 2
 //      or 3 and runs one function of its own there (no kapi calls, no malloc on it).
 // v52: + gpu_info/gpu_draw -- the V3D GPU (VideoCore VI): depth-tested Gouraud triangles
@@ -116,7 +116,7 @@
 //      cannot move, without minimise / maximise / close buttons, kept centred when the screen's
 //      resolution changes (the first-run wizard's).
 // v70: + gpu_texture_rect -- a rectangle of a texture's pixels replaced (no whole re-upload: the
-//      GPU compositing service, user/gpucomp); KAPI_GPU_F_ALPHA -- a GPU frame's target keeps its
+//      GPU compositing service, user/Libs/gpucomp); KAPI_GPU_F_ALPHA -- a GPU frame's target keeps its
 //      alpha (premultiplied ARGB: loaded, blended, stored, cleared to clear's top byte). The
 //      texture handles are shared by the programs using the GPU at once: 1024 in all (was 256),
 //      512 at most a program; the gpu_vbuf blocks 32 in all, 8 a program (was 8 in all).
@@ -126,7 +126,7 @@
 //      opendir / readdir / closedir, mkdir / remove / rename, chdir).
 // v72: gpu_render's blending: the compositing presets KAPI_GPU_BLEND_MULCOL .. DSTOUT (5..12:
 //      multiply, screen, plus, subtract, lighten, mask, cut out -- premultiplied, the alpha
-//      apart; user/gpucomp's layer blend modes). An older kernel takes 5..15 as ALPHA.
+//      apart; user/Libs/gpucomp's layer blend modes). An older kernel takes 5..15 as ALPHA.
 // v73: + pop_event / event_mods / pop_post / pump_sleep -- the event pump's kernel half, for the
 //      user-side pump of a PROTECTED (EL0) process (kern/el0.h): its table's pump_events /
 //      wait_for_exit / pump_wait are EL0 code that pops the window's events and the posted calls
@@ -176,7 +176,7 @@
 //      window gets GUI_EVENT_WINRESIZE (20) with its new place and client size, which it applies
 //      (resize_window2, move_window). uikit: Root::setResizable.
 // v83: shared libraries (docs/SHARED-LIBS-PLAN.md, docs/02 section 7): + lib_open (slot 261): a
-//      position-independent library (SD:/lib/<name>.so, user/lib.ld's shape) loaded once for the
+//      position-independent library (SD:/lib/<name>.so, user/Runtime/lib.ld's shape) loaded once for the
 //      whole system, placed by the kernel in the library arena (16 GB..32 GB), its data relocated
 //      once, mapped into the caller -> its export table (version, size, init, then its entries:
 //      append-only, as this table). + KAPI_IMG_LIB in kapi_image_info.flags. No existing call changes.
@@ -361,7 +361,7 @@ struct kapi_win_geom
 // Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` uses Circle's TGamePadButton bits
 // (circle/usb/usbgamepad.h) and axes 0..3 are the left / right sticks; for any other HID
 // pad they are the report's own buttons (bit 0 = button 1), axes and hats (0..7 = N, NE,
-// E ... NW, else centred). user/gamepad.h turns this into PAD_UP / PAD_A ... masks.
+// E ... NW, else centred). user/Include/gamepad.h turns this into PAD_UP / PAD_A ... masks.
 #define KAPI_CORE_IDLE		0	// core_state() values
 #define KAPI_CORE_RUNNING	1
 #define KAPI_CORE_NOTYOURS	(-1)
@@ -445,7 +445,7 @@ struct kapi_gpu_batch
 #define KAPI_GPU_BLEND_MUL	3		// src * dst
 #define KAPI_GPU_BLEND_PREMUL	4		// src + dst * (1 - a)
 // (v72) the compositing presets, premultiplied colours (s, d; sa, da their alphas) -- what blend
-// modes are made of (user/gpucomp: a layer's multiply = MULCOL then UNDER, subtract = RSUB then UNDER)
+// modes are made of (user/Libs/gpucomp: a layer's multiply = MULCOL then UNDER, subtract = RSUB then UNDER)
 #define KAPI_GPU_BLEND_MULCOL	5		// colour s d + d (1 - sa); alpha kept
 #define KAPI_GPU_BLEND_UNDER	6		// colour s (1 - da) + d; alpha sa + da (1 - sa)
 #define KAPI_GPU_BLEND_SCREEN	7		// colour s + d (1 - s); alpha over
@@ -504,7 +504,7 @@ struct kapi_gpu_frame
 						// byte. Without it: alpha not kept (0x00RRGGBB, as before)
 #define KAPI_GPU_MAX_BATCHES	4096
 
-// kapi v61 (gpu_program / gpu_render2): draws with the app's own QPU shaders (user/v3d/qpu.h
+// kapi v61 (gpu_program / gpu_render2): draws with the app's own QPU shaders (user/Libs/v3d/qpu.h
 // builds them; the GameCube's TEV is generated so). A program: the vertex shader (render), the
 // coordinate shader (binning) and the fragment shader, as V3D 4.2 instructions. A vertex is
 // `inputs` floats, read in order by the vertex shader (the coordinate shader reads the first
@@ -1232,7 +1232,7 @@ struct TKApiTable
 	// --- v24 additions (per-process heap) ---
 	// Unix-style sbrk: move the calling app's heap break by `increment` bytes
 	// (mapping fresh pages as it grows), return the previous break, or (void*)-1 on
-	// failure. The foundation for a user-space allocator (user/umm.h: malloc/free +
+	// failure. The foundation for a user-space allocator (user/Runtime/umm.h: malloc/free +
 	// operator new/delete). Heap pages are owned by the address space -> freed on exit.
 	void *(*sbrk) (long increment);
 
@@ -1271,7 +1271,7 @@ struct TKApiTable
 	// --- v30 additions (hardware RNG) ---
 	// Fill buf[len] with random bytes from the Pi's hardware RNG (Circle
 	// CBcmRandomNumberGenerator). For cryptographic seeding -- e.g. the TLS entropy
-	// source in user/tls/onyx_tls.hpp. Returns the number of bytes written (== len).
+	// source in user/Libs/tls/onyx_tls.hpp. Returns the number of bytes written (== len).
 	int (*random) (void *buf, unsigned len);
 
 	// --- v33 additions (memory detail for memmon) ---
@@ -1878,9 +1878,9 @@ struct TKApiTable
 	// process maps the same code at the same address and gets its own copy of the data. Mapped in
 	// the caller already: the same table. It stays mapped until the process ends (no lib_close).
 	// The table starts with `unsigned version, size; int (*init) (const void *imports);` -- the
-	// caller calls init once (user/lib.h's lib_bind does) -- and is append-only, as this one.
+	// caller calls init once (user/Runtime/lib.h's lib_bind does) -- and is append-only, as this one.
 	// min_version: the table's version must be >= it, else -ENOTSUP. Other errors: -ENOENT (no
-	// such file), -EINVAL (not a library of user/lib.ld's shape; a relocation other than
+	// such file), -EINVAL (not a library of user/Runtime/lib.ld's shape; a relocation other than
 	// R_AARCH64_RELATIVE), -ENOMEM (memory, or no room in the arena), -EMFILE (16 libraries in the
 	// process), -EIO, -ENAMETOOLONG, -EFAULT.
 	const void *(*lib_open) (const char *name, unsigned min_version, int *err);

@@ -47,7 +47,7 @@ def frame_yuv(i):
     return bytes(y) + u + v
 
 def rgb_sum(fr):
-    """the sum of R + G + B of a frame converted as user/av/av_yuv.c does (BT.601, limited)"""
+    """the sum of R + G + B of a frame converted as user/Libs/av/av_yuv.c does (BT.601, limited)"""
     cw, ch = (W + 1) // 2, (H + 1) // 2
     Y, U, V = fr[:W * H], fr[W * H:W * H + cw * ch], fr[W * H + cw * ch:]
     sat = lambda v: 32767 if v > 32767 else -32768 if v < -32768 else v

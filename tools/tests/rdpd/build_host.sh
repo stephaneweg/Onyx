@@ -9,6 +9,6 @@ ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 OUT=${1:-/tmp/rdpd_host}
 SRC=${2:-$ROOT/user/BinUtils/rdpd.c}
 mkdir -p "$OUT"
-gcc -std=gnu11 -O1 -g -Wall -Wno-unused-function -Wno-format-truncation -I "$ROOT/user" -I "$ROOT/user/Kits" -I "$ROOT/user/BinUtils" \
+gcc -std=gnu11 -O1 -g -Wall -Wno-unused-function -Wno-format-truncation -I "$ROOT/user" -I "$ROOT/user/Kits" -I "$ROOT/user/Runtime" -I "$ROOT/user/Include" -I "$ROOT/user/Libs" -I "$ROOT/user/Emulators" -I "$ROOT/user/Ports" -I "$ROOT/user/BinUtils" \
 	-I "$ROOT/kernel/include" -DRDPD_SRC="\"$SRC\"" -o "$OUT/rdpd_host" "$ROOT/tools/tests/rdpd/rdpdhost.c" -lpthread
 echo "built: $OUT/rdpd_host"

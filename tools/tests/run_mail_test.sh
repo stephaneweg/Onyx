@@ -1,14 +1,14 @@
 #!/bin/sh
-# tools/tests/run_mail_test.sh -- Mail's protocol layer (user/mail/: IMAP, POP3, SMTP, MIME, OAuth) built for the PC
+# tools/tests/run_mail_test.sh -- Mail's protocol layer (user/Libs/mail/: IMAP, POP3, SMTP, MIME, OAuth) built for the PC
 # (the stand-in kernel, mbedTLS) and run against tools/tests/mail/fakemail.py on local ports (IMAP also over a
 # self-signed TLS: refused when checked, accepted when the account says not to check); then Mail's HTML renderer
-# (user/mail/html.h) on a few messages, drawn into $OUT/html-*.png; and Mail's model (user/Apps/mail/model.h).
+# (user/Libs/mail/html.h) on a few messages, drawn into $OUT/html-*.png; and Mail's model (user/Apps/mail/model.h).
 set -e
 cd "$(dirname "$0")/../.."
 OUT=${MAIL_TEST_TMP:-/tmp/onyx_mail_test}
 M=third_party/mbedtls-3.6.3
 mkdir -p "$OUT/mb"
-CXX="g++ -std=gnu++17 -O1 -g -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -g -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 if [ ! -f "$OUT/libmb.a" ]; then
 	for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" & done; wait
 	ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o

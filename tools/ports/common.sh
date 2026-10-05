@@ -40,7 +40,7 @@ onyx_cmake ()
 }
 
 # the sysroot: libonyxposix's headers, library, crt0, specs (always brought up to date)
-make --no-print-directory -s -C "$ONYX/user/libc/posix" install PREFIX="$ONYX_TOOLCHAIN_PREFIX" SYSROOT="$ONYX_SYSROOT" >/dev/null
+make --no-print-directory -s -C "$ONYX/user/Runtime/libc/posix" install PREFIX="$ONYX_TOOLCHAIN_PREFIX" SYSROOT="$ONYX_SYSROOT" >/dev/null
 
 # the libraries the ports use that are already in third_party (prebuilt for Onyx): headers and
 # archives copied into the sysroot, with their pkg-config files

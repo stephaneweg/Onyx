@@ -36,7 +36,7 @@ SKLIBS="-lskia -lharfbuzz -lfreetype -lpng16 -ljpeg -lwebpmux -lwebpdemux -lwebp
 ICULIBS="-lharfbuzz-icu -licui18n -licuuc -licudata"
 echo "skia: skiatest, skiademo"
 "${ONYX_TOOLCHAIN_PREFIX}g++" $CFLAGS $SKCF "$ONYX/tools/ports/skia/skiatest.cpp" -o "$B/skiatest" $LDFLAGS $ICULIBS $SKLIBS
-"${ONYX_TOOLCHAIN_PREFIX}g++" $CFLAGS $SKCF -DSCENE_NO_ICU -I"$ONYX/user" -I"$ONYX/user/Kits" -I"$ONYX/kernel/include" "$ONYX/tools/ports/skia/skiademo.cpp" \
+"${ONYX_TOOLCHAIN_PREFIX}g++" $CFLAGS $SKCF -DSCENE_NO_ICU -I"$ONYX/user" -I"$ONYX/user/Kits" -I"$ONYX/user/Runtime" -I"$ONYX/user/Include" -I"$ONYX/user/Libs" -I"$ONYX/user/Emulators" -I"$ONYX/user/Ports" -I"$ONYX/kernel/include" "$ONYX/tools/ports/skia/skiademo.cpp" \
 	-o "$B/skiademo" $LDFLAGS $SKLIBS
 onyx_tool_done "$B/skiatest" skiatest
 onyx_tool_done "$B/skiademo" skiademo

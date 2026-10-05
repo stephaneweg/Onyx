@@ -11,6 +11,6 @@ mkdir -p "$OUT"
 sed -e 's|^int main (void)|static int telnetd_main (void)|' -e 's|__asm__ volatile ("dmb ish" ::: "memory");||' \
 	"$ROOT/user/BinUtils/telnetd.c" > "$OUT/telnetd.c"
 gcc -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-function -fno-builtin-log2 -fsanitize=address,undefined \
-	-I"$ROOT/tools/tests/telnetd" -I"$OUT" -I"$ROOT/user/BinUtils" -I"$ROOT/user" -I"$ROOT/user/Kits" \
+	-I"$ROOT/tools/tests/telnetd" -I"$OUT" -I"$ROOT/user/BinUtils" -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" \
 	"$ROOT/tools/tests/telnetd/telnetd_test.c" -o "$OUT/telnetd_test"
 "$OUT/telnetd_test"

@@ -20,7 +20,7 @@ for n in fm2 delay arp; do
 	cp user/Apps/kp_$n/plugin.json "$CARD/koton/plugins/$n/"
 	echo "(the program)" > "$CARD/koton/plugins/$n/main"
 done
-CXX="g++ -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -fsanitize=undefined -pthread -I user -I user/Kits -I $K -I kernel/include"
+CXX="g++ -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -fsanitize=undefined -pthread -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I $K -I kernel/include"
 OBJS=""; PIDS=""
 for n in fm2 delay arp; do
 	$CXX -Dmain=kp_${n}_main -c user/Apps/kp_$n/main.cpp -o "$OUT.o/kp_$n.o" & PIDS="$PIDS $!"

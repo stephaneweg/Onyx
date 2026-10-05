@@ -1,6 +1,6 @@
 //
 // ftso.c -- FreeType as a shared library (SD:/lib/ft.so; docs/SHARED-LIBS-PLAN.md): what the library
-// takes from a C library. Its memory is the importer's (user/lib.h TLibImports, through librt.cpp):
+// takes from a C library. Its memory is the importer's (user/Runtime/lib.h TLibImports, through librt.cpp):
 // one heap in the process. FreeType's file streams (FT_New_Face by path) are not used on Onyx --
 // the apps read a font file and call FT_New_Memory_Face (ft/fonts.h) --: fopen fails. The rest
 // (the string functions, qsort, setjmp) comes from the toolchain's newlib, linked into the library.

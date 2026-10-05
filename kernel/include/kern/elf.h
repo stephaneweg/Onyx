@@ -122,7 +122,7 @@ struct TImgSource;			// kern/image.h: where the file's bytes come from
 // its headers and every segment's bytes inside the file, every segment in the user VA range, no
 // two segments in one 64 KB page. Segments without memory are left out. -> 0, or -KAPI_E* with
 // *ppWhy a short reason for the log.
-// (v83) nKind ELF_KIND_LIB: a shared library instead (user/lib.ld's shape): an ET_DYN linked at 0,
+// (v83) nKind ELF_KIND_LIB: a shared library instead (user/Runtime/lib.ld's shape): an ET_DYN linked at 0,
 // exactly two segments -- the first one read-only (the code), the second one writable --, one
 // PT_DYNAMIC inside the writable segment's file bytes, and the entry (the library's export table)
 // there too. A program is refused as a library, a library as a program. ELF_KIND_ANY: whichever

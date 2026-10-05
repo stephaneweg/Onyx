@@ -21,7 +21,7 @@ WANT=" $* "
 rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes"
 : > "$OUT/log.txt"
 export SIM_WRITES="$OUT/writes"			# (what the apps save: there, never on the card)
-CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
@@ -42,8 +42,8 @@ rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 audiokit () {
 	[ -f "$OUT/libaudiokit.a" ] && return 0
 	mkdir -p "$OUT/ak"
-	gcc -O2 -w -Iuser -Iuser/Kits -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/ak/codecs.o" || return 1
-	gcc -O2 -w -Iuser -Iuser/Kits -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/ak/vorbis.o" || return 1
+	gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/ak/codecs.o" || return 1
+	gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/ak/vorbis.o" || return 1
 	for f in user/Apps/koton/synth/*.cpp user/Kits/audiokit/*.cpp; do
 		$CXX -Iuser/Apps/koton -Iuser/Apps/media -Ithird_party -c "$f" -o "$OUT/ak/$(basename "$f" .cpp).o" || return 1
 	done
@@ -52,8 +52,8 @@ audiokit () {
 audiokit || exit 1
 AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
-	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
-	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
+	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
+	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
 		for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o" || return 1; done
@@ -68,7 +68,7 @@ build () {
 	fi
 	if [ "$1" = media ]; then			# (newlib-like: FreeType; AudioKit: the decoders, MeltySynth)
 		audiokit || return 1
-		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/av, its codecs, FFmpeg for the PC)
+		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/Libs/av, its codecs, FFmpeg for the PC)
 		sh third_party/ffmpeg-7.1.2/onyx/build.sh host "$FFH" || return 1
 		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1
 		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT/libaudiokit.a" \
@@ -99,16 +99,16 @@ build () {
 			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
 	fi
 	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Iuser/Kits -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
+		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Iuser/Kits -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
+		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/basic/bascomp.cpp user/basic/basvm.cpp \
-			user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
+			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
@@ -130,7 +130,7 @@ APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freece
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
-$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libaudiokit.a" -lpthread -lm &
+$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/Libs/basic/runtime.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libaudiokit.a" -lpthread -lm &
 wait
 
 # ---- the running -------------------------------------------------------------------------------

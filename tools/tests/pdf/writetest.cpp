@@ -1,4 +1,4 @@
-// writetest.cpp -- user/pdf/pdfwrite.h checked on the PC (tools/tests/run_pdf_test.sh): a document of two pages written with
+// writetest.cpp -- user/Libs/pdf/pdfwrite.h checked on the PC (tools/tests/run_pdf_test.sh): a document of two pages written with
 // DejaVu Sans (and its bold) as subsets, a rectangle, an image with transparency, a link, bookmarks; then read back by the
 // PDF Viewer's MuPDF: its pages, its text found again, its outline, its fonts embedded.
 #include <stdio.h>

@@ -14,7 +14,7 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "appkit/appkit.h"
-#include "../onyxpp.hpp"		// (operator new / delete: the library's binding)
+#include "onyxpp.hpp"		// (operator new / delete: the library's binding)
 #include "../Kits/filekit/filekit.h"
 
 static int g_pass, g_fail;

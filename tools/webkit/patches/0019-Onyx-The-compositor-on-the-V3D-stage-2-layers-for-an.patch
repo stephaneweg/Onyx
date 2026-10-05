@@ -128,9 +128,9 @@ index b63537ba..56f4ae68 100644
  // With a host (USE(GRAPHICS_LAYER_ONYX), WebKit's LayerTreeHost on Onyx: the page asked to
  // composite), a layer that draws content keeps it in tiles of 512 pixels painted here by Skia and
  // handed to the host as textures; the host walks the tree and has them assembled by the GPU
--// (user/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again.
+-// (user/Libs/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again.
 -// Animations stay on the main thread (addAnimation answers false).
-+// (user/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again; what
++// (user/Libs/gpucomp). Scrolling then moves the tiles: nothing that was painted is painted again; what
 +// is invalidated is painted again as rectangles of the tiles' textures. A layer drawn scaled or
 +// rotated keeps its content in one texture when it fits. Animations of opacity and transform
 +// are kept here (WebCore's TextureMapperAnimation, which has nothing of GL) and sampled by the
@@ -659,7 +659,7 @@ index 4855a7bb..580d5cd3 100644
 +WEBCORE_EXPORT void setOnyxCullsLeafLayersWhenPainting(bool);
  
  // The compositor a GraphicsLayerOnyx belongs to (WebKit's LayerTreeHost on Onyx): it keeps the
- // tiles' pixels as textures (user/gpucomp: the V3D, or the CPU) and assembles them. A layer made
+ // tiles' pixels as textures (user/Libs/gpucomp: the V3D, or the CPU) and assembles them. A layer made
 @@ -51,27 +57,48 @@ public:
      virtual void layerCreated(GraphicsLayerOnyx&) = 0;
      virtual void layerDestroyed(GraphicsLayerOnyx&) = 0;

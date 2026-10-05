@@ -187,13 +187,13 @@ parameters) — *as built: see §9 and docs/03, "Koton's plugins"*. Three kinds,
    and speaks the applets' messages (`applet_proto.h`, unchanged); the host shows it in a
    floating panel. (As built: not `--applet`, whose watchdog expects the Control Panel as host.)
 
-The protocol (`user/kplug_proto.h`, append-only like the kapi ABI): `KP_HELLO {kind, name,
+The protocol (`user/Include/kplug_proto.h`, append-only like the kapi ABI): `KP_HELLO {kind, name,
 nparams}`, `KP_PARAMS` (JSON), `KP_PREPARE {rate, block, shm}`, `KP_SET {param, value}`,
 `KP_STATE_GET / SET` (a JSON blob, saved in the project), `KP_GENERATE {from, to}` → notes,
 `KP_RESET`, `KP_BYE`. The host kills a plugin that stops answering and marks it "crashed" in the
 chain (the song keeps playing without it).
 
-### 3.5 JSON — `user/json.hpp`
+### 3.5 JSON — `user/Include/json.hpp`
 
 Nothing in `third_party` fits (quickjs is too big for this; the helpers in `groq` are not a
 parser). Proposal: **our own, small, arena-based** (~700 lines), rather than cJSON (MIT, fine, but
@@ -244,7 +244,7 @@ one malloc per node — a leak waiting to happen):
 | **C1** | **TLS certificate verification** (a CA bundle on the card) | an API key goes over it | medium | M4 |
 | **W1** | uikit: **Knob**, **VuMeter**, **SegmentedControl**, **ToolBar / ToolButton** promoted from Letters, an LCD label, a `TimeView` helper (horizontal zoom / scroll in beats, shared by the lanes and the grids) | the "pro" look, reused by other apps | medium | M0–M1 |
 | W2 | uikit: **anti-aliased text** (`.aaf` fonts of `elegant.h`, on `archive/elegant-ui-2026-09-28`) as an opt-in per widget / app | the look of the mock-ups | medium | M1–M2 |
-| L1 | `user/json.hpp` (§3.5) | everything | small | M0 |
+| L1 | `user/Include/json.hpp` (§3.5) | everything | small | M0 |
 | L2 | `umm` debug statistics: live blocks / bytes, a high-water mark; `umm_check ()` | leak hunting on the Pi | small | M0 |
 
 Everything else (files, dialogs, the dock, file associations, the menu bar, HTTP) is there.

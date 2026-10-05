@@ -1,5 +1,5 @@
 #!/bin/sh
-# tools/tests/av/run.sh -- the media library's tests (user/av): the clips made by mkmedia.py,
+# tools/tests/av/run.sh -- the media library's tests (user/Libs/av): the clips made by mkmedia.py,
 # avtest built for the PC and run; with qemu-aarch64 and aarch64-linux-gnu-gcc, built for
 # AArch64 too (the NEON paths) and run under qemu.
 #
@@ -8,9 +8,9 @@ cd "$(dirname "$0")/../../.."
 OUT=${OUT:-/tmp/avtest}
 mkdir -p "$OUT"
 python3 tools/tests/av/mkmedia.py "$OUT/media" || { echo "mkmedia failed"; exit 1; }
-SRC="user/av/av_demux.c user/av/av_mkv.c user/av/av_mp4.c user/av/av_riff.c user/av/av_flac.c user/av/av_mp3.c user/av/av_stub.c \
-     user/av/av_codec.c user/av/av_yuv.c user/av/av_resample.c user/av/av_store.c user/av/av_player.c"
-CF="-std=gnu99 -O2 -g -Wall -Wno-unused-function -DAV_POSIX -Iuser/av"
+SRC="user/Libs/av/av_demux.c user/Libs/av/av_mkv.c user/Libs/av/av_mp4.c user/Libs/av/av_riff.c user/Libs/av/av_flac.c user/Libs/av/av_mp3.c user/Libs/av/av_stub.c \
+     user/Libs/av/av_codec.c user/Libs/av/av_yuv.c user/Libs/av/av_resample.c user/Libs/av/av_store.c user/Libs/av/av_player.c"
+CF="-std=gnu99 -O2 -g -Wall -Wno-unused-function -DAV_POSIX -Iuser/Libs/av"
 fail=0
 gcc $CF -o "$OUT/avtest" $SRC tools/tests/av/avtest.c -lpthread -lm || exit 1
 echo "== PC"
@@ -40,8 +40,8 @@ if command -v ffmpeg >/dev/null && [ "${AV_NO_FFMPEG:-}" = "" ]; then
 	mk h264-ac3.mkv -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a ac3
 	mk h264-10bit-422.mp4 -c:v libx264 -preset ultrafast -pix_fmt yuv422p10le -c:a aac
 	VPX=third_party/libvpx-1.15.2; DAV=third_party/dav1d-1.5.1; OPU=third_party/opus-1.5.2
-	gcc -std=gnu11 -O2 -w -DAV_POSIX -DAV_WITH_FFMPEG -Iuser/av -Ithird_party/ffmpeg-7.1.2/onyx/include \
-		-o "$OUT/fftest" user/av/*.c tools/tests/av/fftest.c -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm || exit 1
+	gcc -std=gnu11 -O2 -w -DAV_POSIX -DAV_WITH_FFMPEG -Iuser/Libs/av -Ithird_party/ffmpeg-7.1.2/onyx/include \
+		-o "$OUT/fftest" user/Libs/av/*.c tools/tests/av/fftest.c -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm || exit 1
 	echo "== FFmpeg (PC)"
 	"$OUT/fftest" "$C" h264-aac.mp4:96:4 h264-aac.ts:96:4 hevc-aac.mkv:96:4 xvid-mp3.avi:96:4 mpeg2-mp2.mpg:96:4 \
 		wmv2-wma.wmv:96:4 flv1-mp3.flv:96:4 theora-vorbis.ogv:96:4 h264-ac3.mkv:96:4 h264-10bit-422.mp4:96:4 || fail=1

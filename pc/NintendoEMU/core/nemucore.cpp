@@ -1,6 +1,6 @@
 //
 // nemucore.cpp -- the native half of NintendoEMU (nemucore.dll): the emulator cores of Onyx
-// (user/gb, gba, nes, snes, n64, gc -- the very same sources as the Onyx apps) behind a small C
+// (user/Emulators/gb, gba, nes, snes, n64, gc -- the very same sources as the Onyx apps) behind a small C
 // API for the .NET front end, plus what Windows gives them: the sound (waveOut), the pads
 // (XInput) and the files (UTF-8 paths). Portable apart from that: it also builds on Linux for
 // the test (tools/tests/run_nemu_test.sh).
@@ -13,8 +13,8 @@
 //
 // The Nintendo 64 and GameCube pictures are 3D: each frame's triangles and textures (what the
 // Pi's GPU draws on Onyx) are drawn here by OpenGL, or by the BASIC 3D's software renderer
-// (user/basic/bas3d.h), ne_set_scale times the console's resolution. The GameCube's CPU is
-// translated to x86-64 (user/gc/gc_jit_x64.cpp; NEMU_GC_INTERP=1: interpreted).
+// (user/Libs/basic/bas3d.h), ne_set_scale times the console's resolution. The GameCube's CPU is
+// translated to x86-64 (user/Emulators/gc/gc_jit_x64.cpp; NEMU_GC_INTERP=1: interpreted).
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -323,7 +323,7 @@ static bool disc_read (void *ctx, gc::u32 off, gc::u32 len, gc::u8 *dst)
 	return u8seek (f, off) && fread (dst, 1, len, f) == len;
 }
 
-// the GameCube JIT's code memory (user/gc/gc_jit_x64.cpp: the PowerPC translated to x86-64)
+// the GameCube JIT's code memory (user/Emulators/gc/gc_jit_x64.cpp: the PowerPC translated to x86-64)
 static void *code_alloc (gc::u32 size)
 {
 #ifdef _WIN32

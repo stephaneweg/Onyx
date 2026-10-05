@@ -135,7 +135,7 @@ if [ -n "$do_wk" ]; then
 		sh "$HERE/run.sh" || exit 2
 	BUILD_ONLY=1 PROG=$PT/skia/skiatest.cpp CFLAGS_EXTRA="$WKCF $SKDEFS" \
 		OBJS="-L$S/lib -lharfbuzz-icu -licui18n -licuuc -licudata -lskia -lharfbuzz $IMGLIBS" sh "$HERE/run.sh" || exit 2
-	BUILD_ONLY=1 PROG=$PT/skia/skiademo.cpp CFLAGS_EXTRA="$WKCF $SKDEFS -DSCENE_NO_ICU -I$ONYX/user" -I$ONYX/user/Kits" \
+	BUILD_ONLY=1 PROG=$PT/skia/skiademo.cpp CFLAGS_EXTRA="$WKCF $SKDEFS -DSCENE_NO_ICU -I$ONYX/user" -I$ONYX/user/Kits" -I$ONYX/user/Runtime" -I$ONYX/user/Include" -I$ONYX/user/Libs" -I$ONYX/user/Emulators" -I$ONYX/user/Ports" \
 		OBJS="-L$S/lib -lskia -lharfbuzz $IMGLIBS" sh "$HERE/run.sh" || exit 2
 	ok "skiademo linked (it opens a window: run it on the Pi)"
 	mkdir -p "$R/SD/res/fonts"

@@ -63,7 +63,7 @@
 // Per-process heap: grows UP from here (kapi_sbrk maps 64 KB pages on demand). Sits
 // in the gap above the app's .text/.data/.bss (which start at 8 GB and are small)
 // and below the window canvas (12 GB). Pages are owned by the address space ->
-// freed on teardown. The user-space allocator (user/umm.h) manages this region.
+// freed on teardown. The user-space allocator (user/Runtime/umm.h) manages this region.
 #define USER_HEAP_BASE		(10ULL * GIGABYTE)	// 0x2_8000_0000
 #define USER_HEAP_MAX		USER_WINDOW_CANVAS	// ceiling (12 GB): 2 GB of heap VA
 

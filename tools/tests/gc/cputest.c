@@ -1,5 +1,5 @@
 /*
- * cputest.c -- a battery of PowerPC instructions for the Gekko interpreter (user/gc): each is
+ * cputest.c -- a battery of PowerPC instructions for the Gekko interpreter (user/Emulators/gc): each is
  * run on pseudo-random operands and its result, CR and XER written out. The same object runs
  * under qemu-ppc (the reference: cputest_main.c prints the buffer) and in the interpreter
  * (tools/tests/gc/gctest.cpp loads it at 0x80003100): the buffers must match.

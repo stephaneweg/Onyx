@@ -4,6 +4,13 @@
 WebKit dependencies. Give this whole file to the local agent. It assumes a Windows PC with an Intel
 i7 and **WSL 2 (Ubuntu)**; everything below runs inside WSL.*
 
+> **2026-10-05 -- the layout of `user/` changed** (docs/03 section 5): `user/gpucomp` is `user/Libs/gpucomp`,
+> `user/av` is `user/Libs/av`, `user/libc/posix` is `user/Runtime/libc/posix`, the kits are in `user/Kits`.
+> The patch series says the new paths (`ONYX_GPUCOMP_INCLUDE_DIR`, `ONYX_AV_INCLUDE_DIR` in WebKit's CMake).
+> **A WebKit tree patched before that date, built against an Onyx clone you then update, must have these two
+> CMake lines follow** (edit them in the tree, or re-apply the series), and the sysroot's POSIX library is
+> reinstalled from its new place: `make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf- SYSROOT=...`.
+
 ---
 
 ## 0. Who you are working for, and the rules
@@ -153,8 +160,8 @@ mbedTLS, Skia CPU raster, our own platform layer), static binaries, JavaScriptCo
    SOCK_SEQPACKET)`, `sendmsg`/`recvmsg` with `SCM_RIGHTS`, `memfd_create` + `mmap(MAP_SHARED)`,
    `posix_spawn` with inherited fds: all validated on the Pi), the UI/web/network processes.
 4. **The Onyx parts** — the web view in an Onyx window (canvas, `present`, key/mouse events, clipboard
-   `clipd`, menus, cursors), a compositor on the V3D (`user/gpucomp`, as Jet does), a media player on
-   `user/av` (FFmpeg, dav1d, libvpx; MSE).
+   `clipd`, menus, cursors), a compositor on the V3D (`user/Libs/gpucomp`, as Jet does), a media player on
+   `user/Libs/av` (FFmpeg, dav1d, libvpx; MSE).
 5. **The browser** — Jet's UI (toolbar, site versions, zoom, downloads, history, padlock: `user/netsurf/
    onyx_*.c*` is the reference), then parity with Jet (`docs/07-BROWSER-GAPS.md` as the checklist), then
    the switch.

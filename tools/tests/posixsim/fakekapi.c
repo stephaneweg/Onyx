@@ -1818,7 +1818,7 @@ static int f_poll (struct kapi_pollfd *fds, unsigned n, int ms)
 /* ---- the screen, shared surfaces, no GPU (WebKit's compositor: tools/webkit/test-webkit.sh GPU=1) ----
  * A surface is a file $ROOT/.shm/surface-<id>: a header (w, h) in its first 64 KB, then the pixels,
  * mapped shared by every process that asks; its id is made of the owner's pid, so ids are unique
- * across the bench's processes. The GPU is "not there": user/gpucomp composites on the CPU. */
+ * across the bench's processes. The GPU is "not there": user/Libs/gpucomp composites on the CPU. */
 #define SURF_HDR	0x10000L
 static int s_surfN;
 

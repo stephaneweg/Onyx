@@ -93,7 +93,7 @@ cd Onyx
 | `docs/04-USER-GUIDE.md` | la carte SD, `system.ini`, le réseau | ce que voit l'utilisateur |
 | `user/Apps/2048/main.cpp` | 190 lignes | **squelette** d'une app GUI minimale |
 | `user/Apps/courier/` | `net.h` | **modèle** d'app réseau : HTTPS + JSON + thread réseau + newlib + FreeType |
-| `user/tls/onyx_tls.hpp`, `user/http.hpp`, `user/json.hpp`, `user/img/imgload.hpp` | les en-têtes | les briques qu'on réutilise (§4) |
+| `user/Libs/tls/onyx_tls.hpp`, `user/Include/http.hpp`, `user/Include/json.hpp`, `user/Libs/img/imgload.hpp` | les en-têtes | les briques qu'on réutilise (§4) |
 
 ### 3.3. La toolchain
 
@@ -113,7 +113,7 @@ construire, depuis `user/` :
 cd user
 make uikit/libuikit.a ft/libft.a libc/crt0libc.o libc/onyx_syscalls.o
 # mbedTLS est déjà construit dans third_party/mbedtls-3.6.3/library/libmbed{tls,x509,crypto}.a
-# (sinon : make -C user/tls)
+# (sinon : make -C user/Libs/tls)
 ```
 
 Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et apps, dans
@@ -132,11 +132,11 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 | Texte TrueType anti-aliasé (chat, pseudos) | FreeType « lean » + `ft/fonts.h` (`fnt::get`, `fnt::draw`) | docs/03 §6 « TrueType text » |
 | Boucle d'événements | `kapi_pump_events`, `kapi_pump_wait (ms)`, `kapi_should_exit` | docs/03 §5.2 |
 | TCP + DNS | `kapi_tcp_connect (host, port)`, `kapi_tcp_send` / `kapi_tcp_recv` (non bloquant) / `kapi_tcp_close`, `kapi_net_status` | `user/kapi.h` |
-| **TLS 1.2 / 1.3** | mbedTLS 3.6.3 + `onyx_tls.hpp` (`start`, `send`, `recv`, vérification des certificats en option) | `user/tls/` |
-| HTTPS (login, API REST, assets) | `HttpClient` (`ONYX_HTTP_TLS`) ; plus complet : `Apps/courier/net.h` (redirections, cookies, gzip) | `user/http.hpp` |
+| **TLS 1.2 / 1.3** | mbedTLS 3.6.3 + `onyx_tls.hpp` (`start`, `send`, `recv`, vérification des certificats en option) | `user/Libs/tls/` |
+| HTTPS (login, API REST, assets) | `HttpClient` (`ONYX_HTTP_TLS`) ; plus complet : `Apps/courier/net.h` (redirections, cookies, gzip) | `user/Include/http.hpp` |
 | **WebSocket** | ⚠ pas de client réutilisable seul : celui de Jet (`user/netsurf/onyx_ws.c`) est lié à NetSurf, donc **GPL**. **Ne pas le copier.** En écrire un petit (RFC 6455 client, ~300 lignes) sur `onyx_tls` : §6.2 | — |
-| JSON | `json.hpp` (arène, accès typés tolérants, writer en flux) | `user/json.hpp` |
-| PNG / JPEG / GIF animé / WebP / BMP | `img_load (fichier)`, **`img_load_mem (octets, len)`** → `0xAARRGGBB` | `user/img/imgload.hpp` |
+| JSON | `json.hpp` (arène, accès typés tolérants, writer en flux) | `user/Include/json.hpp` |
+| PNG / JPEG / GIF animé / WebP / BMP | `img_load (fichier)`, **`img_load_mem (octets, len)`** → `0xAARRGGBB` | `user/Libs/img/imgload.hpp` |
 | Inflate (zlib / gzip / deflate brut) | `img_inflate` | idem |
 | Threads, mutex, events, futex | `kapi_thread_create`, `kapi_post` (renvoyer un résultat au thread GUI) | docs/03 §5.2 |
 | Son | PCM **s16 stéréo 44 100 Hz** : `kapi_sound_acquire` + `kapi_sound_write`, plus des voix synthé | `user/kapi.h` (l.~308) |
@@ -274,7 +274,7 @@ Pile à écrire, du bas vers le haut :
   (`{fichier: hash}`) téléchargé au lancement.
 - **Chiffrement (option)** : AES-GCM (`mbedtls_gcm_*`), clé dérivée et embarquée, un nonce par
   fichier. **Le Cortex-A72 du Pi 4 n'a pas les extensions crypto ARMv8** : mbedTLS est déjà
-  configuré en logiciel pur (`user/tls/Makefile`), donc ne pas activer AESCE.
+  configuré en logiciel pur (`user/Libs/tls/Makefile`), donc ne pas activer AESCE.
 
 ### 6.5. Compte et identifiants
 

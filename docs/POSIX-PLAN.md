@@ -172,7 +172,7 @@ Legend:
 - newlib 4.4.0 with `_RETARGETABLE_LOCKING 1`, `_MB_CAPABLE`, `_WANT_IO_LONG_LONG`, no `_WANT_REENT_THREAD_LOCAL`, iconv disabled;
 - libstdc++ with exceptions and RTTI available (the STK port uses them through `stk.ld` + `onyx_eh.c`), `std::filesystem` compiled in, and none of the thread classes' out-of-line code.
 
-The STK port (`user/stk/compat/bits/gthr-default.h`, `onyx_gthreads.c`, `onyx_gthreads_cxx.cpp`) shows the workaround: shadow `gthr-default.h`, define `_GLIBCXX_HAS_GTHREADS`, and rewrite `std::thread` / `condition_variable` / `call_once`. Its own doc lists what remains broken (docs/SUPERTUXKART-PORT.md):
+The STK port (`user/Ports/stk/compat/bits/gthr-default.h`, `onyx_gthreads.c`, `onyx_gthreads_cxx.cpp`) shows the workaround: shadow `gthr-default.h`, define `_GLIBCXX_HAS_GTHREADS`, and rewrite `std::thread` / `condition_variable` / `call_once`. Its own doc lists what remains broken (docs/SUPERTUXKART-PORT.md):
 - function-local statics are not thread-safe;
 - `thread_local` is one global copy (emutls with single gthreads);
 - `errno` is shared;
@@ -193,7 +193,7 @@ It stays fragile: archive-member clashes with `libstdc++.a`, single-threaded ref
 - **No GCC source patch.** GCC's `config.gcc` matches `aarch64*-*-elf` **(verify)**, autotools' `config.sub` accepts any vendor, and `--host=aarch64-onyx-elf` works for every third-party configure script.
 - GCC: `--enable-threads=posix --enable-tls --disable-shared --enable-languages=c,c++ --with-newlib --enable-libstdcxx-time=yes`.
 - newlib: `--enable-newlib-reent-thread-local` (errno and `_reent` per thread), `--enable-newlib-retargetable-locking`, `--enable-newlib-io-long-long`, `--enable-newlib-io-c99-formats`, `--disable-newlib-supplied-syscalls`.
-- The only Onyx-specific input is a **header overlay** installed into `$PREFIX/aarch64-onyx-elf/include` **after** newlib and **before** the final GCC stage, so that libgcc and libstdc++ build against our `pthread.h`. The overlay is exactly `user/libc/posix/include/pthread.h`, `sys/_pthreadtypes.h`, `semaphore.h` and `sched.h` (if needed); `pthread.h` also defines `_POSIX_TIMEOUTS` / `_POSIX_THREADS` / `_POSIX_READER_WRITER_LOCKS`, which `gthr-posix.h` tests. **The pthread types are then ABI-frozen.**
+- The only Onyx-specific input is a **header overlay** installed into `$PREFIX/aarch64-onyx-elf/include` **after** newlib and **before** the final GCC stage, so that libgcc and libstdc++ build against our `pthread.h`. The overlay is exactly `user/Runtime/libc/posix/include/pthread.h`, `sys/_pthreadtypes.h`, `semaphore.h` and `sched.h` (if needed); `pthread.h` also defines `_POSIX_TIMEOUTS` / `_POSIX_THREADS` / `_POSIX_READER_WRITER_LOCKS`, which `gthr-posix.h` tests. **The pthread types are then ABI-frozen.**
 - Result: native TLS (`mrs tpidr_el0` + local-exec offsets), real gthreads (`std::thread` and `std::mutex` work and libstdc++ is internally thread-aware), thread-safe statics, per-thread errno, `steady_clock` on `clock_gettime` (checked in the installed `c++config.h`).
 
 ### 2.3 Recommendation: (b), staged after an (a) interim
@@ -963,7 +963,7 @@ Can start at once:
 - pthreads, TLS, time and environment fallbacks work on v67/v68 kapis plus the skeleton's `-ENOSYS` (`thread_create` + a trampoline that sets `TPIDR_EL0` works today, §0.1);
 - files, sockets and mmap light up as WP-FILE, WP-NET and WP-MEM merge.
 
-**Tree:** `user/libc/posix/` (MIT):
+**Tree:** `user/Runtime/libc/posix/` (MIT):
 - sources: `fd.c` (the descriptor table), `file.c`, `dir.c`, `stat.c`, `path.c` (realpath, `/tmp` → `RAM:/tmp`, `/dev/*`), `mman.c`, `pthread.c`, `pthread_sync.c` (mutex, cond, rwlock, once, barrier, spin), `sem.c`, `tls.c`, `emutls.c` (option a only), `guard.c` (option a only), `time.c`, `env.c`, `proc.c` (spawn, waitpid, getpid, kill), `signal.c`, `socket.c`, `netdb.c`, `poll.c` (poll, select, pselect), `misc.c` (sysconf, uname, gethostname, getrandom, getentropy, rlimit, rusage, pwd, uid stubs, `dl*` / `backtrace` / `syslog` stubs), `newlib_syscalls.c` (`_read`, `_write`, `_open`, `_close`, `_lseek`, `_fstat`, `_stat`, `_unlink`, `_link`→`EMLINK`, `_isatty`, `_getpid`, `_kill`, `_gettimeofday`, `_times`, `_sbrk`, `_exit`, `_execve`/`_fork`→`ENOSYS`, `_wait`, newlib's retargetable locks as today, the app-core RPC of `onyx_syscalls.c`, plus `rename`, `mkdir`, `posix_memalign` defined here);
 - `crt0posix.S`;
 - `onyx-posix.ld` (from `user.ld`, plus a `PT_TLS` program header, `.tdata`/`.tbss`, `.eh_frame` kept with `__onyx_eh_frame_start` (from `stk.ld`), the main thread's TLS block reserved in `.bss`, `__tls_align`);
@@ -1005,7 +1005,7 @@ Can start at once:
   - `select` over `poll`; `socketpair (AF_UNIX)` = two pipes (SHOULD).
 
 **Sysroot and building third-party code:**
-- `make -C user/libc/posix install SYSROOT=$ONYX_SYSROOT` (default `out/sysroot`, git-ignored) installs `include/`, `lib/libonyxposix.a`, `lib/crt0posix.o`, `lib/onyx-posix.ld`, `lib/onyx.specs` and `lib/pkgconfig/`.
+- `make -C user/Runtime/libc/posix install SYSROOT=$ONYX_SYSROOT` (default `out/sysroot`, git-ignored) installs `include/`, `lib/libonyxposix.a`, `lib/crt0posix.o`, `lib/onyx-posix.ld`, `lib/onyx.specs` and `lib/pkgconfig/`.
 - `onyx.specs`: `*startfile: crt0posix.o`; `*lib: --start-group -lonyxposix -lc -lm -lstdc++ -lgcc --end-group`; `*link: -T onyx-posix.ld -z max-page-size=0x10000 --gc-sections`.
 - `tools/onyx-env.sh` exports:
   - `CC`/`CXX`/`AR`/`RANLIB`;
@@ -1055,8 +1055,8 @@ Can start at once:
    `kapi_spawn` + `kapi_wait`; TCP → the `tcp_*` calls (blocking connect / accept, a carry buffer);
    `poll` → a user-space loop (non-blocking reads into the carry); `mmap` → 64 KB-aligned heap blocks.
    `posixtest` reports each check that needs the real piece as `SKIP (kernel ENOSYS)`.
-2. **Sources** sit in `user/libc/posix/` itself (`start.c` is crt0's C half, `libgen.c` the POSIX
-   `basename`/`dirname`); the build tree is `user/libc/posix/build/`.
+2. **Sources** sit in `user/Runtime/libc/posix/` itself (`start.c` is crt0's C half, `libgen.c` the POSIX
+   `basename`/`dirname`); the build tree is `user/Runtime/libc/posix/build/`.
 3. **Specs:** `*startfile` = `crt0posix.o` **and `libonyxposix.a`**, `*link` adds
    `-u __emutls_get_address -u __cxa_guard_acquire -u __onyx_pthread_anchor`: the archive is
    searched before the program's objects and before g++'s `-lstdc++`, so the emutls / guard
@@ -1237,7 +1237,7 @@ Can start at once:
 - `/home/user/Onyx/kernel/mm/addrspace.cpp` (+ `kern/addrspace.h`): lazy VMAs, `Sbrk`, `MapStack`, page-in, zaps, TLBI.
 - `/home/user/Onyx/kernel/sys/uaccess.cpp`: probes with `AT S1E0*`, populate, pins, copy retry.
 - `/home/user/Onyx/kernel/sys/el0.cpp`: the EL0 fault path (demand paging, OOM kill) and unpin after a system call.
-- `/home/user/Onyx/kernel/sys/net.cpp`: socket slots, asynchronous connect, the carry buffer, the readiness snapshot. Also `kernel/sys/kapi.cpp`, `kernel/sys/thread.cpp`, `kernel/sys/appcore.cpp`, `kernel/sys/stream.cpp` and `user/libc/onyx_syscalls.c` as described per WP.
+- `/home/user/Onyx/kernel/sys/net.cpp`: socket slots, asynchronous connect, the carry buffer, the readiness snapshot. Also `kernel/sys/kapi.cpp`, `kernel/sys/thread.cpp`, `kernel/sys/appcore.cpp`, `kernel/sys/stream.cpp` and `user/Runtime/libc/onyx_syscalls.c` as described per WP.
 
 ---
 
@@ -1261,7 +1261,7 @@ Consequences for the plan:
   padlock and certificate viewer, the per-site version (Standard / Mobile / Desktop) and User-Agent,
   per-site zoom, find in page, history, downloads, cookies, clipboard and context menu, the caches on
   `RAM:`, the status bar, and **video/audio with MSE**: WebCore's media normally uses GStreamer — Onyx
-  needs its own `MediaPlayerPrivate` on `user/av` (FFmpeg, dav1d, libvpx, Opus). `docs/07-BROWSER-GAPS.md`
+  needs its own `MediaPlayerPrivate` on `user/Libs/av` (FFmpeg, dav1d, libvpx, Opus). `docs/07-BROWSER-GAPS.md`
   becomes the parity checklist; Jet's PC bench (shots against Chromium) the regression bench.
 - **JavaScript speed**: C_LOOP only for bring-up; then JSC's **LLInt** (offlineasm, ARM64; generated
   at build time, no runtime code generation, no JIT needed) — the target is not to be slower than
@@ -1281,7 +1281,7 @@ maintaining our own embedding against WebCore's moving APIs alone. With WebKit2,
 architecture is kept (UI process, one web process per tab/site with WebCore + JSC, a network
 process), a crashing page kills only its process (matching Onyx's EL0 isolation), and upstream
 updates can be followed. In both cases the engine (DOM, CSS, layout, JS) is WebKit's; Onyx owns the
-platform port, the media backend on `user/av`, the compositor on the V3D, the browser UI and the
+platform port, the media backend on `user/Libs/av`, the compositor on the V3D, the browser UI and the
 system below.
 
 What it adds to this plan — **WP-IPC** (after the POSIX minimum is merged; its spec is §14, written
@@ -1562,7 +1562,7 @@ IP socket, where libc flattens the iovecs as before).
 - CLOEXEC is libc's: `posix_spawn` passes every descriptor without `FD_CLOEXEC` (and the
   `adddup2` targets) at its number; the kernel passes only what it is given.
 
-**libonyxposix** (`user/libc/posix`): `socketpair (AF_UNIX, SOCK_STREAM | SOCK_SEQPACKET |
+**libonyxposix** (`user/Runtime/libc/posix`): `socketpair (AF_UNIX, SOCK_STREAM | SOCK_SEQPACKET |
 SOCK_DGRAM [| SOCK_NONBLOCK | SOCK_CLOEXEC])`; `sendmsg` / `recvmsg` with `SCM_RIGHTS` (the real
 `CMSG_FIRSTHDR` / `CMSG_NXTHDR` / `CMSG_DATA` / `CMSG_SPACE` / `CMSG_LEN`, Linux's layout),
 `MSG_CMSG_CLOEXEC`, `MSG_CTRUNC`, `MSG_TRUNC`; a received handle becomes a descriptor of the right

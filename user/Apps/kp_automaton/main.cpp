@@ -1,5 +1,5 @@
 //
-// kp_automaton -- a Koton generator plugin (user/kplug.h): an elementary (one-dimensional, Wolfram)
+// kp_automaton -- a Koton generator plugin (user/Include/kplug.h): an elementary (one-dimensional, Wolfram)
 // cellular automaton, a port of Koton Studio's (Plugins/Generators/KotonPluginCellularAutomata): the
 // same parameters and state (flat: {id: value..., "_dur"}), the same notes -- its first row drawn
 // from .NET's seeded Random (kt::NetRandom), as Koton does. A row of `width` cells evolves by the

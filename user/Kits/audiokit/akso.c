@@ -1,6 +1,6 @@
 //
 // akso.c -- AudioKit as a shared library (SD:/lib/audiokit.so): its init, and what its code takes
-// from a C library. Its memory is the importer's (user/lib.h TLibImports, through librt.cpp): one
+// from a C library. Its memory is the importer's (user/Runtime/lib.h TLibImports, through librt.cpp): one
 // heap in the process -- malloc and newlib's own _malloc_r family both go there. No file streams
 // (the files are read through the kapi). The string functions, qsort, snprintf and the maths come
 // from the toolchain's newlib, linked into the library.

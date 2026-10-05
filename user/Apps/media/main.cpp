@@ -5,14 +5,14 @@
 // view (a MIDI file: its notes scrolling as coloured lines); a mini player at the bottom right of the screen.
 // Closing the window stops the music. Tags are read, never written; covers come from the files and their
 // folders, nothing is downloaded. The videos (films, clips, episodes: MP4, MKV, WebM, AVI, MPEG, WMV...) are
-// played by Onyx's media library (user/av, with FFmpeg's decoders and demuxers), in the window or full screen,
+// played by Onyx's media library (user/Libs/av, with FFmpeg's decoders and demuxers), in the window or full screen,
 // each resumed where it was left.
 //
 // This file is MIT (Onyx's own code); the Media Player as a program links FFmpeg (GPL-2.0-or-later) and is
 // distributed under the GPL-2.0 (docs/LICENSING.md).
 //
 // A newlib uikit app with FreeType's text (user/Makefile's media.elf rule): the decoders (codecs.c,
-// vorbis.c), MeltySynth (Apps/koton/synth) for MIDI, user/av and its codecs for the videos. Its parts:
+// vorbis.c), MeltySynth (Apps/koton/synth) for MIDI, user/Libs/av and its codecs for the videos. Its parts:
 // decode.h, midi.h, player.h (the music's playback thread), tags.h, lib.h (the library, its scan thread),
 // covers.h (their loader thread), videos.h (the videos' facts), thumbs.h (their frames' thread), watch.h
 // (a video playing), ui.h. Its files: SD:/etc/media/settings.ini, library.tsv, stats.tsv, videos.tsv,

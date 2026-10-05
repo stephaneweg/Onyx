@@ -32,7 +32,7 @@ AF=""; for a in $ARCHS; do AF="$AF -arch $a"; done
 U="$ROOT/user"
 FT="$ROOT/third_party/freetype-2.14.3"
 FLAGS="-O2 -w $AF -mmacosx-version-min=$MINOS"
-CXXF="-std=gnu++17 $FLAGS -I$U -I$U/Kits -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
+CXXF="-std=gnu++17 $FLAGS -I$U -I$U/Kits -I$U/Runtime -I$U/Include -I$U/Libs -I$U/Emulators -I$U/Ports -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
 mkdir -p "$OUT/uikit" "$OUT/ft" "$OUT/kapi"
 bg () { ( "$@" || touch "$OUT/FAILED" ) & }		# a compile in the background (uikit's ~50 files at once)
 done_bg () { wait; if [ -e "$OUT/FAILED" ]; then echo "pc/macOS/build.sh: a compile failed (above)"; exit 1; fi; }

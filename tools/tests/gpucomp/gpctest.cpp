@@ -1,5 +1,5 @@
 //
-// gpctest -- the GPU compositing service (user/gpucomp) on the PC: each scene composited three
+// gpctest -- the GPU compositing service (user/Libs/gpucomp) on the PC: each scene composited three
 // ways -- the CPU path (GPC_F_CPU), the GPU path on the software V3D of hostkapi.cpp (the kernel's
 // FS_TEX in the QPU simulator) and a reference in doubles written here from the definitions
 // (gpucomp.h) -- and the pictures compared channel by channel. Then the GPU's partial updates,

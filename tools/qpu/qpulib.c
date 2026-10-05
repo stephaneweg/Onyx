@@ -3,7 +3,7 @@
  * syntax of Mesa's disassembler, one instruction a line, assembled into 64-bit words, each line
  * checked by its round trip (packed, unpacked, disassembled: the same text) and the program
  * against the hardware's instruction restrictions. Used by the qpuasm tool (the kernel's
- * shaders) and at run time by the apps that generate their shaders (user/v3d, the GameCube's
+ * shaders) and at run time by the apps that generate their shaders (user/Libs/v3d, the GameCube's
  * TEV). The encoding is Mesa's (mesa/broadcom/qpu, MIT).
  */
 #include <stdio.h>

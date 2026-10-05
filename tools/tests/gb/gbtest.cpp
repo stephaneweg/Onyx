@@ -1,6 +1,6 @@
 #include <cstdlib>
 //
-// gbtest -- run a Game Boy ROM on the PC with the Onyx core (user/gb):
+// gbtest -- run a Game Boy ROM on the PC with the Onyx core (user/Emulators/gb):
 //   gbtest <rom> <seconds> [out.ppm] [keys]
 // prints what the ROM sent on the serial port (the test ROMs report there), saves the last
 // frame (GB_AUDIO=file: the sound too, raw s16 stereo 44100 Hz). keys: "t:mask,t:mask,..." -- at t seconds, press the buttons of mask (gb.h BTN_*).

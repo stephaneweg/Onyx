@@ -81,7 +81,7 @@ screen / full screen 8, wallpaper 3, cursor 2, menus / shell 5).
   **Limit: one image per address space** (`ImageMap`: `pAS->GetImage () != 0` → refused,
   `image.cpp:449`).
 - **The loader is static only**: `ET_EXEC` (and `ET_DYN` taken as is), no relocations, no
-  `PT_DYNAMIC`, no `PT_INTERP`; apps are linked `-fno-pic -fno-pie` at 8 GB (`user/user.ld`).
+  `PT_DYNAMIC`, no `PT_INTERP`; apps are linked `-fno-pic -fno-pie` at 8 GB (`user/Runtime/user.ld`).
 - **The kapi table is already a vDSO**: one read-only table page at 14 GB and one shared code page
   (`svc` stubs + `el0blob.S`: `memcpy`, `memset`, `pump_events`, `pump_wait`...) mapped in every
   process; **some slots already point to user-side code**, not to `svc`.

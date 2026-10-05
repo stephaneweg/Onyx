@@ -30,7 +30,7 @@ MU_DEFS := -DFZ_ENABLE_XPS=0 -DFZ_ENABLE_SVG=0 -DFZ_ENABLE_CBZ=0 -DFZ_ENABLE_IMG
 	-DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_PLOTTERS_CMYK=0 -DFZ_PLOTTERS_N=0 \
 	-DTOFU -DTOFU_CJK -DTOFU_SIL -DTOFU_EMOJI -DTOFU_HISTORIC -DTOFU_SYMBOL -DFZ_HIDE_INTERNAL_JPEG \
 	-DMEMENTO_SQUEEZEBUILD=0
-MU_INC := -I$(MU)/include -I$(MU_CONF) -I$(MU_ROOT)/user -I$(MU_ROOT)/kernel/include -I$(MU)/scripts/libjpeg -I$(MU_JPEG) -I$(MU_ZLIB) -I$(MU_FT)/include \
+MU_INC := -I$(MU)/include -I$(MU_CONF) -I$(MU_ROOT)/user -I$(MU_ROOT)/user/Kits -I$(MU_ROOT)/user/Runtime -I$(MU_ROOT)/user/Include -I$(MU_ROOT)/user/Libs -I$(MU_ROOT)/kernel/include -I$(MU)/scripts/libjpeg -I$(MU_JPEG) -I$(MU_ZLIB) -I$(MU_FT)/include \
 	-I$(MU)/thirdparty/jbig2dec -I$(MU)/thirdparty/openjpeg/src/lib/openjp2 \
 	-DOPJ_STATIC -DOPJ_HAVE_INTTYPES_H -DOPJ_HAVE_STDINT_H -DHAVE_STDINT_H
 MU_FTDEFS := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_muftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>'

@@ -1,5 +1,5 @@
 //
-// kp_arp -- a Koton generator plugin (user/kplug.h): the arpeggiator, a port of Koton Studio's
+// kp_arp -- a Koton generator plugin (user/Include/kplug.h): the arpeggiator, a port of Koton Studio's
 // reference generator (Plugins/Generators/KotonPluginArpeggiator/Arpeggiator.cs): the same parameters,
 // the same state ({"v":1, "duration", "params": {...}, "rhythm": {beats, spb, starts, lens}}), the same
 // notes -- its "Random" pattern draws from .NET's seeded Random (kt::NetRandom), as Koton does.

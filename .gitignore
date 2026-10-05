@@ -31,10 +31,10 @@
 user/kernel_syms.ld
 
 # libonyxposix's build folder and the POSIX sysroot + the ports' builds (docs/03 §5.4, tools/ports)
-user/libc/posix/build/
-user/libc/posix/build-sim/
-user/libc/posix/build-onyx/
-user/libc/posix/build-onyx-sim/
+user/Runtime/libc/posix/build/
+user/Runtime/libc/posix/build-sim/
+user/Runtime/libc/posix/build-onyx/
+user/Runtime/libc/posix/build-onyx-sim/
 /out/
 
 # Python bytecode cache
@@ -111,7 +111,7 @@ sdcard/doom/*.wad
 sdcard/doom/*.WAD
 sdcard/doom/savegame/
 sdcard/doom/*.cfg
-user/doom/build/
+user/Ports/doom/build/
 sdcard/etc/clock
 
 # Koton for Windows: what the app writes into its folder when tried from the repository

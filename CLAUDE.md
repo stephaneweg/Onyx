@@ -38,10 +38,19 @@ LibreOffice headless). Screenshots
 > `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/Kits/audiokit/`), **PrinterKit** (`user/Kits/printerkit/`), **FileKit** (`user/Kits/filekit/`: ZIP, zlib, files and trees),
 > **ImageKit** (`user/Kits/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit), **AppKit** (`user/Kits/appkit/`: the programs' interface to the kernel, loaded and bound by the kernel). docs/03 sections 5.6 to 5.10. DocumentKit: an analysis only (IDEAS.md).
 
-> Layout of `user/` (the user, 2026-10-05): **`user/Apps/<name>/`** the graphical apps, **`user/BinUtils/`** the
-> console programs (`SD:/bin`; it was `user/bin`), **`user/Kits/<kit>/`** the kits (they were `user/<kit>/`).
-> `user/Kits` is on every include path: a source writes `#include "appkit/appkit.h"`, `"uikit/uikit.h"`,
-> `"audiokit/audiokit.h"`… whatever its folder. A header holds declarations as far as possible (the user).
+> Layout of `user/` (the user, 2026-10-05) -- everything sorted by its use:
+> - **`Apps/<name>/`** the graphical apps; **`BinUtils/`** the console programs (`SD:/bin`; it was `user/bin`);
+> - **`Kits/<kit>/`** the shared libraries (appkit, uikit, audiokit, filekit, imagekit, printerkit, fontkit);
+> - **`Runtime/`** what every program is linked with (`crt0.S`, `user.ld`, `lib.ld`, `lib.h`, `librt.cpp`, `umm.h`,
+>   `onyxpp.hpp`, `libc/` = newlib's glue and the POSIX library);
+> - **`Libs/`** the libraries linked into the programs (av, img, zlib, tls, v3d, gpucomp, pdf, mail, pkg, basic, demo);
+> - **`Emulators/`** the emulators' cores (gb, gba, nes, snes, n64, gc, `emucore.h`); **`Ports/`** doom, stk;
+> - **`Include/`** the small headers several programs share (`clipboard.h`, `notify.h`, `gamepad.h`, `http.hpp`...).
+>
+> `user`, `user/Kits`, `user/Runtime`, `user/Include`, `user/Libs`, `user/Emulators`, `user/Ports` are on every
+> include path: a source writes `#include "appkit/appkit.h"`, `"uikit/uikit.h"`, `"umm.h"`, `"clipboard.h"`,
+> `"tls/onyx_tls.hpp"`, `"gb/gb.h"`... whatever its own folder. A header used by one program is beside that
+> program; a header holds declarations as far as possible (the user). The build's outputs: `user/lib/`.
 
 ## RULE — keep the documentation up to date automatically
 

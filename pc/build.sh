@@ -1,6 +1,6 @@
 #!/bin/sh
 # build.sh -- the Onyx tools for Windows, built on Linux: obcore.dll (mingw-w64: the compiler, VM
-# and screen of user/basic), OnyxBasic.exe (the .NET Framework 4.8 editor + runtime) and OnyxRemote.exe
+# and screen of user/Libs/basic), OnyxBasic.exe (the .NET Framework 4.8 editor + runtime) and OnyxRemote.exe
 # (the client of rdpd; the .NET SDK with EnableWindowsTargeting), NintendoEMU.exe + nemucore.dll (the
 # emulators of Onyx) and Koton (pc/Koton/build.sh: pc/dist/Koton/). Result: pc/dist/ -- copy it to the PC.
 #   sh pc/build.sh
@@ -12,8 +12,8 @@ DIST="$HERE/dist"
 mkdir -p "$DIST"
 STRIP=$(command -v x86_64-w64-mingw32-strip || echo strip)
 x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libgcc -static-libstdc++ \
-	-I "$ROOT/user" -I "$ROOT/user/Kits" -o "$DIST/obcore.dll" "$HERE/obcore/obcore.cpp" \
-	"$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/basbax.cpp" -lwinmm
+	-I "$ROOT/user" -I "$ROOT/user/Kits" -I "$ROOT/user/Runtime" -I "$ROOT/user/Include" -I "$ROOT/user/Libs" -I "$ROOT/user/Emulators" -I "$ROOT/user/Ports" -o "$DIST/obcore.dll" "$HERE/obcore/obcore.cpp" \
+	"$ROOT/user/Libs/basic/bascomp.cpp" "$ROOT/user/Libs/basic/basvm.cpp" "$ROOT/user/Libs/basic/basnum.cpp" "$ROOT/user/Libs/basic/basbax.cpp" -lwinmm
 "$STRIP" "$DIST/obcore.dll"
 DOTNET=${DOTNET:-$(command -v dotnet || echo "$HOME/.dotnet/dotnet")}
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxBasic/OnyxBasic.csproj" -c Release -o "$HERE/OnyxBasic/bin/out" -v quiet -nologo
@@ -22,11 +22,11 @@ cp "$ROOT/sdcard/apps/qbasic.app/help.txt" "$DIST/help.txt"
 # Onyx Remote: the client of rdpd (the Onyx windows on the PC)
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxRemote/OnyxRemote.csproj" -c Release -o "$HERE/OnyxRemote/bin/out" -v quiet -nologo
 cp "$HERE/OnyxRemote/bin/out/OnyxRemote.exe" "$HERE/OnyxRemote/bin/out/OnyxRemote.exe.config" "$DIST/"
-# NintendoEMU: the emulators of Onyx (user/gb, gba, nes, snes, n64, gc) + a library of the games
+# NintendoEMU: the emulators of Onyx (user/Emulators/gb, gba, nes, snes, n64, gc) + a library of the games
 x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libgcc -static-libstdc++ \
-	-I "$ROOT/user" -I "$ROOT/user/Kits" -o "$DIST/nemucore.dll" "$HERE/NintendoEMU/core/nemucore.cpp" "$HERE/NintendoEMU/core/gxgl.cpp" \
-	"$ROOT/user/gb/gb.cpp" "$ROOT"/user/gba/*.cpp "$ROOT"/user/nes/*.cpp "$ROOT"/user/snes/*.cpp \
-	"$ROOT"/user/n64/*.cpp "$ROOT"/user/gc/*.cpp -lwinmm -lopengl32 -lgdi32
+	-I "$ROOT/user" -I "$ROOT/user/Kits" -I "$ROOT/user/Runtime" -I "$ROOT/user/Include" -I "$ROOT/user/Libs" -I "$ROOT/user/Emulators" -I "$ROOT/user/Ports" -o "$DIST/nemucore.dll" "$HERE/NintendoEMU/core/nemucore.cpp" "$HERE/NintendoEMU/core/gxgl.cpp" \
+	"$ROOT/user/Emulators/gb/gb.cpp" "$ROOT"/user/Emulators/gba/*.cpp "$ROOT"/user/Emulators/nes/*.cpp "$ROOT"/user/Emulators/snes/*.cpp \
+	"$ROOT"/user/Emulators/n64/*.cpp "$ROOT"/user/Emulators/gc/*.cpp -lwinmm -lopengl32 -lgdi32
 "$STRIP" "$DIST/nemucore.dll"
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/NintendoEMU/NintendoEMU.csproj" -c Release -o "$HERE/NintendoEMU/bin/out" -v quiet -nologo
 cp "$HERE/NintendoEMU/bin/out/NintendoEMU.exe" "$HERE/NintendoEMU/bin/out/NintendoEMU.exe.config" "$DIST/"

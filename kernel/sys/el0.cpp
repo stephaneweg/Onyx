@@ -171,7 +171,7 @@ void El0CoreInit (unsigned nCore)
 	v |= (1ul << 26) | (1ul << 18) | (1ul << 16) | (1ul << 15) | (1ul << 14);
 	asm volatile ("msr sctlr_el1, %0" :: "r" (v));
 
-	// PMUSERENR_EL0.EN: the performance counters at EL0 (user/gc/gc.h) -- only on request: an
+	// PMUSERENR_EL0.EN: the performance counters at EL0 (user/Emulators/gc/gc.h) -- only on request: an
 	// MDCR_EL2.TPM left set by the boot stub would trap this write to EL2.
 	if (s_bPmu)
 	{

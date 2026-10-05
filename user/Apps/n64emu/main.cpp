@@ -1,20 +1,20 @@
 //
-// n64emu -- the Onyx Nintendo 64 emulator (the core: user/n64).
+// n64emu -- the Onyx Nintendo 64 emulator (the core: user/Emulators/n64).
 //
 //   n64emu <rom.z64 | rom.n64 | rom.v64> [--fullscreen]   (without a ROM: the Game Library)
-//   * The machine (the R4300 CPU, the RCP) runs on an app core (core 2 or 3, user/emucore.h)
+//   * The machine (the R4300 CPU, the RCP) runs on an app core (core 2 or 3, user/Emulators/emucore.h)
 //     when one is free. Its graphics are high-level: each frame's triangles and textures are
 //     drawn by the GPU (kapi v53 gpu_render) straight into the window, at the window's size
 //     (sharper than the console's 320 x 240). A game that draws its picture with the CPU is
 //     shown from its framebuffer.
 //   * Keys: arrows = the stick, X = A, C = B, Z = Z, Enter = Start, Q / W = L / R, I J K L =
-//     the C buttons, T F G H = the D-pad; a USB gamepad (user/gamepad.h): the left stick, A
+//     the C buttons, T F G H = the D-pad; a USB gamepad (user/Include/gamepad.h): the left stick, A
 //     (bottom) = A, X (left) = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons,
 //     the D-pad. F11: full screen (Esc back; the GPU then renders straight into the displayed
 //     framebuffer, kapi v55, at the screen's resolution), F12: the speed, P: pause.
 //   * The cartridge's save (SRAM / EEPROM) is <rom>.sav beside the ROM.
 //   * The sound: the audio tasks of Zelda Ocarina of Time / Majora's Mask (their microcode, at a
-//     high level: user/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
+//     high level: user/Emulators/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
 //     audio queue's (as snesemu), else the clock. Sound > Sound On / Off.
 //
 #include "audiokit/audiokit.h"

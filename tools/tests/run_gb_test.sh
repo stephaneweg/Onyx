@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_gb_test.sh -- the Game Boy core (user/gb) on the PC, against the public test ROMs
+# run_gb_test.sh -- the Game Boy core (user/Emulators/gb) on the PC, against the public test ROMs
 # (github.com/c-sp/game-boy-test-roms, a release unzipped; not kept in the repo):
 #   GB_TEST_ROMS=/path/to/game-boy-test-roms tools/tests/run_gb_test.sh
 #   * Blargg cpu_instrs / instr_timing: "Passed" on the serial port;
@@ -9,7 +9,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${GB_TEST_ROMS:?set GB_TEST_ROMS to the unzipped game-boy-test-roms folder}
-g++ -std=c++17 -O2 -Wall -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/gb/gbtest.cpp" "$ROOT/user/gb/gb.cpp" -o "$T/onyx_gbtest"
+g++ -std=c++17 -O2 -Wall -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" "$HERE/gb/gbtest.cpp" "$ROOT/user/Emulators/gb/gb.cpp" -o "$T/onyx_gbtest"
 fail=0
 for t in cpu_instrs/cpu_instrs.gb:60 instr_timing/instr_timing.gb:5; do
 	rom=${t%%:*}; sec=${t##*:}

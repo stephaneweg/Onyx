@@ -10,8 +10,8 @@ CC      = $(PREFIX)gcc
 CXX     = $(PREFIX)g++
 
 CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
-	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../../kernel/include
-# Freestanding C++ console tools (e.g. httpget on the reusable HttpClient, ../http.hpp).
+	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
+# Freestanding C++ console tools (e.g. httpget on the reusable HttpClient, ../Include/http.hpp).
 # Same integer-only base as CFLAGS; no exceptions/RTTI/STL (none needed).
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 # Floating-point variant: WITHOUT -mgeneral-regs-only so GCC may emit hardware
@@ -20,20 +20,20 @@ CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-
 # enabled at EL0 (CPACR_EL1). Opt a tool in via a target-specific CFLAGS override
 # below; everything else stays integer-only.
 CFLAGS_FP = -ffreestanding -nostdlib -fno-pic -fno-pie -mcpu=cortex-a72 \
-	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../../kernel/include
+	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 # newlib (libc + libm) variant: NOT freestanding/-nostdlib -- we want the real
 # <stdio.h>/<stdlib.h>/<string.h>/<math.h> from the toolchain's newlib. -nostartfiles
 # keeps OUR entry (crt0libc.S, which calls exit() so stdio is flushed). FP is on. The
-# kapi syscall layer (../libc/onyx_syscalls.c) maps newlib's _sbrk/_read/_write/... to
+# kapi syscall layer (../Runtime/libc/onyx_syscalls.c) maps newlib's _sbrk/_read/_write/... to
 # kapi; malloc owns the per-process heap, so do NOT also link umm.h here.
 CFLAGS_LIBC = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
-	  -nostartfiles -I.. -I../Kits -I../../kernel/include
+	  -nostartfiles -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 # C++ newlib variant (for TLS apps: mbedTLS is C, the app + http.hpp are C++).
 CXXFLAGS_LIBC = $(CFLAGS_LIBC) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-LIBC_SRC  = ../libc/crt0libc.S ../libc/onyx_syscalls.c
-LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../Kits/appkit/appkit.h ../user.ld
+LIBC_SRC  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c
+LIBC_DEP  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c ../Kits/appkit/appkit.h ../Runtime/user.ld
 # (every program reaches the kernel through AppKit: its import stubs, ../Makefile)
-LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
+LDFLAGS = -Wl,-T,../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
 # Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (appkit/appkit.h,
 # ABI v36). NOT used by the newlib programs, which keep newlib's own.
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
@@ -49,8 +49,8 @@ TLS_PROGS = httpsget.elf ftpfs.elf groq.elf llm.elf
 PKG_PROGS = pkg.elf
 endif
 
-# Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../img/README.md).
-# OPT-IN: pass IMG_DIR to enable them, e.g.  make IMG_DIR=../img  (after: make -C ../img)
+# Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../Libs/img/README.md).
+# OPT-IN: pass IMG_DIR to enable them, e.g.  make IMG_DIR=../Libs/img  (after: make -C ../Libs/img)
 IMG_DIR ?=
 IMG_PROGS =
 ifneq ($(strip $(IMG_DIR)),)
@@ -81,7 +81,7 @@ TEXT_PROGS = ls.elf cat.elf grep.elf wc.elf head.elf tail.elf sed.elf ed.elf sor
 PROGS  += $(filter-out ls.elf cat.elf grep.elf wc.elf,$(TEXT_PROGS))
 $(TEXT_PROGS): tool.h regex.h subst.h
 cmd.elf: cmdparse.h cmdscript.h
-telnetd.elf: ../lineedit.h shellend.h
+telnetd.elf: ../Include/lineedit.h shellend.h
 
 # kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
 PROGS  += nettest.elf
@@ -89,7 +89,7 @@ PROGS  += nettest.elf
 # kapi v77 program images (docs/02 section 7): programs loaded ahead and kept / released
 PROGS  += preload.elf unload.elf
 preload.elf unload.elf: imgname.h
-preload.elf: ../preloadini.h
+preload.elf: ../Include/preloadini.h
 
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.
@@ -100,46 +100,46 @@ CXX_PROGS = httpget.elf
 
 # kapi v83 shared libraries (docs/SHARED-LIBS-PLAN.md): the loader's tests, against ../lib/demo.so
 CXX_PROGS += libtest.elf
-libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
+libtest.elf: ../Runtime/lib.h ../Libs/demo/demo.h ../Runtime/onyxpp.hpp ../Runtime/umm.h
 
 # play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
 # off (it only uses the library's integer entries); links the library's import archive.
 # tone: AudioKit's voices (the FM synthesizer: ak_fm_*)
-tone.elf: tone.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../onyxpp.hpp ../Kits/audiokit/audiokit.h ../lib/audiokit.imp.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
-play.elf: play.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../Kits/audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
+tone.elf: tone.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/onyxpp.hpp ../Kits/audiokit/audiokit.h ../lib/audiokit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/audiokit.imp.a -o $@
+play.elf: play.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Kits/audiokit/audiokit.h ../Runtime/onyxpp.hpp ../lib/audiokit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf
 # fktest: FileKit's self-test (../lib/filekit.so): compression, ZIP on the card and in memory, trees, paths
-fktest.elf: fktest.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../onyxpp.hpp ../Kits/filekit/filekit.h ../lib/filekit.imp.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/filekit.imp.a -o $@
+fktest.elf: fktest.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/onyxpp.hpp ../Kits/filekit/filekit.h ../lib/filekit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/filekit.imp.a -o $@
 AK_PROGS += fktest.elf
 # iktest: ImageKit's self-test (../lib/imagekit.so): pictures written and read back, the transforms, the adjustments
-iktest.elf: iktest.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../onyxpp.hpp ../Kits/imagekit/imagekit.h ../lib/imagekit.imp.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/imagekit.imp.a -o $@
+iktest.elf: iktest.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/onyxpp.hpp ../Kits/imagekit/imagekit.h ../lib/imagekit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/imagekit.imp.a -o $@
 AK_PROGS += iktest.elf
 # ipp: a network printer asked what it can do (../Kits/printerkit/ipp.h; docs/03 "Printing")
 CXX_PROGS += ipp.elf
-ipp.elf: ../Kits/printerkit/ipp.h ../Kits/printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
+ipp.elf: ../Kits/printerkit/ipp.h ../Kits/printerkit/ippnet.h ../Libs/img/pngsave.hpp ../Runtime/onyxpp.hpp ../Runtime/umm.h
 
-# Console tools on libonyxposix, the POSIX layer (../libc/posix, docs/03 §5.4): newlib + pthreads,
+# Console tools on libonyxposix, the POSIX layer (../Runtime/libc/posix, docs/03 §5.4): newlib + pthreads,
 # BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and
-# library come from ../libc/posix/build/onyx.specs (made first: the posixlib target).
-POSIX_DIR    = ../libc/posix
+# library come from ../Runtime/libc/posix/build/onyx.specs (made first: the posixlib target).
+POSIX_DIR    = ../Runtime/libc/posix
 CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
-	       -I.. -I../Kits -I../../kernel/include
+	       -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
 POSIX_PROGS  = posixtest.elf ipctest.elf tcpbench.elf
 POSIX_CXX_PROGS = posixtest-cxx.elf
 # C on libonyxposix with WP-TC's toolchain: malloctest checks that toolchain's newlib (Web's malloc)
 POSIX_TC_PROGS = malloctest.elf
 
-# C++ console tools on the V3D QPU builder (../v3d/libv3d.a: shaders generated at run time),
+# C++ console tools on the V3D QPU builder (../Libs/v3d/libv3d.a: shaders generated at run time),
 # with FP on.
 V3D_PROGS = v3dprog.elf
 
-# C tools on the GPU compositing service (../gpucomp/libgpucomp.a), with FP on.
+# C tools on the GPU compositing service (../Libs/gpucomp/libgpucomp.a), with FP on.
 GPC_PROGS = gpcdemo.elf
 
 all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) $(TLS_PROGS) $(IMG_PROGS) $(ZLIB_PROGS) $(PKG_PROGS) $(POSIX_PROGS) $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS) $(PORT_PROGS) $(AK_PROGS)
@@ -147,8 +147,8 @@ all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
 
-%.elf: %.c ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../umm.h
-	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
+%.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h
+	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
 # pulled automatically since this is not -nostdlib).
@@ -165,13 +165,13 @@ $(POSIX_PROGS): %.elf: %.c posixlib ../Kits/appkit/appkit.h
 # C++ on libonyxposix: WP-TC's aarch64-onyx-elf toolchain (real gthreads, native TLS, errno per
 # thread: docs/03 §1, tools/toolchain). Built when that toolchain is installed (on the PATH or in
 # /opt/toolchains/aarch64-onyx-elf-14.2), skipped with a note otherwise; its libonyxposix is
-# ../libc/posix/build-onyx. posixtest-cxx: the C++ conformance test (`posixtest cxx` runs it).
+# ../Runtime/libc/posix/build-onyx. posixtest-cxx: the C++ conformance test (`posixtest cxx` runs it).
 ONYX_TC_PREFIX ?= aarch64-onyx-elf-
 ONYX_TC_GXX := $(firstword $(shell command -v $(ONYX_TC_PREFIX)g++ 2>/dev/null) \
 		$(wildcard /opt/toolchains/aarch64-onyx-elf-14.2/bin/$(ONYX_TC_PREFIX)g++))
 CXXFLAGS_POSIX_TC = -std=gnu++20 -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-pic -fno-pie \
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
-	       -I.. -I../Kits -I../../kernel/include
+	       -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 LDFLAGS_POSIX_TC = -specs=$(POSIX_DIR)/build-onyx/onyx.specs
 ifneq ($(ONYX_TC_GXX),)
 .PHONY: posixlib-onyx
@@ -217,45 +217,45 @@ jsc:
 	sh ../../tools/webkit/fetch.sh
 	INTERP=$(JSC_INTERP) sh ../../tools/webkit/build-jsc.sh install
 
-# Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
-$(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../http.hpp
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
+# Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../Include/http.hpp only).
+$(CXX_PROGS): %.elf: %.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Include/http.hpp
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< -o $@
 
 CXXFLAGS_FP = $(CFLAGS_FP) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
-	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../v3d/libv3d.a -o $@
+$(V3D_PROGS): %.elf: %.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Libs/v3d/libv3d.a ../Libs/v3d/qpu.h ../Libs/v3d/shaders.h ../Libs/v3d/gxtev.h ../Libs/v3d/gxtev_ref.h
+	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/v3d/libv3d.a -o $@
 
-$(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../umm.h ../gpucomp/libgpucomp.a ../gpucomp/gpucomp.h
-	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../gpucomp/libgpucomp.a -o $@
+$(GPC_PROGS): %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h ../Libs/gpucomp/libgpucomp.a ../Libs/gpucomp/gpucomp.h
+	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/gpucomp/libgpucomp.a -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.
 # (Objects named after the program: a parallel make (-j) builds several at once.)
 ifneq ($(strip $(MBEDTLS_DIR)),)
-$(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+$(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../Include/http.hpp ../Libs/tls/onyx_tls.hpp
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) $*.crt0.o $*.sys.o $< \
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o
 # pkg (the packages, docs/pkg/README.md): HTTPS + the Archiver's ZIP engine + zlib
-$(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+$(PKG_PROGS): %.elf: %.cpp arccli.h ../Libs/pkg/pkglib.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP) ../Include/http.hpp ../Libs/tls/onyx_tls.hpp
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -DPKG_NET -DONYX_HTTP_TLS -I$(MBEDTLS_DIR)/include -I$(ZLIB_DIR) -Wno-maybe-uninitialized -Wno-format-truncation \
 	       -ffunction-sections -fdata-sections -Wl,--gc-sections $(LDFLAGS) $*.crt0.o $*.sys.o $< \
 	       -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -L$(ZLIB_DIR) -lz -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o
-# llm (the AI helper: Gemini / Groq / Mistral / Claude / OpenAI-compatible) also reads ../json.hpp
-llm.elf: ../json.hpp
+# llm (the AI helper: Gemini / Groq / Mistral / Claude / OpenAI-compatible) also reads ../Include/json.hpp
+llm.elf: ../Include/json.hpp
 endif
 
 # Image apps (newlib C++ + the codecs). Built only when IMG_DIR is set. Same crt0 split
 # as the TLS apps: C startup + syscalls as C objects (gcc), then linked with g++.
 ifneq ($(strip $(IMG_DIR)),)
-$(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../img/image.hpp
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+$(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../Libs/img/image.hpp
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(IMG_DIR)/libpng -I$(IMG_DIR)/zlib -I$(IMG_DIR)/libjpeg \
 	  $(LDFLAGS) $*.crt0.o $*.sys.o $< \
 	  -L$(IMG_DIR)/libpng -L$(IMG_DIR)/zlib -L$(IMG_DIR)/libjpeg -lpng -ljpeg -lz -lm -o $@
@@ -278,8 +278,8 @@ vncd.elf rdpd.elf: remotekeys.h
 # zip / unzip (C++ on newlib, the Archiver's engine: ../Apps/archiver/ops.h) with the vendored zlib
 ARC_PROGS = zip.elf unzip.elf
 $(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP)
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
-	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
+	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(ZLIB_DIR) -Wno-maybe-uninitialized -ffunction-sections -fdata-sections -Wl,--gc-sections \
 	       $(LDFLAGS) $*.crt0.o $*.sys.o $< -L$(ZLIB_DIR) -lz -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o

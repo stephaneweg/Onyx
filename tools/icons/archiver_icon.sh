@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")/../.."
 OUT=${OUT:-/tmp/onyx_icon}; mkdir -p "$OUT"
-g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST -o "$OUT/archiver_icon" \
+g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST -o "$OUT/archiver_icon" \
     tools/icons/archiver_icon.cpp user/Kits/uikit/*.cpp \
     tools/tests/desktop_sim/fakekapi.cpp -lpthread
 "$OUT/archiver_icon" "$OUT/icon.ppm"

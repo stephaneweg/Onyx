@@ -2,7 +2,7 @@ From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Stephan WEGENER <steph.wegener@gmail.com>
 Date: Sat, 3 Oct 2026 22:10:48 +0200
 Subject: [PATCH 22/25] [Onyx] Media: video and Media Source on Onyx's media
- library (MediaPlayerPrivateOnyx, MediaSourcePrivateOnyx on user/av: files,
+ library (MediaPlayerPrivateOnyx, MediaSourcePrivateOnyx on user/Libs/av: files,
  MSE, MediaCapabilities, the video decoder on an app core)
 
 ---
@@ -1137,7 +1137,7 @@ index 00000000..05459ab9
 +class NativeImage;
 +class PlatformMediaResource;
 +
-+// Onyx's media engine: <video> and <audio> played by Onyx's own media library (user/av of the Onyx
++// Onyx's media engine: <video> and <audio> played by Onyx's own media library (user/Libs/av of the Onyx
 +// sources: av.h -- its demuxers, its decoders (libvpx, dav1d, opus, FLAC, MP3, PCM), its player with
 +// the audio as the clock). One class for the two ways a page gives media:
 +//
@@ -2028,10 +2028,10 @@ index f1c2460f..833fedc6 100644
          message(FATAL_ERROR "No gpucomp.h in ${ONYX_GPUCOMP_INCLUDE_DIR}: -DONYX_SOURCE_DIR=<the Onyx sources>")
      endif ()
 +
-+    # Onyx's media library (user/av of the Onyx sources: demuxers, decoders, a player), which the media
++    # Onyx's media library (user/Libs/av of the Onyx sources: demuxers, decoders, a player), which the media
 +    # engine (platform/graphics/onyx/MediaPlayerPrivateOnyx) drives: its header here, its code -- with
 +    # libvpx, dav1d and opus -- linked with the program (tools/webkit/av.mk of the Onyx sources).
-+    set(ONYX_AV_INCLUDE_DIR "${ONYX_SOURCE_DIR}/user/av")
++    set(ONYX_AV_INCLUDE_DIR "${ONYX_SOURCE_DIR}/user/Libs/av")
 +    if (ENABLE_VIDEO AND NOT EXISTS "${ONYX_AV_INCLUDE_DIR}/av.h")
 +        message(FATAL_ERROR "No av.h in ${ONYX_AV_INCLUDE_DIR}: -DONYX_SOURCE_DIR=<the Onyx sources>")
 +    endif ()

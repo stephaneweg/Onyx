@@ -55,7 +55,7 @@ sources.
   keep files in memory on `RAM:`.
 - **The GPU.** The VideoCore VI's 3D unit (V3D) is driven by the kernel for the apps: 3D
   (the N64 and GameCube emulators, the BASIC's 3D), and the compositing of layers
-  (`user/gpucomp`: Paint's blend modes, Jet Browser).
+  (`user/Libs/gpucomp`: Paint's blend modes, Jet Browser).
 - **Full graphical desktop.** 32-bit software compositor, window manager,
   toolkit of kernel-drawn widgets (buttons, checkboxes, sliders,
   text fields, scroll bars, icons…), windows with themeable decoration,

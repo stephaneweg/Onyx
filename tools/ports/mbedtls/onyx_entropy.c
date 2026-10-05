@@ -3,7 +3,7 @@
  * configuration keeps MBEDTLS_NO_PLATFORM_ENTROPY (mbedTLS's own source wants a Unix or Windows
  * target) and sets MBEDTLS_ENTROPY_HARDWARE_ALT, so this poll -- getrandom, i.e. the kernel's
  * kapi random -- feeds mbedtls_entropy_func, the CTR-DRBG and PSA. Appended to libmbedcrypto.a.
- * (kapi random is today a tick-seeded software generator: user/tls/README.md's security note.)
+ * (kapi random is today a tick-seeded software generator: user/Libs/tls/README.md's security note.)
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
  * hereby granted, free of charge, to any person obtaining a copy of this software and associated

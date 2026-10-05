@@ -1,5 +1,5 @@
 //
-// kp_delay -- a Koton effect plugin (user/kplug.h): an echo. A delay time in milliseconds (not tied to
+// kp_delay -- a Koton effect plugin (user/Include/kplug.h): an echo. A delay time in milliseconds (not tied to
 // the tempo), its feedback through a low-pass (each repeat darker), ping-pong (the repeats bounce
 // between the left and the right), the stereo width of the repeats, a dry / wet mix. A change of the
 // time glides (no zipper noise).

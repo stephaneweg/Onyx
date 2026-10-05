@@ -53,7 +53,7 @@ suite; the new icons (a slide, a layout, a text box, the shapes, the show) are d
 | Drawing | uikit's `vpaint.h` (anti-aliased paths) | shapes' geometry (OOXML's preset shapes, as needed), gradients, rounded picture masks |
 | Files | Letters' `odt.h` / `docx.h`, Sheet's `ods.h` / `xlsx.h`, their XML and ZIP readers | `odp.h` (draw:page, presentation:*), `pptx.h` (p:sld, p:sldLayout, p:sldMaster, a:theme) |
 | PDF | Letters' PDF export | a page per slide, handouts, notes pages |
-| The show | full screen windows, the GPU compositor (`user/gpucomp`) | slides rendered to textures, transitions and effects composited by the GPU (cross-fade, push, wipe, zoom are a few quads and an alpha) |
+| The show | full screen windows, the GPU compositor (`user/Libs/gpucomp`) | slides rendered to textures, transitions and effects composited by the GPU (cross-fade, push, wipe, zoom are a few quads and an alpha) |
 | Two screens | — (the kernel drives one HDMI output) | a second display: a kernel task of its own; until then the console is View ▸ Rehearse on the one screen |
 
 **Licence**: MIT, like Letters and Sheet (nothing copyleft linked).

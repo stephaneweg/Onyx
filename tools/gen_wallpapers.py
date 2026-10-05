@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # gen_wallpapers.py -- the desktop's abstract wallpaper PATTERNS (sdcard/wallpapers/*.png): made by
 # code, in grey (1024 x 768, the screen's default size), light for the most part. The Control
-# Panel's Theme applet colours one (the wallpaper's "pattern" mode, user/wallpaper.h): each pixel's
+# Panel's Theme applet colours one (the wallpaper's "pattern" mode, user/Include/wallpaper.h): each pixel's
 # grey MULTIPLIES the wallpaper's colours (a gradient from colour 1 to colour 2) -- white is the
 # colour itself, the darker greys its shades.
 #

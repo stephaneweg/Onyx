@@ -1,6 +1,6 @@
 //
 // libtest -- the tests of the kernel's shared libraries (kapi v83 lib_open; docs/SHARED-LIBS-PLAN.md
-// section 6, "Pi, step 1a") against the test library SD:/lib/demo.so (user/demo) and its second
+// section 6, "Pi, step 1a") against the test library SD:/lib/demo.so (user/Libs/demo) and its second
 // build SD:/lib/demo2.so. Prints a `PASS name` / `FAIL name: reason` line per test and exits 0 only
 // if all passed.
 //   usage: libtest [starts]         every test; `starts`: the starts of the leak test (default 200)

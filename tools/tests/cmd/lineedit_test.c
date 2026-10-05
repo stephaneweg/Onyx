@@ -1,5 +1,5 @@
 /*
- * lineedit_test.c -- the consoles' line editor (user/lineedit.h, used by the terminal and by
+ * lineedit_test.c -- the consoles' line editor (user/Include/lineedit.h, used by the terminal and by
  * telnetd) on the PC: the cursor, insertions and deletions, the history (Up / Down, the line
  * being typed kept, the oldest lines leaving a full history). Run by tools/tests/run_cmd_test.sh.
  *
@@ -14,7 +14,7 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include "../../../user/lineedit.h"
+#include "../../../user/Include/lineedit.h"
 
 static struct LineEdit e;
 static int fails, checks;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/tests/pkg/test.py -- `pkg` (user/BinUtils/pkg.cpp, user/pkg/pkglib.h) on the PC, over the desktop
+"""tools/tests/pkg/test.py -- `pkg` (user/BinUtils/pkg.cpp, user/Libs/pkg/pkglib.h) on the PC, over the desktop
 simulator's kapi: a small card made into a repository by tools/pkg/mkrepo.py (a key made for the
 test), then installs, updates, removals, the settings kept, the needs, the system staged and committed,
 a bad signature and a bad archive refused.

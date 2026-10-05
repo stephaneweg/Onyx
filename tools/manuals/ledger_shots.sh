@@ -19,7 +19,7 @@ WANT=" $* "
 rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes" "$OUT/ft" "$IMG"
 : > "$OUT/log.txt"
 export SIM_WRITES="$OUT/writes"
-CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # ---- the building: uikit, the stand-in kernel, FreeType (Letters'), Ledger and Letters ----------------------

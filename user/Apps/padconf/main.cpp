@@ -1,7 +1,7 @@
 //
 // padconf -- the Gamepad settings: the USB gamepads plugged in (Circle's drivers, kapi v50),
 // what each one sends (its buttons, axes and hats, live) and what the apps see (the PAD_*
-// buttons of user/gamepad.h, on a drawn pad), and "Map Buttons..." -- press each button when
+// buttons of user/Include/gamepad.h, on a drawn pad), and "Map Buttons..." -- press each button when
 // asked -- which writes the pad model's section of SD:/etc/gamepad.ini.
 //
 //   * Pads 1-4: click the tabs or keys 1-4. Map Buttons... (M), Forget Mapping (the pad's

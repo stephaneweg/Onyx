@@ -3,7 +3,7 @@
 # section 2.) Checks: an ET_DYN, two LOAD segments + PT_DYNAMIC, no text relocations, ONLY
 # R_AARCH64_RELATIVE relocations and all of them in the RW segment, the entry = the export table,
 # one exported symbol.
-#   sh check_pic.sh                 builds the test library (user/demo) and checks it
+#   sh check_pic.sh                 builds the test library (user/Libs/demo) and checks it
 #   sh check_pic.sh <file.so>...    checks these (user/lib/uikit.so ...)
 # Needs aarch64-none-elf-* on the PATH (PREFIX=... for another toolchain).
 set -e
@@ -36,9 +36,9 @@ if [ $# -gt 0 ]; then
 	exit 0
 fi
 O=${TMPDIR:-/tmp}/onyx-shlib-check; mkdir -p "$O"
-CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$U -I$U/Kits -I$U/../kernel/include"
-${P}g++ $CF -c "$U/demo/demolib.cpp" -o "$O/demolib.o"
-${P}g++ $CF -c "$U/librt.cpp" -o "$O/librt.o"
+CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$U -I$U/Kits -I$U/Runtime -I$U/Include -I$U/Libs -I$U/Emulators -I$U/Ports -I$U/../kernel/include"
+${P}g++ $CF -c "$U/Libs/demo/demolib.cpp" -o "$O/demolib.o"
+${P}g++ $CF -c "$U/Runtime/librt.cpp" -o "$O/librt.o"
 ${P}ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv --build-id=none \
-	-T "$U/lib.ld" --version-script "$U/lib.vers" -e onyx_lib_table -o "$O/demo.so" "$O/demolib.o" "$O/librt.o"
+	-T "$U/Runtime/lib.ld" --version-script "$U/Runtime/lib.vers" -e onyx_lib_table -o "$O/demo.so" "$O/demolib.o" "$O/librt.o"
 check "$O/demo.so"

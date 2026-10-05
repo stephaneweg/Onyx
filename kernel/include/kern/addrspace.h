@@ -88,7 +88,7 @@ public:
 	// (its pages filled on first touch; at once once the app holds an app core) and shrinks with
 	// it (the pages above the new break dropped). Returns the PREVIOUS break (a user VA), or
 	// (void*)-1 on failure (out of heap VA, or a growth beyond the app pool: the overcommit
-	// check). The user allocators (user/umm.h, newlib's malloc) call this through kapi_sbrk.
+	// check). The user allocators (user/Runtime/umm.h, newlib's malloc) call this through kapi_sbrk.
 	void *Sbrk (long nIncrement);
 
 	// Fresh zeroed pages, EL0 read/write/execute, in the code arena (a JIT) -> VA, 0 full.

@@ -6,7 +6,7 @@
 // + zlib + libm and uses printf/malloc, so it is OPT-IN -- build it only when the codec
 // libs are present (see ../bin/Makefile, IMG_DIR; recipe in ../img/README.md):
 //
-//     make -C user/img                                   # build the libs once
+//     make -C user/Libs/img                                   # build the libs once
 //     make -C user/BinUtils IMG_DIR=../img imgtest.elf
 //
 #include <stdio.h>

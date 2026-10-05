@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_basic_test.sh -- Onyx BASIC on the PC: builds the core (user/basic) with a console
+# run_basic_test.sh -- Onyx BASIC on the PC: builds the core (user/Libs/basic) with a console
 # host (basic/host_main.cpp) under AddressSanitizer + UBSan, runs every basic/progs/*.bas
 # (stdin from <name>.in when present; the GUI's events from <name>.events) and compares the output with <name>.out.
 #   sh tools/tests/run_basic_test.sh [--update]      (--update rewrites the .out files)
@@ -7,8 +7,8 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 BIN=${TMPDIR:-/tmp}/onyx_basic_host
-g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" \
-    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
+g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" \
+    "$ROOT/user/Libs/basic/basnum.cpp" "$ROOT/user/Libs/basic/bascomp.cpp" "$ROOT/user/Libs/basic/basvm.cpp" "$ROOT/user/Libs/basic/basbax.cpp" \
     "$HERE/basic/host_main.cpp" -o "$BIN"
 cd "$HERE/basic/progs"
 fail=0

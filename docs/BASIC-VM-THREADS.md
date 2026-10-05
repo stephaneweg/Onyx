@@ -9,7 +9,7 @@ globals. Useful for the same reason as the kernel threads: **concurrency** — a
 file, the network, `SLEEP`, a long computation) while the main one keeps the screen and the
 keyboard alive.
 
-## 1. Split the VM's state (`user/basic/basvm.cpp`, class `VM`)
+## 1. Split the VM's state (`user/Libs/basic/basvm.cpp`, class `VM`)
 
 | Per thread (a new `Ctx`, the VM works on `cur->…`) | Shared (stays in `VM`) |
 |---|---|

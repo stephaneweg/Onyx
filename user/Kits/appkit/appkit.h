@@ -364,7 +364,7 @@ KAPI_FN void kapi_inject_key_held (int key, int down);
 // Run a program under another process name (ABI v49): a runner running an app is named
 // after the app (its window, list_windows, raise_app). See launch.h.
 KAPI_FN int kapi_exec_as (const char *path, const char *args, const char *name);
-// USB gamepads (v50): the raw state of pad 0..3 (1 = there); user/gamepad.h maps its buttons.
+// USB gamepads (v50): the raw state of pad 0..3 (1 = there); user/Include/gamepad.h maps its buttons.
 KAPI_FN int kapi_pad_state (int index, struct kapi_pad *out);
 // App cores (v51): acquire core 2 or 3, run a function of this app there (no kapi call and
 // no malloc in it: compute, and exchange data through memory), poll its state, release.
@@ -418,7 +418,7 @@ KAPI_FN int kapi_proc_stats (int pid, struct kapi_syscall_stats *out);
 // (v75) The POSIX layer's kernel half (docs/POSIX-PLAN.md; the structures and KAPI_* values in
 // kern/kapi_abi.h). Every call returns >= 0 on success, -KAPI_Exxx (newlib's errno value) on
 // failure, and -KAPI_ENOSYS on an older kernel or until the call is implemented. libonyxposix
-// (user/libc/posix) wraps them as the POSIX functions.
+// (user/Runtime/libc/posix) wraps them as the POSIX functions.
 // v75 WP-MEM: virtual memory (vm_map = mmap, vm_protect = mprotect, vm_advise = madvise...),
 // threads with their stack size and TLS (struct kapi_thread_attr).
 KAPI_FN long long kapi_vm_map (unsigned long long addr, unsigned long long len, unsigned prot, unsigned flags);
@@ -525,7 +525,7 @@ KAPI_FN int kapi_win_resizable (int on, int min_w, int min_h);
 // or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *);
 // then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP:
 // the library is older than min_version; -KAPI_ENOSYS on an older kernel). Apps do not call this:
-// the library's bind object does, before main (user/lib.h).
+// the library's bind object does, before main (user/Runtime/lib.h).
 KAPI_FN const void * kapi_lib_open (const char *name, unsigned min_version, int *err);
 // (v84) The sound's output: KAPI_SND_OUT_AUTO / _JACK / _USB / _HDMI (-1: only ask) -> what plays
 // now, what is asked and which outputs are there (KAPI_SND_OUT_NOW / _ASKED / _HAS of the result);
@@ -541,7 +541,7 @@ KAPI_FN int kapi_is_protected (void);
 KAPI_FN int kapi_sound_volume (int volume, int mute);
 // wpa_supplicant.conf read again + DHCP again, no reboot (-1: none / older kernel)
 KAPI_FN int kapi_wlan_reconnect (void);
-// v61: draws with the app's own QPU shaders (user/v3d/qpu.h builds them): gpu_program makes /
+// v61: draws with the app's own QPU shaders (user/Libs/v3d/qpu.h builds them): gpu_program makes /
 // replaces / frees (p = 0) a program, gpu_render2 draws batches of them (kapi_abi.h).
 KAPI_FN int kapi_gpu_program (int handle, const struct kapi_gpu_program *p);
 KAPI_FN int kapi_gpu_render2 (const struct kapi_gpu_frame *f, const float *v, unsigned nv, unsigned stride,
@@ -555,7 +555,7 @@ KAPI_FN int kapi_gpu_render3 (const struct kapi_gpu_frame *f, const float *v, un
 KAPI_FN void * kapi_gpu_vbuf (unsigned bytes);
 // (v70) gpu_texture_rect: a rectangle x, y, w x h of a texture's pixels (0xAARRGGBB) replaced, the
 // rest kept -> 0, -1 no GPU / older kernel, -2 bad arguments. (Also v70: KAPI_GPU_F_ALPHA, a frame's
-// target keeping its alpha; the GPU compositing service over these: user/gpucomp/gpucomp.h.)
+// target keeping its alpha; the GPU compositing service over these: user/Libs/gpucomp/gpucomp.h.)
 KAPI_FN int kapi_gpu_texture_rect (int handle, int x, int y, int w, int h, const unsigned *pixels, int stride);
 // (v64) the windows of the modernised CDE desktop: minimise one (0: mine; back with win_raise /
 // raise_app), my window's place and size and the work area (the screen less the menu bar and the

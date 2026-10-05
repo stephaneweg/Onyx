@@ -178,7 +178,7 @@ fi
 # POSIX options Onyx implements (libonyxposix's overlay, its #include_next turned into an include);
 # <sys/dirent.h> (newlib's is an #error stub on this target) for libstdc++'s directory iterators.
 # The pthread types are ABI-frozen from here on (docs/POSIX-PLAN.md "WP-LIBC resolutions" 7).
-OVL_SRC=$ONYX/user/libc/posix/include
+OVL_SRC=$ONYX/user/Runtime/libc/posix/include
 INC=$PREFIX/$TARGET/include
 if want overlay && ! done_ overlay; then
 	say "the header overlay (libonyxposix) -> $INC"

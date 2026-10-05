@@ -1,5 +1,5 @@
 //
-// kp_drive -- a Koton effect plugin (user/kplug.h): saturation, overdrive, distortion, fuzz -- Koton's
+// kp_drive -- a Koton effect plugin (user/Include/kplug.h): saturation, overdrive, distortion, fuzz -- Koton's
 // Drive (Plugins/Effects/KotonPluginDrive), the same parameters and states. A low cut before the gain
 // (the lows would turn to mush), the gain into a transfer curve at 4x the rate (clipping makes
 // harmonics far above the audible band: they would fold back as noise without the oversampling;

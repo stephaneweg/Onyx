@@ -1,11 +1,11 @@
 //
-// nesemu -- the Onyx NES / Famicom emulator (the core: user/nes).
+// nesemu -- the Onyx NES / Famicom emulator (the core: user/Emulators/nes).
 //
 //   nesemu <rom.nes> [--fullscreen]   (without a ROM: opens the Game Library)
 //                               (its app.txt "games": opening a .nes file starts it; the Game Library
 //                               app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, Enter = Start, Backspace = Select (held keys,
-//     kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A, bottom /
+//     kapi_key_held); a USB gamepad too (user/Include/gamepad.h: right / top button = A, bottom /
 //     left = B, Start, Select); F11 or View > Full Screen: the whole display, stretched with the
 //     proportions kept and centred (Esc / F11 back).
 //   * View > Zoom 1x / 2x / 3x, Region: NTSC (60 Hz) / PAL (50 Hz) -- guessed from the ROM's
@@ -14,7 +14,7 @@
 //     every few seconds after a change and when the emulator closes.
 //   * The pace: the sound output (the frames are made as the audio queue drains), or the
 //     clock when there is no sound; 60.10 (NTSC) or 50.01 (PAL) frames a second.
-//   * The machine runs on an app core (core 2 or 3, user/emucore.h) when one is free: the
+//   * The machine runs on an app core (core 2 or 3, user/Emulators/emucore.h) when one is free: the
 //     window, the input and the sound stay on this thread. Without a free core it runs here.
 //   * Mappers: 0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 66 (GxROM).
 //
@@ -233,7 +233,7 @@ static int buttons (void)
 	if (kapi_key_held ('z')) b |= nes::BTN_B;
 	if (kapi_key_held (KEY_ENTER)) b |= nes::BTN_START;
 	if (kapi_key_held (KEY_BACKSPACE)) b |= nes::BTN_SELECT;
-	// USB gamepads (user/gamepad.h): by place, as on Nintendo's pads -- the right face
+	// USB gamepads (user/Include/gamepad.h): by place, as on Nintendo's pads -- the right face
 	// button is A, the bottom one B (and the top / left ones the same)
 	unsigned p = pad_buttons (-1);
 	if (p & PAD_RIGHT) b |= nes::BTN_RIGHT;

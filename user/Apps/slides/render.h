@@ -1,7 +1,7 @@
 //
 // render.h -- a slide drawn: every object rendered into a layer of its own (0xAARRGGBB premultiplied:
 // its shape filled and outlined -- uikit/vpaint.h's anti-aliased paths --, its picture, its table, its
-// chart, its text), the layers kept as textures and composited by the GPU (user/gpucomp: each layer
+// chart, its text), the layers kept as textures and composited by the GPU (user/Libs/gpucomp: each layer
 // moved, rotated, faded by its matrix and opacity -- an object dragged, a slide show's effects cost no
 // new drawing); the CPU's path when there is no GPU. The background, the master's decorations, the
 // footer and the slide's number are layers too.

@@ -22,7 +22,7 @@ rm -rf "$OUT" && mkdir -p "$OUT/n/obj" "$OUT/n1/obj" "$OUT/n1/src"
 
 LIBF="-ffreestanding -nostdlib -fPIC -fvisibility=hidden -mgeneral-regs-only -O2 -w -fno-stack-protector -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -DONYX_LIB_BUILD"
 APPF="-ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only -O2 -w -fno-stack-protector -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit"
-LDF="-shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv --build-id=none -T $U/lib.ld --version-script $U/lib.vers -e onyx_lib_table"
+LDF="-shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv --build-id=none -T $U/Runtime/lib.ld --version-script $U/Runtime/lib.vers -e onyx_lib_table"
 LIBGCC=$(${P}gcc -mcpu=cortex-a72 -print-libgcc-file-name)
 
 # N+1's sources: a copy of user/Kits/uikit, patched
@@ -48,7 +48,7 @@ EOF
 cp "$U/Kits/uikit/uikit.abi" "$OUT/uikitc.abi"		# the list: N's, then N+1 appends to the same file
 
 build () {	# $1: n | n1   $2: where "uikit/..." comes from   $3: extra app flags
-	D=$OUT/$1; INC="-I$2 -I$U -I$U/Kits -I$ROOT/kernel/include"
+	D=$OUT/$1; INC="-I$2 -I$U -I$U/Kits -I$U/Runtime -I$U/Include -I$U/Libs -I$U/Emulators -I$U/Ports -I$ROOT/kernel/include"
 	OBJS="$D/obj/globals.o"
 	for f in "$2"/uikit/*.cpp; do
 		b=$(basename "$f" .cpp); F=$LIBF
@@ -56,7 +56,7 @@ build () {	# $1: n | n1   $2: where "uikit/..." comes from   $3: extra app flags
 		${P}g++ $F $INC -c "$f" -o "$D/obj/$b.o" &
 		[ "$b" = globals ] || OBJS="$OBJS $D/obj/$b.o"
 	done
-	${P}g++ $LIBF $INC -c "$U/librt.cpp" -o "$D/obj/librt.o" &
+	${P}g++ $LIBF $INC -c "$U/Runtime/librt.cpp" -o "$D/obj/librt.o" &
 	wait
 	python3 "$ROOT/tools/libgen/libgen.py" --nm ${P}nm --name uikitc --abi "$OUT/uikitc.abi" --init uikit_lib_init --vtables \
 		--data onyx_uikit_data --allow-data '^_ZN5uikit' --table "$D/table.S" --stubs "$D/stubs.S" --bind "$D/bind.cpp" $OBJS
@@ -66,9 +66,9 @@ build () {	# $1: n | n1   $2: where "uikit/..." comes from   $3: extra app flags
 	${P}g++ $APPF $INC -c "$2/uikit/globals.cpp" -o "$D/globals_imp.o"
 	${P}ld $LDF -o "$OUT/uikitc-$1.so" $OBJS "$D/table.o" "$D/obj/librt.o" "$LIBGCC"
 	rm -f "$D/uikitc.imp.a"; ${P}ar rcs "$D/uikitc.imp.a" "$D/stubs.o" "$D/bind.o" "$D/globals_imp.o"
-	${P}g++ $APPF $3 $INC -Wl,-T,"$U/user.ld" -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none \
+	${P}g++ $APPF $3 $INC -Wl,-T,"$U/Runtime/user.ld" -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none \
 		-Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy -Wl,--defsym,memmove=kapi_memmove \
-		"$U/crt0.S" "$HERE/compat/app.cpp" "$D/uikitc.imp.a" -o "$OUT/app-$1"
+		"$U/Runtime/crt0.S" "$HERE/compat/app.cpp" "$D/uikitc.imp.a" -o "$OUT/app-$1"
 }
 build n "$U" ""
 N=$(grep -c '^[0-9]' "$OUT/uikitc.abi")

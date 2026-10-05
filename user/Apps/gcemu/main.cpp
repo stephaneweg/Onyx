@@ -1,8 +1,8 @@
 //
-// gcemu -- the Onyx Nintendo GameCube emulator (the core: user/gc) -- in progress.
+// gcemu -- the Onyx Nintendo GameCube emulator (the core: user/Emulators/gc) -- in progress.
 //
 //   gcemu <game.iso | game.gcm | program.dol> [--fullscreen]   (without one: the Game Library)
-//   * The machine (the Gekko CPU, Flipper) runs on an app core (core 2 or 3, user/emucore.h)
+//   * The machine (the Gekko CPU, Flipper) runs on an app core (core 2 or 3, user/Emulators/emucore.h)
 //     when one is free; with the TEV renderer, its GX (the graphics commands) on the second one
 //     when that is free too (gx_core; --gxone: on the machine's). Its graphics are high-level:
 //     each frame's triangles and textures are drawn by the GPU straight into the window; a
@@ -11,9 +11,9 @@
 //   * A disc image (1.4 GB) is not loaded: the DVD's reads are done from the file on demand
 //     (kapi v57 seek) by the main thread for the app core (a request, then the core waits).
 //   * Keys: arrows = the stick, X = A, C = B, S = X, A = Y, Z = Z, Enter = Start, Q / W = L / R,
-//     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/gamepad.h). F11: full
+//     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/Include/gamepad.h). F11: full
 //     screen (Esc back), F12: the speed, F10: the frames a second alone, P: pause.
-//   * The CPU: the JIT (user/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
+//   * The CPU: the JIT (user/Emulators/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
 //     from kapi v58 code_alloc); Game > Interpreter (or --interp) runs the interpreter instead.
 //   * The sound: the machine's audio (the AI's DMA, the Zelda microcode's music) resampled to
 //     SOUND_RATE, pushed by the app core into emucore's ring, written to the kapi sound queue

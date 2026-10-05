@@ -199,7 +199,7 @@ public:
 	bool keyHeld (int key) override { return key > 0 && key < 0x200 && held[key]; }
 
 	// Gamepads (PAD / STICK / STRIG) through winmm's joystick API: the same PAD_* bits as on
-	// Onyx (user/gamepad.h). XInput pads (Xbox) have A B X Y first; other pads the usual
+	// Onyx (user/Include/gamepad.h). XInput pads (Xbox) have A B X Y first; other pads the usual
 	// generic order (1 top, 2 right, 3 bottom, 4 left, 5 L1, 6 R1, 7 L2, 8 R2, 9 select,
 	// 10 start); the d-pad is the POV hat, else the X / Y axes (and the left stick).
 	bool padRead (int pad, unsigned *btn, int ax[4])
