@@ -1,6 +1,6 @@
 //
 // ptext.h -- Paint's Text tool: the text typed on the canvas, in one of the card's TrueType families
-// (ft/fonts.h: FreeType), its size, bold / italic / underline, aligned left / centred / right, its
+// (fontkit/fonts.h: FreeType), its size, bold / italic / underline, aligned left / centred / right, its
 // edges smooth (anti-aliased) or sharp, on colour 2 or on nothing. It is drawn into the overlay of
 // the current layer while it is typed (moved by its box), and put down on the layer when it is done.
 //
@@ -9,7 +9,7 @@
 #ifndef _paint_ptext_h
 #define _paint_ptext_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "pdoc.h"
 
 namespace pd {

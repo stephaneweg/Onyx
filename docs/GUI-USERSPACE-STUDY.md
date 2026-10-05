@@ -324,7 +324,7 @@ that keeps old apps working with new builds, as for `kapi`:
   header, as `kapi_abi.h`'s `static_assert`s would) refuses an accidental change.
 
 What remains compiled into the apps: the header inlines (`widget.h`'s thumb arithmetic, `UkFaceScope`,
-`ft/fonts.h`, `ft/uikitface.h`) — small, and they call the table where they need the library. Moving the
+`fontkit/fonts.h`, `fontkit/uikitface.h`) — small, and they call the table where they need the library. Moving the
 header-only FreeType code into the library (`libft` behind its own table, or inside uikit's) is part of
 the work if FreeType is to be shared.
 

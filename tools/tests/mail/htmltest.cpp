@@ -6,7 +6,7 @@
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
 //
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "mail/html_ft.h"
 #include "mail/mime.h"
 

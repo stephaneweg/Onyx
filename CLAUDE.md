@@ -36,7 +36,7 @@ LibreOffice headless). Screenshots
 
 > Names: the shared libraries are "kits" -- **UIKit** (the widget toolkit, `user/Kits/uikit/`, `namespace uikit`,
 > `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/Kits/audiokit/`), **PrinterKit** (`user/Kits/printerkit/`), **FileKit** (`user/Kits/filekit/`: ZIP, zlib, files and trees),
-> **ImageKit** (`user/Kits/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit), **AppKit** (`user/Kits/appkit/`: the programs' interface to the kernel, loaded and bound by the kernel). docs/03 sections 5.6 to 5.10. DocumentKit: an analysis only (IDEAS.md).
+> **ImageKit** (`user/Kits/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit), **AppKit** (`user/Kits/appkit/`: the programs' interface to the kernel, loaded and bound by the kernel), **FontKit** (`user/Kits/fontkit/`, `SD:/lib/fontkit.so`: FreeType and the apps' font manager; it was `user/ft`, `ft.so`, the package `ft` until 2026-10-05). docs/03 sections 5.6 to 5.10. DocumentKit: an analysis only (IDEAS.md).
 
 > Layout of `user/` (the user, 2026-10-05) -- everything sorted by its use:
 > - **`Apps/<name>/`** the graphical apps; **`BinUtils/`** the console programs (`SD:/bin`; it was `user/bin`);

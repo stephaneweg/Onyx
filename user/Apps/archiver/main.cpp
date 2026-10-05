@@ -14,7 +14,7 @@
 //
 #include <strings.h>
 #include "appkit/appkit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "fileassoc.h"
 #include "arcfk.h"		// the archives: FileKit (SD:/lib/filekit.so)

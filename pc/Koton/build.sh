@@ -38,7 +38,7 @@ rm -f "$OUT/libuikit.a"; $AR rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
 	bg $CC -O2 -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-		-I"$U/ft" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o"
+		-I"$U/Kits/fontkit" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o"
 done; done_bg
 rm -f "$OUT/libft.a"; $AR rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # ---- Koton ---------------------------------------------------------------------------------------------------
@@ -57,7 +57,7 @@ EOF
 printf '1 ICON "%s"\n' "$OUT/koton.ico" > "$OUT/koton.rc"
 $WINDRES "$OUT/koton.rc" -O coff -o "$OUT/koton_res.o"
 mkdir -p "$DIST"
-$CXX $CXXF -g -fno-math-errno -mwindows -I"$K" -I"$U/ft" -I"$FT/include" -o "$OUT/Koton.exe" "$K/main.cpp" \
+$CXX $CXXF -g -fno-math-errno -mwindows -I"$K" -I"$U/Kits/fontkit" -I"$FT/include" -o "$OUT/Koton.exe" "$K/main.cpp" \
 	"$OUT/kapi/winkapi.o" "$OUT"/k/*.o "$OUT/koton_res.o" "$OUT/libuikit.a" "$OUT/libft.a" $LIBS
 cp "$OUT/Koton.exe" "$DIST/Koton.exe"		# (the one with its symbols stays in $OUT: addr2line -e)
 # ---- the plugins: koton/plugins/<name>/main.exe + plugin.json ---------------------------------------------------------

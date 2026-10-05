@@ -22,7 +22,7 @@
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #include "notify.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 
 using namespace uikit;
 

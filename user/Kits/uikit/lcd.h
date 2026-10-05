@@ -6,7 +6,7 @@
 //
 //   LcdDisplay *pos = new LcdDisplay (x, y, 190, 40, "6.3.2", "BAR.BEAT.16");
 //   pos->setSub ("0:14.83");  ...  pos->setText ("6.3.3");    (repainted only when it changed)
-//   pos->face = bigFace;      (e.g. an FtTextFace at 24 px: ft/uikitface.h)
+//   pos->face = bigFace;      (e.g. an FtTextFace at 24 px: fontkit/uikitface.h)
 //
 #ifndef _uikit_lcd_h
 #define _uikit_lcd_h

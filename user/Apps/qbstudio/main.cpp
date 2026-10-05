@@ -17,7 +17,7 @@
 //
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "basic/bas.h"
 #include "codeedit.h"
 #include "designer.h"

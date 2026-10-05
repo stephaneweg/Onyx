@@ -8,7 +8,7 @@
 #ifndef _photos_ui_h
 #define _photos_ui_h
 
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "Apps/photos/lib.h"
 

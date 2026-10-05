@@ -1,7 +1,7 @@
 #!/bin/sh
 # build.sh -- FreeType 2.14.3 for the POSIX ports (third_party/freetype-2.14.3, the apps' copy, FTL):
 # libfreetype.a + include/freetype2 + freetype2.pc into the sysroot -- the FreeType HarfBuzz, Skia and
-# (later) WebKit link. Fuller than the apps' lean build (user/ft: TrueType only, no hinting
+# (later) WebKit link. Fuller than the apps' lean build (user/Kits/fontkit: TrueType only, no hinting
 # interpreter): what web fonts need --
 #   modules (onyx_ftmodule.h): TrueType, CFF / CFF2 (OpenType PostScript outlines), sfnt, the
 #     auto-hinter and the PostScript hinter, the smooth (anti-aliased) and mono rasterizers, OT-SVG;

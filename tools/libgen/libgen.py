@@ -36,8 +36,8 @@
 #   --data SYM: the bind constructor hands the library `SYM` (a `void *const SYM[]` of the program,
 #   `SYM_count` entries: the addresses of the variables the library shares with it) in TLibImports.
 #
-#   python3 tools/libgen/libgen.py --name ft --abi user/ft/ft.abi --init ft_lib_init \
-#       --export '^FT_' --table lib/ft_table.S --stubs lib/ft_stubs.S --bind lib/ft_bind.cpp objs...
+#   python3 tools/libgen/libgen.py --name ft --abi user/Kits/fontkit/fontkit.abi --init ft_lib_init \
+#       --export '^FT_' --table lib/fontkit_table.S --stubs lib/fontkit_stubs.S --bind lib/fontkit_bind.cpp objs...
 #   --frozen: new functions are an error instead of being appended (a release build).
 import argparse, os, re, struct, subprocess, sys
 

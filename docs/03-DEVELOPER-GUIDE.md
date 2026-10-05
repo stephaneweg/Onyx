@@ -286,7 +286,7 @@ A **uikit app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** 
 wants a libc): the `letters.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
 `NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
 `libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `lib/uikit.imp.a`, then its libraries
-(`lib/ft.imp.a`) and `-lm` (the import libraries of the shared uikit and FreeType: §5.6). Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
+(`lib/fontkit.imp.a`) and `-lm` (the import libraries of the shared uikit and FreeType: §5.6). Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
 `make stage` stages it as any.
 
 Notes / caveats:
@@ -687,7 +687,7 @@ the most; sizes of the `.a` with `-ffunction-sections`, the linker keeps what a 
 |---|---|---|---|---|
 | ICU 78.3 | `icu-78.3`: `common/`, `i18n/` (21 MB) + **the filtered data** `source/data/in/icudt78l.dat` (15.9 MB, made by `tools/ports/icu/gen-data.sh` with `data-filter.json`) | Unicode-3.0 | `libicuuc.a` 4.8 MB, `libicui18n.a` 10 MB, `libicudata.a` 15.9 MB (the data linked in, `.incbin`; no data file on the card); `icu-uc.pc`, `icu-i18n.pc`. Our CMake (`tools/ports/icu/CMakeLists.txt`): ICU's autoconf knows no Onyx host | `icutest` |
 | libpng 1.6.44 | `libpng-1.6.44` (the apps' copy) | libpng | `libpng16.a` 0.5 MB (NEON filters) | — |
-| FreeType 2.14.3 | `freetype-2.14.3` (the apps' copy) | FTL | `libfreetype.a` 0.9 MB: TrueType + CFF/CFF2, sfnt, auto-hinter + PS hinter, smooth + mono, OT-SVG, variable fonts, COLR; zlib (WOFF), brotli (WOFF2), libpng (colour bitmaps) — the apps keep their lean `user/ft` | — |
+| FreeType 2.14.3 | `freetype-2.14.3` (the apps' copy) | FTL | `libfreetype.a` 0.9 MB: TrueType + CFF/CFF2, sfnt, auto-hinter + PS hinter, smooth + mono, OT-SVG, variable fonts, COLR; zlib (WOFF), brotli (WOFF2), libpng (colour bitmaps) — the apps keep their lean `user/Kits/fontkit` | — |
 | HarfBuzz 14.5.1 | `harfbuzz-14.5.1` (8 MB) | Old MIT | `libharfbuzz.a` 3.0 MB (hb-ft) + `libharfbuzz-icu.a` (WebKit's `HarfBuzz COMPONENTS ICU`) | `hbtest` |
 | libjpeg-turbo 3.1.4 | `libjpeg-turbo-3.1.4` (4 MB) | IJG + BSD-3 + zlib | `libjpeg.a` 1.0 MB (NEON; the turbo extensions Skia and WebKit use — the in-tree jpeg-9f lacks them) | — |
 | libwebp 1.4.0 | `libwebp-1.4.0` (the apps' copy) | BSD-3 | `libwebp.a` 0.8 MB, `libwebpdemux.a`, `libwebpmux.a`, `libsharpyuv.a` (NEON, threads) | — |
@@ -735,7 +735,7 @@ its licence on the app.
 §7 *Shared libraries*.)*
 
 Since kapi v83 the apps no longer carry a copy of the toolkit and of FreeType: **uikit** and
-**FreeType** are shared libraries — `SD:/lib/uikit.so`, `SD:/lib/ft.so` —, loaded once for the whole
+**FreeType** are shared libraries — `SD:/lib/uikit.so`, `SD:/lib/fontkit.so` —, loaded once for the whole
 system, their code mapped into every process that uses them, their data private to each. A fix in
 a library reaches every app **without rebuilding any app**.
 
@@ -778,7 +778,7 @@ the kernel through `KT`, the app through its imports. What the kernel accepts is
 `sh tools/tests/shlib/check_pic.sh user/lib/<name>.so`. Rules:
 
 - **Functions** — every global function is an entry (`--export` / `--export-file` restrict them:
-  `ft.so` exports FreeType's public API only). Never remove one, never change a signature.
+  `fontkit.so` exports FreeType's public API only). Never remove one, never change a signature.
 - **Global data cannot be imported** by a program (it is linked at a fixed address; the library is
   not). The generator refuses a library with global variables unless `--allow-data` says they are
   handled. uikit's (the palette `C_BG`…, the text face) are **the app's variables**: `uikit/globals.inc`
@@ -798,7 +798,7 @@ the kernel through `KT`, the app through its imports. What the kernel accepts is
   may have to be fixed belongs in the `.cpp` files.
 - A change that cannot keep these rules is **another library** (`uikit2.so`), beside the old one.
 
-**Using one from an app's Makefile rule:** link `lib/uikit.imp.a` (and `lib/ft.imp.a`) in place of
+**Using one from an app's Makefile rule:** link `lib/uikit.imp.a` (and `lib/fontkit.imp.a`) in place of
 the static archives; the package declares `needs = uikit` (and `ft`). Jet's hosted build
 (`tools/webkit/build-web.sh`) links the library too since 2026-10-05 — it compiles the import side
 (`lib/uikit_stubs.S`, `lib/uikit_bind.cpp`, `uikit/globals.cpp`) with its own toolchain. The PC builds
@@ -823,7 +823,7 @@ An app prints by **drawing its pages once**; the system does the rest. Three par
 | **The printers** | `SD:/etc/printers.ini` (`printerkit/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
 
 A job does not depend on the printer: the same recorded pages become a PDF or a raster. `printerkit.so` is
-the first library that **uses other libraries**: FreeType (`ft.so`, for `print_text`) and uikit (`uikit.so`,
+the first library that **uses other libraries**: FreeType (`fontkit.so`, for `print_text`) and uikit (`uikit.so`,
 for the dialog), through their import stubs linked into it; `print.cpp` opens them when first needed
 (`kapi_lib_open`), and uikit's variables are the program's (uikit's library build of `globals.o`, `--data
 onyx_uikit_data` in the bind object) — so a program that links `lib/printerkit.imp.a` also links
@@ -1022,6 +1022,22 @@ masks, the brushes and the document of the photo editor come on top of it later 
   back, the resize in alpha, the turns, the crop, the adjustments; with a picture of the card: probed,
   read, a thumbnail written).
 
+### 5.9.1. FontKit: FreeType for the apps (`SD:/lib/fontkit.so`)
+
+*(`user/Kits/fontkit/`; it was `user/ft`, `SD:/lib/ft.so` and the package `ft` until 2026-10-05 — the
+package `fontkit` replaces `ft` on a card.)*
+
+The shared library is **FreeType** itself (the apps' lean build: TrueType, the auto-hinter, the smooth
+rasterizer — `onyx_ftoption.h`, `onyx_ftmodule.h`), its functions exported under their own names (`FT_*`,
+`fontkit.abi`); `ftso.c` gives it its memory and its files. An app links `lib/fontkit.imp.a` and includes:
+
+- `"fontkit/fonts.h"` — the font manager (`namespace fonts`): the card's families (`SD:/res/fonts`), a
+  font by family / style / size, its glyphs cached, text measured and drawn;
+- `"fontkit/uikitface.h"` — UIKit's text face on it (`FtTextFace`): the anti-aliased text of the apps.
+
+These two are still headers that carry their code (each app compiles its own manager and glyph cache);
+moving them into the library — one cache for the system — is a later step.
+
 ### 5.10. AppKit: the programs' interface to the kernel (`SD:/lib/appkit.so`)
 
 *(`user/Kits/appkit/appkit.h` is the header a program includes and the reference of the calls;
@@ -1137,12 +1153,12 @@ alone**.
 > colours up to 256, else a median cut; the clear pixels one transparent index; LZW), `bmp_encode`
 > (24-bit), `on_white` (a pixel laid on white); `ZipOut` (`add` stored or deflated, `finish`) and
 > `zip_find` (an entry's bytes and method). Paint's exports and its OpenRaster files use them.
-> **TrueType text** (`user/ft/`): the apps' FreeType — the upstream sources of
+> **TrueType text** (`user/Kits/fontkit/`): the apps' FreeType — the upstream sources of
 > `third_party/freetype-2.14.3` built lean by `user/Makefile` into `ft/libft.a`
 > (`ft/onyx_ftoption.h`, `ft/onyx_ftmodule.h`: TrueType fonts only — truetype + sfnt —, anti-aliased
 > — smooth —, hinted by the auto-hinter only — autofit, no bytecode interpreter —, their kerning read
 > — GPOS too —; no compressed, web, bitmap, colour or variable fonts, no PostScript names). FreeType wants a C library: an app using it is a **newlib** app (§5.1;
-> Letters' rule in `user/Makefile` is the model). `#include "ft/fonts.h"` (header-only, one TU):
+> Letters' rule in `user/Makefile` is the model). `#include "fontkit/fonts.h"` (header-only, one TU):
 > `fnt::init ()` finds the families of `SD:/res/fonts` and `SD:/fonts` (each file's family name and
 > style read from its own `name` / `head` / `OS/2` tables — no FreeType, three small reads), sorted;
 > `fnt::count / name / find / styles`; `fnt::get (family, fnt::BOLD | fnt::ITALIC, size in 1/64 px)`
@@ -1512,7 +1528,7 @@ alone**.
 > engine: a coverage buffer a stroke — max of the dabs, the airbrush adds —, each pixel = the original
 > with the colour over it at coverage × opacity × selection; the brushes' dab shapes, the patterns),
 > `pgrad.h` (gradients: stops + midpoints, the presets, GIMP's `.ggr` read / written; the shapes and
-> repeats along a line), `ptext.h` (the Text tool: `ft/fonts.h`'s glyphs laid out into the overlay),
+> repeats along a line), `ptext.h` (the Text tool: `fontkit/fonts.h`'s glyphs laid out into the overlay),
 > `padjust.h` (the colours and filters on the selection, the layer or every layer: the originals kept,
 > each setting applied to them), `raster.h` (the shapes, flips, turns, scaling), `pview.h` (the canvas:
 > the layers as gpucomp textures keyed by their pixels' address — the changed rectangles sent with
@@ -2085,9 +2101,9 @@ alone**.
 >   `uk_u8_len / _get / _next / _prev / _put`, `uk_u8_key (k, out)` (a typed key's UTF-8).
 >   **`UkFaceScope sc (face);`** draws with another face until the end of the scope (a widget's
 >   captions, a display's large digits).
-> - **FreeType's face** (`user/ft/uikitface.h`, header-only, one translation unit; a **newlib** app
+> - **FreeType's face** (`user/Kits/fontkit/uikitface.h`, header-only, one translation unit; a **newlib** app
 >   linking `ft/libft.a`, as Letters — §5.1): **`ft_uikit_install ("DejaVu Sans", 13)`** at the start
->   of `main` (before the `Root` and the widgets) makes an `FtTextFace` on `ft/fonts.h` (the card's
+>   of `main` (before the `Root` and the widgets) makes an `FtTextFace` on `fontkit/fonts.h` (the card's
 >   TrueType families of `SD:/res/fonts` / `SD:/fonts`, anti-aliased, quarter-pixel positioned,
 >   kerned, a small width cache; bold / italic from the family's files or made) and installs it;
 >   false: no TrueType font (the bitmap fonts stay). DejaVu Sans at 13 px has a 16-px line, as the
@@ -2652,7 +2668,7 @@ tools/tests/desktop_sim/shots.sh photos` the screenshots. The mock-ups: `python3
 Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** uikit app
 (`koton.elf` in [`user/Makefile`](../user/Makefile): the engine, MeltySynth and the plugin host are
 separate objects in `Apps/koton/obj/`, the UI is headers included by `main.cpp`), with FreeType text
-(`ft/uikitface.h`: `ft_uikit_install ("DejaVu Sans", 13)` before the Root). Its parts:
+(`fontkit/uikitface.h`: `ft_uikit_install ("DejaVu Sans", 13)` before the Root). Its parts:
 
 | Folder | What |
 |---|---|

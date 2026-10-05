@@ -1,6 +1,6 @@
 //
 // gen_title_font.cpp -- the windows' title font: DejaVu Sans Bold at 13 px rendered by the apps' own
-// FreeType (user/ft/fonts.h: the auto-hinter, the gamma the apps draw with) into SD:/res/fonts/title.aaf,
+// FreeType (user/Kits/fontkit/fonts.h: the auto-hinter, the gamma the apps draw with) into SD:/res/fonts/title.aaf,
 // an anti-aliased bitmap font every app's frame reads (uikit/skin.cpp: no FreeType needed in the app).
 //
 //   sh tools/title_font/build.sh        -> sdcard/res/fonts/title.aaf
@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <vector>
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 
 static void u16 (std::vector<unsigned char> &o, int v) { o.push_back ((unsigned char) (v & 255)); o.push_back ((unsigned char) ((v >> 8) & 255)); }
 static void u32 (std::vector<unsigned char> &o, unsigned v) { for (int i = 0; i < 4; i++) o.push_back ((unsigned char) (v >> (8 * i))); }

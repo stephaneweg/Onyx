@@ -65,7 +65,7 @@ Everywhere: no PDF, PWG Raster at 300 dpi) and the PDF printer. Read `docs/03` �
 an example) and `docs/04` §11 *Printing*.
 
 - **`SD:/lib/printerkit.so`** (`user/Kits/printerkit/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `printerkit/printerkit.abi`,
-  33 entries): the Print dialog and the jobs. The first library that uses others (`ft.so`, `uikit.so`: their
+  33 entries): the Print dialog and the jobs. The first library that uses others (`fontkit.so`, `uikit.so`: their
   stubs linked in, opened on demand; uikit's variables through `--data onyx_uikit_data`).
 - **`printd`** (`user/Apps/printd`): the queue (`SD:/var/spool/print`), the printers (`SD:/etc/printers.ini`),
   a job replayed as a PDF (`printerkit/pdfsink.h`) or rendered (`printerkit/raster.h`, our own MIT rasteriser — the
@@ -151,7 +151,7 @@ recommendation — get the user's answers before writing any code, then record t
 Step 0 (a real random generator behind `kapi_random`, PBKDF2 in the kernel) changes nothing visible and
 can go first. The printing work (`printd`, another session) is taken into account in its section 9.
 
-## Shared libraries: built (2026-10-05) — `SD:/lib/uikit.so`, `SD:/lib/ft.so`, every app on them
+## Shared libraries: built (2026-10-05) — `SD:/lib/uikit.so`, `SD:/lib/fontkit.so`, every app on them
 
 **Where to read**: `docs/SHARED-LIBS-PLAN.md` section 0 (what was built, where it departs from the
 plan, the results), docs/02 §7 *Shared libraries* (the kernel: kapi v83 `lib_open`), docs/03 §5.6 (the
@@ -165,7 +165,7 @@ generator, writing and using a library), **`user/Kits/uikit/abi.h` (the rules �
   **inline** code reaches only the apps rebuilt after it. When the apps are rebuilt against a table
   that grew: raise `uikit >= 1.<entries>` in `tools/pkg/packages.ini` (`[onyx]` and `[*apps]`) and the
   `uikit` version in `versions.ini`.
-- **A new app**: link `lib/uikit.imp.a` (and `lib/ft.imp.a`) — the generic rules of `user/Makefile` do.
+- **A new app**: link `lib/uikit.imp.a` (and `lib/fontkit.imp.a`) — the generic rules of `user/Makefile` do.
   A static constructor of an app may use uikit: the bind constructors run first (priority 101; `user.ld`
   now orders the priorities across files — it did not before).
 - **Jet** links `uikit.so` too since 2026-10-05 (`tools/webkit/build-web.sh` compiles the import side for
@@ -882,8 +882,8 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 Asked by the user: Letters "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
 Letters itself (no RichTextBox). Done:
 
-- **The apps' FreeType** (`user/ft/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
-  `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `ft/fonts.h`: the card's families
+- **The apps' FreeType** (`user/Kits/fontkit/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
+  `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `fontkit/fonts.h`: the card's families
   (`SD:/res/fonts`, `SD:/fonts`), sized fonts, a glyph cache at quarter pixels, the drawing.
 - **Letters** (`user/Apps/letters/`, a newlib app now: `letters.elf` rule): pages (A4, margins,
   page numbers), styles, fonts, sizes, B/I/U/S, super/subscript, colours, highlights,
@@ -911,7 +911,7 @@ a floating selection (moved, nudged, turned, flipped; a click outside puts it do
 `.ora`, PNG, JPEG, BMP, GIF (WebP, PCX); **Export**: PNG, JPEG, BMP, GIF (flattened) — the writers
 in `user/Libs/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
 closed-unsaved picture is recovered. Screenshots `paint.png`, `paint-grid.png`; docs 04 *Paint*,
-03. **Next ideas**: a text tool (it would make Paint a newlib app: `ft/fonts.h`), free-form
+03. **Next ideas**: a text tool (it would make Paint a newlib app: `fontkit/fonts.h`), free-form
 selection, a selection resized by handles, brushes with soft edges, a gradient fill.
 
 ## Cardfile, a small database (2026-09-29, same branch, pushed to `main`)
@@ -1299,7 +1299,7 @@ Koton Studio (the user's C# DAW, `github.com/stephaneweg/MusicTracker`) made aga
 score view: **`docs/daw/README.md`** (the study, the plan, the user's decisions in §8, **where it
 stands and what to test on the Pi in §9**). Code: `user/Apps/koton` (engine/, synth/, plug/, ui/,
 main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/BinUtils/llm.cpp` (the AI's HTTPS
-helper), uikit's text face (`user/ft/uikitface.h`) and studio widgets. Docs: docs/04 *Koton, the
+helper), uikit's text face (`user/Kits/fontkit/uikitface.h`) and studio widgets. Docs: docs/04 *Koton, the
 studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section. Tests:
 `sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
 `sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont

@@ -1,10 +1,10 @@
 //
-// mail/html_ft.h -- Mail's HTML renderer on Onyx: the Host (the card's fonts measured by FreeType -- ft/fonts.h --,
+// mail/html_ft.h -- Mail's HTML renderer on Onyx: the Host (the card's fonts measured by FreeType -- fontkit/fonts.h --,
 // the pictures' sizes) and the Painter (a uikit::Canvas: rectangles blended, FreeType's text, the pictures scaled). The
 // families: Arial / Helvetica / Verdana -> Liberation Sans, Times -> Liberation Serif, Georgia -> Gelasio, Segoe /
 // system-ui -> Selawik, Courier / monospace -> DejaVu Sans Mono. The pictures come from the app (Pictures: a cid:
 // from the message, a remote one once allowed and fetched). Include once, in the app's translation unit, after
-// ft/fonts.h. Part of Mail's own HTML renderer (mail/html.h).
+// fontkit/fonts.h. Part of Mail's own HTML renderer (mail/html.h).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. See mail/util.h for the full notice.
 //
@@ -12,7 +12,7 @@
 #define ONYX_MAIL_HTML_FT_H
 
 #include "mail/html.h"
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 
 namespace mail {
 namespace html {

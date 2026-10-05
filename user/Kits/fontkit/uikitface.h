@@ -4,7 +4,7 @@
 // position). Header-only, like ft/fonts.h: include it once, in the app's one translation unit, and
 // link ft/libft.a -- a newlib app (Letters' rule in user/Makefile is the model).
 //
-//   #include "ft/uikitface.h"
+//   #include "fontkit/uikitface.h"
 //   int main () {
 //       ft_uikit_install ("DejaVu Sans", 13);     // before building the widgets; false: none (bitmap)
 //       Root root (...);  ...
@@ -21,7 +21,7 @@
 #ifndef _ft_uikitface_h
 #define _ft_uikitface_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "uikit/text.h"
 
 class FtTextFace : public uikit::TextFace

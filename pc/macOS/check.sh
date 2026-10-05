@@ -17,14 +17,14 @@ ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
 	gcc -O2 -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-		-I"$U/ft" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o" &
+		-I"$U/Kits/fontkit" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o" &
 done; wait
 ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 $CXX -c "$HERE/hostkapi.cpp" -o "$OUT/hostkapi.o"
 $CXX -c "$HERE/headless.cpp" -o "$OUT/headless.o"
 # (hostkapi.o first: its table is placed before the apps' constructors run)
 $CXX -o "$OUT/ledger" "$OUT/hostkapi.o" "$OUT/headless.o" "$U/Apps/ledger/main.cpp" "$OUT/libuikit.a" -lpthread
-$CXX -I"$U/ft" -I"$FT/include" -o "$OUT/helpers/Letters.app/Contents/MacOS/Letters" "$OUT/hostkapi.o" "$OUT/headless.o" "$U/Apps/letters/main.cpp" \
+$CXX -I"$U/Kits/fontkit" -I"$FT/include" -o "$OUT/helpers/Letters.app/Contents/MacOS/Letters" "$OUT/hostkapi.o" "$OUT/headless.o" "$U/Apps/letters/main.cpp" \
 	"$OUT/libuikit.a" "$OUT/libft.a" -lpthread
 sh "$HERE/card.sh" "$OUT/base"
 export ONYX_SD="$OUT/user" ONYX_DOCS="$OUT/docs" ONYX_SD_BASE="$OUT/base" ONYX_HELPERS="$OUT/helpers"

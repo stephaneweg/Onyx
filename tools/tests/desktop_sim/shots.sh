@@ -30,12 +30,12 @@ want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 
 for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
-# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Letters'
+# the apps' TrueType-only FreeType (user/Kits/fontkit/, as user/Makefile builds it for the Pi): Letters'
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 mkdir -p "$OUT/ft"
 for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
+	-Iuser/Kits/fontkit -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # AudioKit for the PC (on Onyx: SD:/lib/audiokit.so): its own sources, the decoders, MeltySynth -- made
 # (the Media Player, FM Tracker, BASIC, and every program that plays a note: the voices are its FM synthesizer)
@@ -57,13 +57,13 @@ build () {
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
 		for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o" || return 1; done
-		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libuikit.a" "$OUT/libft.a"
+		$CXX -I$K -Iuser/Kits/fontkit -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libuikit.a" "$OUT/libft.a"
 		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
 	fi
 	if [ "$1" = archiver ]; then			# (newlib-like: FreeType; FileKit -- its engine and zlib -- compiled in)
 		mkdir -p "$OUT/zlib"
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/$f.o" || return 1; done
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/Kits/filekit -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp user/Kits/filekit/fkcore.cpp \
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/Kits/filekit -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp user/Kits/filekit/fkcore.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
 	if [ "$1" = media ]; then			# (newlib-like: FreeType; AudioKit: the decoders, MeltySynth)
@@ -71,7 +71,7 @@ build () {
 		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/Libs/av, its codecs, FFmpeg for the PC)
 		sh third_party/ffmpeg-7.1.2/onyx/build.sh host "$FFH" || return 1
 		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1
-		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT/libaudiokit.a" \
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT/libaudiokit.a" \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
@@ -81,7 +81,7 @@ build () {
 			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
 		fi
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o" || return 1; done
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = mail ]; then			# (Mail: mbedTLS built for the PC, as the Package Manager's; its demo accounts' maker)
@@ -90,36 +90,36 @@ build () {
 			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
 			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
 		fi
-		$CXX -Iuser/ft -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
+		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
 		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
 			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
 	fi
 	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
 		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
 		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
 			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
-		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
-		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	case " letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" $AK
 }

@@ -1063,7 +1063,7 @@ it: `ed notes.txt < edits.txt`.
 ### Shared libraries (`SD:/lib`)
 
 The apps do not each carry a copy of the toolkit and of the text renderer: they share
-**`SD:/lib/uikit.so`** (the widgets, the windows' frames, the theme) and **`SD:/lib/ft.so`**
+**`SD:/lib/uikit.so`** (the widgets, the windows' frames, the theme) and **`SD:/lib/fontkit.so`**
 (FreeType: the TrueType text); **`SD:/lib/printerkit.so`** (package **print**) is the Print dialog and the
 apps' print jobs. Each is loaded **once** — the first app that needs it reads it from
 the card, the others map the copy already in memory — and stays while an app uses it; `preload`

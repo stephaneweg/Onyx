@@ -5,7 +5,7 @@
 #ifndef _pdf_ui_h
 #define _pdf_ui_h
 
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 
 namespace pdfv {

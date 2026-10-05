@@ -23,7 +23,7 @@
 #include "bmp.hpp"
 #include "wallpaper.h"
 #include "img/imgload.hpp"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "system.h"
 
 using namespace uikit;

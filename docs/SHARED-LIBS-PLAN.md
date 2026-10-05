@@ -1,8 +1,8 @@
 # Onyx: shared libraries behind an export table — the decided design and the plan
 
 *Status (2026-10-05): **built, on the Pi.** The kernel loads shared libraries (kapi v83
-`lib_open`), `SD:/lib/ft.so` (FreeType) and `SD:/lib/uikit.so` (the toolkit) exist, and **every app of
-`user/` is built against them** (`lib/uikit.imp.a`, `lib/ft.imp.a`). What was built, where it departs
+`lib_open`), `SD:/lib/fontkit.so` (FreeType) and `SD:/lib/uikit.so` (the toolkit) exist, and **every app of
+`user/` is built against them** (`lib/uikit.imp.a`, `lib/fontkit.imp.a`). What was built, where it departs
 from the plan below, and what is tested: **section 0**. The reference documentation is docs/02 §7
 *Shared libraries* (the kernel) and docs/03 §5.6 *Shared libraries* (writing and using one); the rules
 that keep old programs working are in `user/Kits/uikit/abi.h`. The study that led here, and the user-space
@@ -15,9 +15,9 @@ English.*
 |---|---|---|
 | 1a | The kernel: a library is an image (`ET_DYN` at 0, `ELF_KIND_LIB`), placed once in the arena 16 GB..32 GB (`LibPlace`), its `R_AARCH64_RELATIVE` relocations applied once to the data's copy (`LibRelocate`), up to 16 per address space (`ImageMapLib`), `kapi_lib_open` (slot 261), `KAPI_IMG_LIB`, preload of a library | `kernel/proc/elf.cpp`, `proc/image.cpp`, `kernel.cpp` `LibraryOpen`, `sys/kapi.cpp` |
 | 1a | The user side: `user/Runtime/lib.h` (`TLibImports`, `TLibHeader`, `lib_bind`), `user/Runtime/librt.cpp` (a library's runtime), `user/Runtime/lib.ld`, `lib.vers`; the test library `user/Libs/demo`, `/bin/libtest` | |
-| 1b | The generator `tools/libgen/libgen.py`; `ft.so` (FreeType's public API: 135 entries, `user/ft/ft.abi`; `user/ft/ftso.c`) | `user/Makefile` |
+| 1b | The generator `tools/libgen/libgen.py`; `fontkit.so` (FreeType's public API: 135 entries, `user/Kits/fontkit/fontkit.abi`; `user/Kits/fontkit/ftso.c`) | `user/Makefile` |
 | 1c | `uikit.so` (683 entries, `user/Kits/uikit/uikit.abi`), the globals shared with the programs (`uikit/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`uikit/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`uikit/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/Ports/doom/Makefile` |
-| + | `printerkit.so` (33 entries, `user/Kits/printerkit/printerkit.abi`): printing (docs/03 §5.7) — the first library that uses others (`ft.so`, `uikit.so`: their import stubs linked in, opened on demand; uikit's variables through the importer's table) | `user/Makefile` |
+| + | `printerkit.so` (33 entries, `user/Kits/printerkit/printerkit.abi`): printing (docs/03 §5.7) — the first library that uses others (`fontkit.so`, `uikit.so`: their import stubs linked in, opened on demand; uikit's variables through the importer's table) | `user/Makefile` |
 | | Packages `uikit` and `ft` (required), `needs = uikit >= 1.683, ft` on `onyx` and on every app | `tools/pkg/packages.ini` |
 
 **Where it departs from the plan below — the mechanism of sections 4.3 and 5.1–5.2 (the defaults
@@ -201,10 +201,10 @@ the table it describes — produces:
 
 ### 4.4 FreeType first (step 1b)
 
-`ft/libft.a` (FreeType) becomes `SD:/lib/ft.so`: the FreeType calls Onyx's code uses (count them from
-`ft/fonts.h`, `ft/uikitface.h`, the apps — `grep -ho "FT_[A-Za-z_]*" user` gives the list) in its table,
+`ft/libft.a` (FreeType) becomes `SD:/lib/fontkit.so`: the FreeType calls Onyx's code uses (count them from
+`fontkit/fonts.h`, `fontkit/uikitface.h`, the apps — `grep -ho "FT_[A-Za-z_]*" user` gives the list) in its table,
 its memory through `FT_Memory` over the importer's allocator, its file access through the kapi. The
-header-only `ft/fonts.h` / `ft/uikitface.h` stay in the apps at this step (they call FreeType through the
+header-only `fontkit/fonts.h` / `fontkit/uikitface.h` stay in the apps at this step (they call FreeType through the
 table). C: no layouts beyond FreeType's own public structs, which FreeType keeps stable.
 
 ## 5. uikit as a library: the C++ rules (step 1c)
@@ -282,7 +282,7 @@ So that additions keep old apps working (D5):
 - **Inline code with logic** (`widget.h:21-104`: `uk_fw` / `uk_fh`, the thumb arithmetic,
   `UkBarDrag`; `text.h` `UkFaceScope`; `skin.h` `uk_tint`; inline accessors of `root.h`): into the
   library unless trivial — what stays inline is frozen in the apps.
-- **`ft/fonts.h`, `ft/uikitface.h`** (header-only FreeType glue): into `ft.so` or `uikit.so` (to decide
+- **`fontkit/fonts.h`, `fontkit/uikitface.h`** (header-only FreeType glue): into `fontkit.so` or `uikit.so` (to decide
   then; uikit's text face is the natural owner).
 - **`onyxpp.hpp`**: the apps keep defining `operator new` / `delete`; the bind object passes them to
   `init` (P3). The library defines its own `operator new` / `delete` over `TLibImports`.
@@ -337,7 +337,7 @@ collect the log.
 
 The FreeType apps (Letters, Calendar, Sheet, Mail, the Control Panel's applets...) draw their text as
 before (compare screenshots: `screen_grab` through `/bin/screenshot`, or `shots.sh` on the PC);
-`image_list`: `ft.so` once; the binaries' sizes go down by ~92 KB each.
+`image_list`: `fontkit.so` once; the binaries' sizes go down by ~92 KB each.
 
 ### Pi, step 1c — uikit
 
@@ -360,7 +360,7 @@ before (compare screenshots: `screen_grab` through `/bin/screenshot`, or `shots.
   library (the kernel's file hook also drops the name).
 - The onyx package (the kernel, v83) before any app that needs `lib_open`: an app's `needs` include the
   onyx version with v83.
-- `sdcard/etc/preload.ini` (the Preload applet): propose `SD:/lib/uikit.so` and `SD:/lib/ft.so`.
+- `sdcard/etc/preload.ini` (the Preload applet): propose `SD:/lib/uikit.so` and `SD:/lib/fontkit.so`.
 
 ## 8. Licences
 
@@ -394,7 +394,7 @@ to update when each one becomes a library.
   disturb it (its widgets, its derived class, its callback, the same layout); a program built against
   N+1 uses them; (d) the program built against N+1 is refused by the library N, with *needs the shared
   library "uikitc" (version 684 or later): the one installed is older*.
-- Sizes: `uikit.so` 320 KB of code shared + 64 KB of data per process, `ft.so` 192 KB + 64 KB. An app's
+- Sizes: `uikit.so` 320 KB of code shared + 64 KB of data per process, `fontkit.so` 192 KB + 64 KB. An app's
   file: Calendar 862 KB → 246 KB, wtkdemo 229 KB → 195 KB; `sdcard/apps` as a whole 74 MB → 58 MB.
 
 **Found on the way:** `user.ld` did not order the constructors' priorities across files (a static

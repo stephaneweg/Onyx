@@ -48,12 +48,12 @@ rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
 	bg $CC $FLAGS -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-		-I"$U/ft" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o"
+		-I"$U/Kits/fontkit" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o"
 done; done_bg
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # ---- the programs (hostkapi.o first: the table placed before the apps' constructors run) ------------------------
 bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libuikit.a" -framework Cocoa
-bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/letters/main.cpp" \
+bg $CXX $CXXF -I"$U/Kits/fontkit" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/letters/main.cpp" \
 	"$OUT/libuikit.a" "$OUT/libft.a" -framework Cocoa
 done_bg
 

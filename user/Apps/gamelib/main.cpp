@@ -34,7 +34,7 @@
 #include "gamepad.h"
 #include "bmp.hpp"
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 #include "gb/gb.h"
 #include "gba/gba.h"
 #include "nes/nes.h"

@@ -4,8 +4,8 @@
 // The Print dialog is printerkit/dialog.cpp.
 //
 // The library uses two others, opened when first needed (kapi_lib_open: the same tables the program has,
-// or the libraries loaded for us): FreeType (ft.so) for print_text's glyphs and advances, uikit (uikit.so) for
-// the dialog. Their import stubs are linked in; they go through onyx_ft_table / onyx_uikit_table, set here.
+// or the libraries loaded for us): FreeType (fontkit.so) for print_text's glyphs and advances, uikit (uikit.so) for
+// the dialog. Their import stubs are linked in; they go through onyx_fontkit_table / onyx_uikit_table, set here.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -28,7 +28,7 @@ using namespace pprt;
 
 extern "C" {
 int onyx_lib_init (const TLibImports *imp);		// (librt.cpp)
-const void *onyx_ft_table;				// the import stubs' tables (lib/ft_stubs.o, lib/uikit_stubs.o)
+const void *onyx_fontkit_table;				// the import stubs' tables (lib/fontkit_stubs.o, lib/uikit_stubs.o)
 const void *onyx_uikit_table;
 }
 
@@ -47,7 +47,7 @@ static const void *open_lib (const char *name, unsigned version)
 	const TLibHeader *t = (const TLibHeader *) kapi_lib_open (name, version, &err);
 	return t != 0 && t->init (&s_imp) >= 0 ? t : 0;
 }
-bool print__need_ft ()	{ if (!onyx_ft_table) onyx_ft_table = open_lib ("ft", 116); return onyx_ft_table != 0; }
+bool print__need_ft ()	{ if (!onyx_fontkit_table) onyx_fontkit_table = open_lib ("fontkit", 116); return onyx_fontkit_table != 0; }
 bool print__need_uikit ()	{ if (!onyx_uikit_table) onyx_uikit_table = open_lib ("uikit", 683); return onyx_uikit_table != 0; }
 
 // ---- the fonts of the card: each file's family and style, read from its tables (not the whole file) ----

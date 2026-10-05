@@ -17,7 +17,7 @@
 // Files: SD:/courier/ (model.h says which). "courier <file.json>" imports it.
 //
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "docguard.h"
 #include "Apps/courier/dialogs.h"
 

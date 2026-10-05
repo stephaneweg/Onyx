@@ -26,7 +26,7 @@
 #include "applet_proto.h"
 #include "img/imgload.hpp"
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace uikit;
 

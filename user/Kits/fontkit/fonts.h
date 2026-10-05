@@ -1,6 +1,6 @@
 //
 // ft/fonts.h -- the apps' TrueType text (Letters' pages): the fonts on the card by family, at
-// any size, their glyphs rendered by FreeType (user/ft/: TrueType only, anti-aliased, auto-
+// any size, their glyphs rendered by FreeType (user/Kits/fontkit/: TrueType only, anti-aliased, auto-
 // hinted vertically) and cached. Header-only: include it once, in the app's one translation unit;
 // link ft/libft.a (a newlib app: FreeType wants a libc).
 //

@@ -15,7 +15,7 @@
 #ifndef _writer_layout_h
 #define _writer_layout_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "doc.h"
 
 namespace wr {

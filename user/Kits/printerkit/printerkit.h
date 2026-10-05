@@ -23,7 +23,7 @@
 // PDF file for the PDF printer, pages of pixels at its resolution for a network printer -- and tells the
 // user when the job is done. The app does not wait for the printer.
 //
-// A program links lib/printerkit.imp.a (with lib/uikit.imp.a and lib/ft.imp.a: the dialog is uikit's, the text
+// A program links lib/printerkit.imp.a (with lib/uikit.imp.a and lib/fontkit.imp.a: the dialog is uikit's, the text
 // FreeType's). The table is append-only (printerkit/printerkit.abi): these functions never change.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby

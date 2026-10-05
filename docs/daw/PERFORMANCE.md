@@ -78,8 +78,8 @@ a sample.
 3. **Cached work**:
    - the blocks' thumbnails (the notes drawn inside each module) are rebuilt only when the
      document's `revision` changed (`rebuildThumbs`), not at each redraw, scroll or playhead move;
-   - the anti-aliased text: FreeType glyphs cached per quarter-pixel position (`user/ft/fonts.h`),
-     and the labels' widths remembered (`user/ft/uikitface.h`).
+   - the anti-aliased text: FreeType glyphs cached per quarter-pixel position (`user/Kits/fontkit/fonts.h`),
+     and the labels' widths remembered (`user/Kits/fontkit/uikitface.h`).
 4. **Recompiling the song is debounced** (`main.cpp`, `KotonRoot::onTick`): after an edit, once the
    edits pause for ~60 ms (6 ticks), or at most every 250 ms during a long drag — not on every
    mouse move. The mixer (volume, pan, mute, solo) is synced without any compile.

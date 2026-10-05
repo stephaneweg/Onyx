@@ -29,10 +29,10 @@ $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
+	-Iuser/Kits/fontkit -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
-$CXX -Iuser/ft -I$FT/include -o "$OUT/ledger" "$OUT/fakekapi.o" user/Apps/ledger/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
-$CXX -Iuser/ft -I$FT/include -o "$OUT/letters" "$OUT/fakekapi.o" user/Apps/letters/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
+$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/ledger" "$OUT/fakekapi.o" user/Apps/ledger/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
+$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/letters" "$OUT/fakekapi.o" user/Apps/letters/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
 wait
 
 # ---- the running --------------------------------------------------------------------------------------------

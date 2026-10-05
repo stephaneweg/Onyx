@@ -1,7 +1,7 @@
 //
 // letters -- Onyx's word processor, in the way of AbiWord / Word: the document laid out on pages (A4
 // by default) and drawn by Letters itself with FreeType's glyphs from the TrueType fonts of the card
-// (user/ft/fonts.h), at any zoom; two toolbars (the file, the edits, a table, the zoom -- the style,
+// (user/Kits/fontkit/fonts.h), at any zoom; two toolbars (the file, the edits, a table, the zoom -- the style,
 // the font, the size, bold / italic / underline / strike-through, superscript / subscript, the text's
 // colour and its highlight, the alignments, the lists, the indents), a ruler (the margins, the
 // paragraph's indents, a table's columns dragged), a status bar (the file, the page, the words, the
@@ -26,7 +26,7 @@
 //
 #include "uikit/uikit.h"
 #include "docguard.h"
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "ui.h"
 #include "fileio.h"
 #include "docx.h"

@@ -8,7 +8,7 @@
 #ifndef _mail_ui_h
 #define _mail_ui_h
 
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "mail/util.h"
 

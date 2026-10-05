@@ -10,7 +10,7 @@
 #define _slides_text_h
 
 #include "model.h"
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 
 namespace sl {
 

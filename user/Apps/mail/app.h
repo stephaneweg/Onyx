@@ -7,7 +7,7 @@
 #ifndef _mail_app_h
 #define _mail_app_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "Apps/mail/ui.h"
 #include "Apps/mail/model.h"
 #include "mail/html_ft.h"

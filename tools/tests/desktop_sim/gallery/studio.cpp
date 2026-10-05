@@ -2,14 +2,14 @@
 // studio -- (the desktop simulator only) the studio widgets of uikit (Knob, VuMeter, SegmentedControl,
 // ToolBar + ToolButton, LcdDisplay) among the classic controls, for a look at them -- in the
 // theme of the card, or a dark studio palette (SIM_DARK=1) -- and at uikit's text through a FreeType
-// face (built with -DWITH_FT: ft/uikitface.h, DejaVu Sans 13 px; SIM_FT="Family,px" another). Built
+// face (built with -DWITH_FT: fontkit/uikitface.h, DejaVu Sans 13 px; SIM_FT="Family,px" another). Built
 // and run by tools/tests/desktop_sim/studio.sh.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #ifdef WITH_FT
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #endif
 #include <stdlib.h>
 #include <stdio.h>

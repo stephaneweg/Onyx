@@ -20,7 +20,7 @@
 // "koton SD:/koton/songs/a.kson" opens it.
 //
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "ui/chrome.h"
 #include "ui/ai_dialog.h"
 #include "ui/chain.h"

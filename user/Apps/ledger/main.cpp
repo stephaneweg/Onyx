@@ -23,7 +23,7 @@
 // (SD:/apps/ledger.app/last.txt), else it welcomes: a new company, a file, the demo company.
 //
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
+#include "fontkit/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "docguard.h"
 #include "ui.h"
 #include "pick.h"

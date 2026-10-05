@@ -40,7 +40,7 @@ APPS = tinycalc tinypad cppdemo \
        mandelbrot minesweeper \
        eyes voronoy irc spin wtkdemo shell notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
 
-# The apps whose text is FreeType's (DejaVu Sans through uikit's face, ft/uikitface.h): newlib apps as
+# The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
 FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman
 FT_APP_ELFS = $(FT_APPS:=.elf)
@@ -90,36 +90,36 @@ lib/%_stubs.o: lib/%_stubs.S
 	$(CC) -c $< -o $@
 lib/%_bind.o: lib/%_bind.cpp Runtime/lib.h Kits/appkit/appkit.h
 	$(CXX) $(IMP_CXXFLAGS) -c $< -o $@
-lib/ft.imp.a: lib/ft_stubs.o lib/ft_bind.o
+lib/fontkit.imp.a: lib/fontkit_stubs.o lib/fontkit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 .PRECIOUS: lib/%_table.S lib/%_stubs.S lib/%_bind.cpp lib/%_table.o lib/%_stubs.o lib/%_bind.o
 
-# ---- ft.so: FreeType (the apps' TrueType-only build: ft/onyx_ftoption.h, ft/onyx_ftmodule.h) as a
+# ---- fontkit.so: FreeType (the apps' TrueType-only build: Kits/fontkit/onyx_ftoption.h, Kits/fontkit/onyx_ftmodule.h) as a
 # shared library. Its table: FreeType's public API (the functions its public headers declare: the list
-# lib/ft.exports), in ft/ft.abi's order. ft/ftso.c: its memory through the importer's allocator; the
+# lib/ft.exports), in Kits/fontkit/fontkit.abi's order. Kits/fontkit/ftso.c: its memory through the importer's allocator; the
 # string functions, qsort and setjmp from the toolchain's newlib, linked in.
 FT_SRC = ../third_party/freetype-2.14.3
 FT_SO_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections \
 	       -I. -I../kernel/include -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts
 FT_SO_OBJ = $(addprefix lib/ft/,ftsystem.o ftinit.o ftdebug.o ftbase.o ftbitmap.o ftsynth.o autofit.o truetype.o sfnt.o smooth.o)
-lib/ft/%.o: %.c ft/onyx_ftoption.h ft/onyx_ftmodule.h
+lib/ft/%.o: %.c Kits/fontkit/onyx_ftoption.h Kits/fontkit/onyx_ftmodule.h
 	@mkdir -p lib/ft
 	$(CC) $(FT_SO_CFLAGS) -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
-	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -Ift -I$(FT_SRC)/include -c $< -o $@
-lib/ft/ftso.o: ft/ftso.c Runtime/lib.h Kits/appkit/appkit.h
+	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -IKits/fontkit -I$(FT_SRC)/include -c $< -o $@
+lib/ft/ftso.o: Kits/fontkit/ftso.c Runtime/lib.h Kits/appkit/appkit.h
 	@mkdir -p lib/ft
 	$(CC) $(FT_SO_CFLAGS) -Wall -c $< -o $@
 lib/ft.exports: $(wildcard $(FT_SRC)/include/freetype/*.h)
 	@mkdir -p lib
 	@grep -hoE "^  FT_[A-Za-z0-9_]+\(" $^ | sed 's/^  //; s/($$//' | sort -u > $@
-lib/ft_table.S: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft.exports ../tools/libgen/libgen.py
-	$(LIBGEN) --name ft --abi ft/ft.abi --init ft_lib_init --export-file lib/ft.exports --allow-data . \
-		--table lib/ft_table.S --stubs lib/ft_stubs.S --bind lib/ft_bind.cpp $(FT_SO_OBJ)
-lib/ft_stubs.S lib/ft_bind.cpp: lib/ft_table.S ;
+lib/fontkit_table.S: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft.exports ../tools/libgen/libgen.py
+	$(LIBGEN) --name fontkit --abi Kits/fontkit/fontkit.abi --init ft_lib_init --export-file lib/ft.exports --allow-data . \
+		--table lib/fontkit_table.S --stubs lib/fontkit_stubs.S --bind lib/fontkit_bind.cpp $(FT_SO_OBJ)
+lib/fontkit_stubs.S lib/fontkit_bind.cpp: lib/fontkit_table.S ;
 LIBC_A   := $(shell $(CC) -mcpu=cortex-a72 -print-file-name=libc.a)
 LIBGCC_A := $(shell $(CC) -mcpu=cortex-a72 -print-libgcc-file-name)
-lib/ft.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft_table.o lib/librt.o $(LIB_KAPI)
+lib/fontkit.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/fontkit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
 
 UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h Runtime/onyxpp.hpp Include/applet_proto.h Include/bmp.hpp Include/clipboard.h Include/gamepad.h Include/notify.h
@@ -167,20 +167,20 @@ lib/uikit.imp.a: lib/uikit_stubs.o lib/uikit_bind.o lib/uikit_globals.o
 # ---- printerkit.so: printing (Kits/printerkit/printerkit.h; docs/03 "Printing") -- a job's pages recorded, the Print dialog.
 # Its table: the print_ functions (Kits/printerkit/printerkit.abi). The first library that uses others: FreeType (the
 # text's glyphs) and uikit (the dialog), through their import stubs linked in -- Kits/printerkit/printerkit.cpp opens
-# ft.so / uikit.so when first needed and sets the stubs' tables. uikit's variables are the program's, as for
+# fontkit.so / uikit.so when first needed and sets the stubs' tables. uikit's variables are the program's, as for
 # uikit.so itself: uikit's globals.o (the library build: references bound through the importer's table) and
 # --data onyx_uikit_data in the bind object. Floats in its interface: FP/SIMD flags.
 PRINT_HDR = $(wildcard Kits/printerkit/*.h) Libs/pdf/pdfwrite.h Libs/img/pngsave.hpp
 PRINT_SO_OBJ = lib/printerkit/printerkit.o lib/printerkit/dialog.o
 lib/printerkit/%.o: Kits/printerkit/%.cpp $(PRINT_HDR) $(UIKIT_HDR) $(LIB_DEP)
 	@mkdir -p lib/printerkit
-	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Ift -I$(FT_SRC)/include -c $< -o $@
+	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -IKits/fontkit -I$(FT_SRC)/include -c $< -o $@
 lib/printerkit_table.S: $(PRINT_SO_OBJ) Kits/printerkit/printerkit.abi ../tools/libgen/libgen.py
 	$(LIBGEN) --name printerkit --abi Kits/printerkit/printerkit.abi --init print_lib_init --export '^print_' --exclude '^print_lib_init$$' 		--allow-data '^onyx_' --data onyx_uikit_data --table lib/printerkit_table.S --stubs lib/printerkit_stubs.S --bind lib/printerkit_bind.cpp $(PRINT_SO_OBJ)
 Kits/printerkit/printerkit.abi:
 	@touch $@
 lib/printerkit_stubs.S lib/printerkit_bind.cpp: lib/printerkit_table.S ;
-lib/printerkit.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/ft_stubs.o lib/printerkit_table.o lib/librt.o $(LIB_KAPI)
+lib/printerkit.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/fontkit_stubs.o lib/printerkit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBGCC_A)
 lib/printerkit.imp.a: lib/printerkit_stubs.o lib/printerkit_bind.o
 	@rm -f $@
@@ -303,9 +303,9 @@ lib/appkit_stubs.S: lib/appkit_table.S ;
 lib/appkit.so: lib/appkit/appkit.o lib/appkit_table.o
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBGCC_A)
 
-SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so
+SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/appkit_stubs.o lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a
+libs: $(SHLIBS) lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a
 
 # Doom (Ports/doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -347,10 +347,10 @@ $(APP_ELFS): %.elf: Apps/%/main.cpp Runtime/crt0.S Runtime/user.ld Kits/appkit/a
 	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Libs/v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
-# as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
+# as Doom's), with the apps' TrueType-only FreeType (Kits/fontkit/: its options and modules -- no bytecode
 # interpreter, no compressed / web / bitmap fonts --, the upstream sources of third_party).
-# FreeType is the shared library SD:/lib/ft.so (above): the apps link its import library
-# lib/ft.imp.a. (ft/libft.a, the static build, is still made by `make ft/libft.a`: nothing links it.)
+# FreeType is the shared library SD:/lib/fontkit.so (above): the apps link its import library
+# lib/fontkit.imp.a. (Kits/fontkit/libft.a, the static build, is still made by `make Kits/fontkit/libft.a`: nothing links it.)
 NL_CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	     -ffunction-sections -fdata-sections -I. -I../kernel/include -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts
 NL_CXXFLAGS = $(NL_CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
@@ -361,11 +361,11 @@ vpath autofit.c $(FT_SRC)/src/autofit
 vpath truetype.c $(FT_SRC)/src/truetype
 vpath sfnt.c $(FT_SRC)/src/sfnt
 vpath smooth.c $(FT_SRC)/src/smooth
-FT_OBJ = $(addprefix ft/,ftsystem.o ftinit.o ftdebug.o ftbase.o ftbitmap.o ftsynth.o autofit.o truetype.o sfnt.o smooth.o)
-ft/%.o: %.c ft/onyx_ftoption.h ft/onyx_ftmodule.h
+FT_OBJ = $(addprefix Kits/fontkit/,ftsystem.o ftinit.o ftdebug.o ftbase.o ftbitmap.o ftsynth.o autofit.o truetype.o sfnt.o smooth.o)
+Kits/fontkit/%.o: %.c Kits/fontkit/onyx_ftoption.h Kits/fontkit/onyx_ftmodule.h
 	$(CC) $(NL_CFLAGS) -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
-	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -Ift -I$(FT_SRC)/include -c $< -o $@
-ft/libft.a: $(FT_OBJ)
+	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -IKits/fontkit -I$(FT_SRC)/include -c $< -o $@
+Kits/fontkit/libft.a: $(FT_OBJ)
 	$(AR) rcs $@ $^
 Runtime/libc/crt0libc.o: Runtime/libc/crt0libc.S
 	$(CC) $(NL_CFLAGS) -c $< -o $@
@@ -373,55 +373,55 @@ Runtime/libc/onyx_syscalls.o: Runtime/libc/onyx_syscalls.c Kits/appkit/appkit.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 # Letters: its model, layout and files in Apps/letters/*.h (the mail merge reads Cardfile's forms: its model.h;
 # .docx / .odt: the PNG writer's zip / deflate).
-letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h Libs/img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
+letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h Libs/img/pngsave.hpp Kits/fontkit/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/fontkit.imp.a \
 	    lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h Include/docguard.h Include/clipboard.h
-	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 # The spreadsheet: a newlib app as Letters (FreeType, stdio, doubles) -- its engine and files in
 # Apps/sheet/*.h, Letters' icons, the PNG writer's zip / deflate for the .xlsx.
-sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h Libs/img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
+sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h Libs/img/pngsave.hpp Kits/fontkit/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/fontkit.imp.a \
 	   lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h Include/docguard.h Include/clipboard.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # Slides, the presentation program (Apps/slides: docs/slides/README.md): a newlib app as Letters (FreeType), its
 # slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
 # .odp's zip (Libs/img/pngsave.hpp), the PDF writer.
 slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
-	    Libs/img/pngsave.hpp Libs/pdf/pdfwrite.h ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Libs/gpucomp/libgpucomp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o \
+	    Libs/img/pngsave.hpp Libs/pdf/pdfwrite.h Kits/fontkit/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/fontkit.imp.a lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Libs/gpucomp/libgpucomp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o \
 	    Runtime/user.ld Kits/appkit/appkit.h Include/docguard.h Include/clipboard.h
-	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a Libs/gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a Libs/gpucomp/libgpucomp.a lib/fontkit.imp.a -lm -o $@
 
 # QBStudio, the IDE for desktop apps in BASIC (Apps/qbstudio: docs/qbstudio/README.md): a newlib app as Letters
 # (FreeType's text through uikit, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
 # problems as you type, Make App's .bax).
 qbstudio.elf: Apps/qbstudio/main.cpp $(wildcard Apps/qbstudio/*.h) Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
-	      Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h Include/clipboard.h Include/notify.h
-	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	      Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h Include/clipboard.h Include/notify.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Letters (FreeType's text through
 # uikit), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/BinUtils's
 # TLS tools link them).
 COURIER_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) Include/http.hpp Libs/tls/onyx_tls.hpp Include/json.hpp Include/clipboard.h Include/docguard.h 	     Libs/img/imgload.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/ft.imp.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) Include/http.hpp Libs/tls/onyx_tls.hpp Include/json.hpp Include/clipboard.h Include/docguard.h 	     Libs/img/imgload.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/fontkit.imp.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Letters (FreeType's text through uikit), its
 # protocols and its HTML renderer in Libs/mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (uikit's imgload).
 MAIL_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard Libs/mail/*.h) Apps/cardfile/model.h Libs/tls/onyx_tls.hpp Include/clipboard.h Include/notify.h Include/fileassoc.h Include/applet_proto.h Apps/jet/webview_proto.h \
-	  Libs/img/imgload.hpp lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/uikit.imp.a lib/ft.imp.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+	  Libs/img/imgload.hpp lib/fontkit.imp.a Kits/fontkit/fonts.h Kits/fontkit/uikitface.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/uikit.imp.a lib/fontkit.imp.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # uikit), the image codecs (uikit's imgload), the JPEG / PNG writers (Libs/img/pngsave.hpp), the PDF writer (Libs/pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) Libs/img/imgload.hpp Libs/img/pngsave.hpp Libs/pdf/pdfwrite.h Include/clipboard.h Include/notify.h Include/trash.h Include/wallpaper.h \
-	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	  lib/fontkit.imp.a Kits/fontkit/fonts.h Kits/fontkit/uikitface.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Letters (FreeType's text
 # through uikit), its engine and widgets headers included by main.cpp; zlib (Deflate) built from third_party into
@@ -434,9 +434,9 @@ Libs/zlib/%.o: $(ZLIB_SRC)/%.c
 Libs/zlib/libz.a: $(ZLIB_OBJ)
 	$(AR) rcs $@ $^
 archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) Kits/filekit/filekit.h Kits/filekit/arcbase.h Kits/filekit/arcpath.h Include/fileassoc.h \
-	      lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a lib/filekit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -IApps/archiver -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/filekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	      lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -IApps/archiver -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/filekit.imp.a lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # The shared clipboard (docs/clipboard/README.md): clipd, its service (no window, newlib), and clipboard, its widget
 # (the dock's button; FreeType's text). The apps reach clipd through Include/clipboard.h (Include/clipproto.h).
@@ -444,20 +444,20 @@ clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h Include/clipproto.h Include/not
 	$(CXX) $(NL_CXXFLAGS) -IApps/clipd $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< -o $@
 # The print service (docs/03 "Printing"): printd, no window, newlib -- the queue, the printers, a job's pages
 # rendered (Kits/printerkit/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (Kits/printerkit/ipp.h).
-printd.elf: Apps/printd/main.cpp $(PRINT_HDR) Include/notify.h lib/ft.imp.a lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
-clipboard.elf: Apps/clipboard/main.cpp Include/clipboard.h Include/clipproto.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a \
+printd.elf: Apps/printd/main.cpp $(PRINT_HDR) Include/notify.h lib/fontkit.imp.a lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
+clipboard.elf: Apps/clipboard/main.cpp Include/clipboard.h Include/clipproto.h lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a \
 	       Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
 # update daemon (no window) -- on Libs/pkg/pkglib.h as BinUtils/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
 PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 PKG_DEPS = Libs/pkg/pkglib.h Include/http.hpp Libs/tls/onyx_tls.hpp $(wildcard Kits/filekit/*.h) Libs/zlib/libz.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) Include/bmp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a
-	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
-	       $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< lib/uikit.imp.a lib/ft.imp.a Libs/zlib/libz.a \
+pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) Include/bmp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a
+	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
+	       $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< lib/uikit.imp.a lib/fontkit.imp.a Libs/zlib/libz.a \
 	       -L$(PKG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) Include/notify.h
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
@@ -468,14 +468,14 @@ pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) Include/notify.h
 # through uikit), the PNG / JPEG / BMP writers of Libs/img/pngsave.hpp, the clipboard (clipd) and notifyd.
 # Paint: a newlib app (FreeType's text, its Text tool), its canvas composited by the GPU (gpucomp: the
 # layers as textures, their blend modes); its pieces in Apps/paint/*.h.
-paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) Include/clipboard.h Include/docguard.h Libs/img/imgload.hpp Libs/img/pngsave.hpp lib/ft.imp.a \
-	   ft/uikitface.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Libs/gpucomp/libgpucomp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a Libs/gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
-screenshot.elf: Apps/screenshot/main.cpp Libs/img/pngsave.hpp Include/clipboard.h Include/clipproto.h Include/notify.h lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a \
+paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) Include/clipboard.h Include/docguard.h Libs/img/imgload.hpp Libs/img/pngsave.hpp lib/fontkit.imp.a \
+	   Kits/fontkit/uikitface.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Libs/gpucomp/libgpucomp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a Libs/gpucomp/libgpucomp.a lib/fontkit.imp.a -lm -o $@
+screenshot.elf: Apps/screenshot/main.cpp Libs/img/pngsave.hpp Include/clipboard.h Include/clipproto.h Include/notify.h lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a \
 		Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/imagekit.imp.a lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Letters (FreeType text through uikit's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
@@ -487,20 +487,20 @@ KOTON_HDR = $(wildcard Apps/koton/engine/*.h) $(wildcard Apps/koton/synth/*.h) $
 Apps/koton/obj/%.o: Apps/koton/%.cpp $(KOTON_HDR)
 	@mkdir -p $(dir $@)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -c $< -o $@
-koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a lib/audiokit.imp.a \
+koton.elf: Apps/koton/main.cpp $(wildcard Apps/koton/ui/*.h) $(KOTON_OBJ) lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/audiokit.imp.a \
 	   Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld $(KOTON_HDR)
-	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       $(KOTON_OBJ) lib/audiokit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       $(KOTON_OBJ) lib/audiokit.imp.a lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # PDF Viewer (Apps/pdf: docs/pdf/README.md): a newlib app as Letters, on MuPDF -- its fitz + pdf parts, jbig2dec, openjpeg,
 # zlib, libjpeg and a FreeType with the PDF fonts' drivers, built by Apps/pdf/mupdf.mk into Apps/pdf/obj/libmupdf.a (that
-# FreeType serves the app's own text too: no lib/ft.imp.a). The app is AGPL-3.0, MuPDF's licence (docs/LICENSING.md).
+# FreeType serves the app's own text too: no lib/fontkit.imp.a). The app is AGPL-3.0, MuPDF's licence (docs/LICENSING.md).
 MU_NL_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections
 Apps/pdf/obj/libmupdf.a: Apps/pdf/mupdf.mk $(wildcard Apps/pdf/mu/*)
 	@$(MAKE) --no-print-directory -f Apps/pdf/mupdf.mk MU_ROOT=.. MU_ONYX=1 MU_CC=$(CC) MU_AR=$(AR) MU_OUT=Apps/pdf/obj MU_CFLAGS="$(MU_NL_CFLAGS)"
-pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a Include/clipboard.h Include/docguard.h ft/uikitface.h \
+pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a Include/clipboard.h Include/docguard.h Kits/fontkit/uikitface.h \
 	 lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I../third_party/mupdf-1.28.5/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include -I../third_party/mupdf-1.28.5/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/uikit.imp.a Apps/pdf/obj/libmupdf.a -lm -o $@
 
 # Media Player, the music and video library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through
@@ -524,9 +524,9 @@ Apps/media/obj/av/%.o: Libs/av/%.c $(wildcard Libs/av/*.h) Kits/appkit/appkit.h
 	@mkdir -p $(dir $@)
 	$(CC) $(NL_CFLAGS) -std=gnu11 -ILibs/av -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
 media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_AV_OBJ) lib/audiokit.imp.a Libs/img/imgload.hpp Libs/img/pngsave.hpp Include/fileassoc.h Include/notify.h \
-	   lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h $(wildcard Libs/av/*.h)
-	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       $(MEDIA_AV_OBJ) lib/audiokit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
+	   lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h $(wildcard Libs/av/*.h)
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -I../third_party -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       $(MEDIA_AV_OBJ) lib/audiokit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/fontkit.imp.a $(MEDIA_AV_LIBS) -lm -o $@
 
 # Koton's plugins (user/Include/kplug.h, the protocol user/Include/kplug_proto.h; the host: Apps/koton/plug): each
 # Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to
@@ -628,13 +628,13 @@ graphcalc.elf: Apps/graphcalc/expr.h
 cardfile.elf: $(wildcard Apps/cardfile/*.h) Include/clipboard.h Include/docguard.h
 # The Calendar: a newlib app as Letters (FreeType's text through uikit's face); its model (iCalendar), views
 # and dialogs in Apps/calendar/*.h.
-calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) Include/notify.h lib/ft.imp.a ft/uikitface.h \
+calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) Include/notify.h lib/fontkit.imp.a Kits/fontkit/uikitface.h \
 	      lib/uikit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 agenda.elf: Include/notify.h
 setup.elf: Apps/setup/system.h Include/wallpaper.h Libs/img/imgload.hpp
-# The FreeType apps (FT_APPS): newlib + lib/ft.imp.a, as the Calendar. The Game Library also links the
+# The FreeType apps (FT_APPS): newlib + lib/fontkit.imp.a, as the Calendar. The Game Library also links the
 # emulators it takes the covers and the save states' pictures from.
 FT_EXTRA_gamelib = Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
@@ -643,8 +643,8 @@ soundconf.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 fmtracker.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
-$(FT_APP_ELFS): %.elf: Apps/%/main.cpp Include/bmp.hpp Runtime/umm.h Runtime/onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+$(FT_APP_ELFS): %.elf: Apps/%/main.cpp Include/bmp.hpp Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) lib/uikit.imp.a lib/fontkit.imp.a -lm -o $@
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
 # the reports' .xlsx: the PNG writer's zip / deflate).
 ledger.elf: $(wildcard Apps/ledger/*.h) $(wildcard Apps/cardfile/*.h) Include/clipboard.h Include/docguard.h Libs/img/pngsave.hpp
@@ -656,7 +656,7 @@ BinUtils/basic.elf: Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/uikit.imp.a
 	$(CXX) $(CXXFLAGS_FP) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/audiokit.imp.a lib/uikit.imp.a -o $@
 
 clean:
-	rm -f *.elf *.o ft/*.o ft/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
+	rm -f *.elf *.o Kits/fontkit/*.o Kits/fontkit/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
 	rm -f Kits/uikit/*.o Kits/uikit/*.a
 	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj

@@ -23,7 +23,7 @@
 #include "printerkit/printerkit.h"
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "clipboard.h"
 #include "docguard.h"
 #include "pui.h"

@@ -16,7 +16,7 @@
 
 #include "uikit/canvas.h"
 #include "uikit/font.h"
-#include "uikit/text.h"		// the text face an app installs (FreeType's: ft/uikitface.h)
+#include "uikit/text.h"		// the text face an app installs (FreeType's: fontkit/uikitface.h)
 #include "uikit/widget.h"
 #include "uikit/skin.h"
 #include "uikit/label.h"

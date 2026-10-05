@@ -1,6 +1,6 @@
 //
 // facetest -- (the desktop simulator) checks uikit's text hook (uikit/text.h) with FreeType's face
-// (ft/uikitface.h): the bitmap path's measures, the face's prefix widths (monotone, their sum), a
+// (fontkit/uikitface.h): the bitmap path's measures, the face's prefix widths (monotone, their sum), a
 // click's place (the nearest character boundary), UTF-8 (next / prev / get), Textbox and Textarea
 // editing by whole characters (typed Latin-1 and the euro stored as UTF-8), a click's caret, the
 // scroll keeping the caret in view, a password's stars, up / down by x, uk_text_fit, and the way
@@ -8,7 +8,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

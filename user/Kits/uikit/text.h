@@ -9,7 +9,7 @@
 // Styles: 0 regular, 1 italic, 2 bold, 3 bold italic (as the bitmap families). Install it before
 // building the widgets (some size themselves from uk_fh () when made):
 //
-//   #include "ft/uikitface.h"              (a newlib app linking ft/libft.a: FreeType's anti-aliased text)
+//   #include "fontkit/uikitface.h"              (a newlib app linking fontkit/libft.a: FreeType's anti-aliased text)
 //   int main () { ft_uikit_install ("DejaVu Sans", 13); Root root (...); ... }
 //
 // The window's frame (its title) has a face of its own, the same in every app: SD:/res/fonts/title.aaf

@@ -3,7 +3,7 @@
 // first: the app's main.cpp is compiled with -Dmain=app_main and linked with this. SIM_FT="Family,px"
 // (default DejaVu Sans, 13). Used by studio.sh (the Widget Showcase under the face).
 //
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

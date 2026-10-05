@@ -9,7 +9,7 @@
 #define _writer_icons_h
 
 #include "uikit/uikit.h"
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 
 namespace wr {
 

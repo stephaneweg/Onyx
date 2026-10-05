@@ -8,7 +8,7 @@
 # ICC colour management (lcms2), the Noto / CJK fonts (TOFU: the 14 standard fonts stay), the barcodes, OCR,
 # the spot / CMYK plotters. Its third-party libraries: jbig2dec, openjpeg (from MuPDF's tarball), Onyx's zlib,
 # libjpeg (jpeg-9f) and FreeType (2.14.3 -- with the CFF / Type 1 / CID drivers PDF fonts need, plus the
-# TrueType + autofit ones of the apps' text: the whole app links this FreeType instead of user/ft/libft.a).
+# TrueType + autofit ones of the apps' text: the whole app links this FreeType instead of user/Kits/fontkit/libft.a).
 
 MU_ROOT ?= ..
 MU_CC ?= aarch64-none-elf-gcc
@@ -79,4 +79,4 @@ $(foreach f,$(MU_JBIG2),$(eval $(call mu_rule,jbig2,$(f),-I$$(MU)/include -DHAVE
 $(foreach f,$(MU_OPJ),$(eval $(call mu_rule,opj,$(f),-DOPJ_STATIC -DOPJ_HAVE_INTTYPES_H -DOPJ_HAVE_STDINT_H -DMUTEX_pthread=0 -I$$(MU)/thirdparty/openjpeg/src/lib/openjp2)))
 $(foreach f,$(MU_JPG),$(eval $(call mu_rule,jpeg,$(f),-DFZ_HIDE_INTERNAL_JPEG -I$$(MU)/scripts/libjpeg -I$$(MU_JPEG))))
 $(foreach f,$(MU_Z),$(eval $(call mu_rule,z,$(f),-I$$(MU_ZLIB))))
-$(foreach f,$(MU_FTSRC),$(eval $(call mu_rule,ft,$(f),$$(MU_FTDEFS) -I$$(MU_CONF) -I$$(MU_ROOT)/user/ft -I$$(MU_FT)/include)))
+$(foreach f,$(MU_FTSRC),$(eval $(call mu_rule,ft,$(f),$$(MU_FTDEFS) -I$$(MU_CONF) -I$$(MU_ROOT)/user/Kits/fontkit -I$$(MU_FT)/include)))

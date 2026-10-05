@@ -31,7 +31,7 @@
 // item works too.
 //
 #include "appkit/appkit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "launch.h"
 #include "uikit/uikit.h"
 #include "volume.h"

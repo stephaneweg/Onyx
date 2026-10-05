@@ -42,7 +42,7 @@
 #include "ftpfs.h"			// ftpfs_login (Connect to Server)
 #include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libuikit)
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 
 using namespace uikit;
 

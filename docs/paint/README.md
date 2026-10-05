@@ -34,7 +34,7 @@ The mock-ups (`python3 tools/screenshot/mockup_paint.py` → `mockups/paint-*.pn
 
 ## How (the plan)
 
-- Paint becomes a newlib app (FreeType's text, the Text tool's fonts: `ft/fonts.h`).
+- Paint becomes a newlib app (FreeType's text, the Text tool's fonts: `fontkit/fonts.h`).
 - The canvas is composited by the GPU (`user/Libs/gpucomp`): a texture per layer (only the changed rectangles
   uploaded), zoomed with the nearest texel above 100 %, bilinear below; the hidden layers left out. The
   blend modes are gpucomp's (`GPC_B_*`), done by the V3D's blender from **kapi v72** (`KAPI_GPU_BLEND_*`

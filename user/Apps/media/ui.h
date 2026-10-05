@@ -5,7 +5,7 @@
 #ifndef _media_ui_h
 #define _media_ui_h
 
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "covers.h"
 

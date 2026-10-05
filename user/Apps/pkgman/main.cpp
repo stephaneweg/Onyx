@@ -19,7 +19,7 @@
 #include "bmp.hpp"
 #include "pkg/pkglib.h"
 #include "uikit/uikit.h"
-#include "ft/uikitface.h"
+#include "fontkit/uikitface.h"
 
 using namespace uikit;
 using namespace pkg;
