@@ -1,11 +1,11 @@
 //
-// print/dialog.cpp -- the Print dialog, the same in every app (print_dialog, print/print.h): the printer,
+// printerkit/dialog.cpp -- the Print dialog, the same in every app (print_dialog, printerkit/printerkit.h): the printer,
 // the pages (all, the current one, a range), the copies, colour or black and white, the quality, the paper
 // and its orientation. What it shows follows the printer chosen -- a printer without colour has no colour
 // choice, the PDF printer has no copies nor quality and asks for the file to write.
 //
 // A uikit modal dialog in the app's window: uikit is the shared library uikit.so, reached through its import
-// stubs (print/print.cpp opens it); uikit's variables (the palette, the text face) are the program's.
+// stubs (printerkit/printerkit.cpp opens it); uikit's variables (the palette, the text face) are the program's.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -17,8 +17,8 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "uikit/uikit.h"
-#include "print/print.h"
-#include "print/priv.h"
+#include "printerkit/printerkit.h"
+#include "printerkit/priv.h"
 
 using namespace uikit;
 using namespace pprt;

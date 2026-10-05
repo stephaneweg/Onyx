@@ -93,7 +93,7 @@ Two weaknesses, worth fixing:
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
 | pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
-| The print system (Onyx) | `user/print/` (`SD:/lib/print.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
+| The print system (Onyx) | `user/printerkit/` (`SD:/lib/printerkit.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
 | python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |
 | **AudioKit** (Onyx) | `user/audiokit/` (`SD:/lib/audiokit.so`): the files, the background player, mixing, notes, WAV — with MeltySynth and the four decoders below inside it | **MIT** (ours); what it contains: MIT, CC0, public domain — nothing that binds the programs using it. FFmpeg (GPL) is **not** in it and must never be | Keep the notices |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (in AudioKit: Koton, Media Player, BASIC) | MIT | Keep the notice |

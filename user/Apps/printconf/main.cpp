@@ -4,7 +4,7 @@
 // AirPrint: the printer is asked what it can do; SD:/etc/printers.ini) --, the default one, a test page,
 // and the print queue (the jobs waiting, printing, done; a job cancelled).
 //
-// Everything goes through the print library (print/print.h -> the print service, printd).
+// Everything goes through the print library (printerkit/printerkit.h -> the print service, printd).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -21,7 +21,7 @@
 #include "applib.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 
 using namespace uikit;
 

@@ -1,7 +1,7 @@
 //
-// print/job.h -- a print job's file (SD:/var/spool/print/<id>.opj): the pages an app drew, recorded -- not
+// printerkit/job.h -- a print job's file (SD:/var/spool/print/<id>.opj): the pages an app drew, recorded -- not
 // yet a PDF, not yet a raster. printd replays it for the printer it goes to: as a PDF (pdf/pdfwrite.h) for
-// the PDF printer, as pixels at the printer's resolution (print/raster.h) for a network printer. So a job
+// the PDF printer, as pixels at the printer's resolution (printerkit/raster.h) for a network printer. So a job
 // is the same whatever prints it, and an app draws once.
 //
 // The file: "OPJ1", then records -- a byte (the kind), 32 bits (the payload's length), the payload; numbers
@@ -26,7 +26,7 @@
 #ifndef ONYX_PRINT_JOB_H
 #define ONYX_PRINT_JOB_H
 
-#include "print/pio.h"
+#include "printerkit/pio.h"
 #include "img/pngsave.hpp"
 
 namespace pjob {

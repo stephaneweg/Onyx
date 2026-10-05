@@ -1,5 +1,5 @@
 //
-// print/print.h -- printing from an app (the shared library SD:/lib/print.so; docs/03 "Printing").
+// printerkit/printerkit.h -- printing from an app (the shared library SD:/lib/printerkit.so; docs/03 "Printing").
 //
 // An app prints in four steps -- the Print dialog, a job, its pages, the end:
 //
@@ -23,8 +23,8 @@
 // PDF file for the PDF printer, pages of pixels at its resolution for a network printer -- and tells the
 // user when the job is done. The app does not wait for the printer.
 //
-// A program links lib/print.imp.a (with lib/uikit.imp.a and lib/ft.imp.a: the dialog is uikit's, the text
-// FreeType's). The table is append-only (print/print.abi): these functions never change.
+// A program links lib/printerkit.imp.a (with lib/uikit.imp.a and lib/ft.imp.a: the dialog is uikit's, the text
+// FreeType's). The table is append-only (printerkit/printerkit.abi): these functions never change.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

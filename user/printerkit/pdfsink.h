@@ -1,5 +1,5 @@
 //
-// print/pdfsink.h -- a print job's pages as a PDF (print/job.h replayed into pdf/pdfwrite.h): what the PDF
+// printerkit/pdfsink.h -- a print job's pages as a PDF (printerkit/job.h replayed into pdf/pdfwrite.h): what the PDF
 // printer does. The text stays text (the fonts embedded as subsets), the shapes stay shapes.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
@@ -14,7 +14,7 @@
 #ifndef ONYX_PRINT_PDFSINK_H
 #define ONYX_PRINT_PDFSINK_H
 
-#include "print/job.h"
+#include "printerkit/job.h"
 #include "pdf/pdfwrite.h"
 #include "img/imgload.hpp"
 

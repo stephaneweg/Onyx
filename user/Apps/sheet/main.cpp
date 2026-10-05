@@ -281,7 +281,7 @@ static void cmd_export_pdf ()
 }
 
 // File > Print: the Print dialog (the library's: the printer, its paper, the pages...), then the sheet's
-// pages drawn into the job by the PDF export's code (print/pdfprint.h).
+// pages drawn into the job by the PDF export's code (printerkit/pdfprint.h).
 static void cmd_print ()
 {
 	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;

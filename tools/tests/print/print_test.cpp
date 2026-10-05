@@ -1,6 +1,6 @@
 //
 // print_test.cpp -- the print system's core on the PC (tools/tests/run_print_test.sh): a job recorded
-// (user/print/job.h), replayed as a PDF (print/pdfsink.h) and as a 300 dpi raster page (print/raster.h),
+// (user/printerkit/job.h), replayed as a PDF (printerkit/pdfsink.h) and as a 300 dpi raster page (printerkit/raster.h),
 // the PWG Raster stream written, read back and compared with the page, pixel for pixel.
 //
 //   print_test <a TrueType font> <output folder>
@@ -10,9 +10,9 @@
 #include <string.h>
 #define IMGLOAD_IMPLEMENTATION
 #include "img/imgload.hpp"
-#include "print/job.h"
-#include "print/pdfsink.h"
-#include "print/raster.h"
+#include "printerkit/job.h"
+#include "printerkit/pdfsink.h"
+#include "printerkit/raster.h"
 
 static int g_fail;
 #define CHECK(c, what) do { if (!(c)) { printf ("FAIL: %s\n", what); g_fail++; } } while (0)

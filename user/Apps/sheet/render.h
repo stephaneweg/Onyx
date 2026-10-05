@@ -12,7 +12,7 @@
 #include "condfmt.h"
 #include "ui_base.h"
 #include "pdf/pdfwrite.h"
-#include "print/pdfprint.h"
+#include "printerkit/pdfprint.h"
 
 namespace ss {
 

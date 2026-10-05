@@ -1,6 +1,6 @@
 //
-// print/pdfprint.h -- printing through an app's PDF export code: PrintWriter is a pdfw::Writer
-// (pdf/pdfwrite.h) whose pages are recorded into a print job (print/print.h) instead of a PDF. An app that
+// printerkit/pdfprint.h -- printing through an app's PDF export code: PrintWriter is a pdfw::Writer
+// (pdf/pdfwrite.h) whose pages are recorded into a print job (printerkit/printerkit.h) instead of a PDF. An app that
 // has "Export as PDF" prints with the same drawing code:
 //
 //   PrintSetup s; print_setup_default (&s);
@@ -26,7 +26,7 @@
 #define ONYX_PRINT_PDFPRINT_H
 
 #include "pdf/pdfwrite.h"
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 
 class PrintWriter : public pdfw::Writer
 {

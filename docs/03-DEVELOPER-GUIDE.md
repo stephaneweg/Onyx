@@ -786,28 +786,28 @@ libraries, over telnet), `sh tools/tests/shlib/compat.sh` (an app built against 
 library N+1: a fix reaches it, an added function and a used reserve keep it running; an app built
 against N+1 is refused by the library N).
 
-### 5.7. Printing (`SD:/lib/print.so`, the print service `printd`)
+### 5.7. Printing (`SD:/lib/printerkit.so`, the print service `printd`)
 
 An app prints by **drawing its pages once**; the system does the rest. Three parts, all MIT:
 
 | Part | Where | What it does |
 |---|---|---|
-| **The library** | `user/print/print.h` → `SD:/lib/print.so` (`print.cpp`, `dialog.cpp`; its table `print/print.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`print/job.h`), with its ticket `<id>.job`; the printers' list. |
-| **The service** | `user/Apps/printd` (IPC service `print`; started at boot and on demand) | The **queue**. Replays a job for its printer: a **PDF** (`print/pdfsink.h` → `pdf/pdfwrite.h`) for the PDF printer; for a network printer, pages **rendered at its resolution** (`print/raster.h`: FreeType glyphs from the job's own fonts, images scaled, paths filled with smoothed edges) and **streamed as PWG Raster over IPP** (`print/ipp.h`, HTTP chunked on port 631) while they are made — or the PDF itself to a printer that takes PDF. Follows the job at the printer, tells the user (notifyd). |
-| **The printers** | `SD:/etc/printers.ini` (`print/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
+| **The library** | `user/printerkit/printerkit.h` → `SD:/lib/printerkit.so` (`print.cpp`, `dialog.cpp`; its table `printerkit/printerkit.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`printerkit/job.h`), with its ticket `<id>.job`; the printers' list. |
+| **The service** | `user/Apps/printd` (IPC service `print`; started at boot and on demand) | The **queue**. Replays a job for its printer: a **PDF** (`printerkit/pdfsink.h` → `pdf/pdfwrite.h`) for the PDF printer; for a network printer, pages **rendered at its resolution** (`printerkit/raster.h`: FreeType glyphs from the job's own fonts, images scaled, paths filled with smoothed edges) and **streamed as PWG Raster over IPP** (`printerkit/ipp.h`, HTTP chunked on port 631) while they are made — or the PDF itself to a printer that takes PDF. Follows the job at the printer, tells the user (notifyd). |
+| **The printers** | `SD:/etc/printers.ini` (`printerkit/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
 
-A job does not depend on the printer: the same recorded pages become a PDF or a raster. `print.so` is
+A job does not depend on the printer: the same recorded pages become a PDF or a raster. `printerkit.so` is
 the first library that **uses other libraries**: FreeType (`ft.so`, for `print_text`) and uikit (`uikit.so`,
 for the dialog), through their import stubs linked into it; `print.cpp` opens them when first needed
 (`kapi_lib_open`), and uikit's variables are the program's (uikit's library build of `globals.o`, `--data
-onyx_uikit_data` in the bind object) — so a program that links `lib/print.imp.a` also links
+onyx_uikit_data` in the bind object) — so a program that links `lib/printerkit.imp.a` also links
 `lib/uikit.imp.a`.
 
-**Printing from an app** — link `lib/print.imp.a` (before `lib/uikit.imp.a`), include `print/print.h`.
+**Printing from an app** — link `lib/printerkit.imp.a` (before `lib/uikit.imp.a`), include `printerkit/printerkit.h`.
 Lengths are **points** (1/72 inch), y goes down from the page's top-left corner, colours are `0xRRGGBB`:
 
 ```c
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 
 static void cmd_print (void)
 {
@@ -838,7 +838,7 @@ static void cmd_print (void)
 | `print_font_data`, `print_glyph` | For an app with its own text layout: its font's bytes, a glyph at its pen position. |
 | `print_printers`, `print_printers_find`, `print_printer_media`, `print_printer_add / remove / default / status`, `print_jobs`, `print_job_cancel`, `print_jobs_forget` | The printers and the queue (what the Printers applet uses). |
 
-**An app that already exports PDF** prints with the same code: `print/pdfprint.h`'s **`PrintWriter`** is a
+**An app that already exports PDF** prints with the same code: `printerkit/pdfprint.h`'s **`PrintWriter`** is a
 `pdfw::Writer` whose pages go to a job (the writer's drawing calls are virtual), and `print_ask (title,
 pages, current, pageW, pageH)` is the dialog + `print_begin` in one call:
 
@@ -851,7 +851,7 @@ That is how Letters, the Spreadsheet, Slides print; Paint, Photos and the PDF Vi
 MuPDF at 300 dots an inch) use `print_image`; the Printers applet's test page uses the text and shape calls.
 
 **Another kind of printer** is a branch of `printd`'s `run ()` (`kind` in `printers.ini`): replay the job
-into a `pjob::Sink` (`print/job.h`: `font`, `begin_page`, `rect`, `glyphs`, `image`, `path`, `end_page`) —
+into a `pjob::Sink` (`printerkit/job.h`: `font`, `begin_page`, `rect`, `glyphs`, `image`, `path`, `end_page`) —
 `pjob::PdfSink` and `praster::Raster` are the two there are — and send the result.
 
 **Tests.** `sh tools/tests/run_print_test.sh` (on the PC: a job recorded, replayed as a PDF and as 300 dpi

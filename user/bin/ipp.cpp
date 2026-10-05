@@ -1,5 +1,5 @@
 //
-// ipp -- ask a network printer what it can do (IPP: print/ipp.h; the Printers applet's diagnostic).
+// ipp -- ask a network printer what it can do (IPP: printerkit/ipp.h; the Printers applet's diagnostic).
 //
 //   ipp 192.168.0.14            the printer's model, the formats it takes, its papers, its ink
 //   ipp ipp://host:631/ipp/print
@@ -20,7 +20,7 @@
 #include "onyxpp.hpp"
 #pragma GCC diagnostic ignored "-Wunused-function"	// (the headers' other functions)
 #pragma GCC diagnostic ignored "-Wunused-variable"
-#include "print/ippnet.h"
+#include "printerkit/ippnet.h"
 
 static void outs (const char *s) { int n = 0; while (s[n]) n++; kapi_stdout_write (s, (unsigned) n); }
 static void outi (int v) { char t[16]; ipp::sint (t, sizeof t, v); outs (t); }

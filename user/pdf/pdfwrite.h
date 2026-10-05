@@ -15,7 +15,7 @@
 //   w.outline (level, "Title", page, y);  w.info ("Title", "Author", 0, "Writer (Onyx)");
 //   unsigned n; unsigned char *pdf = w.finish (&n);    ... delete[] pdf
 //
-// The drawing calls are virtual: print/pdfprint.h's PrintWriter is a Writer whose pages go to a printer
+// The drawing calls are virtual: printerkit/pdfprint.h's PrintWriter is a Writer whose pages go to a printer
 // (an app's "Export as PDF" code prints as it is).
 //
 // ---------------------------------------------------------------------------------------------------------------

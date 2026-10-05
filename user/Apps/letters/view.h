@@ -16,7 +16,7 @@
 
 #include "edit.h"
 #include "pdf/pdfwrite.h"
-#include "print/pdfprint.h"
+#include "printerkit/pdfprint.h"
 
 namespace wr {
 

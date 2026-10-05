@@ -22,7 +22,7 @@
 #include "ui.h"
 #include "clipboard.h"
 #include "docguard.h"
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 
 using namespace uikit;
 using namespace pdfv;
@@ -1623,7 +1623,7 @@ static void save_copy ()
 	if (a) kapi_close (a); if (b) kapi_stream_close (b);
 	if (!ok) uk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
 }
-// File > Print: the Print dialog (the library's: print/print.h), then the pages drawn by MuPDF at the
+// File > Print: the Print dialog (the library's: printerkit/printerkit.h), then the pages drawn by MuPDF at the
 // printer's 300 dots an inch, each a picture of the job's page (the document's own page size: fitted on the
 // paper). To the PDF printer with every page: the file itself is copied -- it is already what is asked for.
 static void print_doc ()

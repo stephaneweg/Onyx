@@ -1,4 +1,4 @@
-# print.abi -- the export table of SD:/lib/print.so: "<slot> <symbol>", in the table's order.
+# print.abi -- the export table of SD:/lib/printerkit.so: "<slot> <symbol>", in the table's order.
 # APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
 # line -- programs built against an older table call the entries by their slot. The one edit allowed:
 # a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
