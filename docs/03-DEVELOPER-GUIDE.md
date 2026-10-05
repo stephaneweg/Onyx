@@ -963,9 +963,10 @@ masks, the brushes and the document of the photo editor come on top of it later 
 
 | Group | Calls | What it does |
 |---|---|---|
+| **The formats** | `ik_formats (list, max)` | **Asked, not assumed** (`struct ik_format`: name, extensions, read / written, alpha, animated): a program lists what the library handles; a format ImageKit learns is one every program has. |
 | **A picture** | `ik_image_new (w, h)`, `ik_image_from (px, w, h, stride)`, `ik_image_copy`, `ik_image_free`, `ik_width`, `ik_height`, `ik_format`, `ik_pixels`, `ik_fill`, `ik_opaque`, `ik_flatten (im, rgb)`, `ik_has_alpha` | `w × h` pixels `0xAARRGGBB`, straight alpha, rows one after the other (`IK_ARGB8`: the only format today; the handle is opaque so that 16 bits a channel can come). |
 | **Reading** | `ik_load (path, flags)`, `ik_load_mem`, `ik_probe (path, &info)`, `ik_load_preview`, `ik_load_format`, `ik_is_image_name`; `ik_frames_load` / `_load_mem` / `_count` / `_pixels` / `_delay` / `_width` / `_height` / `_free` | **BMP, GIF (animated), PNG, JPEG, PCX, WebP**. `IK_ORIENT`: the camera's orientation (EXIF) applied — the photo as it is seen. `ik_probe` reads no pixel: the size, the orientation, the date taken, the camera and the exposure (`struct ik_info`); `ik_load_preview`: the camera's own small picture. The frames of an animation with their delays. |
-| **Writing** | `ik_encode (im, format, quality, &out, &n)`, `ik_save (im, path, quality)` | **PNG** (zlib's compression through FileKit: smaller files than before), **JPEG**, **BMP**, **GIF**. PNG keeps the alpha, GIF its clear pixels, JPEG and BMP lay the picture on white. |
+| **Writing** | `ik_encode (im, format, quality, &out, &n)`, `ik_save (im, path, quality)`, `ik_encode_pixels (px, w, h, stride, format, quality, alpha, &out, &n)` | **PNG** (zlib's compression through FileKit: smaller files than before), **JPEG**, **BMP**, **GIF**. PNG keeps the alpha, GIF its clear pixels, JPEG and BMP lay the picture on white. |
 | **Transforms** | `ik_scale (src…, dst…)`, `ik_resize`, `ik_fit (im, max_w, max_h, grow)`, `ik_cover (im, w, h)`, `ik_crop`, `ik_rotate (im, quarter_turns)`, `ik_flip`, `ik_orient`, `ik_straighten (im, millidegrees)` | **One resize, right in alpha**: smaller, each pixel is the average of all those it covers; larger, bilinear; the colours weighed by the alpha (a transparent pixel's colour does not bleed). `ik_scale` writes into any buffer (a window's canvas, the wallpaper). |
 | **Adjustments** | `ik_adjust_apply (im, &a)`, `ik_adjust_auto (im, &a)`, `ik_filter_name` | Photos' own, as one tone curve and a colour pass (`struct ik_adjust`: exposure, contrast, highlights, shadows, saturation, warmth −100..100, sharpness 0..100, a filter: black and white, warm, cool, vintage, vivid); "enhance" proposes values from the histogram. The alpha is kept. |
 
@@ -975,12 +976,22 @@ masks, the brushes and the document of the photo editor come on top of it later 
   interface; the resize is its own. Built with the FPU, newlib's libm and libc linked in. **It uses
   FileKit**: `lib/filekit_stubs.o` is linked in and `SD:/lib/filekit.so` is opened when a PNG is first
   written (the package needs `filekit`). The table: `imagekit/imagekit.abi` (append-only).
-- **Who uses it**: the **Image Viewer** (its window and the wallpaper it paints: photos are now turned
-  the way the camera says, and a wallpaper made smaller is averaged). The other programs still take
-  their decoders from `uikit.so` (`img_load*`) and compile `pngsave.hpp`, each with its own resampler:
-  moving them over, and making UIKit's `img_*` relays to ImageKit, is the next step (IDEAS.md).
+- **Who uses it** — everybody, since version 2 (2026-10-05):
+  - **reading**: UIKit's `img_load` / `img_load_mem` / `img_inflate` / `img_is_image_name` (`img/imgload.hpp`,
+    what every app calls) are **relays to ImageKit** in `uikit.so` (`uikit/imgload.cpp`: the library opened at
+    the first picture; `ik_frames_take` hands the frames over). One copy of the decoders in the system
+    (`uikit.so` lost 70 KB); a format added to ImageKit is shown by every app.
+  - **writing**: the apps that write pictures (Letters, Slides, Photos, Paint, Screenshot, the Media
+    Player) are built with `-DPNGSAVE_USE_IMAGEKIT`: `pngsave::png_encode` / `jpeg_encode` / `bmp_encode` /
+    `gif_encode` (`img/pngsave.hpp`) are then `ik_encode_pixels` — the same names in their code, the encoders
+    out of their binaries, PNG files compressed by zlib.
+  - **directly**: the Image Viewer (its window and the wallpaper it paints: photos turned the way the
+    camera says, a wallpaper made smaller averaged).
+  - The PC builds (no shared library) compile the decoders and the encoders into themselves, as before.
+  - Still their own: the resamplers of Photos, Paint, Letters, Slides, the Media Player, the dock (IDEAS.md).
 - **Not in it yet**: masks and selections, drawing and brushes, layers and blend modes with `gpucomp`,
   thumbnails with their cache, 16 bits a channel, ICC profiles, TIFF / RAW / HEIC. Never MuPDF nor FFmpeg.
+- **Rule**: `uikit.so` needs `imagekit.so` (its package says so), which needs `filekit.so`.
 - **Test**: `iktest [picture]` on the Pi (28 checks: a picture written in the four formats and read
   back, the resize in alpha, the turns, the crop, the adjustments; with a picture of the card: probed,
   read, a thumbnail written).

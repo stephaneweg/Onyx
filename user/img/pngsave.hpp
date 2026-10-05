@@ -161,6 +161,32 @@ static unsigned char paeth (int a, int b, int c)
 	return (unsigned char) (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
 }
 
+// ---- the encoders -----------------------------------------------------------------------------------------
+// PNGSAVE_USE_IMAGEKIT (user/Makefile: the apps on Onyx): png_encode, jpeg_encode, bmp_encode and gif_encode
+// are ImageKit's (SD:/lib/imagekit.so: ik_encode_pixels -- one copy in the system, PNG's compression zlib's);
+// the same names and results (a new unsigned char[], the caller's to delete []). Without it (the PC builds,
+// ImageKit itself) they are compiled here.
+#ifdef PNGSAVE_USE_IMAGEKIT
+} // namespace pngsave
+#include "imagekit/imagekit.h"
+namespace pngsave {
+static unsigned char *ik__encode (const unsigned *px, int w, int h, const char *format, int quality, int alpha, unsigned *outLen)
+{
+	void *o = 0; unsigned n = 0;
+	*outLen = 0;
+	if (ik_encode_pixels (px, w, h, w, format, quality, alpha, &o, &n) != 0) return 0;
+	unsigned char *b = new unsigned char[n ? n : 1];
+	for (unsigned i = 0; i < n; i++) b[i] = ((const unsigned char *) o)[i];
+	ik_free (o);
+	*outLen = n;
+	return b;
+}
+static inline unsigned char *png_encode (const unsigned *px, int w, int h, bool alpha, unsigned *outLen)	{ return ik__encode (px, w, h, "png", 0, alpha ? 1 : 0, outLen); }
+static inline unsigned char *bmp_encode (const unsigned *px, int w, int h, unsigned *outLen)		{ return ik__encode (px, w, h, "bmp", 0, 0, outLen); }
+static inline unsigned char *jpeg_encode (const unsigned *px, int w, int h, int quality, unsigned *outLen)	{ return ik__encode (px, w, h, "jpg", quality, 0, outLen); }
+static inline unsigned char *gif_encode (const unsigned *px, int w, int h, unsigned *outLen)		{ return ik__encode (px, w, h, "gif", 0, 1, outLen); }
+#else
+
 // w x h pixels 0xAARRGGBB -> a PNG file (alpha: RGBA, else RGB).
 static unsigned char *png_encode (const unsigned *px, int w, int h, bool alpha, unsigned *outLen)
 {
@@ -584,6 +610,8 @@ static unsigned char *gif_encode (const unsigned *px, int w, int h, unsigned *ou
 	delete[] tk; delete[] tc; delete[] idx;
 	return o.take (outLen);
 }
+
+#endif // PNGSAVE_USE_IMAGEKIT
 
 // ---- ZIP ------------------------------------------------------------------------------------------------
 class ZipOut

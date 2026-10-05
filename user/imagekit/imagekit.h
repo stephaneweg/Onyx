@@ -55,6 +55,20 @@ void ik_opaque (ik_image *im);					// every pixel's alpha 255
 void ik_flatten (ik_image *im, unsigned rgb);			// laid on a colour, the result opaque
 int ik_has_alpha (const ik_image *im);				// 1: a pixel is not opaque
 
+// ---- the formats, asked (version 2) -------------------------------------------------------------
+// A program lists what the library reads and writes instead of keeping its own list: a format the
+// library learns is one every program has.
+struct ik_format
+{
+	char name[12];				// "PNG", "JPEG", "GIF", "BMP", "PCX", "WebP"
+	char extensions[40];			// "jpg jpeg jpe" (lower case, a space between)
+	int  can_read, can_write;
+	int  alpha;				// it keeps transparency
+	int  animated;				// it may hold several frames (read as ik_frames)
+	int  reserved[4];
+};
+int ik_formats (struct ik_format *out, int max);		// how many there are (out: up to max)
+
 // ---- reading ----------------------------------------------------------------------------------
 #define IK_ORIENT	1			// the camera's orientation (EXIF) applied: as the photo is seen
 
@@ -85,6 +99,12 @@ int ik_frames_delay (const ik_frames *f, int i);		// how long it shows, ms (0: a
 int ik_frames_width (const ik_frames *f);
 int ik_frames_height (const ik_frames *f);
 void ik_frames_free (ik_frames *f);
+// The frames handed over to the caller (px[i]: new unsigned[w * h], the caller's to delete []; delay[i]:
+// ms): up to max of them -> how many; f keeps none of those. (UIKit's img_load is this.)
+int ik_frames_take (ik_frames *f, unsigned **px, int *delay, int max);
+// A deflate stream inflated (zlib: with its header, as PNG's; else raw): a new unsigned char[] of
+// *out_n bytes (the caller's to delete []), or 0. (UIKit's img_inflate; a new program takes FileKit's.)
+unsigned char *ik_inflate (const void *data, unsigned n, int zlib, unsigned *out_n);
 
 // ---- writing ----------------------------------------------------------------------------------
 // format: "png", "jpg" / "jpeg", "bmp", "gif" (letters' case ignored). quality: JPEG's 1..100 (0: 90).
@@ -92,6 +112,11 @@ void ik_frames_free (ik_frames *f);
 // others opaque; JPEG and BMP lay it on white.
 int ik_encode (const ik_image *im, const char *format, int quality, void **out, unsigned *out_n);	// 0 / -1
 int ik_save (const ik_image *im, const char *path, int quality);	// the format from the path's extension -> 0 / -1
+// Raw pixels encoded (stride: pixels a row). alpha: 1 kept where the format has it (PNG: RGBA), 0 not
+// (PNG: RGB, whatever the top bytes hold), -1 kept when a pixel is not opaque. (img/pngsave.hpp's
+// encoders are this, in the programs built with PNGSAVE_USE_IMAGEKIT.)
+int ik_encode_pixels (const unsigned *px, int w, int h, int stride, const char *format, int quality, int alpha,
+		      void **out, unsigned *out_n);
 
 // ---- transforms -------------------------------------------------------------------------------
 // The low-level one: the rectangle (sx, sy, sw, sh) of src (src_w x src_h, src_stride pixels a row)

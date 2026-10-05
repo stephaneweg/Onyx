@@ -128,7 +128,7 @@ lib/uikit/%.o: uikit/%.cpp $(UIKIT_HDR) uikit/globals.inc $(LIB_DEP)
 lib/uikit/canvas.o: uikit/canvas.cpp $(UIKIT_HDR) $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -c $< -o $@
-lib/uikit/imgload.o: uikit/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h $(LIB_DEP)
+lib/uikit/imgload.o: uikit/imgload.cpp img/imgload.hpp imagekit/imagekit.h $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
 # The layout lock (uikit/abi.h): the classes' sizes and the base classes' offsets, as static_asserts
@@ -141,11 +141,12 @@ uikit-layout-update:
 	$(UIKIT_LAYOUT) --update
 lib/uikit_table.S: $(UIKIT_SO_OBJ) uikit/uikit.abi ../tools/libgen/libgen.py
 	$(LIBGEN) --name uikit --abi uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data \
-		--allow-data '^_ZN5uikit' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp $(UIKIT_SO_OBJ)
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp $(UIKIT_SO_OBJ)
 uikit/uikit.abi:
 	@touch $@
 lib/uikit_stubs.S lib/uikit_bind.cpp: lib/uikit_table.S ;
-lib/uikit.so: $(UIKIT_SO_OBJ) lib/uikit_table.o lib/librt.o
+# (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
+lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/uikit_table.o lib/librt.o
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
 # The program side: the stubs, the bind constructor, and the variables (uikit/globals.cpp).
 lib/uikit_globals.o: uikit/globals.cpp uikit/globals.inc $(UIKIT_HDR)
@@ -345,9 +346,9 @@ libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
 # Letters: its model, layout and files in Apps/letters/*.h (the mail merge reads Cardfile's forms: its model.h;
 # .docx / .odt: the PNG writer's zip / deflate).
 letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
-	    lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	    lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 # The spreadsheet: a newlib app as Letters (FreeType, stdio, doubles) -- its engine and files in
 # Apps/sheet/*.h, Letters' icons, the PNG writer's zip / deflate for the .xlsx.
 sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
@@ -359,10 +360,10 @@ sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h i
 # slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
 # .odp's zip (img/pngsave.hpp), the PDF writer.
 slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
-	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
+	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
 	    user.ld kapi.h docguard.h clipboard.h
-	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
 
 # QBStudio, the IDE for desktop apps in BASIC (Apps/qbstudio: docs/qbstudio/README.md): a newlib app as Letters
 # (FreeType's text through uikit, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
@@ -390,9 +391,9 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps
 # Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # uikit), the image codecs (uikit's imgload), the JPEG / PNG writers (img/pngsave.hpp), the PDF writer (pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) img/imgload.hpp img/pngsave.hpp pdf/pdfwrite.h clipboard.h notify.h trash.h wallpaper.h \
-	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Letters (FreeType's text
 # through uikit), its engine and widgets headers included by main.cpp; zlib (Deflate) built from third_party into
@@ -440,13 +441,13 @@ pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
 # Paint: a newlib app (FreeType's text, its Text tool), its canvas composited by the GPU (gpucomp: the
 # layers as textures, their blend modes); its pieces in Apps/paint/*.h.
 paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) clipboard.h docguard.h img/imgload.hpp img/pngsave.hpp lib/ft.imp.a \
-	   ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/printerkit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
-screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a \
+	   ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
+screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a \
 		libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # Koton, the studio (Apps/koton: docs/daw/README.md): a newlib app as Letters (FreeType text through uikit's
 # text face, floats everywhere). Its engine (the song model, the harmony, the generators, the compiler,
@@ -495,9 +496,9 @@ Apps/media/obj/av/%.o: av/%.c $(wildcard av/*.h) kapi.h
 	@mkdir -p $(dir $@)
 	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
 media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_AV_OBJ) lib/audiokit.imp.a img/imgload.hpp img/pngsave.hpp fileassoc.h notify.h \
-	   lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h $(wildcard av/*.h)
-	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       $(MEDIA_AV_OBJ) lib/audiokit.imp.a lib/uikit.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
+	   lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h $(wildcard av/*.h)
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       $(MEDIA_AV_OBJ) lib/audiokit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
 
 # Koton's plugins (user/kplug.h, the protocol user/kplug_proto.h; the host: Apps/koton/plug): each
 # Apps/kp_<name>/main.cpp -> Apps/kp_<name>/kp_<name>.elf, a newlib app with the FPU. Built next to

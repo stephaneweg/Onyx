@@ -143,6 +143,27 @@ extern "C" int ik_has_alpha (const ik_image *im)
 
 static const char *s_format = "";
 
+static const struct { const char *name, *exts; int rd, wr, alpha, anim; } s_formats[] = {
+	{ "PNG",  "png",          1, 1, 1, 0 },
+	{ "JPEG", "jpg jpeg jpe", 1, 1, 0, 0 },
+	{ "GIF",  "gif",          1, 1, 1, 1 },
+	{ "BMP",  "bmp",          1, 1, 0, 0 },
+	{ "WebP", "webp",         1, 0, 1, 0 },
+	{ "PCX",  "pcx",          1, 0, 0, 0 },
+};
+extern "C" int ik_formats (struct ik_format *out, int max)
+{
+	int n = (int) (sizeof s_formats / sizeof s_formats[0]);
+	for (int i = 0; out != 0 && i < n && i < max; i++)
+	{
+		memset (&out[i], 0, sizeof out[i]);
+		snprintf (out[i].name, sizeof out[i].name, "%s", s_formats[i].name);
+		snprintf (out[i].extensions, sizeof out[i].extensions, "%s", s_formats[i].exts);
+		out[i].can_read = s_formats[i].rd; out[i].can_write = s_formats[i].wr;
+		out[i].alpha = s_formats[i].alpha; out[i].animated = s_formats[i].anim;
+	}
+	return n;
+}
 extern "C" int ik_is_image_name (const char *name)		{ return name != 0 && img_is_image_name (name) ? 1 : 0; }
 extern "C" const char *ik_load_format (void)			{ return s_format; }
 
@@ -219,6 +240,22 @@ extern "C" const unsigned *ik_frames_pixels (const ik_frames *f, int i)	{ return
 extern "C" int ik_frames_delay (const ik_frames *f, int i)	{ return f != 0 && i >= 0 && i < f->f.n ? f->f.delay[i] : 0; }
 extern "C" int ik_frames_width (const ik_frames *f)		{ return f != 0 ? f->f.w : 0; }
 extern "C" int ik_frames_height (const ik_frames *f)		{ return f != 0 ? f->f.h : 0; }
+extern "C" int ik_frames_take (ik_frames *f, unsigned **px, int *delay, int max)
+{
+	if (f == 0 || px == 0) return 0;
+	int n = 0;
+	for (int i = 0; i < f->f.n && n < max; i++)
+	{
+		px[n] = f->f.px[i]; f->f.px[i] = 0;
+		if (delay != 0) delay[n] = f->f.delay[i];
+		n++;
+	}
+	return n;
+}
+extern "C" unsigned char *ik_inflate (const void *data, unsigned n, int zlib, unsigned *out_n)
+{
+	return img_inflate (data, n, zlib != 0, out_n);
+}
 extern "C" void ik_frames_free (ik_frames *f)			{ if (f != 0) { img_free (&f->f); delete f; } }
 
 // ---- writing ---------------------------------------------------------------------------------------
@@ -232,17 +269,31 @@ static bool word_is (const char *a, const char *b)
 		if (x == 0) return true;
 	}
 }
-extern "C" int ik_encode (const ik_image *im, const char *format, int quality, void **out, unsigned *out_n)
+extern "C" int ik_encode_pixels (const unsigned *src, int w, int h, int stride, const char *format, int quality, int alpha,
+				 void **out, unsigned *out_n)
 {
-	if (im == 0 || format == 0 || out == 0 || out_n == 0) return -1;
+	if (src == 0 || format == 0 || out == 0 || out_n == 0 || w < 1 || h < 1 || stride < w) return -1;
 	*out = 0; *out_n = 0;
-	const unsigned *px = im->p.px; int w = im->p.w, h = im->p.h;
+	unsigned *tight = 0;					// (the encoders take rows one after the other)
+	const unsigned *px = src;
+	if (stride != w)
+	{
+		tight = new unsigned[(size_t) w * h];
+		for (int y = 0; y < h; y++) memcpy (tight + (size_t) y * w, src + (size_t) y * stride, (size_t) w * 4);
+		px = tight;
+	}
+	if (alpha < 0)
+	{
+		alpha = 0;
+		for (size_t i = 0, n = (size_t) w * h; i < n && !alpha; i++) if ((px[i] >> 24) != 255) alpha = 1;
+	}
 	unsigned n = 0; unsigned char *b = 0;
-	if (word_is (format, "png")) b = pngsave::png_encode (px, w, h, ik_has_alpha (im) != 0, &n);
+	if (word_is (format, "png")) b = pngsave::png_encode (px, w, h, alpha != 0, &n);
 	else if (word_is (format, "jpg") || word_is (format, "jpeg") || word_is (format, "jpe"))
 		b = pngsave::jpeg_encode (px, w, h, quality <= 0 ? 90 : quality, &n);
 	else if (word_is (format, "bmp")) b = pngsave::bmp_encode (px, w, h, &n);
 	else if (word_is (format, "gif")) b = pngsave::gif_encode (px, w, h, &n);
+	delete[] tight;
 	if (b == 0 || n == 0) { delete[] b; return -1; }
 	void *o = malloc (n);					// (the caller's: ik_free)
 	if (o != 0) memcpy (o, b, n);
@@ -250,6 +301,11 @@ extern "C" int ik_encode (const ik_image *im, const char *format, int quality, v
 	if (o == 0) return -1;
 	*out = o; *out_n = n;
 	return 0;
+}
+extern "C" int ik_encode (const ik_image *im, const char *format, int quality, void **out, unsigned *out_n)
+{
+	if (im == 0) return -1;
+	return ik_encode_pixels (im->p.px, im->p.w, im->p.h, im->p.w, format, quality, -1, out, out_n);
 }
 extern "C" int ik_save (const ik_image *im, const char *path, int quality)
 {

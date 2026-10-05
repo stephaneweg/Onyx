@@ -44,3 +44,7 @@
 38 ik_scale
 39 ik_straighten
 40 ik_width
+41 ik_formats
+42 ik_frames_take
+43 ik_inflate
+44 ik_encode_pixels

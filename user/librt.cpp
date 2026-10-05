@@ -41,6 +41,8 @@ int onyx_lib_init (const struct TLibImports *imp)
 // The importer's i-th shared variable (TLibImports.data) -> 0: it has none there (an older program).
 void *onyx_lib_data (unsigned i)	{ return i < s_imp.ndata && s_imp.data != 0 ? s_imp.data[i] : 0; }
 
+// What the program gave this library (a library that opens another hands its allocator on: one heap).
+const struct TLibImports *onyx_lib_imports (void)	{ return &s_imp; }
 void *onyx_lib_alloc (lib_size_t n)	{ return s_imp.alloc (n); }
 void onyx_lib_free (void *p)		{ if (p != 0) s_imp.free (p); }
 
