@@ -585,11 +585,37 @@ int OnyxHost::menuItem (const char *title, const char *item, const char *key)
 	return id;
 }
 
+// A standalone app (Make App > Standalone): this executable is the runtime with a compiled program after it
+// (bas::attachBax). Its bytes (new[]) and this program's own path, or 0: the plain runtime.
+static char *attached_program (char *self, int cap, int *len)
+{
+	static char blk[1024];
+	int n = kapi_get_argv (blk, sizeof blk - 1);
+	if (n <= 0) return 0;
+	blk[n < (int) sizeof blk - 1 ? n : (int) sizeof blk - 1] = 0;
+	if (!blk[0]) return 0;
+	void *f = kapi_open (blk);
+	if (!f) return 0;
+	unsigned size = kapi_fsize (f), off = 0, l = 0;
+	char tail[bas::BAX_TRAILER]; char *b = 0;
+	if (size > bas::BAX_TRAILER && kapi_seek (f, size - bas::BAX_TRAILER) >= 0 && kapi_read (f, tail, sizeof tail) == (int) sizeof tail
+	    && bas::attachedBax (tail, size, &off, &l) && kapi_seek (f, off) >= 0)
+	{
+		b = new char[l + 1];
+		if (kapi_read (f, b, l) != (int) l) { delete [] b; b = 0; }
+	}
+	kapi_close (f);
+	if (b) { *len = (int) l; scpy (self, blk, cap); }
+	return b;
+}
+
 int main (void)
 {
 	static char argbuf[512];
 	kapi_get_args (argbuf, sizeof argbuf);
 	char path[256], cwd[256] = ""; int i = 0, n = 0;
+	int alen = 0;
+	char *attached = attached_program (path, sizeof path, &alen);	// (then: no options, every argument is the program's)
 	bool ide = false, compileOnly = false, prof = false, managed = false;
 	static char service[32] = "qbasic";
 	// Options: -d <dir> (current directory, default: the program's folder), -i (report a
@@ -597,7 +623,7 @@ int main (void)
 	// <name>, QBStudio's "qbstudio"), -c (compile
 	// only: write the program's .bax -- basic -c prog.bas -> prog.bax -- and stop), -m (managed: the program runs on
 	// the VM; without it, in machine code -- basjit.h), -p (where the time goes: SD:/basprof.txt).
-	for (;;)
+	while (!attached)
 	{
 		while (argbuf[i] == ' ') i++;
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'i' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { ide = true; i += 2; continue; }
@@ -621,9 +647,13 @@ int main (void)
 		}
 		break;
 	}
-	if (argbuf[i] == '"') { i++; while (argbuf[i] && argbuf[i] != '"' && n < 255) path[n++] = argbuf[i++]; if (argbuf[i]) i++; }
-	else while (argbuf[i] && argbuf[i] != ' ' && n < 255) path[n++] = argbuf[i++];
-	path[n] = 0;
+	if (attached) {}
+	else
+	{
+		if (argbuf[i] == '"') { i++; while (argbuf[i] && argbuf[i] != '"' && n < 255) path[n++] = argbuf[i++]; if (argbuf[i]) i++; }
+		else while (argbuf[i] && argbuf[i] != ' ' && n < 255) path[n++] = argbuf[i++];
+		path[n] = 0;
+	}
 	while (argbuf[i] == ' ') i++;
 
 	static OnyxHost host;
@@ -649,8 +679,8 @@ int main (void)
 		else scpy (host.title, base, sizeof host.title);
 	}
 
-	int len = 0;
-	char *src = host.load (path, &len);
+	int len = alen;
+	char *src = attached ? attached : host.load (path, &len);
 	if (!src)
 	{
 		if (host.console) { ax_puts ("basic: cannot read "); ax_putln (path); }

@@ -3242,6 +3242,13 @@ barwidth = 40
   loops, SELECT, GOSUB, SUBs with by-reference arguments, errors under `RESUME NEXT` -- machine
   code against VM: 1 500 programs identical on 2026-10-05). Measures: `basic -p`
   (`bas::Profile`), `tools/tests/basic/bench/calc.bas`, `tools/tests/basic/pi_prof.py`.
+- **Standalone apps** (the user's form (c); no linker on the machine): `bas::attachBax ()` makes
+  *the runtime's executable + a `.bax` + a 16-byte trailer* (`"OBAXAPP1"`, the program's offset and
+  length); the kernel's ELF loader ignores what follows the segments, and `/bin/basic`
+  (`attached_program ()` in `runtime.cpp`) starts by reading its own file's tail (`kapi_get_argv`:
+  argv[0] is its path): a trailer = that program is run, every argument is the program's, the
+  title is the app folder's. "Make App" with **Standalone** (`qbasic`, `qbstudio`, `pc/OnyxBasic`)
+  copies `SD:/bin/basic` so; the tests' `.bax` replay goes through `attachBax` / `attachedBax`.
 - **Compiled programs** (`basbax.cpp`): `saveBax ()` writes a `Program` table by table
   (little-endian; header "OBAX", the format and the VM's opcode / builtin / statement counts,
   so a `.bax` from another VM is refused), `loadBax ()` reads it back, `load ()` takes a

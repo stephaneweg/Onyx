@@ -277,14 +277,14 @@ static bool ask_text (const char *title, char *out, int cap)
 
 // The compile dialog (Run > Make .bax, File > Make App): how the program is made. "Managed": it will run on
 // the VM (as before machine code); without it /bin/basic runs it in machine code. The choices are kept.
-static bool g_optCompiled = true, g_optManaged = false;
+static bool g_optCompiled = true, g_optManaged = false, g_optAlone = false;
 static void dlg_nop (Widget &) {}
 class CompileDialog : public Modal
 {
 	const char *m_title;
 public:
-	Checkbox *compiled, *managed;
-	CompileDialog (const char *title, bool app) : Modal (460, app ? 176 : 140), m_title (title), compiled (0)
+	Checkbox *compiled, *managed, *alone;
+	CompileDialog (const char *title, bool app) : Modal (500, app ? 208 : 140), m_title (title), compiled (0), alone (0)
 	{
 		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
 		int y = uk_fh () + 18;
@@ -292,6 +292,8 @@ public:
 		{
 			compiled = new Checkbox (14, y, width - 28, 24, "Compiled (main.bax: starts faster, the source is not in the app)", g_optCompiled, dlg_nop);
 			addChild (compiled); y += 32;
+			alone = new Checkbox (14, y, width - 28, 24, "Standalone (main: an executable with the runtime in it, 650 KB)", g_optAlone, dlg_nop);
+			addChild (alone); y += 32;
 		}
 		managed = new Checkbox (14, y, width - 28, 24, "Managed (runs on the VM instead of machine code)", g_optManaged, dlg_nop);
 		addChild (managed);
@@ -309,6 +311,7 @@ static bool ask_compile (const char *title, bool app)
 	CompileDialog d (title, app);
 	if (!d.run ()) return false;
 	if (d.compiled) g_optCompiled = d.compiled->checked;
+	if (d.alone) g_optAlone = d.alone->checked;
 	g_optManaged = d.managed->checked;
 	return true;
 }
@@ -539,7 +542,8 @@ static void op_goto ()
 }
 
 // The program compiled (bytecode: runs without parsing) into a .bax file. true = written.
-static bool write_bax (const char *path, bool managed)
+// alone: a standalone executable -- the runtime (SD:/bin/basic) with the program after it.
+static bool write_bax (const char *path, bool managed, bool alone = false)
 {
 	int starts[MAXMOD];
 	char *s = compose (starts);
@@ -550,6 +554,17 @@ static bool write_bax (const char *path, bool managed)
 	if (managed) bas::setManaged (p, true);
 	char *bytes; int n = bas::saveBax (p, &bytes);
 	bas::destroy (p);
+	if (alone)
+	{
+		void *f = kapi_open ("SD:/bin/basic");
+		if (!f) { delete [] bytes; return false; }
+		unsigned sz = kapi_fsize (f); char *rt = new char[sz + 1];
+		int r = kapi_read (f, rt, sz); kapi_close (f);
+		char *all = 0; int an = r == (int) sz ? bas::attachBax (rt, r, bytes, n, &all) : 0;
+		delete [] rt; delete [] bytes;
+		if (!all) return false;
+		bytes = all; n = an;
+	}
 	bool ok = kapi_save_file (path, bytes, (unsigned) n) >= 0;
 	delete [] bytes;
 	return ok;
@@ -584,12 +599,14 @@ static void op_make_app ()
 	// compiled (main.bax: starts at once, the source stays private) or as source (main.bas);
 	// only one of them, or an old one would be run instead
 	if (!ask_compile ("Make App", true)) return;
-	bool compiled = g_optCompiled;
-	char other[160];
-	fs_join (p, sizeof p, dir, compiled ? "main.bax" : "main.bas");
+	bool compiled = g_optCompiled || g_optAlone;
+	char other[160], third[160];
+	// one of main (standalone), main.bax, main.bas: the others removed, or an old one would be run instead
+	fs_join (p, sizeof p, dir, g_optAlone ? "main" : compiled ? "main.bax" : "main.bas");
 	fs_join (other, sizeof other, dir, compiled ? "main.bas" : "main.bax");
+	fs_join (third, sizeof third, dir, g_optAlone ? "main.bax" : "main");
 	bool ok;
-	if (compiled) ok = write_bax (p, g_optManaged);
+	if (compiled) ok = write_bax (p, g_optManaged, g_optAlone);
 	else if (!g_optManaged) ok = write_to (p);
 	else
 	{	// the source of a managed app says so itself: OPTION MANAGED, its first line
@@ -603,7 +620,7 @@ static void op_make_app ()
 		delete [] s; delete [] t;
 	}
 	if (!ok) { set_status ("Cannot write ", p); return; }
-	kapi_remove (other);
+	kapi_remove (other); kapi_remove (third);
 	char txt[200]; int k = 0;
 	const char *a = "# Onyx application metadata (written by QBasic > Make App)\nname = ";
 	for (int i = 0; a[i]; i++) txt[k++] = a[i];

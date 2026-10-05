@@ -50,10 +50,11 @@ struct Project
 {
 	char dir[200], name[40], title[64], mainForm[40], category[32]; bool compiled;
 	bool managed;				// the app runs on the VM instead of machine code (project.ini: managed = yes)
+	bool alone;				// Make App writes a standalone executable (project.ini: standalone = yes)
 	Vec<Doc> docs;
 	Vec<int> tabs;					// the open docs, in order
 	int cur;
-	Project () : compiled (true), managed (false), cur (-1) { dir[0] = name[0] = title[0] = mainForm[0] = category[0] = 0; }
+	Project () : compiled (true), managed (false), alone (false), cur (-1) { dir[0] = name[0] = title[0] = mainForm[0] = category[0] = 0; }
 };
 static Project g_p;
 struct Problem { int kind; char text[180]; char file[64]; int line; };	// kind 0 error, 1 warning, 2 information
@@ -748,6 +749,7 @@ static bool load_project (const char *dir)
 	ini_get (ini, "category", g_p.category, sizeof g_p.category); if (!g_p.category[0]) cpy (g_p.category, "BASIC", sizeof g_p.category);
 	char c[16] = "yes"; ini_get (ini, "compiled", c, sizeof c); g_p.compiled = !ieq (c, "no");
 	char mg[16] = "no"; ini_get (ini, "managed", mg, sizeof mg); g_p.managed = ieq (mg, "yes");
+	char al[16] = "no"; ini_get (ini, "standalone", al, sizeof al); g_p.alone = ieq (al, "yes");
 	char files[512] = ""; ini_get (ini, "files", files, sizeof files);
 	free (ini);
 	// the files (a form, its code; then the rest)
@@ -788,7 +790,7 @@ static void save_project_ini ()
 	s.puts ("# a QBStudio project: its window, its code, what Make App writes\n[project]\n");
 	s.printf ("name = %s\ntitle = %s\nmain = %s\nfiles =", g_p.name, g_p.title, g_p.mainForm);
 	for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type != DOC_GEN) s.printf (" %s", g_p.docs[i].file);
-	s.printf ("\ncategory = %s\ncompiled = %s\nmanaged = %s\n", g_p.category, g_p.compiled ? "yes" : "no", g_p.managed ? "yes" : "no");
+	s.printf ("\ncategory = %s\ncompiled = %s\nmanaged = %s\nstandalone = %s\n", g_p.category, g_p.compiled ? "yes" : "no", g_p.managed ? "yes" : "no", g_p.alone ? "yes" : "no");
 	char p[260]; join (p, sizeof p, g_p.dir, "project.ini");
 	write_file (p, s.str ());
 }
@@ -951,6 +953,7 @@ static void cmd_project_settings ()
 	if (ask_line ("The project", "Its category (in the app list)", c, sizeof c)) cpy (g_p.category, c, sizeof g_p.category);
 	g_p.compiled = uk_messagebox ("The project", "Make App: compiled (main.bax, it starts at once; the source not in the app)?", MB_YESNO) == 1;
 	g_p.managed = uk_messagebox ("The project", "Managed: the program runs on the VM instead of machine code?", MB_YESNO) == 1;
+	g_p.alone = uk_messagebox ("The project", "Make App: standalone (main: an executable with the runtime in it, 650 KB)?", MB_YESNO) == 1;
 	save_project_ini (); refresh_tree ();
 }
 
@@ -983,14 +986,27 @@ static void cmd_make_app ()
 	char dir[128]; snprintf (dir, sizeof dir, "SD:/apps/%s.app", g_p.name);
 	kapi_mkdir (dir);
 	char path[200], other[200];
-	join (path, sizeof path, dir, g_p.compiled ? "main.bax" : "main.bas");
-	join (other, sizeof other, dir, g_p.compiled ? "main.bas" : "main.bax");
+	bool compiled = g_p.compiled || g_p.alone;
+	char third[200];
+	join (path, sizeof path, dir, g_p.alone ? "main" : compiled ? "main.bax" : "main.bas");
+	join (other, sizeof other, dir, compiled ? "main.bas" : "main.bax");
+	join (third, sizeof third, dir, g_p.alone ? "main.bax" : "main");
 	bool ok;
-	if (g_p.compiled)
+	if (compiled)
 	{
 		if (g_p.managed) bas::setManaged (p, true);
 		char *bytes; int n = bas::saveBax (p, &bytes);
-		ok = kapi_save_file (path, bytes, (unsigned) n) >= 0;
+		if (g_p.alone)				// the runtime with the program after it
+		{
+			void *rf = kapi_open ("SD:/bin/basic");
+			unsigned sz = rf ? kapi_fsize (rf) : 0; char *rt = (char *) malloc (sz + 1);
+			int r = rf ? kapi_read (rf, rt, sz) : -1;
+			if (rf) kapi_close (rf);
+			char *all = 0; int an = r == (int) sz && sz ? bas::attachBax (rt, r, bytes, n, &all) : 0;
+			free (rt); delete[] bytes;
+			bytes = all; n = an;
+		}
+		ok = bytes && kapi_save_file (path, bytes, (unsigned) n) >= 0;
 		delete[] bytes;
 	}
 	else
@@ -1001,7 +1017,7 @@ static void cmd_make_app ()
 	}
 	bas::destroy (p);
 	if (!ok) { char m[260]; snprintf (m, sizeof m, "Cannot write %s", path); status (m); return; }
-	kapi_remove (other);
+	kapi_remove (other); kapi_remove (third);
 	Str txt; txt.printf ("# Onyx application metadata (written by QBStudio > Make App)\nname = %s\ncategory = %s\n", g_p.title, g_p.category);
 	join (path, sizeof path, dir, "app.txt"); write_file (path, txt.str ());
 	// the icon: the project's icon.bmp, else BASIC's
