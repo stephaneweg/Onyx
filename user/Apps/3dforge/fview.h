@@ -52,6 +52,7 @@ struct App
 	bool sketching; int skEdit; Feature sk; SkEval ev;
 	int skPlane; double skOffset;		// the Sketch tool's plane, chosen at the right: 0 XY, 1 XZ, 2 YZ; moved by
 	SkEl cur; int curStep; bool chain; double sweep0;
+	bool snapOn = false; V2 snapP;		// (the sketch's pointer is held by a point: shown)
 	bool ghost = false;			// (a shape not yet clicked: shown once one of its values was typed)
 	V2 arcC, arcM; bool rectCentre = false;	// (an arc being placed: its centre, or its end and its middle; rectangles from their centre)
 	// what is selected, what the pointer is on
@@ -318,7 +319,10 @@ static void sk_spline_end ()
 	if (e.pts.empty ()) { sk_arm (); tool_hint (); ui (R_ALL); return; }
 	sk_add (e);
 }
-// The point of the sketch nearest to a place of the plane, within r: an element's start, end or centre.
+// An angle (degrees) as the pointer gives it: on a multiple of 45 when near one, else by steps of 5.
+static double snap_angle (double a) { double s = floor (a / 45 + 0.5) * 45; return fabs (a - s) <= 4 ? s : floor (a / 5 + 0.5) * 5; }
+// The point of the sketch nearest to a place of the plane, within r: an element's start, end or centre, the middle
+// of a line, a rectangle's corners, a spline's points, the origin.
 static bool sk_near (V2 p, double r, V2 *out)
 {
 	bool got = false; double best = r;
@@ -328,6 +332,15 @@ static bool sk_near (V2 p, double r, V2 *out)
 			double d = hypot (q.x - p.x, q.y - p.y);
 			if (d < best && (q.x != 0 || q.y != 0 || &q != &s.centre)) { best = d; *out = q; got = true; }
 		}
+	auto cand = [&] (const V2 &q) { double d = hypot (q.x - p.x, q.y - p.y); if (d < best) { best = d; *out = q; got = true; } };
+	for (size_t i = 0; i < A.ev.shapes.size () && i < A.sk.els.size (); i++)
+	{
+		const SkShape &s = A.ev.shapes[i]; const SkEl &e = A.sk.els[i];
+		if (e.kind == SK_LINE || e.kind == SK_CLOSE) cand (V2 ((s.start.x + s.end.x) / 2, (s.start.y + s.end.y) / 2));
+		if (e.kind == SK_SPLINE) for (const V2 &q : e.pts) cand (q);
+		if (e.kind == SK_RECT) { cand (V2 (s.start.x, s.end.y)); cand (V2 (s.end.x, s.start.y)); cand (V2 ((s.start.x + s.end.x) / 2, (s.start.y + s.end.y) / 2)); }
+	}
+	cand (V2 (0, 0));
 	return got;
 }
 // The pointer at p (plane) while an element is being placed: its values follow; click: the step is done.
@@ -336,6 +349,7 @@ static void sk_point (V2 p, bool click)
 	SkEl &e = A.cur; double near = 8 / A.cam.scale; V2 q;
 	bool snapped = A.snap && sk_near (p, near, &q);
 	if (snapped) p = q; else { p.x = snapv (p.x); p.y = snapv (p.y); }
+	A.snapOn = snapped; A.snapP = p;
 	if (A.curStep == 0)
 	{
 		e.x = p.x; e.y = p.y; A.arcC = A.arcM = p;
@@ -391,7 +405,7 @@ static void sk_point (V2 p, bool click)
 		if (d > 1e-9)
 		{
 			double a = atan2 (p.y - C.y, p.x - C.x), r = A.typed[0] ? e.r : snapped ? d : snapv (d, 0.5);
-			if (A.snap && !snapped) { double s = floor (a * 180 / PI / 15 + 0.5) * 15; if (fabs (a * 180 / PI - s) < 4) a = s * PI / 180; }
+			if (A.snap && !snapped) a = snap_angle (a * 180 / PI) * PI / 180;
 			e.r = r; e.x = C.x + r * cos (a); e.y = C.y + r * sin (a); e.ca = a * 180 / PI + 180;
 		}
 		if (click && e.r > 1e-6 && d > 1e-9) { A.curStep = 2; A.sweep0 = 0; e.sweep = 0; tool_hint (); ui (R_ALL); return; }
@@ -402,7 +416,7 @@ static void sk_point (V2 p, bool click)
 	if (e.kind == SK_LINE)
 	{
 		double a = atan2 (dy, dx) * 180 / PI, l = dist;
-		if (!snapped && A.snap) { double s = floor (a / 15 + 0.5) * 15; if (fabs (a - s) < 4) a = s; l = snapv (l); }
+		if (!snapped && A.snap) { a = snap_angle (a); l = snapv (l); }
 		if (!A.typed[0]) e.len = l;
 		if (!A.typed[1]) e.a = a;
 		if (click && e.len > 1e-6) { sk_add (e); return; }
@@ -421,7 +435,7 @@ static void sk_point (V2 p, bool click)
 	{
 		if (!A.typed[0]) e.r = snapped ? dist : snapv (dist, 0.5);
 		e.ca = atan2 (dy, dx) * 180 / PI;
-		if (A.snap) { double s = floor (e.ca / 15 + 0.5) * 15; if (fabs (e.ca - s) < 4) e.ca = s; }
+		if (A.snap && !snapped) e.ca = snap_angle (e.ca);
 		if (click && e.r > 1e-6) { A.curStep = 2; A.sweep0 = 0; e.sweep = 0; tool_hint (); ui (R_ALL); return; }
 	}
 	else						// ... its end: the sweep, unwrapped so that it can pass half a turn
@@ -431,7 +445,7 @@ static void sk_point (V2 p, bool click)
 		while (d > 180) d -= 360; while (d < -180) d += 360;
 		double sw = A.sweep0 + d; if (sw > 360) sw = 360; if (sw < -360) sw = -360;
 		A.sweep0 = sw;
-		if (A.snap && !snapped) sw = floor (sw / 5 + 0.5) * 5;
+		if (A.snap && !snapped) sw = snap_angle (sw);
 		if (!A.typed[1]) e.sweep = -sw;				// (kept clockwise)
 		if (click && fabs (e.sweep) > 1e-6) { sk_add (e); return; }
 	}
@@ -741,7 +755,7 @@ public:
 				if ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5 && !A.typed[3] && hypot (q.x - f.x, q.y - f.y) > 1e-6)
 				{
 					double a = atan2 (q.y - f.y, q.x - f.x) * 180 / PI;
-					if (A.snap) { double s = floor (a / 15 + 0.5) * 15; if (fabs (a - s) < 5) a = s; else a = floor (a + 0.5); }
+					if (A.snap) a = snap_angle (a);
 					f.turn = a;
 				}
 				if (f.kind == F_SPHERE) preview_update ();
@@ -790,6 +804,7 @@ public:
 				if (!A.cam.onPlane (mx, my, pl, &p)) break;
 				// (the sizes follow the pointer from here -- but the ones typed, and what has no step of its own)
 				V2 q = pl.to (p); f.pl = pl; f.target = target; f.x = snapv (q.x); f.y = snapv (q.y);
+				if (target < 0 && A.snap && hypot (q.x, q.y) < 9 / A.cam.scale) f.x = f.y = 0;		// (near the origin: on it)
 				if (!A.typed[0]) f.w = 0;
 				if (f.kind == F_BOX && !A.typed[1]) f.d = 0;
 				A.hasPend = true; A.step = 1; A.hasPrev = false; auto_op ();
@@ -836,11 +851,36 @@ public:
 
 	// ---- the bodies: a small panel floating over the view's top left corner ------------------------------------------
 	enum { BX = 10, BY = 44, BW = 168, BROW = 24 };
-	int bodiesH () const { return A.sketching || A.camMode || A.doc.bodies.empty () ? 0 : 24 + BROW * (int) A.doc.bodies.size () + 6; }
+	// (under the bodies: the sketches of the part as it is rebuilt -- a click shows one, "Edit" or a double click opens it)
+	int sketchAt (int k) const { for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++) if (A.doc.feats[i].kind == F_SKETCH && k-- == 0) return i; return -1; }
+	int sketchCount () const { int n = 0; for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++) if (A.doc.feats[i].kind == F_SKETCH) n++; return n; }
+	int bodiesPart () const { return A.doc.bodies.empty () ? 0 : 24 + BROW * (int) A.doc.bodies.size (); }
+	int bodiesH () const
+	{
+		if (A.sketching || A.camMode) return 0;
+		int ns = sketchCount (), h = bodiesPart () + (ns ? 24 + BROW * ns : 0);
+		return h ? h + 6 : 0;
+	}
 	void drawBodies ()
 	{
 		int h = bodiesH (); if (!h) return;
 		uk_rbox (canvas, BX, BY, BW, h, 8, 0xFFFFFF, 0xFFFFFF, 232); uk_rline (canvas, BX, BY, BW, h, 8, 0xB0B4BE);
+		int ns = sketchCount (), sy = BY + bodiesPart ();
+		if (ns)
+		{
+			if (sy > BY) canvas.fillRect (BX + 8, sy + 1, BW - 16, 1, 0xDCDFE5);
+			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, sy + 6, "Sketches", 0x5A5E68, 2); }
+			for (int k = 0; k < ns; k++)
+			{
+				int i = sketchAt (k), y = sy + 24 + k * BROW; unsigned bg = 0xFFFFFF; const Feature &f = A.doc.feats[i];
+				if (i == A.selFeat) { bg = uk_mix (C_ACCENT, 0xFFFFFF, 190); uk_rbox (canvas, BX + 4, y, BW - 8, BROW, 5, bg, bg); }
+				icon (canvas, I_SKETCH, BX + 8, y + 3, 18, 0x464C5A, C_ACCENT, bg);
+				char fit[32]; uk_text_fit (f.name, BW - 34 - 40, fit, sizeof fit);
+				uk_text (canvas, BX + 32, y + (BROW - uk_fh ()) / 2, fit, 0x1A1A1E, i == A.selFeat ? 2 : 0);
+				UkFaceScope fs (g_small); uk_text (canvas, BX + BW - 10 - uk_tw ("Edit"), y + (BROW - uk_fh ()) / 2, "Edit", 0x2862B0);
+			}
+		}
+		if (A.doc.bodies.empty ()) return;
 		{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, BY + 6, "Bodies", 0x5A5E68, 2); }
 		for (size_t i = 0; i < A.doc.bodies.size (); i++)
 		{
@@ -857,8 +897,18 @@ public:
 	{
 		int h = bodiesH ();
 		if (!h || mx < BX || mx >= BX + BW || my < BY || my >= BY + h) return false;
+		int sy = BY + bodiesPart (), k = (my - sy - 24) / BROW;
+		if (my >= sy + 24 && k < sketchCount ())			// a sketch: shown; "Edit", or pressed twice: opened
+		{
+			static int lastK = -1; static unsigned lastT = 0; unsigned now = kapi_get_ticks ();
+			int i = sketchAt (k); bool open = mx >= BX + BW - 44 || (lastK == i && now - lastT < 45); lastK = i; lastT = now;
+			if (A.tool != T_SELECT) tool_set (T_SELECT);
+			A.selFeat = i; A.selBody = -1;
+			if (open) { lastK = -1; sketch_begin (A.doc.feats[i].pl, A.doc.feats[i].target, i); }
+			ui (R_ALL); return true;
+		}
 		int i = (my - BY - 24) / BROW;
-		if (my >= BY + 24 && i < (int) A.doc.bodies.size ())
+		if (my >= BY + 24 && my < sy && i < (int) A.doc.bodies.size ())
 		{
 			int id = A.doc.bodies[i].id;
 			if (mx < BX + 30) { BodyProp &p = A.doc.prop (id); p.visible = !p.visible; A.doc.changes++; }
@@ -1189,6 +1239,11 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 		}
 	}
 	else if (A.curStep == 0 && A.tool >= T_LINE) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
+	if (A.snapOn && A.selEl < 0)			// held by a point: a green ring on it
+	{
+		double x, y; P (A.snapP, &x, &y); const double d = 6.5;
+		ov_line (canvas, x - d, y, x, y - d, 1.5, C_GREEN); ov_line (canvas, x, y - d, x + d, y, 1.5, C_GREEN); ov_line (canvas, x + d, y, x, y + d, 1.5, C_GREEN); ov_line (canvas, x, y + d, x - d, y, 1.5, C_GREEN);
+	}
 }
 void View::overlays ()
 {

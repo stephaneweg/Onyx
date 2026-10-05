@@ -2224,9 +2224,11 @@ Parts are saved as `.3df` (a double click on one in the File Viewer opens it); a
 **wheel** zooms on the pointer. The **cube** at the top right shows the orientation: click a face to look from
 there; under it, *home*, *fit* and *see through*. The **Bodies** panel at the top left lists the bodies: the eye
 hides or shows one, a click selects it (its name, colour, measures and whether it is a closed solid ready to print
-are then at the right). The **timeline** under the view is the history, a picture a step: click a step to see and
+are then at the right). Under them, the **Sketches**: a click shows one, **Edit** (or a double click) opens it to
+change it — what was extruded from it follows. The **timeline** under the view is the history, a picture a step: click a step to see and
 change its values at the right, double-click a sketch to open it, right-click for *Roll back to here* (the part as
-it was after that step: the blue bar), *Roll to the end*, *Delete*. Longer than its room, the timeline moves with
+it was after that step: the blue bar), *Roll to the end*, *Delete*. The **blue bar** can also be **dragged** along
+the steps to go back in the history for a while — the steps behind it wait, greyed — and dragged back to the end. Longer than its room, the timeline moves with
 its arrows, the wheel, or dragged.
 
 **Shapes.** The **Shapes** button unfolds them: Box, Cylinder, Sphere, Torus, Pyramid, Prism, Taper (a prism whose
@@ -2287,8 +2289,10 @@ its centre, its radius and its angle — and they are replayed in the order they
 | **Point** | A mark: part of no outline, nothing is extruded from it — the pointer snaps to it. |
  A run of lines and arcs
 goes on from its last point until it comes back to its first (the green ring: *closes the outline*), **Close**
-(a line back to the start) or **Esc**. The pointer snaps to the grid (1 mm), to the points already drawn and to
-angles of 15°. A closed outline is filled in blue; the timeline shows the elements — click one to change its
+(a line back to the start) or **Esc**. The pointer **snaps**: to the grid (1 mm); to a point when it is near one — an element's ends and centre, the
+**middle of a line**, a rectangle's corners, a spline's points, a mark, the **origin** (a green diamond shows the
+point that holds it); angles go by steps of **5°**, and stick to the multiples of **45°** when near one (a
+perpendicular, a diagonal, a quarter of a turn). The check box *Snap* at the right turns all of it off. A closed outline is filled in blue; the timeline shows the elements — click one to change its
 values — and how many outlines are closed or still open. **Finish sketch** keeps it. **Extrude** then pulls the
 last sketch (or the one selected) up, or pushes it into the body; an outline inside another is a hole.
 

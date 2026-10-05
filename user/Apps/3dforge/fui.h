@@ -202,6 +202,7 @@ class Timeline : public Widget
 public:
 	enum { H = 46, CELL = 38, ARROW = 22 };
 	int scroll, hot, lastI, shownSel, shownN, pressX, pressScroll, pressI; unsigned lastT; bool wasL, wasR, moved;
+	bool barDrag = false, barHot = false;		// (the blue bar -- where the part is rebuilt up to -- held, pointed)
 	Timeline (int l, int t, int w) : Widget (l, t, w, H), scroll (0), hot (-1), lastI (-1), shownSel (-1), shownN (0), pressX (0), pressScroll (0), pressI (-1), lastT (0), wasL (false), wasR (false), moved (false) {}
 	int count () const { return A.camMode ? 1 + (int) A.job.ops.size () : A.sketching ? (int) A.sk.els.size () : (int) A.doc.feats.size (); }
 	int sel () const { return A.camMode ? A.camSel : A.sketching ? A.selEl : A.selFeat; }
@@ -278,7 +279,11 @@ public:
 		if (!A.sketching && !A.camMode && n)					// where the part is rebuilt up to
 		{
 			int mx = x0 + A.doc.upto * CELL - scroll - 2;
-			if (mx >= x0 - 2 && mx <= x1) { canvas.fillRect (mx, 6, 2, H - 12, C_ACCENT); VPath p; int xy[6] = { (mx - 4) * 16, 2 * 16, (mx + 6) * 16, 2 * 16, (mx + 1) * 16, 8 * 16 }; p.poly (xy, 3); p.fill (canvas, C_ACCENT); }
+			if (mx >= x0 - 2 && mx <= x1)			// (a bar with a grip at its top: it can be dragged along the steps)
+			{
+				int g = barDrag || barHot ? 7 : 5; canvas.fillRect (mx - (barDrag ? 1 : 0), 6, barDrag ? 4 : 2, H - 12, C_ACCENT);
+				VPath p; int xy[6] = { (mx + 1 - g) * 16, 2 * 16, (mx + 1 + g) * 16, 2 * 16, (mx + 1) * 16, (4 + g) * 16 }; p.poly (xy, 3); p.fill (canvas, C_ACCENT);
+			}
 		}
 		if (arrows)
 		{
@@ -338,8 +343,26 @@ public:
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 		bool press = bl && !wasL, release = !bl && wasL, rpress = br && !wasR; wasL = bl != 0; wasR = br != 0;
-		if (!in) { if (hot >= 0) { hot = -1; invalidate (true); } pressI = -1; return false; }
 		int x0, x1; bool arrows; room (&x0, &x1, &arrows);
+		// the bar dragged: the part is rebuilt up to the step it is left after (and back to the end the same way)
+		bool design = !A.sketching && !A.camMode && count () > 0; int bar = x0 + A.doc.upto * CELL - scroll - 1;
+		if (barDrag)
+		{
+			if (!bl || !design) { barDrag = false; invalidate (true); return true; }
+			if (mx < x0 + 8 && scroll > 0) scroll -= CELL / 2; if (mx > x1 - 8) scroll += CELL / 2;	// (near an end: the row moves)
+			int k = (mx - x0 + scroll + CELL / 2) / CELL; if (k < 0) k = 0; if (k > count ()) k = count ();
+			if (k != A.doc.upto)
+			{
+				A.doc.upto = k; A.doc.touch (); if (A.selFeat >= k) A.selFeat = -1; if (!A.doc.body (A.selBody)) A.selBody = -1;
+				set_hint (k < count () ? "The part as it was after that step. Drag the bar back to the end for the rest." : "The whole history again.");
+				ui (R_ALL); if (g_view) g_view->invalidate (true);
+			}
+			invalidate (true); return true;
+		}
+		if (!in) { if (hot >= 0 || barHot) { hot = -1; barHot = false; invalidate (true); } pressI = -1; return false; }
+		bool onBar = design && abs (mx - bar) <= 5 && mx >= x0 - 4 && mx <= x1 + 4;
+		if (onBar != barHot) { barHot = onBar; invalidate (true); }
+		if (press && onBar) { if (A.tool != T_SELECT) tool_set (T_SELECT); barDrag = true; pressI = -1; invalidate (true); return true; }
 		int h = cellAt (mx); if (h != hot) { hot = h; invalidate (true); }
 		if (wheel) { scroll -= wheel * CELL * 2; invalidate (true); return true; }
 		if (press)
@@ -383,7 +406,7 @@ public:
 		{
 			Bind &q = p->b[i];
 			if (q.tb != &w) continue;
-			if (q.name) { snprintf (q.name, 24, "%s", q.tb->text); A.doc.changes++; ui (0); if (g_view) g_view->invalidate (true); return; }
+			if (q.name) { snprintf (q.name, 24, "%s", q.tb->text); A.doc.changes++; if (A.camMode) cam_presets_save (); ui (0); if (g_view) g_view->invalidate (true); return; }
 			double v = parse (q.tb->text);
 			if (q.mag) v = (*q.val < 0 ? -1 : 1) * fabs (v);
 			*q.val = v; if (q.typed >= 0) A.typed[q.typed] = true;
