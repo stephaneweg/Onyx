@@ -16,7 +16,9 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   prism, taper) by the user's gestures or from their fields; sketch (line, rectangle, circle, arc, close) and
   extrude; fillet / chamfer on straight edges and circles; move (which also turns and scales a body about its
   centre, or a clone of it), combine; the history as a timeline (values
-  edited, roll back, delete), undo / redo; `.3df`, STL / OBJ; the sample `SD:/docs/3d/bracket.3df`.
+  edited, roll back, delete), undo / redo; `.3df`; exports: STL / OBJ, and a flat drawing seen from a side as DXF /
+  SVG / PDF (1:1, hidden edges optional) or a PNG picture (`fdraw.h`); a sketch on a face, or on XY / XZ / YZ with
+  an offset; the sample `SD:/docs/3d/bracket.3df`.
 - **The user's changes to the mock-ups, while I built** (2026-10-05): no left panel — the bodies in a panel
   floating over the view, the history a **timeline of pictures** under it (arrows / wheel / drag); all the shapes in
   **one fold-out** (the Shapes button); the four extra shapes and the sphere, with the gestures he described; a

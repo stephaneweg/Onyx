@@ -3,7 +3,8 @@
 // steps -- a box or a cylinder by click, move, click; a sketch on a face and its extrusion -- joined, cut or
 // intersected, their edges rounded or chamfered; every step keeps its values in a history that is replayed when
 // one changes. The geometry is Manifold's (Libs/manifold: boolean operations on closed meshes), the view is drawn
-// by the GPU. Files: .3df (the history, as text); exports: STL and OBJ. The shapes: box, cylinder, pyramid, prism,
+// by the GPU. Files: .3df (the history, as text); exports: STL and OBJ (the meshes), DXF, SVG and PDF (a flat drawing
+// seen from a side, at the part's size), PNG (a picture). The shapes: box, cylinder, pyramid, prism,
 // tapered prism (their base of as many sides as wanted), torus, sphere.
 //
 // Pieces: fdoc.h (the document: the steps, their replay, the sketch, the fillets, the file, the exports), frender.h
@@ -20,6 +21,7 @@
 #include "fontkit/uikitface.h"
 #include "docguard.h"
 #include "fui.h"
+#include "fdraw.h"
 
 using namespace uikit;
 using namespace forge;
@@ -91,37 +93,72 @@ static void cmd_open ()
 	if (uk_file_open (path, sizeof path, DOCS) && !load_path (path)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
 }
 
-// ---- Export: STL or OBJ --------------------------------------------------------------------------------------------------
+// ---- Export: the meshes (STL, OBJ), a flat drawing from a side (DXF, SVG, PDF), a picture (PNG) ----------------------------
 class ExportDialog : public Modal
 {
 public:
-	SegmentedControl *fmtS, *whatS, *curveS; Checkbox *bin; Textbox *name, *folder;
-	int tris; unsigned bytes; bool closed; std::string data;
+	enum { STL, OBJ, DXF, SVG, PDF, PNG };
+	SegmentedControl *fmtS, *whatS, *curveS; Dropdown *viewD; Checkbox *bin, *hid; Textbox *name, *folder; Button *browse;
+	int tris, nlines, pw, ph; unsigned bytes; bool closed; std::string data; double dw, dh;
+	int yWhat, yCurve, yView, yCheck, yName, yFolder, ySum;
 	static void changed (Widget &w) { ((ExportDialog *) w.parent)->recompute (); }
 	static void button (Widget &w) { ((ExportDialog *) w.parent)->onButton (w.tag); }
-	ExportDialog () : Modal (440, 392), tris (0), bytes (0), closed (true)
+	ExportDialog () : Modal (460, 440), tris (0), nlines (0), pw (0), ph (0), bytes (0), closed (true), dw (0), dh (0)
 	{
-		static const char *const F[] = { "STL", "OBJ" }, *const WH[] = { "Whole part", "Selected body" }, *const C[] = { "Draft", "Fine", "Very fine" };
-		int x = 20, w = width - 40, y = titleH () + 18;
-		fmtS = new SegmentedControl (x + 110, y, 200, 28, F, 2, 0, changed); addChild (fmtS); y += 40;
-		whatS = new SegmentedControl (x + 110, y, w - 110, 28, WH, 2, 0, changed); addChild (whatS); y += 40;
+		static const char *const F[] = { "STL", "OBJ", "DXF", "SVG", "PDF", "PNG" }, *const WH[] = { "Whole part", "Selected body" }, *const C[] = { "Draft", "Fine", "Very fine" };
+		static const char *const V[] = { "Front", "Back", "Left", "Right", "Top", "Bottom", "As on screen" };
+		int x = 20, w = width - 40;
+		fmtS = new SegmentedControl (x + 110, titleH () + 18, w - 110, 28, F, 6, 0, changed); addChild (fmtS);
+		whatS = new SegmentedControl (x + 110, 0, w - 110, 28, WH, 2, 0, changed); addChild (whatS);
 		if (!A.doc.body (A.selBody)) whatS->setEnabled (1, false);
-		curveS = new SegmentedControl (x + 110, y, w - 110, 28, C, 3, A.doc.segs <= 48 ? 0 : A.doc.segs <= 96 ? 1 : 2, changed); addChild (curveS); y += 60;
-		bin = new Checkbox (x + 110, y, w - 110, 20, "Binary file (smaller)", true, changed, C_FACE); addChild (bin); y += 34;
+		curveS = new SegmentedControl (x + 110, 0, w - 110, 28, C, 3, A.doc.segs <= 48 ? 0 : A.doc.segs <= 96 ? 1 : 2, changed); addChild (curveS);
+		bin = new Checkbox (x + 110, 0, w - 110, 20, "Binary file (smaller)", true, changed, C_FACE); addChild (bin);
+		hid = new Checkbox (x + 110, 0, w - 110, 20, "Hidden edges too, dashed", false, changed, C_FACE); addChild (hid);
 		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : "part"); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
-		name = new Textbox (x + 110, y, w - 110, 28, def); addChild (name); y += 38;
-		folder = new Textbox (x + 110, y, w - 110 - 86, 28, DOCS); folder->maxLen = 180; addChild (folder);
-		Button *b = new Button (x + w - 78, y, 78, 28, "Browse...", button); b->tag = 2; addChild (b);
+		name = new Textbox (x + 110, 0, w - 110, 28, def); addChild (name);
+		folder = new Textbox (x + 110, 0, w - 110 - 86, 28, DOCS); folder->maxLen = 180; addChild (folder);
+		browse = new Button (x + w - 78, 0, 78, 28, "Browse...", button); browse->tag = 2; addChild (browse);
 		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, "Cancel", 0); c->bg = C_FACE; addChild (c);
 		ABtn *o = new ABtn (width - 118, height - 44, 98, 28, "Export", 1, true); o->bg = C_FACE; addChild (o);
+		viewD = new Dropdown (x + 110, 0, 180, 28, V, 7, 0, changed); addChild (viewD);		// (last: its list opens over the rest)
 		recompute ();
 	}
+	bool flat () const { return fmtS->selected >= DXF; }
 	int segs () const { return curveS->selected == 0 ? 48 : curveS->selected == 1 ? 96 : 192; }
+	// The rows, for the format chosen: a mesh has no view, a drawing no "binary".
+	void place ()
+	{
+		int f = fmtS->selected, y = titleH () + 18 + 40;
+		yWhat = y; whatS->top = y; y += 40;
+		yCurve = y; curveS->top = y; y += 60;
+		yView = flat () ? y : -1; viewD->hidden = !flat (); if (flat ()) { viewD->top = y; y += 40; }
+		bool c1 = f == STL, c2 = f == DXF || f == SVG || f == PDF;
+		bin->hidden = !c1; hid->hidden = !c2; yCheck = c1 || c2 ? y : -1; if (c1 || c2) { bin->top = hid->top = y; y += 34; }
+		yName = y; name->top = y; y += 38;
+		yFolder = y; folder->top = browse->top = y; y += 44;
+		ySum = y;
+	}
 	void recompute ()
 	{
+		place ();
 		Doc d; d.feats = A.doc.feats; d.props = A.doc.props; d.upto = A.doc.upto; d.segs = segs (); d.rebuild ();
-		bool obj = fmtS->selected == 1; bin->hidden = obj;
-		data = d.exportMesh (obj, bin->checked, whatS->selected == 1 ? A.selBody : -1, &tris); bytes = (unsigned) data.size ();
+		int f = fmtS->selected, only = whatS->selected == 1 ? A.selBody : -1;
+		static const double VA[7][2] = { { -90, 0 }, { 90, 0 }, { 180, 0 }, { 0, 0 }, { -90, 90 }, { -90, -90 }, { 0, 0 } };
+		double az = viewD->sel == 6 ? A.cam.az : VA[viewD->sel][0], el = viewD->sel == 6 ? A.cam.el : VA[viewD->sel][1];
+		tris = nlines = pw = ph = 0; data.clear ();
+		if (f == STL || f == OBJ) data = d.exportMesh (f == OBJ, bin->checked, only, &tris);
+		else if (f == PNG) data = picture_png (d, only, az, el, 1024, &pw, &ph);
+		else
+		{
+			Drawing g;
+			if (make_drawing (d, only, az, el, hid->checked, g))
+			{
+				nlines = (int) g.segs.size (); dw = g.w; dh = g.h;
+				data = f == DXF ? drawing_dxf (g) : f == SVG ? drawing_svg (g) : drawing_pdf (g, name->text);
+			}
+		}
+		bytes = (unsigned) data.size ();
+		if (f == STL && !tris) { data.clear (); bytes = 0; }
 		closed = true; for (Body &b : d.bodies) if (b.m.Status () != Manifold::Error::NoError) closed = false;
 		invalidate (true);
 	}
@@ -129,26 +166,37 @@ public:
 	{
 		if (tag == 2) { char p[200]; if (uk_folder_open (p, sizeof p, folder->text)) { folder->setText (p); invalidate (true); } return; }
 		if (tag == 0) { close (0); return; }
-		char path[300]; const char *ext = fmtS->selected == 1 ? ".obj" : ".stl";
+		static const char *const EXT[] = { ".stl", ".obj", ".dxf", ".svg", ".pdf", ".png" };
+		char path[300]; const char *ext = EXT[fmtS->selected];
+		if (fmtS->selected == PDF) recompute ();			// (its title: the name as it is now)
 		kapi_mkdir (folder->text);
 		snprintf (path, sizeof path, "%s/%s%s", folder->text, name->text, ends_with (name->text, ext) ? "" : ext);
-		if (!tris) { uk_messagebox ("Export", "There is nothing to export yet.", MB_OK); return; }
+		if (!bytes) { uk_messagebox ("Export", "There is nothing to export yet.", MB_OK); return; }
 		if (kapi_save_file (path, data.data (), bytes) < 0) { uk_messagebox ("Export", "The file could not be written.", MB_OK); return; }
 		close (1);
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { onButton (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("Export"); int x = 20, w = width - 40, y = titleH () + 18; char t[96];
+		drawBox ("Export"); int x = 20, w = width - 40, f = fmtS->selected; char t[120], sz[32];
 		auto lab = [&] (const char *s, int yy) { uk_text (canvas, x, yy + (28 - uk_fh ()) / 2, s, C_TEXT); };
-		lab ("Format", y); y += 40; lab ("What", y); y += 40; lab ("Curves", y); y += 34;
-		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, "%d sides to a circle", segs ()); uk_text (canvas, x + 110, y, t, dim_col ()); }
-		y += 26 + 34; lab ("Name", y); y += 38; lab ("Folder", y); y += 44;
-		unsigned pc = panel_col (); uk_rbox (canvas, x, y, w, 34, 6, pc, pc); uk_rline (canvas, x, y, w, 34, 6, uk_tone (C_BG, 96));
-		icon (canvas, closed && tris ? I_CHECK : I_WARN, x + 10, y + 8, 18, closed && tris ? C_GREEN : 0x4A3A10, C_ACCENT, pc);
-		if (bytes >= 1024 * 1024) snprintf (t, sizeof t, "%d triangles \xC2\xB7 %.1f MB \xC2\xB7 %s", tris, bytes / 1048576.0, closed ? "closed solid" : "not closed");
-		else snprintf (t, sizeof t, "%d triangles \xC2\xB7 %u KB \xC2\xB7 %s", tris, (bytes + 1023) / 1024, closed ? "closed solid" : "not closed");
-		uk_text (canvas, x + 36, y + (34 - uk_fh ()) / 2, tris ? t : "Nothing to export yet", C_TEXT);
+		lab ("Format", titleH () + 18); lab ("What", yWhat); lab ("Curves", yCurve);
+		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, "%d sides to a circle", segs ()); uk_text (canvas, x + 110, yCurve + 34, t, dim_col ()); }
+		if (yView >= 0)
+		{
+			lab ("Seen from", yView);
+			UkFaceScope fs (g_small); uk_text (canvas, x + 110 + 190, yView + (28 - uk_fh ()) / 2, f == PNG ? "1024 pixels" : "at its size, in mm", dim_col ());
+		}
+		lab ("Name", yName); lab ("Folder", yFolder);
+		unsigned pc = panel_col (); uk_rbox (canvas, x, ySum, w, 34, 6, pc, pc); uk_rline (canvas, x, ySum, w, 34, 6, uk_tone (C_BG, 96));
+		bool ok = bytes && (flat () || closed);
+		icon (canvas, ok ? I_CHECK : I_WARN, x + 10, ySum + 8, 18, ok ? C_GREEN : 0x4A3A10, C_ACCENT, pc);
+		if (bytes >= 1024 * 1024) snprintf (sz, sizeof sz, "%.1f MB", bytes / 1048576.0); else snprintf (sz, sizeof sz, "%u KB", (bytes + 1023) / 1024);
+		if (!bytes) snprintf (t, sizeof t, "Nothing to export yet");
+		else if (f == PNG) snprintf (t, sizeof t, "%d \xC3\x97 %d pixels \xC2\xB7 %s", pw, ph, sz);
+		else if (flat ()) snprintf (t, sizeof t, "%d lines \xC2\xB7 %.1f \xC3\x97 %.1f mm \xC2\xB7 %s", nlines, dw, dh, sz);
+		else snprintf (t, sizeof t, "%d triangles \xC2\xB7 %s \xC2\xB7 %s", tris, sz, closed ? "closed solid" : "not closed");
+		uk_text (canvas, x + 36, ySum + (34 - uk_fh ()) / 2, t, C_TEXT);
 	}
 };
 // (the dialog's two buttons are ABtn: their id comes here)
@@ -204,6 +252,12 @@ static void cmd (int id)
 	case CMD_SK_CANCEL: sketch_end (false); break;
 	case CMD_SK_FINISH: sketch_end (true); break;
 	case CMD_SK_CLOSE: sk_close (); break;
+	case CMD_SK_START:				// a sketch on a plane of the axes, moved along its normal
+	{
+		double o = A.skOffset;
+		Plane pl = A.skPlane == 1 ? plane_of (V3 (0, o, 0), V3 (0, -1, 0)) : A.skPlane == 2 ? plane_of (V3 (o, 0, 0), V3 (1, 0, 0)) : plane_of (V3 (0, 0, o), V3 (0, 0, 1));
+		sketch_begin (pl, -1); break;
+	}
 	case CMD_OK: confirm (); break;
 	case CMD_CANCEL: cancel (); break;
 	case CMD_DELETE: if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;

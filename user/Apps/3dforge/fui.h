@@ -14,7 +14,7 @@
 namespace forge {
 
 enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK_CANCEL, CMD_SK_FINISH, CMD_SK_CLOSE, CMD_OK, CMD_CANCEL,
-       CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES };
+       CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES, CMD_SK_START };
 
 static unsigned soft_col (unsigned bg);
 // The shapes, unfolded under their button: a picture and its name each. run (): the tool chosen, -1 none.
@@ -353,7 +353,7 @@ public:
 		if (g_view) g_view->invalidate (true);
 		ui (0);
 	}
-	static void onEnter (Widget &) { cmd (CMD_OK); }
+	static void onEnter (Widget &) { cmd (A.tool == T_SKETCH && !A.sketching ? CMD_SK_START : CMD_OK); }
 	static void onCheck (Widget &w)
 	{
 		Props *p = self (w); Checkbox &c = (Checkbox &) w; Feature *f = A.hasPend ? &A.pend : p->feat;
@@ -377,6 +377,7 @@ public:
 		SegmentedControl &s = (SegmentedControl &) w; Props *p = self (w);
 		if (w.tag == 1) { tool_set (s.selected == 0 ? T_FILLET : T_CHAMFER); return; }
 		if (w.tag == 2 && p->el) { p->el->sweep = (s.selected == 0 ? 1 : -1) * fabs (p->el->sweep); p->applied (); }
+		if (w.tag == 3) { A.skPlane = s.selected; ui (R_ALL); }
 	}
 
 	void label (int x, int y, const char *s, unsigned col = UK_AUTO, int style = 0, bool small = false)
@@ -512,6 +513,18 @@ public:
 			check (y, "Snap to points and angles", A.snap, 3); y += 38;
 			infoY = y; info[0] = "Each element starts from a"; info[1] = "point and keeps its own values."; info[2] = "Change one: what was drawn"; info[3] = "after it follows.";
 			if (edit) { ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this element", CMD_DEL_ELEMENT); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d); }
+		}
+		else if (A.tool == T_SKETCH)			// where the sketch goes: a face clicked, or a plane of the axes
+		{
+			head (I_SKETCH, "Sketch", "its plane");
+			label (12, y, "Click a flat face of a body,", dim_col (), 0, true); label (12, y + 16, "or draw on a plane of the axes:", dim_col (), 0, true); y += 42;
+			static const char *const PL[] = { "XY", "XZ", "YZ" };
+			label (12, y + 5, "Plane"); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, A.skPlane, onSeg); s->tag = 3; addChild (s); y += 38;
+			Textbox *o = field (y, "Offset", &A.skOffset, "mm", -1); o->setFocus (); y += 34;
+			label (12, y, A.skPlane == 0 ? "XY: the ground, seen from above;" : A.skPlane == 1 ? "XZ: upright, seen from the front;" : "YZ: upright, seen from the right;", dim_col (), 0, true);
+			label (12, y + 16, A.skPlane == 0 ? "the offset is its height (Z)." : A.skPlane == 1 ? "the offset is along Y." : "the offset is along X.", dim_col (), 0, true); y += 46;
+			ABtn *b = new ABtn (12, y, width - 24, 28, "Start the sketch", CMD_SK_START, true); b->bg = panel_col (); addChild (b);
+			ABtn *c = new ABtn (12, height - 40, 90, 28, "Cancel", CMD_CANCEL); c->bg = panel_col (); c->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (c);
 		}
 		else if (A.hasPend)
 		{

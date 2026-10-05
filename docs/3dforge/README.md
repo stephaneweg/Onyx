@@ -18,6 +18,9 @@ The app differs from the mock-ups below where the user asked, seeing it take sha
   described (the user guide's table) — the field of the value being set has the keyboard at each step.
 - **A shape without the pointer**: once chosen, its values and its place are fields at the right, a ghost shows
   it, OK makes it.
+- **Move** also turns and scales a body about its centre, or a **clone** of it (a new body).
+- **A sketch on a plane of the axes** (XY, XZ, YZ) with an offset, besides a face.
+- **More exports**: a flat drawing seen from a side as DXF, SVG or PDF (at the part's size), a PNG picture.
 
 | | |
 |---|---|

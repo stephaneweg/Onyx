@@ -2258,7 +2258,10 @@ all the way.
 
 ![A cut](../screenshots/3dforge-cut.png)
 
-**Sketch and Extrude.** *Sketch*, then a click on a flat face (or the ground): the view turns to face it and the
+**Sketch and Extrude.** *Sketch*, then a click on a flat face (or the ground) — or, at the right, a **plane of
+the axes**: *XY* (the ground, seen from above), *XZ* (upright, seen from the front) or *YZ* (upright, seen from the
+right), its **Offset** (how far along the third axis; the plane is shown in the view), then *Start the sketch*.
+The view turns to face the plane and the
 tools become **Line**, **Rectangle**, **Circle**, **Arc** and **Close**. There are no constraints to solve: each
 element is a recipe — where it starts (the end of the one before, or a point), its angle and its length; an arc by
 its centre, its radius and its sweep — and they are replayed in the order they were drawn. A run of lines and arcs
@@ -2282,8 +2285,13 @@ leaves it as it is, 2 doubles it) — type them at the right; a ghost shows the 
 checked the original stays where it is and a copy of it, a new body, is what moves, turns and scales. **Union**,
 **Subtract**, **Intersect** — click the body to keep, then the other. **Measure** — click two points.
 
-**Export** writes **STL** (binary or text) or **OBJ**: the whole part or the selected body, the curves cut in 48,
-96 or 192 sides to a circle; the number of triangles and the file's size are shown before writing.
+**Export** writes the whole part or the selected body, the curves cut in 48, 96 or 192 sides to a circle:
+
+| Format | What is written |
+|---|---|
+| **STL** (binary or text), **OBJ** | The mesh, for a slicer or another 3D program. The number of triangles and the file's size are shown before writing. |
+| **DXF**, **SVG**, **PDF** | A **flat drawing** of the part *seen from* a side you choose — Front, Back, Left, Right, Top, Bottom, or as on screen —: its edges and outlines, at the part's own size in millimetres (1:1; the PDF's and the SVG's page is the drawing plus a margin of 10 mm). What is hidden behind a face is left out, or, with *Hidden edges too*, drawn dashed (in the DXF: on the layer `HIDDEN`, the others on `VISIBLE`). Curves are short straight lines. |
+| **PNG** | A **picture** of the part seen from that side, shaded as in the view, on white, 1024 pixels along its longer side. |
 
 ![Export](../screenshots/3dforge-export.png)
 

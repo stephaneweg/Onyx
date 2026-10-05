@@ -2491,6 +2491,7 @@ The small CAD (the study, the mock-ups and the user's decisions: `docs/3dforge/R
 | `frender.h` | The camera (orthographic), a frame as `kapi_gpu_vertex3` triangles in `kapi_gpu_batch` batches (the bodies with a matrix, lit per face; the edges and the grid as thin quads already in clip space, a depth bias toward the eye), drawn by **`kapi_gpu_render`** at twice the size then averaged down — or, without a GPU (and on the PC), by the z-buffer there over the same triangles; `pick` (a ray against the triangles). |
 | `fview.h` | `App` (the tool and its step, the step being made and its preview, the sketch being drawn, the selection) and the `View` widget: turn / pan / zoom, the tools' clicks and moves, the overlays (values' tags, arrows, the sketch, the cube, the bodies' panel). |
 | `fui.h` | The tools' bar and the shapes' fold-out, the timeline, the selection's panel (its fields bound to the step's values: rebuilt at the loop's next turn, never from a control's own callback), the status bar. |
+| `fdraw.h` | What Export writes besides the meshes: `make_drawing` (the edges seen from a side, laid flat in millimetres; hidden parts found by walking each edge against the bodies' depth picture — the z-buffer of `frender.h` — and cut there), written as DXF (R12 lines, layers `VISIBLE` / `HIDDEN`), SVG, or PDF (`Libs/pdf/pdfwrite.h`'s `path`); `picture_png` (the shaded view, ImageKit's PNG writer). |
 | `ficons.h` | The icons (`uikit/vpaint.h`). |
 
 Tests: `sh tools/tests/run_manifold_test.sh` (Manifold as linked for the Pi, under qemu-aarch64),

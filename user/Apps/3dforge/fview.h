@@ -11,7 +11,8 @@
 //   Taper     the same with one more move and click after the base's radius: the top's
 //   Torus     click the centre, move away for the ring's radius, click, move off the ring for the tube's, click
 //   Sphere    click its centre, move away for its radius, click
-//   Sketch    click a flat face (or the ground): the view turns to it, the tools become Line, Rectangle, Circle, Arc
+//   Sketch    click a flat face (or the ground) -- or choose a plane of the axes (XY, XZ, YZ) and its offset at the
+//             right: the view turns to it, the tools become Line, Rectangle, Circle, Arc
 //   Extrude   the sketch (the one selected, else the last), then its height
 //   Fillet, Chamfer   click edges (straight ones, circles), give the size
 //   Move      click a body, move, click; its fields also turn it (around X, Y, Z, about its centre) and scale it
@@ -48,6 +49,7 @@ struct App
 	bool typed[4];				// a value typed in its field: the pointer leaves it alone
 	// the sketch being drawn
 	bool sketching; int skEdit; Feature sk; SkEval ev;
+	int skPlane; double skOffset;		// the Sketch tool's plane, chosen at the right: 0 XY, 1 XZ, 2 YZ; moved by
 	SkEl cur; int curStep; bool chain; double sweep0;
 	// what is selected, what the pointer is on
 	int selBody, selFeat, selEl;
@@ -59,7 +61,7 @@ struct App
 	char hint[200], path[200], caption[96];
 	unsigned saved; bool gpu;
 	void (*refresh) (int what);
-	App () : tool (T_SELECT), step (0), lastShape (T_PYRAMID), hasPend (false), opAuto (true), hasPrev (false), prevErr (0), sketching (false), skEdit (-1),
+	App () : tool (T_SELECT), step (0), lastShape (T_PYRAMID), hasPend (false), opAuto (true), hasPrev (false), prevErr (0), sketching (false), skEdit (-1), skPlane (0), skOffset (0),
 		 curStep (0), chain (false), sweep0 (0), selBody (-1), selFeat (-1), selEl (-1), hovBody (-1), hovFace (-1), hovChain (-1),
 		 showEdges (true), showGrid (true), seeThrough (false), snap (true), mN (0), saved (0), gpu (false), refresh (0)
 	{ hint[0] = path[0] = caption[0] = 0; memset (typed, 0, sizeof typed); }
@@ -166,7 +168,7 @@ static void tool_hint ()
 	case T_TORUS: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK." : A.step == 1 ? "Move away to set the ring's radius, then click."
 				: "Move off the ring to set the tube's radius and click \xE2\x80\x94 or type it and press Enter."); break;
 	case T_SPHERE: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its radius at the right and press OK." : "Move away to set the radius and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_SKETCH: set_hint ("Click the flat face to draw on, or the ground."); break;
+	case T_SKETCH: set_hint ("Click the flat face to draw on \xE2\x80\x94 or choose a plane at the right and start."); break;
 	case T_EXTRUDE: set_hint ("Move to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
 	case T_FILLET: case T_CHAMFER: set_hint ("Click the edges, then drag the arrow or type the size. Enter to finish."); break;
 	case T_MOVE: set_hint (A.step == 0 ? "Click the body to move, turn or scale." : "Move it and click \xE2\x80\x94 or type its move, its turns and its scale at the right, then Enter."); break;
@@ -938,6 +940,18 @@ void View::overlays ()
 			if (sk.kind != F_SKETCH || (A.doc.used (i) && A.selFeat != i && !(A.hasPend && f.kind == F_EXTRUDE && f.sketch == i))) continue;
 			SkEval ev; sketch_eval (sk.els, A.doc.segs, ev); sketchDraw (sk, ev, false);
 		}
+	// the Sketch tool, before its plane is chosen: the one the panel proposes, shown in the model
+	if (A.tool == T_SKETCH && !A.sketching)
+	{
+		double o = A.skOffset;
+		Plane pl = A.skPlane == 1 ? plane_of (V3 (0, o, 0), V3 (0, -1, 0)) : A.skPlane == 2 ? plane_of (V3 (o, 0, 0), V3 (1, 0, 0)) : plane_of (V3 (0, 0, o), V3 (0, 0, 1));
+		V3 q[4] = { pl.at (-70, -50), pl.at (70, -50), pl.at (70, 50), pl.at (-70, 50) }; int xy[8]; bool ok = true;
+		for (int i = 0; i < 4; i++) { double x, y; sx (q[i], &x, &y); if (fabs (x) > 6000 || fabs (y) > 6000) ok = false; xy[i * 2] = (int) (x * 16); xy[i * 2 + 1] = (int) (y * 16); }
+		if (ok) { VPath p; p.poly (xy, 4); p.fill (canvas, ACC (), 40); }
+		for (int i = 0; i < 4; i++) line3 (q[i], q[(i + 1) % 4], 1.6, ACC ());
+		line3 (pl.at (0, 0), pl.at (30, 0), 2, 0xD6483E); line3 (pl.at (0, 0), pl.at (0, 30), 2, 0x40A04C);
+		tag3 (q[3], 30, -14, A.skPlane == 1 ? "XZ" : A.skPlane == 2 ? "YZ" : "XY");
+	}
 	// a box, a cylinder: the base, the sizes; the height's arrow
 	if (A.hasPend && (f.kind == F_BOX || round_kind (f.kind)) && A.step >= 1)
 	{
