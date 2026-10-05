@@ -37,6 +37,15 @@ static bool starts_kw (const char *p, const char *kw)	// "SUB" at p, then a blan
 	return p[i] == ' ' || p[i] == '\t' || p[i] == 0 || p[i] == '\n' || p[i] == '\r' || p[i] == '(';
 }
 
+// A method's VIRTUAL / OVERRIDE before SUB / FUNCTION: the place after it (else p).
+static const char *skip_modifier (const char *p)
+{
+	int n = starts_kw (p, "VIRTUAL") ? 7 : starts_kw (p, "OVERRIDE") ? 8 : 0;
+	if (!n || p[n] == '(') return p;
+	const char *q = p + n; while (*q == ' ' || *q == '\t') q++;
+	return starts_kw (q, "SUB") || starts_kw (q, "FUNCTION") ? q : p;
+}
+
 // ---- the modules ------------------------------------------------------------------------------
 struct Module { char name[48]; int kind; char *text; };		// kind 0 main, 1 SUB, 2 FUNCTION
 static Module g_mod[MAXMOD]; static int g_nmod = 0, g_cur = 0;
@@ -118,12 +127,16 @@ static void split (const char *src)
 	// main module = every line not inside a SUB / FUNCTION block
 	char *main = new char[n + 1]; int mn = 0;
 	int i = 0;
+	bool iface = false;					// in INTERFACE ... END INTERFACE: its SUB lines are declarations
 	while (i < n)
 	{
 		int ls = i; while (i < n && src[i] != '\n') i++;
 		int le = i; if (i < n) i++;
 		const char *p = src + ls; while (*p == ' ' || *p == '\t') p++;
-		int kind = starts_kw (p, "SUB") ? 1 : starts_kw (p, "FUNCTION") ? 2 : 0;
+		if (starts_kw (p, "INTERFACE") && p[9] == ' ') iface = true;
+		if (iface && starts_kw (p, "END")) { const char *t = p + 3; while (*t == ' ') t++; if (starts_kw (t, "INTERFACE")) iface = false; }
+		p = skip_modifier (p);
+		int kind = iface ? 0 : starts_kw (p, "SUB") ? 1 : starts_kw (p, "FUNCTION") ? 2 : 0;
 		if (kind && g_nmod < MAXMOD - 1)
 		{
 			// name
@@ -170,6 +183,7 @@ static void sync_current ()
 	if (g_mod[g_cur].kind)
 	{
 		const char *p = g_mod[g_cur].text; while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+		p = skip_modifier (p);
 		const char *q = p; while (*q && *q != ' ') q++;
 		while (*q == ' ') q++;
 		char name[48]; int k = 0;

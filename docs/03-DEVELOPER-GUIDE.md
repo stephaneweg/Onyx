@@ -3136,7 +3136,7 @@ barwidth = 40
   interface), `bascomp.cpp` (lexer + one-pass compiler to bytecode, with a pre-scan of the
   SUB / FUNCTION / DEF FN headers and of the TYPEs), `basvm.cpp` (the stack VM: tagged values,
   ref-counted strings, arrays and records -- a record shared at a store is copied first, so
-  TYPEs have value semantics -- references (by-ref arguments, the address of an element or a
+  TYPEs have value semantics; a CLASS's objects are shared, see *Classes* below -- references (by-ref arguments, the address of an element or a
   field: `OP_REFG` / `OP_AADDRG` / `OP_FADDR`, stored through with `OP_STREF`), a frame per
   call), `basnum.cpp` (number formatting / parsing and the math functions, no libc).
   Numeric sub-types are a compile-time matter: values are doubles; a store into an INTEGER /
@@ -3162,7 +3162,7 @@ barwidth = 40
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
 - **QBStudio** `apps/qbstudio` (`user/Apps/qbstudio/`, a newlib app: the `qbstudio.elf` rule compiles the core's
   sources into it): `form.h` (the `.form` text read / written, the layout engine: `form_layout` places every
-  element for a size), `gen.h` (the controls' library -- `TYPE Control` with PROPERTYs --, `generate ()`: the
+  element for a size), `gen.h` (the controls' library -- `CLASS Control` with PROPERTYs, each control's object made by `DIM SHARED name AS Control ()` --, `generate ()`: the
   window's code, each place an affine function of the window's size, found by laying the form out at two sizes;
   the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (the
   code editor), `designer.h` (the window drawn with real uikit widgets under a transparent `Overlay` that takes the
@@ -3207,13 +3207,47 @@ barwidth = 40
   `.bax` and `.bas` to `/bin/basic` (an app's `main.bax` before its `main.bas`). The tests run every program a second time
   through a `.bax` (`BAX=1`). **Add opcodes / builtins / statements at the end** of their
   enums: the counts in the header change, old `.bax` files are then refused cleanly.
-- **Methods**: `SUB Type.Name` (the part before the last dot is a TYPE) is a procedure
-  `TYPE.NAME` whose first parameter is `THIS`, the record by reference; `fieldPath ()` turns
-  an unknown last part of a record path into `Ref.method`, and the call pushes the record's
-  address (`emitAddr`) then the arguments (`callMethod`). `SUB Type.new` is the constructor:
-  `DIM v AS Type (args)` and `NEW Type (args)` (`OP_NEWREC`: a fresh record) call it.
+- **Methods**: `SUB Class.Name` (the part before the last dot is a CLASS) is a procedure
+  `CLASS.NAME` whose first parameter is `THIS`, the object; `fieldPath ()` turns an unknown last
+  part of a path into `Ref.method`, and the call pushes the object (`emitThis`) then the
+  arguments (`callMethod`). `SUB Class.new` is the constructor: `DIM v AS Class (args)` and
+  `NEW Class (args)` (`OP_NEWREC`: a fresh object) call it. A TYPE only holds data: a method
+  on a TYPE is refused (the user's decision, 2026-10-05; before, a TYPE had methods with `THIS`
+  by reference).
   Errors: `trap ()` keeps the SUB frames (each remembers its value-stack depth, `sp0`), so
   `RESUME [NEXT]` continues inside the procedure, as in QBasic.
+- **Classes** (`CLASS` / `INTERFACE`; the language: docs/04 §13): a class and an interface are
+  `TypeInfo`s like a TYPE (`kind` `TK_CLASS` / `TK_IFACE`, `parent`), so `TY_REC + index` types a
+  variable of any of the three. **The compiler**: `prescanTypes ()` first registers every class /
+  interface name (a field may name a class defined further down), then lays the fields out — a
+  child's start with **a copy of its parent's**, so a field keeps its index down the hierarchy;
+  `prescan ()` reads the modifiers (`procModifier`: `VIRTUAL` / `OVERRIDE` / `ABSTRACT`, kept in
+  `PDecl.mod`) and the methods declared in an `INTERFACE` block (procedures `IFACE.NAME` without
+  a body); `buildClasses ()` then fills, per class, `Program::vtab` — the parent's table copied,
+  the overrides put in place, the new virtual methods after (`PDecl.vslot`) — and `Program::itab`
+  — per interface implemented (the parents' included) the pair *interface, where its methods'
+  procedures start in `vtab`* — and checks the rules (OVERRIDE needed / without a target, the
+  same parameters, every interface method present, abstract classes). `findMethod ()` walks up the
+  parents; `callMethod ()` emits `OP_CALL` (a plain method, `BASE.Name`, a constructor), `OP_VCALL
+  slot argc` or `OP_ICALL interface slot argc`. `THIS` of a class's method is the **object by
+  value** (`emitThis`), and an object
+  argument is never passed by reference. `conv ()` is the assignment rule (up: nothing; down or
+  through an interface: `OP_CAST type`). The class words are not in `KEYWORDS`: they are known by
+  their place (`classHeader`, `procModifier`, `isBaseCall`, `NOTHING` when no variable has the
+  name). **The VM**: an object is a `Rec` like a record but tagged `VO` instead of `VT` — `own ()`
+  (the copy before a store) only copies `VT`, which is the whole difference between a value and a
+  reference; `p = 0` is `NOTHING`; slots, array elements and fields whose type is a class start as
+  `VO` / 0 (`initSlot`, `newArr`, `newRec` look at `types[].kind`). `OP_VCALL` / `OP_ICALL` find
+  the object under the arguments and take the procedure from its class's tables (`Rec::type`);
+  `OP_ISTYPE`, `OP_SAMEOBJ`, `OP_CAST` use `Program::isA ()`; `OP_NIL` pushes `NOTHING`.
+  **Destructors**: `rrel ()` does not free an object whose class (or a parent) has a `SUB
+  Class.delete`: it keeps it by one reference in `dtorQ`, and the loop, before the next
+  instruction, calls the destructor like a SUB (`enter ()`, the code shared with `OP_CALL`); when
+  that frame ends the object comes back to `rrel ()`, which queues the next parent's destructor
+  or frees it (`Rec::fl` = how far it got). Nothing runs after the program's end. **`.bax`**:
+  format 2 adds the classes' fields of `TypeInfo`, `vtab` and `itab` after the tables of format 1
+  (a format 1 file still loads). Tests: `t20_classes`, `t21_cls_*` (the compile errors),
+  `t22_classwords` (the words stay free).
 - **Character set**: BASIC text is code page 437. `user/basic/basfont.h` (generated by
   `tools/gen_basfont.py` from Debian console-setup's VGA fonts) holds the 8 × 8 / 14 / 16
   glyphs that `glyph ()` plots, and the Latin-1 <-> CP437 tables: the lexer translates string

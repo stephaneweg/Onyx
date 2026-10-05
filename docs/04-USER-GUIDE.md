@@ -3955,7 +3955,8 @@ writes `<program>.bax`, the bytecode, which starts without parsing and runs like
 (File Viewer, `CHAIN`); **File ▸ Make App** can make a compiled app (`main.bax`); in a terminal
 `basic -c prog.bas` writes `prog.bax`. The editor shows the code in light grey on blue, as
 QBasic did. Examples are in `SD:/basic/examples`
-(**File ▸ Examples...**): `hello`, `guess`, `subs`, `files`, `graphics`, `gui` and
+(**File ▸ Examples...**): `hello`, `guess`, `subs`, `files`, `graphics`, `gui`, `classes` (objects:
+inheritance, virtual methods, an interface) and
 **`arkanoid.bas`**, a full brick breaker in `SCREEN 13` shown with `FULLSCREEN` (arrows or
 the mouse move the paddle, Space / click launches and fires, P pause, F full screen on /
 off, Esc title / quit; capsules E expand, S slow, C catch, L laser, D three balls, P a life;
@@ -4046,14 +4047,102 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
 - **Types**: `%` INTEGER, `&` LONG, `!` SINGLE, `#` DOUBLE (or `AS INTEGER` …, `DEFINT A-Z` …,
   `DEFSTR`); INTEGER / LONG round when stored and raise *Overflow*; DOUBLEs print 15 digits;
   fixed strings `STRING * n`. **User types**: `TYPE … END TYPE` records (nested, in arrays,
-  passed to SUBs, copied by `=`), `LEN (var)` their size, with **methods** (Onyx, in the way
-  of FreeBASIC): `test AS SUB (a AS INTEGER)` declared in the `TYPE`, defined by
-  `SUB Point.Test (a)` where `this` is the object (`this.x = a`, `RETURN this.x + a` in a
-  FUNCTION), called as `p.Test 3`, `y = p.F (2)`, `t(i).Test 1`; a **constructor**
-  `SUB Point.new (…)`: `DIM p AS Point (1, 2)` calls it (`DIM p AS Point` does not), and
-  `p = NEW Point (1, 2)` makes a new object. `DEF FN`, `RETURN value` in a
+  passed to SUBs, copied by `=`), `LEN (var)` their size; a TYPE **only holds data** — methods
+  are for a `CLASS` (below; since 2026-10-05 `SUB Point.Test` on a TYPE is an error: write
+  `CLASS Point … END CLASS` and make the objects with `NEW Point` or `DIM p AS Point ()`).
+  `DEF FN`, `RETURN value` in a
   FUNCTION, `MID$ (…) = …`, `LSET` / `RSET`, `PRINT USING` (all the `#` `,` `.` `+` `-` `**`
   `$$` `^^^^` `!` `\ \` `&` `_` fields).
+- **Classes** (Onyx; the example `classes.bas`): a `TYPE` is a **value** (`b = a` copies it); a
+  **`CLASS`** is a **reference**, as in C#: a variable `AS` a class holds `NOTHING` or an object made
+  by `NEW`, `b = a` makes both name the **same object**, and an object lives as long as something
+  refers to it.
+
+  ```basic
+  INTERFACE Drawable                  ' what a class promises: methods without a body
+    SUB Draw ()
+    FUNCTION Area () AS SINGLE
+  END INTERFACE
+
+  CLASS Sprite                        ' the fields, as in a TYPE
+    x AS SINGLE
+    y AS SINGLE
+  END CLASS
+  SUB Sprite.new (x, y)               ' the constructor
+    this.x = x: this.y = y
+  END SUB
+  VIRTUAL SUB Sprite.Show ()          ' a child class may redefine it
+    PRINT "sprite at"; this.x; this.y
+  END SUB
+  ABSTRACT FUNCTION Sprite.Name$ ()   ' no body: every child must define it
+
+  CLASS Ball EXTENDS Sprite IMPLEMENTS Drawable
+    r AS SINGLE
+  END CLASS
+  SUB Ball.new (x, y, r)
+    BASE.new x, y                     ' the parent's constructor
+    this.r = r
+  END SUB
+  OVERRIDE SUB Ball.Show ()
+    PRINT "ball, "; : BASE.Show       ' the parent's method
+  END SUB
+  OVERRIDE FUNCTION Ball.Name$ ()
+    RETURN "ball"
+  END FUNCTION
+  SUB Ball.Draw ()
+    CIRCLE (this.x, this.y), this.r
+  END SUB
+  FUNCTION Ball.Area () AS SINGLE
+    RETURN 3.14159 * this.r * this.r
+  END FUNCTION
+
+  DIM s AS Sprite                     ' NOTHING for now
+  s = NEW Ball (10, 20, 3)            ' a parent's variable holds any child
+  s.Show                              ' the object's own Show: "ball, sprite at 10 20"
+  IF s IS Ball THEN PRINT s.Name$
+  DIM d AS Drawable: d = s: d.Draw    ' through the interface
+  ```
+
+  - **Inheritance**: `CLASS Child EXTENDS Parent` (one parent, defined above its children): the
+    child has the parent's fields and methods and adds its own. **Interfaces**:
+    `IMPLEMENTS A, B` (up to 8): the class must have every method of the interface, with the same
+    parameters; a variable or a parameter `AS` an interface accepts any object whose class
+    implements it.
+  - **Methods** are written outside the block: `SUB Class.Name (…)` / `FUNCTION Class.Name (…)`,
+    where `this` is the object (`this.x = a`, `RETURN this.x + a`); they are called as
+    `p.Test 3`, `CALL p.Test (3)`, `y = p.F (2)`, `list(i).Test 1`. **Properties**:
+    `PROPERTY Class.Name AS type … END PROPERTY` (the getter) and `PROPERTY Class.Name (v AS
+    type) … END PROPERTY` (the setter): `p.Name = v`, `a = p.Name`. A plain method is called as written for the variable's class; a **`VIRTUAL`** one is
+    looked up in the **object's own class** when the program runs, and a child redefines it with
+    **`OVERRIDE`** (same parameters and result; forgetting the word is an error). **`ABSTRACT`**
+    declares a virtual method without a body (one line, no `END SUB`): the class cannot be
+    created with `NEW` until a child has defined them all. **`BASE.Name`** calls the parent's
+    version.
+  - **Constructor** `SUB Class.new (…)`: called by `NEW Class (args)` and `DIM v AS Class (args)`
+    (`DIM v AS Class` alone leaves `NOTHING`; `DIM v AS Class ()` makes an object, with or without
+    a constructor). A child without a constructor uses its parent's;
+    a child's constructor calls **`BASE.new args`** — if it does not, the parent's constructor is
+    called first by itself when it has no parameters (with parameters, `BASE.new` is required).
+    **Destructor** `SUB Class.delete ()`: called when the last reference to the object goes (a
+    variable set to `NOTHING` or to another object, the end of the SUB that held it); the child's
+    runs first, then its parents'. Objects still alive when the program ends are freed without it,
+    and two objects that refer to each other are only freed at the end (break the circle with
+    `NOTHING`).
+  - **Tests**: `x IS Class` / `x IS Interface` (-1 when the object is of that class, of a child
+    of it, or implements it), `x IS NOTHING`, `a IS b` (the same object); `=` does not compare
+    objects. **Assignments**: a child's object goes into a parent's or an interface's variable as
+    it is; the other way (`ball = sprite`) is allowed and **checked when it runs** (*Type
+    mismatch* if the object is not a `Ball`); two classes without a link do not compile.
+  - Objects go in arrays (`DIM list(9) AS Sprite`, all `NOTHING` at first), in the fields of a
+    class or of a TYPE (`nxt AS Node`: linked lists, trees — a class may name itself or a class
+    defined further down), in parameters and FUNCTION results (`FUNCTION Pick () AS Sprite`;
+    `Pick ().Name$` calls a method on the result). A parameter receives the reference: the SUB
+    works on the caller's object, but assigning the parameter itself changes nothing outside.
+    Using `NOTHING` (`x.field`, a virtual call) is the error *Object is NOTHING* (`ERR` 91).
+    Objects cannot be written by `PUT` / `GET` nor printed.
+  - The words `CLASS`, `INTERFACE`, `EXTENDS`, `IMPLEMENTS`, `VIRTUAL`, `OVERRIDE`, `ABSTRACT`,
+    `BASE`, `NOTHING`, `NEW` are **not reserved**: an older program with a variable named
+    `class` or `base` still runs.
 - **Errors**: `ON ERROR GOTO` handlers with `RESUME` / `RESUME NEXT` / `RESUME label`, `ERR`,
   `ERL`, `ERROR n` — an error inside a SUB comes back to the module-level handler.
 - **Files**: `RANDOM` (records of `LEN = n`, `GET` / `PUT #` of numbers, strings and records,
@@ -4132,7 +4221,7 @@ Layout: `MOVECONTROL id, x, y, w, h`, `SHOWCONTROL id, shown`, `ENABLECONTROL id
 `FOCUSCONTROL id`; `WINDOW title$, w, h, 1` makes the window **resizable** (`WAITEVENT` then
 gives **-2** after a resize, `WINDOWWIDTH` / `WINDOWHEIGHT` its new client size); menus:
 `id = MENUITEM("&File", "&Quit", "Ctrl+Q")` (an item `"-"` is a separator; `WAITEVENT` gives
-`id` when it is chosen). Records may have **properties**: `PROPERTY T.Name AS STRING ... END
+`id` when it is chosen). A CLASS may have **properties**: `PROPERTY T.Name AS STRING ... END
 PROPERTY` (the getter, `RETURN` its value) and `PROPERTY T.Name (v AS STRING) ... END PROPERTY`
 (the setter), then `x.Name = "a"` and `a$ = x.Name` — what QBStudio's generated code uses.
 System: `NOTIFY`, `MSGBOX`, `CLIPBOARD$` / `SETCLIPBOARD`, `OPENFILE$` / `SAVEFILE$` (the file

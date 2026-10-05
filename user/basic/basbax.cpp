@@ -11,7 +11,7 @@
 
 namespace bas {
 
-enum { BAX_FORMAT = 1 };
+enum { BAX_FORMAT = 2 };			// (2: the classes' tables; a format 1 file still loads)
 
 namespace {
 struct Out
@@ -51,7 +51,7 @@ int saveBax (const Program *p, char **out)
 {
 	Out o;
 	o.bytes ("OBAX", 4);
-	o.i32 (BAX_FORMAT); o.i32 (OP_NEWREC + 1); o.i32 (B_LAST); o.i32 (S_LAST);
+	o.i32 (BAX_FORMAT); o.i32 (OP_COUNT_); o.i32 (B_LAST); o.i32 (S_LAST);
 	o.i32 (p->nglobals);
 	o.i32 (p->code.n); for (int i = 0; i < p->code.n; i++) o.i32 (p->code[i]);
 	o.i32 (p->nums.n); for (int i = 0; i < p->nums.n; i++) o.f64 (p->nums[i]);
@@ -74,6 +74,13 @@ int saveBax (const Program *p, char **out)
 	o.i32 (p->stmts.n); for (int i = 0; i < p->stmts.n; i++) { o.i32 (p->stmts[i].start); o.i32 (p->stmts[i].end); }
 	o.i32 (p->numLabels.n); for (int i = 0; i < p->numLabels.n; i++) { o.i32 (p->numLabels[i].pc); o.i32 (p->numLabels[i].value); }
 	o.i32 (p->common.n); for (int i = 0; i < p->common.n; i++) o.i32 (p->common[i]);
+	for (int i = 0; i < p->types.n; i++)
+	{
+		const TypeInfo &t = p->types[i];
+		o.i32 (t.kind); o.i32 (t.parent); o.i32 (t.vt); o.i32 (t.nvt); o.i32 (t.it); o.i32 (t.nit); o.i32 (t.dtor);
+	}
+	o.i32 (p->vtab.n); for (int i = 0; i < p->vtab.n; i++) o.i32 (p->vtab[i]);
+	o.i32 (p->itab.n); for (int i = 0; i < p->itab.n; i++) o.i32 (p->itab[i]);
 	o.bytes ("END.", 4);
 	*out = o.b;
 	return o.n;
@@ -86,7 +93,8 @@ Program *loadBax (const char *buf, int len, Error *err)
 	if (!isBax (buf, len)) { setErr (err, "Not a compiled program (.bax)"); return 0; }
 	In in; in.b = (const unsigned char *) buf; in.n = len; in.at = 4; in.bad = false;
 	// (the enums only grow: a .bax from an older compiler loads)
-	if (in.i32 () != BAX_FORMAT || in.i32 () > OP_NEWREC + 1 || in.i32 () > B_LAST || in.i32 () > S_LAST)
+	int fmt = in.i32 ();
+	if (fmt < 1 || fmt > BAX_FORMAT || in.i32 () > OP_COUNT_ || in.i32 () > B_LAST || in.i32 () > S_LAST)
 	{ setErr (err, "This .bax was made by another BASIC version: compile the .bas again"); return 0; }
 	Program *p = new Program;
 	p->nglobals = in.i32 ();
@@ -112,6 +120,16 @@ Program *loadBax (const char *buf, int len, Error *err)
 	c = in.count (); for (int i = 0; i < c && !in.bad; i++) { StmtRange s; s.start = in.i32 (); s.end = in.i32 (); p->stmts.push (s); }
 	c = in.count (); for (int i = 0; i < c && !in.bad; i++) { NumLabel l; l.pc = in.i32 (); l.value = in.i32 (); p->numLabels.push (l); }
 	c = in.count (); for (int i = 0; i < c && !in.bad; i++) p->common.push (in.i32 ());
+	if (fmt >= 2)
+	{
+		for (int i = 0; i < p->types.n && !in.bad; i++)
+		{
+			TypeInfo &t = p->types[i];
+			t.kind = in.i32 (); t.parent = in.i32 (); t.vt = in.i32 (); t.nvt = in.i32 (); t.it = in.i32 (); t.nit = in.i32 (); t.dtor = in.i32 ();
+		}
+		c = in.count (); for (int i = 0; i < c && !in.bad; i++) p->vtab.push (in.i32 ());
+		c = in.count (); for (int i = 0; i < c && !in.bad; i++) p->itab.push (in.i32 ());
+	}
 	if (in.bad || in.at + 4 > in.n || in.b[in.at] != 'E' || in.b[in.at + 3] != '.'
 	    || p->gkind.n != p->nglobals || p->gext.n != p->nglobals)
 	{ delete p; setErr (err, "The .bax file is damaged"); return 0; }

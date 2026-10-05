@@ -1,0 +1,1 @@
+COMPILE ERROR line 8: OVERRIDE is needed (the parent's method is virtual): B.GO
