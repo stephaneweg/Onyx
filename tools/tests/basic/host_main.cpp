@@ -9,6 +9,7 @@
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
+#include <cstddef>
 
 #ifdef BAS_A64_SHIM
 extern "C" void *shim_code_alloc (unsigned long size);
@@ -32,12 +33,30 @@ static unsigned tk_big (void) { return 4000000000u; }
 static int tk_neg (void) { return -5; }
 static unsigned char tk_byte (void) { return 200; }
 static void *tk_null (void) { return 0; }
+// (structures: a kit's are TYPEs of the program, passed where a function takes a pointer)
+struct tk_point { int x, y; };
+struct tk_item { char name[16]; long long id; double weight; struct tk_point at; unsigned char flag; short level; float ratio; };
+static_assert (sizeof (tk_item) == 48 && offsetof (tk_item, at) == 32 && offsetof (tk_item, level) == 42 && offsetof (tk_item, ratio) == 44, "testkit's .bi");
+static int tk_item_next (struct tk_item *it)		// reads what it is given, writes every field
+{
+	int was = (int) strlen (it->name) + (int) it->id + it->at.x + it->at.y + it->flag + it->level;
+	snprintf (it->name, sizeof it->name, "item %d", ((int) it->id + 1) % 1000);
+	it->id += 0x100000000LL; it->weight += 0.5; it->at.x *= 2; it->at.y = -it->at.y; it->flag = 250; it->level = -3; it->ratio = 0.25f;
+	return was;
+}
+static struct tk_item *tk_item_kept (void) { static tk_item k = { "kept", 7, 1.5, { 3, 4 }, 1, 2, 0.5f }; return &k; }
+static int tk_point_sum (const struct tk_point *p) { return p ? p->x + p->y : -1; }
+static int tk_points (struct tk_point *out, int max) { int t = 0; for (int i = 0; i < max; i++) { t += out[i].x; out[i].x = i * 10; out[i].y = i * 10 + 1; } return t; }
 }
 static void *const TK_TABLE[] = { (void *) tk_add, (void *) tk_len, (void *) tk_name, (void *) tk_half, (void *) tk_scale, (void *) tk_fill,
 	(void *) tk_each, (void *) tk_dup, (void *) tk_free, (void *) tk_say, (void *) tk_mix, (void *) tk_big, (void *) tk_neg, (void *) tk_byte,
-	(void *) tk_null };
+	(void *) tk_null, (void *) tk_item_next, (void *) tk_item_kept, (void *) tk_point_sum, (void *) tk_points };
 static const char TK_BI[] =
-	"# testkit.bi\nkit testkit 15\n"
+	"# testkit.bi\nkit testkit 19\n"
+	"struct point 8 tk_point\nfield x 0 i\nfield y 4 i\n"
+	"struct item 48 tk_item\nfield name 0 a 16\nfield id 16 l\nfield weight 24 d\nfield at 32 t point\nfield flag 40 b\nfield level 42 h\n"
+	"field ratio 44 f\nfield later 46 z\n"
+	"item_next 15 i p tk_item_next\nitem_kept 16 l - tk_item_kept\npoint_sum 17 i p tk_point_sum\npoints 18 i pi tk_points\n"
 	"add 0 i ii tk_add\nlen 1 i s tk_len\nname 2 s - tk_name\nhalf 3 d d tk_half\nscale 4 f fi tk_scale\n"
 	"fill 5 v IDLF tk_fill\neach 6 i icp tk_each\ndup 7 l s tk_dup\nfree 8 v p tk_free\nsay 9 v c tk_say\n"
 	"mix 10 d idifs tk_mix\nbig 11 u - tk_big\nneg 12 i - tk_neg\nbyte 13 b - tk_byte\nnull 14 l - tk_null\n"
@@ -54,7 +73,7 @@ struct ConsoleHost : bas::Host
 {
 	void *const *kitOpen (const char *name, int minVersion, char *why, int cap) override
 	{
-		if (strcmp (name, "testkit") == 0 && minVersion <= 15) return TK_TABLE;
+		if (strcmp (name, "testkit") == 0 && minVersion <= 19) return TK_TABLE;
 		snprintf (why, cap, "version %d asked", minVersion);
 		return 0;
 	}

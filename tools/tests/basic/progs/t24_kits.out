@@ -19,5 +19,14 @@ peek 65 -2  123456  9876543210  1.5  2.25
 pokes text 4 
 heard first 1  2 
 heard second 2  4 
+struct 48  41 
+after [item 6] 4294967301  1.75  20 -20  250 -3  .25 
+cut 267 [item 6] 8589934597 
+point 7  60 -1 
+element 15 
+array 7  0  11  20  30 
+kept [kept] 7  1.5  3  4  .5 
+poked ours 40 
+copy-1 
 each2error 5 caught
 after

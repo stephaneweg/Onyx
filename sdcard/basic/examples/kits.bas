@@ -7,12 +7,15 @@
 '   - a string goes as a string, a number as a number; a handle or a pointer is a number
 '     (keep it in a plain or a # variable, not in a % or & one);
 '   - BYREF variable: where the function fills a number;
+'   - a structure of a kit is a TYPE: DIM e AS FileKit.zip_entry, then e where the function
+'     takes its address (PEEKT / POKET address, e: read from / written at an address);
 '   - ADDRESSOF (Name): a SUB or a FUNCTION of the program the kit calls back;
 '   - ALLOC (bytes) / DEALLOC: memory for what a function writes; CSTR$ (pointer): its text;
 '     PEEKB / PEEKW / PEEKL / PEEKQ / PEEKF / PEEKD and POKEB ... POKES read and write it.
 '
 #import AppKit
 #import FileKit
+#import ImageKit
 #import SystemKit
 
 DECLARE FUNCTION Copying (user, done, total, file$)
@@ -47,6 +50,16 @@ PRINT "SD:/basic:"; nfiles; "files in"; nfolders; "folders,"; bytes#; "bytes"
 ' ... a copy that reports its progress to a FUNCTION of ours (0 = go on)
 IF FileKit.copy("SD:/config.txt", "SD:/tmp/kits-demo.txt", ADDRESSOF(Copying), 42) = 0 THEN PRINT "Copied."
 r = FileKit.remove("SD:/tmp/kits-demo.txt")
+
+' ImageKit: structures. A kit's structures are TYPEs of the program (ImageKit.format is the C
+' struct ik_format): a variable -- or a whole array -- goes where the function takes a pointer
+DIM fmt(15) AS ImageKit.format
+n = ImageKit.formats(fmt(), 16)
+PRINT "ImageKit knows"; n; "picture formats:"
+FOR i = 0 TO n - 1
+	PRINT "  "; fmt(i).name; " ("; fmt(i).extensions; ")";
+	IF fmt(i).can_write THEN PRINT " read and written" ELSE PRINT " read"
+NEXT
 
 ' SystemKit: a notification on the desktop
 SystemKit.notify "BASIC", "Hello from a kit"

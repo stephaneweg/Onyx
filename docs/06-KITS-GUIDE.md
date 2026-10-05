@@ -102,11 +102,11 @@ library first.
 ### From BASIC
 
 A BASIC program uses the kits too: `#import filekit`, then `FileKit.copy (a$, b$, 0, 0)` — every function
-of a kit that takes and returns numbers, strings and pointers, by its name (docs/04 §13, *The system's
-kits*). BASIC knows a kit by its **description**, `SD:/lib/<kit>.bi`, made from the kit's `.abi` and its
+of a kit that takes and returns numbers, strings and pointers, by its name, and its structures as TYPEs
+(`DIM e AS FileKit.zip_entry`) (docs/04 §13, *The system's kits*). BASIC knows a kit by its **description**, `SD:/lib/<kit>.bi`, made from the kit's `.abi` and its
 headers by `tools/kitbi/kitbi.py` when the kits are built: nothing in BASIC names a kit, so **a new kit is
 importable as soon as it is built** (docs/03, *BASIC and the kits*). What BASIC cannot call — C++ classes,
-structures passed by value — is left out of the description: a kit meant for BASIC too exposes plain C
+structures passed by value, a structure with a union or a bit field — is left out of the description: a kit meant for BASIC too exposes plain C
 functions.
 
 ### On a PC

@@ -17,9 +17,21 @@
 # classes and overloads, a struct passed or returned by value, a reference, a variable number of
 # arguments, more than 8 whole-number or 8 floating-point arguments.
 #
+# And the structures the functions take or return by pointer, so that BASIC passes a variable of
+# that type (DIM e AS FileKit.zip_entry):
+#
+#     struct <name> <size in bytes> <C name>
+#     field <name> <offset> <kind> [<length> | <structure>]
+#
+# A field's kind: b c h w i u l f d as a result's, `a` a text in a char array of <length> bytes, `t`
+# another structure. An array that is not a text has no field (its bytes are kept); a structure with
+# a union, a bit field or C++ members is left out. The layout is the compiler's for AArch64 -- and
+# checked by it: --check writes <kit>.bi.check.cpp, a file of static_asserts the build compiles.
+#
 #     python3 tools/kitbi/kitbi.py --out-dir user/lib            every kit of user/Kits
 #     python3 tools/kitbi/kitbi.py --out-dir user/lib filekit    these kits
 #     ... -v                                                      says what was left out, and why
+#     ... --check                                                 also lib/<kit>.bi.check.cpp
 #
 # A new kit needs nothing here: its folder user/Kits/<kit>/ with <kit>.abi and its headers is enough.
 import argparse, glob, os, re, sys
@@ -157,6 +169,105 @@ def prototypes (text, name):
 		found.append ((before, text[m.end ():i - 1].strip ()))
 	return found
 
+SIZES = { "b": 1, "c": 1, "h": 2, "w": 2, "i": 4, "u": 4, "f": 4, "l": 8, "d": 8 }
+INCLUDE_ROOTS = [KITS, os.path.join (ROOT, "user", "Runtime"), os.path.join (ROOT, "user", "Include"),
+		 os.path.join (ROOT, "kernel", "include")]
+
+def read_headers (folder):
+	"""the kit's headers and what they include directly -> (their text cleaned, the #define numbers)"""
+	files = sorted (glob.glob (os.path.join (folder, "*.h"))) + sorted (glob.glob (os.path.join (folder, "*.hpp")))
+	raw = [open (h, encoding = "utf-8", errors = "replace").read () for h in files]
+	own = "\n".join (clean (r) for r in raw)
+	extra = []; seen = { os.path.normcase (f) for f in files }
+	for r in raw:
+		for m in re.finditer (r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', r, re.M):
+			for root in INCLUDE_ROOTS:
+				f = os.path.join (root, m.group (1))
+				if os.path.isfile (f) and os.path.normcase (f) not in seen and f.endswith ((".h", ".hpp")):
+					seen.add (os.path.normcase (f)); extra.append (open (f, encoding = "utf-8", errors = "replace").read ())
+	defs = {}
+	for r in raw + extra:
+		for m in re.finditer (r"^\s*#\s*define\s+(\w+)\s+\(?\s*(\d+|0[xX][0-9a-fA-F]+)\s*[uUlL]*\s*\)?\s*(?://.*|/\*.*)?$", r, re.M):
+			v = m.group (2); defs.setdefault (m.group (1), int (v, 8) if re.fullmatch (r"0\d+", v) else int (v, 0))
+	return own, own + "\n" + "\n".join (clean (r) for r in extra), defs
+
+TAGS = set ()		# the names that are structure tags ("struct name": a function may have the same name)
+
+def struct_bodies (text):
+	"""name -> the text between the braces of `struct name { ... }` / `typedef struct { ... } name;`"""
+	out = {}; TAGS.clear ()
+	for m in re.finditer (r"\b(typedef\s+)?struct\s*(\w+)?\s*\{", text):
+		d = 1; i = m.end ()
+		while i < len (text) and d: d += { "{": 1, "}": -1 }.get (text[i], 0); i += 1
+		body = text[m.end ():i - 1]
+		n = re.match (r"\s*(\w+)?\s*;", text[i:])
+		if m.group (2): out.setdefault (m.group (2), body); TAGS.add (m.group (2))
+		if m.group (1) and n and n.group (1): out.setdefault (n.group (1), body)
+	return out
+
+class Structs:
+	def __init__ (self, text, tdefs, defs):
+		self.bodies = struct_bodies (text); self.tdefs = tdefs; self.defs = defs
+		self.done = {}					# name -> (size, align, fields) | None
+		self.order = []
+	def count (self, dims):
+		n = 1
+		for d in re.findall (r"\[([^\]]*)\]", dims):
+			d = d.strip ()
+			if d in self.defs: n *= self.defs[d]
+			elif re.fullmatch (r"\d+|0[xX][0-9a-fA-F]+", d): n *= int (d, 0)
+			else: raise Skip ("an array of '%s'" % d)
+		return n
+	def get (self, name):
+		if name in self.done: return self.done[name]
+		self.done[name] = None				# (a structure that holds itself: by pointer only)
+		body = self.bodies.get (name)
+		if body is None: return None
+		try:
+			if "{" in body or re.search (r"\b(union|public|private|protected|virtual|operator|template|static)\b", body):
+				raise Skip ("a union or C++ members")
+			off = 0; maxal = 1; fields = []
+			for decl in body.split (";"):
+				decl = " ".join (decl.split ("=")[0].split ())
+				if not decl: continue
+				if ":" in decl: raise Skip ("a bit field")
+				fp = re.fullmatch (r".*\(\s*\*\s*(\w+)\s*\)\s*\(.*\)", decl)
+				if fp: parts = [(fp.group (1), "", "l", 8, 8, None)]
+				else:
+					if "(" in decl or "&" in decl: raise Skip ("C++ members")
+					items = split_args (decl); parts = []
+					m = re.fullmatch (r"(.*?[\s\*])(\w+)\s*((?:\[[^\]]*\])*)", items[0].strip ())
+					if not m: raise Skip ("the field '%s'" % decl)
+					base = " ".join (QUALS.sub (" ", m.group (1).replace ("*", " ")).split ())
+					lead = [(m.group (1).count ("*"), m.group (2), m.group (3))]
+					for it in items[1:]:
+						k = re.fullmatch (r"\s*(\**)\s*(\w+)\s*((?:\[[^\]]*\])*)\s*", it)
+						if not k: raise Skip ("the field '%s'" % decl)
+						lead.append ((len (k.group (1)), k.group (2), k.group (3)))
+					for stars, fname, dims in lead:
+						sub = None
+						if stars: kind, size, al = "l", 8, 8
+						elif base in INT32 and INT32[base] != "v": kind = INT32[base]; size = al = SIZES[kind]
+						elif base in self.tdefs and self.tdefs[base][0] == "int": kind = self.tdefs[base][1]; size = al = SIZES[kind]
+						elif base in self.tdefs and self.tdefs[base][0] in ("fn", "ptr"): kind, size, al = "l", 8, 8
+						else:
+							inner = self.get (base)
+							if inner is None: raise Skip ("the type '%s'" % base)
+							kind, size, al, sub = "t", inner[0], inner[1], base
+						parts.append ((fname, dims, kind, size, al, sub))
+				for fname, dims, kind, size, al, sub in parts:
+					n = self.count (dims) if dims else 1
+					off = (off + al - 1) // al * al
+					maxal = max (maxal, al)
+					if not dims: fields.append ((fname, off, kind, sub))
+					elif kind in "bc" and dims.count ("[") == 1: fields.append ((fname, off, "a", n))
+					off += size * n
+			self.done[name] = ((off + maxal - 1) // maxal * maxal, maxal, fields)
+			self.order.append (name)
+		except Skip as e:
+			self.done[name] = None; self.why = getattr (self, "why", {}); self.why[name] = str (e)
+		return self.done[name]
+
 def describe (kit, verbose):
 	folder = os.path.join (KITS, kit)
 	abi = os.path.join (folder, kit + ".abi")
@@ -165,10 +276,10 @@ def describe (kit, verbose):
 	for l in open (abi, encoding = "utf-8"):
 		f = l.split ()
 		if len (f) == 2 and f[0].isdigit (): entries.append ((int (f[0]), f[1]))
-	text = ""
-	for h in sorted (glob.glob (os.path.join (folder, "*.h"))) + sorted (glob.glob (os.path.join (folder, "*.hpp"))):
-		text += clean (open (h, encoding = "utf-8", errors = "replace").read ()) + "\n"
-	tdefs = typedefs (text)
+	text, alltext, defs = read_headers (folder)
+	tdefs = typedefs (alltext)
+	structs = Structs (alltext, tdefs, defs)
+	used = []						# the structures the functions name, in the order met
 	# the kit's prefix: what nearly all its C names start with (fk_, ik_, kapi_)
 	cnames = [s for _, s in entries if re.fullmatch (r"[A-Za-z]\w*", s)]
 	count = {}
@@ -203,16 +314,38 @@ def describe (kit, verbose):
 		if short.lower () in taken: short = name
 		taken.add (short.lower ())
 		lines.append ("%s %d %s %s %s" % (short, slot, ret, al or "-", name))
+		for w in re.findall (r"\w+", before + " " + args):
+			if w in structs.bodies and w not in used: used.append (w)
+	# the structures: those the functions name, and the ones inside them first
+	for w in used: structs.get (w)
+	def sname (n): return n[len (prefix):] if prefix and n.startswith (prefix) and len (n) > len (prefix) else n
+	slines = []; checks = []
+	for n in structs.order:
+		size, al, fields = structs.done[n]
+		slines.append ("struct %s %d %s" % (sname (n), size, n))
+		cn = ("struct " + n) if n in TAGS else n
+		checks.append ("static_assert (sizeof (%s) == %d, \"%s: size\");" % (cn, size, n))
+		for fname, off, kind, extra in fields:
+			slines.append ("field %s %d %s%s" % (fname, off, kind, "" if extra is None else " %s" % (sname (extra) if kind == "t" else extra)))
+			checks.append ("static_assert (offsetof (%s, %s) == %d, \"%s.%s: offset\");" % (cn, fname, off, n, fname))
+	for w in used:
+		if structs.done.get (w) is None: left.append (("struct " + w, getattr (structs, "why", {}).get (w, "not defined in the headers")))
 	out = ["# %s.bi -- %s for Onyx BASIC (#import %s): made by tools/kitbi/kitbi.py from %s.abi and the kit's headers;" % (kit, kit, kit, kit),
 	       "# not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.",
-	       "kit %s %d" % (kit, len (entries))] + lines
+	       "# struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].",
+	       "kit %s %d" % (kit, len (entries))] + slines + lines
 	if verbose:
 		for sym, why in left: print ("  %s: %s left out (%s)" % (kit, sym, why))
-	return "\n".join (out) + "\n", len (lines), len (entries)
+	main = "%s/%s.h" % (kit, kit)
+	incs = [main] if os.path.isfile (os.path.join (KITS, main)) else [kit + "/" + os.path.basename (h) for h in sorted (glob.glob (os.path.join (folder, "*.h")))]
+	check = "// %s.bi.check.cpp -- made by tools/kitbi/kitbi.py: the compiler agrees with %s.bi's structures.\n#include <stddef.h>\n#include \"appkit/appkit.h\"\n" % (kit, kit) \
+		+ "".join ('#include "%s"\n' % i for i in incs) + "\n".join (checks) + "\n"
+	return "\n".join (out) + "\n", len (lines), len (entries), len (structs.order), (check if checks else None)
 
 ap = argparse.ArgumentParser ()
 ap.add_argument ("--out-dir", required = True)
 ap.add_argument ("-v", "--verbose", action = "store_true")
+ap.add_argument ("--check", action = "store_true", help = "write <kit>.bi.check.cpp: the structures' layouts as static_asserts")
 ap.add_argument ("kits", nargs = "*")
 a = ap.parse_args ()
 kits = a.kits or sorted (d for d in os.listdir (KITS) if os.path.isfile (os.path.join (KITS, d, d + ".abi")))
@@ -220,8 +353,11 @@ os.makedirs (a.out_dir, exist_ok = True)
 for kit in kits:
 	r = describe (kit, a.verbose)
 	if r is None: sys.exit ("kitbi: no user/Kits/%s/%s.abi" % (kit, kit))
-	text, n, total = r
+	text, n, total, ns, check = r
+	cpath = os.path.join (a.out_dir, kit + ".bi.check.cpp")
+	if a.check and check: open (cpath, "w", encoding = "utf-8", newline = "\n").write (check)
+	elif os.path.isfile (cpath): os.remove (cpath)
 	path = os.path.join (a.out_dir, kit + ".bi")
 	old = open (path, encoding = "utf-8", newline = "").read () if os.path.isfile (path) else None
 	if old != text: open (path, "w", encoding = "utf-8", newline = "\n").write (text)
-	print ("kitbi: %s.bi -- %d of the %d entries" % (kit, n, total))
+	print ("kitbi: %s.bi -- %d of the %d entries, %d structures" % (kit, n, total, ns))

@@ -1,6 +1,298 @@
 # appkit.bi -- appkit for Onyx BASIC (#import appkit): made by tools/kitbi/kitbi.py from appkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
+# struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
 kit appkit 298
+struct clock_info 48 kapi_clock_info
+field cnt 0 l
+field freq 8 l
+field utc_us 16 l
+field tz_minutes 24 i
+field flags 28 u
+field boot_cnt 32 l
+field reserved 40 l
+struct cpu_core 16 kapi_cpu_core
+field busy_us 0 l
+field role 8 u
+field pid 12 u
+struct cpu_stats 144 kapi_cpu_stats
+field now_us 0 l
+field cores 8 u
+field reserved 12 u
+struct dirent2 288 kapi_dirent2
+field name 0 a 256
+field size 256 l
+field mtime 264 l
+field mode 272 u
+field attr 276 u
+field ino 280 l
+struct stat 64 kapi_stat
+field size 0 l
+field mtime 8 l
+field ino 16 l
+field mode 24 u
+field dev 28 u
+field blksize 32 u
+field attr 36 u
+field blocks 40 l
+field ctime 48 l
+field reserved 56 l
+struct chrome 104 kapi_chrome
+field content 0 l
+field content_w 8 i
+field content_h 12 i
+field active 16 l
+field inactive 24 l
+field chrome_w 32 i
+field chrome_h 36 i
+field inset_l 40 i
+field inset_r 44 i
+field inset_t 48 i
+field inset_b 52 i
+field title 56 a 48
+struct handle_xfer 24 kapi_handle_xfer
+field h 0 l
+field kind 8 i
+field tag 12 u
+field fd 16 i
+field flags 20 u
+struct gpu_vertex 16 kapi_gpu_vertex
+field x 0 f
+field y 4 f
+field z 8 f
+field r 12 b
+field g 13 b
+field b 14 b
+field a 15 b
+struct gpu_program 56 kapi_gpu_program
+field vs 0 l
+field cs 8 l
+field fs 16 l
+field nvs 24 u
+field ncs 28 u
+field nfs 32 u
+field inputs 36 u
+field csInputs 40 u
+field csOutputs 44 u
+field varyings 48 u
+field flags 52 u
+struct gpu_frame 32 kapi_gpu_frame
+field pixels 0 l
+field w 8 i
+field h 12 i
+field stride 16 i
+field clear 20 u
+field flags 24 u
+struct gpu_vertex3 32 kapi_gpu_vertex3
+field x 0 f
+field y 4 f
+field z 8 f
+field w 12 f
+field s 16 f
+field t 20 f
+field r 24 b
+field g 25 b
+field b 26 b
+field a 27 b
+field r2 28 b
+field g2 29 b
+field b2 30 b
+field a2 31 b
+struct gpu_batch 80 kapi_gpu_batch
+field first 0 u
+field count 4 u
+field texture 8 i
+field flags 12 u
+struct gpu_batch2 160 kapi_gpu_batch2
+field first 0 u
+field count 4 u
+field program 8 i
+field flags 12 u
+field blend 16 u
+field wmask 20 u
+field vsUni 40 u
+field vsNUni 44 u
+field csUni 48 u
+field csNUni 52 u
+field fsUni 56 u
+field fsNUni 60 u
+struct gpu_batch3 168 kapi_gpu_batch3
+field b 0 t gpu_batch2
+field off 160 u
+field stride 164 u
+struct image_info 280 kapi_image_info
+field size 0 l
+field file_size 8 l
+field refs 16 u
+field flags 20 u
+field path 24 a 256
+struct midi_event 12 kapi_midi_event
+field time_us 0 u
+field cable 4 b
+field status 5 b
+field data1 6 b
+field data2 7 b
+field device 8 b
+field length 9 b
+field reserved 10 a 2
+struct net_stats 24 kapi_net_stats
+field rx_bytes 0 l
+field tx_bytes 8 l
+field sockets 16 u
+field reserved 20 u
+struct pollfd 16 kapi_pollfd
+field kind 0 i
+field h 4 i
+field events 8 h
+field revents 10 h
+field reserved 12 i
+struct event 32 kapi_event
+field handler 0 l
+field sender 8 l
+field value 16 l
+field event 24 i
+field mods 28 u
+struct posted 24 kapi_posted
+field fn 0 l
+field ctx 8 l
+field value 16 l
+struct syscall_stats 104 kapi_syscall_stats
+field syscalls 0 l
+field emulated 8 l
+field rate 16 u
+field slots 20 u
+struct proc_status 16 kapi_proc_status
+field code 0 i
+field reason 4 i
+field pid 8 i
+field reserved 12 i
+struct dirent 136 kapi_dirent
+field name 0 a 128
+field size 128 u
+field is_dir 132 i
+struct sockaddr 16 kapi_sockaddr
+field family 0 w
+field port 2 w
+field addr 4 a 4
+field zero 8 a 8
+struct msghdr 48 kapi_msghdr
+field iov 0 l
+field handles 8 l
+field iovcnt 16 u
+field nhandles 20 u
+field flags 24 u
+field reserved 28 u
+struct sound_client 60 kapi_sound_client
+field pid 0 u
+field volume 4 i
+field mute 8 i
+field peak 12 i
+field queued 16 i
+field name 20 a 24
+struct fm_op 9 kapi_fm_op
+field mult 0 b
+field level 1 b
+field ksl 2 b
+field attack 3 b
+field decay 4 b
+field sustain 5 b
+field release 6 b
+field wave 7 b
+field flags 8 b
+struct fm_instrument 20 kapi_fm_instrument
+field feedback 18 b
+field connection 19 b
+struct spawn_attr 64 kapi_spawn_attr
+field path 0 l
+field argv 8 l
+field envp 16 l
+field cwd 24 l
+field in 32 l
+field out 40 l
+field reserved 48 l
+field flags 56 u
+field reserved2 60 u
+struct thread_attr 64 kapi_thread_attr
+field fn 0 l
+field arg 8 l
+field stack_size 16 l
+field tls 24 l
+field name 32 l
+field flags 40 u
+field prio 44 i
+struct thread_info 32 kapi_thread_info
+field stack_lo 0 l
+field stack_hi 8 l
+field tid 16 i
+field state 20 i
+field guard 24 l
+struct vfs_req 640 kapi_vfs_req
+field id 0 u
+field op 4 i
+field path 8 a 300
+field path2 308 a 300
+field a0 608 l
+field a1 616 l
+field a2 624 l
+field in_len 632 u
+struct vm_region 32 kapi_vm_region
+field start 0 l
+field end 8 l
+field prot 16 u
+field kind 20 u
+field resident 24 u
+field flags 28 u
+struct vm_stats 48 kapi_vm_stats
+field resident 0 l
+field lazy 8 l
+field writable 16 l
+field faults 24 l
+field pt_bytes 32 l
+field limit 40 l
+struct vol_info 48 kapi_vol_info
+field total 0 l
+field free 8 l
+field used 16 l
+field files 24 u
+field dirs 28 u
+field flags 32 u
+field type 36 a 12
+struct win_geom 44 kapi_win_geom
+field x 0 i
+field y 4 i
+field w 8 i
+field h 12 i
+field cw 16 i
+field ch 20 i
+field ax 24 i
+field ay 28 i
+field aw 32 i
+field ah 36 i
+field state 40 u
+struct win_info 108 kapi_win_info
+field id 0 u
+field pid 4 u
+field x 8 i
+field y 12 i
+field w 16 i
+field h 20 i
+field flags 24 u
+field alpha 28 i
+field gen 32 u
+field state 36 u
+field title 40 a 48
+field ow 88 i
+field oh 92 i
+field il 96 i
+field it 100 i
+field chromeGen 104 u
+struct wlan_ap 52 kapi_wlan_ap
+field ssid 0 a 33
+field bssid 33 a 6
+field security 39 b
+field channel 40 b
+field connected 41 b
+field freq 44 i
+field level 48 i
 abi_version 0 u - kapi_abi_version
 app_dir 1 i pi kapi_app_dir
 barrier_create 2 i i kapi_barrier_create
@@ -157,9 +449,13 @@ screen_native 152 i II kapi_screen_native
 screen_set 153 i ii kapi_screen_set
 screen_size 154 v II kapi_screen_size
 seek 155 i pi kapi_seek
+set_click_handler 156 v c kapi_set_click_handler
 set_cursor 157 i i kapi_set_cursor
+set_key_handler 158 v c kapi_set_key_handler
 set_keymap 159 i s kapi_set_keymap
 set_keymap_data 160 i spi kapi_set_keymap_data
+set_menu 161 i sc kapi_set_menu
+set_pointer_handler 162 v c kapi_set_pointer_handler
 set_timezone 163 i i kapi_set_timezone
 set_verbose 164 i i kapi_set_verbose
 set_wheel_speed 165 v i kapi_set_wheel_speed

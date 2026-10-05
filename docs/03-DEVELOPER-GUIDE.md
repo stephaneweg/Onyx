@@ -3423,13 +3423,28 @@ barwidth = 40
     a BASIC string); an argument `i` a whole number, `p` a pointer, `c` a function, `s` a C string, `f`, `d`,
     `I` / `L` / `F` / `D` a pointer to numbers (`int *`, a 64-bit number's or a pointer's address, `float *`,
     `double *`) — a number (the address) or `BYREF variable`.
+  - *Structures*: the `.bi` also lists the structures the functions take or return by pointer —
+    `struct <name> <size> <C name>`, then `field <name> <offset> <kind> [<length> | <structure>]` (kinds
+    `b c h w i u l f d`, `a` a text in a `char` array, `t` another structure). `kitbi.py` works the layout
+    out itself (AArch64: natural alignment), from the kit's headers and what they include directly
+    (`kern/kapi_abi.h` for AppKit), and **the compiler checks it**: `--check` writes
+    `lib/<kit>.bi.check.cpp`, a file of `static_assert`s on every size and offset, which the same Makefile
+    rule compiles (`-fsyntax-only`) — a wrong layout stops the build. Left out: a structure with a union, a
+    bit field, C++ members or an array whose size is an expression; an array that is not a text has no
+    field (its bytes are kept, zero from BASIC). `#import` makes each one a **TYPE of the program**
+    (`KIT.NAME`, and under its C name: `Compiler::kalias`), its fields numbers, strings (`a`) and nested
+    TYPEs; `Program::kstructs` / `kflds` keep the C places (`.bax` format 5). Where a function takes a
+    pointer (`p`), a variable of such a TYPE — or an element, or a **whole array** (`name ()`: the C array)
+    — is packed into a C structure before the call and unpacked after it (`VM::kitPack` / `kitUnpack`);
+    `PEEKT` / `POKET address, variable` do the same at an address (a structure the kit keeps, or one a
+    callback receives). `LEN (variable)` is the C structure's size.
   - *The compiler* (`bascomp.cpp`, *kits*): `prescanImports` reads the descriptions through
     `bas::setKitSource` (Onyx: `bas::onyxKitSource`, `baskits.cpp`; the PC tests: a kit of their own in
     `host_main.cpp`), `findKitFn` finds `KIT.NAME`, `kitCall` compiles the arguments by the function's
     letters and emits **`OP_KCALL function argc`**. Only what the program calls goes into the compiled
     program (`Program::kits`, `Program::kfns`; `.bax` format 4), with the smallest table that has them
     (`KitRef::minVer`) — so a `.bax` or a standalone app runs without the `.bi`. The words `ALLOC`,
-    `DEALLOC`, `CSTR$`, `PEEKx`, `POKEx`, `ADDRESSOF`, `BYREF` exist only in a program that has an
+    `DEALLOC`, `CSTR$`, `PEEKx`, `POKEx`, `PEEKT`, `POKET`, `ADDRESSOF`, `BYREF` exist only in a program that has an
     `#import` (`kitsOn`): an older program that uses them as names still compiles.
   - *The call* (`VM::kitCall`, `basvm.cpp`): the kit opened at its first call (`Host::kitOpen`; Onyx:
     `bas::onyxKitOpen` = `kapi_lib_open` + the library's `init`, AppKit at `APPKIT_TABLE_VA`), then **one C
