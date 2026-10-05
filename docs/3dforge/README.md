@@ -1,6 +1,7 @@
 # 3DForge, a small parametric CAD — study, first mock-ups
 
-> **Status (2026-10-05): the design is approved by the user; nothing is built yet.** Asked by the user
+> **Status (2026-10-05): the design is approved by the user; Manifold is built for Onyx and tested under qemu
+> (`sh tools/tests/run_manifold_test.sh`); the app itself is not started.** Asked by the user
 > (2026-10-05): a small parametric CAD that is *easy to use*, in the spirit of Fusion or Shapr3D, above all for
 > simple shapes — "for a cube: click the centre, move away to give the width and the depth, click, move up to give
 > the height, click". Not a port of FreeCAD (too heavy), nor of SolveSpace or OpenCASCADE. The name, **3DForge**, is
@@ -37,7 +38,8 @@ a shadow on the ground) — what the GPU will draw on the Pi. Its measures (63.5
 
 ## What is next
 
-1. Manifold (and Clipper2) built for Onyx as a library; a test program in `/bin`.
+1. ~~Manifold (and Clipper2) built for Onyx as a library~~ — done: `user/Libs/manifold/libmanifold.a`
+   (`third_party/manifold-3.5.4`, `third_party/clipper2-46f6391`), tested in AArch64 under qemu.
 2. The view: the GPU drawing a body, orbit / pan / zoom, picking a face.
 3. Box, Cylinder, the operations, Export — the app is already useful.
 4. The sketch and Extrude; then the history that can be edited; then Fillet and Chamfer.

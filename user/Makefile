@@ -667,6 +667,27 @@ Libs/gpucomp/gpucomp.o: Libs/gpucomp/gpucomp.c Libs/gpucomp/gpucomp.h Kits/appki
 	$(CC) $(filter-out -mgeneral-regs-only -O2,$(CFLAGS)) -mcpu=cortex-a72 -O3 -ffp-contract=off -fno-math-errno -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -c $< -o $@
 Libs/gpucomp/libgpucomp.a: Libs/gpucomp/gpucomp.o
 	$(AR) rcs $@ $^
+# Manifold (Libs/manifold/libmanifold.a: boolean operations on closed meshes, extrusion, 2D outlines -- 3DForge's
+# kernel, docs/3dforge/README.md): third_party/manifold-3.5.4 with Clipper2 (third_party/clipper2-46f6391), a newlib
+# build with the FPU, sequential (no TBB), no iostream. Libs/manifold/onyx_manifold.h goes before every file (the
+# empty std::mutex this libstdc++ lacks); a program compiles with $(MF_INC) too. Test: tools/tests/run_manifold_test.sh.
+MF_SRC = ../third_party/manifold-3.5.4
+CLIPPER_SRC = ../third_party/clipper2-46f6391/CPP/Clipper2Lib
+MF_INC = -std=c++17 -include Libs/manifold/onyx_manifold.h -DMANIFOLD_PAR=-1 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_NO_IOSTREAM \
+	 -DMANIFOLD_NO_FILESYSTEM -DCLIPPER2_NO_IOSTREAM -I$(MF_SRC)/include -I$(CLIPPER_SRC)/include
+MF_OBJ = $(addprefix Libs/manifold/obj/,boolean3.o boolean_result.o constructors.o csg_tree.o edge_op.o execution_impl.o \
+	 face_op.o impl.o manifold.o minkowski.o polygon.o properties.o quickhull.o sdf.o smoothing.o sort.o subdivision.o \
+	 tree2d.o cross_section.o clipper.engine.o clipper.offset.o clipper.rectclip.o clipper.triangulation.o)
+MF_CXX = @mkdir -p Libs/manifold/obj; $(CXX) $(NL_CXXFLAGS) $(MF_INC) -w -c $< -o $@
+Libs/manifold/obj/%.o: $(MF_SRC)/src/%.cpp Libs/manifold/onyx_manifold.h
+	$(MF_CXX)
+Libs/manifold/obj/%.o: $(MF_SRC)/src/cross_section/%.cpp Libs/manifold/onyx_manifold.h
+	$(MF_CXX)
+Libs/manifold/obj/%.o: $(CLIPPER_SRC)/src/%.cpp Libs/manifold/onyx_manifold.h
+	$(MF_CXX)
+Libs/manifold/libmanifold.a: $(MF_OBJ)
+	@rm -f $@
+	$(AR) rcs $@ $^
 
 Emulators/snes/libsnes.a: $(SNES_OBJS)
 	$(AR) rcs $@ $^

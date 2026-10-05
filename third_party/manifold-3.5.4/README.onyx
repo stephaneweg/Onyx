@@ -1,0 +1,15 @@
+Manifold 3.5.4 (https://github.com/elalish/manifold, tag v3.5.4): the library only -- `src/`
+(with `cross_section/cross_section.cpp`, the Clipper2 back end of CrossSection; the experimental
+`cross_section_boolean2.cpp` left out) and `include/manifold/` -- for 3DForge, Onyx's small
+parametric CAD (docs/3dforge/README.md): boolean operations on closed meshes, extrusion,
+the 2D outlines. No bindings, tests, samples nor CMake files.
+
+`include/manifold/version.h` is `cmake/version.h.in` filled in (3.5.4). Nothing else is changed.
+
+Built by `user/Makefile` into `user/Libs/manifold/libmanifold.a` (`make -C user Libs/manifold/libmanifold.a`):
+sequential (`MANIFOLD_PAR=-1`: no TBB), `MANIFOLD_CROSS_SECTION`, `MANIFOLD_NO_IOSTREAM` (and
+`MANIFOLD_NO_FILESYSTEM`), with Clipper2 from `third_party/clipper2-46f6391`. The bare-metal
+libstdc++ has no threads, hence no `std::mutex`: `user/Libs/manifold/onyx_manifold.h`, included
+before every file, gives the empty ones Manifold's headers name. Test: `sh tools/tests/run_manifold_test.sh`.
+
+Apache License 2.0: LICENSE (the authors: AUTHORS).

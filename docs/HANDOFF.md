@@ -4,6 +4,26 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## 3DForge, a small parametric CAD (2026-10-05): the design approved, Manifold built for Onyx — the app is next
+
+Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and
+chamfers as far as they go, STL / OBJ). **Read `docs/3dforge/README.md`**: the six mock-ups (Milk) the user
+approved ("c'est comme ça que je l'imagine") and the choices — the kernel is **Manifold** (meshes: no STEP; fillets
+on straight edges and edges on a circle only), the sketch has **no constraint solver** (each element a recipe,
+replayed in order), the rendering uses **the GPU as much as possible**, the name is the user's.
+
+- **Done**: `third_party/manifold-3.5.4` + `third_party/clipper2-46f6391` (trimmed, their `README.onyx`), built by
+  `user/Makefile` into `user/Libs/manifold/libmanifold.a` (`make -C user Libs/manifold/libmanifold.a`; a newlib
+  build, sequential, no iostream; `Libs/manifold/onyx_manifold.h` gives the empty `std::mutex` the bare-metal
+  libstdc++ lacks — a program compiles with `$(MF_INC)`). **Tested in AArch64 under qemu**
+  (`sh tools/tests/run_manifold_test.sh`, in WSL with the Arm toolchain on the PATH): the three operations and the
+  mock-ups' bracket step by step, every volume exact; about 550 KB of code linked in. **Not run on the Pi yet.**
+- **Next**, in the README's order: the app `user/Apps/3dforge` (a newlib app as Paint, UIKit) with the view drawn
+  by the GPU (`kapi_gpu_render3`; Apps/teapot and Apps/gpudemo show how), orbit / pan / zoom, picking a face
+  (Manifold keeps each triangle's original face: `MeshGL::faceID`, `runOriginalID`); then Box, Cylinder, the
+  operations and Export; then the sketch and Extrude, the editable history, Fillet and Chamfer. Its package, its
+  entry in docs/04, its screenshots when it exists.
+
 ## NEXT (the user, 2026-10-05): the graphics server out of the kernel, into a user process
 
 The user's next work, to start in a new session: **move the window server (the compositor, the windows,
