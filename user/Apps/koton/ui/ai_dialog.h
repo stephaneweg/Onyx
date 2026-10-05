@@ -64,10 +64,10 @@ static bool runLlmIn (const char *req, unsigned reqLen, Vec<char> &out, char *li
 			if (e2 - (i + 1) > 5 && out[i + 1] == 'l' && out[i + 2] == 'l' && out[i + 3] == 'm')
 				snprintf (line, lineCap, "%.*s", imin (lineCap - 1, e2 - (i + 1)), out.data () + i + 1);
 		}
-		wk_pump ();
-		if (*cancel || wk_quit ()) { cancelled = true; break; }
+		uk_pump ();
+		if (*cancel || uk_quit ()) { cancelled = true; break; }
 		view->invalidate (true);
-		if (!r->valid) { r->draw (); wk_present (); }
+		if (!r->valid) { r->draw (); uk_present (); }
 		msleep (30);
 	}
 	if (cancelled) kapi_kill ("llm");			// (by its name: the only llm is ours)
@@ -297,7 +297,7 @@ public:
 			while (s[n] && n < (int) sizeof ln - 1)
 			{
 				ln[n] = s[n]; ln[n + 1] = 0;
-				if (wk_text_w (ln) > maxW) break;
+				if (uk_text_w (ln) > maxW) break;
 				if (s[n] == ' ') lastSp = n;
 				n++;
 			}

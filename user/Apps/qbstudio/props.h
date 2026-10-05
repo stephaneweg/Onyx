@@ -12,7 +12,7 @@
 #include "gen.h"
 
 namespace qs {
-using namespace wtk;
+using namespace uikit;
 
 enum { PR_NAME, PR_TEXT, PR_VALUE, PR_FLAG, PR_CHOICE, PR_HEAD };
 struct PropRow { int type; const char *key; const char *label; const char *tip; };
@@ -79,8 +79,8 @@ public:
 	Textbox *edit; int editRow;
 	Vec<PropRow> rows;
 	PropGrid (int l, int t, int w, int h) : Widget (l, t, w, h), el (0), tab (0), edit (0), editRow (-1), m_lastClick (0), m_lastRow (-1), m_top (0), m_pend (false) { canFocus = true; }
-	int rowH () { return wk_fh () + 8; }
-	int headH () { return wk_fh () * 2 + 30; }
+	int rowH () { return uk_fh () + 8; }
+	int headH () { return uk_fh () * 2 + 30; }
 	static const int TABS_H = 30;
 	int labelW () { return width * 42 / 100; }
 
@@ -103,22 +103,22 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		unsigned dim = wk_mix (C_BG, C_TEXT, 140), line = wk_mix (C_BG, C_TEXT, 40);
-		if (!el) { wk_text_c (canvas, 0, 0, width, 80, "Choose an element of the window", dim); return; }
+		unsigned dim = uk_mix (C_BG, C_TEXT, 140), line = uk_mix (C_BG, C_TEXT, 40);
+		if (!el) { uk_text_c (canvas, 0, 0, width, 80, "Choose an element of the window", dim); return; }
 		// the header: its name, its kind
-		wk_rbox (canvas, 6, 6, width - 12, wk_fh () + 12, 5, C_FIELD, C_FIELD);
-		wk_rline (canvas, 6, 6, width - 12, wk_fh () + 12, 5, line);
+		uk_rbox (canvas, 6, 6, width - 12, uk_fh () + 12, 5, C_FIELD, C_FIELD);
+		uk_rline (canvas, 6, 6, width - 12, uk_fh () + 12, 5, line);
 		char n[64]; snprintf (n, sizeof n, "%s", el->name[0] ? el->name : el->kind == K_MENUITEM || el->kind == K_MENUTITLE ? el->text : "(no name)");
-		wk_text (canvas, 14, 12, n, C_FIELD_TEXT, 2);
-		wk_text (canvas, 22 + wk_tw (n, 2), 12, el->kind == K_MENUTITLE ? "Menu" : el->kind == K_MENUITEM ? "Menu item" : KIND_NAMES[el->kind], dim);
+		uk_text (canvas, 14, 12, n, C_FIELD_TEXT, 2);
+		uk_text (canvas, 22 + uk_tw (n, 2), 12, el->kind == K_MENUTITLE ? "Menu" : el->kind == K_MENUITEM ? "Menu item" : KIND_NAMES[el->kind], dim);
 		// the tabs
-		int ty = wk_fh () + 24, tw = (width - 12) / 2;
+		int ty = uk_fh () + 24, tw = (width - 12) / 2;
 		static const char *const T[2] = { "Properties", "Events" };
 		for (int i = 0; i < 2; i++)
 		{
 			unsigned bg = i == tab ? C_ACCENT : C_FIELD;
-			wk_rbox (canvas, 6 + i * tw, ty, tw, TABS_H - 6, 4, bg, bg);
-			wk_text_c (canvas, 6 + i * tw, ty, tw, TABS_H - 6, T[i], i == tab ? wk_ink_on (C_ACCENT) : C_FIELD_TEXT);
+			uk_rbox (canvas, 6 + i * tw, ty, tw, TABS_H - 6, 4, bg, bg);
+			uk_text_c (canvas, 6 + i * tw, ty, tw, TABS_H - 6, T[i], i == tab ? uk_ink_on (C_ACCENT) : C_FIELD_TEXT);
 		}
 		int y0 = headH (), RH = rowH (), LW = labelW ();
 		Canvas clip; clip.adopt (canvas.px + y0 * canvas.stride, width, imax (1, height - y0), canvas.stride);
@@ -128,34 +128,34 @@ public:
 			{
 				int y = i * RH - m_top; if (y + RH < 0 || y > clip.h) continue;
 				const PropRow &r = rows[i];
-				if (r.type == PR_HEAD) { wk_text (clip, 8, y + 4, r.label, C_TEXT, 2); continue; }
-				if (i == editRow) clip.fillRect (0, y, width, RH, wk_mix (C_BG, C_ACCENT, 50));
-				wk_text (clip, 16, y + 4, r.label, C_TEXT);
+				if (r.type == PR_HEAD) { uk_text (clip, 8, y + 4, r.label, C_TEXT, 2); continue; }
+				if (i == editRow) clip.fillRect (0, y, width, RH, uk_mix (C_BG, C_ACCENT, 50));
+				uk_text (clip, 16, y + 4, r.label, C_TEXT);
 				char v[128]; value (r, v, sizeof v);
 				int vx = LW;
-				if (r.type == PR_FLAG) wk_check_mark (clip, vx, y + (RH - 14) / 2, 14, el->flag (r.key), WK_NORMAL);
-				else if (!v[0] && r.tip) wk_text (clip, vx, y + 4, r.tip, dim, 1);
+				if (r.type == PR_FLAG) uk_check_mark (clip, vx, y + (RH - 14) / 2, 14, el->flag (r.key), UK_NORMAL);
+				else if (!v[0] && r.tip) uk_text (clip, vx, y + 4, r.tip, dim, 1);
 				else
 				{
-					if (y >= 0 && y + RH <= clip.h) { Canvas vc; vc.adopt (clip.px + y * clip.stride + vx, imax (1, width - vx - 6), RH, clip.stride); wk_text (vc, 0, 4, v, C_TEXT); }
-					if (r.type == PR_CHOICE) wk_glyph (clip, WKG_CHEV_DOWN, width - 14, y + RH / 2, 7, dim);
+					if (y >= 0 && y + RH <= clip.h) { Canvas vc; vc.adopt (clip.px + y * clip.stride + vx, imax (1, width - vx - 6), RH, clip.stride); uk_text (vc, 0, 4, v, C_TEXT); }
+					if (r.type == PR_CHOICE) uk_glyph (clip, WKG_CHEV_DOWN, width - 14, y + RH / 2, 7, dim);
 				}
-				clip.fillRect (8, y + RH - 1, width - 16, 1, wk_mix (C_BG, C_TEXT, 18));
+				clip.fillRect (8, y + RH - 1, width - 16, 1, uk_mix (C_BG, C_TEXT, 18));
 			}
 		}
 		else
 		{
 			char names[4][64]; const char *labels[4];
 			int n = events_of (el, names, labels, 4);
-			if (!n) wk_text (clip, 12, 8, el->name[0] ? "No events" : "No events: give it a name", dim);
+			if (!n) uk_text (clip, 12, 8, el->name[0] ? "No events" : "No events: give it a name", dim);
 			for (int i = 0; i < n; i++)
 			{
 				int y = i * RH;
-				wk_text (clip, 16, y + 4, labels[i], C_TEXT);
+				uk_text (clip, 16, y + 4, labels[i], C_TEXT);
 				bool has = g_subExists && g_subExists (names[i]);
-				if (has) { wk_text (clip, LW, y + 4, names[i], C_ACCENT); clip.fillRect (LW, y + 4 + wk_fh () - 2, wk_tw (names[i]), 1, C_ACCENT); }
-				else wk_text (clip, LW, y + 4, "(click: a new SUB)", dim, 1);
-				clip.fillRect (8, y + RH - 1, width - 16, 1, wk_mix (C_BG, C_TEXT, 18));
+				if (has) { uk_text (clip, LW, y + 4, names[i], C_ACCENT); clip.fillRect (LW, y + 4 + uk_fh () - 2, uk_tw (names[i]), 1, C_ACCENT); }
+				else uk_text (clip, LW, y + 4, "(click: a new SUB)", dim, 1);
+				clip.fillRect (8, y + RH - 1, width - 16, 1, uk_mix (C_BG, C_TEXT, 18));
 			}
 		}
 	}
@@ -166,7 +166,7 @@ public:
 		if (!bl || pressed) { if (!bl) pressed = false; return true; }
 		pressed = true;
 		if (!el) return true;
-		int ty = wk_fh () + 24;
+		int ty = uk_fh () + 24;
 		if (my >= ty && my < ty + TABS_H) { commit (); tab = mx < width / 2 ? 0 : 1; invalidate (true); return true; }
 		int y0 = headH (); if (my < y0) return true;
 		int i = (my - y0 + (tab == 0 ? m_top : 0)) / rowH ();

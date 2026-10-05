@@ -6,7 +6,7 @@
 //   make_sample OUT.odp                   (SIM_SD: the card, for the fonts and the picture)
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "Apps/slides/odp.h"
 #include <stdio.h>
 

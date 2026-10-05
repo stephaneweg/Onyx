@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors
 """compat_pi.py -- runs the shared libraries' compatibility test on the Pi (the files built by
-tools/tests/shlib/compat.sh): the program built against wtk N, NOT rebuilt, on the library N+1.
+tools/tests/shlib/compat.sh): the program built against uikit N, NOT rebuilt, on the library N+1.
 
     python tools/tests/shlib/compat_pi.py <pi-ip> <out-dir> [ftp-user ftp-password]
 
 Needs telnetd on the Pi; starts `ftpd SD:/` there if it does not run (its default account: onyx /
-onyx). Uses SD:/lib/wtkc.so (the test's own name: the system's wtk.so is not touched) and
+onyx). Uses SD:/lib/uikitc.so (the test's own name: the system's uikit.so is not touched) and
 SD:/bin/compat-n, compat-n1 (cmd runs the programs of /bin with its output); removes them at the end. Exit status 0 only if every check passed."""
 import ftplib, os, re, socket, sys, time
 
@@ -65,14 +65,14 @@ def run (app):
 	out = pi.cmd (app, 2.5)
 	return dict (re.findall (r"^(\w+)=(-?\d+)$", out, re.M)), out
 
-put (f, "wtkc-n.so", "lib/wtkc.so")
+put (f, "uikitc-n.so", "lib/uikitc.so")
 v, raw = run ("compat-n")
 base = v
 check ("the program built against N runs on the library N",
        v.get ("done") == "1" and v.get ("clicked") == "1" and int (v.get ("drawn", 0)) >= 1 and v.get ("reserve") == "0"
        and v.get ("bfw") != "1234", raw[-300:])
 
-put (f, "wtkc-n1.so", "lib/wtkc.so")			# the library replaced: N+1
+put (f, "uikitc-n1.so", "lib/uikitc.so")			# the library replaced: N+1
 v, raw = run ("compat-n")				# the SAME program file, not rebuilt
 check ("(a) a fix in the library reaches the program built against N", v.get ("bfw") == "1234", raw[-300:])
 check ("(b) (c) it still runs: its widgets, its own class, its callback, the same layout",
@@ -83,14 +83,14 @@ v, raw = run ("compat-n1")
 check ("a program built against N+1 uses the appended function and the reserved virtual",
        v.get ("done") == "1" and v.get ("added") == "77" and v.get ("compat") == "1" and v.get ("reserve") == "49374", raw[-300:])
 
-put (f, "wtkc-n.so", "lib/wtkc.so")			# back to N
+put (f, "uikitc-n.so", "lib/uikitc.so")			# back to N
 v, raw = run ("compat-n1")
 check ("(d) a program built against N+1 is refused by the library N, with a message",
        "done" not in v and "needs the shared library" in raw and "older" in raw, raw[-300:])
 v, raw = run ("compat-n")
 check ("the program built against N runs again on N", v.get ("done") == "1" and v.get ("bfw") == base.get ("bfw"), raw[-300:])
 
-for r in ("lib/wtkc.so", "bin/compat-n", "bin/compat-n1"):
+for r in ("lib/uikitc.so", "bin/compat-n", "bin/compat-n1"):
 	try: f.delete (r)
 	except Exception: pass
 try: f.quit ()

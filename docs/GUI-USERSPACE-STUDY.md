@@ -1,9 +1,9 @@
-# Onyx: the GUI in user space, and wtk no longer linked into every app (a feasibility study)
+# Onyx: the GUI in user space, and uikit no longer linked into every app (a feasibility study)
 
 *Status (2026-10-04): a study read from the code (kapi v82); nothing is built. The decisions are the
 user's: listed at the end. Asked: (1) can the window manager / compositor leave the kernel for a
-user-space process; (2) can the apps stop carrying a static copy of wtk — by putting wtk in the
-user-space window manager (the apps then talk IPC), by putting wtk in a process of its own, or by
+user-space process; (2) can the apps stop carrying a static copy of uikit — by putting uikit in the
+user-space window manager (the apps then talk IPC), by putting uikit in a process of its own, or by
 loading shared libraries (ideally one physical copy, mapped into every process that uses it).
 **Revised the same day**: the user ruled out libraries at a link-time fixed address; §3.3 is now the
 user's design — PIC libraries that publish their entry points in a table filled at load time, read by
@@ -14,9 +14,9 @@ the apps as they read `kapi`'s. **Decided**: the plan to implement is `docs/SHAR
 | Question | Feasible? | Cost | Recommendation |
 |---|---|---|---|
 | **GUI (WM + compositor) in user space** | **Yes** — the apps already draw everything themselves; the kernel keeps the window list, the input routing and the composition | large: ~4–5 k lines moved or written, a new protocol, every app to re-test | **yes, in a second step**, on top of the shared libraries |
-| **wtk inside the window server** (server-side widgets, X11 / Win32 style) | technically, but not for Onyx's apps | a rewrite of most of the 88 wtk apps | **no** |
-| **wtk in a process of its own** | same objection, worse (three parties) | same | **no** (except as a *common-dialogs* service, below) |
-| **Shared PIC libraries behind an export table** (the user's design: one physical copy, the table filled at load, apps not bound to a build) | **Yes**, the loading on the v77 program images; no `ld.so` | medium: ~400 kernel lines, a table generator, wtk's layouts and virtual order frozen (C++) | **yes, first** |
+| **uikit inside the window server** (server-side widgets, X11 / Win32 style) | technically, but not for Onyx's apps | a rewrite of most of the 88 uikit apps | **no** |
+| **uikit in a process of its own** | same objection, worse (three parties) | same | **no** (except as a *common-dialogs* service, below) |
+| **Shared PIC libraries behind an export table** (the user's design: one physical copy, the table filled at load, apps not bound to a build) | **Yes**, the loading on the v77 program images; no `ld.so` | medium: ~400 kernel lines, a table generator, uikit's layouts and virtual order frozen (C++) | **yes, first** |
 | *Libraries at a link-time fixed address* | yes | small | **ruled out by the user** (apps bound to one build) |
 | **Full dynamic linking** (`ld.so`, symbol lookup, `dlopen`) | yes | large: an `ld.so`, PIC builds of newlib / libgcc / libstdc++, kernel `PT_INTERP` | not needed; only for unmodified ports expecting ELF shared objects |
 
@@ -54,19 +54,19 @@ screen / full screen 8, wallpaper 3, cursor 2, menus / shell 5).
 
 ### 1.2 What the apps already do
 
-- **They draw everything**, frames included: wtk paints the title bar and borders into the two chrome
-  buffers the kernel maps (`wk_decorate_window`, `user/wtk/skin.cpp:293`). Menus are drawn by the
+- **They draw everything**, frames included: uikit paints the title bar and borders into the two chrome
+  buffers the kernel maps (`uk_decorate_window`, `user/uikit/skin.cpp:293`). Menus are drawn by the
   menubar *app*, dialogs and tooltips are widgets inside the app's window.
 - The canvas is kernel heap, **physically contiguous** (V3D renders into it directly), mapped at
   `USER_WINDOW_CANVAS` (12 GB). The app draws, then `kapi_present()` (whole window, no rectangle).
 - Events: the kernel queues `{handler, event, value, mods}`; the user-side pump (`el0blob.S`) pops them
-  and calls the app's handlers at EL0. wtk's `Root::run` polls every 16 ms (`should_exit`,
+  and calls the app's handlers at EL0. uikit's `Root::run` polls every 16 ms (`should_exit`,
   `pump_events`, draw + `present`, `msleep 16`): ~5 system calls a tick even when idle.
 - **The desktop is already user space**: dock, menubar, shelf, notifyd, clipd, applist, agenda,
-  taskman, control are wtk processes, talking over kernel mailboxes (512 bytes, named services).
+  taskman, control are uikit processes, talking over kernel mailboxes (512 bytes, named services).
 - **Two user-space compositors already exist**: the Control Panel's applets (`applet_proto.h`: the
   host maps a surface the applet draws into, forwards `AP_PTR` / `AP_KEY`, the applet sends
-  `AP_PRESENT`; wtk's `Root` has an `--applet` mode) and the *activity shell* (`shell_proto.h`,
+  `AP_PRESENT`; uikit's `Root` has an `--applet` mode) and the *activity shell* (`shell_proto.h`,
   `Apps/shell`, phase 0). Mail's HTML view and Koton's plugins use the same pattern.
 
 ### 1.3 Memory, loader, IPC
@@ -91,9 +91,9 @@ screen / full screen 8, wallpaper 3, cursor 2, menus / shell 5).
   frames, **not physically contiguous**, mapped at a per-process address.
 - System calls run on core 0, the kernel is not preemptive, EL0 is preempted at 100 Hz.
 
-### 1.4 wtk
+### 1.4 uikit
 
-- `user/wtk`: 70 files, ~10 000 lines, a static `libwtk.a` compiled once and linked into the
+- `user/uikit`: 70 files, ~10 000 lines, a static `libuikit.a` compiled once and linked into the
   freestanding apps, the newlib / FreeType apps and the Koton plugins; Jet compiles it a third time
   (hosted toolchain, `-DONYX_HOSTED_NEW`).
 - **In each app: 40–150 KB of code + rodata** (tetris 41 KB, tinypad 97 KB, widgets 136 KB, sheet
@@ -101,12 +101,12 @@ screen / full screen 8, wallpaper 3, cursor 2, menus / shell 5).
 - C++ without exceptions / RTTI / STL; a `Widget` base with public fields and virtuals; callbacks are
   plain function pointers; global theme colours (`extern unsigned C_BG...`), a global text face,
   function-local statics; `operator new` / `delete` **defined by the app** (`onyxpp.hpp`) and resolved
-  by `libwtk.a` at link time.
-- **Customisation is heavy**: 88 apps on wtk, **418 classes derived in app code, 304 `onDraw`
-  overrides in 56 apps**; ~19 apps use wtk only as a canvas / font / frame helper around their own
+  by `libuikit.a` at link time.
+- **Customisation is heavy**: 88 apps on uikit, **418 classes derived in app code, 304 `onDraw`
+  overrides in 56 apps**; ~19 apps use uikit only as a canvas / font / frame helper around their own
   drawing (games, menubar, lock); emulators blit their frames themselves.
-- Churn: every one of the recent wtk commits changed headers (frame resize, cursors, DataGrid) and the
-  packages were republished with *every app rebuilt on the new wtk*.
+- Churn: every one of the recent uikit commits changed headers (frame resize, cursors, DataGrid) and the
+  packages were republished with *every app rebuilt on the new uikit*.
 
 ---
 
@@ -204,9 +204,9 @@ features (several windows per process, damage rectangles, `FRAME_DONE`).
 
 ---
 
-## 3. wtk out of the apps: the three ways asked
+## 3. uikit out of the apps: the three ways asked
 
-### 3.1 wtk inside the window server (server-side widgets) — not recommended
+### 3.1 uikit inside the window server (server-side widgets) — not recommended
 
 The X11 / Win32 model: the app asks the server for a button, a list, a text box; the server draws them
 and sends back high-level events.
@@ -222,13 +222,13 @@ and sends back high-level events.
   of the 88 apps.
 - **The server becomes fragile**: a toolkit bug in one app's dialog kills the desktop.
 
-### 3.2 wtk in a process of its own — not recommended
+### 3.2 uikit in a process of its own — not recommended
 
-The same objections, with three parties (app ↔ wtk process ↔ window server) instead of two: twice the
+The same objections, with three parties (app ↔ uikit process ↔ window server) instead of two: twice the
 round trips, the same rewrite. What *does* make sense as separate processes are **common dialogs**
 (file open / save, colour picker, message boxes, the font chooser): one process draws them, the app
 gets back a result (the pattern of `ask` and of the applets). That saves some code in the apps and
-gives one look, but it does not remove wtk from them.
+gives one look, but it does not remove uikit from them.
 
 ### 3.3 Shared libraries — recommended: PIC libraries reached through an export table
 
@@ -250,19 +250,19 @@ before it, as long as the table only grows.
 - **Its export table**, the library's only exported symbol, versioned like `kapi`:
 
   ```c
-  struct TWtkTable {                 // wtk/wtk_abi.h -- append-only, never reorder / remove
+  struct TUIKitTable {                 // uikit/uikit_abi.h -- append-only, never reorder / remove
       unsigned version, size;        // what this build provides
       int  (*init) (const TLibImports *imp);  // the app's allocator, once per process
       void (*widget_ctor) (Widget *, int, int, int, int);
       void (*widget_invalidate) (Widget *, bool);
-      ...                            // ~350 entries for today's wtk (§3.3.3), generated
+      ...                            // ~350 entries for today's uikit (§3.3.3), generated
   };
   ```
 
 - **Its imports go through the same kind of table, the other way**: the kernel through `KT` (already a
   fixed table, nothing to resolve); the app's allocator (`operator new` / `delete`, `malloc` / `free`:
-  a widget made by the app and freed by wtk must use one allocator) passed to `init` as a
-  `TLibImports` table; another library (FreeType for wtk) by asking for *its* table.
+  a widget made by the app and freed by uikit must use one allocator) passed to `init` as a
+  `TLibImports` table; another library (FreeType for uikit) by asking for *its* table.
 - **Its constructors** (`init_array`) run inside `init`, once per process.
 
 #### 3.3.2 The loading
@@ -282,26 +282,26 @@ before it, as long as the table only grows.
   read-only.) A per-process place stays possible (PIC allows it: then each process relocates its copy),
   but nothing needs it; one place per system is also what lets the kernel point `kapi` slots into a
   library (`libgui`, §2.4).
-- **How an app finds it**: `kapi_lib_open ("wtk", min_version)` (a new kapi call) maps the library into
+- **How an app finds it**: `kapi_lib_open ("uikit", min_version)` (a new kapi call) maps the library into
   the caller (loading it if no process has), returns its table — or 0 / an error when the library is
   missing or older than `min_version` (the app says so and exits, as with an old kernel). The app-side
-  header keeps the table in a global, as `KT`: `#define WTK (wtk_table)`. Optionally the app names its
+  header keeps the table in a global, as `KT`: `#define UIKIT (uikit_table)`. Optionally the app names its
   libraries in an ELF note and the kernel maps them before `_start` (no start-up call; same table).
 - **A running process keeps the image it opened** (reference count): a package update replaces the file,
   the new processes get the new build, the old ones finish on the old one.
 
-#### 3.3.3 wtk behind a table: what C++ adds
+#### 3.3.3 uikit behind a table: what C++ adds
 
 The table solves *where the functions are*. It does not solve what C++ exposes **besides** functions,
-and wtk is C++ that the apps subclass (418 derived classes, 304 `onDraw` overrides) and whose fields
+and uikit is C++ that the apps subclass (418 derived classes, 304 `onDraw` overrides) and whose fields
 they read and write (`left`, `width`, `canvas.px`, `valid`, `hidden`...):
 
 1. **Every non-inline method becomes a table entry**, called by an inline thunk in the header that
-   stays in the app: `void Widget::invalidate (bool r) { WTK->widget_invalidate (this, r); }`. About
+   stays in the app: `void Widget::invalidate (bool r) { UIKIT->widget_invalidate (this, r); }`. About
    **330 method declarations + 22 `extern` globals** in today's headers: the table, the thunks and the
    library's side are **generated** from one list (a script, as `kapi_names.h` is), never written by
    hand. Globals (the theme colours `C_BG`..., the text face) become one struct reached through the
-   table (`WTK->theme->bg`, the old names kept as macros or inline references).
+   table (`UIKIT->theme->bg`, the old names kept as macros or inline references).
 2. **The vtables**: an app's class derived from `Button` has *its* vtable in the app; the slots it does
    not override point to the app-side thunks of the base methods (no address of the library needed in
    the app). The library calls `w->onDraw ()` through the object's own vtable — the app's for an
@@ -310,7 +310,7 @@ they read and write (`left`, `width`, `canvas.px`, `valid`, `hidden`...):
 3. **The layouts**: objects made by the app are sized by the app's header, the library writes their
    fields: **the size and the field offsets of every exposed class are ABI.**
 
-So the ABI of a wtk library is: **the table (append-only) + the layouts + the virtual order**. The rule
+So the ABI of a uikit library is: **the table (append-only) + the layouts + the virtual order**. The rule
 that keeps old apps working with new builds, as for `kapi`:
 
 - new functions, new classes: **appended** to the table — always compatible;
@@ -318,14 +318,14 @@ that keeps old apps working with new builds, as for `kapi`:
   `Root`, `Modal` (25 virtuals today) and spare bytes plus an `ext` pointer in each exposed class; new
   state goes into the reserve or behind `ext` (allocated by the library), new virtuals into a spare
   slot;
-- a change that breaks a layout anyway is a **new library name** (`wtk2`), living beside the old one
+- a change that breaks a layout anyway is a **new library name** (`uikit2`), living beside the old one
   (memory paid only while an app uses it) — the escape hatch, not the rule;
 - a build-time check (a host test with `offsetof` / `sizeof` and the virtual order written in the ABI
   header, as `kapi_abi.h`'s `static_assert`s would) refuses an accidental change.
 
-What remains compiled into the apps: the header inlines (`widget.h`'s thumb arithmetic, `WkFaceScope`,
-`ft/fonts.h`, `ft/wtkface.h`) — small, and they call the table where they need the library. Moving the
-header-only FreeType code into the library (`libft` behind its own table, or inside wtk's) is part of
+What remains compiled into the apps: the header inlines (`widget.h`'s thumb arithmetic, `UkFaceScope`,
+`ft/fonts.h`, `ft/uikitface.h`) — small, and they call the table where they need the library. Moving the
+header-only FreeType code into the library (`libft` behind its own table, or inside uikit's) is part of
 the work if FreeType is to be shared.
 
 *The cleaner alternative* — a C API with opaque handles (Win32 / GTK style) and a header-only C++
@@ -337,13 +337,13 @@ rewrite of the apps' UI code, not a recompilation. Not proposed.
 - The apps stay **non-PIC at 8 GB** (`user.ld` unchanged): only the libraries are PIC. An app's calls to
   the library are indirect (`ldr` + `blr` through the table: one load more than a `bl`, as for every
   `kapi` call today).
-- The freestanding and the newlib apps share one wtk library (wtk uses no libc; its allocator comes
-  from the importer). Jet's hosted build of wtk can stay static, or use the library — to decide when the
+- The freestanding and the newlib apps share one uikit library (uikit uses no libc; its allocator comes
+  from the importer). Jet's hosted build of uikit can stay static, or use the library — to decide when the
   rest works.
 - **To verify with the toolchain** (not installed in this session): that `aarch64-none-elf` `ld`
   produces the PIC image (binutils' `aarch64elf` emulation has the shared and PIE scripts), and that the
-  few `libgcc` helpers wtk pulls in link PIC (AArch64's non-PIC code is mostly PC-relative already).
-- `pkg`: a library is a package (`needs = wtk`), installed under `SD:/lib/`; preloaded at boot like the
+  few `libgcc` helpers uikit pulls in link PIC (AArch64's non-PIC code is mostly PC-relative already).
+- `pkg`: a library is a package (`needs = uikit`), installed under `SD:/lib/`; preloaded at boot like the
   WebKit programs.
 - The same mechanism serves FreeType, mbedTLS, newlib, FFmpeg later — each behind its own generated
   table (a C library's table is easy: no layouts beyond the structs it already publishes). **Full
@@ -353,9 +353,9 @@ rewrite of the apps' UI code, not a recompilation. Not proposed.
 
 #### 3.3.5 What it saves
 
-Measured on the binaries: **40–150 KB of wtk + ~92 KB of FreeType per app**. With 64 KB pages, that is
+Measured on the binaries: **40–150 KB of uikit + ~92 KB of FreeType per app**. With 64 KB pages, that is
 **one to four pages a process** of RAM — with fifteen GUI processes running, **1–4 MB**: modest on a
-1 GB Pi, real on the card (~10 MB with FreeType over the ~90 apps) and in package downloads (a wtk fix
+1 GB Pi, real on the card (~10 MB with FreeType over the ~90 apps) and in package downloads (a uikit fix
 no longer republishes 90 apps: they read the new build's table). The larger wins are elsewhere and come with the
 same mechanism: **newlib, FreeType, mbedTLS (Mail, Courier, Jet, pkg, curl...), FFmpeg (Media, Jet),
 libstdc++ / ICU for the POSIX ports** — mbedTLS and FFmpeg weigh hundreds of KB to several MB each in
@@ -372,8 +372,8 @@ even prefers dynamic linking: docs/LICENSING.md to update).
       trivial C library (`libdemo`: a table of three functions) and an app that opens it, on the Pi;
    b. the generator (one list → the table header, the app-side thunks, the library's table) and a
       **C library first: FreeType** (`libft`: no layouts to freeze);
-   c. **wtk**: its ABI frozen (reserved fields and virtual slots, `ext`, the globals in one struct, the
-      `offsetof` / virtual-order check), the generated thunks, every app rebuilt once on it; then a wtk
+   c. **uikit**: its ABI frozen (reserved fields and virtual slots, `ext`, the globals in one struct, the
+      `offsetof` / virtual-order check), the generated thunks, every app rebuilt once on it; then a uikit
       change that does not touch the layouts is shipped **without rebuilding any app**;
    d. then mbedTLS, newlib, FFmpeg as wanted.
 2. **The GUI's kernel pieces**, usable on their own: named local sockets, contiguous shm, privileges on
@@ -394,10 +394,10 @@ even prefers dynamic linking: docs/LICENSING.md to update).
 - The libraries found by a call (`kapi_lib_open`) or named in the app's ELF note and mapped before
   `_start` (or both).
 - How much reserve to freeze into `Widget`, `Root`, `Modal` (spare virtual slots, spare bytes, `ext`),
-  and the name rule for a breaking change (`wtk2` beside `wtk`).
+  and the name rule for a breaking change (`uikit2` beside `uikit`).
 - The allocator for libraries: the importer's (`TLibImports`, proposed) or one shared `libonyx`
   allocator.
-- Which libraries after wtk / FreeType: mbedTLS, newlib, FFmpeg.
+- Which libraries after uikit / FreeType: mbedTLS, newlib, FFmpeg.
 - For the GUI: one process (`wsd` absorbing the menubar / dock policy) or `wsd` + the existing desktop
   apps; a hardware cursor; `wsd` on a core of its own.
 

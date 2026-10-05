@@ -92,12 +92,12 @@ static void close_editor ()
 static void act_add_folder ()
 {
 	char p[300];
-	if (!wk_folder_open (p, sizeof p, "SD:/")) return;
+	if (!uk_folder_open (p, sizeof p, "SD:/")) return;
 	int k = (int) strlen (p); while (k > 1 && p[k - 1] == '/' && p[k - 2] != ':') p[--k] = 0;
 	for (int i = 0; i < g_lib.nroots; i++)
 		if (ipfx (p, g_lib.roots[i]) && (p[strlen (g_lib.roots[i])] == 0 || p[strlen (g_lib.roots[i])] == '/'))
-		{ char q[400]; snprintf (q, sizeof q, "%s is watched already (in %s).", p, g_lib.roots[i]); wk_messagebox ("Photos", q, MB_OK); return; }
-	if (g_lib.nroots >= 16) { wk_messagebox ("Photos", "Photos watches 16 folders at most.", MB_OK); return; }
+		{ char q[400]; snprintf (q, sizeof q, "%s is watched already (in %s).", p, g_lib.roots[i]); uk_messagebox ("Photos", q, MB_OK); return; }
+	if (g_lib.nroots >= 16) { uk_messagebox ("Photos", "Photos watches 16 folders at most.", MB_OK); return; }
 	scpy (g_lib.added[g_lib.nadded++], p, sizeof g_lib.added[0]);
 	g_lib.save_added (); g_lib.load_roots ();
 	g_lib.start_scan ();
@@ -131,7 +131,7 @@ public:
 	{
 		if (!g_edit->hidden) return g_edit->key (k);
 		if (!g_view->hidden) return g_view->key (k);
-		if (k == WK_CTRL ('A')) { for (int i = 0; i < g_list.n; i++) sel_set (g_list[i], true); refresh_all (); return true; }
+		if (k == UK_CTRL ('A')) { for (int i = 0; i < g_list.n; i++) sel_set (g_list[i], true); refresh_all (); return true; }
 		if (k == 27 && g_selN) { sel_clear (); refresh_all (); return true; }
 		if (k == KEY_DEL && g_selN) { act_delete (); return true; }
 		return g_grid->key (k);
@@ -154,7 +154,7 @@ void PhotosRoot::open_path (const char *p)
 	if (k < 0)
 	{
 		PicInfo pi; void *f = kapi_open (p); unsigned sz = 0; if (f) { sz = kapi_fsize (f); kapi_close (f); }
-		if (!f || !pic_info (p, pi)) { wk_messagebox ("Photos", "This picture cannot be read.", MB_OK); return; }
+		if (!f || !pic_info (p, pi)) { uk_messagebox ("Photos", "This picture cannot be read.", MB_OK); return; }
 		Photo ph; photo_from (ph, p, sz, pi, now_local ()); ph.alive = true;
 		g_lib.ph.push (ph); g_lib.reindex (); k = g_lib.ph.n - 1;	// (not saved unless its folder is watched)
 	}
@@ -186,7 +186,7 @@ static void m_smaller () { g_tile = g_tile - 24 < 72 ? 72 : g_tile - 24; refresh
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
 
 	char args[400]; int na = kapi_get_args (args, sizeof args); args[na > 0 && na < 400 ? na : 0] = 0;
@@ -218,10 +218,10 @@ int main (void)
 	menu.separator ();
 	menu.item ("Send by Mail...", "", 0, m_mail);
 	menu.item ("Export as a PDF...", "", 0, m_pdf);
-	menu.item ("Print...", "^P", WK_CTRL ('P'), m_print);
+	menu.item ("Print...", "^P", UK_CTRL ('P'), m_print);
 	menu.menu ("Edit");
-	menu.item ("Find...", "^F", WK_CTRL ('F'), m_find);
-	menu.item ("Select All", "^A", WK_CTRL ('A'), m_selall);
+	menu.item ("Find...", "^F", UK_CTRL ('F'), m_find);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), m_selall);
 	menu.item ("Select None", "Esc", 0, m_selnone);
 	menu.menu ("View");
 	menu.item ("All Photos", "", 0, m_all);
@@ -229,8 +229,8 @@ int main (void)
 	menu.item ("Recently Added", "", 0, m_recent);
 	menu.item ("Albums", "", 0, m_albums);
 	menu.separator ();
-	menu.item ("Bigger Thumbnails", "^+", WK_CTRL ('='), m_bigger);
-	menu.item ("Smaller Thumbnails", "^-", WK_CTRL ('-'), m_smaller);
+	menu.item ("Bigger Thumbnails", "^+", UK_CTRL ('='), m_bigger);
+	menu.item ("Smaller Thumbnails", "^-", UK_CTRL ('-'), m_smaller);
 	menu.menu ("Photo");
 	menu.item ("Edit...", "E", 0, m_edit);
 	menu.item ("Rotate to the Left", "R", 0, m_rotate);

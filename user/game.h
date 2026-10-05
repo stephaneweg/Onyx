@@ -1,5 +1,5 @@
 //
-// game.h -- small shared kit for the wtk games (Solitaire, FreeCell, Pipes, Arkanoid,
+// game.h -- small shared kit for the uikit games (Solitaire, FreeCell, Pipes, Arkanoid,
 // Invaders): a full-window GameView widget with press / release / move edges and a
 // fixed-rate tick, sound effects on the kernel synth, a PRNG and text helpers.
 //
@@ -15,7 +15,7 @@
 #define _onyx_game_h
 
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 // Milliseconds (kapi_get_ticks counts HZ = 100 ticks per second).
 static inline unsigned gms (void) { return kapi_get_ticks () * 10u; }
@@ -92,23 +92,23 @@ static inline void sfx_lose (void)
 // ---- text ------------------------------------------------------------------------------
 static inline int gtext_w (const char *s, int scale = 1)
 {
-	wtk::Font &f = wtk::font ();
-	int cw = f.valid () ? f.width () : wtk::wk_fw ();
-	return wtk::wk_len (s) * cw * scale;
+	uikit::Font &f = uikit::font ();
+	int cw = f.valid () ? f.width () : uikit::uk_fw ();
+	return uikit::uk_len (s) * cw * scale;
 }
 static inline int gtext_h (int scale = 1)
 {
-	wtk::Font &f = wtk::font ();
-	return (f.valid () ? f.height () : wtk::wk_fh ()) * scale;
+	uikit::Font &f = uikit::font ();
+	return (f.valid () ? f.height () : uikit::uk_fh ()) * scale;
 }
-static inline void gtext (wtk::Canvas &c, int x, int y, const char *s, unsigned col, int scale = 1, int style = 0)
+static inline void gtext (uikit::Canvas &c, int x, int y, const char *s, unsigned col, int scale = 1, int style = 0)
 {
-	wtk::Font &f = wtk::font ();
+	uikit::Font &f = uikit::font ();
 	if (f.valid ()) c.drawFont (x, y, s, f, col, scale, style);
 	else c.text (x, y, s, col);
 }
 // Centred at cx, with a 1-px dark shadow.
-static inline void gtext_c (wtk::Canvas &c, int cx, int y, const char *s, unsigned col, int scale = 1, int style = 2)
+static inline void gtext_c (uikit::Canvas &c, int cx, int y, const char *s, unsigned col, int scale = 1, int style = 2)
 {
 	int x = cx - gtext_w (s, scale) / 2;
 	gtext (c, x + scale, y + scale, s, 0x00000000, scale, style);
@@ -124,19 +124,19 @@ static inline int gitoa (long v, char *b)
 	b[k] = '\0';
 	return k;
 }
-static inline void gcat (char *d, const char *s) { int n = wtk::wk_len (d); while (*s) d[n++] = *s++; d[n] = '\0'; }
+static inline void gcat (char *d, const char *s) { int n = uikit::uk_len (d); while (*s) d[n++] = *s++; d[n] = '\0'; }
 static inline void gcatn (char *d, long v) { char t[24]; gitoa (v, t); gcat (d, t); }
 
 // ---- the view ----------------------------------------------------------------------------
 // Subclass and override paint (the whole view, into `canvas`), the mouse edges, key and
 // tick (dt in ms, ~60 Hz). Call redraw () when something changed (tick-driven games can
 // just redraw every tick).
-class GameView : public wtk::Widget
+class GameView : public uikit::Widget
 {
 public:
 	int  mx, my;					// last pointer position (view coords)
 	bool lb, rb;					// buttons held
-	GameView (int l, int t, int w, int h) : wtk::Widget (l, t, w, h), mx (0), my (0), lb (false), rb (false), m_last (0)
+	GameView (int l, int t, int w, int h) : uikit::Widget (l, t, w, h), mx (0), my (0), lb (false), rb (false), m_last (0)
 	{ canFocus = true; }
 	virtual void paint () = 0;
 	virtual void press (int, int, bool) {}		// (x, y, right button?)
@@ -174,11 +174,11 @@ private:
 };
 
 // A Root that ticks its GameView and routes every key to it.
-class GameRoot : public wtk::Root
+class GameRoot : public uikit::Root
 {
 public:
 	GameView *view;
-	GameRoot (int w, int h, const char *title) : wtk::Root (w, h, title), view (0) {}
+	GameRoot (int w, int h, const char *title) : uikit::Root (w, h, title), view (0) {}
 	void onTick () override { if (view) view->step (); }
 	bool onKey (long k) override { return view && !view->hasFocus ? view->key (k) : false; }
 };

@@ -5,13 +5,13 @@
 // with the stamp, the shapes -- a rectangle, a rounded one, an ellipse, and the polygons inscribed
 // in the ellipse of their box (triangle, diamond, pentagon, hexagon, octagon, stars), a right
 // triangle, an arrow, a heart --, the flood fill, and the blocks of pixels flipped and turned.
-// Integer only (the trigonometry: wtk's wk_sin / wk_cos x 16384).
+// Integer only (the trigonometry: uikit's uk_sin / uk_cos x 16384).
 //
 #ifndef _paint_raster_h
 #define _paint_raster_h
 
 #include "pdoc.h"
-#include "wtk/vpaint.h"
+#include "uikit/vpaint.h"
 
 namespace pd {
 
@@ -160,7 +160,7 @@ static int shape_points (int k, int x0, int y0, int x1, int y1, int *xy)
 		{
 			int d = start + 360 * i / (sides * (inner ? 2 : 1));
 			int r = inner && (i & 1) ? inner : 1000;
-			pt (cx + (int) ((long long) rx * r / 1000 * wtk::wk_cos (d) / 16384), cy - (int) ((long long) ry * r / 1000 * wtk::wk_sin (d) / 16384));
+			pt (cx + (int) ((long long) rx * r / 1000 * uikit::uk_cos (d) / 16384), cy - (int) ((long long) ry * r / 1000 * uikit::uk_sin (d) / 16384));
 		}
 	};
 	switch (k)
@@ -171,7 +171,7 @@ static int shape_points (int k, int x0, int y0, int x1, int y1, int *xy)
 		int r = pmin (X1 - X0, Y1 - Y0) / 5;
 		int ccx[4] = { X1 - r, X0 + r, X0 + r, X1 - r }, ccy[4] = { Y0 + r, Y0 + r, Y1 - r, Y1 - r };
 		for (int q = 0; q < 4; q++)
-			for (int i = 0; i <= 8; i++) { int d = q * 90 + 90 * i / 8; pt (ccx[q] + r * wtk::wk_cos (d) / 16384, ccy[q] - r * wtk::wk_sin (d) / 16384); }
+			for (int i = 0; i <= 8; i++) { int d = q * 90 + 90 * i / 8; pt (ccx[q] + r * uikit::uk_cos (d) / 16384, ccy[q] - r * uikit::uk_sin (d) / 16384); }
 		break;
 	}
 	case SH_TRIANGLE: pt (cx, Y0); pt (X1, Y1); pt (X0, Y1); break;
@@ -196,9 +196,9 @@ static int shape_points (int k, int x0, int y0, int x1, int y1, int *xy)
 		for (int i = 0; i < N; i++)
 		{
 			int d = 360 * i / N;
-			long long s = wtk::wk_sin (d), c = wtk::wk_cos (d);
+			long long s = uikit::uk_sin (d), c = uikit::uk_cos (d);
 			long long hx = 16 * s * s / 16384 * s / 16384;			// (x 16384)
-			long long hy = 13 * c - 5 * wtk::wk_cos (2 * d) - 2 * wtk::wk_cos (3 * d) - wtk::wk_cos (4 * d);
+			long long hy = 13 * c - 5 * uikit::uk_cos (2 * d) - 2 * uikit::uk_cos (3 * d) - uikit::uk_cos (4 * d);
 			// hx in [-16, 16] x 16384, hy in about [-17, 12] x 16384: to the box
 			pt (cx + (int) (hx * rx / (16 * 16384)), Y0 + (int) ((12 * 16384 - hy) * (Y1 - Y0) / (29 * 16384)));
 		}

@@ -102,8 +102,8 @@ Onyx's: `/bin/basic` and the Windows runtime, `pc/`):
 
 | Need | Onyx today | To add |
 |---|---|---|
-| The window, its panes, dialogs | wtk, Letters' toolbars, Slides' sidebar | the project tree, the toolbox, the property grid |
-| The designer | wtk's widgets (drawn as they will look), Slides' handles and guides | the layout engine (Column / Row / Grid...), drag from the toolbox, the blueprint |
+| The window, its panes, dialogs | uikit, Letters' toolbars, Slides' sidebar | the project tree, the toolbox, the property grid |
+| The designer | uikit's widgets (drawn as they will look), Slides' handles and guides | the layout engine (Column / Row / Grid...), drag from the toolbox, the blueprint |
 | The `.form` text | — | its reader / writer, kept in step with the designer (undo shared) |
 | The code editor | `qbasic`'s editor, Letters' text view | colours, completion, the object / event lists, problems as you type |
 | Building, running | the compiler (`basic -c`), `/bin/basic` | the generator (`.form` → `.form.bas`), the additions above |

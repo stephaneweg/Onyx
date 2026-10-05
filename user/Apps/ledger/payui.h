@@ -71,8 +71,8 @@ public:
 	{
 		int n; money s; totals (&n, &s);
 		char t[120], a[32]; itoa10 (n, t); scat (t, n == 1 ? TR (" transfer") : TR (" transfers"), sizeof t); scat (t, "  \xB7  ", sizeof t); scat (t, money_s (s, a), sizeof t);
-		wk_text_l (canvas, 20, height - 90, 24, t, C_TEXT, 2);
-		wk_text_l (canvas, 20, height - 64, 20, TR ("The file goes to SD:/docs/Payments: upload it to your bank's site."), dim_ink (C_FACE));
+		uk_text_l (canvas, 20, height - 90, 24, t, C_TEXT, 2);
+		uk_text_l (canvas, 20, height - 64, 20, TR ("The file goes to SD:/docs/Payments: upload it to your bank's site."), dim_ink (C_FACE));
 	}
 	static const char *c_text (DataGrid &gr, int row, int col, char *buf, int cap)
 	{
@@ -94,7 +94,7 @@ public:
 		PayDialog *d = (PayDialog *) gr.user;
 		if (row >= d->np) return false;
 		const char *why = sepa_check (g_b, d->p[row]);
-		if (col == 0) { wk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, d->tick[row], why[0] ? WK_DISABLED : WK_NORMAL); return true; }
+		if (col == 0) { uk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, d->tick[row], why[0] ? UK_DISABLED : UK_NORMAL); return true; }
 		if (col == 4 && !sel)
 		{
 			const Entry &e = g_b.e[d->p[row].entry]; const Line &l = e.l[d->p[row].line];

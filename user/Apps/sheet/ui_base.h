@@ -2,7 +2,7 @@
 // ui_base.h -- the spreadsheet's controls around the grid, in Letters' look: the toolbars' buttons (an
 // icon; toggled: lit; split: an arrow part that drops a palette), the toolbars, the pick boxes (a value
 // shown -- a font's name in that font -- and a list dropping from it), the size box, the colour
-// palettes; the icons Letters does not have (drawn from their geometry: wtk/vpaint.h, 20 x 20 px).
+// palettes; the icons Letters does not have (drawn from their geometry: uikit/vpaint.h, 20 x 20 px).
 //
 #ifndef _sheet_ui_base_h
 #define _sheet_ui_base_h
@@ -11,17 +11,17 @@
 
 namespace ss {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { TB_H = 34, BTN = 28, SPLIT_W = 13 };
 
-// A floating panel drawn inside a widget (a tip over the grid): wk_popup's look, its corners blended over
+// A floating panel drawn inside a widget (a tip over the grid): uk_popup's look, its corners blended over
 // what lies below (no magenta key: the widget is not blitted transparent), a soft shadow.
 static void panel_in (Canvas &cv, int x, int y, int w, int h, int r, unsigned face)
 {
-	wk_rbox (cv, x + 1, y + 2, w, h, r, 0, 0, 36);
-	wk_rbox (cv, x, y, w, h, r, wk_tone (face, 140), face);
-	wk_rline (cv, x, y, w, h, r, wk_tone (C_FACE, 70), 230);
+	uk_rbox (cv, x + 1, y + 2, w, h, r, 0, 0, 36);
+	uk_rbox (cv, x, y, w, h, r, uk_tone (face, 140), face);
+	uk_rline (cv, x, y, w, h, r, uk_tone (C_FACE, 70), 230);
 }
 
 // ---- the icons -------------------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ static void sheet_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off)
 	if (k < 100) { wr::draw_icon (cv, k, x, y, ink, off); return; }
 	if (k >= 200) { if (g_appIcon) g_appIcon (cv, k, x, y, ink, off); return; }
 	if (wr::g_icFam < 0) { wr::g_icFam = fnt::find ("DejaVu Sans"); wr::g_icFamSerif = fnt::find ("DejaVu Serif"); if (wr::g_icFamSerif < 0) wr::g_icFamSerif = wr::g_icFam; }
-	unsigned dim = wk_mix (ink, C_BG, 150);
+	unsigned dim = uk_mix (ink, C_BG, 150);
 	if (off) ink = dim;
 	unsigned acc = off ? dim : C_ACCENT;
 	int A = off ? 110 : 255;
@@ -50,7 +50,7 @@ static void sheet_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off)
 		p.polyline (fr, 4, 18, true);
 		for (int i = 1; i < nc; i++) p.rect (X + V (gx + w * i / nc) - 8, Y + V (gy), 16, V (h));
 		for (int i = 1; i < nr; i++) p.rect (X + V (gx), Y + V (gy + h * i / nr) - 8, V (w), 16);
-		p.fill (cv, wk_mix (ink, 0xFFFFFF, 90));
+		p.fill (cv, uk_mix (ink, 0xFFFFFF, 90));
 	};
 	switch (k)
 	{
@@ -173,7 +173,7 @@ static void sheet_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off)
 	case SI_FILTER:
 	{
 		int f[12] = { X + V (2), Y + V (3), X + V (18), Y + V (3), X + V (12), Y + V (10), X + V (12), Y + V (17), X + V (8), Y + V (15), X + V (8), Y + V (10) };
-		p.poly (f, 6); p.fill (cv, wk_mix (acc, 0xFFFFFF, 100), A);
+		p.poly (f, 6); p.fill (cv, uk_mix (acc, 0xFFFFFF, 100), A);
 		p.clear (); p.polyline (f, 6, 18, true); p.fill (cv, ink);
 		break;
 	}
@@ -200,25 +200,25 @@ public:
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
 		int bw = split ? BTN : width;
-		if (on) { wk_rbox (canvas, 0, 0, bw, height, 5, wk_mix (bg, C_ACCENT, 60), wk_mix (bg, C_ACCENT, 70)); wk_rline (canvas, 0, 0, bw, height, 5, wk_mix (bg, C_ACCENT, 150)); }
+		if (on) { uk_rbox (canvas, 0, 0, bw, height, 5, uk_mix (bg, C_ACCENT, 60), uk_mix (bg, C_ACCENT, 70)); uk_rline (canvas, 0, 0, bw, height, 5, uk_mix (bg, C_ACCENT, 150)); }
 		if (!disabled && m_part >= 0)
 		{
 			bool dn = m_down >= 0;
-			unsigned a = dn ? wk_tone (bg, 110) : wk_tone (bg, 150), b = dn ? wk_tone (bg, 118) : wk_tone (bg, 138);
-			if (!on || split) wk_rbox (canvas, 0, 0, width, height, 5, a, b);
-			wk_rline (canvas, 0, 0, width, height, 5, wk_tone (bg, 96), 150);
-			if (split) canvas.fillRect (BTN, 4, 1, height - 8, wk_tone (bg, 110));
+			unsigned a = dn ? uk_tone (bg, 110) : uk_tone (bg, 150), b = dn ? uk_tone (bg, 118) : uk_tone (bg, 138);
+			if (!on || split) uk_rbox (canvas, 0, 0, width, height, 5, a, b);
+			uk_rline (canvas, 0, 0, width, height, 5, uk_tone (bg, 96), 150);
+			if (split) canvas.fillRect (BTN, 4, 1, height - 8, uk_tone (bg, 110));
 		}
-		unsigned ink = wk_ink_for (bg);
+		unsigned ink = uk_ink_for (bg);
 		int d = m_down == 0 ? 1 : 0;
 		sheet_icon (canvas, icon, (bw - 20) / 2 + d, (height - 20) / 2 + d - (bar != 0xFF000000u ? 2 : 0), ink, disabled);
 		if (bar != 0xFF000000u)
 		{
-			unsigned c = bar == 0xFE000000u ? wk_mix (bg, ink, 60) : bar;
+			unsigned c = bar == 0xFE000000u ? uk_mix (bg, ink, 60) : bar;
 			canvas.fillRect ((bw - 18) / 2 + d, height - 7 + d, 18, 4, c);
-			if (bar == 0xFE000000u) canvas.frameRect ((bw - 18) / 2 + d, height - 7 + d, 18, 4, wk_mix (bg, ink, 120));
+			if (bar == 0xFE000000u) canvas.frameRect ((bw - 18) / 2 + d, height - 7 + d, 18, 4, uk_mix (bg, ink, 120));
 		}
-		if (split) wk_glyph (canvas, WKG_CHEV_DOWN, BTN + SPLIT_W / 2, height / 2 + 1, 7, disabled ? wk_mix (bg, ink, 110) : ink);
+		if (split) uk_glyph (canvas, WKG_CHEV_DOWN, BTN + SPLIT_W / 2, height / 2 + 1, 7, disabled ? uk_mix (bg, ink, 110) : ink);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -264,7 +264,7 @@ public:
 	void onDraw () override
 	{
 		canvas.fillRect (0, 0, width, height, C_BG);
-		for (int i = 0; i < m_nsep; i++) wk_etch_v (canvas, m_sepX[i], 7, height - 14, C_BG);
+		for (int i = 0; i < m_nsep; i++) uk_etch_v (canvas, m_sepX[i], 7, height - 14, C_BG);
 	}
 private:
 	int m_x, m_nsep, m_sepX[24];
@@ -292,30 +292,30 @@ public:
 	int pick () { int r = run (); return r > 0 ? r - 1 : -1; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
-		int sbw = m_n > m_rows ? WK_SBW + 2 : 0;
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		int sbw = m_n > m_rows ? UK_SBW + 2 : 0;
 		for (int r = 0; r < m_rows; r++)
 		{
 			int i = m_top + r, y = 4 + r * m_rowH;
 			if (i >= m_n) break;
 			bool hot = i == m_hot;
-			if (hot) wk_hilite (canvas, 4, y, width - 8 - sbw, m_rowH, 5, true);
-			else if (i == m_sel) wk_rline (canvas, 4, y, width - 8 - sbw, m_rowH, 5, wk_mix (C_FIELD, C_ACCENT, 160));
+			if (hot) uk_hilite (canvas, 4, y, width - 8 - sbw, m_rowH, 5, true);
+			else if (i == m_sel) uk_rline (canvas, 4, y, width - 8 - sbw, m_rowH, 5, uk_mix (C_FIELD, C_ACCENT, 160));
 			m_draw (canvas, i, 10, y, width - 20 - sbw, m_rowH, hot ? C_SEL_TEXT : C_FIELD_TEXT);
 		}
-		if (sbw) { WkThumb t = wk_thumb (m_n, m_rows, m_top, height - 8); wk_draw_vscroll (canvas, width - WK_SBW - 4, 4, WK_SBW, height - 8, t, C_FIELD); }
+		if (sbw) { UkThumb t = uk_thumb (m_n, m_rows, m_top, height - 8); uk_draw_vscroll (canvas, width - UK_SBW - 4, 4, UK_SBW, height - 8, t, C_FIELD); }
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 		if (wheel && in) { m_top = iclamp (m_top - wheel, 0, imax (0, m_n - m_rows)); invalidate (true); return true; }
 		int hot = in && my >= 4 ? m_top + (my - 4) / m_rowH : -1;
-		if (hot >= m_n || (m_n > m_rows && mx >= width - WK_SBW - 6)) hot = -1;
+		if (hot >= m_n || (m_n > m_rows && mx >= width - UK_SBW - 6)) hot = -1;
 		if (hot != m_hot && hot >= 0) { m_hot = hot; invalidate (true); }
-		if (m_n > m_rows && in && bl && mx >= width - WK_SBW - 6)
+		if (m_n > m_rows && in && bl && mx >= width - UK_SBW - 6)
 		{
-			m_top = (int) wk_thumb_pos (my - 4, height - 8, m_n, m_rows, wk_thumb (m_n, m_rows, m_top, height - 8).h);
+			m_top = (int) uk_thumb_pos (my - 4, height - 8, m_n, m_rows, uk_thumb (m_n, m_rows, m_top, height - 8).h);
 			invalidate (true);
 			return true;
 		}
@@ -352,10 +352,10 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, m_hot);
+		uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, m_hot);
 		drawValue (canvas, 7, 2, width - 28, height - 4, C_FIELD_TEXT);
-		wk_raised (canvas, width - 20, 3, 17, height - 6, 3, C_BUTTON, m_hot ? WK_HOT : WK_NORMAL);
-		wk_glyph (canvas, WKG_CHEV_DOWN, width - 12, height / 2, 8, C_BUTTON_TEXT);
+		uk_raised (canvas, width - 20, 3, 17, height - 6, 3, C_BUTTON, m_hot ? UK_HOT : UK_NORMAL);
+		uk_glyph (canvas, WKG_CHEV_DOWN, width - 12, height / 2, 8, C_BUTTON_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -393,32 +393,32 @@ public:
 	{
 		int r = run ();
 		if (r == 1) return (long) AUTO;
-		if (r == 2) { unsigned c = m_last; if (wk_color_dialog (&c, "More Colours")) { m_last = c; return (long) c; } return -1; }
+		if (r == 2) { unsigned c = m_last; if (uk_color_dialog (&c, "More Colours")) { m_last = c; return (long) c; } return -1; }
 		if (r >= 3) return (long) m_cols[r - 3];
 		return -1;
 	}
 	static unsigned m_last;
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
 		int w = width - 2 * PAD;
-		if (m_hot == -1) wk_hilite (canvas, PAD - 2, PAD, w + 4, 26, 5, true);
-		canvas.frameRect (PAD + 4, PAD + 5, 16, 16, wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+		if (m_hot == -1) uk_hilite (canvas, PAD - 2, PAD, w + 4, 26, 5, true);
+		canvas.frameRect (PAD + 4, PAD + 5, 16, 16, uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		if (m_auto[0] == 'A') canvas.fillRect (PAD + 6, PAD + 7, 12, 12, 0);
 		else { for (int k = 0; k < 12; k++) canvas.pixel (PAD + 6 + k, PAD + 18 - k, 0xC0392B); }
-		wk_text_l (canvas, PAD + 28, PAD, 26, m_auto, m_hot == -1 ? C_SEL_TEXT : C_FIELD_TEXT);
+		uk_text_l (canvas, PAD + 28, PAD, 26, m_auto, m_hot == -1 ? C_SEL_TEXT : C_FIELD_TEXT);
 		int y0 = PAD + 26 + 6;
 		for (int i = 0; i < m_n; i++)
 		{
 			int x = PAD + (i % m_per) * (CS + 4), y = y0 + (i / m_per) * (CS + 4);
 			canvas.fillRect (x, y, CS, CS, m_cols[i]);
-			canvas.frameRect (x, y, CS, CS, wk_mix (m_cols[i], 0x000000, 60));
+			canvas.frameRect (x, y, CS, CS, uk_mix (m_cols[i], 0x000000, 60));
 			if (i == m_hot) { canvas.frameRect (x - 2, y - 2, CS + 4, CS + 4, C_ACCENT); canvas.frameRect (x - 1, y - 1, CS + 2, CS + 2, 0xFFFFFF); }
 		}
 		int yb = height - PAD - 26;
-		if (m_hot == -2) wk_hilite (canvas, PAD - 2, yb, w + 4, 26, 5, true);
-		wk_text_l (canvas, PAD + 28, yb, 26, "More Colours...", m_hot == -2 ? C_SEL_TEXT : C_FIELD_TEXT);
+		if (m_hot == -2) uk_hilite (canvas, PAD - 2, yb, w + 4, 26, 5, true);
+		uk_text_l (canvas, PAD + 28, yb, 26, "More Colours...", m_hot == -2 ? C_SEL_TEXT : C_FIELD_TEXT);
 		static const unsigned rb[4] = { 0xE74C3C, 0xF1C40F, 0x2ECC71, 0x3498DB };
 		for (int k = 0; k < 4; k++) canvas.fillRect (PAD + 4 + (k & 1) * 8, yb + 5 + (k >> 1) * 8, 8, 8, rb[k]);
 	}
@@ -464,10 +464,10 @@ static void make_palettes ()
 		unsigned b = base[c];
 		bool dark = c == 1;
 		g_cols[c] = b;
-		g_cols[10 + c] = c == 0 ? 0xF2F2F2 : dark ? 0x7F7F7F : wk_mix (b, 0xFFFFFF, 205);
-		g_cols[20 + c] = c == 0 ? 0xD9D9D9 : dark ? 0x595959 : wk_mix (b, 0xFFFFFF, 154);
-		g_cols[30 + c] = c == 0 ? 0xBFBFBF : dark ? 0x3F3F3F : wk_mix (b, 0xFFFFFF, 102);
-		g_cols[40 + c] = c == 0 ? 0xA6A6A6 : dark ? 0x262626 : wk_mix (b, 0x000000, 64);
+		g_cols[10 + c] = c == 0 ? 0xF2F2F2 : dark ? 0x7F7F7F : uk_mix (b, 0xFFFFFF, 205);
+		g_cols[20 + c] = c == 0 ? 0xD9D9D9 : dark ? 0x595959 : uk_mix (b, 0xFFFFFF, 154);
+		g_cols[30 + c] = c == 0 ? 0xBFBFBF : dark ? 0x3F3F3F : uk_mix (b, 0xFFFFFF, 102);
+		g_cols[40 + c] = c == 0 ? 0xA6A6A6 : dark ? 0x262626 : uk_mix (b, 0x000000, 64);
 		g_cols[50 + c] = std[c];
 	}
 }

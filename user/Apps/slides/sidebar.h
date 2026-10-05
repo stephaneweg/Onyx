@@ -30,7 +30,7 @@ enum { SL_NEWSLIDE = 200, SL_LAYOUT, SL_DUPSLIDE, SL_DELSLIDE, SL_TEXTBOX, SL_SH
        SL_AL_MIDDLE, SL_AL_BOTTOM, SL_SPACING, SL_ANCHOR_T, SL_ANCHOR_M, SL_ANCHOR_B, SL_DIST_H, SL_DIST_V, SL_REMOVE, SL_UP, SL_DOWN };
 static void slides_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off)
 {
-	unsigned dim = wk_mix (ink, C_BG, 150);
+	unsigned dim = uk_mix (ink, C_BG, 150);
 	if (off) ink = dim;
 	int A = off ? 110 : 255;
 	unsigned acc = off ? dim : 0x2E6E80, peach = off ? dim : 0xF0A86E, blue = off ? dim : 0x6EA0D2, green = off ? dim : 0x4E9E5C, red = off ? dim : 0xC84A40;
@@ -46,7 +46,7 @@ static void slides_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off
 	switch (k)
 	{
 	case SL_NEWSLIDE: slide (1, 3, 15, 11); p.clear (); p.rect (X + V (3), Y + V (5), V (6), 30); p.fill (cv, acc); p.clear (); p.rect (X + V (3), Y + V (8), V (9), 20); p.rect (X + V (3), Y + V (11), V (7), 20); p.fill (cv, dim); badge (green, true); break;
-	case SL_LAYOUT: slide (1, 3, 18, 14); p.clear (); p.rect (X + V (3), Y + V (5), V (14), V (3)); p.fill (cv, acc); p.clear (); p.rect (X + V (3), Y + V (10), V (6), V (5)); p.fill (cv, wk_mix (acc, 0xFFFFFF, 140), A); p.clear (); p.rect (X + V (11), Y + V (10), V (6), V (5)); p.fill (cv, wk_mix (peach, 0xFFFFFF, 80), A); break;
+	case SL_LAYOUT: slide (1, 3, 18, 14); p.clear (); p.rect (X + V (3), Y + V (5), V (14), V (3)); p.fill (cv, acc); p.clear (); p.rect (X + V (3), Y + V (10), V (6), V (5)); p.fill (cv, uk_mix (acc, 0xFFFFFF, 140), A); p.clear (); p.rect (X + V (11), Y + V (10), V (6), V (5)); p.fill (cv, uk_mix (peach, 0xFFFFFF, 80), A); break;
 	case SL_DUPSLIDE: slide (6, 2, 13, 10); slide (1, 7, 13, 10); p.clear (); p.rect (X + V (3), Y + V (9), V (5), 30); p.fill (cv, acc); break;
 	case SL_DELSLIDE: slide (1, 3, 15, 11); badge (red, false); break;
 	case SL_TEXTBOX:
@@ -78,13 +78,13 @@ static void slides_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off
 		break;
 	case SL_SHOW: { int t[6] = { X + V (5), Y + V (3), X + V (17), Y + V (10), X + V (5), Y + V (17) }; p.clear (); p.poly (t, 3); p.fill (cv, off ? dim : 0xFFFFFF); break; }
 	case SL_FORWARD: case SL_FRONT:
-		p.clear (); p.rect (X + V (1), Y + V (1), V (12), V (12)); p.fill (cv, wk_mix (acc, 0xFFFFFF, 140), A);
+		p.clear (); p.rect (X + V (1), Y + V (1), V (12), V (12)); p.fill (cv, uk_mix (acc, 0xFFFFFF, 140), A);
 		p.clear (); p.rect (X + V (6), Y + V (6), V (12), V (12)); p.fill (cv, blue, A);
 		if (k == SL_FRONT) { p.clear (); p.rect (X + V (9), Y + V (9), V (6), V (6)); p.fill (cv, 0xFFFFFF, A); }
 		break;
 	case SL_BACKWARD: case SL_BACK:
 		p.clear (); p.rect (X + V (6), Y + V (6), V (12), V (12)); p.fill (cv, blue, A);
-		p.clear (); p.rect (X + V (1), Y + V (1), V (12), V (12)); p.fill (cv, wk_mix (acc, 0xFFFFFF, 140), A);
+		p.clear (); p.rect (X + V (1), Y + V (1), V (12), V (12)); p.fill (cv, uk_mix (acc, 0xFFFFFF, 140), A);
 		if (k == SL_BACK) { p.clear (); p.rect (X + V (4), Y + V (4), V (6), V (6)); p.fill (cv, 0xFFFFFF, A); }
 		break;
 	case SL_AL_LEFT: case SL_AL_CENTER: case SL_AL_RIGHT:
@@ -413,57 +413,57 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (PANEL_C);
-		wk_etch_v (canvas, 0, 0, height, PANEL_C);
+		uk_etch_v (canvas, 0, 0, height, PANEL_C);
 		int maxTop = imax (0, m_total - height); if (m_top > maxTop) m_top = maxTop;
 		for (int i = 0; i < rows.n; i++) draw_row (rows[i], i);
 		// the tabs (over the rows: they stay)
 		canvas.fillRect (1, 0, width - 1, 40, PANEL_C);
 		static const char *T[4] = { "Slide", "Shape", "Text", "Animate" };
 		int tw = (width - 16) / 4;
-		wk_sunken (canvas, 8, 8, width - 16, 26, 6, C_FIELD);
+		uk_sunken (canvas, 8, 8, width - 16, 26, 6, C_FIELD);
 		for (int k = 0; k < 4; k++)
 		{
-			if (k == g_sbTab) wk_rbox (canvas, 10 + k * tw, 10, tw - 4, 22, 5, HANDLE_C, HANDLE_C);
-			wk_text_c (canvas, 8 + k * tw, 8, tw, 26, T[k], k == g_sbTab ? 0xFFFFFF : C_FIELD_TEXT);
+			if (k == g_sbTab) uk_rbox (canvas, 10 + k * tw, 10, tw - 4, 22, 5, HANDLE_C, HANDLE_C);
+			uk_text_c (canvas, 8 + k * tw, 8, tw, 26, T[k], k == g_sbTab ? 0xFFFFFF : C_FIELD_TEXT);
 		}
-		if (m_total > height) { WkThumb t = wk_thumb (m_total - 40, height - 40, m_top, height - 48); wk_draw_vscroll (canvas, width - WK_SBW - 2, 44, WK_SBW, height - 48, t, PANEL_C); }
+		if (m_total > height) { UkThumb t = uk_thumb (m_total - 40, height - 40, m_top, height - 48); uk_draw_vscroll (canvas, width - UK_SBW - 2, 44, UK_SBW, height - 48, t, PANEL_C); }
 	}
-	void field_box (int x, int y, int w, int h, bool hot) { wk_sunken (canvas, x, y, w, h, 4, C_FIELD, hot); }
+	void field_box (int x, int y, int w, int h, bool hot) { uk_sunken (canvas, x, y, w, h, 4, C_FIELD, hot); }
 	void draw_row (SRow &r, int i)
 	{
 		int y = r.y - m_top;
 		if (y + r.h < 40 || y > height) return;
 		bool hot = i == m_hot;
-		unsigned ink = C_TEXT, dim = wk_mix (PANEL_C, C_TEXT, 150);
+		unsigned ink = C_TEXT, dim = uk_mix (PANEL_C, C_TEXT, 150);
 		int lx = r.x, cx = r.x, cw = r.w;
 		if (r.label[0] && r.type != R_SECTION && r.type != R_CHECK && r.type != R_BUTTON && r.type != R_INFO)
 		{
-			int lw = r.half || r.w < 150 ? wk_text_w (r.label) + 8 : 96;
-			wk_text_l (canvas, lx, y, r.h, r.label, dim);
+			int lw = r.half || r.w < 150 ? uk_text_w (r.label) + 8 : 96;
+			uk_text_l (canvas, lx, y, r.h, r.label, dim);
 			cx += lw; cw -= lw;
 		}
 		switch (r.type)
 		{
 		case R_SECTION:
-			canvas.fillRect (1, y + 2, width - 2, r.h - 4, wk_mix (PANEL_C, 0xFFFFFF, 90));
-			wk_glyph (canvas, WKG_CHEV_DOWN, 14, y + r.h / 2, 7, dim);
-			wk_text_l (canvas, 24, y, r.h, L1 (r.label), ink, 1);
+			canvas.fillRect (1, y + 2, width - 2, r.h - 4, uk_mix (PANEL_C, 0xFFFFFF, 90));
+			uk_glyph (canvas, WKG_CHEV_DOWN, 14, y + r.h / 2, 7, dim);
+			uk_text_l (canvas, 24, y, r.h, L1 (r.label), ink, 1);
 			break;
-		case R_INFO: wk_text_l (canvas, lx, y, r.h, r.label, dim); break;
+		case R_INFO: uk_text_l (canvas, lx, y, r.h, r.label, dim); break;
 		case R_PICK:
-			wk_raised (canvas, cx, y + 2, cw, r.h - 4, 5, C_BUTTON, hot ? WK_HOT : WK_NORMAL);
-			{ char v[64]; scpy (v, L1 (r.value), sizeof v); while (wk_text_w (v) > cw - 30 && strlen (v) > 3) { int n = (int) strlen (v); v[n - 4] = '.'; v[n - 3] = '.'; v[n - 2] = 0; }
-			  wk_text_l (canvas, cx + 8, y + 2, r.h - 4, v, C_BUTTON_TEXT); }
-			wk_glyph (canvas, WKG_CHEV_DOWN, cx + cw - 12, y + r.h / 2, 8, C_BUTTON_TEXT);
+			uk_raised (canvas, cx, y + 2, cw, r.h - 4, 5, C_BUTTON, hot ? UK_HOT : UK_NORMAL);
+			{ char v[64]; scpy (v, L1 (r.value), sizeof v); while (uk_text_w (v) > cw - 30 && strlen (v) > 3) { int n = (int) strlen (v); v[n - 4] = '.'; v[n - 3] = '.'; v[n - 2] = 0; }
+			  uk_text_l (canvas, cx + 8, y + 2, r.h - 4, v, C_BUTTON_TEXT); }
+			uk_glyph (canvas, WKG_CHEV_DOWN, cx + cw - 12, y + r.h / 2, 8, C_BUTTON_TEXT);
 			break;
 		case R_COLOR:
 		{
 			int w = imin (cw, 54);
-			wk_raised (canvas, cx, y + 2, w, r.h - 4, 5, C_BUTTON, hot ? WK_HOT : WK_NORMAL);
+			uk_raised (canvas, cx, y + 2, w, r.h - 4, 5, C_BUTTON, hot ? UK_HOT : UK_NORMAL);
 			unsigned c = g_deck.rgb (r.color);
 			canvas.fillRect (cx + 5, y + 7, w - 22, r.h - 14, r.color == AUTO ? 0xFFFFFF : c);
-			canvas.frameRect (cx + 5, y + 7, w - 22, r.h - 14, wk_mix (c, 0, 80));
-			wk_glyph (canvas, WKG_CHEV_DOWN, cx + w - 9, y + r.h / 2, 7, C_BUTTON_TEXT);
+			canvas.frameRect (cx + 5, y + 7, w - 22, r.h - 14, uk_mix (c, 0, 80));
+			uk_glyph (canvas, WKG_CHEV_DOWN, cx + w - 9, y + r.h / 2, 7, C_BUTTON_TEXT);
 			break;
 		}
 		case R_SPIN:
@@ -472,25 +472,25 @@ public:
 			char t[48];
 			if (m_edit == i) snprintf (t, sizeof t, "%s_", m_buf);
 			else snprintf (t, sizeof t, "%.*f%s", r.dec, r.num, r.unit);
-			wk_text_l (canvas, cx + 6, y + 2, r.h - 4, t, C_FIELD_TEXT);
-			wk_glyph (canvas, WKG_CHEV_UP, cx + cw - 10, y + r.h / 2 - 5, 7, dim);
-			wk_glyph (canvas, WKG_CHEV_DOWN, cx + cw - 10, y + r.h / 2 + 5, 7, dim);
+			uk_text_l (canvas, cx + 6, y + 2, r.h - 4, t, C_FIELD_TEXT);
+			uk_glyph (canvas, WKG_CHEV_UP, cx + cw - 10, y + r.h / 2 - 5, 7, dim);
+			uk_glyph (canvas, WKG_CHEV_DOWN, cx + cw - 10, y + r.h / 2 + 5, 7, dim);
 			break;
 		}
 		case R_CHECK:
-			wk_check_mark (canvas, lx, y + (r.h - 16) / 2, 16, r.on, hot ? WK_HOT : WK_NORMAL);
-			wk_text_l (canvas, lx + 24, y, r.h, r.label, ink);
+			uk_check_mark (canvas, lx, y + (r.h - 16) / 2, 16, r.on, hot ? UK_HOT : UK_NORMAL);
+			uk_text_l (canvas, lx + 24, y, r.h, r.label, ink);
 			break;
 		case R_BUTTON:
-			wk_raised (canvas, lx, y + 2, r.w, r.h - 4, 5, C_BUTTON, hot ? WK_HOT : WK_NORMAL);
-			wk_text_c (canvas, lx, y + 2, r.w, r.h - 4, r.label, C_BUTTON_TEXT);
+			uk_raised (canvas, lx, y + 2, r.w, r.h - 4, 5, C_BUTTON, hot ? UK_HOT : UK_NORMAL);
+			uk_text_c (canvas, lx, y + 2, r.w, r.h - 4, r.label, C_BUTTON_TEXT);
 			break;
 		case R_BUTTONS:
 			for (int b = 0; b < r.nbtn; b++)
 			{
 				int bx = cx + b * 34;
-				if (r.btnOn[b]) wk_rbox (canvas, bx, y + 1, 30, r.h - 2, 4, wk_mix (PANEL_C, C_ACCENT, 70), wk_mix (PANEL_C, C_ACCENT, 70));
-				else wk_raised (canvas, bx, y + 1, 30, r.h - 2, 4, wk_mix (PANEL_C, 0xFFFFFF, 90), WK_NORMAL);
+				if (r.btnOn[b]) uk_rbox (canvas, bx, y + 1, 30, r.h - 2, 4, uk_mix (PANEL_C, C_ACCENT, 70), uk_mix (PANEL_C, C_ACCENT, 70));
+				else uk_raised (canvas, bx, y + 1, 30, r.h - 2, 4, uk_mix (PANEL_C, 0xFFFFFF, 90), UK_NORMAL);
 				ss::sheet_icon (canvas, r.icon[b] >= 300 ? text_icon (r.icon[b]) : r.icon[b], bx + 5, y + (r.h - 20) / 2, ink, false);
 			}
 			break;
@@ -502,37 +502,37 @@ public:
 				int tx = r.x + (k % 2) * (tw + 10), ty = y + (k / 2) * 60;
 				const ThemeDef &T = THEMES[k];
 				bool cur = !strcmp (g_deck.theme.name, T.name);
-				if (cur) wk_rbox (canvas, tx - 3, ty - 3, tw + 6, th + 6, 5, HANDLE_C, HANDLE_C);
+				if (cur) uk_rbox (canvas, tx - 3, ty - 3, tw + 6, th + 6, 5, HANDLE_C, HANDLE_C);
 				canvas.fillRect (tx, ty, tw, th - 14, 0xFFFFFF); canvas.frameRect (tx, ty, tw, th - 14, 0xC0B4AC);
 				canvas.fillRect (tx, ty, 4, th - 14, T.acc1);
 				canvas.fillRect (tx + 10, ty + 7, tw / 2, 5, T.dk2); canvas.fillRect (tx + 10, ty + 15, 18, 3, T.acc2);
 				canvas.fillRect (tx + 10, ty + 23, tw * 6 / 10, 2, 0xD2CEC8);
-				wk_text_l (canvas, tx + 2, ty + th - 14, 14, L1 (T.name), cur ? 0xFFFFFF : ink);
+				uk_text_l (canvas, tx + 2, ty + th - 14, 14, L1 (T.name), cur ? 0xFFFFFF : ink);
 			}
 			break;
 		}
 		case R_EFFECTS:
 		{
 			Slide *s = cur_slide ();
-			wk_sunken (canvas, r.x, y, r.w, r.h - 4, 5, C_FIELD);
-			if (!s->anim.n) { wk_text_l (canvas, r.x + 10, y + 4, 26, "No effect yet.", dim); break; }
+			uk_sunken (canvas, r.x, y, r.w, r.h - 4, 5, C_FIELD);
+			if (!s->anim.n) { uk_text_l (canvas, r.x + 10, y + 4, 26, "No effect yet.", dim); break; }
 			int n = 0;
 			for (int k = 0; k < s->anim.n; k++)
 			{
 				Anim &a = s->anim[k];
 				int ry = y + 4 + k * 36;
-				if (k == g_animSel) wk_rbox (canvas, r.x + 3, ry, r.w - 6, 34, 4, wk_mix (C_FIELD, HANDLE_C, 70), wk_mix (C_FIELD, HANDLE_C, 70));
+				if (k == g_animSel) uk_rbox (canvas, r.x + 3, ry, r.w - 6, 34, 4, uk_mix (C_FIELD, HANDLE_C, 70), uk_mix (C_FIELD, HANDLE_C, 70));
 				if (a.start == ST_CLICK || k == 0) n++;
 				char num[8]; snprintf (num, sizeof num, "%d", n);
-				if (a.start == ST_CLICK || k == 0) wk_text_l (canvas, r.x + 8, ry, 18, num, dim, 1);
+				if (a.start == ST_CLICK || k == 0) uk_text_l (canvas, r.x + 8, ry, 18, num, dim, 1);
 				unsigned dc = a.cls == AC_ENTRANCE ? 0x3C9650 : a.cls == AC_EMPHASIS ? 0xD2A028 : 0xBE463C;
 				VPath p; p.circle (V (r.x + 30), V (ry + 9), V (5)); p.fill (canvas, dc);
 				Object *o = s->by_id (a.obj);
 				char t[80]; snprintf (t, sizeof t, "%s  \xB7  %s", FX_NAMES[(int) a.fx], o ? (o->name[0] ? o->name : "Object") : "?");
-				wk_text_l (canvas, r.x + 42, ry, 18, L1 (t), C_FIELD_TEXT, k == g_animSel ? 1 : 0);
-				wk_text_l (canvas, r.x + 42, ry + 16, 16, START_NAMES[(int) a.start], dim);
+				uk_text_l (canvas, r.x + 42, ry, 18, L1 (t), C_FIELD_TEXT, k == g_animSel ? 1 : 0);
+				uk_text_l (canvas, r.x + 42, ry + 16, 16, START_NAMES[(int) a.start], dim);
 				int bw = imin (r.w - 150, a.dur / 40);
-				canvas.fillRect (r.x + r.w - 10 - imax (bw, 6), ry + 7, imax (bw, 6), 6, wk_mix (dc, 0xFFFFFF, 90));
+				canvas.fillRect (r.x + r.w - 10 - imax (bw, 6), ry + 7, imax (bw, 6), 6, uk_mix (dc, 0xFFFFFF, 90));
 			}
 			break;
 		}
@@ -596,7 +596,7 @@ public:
 		SRow &r = rows[i];
 		int y = r.y - m_top;
 		int cx = r.x, cw = r.w;
-		if (r.label[0] && r.type != R_SECTION && r.type != R_CHECK && r.type != R_BUTTON && r.type != R_INFO) { int lw = r.half || r.w < 150 ? wk_text_w (r.label) + 8 : 96; cx += lw; cw -= lw; }
+		if (r.label[0] && r.type != R_SECTION && r.type != R_CHECK && r.type != R_BUTTON && r.type != R_INFO) { int lw = r.half || r.w < 150 ? uk_text_w (r.label) + 8 : 96; cx += lw; cw -= lw; }
 		if (m_edit >= 0 && m_edit != i) commit_edit ();
 		SRow rr = rows[i];			// (act may rebuild the rows)
 		switch (rr.type)
@@ -620,12 +620,12 @@ public:
 		for (Widget *w = this; w && w->parent; w = w->parent) { *ax += w->left; *ay += w->top; }
 	}
 	static const char *const *g_listItems; static int g_listN;
-	static void list_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { wk_text_l (cv, x, y, h, g_listItems[i], ink); }
+	static void list_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { uk_text_l (cv, x, y, h, g_listItems[i], ink); }
 	static const char *font_item (int i) { return fnt::name (i); }
 	static void font_row (Canvas &cv, int i, int x, int y, int w, int h, unsigned ink)
 	{
 		fnt::Font *f = fnt::get (i, 0, 15 * 64);
-		if (!f) { wk_text_l (cv, x, y, h, fnt::name (i), ink); return; }
+		if (!f) { uk_text_l (cv, x, y, h, fnt::name (i), ink); return; }
 		int base = y + (h + ((f->ascent - f->descent) >> 6)) / 2;
 		Canvas sub; sub.adopt (cv.px, x + w < cv.w ? x + w : cv.w, cv.h, cv.stride);
 		fnt::draw_str (sub, f, x << 6, base, fnt::name (i), ink);

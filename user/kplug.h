@@ -23,7 +23,7 @@
 // Build: an Onyx newlib app with the FPU (user/Makefile: Apps/kp_<name>/main.cpp ->
 // Apps/kp_<name>/kp_<name>.elf, staged as SD:/koton/plugins/<name>/main + plugin.json). For the PC
 // tests (tools/tests/koton/plug_run.sh) define KPLUG_DSP_ONLY and KPLUG_TEST_SYM=<a name>: no
-// kernel, no wtk; KPLUG_MAIN then exports a KpTestApi under that name.
+// kernel, no uikit; KPLUG_MAIN then exports a KpTestApi under that name.
 //
 #ifndef _kplug_h
 #define _kplug_h
@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include "json.hpp"
 
-namespace wtk { class Widget; }
+namespace uikit { class Widget; }
 
 // ---- the description ----------------------------------------------------------------------------------
 struct KpParamDef
@@ -128,7 +128,7 @@ struct KpDesc				// (designated initialisers -- .name = ..., in this order -- as
 	void (*setParam) (int index, float value) = 0;	// a parameter changed (the render thread, between blocks)
 	void (*saveState) (json::Writer &w) = 0;	// its own keys, beyond "params" (optional)
 	void (*loadState) (const json::Value &state) = 0;
-	void (*editor) (wtk::Widget &root, int w, int h) = 0;	// its own editor (0: made from the parameters)
+	void (*editor) (uikit::Widget &root, int w, int h) = 0;	// its own editor (0: made from the parameters)
 };
 
 // ---- small DSP helpers (float, no allocation) --------------------------------------------------------------
@@ -607,7 +607,7 @@ struct KpTestApi
 // ---- the process: the kernel side ------------------------------------------------------------------------
 #include "kapi.h"
 #include "applet_proto.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 static int kp__host, kp__shmId, kp__renderTid = -1;
 static unsigned long long kp__notify;		// parameters to report to the host (KP_PARAM_CHANGED)
@@ -616,7 +616,7 @@ static bool kp__dirtyNotify, kp__quitAll;
 // ---- the editor: a Control Panel applet in the host's surface ----
 static int kp__edSid = -1, kp__edW, kp__edH;
 static unsigned *kp__edPx;
-static wtk::Widget *kp__edRoot;
+static uikit::Widget *kp__edRoot;
 static bool kp__edPresent;
 static int kp__bl, kp__br, kp__bm;
 static void kp__edSync ();
@@ -627,23 +627,23 @@ namespace {
 
 // A knob: a 270-degree dial (the parameter's name above, its value under it). Drag up / down (the
 // range in 200 px, Shift: 1000), the wheel (a step), a double click: the default.
-class KpKnob : public wtk::Widget
+class KpKnob : public uikit::Widget
 {
 public:
 	int index; float value;
 	KpKnob (int l, int t, int w, int h, int i) : Widget (l, t, w, h), index (i), value (0), m_drag (false), m_y0 (0), m_v0 (0), m_last (0) { canFocus = true; }
 	void onDraw () override
 	{
-		using namespace wtk;
+		using namespace uikit;
 		const KpParamDef &p = g_kp.desc->params[index];
 		unsigned bg = parent ? parent->bgColor () : C_BG;
 		canvas.clear (bg);
 		char nm[40]; int k = 0;
 		while (p.name[k] && k < 39) { nm[k] = p.name[k]; k++; }
 		nm[k] = 0;
-		while (k > 2 && wk_text_w (nm) > width - 2) { nm[--k] = 0; nm[k - 1] = '.'; }	// (a long name: elided)
-		wk_text_c (canvas, 0, 0, width, wk_fh () + 2, nm, C_TEXT);
-		int top = wk_fh () + 4, bottom = height - wk_fh () - 4;
+		while (k > 2 && uk_text_w (nm) > width - 2) { nm[--k] = 0; nm[k - 1] = '.'; }	// (a long name: elided)
+		uk_text_c (canvas, 0, 0, width, uk_fh () + 2, nm, C_TEXT);
+		int top = uk_fh () + 4, bottom = height - uk_fh () - 4;
 		int d = bottom - top; if (d > width - 8) d = width - 8;
 		if (d < 16) d = 16;
 		int cx = width / 2, cy = top + d / 2, r = d / 2 - 3;
@@ -655,19 +655,19 @@ public:
 			int az = 225 - (int) (-p.min / (p.max - p.min) * 270.0f + 0.5f);
 			if (a0 < az) a1 = az; else { a1 = a0; a0 = az; }
 		}
-		bool dark = wk_bright (bg) < 110;			// (a dark face: the track and the cap lighter than it)
-		unsigned cap = (C_BUTTON & 0xFFFFFF) != (bg & 0xFFFFFF) ? C_BUTTON : wk_tone (bg, dark ? 165 : 150);
-		if (hover || m_drag) cap = wk_tone (cap, dark ? 150 : 170);
+		bool dark = uk_bright (bg) < 110;			// (a dark face: the track and the cap lighter than it)
+		unsigned cap = (C_BUTTON & 0xFFFFFF) != (bg & 0xFFFFFF) ? C_BUTTON : uk_tone (bg, dark ? 165 : 150);
+		if (hover || m_drag) cap = uk_tone (cap, dark ? 150 : 170);
 		VPath path;
-		path.arc (V (cx), V (cy), V (r), -45, 225, V (3)); path.fill (canvas, wk_tone (bg, dark ? 185 : 96));
+		path.arc (V (cx), V (cy), V (r), -45, 225, V (3)); path.fill (canvas, uk_tone (bg, dark ? 185 : 96));
 		if (a0 < a1) { path.clear (); path.arc (V (cx), V (cy), V (r), a0, a1, V (3)); path.fill (canvas, disabled ? C_DIS : C_ACCENT); }
 		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.fill (canvas, cap);
-		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.hole (V (cx), V (cy), V (r - 7)); path.fill (canvas, dark ? wk_tone (cap, 180) : C_BORDER, 140);
+		path.clear (); path.circle (V (cx), V (cy), V (r - 6)); path.hole (V (cx), V (cy), V (r - 7)); path.fill (canvas, dark ? uk_tone (cap, 180) : C_BORDER, 140);
 		int av = 225 - (int) (f * 270.0f + 0.5f);
-		int px = cx + ((r - 9) * wk_cos (av)) / 16384, py = cy - ((r - 9) * wk_sin (av)) / 16384;
-		path.clear (); path.line (V (cx), V (cy), V (px), V (py), V (2)); path.fill (canvas, wk_ink_on (cap));
+		int px = cx + ((r - 9) * uk_cos (av)) / 16384, py = cy - ((r - 9) * uk_sin (av)) / 16384;
+		path.clear (); path.line (V (cx), V (cy), V (px), V (py), V (2)); path.fill (canvas, uk_ink_on (cap));
 		char t[48]; kp_format (index, value, t, sizeof t);
-		wk_text_c (canvas, 0, height - wk_fh () - 2, width, wk_fh () + 2, t, hasFocus ? C_ACCENT : C_TEXT);
+		uk_text_c (canvas, 0, height - uk_fh () - 2, width, uk_fh () + 2, t, hasFocus ? C_ACCENT : C_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
@@ -717,11 +717,11 @@ private:
 // The controls bound to parameters (the editor follows a change from the host, a state). A plugin's
 // own editor makes them with kp_knob / kp_choice / kp_toggle, and any other widget it likes.
 enum { KP_CTL_KNOB = 1, KP_CTL_CHOICE, KP_CTL_TOGGLE };
-static wtk::Widget *kp__ctl[KP_MAX_PARAMS];
+static uikit::Widget *kp__ctl[KP_MAX_PARAMS];
 static unsigned char kp__ctlType[KP_MAX_PARAMS];
 
-static void kp__onDropdown (wtk::Widget &w) { wtk::Dropdown &d = (wtk::Dropdown &) w; kp__set (w.tag, g_kp.desc->params[w.tag].min + (float) d.sel, false); }
-static void kp__onCheck (wtk::Widget &w) { wtk::Checkbox &c = (wtk::Checkbox &) w; kp__set (w.tag, c.checked ? 1.0f : 0.0f, false); }
+static void kp__onDropdown (uikit::Widget &w) { uikit::Dropdown &d = (uikit::Dropdown &) w; kp__set (w.tag, g_kp.desc->params[w.tag].min + (float) d.sel, false); }
+static void kp__onCheck (uikit::Widget &w) { uikit::Checkbox &c = (uikit::Checkbox &) w; kp__set (w.tag, c.checked ? 1.0f : 0.0f, false); }
 
 // a parameter shown as a check box: its choices are Off / On
 static inline bool kp__isToggle (const KpParamDef &p)
@@ -730,7 +730,7 @@ static inline bool kp__isToggle (const KpParamDef &p)
 }
 
 // a knob for parameter i (w x h: its name, the dial, its value)
-static inline wtk::Widget *kp_knob (wtk::Widget &parent, int x, int y, int w, int h, int i)
+static inline uikit::Widget *kp_knob (uikit::Widget &parent, int x, int y, int w, int h, int i)
 {
 	if (i < 0 || i >= kp_nparams ()) return 0;
 	KpKnob *k = new KpKnob (x, y, w, h, i);
@@ -740,13 +740,13 @@ static inline wtk::Widget *kp_knob (wtk::Widget &parent, int x, int y, int w, in
 	return k;
 }
 // a drop-down for an enumerated parameter i (its name above it): w wide, 2 lines high
-static inline wtk::Widget *kp_choice (wtk::Widget &parent, int x, int y, int w, int i)
+static inline uikit::Widget *kp_choice (uikit::Widget &parent, int x, int y, int w, int i)
 {
-	using namespace wtk;
+	using namespace uikit;
 	if (i < 0 || i >= kp_nparams () || !g_kp.desc->params[i].choices) return 0;
 	const KpParamDef &p = g_kp.desc->params[i];
 	int n = 0; while (p.choices[n]) n++;
-	int fh = wk_fh ();
+	int fh = uk_fh ();
 	Label *l = new Label (x, y, w, fh + 4, p.name, C_TEXT, parent.bgColor ());
 	l->tag = -1;
 	parent.addChild (l);
@@ -757,11 +757,11 @@ static inline wtk::Widget *kp_choice (wtk::Widget &parent, int x, int y, int w, 
 	return dd;
 }
 // a check box for an Off / On parameter i
-static inline wtk::Widget *kp_toggle (wtk::Widget &parent, int x, int y, int w, int i)
+static inline uikit::Widget *kp_toggle (uikit::Widget &parent, int x, int y, int w, int i)
 {
-	using namespace wtk;
+	using namespace uikit;
 	if (i < 0 || i >= kp_nparams ()) return 0;
-	Checkbox *c = new Checkbox (x, y, w, wk_fh () + 6, g_kp.desc->params[i].name, g_kp.want[i] >= 0.5f, kp__onCheck, parent.bgColor ());
+	Checkbox *c = new Checkbox (x, y, w, uk_fh () + 6, g_kp.desc->params[i].name, g_kp.want[i] >= 0.5f, kp__onCheck, parent.bgColor ());
 	c->tag = i;
 	parent.addChild (c);
 	kp__ctl[i] = c; kp__ctlType[i] = KP_CTL_TOGGLE;
@@ -769,12 +769,12 @@ static inline wtk::Widget *kp_toggle (wtk::Widget &parent, int x, int y, int w, 
 }
 
 // the editor made from the parameters: a title, then knobs, drop-downs and check boxes in rows
-static inline void kp__autoEditor (wtk::Widget &root, int w, int h)
+static inline void kp__autoEditor (uikit::Widget &root, int w, int h)
 {
-	using namespace wtk;
+	using namespace uikit;
 	(void) h;
 	const KpDesc *d = g_kp.desc;
-	int fh = wk_fh ();
+	int fh = uk_fh ();
 	Label *title = new Label (10, 6, w - 20, fh + 6, d->name ? d->name : "", C_TEXT, C_BG);
 	title->tag = -1;
 	root.addChild (title);
@@ -797,13 +797,13 @@ static void kp__edSync ()
 	if (!kp__edRoot) return;
 	for (int i = 0; i < kp_nparams (); i++)
 	{
-		wtk::Widget *c = kp__ctl[i];
+		uikit::Widget *c = kp__ctl[i];
 		if (!c) continue;
 		const KpParamDef &p = g_kp.desc->params[i];
 		switch (kp__ctlType[i])
 		{
-		case KP_CTL_TOGGLE: { wtk::Checkbox *b = (wtk::Checkbox *) c; bool on = g_kp.want[i] >= 0.5f; if (b->checked != on) { b->checked = on; b->invalidate (true); } } break;
-		case KP_CTL_CHOICE: { wtk::Dropdown *dd = (wtk::Dropdown *) c; int s = (int) (g_kp.want[i] - p.min + 0.5f); if (!dd->open && s != dd->sel) { dd->sel = s; dd->invalidate (true); } } break;
+		case KP_CTL_TOGGLE: { uikit::Checkbox *b = (uikit::Checkbox *) c; bool on = g_kp.want[i] >= 0.5f; if (b->checked != on) { b->checked = on; b->invalidate (true); } } break;
+		case KP_CTL_CHOICE: { uikit::Dropdown *dd = (uikit::Dropdown *) c; int s = (int) (g_kp.want[i] - p.min + 0.5f); if (!dd->open && s != dd->sel) { dd->sel = s; dd->invalidate (true); } } break;
 		case KP_CTL_KNOB: { KpKnob *k = (KpKnob *) c; if (k->value != g_kp.want[i]) { k->value = g_kp.want[i]; k->invalidate (true); } } break;
 		default: break;
 		}
@@ -811,10 +811,10 @@ static void kp__edSync ()
 }
 
 namespace {
-class KpEditorRoot : public wtk::Panel
+class KpEditorRoot : public uikit::Panel
 {
 public:
-	KpEditorRoot (int w, int h) : Panel (0, 0, w, h, wtk::C_BG) { hasFocus = true; tag = -1; }
+	KpEditorRoot (int w, int h) : Panel (0, 0, w, h, uikit::C_BG) { hasFocus = true; tag = -1; }
 };
 } // namespace
 
@@ -837,12 +837,12 @@ static void kp__edOpen (const KpEditor &e)
 		kp__edSid = e.surface; kp__edPx = px; kp__edW = w; kp__edH = h;
 	}
 	int w = e.w > 0 && e.w <= kp__edW ? e.w : kp__edW, h = e.h > 0 && e.h <= kp__edH ? e.h : kp__edH;
-	wtk::init ();
+	uikit::init ();
 	if (e.themed)					// (the host's colours: the editor looks like a part of it)
 	{
-		wtk::WkTheme t; wtk::wk_theme_get (t);
+		uikit::UkTheme t; uikit::uk_theme_get (t);
 		t.window = e.window; t.button = e.button; t.field = e.field; t.accent = e.accent;
-		wtk::wk_theme_set (t);
+		uikit::uk_theme_set (t);
 	}
 	KpEditorRoot *root = new KpEditorRoot (w, h);
 	root->canvas.adopt (kp__edPx, w, h, kp__edW);

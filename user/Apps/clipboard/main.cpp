@@ -8,15 +8,15 @@
 // CLIP_LIST, CLIP_SUBSCRIBE (re-listed at each change), CLIP_CURSOR, CLIP_DELETE, CLIP_CLEAR.
 //
 #include "kapi.h"
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
+#include "ft/uikitface.h"
+#include "uikit/uikit.h"
 #include "clipboard.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static const int W = 300, ROW = 30, HEAD = 42, PAD = 8;
 static const int HMAX = HEAD + CLIP_RING * ROW + PAD;
-static const unsigned KEY = WK_TRANSPARENT_KEY;
+static const unsigned KEY = UK_TRANSPARENT_KEY;
 
 static ClipItemMsg g_it[CLIP_RING]; static int g_n;
 static int g_pid;
@@ -74,40 +74,40 @@ public:
 	{
 		canvas.clear (KEY);
 		int y0 = cardY (), h = cardH ();
-		unsigned face = wk_mix (C_FIELD, C_BG, 40), ink = C_FIELD_TEXT, dim = wk_mix (C_FIELD_TEXT, face, 110);
+		unsigned face = uk_mix (C_FIELD, C_BG, 40), ink = C_FIELD_TEXT, dim = uk_mix (C_FIELD_TEXT, face, 110);
 		canvas.fillRect (0, y0, W, h, face);
-		wk_rline (canvas, 0, y0, W, h, 12, wk_tone (C_BG, 80), 255);
-		wk_corner_key (canvas, 0, y0, W, h, 12);
+		uk_rline (canvas, 0, y0, W, h, 12, uk_tone (C_BG, 80), 255);
+		uk_corner_key (canvas, 0, y0, W, h, 12);
 		// the head: the clipboard's glyph, the title, the count, the bin
 		int gx = 14, gy = y0 + 12;
 		VPath o; int bd[] = { V (gx), V (gy + 2), V (gx + 14), V (gy + 2), V (gx + 14), V (gy + 18), V (gx), V (gy + 18) };
 		o.polyline (bd, 4, V (2), true); o.rrect (V (gx + 3), V (gy), V (8), V (5), V (1)); o.fill (canvas, ink);
-		wk_text (canvas, 40, y0 + (40 - wk_fh ()) / 2, "Clipboard", ink, 2);
+		uk_text (canvas, 40, y0 + (40 - uk_fh ()) / 2, "Clipboard", ink, 2);
 		char c[16]; c[0] = (char) ('0' + g_n / 10); c[1] = (char) ('0' + g_n % 10); c[2] = 0;
 		const char *cs = g_n >= 10 ? c : c + 1;
 		char cnt[16]; int k = 0; for (int i = 0; cs[i]; i++) cnt[k++] = cs[i];
 		const char *tail = " / 10"; for (int i = 0; tail[i]; i++) cnt[k++] = tail[i]; cnt[k] = 0;
-		int cx = 40 + wk_tw ("Clipboard", 2) + 8;
-		{ WkFaceScope sc (g_small); wk_text (canvas, cx, y0 + (40 - wk_fh ()) / 2 + 1, cnt, dim); }
+		int cx = 40 + uk_tw ("Clipboard", 2) + 8;
+		{ UkFaceScope sc (g_small); uk_text (canvas, cx, y0 + (40 - uk_fh ()) / 2 + 1, cnt, dim); }
 		int bx = W - 36, by = y0 + 8;
-		if (binHot) wk_rbox (canvas, bx, by, 26, 26, 6, wk_mix (face, 0x000000, 24), wk_mix (face, 0x000000, 24));
+		if (binHot) uk_rbox (canvas, bx, by, 26, 26, 6, uk_mix (face, 0x000000, 24), uk_mix (face, 0x000000, 24));
 		VPath bin; int bo[] = { V (bx + 8), V (by + 9), V (bx + 18), V (by + 9), V (bx + 17), V (by + 21), V (bx + 9), V (by + 21) };
 		bin.polyline (bo, 4, 24, true); bin.rect (V (bx + 6), V (by + 7), V (14), 24); bin.rect (V (bx + 11), V (by + 5), V (4), 24);
-		bin.fill (canvas, g_n ? dim : wk_mix (dim, face, 120));
-		canvas.fillRect (10, y0 + HEAD - 4, W - 20, 1, wk_mix (face, 0x000000, 30));
+		bin.fill (canvas, g_n ? dim : uk_mix (dim, face, 120));
+		canvas.fillRect (10, y0 + HEAD - 4, W - 20, 1, uk_mix (face, 0x000000, 30));
 		// the rows
 		if (!g_n)
 		{
-			WkFaceScope sc (g_small);
+			UkFaceScope sc (g_small);
 			const char *e = "Nothing copied yet";
-			wk_text (canvas, (W - wk_tw (e)) / 2, y0 + HEAD + (ROW - wk_fh ()) / 2, e, dim);
+			uk_text (canvas, (W - uk_tw (e)) / 2, y0 + HEAD + (ROW - uk_fh ()) / 2, e, dim);
 		}
 		for (int i = 0; i < g_n; i++)
 		{
 			const ClipItemMsg &m = g_it[i];
 			int y = y0 + HEAD + i * ROW;
-			if (m.cursor) { wk_rbox (canvas, 6, y, W - 12, ROW - 2, 6, wk_mix (face, C_ACCENT, 56), wk_mix (face, C_ACCENT, 56)); wk_rline (canvas, 6, y, W - 12, ROW - 2, 6, C_ACCENT, 255); }
-			else if (i == hot) wk_rbox (canvas, 6, y, W - 12, ROW - 2, 6, wk_mix (face, C_ACCENT, 22), wk_mix (face, C_ACCENT, 22));
+			if (m.cursor) { uk_rbox (canvas, 6, y, W - 12, ROW - 2, 6, uk_mix (face, C_ACCENT, 56), uk_mix (face, C_ACCENT, 56)); uk_rline (canvas, 6, y, W - 12, ROW - 2, 6, C_ACCENT, 255); }
+			else if (i == hot) uk_rbox (canvas, 6, y, W - 12, ROW - 2, 6, uk_mix (face, C_ACCENT, 22), uk_mix (face, C_ACCENT, 22));
 			kind_icon (canvas, m.kind, 14, y + 5, 18);
 			char line[420];
 			if (!strcmp (m.kind, "image"))
@@ -128,11 +128,11 @@ public:
 			}
 			char when[8] = "00:00"; when[0] += (char) (m.hour / 10); when[1] += (char) (m.hour % 10); when[3] += (char) (m.minute / 10); when[4] += (char) (m.minute % 10);
 			int right = 0;
-			{ WkFaceScope sc (g_small); right = i == hot ? 26 : wk_tw (when) + 10; }
-			char fit[200]; wk_text_fit (line, W - 44 - 14 - right, fit, sizeof fit);
-			wk_text (canvas, 40, y + (ROW - 2 - wk_fh ()) / 2, fit, !strcmp (m.kind, "url") ? wk_mix (C_ACCENT, 0x000000, 70) : ink);
-			if (i == hot) wk_glyph (canvas, WKG_CLOSE, W - 22, y + ROW / 2 - 1, 10, dim);
-			else { WkFaceScope sc (g_small); wk_text (canvas, W - 14 - wk_tw (when), y + (ROW - 2 - wk_fh ()) / 2, when, dim); }
+			{ UkFaceScope sc (g_small); right = i == hot ? 26 : uk_tw (when) + 10; }
+			char fit[200]; uk_text_fit (line, W - 44 - 14 - right, fit, sizeof fit);
+			uk_text (canvas, 40, y + (ROW - 2 - uk_fh ()) / 2, fit, !strcmp (m.kind, "url") ? uk_mix (C_ACCENT, 0x000000, 70) : ink);
+			if (i == hot) uk_glyph (canvas, WKG_CLOSE, W - 22, y + ROW / 2 - 1, 10, dim);
+			else { UkFaceScope sc (g_small); uk_text (canvas, W - 14 - uk_tw (when), y + (ROW - 2 - uk_fh ()) / 2, when, dim); }
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -193,7 +193,7 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	g_small = new FtTextFace; if (!g_small->open ("DejaVu Sans", 11)) g_small = 0;
 	g_pid = clip_service_ ();
 	Card card (-W - 50, 30);				// (off the screen until it is placed)

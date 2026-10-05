@@ -1,5 +1,5 @@
 //
-// icons.h -- Letters' toolbar icons, drawn from their geometry (wtk/vpaint.h: anti-aliased, 20 x 20
+// icons.h -- Letters' toolbar icons, drawn from their geometry (uikit/vpaint.h: anti-aliased, 20 x 20
 // px) or from the fonts (the letters B, I, U, S, x², A...): a page, a folder, a floppy, the undo
 // arrows, scissors, pages, a clipboard, a magnifier, the alignments' lines, the lists, the indents,
 // a table.
@@ -8,12 +8,12 @@
 #ifndef _writer_icons_h
 #define _writer_icons_h
 
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "ft/fonts.h"
 
 namespace wr {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { IC_NEW, IC_OPEN, IC_SAVE, IC_UNDO, IC_REDO, IC_CUT, IC_COPY, IC_PASTE, IC_FIND, IC_BOLD,
        IC_ITALIC, IC_UNDER, IC_STRIKE, IC_SUPER, IC_SUB, IC_COLOR, IC_HILITE, IC_LEFT, IC_CENTER,
@@ -41,7 +41,7 @@ static void icon_lines (VPath &p, const int *x0, const int *x1, int n, int y0, i
 static void draw_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = false)
 {
 	if (g_icFam < 0) { g_icFam = fnt::find ("DejaVu Sans"); g_icFamSerif = fnt::find ("DejaVu Serif"); if (g_icFamSerif < 0) g_icFamSerif = g_icFam; }
-	unsigned dim = wk_mix (ink, C_BG, 150);
+	unsigned dim = uk_mix (ink, C_BG, 150);
 	if (off) ink = dim;
 	int A = off ? 110 : 255;			// (the colours' opacity when greyed)
 	VPath p;
@@ -91,7 +91,7 @@ static void draw_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off =
 	case IC_CUT:
 		p.line (X + V (6), Y + V (2), X + V (12), Y + V (13), 26);
 		p.line (X + V (14), Y + V (2), X + V (8), Y + V (13), 26);
-		p.fill (cv, wk_mix (ink, 0x808080, 90));
+		p.fill (cv, uk_mix (ink, 0x808080, 90));
 		p.clear (); p.circle (X + V (6), Y + V (15), V (3)); p.hole (X + V (6), Y + V (15), V (2) - 4);
 		p.circle (X + V (14), Y + V (15), V (3)); p.hole (X + V (14), Y + V (15), V (2) - 4);
 		p.fill (cv, 0xC0392B, A);
@@ -103,8 +103,8 @@ static void draw_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off =
 	case IC_PASTE:
 		p.rrect (X + V (3), Y + V (3), V (14), V (16), V (2)); p.fill (cv, 0xB07A3E, A);
 		p.clear (); p.rect (X + V (5), Y + V (6), V (10), V (11)); p.fill (cv, 0xFFFFFF, A);
-		p.clear (); p.rrect (X + V (7), Y + V (1), V (6), V (4), V (1)); p.fill (cv, wk_mix (ink, 0x909090, 120), A);
-		p.clear (); p.rect (X + V (7), Y + V (9), V (6), 14); p.rect (X + V (7), Y + V (12), V (6), 14); p.fill (cv, wk_mix (0xFFFFFF, ink, 120));
+		p.clear (); p.rrect (X + V (7), Y + V (1), V (6), V (4), V (1)); p.fill (cv, uk_mix (ink, 0x909090, 120), A);
+		p.clear (); p.rect (X + V (7), Y + V (9), V (6), 14); p.rect (X + V (7), Y + V (12), V (6), 14); p.fill (cv, uk_mix (0xFFFFFF, ink, 120));
 		break;
 	case IC_FIND: case IC_ZOOMIN: case IC_ZOOMOUT:
 		p.circle (X + V (8), Y + V (8), V (6)); p.hole (X + V (8), Y + V (8), V (5) - 8);
@@ -138,7 +138,7 @@ static void draw_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off =
 	case IC_HILITE:
 	{
 		int body[8] = { X + V (9), Y + V (2), X + V (15), Y + V (8), X + V (9), Y + V (14), X + V (3), Y + V (8) };
-		p.poly (body, 4); p.fill (cv, wk_mix (ink, 0xFFFFFF, 60), A);
+		p.poly (body, 4); p.fill (cv, uk_mix (ink, 0xFFFFFF, 60), A);
 		p.clear (); p.polyline (body, 4, 18, true); p.fill (cv, ink);
 		int tip[6] = { X + V (3), Y + V (8), X + V (6), Y + V (11), X + V (2), Y + V (13) };
 		p.clear (); p.poly (tip, 3); p.fill (cv, ink);

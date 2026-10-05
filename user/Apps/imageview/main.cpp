@@ -19,9 +19,9 @@
 #include "kapi.h"
 #include "fsutil.h"
 #include "img/imgload.hpp"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	720
 #define H	540
@@ -119,7 +119,7 @@ static void set_zoom (int z, bool keepCenter)
 }
 
 // ---- menu commands ---------------------------------------------------------------------------
-static void on_open ()     { char p[256]; if (wk_file_open (p, sizeof p, "SD:/")) open_image (p); }
+static void on_open ()     { char p[256]; if (uk_file_open (p, sizeof p, "SD:/")) open_image (p); }
 static void on_next ()     { step (1); }
 static void on_prev ()     { step (-1); }
 static void on_fit ()      { g_fit = true; clamp_pan (); g_root->invalidate (true); }
@@ -139,7 +139,7 @@ public:
 	{
 		int fh = kapi_font_height (); if (fh < 1) fh = 16;
 		unsigned *px = canvas.px; int stride = canvas.stride;
-		unsigned back = wk_tone (C_BG, 112);			// round the picture: a shade of the face
+		unsigned back = uk_tone (C_BG, 112);			// round the picture: a shade of the face
 		if (g_im.n == 0)
 		{
 			canvas.fillRect (0, 0, W, VIEW_H, back);
@@ -173,8 +173,8 @@ public:
 		}
 		// Status strip: name, size, format, zoom, position in the folder (the theme's face
 		// under an etched line).
-		wk_rbox (canvas, 0, VIEW_H, W, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));
-		wk_etch_h (canvas, 0, VIEW_H, W, C_FACE);
+		uk_rbox (canvas, 0, VIEW_H, W, ST_H, 0, uk_tone (C_FACE, 160), uk_tone (C_FACE, 124));
+		uk_etch_h (canvas, 0, VIEW_H, W, C_FACE);
 		char st[200]; int p = 0;
 		auto put = [&] (const char *t) { for (int i = 0; t[i] && p < (int) sizeof st - 1; i++) st[p++] = t[i]; };
 		auto num = [&] (int v) { char b[12]; int n = 0; if (v == 0) b[n++] = '0'; while (v > 0) { b[n++] = (char) ('0' + v % 10); v /= 10; } while (n) st[p++] = b[--n]; };
@@ -336,7 +336,7 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("Open...",        "^O", WK_CTRL ('O'), on_open);
+	menu.item ("Open...",        "^O", UK_CTRL ('O'), on_open);
 	menu.item ("Next image",     "->", 0,             on_next);
 	menu.item ("Previous image", "<-", 0,             on_prev);
 	menu.separator ();

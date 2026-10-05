@@ -7,9 +7,9 @@
 // kapi_shutdown (the SD unmount flushes FatFs, so no file is left half-written).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	380
 #define H	150
@@ -36,8 +36,8 @@ public:
 	void onDraw () override				// the question in bold, a groove above the buttons
 	{
 		Root::onDraw ();
-		wk_text_l (canvas, 18, 14, 18, "Do you want to shut down Onyx?", C_TEXT, 2);
-		wk_etch_h (canvas, 12, H - 56, W - 24, bg);
+		uk_text_l (canvas, 18, 14, 18, "Do you want to shut down Onyx?", C_TEXT, 2);
+		uk_etch_h (canvas, 12, H - 56, W - 24, bg);
 	}
 };
 

@@ -14,7 +14,7 @@
 // the whole point (it never yields).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"		// wtk window decoration
+#include "uikit/uikit.h"		// uikit window decoration
 
 #define W 272
 #define H 116
@@ -27,15 +27,15 @@ int main (void)
 		return 1;
 	}
 
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
-	using namespace wtk;
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
+	using namespace uikit;
 	for (int i = 0; i < W * H; i++)
 	{
 		fb[i] = C_BG;
 	}
 	draw_text (fb, W, H, 12, 16, "CPU hog -- never yields.",        C_TEXT, 1, 2);
-	draw_text (fb, W, H, 12, 40, "Cooperative kernel: UI FREEZES.", wk_mix (C_TEXT, 0x00E03C3C, 150));
-	draw_text (fb, W, H, 12, 58, "Preemptive (track A): UI alive.", wk_mix (C_TEXT, 0x0030A050, 160));
+	draw_text (fb, W, H, 12, 40, "Cooperative kernel: UI FREEZES.", uk_mix (C_TEXT, 0x00E03C3C, 150));
+	draw_text (fb, W, H, 12, 58, "Preemptive (track A): UI alive.", uk_mix (C_TEXT, 0x0030A050, 160));
 	draw_text (fb, W, H, 12, 88, "Stop me from taskman.",           C_DIS);
 	present ();
 

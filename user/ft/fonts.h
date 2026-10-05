@@ -30,7 +30,7 @@
 #include FT_SIZES_H
 #include FT_ADVANCES_H
 #include "kapi.h"
-#include "wtk/canvas.h"
+#include "uikit/canvas.h"
 
 namespace fnt {
 
@@ -515,7 +515,7 @@ static inline void blend (unsigned &d, unsigned c, int a)
 }
 
 // A character at x64 (1/64 px) on the baseline y, in colour c, clipped to [cx0, cx1) x [cy0, cy1).
-static void draw (wtk::Canvas &cv, Font *f, int x64, int y, unsigned cp, unsigned c,
+static void draw (uikit::Canvas &cv, Font *f, int x64, int y, unsigned cp, unsigned c,
 		  int cx0, int cy0, int cx1, int cy1)
 {
 	if (!f || cp <= 32 || cp == 0xA0) return;
@@ -551,7 +551,7 @@ static void draw (wtk::Canvas &cv, Font *f, int x64, int y, unsigned cp, unsigne
 }
 
 // A string (Latin-1 / ASCII) at x, baseline y, the pen's end returned (1/64 px). For labels.
-static int draw_str (wtk::Canvas &cv, Font *f, int x64, int y, const char *s, unsigned c)
+static int draw_str (uikit::Canvas &cv, Font *f, int x64, int y, const char *s, unsigned c)
 {
 	unsigned prev = 0;
 	for (; s && *s; s++)

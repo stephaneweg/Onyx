@@ -1,5 +1,5 @@
 //
-// dialogs.h -- Letters' dialogs (wtk Modals over the window): Font (the family, the style, the size,
+// dialogs.h -- Letters' dialogs (uikit Modals over the window): Font (the family, the style, the size,
 // the effects, the colours, a preview drawn with the chosen font), Paragraph (the alignment, the
 // indents -- a first line's or a hanging one --, the spacing, the line spacing, a page break before,
 // kept with the next, lines kept together, no widow / orphan; a preview), Tabs (the stops: their
@@ -18,7 +18,7 @@
 
 namespace wr {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- lengths --------------------------------------------------------------------------------------------
 static void fmt_len (char *b, int tw)		// twips -> "2.54" (cm or in)
@@ -96,14 +96,14 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_FACE);
-		wk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, hover ? WK_HOT : WK_NORMAL);
+		uk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, hover ? UK_HOT : UK_NORMAL);
 		if (color == AUTO)
 		{
-			canvas.frameRect (8, 6, 30, 14, wk_mix (C_BUTTON, C_BUTTON_TEXT, 150));
+			canvas.frameRect (8, 6, 30, 14, uk_mix (C_BUTTON, C_BUTTON_TEXT, 150));
 			if (autoLabel[0] == 'A') canvas.fillRect (10, 8, 26, 10, 0); else for (int k = 0; k < 12; k++) canvas.pixel (10 + k * 2, 18 - k * 10 / 12, 0xC0392B);
 		}
-		else { canvas.fillRect (8, 6, 30, 14, color); canvas.frameRect (8, 6, 30, 14, wk_mix (color, 0, 80)); }
-		wk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 7, C_BUTTON_TEXT);
+		else { canvas.fillRect (8, 6, 30, 14, color); canvas.frameRect (8, 6, 30, 14, uk_mix (color, 0, 80)); }
+		uk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 7, C_BUTTON_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -170,8 +170,8 @@ public:
 	void drawBody () override
 	{
 		label (16, 42, "Font:"); label (256, 42, "Style:"); label (396, 42, "Size:");
-		wk_etch_box (canvas, 16, 262, 548, 80, 6, C_FACE);
-		canvas.fillRect (26, 255, wk_text_w ("Effects") + 8, 14, C_FACE);
+		uk_etch_box (canvas, 16, 262, 548, 80, 6, C_FACE);
+		canvas.fillRect (26, 255, uk_text_w ("Effects") + 8, 14, C_FACE);
 		label (30, 255, "Effects");
 		label (344, 286, "Colour:"); label (344, 316, "Highlight:");
 	}
@@ -198,7 +198,7 @@ public:
 	{
 		FontDialog *d = (FontDialog *) ctx;
 		cv.clear (C_FACE);
-		wk_sunken (cv, 0, 0, w, h, 5, 0xFFFFFF);
+		uk_sunken (cv, 0, 0, w, h, 5, 0xFFFFFF);
 		const CharFmt &f = d->f;
 		int size64 = wclamp ((int) f.size * 64 * 4 / 6, 8 * 64, 40 * 64);	// (points at 96 dpi, capped)
 		if (f.flags & (CF_SUPER | CF_SUB)) size64 = size64 * 58 / 100;
@@ -292,8 +292,8 @@ public:
 	}
 	void groupTitle (int x, int y, int w, int h, const char *t)
 	{
-		wk_etch_box (canvas, x, y, w, h, 6, C_FACE);
-		canvas.fillRect (x + 10, y - 7, wk_text_w (t) + 8, 14, C_FACE);
+		uk_etch_box (canvas, x, y, w, h, 6, C_FACE);
+		canvas.fillRect (x + 10, y - 7, uk_text_w (t) + 8, 14, C_FACE);
 		label (x + 14, y - 7, t);
 	}
 	void read ()
@@ -318,7 +318,7 @@ public:
 	{
 		ParaDialog *d = (ParaDialog *) ctx;
 		cv.clear (C_FACE);
-		wk_sunken (cv, 0, 0, w, h, 5, 0xFFFFFF);
+		uk_sunken (cv, 0, 0, w, h, 5, 0xFFFFFF);
 		const ParaFmt &pf = d->pf;
 		int ml = 16, tw = w - 32;			// (a text width standing for the page's)
 		int pageTw = wmax (1440, g_doc.page.w - g_doc.page.left - g_doc.page.right);
@@ -366,7 +366,7 @@ public:
 	{
 		label (16, 44, g_inches ? "Position (in):" : "Position (cm):");
 		label (196, 44, "Alignment:"); label (318, 44, "Leader:");
-		canvas.text (196, 244, "Default stops: every 1.25 cm.", wk_mix (C_FACE, C_TEXT, 170));
+		canvas.text (196, 244, "Default stops: every 1.25 cm.", uk_mix (C_FACE, C_TEXT, 170));
 	}
 	void fill ()
 	{
@@ -477,16 +477,16 @@ public:
 	{
 		const char *u = g_inches ? "in" : "cm";
 		label (24, 48, "Paper:"); label (24, 82, "Orientation:");
-		wk_etch_box (canvas, 16, 122, 300, 152, 6, C_FACE);
-		canvas.fillRect (26, 115, wk_text_w ("Margins") + 8, 14, C_FACE); label (30, 115, "Margins");
+		uk_etch_box (canvas, 16, 122, 300, 152, 6, C_FACE);
+		canvas.fillRect (26, 115, uk_text_w ("Margins") + 8, 14, C_FACE); label (30, 115, "Margins");
 		label (32, 148, "Top:"); label (32, 180, "Bottom:"); label (32, 212, "Left:"); label (32, 244, "Right:");
 		for (int k = 0; k < 4; k++) label (198, 148 + k * 32, u);
-		wk_etch_box (canvas, 16, 294, 468, 90, 6, C_FACE);
-		canvas.fillRect (26, 287, wk_text_w ("Header and footer") + 8, 14, C_FACE); label (30, 287, "Header and footer");
+		uk_etch_box (canvas, 16, 294, 468, 90, 6, C_FACE);
+		canvas.fillRect (26, 287, uk_text_w ("Header and footer") + 8, 14, C_FACE); label (30, 287, "Header and footer");
 		label (32, 320, "Header:"); label (32, 352, "Footer:");
 		label (198, 320, u); label (198, 352, u);
 		label (262, 352, "First page number:");
-		canvas.text (32, 392, "(the header from the page's top, the footer from its foot)", wk_mix (C_FACE, C_TEXT, 170));
+		canvas.text (32, 392, "(the header from the page's top, the footer from its foot)", uk_mix (C_FACE, C_TEXT, 170));
 	}
 	void read ()
 	{
@@ -514,7 +514,7 @@ public:
 		int pw = maxW, ph = (int) ((long long) pw * ps.h / ps.w);
 		if (ph > maxH) { ph = maxH; pw = (int) ((long long) ph * ps.w / ps.h); }
 		int x = (w - pw) / 2, y = (h - ph) / 2;
-		cv.fillRect (x + 3, y + 3, pw, ph, wk_mix (C_FACE, 0, 70));
+		cv.fillRect (x + 3, y + 3, pw, ph, uk_mix (C_FACE, 0, 70));
 		cv.fillRect (x, y, pw, ph, 0xFFFFFF);
 		cv.frameRect (x, y, pw, ph, 0x808080);
 		int l = (int) ((long long) ps.left * pw / ps.w), r = (int) ((long long) ps.right * pw / ps.w);
@@ -560,7 +560,7 @@ public:
 			char k[64]; int j = 0; while (lines[i][j] && lines[i][j] != '\t') { k[j] = lines[i][j]; j++; } k[j] = 0;
 			label (24, 44 + i * 24, k);
 			const char *v = lines[i] + j + 1;
-			canvas.text (width - 24 - wk_text_w (v), 44 + i * 24, v, C_TEXT);
+			canvas.text (width - 24 - uk_text_w (v), 44 + i * 24, v, C_TEXT);
 		}
 	}
 };
@@ -595,7 +595,7 @@ public:
 	void drawBody () override
 	{
 		label (20, 50, "Find:"); label (20, 84, "Replace with:");
-		if (msg[0]) canvas.text (130, 142, msg, wk_mix (C_FACE, C_TEXT, 170));
+		if (msg[0]) canvas.text (130, 142, msg, uk_mix (C_FACE, C_TEXT, 170));
 	}
 	int pattern (const char *s, unsigned *u) { return decode_text (s, slen (s), u, 64); }
 	bool findNext ()
@@ -668,7 +668,7 @@ public:
 	Dropdown *blk;
 	unsigned cps[512]; int n, top, sel;
 	int fam; unsigned last;
-	WkBarDrag m_bar;
+	UkBarDrag m_bar;
 	SymbolDialog () : Dialog (COLS * CELL + 150, ROWS * CELL + 124, "Special Character"), n (0), top (0), sel (0), last (0)
 	{
 		for (int i = 0; i < 12; i++) BLOCK_NAMES[i] = BLOCKS[i].name;
@@ -704,7 +704,7 @@ public:
 			for (int c = 0; c < COLS; c++)
 			{
 				int i = (top + r) * COLS + c, x = x0 + c * CELL, y = y0 + r * CELL;
-				if (i < n && i == sel) canvas.fillRect (x + 1, y + 1, CELL - 1, CELL - 1, wk_mix (0xFFFFFF, C_ACCENT, 90));
+				if (i < n && i == sel) canvas.fillRect (x + 1, y + 1, CELL - 1, CELL - 1, uk_mix (0xFFFFFF, C_ACCENT, 90));
 				if (i < n && f) { int a = fnt::advance (f, cps[i]); fnt::draw (canvas, f, x * 64 + (CELL * 64 - a) / 2, y + 22, cps[i], 0, x, y, x + CELL, y + CELL); }
 			}
 		for (int r = 0; r <= ROWS; r++) canvas.fillRect (x0, y0 + r * CELL, COLS * CELL + 1, 1, 0xD0D0D0);
@@ -713,20 +713,20 @@ public:
 		int px = x0 + COLS * CELL + 16, pw = width - px - 16;
 		if (sel < n)
 		{
-			wk_sunken (canvas, px, 124, pw, 90, 6, 0xFFFFFF);
+			uk_sunken (canvas, px, 124, pw, 90, 6, 0xFFFFFF);
 			fnt::Font *big = fnt::get (fam, 0, 48 * 64);
 			if (big) { int a = fnt::advance (big, cps[sel]); fnt::draw (canvas, big, (px + pw / 2) * 64 - a / 2, 124 + 64, cps[sel], 0, px, 124, px + pw, 214); }
 			char u[12] = "U+"; const char *h = "0123456789ABCDEF"; unsigned c = cps[sel];
 			int k = 2, digits = c > 0xFFFF ? 5 : 4;
 			for (int s = (digits - 1) * 4; s >= 0; s -= 4) u[k++] = h[(c >> s) & 15];
 			u[k] = 0;
-			canvas.text (px + (pw - wk_text_w (u)) / 2, 222, u, C_TEXT);
+			canvas.text (px + (pw - uk_text_w (u)) / 2, 222, u, C_TEXT);
 		}
 		if (n > ROWS * COLS)
 		{
 			int rows = (n + COLS - 1) / COLS;
-			WkThumb t = wk_thumb (rows, ROWS, top, ROWS * CELL);
-			wk_draw_vscroll (canvas, x0 + COLS * CELL + 3, y0, WK_SBW, ROWS * CELL, t, C_FACE);
+			UkThumb t = uk_thumb (rows, ROWS, top, ROWS * CELL);
+			uk_draw_vscroll (canvas, x0 + COLS * CELL + 3, y0, UK_SBW, ROWS * CELL, t, C_FACE);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
@@ -735,7 +735,7 @@ public:
 		bool inGrid = mx >= x0 && my >= y0 && mx < x0 + COLS * CELL && my < y0 + ROWS * CELL;
 		{							// the grid's scroll bar
 			long p = top;
-			if (m_bar.mouse (mx, my, bl, x0 + COLS * CELL + 1, WK_SBW + 4, y0, ROWS * CELL, (n + COLS - 1) / COLS, ROWS, &p))
+			if (m_bar.mouse (mx, my, bl, x0 + COLS * CELL + 1, UK_SBW + 4, y0, ROWS * CELL, (n + COLS - 1) / COLS, ROWS, &p))
 			{ top = (int) p; invalidate (true); return true; }
 		}
 		if (wheel && inGrid) { int rows = (n + COLS - 1) / COLS; top = wclamp (top - wheel, 0, wmax (0, rows - ROWS)); invalidate (true); return true; }
@@ -815,7 +815,7 @@ public:
 		okCancel ();
 		fill ();
 	}
-	void drawBody () override { canvas.text (16, 246, "Its text is kept up to date (a grey background).", wk_mix (C_FACE, C_TEXT, 170)); }
+	void drawBody () override { canvas.text (16, 246, "Its text is kept up to date (a grey background).", uk_mix (C_FACE, C_TEXT, 170)); }
 	void fill ()
 	{
 		pics->clear ();
@@ -883,19 +883,19 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
 		for (int j = 0; j < ROWS; j++)
 			for (int i = 0; i < COLS; i++)
 			{
 				int x = PAD + i * (CS + 3), y = PAD + j * (CS + 3);
 				bool on = j <= r && i <= c;
-				canvas.fillRect (x, y, CS, CS, on ? wk_mix (0xFFFFFF, C_ACCENT, 110) : 0xFFFFFF);
-				canvas.frameRect (x, y, CS, CS, on ? C_ACCENT : wk_mix (C_FIELD, C_FIELD_TEXT, 90));
+				canvas.fillRect (x, y, CS, CS, on ? uk_mix (0xFFFFFF, C_ACCENT, 110) : 0xFFFFFF);
+				canvas.frameRect (x, y, CS, CS, on ? C_ACCENT : uk_mix (C_FIELD, C_FIELD_TEXT, 90));
 			}
 		char b[40] = "Insert a table";
 		if (r >= 0) { int n = 0; char t[8]; fmt_int (t, c + 1); for (char *s = t; *s; s++) b[n++] = *s; b[n++] = ' '; b[n++] = 'x'; b[n++] = ' '; fmt_int (t, r + 1); for (char *s = t; *s; s++) b[n++] = *s; scpy (b + n, " table", 40 - n); }
-		wk_text_c (canvas, 0, height - PAD - 22, width, 22, b, C_FIELD_TEXT);
+		uk_text_c (canvas, 0, height - PAD - 22, width, 22, b, C_FIELD_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -977,9 +977,9 @@ public:
 		const char *u = g_inches ? "in" : "cm";
 		label (22, 50, "Lines:"); label (22, 84, "Line width:"); label (330, 84, "Colour:");
 		label (22, 138, "Alignment:"); label (330, 138, "Indent:");
-		wk_etch_box (canvas, 16, 212, 438, 118, 6, C_FACE);
+		uk_etch_box (canvas, 16, 212, 438, 118, 6, C_FACE);
 		const char *sel = "The selected cells";
-		canvas.fillRect (26, 205, wk_text_w (sel) + 8, 14, C_FACE); label (30, 205, sel);
+		canvas.fillRect (26, 205, uk_text_w (sel) + 8, 14, C_FACE); label (30, 205, sel);
 		label (32, 232, "Columns' width:"); label (328, 232, u);
 		label (32, 266, "Rows' least height:"); label (328, 266, u);
 		label (32, 300, "Shading:");

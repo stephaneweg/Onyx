@@ -1,5 +1,5 @@
 //
-// dialogs.h -- the spreadsheet's dialogs (wtk Modals over the window): Format Cells (Numbers: a category,
+// dialogs.h -- the spreadsheet's dialogs (uikit Modals over the window): Format Cells (Numbers: a category,
 // its decimals, separator, red negatives, symbol, the date and time formats, the code itself and a
 // preview; Font; Alignment; Borders: presets, each edge, the line, the colour; Fill), Insert Function
 // (by category, each one's arguments and purpose), Sort (three keys), Find and Replace, Paste Special,
@@ -37,7 +37,7 @@ private:
 	const char *m_title;
 };
 
-// A message or a question, its text wrapped to the box (wtk's message box keeps three short lines).
+// A message or a question, its text wrapped to the box (uikit's message box keeps three short lines).
 class NoteDialog : public Dialog
 {
 public:
@@ -50,7 +50,7 @@ public:
 	}
 	void drawBody () override { for (int i = 0; i < m_n; i++) canvas.text (16, titleH () + 16 + i * 18, m_line[i], C_TEXT); }
 private:
-	enum { MAXL = 12, PER = (440 - 32) / 8 };		// (wtk's font: 8 px a character)
+	enum { MAXL = 12, PER = (440 - 32) / 8 };		// (uikit's font: 8 px a character)
 	char m_line[MAXL][64]; int m_n;
 	// The lines: words wrapped at the box's width.
 	static int wrap (const char *p, char (*line)[64])
@@ -83,14 +83,14 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_FACE);
-		wk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, hover ? WK_HOT : WK_NORMAL);
+		uk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, hover ? UK_HOT : UK_NORMAL);
 		if (color == AUTO)
 		{
-			canvas.frameRect (8, 6, 30, 14, wk_mix (C_BUTTON, C_BUTTON_TEXT, 150));
+			canvas.frameRect (8, 6, 30, 14, uk_mix (C_BUTTON, C_BUTTON_TEXT, 150));
 			if (autoLabel[0] == 'A') canvas.fillRect (10, 8, 26, 10, 0); else for (int k = 0; k < 12; k++) canvas.pixel (10 + k * 2, 18 - k * 10 / 12, 0xC0392B);
 		}
-		else { canvas.fillRect (8, 6, 30, 14, color); canvas.frameRect (8, 6, 30, 14, wk_mix (color, 0, 80)); }
-		wk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 7, C_BUTTON_TEXT);
+		else { canvas.fillRect (8, 6, 30, 14, color); canvas.frameRect (8, 6, 30, 14, uk_mix (color, 0, 80)); }
+		uk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 7, C_BUTTON_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -120,17 +120,17 @@ public:
 	const char *const *names; int n, cur; void (*onPick) (TabStrip &);
 	TabStrip (int x, int y, int w, const char *const *nm, int n_) : Widget (x, y, w, 30), names (nm), n (n_), cur (0), onPick (0) {}
 	unsigned bgColor () override { return C_FACE; }
-	int tabX (int i) { int x = 0; for (int k = 0; k < i; k++) x += wk_text_w (names[k]) + 28; return x; }
+	int tabX (int i) { int x = 0; for (int k = 0; k < i; k++) x += uk_text_w (names[k]) + 28; return x; }
 	void onDraw () override
 	{
 		canvas.clear (C_FACE);
-		canvas.fillRect (0, height - 1, width, 1, wk_tone (C_FACE, 110));
+		canvas.fillRect (0, height - 1, width, 1, uk_tone (C_FACE, 110));
 		for (int i = 0; i < n; i++)
 		{
-			int x = tabX (i), w = wk_text_w (names[i]) + 24;
+			int x = tabX (i), w = uk_text_w (names[i]) + 24;
 			bool on = i == cur;
-			if (on) { wk_rbox (canvas, x, 2, w, height - 2, 5, wk_tone (C_FACE, 176), wk_tone (C_FACE, 166), 255, WK_TL | WK_TR); wk_rline (canvas, x, 2, w, height, 5, wk_tone (C_FACE, 110), 255, WK_TL | WK_TR); canvas.fillRect (x + 1, height - 1, w - 2, 1, wk_tone (C_FACE, 166)); }
-			wk_text_c (canvas, x, 2, w, height - 4, names[i], on ? C_TEXT : wk_mix (C_TEXT, C_FACE, 90), on ? 2 : 0);
+			if (on) { uk_rbox (canvas, x, 2, w, height - 2, 5, uk_tone (C_FACE, 176), uk_tone (C_FACE, 166), 255, UK_TL | UK_TR); uk_rline (canvas, x, 2, w, height, 5, uk_tone (C_FACE, 110), 255, UK_TL | UK_TR); canvas.fillRect (x + 1, height - 1, w - 2, 1, uk_tone (C_FACE, 166)); }
+			uk_text_c (canvas, x, 2, w, height - 4, names[i], on ? C_TEXT : uk_mix (C_TEXT, C_FACE, 90), on ? 2 : 0);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -139,7 +139,7 @@ public:
 		if (bl && in && !pressed)
 		{
 			pressed = true;
-			for (int i = 0; i < n; i++) { int x = tabX (i), w = wk_text_w (names[i]) + 24; if (mx >= x && mx < x + w && i != cur) { cur = i; invalidate (true); if (onPick) onPick (*this); } }
+			for (int i = 0; i < n; i++) { int x = tabX (i), w = uk_text_w (names[i]) + 24; if (mx >= x && mx < x + w && i != cur) { cur = i; invalidate (true); if (onPick) onPick (*this); } }
 		}
 		if (!bl) pressed = false;
 		return in;
@@ -238,7 +238,7 @@ public:
 			return;
 		}
 		if (tag == 20) { st.fill = AUTO; invalidate (true); return; }
-		if (tag == 21) { unsigned c = st.fill == AUTO ? 0xFFFFFF : st.fill; if (wk_color_dialog (&c, "Fill Colour")) { st.fill = c; invalidate (true); } return; }
+		if (tag == 21) { unsigned c = st.fill == AUTO ? 0xFFFFFF : st.fill; if (uk_color_dialog (&c, "Fill Colour")) { st.fill = c; invalidate (true); } return; }
 		if (tag == 1) { applyCode (); }
 		close (tag);
 	}
@@ -284,18 +284,18 @@ public:
 			if (dt) canvas.text (196, y + 8, m_cat == 6 ? "The date as:" : "The time as:", C_TEXT);
 			canvas.text (196, y + 194, "Format code", C_TEXT);
 			// the preview
-			wk_sunken (canvas, 196, y + 250, 404, 34, 5, 0xFFFFFF, false);
+			uk_sunken (canvas, 196, y + 250, 404, 34, 5, 0xFFFFFF, false);
 			Buf o; unsigned col = AUTO;
 			if (sampleNum) fmt_number (code, sample, o, &col, 30); else fmt_text (code, sampleText, o, &col);
 			text_at (canvas, pf, 206, y + 272, o.str (), col == AUTO ? 0 : col, 0, Rect { y + 252, 198, y + 282, 598 });
-			canvas.text (196, y + 290, "Preview (the cell's value)", wk_mix (C_TEXT, C_FACE, 110));
+			canvas.text (196, y + 290, "Preview (the cell's value)", uk_mix (C_TEXT, C_FACE, 110));
 			break;
 		}
 		case 1:
 		{
 			canvas.text (280, y + 6, "Style", C_TEXT); canvas.text (280, y + 42, "Size", C_TEXT); canvas.text (280, y + 78, "Underline", C_TEXT);
 			canvas.text (280, y + 144, "Colour", C_TEXT);
-			wk_sunken (canvas, 16, y + 250, width - 32, 50, 5, 0xFFFFFF, false);
+			uk_sunken (canvas, 16, y + 250, width - 32, 50, 5, 0xFFFFFF, false);
 			Style s2 = st;
 			fnt::Font *f = style_font (*b, s2, 100);
 			Look L; memset (&L, 0, sizeof L);
@@ -336,7 +336,7 @@ public:
 					if (e == 5) vline (canvas, bx + bw / 2 + t, by, by + bh, c, on ? stl : BS_THIN, cl);
 				}
 			}
-			canvas.text (bx, by + bh + 14, "Click an edge to set it or take it off.", wk_mix (C_TEXT, C_FACE, 110));
+			canvas.text (bx, by + bh + 14, "Click an edge to set it or take it off.", uk_mix (C_TEXT, C_FACE, 110));
 			break;
 		}
 		case 4:
@@ -346,7 +346,7 @@ public:
 			{
 				int x = x0 + (i % 10) * (cs + 6), yy = y + (i / 10) * (cs + 6);
 				canvas.fillRect (x, yy, cs, cs, g_cols[i]);
-				canvas.frameRect (x, yy, cs, cs, wk_mix (g_cols[i], 0, 60));
+				canvas.frameRect (x, yy, cs, cs, uk_mix (g_cols[i], 0, 60));
 				if (st.fill == g_cols[i]) { canvas.frameRect (x - 2, yy - 2, cs + 4, cs + 4, C_ACCENT); canvas.frameRect (x - 3, yy - 3, cs + 6, cs + 6, C_ACCENT); }
 			}
 			canvas.text (16, y + 290, "Sample:", C_TEXT);
@@ -503,10 +503,10 @@ public:
 		for (int i = 0; i < k; i++) text_at (canvas, fb, x, yy + 16 + i * 20, Buf_sub (sig, st[i], en[i]), C_TEXT, 0, Rect { 0, x, height, width - 12 });
 		yy += k * 20 + 20;
 		k = wrap_lines (f, d.help, (int) strlen (d.help), (width - x - 16) * 64, st, en, 16);
-		for (int i = 0; i < k; i++) { char t[200]; int l = imin (en[i] - st[i], 199); memcpy (t, d.help + st[i], l); t[l] = 0; text_at (canvas, f, x, yy + 14 + i * 19, t, wk_mix (C_TEXT, C_FACE, 40), 0, Rect { 0, x, height, width - 12 }); }
+		for (int i = 0; i < k; i++) { char t[200]; int l = imin (en[i] - st[i], 199); memcpy (t, d.help + st[i], l); t[l] = 0; text_at (canvas, f, x, yy + 14 + i * 19, t, uk_mix (C_TEXT, C_FACE, 40), 0, Rect { 0, x, height, width - 12 }); }
 		yy += k * 19 + 24;
 		char cat[64]; snprintf (cat, sizeof cat, "Category: %s", CAT_NAMES[d.cat]);
-		text_at (canvas, f, x, yy, cat, wk_mix (C_TEXT, C_FACE, 110), 0, Rect { 0, x, height, width - 12 });
+		text_at (canvas, f, x, yy, cat, uk_mix (C_TEXT, C_FACE, 110), 0, Rect { 0, x, height, width - 12 });
 	}
 	static const char *Buf_sub (const Buf &b, int a, int z) { static char t[256]; int l = imin (z - a, 255); memcpy (t, b.b + a, l); t[l] = 0; return t; }
 	void onButton (int tag) override { if (tag == 1 && lb->sel >= 0 && lb->sel < n) chosen = map[lb->sel]; close (tag); }
@@ -941,40 +941,40 @@ public:
 	bool allChecked () const { for (int i = 0; i < m_n; i++) if (!m_on[i]) return false; return true; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
 		fnt::Font *f = ui_font (12);
 		Rect all = { 0, 0, height - 1, width - 1 };
 		static const char *const SORTS[2] = { "Sort ascending (A to Z, 1 to 9)", "Sort descending (Z to A, 9 to 1)" };
 		for (int i = 0; i < 2; i++)
 		{
 			int y = 4 + i * RH;
-			if (m_hot == -2 - i) wk_hilite (canvas, 4, y, width - 8, RH, 5, true);
-			wk_glyph (canvas, i ? WKG_DOWN : WKG_UP, 18, y + RH / 2, 10, m_hot == -2 - i ? C_SEL_TEXT : 0x404040);
+			if (m_hot == -2 - i) uk_hilite (canvas, 4, y, width - 8, RH, 5, true);
+			uk_glyph (canvas, i ? WKG_DOWN : WKG_UP, 18, y + RH / 2, 10, m_hot == -2 - i ? C_SEL_TEXT : 0x404040);
 			text_at (canvas, f, 32, y + 15, SORTS[i], m_hot == -2 - i ? C_SEL_TEXT : C_FIELD_TEXT, 0, all);
 		}
 		int ly = listY ();
-		canvas.fillRect (8, ly - 5, width - 16, 1, wk_tone (C_FIELD, 110));
-		int sbw = m_n + 1 > m_rows ? WK_SBW + 2 : 0;
+		canvas.fillRect (8, ly - 5, width - 16, 1, uk_tone (C_FIELD, 110));
+		int sbw = m_n + 1 > m_rows ? UK_SBW + 2 : 0;
 		Rect lc = { ly, 4, ly + m_rows * RH - 1, width - 6 - sbw };
 		for (int r = 0; r < m_rows; r++)
 		{
 			int i = m_top + r, y = ly + r * RH;			// (0: "Select all", then the values)
 			if (i > m_n) break;
-			if (m_hot == i) wk_hilite (canvas, 4, y, width - 8 - sbw, RH, 5, false);
+			if (m_hot == i) uk_hilite (canvas, 4, y, width - 8 - sbw, RH, 5, false);
 			bool on = i == 0 ? allChecked () : m_on[i - 1];
-			wk_check_mark (canvas, 10, y + 4, 14, on, WK_NORMAL);
+			uk_check_mark (canvas, 10, y + 4, 14, on, UK_NORMAL);
 			const char *t = i == 0 ? "(Select all)" : m_v[i - 1].blank ? "(Empty)" : m_v[i - 1].t;
 			text_at (canvas, f, 32, y + 15, t, i == 0 || m_v[i - 1].blank ? 0x505050 : C_FIELD_TEXT, 0, lc);
 		}
-		if (sbw) { WkThumb t = wk_thumb (m_n + 1, m_rows, m_top, m_rows * RH); wk_draw_vscroll (canvas, width - WK_SBW - 4, ly, WK_SBW, m_rows * RH, t, C_FIELD); }
+		if (sbw) { UkThumb t = uk_thumb (m_n + 1, m_rows, m_top, m_rows * RH); uk_draw_vscroll (canvas, width - UK_SBW - 4, ly, UK_SBW, m_rows * RH, t, C_FIELD); }
 		// OK, Cancel
 		int by = height - 38;
 		for (int k = 0; k < 2; k++)
 		{
 			int bx = width - 180 + k * 90;
-			wk_framed (canvas, bx, by, 82, 28, C_FACE, m_hot == -10 - k ? WK_HOT : WK_NORMAL);
-			wk_text_c (canvas, bx, by, 82, 28, k ? "Cancel" : "OK", C_TEXT);
+			uk_framed (canvas, bx, by, 82, 28, C_FACE, m_hot == -10 - k ? UK_HOT : UK_NORMAL);
+			uk_text_c (canvas, bx, by, 82, 28, k ? "Cancel" : "OK", C_TEXT);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -984,12 +984,12 @@ public:
 		if (wheel && in) { m_top = iclamp (m_top - wheel, 0, imax (0, m_n + 1 - m_rows)); invalidate (true); return true; }
 		int hot = -1;
 		if (in && my >= 4 && my < 4 + 2 * RH) hot = -2 - (my - 4) / RH;
-		else if (in && my >= ly && my < ly + m_rows * RH && !(m_n + 1 > m_rows && mx >= width - WK_SBW - 6)) { hot = m_top + (my - ly) / RH; if (hot > m_n) hot = -1; }
+		else if (in && my >= ly && my < ly + m_rows * RH && !(m_n + 1 > m_rows && mx >= width - UK_SBW - 6)) { hot = m_top + (my - ly) / RH; if (hot > m_n) hot = -1; }
 		else if (in && my >= height - 38 && my < height - 10) { if (mx >= width - 180 && mx < width - 98) hot = -10; else if (mx >= width - 90 && mx < width - 8) hot = -11; }
 		if (hot != m_hot) { m_hot = hot; invalidate (true); }
-		if (m_n + 1 > m_rows && in && bl && mx >= width - WK_SBW - 6 && my >= ly && my < ly + m_rows * RH)
+		if (m_n + 1 > m_rows && in && bl && mx >= width - UK_SBW - 6 && my >= ly && my < ly + m_rows * RH)
 		{
-			m_top = (int) wk_thumb_pos (my - ly, m_rows * RH, m_n + 1, m_rows, wk_thumb (m_n + 1, m_rows, m_top, m_rows * RH).h);
+			m_top = (int) uk_thumb_pos (my - ly, m_rows * RH, m_n + 1, m_rows, uk_thumb (m_n + 1, m_rows, m_top, m_rows * RH).h);
 			invalidate (true);
 			return true;
 		}
@@ -1029,8 +1029,8 @@ public:
 	{
 		canvas.clear (C_FACE);
 		bool on = *cur == type;
-		wk_raised (canvas, 0, 0, width, height, 6, on ? wk_mix (C_BUTTON, C_ACCENT, 60) : C_BUTTON, hover ? WK_HOT : WK_NORMAL);
-		if (on) { wk_rline (canvas, 0, 0, width, height, 6, C_ACCENT); wk_rline (canvas, 1, 1, width - 2, height - 2, 5, C_ACCENT); }
+		uk_raised (canvas, 0, 0, width, height, 6, on ? uk_mix (C_BUTTON, C_ACCENT, 60) : C_BUTTON, hover ? UK_HOT : UK_NORMAL);
+		if (on) { uk_rline (canvas, 0, 0, width, height, 6, C_ACCENT); uk_rline (canvas, 1, 1, width - 2, height - 2, 5, C_ACCENT); }
 		VPath p;
 		int X = V (22), Y = V (6);
 		auto bar = [&] (int x, int y, int w, int h, unsigned c) { p.clear (); p.rect (X + V (x), Y + V (y), V (w), V (h)); p.fill (canvas, c); };
@@ -1045,7 +1045,7 @@ public:
 				int a[8] = { X + V (20), Y + V (18), X + V (20), Y + V (2), X + V (36), Y + V (18), X + V (20), Y + V (18) }; p.clear (); p.poly (a, 3); p.fill (canvas, SERIES[1]); break; }
 		case CH_SCATTER: { static const int P[12] = { 4, 28, 10, 20, 16, 24, 22, 12, 30, 14, 38, 6 }; for (int i = 0; i < 6; i++) { p.clear (); p.circle (X + V (P[2 * i]), Y + V (P[2 * i + 1]), V (3)); p.fill (canvas, SERIES[0]); } break; }
 		}
-		wk_text_c (canvas, 0, height - 20, width, 18, CHART_NAMES[type], C_BUTTON_TEXT, on ? 2 : 0);
+		uk_text_c (canvas, 0, height - 20, width, 18, CHART_NAMES[type], C_BUTTON_TEXT, on ? 2 : 0);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{

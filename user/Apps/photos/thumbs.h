@@ -17,11 +17,11 @@
 #include "Apps/photos/lib.h"
 #include "Apps/photos/imgops.h"
 #include "img/pngsave.hpp"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 namespace photos {
 
-using namespace wtk;
+using namespace uikit;
 
 #define PH_THUMBS PH_DIR "/thumbs"
 
@@ -40,7 +40,7 @@ static void round_corners (Canvas &cv, int x, int y, int w, int h, int r, unsign
 			{
 				if (px[k] < 0 || py[k] < 0 || px[k] >= cv.w || py[k] >= cv.h) continue;
 				unsigned &d = cv.px[(long) py[k] * cv.stride + px[k]];
-				d = wk_mix (d, bg, a);
+				d = uk_mix (d, bg, a);
 			}
 		}
 }
@@ -70,8 +70,8 @@ public:
 		if (px) blit (cv, px, x, y, w, h);
 		else
 		{	// (coming) a soft tone
-			unsigned c0 = wk_mix (bg, 0x808080, 60), c1 = wk_mix (bg, 0x808080, 90);
-			for (int j = 0; j < h; j++) cv.fillRect (x, y + j, w, 1, wk_mix (c0, c1, j * 256 / h));
+			unsigned c0 = uk_mix (bg, 0x808080, 60), c1 = uk_mix (bg, 0x808080, 90);
+			for (int j = 0; j < h; j++) cv.fillRect (x, y + j, w, 1, uk_mix (c0, c1, j * 256 / h));
 		}
 		if (radius > 0) round_corners (cv, x, y, w, h, radius, bg);
 	}

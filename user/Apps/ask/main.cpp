@@ -1,15 +1,15 @@
 //
 // ask -- a small system confirmation dialog, for apps whose own window is too small to
-// host a wtk modal (the dock). Run it (kapi_spawn) with args "Title|Message|Yes|No";
+// host a uikit modal (the dock). Run it (kapi_spawn) with args "Title|Message|Yes|No";
 // it shows a centred window and exits with 1 (Yes / Enter) or 0 (No / Esc / close box).
 // The caller polls kapi_proc_done and reads the answer with kapi_wait -- see ask.h.
 // A fifth field "=text" asks for a line of text (a field holding `text`): on OK the text
 // is written to stdout (the caller's pipe: ask_text_begin / ask_text_poll).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	440
 #define H	130
@@ -19,7 +19,7 @@ static Textbox *g_text;				// (asking for a line of text)
 // OK: the text (if asked) on stdout, then 1.
 static void yes (void)
 {
-	if (g_text && g_text->text[0]) kapi_stdout_write (g_text->text, (unsigned) wk_len (g_text->text));
+	if (g_text && g_text->text[0]) kapi_stdout_write (g_text->text, (unsigned) uk_len (g_text->text));
 	kapi_exit (1);
 }
 static void on_yes (Widget &) { yes (); }

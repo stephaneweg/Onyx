@@ -12,9 +12,9 @@
 #include "kapi.h"
 #include "applib.h"
 #include "launch.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
 #define W		330
@@ -220,13 +220,13 @@ public:
 	{
 		int h = height;
 		canvas.clear (0xFF000000);
-		wk_paint_alpha (true);
-		wk_rbox (canvas, 0, 0, W, h, 8, wk_tone (C_BOX, 140), C_BOX);
-		wk_rline (canvas, 0, 0, W, h, 8, C_LINE, 200);
-		wk_paint_alpha (false);
-		wk_text_l (canvas, 14, 8, g_fh, "Wi-Fi", C_TXT, 2);
+		uk_paint_alpha (true);
+		uk_rbox (canvas, 0, 0, W, h, 8, uk_tone (C_BOX, 140), C_BOX);
+		uk_rline (canvas, 0, 0, W, h, 8, C_LINE, 200);
+		uk_paint_alpha (false);
+		uk_text_l (canvas, 14, 8, g_fh, "Wi-Fi", C_TXT, 2);
 		canvas.text (14, 8 + g_fh + 2, g_status, g_join == FAILED ? 0x00C03030 : C_DIMT);
-		wk_etch_h (canvas, 10, HEAD - 3, W - 20, C_BOX);
+		uk_etch_h (canvas, 10, HEAD - 3, W - 20, C_BOX);
 		if (g_scanning) canvas.text (14, HEAD + 7, "Looking for networks...", C_DIMT);
 		else if (g_nnet == 0) canvas.text (14, HEAD + 7, "No network around", C_DIMT);
 		for (int i = 0; i < g_nnet; i++)
@@ -235,10 +235,10 @@ public:
 			int y = row_y (i);
 			bool hot = i == g_hover && i != g_open;
 			unsigned bg = i == g_open ? C_OPEN : hot ? C_ACCENT : C_BOX;
-			if (i == g_open) wk_rbox (canvas, 4, y, W - 8, ROW + EXTRA, 6, C_OPEN, C_OPEN);
-			else if (hot) wk_hilite (canvas, 4, y, W - 8, ROW, 6, true);
-			unsigned ink = hot ? wk_hilite_ink (true) : C_TXT, dim = hot ? ink : C_DIMT;
-			bars (canvas, 14, y + 8, n.level, ink, wk_mix (bg, ink, 64));
+			if (i == g_open) uk_rbox (canvas, 4, y, W - 8, ROW + EXTRA, 6, C_OPEN, C_OPEN);
+			else if (hot) uk_hilite (canvas, 4, y, W - 8, ROW, 6, true);
+			unsigned ink = hot ? uk_hilite_ink (true) : C_TXT, dim = hot ? ink : C_DIMT;
+			bars (canvas, 14, y + 8, n.level, ink, uk_mix (bg, ink, 64));
 			canvas.text (40, y + (ROW - g_fh) / 2, n.ssid, ink);
 			int rx = W - 14;
 			if (n.connected) { const char *t = "Connected"; rx -= slen (t) * g_fw; canvas.text (rx, y + (ROW - g_fh) / 2, t, hot ? ink : C_LINK); rx -= 8; }
@@ -246,7 +246,7 @@ public:
 			if (n.security != WLAN_SEC_OPEN) lock (canvas, rx - 10, y + 10, dim);
 		}
 		int fy = h - FOOT + 9;
-		wk_etch_h (canvas, 10, h - FOOT, W - 20, C_BOX);
+		uk_etch_h (canvas, 10, h - FOOT, W - 20, C_BOX);
 		canvas.text (14, fy, "Refresh", C_LINK);
 		const char *s = "Wi-Fi Settings...";
 		canvas.text (W - 14 - slen (s) * g_fw, fy, s, C_LINK);
@@ -294,14 +294,14 @@ static bool have_keys (void)
 
 int main (void)
 {
-	g_fw = wk_fw (); g_fh = wk_fh ();
+	g_fw = uk_fw (); g_fh = uk_fh ();
 	int sw = 1024, sh = 768; kapi_screen_size (&sw, &sh);
 	MenuRoot root (sw - W - 60, 34);				// under the Wi-Fi icon, near the right
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
-	C_BOX = C_FIELD; C_LINE = wk_tone (C_FACE, 70); C_TXT = C_FIELD_TEXT;	// (the theme is read)
-	C_DIMT = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_LINK = wk_tone (C_ACCENT, 84);
-	C_OPEN = wk_mix (C_FIELD, C_ACCENT, 56);
+	C_BOX = C_FIELD; C_LINE = uk_tone (C_FACE, 70); C_TXT = C_FIELD_TEXT;	// (the theme is read)
+	C_DIMT = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_LINK = uk_tone (C_ACCENT, 84);
+	C_OPEN = uk_mix (C_FIELD, C_ACCENT, 56);
 	root.setBg (C_OPEN);						// (the open row's widgets blend into it)
 	g_pass = new Textbox (14, 0, W - 132, g_fh + 10, "", on_connect); g_pass->password = true; root.addChild (g_pass);
 	g_show = new Checkbox (14, 0, 150, g_fh + 6, "Show password", false, on_show, C_OPEN); root.addChild (g_show);

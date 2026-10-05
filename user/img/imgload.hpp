@@ -1,5 +1,5 @@
 //
-// imgload.hpp -- load an image file into 0xAARRGGBB pixels, for the wtk apps (no newlib).
+// imgload.hpp -- load an image file into 0xAARRGGBB pixels, for the uikit apps (no newlib).
 //
 //   BMP, GIF (all frames + delays), PNG, JPEG  -> stb_image.h   (public domain, v2.30)
 //   WebP (lossy + lossless)                    -> simplewebp.h  (BSD-3, from libwebp)
@@ -11,10 +11,10 @@
 //
 // Pixels are 0xAARRGGBB (A = 255 opaque). The frames are allocated with new unsigned[]
 // (the app's heap), so an app may also keep one and release it with delete []. The codecs
-// are compiled ONCE into libwtk.a (wtk/imgload.cpp defines IMGLOAD_IMPLEMENTATION and is
+// are compiled ONCE into libuikit.a (uikit/imgload.cpp defines IMGLOAD_IMPLEMENTATION and is
 // built with FP/SIMD -- they use floating point): an app just includes this header, and
 // only the apps that call img_load link the codecs in. Their scratch memory also comes
-// from operator new[] (resolved in the app, like the rest of wtk) -- never from a private
+// from operator new[] (resolved in the app, like the rest of uikit) -- never from a private
 // umm heap, which would be a second heap inside the library.
 //
 #ifndef ONYX_IMGLOAD_HPP

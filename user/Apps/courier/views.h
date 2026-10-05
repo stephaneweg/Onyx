@@ -30,7 +30,7 @@ static inline void show (Widget *w, bool on) { if (w && w->hidden == on) { w->hi
 static inline int text_wrap (Canvas &cv, int x, int y, int w, const char *s, unsigned c, int style = 0, int lineGap = 4)
 {
 	Str line; const char *p = s;
-	int fh = wk_fh ();
+	int fh = uk_fh ();
 	while (*p)
 	{
 		const char *e = p; const char *cut = 0;
@@ -38,13 +38,13 @@ static inline int text_wrap (Canvas &cv, int x, int y, int w, const char *s, uns
 		while (*e && *e != '\n')
 		{
 			t.set (p, (int) (e - p + 1));
-			if (wk_tw (t.c (), style) > w && cut) break;
+			if (uk_tw (t.c (), style) > w && cut) break;
 			if (*e == ' ') cut = e;
 			e++;
 		}
 		const char *stop = (*e && *e != '\n' && cut) ? cut : e;
 		line.set (p, (int) (stop - p));
-		wk_text (cv, x, y, line.c (), c, style);
+		uk_text (cv, x, y, line.c (), c, style);
 		y += fh + lineGap;
 		p = stop;
 		if (*p == ' ' || *p == '\n') p++;
@@ -100,7 +100,7 @@ public:
 		AuthPanel &a = (AuthPanel &) p;
 		int lx = 20, lw = imin (260, p.width / 3), rx = lx + lw + 30, rw = imax (120, p.width - rx - 24);
 		place (a.type, lx, 44, lw, 30);
-		int y = 44 + wk_fh () + 8;
+		int y = 44 + uk_fh () + 8;
 		place (a.f1, rx + 110, 44 - 0, rw - 110, 30);
 		place (a.f2, rx + 110, 44 + 44, rw - 110, 30);
 		place (a.where, rx + 110, 44 + 88, imin (200, rw - 110), 30);
@@ -175,15 +175,15 @@ public:
 		if (r.status < 0) snprintf (st, sizeof st, "Error"); else snprintf (st, sizeof st, "%d %s", r.status, r.reason.c ());
 		human_size (sz, sizeof sz, r.bodyLen);
 		snprintf (tm, sizeof tm, "%d ms", r.msTotal);
-		int ws = wk_tw (sz), wt = wk_tw (tm), wst = wk_tw (st, 2);
+		int ws = uk_tw (sz), wt = uk_tw (tm), wst = uk_tw (st, 2);
 		// what fits: the status always, then the time, then the size
 		bool showT = wst + 16 + 22 + wt + 8 <= width, showS = showT && wst + 16 + 44 + wt + ws + 8 <= width;
-		if (showS) { x -= ws; text_v (canvas, x, 0, height, sz, on_field (C_OK)); x -= 22; wk_glyph (canvas, WKG_DOT, x + 11, height / 2, 4, c_faint ()); }
-		if (showT) { x -= wt; text_v (canvas, x, 0, height, tm, on_field (C_OK)); x -= 22; wk_glyph (canvas, WKG_DOT, x + 11, height / 2, 4, c_faint ()); }
+		if (showS) { x -= ws; text_v (canvas, x, 0, height, sz, on_field (C_OK)); x -= 22; uk_glyph (canvas, WKG_DOT, x + 11, height / 2, 4, c_faint ()); }
+		if (showT) { x -= wt; text_v (canvas, x, 0, height, tm, on_field (C_OK)); x -= 22; uk_glyph (canvas, WKG_DOT, x + 11, height / 2, 4, c_faint ()); }
 		x -= wst + 16;
 		if (x < 0) x = 0;
 		unsigned sc = status_color (r.status);
-		wk_rbox (canvas, x, (height - 24) / 2, wst + 16, 24, 6, wk_mix (C_FIELD, sc, 30), wk_mix (C_FIELD, sc, 30));
+		uk_rbox (canvas, x, (height - 24) / 2, wst + 16, 24, 6, uk_mix (C_FIELD, sc, 30), uk_mix (C_FIELD, sc, 30));
 		text_v (canvas, x + 8, 0, height, st, sc, 2);
 		m_tip.clear ();
 		m_tip.addf ("Connect %d ms, first byte %d ms, total %d ms; %d bytes received (headers %d)%s%s", r.msConnect, r.msFirst, r.msTotal, r.wireLen, r.headLen,
@@ -215,7 +215,7 @@ public:
 		}
 		char h[96]; snprintf (h, sizeof h, "%d / %d passed", pass, pass + fail);
 		text_at (canvas, 16, 10, h, fail ? on_field (C_BAD) : on_field (C_OK), 2);
-		if (cap) { char c[48]; snprintf (c, sizeof c, "%d variable%s set", cap, cap > 1 ? "s" : ""); text_at (canvas, 40 + wk_tw (h, 2), 10, c, c_dim ()); }
+		if (cap) { char c[48]; snprintf (c, sizeof c, "%d variable%s set", cap, cap > 1 ? "s" : ""); text_at (canvas, 40 + uk_tw (h, 2), 10, c, c_dim ()); }
 		int y = 38 - top * 32;
 		for (int i = 0; i < t->results.size (); i++, y += 32)
 		{
@@ -224,8 +224,8 @@ public:
 			TestResult &r = t->results[i];
 			unsigned c = r.capture ? on_field (0x000053B8) : r.pass ? on_field (C_OK) : on_field (C_BAD);
 			const char *tag = r.capture ? "SET" : r.pass ? "PASS" : "FAIL";
-			int tw_ = wk_tw (tag, 2) + 14;
-			wk_rbox (canvas, 16, y + 4, tw_, 22, 5, wk_mix (C_FIELD, c, 34), wk_mix (C_FIELD, c, 34));
+			int tw_ = uk_tw (tag, 2) + 14;
+			uk_rbox (canvas, 16, y + 4, tw_, 22, 5, uk_mix (C_FIELD, c, 34), uk_mix (C_FIELD, c, 34));
 			text_v (canvas, 23, y + 4, 22, tag, c, 2);
 			text_fit (canvas, 30 + tw_, y + 4, 22, width / 2 - 40 - tw_, r.name.c (), C_FIELD_TEXT);
 			text_fit (canvas, width / 2, y + 4, 22, width / 2 - 16, r.detail.c (), c_dim ());
@@ -258,7 +258,7 @@ public:
 		SendingView &s = (SendingView &) p;
 		draw_spinner (p.canvas, p.width / 2, p.height / 2 - 28, 16, s.phase, C_ACCENT, C_FIELD);
 		const char *t = "Sending request...";
-		text_at (p.canvas, (p.width - wk_tw (t, 2)) / 2, p.height / 2 + 2, t, c_dim (), 2);
+		text_at (p.canvas, (p.width - uk_tw (t, 2)) / 2, p.height / 2 + 2, t, c_dim (), 2);
 	}
 };
 
@@ -573,7 +573,7 @@ static void paint_headers (Pane &p)
 {
 	text_v (p.canvas, 18, 8, 26, "Headers", c_dim (), 2);
 	const char *h = "Sent too: User-Agent, Accept, Accept-Encoding, Host, Connection, the cookies of the jar";
-	text_fit (p.canvas, 30 + wk_tw ("Headers", 2), 8, 26, p.width - 170 - wk_tw ("Headers", 2), h, c_faint ());
+	text_fit (p.canvas, 30 + uk_tw ("Headers", 2), 8, 26, p.width - 170 - uk_tw ("Headers", 2), h, c_faint ());
 }
 static void lay_body (Pane &p)
 {
@@ -599,7 +599,7 @@ static void paint_body (Pane &p)
 	if (t && t->req.bodyMode == BODY_NONE)
 	{
 		const char *s = "This request does not have a body";
-		text_at (p.canvas, (p.width - wk_tw (s)) / 2, 44 + (p.height - 44) / 2 - 10, s, c_dim ());
+		text_at (p.canvas, (p.width - uk_tw (s)) / 2, 44 + (p.height - 44) / 2 - 10, s, c_dim ());
 	}
 }
 static void lay_binary (Pane &p) { place (ui.binaryPick, 0, 12, 130, 32); }
@@ -622,7 +622,7 @@ static void paint_tests (Pane &p)
 	text_v (p.canvas, 18, 6, 22, "Tests", c_dim (), 2);
 	text_fit (p.canvas, 18, 26, 26, p.width - 36, "Checked on each response:  status = 200,  json.data.id exists,  header.Content-Type contains json,  time < 800,  body contains ok", c_faint ());
 	text_v (p.canvas, 18, 58 + half - 16, 22, "Captures", c_dim (), 2);
-	text_fit (p.canvas, 30 + wk_tw ("Captures", 2), 58 + half - 16, 22, p.width - 60,
+	text_fit (p.canvas, 30 + uk_tw ("Captures", 2), 58 + half - 16, 22, p.width - 60,
 		  "variables set from the response, in the environment chosen (else the globals):  token  <-  json.access_token", c_faint ());
 }
 static void lay_settings (Pane &p)
@@ -682,8 +682,8 @@ static void paint_resp_empty (Pane &p)
 		int cy = p.height / 2 - 40;
 		const char *h = t->resp->cancelled ? "The request was cancelled" : "Could not send the request";
 		unsigned red = t->resp->cancelled ? c_dim () : on_field (C_BAD);
-		wk_glyph (p.canvas, t->resp->cancelled ? WKG_CLOSE : WKG_RING, p.width / 2, cy - 18, 22, red);
-		text_at (p.canvas, (p.width - wk_tw (h, 2)) / 2, cy + 6, h, red, 2);
+		uk_glyph (p.canvas, t->resp->cancelled ? WKG_CLOSE : WKG_RING, p.width / 2, cy - 18, 22, red);
+		text_at (p.canvas, (p.width - uk_tw (h, 2)) / 2, cy + 6, h, red, 2);
 		int w = imin (p.width - 60, 560);
 		text_wrap (p.canvas, (p.width - w) / 2, cy + 34, w, t->resp->error.c (), c_dim ());
 		return;

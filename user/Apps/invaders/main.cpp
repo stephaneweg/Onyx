@@ -6,10 +6,10 @@
 // game. P pauses. The four-note march and the effects play on the synth.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "game.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	448
 #define H	480
@@ -48,34 +48,34 @@ static void sprite (Canvas &c, int x, int y, const char *const *rows, int n, uns
 		for (int i = 0; rows[r][i]; i++)
 			if (rows[r][i] == '#') c.fillRect (x + i * sc, y + r * sc, sc, sc, col);
 }
-static int spr_w (const char *const *rows) { return wk_len (rows[0]); }
+static int spr_w (const char *const *rows) { return uk_len (rows[0]); }
 
 struct Shot { int x, y, vy; bool live; };
 
-// The theme's pieces (wtk/paint.h) round the space: the HUD a strip of the face (a dark edge
+// The theme's pieces (uikit/paint.h) round the space: the HUD a strip of the face (a dark edge
 // under it), a message box (a title strip, the face, an outline), a notice (a floating panel).
 static void hud_item (Canvas &c, int x, const char *label, long v)
 {
 	char n[16]; gitoa (v, n);
-	wk_text_l (c, x, 0, HUD - 1, label, C_TEXT);
-	wk_text_l (c, x + wk_text_w (label) + 6, 0, HUD - 1, n, C_TEXT, 2);
+	uk_text_l (c, x, 0, HUD - 1, label, C_TEXT);
+	uk_text_l (c, x + uk_text_w (label) + 6, 0, HUD - 1, n, C_TEXT, 2);
 }
-static int hud_w (const char *label, long v) { char n[16]; gitoa (v, n); return wk_text_w (label) + 6 + wk_text_w (n); }
+static int hud_w (const char *label, long v) { char n[16]; gitoa (v, n); return uk_text_w (label) + 6 + uk_text_w (n); }
 static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
 {
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (c, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
 }
 static void notice (Canvas &c, int cx, int cy, const char *s)
 {
-	int w = wk_text_w (s, 2) + 48, h = wk_fh () + 20, x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 8, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
-	wk_rline (c, x, y, w, h, 8, wk_tone (C_FACE, 70), 220);
-	wk_text_c (c, x, y, w, h, s, C_TEXT, 2);
+	int w = uk_text_w (s, 2) + 48, h = uk_fh () + 20, x = cx - w / 2, y = cy - h / 2;
+	uk_rbox (c, x, y, w, h, 8, uk_tone (C_FACE, 170), uk_tone (C_FACE, 126));
+	uk_rline (c, x, y, w, h, 8, uk_tone (C_FACE, 70), 220);
+	uk_text_c (c, x, y, w, h, s, C_TEXT, 2);
 }
 
 class Invaders : public GameView
@@ -318,8 +318,8 @@ public:
 		// a few stars
 		for (int i = 0; i < 40; i++) c.pixel ((i * 97 + 13) % W, HUD + (i * 57 + 29) % (GROUND - HUD), 0x00404060);
 		// HUD
-		wk_rbox (c, 0, 0, W, HUD - 1, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
-		c.fillRect (0, HUD - 1, W, 1, wk_tone (C_FACE, 70));
+		uk_rbox (c, 0, 0, W, HUD - 1, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 126));
+		c.fillRect (0, HUD - 1, W, 1, uk_tone (C_FACE, 70));
 		hud_item (c, 8, "Score", score);
 		hud_item (c, (W - hud_w ("Hi", hiscore)) / 2, "Hi", hiscore);
 		hud_item (c, W - 8 - hud_w ("Wave", wave + 1), "Wave", wave + 1);
@@ -368,7 +368,7 @@ int main (void)
 	root.view = g_game;
 	static Menu menu;
 	menu.menu ("Game");
-	menu.item ("New Game",       "^N", WK_CTRL ('N'), on_new);
+	menu.item ("New Game",       "^N", UK_CTRL ('N'), on_new);
 	menu.item ("Pause",          "P",  0,             on_pause);
 	menu.item ("Sound On / Off", "",   0,             on_sound);
 	menu.publish ();

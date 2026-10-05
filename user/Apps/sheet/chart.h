@@ -2,7 +2,7 @@
 // chart.h -- a chart drawn from its range: the series (a column or a row each: the first row / column
 // may name them and the categories), the axes with round steps, the grid, the legend, the title; column,
 // bar (horizontal), line, area (stacked or not), pie (the first series), scatter (the first column the x
-// values). Anti-aliased shapes (wtk/vpaint.h), texts from the card's fonts.
+// values). Anti-aliased shapes (uikit/vpaint.h), texts from the card's fonts.
 //
 #ifndef _sheet_chart_h
 #define _sheet_chart_h

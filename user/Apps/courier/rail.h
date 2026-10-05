@@ -29,21 +29,21 @@ static inline void draw_method_badge (Canvas &cv, int x, int y, int h, const cha
 	char b[8]; s_copy (b, method_short (m), sizeof b);
 	for (int i = 0; b[i]; i++) if (b[i] >= 'a' && b[i] <= 'z') b[i] -= 32;
 	unsigned c = method_color (m);
-	int tw_ = wk_tw (b, 2);
+	int tw_ = uk_tw (b, 2);
 	text_v (cv, x + w - tw_, y, h, b, c, 2);
 }
 // the rail's icons
 static inline void icon_collections (Canvas &cv, int cx, int cy, unsigned c)
 {
-	wk_rline (cv, cx - 10, cy - 6, 20, 15, 3, c);
-	wk_rbox (cv, cx - 10, cy - 9, 9, 4, 2, c, c, 255, WK_TL | WK_TR);
+	uk_rline (cv, cx - 10, cy - 6, 20, 15, 3, c);
+	uk_rbox (cv, cx - 10, cy - 9, 9, 4, 2, c, c, 255, UK_TL | UK_TR);
 	cv.fillRect (cx - 7, cy - 1, 14, 2, c);
 }
 static inline void icon_env (Canvas &cv, int cx, int cy, unsigned c)
 {
-	wk_rline (cv, cx - 11, cy - 6, 22, 13, 6, c);
-	wk_rline (cv, cx - 4, cy - 4, 9, 9, 4, c);
-	wk_glyph (cv, WKG_DOT, cx, cy, 4, c);
+	uk_rline (cv, cx - 11, cy - 6, 22, 13, 6, c);
+	uk_rline (cv, cx - 4, cy - 4, 9, 9, 4, c);
+	uk_glyph (cv, WKG_DOT, cx, cy, 4, c);
 }
 
 class Sidebar : public Widget
@@ -158,32 +158,32 @@ public:
 		canvas.fillRect (0, 0, RAIL_W, height, rail);
 		canvas.fillRect (RAIL_W, 0, 1, height, c_bgline ());
 		static const char *const NAMES[] = { "Collections", "Environments", "History" };
-		unsigned ink = wk_ink_for (rail);
+		unsigned ink = uk_ink_for (rail);
 		for (int i = 0; i < 3; i++)
 		{
 			int y = 10 + i * 66;
 			bool s = i == mode, h = i == m_hotRail;
-			if (s) { wk_rbox (canvas, 6, y, RAIL_W - 12, 60, 8, wk_mix (rail, C_ACCENT, 60), wk_mix (rail, C_ACCENT, 60)); }
-			else if (h) wk_rbox (canvas, 6, y, RAIL_W - 12, 60, 8, wk_mix (rail, ink, 20), wk_mix (rail, ink, 20));
-			unsigned c = s ? ink : wk_mix (rail, ink, 180);
+			if (s) { uk_rbox (canvas, 6, y, RAIL_W - 12, 60, 8, uk_mix (rail, C_ACCENT, 60), uk_mix (rail, C_ACCENT, 60)); }
+			else if (h) uk_rbox (canvas, 6, y, RAIL_W - 12, 60, 8, uk_mix (rail, ink, 20), uk_mix (rail, ink, 20));
+			unsigned c = s ? ink : uk_mix (rail, ink, 180);
 			int cx = RAIL_W / 2, cy = y + 22;
 			if (i == 0) icon_collections (canvas, cx, cy, c);
 			else if (i == 1) icon_env (canvas, cx, cy, c);
-			else wk_glyph (canvas, WKG_HISTORY, cx, cy, 20, c);
-			WkFaceScope fs (g_small);
-			int tw_ = wk_tw (NAMES[i]);
-			wk_text (canvas, cx - tw_ / 2, y + 38, NAMES[i], c, 0);
+			else uk_glyph (canvas, WKG_HISTORY, cx, cy, 20, c);
+			UkFaceScope fs (g_small);
+			int tw_ = uk_tw (NAMES[i]);
+			uk_text (canvas, cx - tw_ / 2, y + 38, NAMES[i], c, 0);
 		}
 		// the list's head
 		static const char *const TITLES[] = { "Collections", "Environments", "History" };
-		text_v (canvas, RAIL_W + 14, 10, 28, TITLES[mode], wk_ink_for (bg), 2);
+		text_v (canvas, RAIL_W + 14, 10, 28, TITLES[mode], uk_ink_for (bg), 2);
 		// the rows
 		int y0 = listY ();
-		canvas.fillRect (RAIL_W + 1, y0 - 4, width - RAIL_W - 1, 1, wk_mix (bg, wk_ink_for (bg), 30));
+		canvas.fillRect (RAIL_W + 1, y0 - 4, width - RAIL_W - 1, 1, uk_mix (bg, uk_ink_for (bg), 30));
 		Canvas clip; clip.adopt (canvas.px + y0 * canvas.stride, width, imax (1, height - y0), canvas.stride);
 		int vr = visRows ();
 		bool bar = rows.size () > vr;
-		int rw = width - (bar ? WK_SBW : 0);
+		int rw = width - (bar ? UK_SBW : 0);
 		for (int k = 0; k <= vr; k++)
 		{
 			int i = top + k;
@@ -192,19 +192,19 @@ public:
 		}
 		if (bar)
 		{
-			WkThumb t = wk_thumb (rows.size (), vr, top, height - y0);
-			wk_draw_vscroll (canvas, width - WK_SBW, y0, WK_SBW, height - y0, t, bg);
+			UkThumb t = uk_thumb (rows.size (), vr, top, height - y0);
+			uk_draw_vscroll (canvas, width - UK_SBW, y0, UK_SBW, height - y0, t, bg);
 		}
 	}
 	void drawRow (Canvas &cv, SideRow &r, int y, int rw, bool hot)
 	{
-		unsigned bg = c_panel (), ink = wk_ink_for (bg), dim = wk_mix (bg, ink, 150);
+		unsigned bg = c_panel (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 150);
 		int x = RAIL_W + 8;
 		bool cur = current (r);
 		if (r.kind != R_DAY && r.kind != R_EMPTY)
 		{
-			if (cur) wk_rbox (cv, x - 2, y + 1, rw - x - 4, ROW_H - 2, 6, wk_mix (bg, C_ACCENT, 60), wk_mix (bg, C_ACCENT, 60));
-			else if (hot) wk_rbox (cv, x - 2, y + 1, rw - x - 4, ROW_H - 2, 6, wk_mix (bg, ink, 18), wk_mix (bg, ink, 18));
+			if (cur) uk_rbox (cv, x - 2, y + 1, rw - x - 4, ROW_H - 2, 6, uk_mix (bg, C_ACCENT, 60), uk_mix (bg, C_ACCENT, 60));
+			else if (hot) uk_rbox (cv, x - 2, y + 1, rw - x - 4, ROW_H - 2, 6, uk_mix (bg, ink, 18), uk_mix (bg, ink, 18));
 		}
 		int more = hot && r.kind != R_DAY && r.kind != R_EMPTY ? 26 : 0;
 		switch (r.kind)
@@ -216,13 +216,13 @@ public:
 			bool open = coll ? ((Collection *) r.ptr)->root.open : ((Item *) r.ptr)->open;
 			if (!filter->text.empty ()) open = true;
 			int ix = x + r.depth * 16;
-			wk_glyph (cv, open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, ix + 8, y + ROW_H / 2, 8, dim);
-			if (coll) icon_collections (cv, ix + 28, y + ROW_H / 2 + 1, wk_mix (bg, C_ACCENT, 200));
+			uk_glyph (cv, open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, ix + 8, y + ROW_H / 2, 8, dim);
+			if (coll) icon_collections (cv, ix + 28, y + ROW_H / 2 + 1, uk_mix (bg, C_ACCENT, 200));
 			else
 			{
-				unsigned fc = wk_mix (bg, ink, 130);
-				wk_rline (cv, ix + 19, y + ROW_H / 2 - 5, 18, 13, 2, fc);
-				wk_rbox (cv, ix + 19, y + ROW_H / 2 - 8, 8, 4, 2, fc, fc, 255, WK_TL | WK_TR);
+				unsigned fc = uk_mix (bg, ink, 130);
+				uk_rline (cv, ix + 19, y + ROW_H / 2 - 5, 18, 13, 2, fc);
+				uk_rbox (cv, ix + 19, y + ROW_H / 2 - 8, 8, 4, 2, fc, fc, 255, UK_TL | UK_TR);
 			}
 			text_fit (cv, ix + 44, y, ROW_H, rw - ix - 44 - 8 - more, nm, ink, coll ? 2 : 0);
 			break;
@@ -242,14 +242,14 @@ public:
 			if (glob)
 			{
 				// a globe
-				unsigned gc = wk_mix (bg, ink, 150);
-				wk_rline (cv, x + 6, y + ROW_H / 2 - 7, 15, 15, 7, gc);
-				wk_rline (cv, x + 10, y + ROW_H / 2 - 7, 7, 15, 3, gc);
+				unsigned gc = uk_mix (bg, ink, 150);
+				uk_rline (cv, x + 6, y + ROW_H / 2 - 7, 15, 15, 7, gc);
+				uk_rline (cv, x + 10, y + ROW_H / 2 - 7, 7, 15, 3, gc);
 				cv.fillRect (x + 7, y + ROW_H / 2, 13, 1, gc);
 			}
-			else icon_env (cv, x + 14, y + ROW_H / 2, wk_mix (bg, ink, 150));
+			else icon_env (cv, x + 14, y + ROW_H / 2, uk_mix (bg, ink, 150));
 			text_fit (cv, x + 32, y, ROW_H, rw - x - 32 - 40 - more, nm, ink, glob ? 2 : 0);
-			if (!glob && r.idx == g_store.activeEnv) wk_glyph (cv, WKG_CHECK, rw - 20 - more, y + ROW_H / 2, 12, C_ACCENT);
+			if (!glob && r.idx == g_store.activeEnv) uk_glyph (cv, WKG_CHECK, rw - 20 - more, y + ROW_H / 2, 12, C_ACCENT);
 			break;
 		}
 		case R_DAY:
@@ -272,7 +272,7 @@ public:
 			draw_method_badge (cv, x, y, ROW_H, h.req.method.c (), 38);
 			char st[16]; st[0] = 0;
 			if (h.status > 0) snprintf (st, sizeof st, "%d", h.status); else if (h.status < 0) s_copy (st, "ERR", sizeof st);
-			int sw = st[0] ? wk_tw (st) + 6 : 0;
+			int sw = st[0] ? uk_tw (st) + 6 : 0;
 			const char *u = h.req.url.c ();
 			if (s_startsi (u, "https://")) u += 8; else if (s_startsi (u, "http://")) u += 7;
 			text_fit (cv, x + 46, y, ROW_H, rw - x - 46 - 10 - sw - more, u, ink);
@@ -284,15 +284,15 @@ public:
 			const char *a = mode == SB_COLL ? "No collections yet" : "Nothing sent yet";
 			const char *b = mode == SB_COLL ? "Save a request (Ctrl+S), click +, or import a Postman collection." : "The requests sent are listed here, by day.";
 			text_at (cv, x + 6, y + 14, a, ink, 2);
-			text_wrap (cv, x + 6, y + 14 + wk_fh () + 8, width - x - 20, b, dim);
+			text_wrap (cv, x + 6, y + 14 + uk_fh () + 8, width - x - 20, b, dim);
 			break;
 		}
 		}
 		if (more)
 		{
-			unsigned mc = wk_mix (bg, ink, m_hotMore ? 230 : 150);
+			unsigned mc = uk_mix (bg, ink, m_hotMore ? 230 : 150);
 			int mx = rw - 18;
-			for (int d = -5; d <= 5; d += 5) wk_rbox (cv, mx + d - 1, y + ROW_H / 2 - 1, 3, 3, 1, mc, mc);
+			for (int d = -5; d <= 5; d += 5) uk_rbox (cv, mx + d - 1, y + ROW_H / 2 - 1, 3, 3, 1, mc, mc);
 		}
 	}
 
@@ -306,7 +306,7 @@ public:
 		int h = mx > RAIL_W && my >= y0 ? top + (my - y0) / ROW_H : -1;
 		if (h >= rows.size ()) h = -1;
 		bool bar = rows.size () > visRows ();
-		int rw = width - (bar ? WK_SBW : 0);
+		int rw = width - (bar ? UK_SBW : 0);
 		bool more = h >= 0 && mx >= rw - 30 && mx < rw - 4;
 		if (h != m_hot || hr != m_hotRail || more != m_hotMore) { m_hot = h; m_hotRail = hr; m_hotMore = more; invalidate (true); }
 		// the history's full URL as a tooltip
@@ -316,10 +316,10 @@ public:
 		{
 			pressed = true;
 			if (hr >= 0 && bl) { setMode (hr); return true; }
-			if (bar && mx >= width - WK_SBW && my >= y0)
+			if (bar && mx >= width - UK_SBW && my >= y0)
 			{
-				WkThumb t = wk_thumb (rows.size (), visRows (), top, height - y0);
-				top = (int) wk_thumb_pos (my - y0, height - y0, rows.size (), visRows (), t.h); invalidate (true);
+				UkThumb t = uk_thumb (rows.size (), visRows (), top, height - y0);
+				top = (int) uk_thumb_pos (my - y0, height - y0, rows.size (), visRows (), t.h); invalidate (true);
 				return true;
 			}
 			if (h < 0) return true;

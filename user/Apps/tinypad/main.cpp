@@ -1,18 +1,18 @@
 //
-// tinypad/main.cpp -- small text editor (wtk). The file's path on a thin bar over a
+// tinypad/main.cpp -- small text editor (uikit). The file's path on a thin bar over a
 // multi-line Textarea body (with its own auto vertical scrollbar). Commands live in the
-// system menu bar (wtk::Menu): File > New (^N), Open... (^O), Save (^S), Save As...
-// (Open / Save As use the wtk file dialogs); Edit > Copy All, Paste (^V) -- the system
+// system menu bar (uikit::Menu): File > New (^N), Open... (^O), Save (^S), Save As...
+// (Open / Save As use the uikit file dialogs); Edit > Copy All, Paste (^V) -- the system
 // clipboard. The app name menu has Quit (^Q).
 // Drag & drop: a file dropped on the window is opened (after asking to save unsaved
 // changes -- docguard.h); dropped text is inserted at the caret.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit + wk_file_open / wk_file_save + Menu
+#include "uikit/uikit.h"		// recursive widget toolkit + uk_file_open / uk_file_save + Menu
 #include "clipboard.h"
 #include "docguard.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	560
 #define H	430
@@ -65,13 +65,13 @@ static void on_open (void)
 {
 	if (!doc_confirm (g_path, changed (), on_save)) return;
 	char path[100];
-	if (wk_file_open (path, sizeof path, "SD:/")) { set_path (path); load_file (); }
+	if (uk_file_open (path, sizeof path, "SD:/")) { set_path (path); load_file (); }
 	g_body->setFocus ();
 }
 static void on_save_as (void)
 {
 	char path[100];
-	if (wk_file_save (path, sizeof path, "SD:/", g_path)) { set_path (path); save_file (); }
+	if (uk_file_save (path, sizeof path, "SD:/", g_path)) { set_path (path); save_file (); }
 	g_body->setFocus ();
 }
 static void on_save (void) { if (g_path[0]) save_file (); else on_save_as (); }
@@ -120,17 +120,17 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New",        "^N", WK_CTRL ('N'), on_new);
-	menu.item ("Open...",    "^O", WK_CTRL ('O'), on_open);
+	menu.item ("New",        "^N", UK_CTRL ('N'), on_new);
+	menu.item ("Open...",    "^O", UK_CTRL ('O'), on_open);
 	menu.separator ();
-	menu.item ("Save",       "^S", WK_CTRL ('S'), on_save);
+	menu.item ("Save",       "^S", UK_CTRL ('S'), on_save);
 	menu.item ("Save As...", "",   0,             on_save_as);
 	menu.menu ("Edit");
-	menu.item ("Cut",        "^X", WK_CTRL ('X'), on_cut);
-	menu.item ("Copy",       "^C", WK_CTRL ('C'), on_copy);
-	menu.item ("Paste",      "^V", WK_CTRL ('V'), on_paste);
+	menu.item ("Cut",        "^X", UK_CTRL ('X'), on_cut);
+	menu.item ("Copy",       "^C", UK_CTRL ('C'), on_copy);
+	menu.item ("Paste",      "^V", UK_CTRL ('V'), on_paste);
 	menu.separator ();
-	menu.item ("Select All", "^A", WK_CTRL ('A'), on_select_all);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), on_select_all);
 	menu.item ("Copy All",   "",   0,             on_copy_all);
 	menu.publish ();
 

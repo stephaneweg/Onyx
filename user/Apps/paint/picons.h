@@ -1,5 +1,5 @@
 //
-// picons.h -- Paint's icons, 20 x 20, drawn from their geometry (wtk's VPath: anti-aliased, any colour
+// picons.h -- Paint's icons, 20 x 20, drawn from their geometry (uikit's VPath: anti-aliased, any colour
 // of the theme), and the shapes' little pictures for the gallery.
 //
 // MIT licence (Onyx).
@@ -11,7 +11,7 @@
 
 namespace pd {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- icons (20 x 20 at (x, y)) -------------------------------------------------------------------------------
 enum { I_PASTE, I_CUT, I_COPY, I_SELECT, I_CROP, I_RESIZE, I_ROTATE, I_PENCIL, I_FILL, I_ERASER, I_PICKER, I_ZOOM,
@@ -23,7 +23,7 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 {
 	VPath p;
 	int X = V (x), Y = V (y);
-	unsigned dim = wk_mix (ink, C_BG, 150);
+	unsigned dim = uk_mix (ink, C_BG, 150);
 	if (off) ink = dim;
 	int A = off ? 110 : 255;
 	auto pts = [&] (int *a, int n) { for (int i = 0; i < n; i++) { a[2 * i] = X + a[2 * i] * 16 / 16; a[2 * i + 1] = Y + a[2 * i + 1]; } };
@@ -34,7 +34,7 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 	case I_PASTE:
 		p.rrect (X + V (3), Y + V (3), V (14), V (16), V (2)); p.fill (cv, 0xB07A3E, A);
 		p.clear (); p.rect (X + V (5), Y + V (6), V (10), V (11)); p.fill (cv, 0xFFFFFF, A);
-		p.clear (); p.rrect (X + V (7), Y + V (1), V (6), V (4), V (1)); p.fill (cv, wk_mix (ink, 0x909090, 120), A);
+		p.clear (); p.rrect (X + V (7), Y + V (1), V (6), V (4), V (1)); p.fill (cv, uk_mix (ink, 0x909090, 120), A);
 		break;
 	case I_CUT:
 		L (V (6), V (2), V (12), V (13), 26); L (V (14), V (2), V (8), V (13), 26); p.fill (cv, ink);
@@ -134,9 +134,9 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 		{
 			p.clear ();
 			int a0 = 90 + i * 60, a1 = a0 + 62;
-			int t[8] = { X + V (10), Y + V (10), X + V (10) + V (8) * wk_cos (a0) / 16384, Y + V (10) - V (8) * wk_sin (a0) / 16384,
-				     X + V (10) + V (8) * wk_cos ((a0 + a1) / 2) / 16384, Y + V (10) - V (8) * wk_sin ((a0 + a1) / 2) / 16384,
-				     X + V (10) + V (8) * wk_cos (a1) / 16384, Y + V (10) - V (8) * wk_sin (a1) / 16384 };
+			int t[8] = { X + V (10), Y + V (10), X + V (10) + V (8) * uk_cos (a0) / 16384, Y + V (10) - V (8) * uk_sin (a0) / 16384,
+				     X + V (10) + V (8) * uk_cos ((a0 + a1) / 2) / 16384, Y + V (10) - V (8) * uk_sin ((a0 + a1) / 2) / 16384,
+				     X + V (10) + V (8) * uk_cos (a1) / 16384, Y + V (10) - V (8) * uk_sin (a1) / 16384 };
 			p.poly (t, 4); p.fill (cv, rb[i], A);
 		}
 		p.clear (); p.circle (X + V (10), Y + V (10), V (3)); p.fill (cv, 0xFFFFFF, A);
@@ -152,7 +152,7 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 		break;
 	}
 	case I_EYE: case I_EYEOFF:
-		p.ellipse (X + V (10), Y + V (10), V (8), V (5)); p.fill (cv, k == I_EYE ? 0xFFFFFF : wk_mix (C_BG, 0xFFFFFF, 90), A);
+		p.ellipse (X + V (10), Y + V (10), V (8), V (5)); p.fill (cv, k == I_EYE ? 0xFFFFFF : uk_mix (C_BG, 0xFFFFFF, 90), A);
 		p.clear (); { int e[] = { X + V (2), Y + V (10), X + V (6), Y + V (6), X + V (10), Y + V (5), X + V (14), Y + V (6), X + V (18), Y + V (10), X + V (14), Y + V (14), X + V (10), Y + V (15), X + V (6), Y + V (14) }; p.polyline (e, 8, 22, true); }
 		p.fill (cv, k == I_EYE ? ink : dim);
 		if (k == I_EYE) { p.clear (); p.circle (X + V (10), Y + V (10), V (3)); p.fill (cv, ink); }
@@ -163,7 +163,7 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 		for (int k2 = 0; k2 < 2; k2++)
 		{
 			int ox = k2 ? V (7) : V (2), oy = k2 ? V (7) : V (2);
-			p.clear (); p.rect (X + ox, Y + oy, V (11), V (11)); p.fill (cv, k2 ? 0xFFFFFF : wk_mix (C_BG, 0xFFFFFF, 120), A);
+			p.clear (); p.rect (X + ox, Y + oy, V (11), V (11)); p.fill (cv, k2 ? 0xFFFFFF : uk_mix (C_BG, 0xFFFFFF, 120), A);
 			p.clear (); int f[8] = { X + ox, Y + oy, X + ox + V (11), Y + oy, X + ox + V (11), Y + oy + V (11), X + ox, Y + oy + V (11) };
 			p.polyline (f, 4, 22, true); p.fill (cv, ink);
 		}
@@ -216,7 +216,7 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 	case I_LASSO:
 	{
 		int e[64]; int n = 0;
-		for (int a = 0; a < 360; a += 15) { e[2 * n] = X + V (10) + V (8) * wk_cos (a) / 16384; e[2 * n + 1] = Y + V (8) - V (5) * wk_sin (a) / 16384; n++; }
+		for (int a = 0; a < 360; a += 15) { e[2 * n] = X + V (10) + V (8) * uk_cos (a) / 16384; e[2 * n + 1] = Y + V (8) - V (5) * uk_sin (a) / 16384; n++; }
 		for (int i = 0; i < n; i += 2) { int j = (i + 1) % n; p.line (e[2 * i], e[2 * i + 1], e[2 * j], e[2 * j + 1], 20); }
 		L (V (6), V (12), V (5), V (16), 20); L (V (5), V (16), V (8), V (19), 20); p.fill (cv, ink);
 		break;
@@ -224,7 +224,7 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 	case I_WAND:
 	{
 		L (V (3), V (18), V (12), V (9), 40); p.fill (cv, ink);
-		p.clear (); int st[20]; for (int i = 0; i < 10; i++) { int r = i & 1 ? V (2) : V (5); st[2 * i] = X + V (14) + r * wk_cos (90 + i * 36) / 16384; st[2 * i + 1] = Y + V (6) - r * wk_sin (90 + i * 36) / 16384; }
+		p.clear (); int st[20]; for (int i = 0; i < 10; i++) { int r = i & 1 ? V (2) : V (5); st[2 * i] = X + V (14) + r * uk_cos (90 + i * 36) / 16384; st[2 * i + 1] = Y + V (6) - r * uk_sin (90 + i * 36) / 16384; }
 		p.poly (st, 10); p.fill (cv, 0xECB428, A);
 		break;
 	}
@@ -236,11 +236,11 @@ static void icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = fals
 		break;
 	}
 	case I_GRADIENT:
-		for (int i = 0; i < 14; i++) { p.clear (); p.rect (X + V (3 + i), Y + V (4), V (1) + 2, V (12)); p.fill (cv, wk_mix (0x3C6EC8, 0xFAC878, i * 256 / 13), A); }
+		for (int i = 0; i < 14; i++) { p.clear (); p.rect (X + V (3 + i), Y + V (4), V (1) + 2, V (12)); p.fill (cv, uk_mix (0x3C6EC8, 0xFAC878, i * 256 / 13), A); }
 		p.clear (); { int f[8] = { X + V (3), Y + V (4), X + V (17), Y + V (4), X + V (17), Y + V (16), X + V (3), Y + V (16) }; p.polyline (f, 4, 18, true); } p.fill (cv, ink);
 		break;
 	case I_FX:
-		wk_text_c (cv, x, y, 20, 20, "fx", ink, 2);
+		uk_text_c (cv, x, y, 20, 20, "fx", ink, 2);
 		break;
 	case I_PROPS:
 		for (int i = 0; i < 3; i++) { p.rect (X + V (3), Y + V (4 + i * 5), V (14), 24); p.circle (X + V (6 + i * 4), Y + V (4 + i * 5) + 12, V (2)); }
@@ -255,7 +255,7 @@ static void shape_icon (Canvas &cv, int k, int x, int y, int w, int h, unsigned 
 	int xy[512];
 	if (k == SH_LINE) { VPath p; p.line (V (x + 2), V (y + h - 3), V (x + w - 3), V (y + 2), 20); p.fill (cv, ink); return; }
 	if (k == SH_ELLIPSE) { VPath p; p.ellipse (V (x) + V (w) / 2, V (y) + V (h) / 2, V (w) / 2 - 24, V (h) / 2 - 24); p.hole (0, 0, 0); p.clear ();
-		int n = 48; int e[96]; for (int i = 0; i < n; i++) { int d = 360 * i / n; e[2 * i] = V (x) + V (w) / 2 + (V (w) / 2 - 24) * wk_cos (d) / 16384; e[2 * i + 1] = V (y) + V (h) / 2 - (V (h) / 2 - 24) * wk_sin (d) / 16384; }
+		int n = 48; int e[96]; for (int i = 0; i < n; i++) { int d = 360 * i / n; e[2 * i] = V (x) + V (w) / 2 + (V (w) / 2 - 24) * uk_cos (d) / 16384; e[2 * i + 1] = V (y) + V (h) / 2 - (V (h) / 2 - 24) * uk_sin (d) / 16384; }
 		p.polyline (e, n, 20, true); p.fill (cv, ink); return; }
 	int n = shape_points (k, x + 1, y + 1, x + w - 2, y + h - 2, xy);
 	VPath p;

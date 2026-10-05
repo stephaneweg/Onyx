@@ -5,7 +5,7 @@
 // remote desktop (rdpd sends a window again when it presents), follow.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 #define W	180
 #define H	110
@@ -58,7 +58,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "eyes");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 
 	int last[4] = { -1, -1, -1, -1 };
 	while (!should_exit ())
@@ -70,7 +70,7 @@ int main (void)
 		pupil (130, 55, 34, 12, mx, my, &p[2], &p[3]);
 		if (p[0] != last[0] || p[1] != last[1] || p[2] != last[2] || p[3] != last[3])
 		{
-			unsigned bg = wtk::C_BG;
+			unsigned bg = uikit::C_BG;
 			for (int i = 0; i < W * H; i++) fb[i] = bg;		// the theme's face
 			draw_eye (50, 55, 34, 12, p[0], p[1]);
 			draw_eye (130, 55, 34, 12, p[2], p[3]);

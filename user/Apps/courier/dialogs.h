@@ -1,5 +1,5 @@
 //
-// dialogs.h -- Courier's dialogs (wtk modals, drawn as the desktop's): a question, a name asked, Save
+// dialogs.h -- Courier's dialogs (uikit modals, drawn as the desktop's): a question, a name asked, Save
 // Request (its name, the collection and the folder it goes to), the code of the request (cURL, HTTP,
 // Python, JavaScript), Import (a file, or text pasted: a cURL command, a Postman collection /
 // environment), the cookie jar.
@@ -46,11 +46,11 @@ public:
 		while (*p)
 		{
 			const char *e = p, *cut = 0; Str t;
-			while (*e && *e != '\n') { t.set (p, (int) (e - p + 1)); if (wk_tw (t.c ()) > w && cut) break; if (*e == ' ') cut = e; e++; }
+			while (*e && *e != '\n') { t.set (p, (int) (e - p + 1)); if (uk_tw (t.c ()) > w && cut) break; if (*e == ' ') cut = e; e++; }
 			const char *stop = (*e && *e != '\n' && cut) ? cut : e;
 			lines++; p = stop; if (*p == ' ' || *p == '\n') p++;
 		}
-		return lines * (wk_fh () + 4);
+		return lines * (uk_fh () + 4);
 	}
 	bool onKey (long k) override { if (k == KEY_ENTER) { close (1); return true; } if (k == 27) { close (0); return true; } return false; }
 	void onDraw () override { drawBox (m_title); text_wrap (canvas, 24, titleH () + 20, width - 48, m_text, C_TEXT); }
@@ -147,7 +147,7 @@ public:
 		text_at (canvas, 20, titleH () + 16, "Request name", C_TEXT);
 		text_at (canvas, 20, titleH () + 86, "Save to", C_TEXT);
 		int ly = listY (), lh = height - 60 - ly;
-		wk_sunken (canvas, 20, ly, width - 40, lh, 5, C_FIELD, false);
+		uk_sunken (canvas, 20, ly, width - 40, lh, 5, C_FIELD, false);
 		if (!dests.size ()) { text_wrap (canvas, 36, ly + 16, width - 72, "There is no collection yet: make one (New Collection, below).", c_dim ()); return; }
 		Canvas clip; clip.adopt (canvas.px + (ly + 2) * canvas.stride + 22, width - 44, lh - 4, canvas.stride);
 		for (int k = 0; k < rows () + 1; k++)
@@ -155,11 +155,11 @@ public:
 			int i = top + k; if (i >= dests.size ()) break;
 			int y = k * 30;
 			Dest &d = dests[i];
-			if (i == sel) wk_hilite (clip, 2, y + 1, clip.w - 4, 28, 5, true);
-			unsigned ink = i == sel ? wk_hilite_ink (true) : C_FIELD_TEXT;
+			if (i == sel) uk_hilite (clip, 2, y + 1, clip.w - 4, 28, 5, true);
+			unsigned ink = i == sel ? uk_hilite_ink (true) : C_FIELD_TEXT;
 			int x = 10 + d.depth * 18;
 			if (d.depth == 0) icon_collections (clip, x + 10, y + 15, ink);
-			else { wk_rline (clip, x + 1, y + 10, 18, 13, 2, ink); wk_rbox (clip, x + 1, y + 7, 8, 4, 2, ink, ink, 255, WK_TL | WK_TR); }
+			else { uk_rline (clip, x + 1, y + 10, 18, 13, 2, ink); uk_rbox (clip, x + 1, y + 7, 8, 4, 2, ink, ink, 255, UK_TL | UK_TR); }
 			text_fit (clip, x + 28, y, 30, clip.w - x - 34, d.depth == 0 ? d.coll->name.c () : d.folder->name.c (), ink, d.depth == 0 ? 2 : 0);
 		}
 	}
@@ -246,7 +246,7 @@ public:
 	void pickFile ()
 	{
 		char p[256];
-		if (!wk_file_open (p, sizeof p, "SD:/")) return;
+		if (!uk_file_open (p, sizeof p, "SD:/")) return;
 		path = p;
 		close (2);
 	}

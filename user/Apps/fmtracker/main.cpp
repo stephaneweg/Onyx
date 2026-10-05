@@ -26,15 +26,15 @@
 #include "applib.h"
 #include "fsutil.h"
 #include "notify.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "ft/wtkface.h"			// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "ft/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "fms.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	980
 #define H	660
@@ -51,7 +51,7 @@ using namespace wtk;
 #define COL_W	((W - SIDE_W - SB_W - NUM_W) / FMS_CH)
 #define GRID_W	(NUM_W + FMS_CH * COL_W)
 #define GRID_H	(H - ST_H - PIANO_H - GRID_Y)
-#define ROW_H	(wk_fh () + 2)
+#define ROW_H	(uk_fh () + 2)
 #define INS_DIR	"SD:/apps/fmtracker.app/ins"
 #define SONG_DIR "SD:/music/fms"
 #define TEST_VOICE 15
@@ -69,8 +69,8 @@ static int g_vu[FMS_CH]; static unsigned char g_snd[FMS_CH]; static unsigned g_v
 
 // the channels' colours (their headers' strip, the piano's lit keys)
 static const unsigned CH_COL[FMS_CH] = { 0xC98A36, 0xBC5069, 0x5E9F58, 0xC85C40, 0x8E6CC4, 0x4A9FB0, 0xB5A040, 0x7484C8 };
-static unsigned col_side () { return wk_mix (C_BG, C_FIELD, 70); }		// the side panel (as the Media Player's)
-static unsigned f_mix (int t) { return wk_mix (C_FIELD, C_FIELD_TEXT, t); }	// a shade of the grid's background
+static unsigned col_side () { return uk_mix (C_BG, C_FIELD, 70); }		// the side panel (as the Media Player's)
+static unsigned f_mix (int t) { return uk_mix (C_FIELD, C_FIELD_TEXT, t); }	// a shade of the grid's background
 
 class Grid; class ChanHeader; class PatList; class Piano;
 static Grid *g_grid = 0;
@@ -101,7 +101,7 @@ class Heading : public Label
 {
 public:
 	Heading (int l, int t, int w, int h, const char *s, unsigned bg_) : Label (l, t, w, h, s, C_TEXT, bg_) {}
-	void onDraw () override { canvas.clear (bg); wk_text_l (canvas, 2, 0, height, text, wk_mix (bg, C_TEXT, 150), 2); }
+	void onDraw () override { canvas.clear (bg); uk_text_l (canvas, 2, 0, height, text, uk_mix (bg, C_TEXT, 150), 2); }
 };
 
 // The status bar: the face's gradient, an etched line along its top.
@@ -111,9 +111,9 @@ public:
 	StatusBar (int l, int t, int w, int h) : Label (l, t, w, h, "", C_TEXT, C_FACE) {}
 	void onDraw () override
 	{
-		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		wk_etch_h (canvas, 0, 0, width, C_FACE);
-		wk_text_l (canvas, 8, 2, height - 2, text, fg);
+		uk_rbox (canvas, 0, 0, width, height, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
+		uk_etch_h (canvas, 0, 0, width, C_FACE);
+		uk_text_l (canvas, 8, 2, height - 2, text, fg);
 	}
 };
 
@@ -300,16 +300,16 @@ public:
 		{
 			int x = k * cellW (), w = cellW () - 6;
 			bool on = k == sel;
-			unsigned bg = on ? wk_mix (C_FIELD, C_ACCENT, 50) : C_FIELD;
-			wk_rbox (canvas, x, 0, w, height, 5, bg, bg);
-			wk_rline (canvas, x, 0, w, height, 5, on || k == hot ? C_ACCENT : wk_tone (C_FACE, 72), on ? 255 : 200);
-			if (on) wk_rline (canvas, x + 1, 1, w - 2, height - 2, 4, C_ACCENT, 255);
+			unsigned bg = on ? uk_mix (C_FIELD, C_ACCENT, 50) : C_FIELD;
+			uk_rbox (canvas, x, 0, w, height, 5, bg, bg);
+			uk_rline (canvas, x, 0, w, height, 5, on || k == hot ? C_ACCENT : uk_tone (C_FACE, 72), on ? 255 : 200);
+			if (on) uk_rline (canvas, x + 1, 1, w - 2, height - 2, 4, C_ACCENT, 255);
 			int mid = height / 2, amp = height / 2 - 6, py = -1;
 			for (int i = 0; i <= w - 12; i++)			// two periods
 			{
 				int y = mid - (int) (wave_at (k, i * 4 * M_PI / (w - 12)) * amp);
 				int a = py < 0 ? y : (py < y ? py : y), b = py < 0 ? y : (py > y ? py : y);
-				canvas.fillRect (x + 6 + i, a, 2, b - a + 2, on ? C_ACCENT : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+				canvas.fillRect (x + 6 + i, a, 2, b - a + 2, on ? C_ACCENT : uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 				py = y;
 			}
 		}
@@ -469,8 +469,8 @@ public:
 	// is added to it; each at its volume -- and, while Test plays, at its envelope's level then.
 	void output_wave (int x, int y, int w, int h)
 	{
-		wk_sunken (canvas, x, y, w, h, 5, C_FIELD);
-		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 40);
+		uk_sunken (canvas, x, y, w, h, 5, C_FIELD);
+		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 40);
 		int mid = y + h / 2, amp = h / 2 - 7;
 		canvas.fillRect (x + 6, mid, w - 12, 1, dim);
 		double t = anim ? (kapi_get_ticks () - animStart) / 100.0 : -1;
@@ -504,9 +504,9 @@ public:
 		if (tag == B_LOAD)
 		{
 			char p[256];
-			if (!wk_file_open (p, sizeof p, INS_DIR)) return;
+			if (!uk_file_open (p, sizeof p, INS_DIR)) return;
 			FmsIns in;
-			if (read_fmi (p, &in)) { ins = in; show (); } else wk_messagebox ("Instrument", "Not an .FMI instrument file.", MB_OK);
+			if (read_fmi (p, &in)) { ins = in; show (); } else uk_messagebox ("Instrument", "Not an .FMI instrument file.", MB_OK);
 			return;
 		}
 		if (tag == B_SAVE)
@@ -514,9 +514,9 @@ public:
 			collect ();
 			char def[20]; snprintf (def, sizeof def, "%.8s.FMI", ins.name[0] ? ins.name : "INSTR");
 			char p[256];
-			if (!wk_file_save (p, sizeof p, INS_DIR, def)) return;
+			if (!uk_file_save (p, sizeof p, INS_DIR, def)) return;
 			char t[600]; int len = fmi_write (&ins, t);
-			if (kapi_save_file (p, t, (unsigned) len) < 0) wk_messagebox ("Instrument", "Cannot write the file.", MB_OK);
+			if (kapi_save_file (p, t, (unsigned) len) < 0) uk_messagebox ("Instrument", "Cannot write the file.", MB_OK);
 			return;
 		}
 		if (tag == B_OK) collect ();
@@ -529,29 +529,29 @@ public:
 	// (or falling on, when it is not held), then the release once the key is let go.
 	void envelope (int o, int x, int y, int w, int h)
 	{
-		wk_sunken (canvas, x, y, w, h, 5, C_FIELD);
+		uk_sunken (canvas, x, y, w, h, 5, C_FIELD);
 		int ar = ins.p[P_AR + o] & 15, dr = ins.p[P_DR + o] & 15, slv = ins.p[P_SL + o] & 15, rr = ins.p[P_RR + o] & 15, tl = ins.p[P_TL + o] & 63;
 		int bot = y + h - 7, top = y + 8 + tl * (h - 22) / 63;
 		int sy = top + slv * (bot - top) / 15;
 		int xa = x + 10 + (15 - ar) * 3, xd = xa + 6 + (15 - dr) * 3, xs = xd + 70, xr = xs + 6 + (15 - rr) * 4;
 		if (xr > x + w - 8) xr = x + w - 8;
 		int ey = ins.p[P_EGT + o] ? sy : sy + (bot - sy) / 2;	// (not held: it goes on falling)
-		unsigned c = C_ACCENT, dim = wk_mix (C_FIELD, C_FIELD_TEXT, 40);
+		unsigned c = C_ACCENT, dim = uk_mix (C_FIELD, C_FIELD_TEXT, 40);
 		canvas.fillRect (x + 6, bot + 1, w - 12, 1, dim);
 		canvas.fillRect (xs, y + 6, 1, bot - y - 5, dim);		// the key let go
 		seg (x + 10, bot, xa, top, c); seg (xa, top, xd, sy, c); seg (xd, sy, xs, ey, c); seg (xs, ey, xr, bot, c);
 	}
 	void box (int x, int y, const char *s)			// an operator in the algorithm's drawing
 	{
-		wk_rbox (canvas, x, y, 50, 22, 4, C_FIELD, C_FIELD);
-		wk_rline (canvas, x, y, 50, 22, 4, wk_tone (C_FACE, 72), 220);
-		wk_text_c (canvas, x, y, 50, 22, s, C_FIELD_TEXT);
+		uk_rbox (canvas, x, y, 50, 22, 4, C_FIELD, C_FIELD);
+		uk_rline (canvas, x, y, 50, 22, 4, uk_tone (C_FACE, 72), 220);
+		uk_text_c (canvas, x, y, 50, 22, s, C_FIELD_TEXT);
 	}
 	void onDraw () override
 	{
 		char t[48]; snprintf (t, sizeof t, "Instrument of channel %d", ch + 1);
 		drawBox (t);
-		unsigned dim = wk_mix (C_FACE, C_TEXT, 150);
+		unsigned dim = uk_mix (C_FACE, C_TEXT, 150);
 		// the algorithm
 		int ax = 276, ay = yB + 2;
 		if (ins.p[P_CON] & 1)			// additive: both to the output
@@ -559,31 +559,31 @@ public:
 			box (ax, ay - 12, "Op 1"); box (ax, ay + 12, "Op 2");
 			seg (ax + 50, ay - 1, ax + 70, ay - 1, C_ACCENT); seg (ax + 50, ay + 23, ax + 70, ay + 23, C_ACCENT);
 			seg (ax + 70, ay - 1, ax + 70, ay + 23, C_ACCENT); seg (ax + 70, ay + 11, ax + 92, ay + 11, C_ACCENT);
-			wk_text_l (canvas, ax + 98, ay, 22, "out", dim);
+			uk_text_l (canvas, ax + 98, ay, 22, "out", dim);
 		}
 		else
 		{
 			box (ax, ay, "Op 1"); box (ax + 70, ay, "Op 2");
 			seg (ax + 50, ay + 11, ax + 70, ay + 11, C_ACCENT); seg (ax + 120, ay + 11, ax + 136, ay + 11, C_ACCENT);
-			wk_text_l (canvas, ax + 140, ay, 22, "out", dim);
+			uk_text_l (canvas, ax + 140, ay, 22, "out", dim);
 		}
-		snprintf (t, sizeof t, "%d", ins.p[P_FB] & 7); wk_text_l (canvas, 624, yB + 3, 20, t, C_TEXT);
+		snprintf (t, sizeof t, "%d", ins.p[P_FB] & 7); uk_text_l (canvas, 624, yB + 3, 20, t, C_TEXT);
 		for (int o = 0; o < 2; o++)
 		{
 			int x = colX (o);
-			wk_text_l (canvas, x, yO, 20, o ? ((ins.p[P_CON] & 1) ? "Operator 2" : "Operator 2 - carrier (what is heard)")
+			uk_text_l (canvas, x, yO, 20, o ? ((ins.p[P_CON] & 1) ? "Operator 2" : "Operator 2 - carrier (what is heard)")
 							   : ((ins.p[P_CON] & 1) ? "Operator 1" : "Operator 1 - modulator (the timbre)"), C_TEXT, 2);
 			envelope (o, x, yO + 58, COLW, 66);
 			for (int r = 0; r < 7; r++)
 			{
 				if (r == 5) { int m = ins.p[P_MULT + o] & 15; if (m) snprintf (t, sizeof t, "x%d", m); else snprintf (t, sizeof t, "x1/2"); }
 				else snprintf (t, sizeof t, "%d", sl[o][r]->value);
-				wk_text_l (canvas, x + COLW - 30, yS + r * 24, 20, t, C_TEXT);
+				uk_text_l (canvas, x + COLW - 30, yS + r * 24, 20, t, C_TEXT);
 			}
 		}
-		wk_text_l (canvas, 16, yS + 7 * 24 + 58, 20, anim ? "The sound's wave, as the note sounds" : "The sound's wave (two periods, at full volume)", C_TEXT, 2);
+		uk_text_l (canvas, 16, yS + 7 * 24 + 58, 20, anim ? "The sound's wave, as the note sounds" : "The sound's wave (two periods, at full volume)", C_TEXT, 2);
 		output_wave (16, yS + 7 * 24 + 80, width - 32, 62);
-		wk_text_l (canvas, 118, height - 42, 30, "Test plays it: the wave moves with the note.", dim);
+		uk_text_l (canvas, 118, height - 42, 30, "Test plays it: the wave moves with the note.", dim);
 	}
 };
 static void dlg_btn (Widget &w) { ((Modal *) w.parent)->onButton (w.tag); }
@@ -633,26 +633,26 @@ public:
 	}
 	void pill (int x, const char *s, bool on, unsigned c, bool hot)
 	{
-		if (on) wk_rbox (canvas, x, 26, 20, 16, 4, wk_tone (c, 150), c);
-		else wk_raised (canvas, x, 26, 20, 16, 4, C_BUTTON, hot ? WK_HOT : WK_NORMAL);
-		wk_text_c (canvas, x, 26, 20, 16, s, on ? 0x00FFFFFFu : C_BUTTON_TEXT, on ? 2 : 0);
+		if (on) uk_rbox (canvas, x, 26, 20, 16, 4, uk_tone (c, 150), c);
+		else uk_raised (canvas, x, 26, 20, 16, 4, C_BUTTON, hot ? UK_HOT : UK_NORMAL);
+		uk_text_c (canvas, x, 26, 20, 16, s, on ? 0x00FFFFFFu : C_BUTTON_TEXT, on ? 2 : 0);
 	}
 	void onDraw () override
 	{
 		bool muted = pat ().mute[ch] != 0, quiet = silenced (ch), cur = g_ch == ch;
-		unsigned bg = cur ? wk_mix (C_BG, C_ACCENT, 46) : C_BG;
+		unsigned bg = cur ? uk_mix (C_BG, C_ACCENT, 46) : C_BG;
 		canvas.clear (bg);
 		canvas.fillRect (0, 0, width - 1, 3, CH_COL[ch]);
-		canvas.fillRect (width - 1, 0, 1, height, wk_tone (C_BG, 100));
-		if (part == 0 || down == 0) wk_raised (canvas, 3, 5, width - 8, 19, 4, C_BUTTON, down == 0 ? WK_PRESSED : WK_HOT);
+		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 100));
+		if (part == 0 || down == 0) uk_raised (canvas, 3, 5, width - 8, 19, 4, C_BUTTON, down == 0 ? UK_PRESSED : UK_HOT);
 		char t[24], f[24]; snprintf (t, sizeof t, "%d  %s", ch + 1, g_song.ins[ch].name[0] ? g_song.ins[ch].name : "(none)");
-		wk_text_fit (t, width - 16, f, sizeof f, 2);
-		wk_text_l (canvas, 8, 5, 19, f, quiet ? C_DIS : C_TEXT, 2);
+		uk_text_fit (t, width - 16, f, sizeof f, 2);
+		uk_text_l (canvas, 8, 5, 19, f, quiet ? C_DIS : C_TEXT, 2);
 		pill (4, "M", muted, 0x00D9534A, part == 1);
 		pill (26, "S", g_solo == ch, 0x00D08A1E, part == 2);
 		int vx = 52, vw = width - vx - 8, fill = quiet ? 0 : g_vu[ch] * vw / 100;
-		wk_rbox (canvas, vx, 31, vw, 6, 3, wk_tone (C_BG, 100), wk_tone (C_BG, 112));
-		if (fill > 2) wk_rbox (canvas, vx, 31, fill, 6, 3, 0x0062B87A, 0x004A9E62);
+		uk_rbox (canvas, vx, 31, vw, 6, 3, uk_tone (C_BG, 100), uk_tone (C_BG, 112));
+		if (fill > 2) uk_rbox (canvas, vx, 31, fill, 6, 3, 0x0062B87A, 0x004A9E62);
 	}
 	void mute () { pat ().mute[ch] ^= 1; g_dirty = true; if (pat ().mute[ch]) note_off (ch); redraw (); }
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
@@ -714,7 +714,7 @@ public:
 		FmsPattern &p = pat ();
 		int rh = ROW_H, vis = visible_rows ();
 		int r0, r1, c0, c1; sel_rect (r0, r1, c0, c1);
-		unsigned playBg = wk_mix (C_FIELD, 0x0048B068, 96), line = f_mix (26), gutter = wk_mix (C_FIELD, C_BG, 150);
+		unsigned playBg = uk_mix (C_FIELD, 0x0048B068, 96), line = f_mix (26), gutter = uk_mix (C_FIELD, C_BG, 150);
 		canvas.clear (C_FIELD);
 		canvas.fillRect (0, 0, NUM_W, height, gutter);
 		for (int i = 0; i < vis + 1; i++)
@@ -723,28 +723,28 @@ public:
 			if (r >= p.rows) break;
 			bool playRow = g_playing && g_playPat == g_pat && r == g_shownRow;
 			unsigned rowBg = playRow ? playBg : r % 16 == 0 ? f_mix (30) : r % 4 == 0 ? f_mix (14) : C_FIELD;
-			if (r == g_row && !playRow) rowBg = wk_mix (rowBg, C_ACCENT, 36);
+			if (r == g_row && !playRow) rowBg = uk_mix (rowBg, C_ACCENT, 36);
 			canvas.fillRect (NUM_W, y, width - NUM_W, rh, rowBg);
-			if (playRow || r == g_row) canvas.fillRect (0, y, NUM_W, rh, wk_mix (gutter, playRow ? 0x0048B068u : C_ACCENT, 90));
+			if (playRow || r == g_row) canvas.fillRect (0, y, NUM_W, rh, uk_mix (gutter, playRow ? 0x0048B068u : C_ACCENT, 90));
 			char num[8]; snprintf (num, sizeof num, "%02d", r);
-			wk_text_l (canvas, NUM_W - 8 - wk_text_w (num, r % 4 == 0 ? 2 : 0), y, rh, num, r % 4 == 0 ? C_FIELD_TEXT : f_mix (120), r % 4 == 0 ? 2 : 0);
+			uk_text_l (canvas, NUM_W - 8 - uk_text_w (num, r % 4 == 0 ? 2 : 0), y, rh, num, r % 4 == 0 ? C_FIELD_TEXT : f_mix (120), r % 4 == 0 ? 2 : 0);
 			for (int c = 0; c < FMS_CH; c++)
 			{
 				int x = NUM_W + c * COL_W;
 				bool cur = r == g_row && c == g_ch, in = g_sel && r >= r0 && r <= r1 && c >= c0 && c <= c1;
-				if (in && !cur) canvas.fillRect (x, y, COL_W, rh, wk_mix (rowBg, C_ACCENT, 96));
+				if (in && !cur) canvas.fillRect (x, y, COL_W, rh, uk_mix (rowBg, C_ACCENT, 96));
 				canvas.fillRect (x, y, 1, rh, line);
-				if (cur) wk_hilite (canvas, x + 1, y, COL_W - 1, rh, 4, hasFocus);	// the cursor: the selection's look
+				if (cur) uk_hilite (canvas, x + 1, y, COL_W - 1, rh, 4, hasFocus);	// the cursor: the selection's look
 				unsigned char v = p.n[c * p.rows + r];
 				char t[4]; fms_note_text (v, t);
 				bool note = (v & 7) && !(v & 128);
 				unsigned col = silenced (c) ? f_mix (70) : note ? C_FIELD_TEXT : f_mix (76);
-				if (cur) col = wk_hilite_ink (hasFocus);
-				wk_text_c (canvas, x, y, COL_W, rh, t, col, note && !cur ? 2 : 0);
+				if (cur) col = uk_hilite_ink (hasFocus);
+				uk_text_c (canvas, x, y, COL_W, rh, t, col, note && !cur ? 2 : 0);
 			}
 		}
 		canvas.fillRect (NUM_W - 1, 0, 1, height, line);
-		wk_rline (canvas, 0, 0, width, height, 0, hasFocus ? C_ACCENT : wk_tone (C_FACE, 72), hasFocus ? 255 : 210);
+		uk_rline (canvas, 0, 0, width, height, 0, hasFocus ? C_ACCENT : uk_tone (C_FACE, 72), hasFocus ? 255 : 210);
 	}
 	bool cellAt (int mx, int my, int &r, int &c)
 	{
@@ -838,14 +838,14 @@ public:
 		{
 			int i = top_ + k, y = k * ROW;
 			bool on = i == g_pat;
-			if (on) wk_hilite (canvas, 2, y + 1, width - 4, ROW - 2, 4, true);
-			else if (i == hot) wk_rbox (canvas, 2, y + 1, width - 4, ROW - 2, 4, wk_tone (bg, 112), wk_tone (bg, 112));
-			unsigned ink = on ? wk_hilite_ink (true) : C_TEXT, dim = on ? ink : wk_mix (bg, C_TEXT, 140);
+			if (on) uk_hilite (canvas, 2, y + 1, width - 4, ROW - 2, 4, true);
+			else if (i == hot) uk_rbox (canvas, 2, y + 1, width - 4, ROW - 2, 4, uk_tone (bg, 112), uk_tone (bg, 112));
+			unsigned ink = on ? uk_hilite_ink (true) : C_TEXT, dim = on ? ink : uk_mix (bg, C_TEXT, 140);
 			char t[24]; snprintf (t, sizeof t, "%02d", i + 1);
-			wk_text_l (canvas, 22, y, ROW, t, ink, 2);
+			uk_text_l (canvas, 22, y, ROW, t, ink, 2);
 			snprintf (t, sizeof t, "%d rows", g_song.pat[i].rows);
-			wk_text_l (canvas, 50, y, ROW, t, dim);
-			if (g_playing && i == g_playPat) wk_glyph (canvas, WKG_RIGHT, 11, y + ROW / 2, 9, on ? ink : 0x0048B068u);
+			uk_text_l (canvas, 50, y, ROW, t, dim);
+			if (g_playing && i == g_playPat) uk_glyph (canvas, WKG_RIGHT, 11, y + ROW / 2, 9, on ? ink : 0x0048B068u);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -884,20 +884,20 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		canvas.fillRect (0, 0, width, 1, wk_tone (C_BG, 100));
+		canvas.fillRect (0, 0, width, 1, uk_tone (C_BG, 100));
 		int k = kw (), x = x0 (), y = 7, h = height - 16, bh = h * 6 / 10;
 		for (int i = 0; i < OCT * 7; i++)
 		{
 			unsigned c = lit (i, false);
-			wk_rbox (canvas, x + i * k, y, k - 1, h, 2, c ? c : 0x00FFFFFFu, c ? c : 0x00ECECECu);
+			uk_rbox (canvas, x + i * k, y, k - 1, h, 2, c ? c : 0x00FFFFFFu, c ? c : 0x00ECECECu);
 		}
 		for (int i = 0; i < OCT * 7; i++)
 			if (hasBlack (i))
 			{
 				unsigned c = lit (i, true);
-				wk_rbox (canvas, x + (i + 1) * k - k * 3 / 10 - 1, y, k * 6 / 10 + 1, bh, 2, c ? c : 0x00303030u, c ? wk_tone (c, 100) : 0x00181818u);
+				uk_rbox (canvas, x + (i + 1) * k - k * 3 / 10 - 1, y, k * 6 / 10 + 1, bh, 2, c ? c : 0x00303030u, c ? uk_tone (c, 100) : 0x00181818u);
 			}
-		wk_rline (canvas, x - 1, y - 1, OCT * 7 * k + 1, h + 2, 2, wk_tone (C_BG, 72), 220);
+		uk_rline (canvas, x - 1, y - 1, OCT * 7 * k + 1, h + 2, 2, uk_tone (C_BG, 72), 220);
 		canvas.fillRect (x + g_oct * 7 * k, y + h + 3, 7 * k - 1, 3, C_ACCENT);		// the octave the keys type in
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -1070,7 +1070,7 @@ static void song_labels ()
 static bool confirm_discard ()
 {
 	if (!g_dirty) return true;
-	int r = wk_messagebox ("FM Tracker", "The song has changed. Save it first?", MB_YESNOCANCEL);
+	int r = uk_messagebox ("FM Tracker", "The song has changed. Save it first?", MB_YESNOCANCEL);
 	if (r == 0) return false;
 	if (r == 1) { extern void op_save (); op_save (); return !g_dirty; }
 	return true;
@@ -1106,7 +1106,7 @@ static bool load_song (const char *path)
 	s.npat = 0;
 	bool ok = r > 0 && fms_parse (b, r, &s);
 	delete [] b;
-	if (!ok) { fms_clear (&s); wk_messagebox ("FM Tracker", "This is not an FM Song (.FMS) file.", MB_OK); return false; }
+	if (!ok) { fms_clear (&s); uk_messagebox ("FM Tracker", "This is not an FM Song (.FMS) file.", MB_OK); return false; }
 	op_stop ();
 	fms_clear (&g_song);
 	g_song = s; s.npat = 0;					// (the patterns move to g_song)
@@ -1118,7 +1118,7 @@ static void op_open ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (wk_file_open (p, sizeof p, g_path[0] ? g_path : SONG_DIR)) load_song (p);
+	if (uk_file_open (p, sizeof p, g_path[0] ? g_path : SONG_DIR)) load_song (p);
 }
 static bool write_song (const char *path)
 {
@@ -1133,7 +1133,7 @@ static void op_save_as ()
 {
 	char p[256];
 	char def[40]; fms_copy (def, g_path[0] ? fs_basename (g_path) : "SONG.FMS", sizeof def);
-	if (!wk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def)) return;
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def)) return;
 	int n = fms_len (p);
 	if (!(n > 4 && p[n - 4] == '.')) fms_copy (p + n, ".FMS", sizeof p - n);
 	if (!write_song (p)) { set_status ("Cannot save ", p); return; }
@@ -1224,7 +1224,7 @@ static void op_dup_pattern () { add_pattern (true); }
 static void op_delete_pattern ()
 {
 	if (g_song.npat <= 1) { set_status ("A song keeps at least one pattern."); return; }
-	if (!wk_messagebox ("Pattern", "Delete this pattern?", MB_YESNO)) return;
+	if (!uk_messagebox ("Pattern", "Delete this pattern?", MB_YESNO)) return;
 	op_stop (); undo_clear ();
 	delete [] g_song.pat[g_pat].n;
 	for (int i = g_pat; i + 1 < g_song.npat; i++) g_song.pat[i] = g_song.pat[i + 1];
@@ -1273,7 +1273,7 @@ static void on_scroll (Widget &w) { g_top = ((Scrollbar &) w).value; ((Widget *)
 
 // The side panel's small icons: up, down, delete.
 static void side_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool)
-{ wk_glyph (cv, id == 0 ? WKG_UP : id == 1 ? WKG_DOWN : WKG_CLOSE, x + size / 2, y + size / 2, id == 2 ? 9 : 10, ink); }
+{ uk_glyph (cv, id == 0 ? WKG_UP : id == 1 ? WKG_DOWN : WKG_CLOSE, x + size / 2, y + size / 2, id == 2 ? 9 : 10, ink); }
 
 class TrackerRoot : public Root
 {
@@ -1282,8 +1282,8 @@ public:
 	void onDraw () override
 	{
 		Root::onDraw ();
-		canvas.fillRect (0, TOOL_H - 1, width, 1, wk_tone (bg, 100));			// the toolbar's edge
-		canvas.fillRect (SIDE_W - 1, TOOL_H, 1, height - TOOL_H - ST_H, wk_tone (bg, 100));	// the side panel's
+		canvas.fillRect (0, TOOL_H - 1, width, 1, uk_tone (bg, 100));			// the toolbar's edge
+		canvas.fillRect (SIDE_W - 1, TOOL_H, 1, height - TOOL_H - ST_H, uk_tone (bg, 100));	// the side panel's
 		canvas.fillRect (GRID_X, HEAD_Y, NUM_W, HEAD_H, bg);
 	}
 	void onTick () override { tick (); }
@@ -1314,7 +1314,7 @@ static ToolButton *tool (Widget &to, int x, int y, int w, int h, const char *tip
 int main (void)
 {
 	FtTextFace *big = 0;
-	if (ft_wtk_install ("DejaVu Sans", 13))		// (FreeType's text: wk_fw / wk_fh follow it)
+	if (ft_uikit_install ("DejaVu Sans", 13))		// (FreeType's text: uk_fw / uk_fh follow it)
 	{
 		big = new FtTextFace;
 		if (!big->open ("DejaVu Sans Mono", 22) && !big->open ("DejaVu Sans", 22)) { delete big; big = 0; }
@@ -1368,7 +1368,7 @@ int main (void)
 	g_stepBox->tip = "The rows the cursor goes down after a note"; sy += 42;
 	side->addChild (new Heading (10, sy, 130, 18, "SONG", sbg)); sy += 22;
 	g_songLabel = new Label (12, sy, SIDE_W - 22, 20, "", C_TEXT, sbg); side->addChild (g_songLabel); sy += 20;
-	g_authorLabel = new Label (12, sy, SIDE_W - 22, 20, "", wk_mix (sbg, C_TEXT, 140), sbg); side->addChild (g_authorLabel);
+	g_authorLabel = new Label (12, sy, SIDE_W - 22, 20, "", uk_mix (sbg, C_TEXT, 140), sbg); side->addChild (g_authorLabel);
 
 	// channel headers, grid, scrollbar, piano, status
 	for (int c = 0; c < FMS_CH; c++) { g_head[c] = new ChanHeader (GRID_X + NUM_W + c * COL_W, HEAD_Y, COL_W, HEAD_H, c); root.addChild (g_head[c]); }
@@ -1383,23 +1383,23 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New",            "^N", WK_CTRL ('N'), op_new);
-	menu.item ("Open...",        "^O", WK_CTRL ('O'), op_open);
-	menu.item ("Save",           "^S", WK_CTRL ('S'), op_save);
+	menu.item ("New",            "^N", UK_CTRL ('N'), op_new);
+	menu.item ("Open...",        "^O", UK_CTRL ('O'), op_open);
+	menu.item ("Save",           "^S", UK_CTRL ('S'), op_save);
 	menu.item ("Save As...",     "",   0,             op_save_as);
 	menu.separator ();
 	menu.item ("Song Info...",   "",   0,             op_info);
 	menu.menu ("Edit");
-	menu.item ("Undo",           "^Z", WK_CTRL ('Z'), op_undo);
-	menu.item ("Redo",           "^Y", WK_CTRL ('Y'), op_redo);
+	menu.item ("Undo",           "^Z", UK_CTRL ('Z'), op_undo);
+	menu.item ("Redo",           "^Y", UK_CTRL ('Y'), op_redo);
 	menu.separator ();
-	menu.item ("Cut",            "^X", WK_CTRL ('X'), op_cut);
-	menu.item ("Copy",           "^C", WK_CTRL ('C'), op_copy);
-	menu.item ("Paste",          "^V", WK_CTRL ('V'), op_paste);
-	menu.item ("Select the Pattern", "^A", WK_CTRL ('A'), op_select_all);
+	menu.item ("Cut",            "^X", UK_CTRL ('X'), op_cut);
+	menu.item ("Copy",           "^C", UK_CTRL ('C'), op_copy);
+	menu.item ("Paste",          "^V", UK_CTRL ('V'), op_paste);
+	menu.item ("Select the Pattern", "^A", UK_CTRL ('A'), op_select_all);
 	menu.separator ();
-	menu.item ("Insert Slice",   "^E", WK_CTRL ('E'), op_insert_row);
-	menu.item ("Delete Slice",   "^D", WK_CTRL ('D'), op_delete_row);
+	menu.item ("Insert Slice",   "^E", UK_CTRL ('E'), op_insert_row);
+	menu.item ("Delete Slice",   "^D", UK_CTRL ('D'), op_delete_row);
 	menu.item ("Clear Channel",  "",   0,             op_clear_channel);
 	menu.separator ();
 	menu.item ("Semitone Up",    "Ctrl+Up",   0,      op_up1);
@@ -1407,8 +1407,8 @@ int main (void)
 	menu.item ("Octave Up",      "",   0,             op_up12);
 	menu.item ("Octave Down",    "",   0,             op_down12);
 	menu.menu ("Pattern");
-	menu.item ("Previous",       "^B", WK_CTRL ('B'), op_prev_pattern);
-	menu.item ("Next",           "^F", WK_CTRL ('F'), op_next_pattern);
+	menu.item ("Previous",       "^B", UK_CTRL ('B'), op_prev_pattern);
+	menu.item ("Next",           "^F", UK_CTRL ('F'), op_next_pattern);
 	menu.separator ();
 	menu.item ("New Pattern",    "",   0,             op_new_pattern);
 	menu.item ("Duplicate",      "",   0,             op_dup_pattern);
@@ -1420,9 +1420,9 @@ int main (void)
 	menu.item ("Mute in this Pattern", "", 0,         op_mute);
 	menu.item ("Solo",           "",   0,             op_solo);
 	menu.menu ("Play");
-	menu.item ("Play / Stop",    "^P", WK_CTRL ('P'), op_play);
+	menu.item ("Play / Stop",    "^P", UK_CTRL ('P'), op_play);
 	menu.item ("From the Start", "",   0,             op_play_start);
-	menu.item ("Loop the Pattern", "^L", WK_CTRL ('L'), op_loop);
+	menu.item ("Loop the Pattern", "^L", UK_CTRL ('L'), op_loop);
 	menu.item ("Follow",         "",   0,             op_follow);
 	menu.item ("Stop",           "Esc", 0,            op_stop);
 	menu.publish ();

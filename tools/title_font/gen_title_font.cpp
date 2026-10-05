@@ -1,7 +1,7 @@
 //
 // gen_title_font.cpp -- the windows' title font: DejaVu Sans Bold at 13 px rendered by the apps' own
 // FreeType (user/ft/fonts.h: the auto-hinter, the gamma the apps draw with) into SD:/res/fonts/title.aaf,
-// an anti-aliased bitmap font every app's frame reads (wtk/skin.cpp: no FreeType needed in the app).
+// an anti-aliased bitmap font every app's frame reads (uikit/skin.cpp: no FreeType needed in the app).
 //
 //   sh tools/title_font/build.sh        -> sdcard/res/fonts/title.aaf
 //
@@ -30,7 +30,7 @@ int main (int argc, char **argv)
 	if (fam < 0) { fprintf (stderr, "gen_title_font: DejaVu Sans not found\n"); return 1; }
 	fnt::Font *f = fnt::get (fam, fnt::BOLD, PX * 64);
 	if (!f) return 1;
-	// the line as FtTextFace::open lays it out (wtk/text.h: the glyphs centred in the line)
+	// the line as FtTextFace::open lays it out (uikit/text.h: the glyphs centred in the line)
 	int glyphs = f->ascent + f->descent, h = (f->height + 63) >> 6;
 	if (h * 64 < glyphs) h = (glyphs + 63) >> 6;
 	int asc = ((h * 64 - glyphs) / 2 + f->ascent + 32) >> 6;

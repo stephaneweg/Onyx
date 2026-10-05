@@ -4,7 +4,7 @@
 // the current folder down, or flat; what to do when a file exists), and change it -- add files and
 // folders of the disk into one of its folders, delete, rename, make a folder -- by rewriting it into
 // a new file next to it, swapped in at the end (the old one stays whole if anything fails).
-// Plain C++ (no wtk): the UI runs these in a thread; the tests run them on the PC.
+// Plain C++ (no uikit): the UI runs these in a thread; the tests run them on the PC.
 //
 #ifndef _archiver_ops_h
 #define _archiver_ops_h

@@ -1,15 +1,15 @@
 # Onyx image codecs
 
-## `imgload.hpp` — the wtk apps' image loader (no newlib)
+## `imgload.hpp` — the uikit apps' image loader (no newlib)
 
-`imgload.hpp` decodes an image **file** into `0xAARRGGBB` frames for the ordinary wtk
+`imgload.hpp` decodes an image **file** into `0xAARRGGBB` frames for the ordinary uikit
 apps (freestanding, umm heap): **BMP, GIF (all frames + delays), PNG, JPEG** via
 `stb_image.h` (v2.30, public domain, vendored here), **WebP** (lossy + lossless) via
 `simplewebp.h` (BSD-3, derived from libwebp, vendored here — licence at the end of the
 file) and **PCX** (1/2/4/8-bit paletted and 24-bit) via our own decoder. It supplies the
 few C symbols the codecs need (`malloc`/`free`/…, `memcmp`, `abs`). Include it in
-an app and call it; the implementation is compiled once into `libwtk.a`
-(`../wtk/imgload.cpp`, with FP/SIMD — the codecs use floating point) and only linked into
+an app and call it; the implementation is compiled once into `libuikit.a`
+(`../uikit/imgload.cpp`, with FP/SIMD — the codecs use floating point) and only linked into
 the apps that use it. All its memory comes from the app's `operator new[]`. Used by `imageview` and the File
 Viewer's preview. Host-tested (PNG/RGBA PNG/JPEG/BMP/PCX ×3/animated GIF/WebP lossy +
 lossless) with `-DIMG_HOST_TEST`.

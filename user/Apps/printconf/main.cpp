@@ -19,11 +19,11 @@
 #include <string.h>
 #include "kapi.h"
 #include "applib.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 #include "print/print.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	700
 #define H	470
@@ -38,7 +38,7 @@ static ListBox *g_found; static PrintFound g_fnd[16]; static int g_nfnd;
 
 static void status (const char *s) { g_status->setText (s); }
 // the window shown now (a request to the printer takes a moment)
-static void show_now (void) { if (!g_root->valid) { g_root->draw (); wk_present (); } }
+static void show_now (void) { if (!g_root->valid) { g_root->draw (); uk_present (); } }
 
 static void show_printer (void)
 {
@@ -121,7 +121,7 @@ static void on_remove (Widget &)
 	int i = g_list->sel; if (i < 0 || i >= g_npr) return;
 	if (!strcmp (g_pr[i].kind, "pdf")) { status ("The PDF printer is part of Onyx: it stays."); return; }
 	char q[128]; snprintf (q, sizeof q, "Remove the printer %.60s?", g_pr[i].name);
-	if (wk_messagebox ("Printers", q, MB_YESNO) != 1) return;
+	if (uk_messagebox ("Printers", q, MB_YESNO) != 1) return;
 	print_printer_remove (g_pr[i].name);
 	load_printers (0); status ("Removed.");
 }
@@ -244,7 +244,7 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	PrintRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;

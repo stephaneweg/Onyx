@@ -1,5 +1,5 @@
 #!/bin/sh
-# build-web.sh -- build Jet, the browser on WebKit (user/Apps/jet: its window on wtk, engine_webkit.cpp on
+# build-web.sh -- build Jet, the browser on WebKit (user/Apps/jet: its window on uikit, engine_webkit.cpp on
 # WebKit2's C API), against the build of build-webkit.sh, with the POSIX toolchain (aarch64-onyx-elf):
 # ONE program that is the window and, started again by WebKit, its web and network processes.
 #
@@ -8,8 +8,8 @@
 #   BUILD=$HOME/webkit-build/webkit-jit sh tools/webkit/build-web.sh     # the package's program: the tree
 #                                               # with JavaScriptCore's JIT (docs/08 "The JIT")
 #
-# wtk is compiled again for this toolchain (a hosted C++ program here: libstdc++'s operator new, not
-# onyxpp.hpp's -- -DONYX_HOSTED_NEW says so to that header, which wtk.h includes; without it the whole
+# uikit is compiled again for this toolchain (a hosted C++ program here: libstdc++'s operator new, not
+# onyxpp.hpp's -- -DONYX_HOSTED_NEW says so to that header, which uikit.h includes; without it the whole
 # program, Skia too, allocates on umm.h's heap, whose kapi_sbrk is a kernel call an app core may not
 # make: the link is checked). engine_webkit.cpp is compiled with the command one of WebKit's own sources gets (its
 # forwarding headers, its config.h). Variables: as build-wctest.sh; STAGE=0 leaves sdcard/ alone.
@@ -30,21 +30,21 @@ export PATH
 S=$ONYX_SYSROOT
 APP=$ONYX/user/Apps/jet
 O=$BUILD/web
-mkdir -p "$O/wtk" "$BUILD/bin"
+mkdir -p "$O/uikit" "$BUILD/bin"
 
 [ -f "$BUILD/lib/libWebKit.a" ] || { echo "build-web.sh: no $BUILD/lib/libWebKit.a: sh tools/webkit/build-webkit.sh" >&2; exit 1; }
 
 CXX="aarch64-onyx-elf-g++ -specs=$S/lib/onyx.specs -std=gnu++17 -O2 -mcpu=cortex-a72 -fno-exceptions -fno-rtti -w \
 	-ffunction-sections -fdata-sections -DONYX_HOSTED_NEW -I$ONYX/user -I$ONYX/kernel/include"
 
-# ---- wtk, for this toolchain ----
-echo "web: wtk"
-for f in "$ONYX"/user/wtk/*.cpp; do
-	o="$O/wtk/$(basename "$f" .cpp).o"
+# ---- uikit, for this toolchain ----
+echo "web: uikit"
+for f in "$ONYX"/user/uikit/*.cpp; do
+	o="$O/uikit/$(basename "$f" .cpp).o"
 	echo "$CXX -c $f -o $o"				# (always: a header of user/ may have changed -- a few seconds)
-done > "$O/wtk.jobs"
-[ -s "$O/wtk.jobs" ] && xargs -P "$JOBS" -I{} sh -c '{}' < "$O/wtk.jobs"
-rm -f "$O/libwtk.a"; aarch64-onyx-elf-ar rcs "$O/libwtk.a" "$O"/wtk/*.o
+done > "$O/uikit.jobs"
+[ -s "$O/uikit.jobs" ] && xargs -P "$JOBS" -I{} sh -c '{}' < "$O/uikit.jobs"
+rm -f "$O/libuikit.a"; aarch64-onyx-elf-ar rcs "$O/libuikit.a" "$O"/uikit/*.o
 
 # ---- the window ----
 echo "web: the window"
@@ -64,7 +64,7 @@ cmd=$(printf '%s' "$cmd" | sed -E 's/ -MD -MT [^ ]+ -MF [^ ]+//; s| -o [^ ]+| -o
 echo "web: the engine"
 ( cd "$BUILD" && sh -c "$cmd" )
 
-# ---- link: the window, wtk, WebKit, the sysroot's libraries ----
+# ---- link: the window, uikit, WebKit, the sysroot's libraries ----
 WK="-Wl,--start-group $BUILD/lib/libWebKit.a $BUILD/lib/libWebCore.a $BUILD/lib/libPAL.a $BUILD/lib/libJavaScriptCore.a $BUILD/lib/libWTF.a $BUILD/lib/libbmalloc.a -Wl,--end-group"
 LIBS=""
 for l in skia harfbuzz-icu harfbuzz freetype png16 jpeg webpmux webpdemux webp sharpyuv curl mbedtls mbedx509 mbedcrypto \
@@ -112,7 +112,7 @@ if aarch64-onyx-elf-nm "$BUILD/lib/libWebCore.a" 2>/dev/null | grep -q ' U av_pl
 fi
 echo "web: link"
 aarch64-onyx-elf-g++ -mcpu=cortex-a72 -specs="$S/lib/onyx.specs" -L"$S/lib" -Wl,--gc-sections \
-	$WIN "$O/engine_webkit.o" "$O/libwtk.a" $SKMS $HC $GPC $WK $AVL $LIBS -o "$BUILD/bin/web"
+	$WIN "$O/engine_webkit.o" "$O/libuikit.a" $SKMS $HC $GPC $WK $AVL $LIBS -o "$BUILD/bin/web"
 aarch64-onyx-elf-size "$BUILD/bin/web"
 # The program's allocator is newlib's malloc alone (its _sbrk goes through the app-core RPC): no umm
 # heap, whose kapi_sbrk on an app core stops the raster job there and hangs the page (onyxcores.c).

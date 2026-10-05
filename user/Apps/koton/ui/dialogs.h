@@ -1,5 +1,5 @@
 //
-// ui/dialogs.h -- Koton's dialogs (wtk Modals in the studio's dark theme): a text prompt, the sound
+// ui/dialogs.h -- Koton's dialogs (uikit Modals in the studio's dark theme): a text prompt, the sound
 // of a track (the General MIDI families and their instruments, the SoundFont's drum kits -- heard as
 // they are picked), the song's key / meter / tempo / feel (a key change transposes the song or lets
 // the chords follow their degrees), a cadence written on the chord track; and what the arrangement
@@ -67,7 +67,7 @@ static bool promptText (const char *title, const char *prompt, char *text, int c
 	delete d;
 	return r == 1;
 }
-static bool confirm (const char *title, const char *text) { return wk_messagebox (title, text, MB_YESNO) == 1; }
+static bool confirm (const char *title, const char *text) { return uk_messagebox (title, text, MB_YESNO) == 1; }
 
 // ---- the sound of a track ----------------------------------------------------------------------------------------------------
 class SoundDialog : public KDialog

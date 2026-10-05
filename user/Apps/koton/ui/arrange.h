@@ -195,12 +195,12 @@ public:
 		// ---- the vertical scroll bar, the horizontal one
 		{
 			int ch = contentH (), vh = chordTop () - lanesTop ();
-			WkThumb tb = wk_thumb (ch, vh, scrollY, vh);
-			if (tb.show) wk_scroll_bar (cv, width - 10, lanesTop (), 10, vh, true, tb.y, tb.h, ALANE_BG, WK_NORMAL);
+			UkThumb tb = uk_thumb (ch, vh, scrollY, vh);
+			if (tb.show) uk_scroll_bar (cv, width - 10, lanesTop (), 10, vh, true, tb.y, tb.h, ALANE_BG, UK_NORMAL);
 			double total = dmax (songEnd + 16, lastBeat - scrollBeat);
-			WkThumb hb = wk_thumb ((long) (total * 16), (long) ((lastBeat - scrollBeat) * 16), (long) (scrollBeat * 16), lw);
+			UkThumb hb = uk_thumb ((long) (total * 16), (long) ((lastBeat - scrollBeat) * 16), (long) (scrollBeat * 16), lw);
 			cv.fillRect (0, height - 12, width, 12, PANEL);
-			wk_scroll_bar (cv, lx, height - 11, lw, 10, false, hb.y, hb.show ? hb.h : 0, PANEL, WK_NORMAL);
+			uk_scroll_bar (cv, lx, height - 11, lw, 10, false, hb.y, hb.show ? hb.h : 0, PANEL, UK_NORMAL);
 		}
 		// ---- the playhead and the cursor
 		double ph = g_audio.isPlaying () ? g_audio.playheadBeat () : cursorBeat;
@@ -236,7 +236,7 @@ public:
 			}
 		if (h <= SMALL_H) return;
 		// the sound (click: choose)
-		wk_sunken (cv, 12, y + 28, HEADER_W - 70, 20, 4, FIELD);
+		uk_sunken (cv, 12, y + 28, HEADER_W - 70, 20, 4, FIELD);
 		textFit (cv, 18, y + 28, HEADER_W - 96, 20, instrumentName (tr), TEXT);
 		tri (cv, HEADER_W - 70, y + 38, 3, 1, DIM);
 		if (tr.type == TRACK_CHORD) { textL (cv, 14, y + 50, 20, "the harmony every track reads", FAINT); return; }
@@ -255,7 +255,7 @@ public:
 		int a = (int) (90 - tr.pan * 135);
 		if (tr.pan >= 0) ringArc (cv, kx, ky, r, a, 90, 3, col); else ringArc (cv, kx, ky, r, 90, a, 3, col);
 		disc (cv, kx, ky, r - 4, FACE);
-		aline (cv, kx + wk_cos (a) * (r - 11) / 16384, ky - wk_sin (a) * (r - 11) / 16384, kx + wk_cos (a) * (r - 4) / 16384, ky - wk_sin (a) * (r - 4) / 16384, 2, TEXT);
+		aline (cv, kx + uk_cos (a) * (r - 11) / 16384, ky - uk_sin (a) * (r - 11) / 16384, kx + uk_cos (a) * (r - 4) / 16384, ky - uk_sin (a) * (r - 4) / 16384, 2, TEXT);
 		textC (cv, kx - 16, ky + r + 1, 32, 12, "PAN", FAINT);
 	}
 
@@ -553,7 +553,7 @@ public:
 	bool onKey (long k) override
 	{
 		if (k == KEY_DEL || k == KEY_BACKSPACE) { deleteSelected (); return true; }
-		if (k == WK_CTRL ('D')) { duplicateSelected (); return true; }
+		if (k == UK_CTRL ('D')) { duplicateSelected (); return true; }
 		if (k == KEY_LEFT || k == KEY_RIGHT)
 		{
 			if (!g_doc.sel.valid ()) return false;
@@ -599,16 +599,16 @@ public:
 	void dragScrollV (int my)
 	{
 		int ch = contentH (), vh = chordTop () - lanesTop ();
-		WkThumb tb = wk_thumb (ch, vh, scrollY, vh);
-		scrollY = (int) wk_thumb_pos (my - lanesTop (), vh, ch, vh, tb.h);
+		UkThumb tb = uk_thumb (ch, vh, scrollY, vh);
+		scrollY = (int) uk_thumb_pos (my - lanesTop (), vh, ch, vh, tb.h);
 		invalidate (true);
 	}
 	void dragScrollH (int mx)
 	{
 		double songEnd = dmax (g_doc.p.totalBeats (), 16), view = laneW () / ppb;
 		double total = dmax (songEnd + 16, view);
-		WkThumb hb = wk_thumb ((long) (total * 16), (long) (view * 16), (long) (scrollBeat * 16), laneW ());
-		scrollBeat = wk_thumb_pos (mx - laneX (), laneW (), (long) (total * 16), (long) (view * 16), hb.h) / 16.0;
+		UkThumb hb = uk_thumb ((long) (total * 16), (long) (view * 16), (long) (scrollBeat * 16), laneW ());
+		scrollBeat = uk_thumb_pos (mx - laneX (), laneW (), (long) (total * 16), (long) (view * 16), hb.h) / 16.0;
 		invalidate (true);
 	}
 

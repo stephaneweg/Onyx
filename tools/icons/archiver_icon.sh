@@ -1,11 +1,11 @@
 #!/bin/sh
 # tools/icons/archiver_icon.sh -- sdcard/apps/archiver.app/icon.bmp from the app's own vector crate
-# (archiver_icon.cpp: wtk's anti-aliased paths, on the PC). Needs g++ and python3.
+# (archiver_icon.cpp: uikit's anti-aliased paths, on the PC). Needs g++ and python3.
 set -e
 cd "$(dirname "$0")/../.."
 OUT=${OUT:-/tmp/onyx_icon}; mkdir -p "$OUT"
 g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST -o "$OUT/archiver_icon" \
-    tools/icons/archiver_icon.cpp user/wtk/*.cpp \
+    tools/icons/archiver_icon.cpp user/uikit/*.cpp \
     tools/tests/desktop_sim/fakekapi.cpp -lpthread
 "$OUT/archiver_icon" "$OUT/icon.ppm"
 python3 - "$OUT/icon.ppm" <<'PY'

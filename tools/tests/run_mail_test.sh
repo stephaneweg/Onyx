@@ -16,19 +16,19 @@ fi
 $CXX -c tools/tests/desktop_sim/fakekapi.cpp -o "$OUT/fakekapi.o"
 $CXX -I$M/include tools/tests/mail/mailtest.cpp "$OUT/fakekapi.o" "$OUT/libmb.a" -lpthread -o "$OUT/mailtest"
 $CXX -I$M/include tools/tests/mail/modeltest.cpp "$OUT/fakekapi.o" "$OUT/libmb.a" -lpthread -o "$OUT/modeltest"
-# the HTML renderer: wtk's canvas and the apps' FreeType, built for the PC
+# the HTML renderer: uikit's canvas and the apps' FreeType, built for the PC
 FT=third_party/freetype-2.14.3
-mkdir -p "$OUT/wtk" "$OUT/ft"
-if [ ! -f "$OUT/libwtk.a" ]; then
-	for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/wtk/$(basename "$f" .cpp).o" & done; wait
-	ar rcs "$OUT/libwtk.a" "$OUT"/wtk/*.o
+mkdir -p "$OUT/uikit" "$OUT/ft"
+if [ ! -f "$OUT/libuikit.a" ]; then
+	for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" & done; wait
+	ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 fi
 if [ ! -f "$OUT/libft.a" ]; then
 	for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
 		gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 	ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 fi
-$CXX -Iuser/ft -I$FT/include tools/tests/mail/htmltest.cpp "$OUT/fakekapi.o" "$OUT/libwtk.a" "$OUT/libft.a" -lpthread -o "$OUT/htmltest"
+$CXX -Iuser/ft -I$FT/include tools/tests/mail/htmltest.cpp "$OUT/fakekapi.o" "$OUT/libuikit.a" "$OUT/libft.a" -lpthread -o "$OUT/htmltest"
 # a self-signed certificate for localhost
 [ -f "$OUT/cert.pem" ] || openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=localhost -days 30 \
 	-keyout "$OUT/cert.pem" -out "$OUT/crt.pem" 2>/dev/null && cat "$OUT/crt.pem" >> "$OUT/cert.pem"

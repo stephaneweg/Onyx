@@ -277,15 +277,15 @@ public:
 			text_fit_l (canvas, 132, 102, rx - 150, 26, t, dim_ink (C_BG));
 		}
 		int fy = wg (g)->top + g->height + 12, fh = height - fy - 8, tx = W - 300;
-		wk_rbox (canvas, tx, fy, 284, fh, 8, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 122));
-		wk_rline (canvas, tx, fy, 284, fh, 8, wk_mix (C_BG, 0, 60), 100);
+		uk_rbox (canvas, tx, fy, 284, fh, 8, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 122));
+		uk_rline (canvas, tx, fy, 284, fh, 8, uk_mix (C_BG, 0, 60), 100);
 		char a[32];
-		wk_text_l (canvas, tx + 14, fy + 8, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 8, 20, money_s (tNet, a), C_FIELD_TEXT);
-		wk_text_l (canvas, tx + 14, fy + 30, 20, TR ("VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 30, 20, money_s (tTax, a), C_FIELD_TEXT);
-		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, wk_tone (C_FIELD, 100));
-		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, TR ("Total"), C_FIELD_TEXT, 2);
+		uk_text_l (canvas, tx + 14, fy + 8, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 8, 20, money_s (tNet, a), C_FIELD_TEXT);
+		uk_text_l (canvas, tx + 14, fy + 30, 20, TR ("VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 30, 20, money_s (tTax, a), C_FIELD_TEXT);
+		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, uk_tone (C_FIELD, 100));
+		uk_text_l (canvas, tx + 14, fy + fh - 36, 28, TR ("Total"), C_FIELD_TEXT, 2);
 		text_r (canvas, tx + 270, fy + fh - 36, 28, money_s (tTot, a), C_FIELD_TEXT, 2);
-		wk_text_l (canvas, 20, fy, 20, TR ("Printing"), dim_ink (C_BG), 2);
+		uk_text_l (canvas, 20, fy, 20, TR ("Printing"), dim_ink (C_BG), 2);
 		int k = pk_of (d.kind);
 		char t[160]; scpy (t, TR ("Its template: "), sizeof t); scat (t, PK_FILE[k], sizeof t); scat (t, ".rtf", sizeof t); scat (t, TR (" (Settings > Printing)"), sizeof t);
 		text_fit_l (canvas, 20, fy + 22, tx - 40, 18, t, dim_ink (C_BG));

@@ -1,7 +1,7 @@
 //
-// panel/main.cpp -- the launcher/taskbar bar (wtk port). Borderless bar pinned to a
+// panel/main.cpp -- the launcher/taskbar bar (uikit port). Borderless bar pinned to a
 // screen edge (config.ini position). Apps button + quicklaunch + dynamic taskbar are
-// wtk::Icon; the clock is a wtk::Label; the bar background + separators are drawn by the
+// uikit::Icon; the clock is a uikit::Label; the bar background + separators are drawn by the
 // PanelRoot itself. The bar polls every ~160 ms (open apps / taskbar / clock / geometry),
 // so it runs a custom loop instead of Root::run() and feeds the pointer stream into the
 // widget tree by hand.
@@ -9,9 +9,9 @@
 #include "kapi.h"
 #include "applib.h"
 #include "launch.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define BAR	60		// bar thickness (cross axis)
 #define MAXLEN	760		// over-allocated canvas length (main axis)
@@ -76,15 +76,15 @@ class PanelRoot : public Root
 public:
 	PanelRoot (int x, int y, int w, int h, const char *t, unsigned flags) : Root (x, y, w, h, t, flags) {}
 	void sep_at (int a)
-	{ if (g_vert) wk_etch_h (canvas, 6, a, BAR - 12, BG); else wk_etch_v (canvas, a, 6, BAR - 12, BG); }
+	{ if (g_vert) uk_etch_h (canvas, 6, a, BAR - 12, BG); else uk_etch_v (canvas, a, 6, BAR - 12, BG); }
 	void onDraw () override
 	{
 		int w = g_vert ? BAR : g_content_len, h = g_vert ? g_content_len : BAR;
 		canvas.clear (0xFF000000);
-		wk_paint_alpha (true);
-		wk_rbox (canvas, 0, 0, w, h, 8, wk_tone (BG, 140), BG);
-		wk_rline (canvas, 0, 0, w, h, 8, wk_tone (C_FACE, 70), 200);
-		wk_paint_alpha (false);
+		uk_paint_alpha (true);
+		uk_rbox (canvas, 0, 0, w, h, 8, uk_tone (BG, 140), BG);
+		uk_rline (canvas, 0, 0, w, h, 8, uk_tone (C_FACE, 70), 200);
+		uk_paint_alpha (false);
 		sep_at (48);					// below the apps button
 		sep_at (g_tb_start - 4);				// launchers | running
 		sep_at (g_tb_start + g_tb_count * STEP + 1);	// running | clock
@@ -100,9 +100,9 @@ public:
 	void onDraw () override
 	{
 		Icon::onDraw ();
-		unsigned c = wk_mix (bg, C_FIELD_TEXT, 170);
+		unsigned c = uk_mix (bg, C_FIELD_TEXT, 170);
 		for (int j = 0; j < 3; j++)
-			for (int i = 0; i < 3; i++) wk_rbox (canvas, 6 + i * 12, 6 + j * 12, 8, 8, 2, c, c);
+			for (int i = 0; i < 3; i++) uk_rbox (canvas, 6 + i * 12, 6 + j * 12, 8, 8, 2, c, c);
 	}
 };
 

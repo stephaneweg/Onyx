@@ -20,13 +20,13 @@
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "n64/n64.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 #include "basic/bas3d.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static n64::Machine *g_m = 0;
 static unsigned char *g_rom = 0;
@@ -253,7 +253,7 @@ static void set_zoom (int z)
 {
 	g_zoom = z;
 	g_root->canvas.adopt (kapi_resize_window (320 * z, 240 * z), 320 * z, 240 * z, g_stride);
-	wtk::wk_decorate_window ();					// the frame follows
+	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = 320 * z; g_root->height = 240 * z;
 	g_root->invalidate (true);
 }
@@ -391,7 +391,7 @@ int main (void)
 	if (!g_m->load (g_rom, (unsigned) r))
 	{
 		g_loading = false;
-		wk_messagebox ("N64", "Not a Nintendo 64 ROM (.z64 / .n64 / .v64).", MB_OK);
+		uk_messagebox ("N64", "Not a Nintendo 64 ROM (.z64 / .n64 / .v64).", MB_OK);
 		return 1;
 	}
 	delete [] g_rom; g_rom = 0;					// (the machine keeps its own copy)
@@ -409,7 +409,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	menu.item ("Reset",        "",    0, on_reset);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Zoom 1x",      "",    0, on_zoom1);

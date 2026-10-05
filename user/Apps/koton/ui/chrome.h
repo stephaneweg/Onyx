@@ -4,7 +4,7 @@
 // "Compose with AI", the master level), the browser on the right (what can be put in the song: the
 // harmony, the rhythm, the melody generators, the AI's actions, the plugins), the editor's host at the
 // bottom (its title strip -- the block's kind, its track, Listen -- and the editor) and the status bar.
-// All hand-drawn in the studio's colours; the few wtk controls (the snap's drop-down, Listen) are
+// All hand-drawn in the studio's colours; the few uikit controls (the snap's drop-down, Listen) are
 // children.
 //
 #ifndef _koton_chrome_h
@@ -132,7 +132,7 @@ public:
 		double beat = g_audio.isPlaying () ? g_audio.playheadBeat () : (g_arrange ? g_arrange->cursorBeat : 0);
 		char pos[32], tim[32]; positionText (beat, pos, sizeof pos, tim, sizeof tim);
 		snprintf (lastPos, sizeof lastPos, "%s", pos);
-		{ WkFaceScope sc (g_bigFace); textL (cv, lx + 14, 8, H - 16, pos, ACC, g_bigFace ? 0 : 2); }
+		{ UkFaceScope sc (g_bigFace); textL (cv, lx + 14, 8, H - 16, pos, ACC, g_bigFace ? 0 : 2); }
 		textR (cv, lx + LCD_W - 12, 12, 18, "BAR.BEAT.16", FAINT);
 		textR (cv, lx + LCD_W - 12, 30, 18, tim, DIM);
 		// the song's chips

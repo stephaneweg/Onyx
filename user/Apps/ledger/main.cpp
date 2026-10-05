@@ -22,8 +22,8 @@
 // File Viewer (fileassoc.ini: ledger). Started without one, Ledger opens the books it had last
 // (SD:/apps/ledger.app/last.txt), else it welcomes: a new company, a file, the demo company.
 //
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"			// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "docguard.h"
 #include "ui.h"
 #include "pick.h"
@@ -35,7 +35,7 @@
 #include "commerce_ui.h"
 #include "payui.h"
 
-using namespace wtk;
+using namespace uikit;
 
 namespace lg {
 
@@ -78,7 +78,7 @@ public:
 		addChild (years);
 		for (int i = 0; i < P_COUNT; i++) { badge[i] = 0; badgeCol[i] = 0; }
 	}
-	unsigned face () const { return wk_tone (C_BG, 116); }
+	unsigned face () const { return uk_tone (C_BG, 116); }
 	unsigned bgColor () override { return face (); }
 	int itemY (int i) const { int y = NAV_Y; for (int k = 0; k < i; k++) y += NAV[k].page < 0 ? CAP_H : ITEM_H; return y; }
 	int itemAt (int my) const
@@ -131,9 +131,9 @@ public:
 	}
 	void onDraw () override
 	{
-		unsigned bg = face (), ink = wk_ink_for (bg), dim = wk_mix (bg, ink, 140);
+		unsigned bg = face (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 140);
 		canvas.clear (bg);
-		canvas.fillRect (width - 1, 0, 1, height, wk_tone (C_BG, 92));
+		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 92));
 		bool open = g_b.nacc != 0;
 		// the company
 		text_fit_l (canvas, 14, 10, width - 28, 24, open ? (g_b.name[0] ? g_b.name : TR ("(the company)")) : "Ledger", ink, 2);
@@ -146,16 +146,16 @@ public:
 			const NavItem &n = NAV[i];
 			if (n.page < 0)
 			{
-				if (n.label[0]) wk_text_l (canvas, 16, y + 4, CAP_H - 4, TR (n.label), wk_mix (bg, ink, 110));
-				else wk_etch_h (canvas, 12, y + CAP_H / 2, width - 24, bg);
+				if (n.label[0]) uk_text_l (canvas, 16, y + 4, CAP_H - 4, TR (n.label), uk_mix (bg, ink, 110));
+				else uk_etch_h (canvas, 12, y + CAP_H / 2, width - 24, bg);
 				continue;
 			}
 			bool on = n.page == cur, h = i == hot && open;
-			if (on) wk_hilite (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, true);
-			else if (h) wk_rbox (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, wk_tone (bg, 150), wk_tone (bg, 140));
-			unsigned in = on ? wk_hilite_ink (true) : open || n.page == P_OVERVIEW ? ink : wk_mix (bg, ink, 90);
+			if (on) uk_hilite (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, true);
+			else if (h) uk_rbox (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, uk_tone (bg, 150), uk_tone (bg, 140));
+			unsigned in = on ? uk_hilite_ink (true) : open || n.page == P_OVERVIEW ? ink : uk_mix (bg, ink, 90);
 			draw_ni (canvas, PAGE_ICON[n.page], 18, y + (ITEM_H - 20) / 2, in, on ? in : C_ACCENT);
-			wk_text_l (canvas, 48, y, ITEM_H, TR (n.label), in, on ? 2 : 0);
+			uk_text_l (canvas, 48, y, ITEM_H, TR (n.label), in, on ? 2 : 0);
 			if (open && badge[n.page])
 			{
 				char b[8]; itoa10 (badge[n.page], b);
@@ -165,21 +165,21 @@ public:
 		}
 		// the file, at the foot; the language at its right (EN | FR)
 		int fy = height - 30;
-		wk_etch_h (canvas, 12, fy - 8, width - 24, bg);
+		uk_etch_h (canvas, 12, fy - 8, width - 24, bg);
 		if (g_path[0])
 		{
 			const char *f = g_path; for (const char *q = g_path; *q; q++) if (*q == '/' || *q == ':') f = q + 1;
 			unsigned c = g_saveFailed ? C_BAD : C_GOOD;
-			wk_rbox (canvas, 16, fy + 7, 8, 8, 4, c, c);
+			uk_rbox (canvas, 16, fy + 7, 8, 8, 4, c, c);
 			text_fit_l (canvas, 30, fy, langX (0) - 36, 22, f, dim);
 		}
 		for (int k = 0; k < NLANG; k++)
 		{
-			bool on = ci_eq (wk_lang (), LANGS[k].code), h = k == langHot;
+			bool on = ci_eq (uk_lang (), LANGS[k].code), h = k == langHot;
 			int x = langX (k);
-			if (on) wk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, C_ACCENT, C_ACCENT);
-			else wk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, h ? wk_tone (bg, 150) : bg, wk_tone (bg, 92));
-			wk_text_c (canvas, x, fy + 1, LANG_W, 20, LANGS[k].tag, on ? wk_ink_for (C_ACCENT) : dim, on ? 2 : 0);
+			if (on) uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, C_ACCENT, C_ACCENT);
+			else uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, h ? uk_tone (bg, 150) : bg, uk_tone (bg, 92));
+			uk_text_c (canvas, x, fy + 1, LANG_W, 20, LANGS[k].tag, on ? uk_ink_for (C_ACCENT) : dim, on ? 2 : 0);
 		}
 	}
 	enum { LANG_W = 30 };
@@ -219,7 +219,7 @@ public:
 	void show (const char *m)
 	{
 		scpy (msg, m, sizeof msg);
-		int w = imin (wk_text_w (msg) + 40, W - SIDE_W - 40);
+		int w = imin (uk_text_w (msg) + 40, W - SIDE_W - 40);
 		Widget *p = parent;
 		if (p) { left = SIDE_W + (p->width - SIDE_W - w) / 2; top = p->height - height - 18; bringToFront (); }
 		if (w != width) resizeTo (w, height);
@@ -229,12 +229,12 @@ public:
 	void tick () { if (!hidden && kapi_get_ticks () - t0 > 350) { hidden = true; if (parent) parent->invalidate (true); } }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
+		canvas.clear (UK_TRANSPARENT_KEY);
 		unsigned c = 0x00303438;
-		wk_rbox (canvas, 0, 0, width, height, height / 2, c, c);
-		wk_corner_key (canvas, 0, 0, width, height, height / 2);
+		uk_rbox (canvas, 0, 0, width, height, height / 2, c, c);
+		uk_corner_key (canvas, 0, 0, width, height, height / 2);
 		char t[160]; fit_text (msg, width - 32, t, sizeof t);
-		wk_text_c (canvas, 0, 0, width, height, t, 0x00FFFFFF);
+		uk_text_c (canvas, 0, 0, width, height, t, 0x00FFFFFF);
 	}
 };
 static Toast *g_toast;
@@ -430,7 +430,7 @@ static void cmd_open ()
 {
 	if (!leave_current ()) return;
 	char path[200];
-	if (!wk_file_open (path, sizeof path, "SD:/docs")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/docs")) return;
 	load_path (path);
 }
 static void cmd_new_company ()
@@ -446,7 +446,7 @@ static void cmd_new_company ()
 	name[k] = '\0'; if (!k) scpy (name, "company", sizeof name);
 	scat (name, ".ledger", sizeof name);
 	char path[200];
-	if (!wk_file_save (path, sizeof path, "SD:/docs", name)) { book_clear (nb); return; }
+	if (!uk_file_save (path, sizeof path, "SD:/docs", name)) { book_clear (nb); return; }
 	int n = slen (path); if (n < 7 || !ci_eq (path + n - 7, ".ledger")) scat (path, ".ledger", sizeof path);
 	Out o; book_write (nb, o);
 	book_clear (nb);
@@ -458,7 +458,7 @@ static void cmd_save_copy ()
 {
 	if (!g_b.nacc) return;
 	char path[200];
-	if (!wk_file_save (path, sizeof path, "SD:/docs", "copy.ledger")) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs", "copy.ledger")) return;
 	Out o; book_write (g_b, o);
 	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) warn (TR ("Save a Copy"), TR ("The file could not be written."));
 	else { char m[240]; scpy (m, TR ("Copy written: "), sizeof m); scat (m, path, sizeof m); status (m); }
@@ -528,7 +528,7 @@ static void cmd_import_coda ()
 {
 	if (!books () || !leave_current ()) return;
 	char path[200];
-	if (!wk_file_open (path, sizeof path, "SD:/docs")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/docs")) return;
 	char *b; int n;
 	if (!file_read (path, &b, &n)) { warn (TR ("Import CODA"), TR ("The file could not be read.")); return; }
 	coda_stop ();
@@ -567,9 +567,9 @@ static void cmd_listings () { if (!books ()) return; go (P_VAT); if (g_vp) g_vp-
 // ---- the language ----------------------------------------------------------------------------------------------------------------
 static void choose_lang (const char *code)
 {
-	if (ci_eq (wk_lang (), code)) return;
+	if (ci_eq (uk_lang (), code)) return;
 	if (!leave_current ()) return;				// (the document open: saved or given up first)
-	if (!wk_lang_choose (code)) { warn (TR ("Language"), TR ("The choice of language could not be written.")); return; }
+	if (!uk_lang_choose (code)) { warn (TR ("Language"), TR ("The choice of language could not be written.")); return; }
 	if (!kapi_exec ("SD:/apps/ledger.app/main", g_path)) { status (TR ("The language changes when Ledger starts again")); return; }
 	kapi_exit (0);						// (the books are written already: the new Ledger opens them)
 }
@@ -608,8 +608,8 @@ using namespace lg;
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);	// (FreeType's text: wk_fw / wk_fh follow it)
-	wk_lang_init ();			// the words in the language chosen (before the window and its pages)
+	ft_uikit_install ("DejaVu Sans", 13);	// (FreeType's text: uk_fw / uk_fh follow it)
+	uk_lang_init ();			// the words in the language chosen (before the window and its pages)
 	LedgerRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.attach ();				// (a question asked before run (): its clicks and keys)
@@ -625,18 +625,18 @@ int main (void)
 	static Menu menu;
 	menu.menu (TR ("File"));
 	menu.item (TR ("New Company..."), "", 0, cmd_new_company);
-	menu.item (TR ("Open..."), "^O", WK_CTRL ('O'), cmd_open);
+	menu.item (TR ("Open..."), "^O", UK_CTRL ('O'), cmd_open);
 	menu.separator ();
 	menu.item (TR ("Save a Copy As..."), "", 0, cmd_save_copy);
 	menu.separator ();
 	menu.item ("English", "", 0, cmd_lang_en);			// (each in its own language)
 	menu.item (LANGS[1].name, "", 0, cmd_lang_fr);
 	menu.menu (TRC ("menu", "Edit"));
-	menu.item (TR ("New"), "^N", WK_CTRL ('N'), cmd_new);
-	menu.item (TR ("Save the Document"), "^S", WK_CTRL ('S'), cmd_save);
+	menu.item (TR ("New"), "^N", UK_CTRL ('N'), cmd_new);
+	menu.item (TR ("Save the Document"), "^S", UK_CTRL ('S'), cmd_save);
 	menu.item (TR ("Delete..."), "", 0, cmd_delete);
 	menu.separator ();
-	menu.item (TR ("Search"), "^F", WK_CTRL ('F'), cmd_find);
+	menu.item (TR ("Search"), "^F", UK_CTRL ('F'), cmd_find);
 	menu.menu (TR ("Documents"));
 	menu.item (TR ("Sales Invoice"), "", 0, cmd_sale);
 	menu.item (TR ("Sales Credit Note"), "", 0, cmd_sale_cn);

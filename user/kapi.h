@@ -112,7 +112,7 @@ static inline int  kapi_get_keymap (char *b, unsigned s) { return KT->get_keymap
 #define MB_OK		0
 #define MB_OKCANCEL	1
 #define MB_YESNO	2
-#define MB_YESNOCANCEL	3	// wtk: Yes = 1, No = 2, Cancel / Esc = 0
+#define MB_YESNOCANCEL	3	// uikit: Yes = 1, No = 2, Cancel / Esc = 0
 // Run an ELF at an absolute path with an argv string (fire-and-forget). 1/0.
 static inline int  kapi_exec (const char *path, const char *args) { return KT->exec (path, args); }
 // Framebuffer size in pixels (for edge-pinned borderless windows).
@@ -239,7 +239,7 @@ static inline void kapi_inject_key (const char *keys) { KT->inject_key (keys); }
 
 // System menu bar (ABI v39). set_menu: declare this app's menus (spec lines "M<title>",
 // "I<id>\t<label>\t<shortcut>", "-") + the GUI_EVENT_MENU handler -- apps normally use
-// wtk::Menu. get_menu / menu_command: for the menu-bar app (active window's spec+title ->
+// uikit::Menu. get_menu / menu_command: for the menu-bar app (active window's spec+title ->
 // change serial, 0 = none; send item id, MENU_QUIT closes the active app).
 static inline int      kapi_set_menu (const char *spec, gui_handler h) { return KT->set_menu (spec, h); }
 static inline unsigned kapi_get_menu (char *buf, unsigned cap, char *title, unsigned tcap) { return KT->get_menu (buf, cap, title, tcap); }
@@ -548,13 +548,13 @@ static inline int kapi_net_stats (int pid, struct kapi_net_stats *out)
 	return -KAPI_ENOSYS;
 }
 // (v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had; -1 on an older
-// kernel (the arrow stays). wtk: wk_cursor, from a widget's onMouse.
+// kernel (the arrow stays). uikit: uk_cursor, from a widget's onMouse.
 static inline int kapi_set_cursor (int shape)
 	{ return KT->version >= 81 && KT->set_cursor ? KT->set_cursor (shape) : -1; }
 // (v82) This window can be resized by its frame (min_w x min_h: its smallest client area) -> 0; -1
 // on an older kernel, or for a borderless / fixed window. At the release of a drag the pointer
 // handler gets GUI_EVENT_WINRESIZE: GUI_WINRESIZE_X / _Y (the frame's new top left), _W / _H (the
-// client area's new size) of its value; the app applies them. wtk: Root::setResizable.
+// client area's new size) of its value; the app applies them. uikit: Root::setResizable.
 #define GUI_EVENT_WINRESIZE	20
 #define GUI_WINRESIZE_X(v)	((int) (short) ((unsigned long long) (v) >> 48))
 #define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
@@ -562,7 +562,7 @@ static inline int kapi_set_cursor (int shape)
 #define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
 static inline int kapi_win_resizable (int on, int min_w, int min_h)
 	{ return KT->version >= 82 && KT->win_resizable ? KT->win_resizable (on, min_w, min_h) : -1; }
-// (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "wtk" is SD:/lib/wtk.so, anything with a '/'
+// (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "uikit" is SD:/lib/uikit.so, anything with a '/'
 // or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *);
 // then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP:
 // the library is older than min_version; -KAPI_ENOSYS on an older kernel). Apps do not call this:

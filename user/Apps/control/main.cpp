@@ -8,7 +8,7 @@
 //     target = theme                           the applet: an app's name (SD:/apps/<name>.app)
 //     text   = Colours of the windows, ...      a line of help under the title
 //
-// A click on one starts its target with "--applet <surface> <pid>": the applet (a wtk app) draws
+// A click on one starts its target with "--applet <surface> <pid>": the applet (a uikit app) draws
 // into the Control Panel's pane -- a shared surface made once, the pane's size -- and the Control
 // Panel copies it into its window when the applet says so (AP_PRESENT), and sends it the pointer
 // and the keys. "Control Panel" in the path bar (or the menu's All Settings) closes the applet and
@@ -22,10 +22,10 @@
 #include "launch.h"
 #include "notify.h"
 #include "applet_proto.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	700
 #define HDR	46			// the path bar
@@ -169,7 +169,7 @@ class ControlRoot : public Root
 public:
 	int hot = -1, down = -1;		// the list: the link under the pointer / pressed
 	int scroll = 0;				// the list scrolled (px): more applets than the pane shows
-	WkBarDrag bar;				// ... its scroll bar
+	UkBarDrag bar;				// ... its scroll bar
 	int listH () const { return 24 + ((g_nl + 1) / 2) * ROWH; }
 	void scrollTo (int v)
 	{
@@ -196,25 +196,25 @@ public:
 	{
 		// the path bar: the window's face, a field with the path in it (elementary's style)
 		canvas.fillRect (0, 0, W, HDR, C_BG);
-		wk_sunken (canvas, 10, 7, W - 20, HDR - 14, 6, wk_mix (C_BG, C_FIELD, 150), false);
-		int fh = wk_fh (), y = (HDR - fh) / 2, x = 22;
+		uk_sunken (canvas, 10, 7, W - 20, HDR - 14, 6, uk_mix (C_BG, C_FIELD, 150), false);
+		int fh = uk_fh (), y = (HDR - fh) / 2, x = 22;
 		const char *root = "Control Panel";
-		int rw = wk_text_w (root, 2);
+		int rw = uk_text_w (root, 2);
 		bool link = g_cur >= 0;
-		unsigned ink = link ? (crumbHot ? C_ACCENT : C_FIELD_TEXT) : wk_tone (C_ACCENT, 84);
-		wk_text (canvas, x, y, root, ink, 2);
+		unsigned ink = link ? (crumbHot ? C_ACCENT : C_FIELD_TEXT) : uk_tone (C_ACCENT, 84);
+		uk_text (canvas, x, y, root, ink, 2);
 		if (link && crumbHot) canvas.fillRect (x, y + fh, rw, 1, C_ACCENT);
 		if (!link) canvas.fillRect (x, y + fh + 1, rw, 2, C_ACCENT);
 		x += rw + 10;
 		if (link)
 		{
-			wk_glyph (canvas, WKG_CHEV_RIGHT, x + 2, HDR / 2, 9, wk_mix (C_FIELD, C_FIELD_TEXT, 120));
+			uk_glyph (canvas, WKG_CHEV_RIGHT, x + 2, HDR / 2, 9, uk_mix (C_FIELD, C_FIELD_TEXT, 120));
 			x += 16;
 			const char *nm = g_link[g_cur].name;
-			wk_text (canvas, x, y, nm, wk_tone (C_ACCENT, 84), 2);
-			canvas.fillRect (x, y + fh + 1, wk_text_w (nm, 2), 2, C_ACCENT);
+			uk_text (canvas, x, y, nm, uk_tone (C_ACCENT, 84), 2);
+			canvas.fillRect (x, y + fh + 1, uk_text_w (nm, 2), 2, C_ACCENT);
 		}
-		wk_etch_h (canvas, 0, HDR - 2, W, C_BG);
+		uk_etch_h (canvas, 0, HDR - 2, W, C_BG);
 	}
 
 	void drawList ()
@@ -222,18 +222,18 @@ public:
 		canvas.fillRect (0, HDR, W, PH, C_BG);
 		if (g_nl == 0)
 		{
-			wk_text_c (canvas, 0, HDR, W, 60, "No applet: SD:/apps/control.app/applets/*.lnk", C_DIS);
+			uk_text_c (canvas, 0, HDR, W, 60, "No applet: SD:/apps/control.app/applets/*.lnk", C_DIS);
 			return;
 		}
-		int fh = wk_fh ();
+		int fh = uk_fh ();
 		for (int i = 0; i < g_nl; i++)
 		{
 			const Link &l = g_link[i];
 			int x = 14 + (i % 2) * COLW2, y = HDR + 12 + (i / 2) * ROWH - scroll, w = COLW2 - 28, h = ROWH - 8;
 			if (y + h <= HDR || y >= H) continue;			// (scrolled out of the pane)
 			bool on = i == hot;
-			if (on) wk_hilite (canvas, x, y, w, h, 8, down == i);
-			else wk_rbox (canvas, x, y, w, h, 8, wk_tone (C_BG, 150), wk_tone (C_BG, 136), 120);
+			if (on) uk_hilite (canvas, x, y, w, h, 8, down == i);
+			else uk_rbox (canvas, x, y, w, h, 8, uk_tone (C_BG, 150), uk_tone (C_BG, 136), 120);
 			if (l.icon)
 				for (int j = 0; j < l.ih && j < 40; j++)
 					for (int k = 0; k < l.iw && k < 40; k++)
@@ -242,27 +242,27 @@ public:
 						int py = y + (h - 40) / 2 + j;
 						if (c != 0xFF00FF && py >= HDR && py < H) canvas.pixel (x + 12 + k, py, c);
 					}
-			unsigned ink = on ? wk_hilite_ink (down == i) : C_TEXT;
-			wk_text (canvas, x + 64, y + 10, l.name, ink, 2);
+			unsigned ink = on ? uk_hilite_ink (down == i) : C_TEXT;
+			uk_text (canvas, x + 64, y + 10, l.name, ink, 2);
 			// the help, over two lines at most
 			int maxw = w - 76, line = 0;				// (measured in pixels: the face is proportional)
 			const char *p = l.text;
 			while (*p && line < 2)
 			{
 				int len = 0, cut = -1;
-				while (p[len] && wk_tw_n (p, len + 1) <= maxw) { if (p[len] == ' ') cut = len; len++; }
+				while (p[len] && uk_tw_n (p, len + 1) <= maxw) { if (p[len] == ' ') cut = len; len++; }
 				if (p[len] && cut > 0) len = cut;
 				if (len == 0) len = 1;
 				char t[80]; int k = 0;
 				for (int q = 0; q < len && k < 79; q++) t[k++] = p[q];
 				t[k] = 0;
-				canvas.text (x + 64, y + 14 + fh + line * (fh + 1), t, on ? ink : wk_mix (C_BG, C_TEXT, 170));
+				canvas.text (x + 64, y + 14 + fh + line * (fh + 1), t, on ? ink : uk_mix (C_BG, C_TEXT, 170));
 				p += len; while (*p == ' ') p++;
 				line++;
 			}
 		}
 		if (listH () > PH)
-			wk_draw_vscroll (canvas, W - WK_SBW - 2, HDR + 2, WK_SBW, PH - 4, wk_thumb (listH (), PH, scroll, PH - 4), C_BG, bar.held);
+			uk_draw_vscroll (canvas, W - UK_SBW - 2, HDR + 2, UK_SBW, PH - 4, uk_thumb (listH (), PH, scroll, PH - 4), C_BG, bar.held);
 	}
 
 	void drawPane ()
@@ -271,7 +271,7 @@ public:
 		{
 			canvas.fillRect (0, HDR, W, PH, C_BG);
 			const char *s = g_status[0] ? g_status : g_closing ? "Closing..." : "Starting...";
-			wk_text_c (canvas, 0, HDR, W, PH, s, C_DIS);
+			uk_text_c (canvas, 0, HDR, W, PH, s, C_DIS);
 			return;
 		}
 		for (int y = 0; y < PH; y++)
@@ -302,7 +302,7 @@ public:
 			else if (type == AP_EXIT) { g_pid = 0; g_cur = -1; g_closing = false; }
 			else if (type == AP_THEME)			// a new theme: ours, and the applet again
 			{
-				wk_theme_reload ();
+				uk_theme_reload ();
 				bg = C_BG;
 				wanted = g_cur;
 				close_applet ();
@@ -360,14 +360,14 @@ public:
 		inPane = false; ptrButtons = 0;
 		if (mx < 0) { if (hot >= 0 || crumbHot) { hot = -1; crumbHot = false; invalidate (true); } pressed = false; return false; }
 		// the path bar: "Control Panel" -> the list
-		bool onCrumb = my < HDR && mx >= 16 && mx < 24 + wk_text_w ("Control Panel", 2) && g_cur >= 0;
+		bool onCrumb = my < HDR && mx >= 16 && mx < 24 + uk_text_w ("Control Panel", 2) && g_cur >= 0;
 		if (onCrumb != crumbHot) { crumbHot = onCrumb; invalidate (true); }
 		int h = -1;
 		if (g_cur < 0 && listH () > PH)
 		{	// the list's wheel and scroll bar
 			if (wheel) scrollTo (scroll - wheel * (ROWH / 2));
 			long pos = scroll;
-			if (bar.mouse (mx, my, bl, W - WK_SBW - 4, WK_SBW + 4, HDR + 2, PH - 4, listH (), PH, &pos))
+			if (bar.mouse (mx, my, bl, W - UK_SBW - 4, UK_SBW + 4, HDR + 2, PH - 4, listH (), PH, &pos))
 			{
 				scrollTo ((int) pos);
 				if (hot >= 0) { hot = -1; invalidate (true); }
@@ -446,7 +446,7 @@ static void raise_other (void)
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	if (!kapi_ipc_register (AP_SERVICE)) { raise_other (); return 0; }
 	g_self = kapi_ipc_lookup (AP_SERVICE);
 	char args[64]; kapi_get_args (args, sizeof args);
@@ -462,7 +462,7 @@ int main (void)
 	g_menu.separator ();
 	for (int i = 0; i < g_nl && i < 16; i++) g_menu.item (g_link[i].name, "", 0, ON_L[i]);
 	g_menu.separator ();
-	g_menu.item ("Quit", "^Q", WK_CTRL ('Q'), on_quit);
+	g_menu.item ("Quit", "^Q", UK_CTRL ('Q'), on_quit);
 	g_menu.publish ();
 	trim (args);
 	if (args[0])

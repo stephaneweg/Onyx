@@ -1,5 +1,5 @@
 //
-// designer.h -- QBStudio's designer: the form's window drawn as Onyx draws it (its controls are wtk's own widgets, at
+// designer.h -- QBStudio's designer: the form's window drawn as Onyx draws it (its controls are uikit's own widgets, at
 // the places the layout gives them), its layout's boxes over it (the containers dashed and named), the selection
 // and its handles; a click chooses an element, a drag moves it -- to another place of its container or into another
 // --, the toolbox's controls are dragged in (a line shows where they go: no x, no y to give), the window's corner and
@@ -11,11 +11,11 @@
 #ifndef _qbstudio_designer_h
 #define _qbstudio_designer_h
 
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "form.h"
 
 namespace qs {
-using namespace wtk;
+using namespace uikit;
 
 static void (*g_onSelect) (El *e);			// an element chosen (0: none)
 static void (*g_onFormEdited) ();			// the tree changed: the app writes the text again
@@ -107,24 +107,24 @@ public:
 	Strip (El *el) : Widget (el->x, el->y, imax (1, el->w), imax (1, el->h)), e (el) {}
 	void onDraw () override
 	{
-		canvas.clear (e->kind == K_STATUSBAR ? wk_mix (C_BG, C_FACE, 128) : C_BG);
+		canvas.clear (e->kind == K_STATUSBAR ? uk_mix (C_BG, C_FACE, 128) : C_BG);
 		if (e->kind == K_MENU)
 		{
-			canvas.fillRect (0, height - 1, width, 1, wk_mix (C_BG, C_TEXT, 40));
+			canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
 			int x = 10;
 			for (int i = 0; i < e->kids.n; i++)
 			{
 				if (e->kids[i]->kind != K_MENUTITLE) continue;
 				char t[64]; plain (e->kids[i]->text, t, sizeof t);
-				wk_text (canvas, x, (height - wk_fh ()) / 2, t, C_TEXT);
-				x += wk_tw (t) + 18;
+				uk_text (canvas, x, (height - uk_fh ()) / 2, t, C_TEXT);
+				x += uk_tw (t) + 18;
 			}
 		}
-		else if (e->kind == K_TOOLBAR) wk_etch_h (canvas, 0, height - 2, width, C_BG);
+		else if (e->kind == K_TOOLBAR) uk_etch_h (canvas, 0, height - 2, width, C_BG);
 		else if (e->kind == K_STATUSBAR)
 		{
-			wk_etch_h (canvas, 0, 0, width, C_BG);
-			wk_text (canvas, 8, (height - wk_fh ()) / 2 + 1, e->text, C_TEXT);
+			uk_etch_h (canvas, 0, 0, width, C_BG);
+			uk_text (canvas, 8, (height - uk_fh ()) / 2 + 1, e->text, C_TEXT);
 		}
 	}
 };
@@ -138,7 +138,7 @@ public:
 	{
 		canvas.clear (C_BG);
 		if (!g_showGrid) return;
-		unsigned dot = wk_mix (C_BG, C_TEXT, 38), strong = wk_mix (C_BG, C_TEXT, 80);
+		unsigned dot = uk_mix (C_BG, C_TEXT, 38), strong = uk_mix (C_BG, C_TEXT, 80);
 		for (int y = 0; y < height; y += GRID)
 			for (int x = 0; x < width; x += GRID)
 				canvas.fillRect (x, y, 1, 1, x % (GRID * 10) == 0 && y % (GRID * 10) == 0 ? strong : dot);
@@ -247,18 +247,18 @@ public:
 
 	void onDraw () override
 	{
-		unsigned bg = wk_mix (C_BG, C_TEXT, 20);
+		unsigned bg = uk_mix (C_BG, C_TEXT, 20);
 		canvas.clear (bg);
-		for (int y = 8; y < height; y += 16) for (int x = 8; x < width; x += 16) canvas.fillRect (x, y, 1, 1, wk_mix (bg, C_TEXT, 50));
-		if (!form || !form->root) { wk_text_c (canvas, 0, 0, width, height, "The form has errors: see the text", wk_mix (bg, C_TEXT, 150)); return; }
+		for (int y = 8; y < height; y += 16) for (int x = 8; x < width; x += 16) canvas.fillRect (x, y, 1, 1, uk_mix (bg, C_TEXT, 50));
+		if (!form || !form->root) { uk_text_c (canvas, 0, 0, width, height, "The form has errors: see the text", uk_mix (bg, C_TEXT, 150)); return; }
 		int W = winW, H = winH + menuH ();
 		// the window: its shadow, its frame, its title
-		for (int i = 1; i <= 6; i++) wk_rline (canvas, ox - 1 - i, oy - TITLE_H - 1 - i + 3, W + 2 + 2 * i, H + TITLE_H + 2 + 2 * i, 8 + i, 0, 30 - i * 4);
-		canvas.fillRect (ox - 1, oy - TITLE_H - 1, W + 2, H + TITLE_H + 2, wk_mix (C_BG, C_TEXT, 90));
+		for (int i = 1; i <= 6; i++) uk_rline (canvas, ox - 1 - i, oy - TITLE_H - 1 - i + 3, W + 2 + 2 * i, H + TITLE_H + 2 + 2 * i, 8 + i, 0, 30 - i * 4);
+		canvas.fillRect (ox - 1, oy - TITLE_H - 1, W + 2, H + TITLE_H + 2, uk_mix (C_BG, C_TEXT, 90));
 		const char *t = form->root->hasText ? form->root->text : form->root->name;
-		wk_title_strip (canvas, ox, oy - TITLE_H, W, TITLE_H, t, 0);
+		uk_title_strip (canvas, ox, oy - TITLE_H, W, TITLE_H, t, 0);
 		char sz[32]; snprintf (sz, sizeof sz, "%d x %d", winW, winH);
-		wk_text (canvas, ox + W - wk_tw (sz), oy + H + 10, sz, wk_mix (bg, C_TEXT, 150));
+		uk_text (canvas, ox + W - uk_tw (sz), oy + H + 10, sz, uk_mix (bg, C_TEXT, 150));
 	}
 
 	// ---- finding ---------------------------------------------------------------------------------------------------
@@ -420,9 +420,9 @@ static void dashed_rect (Canvas &cv, int x, int y, int w, int h, unsigned c)
 }
 static void draw_tag (Canvas &cv, int x, int y, const char *s, unsigned bg)
 {
-	int w = wk_tw (s, 2) + 8, h = wk_fh () - 1;
+	int w = uk_tw (s, 2) + 8, h = uk_fh () - 1;
 	cv.fillRect (x, y, w, h, bg);
-	wk_text (cv, x + 4, y - 1, s, 0xFFFFFF, 2);
+	uk_text (cv, x + 4, y - 1, s, 0xFFFFFF, 2);
 }
 static void describe (const El *e, char *o, int cap)
 {
@@ -436,21 +436,21 @@ static void draw_boxes (Canvas &cv, const El *e, int ox, int oy, const El *sel)
 	if (e->kind == K_COMMENT || e->kind == K_MENU) return;
 	if (is_container (e->kind) && e->kind != K_WINDOW && e->w > 0)
 	{
-		unsigned c = wk_mix (C_BLUEPRINT, C_BG, 60);
+		unsigned c = uk_mix (C_BLUEPRINT, C_BG, 60);
 		dashed_rect (cv, ox + e->x, oy + e->y, e->w, e->h, c);
 		// its name: the chosen element's container's only (the others would hide the controls)
-		if (e != sel && sel && sel->parent == e) { char d[96]; describe (e, d, sizeof d); draw_tag (cv, ox + e->x, oy + e->y - wk_fh () + 1, d, wk_mix (C_BLUEPRINT, C_BG, 70)); }
+		if (e != sel && sel && sel->parent == e) { char d[96]; describe (e, d, sizeof d); draw_tag (cv, ox + e->x, oy + e->y - uk_fh () + 1, d, uk_mix (C_BLUEPRINT, C_BG, 70)); }
 	}
 	if (e->kind == K_SPACER && e->h > 4)
 	{
-		dashed_rect (cv, ox + e->x + 2, oy + e->y + 2, e->w - 4, e->h - 4, wk_mix (C_BLUEPRINT, C_BG, 120));
-		if (e->h > 20 && e == sel) { const char *t = "Spacer: the free room"; int tw = wk_tw (t) + 8; draw_tag (cv, ox + e->x + (e->w - tw) / 2, oy + e->y + (e->h - wk_fh ()) / 2, t, wk_mix (C_BLUEPRINT, C_BG, 90)); }
+		dashed_rect (cv, ox + e->x + 2, oy + e->y + 2, e->w - 4, e->h - 4, uk_mix (C_BLUEPRINT, C_BG, 120));
+		if (e->h > 20 && e == sel) { const char *t = "Spacer: the free room"; int tw = uk_tw (t) + 8; draw_tag (cv, ox + e->x + (e->w - tw) / 2, oy + e->y + (e->h - uk_fh ()) / 2, t, uk_mix (C_BLUEPRINT, C_BG, 90)); }
 	}
 	for (int i = 0; i < e->kids.n; i++) draw_boxes (cv, e->kids[i], ox, oy, sel);
 }
 inline void Overlay::onDraw ()
 {
-	canvas.clear (WK_TRANSPARENT_KEY);
+	canvas.clear (UK_TRANSPARENT_KEY);
 	if (!d->form || !d->form->root) return;
 	d->relay ();
 	int ox = d->ox, oy = d->oy;
@@ -467,7 +467,7 @@ inline void Overlay::onDraw ()
 		for (int i = 0; i < 8; i++) { canvas.fillRect (hx[i] - 3, hy[i] - 3, 7, 7, C_BLUEPRINT); canvas.fillRect (hx[i] - 2, hy[i] - 2, 5, 5, 0xFFFFFF); }
 		char t[96]; describe (s, t, sizeof t);
 		int ty = y + h + 4; if (s == d->form->root) ty = y + h + 26;
-		draw_tag (canvas, x + w - wk_tw (t, 2) - 8, imin (ty, height - wk_fh ()), t, C_BLUEPRINT);
+		draw_tag (canvas, x + w - uk_tw (t, 2) - 8, imin (ty, height - uk_fh ()), t, C_BLUEPRINT);
 	}
 	if (d->dropOk && (d->drag == Designer::DR_MOVE || d->newKind >= 0))
 	{
@@ -479,11 +479,11 @@ inline void Overlay::onDraw ()
 	if (d->newKind >= 0 && d->hoverX >= 0)
 	{
 		const char *n = KIND_NAMES[d->newKind];
-		int w = wk_tw (n) + 24, h = wk_fh () + 8, x = d->hoverX + 8, y = d->hoverY - h / 2;
-		canvas.fillRect (x, y, w, h, wk_mix (C_FIELD, C_BLUEPRINT, 40));
+		int w = uk_tw (n) + 24, h = uk_fh () + 8, x = d->hoverX + 8, y = d->hoverY - h / 2;
+		canvas.fillRect (x, y, w, h, uk_mix (C_FIELD, C_BLUEPRINT, 40));
 		canvas.fillRect (x, y, w, 1, C_BLUEPRINT); canvas.fillRect (x, y + h - 1, w, 1, C_BLUEPRINT);
 		canvas.fillRect (x, y, 1, h, C_BLUEPRINT); canvas.fillRect (x + w - 1, y, 1, h, C_BLUEPRINT);
-		wk_text (canvas, x + 12, y + 4, n, C_FIELD_TEXT);
+		uk_text (canvas, x + 12, y + 4, n, C_FIELD_TEXT);
 	}
 }
 inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
@@ -501,9 +501,9 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 	bool onBottom = s && s != D->form->root && is_control (s->kind) && abs (cy - (s->y + s->h)) <= 4 && cx > s->x && cx < s->x + s->w;
 	if (D->drag == Designer::DR_NONE)
 	{
-		if (onCorner) wk_cursor (KAPI_CURSOR_SIZE_NWSE);
-		else if (onRight) wk_cursor (KAPI_CURSOR_SIZE_H);
-		else if (onBottom) wk_cursor (KAPI_CURSOR_SIZE_V);
+		if (onCorner) uk_cursor (KAPI_CURSOR_SIZE_NWSE);
+		else if (onRight) uk_cursor (KAPI_CURSOR_SIZE_H);
+		else if (onBottom) uk_cursor (KAPI_CURSOR_SIZE_V);
 	}
 	if (bl && !pressed)
 	{
@@ -587,7 +587,7 @@ static const int NTOOLS = (int) (sizeof TOOLS / sizeof TOOLS[0]);
 // A small picture of each kind
 static void tool_icon (Canvas &cv, int kind, int x, int y, unsigned ink, unsigned acc)
 {
-	unsigned soft = wk_mix (ink, 0xFFFFFF, 150);
+	unsigned soft = uk_mix (ink, 0xFFFFFF, 150);
 	switch (kind)
 	{
 	case K_COLUMN: for (int i = 0; i < 3; i++) cv.fillRect (x + 1, y + 1 + i * 5, 12, 4, i == 1 ? acc : soft); break;
@@ -596,14 +596,14 @@ static void tool_icon (Canvas &cv, int kind, int x, int y, unsigned ink, unsigne
 	case K_GROUP: dashed_rect (cv, x + 1, y + 3, 12, 10, ink); cv.fillRect (x + 3, y + 1, 6, 3, acc); break;
 	case K_SPACER: cv.fillRect (x + 1, y + 7, 12, 1, ink); cv.fillRect (x + 1, y + 4, 1, 7, ink); cv.fillRect (x + 12, y + 4, 1, 7, ink); break;
 	case K_CANVAS: cv.fillRect (x + 1, y + 2, 12, 10, soft); cv.fillRect (x + 3, y + 8, 3, 3, acc); cv.fillRect (x + 8, y + 4, 3, 3, ink); break;
-	case K_LABEL: wk_text (cv, x + 2, y - 1, "A", ink, 2); break;
-	case K_BUTTON: wk_rbox (cv, x, y + 3, 14, 9, 3, soft, soft); wk_rline (cv, x, y + 3, 14, 9, 3, ink); break;
-	case K_TEXTBOX: cv.fillRect (x, y + 3, 14, 9, 0xFFFFFF); wk_rline (cv, x, y + 3, 14, 9, 0, ink); cv.fillRect (x + 3, y + 5, 1, 5, ink); break;
-	case K_CHECKBOX: wk_check_mark (cv, x + 1, y + 1, 12, true, WK_NORMAL); break;
-	case K_LISTBOX: cv.fillRect (x, y + 1, 14, 12, 0xFFFFFF); wk_rline (cv, x, y + 1, 14, 12, 0, ink); cv.fillRect (x + 2, y + 3, 10, 2, acc); cv.fillRect (x + 2, y + 7, 10, 1, ink); cv.fillRect (x + 2, y + 10, 10, 1, ink); break;
-	case K_DROPDOWN: cv.fillRect (x, y + 3, 14, 9, 0xFFFFFF); wk_rline (cv, x, y + 3, 14, 9, 0, ink); wk_glyph (cv, WKG_CHEV_DOWN, x + 10, y + 7, 5, ink); break;
+	case K_LABEL: uk_text (cv, x + 2, y - 1, "A", ink, 2); break;
+	case K_BUTTON: uk_rbox (cv, x, y + 3, 14, 9, 3, soft, soft); uk_rline (cv, x, y + 3, 14, 9, 3, ink); break;
+	case K_TEXTBOX: cv.fillRect (x, y + 3, 14, 9, 0xFFFFFF); uk_rline (cv, x, y + 3, 14, 9, 0, ink); cv.fillRect (x + 3, y + 5, 1, 5, ink); break;
+	case K_CHECKBOX: uk_check_mark (cv, x + 1, y + 1, 12, true, UK_NORMAL); break;
+	case K_LISTBOX: cv.fillRect (x, y + 1, 14, 12, 0xFFFFFF); uk_rline (cv, x, y + 1, 14, 12, 0, ink); cv.fillRect (x + 2, y + 3, 10, 2, acc); cv.fillRect (x + 2, y + 7, 10, 1, ink); cv.fillRect (x + 2, y + 10, 10, 1, ink); break;
+	case K_DROPDOWN: cv.fillRect (x, y + 3, 14, 9, 0xFFFFFF); uk_rline (cv, x, y + 3, 14, 9, 0, ink); uk_glyph (cv, WKG_CHEV_DOWN, x + 10, y + 7, 5, ink); break;
 	case K_SLIDER: cv.fillRect (x, y + 7, 14, 2, ink); cv.fillRect (x + 5, y + 3, 4, 10, acc); break;
-	case K_PROGRESS: wk_rline (cv, x, y + 4, 14, 7, 0, ink); cv.fillRect (x + 1, y + 5, 7, 5, acc); break;
+	case K_PROGRESS: uk_rline (cv, x, y + 4, 14, 7, 0, ink); cv.fillRect (x + 1, y + 5, 7, 5, acc); break;
 	case K_MENU: cv.fillRect (x, y + 2, 14, 3, ink); cv.fillRect (x + 2, y + 6, 8, 7, soft); break;
 	case K_TOOLBAR: cv.fillRect (x, y + 3, 14, 8, soft); cv.fillRect (x + 2, y + 5, 3, 4, ink); cv.fillRect (x + 7, y + 5, 3, 4, acc); break;
 	case K_STATUSBAR: cv.fillRect (x, y + 9, 14, 4, soft); cv.fillRect (x + 1, y + 10, 6, 2, ink); break;
@@ -616,7 +616,7 @@ public:
 	int hot, down, scroll; bool dragging; int pressX, pressY; unsigned lastClick; int lastIdx;
 	void (*onPick) (int kind);			// a double click (the designer adds it)
 	Toolbox (int l, int t, int w, int h, Designer *d) : Widget (l, t, w, h), des (d), hot (-1), down (-1), scroll (0), dragging (false), pressX (0), pressY (0), lastClick (0), lastIdx (-1), onPick (0) {}
-	int rowH () { return wk_fh () + 6; }
+	int rowH () { return uk_fh () + 6; }
 	// item i's box (2 columns; the groups' titles across)
 	void place (int i, int *x, int *y, int *w)
 	{
@@ -639,12 +639,12 @@ public:
 			if (y + RH < 0 || y > height) continue;
 			if (TOOLS[i].kind < 0)
 			{
-				wk_text (canvas, x, y + 3, TOOLS[i].label, wk_mix (C_BG, C_TEXT, 170), 2);
+				uk_text (canvas, x, y + 3, TOOLS[i].label, uk_mix (C_BG, C_TEXT, 170), 2);
 				continue;
 			}
-			if (i == down || i == hot) wk_rbox (canvas, x, y + 1, w - 2, RH - 2, 4, wk_mix (C_BG, C_ACCENT, i == down ? 90 : 40), wk_mix (C_BG, C_ACCENT, i == down ? 90 : 40));
+			if (i == down || i == hot) uk_rbox (canvas, x, y + 1, w - 2, RH - 2, 4, uk_mix (C_BG, C_ACCENT, i == down ? 90 : 40), uk_mix (C_BG, C_ACCENT, i == down ? 90 : 40));
 			tool_icon (canvas, TOOLS[i].kind, x + 4, y + (RH - 14) / 2, C_TEXT, C_ACCENT);
-			wk_text (canvas, x + 24, y + 3, TOOLS[i].label, C_TEXT);
+			uk_text (canvas, x + 24, y + 3, TOOLS[i].label, C_TEXT);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override

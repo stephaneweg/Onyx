@@ -6,7 +6,7 @@
 // -nostdlib -fno-exceptions -fno-rtti. No STL.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "onyxpp.hpp"
 
 #define W	360
@@ -45,7 +45,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "cppdemo");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 
 	for (int i = 0; i < N; i++)			// heap-allocate a mix of subclasses
 	{
@@ -58,9 +58,9 @@ int main (void)
 	while (!should_exit ())
 	{
 		pump_events ();
-		unsigned bg = wtk::C_BG;				// (the theme's face)
+		unsigned bg = uikit::C_BG;				// (the theme's face)
 		for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) fb[y * W + x] = bg;
-		wtk::draw_text (fb, W, H, 8, 8, g_banner.text, wtk::C_TEXT);	// proves the ctor ran
+		uikit::draw_text (fb, W, H, 8, 8, g_banner.text, uikit::C_TEXT);	// proves the ctor ran
 		for (int i = 0; i < N; i++) g_shapes[i]->draw ();	// virtual dispatch
 		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);

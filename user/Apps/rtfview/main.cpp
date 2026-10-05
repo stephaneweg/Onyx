@@ -7,12 +7,12 @@
 // Double-clicking a .rtf file in the File Viewer opens it here (fileassoc.ini).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "clipboard.h"
 #include "docguard.h"
 #include "rtf.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	640
 #define H	500
@@ -25,9 +25,9 @@ static char         g_path[128];
 static void open_file (const char *path)
 {
 	void *f = kapi_open (path);
-	if (f == 0) { wk_messagebox ("Open", "Cannot open this file.", MB_OK); return; }
+	if (f == 0) { uk_messagebox ("Open", "Cannot open this file.", MB_OK); return; }
 	unsigned sz = kapi_fsize (f);
-	if (sz > 4u * 1024 * 1024) { kapi_close (f); wk_messagebox ("Open", "This file is too big (4 MB at most).", MB_OK); return; }
+	if (sz > 4u * 1024 * 1024) { kapi_close (f); uk_messagebox ("Open", "This file is too big (4 MB at most).", MB_OK); return; }
 	char *b = new char[sz + 1];
 	int n = kapi_read (f, b, sz);
 	kapi_close (f);
@@ -50,7 +50,7 @@ static void open_file (const char *path)
 static void on_open ()
 {
 	char p[128];
-	if (wk_file_open (p, sizeof p, "SD:/")) open_file (p);
+	if (uk_file_open (p, sizeof p, "SD:/")) open_file (p);
 	g_rtb->setFocus ();
 }
 static void on_writer () { if (g_path[0]) kapi_exec ("SD:/apps/letters.app/main", g_path); }
@@ -87,11 +87,11 @@ int main (void)
 	root.setResizable (true);
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("Open...",        "^O", WK_CTRL ('O'), on_open);
+	menu.item ("Open...",        "^O", UK_CTRL ('O'), on_open);
 	menu.item ("Edit in Letters", "",   0,             on_writer);
 	menu.menu ("Edit");
-	menu.item ("Copy",           "^C", WK_CTRL ('C'), on_copy);
-	menu.item ("Select All",     "^A", WK_CTRL ('A'), on_all);
+	menu.item ("Copy",           "^C", UK_CTRL ('C'), on_copy);
+	menu.item ("Select All",     "^A", UK_CTRL ('A'), on_all);
 	menu.publish ();
 	char args[128];
 	if (kapi_get_args (args, sizeof args) > 0 && args[0]) open_file (args);

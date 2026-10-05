@@ -44,7 +44,7 @@
 #define DK_RSHIFT	(0x80 + 0x36)
 #define DK_RALT		(0x80 + 0x38)
 
-void onyx_decorate (void);					// doom_wtk.cpp
+void onyx_decorate (void);					// doom_uikit.cpp
 void onyx_menu (void (*full) (void), void (*quit) (void));
 
 static unsigned *s_canvas = 0;				// the window's 640 x 400 client area

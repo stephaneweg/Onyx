@@ -1,6 +1,6 @@
 //
 // Apps/mail/ui.h -- Mail's drawing helpers: the faces (DejaVu Sans at a few sizes), text cut to fit, the icons
-// (drawn from their geometry: wtk/vpaint.h), the round avatars with their initials, the hit lists of the parts that
+// (drawn from their geometry: uikit/vpaint.h), the round avatars with their initials, the hit lists of the parts that
 // are drawn by hand (the folders, the conversations, the message's header).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
@@ -8,15 +8,15 @@
 #ifndef _mail_ui_h
 #define _mail_ui_h
 
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
+#include "ft/uikitface.h"
+#include "uikit/uikit.h"
 #include "mail/util.h"
 
 namespace mailapp {
 
-using namespace wtk;
+using namespace uikit;
 
-// (style 1 here is bold: wtk's 2 -- Mail draws no italics in its own parts)
+// (style 1 here is bold: uikit's 2 -- Mail draws no italics in its own parts)
 static inline int B_ (int style) { return style == 1 ? 2 : style; }
 
 // ---- the faces --------------------------------------------------------------------------------------------------------
@@ -27,21 +27,21 @@ static void faces_open ()
 	static const int SZ[F_N] = { 13, 11, 14, 17, 24, 9 };
 	for (int i = 1; i < F_N; i++) { g_face[i] = new FtTextFace; if (!g_face[i]->open ("DejaVu Sans", SZ[i])) { delete g_face[i]; g_face[i] = 0; } }
 }
-static inline int tw (const char *s, int f = F_UI, int style = 0) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_tw (s, B_ (style)); }
-static inline int fh (int f = F_UI) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_fh (); }
+static inline int tw (const char *s, int f = F_UI, int style = 0) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_tw (s, B_ (style)); }
+static inline int fh (int f = F_UI) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_fh (); }
 // s at x, the line's top y; cut with "..." past w (0: not cut)
 static inline void text (Canvas &cv, int x, int y, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0)
 {
-	WkFaceScope sc (f == F_UI ? 0 : g_face[f]);
+	UkFaceScope sc (f == F_UI ? 0 : g_face[f]);
 	style = B_ (style);
-	if (w > 0 && wk_tw (s, style) > w) { char b[600]; wk_text_fit (s, w, b, sizeof b, style); wk_text (cv, x, y, b, c, style); }
-	else wk_text (cv, x, y, s, c, style);
+	if (w > 0 && uk_tw (s, style) > w) { char b[600]; uk_text_fit (s, w, b, sizeof b, style); uk_text (cv, x, y, b, c, style); }
+	else uk_text (cv, x, y, s, c, style);
 }
 static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0) { text (cv, x, y + (h - fh (f)) / 2, s, c, f, style, w); }
 static inline void text_r (Canvas &cv, int xr, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0) { text (cv, xr - tw (s, f, style), y + (h - fh (f)) / 2, s, c, f, style); }
 static inline void text_c (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int f = F_UI, int style = 0) { text (cv, x + (w - tw (s, f, style)) / 2, y + (h - fh (f)) / 2, s, c, f, style); }
 
-static inline void wk_fill_round (Canvas &cv, int x, int y, int w, int h, int r, unsigned c) { wk_rbox (cv, x, y, w, h, r, c, c); }
+static inline void uk_fill_round (Canvas &cv, int x, int y, int w, int h, int r, unsigned c) { uk_rbox (cv, x, y, w, h, r, c, c); }
 
 // a text field that says what goes in it while empty
 class HintBox : public Textbox
@@ -53,7 +53,7 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		if (!text[0] && !hasFocus && hint[0]) text_v (canvas, 9, 0, height, hint, wk_mix (C_FIELD, C_FIELD_TEXT, 110), F_UI, 0, width - 16);
+		if (!text[0] && !hasFocus && hint[0]) text_v (canvas, 9, 0, height, hint, uk_mix (C_FIELD, C_FIELD_TEXT, 110), F_UI, 0, width - 16);
 	}
 };
 

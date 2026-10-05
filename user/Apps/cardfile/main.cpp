@@ -6,7 +6,7 @@
 // or the View menu (F5, F6, F7):
 //   * Form (formview.h): a record at a time, on an index card: the fields' names and their editors; the
 //     navigator at the foot (first, previous, "Record 3 of 12", next, last, a new one);
-//   * List (listview.h): the records in a grid (wtk's DataGrid), a column per field; a click on a title
+//   * List (listview.h): the records in a grid (uikit's DataGrid), a column per field; a click on a title
 //     sorts, again the other way; a double click opens the record in the form;
 //   * Design (designview.h): the form itself -- its fields added, removed, moved, named, typed.
 // The search box (Ctrl+F) keeps the records holding every word typed (case and accents ignored); the
@@ -44,7 +44,7 @@
 // values) or unknown (ignored), no [field] at all (the header's columns become text fields), a value
 // that is not one of its type (kept as it is: the form asks for a valid one when it is edited).
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "docguard.h"
 #include "model.h"
 #include "widgets.h"
@@ -53,7 +53,7 @@
 #include "listview.h"
 #include "designview.h"
 
-using namespace wtk;
+using namespace uikit;
 
 namespace cf {
 
@@ -86,7 +86,7 @@ public:
 	enum { MAXL = 10 };
 	AskBox (const char *title, const char *text, int buttons, int icon) : Modal (440, 120), m_title (title), m_icon (icon), m_n (0), m_def (1), m_cancel (0)
 	{
-		int maxc = imin (95, (width - 70 - 22) / wk_fw ());
+		int maxc = imin (95, (width - 70 - 22) / uk_fw ());
 		const char *p = text;
 		while (*p && m_n < MAXL)
 		{
@@ -123,9 +123,9 @@ public:
 		drawBox (m_title);
 		int cx = 20, cy = titleH () + 22;
 		unsigned c = m_icon == 2 ? 0x00D8902A : C_ACCENT;
-		wk_rbox (canvas, cx, cy, 32, 32, 16, wk_tone (c, 156), wk_tone (c, 112));
-		wk_rline (canvas, cx, cy, 32, 32, 16, wk_tone (c, 80), 160);
-		wk_text_c (canvas, cx, cy, 32, 32, m_icon == 2 ? "!" : m_icon == 1 ? "?" : "i", 0x00FFFFFF, 2);
+		uk_rbox (canvas, cx, cy, 32, 32, 16, uk_tone (c, 156), uk_tone (c, 112));
+		uk_rline (canvas, cx, cy, 32, 32, 16, uk_tone (c, 80), 160);
+		uk_text_c (canvas, cx, cy, 32, 32, m_icon == 2 ? "!" : m_icon == 1 ? "?" : "i", 0x00FFFFFF, 2);
 		int y = titleH () + 22 + (m_n == 1 ? 8 : 0);
 		for (int i = 0; i < m_n; i++) canvas.text (68, y + i * 20, m_line[i], C_TEXT);
 	}
@@ -160,9 +160,9 @@ public:
 	void onDraw () override
 	{
 		drawBox ("Go to Record");
-		wk_text_l (canvas, 20, titleH () + 20, ED_H, "Record", C_TEXT);
+		uk_text_l (canvas, 20, titleH () + 20, ED_H, "Record", C_TEXT);
 		char t[32] = "of "; scat_num (t, n, sizeof t);
-		wk_text_l (canvas, 198, titleH () + 20, ED_H, t, C_TEXT);
+		uk_text_l (canvas, 198, titleH () + 20, ED_H, t, C_TEXT);
 	}
 };
 
@@ -219,7 +219,7 @@ public:
 		if (tag == 2)
 		{
 			char path[200];
-			if (wk_file_open (path, sizeof path, "SD:/docs")) letter->setText (path);
+			if (uk_file_open (path, sizeof path, "SD:/docs")) letter->setText (path);
 			return;
 		}
 		if (tag == 1 && !letter->text ()[0]) { ask ("Mail Merge", "Choose the letter first: a Letters document whose fields are the form's (Letters: Tools > Mail Merge).", MB_OK, 1); return; }
@@ -230,12 +230,12 @@ public:
 	{
 		drawBox ("Mail Merge");
 		int y = titleH () + 18;
-		wk_text_l (canvas, 20, y, ED_H, "Letter:", C_TEXT);
-		wk_text_l (canvas, 20, y + 46, 24, "Records:", C_TEXT);
-		wk_text_l (canvas, 20, y + 120, 24, "Documents:", C_TEXT);
-		wk_text_l (canvas, 150, y + 186, 26, "Their names:", files->checked ? C_TEXT : wk_mix (C_FACE, C_TEXT, 120));
-		wk_text_l (canvas, 150, y + 220, 26, "Their format:", files->checked ? C_TEXT : wk_mix (C_FACE, C_TEXT, 120));
-		wk_text_l (canvas, 20, height - 78, 20, "Letters fills the letter's fields with the records' values.", wk_mix (C_FACE, C_TEXT, 170));
+		uk_text_l (canvas, 20, y, ED_H, "Letter:", C_TEXT);
+		uk_text_l (canvas, 20, y + 46, 24, "Records:", C_TEXT);
+		uk_text_l (canvas, 20, y + 120, 24, "Documents:", C_TEXT);
+		uk_text_l (canvas, 150, y + 186, 26, "Their names:", files->checked ? C_TEXT : uk_mix (C_FACE, C_TEXT, 120));
+		uk_text_l (canvas, 150, y + 220, 26, "Their format:", files->checked ? C_TEXT : uk_mix (C_FACE, C_TEXT, 120));
+		uk_text_l (canvas, 20, height - 78, 20, "Letters fills the letter's fields with the records' values.", uk_mix (C_FACE, C_TEXT, 170));
 	}
 };
 
@@ -559,9 +559,9 @@ static void cmd_field_up () { if (to_design ()) g_design->move (-1); }
 static void cmd_field_down () { if (to_design ()) g_design->move (1); }
 
 // ---- the clipboard: to the editor with the keyboard -------------------------------------------------------------------
-static void cmd_cut () { g_root->handleKey (WK_CTRL ('X')); }
-static void cmd_copy () { g_root->handleKey (WK_CTRL ('C')); }
-static void cmd_paste () { g_root->handleKey (WK_CTRL ('V')); }
+static void cmd_cut () { g_root->handleKey (UK_CTRL ('X')); }
+static void cmd_copy () { g_root->handleKey (UK_CTRL ('C')); }
+static void cmd_paste () { g_root->handleKey (UK_CTRL ('V')); }
 
 // ---- the files ------------------------------------------------------------------------------------------------------------
 static bool read_all (const char *path, char **out, int *len)
@@ -671,7 +671,7 @@ static void cmd_save_as ()
 	if (!commit_edits ()) return;
 	char path[200], def[96];
 	default_name (def, sizeof def, ".card");
-	if (wk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		if (!has_ext (path, ".card")) scat (path, ".card", sizeof path);
 		write_path (path);
@@ -710,7 +710,7 @@ static void cmd_open ()
 {
 	if (!confirm_discard ()) { focus_view (); return; }
 	char path[200];
-	if (wk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (uk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
 	focus_view ();
 }
 static void cmd_import_csv () { cmd_open (); }
@@ -719,7 +719,7 @@ static void cmd_export_csv ()
 	if (!commit_edits ()) return;
 	char path[200], def[96];
 	default_name (def, sizeof def, ".csv");
-	if (wk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		if (!has_ext (path, ".csv")) scat (path, ".csv", sizeof path);
 		Out o; csv_write (g_doc, g_ord, g_nord, o);
@@ -875,34 +875,34 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Form", "^N", WK_CTRL ('N'), cmd_new);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmd_open);
+	menu.item ("New Form", "^N", UK_CTRL ('N'), cmd_new);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), cmd_open);
 	menu.separator ();
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.separator ();
 	menu.item ("Import CSV...", "", 0, cmd_import_csv);
 	menu.item ("Export as CSV...", "", 0, cmd_export_csv);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), cmd_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), cmd_redo);
 	menu.separator ();
 	menu.item ("Cut", "^X", 0, cmd_cut);
 	menu.item ("Copy", "^C", 0, cmd_copy);
 	menu.item ("Paste", "^V", 0, cmd_paste);
 	menu.separator ();
-	menu.item ("Search...", "^F", WK_CTRL ('F'), cmd_find);
+	menu.item ("Search...", "^F", UK_CTRL ('F'), cmd_find);
 	menu.item ("Clear the Search", "", 0, cmd_clear_search);
 	menu.menu ("Record");
-	menu.item ("New Record", "^R", WK_CTRL ('R'), cmd_new_record);
-	menu.item ("Duplicate Record", "^D", WK_CTRL ('D'), cmd_dup_record);
+	menu.item ("New Record", "^R", UK_CTRL ('R'), cmd_new_record);
+	menu.item ("Duplicate Record", "^D", UK_CTRL ('D'), cmd_dup_record);
 	menu.item ("Delete Record...", "", 0, cmd_del_record);
 	menu.separator ();
 	menu.item ("First Record", "^Home", 0, cmd_first);
 	menu.item ("Previous Record", "PgUp", 0, cmd_prev);
 	menu.item ("Next Record", "PgDn", 0, cmd_next);
 	menu.item ("Last Record", "^End", 0, cmd_last);
-	menu.item ("Go to Record...", "^G", WK_CTRL ('G'), cmd_goto);
+	menu.item ("Go to Record...", "^G", UK_CTRL ('G'), cmd_goto);
 	menu.separator ();
 	menu.item ("Mail Merge...", "", 0, cmd_mail_merge);
 	menu.separator ();

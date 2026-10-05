@@ -32,9 +32,9 @@
 #include "notify.h"
 #include "ask.h"
 #include "shelfmsg.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define SHELF_INI	"SD:/etc/shelf.ini"
 #define SH		100			// window height
@@ -47,10 +47,10 @@ using namespace wtk;
 #define PANEL_BAR	60			// the panel's thickness (panel/main.cpp BAR)
 #define DRAG_START	6
 
-// The theme's colours (wtk/theme.h: read when drawn): the strip the apps' face; the current
+// The theme's colours (uikit/theme.h: read when drawn): the strip the apps' face; the current
 // tab, the pressed item in the accent; a drop target outlined in it.
 #define S_BG	C_BG
-#define S_EDGE	wk_tone (C_FACE, 70)
+#define S_EDGE	uk_tone (C_FACE, 70)
 #define S_TXT	C_TEXT
 #define S_DIMT	C_DIS
 
@@ -405,21 +405,21 @@ public:
 			const char *nm = (t == editTab) ? editBuf : g_tabs[t].name;
 			int w = fs_len (nm) * g_fw + 16 + (t == editTab ? g_fw : 0);
 			bool cur = t == g_cur;
-			if (cur) wk_hilite (canvas, x, 3, w, TAB_H - 3, 5, true);
-			else wk_raised (canvas, x, 3, w, TAB_H - 3, 5, C_FACE);
-			if (hotTab == t) wk_rline (canvas, x, 3, w, TAB_H - 3, 5, C_ACCENT);
+			if (cur) uk_hilite (canvas, x, 3, w, TAB_H - 3, 5, true);
+			else uk_raised (canvas, x, 3, w, TAB_H - 3, 5, C_FACE);
+			if (hotTab == t) uk_rline (canvas, x, 3, w, TAB_H - 3, 5, C_ACCENT);
 			canvas.text (x + 8, 4 + (TAB_H - 3 - g_fh) / 2, nm, cur ? C_SEL_TEXT : S_TXT);
 			if (t == editTab) canvas.fillRect (x + 8 + editLen * g_fw, 6, 2, g_fh, cur ? C_SEL_TEXT : C_ACCENT);	// caret
 			x += w + 2;
 			g_tabX[t] = x;
 		}
-		wk_raised (canvas, x, 3, 22, TAB_H - 3, 5, C_FACE);
+		uk_raised (canvas, x, 3, 22, TAB_H - 3, 5, C_FACE);
 		canvas.text (x + 7, 4 + (TAB_H - 3 - g_fh) / 2, "+", S_TXT);
 		g_tabRight = x + 22;
 		int mxb = items_w () - MINUS_W - 4;			// "-": remove the current tab
-		wk_raised (canvas, mxb, 3, MINUS_W, TAB_H - 3, 5, C_FACE, g_ntabs > 1 ? WK_NORMAL : WK_DISABLED);
+		uk_raised (canvas, mxb, 3, MINUS_W, TAB_H - 3, 5, C_FACE, g_ntabs > 1 ? UK_NORMAL : UK_DISABLED);
 		canvas.text (mxb + (MINUS_W - g_fw) / 2, 4 + (TAB_H - 3 - g_fh) / 2, "-", g_ntabs > 1 ? S_TXT : S_DIMT);
-		wk_etch_h (canvas, 0, TAB_H, width, S_BG);
+		uk_etch_h (canvas, 0, TAB_H, width, S_BG);
 
 		// Items of the current tab.
 		Tab &tb = g_tabs[g_cur];
@@ -429,7 +429,7 @@ public:
 			int cx = 4 + (i - tb.scroll) * CELL;
 			if (cx + CELL > items_w ()) break;
 			bool sel = i == armItem && !dragging;
-			if (sel) wk_hilite (canvas, cx + 2, TAB_H + 3, CELL - 4, SH - TAB_H - 6, 6, true);
+			if (sel) uk_hilite (canvas, cx + 2, TAB_H + 3, CELL - 4, SH - TAB_H - 6, 6, true);
 			glyph (canvas, cx + (CELL - ICON) / 2, TAB_H + 6, tb.items[i]);
 			char lab[40]; fs_copy (lab, tb.items[i].label, sizeof lab);
 			fit_label (lab, maxc);
@@ -438,13 +438,13 @@ public:
 		}
 		if (tb.n == 0)
 			canvas.text (12, TAB_H + 30, "Drop files, folders or apps here", S_DIMT);
-		if (hotItem == -1) wk_rline (canvas, 2, TAB_H + 2, items_w () - 4, SH - TAB_H - 4, 6, C_ACCENT);
+		if (hotItem == -1) uk_rline (canvas, 2, TAB_H + 2, items_w () - 4, SH - TAB_H - 4, 6, C_ACCENT);
 		if (tb.scroll > 0) canvas.text (items_w () - 20, TAB_H + 2, "<", S_DIMT);
 
 		// The Trash.
 		int tx = items_w ();
-		wk_etch_v (canvas, tx, TAB_H + 4, SH - TAB_H - 8, S_BG);
-		if (hotItem == -3) wk_hilite (canvas, tx + 3, TAB_H + 3, TRASH_W - 6, SH - TAB_H - 6, 6, true);
+		uk_etch_v (canvas, tx, TAB_H + 4, SH - TAB_H - 8, S_BG);
+		if (hotItem == -3) uk_hilite (canvas, tx + 3, TAB_H + 3, TRASH_W - 6, SH - TAB_H - 6, 6, true);
 		trash_glyph (canvas, tx + (TRASH_W - ICON) / 2, TAB_H + 6, trashFull);
 		canvas.text (tx + (TRASH_W - 5 * g_fw) / 2, TAB_H + 50, "Trash", hotItem == -3 ? C_SEL_TEXT : S_TXT);
 	}

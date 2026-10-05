@@ -1,12 +1,12 @@
 //
 // pc/Koton/winkapi.cpp -- the Onyx kernel's ABI table (kern/kapi_abi.h) on Windows, so that Koton (user/Apps/
-// koton), wtk, FreeType, Koton's plugins (user/Apps/kp_*) and its AI helper (user/bin/llm.cpp) build for
+// koton), uikit, FreeType, Koton's plugins (user/Apps/kp_*) and its AI helper (user/bin/llm.cpp) build for
 // Windows from the Onyx sources, unchanged: the table is put where the apps look for it (KAPI_TABLE_VA)
 // before any constructor runs, and filled with Win32 equivalents of what those programs call.
 //
 //   the window     a Windows window; its client area is the app's canvas (the Onyx frame is not drawn:
 //                  get_chrome says "borderless"), the app's menu bar a Windows menu. The window's size is
-//                  the "work area": wtk's maximised Root follows it (GUI_EVENT_DISPLAY_RESIZE).
+//                  the "work area": uikit's maximised Root follows it (GUI_EVENT_DISPLAY_RESIZE).
 //   files          "SD:/..." is the folder of Koton.exe (ONYX_SD, inherited by the programs it starts);
 //                  "C:/..." a Windows path. A program ".../main" or "SD:/bin/llm" is main.exe, llm.exe.
 //   sound          the mapped PCM ring (kapi_sound_map) played through WASAPI (shared mode, event driven).

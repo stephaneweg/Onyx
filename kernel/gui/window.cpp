@@ -143,7 +143,7 @@ void CWindow::SetLogicalSize (int w, int h)
 	m_nLogicalH = h;
 	if (HasChrome ())				// the frame follows (its copies were made for the
 	{						// canvas's full size: always big enough); the app
-		m_nOuterW = ChromeL () + w + ChromeR ();	// redraws it (wtk: wk_decorate_window)
+		m_nOuterW = ChromeL () + w + ChromeR ();	// redraws it (uikit: uk_decorate_window)
 		m_nOuterH = ChromeT () + h + ChromeB ();
 		m_nChromeGen++;
 	}
@@ -1375,7 +1375,7 @@ static void EmitDnd (CWindow *pWin, int nEvent, int cx, int cy, unsigned nFlags,
 }
 
 // The screen's size changed (see window.h). Every window stays on the screen (moved in, not
-// resized: its app does that, on GUI_EVENT_DISPLAY_RESIZE -- wtk re-maximises a maximised
+// resized: its app does that, on GUI_EVENT_DISPLAY_RESIZE -- uikit re-maximises a maximised
 // window, shrinks one too big for the work area); the cursor too.
 void CWindowManager::OnScreenResized (int nW, int nH)
 {

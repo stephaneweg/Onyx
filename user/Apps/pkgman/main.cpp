@@ -19,10 +19,10 @@
 #include "applib.h"
 #include "bmp.hpp"
 #include "pkg/pkglib.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace pkg;
 
 #define W	700
@@ -286,12 +286,12 @@ static bool start_job (int kind, const char *const *names, int n, const char *mo
 // ---- drawing helpers -------------------------------------------------------------------------------------------
 static void small (Canvas &cv, int x, int y, const char *s, unsigned c, int style = 0)
 {
-	if (g_small) g_small->draw (cv, x, y, s, c, style); else wk_text (cv, x, y, s, c, style);
+	if (g_small) g_small->draw (cv, x, y, s, c, style); else uk_text (cv, x, y, s, c, style);
 }
-static int small_w (const char *s, int style = 0) { return g_small ? g_small->width (s, style) : wk_tw (s, style); }
+static int small_w (const char *s, int style = 0) { return g_small ? g_small->width (s, style) : uk_tw (s, style); }
 static void blit_icon (Canvas &cv, const Row &r, int x, int y, int s)
 {
-	if (!r.icon) { wk_rbox (cv, x + 2, y + 2, s - 4, s - 4, 6, wk_tone (C_ACCENT, 150), C_ACCENT); return; }
+	if (!r.icon) { uk_rbox (cv, x + 2, y + 2, s - 4, s - 4, 6, uk_tone (C_ACCENT, 150), C_ACCENT); return; }
 	for (int j = 0; j < s; j++)
 		for (int k = 0; k < s; k++)
 		{
@@ -305,19 +305,19 @@ static void blit_icon (Canvas &cv, const Row &r, int x, int y, int s)
 static int pill (Canvas &cv, int x, int y, int w, int h, const char *s, int state, bool accent = false)
 {
 	int lx, ly, lw, lh;
-	wk_framed (cv, x, y, w, h, accent ? C_ACCENT : C_BUTTON, state, &lx, &ly, &lw, &lh);
-	wk_text_c (cv, lx, ly, lw, lh, s, accent ? C_SEL_TEXT : (state == WK_DISABLED ? C_DIS : C_BUTTON_TEXT), accent ? 2 : 0);
+	uk_framed (cv, x, y, w, h, accent ? C_ACCENT : C_BUTTON, state, &lx, &ly, &lw, &lh);
+	uk_text_c (cv, lx, ly, lw, lh, s, accent ? C_SEL_TEXT : (state == UK_DISABLED ? C_DIS : C_BUTTON_TEXT), accent ? 2 : 0);
 	return w;
 }
 static void badge (Canvas &cv, int x, int y, const char *s, unsigned bg)
 {
 	int w = small_w (s, 2) + 12;
-	wk_rbox (cv, x, y, w, 16, 8, bg, bg);
+	uk_rbox (cv, x, y, w, 16, 8, bg, bg);
 	small (cv, x + 6, y + 1, s, 0xFFFFFF, 2);
 }
 
 // ---- the tabs ---------------------------------------------------------------------------------------------------
-// wtk's segmented control (as the Calendar's Day / Week / Month), each segment its number of packages.
+// uikit's segmented control (as the Calendar's Day / Week / Month), each segment its number of packages.
 static SegmentedControl *g_tabs;
 static void tabs_labels ()
 {
@@ -375,18 +375,18 @@ public:
 		int rw = width - 14;
 		if (banner ())
 		{
-			wk_rbox (canvas, 6, y, rw - 6, 56, 8, wk_mix (C_FIELD, 0xE2A03A, 40), wk_mix (C_FIELD, 0xE2A03A, 40));
-			wk_rline (canvas, 6, y, rw - 6, 56, 8, wk_mix (C_FIELD, 0xE2A03A, 160));
-			wk_text (canvas, 18, y + 8, "Restart to finish the system update", C_FIELD_TEXT, 2);
-			small (canvas, 18, y + 30, "It is moved in at the next boot (the previous kernel kept as .old).", wk_mix (C_FIELD, C_FIELD_TEXT, 150));
-			pill (canvas, rw - 100, y + 14, 90, 28, "Restart", hotRow == -2 ? WK_HOT : WK_NORMAL, true);
+			uk_rbox (canvas, 6, y, rw - 6, 56, 8, uk_mix (C_FIELD, 0xE2A03A, 40), uk_mix (C_FIELD, 0xE2A03A, 40));
+			uk_rline (canvas, 6, y, rw - 6, 56, 8, uk_mix (C_FIELD, 0xE2A03A, 160));
+			uk_text (canvas, 18, y + 8, "Restart to finish the system update", C_FIELD_TEXT, 2);
+			small (canvas, 18, y + 30, "It is moved in at the next boot (the previous kernel kept as .old).", uk_mix (C_FIELD, C_FIELD_TEXT, 150));
+			pill (canvas, rw - 100, y + 14, 90, 28, "Restart", hotRow == -2 ? UK_HOT : UK_NORMAL, true);
 			y += 64;
 		}
 		if (!g_nvis)
 		{
 			const char *t = g_tab == T_UPDATES ? (g_haveIndex ? "Everything is up to date." : "The repository has not been read yet: Check Now.")
 				      : g_tab == T_INSTALLED ? "Nothing installed matches." : (g_haveIndex ? "Nothing more to install." : "The repository has not been read yet: Check Now.");
-			wk_text_c (canvas, 0, y + 30, width, 24, t, C_DIS);
+			uk_text_c (canvas, 0, y + 30, width, 24, t, C_DIS);
 		}
 		for (int vi = 0; vi < g_nvis; vi++, y += ROWH)
 		{
@@ -395,20 +395,20 @@ public:
 			bool hot = vi == hotRow;
 			if (vi == sel)					// the row chosen: the accent's tint, its ring when the list has the keys
 			{
-				wk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, wk_mix (C_FIELD, C_ACCENT, 48), wk_mix (C_FIELD, C_ACCENT, 48));
-				if (hasFocus) wk_rline (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, C_ACCENT, 255);
+				uk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, uk_mix (C_FIELD, C_ACCENT, 48), uk_mix (C_FIELD, C_ACCENT, 48));
+				if (hasFocus) uk_rline (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, C_ACCENT, 255);
 			}
-			else if (hot) wk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, wk_mix (C_FIELD, C_ACCENT, 26), wk_mix (C_FIELD, C_ACCENT, 26));
-			if (vi + 1 < g_nvis) canvas.fillRect (12, y + ROWH - 1, rw - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 30));
+			else if (hot) uk_rbox (canvas, 4, y + 1, rw - 2, ROWH - 2, 6, uk_mix (C_FIELD, C_ACCENT, 26), uk_mix (C_FIELD, C_ACCENT, 26));
+			if (vi + 1 < g_nvis) canvas.fillRect (12, y + ROWH - 1, rw - 16, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 30));
 			int x = 10;
-			unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 150);
-			if (can_mark (r)) wk_check_mark (canvas, x, y + (ROWH - 16) / 2, 16, mark_of (r), hot && hotPart == 1 ? WK_HOT : WK_NORMAL);
+			unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 150);
+			if (can_mark (r)) uk_check_mark (canvas, x, y + (ROWH - 16) / 2, 16, mark_of (r), hot && hotPart == 1 ? UK_HOT : UK_NORMAL);
 			x += 26;
 			blit_icon (canvas, r, x, y + (ROWH - ICON) / 2, ICON);
 			x += ICON + 10;
 			// the title, the versions
-			wk_text (canvas, x, y + 9, r.title, C_FIELD_TEXT, 2);
-			int vx = x + wk_tw (r.title, 2) + 8;
+			uk_text (canvas, x, y + 9, r.title, C_FIELD_TEXT, 2);
+			int vx = x + uk_tw (r.title, 2) + 8;
 			char v[64];
 			if ((g_tab == T_UPDATES || (g_tab == T_AVAILABLE && r.hasUpdate)) && r.hasUpdate)
 			{
@@ -425,13 +425,13 @@ public:
 			else if (g_tab == T_INSTALLED) snprintf (line, sizeof line, "%s", r.category);
 			else snprintf (line, sizeof line, "%s", r.summary[0] ? r.summary : r.category);
 			char fit[160]; int maxw = (g_tab == T_INSTALLED ? rw - 92 - 8 - 186 - 12 : rw - 110) - x;
-			wk_text_fit (line, maxw, fit, sizeof fit);
+			uk_text_fit (line, maxw, fit, sizeof fit);
 			if (g_small) { int k = 0; while (fit[k] && small_w (fit) > maxw && k < 300) { int l = (int) strlen (fit); if (l > 4) { fit[l - 4] = '.'; fit[l - 3] = '.'; fit[l - 2] = '.'; fit[l - 1] = 0; } k++; } }
 			small (canvas, x, y + 32, fit, dim);
 			// the right side
 			if (r.state == ST_WORK)
 			{
-				wk_progress_bar (canvas, rw - 170, y + 22, 110, 12, r.pct * 110 / 100);
+				uk_progress_bar (canvas, rw - 170, y + 22, 110, 12, r.pct * 110 / 100);
 				char p[8]; snprintf (p, sizeof p, "%d %%", r.pct); small (canvas, rw - 50, y + 21, p, C_ACCENT, 2);
 				continue;
 			}
@@ -445,21 +445,21 @@ public:
 			{
 				int mx = rw - 92 - 8 - 186;
 				static const char *const modes[] = { "Manual", "Auto", "Never" }, *const keys[] = { "manual", "auto", "never" };
-				wk_rbox (canvas, mx, y + 16, 186, 26, 13, wk_tone (C_FIELD, 110), wk_tone (C_FIELD, 110));
+				uk_rbox (canvas, mx, y + 16, 186, 26, 13, uk_tone (C_FIELD, 110), uk_tone (C_FIELD, 110));
 				for (int k = 0; k < 3; k++)
 				{
 					bool on = eq (r.mode, keys[k]);
-					if (on) wk_rbox (canvas, mx + 2 + k * 62, y + 18, 58, 22, 11, wk_tone (C_ACCENT, 150), C_ACCENT);
-					else if (hot && hotPart == 10 + k) wk_rbox (canvas, mx + 2 + k * 62, y + 18, 58, 22, 11, wk_tone (C_FIELD, 150), wk_tone (C_FIELD, 140));
+					if (on) uk_rbox (canvas, mx + 2 + k * 62, y + 18, 58, 22, 11, uk_tone (C_ACCENT, 150), C_ACCENT);
+					else if (hot && hotPart == 10 + k) uk_rbox (canvas, mx + 2 + k * 62, y + 18, 58, 22, 11, uk_tone (C_FIELD, 150), uk_tone (C_FIELD, 140));
 					int tw = small_w (modes[k], on ? 2 : 0);
 					small (canvas, mx + 2 + k * 62 + (58 - tw) / 2, y + 22, modes[k], on ? C_SEL_TEXT : C_FIELD_TEXT, on ? 2 : 0);
 				}
-				if (!r.required) pill (canvas, rw - 92, y + 14, 84, 30, "Remove", g_job.running ? WK_DISABLED : hot && hotPart == 2 ? WK_HOT : WK_NORMAL);
+				if (!r.required) pill (canvas, rw - 92, y + 14, 84, 30, "Remove", g_job.running ? UK_DISABLED : hot && hotPart == 2 ? UK_HOT : UK_NORMAL);
 			}
 			else
 			{
 				bool upd = r.hasUpdate;
-				pill (canvas, rw - 96, y + 14, 88, 30, upd ? "Update" : "Install", g_job.running ? WK_DISABLED : hot && hotPart == 2 ? WK_HOT : WK_NORMAL, !upd);
+				pill (canvas, rw - 96, y + 14, 88, 30, upd ? "Update" : "Install", g_job.running ? UK_DISABLED : hot && hotPart == 2 ? UK_HOT : UK_NORMAL, !upd);
 				char s2[24]; size_text (r.size, s2, sizeof s2); small (canvas, rw - 106 - small_w (s2), y + 21, s2, dim);
 			}
 		}
@@ -467,8 +467,8 @@ public:
 		int total = rows_h ();
 		if (total > height)
 		{
-			WkThumb t = wk_thumb (total, height, top, height - 4);
-			wk_draw_vscroll (canvas, width - 12, 2, 10, height - 4, t, C_FIELD, drag);
+			UkThumb t = uk_thumb (total, height, top, height - 4);
+			uk_draw_vscroll (canvas, width - 12, 2, 10, height - 4, t, C_FIELD, drag);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -476,7 +476,7 @@ public:
 		if (drag)						// the thumb held: the list follows the pointer
 		{
 			if (!bl || mx < 0) { drag = false; invalidate (true); }
-			else { int total = rows_h (); WkThumb t = wk_thumb (total, height, top, height - 4); top = (int) wk_thumb_pos (my - 2, height - 4, total, height, t.h); clamp (); invalidate (true); }
+			else { int total = rows_h (); UkThumb t = uk_thumb (total, height, top, height - 4); top = (int) uk_thumb_pos (my - 2, height - 4, total, height, t.h); clamp (); invalidate (true); }
 			wasDown = bl != 0;
 			return true;
 		}
@@ -487,7 +487,7 @@ public:
 			if (hotRow != -1) { hotRow = -1; invalidate (true); }
 			if (bl && !wasDown)
 			{
-				WkThumb t = wk_thumb (rows_h (), height, top, height - 4);
+				UkThumb t = uk_thumb (rows_h (), height, top, height - 4);
 				int cy = my - 2;
 				if (cy >= t.y && cy < t.y + t.h) drag = true;			// the thumb: dragged
 				else { top += cy < t.y ? -(height - ROWH) : height - ROWH; clamp (); }	// the groove: a page
@@ -560,7 +560,7 @@ static void update_main_button (void)
 static void set_status (const char *s)
 {
 	cpy (g_status, s, sizeof g_status);
-	char fit[200]; wk_text_fit (s, g_lblStatus->width, fit, sizeof fit);
+	char fit[200]; uk_text_fit (s, g_lblStatus->width, fit, sizeof fit);
 	g_lblStatus->setText (fit);
 }
 static void status_idle (void)
@@ -581,7 +581,7 @@ void app_click (int row, int part)
 {
 	if (row == -2)
 	{
-		if (wk_messagebox ("Restart", "Restart Onyx now to finish the system update?", MB_YESNO)) kapi_reboot ();
+		if (uk_messagebox ("Restart", "Restart Onyx now to finish the system update?", MB_YESNO)) kapi_reboot ();
 		return;
 	}
 	if (row < 0 || row >= g_nvis || g_job.running) return;
@@ -600,7 +600,7 @@ void app_click (int row, int part)
 	if (g_tab == T_INSTALLED && part == 2 && !r.required)
 	{
 		char q[160]; snprintf (q, sizeof q, "Remove %s %s? (the settings you changed are kept)", r.title, r.inst);
-		if (!wk_messagebox ("Remove", q, MB_YESNO)) return;
+		if (!uk_messagebox ("Remove", q, MB_YESNO)) return;
 		const char *n[1] = { r.name };
 		if (start_job (J_REMOVE, n, 1)) { set_status ("Removing..."); update_main_button (); }
 	}
@@ -612,7 +612,7 @@ static void on_install (Widget &)
 	if (!n) return;
 	if (g_tab != T_INSTALLED) { install_names (names, n); return; }
 	char q[160]; snprintf (q, sizeof q, "Remove %d package%s? (the settings you changed are kept)", n, n == 1 ? "" : "s");
-	if (!wk_messagebox ("Remove", q, MB_YESNO)) return;
+	if (!uk_messagebox ("Remove", q, MB_YESNO)) return;
 	if (start_job (J_REMOVE, names, n)) { set_status ("Removing..."); update_main_button (); g_list->invalidate (true); }
 }
 // All / None: every row shown ticked -- or none when they all are.
@@ -681,7 +681,7 @@ public:
 int main (void)
 {
 	char args[64]; int an = kapi_get_args (args, sizeof args); args[an > 0 && an < 64 ? an : 0] = 0;
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	g_small = new FtTextFace; if (!g_small->open ("DejaVu Sans", 11)) g_small = 0;
 	static Manager m; g_M = &m;
 	m.load_cached_quiet ();

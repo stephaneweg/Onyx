@@ -22,12 +22,12 @@
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "snes/snes.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 
-using namespace wtk;
+using namespace uikit;
 
 enum { EH = 224 };						// the lines shown (an overscan frame: its first 224)
 
@@ -179,7 +179,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 3x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (snes::W * z, EH * z), snes::W * z, EH * z, g_stride);
-	wtk::wk_decorate_window ();					// the frame follows
+	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = snes::W * z; g_root->height = EH * z;
 	g_root->invalidate (true);
 }
@@ -324,7 +324,7 @@ int main (void)
 			? "This game uses an enhancement chip in its cartridge\n(Super FX, SA-1, DSP-1...): not supported."
 			: "Not a Super Nintendo ROM (.sfc / .smc).";
 		g_loading = false;
-		wk_messagebox ("SNES", msg, MB_OK);
+		uk_messagebox ("SNES", msg, MB_OK);
 		return 1;
 	}
 	// <rom>.sav
@@ -339,7 +339,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	menu.item ("Reset",        "",    0, on_reset);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Zoom 1x",      "",    0, on_zoom1);

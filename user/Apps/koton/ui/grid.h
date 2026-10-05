@@ -181,11 +181,11 @@ public:
 		}
 		// the scroll bars
 		int total = rows * rowH;
-		WkThumb tv = wk_thumb (total, gh, m_sy, gh);
-		if (tv.show) wk_scroll_bar (cv, width - 10, headerH, 10, gh, true, tv.y, tv.h, LANE, WK_NORMAL);
-		WkThumb thh = wk_thumb (cols * pxPerCol + 20, gw, m_sx, gw);
+		UkThumb tv = uk_thumb (total, gh, m_sy, gh);
+		if (tv.show) uk_scroll_bar (cv, width - 10, headerH, 10, gh, true, tv.y, tv.h, LANE, UK_NORMAL);
+		UkThumb thh = uk_thumb (cols * pxPerCol + 20, gw, m_sx, gw);
 		cv.fillRect (0, height - 10, width, 10, PANEL);
-		if (thh.show) wk_scroll_bar (cv, labelW, height - 10, gw, 10, false, thh.y, thh.h, PANEL, WK_NORMAL);
+		if (thh.show) uk_scroll_bar (cv, labelW, height - 10, gw, 10, false, thh.y, thh.h, PANEL, UK_NORMAL);
 		frame (cv, 0, 0, width, height, 0, LINE);
 	}
 
@@ -235,16 +235,16 @@ public:
 			{
 				m_drag = 5;
 				int gh = gridH (), total = rows * rowH;
-				WkThumb tv = wk_thumb (total, gh, m_sy, gh);
-				m_sy = (int) wk_thumb_pos (my - headerH, gh, total, gh, tv.h);
+				UkThumb tv = uk_thumb (total, gh, m_sy, gh);
+				m_sy = (int) uk_thumb_pos (my - headerH, gh, total, gh, tv.h);
 				invalidate (true); return true;
 			}
 			if (m_drag == 6 || (e == 1 && my >= height - 10))
 			{
 				m_drag = 6;
 				int gw = gridW ();
-				WkThumb th_ = wk_thumb (cols * pxPerCol + 20, gw, m_sx, gw);
-				m_sx = (int) wk_thumb_pos (mx - labelW, gw, cols * pxPerCol + 20, gw, th_.h);
+				UkThumb th_ = uk_thumb (cols * pxPerCol + 20, gw, m_sx, gw);
+				m_sx = (int) uk_thumb_pos (mx - labelW, gw, cols * pxPerCol + 20, gw, th_.h);
 				invalidate (true); return true;
 			}
 		}

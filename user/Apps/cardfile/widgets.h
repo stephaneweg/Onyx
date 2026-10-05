@@ -1,6 +1,6 @@
 //
-// widgets.h -- Cardfile's controls, drawn in the theme's look (wtk/paint.h):
-//   * the icons (wtk/vpaint.h: anti-aliased, from their geometry), the toolbar and its buttons, the
+// widgets.h -- Cardfile's controls, drawn in the theme's look (uikit/paint.h):
+//   * the icons (uikit/vpaint.h: anti-aliased, from their geometry), the toolbar and its buttons, the
 //     view switch (Form | List | Design: one segment lit in the accent);
 //   * the editors of a form's fields: a line of any length (LineEdit: the selection -- Shift + the
 //     arrows, a drag, a double click on a word, ^A --, the clipboard ^X ^C ^V, words with Ctrl; a
@@ -14,13 +14,13 @@
 #ifndef _cardfile_widgets_h
 #define _cardfile_widgets_h
 
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "clipboard.h"
 #include "model.h"
 
 namespace cf {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { TB_H = 40, BTN = 28, NAV_H = 30, ED_H = 26 };
 static const unsigned C_ERROR = 0x00C8402E;		// an invalid value's outline
@@ -46,7 +46,7 @@ static void icon_box (Canvas &cv, VPath &p, int x, int y, int w, int h, int r, u
 
 static void draw_icon (Canvas &cv, int k, int x, int y, unsigned ink, bool off = false)
 {
-	unsigned dim = wk_mix (ink, C_BG, 150);
+	unsigned dim = uk_mix (ink, C_BG, 150);
 	if (off) ink = dim;
 	int A = off ? 110 : 255;
 	VPath p;
@@ -178,11 +178,11 @@ public:
 		if (!disabled && m_hot)
 		{
 			bool dn = pressed;
-			wk_rbox (canvas, 0, 0, width, height, 5, dn ? wk_tone (bg, 110) : wk_tone (bg, 150), dn ? wk_tone (bg, 118) : wk_tone (bg, 138));
-			wk_rline (canvas, 0, 0, width, height, 5, wk_tone (bg, 96), 150);
+			uk_rbox (canvas, 0, 0, width, height, 5, dn ? uk_tone (bg, 110) : uk_tone (bg, 150), dn ? uk_tone (bg, 118) : uk_tone (bg, 138));
+			uk_rline (canvas, 0, 0, width, height, 5, uk_tone (bg, 96), 150);
 		}
 		int d = pressed && m_hot ? 1 : 0;
-		draw_icon (canvas, icon, (width - 20) / 2 + d, (height - 20) / 2 + d, wk_ink_for (bg), disabled);
+		draw_icon (canvas, icon, (width - 20) / 2 + d, (height - 20) / 2 + d, uk_ink_for (bg), disabled);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
@@ -213,8 +213,8 @@ public:
 	void onDraw () override
 	{
 		canvas.fillRect (0, 0, width, height, C_BG);
-		for (int i = 0; i < m_nsep; i++) wk_etch_v (canvas, m_sepX[i], 8, height - 16, C_BG);
-		wk_etch_h (canvas, 0, height - 2, width, C_BG);
+		for (int i = 0; i < m_nsep; i++) uk_etch_v (canvas, m_sepX[i], 8, height - 16, C_BG);
+		uk_etch_h (canvas, 0, height - 2, width, C_BG);
 	}
 private:
 	int m_x, m_nsep, m_sepX[16];
@@ -234,21 +234,21 @@ public:
 		static const int ICON[N] = { IC_FORM, IC_LIST, IC_DESIGN };
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
-		wk_rbox (canvas, 0, 0, width, height, 6, wk_tone (C_BUTTON, 176), wk_tone (C_BUTTON, 118));
+		uk_rbox (canvas, 0, 0, width, height, 6, uk_tone (C_BUTTON, 176), uk_tone (C_BUTTON, 118));
 		int sw = width / N;
 		for (int i = 0; i < N; i++)
 		{
 			int x = i * sw, w = i == N - 1 ? width - x : sw;
-			int corners = (i == 0 ? WK_TL | WK_BL : 0) | (i == N - 1 ? WK_TR | WK_BR : 0);
-			if (i == cur) wk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, wk_tone (C_ACCENT, 142), wk_tone (C_ACCENT, 112), 255, corners);
-			else if (i == m_hot) wk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, wk_tone (C_BUTTON, m_down == i ? 120 : 196), wk_tone (C_BUTTON, m_down == i ? 132 : 140), 255, corners);
-			if (i > 0 && i != cur && i - 1 != cur) canvas.fillRect (x, 5, 1, height - 10, wk_tone (C_BUTTON, 96));
+			int corners = (i == 0 ? UK_TL | UK_BL : 0) | (i == N - 1 ? UK_TR | UK_BR : 0);
+			if (i == cur) uk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, uk_tone (C_ACCENT, 142), uk_tone (C_ACCENT, 112), 255, corners);
+			else if (i == m_hot) uk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, uk_tone (C_BUTTON, m_down == i ? 120 : 196), uk_tone (C_BUTTON, m_down == i ? 132 : 140), 255, corners);
+			if (i > 0 && i != cur && i - 1 != cur) canvas.fillRect (x, 5, 1, height - 10, uk_tone (C_BUTTON, 96));
 			unsigned ink = i == cur ? C_SEL_TEXT : C_BUTTON_TEXT;
-			int tw = wk_text_w (NAME[i], i == cur ? 2 : 0), gx = x + (w - 20 - 5 - tw) / 2;
+			int tw = uk_text_w (NAME[i], i == cur ? 2 : 0), gx = x + (w - 20 - 5 - tw) / 2;
 			draw_icon (canvas, ICON[i], gx, (height - 20) / 2, ink);
-			wk_text_l (canvas, gx + 25, 0, height, NAME[i], ink, i == cur ? 2 : 0);
+			uk_text_l (canvas, gx + 25, 0, height, NAME[i], ink, i == cur ? 2 : 0);
 		}
-		wk_rline (canvas, 0, 0, width, height, 6, wk_tone (C_BUTTON, 70), 190);
+		uk_rline (canvas, 0, 0, width, height, 6, uk_tone (C_BUTTON, 70), 190);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
@@ -374,10 +374,10 @@ struct TextCore
 			remove (caret, p - caret);
 			return 2;
 		}
-		if (k == WK_CTRL ('A')) { anchor = 0; caret = len; return 1; }
-		if (k == WK_CTRL ('C')) { copy (); return 1; }
-		if (k == WK_CTRL ('X')) { if (!hasSel ()) return 1; copy (); delSel (); return 2; }
-		if (k == WK_CTRL ('V'))
+		if (k == UK_CTRL ('A')) { anchor = 0; caret = len; return 1; }
+		if (k == UK_CTRL ('C')) { copy (); return 1; }
+		if (k == UK_CTRL ('X')) { if (!hasSel ()) return 1; copy (); delSel (); return 2; }
+		if (k == UK_CTRL ('V'))
 		{
 			static char b[16384];
 			int n = clip_get_text (b, sizeof b);
@@ -410,13 +410,13 @@ public:
 
 	int textX ()				// where the text starts (the right alignment, the scroll)
 	{
-		int fw = wk_fw (), area = width - padL - padR - 12;
+		int fw = uk_fw (), area = width - padL - padR - 12;
 		if (rightAlign && t.len * fw <= area) return width - padR - 6 - t.len * fw;
 		return padL + 6 - m_scroll * fw;
 	}
 	void scrollToCaret ()
 	{
-		int fw = wk_fw (), vis = (width - padL - padR - 12) / fw; if (vis < 1) vis = 1;
+		int fw = uk_fw (), vis = (width - padL - padR - 12) / fw; if (vis < 1) vis = 1;
 		if (t.caret < m_scroll) m_scroll = t.caret;
 		if (t.caret > m_scroll + vis) m_scroll = t.caret - vis;
 		if (m_scroll > t.len - vis) m_scroll = imax (0, t.len - vis);
@@ -425,18 +425,18 @@ public:
 	virtual void drawExtra () {}		// (a subclass's icon or button, over the field)
 	void onDraw () override
 	{
-		int fw = wk_fw (), fh = wk_fh ();
+		int fw = uk_fw (), fh = uk_fh ();
 		canvas.clear (bgColor ());
 		bool focus = hasFocus && !disabled;
-		wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, focus && !error);
-		if (error) { wk_rline (canvas, 0, 0, width, height, 4, C_ERROR, 255); wk_rline (canvas, 1, 1, width - 2, height - 2, 3, C_ERROR, focus ? 160 : 90); }
+		uk_sunken (canvas, 0, 0, width, height, 4, disabled ? uk_tone (C_FACE, 150) : C_FIELD, focus && !error);
+		if (error) { uk_rline (canvas, 0, 0, width, height, 4, C_ERROR, 255); uk_rline (canvas, 1, 1, width - 2, height - 2, 3, C_ERROR, focus ? 160 : 90); }
 		if (focus) scrollToCaret (); else m_scroll = 0;		// (without the keyboard: its start shown)
 		int x0 = textX (), ty = (height - fh) / 2;
 		Canvas clip; clip.adopt (canvas.px + padL + 3, imax (1, width - padL - padR - 6), height, canvas.stride);
 		int cx = x0 - padL - 3;
-		if (t.len == 0 && placeholder && !focus) wk_text_l (clip, 3, 0, height, placeholder, wk_mix (C_FIELD, C_FIELD_TEXT, 120), 1);
+		if (t.len == 0 && placeholder && !focus) uk_text_l (clip, 3, 0, height, placeholder, uk_mix (C_FIELD, C_FIELD_TEXT, 120), 1);
 		if (focus && t.hasSel ())
-			clip.fillRect (cx + t.selA () * fw, ty, (t.selB () - t.selA ()) * fw, fh, wk_mix (C_FIELD, C_ACCENT, 96));
+			clip.fillRect (cx + t.selA () * fw, ty, (t.selB () - t.selA ()) * fw, fh, uk_mix (C_FIELD, C_ACCENT, 96));
 		int first = imax (0, -cx / fw - 1), last = imin (t.len, first + clip.w / fw + 3);
 		if (last > first)
 		{
@@ -447,7 +447,7 @@ public:
 		if (focus) clip.fillRect (cx + t.caret * fw - (t.caret == t.len && rightAlign ? 1 : 0), ty, 2, fh, C_ACCENT);
 		drawExtra ();
 	}
-	int posAt (int mx) { int fw = wk_fw (); int p = (mx - textX () + fw / 2) / fw; return iclamp (p, 0, t.len); }
+	int posAt (int mx) { int fw = uk_fw (); int p = (mx - textX () + fw / 2) / fw; return iclamp (p, 0, t.len); }
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		if (wheel) return false;
@@ -495,7 +495,7 @@ public:
 		case KEY_END: if (ctrl) return false; t.moveTo (t.len, shift); invalidate (true); return true;
 		case KEY_ENTER: if (onEnter) { onEnter (*this); return true; } return false;
 		}
-		if (readonly && k != WK_CTRL ('C') && k != WK_CTRL ('A')) return false;
+		if (readonly && k != UK_CTRL ('C') && k != UK_CTRL ('A')) return false;
 		int r = t.editKey (k, accept);
 		if (!r) return false;
 		invalidate (true);
@@ -533,8 +533,8 @@ public:
 	// The visual lines: where each starts (a line of the text cut at the last space that fits).
 	void rewrap ()
 	{
-		int fw = wk_fw ();
-		m_cols = imax (4, (width - 12 - WK_SBW) / fw);
+		int fw = uk_fw ();
+		m_cols = imax (4, (width - 12 - UK_SBW) / fw);
 		m_nls = 0;
 		int i = 0;
 		for (;;)
@@ -558,7 +558,7 @@ public:
 		if (e > 0 && (t.buf[e - 1] == '\n' || t.buf[e - 1] == ' ') && e - 1 >= m_ls[k]) return e - 1;
 		return e;
 	}
-	int rows () const { return imax (1, (height - 6) / wk_fh ()); }
+	int rows () const { return imax (1, (height - 6) / uk_fh ()); }
 	void scrollToCaret ()
 	{
 		int k = lineOf (t.caret), r = rows ();
@@ -569,13 +569,13 @@ public:
 	void clampTop () { m_top = iclamp (m_top, 0, imax (0, m_nls - rows ())); }
 	void onDraw () override
 	{
-		int fw = wk_fw (), fh = wk_fh ();
+		int fw = uk_fw (), fh = uk_fh ();
 		canvas.clear (bgColor ());
 		bool focus = hasFocus && !disabled;
-		wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, focus && !error);
-		if (error) wk_rline (canvas, 0, 0, width, height, 4, C_ERROR, 255);
+		uk_sunken (canvas, 0, 0, width, height, 4, disabled ? uk_tone (C_FACE, 150) : C_FIELD, focus && !error);
+		if (error) uk_rline (canvas, 0, 0, width, height, 4, C_ERROR, 255);
 		int R = rows (), sa = t.selA (), sb = t.selB ();
-		unsigned selc = wk_mix (C_FIELD, C_ACCENT, focus ? 96 : 52);
+		unsigned selc = uk_mix (C_FIELD, C_ACCENT, focus ? 96 : 52);
 		char line[512];
 		for (int r = 0; r < R && m_top + r < m_nls; r++)
 		{
@@ -595,12 +595,12 @@ public:
 			int k = lineOf (t.caret);
 			if (k >= m_top && k < m_top + R) canvas.fillRect (6 + (t.caret - m_ls[k]) * fw, 3 + (k - m_top) * fh, 2, fh, C_ACCENT);
 		}
-		WkThumb th = wk_thumb (m_nls, R, m_top, height - 6);
-		if (th.show) wk_draw_vscroll (canvas, width - WK_SBW - 3, 3, WK_SBW, height - 6, th, C_FIELD, m_drag == 2);
+		UkThumb th = uk_thumb (m_nls, R, m_top, height - 6);
+		if (th.show) uk_draw_vscroll (canvas, width - UK_SBW - 3, 3, UK_SBW, height - 6, th, C_FIELD, m_drag == 2);
 	}
 	int posAt (int mx, int my)
 	{
-		int fw = wk_fw (), fh = wk_fh ();
+		int fw = uk_fw (), fh = uk_fh ();
 		int k = iclamp (m_top + (my - 3) / fh, 0, m_nls - 1);
 		int c = (mx - 6 + fw / 2) / fw;
 		return iclamp (m_ls[k] + imax (0, c), m_ls[k], lineEnd (k));
@@ -615,15 +615,15 @@ public:
 		}
 		if (mx < 0) { if (m_drag) { m_drag = 0; catchOutside = false; invalidate (true); } pressed = false; return false; }
 		if (disabled) return true;
-		WkThumb th = wk_thumb (m_nls, rows (), m_top, height - 6);
+		UkThumb th = uk_thumb (m_nls, rows (), m_top, height - 6);
 		if (bl && !pressed)
 		{
 			pressed = true;
 			if (!hasFocus) setFocus ();
-			if (th.show && mx >= width - WK_SBW - 4)
+			if (th.show && mx >= width - UK_SBW - 4)
 			{
 				m_drag = 2; catchOutside = true;
-				m_top = (int) wk_thumb_pos (my - 3, height - 6, m_nls, rows (), th.h); clampTop ();
+				m_top = (int) uk_thumb_pos (my - 3, height - 6, m_nls, rows (), th.h); clampTop ();
 				invalidate (true);
 				return true;
 			}
@@ -637,7 +637,7 @@ public:
 		}
 		else if (bl && m_drag == 2)
 		{
-			m_top = (int) wk_thumb_pos (my - 3, height - 6, m_nls, rows (), th.h); clampTop ();
+			m_top = (int) uk_thumb_pos (my - 3, height - 6, m_nls, rows (), th.h); clampTop ();
 			invalidate (true);
 		}
 		else if (bl && m_drag == 1)
@@ -702,8 +702,8 @@ class PickList : public Modal
 {
 public:
 	PickList (int x, int y, int w, int boxH, const char *const *items, int n, int sel, int maxRows = 12)
-		: Modal (w, 8 + imin (n, maxRows) * (wk_fh () + 8)), m_items (items), m_n (n), m_sel (sel), m_hot (sel), m_top (0),
-		  m_rows (imin (n, maxRows)), m_rowH (wk_fh () + 8)
+		: Modal (w, 8 + imin (n, maxRows) * (uk_fh () + 8)), m_items (items), m_n (n), m_sel (sel), m_hot (sel), m_top (0),
+		  m_rows (imin (n, maxRows)), m_rowH (uk_fh () + 8)
 	{
 		left = x; top = y + boxH + 2;
 		Root *r = Root::current ();
@@ -719,31 +719,31 @@ public:
 	int pick () { int r = run (); return r > 0 ? r - 1 : -1; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
-		int sbw = m_n > m_rows ? WK_SBW + 2 : 0;
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		int sbw = m_n > m_rows ? UK_SBW + 2 : 0;
 		for (int r = 0; r < m_rows && m_top + r < m_n; r++)
 		{
 			int i = m_top + r, y = 4 + r * m_rowH;
 			bool hot = i == m_hot;
-			if (hot) wk_hilite (canvas, 4, y, width - 8 - sbw, m_rowH, 5, true);
-			else if (i == m_sel) wk_rline (canvas, 4, y, width - 8 - sbw, m_rowH, 5, wk_mix (C_FIELD, C_ACCENT, 160));
+			if (hot) uk_hilite (canvas, 4, y, width - 8 - sbw, m_rowH, 5, true);
+			else if (i == m_sel) uk_rline (canvas, 4, y, width - 8 - sbw, m_rowH, 5, uk_mix (C_FIELD, C_ACCENT, 160));
 			Canvas c; c.adopt (canvas.px + 10, imax (1, width - 20 - sbw), height, canvas.stride);
-			wk_text_l (c, 0, y, m_rowH, m_items[i], hot ? C_SEL_TEXT : C_FIELD_TEXT, i == 0 && m_items[i][0] == '(' ? 1 : 0);
+			uk_text_l (c, 0, y, m_rowH, m_items[i], hot ? C_SEL_TEXT : C_FIELD_TEXT, i == 0 && m_items[i][0] == '(' ? 1 : 0);
 		}
-		if (sbw) { WkThumb t = wk_thumb (m_n, m_rows, m_top, height - 8); wk_draw_vscroll (canvas, width - WK_SBW - 4, 4, WK_SBW, height - 8, t, C_FIELD); }
+		if (sbw) { UkThumb t = uk_thumb (m_n, m_rows, m_top, height - 8); uk_draw_vscroll (canvas, width - UK_SBW - 4, 4, UK_SBW, height - 8, t, C_FIELD); }
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 		if (wheel) { if (in) { m_top = iclamp (m_top - wheel, 0, imax (0, m_n - m_rows)); invalidate (true); } return true; }
-		bool onBar = m_n > m_rows && in && mx >= width - WK_SBW - 6;
+		bool onBar = m_n > m_rows && in && mx >= width - UK_SBW - 6;
 		int hot = in && !onBar && my >= 4 ? m_top + (my - 4) / m_rowH : -1;
 		if (hot >= m_n) hot = -1;
 		if (hot >= 0 && hot != m_hot) { m_hot = hot; invalidate (true); }
 		if (onBar && bl)
 		{
-			m_top = (int) wk_thumb_pos (my - 4, height - 8, m_n, m_rows, wk_thumb (m_n, m_rows, m_top, height - 8).h);
+			m_top = (int) uk_thumb_pos (my - 4, height - 8, m_n, m_rows, uk_thumb (m_n, m_rows, m_top, height - 8).h);
 			invalidate (true);
 			return true;
 		}
@@ -812,20 +812,20 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		int st = disabled ? WK_DISABLED : pressed ? WK_PRESSED : m_hot ? WK_HOT : WK_NORMAL;
-		if (hasFocus && !disabled) st |= WK_FOCUS;
-		wk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, st);
-		unsigned ink = disabled ? wk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT;
+		int st = disabled ? UK_DISABLED : pressed ? UK_PRESSED : m_hot ? UK_HOT : UK_NORMAL;
+		if (hasFocus && !disabled) st |= UK_FOCUS;
+		uk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, st);
+		unsigned ink = disabled ? uk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT;
 		Canvas c; c.adopt (canvas.px + 9, imax (1, width - 34), height, canvas.stride);
-		if (sel > 0 || !withNone) wk_text_l (c, 0, 0, height, opt[sel], ink);
-		else wk_text_l (c, 0, 0, height, TR ("(none)"), wk_mix (C_BUTTON, C_BUTTON_TEXT, 150), 1);
-		wk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 9, ink);
+		if (sel > 0 || !withNone) uk_text_l (c, 0, 0, height, opt[sel], ink);
+		else uk_text_l (c, 0, 0, height, TR ("(none)"), uk_mix (C_BUTTON, C_BUTTON_TEXT, 150), 1);
+		uk_glyph (canvas, WKG_CHEV_DOWN, width - 13, height / 2, 9, ink);
 	}
 	void drop ()
 	{
 		int x, y; abs_pos (this, &x, &y);
 		int w = width;
-		for (int i = 0; i < nopt; i++) w = imax (w, wk_text_w (opt[i]) + 34);
+		for (int i = 0; i < nopt; i++) w = imax (w, uk_text_w (opt[i]) + 34);
 		PickList pl (x, y, imin (w, 420), height, opt, nopt, sel);
 		int r = pl.pick ();
 		setFocus ();
@@ -906,7 +906,7 @@ public:
 		if (w.tag == 3) { int y, m, d; today (&y, &m, &d); p->cal->setDate (y, m, d); p->close (1); }
 		else p->close (2);
 	}
-	void onDraw () override { canvas.clear (WK_TRANSPARENT_KEY); wk_popup (canvas, 0, 0, width, height, 8, C_FACE); }
+	void onDraw () override { canvas.clear (UK_TRANSPARENT_KEY); uk_popup (canvas, 0, 0, width, height, 8, C_FACE); }
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
@@ -924,11 +924,11 @@ public:
 	void drawExtra () override
 	{
 		int bw = 20, bx = width - bw - 3, bh = height - 6;
-		wk_raised (canvas, bx, 3, bw, bh, 3, C_BUTTON, disabled ? WK_DISABLED : m_btnHot ? WK_HOT : WK_NORMAL);
+		uk_raised (canvas, bx, 3, bw, bh, 3, C_BUTTON, disabled ? UK_DISABLED : m_btnHot ? UK_HOT : UK_NORMAL);
 		int gx = bx + (bw - 11) / 2, gy = 3 + (bh - 10) / 2;		// a small calendar page
-		wk_rbox (canvas, gx, gy, 11, 10, 2, 0x00FFFFFF, wk_tone (C_FIELD, 120));
-		wk_rbox (canvas, gx, gy, 11, 3, 1, 0x00D05048, 0x00B8403A, 255, WK_TL | WK_TR);
-		wk_rline (canvas, gx, gy, 11, 10, 2, wk_tone (C_FACE, 70), 200);
+		uk_rbox (canvas, gx, gy, 11, 10, 2, 0x00FFFFFF, uk_tone (C_FIELD, 120));
+		uk_rbox (canvas, gx, gy, 11, 3, 1, 0x00D05048, 0x00B8403A, 255, UK_TL | UK_TR);
+		uk_rline (canvas, gx, gy, 11, 10, 2, uk_tone (C_FACE, 70), 200);
 		for (int i = 0; i < 3; i++) canvas.fillRect (gx + 2 + i * 3, gy + 5, 2, 2, C_TEXT);
 	}
 	void drop ()
@@ -994,33 +994,33 @@ public:
 	{
 		int r = run ();
 		if (r == 2) return 2;
-		if (r == 3) { unsigned c = color; if (wk_color_dialog (&c, TR ("Colour"))) { color = c; return 1; } return 0; }
+		if (r == 3) { unsigned c = color; if (uk_color_dialog (&c, TR ("Colour"))) { color = c; return 1; } return 0; }
 		if (r >= 10) { color = PALETTE[r - 10]; return 1; }
 		return 0;
 	}
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
 		int w = width - 2 * PAD;
-		if (m_hot == -1) wk_hilite (canvas, PAD - 3, PAD, w + 6, ROWH, 5, true);
-		canvas.frameRect (PAD + 2, PAD + 5, 16, 16, wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+		if (m_hot == -1) uk_hilite (canvas, PAD - 3, PAD, w + 6, ROWH, 5, true);
+		canvas.frameRect (PAD + 2, PAD + 5, 16, 16, uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		for (int k = 0; k < 12; k++) canvas.pixel (PAD + 4 + k, PAD + 18 - k, 0xC0392B);
-		wk_text_l (canvas, PAD + 26, PAD, ROWH, TR ("No colour"), m_hot == -1 ? C_SEL_TEXT : C_FIELD_TEXT);
+		uk_text_l (canvas, PAD + 26, PAD, ROWH, TR ("No colour"), m_hot == -1 ? C_SEL_TEXT : C_FIELD_TEXT);
 		int y0 = PAD + ROWH + 6;
 		for (int i = 0; i < 40; i++)
 		{
 			int x = PAD + (i % PER) * (CS + GAP), y = y0 + (i / PER) * (CS + GAP);
-			wk_rbox (canvas, x, y, CS, CS, 3, PALETTE[i], PALETTE[i]);
+			uk_rbox (canvas, x, y, CS, CS, 3, PALETTE[i], PALETTE[i]);
 			bool cur = !none && PALETTE[i] == color;
-			wk_rline (canvas, x, y, CS, CS, 3, i == m_hot || cur ? C_ACCENT : wk_mix (PALETTE[i], 0, 70), i == m_hot || cur ? 255 : 150);
-			if (i == m_hot || cur) wk_rline (canvas, x - 1, y - 1, CS + 2, CS + 2, 4, C_ACCENT, i == m_hot ? 255 : 150);
+			uk_rline (canvas, x, y, CS, CS, 3, i == m_hot || cur ? C_ACCENT : uk_mix (PALETTE[i], 0, 70), i == m_hot || cur ? 255 : 150);
+			if (i == m_hot || cur) uk_rline (canvas, x - 1, y - 1, CS + 2, CS + 2, 4, C_ACCENT, i == m_hot ? 255 : 150);
 		}
 		int yb = height - PAD - ROWH;
-		if (m_hot == -2) wk_hilite (canvas, PAD - 3, yb, w + 6, ROWH, 5, true);
+		if (m_hot == -2) uk_hilite (canvas, PAD - 3, yb, w + 6, ROWH, 5, true);
 		static const unsigned rb[4] = { 0xE74C3C, 0xF1C40F, 0x2ECC71, 0x3498DB };
 		for (int k = 0; k < 4; k++) canvas.fillRect (PAD + 2 + (k & 1) * 8, yb + 5 + (k >> 1) * 8, 8, 8, rb[k]);
-		wk_text_l (canvas, PAD + 26, yb, ROWH, TR ("More Colours..."), m_hot == -2 ? C_SEL_TEXT : C_FIELD_TEXT);
+		uk_text_l (canvas, PAD + 26, yb, ROWH, TR ("More Colours..."), m_hot == -2 ? C_SEL_TEXT : C_FIELD_TEXT);
 	}
 	int hitAt (int mx, int my)
 	{
@@ -1066,24 +1066,24 @@ public:
 	{
 		canvas.clear (bgColor ());
 		bool focus = hasFocus && !disabled;
-		wk_sunken (canvas, 0, 0, width, height, 4, disabled ? wk_tone (C_FACE, 150) : C_FIELD, focus);
+		uk_sunken (canvas, 0, 0, width, height, 4, disabled ? uk_tone (C_FACE, 150) : C_FIELD, focus);
 		int sw = 34, sh = height - 10;
 		if (none)
 		{
-			wk_rline (canvas, 5, 5, sw, sh, 3, wk_mix (C_FIELD, C_FIELD_TEXT, 110), 200);
+			uk_rline (canvas, 5, 5, sw, sh, 3, uk_mix (C_FIELD, C_FIELD_TEXT, 110), 200);
 			for (int k = 0; k < sh - 4; k++) canvas.pixel (7 + k * (sw - 4) / (sh - 4), 7 + (sh - 5) - k, 0xC0392B);
-			wk_text_l (canvas, sw + 12, 0, height, TR ("None"), wk_mix (C_FIELD, C_FIELD_TEXT, 130), 1);
+			uk_text_l (canvas, sw + 12, 0, height, TR ("None"), uk_mix (C_FIELD, C_FIELD_TEXT, 130), 1);
 		}
 		else
 		{
-			wk_rbox (canvas, 5, 5, sw, sh, 3, color, color);
-			wk_rline (canvas, 5, 5, sw, sh, 3, wk_mix (color, 0, 90), 200);
+			uk_rbox (canvas, 5, 5, sw, sh, 3, color, color);
+			uk_rline (canvas, 5, 5, sw, sh, 3, uk_mix (color, 0, 90), 200);
 			char h[8]; fmt_color (color, h);
-			wk_text_l (canvas, sw + 12, 0, height, h, disabled ? C_DIS : C_FIELD_TEXT);
+			uk_text_l (canvas, sw + 12, 0, height, h, disabled ? C_DIS : C_FIELD_TEXT);
 		}
 		int bx = width - 23, bh = height - 6;
-		wk_raised (canvas, bx, 3, 20, bh, 3, C_BUTTON, disabled ? WK_DISABLED : m_hot ? WK_HOT : WK_NORMAL);
-		wk_glyph (canvas, WKG_CHEV_DOWN, bx + 10, height / 2, 8, C_BUTTON_TEXT);
+		uk_raised (canvas, bx, 3, 20, bh, 3, C_BUTTON, disabled ? UK_DISABLED : m_hot ? UK_HOT : UK_NORMAL);
+		uk_glyph (canvas, WKG_CHEV_DOWN, bx + 10, height / 2, 8, C_BUTTON_TEXT);
 	}
 	void drop ()
 	{
@@ -1124,8 +1124,8 @@ public:
 	SearchBox (int w) : LineEdit (0, 0, w, BTN), m_xHot (false) { padL = 22; padR = 22; placeholder = TR ("Search"); tip = TR ("Search the records (Ctrl+F)"); }
 	void drawExtra () override
 	{
-		draw_icon (canvas, IC_SEARCH, 6, (height - 20) / 2 + 2, wk_mix (C_FIELD, C_FIELD_TEXT, 150));
-		if (t.len) wk_glyph (canvas, WKG_CLOSE, width - 12, height / 2, 8, m_xHot ? C_ACCENT : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+		draw_icon (canvas, IC_SEARCH, 6, (height - 20) / 2 + 2, uk_mix (C_FIELD, C_FIELD_TEXT, 150));
+		if (t.len) uk_glyph (canvas, WKG_CLOSE, width - 12, height / 2, 8, m_xHot ? C_ACCENT : uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 	}
 	void clear () { if (t.len) { setText (""); edited (); } }
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
@@ -1166,12 +1166,12 @@ public:
 	}
 	int bx (int b) const { return b < B_NEXT ? 8 + b * 26 : b == B_POS ? 8 + 2 * 26 + 4 : 8 + 2 * 26 + 4 + posW () + 4 + (b - B_NEXT) * 26 + (b == B_NEW ? 6 : 0); }
 	int bw (int b) const { return b == B_POS ? posW () : 24; }
-	int posW () const { return imax (136, wk_text_w (pos) + 36); }
+	int posW () const { return imax (136, uk_text_w (pos) + 36); }
 	void onDraw () override
 	{
-		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_BG, 150), wk_tone (C_BG, 120));
-		wk_etch_h (canvas, 0, 0, width, C_BG);
-		unsigned ink = wk_ink_for (C_BG), dim = wk_mix (C_BG, ink, 170);
+		uk_rbox (canvas, 0, 0, width, height, 0, uk_tone (C_BG, 150), uk_tone (C_BG, 120));
+		uk_etch_h (canvas, 0, 0, width, C_BG);
+		unsigned ink = uk_ink_for (C_BG), dim = uk_mix (C_BG, ink, 170);
 		int x = 12;
 		if (nav)
 		{
@@ -1181,24 +1181,24 @@ public:
 				bool en = b == B_POS || b == B_NEW || (b <= B_PREV ? canPrev : canNext);
 				if (b == B_POS)
 				{
-					wk_sunken (canvas, X, y, W, h, 4, wk_mix (C_FIELD, C_BG, 60), m_hot == b);
-					if (recDirty) wk_glyph (canvas, WKG_DOT, X + 11, height / 2, 8, C_ACCENT);
-					wk_text_c (canvas, X + 8, y, W - 16, h, pos, C_FIELD_TEXT);
+					uk_sunken (canvas, X, y, W, h, 4, uk_mix (C_FIELD, C_BG, 60), m_hot == b);
+					if (recDirty) uk_glyph (canvas, WKG_DOT, X + 11, height / 2, 8, C_ACCENT);
+					uk_text_c (canvas, X + 8, y, W - 16, h, pos, C_FIELD_TEXT);
 					continue;
 				}
 				if (en && (m_hot == b || m_down == b))
-					wk_rbox (canvas, X, y, W, h, 4, wk_tone (C_BG, m_down == b ? 110 : 170), wk_tone (C_BG, m_down == b ? 120 : 140));
+					uk_rbox (canvas, X, y, W, h, 4, uk_tone (C_BG, m_down == b ? 110 : 170), uk_tone (C_BG, m_down == b ? 120 : 140));
 				nav_glyph (canvas, b == B_FIRST ? NG_FIRST : b == B_PREV ? NG_PREV : b == B_NEXT ? NG_NEXT : b == B_LAST ? NG_LAST : NG_NEW,
-					   X + W / 2, height / 2, en ? (b == B_NEW ? C_ACCENT : ink) : wk_mix (C_BG, ink, 90));
+					   X + W / 2, height / 2, en ? (b == B_NEW ? C_ACCENT : ink) : uk_mix (C_BG, ink, 90));
 			}
 			x = bx (B_NEW) + 24 + 14;
-			wk_etch_v (canvas, x - 7, 6, height - 12, C_BG);
+			uk_etch_v (canvas, x - 7, 6, height - 12, C_BG);
 		}
-		Canvas c; c.adopt (canvas.px + x, imax (1, width - x - 12 - wk_text_w (file) - 30), height, canvas.stride);
-		wk_text_l (c, 0, 1, height - 1, info, dim);
-		int fx = width - 12 - wk_text_w (file);
-		if (modified) wk_glyph (canvas, WKG_DOT, fx - 12, height / 2, 8, C_ACCENT);
-		wk_text_l (canvas, fx, 1, height - 1, file, dim);
+		Canvas c; c.adopt (canvas.px + x, imax (1, width - x - 12 - uk_text_w (file) - 30), height, canvas.stride);
+		uk_text_l (c, 0, 1, height - 1, info, dim);
+		int fx = width - 12 - uk_text_w (file);
+		if (modified) uk_glyph (canvas, WKG_DOT, fx - 12, height / 2, 8, C_ACCENT);
+		uk_text_l (canvas, fx, 1, height - 1, file, dim);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{

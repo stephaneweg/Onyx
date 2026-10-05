@@ -7,7 +7,7 @@
 // Properties; full screen (a presentation). With no document: the home -- the recent ones (reopened where they
 // were left), the folders holding PDFs.
 //
-// MuPDF draws (engine.h: its documents, the worker thread rendering and searching); a newlib wtk app with
+// MuPDF draws (engine.h: its documents, the worker thread rendering and searching); a newlib uikit app with
 // FreeType's text (user/Makefile's pdf.elf rule: mupdf.mk). This app is AGPL-3.0 because of MuPDF
 // (docs/LICENSING.md). Its files: SD:/etc/pdf/settings.ini, SD:/etc/pdf/recent.tsv.
 //
@@ -24,7 +24,7 @@
 #include "docguard.h"
 #include "print/print.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace pdfv;
 
 #define CONF_DIR "SD:/etc/pdf"
@@ -34,9 +34,9 @@ using namespace pdfv;
 // ---- the layout's sizes, colours ------------------------------------------------------------------------------
 enum { TABS_H = 34, TB_H = 46, SIDE_W = 224, MARGIN = 16, GAP = 14, SB_W = 12 };
 static const unsigned CANVAS_BG = 0x847E7A;	// behind the pages
-static unsigned col_side () { return wk_mix (C_BG, C_FIELD, 70); }
-static unsigned col_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 150); }
-static unsigned col_dim_bg () { return wk_mix (C_BG, C_TEXT, 150); }
+static unsigned col_side () { return uk_mix (C_BG, C_FIELD, 70); }
+static unsigned col_dim () { return uk_mix (C_FIELD, C_FIELD_TEXT, 150); }
+static unsigned col_dim_bg () { return uk_mix (C_BG, C_TEXT, 150); }
 
 // ---- a tab: a document and how it is shown ------------------------------------------------------------------------
 enum { L_SINGLE, L_SCROLL, L_TWO };
@@ -267,7 +267,7 @@ static Job page_job (Tab &t, int pg, float s, int cx, int cy, int cw, int ch, in
 static void blend_rect (Canvas &cv, int x, int y, int w, int h, unsigned c, int a)
 {
 	int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y, x1 = x + w > cv.w ? cv.w : x + w, y1 = y + h > cv.h ? cv.h : y + h;
-	for (int yy = y0; yy < y1; yy++) { unsigned *r = cv.px + (size_t) yy * cv.stride; for (int xx = x0; xx < x1; xx++) r[xx] = wk_over (r[xx], c, a); }
+	for (int yy = y0; yy < y1; yy++) { unsigned *r = cv.px + (size_t) yy * cv.stride; for (int xx = x0; xx < x1; xx++) r[xx] = uk_over (r[xx], c, a); }
 }
 // a rectangle of a page's points -> the canvas (the page's top left at (px, py))
 static void quad_to_px (Doc *D, int pg, float s, int rot, Quad q, int px, int py, int *x, int *y, int *w, int *h)
@@ -282,7 +282,7 @@ static fz_point px_to_page (Doc *D, int pg, float s, int rot, int x, int y)
 static void bubble (Canvas &cv, int cx, int y, const char *s)
 {
 	int w = tw (s, F_UI, 2) + 24;
-	wk_rbox (cv, cx - w / 2, y, w, 26, 13, 0x3A3634, 0x3A3634);
+	uk_rbox (cv, cx - w / 2, y, w, 26, 13, 0x3A3634, 0x3A3634);
 	text_c (cv, cx - w / 2, y, w, 26, s, 0xFFFFFF, F_UI, 2);
 }
 
@@ -378,14 +378,14 @@ public:
 		// the scroll bars
 		int y0, y1; scroll_range (t, W, H, &y0, &y1);
 		long total = (long) (y1 - y0) + H, pos = t.sy - y0;
-		canvas.fillRect (W, 0, SB_W, H, wk_mix (CANVAS_BG, 0xFFFFFF, 60));
-		WkThumb th = wk_thumb (total, H, pos, H - 4);
-		if (th.show) wk_rbox (canvas, W + 2, 2 + th.y, SB_W - 4, th.h, (SB_W - 4) / 2, 0xD8D2CC, 0xC8C0BA);
+		canvas.fillRect (W, 0, SB_W, H, uk_mix (CANVAS_BG, 0xFFFFFF, 60));
+		UkThumb th = uk_thumb (total, H, pos, H - 4);
+		if (th.show) uk_rbox (canvas, W + 2, 2 + th.y, SB_W - 4, th.h, (SB_W - 4) / 2, 0xD8D2CC, 0xC8C0BA);
 		if (g_contentW > W)
 		{
-			WkThumb hz = wk_thumb (g_contentW, W, t.sx, W - 4);
+			UkThumb hz = uk_thumb (g_contentW, W, t.sx, W - 4);
 			blend_rect (canvas, 0, H - 9, W, 9, 0xFFFFFF, 60);
-			if (hz.show) wk_rbox (canvas, 2 + hz.y, H - 8, hz.h, 6, 3, 0xD8D2CC, 0xC8C0BA);
+			if (hz.show) uk_rbox (canvas, 2 + hz.y, H - 8, hz.h, 6, 3, 0xD8D2CC, 0xC8C0BA);
 		}
 		// while it scrolls: the page
 		if (g_tick - g_pillT < 150)
@@ -473,8 +473,8 @@ public:
 			if (mx >= W)
 			{	// the scroll bar: the thumb follows the pointer
 				dragMode = 2; int y0, y1; scroll_range (t, W, H, &y0, &y1);
-				WkThumb th = wk_thumb ((long) (y1 - y0) + H, H, t.sy - y0, H - 4);
-				t.sy = y0 + (int) wk_thumb_pos (my - 2, H - 4, (long) (y1 - y0) + H, H, th.h); scroll_by (0, 0);
+				UkThumb th = uk_thumb ((long) (y1 - y0) + H, H, t.sy - y0, H - 4);
+				t.sy = y0 + (int) uk_thumb_pos (my - 2, H - 4, (long) (y1 - y0) + H, H, th.h); scroll_by (0, 0);
 				return true;
 			}
 			fz_point pt; int pg = page_under (mx, my, &pt);
@@ -500,8 +500,8 @@ public:
 			if (dragMode == 2)
 			{
 				int y0, y1; scroll_range (t, W, H, &y0, &y1);
-				WkThumb th = wk_thumb ((long) (y1 - y0) + H, H, t.sy - y0, H - 4);
-				t.sy = y0 + (int) wk_thumb_pos (my - 2, H - 4, (long) (y1 - y0) + H, H, th.h); scroll_by (0, 0);
+				UkThumb th = uk_thumb ((long) (y1 - y0) + H, H, t.sy - y0, H - 4);
+				t.sy = y0 + (int) uk_thumb_pos (my - 2, H - 4, (long) (y1 - y0) + H, H, th.h); scroll_by (0, 0);
 			}
 			else if (dragMode == 1)
 			{
@@ -563,11 +563,11 @@ public:
 	{
 		static const char *L[3] = { "Pages", "Contents", "Find" };
 		int x = 10, w = width - 20, sw = w / 3;
-		wk_rbox (canvas, x, 8, w, 28, 6, C_FIELD, C_FIELD); wk_rline (canvas, x, 8, w, 28, 6, 0x000000, 50);
+		uk_rbox (canvas, x, 8, w, 28, 6, C_FIELD, C_FIELD); uk_rline (canvas, x, 8, w, 28, 6, 0x000000, 50);
 		for (int k = 0; k < 3; k++)
 		{
 			bool on = tab ().side == k;
-			if (on) wk_rbox (canvas, x + 2 + k * sw, 10, sw - 4, 24, 5, C_ACCENT, C_ACCENT);
+			if (on) uk_rbox (canvas, x + 2 + k * sw, 10, sw - 4, 24, 5, C_ACCENT, C_ACCENT);
 			text_c (canvas, x + k * sw, 8, sw, 28, L[k], on ? C_SEL_TEXT : C_FIELD_TEXT);
 			hits.add (x + k * sw, 8, sw, 28, SP_TAB, k);
 		}
@@ -576,7 +576,7 @@ public:
 	{
 		Tab &t = tab (); Doc *D = t.doc;
 		canvas.clear (col_side ());
-		canvas.fillRect (width - 1, 0, 1, height, wk_tone (C_BG, 100));
+		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 100));
 		hits.clear (); g_nwantSide = 0;
 		findBox->hidden = !D || t.side != S_FIND;
 		if (!D) return;
@@ -587,8 +587,8 @@ public:
 		// the list's scroll bar
 		if (contentH > listH)
 		{
-			WkThumb th = wk_thumb (contentH, listH, scroll (), listH - 4);
-			wk_rbox (canvas, width - 10, listTop + 2 + th.y, 6, th.h, 3, wk_mix (col_side (), C_TEXT, 60), wk_mix (col_side (), C_TEXT, 70));
+			UkThumb th = uk_thumb (contentH, listH, scroll (), listH - 4);
+			uk_rbox (canvas, width - 10, listTop + 2 + th.y, 6, th.h, 3, uk_mix (col_side (), C_TEXT, 60), uk_mix (col_side (), C_TEXT, 70));
 		}
 	}
 	void clamp () { int m = contentH - listH; if (m < 0) m = 0; if (scroll () > m) scroll () = m; if (scroll () < 0) scroll () = 0; }
@@ -603,7 +603,7 @@ public:
 			int x = (width - w) / 2, ih = h + 30;
 			if (y + ih > listTop && y < height)
 			{
-				if (i == t.cur) { wk_rbox (canvas, x - 6, y - 6, w + 12, h + 12, 6, wk_mix (col_side (), C_ACCENT, 70), wk_mix (col_side (), C_ACCENT, 70)); wk_rline (canvas, x - 6, y - 6, w + 12, h + 12, 6, C_ACCENT, 255); }
+				if (i == t.cur) { uk_rbox (canvas, x - 6, y - 6, w + 12, h + 12, 6, uk_mix (col_side (), C_ACCENT, 70), uk_mix (col_side (), C_ACCENT, 70)); uk_rline (canvas, x - 6, y - 6, w + 12, h + 12, 6, C_ACCENT, 255); }
 				blend_rect (canvas, x + 1, y + 2, w, h, 0x000000, 50);
 				canvas.fillRect (x, y, w, h, 0xFFFFFF);
 				bool exact; Bmp *b = bmp_find (D->id, i, s, t.rot, 0, 0, w, h, &exact, true);
@@ -642,8 +642,8 @@ public:
 			{
 				int ind = 24 + o.depth * 14;		// (the title's x; its arrow before it)
 				bool on = i == cur;
-				if (on) wk_rbox (canvas, ind - 4, y + 1, width - ind - 6, 24, 5, C_ACCENT, C_ACCENT);
-				else if (hits.n == hot) wk_rbox (canvas, ind - 4, y + 1, width - ind - 6, 24, 5, wk_mix (col_side (), C_ACCENT, 40), wk_mix (col_side (), C_ACCENT, 40));
+				if (on) uk_rbox (canvas, ind - 4, y + 1, width - ind - 6, 24, 5, C_ACCENT, C_ACCENT);
+				else if (hits.n == hot) uk_rbox (canvas, ind - 4, y + 1, width - ind - 6, 24, 5, uk_mix (col_side (), C_ACCENT, 40), uk_mix (col_side (), C_ACCENT, 40));
 				unsigned ink = on ? C_SEL_TEXT : C_TEXT;
 				if (o.kids)
 				{
@@ -663,7 +663,7 @@ public:
 	}
 	void check (int x, int y, const char *label, bool on, int kind)
 	{
-		wk_check_mark (canvas, x, y, 16, on, hits.n == hot ? WK_HOT : WK_NORMAL);
+		uk_check_mark (canvas, x, y, 16, on, hits.n == hot ? UK_HOT : UK_NORMAL);
 		text_v (canvas, x + 24, y - 2, 20, label, C_TEXT);
 		hits.add (x, y - 2, tw (label) + 30, 20, kind);
 	}
@@ -699,8 +699,8 @@ public:
 			if (y + 22 > listTop && y < height)
 			{
 				bool on = k == t.hit;
-				if (on) wk_rbox (canvas, 6, y, width - 14, 22, 5, C_ACCENT, C_ACCENT);
-				else if (hits.n == hot) wk_rbox (canvas, 6, y, width - 14, 22, 5, wk_mix (col_side (), C_ACCENT, 40), wk_mix (col_side (), C_ACCENT, 40));
+				if (on) uk_rbox (canvas, 6, y, width - 14, 22, 5, C_ACCENT, C_ACCENT);
+				else if (hits.n == hot) uk_rbox (canvas, 6, y, width - 14, 22, 5, uk_mix (col_side (), C_ACCENT, 40), uk_mix (col_side (), C_ACCENT, 40));
 				snippet (h.ctx ? h.ctx : "", t.needle, 14, y, width - 24, on);
 				hits.add (6, y, width - 14, 22, SP_HIT, k);
 			}
@@ -780,10 +780,10 @@ class TabBar : public Widget
 public:
 	HitList hits; int hot; bool wasMid;
 	TabBar (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), wasMid (false) {}
-	unsigned bgColor () override { return wk_tone (C_BG, 112); }
+	unsigned bgColor () override { return uk_tone (C_BG, 112); }
 	void onDraw () override
 	{
-		unsigned bg = wk_tone (C_BG, 112);
+		unsigned bg = uk_tone (C_BG, 112);
 		canvas.clear (bg);
 		hits.clear ();
 		int x = 8, avail = width - 60;
@@ -794,21 +794,21 @@ public:
 			const char *name = t.doc ? t.doc->name : "Home";
 			int w = tw (name, F_UI, 2) + 64; if (w > each) w = each; if (w < 90) w = 90;
 			bool on = k == g_cur, h = hits.n == hot || hits.n + 1 == hot;
-			unsigned face = on ? C_BG : (h ? wk_tone (C_BG, 124) : wk_tone (C_BG, 118));
-			wk_rbox (canvas, x, 5, w, height - 5, 7, face, face);
+			unsigned face = on ? C_BG : (h ? uk_tone (C_BG, 124) : uk_tone (C_BG, 118));
+			uk_rbox (canvas, x, 5, w, height - 5, 7, face, face);
 			canvas.fillRect (x, height - 4, w, 4, face);
-			if (on) wk_rline (canvas, x, 5, w, height + 6, 7, 0x000000, 40);
+			if (on) uk_rline (canvas, x, 5, w, height + 6, 7, 0x000000, 40);
 			icon (canvas, t.doc ? I_PDF : I_HOME, x + 10, 12, 15, t.doc ? 0 : C_TEXT);
 			text_v (canvas, x + 32, 5, height - 5, name, on ? C_TEXT : col_dim_bg (), F_UI, on ? 2 : 0, w - 32 - 26);
 			hits.add (x, 5, w - 24, height - 5, TS_TAB, k);
 			bool hc = hits.n == hot;
-			if (hc) wk_rbox (canvas, x + w - 24, 11, 18, 18, 9, wk_tone (face, 112), wk_tone (face, 112));
+			if (hc) uk_rbox (canvas, x + w - 24, 11, 18, 18, 9, uk_tone (face, 112), uk_tone (face, 112));
 			icon (canvas, I_CLOSE, x + w - 22, 13, 14, col_dim_bg ());
 			hits.add (x + w - 24, 9, 22, 22, TS_CLOSE, k);
 			x += w + 4;
 		}
 		bool hn = hits.n == hot;
-		if (hn) wk_rbox (canvas, x + 4, 8, 24, 24, 12, wk_tone (bg, 120), wk_tone (bg, 120));
+		if (hn) uk_rbox (canvas, x + 4, 8, 24, 24, 12, uk_tone (bg, 120), uk_tone (bg, 120));
 		icon (canvas, I_PLUS, x + 8, 12, 16, col_dim_bg ());
 		hits.add (x + 2, 6, 28, 28, TS_NEW);
 	}
@@ -851,7 +851,7 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 110);
+		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 110);
 		if (!text[0] && !hasFocus) { canvas.fillRect (2, 2, width - 4, height - 4, C_FIELD); text_v (canvas, 32, 0, height, "Find in the document", dim); icon (canvas, I_SEARCH, 9, (height - 16) / 2, 16, dim); }
 		Tab &t = tab ();
 		if (text[0] && t.doc && t.needle[0])
@@ -875,18 +875,18 @@ public:
 	int btn (int x, int ic, int kind, bool on = false, bool dis = false)
 	{
 		bool h = hits.n == hot && !dis;
-		if (on) { wk_rbox (canvas, x, 7, 32, 32, 6, wk_mix (C_BG, C_ACCENT, 60), wk_mix (C_BG, C_ACCENT, 60)); wk_rline (canvas, x, 7, 32, 32, 6, C_ACCENT, 140); }
-		else if (h) { wk_rbox (canvas, x, 7, 32, 32, 6, wk_tone (C_BG, 150), wk_tone (C_BG, 140)); wk_rline (canvas, x, 7, 32, 32, 6, 0x000000, 50); }
+		if (on) { uk_rbox (canvas, x, 7, 32, 32, 6, uk_mix (C_BG, C_ACCENT, 60), uk_mix (C_BG, C_ACCENT, 60)); uk_rline (canvas, x, 7, 32, 32, 6, C_ACCENT, 140); }
+		else if (h) { uk_rbox (canvas, x, 7, 32, 32, 6, uk_tone (C_BG, 150), uk_tone (C_BG, 140)); uk_rline (canvas, x, 7, 32, 32, 6, 0x000000, 50); }
 		icon (canvas, ic, x + 7, 14, 18, dis ? C_DIS : C_TEXT);
 		if (!dis) hits.add (x, 7, 32, 32, kind);
 		return x + 34;
 	}
-	int sep (int x) { canvas.fillRect (x + 4, 10, 1, 26, wk_tone (C_BG, 108)); return x + 10; }
+	int sep (int x) { canvas.fillRect (x + 4, 10, 1, 26, uk_tone (C_BG, 108)); return x + 10; }
 	void onDraw () override
 	{
 		Tab &t = tab (); Doc *D = t.doc;
 		canvas.clear (C_BG);
-		canvas.fillRect (0, height - 1, width, 1, wk_tone (C_BG, 108));
+		canvas.fillRect (0, height - 1, width, 1, uk_tone (C_BG, 108));
 		hits.clear ();
 		int x = 8;
 		x = btn (x, I_SIDEBAR, TB_SIDE, g_sideOn != 0);
@@ -905,8 +905,8 @@ public:
 		else snprintf (z, sizeof z, "%d %%", (int) (t.zoom * 72.0f / 96.0f * 100 + 0.5f));
 		{
 			bool h = hits.n == hot; zoomX = x + 2;
-			wk_rbox (canvas, x + 2, 8, 116, 30, 5, h ? wk_tone (C_BUTTON, 150) : wk_tone (C_BUTTON, 142), wk_tone (C_BUTTON, 124));
-			wk_rline (canvas, x + 2, 8, 116, 30, 5, 0x000000, 70);
+			uk_rbox (canvas, x + 2, 8, 116, 30, 5, h ? uk_tone (C_BUTTON, 150) : uk_tone (C_BUTTON, 142), uk_tone (C_BUTTON, 124));
+			uk_rline (canvas, x + 2, 8, 116, 30, 5, 0x000000, 70);
 			text_v (canvas, x + 12, 8, 30, z, C_BUTTON_TEXT);
 			icon (canvas, I_DOWN, x + 96, 16, 14, C_BUTTON_TEXT);
 			hits.add (x + 2, 8, 116, 30, TB_ZOOM);
@@ -1066,7 +1066,7 @@ public:
 		text (canvas, ax, ay, "Recent documents", C_FIELD_TEXT, F_H1, 2);
 		{	// Open a file...
 			int bw = 160, bx = width - 40 - bw; bool h = hits.n == hot;
-			wk_rbox (canvas, bx, ay, bw, 36, 6, wk_tone (C_ACCENT, h ? 150 : 140), wk_tone (C_ACCENT, h ? 128 : 118));
+			uk_rbox (canvas, bx, ay, bw, 36, 6, uk_tone (C_ACCENT, h ? 150 : 140), uk_tone (C_ACCENT, h ? 128 : 118));
 			icon (canvas, I_OPEN, bx + 12, ay + 9, 18, 0);
 			text_v (canvas, bx + 40, ay, 36, "Open a file...", 0xFFFFFF, F_UI, 2);
 			hits.add (bx, ay, bw, 36, HM_OPEN);
@@ -1092,17 +1092,17 @@ public:
 				Job j; memset (&j, 0, sizeof j); j.kind = J_RECENT; j.cw = S; j.page = k; scopy (j.path, r.path, sizeof j.path);
 				g_wantHome[g_nwantHome++] = j;
 			}
-			canvas.frameRect (x, y, S, ph, wk_mix (C_FIELD, C_FIELD_TEXT, 60));
+			canvas.frameRect (x, y, S, ph, uk_mix (C_FIELD, C_FIELD_TEXT, 60));
 			if (r.npages > 0) canvas.fillRect (x, y + ph - 4, S * (r.page + 1) / r.npages, 4, C_ACCENT);
 			bool h = hits.n == hot || hits.n + 1 == hot;
 			if (h)
 			{
-				blend_rect (canvas, x, y, S, ph, C_ACCENT, 40); wk_rline (canvas, x - 1, y - 1, S + 2, ph + 2, 2, C_ACCENT, 255);
+				blend_rect (canvas, x, y, S, ph, C_ACCENT, 40); uk_rline (canvas, x - 1, y - 1, S + 2, ph + 2, 2, C_ACCENT, 255);
 			}
 			hits.add (x, y, S, ph + 60, HM_RECENT, k);
 			if (h || hits.n == hot)
 			{
-				wk_rbox (canvas, x + S - 28, y + 6, 22, 22, 11, 0xFFFFFF, 0xF0F0F0);
+				uk_rbox (canvas, x + S - 28, y + 6, 22, 22, 11, 0xFFFFFF, 0xF0F0F0);
 				icon (canvas, I_MORE, x + S - 26, y + 8, 18, C_TEXT);
 			}
 			hits.add (x + S - 28, y + 6, 22, 22, HM_RMORE, k);
@@ -1110,7 +1110,7 @@ public:
 			text (canvas, x, y + ph + 10, nm, C_FIELD_TEXT, F_UI, 2, S);
 			char b[64]; snprintf (b, sizeof b, r.npages ? "Page %d of %d" : "Page %d", r.page + 1, r.npages);
 			text (canvas, x, y + ph + 28, b, col_dim (), F_SMALL);
-			fmt_when (r.when, b, sizeof b); text (canvas, x, y + ph + 44, b, wk_mix (C_FIELD, C_FIELD_TEXT, 110), F_SMALL);
+			fmt_when (r.when, b, sizeof b); text (canvas, x, y + ph + 44, b, uk_mix (C_FIELD, C_FIELD_TEXT, 110), F_SMALL);
 			shown++;
 		}
 		send_wants ();
@@ -1124,8 +1124,8 @@ public:
 				if (!g_folders[i].there) continue;
 				if (fx + cw > width - 20) break;
 				bool h = hits.n == hot;
-				wk_rbox (canvas, fx, fy + 34, cw, 56, 8, h ? wk_mix (C_FIELD, C_ACCENT, 30) : 0xFFFFFF, h ? wk_mix (C_FIELD, C_ACCENT, 30) : 0xFFFFFF);
-				wk_rline (canvas, fx, fy + 34, cw, 56, 8, 0x000000, 30);
+				uk_rbox (canvas, fx, fy + 34, cw, 56, 8, h ? uk_mix (C_FIELD, C_ACCENT, 30) : 0xFFFFFF, h ? uk_mix (C_FIELD, C_ACCENT, 30) : 0xFFFFFF);
+				uk_rline (canvas, fx, fy + 34, cw, 56, 8, 0x000000, 30);
 				icon (canvas, I_FOLDER, fx + 14, fy + 48, 28, 0);
 				text (canvas, fx + 56, fy + 45, g_folders[i].name, C_FIELD_TEXT, F_UI, 2);
 				char b[96]; snprintf (b, sizeof b, "%s  \xC2\xB7  %d document%s", g_folders[i].path, g_folders[i].count, g_folders[i].count == 1 ? "" : "s");
@@ -1134,7 +1134,7 @@ public:
 				fx += cw + 20;
 			}
 		}
-		text_c (canvas, 0, height - 50, width, 20, "Or drop a PDF file here from the File Viewer.", wk_mix (C_FIELD, C_FIELD_TEXT, 110));
+		text_c (canvas, 0, height - 50, width, 20, "Or drop a PDF file here from the File Viewer.", uk_mix (C_FIELD, C_FIELD_TEXT, 110));
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
 	{
@@ -1152,14 +1152,14 @@ public:
 			else if (ht->kind == HM_RECENT)
 			{
 				Recent &r = g_rec[ht->a];
-				if (!file_exists (r.path)) { wk_messagebox ("PDF Viewer", "This document is no longer there (moved or deleted). It is taken off the list.", MB_OK); recent_remove (ht->a); invalidate (true); return true; }
+				if (!file_exists (r.path)) { uk_messagebox ("PDF Viewer", "This document is no longer there (moved or deleted). It is taken off the list.", MB_OK); recent_remove (ht->a); invalidate (true); return true; }
 				char p[300]; scopy (p, r.path, sizeof p);
 				open_path (p, r.page, false);
 			}
 			else if (ht->kind == HM_FOLDER)
 			{
 				char p[300];
-				if (wk_file_open (p, sizeof p, g_folders[ht->a].path)) open_path (p, -1, false);
+				if (uk_file_open (p, sizeof p, g_folders[ht->a].path)) open_path (p, -1, false);
 			}
 		}
 		return mx >= 0 && my >= 0 && mx < width && my < height;
@@ -1279,18 +1279,18 @@ public:
 		for (int k = 0; k < 3; k++)
 		{
 			int w = tw (T[k]) + 28; bool on = k == m_page;
-			if (on) wk_rbox (canvas, x, y, w, 28, 6, C_ACCENT, C_ACCENT); else { wk_rbox (canvas, x, y, w, 28, 6, C_FIELD, C_FIELD); wk_rline (canvas, x, y, w, 28, 6, 0x000000, 50); }
+			if (on) uk_rbox (canvas, x, y, w, 28, 6, C_ACCENT, C_ACCENT); else { uk_rbox (canvas, x, y, w, 28, 6, C_FIELD, C_FIELD); uk_rline (canvas, x, y, w, 28, 6, 0x000000, 50); }
 			text_c (canvas, x, y, w, 28, T[k], on ? C_SEL_TEXT : C_FIELD_TEXT, F_UI, on ? 2 : 0);
 			x += w + 4;
 		}
 		y += 44;
-		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		if (m_page == 0)
 			for (int i = 0; i < m_n; i++)
 			{
 				text_v (canvas, 24, y, 22, m_k[i], dim); text_v (canvas, 160, y, 22, m_v[i], C_TEXT, F_UI, !strcmp (m_k[i], "Title") ? 2 : 0, width - 176);
 				y += 22;
-				if (m_sepAfter[i]) { canvas.fillRect (16, y + 4, width - 32, 1, wk_tone (C_BG, 112)); y += 10; }
+				if (m_sepAfter[i]) { canvas.fillRect (16, y + 4, width - 32, 1, uk_tone (C_BG, 112)); y += 10; }
 			}
 		else if (m_page == 1)
 		{
@@ -1336,7 +1336,7 @@ static void open_path (const char *path, int page, bool newTab)
 	if (!D)
 	{
 		char m[400]; snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be opened.\n%s", nm, err[0] ? err : "It is not a PDF document, or it is damaged.");
-		wk_messagebox ("PDF Viewer", m, MB_OK); return;
+		uk_messagebox ("PDF Viewer", m, MB_OK); return;
 	}
 	if (needPw)
 	{
@@ -1353,12 +1353,12 @@ static void open_path (const char *path, int page, bool newTab)
 	if (!doc_load (g_mu, D, err, sizeof err))
 	{
 		char m[400]; snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be read: %s", nm, err);
-		wk_messagebox ("PDF Viewer", m, MB_OK); doc_free (g_mu, D); return;
+		uk_messagebox ("PDF Viewer", m, MB_OK); doc_free (g_mu, D); return;
 	}
 	int k;
 	if (!newTab && !tab ().doc) k = g_cur;				// the home: replaced
 	else if (g_ntabs < MAX_TABS) k = g_ntabs++;
-	else { wk_messagebox ("PDF Viewer", "Too many documents are open: close one first.", MB_OK); doc_free (g_mu, D); return; }
+	else { uk_messagebox ("PDF Viewer", "Too many documents are open: close one first.", MB_OK); doc_free (g_mu, D); return; }
 	tab_init (g_tabs[k], D);
 	if (page < 0) { int r = recent_find (D->path); if (r >= 0) page = g_rec[r].page; }
 	if (page > 0 && page < D->npages) { g_tabs[k].pendingPage = page; g_tabs[k].pendingY = -1; g_tabs[k].cur = page; }
@@ -1561,7 +1561,7 @@ static void copy_selection ()
 {
 	char *s = selection_text ();
 	if (!s) return;
-	if (!doc_allows (g_mu, tab ().doc, FZ_PERMISSION_COPY)) { wk_messagebox ("PDF Viewer", "This document does not allow copying its text.", MB_OK); fz_free (g_mu, s); return; }
+	if (!doc_allows (g_mu, tab ().doc, FZ_PERMISSION_COPY)) { uk_messagebox ("PDF Viewer", "This document does not allow copying its text.", MB_OK); fz_free (g_mu, s); return; }
 	clip_set_text (s); fz_free (g_mu, s);
 }
 static void select_all ()
@@ -1574,7 +1574,7 @@ static void url_open (const char *uri)
 	if (!strncmp (uri, "http://", 7) || !strncmp (uri, "https://", 8)) { kapi_exec ("SD:apps/jet.app/main", uri); return; }
 	if (!strncmp (uri, "file:", 5) || strstr (uri, ".pdf")) { const char *p = uri; if (!strncmp (p, "file://", 7)) p += 7; open_path (p); return; }
 	char m[400]; snprintf (m, sizeof m, "This link (%.300s) cannot be opened on Onyx.", uri);
-	wk_messagebox ("PDF Viewer", m, MB_OK);
+	uk_messagebox ("PDF Viewer", m, MB_OK);
 }
 static void look_up (const char *s)
 {
@@ -1616,12 +1616,12 @@ static void save_copy ()
 {
 	Tab &t = tab (); if (!t.doc) return;
 	char out[300];
-	if (!wk_file_save (out, sizeof out, "SD:/Documents", t.doc->name)) return;
+	if (!uk_file_save (out, sizeof out, "SD:/Documents", t.doc->name)) return;
 	void *a = kapi_open (t.doc->path); void *b = a ? kapi_file_out (out, 0) : 0;
 	bool ok = a && b;
 	if (ok) { static char buf[32768]; int n; while ((n = kapi_read (a, buf, sizeof buf)) > 0) if (kapi_stream_write (b, buf, n) != n) { ok = false; break; } }
 	if (a) kapi_close (a); if (b) kapi_stream_close (b);
-	if (!ok) wk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
+	if (!ok) uk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
 }
 // File > Print: the Print dialog (the library's: print/print.h), then the pages drawn by MuPDF at the
 // printer's 300 dots an inch, each a picture of the job's page (the document's own page size: fitted on the
@@ -1630,7 +1630,7 @@ static void print_doc ()
 {
 	Tab &t = tab (); if (!t.doc) return;
 	Doc *D = t.doc;
-	if (!doc_allows (g_mu, D, FZ_PERMISSION_PRINT)) { wk_messagebox ("PDF Viewer", "This document does not allow printing.", MB_OK); return; }
+	if (!doc_allows (g_mu, D, FZ_PERMISSION_PRINT)) { uk_messagebox ("PDF Viewer", "This document does not allow printing.", MB_OK); return; }
 	PrintSetup ps; print_setup_default (&ps);
 	PrintDialogInfo di = { sizeof di, D->name, D->npages, t.cur + 1, PRINT_DLG_OWN_PAPER, D->pw[t.cur], D->ph[t.cur] };
 	if (!print_dialog (&ps, &di)) return;
@@ -1640,7 +1640,7 @@ static void print_doc ()
 		bool ok = a && b;
 		if (ok) { static char buf[32768]; int n; while ((n = kapi_read (a, buf, sizeof buf)) > 0) if (kapi_stream_write (b, buf, n) != n) { ok = false; break; } }
 		if (a) kapi_close (a); if (b) kapi_stream_close (b);
-		if (!ok) wk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
+		if (!ok) uk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
 		return;
 	}
 	PrintJob *j = print_begin (&ps, D->name);
@@ -1655,7 +1655,7 @@ static void print_doc ()
 		print_image (j, px, w, h, 0, 0, D->pw[pg], D->ph[pg], 0);
 		free (px);
 	}
-	if (!j || print_end (j) < 0) wk_messagebox ("PDF Viewer", "The document could not be put in the print queue.", MB_OK);
+	if (!j || print_end (j) < 0) uk_messagebox ("PDF Viewer", "The document could not be put in the print queue.", MB_OK);
 }
 static void show_in_files ()
 {
@@ -1683,7 +1683,7 @@ static void m_open ()
 	char p[300];
 	const char *start = tab ().doc ? tab ().doc->path : "SD:/";
 	char dir[300]; scopy (dir, start, sizeof dir); { char *e = 0; for (char *q = dir; *q; q++) if (*q == '/') e = q; if (e && tab ().doc) *e = 0; }
-	if (wk_file_open (p, sizeof p, dir)) open_path (p, -1, tab ().doc != 0);
+	if (uk_file_open (p, sizeof p, dir)) open_path (p, -1, tab ().doc != 0);
 }
 
 // ---- full screen: the pages alone, on black (a presentation) ------------------------------------------------------------------
@@ -1730,7 +1730,7 @@ static void full_screen ()
 		if (k == KEY_RIGHT || k == KEY_DOWN || k == KEY_PGDN || k == ' ' || k == KEY_ENTER || c > 0) { if (pg + 1 < t.doc->npages) pg++; }
 		else if (k == KEY_LEFT || k == KEY_UP || k == KEY_PGUP || k == KEY_BACKSPACE || c < 0) { if (pg > 0) pg--; }
 		else if (k == KEY_HOME) pg = 0; else if (k == KEY_END) pg = t.doc->npages - 1;
-		if (wk_quit ()) break;
+		if (uk_quit ()) break;
 	}
 	free (next);
 	kapi_fullscreen_end ();
@@ -1928,9 +1928,9 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
-	if (!engine_init ()) { wk_messagebox ("PDF Viewer", "Not enough memory to start.", MB_OK); return 1; }
+	if (!engine_init ()) { uk_messagebox ("PDF Viewer", "Not enough memory to start.", MB_OK); return 1; }
 	load_settings ();
 	recent_load ();
 	folders_count ();
@@ -1950,20 +1950,20 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("Open...", "^O", WK_CTRL ('O'), m_open);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), m_open);
 	menu.item ("Home", "", 0, m_home);
-	menu.item ("Close the Tab", "^W", WK_CTRL ('W'), m_close);
+	menu.item ("Close the Tab", "^W", UK_CTRL ('W'), m_close);
 	menu.separator ();
 	menu.item ("Save a Copy...", "", 0, m_savecopy);
-	menu.item ("Print...", "^P", WK_CTRL ('P'), print_doc);
+	menu.item ("Print...", "^P", UK_CTRL ('P'), print_doc);
 	menu.item ("Show in the File Viewer", "", 0, show_in_files);
 	menu.separator ();
-	menu.item ("Properties...", "^D", WK_CTRL ('D'), m_props);
+	menu.item ("Properties...", "^D", UK_CTRL ('D'), m_props);
 	menu.menu ("Edit");
-	menu.item ("Copy", "^C", WK_CTRL ('C'), m_copy);
-	menu.item ("Select All (the page)", "^A", WK_CTRL ('A'), m_selall);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), m_copy);
+	menu.item ("Select All (the page)", "^A", UK_CTRL ('A'), m_selall);
 	menu.separator ();
-	menu.item ("Find...", "^F", WK_CTRL ('F'), m_find);
+	menu.item ("Find...", "^F", UK_CTRL ('F'), m_find);
 	menu.item ("Find Next", "F3", 0, m_next);
 	menu.item ("Find Previous", "Shift+F3", 0, m_prev);
 	menu.menu ("View");
@@ -1979,14 +1979,14 @@ int main (void)
 	menu.item ("Continuous", "", 0, m_scroll);
 	menu.item ("Two Pages", "", 0, m_two);
 	menu.separator ();
-	menu.item ("Rotate", "^R", WK_CTRL ('R'), m_rotate);
+	menu.item ("Rotate", "^R", UK_CTRL ('R'), m_rotate);
 	menu.item ("Full Screen", "F11", 0, m_full);
 	menu.menu ("Go");
 	menu.item ("Next Page", "PgDn", 0, m_pgnext);
 	menu.item ("Previous Page", "PgUp", 0, m_pgprev);
 	menu.item ("First Page", "Home", 0, m_first);
 	menu.item ("Last Page", "End", 0, m_last);
-	menu.item ("Go to Page...", "^G", WK_CTRL ('G'), m_goto);
+	menu.item ("Go to Page...", "^G", UK_CTRL ('G'), m_goto);
 	menu.separator ();
 	menu.item ("Next Tab", "^Tab", 0, m_nexttab);
 	menu.publish ();

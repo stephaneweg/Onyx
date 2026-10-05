@@ -1,15 +1,15 @@
 //
-// applist/main.cpp -- the app-list popup (wtk port). A borderless window with a scrollable
-// grid of wtk::Icon (one per app under /apps), driven by a wtk::Scrollbar. Clicking an icon
+// applist/main.cpp -- the app-list popup (uikit port). A borderless window with a scrollable
+// grid of uikit::Icon (one per app under /apps), driven by a uikit::Scrollbar. Clicking an icon
 // launches that app and closes the popup. Icons that scroll out of view are parked off the
 // canvas (the toolkit clips them away).
 //
 #include "kapi.h"
 #include "applib.h"
 #include "launch.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W		444			// square: 6 columns of 70 px + margins + scrollbar
 #define H		444
@@ -56,12 +56,12 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (0xFF000000);
-		wk_paint_alpha (true);
-		wk_rbox (canvas, 0, 0, W, H, 8, wk_tone (C_FIELD, 140), C_FIELD);
-		wk_rline (canvas, 0, 0, W, H, 8, wk_tone (C_FACE, 70), 200);
-		wk_paint_alpha (false);
-		wk_text_l (canvas, LX + 4, 3, VIEW_Y - 8, "Applications", C_FIELD_TEXT, 2);
-		wk_etch_h (canvas, 8, VIEW_Y - 4, W - 16, C_FIELD);
+		uk_paint_alpha (true);
+		uk_rbox (canvas, 0, 0, W, H, 8, uk_tone (C_FIELD, 140), C_FIELD);
+		uk_rline (canvas, 0, 0, W, H, 8, uk_tone (C_FACE, 70), 200);
+		uk_paint_alpha (false);
+		uk_text_l (canvas, LX + 4, 3, VIEW_Y - 8, "Applications", C_FIELD_TEXT, 2);
+		uk_etch_h (canvas, 8, VIEW_Y - 4, W - 16, C_FIELD);
 	}
 };
 

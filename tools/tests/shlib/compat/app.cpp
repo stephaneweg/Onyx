@@ -1,11 +1,11 @@
 // app.cpp -- the program of the shared libraries' compatibility test (tools/tests/shlib/compat.sh;
-// docs/SHARED-LIBS-PLAN.md section 6, "the compatibility test of D5"): a small wtk app that builds a
+// docs/SHARED-LIBS-PLAN.md section 6, "the compatibility test of D5"): a small uikit app that builds a
 // window with widgets of the library and classes of its own, draws it once, and prints what it saw
-// as "key=value" lines. Built twice: against wtk N (plain) and against wtk N+1 (-DCOMPAT_N1: it then
+// as "key=value" lines. Built twice: against uikit N (plain) and against uikit N+1 (-DCOMPAT_N1: it then
 // also uses what N+1 added). MIT (as Onyx).
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static void put (const char *k, long v)
 {
@@ -49,13 +49,13 @@ int main (void)
 	b->handleMouse (5, 5, 0, 0, 0, 0);			// ... released: the program's callback
 	root.draw ();
 
-	put ("bfw", wk_bfw ());					// N: the font's cell; N+1: 1234 (the "fix")
+	put ("bfw", uk_bfw ());					// N: the font's cell; N+1: 1234 (the "fix")
 	put ("drawn", g_drawn);					// the program's override ran (>= 1)
 	put ("clicked", g_clicked);				// 1
 	put ("width", b->width + m->left + (int) sizeof (Widget));	// the classes' layout, as the program sees it
 	put ("reserve", (long) m->reserved_[0]);		// N: 0; N+1's library writes 49374 there
 #ifdef COMPAT_N1
-	put ("added", wk_compat_added ());			// a function N+1 appended: 77
+	put ("added", uk_compat_added ());			// a function N+1 appended: 77
 	put ("compat", g_compat);				// the reserved virtual, overridden: 1
 #endif
 	put ("done", 1);

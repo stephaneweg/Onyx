@@ -3,7 +3,7 @@
 // First to 9 wins; 'r' resets. App-drawn; integer physics.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "applib.h"
 
 #define W	480
@@ -90,25 +90,25 @@ static void redraw (void)
 	fill_rect (W - 16 - PW, g_ry, PW, PH, 0x00ffffff);
 	fill_rect (g_bx, g_by, BS, BS, 0x0060ff90);
 	char l[4], r[4]; ax_itoa (g_ls, l); ax_itoa (g_rs, r);
-	wtk::draw_text (fb, WW, WH, M + W / 2 - 40, M + 10, l, 0x00ffffff);
-	wtk::draw_text (fb, WW, WH, M + W / 2 + 32, M + 10, r, 0x00ffffff);
+	uikit::draw_text (fb, WW, WH, M + W / 2 - 40, M + 10, l, 0x00ffffff);
+	uikit::draw_text (fb, WW, WH, M + W / 2 + 32, M + 10, r, 0x00ffffff);
 }
 
-// The theme's look (wtk/paint.h), drawn once: the face round the court, the court in a sunken
+// The theme's look (uikit/paint.h), drawn once: the face round the court, the court in a sunken
 // well (its own dark; redrawn at each frame inside it).
 static void paint_frame (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	Canvas cv; cv.adopt (fb, WW, WH);
 	cv.clear (C_BG);
-	wk_sunken (cv, M - 3, M - 3, W + 6, H + 6, 6, 0x00101814);
+	uk_sunken (cv, M - 3, M - 3, W + 6, H + 6, 6, 0x00101814);
 }
 
 int main (void)
 {
 	fb = kapi_create_window (WW, WH, "pong");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	paint_frame ();
 	kapi_set_key_handler (on_key);
 	reset ();

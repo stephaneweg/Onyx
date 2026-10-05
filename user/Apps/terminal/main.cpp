@@ -10,12 +10,12 @@
 // It runs in TWO modes (same scrollback + rendering):
 //   - embedded in the activity shell as a SECONDARY app: it registers, gets a surface
 //     viewport, and is driven by the shell's forwarded input over the mailbox.
-//   - standalone fallback (no shell): its own decorated wtk window.
+//   - standalone fallback (no shell): its own decorated uikit window.
 // Both modes need a custom loop (not embed::run / Root::run) because the terminal must
 // also pump cmd's output pipe every frame.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit (TermView draws into a Canvas)
+#include "uikit/uikit.h"		// recursive widget toolkit (TermView draws into a Canvas)
 #include "applib.h"		// should_exit, pump_events, msleep
 #include "embed.h"		// run embedded in the activity shell (surface + mailbox)
 #include "lineedit.h"		// the line being typed: its cursor, the history
@@ -143,11 +143,11 @@ static void term_key (int key)
 	}
 }
 
-// ---- view (wtk widget) -------------------------------------------------------
+// ---- view (uikit widget) -------------------------------------------------------
 // Renders the scrollback into its Canvas; works for an owned window canvas (standalone)
 // AND an adopted shell surface (embedded). Recomputes the visible rows/cols from its
 // current logical size each frame, so a viewport resize just reflows the text.
-using namespace wtk;
+using namespace uikit;
 
 class TermView : public Widget
 {
@@ -190,7 +190,7 @@ public:
 			row[n] = 0;
 			canvas.text (4, 4 + r * g_fh, row, TERM_FG);
 			if (caret / g_cols == k)			// the caret, at the cursor
-				canvas.fillRect (4 + (caret % g_cols) * g_fw, 4 + r * g_fh, 2, g_fh, wk_tone (C_ACCENT, 180));	// (the accent, lit)
+				canvas.fillRect (4 + (caret % g_cols) * g_fw, 4 + r * g_fh, 2, g_fh, uk_tone (C_ACCENT, 180));	// (the accent, lit)
 		}
 	}
 
@@ -203,7 +203,7 @@ public:
 	}
 };
 
-// ---- standalone input trampolines (mirror wtk::Root::run's routing) ----------
+// ---- standalone input trampolines (mirror uikit::Root::run's routing) ----------
 static Root *g_saroot = 0;
 
 static void sa_ptr (unsigned long, int ev, long v)

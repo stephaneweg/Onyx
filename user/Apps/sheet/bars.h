@@ -33,7 +33,7 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, hasFocus);
+		uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, hasFocus);
 		fnt::Font *f = ui_font (13);
 		int n; const char *t = text (&n);
 		int lineEnd = 0; while (lineEnd < n && t[lineEnd] != '\n') lineEnd++;
@@ -55,11 +55,11 @@ public:
 			int adv = fnt::advance (f, cp);
 			unsigned c = C_FIELD_TEXT;
 			for (int k = 0; k < nr; k++) if (i >= refs[k].at && i < refs[k].at + refs[k].len) c = refs[k].col;
-			if (i >= s0 && i < s1) { int X0 = imax (x64 >> 6, clip.c0), X1 = imin ((x64 + adv) >> 6, clip.c1); if (X1 > X0) canvas.fillRect (X0, 5, X1 - X0, height - 10, wk_mix (C_FIELD, C_ACCENT, 110)); }
+			if (i >= s0 && i < s1) { int X0 = imax (x64 >> 6, clip.c0), X1 = imin ((x64 + adv) >> 6, clip.c1); if (X1 > X0) canvas.fillRect (X0, 5, X1 - X0, height - 10, uk_mix (C_FIELD, C_ACCENT, 110)); }
 			fnt::draw (canvas, f, x64, base, cp, c, clip.c0, clip.r0, clip.c1, clip.r1);
 			x64 += adv; prev = cp; i += l;
 		}
-		if (lineEnd < n) fnt::draw (canvas, f, x64 + 4 * 64, base, 0x21B5, wk_mix (C_FIELD, C_FIELD_TEXT, 120), clip.c0, clip.r0, clip.c1, clip.r1);	// (more lines)
+		if (lineEnd < n) fnt::draw (canvas, f, x64 + 4 * 64, base, 0x21B5, uk_mix (C_FIELD, C_FIELD_TEXT, 120), clip.c0, clip.r0, clip.c1, clip.r1);	// (more lines)
 		if (g->ed.on && hasFocus) { int cx = 8 - m_scroll + caretX; if (cx >= 3 && cx < width - 3) canvas.fillRect (cx, 6, 1, height - 12, C_FIELD_TEXT); }
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -124,10 +124,10 @@ public:
 		Textbox::onDraw ();
 		if (m_all && hasFocus && text[0])			// (the text selected: tinted)
 		{
-			int fw = wk_fw (), fh = wk_fh (), n = imin ((int) strlen (text), (width - 12) / fw);
+			int fw = uk_fw (), fh = uk_fh (), n = imin ((int) strlen (text), (width - 12) / fw);
 			int y0 = (height - fh) / 2;
 			for (int y = y0; y < y0 + fh; y++)
-				for (int x = 6; x < 6 + n * fw; x++) { unsigned &p = canvas.px[y * canvas.stride + x]; p = wk_mix (p, C_ACCENT, 90); }
+				for (int x = 6; x < 6 + n * fw; x++) { unsigned &p = canvas.px[y * canvas.stride + x]; p = uk_mix (p, C_ACCENT, 90); }
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
@@ -173,7 +173,7 @@ public:
 	void onDraw () override
 	{
 		canvas.fillRect (0, 0, width, height, C_BG);
-		wk_etch_v (canvas, 116, 7, height - 14, C_BG);
+		uk_etch_v (canvas, 116, 7, height - 14, C_BG);
 	}
 	void sync ()
 	{
@@ -229,14 +229,14 @@ public:
 	void onDraw () override
 	{
 		canvas.fillRect (0, 0, width, height, C_BG);
-		canvas.fillRect (0, 0, width, 1, wk_tone (C_BG, 110));
+		canvas.fillRect (0, 0, width, 1, uk_tone (C_BG, 110));
 		unsigned ink = C_TEXT;
 		// the arrows and "+"
 		for (int k = 0; k < 3; k++)
 		{
 			int x = k * 28 + 2;
-			if (m_hot == -1 - k) wk_rbox (canvas, x, 3, 24, height - 6, 4, wk_tone (C_BG, 150), wk_tone (C_BG, 138));
-			if (k < 2) wk_glyph (canvas, k == 0 ? WKG_CHEV_LEFT : WKG_CHEV_RIGHT, x + 12, height / 2, 8, ink);
+			if (m_hot == -1 - k) uk_rbox (canvas, x, 3, 24, height - 6, 4, uk_tone (C_BG, 150), uk_tone (C_BG, 138));
+			if (k < 2) uk_glyph (canvas, k == 0 ? WKG_CHEV_LEFT : WKG_CHEV_RIGHT, x + 12, height / 2, 8, ink);
 			else sheet_icon (canvas, SI_SHEETADD, x + 2, height / 2 - 10, ink, false);
 		}
 		int x = NAV_W + 4;
@@ -245,11 +245,11 @@ public:
 		{
 			int w = tabW (i);
 			bool act = i == b->active, hot = i == m_hot;
-			unsigned bg = act ? 0xFFFFFF : hot ? wk_tone (C_BG, 150) : wk_tone (C_BG, 132);
+			unsigned bg = act ? 0xFFFFFF : hot ? uk_tone (C_BG, 150) : uk_tone (C_BG, 132);
 			VPath p;
 			int pts[8] = { V (x), V (0), V (x + w), V (0), V (x + w - 5), V (height - 3), V (x + 5), V (height - 3) };
 			p.poly (pts, 4); p.fill (canvas, bg);
-			p.clear (); p.polyline (pts, 4, 16, true); p.fill (canvas, wk_tone (C_BG, 96));
+			p.clear (); p.polyline (pts, 4, 16, true); p.fill (canvas, uk_tone (C_BG, 96));
 			if (act) canvas.fillRect (x + 1, 0, w - 2, 2, 0xFFFFFF);
 			if (b->sh[i]->tab != AUTO) canvas.fillRect (x + 8, height - 7, w - 16, 3, b->sh[i]->tab);
 			text_at (canvas, act ? fb : f, x + w / 2, height / 2 + 4, b->sh[i]->name, act ? 0x202124 : ink, 1, Rect { 0, x + 4, height - 1, x + w - 5 });
@@ -309,15 +309,15 @@ public:
 	void onDraw () override
 	{
 		canvas.fillRect (0, 0, width, height, C_BG);
-		canvas.fillRect (0, 0, width, 1, wk_tone (C_BG, 110));
+		canvas.fillRect (0, 0, width, 1, uk_tone (C_BG, 110));
 		fnt::Font *f = ui_font (12);
 		text_at (canvas, f, 10, height / 2 + 5, left, C_TEXT, 0, Rect { 0, 0, height - 1, width / 3 });
 		text_at (canvas, f, width - 110, height / 2 + 5, mid, C_TEXT, 2, Rect { 0, width / 3, height - 1, width - 104 });
 		char z[16]; snprintf (z, sizeof z, "%d%%", zoom);
-		wk_etch_v (canvas, width - 102, 4, height - 8, C_BG);
-		wk_glyph (canvas, WKG_MINUS, width - 88, height / 2, 8, C_TEXT);
+		uk_etch_v (canvas, width - 102, 4, height - 8, C_BG);
+		uk_glyph (canvas, WKG_MINUS, width - 88, height / 2, 8, C_TEXT);
 		text_at (canvas, f, width - 52, height / 2 + 5, z, C_TEXT, 1, Rect { 0, width - 80, height - 1, width - 24 });
-		wk_glyph (canvas, WKG_PLUS, width - 14, height / 2, 8, C_TEXT);
+		uk_glyph (canvas, WKG_PLUS, width - 14, height / 2, 8, C_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{

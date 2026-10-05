@@ -1,9 +1,9 @@
 //
-// applet_proto.h -- the Control Panel's applets (apps/control): an applet is a wtk app shown
+// applet_proto.h -- the Control Panel's applets (apps/control): an applet is a uikit app shown
 // INSIDE the Control Panel's window instead of in a window of its own. The host (apps/control)
 // makes a shared surface (kapi v35) the size of its pane and starts the applet with the
-// arguments "--applet <surface id> <host pid>"; the applet's wtk::Root then draws into that
-// surface (wtk/root.cpp, the applet mode); the host copies it into its window when told and
+// arguments "--applet <surface id> <host pid>"; the applet's uikit::Root then draws into that
+// surface (uikit/root.cpp, the applet mode); the host copies it into its window when told and
 // sends it the pointer and the keys. Messages over the kernel's mailboxes (kapi v35 / v40,
 // <= 512 bytes), from / to the pids:
 //
@@ -19,7 +19,7 @@
 //
 // The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another
 // host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id>
-// <host pid> <service>"; its own message types go to the applet's wk_applet_on_message (wtk/root.h;
+// <host pid> <service>"; its own message types go to the applet's uk_applet_on_message (uikit/root.h;
 // Jet's web view: Apps/jet/webview_proto.h, types 60..79). The surface's frames live as long as
 // either process maps it (kernel v65: its users).
 //

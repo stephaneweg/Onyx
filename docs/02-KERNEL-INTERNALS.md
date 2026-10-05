@@ -888,7 +888,7 @@ unnamed when its file changes. What is different:
   image found in memory (no card access) or streamed by the calling task as a program's start does,
   the version checked against `min_version` (the table's first `u32`, read in the relocated copy),
   the library mapped, the caches synchronised. One line in the kernel log per mapping:
-  `lib: sd:/lib/wtk.so: loaded in 41 ms at 0x400000000, version 3, 5120 relocations, 640 KB shared,
+  `lib: sd:/lib/uikit.so: loaded in 41 ms at 0x400000000, version 3, 5120 relocations, 640 KB shared,
   128 KB private` (`loaded` / `shared` / `shared after a wait`).
 
 **The export table.** A struct of function pointers in the library's data, relocated with it. Its
@@ -905,7 +905,7 @@ system (`image_list`: the library once, `refs` = the processes mapping it, `size
 data's copy). The read + write segment is private pages in every process: a library's globals are
 per process.
 
-**Preload, unload, the file hook.** As a program's: `preload SD:/lib/wtk.so` (or the line in
+**Preload, unload, the file hook.** As a program's: `preload SD:/lib/uikit.so` (or the line in
 `SD:/etc/preload.ini`) keeps a library in memory with no process; `unload` and a write, rename or
 removal of the file take its name away — processes that map it keep it, new ones load the file again.
 
@@ -1152,13 +1152,13 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 
 | Category | Examples |
 |---|---|
-| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `wk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
-| Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `wtk::Menu`. |
+| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
+| Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `uikit::Menu`. |
 | Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
 | Word waits, priority (v68) | `wait_word(addr, expected, timeout_ms)` sleeps while the 4-byte word `*addr == expected` → 0 (woken, or the value differs), 1 timeout (0 ms: only check), −1 bad address (unaligned, unmapped); `wake_word(addr)` → the sleepers woken. Keyed by the **physical** address (a word of a shared surface wakes across processes); the 100 Hz tick also reads every sleeping word and wakes those that changed — an app core's write needs no `wake_word` (≤ 10 ms). `thread_priority(tid 0 self / 1 main / ≥ 2, prio 0 / 1 / −1 ask)` → the previous one, −1 bad prio, −2 no such thread: a "real time" task is picked first when ready and a tick preempts an app for it, while it yields by itself (§5). See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
-| Widgets | none since v29 (the kernel-drawn `add_button`… removed: §10.3; apps use wtk) |
+| Widgets | none since v29 (the kernel-drawn `add_button`… removed: §10.3; apps use uikit) |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
 | App-drawn text | `draw_text`, `font_width`, `font_height` |
 | System-call statistics (v74) | `proc_stats(pid, out)` (pid 0: the caller) → 0 and `struct kapi_syscall_stats { syscalls, emulated; rate, slots; top_slot[8], top_count[8]; reserved[4] }` (104 bytes): the `svc`s since the process started, the ID register reads emulated, the calls per second (the last full window ≥ 1 s), the table's slot count, the 8 slots most called (a slot = the field's index in `TKApiTable` in 8-byte words, `version` = 0; `user/kapi_names.h`, generated by `tools/gen_kapi_names.py`, names them) → −1 no such process / a kernel task, −2 a bad pointer. |
@@ -1547,7 +1547,7 @@ output: …` lines.
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 261 | `lib_open (name, min_version, err)` | the shared library `name` mapped into the caller → its export table, or 0 with `*err` (if not 0) = −`KAPI_E*`. `name`: a bare name (`"wtk"` is `SD:/lib/wtk.so`) or a path (anything with a `/`, a `\` or a `:`; relative: to the working directory). Mapped in the caller already: the same table. The table's first `unsigned` (its version) must be ≥ `min_version`, else `-ENOTSUP`. Other errors: `-ENOENT` (no such file), `-EINVAL` (not a library of `user/lib.ld`'s shape, a program, a relocation other than `R_AARCH64_RELATIVE`), `-ENOMEM` (memory, or no room in the arena), `-EMFILE` (16 libraries in the process), `-EIO`, `-ENAMETOOLONG`, `-EFAULT`. No `lib_close`: a library stays mapped until the process ends. |
+| 261 | `lib_open (name, min_version, err)` | the shared library `name` mapped into the caller → its export table, or 0 with `*err` (if not 0) = −`KAPI_E*`. `name`: a bare name (`"uikit"` is `SD:/lib/uikit.so`) or a path (anything with a `/`, a `\` or a `:`; relative: to the working directory). Mapped in the caller already: the same table. The table's first `unsigned` (its version) must be ≥ `min_version`, else `-ENOTSUP`. Other errors: `-ENOENT` (no such file), `-EINVAL` (not a library of `user/lib.ld`'s shape, a program, a relocation other than `R_AARCH64_RELATIVE`), `-ENOMEM` (memory, or no room in the arena), `-EMFILE` (16 libraries in the process), `-EIO`, `-ENAMETOOLONG`, `-EFAULT`. No `lib_close`: a library stays mapped until the process ends. |
 
 What a library is, how the kernel places and relocates it, and its lifetime: §7 *Shared libraries
 (v83)*. `user/kapi.h`'s wrapper returns 0 with `-KAPI_ENOSYS` on an older kernel; a program does not
@@ -1592,8 +1592,8 @@ desktop, a window that never asked, and during a drag & drop. The shapes are ima
 edge added around, its hot spot given (`--show` prints them). Black with a white edge, as the
 arrow, which stays `kernel.cpp`'s own. A shape is at most 24 x 24 with its hot spot within 12 of
 its top left (`WM_CURSOR_BOX`, `WM_CURSOR_REACH`): the screen's part made dirty when the pointer
-moves or changes is that box around it. Apps do not call this themselves: wtk does (docs/03,
-`wk_cursor`).
+moves or changes is that box around it. Apps do not call this themselves: uikit does (docs/03,
+`uk_cursor`).
 
 ### v80: cpu_stats, net_stats
 
@@ -1714,12 +1714,12 @@ the author's FreeBASIC `SimpleOS`.
   desktop's band; `TOPMOST`: the menu bar, the dock — above every window, never active, never the
   keys; `TRANSPARENT`: the magenta key; `SYSTEM`: not listed as an open app; `ALPHA` (v64): the
   canvas's top byte is a transparency; `FIXED` (v69): the user cannot move it — no drag, no
-  double-click maximise, `HitTitleButton` finds no button (wtk draws none: `WK_WIN_FIXED`) — and
+  double-click maximise, `HitTitleButton` finds no button (uikit draws none: `UK_WIN_FIXED`) — and
   `OnScreenResized` centres it again at a new resolution instead of only moving it in: Setup's), a `GImage` **canvas allocated 64 KB-aligned and
   physically contiguous** (mapped into the app at `USER_WINDOW_CANVAS` = 12 GB — the app draws
   directly, with no per-pixel call), the frame's two copies (active, inactive: mapped at
-  `USER_WINDOW_CHROME` / `_INACTIVE`, drawn by the app — kapi v28 `get_chrome`; wtk:
-  `wk_decorate_window`), an event queue (spinlock-protected ring), the app's handlers, its menu.
+  `USER_WINDOW_CHROME` / `_INACTIVE`, drawn by the app — kapi v28 `get_chrome`; uikit:
+  `uk_decorate_window`), an event queue (spinlock-protected ring), the app's handlers, its menu.
 - **The frame** (v64, the modernised CDE): a 28 px title bar and 4 px borders (`WIN_TITLEBAR_H` /
   `WIN_BORDER` = `KAPI_FRAME_TITLE_H` / `KAPI_FRAME_BORDER`, shared with the apps in `kapi_abi.h`),
   rounded corners (radius `KAPI_FRAME_RADIUS` = 8): in the frame's copies a pixel's top byte is
@@ -1743,7 +1743,7 @@ the author's FreeBASIC `SimpleOS`.
   `HitTitleButton`). Close and minimise act at their release over them (`RequestExit`,
   `Minimise`); the window menu (at the press) and maximise (also a double click on the title
   bar) go to the app as `GUI_EVENT_WINCTL` (18; value `KAPI_FRAME_MENU` / `KAPI_FRAME_MAXIMISE`):
-  wtk's `Root` shows its window menu, maximises and restores (the developer guide).
+  uikit's `Root` shows its window menu, maximises and restores (the developer guide).
 - **Minimised windows** (v64, `SetMinimised`): not drawn, not hit, never the active window nor the
   keys' target (`ActiveLocked`, `KeyTargetLocked`), their area damaged as they go and come back;
   `Raise` (`win_raise`, `raise_app`: the dock, the menu bar's Open Windows) brings one back.
@@ -1777,7 +1777,7 @@ the author's FreeBASIC `SimpleOS`.
   `OnScreenResized` keeps the windows on the screen and sends them `GUI_EVENT_DISPLAY_RESIZE`. The
   apps placed by the screen's size place themselves again on it: the menu bar (its canvas grown to
   the screen: `resize_window2`), the dock (`onDisplayResize`: laid out for the new width, along the
-  bottom), the notifications (the top right corner); wtk re-maximises a maximised window and
+  bottom), the notifications (the top right corner); uikit re-maximises a maximised window and
   shrinks / moves one past the work area ~0.3 s later (`Root::displayTick`: the dock has moved,
   the work area is the new one). vncd sends the VNC `DesktopSize` pseudo-rectangle (−223) to a
   client that takes it (else it closes the session: the client connects again at the new size);
@@ -1802,7 +1802,7 @@ the author's FreeBASIC `SimpleOS`.
 
 The kernel draws **no widget** any more: the kernel-drawn widget API (buttons, labels, check
 boxes, text boxes, sliders, scroll bars, icons) was removed from the table by the v29 compat
-break; every app draws its own controls with **wtk** (`user/wtk`, docs/03 §6). The window
+break; every app draws its own controls with **uikit** (`user/uikit`, docs/03 §6). The window
 manager keeps the window-level work: the hit-test of the frame (title bar, its buttons, the
 borders), raising and moving windows, focus, and **pushing events** into the window's queue;
 the app's `pump_events` (user-side since v74: `pop_event` / `pop_post` in a loop, §6) calls its
@@ -1826,9 +1826,9 @@ dialog, otherwise to the app's keyboard handler.
 ### 10.4 Theme, wallpaper
 
 - **The theme** is the apps' business: the windows' frames, like every control, are drawn by the
-  apps (wtk: `user/wtk/skin.cpp`, `paint.cpp` — by code, no bitmap) from `SD:/etc/theme.txt`
+  apps (uikit: `user/uikit/skin.cpp`, `paint.cpp` — by code, no bitmap) from `SD:/etc/theme.txt`
   (`theme` = Peach / Steel / Sage / Brick / Slate, or `active`; `inactive`, `face`, `accent`,
-  `outline`, `dock`: read by `wtk/theme.cpp`); the kernel only blits the frames. Of that file the
+  `outline`, `dock`: read by `uikit/theme.cpp`); the kernel only blits the frames. Of that file the
   kernel reads only `wheelspeed=N` at boot. (The old 9-slice window skin — `wings.bmp` tinted by
   `CSkin` — and `kapi_set_window_theme` are no longer used by the desktop.)
 - **Wallpaper**: `wallpaper_generate` (toroidal Voronoi generated at runtime), or **an
@@ -1840,7 +1840,7 @@ dialog, otherwise to the app's keyboard handler.
 ### 10.5 Modal dialogs
 
 None in the kernel any more: `message_box`, `file_open`, `file_save` (v9/v10, `CDialog`) were
-removed; the dialogs are user-side (wtk's `MessageBox`, `FileDialog`…), modal within their app.
+removed; the dialogs are user-side (uikit's `MessageBox`, `FileDialog`…), modal within their app.
 
 ---
 

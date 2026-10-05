@@ -20,11 +20,11 @@
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "gba/gba.h"
 #include "emucore.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static gba::Machine *g_m = 0;
 static unsigned char *g_rom = 0;
@@ -171,7 +171,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 4x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (gba::W * z, gba::H * z), gba::W * z, gba::H * z, g_stride);
-	wtk::wk_decorate_window ();					// the frame follows
+	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = gba::W * z; g_root->height = gba::H * z;
 	g_root->invalidate (true);
 }
@@ -318,7 +318,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	menu.item ("Reset",        "",    0, on_reset);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Zoom 1x",      "",    0, on_zoom1);

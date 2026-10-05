@@ -16,9 +16,9 @@
 #include "Apps/ledger/coda.h"
 #include "Apps/ledger/sepa.h"
 
-// (Ledger's words: English here -- wtk/lang.cpp is the apps')
-const char *wk_tr (const char *s) { return s; }
-const char *wk_trc (const char *, const char *s) { return s; }
+// (Ledger's words: English here -- uikit/lang.cpp is the apps')
+const char *uk_tr (const char *s) { return s; }
+const char *uk_trc (const char *, const char *s) { return s; }
 using namespace lg;
 
 static int g_fail, g_checks;

@@ -1,4 +1,4 @@
-# Ledger's words in French (wtk/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# Ledger's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
 # The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
      Out 	     Sorties 
      Total 	     Total 

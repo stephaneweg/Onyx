@@ -102,7 +102,7 @@ almost entirely **on the Onyx side**.
 Trap frame, vectors, FP/NEON save, the syscall path and the preemption trampoline
 (`kernel/arch/aarch64/`), the per-process address spaces (64 KB granule, L2/L3 math, 8-bit ASIDs,
 TLBI, teardown — only the VA *constants* depend on the RAM), the scheduler logic, threads, futex
-tick, IPC, VFS, streams, the ELF loader, the window manager and wtk, the kapi table mechanism, USB
+tick, IPC, VFS, streams, the ELF loader, the window manager and uikit, the kapi table mechanism, USB
 HID / gamepads / MIDI, TCP/IP, NTP, FatFs and the Onyx FatFs patches, the FTP / telnet / VNC / rdpd
 daemons, BASIC, NetSurf, Letters, Ledger, the emulators' CPU cores **and the GameCube JIT** (plain
 ARMv8.0 code; it flushes with `dc cvau`/`ic ivau` using `CTR_EL0` line sizes). **Every timing path

@@ -9,7 +9,7 @@
 //     Viewer): the first PRINT opens the window.
 // The window is a QBasic-like screen (basscreen.h, shared with the PC runtime: 80 x 25 text
 // cells = 640 x 400 by default; SCREEN 12 = 640 x 480, SCREEN 13 = 320 x 200) that text and
-// graphics share, with wtk controls (BUTTON, TEXTBOX, ...) on top. A windowed app (WINDOW) is in
+// graphics share, with uikit controls (BUTTON, TEXTBOX, ...) on top. A windowed app (WINDOW) is in
 // the theme's colours -- the windows' face, the text on it --, unless COLOR chose others first;
 // the QBasic screens (text, SCREEN n, the games) keep their own. The program's folder becomes the current
 // directory, so it finds its files by relative names.
@@ -19,11 +19,11 @@
 #include "applib.h"
 #include "notify.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "basic/basscreen.h"
 #include "audiokit/audiokit.h"		// AudioKit: PLAYFILE, MIDINOTE ... (lib/audiokit.imp.a)
 
-using namespace wtk;
+using namespace uikit;
 
 static int slen (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 static void scpy (char *d, const char *s, int cap) { int i = 0; if (s) for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
@@ -106,7 +106,7 @@ public:
 		if (w > winW) w = winW;
 		if (h > winH) h = winH;
 		root->canvas.adopt (kapi_resize_window (w, h), w, h, winW);
-		wtk::wk_decorate_window ();					// the frame follows
+		uikit::uk_decorate_window ();					// the frame follows
 		root->width = w; root->height = h;
 	}
 	void pageChanged () override { root->vis = visible (); root->vw = W; root->vh = H; root->sx = sx; root->sy = sy; }
@@ -198,7 +198,7 @@ public:
 	// A windowed app (WINDOW) in the theme's colours: the windows' face, the text on it.
 	bool windowColours (unsigned *face, unsigned *text) override
 	{
-		wtk::init ();					// (the theme: read once, SD:/etc/theme.txt)
+		uikit::init ();					// (the theme: read once, SD:/etc/theme.txt)
 		*face = C_BG; *text = C_TEXT;
 		return true;
 	}
@@ -313,7 +313,7 @@ public:
 	double akNoteHz (int key) override { return ak_note_mhz (key) / 1000.0; }
 	int akNoteKey (const char *name) override { return ak_note_parse (name); }
 
-	// ---- GUI controls (wtk) -------------------------------------------------------------------------------
+	// ---- GUI controls (uikit) -------------------------------------------------------------------------------
 	int control (int kind, int x, int y, int w, int h, const char *text, int val) override
 	{
 		if (!ensureWindow () || nctl >= MAXCTL - 1) return 0;
@@ -322,7 +322,7 @@ public:
 		switch (kind)
 		{
 		case bas::CTL_BUTTON:   wd = new Button (x, y, w, h, text, on_control); break;
-		case bas::CTL_LABEL:    wd = new Label (x, y, w, h, text, wk_ink_for (rgb (bg, 0)), rgb (bg, 0)); break;
+		case bas::CTL_LABEL:    wd = new Label (x, y, w, h, text, uk_ink_for (rgb (bg, 0)), rgb (bg, 0)); break;
 		case bas::CTL_TEXTBOX:  wd = new Textbox (x, y, w, h, text, on_control); break;
 		case bas::CTL_CHECKBOX: wd = new Checkbox (x, y, w, h, text, val != 0, on_control, rgb (bg, 0)); break;
 		case bas::CTL_PROGRESS: wd = new Progress (x, y, w, h, 0, 100, val); break;
@@ -432,7 +432,7 @@ public:
 	int msgbox (const char *t, const char *m, int b) override
 	{
 		if (!ensureWindow ()) return 0;
-		int r = wk_messagebox (t, m, b);
+		int r = uk_messagebox (t, m, b);
 		dirty (); present (true);
 		return r;
 	}
@@ -442,8 +442,8 @@ public:
 	{
 		if (!ensureWindow ()) return false;
 		char name[128]; scpy (name, o, sizeof name);
-		bool ok = save ? wk_file_save (o, (unsigned) cap, dir[0] ? dir : "SD:/", name[0] ? name : "untitled.txt")
-			       : wk_file_open (o, (unsigned) cap, dir[0] ? dir : "SD:/");
+		bool ok = save ? uk_file_save (o, (unsigned) cap, dir[0] ? dir : "SD:/", name[0] ? name : "untitled.txt")
+			       : uk_file_open (o, (unsigned) cap, dir[0] ? dir : "SD:/");
 		dirty (); present (true);
 		return ok;
 	}
@@ -566,7 +566,7 @@ int OnyxHost::menuItem (const char *title, const char *item, const char *key)
 			if (menus[j].item[0] == '-' && !menus[j].item[1]) { menuBar->separator (); continue; }
 			g_menuIds[j] = menus[j].id;
 			const char *k = menus[j].key; long code = 0; char shown[16] = "";
-			if (ci_same (k, "") == false && (k[0] == 'C' || k[0] == 'c') && (k[1] == 't' || k[1] == 'T') && (k[2] == 'r' || k[2] == 'R') && (k[3] == 'l' || k[3] == 'L') && k[4] == '+' && k[5]) { char c = k[5] >= 'a' && k[5] <= 'z' ? (char) (k[5] - 32) : k[5]; code = WK_CTRL (c); shown[0] = '^'; shown[1] = c; shown[2] = 0; }
+			if (ci_same (k, "") == false && (k[0] == 'C' || k[0] == 'c') && (k[1] == 't' || k[1] == 'T') && (k[2] == 'r' || k[2] == 'R') && (k[3] == 'l' || k[3] == 'L') && k[4] == '+' && k[5]) { char c = k[5] >= 'a' && k[5] <= 'z' ? (char) (k[5] - 32) : k[5]; code = UK_CTRL (c); shown[0] = '^'; shown[1] = c; shown[2] = 0; }
 			menuBar->item (menus[j].item, shown, code, thunks[j]);
 		}
 	}
@@ -691,7 +691,7 @@ int main (void)
 			}
 		}
 		if (host.fsBuf) host.fullscreen (false);
-		if (host.root) { wk_messagebox ("BASIC", msg, MB_OK); }
+		if (host.root) { uk_messagebox ("BASIC", msg, MB_OK); }
 		else if (host.console) ax_putln (msg);
 		else notify (host.title, msg);
 	};

@@ -19,7 +19,7 @@ of the **Circle** bare-metal framework.
 |---|---|---|---|
 | 01 | **[Project Overview](01-PROJECT-OVERVIEW.md)** | everyone | vision, architecture, features, execution model (apps at EL0), the cores, repository structure |
 | 02 | **[Kernel Internals](02-KERNEL-INTERNALS.md)** | to understand the kernel | boot, memory/MMU/ASID, scheduling, exceptions and system calls, ELF loader, threads, kapi ABI, streams, GUI, network, sound, app cores, GPU, `RAM:` (excluding Circle) |
-| 03 | **[Developer Guide](03-DEVELOPER-GUIDE.md)** | to build / extend | toolchain, build, app model, writing an app/tool, wtk, the big apps' code, extending the ABI, conventions, debugging, pitfalls |
+| 03 | **[Developer Guide](03-DEVELOPER-GUIDE.md)** | to build / extend | toolchain, build, app model, writing an app/tool, uikit, the big apps' code, extending the ABI, conventions, debugging, pitfalls |
 | 04 | **[User Guide](04-USER-GUIDE.md)** | to use it | SD card, boot options, Onyx desktop, terminal, `/bin` tools, files, Control Panel, app catalog, BASIC |
 | 05 | **[Circle Changes](05-CIRCLE-CHANGES.md)** | HAL maintainers | the patches in our Circle fork vs upstream `Step51` |
 | 08 | **[Jet Browser: the WebKit port](08-WEBKIT-PORT.md)** | the browser | the port of WebKit to Onyx (Jet Browser since 2026-10-04; the NetSurf Jet and its documents 06 and 07 were removed): where it stands, the patch series, the builds, the media engine, the compositor |

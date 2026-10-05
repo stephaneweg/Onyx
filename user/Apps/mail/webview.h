@@ -229,8 +229,8 @@ static void wv_draw (Canvas &cv, int x, int y, int w, int h, int clipH)
 		int hy = (y + h < clipH ? y + h : clipH) - 26;
 		if (hy > y0)
 		{
-			wk_fill_round (cv, x + 4, hy, hw, 22, 4, col_line ());
-			wk_fill_round (cv, x + 5, hy + 1, hw - 2, 20, 4, C_FIELD);
+			uk_fill_round (cv, x + 4, hy, hw, 22, 4, col_line ());
+			uk_fill_round (cv, x + 5, hy + 1, hw - 2, 20, 4, C_FIELD);
 			text_v (cv, x + 12, hy, 22, g_wv.hover, C_FIELD_TEXT, F_SMALL, 0, hw - 16);
 		}
 	}

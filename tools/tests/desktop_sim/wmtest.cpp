@@ -24,7 +24,7 @@ static int g_fail = 0;
 
 static std::string g_dir;
 
-// A frame as wtk draws it: opaque, but its rounded corners' outside see-through (the top byte:
+// A frame as uikit draws it: opaque, but its rounded corners' outside see-through (the top byte:
 // 255 - the pixel's coverage, 4 x 4 samples), a title band, the face below.
 static void draw_frame (CWindow *w, u32 title, u32 face)
 {

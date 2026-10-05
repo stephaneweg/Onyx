@@ -11,7 +11,7 @@
 // This file is MIT (Onyx's own code); the Media Player as a program links FFmpeg (GPL-2.0-or-later) and is
 // distributed under the GPL-2.0 (docs/LICENSING.md).
 //
-// A newlib wtk app with FreeType's text (user/Makefile's media.elf rule): the decoders (codecs.c,
+// A newlib uikit app with FreeType's text (user/Makefile's media.elf rule): the decoders (codecs.c,
 // vorbis.c), MeltySynth (Apps/koton/synth) for MIDI, user/av and its codecs for the videos. Its parts:
 // decode.h, midi.h, player.h (the music's playback thread), tags.h, lib.h (the library, its scan thread),
 // covers.h (their loader thread), videos.h (the videos' facts), thumbs.h (their frames' thread), watch.h
@@ -30,7 +30,7 @@
 #include "fileassoc.h"
 #include "notify.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace media;
 
 #define SETTINGS "SD:/etc/media/settings.ini"
@@ -352,9 +352,9 @@ static void play_next_ids (const IntList &ids, bool next)
 
 // ---- the window's parts ------------------------------------------------------------------------------------
 static const int SIDE_W = 208, TOP_H = 52, NOW_H = 80;
-static unsigned col_side () { return wk_mix (C_BG, C_FIELD, 70); }
-static unsigned col_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 150); }
-static unsigned col_dim_bg () { return wk_mix (C_BG, C_TEXT, 150); }
+static unsigned col_side () { return uk_mix (C_BG, C_FIELD, 70); }
+static unsigned col_dim () { return uk_mix (C_FIELD, C_FIELD_TEXT, 150); }
+static unsigned col_dim_bg () { return uk_mix (C_BG, C_TEXT, 150); }
 
 struct Hit { int x, y, w, h, kind, a, b; };
 struct HitList
@@ -387,8 +387,8 @@ public:
 	void item (int &y, const char *label, int ic, int kind, int arg)
 	{
 		bool on = selected (kind, arg), h = hits.n == hot;
-		if (on) wk_rbox (canvas, 8, y, width - 16, 28, 6, C_ACCENT, C_ACCENT);
-		else if (h) wk_rbox (canvas, 8, y, width - 16, 28, 6, wk_mix (col_side (), C_ACCENT, 40), wk_mix (col_side (), C_ACCENT, 40));
+		if (on) uk_rbox (canvas, 8, y, width - 16, 28, 6, C_ACCENT, C_ACCENT);
+		else if (h) uk_rbox (canvas, 8, y, width - 16, 28, 6, uk_mix (col_side (), C_ACCENT, 40), uk_mix (col_side (), C_ACCENT, 40));
 		unsigned ink = on ? C_SEL_TEXT : C_TEXT;
 		icon (canvas, ic, 18, y + 6, 16, ic == I_HEART ? (on ? C_SEL_TEXT : 0xD8484E) : ink);
 		text_v (canvas, 44, y, 28, label, ink, F_UI, on ? 2 : 0, width - 56);
@@ -399,7 +399,7 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (col_side ());
-		canvas.fillRect (width - 1, 0, 1, height, wk_tone (C_BG, 100));
+		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 100));
 		hits.clear ();
 		int y = 10;
 		item (y, "Home", I_HOME, SB_PAGE, P_HOME);
@@ -420,7 +420,7 @@ public:
 		// at the bottom: a new playlist; the scan
 		int by = height - 58;
 		bool h = hits.n == hot;
-		text_v (canvas, 18, by, 26, "+  New playlist", h ? C_ACCENT : wk_mix (C_TEXT, C_ACCENT, 200), F_UI);
+		text_v (canvas, 18, by, 26, "+  New playlist", h ? C_ACCENT : uk_mix (C_TEXT, C_ACCENT, 200), F_UI);
 		hits.add (8, by, width - 16, 26, SB_NEWPL);
 		char st[96];
 		if (g_scan && !g_scan->done) snprintf (st, sizeof st, "Looking for songs...  %d", g_scan->found + g_scan->vfound);
@@ -464,10 +464,10 @@ public:
 	}
 	void round (int x, int y, int ic, bool on, bool h)
 	{
-		unsigned f = h && on ? wk_mix (C_BG, 0xFFFFFF, 140) : wk_mix (C_BG, 0xFFFFFF, 90);
+		unsigned f = h && on ? uk_mix (C_BG, 0xFFFFFF, 140) : uk_mix (C_BG, 0xFFFFFF, 90);
 		VPath c; c.circle (V (x + 15), V (y + 15), V (15)); c.fill (canvas, f);
-		VPath o; o.arc (V (x + 15), V (y + 15), V (15), 0, 360, 14); o.fill (canvas, wk_tone (C_BG, 96));
-		icon (canvas, ic, x + 8, y + 8, 14, on ? C_TEXT : wk_mix (C_BG, C_TEXT, 90));
+		VPath o; o.arc (V (x + 15), V (y + 15), V (15), 0, 360, 14); o.fill (canvas, uk_tone (C_BG, 96));
+		icon (canvas, ic, x + 8, y + 8, 14, on ? C_TEXT : uk_mix (C_BG, C_TEXT, 90));
 	}
 	// Where we are, as the File Viewer's path bar: an entry-like field, the levels in it as links -- the page
 	// shown in the accent, underlined; the one pointed at underlined.
@@ -495,19 +495,19 @@ public:
 		case P_VIDEOS: a = "Videos"; b = p.arg == VK_FILM ? "Films" : p.arg == VK_CLIP ? "Clips and series" : 0; if (b) ak = P_VIDEOS; break;
 		case P_WATCH: a = "Videos"; b = VL && p.arg >= 0 && p.arg < VL->n ? VL->v[p.arg].title : ""; break;
 		}
-		unsigned field = wk_mix (C_BG, C_FIELD, 170), ink = wk_ink_on (field), dim = wk_mix (field, ink, 120);
-		wk_rbox (canvas, bx, by, bw, bh, 8, wk_tone (field, 136), field);
-		wk_rline (canvas, bx, by, bw, bh, 8, wk_tone (C_BG, 88), 190);
+		unsigned field = uk_mix (C_BG, C_FIELD, 170), ink = uk_ink_on (field), dim = uk_mix (field, ink, 120);
+		uk_rbox (canvas, bx, by, bw, bh, 8, uk_tone (field, 136), field);
+		uk_rline (canvas, bx, by, bw, bh, 8, uk_tone (C_BG, 88), 190);
 		const char *seg[2] = { a, b };
 		int n = b ? 2 : 1, x = bx + 14, y = by + (bh - fh ()) / 2, right = bx + bw - 14;
 		for (int i = 0; i < n; i++)
 		{
-			if (i) { wk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, by + bh / 2, 9, dim); x += 18; }
+			if (i) { uk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, by + bh / 2, 9, dim); x += 18; }
 			bool cur = i == n - 1, link = !cur && ak >= 0, h = link && hits.n == hot;
 			int w = tw (seg[i], F_UI, cur ? 2 : 0);
 			if (w > right - x) w = right - x;
 			if (w <= 0) break;
-			text (canvas, x, y, seg[i], cur ? wk_tone (C_ACCENT, 84) : ink, F_UI, cur ? 2 : 0, w);
+			text (canvas, x, y, seg[i], cur ? uk_tone (C_ACCENT, 84) : ink, F_UI, cur ? 2 : 0, w);
 			if (cur) canvas.fillRect (x, y + fh () + 1, w, 2, C_ACCENT);
 			else if (h) canvas.fillRect (x, y + fh () + 1, w, 1, ink);
 			if (link) hits.add (x, by, w, bh, TB_CRUMB, ak);
@@ -517,7 +517,7 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		canvas.fillRect (0, height - 1, width, 1, wk_tone (C_BG, 100));
+		canvas.fillRect (0, height - 1, width, 1, uk_tone (C_BG, 100));
 		hits.clear ();
 		bool canB = g_hpos > 0, canF = g_hpos < g_nhist - 1;
 		round (12, 11, I_BACK, canB, hot == hits.n); hits.add (12, 11, 30, 30, TB_BACK);
@@ -528,8 +528,8 @@ public:
 		bool grid = page ().kind == P_ALBUMS;
 		if (grid)
 		{
-			wk_rbox (canvas, vx, 12, 50, 28, 6, C_FIELD, C_FIELD); wk_rline (canvas, vx, 12, 50, 28, 6, wk_tone (C_BG, 96));
-			if (!g_albumList) wk_rbox (canvas, vx + 2, 14, 23, 24, 5, C_ACCENT, C_ACCENT); else wk_rbox (canvas, vx + 25, 14, 23, 24, 5, C_ACCENT, C_ACCENT);
+			uk_rbox (canvas, vx, 12, 50, 28, 6, C_FIELD, C_FIELD); uk_rline (canvas, vx, 12, 50, 28, 6, uk_tone (C_BG, 96));
+			if (!g_albumList) uk_rbox (canvas, vx + 2, 14, 23, 24, 5, C_ACCENT, C_ACCENT); else uk_rbox (canvas, vx + 25, 14, 23, 24, 5, C_ACCENT, C_ACCENT);
 			icon (canvas, I_GRID, vx + 6, 18, 15, !g_albumList ? C_SEL_TEXT : C_FIELD_TEXT); hits.add (vx, 12, 25, 28, TB_GRID);
 			icon (canvas, I_ROWS, vx + 29, 18, 15, g_albumList ? C_SEL_TEXT : C_FIELD_TEXT); hits.add (vx + 25, 12, 25, 28, TB_LIST);
 		}
@@ -565,8 +565,8 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		if (!text[0] && !hasFocus) text_v (canvas, 10, 0, height, "Search the library", wk_mix (C_FIELD, C_FIELD_TEXT, 110));
-		icon (canvas, I_SEARCH, width - 22, (height - 14) / 2, 14, wk_mix (C_FIELD, C_FIELD_TEXT, 120));
+		if (!text[0] && !hasFocus) text_v (canvas, 10, 0, height, "Search the library", uk_mix (C_FIELD, C_FIELD_TEXT, 110));
+		icon (canvas, I_SEARCH, width - 22, (height - 14) / 2, 14, uk_mix (C_FIELD, C_FIELD_TEXT, 120));
 	}
 };
 
@@ -591,8 +591,8 @@ public:
 	void band_button (int x, int y, int w, int ic, const char *label, bool accent, int kind)
 	{
 		bool h = hits.n == hot;
-		if (accent) wk_rbox (canvas, x, y, w, 34, 6, wk_tone (C_ACCENT, h ? 150 : 140), wk_tone (C_ACCENT, h ? 128 : 118));
-		else { wk_rbox (canvas, x, y, w, 34, 6, h ? 0xFFFFFF : 0xF4F1EE, h ? 0xF4F2F0 : 0xE8E3DE); wk_rline (canvas, x, y, w, 34, 6, 0x000000, 40); }
+		if (accent) uk_rbox (canvas, x, y, w, 34, 6, uk_tone (C_ACCENT, h ? 150 : 140), uk_tone (C_ACCENT, h ? 128 : 118));
+		else { uk_rbox (canvas, x, y, w, 34, 6, h ? 0xFFFFFF : 0xF4F1EE, h ? 0xF4F2F0 : 0xE8E3DE); uk_rline (canvas, x, y, w, 34, 6, 0x000000, 40); }
 		unsigned ink = accent ? 0xFFFFFF : 0x202020;
 		if (label) { icon (canvas, ic, x + 12, y + 9, 16, ink); text_v (canvas, x + 34, y, 34, label, ink, F_UI, accent ? 2 : 0); }
 		else icon (canvas, ic, x + (w - 16) / 2, y + 9, 16, ic == I_HEART ? 0xD8484E : ink);
@@ -605,10 +605,10 @@ public:
 		if (right)
 		{
 			int rw = tw (right) + 40; bool h = hits.n == hot;
-			wk_rbox (canvas, x + w - rw, y + 2, rw, 30, 6, h ? 0xFFFFFF : wk_mix (C_FIELD, C_BG, 60), wk_mix (C_FIELD, C_BG, 110));
-			wk_rline (canvas, x + w - rw, y + 2, rw, 30, 6, wk_tone (C_BG, 96));
+			uk_rbox (canvas, x + w - rw, y + 2, rw, 30, 6, h ? 0xFFFFFF : uk_mix (C_FIELD, C_BG, 60), uk_mix (C_FIELD, C_BG, 110));
+			uk_rline (canvas, x + w - rw, y + 2, rw, 30, 6, uk_tone (C_BG, 96));
 			text_v (canvas, x + w - rw + 12, y + 2, 30, right, C_FIELD_TEXT);
-			wk_glyph (canvas, WKG_CHEV_DOWN, x + w - 16, y + 18, 8, C_FIELD_TEXT);
+			uk_glyph (canvas, WKG_CHEV_DOWN, x + w - 16, y + 18, 8, C_FIELD_TEXT);
 			hits.add (x + w - rw, y + 2, rw, 30, rightKind);
 		}
 	}
@@ -616,15 +616,15 @@ public:
 	{
 		const Album &al = L->al[a];
 		bool h = hot >= 0 && hot < hits.n + 2 && hits.n == hot;
-		wk_rbox (canvas, x + 2, y + 3, S, S, 7, 0, 0, 40);
+		uk_rbox (canvas, x + 2, y + 3, S, S, 7, 0, 0, 40);
 		g_covers.draw (canvas, a, x, y, S, 7, C_FIELD);
 		bool playingHere = g_playing >= 0 && song (g_playing) && song (g_playing)->alb == a && g_playing < (L ? L->n : 0);
-		if (playingHere && !h) { wk_rbox (canvas, x + S - 34, y + S - 34, 28, 28, 14, 0x000000, 0x000000, 150); eq_bars (canvas, x + S - 27, y + S - 27, 14, 0xFFFFFF, g_tick); }
+		if (playingHere && !h) { uk_rbox (canvas, x + S - 34, y + S - 34, 28, 28, 14, 0x000000, 0x000000, 150); eq_bars (canvas, x + S - 27, y + S - 27, 14, 0xFFFFFF, g_tick); }
 		int titleY = y + S + 7;
 		hits.add (x, y, S, S + 44, H_ALBUM, a);
 		if (h)
 		{
-			wk_rbox (canvas, x, y, S, S, 7, 0, 0, 60);
+			uk_rbox (canvas, x, y, S, S, 7, 0, 0, 60);
 			VPath c; c.circle (V (x + 28), V (y + S - 28), V (18)); c.fill (canvas, C_ACCENT);
 			icon (canvas, I_PLAY, x + 18, y + S - 38, 20, 0xFFFFFF);
 			hits.add (x + 8, y + S - 48, 40, 40, H_ALBUM_PLAY, a);
@@ -640,7 +640,7 @@ public:
 		int colTitle = x + (showNum ? 44 : 12), colArtist = x + (int) (w * (showAlbum ? 0.40 : 0.55)), colAlbum = x + (int) (w * 0.66);
 		int colTime = x + w - 74, colFmt = x + w - 62;
 		// the head
-		wk_rbox (canvas, x, y, w, 28, 5, wk_mix (C_FIELD, C_BG, 90), wk_mix (C_FIELD, C_BG, 90));
+		uk_rbox (canvas, x, y, w, 28, 5, uk_mix (C_FIELD, C_BG, 90), uk_mix (C_FIELD, C_BG, 90));
 		const Page &pg = page ();
 		struct { const char *s; int x; int col; bool right; } heads[] = { { "#", x + 30, 0, true }, { "Title", colTitle, 1, false }, { "Artist", colArtist, 2, false },
 			{ "Album", colAlbum, 3, false }, { "Time", colTime, 4, true }, { "", colFmt, 5, false } };
@@ -660,9 +660,9 @@ public:
 			if (ry + 32 < top || ry > bottom) { continue; }
 			int id = ids.v[i]; const Song &s = L->s[id];
 			bool on = sel[id], pl = id == g_playing, h = hits.n == hot;
-			if (on) wk_rbox (canvas, x + 4, ry, w - 8, 30, 5, wk_mix (C_FIELD, C_ACCENT, 70), wk_mix (C_FIELD, C_ACCENT, 70));
-			else if (h) wk_rbox (canvas, x + 4, ry, w - 8, 30, 5, wk_mix (C_FIELD, C_BG, 70), wk_mix (C_FIELD, C_BG, 70));
-			else if (i % 2) wk_rbox (canvas, x + 4, ry, w - 8, 30, 5, wk_mix (C_FIELD, C_BG, 30), wk_mix (C_FIELD, C_BG, 30));
+			if (on) uk_rbox (canvas, x + 4, ry, w - 8, 30, 5, uk_mix (C_FIELD, C_ACCENT, 70), uk_mix (C_FIELD, C_ACCENT, 70));
+			else if (h) uk_rbox (canvas, x + 4, ry, w - 8, 30, 5, uk_mix (C_FIELD, C_BG, 70), uk_mix (C_FIELD, C_BG, 70));
+			else if (i % 2) uk_rbox (canvas, x + 4, ry, w - 8, 30, 5, uk_mix (C_FIELD, C_BG, 30), uk_mix (C_FIELD, C_BG, 30));
 			unsigned ink = pl ? C_ACCENT : C_FIELD_TEXT, dim = col_dim ();
 			char t[16];
 			if (showNum)
@@ -680,8 +680,8 @@ public:
 			fmt_time (t, sizeof t, s.durMs); text_r (canvas, colTime, ry, 30, t, dim, F_SMALL);
 			const char *f = s.fmt >= 0 && s.fmt < FMT_N ? FMT_NAME[s.fmt] : "?";
 			int fw = tw (f, F_SMALL, 2) + 12;
-			unsigned fc = s.fmt == FMT_MIDI ? 0x7860C4 : wk_mix (C_FIELD, C_FIELD_TEXT, 100);
-			wk_rbox (canvas, colFmt + 6, ry + 7, fw, 17, 8, fc, fc);
+			unsigned fc = s.fmt == FMT_MIDI ? 0x7860C4 : uk_mix (C_FIELD, C_FIELD_TEXT, 100);
+			uk_rbox (canvas, colFmt + 6, ry + 7, fw, 17, 8, fc, fc);
 			text_c (canvas, colFmt + 6, ry + 7, fw, 17, f, 0xFFFFFF, F_SMALL, 2);
 			hits.add (x, ry, w, 30, H_ROW, id, i);
 		}
@@ -696,12 +696,12 @@ public:
 		bool hv = hits.n == hot;
 		hits.add (x, y, w, h + (texts ? 44 : 0), H_VIDEO, vi);
 		if (y + h + 44 < 0 || y > height) return;
-		wk_rbox (canvas, x + 2, y + 3, w, h, 7, 0, 0, 40);
+		uk_rbox (canvas, x + 2, y + 3, w, h, 7, 0, 0, 40);
 		g_thumbs.draw (canvas, vi, x, y, w, h, 7, C_FIELD);
 		video_badges (x, y, w, h, v);
 		if (hv)
 		{
-			wk_rbox (canvas, x, y, w, h, 7, 0, 0, 50);
+			uk_rbox (canvas, x, y, w, h, 7, 0, 0, 50);
 			VPath c; c.circle (V (x + w / 2), V (y + h / 2), V (22)); c.fill (canvas, 0xFFFFFF, 230);
 			icon (canvas, I_PLAY, x + w / 2 - 10, y + h / 2 - 11, 22, 0x202028);
 		}
@@ -718,14 +718,14 @@ public:
 		if (v.durMs > 0)
 		{
 			int bw = tw (t, F_SMALL, 2) + 12;
-			wk_rbox (canvas, x + w - bw - 6, y + h - 25, bw, 18, 4, 0x101014, 0x101014, 200);
+			uk_rbox (canvas, x + w - bw - 6, y + h - 25, bw, 18, 4, 0x101014, 0x101014, 200);
 			text_c (canvas, x + w - bw - 6, y + h - 25, bw, 18, t, 0xFFFFFF, F_SMALL, 2);
 		}
 		if (v.posMs > 0 && v.durMs > 0)
 		{
 			int bw = w - 14, f = (int) ((long long) v.posMs * bw / v.durMs); if (f > bw) f = bw; if (f < 3) f = 3;
-			wk_rbox (canvas, x + 7, y + h - 6, bw, 3, 1, 0x000000, 0x000000, 120);
-			wk_rbox (canvas, x + 7, y + h - 6, f, 3, 1, 0xE0383C, 0xE0383C);
+			uk_rbox (canvas, x + 7, y + h - 6, bw, 3, 1, 0x000000, 0x000000, 120);
+			uk_rbox (canvas, x + 7, y + h - 6, f, 3, 1, 0xE0383C, 0xE0383C);
 		}
 		else if (v.watched)
 		{
@@ -736,14 +736,14 @@ public:
 		{
 			const char *c = codec_label (v.vcodec);
 			int bw = tw (c, F_SMALL, 2) + 12;
-			wk_rbox (canvas, x + 6, y + 6, bw, 18, 4, 0x707078, 0x707078, 220);
+			uk_rbox (canvas, x + 6, y + 6, bw, 18, 4, 0x707078, 0x707078, 220);
 			text_c (canvas, x + 6, y + 6, bw, 18, c, 0xFFFFFF, F_SMALL, 2);
 		}
 	}
 	void small_button (int x, int y, int w, int ic, const char *label, int kind, int a)
 	{
 		bool h = hits.n == hot;
-		wk_rbox (canvas, x, y, w, 26, 5, wk_tone (C_ACCENT, h ? 150 : 140), wk_tone (C_ACCENT, h ? 128 : 118));
+		uk_rbox (canvas, x, y, w, 26, 5, uk_tone (C_ACCENT, h ? 150 : 140), uk_tone (C_ACCENT, h ? 128 : 118));
 		icon (canvas, ic, x + 9, y + 6, 14, 0xFFFFFF);
 		text_v (canvas, x + 28, y, 26, label, 0xFFFFFF, F_UI, 2);
 		hits.add (x, y, w, 26, kind, a);
@@ -752,7 +752,7 @@ public:
 	void resume_video_card (int x, int y, int cw, int vi)
 	{
 		const Video &v = VL->v[vi];
-		wk_rbox (canvas, x, y, cw, 78, 9, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, x, y, cw, 78, 9, wk_tone (C_BG, 110));
+		uk_rbox (canvas, x, y, cw, 78, 9, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, x, y, cw, 78, 9, uk_tone (C_BG, 110));
 		hits.add (x, y, cw, 78, H_VRESUME, vi);
 		int tw_ = 110, th = 62;
 		g_thumbs.draw (canvas, vi, x + 8, y + 8, tw_, th, 5, 0xFFFFFF);
@@ -770,7 +770,7 @@ public:
 	void resume_song_card (int x, int y, int cw, int cur, bool half)
 	{
 		const Song &s = *song (cur);
-		wk_rbox (canvas, x, y, cw, 78, 9, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, x, y, cw, 78, 9, wk_tone (C_BG, 110));
+		uk_rbox (canvas, x, y, cw, 78, 9, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, x, y, cw, 78, 9, uk_tone (C_BG, 110));
 		if (s.alb >= 0 && cur >= 0) g_covers.draw (canvas, s.alb, x + 9, y + 9, 60, 5, 0xFFFFFF);
 		bool playing = cur == g_playing && g_player.state == PS_PLAYING;
 		int tmax = cw - 82 - (half ? 56 : 160);
@@ -785,7 +785,7 @@ public:
 		if (half)
 		{
 			bool h = hits.n == hot;
-			VPath c; c.circle (V (x + cw - 34), V (y + 39), V (18)); c.fill (canvas, h ? wk_tone (C_ACCENT, 150) : C_ACCENT);
+			VPath c; c.circle (V (x + cw - 34), V (y + 39), V (18)); c.fill (canvas, h ? uk_tone (C_ACCENT, 150) : C_ACCENT);
 			icon (canvas, playing ? I_PAUSE : I_PLAY, x + cw - 43, y + 30, 18, 0xFFFFFF);
 			hits.add (x + cw - 52, y + 21, 36, 36, H_RESUME, cur);
 		}
@@ -827,7 +827,7 @@ public:
 				if (!vl.n) continue;
 				text (canvas, x, y, "Videos", C_FIELD_TEXT, F_BIG, 2);
 				bool h = hits.n == hot;
-				text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : wk_mix (C_FIELD_TEXT, C_ACCENT, 200));
+				text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : uk_mix (C_FIELD_TEXT, C_ACCENT, 200));
 				hits.add (x + w - 80, y, 80, 22, H_SEEALL, 2);
 				y += 32;
 				const int VW = 166, VG = 16;
@@ -852,7 +852,7 @@ public:
 			if (!al.n) continue;
 			text (canvas, x, y, row == 0 ? "Recently played" : "Recently added", C_FIELD_TEXT, F_BIG, 2);
 			bool h = hits.n == hot;
-			text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : wk_mix (C_FIELD_TEXT, C_ACCENT, 200));
+			text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : uk_mix (C_FIELD_TEXT, C_ACCENT, 200));
 			hits.add (x + w - 80, y, 80, 22, H_SEEALL, row == 0 ? 0 : 1);
 			y += 32;
 			for (int i = 0; i < al.n && i < cols; i++) album_tile (x + i * (S + G), y, S, al.v[i]);
@@ -904,8 +904,8 @@ public:
 				if (ry + 56 >= scrollY && ry <= scrollY + height)
 				{
 					bool h = hits.n == hot;
-					if (h) wk_rbox (canvas, x, ry, w, 52, 6, wk_mix (C_FIELD, C_BG, 70), wk_mix (C_FIELD, C_BG, 70));
-					g_covers.draw (canvas, o[i], x + 6, ry + 4, 44, 4, h ? wk_mix (C_FIELD, C_BG, 70) : C_FIELD);
+					if (h) uk_rbox (canvas, x, ry, w, 52, 6, uk_mix (C_FIELD, C_BG, 70), uk_mix (C_FIELD, C_BG, 70));
+					g_covers.draw (canvas, o[i], x + 6, ry + 4, 44, 4, h ? uk_mix (C_FIELD, C_BG, 70) : C_FIELD);
 					text (canvas, x + 62, ry + 8, a.title, C_FIELD_TEXT, F_UI, 2, w / 2 - 70);
 					text (canvas, x + 62, ry + 27, a.artist, col_dim (), F_SMALL, 0, w / 2 - 70);
 					char t[64], dd[24]; fmt_long (dd, sizeof dd, a.durMs);
@@ -936,12 +936,12 @@ public:
 	int draw_header_band (int x, int y, int w, int album, const char *kind, const char *title, const char *by, const char *meta, bool circle)
 	{
 		unsigned tone = album >= 0 ? g_covers.tone (album) : 0x384858;
-		unsigned top = wk_mix (tone, 0x000000, 60), bot = wk_mix (tone, 0x000000, 120);
-		wk_rbox (canvas, x, y, w, 200, 10, top, bot);
-		if (album >= 0) g_covers.draw (canvas, album, x + 20, y + 20, 160, circle ? 80 : 8, wk_mix (top, bot, 100));
-		else { VPath c; c.circle (V (x + 100), V (y + 100), V (80)); c.fill (canvas, wk_mix (tone, 0xFFFFFF, 60)); icon (canvas, I_PERSON, x + 60, y + 60, 80, 0xFFFFFF); }
+		unsigned top = uk_mix (tone, 0x000000, 60), bot = uk_mix (tone, 0x000000, 120);
+		uk_rbox (canvas, x, y, w, 200, 10, top, bot);
+		if (album >= 0) g_covers.draw (canvas, album, x + 20, y + 20, 160, circle ? 80 : 8, uk_mix (top, bot, 100));
+		else { VPath c; c.circle (V (x + 100), V (y + 100), V (80)); c.fill (canvas, uk_mix (tone, 0xFFFFFF, 60)); icon (canvas, I_PERSON, x + 60, y + 60, 80, 0xFFFFFF); }
 		int tx = x + 204;
-		unsigned lite = wk_mix (tone, 0xFFFFFF, 200);
+		unsigned lite = uk_mix (tone, 0xFFFFFF, 200);
 		text (canvas, tx, y + 26, kind, lite, F_SMALL, 2);
 		text (canvas, tx, y + 44, title, 0xFFFFFF, F_H1, 2, w - 224);
 		if (by) text (canvas, tx, y + 82, by, 0xF0F0F0, F_MID, 0, w - 224);
@@ -1043,9 +1043,9 @@ public:
 			{
 				int tx = x + (i % cols) * (TW + G), ty = y + (i / cols) * (TH + G);
 				hits.add (tx, ty, TW, TH, kind, i);
-				unsigned c = hash_str (gs[i].name); c = wk_mix (0x30405A, (c & 0x7F7F7F) + 0x303030, 160);
+				unsigned c = hash_str (gs[i].name); c = uk_mix (0x30405A, (c & 0x7F7F7F) + 0x303030, 160);
 				bool h = hits.n - 1 == hot;
-				wk_rbox (canvas, tx, ty, TW, TH, 10, wk_tone (c, h ? 150 : 138), wk_tone (c, h ? 120 : 108));
+				uk_rbox (canvas, tx, ty, TW, TH, 10, uk_tone (c, h ? 150 : 138), uk_tone (c, h ? 120 : 108));
 				text (canvas, tx + 16, ty + 16, gs[i].name, 0xFFFFFF, F_BIG, 2, TW - 32);
 				char t[48]; snprintf (t, sizeof t, gs[i].na == 1 ? "%d songs  \xC2\xB7  %d album" : "%d songs  \xC2\xB7  %d albums", gs[i].n, gs[i].na);
 				text (canvas, tx + 16, ty + TH - 30, t, 0xF0F0F0, F_SMALL);
@@ -1057,7 +1057,7 @@ public:
 			int ry = y + i * 44;
 			hits.add (x, ry, w, 40, kind, i);
 			bool h = hits.n - 1 == hot;
-			if (h) wk_rbox (canvas, x, ry, w, 40, 6, wk_mix (C_FIELD, C_BG, 70), wk_mix (C_FIELD, C_BG, 70));
+			if (h) uk_rbox (canvas, x, ry, w, 40, 6, uk_mix (C_FIELD, C_BG, 70), uk_mix (C_FIELD, C_BG, 70));
 			icon (canvas, I_FOLDER, x + 10, ry + 10, 20, 0);
 			text_v (canvas, x + 42, ry, 40, gs[i].name, C_FIELD_TEXT, F_UI, 2, w - 200);
 			char t[48]; snprintf (t, sizeof t, "%d songs", gs[i].n); text_r (canvas, x + w - 12, ry, 40, t, col_dim (), F_SMALL);
@@ -1111,7 +1111,7 @@ public:
 		text_c (canvas, x, y + 60, w, 20, "MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: MP4, MKV, WebM, AVI, WMV and more.", col_dim ());
 		int fw = 460, fx = mx - fw / 2, fy = y + 100;
 		int fh_ = 10 + (g_nfolders ? g_nfolders : 1) * 36;
-		wk_rbox (canvas, fx, fy, fw, fh_, 8, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, fx, fy, fw, fh_, 8, wk_tone (C_BG, 110));
+		uk_rbox (canvas, fx, fy, fw, fh_, 8, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, fx, fy, fw, fh_, 8, uk_tone (C_BG, 110));
 		for (int i = 0; i < g_nfolders; i++)
 		{
 			int ry = fy + 5 + i * 36;
@@ -1145,7 +1145,7 @@ public:
 	void piano_roll (int x, int y, int w, int h, MidiSong *m, long long posMs)
 	{
 		const unsigned BG = 0x18161F;
-		wk_rbox (canvas, x, y, w, h, 10, BG, BG);
+		uk_rbox (canvas, x, y, w, h, 10, BG, BG);
 		if (!m) return;
 		int lo = m->lowKey - 1, hi = m->highKey + 1; if (hi - lo < 24) { int c = (lo + hi) / 2; lo = c - 12; hi = c + 12; }
 		int keys = hi - lo + 1, kx = x + 50, kw = w - 60, top = y + 26, kh = h - 34;
@@ -1168,7 +1168,7 @@ public:
 		{
 			int bx = X (m->bars[b]);
 			if (bx < kx || bx > kx + kw) continue;
-			canvas.fillRect (bx, y + 8, 1, h - 16, wk_mix (BG, 0xFFFFFF, 34));
+			canvas.fillRect (bx, y + 8, 1, h - 16, uk_mix (BG, 0xFFFFFF, 34));
 			char t[12]; snprintf (t, sizeof t, "%d", b + 1); text (canvas, bx + 4, y + 7, t, 0x8A889A, F_SMALL);
 		}
 		for (int i = 0; i < m->nnotes; i++)
@@ -1179,10 +1179,10 @@ public:
 			if (nx0 < kx) nx0 = kx; if (nx1 > kx + kw) nx1 = kx + kw; if (nx1 - nx0 < 4) nx1 = nx0 + 4;
 			int ny = top + (hi - n.key) * rowH;
 			bool sounding = n.on <= now && n.off > now, past = n.off <= now;
-			unsigned c = roll_colour (n.ch); if (past) c = wk_mix (c, BG, 110);
+			unsigned c = roll_colour (n.ch); if (past) c = uk_mix (c, BG, 110);
 			int nh = rowH > 4 ? rowH - 1 : rowH;
-			wk_rbox (canvas, nx0, ny, nx1 - nx0 - 1, nh, nh / 2 < 3 ? nh / 2 : 3, c, c);
-			if (sounding) wk_rline (canvas, nx0 - 1, ny - 1, nx1 - nx0 + 1, nh + 2, 3, 0xFFFFFF);
+			uk_rbox (canvas, nx0, ny, nx1 - nx0 - 1, nh, nh / 2 < 3 ? nh / 2 : 3, c, c);
+			if (sounding) uk_rline (canvas, nx0 - 1, ny - 1, nx1 - nx0 + 1, nh + 2, 3, 0xFFFFFF);
 		}
 		int ph = kx + kw * 3 / 10;					// the playhead
 		canvas.fillRect (ph - 1, y + 6, 2, h - 12, 0xFFFFFF);
@@ -1222,7 +1222,7 @@ public:
 		text (canvas, tx, y + 48, line, col_dim (), F_SMALL, 0, w - 124);
 		text_v (canvas, tx, y + 70, 28, "Played by", col_dim (), F_SMALL);
 		int fx = tx + 64, fw = tw (g_sfName[0] ? g_sfName : "a SoundFont") + 24;
-		wk_rbox (canvas, fx, y + 70, fw, 28, 6, wk_mix (C_FIELD, C_BG, 60), wk_mix (C_FIELD, C_BG, 110)); wk_rline (canvas, fx, y + 70, fw, 28, 6, wk_tone (C_BG, 96));
+		uk_rbox (canvas, fx, y + 70, fw, 28, 6, uk_mix (C_FIELD, C_BG, 60), uk_mix (C_FIELD, C_BG, 110)); uk_rline (canvas, fx, y + 70, fw, 28, 6, uk_tone (C_BG, 96));
 		text_v (canvas, fx + 12, y + 70, 28, g_sfName[0] ? g_sfName : "a SoundFont", C_FIELD_TEXT);
 		y += 122;
 		piano_roll (x, y, w, hRoll, m, g_player.posMs);
@@ -1257,8 +1257,8 @@ int Content::draw_now (int x, int y, int w)
 		return draw_midi (x, y, w, hRoll);
 	}
 	unsigned tone = s && s->alb >= 0 && g_playing >= 0 ? g_covers.tone (s->alb) : 0x2A3448;
-	unsigned top = wk_mix (tone, 0x0A0E18, 150), bot = wk_mix (tone, 0x0A0E18, 215);
-	for (int yy = 0; yy < height; yy++) canvas.fillRect (0, scrollY + yy, width, 1, wk_mix (top, bot, yy * 256 / (height ? height : 1)));
+	unsigned top = uk_mix (tone, 0x0A0E18, 150), bot = uk_mix (tone, 0x0A0E18, 215);
+	for (int yy = 0; yy < height; yy++) canvas.fillRect (0, scrollY + yy, width, 1, uk_mix (top, bot, yy * 256 / (height ? height : 1)));
 	int x0 = 40, y0 = scrollY + 24;
 	VPath c; c.circle (V (x0 + 16), V (y0 + 16), V (16)); c.fill (canvas, 0xFFFFFF, 40);
 	icon (canvas, I_DOWN, x0 + 8, y0 + 8, 16, 0xFFFFFF);
@@ -1270,7 +1270,7 @@ int Content::draw_now (int x, int y, int w)
 	int S = avail < 320 ? avail : 320; if (S > height - 260) S = height - 260; if (S < 120) S = 120;
 	int cx = x0, cy = y0 + 54;
 	if (midi) { int rw = avail; piano_roll (cx, cy, rw, S, roll_for (g_playing), g_player.posMs); }
-	else if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, cx, cy, S, 10, wk_mix (top, bot, 100));
+	else if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, cx, cy, S, 10, uk_mix (top, bot, 100));
 	int ty = cy + S + (midi ? 56 : 20);
 	text (canvas, cx, ty, s->title, 0xFFFFFF, F_H1, 2, avail);
 	char line[220]; snprintf (line, sizeof line, "%s  \xC2\xB7  %s%s", g_playing >= 0 ? L->artist_of (*s) : s->artist, s->album, "");
@@ -1283,7 +1283,7 @@ int Content::draw_now (int x, int y, int w)
 	text (canvas, cx, ty + 62, fmtl, 0xA8B4C0, F_SMALL);
 	// up next
 	int qx = width - 40 - qw, qy = y0 + 54, qh = height - (qy - scrollY) - 30;
-	wk_rbox (canvas, qx, qy, qw, qh, 12, 0xFFFFFF, 0xFFFFFF, 26);
+	uk_rbox (canvas, qx, qy, qw, qh, 12, 0xFFFFFF, 0xFFFFFF, 26);
 	text (canvas, qx + 18, qy + 14, "Up next", 0xFFFFFF, F_BIG, 2);
 	int rowsMax = (qh - 60) / 56;
 	int shown = 0;
@@ -1292,8 +1292,8 @@ int Content::draw_now (int x, int y, int w)
 		const Song *q = song (g_queue[i]); if (!q) continue;
 		int ry = qy + 50 + shown * 56;
 		bool h = hits.n == hot;
-		if (h) wk_rbox (canvas, qx + 8, ry - 4, qw - 16, 52, 8, 0xFFFFFF, 0xFFFFFF, 40);
-		if (q->alb >= 0 && g_queue[i] >= 0) g_covers.draw (canvas, q->alb, qx + 18, ry, 44, 4, wk_mix (top, bot, 100));
+		if (h) uk_rbox (canvas, qx + 8, ry - 4, qw - 16, 52, 8, 0xFFFFFF, 0xFFFFFF, 40);
+		if (q->alb >= 0 && g_queue[i] >= 0) g_covers.draw (canvas, q->alb, qx + 18, ry, 44, 4, uk_mix (top, bot, 100));
 		text (canvas, qx + 74, ry + 4, q->title, 0xFFFFFF, F_UI, 2, qw - 150);
 		text (canvas, qx + 74, ry + 24, q->artist[0] ? q->artist : q->albumArtist, 0xC0CCD8, F_SMALL, 0, qw - 150);
 		char t[16]; fmt_time (t, sizeof t, q->durMs); text_r (canvas, qx + qw - 18, ry + 2, 40, t, 0xC0CCD8, F_SMALL);
@@ -1312,7 +1312,7 @@ void Content::onDraw ()
 	if (!rowsValid) { page_songs (page (), rows); sort_songs (rows, page ().sortCol, page ().sortDesc); rowsValid = true; }
 	// the pages draw in the view's coordinates: their top at 22 - the page's scroll (Widget::scrollY stays 0:
 	// the pieces cull against 0 .. height)
-	int sy_ = sy (), x = 28, w = width - 56 - WK_SBW, y0 = 22 - sy_, yEnd = y0;
+	int sy_ = sy (), x = 28, w = width - 56 - UK_SBW, y0 = 22 - sy_, yEnd = y0;
 	switch (page ().kind)
 	{
 	case P_ALBUMS: case P_ARTISTS: case P_SONGS: case P_GENRES:
@@ -1352,8 +1352,8 @@ void Content::onDraw ()
 	// the scroll bar
 	if (contentH > height)
 	{
-		WkThumb t = wk_thumb (contentH, height, sy_, height - 8);
-		wk_draw_vscroll (canvas, width - WK_SBW - 2, 4, WK_SBW, height - 8, t, C_FIELD, dragSb);
+		UkThumb t = uk_thumb (contentH, height, sy_, height - 8);
+		uk_draw_vscroll (canvas, width - UK_SBW - 2, 4, UK_SBW, height - 8, t, C_FIELD, dragSb);
 	}
 }
 
@@ -1416,7 +1416,7 @@ public:
 		for (int i = 0; i < m_n; i++)
 		{
 			int y = titleH () + 14 + i * 22;
-			text (canvas, 16, y, m_lines[i][0], wk_mix (C_FACE, C_TEXT, 150), F_UI);
+			text (canvas, 16, y, m_lines[i][0], uk_mix (C_FACE, C_TEXT, 150), F_UI);
 			text (canvas, 130, y, m_lines[i][1], C_TEXT, F_UI, 2, width - 146);
 		}
 	}
@@ -1542,7 +1542,7 @@ static void more_menu (int mx, int my)
 		break;
 	}
 	case 7:
-		if (wk_messagebox ("Delete the playlist", "Delete this playlist? (Its songs stay in the library.)", MB_YESNO) == 1)
+		if (uk_messagebox ("Delete the playlist", "Delete this playlist? (Its songs stay in the library.)", MB_YESNO) == 1)
 		{ kapi_remove (g_pl[page ().arg].path); playlists_load (); go_back (); }
 		break;
 	}
@@ -1554,12 +1554,12 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	int maxS = contentH - height; if (maxS < 0) maxS = 0;
 	if (wheel && in) { int s = sy () - wheel * 60; sy () = s < 0 ? 0 : s > maxS ? maxS : s; invalidate (true); return true; }
 	// the scroll bar
-	if (bl && !pressed && in && contentH > height && mx >= width - WK_SBW - 4) { dragSb = true; pressed = true; }
+	if (bl && !pressed && in && contentH > height && mx >= width - UK_SBW - 4) { dragSb = true; pressed = true; }
 	if (dragSb)
 	{
 		if (!bl) { dragSb = false; pressed = false; invalidate (true); return true; }
-		WkThumb t = wk_thumb (contentH, height, sy (), height - 8);
-		sy () = (int) wk_thumb_pos (my - 4, height - 8, contentH, height, t.h); invalidate (true); return true;
+		UkThumb t = uk_thumb (contentH, height, sy (), height - 8);
+		sy () = (int) uk_thumb_pos (my - 4, height - 8, contentH, height, t.h); invalidate (true); return true;
 	}
 	const Hit *ht = in ? hits.at (mx, my) : 0;
 	int nh = ht ? (int) (ht - hits.h) : -1;
@@ -1637,7 +1637,7 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 		case H_ADDFOLDER:
 		{
 			char d[200];
-			if (g_nfolders < 8 && wk_folder_open (d, sizeof d, "SD:/"))
+			if (g_nfolders < 8 && uk_folder_open (d, sizeof d, "SD:/"))
 			{
 				int l = (int) strlen (d); while (l > 4 && d[l - 1] == '/') d[--l] = 0;
 				bool have = false; for (int i = 0; i < g_nfolders; i++) if (!strcmp (g_folders[i], d)) have = true;
@@ -1656,7 +1656,7 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 }
 bool Content::onKey (long k)
 {
-	if (k == WK_CTRL ('A')) { ensure_sel (); for (int i = 0; i < rows.n; i++) sel[rows.v[i]] = 1; invalidate (true); return true; }
+	if (k == UK_CTRL ('A')) { ensure_sel (); for (int i = 0; i < rows.n; i++) sel[rows.v[i]] = 1; invalidate (true); return true; }
 	if (k == KEY_ENTER) { IntList ids; selected_ids (ids); if (ids.n == 1) { int r = rows.find (ids.v[0]); play_list (rows, r, false); } else if (ids.n) play_list (ids, 0, false); return true; }
 	if (k == KEY_PGDN || k == KEY_PGUP || k == KEY_HOME || k == KEY_END)
 	{
@@ -1675,7 +1675,7 @@ class NowBar : public Widget
 public:
 	HitList hits; int hot, drag; long long dragMs;
 	NowBar (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), drag (0), dragMs (0) {}
-	unsigned face () { return wk_mix (C_FIELD, C_BG, 90); }
+	unsigned face () { return uk_mix (C_FIELD, C_BG, 90); }
 	unsigned bgColor () override { return face (); }
 	int seekX () { return width / 2 - 200; }
 	int seekW () { return 400; }
@@ -1683,14 +1683,14 @@ public:
 	{
 		unsigned f = face ();
 		canvas.clear (f);
-		canvas.fillRect (0, 0, width, 1, wk_tone (C_BG, 100));
+		canvas.fillRect (0, 0, width, 1, uk_tone (C_BG, 100));
 		hits.clear ();
 		const Song *s = song (g_playing);
-		unsigned dim = wk_mix (f, C_FIELD_TEXT, 150);
+		unsigned dim = uk_mix (f, C_FIELD_TEXT, 150);
 		if (s)
 		{
 			if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, 12, 12, 56, 5, f);
-			else { wk_rbox (canvas, 12, 12, 56, 56, 5, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 24, 24, 32, 0xFFFFFF); }
+			else { uk_rbox (canvas, 12, 12, 56, 56, 5, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 24, 24, 32, 0xFFFFFF); }
 			hits.add (12, 12, 56, 56, N_COVER);
 			int maxw = seekX () - 80 - 40;
 			if (maxw < 120) maxw = 120;
@@ -1706,7 +1706,7 @@ public:
 		auto btn = [&] (int x, int y, int sz, int ic, unsigned c, int kind) { bool h = hits.n == hot; icon (canvas, ic, x, y, sz, h ? C_ACCENT : c); hits.add (x - 4, y - 4, sz + 8, sz + 8, kind); };
 		btn (mx - 122, 15, 18, I_SHUFFLE, g_shuffle ? C_ACCENT : dim, N_SHUFFLE);
 		btn (mx - 72, 12, 22, I_PREV, C_FIELD_TEXT, N_PREV);
-		{ bool h = hits.n == hot; VPath c; c.circle (V (mx), V (24), V (19)); c.fill (canvas, h ? wk_tone (C_ACCENT, 150) : C_ACCENT);
+		{ bool h = hits.n == hot; VPath c; c.circle (V (mx), V (24), V (19)); c.fill (canvas, h ? uk_tone (C_ACCENT, 150) : C_ACCENT);
 		  icon (canvas, g_player.state == PS_PLAYING || g_player.state == PS_LOADING ? I_PAUSE : I_PLAY, mx - 10, 14, 20, 0xFFFFFF); hits.add (mx - 19, 5, 38, 38, N_PLAY); }
 		btn (mx + 50, 12, 22, I_NEXT, C_FIELD_TEXT, N_NEXT);
 		btn (mx + 104, 15, 18, g_repeat == 2 ? I_REPEAT1 : I_REPEAT, g_repeat ? C_ACCENT : dim, N_REPEAT);
@@ -1717,16 +1717,16 @@ public:
 		fmt_time (t, sizeof t, pos); text_r (canvas, bx - 10, 50, 18, t, dim, F_SMALL);
 		fmt_time (t, sizeof t, len); text (canvas, bx + bw + 10, 52, t, dim, F_SMALL);
 		int fill = len > 0 ? (int) (pos * bw / len) : 0; if (fill > bw) fill = bw;
-		wk_rbox (canvas, bx, 57, bw, 5, 2, wk_tone (f, 112), wk_tone (f, 112));
-		if (fill > 0) wk_rbox (canvas, bx, 57, fill, 5, 2, C_ACCENT, C_ACCENT);
+		uk_rbox (canvas, bx, 57, bw, 5, 2, uk_tone (f, 112), uk_tone (f, 112));
+		if (fill > 0) uk_rbox (canvas, bx, 57, fill, 5, 2, C_ACCENT, C_ACCENT);
 		if (s) { VPath k; k.circle (V (bx + fill), V (59) + 8, V (7)); k.fill (canvas, 0xFFFFFF); VPath o; o.arc (V (bx + fill), V (59) + 8, V (7), 0, 360, 24); o.fill (canvas, C_ACCENT); }
 		hits.add (bx - 6, 48, bw + 12, 22, N_SEEK);
 		// the right: the queue, the mini player, the volume
 		int rx = width - 16, vw = 90;
 		int vf = g_muted ? 0 : g_volume * vw / 100;
-		wk_rbox (canvas, rx - vw, 38, vw, 4, 2, wk_tone (f, 112), wk_tone (f, 112));
-		if (vf) wk_rbox (canvas, rx - vw, 38, vf, 4, 2, wk_mix (f, C_FIELD_TEXT, 170), wk_mix (f, C_FIELD_TEXT, 170));
-		VPath k; k.circle (V (rx - vw + vf), V (40), V (6)); k.fill (canvas, 0xFFFFFF); VPath o; o.arc (V (rx - vw + vf), V (40), V (6), 0, 360, 20); o.fill (canvas, wk_mix (f, C_FIELD_TEXT, 170));
+		uk_rbox (canvas, rx - vw, 38, vw, 4, 2, uk_tone (f, 112), uk_tone (f, 112));
+		if (vf) uk_rbox (canvas, rx - vw, 38, vf, 4, 2, uk_mix (f, C_FIELD_TEXT, 170), uk_mix (f, C_FIELD_TEXT, 170));
+		VPath k; k.circle (V (rx - vw + vf), V (40), V (6)); k.fill (canvas, 0xFFFFFF); VPath o; o.arc (V (rx - vw + vf), V (40), V (6), 0, 360, 20); o.fill (canvas, uk_mix (f, C_FIELD_TEXT, 170));
 		hits.add (rx - vw - 6, 30, vw + 12, 20, N_VOL);
 		btn (rx - vw - 30, 31, 18, g_muted || !g_volume ? I_MUTE : I_VOLUME, C_FIELD_TEXT, N_MUTE);
 		btn (rx - vw - 62, 31, 18, I_MINI, C_FIELD_TEXT, N_MINI);
@@ -1798,20 +1798,20 @@ public:
 	{
 		const Song *s = song (g_playing);
 		unsigned tone = s && s->alb >= 0 && g_playing >= 0 ? g_covers.tone (s->alb) : 0x2A3448;
-		unsigned top = wk_mix (tone, 0x101018, 140), bot = wk_mix (tone, 0x101018, 200);
-		for (int y = 0; y < height; y++) canvas.fillRect (0, y, width, 1, wk_mix (top, bot, y * 256 / height));
+		unsigned top = uk_mix (tone, 0x101018, 140), bot = uk_mix (tone, 0x101018, 200);
+		for (int y = 0; y < height; y++) canvas.fillRect (0, y, width, 1, uk_mix (top, bot, y * 256 / height));
 		hits.clear ();
-		if (s && s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, 10, 10, height - 20, 6, wk_mix (top, bot, 128));
-		else { wk_rbox (canvas, 10, 10, height - 20, height - 20, 6, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 24, 24, height - 48, 0xFFFFFF); }
+		if (s && s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, 10, 10, height - 20, 6, uk_mix (top, bot, 128));
+		else { uk_rbox (canvas, 10, 10, height - 20, height - 20, 6, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 24, 24, height - 48, 0xFFFFFF); }
 		int x = height + 4, w = width - x - 12;
 		text (canvas, x, 10, s ? s->title : "Nothing playing", 0xFFFFFF, F_UI, 2, w - 30);
 		if (s) text (canvas, x, 29, s->artist[0] ? s->artist : s->albumArtist, 0xD0D4DC, F_SMALL, 0, w - 30);
 		long long len = g_player.lenMs > 0 ? g_player.lenMs : s ? s->durMs : 0, pos = g_player.posMs;
 		int fill = len > 0 ? (int) (pos * w / len) : 0; if (fill > w) fill = w;
-		canvas.fillRect (x, 50, w, 3, wk_mix (bot, 0xFFFFFF, 70)); canvas.fillRect (x, 50, fill, 3, 0xFFFFFF);
+		canvas.fillRect (x, 50, w, 3, uk_mix (bot, 0xFFFFFF, 70)); canvas.fillRect (x, 50, fill, 3, 0xFFFFFF);
 		hits.add (x, 44, w, 14, M_SEEK);
 		int my = 60, cx = x + 46;
-		auto btn = [&] (int bx, int ic, int kind, int sz) { bool h = hits.n == hot; icon (canvas, ic, bx, my + (22 - sz) / 2, sz, h ? wk_mix (0xFFFFFF, C_ACCENT, 150) : 0xFFFFFF); hits.add (bx - 4, my - 4, sz + 8, 30, kind); };
+		auto btn = [&] (int bx, int ic, int kind, int sz) { bool h = hits.n == hot; icon (canvas, ic, bx, my + (22 - sz) / 2, sz, h ? uk_mix (0xFFFFFF, C_ACCENT, 150) : 0xFFFFFF); hits.add (bx - 4, my - 4, sz + 8, 30, kind); };
 		btn (cx - 42, I_PREV, M_PREV, 18);
 		{ bool h = hits.n == hot; VPath c; c.circle (V (cx + 11), V (my + 11), V (13)); c.fill (canvas, h ? 0xE8E8F0 : 0xFFFFFF);
 		  icon (canvas, g_player.state == PS_PLAYING ? I_PAUSE : I_PLAY, cx + 3, my + 3, 16, 0x202030); hits.add (cx - 2, my - 2, 26, 26, M_PLAY); }
@@ -1878,7 +1878,7 @@ static bool video_start (int vi, bool fromStart)
 	int r = g_vp.open (x.path, fromStart || x.watched && !x.posMs ? 0 : x.posMs, g_volume, g_muted);
 	if (r != AV_OK)
 	{
-		wk_messagebox ("Media Player", r == AV_EUNSUP ? "This file is not a video Media Player\ncan read." : "This video cannot be read.", MB_OK);
+		uk_messagebox ("Media Player", r == AV_EUNSUP ? "This file is not a video Media Player\ncan read." : "This video cannot be read.", MB_OK);
 		return false;
 	}
 	g_vidx = vi; g_vpEnded = false;
@@ -1896,7 +1896,7 @@ void play_video (int vi, bool fromStart)
 	{
 		char m[300], t[28]; scopy (t, x.title, sizeof t);
 		snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be played:\nits picture (%s) or its sound (%s)\nis in a format Onyx cannot decode.", t, codec_label (x.vcodec), x.acodec[0] ? codec_label (x.acodec) : "none");
-		wk_messagebox ("Media Player", m, MB_OK);
+		uk_messagebox ("Media Player", m, MB_OK);
 		return;
 	}
 	if (!video_start (vi, fromStart)) return;
@@ -1943,12 +1943,12 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 	{	// (the first frame not there yet: the video's own, from the library, dimmed)
 		int tw_ = W * 2 / 3, th = tw_ * 9 / 16; if (th > H * 2 / 3) { th = H * 2 / 3; tw_ = th * 16 / 9; }
 		g_thumbs.draw (cv, g_vidx, cx - tw_ / 2, cy - th / 2, tw_, th, 0, 0);
-		wk_rbox (cv, cx - tw_ / 2, cy - th / 2, tw_, th, 0, 0, 0, 120);
+		uk_rbox (cv, cx - tw_ / 2, cy - th / 2, tw_, th, 0, 0, 0, 120);
 	}
 	bool loading = g_vp.active () && !st.error && !st.ended && (st.seeking || st.waiting || st.ready < AV_HAVE_CURRENT_DATA || !g_vp.frame);
 	if (st.error)
 	{
-		wk_rbox (cv, cx - 260, cy - 60, 520, 120, 12, 0x1C1C22, 0x1C1C22, 230);
+		uk_rbox (cv, cx - 260, cy - 60, 520, 120, 12, 0x1C1C22, 0x1C1C22, 230);
 		text_c (cv, cx - 260, cy - 44, 520, 26, "This video cannot be played.", 0xFFFFFF, F_BIG, 2);
 		const char *why = st.error == AV_EUNSUP ? "Its picture or sound is in a format Onyx does not decode yet." : "The file is damaged, or its data could not be read.";
 		text_c (cv, cx - 260, cy - 10, 520, 20, why, 0xC8CCD4);
@@ -1957,16 +1957,16 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 	{
 		int ne = next_episode (g_vidx);
 		int bw = ne >= 0 ? 380 : 200;
-		wk_rbox (cv, cx - bw / 2, cy - 34, bw, 68, 12, 0x1C1C22, 0x1C1C22, 210);
+		uk_rbox (cv, cx - bw / 2, cy - 34, bw, 68, 12, 0x1C1C22, 0x1C1C22, 210);
 		int bx = cx - bw / 2 + 16;
 		bool h = u.hits.n == u.hot;
-		wk_rbox (cv, bx, cy - 18, 168, 36, 8, h ? 0xFFFFFF : 0xE8E8EE, h ? 0xF0F0F4 : 0xD8D8E0);
+		uk_rbox (cv, bx, cy - 18, 168, 36, 8, h ? 0xFFFFFF : 0xE8E8EE, h ? 0xF0F0F4 : 0xD8D8E0);
 		icon (cv, I_REPEAT, bx + 14, cy - 9, 18, 0x202028); text_v (cv, bx + 42, cy - 18, 36, "Watch again", 0x202028, F_UI, 2);
 		u.hits.add (bx, cy - 18, 168, 36, W_AGAIN);
 		if (ne >= 0)
 		{
 			bx += 180; h = u.hits.n == u.hot;
-			wk_rbox (cv, bx, cy - 18, 168, 36, 8, wk_tone (C_ACCENT, h ? 150 : 140), wk_tone (C_ACCENT, h ? 128 : 118));
+			uk_rbox (cv, bx, cy - 18, 168, 36, 8, uk_tone (C_ACCENT, h ? 150 : 140), uk_tone (C_ACCENT, h ? 128 : 118));
 			char t[48]; snprintf (t, sizeof t, "Next: S%d E%d", VL->v[ne].season, VL->v[ne].episode);
 			icon (cv, I_NEXT, bx + 14, cy - 9, 18, 0xFFFFFF); text_v (cv, bx + 42, cy - 18, 36, t, 0xFFFFFF, F_UI, 2);
 			u.hits.add (bx, cy - 18, 168, 36, W_NEXTEP, ne);
@@ -1986,7 +1986,7 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 	}
 	if (!watch_controls (u)) return;
 	// the top: back, the title
-	for (int k = 0; k < 30; k++) wk_rbox (cv, 0, k * 3, W, 3, 0, 0, 0, (30 - k) * (30 - k) * 160 / 900);
+	for (int k = 0; k < 30; k++) uk_rbox (cv, 0, k * 3, W, 3, 0, 0, 0, (30 - k) * (30 - k) * 160 / 900);
 	{
 		bool h = u.hits.n == u.hot;
 		VPath c; c.circle (V (36), V (36), V (18)); c.fill (cv, 0xFFFFFF, h ? 90 : 45);
@@ -2002,7 +2002,7 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 		}
 	}
 	// the bottom: the position, the transport, the volume, full screen
-	for (int k = 0; k < 36; k++) wk_rbox (cv, 0, H - 108 + k * 3, W, 3, 0, 0, 0, (k + 1) * (k + 1) * 180 / 1296);
+	for (int k = 0; k < 36; k++) uk_rbox (cv, 0, H - 108 + k * 3, W, 3, 0, 0, 0, (k + 1) * (k + 1) * 180 / 1296);
 	long long len = g_vp.len_ms () > 0 ? g_vp.len_ms () : x ? x->durMs : 0;
 	long long pos = u.drag == W_SEEK ? u.dragMs : g_vp.pos_ms ();
 	int sx = seek_x0 (), sw = W - 48, sy = H - 62;
@@ -2010,8 +2010,8 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 		int f = len > 0 ? (int) (pos * sw / len) : 0; if (f > sw) f = sw; if (f < 0) f = 0;
 		bool h = u.hits.n == u.hot || u.drag == W_SEEK;
 		int th = h ? 5 : 4;
-		wk_rbox (cv, sx, sy - th / 2, sw, th, 2, 0xFFFFFF, 0xFFFFFF, 70);
-		if (f > 0) wk_rbox (cv, sx, sy - th / 2, f, th, 2, 0xE0383C, 0xE0383C);
+		uk_rbox (cv, sx, sy - th / 2, sw, th, 2, 0xFFFFFF, 0xFFFFFF, 70);
+		if (f > 0) uk_rbox (cv, sx, sy - th / 2, f, th, 2, 0xE0383C, 0xE0383C);
 		VPath k; k.circle (V (sx + f), V (sy) + V (1) / 2, V (h ? 8 : 6)); k.fill (cv, 0xE0383C);
 		u.hits.add (sx - 8, sy - 12, sw + 16, 24, W_SEEK);
 	}
@@ -2025,8 +2025,8 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 	int rx = W - 24;
 	btn (rx - 22, u.full ? I_UNFULL : I_FULL, 22, W_FULL);
 	int vw = 90, vx = rx - 22 - 22 - vw, vf = g_muted ? 0 : g_volume * vw / 100;
-	wk_rbox (cv, vx, by + 12, vw, 4, 2, 0xFFFFFF, 0xFFFFFF, 70);
-	if (vf) wk_rbox (cv, vx, by + 12, vf, 4, 2, 0xFFFFFF, 0xFFFFFF);
+	uk_rbox (cv, vx, by + 12, vw, 4, 2, 0xFFFFFF, 0xFFFFFF, 70);
+	if (vf) uk_rbox (cv, vx, by + 12, vf, 4, 2, 0xFFFFFF, 0xFFFFFF);
 	{ VPath k; k.circle (V (vx + vf), V (by + 14), V (6)); k.fill (cv, 0xFFFFFF); }
 	u.hits.add (vx - 6, by, vw + 12, 28, W_VOL);
 	btn (vx - 34, g_muted || !g_volume ? I_MUTE : I_VOLUME, 20, W_MUTE);
@@ -2154,7 +2154,7 @@ static void video_full_screen ()
 	for (;;)
 	{
 		kapi_pump_wait (8);
-		if (wk_quit ()) break;
+		if (uk_quit ()) break;
 		bool nf = g_vp.poll ();
 		long k = g_fsKey; g_fsKey = 0;
 		if (k == 27 || k == KEY_F1 + 10 || ((k == 'f' || k == 'F') && !u.drag)) break;
@@ -2227,7 +2227,7 @@ public:
 		for (int i = 0; i < m_n; i++)
 		{
 			int y = titleH () + 14 + i * 22;
-			text (canvas, 16, y, m_lines[i][0], wk_mix (C_FACE, C_TEXT, 150), F_UI);
+			text (canvas, 16, y, m_lines[i][0], uk_mix (C_FACE, C_TEXT, 150), F_UI);
 			text (canvas, 130, y, m_lines[i][1], C_TEXT, F_UI, 2, width - 146);
 		}
 	}
@@ -2293,7 +2293,7 @@ static void resize_to (int cw, int ch, int x, int y)
 	if (!fb) return;
 	g_root->canvas.adopt (fb, cw, ch, stride);
 	g_root->width = cw; g_root->height = ch;
-	wk_decorate_window ();
+	uk_decorate_window ();
 	kapi_move_window (x, y);
 	refresh_all ();
 }
@@ -2471,14 +2471,14 @@ static void m_full () { if (page ().kind == P_WATCH) video_full_screen (); }
 static void m_open ()
 {
 	char p[300];
-	if (!wk_file_open (p, sizeof p, g_nfolders ? g_folders[0] : "SD:/")) return;
+	if (!uk_file_open (p, sizeof p, g_nfolders ? g_folders[0] : "SD:/")) return;
 	extern void open_file (const char *);
 	open_file (p);
 }
 void m_open_video ()
 {
 	char p[300];
-	if (!wk_file_open (p, sizeof p, VIDEO_DIR)) return;
+	if (!uk_file_open (p, sizeof p, VIDEO_DIR)) return;
 	extern void open_file (const char *);
 	open_file (p);
 }
@@ -2490,7 +2490,7 @@ void open_file (const char *p)
 		if (vi < 0)
 		{
 			Video &x = VL->add ();
-			if (!probe_video (p, &x)) { VL->n--; wk_messagebox ("Media Player", "This file is not a video Media Player\ncan read.", MB_OK); return; }
+			if (!probe_video (p, &x)) { VL->n--; uk_messagebox ("Media Player", "This file is not a video Media Player\ncan read.", MB_OK); return; }
 			char t[200]; video_names (p, t, sizeof t, &x.kind, &x.season, &x.episode);
 			if (x.kind < 0) x.kind = x.durMs >= 40 * 60000 ? VK_FILM : VK_CLIP;
 			x.path = sdup (p); x.title = sdup (t); x.ext = true; x.added = now_stamp ();
@@ -2506,7 +2506,7 @@ void open_file (const char *p)
 		IntList l; for (int i = 0; i < pl.n; i++) { int id = L->find (pl.paths[i]); if (id >= 0) l.push (id); free (pl.paths[i]); }
 		free (pl.paths);
 		if (l.n) play_list (l, 0, false);
-		else wk_messagebox ("Media Player", "None of this playlist's songs is in the library (Folders to Watch...).", MB_OK);
+		else uk_messagebox ("Media Player", "None of this playlist's songs is in the library (Folders to Watch...).", MB_OK);
 		return;
 	}
 	int id = L ? L->find (p) : -1;
@@ -2518,7 +2518,7 @@ void open_file (const char *p)
 		return;
 	}
 	Tags t;
-	if (!read_tags (p, &t)) { wk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV and MIDI songs are; MP4,\nMKV, WebM, AVI, WMV... videos).", MB_OK); return; }
+	if (!read_tags (p, &t)) { uk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV and MIDI songs are; MP4,\nMKV, WebM, AVI, WMV... videos).", MB_OK); return; }
 	int k = g_next < 16 ? g_next++ : 15;
 	Song &x = g_ext[k];
 	if (x.path) { free (x.path); free (x.title); free (x.artist); free (x.albumArtist); free (x.album); free (x.genre); free (x.folderCover); }
@@ -2531,7 +2531,7 @@ void open_file (const char *p)
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
 	load_settings ();
 	kapi_mkdir (LIB_DIR);
@@ -2566,7 +2566,7 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("Open a File...", "^O", WK_CTRL ('O'), m_open);
+	menu.item ("Open a File...", "^O", UK_CTRL ('O'), m_open);
 	menu.item ("Open a Video...", "", 0, m_open_video);
 	menu.separator ();
 	menu.item ("Folders to Watch...", "", 0, m_folders);
@@ -2574,12 +2574,12 @@ int main (void)
 	menu.separator ();
 	menu.item ("New Playlist...", "", 0, m_newpl);
 	menu.menu ("Play");
-	menu.item ("Play / Pause", "^P", WK_CTRL ('P'), m_play);
-	menu.item ("Next", "^F", WK_CTRL ('F'), m_next);
-	menu.item ("Previous", "^B", WK_CTRL ('B'), m_prev);
+	menu.item ("Play / Pause", "^P", UK_CTRL ('P'), m_play);
+	menu.item ("Next", "^F", UK_CTRL ('F'), m_next);
+	menu.item ("Previous", "^B", UK_CTRL ('B'), m_prev);
 	menu.separator ();
-	menu.item ("Shuffle", "^S", WK_CTRL ('S'), m_shuffle);
-	menu.item ("Repeat (all, one, off)", "^T", WK_CTRL ('T'), m_repeat);
+	menu.item ("Shuffle", "^S", UK_CTRL ('S'), m_shuffle);
+	menu.item ("Repeat (all, one, off)", "^T", UK_CTRL ('T'), m_repeat);
 	menu.separator ();
 	menu.item ("Full Screen (a video)", "F", 0, m_full);
 	menu.menu ("View");
@@ -2589,12 +2589,12 @@ int main (void)
 	menu.item ("Songs", "", 0, m_songs);
 	menu.item ("Films", "", 0, m_films);
 	menu.item ("Clips and Series", "", 0, m_clips);
-	menu.item ("Now Playing", "^L", WK_CTRL ('L'), m_now);
+	menu.item ("Now Playing", "^L", UK_CTRL ('L'), m_now);
 	menu.separator ();
-	menu.item ("Search", "^E", WK_CTRL ('E'), m_search);
+	menu.item ("Search", "^E", UK_CTRL ('E'), m_search);
 	menu.item ("Back", "", 0, m_back);
 	menu.separator ();
-	menu.item ("Mini Player", "^K", WK_CTRL ('K'), m_mini);
+	menu.item ("Mini Player", "^K", UK_CTRL ('K'), m_mini);
 	menu.publish ();
 
 	refresh_all ();

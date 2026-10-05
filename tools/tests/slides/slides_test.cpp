@@ -8,7 +8,7 @@
 // converted to .pptx by LibreOffice: read and described.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "Apps/slides/pptx.h"
 #include "Apps/slides/master.h"
 #include "Apps/slides/find.h"

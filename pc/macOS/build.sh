@@ -1,7 +1,7 @@
 #!/bin/sh
 # pc/macOS/build.sh -- Ledger for macOS (Apple silicon), built ON A MAC from the Onyx sources, unchanged:
 # user/Apps/ledger (the accounting), user/Apps/letters (it prints Ledger's quotes, orders and invoices from
-# their templates), user/wtk and FreeType, over pc/macOS/hostkapi.cpp + cocoa.mm (the Onyx kernel's table
+# their templates), user/uikit and FreeType, over pc/macOS/hostkapi.cpp + cocoa.mm (the Onyx kernel's table
 # on macOS). Result: pc/dist/macOS/Ledger.app (Letters.app in its Contents/Helpers, the card's files it
 # reads in its Contents/Resources/sd) and pc/dist/macOS/Ledger-macOS-arm64.zip.
 #   sh pc/macOS/build.sh
@@ -33,17 +33,17 @@ U="$ROOT/user"
 FT="$ROOT/third_party/freetype-2.14.3"
 FLAGS="-O2 -w $AF -mmacosx-version-min=$MINOS"
 CXXF="-std=gnu++17 $FLAGS -I$U -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
-mkdir -p "$OUT/wtk" "$OUT/ft" "$OUT/kapi"
-bg () { ( "$@" || touch "$OUT/FAILED" ) & }		# a compile in the background (wtk's ~50 files at once)
+mkdir -p "$OUT/uikit" "$OUT/ft" "$OUT/kapi"
+bg () { ( "$@" || touch "$OUT/FAILED" ) & }		# a compile in the background (uikit's ~50 files at once)
 done_bg () { wait; if [ -e "$OUT/FAILED" ]; then echo "pc/macOS/build.sh: a compile failed (above)"; exit 1; fi; }
 rm -f "$OUT/FAILED"
 
 # ---- the Onyx kernel's table on macOS ------------------------------------------------------------------------
 $CXX $CXXF -c "$HERE/hostkapi.cpp" -o "$OUT/kapi/hostkapi.o"
 $CXX $CXXF -x objective-c++ -fobjc-arc -c "$HERE/cocoa.mm" -o "$OUT/kapi/cocoa.o"
-# ---- wtk ---------------------------------------------------------------------------------------------------
-for f in "$U"/wtk/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/wtk/$(basename "$f" .cpp).o"; done; done_bg
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/wtk/*.o
+# ---- uikit ---------------------------------------------------------------------------------------------------
+for f in "$U"/uikit/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o"; done; done_bg
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 # ---- FreeType (Onyx's configuration: Letters' fonts) ----------------------------------------------------------
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
@@ -52,9 +52,9 @@ for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitma
 done; done_bg
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # ---- the programs (hostkapi.o first: the table placed before the apps' constructors run) ------------------------
-bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libwtk.a" -framework Cocoa
+bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libuikit.a" -framework Cocoa
 bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/letters/main.cpp" \
-	"$OUT/libwtk.a" "$OUT/libft.a" -framework Cocoa
+	"$OUT/libuikit.a" "$OUT/libft.a" -framework Cocoa
 done_bg
 
 # ---- Ledger.app ------------------------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 //
 // pc/macOS/hostkapi.cpp -- the Onyx kernel's ABI table (kern/kapi_abi.h) on a POSIX host, so that Ledger
-// (user/Apps/ledger), Letters (user/Apps/letters, which prints Ledger's documents), wtk and FreeType build
+// (user/Apps/ledger), Letters (user/Apps/letters, which prints Ledger's documents), uikit and FreeType build
 // for macOS from the Onyx sources, unchanged: the table is put where the apps look for it (KAPI_TABLE_VA)
 // before any constructor of theirs runs, and filled with host equivalents of what they call. This file is
 // the POSIX half (it also builds on Linux: pc/macOS/check.sh); the window's half is cocoa.mm.

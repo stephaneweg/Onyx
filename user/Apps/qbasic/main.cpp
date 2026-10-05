@@ -1,5 +1,5 @@
 //
-// qbasic -- the Onyx BASIC editor (QBasic style), on wtk with the global menu bar.
+// qbasic -- the Onyx BASIC editor (QBasic style), on uikit with the global menu bar.
 //
 //   * The program is split into MODULES, edited one at a time: the main module and each
 //     SUB / FUNCTION (View > SUBs... / ^L lists them; Edit > New SUB... / New FUNCTION...
@@ -16,10 +16,10 @@
 #include "applib.h"
 #include "fsutil.h"
 #include "notify.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "basic/bas.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	760
 #define H	540
@@ -58,12 +58,12 @@ public:
 	Strip (int l, int t, int w, int h, const char *s, int etch) : Label (l, t, w, h, s, C_TEXT, C_FACE), m_etch (etch) {}
 	void onDraw () override
 	{
-		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		if (m_etch & ETCH_BOTTOM) wk_etch_h (canvas, 0, height - 2, width, C_FACE);
-		if (m_etch & ETCH_TOP) wk_etch_h (canvas, 0, 0, width, C_FACE);
-		if (m_etch & ETCH_LEFT) wk_etch_v (canvas, 0, 4, height - 6, C_FACE);
+		uk_rbox (canvas, 0, 0, width, height, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
+		if (m_etch & ETCH_BOTTOM) uk_etch_h (canvas, 0, height - 2, width, C_FACE);
+		if (m_etch & ETCH_TOP) uk_etch_h (canvas, 0, 0, width, C_FACE);
+		if (m_etch & ETCH_LEFT) uk_etch_v (canvas, 0, 4, height - 6, C_FACE);
 		int t = m_etch & ETCH_TOP ? 2 : 0, b = m_etch & ETCH_BOTTOM ? 2 : 0;
-		wk_text_l (canvas, 8, t, height - t - b, text, fg, m_etch & ETCH_BOTTOM ? 2 : 0);
+		uk_text_l (canvas, 8, t, height - t - b, text, fg, m_etch & ETCH_BOTTOM ? 2 : 0);
 	}
 };
 
@@ -94,7 +94,7 @@ public:
 			return true;
 		}
 		bool r = Textarea::onKey (k);
-		if (r && ((k >= 32 && k < 127) || k == KEY_BACKSPACE || k == KEY_DEL || k == KEY_TAB || k == WK_CTRL ('X') || k == WK_CTRL ('V'))) g_dirty = true;
+		if (r && ((k >= 32 && k < 127) || k == KEY_BACKSPACE || k == KEY_DEL || k == KEY_TAB || k == UK_CTRL ('X') || k == UK_CTRL ('V'))) g_dirty = true;
 		return r;
 	}
 };
@@ -242,7 +242,7 @@ public:
 	InputBox (const char *title, const char *init) : Modal (360, 120), m_title (title)
 	{
 		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
-		tb = new Textbox (12, wk_fh () + 16, width - 24, 26, init, dlg_enter);
+		tb = new Textbox (12, uk_fh () + 16, width - 24, 26, init, dlg_enter);
 		addChild (tb);
 		Button *b;
 		b = new Button (width - 180, height - 36, 82, 28, "OK", dlg_btn);     b->tag = 1; addChild (b);
@@ -269,7 +269,7 @@ public:
 	SubsDialog () : Modal (380, 320)
 	{
 		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
-		list = new ListBox (12, wk_fh () + 14, width - 24, height - wk_fh () - 64, 0, dlg_enter);
+		list = new ListBox (12, uk_fh () + 14, width - 24, height - uk_fh () - 64, 0, dlg_enter);
 		for (int i = 0; i < g_nmod; i++)
 		{
 			char s[64];
@@ -299,7 +299,7 @@ public:
 static bool confirm_discard ()
 {
 	if (!g_dirty) return true;
-	int r = wk_messagebox ("QBasic", "The program has changed. Save it first?", MB_YESNOCANCEL);
+	int r = uk_messagebox ("QBasic", "The program has changed. Save it first?", MB_YESNOCANCEL);
 	if (r == 0) return false;
 	if (r == 1)
 	{
@@ -345,7 +345,7 @@ static void op_open ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (!wk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/basic")) return;
+	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/basic")) return;
 	load_file (p);
 }
 
@@ -361,7 +361,7 @@ static void op_save_as ()
 {
 	char p[256];
 	const char *base = g_path[0] ? fs_basename (g_path) : "program.bas";
-	if (!wk_file_save (p, sizeof p, g_path[0] ? g_path : "SD:/basic", base)) return;
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : "SD:/basic", base)) return;
 	int n = slen (p);
 	if (!(n > 4 && p[n - 4] == '.' && (p[n - 3] | 32) == 'b')) { scpy (p + n, ".bas", sizeof p - n); }
 	if (!write_to (p)) { set_status ("Cannot save ", p); return; }
@@ -417,7 +417,7 @@ static void op_subs ()
 		char q[120]; scpy (q, "Delete ", sizeof q);
 		int n = slen (q); for (int k = 0; g_mod[sel].name[k] && n < 100; k++) q[n++] = g_mod[sel].name[k];
 		scpy (q + n, "?", sizeof q - n);
-		if (!wk_messagebox ("Delete", q, MB_YESNO)) return;
+		if (!uk_messagebox ("Delete", q, MB_YESNO)) return;
 		delete [] g_mod[sel].text;
 		for (int i = sel; i + 1 < g_nmod; i++) g_mod[i] = g_mod[i + 1];
 		g_nmod--;
@@ -529,7 +529,7 @@ static void op_make_app ()
 	char p[160];
 	// compiled (main.bax: starts at once, the source stays private) or as source (main.bas);
 	// only one of them, or an old one would be run instead
-	bool compiled = wk_messagebox ("Make App", "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", MB_YESNO) == 1;
+	bool compiled = uk_messagebox ("Make App", "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", MB_YESNO) == 1;
 	char other[160];
 	fs_join (p, sizeof p, dir, compiled ? "main.bax" : "main.bas");
 	fs_join (other, sizeof other, dir, compiled ? "main.bas" : "main.bax");
@@ -562,7 +562,7 @@ static void op_examples ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (!wk_file_open (p, sizeof p, "SD:/basic/examples")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/basic/examples")) return;
 	load_file (p);
 }
 
@@ -631,10 +631,10 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New",          "^N", WK_CTRL ('N'), op_new);
-	menu.item ("Open...",      "^O", WK_CTRL ('O'), op_open);
+	menu.item ("New",          "^N", UK_CTRL ('N'), op_new);
+	menu.item ("Open...",      "^O", UK_CTRL ('O'), op_open);
 	menu.item ("Examples...",  "",   0,             op_examples);
-	menu.item ("Save",         "^S", WK_CTRL ('S'), op_save);
+	menu.item ("Save",         "^S", UK_CTRL ('S'), op_save);
 	menu.item ("Save As...",   "",   0,             op_save_as);
 	menu.separator ();
 	menu.item ("Make App...",  "",   0,             op_make_app);
@@ -642,12 +642,12 @@ int main (void)
 	menu.item ("New SUB...",      "", 0,             op_new_sub);
 	menu.item ("New FUNCTION...", "", 0,             op_new_function);
 	menu.separator ();
-	menu.item ("Go to Line...",   "^G", WK_CTRL ('G'), op_goto);
+	menu.item ("Go to Line...",   "^G", UK_CTRL ('G'), op_goto);
 	menu.menu ("View");
-	menu.item ("SUBs... (F2)", "^L", WK_CTRL ('L'), op_subs);
+	menu.item ("SUBs... (F2)", "^L", UK_CTRL ('L'), op_subs);
 	menu.menu ("Run");
-	menu.item ("Start (F5)",   "^R", WK_CTRL ('R'), op_run);
-	menu.item ("Check Syntax", "^K", WK_CTRL ('K'), op_check);
+	menu.item ("Start (F5)",   "^R", UK_CTRL ('R'), op_run);
+	menu.item ("Check Syntax", "^K", UK_CTRL ('K'), op_check);
 	menu.item ("Make .bax",    "",   0,             op_make_bax);
 	menu.menu ("Help");
 	menu.item ("Keywords",     "",   0,             op_help);

@@ -1,16 +1,16 @@
 //
 // Apps/pdf/ui.h -- the PDF Viewer's drawing helpers: the faces (sizes of DejaVu Sans), text that fits, the icons
-// (drawn from their geometry: wtk/vpaint.h), the hit lists of the custom-drawn parts.
+// (drawn from their geometry: uikit/vpaint.h), the hit lists of the custom-drawn parts.
 //
 #ifndef _pdf_ui_h
 #define _pdf_ui_h
 
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
+#include "ft/uikitface.h"
+#include "uikit/uikit.h"
 
 namespace pdfv {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- the faces --------------------------------------------------------------------------------------------
 enum { F_UI, F_SMALL, F_MID, F_H2, F_H1, F_TINY, F_N };
@@ -20,14 +20,14 @@ static void faces_open ()
 	static const int SZ[F_N] = { 13, 11, 15, 18, 26, 8 };
 	for (int i = 1; i < F_N; i++) { g_face[i] = new FtTextFace; if (!g_face[i]->open ("DejaVu Sans", SZ[i])) { delete g_face[i]; g_face[i] = 0; } }
 }
-static inline int tw (const char *s, int f = F_UI, int style = 0) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_tw (s, style); }
-static inline int fh (int f = F_UI) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_fh (); }
+static inline int tw (const char *s, int f = F_UI, int style = 0) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_tw (s, style); }
+static inline int fh (int f = F_UI) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_fh (); }
 // s at x, the line's top y; cut with "..." past w (0: not cut)
 static inline void text (Canvas &cv, int x, int y, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0)
 {
-	WkFaceScope sc (f == F_UI ? 0 : g_face[f]);
-	if (w > 0 && wk_tw (s, style) > w) { char b[400]; wk_text_fit (s, w, b, sizeof b, style); wk_text (cv, x, y, b, c, style); }
-	else wk_text (cv, x, y, s, c, style);
+	UkFaceScope sc (f == F_UI ? 0 : g_face[f]);
+	if (w > 0 && uk_tw (s, style) > w) { char b[400]; uk_text_fit (s, w, b, sizeof b, style); uk_text (cv, x, y, b, c, style); }
+	else uk_text (cv, x, y, s, c, style);
 }
 static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0) { text (cv, x, y + (h - fh (f)) / 2, s, c, f, style, w); }
 static inline void text_r (Canvas &cv, int xr, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0) { text (cv, xr - tw (s, f, style), y + (h - fh (f)) / 2, s, c, f, style); }
@@ -57,7 +57,7 @@ static void icon (Canvas &cv, int id, int x, int y, int s, unsigned c)
 	{
 	case I_SIDEBAR:
 		p.rrect (PX (2), PY (4), 20 * u, 16 * u, 2 * u); p.fill (cv, c);
-		{ VPath h; h.rect (PX (10), PY (6), 10 * u, 12 * u); h.fill (cv, wk_mix (c, 0xFFFFFF, 230)); }
+		{ VPath h; h.rect (PX (10), PY (6), 10 * u, 12 * u); h.fill (cv, uk_mix (c, 0xFFFFFF, 230)); }
 		return;
 	case I_OPEN: p.rrect (PX (1), PY (6), 22 * u, 15 * u, 2 * u); p.rrect (PX (1), PY (3), 9 * u, 5 * u, 2 * u); p.fill (cv, 0xD6AA5A); return;
 	case I_FOLDER: p.rrect (PX (1), PY (6), 22 * u, 15 * u, 2 * u); p.rrect (PX (1), PY (3), 9 * u, 5 * u, 2 * u); p.fill (cv, 0xD6AA5A); return;

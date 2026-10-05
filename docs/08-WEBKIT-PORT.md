@@ -327,7 +327,7 @@ PC: WebCore links into a test program that loads a page from a file and paints i
 
 ## Step 3: WebKit2 and Web, the browser (2026-10-03)
 
-**Web runs on the Pi** (`user/Apps/jet`, package `web` 93 MB; docs/04 *Web*): the window on wtk, the
+**Web runs on the Pi** (`user/Apps/jet`, package `web` 93 MB; docs/04 *Web*): the window on uikit, the
 page drawn by WebKit2's three processes — **one program** (`apps/jet.app/main`) that is the UI and,
 started again with `--onyx-webkit-process=web|network`, the web and the network process; the kernel
 maps the program's image once for all (`image …: shared in 0 ms` in kmsg). Tried there (overnight,
@@ -397,7 +397,7 @@ Found and **not fixed** (Onyx, outside WebKit):
 
 **Then (2026-10-03, patch `0016`)**, tried on the Pi over VNC: the pages' **drop-down lists** (the C
 API's `WKViewClientV1` `showPopupMenu` / `hidePopupMenu` and `WKViewSelectPopupMenuItem`, from
-`UIProcess/onyx/WebPopupMenuProxyOnyx`; Web shows the list in a wtk popup and answers — the
+`UIProcess/onyx/WebPopupMenuProxyOnyx`; Web shows the list in a uikit popup and answers — the
 `change` event fires), the **system clipboard** both ways (`WKSetClipboardCallbacksOnyx`: WebCore's
 `PlatformPasteboard` of the UI process calls Web's three functions, `clipboard.h` underneath; the
 system's text is read again when its serial changed), **find in the page** (`WKPageFindString`, the
@@ -545,10 +545,10 @@ core and **fail the test on any kernel call**).
 - **On the Pi** (kotonstudio.com, one app core free + the main thread): the 12-notch scroll's
   worst two seconds went from `20 frames, 7 Mpx, paint 1450 ms` to `64–73 frames, 5–7 Mpx, paint
   200–340 ms`; the self-test's stages all pass.
-- **What this found in Web's link**: `user/img/imgload.hpp` (in wtk) defines *weak* `malloc` /
+- **What this found in Web's link**: `user/img/imgload.hpp` (in uikit) defines *weak* `malloc` /
   `free` / `calloc` / `realloc` on `operator new[]`, and `onyxpp.hpp` a global `operator new` on
   `umm.h` (`kapi_sbrk`): in the static link both won over newlib's. So the whole browser — Skia,
-  WebKit — allocated with wtk's allocator, while `malloc_usable_size` and `posix_memalign` were
+  WebKit — allocated with uikit's allocator, while `malloc_usable_size` and `posix_memalign` were
   newlib's: **the heap corruption in Skia's glyph painting of Step 3** (a usable size read from a
   block newlib did not make) has its cause — `skmallocsize.c` was the cure of a symptom, kept. A
   hosted program now defines `ONYX_HOSTED_NEW` (`build-web.sh`): newlib's malloc everywhere,
