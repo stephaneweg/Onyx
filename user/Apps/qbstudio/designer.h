@@ -234,17 +234,64 @@ public:
 	int menuH () const { return form && form->root && child_of_kind (form->root, K_MENU) ? MENU_H : 0; }
 	static const int TITLE_H = 28;
 
-	// The form shown again (a new tree, a change): laid out, its widgets made again
-	void setForm (Form *f) { form = f; sel = 0; rebuild (); }
+	// The widgets drawn, one per element in the order they were made (0: an element with none -- a Column), and
+	// what each looked like: while the elements and their looks are the same -- one is dragged, sized, the window
+	// sized -- the widgets are kept and only placed again (sync); they are made again when the tree changes or a
+	// look does (a text, an item, a flag). Making them all again at each step of a drag was the designer's cost.
+	struct Item { El *e; Widget *w; unsigned sig; };
+	Vec<Item> items;
+	bool alwaysFull = false;			// (the measure: as before, everything made again each time)
+	// What an element's widget shows besides its place and size: its kind, name, text, the properties that are
+	// not the layout's
+	static unsigned sig_of (const El *e)
+	{
+		static const char *const GEOM[] = { "width", "height", "size", "min", "at", "cell", "fill", "grow", "align", "halign", "valign", "padding", "gap", "widths", "heights", "cols", 0 };
+		unsigned h = 2166136261u;
+		auto mix = [&] (const char *s) { for (; *s; s++) h = (h ^ (unsigned char) *s) * 16777619u; h = (h ^ 0xFF) * 16777619u; };
+		h = (h ^ (unsigned) e->kind) * 16777619u; h = (h ^ (e->uc ? 1u : 0u)) * 16777619u;
+		mix (e->name); mix (e->text);
+		for (int i = 0; i < e->props.n; i++)
+		{
+			bool geom = false;
+			for (int k = 0; GEOM[k]; k++) if (ieq (e->props[i].key, GEOM[k])) geom = true;
+			if (!geom) { mix (e->props[i].key); mix (e->props[i].val); }
+		}
+		return h;
+	}
+	void listed (El *e, Vec<Item> &o) { Item it; it.e = e; it.w = 0; it.sig = sig_of (e); o.push (it); if (e->kind != K_MENU) for (int i = 0; i < e->kids.n; i++) listed (e->kids[i], o); }
+	// The widgets kept, at the layout's new places -> false: they must be made again
+	bool sync ()
+	{
+		if (!client || alwaysFull) return false;
+		Vec<Item> now; listed (form->root, now);
+		if (now.n != items.n) return false;
+		for (int i = 0; i < now.n; i++) if (now[i].e != items[i].e || now[i].sig != items[i].sig) return false;
+		client->left = ox; client->top = oy; client->resizeTo (winW, winH + menuH ());
+		for (int i = 0; i < items.n; i++)
+		{
+			Widget *w = items[i].w; const El *e = items[i].e;
+			if (!w) continue;
+			w->left = e->x; w->top = e->y; w->resizeTo (imax (1, e->w), imax (1, e->h));
+		}
+		return true;
+	}
+	// The form shown again (a new tree, a change): laid out, its widgets placed again -- or made again
+	void setForm (Form *f) { form = f; sel = 0; items.clear (); rebuild (); }
 	void rebuild ()
 	{
-		if (client) { removeChild (client); delete client; client = 0; }
-		freePool ();
-		if (!form || !form->root) { invalidate (true); return; }
+		if (!form || !form->root)
+		{
+			if (client) { removeChild (client); delete client; client = 0; }
+			freePool (); items.clear ();
+			invalidate (true); return;
+		}
 		form_size (*form, &winW, &winH);
 		int mh = menuH ();
 		form_layout (*form, winW, winH + mh, true);
 		origin ();
+		if (sync ()) { redraw (); invalidate (true); return; }
+		if (client) { removeChild (client); delete client; client = 0; }
+		freePool (); items.clear ();
 		client = new GridPanel (ox, oy, winW, winH + mh);
 		make (form->root);
 		// (the overlay over the widgets, the bars over the overlay)
@@ -287,6 +334,7 @@ public:
 		default: break;
 		}
 		if (w) { if (e->flag ("disabled")) w->disabled = true; client->addChild (w); }
+		{ Item it; it.e = e; it.w = w; it.sig = sig_of (e); items.push (it); }	// (in listed ()'s order)
 		if (e->kind != K_MENU) for (int i = 0; i < e->kids.n; i++) make (e->kids[i]);
 	}
 	void redraw () { invalidate (true); ov->invalidate (true); }

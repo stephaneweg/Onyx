@@ -131,6 +131,15 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   the Pi's screen, not clicked. Not done: several instances of one user control (each is one object), a
   user control's preview inside the window's Host in the designer (a dashed frame with its name), a
   choice list for `content=` / `halign=` in the properties (typed), `Add Window` (one window a program).
+- **The designer's cost, measured (the user asked whether GPU composition, or drawing the widgets instead of
+  making them, would speed it up)**: `qbstudio -bench [project]` sizes the drawn window 40 times and prints, a
+  step: on the Pi 4, the converter -- making every widget again **0.07 ms** (it was my guess for the cost:
+  wrong), drawing the QBStudio window **11 to 15 ms**, showing it (`uk_present`) **0.5 to 0.8 ms**. So GPU
+  composition would gain nothing here, and neither would painting without widgets; the time is the CPU
+  drawing of the whole window at each step. The designer now keeps its widgets while the tree and their
+  looks are the same (`Designer::sync`, `sig_of`): about 20 % less drawing (10 to 11 ms a step, under a 16 ms
+  frame). If it must go faster: draw only what changed (the designer invalidates itself whole, its overlay
+  is the size of the designer) -- not started, nobody found it slow.
 - **Next**: what the list above lacks, as programs ask for it. Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
   FreeType's functions in `fontkit.bi` (their prototypes are in FreeType's headers, not in the kit's
   folder: `kitbi.py` reads `user/Kits/<kit>/*.h` only).
