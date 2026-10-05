@@ -702,8 +702,8 @@ its licence on the app.
 ### 5.6. Shared libraries (kapi v83): `SD:/lib/<name>.so`
 
 > **Names.** The libraries are "kits", one per use: **UIKit** (the widget toolkit: `user/uikit/`,
-> `namespace uikit`, the `uk_` functions, `SD:/lib/uikit.so`), **AudioKit** (§5.7), and ImageKit to
-> come. UIKit was named **wtk** until 2026-10-05 (`user/wtk/`, `namespace wtk`, `wk_`, `wtk.so`): the
+> `namespace uikit`, the `uk_` functions, `SD:/lib/uikit.so`), **PrinterKit** (§5.7), **AudioKit** (§5.7), **FileKit** (§5.8),
+> **ImageKit** (§5.9). UIKit was named **wtk** until 2026-10-05 (`user/wtk/`, `namespace wtk`, `wk_`, `wtk.so`): the
 > rename was complete — sources, headers, the library, its package (`uikit` replaces `wtk`) — and
 > every program was rebuilt; older notes and commit messages say wtk.
 
@@ -940,6 +940,40 @@ built without the FPU calls it); a buffer the library returns (`void **out`) is 
   (IDEAS.md).
 - **Test**: `fktest` on the Pi (34 checks: compression there and back, an archive made and read on the
   card and in memory, a tree copied / moved / removed, the paths; everything under `SD:/tmp/fktest`).
+
+### 5.9. ImageKit: pictures (`SD:/lib/imagekit.so`)
+
+*(`user/imagekit/imagekit.h` is the reference; the library's mechanism: §5.6.)*
+
+What every program that shows or writes a picture needs, one copy for the whole system. A program links
+`lib/imagekit.imp.a` and calls plain functions (`ik_*`). Every call takes integers and pointers only (a
+program built without the FPU calls it — the Image Viewer does); an `ik_image` is opaque; a buffer the
+library returns is freed with `ik_free`. **The first version (2026-10-05) is the base**: the layers, the
+masks, the brushes and the document of the photo editor come on top of it later (IDEAS.md).
+
+| Group | Calls | What it does |
+|---|---|---|
+| **A picture** | `ik_image_new (w, h)`, `ik_image_from (px, w, h, stride)`, `ik_image_copy`, `ik_image_free`, `ik_width`, `ik_height`, `ik_format`, `ik_pixels`, `ik_fill`, `ik_opaque`, `ik_flatten (im, rgb)`, `ik_has_alpha` | `w × h` pixels `0xAARRGGBB`, straight alpha, rows one after the other (`IK_ARGB8`: the only format today; the handle is opaque so that 16 bits a channel can come). |
+| **Reading** | `ik_load (path, flags)`, `ik_load_mem`, `ik_probe (path, &info)`, `ik_load_preview`, `ik_load_format`, `ik_is_image_name`; `ik_frames_load` / `_load_mem` / `_count` / `_pixels` / `_delay` / `_width` / `_height` / `_free` | **BMP, GIF (animated), PNG, JPEG, PCX, WebP**. `IK_ORIENT`: the camera's orientation (EXIF) applied — the photo as it is seen. `ik_probe` reads no pixel: the size, the orientation, the date taken, the camera and the exposure (`struct ik_info`); `ik_load_preview`: the camera's own small picture. The frames of an animation with their delays. |
+| **Writing** | `ik_encode (im, format, quality, &out, &n)`, `ik_save (im, path, quality)` | **PNG** (zlib's compression through FileKit: smaller files than before), **JPEG**, **BMP**, **GIF**. PNG keeps the alpha, GIF its clear pixels, JPEG and BMP lay the picture on white. |
+| **Transforms** | `ik_scale (src…, dst…)`, `ik_resize`, `ik_fit (im, max_w, max_h, grow)`, `ik_cover (im, w, h)`, `ik_crop`, `ik_rotate (im, quarter_turns)`, `ik_flip`, `ik_orient`, `ik_straighten (im, millidegrees)` | **One resize, right in alpha**: smaller, each pixel is the average of all those it covers; larger, bilinear; the colours weighed by the alpha (a transparent pixel's colour does not bleed). `ik_scale` writes into any buffer (a window's canvas, the wallpaper). |
+| **Adjustments** | `ik_adjust_apply (im, &a)`, `ik_adjust_auto (im, &a)`, `ik_filter_name` | Photos' own, as one tone curve and a colour pass (`struct ik_adjust`: exposure, contrast, highlights, shadows, saturation, warmth −100..100, sharpness 0..100, a filter: black and white, warm, cool, vintage, vivid); "enhance" proposes values from the histogram. The alpha is kept. |
+
+- **Inside**: `imagekit/ikcore.cpp` compiles the decoders (`img/imgload.hpp`: stb_image, simplewebp, PCX),
+  the encoders (`img/pngsave.hpp`; `PNGSAVE_DEFLATE` sends PNG's compression to FileKit's zlib), Photos'
+  `exif.h` (the picture's facts) and `imgops.h` (the turns, the crop, the adjustments) behind the C
+  interface; the resize is its own. Built with the FPU, newlib's libm and libc linked in. **It uses
+  FileKit**: `lib/filekit_stubs.o` is linked in and `SD:/lib/filekit.so` is opened when a PNG is first
+  written (the package needs `filekit`). The table: `imagekit/imagekit.abi` (append-only).
+- **Who uses it**: the **Image Viewer** (its window and the wallpaper it paints: photos are now turned
+  the way the camera says, and a wallpaper made smaller is averaged). The other programs still take
+  their decoders from `uikit.so` (`img_load*`) and compile `pngsave.hpp`, each with its own resampler:
+  moving them over, and making UIKit's `img_*` relays to ImageKit, is the next step (IDEAS.md).
+- **Not in it yet**: masks and selections, drawing and brushes, layers and blend modes with `gpucomp`,
+  thumbnails with their cache, 16 bits a channel, ICC profiles, TIFF / RAW / HEIC. Never MuPDF nor FFmpeg.
+- **Test**: `iktest [picture]` on the Pi (28 checks: a picture written in the four formats and read
+  back, the resize in alpha, the turns, the crop, the adjustments; with a picture of the card: probed,
+  read, a thumbnail written).
 
 ## 6. Writing a graphical application
 

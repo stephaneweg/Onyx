@@ -113,6 +113,10 @@ AK_PROGS = play.elf
 fktest.elf: fktest.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../filekit/filekit.h ../lib/filekit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/filekit.imp.a -o $@
 AK_PROGS += fktest.elf
+# iktest: ImageKit's self-test (../lib/imagekit.so): pictures written and read back, the transforms, the adjustments
+iktest.elf: iktest.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../imagekit/imagekit.h ../lib/imagekit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/imagekit.imp.a -o $@
+AK_PROGS += iktest.elf
 # ipp: a network printer asked what it can do (../printerkit/ipp.h; docs/03 "Printing")
 CXX_PROGS += ipp.elf
 ipp.elf: ../printerkit/ipp.h ../printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h

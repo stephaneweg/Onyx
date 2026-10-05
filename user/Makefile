@@ -251,9 +251,34 @@ lib/filekit.imp.a: lib/filekit_stubs.o lib/filekit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so
+# ---- imagekit.so: ImageKit, pictures (imagekit/imagekit.h; docs/03 "ImageKit"): the decoders
+# (img/imgload.hpp: stb_image, simplewebp, PCX), the encoders (img/pngsave.hpp; PNG's deflate is zlib's,
+# through FileKit: its import stubs linked in, the library opened when a PNG is first written), what a
+# file says and the adjustments (Photos' exif.h, imgops.h), one resize right in alpha. Built with the
+# FPU, an integer interface; newlib's libm and libc linked in. Exported: ik_*.
+IK_OBJ = lib/ik/ikcore.o
+lib/ik/ikcore.o: imagekit/ikcore.cpp imagekit/imagekit.h filekit/filekit.h img/imgload.hpp img/pngsave.hpp img/stb_image.h img/simplewebp.h \
+		 Apps/photos/imgops.h Apps/photos/exif.h kapi.h $(LIB_DEP)
+	@mkdir -p lib/ik
+	$(CXX) $(AK_CXXFLAGS) -w -Iimagekit -c $< -o $@
+lib/ik/ikso.o: imagekit/ikso.c lib.h kapi.h
+	@mkdir -p lib/ik
+	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
+imagekit/imagekit.abi:
+	@touch $@
+lib/imagekit_table.S: $(IK_OBJ) lib/ik/ikso.o imagekit/imagekit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name imagekit --abi imagekit/imagekit.abi --init ik_lib_init --allow-data . --export '^ik_' --exclude '^ik_lib_init$$' \
+		--table lib/imagekit_table.S --stubs lib/imagekit_stubs.S --bind lib/imagekit_bind.cpp $(IK_OBJ)
+lib/imagekit_stubs.S lib/imagekit_bind.cpp: lib/imagekit_table.S ;
+lib/imagekit.so: $(IK_OBJ) lib/ik/ikso.o lib/filekit_stubs.o lib/imagekit_table.o lib/librt.o
+	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBM_A) $(LIBC_A) $(LIBGCC_A)
+lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a
+libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -289,8 +314,8 @@ uikit/libuikit.a: $(UIKIT_OBJ)
 # (uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h lib/imagekit.imp.a imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode

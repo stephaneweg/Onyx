@@ -36,7 +36,7 @@ LibreOffice headless). Screenshots
 
 > Names: the shared libraries are "kits" -- **UIKit** (the widget toolkit, `user/uikit/`, `namespace uikit`,
 > `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/audiokit/`), **PrinterKit** (`user/printerkit/`), **FileKit** (`user/filekit/`: ZIP, zlib, files and trees),
-> ImageKit to come. docs/03 sections 5.6 and 5.7.
+> **ImageKit** (`user/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit). docs/03 sections 5.6 to 5.9. DocumentKit: an analysis only (IDEAS.md).
 
 ## RULE — keep the documentation up to date automatically
 

@@ -204,7 +204,11 @@ static unsigned char *png_encode (const unsigned *px, int w, int h, bool alpha, 
 	}
 	delete[] cur; delete[] up; delete[] tr;
 	unsigned zn;
+#ifdef PNGSAVE_DEFLATE					// (ImageKit: zlib's, through FileKit -- a smaller file)
+	unsigned char *z = PNGSAVE_DEFLATE (raw, (rowLen + 1) * (unsigned) h, &zn);
+#else
 	unsigned char *z = deflate (raw, (rowLen + 1) * (unsigned) h, true, &zn);
+#endif
 	delete[] raw;
 	Buf o;
 	static const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 13, 10, 26, 10 };
