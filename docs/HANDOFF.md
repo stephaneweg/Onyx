@@ -20,13 +20,14 @@ the user says so -- and **do not publish packages from it** until then (the Pi i
   window manager is removed.
 - **Events**: the **per-process event queue stays in the kernel**, as a mechanism; Elegant pushes into
   it. The pump (`el0blob.S`), `kapi_post` and `kapi_pump_wait` do not change.
-- **Open, asked**: the protocol's home. Recommended: private to AppKit (its `kapi_*` window names cannot
-  move, UIKit depends on AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit), what Elegant brings
-  that is new (several windows a process, damage rectangles, a frame-done pace) shown by UIKit. The user
-  leaned towards UIKit: wait for the answer before writing the client side.
-- **Open, asked**: `rdpd` inside Elegant. Recommended: no -- a capture channel of Elegant for `rdpd` and
-  `vncd` instead (the windows' buffers mapped read-only, the damage sent as it happens), the daemons
-  staying processes of their own (a network parser's fault must not take the display down).
+- **The protocol is AppKit's** (private to it, shared with Elegant; no program includes it): its `kapi_*`
+  window names cannot move, UIKit depends on AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit.
+  What Elegant brings that is new (several windows a process, damage rectangles, a frame-done pace) is
+  shown to the programs by UIKit.
+- **`rdpd` stays a process of its own** (and `vncd`), with an access to what it needs: a capture channel
+  of Elegant (the windows' content -- their buffers mapped read-only, the damage as it happens) and the
+  injection of the network client's clicks and keys. A network parser's fault must not take the display
+  down.
 
 **The design** (the study `docs/GUI-USERSPACE-STUDY.md` §2, revised with the kits): the kernel keeps
 mechanisms, Elegant has all the policy (the window list, z-order, focus, desks, input routing, drag and
