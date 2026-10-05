@@ -313,6 +313,8 @@ static inline int kapi_wlan_scan (struct kapi_wlan_ap *out, int max) { return KT
 //                     returns the frames taken (0 = full, retry later) -- audio players.
 static inline int  kapi_sound_acquire (void) { return KT->sound_acquire (); }
 static inline void kapi_sound_release (void) { KT->sound_release (); }
+// (RETIRED 2026-10-05: the voices are AudioKit's -- ak_fm_start / ak_fm_stop / ak_fm_instrument,
+// audiokit/audiokit.h --; these three answer -1)
 static inline int  kapi_sound_start (int voice, unsigned millihz, int wave, int volume) { return KT->sound_start (voice, millihz, wave, volume); }
 static inline int  kapi_sound_stop (int voice) { return KT->sound_stop (voice); }
 static inline int  kapi_sound_write (const short *frames, unsigned n) { return KT->sound_write (frames, n); }

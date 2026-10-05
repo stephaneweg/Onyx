@@ -1,5 +1,5 @@
 //
-// synth_test.cpp -- the kernel synthesizer (kernel/sys/sound.cpp) on a PC: renders notes of
+// synth_test.cpp -- the kernel synthesizer (user/audiokit/fmsynth.h) on a PC: renders notes of
 // an FM instrument (.FMI, the fmtracker format) or a simple wave into a WAV file, and
 // prints the level / pitch so a test can check them.
 //   synth_test out.wav [instrument.FMI] [freq]
@@ -12,12 +12,9 @@ typedef int16_t s16; typedef uint16_t u16; typedef uint32_t u32; typedef int32_t
 typedef uint64_t u64; typedef int64_t s64; typedef bool boolean;
 #define TRUE true
 #define FALSE false
-#define IRQ_LEVEL 0
-struct CSpinLock { CSpinLock (int) {} void Acquire () {} void Release () {} };
-#define SND_RATE	44100
-#define SND_VOICES	16
-#define SOUND_HOST_TEST
-#include "../../../kernel/sys/sound.cpp"
+#define SND_RATE	FMSYNTH_RATE
+#include "../../../user/audiokit/fmsynth.h"
+using namespace fmsynth;
 
 // .FMI: "fm-song instrument", "NAME", then 13 "a,b" lines: attack, decay, sustain, release,
 // level, ksl, am(field "amplitudevibrato"), vib("pitchvibrato"), mult, ksr, wave,
@@ -47,13 +44,12 @@ int main (int argc, char **argv)
 	double hz = argc > 3 ? atof (argv[3]) : 261.63;
 	kapi_fm_instrument ins;
 	bool fm = argc > 2 && loadFMI (argv[2], &ins);
-	SoundAcquire (1);
-	if (fm) SoundInstrument (1, 0, &ins);
+	if (fm) instrument (0, &ins);
 	static s16 buf[44100 * 3 * 2];
-	SoundStart (1, 0, (unsigned) (hz * 1000), fm ? SOUND_FM : SOUND_SINE, 200);
-	Render (buf, 44100);					// 1 s key down
-	SoundStop (1, 0);
-	Render (buf + 44100 * 2, 44100);			// 1 s release
+	start (0, (unsigned) (hz * 1000), fm ? SOUND_FM : SOUND_SINE, 200);
+	render (buf, 44100);					// 1 s key down
+	stop (0);
+	render (buf + 44100 * 2, 44100);			// 1 s release
 	// report: peak / RMS of the first 0.5 s, of the last 0.25 s, zero crossings -> pitch
 	auto stats = [&] (int from, int n, double *rms) { double s = 0; int pk = 0; for (int i = 0; i < n; i++) { int x = buf[(from + i) * 2]; s += (double) x * x; if (abs (x) > pk) pk = abs (x); } *rms = __builtin_sqrt (s / n); return pk; };
 	double r1, r2; int p1 = stats (0, 22050, &r1), p2 = stats (44100 * 2 - 11025, 11025, &r2);

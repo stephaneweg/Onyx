@@ -1,7 +1,7 @@
 //
 // fmsplayer.cpp -- FM Song player for Windows: plays .FMS files (FM Song / Onyx fmtracker)
 // with EXACTLY the Onyx code: the file format of user/Apps/fmtracker/fms.h and the FM
-// synthesizer of kernel/sys/sound.cpp (compiled in its PC mode), out through waveOut.
+// synthesizer of user/audiokit/fmsynth.h (compiled in its PC mode), out through waveOut.
 //
 //   * Open... (or drop files on the window, or give them on the command line); the other
 //     .FMS files of the same folder fill the playlist; double-click one to play it.
@@ -28,13 +28,11 @@ typedef uint64_t u64; typedef int64_t s64; typedef bool boolean;
 #undef FALSE
 #define TRUE true
 #define FALSE false
-#define IRQ_LEVEL 0
 static CRITICAL_SECTION g_synthLock;
-struct CSpinLock { CSpinLock (int) {} void Acquire () { EnterCriticalSection (&g_synthLock); } void Release () { LeaveCriticalSection (&g_synthLock); } };
-#define SND_RATE	44100
-#define SND_VOICES	16
-#define SOUND_HOST_TEST
-#include "../../kernel/sys/sound.cpp"
+#define SND_RATE	FMSYNTH_RATE
+#include "../../user/audiokit/fmsynth.h"
+using namespace fmsynth;
+#include "../../user/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
 #include "../../user/Apps/fmtracker/fms.h"
 
 #define PID 1
@@ -56,7 +54,7 @@ static void upload_all ()
 	{
 		struct kapi_fm_instrument k;
 		fms_to_kapi (&g_song.ins[c], &k);
-		SoundInstrument (PID, c, &k);
+		instrument (c, &k);
 	}
 }
 static void play_row ()
@@ -65,10 +63,10 @@ static void play_row ()
 	for (int c = 0; c < FMS_CH; c++)
 	{
 		unsigned char v = p.n[c * p.rows + g_row];
-		if (v & 128) { SoundStop (PID, c); g_chanNote[c] = 0; }
+		if (v & 128) { stop (c); g_chanNote[c] = 0; }
 		else if ((v & 7) == 0) continue;
-		else if (p.mute[c]) { SoundStop (PID, c); g_chanNote[c] = 0; }
-		else { SoundStart (PID, c, fms_note_mhz (v), SOUND_FM, 220); g_chanNote[c] = v; }
+		else if (p.mute[c]) { stop (c); g_chanNote[c] = 0; }
+		else { start (c, fms_note_mhz (v), SOUND_FM, 220); g_chanNote[c] = v; }
 	}
 	g_shownPat = g_pat; g_shownRow = g_row;
 }
@@ -101,11 +99,11 @@ static void fill (s16 *out, unsigned frames)
 				if (!advance ()) { g_ended = true; }
 			}
 			unsigned n = frames - done < g_rowLeft ? frames - done : g_rowLeft;
-			s_Lock.Acquire (); Render (out + done * 2, n); s_Lock.Release ();
+			EnterCriticalSection (&g_synthLock); render (out + done * 2, n); LeaveCriticalSection (&g_synthLock);
 			g_rowLeft -= n; done += n; g_frames += n;
-			if (g_ended && g_rowLeft == 0) { g_playing = false; SoundStop (PID, -1); }
+			if (g_ended && g_rowLeft == 0) { g_playing = false; stop (-1); }
 		}
-		else { s_Lock.Acquire (); Render (out + done * 2, frames - done); s_Lock.Release (); done = frames; }	// (releases fade out)
+		else { EnterCriticalSection (&g_synthLock); render (out + done * 2, frames - done); LeaveCriticalSection (&g_synthLock); done = frames; }	// (releases fade out)
 	}
 	LeaveCriticalSection (&g_seqLock);
 }
@@ -161,7 +159,7 @@ static bool load_file (const char *path)
 	free (b);
 	if (!ok) { fms_clear (&s); return false; }
 	EnterCriticalSection (&g_seqLock);
-	SoundStop (PID, -1);
+	stop (-1);
 	fms_clear (&g_song);
 	g_song = s; s.npat = 0;
 	g_loaded = true; g_playing = false; g_paused = false; g_ended = false;
@@ -242,14 +240,14 @@ static void on_command (int id, int code)
 		EnterCriticalSection (&g_seqLock);
 		if (!g_loaded) { LeaveCriticalSection (&g_seqLock); on_command (ID_OPEN, 0); return; }
 		if (!g_playing) { g_playing = true; g_paused = false; g_ended = false; }
-		else { g_paused = !g_paused; if (g_paused) SoundStop (PID, -1); }
+		else { g_paused = !g_paused; if (g_paused) stop (-1); }
 		LeaveCriticalSection (&g_seqLock);
 		update_info ();
 		break;
 	case ID_STOP:
 		EnterCriticalSection (&g_seqLock);
 		g_playing = false; g_paused = false; g_pat = g_row = 0; g_rowLeft = 0; g_frames = 0;
-		SoundStop (PID, -1); memset (g_chanNote, 0, sizeof g_chanNote);
+		stop (-1); memset (g_chanNote, 0, sizeof g_chanNote);
 		LeaveCriticalSection (&g_seqLock);
 		update_info ();
 		break;
@@ -332,7 +330,6 @@ int WINAPI WinMain (HINSTANCE inst, HINSTANCE, LPSTR cmd, int show)
 	InitializeCriticalSection (&g_synthLock);
 	InitializeCriticalSection (&g_seqLock);
 	fms_new (&g_song); fms_clear (&g_song);
-	SoundAcquire (PID);
 	if (!audio_open ()) { MessageBoxA (0, "Cannot open the sound output.", "FM Song Player", MB_ICONERROR); return 1; }
 
 	WNDCLASSA wc = {}; wc.lpfnWndProc = wndproc; wc.hInstance = inst; wc.lpszClassName = "OnyxFmsPlayer";

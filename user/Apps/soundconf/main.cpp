@@ -6,6 +6,7 @@
 // chime, when no app holds the sound output). The menu bar's speaker changes the same volume: the
 // applet follows it.
 //
+#include "audiokit/audiokit.h"
 #include "kapi.h"
 #include "applib.h"
 #include "volume.h"
@@ -113,18 +114,14 @@ static void on_mute (Widget &w)
 // A chime: C E G, a sine each, the notes one after the other (the voices 0..2).
 static void on_test (Widget &)
 {
-	int a = kapi_sound_acquire ();
-	if (a <= 0) { g_status->setText (a == 0 ? "Another app is playing: try again later." : "No sound output."); return; }
 	static const unsigned NOTES[3] = { 523251, 659255, 783991 };
 	for (int i = 0; i < 3; i++)
 	{
-		kapi_sound_start (i, NOTES[i], SOUND_SINE, 170);
+		ak_fm_start (i, NOTES[i], SOUND_SINE, 170);
 		kapi_msleep (140);
 	}
 	kapi_msleep (320);
-	kapi_sound_stop (-1);
-	kapi_msleep (60);
-	kapi_sound_release ();
+	ak_fm_stop (-1);
 	g_status->setText ("");
 }
 

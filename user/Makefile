@@ -202,8 +202,8 @@ lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h Apps/media/decode.h App
 lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o: lib/ak/%.o: audiokit/%.cpp audiokit/audiokit.h Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -IApps/koton -c $< -o $@
-# (the FM synthesizer: the kernel's own source, in its host mode)
-lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h ../kernel/sys/sound.cpp ../kernel/sys/sound_tables.h kapi.h $(LIB_DEP)
+# (the FM synthesizer: audiokit/fmsynth.h)
+lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h audiokit/fmsynth.h audiokit/fm_tables.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -w -c $< -o $@
 lib/ak/akso.o: audiokit/akso.c lib.h kapi.h
@@ -556,6 +556,8 @@ setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
 # emulators it takes the covers and the save states' pictures from.
 FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
+FT_EXTRA_soundconf = lib/audiokit.imp.a
+soundconf.elf: lib/audiokit.imp.a audiokit/audiokit.h
 fmtracker.elf: lib/audiokit.imp.a audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a printerkit/printerkit.h

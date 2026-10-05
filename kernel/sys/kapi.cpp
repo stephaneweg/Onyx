@@ -2745,8 +2745,10 @@ int kapi_wlan_reconnect (void) { return NetWlanReconnect (); }
 static unsigned CallerPid (void) { CAddressSpace *pAS = CurrentAS (); return pAS != 0 ? pAS->GetPid () : 0; }
 int  kapi_sound_acquire (void) { return SoundAcquire (CallerPid ()); }
 void kapi_sound_release (void) { SoundRelease (CallerPid ()); }
-int  kapi_sound_start (int nVoice, unsigned nMilliHz, int nWave, int nVolume) { return SoundStart (CallerPid (), nVoice, nMilliHz, nWave, nVolume); }
-int  kapi_sound_stop (int nVoice) { return SoundStop (CallerPid (), nVoice); }
+// (retired 2026-10-05: the synthesizer left the kernel -- AudioKit: ak_fm_start / ak_fm_stop /
+// ak_fm_instrument, user/audiokit --; the three slots stay in the table and answer -1)
+int  kapi_sound_start (int, unsigned, int, int) { return -1; }
+int  kapi_sound_stop (int) { return -1; }
 int kapi_sound_write (const short *pFrames, unsigned nFrames)
 {
 	// (the ring holds half a second: no call takes more frames than that -- what is read)
@@ -2765,12 +2767,7 @@ int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 }
 int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
 int  kapi_sound_output (int nOut) { return SoundOutput (nOut); }	// (v84) which output plays
-int kapi_sound_instrument (int nVoice, const struct kapi_fm_instrument *pIns)
-{
-	struct kapi_fm_instrument In;
-	if (pIns == 0 || !UserGet (&In, pIns)) return -1;
-	return SoundInstrument (CallerPid (), nVoice, &In);
-}
+int kapi_sound_instrument (int, const struct kapi_fm_instrument *) { return -1; }	// (retired: see kapi_sound_start)
 
 // --- v68: low-latency sound ---
 int kapi_sound_config (int nChunkFrames, int nAhead) { return SoundConfig (CallerPid (), nChunkFrames, nAhead); }

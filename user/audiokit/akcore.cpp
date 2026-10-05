@@ -153,6 +153,7 @@ extern "C" void ak_out_close (void)				{ if (s_out == 1) { s_out = 0; kapi_sound
 
 #define P_CHUNK		512				// frames a pass
 #define P_AHEAD		4096				// frames kept queued (~93 ms)
+#define P_AHEAD_LIVE	1024				// ... when only notes play (a game's effects: ~23 ms)
 
 static volatile int s_lk;				// the player's state, between its thread and the callers
 static Stream *s_file;
@@ -194,7 +195,7 @@ static int player_main (void *)
 			}
 			if (s_state == AK_BUSY) s_state = AK_PLAYING;
 		}
-		if (ak_out_queued () > P_AHEAD) { kapi_msleep (4); continue; }
+		if (ak_out_queued () > (bFile ? P_AHEAD : P_AHEAD_LIVE)) { kapi_msleep (4); continue; }
 
 		memset (buf, 0, sizeof buf);
 		kapi_lock (&s_lk);
@@ -218,7 +219,7 @@ static int player_main (void *)
 			else s_liveQuiet = 0;
 		}
 		kapi_unlock (&s_lk);
-		if (akfm_active ()) { memset (tmp, 0, sizeof tmp); ak_fm_render (tmp, P_CHUNK); ak_mix_s16 (buf, tmp, P_CHUNK, nGain); }
+		if (akfm_active ()) { memset (tmp, 0, sizeof tmp); ak_fm_render (tmp, P_CHUNK); ak_mix_s16 (buf, tmp, P_CHUNK, 65536); }
 		ak_out_write (buf, P_CHUNK);
 	}
 	return 0;

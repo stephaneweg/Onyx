@@ -1,8 +1,8 @@
-// sound_tables.h -- generated tables for sys/sound.cpp (integer synthesis, no FP in the kernel).
+// fm_tables.h -- generated tables for fmsynth.h (integer synthesis; included inside its namespace).
 // s_Sin1024: one sine period, 1024 steps, amplitude 32767. s_Exp256: 65535 * 2^(-i/256):
 // an attenuation of a units (256 units = 6.02 dB, one halving) is exp[a & 255] >> (a >> 8).
-#ifndef _sound_tables_h
-#define _sound_tables_h
+#ifndef _audiokit_fm_tables_h
+#define _audiokit_fm_tables_h
 
 static const s16 s_Sin1024[1024] = {
 	0, 201, 402, 603, 804, 1005, 1206, 1407, 1608, 1809, 2009, 2210, 2410, 2611, 2811, 3012,

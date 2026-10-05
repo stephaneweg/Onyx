@@ -873,7 +873,7 @@ always 16-bit stereo at `AUDIOKIT_RATE` (44100 Hz, the system output's).
 | **The player** | `ak_play (path, loop)`, `ak_play_stop`, `_pause`, `_state`, `_pos_ms`, `_len_ms`, `_seek_ms`, `_volume`, `_wait`, `_error`, `_keep_output` | A file played **in the background** by a thread of the library, on the system's output (it takes the output when it has something to play and lets it go after ~0.6 s of silence; another program playing: `AK_BUSY` until it can). One line to make a sound. |
 | **Live notes** | `ak_note_on (channel, key, velocity)`, `ak_note_off`, `ak_program`, `ak_control`, `ak_pitch_bend`, `ak_notes_off` | Notes on a **General MIDI synthesizer** (16 channels, 9 the drums), mixed with the file by the same thread. |
 | **The output** | `ak_out_open`, `ak_out_write`, `ak_out_free`, `ak_out_queued`, `ak_out_close` | The system's output for a program that makes its own frames: the acquire / status / write loop every player and emulator wrote for itself (`ak_out_open (0, 0)`: the output as it is configured). **The Media Player and the six emulators play through it.** |
-| **The FM synthesizer** | `ak_fm_instrument (voice, ins)`, `ak_fm_start (voice, milli_hz, wave, volume)`, `ak_fm_stop`, `ak_fm_render`, `ak_fm_live` | The kernel's synthesizer **in user space** (16 voices, two-operator FM instruments, the plain waves; `struct kapi_fm_instrument`, `SOUND_FM`...): the voices are played by the player's thread, mixed with the file and the MIDI notes — or, after `ak_fm_live (0)`, rendered by the program itself (`ak_fm_render`: an export to a file). **FM Tracker plays through it.** |
+| **The FM synthesizer** | `ak_fm_instrument (voice, ins)`, `ak_fm_start (voice, milli_hz, wave, volume)`, `ak_fm_stop`, `ak_fm_silence`, `ak_fm_render`, `ak_fm_live` | **The system's voices** (`audiokit/fmsynth.h`; they were in the kernel until 2026-10-05, which only puts sound out now): 16 voices, each a plain wave (`SOUND_SQUARE` … `SOUND_NOISE`) or a two-operator FM instrument (`struct kapi_fm_instrument`, `SOUND_FM`). A note sounds until it is stopped; the voices are played by the player's thread, mixed with the file and the MIDI notes (~70 ms from the call to the ear when only notes play) — or, after `ak_fm_live (0)`, rendered by the program itself (`ak_fm_render`: an export, or a program that mixes them with its own frames — Doom's music). **BASIC's `SOUND` / `PLAY` / `NOTEON`, the games' effects (`game.h`), `tone`, FM Tracker, the Sound applet's test play through it.** |
 | **Mixing** | `ak_gain_s16`, `ak_mix_s16` (saturated), `ak_mono_to_stereo`, `ak_volume_gain`, `ak_resampler_new` / `ak_resample`, `ak_f32_to_s16`, `ak_soft_clip` | Gains are 16.16 (65536 = 1). `ak_soft_clip` is the soft limiter (straight up to 0.75, then a `tanh` knee that never passes 1 — Koton's); `ak_f32_to_s16` goes through it. |
 | **Effects** | `ak_reverb_new (rate)` / `_set (room, damp, wet, width)` / `_process (in, left, right, n)` / `_mute` / `_free`; `ak_chorus_new (rate, delay_s, depth_s, hz)` / `_process` / `_mute` / `_free` | MeltySynth's **reverb** (Freeverb: mono in, stereo out) and **chorus**, as effects of their own on float buffers. |
 | **Notes** | `ak_note_mhz`, `ak_note_key (note, octave)`, `ak_note_octave_mhz (note, octave)`, `ak_note_name`, `ak_note_parse` | A MIDI key's frequency (69 = A4 = 440 Hz); a note (0 = C .. 11 = B) and an octave's key (C4 = 60) and frequency — **the one table of notes** (FM Tracker's `fms_note_mhz` uses it); a key's name (`C4`, `F#3`), a name's key. |
@@ -897,17 +897,15 @@ the library, and Koton and the Media Player no longer carry them.
 - **Inside**: `audiokit/akcore.cpp` (the files, the player, the output, the effects) compiles the Media
   Player's `decode.h` / `midi.h` (the decoder classes, the Standard MIDI File reader, the rate converter)
   behind the C interface; `akmix.cpp` is the pure part (mixing, the soft limiter, the notes, the WAV
-  header), `aksf.cpp` the SoundFont, `akwav.cpp` the WAV files, `akfm.cpp` the FM synthesizer — **the
-  kernel's own source** (`kernel/sys/sound.cpp` compiled in its host mode: one source, the same sound);
+  header), `aksf.cpp` the SoundFont, `akwav.cpp` the WAV files, `akfm.cpp` the FM synthesizer over `fmsynth.h` (one source: the library's and
+  the PC tools');
   `audiokit/akso.c` gives the library its `malloc` over the importer's allocator; newlib's `libm`
   and `libc` are linked in. The table: `audiokit/audiokit.abi` (append-only).
 - **Not in it** (and why): FFmpeg and the video side of `user/av` (GPL, and video: the Media
-  Player's), Koton's engine and plugin host (its own classes), the per-sample inline DSP of `kplug.h`. The kernel
-  keeps its own voices (`kapi_sound_start`: the kapi is append-only; BASIC's `SOUND` / `PLAY`, the games
-  and `tone` use them) — a new program takes `ak_fm_*`.
+  Player's), Koton's engine and plugin host (its own classes), the per-sample inline DSP of `kplug.h`.
 - **The PC builds** (no shared library there): Koton compiles `akmix.cpp`, `aksf.cpp` and `akwav.cpp`
   into itself (`Apps/koton/engine/akhost.cpp`, `ui/audio.h`); the simulator (`tools/tests/desktop_sim/shots.sh`)
-  makes a `libaudiokit.a` of the library's sources for the Media Player, FM Tracker and BASIC.
+  makes a `libaudiokit.a` of the library's sources, linked into every app it builds.
 - **Tests**: `play --notes` (a scale on the synthesizer), `play --fm` (the FM synthesizer: a note rendered
   off line and checked, then a scale heard), `play --info <file>`, `play <file>`
   (docs/04 §8); a BASIC program (`PLAYFILE`, `MIDINOTE`: docs/04 *Onyx BASIC*).
@@ -1014,11 +1012,13 @@ the library, and Koton and the Media Player no longer carry them.
 > remembered), `ftpfs_forget`, `ftpfs_load_sites` (the remembered servers of `SD:/etc/ftpfs.ini`).
 > **Sound (ABI v46)**: `kapi_sound_acquire ()` first (1 = the output is yours; 0 = another
 > app has it) — the output is released and silenced by `kapi_sound_release ()` or when your
-> process ends. Then `kapi_sound_start (voice 0..15, milliHz, SOUND_SQUARE / SINE / TRIANGLE /
-> SAW / NOISE, volume 0..255)` plays a note until `kapi_sound_stop (voice)` (-1 = all), and
-> `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
+> process ends. Then `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
 > returns the frames taken — loop with a short sleep while it returns 0) for audio / MIDI
-> players. Example: `user/bin/tone.c`.
+> players. **A program that only wants to make a sound does not do this itself: AudioKit (§5.7) does** —
+> `ak_fm_start (voice 0..15, milliHz, SOUND_SQUARE / SINE / TRIANGLE / SAW / NOISE, volume 0..255)` plays a
+> note until `ak_fm_stop (voice)` (-1 = all), `ak_play (file)` a file, `ak_out_*` your own frames. (The
+> kernel had 16 voices of its own, `kapi_sound_start` / `_stop`, until 2026-10-05: they answer −1 now.)
+> Example: `user/bin/tone.cpp`.
 > **Low-latency sound (ABI v68)**: the output normally lags ~116 ms (1024-frame chunks, 4 rendered
 > ahead). The owner may ask for less: `kapi_sound_config (chunk_frames, ahead)` (64..1024 frames,
 > 1..4 chunks; 0 = the default) → the latency in frames, (ahead + 1) × chunk — 256 × 2 = 768
@@ -1026,16 +1026,17 @@ the library, and Koton and the Media Player no longer carry them.
 > 1: try 256 × 2 first). Then keep little queued: with `kapi_sound_write`, write only while
 > `kapi_sound_status`'s free frames show less than a chunk or two waiting. **The mapped ring**:
 > `struct kapi_sound_ring *r = kapi_sound_map ();` (0 if you are not the owner) — 8192 frames in
-> shared memory that the kernel mixes (with the voices and the stream) until you release the
+> shared memory that the kernel mixes (with the stream) until you release the
 > output. `kapi_sound_ring_write (r, frames, n)` → frames taken (`kapi_sound_ring_free (r)`: the
 > room). It makes no kapi call, so **code on an app core** (`kapi_core_run`) can fill it: the
 > audio needs no pump thread on core 0. `r->dry` counts the underruns; `r->rd` moves as the
 > kernel plays — a thread can sleep on it with `kapi_wait_word (&r->rd, old, ms)` (§5.2). All of
 > this is undone by `kapi_sound_release` or the process's end. Example: `user/bin/ringtest.c`
 > (a tone from an app core at 256 × 2).
-> **FM instruments (ABI v47)**: fill a `struct kapi_fm_instrument` (2 operators, OPL2-style
-> parameters, see `kern/kapi_abi.h`), `kapi_sound_instrument (voice, &ins)`, then
-> `kapi_sound_start (voice, milliHz, SOUND_FM, volume)` / `kapi_sound_stop (voice)`. The FM Song
+> **FM instruments** (AudioKit; the kernel's `kapi_sound_instrument`, ABI v47, is retired): fill a
+> `struct kapi_fm_instrument` (2 operators, OPL2-style parameters, see `kern/kapi_abi.h`),
+> `ak_fm_instrument (voice, &ins)`, then `ak_fm_start (voice, milliHz, SOUND_FM, volume)` /
+> `ak_fm_stop (voice)`. The FM Song
 > formats (.FMS / .FMI) and their conversion are in `user/Apps/fmtracker/fms.h` (portable;
 > host tests: `sh tools/tests/run_fms_test.sh`).
 > **Held keys (ABI v48)**: key events only report presses; an action game polls

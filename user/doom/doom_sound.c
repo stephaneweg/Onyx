@@ -4,7 +4,7 @@
 //   * Sound effects: the WAD's DS* lumps (8-bit, 11025 Hz) mixed here -- 16 channels, the
 //     volume and stereo separation Doom gives -- into the kernel's PCM stream
 //     (kapi_sound_write, 44100 Hz stereo), a little ahead of the output, at each game tic.
-//   * Music: the MUS (Doom) or MIDI (Freedoom) songs played on the kernel's FM voices (kapi_sound_instrument, OPL2-
+//   * Music: the MUS (Doom) or MIDI (Freedoom) songs played on AudioKit's FM voices (ak_fm_instrument, OPL2-
 //     style 2-operator), with the instruments of the WAD's GENMIDI lump -- the same OPL
 //     patches the original Adlib / Sound Blaster driver used, so it sounds like DOS Doom.
 //   * Two threads: the engine may run on an app core (doom_onyx.c), where it makes no kapi
@@ -18,6 +18,7 @@
 #include <string.h>
 #include <math.h>
 #include "kapi.h"
+#include "../audiokit/audiokit.h"	/* the FM voices (the music): ak_fm_* */
 #include "doomtype.h"
 #include "i_sound.h"
 #include "w_wad.h"
@@ -66,7 +67,7 @@ static void wait_applied (unsigned upto)			// until the commands before upto are
 
 static int audio_ok (void)
 {
-	if (!s_audio) s_audio = kapi_sound_acquire () == 1 ? 1 : -1;
+	if (!s_audio) { s_audio = kapi_sound_acquire () == 1 ? 1 : -1; ak_fm_live (0); }	/* (the voices: mixed here, sfx_out) */
 	return s_audio == 1;
 }
 
@@ -189,8 +190,25 @@ static void sfx_out (void)
 	}
 	fence ();
 	s_rTail = t + n;
-	if (n) kapi_sound_write (buf, n);
-	s_kQueued = cap - freeFrames + n;
+	// the music: AudioKit's FM voices, rendered here over the effects (and alone, a little ahead, when
+	// the effects' ring has nothing: the music does not wait for them)
+	unsigned out = n, queued = cap - freeFrames;
+	if (queued + out < 2048)
+	{
+		unsigned more = 2048 - queued - out;
+		if (out + more > freeFrames) more = freeFrames > out ? freeFrames - out : 0;
+		if (out + more > 4096) more = 4096 - out;
+		memset (buf + out * 2, 0, more * 4);
+		out += more;
+	}
+	if (out)
+	{
+		static short fm[4096 * 2];
+		ak_fm_render (fm, (int) out);
+		ak_mix_s16 (buf, fm, (int) out, 65536);
+		kapi_sound_write (buf, out);
+	}
+	s_kQueued = queued + out;
 }
 
 static snddevice_t s_devices[] = { SNDDEVICE_SB, SNDDEVICE_PAS, SNDDEVICE_GUS, SNDDEVICE_WAVEBLASTER,
@@ -249,7 +267,7 @@ static void fm_op (struct kapi_fm_op *o, const gm_op *g)
 
 static void voice_off (int v)
 {
-	if (s_v[v].on) kapi_sound_stop (v);
+	if (s_v[v].on) ak_fm_stop (v);
 	s_v[v].on = 0;
 }
 
@@ -301,13 +319,13 @@ static void note_on (int ch, int key, int vel)
 		fm_op (&fi.op[1], &ins->voices[0].car);
 		fi.feedback = (ins->voices[0].feedback >> 1) & 7;
 		fi.connection = ins->voices[0].feedback & 1;
-		kapi_sound_instrument (best, &fi);
+		ak_fm_instrument (best, &fi);
 		s_voiceIns[best] = ins;
 	}
 	int vol = vel * s_mch[ch].volume / 127 * s_musVol / 127;	// 0..127
 	vol = vol * 2 > 255 ? 255 : vol * 2;
 	s_v[best].on = 1; s_v[best].chan = ch; s_v[best].key = key; s_v[best].note = note; s_v[best].age = ++s_age; s_v[best].ins = ins;
-	kapi_sound_start (best, note_mhz (note, ch == 15 ? 128 : s_mch[ch].bend), SOUND_FM, vol);
+	ak_fm_start (best, note_mhz (note, ch == 15 ? 128 : s_mch[ch].bend), SOUND_FM, vol);
 }
 
 static void bend (int ch, int b)
@@ -318,7 +336,7 @@ static void bend (int ch, int b)
 		{
 			// (a restart with the new pitch: the kernel voices have no pitch-only change)
 			int vol = 127 * s_mch[ch].volume / 127 * s_musVol / 127 * 2;
-			kapi_sound_start (v, note_mhz (s_v[v].note, b), SOUND_FM, vol > 255 ? 255 : vol);
+			ak_fm_start (v, note_mhz (s_v[v].note, b), SOUND_FM, vol > 255 ? 255 : vol);
 		}
 }
 

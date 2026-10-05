@@ -1399,6 +1399,8 @@ struct TKApiTable
 	// the ring, owner pid (0 = free). Calls from a non-owner return -1.
 	int  (*sound_acquire) (void);
 	void (*sound_release) (void);
+	// (sound_start / sound_stop / sound_instrument: RETIRED 2026-10-05 -- the synthesizer left the
+	// kernel for AudioKit, ak_fm_*; the slots stay and answer -1)
 	int  (*sound_start) (int voice, unsigned millihz, int wave, int volume);
 	int  (*sound_stop) (int voice);
 	int  (*sound_write) (const short *frames, unsigned nframes);
