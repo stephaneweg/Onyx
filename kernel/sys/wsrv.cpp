@@ -88,25 +88,28 @@ void WsOnProcessGone (unsigned nPid)
 
 // ---- the raw input ------------------------------------------------------------------------------
 
-// Queue one event (an interrupt is allowed). A pointer move after an unread pointer move with the
-// same buttons replaces it; a full ring drops the event (counted).
+// Queue one event (an interrupt is allowed). A pointer MOVE (no button changed, no wheel) after an
+// unread pointer move replaces it -- never a press or a release: where the button went down is
+// what a drag starts from. A full ring drops the event (counted).
+static unsigned s_nPushButtons = 0;		// the buttons of the last pointer event queued
+static boolean  s_bLastMove = FALSE;		// the last event queued is a pointer move
+
 static boolean Push (const struct kapi_ws_input &Ev)
 {
 	if (!s_bOwned) return FALSE;
 	s_RingLock.Acquire ();
-	unsigned nLast = (s_nHead + WS_RING - 1) % WS_RING;
-	if (   Ev.type == KAPI_WS_IN_POINTER && Ev.a == 0 && s_nHead != s_nTail
-	    && s_Ring[nLast].type == KAPI_WS_IN_POINTER && s_Ring[nLast].a == 0
-	    && s_Ring[nLast].buttons == Ev.buttons)
+	boolean bMove = Ev.type == KAPI_WS_IN_POINTER && Ev.a == 0 && Ev.buttons == s_nPushButtons;
+	if (bMove && s_bLastMove && s_nHead != s_nTail)
 	{
-		s_Ring[nLast] = Ev;
+		s_Ring[(s_nHead + WS_RING - 1) % WS_RING] = Ev;
 	}
 	else
 	{
 		unsigned nNext = (s_nHead + 1) % WS_RING;
 		if (nNext == s_nTail) s_nDropped++;
-		else { s_Ring[s_nHead] = Ev; s_nHead = nNext; }
+		else { s_Ring[s_nHead] = Ev; s_nHead = nNext; s_bLastMove = bMove; }
 	}
+	if (Ev.type == KAPI_WS_IN_POINTER) s_nPushButtons = Ev.buttons;
 	s_RingLock.Release ();
 	IoWake ();				// (the server's KAPI_WS_WAIT)
 	return TRUE;
@@ -254,11 +257,21 @@ static long Input (struct kapi_ws_input *pOut, long nMax)
 	return n;
 }
 
+// Until an event is there, or the timeout. The wait is on the system's I/O generation, which moves
+// for everyone's I/O (the network's, the pipes'): what is not for the server is slept through here,
+// not returned to it.
 static long Wait (unsigned nTimeoutMs)
 {
 	if (nTimeoutMs > WS_WAIT_MAX_MS) nTimeoutMs = WS_WAIT_MAX_MS;
-	u32 nGen = IoGen ();			// (taken before the look: a push after it changes it)
-	if (s_nHead == s_nTail && nTimeoutMs != 0) IoWait (nGen, nTimeoutMs);
+	unsigned nStart = CTimer::Get ()->GetClockTicks ();
+	while (s_bOwned)
+	{
+		u32 nGen = IoGen ();		// (taken before the look: a push after it changes it)
+		if (s_nHead != s_nTail) break;
+		unsigned nGoneMs = (CTimer::Get ()->GetClockTicks () - nStart) / 1000;
+		if (nGoneMs >= nTimeoutMs) break;
+		IoWait (nGen, nTimeoutMs - nGoneMs);
+	}
 	s_nLastCall = CTimer::Get ()->GetTicks ();
 	return s_nHead != s_nTail ? KAPI_WS_PENDING_INPUT : 0;
 }
