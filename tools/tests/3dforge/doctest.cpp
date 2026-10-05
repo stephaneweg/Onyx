@@ -113,6 +113,46 @@ int main (int argc, char **argv)
 	f = &add (d, F_COMBINE); f->target = 0; f->tool = id2; f->op = OP_SUB;
 	d.rebuild ();
 	check (d.bodies.size () == 1 && !d.feats.back ().failed, "moved, then cut from the first");
+	// two edges of a corner rounded one after the other meet as when rounded together: mitred, no stub left
+	{
+		Doc a; Feature *g = &add (a, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (a, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (0, 15, 10)); g->edges.push_back (V3 (20, 0, 10)); a.rebuild ();
+		Doc b; g = &add (b, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (b, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (0, 15, 10));
+		g = &add (b, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (22, 0, 10)); b.rebuild ();
+		check (!b.feats[2].failed && fabs (a.bodies[0].m.Volume () - b.bodies[0].m.Volume ()) < 0.02, "two fillets in two steps: the same corner as in one (mitred)");
+		Doc c; g = &add (c, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (c, F_CHAMFER); g->target = 0; g->r = 3; g->edges.push_back (V3 (0, 15, 10)); g->edges.push_back (V3 (20, 0, 10)); c.rebuild ();
+		Doc e; g = &add (e, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (e, F_CHAMFER); g->target = 0; g->r = 3; g->edges.push_back (V3 (0, 15, 10));
+		g = &add (e, F_CHAMFER); g->target = 0; g->r = 3; g->edges.push_back (V3 (22, 0, 10)); e.rebuild ();
+		check (!e.feats[2].failed && fabs (c.bodies[0].m.Volume () - e.bodies[0].m.Volume ()) < 0.02, "... and two chamfers");
+		// an edge that stops against a wall: its fillet does not cut into the wall
+		Doc w; g = &add (w, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (w, F_BOX); g->target = 0; g->op = OP_UNION; g->centred = false; g->pl = plane_of (V3 (0, 0, 10), V3 (0, 0, 1)); g->x = 0; g->y = 0; g->w = 10; g->d = 30; g->h = 15;
+		w.rebuild (); double before = w.bodies[0].m.Volume ();
+		g = &add (w, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (25, 0, 10)); w.rebuild ();
+		double poly = 0.5 * 96 * sin (2 * PI / 96);
+		check (!w.feats[2].failed && fabs (before - w.bodies[0].m.Volume () - 25 * (1 - poly / 4) * 30) < 0.02, "an edge ending at a wall: only the edge is rounded");
+		// the third edge of a corner, the upright one, after the two on top: the corner becomes a piece of a sphere
+		Doc k; g = &add (k, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (k, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (0, 15, 10));
+		g = &add (k, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (22, 0, 10));
+		g = &add (k, F_FILLET); g->target = 0; g->r = 5; g->edges.push_back (V3 (0, 0, 2)); k.rebuild ();
+		double q = 1 - PI / 4, ball = 12000 - q * 25 * 35 - q * 25 * 25 - q * 25 * 5 - 125 * (1 - PI / 6);
+		printf ("     corner: %s volume %.2f, a sphere's piece would leave %.2f\n", k.feats[3].failed ? k.feats[3].err : "made,", k.bodies[0].m.Volume (), ball);
+		check (!k.feats[3].failed && fabs (k.bodies[0].m.Volume () - ball) < 1.5 && k.bodies[0].m.Genus () == 0, "three edges of a corner rounded, the upright one last: a ball's corner");
+		// ... and the other way: the upright edge first (R 8), then the top's two edges and the arc between them (r 3)
+		Doc t; g = &add (t, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (t, F_FILLET); g->target = 0; g->r = 8; g->edges.push_back (V3 (0, 0, 5)); t.rebuild ();
+		int arcs = 0; for (const Chain &c : t.bodies[0].mesh.chains) if (c.kind == 3) arcs++;
+		check (arcs == 2, "a rounded corner's rims are arcs");
+		g = &add (t, F_FILLET); g->target = 0; g->r = 3;
+		g->edges.push_back (V3 (25, 0, 10)); g->edges.push_back (V3 (0, 20, 10)); g->edges.push_back (V3 (8 - 8 * cos (PI / 4), 8 - 8 * sin (PI / 4), 10)); t.rebuild ();
+		double torus = 12000 - q * 64 * 10 - q * 9 * (32 + 22) - q * 9 * (PI / 2) * (8 - 0.2234 * 3);
+		printf ("     rim: %s volume %.2f, a torus' quarter would leave %.2f\n", t.feats[2].failed ? t.feats[2].err : "made,", t.bodies[0].m.Volume (), torus);
+		check (!t.feats[2].failed && fabs (t.bodies[0].m.Volume () - torus) < 1.5 && t.bodies[0].m.Genus () == 0, "the top's edges and the arc between them rounded: a torus' quarter");
+	}
 	// a body turned and scaled about its centre, then moved
 	{
 		Doc s; Feature *g = &add (s, F_BOX); g->centred = false; g->w = 10; g->d = 20; g->h = 30; s.rebuild ();

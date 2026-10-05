@@ -129,7 +129,7 @@ struct Feature
 struct Chain
 {
 	std::vector<int> pts; bool closed; int g0, g1;
-	int kind;			// 0 other, 1 straight between two flat faces, 2 a circle on a flat face
+	int kind;			// 0 other, 1 straight between two flat faces, 2 a circle on a flat face, 3 an arc of one
 };
 struct RMesh
 {
@@ -145,6 +145,7 @@ struct RMesh
 
 static inline unsigned long long ekey (int a, int b) { if (a > b) { int c = a; a = b; b = c; } return ((unsigned long long) a << 32) | (unsigned) b; }
 
+static bool circle_of (const V3 &p0, const V3 &p1, const V3 &p2, V3 *ctr);
 static void build_mesh (const Manifold &m, RMesh &r)
 {
 	r.clear ();
@@ -328,9 +329,27 @@ static void build_mesh (const Manifold &m, RMesh &r)
 			for (int p : c.pts) { V3 q = r.v[p] - ctr; if (fabs (len (q) - R) > 1e-3 * (1 + R) || fabs (dot (q, nn)) > 1e-4) { round = false; break; } }
 			if (round) c.kind = 2;
 		}
+		else if (!c.closed && c.pts.size () >= 4 && (r.flat[c.g0] != r.flat[c.g1]))	// an arc: a rounded corner's rim
+		{
+			V3 nn = r.gn[r.flat[c.g0] ? c.g0 : c.g1], ctr;
+			if (circle_of (a, r.v[c.pts[c.pts.size () / 2]], b, &ctr))
+			{
+				double R = len (a - ctr); bool round = R > 1e-4;
+				for (int p : c.pts) { V3 q = r.v[p] - ctr; if (fabs (len (q) - R) > 1e-3 * (1 + R) || fabs (dot (q, nn)) > 1e-4) { round = false; break; } }
+				if (round) c.kind = 3;
+			}
+		}
 	}
 }
 
+// The centre of the circle through three points (false: they are in line).
+static bool circle_of (const V3 &p0, const V3 &p1, const V3 &p2, V3 *ctr)
+{
+	V3 a = p1 - p0, b = p2 - p0, ab = cross (a, b); double d = 2 * dot (ab, ab);
+	if (d < 1e-12) return false;
+	*ctr = p0 + cross (b * dot (a, a) - a * dot (b, b), ab) * (1 / d);
+	return true;
+}
 // The distance from p to the segment a b.
 static inline double seg_dist (const V3 &p, const V3 &a, const V3 &b)
 {
@@ -407,10 +426,81 @@ static bool third_of (const RMesh &r, int a, int b, int g, V3 *out)
 	}
 	return false;
 }
+// Is p inside the body? (a ray from it: an odd number of faces crossed)
+static bool inside_mesh (const RMesh &r, const V3 &p)
+{
+	const V3 dir = unit (V3 (0.5377, 0.2917, 0.7911)); int n = 0;
+	for (int i = 0; i < r.tris (); i++)
+	{
+		const V3 &a = r.v[r.t[i * 3]]; V3 e1 = r.v[r.t[i * 3 + 1]] - a, e2 = r.v[r.t[i * 3 + 2]] - a;
+		V3 pv = cross (dir, e2); double det = dot (e1, pv);
+		if (fabs (det) < 1e-14) continue;
+		V3 tv = p - a; double u = dot (tv, pv) / det; if (u < 0 || u > 1) continue;
+		V3 qv = cross (tv, e1); double v = dot (dir, qv) / det; if (v < 0 || u + v > 1) continue;
+		if (dot (e2, qv) / det > 1e-9) n++;
+	}
+	return (n & 1) != 0;
+}
+// How far the cut of an outer edge may go on past one of its ends (from `end`, along `out`), so that it meets
+// what was cut before across the corner -- as two skirting boards are mitred -- instead of stopping short of
+// it. An edge rounded after its neighbour ends where the neighbour's curve begins: the corner itself is still
+// there beyond. Followed along the edge's own line: a wall rising there (matter outside one of the two faces'
+// planes) stops it; so does matter met again after a gap (another part of the body), or the edge going on as a
+// sharp corner (then it simply ended: nothing to reach).
+static double corner_reach (const RMesh &r, const V3 &end, const V3 &out, const V3 &n1, const V3 &n2, double rad, bool *wall)
+{
+	double most = 4 * rad, step = rad / 8; if (step > 0.5) step = 0.5; if (step < 0.05) step = 0.05;
+	V3 in = (n1 + n2) * -0.02; bool gap = false;
+	V3 q0 = end + out * 0.02;				// (a wall right at the end: the cut must not even stick out)
+	*wall = inside_mesh (r, q0 + n1 * 0.05 - n2 * 0.05) || inside_mesh (r, q0 + n2 * 0.05 - n1 * 0.05);
+	if (*wall) return 0;
+	for (double t = step; t <= most; t += step)
+	{
+		V3 q = end + out * t;
+		if (inside_mesh (r, q + n1 * 0.05 - n2 * 0.05) || inside_mesh (r, q + n2 * 0.05 - n1 * 0.05)) return t - step;	// a wall
+		bool solid = inside_mesh (r, q + in);
+		if (!solid) gap = true;
+		else if (gap) return t - step;				// matter again
+		else if (t > 2.5) return 0;				// the corner goes on, sharp
+	}
+	return gap ? most : 0;
+}
+// Where an outer edge ends on two faces already rounded (a box's upright edge under its two rounded top edges):
+// the piece that turns those rounds around the corner -- their profile revolved a quarter turn about the new
+// round's axis: a quarter of a torus, a piece of a sphere when the radii are the same. vi: the end's vertex;
+// out: the edge's direction past it. false: the end is not such a corner (then the straight cut is all).
+static bool corner_blend (const RMesh &r, const Chain &edge, int vi, const V3 &end, const V3 &out, const V3 &n1, const V3 &n2, double R, int segs, Manifold *res)
+{
+	if (fabs (dot (n1, n2)) > 1e-6) return false;
+	double rr[2] = { -1, -1 }; int round[2] = { -1, -1 };
+	for (const Chain &c : r.chains)
+	{
+		if (&c == &edge || (c.pts[0] != vi && c.pts.back () != vi)) continue;
+		// (the line where a side face turns into its round runs across the edge: a round that merely ends here -- the
+		//  neighbour's, seen from its end -- is not one to turn around the corner)
+		if (fabs (dot (unit (r.v[c.pts.back ()] - r.v[c.pts[0]]), out)) > 0.02) continue;
+		for (int k = 0; k < 2; k++)
+		{
+			int side = k == 0 ? edge.g0 : edge.g1, other = c.g0 == side ? c.g1 : c.g1 == side ? c.g0 : -1;
+			if (other < 0 || r.flat[other]) continue;
+			round[k] = other;
+			double top = 0;					// how high the round next to this side face rises: its radius
+			for (int i = 0; i < r.tris (); i++) if (r.grp[i] == other) for (int j = 0; j < 3; j++) top = std::max (top, dot (r.v[r.t[i * 3 + j]] - end, out));
+			rr[k] = top;
+		}
+	}
+	if (rr[0] < 0.01 || fabs (rr[0] - rr[1]) > 1e-3 || R < rr[0] - 1e-6) return false;		// (the two rounds may be one face: mitred, they run into each other)
+	double q = rr[0];
+	SimplePolygon poly = corner_profile (V2 (R, q), V2 (-1, 0), V2 (0, -1), V2 (0, 1), V2 (1, 0), q, true, segs);
+	for (auto &p : poly) if (p.x < 0) p.x = 0;
+	bool right = dot (cross (n1, n2), out) > 0; V3 e1 = right ? n1 : n2, e2 = right ? n2 : n1;
+	*res = placed (Manifold::Revolve (Polygons { poly }, segs, 90), e1, e2, out, end - (n1 + n2) * R).AsOriginal ();
+	return true;
+}
 // The solid for one edge: true and *add (an inner edge: it is added; else cut). why: what stops it.
 static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fillet, int segs, Manifold *out, bool *add, const char **why)
 {
-	*why = "This edge cannot be rounded: only straight edges and edges on a circle";
+	*why = "This edge cannot be rounded: only straight edges, circles and arcs";
 	if (rad <= 1e-6) { *why = "The size must be more than 0"; return false; }
 	int a = c.pts[0], b = c.pts[1];
 	V3 A = r.v[a], B = r.v[c.pts.back ()], p1, p2;
@@ -428,15 +518,28 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		V2 o1 = to2 (n1), o2 = to2 (n2);
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
 		SimplePolygon poly = corner_profile (V2 (0, 0), V2 (1, 0), to2 (d2), o1, o2, rad, fillet, segs);
-		double over = convex ? EPS : 0;
-		Manifold s = Manifold::Extrude (Polygons { poly }, L + 2 * over).Translate ({0, 0, -over});
-		*out = placed (s, ex, ey, ez, dot (ez, dir) > 0 ? A : B).AsOriginal (); *add = !convex;
+		// (an outer edge's cut sticks out of its ends, and goes on to the corner where a neighbour was cut before)
+		bool wallA = false, wallB = false;
+		double pastA = convex ? corner_reach (r, A, -dir, n1, n2, rad, &wallA) : 0, pastB = convex ? corner_reach (r, B, dir, n1, n2, rad, &wallB) : 0;
+		if (convex) { pastA += wallA ? 0 : EPS; pastB += wallB ? 0 : EPS; }
+		bool fromA = dot (ez, dir) > 0;
+		Manifold s = Manifold::Extrude (Polygons { poly }, L + pastA + pastB).Translate ({0, 0, -(fromA ? pastA : pastB)});
+		s = placed (s, ex, ey, ez, fromA ? A : B).AsOriginal ();
+		if (convex && fillet)				// ... and the rounds it ends on are turned around the corner
+		{
+			Manifold bl;
+			if (corner_blend (r, c, c.pts[0], A, -dir, n1, n2, rad, segs, &bl)) s += bl;
+			if (corner_blend (r, c, c.pts.back (), B, dir, n1, n2, rad, segs, &bl)) s += bl;
+		}
+		*out = s; *add = !convex;
 		return true;
 	}
-	if (c.kind == 2)
+	if (c.kind == 2 || c.kind == 3)
 	{
 		int gp = r.flat[c.g0] ? c.g0 : c.g1, gw = r.flat[c.g0] ? c.g1 : c.g0;
-		V3 nn = r.gn[gp], ctr; for (int p : c.pts) ctr = ctr + r.v[p]; ctr = ctr * (1.0 / c.pts.size ());
+		V3 nn = r.gn[gp], ctr;
+		if (c.kind == 2) { for (int p : c.pts) ctr = ctr + r.v[p]; ctr = ctr * (1.0 / c.pts.size ()); }
+		else if (!circle_of (A, r.v[c.pts[c.pts.size () / 2]], B, &ctr)) return false;
 		double R = len (A - ctr); V3 er = unit (A - ctr), et = cross (nn, er);
 		if (!third_of (r, a, b, gp, &p1) || !third_of (r, a, b, gw, &p2)) return false;
 		V3 nw; bool got = false;				// the wall's normal at this edge
@@ -456,9 +559,17 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
 		SimplePolygon poly = corner_profile (V2 (R, 0), to2 (d1), to2 (d2), o1, o2, rad, fillet, segs);
 		for (auto &q : poly) if (q.x < 0) { *why = "Too large for this edge"; return false; }
-		Manifold s = Manifold::Revolve (Polygons { poly }, segs);
-		V3 e1 = er, e2 = cross (nn, er);
-		*out = placed (s, e1, e2, nn, ctr).AsOriginal (); *add = !convex;
+		double sweep = 360; V3 e1 = er;
+		if (c.kind == 3)				// an arc: from its first point, the way its middle goes
+		{
+			auto ang = [&] (const V3 &p) { V3 q = p - ctr; return atan2 (dot (q, et), dot (q, er)) * 180 / PI; };
+			double am = ang (r.v[c.pts[c.pts.size () / 2]]), ab = ang (B);
+			if (am < 0 && ab > 0) ab -= 360; if (am > 0 && ab < 0) ab += 360;
+			sweep = fabs (ab); if (ab < 0) e1 = unit (B - ctr);		// (turned the other way: from its last point)
+			if (sweep < 0.5) return false;
+		}
+		Manifold s = Manifold::Revolve (Polygons { poly }, segs, sweep);
+		*out = placed (s, e1, cross (nn, e1), nn, ctr).AsOriginal (); *add = !convex;
 		return true;
 	}
 	return false;

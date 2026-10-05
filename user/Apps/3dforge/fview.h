@@ -396,8 +396,11 @@ public:
 	void lookAlong (double az, double el) { A.cam.az = az; A.cam.el = el; A.cam.set (); invalidate (true); }
 	double radius () const
 	{
+		// (the depth the frame holds, either side of the view's centre: the bodies, and the grid as far as it is drawn
+		//  -- zoomed out, it was cut off in the distance)
 		double r = 300;
 		for (const Body &b : A.doc.bodies) r = std::max (r, std::max (len (b.mesh.lo - A.cam.t), len (b.mesh.hi - A.cam.t)) * 1.5);
+		r = std::max (r, std::max (width, height) / A.cam.scale * 2.5);
 		return r + len (A.cam.t);
 	}
 
@@ -571,7 +574,7 @@ public:
 			int b, c;
 			if (!edgeAt (mx, my, &b, &c)) break;
 			const Body &bd = A.doc.bodies[b]; const Chain &ch = bd.mesh.chains[c];
-			if (ch.kind == 0) { set_hint ("This edge cannot be rounded: only straight edges and edges on a circle."); ui (R_PANELS); break; }
+			if (ch.kind == 0) { set_hint ("This edge cannot be rounded: only straight edges, circles and arcs."); ui (R_PANELS); break; }
 			V3 m = chain_mid (bd.mesh, ch); bool had = false;
 			for (size_t i = 0; i < f.edges.size (); i++) if (chain_near (bd.mesh, f.edges[i], 0.05) == c) { f.edges.erase (f.edges.begin () + i); had = true; break; }
 			if (!had) { f.edges.push_back (m); f.target = bd.id; }
@@ -750,6 +753,13 @@ public:
 			{
 				sc.line (V3 (0, 0, 0), V3 (cx + n * step, 0, 0), 0.9 * SS, 0xD65C52, 255, bias / 2);
 				sc.line (V3 (0, 0, 0), V3 (0, cy + n * step, 0), 0.9 * SS, 0x50A85A, 255, bias / 2);
+			}
+			else						// the sketch's two axes through its origin, in the colours of the model's
+			{
+				auto colour = [] (const V3 &d) { return fabs (d.x) > 0.9 ? 0xD6483Eu : fabs (d.y) > 0.9 ? 0x40A04Cu : fabs (d.z) > 0.9 ? 0x3A7AD6u : 0x808890u; };
+				double far = (n + 2) * step + std::max (fabs (cx), fabs (cy));
+				sc.line (pl.at (-far, 0), pl.at (far, 0), 1.1 * SS, colour (pl.u), 255, bias / 2);
+				sc.line (pl.at (0, -far), pl.at (0, far), 1.1 * SS, colour (pl.v), 255, bias / 2);
 			}
 		}
 		// the bodies

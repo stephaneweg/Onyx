@@ -2261,7 +2261,8 @@ all the way.
 **Sketch and Extrude.** *Sketch*, then a click on a flat face (or the ground) — or, at the right, a **plane of
 the axes**: *XY* (the ground, seen from above), *XZ* (upright, seen from the front) or *YZ* (upright, seen from the
 right), its **Offset** (how far along the third axis; the plane is shown in the view), then *Start the sketch*.
-The view turns to face the plane and the
+The view turns to face the plane, the plane's **two axes through its origin** drawn in the colours of the
+model's (X red, Y green, Z blue), and the
 tools become **Line**, **Rectangle**, **Circle**, **Arc** and **Close**. There are no constraints to solve: each
 element is a recipe — where it starts (the end of the one before, or a point), its angle and its length; an arc by
 its centre, its radius and its sweep — and they are replayed in the order they were drawn. A run of lines and arcs
@@ -2275,7 +2276,12 @@ last sketch (or the one selected) up, or pushes it into the body; an outline ins
 
 **Fillet and Chamfer.** Click the edges (the one pointed turns orange; an edge that cannot be done, grey), then drag
 the arrow or type the size. An inner edge is filled, an outer one cut. 3DForge rounds **straight edges between
-two flat faces** and **edges on a circle** (the rim of a hole, the top of a cylinder).
+two flat faces**, **edges on a circle** (the rim of a hole, the top of a cylinder) and **arcs** (the rim of a
+corner already rounded). **At a corner** the rounds meet properly, in one step or several: two edges rounded one
+after the other are **mitred** (as skirting boards), and the third edge of the corner — the upright one of a box
+whose two top edges are rounded, or the top's edges and the arc of a box whose upright edge is — turns the rounds
+around it: a piece of a sphere when the radii are the same, of a torus otherwise. An edge that stops against a
+wall is rounded up to the wall, which is left whole.
 
 ![A fillet](../screenshots/3dforge-fillet.png)
 
@@ -2307,7 +2313,8 @@ Keys: **Enter** the step goes on (as OK), **Esc** leaves the tool (in a sketch: 
 selected step (in a sketch: the selected element).
 
 *What it does not do*: everything is a mesh — a circle is a polygon of 96 sides, right for printing, but there is
-no STEP export; edges that are neither straight nor on a circle cannot be rounded; a face or an edge chosen for a
+no STEP export; edges that are neither straight nor on a circle cannot be rounded, and a corner's rounds are
+turned around it only where its faces are square to one another; a face or an edge chosen for a
 step is kept by its place: after a change up the history a later fillet may have to be given its edge again (it
 then shows a warning in the timeline).
 

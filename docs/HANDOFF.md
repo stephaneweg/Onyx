@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## 3DForge, a small parametric CAD (2026-10-05): built, tested on the PC — NOT yet run on the Pi
+## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
 
 Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and
 chamfers as far as they go, STL / OBJ). **Read `docs/3dforge/README.md`** (the mock-ups the user approved, the
@@ -23,6 +23,7 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   floating over the view, the history a **timeline of pictures** under it (arrows / wheel / drag); all the shapes in
   **one fold-out** (the Shapes button); the four extra shapes and the sphere, with the gestures he described; a
   shape's values can be typed at once in the right panel (a ghost, OK).
+- **On the Pi** (the user, 2026-10-05, a screenshot): the app runs, the status bar says `GPU`, the picture is right.
 - **Tested**: `sh tools/tests/run_3dforge_test.sh` (the document: every volume exact), `run_manifold_test.sh`
   (qemu-aarch64), and the app driven by scripts in the desktop simulator (`shots.sh 3dforge`) — **the processor's
   renderer only**. **`kapi_gpu_render` has not run anywhere**: the Pi was on another session's Elegant trial
@@ -32,8 +33,9 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
 - **Known limits / ideas**: an edge or a face chosen is kept by its place (a fixed point / plane): a change up the
   history can lose a later fillet's edge (the step then fails with a message; the fix is a reference that follows —
   the feature that made the edge + which one). No shadow on the ground (in the mock-up). The sketch has no
-  dimensions from the body's edges, no trim, no construction lines. Fillets where three rounded edges meet at a
-  corner are not blended.
+  dimensions from the body's edges, no trim, no construction lines. A corner's rounds are mitred, and turned around
+  the corner by its third edge (a sphere's / a torus' piece: `corner_blend`), only for faces square to one another
+  and a third radius not smaller than the two others'.
 
 ## NEXT (the user, 2026-10-05): the graphics server out of the kernel, into a user process
 
