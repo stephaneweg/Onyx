@@ -227,6 +227,28 @@ if (uk_color_dialog (&colour, "Pick a colour")) root.setBg (colour);
 **The theme**: draw with the palette (`C_BG`, `C_TEXT`, `C_ACCENT`, `C_FACE`…), never with fixed
 colours, so that the program follows the user's theme.
 
+**Without C++** (`uikit/flat.h`, in `uikit/uikit.h`): the same window and widgets as handles, behind plain
+C functions — what a BASIC program calls (`#import UIKit`), what QBStudio's generated code is made of,
+and what a C program can use:
+
+```c
+void *win = uk_window ("Hello", 320, 120, 0);
+uk_label (win, 12, 12, 200, 20, "Your name:");
+void *name = uk_textbox (win, 12, 36, 200, 24, "", 0);
+uk_button (win, 220, 36, 80, 24, "OK", on_ok);          /* void on_ok (void *button) */
+uk_window_run (win);                                     /* until the window is closed */
+```
+
+```basic
+#import UIKit
+win = UIKit.window("Hello", 320, 120, 0)
+ok = UIKit.button(win, 220, 36, 80, 24, "OK", ADDRESSOF(Clicked))
+DO WHILE UIKit.window_wait(win): LOOP
+```
+
+A widget added to UIKit that BASIC should reach gets its functions there (a maker, and `uk_set_text` /
+`uk_get_value` ... taught its kind).
+
 **An icon** — any picture ImageKit reads (BMP today, PNG tomorrow), given as icons are drawn (magenta
 = see-through):
 

@@ -181,18 +181,20 @@ void Root::attach ()
 	kapi_set_key_handler (keyEvent);
 }
 
+bool Root::step ()
+{
+	if (uk_quit ()) return false;
+	uk_pump ();
+	onTick ();
+	displayTick ();
+	tooltipTick ();
+	if (!valid) { draw (); uk_present (); }
+	return !uk_quit ();
+}
 void Root::run ()
 {
 	attach ();
-	while (!uk_quit ())
-	{
-		uk_pump ();
-		onTick ();
-		displayTick ();
-		tooltipTick ();
-		if (!valid) { draw (); uk_present (); }
-		msleep (16);
-	}
+	while (step ()) msleep (16);
 }
 
 // ---- the pointer's shape ---------------------------------------------------------------------------

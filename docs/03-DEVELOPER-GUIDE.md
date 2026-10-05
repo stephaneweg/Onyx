@@ -3391,7 +3391,7 @@ barwidth = 40
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
 - **QBStudio** `apps/qbstudio` (`user/Apps/qbstudio/`, a newlib app: the `qbstudio.elf` rule compiles the core's
   sources into it): `form.h` (the `.form` text read / written, the layout engine: `form_layout` places every
-  element for a size), `gen.h` (the controls' library -- `CLASS Control` with PROPERTYs, each control's object made by `DIM SHARED name AS Control ()` --, `generate ()`: the
+  element for a size), `gen.h` (the controls' library -- `#import UIKit`, `CLASS Control` with PROPERTYs over UIKit's flat functions, each control's object made by `DIM SHARED name AS Control ()` --, `generate ()`: the
   window's code, each place an affine function of the window's size, found by laying the form out at two sizes;
   the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (the
   code editor), `designer.h` (the window drawn with real uikit widgets under a transparent `Overlay` that takes the
@@ -3417,7 +3417,9 @@ barwidth = 40
     leaves out and why: C++ classes and overloads, a struct by value, a reference, variable arguments, more
     than 8 whole-number or 8 floating-point arguments, a function with no prototype in the kit's headers
     (the codecs AudioKit carries; FreeType in FontKit). `<name>` is the C name less the kit's prefix when
-    at least 80 % of its functions share one (`fk_copy` → `copy`); BASIC takes both.
+    at least 80 % of its functions share one (`fk_copy` → `copy`); BASIC takes both. A sixth word, optional, gives the
+    arguments' names (`button 690 l piiiisc uk_button window,x,y,w,h,text,on_click`): BASIC does not read it,
+    QBStudio's completion does (`main.cpp`: `imported_kits`, `kit_members`).
   - *The types*, one letter each (`basint.h`, above `struct Program`): a result `v` none, `i` / `u` 32 bits,
     `l` 64 bits or a pointer, `b` / `c` a byte, `h` / `w` 16 bits, `f`, `d`, `s` a `const char *` (copied into
     a BASIC string); an argument `i` a whole number, `p` a pointer, `c` a function, `s` a C string, `f`, `d`,
@@ -3460,6 +3462,25 @@ barwidth = 40
     a FUNCTION's number back; where the program was (`pc`, `opPc`, the loop's budget) is kept, so a kit may
     call back from inside a call or from the window's pump. An error in the SUB ends it and fails the kit
     call that led to it (`ON ERROR` sees it there). A kit must call back **on the program's own thread**.
+  - *UIKit for BASIC* (`user/Kits/uikit/flat.h`, `flat.cpp`): UIKit's table is C++ (classes to derive), so it
+    has a **flat layer** — C functions on handles, `uk_window`, `uk_button`, `uk_set_text` ... (42 entries of
+    `uikit.bi`; table version 722). A handle is the `Widget *` itself, its `tag` saying what it is (the
+    window: a `Root` subclass, `FlatWin`, with its menus and its resize callback). A widget's `Action`
+    (`void (*) (Widget &)`) is given the BASIC relay as it is — a reference is the widget's address, the
+    relay's first argument. The loop is the program's: `uk_window_wait` = one round of `Root::step ()` (new:
+    what `Root::run ()` repeats) and 16 ms — **in BASIC the loop is BASIC's** (`DO WHILE UIKit.window_wait
+    (win) : LOOP`), not `uk_window_run`: an error or an `END` in a SUB the window called must come back to
+    the VM, which a loop inside the kit would never let it do. One window a program: `uk_window` gives 0 if
+    the runtime's own screen is open, and `runtime.cpp` no longer opens its screen once the program has a
+    UIKit window (`Root::current ()`: `openWindow` refuses; `MSGBOX`, the file dialogs and the error's box
+    go over that window).
+    **QBStudio's generated code is on it** (`gen.h`): the controls' library is `#import UIKit` + `CLASS
+    Control` (a `handle`, PROPERTYs over `UIKit.get_text` ...), `<Form>_Create` makes the window and each
+    widget with `ADDRESSOF (<name>_<Event>)` when the project has that SUB, `<Form>_Sized` is the window's
+    resize callback, `<Form>_Run` the loop. The test (`tools/tests/qbstudio/qbstudio_test.cpp`) runs the
+    sample project against a UIKit of its own placed by the **real** `uikit.bi` (made by `kitbi.py` in the
+    test's script): a function renamed or re-typed in `flat.h` fails it. `/bin/basic`, `qbasic` and
+    `qbstudio` are linked against table 722: their packages need `uikit >= 1.722`.
   - *Not checked*: a wrong pointer ends the program (not the system) — as in any compiled BASIC. Memory a
     kit returns is freed by the program with the kit's own function (`FileKit.free`).
   - Tests: `tools/tests/basic/progs/t24_kits.bas` (PC, `.bax`, AArch64 in machine code and on the VM);

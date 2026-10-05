@@ -44,6 +44,9 @@ void *const *onyxKitOpen (const char *name, int minVersion, char *why, int cap)
 	if (ksame (name, "appkit")) return (void *const *) APPKIT_TABLE_VA;
 	for (const char *c = name; *c; c++) if (*c == '/' || *c == ':' || *c == '.') { kcat (why, 0, cap, "not a kit's name"); return 0; }
 	int err = 0;
+#ifdef BAS_KIT_TEST_NAME				// (a test build: this kit from a file of its own, not the system's)
+	if (ksame (name, BAS_KIT_TEST_NAME)) name = BAS_KIT_TEST_PATH;
+#endif
 	const TLibHeader *t = (const TLibHeader *) kapi_lib_open (name, (unsigned) (minVersion > 0 ? minVersion : 0), &err);
 	if (!t)
 	{

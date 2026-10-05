@@ -2,12 +2,14 @@
 // gen.h -- what QBStudio makes of a form: <Form>.form.bas, the window's code (generated, never edited by hand):
 //   - DIM SHARED: each control an object of the controls' library (Control: Text, Value, Checked, Enabled, Visible,
 //     Move, Focus, AddItem), the window an object (Window: Width, Height, Close);
-//   - <Form>_Create: WINDOW, the controls made where the layout puts them at the window's size, the menus;
+//   - <Form>_Create: the window (UIKit.window), the controls made where the layout puts them at the window's size --
+//     each with your SUB as what it calls (ADDRESSOF) --, the menus;
 //   - <Form>_Layout (w, h): every control placed for a size -- the layout computed at two sizes, each place an
 //     affine function of the size (a Column, a Row, a Grid share the room in proportion);
-//   - <Form>_Run: the event loop -- a control's event calls your SUB <name>_<Event> (Click, Change), the window's
-//     <Form>_Load after it is made, <Form>_Resize after a resize, <Form>_Close before it ends.
-// The controls' library (LIBRARY) is BASIC too, PROPERTY over the runtime's words. The app's program: the library,
+//   - <Form>_Sized: what the window calls when it was resized (the layout again, then your <Form>_Resize);
+//   - <Form>_Run: the window made, <Form>_Load, the events until it is closed -- a control's event calls your SUB
+//     <name>_<Event> (Click, Change) --, then <Form>_Close.
+// The controls' library (LIBRARY) is BASIC too, PROPERTY over UIKit's functions (#import UIKit). The app's program: the library,
 // the forms' code, your files, then "<Main>_Run" (build_program: the lines of each part kept, an error found back).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
@@ -19,66 +21,70 @@
 
 namespace qs {
 
-// The controls' library: the objects the generated code and yours use
+// The controls' library: the objects the generated code and yours use. They are UIKit's widgets (#import UIKit:
+// uikit/flat.h), each object holding its widget's handle.
 static const char *const LIBRARY =
-"' QBStudio's controls (made by QBStudio: the objects of a window's controls)\n"
+"' QBStudio's controls (made by QBStudio: the objects of a window's controls, UIKit's widgets)\n"
+"#import UIKit\n"
 "CLASS Control\n"
-"  id AS INTEGER\n"
-"  off AS INTEGER\n"
-"  hide AS INTEGER\n"
+"  handle AS DOUBLE\n"
 "END CLASS\n"
 "PROPERTY Control.Text AS STRING\n"
-"  RETURN GETTEXT$ (this.id)\n"
+"  RETURN UIKit.get_text (this.handle)\n"
 "END PROPERTY\n"
 "PROPERTY Control.Text (v AS STRING)\n"
-"  SETTEXT this.id, v\n"
+"  UIKit.set_text this.handle, v\n"
 "END PROPERTY\n"
 "PROPERTY Control.Value AS DOUBLE\n"
-"  RETURN VALUE (this.id)\n"
+"  RETURN UIKit.get_value (this.handle)\n"
 "END PROPERTY\n"
 "PROPERTY Control.Value (v AS DOUBLE)\n"
-"  SETVALUE this.id, v\n"
+"  UIKit.set_value this.handle, v\n"
 "END PROPERTY\n"
 "PROPERTY Control.Checked AS INTEGER\n"
-"  IF VALUE (this.id) THEN RETURN -1 ELSE RETURN 0\n"
+"  IF UIKit.get_value (this.handle) THEN RETURN -1 ELSE RETURN 0\n"
 "END PROPERTY\n"
 "PROPERTY Control.Checked (v AS INTEGER)\n"
-"  SETVALUE this.id, v\n"
+"  UIKit.set_value this.handle, v\n"
 "END PROPERTY\n"
 "PROPERTY Control.Enabled AS INTEGER\n"
-"  IF this.off THEN RETURN 0 ELSE RETURN -1\n"
+"  IF UIKit.enabled (this.handle) THEN RETURN -1 ELSE RETURN 0\n"
 "END PROPERTY\n"
 "PROPERTY Control.Enabled (v AS INTEGER)\n"
-"  IF v THEN this.off = 0 ELSE this.off = -1\n"
-"  ENABLECONTROL this.id, v\n"
+"  UIKit.enable this.handle, v\n"
 "END PROPERTY\n"
 "PROPERTY Control.Visible AS INTEGER\n"
-"  IF this.hide THEN RETURN 0 ELSE RETURN -1\n"
+"  IF UIKit.shown (this.handle) THEN RETURN -1 ELSE RETURN 0\n"
 "END PROPERTY\n"
 "PROPERTY Control.Visible (v AS INTEGER)\n"
-"  IF v THEN this.hide = 0 ELSE this.hide = -1\n"
-"  SHOWCONTROL this.id, v\n"
+"  UIKit.show this.handle, v\n"
+"END PROPERTY\n"
+"PROPERTY Control.Count AS INTEGER\n"
+"  RETURN UIKit.item_count (this.handle)\n"
 "END PROPERTY\n"
 "SUB Control.Move (x, y, w, h)\n"
-"  MOVECONTROL this.id, x, y, w, h\n"
+"  UIKit.move this.handle, x, y, w, h\n"
 "END SUB\n"
 "SUB Control.Focus\n"
-"  FOCUSCONTROL this.id\n"
+"  UIKit.focus this.handle\n"
 "END SUB\n"
 "SUB Control.AddItem (s AS STRING)\n"
-"  SETTEXT this.id, s\n"
+"  UIKit.add_item this.handle, s\n"
+"END SUB\n"
+"SUB Control.Clear\n"
+"  UIKit.clear_items this.handle\n"
 "END SUB\n"
 "CLASS Window\n"
-"  id AS INTEGER\n"
+"  handle AS DOUBLE\n"
 "END CLASS\n"
 "PROPERTY Window.Width AS INTEGER\n"
-"  RETURN WINDOWWIDTH\n"
+"  RETURN UIKit.window_width (this.handle)\n"
 "END PROPERTY\n"
 "PROPERTY Window.Height AS INTEGER\n"
-"  RETURN WINDOWHEIGHT\n"
+"  RETURN UIKit.window_height (this.handle)\n"
 "END PROPERTY\n"
 "SUB Window.Close\n"
-"  END\n"
+"  UIKit.window_close this.handle\n"
 "END SUB\n";
 
 // A BASIC string literal (a quote: CHR$(34))
@@ -145,38 +151,64 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 	o.printf ("DIM SHARED %s AS Window ()\n", form);			// (objects: made here)
 	for (int i = 0; i < ctl.n; i++) o.printf ("DIM SHARED %s AS Control ()\n", ctl[i].var);
 	o.puts ("\n");
+	// what a control calls: your SUB <name>_<Event>, if you wrote it
+	char sn[96];
+	auto handler = [&] (const GenCtl &c)
+	{
+		const char *ev = event_of (c.e->kind);
+		if (ev) { snprintf (sn, sizeof sn, "%s_%s", c.var, ev); if (has_sub (subs, sn)) { o.printf ("ADDRESSOF (%s)", sn); return; } }
+		o.puts ("0");
+	};
 	// _Create
-	o.printf ("SUB %s_Create\n  WINDOW ", form); bstr_keep (o, win->hasText ? win->text : form); o.printf (", %d, %d%s\n", W0, H0, win->flag ("resizable") ? ", 1" : "");
+	o.printf ("SUB %s_Create\n  %s.handle = UIKit.window (", form, form); bstr_keep (o, win->hasText ? win->text : form);
+	o.printf (", %d, %d, %d)\n", W0, H0, win->flag ("resizable") ? 1 : 0);
+	if (minW || minH) o.printf ("  UIKit.window_min_size %s.handle, %d, %d\n", form, minW, minH);
 	for (int i = 0; i < ctl.n; i++)
 	{
 		El *e = ctl[i].e; const char *v = ctl[i].var;
 		int x = a[4 * i], y = a[4 * i + 1], w = a[4 * i + 2], h = a[4 * i + 3];
+		const char *maker = 0;
 		switch (e->kind)
 		{
 		case K_SEP:
-			if (e->parent && e->parent->kind == K_MENUTITLE) { o.printf ("  %s.id = MENUITEM (", v); bstr (o, e->parent->text); o.puts (", \"-\")\n"); }
+			if (e->parent && e->parent->kind == K_MENUTITLE) { o.printf ("  UIKit.menu_item %s.handle, ", form); bstr (o, e->parent->text); o.puts (", \"-\", \"\", 0\n"); }
 			continue;
 		case K_MENUITEM:
 		{
 			const El *t = e->parent; if (!t) break;
-			o.printf ("  %s.id = MENUITEM (", v); bstr (o, t->text); o.puts (", "); bstr (o, e->text);
-			const char *k = e->get ("key"); if (k) { o.puts (", "); bstr_keep (o, k); }
-			o.puts (")\n");
+			o.printf ("  UIKit.menu_item %s.handle, ", form); bstr (o, t->text); o.puts (", "); bstr (o, e->text); o.puts (", ");
+			const char *k = e->get ("key"); bstr_keep (o, k ? k : "");
+			o.puts (", "); handler (ctl[i]); o.puts ("\n");
 			continue;
 		}
-		case K_LABEL: case K_STATUSBAR: o.printf ("  %s.id = LABEL (%d, %d, %d, %d, ", v, x, y, w, h); bstr_keep (o, e->text); o.puts (")\n"); break;
-		case K_BUTTON: o.printf ("  %s.id = BUTTON (%d, %d, %d, %d, ", v, x, y, w, h); bstr_keep (o, e->text); o.puts (")\n"); break;
-		case K_TEXTBOX: o.printf ("  %s.id = TEXTBOX (%d, %d, %d, %d, ", v, x, y, w, h); bstr_keep (o, e->text); o.puts (")\n"); break;
-		case K_CHECKBOX: o.printf ("  %s.id = CHECKBOX (%d, %d, %d, %d, ", v, x, y, w, h); bstr_keep (o, e->text); o.printf (", %d)\n", e->flag ("checked") ? 1 : 0); break;
-		case K_LISTBOX: o.printf ("  %s.id = LISTBOX (%d, %d, %d, %d, ", v, x, y, w, h); bstr_keep (o, e->get ("items") ? e->get ("items") : ""); o.puts (")\n"); break;
-		case K_DROPDOWN: o.printf ("  %s.id = DROPDOWN (%d, %d, %d, %d, ", v, x, y, w, h); bstr_keep (o, e->get ("items") ? e->get ("items") : e->text); o.puts (")\n"); break;
-		case K_SLIDER: o.printf ("  %s.id = SLIDER (%d, %d, %d, %d, %d)\n", v, x, y, w, h, e->num ("max", 100)); if (e->get ("value")) o.printf ("  SETVALUE %s.id, %d\n", v, e->num ("value", 0)); break;
-		case K_PROGRESS: o.printf ("  %s.id = PROGRESS (%d, %d, %d, %d)\n", v, x, y, w, h); if (e->get ("value")) o.printf ("  SETVALUE %s.id, %d\n", v, e->num ("value", 0)); break;
+		case K_LABEL: case K_STATUSBAR: maker = "label"; break;
+		case K_BUTTON: maker = "button"; break;
+		case K_TEXTBOX: maker = "textbox"; break;
+		case K_CHECKBOX: maker = "checkbox"; break;
+		case K_LISTBOX: maker = "listbox"; break;
+		case K_DROPDOWN: maker = "dropdown"; break;
+		case K_SLIDER: maker = "slider"; break;
+		case K_PROGRESS: maker = "progress"; break;
 		default: break;
 		}
+		if (!maker) continue;
+		o.printf ("  %s.handle = UIKit.%s (%s.handle, %d, %d, %d, %d", v, maker, form, x, y, w, h);
+		switch (e->kind)
+		{
+		case K_LABEL: case K_STATUSBAR: o.puts (", "); bstr_keep (o, e->text); break;
+		case K_BUTTON: case K_TEXTBOX: o.puts (", "); bstr_keep (o, e->text); o.puts (", "); handler (ctl[i]); break;
+		case K_CHECKBOX: o.puts (", "); bstr_keep (o, e->text); o.printf (", %d, ", e->flag ("checked") ? 1 : 0); handler (ctl[i]); break;
+		case K_LISTBOX: o.puts (", "); bstr_keep (o, e->get ("items") ? e->get ("items") : ""); o.puts (", "); handler (ctl[i]); break;
+		case K_DROPDOWN: o.puts (", "); bstr_keep (o, e->get ("items") ? e->get ("items") : e->text); o.puts (", "); handler (ctl[i]); break;
+		case K_SLIDER: o.printf (", %d, %d, ", e->num ("max", 100), e->num ("value", 0)); handler (ctl[i]); break;
+		case K_PROGRESS: o.printf (", 100, %d", e->num ("value", 0)); break;
+		default: break;
+		}
+		o.puts (")\n");
 		if (e->flag ("hidden")) o.printf ("  %s.Visible = 0\n", v);
 		if (e->flag ("disabled") || e->flag ("readonly")) o.printf ("  %s.Enabled = 0\n", v);
 	}
+	o.printf ("  UIKit.window_on_resize %s.handle, ADDRESSOF (%s_Sized)\n", form, form);
 	o.puts ("END SUB\n\n");
 	// _Layout
 	o.printf ("' the window's layout: where each control goes for a size w x h\nSUB %s_Layout (w, h)\n", form);
@@ -185,7 +217,7 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 	for (int i = 0; i < ctl.n; i++)
 	{
 		if (ctl[i].e->kind == K_MENUITEM || ctl[i].e->kind == K_SEP) continue;
-		o.printf ("  MOVECONTROL %s.id, ", ctl[i].var);
+		o.printf ("  UIKit.move %s.handle, ", ctl[i].var);
 		static const char *const S[4] = { "w", "h", "w", "h" };
 		for (int k = 0; k < 4; k++)
 		{
@@ -196,23 +228,16 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 		o.puts ("\n");
 	}
 	o.puts ("END SUB\n\n");
-	// _Run: the events
-	char sn[96];
-	o.printf ("' the events -> your SUBs\nSUB %s_Run\n  %s_Create\n", form, form);
+	// _Sized: the window was resized
+	o.printf ("' the window was resized (what it calls): the layout again\nSUB %s_Sized (win, w, h)\n  %s_Layout w, h\n", form, form);
+	snprintf (sn, sizeof sn, "%s_Resize", form); if (has_sub (subs, sn)) o.printf ("  %s\n", sn);
+	o.puts ("END SUB\n\n");
+	// _Run: the window, its events until it is closed (each control calls your SUB: _Create)
+	o.printf ("' the window made and its events, until it is closed\nSUB %s_Run\n  %s_Create\n", form, form);
 	snprintf (sn, sizeof sn, "%s_Load", form); if (has_sub (subs, sn)) o.printf ("  %s\n", sn);
-	o.puts ("  DO\n    e = WAITEVENT\n    IF e = -1 THEN\n");
-	snprintf (sn, sizeof sn, "%s_Close", form); if (has_sub (subs, sn)) o.printf ("      %s\n", sn);
-	o.puts ("      EXIT DO\n    ELSEIF e = -2 THEN\n");
-	o.printf ("      %s_Layout WINDOWWIDTH, WINDOWHEIGHT\n", form);
-	snprintf (sn, sizeof sn, "%s_Resize", form); if (has_sub (subs, sn)) o.printf ("      %s\n", sn);
-	for (int i = 0; i < ctl.n; i++)
-	{
-		const char *ev = event_of (ctl[i].e->kind); if (!ev) continue;
-		snprintf (sn, sizeof sn, "%s_%s", ctl[i].var, ev);
-		if (!has_sub (subs, sn)) continue;
-		o.printf ("    ELSEIF e = %s.id THEN\n      %s\n", ctl[i].var, sn);
-	}
-	o.puts ("    END IF\n  LOOP\nEND SUB\n");
+	o.printf ("  DO WHILE UIKit.window_wait (%s.handle)\n  LOOP\n", form);
+	snprintf (sn, sizeof sn, "%s_Close", form); if (has_sub (subs, sn)) o.printf ("  %s\n", sn);
+	o.puts ("END SUB\n");
 }
 
 // The SUB / FUNCTION names a BASIC text defines ("SUB name", "FUNCTION name" at a line's start)

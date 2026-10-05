@@ -122,7 +122,8 @@ static inline bool var_tip (Str &tip, const char *s, int n, int i)
 
 // ---- a caret / selection in a UTF-8 line ------------------------------------------------------------------------------
 static inline bool word_char (char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || (unsigned char) c >= 0x80; }
-static inline bool ctrl_held () { return (kapi_get_modifiers () & MOD_CTRL) != 0; }
+// (Ctrl alone: Ctrl + Alt is AltGr as a PC sends it -- VNC, Onyx Remote --, and types its character)
+static inline bool ctrl_held () { unsigned m = kapi_get_modifiers (); return (m & MOD_CTRL) != 0 && (m & MOD_ALT) == 0; }
 static inline bool shift_held () { return (kapi_get_modifiers () & MOD_SHIFT) != 0; }
 
 // the byte of s[0..n) whose caret is nearest x px (a binary search on the prefixes' widths)

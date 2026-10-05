@@ -68,6 +68,14 @@ KITS (Onyx): the system's shared libraries, called by name
     C names; give e where the function takes its address (filled at the return); a whole array:
     DIM f(15) AS ImageKit.format : n = ImageKit.formats(f(), 16)
   PEEKT address, e   POKET address, e     a structure read from / written at an address; LEN(e) its size
+  UIKit, the system's widgets: #import UIKit
+    win = UIKit.window(title$, w, h, 1)          (1: resizable)   UIKit.window_close win
+    b = UIKit.button(win, x, y, w, h, "OK", ADDRESSOF(Clicked))   SUB Clicked (widget)
+    label textbox checkbox listbox dropdown slider progress: the same way (SD:/lib/uikit.bi)
+    UIKit.get_text(b) set_text b, t$  get_value(b) set_value b, n  add_item  move  show  enable  focus
+    UIKit.menu_item win, "File", "Quit", "Ctrl+Q", ADDRESSOF(Quit)     UIKit.message(title$, text$, 0)
+    DO WHILE UIKit.window_wait(win): LOOP         the events, until the window is closed
+    One window a program: after UIKit.window, PRINT shows nothing. Example: SD:/basic/examples/uikit.bas
   What a kit allocates and returns is yours to free with the kit's function (FileKit.free p#).
   Nothing is checked: a wrong address ends the program. Example: SD:/basic/examples/kits.bas.
 

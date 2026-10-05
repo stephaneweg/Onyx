@@ -35,6 +35,7 @@ public:
 	unsigned bgColor () override { return bg; }
 	void onDraw () override;
 	void run ();
+	bool step ();				// one round of run (): false once it is time to end (attach () first)
 	void attach ();				// hook the kapi pointer / key streams (run () does it); for
 						// an app that pumps its own loop (pump_events + draw + present)
 	virtual void onTick () {}		// called once per run() loop (~60 Hz): polling, timers

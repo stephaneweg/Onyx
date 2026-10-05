@@ -57,7 +57,7 @@ static const char TK_BI[] =
 	"struct item 48 tk_item\nfield name 0 a 16\nfield id 16 l\nfield weight 24 d\nfield at 32 t point\nfield flag 40 b\nfield level 42 h\n"
 	"field ratio 44 f\nfield later 46 z\n"
 	"item_next 15 i p tk_item_next\nitem_kept 16 l - tk_item_kept\npoint_sum 17 i p tk_point_sum\npoints 18 i pi tk_points\n"
-	"add 0 i ii tk_add\nlen 1 i s tk_len\nname 2 s - tk_name\nhalf 3 d d tk_half\nscale 4 f fi tk_scale\n"
+	"add 0 i ii tk_add a,b\nlen 1 i s tk_len\nname 2 s - tk_name\nhalf 3 d d tk_half\nscale 4 f fi tk_scale\n"
 	"fill 5 v IDLF tk_fill\neach 6 i icp tk_each\ndup 7 l s tk_dup\nfree 8 v p tk_free\nsay 9 v c tk_say\n"
 	"mix 10 d idifs tk_mix\nbig 11 u - tk_big\nneg 12 i - tk_neg\nbyte 13 b - tk_byte\nnull 14 l - tk_null\n"
 	"broken 99 q zz\n";

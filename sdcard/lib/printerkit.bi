@@ -51,36 +51,36 @@ field address 0 a 32
 field name 32 a 64
 field model 96 a 64
 field usable 160 i
-abort 0 v p print_abort
-begin 1 l ps print_begin
-dialog 2 i pp print_dialog
-end 3 i p print_end
-font 4 i psi print_font
-font_data 5 i psi print_font_data
-font_metrics 6 v pifFFF print_font_metrics
-frame 7 v pfffffi print_frame
-glyph 8 v pifffiiii print_glyph
-image 9 v ppiiffffi print_image
-job_cancel 10 i i print_job_cancel
-jobs 11 i pi print_jobs
+abort 0 v p print_abort j
+begin 1 l ps print_begin s,title
+dialog 2 i pp print_dialog s,info
+end 3 i p print_end j
+font 4 i psi print_font j,family,style
+font_data 5 i psi print_font_data j,ttf,len
+font_metrics 6 v pifFFF print_font_metrics j,font,size,ascent,descent,line
+frame 7 v pfffffi print_frame j,x,y,w,h,width,rgb
+glyph 8 v pifffiiii print_glyph j,font,size,x,baseline,glyph,unicode,rgb,style
+image 9 v ppiiffffi print_image j,px,pw,ph,x,y,w,h,flags
+job_cancel 10 i i print_job_cancel id
+jobs 11 i pi print_jobs out,max
 jobs_forget 12 v - print_jobs_forget
-line 13 v pfffffi print_line
-page 14 i pff print_page
-path_close 15 v p print_path_close
-path_curve 16 v pffffff print_path_curve
-path_fill 17 v pi print_path_fill
-path_line 18 v pff print_path_line
-path_move 19 v pff print_path_move
-path_stroke 20 v pfi print_path_stroke
-printer_add 21 i sspi print_printer_add
-printer_default 22 i s print_printer_default
-printer_media 23 i sipipi print_printer_media
-printer_remove 24 i s print_printer_remove
-printer_status 25 i spi print_printer_status
-printers 26 i pi print_printers
-rect 27 v pffffi print_rect
-setup_default 28 v p print_setup_default
-setup_paper 29 i psi print_setup_paper
-text 30 f pifffsi print_text
-text_width 31 f pifs print_text_width
-printers_find 32 i pi print_printers_find
+line 13 v pfffffi print_line j,x0,y0,x1,y1,width,rgb
+page 14 i pff print_page j,w,h
+path_close 15 v p print_path_close j
+path_curve 16 v pffffff print_path_curve j,x1,y1,x2,y2,x3,y3
+path_fill 17 v pi print_path_fill j,rgb
+path_line 18 v pff print_path_line j,x,y
+path_move 19 v pff print_path_move j,x,y
+path_stroke 20 v pfi print_path_stroke j,width,rgb
+printer_add 21 i sspi print_printer_add name,address,err,cap
+printer_default 22 i s print_printer_default name
+printer_media 23 i sipipi print_printer_media printer,i,name,ncap,label,lcap
+printer_remove 24 i s print_printer_remove name
+printer_status 25 i spi print_printer_status name,text,cap
+printers 26 i pi print_printers out,max
+rect 27 v pffffi print_rect j,x,y,w,h,rgb
+setup_default 28 v p print_setup_default s
+setup_paper 29 i psi print_setup_paper s,media,orientation
+text 30 f pifffsi print_text j,font,size,x,baseline,utf8,rgb
+text_width 31 f pifs print_text_width j,font,size,utf8
+printers_find 32 i pi print_printers_find out,max
