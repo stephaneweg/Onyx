@@ -1,7 +1,7 @@
 //
-// print/print.cpp -- the print library (SD:/lib/print.so; print/print.h): a job's pages recorded into the
-// spool (print/job.h), the fonts found by their family, the printers' list, the requests to printd.
-// The Print dialog is print/dialog.cpp.
+// printerkit/printerkit.cpp -- the print library (SD:/lib/printerkit.so; printerkit/printerkit.h): a job's pages recorded into the
+// spool (printerkit/job.h), the fonts found by their family, the printers' list, the requests to printd.
+// The Print dialog is printerkit/dialog.cpp.
 //
 // The library uses two others, opened when first needed (kapi_lib_open: the same tables the program has,
 // or the libraries loaded for us): FreeType (ft.so) for print_text's glyphs and advances, uikit (uikit.so) for
@@ -19,10 +19,10 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include "lib.h"
-#include "print/print.h"
-#include "print/job.h"
-#include "print/printers.h"
-#include "print/priv.h"
+#include "printerkit/printerkit.h"
+#include "printerkit/job.h"
+#include "printerkit/printers.h"
+#include "printerkit/priv.h"
 
 using namespace pprt;
 
@@ -406,7 +406,7 @@ static void setup_printer (PrintSetup *s, const Printer &p, const char *media, i
 	float ml = p.margin[0] * k, mt = p.margin[1] * k, mr = p.margin[2] * k, mb = p.margin[3] * k;
 	s->orientation = orientation == PRINT_LANDSCAPE ? PRINT_LANDSCAPE : PRINT_PORTRAIT;
 	if (s->orientation == PRINT_LANDSCAPE)
-	{	// the page lies on the paper: its left edge is the paper's top (print/raster.h turns it that way)
+	{	// the page lies on the paper: its left edge is the paper's top (printerkit/raster.h turns it that way)
 		s->paper_w = h; s->paper_h = w;
 		s->margin_l = mt; s->margin_t = mr; s->margin_r = mb; s->margin_b = ml;
 	}

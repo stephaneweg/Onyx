@@ -37,8 +37,21 @@ mkdir -p "$OUT/ft"
 for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
 	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
+# AudioKit for the PC (on Onyx: SD:/lib/audiokit.so): its own sources, the decoders, MeltySynth -- made
+# when an app that uses it is built (the Media Player, FM Tracker)
+audiokit () {
+	[ -f "$OUT/libaudiokit.a" ] && return 0
+	mkdir -p "$OUT/ak"
+	gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/ak/codecs.o" || return 1
+	gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/ak/vorbis.o" || return 1
+	for f in user/Apps/koton/synth/*.cpp user/audiokit/*.cpp; do
+		$CXX -Iuser/Apps/koton -Iuser/Apps/media -Ithird_party -c "$f" -o "$OUT/ak/$(basename "$f" .cpp).o" || return 1
+	done
+	ar rcs "$OUT/libaudiokit.a" "$OUT"/ak/*.o
+}
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
+	[ "$1" = fmtracker ] && { audiokit || return 1; extra="$OUT/libaudiokit.a -lpthread -lm"; }
 	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -52,15 +65,12 @@ build () {
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
-	if [ "$1" = media ]; then			# (newlib-like: FreeType, the decoders, Koton's MeltySynth)
-		mkdir -p "$OUT/media"
-		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/media/codecs.o" || return 1
-		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/media/vorbis.o" || return 1
-		for f in user/Apps/koton/synth/*.cpp; do $CXX -c "$f" -o "$OUT/media/$(basename "$f" .cpp).o" || return 1; done
+	if [ "$1" = media ]; then			# (newlib-like: FreeType; AudioKit: the decoders, MeltySynth)
+		audiokit || return 1
 		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/av, its codecs, FFmpeg for the PC)
 		sh third_party/ffmpeg-7.1.2/onyx/build.sh host "$FFH" || return 1
 		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1
-		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
+		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT/libaudiokit.a" \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
@@ -108,7 +118,7 @@ build () {
 	fi
 	case " letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a"; return ;;
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" $extra; return ;;
 	esac
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a"
 }
@@ -117,8 +127,9 @@ APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewe
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
-# the BASIC runtime (SD:/bin/basic: a BASIC program's window)
-$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libuikit.a" &
+# the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
+audiokit
+$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libaudiokit.a" -lpthread -lm &
 wait
 
 # ---- the running -------------------------------------------------------------------------------

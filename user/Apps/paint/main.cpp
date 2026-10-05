@@ -20,7 +20,7 @@
 // MIT licence (Onyx).
 //
 #include <math.h>
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 #include "kapi.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"
@@ -132,7 +132,7 @@ static void export_as (const char *ext)
 	}
 	focus_view ();
 }
-// File > Print: the Print dialog (print/print.h: the printer, the paper...), then the picture -- as the
+// File > Print: the Print dialog (printerkit/printerkit.h: the printer, the paper...), then the picture -- as the
 // screen shows it, its layers flattened -- on one page: at its size (96 pixels an inch), made smaller if
 // it does not fit in what the printer prints, centred.
 static void cmd_print ()

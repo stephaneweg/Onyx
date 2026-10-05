@@ -786,28 +786,28 @@ libraries, over telnet), `sh tools/tests/shlib/compat.sh` (an app built against 
 library N+1: a fix reaches it, an added function and a used reserve keep it running; an app built
 against N+1 is refused by the library N).
 
-### 5.7. Printing (`SD:/lib/print.so`, the print service `printd`)
+### 5.7. Printing (`SD:/lib/printerkit.so`, the print service `printd`)
 
 An app prints by **drawing its pages once**; the system does the rest. Three parts, all MIT:
 
 | Part | Where | What it does |
 |---|---|---|
-| **The library** | `user/print/print.h` → `SD:/lib/print.so` (`print.cpp`, `dialog.cpp`; its table `print/print.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`print/job.h`), with its ticket `<id>.job`; the printers' list. |
-| **The service** | `user/Apps/printd` (IPC service `print`; started at boot and on demand) | The **queue**. Replays a job for its printer: a **PDF** (`print/pdfsink.h` → `pdf/pdfwrite.h`) for the PDF printer; for a network printer, pages **rendered at its resolution** (`print/raster.h`: FreeType glyphs from the job's own fonts, images scaled, paths filled with smoothed edges) and **streamed as PWG Raster over IPP** (`print/ipp.h`, HTTP chunked on port 631) while they are made — or the PDF itself to a printer that takes PDF. Follows the job at the printer, tells the user (notifyd). |
-| **The printers** | `SD:/etc/printers.ini` (`print/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
+| **The library** | `user/printerkit/printerkit.h` → `SD:/lib/printerkit.so` (`print.cpp`, `dialog.cpp`; its table `printerkit/printerkit.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`printerkit/job.h`), with its ticket `<id>.job`; the printers' list. |
+| **The service** | `user/Apps/printd` (IPC service `print`; started at boot and on demand) | The **queue**. Replays a job for its printer: a **PDF** (`printerkit/pdfsink.h` → `pdf/pdfwrite.h`) for the PDF printer; for a network printer, pages **rendered at its resolution** (`printerkit/raster.h`: FreeType glyphs from the job's own fonts, images scaled, paths filled with smoothed edges) and **streamed as PWG Raster over IPP** (`printerkit/ipp.h`, HTTP chunked on port 631) while they are made — or the PDF itself to a printer that takes PDF. Follows the job at the printer, tells the user (notifyd). |
+| **The printers** | `SD:/etc/printers.ini` (`printerkit/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
 
-A job does not depend on the printer: the same recorded pages become a PDF or a raster. `print.so` is
+A job does not depend on the printer: the same recorded pages become a PDF or a raster. `printerkit.so` is
 the first library that **uses other libraries**: FreeType (`ft.so`, for `print_text`) and uikit (`uikit.so`,
 for the dialog), through their import stubs linked into it; `print.cpp` opens them when first needed
 (`kapi_lib_open`), and uikit's variables are the program's (uikit's library build of `globals.o`, `--data
-onyx_uikit_data` in the bind object) — so a program that links `lib/print.imp.a` also links
+onyx_uikit_data` in the bind object) — so a program that links `lib/printerkit.imp.a` also links
 `lib/uikit.imp.a`.
 
-**Printing from an app** — link `lib/print.imp.a` (before `lib/uikit.imp.a`), include `print/print.h`.
+**Printing from an app** — link `lib/printerkit.imp.a` (before `lib/uikit.imp.a`), include `printerkit/printerkit.h`.
 Lengths are **points** (1/72 inch), y goes down from the page's top-left corner, colours are `0xRRGGBB`:
 
 ```c
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 
 static void cmd_print (void)
 {
@@ -838,7 +838,7 @@ static void cmd_print (void)
 | `print_font_data`, `print_glyph` | For an app with its own text layout: its font's bytes, a glyph at its pen position. |
 | `print_printers`, `print_printers_find`, `print_printer_media`, `print_printer_add / remove / default / status`, `print_jobs`, `print_job_cancel`, `print_jobs_forget` | The printers and the queue (what the Printers applet uses). |
 
-**An app that already exports PDF** prints with the same code: `print/pdfprint.h`'s **`PrintWriter`** is a
+**An app that already exports PDF** prints with the same code: `printerkit/pdfprint.h`'s **`PrintWriter`** is a
 `pdfw::Writer` whose pages go to a job (the writer's drawing calls are virtual), and `print_ask (title,
 pages, current, pageW, pageH)` is the dialog + `print_begin` in one call:
 
@@ -851,7 +851,7 @@ That is how Letters, the Spreadsheet, Slides print; Paint, Photos and the PDF Vi
 MuPDF at 300 dots an inch) use `print_image`; the Printers applet's test page uses the text and shape calls.
 
 **Another kind of printer** is a branch of `printd`'s `run ()` (`kind` in `printers.ini`): replay the job
-into a `pjob::Sink` (`print/job.h`: `font`, `begin_page`, `rect`, `glyphs`, `image`, `path`, `end_page`) —
+into a `pjob::Sink` (`printerkit/job.h`: `font`, `begin_page`, `rect`, `glyphs`, `image`, `path`, `end_page`) —
 `pjob::PdfSink` and `praster::Raster` are the two there are — and send the result.
 
 **Tests.** `sh tools/tests/run_print_test.sh` (on the PC: a job recorded, replayed as a PDF and as 300 dpi
@@ -872,11 +872,13 @@ always 16-bit stereo at `AUDIOKIT_RATE` (44100 Hz, the system output's).
 | **Files** | `ak_open`, `ak_read`, `ak_seek_ms`, `ak_info_of`, `ak_close` | A sound file of any kind — **MP3, FLAC, WAV, Ogg Vorbis, MIDI** (through the SoundFont) — read as frames at the output's rate, whatever its own rate and channels. |
 | **The player** | `ak_play (path, loop)`, `ak_play_stop`, `_pause`, `_state`, `_pos_ms`, `_len_ms`, `_seek_ms`, `_volume`, `_wait`, `_error`, `_keep_output` | A file played **in the background** by a thread of the library, on the system's output (it takes the output when it has something to play and lets it go after ~0.6 s of silence; another program playing: `AK_BUSY` until it can). One line to make a sound. |
 | **Live notes** | `ak_note_on (channel, key, velocity)`, `ak_note_off`, `ak_program`, `ak_control`, `ak_pitch_bend`, `ak_notes_off` | Notes on a **General MIDI synthesizer** (16 channels, 9 the drums), mixed with the file by the same thread. |
-| **The output** | `ak_out_open`, `ak_out_write`, `ak_out_free`, `ak_out_queued`, `ak_out_close` | The system's output for a program that makes its own frames: the acquire / status / write loop every player and emulator wrote for itself. |
-| **Mixing** | `ak_gain_s16`, `ak_mix_s16` (saturated), `ak_mono_to_stereo`, `ak_volume_gain`, `ak_resampler_new` / `ak_resample`, `ak_f32_to_s16` (a soft limiter) | Gains are 16.16 (65536 = 1). |
-| **Notes** | `ak_note_mhz`, `ak_note_name`, `ak_note_parse` | A MIDI key's frequency (69 = A4 = 440 Hz), its name (`C4`, `F#3`), a name's key. |
-| **WAV** | `ak_wav_header`, `ak_wav_save` | A 16-bit PCM file written. |
-| **The synthesizer** | `ak_soundfont_default`, `ak_soundfont_name`, `ak_synth_new` / `_midi` / `_render` / `_free` | The SoundFont synthesizer for C; `render` never allocates and never calls the kernel (it may run on an app core). |
+| **The output** | `ak_out_open`, `ak_out_write`, `ak_out_free`, `ak_out_queued`, `ak_out_close` | The system's output for a program that makes its own frames: the acquire / status / write loop every player and emulator wrote for itself (`ak_out_open (0, 0)`: the output as it is configured). **The Media Player and the six emulators play through it.** |
+| **The FM synthesizer** | `ak_fm_instrument (voice, ins)`, `ak_fm_start (voice, milli_hz, wave, volume)`, `ak_fm_stop`, `ak_fm_render`, `ak_fm_live` | The kernel's synthesizer **in user space** (16 voices, two-operator FM instruments, the plain waves; `struct kapi_fm_instrument`, `SOUND_FM`...): the voices are played by the player's thread, mixed with the file and the MIDI notes — or, after `ak_fm_live (0)`, rendered by the program itself (`ak_fm_render`: an export to a file). **FM Tracker plays through it.** |
+| **Mixing** | `ak_gain_s16`, `ak_mix_s16` (saturated), `ak_mono_to_stereo`, `ak_volume_gain`, `ak_resampler_new` / `ak_resample`, `ak_f32_to_s16`, `ak_soft_clip` | Gains are 16.16 (65536 = 1). `ak_soft_clip` is the soft limiter (straight up to 0.75, then a `tanh` knee that never passes 1 — Koton's); `ak_f32_to_s16` goes through it. |
+| **Effects** | `ak_reverb_new (rate)` / `_set (room, damp, wet, width)` / `_process (in, left, right, n)` / `_mute` / `_free`; `ak_chorus_new (rate, delay_s, depth_s, hz)` / `_process` / `_mute` / `_free` | MeltySynth's **reverb** (Freeverb: mono in, stereo out) and **chorus**, as effects of their own on float buffers. |
+| **Notes** | `ak_note_mhz`, `ak_note_key (note, octave)`, `ak_note_octave_mhz (note, octave)`, `ak_note_name`, `ak_note_parse` | A MIDI key's frequency (69 = A4 = 440 Hz); a note (0 = C .. 11 = B) and an octave's key (C4 = 60) and frequency — **the one table of notes** (FM Tracker's `fms_note_mhz` uses it); a key's name (`C4`, `F#3`), a name's key. |
+| **WAV** | `ak_wav_header`, `ak_wav_save`, `ak_wav_begin (path, rate, channels, frames)` / `ak_wav_write` / `ak_wav_end` | A 16-bit PCM file written: a buffer at once, or a long one as it is made (its length said first — **Koton's export**). |
+| **The synthesizer** | `ak_soundfont_default`, `ak_soundfont_name`, `ak_soundfont_prefer (path)`, `ak_soundfont_find (preferred, out, cap)`, `ak_soundfont_load` / `_free`, `ak_synth_new` / `_midi` / `_render` / `_free` | The SoundFont: **one search for everybody** (the preferred file, else the first `.sf2` of `SD:/res/soundfonts`, `SD:/koton/soundfonts`, `SD:/music/soundfonts`, `SD:/music`, `SD:/apps/koton.app`), its load into MeltySynth (Koton's own copy: `_load`; the process's default: `_default`, after `_prefer` — the Media Player's setting). The synthesizer for C; `render` never allocates and never calls the kernel (it may run on an app core). |
 
 Also exported **as they are**, for the programs that want them raw: **MeltySynth**'s C++ interface
 (`Apps/koton/synth/meltysynth.h`: `ms::Synthesizer`, `ms::soundfont_*` — Koton's engine and the
@@ -889,20 +891,28 @@ the library, and Koton and the Media Player no longer carry them.
   `render`) are for programs built with the FPU (the newlib apps, `/bin/basic`, `CXXFLAGS_FP`); all
   the file, player, output, note and 16-bit mixing calls are integer — `/bin/play` is built
   `-mgeneral-regs-only`.
-- **The SoundFont**: the first `.sf2` of `SD:/res/soundfonts` (the package `generaluser-gs`), loaded
+- **The SoundFont**: the first `.sf2` of the folders above (`SD:/res/soundfonts`: the package `generaluser-gs`), loaded
   once per process at the first MIDI file or note (a few seconds for its 32 MB); without one,
   `ak_play` of a MIDI file and `ak_note_on` fail with the reason in `ak_play_error ()`.
-- **Inside**: `audiokit/akcore.cpp` compiles the Media Player's own `decode.h` / `midi.h` (the
-  decoder classes, the Standard MIDI File reader, the rate converter) behind the C interface;
+- **Inside**: `audiokit/akcore.cpp` (the files, the player, the output, the effects) compiles the Media
+  Player's `decode.h` / `midi.h` (the decoder classes, the Standard MIDI File reader, the rate converter)
+  behind the C interface; `akmix.cpp` is the pure part (mixing, the soft limiter, the notes, the WAV
+  header), `aksf.cpp` the SoundFont, `akwav.cpp` the WAV files, `akfm.cpp` the FM synthesizer — **the
+  kernel's own source** (`kernel/sys/sound.cpp` compiled in its host mode: one source, the same sound);
   `audiokit/akso.c` gives the library its `malloc` over the importer's allocator; newlib's `libm`
   and `libc` are linked in. The table: `audiokit/audiokit.abi` (append-only).
 - **Not in it** (and why): FFmpeg and the video side of `user/av` (GPL, and video: the Media
-  Player's), Koton's engine and plugin host (its own classes), the kernel's FM voices (already
-  shared through the kapi: `kapi_sound_start`), the per-sample inline DSP of `kplug.h`.
-- **Tests**: `play --notes` (a scale on the synthesizer), `play --info <file>`, `play <file>`
+  Player's), Koton's engine and plugin host (its own classes), the per-sample inline DSP of `kplug.h`. The kernel
+  keeps its own voices (`kapi_sound_start`: the kapi is append-only; BASIC's `SOUND` / `PLAY`, the games
+  and `tone` use them) — a new program takes `ak_fm_*`.
+- **The PC builds** (no shared library there): Koton compiles `akmix.cpp`, `aksf.cpp` and `akwav.cpp`
+  into itself (`Apps/koton/engine/akhost.cpp`, `ui/audio.h`); the simulator (`tools/tests/desktop_sim/shots.sh`)
+  makes a `libaudiokit.a` of the library's sources for the Media Player, FM Tracker and BASIC.
+- **Tests**: `play --notes` (a scale on the synthesizer), `play --fm` (the FM synthesizer: a note rendered
+  off line and checked, then a scale heard), `play --info <file>`, `play <file>`
   (docs/04 §8); a BASIC program (`PLAYFILE`, `MIDINOTE`: docs/04 *Onyx BASIC*).
-- **To come** (IDEAS.md): a tags reader (the Media Player's `tags.h`), the reverb and the chorus as
-  effects of their own, the emulators and Doom on `ak_out_*`, the Media Player on `ak_open`.
+- **To come** (IDEAS.md): a tags reader (the Media Player's `tags.h`), Doom on `ak_out_*`, FM Tracker's
+  WAV export (`ak_fm_live (0)` + `ak_fm_render` + `ak_wav_*`).
 
 ## 6. Writing a graphical application
 

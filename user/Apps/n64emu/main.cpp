@@ -17,6 +17,7 @@
 //     high level: user/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
 //     audio queue's (as snesemu), else the clock. Sound > Sound On / Off.
 //
+#include "audiokit/audiokit.h"
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
@@ -264,7 +265,7 @@ static void on_full () { full_screen (!g_fs); }
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; ak_out_close (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_gpu () { g_gpuOn = !g_gpuOn; g_root->invalidate (true); }
@@ -424,7 +425,7 @@ int main (void)
 	if (wantFull) full_screen (true);
 
 	static short pcm[4096 * 2];
-	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0, stQueued = 0;
+	unsigned freeFrames = 0, stQueued = 0;
 	g_m->setAudioRate (SOUND_RATE);
 	if (!ec_init (&g_ec, n64::FB_MAX_W, n64::FB_MAX_H, n64_frame)) return 1;
 	g_loading = false;
@@ -440,7 +441,7 @@ int main (void)
 		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
 		// may read its frame and textures; drawn while it runs, they may change under the kernel)
 		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
-		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		if (g_sound && g_audio == 0) { g_audio = ak_out_open (0, 0) == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		unsigned fps = fps100 ();
 		// with sound the game's audio paces it (kept ~60 ms ahead; a game without sound of ours
 		// leaves the queue empty: then the clock), else the clock
@@ -448,11 +449,11 @@ int main (void)
 		unsigned queued = 0;
 		if (audio)
 		{
-			kapi_sound_status (&rate, &freeFrames, &owner);
+			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			queued = cap - freeFrames;
 			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
-			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			stQueued = queued;
 		}
 		if (audio && g_m->audioTasks > 0)

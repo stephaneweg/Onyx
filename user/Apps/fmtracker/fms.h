@@ -229,15 +229,10 @@ static inline void fms_to_kapi (const FmsIns *in, struct kapi_fm_instrument *k)
 // semitone higher; its octave numbers are kept.)
 static inline unsigned fms_note_mhz (unsigned char v)
 {
-	static const unsigned oct4[12] = { 261626, 277183, 293665, 311127, 329628, 349228,
-					   369994, 391995, 415305, 440000, 466164, 493883 };
 	static const int semi[8] = { 0, 0, 2, 4, 5, 7, 9, 11 };	// (index 1..7 = C..B)
 	int note = v & 7, oct = (v >> 3) & 7, sharp = (v >> 6) & 1;
 	if (note == 0 || (v & 128)) return 0;
-	int s = semi[note] + sharp;
-	if (s >= 12) { s -= 12; oct++; }
-	unsigned f = oct4[s];
-	return oct >= 4 ? f << (oct - 4) : f >> (4 - oct);
+	return (unsigned) ak_note_octave_mhz (semi[note] + sharp, oct);	// (AudioKit: the one table of notes)
 }
 static inline unsigned char fms_make_note (int note /*1..7*/, int sharp, int oct)
 {

@@ -1,6 +1,6 @@
 //
-// print/printers.h -- the printers Onyx knows (SD:/etc/printers.ini) and the papers' names; printd's
-// protocol (the service "print"). Shared by the library (print/print.cpp), the daemon (Apps/printd) and the
+// printerkit/printers.h -- the printers Onyx knows (SD:/etc/printers.ini) and the papers' names; printd's
+// protocol (the service "print"). Shared by the library (printerkit/printerkit.cpp), the daemon (Apps/printd) and the
 // host tests; no libc.
 //
 // printers.ini -- written by printd when a printer is added (what the printer said it can do is kept, so
@@ -27,7 +27,7 @@
 #ifndef ONYX_PRINT_PRINTERS_H
 #define ONYX_PRINT_PRINTERS_H
 
-#include "print/pio.h"
+#include "printerkit/pio.h"
 #include "img/pngsave.hpp"
 
 #ifdef PRINT_HOST
@@ -36,7 +36,7 @@
 #define PRINT_REPLY	"reply"
 #else
 #define PRINT_INI	"SD:/etc/printers.ini"
-#define PRINT_SPOOL	"SD:/var/spool/print"		// <id>.opj (the pages, print/job.h), <id>.job (the ticket)
+#define PRINT_SPOOL	"SD:/var/spool/print"		// <id>.opj (the pages, printerkit/job.h), <id>.job (the ticket)
 #define PRINT_REPLY	"RAM:/print"			// printd's answers (a file each: an app's mailbox is its own)
 #endif
 #define PRINT_PDF_NAME	"PDF"				// the PDF printer's name

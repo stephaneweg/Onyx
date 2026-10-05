@@ -1,12 +1,12 @@
 //
 // printd -- the print service (the IPC service "print"; docs/03 "Printing"): the queue of the jobs the apps
-// recorded (SD:/var/spool/print: <id>.opj the pages, <id>.job the ticket -- print/print.cpp writes them),
+// recorded (SD:/var/spool/print: <id>.opj the pages, <id>.job the ticket -- printerkit/printerkit.cpp writes them),
 // printed one after the other; the printers (SD:/etc/printers.ini: added, removed, asked what they can do).
 //
 // A job, by its printer's kind:
-//   pdf  the pages replayed as a PDF (print/pdfsink.h), saved where the user said;
-//   ipp  a network printer (IPP Everywhere / AirPrint; print/ipp.h): the pages rendered at its resolution
-//        (print/raster.h) and streamed as PWG Raster while they are made -- or sent as a PDF to a printer
+//   pdf  the pages replayed as a PDF (printerkit/pdfsink.h), saved where the user said;
+//   ipp  a network printer (IPP Everywhere / AirPrint; printerkit/ipp.h): the pages rendered at its resolution
+//        (printerkit/raster.h) and streamed as PWG Raster while they are made -- or sent as a PDF to a printer
 //        that takes PDF --, then the printer asked until it has printed.
 // The user is told when a job is printed, or why it was not (notifyd). One thread: while a job is rendered
 // and sent, the requests (the queue's list, a cancel) are answered between the rows.
@@ -28,11 +28,11 @@
 #include <stdlib.h>
 #include "kapi.h"
 #include "notify.h"
-#include "print/printers.h"
-#include "print/job.h"
-#include "print/pdfsink.h"
-#include "print/raster.h"
-#include "print/ippnet.h"
+#include "printerkit/printers.h"
+#include "printerkit/job.h"
+#include "printerkit/pdfsink.h"
+#include "printerkit/raster.h"
+#include "printerkit/ippnet.h"
 
 using namespace pprt;
 

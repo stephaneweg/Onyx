@@ -37,6 +37,7 @@
 //     default; the last ~200 KB kept, saved every 5 s), without --diag's frame dumps and end -- a
 //     measure of the game played (F12's lines complete, whatever the window's width).
 //
+#include "audiokit/audiokit.h"
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
@@ -691,7 +692,7 @@ static void diag_tick (void)
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; ak_out_close (); g_audio = 0; }
 }
 
 int main (void)
@@ -841,7 +842,7 @@ int main (void)
 	g_loading = false;
 
 	unsigned t0 = kapi_get_ticks (), asked = 0, lastSave = kapi_get_ticks ();
-	unsigned freeFrames = 0, rate = SOUND_RATE, owner = 0, stQueued = 0;
+	unsigned freeFrames = 0, stQueued = 0;
 	static short pcm[4096 * 2];
 	unsigned long long stT = now_us (), drawUs = 0, stEmuUs = 0; unsigned stDone = 0, stShown = 0;
 	unsigned long long reqEnd = 0; unsigned fieldUs = 20000;	// (the fields asked for: done by then; a field's time)
@@ -853,7 +854,7 @@ int main (void)
 		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
 		// may read its frame and textures; drawn while it runs, they may change under the kernel)
 		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
-		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		if (g_sound && g_audio == 0) { g_audio = ak_out_open (0, 0) == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		// a new image, the machine between two fields: taken before the next field is asked for --
 		// else, slower than real time, the next one was always asked first and nothing was shown.
 		// The TEV's frame is prepared and drawn after the request (under gxLock -- the GX may be on
@@ -877,11 +878,11 @@ int main (void)
 		unsigned queued = 0;
 		if (audio)
 		{
-			kapi_sound_status (&rate, &freeFrames, &owner);
+			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			queued = cap - freeFrames;
 			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
-			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			stQueued = queued;
 		}
 		if (audio && g_audioMade > 0)

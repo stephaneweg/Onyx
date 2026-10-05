@@ -106,9 +106,9 @@ libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
 play.elf: play.cpp ../crt0.S ../user.ld ../kapi.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf
-# ipp: a network printer asked what it can do (../print/ipp.h; docs/03 "Printing")
+# ipp: a network printer asked what it can do (../printerkit/ipp.h; docs/03 "Printing")
 CXX_PROGS += ipp.elf
-ipp.elf: ../print/ipp.h ../print/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
+ipp.elf: ../printerkit/ipp.h ../printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
 
 # Console tools on libonyxposix, the POSIX layer (../libc/posix, docs/03 §5.4): newlib + pthreads,
 # BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and

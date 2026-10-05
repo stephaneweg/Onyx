@@ -13,7 +13,7 @@
 #include "Apps/photos/editor.h"
 #include "wallpaper.h"
 #include "pdf/pdfwrite.h"
-#include "print/print.h"
+#include "printerkit/printerkit.h"
 
 namespace photos {
 
@@ -354,7 +354,7 @@ static void act_pdf (int album)
 }
 
 // ---- printing: each photo a page, as large as what the printer prints of the paper takes it, centred ----------------------------------
-// (one: the photo shown in the viewer; else the photos selected). The Print dialog is the library's (print/print.h).
+// (one: the photo shown in the viewer; else the photos selected). The Print dialog is the library's (printerkit/printerkit.h).
 static void act_print (int one = -1)
 {
 	Vec<int> c;

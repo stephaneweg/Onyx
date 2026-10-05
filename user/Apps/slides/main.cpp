@@ -28,7 +28,7 @@
 #include "find.h"
 #include "pptx.h"
 #include "pdf/pdfwrite.h"
-#include "print/pdfprint.h"
+#include "printerkit/pdfprint.h"
 
 using namespace uikit;
 using namespace sl;

@@ -104,6 +104,29 @@ A compact existence proof: FreeBSD's `virtual_oss` plays to A2DP sinks with **~2
 archived). Apache-2.0 is compatible with the GPL-3.0 kernel; it would be a third-party notice in
 `docs/LICENSING.md`. BlueZ's is LGPL; FreeBSD's uses floating point. No MIT one was found.
 
+### 4.1. BTstack after all? Only outside the kernel (the user's question, 2026-10-05)
+
+Onyx is not sold, so BTstack's "not for any commercial purpose" clause is not broken by *our use* of
+it. That does not make it usable **in the kernel**: the kernel image is one work with Circle
+(GPL-3.0), and the GPL forbids adding a restriction to what it covers — a non-commercial clause is one.
+A kernel linked with BTstack could not be distributed at all, by anyone, commercially or not.
+
+What stays open is BTstack **as a separate program**:
+
+- a user-space daemon (`btd`) that holds the whole stack (HCI, L2CAP, SDP, AVDTP, A2DP source, the SBC
+  encoder), under BTstack's licence, in a package of its own;
+- the kernel only gives it the **HCI transport** (the UART to the CYW43455 and its patch download, or
+  raw read / write of HCI packets through the kapi) and hands it the sound through a ring — a new
+  `COutBluetooth` in `kernel/sys/sound.cpp` that writes the mixed frames where `btd` reads them;
+- the kernel stays GPL-3.0, `btd` is a program that talks to it through the kapi, as Jet (LGPL) or the
+  PDF Viewer (AGPL) do.
+
+The price: that package is **not free software** — nobody may redistribute Onyx *with it* commercially,
+and it must be told apart in `docs/LICENSING.md` (optional, not in the base system). The more work
+part moves from "writing a stack" to "a transport in the kernel + a ring + a daemon": weeks instead of
+months. (This is our reading of the two licences, not legal advice; BlueKitchen also sells commercial
+licences and answers questions about the free one.)
+
 ## 5. What changes in Onyx
 
 1. **The serial console leaves UART0.** The Pi 4 has four more PL011s and the mini-UART; the log

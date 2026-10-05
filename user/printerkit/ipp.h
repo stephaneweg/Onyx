@@ -1,9 +1,9 @@
 //
-// print/ipp.h -- IPP (the Internet Printing Protocol, RFC 8010 / 8011; what IPP Everywhere and AirPrint
+// printerkit/ipp.h -- IPP (the Internet Printing Protocol, RFC 8010 / 8011; what IPP Everywhere and AirPrint
 // printers speak: no driver of a make): a printer asked what it can do (Get-Printer-Attributes), a document
 // sent (Print-Job, streamed -- its length is not known before it is made: HTTP's chunked encoding), a job
 // followed (Get-Job-Attributes) and cancelled (Cancel-Job). Over HTTP on port 631, through a small socket
-// interface: the kapi's TCP on Onyx (print/ippnet.h), BSD sockets in the host test.
+// interface: the kapi's TCP on Onyx (printerkit/ippnet.h), BSD sockets in the host test.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

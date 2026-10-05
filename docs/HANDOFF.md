@@ -49,18 +49,18 @@ A generic print system, done and tested on the Pi with the user's HP DeskJet 270
 Everywhere: no PDF, PWG Raster at 300 dpi) and the PDF printer. Read `docs/03` §5.7 (the design, the API,
 an example) and `docs/04` §11 *Printing*.
 
-- **`SD:/lib/print.so`** (`user/print/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `print/print.abi`,
+- **`SD:/lib/printerkit.so`** (`user/printerkit/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `printerkit/printerkit.abi`,
   33 entries): the Print dialog and the jobs. The first library that uses others (`ft.so`, `uikit.so`: their
   stubs linked in, opened on demand; uikit's variables through `--data onyx_uikit_data`).
 - **`printd`** (`user/Apps/printd`): the queue (`SD:/var/spool/print`), the printers (`SD:/etc/printers.ini`),
-  a job replayed as a PDF (`print/pdfsink.h`) or rendered (`print/raster.h`, our own MIT rasteriser — the
-  user's choice, no MuPDF in the chain) and streamed as PWG Raster over IPP (`print/ipp.h`).
+  a job replayed as a PDF (`printerkit/pdfsink.h`) or rendered (`printerkit/raster.h`, our own MIT rasteriser — the
+  user's choice, no MuPDF in the chain) and streamed as PWG Raster over IPP (`printerkit/ipp.h`).
 - **Printers** applet (`user/Apps/printconf`), `/bin/ipp`; the Control Panel's list scrolls now. **Find**
   (the user's request): a one-shot mDNS query from printd (`scan ()`); from the PC the HP answers it; on the
   Pi the user ran it: the HP is found, quickly (2026-10-05). A first version tried every address of the /24 with 12 non-blocking connects at a time: **it
   restarted the Pi** (the network stack; not investigated) — removed. The Pi also restarted once earlier in
   the session, right after `ipp ... validate` and stopping `ftpd` with Ctrl-C: cause unknown, to watch.
-- **File ▸ Print… (Ctrl+P)** in Letters, Sheet, Slides (through `print/pdfprint.h`: their PDF export code),
+- **File ▸ Print… (Ctrl+P)** in Letters, Sheet, Slides (through `printerkit/pdfprint.h`: their PDF export code),
   Paint, Photos, the PDF Viewer (`print_image`).
 - Tests: `sh tools/tests/run_print_test.sh` (`IPP_PRINTER=192.168.0.14` asks the real printer).
 - **Next / not done**: the screenshots (`printconf`, the Print dialog, `control` with its 11 applets:

@@ -1,5 +1,5 @@
 //
-// print/pio.h -- the print system's files and clock, the same calls on Onyx (the kapi) and on a PC (the host
+// printerkit/pio.h -- the print system's files and clock, the same calls on Onyx (the kapi) and on a PC (the host
 // tests: -DPRINT_HOST, stdio). A job is written and read as a stream: never whole in memory.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby

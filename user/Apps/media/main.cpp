@@ -1221,9 +1221,9 @@ public:
 			  m && m->used[9] ? " and drums" : "", m ? m->bpm : 120);
 		text (canvas, tx, y + 48, line, col_dim (), F_SMALL, 0, w - 124);
 		text_v (canvas, tx, y + 70, 28, "Played by", col_dim (), F_SMALL);
-		int fx = tx + 64, fw = tw (g_sfName[0] ? g_sfName : "a SoundFont") + 24;
+		int fx = tx + 64, fw = tw (ak_soundfont_name ()[0] ? ak_soundfont_name () : "a SoundFont") + 24;
 		uk_rbox (canvas, fx, y + 70, fw, 28, 6, uk_mix (C_FIELD, C_BG, 60), uk_mix (C_FIELD, C_BG, 110)); uk_rline (canvas, fx, y + 70, fw, 28, 6, uk_tone (C_BG, 96));
-		text_v (canvas, fx + 12, y + 70, 28, g_sfName[0] ? g_sfName : "a SoundFont", C_FIELD_TEXT);
+		text_v (canvas, fx + 12, y + 70, 28, ak_soundfont_name ()[0] ? ak_soundfont_name () : "a SoundFont", C_FIELD_TEXT);
 		y += 122;
 		piano_roll (x, y, w, hRoll, m, g_player.posMs);
 		y += hRoll + 12;
@@ -1276,7 +1276,7 @@ int Content::draw_now (int x, int y, int w)
 	char line[220]; snprintf (line, sizeof line, "%s  \xC2\xB7  %s%s", g_playing >= 0 ? L->artist_of (*s) : s->artist, s->album, "");
 	text (canvas, cx, ty + 38, line, 0xD8E0E8, F_MID, 0, avail);
 	char fmtl[120];
-	if (midi) snprintf (fmtl, sizeof fmtl, "MIDI  \xC2\xB7  played by %s", g_sfName[0] ? g_sfName : "a SoundFont");
+	if (midi) snprintf (fmtl, sizeof fmtl, "MIDI  \xC2\xB7  played by %s", ak_soundfont_name ()[0] ? ak_soundfont_name () : "a SoundFont");
 	else if (g_player.rate) snprintf (fmtl, sizeof fmtl, "%s  \xC2\xB7  %d.%d kHz  \xC2\xB7  %d bit  \xC2\xB7  %d kbit/s", g_player.fmt, g_player.rate / 1000, g_player.rate % 1000 / 100,
 					  g_player.bits ? g_player.bits : 16, g_player.kbps);
 	else fmtl[0] = 0;
@@ -2534,6 +2534,7 @@ int main (void)
 	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
 	load_settings ();
+	ak_soundfont_prefer (g_sfPath);			// (the MIDI files: AudioKit plays them)
 	kapi_mkdir (LIB_DIR);
 
 	L = new Library;

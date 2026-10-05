@@ -16,7 +16,10 @@
 //
 #ifndef _koton_audio_h
 #define _koton_audio_h
+#include "../../../audiokit/audiokit.h"
 #ifndef __aarch64__
+#include "../../../audiokit/aksf.cpp"	// (the PC builds: no shared library -- as engine/akhost.cpp)
+#include "../../../audiokit/akwav.cpp"
 #include <chrono>			// (the PC builds: the DSP thread's load)
 #endif
 
@@ -64,33 +67,12 @@ struct AudioHost
 		kapi_closedir (d);
 		return found;
 	}
-	bool findSoundFont (const char *preferred)
-	{
-		if (preferred && preferred[0] && exists (preferred)) { snprintf (sfPath, sizeof sfPath, "%s", preferred); return true; }
-		static const char *const dirs[] = { "SD:/res/soundfonts", "SD:/koton/soundfonts", "SD:/music/soundfonts", "SD:/music", "SD:/apps/koton.app" };
-		for (unsigned i = 0; i < sizeof dirs / sizeof dirs[0]; i++) if (firstSf2 (dirs[i], sfPath, sizeof sfPath)) return true;
-		return false;
-	}
+	bool findSoundFont (const char *preferred)			{ return ak_soundfont_find (preferred, sfPath, sizeof sfPath) != 0; }
 	bool loadSoundFont ()
 	{
-		void *f = kapi_open (sfPath);
-		if (!f) { snprintf (status, sizeof status, "cannot open %s", sfPath); return false; }
-		unsigned long long n = kapi_fsize64 (f);
-		unsigned char *buf = (unsigned char *) malloc ((size_t) n);
-		if (!buf) { kapi_close (f); snprintf (status, sizeof status, "not enough memory for the SoundFont (%llu MB)", n >> 20); return false; }
-		unsigned long long got = 0;
-		while (got < n)
-		{
-			unsigned want = n - got > (1u << 24) ? (1u << 24) : (unsigned) (n - got);
-			int r = kapi_read (f, buf + got, want);
-			if (r <= 0) break;
-			got += (unsigned) r;
-		}
-		kapi_close (f);
-		char err[128];
-		sf = ms::soundfont_load (buf, (size_t) got, err, sizeof err);
-		free (buf);						// (the SoundFont keeps its own copy)
-		if (!sf) { snprintf (status, sizeof status, "SoundFont: %s", err); return false; }
+		char err[160];
+		sf = (ms::SoundFont *) ak_soundfont_load (sfPath, err, sizeof err);
+		if (!sf) { snprintf (status, sizeof status, "%s", err); return false; }
 		snprintf (sfName, sizeof sfName, "%s", ms::soundfont_name (sf));
 		// its names: the GM programs (bank 0) and the drum kits (bank 128), by patch
 		g_kitPrograms.clear (); g_names.nKits = 0;
@@ -303,15 +285,8 @@ struct AudioHost
 		long long frames = cs->totalSamples () + 2 * SOUND_RATE;
 		e->post (CMD_SONG, 0, 0, 0, 0, cs);
 		e->post (CMD_PLAY, 0);
-		void *out = kapi_file_out (path, 0);
+		ak_wav *out = ak_wav_begin (path, SOUND_RATE, 2, frames);
 		if (!out) { delete e; return false; }
-		unsigned char hdr[44];
-		unsigned data = (unsigned) (frames * 4), riff = 36 + data, rate = SOUND_RATE, br = SOUND_RATE * 4;
-		memcpy (hdr, "RIFF", 4); memcpy (hdr + 4, &riff, 4); memcpy (hdr + 8, "WAVEfmt ", 8);
-		unsigned fl = 16; unsigned short pcmf = 1, ch = 2, al = 4, bits = 16;
-		memcpy (hdr + 16, &fl, 4); memcpy (hdr + 20, &pcmf, 2); memcpy (hdr + 22, &ch, 2); memcpy (hdr + 24, &rate, 4);
-		memcpy (hdr + 28, &br, 4); memcpy (hdr + 32, &al, 2); memcpy (hdr + 34, &bits, 2); memcpy (hdr + 36, "data", 4); memcpy (hdr + 40, &data, 4);
-		kapi_stream_write (out, hdr, 44);
 		enum { N = 4096 };
 		float *L = new float[N], *R = new float[N]; short *s = new short[N * 2];
 		int lastPct = -1;
@@ -320,12 +295,12 @@ struct AudioHost
 			int n = frames - done > N ? N : (int) (frames - done);
 			e->render (L, R, n);
 			toS16 (L, R, s, n, 1.0f);
-			kapi_stream_write (out, s, n * 4);
+			ak_wav_write (out, s, n);
 			done += n;
 			int pct = (int) (done * 100 / frames);
 			if (progress && pct != lastPct) { lastPct = pct; progress (pct); }
 		}
-		kapi_stream_close (out);
+		ak_wav_end (out);
 		delete [] L; delete [] R; delete [] s;
 		delete e;
 		return true;

@@ -1,6 +1,6 @@
 //
-// print/raster.h -- a print job's pages as pixels, for a printer that takes no PDF (most home printers: they
-// take PWG Raster, the format of IPP Everywhere / AirPrint): a page replayed (print/job.h) into a
+// printerkit/raster.h -- a print job's pages as pixels, for a printer that takes no PDF (most home printers: they
+// take PWG Raster, the format of IPP Everywhere / AirPrint): a page replayed (printerkit/job.h) into a
 // 0x00RRGGBB buffer at the printer's resolution -- the glyphs by FreeType from the job's own fonts, the
 // rectangles, the images scaled, the paths filled with smoothed edges --, then written as a PWG Raster page.
 //
@@ -22,7 +22,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
-#include "print/job.h"
+#include "printerkit/job.h"
 #include "img/imgload.hpp"
 
 namespace praster {

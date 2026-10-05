@@ -155,25 +155,25 @@ lib/uikit.imp.a: lib/uikit_stubs.o lib/uikit_bind.o lib/uikit_globals.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- print.so: printing (print/print.h; docs/03 "Printing") -- a job's pages recorded, the Print dialog.
-# Its table: the print_ functions (print/print.abi). The first library that uses others: FreeType (the
-# text's glyphs) and uikit (the dialog), through their import stubs linked in -- print/print.cpp opens
+# ---- printerkit.so: printing (printerkit/printerkit.h; docs/03 "Printing") -- a job's pages recorded, the Print dialog.
+# Its table: the print_ functions (printerkit/printerkit.abi). The first library that uses others: FreeType (the
+# text's glyphs) and uikit (the dialog), through their import stubs linked in -- printerkit/printerkit.cpp opens
 # ft.so / uikit.so when first needed and sets the stubs' tables. uikit's variables are the program's, as for
 # uikit.so itself: uikit's globals.o (the library build: references bound through the importer's table) and
 # --data onyx_uikit_data in the bind object. Floats in its interface: FP/SIMD flags.
-PRINT_HDR = $(wildcard print/*.h) pdf/pdfwrite.h img/pngsave.hpp
-PRINT_SO_OBJ = lib/print/print.o lib/print/dialog.o
-lib/print/%.o: print/%.cpp $(PRINT_HDR) $(UIKIT_HDR) $(LIB_DEP)
-	@mkdir -p lib/print
+PRINT_HDR = $(wildcard printerkit/*.h) pdf/pdfwrite.h img/pngsave.hpp
+PRINT_SO_OBJ = lib/printerkit/printerkit.o lib/printerkit/dialog.o
+lib/printerkit/%.o: printerkit/%.cpp $(PRINT_HDR) $(UIKIT_HDR) $(LIB_DEP)
+	@mkdir -p lib/printerkit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Ift -I$(FT_SRC)/include -c $< -o $@
-lib/print_table.S: $(PRINT_SO_OBJ) print/print.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name print --abi print/print.abi --init print_lib_init --export '^print_' --exclude '^print_lib_init$$' 		--allow-data '^onyx_' --data onyx_uikit_data --table lib/print_table.S --stubs lib/print_stubs.S --bind lib/print_bind.cpp $(PRINT_SO_OBJ)
-print/print.abi:
+lib/printerkit_table.S: $(PRINT_SO_OBJ) printerkit/printerkit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name printerkit --abi printerkit/printerkit.abi --init print_lib_init --export '^print_' --exclude '^print_lib_init$$' 		--allow-data '^onyx_' --data onyx_uikit_data --table lib/printerkit_table.S --stubs lib/printerkit_stubs.S --bind lib/printerkit_bind.cpp $(PRINT_SO_OBJ)
+printerkit/printerkit.abi:
 	@touch $@
-lib/print_stubs.S lib/print_bind.cpp: lib/print_table.S ;
-lib/print.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/ft_stubs.o lib/print_table.o lib/librt.o
+lib/printerkit_stubs.S lib/printerkit_bind.cpp: lib/printerkit_table.S ;
+lib/printerkit.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/ft_stubs.o lib/printerkit_table.o lib/librt.o
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBGCC_A)
-lib/print.imp.a: lib/print_stubs.o lib/print_bind.o
+lib/printerkit.imp.a: lib/printerkit_stubs.o lib/printerkit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
@@ -187,7 +187,8 @@ AK_FLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -
 	   -fno-math-errno -DONYX_LIB_BUILD -I. -I../kernel/include
 AK_CXXFLAGS = $(AK_FLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 AK_SYNTH_SRC = $(wildcard Apps/koton/synth/*.cpp)
-AK_OBJ = $(patsubst Apps/koton/synth/%.cpp,lib/ak/synth_%.o,$(AK_SYNTH_SRC)) lib/ak/codecs.o lib/ak/vorbis.o lib/ak/akcore.o
+AK_OBJ = $(patsubst Apps/koton/synth/%.cpp,lib/ak/synth_%.o,$(AK_SYNTH_SRC)) lib/ak/codecs.o lib/ak/vorbis.o lib/ak/akcore.o \
+	 lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o lib/ak/akfm.o
 lib/ak/synth_%.o: Apps/koton/synth/%.cpp $(wildcard Apps/koton/synth/*.h)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -IApps/koton -c $< -o $@
@@ -198,6 +199,13 @@ lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h Apps/media/decode.h App
 		 Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -I../third_party -IApps/media -IApps/koton -c $< -o $@
+lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o: lib/ak/%.o: audiokit/%.cpp audiokit/audiokit.h Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
+	@mkdir -p lib/ak
+	$(CXX) $(AK_CXXFLAGS) -Wall -IApps/koton -c $< -o $@
+# (the FM synthesizer: the kernel's own source, in its host mode)
+lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h ../kernel/sys/sound.cpp ../kernel/sys/sound_tables.h kapi.h $(LIB_DEP)
+	@mkdir -p lib/ak
+	$(CXX) $(AK_CXXFLAGS) -w -c $< -o $@
 lib/ak/akso.o: audiokit/akso.c lib.h kapi.h
 	@mkdir -p lib/ak
 	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
@@ -215,9 +223,9 @@ lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/print.so lib/audiokit.so
+SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/print.imp.a lib/audiokit.imp.a
+libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -253,8 +261,8 @@ uikit/libuikit.a: $(UIKIT_OBJ)
 # (uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build and the PC builds make their own.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
@@ -283,25 +291,25 @@ libc/onyx_syscalls.o: libc/onyx_syscalls.c kapi.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 # Letters: its model, layout and files in Apps/letters/*.h (the mail merge reads Cardfile's forms: its model.h;
 # .docx / .odt: the PNG writer's zip / deflate).
-letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h lib/print.imp.a $(PRINT_HDR) lib/ft.imp.a \
+letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
 	    lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/print.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 # The spreadsheet: a newlib app as Letters (FreeType, stdio, doubles) -- its engine and files in
 # Apps/sheet/*.h, Letters' icons, the PNG writer's zip / deflate for the .xlsx.
-sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h lib/print.imp.a $(PRINT_HDR) lib/ft.imp.a \
+sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
 	   lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/print.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # Slides, the presentation program (Apps/slides: docs/slides/README.md): a newlib app as Letters (FreeType), its
 # slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
 # .odp's zip (img/pngsave.hpp), the PDF writer.
 slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
-	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/print.imp.a $(PRINT_HDR) lib/ft.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
+	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
 	    user.ld kapi.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/print.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
+	       lib/printerkit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
 
 # QBStudio, the IDE for desktop apps in BASIC (Apps/qbstudio: docs/qbstudio/README.md): a newlib app as Letters
 # (FreeType's text through uikit, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
@@ -329,9 +337,9 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps
 # Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # uikit), the image codecs (uikit's imgload), the JPEG / PNG writers (img/pngsave.hpp), the PDF writer (pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) img/imgload.hpp img/pngsave.hpp pdf/pdfwrite.h clipboard.h notify.h trash.h wallpaper.h \
-	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/print.imp.a print/print.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/print.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
+	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # Archiver, the archive manager (Apps/archiver: docs/archiver/README.md): a newlib app as Letters (FreeType's text
 # through uikit), its engine and widgets headers included by main.cpp; zlib (Deflate) built from third_party into
@@ -353,7 +361,7 @@ archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) fileassoc.h l
 clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h clipproto.h notify.h libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -IApps/clipd $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< -o $@
 # The print service (docs/03 "Printing"): printd, no window, newlib -- the queue, the printers, a job's pages
-# rendered (print/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (print/ipp.h).
+# rendered (printerkit/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (printerkit/ipp.h).
 printd.elf: Apps/printd/main.cpp $(PRINT_HDR) notify.h lib/ft.imp.a lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 clipboard.elf: Apps/clipboard/main.cpp clipboard.h clipproto.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a \
@@ -379,9 +387,9 @@ pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
 # Paint: a newlib app (FreeType's text, its Text tool), its canvas composited by the GPU (gpucomp: the
 # layers as textures, their blend modes); its pieces in Apps/paint/*.h.
 paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) clipboard.h docguard.h img/imgload.hpp img/pngsave.hpp lib/ft.imp.a \
-	   ft/uikitface.h lib/print.imp.a print/print.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	   ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/print.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
+	       lib/printerkit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
 screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a \
 		libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
@@ -409,9 +417,9 @@ MU_NL_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffun
 Apps/pdf/obj/libmupdf.a: Apps/pdf/mupdf.mk $(wildcard Apps/pdf/mu/*)
 	@$(MAKE) --no-print-directory -f Apps/pdf/mupdf.mk MU_ROOT=.. MU_ONYX=1 MU_CC=$(CC) MU_AR=$(AR) MU_OUT=Apps/pdf/obj MU_CFLAGS="$(MU_NL_CFLAGS)"
 pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clipboard.h docguard.h ft/uikitface.h \
-	 lib/print.imp.a print/print.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	 lib/printerkit.imp.a printerkit/printerkit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I../third_party/mupdf-1.28.5/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/print.imp.a lib/uikit.imp.a Apps/pdf/obj/libmupdf.a -lm -o $@
+	       lib/printerkit.imp.a lib/uikit.imp.a Apps/pdf/obj/libmupdf.a -lm -o $@
 
 # Media Player, the music and video library (Apps/media: docs/media/README.md): a newlib app (FreeType's text through
 # uikit), its music decoders from third_party (minimp3, stb_vorbis, dr_flac, dr_wav: Apps/media/codecs.c, vorbis.c, built
@@ -547,8 +555,10 @@ setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
 # The FreeType apps (FT_APPS): newlib + lib/ft.imp.a, as the Calendar. The Game Library also links the
 # emulators it takes the covers and the save states' pictures from.
 FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
-FT_EXTRA_printconf = lib/print.imp.a
-printconf.elf: lib/print.imp.a print/print.h
+FT_EXTRA_fmtracker = lib/audiokit.imp.a
+fmtracker.elf: lib/audiokit.imp.a audiokit/audiokit.h
+FT_EXTRA_printconf = lib/printerkit.imp.a
+printconf.elf: lib/printerkit.imp.a printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;

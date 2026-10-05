@@ -8,7 +8,7 @@
 // zoom). Tables (rows, columns, merged cells, lines, shading, a heading row), headers and footers (the
 // first page's own), page numbers and fields, tab stops with leaders, a table of contents, the pages
 // kept whole (widows, orphans, headings with their text), a mail merge (a Cardfile's records into a
-// letter). File > Print: the pages to the print service (print/print.h).
+// letter). File > Print: the pages to the print service (printerkit/printerkit.h).
 //
 // The pieces: doc.h (the document, its formats, tables, fields, stories, undo), layout.h (lines,
 // tables, pages), edit.h (the selection, the edits, the tables' changes, the clipboard, find), view.h
@@ -257,7 +257,7 @@ static int utf8_put (char *o, unsigned c)
 	o[0] = (char) (0xF0 | c >> 18); o[1] = (char) (0x80 | (c >> 12 & 63)); o[2] = (char) (0x80 | (c >> 6 & 63)); o[3] = (char) (0x80 | (c & 63)); return 4;
 }
 // File > Print: the Print dialog (the library's, the same in every app), then the pages drawn into the job
-// by the code that draws them into a PDF (print/pdfprint.h) -- the print service does the rest.
+// by the code that draws them into a PDF (printerkit/pdfprint.h) -- the print service does the rest.
 static void cmd_print ()
 {
 	char name[200]; scpy (name, g_path[0] ? base_name (g_path) : "Untitled", sizeof name);

@@ -22,8 +22,10 @@
 #include <stdio.h>
 #include <math.h>
 #include "kapi.h"
+#define MEDIA_SOUNDFONT_AUDIOKIT			// (midi.h: the SoundFont is aksf.cpp's, one for the process)
 #include "Apps/media/decode.h"		// media::Decoder, Stream, decoder_open; midi.h: MidiDecoder, soundfont ()
 #include "audiokit/audiokit.h"
+#include "Apps/koton/synth/ms_internal.h"	// the reverb and the chorus (ak_reverb_*, ak_chorus_*)
 
 using namespace media;
 
@@ -67,149 +69,15 @@ extern "C" void ak_info_of (ak_stream *a, struct ak_info *o)
 }
 extern "C" void ak_close (ak_stream *a)				{ if (a != 0) { delete a->s; delete a; } }
 
-// ---- mixing and conversion ----------------------------------------------------------------------------
+// (the mixing and conversion functions, the notes, the WAV header: akmix.cpp)
 
 static inline short sat16 (int v) { return (short) (v > 32767 ? 32767 : v < -32768 ? -32768 : v); }
 
-extern "C" void ak_gain_s16 (short *b, int frames, int gain)
-{
-	if (gain == 65536) return;
-	for (int i = 0; i < frames * 2; i++) b[i] = sat16 ((int) (((long long) b[i] * gain) >> 16));
-}
-extern "C" void ak_mix_s16 (short *dst, const short *src, int frames, int gain)
-{
-	for (int i = 0; i < frames * 2; i++) dst[i] = sat16 (dst[i] + (int) (((long long) src[i] * gain) >> 16));
-}
-extern "C" void ak_mono_to_stereo (short *b, int frames)
-{
-	for (int i = frames - 1; i >= 0; i--) { b[2 * i + 1] = b[i]; b[2 * i] = b[i]; }
-}
-extern "C" int ak_volume_gain (int v)
-{
-	if (v < 0) v = 0;
-	if (v > 100) v = 100;
-	return (int) ((long long) v * v * 65536 / 10000);		// the square: even steps for the ear
-}
-
-// A soft limiter: straight up to 0.9, then bent so that it never passes 1.
-static inline float soft (float x)
-{
-	float a = x < 0 ? -x : x;
-	if (a <= 0.9f) return x;
-	float y = 0.9f + 0.1f * tanhf ((a - 0.9f) * 10.0f);
-	return x < 0 ? -y : y;
-}
-extern "C" void ak_f32_to_s16 (const float *l, const float *r, short *out, int frames, float gain)
-{
-	for (int i = 0; i < frames; i++)
-	{
-		out[2 * i]     = (short) (soft (l[i] * gain) * 32767.0f);
-		out[2 * i + 1] = (short) (soft (r[i] * gain) * 32767.0f);
-	}
-}
-
-struct ak_resampler { unsigned in, out, frac; int pl, pr, cl, cr; bool primed; };
-extern "C" ak_resampler *ak_resampler_new (int in_rate, int out_rate)
-{
-	if (in_rate <= 0 || out_rate <= 0) return 0;
-	ak_resampler *r = new ak_resampler;
-	memset (r, 0, sizeof *r);
-	r->in = (unsigned) in_rate; r->out = (unsigned) out_rate;
-	return r;
-}
-extern "C" int ak_resample (ak_resampler *r, const short *in, int nIn, short *out, int cap, int *used)
-{
-	int i = 0, o = 0;
-	if (r == 0) { if (used) *used = 0; return 0; }
-	while (o < cap)
-	{
-		while (r->frac >= r->out || !r->primed)			// the next source frame is needed
-		{
-			if (i >= nIn) goto done;
-			r->pl = r->cl; r->pr = r->cr;
-			r->cl = in[2 * i]; r->cr = in[2 * i + 1]; i++;
-			if (!r->primed) { r->primed = true; r->pl = r->cl; r->pr = r->cr; }
-			else r->frac -= r->out;
-		}
-		out[2 * o]     = (short) (r->pl + (int) ((long long) (r->cl - r->pl) * (int) r->frac / (int) r->out));
-		out[2 * o + 1] = (short) (r->pr + (int) ((long long) (r->cr - r->pr) * (int) r->frac / (int) r->out));
-		o++;
-		r->frac += r->in;
-	}
-done:
-	if (used) *used = i;
-	return o;
-}
-extern "C" void ak_resampler_free (ak_resampler *r)		{ delete r; }
-
-// ---- notes ----------------------------------------------------------------------------------------------
-
-extern "C" int ak_note_mhz (int key)
-{
-	if (key < 0) key = 0;
-	if (key > 127) key = 127;
-	return (int) lrint (440000.0 * pow (2.0, (key - 69) / 12.0));
-}
-static const char *const s_noteNames[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-extern "C" void ak_note_name (int key, char *out8)
-{
-	if (key < 0) key = 0;
-	if (key > 127) key = 127;
-	snprintf (out8, 8, "%s%d", s_noteNames[key % 12], key / 12 - 1);
-}
-extern "C" int ak_note_parse (const char *s)
-{
-	if (s == 0) return -1;
-	while (*s == ' ') s++;
-	static const int base[7] = { 9, 11, 0, 2, 4, 5, 7 };		// A B C D E F G
-	char c = *s >= 'a' && *s <= 'g' ? (char) (*s - 32) : *s;
-	if (c < 'A' || c > 'G') return -1;
-	int n = base[c - 'A'];
-	s++;
-	if (*s == '#') { n++; s++; }
-	else if (*s == 'b') { n--; s++; }
-	int sign = 1, oct = 4;
-	if (*s == '-') { sign = -1; s++; }
-	if (*s >= '0' && *s <= '9') { oct = 0; while (*s >= '0' && *s <= '9') oct = oct * 10 + (*s++ - '0'); oct *= sign; }
-	int key = (oct + 1) * 12 + n;
-	return key < 0 || key > 127 ? -1 : key;
-}
-
-// ---- WAV ------------------------------------------------------------------------------------------------
-
-static void le32 (unsigned char *p, unsigned v) { p[0] = (unsigned char) v; p[1] = (unsigned char) (v >> 8); p[2] = (unsigned char) (v >> 16); p[3] = (unsigned char) (v >> 24); }
-static void le16 (unsigned char *p, unsigned v) { p[0] = (unsigned char) v; p[1] = (unsigned char) (v >> 8); }
-extern "C" int ak_wav_header (unsigned char *h, int rate, int channels, unsigned bytes)
-{
-	memcpy (h, "RIFF", 4); le32 (h + 4, 36 + bytes); memcpy (h + 8, "WAVEfmt ", 8);
-	le32 (h + 16, 16); le16 (h + 20, 1); le16 (h + 22, (unsigned) channels);
-	le32 (h + 24, (unsigned) rate); le32 (h + 28, (unsigned) (rate * channels * 2)); le16 (h + 32, (unsigned) (channels * 2)); le16 (h + 34, 16);
-	memcpy (h + 36, "data", 4); le32 (h + 40, bytes);
-	return 44;
-}
-extern "C" int ak_wav_save (const char *path, const short *frames, int n, int rate)
-{
-	if (path == 0 || frames == 0 || n < 0) return -1;
-	unsigned bytes = (unsigned) n * 4;
-	unsigned char *b = (unsigned char *) malloc (44 + bytes);
-	if (b == 0) return -1;
-	ak_wav_header (b, rate, 2, bytes);
-	memcpy (b + 44, frames, bytes);
-	int r = kapi_save_file (path, b, 44 + bytes);
-	free (b);
-	return r == (int) (44 + bytes) ? 0 : -1;
-}
+// (the WAV files written -- ak_wav_save, ak_wav_begin / _write / _end --: akwav.cpp)
 
 // ---- the SoundFont, the synthesizer for C ---------------------------------------------------------------
 
-extern "C" void *ak_soundfont_default (char *err, int cap)
-{
-	char e[160];
-	if (err == 0 || cap <= 0) { err = e; cap = (int) sizeof e; }
-	err[0] = 0;
-	return soundfont (err, cap);				// (midi.h: found, loaded once, kept)
-}
-extern "C" const char *ak_soundfont_name (void)			{ return g_sf != 0 ? g_sfName : ""; }
+// (the SoundFont -- ak_soundfont_find / _load / _default / _name --: aksf.cpp)
 
 struct ak_synth { ms::Synthesizer *syn; float L[1024], R[1024]; };
 extern "C" ak_synth *ak_synth_new (void)
@@ -247,7 +115,7 @@ static int out_acquire (int chunk, int ahead)
 {
 	int r = kapi_sound_acquire ();
 	if (r != 1) return r;
-	kapi_sound_config (chunk, ahead);
+	if (chunk > 0) kapi_sound_config (chunk, ahead);		// (0: the output as it is)
 	unsigned rt = 0, fr = 0, own = 0;
 	kapi_sound_status (&rt, &fr, &own);
 	s_cap = fr != 0 ? fr : 22050;
@@ -299,6 +167,8 @@ static volatile bool s_liveOn;				// notes were played and may still sound
 static volatile bool s_keepOut;				// (ak_play_keep_output)
 static int s_liveQuiet;					// passes without a voice
 
+extern "C" int akfm_active (void);			// (akfm.cpp: FM voices sound, or their releases)
+
 static int player_main (void *)
 {
 	static short buf[2 * P_CHUNK], tmp[2 * P_CHUNK];
@@ -307,7 +177,7 @@ static int player_main (void *)
 	for (;;)
 	{
 		bool bFile = s_file != 0 && (s_state == AK_PLAYING || s_state == AK_BUSY);
-		if (!bFile && !s_liveOn)
+		if (!bFile && !s_liveOn && !akfm_active ())
 		{
 			if (s_out == 1 && !s_keepOut && ++idle > 60 && ak_out_queued () == 0) ak_out_close ();	// (let the others play)
 			kapi_msleep (10);
@@ -348,10 +218,15 @@ static int player_main (void *)
 			else s_liveQuiet = 0;
 		}
 		kapi_unlock (&s_lk);
+		if (akfm_active ()) { memset (tmp, 0, sizeof tmp); ak_fm_render (tmp, P_CHUNK); ak_mix_s16 (buf, tmp, P_CHUNK, nGain); }
 		ak_out_write (buf, P_CHUNK);
 	}
 	return 0;
 }
+
+extern "C" void akplayer_start (void);		// (for akfm.cpp: the FM voices are played by the same thread)
+static void player_start (void);
+extern "C" void akplayer_start (void)			{ player_start (); }
 
 static void player_start (void)
 {
@@ -464,3 +339,44 @@ extern "C" void ak_notes_off (void)
 	s_live->noteOffAll (false);
 	kapi_unlock (&s_lk);
 }
+
+// ---- the reverb and the chorus (MeltySynth's), as effects of their own -------------------------------------
+
+struct ak_reverb { ms::Reverb r; };
+extern "C" ak_reverb *ak_reverb_new (int rate)
+{
+	ak_reverb *v = new ak_reverb;
+	memset ((void *) v, 0, sizeof *v);
+	if (!v->r.init (rate)) { v->r.free_ (); delete v; return 0; }
+	return v;
+}
+extern "C" void ak_reverb_set (ak_reverb *v, float room, float damp, float wet, float width)
+{
+	if (v == 0) return;
+	if (room >= 0) v->r.roomSize = room;
+	if (damp >= 0) v->r.damp = damp;
+	if (wet >= 0) v->r.wet = wet;
+	if (width >= 0) v->r.width = width;
+	v->r.update ();
+}
+extern "C" void ak_reverb_process (ak_reverb *v, const float *in, float *left, float *right, int frames)
+{
+	if (v != 0) v->r.process (in, left, right, frames);
+}
+extern "C" void ak_reverb_mute (ak_reverb *v)		{ if (v != 0) v->r.mute (); }
+extern "C" void ak_reverb_free (ak_reverb *v)		{ if (v != 0) { v->r.free_ (); delete v; } }
+
+struct ak_chorus { ms::Chorus c; };
+extern "C" ak_chorus *ak_chorus_new (int rate, float delay_s, float depth_s, float hz)
+{
+	ak_chorus *v = new ak_chorus;
+	memset ((void *) v, 0, sizeof *v);
+	if (!v->c.init (rate, delay_s, depth_s, hz)) { v->c.free_ (); delete v; return 0; }
+	return v;
+}
+extern "C" void ak_chorus_process (ak_chorus *v, const float *inL, const float *inR, float *outL, float *outR, int frames)
+{
+	if (v != 0) v->c.process (inL, inR, outL, outR, frames);
+}
+extern "C" void ak_chorus_mute (ak_chorus *v)		{ if (v != 0) v->c.mute (); }
+extern "C" void ak_chorus_free (ak_chorus *v)		{ if (v != 0) { v->c.free_ (); delete v; } }

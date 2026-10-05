@@ -1,15 +1,15 @@
 //
-// print/ippnet.h -- print/ipp.h's sockets on Onyx: the kapi's TCP. A send goes on until everything is
+// printerkit/ippnet.h -- printerkit/ipp.h's sockets on Onyx: the kapi's TCP. A send goes on until everything is
 // queued (kapi_tcp_send returns a short count after 5 s: a printer that prints while it receives is slow
 // to take the next rows) and gives up after a minute without a byte taken.
 //
-// MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (the notice: print/print.h).
+// MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (the notice: printerkit/printerkit.h).
 //
 #ifndef ONYX_PRINT_IPPNET_H
 #define ONYX_PRINT_IPPNET_H
 
 #include "kapi.h"
-#include "print/ipp.h"
+#include "printerkit/ipp.h"
 
 namespace ipp {
 
