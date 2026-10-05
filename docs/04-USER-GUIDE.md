@@ -2348,7 +2348,7 @@ checked the original stays where it is and a copy of it, a new body, is what mov
 | **View** | Home, Fit, Top, Front, Right, Edges, Grid, See Through, Draw with the Processor |
 | **Create** | the seven shapes, Sketch, Extrude |
 | **Modify** | Fillet, Chamfer, Move, Union, Subtract, Intersect, Measure |
-| **Manufacture** | Design, Manufacture, Setup, Tool and Machine, New Clearing, New Contour, Simulate, G-code (Ctrl+G) |
+| **Manufacture** | Design, Manufacture, Setup, Tool and Machine, New Clearing, New Contour, Simulate, G-code / Print File (Ctrl+G), Process: Milling, Process: Resin Printing, Supports, Generate Supports, Layers |
 
 Keys: **Enter** the step goes on (as OK), **Esc** leaves the tool (in a sketch: ends the run), **Del** deletes the
 selected step (in a sketch: the selected element).
@@ -2364,8 +2364,10 @@ then shows a warning in the timeline).
 ![Manufacture: the setup](../screenshots/3dforge-cam.png)
 *The setup: the body in its stock, the origin on one of the stock's 27 points, the machine's axes.*
 
-**Manufacture** (the switch at the left of the tools; **Design** comes back to the part) prepares the cutting of
-**one body** on a 3-axis router driven by **GRBL**, with a **flat end mill**. The view shows that body alone, in
+**Manufacture** (the switch at the left of the tools; **Design** comes back to the part) makes **one body**. What it
+makes is the **Process**, chosen in the setup beside the body: **Milling** — the G-code of a router, described
+here — or **Resin printing** — the layers of a resin printer, described after. Milling prepares the cutting of the
+body on a 3-axis router driven by **GRBL**, with a **flat end mill**. The view shows that body alone, in
 its **stock** (the block it is cut from, see-through); the timeline shows the setup, then the operations in the
 order they are run. Everything is kept in the `.3df`.
 
@@ -2393,7 +2395,8 @@ order they are run. Everything is kept in the `.3df`.
 *The moves: cuts in blue, fast moves in orange; the selected operation's are the strong ones.*
 
 The moves are computed again a moment after a value changes; each operation shows the length cut, its time and
-its lowest Z. **Simulate** shows what is left of the stock once every operation is done (Esc comes back to the
+its lowest Z. **Simulate** shows what is left of the stock once every operation is done; the bar at the left goes
+through the cut — drag it — and its **Play** button runs it, the tool shown where it is (Esc comes back to the
 moves) — a hole that only a tool lying on its side could cut stays full: the router has three axes.
 
 ![Manufacture: simulated](../screenshots/3dforge-cam-sim.png)
@@ -2411,8 +2414,53 @@ above the stock.
 width on a level's first pass and in the corners: choose the step down and the feed for that) — not a
 constant-engagement "adaptive" one; flat end mills only; three axes (no rotary axis yet); one setup a part.
 
-Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); exports and G-code (`.nc`) where you
-choose; `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered).
+#### Manufacture: the layers for a resin printer
+
+![Resin printing: the setup](../screenshots/3dforge-print.png)
+*The body on the printer's plate.*
+
+With the process **Resin printing** (the *Process* button of the setup lists the printers), Manufacture prepares a
+body for a printer that hardens resin layer by layer under an LCD screen — an **Anycubic Photon Mono 2** (its
+`.pm3n` file; the format was read from a file of that printer and is written back to the byte). The tools become
+Setup, Resin, Supports and Layers, and the button at the right **Print file**.
+
+- **Setup** — the body, the printer (its screen, its room); where the body is **on the plate**: moved (*X*, *Y*),
+  *Lifted* off it, *Tilted* about X and Y, *Turned*; *Mirror the picture* flips the layers left to right (try a
+  first print with a letter on it: a printer shows whether it needs it). Under the fields: whether it fits.
+- **Resin** — the values of a print, kept from a part to the next: the layer's *height*, its *exposure*, the time
+  the *light* is *off* before it; the *first layers* — how many, their long exposure, the layers over which it comes
+  down to the normal one —; the *lift* after each layer, slowly at first then faster, and the speed back down. The
+  button at the top takes the maker's values for a **Standard**, an **ABS-like** or a **Plant-based** resin
+  (2.5 s, 2.5 s and 3 s a layer of 0.05 mm on this printer; the other values are a starting point: a resin's own
+  sheet is the reference).
+- **Supports** — what holds the body when it is lifted and tilted: **Generate** puts a **pillar** with a thin tip
+  under every place that leans more than the *overhang* angle from upright, one *every* few millimetres, under the
+  body's *low points* and along its low edges, and a **raft** under them all (its thickness, how much wider than
+  the body). A click on the body adds a pillar there, a click on a pillar's tip removes it. The pillars go down to
+  the plate: what hangs above another part of the body is not held by them.
+- **Layers** — the layers are cut (a bar shows how far it is; the window stays alive) and shown **as the screen
+  will light them**: white is lit. The bar at the right, or the wheel, goes through them; **Play** runs them.
+  *Show it in the 3D view* shows instead the body as it is printed up to that layer. At the right: the number of
+  layers, the resin (ml), the time, and what was **checked** — it fits the plate and the room; the first layers lie
+  on the plate; each layer rests on the last (a part that would start **in mid-air** is counted, with its height:
+  it needs a support).
+
+![Resin printing: the supports](../screenshots/3dforge-print-supports.png)
+
+![Resin printing: a layer](../screenshots/3dforge-print-layers.png)
+
+**Print file** (Ctrl+G) cuts the layers if they are not, shows the checks — nothing is written for a body that
+does not fit or that nothing holds on the plate — and saves the file to copy to the printer's USB stick.
+
+*What it does not do*: supports that branch or that stand on the body; hollowing; anti-aliased edges; other
+makers' files. Another printer of the same family can be added without a new version: a line of
+`SD:/apps/3dforge.app/printers.ini`, `name = columns rows pixel(µm) width depth height(mm) ending` (for
+instance `My Printer = 4096 2560 35 143.36 89.1 165 pm3n`) — only the Photon Mono 2 has been checked against a real
+file.
+
+Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); exports, G-code (`.nc`) and print files
+where you choose; `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered), `print.ini` (the resin and
+the printer, remembered), `printers.ini` (more printers, yours to write).
 
 ### Screenshot, the screen capture tool (`screenshot`)
 

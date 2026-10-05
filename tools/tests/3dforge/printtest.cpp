@@ -27,7 +27,8 @@ int main (int argc, char **argv)
 
 	PrintSetup s; s.on = true; s.body = d.bodies[0].id;
 	PrintJob job; int calls = 0;
-	bool ok = print_slice (d.bodies[0].m, s, job, [&] (int, int) { calls++; return true; });
+	Manifold flat = print_place (d.bodies[0].m, s);
+	bool ok = print_slice (flat, s, job, [&] (int, int) { calls++; return true; });
 	const PmFile &f = job.file; size_t pixels = (size_t) s.machine.resX * s.machine.resY;
 	check (ok && f.layers.size () == 900 && calls == 900, "the bracket, 45 mm high: 900 layers of 0.05 mm");
 	// what is lit, layer by layer, is the body's volume (a pixel: 35 x 35 micrometres)
@@ -41,7 +42,7 @@ int main (int argc, char **argv)
 	printf ("     lit: %.0f mm3, the body: %.0f mm3; %.0f min, %.1f ml\n", vol, real, job.minutes, job.volume);
 	check (sized, "... every picture is the screen's size, its lit pixels counted");
 	check (fabs (vol - real) < real * 0.004, "... what is lit is the body's volume");
-	check (!job.tooLarge && fabs (f.hi.z - 45) < 1e-6 && fabs (f.lo.x + 45) < 1e-6 && fabs (f.hi.y - 30) < 1e-6, "... on the plate's middle, inside the printer");
+	check (!job.tooLarge && job.onPlate && !job.islands && fabs (f.hi.z - 45) < 1e-6 && fabs (f.lo.x + 45) < 1e-6 && fabs (f.hi.y - 30) < 1e-6, "... on the plate's middle, inside the printer");
 	check (f.layers[0].exposure == 25 && f.layers[4].exposure == 25 && f.layers[5].exposure < 25 && f.layers[14].exposure > 2.5f && f.layers[15].exposure == 2.5f,
 	       "... the first layers long, then down to the normal exposure");
 	// a pixel's place: the plate's top face seen from above -- the round hole at (16, 22) of the body, 4.5 mm in radius
@@ -60,7 +61,25 @@ int main (int argc, char **argv)
 	check (pm_read (bytes, g) && g.layers.size () == 900 && g.layers[450].rle == f.layers[450].rle && g.machine.resX == 4096 && g.exposure == 2.5f && g.hi.z == 45
 	       && !strcmp (g.machine.name, "Anycubic Photon Mono 2") && pm_write (g) == bytes, "the file written, read back, written again: the same");
 	check (!print_slice (Manifold (), s, job, [] (int, int) { return true; }) && job.err[0], "nothing to print: said");
-	check (!print_slice (d.bodies[0].m, s, job, [] (int i, int) { return i < 10; }), "stopped when asked");
+	check (!print_slice (flat, s, job, [] (int i, int) { return i < 10; }), "stopped when asked");
+	{
+		// tilted and lifted: it hangs in the air until it is held -- pillars under what leans, a raft
+		PrintSetup t = s; t.tiltX = 24; t.lift = 5; t.resin.layer = 0.2; Manifold up = print_place (d.bodies[0].m, t); auto b = up.BoundingBox ();
+		PrintJob j; print_slice (up, t, j, [] (int, int) { return true; });
+		check (fabs (b.min.z - 5) < 1e-6 && fabs (b.min.x + b.max.x) < 1e-6 && !j.onPlate, "tilted, lifted, in the plate's middle: nothing lies on the plate, and it is said");
+		print_supports_auto (up, t, t.tips); Manifold sup = print_support_solid (up, t);
+		printf ("     %d pillars, %.1f ml of supports\n", (int) t.tips.size (), sup.Volume () / 1000);
+		check (t.tips.size () > 20 && t.tips.size () < 400 && sup.Status () == Manifold::Error::NoError && sup.Volume () > 500, "its supports: pillars and a raft");
+		Manifold all = up + sup; print_slice (all, t, j, [] (int, int) { return true; });
+		printf ("     held: on the plate %d, islands %d (the first at %.2f), too large %d\n", j.onPlate, j.islands, j.islandAt, j.tooLarge);
+		check (j.onPlate && !j.islands && !j.tooLarge && j.file.preview.size () == 224 * 168, "held: on the plate, nothing starts in mid-air");
+		// a ball hung above the plate beside it: an island
+		Manifold ball = all + Manifold::Sphere (3, 24).Translate ({40, 30, 20}); print_slice (ball, t, j, [] (int, int) { return true; });
+		printf ("     with a ball: islands %d (the first at %.2f)\n", j.islands, j.islandAt);
+		check (j.islands == 1 && fabs (j.islandAt - 17) < 0.25, "a piece that starts in mid-air is found, with its height");
+		PrintSetup u; print_load (u, print_save (t).c_str ());
+		check (u.on && u.tips.size () == t.tips.size () && u.tiltX == 24 && u.lift == 5 && u.resin.layer == 0.2 && !strcmp (u.resin.name, "Standard") && u.raft, "the setup saved and loaded");
+	}
 
 	if (argc > 2)		// a file of the printer's own slicer
 	{

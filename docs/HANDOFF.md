@@ -38,11 +38,21 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   first. Ideas kept for later: the **4th axis** (he has the rotary option; indexed 3 + 1 first — ask which firmware
   drives it), a true constant-engagement adaptive clearing (FreeCAD's could be ported: check its licence and ask
   him first), ramps that go back and forth less on a face's clearing (it is long: about 150 min on the sample).
-- **Print, for his resin printer (asked 2026-10-06)**: `fprint.h` writes the Anycubic Photon Mono 2's `.pm3n` (his
-  own file comes back the same to the byte: `FORGE_PM_REF=<his file> sh tools/tests/run_3dforge_test.sh`) and cuts a
-  body into layers; **its screen is only mock-ups** (`docs/3dforge/README.md`, *Print*): wait for his word. Decided:
-  our own supports, MIT (not PrusaSlicer's AGPL code); the machine chosen in the setup selects the "generator"
-  (router / resin printer; his idea of plug-ins).
+- **Print, for his resin printer (asked and built 2026-10-06)**: `fprint.h` writes the Anycubic Photon Mono 2's
+  `.pm3n` (his own file comes back the same to the byte: `FORGE_PM_REF=<his file> sh tools/tests/run_3dforge_test.sh`),
+  places the body, makes supports (our own, MIT — not PrusaSlicer's AGPL code: his choice was "PrusaSlicer if it
+  performs, else ours"; porting libslic3r is out of proportion), cuts the layers and checks them; the screen is built
+  from the mock-ups he approved (the **Process** in the setup: Milling / Resin printing — his idea of plug-ins:
+  `PrintFormat`, `printers.ini`). **Nothing printed yet**: whether the printer wants the picture mirrored is unknown
+  (his sample is symmetric) — ask him to print something with a letter. Kept for later: a filament printer's
+  generator (large), supports that branch or stand on the body, hollowing.
+- **The simulations play** (his wish): the router's cut (`cam_sim_advance`, a bar and Play), the layers (Play, and
+  the body shown printed up to a layer).
+- **Computations on another core** (his question, 2026-10-06): threads all run on core 0; an app core (2, 3) may
+  run a function but **without any kapi call or malloc** — Manifold allocates all the time. To study before
+  promising: growing the heap beforehand so that malloc never needs `kapi_sbrk` there (the allocator's lock already
+  spins on an app core), or a kernel change. The slicing is cut into steps in the loop meanwhile; `cam_compute`
+  still blocks the window while it runs.
 - **The same day, asked while I built**: the sketch's arc by centre, start, end (its angle + clockwise), a 3-point
   arc, splines, a rectangle from its centre, construction points; a shape's Z / distance off its face and its turn
   about its axis (the pointer gives it while the radius is set); no ghost before the first click.

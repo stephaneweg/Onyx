@@ -24,8 +24,12 @@
 
 namespace forge {
 
-struct PrintMachine { char name[32]; int resX, resY; double pixel, sizeX, sizeY, sizeZ; };	// (pixel: micrometres; sizes: mm)
-static const PrintMachine PRINT_MACHINE0 = { "Anycubic Photon Mono 2", 4096, 2560, 35, 143.36, 89.1, 165 };
+struct PrintMachine { char name[32]; int resX, resY; double pixel, sizeX, sizeY, sizeZ; char ext[8]; };	// (pixel: micrometres; sizes: mm)
+static const PrintMachine PRINT_MACHINE0 = { "Anycubic Photon Mono 2", 4096, 2560, 35, 143.36, 89.1, 165, "pm3n" };
+// A file's format: what writes a job's layers for a family of printers. (One so far; another printer of the same
+// family is a line of printers.ini -- print_machines --, another family a writer added here.)
+struct PmFile;
+struct PrintFormat { const char *id, *name; std::string (*write) (const PmFile &); };
 // A lift in two stages (slow off the film, then fast): heights (mm), speeds up and back down (mm/s).
 struct PrintLift { double h1, up1, down1, h2, up2, down2; };
 struct PrintResin
@@ -99,6 +103,25 @@ static std::string pm_write (const PmFile &f)
 	o.at (table + 28, (unsigned) o.s.size ());
 	for (size_t i = 0; i < n; i++) { o.at (defs + 32 * i, (unsigned) o.s.size ()); o.s += f.layers[i].rle; }
 	return o.s;
+}
+static const PrintFormat PRINT_FORMATS[] = { { "anycubic", "Anycubic Photon (ANYCUBIC 5.17, pw0Img)", pm_write } };
+// The printers: the one the format was read from, then those of `ini` (printers.ini beside the app), a line each:
+//   name = columns rows pixel(micrometres) width depth height(mm) ending
+static std::vector<PrintMachine> print_machines (const char *ini)
+{
+	std::vector<PrintMachine> out (1, PRINT_MACHINE0);
+	for (const char *p = ini; p && *p; )
+	{
+		const char *e = strchr (p, '\n'); size_t n = e ? (size_t) (e - p) : strlen (p);
+		char line[200]; if (n >= sizeof line) n = sizeof line - 1; memcpy (line, p, n); line[n] = 0; p = e ? e + 1 : 0;
+		char *eq = strchr (line, '='); if (!eq || line[0] == '#' || line[0] == ';') continue;
+		*eq = 0; char *nm = line; while (*nm == ' ') nm++; size_t l = strlen (nm); while (l && (nm[l - 1] == ' ' || nm[l - 1] == '\t')) nm[--l] = 0;
+		PrintMachine m = PRINT_MACHINE0; char ext[16] = "";
+		if (!l || sscanf (eq + 1, "%d %d %lf %lf %lf %lf %7s", &m.resX, &m.resY, &m.pixel, &m.sizeX, &m.sizeY, &m.sizeZ, ext) < 7) continue;
+		if (m.resX < 16 || m.resY < 16 || m.resX > 16384 || m.resY > 16384 || m.pixel < 1) continue;
+		snprintf (m.name, sizeof m.name, "%s", nm); snprintf (m.ext, sizeof m.ext, "%s", ext); out.push_back (m);
+	}
+	return out;
 }
 // A file read back (the test's, and to look into one): false when it is not of this kind.
 static bool pm_read (const std::string &d, PmFile &f)
@@ -194,15 +217,125 @@ static void pm_raster (const Polygons &polys, const PrintMachine &m, bool mirror
 }
 
 // ---- a body, printed ---------------------------------------------------------------------------------------------------
+// The resins the printer's maker gives values for (a layer of 0.05 mm; the first layers' as the standard one's).
+static const PrintResin PRINT_RESINS[3] = {
+	{ "Standard", 0.05, 2.5, 2, 25, 5, 10, 4, 3, { 2, 1, 2, 4, 4, 5 }, { 2, 1, 2, 4, 4, 5 } },
+	{ "ABS-like", 0.05, 2.5, 2, 25, 5, 10, 4, 3, { 2, 1, 2, 4, 4, 5 }, { 2, 1, 2, 4, 4, 5 } },
+	{ "Plant-based", 0.05, 3, 2, 25, 5, 10, 4, 3, { 2, 1, 2, 4, 4, 5 }, { 2, 1, 2, 4, 4, 5 } } };
 struct PrintSetup
 {
 	bool on; int body;
 	PrintMachine machine; PrintResin resin;
 	bool mirror;				// the picture flipped left to right
-	double x, y;				// where the body's middle is on the plate, from the plate's middle
-	PrintSetup () : on (false), body (-1), machine (PRINT_MACHINE0), resin (PRINT_RESIN0), mirror (false), x (0), y (0) {}
+	double x, y, lift;			// where the body's middle is on the plate, from the plate's middle; how high above it
+	double tiltX, tiltY, turn;		// turned about X, then Y, then Z (degrees) before it is put there
+	// what holds it: a pillar under each tip, a raft under them all
+	double supAngle, supEvery; bool supLow;	// found where a face leans more than that from upright, every so many mm; under low points
+	double supDia, supTip, supInto;		// a pillar's and its tip's diameters; how far the tip goes into the body
+	bool raft; double raftThick, raftMore;
+	std::vector<V3> tips;			// the tips, on the body as it is on the plate
+	PrintSetup () : on (false), body (-1), machine (PRINT_MACHINE0), resin (PRINT_RESIN0), mirror (false), x (0), y (0), lift (0), tiltX (0), tiltY (0), turn (0),
+			supAngle (45), supEvery (6), supLow (true), supDia (1.4), supTip (0.45), supInto (0.2), raft (true), raftThick (0.8), raftMore (3) {}
 };
-struct PrintJob { PmFile file; double minutes, volume; bool tooLarge; char err[72]; PrintJob () : minutes (0), volume (0), tooLarge (false) { err[0] = 0; } };
+// The body as it is on the plate (the plate's middle is the origin, its top z = 0).
+static Manifold print_place (const Manifold &body, const PrintSetup &s)
+{
+	Manifold r = body.Rotate (s.tiltX, s.tiltY, s.turn); auto b = r.BoundingBox ();
+	return r.Translate ({s.x - (b.min.x + b.max.x) / 2, s.y - (b.min.y + b.max.y) / 2, s.lift - b.min.z});
+}
+// Under (x, y): the lowest point of the mesh there. false: nothing above.
+struct PrintMesh
+{
+	std::vector<V3> v; std::vector<int> t;
+	void of (const Manifold &m)
+	{
+		auto g = m.GetMeshGL (); v.clear (); t.clear ();
+		for (size_t i = 0; i + 2 < g.vertProperties.size (); i += g.numProp) v.push_back (V3 (g.vertProperties[i], g.vertProperties[i + 1], g.vertProperties[i + 2]));
+		for (unsigned k : g.triVerts) t.push_back ((int) k);
+	}
+	bool under (double x, double y, double *z, double *nz) const
+	{
+		bool got = false; double best = 1e30;
+		for (size_t k = 0; k + 2 < t.size (); k += 3)
+		{
+			const V3 &a = v[t[k]], &b = v[t[k + 1]], &c = v[t[k + 2]];
+			if ((a.x < x && b.x < x && c.x < x) || (a.x > x && b.x > x && c.x > x) || (a.y < y && b.y < y && c.y < y) || (a.y > y && b.y > y && c.y > y)) continue;
+			double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y); if (fabs (den) < 1e-12) continue;
+			double w0 = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / den, w1 = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / den, w2 = 1 - w0 - w1;
+			if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+			double zz = w0 * a.z + w1 * b.z + w2 * c.z;
+			if (zz < best) { best = zz; got = true; V3 n = unit (cross (b - a, c - a)); *nz = n.z; }
+		}
+		*z = best; return got;
+	}
+};
+// Where the body needs holding: under what leans more than the angle from upright, on a grid; under its low points.
+static void print_supports_auto (const Manifold &placed, const PrintSetup &s, std::vector<V3> &tips)
+{
+	tips.clear (); if (placed.IsEmpty ()) return;
+	PrintMesh m; m.of (placed); auto b = placed.BoundingBox ();
+	double every = s.supEvery < 1 ? 1 : s.supEvery, lim = sin (s.supAngle * PI / 180);
+	int nx = (int) floor ((b.max.x - b.min.x) / every) + 1, ny = (int) floor ((b.max.y - b.min.y) / every) + 1;
+	double ox = (b.min.x + b.max.x) / 2 - (nx - 1) * every / 2, oy = (b.min.y + b.max.y) / 2 - (ny - 1) * every / 2;
+	for (int j = 0; j < ny && tips.size () < 4000; j++) for (int i = 0; i < nx; i++)
+	{
+		double x = ox + i * every, y = oy + j * every, z, nz;
+		if (m.under (x, y, &z, &nz) && z > 0.3 && -nz > lim) tips.push_back (V3 (x, y, z));
+	}
+	if (!s.supLow) return;
+	// a point no higher than those around it: something starts there -- and along an edge that lies level between
+	// two such points (the low edge of a tilted block: a strip of it would start in mid-air between two pillars)
+	std::vector<double> low (m.v.size (), 1e30);
+	for (size_t k = 0; k + 2 < m.t.size (); k += 3)
+		for (int e = 0; e < 3; e++) { int a = m.t[k + e], c = m.t[k + (e + 1) % 3]; low[a] = std::min (low[a], m.v[c].z); low[c] = std::min (low[c], m.v[a].z); }
+	auto add = [&] (const V3 &q)
+	{
+		if (tips.size () >= 4000) return;
+		for (const V3 &t : tips) if (hypot (t.x - q.x, t.y - q.y) < every / 3 && fabs (t.z - q.z) < 1.5) return;
+		tips.push_back (q);
+	};
+	auto is_low = [&] (int i) { return m.v[i].z > 0.3 && m.v[i].z <= low[i] + 1e-6; };
+	for (size_t i = 0; i < m.v.size (); i++) if (is_low ((int) i)) add (m.v[i]);
+	for (size_t k = 0; k + 2 < m.t.size (); k += 3)
+		for (int e = 0; e < 3; e++)
+		{
+			int a = m.t[k + e], c = m.t[k + (e + 1) % 3]; if (a > c || !is_low (a) || !is_low (c)) continue;
+			double l = len (m.v[c] - m.v[a]); int n = (int) (l / every);
+			for (int q = 1; q <= n; q++) add (m.v[a] + (m.v[c] - m.v[a]) * ((double) q / (n + 1)));
+		}
+}
+// The pillars and the raft, one solid. (Each: a column from the raft up to a little under its tip, then a cone to
+// the tip, which goes a hair into the body.)
+static Manifold print_support_solid (const Manifold &placed, const PrintSetup &s)
+{
+	std::vector<Manifold> parts; if (s.tips.empty ()) return Manifold ();
+	double base = s.raft ? s.raftThick : 0, r = s.supDia / 2, cone = std::max (1.5, s.supDia * 1.3), tr = std::min (s.supTip / 2, r);
+	for (const V3 &t : s.tips)
+	{
+		double top = t.z + s.supInto, neck = t.z - cone;
+		if (top - base < 0.05) continue;
+		if (neck > base + 0.2)
+		{
+			parts.push_back (Manifold::Cylinder (neck - base, r, r, 10).Translate ({t.x, t.y, base}));
+			parts.push_back (Manifold::Cylinder (top - neck, r, tr, 10).Translate ({t.x, t.y, neck}));
+		}
+		else parts.push_back (Manifold::Cylinder (top - base, r, tr, 10).Translate ({t.x, t.y, base}));
+	}
+	if (s.raft && s.raftThick > 0.01)
+	{
+		CrossSection foot = CrossSection (placed.Project (), CrossSection::FillRule::NonZero).Hull ().Offset (s.raftMore, CrossSection::JoinType::Round, 2.0, 32);
+		parts.push_back (Manifold::Extrude (foot.ToPolygons (), s.raftThick));
+	}
+	return Manifold::BatchBoolean (parts, manifold::OpType::Add);
+}
+
+struct PrintJob
+{
+	PmFile file; double minutes, volume; bool tooLarge; char err[72];
+	bool onPlate; int islands; double islandAt;	// its first layer is there; parts that start in mid-air, the first one's height
+	int done, total;
+	PrintJob () : minutes (0), volume (0), tooLarge (false), onPlate (true), islands (0), islandAt (0), done (0), total (0) { err[0] = 0; }
+};
 // The seconds a layer takes: waited, lit, lifted and brought back.
 static double print_layer_time (const PrintResin &r, bool bottom, double exposure)
 {
@@ -218,36 +351,154 @@ static double print_exposure (const PrintResin &r, int i)
 	if (i - nb < nt) return r.bottomExposure + (r.exposure - r.bottomExposure) * (i - nb + 1) / (nt + 1);
 	return r.exposure;
 }
-// What is printed, `solid` (the body, its supports), cut into its layers. progress (done, of): false stops it.
-template <class F> static bool print_slice (const Manifold &solid, const PrintSetup &s, PrintJob &job, F progress)
+// The small picture the printer shows: the solid seen from a corner, shaded.
+static void print_preview (const Manifold &solid, PmFile &f)
 {
-	const PrintResin &r = s.resin; const PrintMachine &m = s.machine; PmFile &f = job.file;
-	job.err[0] = 0; f = PmFile (); f.machine = m;
-	if (solid.IsEmpty () || r.layer < 0.005) { snprintf (job.err, sizeof job.err, "There is nothing to print"); return false; }
-	auto box = solid.BoundingBox ();
-	V3 lo (box.min.x, box.min.y, box.min.z), hi (box.max.x, box.max.y, box.max.z), size = hi - lo;
-	job.tooLarge = size.x > m.resX * m.pixel / 1000 || size.y > m.resY * m.pixel / 1000 || size.z > m.sizeZ;
-	// on the plate: its box's middle at (x, y), its underside on it
-	Manifold placed = solid.Translate ({s.x - (lo.x + hi.x) / 2, s.y - (lo.y + hi.y) / 2, -lo.z});
-	int n = (int) ceil (size.z / r.layer - 1e-6); if (n < 1) n = 1;
-	f.pixel = (float) m.pixel; f.layer = (float) r.layer; f.exposure = (float) r.exposure; f.off = (float) r.off; f.bottomExposure = (float) r.bottomExposure;
-	f.bottomLayers = (float) r.bottomLayers; f.lift = (float) (r.normal.h1 + r.normal.h2); f.liftSpeed = (float) r.liftSpeed; f.retractSpeed = (float) r.retractSpeed;
-	f.transition = (unsigned) (r.transition + 0.5); f.bottomLift = r.bottom; f.normalLift = r.normal;
-	job.volume = solid.Volume () / 1000; f.volume = (float) job.volume; f.weight = (float) (job.volume * 1.1);
-	f.lo = V3 (s.x - size.x / 2, s.y - size.y / 2, 0); f.hi = V3 (s.x + size.x / 2, s.y + size.y / 2, size.z);
-	double secs = 0; f.layers.resize (n);
-	for (int i = 0; i < n; i++)
+	int W = f.pw, H = f.ph; f.preview.assign ((size_t) W * H, 0x6240); if (solid.IsEmpty () || W < 8 || H < 8) return;
+	PrintMesh m; m.of (solid); std::vector<float> zb ((size_t) W * H, -1e30f);
+	double az = -58 * PI / 180, el = 30 * PI / 180;
+	V3 d (cos (el) * cos (az), cos (el) * sin (az), sin (el)), rt (-sin (az), cos (az), 0), up = cross (d, rt);
+	double lx = 1e30, hx = -1e30, ly = 1e30, hy = -1e30; std::vector<V3> q (m.v.size ());
+	for (size_t i = 0; i < m.v.size (); i++) { q[i] = V3 (dot (m.v[i], rt), dot (m.v[i], up), dot (m.v[i], d)); lx = std::min (lx, q[i].x); hx = std::max (hx, q[i].x); ly = std::min (ly, q[i].y); hy = std::max (hy, q[i].y); }
+	double k = std::min ((W - 16) / std::max (hx - lx, 1e-6), (H - 16) / std::max (hy - ly, 1e-6));
+	for (V3 &p : q) { p.x = W / 2.0 + (p.x - (lx + hx) / 2) * k; p.y = H / 2.0 - (p.y - (ly + hy) / 2) * k; }
+	V3 light = unit (V3 (0.35, -0.5, 0.8));
+	for (size_t t = 0; t + 2 < m.t.size (); t += 3)
 	{
-		if (!progress (i, n)) return false;
-		PmLayer &l = f.layers[i]; bool bottom = i < (int) (r.bottomLayers + 0.5);
-		pm_raster (placed.Slice ((i + 0.5) * r.layer), m, s.mirror, l);
-		l.exposure = (float) print_exposure (r, i); l.height = (float) r.layer;
-		l.lift = (float) ((bottom ? r.bottom : r.normal).h1 + (bottom ? r.bottom : r.normal).h2); l.liftSpeed = (float) r.liftSpeed;
-		secs += print_layer_time (r, bottom, l.exposure);
+		const V3 &a = q[m.t[t]], &b = q[m.t[t + 1]], &c = q[m.t[t + 2]];
+		V3 n = unit (cross (m.v[m.t[t + 1]] - m.v[m.t[t]], m.v[m.t[t + 2]] - m.v[m.t[t]])); if (dot (n, d) <= 0) continue;
+		double sh = 0.45 + 0.55 * std::max (0.0, dot (n, light)); unsigned R = (unsigned) (206 * sh), G = (unsigned) (196 * sh), B = (unsigned) (70 * sh);
+		unsigned short col = (unsigned short) ((R >> 3) << 11 | (G >> 2) << 5 | B >> 3);
+		int x0 = (int) floor (std::min (a.x, std::min (b.x, c.x))), x1 = (int) ceil (std::max (a.x, std::max (b.x, c.x))), y0 = (int) floor (std::min (a.y, std::min (b.y, c.y))), y1 = (int) ceil (std::max (a.y, std::max (b.y, c.y)));
+		double den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y); if (fabs (den) < 1e-12) continue;
+		for (int y = std::max (y0, 0); y <= y1 && y < H; y++) for (int x = std::max (x0, 0); x <= x1 && x < W; x++)
+		{
+			double px = x + 0.5, py = y + 0.5, w0 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / den, w1 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / den, w2 = 1 - w0 - w1;
+			if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+			float z = (float) (w0 * a.z + w1 * b.z + w2 * c.z); size_t at = (size_t) y * W + x;
+			if (z > zb[at]) { zb[at] = z; f.preview[at] = col; }
+		}
 	}
-	f.seconds = (unsigned) (secs + 0.5); job.minutes = secs / 60;
-	f.preview.assign ((size_t) f.pw * f.ph, 0);
+}
+// What is printed -- `solid`, already on the plate: the body, its supports -- cut into its layers, a few at a time
+// (begin, then step until it says done: the window stays alive meanwhile).
+struct PrintSlicer
+{
+	Manifold solid; PrintSetup s; PrintJob *job; int next, n; double secs; Polygons prev;
+	PrintSlicer () : job (0), next (0), n (0), secs (0) {}
+	bool running () const { return job && next < n; }
+	bool begin (const Manifold &on_plate, const PrintSetup &setup, PrintJob &j)
+	{
+		solid = on_plate; s = setup; job = &j; next = n = 0; secs = 0; prev.clear ();
+		const PrintResin &r = s.resin; const PrintMachine &m = s.machine; PmFile &f = j.file;
+		j = PrintJob (); f.machine = m;
+		if (solid.IsEmpty () || r.layer < 0.005) { snprintf (j.err, sizeof j.err, "There is nothing to print"); job = 0; return false; }
+		auto box = solid.BoundingBox (); double hw = m.resX * m.pixel / 2000, hh = m.resY * m.pixel / 2000;
+		j.tooLarge = box.min.x < -hw - 1e-6 || box.max.x > hw + 1e-6 || box.min.y < -hh - 1e-6 || box.max.y > hh + 1e-6 || box.max.z > m.sizeZ + 1e-6;
+		j.onPlate = box.min.z < r.layer / 2;
+		n = (int) ceil (box.max.z / r.layer - 1e-6); if (n < 1) n = 1;
+		f.pixel = (float) m.pixel; f.layer = (float) r.layer; f.exposure = (float) r.exposure; f.off = (float) r.off; f.bottomExposure = (float) r.bottomExposure;
+		f.bottomLayers = (float) r.bottomLayers; f.lift = (float) (r.normal.h1 + r.normal.h2); f.liftSpeed = (float) r.liftSpeed; f.retractSpeed = (float) r.retractSpeed;
+		f.transition = (unsigned) (r.transition + 0.5); f.bottomLift = r.bottom; f.normalLift = r.normal;
+		j.volume = solid.Volume () / 1000; f.volume = (float) j.volume; f.weight = (float) (j.volume * 1.1);
+		f.lo = V3 (box.min.x, box.min.y, 0); f.hi = V3 (box.max.x, box.max.y, box.max.z);
+		f.layers.resize (n); j.total = n; print_preview (solid, f);
+		return true;
+	}
+	static bool inside (const Polygons &ps, double x, double y)
+	{
+		bool in = false;
+		for (const SimplePolygon &l : ps)
+			for (size_t i = 0, k = l.size () - 1; i < l.size (); k = i++)
+				if ((l[i].y > y) != (l[k].y > y) && x < (l[k].x - l[i].x) * (y - l[i].y) / (l[k].y - l[i].y) + l[i].x) in = !in;
+		return in;
+	}
+	// `count` more layers. true: all are made.
+	bool step (int count)
+	{
+		if (!job) return true;
+		const PrintResin &r = s.resin; PmFile &f = job->file;
+		for (; count > 0 && next < n; count--, next++)
+		{
+			int i = next; PmLayer &l = f.layers[i]; bool bottom = i < (int) (r.bottomLayers + 0.5);
+			Polygons sec = solid.Slice ((i + 0.5) * r.layer);
+			pm_raster (sec, s.machine, s.mirror, l);
+			l.exposure = (float) print_exposure (r, i); l.height = (float) r.layer;
+			l.lift = (float) ((bottom ? r.bottom : r.normal).h1 + (bottom ? r.bottom : r.normal).h2); l.liftSpeed = (float) r.liftSpeed;
+			secs += print_layer_time (r, bottom, l.exposure);
+			// a piece of this layer that touches nothing of the one before starts in mid-air
+			if (i > 0)
+				for (const SimplePolygon &loop : sec)
+				{
+					double a = 0; for (size_t q = 0, k = loop.size () - 1; q < loop.size (); k = q++) a += loop[k].x * loop[q].y - loop[q].x * loop[k].y;
+					if (a <= 0 || loop.empty ()) continue;				// (a hole)
+					bool held = false; Polygons one (1, loop);
+					for (size_t q = 0; q < loop.size () && !held; q++) held = inside (prev, loop[q].x, loop[q].y);
+					for (size_t pi = 0; pi < prev.size () && !held; pi++) for (size_t q = 0; q < prev[pi].size () && !held; q++) held = inside (one, prev[pi][q].x, prev[pi][q].y);
+					if (!held) { if (!job->islands) job->islandAt = i * r.layer; job->islands++; }
+				}
+			prev.swap (sec);
+		}
+		job->done = next;
+		if (next < n) return false;
+		f.seconds = (unsigned) (secs + 0.5); job->minutes = secs / 60; return true;
+	}
+};
+template <class F> static bool print_slice (const Manifold &on_plate, const PrintSetup &s, PrintJob &job, F progress)
+{
+	PrintSlicer sl; if (!sl.begin (on_plate, s, job)) return false;
+	while (sl.running ()) { if (!progress (sl.next, sl.n)) return false; sl.step (1); }
 	return true;
+}
+
+// ---- kept: in the part's file, and the resin from a part to the next -----------------------------------------------------
+static std::string print_resin_line (const PrintResin &r)
+{
+	char b[400];
+	snprintf (b, sizeof b, "printresin %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g  %.9g %.9g %.9g %.9g %.9g %.9g  %.9g %.9g %.9g %.9g %.9g %.9g  %s\n", r.layer, r.exposure, r.off, r.bottomExposure,
+		  r.bottomLayers, r.transition, r.liftSpeed, r.retractSpeed, r.bottom.h1, r.bottom.up1, r.bottom.down1, r.bottom.h2, r.bottom.up2, r.bottom.down2,
+		  r.normal.h1, r.normal.up1, r.normal.down1, r.normal.h2, r.normal.up2, r.normal.down2, r.name);
+	return b;
+}
+static std::string print_save (const PrintSetup &s)
+{
+	if (!s.on) return std::string ();
+	char b[300]; std::string out;
+	snprintf (b, sizeof b, "print body %d at %.9g %.9g %.9g tilt %.9g %.9g %.9g mirror %d\n", s.body, s.x, s.y, s.lift, s.tiltX, s.tiltY, s.turn, s.mirror ? 1 : 0); out += b;
+	snprintf (b, sizeof b, "printmachine %d %d %.9g %.9g %.9g %.9g %s %s\n", s.machine.resX, s.machine.resY, s.machine.pixel, s.machine.sizeX, s.machine.sizeY, s.machine.sizeZ, s.machine.ext, s.machine.name); out += b;
+	snprintf (b, sizeof b, "printsup %.9g %.9g %d %.9g %.9g %.9g raft %d %.9g %.9g\n", s.supAngle, s.supEvery, s.supLow ? 1 : 0, s.supDia, s.supTip, s.supInto, s.raft ? 1 : 0, s.raftThick, s.raftMore); out += b;
+	out += print_resin_line (s.resin);
+	for (const V3 &t : s.tips) { snprintf (b, sizeof b, "printtip %.9g %.9g %.9g\n", t.x, t.y, t.z); out += b; }
+	return out;
+}
+static void print_load (PrintSetup &s, const char *text)
+{
+	const char *p = text;
+	while (p && *p)
+	{
+		const char *e = strchr (p, '\n'); size_t n = e ? (size_t) (e - p) : strlen (p);
+		char line[500]; if (n >= sizeof line) n = sizeof line - 1; memcpy (line, p, n); line[n] = 0; if (n && line[n - 1] == '\r') line[n - 1] = 0;
+		p = e ? e + 1 : 0; int a = 0, c = 0, off = 0;
+		if (!strncmp (line, "print body ", 11))
+		{ if (sscanf (line, "print body %d at %lf %lf %lf tilt %lf %lf %lf mirror %d", &s.body, &s.x, &s.y, &s.lift, &s.tiltX, &s.tiltY, &s.turn, &a) >= 7) { s.on = true; s.mirror = a != 0; s.tips.clear (); } }
+		else if (!strncmp (line, "printmachine ", 13))
+		{
+			PrintMachine m = s.machine; char ext[16] = "";
+			if (sscanf (line, "printmachine %d %d %lf %lf %lf %lf %7s %n", &m.resX, &m.resY, &m.pixel, &m.sizeX, &m.sizeY, &m.sizeZ, ext, &off) >= 7 && off && m.resX >= 16 && m.resY >= 16 && m.pixel >= 1)
+			{ snprintf (m.name, sizeof m.name, "%s", line + off); snprintf (m.ext, sizeof m.ext, "%s", ext); s.machine = m; }
+		}
+		else if (!strncmp (line, "printsup ", 9))
+		{ if (sscanf (line, "printsup %lf %lf %d %lf %lf %lf raft %d %lf %lf", &s.supAngle, &s.supEvery, &a, &s.supDia, &s.supTip, &s.supInto, &c, &s.raftThick, &s.raftMore) >= 9) { s.supLow = a != 0; s.raft = c != 0; } }
+		else if (!strncmp (line, "printresin ", 11))
+		{
+			PrintResin r = s.resin;
+			if (sscanf (line, "printresin %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %n", &r.layer, &r.exposure, &r.off, &r.bottomExposure, &r.bottomLayers, &r.transition,
+				    &r.liftSpeed, &r.retractSpeed, &r.bottom.h1, &r.bottom.up1, &r.bottom.down1, &r.bottom.h2, &r.bottom.up2, &r.bottom.down2,
+				    &r.normal.h1, &r.normal.up1, &r.normal.down1, &r.normal.h2, &r.normal.up2, &r.normal.down2, &off) >= 20)
+			{ snprintf (r.name, sizeof r.name, "%s", off ? line + off : "Resin"); s.resin = r; }
+		}
+		else if (!strncmp (line, "printtip ", 9)) { V3 t; if (sscanf (line + 9, "%lf %lf %lf", &t.x, &t.y, &t.z) == 3 && s.tips.size () < 4000) s.tips.push_back (t); }
+	}
 }
 
 } // namespace forge

@@ -138,7 +138,10 @@ the layer drawn are real ones for the sample bracket, tilted and lifted).
 | ![](mockups/3dforge-print-supports.png) | **Supports**: *Generate* (where the body hangs beyond an angle, under its low points, every few millimetres), the pillars' and their tips' sizes, a raft; a click on the body adds one, on a pillar removes it. |
 | ![](mockups/3dforge-print-layers.png) | **Layers**: the pictures as the screen will show them, one by one (the bar, the wheel); the number of layers, the resin, the time; **checked**: it fits, each layer rests on the last (nothing starts in mid-air), the first layers lie on the plate, no closed hollow keeps resin. *Write the print file*. |
 
-**Wait for the user's word on these mock-ups before building the screen.**
+**Built (2026-10-06)** after his word ("ok pour la maquette"): the user guide's *Manufacture: the layers for a resin
+printer*. What differs from the mock-ups: the machine and the kind of work are one **Process** button beside the
+body; the resin's presets are the maker's three (yours are simply the values as you leave them, remembered); no
+"from the body too" for the supports, no "closed hollow" check; *Lay a face on the plate* is not there yet.
 
 ## What is next
 
