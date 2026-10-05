@@ -80,7 +80,7 @@ TEXT_PROGS = ls.elf cat.elf grep.elf wc.elf head.elf tail.elf sed.elf ed.elf sor
 PROGS  += $(filter-out ls.elf cat.elf grep.elf wc.elf,$(TEXT_PROGS))
 $(TEXT_PROGS): tool.h regex.h subst.h
 cmd.elf: cmdparse.h cmdscript.h
-telnetd.elf: ../lineedit.h
+telnetd.elf: ../lineedit.h shellend.h
 
 # kapi v75 BSD sockets and poll (docs/POSIX-PLAN.md WP-NET)
 PROGS  += nettest.elf

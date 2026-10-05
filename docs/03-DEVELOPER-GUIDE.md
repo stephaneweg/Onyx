@@ -238,7 +238,10 @@ The shell's parser, command lists and file patterns
 `for` — no kapi in it: `cmd.c` gives it the pipelines, the variables and Ctrl-C through `struct
 CsHost`, the test gives it a stand-in) and the consoles' line editor with its history
 ([`user/lineedit.h`](../user/lineedit.h), shared by the terminal and `telnetd`) are tested by
-**`sh tools/tests/run_cmd_test.sh`**.
+**`sh tools/tests/run_cmd_test.sh`**. The end of a remote session — `telnetd.c` itself and
+[`user/bin/shellend.h`](../user/bin/shellend.h) against a mock kapi (a clock, the kernel's 8 KB
+pipes, a scripted client, a model of `cmd`): a client that closes or vanishes, at the prompt or
+while a program runs, leaves no shell behind — by **`sh tools/tests/run_telnetd_test.sh`**.
 
 ### 5.1. Apps using the C library (newlib)
 
@@ -3662,7 +3665,14 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Remote shell**: `/bin/telnetd` (autostarted, TCP port 23) serves the `cmd` shell over
   the network; from the dev machine, `python tools/onyx-telnet.py <pi-ip>` (or any telnet
   client) — handy to run `kmsg`, `ps`, `kill`, tests, without the Pi's keyboard. Its
-  server side uses the ABI v37 `kapi_tcp_listen`/`kapi_tcp_accept`.
+  server side uses the ABI v37 `kapi_tcp_listen`/`kapi_tcp_accept`. A session whose client
+  goes without `exit` is ended with what it runs (`shellend.h`: Ctrl-C, the end of the shell's
+  input, its output still read; `kill_pid` after 3 s — the kernel ends a dead process's children):
+  a script that must leave a daemon on the Pi starts it with `run SD:/bin/<tool> …`, not in the
+  foreground of its session. A pipe has no "reader gone": a program writing to one nobody reads
+  waits for ever (in `ps`: state R, no system call), which is what dropped sessions used to leave.
+  A connection from which not one byte came in 5 minutes is ended too (the kernel's "deaf"
+  connections, `docs/HANDOFF.md`, *Testing on the Pi*).
 - **Remote desktop**: `/bin/vncd` (autostarted, VNC port 5900) — watch and drive the GUI
   from any VNC viewer, no monitor needed. It grabs the screen with `kapi_screen_grab`
   and injects input with `kapi_inject_pointer`/`kapi_inject_key` (ABI v38); it is a

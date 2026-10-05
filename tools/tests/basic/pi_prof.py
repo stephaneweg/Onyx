@@ -8,7 +8,7 @@ card's /bin/basic is left alone) by ftpd, runs it over telnetd.
         calc | calls             a benchmark (tools/tests/basic/bench/<name>.bas), to its end
         <SD: path> [seconds]     a program of the card (a game: started, measured for <seconds>, then killed)
 
-Needs ftpd on the Pi (started here: "ftpd SD:/") and, for a game's key, vncdotool."""
+Needs ftpd on the Pi (started here, detached: "run SD:/bin/ftpd SD:/") and, for a game's key, vncdotool."""
 import ftplib, os, re, socket, subprocess, sys, time
 
 # (the telnet client of tools/tests/shlib/pi_apps.py)
@@ -98,13 +98,13 @@ def main ():
 	try:
 		ftplib.FTP ().connect (ip, 21, timeout = 3)
 	except Exception:
-		pi.cmd ("ftpd SD:/", 2.0)
+		pi.cmd ("run SD:/bin/ftpd SD:/", 2.0)	# (detached: a session's own programs end with it)
 	upload (ip, runtime, "bin/basicp")
 	if what in ("calc", "calls", "calls_t"):
 		upload (ip, os.path.join (ROOT, "tools", "tests", "basic", "bench", what + ".bas"), what + ".bas")
 		out = pi.cmd ("basicp %s SD:/%s.bas" % (flags, what), 6.0, 300.0)
 		print (out)
-		pi.cmd ("exit", 1.0)			# (a telnet session just dropped leaves its shell spinning on the Pi)
+		pi.cmd ("exit", 1.0)
 		return
 	pi.cmd ("rm SD:/basprof.txt", 1.0)
 	p2 = Pi (ip)					# the program holds this shell

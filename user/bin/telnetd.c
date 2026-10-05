@@ -12,8 +12,14 @@
 // ANSI escape sequences are read, the line is redrawn with backspaces and "erase to the end
 // of the line"; a line longer than the client's window is not redrawn well), so any
 // telnet client works: `telnet <ip>`, PuTTY (Telnet), or tools/onyx-telnet.py. Incoming
-// telnet option negotiation is parsed and ignored. A session whose cmd is stuck (a tool
-// waiting on its stdin after the client left) no longer holds the others up.
+// telnet option negotiation is parsed and ignored.
+//
+// A client that goes without `exit` (its connection closed or reset, or nothing coming back
+// to the NOP sent every KEEPALIVE_MS of silence) ends its session: the shell AND what it runs
+// in the foreground are stopped (shellend.h) -- before 2026-10-05 a program still running kept
+// its shell, both then blocked for good on a pipe nobody read. A program meant to stay after
+// the session is started detached: `run SD:/bin/ftpd SD:/`. So does a connection from which
+// nothing at all was heard after KEEPALIVE_MS (see session ()).
 //
 // No authentication, no encryption: anyone on the LAN who reaches the port gets a
 // shell. Keep it for a trusted network.
@@ -21,6 +27,7 @@
 #include "kapi.h"
 #include "applib.h"
 #include "lineedit.h"
+#include "shellend.h"
 
 #define IAC	255
 #define WILL	251
@@ -29,10 +36,16 @@
 #define DONT	254
 #define SB	250
 #define SE	240
+#define NOP	241
 #define OPT_ECHO 1
 #define OPT_SGA	 3
 
 #define MAX_SESSIONS	8
+// A silent session: a telnet NOP that often (is the client there?). Longer than the time the
+// kernel's TCP takes to give a segment up (5 tries, 63 s from a 1 s timeout, 189 s from 3 s):
+// every segment sent starts that timer again, so a NOP each 30 s kept a dead connection for ever
+// (tried, 2026-10-05, against a PC whose firewall answers nothing).
+#define KEEPALIVE_MS	300000
 
 // One client: its socket, cmd's pipes, the output buffer, the telnet parser + line editor.
 struct Session
@@ -234,14 +247,14 @@ static void session (struct Session *s)
 	}
 	out_str (s, "Onyx remote shell -- connected from "); out_str (s, s->peer); out_str (s, "\r\n");
 
-	int peer_gone = 0;
+	int peer_gone = 0, idle = 0, heard = 0;
 	for (;;)
 	{
 		int busy = 0, n;
 
 		n = kapi_tcp_recv (s->sock, s->in, sizeof s->in);
 		if (n < 0) { peer_gone = 1; break; }		// client closed the connection
-		if (n > 0) { from_client (s, s->in, n); busy = 1; }
+		if (n > 0) { from_client (s, s->in, n); busy = 1; heard = 1; }
 
 		while ((n = kapi_stream_read_nb (s->from_cmd, s->buf, sizeof s->buf)) > 0)
 		{
@@ -250,18 +263,33 @@ static void session (struct Session *s)
 		flush_out (s);
 
 		if (kapi_proc_done (proc)) break;		// `exit` / Ctrl-D / killed
-		if (!busy) kapi_msleep (10);
+		if (busy) { idle = 0; continue; }
+		kapi_msleep (10);
+		// Nothing said for a while: a telnet NOP, which every client ignores. A client that
+		// left without a word reaching us (its machine off, its last packet lost) is found
+		// out by it: reset by the machine, or never acknowledged, the connection ends and
+		// tcp_recv says so. (A send's own result tells nothing: a slow client fails it too.)
+		if ((idle += 10) >= KEEPALIVE_MS)
+		{
+			static const unsigned char nop[] = { IAC, NOP };
+			idle = 0;
+			// Not one byte from this client since it connected, not even an answer to the
+			// negotiation: the session is ended. The kernel's network now and then hands over
+			// a connection that is deaf and mute (made right after another one ended: the
+			// client gets no greeting and gives up, nothing of it is ever received -- its
+			// close neither -- and nothing sent to it times out; seen 2026-10-05, an open
+			// bug there): such sessions kept a shell each, for ever.
+			if (!heard) { peer_gone = 1; break; }
+			kapi_tcp_send (s->sock, nop, sizeof nop);
+		}
 	}
 
 	if (peer_gone)
 	{
-		// Client dropped: end cmd with EOF on its stdin, give it a moment to exit.
-		kapi_stream_eof (s->to_cmd);
-		for (int i = 0; i < 300 && !kapi_proc_done (proc); i++)
-		{
-			while (kapi_stream_read_nb (s->from_cmd, s->buf, sizeof s->buf) > 0) {}	// keep it unblocked
-			kapi_msleep (10);
-		}
+		// Client dropped: the shell and what it runs in the foreground end with the session
+		// (shellend.h: Ctrl-C, the end of its input, its output read meanwhile; terminated if
+		// it is still there after a few seconds).
+		shell_end (proc, s->to_cmd, s->from_cmd);
 	}
 	else
 	{

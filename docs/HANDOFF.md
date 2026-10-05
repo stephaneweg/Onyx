@@ -39,8 +39,8 @@ answer in French. The docs stay in English.
 - **Calls and numeric functions in machine code (asked by the user, done 2026-10-05)**: frames made
   and given back in line, by-reference arguments, ABS ... LOG. Pi 4, one telnet session, nothing
   else running: `calc.bas` 1.47 s -> 0.07 s, `calls_t.bas` 1.69 s -> 0.19 s (Fib&(27) 0.40 -> 0.05).
-  Measure through ONE telnet session ended by `exit`: a session just dropped leaves its `cmd` shell
-  spinning on the Pi (state R in `ps`) and the timings then vary threefold.
+  Measure with nothing else running (`ps`): shells left by dropped telnet sessions made the timings
+  vary threefold that day (fixed since: a dropped session ends its shell, see *Testing on the Pi*).
 - **Next**: (1) strings, GOSUB, virtual calls in machine code; faster SIN / COS; (2) done the same day: **form (c)**, the standalone app --
   "Make App" > Standalone writes `apps/<name>.app/main` = the card's `/bin/basic` with the `.bax`
   attached (`bas::attachBax`; tried on the Pi with Planets 3D's program: it starts and runs); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
@@ -1273,8 +1273,22 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   - run: `run gcemu SD1:/roms/ZeldaWIndWaker/ZeldaWIndWaker.iso --diag=...` (the second
     partition); `v3dprog` must pass after any GPU change; a GPU hang leaves the GPU off until a
     reboot (`v3dprog` then says `no GPU: V3D: stopped`).
-  - pitfalls: `grep` / `wc` read stdin only (`wc < file`; with a file argument they wait, and
-    once the telnet session is gone they spin on stdin's end -- an open bug, cmd too sometimes);
+  - pitfalls: `grep` / `wc` read stdin only (`wc < file`; with a file argument they wait).
+    **A telnet session that drops ends its shell and what it runs** (telnetd, 2026-10-05,
+    `user/bin/shellend.h`, `tools/tests/run_telnetd_test.sh`; before, a program still running kept
+    its `cmd`, then both waited for ever on a pipe nobody read -- state R, no system call -- and
+    the leftovers slowed everything): a daemon to leave on the Pi is started with
+    `run SD:/bin/ftpd SD:/`, not in a session's foreground. **Still open, in the kernel's
+    network**: (1) now and then a connection a server accepts is deaf and mute (3 times in a dozen
+    connects to a telnetd started on port 2323 a few seconds before -- its first or second
+    client --, once the first telnet after a boot; not reproduced at will): the
+    PC's connect succeeds, no greeting comes, what it sends is never received -- its close
+    neither --, the next connect is reset, the ones after work; on the Pi it stays ESTAB for ever
+    (`netstat`), and nothing sent on it makes the TCP give up. telnetd ends such a session after
+    5 min (not one byte ever received); the others (vncd, rdpd, ftpd) were not looked at. (2)
+    Circle's retransmission timer starts again at every segment sent (`SendNewSegment` ->
+    `StartTimer`), so a peer sent to more often than the backed-off timeout never times out
+    (a keepalive every 30 s kept a dead connection alive: telnetd's is every 5 min).
     `kmsg` streams until Ctrl+C and consumes the log (each line is read once).
   - the picture: `OnyxRemote.exe` (`pc/dist/`, rdpd port 3390); or VNC (vncd, no password):
     `python -m vncdotool.command -s <pi-ip> capture x.png`, `... key p` (a key).
@@ -1388,7 +1402,7 @@ the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ft
 - **Line editor** (`user/lineedit.h`): the cursor in the line, the history (Up / Down), in the
   terminal (the typed line is drawn after the prompt, wrapped; it enters the scrollback when sent) and
   in `telnetd` (ANSI escape sequences read; `tools/onyx-telnet.py` sends them on Windows).
-- **Tested**: `run_cmd_test.sh`, `run_tools_test.sh` (PC); on the Pi through telnet, the binaries
+- **Tested**: `run_cmd_test.sh`, `run_tools_test.sh`, `run_telnetd_test.sh` (PC); on the Pi through telnet, the binaries
   under other names (`cmd2`, `telnetd2` on another port…): the tools, scripts, exit codes, Ctrl-C,
   Ctrl-D, the arrows. The terminal: in the desktop simulator only. **Not tried**: a `.sh` command
   word and Ctrl-C on a nested script with the real `cmd` in place (they need `SD:/bin/cmd` replaced).

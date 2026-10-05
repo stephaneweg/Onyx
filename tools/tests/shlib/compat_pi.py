@@ -5,7 +5,7 @@ tools/tests/shlib/compat.sh): the program built against uikit N, NOT rebuilt, on
 
     python tools/tests/shlib/compat_pi.py <pi-ip> <out-dir> [ftp-user ftp-password]
 
-Needs telnetd on the Pi; starts `ftpd SD:/` there if it does not run (its default account: onyx /
+Needs telnetd on the Pi; starts `run SD:/bin/ftpd SD:/` there if it does not run (its default account: onyx /
 onyx). Uses SD:/lib/uikitc.so (the test's own name: the system's uikit.so is not touched) and
 SD:/bin/compat-n, compat-n1 (cmd runs the programs of /bin with its output); removes them at the end. Exit status 0 only if every check passed."""
 import ftplib, os, re, socket, sys, time
@@ -41,7 +41,7 @@ def ftp ():
 	try:
 		f = ftplib.FTP (); f.connect (HOST, 21, timeout = 5)
 	except Exception:
-		t = Telnet (); t.s.sendall (b"ftpd SD:/\r\n"); time.sleep (2.0); t.s.close ()
+		t = Telnet (); t.s.sendall (b"run SD:/bin/ftpd SD:/\r\n"); time.sleep (2.0); t.s.close ()
 		f = ftplib.FTP (); f.connect (HOST, 21, timeout = 10)
 	f.login (USER, PW)
 	return f

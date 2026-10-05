@@ -1050,7 +1050,7 @@ it: `ed notes.txt < edits.txt`.
 | `httpsget` | `httpsget <url>` | Same as `httpget` but with **TLS** (`https://`), via mbedTLS (`user/tls/`) — downloads real HTTPS pages. Opt-in build (needs the cross-built mbedTLS — see `user/tls/README.md`). **Not yet secure**: no certificate verification, software (non-HW) RNG. |
 | `groq` | `groq <question…>`, `groq -j < messages.json`, `-c <config>` | Asks a large language model through the **Groq** chat API (HTTPS) and prints the answer — the engine behind **Lisa**. Reads `SD:/apps/lisa.app/config.ini` (`key` = your Groq API key, `model`, `role` = the system prompt, `temperature`, `max_tokens`). `-j`: stdin is a JSON array of `{"role","content"}` messages (a whole conversation). Non-ASCII text is converted between Latin-1 and UTF-8. |
 | `llm` | `llm [request.json] [-o result.json]` (the request on stdin when no file) | Asks a large language model for ONE answer over HTTPS — the engine behind **Koton**'s "compose with AI". The request is a JSON document: `provider` (`gemini`, `groq`, `mistral`, `claude`, `deepseek`, `grok`, `openai` or `openai-compatible` + `url`), `model`, `key` (your API key), `system`, `user`, `json` (ask for JSON), `temperature`, `thinking` (Gemini's thinking budget, -1 = default); the answer is one line `{"ok":true,"text":"..."}` or `{"ok":false,"error":"..."}`, after progress lines (`llm: connecting…`, `llm: receiving N bytes`). A busy model (503 "high demand", 429…) is asked again up to 4 times, after 5, 10, 20 and 40 s. Also downloads a file: `{"fetch":"https://…","out":"SD:/…"}` → `{"ok":true,"bytes":N}` (Koton fetches its SoundFont this way; redirects followed). Answers of 100+ KB and downloads of tens of MB are fine. **Not secure**: the server's certificate is not verified, and the request (with the key) is plain text if you keep it in a file. |
-| `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves up to **8 clients at once**, each in a thread of its own with its own `cmd` (see §7) — a session stuck on a command does not hold the others up (one at a time on a kernel older than v67). Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
+| `telnetd` | `telnetd [port]` | **Remote text shell** (default port **23**): waits for Wi-Fi, then serves up to **8 clients at once**, each in a thread of its own with its own `cmd` (see §7) — a session stuck on a command does not hold the others up (one at a time on a kernel older than v67). A connection that drops ends its shell and the command it runs. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote shell* below. |
 | `rdpd` | `rdpd [port]` | **Remote windows** (port **3390**): the Onyx windows shown one by one on a Windows PC by `OnyxRemote.exe` (pc/dist). Started at boot by `SD:/etc/autostart`. **No password, no encryption.** See *Remote windows on a PC* below. |
 | `vncd` | `vncd [port]` | **Remote desktop** (VNC, default port **5900**): see and drive the Onyx screen from any VNC viewer. Started at boot by `SD:/etc/autostart`. **No password, no encryption** — trusted LAN only. See *Remote desktop* below. |
 | `notifytest` | `notifytest [-t <title>] <message>` | Sends a **notification** (bubble under the menu bar) — handy to test `notifyd` from the terminal or telnet, e.g. `notifytest -t Build "Kernel staged"`. The title defaults to "Test". |
@@ -1124,8 +1124,16 @@ by the Pi, as in the terminal (§7): the **arrows** move the cursor in the line 
 **history**, Home / End / Delete, `Ctrl-A` `Ctrl-E` `Ctrl-U` `Ctrl-K` (a line longer than the
 client's window is not redrawn well: keep the window wide). **Ctrl-C** stops the running
 command, **`exit`** or **Ctrl-D** on an empty line ends the session (in
-`onyx-telnet.py`, **Ctrl-]** disconnects locally). One client at a time: a second
-connection waits until the first ends.
+`onyx-telnet.py`, **Ctrl-]** disconnects locally). Up to eight clients at once.
+
+**A connection that drops ends its session**: closing the client's window (or losing the
+network) without `exit` stops the shell *and the command it was running*, as Ctrl-C then `exit`
+would have — nothing is left behind on the Pi. A client that vanishes without a word (its
+computer switched off) is found out within a few minutes: `telnetd` sends a telnet *NOP*, which
+clients ignore, every 5 minutes of silence; and a session from which nothing at all was received
+in its first 5 minutes (no key, no answer to the telnet negotiation) is closed. To leave a
+program running after you disconnect, start it detached with `run` instead of in the
+foreground: `run SD:/bin/ftpd SD:/`.
 
 > ⚠️ Not secure: no authentication and no encryption — anyone who can reach port 23
 > gets a shell. Remove the `telnetd` line from `SD:/etc/autostart` on an untrusted
