@@ -1683,7 +1683,14 @@ public:
 			while (!endOfStmt ()) next ();				// DEF SEG: nothing to do
 			return;
 		}
-		if (bseq (w, "OPTION")) { next (); if (acceptKw ("BASE")) { base1 = cur ().t == T_NUM && cur ().num == 1; next (); } else while (!endOfStmt ()) next (); return; }
+		if (bseq (w, "OPTION"))
+		{
+			next ();
+			if (acceptKw ("BASE")) { base1 = cur ().t == T_NUM && cur ().num == 1; next (); }
+			else if (acceptKw ("MANAGED")) P->managed = true;		// run by the VM, not in machine code
+			else while (!endOfStmt ()) next ();
+			return;
+		}
 		if (bseq (w, "SUB") || bseq (w, "FUNCTION")) { stProc (); return; }
 		if (bseq (w, "PSET") || bseq (w, "PRESET")) { bool re = bseq (w, "PRESET"); next (); stPset (re); return; }
 		if (bseq (w, "CIRCLE")) { next (); stCircle (); return; }
@@ -2894,7 +2901,7 @@ int bas::wordList (char *buf, int cap)
 	auto add = [&] (const char *w) { if (n && n < cap - 1) buf[n++] = ' '; for (; *w && n < cap - 1; w++) buf[n++] = *w; };
 	for (int i = 0; KEYWORDS[i]; i++) add (KEYWORDS[i]);
 	// (the words of the classes: not reserved, known by their place)
-	static const char *const CLASSWORDS[] = { "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING", 0 };
+	static const char *const CLASSWORDS[] = { "MANAGED", "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING", 0 };
 	for (int i = 0; CLASSWORDS[i]; i++) add (CLASSWORDS[i]);
 	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
 	if (cap > 0) buf[n] = 0;

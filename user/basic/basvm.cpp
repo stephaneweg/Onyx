@@ -170,6 +170,14 @@ static int scanOf (unsigned char c)
 	return 0;
 }
 
+// The program in machine code (basjit.h: AArch64 only; elsewhere nativeTranslate gives 0).
+struct Native;
+class VM;
+static Native *nativeTranslate (VM &vm);
+static bool nativeEntry (Native *n, int pc);
+static void nativeRun (Native *n, VM &vm);
+static void nativeFree (Native *n);
+
 class VM
 {
 public:
@@ -179,6 +187,7 @@ public:
 	V *G;
 	struct Frame { int ret; V *loc; int nloc; int proc; int sp0; };	// sp0: the value stack at its start
 	Frame frames[MAXFRAMES]; int nf;
+	V *nloc = 0;					// the current frame's locals (frames[nf - 1].loc): read by the machine code
 	struct GoSub { int ret; int frame; int chan; int ev; int sp; };
 	GoSub gosubs[MAXGOSUB]; int ngs;
 	int pc, opPc; bool failed, ended;
@@ -409,6 +418,7 @@ public:
 		for (int i = argc - 1; i >= 0; i--) { V v = pop (); own (v); vclear (f.loc[first + i]); f.loc[first + i] = v; }
 		f.sp0 = sp;
 		nf++;
+		nloc = f.loc;
 		pc = pr.entry;
 	}
 
@@ -417,6 +427,7 @@ public:
 		Frame &f = frames[--nf];
 		for (int i = 0; i < f.nloc; i++) if (f.loc[i].t != VR) vclear (f.loc[i]);
 		delete [] f.loc;
+		nloc = nf > 0 ? frames[nf - 1].loc : 0;
 		while (ngs > 0 && gosubs[ngs - 1].frame > nf) popGosub ();
 	}
 	void popGosub ()
@@ -1920,14 +1931,79 @@ public:
 	}
 
 	// ---- the loop ---------------------------------------------------------------------------------------------
+	const int *code; unsigned count;
+	Profile *pf; unsigned pfStart, pfLast;		// basic -p: the time in the primitives
+	long budget;					// loop (n): the iterations left (< 0: no limit)
+	Native *native = 0;				// the program's machine code (basjit.h), or 0
+	unsigned lastTick = 0;
+	// An error no handler takes (what stops the loop).
+	bool fatal () { return failed && (onErr < 0 || inErr || errCode == 51); }
 	int run ()
 	{
-		const int *code = P->code.d;
-		unsigned count = 0;
+		code = P->code.d; count = 0;
 		dtorProg = P; dtorQ.n = 0;
-		Profile *pf = H.prof;					// basic -p: the time in the primitives
-		unsigned pfStart = pf ? H.clockUs () : 0, pfLast = pfStart;
-		while (!ended)
+		pf = H.prof;
+		pfStart = pfLast = pf ? H.clockUs () : 0;
+		if (!H.managed && !P->managed) native = nativeTranslate (*this);
+		if (!native) loop (-1);
+		else
+			// the machine code runs from an entry point (a statement, a jump's target, a return) until it
+			// meets what it leaves to the VM for good (TRON) or a place it has no entry for; the VM then
+			// goes on, one instruction at a time, until the next entry
+			while (!ended && !fatal ())
+			{
+				if (!failed && !tron && nativeEntry (native, pc)) nativeRun (native, *this);
+				else loop (1);
+			}
+		nativeFree (native); native = 0;
+		return runEnd ();
+	}
+	// What the machine code calls. One instruction on the VM (the one at `at`), then what the loop does
+	// before the next one: the error's handler, an event raised by the statement, a destructor. The
+	// result: where the program goes on (-1: leave the machine code).
+	long nativeStep (long at)
+	{
+		pc = (int) at;
+		loop (1);
+		return nativeAfter ();
+	}
+	long nativeAfter ()
+	{
+		if (failed && !trap ()) return -1;
+		if (ended || tron) return -1;
+		if (evAny && evKick) { evKick = false; checkEvents (); if (failed && !trap ()) return -1; }
+		if (dtorQ.n) { destructor (); if (failed && !trap ()) return -1; }
+		return pc;
+	}
+	// Every few thousand jumps back / calls of the machine code: the window, Ctrl-Break, the events.
+	long nativeTick (long at)
+	{
+		pc = (int) at;
+		unsigned now = H.clockUs ();
+		if (now && (unsigned) (now - lastTick) < 1000u) return pc;	// (at most every millisecond)
+		lastTick = now;
+		if (pf)
+		{
+			pf->usTotal += (unsigned) (now - pfLast); pfLast = now;
+			if ((unsigned) (now - pfStart) > 5000000u) { H.profReport (); pfStart = pfLast = H.clockUs (); }
+		}
+		if (!H.poll ()) { ended = true; return -1; }
+		if (evAny) { evKick = false; checkEvents (); if (failed && !trap ()) return -1; }
+		return pc;
+	}
+	// An object's last reference went: SUB Class.delete (THIS), called like a SUB from where the program is.
+	void destructor ()
+	{
+		Rec *r = dtorQ[--dtorQ.n];
+		V v; v.t = VO; v.n = 0; v.p = r;
+		opPc = pc;
+		push (v);
+		if (!failed) enter (P->types[r->fl - 1].dtor, 1);
+	}
+	void loop (long n)
+	{
+		budget = n;
+		while (!ended && (budget < 0 || budget-- > 0))
 		{
 			if (failed) { if (!trap ()) break; continue; }
 			++count;
@@ -1947,15 +2023,7 @@ public:
 				int l = P->lineAt (pc);
 				if (l != traceLine) { traceLine = l; char b[16]; int n = 0; b[n++] = '['; n += formatNum (l, b + n); b[n++] = ']'; H.out (b, n); }
 			}
-			if (dtorQ.n)					// an object's last reference went: SUB Class.delete (THIS)
-			{
-				Rec *r = dtorQ[--dtorQ.n];
-				V v; v.t = VO; v.n = 0; v.p = r;
-				opPc = pc;
-				push (v);
-				if (!failed) enter (P->types[r->fl - 1].dtor, 1);
-				continue;
-			}
+			if (dtorQ.n) { destructor (); continue; }
 			opPc = pc;
 			int op = code[pc++];
 			bool pr = pf && (op == OP_BI || op == OP_ST || (op >= OP_PRINT && op <= OP_CLOSE) || (op >= OP_USING && op <= OP_SEEK));
@@ -2415,7 +2483,17 @@ public:
 			default: fail ("Bad bytecode", 51); break;
 			}
 			if (pr) { pf->prims++; pf->usPrim += (unsigned) (H.clockUs () - pt0); pf->inPrim = false; }
+#ifdef BAS_CHECK_OPLEN
+			// (the tests: opLen () is what the VM really reads, for every instruction that goes straight on)
+			if (!failed && !ended && op != OP_JMP && op != OP_JZ && op != OP_JNZ && op != OP_CALL && op != OP_VCALL && op != OP_ICALL
+			    && op != OP_RET && op != OP_RETF && op != OP_GOSUB && op != OP_RETSUB && op != OP_RESUME && op != OP_RUN
+			    && pc != opPc + 1 + opLen (op))
+				fail ("Internal error (opLen)", 51);
+#endif
 		}
+	}
+	int runEnd ()
+	{
 		if (pf) { pf->ops += count & 4095; pf->usTotal += (unsigned) (H.clockUs () - pfLast); H.profReport (); }
 		dtorProg = 0;						// (what is still alive is freed without its destructor)
 		while (dtorQ.n) { V v; v.t = VO; v.n = 0; v.p = dtorQ[--dtorQ.n]; vclear (v); }
@@ -2427,6 +2505,8 @@ public:
 		return wasFailed ? -1 : 0;
 	}
 };
+
+#include "basic/basjit.h"
 
 // The program file of a CHAIN / RUN "file" (".bas" added when the name has no extension).
 static char *loadProgram (Host &h, const char *path, int *len)

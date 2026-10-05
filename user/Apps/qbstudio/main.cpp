@@ -49,10 +49,11 @@ struct Doc
 struct Project
 {
 	char dir[200], name[40], title[64], mainForm[40], category[32]; bool compiled;
+	bool managed;				// the app runs on the VM instead of machine code (project.ini: managed = yes)
 	Vec<Doc> docs;
 	Vec<int> tabs;					// the open docs, in order
 	int cur;
-	Project () : compiled (true), cur (-1) { dir[0] = name[0] = title[0] = mainForm[0] = category[0] = 0; }
+	Project () : compiled (true), managed (false), cur (-1) { dir[0] = name[0] = title[0] = mainForm[0] = category[0] = 0; }
 };
 static Project g_p;
 struct Problem { int kind; char text[180]; char file[64]; int line; };	// kind 0 error, 1 warning, 2 information
@@ -746,6 +747,7 @@ static bool load_project (const char *dir)
 	ini_get (ini, "main", g_p.mainForm, sizeof g_p.mainForm); if (!g_p.mainForm[0]) cpy (g_p.mainForm, "Main", sizeof g_p.mainForm);
 	ini_get (ini, "category", g_p.category, sizeof g_p.category); if (!g_p.category[0]) cpy (g_p.category, "BASIC", sizeof g_p.category);
 	char c[16] = "yes"; ini_get (ini, "compiled", c, sizeof c); g_p.compiled = !ieq (c, "no");
+	char mg[16] = "no"; ini_get (ini, "managed", mg, sizeof mg); g_p.managed = ieq (mg, "yes");
 	char files[512] = ""; ini_get (ini, "files", files, sizeof files);
 	free (ini);
 	// the files (a form, its code; then the rest)
@@ -786,7 +788,7 @@ static void save_project_ini ()
 	s.puts ("# a QBStudio project: its window, its code, what Make App writes\n[project]\n");
 	s.printf ("name = %s\ntitle = %s\nmain = %s\nfiles =", g_p.name, g_p.title, g_p.mainForm);
 	for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type != DOC_GEN) s.printf (" %s", g_p.docs[i].file);
-	s.printf ("\ncategory = %s\ncompiled = %s\n", g_p.category, g_p.compiled ? "yes" : "no");
+	s.printf ("\ncategory = %s\ncompiled = %s\nmanaged = %s\n", g_p.category, g_p.compiled ? "yes" : "no", g_p.managed ? "yes" : "no");
 	char p[260]; join (p, sizeof p, g_p.dir, "project.ini");
 	write_file (p, s.str ());
 }
@@ -948,6 +950,7 @@ static void cmd_project_settings ()
 	char c[32]; cpy (c, g_p.category, sizeof c);
 	if (ask_line ("The project", "Its category (in the app list)", c, sizeof c)) cpy (g_p.category, c, sizeof g_p.category);
 	g_p.compiled = uk_messagebox ("The project", "Make App: compiled (main.bax, it starts at once; the source not in the app)?", MB_YESNO) == 1;
+	g_p.managed = uk_messagebox ("The project", "Managed: the program runs on the VM instead of machine code?", MB_YESNO) == 1;
 	save_project_ini (); refresh_tree ();
 }
 
@@ -964,7 +967,7 @@ static void cmd_run ()
 	kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/qbstudio");
 	char tmp[200]; snprintf (tmp, sizeof tmp, "SD:/tmp/qbstudio/%s.bas", g_p.name);
 	if (!write_file (tmp, prog.str ())) { status ("Cannot write SD:/tmp/qbstudio"); return; }
-	char args[600]; snprintf (args, sizeof args, "-s qbstudio -d \"%s\" \"%s\"", g_p.dir, tmp);
+	char args[600]; snprintf (args, sizeof args, "%s-s qbstudio -d \"%s\" \"%s\"", g_p.managed ? "-m " : "", g_p.dir, tmp);
 	if (!kapi_exec ("SD:/bin/basic", args)) { status ("Cannot start SD:/bin/basic"); return; }
 	snprintf (g_msgs->output, sizeof g_msgs->output, "Running %s", g_p.title);
 	g_msgs->invalidate (true);
@@ -985,11 +988,17 @@ static void cmd_make_app ()
 	bool ok;
 	if (g_p.compiled)
 	{
+		if (g_p.managed) bas::setManaged (p, true);
 		char *bytes; int n = bas::saveBax (p, &bytes);
 		ok = kapi_save_file (path, bytes, (unsigned) n) >= 0;
 		delete[] bytes;
 	}
-	else { Str prog; build (prog, true); ok = write_file (path, prog.str ()); }
+	else
+	{
+		Str prog;
+		if (g_p.managed) prog.puts ("OPTION MANAGED\n");	// (the source of a managed app says so itself)
+		build (prog, true); ok = write_file (path, prog.str ());
+	}
 	bas::destroy (p);
 	if (!ok) { char m[260]; snprintf (m, sizeof m, "Cannot write %s", path); status (m); return; }
 	kapi_remove (other);

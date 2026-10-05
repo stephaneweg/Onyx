@@ -315,7 +315,7 @@ slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.
 # (FreeType's text through uikit, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
 # problems as you type, Make App's .bax).
 qbstudio.elf: Apps/qbstudio/main.cpp $(wildcard Apps/qbstudio/*.h) basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp \
-	      basic/bas.h basic/basint.h basic/basnum.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h clipboard.h notify.h
+	      basic/bas.h basic/basint.h basic/basjit.h basic/basnum.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h clipboard.h notify.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
@@ -530,7 +530,7 @@ snes/libsnes.a: $(SNES_OBJS)
 
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
 # (linked into the qbasic editor too), and the runtime /bin/basic (basic/runtime.cpp).
-BAS_HDR = basic/bas.h basic/basint.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h kapi.h
+BAS_HDR = basic/bas.h basic/basint.h basic/basjit.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h kapi.h
 BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o basic/basbax.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.

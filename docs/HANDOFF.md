@@ -29,11 +29,19 @@ answer in French. The docs stay in English.
   `PROF=1 PROFVMS=<ms>`), i.e. 2 ms of VM per second: native code will not show there.
   Careful on the Pi: another session uses it too, and `pkg` may be updating it (a staged system
   update restarts it); `pi_apps.py` runs at import (do not import it).
-- **Next (phase B, asked by the user)**: a compiled, native AArch64 execution beside the VM --
-  first measure the time spent in the VM against the runtime's primitives (IDEAS.md, *JIT pour la
-  VM BASIC*), propose the strategy and the form of the deliverable to the user, then one demo,
-  then Arkanoid. Another session was adding AudioKit statements to BASIC at the same time (the
-  end of `enum Builtin`): merge `origin/main` before touching `basint.h`.
+- **Phase B, step (a) done (2026-10-05)**: machine code at load, on by default (`basjit.h`; docs/03
+  *Machine code*, docs/04 §13 *Machine code or managed*). The user's decisions: form (a) then (c);
+  native by default with the VM as the fallback; `-m` and a "Managed" box in the compile dialogs
+  (the user wrote the label in French, "Managé": the dialogs being in English it reads "Managed").
+  Pi 4: the benchmark 1.48 s -> 0.11 s. `sh tools/tests/run_basic_native_test.sh` (qemu-aarch64 +
+  the bare-metal toolchain) and its fuzzer must stay green after any change to the VM's
+  instructions or to `opLen ()`.
+- **Next**: (1) the calls and the numeric built-in functions in machine code (today each is a
+  call to the VM: recursion gains little), strings; (2) **form (c)**, the standalone app: "Make
+  App" writes `apps/<name>.app/main` = a pre-linked runtime with the program attached (no linker
+  on the machine); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
+  Another session was adding AudioKit statements to BASIC at the same time (the end of
+  `enum Builtin`): merge `origin/main` before touching `basint.h`.
 
 ## Printing (2026-10-05)
 

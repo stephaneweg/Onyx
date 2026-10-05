@@ -11,7 +11,7 @@
 
 namespace bas {
 
-enum { BAX_FORMAT = 2 };			// (2: the classes' tables; a format 1 file still loads)
+enum { BAX_FORMAT = 3 };			// (2: the classes' tables; 3: the program's flags -- managed; older files still load)
 
 namespace {
 struct Out
@@ -81,6 +81,7 @@ int saveBax (const Program *p, char **out)
 	}
 	o.i32 (p->vtab.n); for (int i = 0; i < p->vtab.n; i++) o.i32 (p->vtab[i]);
 	o.i32 (p->itab.n); for (int i = 0; i < p->itab.n; i++) o.i32 (p->itab[i]);
+	o.i32 (p->managed ? 1 : 0);
 	o.bytes ("END.", 4);
 	*out = o.b;
 	return o.n;
@@ -130,11 +131,15 @@ Program *loadBax (const char *buf, int len, Error *err)
 		c = in.count (); for (int i = 0; i < c && !in.bad; i++) p->vtab.push (in.i32 ());
 		c = in.count (); for (int i = 0; i < c && !in.bad; i++) p->itab.push (in.i32 ());
 	}
+	if (fmt >= 3) p->managed = (in.i32 () & 1) != 0;
 	if (in.bad || in.at + 4 > in.n || in.b[in.at] != 'E' || in.b[in.at + 3] != '.'
 	    || p->gkind.n != p->nglobals || p->gext.n != p->nglobals)
 	{ delete p; setErr (err, "The .bax file is damaged"); return 0; }
 	return p;
 }
+
+void setManaged (Program *p, bool on) { if (p) p->managed = on; }
+bool isManaged (const Program *p) { return p && p->managed; }
 
 // A program from a file's bytes: a .bax as it is, else BASIC source (compiled).
 Program *load (const char *buf, int len, Error *err)

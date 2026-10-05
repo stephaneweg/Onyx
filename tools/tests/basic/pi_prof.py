@@ -4,7 +4,7 @@
 instructions / the runtime's primitives / the waits). Uploads a runtime as SD:/bin/basicp (the
 card's /bin/basic is left alone) by ftpd, runs it over telnetd.
 
-    python tools/tests/basic/pi_prof.py <pi-ip> [--runtime user/bin/basic.elf] [--native] [--key]
+    python tools/tests/basic/pi_prof.py <pi-ip> [--runtime user/bin/basic.elf] [--managed] [--key]
         calc                     the computing benchmark (tools/tests/basic/bench/calc.bas), to its end
         <SD: path> [seconds]     a program of the card (a game: started, measured for <seconds>, then killed)
 
@@ -91,7 +91,7 @@ def main ():
 	while a and a[0].startswith ("--"):
 		o = a.pop (0)
 		if o == "--runtime": runtime = a.pop (0)
-		elif o == "--native": flags = "-n -p"
+		elif o == "--managed": flags = "-m -p"
 		elif o == "--key": key = True
 	what = a[0]; secs = int (a[1]) if len (a) > 1 else 25
 	pi = Pi (ip)

@@ -275,6 +275,44 @@ static bool ask_text (const char *title, char *out, int cap)
 	return out[0] != 0;
 }
 
+// The compile dialog (Run > Make .bax, File > Make App): how the program is made. "Managed": it will run on
+// the VM (as before machine code); without it /bin/basic runs it in machine code. The choices are kept.
+static bool g_optCompiled = true, g_optManaged = false;
+static void dlg_nop (Widget &) {}
+class CompileDialog : public Modal
+{
+	const char *m_title;
+public:
+	Checkbox *compiled, *managed;
+	CompileDialog (const char *title, bool app) : Modal (460, app ? 176 : 140), m_title (title), compiled (0)
+	{
+		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
+		int y = uk_fh () + 18;
+		if (app)
+		{
+			compiled = new Checkbox (14, y, width - 28, 24, "Compiled (main.bax: starts faster, the source is not in the app)", g_optCompiled, dlg_nop);
+			addChild (compiled); y += 32;
+		}
+		managed = new Checkbox (14, y, width - 28, 24, "Managed (runs on the VM instead of machine code)", g_optManaged, dlg_nop);
+		addChild (managed);
+		Button *b;
+		b = new Button (width - 180, height - 36, 82, 28, "OK", dlg_btn);     b->tag = 1; addChild (b);
+		b = new Button (width - 92,  height - 36, 82, 28, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		managed->setFocus ();
+	}
+	void onButton (int tag) override { close (tag); }
+	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
+	void onDraw () override { drawBox (m_title); }
+};
+static bool ask_compile (const char *title, bool app)
+{
+	CompileDialog d (title, app);
+	if (!d.run ()) return false;
+	if (d.compiled) g_optCompiled = d.compiled->checked;
+	g_optManaged = d.managed->checked;
+	return true;
+}
+
 // View > SUBs...: every module; Edit / Delete.
 class SubsDialog : public Modal
 {
@@ -501,7 +539,7 @@ static void op_goto ()
 }
 
 // The program compiled (bytecode: runs without parsing) into a .bax file. true = written.
-static bool write_bax (const char *path)
+static bool write_bax (const char *path, bool managed)
 {
 	int starts[MAXMOD];
 	char *s = compose (starts);
@@ -509,6 +547,7 @@ static bool write_bax (const char *path)
 	bas::Program *p = bas::compile (s, &e);
 	delete [] s;
 	if (!p) { check (false); return false; }
+	if (managed) bas::setManaged (p, true);
 	char *bytes; int n = bas::saveBax (p, &bytes);
 	bas::destroy (p);
 	bool ok = kapi_save_file (path, bytes, (unsigned) n) >= 0;
@@ -523,7 +562,8 @@ static void op_make_bax ()
 	int e = slen (out), d = e; while (d > 0 && out[d - 1] != '.' && out[d - 1] != '/') d--;
 	if (d > 0 && out[d - 1] == '.') e = d - 1;
 	scpy (out + e, ".bax", sizeof out - e);
-	if (write_bax (out)) set_status ("Compiled: ", out);
+	if (!ask_compile ("Make .bax", false)) return;
+	if (write_bax (out, g_optManaged)) set_status ("Compiled: ", out);
 	else if (g_status) set_status ("Cannot write ", out);
 }
 
@@ -543,11 +583,26 @@ static void op_make_app ()
 	char p[160];
 	// compiled (main.bax: starts at once, the source stays private) or as source (main.bas);
 	// only one of them, or an old one would be run instead
-	bool compiled = uk_messagebox ("Make App", "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", MB_YESNO) == 1;
+	if (!ask_compile ("Make App", true)) return;
+	bool compiled = g_optCompiled;
 	char other[160];
 	fs_join (p, sizeof p, dir, compiled ? "main.bax" : "main.bas");
 	fs_join (other, sizeof other, dir, compiled ? "main.bas" : "main.bax");
-	if (compiled ? !write_bax (p) : !write_to (p)) { set_status ("Cannot write ", p); return; }
+	bool ok;
+	if (compiled) ok = write_bax (p, g_optManaged);
+	else if (!g_optManaged) ok = write_to (p);
+	else
+	{	// the source of a managed app says so itself: OPTION MANAGED, its first line
+		char *s = compose (0);
+		const char *opt = "OPTION MANAGED\n";
+		int n = slen (s), k = slen (opt);
+		char *t = new char[n + k + 1];
+		for (int i = 0; i < k; i++) t[i] = opt[i];
+		for (int i = 0; i <= n; i++) t[k + i] = s[i];
+		ok = kapi_save_file (p, t, (unsigned) (n + k)) >= 0;
+		delete [] s; delete [] t;
+	}
+	if (!ok) { set_status ("Cannot write ", p); return; }
 	kapi_remove (other);
 	char txt[200]; int k = 0;
 	const char *a = "# Onyx application metadata (written by QBasic > Make App)\nname = ";
