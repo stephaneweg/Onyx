@@ -185,7 +185,11 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      `WinPixelsAlloc` gives), then has the wallpaper painted again (`voronoy`). AppKit also keeps
      what a program asked and asks it again when a call finds another server (a safety net). Lost at
      a restart: the windows' order (front to back), a drag in progress, the drag-and-drop payload.
-   - **`SD:/etc/elegant.on`** (kept, unlike the trial file): Elegant at every start. Not enabled.
+   - **Stage 5a (the user: "tu peux continuer", 2026-10-05): Elegant is started at EVERY boot** by the
+     kernel, before init (`WsBootStart`; no trial file any more -- `pi_deploy.py --trial` is not needed).
+     The kernel's window manager is still in the kernel, used only if Elegant does not take the display;
+     `SD:/etc/elegant.off` (made by hand) keeps Elegant from starting: the way back until 5b removes the
+     kernel's window manager. On the Pi since 22:28.
    - **Left**: the role given to the process the kernel started (today: the program named
      `elegant`); `screen_set` under Elegant to try; the capture channel for `rdpd` (the windows'
      buffers mapped read-only instead of `win_read`'s copies); Elegant's memory after many windows

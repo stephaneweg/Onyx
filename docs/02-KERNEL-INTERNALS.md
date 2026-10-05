@@ -1233,12 +1233,12 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
   - *who has the keyboard* (`KAPI_WS_FOCUS`: the server says; `key_held` and a pad's `focus` answer by it --
     the kernel's window manager keeps the keys' state and the modifiers, fed as before) and *a process's
     name* (`KAPI_WS_PROC_NAME`: the lists of the open programs);
-- **the start** (`WsBootStart`, before init) — **a one-boot trial**: `SD:/etc/elegant.trial` is there → the
-  kernel removes it (the next start is its own window manager's again, whatever happens), starts
-  `SD:bin/elegant --serve` and waits (5 s at most) until it has the display; init then starts the
-  desktop, whose programs have their windows in Elegant.
+- **the start** (`WsBootStart`, before init) — the kernel starts `SD:bin/elegant --serve` at every boot and
+  waits (5 s at most) until it has the display; init then starts the desktop, whose programs have their
+  windows in Elegant. (While the kernel's own window manager still exists: it is what is left if Elegant
+  does not come up, and `SD:/etc/elegant.off` keeps Elegant from being started.)
 
-Nothing changes unless Elegant takes the display. **AppKit's window calls have two bodies**
+**AppKit's window calls have two bodies**
 (`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): at a program's first window call AppKit asks
 `KAPI_WS_ACTIVE`; Elegant owns the display → that program's window calls speak the protocol
 (`user/Kits/appkit/elegant.h`, private to AppKit and Elegant: 30 operations, each doing what the kernel's

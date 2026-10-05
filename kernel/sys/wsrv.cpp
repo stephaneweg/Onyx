@@ -719,31 +719,22 @@ void WsOnProcessGone (unsigned nPid)
 }
 
 // ---- the start ------------------------------------------------------------------------------------
-// The one-boot trial (as the network's, sys/net.cpp): SD:/etc/elegant.trial is there -> it is
-// removed (the next start is the kernel's window manager's again, whatever happens), the graphics
-// server is started before init and waited for: the programs init starts have their windows there.
-#define WS_TRIAL_FILE	"SD:/etc/elegant.trial"
-#define WS_ON_FILE	"SD:/etc/elegant.on"
+// The graphics server is started before init, at every start, and waited for: the programs init
+// starts have their windows there. (Until the kernel's own window manager is removed it is what is
+// left when the server does not come up -- and SD:/etc/elegant.off, made by hand, keeps the server
+// from being started at all: the way back while both exist.)
+#define WS_OFF_FILE	"SD:/etc/elegant.off"
 #define WS_SERVER_PATH	"SD:bin/elegant"
 
 void WsBootStart (void)
 {
 	FIL File;
-	boolean bTrial = f_open (&File, WS_TRIAL_FILE, FA_READ) == FR_OK;
-	if (bTrial)
+	if (f_open (&File, WS_OFF_FILE, FA_READ) == FR_OK)
 	{
 		f_close (&File);
-		if (f_unlink (WS_TRIAL_FILE) != FR_OK)		// (it must not come back at the next boot)
-		{
-			CLogger::Get ()->Write ("wsrv", LogWarning, "the trial file cannot be removed: no trial");
-			bTrial = FALSE;
-		}
+		CLogger::Get ()->Write ("wsrv", LogWarning, WS_OFF_FILE " is there: the graphics server is not started");
+		return;
 	}
-	// ... or every start (SD:/etc/elegant.on: kept; removed by hand to go back -- `rm etc/elegant.on`
-	// over telnet --, which a start without the server leaves possible)
-	boolean bOn = f_open (&File, WS_ON_FILE, FA_READ) == FR_OK;
-	if (bOn) f_close (&File);
-	if (!bTrial && !bOn) return;
 	s_bBootMode = TRUE;
 	if (!ExecPath (WS_SERVER_PATH, "--serve"))
 	{
