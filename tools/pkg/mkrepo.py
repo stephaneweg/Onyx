@@ -104,6 +104,7 @@ def plan (sd, ini):
 		      "summary": sec.get ("summary", ""), "author": sec.get ("author", "Onyx"),
 		      "needs": [n.strip () for n in sec.get ("needs", "").split (",") if n.strip ()],
 		      "required": sec.get ("required", "0"), "restart": sec.get ("restart", "0"),
+		      "kapi": sec.get ("kapi", "").strip (),
 		      "config_pats": split (sec.get ("config", "")), "icon": sec.get ("icon", ""),
 		      "replaces": [n.strip () for n in sec.get ("replaces", "").split (",") if n.strip ()],
 		      # what its apps open and what its programs run (fileassoc.ini, runners.ini: kept in step by pkg)
@@ -153,6 +154,9 @@ def manifest_text (p, version, kapi):
 	# "kapi >= N": the package's programs were built for this kernel -- pkg installs it only once that kernel
 	# runs. Not for the package that BRINGS the kernel (staged, moved in at the restart): it must install on the
 	# older one. (Its programs are the kernel's own age; AppKit, shipped in it, is what the others wait for.)
+	# A package may state the kernel it needs itself (packages.ini: `kapi = N`): a kit the system's own
+	# programs wait for must install BEFORE the kernel that comes with them (UIKit, kapi v90).
+	if p.get ("kapi"): kapi = int (p["kapi"])
 	needs = p["needs"] + (["kapi >= %d" % kapi] if "kernel8-rpi4.img" not in p["files"] and p["restart"] != "1" else [])
 	cfgfiles = [f for f in p["files"] if any (matches (f, c) for c in p["config_pats"])]
 	lines = ["# Onyx package manifest (tools/pkg/mkrepo.py)",

@@ -61,6 +61,8 @@ config   = apps/archiver.app/config.ini  ; the user's files: never overwritten o
 replaces = zipper                ; (rare) packages it takes the place of: one renamed
 ```
 
+`kapi >= N` is added by `mkrepo.py`: the kernel the package was built for (not for the package that brings the kernel). A package may state it itself in `packages.ini` (`kapi = N`): **UIKit** does (88) — the package `onyx` brings a kernel, installed at the restart, *and* programs built against UIKit's table (the dock, the menu bar): UIKit must install before that restart, on the kernel before, or the desktop would not start after it (kapi v90, 2026-10-06). `onyx` and `[*apps]` need that UIKit (`uikit >= 1.729`).
+
 Installing = check, then extract to `SD:/` (the files listed `config`: written only if absent, or
 unchanged since the last install — else beside as `<file>.new`); the installed packages' database:
 **`SD:/var/pkg/<name>.ini`** (the manifest + the list of the files written, each with its SHA-256 — so

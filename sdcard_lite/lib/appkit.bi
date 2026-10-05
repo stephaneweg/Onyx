@@ -1,7 +1,7 @@
 # appkit.bi -- appkit for Onyx BASIC (#import appkit): made by tools/kitbi/kitbi.py from appkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit appkit 298
+kit appkit 300
 struct clock_info 48 kapi_clock_info
 field cnt 0 l
 field freq 8 l
@@ -591,3 +591,5 @@ lx_low 294 b i lx_low c
 lx_open 295 i ss lx_open path,args
 lx_open_as 296 i sss lx_open_as path,args,name
 lx_runner 297 i spi lx_runner path,out,cap
+ws_ctl 298 l iiii kapi_ws_ctl op,a0,a1,a2
+cursor_shown 299 i - kapi_cursor_shown

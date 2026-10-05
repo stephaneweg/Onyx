@@ -253,11 +253,15 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      (`pi_apps.py`, Jet among them; Elegant at 17 MB after it). Print Screen and the wheel: not tried
      (a real USB keyboard is needed). That evening the Pi's Wi-Fi lost 10 to 50 % of the pings, with
      the kernel of before Elegant too (kapi 88, put back to compare): telnet sessions dropped.
+   - **MERGED INTO `main` AND PUBLISHED (2026-10-06)**: onyx 2026.10.94 (the kernel kapi v90, `appkit.so`,
+     `bin/elegant`, `rdpd`), uikit 1.729.0, and every app rebuilt (the file dialogs' filters). **The order
+     on a card**: `pkg check`, `pkg update -a` (UIKit installs at once -- `kapi = 88` in `packages.ini`,
+     docs/pkg/README.md --, `onyx` is staged), restart, `pkg update -a` again (the apps and the other kits
+     wait for kapi 90). Jet's package is unchanged (2.0.13: its program reads no kernel table, checked).
    - **Still to do**: the branch `kapi-compact` of another session (v87's compaction) touches the same
-     table: it is superseded by v90 -- say so before anyone merges it; the role given to the
-     process the kernel started; the capture channel for `rdpd`; `screen_set` under Elegant to try;
-     Elegant's memory after many windows; the packages (kernel + AppKit + Elegant TOGETHER: a v90
-     kernel with an older `appkit.so` starts nothing) and the merge into `main` when the user says.
+     table: it is superseded by v90 -- do not merge it; Print Screen / Alt + Print Screen and the wheel's
+     speed to try with a real keyboard and mouse; the role given to the process the kernel started; the
+     capture channel for `rdpd`; `screen_set` under Elegant to try.
    - **Known differences**: a program's wallpaper buffer is its own copy (what is shown when it asks),
      not the live one; a drag's payload is 4 044 bytes at most (4 096 before); a program started
      while the kernel's window manager has the display stays there (and the reverse).
