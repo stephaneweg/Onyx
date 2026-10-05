@@ -787,6 +787,12 @@ KAPI_FN int kapi_shell_request (int type, const void *in, unsigned len);
 KAPI_FN int kapi_mailbox_send (int target_pid, int type, const void *in, unsigned len);
 KAPI_FN int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
+// (v89) The pointer's shape shown now, whatever window it is over (KAPI_CURSOR_*: the arrow, the hand
+// over a link, the I bar over text, the arrows of a frame's edge...) -- for a remote desktop, which
+// shows it on the other machine (rdpd -> Onyx Remote). -1: not known (the kernel's own window manager
+// does not say; Elegant, the graphics server, does).
+KAPI_FN int kapi_cursor_shown (void);
+
 // (v89) The graphics server's own door to the kernel (Elegant, SD:/bin/elegant): the display, the raw
 // input, its wait -- KAPI_WS_* (kern/kapi_abi.h). Not for programs: a program's windows are the calls
 // above, whoever serves them. -> >= 0, or -KAPI_Exxx (-KAPI_ENOSYS: a kernel before v89).

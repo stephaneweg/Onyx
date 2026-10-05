@@ -369,6 +369,9 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 			*pnOutLen = sizeof R;
 			return nResult;
 		}
+	case EL_OP_CURSOR_SHOWN:
+		return (long) pWM->CursorShown ();
+
 	case EL_OP_POINTER:			// the pointer, from the caller's client area's corner
 		{
 			int pt[2] = { pWM->CursorX (), pWM->CursorY () };

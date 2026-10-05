@@ -503,6 +503,7 @@ public:
 	// the arrow (kernel.cpp builds them from gui/cursors.inc); a window's shape changed.
 	void SetCursorImage (unsigned nShape, GImage *pImage, int nHotX, int nHotY);
 	void SetWindowCursor (CWindow *pWindow, unsigned nShape);
+	unsigned CursorShown (void) const	{ return m_nShape; }	// the shape shown now (KAPI_CURSOR_*)
 
 	// Shared wallpaper buffer for a wallpaper-writer app. EnsureWallpaperBuffer
 	// allocates (once) a frame-backed, page-aligned screen-sized buffer and returns

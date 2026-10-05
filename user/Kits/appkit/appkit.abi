@@ -302,3 +302,4 @@
 296 lx_open_as
 297 lx_runner
 298 kapi_ws_ctl
+299 kapi_cursor_shown

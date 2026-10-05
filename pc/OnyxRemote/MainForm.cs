@@ -226,6 +226,21 @@ namespace OnyxRemote
 		// (pipelined, or lock-step with an older rdpd), the PINGs answered (the server's probes
 		// after a loss, its liveness checks), the reconnections; or, the connection lost, what is
 		// being done about it.
+		// The pointer's shape on the Pi (rdpd's message 11, KAPI_CURSOR_*) shown by the PC's own pointer
+		// over the Onyx windows: the hand over a link, the I bar over text, the arrows of a frame's edge...
+		Cursor pointer = Cursors.Default;
+		static readonly Cursor[] Shapes = { Cursors.Default, Cursors.Hand, Cursors.IBeam, Cursors.SizeAll, Cursors.SizeWE,
+			Cursors.SizeNS, Cursors.SizeNWSE, Cursors.SizeNESW, Cursors.Cross, Cursors.Cross, Cursors.WaitCursor, Cursors.No };
+
+		void ShowCursor (int shape)
+		{
+			pointer = shape >= 0 && shape < Shapes.Length ? Shapes[shape] : Cursors.Default;
+			desk.Cursor = pointer;
+			foreach (var w in wins.Values) w.Cursor = pointer;
+			foreach (var o in overlays.Values) o.Cursor = pointer;
+			if (barDrop != null) barDrop.Cursor = pointer;
+		}
+
 		void ShowStatus ()
 		{
 			var c = Conn;
@@ -270,6 +285,7 @@ namespace OnyxRemote
 			c.RoundDone += session => BeginInvoke ((Action) (() => { if (Conn != c) return; Sync (); rounds++; c.Ready (session); }));
 			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
 			c.LinkChanged += what => BeginInvoke ((Action) (() => { if (Conn != c) return; link = what; ShowStatus (); }));
+			c.CursorChanged += shape => BeginInvoke ((Action) (() => { if (Conn == c) ShowCursor (shape); }));
 			go.Text = "Disconnect";
 			scroller.AutoScrollPosition = Point.Empty;
 			desk.Location = Point.Empty;
@@ -534,6 +550,7 @@ namespace OnyxRemote
 					if (!wins.TryGetValue (id, out RemoteWindow w))
 					{
 						w = new RemoteWindow (Conn, id, frames.Checked, desk);
+						w.Cursor = pointer;
 						wins[id] = w;
 						w.Apply (m, 0);
 						w.Show ();

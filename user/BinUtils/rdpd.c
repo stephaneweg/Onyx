@@ -42,6 +42,10 @@
 //               client that set option bit 2)
 //    10 PING    u32 the server's clock in ms (between rounds, never inside one; a client
 //               skips an unknown type, so an older one ignores it)
+//    11 CURSOR  u8 the pointer's shape now (KAPI_CURSOR_*: 0 arrow, 1 hand, 2 text, 3 move, 4 .. 7
+//               the size arrows, 8 cell, 9 cross, 10 wait, 11 no), sent when it changes, between
+//               rounds -- the client shows its own pointer of that shape (kapi_cursor_shown: known
+//               only when Elegant, the graphics server, has the display)
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
 //     2 PTR     u32 id, s16 x y (in the window's client area: negative on its frame, e.g.
@@ -192,7 +196,7 @@ static void put (const void *p, int n)
 static void put8 (unsigned v)  { unsigned char b = (unsigned char) v; put (&b, 1); }
 static void put16 (unsigned v) { unsigned char b[2] = { (unsigned char) v, (unsigned char) (v >> 8) }; put (b, 2); }
 static void put32 (unsigned v) { unsigned char b[4] = { (unsigned char) v, (unsigned char) (v >> 8), (unsigned char) (v >> 16), (unsigned char) (v >> 24) }; put (b, 4); }
-static void msg (unsigned type, unsigned len) { if (type != 5 && type != 10) g_roundMsgs++; put8 (type); put32 (len); }
+static void msg (unsigned type, unsigned len) { if (type != 5 && type != 10 && type != 11) g_roundMsgs++; put8 (type); put32 (len); }
 
 // ---- input --------------------------------------------------------------------------------
 
@@ -442,6 +446,21 @@ static void keepalive (unsigned now)
 	if (g_endn) g_st.probes++;
 }
 
+// The pointer's shape, looked at 20 times a second and sent when it changed (message 11).
+#define CURSOR_POLL	50000u		// us
+static int g_cursor = -1;		// the shape the client has (-1: none sent)
+static unsigned g_cursorAt;
+
+static void cursor_poll (unsigned now)
+{
+	if (now - g_cursorAt < CURSOR_POLL) return;
+	g_cursorAt = now;
+	int shape = kapi_cursor_shown ();
+	if (shape < 0 || shape == g_cursor) return;
+	g_cursor = shape;
+	msg (11, 1); put8 ((unsigned) shape); flush_out ();
+}
+
 // ---- input: the pointer back on the Pi's screen -------------------------------------------
 
 static unsigned g_btn;
@@ -589,6 +608,7 @@ static void session (void)
 		}
 		us = kapi_clock_us ();
 		keepalive (us);
+		cursor_poll (us);
 		if (g_pipe && us - g_lastRx > SILENT_LIMIT)
 		{
 			if (!fill_in ()) break;			// (what came during a long send counts)

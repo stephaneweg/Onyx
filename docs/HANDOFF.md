@@ -128,6 +128,15 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      requests to Elegant (about 130 a second; 110 ms of read + compare a round: each read is a round
      trip and a copy through the transfer buffer -- what the capture channel is for), its clicks
      and keys go through `inject_*`.
+   - **The pointer's shape in Onyx Remote** (asked by the user, 2026-10-05): `kapi_cursor_shown` (a new
+     AppKit call: Elegant's `EL_OP_CURSOR_SHOWN`; -1 under the kernel's window manager), `rdpd` looks
+     20 times a second and sends message 11 when it changed (an older client skips it), Onyx Remote
+     shows the matching Windows pointer (`MainForm.ShowCursor`). The Pi's side tried with a test client
+     (arrow, then the size arrows over a frame's edge); **`pc/dist/OnyxRemote.exe` rebuilt, its pointer
+     not yet looked at by anyone**.
+   - **Elegant's arrow** is its own (white, black edge; `core.cpp`); **one frame every 16 ms at
+     most** (`server.cpp`: the programs' presents composed together) -- on the Pi since the trial of
+     20:38; VNC felt slower than under the kernel before that (the user): to compare again.
    - **`screen_set` under Elegant: written and built, NOT tried** (the user was on the Pi by RDP: no
      restart then). The kernel's compositor does the resize as always (between two of Elegant's
      presents), then tells Elegant (`KAPI_WS_IN_SCREEN`): a new screen buffer, `OnScreenResized`.

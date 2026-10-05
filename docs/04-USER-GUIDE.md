@@ -1110,6 +1110,11 @@ foreground: `run SD:/bin/ftpd SD:/`.
 
 ### Remote windows on a PC (`rdpd` + Onyx Remote)
 
+*The pointer's shape* (2026-10-05): over the Onyx windows the PC's pointer takes the shape the Pi's has
+— the hand over a link, the I bar over text, the arrows of a frame's edge, the hourglass... (`rdpd`'s
+message 11, when it changes). Known only when **Elegant**, the graphics server, has the display (kapi
+v89, `kapi_cursor_shown`); under the kernel's own window manager the pointer stays an arrow, as before.
+
 `rdpd` (started by `SD:/etc/autostart`, port **3390**) serves the Onyx windows one by one to
 **Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
 11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,

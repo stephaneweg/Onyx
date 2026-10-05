@@ -140,4 +140,7 @@ struct el_read
 	int	 w, h;				// what was read, clipped to the part (0: nothing)
 };
 
+// The pointer's shape shown now (kapi_cursor_shown: the remote desktop) -> KAPI_CURSOR_*.
+#define EL_OP_CURSOR_SHOWN	31
+
 #endif
