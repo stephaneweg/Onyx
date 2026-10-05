@@ -30,6 +30,10 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   kernel that day, so I did not start the app there. First thing to do on the Pi: open the sample, check the
   status bar says `GPU` and the picture is the simulator's (View > Draw with the Processor compares); the frame is
   drawn at twice the view's size (at most 2048: the kernel's limit, checked in `scene_show`).
+- **Next, asked by the user (2026-10-06): Manufacture** — G-code (GRBL) for his router: setup (stock, origin among
+  27 points, axes), tool and machine presets, a clearing in levels and a 2D contour, the G-code checked. The study
+  and five mock-ups are in `docs/3dforge/README.md` (*Manufacture*); **wait for his word on the mock-ups** before
+  building.
 - **Known limits / ideas**: an edge or a face chosen is kept by its place (a fixed point / plane): a change up the
   history can lose a later fillet's edge (the step then fails with a message; the fix is a reference that follows —
   the feature that made the edge + which one). No shadow on the ground (in the mock-up). The sketch has no

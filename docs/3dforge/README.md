@@ -59,6 +59,39 @@ a shadow on the ground) — what the GPU will draw on the Pi. Its measures (63.5
 - **Rendering: the GPU as much as possible** (the bodies, the grid, the selection).
 - **The interface first**: these mock-ups were approved before any code.
 
+## Manufacture: G-code for a CNC router — a study, mock-ups (2026-10-06; nothing built)
+
+Asked by the user for a "version 2": from a body, the **G-code (GRBL)** for his router (a Two Trees), with the two
+operations he uses in Fusion — *adaptive clearing* and *2D contour* —, flat end mills only. He described the setup as
+Fusion's: the **stock** (its size, where the model sits in it), the **body** to cut (the others hidden), the
+**origin** among the stock's 27 points (corners, middles, centres), the direction of X and Y and their inversion;
+then the tool's diameter, the spindle speed, the feeds and the travel speed (a **preset** for the tool and the
+machine), the safe distances from the stock, the lowest depth.
+
+The mock-ups: `python tools/screenshot/mockup_3dforge_cam.py` → `mockups/3dforge-cam-*.png` (the app's window as
+built; the tool paths drawn are real ones for the sample bracket, computed with Manifold's slices and Clipper2's
+offsets, as the app would).
+
+| | |
+|---|---|
+| ![](mockups/3dforge-cam-setup.png) | **Design / Manufacture** at the bar's left: the app's two halves. In Manufacture the tools are Setup, Tool, Clearing, Contour, Simulate, and **G-code** at the right; the timeline shows the setup and its operations. **Setup**: the body, the stock (around the body with margins, or a fixed size) drawn see-through, the **origin** picked among the 27 points — on the drawing, or in the three small grids —, X and Y's directions and their flip; the arrows show the machine's axes. |
+| ![](mockups/3dforge-cam-tool.png) | **Tool**: a flat end mill — its diameter, its cutting length —, the spindle speed, the cutting and plunge feeds, the travel speed, kept as a **preset**; the **machine** (its travel, its spindle's range, GRBL), a preset too. |
+| ![](mockups/3dforge-cam-clearing.png) | **Clearing**: the stock removed level by level around the body (step down), each level by passes a step over apart, a little left on the walls and the floors for the contour; climb or conventional; the way in from outside the stock or by a helix; the heights (safe, retract, down to); the length cut, the time, the lowest Z. |
+| ![](mockups/3dforge-cam-contour.png) | **Contour**: the tool's side on the body's outline (outside or inside), a pass a step down, from a height down to under the body; a ramp into each pass; **tabs** that hold the part. |
+| ![](mockups/3dforge-cam-gcode.png) | **G-code**: the operations in their order, **checked** before writing — no fast move through the stock or the body, nothing below the lowest depth, inside the machine's travel, the tool long enough —, the file's first lines, its size, the time. |
+
+What I told the user (2026-10-05), to keep in mind when building:
+
+- **Simple**: the setup, the tool and the presets, the heights, GRBL's output (G0 / G1, M3 S, G21 G90; curves as
+  short lines), the paths shown in the view. **Moderate**: the 2D contour (Manifold slices the body, Clipper2
+  offsets by the tool's radius; passes, side, direction, ramps, tabs).
+- **The clearing in two levels of ambition**: first **passes by offsets** in Z levels (what the mock-up shows; the
+  tool cuts its full width in the corners and on the first pass) — then, if it does not do, a true **adaptive**
+  clearing at constant engagement (a large piece of work; FreeCAD has one that could be ported: its licence to be
+  checked and the user asked first).
+- **I cannot test a real cut**: everything is checked by computation and in the preview; the user tries it in the
+  air first. The checks of the G-code dialog are part of the first version, not an extra.
+
 ## What is next
 
 All four stages of the plan are done (Manifold for Onyx; the view; the shapes, the operations, Export; the sketch,
