@@ -1944,7 +1944,7 @@ public:
 		dtorProg = P; dtorQ.n = 0;
 		pf = H.prof;
 		pfStart = pfLast = pf ? H.clockUs () : 0;
-		if (!H.managed) native = nativeTranslate (*this);
+		if (!H.managed && !P->managed) native = nativeTranslate (*this);
 		if (!native) loop (-1);
 		else
 			// the machine code runs from an entry point (a statement, a jump's target, a return) until it

@@ -197,7 +197,8 @@ struct Program
 	Vec<int> common;			// COMMON global slots, in order (CHAIN)
 	Vec<int> vtab, itab;			// the classes' method tables (TypeInfo)
 	int nglobals;
-	Program () : nglobals (0) {}
+	bool managed;				// OPTION MANAGED / the compile dialogs' "Managed": run by the VM, not in machine code
+	Program () : nglobals (0), managed (false) {}
 	~Program ()
 	{
 		for (int i = 0; i < strs.n; i++) delete [] strs[i];

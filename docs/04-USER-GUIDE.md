@@ -1025,7 +1025,7 @@ it: `ed notes.txt < edits.txt`.
 |---|---|---|
 | `net` | `net` | Shows the WLAN link status and the IPv4 address (or "link down" if Wi-Fi has not associated — check the firmware and `wpa_supplicant.conf`). |
 | `ping` | `ping <host> [count]` | Sends ICMP echo requests (default 4, one per second, 2 s timeout) to a name or an IP and prints each round-trip time, then the loss and min / avg / max statistics. (Onyx itself also answers pings.) |
-| `basic` | `basic [-d dir] <prog.bas> [args]` | The Onyx BASIC runtime (see §13): runs a program in the console or in its window; `-d` sets the current folder (default: the program's). A `.bas` path given to `run` or the shell runs through it. |
+| `basic` | `basic [-m] [-p] [-d dir] <prog.bas \| prog.bax> [args]`, `basic -c <prog.bas>` | The Onyx BASIC runtime (see §13): runs a program in the console or in its window, **in machine code** (the program is translated when it starts); `-m` (*managed*) runs it on the VM instead; `-d` sets the current folder (default: the program's); `-c` only compiles (`prog.bax`); `-p` measures where the time goes (the program's instructions, the runtime's own work, the waits: printed at the end, and in `SD:/basprof.txt` every 5 s). A `.bas` path given to `run` or the shell runs through it. |
 | `shutdown` | `shutdown`, `shutdown -r` | Ends the session like the Onyx menu's **Shut Down…**: unmounts the SD card (every pending write flushed), then halts — safe to switch the Raspberry Pi off once the green LED is dark; `-r` restarts instead. Works over telnet (the connection drops). |
 | `reboot` | `reboot` | Restarts Onyx (= `shutdown -r`): unmounts the SD card, then restarts the Raspberry Pi. |
 | `fsbench` | `fsbench [big-file]` | Measures the SD card: reading a big file (default `SD:/doom/freedoom1.wad`, MB/s), opening every app's `app.txt` twice (the second time from the sector cache), listing `SD:/apps` twice, writing + reading back a 4 MB file (`SD:/fsbench.tmp`, removed after; its content is checked). Compare with `sdhs=1` / `sdcache=0` in `cmdline.txt`. |
@@ -3950,7 +3950,24 @@ group: transport buttons, a time display, a segmented choice, knobs and level me
 Onyx has a **BASIC in the style of QBasic**: the **QBasic** editor (`qbasic`, category
 *Productivity*), the runtime **`/bin/basic`**, and apps written in BASIC. Programs are
 compiled to bytecode and run by a small virtual machine. The full list of keywords is in
-**Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`). **Compiled programs**: **Run ▸ Make .bax**
+**Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`).
+
+**Machine code or managed.** On the Pi a BASIC program runs **in machine code**: when it starts,
+`/bin/basic` translates its bytecode to AArch64 once (a few milliseconds) and runs that — nothing to
+do, nothing changes in the files, and a `.bas`, a `.bax` and an app behave the same. What computes
+(numbers, loops, arrays, comparisons) is about **ten times faster** than on the VM (a Mandelbrot set +
+a sieve + recursion: 1.48 s on the VM, 0.11 s in machine code on a Pi 4); what draws, prints, waits
+or reads files takes the same time as before, since that was machine code already — a game like
+Arkanoid, which spends its time drawing and pausing, does not change. The results are the same,
+errors and `ON ERROR` / `RESUME`, `ON TIMER` / `ON KEY` and Ctrl-Break included: every instruction
+the translator does not handle is done by the VM itself. **Managed** means *run on the VM, as
+before*: `basic -m prog.bas` for one run; the statement **`OPTION MANAGED`** in a program for that
+program, always; the **Managed** box of the compile dialogs (QBasic's **Run ▸ Make .bax** and
+**File ▸ Make App**, QBStudio's project settings, the Windows editor) for a compiled program or an
+app. Use it if a program ever behaves differently in machine code (and tell us). On Windows
+programs always run on the VM.
+
+**Compiled programs**: **Run ▸ Make .bax**
 writes `<program>.bax`, the bytecode, which starts without parsing and runs like a `.bas`
 (File Viewer, `CHAIN`); **File ▸ Make App** can make a compiled app (`main.bax`); in a terminal
 `basic -c prog.bas` writes `prog.bax`. The editor shows the code in light grey on blue, as

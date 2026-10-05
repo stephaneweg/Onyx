@@ -369,9 +369,14 @@ namespace OnyxBasic
 			return OpSave ();
 		}
 		// Run > Make .bax: the program compiled (it runs without parsing) beside the .bas.
-		bool WriteBax (string p)
+		// "Managed": the program runs on Onyx's VM; without it /bin/basic runs it in machine code (on the Pi).
+		bool AskManaged (string title)
 		{
-			int line = Native.Compile (Compose (out _), p, out string msg);
+			return MessageBox.Show (this, "Managed? (the program runs on the VM instead of machine code)", title, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+		}
+		bool WriteBax (string p, bool managed)
+		{
+			int line = Native.Compile (Compose (out _), p, managed, out string msg);
 			if (line == 0) return true;
 			if (line > 0) { GotoProgramLine (line); MessageBox.Show (this, "Syntax error in line " + line + ": " + msg, "Onyx BASIC", MessageBoxButtons.OK, MessageBoxIcon.Error); }
 			else MessageBox.Show (this, "Cannot write " + p, "Onyx BASIC");
@@ -381,7 +386,7 @@ namespace OnyxBasic
 		{
 			if (path == null && !OpSaveAs ()) return;
 			string p = Path.ChangeExtension (path, ".bax");
-			if (WriteBax (p)) MessageBox.Show (this, "Compiled: " + p, "Onyx BASIC");
+			if (WriteBax (p, AskManaged ("Make .bax"))) MessageBox.Show (this, "Compiled: " + p, "Onyx BASIC");
 		}
 		// File > Make App...: SD:/apps/<name>.app/{main.bas or main.bax, app.txt, icon.bmp}, as on Onyx.
 		void OpMakeApp ()
@@ -399,7 +404,13 @@ namespace OnyxBasic
 				// compiled (main.bax) or as source (main.bas): only one of them
 				bool compiled = MessageBox.Show (this, "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", "Make App", MessageBoxButtons.YesNo) == DialogResult.Yes;
 				string main = Path.Combine (dir, compiled ? "main.bax" : "main.bas"), other = Path.Combine (dir, compiled ? "main.bas" : "main.bax");
-				if (compiled ? !WriteBax (main) : !WriteTo (main)) return;
+				bool managed = AskManaged ("Make App");
+				if (compiled) { if (!WriteBax (main, managed)) return; }
+				else
+				{
+					if (!WriteTo (main)) return;
+					if (managed) File.WriteAllBytes (main, Latin1.Enc.GetBytes ("OPTION MANAGED\n").Concat (File.ReadAllBytes (main)).ToArray ());
+				}
 				if (File.Exists (other)) File.Delete (other);
 				File.WriteAllBytes (Path.Combine (dir, "app.txt"), Latin1.Enc.GetBytes ("# Onyx application metadata (written by QBasic > Make App)\nname = " + title + "\ncategory = BASIC\n"));
 				string icon = Path.Combine (Settings.SdFolder, "apps", "qbasic.app", "program.bmp");

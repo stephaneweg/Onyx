@@ -20,7 +20,8 @@ VALUES
   INTEGER / LONG round when stored (7 / 2 -> 4) and give "Overflow" out of range;
   DOUBLEs print 15 digits. Strings: a$, DIM s AS STRING, fixed: DIM s AS STRING * 10.
   Arrays: DIM a(10), DIM b$(1 TO 5, 3), REDIM, ERASE, LBOUND(a), UBOUND(a[, dim]).
-  OPTION BASE 1. CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
+  OPTION BASE 1. OPTION MANAGED (this program runs on the VM, not in machine code).
+  CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
   AND OR XOR NOT EQV IMP (true = -1). Strings join with +.
   Records: TYPE Point / x AS INTEGER / y AS INTEGER / END TYPE, then DIM p AS Point,
   p.x = 3, DIM t(10) AS Point, t(i).y, fields of another TYPE (p.pos.x), a = b copies,

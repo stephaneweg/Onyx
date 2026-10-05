@@ -183,6 +183,8 @@ Program *compile (const char *src, Error *err);
 int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
 // Compiled programs (.bax, basbax.cpp): the bytecode as a file -- it runs without parsing.
+void     setManaged (Program *p, bool on);		// "Managed": the program runs on the VM even where machine code is possible
+bool     isManaged (const Program *p);
 int      saveBax (const Program *p, char **out);	// its bytes (new[]), their count
 bool     isBax (const char *buf, int len);
 Program *loadBax (const char *buf, int len, Error *err);

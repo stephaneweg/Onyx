@@ -65,12 +65,15 @@ namespace OnyxBasic
 		public static extern int ob_run (byte[] src, int len, string sd, string cwd, byte[] args, byte[] title, ref ObCallbacks cb, out int line, byte[] msg, int cap);
 		[DllImport (Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
 		public static extern int ob_compile (byte[] src, string outPath, out int line, byte[] msg, int cap);
+		[DllImport (Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+		public static extern int ob_compile_ex (byte[] src, string outPath, int managed, out int line, byte[] msg, int cap);
 
 		// Compile to a .bax file: 0 = written, else the syntax error's line (-1: cannot write).
-		public static int Compile (string src, string outPath, out string msg)
+		// managed: the program will run on Onyx's VM instead of machine code.
+		public static int Compile (string src, string outPath, bool managed, out string msg)
 		{
 			var m = new byte[200];
-			int r = ob_compile (Latin1.Z (src), outPath, out int line, m, m.Length);
+			int r = ob_compile_ex (Latin1.Z (src), outPath, managed ? 1 : 0, out int line, m, m.Length);
 			msg = Latin1.FromZ (m);
 			return r == 0 ? 0 : r == 1 ? Math.Max (line, 1) : -1;
 		}

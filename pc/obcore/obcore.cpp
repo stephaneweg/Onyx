@@ -431,11 +431,15 @@ OBAPI int ob_words (char *buf, int cap) { return bas::wordList (buf, cap); }
 
 // Compile a source into a .bax file (UTF-16 path): 0 = written, 1 = syntax error (line +
 // message), 2 = cannot write.
-OBAPI int ob_compile (const char *src, const wchar_t *out, int *line, char *msg, int cap)
+// managed: the program will run on the VM, not in machine code (the compile dialogs' "Managed").
+OBAPI int ob_compile_ex (const char *src, const wchar_t *out, int managed, int *line, char *msg, int cap);
+OBAPI int ob_compile (const char *src, const wchar_t *out, int *line, char *msg, int cap) { return ob_compile_ex (src, out, 0, line, msg, cap); }
+OBAPI int ob_compile_ex (const char *src, const wchar_t *out, int managed, int *line, char *msg, int cap)
 {
 	bas::Error e; e.line = 0; e.msg[0] = 0;
 	bas::Program *p = bas::compile (src, &e);
 	if (!p) { setErr (e, line, msg, cap); return 1; }
+	if (managed) bas::setManaged (p, true);
 	char *bytes; int n = bas::saveBax (p, &bytes);
 	bas::destroy (p);
 	FILE *f = _wfopen (out, L"wb");
