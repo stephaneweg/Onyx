@@ -11,7 +11,8 @@
 //   Taper     the same with one more move and click after the base's radius: the top's
 //   Torus     click the centre, move away for the ring's radius, click, move off the ring for the tube's, click
 //   Sphere    click its centre, move away for its radius, click
-//   Sketch    click a flat face (or the ground): the view turns to it, the tools become Line, Rectangle, Circle, Arc
+//   Sketch    click a flat face (or the ground) -- or choose a plane of the axes (XY, XZ, YZ) and its offset at the
+//             right: the view turns to it, the tools become Line, Rectangle, Circle, Arc
 //   Extrude   the sketch (the one selected, else the last), then its height
 //   Fillet, Chamfer   click edges (straight ones, circles), give the size
 //   Move      click a body, move, click; its fields also turn it (around X, Y, Z, about its centre) and scale it
@@ -26,12 +27,13 @@
 
 #include "frender.h"
 #include "ficons.h"
+#include "fcam.h"
 
 namespace forge {
 
 enum { T_SELECT, T_BOX, T_CYL, T_SKETCH, T_EXTRUDE, T_FILLET, T_CHAMFER, T_MOVE, T_UNION, T_SUB, T_INT, T_MEASURE,
        T_PYRAMID, T_PRISM, T_TAPER, T_TORUS, T_SPHERE,
-       T_LINE, T_RECT, T_CIRCLE, T_ARC };
+       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT };		// (from T_LINE on: the sketch's)
 static inline bool shape_tool (int t) { return t == T_BOX || t == T_CYL || (t >= T_PYRAMID && t <= T_SPHERE); }
 enum { R_FIELDS = 1, R_PANELS = 2, R_ALL = 3 };		// what the window must show again
 
@@ -48,7 +50,11 @@ struct App
 	bool typed[4];				// a value typed in its field: the pointer leaves it alone
 	// the sketch being drawn
 	bool sketching; int skEdit; Feature sk; SkEval ev;
+	int skPlane; double skOffset;		// the Sketch tool's plane, chosen at the right: 0 XY, 1 XZ, 2 YZ; moved by
 	SkEl cur; int curStep; bool chain; double sweep0;
+	bool snapOn = false; V2 snapP;		// (the sketch's pointer is held by a point: shown)
+	bool ghost = false;			// (a shape not yet clicked: shown once one of its values was typed)
+	V2 arcC, arcM; bool rectCentre = false;	// (an arc being placed: its centre, or its end and its middle; rectangles from their centre)
 	// what is selected, what the pointer is on
 	int selBody, selFeat, selEl;
 	int hovBody, hovFace, hovChain;
@@ -56,10 +62,14 @@ struct App
 	Cam cam, camSaved;
 	V3 mA, mB; int mN;			// Measure's points
 	std::vector<std::string> undo, redo;
+	// Manufacture (fcam.h): the setup and its operations, their moves; what the panel shows -- camSel: 0 the setup,
+	// k: its operation k - 1; camPage: 0 the setup, 1 the tool, 2 the operation
+	CamSetup job; CamPaths paths; RMesh stockMesh;
+	bool camMode = false, camSim = false, camDirty = false; int camSel = 0, camPage = 0; unsigned camDirtyT = 0;
 	char hint[200], path[200], caption[96];
 	unsigned saved; bool gpu;
 	void (*refresh) (int what);
-	App () : tool (T_SELECT), step (0), lastShape (T_PYRAMID), hasPend (false), opAuto (true), hasPrev (false), prevErr (0), sketching (false), skEdit (-1),
+	App () : tool (T_SELECT), step (0), lastShape (T_PYRAMID), hasPend (false), opAuto (true), hasPrev (false), prevErr (0), sketching (false), skEdit (-1), skPlane (0), skOffset (0),
 		 curStep (0), chain (false), sweep0 (0), selBody (-1), selFeat (-1), selEl (-1), hovBody (-1), hovFace (-1), hovChain (-1),
 		 showEdges (true), showGrid (true), seeThrough (false), snap (true), mN (0), saved (0), gpu (false), refresh (0)
 	{ hint[0] = path[0] = caption[0] = 0; memset (typed, 0, sizeof typed); }
@@ -119,7 +129,7 @@ static void preview_update ()
 		if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { A.prevErr = "A scale of 0 would leave nothing"; return; }
 		build_mesh (moved (*b, f), A.prev); A.hasPrev = true; return;
 	}
-	if (makes_solid (f.kind) && (A.step >= height_step () || (A.step == 0 && f.kind != F_EXTRUDE)))
+	if (makes_solid (f.kind) && (A.step >= height_step () || (A.step == 0 && f.kind != F_EXTRUDE && A.ghost)))
 	{
 		Manifold m;
 		if (!A.doc.solid (f, &m, &why)) { if (*why) A.prevErr = why; return; }
@@ -166,26 +176,32 @@ static void tool_hint ()
 	case T_TORUS: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK." : A.step == 1 ? "Move away to set the ring's radius, then click."
 				: "Move off the ring to set the tube's radius and click \xE2\x80\x94 or type it and press Enter."); break;
 	case T_SPHERE: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its radius at the right and press OK." : "Move away to set the radius and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_SKETCH: set_hint ("Click the flat face to draw on, or the ground."); break;
+	case T_SKETCH: set_hint ("Click the flat face to draw on \xE2\x80\x94 or choose a plane at the right and start."); break;
 	case T_EXTRUDE: set_hint ("Move to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
 	case T_FILLET: case T_CHAMFER: set_hint ("Click the edges, then drag the arrow or type the size. Enter to finish."); break;
 	case T_MOVE: set_hint (A.step == 0 ? "Click the body to move, turn or scale." : "Move it and click \xE2\x80\x94 or type its move, its turns and its scale at the right, then Enter."); break;
 	case T_UNION: case T_SUB: case T_INT: set_hint (A.step == 0 ? "Click the body to keep." : A.tool == T_SUB ? "Click the body to cut out of it." : "Click the other body."); break;
 	case T_MEASURE: set_hint (A.mN == 2 ? "Click again to measure something else." : A.mN == 1 ? "Click the second point." : "Click two points to measure between them."); break;
 	case T_LINE: set_hint (A.curStep == 0 ? "Line: click where it starts." : "Line: click where it ends \xE2\x80\x94 or type its length and angle. Esc ends the run."); break;
-	case T_RECT: set_hint (A.curStep == 0 ? "Rectangle: click a corner." : "Rectangle: click the opposite corner."); break;
+	case T_RECT: set_hint (A.rectCentre ? (A.curStep == 0 ? "Rectangle: click its centre." : "Rectangle: click a corner \xE2\x80\x94 or type its width and height.")
+					    : A.curStep == 0 ? "Rectangle: click a corner." : "Rectangle: click the opposite corner."); break;
 	case T_CIRCLE: set_hint (A.curStep == 0 ? "Circle: click its centre." : "Circle: click to set its diameter."); break;
-	case T_ARC: set_hint (A.curStep == 0 ? "Arc: click where it starts." : A.curStep == 1 ? "Arc: click the centre. It starts at the end of the last element." : "Arc: click where it ends."); break;
+	case T_ARC: set_hint (A.curStep == 0 ? "Arc: click its centre." : A.curStep == 2 ? "Arc: click where it ends \xE2\x80\x94 or type its angle (+ clockwise)."
+			      : A.cur.chain ? "Arc: click the centre. It starts at the end of the last element." : "Arc: click where it starts: that sets its radius."); break;
+	case T_ARC3: set_hint (A.curStep == 0 ? "Arc: click where it starts." : A.curStep == 1 ? "Arc: click where it ends." : "Arc: move its middle and click \xE2\x80\x94 or type its radius."); break;
+	case T_SPLINE: set_hint (A.curStep == 0 ? "Spline: click where it starts." : "Spline: click its points. Enter, or the last point clicked again, ends it."); break;
+	case T_POINT: set_hint ("Point: click to place a mark to snap to. It is part of no outline."); break;
 	}
 }
 // The element a sketch tool is about to place: chained to the run when there is one.
 static void sk_arm ()
 {
 	A.cur = SkEl (); memset (A.typed, 0, sizeof A.typed); A.sweep0 = 0;
-	A.cur.kind = A.tool == T_ARC ? SK_ARC : A.tool == T_RECT ? SK_RECT : A.tool == T_CIRCLE ? SK_CIRCLE : SK_LINE;
-	bool chained = A.chain && A.ev.has && (A.tool == T_LINE || A.tool == T_ARC);
-	A.cur.chain = chained; A.curStep = chained ? 1 : 0;
-	if (chained) { A.cur.x = A.ev.cur.x; A.cur.y = A.ev.cur.y; }
+	A.cur.kind = A.tool == T_ARC || A.tool == T_ARC3 ? SK_ARC : A.tool == T_RECT ? SK_RECT : A.tool == T_CIRCLE ? SK_CIRCLE : A.tool == T_SPLINE ? SK_SPLINE
+		     : A.tool == T_POINT ? SK_POINT : SK_LINE;
+	bool chained = A.chain && A.ev.has && (A.tool == T_LINE || A.tool == T_ARC || A.tool == T_ARC3 || A.tool == T_SPLINE);
+	A.cur.chain = chained; A.curStep = chained ? 1 : 0; A.cur.rel = A.tool == T_RECT && A.rectCentre;
+	if (chained) { A.cur.x = A.ev.cur.x; A.cur.y = A.ev.cur.y; A.arcC = A.arcM = A.ev.cur; if (A.tool == T_SPLINE) A.cur.pts.assign (1, A.ev.cur); }
 }
 static void extrude_begin ()
 {
@@ -199,8 +215,9 @@ static void extrude_begin ()
 }
 static void tool_set (int t)
 {
-	if (A.sketching && t != T_LINE && t != T_RECT && t != T_CIRCLE && t != T_ARC) return;
-	A.tool = t; A.step = 0; A.hasPend = false; A.hasPrev = false; A.prevErr = 0; A.pend = Feature (); A.opAuto = true; A.mN = 0;
+	if (A.sketching && t < T_LINE) return;
+	if (A.camMode && t != T_SELECT) return;			// (Manufacture has its own tools)
+	A.tool = t; A.step = 0; A.ghost = false; A.hasPend = false; A.hasPrev = false; A.prevErr = 0; A.pend = Feature (); A.opAuto = true; A.mN = 0;
 	A.hovChain = A.hovFace = A.hovBody = -1; memset (A.typed, 0, sizeof A.typed);
 	// a shape: ready to be made as it is (its values at the right, a ghost at the origin), or drawn with the pointer
 	Feature &p = A.pend;
@@ -292,10 +309,20 @@ static void sketch_end (bool keep)
 static void sk_add (const SkEl &e)
 {
 	A.sk.els.push_back (e); sk_eval ();
-	A.chain = (e.kind == SK_LINE || e.kind == SK_ARC) && A.ev.has;	// (a run that closed itself is over)
+	if (e.kind != SK_POINT) A.chain = (e.kind == SK_LINE || e.kind == SK_ARC || e.kind == SK_SPLINE) && A.ev.has;	// (a run that closed itself is over)
 	A.selEl = -1; sk_arm (); tool_hint (); ui (R_ALL);
 }
-// The point of the sketch nearest to a place of the plane, within r: an element's start, end or centre.
+// The spline being placed is done: the points clicked (the one that follows the pointer is not one).
+static void sk_spline_end ()
+{
+	SkEl e = A.cur; if (!e.pts.empty ()) e.pts.pop_back ();
+	if (e.pts.empty ()) { sk_arm (); tool_hint (); ui (R_ALL); return; }
+	sk_add (e);
+}
+// An angle (degrees) as the pointer gives it: on a multiple of 45 when near one, else by steps of 5.
+static double snap_angle (double a) { double s = floor (a / 45 + 0.5) * 45; return fabs (a - s) <= 4 ? s : floor (a / 5 + 0.5) * 5; }
+// The point of the sketch nearest to a place of the plane, within r: an element's start, end or centre, the middle
+// of a line, a rectangle's corners, a spline's points, the origin.
 static bool sk_near (V2 p, double r, V2 *out)
 {
 	bool got = false; double best = r;
@@ -305,6 +332,15 @@ static bool sk_near (V2 p, double r, V2 *out)
 			double d = hypot (q.x - p.x, q.y - p.y);
 			if (d < best && (q.x != 0 || q.y != 0 || &q != &s.centre)) { best = d; *out = q; got = true; }
 		}
+	auto cand = [&] (const V2 &q) { double d = hypot (q.x - p.x, q.y - p.y); if (d < best) { best = d; *out = q; got = true; } };
+	for (size_t i = 0; i < A.ev.shapes.size () && i < A.sk.els.size (); i++)
+	{
+		const SkShape &s = A.ev.shapes[i]; const SkEl &e = A.sk.els[i];
+		if (e.kind == SK_LINE || e.kind == SK_CLOSE) cand (V2 ((s.start.x + s.end.x) / 2, (s.start.y + s.end.y) / 2));
+		if (e.kind == SK_SPLINE) for (const V2 &q : e.pts) cand (q);
+		if (e.kind == SK_RECT) { cand (V2 (s.start.x, s.end.y)); cand (V2 (s.end.x, s.start.y)); cand (V2 ((s.start.x + s.end.x) / 2, (s.start.y + s.end.y) / 2)); }
+	}
+	cand (V2 (0, 0));
 	return got;
 }
 // The pointer at p (plane) while an element is being placed: its values follow; click: the step is done.
@@ -313,24 +349,81 @@ static void sk_point (V2 p, bool click)
 	SkEl &e = A.cur; double near = 8 / A.cam.scale; V2 q;
 	bool snapped = A.snap && sk_near (p, near, &q);
 	if (snapped) p = q; else { p.x = snapv (p.x); p.y = snapv (p.y); }
+	A.snapOn = snapped; A.snapP = p;
 	if (A.curStep == 0)
 	{
-		e.x = p.x; e.y = p.y;
-		if (click) { A.curStep = 1; tool_hint (); ui (R_ALL); }
+		e.x = p.x; e.y = p.y; A.arcC = A.arcM = p;
+		if (click)
+		{
+			if (e.kind == SK_POINT) { sk_add (e); return; }
+			if (e.kind == SK_SPLINE) e.pts.assign (1, p);
+			A.curStep = 1; tool_hint (); ui (R_ALL);
+		}
+		return;
+	}
+	if (e.kind == SK_SPLINE)				// its next point follows the pointer; a click keeps it
+	{
+		if (e.pts.empty ()) e.pts.push_back (p);
+		e.pts.back () = p;
+		if (click)
+		{
+			V2 prev = e.pts.size () > 1 ? e.pts[e.pts.size () - 2] : V2 (e.x, e.y);
+			if (hypot (p.x - prev.x, p.y - prev.y) < near * 0.5 + 1e-6) { if (e.pts.size () > 1) sk_spline_end (); return; }
+			e.pts.push_back (p); ui (R_FIELDS);
+		}
+		return;
+	}
+	if (e.kind == SK_ARC && A.tool == T_ARC3)		// its end, then its middle: on the line that cuts the chord in two
+	{
+		if (A.curStep == 1)
+		{
+			A.arcC = A.arcM = p; e.r = 0; e.sweep = 0;
+			if (click && hypot (p.x - e.x, p.y - e.y) > 1e-6) { A.curStep = 2; tool_hint (); ui (R_ALL); }
+			return;
+		}
+		double cx = A.arcC.x - e.x, cy = A.arcC.y - e.y, c = hypot (cx, cy), nx = -cy / c, ny = cx / c;
+		V2 M ((e.x + A.arcC.x) / 2, (e.y + A.arcC.y) / 2);
+		double h = (p.x - M.x) * nx + (p.y - M.y) * ny;
+		if (A.snap && !snapped) h = snapv (h, 0.5);
+		if (A.typed[0] && e.r >= c / 2) { double hh = e.r - sqrt (e.r * e.r - c * c / 4); h = h < 0 ? -hh : hh; }
+		A.arcM = V2 (M.x + nx * h, M.y + ny * h);
+		if (fabs (h) < 1e-6) { e.sweep = 0; if (!A.typed[0]) e.r = 0; }
+		else
+		{
+			double r = (c * c / 4 + h * h) / (2 * fabs (h)), s = h > 0 ? 1 : -1, k = s * (r - fabs (h));
+			V2 C (M.x - nx * k, M.y - ny * k);
+			e.r = r; e.ca = atan2 (C.y - e.y, C.x - e.x) * 180 / PI;
+			e.sweep = s * 2 * atan2 (c / 2, r - fabs (h)) * 180 / PI;	// (bulging to the left of start -> end: clockwise)
+		}
+		if (click && fabs (e.sweep) > 1e-6) { sk_add (e); return; }
+		if (click) ui (R_FIELDS);
+		return;
+	}
+	if (e.kind == SK_ARC && !e.chain && A.curStep == 1)	// an arc from its centre: where it starts, which sets its radius
+	{
+		V2 C = A.arcC; double d = hypot (p.x - C.x, p.y - C.y);
+		if (d > 1e-9)
+		{
+			double a = atan2 (p.y - C.y, p.x - C.x), r = A.typed[0] ? e.r : snapped ? d : snapv (d, 0.5);
+			if (A.snap && !snapped) a = snap_angle (a * 180 / PI) * PI / 180;
+			e.r = r; e.x = C.x + r * cos (a); e.y = C.y + r * sin (a); e.ca = a * 180 / PI + 180;
+		}
+		if (click && e.r > 1e-6 && d > 1e-9) { A.curStep = 2; A.sweep0 = 0; e.sweep = 0; tool_hint (); ui (R_ALL); return; }
+		if (click) ui (R_FIELDS);
 		return;
 	}
 	double dx = p.x - e.x, dy = p.y - e.y, dist = hypot (dx, dy);
 	if (e.kind == SK_LINE)
 	{
 		double a = atan2 (dy, dx) * 180 / PI, l = dist;
-		if (!snapped && A.snap) { double s = floor (a / 15 + 0.5) * 15; if (fabs (a - s) < 4) a = s; l = snapv (l); }
+		if (!snapped && A.snap) { a = snap_angle (a); l = snapv (l); }
 		if (!A.typed[0]) e.len = l;
 		if (!A.typed[1]) e.a = a;
 		if (click && e.len > 1e-6) { sk_add (e); return; }
 	}
 	else if (e.kind == SK_RECT)
 	{
-		if (!A.typed[0]) e.w = dx; if (!A.typed[1]) e.h = dy;
+		if (!A.typed[0]) e.w = e.rel ? 2 * fabs (dx) : dx; if (!A.typed[1]) e.h = e.rel ? 2 * fabs (dy) : dy;
 		if (click && fabs (e.w) > 1e-6 && fabs (e.h) > 1e-6) { sk_add (e); return; }
 	}
 	else if (e.kind == SK_CIRCLE)
@@ -342,7 +435,7 @@ static void sk_point (V2 p, bool click)
 	{
 		if (!A.typed[0]) e.r = snapped ? dist : snapv (dist, 0.5);
 		e.ca = atan2 (dy, dx) * 180 / PI;
-		if (A.snap) { double s = floor (e.ca / 15 + 0.5) * 15; if (fabs (e.ca - s) < 4) e.ca = s; }
+		if (A.snap && !snapped) e.ca = snap_angle (e.ca);
 		if (click && e.r > 1e-6) { A.curStep = 2; A.sweep0 = 0; e.sweep = 0; tool_hint (); ui (R_ALL); return; }
 	}
 	else						// ... its end: the sweep, unwrapped so that it can pass half a turn
@@ -352,8 +445,8 @@ static void sk_point (V2 p, bool click)
 		while (d > 180) d -= 360; while (d < -180) d += 360;
 		double sw = A.sweep0 + d; if (sw > 360) sw = 360; if (sw < -360) sw = -360;
 		A.sweep0 = sw;
-		if (A.snap && !snapped) sw = floor (sw / 5 + 0.5) * 5;
-		if (!A.typed[1]) e.sweep = sw;
+		if (A.snap && !snapped) sw = snap_angle (sw);
+		if (!A.typed[1]) e.sweep = -sw;				// (kept clockwise)
 		if (click && fabs (e.sweep) > 1e-6) { sk_add (e); return; }
 	}
 	if (click) ui (R_FIELDS);
@@ -362,6 +455,61 @@ static void sk_close ()
 {
 	if (!A.sketching || !A.ev.has) return;
 	SkEl e; e.kind = SK_CLOSE; e.chain = true; A.sk.els.push_back (e); sk_eval (); A.chain = false; sk_arm (); tool_hint (); ui (R_ALL);
+}
+
+// ---- Manufacture ---------------------------------------------------------------------------------------------------------
+static CamOp *cam_op () { return A.camSel >= 1 && A.camSel <= (int) A.job.ops.size () ? &A.job.ops[A.camSel - 1] : 0; }
+static void cam_hint ()
+{
+	CamOp *op = cam_op (); A.prevErr = 0; char a[24], b[24], c[24];
+	V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12);
+	if (A.camPage == 0) { set_hint ("Click one of the stock's points to put the origin there."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s", a, b, c); }
+	else if (A.camPage == 1) { set_hint ("The tool and the machine are remembered: the next part starts with them."); snprintf (A.caption, sizeof A.caption, "Tool \xC2\xB7 %s", A.job.tool.name); }
+	else if (op)
+	{
+		if (op->failed) { A.prevErr = op->err; set_hint (op->err); }
+		else if (op->useFace && A.camDirty) set_hint ("Click the flat face, turned up, to work on.");
+		else set_hint (op->kind == CAM_CLEAR ? "Clearing: the stock removed level by level around the body. Its values are at the right."
+						     : "Contour: the tool follows the outline, a pass a step down. Tabs hold the part at the end.");
+		snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 %d min", op->name, (int) (op->minutes + 0.5));
+	}
+}
+// The stock and the moves made again (it can take a moment: asked a little after the last change, main.cpp).
+static void cam_refresh ()
+{
+	A.camDirty = false;
+	V3 lo, hi; cam_stock (A.doc, A.job, &lo, &hi);
+	build_mesh (Manifold::Cube ({hi.x - lo.x, hi.y - lo.y, hi.z - lo.z}).Translate ({lo.x, lo.y, lo.z}), A.stockMesh);
+	A.paths.lo = lo; A.paths.hi = hi;
+	if (A.job.ops.empty () || !cam_compute (A.doc, A.job, A.paths)) { A.paths.moves.clear (); A.paths.hm.clear (); }
+	cam_hint ();
+}
+static void cam_touch () { A.camDirty = true; A.camDirtyT = kapi_get_ticks (); A.doc.changes++; }
+static void cam_enter (bool on)
+{
+	if (A.sketching || on == A.camMode) return;
+	tool_set (T_SELECT);
+	if (on)
+	{
+		if (A.doc.bodies.empty ()) { set_hint ("Manufacture needs a body: make one first."); ui (R_ALL); return; }
+		if (!A.job.on || !A.doc.body (A.job.body)) { A.job.on = true; A.job.body = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id; }
+		A.camMode = true; A.camSel = 0; A.camPage = 0; A.camSim = false; cam_refresh ();
+	}
+	else { A.camMode = false; A.caption[0] = 0; A.prevErr = 0; tool_hint (); }
+	ui (R_ALL);
+}
+static void cam_add (int kind)
+{
+	CamOp o; o.kind = kind; int n = 1; for (const CamOp &q : A.job.ops) if (q.kind == kind) n++;
+	snprintf (o.name, sizeof o.name, "%s %d", kind == CAM_CLEAR ? "Clearing" : "Contour", n);
+	if (kind == CAM_CONTOUR) o.stepdown = 2;
+	A.job.ops.push_back (o); A.camSel = (int) A.job.ops.size (); A.camPage = 2; A.camSim = false; A.doc.changes++;
+	cam_refresh (); ui (R_ALL);
+}
+static void cam_delete_op ()
+{
+	if (!cam_op ()) return;
+	A.job.ops.erase (A.job.ops.begin () + A.camSel - 1); A.camSel = 0; A.camPage = 0; A.doc.changes++; cam_refresh (); ui (R_ALL);
 }
 
 // ---- the view ----------------------------------------------------------------------------------------------------------
@@ -394,8 +542,11 @@ public:
 	void lookAlong (double az, double el) { A.cam.az = az; A.cam.el = el; A.cam.set (); invalidate (true); }
 	double radius () const
 	{
+		// (the depth the frame holds, either side of the view's centre: the bodies, and the grid as far as it is drawn
+		//  -- zoomed out, it was cut off in the distance)
 		double r = 300;
 		for (const Body &b : A.doc.bodies) r = std::max (r, std::max (len (b.mesh.lo - A.cam.t), len (b.mesh.hi - A.cam.t)) * 1.5);
+		r = std::max (r, std::max (width, height) / A.cam.scale * 2.5);
 		return r + len (A.cam.t);
 	}
 
@@ -440,8 +591,8 @@ public:
 	V3 baseCentre () const
 	{
 		const Feature &f = A.pend;
-		if (f.kind == F_BOX) return f.centred ? f.pl.at (f.x, f.y) : f.pl.at (f.x + f.w / 2, f.y + f.d / 2);
-		if (round_kind (f.kind)) return f.pl.at (f.x, f.y);
+		if (f.kind == F_BOX) return f.centred ? f.pl.at (f.x, f.y, f.z) : f.pl.at (f.x + f.w / 2, f.y + f.d / 2, f.z);
+		if (round_kind (f.kind)) return f.pl.at (f.x, f.y, f.z);
 		if (f.kind == F_EXTRUDE && f.sketch >= 0 && f.sketch < (int) A.doc.feats.size ())
 		{
 			const Feature &sk = A.doc.feats[f.sketch]; SkEval ev; sketch_eval (sk.els, 24, ev);
@@ -478,9 +629,98 @@ public:
 		auto_op (); preview_update (); tool_hint (); caption_set (); ui (R_ALL);
 		return false;
 	}
+	// ---- Manufacture in the view: the stock, the origin's 27 points, the face an operation works on, the moves ----
+	V3 stockPoint (int k) const
+	{
+		const V3 &lo = A.paths.lo, &hi = A.paths.hi;
+		return V3 (lo.x + (hi.x - lo.x) * (k % 3) / 2, lo.y + (hi.y - lo.y) * (k / 3 % 3) / 2, lo.z + (hi.z - lo.z) * (k / 9) / 2);
+	}
+	bool camFacePick () const { CamOp *op = cam_op (); return A.camMode && A.camPage == 2 && op && op->useFace; }
+	void camMove (int mx, int my)
+	{
+		Hit h; int hb = -1, hf = -1;
+		if (camFacePick () && pick (A.doc, A.cam, mx, my, &h) && A.doc.bodies[h.body].id == A.job.body) { hb = h.body; hf = A.doc.bodies[h.body].mesh.grp[h.tri]; }
+		if (hb != A.hovBody || hf != A.hovFace) { A.hovBody = hb; A.hovFace = hf; invalidate (true); }
+	}
+	void camClick (int mx, int my)
+	{
+		if (A.camPage == 0)
+		{
+			int best = -1; double bd = 12;
+			for (int k = 0; k < 27; k++) { double x, y; sx (stockPoint (k), &x, &y); double d = hypot (mx - x, my - y); if (d < bd) { bd = d; best = k; } }
+			if (best >= 0) { A.job.origin = best; A.doc.changes++; ui (R_ALL); }
+		}
+		else if (camFacePick ())
+		{
+			Hit h; CamOp *op = cam_op ();
+			if (pick (A.doc, A.cam, mx, my, &h) && A.doc.bodies[h.body].id == A.job.body)
+			{
+				const RMesh &m = A.doc.bodies[h.body].mesh; int g = m.grp[h.tri];
+				if (m.flat[g] && m.gn[g].z > 0.9999) { op->facePt = h.p; cam_refresh (); ui (R_ALL); }
+				else { set_hint ("Choose a flat face turned up."); ui (0); }
+			}
+		}
+		invalidate (true);
+	}
+	void camScene ()
+	{
+		const CamSetup &c = A.job; double bias = 2.0 / A.cam.scale; (void) c;
+		if (!A.camSim && A.stockMesh.tris ())			// the stock: a see-through block
+		{
+			sc.batch (KAPI_GPU_B_CULL_BACK | KAPI_GPU_B_BLEND (KAPI_GPU_BLEND_ALPHA) | KAPI_GPU_B_NOZWRITE, true);
+			scene_body (sc, A.stockMesh, 0xECC882, 44);
+			sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LEQUAL) | KAPI_GPU_B_NOZWRITE, false);
+			scene_edges (sc, A.stockMesh, 0x966E28, 0.6, 200);
+		}
+		const CamPaths &p = A.paths;
+		if (A.camSim && !p.hm.empty ())				// what is left of the stock: its height, cell by cell
+		{
+			sc.batch (0, true);
+			int s = 1; while ((p.nx / s) * (p.ny / s) > 14000) s++;
+			double x0 = p.lo.x - c.tool.dia, y0 = p.lo.y - c.tool.dia;
+			auto hgt = [&] (int i, int j) { if (i >= p.nx) i = p.nx - 1; if (j >= p.ny) j = p.ny - 1; return (double) p.hm[(size_t) j * p.nx + i]; };
+			for (int j = 0; j + s <= p.ny; j += s) for (int i = 0; i + s <= p.nx; i += s)
+			{
+				double h00 = hgt (i, j), h10 = hgt (i + s, j), h11 = hgt (i + s, j + s), h01 = hgt (i, j + s);
+				if (h00 < -1e8 || h10 < -1e8 || h11 < -1e8 || h01 < -1e8) continue;
+				V3 a (x0 + (i + 0.5) * p.cell, y0 + (j + 0.5) * p.cell, h00), b (x0 + (i + s + 0.5) * p.cell, y0 + (j + 0.5) * p.cell, h10);
+				V3 d (x0 + (i + s + 0.5) * p.cell, y0 + (j + s + 0.5) * p.cell, h11), e (x0 + (i + 0.5) * p.cell, y0 + (j + s + 0.5) * p.cell, h01);
+				V3 n = unit (cross (b - a, e - a)); unsigned col = shade_rgb (0xD9B77E, lit (A.cam, n));
+				sc.vert (a.x, a.y, a.z, col); sc.vert (b.x, b.y, b.z, col); sc.vert (d.x, d.y, d.z, col);
+				sc.vert (a.x, a.y, a.z, col); sc.vert (d.x, d.y, d.z, col); sc.vert (e.x, e.y, e.z, col);
+			}
+			return;
+		}
+		if (p.moves.size () < 2) return;				// the moves: cuts blue, fast moves amber; the chosen operation's stronger
+		sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LEQUAL) | KAPI_GPU_B_NOZWRITE | KAPI_GPU_B_BLEND (KAPI_GPU_BLEND_ALPHA), false);
+		size_t skip = p.moves.size () > 30000 ? p.moves.size () / 30000 + 1 : 1; int only = A.camPage == 2 ? A.camSel - 1 : -1;
+		for (size_t k = 1; k < p.moves.size (); k++)
+		{
+			const CamMove &m = p.moves[k];
+			if (skip > 1 && k % skip && m.kind == p.moves[k - 1].kind && len (m.p - p.moves[k - 1].p) < 0.6) continue;
+			bool on = only < 0 || m.op == only;
+			sc.line (p.moves[k - 1].p, m.p, (m.kind ? 0.55 : 0.45) * SS, m.kind ? 0x1E6EDC : 0xE2962C, on ? (m.kind ? 255 : 200) : 60, bias);
+		}
+	}
+	void camOverlays ()
+	{
+		V3 o = cam_origin (A.job, A.paths.lo, A.paths.hi), ax, ay; cam_axes (A.job, &ax, &ay);
+		if (A.camPage == 0)
+			for (int k = 0; k < 27; k++) { double x, y; sx (stockPoint (k), &x, &y); ov_dot (canvas, x, y, k == A.job.origin ? 0 : 3.2, 0xFFFFFF, 0x966E28, 1.4); }
+		double L = 70 / A.cam.scale; if (L < 12) L = 12; double x0, y0; sx (o, &x0, &y0);
+		const struct { V3 v; unsigned c; const char *n; } axis[3] = { { ax, 0xD6483E, "X" }, { ay, 0x40A04C, "Y" }, { V3 (0, 0, 1), 0x3A7AD6, "Z" } };
+		for (int i = 0; i < 3; i++)
+		{
+			double x1, y1; sx (o + axis[i].v * L, &x1, &y1); ov_arrow (canvas, x0, y0, x1, y1, axis[i].c, false);
+			uk_text (canvas, (int) (x0 + (x1 - x0) * 1.18) - 4, (int) (y0 + (y1 - y0) * 1.18) - uk_fh () / 2, axis[i].n, axis[i].c, 2);
+		}
+		ov_dot (canvas, x0, y0, 5, 0xFFFFFF, 0x282C36, 2);
+	}
+
 	void toolMove (int mx, int my)
 	{
 		Feature &f = A.pend; V3 p;
+		if (A.camMode) { camMove (mx, my); return; }
 		if (A.sketching)
 		{
 			if (A.cam.onPlane (mx, my, A.sk.pl, &p)) { sk_point (A.sk.pl.to (p), false); ui (R_FIELDS); }
@@ -511,6 +751,13 @@ public:
 					if (!A.typed[0]) f.w = w; if (!A.typed[1]) f.d = d;
 				}
 				else if (!A.typed[0]) f.w = (f.kind == F_CYL ? 2 : 1) * snapv (hypot (q.x - f.x, q.y - f.y), 0.5);
+				// a base with sides: a corner of it points to the pointer
+				if ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5 && !A.typed[3] && hypot (q.x - f.x, q.y - f.y) > 1e-6)
+				{
+					double a = atan2 (q.y - f.y, q.x - f.x) * 180 / PI;
+					if (A.snap) a = snap_angle (a);
+					f.turn = a;
+				}
 				if (f.kind == F_SPHERE) preview_update ();
 				ui (R_FIELDS); invalidate (true);
 			}
@@ -538,6 +785,7 @@ public:
 	void toolClick (int mx, int my)
 	{
 		Feature &f = A.pend; V3 p; Hit h;
+		if (A.camMode) { camClick (mx, my); return; }
 		if (A.sketching)
 		{
 			if (A.cam.onPlane (mx, my, A.sk.pl, &p)) sk_point (A.sk.pl.to (p), true);
@@ -556,6 +804,7 @@ public:
 				if (!A.cam.onPlane (mx, my, pl, &p)) break;
 				// (the sizes follow the pointer from here -- but the ones typed, and what has no step of its own)
 				V2 q = pl.to (p); f.pl = pl; f.target = target; f.x = snapv (q.x); f.y = snapv (q.y);
+				if (target < 0 && A.snap && hypot (q.x, q.y) < 9 / A.cam.scale) f.x = f.y = 0;		// (near the origin: on it)
 				if (!A.typed[0]) f.w = 0;
 				if (f.kind == F_BOX && !A.typed[1]) f.d = 0;
 				A.hasPend = true; A.step = 1; A.hasPrev = false; auto_op ();
@@ -569,7 +818,7 @@ public:
 			int b, c;
 			if (!edgeAt (mx, my, &b, &c)) break;
 			const Body &bd = A.doc.bodies[b]; const Chain &ch = bd.mesh.chains[c];
-			if (ch.kind == 0) { set_hint ("This edge cannot be rounded: only straight edges and edges on a circle."); ui (R_PANELS); break; }
+			if (ch.kind == 0) { set_hint ("This edge cannot be rounded: only straight edges, circles and arcs."); ui (R_PANELS); break; }
 			V3 m = chain_mid (bd.mesh, ch); bool had = false;
 			for (size_t i = 0; i < f.edges.size (); i++) if (chain_near (bd.mesh, f.edges[i], 0.05) == c) { f.edges.erase (f.edges.begin () + i); had = true; break; }
 			if (!had) { f.edges.push_back (m); f.target = bd.id; }
@@ -602,11 +851,36 @@ public:
 
 	// ---- the bodies: a small panel floating over the view's top left corner ------------------------------------------
 	enum { BX = 10, BY = 44, BW = 168, BROW = 24 };
-	int bodiesH () const { return A.sketching || A.doc.bodies.empty () ? 0 : 24 + BROW * (int) A.doc.bodies.size () + 6; }
+	// (under the bodies: the sketches of the part as it is rebuilt -- a click shows one, "Edit" or a double click opens it)
+	int sketchAt (int k) const { for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++) if (A.doc.feats[i].kind == F_SKETCH && k-- == 0) return i; return -1; }
+	int sketchCount () const { int n = 0; for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++) if (A.doc.feats[i].kind == F_SKETCH) n++; return n; }
+	int bodiesPart () const { return A.doc.bodies.empty () ? 0 : 24 + BROW * (int) A.doc.bodies.size (); }
+	int bodiesH () const
+	{
+		if (A.sketching || A.camMode) return 0;
+		int ns = sketchCount (), h = bodiesPart () + (ns ? 24 + BROW * ns : 0);
+		return h ? h + 6 : 0;
+	}
 	void drawBodies ()
 	{
 		int h = bodiesH (); if (!h) return;
 		uk_rbox (canvas, BX, BY, BW, h, 8, 0xFFFFFF, 0xFFFFFF, 232); uk_rline (canvas, BX, BY, BW, h, 8, 0xB0B4BE);
+		int ns = sketchCount (), sy = BY + bodiesPart ();
+		if (ns)
+		{
+			if (sy > BY) canvas.fillRect (BX + 8, sy + 1, BW - 16, 1, 0xDCDFE5);
+			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, sy + 6, "Sketches", 0x5A5E68, 2); }
+			for (int k = 0; k < ns; k++)
+			{
+				int i = sketchAt (k), y = sy + 24 + k * BROW; unsigned bg = 0xFFFFFF; const Feature &f = A.doc.feats[i];
+				if (i == A.selFeat) { bg = uk_mix (C_ACCENT, 0xFFFFFF, 190); uk_rbox (canvas, BX + 4, y, BW - 8, BROW, 5, bg, bg); }
+				icon (canvas, I_SKETCH, BX + 8, y + 3, 18, 0x464C5A, C_ACCENT, bg);
+				char fit[32]; uk_text_fit (f.name, BW - 34 - 40, fit, sizeof fit);
+				uk_text (canvas, BX + 32, y + (BROW - uk_fh ()) / 2, fit, 0x1A1A1E, i == A.selFeat ? 2 : 0);
+				UkFaceScope fs (g_small); uk_text (canvas, BX + BW - 10 - uk_tw ("Edit"), y + (BROW - uk_fh ()) / 2, "Edit", 0x2862B0);
+			}
+		}
+		if (A.doc.bodies.empty ()) return;
 		{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, BY + 6, "Bodies", 0x5A5E68, 2); }
 		for (size_t i = 0; i < A.doc.bodies.size (); i++)
 		{
@@ -623,8 +897,18 @@ public:
 	{
 		int h = bodiesH ();
 		if (!h || mx < BX || mx >= BX + BW || my < BY || my >= BY + h) return false;
+		int sy = BY + bodiesPart (), k = (my - sy - 24) / BROW;
+		if (my >= sy + 24 && k < sketchCount ())			// a sketch: shown; "Edit", or pressed twice: opened
+		{
+			static int lastK = -1; static unsigned lastT = 0; unsigned now = kapi_get_ticks ();
+			int i = sketchAt (k); bool open = mx >= BX + BW - 44 || (lastK == i && now - lastT < 45); lastK = i; lastT = now;
+			if (A.tool != T_SELECT) tool_set (T_SELECT);
+			A.selFeat = i; A.selBody = -1;
+			if (open) { lastK = -1; sketch_begin (A.doc.feats[i].pl, A.doc.feats[i].target, i); }
+			ui (R_ALL); return true;
+		}
 		int i = (my - BY - 24) / BROW;
-		if (my >= BY + 24 && i < (int) A.doc.bodies.size ())
+		if (my >= BY + 24 && my < sy && i < (int) A.doc.bodies.size ())
 		{
 			int id = A.doc.bodies[i].id;
 			if (mx < BX + 30) { BodyProp &p = A.doc.prop (id); p.visible = !p.visible; A.doc.changes++; }
@@ -720,6 +1004,7 @@ public:
 	void sketchDraw (const Feature &sk, const SkEval &ev, bool editing);
 	void drawCube ();
 	void overlays ();
+	void chrome ();
 	void onDraw () override
 	{
 		A.cam.w = width; A.cam.h = height;
@@ -749,6 +1034,13 @@ public:
 				sc.line (V3 (0, 0, 0), V3 (cx + n * step, 0, 0), 0.9 * SS, 0xD65C52, 255, bias / 2);
 				sc.line (V3 (0, 0, 0), V3 (0, cy + n * step, 0), 0.9 * SS, 0x50A85A, 255, bias / 2);
 			}
+			else						// the sketch's two axes through its origin, in the colours of the model's
+			{
+				auto colour = [] (const V3 &d) { return fabs (d.x) > 0.9 ? 0xD6483Eu : fabs (d.y) > 0.9 ? 0x40A04Cu : fabs (d.z) > 0.9 ? 0x3A7AD6u : 0x808890u; };
+				double far = (n + 2) * step + std::max (fabs (cx), fabs (cy));
+				sc.line (pl.at (-far, 0), pl.at (far, 0), 1.1 * SS, colour (pl.u), 255, bias / 2);
+				sc.line (pl.at (0, -far), pl.at (0, far), 1.1 * SS, colour (pl.v), 255, bias / 2);
+			}
 		}
 		// the bodies
 		bool thru = A.seeThrough, fade = A.sketching;
@@ -756,9 +1048,14 @@ public:
 		for (size_t bi = 0; bi < A.doc.bodies.size (); bi++)
 		{
 			const Body &b = A.doc.bodies[bi]; BodyProp &bp = A.doc.prop (b.id);
-			if (!bp.visible) continue;
+			if (A.camMode ? b.id != A.job.body || A.camSim : !bp.visible) continue;	// (Manufacture: the body cut, alone; simulated: what is left)
 			sc.batch (flags, true);
 			int tintFace = -1; unsigned tint = ACC ();
+			if (camFacePick ())					// the face the operation works on; the one pointed
+			{
+				tintFace = (int) bi == A.hovBody && A.hovFace >= 0 && b.mesh.flat[A.hovFace] && b.mesh.gn[A.hovFace].z > 0.9999 ? A.hovFace : cam_face (b.mesh, cam_op ()->facePt);
+				if (tintFace != A.hovFace || (int) bi != A.hovBody) tint = C_AMBER;
+			}
 			bool planeTool = shape_tool (A.tool) || A.tool == T_SKETCH;
 			if ((int) bi == A.hovBody && A.hovFace >= 0 && planeTool && A.step == 0 && b.mesh.flat[A.hovFace]) tintFace = A.hovFace;
 			unsigned col = bp.colour;
@@ -771,6 +1068,7 @@ public:
 				scene_edges (sc, b.mesh, fade ? 0x8C98AC : 0x222E42, 0.6);
 			}
 		}
+		if (A.camMode) camScene ();
 		// what the tool would make
 		if (A.hasPrev && A.prev.tris ())
 		{
@@ -873,6 +1171,12 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 	for (size_t i = 0; i < ev.shapes.size (); i++)
 	{
 		const SkShape &s = ev.shapes[i]; const SkEl &e = sk.els[i]; double x, y; char a[24], t[48];
+		if (e.kind == SK_POINT)				// a mark: a small cross
+		{
+			unsigned c = (int) i == A.selEl ? C_AMBER : 0x7A5AB0; P (s.start, &x, &y);
+			ov_line (canvas, x - 6, y, x + 6, y, 1.3, c); ov_line (canvas, x, y - 6, x, y + 6, 1.3, c); ov_dot (canvas, x, y, 2.6, 0xFFFFFF, c, 1.5); continue;
+		}
+		if (e.kind == SK_SPLINE) for (const V2 &q : e.pts) { P (q, &x, &y); ov_dot (canvas, x, y, 2.4, 0xFFFFFF, C_LINE, 1.2); }
 		P (s.start, &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_LINE);
 		P (s.end, &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_LINE);
 		if (e.kind == SK_ARC || e.kind == SK_CIRCLE) { P (s.centre, &x, &y); ov_dot (canvas, x, y, 2.2, C_LINE, C_LINE, 1); }
@@ -881,7 +1185,7 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 		if (e.kind == SK_LINE) { fmt (e.len, a); snprintf (t, sizeof t, "%s", a); V2 m ((s.start.x + s.end.x) / 2, (s.start.y + s.end.y) / 2); P (m, &x, &y); double nx = -(s.end.y - s.start.y), ny = s.end.x - s.start.x, l = hypot (nx, ny); if (l > 0) { x += nx / l * 16; y += -ny / l * -16; } }
 		else if (e.kind == SK_ARC) { fmt (e.r, a); snprintf (t, sizeof t, "R %s", a); P (s.pts[s.pts.size () / 2], &x, &y); double cx2, cy2; P (s.centre, &cx2, &cy2); double l = hypot (x - cx2, y - cy2); if (l > 0) { x += (x - cx2) / l * 26; y += (y - cy2) / l * 16; } }
 		else if (e.kind == SK_CIRCLE) { fmt (e.w, a); snprintf (t, sizeof t, "\xC3\x98 %s", a); P (V2 (s.centre.x, s.centre.y + e.w / 2), &x, &y); y -= 16; }
-		else if (e.kind == SK_RECT) { char b[24]; fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, "%s \xC3\x97 %s", a, b); P (V2 (e.x + e.w / 2, e.y + (e.h > 0 ? e.h : 0)), &x, &y); y -= 16; }
+		else if (e.kind == SK_RECT) { char b[24]; fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, "%s \xC3\x97 %s", a, b); P (e.rel ? V2 (e.x, e.y + fabs (e.h) / 2) : V2 (e.x + e.w / 2, e.y + (e.h > 0 ? e.h : 0)), &x, &y); y -= 16; }
 		if (t[0]) ov_tag (canvas, (int) x, (int) y, t, false, 0);
 	}
 	// the element being placed
@@ -894,14 +1198,25 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 			const SkShape &s = e1.shapes[0];
 			if (!(e.kind == SK_ARC && A.curStep == 1))
 				for (size_t k = 0; k + 1 < s.pts.size (); k++) { P (s.pts[k], &x, &y); P (s.pts[k + 1], &x1, &y1); ov_line (canvas, x, y, x1, y1, 2.4, C_AMBER); }
-			if (e.kind == SK_ARC)
+			if (e.kind == SK_SPLINE) for (const V2 &q : e.pts) { P (q, &x, &y); ov_dot (canvas, x, y, 3, 0xFFFFFF, C_AMBER, 1.6); }
+			else if (e.kind == SK_ARC && A.tool == T_ARC3)		// the chord, the line its middle slides on
+			{
+				double x2, y2; P (V2 (e.x, e.y), &x, &y); P (A.arcC, &x1, &y1); ov_dash (canvas, x, y, x1, y1, 1, C_AMBER);
+				ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); ov_dot (canvas, x1, y1, 3.2, 0xFFFFFF, C_AMBER, 1.8);
+				if (A.curStep == 2)
+				{
+					P (A.arcM, &x2, &y2); ov_dash (canvas, (x + x1) / 2, (y + y1) / 2, x2, y2, 1, C_AMBER); ov_dot (canvas, x2, y2, 3.2, 0xFFFFFF, C_AMBER, 1.8);
+					if (e.r > 1e-6) { fmt (e.r, a); snprintf (t, sizeof t, "R %s", a); ov_tag (canvas, (int) x2, (int) y2 - 18, t, true, C_AMBER); }
+				}
+			}
+			else if (e.kind == SK_ARC)
 			{
 				double ca = e.ca * PI / 180; V2 C (e.x + e.r * cos (ca), e.y + e.r * sin (ca));
 				P (V2 (e.x, e.y), &x, &y); P (C, &x1, &y1); ov_dash (canvas, x, y, x1, y1, 1, C_AMBER);
 				if (A.curStep == 2) { double x2, y2; P (s.end, &x2, &y2); ov_dash (canvas, x1, y1, x2, y2, 1, C_AMBER); }
 				ov_dot (canvas, x1, y1, 3.2, 0xFFFFFF, C_AMBER, 1.8);
 				if (A.curStep == 1) { fmt (e.r, a); snprintf (t, sizeof t, "R %s", a); ov_tag (canvas, (int) (x + x1) / 2, (int) (y + y1) / 2 - 16, t, true, C_AMBER); }
-				else { fmt (fabs (e.sweep), a); snprintf (t, sizeof t, "%s\xC2\xB0", a); P (s.pts[s.pts.size () / 2], &x, &y); ov_tag (canvas, (int) (x + (x - x1) * 0.5), (int) (y + (y - y1) * 0.5), t, true, C_AMBER); }
+				else { fmt (e.sweep, a); snprintf (t, sizeof t, "%s\xC2\xB0", a); P (s.pts[s.pts.size () / 2], &x, &y); ov_tag (canvas, (int) (x + (x - x1) * 0.5), (int) (y + (y - y1) * 0.5), t, true, C_AMBER); }
 			}
 			else if (e.kind == SK_LINE)
 			{
@@ -909,7 +1224,7 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 				ov_tag (canvas, (int) (x + x1) / 2, (int) (y + y1) / 2 - 18, t, true, C_AMBER);
 			}
 			else if (e.kind == SK_CIRCLE) { fmt (e.w, a); snprintf (t, sizeof t, "\xC3\x98 %s", a); P (V2 (e.x, e.y + e.w / 2), &x, &y); ov_tag (canvas, (int) x, (int) y - 16, t, true, C_AMBER); }
-			else { char b[24]; fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, "%s \xC3\x97 %s", a, b); P (V2 (e.x + e.w / 2, e.y + (e.h > 0 ? e.h : 0)), &x, &y); ov_tag (canvas, (int) x, (int) y - 16, t, true, C_AMBER); }
+			else if (e.kind == SK_RECT) { char b[24]; fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, "%s \xC3\x97 %s", a, b); P (e.rel ? V2 (e.x, e.y + fabs (e.h) / 2) : V2 (e.x + e.w / 2, e.y + (e.h > 0 ? e.h : 0)), &x, &y); ov_tag (canvas, (int) x, (int) y - 16, t, true, C_AMBER); }
 			// the run would close here
 			if ((e.kind == SK_LINE || (e.kind == SK_ARC && A.curStep == 2)) && A.chain)
 			{
@@ -924,11 +1239,17 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 		}
 	}
 	else if (A.curStep == 0 && A.tool >= T_LINE) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
+	if (A.snapOn && A.selEl < 0)			// held by a point: a green ring on it
+	{
+		double x, y; P (A.snapP, &x, &y); const double d = 6.5;
+		ov_line (canvas, x - d, y, x, y - d, 1.5, C_GREEN); ov_line (canvas, x, y - d, x + d, y, 1.5, C_GREEN); ov_line (canvas, x + d, y, x, y + d, 1.5, C_GREEN); ov_line (canvas, x, y + d, x - d, y, 1.5, C_GREEN);
+	}
 }
 void View::overlays ()
 {
 	const Feature &f = A.pend; char a[24], t[64];
 	arrowX = arrowY = -1;
+	if (A.camMode) { camOverlays (); chrome (); return; }
 	// the sketches not yet used; the one being drawn
 	if (A.sketching) sketchDraw (A.sk, A.ev, true);
 	else
@@ -938,14 +1259,28 @@ void View::overlays ()
 			if (sk.kind != F_SKETCH || (A.doc.used (i) && A.selFeat != i && !(A.hasPend && f.kind == F_EXTRUDE && f.sketch == i))) continue;
 			SkEval ev; sketch_eval (sk.els, A.doc.segs, ev); sketchDraw (sk, ev, false);
 		}
+	// the Sketch tool, before its plane is chosen: the one the panel proposes, shown in the model
+	if (A.tool == T_SKETCH && !A.sketching)
+	{
+		double o = A.skOffset;
+		Plane pl = A.skPlane == 1 ? plane_of (V3 (0, o, 0), V3 (0, -1, 0)) : A.skPlane == 2 ? plane_of (V3 (o, 0, 0), V3 (1, 0, 0)) : plane_of (V3 (0, 0, o), V3 (0, 0, 1));
+		V3 q[4] = { pl.at (-70, -50), pl.at (70, -50), pl.at (70, 50), pl.at (-70, 50) }; int xy[8]; bool ok = true;
+		for (int i = 0; i < 4; i++) { double x, y; sx (q[i], &x, &y); if (fabs (x) > 6000 || fabs (y) > 6000) ok = false; xy[i * 2] = (int) (x * 16); xy[i * 2 + 1] = (int) (y * 16); }
+		if (ok) { VPath p; p.poly (xy, 4); p.fill (canvas, ACC (), 40); }
+		for (int i = 0; i < 4; i++) line3 (q[i], q[(i + 1) % 4], 1.6, ACC ());
+		line3 (pl.at (0, 0), pl.at (30, 0), 2, 0xD6483E); line3 (pl.at (0, 0), pl.at (0, 30), 2, 0x40A04C);
+		tag3 (q[3], 30, -14, A.skPlane == 1 ? "XZ" : A.skPlane == 2 ? "YZ" : "XY");
+	}
 	// a box, a cylinder: the base, the sizes; the height's arrow
 	if (A.hasPend && (f.kind == F_BOX || round_kind (f.kind)) && A.step >= 1)
 	{
-		const Plane &pl = f.pl; unsigned col = f.op == OP_SUB ? C_RED : ACC ();
+		Plane pl = f.pl; pl.o = pl.o + pl.n * f.z; unsigned col = f.op == OP_SUB ? C_RED : ACC ();
+		double ta = f.turn * PI / 180, tc = cos (ta), ts = sin (ta);
+		auto at = [&] (double x, double y) { double dx = x - f.x, dy = y - f.y; return pl.at (f.x + dx * tc - dy * ts, f.y + dx * ts + dy * tc); };	// (turned)
 		if (f.kind == F_BOX)
 		{
 			double x0 = f.centred ? f.x - fabs (f.w) / 2 : std::min (f.x, f.x + f.w), y0 = f.centred ? f.y - fabs (f.d) / 2 : std::min (f.y, f.y + f.d), w = fabs (f.w), d = fabs (f.d);
-			V3 c0 = pl.at (x0, y0), c1 = pl.at (x0 + w, y0), c2 = pl.at (x0 + w, y0 + d), c3 = pl.at (x0, y0 + d);
+			V3 c0 = at (x0, y0), c1 = at (x0 + w, y0), c2 = at (x0 + w, y0 + d), c3 = at (x0, y0 + d);
 			line3 (c0, c1, 2, col); line3 (c1, c2, 2, col); line3 (c2, c3, 2, col); line3 (c3, c0, 2, col);
 			double px, py; sx (pl.at (f.x, f.y), &px, &py); ov_dot (canvas, px, py, 3.2, 0xFFFFFF, col);
 			fmt (w, a); tag3 ((c0 + c1) * 0.5, 0, 18, a, A.step == 1 && !A.typed[0], C_AMBER);
@@ -955,7 +1290,7 @@ void View::overlays ()
 		{
 			bool torus = f.kind == F_TORUS, cyl = f.kind == F_CYL; double rad = cyl ? f.w / 2 : f.w;
 			int ns = !cyl && !torus && f.n >= 2.5 ? (int) (f.n + 0.5) : 48;				// (the base as it will be: its sides)
-			auto ring = [&] (double r, unsigned c, double lw) { V3 prev; for (int i = 0; i <= ns; i++) { double an = 2 * PI * i / ns; V3 p = pl.at (f.x + r * cos (an), f.y + r * sin (an)); if (i) line3 (prev, p, lw, c); prev = p; } };
+			auto ring = [&] (double r, unsigned c, double lw) { V3 prev; for (int i = 0; i <= ns; i++) { double an = 2 * PI * i / ns + (ns < 48 ? ta : 0); V3 p = pl.at (f.x + r * cos (an), f.y + r * sin (an)); if (i) line3 (prev, p, lw, c); prev = p; } };
 			ring (rad, col, 2);
 			double px, py; sx (pl.at (f.x, f.y), &px, &py); ov_dot (canvas, px, py, 3.2, 0xFFFFFF, col);
 			fmt (f.w, a); snprintf (t, sizeof t, cyl ? "\xC3\x98 %s" : "R %s", a); tag3 (pl.at (f.x, f.y + rad), 0, -18, t, A.step == 1, C_AMBER);
@@ -1014,7 +1349,11 @@ void View::overlays ()
 			fmt (len (A.mB - A.mA), a); snprintf (t, sizeof t, "%s mm", a); ov_tag (canvas, (int) (x + x1) / 2, (int) (y + y1) / 2 - 16, t, false, 0);
 		}
 	}
-	// the view's own: the bodies, the cube, its buttons, the axes, what is being made, what went wrong
+	chrome ();
+}
+// The view's own: the bodies, the cube, its buttons, the axes, what is being made, what went wrong.
+void View::chrome ()
+{
 	drawBodies ();
 	drawCube ();
 	int bx = width - 40, by = 124;

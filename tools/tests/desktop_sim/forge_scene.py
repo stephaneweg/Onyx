@@ -5,6 +5,7 @@ app shows it at -- its home view of the bracket (the camera of user/Apps/3dforge
 a sketch on the plate's top face is drawn in.
 
     python3 tools/tests/desktop_sim/forge_scene.py main | shapes | box | cut | sketch | fillet | export
+                                                   | cam | cam-ops | cam-sim | cam-gcode        (Manufacture)
 """
 import math, sys
 
@@ -25,15 +26,17 @@ def ck (p): return "down %s;up %s;wait" % (p, p)
 def mv (p): return "move %s" % p
 def typed (s): return ";".join ("key 0x08" if c == "<" else "key 0x0D" if c == "!" else "key %s" % c for c in s)
 
-SHAPES = ck ("202 30")			# the Shapes button; its fold-out's cells:
-CELL = dict (box = "211 97", cyl = "283 97", sphere = "355 97", torus = "427 97", pyramid = "211 159", prism = "283 159", taper = "355 159")
-TOOL = dict (sketch = "264 30", extrude = "323 30", fillet = "392 30", chamfer = "452 30", move = "513 30", union = "580 30", subtract = "640 30")
-SK = dict (line = "212 30", rect = "277 30", circle = "341 30", arc = "399 30", close = "456 30", finish = "930 28")
+SHAPES = ck ("310 30")			# the Shapes button; its fold-out's cells:
+CELL = dict (box = "321 97", cyl = "393 97", sphere = "464 97", torus = "536 97", pyramid = "321 159", prism = "393 159", taper = "464 159")
+TOOL = dict (sketch = "366 30", extrude = "419 30", fillet = "482 30", chamfer = "536 30", move = "590 30", union = "650 30", subtract = "705 30")
+SK = dict (line = "194 30", rect = "253 30", circle = "311 30", arc = "362 30", arc3 = "414 30", spline = "466 30", point = "516 30", close = "567 30", finish = "930 28")
+# Manufacture: the switch, its tools
+CAM = dict (on = "220 42", setup = "302 31", tool = "352 31", clearing = "416 31", contour = "472 31", simulate = "540 31", gcode = "944 30")
 
 def scene (name):
 	w = "wait;wait"
 	if name == "main": return w + ";wait"
-	if name == "shapes": return ";".join ([w, "down 202 30;up 202 30;wait", mv (CELL["torus"]), "wait"])
+	if name == "shapes": return ";".join ([w, "down 310 30;up 310 30;wait", mv (CELL["torus"]), "wait"])
 	if name == "box":			# a box on the wall's top... the plate's top face: base, then the height pulled
 		return ";".join ([w, SHAPES, ck (CELL["box"]), mv (P (70, 30, 8)), ck (P (70, 30, 8)), mv (P (80, 38, 8)), ck (P (80, 38, 8)), mv (P (80, 38, 26)), "wait;wait"])
 	if name == "cut":			# a cylinder pushed into the plate: Subtract chosen
@@ -42,11 +45,20 @@ def scene (name):
 		return ";".join ([w, ck (TOOL["sketch"]), mv (P (25, 42, 8)), ck (P (25, 42, 8)), "wait",
 				  ck (SK["rect"]), mv (T (6, 34)), ck (T (6, 34)), mv (T (24, 46)), ck (T (24, 46)),
 				  ck (SK["circle"]), mv (T (74, 40)), ck (T (74, 40)), mv (T (79, 40)), ck (T (79, 40)),
+				  ck (SK["point"]), mv (T (45, 20)), ck (T (45, 20)),
+				  ck (SK["spline"]), mv (T (8, 12)), ck (T (8, 12)), mv (T (22, 20)), ck (T (22, 20)), mv (T (34, 10)), ck (T (34, 10)), mv (T (45, 20)), ck (T (45, 20)), ck (T (45, 20)), "key 0x1B",
 				  ck (SK["line"]), mv (T (36, 34)), ck (T (36, 34)), mv (T (58, 34)), ck (T (58, 34)), mv (T (58, 46)), ck (T (58, 46)), mv (T (36, 34)), "wait;wait"])
 	if name == "fillet":			# the wall's top front edge chosen, its radius typed
 		e = P (45, 52, 45)
 		return ";".join ([w, ck (TOOL["fillet"]), mv (e), ck (e), typed ("<4"), "wait;wait"])
 	if name == "export": return ";".join ([w, ck ("950 28"), "wait;wait"])
+	# Manufacture: the setup; a clearing then a contour; what is left of the stock; the G-code
+	cam = ";".join ([w, ck (CAM["on"]), "wait;wait"])
+	ops = ";".join ([cam, ck (CAM["clearing"]), "wait;wait", ck (CAM["contour"]), "wait;wait"])
+	if name == "cam": return cam
+	if name == "cam-ops": return ops
+	if name == "cam-sim": return ";".join ([ops, ck (CAM["simulate"]), "wait;wait"])
+	if name == "cam-gcode": return ";".join ([ops, ck (CAM["gcode"]), "wait;wait"])
 	raise SystemExit ("no such scene: " + name)
 
 if __name__ == "__main__":

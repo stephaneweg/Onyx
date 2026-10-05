@@ -83,7 +83,7 @@ static inline bool makes_solid (int k) { return k == F_BOX || k == F_CYL || k ==
 // ... those drawn from a centre: a base's radius, then a height (the torus: its ring, then its tube).
 static inline bool round_kind (int k) { return k == F_CYL || k == F_PYRAMID || k == F_PRISM || k == F_TAPER || k == F_TORUS || k == F_SPHERE; }
 enum { OP_NEW, OP_UNION, OP_SUB, OP_INT };
-enum { SK_LINE, SK_ARC, SK_CIRCLE, SK_RECT, SK_CLOSE };
+enum { SK_LINE, SK_ARC, SK_CIRCLE, SK_RECT, SK_CLOSE, SK_SPLINE, SK_POINT };
 static const char *const KIND_NAME[F_KINDS] = { "Box", "Cylinder", "Sketch", "Extrude", "Fillet", "Chamfer", "Move", "Combine", "Pyramid", "Prism", "Taper", "Torus", "Sphere" };
 static const char *const KIND_KEY[F_KINDS] = { "box", "cyl", "sketch", "extrude", "fillet", "chamfer", "move", "combine", "pyramid", "prism", "taper", "torus", "sphere" };
 static const char *const OP_NAME[4] = { "New body", "Union", "Subtract", "Intersect" };
@@ -94,8 +94,11 @@ struct SkEl
 	int kind; bool chain, rel;
 	double x, y;			// the start (line, arc) -- the centre (circle) -- a corner (rectangle)
 	double a, len;			// a line: its angle (degrees; rel: from the line before), its length
-	double r, ca, sweep;		// an arc: its radius, the direction from its start to its centre, its sweep (+: left)
-	double w, h;			// a rectangle's sizes; w: a circle's diameter
+	double r, ca, sweep;		// an arc: its radius, the direction from its start to its centre, its sweep (+: clockwise;
+					// in the file: + anticlockwise, as it was first)
+	double w, h;			// a rectangle's sizes (rel: (x, y) is its centre, not a corner); w: a circle's diameter
+	std::vector<V2> pts;		// a spline: the points it goes through after its start
+					// (a point: a mark to snap to, part of no outline)
 	SkEl () : kind (SK_LINE), chain (false), rel (false), x (0), y (0), a (0), len (0), r (0), ca (0), sweep (0), w (0), h (0) {}
 };
 
@@ -108,6 +111,8 @@ struct Feature
 					// pyramid, prism, taper: the centre, w the base's radius, d the top's (taper), h -- torus: w
 					// the ring's radius, d the tube's
 	double n;			// pyramid, prism, taper: the base's sides (less than 3: round)
+	double turn = 0;		// a box, a base with sides: turned about its plane's normal (degrees), round where it was clicked
+	double z = 0;			// a shape: how far off its plane (along its normal) its base is -- a sphere, a torus: its centre
 	bool centred, through;		// box: (x, y) is its centre -- cylinder, extrude: through the whole body
 	std::vector<SkEl> els;		// sketch
 	int sketch;			// extrude: its sketch's step
@@ -129,7 +134,7 @@ struct Feature
 struct Chain
 {
 	std::vector<int> pts; bool closed; int g0, g1;
-	int kind;			// 0 other, 1 straight between two flat faces, 2 a circle on a flat face
+	int kind;			// 0 other, 1 straight between two flat faces, 2 a circle on a flat face, 3 an arc of one
 };
 struct RMesh
 {
@@ -145,6 +150,7 @@ struct RMesh
 
 static inline unsigned long long ekey (int a, int b) { if (a > b) { int c = a; a = b; b = c; } return ((unsigned long long) a << 32) | (unsigned) b; }
 
+static bool circle_of (const V3 &p0, const V3 &p1, const V3 &p2, V3 *ctr);
 static void build_mesh (const Manifold &m, RMesh &r)
 {
 	r.clear ();
@@ -328,9 +334,27 @@ static void build_mesh (const Manifold &m, RMesh &r)
 			for (int p : c.pts) { V3 q = r.v[p] - ctr; if (fabs (len (q) - R) > 1e-3 * (1 + R) || fabs (dot (q, nn)) > 1e-4) { round = false; break; } }
 			if (round) c.kind = 2;
 		}
+		else if (!c.closed && c.pts.size () >= 4 && (r.flat[c.g0] != r.flat[c.g1]))	// an arc: a rounded corner's rim
+		{
+			V3 nn = r.gn[r.flat[c.g0] ? c.g0 : c.g1], ctr;
+			if (circle_of (a, r.v[c.pts[c.pts.size () / 2]], b, &ctr))
+			{
+				double R = len (a - ctr); bool round = R > 1e-4;
+				for (int p : c.pts) { V3 q = r.v[p] - ctr; if (fabs (len (q) - R) > 1e-3 * (1 + R) || fabs (dot (q, nn)) > 1e-4) { round = false; break; } }
+				if (round) c.kind = 3;
+			}
+		}
 	}
 }
 
+// The centre of the circle through three points (false: they are in line).
+static bool circle_of (const V3 &p0, const V3 &p1, const V3 &p2, V3 *ctr)
+{
+	V3 a = p1 - p0, b = p2 - p0, ab = cross (a, b); double d = 2 * dot (ab, ab);
+	if (d < 1e-12) return false;
+	*ctr = p0 + cross (b * dot (a, a) - a * dot (b, b), ab) * (1 / d);
+	return true;
+}
 // The distance from p to the segment a b.
 static inline double seg_dist (const V3 &p, const V3 &a, const V3 &b)
 {
@@ -407,10 +431,80 @@ static bool third_of (const RMesh &r, int a, int b, int g, V3 *out)
 	}
 	return false;
 }
+// Is p inside the body? (a ray from it: an odd number of faces crossed)
+static bool inside_mesh (const RMesh &r, const V3 &p)
+{
+	const V3 dir = unit (V3 (0.5377, 0.2917, 0.7911)); int n = 0;
+	for (int i = 0; i < r.tris (); i++)
+	{
+		const V3 &a = r.v[r.t[i * 3]]; V3 e1 = r.v[r.t[i * 3 + 1]] - a, e2 = r.v[r.t[i * 3 + 2]] - a;
+		V3 pv = cross (dir, e2); double det = dot (e1, pv);
+		if (fabs (det) < 1e-14) continue;
+		V3 tv = p - a; double u = dot (tv, pv) / det; if (u < 0 || u > 1) continue;
+		V3 qv = cross (tv, e1); double v = dot (dir, qv) / det; if (v < 0 || u + v > 1) continue;
+		if (dot (e2, qv) / det > 1e-9) n++;
+	}
+	return (n & 1) != 0;
+}
+// How far the cut of an outer edge may go on past one of its ends (from `end`, along `out`), so that it meets
+// what was cut before across the corner -- as two skirting boards are mitred -- instead of stopping short of
+// it. An edge rounded after its neighbour ends where the neighbour's curve begins: the corner itself is still
+// there beyond. Followed along the edge's own line: a wall rising there (matter outside one of the two faces'
+// planes) stops it; so does matter met again after a gap (another part of the body), or the edge going on as a
+// sharp corner (then it simply ended: nothing to reach).
+static double corner_reach (const RMesh &r, const V3 &end, const V3 &out, const V3 &n1, const V3 &n2, double rad, bool *wall)
+{
+	double most = 4 * rad, step = rad / 8; if (step > 0.5) step = 0.5; if (step < 0.05) step = 0.05;
+	V3 in = (n1 + n2) * -0.02; bool gap = false;
+	V3 q0 = end + out * 0.02;				// (a wall right at the end: the cut must not even stick out)
+	*wall = inside_mesh (r, q0 + n1 * 0.05 - n2 * 0.05) || inside_mesh (r, q0 + n2 * 0.05 - n1 * 0.05);
+	if (*wall) return 0;
+	for (double t = step; t <= most; t += step)
+	{
+		V3 q = end + out * t;
+		if (inside_mesh (r, q + n1 * 0.05 - n2 * 0.05) || inside_mesh (r, q + n2 * 0.05 - n1 * 0.05)) return t - step;	// a wall
+		bool solid = inside_mesh (r, q + in);
+		if (!solid) gap = true;
+		else if (gap) return t - step;				// matter again
+		else if (t > 2.5) return 0;				// the corner goes on, sharp
+	}
+	return gap ? most : 0;
+}
+// Where an outer edge ends on two faces already rounded (a box's upright edge under its two rounded top edges):
+// the piece that turns those rounds around the corner -- their profile revolved a quarter turn about the new
+// round's axis: a quarter of a torus, a piece of a sphere when the radii are the same. vi: the end's vertex;
+// out: the edge's direction past it. false: the end is not such a corner (then the straight cut is all).
+static bool corner_blend (const RMesh &r, const Chain &edge, int vi, const V3 &end, const V3 &out, const V3 &n1, const V3 &n2, double R, int segs, Manifold *res)
+{
+	if (fabs (dot (n1, n2)) > 1e-6) return false;
+	double rr[2] = { -1, -1 };
+	for (const Chain &c : r.chains)
+	{
+		if (&c == &edge || (c.pts[0] != vi && c.pts.back () != vi)) continue;
+		// (the line where a side face turns into its round runs across the edge: a round that merely ends here -- the
+		//  neighbour's, seen from its end -- is not one to turn around the corner)
+		if (fabs (dot (unit (r.v[c.pts.back ()] - r.v[c.pts[0]]), out)) > 0.02) continue;
+		for (int k = 0; k < 2; k++)
+		{
+			int side = k == 0 ? edge.g0 : edge.g1, other = c.g0 == side ? c.g1 : c.g1 == side ? c.g0 : -1;
+			if (other < 0 || r.flat[other]) continue;
+			double top = 0;					// how high the round next to this side face rises: its radius
+			for (int i = 0; i < r.tris (); i++) if (r.grp[i] == other) for (int j = 0; j < 3; j++) top = std::max (top, dot (r.v[r.t[i * 3 + j]] - end, out));
+			rr[k] = top;
+		}
+	}
+	if (rr[0] < 0.01 || fabs (rr[0] - rr[1]) > 1e-3 || R < rr[0] - 1e-6) return false;		// (the two rounds may be one face: mitred, they run into each other)
+	double q = rr[0];
+	SimplePolygon poly = corner_profile (V2 (R, q), V2 (-1, 0), V2 (0, -1), V2 (0, 1), V2 (1, 0), q, true, segs);
+	for (auto &p : poly) if (p.x < 0) p.x = 0;
+	bool right = dot (cross (n1, n2), out) > 0; V3 e1 = right ? n1 : n2, e2 = right ? n2 : n1;
+	*res = placed (Manifold::Revolve (Polygons { poly }, segs, 90), e1, e2, out, end - (n1 + n2) * R).AsOriginal ();
+	return true;
+}
 // The solid for one edge: true and *add (an inner edge: it is added; else cut). why: what stops it.
 static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fillet, int segs, Manifold *out, bool *add, const char **why)
 {
-	*why = "This edge cannot be rounded: only straight edges and edges on a circle";
+	*why = "This edge cannot be rounded: only straight edges, circles and arcs";
 	if (rad <= 1e-6) { *why = "The size must be more than 0"; return false; }
 	int a = c.pts[0], b = c.pts[1];
 	V3 A = r.v[a], B = r.v[c.pts.back ()], p1, p2;
@@ -428,15 +522,28 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		V2 o1 = to2 (n1), o2 = to2 (n2);
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
 		SimplePolygon poly = corner_profile (V2 (0, 0), V2 (1, 0), to2 (d2), o1, o2, rad, fillet, segs);
-		double over = convex ? EPS : 0;
-		Manifold s = Manifold::Extrude (Polygons { poly }, L + 2 * over).Translate ({0, 0, -over});
-		*out = placed (s, ex, ey, ez, dot (ez, dir) > 0 ? A : B).AsOriginal (); *add = !convex;
+		// (an outer edge's cut sticks out of its ends, and goes on to the corner where a neighbour was cut before)
+		bool wallA = false, wallB = false;
+		double pastA = convex ? corner_reach (r, A, -dir, n1, n2, rad, &wallA) : 0, pastB = convex ? corner_reach (r, B, dir, n1, n2, rad, &wallB) : 0;
+		if (convex) { pastA += wallA ? 0 : EPS; pastB += wallB ? 0 : EPS; }
+		bool fromA = dot (ez, dir) > 0;
+		Manifold s = Manifold::Extrude (Polygons { poly }, L + pastA + pastB).Translate ({0, 0, -(fromA ? pastA : pastB)});
+		s = placed (s, ex, ey, ez, fromA ? A : B).AsOriginal ();
+		if (convex && fillet)				// ... and the rounds it ends on are turned around the corner
+		{
+			Manifold bl;
+			if (corner_blend (r, c, c.pts[0], A, -dir, n1, n2, rad, segs, &bl)) s += bl;
+			if (corner_blend (r, c, c.pts.back (), B, dir, n1, n2, rad, segs, &bl)) s += bl;
+		}
+		*out = s; *add = !convex;
 		return true;
 	}
-	if (c.kind == 2)
+	if (c.kind == 2 || c.kind == 3)
 	{
 		int gp = r.flat[c.g0] ? c.g0 : c.g1, gw = r.flat[c.g0] ? c.g1 : c.g0;
-		V3 nn = r.gn[gp], ctr; for (int p : c.pts) ctr = ctr + r.v[p]; ctr = ctr * (1.0 / c.pts.size ());
+		V3 nn = r.gn[gp], ctr;
+		if (c.kind == 2) { for (int p : c.pts) ctr = ctr + r.v[p]; ctr = ctr * (1.0 / c.pts.size ()); }
+		else if (!circle_of (A, r.v[c.pts[c.pts.size () / 2]], B, &ctr)) return false;
 		double R = len (A - ctr); V3 er = unit (A - ctr), et = cross (nn, er);
 		if (!third_of (r, a, b, gp, &p1) || !third_of (r, a, b, gw, &p2)) return false;
 		V3 nw; bool got = false;				// the wall's normal at this edge
@@ -456,9 +563,17 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
 		SimplePolygon poly = corner_profile (V2 (R, 0), to2 (d1), to2 (d2), o1, o2, rad, fillet, segs);
 		for (auto &q : poly) if (q.x < 0) { *why = "Too large for this edge"; return false; }
-		Manifold s = Manifold::Revolve (Polygons { poly }, segs);
-		V3 e1 = er, e2 = cross (nn, er);
-		*out = placed (s, e1, e2, nn, ctr).AsOriginal (); *add = !convex;
+		double sweep = 360; V3 e1 = er;
+		if (c.kind == 3)				// an arc: from its first point, the way its middle goes
+		{
+			auto ang = [&] (const V3 &p) { V3 q = p - ctr; return atan2 (dot (q, et), dot (q, er)) * 180 / PI; };
+			double am = ang (r.v[c.pts[c.pts.size () / 2]]), ab = ang (B);
+			if (am < 0 && ab > 0) ab -= 360; if (am > 0 && ab < 0) ab += 360;
+			sweep = fabs (ab); if (ab < 0) e1 = unit (B - ctr);		// (turned the other way: from its last point)
+			if (sweep < 0.5) return false;
+		}
+		Manifold s = Manifold::Revolve (Polygons { poly }, segs, sweep);
+		*out = placed (s, e1, cross (nn, e1), nn, ctr).AsOriginal (); *add = !convex;
 		return true;
 	}
 	return false;
@@ -492,6 +607,7 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 	for (int i = 0; i < (int) els.size (); i++)
 	{
 		const SkEl &e = els[i]; SkShape s; s.outline = -1;
+		if (e.kind == SK_POINT) { s.start = s.end = s.centre = V2 (e.x, e.y); s.pts.push_back (s.start); ev.shapes.push_back (s); continue; }
 		if (e.kind == SK_CIRCLE || e.kind == SK_RECT)
 		{
 			flush (false); ev.has = false;
@@ -504,7 +620,8 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 			else
 			{
 				double x0 = e.w < 0 ? e.x + e.w : e.x, y0 = e.h < 0 ? e.y + e.h : e.y, w = fabs (e.w), h = fabs (e.h);
-				p = { {x0, y0}, {x0 + w, y0}, {x0 + w, y0 + h}, {x0, y0 + h} }; s.start = s.end = V2 (e.x, e.y);
+				if (e.rel) { x0 = e.x - w / 2; y0 = e.y - h / 2; s.centre = V2 (e.x, e.y); }
+				p = { {x0, y0}, {x0 + w, y0}, {x0 + w, y0 + h}, {x0, y0 + h} }; s.start = V2 (x0, y0); s.end = V2 (x0 + w, y0 + h);
 			}
 			for (auto &q : p) s.pts.push_back (V2 (q.x, q.y));
 			s.pts.push_back (s.pts[0]);
@@ -527,10 +644,30 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 			s.pts.push_back (s.start); s.pts.push_back (ev.cur);
 			run.push_back ({ev.cur.x, ev.cur.y});
 		}
+		else if (e.kind == SK_SPLINE)			// a smooth curve through its points (Catmull-Rom)
+		{
+			std::vector<V2> c; c.push_back (ev.cur); for (const V2 &q : e.pts) c.push_back (q);
+			int n = (int) c.size (), per = segs / 8 < 4 ? 4 : segs / 8;
+			s.pts.push_back (s.start);
+			for (int k = 0; k + 1 < n; k++)
+			{
+				const V2 &p0 = c[k ? k - 1 : 0], &p1 = c[k], &p2 = c[k + 1], &p3 = c[k + 2 < n ? k + 2 : n - 1];
+				if (hypot (p2.x - p1.x, p2.y - p1.y) < 1e-9) continue;
+				for (int j = 1; j <= per; j++)
+				{
+					double t = (double) j / per, t2 = t * t, t3 = t2 * t;
+					V2 q (0.5 * (2 * p1.x + (p2.x - p0.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (3 * p1.x - p0.x - 3 * p2.x + p3.x) * t3),
+					      0.5 * (2 * p1.y + (p2.y - p0.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (3 * p1.y - p0.y - 3 * p2.y + p3.y) * t3));
+					if (j == per) q = p2;
+					s.pts.push_back (q); run.push_back ({q.x, q.y});
+				}
+			}
+			if (s.pts.size () > 1) { const V2 &a = s.pts[s.pts.size () - 2], &b = s.pts.back (); ev.dir = atan2 (b.y - a.y, b.x - a.x) * 180 / PI; ev.cur = b; }
+		}
 		else
 		{
 			double ca = e.ca * PI / 180; V2 C (ev.cur.x + e.r * cos (ca), ev.cur.y + e.r * sin (ca));
-			double a0 = ca + PI, sw = e.sweep * PI / 180;
+			double a0 = ca + PI, sw = -e.sweep * PI / 180;
 			int n = (int) ceil (segs * fabs (sw) / (2 * PI)); if (n < 2) n = 2;
 			s.centre = C; s.pts.push_back (s.start);
 			for (int k = 1; k <= n; k++)
@@ -607,7 +744,7 @@ struct Doc
 			if (w < 1e-6 || d < 1e-6 || h < 1e-6) { *why = "The box has no size"; return false; }
 			double x0 = f.centred ? f.x - w / 2 : (f.w < 0 ? f.x + f.w : f.x), y0 = f.centred ? f.y - d / 2 : (f.d < 0 ? f.y + f.d : f.y);
 			double z0 = f.h < 0 ? f.h : 0, over = f.op == OP_SUB && f.h < 0 ? EPS : 0;
-			*out = placed (Manifold::Cube ({w, d, h + over}).Translate ({x0, y0, z0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o).AsOriginal ();
+			*out = placed (Manifold::Cube ({w, d, h + over}).Translate ({x0 - f.x, y0 - f.y, z0}).Rotate (0, 0, f.turn).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
 		}
 		if (f.kind == F_CYL)
@@ -615,7 +752,7 @@ struct Doc
 			double h = f.through && reach > 0 ? -reach : f.h;
 			if (f.w < 1e-6 || fabs (h) < 1e-6) { *why = "The cylinder has no size"; return false; }
 			double over = f.op == OP_SUB && h < 0 ? EPS : 0;
-			*out = placed (Manifold::Cylinder (fabs (h) + over, f.w / 2, f.w / 2, segs).Translate ({f.x, f.y, h < 0 ? h : 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o).AsOriginal ();
+			*out = placed (Manifold::Cylinder (fabs (h) + over, f.w / 2, f.w / 2, segs).Translate ({f.x, f.y, h < 0 ? h : 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
 		}
 		if (f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER)
@@ -630,13 +767,13 @@ struct Doc
 			Manifold m = Manifold::Cylinder (fabs (h), lo, hi, sides);
 			if (h < 0) m = m.Mirror ({0, 0, 1});
 			if (over > 0) m += Manifold::Cylinder (over, lo, lo, sides);		// (the cut starts just above the face)
-			*out = placed (m.Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o).AsOriginal ();
+			*out = placed (m.Rotate (0, 0, f.turn).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
 		}
 		if (f.kind == F_SPHERE)				// (its centre on the plane, where it was clicked)
 		{
 			if (f.w < 1e-6) { *why = "The sphere has no size"; return false; }
-			*out = placed (Manifold::Sphere (f.w, segs).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o).AsOriginal ();
+			*out = placed (Manifold::Sphere (f.w, segs).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
 		}
 		if (f.kind == F_TORUS)
@@ -646,7 +783,7 @@ struct Doc
 			if (f.w <= f.d) { *why = "The ring must be larger than its tube"; return false; }
 			int ts = segs / 2 < 12 ? 12 : segs / 2; SimplePolygon c;
 			for (int i = 0; i < ts; i++) { double a = 2 * PI * i / ts; c.push_back ({f.w + f.d * cos (a), f.d + f.d * sin (a)}); }
-			*out = placed (Manifold::Revolve (Polygons { c }, segs).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o).AsOriginal ();
+			*out = placed (Manifold::Revolve (Polygons { c }, segs).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
 		}
 		if (f.kind == F_EXTRUDE)
@@ -767,12 +904,15 @@ struct Doc
 				  KIND_KEY[f.kind], f.op, f.target, f.x, f.y, f.w, f.d, f.h, f.centred ? 1 : 0, f.through ? 1 : 0, f.sketch, f.r,
 				  f.mv.x, f.mv.y, f.mv.z, f.tool, f.name); s += b;
 			if (f.kind >= F_PYRAMID) { snprintf (b, sizeof b, "sides %.9g\n", f.n); s += b; }
+			if (f.z != 0) { snprintf (b, sizeof b, "lift %.9g\n", f.z); s += b; }
+			if (f.turn != 0) { snprintf (b, sizeof b, "turned %.9g\n", f.turn); s += b; }
 			if (f.kind == F_MOVE && f.clone) s += "clone 1\n";
 			if (f.kind == F_MOVE && (f.turned () || f.scaled ())) { snprintf (b, sizeof b, "turn %.9g %.9g %.9g scale %.9g %.9g %.9g\n", f.rot.x, f.rot.y, f.rot.z, f.sc.x, f.sc.y, f.sc.z); s += b; }
 			snprintf (b, sizeof b, "plane %.9g %.9g %.9g  %.9g %.9g %.9g  %.9g %.9g %.9g\n", f.pl.o.x, f.pl.o.y, f.pl.o.z, f.pl.u.x, f.pl.u.y, f.pl.u.z, f.pl.n.x, f.pl.n.y, f.pl.n.z); s += b;
 			for (const SkEl &e : f.els)
 			{
-				snprintf (b, sizeof b, "el %d %d %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", e.kind, e.chain ? 1 : 0, e.rel ? 1 : 0, e.x, e.y, e.a, e.len, e.r, e.ca, e.sweep, e.w, e.h); s += b;
+				snprintf (b, sizeof b, "el %d %d %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", e.kind, e.chain ? 1 : 0, e.rel ? 1 : 0, e.x, e.y, e.a, e.len, e.r, e.ca, e.sweep ? -e.sweep : 0, e.w, e.h); s += b;
+				for (const V2 &q : e.pts) { snprintf (b, sizeof b, "sp %.9g %.9g\n", q.x, q.y); s += b; }
 			}
 			for (const V3 &p : f.edges) { snprintf (b, sizeof b, "edge %.9g %.9g %.9g\n", p.x, p.y, p.z); s += b; }
 		}
@@ -807,6 +947,8 @@ struct Doc
 				feats.push_back (f);
 			}
 			else if (!strncmp (line, "sides ", 6) && !feats.empty ()) feats.back ().n = atof (line + 6);
+			else if (!strncmp (line, "lift ", 5) && !feats.empty ()) feats.back ().z = atof (line + 5);
+			else if (!strncmp (line, "turned ", 7) && !feats.empty ()) feats.back ().turn = atof (line + 7);
 			else if (!strncmp (line, "clone ", 6) && !feats.empty ()) feats.back ().clone = atoi (line + 6) != 0;
 			else if (!strncmp (line, "turn ", 5) && !feats.empty ())
 			{ Feature &g = feats.back (); sscanf (line + 5, "%lf %lf %lf scale %lf %lf %lf", &g.rot.x, &g.rot.y, &g.rot.z, &g.sc.x, &g.sc.y, &g.sc.z); }
@@ -820,7 +962,11 @@ struct Doc
 			{
 				SkEl el; int c = 0, r = 0;
 				sscanf (line + 3, "%d %d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf", &el.kind, &c, &r, &el.x, &el.y, &el.a, &el.len, &el.r, &el.ca, &el.sweep, &el.w, &el.h);
-				el.chain = c != 0; el.rel = r != 0; feats.back ().els.push_back (el);
+				el.chain = c != 0; el.rel = r != 0; el.sweep = -el.sweep; feats.back ().els.push_back (el);
+			}
+			else if (!strncmp (line, "sp ", 3) && !feats.empty () && !feats.back ().els.empty ())
+			{
+				V2 q; sscanf (line + 3, "%lf %lf", &q.x, &q.y); feats.back ().els.back ().pts.push_back (q);
 			}
 			else if (!strncmp (line, "edge ", 5) && !feats.empty ())
 			{

@@ -14,7 +14,9 @@
 namespace forge {
 
 enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK_CANCEL, CMD_SK_FINISH, CMD_SK_CLOSE, CMD_OK, CMD_CANCEL,
-       CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES };
+       CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES, CMD_SK_START,
+       CMD_MODE_DESIGN, CMD_MODE_CAM, CMD_CAM_SETUP, CMD_CAM_TOOL, CMD_CAM_CLEAR, CMD_CAM_CONTOUR, CMD_CAM_SIM, CMD_GCODE, CMD_CAM_BODY, CMD_CAM_DELETE };
+static void cam_presets_save ();			// (main.cpp)
 
 static unsigned soft_col (unsigned bg);
 // The shapes, unfolded under their button: a picture and its name each. run (): the tool chosen, -1 none.
@@ -94,24 +96,29 @@ static const ToolDef TOOLS[] = {
 	{ -4, I_SHAPES, "Shapes" }, { T_SKETCH, I_SKETCH, "Sketch" }, { T_EXTRUDE, I_EXTRUDE, "Extrude" }, { -1, 0, 0 },
 	{ T_FILLET, I_FILLET, "Fillet" }, { T_CHAMFER, I_CHAMFER, "Chamfer" }, { T_MOVE, I_MOVE, "Move" }, { -1, 0, 0 },
 	{ T_UNION, I_UNION, "Union" }, { T_SUB, I_SUB, "Subtract" }, { T_INT, I_INT, "Intersect" }, { -1, 0, 0 }, { T_MEASURE, I_MEASURE, "Measure" }, { -2, 0, 0 } };
+static const ToolDef CAMTOOLS[] = {
+	{ -10, I_CAM_SETUP, "Setup" }, { -11, I_CAM_TOOL, "Tool" }, { -1, 0, 0 }, { -12, I_CAM_CLEAR, "Clearing" }, { -13, I_CAM_CONTOUR, "Contour" }, { -1, 0, 0 },
+	{ -14, I_PLAY, "Simulate" }, { -2, 0, 0 } };
 static const ToolDef SKTOOLS[] = {
-	{ T_LINE, I_LINE, "Line" }, { T_RECT, I_RECT, "Rectangle" }, { T_CIRCLE, I_CIRCLE, "Circle" }, { T_ARC, I_ARC, "Arc" }, { -3, I_CLOSE, "Close" }, { -2, 0, 0 } };
+	{ T_LINE, I_LINE, "Line" }, { T_RECT, I_RECT, "Rectangle" }, { T_CIRCLE, I_CIRCLE, "Circle" }, { T_ARC, I_ARC, "Arc" }, { T_ARC3, I_ARC3, "3-pt arc" },
+	{ T_SPLINE, I_SPLINE, "Spline" }, { T_POINT, I_POINT, "Point" }, { -3, I_CLOSE, "Close" }, { -2, 0, 0 } };
 
 class Ribbon : public Widget
 {
 public:
 	enum { H = 62, MAXHIT = 32 };
 	struct Zone { int x, y, w, h, id; bool tool; } z[MAXHIT]; int nz, hot, down;
-	ABtn *bExport, *bCancel, *bFinish;
+	ABtn *bExport, *bCancel, *bFinish, *bGcode;
 	Ribbon (int w) : Widget (0, 0, w, H), nz (0), hot (-1), down (-1)
 	{
 		bExport = new ABtn (w - 108, 14, 98, 28, "Export", CMD_EXPORT, true, I_EXPORT);
 		bCancel = new ABtn (w - 232, 14, 84, 28, "Cancel", CMD_SK_CANCEL);
 		bFinish = new ABtn (w - 140, 14, 130, 28, "Finish sketch", CMD_SK_FINISH, true);
-		for (ABtn *b : { bExport, bCancel, bFinish }) { b->anchor = ANCHOR_TOP | ANCHOR_RIGHT; addChild (b); }
+		bGcode = new ABtn (w - 118, 14, 108, 28, "G-code", CMD_GCODE, true, I_GCODE);
+		for (ABtn *b : { bExport, bCancel, bFinish, bGcode }) { b->anchor = ANCHOR_TOP | ANCHOR_RIGHT; addChild (b); }
 		sync ();
 	}
-	void sync () { bExport->hidden = A.sketching; bCancel->hidden = bFinish->hidden = !A.sketching; invalidate (true); }
+	void sync () { bExport->hidden = A.sketching || A.camMode; bGcode->hidden = !A.camMode; bCancel->hidden = bFinish->hidden = !A.sketching; invalidate (true); }
 	void zone (int x, int y, int w, int h, int id, bool tool) { if (nz < MAXHIT) { Zone q = { x, y, w, h, id, tool }; z[nz++] = q; } }
 	void onDraw () override
 	{
@@ -128,22 +135,39 @@ public:
 		}
 		uk_etch_v (canvas, x + 3, 8, 46, C_BG); x += 12;
 		UkFaceScope fs (g_small);
-		const ToolDef *list = A.sketching ? SKTOOLS : TOOLS;
+		if (!A.sketching)				// the app's two halves: Design, Manufacture
+		{
+			static const char *const MD[2] = { "Design", "Manufacture" }; int sw = uk_tw (MD[1], 2) + 16;	// (one over the other: the bar is short)
+			uk_sunken (canvas, x, 8, sw, 46, 5, C_FIELD);
+			for (int i = 0; i < 2; i++)
+			{
+				int sy = 9 + i * 22; bool on = (i == 1) == A.camMode;
+				if (on) uk_rbox (canvas, x + 1, sy, sw - 2, 22, 4, C_ACCENT, C_ACCENT);
+				uk_text (canvas, x + (sw - uk_tw (MD[i], on ? 2 : 0)) / 2, sy + (22 - uk_fh ()) / 2, MD[i], on ? 0xFFFFFF : C_FIELD_TEXT, on ? 2 : 0);
+				zone (x, sy, sw, 22, i ? CMD_MODE_CAM : CMD_MODE_DESIGN, false);
+			}
+			x += sw + 6; uk_etch_v (canvas, x, 8, 46, C_BG); x += 7;
+		}
+		const ToolDef *list = A.sketching ? SKTOOLS : A.camMode ? CAMTOOLS : TOOLS;
 		for (int i = 0; list[i].tool != -2; i++)
 		{
 			if (list[i].tool == -1) { uk_etch_v (canvas, x + 4, 8, 46, C_BG); x += 10; continue; }
 			// (the shapes' button: an arrow -- a click unfolds them)
 			bool more = list[i].tool == -4; int tl = list[i].tool, ic = list[i].ic;
 			const char *nm = list[i].name;
-			int bw = uk_tw (nm) + (more ? 26 : 14); if (bw < 54) bw = 54;
-			bool on = tl == A.tool || (more && shape_tool (A.tool)), isHot = nz == hot;
+			int bw = uk_tw (nm) + (more ? 22 : 10); if (bw < 48) bw = 48;
+			bool camTile = tl <= -10;
+			bool on = camTile ? (tl == -10 ? A.camPage == 0 && !A.camSim : tl == -11 ? A.camPage == 1 && !A.camSim : tl == -14 ? A.camSim
+						     : A.camPage == 2 && cam_op () && cam_op ()->kind == (tl == -12 ? CAM_CLEAR : CAM_CONTOUR) && !A.camSim)
+					  : tl == A.tool || (more && shape_tool (A.tool));
+			bool isHot = nz == hot;
 			unsigned bg = C_BG;
 			if (on) { bg = soft_col (C_BG); uk_rbox (canvas, x, 4, bw, 54, 6, bg, bg); uk_rline (canvas, x, 4, bw, 54, 6, C_ACCENT); }
 			else if (isHot) { bg = uk_tone (C_BG, 150); uk_rbox (canvas, x, 4, bw, 54, 6, bg, bg); }
 			icon (canvas, ic, x + bw / 2 - 13, 8, 26, ink, C_ACCENT, bg);
 			int tx = x + (bw - uk_tw (nm) - (more ? 10 : 0)) / 2; uk_text (canvas, tx, 38, nm, C_TEXT);
 			if (more) uk_glyph (canvas, WKG_CHEV_DOWN, tx + uk_tw (nm) + 6, 46, 7, C_TEXT);
-			zone (x, 4, bw, 54, more ? CMD_SHAPES : list[i].tool == -3 ? CMD_SK_CLOSE : tl, !more && list[i].tool != -3); x += bw + 3;
+			zone (x, 4, bw, 54, camTile ? CMD_CAM_SETUP + (-10 - tl) : more ? CMD_SHAPES : list[i].tool == -3 ? CMD_SK_CLOSE : tl, !camTile && !more && list[i].tool != -3); x += bw + 2;
 		}
 		uk_etch_h (canvas, 0, H - 2, width, C_BG);
 	}
@@ -178,25 +202,36 @@ class Timeline : public Widget
 public:
 	enum { H = 46, CELL = 38, ARROW = 22 };
 	int scroll, hot, lastI, shownSel, shownN, pressX, pressScroll, pressI; unsigned lastT; bool wasL, wasR, moved;
+	bool barDrag = false, barHot = false;		// (the blue bar -- where the part is rebuilt up to -- held, pointed)
 	Timeline (int l, int t, int w) : Widget (l, t, w, H), scroll (0), hot (-1), lastI (-1), shownSel (-1), shownN (0), pressX (0), pressScroll (0), pressI (-1), lastT (0), wasL (false), wasR (false), moved (false) {}
-	int count () const { return A.sketching ? (int) A.sk.els.size () : (int) A.doc.feats.size (); }
-	int sel () const { return A.sketching ? A.selEl : A.selFeat; }
+	int count () const { return A.camMode ? 1 + (int) A.job.ops.size () : A.sketching ? (int) A.sk.els.size () : (int) A.doc.feats.size (); }
+	int sel () const { return A.camMode ? A.camSel : A.sketching ? A.selEl : A.selFeat; }
 	// what a step, or an element, says of itself
 	void text (int i, char *out, int cap) const
 	{
 		char t[96], a[24], b[24], c[24];
+		if (A.camMode)					// the setup, then its operations
+		{
+			if (i == 0) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s", body_name (A.job.body), a, b, c); return; }
+			const CamOp &o = A.job.ops[i - 1]; fmt (A.job.tool.dia, a, 12);
+			if (o.failed) snprintf (out, cap, "%s  \xC2\xB7  %s", o.name, o.err);
+			else snprintf (out, cap, "%s  \xC2\xB7  \xC3\x98 %s flat \xC2\xB7 %d min%s", o.name, a, (int) (o.minutes + 0.5), o.useFace ? " \xC2\xB7 one face" : "");
+			return;
+		}
 		if (!A.sketching)
 		{
 			const Feature &f = A.doc.feats[i];
 			if (f.failed && i < A.doc.upto) snprintf (t, sizeof t, "%s", f.err); else describe (A.doc, f, t, sizeof t);
 			snprintf (out, cap, "%s  \xC2\xB7  %s%s", f.name, t, i >= A.doc.upto ? "  (rolled back)" : ""); return;
 		}
-		static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close" };
+		static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close", "Spline", "Point" };
 		const SkEl &e = A.sk.els[i]; int k = 0; for (int j = 0; j <= i; j++) if (A.sk.els[j].kind == e.kind) k++;
 		if (e.kind == SK_LINE) { fmt (e.len, a); fmt (e.a, b); snprintf (t, sizeof t, e.rel ? "%s \xC2\xB7 turn %s\xC2\xB0" : "%s \xC2\xB7 at %s\xC2\xB0", a, b); }
-		else if (e.kind == SK_ARC) { fmt (e.r, a); fmt (fabs (e.sweep), b); snprintf (t, sizeof t, "R %s \xC2\xB7 %s\xC2\xB0", a, b); }
+		else if (e.kind == SK_ARC) { fmt (e.r, a); fmt (e.sweep, b); snprintf (t, sizeof t, "R %s \xC2\xB7 %s\xC2\xB0", a, b); }
+		else if (e.kind == SK_SPLINE) snprintf (t, sizeof t, "through %d points", (int) e.pts.size () + 1);
+		else if (e.kind == SK_POINT) { fmt (e.x, a); fmt (e.y, b); snprintf (t, sizeof t, "a mark at %s, %s", a, b); }
 		else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, "\xC3\x98 %s \xC2\xB7 at %s, %s", a, b, c); }
-		else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, "%s \xC3\x97 %s", a, b); }
+		else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? "%s \xC3\x97 %s \xC2\xB7 from its centre" : "%s \xC3\x97 %s", a, b); }
 		else snprintf (t, sizeof t, "back to the start");
 		snprintf (out, cap, "%s %d  \xC2\xB7  %s", EN[e.kind], k, t);
 	}
@@ -226,24 +261,29 @@ public:
 		}
 		shownSel = sel (); shownN = n;
 		if (scroll > most) scroll = most; if (scroll < 0) scroll = 0;
-		static const int EI[] = { I_LINE, I_ARC, I_CIRCLE, I_RECT, I_CLOSE };
+		static const int EI[] = { I_LINE, I_ARC, I_CIRCLE, I_RECT, I_CLOSE, I_SPLINE, I_POINT };
 		unsigned ink = uk_mix (C_FIELD_TEXT, C_FIELD, 40);
 		for (int i = 0; i < n; i++)
 		{
 			int x = x0 + i * CELL - scroll;
 			if (x < x0 || x + CELL > x1 + 6) continue;
-			bool on = i == sel (), off = !A.sketching && i >= A.doc.upto, bad = !A.sketching && A.doc.feats[i].failed && !off;
+			bool on = i == sel (), off = !A.camMode && !A.sketching && i >= A.doc.upto;
+			bool bad = A.camMode ? i > 0 && A.job.ops[i - 1].failed : !A.sketching && A.doc.feats[i].failed && !off;
 			unsigned bg = C_FIELD;
 			if (on) { bg = soft_col (C_FIELD); uk_rbox (canvas, x + 1, 5, CELL - 4, H - 10, 6, bg, bg); uk_rline (canvas, x + 1, 5, CELL - 4, H - 10, 6, C_ACCENT); }
 			else if (i == hot) { bg = uk_tone (C_FIELD, 112); uk_rbox (canvas, x + 1, 5, CELL - 4, H - 10, 6, bg, bg); }
-			int ic = A.sketching ? EI[A.sk.els[i].kind] : icon_of_kind (A.doc.feats[i].kind);
+			int ic = A.camMode ? (i == 0 ? I_CAM_SETUP : A.job.ops[i - 1].kind == CAM_CLEAR ? I_CAM_CLEAR : I_CAM_CONTOUR) : A.sketching ? EI[A.sk.els[i].kind] : icon_of_kind (A.doc.feats[i].kind);
 			icon (canvas, ic, x + (CELL - 2 - 24) / 2, (H - 24) / 2, 24, off ? uk_mix (ink, bg, 170) : ink, off ? uk_mix (C_ACCENT, bg, 170) : C_ACCENT, bg);
 			if (bad) icon (canvas, I_WARN, x + CELL - 19, H - 20, 14, 0x4A3A10, C_ACCENT, bg);
 		}
-		if (!A.sketching && n)							// where the part is rebuilt up to
+		if (!A.sketching && !A.camMode && n)					// where the part is rebuilt up to
 		{
 			int mx = x0 + A.doc.upto * CELL - scroll - 2;
-			if (mx >= x0 - 2 && mx <= x1) { canvas.fillRect (mx, 6, 2, H - 12, C_ACCENT); VPath p; int xy[6] = { (mx - 4) * 16, 2 * 16, (mx + 6) * 16, 2 * 16, (mx + 1) * 16, 8 * 16 }; p.poly (xy, 3); p.fill (canvas, C_ACCENT); }
+			if (mx >= x0 - 2 && mx <= x1)			// (a bar with a grip at its top: it can be dragged along the steps)
+			{
+				int g = barDrag || barHot ? 7 : 5; canvas.fillRect (mx - (barDrag ? 1 : 0), 6, barDrag ? 4 : 2, H - 12, C_ACCENT);
+				VPath p; int xy[6] = { (mx + 1 - g) * 16, 2 * 16, (mx + 1 + g) * 16, 2 * 16, (mx + 1) * 16, (4 + g) * 16 }; p.poly (xy, 3); p.fill (canvas, C_ACCENT);
+			}
 		}
 		if (arrows)
 		{
@@ -274,6 +314,17 @@ public:
 	}
 	void pick (int i, bool dbl, bool right, int mx, int my)
 	{
+		if (A.camMode)
+		{
+			A.camSel = i; A.camPage = i == 0 ? 0 : 2; A.camSim = false; cam_hint (); ui (R_ALL);
+			if (right && i > 0)
+			{
+				Root *r = Root::current (); int ax = 0, ay = 0; for (Widget *w = this; w && w != r; w = w->parent) { ax += w->left; ay += w->top; }
+				PopupMenu pm (ax + mx, ay + my - 40); pm.add ("Delete", CMD_CAM_DELETE);
+				int c = pm.run (); if (c > 0) cmd (c);
+			}
+			return;
+		}
 		if (A.sketching) { A.selEl = A.selEl == i && !right ? -1 : i; sk_arm (); ui (R_ALL); return; }
 		if (A.tool != T_SELECT) tool_set (T_SELECT);
 		A.selFeat = i; A.selBody = -1; ui (R_ALL);
@@ -292,8 +343,26 @@ public:
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 		bool press = bl && !wasL, release = !bl && wasL, rpress = br && !wasR; wasL = bl != 0; wasR = br != 0;
-		if (!in) { if (hot >= 0) { hot = -1; invalidate (true); } pressI = -1; return false; }
 		int x0, x1; bool arrows; room (&x0, &x1, &arrows);
+		// the bar dragged: the part is rebuilt up to the step it is left after (and back to the end the same way)
+		bool design = !A.sketching && !A.camMode && count () > 0; int bar = x0 + A.doc.upto * CELL - scroll - 1;
+		if (barDrag)
+		{
+			if (!bl || !design) { barDrag = false; invalidate (true); return true; }
+			if (mx < x0 + 8 && scroll > 0) scroll -= CELL / 2; if (mx > x1 - 8) scroll += CELL / 2;	// (near an end: the row moves)
+			int k = (mx - x0 + scroll + CELL / 2) / CELL; if (k < 0) k = 0; if (k > count ()) k = count ();
+			if (k != A.doc.upto)
+			{
+				A.doc.upto = k; A.doc.touch (); if (A.selFeat >= k) A.selFeat = -1; if (!A.doc.body (A.selBody)) A.selBody = -1;
+				set_hint (k < count () ? "The part as it was after that step. Drag the bar back to the end for the rest." : "The whole history again.");
+				ui (R_ALL); if (g_view) g_view->invalidate (true);
+			}
+			invalidate (true); return true;
+		}
+		if (!in) { if (hot >= 0 || barHot) { hot = -1; barHot = false; invalidate (true); } pressI = -1; return false; }
+		bool onBar = design && abs (mx - bar) <= 5 && mx >= x0 - 4 && mx <= x1 + 4;
+		if (onBar != barHot) { barHot = onBar; invalidate (true); }
+		if (press && onBar) { if (A.tool != T_SELECT) tool_set (T_SELECT); barDrag = true; pressI = -1; invalidate (true); return true; }
 		int h = cellAt (mx); if (h != hot) { hot = h; invalidate (true); }
 		if (wheel) { scroll -= wheel * CELL * 2; invalidate (true); return true; }
 		if (press)
@@ -337,7 +406,7 @@ public:
 		{
 			Bind &q = p->b[i];
 			if (q.tb != &w) continue;
-			if (q.name) { snprintf (q.name, 24, "%s", q.tb->text); A.doc.changes++; ui (0); if (g_view) g_view->invalidate (true); return; }
+			if (q.name) { snprintf (q.name, 24, "%s", q.tb->text); A.doc.changes++; if (A.camMode) cam_presets_save (); ui (0); if (g_view) g_view->invalidate (true); return; }
 			double v = parse (q.tb->text);
 			if (q.mag) v = (*q.val < 0 ? -1 : 1) * fabs (v);
 			*q.val = v; if (q.typed >= 0) A.typed[q.typed] = true;
@@ -347,13 +416,112 @@ public:
 	// A value changed (a field, the operation, a check box): what it belongs to is made again.
 	void applied ()
 	{
+		if (!A.camMode && !A.sketching && A.hasPend && A.step == 0) A.ghost = true;		// (a shape made from its values: shown from now)
+		if (A.camMode)				// (the moves are made again a little after the last change: main.cpp)
+		{
+			cam_touch (); if (A.camPage == 1) cam_presets_save ();
+			if (g_view) g_view->invalidate (true);
+			ui (0); return;
+		}
 		if (A.sketching) { sk_eval (); }
 		else if (A.hasPend) { auto_op (); preview_update (); if (A.prevErr) set_hint (A.prevErr); else tool_hint (); }
 		else if (feat) { A.doc.touch (); }
 		if (g_view) g_view->invalidate (true);
 		ui (0);
 	}
-	static void onEnter (Widget &) { cmd (CMD_OK); }
+	static void onEnter (Widget &) { if (A.camMode) { cam_refresh (); ui (0); return; } cmd (A.tool == T_SKETCH && !A.sketching ? CMD_SK_START : CMD_OK); }
+	static void onDrop (Widget &w) { A.job.xdir = ((Dropdown &) w).sel; A.doc.changes++; cam_hint (); ui (R_ALL); }
+	int camOrgY = -1, camSumY = -1, camSizeY = -1;
+	void seg2 (int y, const char *name, const char *a, const char *b, int sel, int tag, int sw = 150)
+	{
+		static const char *lab[8][2]; static int n = 0; const char **l = lab[n++ & 7]; l[0] = a; l[1] = b;
+		if (name) label (12, y + 5, name);
+		SegmentedControl *s = new SegmentedControl (name ? width - 12 - sw : 12, y, name ? sw : width - 24, 26, l, 2, sel, onSeg); s->tag = tag; addChild (s);
+	}
+	// Manufacture's pages: the setup, the tool and the machine, an operation.
+	void camPages (int y)
+	{
+		CamSetup &c = A.job; CamOp *op = cam_op (); char t[96];
+		camOrgY = camSumY = camSizeY = -1;
+		if (A.camPage == 0)
+		{
+			head (I_CAM_SETUP, "Setup", "the body, its stock");
+			label (12, y, "Body", UK_AUTO, 2); y += 20;
+			ABtn *b = new ABtn (12, y, width - 24, 26, body_name (c.body), CMD_CAM_BODY); b->bg = panel_col (); addChild (b); y += 34;
+			label (12, y, "Stock", UK_AUTO, 2); y += 20; seg2 (y, 0, "Around it", "Fixed size", c.fixed ? 1 : 0, 10); y += 32;
+			if (!c.fixed) { field (y, "Sides, more", &c.side, "mm", -1); y += 28; field (y, "Top, more", &c.top, "mm", -1); y += 28; field (y, "Under, more", &c.under, "mm", -1); y += 28; }
+			else
+			{
+				// (its size, then the body moved in it: from the middle, its underside on the stock's -- 0: there)
+				field (y, "Along X", &c.size.x, "mm", -1); y += 26; field (y, "Along Y", &c.size.y, "mm", -1); y += 26; field (y, "Height", &c.size.z, "mm", -1); y += 26;
+				field (y, "Moved, X", &c.off.x, "mm", -1); y += 26; field (y, "Moved, Y", &c.off.y, "mm", -1); y += 26; field (y, "Moved, Z", &c.off.z, "mm", -1); y += 28;
+			}
+			if (!c.fixed) { camSizeY = y; y += 22; }
+			label (12, y, "Origin", UK_AUTO, 2); y += 19; camOrgY = y; y += 64;
+			if (!c.fixed) { label (12, y, "Axes", UK_AUTO, 2); y += 20; }
+			static const char *const DIR[4] = { "right", "back", "left", "front" };
+			label (12, y + 5, "X goes"); Dropdown *d = new Dropdown (width - 12 - 96, y, 96, 26, DIR, 4, c.xdir & 3, onDrop);
+			snprintf (t, sizeof t, "Y goes %s; Z goes up.", DIR[(c.xdir + 1) & 3]);
+			if (!c.fixed) { label (12, y + 31, t, dim_col (), 0, true); y += 52; } else y += 34;
+			if (!c.fixed) { label (12, y, "Heights above the stock", UK_AUTO, 2); y += 20; }
+			field (y, c.fixed ? "Safe, above" : "Safe", &c.safe, "mm", -1); y += 28; field (y, c.fixed ? "Retract, above" : "Retract", &c.retract, "mm", -1);
+			addChild (d);					// (last: its list opens over what is under it)
+		}
+		else if (A.camPage == 1)
+		{
+			head (I_CAM_TOOL, "Tool", "a flat end mill");
+			label (12, y, "Tool", UK_AUTO, 2); y += 20;
+			label (12, y + 5, "Name"); Textbox *n = new Textbox (width - 12 - 146, y, 146, 26, c.tool.name); n->maxLen = 22; n->changed = onChanged; addChild (n);
+			{ Bind q = { n, 0, -1, false, c.tool.name }; b[nb++] = q; } y += 29;
+			field (y, "Diameter", &c.tool.dia, "mm", -1); y += 28; field (y, "Cutting length", &c.tool.flute, "mm", -1); y += 28;
+			field (y, "Spindle", &c.tool.rpm, "rpm", -1); y += 28; field (y, "Cutting feed", &c.tool.feed, "/min", -1); y += 28;
+			field (y, "Plunge feed", &c.tool.plunge, "/min", -1); y += 28; field (y, "Travel", &c.tool.travel, "/min", -1); y += 36;
+			label (12, y, "Machine", UK_AUTO, 2); y += 20;
+			label (12, y + 5, "Name"); Textbox *m = new Textbox (width - 12 - 146, y, 146, 26, c.machine.name); m->maxLen = 22; m->changed = onChanged; addChild (m);
+			{ Bind q = { m, 0, -1, false, c.machine.name }; b[nb++] = q; } y += 29;
+			field (y, "Travel X", &c.machine.tx, "mm", -1); y += 28; field (y, "Travel Y", &c.machine.ty, "mm", -1); y += 28; field (y, "Travel Z", &c.machine.tz, "mm", -1); y += 28;
+			field (y, "Spindle, most", &c.machine.rpmMax, "rpm", -1); y += 28; field (y, "Spindle's wait", &c.machine.dwell, "s", -1);
+		}
+		else if (op)
+		{
+			bool clear = op->kind == CAM_CLEAR;
+			head (clear ? I_CAM_CLEAR : I_CAM_CONTOUR, op->name, clear ? "roughing, by levels" : "the outline, to depth");
+			seg2 (y, "On", "The body", "A face", op->useFace ? 1 : 0, 11); y += 30;
+			if (op->useFace)
+			{
+				const Body *b = A.doc.body (c.body); int g = b ? cam_face (b->mesh, op->facePt) : -1; char a[24]; fmt (op->facePt.z, a, 12);
+				if (g >= 0) snprintf (t, sizeof t, "the face at height %s", a); else snprintf (t, sizeof t, "click a flat face turned up");
+				label (12, y, t, g >= 0 ? dim_col () : 0xB03A30, 0, true); y += 20;
+			}
+			else y += 4;
+			if (clear)
+			{
+				field (y, "Step over", &op->stepover, "mm", -1); y += 28; field (y, "Step down", &op->stepdown, "mm", -1); y += 28;
+				field (y, "Left on walls", &op->leaveR, "mm", -1); y += 28; field (y, "Left on floors", &op->leaveZ, "mm", -1); y += 32;
+				seg2 (y, "Cut", "Climb", "Convent.", op->climb ? 0 : 1, 12); y += 34;
+				if (!op->useFace)
+				{
+					check (y, "To the lowest flat face", op->lowestAuto, 20); y += 26;
+					if (!op->lowestAuto) { field (y, "Lowest (model Z)", &op->lowest, "mm", -1); y += 30; }
+				}
+			}
+			else
+			{
+				seg2 (y, "Side", "Outside", "Inside", op->inside ? 1 : 0, 13); y += 32; seg2 (y, "Cut", "Climb", "Convent.", op->climb ? 0 : 1, 12); y += 34;
+				field (y, "Step down", &op->stepdown, "mm", -1); y += 30;
+				check (y, "From the stock's top", op->fromAuto, 21); y += 26;
+				if (!op->fromAuto) { field (y, "From (model Z)", &op->from, "mm", -1); y += 30; }
+				if (!op->useFace)
+				{
+					field (y, "Under it, by", &op->under, "mm", -1); y += 32;
+					check (y, "Tabs", op->tabs, 22); y += 26;
+					if (op->tabs) { field (y, "How many", &op->ntabs, 0, -1); y += 28; field (y, "Width", &op->tabw, "mm", -1); y += 28; field (y, "Height", &op->tabh, "mm", -1); y += 30; }
+				}
+			}
+			camSumY = y + 4;
+			ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this operation", CMD_CAM_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
+		}
+	}
 	static void onCheck (Widget &w)
 	{
 		Props *p = self (w); Checkbox &c = (Checkbox &) w; Feature *f = A.hasPend ? &A.pend : p->feat;
@@ -367,8 +535,12 @@ public:
 		case 6: A.seeThrough = c.checked; break;
 		case 7: if (p->el) { p->el->rel = c.checked; } break;
 		case 8: if (f) { f->clone = c.checked; } break;
+		case 20: if (cam_op ()) cam_op ()->lowestAuto = c.checked; break;
+		case 21: if (cam_op ()) cam_op ()->fromAuto = c.checked; break;
+		case 22: if (cam_op ()) cam_op ()->tabs = c.checked; break;
 		}
 		if (w.tag >= 4 && w.tag <= 6) { if (g_view) g_view->invalidate (true); ui (0); return; }
+		if (w.tag >= 20) { cam_touch (); ui (R_PANELS); return; }
 		if (!A.hasPend && !A.sketching && f) undo_push ();
 		p->applied (); ui (R_PANELS);
 	}
@@ -377,6 +549,20 @@ public:
 		SegmentedControl &s = (SegmentedControl &) w; Props *p = self (w);
 		if (w.tag == 1) { tool_set (s.selected == 0 ? T_FILLET : T_CHAMFER); return; }
 		if (w.tag == 2 && p->el) { p->el->sweep = (s.selected == 0 ? 1 : -1) * fabs (p->el->sweep); p->applied (); }
+		if (w.tag == 14 && p->el)			// a rectangle from a corner, or from its centre (kept where it is)
+		{
+			SkEl &e = *p->el; bool c = s.selected == 1;
+			if (c != e.rel && A.curStep > 0) { double x0 = e.rel ? e.x - fabs (e.w) / 2 : e.w < 0 ? e.x + e.w : e.x, y0 = e.rel ? e.y - fabs (e.h) / 2 : e.h < 0 ? e.y + e.h : e.y;
+				e.w = fabs (e.w); e.h = fabs (e.h); e.x = c ? x0 + e.w / 2 : x0; e.y = c ? y0 + e.h / 2 : y0; }
+			if (c != e.rel && A.selEl >= 0) { double x0 = e.rel ? e.x - fabs (e.w) / 2 : e.w < 0 ? e.x + e.w : e.x, y0 = e.rel ? e.y - fabs (e.h) / 2 : e.h < 0 ? e.y + e.h : e.y;
+				e.w = fabs (e.w); e.h = fabs (e.h); e.x = c ? x0 + e.w / 2 : x0; e.y = c ? y0 + e.h / 2 : y0; }
+			e.rel = c; A.rectCentre = c; p->applied (); tool_hint (); ui (R_PANELS);
+		}
+		if (w.tag == 3) { A.skPlane = s.selected; ui (R_ALL); }
+		if (w.tag == 10) { A.job.fixed = s.selected == 1; if (A.job.fixed) A.job.size = A.paths.hi - A.paths.lo; cam_refresh (); ui (R_ALL); }
+		if (w.tag == 11 && cam_op ()) { cam_op ()->useFace = s.selected == 1; cam_refresh (); if (s.selected == 1) set_hint ("Click the flat face, turned up, to work on."); ui (R_ALL); }
+		if (w.tag == 12 && cam_op ()) { cam_op ()->climb = s.selected == 0; cam_touch (); }
+		if (w.tag == 13 && cam_op ()) { cam_op ()->inside = s.selected == 1; cam_touch (); }
 	}
 
 	void label (int x, int y, const char *s, unsigned col = UK_AUTO, int style = 0, bool small = false)
@@ -448,7 +634,7 @@ public:
 			if (f.edges.empty ()) label (12, y, "Click an edge of a body", dim_col (), 0, true);
 			else { Body *b = A.doc.body (f.target); snprintf (t, sizeof t, "on %s", body_name (f.target)); label (12, y, t, dim_col (), 0, true); (void) b; }
 			y += 30;
-			if (making) { infoY = y; info[0] = "Straight edges and edges on"; info[1] = "a circle can be rounded; the"; info[2] = "others show in grey."; info[3] = 0; y += 70; }
+			if (making) { infoY = y; info[0] = "Straight edges, circles and"; info[1] = "arcs can be rounded; the"; info[2] = "others show in grey."; info[3] = 0; y += 70; }
 			break;
 		}
 		case F_MOVE:
@@ -468,7 +654,11 @@ public:
 		}
 		if (makes_solid (f.kind) && f.kind != F_EXTRUDE)		// where it is, on its plane
 		{
-			y += 4; field (y, f.kind == F_BOX && !f.centred ? "Corner X" : "Centre X", &f.x, "mm", -1); y += 32; field (y, "Y", &f.y, "mm", -1); y += 40;
+			y += 4; field (y, f.kind == F_BOX && !f.centred ? "Corner X" : "Centre X", &f.x, "mm", -1); y += 28; field (y, "Y", &f.y, "mm", -1); y += 28;
+			// (off its plane: up from the ground, out of the face it was put on -- less than 0: sunk into it)
+			field (y, f.target >= 0 ? "Off the face" : f.pl.n.z > 0.9999 && fabs (f.pl.o.z) < 1e-9 ? "Z" : "Off the plane", &f.z, "mm", -1); y += 28;
+			if (f.kind == F_BOX || ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5)) { field (y, "Turned", &f.turn, "\xC2\xB0", 3); y += 28; }
+			y += 6;
 		}
 		if (makes_solid (f.kind))
 		{
@@ -487,31 +677,61 @@ public:
 		while (firstChild) { Widget *c = firstChild; removeChild (c); delete c; }
 		nb = nl = 0; opY = swY = infoY = -1; headIcon = -1; title[0] = 0; sub[0][0] = sub[1][0] = 0; subAt = -1; feat = 0; el = 0;
 		int y = 64; char t[96];
-		if (A.sketching)
+		camOrgY = camSumY = camSizeY = -1;
+		if (A.camMode) camPages (y);
+		else if (A.sketching)
 		{
-			static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close" }; static const int EI[] = { I_LINE, I_ARC, I_CIRCLE, I_RECT, I_CLOSE };
+			static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close", "Spline", "Point" };
+			static const int EI[] = { I_LINE, I_ARC, I_CIRCLE, I_RECT, I_CLOSE, I_SPLINE, I_POINT };
 			bool edit = A.selEl >= 0 && A.selEl < (int) A.sk.els.size ();
 			SkEl &e = edit ? A.sk.els[A.selEl] : A.cur; el = &e;
-			if (e.kind == SK_ARC && !edit) head (EI[e.kind], "Arc", "Start", "Centre \xC2\xB7 End", A.curStep == 0 ? 0 : 1);
+			if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, "3-point arc", "Ends", "Middle", A.curStep < 2 ? 0 : 1);
+			else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], "Arc", "Centre", "End", A.curStep < 2 ? 0 : 1);
+			else if (e.kind == SK_ARC && !edit) head (EI[e.kind], "Arc", "Centre", "Start \xC2\xB7 End", A.curStep == 0 ? 0 : 1);
 			else head (EI[e.kind], EN[e.kind], edit ? "selected" : 0);
 			bool chained = e.chain;
-			if (e.kind != SK_CLOSE && !chained) { field (y, e.kind == SK_CIRCLE ? "Centre X" : "Starts at X", &e.x, "mm", -1, false, 96); y += 32; field (y, "Y", &e.y, "mm", -1, false, 96); y += 32; }
+			const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? "Centre X"
+					 : e.kind == SK_RECT ? "Corner X" : e.kind == SK_POINT ? "At X" : "Starts at X";
+			if (e.kind != SK_CLOSE && !chained) { field (y, xn, &e.x, "mm", -1, false, 96); y += 32; field (y, "Y", &e.y, "mm", -1, false, 96); y += 32; }
 			else if (e.kind != SK_CLOSE) { label (12, y + 5, "Starts at"); label (width - 12 - 118, y + 5, "the end before", 0x2862B0); y += 32; }
 			Textbox *first = 0;
 			if (e.kind == SK_LINE) { first = field (y, "Length", &e.len, "mm", 0); y += 32; field (y, "Angle", &e.a, "\xC2\xB0", 1); y += 34; if (chained) { check (y, "From the line before", e.rel, 7); y += 28; } }
 			else if (e.kind == SK_ARC)
 			{
-				first = field (y, "Radius", &e.r, "mm", 0); y += 32; field (y, "Centre at", &e.ca, "\xC2\xB0", -1); y += 32; Textbox *sw = field (y, "Sweep", &e.sweep, "\xC2\xB0", 1, true); y += 40;
-				if (!edit && A.curStep == 2) first = sw;
-				static const char *const LR[] = { "Left", "Right" };
-				label (12, y + 5, "Turns"); SegmentedControl *s = new SegmentedControl (width - 12 - 112, y, 112, 26, LR, 2, e.sweep < 0 ? 1 : 0, onSeg); s->tag = 2; addChild (s); y += 40;
+				first = field (y, "Radius", &e.r, "mm", 0); y += 32; field (y, "Centre at", &e.ca, "\xC2\xB0", -1); y += 32; Textbox *sw = field (y, "Angle", &e.sweep, "\xC2\xB0", 1); y += 30;
+				if (!edit && A.curStep == 2 && A.tool != T_ARC3) first = sw;
+				label (12, y, "+ clockwise, \xE2\x88\x92 anticlockwise", dim_col (), 0, true); y += 26;
 			}
+			else if (e.kind == SK_SPLINE)
+			{
+				snprintf (t, sizeof t, "through %d points", (int) e.pts.size () + (edit ? 1 : 0)); label (12, y + 2, t); y += 24;
+				if (!edit) { label (12, y, "Enter, or the last point clicked", dim_col (), 0, true); y += 15; label (12, y, "again, ends it.", dim_col (), 0, true); y += 15; }
+				y += 12;
+			}
+			else if (e.kind == SK_POINT) { label (12, y, "A mark to snap to: it is part", dim_col (), 0, true); y += 15; label (12, y, "of no outline.", dim_col (), 0, true); y += 27; }
 			else if (e.kind == SK_CIRCLE) { first = field (y, "Diameter", &e.w, "mm", 0); y += 40; }
-			else if (e.kind == SK_RECT) { first = field (y, "Width", &e.w, "mm", 0); y += 32; field (y, "Height", &e.h, "mm", 1); y += 40; }
+			else if (e.kind == SK_RECT)
+			{
+				first = field (y, "Width", &e.w, "mm", 0); y += 32; field (y, "Height", &e.h, "mm", 1); y += 36;
+				static const char *const RC[] = { "Corner", "Centre" };
+				label (12, y + 5, "From its"); SegmentedControl *s = new SegmentedControl (width - 12 - 132, y, 132, 26, RC, 2, e.rel ? 1 : 0, onSeg); s->tag = 14; addChild (s); y += 40;
+			}
 			if (first && !edit && A.curStep > 0) first->setFocus ();
 			check (y, "Snap to points and angles", A.snap, 3); y += 38;
 			infoY = y; info[0] = "Each element starts from a"; info[1] = "point and keeps its own values."; info[2] = "Change one: what was drawn"; info[3] = "after it follows.";
 			if (edit) { ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this element", CMD_DEL_ELEMENT); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d); }
+		}
+		else if (A.tool == T_SKETCH)			// where the sketch goes: a face clicked, or a plane of the axes
+		{
+			head (I_SKETCH, "Sketch", "its plane");
+			label (12, y, "Click a flat face of a body,", dim_col (), 0, true); label (12, y + 16, "or draw on a plane of the axes:", dim_col (), 0, true); y += 42;
+			static const char *const PL[] = { "XY", "XZ", "YZ" };
+			label (12, y + 5, "Plane"); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, A.skPlane, onSeg); s->tag = 3; addChild (s); y += 38;
+			Textbox *o = field (y, "Offset", &A.skOffset, "mm", -1); o->setFocus (); y += 34;
+			label (12, y, A.skPlane == 0 ? "XY: the ground, seen from above;" : A.skPlane == 1 ? "XZ: upright, seen from the front;" : "YZ: upright, seen from the right;", dim_col (), 0, true);
+			label (12, y + 16, A.skPlane == 0 ? "the offset is its height (Z)." : A.skPlane == 1 ? "the offset is along Y." : "the offset is along X.", dim_col (), 0, true); y += 46;
+			ABtn *b = new ABtn (12, y, width - 24, 28, "Start the sketch", CMD_SK_START, true); b->bg = panel_col (); addChild (b);
+			ABtn *c = new ABtn (12, height - 40, 90, 28, "Cancel", CMD_CANCEL); c->bg = panel_col (); c->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (c);
 		}
 		else if (A.hasPend)
 		{
@@ -609,6 +829,46 @@ public:
 			int x = l.x < 0 ? width + l.x - uk_tw (l.s, l.style) : l.x;
 			uk_text (canvas, x, l.y, l.s, l.col == UK_AUTO ? C_TEXT : l.col, l.style);
 		}
+		if (A.camMode)				// Manufacture's own: the stock's size, the origin's 27 points, an operation's sum
+		{
+			char t[96], a[24], b[24], c[24];
+			if (camSizeY >= 0)
+			{
+				V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s mm", a, b, c);
+				uk_text (canvas, 12, camSizeY, "Size", dim_col ()); uk_text (canvas, width - 12 - uk_tw (t), camSizeY, t, C_TEXT);
+			}
+			if (camOrgY >= 0)
+			{
+				static const char *const LN[3] = { "Top", "Middle", "Bottom" }; UkFaceScope fs (g_small);
+				for (int li = 0; li < 3; li++)
+				{
+					int gx = 12 + li * 66; uk_text (canvas, gx + (56 - uk_tw (LN[li])) / 2, camOrgY, LN[li], dim_col ());
+					uk_sunken (canvas, gx, camOrgY + 15, 56, 44, 4, C_FIELD);
+					for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++)
+					{
+						int k = i + 3 * (2 - j) + 9 * (2 - li); bool on = k == A.job.origin;
+						ov_dot (canvas, gx + 10 + i * 18, camOrgY + 23 + j * 14, on ? 4.2 : 3, on ? C_ACCENT : uk_tone (C_FIELD, 100), on ? uk_tone (C_ACCENT, 80) : uk_tone (C_FIELD, 70), 1.2);
+					}
+				}
+			}
+			CamOp *op = cam_op ();
+			if (camSumY >= 0 && op)
+			{
+				unsigned ic = uk_mix (pc, 0xFFFFFF, 110); bool bad = op->failed;
+				uk_rbox (canvas, 12, camSumY, width - 24, 42, 6, ic, ic); uk_rline (canvas, 12, camSumY, width - 24, 42, 6, uk_tone (C_BG, 104));
+				icon (canvas, bad ? I_WARN : I_CHECK, 20, camSumY + 12, 17, bad ? 0x4A3A10 : C_GREEN, C_ACCENT, ic);
+				UkFaceScope fs (g_small);
+				if (A.camDirty) { uk_text (canvas, 44, camSumY + 13, "computing...", dim_col ()); }
+				else if (bad) { char fit[64]; uk_text_fit (op->err, width - 70, fit, sizeof fit); uk_text (canvas, 44, camSumY + 13, fit, 0x8A5A10); }
+				else
+				{
+					snprintf (t, sizeof t, "%.1f m cut \xC2\xB7 %d min", op->length / 1000, (int) (op->minutes + 0.5)); uk_text (canvas, 44, camSumY + 6, t, 0x286E38);
+					V3 o = cam_origin (A.job, A.paths.lo, A.paths.hi); double lowz = 1e30;
+					for (const CamMove &m : A.paths.moves) if (m.op == A.camSel - 1 && m.p.z < lowz) lowz = m.p.z;
+					fmt (lowz - o.z, a, 12); snprintf (t, sizeof t, "never below Z %s", a); uk_text (canvas, 44, camSumY + 22, t, dim_col ());
+				}
+			}
+		}
 		if (opY >= 0)				// the operation: one of four
 		{
 			const Feature &f = A.hasPend ? A.pend : *feat;
@@ -655,6 +915,12 @@ public:
 		bool press = bl && !wasL; wasL = bl != 0;
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 		if (!in || !press) return in;
+		if (A.camMode && camOrgY >= 0 && my >= camOrgY + 15 && my < camOrgY + 59)		// one of the origin's 27 points
+		{
+			int li = (mx - 12) / 66, i = ((mx - 12) % 66 - 1) / 18, j = (my - camOrgY - 16) / 14;
+			if (mx >= 12 && li < 3 && i >= 0 && i < 3 && j >= 0 && j < 3) { A.job.origin = i + 3 * (2 - j) + 9 * (2 - li); A.doc.changes++; if (g_view) g_view->invalidate (true); ui (0); }
+			return true;
+		}
 		if (opY >= 0 && my >= opY + 23 && my < opY + 23 + 4 * 28 && mx >= 12 && mx < width - 12)
 		{
 			int i = (my - opY - 23) / 28; Feature &f = A.hasPend ? A.pend : *feat;

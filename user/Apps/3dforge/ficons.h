@@ -17,6 +17,7 @@ using namespace uikit;
 enum { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_UNION, I_SUB, I_INT, I_NEWBODY, I_MEASURE, I_EXPORT,
        I_LINE, I_RECT, I_CIRCLE, I_ARC, I_CLOSE, I_HOME, I_FIT, I_SHADED, I_CHECK, I_INFO, I_EYE, I_WARN, I_COMBINE,
        I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE, I_SHAPES,
+       I_CAM_SETUP, I_CAM_TOOL, I_CAM_CLEAR, I_CAM_CONTOUR, I_GCODE, I_PLAY, I_ARC3, I_SPLINE, I_POINT,
        I_NEW, I_OPEN, I_SAVE, I_UNDO, I_REDO };
 
 // Icon `kind` in the s x s box at (x, y): ink the lines, acc the accent, bg what is behind it.
@@ -65,6 +66,38 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 		seg (5, 6.5, 5, 17.5, ink); seg (19, 6.5, 19, 17.5, ink);
 		{ int xy[26]; for (int i = 0; i <= 12; i++) { xy[i * 2] = X (12 + 7 * uk_cos (i * 15) / 16384.0); xy[i * 2 + 1] = Y (17.5 + 3.3 * uk_sin (i * 15) / 16384.0); } p.clear (); p.polyline (xy, 13, w); p.fill (cv, ink); }
 		break;
+	case I_CAM_SETUP:			// the stock, the origin's three axes at its corner
+	{
+		const double top[] = { 12, 3, 20, 7, 12, 11, 4, 7 }, hex[] = { 12, 3, 20, 7, 20, 15, 12, 19, 4, 15, 4, 7 };
+		poly (top, 4, soft, true, 0, false); poly (hex, 6, 0, false, ink, true); seg (4, 7, 12, 11, ink); seg (12, 11, 20, 7, ink); seg (12, 11, 12, 19, ink);
+		seg (4, 15, 4, 22.5, 0x3A7AD6, w * 5 / 4); seg (4, 15, -0.5, 18, 0xD6483E, w * 5 / 4); seg (4, 15, 9, 18.5, 0x40A04C, w * 5 / 4); break;
+	}
+	case I_CAM_TOOL:			// a flat end mill
+	{
+		const double sh[] = { 9, 2, 15, 2, 15, 9, 9, 9 }, fl[] = { 9.5, 9, 14.5, 9, 14.5, 21, 9.5, 21 };
+		poly (sh, 4, uk_mix (ink, bg, 128), true, ink, true); poly (fl, 4, soft, true, ink, true);
+		for (int i = 0; i < 3; i++) seg (9.5, 12.5 + i * 3.2, 14.5, 10.5 + i * 3.2, ink, w * 3 / 4);
+		break;
+	}
+	case I_CAM_CLEAR: case I_CAM_CONTOUR:	// passes going in, round a shape -- a shape, the pass around it
+	{
+		auto ring = [&] (double x0, double y0, double ww, double hh, double r, unsigned c, int lw)
+		{
+			p.clear (); p.rrect (X (x0) - lw / 2, Y (y0) - lw / 2, L (ww) + lw, L (hh) + lw, L (r) + lw / 2); p.fill (cv, c);
+			p.clear (); p.rrect (X (x0) + lw / 2, Y (y0) + lw / 2, L (ww) - lw, L (hh) - lw, L (r) - lw / 2 > 0 ? L (r) - lw / 2 : 1); p.fill (cv, bg);
+		};
+		if (kind == I_CAM_CLEAR) { ring (2.5, 4.5, 19, 15, 5, acc, w); ring (6, 7.5, 12, 9, 3, acc, w); p.clear (); p.rrect (X (9.5), Y (10), L (5), L (4), L (1)); p.fill (cv, ink); }
+		else { ring (2.5, 3.5, 19, 17, 5, acc, w * 5 / 4); p.clear (); p.rrect (X (6.5), Y (7.5), L (11), L (9), L (2)); p.fill (cv, ink); p.clear (); p.rrect (X (6.5) + w, Y (7.5) + w, L (11) - 2 * w, L (9) - 2 * w, L (1)); p.fill (cv, soft); }
+		break;
+	}
+	case I_GCODE:				// a page of code
+	{
+		const double pg[] = { 5, 2, 14, 2, 19, 7, 19, 22, 5, 22 };
+		poly (pg, 5, bg == acc ? acc : 0xFFFFFF, true, ink, true); seg (14, 2, 14, 7, ink); seg (14, 7, 19, 7, ink);
+		for (int i = 0; i < 3; i++) seg (8, 11.5 + i * 3.4, 16 - i * 2, 11.5 + i * 3.4, bg == acc ? ink : acc);
+		break;
+	}
+	case I_PLAY: { const double t[] = { 7, 4, 20, 12, 7, 20 }; poly (t, 3, soft, true, ink, true); break; }
 	case I_PYRAMID:
 	{
 		const double l[] = { 12, 3, 4, 17, 12, 21 }, r[] = { 12, 3, 12, 21, 20, 17 }, o[] = { 12, 3, 20, 17, 12, 21, 4, 17 };
@@ -139,6 +172,17 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 		seg (6, 19, 6, 5, dim, w * 3 / 4); seg (6, 19, 20, 19, dim, w * 3 / 4);
 		p.clear (); p.arc (X (6), Y (19), L (14), 0, 90, w); p.fill (cv, ink);
 		dot (6, 19, 2.2, acc); dot (6, 5, 2.2, acc); dot (20, 19, 2.2, acc); break;
+	case I_ARC3:				// an arc through three points
+		seg (4, 18, 20, 18, dim, w * 3 / 4);
+		p.clear (); p.arc (X (12), Y (18), L (8), 0, 180, w); p.fill (cv, ink);
+		dot (4, 18, 2.2, acc); dot (20, 18, 2.2, acc); dot (12, 10, 2.2, acc); break;
+	case I_SPLINE:
+	{
+		double px = 4, py = 16;
+		for (int i = 1; i <= 16; i++) { double t = i / 16.0, qx = 4 + 16 * t, qy = 12 + 6 * sin (t * 6.2832 + 0.72) * (1 - 0.25 * t); seg (px, py, qx, qy, ink); px = qx; py = qy; }
+		dot (4, 16, 2.2, acc); dot (20, 12 + 6 * sin (6.2832 + 0.72) * 0.75, 2.2, acc); dot (9.6, 7.2, 1.9, acc); dot (15.6, 16.2, 1.9, acc); break;
+	}
+	case I_POINT: seg (12, 5, 12, 19, dim, w * 3 / 4); seg (5, 12, 19, 12, dim, w * 3 / 4); dot (12, 12, 3.2, ink); dot (12, 12, 1.9, acc); break;
 	case I_CLOSE:
 		seg (5, 19, 5, 6, ink); seg (5, 6, 19, 6, ink); seg (19, 6, 19, 19, ink);
 		for (int i = 0; i < 3; i++) seg (6.5 + i * 4.5, 19, 9 + i * 4.5, 19, acc, w * 5 / 4);
