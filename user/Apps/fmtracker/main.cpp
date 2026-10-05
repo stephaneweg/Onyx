@@ -1139,6 +1139,41 @@ static void op_save_as ()
 	fms_copy (g_path, p, sizeof g_path);
 	g_dirty = false; title_status (); song_labels ();
 }
+// File > Export WAV...: the song as AudioKit plays it (ak_open reads the FM Song -- the one saved to a
+// file of the moment --, the frames go to a WAV file as they come).
+static void op_export_wav ()
+{
+	char p[256];
+	char def[40]; fms_copy (def, g_path[0] ? fs_basename (g_path) : "SONG.FMS", sizeof def);
+	int dn = fms_len (def);
+	if (dn > 4 && def[dn - 4] == '.') fms_copy (def + dn - 4, ".WAV", sizeof def - (dn - 4)); else fms_copy (def + dn, ".WAV", sizeof def - dn);
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def)) return;
+	int n = fms_len (p);
+	if (!(n > 4 && p[n - 4] == '.')) fms_copy (p + n, ".WAV", sizeof p - n);
+	static const char tmp[] = "SD:/tmp/fmtracker-export.fms";
+	kapi_mkdir ("SD:/tmp");
+	if (!write_song (tmp)) { set_status ("Cannot export ", p); return; }
+	char err[128];
+	ak_stream *st = ak_open (tmp, err, sizeof err);
+	bool ok = false;
+	if (st != 0)
+	{
+		struct ak_info in; ak_info_of (st, &in);
+		long long frames = in.length_ms * AUDIOKIT_RATE / 1000 + AUDIOKIT_RATE / 10;
+		ak_wav *w = ak_wav_begin (p, AUDIOKIT_RATE, 2, frames);
+		if (w != 0)
+		{
+			static short buf[2 * 4096];
+			set_status ("Exporting ", p);
+			for (int k; (k = ak_read (st, buf, 4096)) > 0; ) ak_wav_write (w, buf, k);
+			ok = ak_wav_end (w) == 0;
+		}
+		ak_close (st);
+	}
+	kapi_remove (tmp);
+	set_status (ok ? "Exported " : "Cannot export ", p);
+}
+
 void op_save ()
 {
 	if (!g_path[0]) { op_save_as (); return; }
@@ -1386,6 +1421,7 @@ int main (void)
 	menu.item ("Open...",        "^O", UK_CTRL ('O'), op_open);
 	menu.item ("Save",           "^S", UK_CTRL ('S'), op_save);
 	menu.item ("Save As...",     "",   0,             op_save_as);
+	menu.item ("Export WAV...",  "",   0,             op_export_wav);
 	menu.separator ();
 	menu.item ("Song Info...",   "",   0,             op_info);
 	menu.menu ("Edit");

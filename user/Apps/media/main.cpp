@@ -2518,7 +2518,7 @@ void open_file (const char *p)
 		return;
 	}
 	Tags t;
-	if (!read_tags (p, &t)) { uk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV and MIDI songs are; MP4,\nMKV, WebM, AVI, WMV... videos).", MB_OK); return; }
+	if (!read_tags (p, &t)) { uk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV, MIDI and FM songs are; MP4,\nMKV, WebM, AVI, WMV... videos).", MB_OK); return; }
 	int k = g_next < 16 ? g_next++ : 15;
 	Song &x = g_ext[k];
 	if (x.path) { free (x.path); free (x.title); free (x.artist); free (x.albumArtist); free (x.album); free (x.genre); free (x.folderCover); }

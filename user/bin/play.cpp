@@ -45,6 +45,11 @@ static int info (const char *path)
 	}
 	ax_puts ("read "); putn (got); ax_puts (" frames, peak "); putn (peak); ax_putln ("");
 	ak_close (s);
+	static struct ak_tags t;
+	if (ak_tags_read (path, &t))
+	{
+		ax_puts ("title: "); ax_puts (t.title); ax_puts ("   artist: "); ax_puts (t.artist); ax_puts ("   album: "); ax_putln (t.album);
+	}
 	return got > 0 ? 0 : 1;
 }
 

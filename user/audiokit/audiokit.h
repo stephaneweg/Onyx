@@ -81,6 +81,22 @@ int ak_seek_ms (ak_stream *s, long long ms);		// 1 done / 0
 void ak_info_of (ak_stream *s, struct ak_info *out);
 void ak_close (ak_stream *s);
 
+// What a sound file says about itself (MP3: ID3v2 / ID3v1; FLAC and Ogg: Vorbis comments; WAV: LIST
+// INFO; MIDI: the first track's name; an FM Song: its title and author) -- read only, nothing decoded.
+// What is missing comes from the path: the file's name (a leading "03 - ": the track), its folder (the
+// album), the folder above (the artist).
+struct ak_tags
+{
+	char title[128], artist[96], album_artist[96], album[128], genre[48];
+	int year, track, disc;			// 0: not known
+	int duration_ms;			// 0: not known
+	char format[8];				// "MP3", "OGG", "FLAC", "WAV", "MIDI", "FMS"
+	long long cover_offset;			// a picture inside the file (JPEG / PNG bytes): where, and
+	unsigned cover_length;			// how long (0: none)
+	int reserved[8];
+};
+int ak_tags_read (const char *path, struct ak_tags *out);	// 1 / 0: not a sound file of ours, unreadable
+
 // ---- the player: a file in the background, notes played live ---------------------------------
 // One per process: a thread of its own that holds the system's output while it has something to
 // play (another program playing: AK_BUSY until it lets go). The file and the live notes are mixed.

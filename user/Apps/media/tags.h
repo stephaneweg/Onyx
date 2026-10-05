@@ -394,7 +394,7 @@ static void from_path (const char *path, Tags *t)
 }
 
 // Everything known of the file at path -> false: not a song of ours / unreadable.
-static bool read_tags (const char *path, Tags *t)
+static bool read_tags_impl (const char *path, Tags *t)
 {
 	t->clear ();
 	t->fmt = format_of (path);
@@ -437,6 +437,26 @@ static bool read_tags (const char *path, Tags *t)
 	from_path (path, t);
 	return true;
 }
+
+// The Media Player asks AudioKit (ak_tags_read: this very code, compiled once into SD:/lib/audiokit.so
+// -- audiokit/akcore.cpp defines MEDIA_TAGS_IMPL).
+#ifdef MEDIA_TAGS_IMPL
+static bool read_tags (const char *path, Tags *t) { return read_tags_impl (path, t); }
+#else
+static bool read_tags (const char *path, Tags *t)
+{
+	t->clear ();
+	struct ak_tags a;
+	if (!ak_tags_read (path, &a)) return false;
+	scopy (t->title, a.title, sizeof t->title); scopy (t->artist, a.artist, sizeof t->artist);
+	scopy (t->albumArtist, a.album_artist, sizeof t->albumArtist); scopy (t->album, a.album, sizeof t->album);
+	scopy (t->genre, a.genre, sizeof t->genre);
+	t->year = a.year; t->track = a.track; t->disc = a.disc; t->durMs = a.duration_ms;
+	t->coverOff = (u64) a.cover_offset; t->coverLen = a.cover_length;
+	t->fmt = format_of (path);
+	return t->fmt >= 0;
+}
+#endif
 
 } // namespace media
 

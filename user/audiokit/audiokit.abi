@@ -234,3 +234,4 @@
 228 ak_wav_write
 229 ak_fm_live
 230 ak_fm_silence
+231 ak_tags_read

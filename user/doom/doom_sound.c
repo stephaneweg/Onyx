@@ -67,7 +67,7 @@ static void wait_applied (unsigned upto)			// until the commands before upto are
 
 static int audio_ok (void)
 {
-	if (!s_audio) { s_audio = kapi_sound_acquire () == 1 ? 1 : -1; ak_fm_live (0); }	/* (the voices: mixed here, sfx_out) */
+	if (!s_audio) { s_audio = ak_out_open (0, 0) == 1 ? 1 : -1; ak_fm_live (0); }	/* (the voices: mixed here, sfx_out) */
 	return s_audio == 1;
 }
 
@@ -170,12 +170,11 @@ static void sfx_update (void)
 	if (!g_doomOnCore) onyx_sound_service ();		// (and out at once)
 }
 
-// The main thread: the ring into the kernel's stream.
+// The main thread: the ring into the sound output (AudioKit's ak_out_*).
 static void sfx_out (void)
 {
 	if (!audio_ok ()) { s_rTail = s_rHead; return; }
-	unsigned rate, freeFrames, owner;
-	kapi_sound_status (&rate, &freeFrames, &owner);
+	unsigned freeFrames = (unsigned) ak_out_free ();
 	static unsigned cap = 0;
 	if (freeFrames > cap) cap = freeFrames;
 	static short buf[4096 * 2];
@@ -206,7 +205,7 @@ static void sfx_out (void)
 		static short fm[4096 * 2];
 		ak_fm_render (fm, (int) out);
 		ak_mix_s16 (buf, fm, (int) out, 65536);
-		kapi_sound_write (buf, out);
+		ak_out_write (buf, (int) out);
 	}
 	s_kQueued = queued + out;
 }

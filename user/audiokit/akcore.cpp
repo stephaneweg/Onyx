@@ -53,6 +53,8 @@ namespace fmsdec {
 #include "fmsynth.h"
 }
 #include "Apps/fmtracker/fms.h"
+#define MEDIA_TAGS_IMPL				// (tags.h: the readers themselves, here)
+#include "Apps/media/tags.h"
 
 class FmsDecoder : public Decoder
 {
@@ -133,6 +135,21 @@ public:
 		return true;
 	}
 };
+
+extern "C" int ak_tags_read (const char *path, struct ak_tags *o)
+{
+	if (path == 0 || o == 0) return 0;
+	memset (o, 0, sizeof *o);
+	Tags t;
+	if (!read_tags (path, &t)) return 0;
+	snprintf (o->title, sizeof o->title, "%s", t.title); snprintf (o->artist, sizeof o->artist, "%s", t.artist);
+	snprintf (o->album_artist, sizeof o->album_artist, "%s", t.albumArtist); snprintf (o->album, sizeof o->album, "%s", t.album);
+	snprintf (o->genre, sizeof o->genre, "%s", t.genre);
+	o->year = t.year; o->track = t.track; o->disc = t.disc; o->duration_ms = t.durMs;
+	snprintf (o->format, sizeof o->format, "%s", t.fmt >= 0 && t.fmt < FMT_N ? FMT_NAME[t.fmt] : "");
+	o->cover_offset = (long long) t.coverOff; o->cover_length = t.coverLen;
+	return 1;
+}
 
 static Decoder *open_any (const char *path, char *err, int cap)
 {
