@@ -24,7 +24,7 @@ replayed in order), the rendering uses **the GPU as much as possible**, the name
   operations and Export; then the sketch and Extrude, the editable history, Fillet and Chamfer. Its package, its
   entry in docs/04, its screenshots when it exists.
 
-## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2 done; 3: the whole desktop runs on Elegant in a one-boot trial
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- DONE: the windows are Elegant's, the kernel's window manager is removed (on the branch, on the Pi; not merged, not published)
 
 **The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
 `UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
@@ -195,11 +195,26 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      buffers mapped read-only instead of `win_read`'s copies); Elegant's memory after many windows
      (38 MB after the 86 apps, 17 MB at its start: a leak or the heap not given back -- not looked
      into); a PC test (not written, the Pi was used).
-   - **NEXT, asked by the user (2026-10-05): stage 5 -- remove the kernel's window manager, and clean
-     kapi of what neither the kernel nor the programs use any more** (the kernel's table may be
-     restructured: AppKit is adapted and rebuilt, no program is). Elegant is then the only way: the
-     kernel keeps the console (boot, panic, debug), the full screen's buffer and direct mode, the
-     display and input mechanisms of `wsrv.cpp`, and starts Elegant at every boot.
+   - **Stage 5b DONE (2026-10-05, on the Pi since 22:35): the kernel's window manager is removed.**
+     `kernel/gui/window.cpp`, `kern/gui/window.h`, `cursors.inc` are now `user/Servers/elegant/wm/`
+     (Elegant builds them; `tools/tests/desktop_sim/run.sh` and `tools/gui/gen_cursors.py` follow); the
+     kernel keeps `kernel/gui/kwin.cpp` + a 150-line `kern/gui/window.h` (a program's queue of events,
+     the keys' state, the full screen: docs/02 §10's box). `sys/kapi.cpp` lost its 40 window functions
+     (740 lines), `kernel.cpp` its composition, its pointer's art, its `OnMouse` / `OnKey` calls (the
+     watchdog finds the programs' queues by their processes); the table's 38 window entries and the
+     activity shell's 2 are 0 (slots unchanged). AppKit's window calls speak to Elegant only; a call
+     without a server waits 5 s. No server -> the kernel's console (`DebugConsoleTakeover`). The image:
+     1 195 832 bytes (1 239 096 before). **Tried on the Pi**: the desktop, Terminal and Tinypad, a
+     full-screen program (8 s) ended by kill, Elegant killed -> started again with its 7 windows.
+     Lost with it, to give back through Elegant: **Alt + Print Screen** captures the screen, not the
+     active window (the kernel no longer knows the windows); **the wheel's speed** of `SD:/etc/theme.txt`
+     is not read at boot (Elegant starts with its default; the Theme applet sets it while running).
+   - **Still to do**: the table's entries could be compacted (they are only 0 today: a renumbering
+     of the system calls, and the branch `kapi-compact` of another session touches the same table --
+     ask before); `el0test` / `faulttest` (they read the table) to run again; the role given to the
+     process the kernel started; the capture channel for `rdpd`; `screen_set` under Elegant to try;
+     Elegant's memory after many windows; every app started again on this kernel
+     (`tools/tests/shlib/pi_apps.py`); the packages and the merge into `main` when the user says.
    - **Known differences**: a program's wallpaper buffer is its own copy (what is shown when it asks),
      not the live one; a drag's payload is 4 044 bytes at most (4 096 before); a program started
      while the kernel's window manager has the display stays there (and the reverse).

@@ -26,13 +26,14 @@
 #else
 #define KAPI_CALL(ret, name, args, ...)	static inline ret name args __VA_ARGS__
 #endif
-// The window calls have two bodies: KAPI_WS (value) / KAPI_WSV (statement) is the one that speaks
-// to Elegant, the graphics server, when it owns the display (appkit_ws.inc: in AppKit only); what
-// follows it is the kernel's window manager's.
+// The window calls: KAPI_WS (value) / KAPI_WSV (statement) is their body in AppKit -- it speaks to
+// Elegant, the graphics server (appkit_ws.inc); the windows are no longer the kernel's, and the kernel's
+// table has nothing at those entries (2026-10-05). What follows the macro is for the builds that take
+// the calls inline against a stand-in kernel that still has a window manager (the PC's simulator).
 #ifdef KAPI_IMPL
-#define KAPI_WS(value)		if (ws_on ()) return value;
-#define KAPI_WS_DO(statement)	if (ws_on ()) { statement; }	// (then the kernel's call too)
-#define KAPI_WSV(statement)	if (ws_on ()) { statement; return; }
+#define KAPI_WS(value)		return value;
+#define KAPI_WS_DO(statement)	{ statement; }			// (then the kernel's call too)
+#define KAPI_WSV(statement)	{ statement; return; }
 #else
 #define KAPI_WS(value)
 #define KAPI_WS_DO(statement)
@@ -78,7 +79,7 @@ KAPI_CALL (void, kapi_set_click_handler, (gui_handler fn), { KAPI_WSV (ws_handle
 KAPI_CALL (void, kapi_set_pointer_handler, (gui_handler fn), { KAPI_WSV (ws_handler (EL_HANDLER_POINTER, fn)); KT->set_pointer_handler (fn); })
 KAPI_CALL (int, kapi_meminfo, (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb), { return KT->meminfo (total_kb, free_kb, app_kb, page_kb); })
 KAPI_CALL (int, kapi_ram_detail, (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments), { return KT->ram_detail (detected_kb, apppool_kb, apppool_free_kb, above4g_kb, nsegments); })
-KAPI_CALL (void, kapi_set_wheel_speed, (int lines_per_notch), { KAPI_WS_DO (WS_OP (EL_OP_WHEEL, lines_per_notch, 0, 0, 0)); KT->set_wheel_speed (lines_per_notch); })
+KAPI_CALL (void, kapi_set_wheel_speed, (int lines_per_notch), { KAPI_WSV (WS_OP (EL_OP_WHEEL, lines_per_notch, 0, 0, 0)); KT->set_wheel_speed (lines_per_notch); })
 KAPI_CALL (int, kapi_get_wheel_speed, (void), { KAPI_WS ((int) WS_OP (EL_OP_WHEEL, -1, 0, 0, 0)); return KT->get_wheel_speed (); })
 KAPI_CALL (void *, kapi_sbrk, (long inc), { return KT->sbrk (inc); })
 KAPI_CALL (int, kapi_list_apps, (char *b, unsigned s), { return KT->list_apps (b, s); })
@@ -406,8 +407,8 @@ KAPI_CALL (unsigned *, kapi_surface_map, (int id), { return KT->surface_map (id)
 KAPI_CALL (int, kapi_surface_size, (int id, int *w, int *h), { return KT->surface_size (id, w, h); })
 KAPI_CALL (void, kapi_surface_present, (int id), { KT->surface_present (id); })
 KAPI_CALL (int, kapi_surface_destroy, (int id), { return KT->surface_destroy (id); })
-KAPI_CALL (int, kapi_register_shell, (void), { return KT->register_shell (); })
-KAPI_CALL (int, kapi_shell_request, (int type, const void *in, unsigned len), { return KT->shell_request (type, in, len); })
+KAPI_CALL (int, kapi_register_shell, (void), { return 0; })		// (the activity shell is gone: the name stays)
+KAPI_CALL (int, kapi_shell_request, (int type, const void *in, unsigned len), { (void) type; (void) in; (void) len; return -1; })
 KAPI_CALL (int, kapi_mailbox_send, (int target_pid, int type, const void *in, unsigned len), { return KT->mailbox_send (target_pid, type, in, len); })
 KAPI_CALL (int, kapi_mailbox_recv, (int *from_pid, int *type, void *buf, unsigned cap, int blocking), { return KT->mailbox_recv (from_pid, type, buf, cap, blocking); })
 KAPI_CALL (int, kapi_cursor_shown, (void), { KAPI_WS ((int) WS_OP (EL_OP_CURSOR_SHOWN, 0, 0, 0, 0)); return -1; })

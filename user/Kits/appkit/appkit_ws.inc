@@ -1,11 +1,9 @@
 //
-// appkit_ws.inc -- AppKit's window calls when Elegant, the graphics server, owns the display: each
-// kapi_* window call's other body (appkit_calls.inc's KAPI_WS), speaking the protocol of elegant.h
-// instead of calling the kernel's window manager. Compiled into AppKit only (appkit.c): no program
-// is rebuilt, none sees it.
+// appkit_ws.inc -- AppKit's window calls: each kapi_* window call's body (appkit_calls.inc's KAPI_WS),
+// speaking the protocol of elegant.h to Elegant, the graphics server -- the windows are no longer the
+// kernel's (2026-10-05). Compiled into AppKit only (appkit.c): no program is rebuilt, none sees it.
 //
-// Which way a program's window calls go is settled at its first one, for its whole life: Elegant
-// owns the display then (the kernel's KAPI_WS_ACTIVE), or the kernel's window manager does.
+// A call that finds no server (it is being started, or started again) waits for it, 5 s at most.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -20,15 +18,8 @@
 
 #define WS_KT	((const struct TKApiTable *) KAPI_TABLE_VA)
 
-static int ws__mode;			// 0 not settled, 1 Elegant, 2 the kernel's window manager
 static int ws__cw, ws__ch;		// the canvas: its row in pixels, its rows (kapi_draw_text)
-
-static int ws_on (void)
-{
-	if (ws__mode == 0)
-		ws__mode = WS_KT->version >= 89 && WS_KT->ws_ctl != 0 && WS_KT->ws_ctl (KAPI_WS_ACTIVE, 0, 0, 0) > 0 ? 1 : 2;
-	return ws__mode == 1;
-}
+static int ws__lost;			// no server came back: the calls fail at once
 
 static long ws_raw (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap)
 {
@@ -36,6 +27,11 @@ static long ws_raw (int op, long a0, long a1, long a2, long a3, const void *in, 
 	__builtin_memset (&c, 0, sizeof c);
 	c.op = op; c.in = in; c.in_len = in_len; c.out = out; c.out_cap = cap;
 	c.a[0] = a0; c.a[1] = a1; c.a[2] = a2; c.a[3] = a3;
+	long r = WS_KT->ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
+	if (r != -KAPI_ESRCH || ws__lost) return r;
+	int t = 0;				// no server: the kernel is starting it (5 s at most)
+	for (; t < 100 && WS_KT->ws_ctl (KAPI_WS_ACTIVE, 0, 0, 0) <= 0; t++) WS_KT->msleep (50);
+	if (t == 100) { ws__lost = 1; return r; }
 	return WS_KT->ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
 }
 
@@ -55,7 +51,7 @@ static char ws__menu[2048]; static long ws__menu_handler; static int ws__menu_se
 static int ws__alpha = -1, ws__cursor = -1;
 static int ws__sizable_set, ws__sizable, ws__min_w, ws__min_h;
 static long ws__server;				// the server's pid, as the last present saw it
-static int ws__replaying, ws__lost;		// lost: no server came back -- the calls fail at once
+static int ws__replaying;
 
 static unsigned ws_len (const char *s);
 
@@ -83,14 +79,8 @@ static void ws_replay (void)
 static long ws_call (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap)
 {
 	long r = ws_raw (op, a0, a1, a2, a3, in, in_len, out, cap);
-	if ((r != -KAPI_ESRCH && r != EL_E_NOWINDOW) || !ws__made || ws__replaying || ws__lost) return r;
-	if (r == -KAPI_ESRCH)			// no server: the kernel is starting it again (5 s at most)
-	{
-		int t = 0;
-		for (; t < 100 && WS_KT->ws_ctl (KAPI_WS_ACTIVE, 0, 0, 0) <= 0; t++) WS_KT->msleep (50);
-		if (t == 100) { ws__lost = 1; return r; }
-	}
-	ws_replay ();
+	if (r != EL_E_NOWINDOW || !ws__made || ws__replaying || ws__lost) return r;
+	ws_replay ();				// (a server started again that does not have this program's window)
 	return ws_raw (op, a0, a1, a2, a3, in, in_len, out, cap);
 }
 

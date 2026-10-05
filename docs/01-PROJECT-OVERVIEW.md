@@ -56,6 +56,10 @@ sources.
 - **The GPU.** The VideoCore VI's 3D unit (V3D) is driven by the kernel for the apps: 3D
   (the N64 and GameCube emulators, the BASIC's 3D), and the compositing of layers
   (`user/Libs/gpucomp`: Paint's blend modes, Jet Browser).
+- **The graphics server is a user process** (2026-10-05): **Elegant** (`SD:/bin/elegant`) has the window
+  manager, the compositor and the routing of the input; the kernel gives it the display, the raw input
+  and shared buffers, starts it at boot and again if it ends (the windows come back with their pixels).
+  The programs reach it through AppKit, unchanged.
 - **Full graphical desktop.** 32-bit software compositor, window manager,
   toolkit of kernel-drawn widgets (buttons, checkboxes, sliders,
   text fields, scroll bars, icons…), windows with themeable decoration,
@@ -103,7 +107,8 @@ sources.
 │   • proc/    ELF64 loader                                        │
 │   • sys/     kapi impl., system calls, handles, streams, threads,│
 │              network, sound, app cores, GPU (V3D), RAM: volume   │
-│   • gui/     GImage (software renderer), compositor+WM, cursor   │
+│   • gui/     GImage, the programs' event queues, the full screen │
+│              (the windows: Elegant, a user process)              │
 ├──────────────────────────────────────────────────────────────────┤
 │  CIRCLE  (HAL + drivers; our fork, a few patches: docs/05)       │
 │   palloc · GIC · timer · EMMC+FatFs · USB · WLAN · TCP/IP · fb   │

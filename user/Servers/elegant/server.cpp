@@ -108,13 +108,17 @@ static void forward_events (unsigned self)
 	}
 }
 
+static int s_bLostDisplay = 0;
+
 // -> 0 shown; else not (a full-screen program has the display: the kernel shows its buffer).
 static long present (unsigned *screen, int stride, int x, int y, int w, int h)
 {
 	struct kapi_ws_present p;
 	kapi_memset (&p, 0, sizeof p);
 	p.pixels = screen; p.stride = stride; p.x = x; p.y = y; p.w = w; p.h = h;
-	return kws_present (&p);
+	long r = kws_present (&p);
+	if (r == -KAPI_EPERM) s_bLostDisplay = 1;	// (the kernel took the display back: this server ends, another is started)
+	return r;
 }
 
 static void say (const char *s) { ax_puts (s); }
@@ -274,6 +278,7 @@ int el_serve (int demo, int restart)
 		}
 		for (int i = 0; i < k; i++) shown |= present (screen, w, rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3]);
 		if (shown != 0) { el_core_redraw (); kws_wait (20); }	// (not shown: the whole screen at the next turn)
+		if (s_bLostDisplay) break;
 		if (drew) s_nFrames++;
 		stats ();
 		if (!drew) kws_wait (100);

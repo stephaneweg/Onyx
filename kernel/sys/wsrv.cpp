@@ -18,7 +18,8 @@
 #include <kern/ipc.h>			// IpcPidAlive
 #include <kern/uaccess.h>
 #include <kern/layout.h>
-#include <kern/applaunch.h>		// ExecPath (the trial's start)
+#include <kern/applaunch.h>		// ExecPath (the server's start)
+#include <kern/debugcon.h>		// the console, when no server can be had
 #include <fatfs/ff.h>
 #include <circle/2dgraphics.h>
 #include <circle/new.h>
@@ -76,7 +77,7 @@ static void Release (const char *pWhy)
 	s_nHead = s_nTail = 0;
 	s_RingLock.Release ();
 	ScreenDirty ();				// the kernel's compositor draws the whole screen again
-	if (pWhy != 0) CLogger::Get ()->Write ("wsrv", LogWarning, "the display taken back: %s", pWhy);
+	if (pWhy != 0) CLogger::Get ()->Write ("wsrv", LogWarning, "the display taken from the graphics server: %s", pWhy);
 }
 
 // The server started by the kernel ended (WsOnProcessGone: nothing may be done there): started again
@@ -94,7 +95,8 @@ void WsPoll (void)
 	s_bRelaunch = FALSE;
 	if (s_nRelaunches >= WS_RELAUNCH_MAX)
 	{
-		CLogger::Get ()->Write ("wsrv", LogError, "the graphics server ended %u times: not started again", s_nRelaunches);
+		CLogger::Get ()->Write ("wsrv", LogError, "the graphics server ended %u times: not started again, the console", s_nRelaunches);
+		DebugConsoleTakeover ();
 		return;
 	}
 	s_nRelaunches++;
@@ -326,10 +328,9 @@ static long Wait (unsigned nTimeoutMs)
 // ---- the programs' windows: the attached programs, their event queues ---------------------------
 //
 // An attached program's windows are the server's. The kernel keeps what its pump reads: an event
-// queue, the exit request, the wake of kapi_pump_wait. They are a window's (CWindow) -- so an
-// attached program has a kernel window that is only that: never given to the kernel's window
-// manager, never drawn (one page of pixels). kapi_pop_event, kapi_should_exit, kapi_event_mods,
-// kapi_pump_sleep and kapi_kill's clean close work on it as on any window.
+// queue, the exit request, the wake of kapi_pump_wait -- a CWindow (kern/gui/window.h: the name is
+// historical, it holds no pixels). kapi_pop_event, kapi_should_exit, kapi_event_mods,
+// kapi_pump_sleep and kapi_kill's clean close work on it.
 
 #define WS_CLIENTS	64
 
@@ -348,12 +349,12 @@ static long Attach (unsigned nPid)
 	CAddressSpace *pAS = IpcFindAS (nPid);
 	if (pAS == 0) return -KAPI_ESRCH;
 	if (ClientSlot (nPid) >= 0) return 0;
-	if (pAS->GetWindow () != 0) return -KAPI_EBUSY;		// (a window of the kernel's window manager)
+	if (pAS->GetWindow () != 0) return -KAPI_EBUSY;		// (it has one that the server did not ask for)
 	int nFree = -1;
 	for (int i = 0; i < WS_CLIENTS && nFree < 0; i++) if (s_Client[i] == 0) nFree = i;
 	if (nFree < 0) return -KAPI_ENOMEM;
-	CWindow *pWin = new CWindow (0, 0, 1, 1, "ws", WIN_FLAG_BORDERLESS);
-	if (pWin == 0 || !pWin->IsValid ()) { delete pWin; return -KAPI_ENOMEM; }
+	CWindow *pWin = new CWindow;
+	if (pWin == 0) return -KAPI_ENOMEM;
 	pWin->SetOwnerPid (nPid);
 	pAS->SetWindow (pWin);
 	s_Client[nFree] = nPid;
@@ -720,30 +721,24 @@ void WsOnProcessGone (unsigned nPid)
 
 // ---- the start ------------------------------------------------------------------------------------
 // The graphics server is started before init, at every start, and waited for: the programs init
-// starts have their windows there. (Until the kernel's own window manager is removed it is what is
-// left when the server does not come up -- and SD:/etc/elegant.off, made by hand, keeps the server
-// from being started at all: the way back while both exist.)
-#define WS_OFF_FILE	"SD:/etc/elegant.off"
+// starts have their windows there. There is no other window manager: a server that cannot be
+// started, or that does not take the display, leaves the kernel's console on the screen (its log:
+// kern/debugcon.h) -- the Pi is still reached by telnet.
 #define WS_SERVER_PATH	"SD:bin/elegant"
 
 void WsBootStart (void)
 {
-	FIL File;
-	if (f_open (&File, WS_OFF_FILE, FA_READ) == FR_OK)
-	{
-		f_close (&File);
-		CLogger::Get ()->Write ("wsrv", LogWarning, WS_OFF_FILE " is there: the graphics server is not started");
-		return;
-	}
 	s_bBootMode = TRUE;
 	if (!ExecPath (WS_SERVER_PATH, "--serve"))
 	{
-		CLogger::Get ()->Write ("wsrv", LogWarning, "cannot start " WS_SERVER_PATH);
+		CLogger::Get ()->Write ("wsrv", LogError, "cannot start " WS_SERVER_PATH ": no graphics server, the console");
+		DebugConsoleTakeover ();
 		return;
 	}
 	for (unsigned t = 0; t < 250 && !s_bOwned; t++) CScheduler::Get ()->MsSleep (20);	// 5 s
-	CLogger::Get ()->Write ("wsrv", s_bOwned ? LogNotice : LogWarning,
-				s_bOwned ? "the graphics server has the display" : "the graphics server did not take the display: the kernel's window manager");
+	if (s_bOwned) { CLogger::Get ()->Write ("wsrv", LogNotice, "the graphics server has the display"); return; }
+	CLogger::Get ()->Write ("wsrv", LogError, "the graphics server did not take the display: the console");
+	DebugConsoleTakeover ();
 }
 
 extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)

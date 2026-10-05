@@ -552,7 +552,7 @@ class CCompositorTask : public CTask
 
 public:
 	CCompositorTask (C2DGraphics *p2D, CWindowManager *pWM)
-	:	m_p2D (p2D), m_pWM (pWM), m_bFirst (TRUE)
+	:	m_p2D (p2D), m_pWM (pWM)
 	{
 		SetName ("compositor");
 	}
@@ -577,8 +577,6 @@ public:
 			g_nScreenWidth = nW; g_nScreenHeight = nH;
 			if (nResult != 0)
 				CLogger::Get ()->Write ("screen", LogWarning, "the firmware refused %dx%d: %dx%d", w, h, nW, nH);
-			m_pWM->OnScreenResized (nW, nH);
-			m_bFirst = TRUE;			// (the whole screen at the next frame)
 		}
 		s_nResizeResult = nResult;
 		DataMemBarrier ();
@@ -594,73 +592,26 @@ public:
 	{
 		int nW = (int) m_p2D->GetWidth ();
 		int nH = (int) m_p2D->GetHeight ();
-		unsigned nLastGen = g_nScreenGen - 1, nLastTicks = 0;	// (first frame: always)
 		for (;;)
 		{
 			if (DebugConsoleActive ())
 			{
-				// An app exited: the debug console owns the display now. Stop
-				// presenting so we don't fight it for the framebuffer.
+				// An app exited: the debug console owns the display now.
 				CScheduler::Get ()->MsSleep (100);
 				continue;
 			}
-			WsPoll ();				// (the graphics server ended: started again)
-			if (WsDisplayOwned ())
+			// Nothing is composed here any more: the graphics server (Elegant, a user process:
+			// kern/wsrv.h) composes and sends its frames itself; a full-screen program's buffer
+			// is sent by kapi_present_fb. This task keeps what must be done from the kernel:
+			WsPoll ();				// the server ended: started again
+			m_pWM->CompositorAlive ();		// (the hang watchdog: this loop runs)
+			WsWatch ();				// the server silent too long: the display taken back
+			// a new screen size asked for (kapi_screen_set): done between two frames of the
+			// server's (its display DMA over), then the server is told
+			if (s_nResizeSeq != s_nResizeDone && !s_bPresenting && m_pWM->FullscreenWindow () == 0)
 			{
-				// The graphics server owns the display (kern/wsrv.h): nothing to draw. It is
-				// watched (silent too long: the display is ours again), and when it gives the
-				// display back the whole screen is drawn.
-				m_pWM->CompositorAlive ();
-				WsWatch ();
-				m_bFirst = TRUE;
-				// a new screen size asked for (kapi_screen_set): done here as always, between two
-				// of the server's presents (its display DMA over), then the server is told
-				if (s_nResizeSeq != s_nResizeDone && !s_bPresenting && m_pWM->FullscreenWindow () == 0)
-				{
-					Resize (nW, nH);
-					WsScreenResized (nW, nH);
-				}
-				CScheduler::Get ()->MsSleep (16);
-				continue;
-			}
-			if (m_pWM->FullscreenWindow () != 0)
-			{
-				// A full-screen app owns the display (kapi_present_fb): pause. Still alive for the
-				// watchdog (a show left on one slide presents nothing: not a stalled compositor).
-				m_pWM->CompositorAlive ();
-				CScheduler::Get ()->MsSleep (16);
-				continue;
-			}
-			if (s_nResizeSeq != s_nResizeDone) Resize (nW, nH);
-			// Recomposite only when something changed (g_nScreenGen), and only the damaged
-			// rectangles (ScreenDirtyRect): each is redrawn with the screen clipped to it and
-			// sent to the display alone. The whole screen when ScreenDirty said so, plus a
-			// safety refresh every 2 s (a missed damage source, the watchdog's frame count).
-			unsigned nGen = g_nScreenGen, nTicks = CTimer::Get ()->GetTicks ();
-			boolean bSafety = nTicks - nLastTicks >= 2 * HZ;
-			if (nGen != nLastGen || bSafety)
-			{
-				nLastGen = nGen;
-				TScreenDamage Damage;
-				ScreenTakeDamage (&Damage);
-				GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
-				if (Damage.bFull || bSafety || m_bFirst)
-				{
-					nLastTicks = nTicks; m_bFirst = FALSE;
-					m_pWM->Composite (&Screen);
-					Present (0, 0, 0, 0);
-				}
-				else
-				{
-					for (int i = 0; i < Damage.n; i++)
-					{
-						Screen.SetClip (Damage.x0[i], Damage.y0[i], Damage.x1[i], Damage.y1[i]);
-						m_pWM->Composite (&Screen, i == 0);
-						Present ((unsigned) Damage.x0[i], (unsigned) Damage.y0[i],
-							 (unsigned) (Damage.x1[i] - Damage.x0[i]),
-							 (unsigned) (Damage.y1[i] - Damage.y0[i]));
-					}
-				}
+				Resize (nW, nH);
+				WsScreenResized (nW, nH);
 			}
 			CScheduler::Get ()->MsSleep (16);
 		}
@@ -669,7 +620,6 @@ public:
 private:
 	C2DGraphics    *m_p2D;
 	CWindowManager *m_pWM;
-	boolean		m_bFirst;
 };
 
 volatile int CCompositorTask::s_nResizeW = 0, CCompositorTask::s_nResizeH = 0, CCompositorTask::s_nResizeResult = 0;
@@ -880,6 +830,20 @@ static boolean TaskStateCollect (CTask *pTask, const char *pName, TTaskState Sta
 	return TRUE;
 }
 
+// The programs that have a queue of events (kern/gui/window.h CWindow: one a program whose windows
+// are the graphics server's), for the watchdog: found by their processes.
+#define WD_MAX	48
+struct TWdScan { CWindow *pWin[WD_MAX]; const char *pName[WD_MAX]; unsigned n; };
+static boolean WdCollect (CTask *pTask, const char *pName, TTaskState State, TTaskFlags, void *pParam)
+{
+	TWdScan *pScan = (TWdScan *) pParam;
+	if (State == TaskStateTerminated || pScan->n >= WD_MAX) return TRUE;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0 || pAS->GetWindow () == 0 || pTask != pAS->GetMainTask ()) return TRUE;
+	pScan->pWin[pScan->n] = pAS->GetWindow (); pScan->pName[pScan->n] = pName != 0 ? pName : "?"; pScan->n++;
+	return TRUE;
+}
+
 class CGuiWatchdogTask : public CTask
 {
 public:
@@ -889,13 +853,12 @@ public:
 	{
 		static const char From[] = "gui";
 		unsigned nLastFrames = m_pWM->FrameCount (), nStallSec = 0;
-		unsigned nBeatFrames = nLastFrames, nBeatMouse = m_pWM->MouseCount ();
-		unsigned nBeatKeys = m_pWM->KeyCount (), nSec = 0;
+		unsigned nBeatFrames = nLastFrames, nSec = 0;
 		boolean bStalled = FALSE;
 		CWindow *pWatched = 0;			// (the app watchdog's: CrashLogWatchPid)
-		boolean bFrozen[WM_MAX_WINDOWS];
-		CWindow *pFrozenWin[WM_MAX_WINDOWS];
-		for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
+		boolean bFrozen[WD_MAX];
+		CWindow *pFrozenWin[WD_MAX];
+		for (unsigned i = 0; i < WD_MAX; i++) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
 		static char Tasks[512];
 
 		for (;;)
@@ -918,21 +881,24 @@ public:
 				TaskStateScan s = {{0}, Tasks, sizeof Tasks, 0}; Tasks[0] = '\0';
 				CScheduler::Get ()->EnumerateTasks (TaskStateCollect, &s);
 				CLogger::Get ()->Write (From, LogWarning,
-					"compositor STALLED: no frame for %u s; tasks: %s", nStallSec, Tasks);
+					"the display task STALLED for %u s; tasks: %s", nStallSec, Tasks);
 			}
 			// (A warning only, since 2026-10-04: no report, no restart -- a slide show left on one
 			// slide was restarted as "no frame for 12 s". A frozen kernel is the hang watchdog's.)
 			if (nStallSec == 0 && bStalled)
 			{
 				bStalled = FALSE;
-				CLogger::Get ()->Write (From, LogWarning, "compositor recovered");
+				CLogger::Get ()->Write (From, LogWarning, "the display task runs again");
 				if (pWatched == 0) CrashLogAppRecovered ();
 			}
 
 			// 2. Frozen apps: events queued but not pumped for 2 s.
-			CWindow *pWins[WM_MAX_WINDOWS];
-			unsigned nWins = m_pWM->Snapshot (pWins, WM_MAX_WINDOWS);
-			for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
+			static TWdScan Scan;
+			Scan.n = 0;
+			CScheduler::Get ()->EnumerateTasks (WdCollect, &Scan);
+			CWindow **pWins = Scan.pWin;
+			unsigned nWins = Scan.n;
+			for (unsigned i = 0; i < WD_MAX; i++)
 			{
 				if (!bFrozen[i]) continue;
 				boolean bStill = FALSE;			// forget windows that went away
@@ -951,21 +917,21 @@ public:
 				unsigned nIdle = (nNow - pW->LastPumpTicks ()) / HZ;
 				boolean bNow = pW->QueuedEvents () > 0 && nIdle >= 2;
 				int k = -1;
-				for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) if (bFrozen[i] && pFrozenWin[i] == pW) k = (int) i;
+				for (unsigned i = 0; i < WD_MAX; i++) if (bFrozen[i] && pFrozenWin[i] == pW) k = (int) i;
 				if (bNow && k < 0)
 				{
-					for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
+					for (unsigned i = 0; i < WD_MAX; i++)
 						if (!bFrozen[i]) { bFrozen[i] = TRUE; pFrozenWin[i] = pW; break; }
 					CLogger::Get ()->Write (From, LogWarning,
 						"app '%s' NOT PUMPING events for %u s (%u queued, %u dropped)%s",
-						pW->Title (), pW->LastPumpTicks () ? nIdle : nSec,
+						Scan.pName[j], pW->LastPumpTicks () ? nIdle : nSec,
 						pW->QueuedEvents (), pW->DroppedEvents (),
 						pWatched == 0 ? "; watched: a report in SD:/etc/apphang.txt every 2 s" : "");
 				}
 				else if (!bNow && k >= 0)
 				{
 					bFrozen[k] = FALSE; pFrozenWin[k] = 0;
-					CLogger::Get ()->Write (From, LogWarning, "app '%s' pumping again", pW->Title ());
+					CLogger::Get ()->Write (From, LogWarning, "app '%s' pumping again", Scan.pName[j]);
 					if (pW == pWatched) { pWatched = 0; CrashLogAppRecovered (); }
 				}
 				// The app watchdog: the first frozen app watched (where its task is, its
@@ -974,35 +940,33 @@ public:
 				{
 					if (pWatched == 0) { pWatched = pW; CrashLogWatchPid (pW->OwnerPid ()); }
 					if (nIdle % 2 == 0)
-						CrashLogAppHang (pW->Title (), pW->OwnerPid (),
+						CrashLogAppHang (Scan.pName[j], pW->OwnerPid (),
 								 pW->LastPumpTicks () ? nIdle : nSec, pW->QueuedEvents ());
 				}
 			}
 
 			// 3. Heartbeat.
 			if (g_nHeartbeatSec == 0 || nSec % g_nHeartbeatSec != 0) continue;
-			unsigned nMouse = m_pWM->MouseCount (), nKeys = m_pWM->KeyCount ();
 			TaskStateScan s = {{0}, 0, 0, 0};
 			CScheduler::Get ()->EnumerateTasks (TaskStateCollect, &s);
 			char Wins[256]; unsigned n = 0; Wins[0] = '\0';
 			for (unsigned j = 0; j < nWins && n + 48 < sizeof Wins; j++)
 			{
 				CString W;
-				W.Format ("%s%s[q%u d%u]", j ? " " : "", pWins[j]->Title (),
+				W.Format ("%s%s[q%u d%u]", j ? " " : "", Scan.pName[j],
 					  pWins[j]->QueuedEvents (), pWins[j]->DroppedEvents ());
 				for (const char *p = (const char *) W; *p && n + 1 < sizeof Wins; p++) Wins[n++] = *p;
 				Wins[n] = '\0';
 			}
 			CLogger::Get ()->Write (From, LogNotice,
-				"heartbeat up %us: %u fps, mouse +%u, keys +%u, tasks %u (ready %u, sleep %u, "
-				"block %u), windows %u: %s",
+				"heartbeat up %us: %u display turns/s, tasks %u (ready %u, sleep %u, "
+				"block %u), programs with windows %u: %s",
 				CTimer::Get ()->GetUptime (),
 				(nFrames - nBeatFrames) / g_nHeartbeatSec,
-				nMouse - nBeatMouse, nKeys - nBeatKeys,
 				s.nByState[0] + s.nByState[1] + s.nByState[2] + s.nByState[3] + s.nByState[4],
 				s.nByState[1], s.nByState[4], s.nByState[2] + s.nByState[3],
 				nWins, Wins);
-			nBeatFrames = nFrames; nBeatMouse = nMouse; nBeatKeys = nKeys;
+			nBeatFrames = nFrames;
 		}
 	}
 
@@ -1360,17 +1324,11 @@ private:
 		case MouseEventMouseUp:   s_nButtons &= ~nButtons; break;
 		case MouseEventMouseMove: s_nButtons = nButtons;   break;	// full state
 		case MouseEventMouseWheel:					// scroll notch, no button change
-			if (WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, nWheelMove)) return;
-			if (CWindowManager::Get () != 0)
-				CWindowManager::Get ()->OnMouseWheel ((int) nPosX, (int) nPosY, nWheelMove);
+			WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, nWheelMove);
 			return;
 		default: break;
 		}
-		if (WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, 0)) return;	// (the graphics server's)
-		if (CWindowManager::Get () != 0)
-		{
-			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, s_nButtons);
-		}
+		WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, 0);	// (the graphics server's: kern/wsrv.h)
 	}
 
 	// USB HID modifier byte: bit0/4 Ctrl, bit1/5 Shift, bit2/6 Alt (left/right). Each
@@ -1419,11 +1377,7 @@ private:
 	{
 		// Route to the focused widget (a textbox); the WM edits its text + posts a
 		// TEXT_CHANGED event to the owning app.
-		if (WsInputKey (pString)) return;	// (the graphics server's)
-		if (CWindowManager::Get () != 0)
-		{
-			CWindowManager::Get ()->OnKey (pString);
-		}
+		WsInputKey (pString);			// (the graphics server's)
 	}
 
 	static void MouseRemoved (CDevice *, void *)
@@ -1667,88 +1621,6 @@ static u8 *LoadFileFromSD (const char *pPath, unsigned *pSize)
 }
 
 // Scan a theme.txt buffer for a "wheelspeed=N" line; returns N, or 0 if absent/invalid.
-static int ParseWheelSpeed (const u8 *p, unsigned n)
-{
-	static const char key[] = "wheelspeed=";
-	const unsigned klen = sizeof key - 1;
-	for (unsigned i = 0; i + klen <= n; i++)
-	{
-		unsigned k = 0;
-		while (k < klen && p[i + k] == (u8) key[k]) k++;
-		if (k != klen) continue;
-		int v = 0; unsigned j = i + klen;
-		while (j < n && p[j] >= '0' && p[j] <= '9') v = v * 10 + (p[j++] - '0');
-		return v;
-	}
-	return 0;
-}
-
-// The mouse cursor, built in (it was SD:skins/mousecur.bin, SimpleOS's 12x19 arrow; the skins folder
-// is gone -- window chrome is drawn user-side): W white, B black, . transparent.
-static const char s_Cursor[19][13] = {
-	"W...........",
-	"WW..........",
-	"WBW.........",
-	"WBBW........",
-	"WBBBW.......",
-	"WBBBBW......",
-	"WBBBBBW.....",
-	"WBBBBBBW....",
-	"WBBBBBBBW...",
-	"WBBBBBBBBW..",
-	"WBBBBBBBBBW.",
-	"WBBBBBBBBBBW",
-	"WBBBBBBWWWWW",
-	"WBBBWBBW....",
-	"WBBW.WBBW...",
-	"WBW..WBBW...",
-	"WW....WBBW..",
-	"......WBBW..",
-	".......WW..."
-};
-
-static GImage *BuiltinCursor (void)
-{
-	const int nW = 12, nH = 19;
-	GImage *pImg = new GImage;
-	if (pImg == 0) return 0;
-	pImg->SetSize (nW, nH);
-	if (!pImg->IsValid ()) { delete pImg; return 0; }
-	for (int y = 0; y < nH; y++)
-	{
-		for (int x = 0; x < nW; x++)
-		{
-			char c = s_Cursor[y][x];
-			pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
-		}
-	}
-	return pImg;
-}
-
-// The pointer's other shapes (kapi v81 set_cursor): gui/cursors.inc, drawn by tools/gui/gen_cursors.py.
-#include "gui/cursors.inc"
-
-static void BuiltinCursorShapes (CWindowManager *pWM)
-{
-	for (unsigned n = 1; n < sizeof s_CursorArt / sizeof s_CursorArt[0] && n < KAPI_CURSOR_COUNT; n++)
-	{
-		const TCursorArt &A = s_CursorArt[n];
-		GImage *pImg = new GImage;
-		if (pImg == 0) return;
-		pImg->SetSize (A.nW, A.nH);
-		if (!pImg->IsValid ()) { delete pImg; return; }
-		for (int y = 0; y < A.nH; y++)
-		{
-			for (int x = 0; x < A.nW; x++)
-			{
-				char c = A.pRows[y * A.nW + x];
-				pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
-			}
-		}
-		pWM->SetCursorImage (n, pImg, A.nHotX, A.nHotY);
-	}
-}
-
 static boolean KeyEq (const char *s, const char *e, const char *pLit)
 {
 	while (s < e && *pLit != '\0' && *s == *pLit) { s++; pLit++; }
@@ -2247,9 +2119,6 @@ boolean CKernel::Initialize (void)
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 
-			// Mouse cursor: built in (BuiltinCursor), a GImage the compositor blits.
-			m_WindowManager.SetCursor (BuiltinCursor ());
-			BuiltinCursorShapes (&m_WindowManager);
 		}
 		else
 		{
@@ -2287,14 +2156,8 @@ static void PrintScreenPoll (void)
 	unsigned nWhat = s_nPrintScreen;
 	if (nWhat == 0) return;
 	s_nPrintScreen = 0;
-	unsigned nId = 0;
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (nWhat == 2 && pWM != 0)
-	{
-		CWindow *List[WM_MAX_WINDOWS];
-		unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
-		for (unsigned i = 0; i < n; i++) if (pWM->HasKeyFocus (List[i])) nId = List[i]->Id ();
-	}
+	unsigned nId = 0;			// (Alt + Print Screen: the active window is the graphics server's to
+						// know -- the whole screen until the server takes Print Screen over)
 	CString Msg, Args;
 	if (nId != 0) { Msg.Format ("window %u", nId); Args.Format ("--window %u", nId); }
 	else { Msg = "now"; Args = "--now"; }
@@ -2333,20 +2196,6 @@ TShutdownMode CKernel::Run (void)
 		{
 			EnumerateApps (&m_Logger);
 
-			// Restore the saved scroll-wheel speed (theme editor persists it).
-			unsigned nThemeSize = 0;
-			u8 *pTheme = LoadFileFromSD ("SD:/etc/theme.txt", &nThemeSize);
-			if (pTheme != 0)
-			{
-				int nSpeed = ParseWheelSpeed (pTheme, nThemeSize);
-				if (nSpeed > 0)
-				{
-					m_WindowManager.SetWheelSpeed (nSpeed);
-					m_Logger.Write (FromKernel, LogNotice,
-							"wheel speed: %d lines/notch", nSpeed);
-				}
-				delete [] pTheme;
-			}
 		}
 
 		// Reaper: reclaims ended apps; it also blinks the ACT LED (headless sign of

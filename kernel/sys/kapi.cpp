@@ -174,183 +174,14 @@ extern "C" {
 
 // --- windowing ---------------------------------------------------------------
 
-// Create the calling app's window. (x,y) is the outer top-left; pass x<0 or y<0 to
-// auto-place at a pseudo-random on-screen position (normal apps). nFlags is a mask
-// of WIN_FLAG_* (e.g. WIN_FLAG_BORDERLESS for the shell's panel/popup). Returns the
-// canvas VA (USER_WINDOW_CANVAS) or 0 on failure. One window per process.
-static unsigned *CreateWindow (int x, int y, int w, int h, const char *pTitle,
-			       unsigned nFlags)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	if (pAS == 0 || w <= 0 || h <= 0 || w > g_nScreenWidth || h > g_nScreenHeight)	// (no bigger than the screen)
-	{
-		return 0;
-	}
-	if (pAS->GetWindow () != 0)
-	{
-		return (unsigned *) USER_WINDOW_CANVAS;		// one window per process
-	}
-
-	boolean bBorderless = (nFlags & WIN_FLAG_BORDERLESS) != 0;
-	int nOuterW = w + (bBorderless ? 0 : 2 * WIN_BORDER);
-	int nOuterH = h + (bBorderless ? 0 : WIN_TITLEBAR_H + WIN_BORDER);
-
-	// Auto-placement (only when the caller didn't pin a position). The LCG state
-	// persists across calls (so successive windows differ) and is seeded from the
-	// timer (so it varies run to run). We keep a left margin to dodge the defective
-	// left edge of the display.
-	if (x < 0 || y < 0)
-	{
-		static unsigned s_nRng = 0;
-		if (s_nRng == 0)
-		{
-			s_nRng = CTimer::Get ()->GetTicks () | 1u;	// seed once, never 0
-		}
-		int nXMin   = g_nScreenWidth / 5;			// skip the leftmost fifth
-		int ax = 0, ay = 0, aw = g_nScreenWidth, ah = g_nScreenHeight;	// the work area: below
-		if (CWindowManager::Get () != 0) CWindowManager::Get ()->WorkArea (&ax, &ay, &aw, &ah);	// the menu
-		int nYMin   = ay;					// bar, above the dock
-		int nXRange = g_nScreenWidth  - nOuterW - nXMin;
-		int nYRange = ay + ah - nOuterH - nYMin;
-		s_nRng = s_nRng * 1103515245u + 12345u;
-		x = nXRange > 0 ? nXMin + (int) (s_nRng % (unsigned) nXRange) : 0;
-		s_nRng = s_nRng * 1103515245u + 12345u;
-		y = nYMin + (nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0);
-	}
-
-	// pTitle: kernel memory (the kapi copied the app's) -- CWindow copies it. Fall back to a
-	// default if null.
-	CWindow *pWin = new CWindow (x, y, w, h, pTitle != 0 ? pTitle : "app", nFlags);
-	if (pWin == 0 || !pWin->IsValid ())
-	{
-		return 0;
-	}
-	pWin->SetOwnerPid (pAS->GetPid ());			// drag & drop results name it
-
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL0 RW, ASID-tagged
-	pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
-	if (pWin->HasChrome ())					// user-drawn window chrome buffers
-	{
-		pAS->MapContig (USER_WINDOW_CHROME,          pWin->ChromePhys (0), pWin->ChromePages (0), Attr);
-		pAS->MapContig (USER_WINDOW_CHROME_INACTIVE, pWin->ChromePhys (1), pWin->ChromePages (1), Attr);
-	}
-	pAS->SetWindow (pWin);
-	if (CWindowManager::Get () != 0)
-	{
-		CWindowManager::Get ()->Add (pWin);
-	}
-
-	return (unsigned *) USER_WINDOW_CANVAS;
-}
-
 // The title: a copy (a window's holds 47 characters; a longer one is cut, as before).
 #define TITLE_MAX	64
-
-unsigned *kapi_create_window (int w, int h, const char *pTitle)
-{
-	CUserStr Title (pTitle, TITLE_MAX, TRUE);
-	if (!Title.OK () && !Title.IsNull ()) return 0;
-	return CreateWindow (-1, -1, w, h, Title.Get (), 0);	// auto-placed, normal chrome
-}
-
-unsigned *kapi_create_window_ex (int x, int y, int w, int h, const char *pTitle,
-				 unsigned nFlags)
-{
-	CUserStr Title (pTitle, TITLE_MAX, TRUE);
-	if (!Title.OK () && !Title.IsNull ()) return 0;
-	return CreateWindow (x, y, w, h, Title.Get (), nFlags);
-}
-
-// Resize the calling app's window to w x h (logical; clamped to the canvas it was
-// created with). The canvas buffer/VA is unchanged -- create the window at the
-// MAX size you'll need, then shrink/grow with this (e.g. a taskbar panel). Returns
-// the canvas VA, or 0 on failure.
-unsigned *kapi_resize_window (int w, int h)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0)
-	{
-		return 0;
-	}
-	pWin->SetLogicalSize (w, h);
-	return (unsigned *) USER_WINDOW_CANVAS;
-}
-
-// Move the calling app's window (outer top-left, screen coords). Used by borderless
-// windows that re-position themselves (e.g. the panel keeping itself centered).
-void kapi_move_window (int x, int y)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0)
-	{
-		pWin->Move (x, y);
-	}
-}
 
 // Draw text into the calling app's window canvas using the kernel bitmap font
 // (transparent background -- only glyph pixels are written). Apps have no font of
 // their own, so this is how an app-drawn UI (e.g. the editor) renders text.
 // (a text drawn: one line, what is past 64 K characters cut)
 #define DRAW_TEXT_MAX	0x10000
-
-void kapi_draw_text (int x, int y, const char *pStr, unsigned nColor)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || pStr == 0)
-	{
-		return;
-	}
-	CUserStr Text (pStr, DRAW_TEXT_MAX, TRUE);
-	if (!Text.OK ())
-	{
-		return;
-	}
-	pWin->Canvas ()->DrawText (x, y, Text.Get (), (u32) nColor);
-}
-
-// Report the calling app's window surfaces so a user-side toolkit can draw the window
-// chrome (decorations). Fills *out with the content canvas and, for a normal window,
-// the active + inactive chrome copies (in the chrome buffer mapped at
-// USER_WINDOW_CHROME), the chrome insets, and the title. For a borderless window the
-// chrome pointers are 0. Returns 1, or 0 if the app has no window. The kernel keeps
-// chrome BEHAVIOUR (title-bar drag, close-box hit-test) -- only the drawing moves here.
-int kapi_get_chrome (struct kapi_chrome *out)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0) { pWin->Damage (); pWin->ChromeTouch (); }	// the caller is about to (re)draw its chrome
-	if (pWin == 0 || out == 0)
-	{
-		return 0;
-	}
-	struct kapi_chrome C;					// (made here, copied out whole)
-	memset (&C, 0, sizeof C);
-	C.content   = (unsigned *) USER_WINDOW_CANVAS;
-	C.content_w = pWin->ClientWidth ();
-	C.content_h = pWin->ClientHeight ();
-	if (pWin->HasChrome ())
-	{
-		C.active   = (unsigned *) USER_WINDOW_CHROME;
-		C.inactive = (unsigned *) USER_WINDOW_CHROME_INACTIVE;
-		C.chrome_w = pWin->OuterW ();
-		C.chrome_h = pWin->OuterH ();
-		C.inset_l  = pWin->ChromeL ();
-		C.inset_r  = pWin->ChromeR ();
-		C.inset_t  = pWin->ChromeT ();
-		C.inset_b  = pWin->ChromeB ();
-	}
-	const char *pTitle = pWin->Title ();
-	unsigned i;
-	for (i = 0; i + 1 < sizeof C.title && pTitle[i] != '\0'; i++)
-	{
-		C.title[i] = pTitle[i];
-	}
-	C.title[i] = '\0';
-	return UserPut (out, C) ? 1 : 0;
-}
 
 // Draw kernel-font text (transparent background) into an arbitrary app-mapped
 // 0x00RRGGBB buffer (dst, dstW x dstH) at (x,y). Lets a user-side toolkit render text
@@ -379,43 +210,6 @@ void kapi_draw_text_buf (unsigned *dst, int dstW, int dstH, int x, int y,
 
 int kapi_font_width  (void) { return GImage::FontWidth (); }	// glyph cell width
 int kapi_font_height (void) { return GImage::FontHeight (); }	// glyph cell height
-
-// Register an app-level key handler for THIS window (void (sender=0, GUI_EVENT_KEY,
-// keycode)). Keys reach it when the window is topmost and no textbox/textarea is
-// focused. Pass 0 to clear.
-void kapi_set_key_handler (void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0)
-	{
-		pWin->SetKeyHandler ((u64) pHandler);
-	}
-}
-
-// Register a canvas-click handler for THIS window: void (sender=0,
-// GUI_EVENT_CANVAS_CLICK, (clientX<<16)|clientY) when a press hits no widget.
-void kapi_set_click_handler (void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0)
-	{
-		pWin->SetClickHandler ((u64) pHandler);
-	}
-}
-
-// Register a full pointer-event handler for THIS window (GUI_EVENT_PTR_* stream).
-// For app-side widget toolkits (uikit.h). See kapi_abi.h v22 for the value layout.
-void kapi_set_pointer_handler (void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0)
-	{
-		pWin->SetPointerHandler ((u64) pHandler);
-	}
-}
 
 // Launch another app by folder name (apps/<name>.app/main) as a new process.
 // Used by the shell (panel / app-list popup). Returns 1 on success, 0 on failure.
@@ -580,87 +374,11 @@ int kapi_net_stats (int nPid, struct kapi_net_stats *pOut)
 	return UserCopyOut (pOut, &Out, sizeof Out) ? 0 : -KAPI_EFAULT;
 }
 
-// (v81) The pointer's shape over the caller's window.
-int kapi_set_cursor (int nShape)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || nShape < 0 || nShape >= KAPI_CURSOR_COUNT) return -1;
-	int nWas = (int) pWin->CursorShape ();
-	if (nWas != nShape) CWindowManager::Get ()->SetWindowCursor (pWin, (unsigned) nShape);
-	return nWas;
-}
-
-// (v82) The caller's window can be resized by its frame (the window manager shows the outline, the
-// app applies the size it is told: GUI_EVENT_WINRESIZE).
-int kapi_win_resizable (int bOn, int nMinW, int nMinH)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || pWin->Borderless () || pWin->Fixed ()) return -1;
-	pWin->SetResizable (bOn != 0, nMinW, nMinH);
-	return 0;
-}
-
 // Framebuffer size, for edge-pinned borderless windows (the dock, the menu bar).
 void kapi_screen_size (int *pW, int *pH)
 {
 	if (OutOK (pW)) OutPut (pW, g_nScreenWidth);
 	if (OutOK (pH)) OutPut (pH, g_nScreenHeight);
-}
-
-// --- v39: system menu bar ----------------------------------------------------
-// An app declares its menus on its window (spec: see kapi_abi.h) + the callback that
-// receives GUI_EVENT_MENU; the menu-bar app reads the ACTIVE window's menu and sends
-// the chosen command back to it.
-int kapi_set_menu (const char *pSpec, void *pHandler)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0)
-	{
-		return 0;
-	}
-	CUserStr Spec (pSpec, WIN_MENU_MAX, TRUE);		// (cut as before: the window's copy)
-	if (!Spec.OK () && !Spec.IsNull ())
-	{
-		return 0;
-	}
-	pWin->SetMenu (Spec.Get (), (u64) pHandler);
-	return 1;
-}
-
-// (filled in kernel memory -- the window manager's lock is held meanwhile --, then copied out)
-unsigned kapi_get_menu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0)
-	{
-		return 0;
-	}
-	char Title[64];						// (a window's title: 47 characters)
-	boolean bMenu = pBuf != 0 && nCap > 0, bTitle = pTitle != 0 && nTitleCap > 0;
-	if (   (bMenu && !UserRange (pBuf, nCap < WIN_MENU_MAX ? nCap : WIN_MENU_MAX))
-	    || (bTitle && !UserRange (pTitle, nTitleCap < sizeof Title ? nTitleCap : sizeof Title)))
-	{
-		return 0;
-	}
-	char *pMenu = bMenu ? new char[WIN_MENU_MAX] : 0;
-	if (bMenu && pMenu == 0)
-	{
-		return 0;
-	}
-	unsigned nSerial = pWM->GetActiveMenu (pMenu, bMenu ? WIN_MENU_MAX : 0, Title, bTitle ? sizeof Title : 0);
-	if (bMenu) UserStrOut (pBuf, nCap, pMenu);
-	if (bTitle) UserStrOut (pTitle, nTitleCap, Title);
-	delete [] pMenu;
-	return nSerial;
-}
-
-int kapi_menu_command (int nID)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	return pWM != 0 && pWM->SendMenuCommand (nID) ? 1 : 0;
 }
 
 extern C2DGraphics *g_pGraphics;
@@ -728,9 +446,7 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 		memcpy (pDst, pWM->FullscreenBuffer (), (size_t) nW * nH * 4);	// what is shown
 		return 1;
 	}
-	GImage Screen ((u32 *) pDst, nW, nH);
-	pWM->Composite (&Screen, FALSE);
-	return 1;
+	return 0;				// (no graphics server has the display: nothing is shown)
 }
 
 // Inject pointer input as if it came from a USB mouse: absolute screen position,
@@ -747,12 +463,6 @@ void kapi_inject_pointer (int x, int y, unsigned nButtons, int nWheel)
 		// the server now, not after the injector's time slice: it moves the pointer, the window
 		// dragged, and shows them before the remote desktop grabs the screen again
 		if (CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
-		return;
-	}
-	pWM->OnMouse (x, y, nButtons);
-	if (nWheel != 0)
-	{
-		pWM->OnMouseWheel (x, y, nWheel);
 	}
 }
 
@@ -760,94 +470,8 @@ void kapi_inject_pointer (int x, int y, unsigned nButtons, int nWheel)
 // (characters, '\n' = Enter, '\b' = Backspace, VT100 escapes for arrows/Home/...).
 void kapi_inject_key (const char *pKeys)
 {
-	CWindowManager *pWM = CWindowManager::Get ();
-	CUserStr Keys (pKeys, 4096, TRUE);			// (read under the window manager's lock)
-	if (Keys.OK () && WsInputKey (Keys.Get ())) return;	// (the graphics server's)
-	if (pWM != 0 && Keys.OK ())
-	{
-		pWM->OnKey (Keys.Get ());
-	}
-}
-
-// Toggle a named app: if an app with this folder name is already running, ask it to
-// close (set its window's exit flag) and return 0; otherwise launch it and return 1
-// (-1 on error). The shell's "apps" button uses this so a second click closes the
-// popup -- no IPC needed.
-int kapi_toggle_app (const char *pUserName)
-{
-	CUserStr Name (pUserName);
-	const char *pName = Name.Get ();
-	if (pName == 0 || pName[0] == '\0' || !CScheduler::IsActive ())
-	{
-		return -1;
-	}
-
-	CTask *pTask = CScheduler::Get ()->GetRunningTask (pName);
-	if (pTask != 0)
-	{
-		// Running: close it via its window's exit flag (its pump loop then ends).
-		CAddressSpace *pAS =
-			(CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
-		CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-		if (pWin != 0)
-		{
-			pWin->RequestExit ();
-		}
-		return 0;			// toggled OFF
-	}
-
-	return LaunchAppByName (pName) ? 1 : -1;	// toggled ON
-}
-
-// The first window of a running task named pName that is not on another workspace.
-struct RaiseCtx { const char *pName; CWindow *pWin; };
-static boolean RaiseCallback (CTask *pTask, const char *pTaskName, TTaskState State, TTaskFlags, void *pParam)
-{
-	RaiseCtx *pCtx = (RaiseCtx *) pParam;
-	if (State == TaskStateTerminated || pCtx->pWin != 0 || pTaskName == 0) return TRUE;
-	unsigned i = 0;
-	for (; pCtx->pName[i] != '\0' && pTaskName[i] == pCtx->pName[i]; i++) {}
-	if (pCtx->pName[i] != '\0' || pTaskName[i] != '\0') return TRUE;
-	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0 && !pWin->OffDesk ()) pCtx->pWin = pWin;
-	return TRUE;
-}
-
-// Raise the named running app's window to the front (a dock / taskbar click on
-// an already-open app). Returns 1 if raised, 0 if not running / no window.
-int kapi_raise_app (const char *pUserName)
-{
-	CUserStr Name (pUserName);
-	const char *pName = Name.Get ();
-	if (pName == 0 || !CScheduler::IsActive () || CWindowManager::Get () == 0)
-	{
-		return 0;
-	}
-	// (v65) an instance with a window on the current workspace (or on every one): one on
-	// another workspace is not raised -- the caller starts another one here (the dock)
-	RaiseCtx Ctx = { pName, 0 };
-	CScheduler::Get ()->EnumerateTasks (RaiseCallback, &Ctx);
-	if (Ctx.pWin == 0)
-	{
-		return 0;
-	}
-	CWindowManager::Get ()->Raise (Ctx.pWin);
-	return 1;
-}
-
-void kapi_present (void)
-{
-	// the app's canvas changed: its window's area is to be redrawn
-	CAddressSpace *pPresAS = CurrentAS ();
-	CWindow *pPresWin = pPresAS != 0 ? pPresAS->GetWindow () : 0;
-	if (pPresWin != 0) pPresWin->PresentDamage (); else ScreenDirty ();
-	// The compositor reads the shared canvas continuously; yield so it and the
-	// other app get the CPU promptly.
-	if (CScheduler::IsActive ())
-	{
-		CScheduler::Get ()->Yield ();
-	}
+	CUserStr Keys (pKeys, 4096, TRUE);
+	if (Keys.OK ()) WsInputKey (Keys.Get ());		// (the graphics server's: kern/wsrv.h)
 }
 
 // ---- shell surfaces (ABI v35) ----------------------------------------------
@@ -927,57 +551,6 @@ int kapi_surface_destroy (int id)
 	}
 	CSurfaceManager::Get ()->Destroy (id);
 	return 1;
-}
-
-// Generate the desktop wallpaper at runtime: a toroidal-Voronoi cellular pattern
-// tinted onto base_color, with `points` seeds. seed 0 => seed from the timer (varies
-// per boot). Replaces loading a wallpaper BMP from a file. Returns 1 on success.
-int kapi_wallpaper_generate (unsigned nBaseColor, int nPoints, unsigned nSeed)
-{
-	if (CWindowManager::Get () == 0)
-	{
-		return 0;
-	}
-	if (nSeed == 0)
-	{
-		nSeed = CTimer::Get ()->GetTicks () | 1u;
-	}
-	CWindowManager::Get ()->GenerateWallpaper (nBaseColor, nPoints, nSeed);
-	return 1;
-}
-
-// Map the shared desktop-wallpaper buffer (screen-sized, 0x00RRGGBB) into the calling
-// app at USER_WALLPAPER_CANVAS and return that VA (+ dims). The app draws into it,
-// then calls kapi_wallpaper_commit to make it the live background. The frames are
-// kernel-owned, so the wallpaper persists after the writer app exits. Returns 0 on
-// failure.
-unsigned *kapi_wallpaper_buffer (int *pW, int *pH)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pAS == 0 || pWM == 0 || !OutOK (pW) || !OutOK (pH))
-	{
-		return 0;
-	}
-	u64 ulPhys = 0; unsigned nPages = 0;
-	if (pWM->EnsureWallpaperBuffer (g_nScreenWidth, g_nScreenHeight, &ulPhys, &nPages) == 0)
-	{
-		return 0;
-	}
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL0 RW, ASID-tagged
-	pAS->MapContig (USER_WALLPAPER_CANVAS, ulPhys, nPages, Attr);
-	OutPut (pW, g_nScreenWidth);
-	OutPut (pH, g_nScreenHeight);
-	return (unsigned *) USER_WALLPAPER_CANVAS;
-}
-
-// Make the (app-written) wallpaper buffer the live desktop background.
-void kapi_wallpaper_commit (void)
-{
-	if (CWindowManager::Get () != 0)
-	{
-		CWindowManager::Get ()->CommitWallpaper ();
-	}
 }
 
 // (v73) The kernel half of the event pump: the next event, its handler NOT called -- the
@@ -1171,55 +744,6 @@ int kapi_list_apps (char *pBuf, unsigned nBufSize)
 // a window, one per '\n'-separated line in pBuf. Backs the panel's taskbar section.
 // Windows created with WIN_FLAG_SYSTEM (menu bar, notifications, panel...) are skipped.
 struct WinListCtx { char *pBuf; unsigned nSize; unsigned nPos; int nCount; };
-
-static boolean WinListCallback (CTask *pTask, const char *pName, TTaskState State,
-				TTaskFlags Flags, void *pParam)
-{
-	(void) Flags;
-	if (State == TaskStateTerminated)
-	{
-		return TRUE;					// keep going
-	}
-	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
-	if (pAS == 0 || pAS->GetWindow () == 0 || pAS->GetWindow ()->System ())
-	{
-		return TRUE;					// not a windowed app / a system component
-	}
-	if (pTask != pAS->GetMainTask ())
-	{
-		return TRUE;					// (v67) a thread: its app is listed once
-	}
-	if (pAS->GetWindow ()->OffDesk ())
-	{
-		return TRUE;					// (v65) on another workspace
-	}
-
-	WinListCtx *pCtx = (WinListCtx *) pParam;
-	for (unsigned j = 0; pName[j] != '\0'; j++)
-	{
-		if (pCtx->nPos + 2 < pCtx->nSize) pCtx->pBuf[pCtx->nPos++] = pName[j];
-	}
-	if (pCtx->nPos + 1 < pCtx->nSize) pCtx->pBuf[pCtx->nPos++] = '\n';
-	pCtx->nCount++;
-	return TRUE;
-}
-
-int kapi_list_windows (char *pBuf, unsigned nBufSize)
-{
-	if (pBuf == 0 || nBufSize == 0 || !UserWritable (pBuf, nBufSize))
-	{
-		return 0;
-	}
-	pBuf[0] = '\0';
-	if (!CScheduler::IsActive ())
-	{
-		return 0;
-	}
-	WinListCtx Ctx = { pBuf, nBufSize, 0, 0 };
-	CScheduler::Get ()->EnumerateTasks (WinListCallback, &Ctx);
-	pBuf[Ctx.nPos] = '\0';
-	return Ctx.nCount;
-}
 
 // List ALL tasks for the task manager: one line per task "<state><kind> <name>",
 // where state is R/S/B/N, and kind is 'a' (app: has an address space, killable) or
@@ -2227,27 +1751,6 @@ int kapi_rename (const char *pUserFrom, const char *pUserTo)
 	return (f_rename (absF, absT) == FR_OK) ? 0 : -1;
 }
 
-// Current cursor position relative to the calling window's client origin (so a
-// gadget can make its eyes follow the mouse even when it's outside the window).
-void kapi_cursor_pos (int *pX, int *pY)
-{
-	int cx = 0, cy = 0;
-	if (CWindowManager::Get () != 0)
-	{
-		cx = CWindowManager::Get ()->CursorX ();
-		cy = CWindowManager::Get ()->CursorY ();
-	}
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0)
-	{
-		cx -= pWin->X () + pWin->ChromeL ();
-		cy -= pWin->Y () + pWin->ChromeT ();
-	}
-	OutPut (pX, cx);
-	OutPut (pY, cy);
-}
-
 // --- modal dialogs -----------------------------------------------------------
 
 // Write a whole file (create/truncate). Returns bytes written, or -1 on error.
@@ -2436,20 +1939,6 @@ int kapi_ram_detail (unsigned long *pDetectedKB, unsigned long *pAppPoolKB,
 	return 1;
 }
 
-// --- v34: scroll-wheel speed --------------------------------------------------
-// Lines scrolled per wheel notch, applied system-wide (the WM scales the raw notch
-// before delivering GUI_EVENT_PTR_WHEEL). The theme editor persists it in theme.txt.
-void kapi_set_wheel_speed (int nLinesPerNotch)
-{
-	if (CWindowManager::Get () != 0)
-		CWindowManager::Get ()->SetWheelSpeed (nLinesPerNotch);
-}
-
-int kapi_get_wheel_speed (void)
-{
-	return CWindowManager::Get () != 0 ? CWindowManager::Get ()->GetWheelSpeed () : 1;
-}
-
 // Grow/shrink the calling process's heap by nIncrement bytes (Unix sbrk). Returns
 // the previous break, or (void*)-1 on failure. The user-space allocator (user/Runtime/umm.h)
 // builds malloc/free + operator new/delete on top of this.
@@ -2502,15 +1991,6 @@ int kapi_clipboard_get (int *pType, void *pBuf, unsigned nCap, unsigned *pSerial
 	return (int) s_nClipLen;
 }
 
-// Whole-window opacity of the caller's window (0 = invisible .. 255 = opaque), for
-// fades (the notification bubbles).
-void kapi_set_window_alpha (int nAlpha)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin != 0) pWin->SetAlpha (nAlpha);
-}
-
 // --- v41: full-screen apps --------------------------------------------------------
 extern C2DGraphics *g_pGraphics;
 
@@ -2530,13 +2010,10 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 	{
 		return 0;
 	}
-	// (the graphics server owns the display: the caller's window is the server's -- AppKit made it
-	// -- and what the kernel has of it is its event queue; never a window of the kernel's manager)
-	if (WsDisplayOwned () && pAS->GetWindow () == 0)
-	{
-		return 0;
-	}
-	if (pAS->GetWindow () == 0 && CreateWindow (0, 0, 64, 64, "fullscreen", WIN_FLAG_BORDERLESS) == 0)
+	// (the caller's window is the graphics server's -- AppKit asks it for one first -- and what the
+	// kernel has of it is the program's queue of events: the server sends that program all the
+	// input while it has the full screen)
+	if (pAS->GetWindow () == 0)
 	{
 		return 0;
 	}
@@ -2548,8 +2025,6 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 	pAS->MapContig (USER_FULLSCREEN_CANVAS, ulPhys, nPages, KPAGE_ATTR_APP_DATA);
 	pAS->FlushTLB ();					// (a new buffer after a change of resolution)
 	CWindow *pWin = pAS->GetWindow ();
-	if (pWM->FullscreenWindow () != pWin) { s_pFsWin = pWin; s_nFsX = pWin->X (); s_nFsY = pWin->Y (); }
-	pWin->Move (0, 0);
 	memset ((void *) ulPhys, 0, (size_t) g_nScreenWidth * g_nScreenHeight * 4);
 	pWM->SetFullscreen (pWin);
 	s_pDirectWin = 0;
@@ -2617,7 +2092,6 @@ void kapi_present_fb (void)
 			}
 			g_pGraphics->UpdateDisplay ();
 			ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
-			pAS->GetWindow ()->Touch ();		// (rdpd)
 		}
 	}
 	if (CScheduler::IsActive ())
@@ -2634,19 +2108,8 @@ void kapi_fullscreen_end (void)
 	CWindowManager *pWM = CWindowManager::Get ();
 	if (pAS != 0 && pWM != 0 && pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ())
 	{
-		CWindow *pWin = pAS->GetWindow ();
 		s_pDirectWin = 0;
-		pWM->SetFullscreen (0);
-		// back where it was; else (made full screen at once) centred, below the menu bar
-		int x = s_nFsX, y = s_nFsY;
-		if (s_pFsWin != pWin || y < 32)			// (32: the menu bar, user/Apps/menubar)
-		{
-			x = (g_nScreenWidth - pWin->OuterW ()) / 2; y = (g_nScreenHeight - pWin->OuterH ()) / 2;
-			if (y < 32) y = 32;
-			if (x < 0) x = 0;
-		}
-		pWin->Move (x, y);
-		s_pFsWin = 0;
+		pWM->SetFullscreen (0);			// (the graphics server puts the window back where it was)
 	}
 }
 
@@ -2677,49 +2140,6 @@ void kapi_shutdown (int nMode)
 static u8	s_Dnd[DND_MAX];
 static unsigned	s_nDndLen = 0;
 static int	s_nDndType = 0;
-
-// Start dragging (type, data) from the caller's window, with `label` on the cursor
-// badge. The left button must be held (call it from a pointer-move handler once the
-// cursor moved a few pixels with the button down). 1 = started, 0 = not.
-int kapi_drag_begin (int nType, const void *pData, unsigned nLen, const char *pLabel)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindowManager *pWM = CWindowManager::Get ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || pWM == 0)
-	{
-		return 0;
-	}
-	CUserStr Label (pLabel, DND_LABEL_MAX, TRUE);		// copy out of the app's memory first
-	if (!Label.OK () && !Label.IsNull ())
-	{
-		return 0;
-	}
-	if (nLen > DND_MAX) nLen = DND_MAX;
-	if (pData == 0) nLen = 0;
-	if (!UserReadable (pData, nLen))
-	{
-		return 0;
-	}
-	if (!pWM->DragBegin (pWin, Label.OK () ? Label.Get () : ""))
-	{
-		return 0;
-	}
-	if (nLen) memcpy (s_Dnd, pData, nLen);
-	s_nDndLen = nLen;
-	s_nDndType = nType;
-	return 1;
-}
-
-// The dropped payload: copies <= cap bytes, returns the full length (+ its type).
-int kapi_drag_data (int *pType, void *pBuf, unsigned nCap)
-{
-	unsigned n = s_nDndLen < nCap ? s_nDndLen : nCap;
-	if (!OutOK (pType) || (pBuf != 0 && !UserRange (pBuf, n))) return 0;
-	OutPut (pType, s_nDndType);
-	if (pBuf != 0 && n && !UserCopyOut (pBuf, s_Dnd, n)) return 0;
-	return (int) s_nDndLen;
-}
 
 // Current keyboard modifiers (MOD_CTRL / MOD_SHIFT / MOD_ALT).
 // While a key handler runs, these are the modifiers held when that key was typed.
@@ -2861,10 +2281,8 @@ int kapi_key_held (int nKey)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
 	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (WsDisplayOwned ())				// (the graphics server says who has the keyboard)
-		return pWM != 0 && pAS != 0 && WsFocusPid () == pAS->GetPid () && pWM->KeyHeldAny (nKey) ? 1 : 0;
-	return pWM != 0 && pWM->KeyHeld (nKey, pWin) ? 1 : 0;
+	// (the graphics server says who has the keyboard: kern/wsrv.h)
+	return pWM != 0 && pAS != 0 && WsFocusPid () == pAS->GetPid () && pWM->KeyHeldAny (nKey) ? 1 : 0;
 }
 void kapi_inject_key_held (int nKey, int bDown)
 {
@@ -2886,175 +2304,14 @@ int kapi_pad_state (int nIndex, struct kapi_pad *pOut)
 {
 	struct kapi_pad Pad;
 	if (pOut == 0 || !UserRange (pOut, sizeof *pOut) || !KernelPadState (nIndex, &Pad)) return 0;
-	CWindowManager *pWM = CWindowManager::Get ();
 	CAddressSpace *pAS = CurrentAS ();
-	Pad.focus = pWM != 0 && pAS != 0 && pWM->HasKeyFocus (pAS->GetWindow ()) ? 1 : 0;
-	if (WsDisplayOwned ()) Pad.focus = pAS != 0 && WsFocusPid () == pAS->GetPid () ? 1 : 0;
+	Pad.focus = pAS != 0 && WsFocusPid () == pAS->GetPid () ? 1 : 0;	// (the graphics server says who has the keyboard)
 	return UserPut (pOut, Pad) ? 1 : 0;
 }
 
 }  // extern "C"
 
-// ---- v56: the windows as objects (the window-level remote desktop, rdpd) --------------------
-static CWindow *WinById (CWindowManager *pWM, unsigned nId)
-{
-	CWindow *List[WM_MAX_WINDOWS];
-	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
-	for (unsigned i = 0; i < n; i++) if (List[i]->Id () == nId) return List[i];
-	return 0;				// (a CWindow is never freed: see Composite)
-}
-
 extern "C" {
-
-int kapi_win_list (struct kapi_win_info *pOut, int nMax)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0 || pOut == 0 || nMax <= 0 || !UserWritable (pOut, (u64) nMax * sizeof *pOut)) return 0;
-	CWindow *List[WM_MAX_WINDOWS];
-	unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
-	CWindow *pFs = pWM->FullscreenWindow ();
-	int k = 0;
-	{	// the desktop first (it is not a window: the wallpaper + the backmost windows)
-		struct kapi_win_info &I = pOut[k++];
-		memset (&I, 0, sizeof I);
-		I.id = KAPI_WIN_DESKTOP; I.w = g_nScreenWidth; I.h = g_nScreenHeight;
-		I.flags = WIN_FLAG_BACKMOST | WIN_FLAG_BORDERLESS; I.alpha = 255; I.gen = pWM->DesktopGen ();
-		memcpy (I.title, "Onyx Desktop", 13);
-	}
-	for (unsigned i = 0; i < n && k < nMax; i++)
-	{
-		CWindow *pW = List[i];
-		struct kapi_win_info &I = pOut[k++];
-		I.id = pW->Id (); I.pid = pW->OwnerPid ();
-		I.x = pW->X () + pW->ChromeL (); I.y = pW->Y () + pW->ChromeT ();
-		I.w = pW->ClientWidth (); I.h = pW->ClientHeight ();
-		I.flags = pW->Flags (); I.alpha = pW->Alpha (); I.gen = pW->Gen ();
-		I.state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
-			| (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
-		if (pW == pFs) { I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN; }
-		I.ow = I.oh = I.il = I.it = 0; I.chromeGen = pW->ChromeGen ();
-		if (pW->HasChrome () && pW != pFs) { I.ow = pW->OuterW (); I.oh = pW->OuterH (); I.il = pW->ChromeL (); I.it = pW->ChromeT (); }
-		const char *t = pW->Title ();
-		unsigned j = 0;
-		for (; j + 1 < sizeof I.title && t[j]; j++) I.title[j] = t[j];
-		I.title[j] = 0;
-	}
-	return k;
-}
-
-int kapi_win_read (unsigned nId, int nPart, int x, int y, int w, int h, unsigned *pDst, int nStride)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM != 0 && nId == KAPI_WIN_DESKTOP)		// the whole desktop, composited straight in
-	{
-		if (nPart != 0 || x != 0 || y != 0 || w != g_nScreenWidth || h != g_nScreenHeight || nStride != w
-		    || pDst == 0 || !UserWritable (pDst, (u64) w * h * 4)) return -1;
-		GImage Img ((u32 *) pDst, w, h);
-		pWM->CompositeDesktop (&Img);
-		return 0;
-	}
-	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
-	if (pW == 0 || pDst == 0) return -1;
-	const u8 *pSrc; unsigned nPitch; int W, H;
-	if (nPart == 1 || nPart == 2)
-	{
-		if (!pW->HasChrome ()) return -1;
-		W = pW->OuterW (); H = pW->OuterH ();
-		pSrc = (const u8 *) pW->ChromePhys (nPart - 1); nPitch = (unsigned) W * 4;
-	}
-	else if (nPart != 0) return -1;
-	else if (pW == pWM->FullscreenWindow ())
-	{
-		W = g_nScreenWidth; H = g_nScreenHeight;
-		if (FsDirect (pWM) && (pSrc = (const u8 *) MapScreen (CurrentAS (), &nPitch)) != 0) {}
-		else if (pWM->FullscreenBuffer () != 0) { pSrc = (const u8 *) pWM->FullscreenBuffer (); nPitch = (unsigned) W * 4; }
-		else return -1;
-	}
-	else
-	{
-		W = pW->ClientWidth (); H = pW->ClientHeight ();
-		pSrc = (const u8 *) pW->CanvasBuffer (); nPitch = (unsigned) pW->Canvas ()->Width () * 4;
-		if (pSrc == 0) return -1;
-	}
-	if (x < 0) { w += x; x = 0; }
-	if (y < 0) { h += y; y = 0; }
-	if (x + w > W) w = W - x;
-	if (y + h > H) h = H - y;
-	if (w <= 0 || h <= 0) return 0;
-	if (nStride < w) return -1;
-	if (!UserWritable (pDst, ((u64) (h - 1) * (u64) nStride + (u64) w) * 4)) return -1;
-	for (int r = 0; r < h; r++)
-		memcpy (pDst + (size_t) r * nStride, pSrc + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
-	return 0;
-}
-
-int kapi_win_raise (unsigned nId)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
-	if (pW == 0) return -1;
-	pWM->Raise (pW);
-	ScreenDirty ();
-	return 0;
-}
-
-int kapi_win_close (unsigned nId)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	CWindow *pW = pWM != 0 ? WinById (pWM, nId) : 0;
-	if (pW == 0) return -1;
-	pW->RequestExit ();
-	return 0;
-}
-
-// ---- v64: the modernised CDE desktop's windows ------------------------------------------
-int kapi_win_minimise (unsigned nId)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0) return -1;
-	CWindow *pW;
-	if (nId == 0) { CAddressSpace *pAS = CurrentAS (); pW = pAS != 0 ? pAS->GetWindow () : 0; }
-	else pW = WinById (pWM, nId);
-	if (pW == 0) return -1;
-	pWM->Minimise (pW);
-	return 0;
-}
-
-int kapi_win_geometry (struct kapi_win_geom *pOut)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pW = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWM == 0 || pW == 0 || pOut == 0) return -1;
-	struct kapi_win_geom G;					// (made here, copied out whole)
-	memset (&G, 0, sizeof G);
-	G.x = pW->X (); G.y = pW->Y ();
-	G.w = pW->OuterWidth (); G.h = pW->OuterHeight ();
-	G.cw = pW->ClientWidth (); G.ch = pW->ClientHeight ();
-	pWM->WorkArea (&G.ax, &G.ay, &G.aw, &G.ah);
-	G.state = (pWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
-		| (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
-	return UserPut (pOut, G) ? 0 : -1;
-}
-
-// ---- v65: the workspaces (virtual desktops) -------------------------------------------------
-int kapi_desk (int nSet, int nCount)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0) return 1 << 8;
-	return nSet < 0 && nCount <= 0 ? pWM->DeskInfo () : pWM->SetDesk (nSet, nCount);
-}
-
-int kapi_win_desk (unsigned nId, int n)
-{
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (pWM == 0) return -3;
-	CWindow *pW;
-	if (nId == 0) { CAddressSpace *pAS = CurrentAS (); pW = pAS != 0 ? pAS->GetWindow () : 0; }
-	else pW = WinById (pWM, nId);
-	if (pW == 0) return -3;
-	return n < -1 ? pW->Desk () : pWM->MoveToDesk (pW, n);
-}
 
 // --- v66: the screen's resolution, while running (kernel.cpp: the compositor does it) ---------
 int kapi_screen_set (int w, int h)
@@ -3087,38 +2344,6 @@ int kapi_set_timezone (int nMinutes)
 {
 	if (nMinutes < -720 || nMinutes > 840) return 0;
 	return CTimer::Get ()->SetTimeZone (nMinutes) ? 1 : 0;
-}
-
-// Resize the caller's window, its canvas (and frame copies) growing when needed: new memory
-// mapped at the same addresses (the old kept a few frames for the compositor, then freed).
-unsigned *kapi_resize_window2 (int w, int h, int *pStride)
-{
-	CAddressSpace *pAS = CurrentAS ();
-	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
-	if (pWin == 0 || w <= 0 || h <= 0 || !OutOK (pStride))
-	{
-		return 0;
-	}
-	if (w > g_nScreenWidth) w = g_nScreenWidth;		// (no bigger than the screen)
-	if (h > g_nScreenHeight) h = g_nScreenHeight;
-	if (w > pWin->Canvas ()->Width () || h > pWin->Canvas ()->Height ())
-	{
-		if (!pWin->Grow (w, h))
-		{
-			return 0;
-		}
-		TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
-		pAS->MapContig (USER_WINDOW_CANVAS, pWin->CanvasPhys (), pWin->CanvasPages (), Attr);
-		if (pWin->HasChrome ())
-		{
-			pAS->MapContig (USER_WINDOW_CHROME,          pWin->ChromePhys (0), pWin->ChromePages (0), Attr);
-			pAS->MapContig (USER_WINDOW_CHROME_INACTIVE, pWin->ChromePhys (1), pWin->ChromePages (1), Attr);
-		}
-		pAS->FlushTLB ();
-	}
-	pWin->SetLogicalSize (w, h);
-	OutPut (pStride, (int) pWin->Canvas ()->Width ());
-	return (unsigned *) USER_WINDOW_CANVAS;
 }
 
 // (v71) A volume's room: RAM: (kern/ramfs.h) or a FatFs volume ("SD:", "SD1:"...: f_getfree,

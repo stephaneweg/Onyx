@@ -17,22 +17,13 @@
 // table; C linkage matches them to the void*-taking definitions by symbol name.
 extern "C" {
 
-unsigned *kapi_create_window (int, int, const char *);
-unsigned *kapi_create_window_ex (int, int, int, int, const char *, unsigned);
-unsigned *kapi_resize_window (int, int);
 int kapi_launch (const char *);
-int kapi_toggle_app (const char *);
-int kapi_raise_app (const char *);
-int kapi_list_windows (char *, unsigned);
 int kapi_list_tasks (char *, unsigned);
 int kapi_kill (const char *);
 int kapi_exec (const char *, const char *);
 int kapi_exec_as (const char *, const char *, const char *);
 int kapi_pad_state (int, struct kapi_pad *);
 void kapi_screen_size (int *, int *);
-void kapi_move_window (int, int);
-unsigned *kapi_wallpaper_buffer (int *, int *);
-void kapi_wallpaper_commit (void);
 int kapi_list_procs (char *, unsigned);
 int kapi_kill_pid (int, int);
 int kapi_set_keymap (const char *);
@@ -54,28 +45,18 @@ int kapi_tcp_accept (int, char *, unsigned);
 int kapi_screen_grab (unsigned *, int, int);
 void kapi_inject_pointer (int, int, unsigned, int);
 void kapi_inject_key (const char *);
-int kapi_set_menu (const char *, void *);
-unsigned kapi_get_menu (char *, unsigned, char *, unsigned);
-int kapi_menu_command (int);
 int kapi_ipc_register (const char *);
 int kapi_ipc_lookup (const char *);
 int kapi_clipboard_set (int, const void *, unsigned);
 int kapi_clipboard_get (int *, void *, unsigned, unsigned *);
-void kapi_set_window_alpha (int);
 void kapi_shutdown (int);
 unsigned *kapi_fullscreen_begin (int *, int *);
 void kapi_present_fb (void);
 void kapi_fullscreen_end (void);
 unsigned *kapi_fullscreen_direct (int *, int *, int *);
-int kapi_win_list (struct kapi_win_info *, int);
-int kapi_win_read (unsigned, int, int, int, int, int, unsigned *, int);
-int kapi_win_raise (unsigned);
-int kapi_win_close (unsigned);
 int kapi_seek (void *, unsigned long long);
 void *kapi_code_alloc (unsigned long);
 unsigned long long kapi_fsize64 (void *);
-int  kapi_drag_begin (int, const void *, unsigned, const char *);
-int  kapi_drag_data (int *, void *, unsigned);
 unsigned kapi_get_modifiers (void);
 void kapi_inject_modifiers (unsigned);
 int  kapi_net_ping (const char *, unsigned, unsigned, char *, unsigned);
@@ -97,11 +78,6 @@ int  kapi_pop_event (struct kapi_event *);		// (v73)
 unsigned kapi_event_mods (unsigned);
 int  kapi_pop_post (struct kapi_posted *);
 int  kapi_pump_sleep (unsigned);
-int  kapi_win_minimise (unsigned);
-int  kapi_win_geometry (struct kapi_win_geom *);
-unsigned *kapi_resize_window2 (int, int, int *);
-int  kapi_desk (int, int);
-int  kapi_win_desk (unsigned, int);
 int  kapi_screen_set (int, int);
 int  kapi_thread_create (int (*) (void *), void *, unsigned, const char *);
 void kapi_thread_exit (int);
@@ -137,8 +113,6 @@ int  kapi_screen_native (int *, int *);
 int  kapi_set_timezone (int);
 int  kapi_key_held (int);
 void kapi_inject_key_held (int, int);
-int kapi_wallpaper_generate (unsigned, int, unsigned);
-void kapi_present (void);
 unsigned kapi_get_ticks (void);
 void kapi_msleep (unsigned);
 void kapi_yield (void);
@@ -146,10 +120,8 @@ void kapi_exit (int);
 
 int kapi_should_exit (void);
 
-void kapi_draw_text (int, int, const char *, unsigned);
 int kapi_font_width (void);
 int kapi_font_height (void);
-void kapi_set_key_handler (gui_handler);
 
 int kapi_list_apps (char *, unsigned);
 int kapi_get_datetime (int *, int *, int *, int *, int *, int *);
@@ -162,17 +134,12 @@ void kapi_close (void *);
 int kapi_save_file (const char *, const void *, unsigned);
 
 int kapi_app_dir (char *, unsigned);
-void kapi_set_click_handler (gui_handler);
-void kapi_set_pointer_handler (gui_handler);
 int kapi_meminfo (unsigned long *, unsigned long *, unsigned long *, unsigned *);
 int kapi_ram_detail (unsigned long *, unsigned long *, unsigned long *, unsigned long *, unsigned *);
-void kapi_set_wheel_speed (int);
-int kapi_get_wheel_speed (void);
 void *kapi_sbrk (long);
 void kapi_reboot (void);
 int kapi_kbd_ready (void);
 int kapi_set_keymap_data (const char *, const void *, unsigned);
-int kapi_get_chrome (struct kapi_chrome *);
 void kapi_draw_text_buf (unsigned *, int, int, int, int, const char *, unsigned);
 int kapi_random (void *, unsigned);
 void *kapi_opendir (const char *);
@@ -181,7 +148,6 @@ void kapi_closedir (void *);
 int kapi_mkdir (const char *);
 int kapi_remove (const char *);
 int kapi_rename (const char *, const char *);
-void kapi_cursor_pos (int *, int *);
 
 void *kapi_pipe (void);
 void *kapi_file_in (const char *);
@@ -204,8 +170,6 @@ int kapi_surface_size (int, int *, int *);
 void kapi_surface_present (int);
 int kapi_surface_destroy (int);
 
-int kapi_register_shell (void);
-int kapi_shell_request (int, const void *, unsigned);
 int kapi_mailbox_send (int, int, const void *, unsigned);
 int kapi_mailbox_recv (int *, int *, void *, unsigned, int);
 
@@ -280,9 +244,7 @@ int kapi_kernel_info (char *pBuf, unsigned nCap);
 int kapi_cpu_stats (struct kapi_cpu_stats *pOut);
 int kapi_net_stats (int nPid, struct kapi_net_stats *pOut);
 // v81 the pointer's shape (sys/kapi.cpp)
-int kapi_set_cursor (int nShape);
 // v82 a window resized by its frame (sys/kapi.cpp)
-int kapi_win_resizable (int bOn, int nMinW, int nMinH);
 // v83 shared libraries (sys/kapi.cpp over proc/image.cpp)
 const void *kapi_lib_open (const char *pName, unsigned nMinVersion, int *pErr);
 // v84 the sound's output (sys/kapi.cpp over sys/sound.cpp)
@@ -307,15 +269,7 @@ void KApiTableInit (void)
 	TKApiTable *t = &s_Table;
 	t->version = KAPI_ABI_VERSION;
 
-	t->create_window     = kapi_create_window;
-	t->create_window_ex  = kapi_create_window_ex;
-	t->resize_window     = kapi_resize_window;
 	t->launch            = kapi_launch;
-	t->toggle_app        = kapi_toggle_app;
-	t->raise_app         = kapi_raise_app;
-	t->list_windows      = kapi_list_windows;
-	t->wallpaper_generate = kapi_wallpaper_generate;
-	t->present           = kapi_present;
 	t->get_ticks         = kapi_get_ticks;
 	t->msleep            = kapi_msleep;
 	t->yield             = kapi_yield;
@@ -328,10 +282,8 @@ void KApiTableInit (void)
 	t->wait_for_exit     = 0;
 	t->should_exit       = kapi_should_exit;
 
-	t->draw_text         = kapi_draw_text;
 	t->font_width        = kapi_font_width;
 	t->font_height       = kapi_font_height;
-	t->set_key_handler   = kapi_set_key_handler;
 
 	t->list_apps         = kapi_list_apps;
 	t->get_datetime      = kapi_get_datetime;
@@ -344,14 +296,12 @@ void KApiTableInit (void)
 	t->save_file         = kapi_save_file;
 
 	t->app_dir           = kapi_app_dir;
-	t->set_click_handler = kapi_set_click_handler;
 	t->opendir           = kapi_opendir;
 	t->readdir           = kapi_readdir;
 	t->closedir          = kapi_closedir;
 	t->mkdir             = kapi_mkdir;
 	t->remove            = kapi_remove;
 	t->rename            = kapi_rename;
-	t->cursor_pos        = kapi_cursor_pos;
 	t->list_tasks        = kapi_list_tasks;
 	t->kill              = kapi_kill;
 
@@ -371,9 +321,6 @@ void KApiTableInit (void)
 	t->proc_done         = kapi_proc_done;
 	t->exec              = kapi_exec;
 	t->screen_size       = kapi_screen_size;
-	t->move_window       = kapi_move_window;
-	t->wallpaper_buffer  = kapi_wallpaper_buffer;
-	t->wallpaper_commit  = kapi_wallpaper_commit;
 	t->list_procs        = kapi_list_procs;
 	t->kill_pid          = kapi_kill_pid;
 	t->set_keymap        = kapi_set_keymap;
@@ -390,18 +337,14 @@ void KApiTableInit (void)
 	t->tcp_send          = kapi_tcp_send;
 	t->tcp_recv          = kapi_tcp_recv;
 	t->tcp_close         = kapi_tcp_close;
-	t->set_pointer_handler = kapi_set_pointer_handler;
 	t->meminfo           = kapi_meminfo;
 	t->sbrk              = kapi_sbrk;
 	t->reboot            = kapi_reboot;
 	t->kbd_ready         = kapi_kbd_ready;
 	t->set_keymap_data   = kapi_set_keymap_data;
-	t->get_chrome        = kapi_get_chrome;
 	t->draw_text_buf     = kapi_draw_text_buf;
 	t->random            = kapi_random;
 	t->ram_detail        = kapi_ram_detail;
-	t->set_wheel_speed   = kapi_set_wheel_speed;
-	t->get_wheel_speed   = kapi_get_wheel_speed;
 
 	t->surface_create    = kapi_surface_create;
 	t->surface_map       = kapi_surface_map;
@@ -409,8 +352,6 @@ void KApiTableInit (void)
 	t->surface_present   = kapi_surface_present;
 	t->surface_destroy   = kapi_surface_destroy;
 
-	t->register_shell    = kapi_register_shell;
-	t->shell_request     = kapi_shell_request;
 	t->mailbox_send      = kapi_mailbox_send;
 	t->mailbox_recv      = kapi_mailbox_recv;
 
@@ -427,23 +368,17 @@ void KApiTableInit (void)
 	t->inject_pointer    = kapi_inject_pointer;
 	t->inject_key        = kapi_inject_key;
 
-	t->set_menu          = (int (*) (const char *, gui_handler)) kapi_set_menu;
-	t->get_menu          = kapi_get_menu;
-	t->menu_command      = kapi_menu_command;
 
 	t->ipc_register      = kapi_ipc_register;
 	t->ipc_lookup        = kapi_ipc_lookup;
 	t->clipboard_set     = kapi_clipboard_set;
 	t->clipboard_get     = kapi_clipboard_get;
-	t->set_window_alpha  = kapi_set_window_alpha;
 	t->shutdown          = kapi_shutdown;
 
 	t->fullscreen_begin  = kapi_fullscreen_begin;
 	t->present_fb        = kapi_present_fb;
 	t->fullscreen_end    = kapi_fullscreen_end;
 
-	t->drag_begin        = kapi_drag_begin;
-	t->drag_data         = kapi_drag_data;
 	t->get_modifiers     = kapi_get_modifiers;
 	t->inject_modifiers  = kapi_inject_modifiers;
 
@@ -478,10 +413,6 @@ void KApiTableInit (void)
 	t->gpu_texture       = kapi_gpu_texture;
 	t->gpu_render        = kapi_gpu_render;
 	t->fullscreen_direct = kapi_fullscreen_direct;
-	t->win_list          = kapi_win_list;
-	t->win_read          = kapi_win_read;
-	t->win_raise         = kapi_win_raise;
-	t->win_close         = kapi_win_close;
 	t->seek              = kapi_seek;
 	t->code_alloc        = kapi_code_alloc;
 	t->fsize64           = kapi_fsize64;
@@ -491,11 +422,6 @@ void KApiTableInit (void)
 	t->gpu_render2       = kapi_gpu_render2;
 	t->gpu_render3       = kapi_gpu_render3;
 	t->gpu_vbuf          = kapi_gpu_vbuf;
-	t->win_minimise      = kapi_win_minimise;
-	t->win_geometry      = kapi_win_geometry;
-	t->resize_window2    = kapi_resize_window2;
-	t->desk              = kapi_desk;
-	t->win_desk          = kapi_win_desk;
 	t->screen_set        = kapi_screen_set;
 	t->thread_create     = kapi_thread_create;
 	t->thread_exit       = kapi_thread_exit;
@@ -598,8 +524,6 @@ void KApiTableInit (void)
 	t->kernel_info       = kapi_kernel_info;
 	t->cpu_stats         = kapi_cpu_stats;		// (v80)
 	t->net_stats         = kapi_net_stats;
-	t->set_cursor        = kapi_set_cursor;		// (v81)
-	t->win_resizable     = kapi_win_resizable;	// (v82)
 	t->lib_open          = kapi_lib_open;		// (v83)
 	t->sound_output      = kapi_sound_output;	// (v84)
 	t->sound_clients       = kapi_sound_clients;	// (v85)

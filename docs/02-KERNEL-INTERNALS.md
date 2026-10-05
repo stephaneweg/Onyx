@@ -1235,15 +1235,13 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
     name* (`KAPI_WS_PROC_NAME`: the lists of the open programs);
 - **the start** (`WsBootStart`, before init) — the kernel starts `SD:bin/elegant --serve` at every boot and
   waits (5 s at most) until it has the display; init then starts the desktop, whose programs have their
-  windows in Elegant. (While the kernel's own window manager still exists: it is what is left if Elegant
-  does not come up, and `SD:/etc/elegant.off` keeps Elegant from being started.)
+  windows in Elegant. There is no other window manager (§10): without a server, the kernel's console.
 
-**AppKit's window calls have two bodies**
-(`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): at a program's first window call AppKit asks
-`KAPI_WS_ACTIVE`; Elegant owns the display → that program's window calls speak the protocol
-(`user/Kits/appkit/elegant.h`, private to AppKit and Elegant: 30 operations, each doing what the kernel's
-call of the same name did) for its whole life; else they call the kernel's window manager as before. No
-program is rebuilt. Under Elegant the kernel still serves: the pump (`pop_event`, `should_exit`,
+**AppKit's window calls speak to Elegant** (`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): the protocol
+is `user/Kits/appkit/elegant.h` (private to AppKit and Elegant: 31 operations, each doing what the kernel's
+call of the same name did). A call that finds no server (it is being started, or started again) waits for
+it, 5 s at most. No program is rebuilt. (The builds that take the calls inline against a stand-in kernel
+with a window manager -- the PC's simulator -- still call that table.) The kernel still serves: the pump (`pop_event`, `should_exit`,
 `pump_sleep`, `post`), `screen_size`, `screen_grab` (the off-screen buffer), `inject_*` (to the server's
 ring), `get_modifiers`, `key_held`, `draw_text_buf` (AppKit's `kapi_draw_text` draws into the canvas with
 it), the surfaces, the clipboard — and **the full screen**: `fullscreen_begin` / `present_fb` /
@@ -1819,8 +1817,34 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 
 ## 10. Graphics subsystem (GUI)
 
-Source: `kernel/gui/{gimage,window,surface}.cpp` + headers (`kern/gui/`). Rendering core ported from
-the author's FreeBASIC `SimpleOS`.
+> **Since 2026-10-05 the window manager, the compositor and the routing of the input are no longer in
+> the kernel.** They are **Elegant**'s, the graphics server, a user process (`SD:/bin/elegant`,
+> `user/Servers/elegant`; §8, v89: what the kernel gives it; `docs/GUI-USERSPACE-STUDY.md`). The window
+> manager described in §10.2 and §10.3 below is the same code, moved: `user/Servers/elegant/wm/window.cpp`
+> and `wm/kern/gui/window.h` (with `wm/cursors.inc`), built for a user process with stand-ins for the few
+> Circle headers it includes (`user/Servers/elegant/port`) — read "the kernel" there as "Elegant".
+>
+> **What the kernel keeps** (`kernel/gui/kwin.cpp`, `kern/gui/window.h`, 150 lines):
+> - `CWindow` — only a program's **queue of events** (with the request to end and the wake of
+>   `kapi_pump_wait`): one a program whose windows are Elegant's; Elegant pushes into it. No pixels.
+> - `CWindowManager` — the **keys' state** (the modifiers, the held keys: `get_modifiers`, `key_held`) and
+>   **the full screen** (the program that has it and its buffer; `present_fb` still sends that buffer to
+>   the display itself).
+> - `GImage` (§10.1; Elegant compiles the same file) for `draw_text_buf`'s bitmap font; the surfaces
+>   (`surface.cpp`); the frame buffer, its DMA, the change of resolution; the USB input drivers, whose
+>   events go to Elegant's ring.
+> - **The display task** (`CCompositorTask`, `kernel.cpp`: it composes nothing any more): it starts
+>   Elegant again when it ends (`WsPoll`), takes the display from a silent one (`WsWatch`), does a
+>   resolution change. **No server** (it cannot be started, does not take the display, or ended 5 times):
+>   the kernel's **console** takes the screen (`DebugConsoleTakeover`: its log); the Pi is reached by telnet.
+> - **The kernel's table**: the 38 entries of the windows (`create_window`, `present`, `set_menu`,
+>   `win_list`, `drag_begin`, `wallpaper_*`, `desk`...) and the 2 of the activity shell
+>   (`register_shell`, `shell_request`) are **0** — their slots stay where they were (a slot is a system
+>   call's number), their functions are gone from `sys/kapi.cpp` (740 lines). AppKit's functions of those
+>   names speak to Elegant (`appkit_ws.inc`); no program is rebuilt. The kernel image lost 43 KB.
+
+Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
+`user/Servers/elegant/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
 
 ### 10.1 `GImage` — software rendering engine
 

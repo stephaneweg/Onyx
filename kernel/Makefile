@@ -21,7 +21,7 @@ OBJS = \
 	sched/task.o \
 	mm/addrspace.o \
 	gui/gimage.o \
-	gui/window.o \
+	gui/kwin.o \
 	gui/surface.o \
 	proc/elf.o \
 	proc/image.o \

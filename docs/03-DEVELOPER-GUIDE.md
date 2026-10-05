@@ -1128,9 +1128,9 @@ alone**.
   and has no constructor (its only data: the `.ini` reader's store, private to each program); it is built with the FPU on, its calls passing floats through.
 - **Cost**: one more indirect jump a call (the stub), then AppKit's function — nothing beside a system
   call.
-- **The window calls have two bodies** (kapi v89, `appkit_ws.inc`; docs/02 §8 v89): the windows are leaving
+- **The window calls speak to Elegant** (kapi v89, `appkit_ws.inc`; docs/02 §8 v89, §10): the windows left
   the kernel for **Elegant**, the graphics server, a user process (`user/Servers/elegant`,
-  `SD:/bin/elegant`). When Elegant owns the display, a program's `kapi_create_window`, `kapi_present`,
+  `SD:/bin/elegant`). A program's `kapi_create_window`, `kapi_present`,
   `kapi_set_menu`... speak to it (`appkit/elegant.h`: private, never included by a program) instead of
   the kernel's window manager; the pixels are memory shared with Elegant at the same addresses, the events
   come through the same pump. A program sees no difference and is not rebuilt. Adding a window call:
@@ -3897,7 +3897,7 @@ log lines.
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.
 
 If you add a new **GUI event** or a **window flag**, keep the values
-synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `user/Kits/appkit/appkit.h` (commented
+synchronized between `user/Servers/elegant/wm/kern/gui/window.h` (Elegant's window manager) and the `#define`s in `user/Kits/appkit/appkit.h` (commented
 "must match").
 
 ## 11. Coding conventions

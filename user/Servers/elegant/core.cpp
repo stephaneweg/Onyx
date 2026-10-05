@@ -52,9 +52,9 @@ static CWindow *Win (int id)
 	return id >= 0 && id < EL_WINDOWS_MAX ? g_pElWin[id] : 0;
 }
 
-// The pointer's shapes (kapi_set_cursor): the kernel's art (kernel/gui/cursors.inc), built as
+// The pointer's shapes (kapi_set_cursor): the art of wm/cursors.inc (tools/gui/gen_cursors.py), built as
 // kernel.cpp does; the arrow is the window manager's own drawn one.
-#include "../../../kernel/gui/cursors.inc"
+#include "wm/cursors.inc"
 
 // The arrow: white with a black edge (the kernel's own is black with a white edge), its tip the hot spot.
 #define ARROW_W	13
