@@ -869,7 +869,7 @@ always 16-bit stereo at `AUDIOKIT_RATE` (44100 Hz, the system output's).
 
 | Group | Calls | What it does |
 |---|---|---|
-| **Files** | `ak_open`, `ak_read`, `ak_seek_ms`, `ak_info_of`, `ak_close` | A sound file of any kind — **MP3, FLAC, WAV, Ogg Vorbis, MIDI** (through the SoundFont) — read as frames at the output's rate, whatever its own rate and channels. |
+| **Files** | `ak_open`, `ak_read`, `ak_seek_ms`, `ak_info_of`, `ak_close` | A sound file of any kind — **MP3, FLAC, WAV, Ogg Vorbis, MIDI** (through the SoundFont), **FM Song** (`.fms`, FM Tracker's: on a synthesizer of the stream's own, one at a time per process) — read as frames at the output's rate, whatever its own rate and channels. |
 | **The player** | `ak_play (path, loop)`, `ak_play_stop`, `_pause`, `_state`, `_pos_ms`, `_len_ms`, `_seek_ms`, `_volume`, `_wait`, `_error`, `_keep_output` | A file played **in the background** by a thread of the library, on the system's output (it takes the output when it has something to play and lets it go after ~0.6 s of silence; another program playing: `AK_BUSY` until it can). One line to make a sound. |
 | **Live notes** | `ak_note_on (channel, key, velocity)`, `ak_note_off`, `ak_program`, `ak_control`, `ak_pitch_bend`, `ak_notes_off` | Notes on a **General MIDI synthesizer** (16 channels, 9 the drums), mixed with the file by the same thread. |
 | **The output** | `ak_out_open`, `ak_out_write`, `ak_out_free`, `ak_out_queued`, `ak_out_close` | The system's output for a program that makes its own frames: the acquire / status / write loop every player and emulator wrote for itself (`ak_out_open (0, 0)`: the output as it is configured). **The Media Player and the six emulators play through it.** |

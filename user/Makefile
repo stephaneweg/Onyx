@@ -195,7 +195,7 @@ lib/ak/synth_%.o: Apps/koton/synth/%.cpp $(wildcard Apps/koton/synth/*.h)
 lib/ak/codecs.o lib/ak/vorbis.o: lib/ak/%.o: Apps/media/%.c Apps/media/codecs.h
 	@mkdir -p lib/ak
 	$(CC) $(AK_FLAGS) -w -I../third_party -IApps/media -c $< -o $@
-lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
+lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h audiokit/fmsynth.h audiokit/fm_tables.h Apps/fmtracker/fms.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
 		 Apps/koton/synth/meltysynth.h kapi.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -I../third_party -IApps/media -IApps/koton -c $< -o $@
