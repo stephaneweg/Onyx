@@ -15,7 +15,7 @@ CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfi
 	  -I.. -I../../kernel/include -I$(DG) -w
 CXXFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	  -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -I.. -I../../kernel/include
-LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections
+LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections ../lib/appkit_stubs.o
 
 DG_SRC = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_main d_mode d_net \
 	 f_finale f_wipe g_game hu_lib hu_stuff info i_cdmus i_endoom i_joystick i_scale i_sound \

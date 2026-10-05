@@ -75,6 +75,8 @@ struct TTrapFrame;
 
 // Boot: build the EL0 table page and the EL0 code page (after KApiTableInit, before any process).
 void El0Init (void);
+// (AppKit, kern/kapi_abi.h) its table copied at APPKIT_TABLE_VA for every program
+void El0InstallAppKit (const u64 *pEntries, unsigned nEntries);
 
 // Every core, early: let EL0 read the counters (CNTKCTL_EL1), the cache type and do the JIT's cache
 // maintenance (SCTLR_EL1.UCI / UCT / DZE), WFE / WFI without a trap (nTWE / nTWI), the PMU

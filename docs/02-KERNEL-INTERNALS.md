@@ -1039,6 +1039,33 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
 
 ## 8. The kapi ABI table
 
+> **AppKit (2026-10-05): the table below is no longer what the programs are built against.** The
+> programs reach the kernel through **AppKit** (`SD:/lib/appkit.so`, `user/appkit/appkit.c`: the `kapi_*`
+> functions of `user/kapi.h`, exported **by name**), and only AppKit reads this table. The kernel and
+> AppKit are built and shipped together (the package `onyx`), so **the table may be restructured** —
+> entries moved, removed, merged — by adapting AppKit; no program is rebuilt. What is append-only from
+> now on is AppKit's list of names (`user/appkit/appkit.abi`), kept by the generator.
+>
+> **How the kernel gives it to the programs** (no call of theirs):
+> - `kernel.cpp`, `AppKitAttach`: at the first program's start `SD:/lib/appkit.so` is loaded like any
+>   library (§7 *Shared libraries*), its export table read (`ImageLibTableRead`) and **copied at
+>   `APPKIT_TABLE_VA`** (`KAPI_TABLE_VA + 0x8000`: the same read-only page as the kernel's own table,
+>   `El0InstallAppKit` — entry *n* at `+ 8 n`, 4096 at most); the image is kept for good.
+> - Every new address space then gets AppKit's code mapped (`ImageMapLib` of that very image) before
+>   its program's own image.
+> - A program's import stubs (`lib/appkit_stubs.o`, linked into every program and library) are five
+>   instructions each: the entry read at the fixed address, a jump. No variable, no constructor,
+>   nothing to open: valid from the program's first instruction.
+> - **An update of AppKit takes a restart**: the page every program reads holds the addresses of the
+>   image loaded at this start; a newer file on the card is the next start's.
+> - Without `appkit.so` the log says so loudly and no program built for AppKit can call the kernel
+>   (a program built before AppKit, reading the table itself, still runs while the layout is the one
+>   it knew).
+>
+> **What still reads the table itself** (`-DKAPI_INLINE`, or a PC build): the two tests of the table
+> (`el0test`, `faulttest`), the simulator's stand-in kernel, and — until it is rebuilt — Jet (the hosted
+> WebKit build: its sysroot's `libonyxposix` gets the stubs at its next build).
+
 Source: [`kernel/include/kern/kapi_abi.h`](../kernel/include/kern/kapi_abi.h),
 [`kernel/sys/kapitable.cpp`](../kernel/sys/kapitable.cpp),
 [`kernel/sys/kapi.cpp`](../kernel/sys/kapi.cpp).
@@ -1145,6 +1172,9 @@ device or HDMI behind the same producer (*v84: sound_output* below).
 v85 = **the sound's mixer**: every program that plays has a channel of its own (`sound_acquire`: up to 8
 at once), with its volume and its mute; `sound_clients` (slot 263), `sound_client_volume` (slot 264),
 `struct kapi_sound_client` (*v85: the mixer* below).
+v86 = **AppKit**: no entry added — the kernel loads `SD:/lib/appkit.so`, copies its table at `APPKIT_TABLE_VA` and maps
+it into every program (the note at the top of this section). A program built for AppKit needs this kernel: its
+package says `kapi >= 86`, so the package manager installs it only once the new kernel runs.
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32

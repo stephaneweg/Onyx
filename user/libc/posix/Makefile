@@ -71,9 +71,12 @@ $(B)/crt0posix.o: crt0posix.S
 	@mkdir -p $(B)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(B)/libonyxposix.a: $(OBJ)
+# (AppKit's import stubs, ../../lib/appkit_stubs.o -- user/Makefile makes them --, in the archive: a program on
+#  this library reaches the kernel through AppKit as every other, with nothing more on its link line)
+APPKIT_STUBS = $(HERE)/../../lib/appkit_stubs.o
+$(B)/libonyxposix.a: $(OBJ) $(APPKIT_STUBS)
 	rm -f $@
-	$(AR) rcs $@ $(OBJ)
+	$(AR) rcs $@ $(OBJ) $(APPKIT_STUBS)
 
 $(B)/onyx-posix.ld: onyx-posix.ld
 	@mkdir -p $(B)

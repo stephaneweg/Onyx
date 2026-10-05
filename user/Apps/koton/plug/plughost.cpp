@@ -72,7 +72,7 @@ bool PlugHost::init (int sampleRate)
 {
 	m_rate = sampleRate > 0 ? sampleRate : 44100;
 	if (m_ok) return true;
-	if (KT->version < 68) return false;			// (word waits, priorities: kapi v68)
+	if (kapi_abi_version () < 68) return false;			// (word waits, priorities: kapi v68)
 	if (!kapi_ipc_register (KP_SERVICE)) return false;	// (another Koton hosts plugins)
 	m_self = kapi_ipc_lookup (KP_SERVICE);
 	if (m_self <= 0) return false;

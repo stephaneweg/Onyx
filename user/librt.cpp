@@ -47,9 +47,9 @@ void *onyx_lib_alloc (lib_size_t n)	{ return s_imp.alloc (n); }
 void onyx_lib_free (void *p)		{ if (p != 0) s_imp.free (p); }
 
 // The C memory primitives (weak: a library with its own keeps them).
-__attribute__ ((weak)) void *memset (void *d, int c, lib_size_t n)		{ return KT->memset (d, c, n); }
-__attribute__ ((weak)) void *memcpy (void *d, const void *s, lib_size_t n)	{ return KT->memcpy (d, s, n); }
-__attribute__ ((weak)) void *memmove (void *d, const void *s, lib_size_t n)	{ return KT->memmove (d, s, n); }
+__attribute__ ((weak)) void *memset (void *d, int c, lib_size_t n)		{ return kapi_memset (d, c, n); }
+__attribute__ ((weak)) void *memcpy (void *d, const void *s, lib_size_t n)	{ return kapi_memcpy (d, s, n); }
+__attribute__ ((weak)) void *memmove (void *d, const void *s, lib_size_t n)	{ return kapi_memmove (d, s, n); }
 __attribute__ ((weak)) int memcmp (const void *a, const void *b, lib_size_t n)
 {
 	const unsigned char *p = (const unsigned char *) a, *q = (const unsigned char *) b;

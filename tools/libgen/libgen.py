@@ -56,6 +56,7 @@ ap.add_argument ("--allow-data", default = None)
 ap.add_argument ("--frozen", action = "store_true")
 ap.add_argument ("--vtables", action = "store_true", help = "C++: copies of the objects' vtables for the programs")
 ap.add_argument ("--data", default = None, help = "the program's table of shared variables' addresses (bind)")
+ap.add_argument ("--fixed-table", default = None, help = "the stubs read their entry at this fixed address + 8 * slot (AppKit: the kernel copies the table there for every program; no bind)")
 ap.add_argument ("--table")
 ap.add_argument ("--stubs")
 ap.add_argument ("--bind")
@@ -219,8 +220,15 @@ for i, sym in enumerate (entries):
 	      "\t.weak %s" % sym,
 	      "\t.type %s, %%function" % sym,
 	      "\t.balign 4",
-	      "%s:" % sym,
-	      "\tadrp x16, %s" % var,
+	      "%s:" % sym]
+	if a.fixed_table is not None:			# entry i at a fixed address: no variable, no bind, valid from the first instruction
+		va = int (a.fixed_table, 0)
+		if 8 * i > 32760: die ("--fixed-table: too many entries for one ldr")
+		s += ["\tmovz x16, #0x%x" % (va & 0xFFFF), "\tmovk x16, #0x%x, lsl #16" % ((va >> 16) & 0xFFFF),
+		      "\tmovk x16, #0x%x, lsl #32" % ((va >> 32) & 0xFFFF), "\tldr x16, [x16, #%d]" % (8 * i),
+		      "\tbr x16", "\t.size %s, . - %s" % (sym, sym)]
+		continue
+	s += ["\tadrp x16, %s" % var,
 	      "\tldr x16, [x16, :lo12:%s]" % var]
 	if off <= 32760:
 		s += ["\tldr x16, [x16, #%d]" % off]
@@ -256,4 +264,4 @@ __attribute__ ((constructor (101))) static void %(name)s_bind (void)
 	"decl": "" if a.data is None else
 		"extern \"C\" { extern void *const %s[]; extern const unsigned %s_count; }\n" % (a.data, a.data),
 	"imports": "lib_cxx_imports ()" if a.data is None else "lib_cxx_imports_data (%s, %s_count)" % (a.data, a.data) }
-write (a.bind, b)
+if a.bind: write (a.bind, b)

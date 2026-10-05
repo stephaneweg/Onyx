@@ -18,6 +18,7 @@
 //
 // MIT licence (Onyx). Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
 //
+#define KAPI_INLINE			// (a test of the kernel's table itself: read here, not through AppKit)
 #include "kapi.h"
 #include "applib.h"
 

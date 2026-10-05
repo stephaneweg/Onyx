@@ -32,7 +32,8 @@ CFLAGS_LIBC = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -
 CXXFLAGS_LIBC = $(CFLAGS_LIBC) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LIBC_SRC  = ../libc/crt0libc.S ../libc/onyx_syscalls.c
 LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../kapi.h ../user.ld
-LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
+# (every program reaches the kernel through AppKit: its import stubs, ../Makefile)
+LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
 # Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (kapi.h,
 # ABI v36). NOT used by the newlib programs, which keep newlib's own.
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \

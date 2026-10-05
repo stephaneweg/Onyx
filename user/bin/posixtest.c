@@ -106,7 +106,7 @@ static void probe_kernel (void)
 	k_pipe_nb = kapi_stream_write_nb (0, b, 0) != -KAPI_ENOSYS;
 	k_ipc = kapi_shm_ctl (0, 0, 0) != -KAPI_ENOSYS;
 	printf ("posixtest: kapi v%u; v75 pieces: vm %s, threads %s, files %s, processes %s, clock %s, "
-		"sleep %s, environment %s, sockets %s, poll %s, pipe writes %s\n", KT->version,
+		"sleep %s, environment %s, sockets %s, poll %s, pipe writes %s\n", kapi_abi_version (),
 		k_vm ? "yes" : "no", k_threads ? "yes" : "no", k_files ? "yes" : "no", k_proc ? "yes" : "no",
 		k_clock ? "yes" : "no", k_sleep ? "yes" : "no", k_env ? "yes" : "no", k_net ? "yes" : "no",
 		k_poll ? "yes" : "no", k_pipe_nb ? "yes" : "no");

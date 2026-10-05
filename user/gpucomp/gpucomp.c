@@ -177,7 +177,7 @@ gpc_ctx *gpc_create (const gpc_config *cfg)
 	g->thread = -1;
 	char buf[80]; buf[0] = 0;
 	if (cfg->flags & GPC_F_CPU) gpc_strcpy (g->info, sizeof g->info, "CPU: asked for");
-	else if (KT->version < 70) gpc_strcpy (g->info, sizeof g->info, "CPU: the kernel is older than kapi v70");
+	else if (kapi_abi_version () < 70) gpc_strcpy (g->info, sizeof g->info, "CPU: the kernel is older than kapi v70");
 	else if (kapi_gpu_info (buf, sizeof buf) != 1)
 	{
 		gpc_strcpy (g->info, sizeof g->info, "CPU: no GPU (");
@@ -840,7 +840,7 @@ static int gpc_gpu_run (gpc_ctx *g, const gpc_target *T, const gpc_layer *Ls, in
 // the presets (v72)
 static int gpc_on_gpu (const gpc_layer *L)
 {
-	return L->tex && L->tex->onGpu && (L->blend == GPC_B_NORMAL || L->blend >= GPC_B_COUNT || KT->version >= 72);
+	return L->tex && L->tex->onGpu && (L->blend == GPC_B_NORMAL || L->blend >= GPC_B_COUNT || kapi_abi_version () >= 72);
 }
 static int gpc_do_composite (gpc_ctx *g, const gpc_target *T, const gpc_layer *Ls, int n, unsigned clear, unsigned flags)
 {
@@ -930,7 +930,7 @@ int gpc_submit (gpc_ctx *g, const gpc_target *t, const gpc_layer *layers, int n,
 {
 	if (g == 0 || t == 0 || n < 0) return GPC_EINVAL;
 	gpc_wait (g, 0);
-	if ((g->cfg.flags & GPC_F_ASYNC) && g->thread < 0 && KT->version >= 67)
+	if ((g->cfg.flags & GPC_F_ASYNC) && g->thread < 0 && kapi_abi_version () >= 67)
 	{
 		g->evGo = kapi_event_create (0, 0); g->evDone = kapi_event_create (0, 0);
 		if (g->evGo > 0 && g->evDone > 0) g->thread = kapi_thread_create (gpc_worker, g, 0, "gpucomp");

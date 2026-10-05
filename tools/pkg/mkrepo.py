@@ -142,7 +142,10 @@ def plan (sd, ini):
 	return pkgs, left
 
 def manifest_text (p, version, kapi):
-	needs = p["needs"] + ["kapi >= %d" % kapi]
+	# "kapi >= N": the package's programs were built for this kernel -- pkg installs it only once that kernel
+	# runs. Not for the package that BRINGS the kernel (staged, moved in at the restart): it must install on the
+	# older one. (Its programs are the kernel's own age; AppKit, shipped in it, is what the others wait for.)
+	needs = p["needs"] + (["kapi >= %d" % kapi] if "kernel8-rpi4.img" not in p["files"] and p["restart"] != "1" else [])
 	cfgfiles = [f for f in p["files"] if any (matches (f, c) for c in p["config_pats"])]
 	lines = ["# Onyx package manifest (tools/pkg/mkrepo.py)",
 		 "name = " + p["name"], "title = " + p["title"], "version = " + version,

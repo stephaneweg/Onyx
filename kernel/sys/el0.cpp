@@ -77,6 +77,18 @@ static inline const u64 *KernelSlots (void)
 	return (const u64 *) KApiKernelTable ();
 }
 
+// AppKit's table (kern/kapi_abi.h) where every program's stubs read it: APPKIT_TABLE_VA, in the page of
+// the kernel's own table. Before any program runs (kernel.cpp: the first program's start).
+static_assert (KAPI_SLOTS * 8 <= APPKIT_TABLE_VA - KAPI_TABLE_VA, "the kernel's table and AppKit's in one page");
+static_assert (APPKIT_TABLE_VA - KAPI_TABLE_VA + APPKIT_TABLE_MAX * 8ULL <= KPAGE_SIZE, "AppKit's table in the page");
+void El0InstallAppKit (const u64 *pEntries, unsigned nEntries)
+{
+	u64 *pDst = s_pTable + (APPKIT_TABLE_VA - KAPI_TABLE_VA) / 8;
+	for (unsigned i = 0; i < APPKIT_TABLE_MAX; i++) pDst[i] = i < nEntries ? pEntries[i] : 0;
+	CleanDataCacheRange ((u64) (uintptr) s_pTable, KPAGE_SIZE);
+	asm volatile ("dsb ish; isb" ::: "memory");
+}
+
 void El0Init (void)
 {
 	s_pTable = (u64 *) palloc ();

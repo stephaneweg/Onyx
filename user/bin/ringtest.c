@@ -67,7 +67,7 @@ static int parse (const char *s, int *pos)
 
 int main (void)
 {
-	if (KT->version < 68) { ax_putln ("ringtest: the kernel is older than v68"); return 1; }
+	if (kapi_abi_version () < 68) { ax_putln ("ringtest: the kernel is older than v68"); return 1; }
 	char args[32]; kapi_get_args (args, sizeof args);
 	int p = 0, chunk = parse (args, &p), ahead = parse (args, &p);
 	if (chunk == 0) chunk = 256;

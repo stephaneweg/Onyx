@@ -743,7 +743,7 @@ int main (int argc, char **argv)
 	int probe[2];
 	if (kapi_sock_pair (KAPI_SOCK_STREAM, 0, probe) == -KAPI_ENOSYS)
 	{
-		printf ("ipctest: the kernel has no v76 IPC (kapi %u)\nipctest: FAIL (1)\n", KT->version);
+		printf ("ipctest: the kernel has no v76 IPC (kapi %u)\nipctest: FAIL (1)\n", kapi_abi_version ());
 		return 1;
 	}
 	kapi_sock_close (probe[0]);

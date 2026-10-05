@@ -90,7 +90,7 @@ int main (void)
 		if (!v[0]) { read_file ("SD:etc/system.ini", s_file, sizeof s_file); value_of (s_file, "hostname", '=', v, sizeof v); }
 		ax_puts (v[0] ? v : "onyx");
 	}
-	if (r) { SEP (); ax_puts ("kapi "); put_u (KT->version); }
+	if (r) { SEP (); ax_puts ("kapi "); put_u (kapi_abi_version ()); }
 	if (ver)
 	{
 		SEP ();

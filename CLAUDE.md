@@ -36,7 +36,7 @@ LibreOffice headless). Screenshots
 
 > Names: the shared libraries are "kits" -- **UIKit** (the widget toolkit, `user/uikit/`, `namespace uikit`,
 > `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/audiokit/`), **PrinterKit** (`user/printerkit/`), **FileKit** (`user/filekit/`: ZIP, zlib, files and trees),
-> **ImageKit** (`user/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit). docs/03 sections 5.6 to 5.9. DocumentKit: an analysis only (IDEAS.md).
+> **ImageKit** (`user/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit), **AppKit** (`user/appkit/`: the programs' interface to the kernel, loaded and bound by the kernel). docs/03 sections 5.6 to 5.10. DocumentKit: an analysis only (IDEAS.md).
 
 ## RULE — keep the documentation up to date automatically
 
@@ -46,7 +46,11 @@ documentation in the same session**, without being asked again:
 - **`kapi` function** (`kernel/include/kern/kapi_abi.h`, `kernel/sys/kapi.cpp`,
   `kernel/sys/kapitable.cpp`, `user/kapi.h`) → update the ABI table in
   `docs/02-KERNEL-INTERNALS.md` (+ `docs/03` if dev-facing) and the version history
-  (`KAPI_ABI_VERSION`). **The ABI is append-only**: never reorder/remove a field.
+  (`KAPI_ABI_VERSION`). Since **AppKit** (2026-10-05) the programs reach the kernel through
+  `SD:/lib/appkit.so` (`user/appkit/`, the `kapi_*` functions of `user/kapi.h` by name): add the call's
+  `KAPI_CALL` in `kapi.h` and commit `user/appkit/appkit.abi` (append-only **by name**: never remove or
+  rename a line). The kernel's own table (`kapi_abi.h`) may be restructured — AppKit is adapted and rebuilt
+  with the kernel, no program is; a program never reads `KT` (docs/03 §5.10, docs/02 §8).
 - **Application** (`user/Apps/<name>/`, `user/bin/*.c`, `sdcard/apps/<name>.app`) → update the catalog
   in `docs/04-USER-GUIDE.md` (controls, files read/written) and `docs/03` if relevant. Add
   the `.elf` to `user/Makefile` (or `user/bin/Makefile`).

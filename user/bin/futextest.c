@@ -78,7 +78,7 @@ static int spinner (void *arg)
 
 int main (void)
 {
-	if (KT->version < 68) { ax_putln ("futextest: the kernel is older than v68"); return 1; }
+	if (kapi_abi_version () < 68) { ax_putln ("futextest: the kernel is older than v68"); return 1; }
 	ax_putln ("futextest: kapi v68 word waits");
 
 	// 1. the immediate returns

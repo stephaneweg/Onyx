@@ -96,7 +96,7 @@ static void line (int pid, const char *name, const struct kapi_syscall_stats *s)
 
 int main (void)
 {
-	if (KT->version < 74)
+	if (kapi_abi_version () < 74)
 	{
 		ax_putln ("sysstat: needs a kernel with kapi v74 (proc_stats)");
 		return 1;

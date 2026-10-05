@@ -501,7 +501,7 @@ static void session (void)
 	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
 	memset (g_held, 0, sizeof g_held);
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
-	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (KT->version); flush_out ();
+	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (kapi_abi_version ()); flush_out ();
 	if (!need (9) || memcmp (g_in, "ONYXRDP1", 8) != 0) return;
 	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0; g_pipe = (g_in[8] & 4) != 0;
 	consume (9);
@@ -618,7 +618,7 @@ int main (void)
 	{
 		struct kapi_win_info L[MAXWIN];
 		int n = kapi_win_list (L, MAXWIN);
-		printf ("kapi v%u, screen %d x %d, %d windows listed:\n", KT->version, g_W, g_H, n);
+		printf ("kapi v%u, screen %d x %d, %d windows listed:\n", kapi_abi_version (), g_W, g_H, n);
 		for (int i = 0; i < n; i++)
 			printf ("  %08X pid %u  %d,%d %dx%d  frame %dx%d  flags %X alpha %d gen %u state %u  %s\n", L[i].id, L[i].pid,
 				L[i].x, L[i].y, L[i].w, L[i].h, L[i].ow, L[i].oh, L[i].flags, L[i].alpha, L[i].gen, L[i].state, L[i].title);

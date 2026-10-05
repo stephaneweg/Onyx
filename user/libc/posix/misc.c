@@ -145,7 +145,7 @@ int uname (struct utsname *u)
 	memset (u, 0, sizeof *u);
 	strcpy (u->sysname, "Onyx");
 	gethostname (u->nodename, sizeof u->nodename);
-	snprintf (u->release, sizeof u->release, "kapi%u", kapi__core () == 0 ? KT->version : 0);
+	snprintf (u->release, sizeof u->release, "kapi%u", kapi__core () == 0 ? kapi_abi_version () : 0);
 	strcpy (u->version, "Onyx (Raspberry Pi 4, Circle)");
 	strcpy (u->machine, "aarch64");
 	strcpy (u->domainname, "(none)");

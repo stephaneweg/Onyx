@@ -316,7 +316,7 @@ int main (void)
 	char info[96];
 	if (!kapi_gpu_info (info, sizeof info)) { ax_puts ("no GPU: "); ax_putln (info); return 1; }
 	ax_puts ("GPU: "); ax_putln (info);
-	if (KT->version < 61) { ax_putln ("the kernel is older than kapi v61 (gpu_program)"); return 1; }
+	if (kapi_abi_version () < 61) { ax_putln ("the kernel is older than kapi v61 (gpu_program)"); return 1; }
 	qpu::passVS (s_VS, 8); qpu::passVS (s_VS12, 12); qpu::passCS (s_CS);
 	qpu::flatFS (s_Flat, false); qpu::flatFS (s_FlatF, true);
 	qpu::varyFS (s_Vary, 4, false); qpu::varyFS (s_VaryF, 4, true); qpu::varyFS (s_Vary8, 8, false);

@@ -33,7 +33,7 @@ static void put_note (unsigned n)
 
 int main (void)
 {
-	if (KT->version < 68) { ax_putln ("miditest: the kernel is older than v68 (no MIDI)"); return 1; }
+	if (kapi_abi_version () < 68) { ax_putln ("miditest: the kernel is older than v68 (no MIDI)"); return 1; }
 	char args[32]; kapi_get_args (args, sizeof args);
 	unsigned secs = 0;
 	for (int i = 0; args[i] >= '0' && args[i] <= '9'; i++) secs = secs * 10 + (unsigned) (args[i] - '0');

@@ -209,7 +209,7 @@ int main (void)
 	}
 
 	ax_putln ("threadtest: kapi v67 threads");
-	if (KT->version < 67)
+	if (kapi_abi_version () < 67)
 	{
 		ax_putln ("  this kernel has no threads (ABI < 67)");
 		return 1;

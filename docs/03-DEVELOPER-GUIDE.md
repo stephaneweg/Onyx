@@ -1001,6 +1001,40 @@ masks, the brushes and the document of the photo editor come on top of it later 
   back, the resize in alpha, the turns, the crop, the adjustments; with a picture of the card: probed,
   read, a thumbnail written).
 
+### 5.10. AppKit: the programs' interface to the kernel (`SD:/lib/appkit.so`)
+
+*(`user/kapi.h` is the reference of the calls; `user/appkit/appkit.c` the library; the kernel's side:
+docs/02 §8.)*
+
+Every `kapi_*` function a program calls is **AppKit's**, reached **by name**. The kernel loads AppKit by
+itself and binds it to every program: nothing to open, nothing to link by hand (`user/Makefile` puts
+`lib/appkit_stubs.o` on every link line; `libonyxposix.a` carries it for the POSIX programs). Only
+AppKit reads the kernel's table — so **the kernel's table can be restructured by rebuilding AppKit
+alone**.
+
+- **One header, three ways.** `user/kapi.h` writes each call as
+  `KAPI_CALL (result, name, (arguments), { body })`:
+  - a program for Onyx (the default): the declaration — AppKit has the body;
+  - `KAPI_IMPL` (`appkit/appkit.c` only): the functions themselves, exported by name;
+  - `KAPI_INLINE`, or a PC build: the function inline in the program, reading the kernel's table itself
+    (as every program did before AppKit) — for the tests of the table and the simulator.
+  The inline helpers that make no kernel call (`kapi_sound_ring_write`, `kapi_clock_us`, the spin
+  locks' primitives) stay inline: an app core may use them.
+- **`KT` is not for programs any more**: it only exists in AppKit (and `KAPI_INLINE`). The kernel's
+  version is `kapi_abi_version ()` (it was `KT->version`).
+- **Adding a call**: the kernel's entry (`kern/kapi_abi.h`, `sys/kapi.cpp`, `sys/kapitable.cpp`), then
+  its `KAPI_CALL` in `kapi.h`; the build appends its name to `appkit/appkit.abi` and makes its stub.
+  Commit the `.abi`.
+- **Changing the kernel's table** (an entry moved, removed, two merged, a structure changed): adapt the
+  bodies in `kapi.h` — they are AppKit's code — so that each `kapi_*` name still does what the programs
+  expect; rebuild the kernel and AppKit, ship them together (the package `onyx`), restart. No program is
+  rebuilt. A name of `appkit.abi` is never removed nor renamed: a call that is gone keeps a body that
+  answers `-KAPI_ENOSYS` (or does it another way).
+- **Rules**: the table is append-only by name (the generator refuses a removal); AppKit has no state (no
+  memory of its own, no constructor); it is built with the FPU on, its calls passing floats through.
+- **Cost**: one more indirect jump a call (the stub), then AppKit's function — nothing beside a system
+  call.
+
 ## 6. Writing a graphical application
 
 > **Notifications and clipboard (ABI v40).** `#include "notify.h"` then

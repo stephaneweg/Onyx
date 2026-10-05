@@ -783,7 +783,7 @@ int main (void)
 	{
 		kapi_exit (child (Args + 6));
 	}
-	if (KT->version < 75 || kapi_vm_map (0, PAGE, RW, 0) == -KAPI_ENOSYS)
+	if (kapi_abi_version () < 75 || kapi_vm_map (0, PAGE, RW, 0) == -KAPI_ENOSYS)
 	{
 		ax_putln ("memtest: this kernel has no demand paging (kapi v75 WP-MEM)");
 		ax_putln ("memtest: FAIL (1)");

@@ -669,6 +669,12 @@ boolean ImageMap (TImage *o, CAddressSpace *pAS, u64 *pEntry)
 	return TRUE;
 }
 
+boolean ImageLibTableRead (const TImage *o, u64 ulOffset, void *pOut, u64 n)
+{
+	if (!Is (o) || o->nState != IMG_ST_READY || !o->bLib) return FALSE;
+	return LibPeek (o, o->ulEntry + ulOffset, pOut, n);
+}
+
 int ImageMapLib (TImage *o, CAddressSpace *pAS, u64 *pTable)
 {
 	if (!Is (o) || o->nState != IMG_ST_READY || !o->bLib || pAS == 0) return -KAPI_EINVAL;

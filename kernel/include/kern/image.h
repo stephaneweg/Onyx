@@ -121,6 +121,9 @@ int ImageMapLib (TImage *pImage, CAddressSpace *pAS, u64 *pTable);
 // A library's place, the relocations applied at its load, its export table's version -> FALSE:
 // not a library.
 boolean ImageLibInfo (const TImage *pImage, u64 *pBase, unsigned *pRelocs, unsigned *pVersion);
+// n bytes of a library as it is in memory (relocated), from ulOffset after its export table's start
+// -> FALSE: not a library, or past its end. (AppKit's table, read by the kernel: kernel.cpp.)
+boolean ImageLibTableRead (const TImage *pImage, u64 ulOffset, void *pOut, u64 n);
 
 // A reference dropped. The last one frees the image's frames unless it is pinned. No yield, no
 // I/O (the address space's teardown calls it).

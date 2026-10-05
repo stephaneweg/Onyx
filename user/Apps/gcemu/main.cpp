@@ -807,7 +807,7 @@ int main (void)
 
 	g_gpu = kapi_gpu_info (0, 0) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1;
 	for (int k = 0; k < gc::Machine::MAX_TEX; k++) g_gpuTex[k] = -1;
-	g_tevOk = g_gpu && KT->version >= 61 && g_rec.init () && g_out.init ();
+	g_tevOk = g_gpu && kapi_abi_version () >= 61 && g_rec.init () && g_out.init ();
 	if (g_tevOk && g_wantTev) g_m->gpu = &g_rec;
 
 	static Menu menu;

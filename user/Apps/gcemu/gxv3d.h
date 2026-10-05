@@ -809,7 +809,7 @@ struct Out
 	bool init ()
 	{
 		for (int i = 0; i < gc::Machine::MAX_TEX; i++) gpuTex[i] = -1;
-		v62 = KT->version >= 62;
+		v62 = kapi_abi_version () >= 62;
 		rvCap = v62 ? 0 : MAX_FLOATS * 2; rv = v62 ? 0 : new float[rvCap];
 		ru = new unsigned[MAX_UNIS + 8]; rb = new kapi_gpu_batch2[MAX_BATCHES]; rb3 = new kapi_gpu_batch3[MAX_BATCHES];
 		qpu::passCS (cs);

@@ -35,6 +35,7 @@
 //
 // MIT licence (Onyx).
 //
+#define KAPI_INLINE			// (a test of the kernel's table itself: read here, not through AppKit)
 #include "kapi.h"
 #include "applib.h"
 

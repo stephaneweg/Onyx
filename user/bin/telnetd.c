@@ -334,7 +334,7 @@ int main (void)
 
 	char nb[16]; ax_itoa ((int) port, nb);
 	ax_puts ("telnetd: listening on "); ax_puts (ip); ax_puts (":"); ax_putln (nb);
-	int threads = KT->version >= 67;
+	int threads = kapi_abi_version () >= 67;
 
 	for (;;)
 	{

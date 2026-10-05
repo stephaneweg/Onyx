@@ -19,7 +19,11 @@ CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
 # C++ apps: same base, freestanding C++ subset (no exceptions/RTTI/STL; function-
 # local statics are single-threaded; static dtors are not run -- see onyxpp.hpp).
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none
+# Every program reaches the kernel through AppKit (SD:/lib/appkit.so, appkit/appkit.c: the kapi_* functions,
+# by name): its import stubs (lib/appkit_stubs.o, generated: each one jumps through AppKit's table, which the
+# kernel puts at a fixed address for every program -- no bind, nothing to open) are linked into each of them.
+APPKIT_STUBS = lib/appkit_stubs.o
+LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none $(APPKIT_STUBS)
 # Freestanding apps have no libc: alias the C memory primitives GCC may emit on its own
 # onto the kapi ones (kapi.h, ABI v36 -> the kernel's Circle implementations).
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
@@ -44,6 +48,8 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 APP_ELFS = $(APPS:=.elf)
 
 all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin bin/basic.elf doom
+# (AppKit's stubs are linked into every program: made first)
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf bin/basic.elf: | lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # lib.ld at 0 -- the kernel places it --, ONE exported symbol (lib.vers), the export table, which is
@@ -57,6 +63,8 @@ LIB_CXXFLAGS = -ffreestanding -nostdlib -fPIC -fvisibility=hidden -mgeneral-regs
 LIB_LD      = $(PREFIX)ld
 LIB_LDFLAGS = -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv \
 	      --build-id=none -T lib.ld --version-script lib.vers -e onyx_lib_table
+# (a library calls the kernel as a program does: AppKit's stubs in each -- what it does not use is dropped)
+LIB_KAPI    = lib/appkit_stubs.o
 LIB_DEP     = lib.ld lib.vers lib.h kapi.h ../kernel/include/kern/kapi_abi.h
 lib/librt.o: librt.cpp $(LIB_DEP)
 	@mkdir -p lib
@@ -68,7 +76,7 @@ lib/demo.o: demo/demolib.cpp demo/demo.h $(LIB_DEP)
 lib/demo2.o: demo/demolib.cpp demo/demo.h $(LIB_DEP)
 	@mkdir -p lib
 	$(CXX) $(LIB_CXXFLAGS) -DDEMO_BUILD=2 -c $< -o $@
-lib/demo.so lib/demo2.so: lib/%.so: lib/%.o lib/librt.o
+lib/demo.so lib/demo2.so: lib/%.so: lib/%.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^
 # A library's interface, both halves, from its objects and its append-only list <lib>.abi
 # (tools/libgen/libgen.py): lib/<lib>_table.S (the library's export table), lib/<lib>_stubs.S and
@@ -111,7 +119,7 @@ lib/ft_table.S: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft.exports ../tools/libgen/libgen
 lib/ft_stubs.S lib/ft_bind.cpp: lib/ft_table.S ;
 LIBC_A   := $(shell $(CC) -mcpu=cortex-a72 -print-file-name=libc.a)
 LIBGCC_A := $(shell $(CC) -mcpu=cortex-a72 -print-libgcc-file-name)
-lib/ft.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft_table.o lib/librt.o
+lib/ft.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
 
 UIKIT_HDR = $(wildcard uikit/*.h) kapi.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
@@ -146,7 +154,7 @@ uikit/uikit.abi:
 	@touch $@
 lib/uikit_stubs.S lib/uikit_bind.cpp: lib/uikit_table.S ;
 # (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
-lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/uikit_table.o lib/librt.o
+lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
 # The program side: the stubs, the bind constructor, and the variables (uikit/globals.cpp).
 lib/uikit_globals.o: uikit/globals.cpp uikit/globals.inc $(UIKIT_HDR)
@@ -172,7 +180,7 @@ lib/printerkit_table.S: $(PRINT_SO_OBJ) printerkit/printerkit.abi ../tools/libge
 printerkit/printerkit.abi:
 	@touch $@
 lib/printerkit_stubs.S lib/printerkit_bind.cpp: lib/printerkit_table.S ;
-lib/printerkit.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/ft_stubs.o lib/printerkit_table.o lib/librt.o
+lib/printerkit.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/ft_stubs.o lib/printerkit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBGCC_A)
 lib/printerkit.imp.a: lib/printerkit_stubs.o lib/printerkit_bind.o
 	@rm -f $@
@@ -218,7 +226,7 @@ lib/audiokit_table.S: $(AK_OBJ) lib/ak/akso.o audiokit/audiokit.abi ../tools/lib
 		--table lib/audiokit_table.S --stubs lib/audiokit_stubs.S --bind lib/audiokit_bind.cpp $(AK_OBJ)
 lib/audiokit_stubs.S lib/audiokit_bind.cpp: lib/audiokit_table.S ;
 LIBM_A := $(shell $(CC) -mcpu=cortex-a72 -print-file-name=libm.a)
-lib/audiokit.so: $(AK_OBJ) lib/ak/akso.o lib/audiokit_table.o lib/librt.o
+lib/audiokit.so: $(AK_OBJ) lib/ak/akso.o lib/audiokit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBM_A) $(LIBC_A) $(LIBGCC_A)
 lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
 	@rm -f $@
@@ -246,7 +254,7 @@ lib/filekit_table.S: $(FK_OBJ) lib/fk/fkso.o filekit/filekit.abi ../tools/libgen
 	$(LIBGEN) --name filekit --abi filekit/filekit.abi --init fk_lib_init --allow-data . --export '^fk_' \
 		--table lib/filekit_table.S --stubs lib/filekit_stubs.S --bind lib/filekit_bind.cpp $(FK_OBJ)
 lib/filekit_stubs.S lib/filekit_bind.cpp: lib/filekit_table.S ;
-lib/filekit.so: $(FK_OBJ) lib/fk/fkso.o lib/filekit_table.o lib/librt.o
+lib/filekit.so: $(FK_OBJ) lib/fk/fkso.o lib/filekit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
 lib/filekit.imp.a: lib/filekit_stubs.o lib/filekit_bind.o
 	@rm -f $@
@@ -271,19 +279,36 @@ lib/imagekit_table.S: $(IK_OBJ) lib/ik/ikso.o imagekit/imagekit.abi ../tools/lib
 	$(LIBGEN) --name imagekit --abi imagekit/imagekit.abi --init ik_lib_init --allow-data . --export '^ik_' --exclude '^ik_lib_init$$' \
 		--table lib/imagekit_table.S --stubs lib/imagekit_stubs.S --bind lib/imagekit_bind.cpp $(IK_OBJ)
 lib/imagekit_stubs.S lib/imagekit_bind.cpp: lib/imagekit_table.S ;
-lib/imagekit.so: $(IK_OBJ) lib/ik/ikso.o lib/filekit_stubs.o lib/imagekit_table.o lib/librt.o
+lib/imagekit.so: $(IK_OBJ) lib/ik/ikso.o lib/filekit_stubs.o lib/imagekit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBM_A) $(LIBC_A) $(LIBGCC_A)
 lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so
+# ---- appkit.so: AppKit, the interface between the programs and the kernel (appkit/appkit.c, kapi.h; docs/03
+# "AppKit"). Its table: every kapi_* function, by name (appkit/appkit.abi, append-only). Its stubs read the
+# table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
+# state, no library runtime; built with the FPU on (some calls take floats: they pass through).
+APPKIT_TABLE_VA = 0x380008000
+lib/appkit/appkit.o: appkit/appkit.c kapi.h lib.h ../kernel/include/kern/kapi_abi.h
+	@mkdir -p lib/appkit
+	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -c $< -o $@
+appkit/appkit.abi:
+	@touch $@
+lib/appkit_table.S: lib/appkit/appkit.o appkit/appkit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name appkit --abi appkit/appkit.abi --init appkit_init --allow-data . --export '^kapi_' \
+		--fixed-table $(APPKIT_TABLE_VA) --table lib/appkit_table.S --stubs lib/appkit_stubs.S lib/appkit/appkit.o
+lib/appkit_stubs.S: lib/appkit_table.S ;
+lib/appkit.so: lib/appkit/appkit.o lib/appkit_table.o
+	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBGCC_A)
+
+SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a
+libs: $(SHLIBS) lib/appkit_stubs.o lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
-doom: lib/uikit.imp.a
+doom: lib/uikit.imp.a lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C doom
 
 # /bin console tools live in bin/ (their own Makefile).
@@ -326,7 +351,7 @@ $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h http
 NL_CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	     -ffunction-sections -fdata-sections -I. -I../kernel/include
 NL_CXXFLAGS = $(NL_CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-NL_LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections
+NL_LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections $(APPKIT_STUBS)
 FT_SRC = ../third_party/freetype-2.14.3
 vpath ft%.c $(FT_SRC)/src/base
 vpath autofit.c $(FT_SRC)/src/autofit

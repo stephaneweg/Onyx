@@ -287,6 +287,69 @@ int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pA
 	return nMapped < 0 ? nMapped : 0;
 }
 
+// ---- AppKit (kern/kapi_abi.h): the interface between the programs and the kernel -----------------------
+// SD:/lib/appkit.so is loaded when the first program starts, its table copied where every program's
+// stubs read it (APPKIT_TABLE_VA), and its code mapped into EVERY program from then on: no program
+// asks for it. The image is kept for good -- a newer file on the card is the next start's (the
+// table's addresses are in the page every program reads: an update of AppKit takes a restart).
+// Without it no program built for AppKit can call the kernel: its absence is said loudly in the log.
+#define APPKIT_PATH	"SD:/lib/appkit.so"
+static TImage *s_pAppKit = 0;
+static volatile int s_nAppKit = 0;			// 0 not tried, 2 being loaded, 1 in use, -1 none
+
+static boolean AppKitLoad (void)
+{
+	TImage *pImage = 0;
+	unsigned nHow = 0;
+	const char *pWhy = "";
+	if (ProgramImage (APPKIT_PATH, IMG_OPEN_LIB, &pImage, &nHow, &pWhy) < 0)
+	{
+		CLogger::Get ()->Write ("appkit", LogError, "cannot load " APPKIT_PATH " (%s): THE PROGRAMS CANNOT CALL THE KERNEL", pWhy);
+		return FALSE;
+	}
+	// its table: the libraries' header (version = the number of entries, size, init), then the entries
+	struct { u32 nVersion, nSize; u64 ulInit; } Head;
+	u64 *pEntries = 0;
+	boolean bOK = ImageLibTableRead (pImage, 0, &Head, sizeof Head) && Head.nVersion >= 1 && Head.nVersion <= APPKIT_TABLE_MAX
+		   && Head.nSize >= 16 + Head.nVersion * 8;
+	if (bOK)
+	{
+		pEntries = new u64[Head.nVersion];
+		bOK = pEntries != 0 && ImageLibTableRead (pImage, 16, pEntries, (u64) Head.nVersion * 8);
+	}
+	for (u32 i = 0; bOK && i < Head.nVersion; i++)		// (an entry: code of the libraries' arena)
+		if (pEntries[i] < USER_LIB_BASE || pEntries[i] >= USER_LIB_END) bOK = FALSE;
+	if (!bOK)
+	{
+		CLogger::Get ()->Write ("appkit", LogError, APPKIT_PATH " is not AppKit (its table): THE PROGRAMS CANNOT CALL THE KERNEL");
+		delete [] pEntries;
+		ImageRelease (pImage);
+		return FALSE;
+	}
+	El0InstallAppKit (pEntries, Head.nVersion);
+	CLogger::Get ()->Write ("appkit", LogNotice, APPKIT_PATH ": the programs' interface to the kernel (%u functions, kapi v%u)",
+				Head.nVersion, (unsigned) KAPI_ABI_VERSION);
+	delete [] pEntries;
+	s_pAppKit = pImage;					// (kept: every program maps this very image)
+	return TRUE;
+}
+// Called on a new program's task, before its image: AppKit in its address space.
+static boolean AppKitAttach (CAddressSpace *pAS)
+{
+	while (s_nAppKit == 2) CScheduler::Get ()->MsSleep (5);	// (another program's start is loading it)
+	if (s_nAppKit == 0)
+	{
+		s_nAppKit = 2;
+		s_nAppKit = AppKitLoad () ? 1 : -1;
+	}
+	if (s_nAppKit != 1) return TRUE;			// (none: said in the log; an older program still runs)
+	u64 ulTable = 0;
+	int n = ImageMapLib (s_pAppKit, pAS, &ulTable);
+	if (n < 0) return FALSE;
+	if (n == 1) SyncDataAndInstructionCache ();
+	return TRUE;
+}
+
 //
 // CUserProcessTask: one process = one task (plus its threads, kern/thread.h). The task builds the
 // process's address space, loads the ELF into it, maps the user stack, then enters the entry
@@ -363,6 +426,12 @@ public:
 		// card is not touched. Else the file is streamed into a new image, in chunks, yielding
 		// between them, so the compositor + the rest of the UI keep running while we load (the SD
 		// read is the slow part; we're single-core); a start meanwhile waits for this load.
+		if (!AppKitAttach (pAS))			// (the programs' interface to the kernel: kern/kapi_abi.h)
+		{
+			m_pLogger->Write (GetName (), LogError, "out of memory mapping AppKit for %s", m_Path);
+			delete pAS;
+			return;
+		}
 		unsigned nT0 = CTimer::GetClockTicks ();
 		TImage *pImage = 0;
 		unsigned nHow = 0;

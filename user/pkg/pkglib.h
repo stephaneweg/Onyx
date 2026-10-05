@@ -254,7 +254,7 @@ static inline int parse_needs (const char *s, Need *out, int max)
 	}
 	return n;
 }
-static inline int kapi_level () { return (int) KT->version; }
+static inline int kapi_level () { return (int) kapi_abi_version (); }
 
 // ---- the repository's index ---------------------------------------------------------------------------------
 struct Pkg

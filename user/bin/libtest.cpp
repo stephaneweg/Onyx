@@ -179,7 +179,7 @@ int main (void)
 	int starts = 0;
 	for (const char *p = args; *p >= '0' && *p <= '9'; p++) starts = starts * 10 + (*p - '0');
 	if (starts == 0) starts = 200;
-	if (KT->version < 83) { put ("FAIL kernel: no shared libraries (kapi v83)\n"); return 1; }
+	if (kapi_abi_version () < 83) { put ("FAIL kernel: no shared libraries (kapi v83)\n"); return 1; }
 
 	struct kapi_image_info info;
 	int r;
