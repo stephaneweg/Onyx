@@ -14,7 +14,7 @@
 #include "imagekit/imagekit.h"
 #endif
 #include "lib.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 #include "uikit/uikit.h"
 
 namespace media {

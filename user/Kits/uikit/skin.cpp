@@ -6,7 +6,7 @@
 #include "uikit/paint.h"		// the painter (the frame is drawn by code)
 #include "uikit/theme.h"		// the frame's colours
 #include "uikit/text.h"		// (the frame bypasses an app's text face)
-#include "bmp.hpp"		// ui::bmp_decode
+#include "bmp.h"		// ui::bmp_decode
 #include "appkit/appkit.h"		// kapi_get_chrome, kapi_draw_text_buf, kapi_font_height
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 

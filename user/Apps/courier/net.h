@@ -12,8 +12,8 @@
 #ifndef COURIER_NO_TLS
 #define ONYX_HTTP_TLS
 #endif
-#include "http.hpp"			// the Transport (plain / TLS)
-#include "img/imgload.hpp"		// img_inflate (gzip, deflate)
+#include "netkit/http.hpp"			// the Transport (plain / TLS)
+#include "imagekit/img/imgload.hpp"		// img_inflate (gzip, deflate)
 #include "vars.h"
 
 namespace cr {

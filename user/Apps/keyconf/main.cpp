@@ -6,7 +6,7 @@
 // ("wheelspeed=", the kernel reads it at boot).
 //
 #include "appkit/appkit.h"
-#include "fsutil.h"
+#include "filekit/fsutil.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

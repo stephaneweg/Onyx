@@ -9,7 +9,7 @@
 //
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
-#include "img/stb_image.h"
+#include "imagekit/img/stb_image.h"
 #include "Apps/sheet/ods.h"
 #include <stdio.h>
 #include <stdlib.h>

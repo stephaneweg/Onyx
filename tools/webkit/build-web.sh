@@ -51,7 +51,13 @@ aarch64-onyx-elf-gcc -mcpu=cortex-a72 -c "$U/lib/uikit_stubs.S" -o "$O/uikit/stu
 $CXX -c "$U/lib/uikit_bind.cpp" -o "$O/uikit/bind.o"
 $CXX -c "$U/Kits/uikit/globals.cpp" -o "$O/uikit/globals.o"
 rm -f "$O/libuikit.a"
-UIKIT="$O/uikit/globals.o $O/uikit/bind.o $O/uikit/stubs.o"
+# (SystemKit too -- the clipboard, the notifications: its import side beside UIKit's)
+for f in lib/systemkit_stubs.S lib/systemkit_bind.cpp; do
+	[ -f "$U/$f" ] || { echo "build-web.sh: no $U/$f: make -C user lib/systemkit.imp.a (the Arm toolchain) first" >&2; exit 1; }
+done
+aarch64-onyx-elf-gcc -mcpu=cortex-a72 -c "$U/lib/systemkit_stubs.S" -o "$O/uikit/sk_stubs.o"
+$CXX -c "$U/lib/systemkit_bind.cpp" -o "$O/uikit/sk_bind.o"
+UIKIT="$O/uikit/globals.o $O/uikit/bind.o $O/uikit/stubs.o $O/uikit/sk_bind.o $O/uikit/sk_stubs.o"
 
 # ---- the window ----
 echo "web: the window"
@@ -127,7 +133,7 @@ if aarch64-onyx-elf-nm "$BUILD/bin/web" | grep -q ' umm__\| _Z8onyx_newmPv'; the
 	echo "build-web.sh: $BUILD/bin/web has onyxpp.hpp's operator new (umm.h over kapi_sbrk): -DONYX_HOSTED_NEW is missing somewhere" >&2
 	exit 1
 fi
-# ... and malloc & co are newlib's own: a weak definition in a header of user/ (user/Libs/img/imgload.hpp's,
+# ... and malloc & co are newlib's own: a weak definition in a header of user/ (user/Kits/imagekit/img/imgload.hpp's,
 # over operator new) wins over the C library's in a static link.
 weak=$(aarch64-onyx-elf-nm "$BUILD/bin/web" | grep -E ' [WwVv] (malloc|free|calloc|realloc|memalign|_malloc_r|_free_r)$' || true)
 if [ -n "$weak" ]; then

@@ -16,7 +16,7 @@
 
 #include "printerkit/job.h"
 #include "pdf/pdfwrite.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 namespace pjob {
 

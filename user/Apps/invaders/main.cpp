@@ -7,7 +7,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "game.h"
+#include "../games/game.h"
 
 using namespace uikit;
 

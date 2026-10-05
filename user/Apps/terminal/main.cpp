@@ -7,16 +7,11 @@
 // in the line with Left / Right / Home / End, Up / Down recall the lines sent before, Enter
 // sends the line, Ctrl-C stops the running command, Ctrl-D sends EOF); cmd prints the prompt.
 //
-// It runs in TWO modes (same scrollback + rendering):
-//   - embedded in the activity shell as a SECONDARY app: it registers, gets a surface
-//     viewport, and is driven by the shell's forwarded input over the mailbox.
-//   - standalone fallback (no shell): its own decorated uikit window.
-// Both modes need a custom loop (not embed::run / Root::run) because the terminal must
-// also pump cmd's output pipe every frame.
+// Its own decorated uikit window, with a loop of its own (not Root::run): the terminal must also
+// pump cmd's output pipe every frame.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit (TermView draws into a Canvas)
-#include "embed.h"		// run embedded in the activity shell (surface + mailbox)
 #include "lineedit.h"		// the line being typed: its cursor, the history
 
 #define W		620		// standalone window size
@@ -234,51 +229,6 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	// --- embedded in the activity shell (secondary section) -------------
-	embed::Host host;
-	if (embed::attach (&host, ROLE_SECONDARY, "terminal"))
-	{
-		TermView view (host.w, host.h);
-		view.canvas.adopt (host.pixels, host.w, host.h, host.stride);	// draw into the surface sub-rect
-		start_cmd ();
-		view.invalidate (true); view.draw ();
-		kapi_shell_request (SH_PRESENT, &host.surface_id, sizeof (int));
-
-		bool running = true;
-		while (running && !should_exit ())
-		{
-			int from, type; unsigned char buf[128];
-			while (kapi_mailbox_recv (&from, &type, buf, sizeof buf, 0) >= 0)	// non-blocking drain
-			{
-				switch (type)
-				{
-				case SH_PTR:
-				{
-					ShPtr *p = (ShPtr *) buf;
-					view.handleMouse (p->x, p->y, p->buttons & 1,
-							  (p->buttons >> 1) & 1, (p->buttons >> 2) & 1, p->wheel);
-					break;
-				}
-				case SH_KEY:    term_key (*(int *) buf); view.invalidate (true); break;
-				case SH_RESIZE: { ShResize *r = (ShResize *) buf; view.setBounds (r->w, r->h); view.invalidate (true); break; }
-				case SH_CLOSE:  running = false; break;
-				}
-			}
-			if (drain_cmd () > 0) view.invalidate (true);		// new cmd output -> repaint
-			if (g_cmd && kapi_proc_done (g_cmd)) { kapi_wait (g_cmd); running = false; }	// shell ended
-			if (!view.valid)
-			{
-				view.draw ();
-				kapi_shell_request (SH_PRESENT, &host.surface_id, sizeof (int));
-			}
-			msleep (16);
-		}
-		if (g_to_cmd)   kapi_stream_close (g_to_cmd);
-		if (g_from_cmd) kapi_stream_close (g_from_cmd);
-		return 0;
-	}
-
-	// --- standalone fallback: our own decorated window ------------------
 	Root root (W, H, "terminal");
 	if (root.canvas.px == 0) return 1;
 	root.setBg (TERM_BG);				// (the console covers the window)

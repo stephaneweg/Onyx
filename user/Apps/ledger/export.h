@@ -14,7 +14,7 @@
 #define _ledger_export_h
 
 #include "ui.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace lg {
 

@@ -30,9 +30,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "appkit/appkit.h"
-#include "launch.h"
 #include "gamepad.h"
-#include "bmp.hpp"
+#include "uikit/bmp.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 #include "gb/gb.h"

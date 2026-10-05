@@ -3,7 +3,7 @@
 // codecs in uikit/imgload.cpp), so only apps that call it link them in.
 //
 #include "uikit/imagebox.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 namespace uikit {
 

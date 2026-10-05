@@ -1,6 +1,7 @@
 #include "uikit/textarea.h"
 #include "uikit/menu.h"		// UK_CTRL
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
+#include "sysclip.h"
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {
@@ -49,14 +50,14 @@ void Textarea::selectAll () { anchor = 0; caret = len; invalidate (true); }
 void Textarea::copy ()
 {
 	if (!hasSelection ()) return;
-	clip_set_text_n (buf + selStart (), selEnd () - selStart ());
+	if (uk_clip_ready ()) clip_set_text_n (buf + selStart (), selEnd () - selStart ());
 }
 void Textarea::cut () { if (readonly || !hasSelection ()) return; copy (); deleteSelection (); }
 void Textarea::paste ()
 {
 	if (readonly) return;
 	static char b[8192];
-	if (clip_get_text (b, sizeof b)) insertText (b);
+	if (uk_clip_ready () && clip_get_text (b, sizeof b)) insertText (b);
 }
 
 void Textarea::gotoLine (int line)

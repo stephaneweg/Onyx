@@ -27,7 +27,7 @@
 #define ONYX_PRINT_JOB_H
 
 #include "printerkit/pio.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace pjob {
 

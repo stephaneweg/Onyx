@@ -180,12 +180,13 @@ The sources of user space are sorted by their use, in `user/`:
 | `Libs/` | the libraries linked into the programs: `av`, `img`, `zlib`, `tls`, `v3d`, `gpucomp`, `pdf`, `mail`, `pkg`, `basic` (and `demo`, the loader's test library) |
 | `Emulators/` | the emulators' cores (`gb`, `gba`, `nes`, `snes`, `n64`, `gc`, `emucore.h`); their windows are apps |
 | `Ports/` | third-party programs ported: `doom`, `stk` |
-| `Include/` | the small headers several programs share (`clipboard.h`, `notify.h`, `gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`…) |
+| `Include/` | the small headers several programs share (`gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`, `fileassoc.h`, `docguard.h`…) |
+| `Apps/games/` | what the games share (`game.h`, `cards.h`) |
 | `lib/` | the build's outputs for the libraries (not in git) |
 
 `user` and these folders (`Kits`, `Runtime`, `Include`, `Libs`, `Emulators`, `Ports`) are on every include
 path, so a source includes a header the same way whatever its own folder: `"appkit/appkit.h"`,
-`"uikit/uikit.h"`, `"umm.h"`, `"clipboard.h"`, `"tls/onyx_tls.hpp"`, `"gb/gb.h"`. A build of our sources
+`"uikit/uikit.h"`, `"uikit/clipboard.h"`, `"filekit/fsutil.h"`, `"umm.h"`, `"gamepad.h"`, `"tls/onyx_tls.hpp"`, `"gb/gb.h"`. A build of our sources
 elsewhere (a PC test) passes `-I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs
 -I user/Emulators -I user/Ports -I kernel/include`. A header that one program uses is beside that
 program.
@@ -1022,6 +1023,37 @@ masks, the brushes and the document of the photo editor come on top of it later 
   back, the resize in alpha, the turns, the crop, the adjustments; with a picture of the card: probed,
   read, a thumbnail written).
 
+### 5.9.0. What moved into the kits on 2026-10-05; SystemKit and NetKit
+
+Headers of inline functions that every program copied are now a kit's, declared in a header and
+compiled once in the library. Which kit: **AppKit** makes a program run (its link to the kernel, and
+what any program needs to stand: strings, console, `.ini`, starting a program); **SystemKit** is what a
+program says to the system and to the other programs; **NetKit** is the network; **FileKit**,
+**ImageKit**, **FontKit**, **UIKit** their subject.
+
+| It was | It is | In |
+|---|---|---|
+| `user/applib.h` (strings, console, `.ini`, keymap) | `appkit/appkit.h` (`ax_*`, `app_ini_*`) | AppKit |
+| `user/launch.h` | `appkit/appkit.h` (`lx_*`) | AppKit |
+| `user/notify.h` | `systemkit/notify.h` (`notify`, `notify_action`) | SystemKit |
+| `user/clipboard.h`, `user/clipproto.h` | `systemkit/clipboard.h`, `systemkit/clipproto.h` (`clip_*`) | SystemKit (UIKit's text fields open it when they first copy or paste) |
+| `user/wallpaper.h`, `volume.h`, `trash.h`, `preloadini.h`, `fileassoc.h`, `applet_proto.h` | `systemkit/<the same name>` (`wp_*`, `volume_*`, `mixer_set`, `trash_*`, `preload_ini_*`, `fa_*`) | SystemKit |
+| `user/ftpfs.h`, `user/httpc.h`, `user/http.hpp` | `netkit/ftpfs.h`, `netkit/httpc.h` (`ftpfs_*`, `http_get` / `http_post` / `http_request`), `netkit/http.hpp` | NetKit — `http.hpp` (the HTTP/1.1 class, its TLS transport) is still a header with its code |
+| `user/bmp.hpp` | `uikit/bmp.h`: `ui::icon_load` (and the old name `ui::bmp_decode`) | UIKit, **through ImageKit**: an icon may be any picture ImageKit reads |
+| `user/fsutil.h` | `filekit/fsutil.h` (`fs_*`) | FileKit |
+| `user/Libs/img` (the codecs' sources) | `user/Kits/imagekit/img` | ImageKit's folder; the programs that still include `imagekit/img/imgload.hpp` / `pngsave.hpp` get relays to `ik_*` |
+| `user/ft` | `user/Kits/fontkit` | FontKit |
+
+**How a kit of this kind is made** (SystemKit, NetKit, `filekit/fsutil.h`): each header `x.h` declares
+(`SK_API int notify (...)`), `x.inc` beside it has the code, and the kit's one source (`systemkit.cpp`)
+compiles every `.inc` into `SD:/lib/systemkit.so`, exported by name. A program links
+`lib/systemkit.imp.a` / `lib/netkit.imp.a` / `lib/filekit.imp.a` (the apps' rules of `user/Makefile` do).
+Where there is no shared library or no C++ runtime to bind one, the code comes inline with the header
+— `-DSK_INLINE` / `-DNK_INLINE` / `-DFS_INLINE`, or any PC build: the console tools of `user/BinUtils`
+(C programs) and Doom's C glue are built that way.
+
+Still to come: `docguard.h` in the future DocumentKit; `http.hpp`'s class inside NetKit.
+
 ### 5.9.1. FontKit: FreeType for the apps (`SD:/lib/fontkit.so`)
 
 *(`user/Kits/fontkit/`; it was `user/ft`, `SD:/lib/ft.so` and the package `ft` until 2026-10-05 — the
@@ -1079,8 +1111,9 @@ alone**.
   expect; rebuild the kernel and AppKit, ship them together (the package `onyx`), restart. No program is
   rebuilt. A name of `appkit.abi` is never removed nor renamed: a call that is gone keeps a body that
   answers `-KAPI_ENOSYS` (or does it another way).
-- **Its small services** (§8): the strings, the console, the `.ini` reader and the keyboard layout
-  loader — `appkit_lib.inc`, exported by name like the calls (`ax_*`, `app_ini_*`).
+- **Its small services** (§8): the strings, the console, the `.ini` reader, the keyboard layout
+  loader, the **notifications** (`notify`, `notify_action`) and the **starting of programs** by their
+  runner (`lx_launch`, `lx_open`, `lx_runner`…) — `appkit_lib.inc`, exported by name like the calls.
 - **Rules**: the table is append-only by name (the generator refuses a removal); AppKit allocates nothing
   and has no constructor (its only data: the `.ini` reader's store, private to each program); it is built with the FPU on, its calls passing floats through.
 - **Cost**: one more indirect jump a call (the stub), then AppKit's function — nothing beside a system
@@ -1088,10 +1121,10 @@ alone**.
 
 ## 6. Writing a graphical application
 
-> **Notifications and clipboard (ABI v40).** `#include "notify.h"` then
+> **Notifications and clipboard (ABI v40).** Notifications are AppKit's (`appkit/appkit.h`; it was `notify.h`):
 > `notify ("My App", "Done.")` shows a bubble (the `notifyd` service, reached by IPC;
 > launched on demand); `notify_action (title, text, "app args")`: a click on it runs that app with those
-> arguments (`pkgd`: `"control pkgman"`), and it stays longer. `#include "clipboard.h"`: `clip_set_text`, `clip_get_text`,
+> arguments (`pkgd`: `"control pkgman"`), and it stays longer. `#include "uikit/clipboard.h"` (UIKit's; it was `user/clipboard.h`): `clip_set_text`, `clip_get_text`,
 > `clip_set_files (paths, cut)`, `clip_get_file`, `clip_clear`, `clip_set_image (px, w, h)`,
 > `clip_get_image (&w, &h)`, and for several formats of one copy `clip_put (fmts, datas, lens, n)` /
 > `clip_get (fmts, nf, got, cap, &data, &len)` (formats: `text`, `rtf`, `image`, `files`, `files-cut`,
@@ -1113,7 +1146,7 @@ alone**.
 > more (`kapi_present_fb` only yields); tearing is possible. 0: keep the back buffer. Used
 > by `n64emu` in full screen.
 >
-> Files: `fsutil.h` (`fs_join`, `fs_exists`, `fs_is_dir`, `fs_copy_tree`,
+> Files: `filekit/fsutil.h` (FileKit's — link `lib/filekit.imp.a`; it was `user/fsutil.h`) (`fs_join`, `fs_exists`, `fs_is_dir`, `fs_copy_tree`,
 > `fs_remove_tree`, `fs_unique_name`) and `trash.h` (`trash_move`, `trash_restore`,
 > `trash_purge`, `trash_empty`, `trash_count` — layout `SD:/.Trash/files` + `info/*.trashinfo`
 > holding `Path=<original>`). Your own IPC service: `kapi_ipc_register ("name")`, clients `kapi_ipc_lookup ("name")` +
@@ -1146,7 +1179,7 @@ alone**.
 > `fileviewer` (preview), `uikit::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
 > already in memory (Letters' RTF pictures, Paint's OpenRaster layers); `img_inflate (data, len, zlib,
 > &n)` inflates a deflate stream (stb's: a ZIP entry, a zlib stream).
-> **Writing images** (`user/Libs/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
+> **Writing images** (`user/Kits/imagekit/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
 > `pngsave::deflate` (LZ77 over 32 KB with hash chains, the fixed Huffman codes; zlib's wrapper or
 > raw), `png_encode (px, w, h, alpha)` (RGBA / RGB, each row's best filter), `jpeg_encode (px, w, h,
 > quality)` (baseline 4:2:0, the standard tables, an integer DCT), `gif_encode` (GIF89a: the exact
@@ -1456,12 +1489,12 @@ alone**.
 > last second's time a field, is further than 12 ms — a yield in a loop kept core 0 busy
 > (heat: the Pi 4 throttles its clock above ~80 °C, kmsg's `power:` lines).
 > See `gbemu` / `gbaemu` / `nesemu` / `snesemu`; `/bin/coretest` exercises the raw kapi.
-> **Game kit** (`user/Include/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
+> **Game kit** (`user/Apps/games/game.h`): `GameView` (a full-window widget: `paint`, `press` / `release` /
 > `move` edges, `key`, `tick (dt)` at ~60 Hz), `GameRoot` (ticks it, routes every key to it),
 > sound effects on voices 12..15 (`sfx (hz, ms, wave, vol)`, `sfx_later` for jingles,
 > `sfx_win` / `sfx_lose`, `sfx_set_mute`; the output is acquired on first use), `rng` / `rng_n`,
 > text helpers (`gtext`, `gtext_c` centred with a shadow, `gitoa`, `gcat`). Cards
-> (`user/Include/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
+> (`user/Apps/games/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
 > victory animation (`win_start` / `win_step`). Used by invaders, pipes, solitaire, freecell
 > (Arkanoid is now the BASIC game). **Host test**: `sh tools/tests/run_games_test.sh [INVADERS …]` builds each game on
 > the PC against a fake kapi table (`tools/tests/uikithost/host_kapi.h`: every slot a stub,
@@ -2704,8 +2737,8 @@ its own — the way the Control Panel hosts its applets: a crash in one never ta
 
 | File | What |
 |---|---|
-| [`user/Include/kplug_proto.h`](../user/Include/kplug_proto.h) | The protocol (plain C, **append-only** like the kapi ABI: a message number or a field never moves; `KP_PROTO_VERSION` grows): the shared region (`KpShm`), the rings, the mailbox messages. |
-| [`user/Include/kplug.h`](../user/Include/kplug.h) | The plugin's side: a plugin is its parameters, a few callbacks and `KPLUG_MAIN (desc)`; the runtime does the rest (the region, the handshake, the render thread, the parameters, the state, a generator's requests, the editor). Small DSP helpers (`KpAdsr`, `KpSvf`, `KpBiquad`, `KpNoise`, `kp_sin`, `kp_mtof`, `kp_db`). |
+| [`user/Apps/koton/plug/kplug_proto.h`](../user/Apps/koton/plug/kplug_proto.h) | The protocol (plain C, **append-only** like the kapi ABI: a message number or a field never moves; `KP_PROTO_VERSION` grows): the shared region (`KpShm`), the rings, the mailbox messages. |
+| [`user/Apps/koton/plug/kplug.h`](../user/Apps/koton/plug/kplug.h) | The plugin's side: a plugin is its parameters, a few callbacks and `KPLUG_MAIN (desc)`; the runtime does the rest (the region, the handshake, the render thread, the parameters, the state, a generator's requests, the editor). Small DSP helpers (`KpAdsr`, `KpSvf`, `KpBiquad`, `KpNoise`, `kp_sin`, `kp_mtof`, `kp_db`). |
 | `user/Apps/kp_<name>/` | A plugin: `main.cpp` + `plugin.json` (fm2, subsynth, pluck; delay, reverb, chorus, eq3, drive; arp, euclid, automaton — the catalogue: [docs/04](04-USER-GUIDE.md), *Koton's plugins*). |
 | [`Apps/koton/plug/plughost.h`](../user/Apps/koton/plug/plughost.h) | The host: the catalogue, the processes, the engine's side of each, parameters, states, generators, editors, crashes. |
 | `Apps/koton/plug/plugshm.h` | The engine's side of a plugin — `ShmSource` (a `kt::ExternalSource`), `ShmEffect` (a `kt::Effect`) — pure memory (they run on the app core). |
@@ -2792,7 +2825,7 @@ Panel's service.)
 **Writing a plugin** (`user/Apps/kp_<name>/main.cpp`):
 
 ```cpp
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 enum { P_CUT, P_RES, NP };
 static const KpParamDef P[NP] = {
 	{ "cutoff", "Cutoff", 20, 18000, 1200, "Hz", 0, 0 },     // id, name, min, max, default, unit, step, choices
@@ -3100,17 +3133,17 @@ rule: a newlib app as Letters (FreeType's text through uikit) linking mbedTLS
 (`COURIER_MBEDTLS`, default `third_party/mbedtls-3.6.3`). On the PC it builds with
 `-DCOURIER_NO_TLS` (`shots.sh courier`).
 
-For **images** there is a reusable decoder, [`user/Libs/img/image.hpp`](../user/Libs/img/image.hpp)
+For **images** there is a reusable decoder, [`user/Kits/imagekit/img/image.hpp`](../user/Kits/imagekit/img/image.hpp)
 (`onyximg::decode(data, len, &w, &h)`) — built on the cross-compiled **zlib + libpng +
 libjpeg**. It sniffs the format (PNG signature / JPEG SOI) and decodes a byte buffer into
 a freshly `malloc`'d array of `0xAARRGGBB` pixels (8-bit alpha in the top byte, which the
 canvas ignores when blitting). Same split as TLS: the libraries are cross-built once
-(`make -C user/Libs/img`, sources pinned in [`user/Libs/img/README.md`](../user/Libs/img/README.md) —
+(`make -C user/Kits/imagekit/img`, sources pinned in [`user/Kits/imagekit/img/README.md`](../user/Kits/imagekit/img/README.md) —
 zlib 1.3.1, libpng 1.6.44, libjpeg IJG v9f), the Onyx glue is header-only. It is a
 **newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/BinUtils
-IMG_DIR=../img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
+IMG_DIR=../Kits/imagekit/img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
 size). Note: `image.hpp` is for full-colour web images; keep
-[`user/Include/bmp.hpp`](../user/Include/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
+[`user/Kits/uikit/bmp.h`](../user/Kits/uikit/bmp.h) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
 
 **The browser** is Jet, on WebKit: the port's own document is [`08-WEBKIT-PORT.md`](08-WEBKIT-PORT.md)
 (the POSIX layer it stands on, the patch series, the builds, its media engine and compositor).
@@ -3185,7 +3218,7 @@ SD:apps/<nom>.app/
 ```
 
 An app may also be written in **BASIC**: `main.bas` (or a compiled `main.bax`) instead of
-`main`. The kernel only loads ELFs: **`user/Include/launch.h`** resolves the rest from
+`main`. The kernel only loads ELFs: **AppKit's `lx_*` functions** (`appkit/appkit.h`; they were `user/launch.h`) resolve the rest from
 **`SD:/etc/runners.ini`** ("extension = program", e.g. `bax = SD:/bin/basic`), then from the
 **apps' own `app.txt`** (`lx_app_for`: an emulator's `games = Game Boy Color: gbc; Game Boy: gb` —
 the extensions after each system's name —, any app's `opens = wad`; the app's `main` must be there),
@@ -3226,7 +3259,7 @@ engine may use 4).
 
 The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show
 their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
-`menubar`, `dock`, `notifyd`, `agenda`, `lock`, `shell`…), `Settings` (the Control Panel's applets: reached through it) and
+`menubar`, `dock`, `notifyd`, `agenda`, `lock`…), `Settings` (the Control Panel's applets: reached through it) and
 `Emulators` (reached through the Game Library, which starts the right one for a game). A shell
 component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
 positioned `uikit::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's

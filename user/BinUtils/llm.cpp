@@ -310,7 +310,7 @@ inline void writeFetchResult (json::Writer &w, bool ok, unsigned long bytes, con
 #ifndef LLM_PROTO_ONLY
 // ==== the helper: the network ===============================================================================
 #define ONYX_HTTP_TLS
-#include "http.hpp"
+#include "netkit/http.hpp"
 #include "appkit/appkit.h"
 #include <unistd.h>
 

@@ -9,7 +9,7 @@
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 using namespace uikit;
 

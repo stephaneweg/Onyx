@@ -2,7 +2,7 @@
 // with LibreOffice (when installed: soffice), our .xlsx converted to .ods and .xlsx by it, read back.
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
-#include "img/stb_image.h"
+#include "imagekit/img/stb_image.h"
 #include "Apps/sheet/condfmt.h"
 #include <stdio.h>
 #include <stdlib.h>

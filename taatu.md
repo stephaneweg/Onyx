@@ -93,7 +93,7 @@ cd Onyx
 | `docs/04-USER-GUIDE.md` | la carte SD, `system.ini`, le réseau | ce que voit l'utilisateur |
 | `user/Apps/2048/main.cpp` | 190 lignes | **squelette** d'une app GUI minimale |
 | `user/Apps/courier/` | `net.h` | **modèle** d'app réseau : HTTPS + JSON + thread réseau + newlib + FreeType |
-| `user/Libs/tls/onyx_tls.hpp`, `user/Include/http.hpp`, `user/Include/json.hpp`, `user/Libs/img/imgload.hpp` | les en-têtes | les briques qu'on réutilise (§4) |
+| `user/Libs/tls/onyx_tls.hpp`, `user/Include/http.hpp`, `user/Include/json.hpp`, `user/Kits/imagekit/img/imgload.hpp` | les en-têtes | les briques qu'on réutilise (§4) |
 
 ### 3.3. La toolchain
 
@@ -136,7 +136,7 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 | HTTPS (login, API REST, assets) | `HttpClient` (`ONYX_HTTP_TLS`) ; plus complet : `Apps/courier/net.h` (redirections, cookies, gzip) | `user/Include/http.hpp` |
 | **WebSocket** | ⚠ pas de client réutilisable seul : celui de Jet (`user/netsurf/onyx_ws.c`) est lié à NetSurf, donc **GPL**. **Ne pas le copier.** En écrire un petit (RFC 6455 client, ~300 lignes) sur `onyx_tls` : §6.2 | — |
 | JSON | `json.hpp` (arène, accès typés tolérants, writer en flux) | `user/Include/json.hpp` |
-| PNG / JPEG / GIF animé / WebP / BMP | `img_load (fichier)`, **`img_load_mem (octets, len)`** → `0xAARRGGBB` | `user/Libs/img/imgload.hpp` |
+| PNG / JPEG / GIF animé / WebP / BMP | `img_load (fichier)`, **`img_load_mem (octets, len)`** → `0xAARRGGBB` | `user/Kits/imagekit/img/imgload.hpp` |
 | Inflate (zlib / gzip / deflate brut) | `img_inflate` | idem |
 | Threads, mutex, events, futex | `kapi_thread_create`, `kapi_post` (renvoyer un résultat au thread GUI) | docs/03 §5.2 |
 | Son | PCM **s16 stéréo 44 100 Hz** : `kapi_sound_acquire` + `kapi_sound_write`, plus des voix synthé | `user/kapi.h` (l.~308) |

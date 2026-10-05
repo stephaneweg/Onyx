@@ -686,3 +686,6 @@
 680 simplewebp_load_from_memory
 681 simplewebp_unload
 682 simplewebp_version
+683 _ZN2ui10bmp_decodeEPKcPiS2_
+684 _ZN2ui9icon_loadEPKcPiS2_
+685 _ZN5uikit13uk_clip_readyEv

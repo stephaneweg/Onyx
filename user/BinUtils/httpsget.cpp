@@ -11,7 +11,7 @@
 // (see onyx_tls.hpp) -- functional, not yet secure.
 //
 #define ONYX_HTTP_TLS
-#include "http.hpp"
+#include "netkit/http.hpp"
 
 #include "appkit/appkit.h"		// kapi_get_args
 

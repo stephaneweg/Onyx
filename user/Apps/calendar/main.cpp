@@ -19,9 +19,9 @@
 // old calendar's notes in it are taken over the first time. An argument "YYYYMMDD" opens that day.
 //
 #include "appkit/appkit.h"
+#include "systemkit/notify.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
-#include "notify.h"
 #include "fontkit/uikitface.h"
 
 using namespace uikit;

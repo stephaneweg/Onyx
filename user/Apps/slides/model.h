@@ -11,7 +11,7 @@
 #define _slides_model_h
 
 #include "Apps/sheet/core.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 namespace sl {
 

@@ -12,7 +12,7 @@
 #define _photos_lib_h
 
 #include "Apps/photos/exif.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 namespace photos {
 

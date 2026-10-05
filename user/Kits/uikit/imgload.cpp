@@ -11,13 +11,13 @@
 #ifndef ONYX_LIB_BUILD
 
 #define IMGLOAD_IMPLEMENTATION
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 #else
 
 #include "appkit/appkit.h"
 #include "lib.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 #include "imagekit/imagekit.h"
 
 extern "C" {

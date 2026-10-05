@@ -21,7 +21,6 @@
 //
 #include "audiokit/audiokit.h"
 #include "appkit/appkit.h"
-#include "launch.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"
 #include "snes/snes.h"

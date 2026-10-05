@@ -11,8 +11,8 @@
 #define _slides_editor_h
 
 #include "render.h"
-#include "clipboard.h"
-#include "img/pngsave.hpp"
+#include "systemkit/clipboard.h"
+#include "imagekit/img/pngsave.hpp"
 
 namespace sl {
 

@@ -23,7 +23,7 @@
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
 #include "printerkit/job.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 namespace praster {
 

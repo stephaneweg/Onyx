@@ -9,7 +9,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "cards.h"
+#include "../games/cards.h"
 
 using namespace uikit;
 

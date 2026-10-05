@@ -6,7 +6,7 @@
 // (no libc) -- proves http.hpp works in an integer-only app; console I/O via kapi.
 //
 #include "appkit/appkit.h"
-#include "http.hpp"
+#include "netkit/http.hpp"
 
 static void outs (const char *s) { int n = 0; while (s[n]) n++; kapi_stdout_write (s, (unsigned) n); }
 static void outi (int v)

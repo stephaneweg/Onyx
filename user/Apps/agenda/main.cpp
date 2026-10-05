@@ -14,8 +14,8 @@
 // a light wallpaper, white with a soft shadow on a dark one.
 //
 #include "appkit/appkit.h"
+#include "systemkit/notify.h"
 #include "uikit/uikit.h"
-#include "notify.h"
 
 using namespace uikit;
 

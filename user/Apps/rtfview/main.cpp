@@ -8,7 +8,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 #include "docguard.h"
 #include "rtf.h"
 

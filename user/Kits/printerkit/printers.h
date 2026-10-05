@@ -28,7 +28,7 @@
 #define ONYX_PRINT_PRINTERS_H
 
 #include "printerkit/pio.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 #ifdef PRINT_HOST
 #define PRINT_INI	"printers.ini"

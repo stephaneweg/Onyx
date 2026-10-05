@@ -10,8 +10,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include "doc.h"
-#include "img/imgload.hpp"
-#include "img/pngsave.hpp"
+#include "imagekit/img/imgload.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace wr {
 

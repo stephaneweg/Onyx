@@ -11,10 +11,11 @@
 #include "Apps/mail/ui.h"
 #include "Apps/mail/model.h"
 #include "mail/html_ft.h"
-#include "img/imgload.hpp"
-#include "notify.h"
-#include "clipboard.h"
-#include "fileassoc.h"
+#include "imagekit/img/imgload.hpp"
+#include "appkit/appkit.h"
+#include "systemkit/notify.h"
+#include "systemkit/clipboard.h"
+#include "systemkit/fileassoc.h"
 
 namespace mailapp {
 

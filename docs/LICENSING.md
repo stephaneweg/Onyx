@@ -87,8 +87,8 @@ Two weaknesses, worth fixing:
 | libwebp, brotli | `third_party/` | BSD-3 / MIT | Keep the notices |
 | nghttp2 (curl's HTTP/2) | `third_party/nghttp2-1.70.0` | MIT | Keep the notice |
 | ns-sans glyphs (the system's bitmap font is generated from them: `tools/fonts/gen_nssans.py`) | `third_party/fonts/ns-sans` (from NetSurf's framebuffer front end; Tim Tyler, Michael Drake) | MIT | Keep the notice |
-| stb_image | `user/Libs/img` | Public domain / MIT | — |
-| simplewebp | `user/Libs/img` | BSD | Keep the notice |
+| stb_image | `user/Kits/imagekit/img` | Public domain / MIT | — |
+| simplewebp | `user/Kits/imagekit/img` | BSD | Keep the notice |
 | MuPDF 1.28.5 (fitz, pdf; the URW base-14 fonts) | `third_party/mupdf-1.28.5`, the PDF Viewer | **AGPL-3.0** (Artifex) | The PDF Viewer under AGPL-3.0, its source available (the repository); keep `COPYING` |
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |

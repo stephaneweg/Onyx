@@ -11,7 +11,7 @@
 #define _photos_share_h
 
 #include "Apps/photos/editor.h"
-#include "wallpaper.h"
+#include "systemkit/wallpaper.h"
 #include "pdf/pdfwrite.h"
 #include "printerkit/printerkit.h"
 

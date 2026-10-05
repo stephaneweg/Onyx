@@ -19,7 +19,7 @@
 //
 #include "appkit/appkit.h"
 #include "umm.h"
-#include "ftpfs.h"
+#include "netkit/ftpfs.h"
 
 static char g_base[160] = "";		// "FTP:host" / "FTPS:host:990" ("" = not connected)
 static char g_host[100] = "";

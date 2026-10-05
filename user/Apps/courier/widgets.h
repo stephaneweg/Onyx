@@ -14,7 +14,7 @@
 
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 #include "vars.h"
 
 namespace cr {

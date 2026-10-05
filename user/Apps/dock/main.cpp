@@ -26,12 +26,11 @@
 // above it. IPC service "dock": DOCK_MSG_RELOAD reads dock.ini and the theme again.
 //
 #include "appkit/appkit.h"
-#include "bmp.hpp"
-#include "fsutil.h"
-#include "fileassoc.h"
-#include "launch.h"
-#include "trash.h"
-#include "notify.h"
+#include "systemkit/notify.h"
+#include "uikit/bmp.h"
+#include "filekit/fsutil.h"
+#include "systemkit/fileassoc.h"
+#include "systemkit/trash.h"
 #include "dockconf.h"
 #include "uikit/uikit.h"
 

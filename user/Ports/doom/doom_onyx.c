@@ -25,8 +25,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "appkit/appkit.h"
+#include "systemkit/notify.h"
 #include "gamepad.h"
-#include "notify.h"
 #include "doomgeneric.h"
 // Doom's key codes (doomkeys.h, whose names clash with appkit.h's KEY_*)
 #define DK_RIGHT	0xae

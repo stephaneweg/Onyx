@@ -26,7 +26,7 @@
 #include <mbedtls/sha256.h>
 #include <mbedtls/pk.h>
 #ifdef PKG_NET
-#include "http.hpp"
+#include "netkit/http.hpp"
 #else
 #include "tls/onyx_tls.hpp"		// (PSA's random bytes: kapi_random)
 #endif

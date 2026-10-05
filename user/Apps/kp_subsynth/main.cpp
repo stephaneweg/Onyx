@@ -1,10 +1,10 @@
 //
-// kp_subsynth -- a Koton instrument plugin (user/Include/kplug.h): a subtractive synthesiser. Two oscillators
+// kp_subsynth -- a Koton instrument plugin (user/Apps/koton/plug/kplug.h): a subtractive synthesiser. Two oscillators
 // (saw, square with its pulse width, triangle, sine; anti-aliased by polyBLEP) and noise, mixed into
 // a state-variable filter (low-, band- or high-pass) whose cutoff follows the key and its own ADSR;
 // an ADSR on the amplitude. 8 voices.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 
 static const char *const WAVES[] = { "Saw", "Square", "Triangle", "Sine", 0 };
 static const char *const MODES[] = { "Low-pass", "Band-pass", "High-pass", 0 };

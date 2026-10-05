@@ -9,7 +9,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit + uk_file_open / uk_file_save + Menu
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 #include "docguard.h"
 
 using namespace uikit;

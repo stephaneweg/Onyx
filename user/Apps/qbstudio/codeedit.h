@@ -11,7 +11,7 @@
 #define _qbstudio_codeedit_h
 
 #include "uikit/uikit.h"
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 #include "form.h"
 
 namespace qs {

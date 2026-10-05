@@ -199,7 +199,10 @@
 //      the .ini reader, the keyboard layout -- they were user/applib.h, inline in every program). No
 //      entry added to this table: the number says "this system's AppKit has them" -- a program built
 //      from now on calls them in AppKit, and its package's "kapi >= 87" waits for this system.
-#define KAPI_ABI_VERSION	87
+// v88: AppKit carries the starting of programs by their runner (lx_launch, lx_open...: it was
+//      user/launch.h). No entry added here:
+//      as v87, the number makes the packages of the programs rebuilt wait for this system's AppKit.
+#define KAPI_ABI_VERSION	88
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 

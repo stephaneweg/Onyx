@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #define IMGLOAD_IMPLEMENTATION
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 #include "printerkit/job.h"
 #include "printerkit/pdfsink.h"
 #include "printerkit/raster.h"

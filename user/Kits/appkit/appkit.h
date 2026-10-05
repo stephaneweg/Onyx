@@ -819,6 +819,42 @@ KAPI_FN const char *app_ini_value (int i);
 // map the kernel has (kapi_set_keymap). Non-zero = done. The keyboard must be up (kapi_kbd_ready).
 KAPI_FN int ax_load_keymap (const char *name);
 
+// ---- Starting programs (it was user/launch.h until 2026-10-05) ----
+// launch.h -- starting programs from user space. The kernel only loads ELF programs; the
+// other formats have a RUNNER (SD:/etc/runners.ini, "extension = program"): a BASIC
+// program (.bas, .bax) is run by SD:/bin/basic -- or an app that says it opens them: an emulator's
+// app.txt names the games it plays, "games = Game Boy Color: gbc; Game Boy: gb" (and "opens = dol"
+// for files it opens that are not games): installing an emulator's package is enough.
+//   lx_launch (name, args)   an app: SD:apps/<name>.app/main (an ELF), else its main.<ext>
+//                            run by that extension's runner (named after the app)
+//   lx_open (path, args)     a program file: an ELF as it is, else by its runner
+//   lx_runner (path, out)    the runner of a file (by its extension), 0 if none
+// C and C++ (run, init, the apps).
+#define LX_INI	"SD:/etc/runners.ini"
+KAPI_FN char lx_low (char c);
+KAPI_FN int lx_len (const char *s);
+KAPI_FN void lx_cat (char *d, int cap, int *n, const char *s);
+KAPI_FN int lx_exists (const char *path);
+// The i-th "ext = program" line of runners.ini (0-based): 1 found, 0 past the end.
+KAPI_FN int lx_entry (int i, char *ext, int ecap, char *prog, int pcap);
+// Does the value of an app.txt's "games" / "opens" (the extensions after each "System:", or all the
+// words of "opens") hold ext?
+KAPI_FN int lx_lists_ext (const char *v, int len, const char *ext, int games);
+// The app (SD:/apps/<name>.app/main) whose app.txt opens files of this extension: 1 + out, 0 if none.
+KAPI_FN int lx_app_for (const char *ext, char *out, int cap);
+// The runner of a file, by its extension (runners.ini, else the built-in list): 1 + out, 0 if none.
+KAPI_FN int lx_runner (const char *path, char *out, int cap);
+// The runner's command line: "path" args (the path quoted when it has spaces).
+KAPI_FN void lx_cmdline (char *out, int cap, const char *path, const char *args);
+// A program file: by its runner if its extension has one, else as an ELF. name: the
+// process name (0: the kernel's, from the path). 1 = started.
+KAPI_FN int lx_open_as (const char *path, const char *args, const char *name);
+KAPI_FN int lx_open (const char *path, const char *args);
+// An app bundle by folder path (".../x.app"): its main (ELF), else main.<ext> for a runner.
+KAPI_FN int lx_launch_dir (const char *dir, const char *name, const char *args);
+// An app by name (SD:apps/<name>.app), with arguments (0 / "": none). 1 = started.
+KAPI_FN int lx_launch (const char *name, const char *args);
+
 // (the tests of the kernel's table, and the PC builds: the bodies inline -- see this header's top)
 #if (defined (KAPI_INLINE) || !defined (__aarch64__)) && !defined (KAPI_IMPL)
 #include "appkit_calls.inc"

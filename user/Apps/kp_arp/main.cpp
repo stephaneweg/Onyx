@@ -1,5 +1,5 @@
 //
-// kp_arp -- a Koton generator plugin (user/Include/kplug.h): the arpeggiator, a port of Koton Studio's
+// kp_arp -- a Koton generator plugin (user/Apps/koton/plug/kplug.h): the arpeggiator, a port of Koton Studio's
 // reference generator (Plugins/Generators/KotonPluginArpeggiator/Arpeggiator.cs): the same parameters,
 // the same state ({"v":1, "duration", "params": {...}, "rhythm": {beats, spb, starts, lens}}), the same
 // notes -- its "Random" pattern draws from .NET's seeded Random (kt::NetRandom), as Koton does.
@@ -10,7 +10,7 @@
 // repeats it over 1 + extend octaves (3 at most) and plays the pool Up, Down, Up-Down, Down-Up, at
 // Random, or as a Chord; voice leading: at a chord change, from the note nearest the last one.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 #include "Apps/koton/engine/kbase.h"		// kt::NetRandom: .NET's seeded Random, bit for bit
 
 static const char *const PATTERNS[] = { "Up", "Down", "Up-Down", "Down-Up", "Random", "Chord", 0 };

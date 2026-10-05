@@ -1,5 +1,5 @@
 // tools/tests/koton/plug_host_test.cpp -- the plugin host (user/Apps/koton/plug/plughost.cpp) and the
-// plugins' kernel side (user/Include/kplug.h: kplug_main, its render thread, its editor) on the PC: the
+// plugins' kernel side (user/Apps/koton/plug/kplug.h: kplug_main, its render thread, its editor) on the PC: the
 // desktop simulator's stand-in kernel (tools/tests/desktop_sim/fakekapi.cpp, used as it is) with a
 // few of its entries replaced here by a small multi-process one -- processes are threads (exec_as runs
 // a plugin's real main in one), each its mailbox, several shared surfaces, named services, the process
@@ -15,7 +15,7 @@
 #include "uikit/uikit.h"
 #include "plug/plughost.h"
 #include "engine/theory.h"
-#include "applet_proto.h"
+#include "systemkit/applet_proto.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

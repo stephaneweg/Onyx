@@ -1,0 +1,53 @@
+# systemkit.abi -- the export table of SD:/lib/systemkit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 clip_clear
+1 clip_get
+2 clip_get_file
+3 clip_get_image
+4 clip_get_text
+5 clip_put
+6 clip_service_
+7 clip_set_files
+8 clip_set_image
+9 clip_set_text
+10 clip_set_text_n
+11 fa_app_for
+12 fa_ext
+13 fa_is_program
+14 fa_open
+15 mixer_set
+16 notify
+17 notify_action
+18 preload_ini_load
+19 preload_ini_save
+20 trash_count
+21 trash_empty
+22 trash_ensure
+23 trash_info_path_
+24 trash_move
+25 trash_origin
+26 trash_purge
+27 trash_restore
+28 volume_output_word
+29 volume_restore
+30 volume_save
+31 volume_set_output
+32 wp_colour
+33 wp_defaults
+34 wp_eq
+35 wp_grey_cover
+36 wp_grey_tile
+37 wp_isqrt
+38 wp_key
+39 wp_lines
+40 wp_load
+41 wp_lum
+42 wp_multiply
+43 wp_paint
+44 wp_put
+45 wp_put_colour
+46 wp_save
+47 wp_tint

@@ -22,9 +22,9 @@
 //
 #include "appkit/appkit.h"
 #include "dockconf.h"
-#include "wallpaper.h"
-#include "applet_proto.h"
-#include "img/imgload.hpp"
+#include "systemkit/wallpaper.h"
+#include "systemkit/applet_proto.h"
+#include "imagekit/img/imgload.hpp"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

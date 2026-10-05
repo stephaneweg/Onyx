@@ -17,7 +17,7 @@
 #ifndef ONYX_PRINT_IPP_H
 #define ONYX_PRINT_IPP_H
 
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace ipp {
 

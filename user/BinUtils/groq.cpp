@@ -21,7 +21,7 @@
 // UTF-8 / \uXXXX comes back as Latin-1 (typographic quotes / dashes folded to ASCII).
 //
 #define ONYX_HTTP_TLS
-#include "http.hpp"
+#include "netkit/http.hpp"
 #include "appkit/appkit.h"
 
 #include <stdlib.h>

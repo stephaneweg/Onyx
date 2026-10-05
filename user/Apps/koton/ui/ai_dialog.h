@@ -14,7 +14,7 @@
 
 #include "ui/dialogs.h"
 #include "engine/ai.h"
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 
 namespace kui {
 

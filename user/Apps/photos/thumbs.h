@@ -16,7 +16,7 @@
 
 #include "Apps/photos/lib.h"
 #include "Apps/photos/imgops.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 #include "uikit/uikit.h"
 
 namespace photos {

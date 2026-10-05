@@ -13,8 +13,8 @@
 //
 #include "appkit/appkit.h"
 #include "onyxpp.hpp"			// operator new / delete (the picture's decoder)
-#include "wallpaper.h"
-#include "img/imgload.hpp"
+#include "systemkit/wallpaper.h"
+#include "imagekit/img/imgload.hpp"
 
 static void yield (void) { kapi_yield (); }
 

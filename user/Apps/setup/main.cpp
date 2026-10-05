@@ -20,9 +20,9 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "bmp.hpp"
-#include "wallpaper.h"
-#include "img/imgload.hpp"
+#include "uikit/bmp.h"
+#include "systemkit/wallpaper.h"
+#include "imagekit/img/imgload.hpp"
 #include "fontkit/uikitface.h"
 #include "system.h"
 

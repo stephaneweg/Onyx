@@ -1,11 +1,11 @@
 //
-// kp_pluck -- a Koton instrument plugin (user/Include/kplug.h): plucked strings, Karplus-Strong. A burst of
+// kp_pluck -- a Koton instrument plugin (user/Apps/koton/plug/kplug.h): plucked strings, Karplus-Strong. A burst of
 // noise (its brightness, the pick's position: a comb) is loaded into a delay line one period long;
 // the line feeds back through a one-zero low-pass (the damping) and an all-pass (the fine tuning)
 // with the gain that makes it fall 60 dB in the decay time -- a kora, a harp, a guitar. A released
 // key damps its string. 12 voices, spread across the stereo field by pitch.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 
 enum { P_DECAY, P_DAMP, P_BRIGHT, P_PICK, P_RELEASE, P_WIDTH, P_VELSENS, P_VOLUME, NP };
 static const KpParamDef P[NP] = {

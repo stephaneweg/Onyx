@@ -1,17 +1,17 @@
 //
 // imgtest -- proof that the image codecs (zlib + libpng) decode end-to-end on Onyx.
 //
-// Decodes a small embedded PNG with onyximg::decode (../img/image.hpp) and prints its
+// Decodes a small embedded PNG with onyximg::decode (imagekit/img/image.hpp) and prints its
 // dimensions + a few pixels. Self-contained (no SD asset). Newlib app: it links libpng
 // + zlib + libm and uses printf/malloc, so it is OPT-IN -- build it only when the codec
-// libs are present (see ../bin/Makefile, IMG_DIR; recipe in ../img/README.md):
+// libs are present (see user/BinUtils/Makefile, IMG_DIR; recipe in user/Kits/imagekit/img/README.md):
 //
-//     make -C user/Libs/img                                   # build the libs once
-//     make -C user/BinUtils IMG_DIR=../img imgtest.elf
+//     make -C user/Kits/imagekit/img                                   # build the libs once
+//     make -C user/BinUtils IMG_DIR=../Kits/imagekit/img imgtest.elf
 //
 #include <stdio.h>
 #include <stdlib.h>
-#include "img/image.hpp"
+#include "imagekit/img/image.hpp"
 
 // 4x4 8-bit RGBA PNG, top-left pixel = opaque red (decodes to 0xFFFF0000).
 static const unsigned char test_png[] = {

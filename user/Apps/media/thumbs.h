@@ -11,7 +11,7 @@
 #define _media_thumbs_h
 
 #include "covers.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace media {
 

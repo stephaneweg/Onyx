@@ -552,7 +552,7 @@ core and **fail the test on any kernel call**).
 - **On the Pi** (kotonstudio.com, one app core free + the main thread): the 12-notch scroll's
   worst two seconds went from `20 frames, 7 Mpx, paint 1450 ms` to `64–73 frames, 5–7 Mpx, paint
   200–340 ms`; the self-test's stages all pass.
-- **What this found in Web's link**: `user/Libs/img/imgload.hpp` (in uikit) defines *weak* `malloc` /
+- **What this found in Web's link**: `user/Kits/imagekit/img/imgload.hpp` (in uikit) defines *weak* `malloc` /
   `free` / `calloc` / `realloc` on `operator new[]`, and `onyxpp.hpp` a global `operator new` on
   `umm.h` (`kapi_sbrk`): in the static link both won over newlib's. So the whole browser — Skia,
   WebKit — allocated with uikit's allocator, while `malloc_usable_size` and `posix_memalign` were

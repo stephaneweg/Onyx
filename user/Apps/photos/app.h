@@ -11,9 +11,10 @@
 #include "fontkit/fonts.h"
 #include "Apps/photos/ui.h"
 #include "Apps/photos/thumbs.h"
-#include "notify.h"
-#include "clipboard.h"
-#include "trash.h"
+#include "appkit/appkit.h"
+#include "systemkit/notify.h"
+#include "systemkit/clipboard.h"
+#include "systemkit/trash.h"
 
 namespace photos {
 

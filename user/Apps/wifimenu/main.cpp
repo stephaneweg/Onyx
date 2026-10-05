@@ -10,7 +10,6 @@
 // "Wi-Fi Settings..." opens wpaconf (the country, the fields by hand).
 //
 #include "appkit/appkit.h"
-#include "launch.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

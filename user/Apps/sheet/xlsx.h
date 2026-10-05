@@ -12,8 +12,8 @@
 
 #include "undo.h"
 #include "xml.h"
-#include "img/pngsave.hpp"
-#include "img/imgload.hpp"
+#include "imagekit/img/pngsave.hpp"
+#include "imagekit/img/imgload.hpp"
 #ifdef SHEET_APP
 #include "appkit/appkit.h"
 #endif

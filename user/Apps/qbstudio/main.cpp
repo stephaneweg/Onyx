@@ -23,7 +23,8 @@
 #include "designer.h"
 #include "props.h"
 #include "gen.h"
-#include "notify.h"
+#include "appkit/appkit.h"
+#include "systemkit/notify.h"
 
 using namespace uikit;
 using namespace qs;

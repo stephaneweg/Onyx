@@ -16,7 +16,7 @@
 #include "uikit/toolbar.h"
 #include "uikit/paint.h"
 #include "uikit/skin.h"
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 #include "engine.h"
 #include <fcntl.h>
 #include <stdio.h>

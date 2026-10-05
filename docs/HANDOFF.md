@@ -264,7 +264,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   sound_status, msleep, should_exit, get_modifiers, pop_event (~4 300/s each). Cause: `poll_input`
   (`user/Ports/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
   called ~4 300 times a second (not once a frame). The same per-key polling is in **every emulator**
-  (gb, gba, nes, snes, n64, **gc**), invaders, `user/Include/game.h` and the BASIC runtime (**Arkanoid**) --
+  (gb, gba, nes, snes, n64, **gc**), invaders, `user/Apps/games/game.h` and the BASIC runtime (**Arkanoid**) --
   likely a big part of their slowdown at EL0. **The fix (the user's design, 2026-10-02):** `key_held` must not be
   a system call. The kernel keeps **one input-state page** (a 256-bit held-key map, the modifiers,
   the pads' state -- removing `pad_state`'s 7 % too), mapped **read-only at a fixed VA** next to the
@@ -598,8 +598,8 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 
 ## The shared clipboard (2026-10-01, not yet tried on the Pi)
 
-- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/Include/clipboard.h`**
-  (the apps' side, its old functions kept + images and formats), **`user/Include/clipproto.h`** (messages by mailbox,
+- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/Kits/uikit/clipboard.h`**
+  (the apps' side, its old functions kept + images and formats), **`user/Kits/uikit/clipproto.h`** (messages by mailbox,
   bytes by `RAM:/clip` files), **`user/Apps/clipboard`** (the widget, the dock's new button; the dock's small
   buttons now: lock / gear at the left, power / clipboard at the right). Every uikit app gets it through
   `textbox.cpp` / `textarea.cpp`: all the apps were rebuilt and staged. `autostart` runs clipd.
@@ -909,7 +909,7 @@ toggle, Fit), transparent **layers** (eye, opacity, add, duplicate, delete, move
 a floating selection (moved, nudged, turned, flipped; a click outside puts it down), zoom 12 % –
 3200 %, undo by tiles. **Save** = OpenRaster (`.ora`, the layers; GIMP / Krita read it); **Open**:
 `.ora`, PNG, JPEG, BMP, GIF (WebP, PCX); **Export**: PNG, JPEG, BMP, GIF (flattened) — the writers
-in `user/Libs/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
+in `user/Kits/imagekit/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
 closed-unsaved picture is recovered. Screenshots `paint.png`, `paint-grid.png`; docs 04 *Paint*,
 03. **Next ideas**: a text tool (it would make Paint a newlib app: `fontkit/fonts.h`), free-form
 selection, a selection resized by handles, brushes with soft edges, a gradient fill.

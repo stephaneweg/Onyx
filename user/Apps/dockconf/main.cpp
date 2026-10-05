@@ -11,8 +11,7 @@
 // number of workspaces too. Discard reloads what is saved.
 //
 #include "appkit/appkit.h"
-#include "fsutil.h"
-#include "launch.h"
+#include "filekit/fsutil.h"
 #include "dockconf.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget

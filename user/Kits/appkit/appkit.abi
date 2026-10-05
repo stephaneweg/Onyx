@@ -288,3 +288,16 @@
 282 ax_strcat
 283 ax_streq
 284 ax_strlen
+285 lx_app_for
+286 lx_cat
+287 lx_cmdline
+288 lx_entry
+289 lx_exists
+290 lx_launch
+291 lx_launch_dir
+292 lx_len
+293 lx_lists_ext
+294 lx_low
+295 lx_open
+296 lx_open_as
+297 lx_runner

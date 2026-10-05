@@ -15,8 +15,8 @@
 // directory, so it finds its files by relative names.
 //
 #include "appkit/appkit.h"
-#include "clipboard.h"
-#include "notify.h"
+#include "systemkit/notify.h"
+#include "systemkit/clipboard.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"
 #include "basic/basscreen.h"

@@ -16,7 +16,7 @@
 // `pkgman --updates` opens on Updates (pkgd's notification).
 //
 #include "appkit/appkit.h"
-#include "bmp.hpp"
+#include "uikit/bmp.h"
 #include "pkg/pkglib.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"

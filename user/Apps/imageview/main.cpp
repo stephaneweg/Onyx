@@ -18,8 +18,8 @@
 //
 #include "imagekit/imagekit.h"
 #include "appkit/appkit.h"
-#include "fsutil.h"
-#include "img/imgload.hpp"
+#include "filekit/fsutil.h"
+#include "imagekit/img/imgload.hpp"
 #include "uikit/uikit.h"
 
 using namespace uikit;

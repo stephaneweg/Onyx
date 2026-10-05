@@ -19,7 +19,7 @@
 #define _mail_webview_h
 
 #include "Apps/mail/app.h"
-#include "applet_proto.h"
+#include "systemkit/applet_proto.h"
 #include "Apps/jet/webview_proto.h"
 
 namespace mailapp {

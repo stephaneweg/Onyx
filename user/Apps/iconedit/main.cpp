@@ -11,7 +11,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "bmp.hpp"
+#include "uikit/bmp.h"
 #include "docguard.h"
 
 using namespace uikit;

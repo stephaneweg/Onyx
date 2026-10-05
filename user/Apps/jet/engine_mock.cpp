@@ -6,7 +6,7 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
 #include "appkit/appkit.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 #include "engine.h"
 #include <string.h>
 

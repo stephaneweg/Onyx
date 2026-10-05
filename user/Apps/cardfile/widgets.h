@@ -15,7 +15,7 @@
 #define _cardfile_widgets_h
 
 #include "uikit/uikit.h"
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
 #include "model.h"
 
 namespace cf {

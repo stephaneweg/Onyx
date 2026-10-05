@@ -49,12 +49,12 @@ static bool need_filekit (void)
 
 // ---- the decoders ------------------------------------------------------------------------------------
 #define IMGLOAD_IMPLEMENTATION
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 // ---- the encoders: PNG's compression is zlib's (FileKit) ---------------------------------------------
 static unsigned char *ik__png_deflate (const unsigned char *in, unsigned n, unsigned *outLen);
 #define PNGSAVE_DEFLATE ik__png_deflate
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 static unsigned char *ik__png_deflate (const unsigned char *in, unsigned n, unsigned *outLen)
 {
 	if (need_filekit ())

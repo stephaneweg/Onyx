@@ -8,7 +8,7 @@
 // async events with kapi_mailbox_send; both drain their mailbox with kapi_mailbox_recv.
 //
 // The kernel is payload-agnostic: a message is just {from_pid, type, bytes}. The
-// meaning of `type` is the user-side shell protocol (user/Include/shell_proto.h). from_pid 0
+// meaning of `type` is the user-side shell protocol (it was user/shell_proto.h; the activity shell was removed on 2026-10-05). from_pid 0
 // means "from the kernel" (e.g. a future process-gone notice).
 //
 #ifndef _kern_ipc_h

@@ -1,7 +1,7 @@
-// trash_test -- host test of user/Include/trash.h + user/Include/fsutil.h against mock_kapi.h (the kernel's
+// trash_test -- host test of user/Include/trash.h + user/Kits/filekit/fsutil.h against mock_kapi.h (the kernel's
 // return conventions). Build + run: tools/tests/run_trash_test.sh
 #include "appkit/appkit.h"			// = mock_kapi.h (see run_trash_test.sh)
-#include "trash.h"
+#include "systemkit/trash.h"
 static int fails = 0;
 #define CHECK(c) do { if (!(c)) { printf ("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 int main ()

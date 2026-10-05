@@ -10,7 +10,7 @@
 // Kept in SD:/etc/sound.ini (applied again at boot by the menu bar, whose icon follows).
 //
 #include "appkit/appkit.h"
-#include "volume.h"
+#include "systemkit/volume.h"
 
 static void show (int r)
 {

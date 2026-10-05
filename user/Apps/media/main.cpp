@@ -23,12 +23,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "appkit/appkit.h"
+#include "systemkit/notify.h"
 #include "player.h"
 #include "ui.h"
 #include "thumbs.h"
 #include "watch.h"
-#include "fileassoc.h"
-#include "notify.h"
+#include "systemkit/fileassoc.h"
 
 using namespace uikit;
 using namespace media;

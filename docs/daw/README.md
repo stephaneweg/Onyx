@@ -187,7 +187,7 @@ parameters) — *as built: see §9 and docs/03, "Koton's plugins"*. Three kinds,
    and speaks the applets' messages (`applet_proto.h`, unchanged); the host shows it in a
    floating panel. (As built: not `--applet`, whose watchdog expects the Control Panel as host.)
 
-The protocol (`user/Include/kplug_proto.h`, append-only like the kapi ABI): `KP_HELLO {kind, name,
+The protocol (`user/Apps/koton/plug/kplug_proto.h`, append-only like the kapi ABI): `KP_HELLO {kind, name,
 nparams}`, `KP_PARAMS` (JSON), `KP_PREPARE {rate, block, shm}`, `KP_SET {param, value}`,
 `KP_STATE_GET / SET` (a JSON blob, saved in the project), `KP_GENERATE {from, to}` → notes,
 `KP_RESET`, `KP_BYE`. The host kills a plugin that stops answering and marks it "crashed" in the

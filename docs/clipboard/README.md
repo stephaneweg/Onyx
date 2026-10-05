@@ -1,6 +1,6 @@
 # The shared clipboard — a service with a history (study, first mock-ups)
 
-> **Status (2026-10-01): implemented** (`user/Apps/clipd`, `user/Include/clipboard.h`, `user/Include/clipproto.h`, the widget
+> **Status (2026-10-01): implemented** (`user/Apps/clipd`, `user/Kits/uikit/clipboard.h`, `user/Kits/uikit/clipproto.h`, the widget
 > `user/Apps/clipboard`; tested on the PC: `tools/tests/run_clipboard_test.sh`; not yet tried on the Pi).
 > The transfers go through files of `RAM:/clip` rather than shared surfaces (a surface mapped stays
 > mapped in clipd until it ends: memory kept for nothing). Its use: docs/04 §5 *The clipboard*. Asked by the user (with
@@ -62,7 +62,7 @@ share their buffers): the sender writes into one, the receiver maps it by its id
 
 ### What changes in the apps: nothing at first
 
-`user/Include/clipboard.h` keeps its functions (`clip_set_text`, `clip_get_text`, `clip_set_files`,
+`user/Kits/uikit/clipboard.h` keeps its functions (`clip_set_text`, `clip_get_text`, `clip_set_files`,
 `clip_get_file`, `clip_clear`) and adds `clip_set_image`, `clip_get_image`, `clip_set (formats...)`,
 `clip_get (formats...)` — now over IPC to clipd. uikit's text fields (`textbox.cpp`, `textarea.cpp`) and
 the apps that use the header get the history without a change; an app then adds its own formats

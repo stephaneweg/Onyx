@@ -18,10 +18,9 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "appkit/appkit.h"
-#include "fsutil.h"
-#include "launch.h"
+#include "filekit/fsutil.h"
 #include "BinUtils/imgname.h"
-#include "preloadini.h"
+#include "systemkit/preloadini.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

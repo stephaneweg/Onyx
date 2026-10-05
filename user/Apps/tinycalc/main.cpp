@@ -8,7 +8,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit
-#include "embed.h"		// run embedded in the activity shell (surface + mailbox)
 
 typedef long long          i64;
 typedef unsigned long long u64;
@@ -282,7 +281,6 @@ static bool calc_key (int key)
 	else return false;
 	return true;
 }
-static void calc_key_v (int key) { calc_key (key); }	// embed::KeyFn adapter
 
 // A Root subclass so the keyboard drives the calculator directly (buttons never steal
 // focus, so unfocused keys fall through to the Root's onKey).
@@ -335,18 +333,6 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	// Embedded in the activity shell? Register, get a surface viewport, run on it.
-	embed::Host host;
-	if (embed::attach (&host, ROLE_SECONDARY, "calc"))
-	{
-		Panel *root = new Panel (0, 0, host.w, host.h, CALC_BG);
-		root->canvas.adopt (host.pixels, host.w, host.h, host.stride);	// draw into the surface sub-rect
-		build_ui (root, host.w, host.h);
-		embed::run (&host, root, calc_key_v);
-		return 0;
-	}
-
-	// Standalone fallback: our own window.
 	Calc root (W, H, "tinycalc");
 	if (root.canvas.px == 0) return 1;
 	root.setBg (CALC_BG);

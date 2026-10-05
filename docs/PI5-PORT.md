@@ -524,7 +524,7 @@ In rough order of value for effort.
      `emucore` `ec_xchg` (`user/Emulators/emucore.h:59-67`), `kapi.h:455`: modest gains under contention; in
      a shared binary select at run time (a CPU-feature word, §11).
    - **RCpc (`ldapr`)** for the emucore ring acquire loads.
-   - **CRC32 instructions** (ARMv8.0 already, unused): `user/Libs/img/pngsave.hpp:52-58`,
+   - **CRC32 instructions** (ARMv8.0 already, unused): `user/Kits/imagekit/img/pngsave.hpp:52-58`,
      `user/Emulators/n64/n64_bus.cpp:39`, zlib.
    - **PAN / UAO** for `docs/EL0-PROTECTED-MODE.md`: with PAN, stray kernel accesses to user pages
      fault while `LDTR`/`STTR` copies still work. The A72 lacks PAN → keep it optional (feature
@@ -564,7 +564,7 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
 - **Compiler flags** `-mcpu=cortex-a72` (fine for a shared userland; switch only for a Pi-5-tuned
   build): `user/Makefile:5, 60, 64, 79, 176, 182`, `user/BinUtils/Makefile:16, 20, 27`,
   `user/Ports/doom/Makefile:13, 16`, `user/netsurf/Makefile:44`, `user/netsurf/netsurf-app.mk:47, 147,
-  183-187, 246`, `user/Libs/img/Makefile:25, 27`, `user/Libs/tls/Makefile:15, 17`, `user/Ports/stk/Makefile:29`,
+  183-187, 246`, `user/Kits/imagekit/img/Makefile:25, 27`, `user/Libs/tls/Makefile:15, 17`, `user/Ports/stk/Makefile:29`,
   `user/nsfb/Makefile:27`, `third_party/libwebp-1.4.0/src/**/Makefile`,
   `tools/tests/koton/{synth,plug,engine,ai}_run.sh`.
 - **The QPU toolchain** pinned to 42: `tools/qpu/qpulib.c:19-21`, `tools/qpu/qpusim.cpp:17`,

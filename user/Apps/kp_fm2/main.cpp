@@ -1,10 +1,10 @@
 //
-// kp_fm2 -- a Koton instrument plugin (user/Include/kplug.h): two-operator FM, the kernel's FM voices'
+// kp_fm2 -- a Koton instrument plugin (user/Apps/koton/plug/kplug.h): two-operator FM, the kernel's FM voices'
 // algorithm in float. A modulator (its ratio to the note, a fine detune, self-feedback) bends the
 // phase of a sine carrier; the modulation index follows its own envelope (the brightness that fades
 // as a note rings), the amplitude the other. 16 voices.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 
 enum { P_RATIO, P_INDEX, P_FEEDBACK, P_ATTACK, P_DECAY, P_SUSTAIN, P_RELEASE, P_MDECAY, P_MSUSTAIN, P_DETUNE, P_VELSENS, P_VOLUME, NP };
 static const KpParamDef P[NP] = {

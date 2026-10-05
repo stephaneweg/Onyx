@@ -1,5 +1,5 @@
 #include "uikit/icon.h"
-#include "bmp.hpp"		// ui::bmp_decode
+#include "bmp.h"		// ui::bmp_decode
 // operator delete[] resolves at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {

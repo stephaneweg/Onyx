@@ -1,6 +1,7 @@
 #include "uikit/textbox.h"
 #include "uikit/menu.h"		// UK_CTRL
-#include "clipboard.h"
+#include "systemkit/clipboard.h"
+#include "sysclip.h"
 
 namespace uikit {
 
@@ -159,13 +160,13 @@ bool Textbox::clipKey (long k)
 	if (k == UK_CTRL ('C') || k == UK_CTRL ('X'))
 	{
 		if (password || !text[0]) return true;
-		clip_set_text (text);
+		if (uk_clip_ready ()) clip_set_text (text);
 		if (k == UK_CTRL ('X')) { text[0] = '\0'; caret = 0; invalidate (true); }
 		return true;
 	}
 	if (k != UK_CTRL ('V')) return false;
 	static char b[TEXT_CAP * 4];
-	if (!clip_get_text (b, sizeof b)) return true;
+	if (!uk_clip_ready () || !clip_get_text (b, sizeof b)) return true;
 	// One line: tabs and line breaks become spaces, those around the text are dropped. Without a
 	// face the field is Latin-1: the clipboard's UTF-8 is brought to it (other characters dropped).
 	bool face = uk_textface () != 0;

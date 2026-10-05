@@ -12,9 +12,9 @@ OUT     = build
 
 CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	  -DONYX -DFEATURE_SOUND -DNORMALUNIX -D_DEFAULT_SOURCE -DDOOMGENERIC_RESX=640 -DDOOMGENERIC_RESY=400 \
-	  -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../Libs -I../../Emulators -I../../Ports -I../../../kernel/include -I$(DG) -w
+	  -DSK_INLINE -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../Libs -I../../Emulators -I../../Ports -I../../../kernel/include -I$(DG) -w
 CXXFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
-	  -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../Libs -I../../Emulators -I../../Ports -I../../../kernel/include
+	  -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -DSK_INLINE -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../Libs -I../../Emulators -I../../Ports -I../../../kernel/include
 LDFLAGS = -Wl,-T,../../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections ../../lib/appkit_stubs.o
 
 DG_SRC = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_main d_mode d_net \

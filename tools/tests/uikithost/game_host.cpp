@@ -25,7 +25,7 @@
 #include "Apps/menubar/main.cpp"
 #endif
 #undef main
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 bool img_load (const char *, ImgFrames *) { return false; }	// (no codecs on the host)
 
 #if defined GAME_BASICRT

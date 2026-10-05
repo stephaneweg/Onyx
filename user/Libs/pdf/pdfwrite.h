@@ -41,7 +41,7 @@
 #ifndef ONYX_PDFWRITE_H
 #define ONYX_PDFWRITE_H
 
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace pdfw {
 
