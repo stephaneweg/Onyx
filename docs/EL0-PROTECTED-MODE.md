@@ -145,7 +145,7 @@ in the kernel → add an exception **fixup table** (faulting PC → recovery PC 
 | `mrs mpidr_el1` (current core) | `user/kapi.h:465`, `user/libc/onyx_syscalls.c:110` | read `TPIDRRO_EL0`, set per core by the kernel |
 | `cntpct_el0`, `cntvct_el0`, `cntfrq_el0` | many apps | `CNTKCTL_EL1.EL0PCTEN/EL0VCTEN` |
 | PMU (`pmcr_el0`, `pmevcntr*`, `pmccntr_el0`) | `user/gc/gc.h` | `PMUSERENR_EL0.EN` (or drop) |
-| `msr daifset` | `user/bin/hangtest.c` | intentionally breaks (it is a hang test) |
+| `msr daifset` | `user/BinUtils/hangtest.c` | intentionally breaks (it is a hang test) |
 | `dmb`, `dsb`, `sev`, `wfe`, `fpcr` | various | fine at EL0 |
 
 The two `mpidr` sites are inline → those apps need a rebuild; everything else is transparent.

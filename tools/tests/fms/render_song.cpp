@@ -12,9 +12,9 @@ typedef uint64_t u64; typedef int64_t s64; typedef bool boolean;
 #define TRUE true
 #define FALSE false
 #define SND_RATE	FMSYNTH_RATE
-#include "../../../user/audiokit/fmsynth.h"
+#include "../../../user/Kits/audiokit/fmsynth.h"
 using namespace fmsynth;
-#include "../../../user/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
+#include "../../../user/Kits/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
 #include "../../../user/Apps/fmtracker/fms.h"
 
 int main (int argc, char **argv)

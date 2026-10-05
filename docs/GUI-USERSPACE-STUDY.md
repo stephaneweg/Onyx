@@ -55,7 +55,7 @@ screen / full screen 8, wallpaper 3, cursor 2, menus / shell 5).
 ### 1.2 What the apps already do
 
 - **They draw everything**, frames included: uikit paints the title bar and borders into the two chrome
-  buffers the kernel maps (`uk_decorate_window`, `user/uikit/skin.cpp:293`). Menus are drawn by the
+  buffers the kernel maps (`uk_decorate_window`, `user/Kits/uikit/skin.cpp:293`). Menus are drawn by the
   menubar *app*, dialogs and tooltips are widgets inside the app's window.
 - The canvas is kernel heap, **physically contiguous** (V3D renders into it directly), mapped at
   `USER_WINDOW_CANVAS` (12 GB). The app draws, then `kapi_present()` (whole window, no rectangle).
@@ -93,7 +93,7 @@ screen / full screen 8, wallpaper 3, cursor 2, menus / shell 5).
 
 ### 1.4 uikit
 
-- `user/uikit`: 70 files, ~10 000 lines, a static `libuikit.a` compiled once and linked into the
+- `user/Kits/uikit`: 70 files, ~10 000 lines, a static `libuikit.a` compiled once and linked into the
   freestanding apps, the newlib / FreeType apps and the Koton plugins; Jet compiles it a third time
   (hosted toolchain, `-DONYX_HOSTED_NEW`).
 - **In each app: 40–150 KB of code + rodata** (tetris 41 KB, tinypad 97 KB, widgets 136 KB, sheet

@@ -14,7 +14,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${SNES_TEST_ROMS:?set SNES_TEST_ROMS to the PeterLemon SNES folder}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" "$HERE/snes/snestest.cpp" "$ROOT"/user/snes/*.cpp -o "$T/onyx_snestest"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/snes/snestest.cpp" "$ROOT"/user/snes/*.cpp -o "$T/onyx_snestest"
 fail=0
 for rom in $(cd "$R" && ls CPUTest/CPU/*/*.sfc CPUTest/SPC700/*/*.sfc PPU/BGMAP/*/*/*/*.sfc PPU/BGMAP/*/*/*/*/*.sfc \
 	PPU/HDMA/RedSpace*/*.sfc PPU/HDMA/HiColor64PerTileRow/*.sfc PPU/Window/WindowHDMA/*.sfc PPU/Mode7/Perspective/*.sfc \

@@ -34,7 +34,7 @@ step ()
 	sum=$(echo "$out" | grep -E '^posixtest(-cxx)?: [0-9]+ passed' | tail -n 1)
 	if [ $st -eq 0 ] && [ -n "$sum" ]; then echo "PASS  $label: $sum"; else echo "FAIL  $label: ${sum:-no summary} (exit $st)"; bad=$((bad + 1)); fi
 }
-CXX_SRC=$ONYX/user/bin/posixtest-cxx.cpp
+CXX_SRC=$ONYX/user/BinUtils/posixtest-cxx.cpp
 step "posixtest (v75)" sh "$HERE/run.sh"
 step "posixtest (v74 fallbacks)" env POSIXSIM_LEVEL=74 sh "$HERE/run.sh"
 step "posixtest-cxx (v75)" env PROG="$CXX_SRC" sh "$HERE/run.sh"

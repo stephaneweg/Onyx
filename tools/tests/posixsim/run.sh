@@ -36,7 +36,7 @@ command -v "${PREFIX}gcc" >/dev/null 2>&1 || { echo "run.sh: no ${PREFIX}gcc" >&
 : "${POSIXSIM_QEMU:=$(command -v qemu-aarch64-static || command -v qemu-aarch64)}"
 [ -x "$POSIXSIM_QEMU" ] || { echo "run.sh: no qemu-aarch64(-static) (apt install qemu-user-static, or qemu-user on Ubuntu 25.04 and later)" >&2; exit 2; }
 : "${POSIXSIM_ROOT:=/tmp/posixsim}"
-: "${PROG:=$ONYX/user/bin/posixtest.c}"
+: "${PROG:=$ONYX/user/BinUtils/posixtest.c}"
 case $PROG in *.cpp) SIM_CXX=1;; esac
 name=${NAME:-$(basename "$PROG" | sed 's/\.c\(pp\)*$//')}
 B=$POSIXSIM_ROOT/build/${PREFIX%-}
@@ -51,7 +51,7 @@ LD="${PREFIX}gcc"
 P=$ONYX/user/libc/posix
 # the library built for the bench (-DONYX_POSIXSIM: the virtual counter, which qemu-user lets EL0 read)
 make -s --no-print-directory -C "$P" PREFIX="$PREFIX" B=$SIMB EXTRA_CFLAGS=-DONYX_POSIXSIM >/dev/null
-CF="-mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem $P/include -DFD_SETSIZE=1024 -I$ONYX/user -I$ONYX/kernel/include"
+CF="-mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem $P/include -DFD_SETSIZE=1024 -I$ONYX/user -I$ONYX/user/Kits -I$ONYX/kernel/include"
 "${PREFIX}gcc" $CF -c "$HERE/fakekapi.c" -o "$B/fakekapi.o"
 "${PREFIX}gcc" -c "$HERE/start.S" -o "$B/start.o"
 src=$PROG

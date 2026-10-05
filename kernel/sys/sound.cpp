@@ -3,7 +3,7 @@
 // integer arithmetic (no FP in the kernel) and played by the output chosen; GetChunk () is the
 // "producer": zeros while nothing plays, otherwise the owner's frames.
 // (The synthesizer -- the 16 voices, the FM instruments -- left the kernel on 2026-10-05: it is
-// AudioKit's, user/audiokit/fmsynth.h, in user space; the kernel only puts sound out.)
+// AudioKit's, user/Kits/audiokit/fmsynth.h, in user space; the kernel only puts sound out.)
 //
 // Single core (the default Circle build): GetChunk renders the chunk itself, in the DMA
 // completion interrupt on core 0 (~1024 frames every 23 ms: cheap).

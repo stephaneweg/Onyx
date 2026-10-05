@@ -19,7 +19,7 @@ g++ $FLAGS $INC "$HERE/image/imagetest.cpp" "$T/image.o" "$T/elf.o" -o "$T/image
 # (v83) the shared libraries: against the real test library (user/demo), when the cross toolchain is there
 P=${PREFIX:-aarch64-none-elf-}
 if command -v ${P}g++ >/dev/null 2>&1; then
-	CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$ROOT/user -I$ROOT/kernel/include -w"
+	CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/kernel/include -w"
 	${P}g++ $CF -c "$ROOT/user/demo/demolib.cpp" -o "$T/demolib.o"
 	${P}g++ $CF -c "$ROOT/user/librt.cpp" -o "$T/librt.o"
 	${P}ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv --build-id=none \

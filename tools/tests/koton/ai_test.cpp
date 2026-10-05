@@ -16,7 +16,7 @@
 #include "../../../user/json.hpp"
 
 #define LLM_PROTO_ONLY
-#include "../../../user/bin/llm.cpp"
+#include "../../../user/BinUtils/llm.cpp"
 
 using namespace kt;
 

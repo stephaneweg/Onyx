@@ -1,7 +1,7 @@
 #!/bin/sh
 # pc/Koton/build.sh -- Koton for Windows, built on Linux with MinGW-w64 from the Onyx sources, unchanged:
-# user/Apps/koton (the studio), user/uikit, FreeType, MeltySynth, the plugins (user/Apps/kp_*) and the AI
-# helper (user/bin/llm.cpp + mbedTLS), over pc/Koton/winkapi.cpp (the Onyx kernel's table on Win32).
+# user/Apps/koton (the studio), user/Kits/uikit, FreeType, MeltySynth, the plugins (user/Apps/kp_*) and the AI
+# helper (user/BinUtils/llm.cpp + mbedTLS), over pc/Koton/winkapi.cpp (the Onyx kernel's table on Win32).
 # Result: pc/dist/Koton/ -- Koton.exe, its plugins, bin/llm.exe and the card's files it reads (the fonts,
 # the theme, the drum catalogue, koton/: songs, SoundFont, plugins). Copy the folder to the PC.
 #   sh pc/Koton/build.sh
@@ -20,7 +20,7 @@ U="$ROOT/user"
 K="$U/Apps/koton"
 FT="$ROOT/third_party/freetype-2.14.3"
 TLS="$ROOT/third_party/mbedtls-3.6.3"
-FLAGS="-O2 -w -I$U -I$ROOT/kernel/include -D_WIN32_WINNT=0x0A00"
+FLAGS="-O2 -w -I$U -I$U/Kits -I$ROOT/kernel/include -D_WIN32_WINNT=0x0A00"
 CXXF="-std=gnu++17 $FLAGS -fno-exceptions -fno-rtti -include $HERE/onyxwin.h -DIMG_HOST_TEST"
 LIBS="-static -lgdi32 -luser32 -lshell32 -lole32 -lwinmm -lbcrypt -lws2_32 -lsynchronization"
 mkdir -p "$OUT/uikit" "$OUT/ft" "$OUT/k" "$OUT/tls" "$OUT/kapi"
@@ -32,7 +32,7 @@ rm -f "$OUT/FAILED"
 # ---- the Onyx kernel's table on Windows ---------------------------------------------------------------
 $CXX $CXXF -c "$HERE/winkapi.cpp" -o "$OUT/kapi/winkapi.o"
 # ---- uikit ---------------------------------------------------------------------------------------------------
-for f in "$U"/uikit/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" ; done; done_bg
+for f in "$U"/Kits/uikit/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" ; done; done_bg
 rm -f "$OUT/libuikit.a"; $AR rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 # ---- FreeType (Onyx's configuration) -----------------------------------------------------------------------
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
@@ -71,7 +71,7 @@ done; done_bg
 for f in "$TLS"/library/*.c; do bg $CC -O2 -w -I"$TLS/include" -c "$f" -o "$OUT/tls/$(basename "$f" .c).o" ; done; done_bg
 rm -f "$OUT/libmbed.a"; $AR rcs "$OUT/libmbed.a" "$OUT"/tls/*.o
 mkdir -p "$DIST/bin"
-$CXX $CXXF -I"$TLS/include" -o "$DIST/bin/llm.exe" "$U/bin/llm.cpp" "$OUT/kapi/winkapi.o" "$OUT/libmbed.a" $LIBS
+$CXX $CXXF -I"$TLS/include" -o "$DIST/bin/llm.exe" "$U/BinUtils/llm.cpp" "$OUT/kapi/winkapi.o" "$OUT/libmbed.a" $LIBS
 $STRIP "$DIST/Koton.exe" "$DIST"/koton/plugins/*/main.exe "$DIST/bin/llm.exe"
 # ---- the card's files Koton reads ----------------------------------------------------------------------------------------
 SD="$ROOT/sdcard"

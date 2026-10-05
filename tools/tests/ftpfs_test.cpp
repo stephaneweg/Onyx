@@ -1,4 +1,4 @@
-// ftpfs_test -- host test of user/bin/ftpfs.cpp's FTP client logic (plain FTP), against
+// ftpfs_test -- host test of user/BinUtils/ftpfs.cpp's FTP client logic (plain FTP), against
 // a real server. Usage: ftpfs_test <FTP:user:pass@host:port> ; the server's root must hold
 // readme.txt ("hello onyx\n") and an empty folder "sub". See run_ftpfs_test.sh.
 static int mock_session (char *) { return 0; }

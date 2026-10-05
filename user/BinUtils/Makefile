@@ -10,7 +10,7 @@ CC      = $(PREFIX)gcc
 CXX     = $(PREFIX)g++
 
 CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
-	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../../kernel/include
+	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../../kernel/include
 # Freestanding C++ console tools (e.g. httpget on the reusable HttpClient, ../http.hpp).
 # Same integer-only base as CFLAGS; no exceptions/RTTI/STL (none needed).
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
@@ -20,18 +20,18 @@ CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-
 # enabled at EL0 (CPACR_EL1). Opt a tool in via a target-specific CFLAGS override
 # below; everything else stays integer-only.
 CFLAGS_FP = -ffreestanding -nostdlib -fno-pic -fno-pie -mcpu=cortex-a72 \
-	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../../kernel/include
+	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../../kernel/include
 # newlib (libc + libm) variant: NOT freestanding/-nostdlib -- we want the real
 # <stdio.h>/<stdlib.h>/<string.h>/<math.h> from the toolchain's newlib. -nostartfiles
 # keeps OUR entry (crt0libc.S, which calls exit() so stdio is flushed). FP is on. The
 # kapi syscall layer (../libc/onyx_syscalls.c) maps newlib's _sbrk/_read/_write/... to
 # kapi; malloc owns the per-process heap, so do NOT also link umm.h here.
 CFLAGS_LIBC = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
-	  -nostartfiles -I.. -I../../kernel/include
+	  -nostartfiles -I.. -I../Kits -I../../kernel/include
 # C++ newlib variant (for TLS apps: mbedTLS is C, the app + http.hpp are C++).
 CXXFLAGS_LIBC = $(CFLAGS_LIBC) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LIBC_SRC  = ../libc/crt0libc.S ../libc/onyx_syscalls.c
-LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../appkit/appkit.h ../user.ld
+LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../Kits/appkit/appkit.h ../user.ld
 # (every program reaches the kernel through AppKit: its import stubs, ../Makefile)
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
 # Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (appkit/appkit.h,
@@ -105,22 +105,22 @@ libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
 # play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
 # off (it only uses the library's integer entries); links the library's import archive.
 # tone: AudioKit's voices (the FM synthesizer: ak_fm_*)
-tone.elf: tone.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../onyxpp.hpp ../audiokit/audiokit.h ../lib/audiokit.imp.a
+tone.elf: tone.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../applib.h ../onyxpp.hpp ../Kits/audiokit/audiokit.h ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
-play.elf: play.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
+play.elf: play.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../Kits/audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf
 # fktest: FileKit's self-test (../lib/filekit.so): compression, ZIP on the card and in memory, trees, paths
-fktest.elf: fktest.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../onyxpp.hpp ../filekit/filekit.h ../lib/filekit.imp.a
+fktest.elf: fktest.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../applib.h ../onyxpp.hpp ../Kits/filekit/filekit.h ../lib/filekit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/filekit.imp.a -o $@
 AK_PROGS += fktest.elf
 # iktest: ImageKit's self-test (../lib/imagekit.so): pictures written and read back, the transforms, the adjustments
-iktest.elf: iktest.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../onyxpp.hpp ../imagekit/imagekit.h ../lib/imagekit.imp.a
+iktest.elf: iktest.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../applib.h ../onyxpp.hpp ../Kits/imagekit/imagekit.h ../lib/imagekit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/imagekit.imp.a -o $@
 AK_PROGS += iktest.elf
-# ipp: a network printer asked what it can do (../printerkit/ipp.h; docs/03 "Printing")
+# ipp: a network printer asked what it can do (../Kits/printerkit/ipp.h; docs/03 "Printing")
 CXX_PROGS += ipp.elf
-ipp.elf: ../printerkit/ipp.h ../printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
+ipp.elf: ../Kits/printerkit/ipp.h ../Kits/printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h
 
 # Console tools on libonyxposix, the POSIX layer (../libc/posix, docs/03 §5.4): newlib + pthreads,
 # BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and
@@ -128,7 +128,7 @@ ipp.elf: ../printerkit/ipp.h ../printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp
 POSIX_DIR    = ../libc/posix
 CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
-	       -I.. -I../../kernel/include
+	       -I.. -I../Kits -I../../kernel/include
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
 POSIX_PROGS  = posixtest.elf ipctest.elf tcpbench.elf
 POSIX_CXX_PROGS = posixtest-cxx.elf
@@ -147,7 +147,7 @@ all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
 
-%.elf: %.c ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../httpc.h ../umm.h
+%.elf: %.c ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../applib.h ../httpc.h ../umm.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
@@ -159,7 +159,7 @@ $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
 .PHONY: posixlib
 posixlib:
 	@$(MAKE) --no-print-directory -C $(POSIX_DIR)
-$(POSIX_PROGS): %.elf: %.c posixlib ../appkit/appkit.h
+$(POSIX_PROGS): %.elf: %.c posixlib ../Kits/appkit/appkit.h
 	$(CC) $(CFLAGS_POSIX) $(LDFLAGS_POSIX) $< -o $@
 
 # C++ on libonyxposix: WP-TC's aarch64-onyx-elf toolchain (real gthreads, native TLS, errno per
@@ -171,7 +171,7 @@ ONYX_TC_GXX := $(firstword $(shell command -v $(ONYX_TC_PREFIX)g++ 2>/dev/null) 
 		$(wildcard /opt/toolchains/aarch64-onyx-elf-14.2/bin/$(ONYX_TC_PREFIX)g++))
 CXXFLAGS_POSIX_TC = -std=gnu++20 -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-pic -fno-pie \
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
-	       -I.. -I../../kernel/include
+	       -I.. -I../Kits -I../../kernel/include
 LDFLAGS_POSIX_TC = -specs=$(POSIX_DIR)/build-onyx/onyx.specs
 ifneq ($(ONYX_TC_GXX),)
 .PHONY: posixlib-onyx
@@ -218,14 +218,14 @@ jsc:
 	INTERP=$(JSC_INTERP) sh ../../tools/webkit/build-jsc.sh install
 
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
-$(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../http.hpp
+$(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../http.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 CXXFLAGS_FP = $(CFLAGS_FP) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
+$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
 	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../v3d/libv3d.a -o $@
 
-$(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../umm.h ../gpucomp/libgpucomp.a ../gpucomp/gpucomp.h
+$(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../applib.h ../umm.h ../gpucomp/libgpucomp.a ../gpucomp/gpucomp.h
 	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../gpucomp/libgpucomp.a -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
@@ -239,7 +239,7 @@ $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o
 # pkg (the packages, docs/pkg/README.md): HTTPS + the Archiver's ZIP engine + zlib
-$(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../filekit/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
+$(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -DPKG_NET -DONYX_HTTP_TLS -I$(MBEDTLS_DIR)/include -I$(ZLIB_DIR) -Wno-maybe-uninitialized -Wno-format-truncation \
@@ -277,7 +277,7 @@ vncd.elf rdpd.elf: remotekeys.h
 
 # zip / unzip (C++ on newlib, the Archiver's engine: ../Apps/archiver/ops.h) with the vendored zlib
 ARC_PROGS = zip.elf unzip.elf
-$(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../filekit/*.h) $(LIBC_DEP)
+$(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP)
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(ZLIB_DIR) -Wno-maybe-uninitialized -ffunction-sections -fdata-sections -Wl,--gc-sections \

@@ -1,7 +1,7 @@
 //
 // fmsplayer.cpp -- FM Song player for Windows: plays .FMS files (FM Song / Onyx fmtracker)
 // with EXACTLY the Onyx code: the file format of user/Apps/fmtracker/fms.h and the FM
-// synthesizer of user/audiokit/fmsynth.h (compiled in its PC mode), out through waveOut.
+// synthesizer of user/Kits/audiokit/fmsynth.h (compiled in its PC mode), out through waveOut.
 //
 //   * Open... (or drop files on the window, or give them on the command line); the other
 //     .FMS files of the same folder fill the playlist; double-click one to play it.
@@ -30,9 +30,9 @@ typedef uint64_t u64; typedef int64_t s64; typedef bool boolean;
 #define FALSE false
 static CRITICAL_SECTION g_synthLock;
 #define SND_RATE	FMSYNTH_RATE
-#include "../../user/audiokit/fmsynth.h"
+#include "../../user/Kits/audiokit/fmsynth.h"
 using namespace fmsynth;
-#include "../../user/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
+#include "../../user/Kits/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
 #include "../../user/Apps/fmtracker/fms.h"
 
 #define PID 1

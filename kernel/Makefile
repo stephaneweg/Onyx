@@ -131,7 +131,7 @@ BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas planets3d=$(SDCARD)/
 BASC = ../tools/basc/basc
 BASC_SRC = ../tools/basc/basc.cpp ../user/basic/bascomp.cpp ../user/basic/basnum.cpp ../user/basic/basbax.cpp ../user/basic/basvm.cpp
 $(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h ../user/basic/bas3d.h ../user/basic/bas3dscene.h
-	@g++ -std=c++17 -O1 -I../user -o $@ $(BASC_SRC)
+	@g++ -std=c++17 -O1 -I../user -I../user/Kits -o $@ $(BASC_SRC)
 .PHONY: stage
 stage: sizecheck apps $(BASC)
 	@cp $(TARGET).img $(SDCARD)/
@@ -141,7 +141,7 @@ stage: sizecheck apps $(BASC)
 		cp $$elf $(SDCARD)/apps/$$name.app/main; \
 	done
 	@mkdir -p $(SDCARD)/bin
-	@for elf in ../user/bin/*.elf; do \
+	@for elf in ../user/BinUtils/*.elf; do \
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
 	done

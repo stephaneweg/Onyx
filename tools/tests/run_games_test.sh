@@ -7,12 +7,12 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${OUT:-${TMPDIR:-/tmp}/onyx_games}; export OUT
 mkdir -p "$OUT"
-UIKIT=$(ls "$ROOT"/user/uikit/*.cpp | grep -v imgload)
+UIKIT=$(ls "$ROOT"/user/Kits/uikit/*.cpp | grep -v imgload)
 for g in ${@:-INVADERS PIPES SOLITAIRE FREECELL GRAPHCALC ICONEDIT RTF BASICRT MENUBAR}; do
 	BIN=$OUT/game_$g
 	g++ -std=c++17 -O1 -g -w -fsanitize=undefined -fno-sanitize=alignment -DGAME_$g \
 	    "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
-	    -I"$HERE/uikithost/inc" -I"$ROOT/user" -I"$ROOT/kernel/include" \
+	    -I"$HERE/uikithost/inc" -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/kernel/include" \
 	    "$HERE/uikithost/game_host.cpp" $UIKIT -o "$BIN"
 	(cd "$OUT" && "$BIN" "$ROOT/sdcard")
 done

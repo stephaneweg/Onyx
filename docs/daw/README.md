@@ -351,7 +351,7 @@ the difference with the mock-ups; without it, the same layout with the bitmap fo
 ## 9. Where it stands (2026-09-29)
 
 Everything of M0–M5 is in: the engine (`user/Apps/koton/engine`, MeltySynth in `synth/`), the app
-(`user/Apps/koton/main.cpp` + `ui/`), the AI (`engine/ai*`, `user/bin/llm`), the plugins
+(`user/Apps/koton/main.cpp` + `ui/`), the AI (`engine/ai*`, `user/BinUtils/llm`), the plugins
 (`user/kplug*.h`, `plug/`, eleven plugins `user/Apps/kp_*`), uikit's text face and studio widgets,
 kapi v68 (the sound ring, word waits, real-time threads, USB MIDI). The user's guide: docs/04,
 *Koton, the studio*; the code: docs/03, *A large app: Koton* and *Koton's plugins*. Screenshots

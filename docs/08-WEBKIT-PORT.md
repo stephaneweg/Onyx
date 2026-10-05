@@ -32,9 +32,9 @@ its `Source/ThirdParty/skia` is Skia m154 `588b550a`, the copy already ported in
   patch series on a branch `onyx`), `export-patches.sh` (the branch `onyx` → `tools/webkit/patches/`),
   `build-jsc.sh` (configure + build `jsc`; `INTERP=llint` (default: the LLInt, with WebAssembly) or
   `INTERP=cloop` (the C++ interpreter, without), each in its own build tree
-  `<WEBKIT_DIR>-build/jsc-<interp>`; `install` strips it into `user/bin/jsc.elf`),
+  `<WEBKIT_DIR>-build/jsc-<interp>`; `install` strips it into `user/BinUtils/jsc.elf`),
   `test-jsc.sh` (the tests on the posixsim bench, below), `smoke.js`, `bench.js`.
-  `make -C user/bin jsc` = `fetch.sh` + `build-jsc.sh install`.
+  `make -C user/BinUtils jsc` = `fetch.sh` + `build-jsc.sh install`.
 - **The port** (the patch series, `tools/webkit/patches/`):
   1. `0001` — `PORT=Onyx`: `Source/cmake/OptionsOnyx.cmake` (static libraries; `ENABLE_JIT` OFF,
      `ENABLE_C_LOOP` ON by default, WebAssembly / sampling profiler / remote inspector OFF,
@@ -174,7 +174,7 @@ sh tools/toolchain/fetch.sh                                 # aarch64-onyx-elf i
 make -C user/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
 sh tools/ports/build-all.sh icu                             # ICU into the sysroot (webkit: all of them)
 sh tools/webkit/fetch.sh                                    # the checkout at the pin + the patches
-sh tools/webkit/build-jsc.sh install                        # -> user/bin/jsc.elf (7 min on 16 cores)
+sh tools/webkit/build-jsc.sh install                        # -> user/BinUtils/jsc.elf (7 min on 16 cores)
 STRESS_STEP=1 sh tools/webkit/test-jsc.sh smoke es6 stress wasm bench   # 20 min
 # a change: commit in the checkout (branch onyx), then: sh tools/webkit/export-patches.sh
 ```

@@ -12,9 +12,9 @@ OUT     = build
 
 CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	  -DONYX -DFEATURE_SOUND -DNORMALUNIX -D_DEFAULT_SOURCE -DDOOMGENERIC_RESX=640 -DDOOMGENERIC_RESY=400 \
-	  -I.. -I../../kernel/include -I$(DG) -w
+	  -I.. -I../Kits -I../../kernel/include -I$(DG) -w
 CXXFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
-	  -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -I.. -I../../kernel/include
+	  -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -I.. -I../Kits -I../../kernel/include
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections ../lib/appkit_stubs.o
 
 DG_SRC = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_main d_mode d_net \
@@ -34,15 +34,15 @@ all: ../doom.elf
 
 $(OUT)/%.o: $(DG)/%.c | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_onyx.o: doom_onyx.c ../appkit/appkit.h ../gamepad.h | $(OUT)
+$(OUT)/doom_onyx.o: doom_onyx.c ../Kits/appkit/appkit.h ../gamepad.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_sound.o: doom_sound.c ../appkit/appkit.h ../audiokit/audiokit.h | $(OUT)
+$(OUT)/doom_sound.o: doom_sound.c ../Kits/appkit/appkit.h ../Kits/audiokit/audiokit.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_uikit.o: doom_uikit.cpp ../appkit/appkit.h | $(OUT)
+$(OUT)/doom_uikit.o: doom_uikit.cpp ../Kits/appkit/appkit.h | $(OUT)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 $(OUT)/crt0libc.o: ../libc/crt0libc.S | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../appkit/appkit.h | $(OUT)
+$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../Kits/appkit/appkit.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT):

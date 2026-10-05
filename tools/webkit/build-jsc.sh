@@ -8,7 +8,7 @@
 #                                                 # with WebAssembly (its interpreter) -> $BUILD/bin/jsc
 #   INTERP=cloop sh tools/webkit/build-jsc.sh     # the portable C++ interpreter (no WebAssembly)
 #   INTERP=jit sh tools/webkit/build-jsc.sh       # + the Baseline JIT and the DFG (kernel v78: PROT_EXEC)
-#   sh tools/webkit/build-jsc.sh install          # + strip it into user/bin/jsc.elf (make stage
+#   sh tools/webkit/build-jsc.sh install          # + strip it into user/BinUtils/jsc.elf (make stage
 #                                                 #   copies it to the card as /bin/jsc)
 #
 # Variables: WEBKIT_DIR (the checkout, as fetch.sh), BUILD (default <WEBKIT_DIR>-build/jsc-<interp>),
@@ -70,7 +70,7 @@ cmake --build "$BUILD" --target jsc -- -j"$JOBS"
 echo "build-jsc.sh: jsc built in $(( $(date +%s) - start )) s: $BUILD/bin/jsc"
 
 if [ "${1:-}" = install ]; then
-	mkdir -p "$ONYX/user/bin"
-	aarch64-onyx-elf-strip -o "$ONYX/user/bin/jsc.elf" "$BUILD/bin/jsc"
-	ls -l "$ONYX/user/bin/jsc.elf"
+	mkdir -p "$ONYX/user/BinUtils"
+	aarch64-onyx-elf-strip -o "$ONYX/user/BinUtils/jsc.elf" "$BUILD/bin/jsc"
+	ls -l "$ONYX/user/BinUtils/jsc.elf"
 fi

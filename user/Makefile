@@ -4,35 +4,35 @@
 # (-mgeneral-regs-only). An app may opt into hardware float by overriding the
 # flags (drop -mgeneral-regs-only, add -mcpu=cortex-a72): the kernel now saves the
 # full FP/SIMD state on every trap (kern/trapframe.h), so FP is safe across context
-# switches. See user/bin/Makefile (fptest) for the recipe.
+# switches. See user/BinUtils/Makefile (fptest) for the recipe.
 #
 PREFIX ?= aarch64-none-elf-
 CC      = $(PREFIX)gcc
 CXX     = $(PREFIX)g++
 AR      = $(PREFIX)ar
 
-# -I../kernel/include: apps include <kern/kapi_abi.h> (the shared ABI). Apps call
+# -I../kernel/include -IKits: apps include <kern/kapi_abi.h> (the shared ABI). Apps call
 # the kernel through the ABI table at a fixed VA, so they DON'T link against kernel
 # addresses and need not be rebuilt when the kernel changes.
 CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
-	  -O2 -Wall -Wextra -fno-stack-protector -I../kernel/include
+	  -O2 -Wall -Wextra -fno-stack-protector -I../kernel/include -IKits
 # C++ apps: same base, freestanding C++ subset (no exceptions/RTTI/STL; function-
 # local statics are single-threaded; static dtors are not run -- see onyxpp.hpp).
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-# Every program reaches the kernel through AppKit (SD:/lib/appkit.so, appkit/appkit.c: the kapi_* functions,
+# Every program reaches the kernel through AppKit (SD:/lib/appkit.so, Kits/appkit/appkit.c: the kapi_* functions,
 # by name): its import stubs (lib/appkit_stubs.o, generated: each one jumps through AppKit's table, which the
 # kernel puts at a fixed address for every program -- no bind, nothing to open) are linked into each of them.
 APPKIT_STUBS = lib/appkit_stubs.o
 LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none $(APPKIT_STUBS)
 # Freestanding apps have no libc: alias the C memory primitives GCC may emit on its own
-# onto the kapi ones (appkit/appkit.h, ABI v36 -> the kernel's Circle implementations).
+# onto the kapi ones (Kits/appkit/appkit.h, ABI v36 -> the kernel's Circle implementations).
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 	       -Wl,--defsym,memmove=kapi_memmove
 
 # All graphical apps live in Apps/<name>/main.cpp (one folder per app) and build to
 # <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf; it stages
 # each one as apps/<name>.app/main, without extension). Every graphical
-# app is C++ on the uikit toolkit now; the /bin console tools stay C in bin/.
+# app is C++ on the uikit toolkit now; the /bin console tools stay C in BinUtils/.
 APPS = tinycalc tinypad applist panel cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
        tetris snake same terminal \
@@ -47,9 +47,9 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin bin/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
-$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf bin/basic.elf: | lib/appkit_stubs.o
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf: | lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # lib.ld at 0 -- the kernel places it --, ONE exported symbol (lib.vers), the export table, which is
@@ -59,17 +59,17 @@ $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.e
 # constructors).
 LIB_CXXFLAGS = -ffreestanding -nostdlib -fPIC -fvisibility=hidden -mgeneral-regs-only -O2 -Wall -Wextra \
 	       -fno-stack-protector -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
-	       -I. -I../kernel/include
+	       -I. -I../kernel/include -IKits
 LIB_LD      = $(PREFIX)ld
 LIB_LDFLAGS = -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv \
 	      --build-id=none -T lib.ld --version-script lib.vers -e onyx_lib_table
 # (a library calls the kernel as a program does: AppKit's stubs in each -- what it does not use is dropped)
 LIB_KAPI    = lib/appkit_stubs.o
-LIB_DEP     = lib.ld lib.vers lib.h appkit/appkit.h ../kernel/include/kern/kapi_abi.h
+LIB_DEP     = lib.ld lib.vers lib.h Kits/appkit/appkit.h ../kernel/include/kern/kapi_abi.h
 lib/librt.o: librt.cpp $(LIB_DEP)
 	@mkdir -p lib
 	$(CXX) $(LIB_CXXFLAGS) -c $< -o $@
-# The loader's test library (bin/libtest runs it) and its "other build".
+# The loader's test library (BinUtils/libtest runs it) and its "other build".
 lib/demo.o: demo/demolib.cpp demo/demo.h $(LIB_DEP)
 	@mkdir -p lib
 	$(CXX) $(LIB_CXXFLAGS) -c $< -o $@
@@ -83,12 +83,12 @@ lib/demo.so lib/demo2.so: lib/%.so: lib/%.o lib/librt.o $(LIB_KAPI)
 # lib/<lib>_bind.cpp (the program's import stubs and the constructor that opens the library) --
 # the last two make lib/<lib>.imp.a, which a program links where it linked the static library.
 LIBGEN = python3 ../tools/libgen/libgen.py --nm $(PREFIX)nm
-IMP_CXXFLAGS = $(CXXFLAGS) -I.
+IMP_CXXFLAGS = $(CXXFLAGS) -I. -IKits
 lib/%_table.o: lib/%_table.S
 	$(CC) -c $< -o $@
 lib/%_stubs.o: lib/%_stubs.S
 	$(CC) -c $< -o $@
-lib/%_bind.o: lib/%_bind.cpp lib.h appkit/appkit.h
+lib/%_bind.o: lib/%_bind.cpp lib.h Kits/appkit/appkit.h
 	$(CXX) $(IMP_CXXFLAGS) -c $< -o $@
 lib/ft.imp.a: lib/ft_stubs.o lib/ft_bind.o
 	@rm -f $@
@@ -101,13 +101,13 @@ lib/ft.imp.a: lib/ft_stubs.o lib/ft_bind.o
 # string functions, qsort and setjmp from the toolchain's newlib, linked in.
 FT_SRC = ../third_party/freetype-2.14.3
 FT_SO_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections \
-	       -I. -I../kernel/include
+	       -I. -I../kernel/include -IKits
 FT_SO_OBJ = $(addprefix lib/ft/,ftsystem.o ftinit.o ftdebug.o ftbase.o ftbitmap.o ftsynth.o autofit.o truetype.o sfnt.o smooth.o)
 lib/ft/%.o: %.c ft/onyx_ftoption.h ft/onyx_ftmodule.h
 	@mkdir -p lib/ft
 	$(CC) $(FT_SO_CFLAGS) -w -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' \
 	      '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' -Ift -I$(FT_SRC)/include -c $< -o $@
-lib/ft/ftso.o: ft/ftso.c lib.h appkit/appkit.h
+lib/ft/ftso.o: ft/ftso.c lib.h Kits/appkit/appkit.h
 	@mkdir -p lib/ft
 	$(CC) $(FT_SO_CFLAGS) -Wall -c $< -o $@
 lib/ft.exports: $(wildcard $(FT_SRC)/include/freetype/*.h)
@@ -122,62 +122,62 @@ LIBGCC_A := $(shell $(CC) -mcpu=cortex-a72 -print-libgcc-file-name)
 lib/ft.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
 
-UIKIT_HDR = $(wildcard uikit/*.h) appkit/appkit.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
+UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
 # ---- uikit.so: the toolkit as a shared library. Its table: every global function of uikit's objects
-# (uikit/uikit.abi, append-only), the programs' copies of its vtables (--vtables); its global variables
-# are the program's (uikit/globals.cpp, compiled into the import library too: --data). globals.o is
+# (Kits/uikit/uikit.abi, append-only), the programs' copies of its vtables (--vtables); its global variables
+# are the program's (Kits/uikit/globals.cpp, compiled into the import library too: --data). globals.o is
 # linked first: its initialisers bind the library's references before any other constructor.
-UIKIT_SO_SRC = $(sort $(filter-out uikit/globals.cpp,$(wildcard uikit/*.cpp)) uikit/layout_lock.cpp)
-UIKIT_SO_OBJ = lib/uikit/globals.o $(patsubst uikit/%.cpp,lib/uikit/%.o,$(UIKIT_SO_SRC))
+UIKIT_SO_SRC = $(sort $(filter-out Kits/uikit/globals.cpp,$(wildcard Kits/uikit/*.cpp)) Kits/uikit/layout_lock.cpp)
+UIKIT_SO_OBJ = lib/uikit/globals.o $(patsubst Kits/uikit/%.cpp,lib/uikit/%.o,$(UIKIT_SO_SRC))
 LIB_CXXFLAGS_NEON = $(filter-out -mgeneral-regs-only,$(LIB_CXXFLAGS)) -mcpu=cortex-a72
-lib/uikit/%.o: uikit/%.cpp $(UIKIT_HDR) uikit/globals.inc $(LIB_DEP)
+lib/uikit/%.o: Kits/uikit/%.cpp $(UIKIT_HDR) Kits/uikit/globals.inc $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS) -DONYX_LIB_BUILD -c $< -o $@
-lib/uikit/canvas.o: uikit/canvas.cpp $(UIKIT_HDR) $(LIB_DEP)
+lib/uikit/canvas.o: Kits/uikit/canvas.cpp $(UIKIT_HDR) $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -c $< -o $@
-lib/uikit/imgload.o: uikit/imgload.cpp img/imgload.hpp imagekit/imagekit.h $(LIB_DEP)
+lib/uikit/imgload.o: Kits/uikit/imgload.cpp img/imgload.hpp Kits/imagekit/imagekit.h $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
-# The layout lock (uikit/abi.h): the classes' sizes and the base classes' offsets, as static_asserts
+# The layout lock (Kits/uikit/abi.h): the classes' sizes and the base classes' offsets, as static_asserts
 # compiled with the library. Made once from the headers; `make uikit-layout-update` only for a class added.
-UIKIT_LAYOUT = python3 ../tools/libgen/layout.py --cxx $(CXX) --flags "$(LIB_CXXFLAGS) -DONYX_LIB_BUILD" --umbrella uikit/uikit.h 	--ns uikit --headers 'uikit/*.h' --out uikit/layout_lock.cpp --offsets 	Widget:canvas,left,tag,anchor,transparent,tip,parent,prevHandled,ext,reserved_ Canvas:px,w,stride,owns,capH,ext Root:bg
-uikit/layout_lock.cpp:
+UIKIT_LAYOUT = python3 ../tools/libgen/layout.py --cxx $(CXX) --flags "$(LIB_CXXFLAGS) -DONYX_LIB_BUILD" --umbrella Kits/uikit/uikit.h 	--ns uikit --headers 'Kits/uikit/*.h' --out Kits/uikit/layout_lock.cpp --offsets 	Widget:canvas,left,tag,anchor,transparent,tip,parent,prevHandled,ext,reserved_ Canvas:px,w,stride,owns,capH,ext Root:bg
+Kits/uikit/layout_lock.cpp:
 	$(UIKIT_LAYOUT)
 .PHONY: uikit-layout-update
 uikit-layout-update:
 	$(UIKIT_LAYOUT) --update
-lib/uikit_table.S: $(UIKIT_SO_OBJ) uikit/uikit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name uikit --abi uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data \
+lib/uikit_table.S: $(UIKIT_SO_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data \
 		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp $(UIKIT_SO_OBJ)
-uikit/uikit.abi:
+Kits/uikit/uikit.abi:
 	@touch $@
 lib/uikit_stubs.S lib/uikit_bind.cpp: lib/uikit_table.S ;
 # (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
 lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
-# The program side: the stubs, the bind constructor, and the variables (uikit/globals.cpp).
-lib/uikit_globals.o: uikit/globals.cpp uikit/globals.inc $(UIKIT_HDR)
+# The program side: the stubs, the bind constructor, and the variables (Kits/uikit/globals.cpp).
+lib/uikit_globals.o: Kits/uikit/globals.cpp Kits/uikit/globals.inc $(UIKIT_HDR)
 	@mkdir -p lib
-	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
+	$(CXX) $(CXXFLAGS) -I. -IKits -c $< -o $@
 lib/uikit.imp.a: lib/uikit_stubs.o lib/uikit_bind.o lib/uikit_globals.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- printerkit.so: printing (printerkit/printerkit.h; docs/03 "Printing") -- a job's pages recorded, the Print dialog.
-# Its table: the print_ functions (printerkit/printerkit.abi). The first library that uses others: FreeType (the
-# text's glyphs) and uikit (the dialog), through their import stubs linked in -- printerkit/printerkit.cpp opens
+# ---- printerkit.so: printing (Kits/printerkit/printerkit.h; docs/03 "Printing") -- a job's pages recorded, the Print dialog.
+# Its table: the print_ functions (Kits/printerkit/printerkit.abi). The first library that uses others: FreeType (the
+# text's glyphs) and uikit (the dialog), through their import stubs linked in -- Kits/printerkit/printerkit.cpp opens
 # ft.so / uikit.so when first needed and sets the stubs' tables. uikit's variables are the program's, as for
 # uikit.so itself: uikit's globals.o (the library build: references bound through the importer's table) and
 # --data onyx_uikit_data in the bind object. Floats in its interface: FP/SIMD flags.
-PRINT_HDR = $(wildcard printerkit/*.h) pdf/pdfwrite.h img/pngsave.hpp
+PRINT_HDR = $(wildcard Kits/printerkit/*.h) pdf/pdfwrite.h img/pngsave.hpp
 PRINT_SO_OBJ = lib/printerkit/printerkit.o lib/printerkit/dialog.o
-lib/printerkit/%.o: printerkit/%.cpp $(PRINT_HDR) $(UIKIT_HDR) $(LIB_DEP)
+lib/printerkit/%.o: Kits/printerkit/%.cpp $(PRINT_HDR) $(UIKIT_HDR) $(LIB_DEP)
 	@mkdir -p lib/printerkit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Ift -I$(FT_SRC)/include -c $< -o $@
-lib/printerkit_table.S: $(PRINT_SO_OBJ) printerkit/printerkit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name printerkit --abi printerkit/printerkit.abi --init print_lib_init --export '^print_' --exclude '^print_lib_init$$' 		--allow-data '^onyx_' --data onyx_uikit_data --table lib/printerkit_table.S --stubs lib/printerkit_stubs.S --bind lib/printerkit_bind.cpp $(PRINT_SO_OBJ)
-printerkit/printerkit.abi:
+lib/printerkit_table.S: $(PRINT_SO_OBJ) Kits/printerkit/printerkit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name printerkit --abi Kits/printerkit/printerkit.abi --init print_lib_init --export '^print_' --exclude '^print_lib_init$$' 		--allow-data '^onyx_' --data onyx_uikit_data --table lib/printerkit_table.S --stubs lib/printerkit_stubs.S --bind lib/printerkit_bind.cpp $(PRINT_SO_OBJ)
+Kits/printerkit/printerkit.abi:
 	@touch $@
 lib/printerkit_stubs.S lib/printerkit_bind.cpp: lib/printerkit_table.S ;
 lib/printerkit.so: $(PRINT_SO_OBJ) lib/uikit/globals.o lib/uikit_stubs.o lib/ft_stubs.o lib/printerkit_table.o lib/librt.o $(LIB_KAPI)
@@ -186,14 +186,14 @@ lib/printerkit.imp.a: lib/printerkit_stubs.o lib/printerkit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- audiokit.so: AudioKit, the shared sound library (audiokit/audiokit.h; docs/03 "AudioKit"). In it:
+# ---- audiokit.so: AudioKit, the shared sound library (Kits/audiokit/audiokit.h; docs/03 "AudioKit"). In it:
 # MeltySynth, Koton's SoundFont synthesizer (Apps/koton/synth: its C++ interface exported as it is), the
 # audio decoders (Apps/media/codecs.c, vorbis.c: minimp3, dr_flac, dr_wav, stb_vorbis -- their C
-# interfaces as they are), and AudioKit's own functions (audiokit/akcore.cpp: the files, the background
+# interfaces as they are), and AudioKit's own functions (Kits/audiokit/akcore.cpp: the files, the background
 # player, the output, mixing, notes, WAV). Built with the FPU; newlib's libm and libc linked in. Exported:
 # ms::Synthesizer and ms::soundfont_* (not the synthesizer's inner classes), the decoders' functions, ak_*.
 AK_FLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections \
-	   -fno-math-errno -DONYX_LIB_BUILD -I. -I../kernel/include
+	   -fno-math-errno -DONYX_LIB_BUILD -I. -I../kernel/include -IKits
 AK_CXXFLAGS = $(AK_FLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 AK_SYNTH_SRC = $(wildcard Apps/koton/synth/*.cpp)
 AK_OBJ = $(patsubst Apps/koton/synth/%.cpp,lib/ak/synth_%.o,$(AK_SYNTH_SRC)) lib/ak/codecs.o lib/ak/vorbis.o lib/ak/akcore.o \
@@ -204,24 +204,24 @@ lib/ak/synth_%.o: Apps/koton/synth/%.cpp $(wildcard Apps/koton/synth/*.h)
 lib/ak/codecs.o lib/ak/vorbis.o: lib/ak/%.o: Apps/media/%.c Apps/media/codecs.h
 	@mkdir -p lib/ak
 	$(CC) $(AK_FLAGS) -w -I../third_party -IApps/media -c $< -o $@
-lib/ak/akcore.o: audiokit/akcore.cpp audiokit/audiokit.h audiokit/fmsynth.h audiokit/fm_tables.h Apps/fmtracker/fms.h Apps/media/tags.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
-		 Apps/koton/synth/meltysynth.h appkit/appkit.h $(LIB_DEP)
+lib/ak/akcore.o: Kits/audiokit/akcore.cpp Kits/audiokit/audiokit.h Kits/audiokit/fmsynth.h Kits/audiokit/fm_tables.h Apps/fmtracker/fms.h Apps/media/tags.h Apps/media/decode.h Apps/media/midi.h Apps/media/codecs.h \
+		 Apps/koton/synth/meltysynth.h Kits/appkit/appkit.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -I../third_party -IApps/media -IApps/koton -c $< -o $@
-lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o: lib/ak/%.o: audiokit/%.cpp audiokit/audiokit.h Apps/koton/synth/meltysynth.h appkit/appkit.h $(LIB_DEP)
+lib/ak/akmix.o lib/ak/aksf.o lib/ak/akwav.o: lib/ak/%.o: Kits/audiokit/%.cpp Kits/audiokit/audiokit.h Apps/koton/synth/meltysynth.h Kits/appkit/appkit.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -Wall -IApps/koton -c $< -o $@
-# (the FM synthesizer: audiokit/fmsynth.h)
-lib/ak/akfm.o: audiokit/akfm.cpp audiokit/audiokit.h audiokit/fmsynth.h audiokit/fm_tables.h appkit/appkit.h $(LIB_DEP)
+# (the FM synthesizer: Kits/audiokit/fmsynth.h)
+lib/ak/akfm.o: Kits/audiokit/akfm.cpp Kits/audiokit/audiokit.h Kits/audiokit/fmsynth.h Kits/audiokit/fm_tables.h Kits/appkit/appkit.h $(LIB_DEP)
 	@mkdir -p lib/ak
 	$(CXX) $(AK_CXXFLAGS) -w -c $< -o $@
-lib/ak/akso.o: audiokit/akso.c lib.h appkit/appkit.h
+lib/ak/akso.o: Kits/audiokit/akso.c lib.h Kits/appkit/appkit.h
 	@mkdir -p lib/ak
 	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
-audiokit/audiokit.abi:
+Kits/audiokit/audiokit.abi:
 	@touch $@
-lib/audiokit_table.S: $(AK_OBJ) lib/ak/akso.o audiokit/audiokit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name audiokit --abi audiokit/audiokit.abi --init ak_lib_init --allow-data . \
+lib/audiokit_table.S: $(AK_OBJ) lib/ak/akso.o Kits/audiokit/audiokit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name audiokit --abi Kits/audiokit/audiokit.abi --init ak_lib_init --allow-data . \
 		--export '^(_ZNK?2ms(11Synthesizer|[0-9]+soundfont_)|mp3dec_|drflac_|drwav_|stb_vorbis_|ak_)' \
 		--table lib/audiokit_table.S --stubs lib/audiokit_stubs.S --bind lib/audiokit_bind.cpp $(AK_OBJ)
 lib/audiokit_stubs.S lib/audiokit_bind.cpp: lib/audiokit_table.S ;
@@ -232,8 +232,8 @@ lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- filekit.so: FileKit, what programs do with files (filekit/filekit.h; docs/03 "FileKit"): zlib
-# (third_party, compiled for the library), the archives' engine (filekit/arc.h, zip.h, tar.h, ops.h: ZIP read
+# ---- filekit.so: FileKit, what programs do with files (Kits/filekit/filekit.h; docs/03 "FileKit"): zlib
+# (third_party, compiled for the library), the archives' engine (Kits/filekit/arc.h, zip.h, tar.h, ops.h: ZIP read
 # and written, tar / tar.gz / gzip read -- the Archiver calls it through fk_arc_*), ZIP archives in memory, whole files, trees copied / moved / removed, paths.
 # Integer only in its interface; newlib's libc linked in. Exported: fk_*.
 ZLIB_SRC = ../third_party/zlib-1.3.1
@@ -242,16 +242,16 @@ FK_OBJ = lib/fk/fkcore.o $(FK_ZOBJ)
 lib/fk/z_%.o: $(ZLIB_SRC)/%.c
 	@mkdir -p lib/fk
 	$(CC) $(AK_FLAGS) -w -I$(ZLIB_SRC) -c $< -o $@
-lib/fk/fkcore.o: filekit/fkcore.cpp filekit/filekit.h $(wildcard filekit/*.h) appkit/appkit.h $(LIB_DEP)
+lib/fk/fkcore.o: Kits/filekit/fkcore.cpp Kits/filekit/filekit.h $(wildcard Kits/filekit/*.h) Kits/appkit/appkit.h $(LIB_DEP)
 	@mkdir -p lib/fk
-	$(CXX) $(AK_CXXFLAGS) -Wall -Ifilekit -I$(ZLIB_SRC) -c $< -o $@
-lib/fk/fkso.o: filekit/fkso.c lib.h appkit/appkit.h
+	$(CXX) $(AK_CXXFLAGS) -Wall -IKits/filekit -I$(ZLIB_SRC) -c $< -o $@
+lib/fk/fkso.o: Kits/filekit/fkso.c lib.h Kits/appkit/appkit.h
 	@mkdir -p lib/fk
 	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
-filekit/filekit.abi:
+Kits/filekit/filekit.abi:
 	@touch $@
-lib/filekit_table.S: $(FK_OBJ) lib/fk/fkso.o filekit/filekit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name filekit --abi filekit/filekit.abi --init fk_lib_init --allow-data . --export '^fk_' \
+lib/filekit_table.S: $(FK_OBJ) lib/fk/fkso.o Kits/filekit/filekit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name filekit --abi Kits/filekit/filekit.abi --init fk_lib_init --allow-data . --export '^fk_' \
 		--table lib/filekit_table.S --stubs lib/filekit_stubs.S --bind lib/filekit_bind.cpp $(FK_OBJ)
 lib/filekit_stubs.S lib/filekit_bind.cpp: lib/filekit_table.S ;
 lib/filekit.so: $(FK_OBJ) lib/fk/fkso.o lib/filekit_table.o lib/librt.o $(LIB_KAPI)
@@ -260,23 +260,23 @@ lib/filekit.imp.a: lib/filekit_stubs.o lib/filekit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- imagekit.so: ImageKit, pictures (imagekit/imagekit.h; docs/03 "ImageKit"): the decoders
+# ---- imagekit.so: ImageKit, pictures (Kits/imagekit/imagekit.h; docs/03 "ImageKit"): the decoders
 # (img/imgload.hpp: stb_image, simplewebp, PCX), the encoders (img/pngsave.hpp; PNG's deflate is zlib's,
 # through FileKit: its import stubs linked in, the library opened when a PNG is first written), what a
 # file says and the adjustments (Photos' exif.h, imgops.h), one resize right in alpha. Built with the
 # FPU, an integer interface; newlib's libm and libc linked in. Exported: ik_*.
 IK_OBJ = lib/ik/ikcore.o
-lib/ik/ikcore.o: imagekit/ikcore.cpp imagekit/imagekit.h filekit/filekit.h img/imgload.hpp img/pngsave.hpp img/stb_image.h img/simplewebp.h \
-		 Apps/photos/imgops.h Apps/photos/exif.h appkit/appkit.h $(LIB_DEP)
+lib/ik/ikcore.o: Kits/imagekit/ikcore.cpp Kits/imagekit/imagekit.h Kits/filekit/filekit.h img/imgload.hpp img/pngsave.hpp img/stb_image.h img/simplewebp.h \
+		 Apps/photos/imgops.h Apps/photos/exif.h Kits/appkit/appkit.h $(LIB_DEP)
 	@mkdir -p lib/ik
-	$(CXX) $(AK_CXXFLAGS) -w -Iimagekit -c $< -o $@
-lib/ik/ikso.o: imagekit/ikso.c lib.h appkit/appkit.h
+	$(CXX) $(AK_CXXFLAGS) -w -IKits/imagekit -c $< -o $@
+lib/ik/ikso.o: Kits/imagekit/ikso.c lib.h Kits/appkit/appkit.h
 	@mkdir -p lib/ik
 	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
-imagekit/imagekit.abi:
+Kits/imagekit/imagekit.abi:
 	@touch $@
-lib/imagekit_table.S: $(IK_OBJ) lib/ik/ikso.o imagekit/imagekit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name imagekit --abi imagekit/imagekit.abi --init ik_lib_init --allow-data . --export '^ik_' --exclude '^ik_lib_init$$' \
+lib/imagekit_table.S: $(IK_OBJ) lib/ik/ikso.o Kits/imagekit/imagekit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name imagekit --abi Kits/imagekit/imagekit.abi --init ik_lib_init --allow-data . --export '^ik_' --exclude '^ik_lib_init$$' \
 		--table lib/imagekit_table.S --stubs lib/imagekit_stubs.S --bind lib/imagekit_bind.cpp $(IK_OBJ)
 lib/imagekit_stubs.S lib/imagekit_bind.cpp: lib/imagekit_table.S ;
 lib/imagekit.so: $(IK_OBJ) lib/ik/ikso.o lib/filekit_stubs.o lib/imagekit_table.o lib/librt.o $(LIB_KAPI)
@@ -285,19 +285,19 @@ lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- appkit.so: AppKit, the interface between the programs and the kernel (appkit/appkit.c + appkit_calls.inc:
+# ---- appkit.so: AppKit, the interface between the programs and the kernel (Kits/appkit/appkit.c + appkit_calls.inc:
 # the bodies of the calls appkit.h declares; docs/03
-# "AppKit"). Its table: every kapi_* function, by name (appkit/appkit.abi, append-only). Its stubs read the
+# "AppKit"). Its table: every kapi_* function, by name (Kits/appkit/appkit.abi, append-only). Its stubs read the
 # table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
 # state, no library runtime; built with the FPU on (some calls take floats: they pass through).
 APPKIT_TABLE_VA = 0x380008000
-lib/appkit/appkit.o: appkit/appkit.c appkit/appkit_calls.inc appkit/appkit.h lib.h ../kernel/include/kern/kapi_abi.h
+lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit.h lib.h ../kernel/include/kern/kapi_abi.h
 	@mkdir -p lib/appkit
 	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -c $< -o $@
-appkit/appkit.abi:
+Kits/appkit/appkit.abi:
 	@touch $@
-lib/appkit_table.S: lib/appkit/appkit.o appkit/appkit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name appkit --abi appkit/appkit.abi --init appkit_init --allow-data . --export '^kapi_' \
+lib/appkit_table.S: lib/appkit/appkit.o Kits/appkit/appkit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name appkit --abi Kits/appkit/appkit.abi --init appkit_init --allow-data . --export '^kapi_' \
 		--fixed-table $(APPKIT_TABLE_VA) --table lib/appkit_table.S --stubs lib/appkit_stubs.S lib/appkit/appkit.o
 lib/appkit_stubs.S: lib/appkit_table.S ;
 lib/appkit.so: lib/appkit/appkit.o lib/appkit_table.o
@@ -312,37 +312,37 @@ libs: $(SHLIBS) lib/appkit_stubs.o lib/ft.imp.a lib/uikit.imp.a lib/printerkit.i
 doom: lib/uikit.imp.a lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C doom
 
-# /bin console tools live in bin/ (their own Makefile).
+# /bin console tools live in BinUtils/ (their own Makefile).
 .PHONY: bin
 bin: v3d/libv3d.a gpucomp/libgpucomp.a libs
-	@$(MAKE) --no-print-directory -C bin
+	@$(MAKE) --no-print-directory -C BinUtils
 
-# Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.
+# Apps/<name>/main.cpp -> <name>.elf. -I. -IKits so a nested source finds the user-side headers.
 # uikit toolkit: compiled once into a static library, linked into every app.
-# (+ the user-side headers uikit includes: an inline of appkit/appkit.h -- kapi_lock, kapi__core -- is compiled
+# (+ the user-side headers uikit includes: an inline of Kits/appkit/appkit.h -- kapi_lock, kapi__core -- is compiled
 # into the library, which must follow it)
-UIKIT_HDR = $(wildcard uikit/*.h) appkit/appkit.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
-UIKIT_OBJ = $(patsubst %.cpp,%.o,$(wildcard uikit/*.cpp))
-uikit/%.o: uikit/%.cpp $(UIKIT_HDR)
-	$(CXX) $(CXXFLAGS) -I. -c $< -o $@
+UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
+UIKIT_OBJ = $(patsubst %.cpp,%.o,$(wildcard Kits/uikit/*.cpp))
+Kits/uikit/%.o: Kits/uikit/%.cpp $(UIKIT_HDR)
+	$(CXX) $(CXXFLAGS) -I. -IKits -c $< -o $@
 # canvas.cpp is the hot pixel path (clear/fillRect/putOther): build it with NEON/FP
 # (drop -mgeneral-regs-only, target the A72). The kernel saves full FP/SIMD on every
 # trap, so SIMD is safe even though the rest of uikit and every app stay integer-only --
 # the NEON is confined to this TU and Canvas's public signatures use no FP regs, so the
-# calling ABI is unchanged. This explicit rule overrides the uikit/%.o pattern above.
+# calling ABI is unchanged. This explicit rule overrides the Kits/uikit/%.o pattern above.
 CXXFLAGS_NEON = $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72
-uikit/canvas.o: uikit/canvas.cpp $(UIKIT_HDR)
-	$(CXX) $(CXXFLAGS_NEON) -I. -c $< -o $@
+Kits/uikit/canvas.o: Kits/uikit/canvas.cpp $(UIKIT_HDR)
+	$(CXX) $(CXXFLAGS_NEON) -I. -IKits -c $< -o $@
 # The image codecs (stb_image, simplewebp, PCX) use floating point: FP/SIMD too.
-uikit/imgload.o: uikit/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
-	$(CXX) $(CXXFLAGS_NEON) -Wno-unused-parameter -Wno-sign-compare -I. -c $< -o $@
-uikit/libuikit.a: $(UIKIT_OBJ)
+Kits/uikit/imgload.o: Kits/uikit/imgload.cpp img/imgload.hpp img/stb_image.h img/simplewebp.h
+	$(CXX) $(CXXFLAGS_NEON) -Wno-unused-parameter -Wno-sign-compare -I. -IKits -c $< -o $@
+Kits/uikit/libuikit.a: $(UIKIT_OBJ)
 	$(AR) rcs $@ $^
-# (uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
+# (Kits/uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld appkit/appkit.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h lib/imagekit.imp.a imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld Kits/appkit/appkit.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -IKits -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (ft/: its options and modules -- no bytecode
@@ -350,7 +350,7 @@ $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld appkit/appkit.h applib.h laun
 # FreeType is the shared library SD:/lib/ft.so (above): the apps link its import library
 # lib/ft.imp.a. (ft/libft.a, the static build, is still made by `make ft/libft.a`: nothing links it.)
 NL_CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
-	     -ffunction-sections -fdata-sections -I. -I../kernel/include
+	     -ffunction-sections -fdata-sections -I. -I../kernel/include -IKits
 NL_CXXFLAGS = $(NL_CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 NL_LDFLAGS = -Wl,-T,user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections $(APPKIT_STUBS)
 FT_SRC = ../third_party/freetype-2.14.3
@@ -367,18 +367,18 @@ ft/libft.a: $(FT_OBJ)
 	$(AR) rcs $@ $^
 libc/crt0libc.o: libc/crt0libc.S
 	$(CC) $(NL_CFLAGS) -c $< -o $@
-libc/onyx_syscalls.o: libc/onyx_syscalls.c appkit/appkit.h
+libc/onyx_syscalls.o: libc/onyx_syscalls.c Kits/appkit/appkit.h
 	$(CC) $(NL_CFLAGS) -c $< -o $@
 # Letters: its model, layout and files in Apps/letters/*.h (the mail merge reads Cardfile's forms: its model.h;
 # .docx / .odt: the PNG writer's zip / deflate).
 letters.elf: Apps/letters/main.cpp $(wildcard Apps/letters/*.h) Apps/cardfile/model.h img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
-	    lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h docguard.h clipboard.h
+	    lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 # The spreadsheet: a newlib app as Letters (FreeType, stdio, doubles) -- its engine and files in
 # Apps/sheet/*.h, Letters' icons, the PNG writer's zip / deflate for the .xlsx.
 sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h img/pngsave.hpp ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a \
-	   lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h docguard.h clipboard.h
+	   lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
@@ -386,8 +386,8 @@ sheet.elf: Apps/sheet/main.cpp $(wildcard Apps/sheet/*.h) Apps/letters/icons.h i
 # slides' layers composited by the GPU (gpucomp), Letters' icons and Sheet's controls (Apps/sheet/ui_base.h), the
 # .odp's zip (img/pngsave.hpp), the PDF writer.
 slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.h Apps/sheet/core.h Apps/sheet/xml.h Apps/letters/icons.h \
-	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
-	    user.ld appkit/appkit.h docguard.h clipboard.h
+	    img/pngsave.hpp pdf/pdfwrite.h ft/fonts.h lib/printerkit.imp.a $(PRINT_HDR) lib/ft.imp.a lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o \
+	    user.ld Kits/appkit/appkit.h docguard.h clipboard.h
 	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
 
@@ -395,29 +395,29 @@ slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.
 # (FreeType's text through uikit, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
 # problems as you type, Make App's .bax).
 qbstudio.elf: Apps/qbstudio/main.cpp $(wildcard Apps/qbstudio/*.h) basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp \
-	      basic/bas.h basic/basint.h basic/basjit.h basic/basnum.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h clipboard.h notify.h
+	      basic/bas.h basic/basint.h basic/basjit.h basic/basnum.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h clipboard.h notify.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       basic/bascomp.cpp basic/basvm.cpp basic/basnum.cpp basic/basbax.cpp lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Letters (FreeType's text through
-# uikit), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/bin's
+# uikit), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/BinUtils's
 # TLS tools link them).
 COURIER_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+courier.elf: Apps/courier/main.cpp $(wildcard Apps/courier/*.h) http.hpp tls/onyx_tls.hpp json.hpp clipboard.h docguard.h 	     img/imgload.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I$(COURIER_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/ft.imp.a -L$(COURIER_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Mail, the mail client (Apps/mail: docs/mail/README.md): a newlib app as Letters (FreeType's text through uikit), its
 # protocols and its HTML renderer in mail/ (MIT), mbedTLS for TLS (as Courier), the image codecs (uikit's imgload).
 MAIL_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard mail/*.h) Apps/cardfile/model.h tls/onyx_tls.hpp clipboard.h notify.h fileassoc.h applet_proto.h Apps/jet/webview_proto.h \
-	  img/imgload.hpp lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+	  img/imgload.hpp lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/ft.imp.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 # Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # uikit), the image codecs (uikit's imgload), the JPEG / PNG writers (img/pngsave.hpp), the PDF writer (pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) img/imgload.hpp img/pngsave.hpp pdf/pdfwrite.h clipboard.h notify.h trash.h wallpaper.h \
-	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+	  lib/ft.imp.a ft/fonts.h ft/uikitface.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
@@ -431,28 +431,28 @@ zlib/%.o: $(ZLIB_SRC)/%.c
 	$(CC) $(NL_CFLAGS) -w -c $< -o $@
 zlib/libz.a: $(ZLIB_OBJ)
 	$(AR) rcs $@ $^
-archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) filekit/filekit.h filekit/arcbase.h filekit/arcpath.h fileassoc.h \
-	      lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a lib/filekit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) Kits/filekit/filekit.h Kits/filekit/arcbase.h Kits/filekit/arcpath.h fileassoc.h \
+	      lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a lib/filekit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -IApps/archiver -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/filekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # The shared clipboard (docs/clipboard/README.md): clipd, its service (no window, newlib), and clipboard, its widget
 # (the dock's button; FreeType's text). The apps reach clipd through clipboard.h (clipproto.h).
-clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h clipproto.h notify.h libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h clipproto.h notify.h libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -IApps/clipd $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< -o $@
 # The print service (docs/03 "Printing"): printd, no window, newlib -- the queue, the printers, a job's pages
-# rendered (printerkit/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (printerkit/ipp.h).
-printd.elf: Apps/printd/main.cpp $(PRINT_HDR) notify.h lib/ft.imp.a lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+# rendered (Kits/printerkit/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (Kits/printerkit/ipp.h).
+printd.elf: Apps/printd/main.cpp $(PRINT_HDR) notify.h lib/ft.imp.a lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 clipboard.elf: Apps/clipboard/main.cpp clipboard.h clipproto.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a \
-	       libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+	       libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
-# update daemon (no window) -- on pkg/pkglib.h as bin/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
+# update daemon (no window) -- on pkg/pkglib.h as BinUtils/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
 PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-PKG_DEPS = pkg/pkglib.h http.hpp tls/onyx_tls.hpp $(wildcard filekit/*.h) zlib/libz.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+PKG_DEPS = pkg/pkglib.h http.hpp tls/onyx_tls.hpp $(wildcard Kits/filekit/*.h) zlib/libz.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) bmp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
 	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< lib/uikit.imp.a lib/ft.imp.a zlib/libz.a \
@@ -467,11 +467,11 @@ pkgd.elf: Apps/pkgd/main.cpp $(PKG_DEPS) notify.h
 # Paint: a newlib app (FreeType's text, its Text tool), its canvas composited by the GPU (gpucomp: the
 # layers as textures, their blend modes); its pieces in Apps/paint/*.h.
 paint.elf: Apps/paint/main.cpp $(wildcard Apps/paint/*.h) clipboard.h docguard.h img/imgload.hpp img/pngsave.hpp lib/ft.imp.a \
-	   ft/uikitface.h lib/printerkit.imp.a printerkit/printerkit.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+	   ft/uikitface.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a gpucomp/libgpucomp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/imagekit.imp.a lib/uikit.imp.a gpucomp/libgpucomp.a lib/ft.imp.a -lm -o $@
-screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a \
-		libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h notify.h lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a \
+		libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
@@ -481,7 +481,7 @@ screenshot.elf: Apps/screenshot/main.cpp img/pngsave.hpp clipboard.h clipproto.h
 # (its synthesizer, Apps/koton/synth, is in the shared library AudioKit: lib/audiokit.imp.a)
 KOTON_SRC = $(wildcard Apps/koton/engine/*.cpp) $(wildcard Apps/koton/plug/*.cpp)
 KOTON_OBJ = $(patsubst Apps/koton/%.cpp,Apps/koton/obj/%.o,$(KOTON_SRC))
-KOTON_HDR = $(wildcard Apps/koton/engine/*.h) $(wildcard Apps/koton/synth/*.h) $(wildcard Apps/koton/plug/*.h) kplug_proto.h json.hpp appkit/appkit.h
+KOTON_HDR = $(wildcard Apps/koton/engine/*.h) $(wildcard Apps/koton/synth/*.h) $(wildcard Apps/koton/plug/*.h) kplug_proto.h json.hpp Kits/appkit/appkit.h
 Apps/koton/obj/%.o: Apps/koton/%.cpp $(KOTON_HDR)
 	@mkdir -p $(dir $@)
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IApps/koton -c $< -o $@
@@ -497,7 +497,7 @@ MU_NL_CFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -ffun
 Apps/pdf/obj/libmupdf.a: Apps/pdf/mupdf.mk $(wildcard Apps/pdf/mu/*)
 	@$(MAKE) --no-print-directory -f Apps/pdf/mupdf.mk MU_ROOT=.. MU_ONYX=1 MU_CC=$(CC) MU_AR=$(AR) MU_OUT=Apps/pdf/obj MU_CFLAGS="$(MU_NL_CFLAGS)"
 pdf.elf: Apps/pdf/main.cpp $(wildcard Apps/pdf/*.h) Apps/pdf/obj/libmupdf.a clipboard.h docguard.h ft/uikitface.h \
-	 lib/printerkit.imp.a printerkit/printerkit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+	 lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include -I../third_party/mupdf-1.28.5/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/printerkit.imp.a lib/uikit.imp.a Apps/pdf/obj/libmupdf.a -lm -o $@
 
@@ -518,11 +518,11 @@ FFMPEG = ../third_party/ffmpeg-7.1.2/onyx
 MEDIA_AV_LIBS = $(VPX)/libvpx.a $(DAV1D)/libdav1d.a $(OPUS)/libopus.a \
 	$(FFMPEG)/aarch64/libavformat.a $(FFMPEG)/aarch64/libavcodec.a $(FFMPEG)/aarch64/libswscale.a \
 	$(FFMPEG)/aarch64/libswresample.a $(FFMPEG)/aarch64/libavutil.a
-Apps/media/obj/av/%.o: av/%.c $(wildcard av/*.h) appkit/appkit.h
+Apps/media/obj/av/%.o: av/%.c $(wildcard av/*.h) Kits/appkit/appkit.h
 	@mkdir -p $(dir $@)
-	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
+	$(CC) $(NL_CFLAGS) -std=gnu11 -Iav -I. -IKits $(AV_CODECS_CF) -DAV_WITH_FFMPEG -I$(FFMPEG)/include -c $< -o $@
 media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_AV_OBJ) lib/audiokit.imp.a img/imgload.hpp img/pngsave.hpp fileassoc.h notify.h \
-	   lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h $(wildcard av/*.h)
+	   lib/ft.imp.a ft/uikitface.h lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h $(wildcard av/*.h)
 	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -I../third_party -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       $(MEDIA_AV_OBJ) lib/audiokit.imp.a lib/imagekit.imp.a lib/uikit.imp.a lib/ft.imp.a $(MEDIA_AV_LIBS) -lm -o $@
 
@@ -533,7 +533,7 @@ media.elf: Apps/media/main.cpp $(wildcard Apps/media/*.h) $(MEDIA_AV_OBJ) lib/au
 # SD:/koton/plugins/<name>/main with their plugin.json.
 KPLUG_DIRS = $(wildcard Apps/kp_*)
 KPLUG_ELFS = $(foreach d,$(KPLUG_DIRS),$(d)/$(notdir $(d)).elf)
-KPLUG_HDR = kplug.h kplug_proto.h applet_proto.h json.hpp appkit/appkit.h Apps/koton/engine/kbase.h
+KPLUG_HDR = kplug.h kplug_proto.h applet_proto.h json.hpp Kits/appkit/appkit.h Apps/koton/engine/kbase.h
 define KPLUG_RULE
 $(1)/$(notdir $(1)).elf: $(1)/main.cpp $$(KPLUG_HDR) lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld
 	$$(CXX) $$(NL_CXXFLAGS) -fno-math-errno -Wall $$(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $$< lib/uikit.imp.a -lm -o $$@
@@ -544,38 +544,38 @@ plugins: $(KPLUG_ELFS)
 
 # The Game Boy / Color emulator core (gb/: integer only, no libc), for gbemu and the library.
 gb/gb.o: gb/gb.cpp gb/gb.h
-	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
+	$(CXX) $(CXXFLAGS) -O2 -I. -IKits -c $< -o $@
 gb/libgb.a: gb/gb.o
 	$(AR) rcs $@ $^
 
 # The Game Boy Advance emulator core (gba/: integer only, no libc), for gbaemu and the library.
 GBA_OBJS = gba/gba.o gba/gba_cpu.o gba/gba_bios.o gba/gba_ppu.o gba/gba_apu.o
 gba/%.o: gba/%.cpp gba/gba.h
-	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
+	$(CXX) $(CXXFLAGS) -O2 -I. -IKits -c $< -o $@
 gba/libgba.a: $(GBA_OBJS)
 	$(AR) rcs $@ $^
 
 # The NES / Famicom emulator core (nes/: integer only, no libc), for nesemu and the library.
 NES_OBJS = nes/nes.o nes/nes_ppu.o nes/nes_apu.o
 nes/%.o: nes/%.cpp nes/nes.h nes/nes_optable.inc nes/nes_mix.inc
-	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
+	$(CXX) $(CXXFLAGS) -O2 -I. -IKits -c $< -o $@
 nes/libnes.a: $(NES_OBJS)
 	$(AR) rcs $@ $^
 
 # The Super Nintendo core (snes/: integer only, no libc), for snesemu and the library.
 SNES_OBJS = snes/snes.o snes/snes_cpu.o snes/snes_ppu.o snes/snes_apu.o
 snes/%.o: snes/%.cpp snes/snes.h snes/snes_gauss.inc
-	$(CXX) $(CXXFLAGS) -O2 -I. -c $< -o $@
+	$(CXX) $(CXXFLAGS) -O2 -I. -IKits -c $< -o $@
 # The Nintendo 64 core (n64/: the FPU is used: FP/SIMD flags), for n64emu.
 N64_OBJS = n64/n64_cpu.o n64/n64_bus.o n64/n64_gfx.o n64/n64_audio.o
 n64/%.o: n64/%.cpp n64/n64.h
-	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -c $< -o $@
+	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -IKits -c $< -o $@
 n64/libn64.a: $(N64_OBJS)
 	$(AR) rcs $@ $^
 # The GameCube core (gc/: the FPU is used, as n64/), for gcemu.
 GC_OBJS = gc/gc_cpu.o gc/gc_mem.o gc/gc_hw.o gc/gc_gx.o gc/gc_gxdraw.o gc/gc_dsp.o gc/gc_boot.o gc/gc_jit.o gc/gc_card.o gc/gc_zelda.o gc/gc_gxgpu.o
 gc/%.o: gc/%.cpp gc/gc.h
-	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -c $< -o $@
+	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -IKits -c $< -o $@
 gc/libgc.a: $(GC_OBJS)
 	$(AR) rcs $@ $^
 # The V3D QPU builder (v3d/: shaders generated at run time, e.g. the GameCube's TEV): the C++
@@ -583,11 +583,11 @@ gc/libgc.a: $(GC_OBJS)
 V3D_MESA = ../tools/qpu/mesa
 V3D_OBJS = v3d/qpu.o v3d/shaders.o v3d/gxtev.o v3d/qpu_pack.o v3d/qpu_instr.o v3d/shim.o
 v3d/qpu.o: v3d/qpu.cpp v3d/qpu.h
-	$(CXX) $(CXXFLAGS) -O2 -I. -I$(V3D_MESA) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -O2 -I. -IKits -I$(V3D_MESA) -c $< -o $@
 v3d/shaders.o: v3d/shaders.cpp v3d/shaders.h v3d/qpu.h
-	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -I$(V3D_MESA) -c $< -o $@
+	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -IKits -I$(V3D_MESA) -c $< -o $@
 v3d/gxtev.o: v3d/gxtev.cpp v3d/gxtev.h v3d/qpu.h
-	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -I$(V3D_MESA) -c $< -o $@
+	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -IKits -I$(V3D_MESA) -c $< -o $@
 v3d/qpu_pack.o: $(V3D_MESA)/broadcom/qpu/qpu_pack.c
 	$(CC) $(CFLAGS) -std=gnu11 -DNDEBUG -w -I$(V3D_MESA) -c $< -o $@
 v3d/qpu_instr.o: $(V3D_MESA)/broadcom/qpu/qpu_instr.c
@@ -600,8 +600,8 @@ v3d/libv3d.a: $(V3D_OBJS)
 # pure C without libc, FP/SIMD on and -O3 (the CPU path's row loops become NEON code), no fused
 # multiply-adds (-ffp-contract=off: the same pixels as the PC's build, tools/tests/run_gpucomp_test.sh).
 # Linked by freestanding apps (gpcdemo) and newlib ones alike.
-gpucomp/gpucomp.o: gpucomp/gpucomp.c gpucomp/gpucomp.h appkit/appkit.h ../kernel/include/kern/kapi_abi.h
-	$(CC) $(filter-out -mgeneral-regs-only -O2,$(CFLAGS)) -mcpu=cortex-a72 -O3 -ffp-contract=off -fno-math-errno -I. -c $< -o $@
+gpucomp/gpucomp.o: gpucomp/gpucomp.c gpucomp/gpucomp.h Kits/appkit/appkit.h ../kernel/include/kern/kapi_abi.h
+	$(CC) $(filter-out -mgeneral-regs-only -O2,$(CFLAGS)) -mcpu=cortex-a72 -O3 -ffp-contract=off -fno-math-errno -I. -IKits -c $< -o $@
 gpucomp/libgpucomp.a: gpucomp/gpucomp.o
 	$(AR) rcs $@ $^
 
@@ -610,7 +610,7 @@ snes/libsnes.a: $(SNES_OBJS)
 
 # Onyx BASIC (basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
 # (linked into the qbasic editor too), and the runtime /bin/basic (basic/runtime.cpp).
-BAS_HDR = basic/bas.h basic/basint.h basic/basjit.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h appkit/appkit.h
+BAS_HDR = basic/bas.h basic/basint.h basic/basjit.h basic/basnum.h basic/bas3d.h basic/bas3dscene.h basic/basscreen.h Kits/appkit/appkit.h
 BAS_OBJ = basic/basnum.o basic/bascomp.o basic/basvm.o basic/basbax.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.
@@ -627,7 +627,7 @@ cardfile.elf: $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h
 # The Calendar: a newlib app as Letters (FreeType's text through uikit's face); its model (iCalendar), views
 # and dialogs in Apps/calendar/*.h.
 calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h applib.h lib/ft.imp.a ft/uikitface.h \
-	      lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+	      lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 agenda.elf: notify.h
@@ -637,26 +637,26 @@ setup.elf: Apps/setup/system.h wallpaper.h img/imgload.hpp
 FT_EXTRA_gamelib = gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
 FT_EXTRA_soundconf = lib/audiokit.imp.a
-soundconf.elf: lib/audiokit.imp.a audiokit/audiokit.h
-fmtracker.elf: lib/audiokit.imp.a audiokit/audiokit.h
+soundconf.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
+fmtracker.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
-printconf.elf: lib/printerkit.imp.a printerkit/printerkit.h
-$(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld appkit/appkit.h
+printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
+$(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
 # the reports' .xlsx: the PNG writer's zip / deflate).
 ledger.elf: $(wildcard Apps/ledger/*.h) $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h img/pngsave.hpp
 basic/%.o: basic/%.cpp $(BAS_HDR)
-	$(CXX) $(CXXFLAGS_FP) -I. -c $< -o $@
+	$(CXX) $(CXXFLAGS_FP) -I. -IKits -c $< -o $@
 basic/libbasic.a: $(BAS_OBJ)
 	$(AR) rcs $@ $^
-bin/basic.elf: basic/runtime.cpp basic/libbasic.a lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h crt0.S user.ld appkit/appkit.h $(BAS_HDR)
-	$(CXX) $(CXXFLAGS_FP) -I. $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a lib/audiokit.imp.a lib/uikit.imp.a -o $@
+BinUtils/basic.elf: basic/runtime.cpp basic/libbasic.a lib/uikit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h crt0.S user.ld Kits/appkit/appkit.h $(BAS_HDR)
+	$(CXX) $(CXXFLAGS_FP) -I. -IKits $(LDFLAGS) $(KAPI_ALIASES) crt0.S basic/runtime.cpp basic/libbasic.a lib/audiokit.imp.a lib/uikit.imp.a -o $@
 
 clean:
-	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a bin/basic.elf
-	rm -f uikit/*.o uikit/*.a
+	rm -f *.elf *.o ft/*.o ft/*.a zlib/*.o zlib/*.a libc/*.o basic/*.o basic/*.a $(KPLUG_ELFS) gb/*.o gb/*.a gba/*.o gba/*.a nes/*.o nes/*.a snes/*.o snes/*.a n64/*.o n64/*.a gc/*.o gc/*.a v3d/*.o v3d/*.a gpucomp/*.o gpucomp/*.a BinUtils/basic.elf
+	rm -f Kits/uikit/*.o Kits/uikit/*.a
 	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
-	@$(MAKE) --no-print-directory -C bin clean
+	@$(MAKE) --no-print-directory -C BinUtils clean
 	@$(MAKE) --no-print-directory -C doom clean

@@ -4,5 +4,5 @@
 set -e
 cd "$(dirname "$0")/../../.."
 OUT=${TMPDIR:-/tmp}/onyx_json_test
-g++ -std=gnu++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I user -o "$OUT" tools/tests/json/test_json.cpp
+g++ -std=gnu++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I user -I user/Kits -o "$OUT" tools/tests/json/test_json.cpp
 "$OUT" "$@"

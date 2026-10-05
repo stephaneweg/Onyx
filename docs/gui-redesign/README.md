@@ -96,7 +96,7 @@ everything drawn by code, precomputed so that drawing is only straight lines:
   the colour's brightness. (`tone ()` and `FRAME` in `mockup_cde_modern.py`.)
 - **The frames** (the title bar, the borders, the corners, the outline) are drawn once into the
   two chrome copies the compositor blits (active, inactive — kapi v28 `get_chrome`, drawn by
-  uikit today in `user/uikit/skin.cpp`): a table of one colour per row, made once per height and
+  uikit today in `user/Kits/uikit/skin.cpp`): a table of one colour per row, made once per height and
   state; redrawn only at a resize or a theme change, never per frame.
 - **The buttons** (the windows' and the apps') compute their gradient **at each redraw, from
   their height**: the grey profile spread over the button's rows (a colour a row: a few
@@ -131,14 +131,14 @@ app cores — are not touched.)
 
 ## 5. Where the work landed
 
-1. **uikit's painter** (`user/uikit/paint.h`, `paint.cpp`): `uk_tone` (a shade of the theme's colour,
+1. **uikit's painter** (`user/Kits/uikit/paint.h`, `paint.cpp`): `uk_tone` (a shade of the theme's colour,
    128 = itself), gradients computed at each size (`uk_rbox`, `uk_rline`: rows of spans, the
    corners from a table of x offsets), the framed button (`uk_framed`), bevels, sunken fields,
    etched lines, the check / radio / switch / slider / scroll-bar / progress marks, pop-ups,
    selection rows, the glyphs; an alpha mode for see-through windows (`uk_paint_alpha`). The
-   theme's colours are variables read from `SD:/etc/theme.txt` (`user/uikit/theme.h`: `theme` or
+   theme's colours are variables read from `SD:/etc/theme.txt` (`user/Kits/uikit/theme.h`: `theme` or
    `active`, `inactive`, `face`, `accent`, `outline`, `dock`). Every uikit widget draws with it.
-2. **The window frames**: drawn by uikit into the two chrome copies (`user/uikit/skin.cpp`
+2. **The window frames**: drawn by uikit into the two chrome copies (`user/Kits/uikit/skin.cpp`
    `draw_frame`), to the new metrics (title 28, border 4, corner radius 8: `KAPI_FRAME_*`,
    `kapi_abi.h`); the title buttons — the window menu (Restore / Maximise, Minimise, Close),
    minimise, maximise (greyed for a fixed-size window), close — reported to the app as

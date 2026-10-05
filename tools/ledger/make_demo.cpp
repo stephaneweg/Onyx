@@ -12,7 +12,7 @@
 // invoice paid with its structured communication, others by their customers' names, a supplier's direct
 // debit found by its IBAN, the bank's charges, a transfer from an unknown party left to complete).
 //
-//   g++ -std=gnu++17 -O1 -I user -I kernel/include tools/ledger/make_demo.cpp -o /tmp/make_demo
+//   g++ -std=gnu++17 -O1 -I user -I user/Kits -I kernel/include tools/ledger/make_demo.cpp -o /tmp/make_demo
 //   /tmp/make_demo sdcard/docs/demo-company.ledger sdcard/docs/demo-bank-statement.cod
 //
 // (Every name, number and amount is made up; the VAT numbers and IBANs have valid check digits.)

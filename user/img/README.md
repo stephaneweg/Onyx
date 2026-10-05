@@ -37,7 +37,7 @@ don't cover). Onyx does the equivalent: the codecs cross-built here, behind one 
 - `zlib/`, `libpng/`, `libjpeg/` — the upstream sources for this opt-in build (unpacked
   tarballs, **not** committed here). The same releases are **vendored** in `third_party/`
   (`zlib-1.3.1`, `libpng-1.6.44`, `jpeg-9f`, with their built `.a`): Jet Browser and the default
-  `user/bin` build (`ZLIB_DIR`) use those; point `ZLIB` / `PNG` / `JPEG` at them to skip step 1.
+  `user/BinUtils` build (`ZLIB_DIR`) use those; point `ZLIB` / `PNG` / `JPEG` at them to skip step 1.
 
 ## Building
 

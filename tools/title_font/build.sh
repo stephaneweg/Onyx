@@ -10,8 +10,8 @@ for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitma
 	gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
 		-Iuser/ft -I$FT/include $FT/src/$f -o "$T/$(basename $f .c).o"
 done
-CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
-for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$T/w_$(basename "$f" .cpp).o"; done
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$T/w_$(basename "$f" .cpp).o"; done
 $CXX -c tools/tests/desktop_sim/fakekapi.cpp -o "$T/fakekapi.o"
 $CXX -Iuser/ft -I$FT/include tools/title_font/gen_title_font.cpp "$T/fakekapi.o" "$T"/w_*.o "$T"/ft*.o "$T"/autofit.o "$T"/truetype.o "$T"/sfnt.o "$T"/smooth.o -lpthread -o "$T/gen"
 SIM="exit" "$T/gen" "${1:-sdcard/res/fonts/title.aaf}"

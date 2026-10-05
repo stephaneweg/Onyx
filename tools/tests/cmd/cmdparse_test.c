@@ -1,5 +1,5 @@
 /*
- * cmdparse_test.c -- cmd's command-line parser (user/bin/cmdparse.h) on the PC: words, quotes,
+ * cmdparse_test.c -- cmd's command-line parser (user/BinUtils/cmdparse.h) on the PC: words, quotes,
  * backslash escapes, pipes, redirections, the errors. Run by tools/tests/run_cmd_test.sh.
  *
  * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
@@ -13,7 +13,7 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include "../../../user/bin/cmdparse.h"
+#include "../../../user/BinUtils/cmdparse.h"
 
 static struct CmdStage st[CMD_MAXSTAGES];
 static int fails, checks;

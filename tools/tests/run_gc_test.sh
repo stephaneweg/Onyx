@@ -22,7 +22,7 @@ qemu-ppc -cpu 750 "$T/cputest_qemu" > "$T/expected.bin"
 powerpc-linux-gnu-ld -Ttext=0x80003100 -e run_tests -nostdlib "$T/cputest.o" -o "$T/cputest.elf"
 powerpc-linux-gnu-as -m750cl "$here/gc/pstest.S" -o "$T/pstest.o"
 powerpc-linux-gnu-ld -Ttext=0x80003100 -e run_ps -nostdlib "$T/pstest.o" -o "$T/pstest.elf"
-g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" -I"$root/user/Kits" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest"
 "$T/gctest" cpu "$T/cputest.elf" "$T/expected.bin"
 "$T/gctest" ps "$T/pstest.elf"
 # the hardware: a bare-metal program (hwtest.c -> .dol): the VI's picture and display interrupts,
@@ -58,7 +58,7 @@ Q="$root/tools/qpu"
 for f in mesa/broadcom/qpu/qpu_instr mesa/broadcom/qpu/qpu_pack mesa/broadcom/qpu/qpu_disasm ralloc_stub; do
 	gcc -std=gnu11 -O1 -w -I"$Q/mesa" -I"$Q" -c "$Q/$f.c" -o "$T/q_$(basename $f).o"
 done
-g++ -std=c++17 -O2 -w -I"$root/user" -I"$root/kernel/include" -I"$Q" -I"$Q/mesa" "$here/gc/gcv3d.cpp" "$root/user/v3d/gxtev.cpp" "$root/user/v3d/qpu.cpp" \
+g++ -std=c++17 -O2 -w -I"$root/user" -I"$root/user/Kits" -I"$root/kernel/include" -I"$Q" -I"$Q/mesa" "$here/gc/gcv3d.cpp" "$root/user/v3d/gxtev.cpp" "$root/user/v3d/qpu.cpp" \
 	"$root/user/v3d/shaders.cpp" "$Q/qpusim.cpp" "$root"/user/gc/*.cpp "$T"/q_*.o -o "$T/gcv3d"
 "$T/gcv3d" "$T/gxtest.dol" 5 "$T/v3d.ppm" > /dev/null
 python3 - "$T/v3d.ppm" <<'X'
@@ -78,7 +78,7 @@ X
 
 # the JIT: the same checks on an AArch64 build (qemu-aarch64), GC_JIT=1
 if command -v aarch64-linux-gnu-g++ > /dev/null && command -v qemu-aarch64 > /dev/null; then
-	aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest_a64"
+	aarch64-linux-gnu-g++ -std=c++17 -O2 -Wall -Wextra -I"$root/user" -I"$root/user/Kits" "$here/gc/gctest.cpp" "$root"/user/gc/*.cpp -o "$T/gctest_a64"
 	Q="qemu-aarch64 -L /usr/aarch64-linux-gnu $T/gctest_a64"
 	echo "the JIT:"
 	GC_JIT=1 $Q cpu "$T/cputest.elf" "$T/expected.bin"

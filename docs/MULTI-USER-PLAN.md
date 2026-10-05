@@ -31,7 +31,7 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
 - The kernel starts its own tasks (reaper, input, **compositor and window manager — in the kernel**,
   `kernel/gui/`; the network stack too), then `CKernel::StartAutostart` (`kernel/kernel.cpp:1929`)
   runs `init=` of `cmdline.txt` (`SD:/bin/init`).
-- `user/bin/init.c` (89 lines) reads `SD:/etc/autostart`, runs each line with `kapi_exec` (builtins
+- `user/BinUtils/init.c` (89 lines) reads `SD:/etc/autostart`, runs each line with `kapi_exec` (builtins
   `sleep`, `wait`) and **exits**: nothing is supervised or restarted.
 - `sdcard/etc/autostart` mixes what is the machine's and what is a desktop's:
 
@@ -106,7 +106,7 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
 - What is **the system's**: `system.ini`, `wpa_supplicant.conf` (Wi-Fi passwords in clear),
   `autostart`, `keymaps/`, `fileassoc.ini`, `runners.ini`, `preload.ini`, `gamepad.ini`, `pkg/`,
   `SD:/var/pkg`, fonts, `res/`, `wallpapers/`, `apps/`, `bin/`, `lib/`, `cmdline.txt`.
-- File dialogs: `uikit::FileDialog` (`user/uikit/dialog.cpp`), ≈ 87 call sites in 28 apps; the start folder
+- File dialogs: `uikit::FileDialog` (`user/Kits/uikit/dialog.cpp`), ≈ 87 call sites in 28 apps; the start folder
   is `SD:/` when none is given (22 sites), `SD:/docs` (20+). The File Viewer starts at `SD:/`; its
   sidebar has no "Home".
 - The clipboard is the `clipd` service (its memory + files in `RAM:/clip`): one for the whole system.
@@ -624,8 +624,8 @@ in the same session (CLAUDE.md). Kapi version numbers are indicative (v84 onward
   Setup's account page; `login.ini` (automatic login); `telnetd`'s `login:` prompt (clear text, the
   port and the rest unchanged).
 - *kapi* (v85): `session_open`, `session_close`, `session_info`; the `CONSOLE` rule on window creation.
-- *Files*: `user/bin/init.c`, `user/Apps/login` (from `lock`), `user/bin/session.c`,
-  `user/Apps/{menubar,dock,shutdown,setup}`, `user/bin/telnetd.c`, `sdcard/etc/{autostart,session}`.
+- *Files*: `user/BinUtils/init.c`, `user/Apps/login` (from `lock`), `user/BinUtils/session.c`,
+  `user/Apps/{menubar,dock,shutdown,setup}`, `user/BinUtils/telnetd.c`, `sdcard/etc/{autostart,session}`.
 - *Risk*: a console with no desktop (the greeter crashes, a bad session list) — `init` restarts the
   greeter, telnet stays (it is the system's), `multiuser=0` on the card.
 - *Test*: boot → the greeter; a wrong password; log in → the desktop; log out with a document open
@@ -681,7 +681,7 @@ in the same session (CLAUDE.md). Kapi version numbers are indicative (v84 onward
   `telnetd` on 992 + `tools/onyx-telnet.py` + the test scripts; `ftpd` on accounts + `AUTH TLS`;
   `vncd` VeNCrypt, off by default; `remote.ini`, the Remote Access applet; the attach rules (§8.3).
 - *kapi*: `user_scram` (v89) if SCRAM is kept for a client without TLS.
-- *Files*: `user/bin/{rdpd,telnetd,ftpd,vncd}.c`, `user/tls/`, `pc/OnyxRemote/{Connection,MainForm,
+- *Files*: `user/BinUtils/{rdpd,telnetd,ftpd,vncd}.c`, `user/tls/`, `pc/OnyxRemote/{Connection,MainForm,
   TelnetForm}.cs` (+ `pc/dist`), `tools/onyx-telnet.py`, `tools/tests/**` that telnet.
 - *Risk*: **losing the remote hand** — the rules of §8.6 (new beside old, one-boot trial); TLS's cost
   on the remote desktop's rate (measure; HANDOFF's network figures are the reference).

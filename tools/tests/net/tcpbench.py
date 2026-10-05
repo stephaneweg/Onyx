@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/tests/net/tcpbench.py -- the PC's side of /bin/tcpbench (user/bin/tcpbench.c): the Pi's TCP speed
+tools/tests/net/tcpbench.py -- the PC's side of /bin/tcpbench (user/BinUtils/tcpbench.c): the Pi's TCP speed
 without a disk and without the internet, each way, and the latency of a round trip.
 
   python3 tools/tests/net/tcpbench.py HOST [MEGABYTES] [PORT]      (default 8 MB, port 5001)

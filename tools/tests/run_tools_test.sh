@@ -1,6 +1,6 @@
 #!/bin/sh
 # run_tools_test.sh -- the text tools of /bin (grep, wc, head, tail, sed, ed, sort, uniq, cut, tr,
-# tee, nl, find, date, sleep, hexdump, diff) on the PC: the very sources of user/bin, built with
+# tee, nl, find, date, sleep, hexdump, diff) on the PC: the very sources of user/BinUtils, built with
 # -DTOOL_HOST (tool.h's libc back end) and the address / undefined sanitizers, each run on small
 # inputs and its output compared with what is expected. docs/04 *The /bin tools*.
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -10,7 +10,7 @@ export ASAN_OPTIONS=detect_leaks=0		# (a tool's memory goes with its process)
 TOOLS="ls cat grep wc head tail sed ed sort uniq cut tr tee nl find date sleep hexdump diff"
 for t in $TOOLS; do
 	gcc -std=gnu11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -DTOOL_HOST \
-		"$ROOT/user/bin/$t.c" -o "$OUT/$t" || { echo "BUILD FAILED: $t"; exit 1; }
+		"$ROOT/user/BinUtils/$t.c" -o "$OUT/$t" || { echo "BUILD FAILED: $t"; exit 1; }
 done
 PATH="$OUT:$PATH"; export PATH
 cd "$OUT/w" || exit 1

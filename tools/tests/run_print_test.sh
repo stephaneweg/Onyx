@@ -1,6 +1,6 @@
 #!/bin/sh
 # run_print_test.sh -- the print system on the PC: a job recorded, replayed as a PDF and as PWG Raster pages
-# (user/printerkit/: job.h, pdfsink.h, raster.h), the raster stream read back; the IPP messages (printerkit/ipp.h)
+# (user/Kits/printerkit/: job.h, pdfsink.h, raster.h), the raster stream read back; the IPP messages (printerkit/ipp.h)
 # encoded and decoded, and -- IPP_PRINTER=<address> -- a real printer asked what it can do and whether it
 # would take a job (Validate-Job: nothing is printed). The pictures and the PDFs stay in the output folder.
 #   sh tools/tests/run_print_test.sh
@@ -17,7 +17,7 @@ if [ ! -f "$OUT/libft.a" ]; then
 	done; wait
 	ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 fi
-CXX="g++ -std=gnu++17 -O2 -g -Wall -I$ROOT/user -I$ROOT/kernel/include -I$ROOT/user/ft -I$FT/include -fno-exceptions -fno-rtti -DPRINT_HOST -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O2 -g -Wall -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/kernel/include -I$ROOT/user/ft -I$FT/include -fno-exceptions -fno-rtti -DPRINT_HOST -DIMG_HOST_TEST"
 $CXX -Wno-unused-function -Wno-sign-compare -Wno-unused-parameter "$HERE/print/print_test.cpp" "$OUT/libft.a" -o "$OUT/print_test"
 "$OUT/print_test" "$ROOT/sdcard/res/fonts/DejaVuSans.ttf" "$OUT"
 if [ -f "$HERE/print/ipp_test.cpp" ]; then

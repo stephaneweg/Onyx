@@ -67,10 +67,10 @@ Two weaknesses, worth fixing:
    kernel's memory, and each kapi entry is a **system call** (`svc`) through a stub
    (docs/EL0-PROTECTED-MODE.md, docs/02 §6): the same seam as Linux's system calls. Still worth
    saying explicitly in the future `LICENSE`, as Linux's syscall note does — *"Programs that use
-   the Onyx kernel only through the kapi table (`user/appkit/appkit.h`) are not derived works of the
+   the Onyx kernel only through the kapi table (`user/Kits/appkit/appkit.h`) are not derived works of the
    kernel."* You can grant it for your own kernel code; Circle's author grants nothing, but your
    code is the only part the apps call.
-2. `user/appkit/appkit.h` (included by every app) must be under a licence every app's licence can take: put it
+2. `user/Kits/appkit/appkit.h` (included by every app) must be under a licence every app's licence can take: put it
    (and `user/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
 
 ## 3. The inventory
@@ -93,11 +93,11 @@ Two weaknesses, worth fixing:
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
 | pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
-| The print system (Onyx) | `user/printerkit/` (`SD:/lib/printerkit.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
+| The print system (Onyx) | `user/Kits/printerkit/` (`SD:/lib/printerkit.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
 | python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |
-| **ImageKit** (Onyx) | `user/imagekit/` (`SD:/lib/imagekit.so`): pictures read, written, transformed, adjusted — with stb_image, simplewebp and the PCX reader (as in UIKit) inside | MIT (stb_image: public domain / MIT; simplewebp: BSD-3) | Keep the notices |
-| **FileKit** (Onyx) | `user/filekit/` (`SD:/lib/filekit.so`): compression, ZIP archives, files and trees, paths — with zlib and the Archiver's ZIP engine (Onyx, MIT) inside | MIT (zlib: the zlib licence, below) | Keep the notices |
-| **AudioKit** (Onyx) | `user/audiokit/` (`SD:/lib/audiokit.so`): the files, the background player, mixing, notes, WAV — with MeltySynth and the four decoders below inside it | **MIT** (ours); what it contains: MIT, CC0, public domain — nothing that binds the programs using it. FFmpeg (GPL) is **not** in it and must never be | Keep the notices |
+| **ImageKit** (Onyx) | `user/Kits/imagekit/` (`SD:/lib/imagekit.so`): pictures read, written, transformed, adjusted — with stb_image, simplewebp and the PCX reader (as in UIKit) inside | MIT (stb_image: public domain / MIT; simplewebp: BSD-3) | Keep the notices |
+| **FileKit** (Onyx) | `user/Kits/filekit/` (`SD:/lib/filekit.so`): compression, ZIP archives, files and trees, paths — with zlib and the Archiver's ZIP engine (Onyx, MIT) inside | MIT (zlib: the zlib licence, below) | Keep the notices |
+| **AudioKit** (Onyx) | `user/Kits/audiokit/` (`SD:/lib/audiokit.so`): the files, the background player, mixing, notes, WAV — with MeltySynth and the four decoders below inside it | **MIT** (ours); what it contains: MIT, CC0, public domain — nothing that binds the programs using it. FFmpeg (GPL) is **not** in it and must never be | Keep the notices |
 | MeltySynth (C++ port) | `user/Apps/koton/synth` (in AudioKit: Koton, Media Player, BASIC) | MIT | Keep the notice |
 | minimp3 | `third_party/minimp3`, AudioKit (the Media Player, `/bin/play`, BASIC), Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
 | libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
@@ -177,11 +177,11 @@ the repository on 2026-10-04: Jet is the WebKit port.
    IJG's credit lines are required).
 4. The firmware licences on the card (`LICENCE.broadcom`, the Wi-Fi's).
 5. SPDX headers in our own files (`// SPDX-License-Identifier: MIT`: the user's decision above),
-   `user/appkit/appkit.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
+   `user/Kits/appkit/appkit.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
    The new files already carry the MIT notice — the EL0 work (`kernel/arch/aarch64/el0.S`,
    `el0blob.S`, `kernel/sys/el0.cpp`, `sys/uaccess.cpp`, `kern/handle.h`, `kern/uaccess.h`,
    `tools/el0scan.sh`, `tools/gen_kapi_names.py`, `/bin/sysstat`, `el0test`, `faulttest`), Mail
-   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/appkit/appkit.h`, `user/kapi_names.h` (generated)
+   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/Kits/appkit/appkit.h`, `user/kapi_names.h` (generated)
    and most older files do not yet.
 6. The FM Song covers out of the public distribution.
 

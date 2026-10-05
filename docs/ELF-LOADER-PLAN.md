@@ -90,7 +90,7 @@ loaded at boot and kept — stage (c)'s image object, created ahead of any proce
 dropped by stage (d)'s eviction). A run of one of them maps the read-only image (99.8 % of the
 file: shared, not duplicated) and copies only its writable data (169 KB for `wctest`): no card
 read, 80 MB held once whatever the number of processes. **No kernel parameter** (the user): the
-list is `preload <program>` lines in `/etc/autostart`, which `init` reads (`user/bin/init.c`) — a
+list is `preload <program>` lines in `/etc/autostart`, which `init` reads (`user/BinUtils/init.c`) — a
 `/bin/preload` tool over a new kapi call (appended: the ABI version goes up), which returns at
 once while a kernel task loads the image. The line's place in the file gives the order (after the
 dock, so the boot is not 5 s longer), the same tool works from the terminal at any time and, with

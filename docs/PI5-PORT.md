@@ -562,7 +562,7 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
 ## 12. Text, docs and tools to update
 
 - **Compiler flags** `-mcpu=cortex-a72` (fine for a shared userland; switch only for a Pi-5-tuned
-  build): `user/Makefile:5, 60, 64, 79, 176, 182`, `user/bin/Makefile:16, 20, 27`,
+  build): `user/Makefile:5, 60, 64, 79, 176, 182`, `user/BinUtils/Makefile:16, 20, 27`,
   `user/doom/Makefile:13, 16`, `user/netsurf/Makefile:44`, `user/netsurf/netsurf-app.mk:47, 147,
   183-187, 246`, `user/img/Makefile:25, 27`, `user/tls/Makefile:15, 17`, `user/stk/Makefile:29`,
   `user/nsfb/Makefile:27`, `third_party/libwebp-1.4.0/src/**/Makefile`,
@@ -591,7 +591,7 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
 |---|---|---|
 | Build | both images build from a clean tree; `sizecheck` passes; the Pi 4 image is unchanged byte-for-byte except intended changes | `make`, `make BOARD=pi5` |
 | Pi 4 regression | after every phase, the Pi 4 still boots and passes the usual tests (B1 and the memory rework touch both) | the Pi-4 workflow (telnet, FTP, vncdotool) |
-| Boot | serial log to the desktop; `ps` shows the per-core tasks; `coretest`, `threadtest`, `futextest`, `ringtest` pass (B1) | debug UART, `user/bin/*test` |
+| Boot | serial log to the desktop; `ps` shows the per-core tasks; `coretest`, `threadtest`, `futextest`, `ringtest` pass (B1) | debug UART, `user/BinUtils/*test` |
 | Memory | `meminfo` reports the RAM once; a long NetSurf + gcemu session with no corruption; `heaptest` | `memmon`, `kapi_meminfo` |
 | Display | 32 bpp colours right; compositor DMA on and `dispdma=0`; the resolution change | VNC screenshots |
 | Sound | HDMI tone; Koton at 256 × 2 and 384 × 2 without underruns; the emulators' audio | `soundconf`, Koton meter |

@@ -18,11 +18,11 @@ WANT=" $* "
 rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes" "$OUT/ft" "$OUT/k" "$IMG"
 : > "$OUT/log.txt"
 export SIM_WRITES="$OUT/writes"
-CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # ---- the building: uikit, the stand-in kernel, FreeType, Koton (its engine, MeltySynth, its plugin host) ----
-for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 FT=third_party/freetype-2.14.3

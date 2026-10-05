@@ -3,7 +3,7 @@
 // at the kapi level: local sockets (sock_pair STREAM / SEQPACKET / DGRAM, the sock_* calls, poll,
 // sock_sendmsg / sock_recvmsg), handles carried between processes, shared memory objects (shm_create,
 // shm_ctl, shm_map, shm_open), spawn_ex2 / get_handles. Built on libonyxposix (printf, pthreads) so
-// it also runs on the PC bench (PROG=user/bin/ipctest.c sh tools/tests/posixsim/run.sh). Every check
+// it also runs on the PC bench (PROG=user/BinUtils/ipctest.c sh tools/tests/posixsim/run.sh). Every check
 // prints a PASS, FAIL or SKIP line; the last line is "ipctest: PASS" or "ipctest: FAIL (n)", and the
 // exit status the number of failures.
 //

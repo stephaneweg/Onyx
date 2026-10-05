@@ -1,4 +1,4 @@
-// Connection.cs -- the link to rdpd: the protocol (see user/bin/rdpd.c), a reading thread that
+// Connection.cs -- the link to rdpd: the protocol (see user/BinUtils/rdpd.c), a reading thread that
 // keeps the model of the Onyx windows (their place, frame, pixels) up to date, a sending thread
 // for the messages sent back (pointer, keys, focus, close), and the reconnection.
 //

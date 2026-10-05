@@ -19,7 +19,7 @@ AR := aarch64-onyx-elf-ar
 
 AV_SRC := $(addprefix $(ONYX)/user/av/,av_demux.c av_mkv.c av_mp4.c av_riff.c av_flac.c av_mp3.c av_stub.c \
 	av_codec.c av_yuv.c av_resample.c av_store.c av_player.c av_vpx.c av_dav1d.c av_opus.c)
-AV_CF := -std=gnu99 -O2 -DAV_POSIX -DAV_KAPI_SOUND $(AV_CODECS_CF) -I$(ONYX)/user/av -I$(ONYX)/user -I$(ONYX)/kernel/include
+AV_CF := -std=gnu99 -O2 -DAV_POSIX -DAV_KAPI_SOUND $(AV_CODECS_CF) -I$(ONYX)/user/av -I$(ONYX)/user -I$(ONYX)/user/Kits -I$(ONYX)/kernel/include
 
 obj = $(patsubst $(ONYX)/%,$(O)/%.o,$(1))
 AV_OBJ := $(call obj,$(AV_SRC))

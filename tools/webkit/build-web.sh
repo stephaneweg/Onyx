@@ -38,7 +38,7 @@ mkdir -p "$O/uikit" "$BUILD/bin"
 [ -f "$BUILD/lib/libWebKit.a" ] || { echo "build-web.sh: no $BUILD/lib/libWebKit.a: sh tools/webkit/build-webkit.sh" >&2; exit 1; }
 
 CXX="aarch64-onyx-elf-g++ -specs=$S/lib/onyx.specs -std=gnu++17 -O2 -mcpu=cortex-a72 -fno-exceptions -fno-rtti -w \
-	-ffunction-sections -fdata-sections -DONYX_HOSTED_NEW -I$ONYX/user -I$ONYX/kernel/include"
+	-ffunction-sections -fdata-sections -DONYX_HOSTED_NEW -I$ONYX/user -I$ONYX/user/Kits -I$ONYX/kernel/include"
 
 # ---- uikit: the import side of SD:/lib/uikit.so, for this toolchain ----
 echo "web: uikit (the shared library's import side)"
@@ -49,7 +49,7 @@ done
 rm -rf "$O/uikit"; mkdir -p "$O/uikit"
 aarch64-onyx-elf-gcc -mcpu=cortex-a72 -c "$U/lib/uikit_stubs.S" -o "$O/uikit/stubs.o"
 $CXX -c "$U/lib/uikit_bind.cpp" -o "$O/uikit/bind.o"
-$CXX -c "$U/uikit/globals.cpp" -o "$O/uikit/globals.o"
+$CXX -c "$U/Kits/uikit/globals.cpp" -o "$O/uikit/globals.o"
 rm -f "$O/libuikit.a"
 UIKIT="$O/uikit/globals.o $O/uikit/bind.o $O/uikit/stubs.o"
 
@@ -88,14 +88,14 @@ SKMS="$O/skmallocsize.o -Wl,--wrap=_Z14sk_malloc_sizePvm"
 # appkit.h): the GPU compositing service, built as user/Makefile builds it, and the kernel surfaces.
 GPC="$O/gpucomp.o $O/onyxsurface.o $O/onyxcores.o"
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O3 -mcpu=cortex-a72 -ffp-contract=off -fno-math-errno \
-	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$O/gpucomp.o"
+	-I"$ONYX/user" -I"$ONYX/user/Kits" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$O/gpucomp.o"
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 \
-	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$HERE/onyxsurface.c" -o "$O/onyxsurface.o"
+	-I"$ONYX/user" -I"$ONYX/user/Kits" -I"$ONYX/kernel/include" -c "$HERE/onyxsurface.c" -o "$O/onyxsurface.o"
 # The tiles rasterised on Onyx's app cores (onyxcores.c: the workers, and core 0's locks, which must not
 # sleep while an app core may hold them -- the four entries wrapped here; it uses libonyxposix's
 # internals for the workers' TLS).
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 \
-	-I"$ONYX/user" -I"$ONYX/user/libc/posix" -I"$ONYX/kernel/include" -c "$HERE/onyxcores.c" -o "$O/onyxcores.o"
+	-I"$ONYX/user" -I"$ONYX/user/Kits" -I"$ONYX/user/libc/posix" -I"$ONYX/kernel/include" -c "$HERE/onyxcores.c" -o "$O/onyxcores.o"
 GPC="$GPC -Wl,--wrap=__retarget_lock_acquire -Wl,--wrap=__retarget_lock_acquire_recursive -Wl,--wrap=sem_wait -Wl,--wrap=pthread_mutex_lock -Wl,--wrap=pread -Wl,--wrap=pwrite"
 # HEAPCHECK=1: the checking malloc of heapcheck.c in front of newlib's (a hunt for heap corruption);
 # HEAPCHECK=2: the same with blocks as large as newlib's and a malloc_usable_size that says so, Skia

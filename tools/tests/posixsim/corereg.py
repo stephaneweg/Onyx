@@ -3,7 +3,7 @@
 #
 #   python3 tools/tests/posixsim/corereg.py <program>      (run.sh does it, in place)
 #
-# kapi__core () (user/appkit/appkit.h) reads TPIDRRO_EL0, where Onyx's kernel publishes the core: 0 for the
+# kapi__core () (user/Kits/appkit/appkit.h) reads TPIDRRO_EL0, where Onyx's kernel publishes the core: 0 for the
 # threads, 2 or 3 on an app core. Under qemu-user that register is 0 for good, so the code of a
 # fake app core (fakekapi.c) took itself for a thread and made kernel calls the Pi faults on.
 # Every "mrs xN, tpidrro_el0" of the program's .text becomes "mrs xN, tpidr2_el0": a register the

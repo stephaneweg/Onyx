@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../.."
 OUT=${MAIL_TEST_TMP:-/tmp/onyx_mail_test}
 M=third_party/mbedtls-3.6.3
 mkdir -p "$OUT/mb"
-CXX="g++ -std=gnu++17 -O1 -g -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -g -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 if [ ! -f "$OUT/libmb.a" ]; then
 	for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" & done; wait
 	ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
@@ -20,7 +20,7 @@ $CXX -I$M/include tools/tests/mail/modeltest.cpp "$OUT/fakekapi.o" "$OUT/libmb.a
 FT=third_party/freetype-2.14.3
 mkdir -p "$OUT/uikit" "$OUT/ft"
 if [ ! -f "$OUT/libuikit.a" ]; then
-	for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" & done; wait
+	for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" & done; wait
 	ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 fi
 if [ ! -f "$OUT/libft.a" ]; then

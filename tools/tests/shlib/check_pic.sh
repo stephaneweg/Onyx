@@ -36,7 +36,7 @@ if [ $# -gt 0 ]; then
 	exit 0
 fi
 O=${TMPDIR:-/tmp}/onyx-shlib-check; mkdir -p "$O"
-CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$U -I$U/../kernel/include"
+CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$U -I$U/Kits -I$U/../kernel/include"
 ${P}g++ $CF -c "$U/demo/demolib.cpp" -o "$O/demolib.o"
 ${P}g++ $CF -c "$U/librt.cpp" -o "$O/librt.o"
 ${P}ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv --build-id=none \

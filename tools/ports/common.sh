@@ -86,7 +86,7 @@ onyx_install_deps ()
 	printf 'prefix=%s\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\nName: libbrotlidec\nDescription: Brotli decoder library (with brotlicommon)\nVersion: 1.1.0\nLibs: -L${libdir} -lbrotlidec\nCflags: -I${includedir}\n' "$ONYX_SYSROOT" > "$pc/libbrotlidec.pc"
 }
 
-# a tool built: kept as <name>.elf (the in-tree convention: make stage copies user/bin/*.elf),
+# a tool built: kept as <name>.elf (the in-tree convention: make stage copies user/BinUtils/*.elf),
 # checked by el0scan
 onyx_tool_done ()
 {

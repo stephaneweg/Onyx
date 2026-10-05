@@ -12,7 +12,7 @@
  * Each connection's line in the output: the bytes, the time, the rate, the reads / writes and the
  * largest and smallest count one of them returned.
  *
- * A POSIX program (libonyxposix's sockets): built by user/bin/Makefile's POSIX rule.
+ * A POSIX program (libonyxposix's sockets): built by user/BinUtils/Makefile's POSIX rule.
  *
  * MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
  */

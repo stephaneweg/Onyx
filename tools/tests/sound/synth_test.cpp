@@ -1,5 +1,5 @@
 //
-// synth_test.cpp -- the kernel synthesizer (user/audiokit/fmsynth.h) on a PC: renders notes of
+// synth_test.cpp -- the kernel synthesizer (user/Kits/audiokit/fmsynth.h) on a PC: renders notes of
 // an FM instrument (.FMI, the fmtracker format) or a simple wave into a WAV file, and
 // prints the level / pitch so a test can check them.
 //   synth_test out.wav [instrument.FMI] [freq]
@@ -13,7 +13,7 @@ typedef uint64_t u64; typedef int64_t s64; typedef bool boolean;
 #define TRUE true
 #define FALSE false
 #define SND_RATE	FMSYNTH_RATE
-#include "../../../user/audiokit/fmsynth.h"
+#include "../../../user/Kits/audiokit/fmsynth.h"
 using namespace fmsynth;
 
 // .FMI: "fm-song instrument", "NAME", then 13 "a,b" lines: attack, decay, sustain, release,

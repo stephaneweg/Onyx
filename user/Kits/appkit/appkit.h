@@ -2,7 +2,7 @@
 // appkit.h -- AppKit: what a program includes to talk to the system.
 //
 // A program calls the functions declared here (kapi_*: the names of AppKit's table, kept as they
-// were); they are AppKit's (SD:/lib/appkit.so, user/appkit), which the kernel binds to every program.
+// were); they are AppKit's (SD:/lib/appkit.so, user/Kits/appkit), which the kernel binds to every program.
 // A program never talks to the kernel itself. Their bodies are in appkit_calls.inc, beside this file.
 // The structures and constants shared with the kernel come from <kern/kapi_abi.h>.
 //
@@ -15,7 +15,7 @@
 #include <kern/kapi_abi.h>
 
 // ---- how a program reaches the kernel: AppKit (2026-10-05) -------------------------------------------
-// The kapi_* functions declared below (KAPI_FN) are AppKit's (SD:/lib/appkit.so, user/appkit: the ONE
+// The kapi_* functions declared below (KAPI_FN) are AppKit's (SD:/lib/appkit.so, user/Kits/appkit: the ONE
 // interface between the programs and the kernel -- loaded by the kernel and bound to every program
 // with no call of theirs). A program calls them BY NAME, through the import stubs linked into it
 // (lib/appkit_stubs.o). THIS HEADER ONLY DECLARES THEM: their bodies -- the calls through the kernel's

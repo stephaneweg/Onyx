@@ -123,7 +123,7 @@ cd ~/src/Onyx/circle && ./configure -r 4 -p aarch64-none-elf- -d DEPTH=32 -f
 for d in lib lib/sched lib/fs lib/fs/fat lib/usb lib/input lib/net lib/sound addon/SDCard addon/fatfs addon/wlan; do make -C $d -j$(nproc) || break; done
 (cd addon/wlan/hostap/wpa_supplicant && make -f Makefile.circle -j$(nproc))
 cd ../kernel && (make -j$(nproc) || make -j1) && make stage     # the kernel + every app -> sdcard/
-cd .. && make -C user/bin ports                                  # SQLite, libxml2, curl, ICU, HarfBuzz, Skia tools
+cd .. && make -C user/BinUtils ports                                  # SQLite, libxml2, curl, ICU, HarfBuzz, Skia tools
 sh tools/tests/posixsim/run.sh                                   # posixtest under qemu: all pass expected
 sh tools/tests/posixsim/tc.sh                                    # + posixtest-cxx (the onyx-elf toolchain)
 sh tools/tests/posixsim/ports.sh webkit                          # icutest, hbtest, skiatest

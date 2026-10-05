@@ -14,7 +14,7 @@ command -v qemu-aarch64 > /dev/null || { echo "skipped: no qemu-aarch64"; exit 0
 BIN=${BAS_A64_BIN:-$HOME/.cache/onyx_basic_host_a64}
 mkdir -p "$(dirname "$BIN")"
 aarch64-none-elf-gcc -O2 -c "$HERE/basic/a64/linux_shim.c" -o "$BIN.shim.o"
-aarch64-none-elf-g++ -std=c++17 -O2 -Wall -Wextra -DBAS_A64_SHIM -static -nostartfiles --specs=nosys.specs -I"$ROOT/user" \
+aarch64-none-elf-g++ -std=c++17 -O2 -Wall -Wextra -DBAS_A64_SHIM -static -nostartfiles --specs=nosys.specs -I"$ROOT/user" -I"$ROOT/user/Kits" \
     "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
     "$HERE/basic/host_main.cpp" "$BIN.shim.o" -o "$BIN" 2>&1 | grep -v "is not implemented and will always fail" | grep -v "in function" || true
 [ -x "$BIN" ] || { echo "the AArch64 host did not build"; exit 1; }

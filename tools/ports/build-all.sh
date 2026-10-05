@@ -7,7 +7,7 @@
 #   WebKit's graphics / text / i18n libraries (aarch64-onyx-elf only: C++ threads):
 #                       ICU, libpng, FreeType, HarfBuzz, libjpeg-turbo, libwebp, Skia
 #                                                               icutest.elf  hbtest.elf  skiatest.elf  skiademo.elf
-# `make -C user/bin ports` runs it and copies the tools to user/bin (make stage puts them on the
+# `make -C user/BinUtils ports` runs it and copies the tools to user/BinUtils (make stage puts them on the
 # card as /bin/sqlite3, /bin/xmllint, /bin/curl, /bin/icutest, /bin/hbtest, /bin/skiatest, /bin/skiademo).
 #
 #   sh tools/ports/build-all.sh [port...]     ports: sqlite mbedtls libxml2 curl icu libpng freetype
@@ -55,7 +55,7 @@ for p in $ports; do
 	echo "=== $p"
 	sh "$here/$p/build.sh"
 done
-# PORTS_COPY_TO=<dir>: the tools made, copied there (user/bin's `make ports`)
+# PORTS_COPY_TO=<dir>: the tools made, copied there (user/BinUtils's `make ports`)
 if [ -n "$PORTS_COPY_TO" ]; then
 	for t in sqlite3 xmllint curl icutest hbtest skiatest skiademo; do
 		if [ -f "$PORTS_OUT/bin/$t.elf" ]; then cp "$PORTS_OUT/bin/$t.elf" "$PORTS_COPY_TO/$t.elf"; fi

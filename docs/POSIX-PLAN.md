@@ -370,7 +370,7 @@ Every v75 kapi follows docs/03 §10's EL0 rules: pointers checked at entry, no k
 
 ### 3.1 WP-MEM (kernel): demand paging, mmap, TLS, stacks
 
-**Owned files:** `sys/vm.cpp` (new), `kern/vm.h` (new), `mm/addrspace.cpp/.h` (Sbrk, MapStack, teardown hook), `sys/uaccess.cpp`, `sys/el0.cpp` (fault path, unpin after a system call), `arch/aarch64/exception.cpp` (`SyncHandlerEL1` safety net only), `sys/thread.cpp` (`thread_create_ex`, `thread_info`, WordPhys), `sys/appcore.cpp` (page-in, TLS), `kernel.cpp` (main stack VMA, the pager task); `user/bin/memtest.c`.
+**Owned files:** `sys/vm.cpp` (new), `kern/vm.h` (new), `mm/addrspace.cpp/.h` (Sbrk, MapStack, teardown hook), `sys/uaccess.cpp`, `sys/el0.cpp` (fault path, unpin after a system call), `arch/aarch64/exception.cpp` (`SyncHandlerEL1` safety net only), `sys/thread.cpp` (`thread_create_ex`, `thread_info`, WordPhys), `sys/appcore.cpp` (page-in, TLS), `kernel.cpp` (main stack VMA, the pager task); `user/BinUtils/memtest.c`.
 
 #### Address space
 
@@ -593,7 +593,7 @@ The ABI above is unchanged. Where the implementation differs from the text above
 
 ### 3.2 WP-FILE/PROC (kernel): file descriptors, stat, pipes, environment, spawn/wait, clock
 
-**Owned files:** `sys/ofile.cpp` (new), `sys/procx.cpp` (new), `sys/stream.cpp`/`kern/stream.h` (pipe), `sys/ramfs.cpp`/`kern/ramfs.h` (random access, deferred delete), `sys/kapi.cpp` (kill reasons in `kapi_kill`/`kapi_kill_pid`, `kapi_spawn` env inheritance), `kernel.cpp` (`SpawnProcess`/`ExecPath`/`LaunchApp`: env and argv blocks; boot: the default environment and the cleanup of hidden deleted files), `sys/el0.cpp` (one line: `SetTermReason (KAPI_PROC_FAULT, -11)` in `Fault`; coordinate with WP-MEM or put it in WP-0); `user/bin/filetest.c`.
+**Owned files:** `sys/ofile.cpp` (new), `sys/procx.cpp` (new), `sys/stream.cpp`/`kern/stream.h` (pipe), `sys/ramfs.cpp`/`kern/ramfs.h` (random access, deferred delete), `sys/kapi.cpp` (kill reasons in `kapi_kill`/`kapi_kill_pid`, `kapi_spawn` env inheritance), `kernel.cpp` (`SpawnProcess`/`ExecPath`/`LaunchApp`: env and argv blocks; boot: the default environment and the cleanup of hidden deleted files), `sys/el0.cpp` (one line: `SetTermReason (KAPI_PROC_FAULT, -11)` in `Fault`; coordinate with WP-MEM or put it in WP-0); `user/BinUtils/filetest.c`.
 
 #### Open files (`sys/ofile.cpp`)
 
@@ -815,7 +815,7 @@ The ABI of slots 207–228 is unchanged. Where the code differs from the text ab
 
 ### 3.3 WP-NET (kernel): BSD sockets and `poll`
 
-**Owned files:** `sys/net.cpp`, `kern/net.h`, `sys/bsdsock.cpp` (new: the kapis and `poll`), the Circle fork (`include/circle/net/socket.h`, `lib/net/socket.cpp`: `boolean AcceptReady (void) const` and `u16 GetForeignPort (void) const`, plus docs/05 §23), `user/bin/nettest.c`, `tools/tests/nettest_peer.py`.
+**Owned files:** `sys/net.cpp`, `kern/net.h`, `sys/bsdsock.cpp` (new: the kapis and `poll`), the Circle fork (`include/circle/net/socket.h`, `lib/net/socket.cpp`: `boolean AcceptReady (void) const` and `u16 GetForeignPort (void) const`, plus docs/05 §23), `user/BinUtils/nettest.c`, `tools/tests/nettest_peer.py`.
 
 #### Slots
 
@@ -1096,7 +1096,7 @@ Can start at once:
 
 1. **What was ported** (all with `aarch64-onyx-elf`, static, into `out/sysroot-onyx`, one
    `tools/ports/<name>/build.sh` each, `sh tools/ports/build-all.sh webkit`; the smoke tools go to
-   `/bin` with `make -C user/bin ports`):
+   `/bin` with `make -C user/BinUtils ports`):
 
    | Library | Version (pin) | Options | `.a` | Vendored (repo, uncompressed / gzip) |
    |---|---|---|---|---|

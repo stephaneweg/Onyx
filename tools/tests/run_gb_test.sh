@@ -9,7 +9,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${GB_TEST_ROMS:?set GB_TEST_ROMS to the unzipped game-boy-test-roms folder}
-g++ -std=c++17 -O2 -Wall -I"$ROOT/user" "$HERE/gb/gbtest.cpp" "$ROOT/user/gb/gb.cpp" -o "$T/onyx_gbtest"
+g++ -std=c++17 -O2 -Wall -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/gb/gbtest.cpp" "$ROOT/user/gb/gb.cpp" -o "$T/onyx_gbtest"
 fail=0
 for t in cpu_instrs/cpu_instrs.gb:60 instr_timing/instr_timing.gb:5; do
 	rom=${t%%:*}; sec=${t##*:}

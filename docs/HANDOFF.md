@@ -64,7 +64,7 @@ A generic print system, done and tested on the Pi with the user's HP DeskJet 270
 Everywhere: no PDF, PWG Raster at 300 dpi) and the PDF printer. Read `docs/03` §5.7 (the design, the API,
 an example) and `docs/04` §11 *Printing*.
 
-- **`SD:/lib/printerkit.so`** (`user/printerkit/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `printerkit/printerkit.abi`,
+- **`SD:/lib/printerkit.so`** (`user/Kits/printerkit/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `printerkit/printerkit.abi`,
   33 entries): the Print dialog and the jobs. The first library that uses others (`ft.so`, `uikit.so`: their
   stubs linked in, opened on demand; uikit's variables through `--data onyx_uikit_data`).
 - **`printd`** (`user/Apps/printd`): the queue (`SD:/var/spool/print`), the printers (`SD:/etc/printers.ini`),
@@ -131,7 +131,7 @@ an example) and `docs/04` §11 *Printing*.
   Windows: MSYS2 (or WSL) with MinGW-w64 + the .NET SDK. The script rebuilds every exe; restore
   the unchanged ones (`git checkout pc/dist/<file>`) before committing.
 - **Host tests:** `tools/tests/run_*.sh` (fs, v3d clip, gamepad, gc, nemu...). N64 headless:
-  `g++ -std=c++17 -O2 [-DN64_TRACE] -I user -I user/basic tools/tests/n64/n64test.cpp user/n64/*.cpp`
+  `g++ -std=c++17 -O2 [-DN64_TRACE] -I user -I user/Kits -I user/basic tools/tests/n64/n64test.cpp user/n64/*.cpp`
   then `n64test <rom> <frames>` with `N64_SAV`, `N64_INPUT="f0-f1:hex;..."`, `N64_SNAP=1`,
   `N64_GFX=prefix N64_GFXEVERY=n`, `N64_FRAMELOG=f`, `N64_CIMG=f` (see the file's header). With
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
@@ -155,11 +155,11 @@ can go first. The printing work (`printd`, another session) is taken into accoun
 
 **Where to read**: `docs/SHARED-LIBS-PLAN.md` section 0 (what was built, where it departs from the
 plan, the results), docs/02 §7 *Shared libraries* (the kernel: kapi v83 `lib_open`), docs/03 §5.6 (the
-generator, writing and using a library), **`user/uikit/abi.h` (the rules — read it before changing uikit)**.
+generator, writing and using a library), **`user/Kits/uikit/abi.h` (the rules — read it before changing uikit)**.
 
 - **Changing uikit now**: a fix in a `.cpp` → rebuild `lib/uikit.so` only (`make -C user libs`), stage
   `sdcard/lib/uikit.so`, publish the `uikit` package: every app gets it, none is rebuilt. A new function:
-  the same (the build appends it to `user/uikit/uikit.abi`: commit that file). **Never** add a field or a
+  the same (the build appends it to `user/Kits/uikit/uikit.abi`: commit that file). **Never** add a field or a
   virtual to a class of the headers: use the reserve (`Widget::reserved_` / `ext`, `uk_reserved0..7`,
   `Root`'s) — `uikit/layout_lock.cpp` fails the library's build otherwise. A change in a header's
   **inline** code reaches only the apps rebuilt after it. When the apps are rebuilt against a table
@@ -170,7 +170,7 @@ generator, writing and using a library), **`user/uikit/abi.h` (the rules — rea
   now orders the priorities across files — it did not before).
 - **Jet** links `uikit.so` too since 2026-10-05 (`tools/webkit/build-web.sh` compiles the import side for
   the POSIX toolchain; `make -C user lib/uikit.imp.a` first). **Still static**: the PC builds (the simulator,
-  Koton for Windows, macOS) — they compile `user/uikit/*.cpp` as before.
+  Koton for Windows, macOS) — they compile `user/Kits/uikit/*.cpp` as before.
 - **Tests**: `sh tools/tests/run_image_test.sh` (PC), on the Pi `libtest`, then from the PC
   `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app started) and `sh tools/tests/shlib/compat.sh`
   + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat` (uikit N's program on uikit N+1).
@@ -333,7 +333,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   the **`aarch64-onyx-elf`** toolchain (GCC 14.2, posix threads, native TLS; prebuilt + sources in the
   repo `stephaneweg/onyx-toolchain`; install: `sh tools/toolchain/fetch.sh`, rebuild:
   `tools/toolchain/build-onyx-toolchain.sh`); ports: SQLite, libxml2, curl+mbedTLS, ICU 78.3, HarfBuzz,
-  Skia m154 (WebKit's copy), libjpeg-turbo (`tools/ports/`, `make -C user/bin ports`). Tests on the Pi:
+  Skia m154 (WebKit's copy), libjpeg-turbo (`tools/ports/`, `make -C user/BinUtils ports`). Tests on the Pi:
   memtest, filetest, proctest, nettest, ipctest, posixtest (all groups), posixtest-cxx, malloctest,
   icutest, hbtest, skiatest, skiademo -- all pass. The plan and every decision: **`docs/POSIX-PLAN.md`**.
 - **Decisions (the user)**: WebKit2 replaces Jet (§8–§9), on the PlayStation port's model (no GLib,
@@ -365,7 +365,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain
   (`sh tools/toolchain/fetch.sh`), WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
   checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), the build
-  with `tools/webkit/build-jsc.sh` (or `make -C user/bin jsc`). Next steps: WebCore → WebKit2 → the
+  with `tools/webkit/build-jsc.sh` (or `make -C user/BinUtils jsc`). Next steps: WebCore → WebKit2 → the
   Onyx view / compositor / media player → the browser → parity with Jet.
 
 ## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
@@ -728,7 +728,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   `docs/gui-redesign/README.md` has the decisions, the mock-ups and §5 *where the work landed*;
   the user guide (`docs/04` §4-§6, §11) describes the result; `screenshots/` are the real apps
   (`sh tools/tests/desktop_sim/shots.sh`).
-  In short: uikit's procedural painter (`user/uikit/paint.h`) and the theme's colours as variables
+  In short: uikit's procedural painter (`user/Kits/uikit/paint.h`) and the theme's colours as variables
   (`theme.txt`: theme Peach / Steel / Sage / Brick / Slate or a colour, inactive, face, accent,
   outline, dock), every uikit widget restyled (the user's framed button; since 2026-10-03 the push button is a plain
   raised face, as the drop-down's: `uk_framed` draws `uk_raised`, no frame nor well), the window frames drawn
@@ -1275,7 +1275,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
     reboot (`v3dprog` then says `no GPU: V3D: stopped`).
   - pitfalls: `grep` / `wc` read stdin only (`wc < file`; with a file argument they wait).
     **A telnet session that drops ends its shell and what it runs** (telnetd, 2026-10-05,
-    `user/bin/shellend.h`, `tools/tests/run_telnetd_test.sh`; before, a program still running kept
+    `user/BinUtils/shellend.h`, `tools/tests/run_telnetd_test.sh`; before, a program still running kept
     its `cmd`, then both waited for ever on a pipe nobody read -- state R, no system call -- and
     the leftovers slowed everything): a daemon to leave on the Pi is started with
     `run SD:/bin/ftpd SD:/`, not in a session's foreground. **Still open, in the kernel's
@@ -1298,7 +1298,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
 Koton Studio (the user's C# DAW, `github.com/stephaneweg/MusicTracker`) made again for Onyx, no
 score view: **`docs/daw/README.md`** (the study, the plan, the user's decisions in §8, **where it
 stands and what to test on the Pi in §9**). Code: `user/Apps/koton` (engine/, synth/, plug/, ui/,
-main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/bin/llm.cpp` (the AI's HTTPS
+main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/BinUtils/llm.cpp` (the AI's HTTPS
 helper), uikit's text face (`user/ft/uikitface.h`) and studio widgets. Docs: docs/04 *Koton, the
 studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section. Tests:
 `sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
@@ -1376,7 +1376,7 @@ the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ft
 
 ## The shell made useful: text tools, scripts, the line editor (2026-10-04, branch `term_updates`; its second commit, the script language, is not merged; nothing staged, nothing published)
 
-- **The script language** (`user/bin/cmdscript.h`, at least a DOS `.bat`'s level; docs/04 §7 *Scripts*):
+- **The script language** (`user/BinUtils/cmdscript.h`, at least a DOS `.bat`'s level; docs/04 §7 *Scripts*):
   variables (`name=value`, `$name`; handed to the children as their environment, read back by a
   child `cmd`), `$(command)`, `$((arithmetic))`, file patterns (`*.txt`: `cmd_glob_hook` in
   `cmdparse.h`), `if` / `elif` / `else` / `fi`, `while` / `until` / `for … in` / `done`, `break`,
@@ -1390,7 +1390,7 @@ the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ft
   jobs; `rm` / `cp` / `mv` / `mkdir` / `touch` still read the old argument line (a name with a blank
   from a pattern breaks them).
 
-- **Tools** (`user/bin`, on `tool.h`; docs/04 §8): new `head tail sed ed sort uniq cut tr tee nl find
+- **Tools** (`user/BinUtils`, on `tool.h`; docs/04 §8): new `head tail sed ed sort uniq cut tr tee nl find
   date sleep hexdump diff`; `grep` (regular expressions, `-i -v -n -c -q -F`, files), `wc` (`-l -w -c`,
   files) and `echo` (the argv, `-n`) rewritten. `regex.h`: basic expressions, no alternation.
 - **`cmd`**: `;` `&&` `||`, `#` comments, exit codes (`$?`), scripts (`cmd file [args]`, `cmd -c`,

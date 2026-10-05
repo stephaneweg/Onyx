@@ -4,5 +4,5 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
-g++ -std=c++17 -O2 -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/kernel/include" -I"$ROOT/user" "$HERE/v3d/cliptest.cpp" -o "$T/onyx_v3d_clip"
+g++ -std=c++17 -O2 -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/kernel/include" -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/v3d/cliptest.cpp" -o "$T/onyx_v3d_clip"
 "$T/onyx_v3d_clip"

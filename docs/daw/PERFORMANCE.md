@@ -69,7 +69,7 @@ Apps build with `-mgeneral-regs-only`; Koton opts out (as n64 / gc do) and mixes
 The UI runs on core 0 and is **decoupled from the sound**: a slow frame can drop an image, never
 a sample.
 
-1. **Two-level damage** (`user/uikit/widget.cpp`, `invalidate`): each widget owns its canvas;
+1. **Two-level damage** (`user/Kits/uikit/widget.cpp`, `invalidate`): each widget owns its canvas;
    `invalidate (true)` redraws that widget, its ancestors only **re-blit** children's canvases
    already drawn. Hovering a toolbar button redraws that button, not the lanes.
 2. **The big areas are hand-drawn**: the lanes, the chord grid, the piano roll, the rings are each

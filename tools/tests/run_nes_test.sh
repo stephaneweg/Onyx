@@ -10,7 +10,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${NES_TEST_ROMS:?set NES_TEST_ROMS to the nes-test-roms folder}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" "$HERE/nes/nestest.cpp" "$ROOT"/user/nes/*.cpp -o "$T/onyx_nestest"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/nes/nestest.cpp" "$ROOT"/user/nes/*.cpp -o "$T/onyx_nestest"
 fail=0
 if "$T/onyx_nestest" cpu "$R/other/nestest.nes" "$R/other/nestest.log" | grep -q "all match"; then echo "ok   nestest"
 else echo "FAIL nestest"; fail=1; fi

@@ -4,5 +4,5 @@
 // into the program. On Onyx it comes from SD:/lib/audiokit.so and this file is empty.
 //
 #ifndef __aarch64__
-#include "../../../audiokit/akmix.cpp"
+#include "../../../Kits/audiokit/akmix.cpp"
 #endif

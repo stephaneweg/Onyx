@@ -1,6 +1,6 @@
 //
 // print_test.cpp -- the print system's core on the PC (tools/tests/run_print_test.sh): a job recorded
-// (user/printerkit/job.h), replayed as a PDF (printerkit/pdfsink.h) and as a 300 dpi raster page (printerkit/raster.h),
+// (user/Kits/printerkit/job.h), replayed as a PDF (printerkit/pdfsink.h) and as a 300 dpi raster page (printerkit/raster.h),
 // the PWG Raster stream written, read back and compared with the page, pixel for pixel.
 //
 //   print_test <a TrueType font> <output folder>

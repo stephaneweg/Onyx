@@ -16,10 +16,10 @@
 //
 #ifndef _koton_audio_h
 #define _koton_audio_h
-#include "../../../audiokit/audiokit.h"
+#include "../../../Kits/audiokit/audiokit.h"
 #ifndef __aarch64__
-#include "../../../audiokit/aksf.cpp"	// (the PC builds: no shared library -- as engine/akhost.cpp)
-#include "../../../audiokit/akwav.cpp"
+#include "../../../Kits/audiokit/aksf.cpp"	// (the PC builds: no shared library -- as engine/akhost.cpp)
+#include "../../../Kits/audiokit/akwav.cpp"
 #include <chrono>			// (the PC builds: the DSP thread's load)
 #endif
 

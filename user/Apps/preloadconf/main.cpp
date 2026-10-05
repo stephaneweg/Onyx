@@ -21,7 +21,7 @@
 #include "applib.h"
 #include "fsutil.h"
 #include "launch.h"
-#include "bin/imgname.h"
+#include "BinUtils/imgname.h"
 #include "preloadini.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget

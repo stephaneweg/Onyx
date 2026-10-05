@@ -10,9 +10,9 @@ ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${MAC_CHECK_TMP:-/tmp/onyx_mac_check}
 U="$ROOT/user"
 FT="$ROOT/third_party/freetype-2.14.3"
-CXX="g++ -std=gnu++17 -O1 -w -I$U -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -w -I$U -I$U/Kits -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
 rm -rf "$OUT"; mkdir -p "$OUT/uikit" "$OUT/ft" "$OUT/helpers/Letters.app/Contents/MacOS" "$OUT/user" "$OUT/docs"
-for f in "$U"/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" & done; wait
+for f in "$U"/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o" & done; wait
 ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do

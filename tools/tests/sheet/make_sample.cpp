@@ -4,7 +4,7 @@
 // inputs, PMT, IPMT, PPMT; a colour scale; an area chart; frozen panes). Built by the spreadsheet's own
 // engine -- what the screenshots and the user guide show.
 //
-//   g++ -std=gnu++17 -I user tools/tests/sheet/make_sample.cpp -lm -o /tmp/make_sample
+//   g++ -std=gnu++17 -I user -I user/Kits tools/tests/sheet/make_sample.cpp -lm -o /tmp/make_sample
 //   /tmp/make_sample sdcard/docs/cafe-2026.xlsx
 //
 #define STB_IMAGE_IMPLEMENTATION

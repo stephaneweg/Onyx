@@ -4,7 +4,7 @@
 instructions / the runtime's primitives / the waits). Uploads a runtime as SD:/bin/basicp (the
 card's /bin/basic is left alone) by ftpd, runs it over telnetd.
 
-    python tools/tests/basic/pi_prof.py <pi-ip> [--runtime user/bin/basic.elf] [--managed] [--key]
+    python tools/tests/basic/pi_prof.py <pi-ip> [--runtime user/BinUtils/basic.elf] [--managed] [--key]
         calc | calls             a benchmark (tools/tests/basic/bench/<name>.bas), to its end
         <SD: path> [seconds]     a program of the card (a game: started, measured for <seconds>, then killed)
 

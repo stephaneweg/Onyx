@@ -30,10 +30,10 @@ here: mbedTLS plugged onto our transport primitives (`kapi_tcp_send`/`recv`).
 
    → `third_party/mbedtls-3.6.3/library/libmbed{crypto,x509,tls}.a`.
 
-2. Build an HTTPS app: the `user/bin` and `user` makefiles already point at them, e.g.
+2. Build an HTTPS app: the `user/BinUtils` and `user` makefiles already point at them, e.g.
 
    ```sh
-   make -C user/bin httpsget.elf
+   make -C user/BinUtils httpsget.elf
    ```
 
    `httpsget` is a demo; any newlib C++ app can do the same — `#define ONYX_HTTP_TLS`
@@ -58,7 +58,7 @@ This is a **functional** TLS bring-up, **not yet secure**:
   refused certificate and fills a `Verify` record of the chain. `START_ALPN_H2` /
   `START_ALPN_H1` offer ALPN; `sess_export` / `sess_import` keep the session cache across
   launches. Mail (`user/mail/conn.h`)
-  use it; the other users (`user/bin` tools, Courier) still connect without verification.
+  use it; the other users (`user/BinUtils` tools, Courier) still connect without verification.
 
 ## Config notes
 

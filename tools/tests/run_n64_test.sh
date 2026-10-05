@@ -10,7 +10,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${N64_TEST_ROMS:?set N64_TEST_ROMS to the PeterLemon N64 folder}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" "$HERE/n64/n64test.cpp" "$ROOT"/user/n64/*.cpp -o "$T/onyx_n64test"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/n64/n64test.cpp" "$ROOT"/user/n64/*.cpp -o "$T/onyx_n64test"
 fail=0; pass=0
 for rom in $(cd "$R" && find CPUTest -name "*.N64" | sort | grep "${1:-.}"); do
 	ref="$R/${rom%.N64}.png"

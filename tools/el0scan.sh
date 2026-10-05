@@ -21,7 +21,7 @@
 #          __arm_tpidr2_save...: tpidr2_el0, run only when __aarch64_have_sme, 0 on the A72)
 #
 # Use:  sh tools/el0scan.sh [-v] [file-or-dir ...]
-#   no argument: the build's outputs (user/*.elf, user/bin/*.elf, the Koton plugins); a directory: every ELF
+#   no argument: the build's outputs (user/*.elf, user/BinUtils/*.elf, the Koton plugins); a directory: every ELF
 #   or static library (.a) under it (e.g. sdcard/apps sdcard/bin sdcard/koton: what is on the
 #   card, no extension; third_party: the prebuilt libraries).
 # Exit status: 1 if an ERROR was found, else 0.
@@ -48,7 +48,7 @@ is_ar () { [ -f "$1" ] && [ "$(head -c 7 "$1" 2>/dev/null)" = "!<arch>" ]; }
 list=$(mktemp)
 trap 'rm -f "$list"' EXIT
 if [ $# -eq 0 ]; then
-	for f in "$HERE"/user/*.elf "$HERE"/user/bin/*.elf "$HERE"/user/Apps/kp_*/kp_*.elf; do
+	for f in "$HERE"/user/*.elf "$HERE"/user/BinUtils/*.elf "$HERE"/user/Apps/kp_*/kp_*.elf; do
 		is_elf "$f" && echo "$f" >> "$list"
 	done
 else

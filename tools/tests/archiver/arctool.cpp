@@ -11,7 +11,7 @@
 //   delete  ARC NAME...       rename ARC FROM TO       mkdir ARC NAME
 //
 #include <stdio.h>
-#include "../../../user/filekit/ops.h"
+#include "../../../user/Kits/filekit/ops.h"
 
 using namespace arc;
 

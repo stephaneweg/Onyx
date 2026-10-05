@@ -5,7 +5,7 @@ on a Pi running Onyx, over telnetd; uploads it as SD:/bin/fsrace by ftpd and rem
 
     python tools/tests/fsrace/run_pi.py <pi-ip> <fsrace binary> [rounds]
 
-Build the binary first (the bare-metal toolchain on the PATH), from user/bin:
+Build the binary first (the bare-metal toolchain on the PATH), from user/BinUtils:
     aarch64-none-elf-gcc -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only -O2 \\
         -fno-stack-protector -I.. -I../../kernel/include -Wl,-T,../user.ld \\
         -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--defsym,memset=kapi_memset \\

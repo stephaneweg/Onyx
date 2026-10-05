@@ -1,5 +1,5 @@
 //
-// ipp_test.cpp -- the IPP client (user/printerkit/ipp.h) on the PC: addresses, a request's attributes written and
+// ipp_test.cpp -- the IPP client (user/Kits/printerkit/ipp.h) on the PC: addresses, a request's attributes written and
 // read back, an HTTP answer in chunks taken apart; and, given a printer's address, the real thing -- what
 // it can do, and whether it would take our PWG Raster job (Validate-Job: nothing is printed).
 //

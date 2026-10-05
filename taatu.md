@@ -127,7 +127,7 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 |---|---|---|
 | Fenêtre + framebuffer 32 bits `0x00RRGGBB` | `kapi_create_window (w, h, titre)` → `unsigned *` | `user/kapi.h`, ex. `Apps/2048` |
 | Plein écran | `kapi_fullscreen_begin / kapi_present_fb / kapi_fullscreen_end` (v41), accès direct v55 | docs/03 §6, `Apps/plasma` |
-| Widgets (champs texte, boutons, listes, dialogues, menus) | **uikit** (C++) | `user/uikit/*.h`, docs/03 §6 |
+| Widgets (champs texte, boutons, listes, dialogues, menus) | **uikit** (C++) | `user/Kits/uikit/*.h`, docs/03 §6 |
 | Souris / clavier | `kapi_set_pointer_handler`, `kapi_set_key_handler`, `kapi_get_modifiers` | `user/kapi.h` |
 | Texte TrueType anti-aliasé (chat, pseudos) | FreeType « lean » + `ft/fonts.h` (`fnt::get`, `fnt::draw`) | docs/03 §6 « TrueType text » |
 | Boucle d'événements | `kapi_pump_events`, `kapi_pump_wait (ms)`, `kapi_should_exit` | docs/03 §5.2 |
@@ -292,7 +292,7 @@ Pile à écrire, du bas vers le haut :
   une capture. Avec **`SIM_REALNET=1`**, les sockets TCP sont celles du PC : on peut donc se
   connecter au vrai serveur TAATU ou à un serveur local. `SIM_SLEEP=1` fait arriver les réponses
   en temps réel. Voir `shots.sh` et la doc docs/03 §9 « Screenshots », puis adapter le principe
-  pour une app hors dépôt (mêmes fichiers `fakekapi.cpp`, `imgstub.cpp`, `user/uikit/*.cpp`).
+  pour une app hors dépôt (mêmes fichiers `fakekapi.cpp`, `imgstub.cpp`, `user/Kits/uikit/*.cpp`).
 - **Le vrai ELF du Pi sur PC** : `sh tools/tests/desktop_sim/elfrun.sh <app>` exécute un
   `user/<app>.elf` sous `qemu-aarch64` avec la kapi simulée. Le script cherche l'ELF dans
   `user/` : y copier `taatu.elf`, ou adapter le chemin.

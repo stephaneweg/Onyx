@@ -1,5 +1,5 @@
 /*
- * cmdscript_test.c -- cmd's script language (user/bin/cmdscript.h) on the PC: what replaces a $
+ * cmdscript_test.c -- cmd's script language (user/BinUtils/cmdscript.h) on the PC: what replaces a $
  * (arguments, variables, $(command), $((arithmetic))), `test`, the command lists with `!` and
  * assignments, the blocks (if / elif / else, while, until, for, break, continue, nested). The
  * shell's side is a stand-in here: `echo` writes into a log, the log is what a script "printed".
@@ -19,7 +19,7 @@
 #include <string.h>
 #define CS_MALLOC(n)	malloc (n)
 #define CS_FREE(p)	free (p)
-#include "../../../user/bin/cmdscript.h"
+#include "../../../user/BinUtils/cmdscript.h"
 
 static int fails, checks;
 

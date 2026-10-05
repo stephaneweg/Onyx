@@ -26,7 +26,7 @@ $(call obj,$(1)): $(1) $(wildcard user/av/*.h)
 	@mkdir -p $(OUT)/o
 	@gcc -w -O2 $(2) -c $(1) -o $$@
 endef
-$(foreach s,$(AV_SRC),$(eval $(call RULE,$(s),-std=gnu11 -DONYX_HOST_SIM -Iuser/av -Iuser -Ikernel/include $(AV_CODECS_CF) -DAV_WITH_FFMPEG -Ithird_party/ffmpeg-7.1.2/onyx/include)))
+$(foreach s,$(AV_SRC),$(eval $(call RULE,$(s),-std=gnu11 -DONYX_HOST_SIM -Iuser/av -Iuser -Iuser/Kits -Ikernel/include $(AV_CODECS_CF) -DAV_WITH_FFMPEG -Ithird_party/ffmpeg-7.1.2/onyx/include)))
 $(foreach s,$(VPX_SRC),$(eval $(call RULE,$(s),$(VPX_CF))))
 $(foreach s,$(DAV1D_SRC),$(eval $(call RULE,$(s),$(DAV1D_CF))))
 $(foreach s,$(DAV1D_TMPL_SRC),$(eval $(call RULE,$(s),-DBITDEPTH=8 $(DAV1D_CF))))

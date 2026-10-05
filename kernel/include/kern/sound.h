@@ -6,7 +6,7 @@
 // PCM stream, its volume, its mute -- and the producer adds them; a channel is freed when its
 // program releases it or exits (SoundOnProcessGone). (Until v84 one process owned the output.)
 //   * (The voices -- SoundStart / SoundStop / SoundInstrument -- left the kernel on 2026-10-05: the
-//     synthesizer is AudioKit's, in user space: user/audiokit/fmsynth.h, ak_fm_*.)
+//     synthesizer is AudioKit's, in user space: user/Kits/audiokit/fmsynth.h, ak_fm_*.)
 //   * PCM stream: SoundWrite (s16 stereo frames at SND_RATE), non-blocking, into a ring
 //     that is mixed with the mapped ring (audio / MIDI players, AudioKit).
 // The mixing runs in the PWM DMA interrupt (single core), or -- when Circle is built with

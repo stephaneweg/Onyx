@@ -21,13 +21,13 @@ WANT=" $* "
 rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes"
 : > "$OUT/log.txt"
 export SIM_WRITES="$OUT/writes"			# (what the apps save: there, never on the card)
-CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # ---- the building ------------------------------------------------------------------------------
 # uikit (with the image codecs, on the host's libc) and the stand-in kernel, once; then the apps
-for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 # the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Letters'
@@ -42,9 +42,9 @@ rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 audiokit () {
 	[ -f "$OUT/libaudiokit.a" ] && return 0
 	mkdir -p "$OUT/ak"
-	gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/ak/codecs.o" || return 1
-	gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/ak/vorbis.o" || return 1
-	for f in user/Apps/koton/synth/*.cpp user/audiokit/*.cpp; do
+	gcc -O2 -w -Iuser -Iuser/Kits -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/ak/codecs.o" || return 1
+	gcc -O2 -w -Iuser -Iuser/Kits -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/ak/vorbis.o" || return 1
+	for f in user/Apps/koton/synth/*.cpp user/Kits/audiokit/*.cpp; do
 		$CXX -Iuser/Apps/koton -Iuser/Apps/media -Ithird_party -c "$f" -o "$OUT/ak/$(basename "$f" .cpp).o" || return 1
 	done
 	ar rcs "$OUT/libaudiokit.a" "$OUT"/ak/*.o
@@ -63,7 +63,7 @@ build () {
 	if [ "$1" = archiver ]; then			# (newlib-like: FreeType; FileKit -- its engine and zlib -- compiled in)
 		mkdir -p "$OUT/zlib"
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/$f.o" || return 1; done
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/filekit -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp user/filekit/fkcore.cpp \
+		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/Kits/filekit -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp user/Kits/filekit/fkcore.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
 	if [ "$1" = media ]; then			# (newlib-like: FreeType; AudioKit: the decoders, MeltySynth)
@@ -99,11 +99,11 @@ build () {
 			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
 	fi
 	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
+		gcc -O2 -w -Iuser -Iuser/Kits -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
+		gcc -O2 -w -Iuser -Iuser/Kits -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)

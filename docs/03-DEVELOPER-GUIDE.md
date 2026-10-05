@@ -55,7 +55,7 @@ Under WSL keep the build directory on the Linux side (the default `~/.cache`), n
 `/mnt/c` (ten times slower). Nothing selects it for the kernel: `kernel/` and `user/` keep
 `aarch64-none-elf-`. What does select it when it is installed: `tools/onyx-env.sh`,
 `tools/onyx-toolchain.cmake`, `tools/ports/build-all.sh` (`ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-`
-forces the interim one), and `user/bin`'s `posixtest-cxx` (skipped with a note when absent).
+forces the interim one), and `user/BinUtils`'s `posixtest-cxx` (skipped with a note when absent).
 `make -C user/libc/posix PREFIX=aarch64-onyx-elf-` builds libonyxposix for it (`build-onyx/`,
 sysroot `out/sysroot-onyx`).
 - **Circle**, pulled in as a **git submodule** at `circle/` (our fork
@@ -119,7 +119,7 @@ make           # -> kernel8-rpi4.img, THEN builds the apps (../user)
 The default target (`all`):
 1. compiles our sources + links against the Circle libs → **`kernel8-rpi4.img`**;
 2. triggers `make -C ../user`, which builds **all the apps** (each from its folder
-   `user/Apps/<name>/`, to `user/<name>.elf`), the **`/bin` tools** (`user/bin/*.elf`), Doom
+   `user/Apps/<name>/`, to `user/<name>.elf`), the **`/bin` tools** (`user/BinUtils/*.elf`), Doom
    (`user/doom`) and Koton's plugins. Jet Browser, on WebKit, is built apart
    (`sh tools/webkit/build-web.sh`, docs/08).
 
@@ -146,10 +146,10 @@ make stage     # copie l'image + chaque app + chaque outil vers ../sdcard/
   kept in `sdcard/apps/<name>.app/` itself, committed);
 - Koton's plugins (`user/Apps/kp_<name>/`) → `sdcard/koton/plugins/<name>/main` + `plugin.json`;
 - the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`;
-- copies each `../user/bin/<tool>.elf` → `sdcard/bin/<tool>`.
+- copies each `../user/BinUtils/<tool>.elf` → `sdcard/bin/<tool>`.
 
 **Executables on the card have no extension**: `.elf` only exists in the build tree
-(`user/*.elf`, `user/bin/*.elf`); staging drops it. Programs are recognized by their
+(`user/*.elf`, `user/BinUtils/*.elf`); staging drops it. Programs are recognized by their
 content (ELF magic `7F 45 4C 46`), e.g. by the file manager.
 
 Then copy **all** of the contents of `sdcard/` onto a **FAT32** card and boot the
@@ -169,10 +169,17 @@ is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model
 
+The sources of user space are in three folders of `user/`: **`Apps/<name>/`** the graphical
+applications, **`BinUtils/`** the console programs (the card's `SD:/bin`), **`Kits/<kit>/`** the shared
+libraries (AppKit, UIKit, AudioKit, FileKit, ImageKit, PrinterKit: §5.6 to §5.10). `user/Kits` is on
+every include path, so a source includes a kit's header as `"appkit/appkit.h"`, `"uikit/uikit.h"`,
+`"audiokit/audiokit.h"`… whatever its own folder; a build of our sources elsewhere (a PC test) passes
+`-I user -I user/Kits -I kernel/include`.
+
 An Onyx application is a folder **`user/Apps/<name>/`** whose `main.cpp` (C++ on the **uikit**
 toolkit, §6; a big app has more files beside it) is compiled into an **ELF** — freestanding, or
 against newlib (§5.1) — and run at **EL0** in its own page table, calling the kernel by system
-calls through the kapi table (docs/02 §6). A `/bin` tool is a single C file, `user/bin/<tool>.c`
+calls through the kapi table (docs/02 §6). A `/bin` tool is a single C file, `user/BinUtils/<tool>.c`
 (§7).
 
 **Runtime** ([`user/crt0.S`](../user/crt0.S)):
@@ -212,7 +219,7 @@ max-page-size=0x10000`) so that the loader maps them onto distinct pages.
   (the Pi 4 core). Basic FP (`+ - * /`, int↔double) compiles to hardware
   instructions with **no** soft-float runtime; transcendental math (`sin`/`cos`/
   `pow`…) lives in newlib's `libm` — see §5.1. For the bare-FP recipe, see the
-  `fptest` target in [`user/bin/Makefile`](../user/bin/Makefile) (a target-specific
+  `fptest` target in [`user/BinUtils/Makefile`](../user/BinUtils/Makefile) (a target-specific
   `CFLAGS` override) and the `fptest` proof tool. Opt **only** the FP app in — leave
   the rest integer-only.
 - `-I../kernel/include`: to include `<kern/kapi_abi.h>` (the shared ABI structure).
@@ -220,26 +227,26 @@ max-page-size=0x10000`) so that the loader maps them onto distinct pages.
 To add an app, create `user/Apps/<name>/main.cpp` and **add `<name>` to the `APPS` list**
 of [`user/Makefile`](../user/Makefile) (`FT_APPS` for a FreeType app, or a rule of its own for a
 newlib app, as `letters.elf`), and declare its package in `tools/pkg/packages.ini`; for a tool,
-add `<tool>.elf` to the `PROGS` of [`user/bin/Makefile`](../user/bin/Makefile).
+add `<tool>.elf` to the `PROGS` of [`user/BinUtils/Makefile`](../user/BinUtils/Makefile).
 
 **A text tool** (a filter as `head`, `sed`, `sort`: `TEXT_PROGS` in that Makefile) is written on
-[`user/bin/tool.h`](../user/bin/tool.h): it defines `TOOL_NAME` and `int tool_main (int argc, char
+[`user/BinUtils/tool.h`](../user/BinUtils/tool.h): it defines `TOOL_NAME` and `int tool_main (int argc, char
 **argv)`, and gets its argv, a buffered stdout (`t_puts`, `t_putnum`…), files and stdin read by
 lines (`t_open`, `t_getline`, `t_slurp`), memory (`t_malloc`) and the exit code (`tool_main`'s,
 through `kapi_exit`: what the shell's `&&`, `||` and `$?` read — a tool on `crt0.S` alone must call
 `kapi_exit` itself). The variables of the shell reach a program as its **environment**
 (`kapi_get_env`, `getenv` on the POSIX layer). The regular expressions of `grep`, `sed` and `ed` are
-[`regex.h`](../user/bin/regex.h) and [`subst.h`](../user/bin/subst.h). The same sources build on
+[`regex.h`](../user/BinUtils/regex.h) and [`subst.h`](../user/BinUtils/subst.h). The same sources build on
 the PC with `-DTOOL_HOST` (the libc behind the same calls): **`sh tools/tests/run_tools_test.sh`**
 runs every tool against expected outputs, under the address sanitizer — add a tool's cases there.
 The shell's parser, command lists and file patterns
-([`cmdparse.h`](../user/bin/cmdparse.h)), its script language
-([`cmdscript.h`](../user/bin/cmdscript.h): variables, `$(…)`, `$((…))`, `test`, `if` / `while` /
+([`cmdparse.h`](../user/BinUtils/cmdparse.h)), its script language
+([`cmdscript.h`](../user/BinUtils/cmdscript.h): variables, `$(…)`, `$((…))`, `test`, `if` / `while` /
 `for` — no kapi in it: `cmd.c` gives it the pipelines, the variables and Ctrl-C through `struct
 CsHost`, the test gives it a stand-in) and the consoles' line editor with its history
 ([`user/lineedit.h`](../user/lineedit.h), shared by the terminal and `telnetd`) are tested by
 **`sh tools/tests/run_cmd_test.sh`**. The end of a remote session — `telnetd.c` itself and
-[`user/bin/shellend.h`](../user/bin/shellend.h) against a mock kapi (a clock, the kernel's 8 KB
+[`user/BinUtils/shellend.h`](../user/BinUtils/shellend.h) against a mock kapi (a clock, the kernel's 8 KB
 pipes, a scripted client, a model of `cmd`): a client that closes or vanishes, at the prompt or
 while a program runs, leaves no shell behind — by **`sh tools/tests/run_telnetd_test.sh`**.
 
@@ -258,8 +265,8 @@ the handful of POSIX stubs newlib bottoms out in (`_sbrk`, `_read`, `_write`, `_
 but it calls `exit(main())` so stdio is flushed on the way out. Build flags drop
 `-ffreestanding`/`-nostdlib` and use `-nostartfiles` (keep our entry, keep `libc`);
 add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`. See
-the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
-tool [`user/bin/libctest.c`](../user/bin/libctest.c).
+the `LIBC_PROGS` rule in [`user/BinUtils/Makefile`](../user/BinUtils/Makefile) and the proof
+tool [`user/BinUtils/libctest.c`](../user/BinUtils/libctest.c).
 
 A **uikit app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** — FreeType
 wants a libc): the `letters.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
@@ -345,7 +352,7 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
     yield: no handle, a zeroed `int` is a free lock; not recursive).
   - A kapi call is not preempted, but it may wait (a file read in pieces, a socket): another
     thread of the process can run meanwhile, even in another kapi call.
-- Example and test: [`user/bin/threadtest.c`](../user/bin/threadtest.c) (`threadtest` in a
+- Example and test: [`user/BinUtils/threadtest.c`](../user/BinUtils/threadtest.c) (`threadtest` in a
   terminal: every check, then PASS / FAIL).
 - **Word waits — a futex (v68)**: `kapi_wait_word (&word, expected, timeout_ms)` sleeps while
   `word == expected` → 0 (woken, or the value already differs), 1 timeout (0 ms: only check),
@@ -367,7 +374,7 @@ kapi_thread_join (tid, KAPI_WAIT_FOREVER, &code);
   tick preempts an app for it. It keeps that only while it sleeps / waits before its 20 ms slice
   ends — a thread that computes through its slice is an ordinary one until it next sleeps, so it
   cannot freeze the system. For an audio pump, a plugin's render loop. `-1` asks → the previous
-  priority; −2 no such thread. Test: [`user/bin/futextest.c`](../user/bin/futextest.c).
+  priority; −2 no such thread. Test: [`user/BinUtils/futextest.c`](../user/BinUtils/futextest.c).
 
 ### 5.3. Files in memory: the `RAM:` volume (kernel v71)
 
@@ -429,7 +436,7 @@ is built per toolchain — `make -C user/libc/posix` with `aarch64-none-elf` (`b
 newlib's `_WANT_REENT_THREAD_LOCAL` (`ONYX_NATIVE_TLS`). Objects of the two do not mix.
 
 `main (int argc, char **argv, char **envp)` gets its arguments and environment; `exit` flushes
-stdio. In the tree: the `POSIX_PROGS` rule of [`user/bin/Makefile`](../user/bin/Makefile)
+stdio. In the tree: the `POSIX_PROGS` rule of [`user/BinUtils/Makefile`](../user/BinUtils/Makefile)
 (`posixtest`, `aarch64-none-elf`) and `POSIX_CXX_PROGS` (`posixtest-cxx`, `aarch64-onyx-elf`:
 built when that toolchain is installed, else skipped with a note).
 
@@ -528,7 +535,7 @@ spin instead of sleeping (no kapi call there); stdio and files from there go thr
   soon as its parent had nothing to say).
 - `kapi_random` (behind `getrandom`, `/dev/urandom`) is not yet a hardware RNG (user/tls/README.md).
 
-**Testing it: `/bin/posixtest [group…] [dir]`** ([`user/bin/posixtest.c`](../user/bin/posixtest.c);
+**Testing it: `/bin/posixtest [group…] [dir]`** ([`user/BinUtils/posixtest.c`](../user/BinUtils/posixtest.c);
 groups `mem thread file io time proc ipc net misc cxx`): one line per check, `PASS`, `FAIL (what was
 seen)` or `SKIP (kernel ENOSYS)` for a check that needs a v75 piece the kernel does not have yet
 — it first prints which pieces it found —, then a summary; the exit code is the number of
@@ -542,7 +549,7 @@ The group `loop` (not in the default run) does TCP / UDP over `127.0.0.1`. The g
 child given the socket at its number (WebKit's launcher: the number in argv, the server end
 `FD_CLOEXEC` kept out, an `adddup2`) that receives the memfd and writes into it.
 
-**`/bin/ipctest [net]`** ([`user/bin/ipctest.c`](../user/bin/ipctest.c), libonyxposix, the kapi calls
+**`/bin/ipctest [net]`** ([`user/BinUtils/ipctest.c`](../user/BinUtils/ipctest.c), libonyxposix, the kapi calls
 directly): the v76 kernel itself — local sockets (merging, `EAGAIN`, `POLLOUT`, `SO_RCVBUF`,
 boundaries, `MSG_TRUNC`, `EMSGSIZE`, a 1 MB packet, the end, `EPIPE`, a blocked receive woken by
 another thread, `SO_RCVTIMEO`), children spawned with `spawn_ex2` that use a file (its offset shared),
@@ -552,7 +559,7 @@ message, `MSG_CTRUNC`, seals, `shm_open`, a child killed touching beyond its obj
 back after 64 MB of shared pages (`meminfo`) and after a queued message is discarded.
 
 **`/bin/malloctest [phase…] [-s seed] [-n rounds] [-t threads]`**
-([`user/bin/malloctest.c`](../user/bin/malloctest.c), libonyxposix, built with `aarch64-onyx-elf`: the
+([`user/BinUtils/malloctest.c`](../user/BinUtils/malloctest.c), libonyxposix, built with `aarch64-onyx-elf`: the
 newlib Web links): is every byte `malloc_usable_size` promises the block's own? Each block is filled
 to its usable size with a pattern of its own; after every phase, and every 1024 operations of the
 random ones, every live block must still hold its pattern and report the same usable size. Phases
@@ -562,11 +569,11 @@ heap while it grows and newlib trims it: `sbrk` with a negative increment, the k
 pages), `sbrk` (the program's own `sbrk` between allocations: newlib's fenceposts), `mix` (all of it at
 random) and `threads` (the mix in several threads). A finding prints the block, the first byte
 changed and the last operations; the exit status is the number of findings. It passes on the bench
-(`PROG=user/bin/malloctest.c PREFIX=aarch64-onyx-elf- sh tools/tests/posixsim/run.sh`) and on the Pi
+(`PROG=user/BinUtils/malloctest.c PREFIX=aarch64-onyx-elf- sh tools/tests/posixsim/run.sh`) and on the Pi
 (about three minutes); it also runs under `tools/webkit/heapcheck.c` (`OBJS=heapcheck.o`,
 `CFLAGS_EXTRA` with the `--wrap` options of `build-web.sh`), which is how that tool is tested.
 
-**`/bin/posixtest-cxx [group…] [dir]`** ([`user/bin/posixtest-cxx.cpp`](../user/bin/posixtest-cxx.cpp),
+**`/bin/posixtest-cxx [group…] [dir]`** ([`user/BinUtils/posixtest-cxx.cpp`](../user/BinUtils/posixtest-cxx.cpp),
 `aarch64-onyx-elf`, C++20): the C++ part, same output and exit code. Groups `thread` (`std::thread`,
 detach, a move-only argument, a 200 KB frame), `mutex` (`mutex`, `recursive_mutex`, `timed_mutex`
 timeouts, `shared_mutex`, `scoped_lock`), `cond` (`condition_variable` producer / consumer,
@@ -590,7 +597,7 @@ v75 handles, `spawn_ex`, sockets and `poll` are emulated; v76's local sockets ar
 socketpairs carrying the descriptors with `SCM_RIGHTS` and their kinds in a header or a side
 channel, shm objects are memfds, `spawn_ex2` leaves the descriptors open across `execve`).
 `POSIXSIM_LEVEL=75` answers `ENOSYS` to the v76 calls, `POSIXSIM_LEVEL=74` to every v75 call too,
-to test libonyxposix's fallbacks; `PROG=user/bin/ipctest.c sh tools/tests/posixsim/run.sh` runs
+to test libonyxposix's fallbacks; `PROG=user/BinUtils/ipctest.c sh tools/tests/posixsim/run.sh` runs
 ipctest there; `POSIXSIM_NONET=0` lets the
 `net` group out. `sh tools/tests/posixsim/ports.sh` relinks the smoke ports (§5.5) for the bench
 and runs them on real jobs (a SQLite database on `RAM:` and `SD:`, xmllint, curl over HTTP and
@@ -599,7 +606,7 @@ run stays the reference.
 
 With **`aarch64-onyx-elf`** (§1.1): `PREFIX=aarch64-onyx-elf- sh tools/tests/posixsim/run.sh` builds
 posixtest with it (libonyxposix in `build-onyx-sim`); a `.cpp` `PROG` is linked with `g++`
-(`PROG=user/bin/posixtest-cxx.cpp`); **`sh tools/tests/posixsim/tc.sh`** runs the lot — posixtest and
+(`PROG=user/BinUtils/posixtest-cxx.cpp`); **`sh tools/tests/posixsim/tc.sh`** runs the lot — posixtest and
 posixtest-cxx on the v75 calls and on the v74 fallbacks, then `posixtest cxx` (posixtest spawning
 posixtest-cxx) — and `ports.sh` relinks and runs the ports of whichever toolchain built them
 (`tools/onyx-env.sh`'s choice).
@@ -645,10 +652,10 @@ toolchain's tree; `aarch64-onyx-elf` has its own `--with-sysroot`, `<prefix>/aar
 ```
 
 **The ports** (`tools/ports/<name>/build.sh`, sources vendored and trimmed in `third_party/`
-with a `README.onyx`; `sh tools/ports/build-all.sh`, or `make -C user/bin ports`, which also
-copies the tools to `user/bin/*.elf` — opt-in, a few minutes; `PORTS=1` adds it to `all`). They
+with a `README.onyx`; `sh tools/ports/build-all.sh`, or `make -C user/BinUtils ports`, which also
+copies the tools to `user/BinUtils/*.elf` — opt-in, a few minutes; `PORTS=1` adds it to `all`). They
 are built with `aarch64-onyx-elf` when it is installed (out `out/ports-onyx/`), else with
-`aarch64-none-elf` (`out/ports/`); `make -C user/bin ports ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-`
+`aarch64-none-elf` (`out/ports/`); `make -C user/BinUtils ports ONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-`
 forces the interim one:
 
 | Port | Source | Licence | Built as | Tool |
@@ -704,7 +711,7 @@ its licence on the app.
 
 ### 5.6. Shared libraries (kapi v83): `SD:/lib/<name>.so`
 
-> **Names.** The libraries are "kits", one per use: **UIKit** (the widget toolkit: `user/uikit/`,
+> **Names.** The libraries are "kits", one per use: **UIKit** (the widget toolkit: `user/Kits/uikit/`,
 > `namespace uikit`, the `uk_` functions, `SD:/lib/uikit.so`), **PrinterKit** (§5.7), **AudioKit** (§5.7), **FileKit** (§5.8),
 > **ImageKit** (§5.9). UIKit was named **wtk** until 2026-10-05 (`user/wtk/`, `namespace wtk`, `wk_`, `wtk.so`): the
 > rename was complete — sources, headers, the library, its package (`uikit` replaces `wtk`) — and
@@ -782,7 +789,7 @@ the static archives; the package declares `needs = uikit` (and `ft`). Jet's host
 (`tools/webkit/build-web.sh`) links the library too since 2026-10-05 — it compiles the import side
 (`lib/uikit_stubs.S`, `lib/uikit_bind.cpp`, `uikit/globals.cpp`) with its own toolchain. The PC builds
 (the simulator, Koton for Windows, macOS) still
-compile uikit statically (`user/uikit/*.cpp`: the same sources — `uikit/globals.cpp` then simply defines
+compile uikit statically (`user/Kits/uikit/*.cpp`: the same sources — `uikit/globals.cpp` then simply defines
 the variables).
 
 **Tests.** `sh tools/tests/run_image_test.sh` (the loader, on the PC), `/bin/libtest` (the loader,
@@ -797,7 +804,7 @@ An app prints by **drawing its pages once**; the system does the rest. Three par
 
 | Part | Where | What it does |
 |---|---|---|
-| **The library** | `user/printerkit/printerkit.h` → `SD:/lib/printerkit.so` (`print.cpp`, `dialog.cpp`; its table `printerkit/printerkit.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`printerkit/job.h`), with its ticket `<id>.job`; the printers' list. |
+| **The library** | `user/Kits/printerkit/printerkit.h` → `SD:/lib/printerkit.so` (`print.cpp`, `dialog.cpp`; its table `printerkit/printerkit.abi`, append-only) | The **Print dialog** (the same in every app), a **job**: the pages recorded as they are drawn — rectangles, glyphs, images, paths, in points — into `SD:/var/spool/print/<id>.opj` (`printerkit/job.h`), with its ticket `<id>.job`; the printers' list. |
 | **The service** | `user/Apps/printd` (IPC service `print`; started at boot and on demand) | The **queue**. Replays a job for its printer: a **PDF** (`printerkit/pdfsink.h` → `pdf/pdfwrite.h`) for the PDF printer; for a network printer, pages **rendered at its resolution** (`printerkit/raster.h`: FreeType glyphs from the job's own fonts, images scaled, paths filled with smoothed edges) and **streamed as PWG Raster over IPP** (`printerkit/ipp.h`, HTTP chunked on port 631) while they are made — or the PDF itself to a printer that takes PDF. Follows the job at the printer, tells the user (notifyd). |
 | **The printers** | `SD:/etc/printers.ini` (`printerkit/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
 
@@ -866,7 +873,7 @@ printer asked and a `Validate-Job` — nothing is printed). On the Pi: `ipp <add
 
 ### 5.7. AudioKit: the shared sound library (`SD:/lib/audiokit.so`)
 
-*(`user/audiokit/audiokit.h` is the reference; the library's mechanism: §5.6.)*
+*(`user/Kits/audiokit/audiokit.h` is the reference; the library's mechanism: §5.6.)*
 
 Everything about sound that more than one program can use lives in **AudioKit**, one copy for the
 whole system. A program links `lib/audiokit.imp.a` and calls plain functions (`ak_*`); frames are
@@ -919,7 +926,7 @@ the library, and Koton and the Media Player no longer carry them.
 
 ### 5.8. FileKit: what programs do with files (`SD:/lib/filekit.so`)
 
-*(`user/filekit/filekit.h` is the reference; the library's mechanism: §5.6.)*
+*(`user/Kits/filekit/filekit.h` is the reference; the library's mechanism: §5.6.)*
 
 Compression, ZIP archives, whole files and trees, paths: one copy for the whole system. A program links
 `lib/filekit.imp.a` and calls plain functions (`fk_*`). Everything is integer and pointers (a program
@@ -953,7 +960,7 @@ built without the FPU calls it); a buffer the library returns (`void **out`) is 
 
 ### 5.9. ImageKit: pictures (`SD:/lib/imagekit.so`)
 
-*(`user/imagekit/imagekit.h` is the reference; the library's mechanism: §5.6.)*
+*(`user/Kits/imagekit/imagekit.h` is the reference; the library's mechanism: §5.6.)*
 
 What every program that shows or writes a picture needs, one copy for the whole system. A program links
 `lib/imagekit.imp.a` and calls plain functions (`ik_*`). Every call takes integers and pointers only (a
@@ -1003,8 +1010,8 @@ masks, the brushes and the document of the photo editor come on top of it later 
 
 ### 5.10. AppKit: the programs' interface to the kernel (`SD:/lib/appkit.so`)
 
-*(`user/appkit/appkit.h` is the header a program includes and the reference of the calls;
-`user/appkit/appkit_calls.inc` their bodies; `user/appkit/appkit.c` the library; the kernel's side:
+*(`user/Kits/appkit/appkit.h` is the header a program includes and the reference of the calls;
+`user/Kits/appkit/appkit_calls.inc` their bodies; `user/Kits/appkit/appkit.c` the library; the kernel's side:
 docs/02 §8.)*
 
 ```c
@@ -1140,8 +1147,8 @@ alone**.
 > **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
 > app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
 > request (`req.op` = `VFS_OP_OPEN` / `READ` / `CLOSE` / `LIST` / `SAVE` / `MKDIR` / `REMOVE`
-> / `RENAME`, see `user/appkit/appkit.h`) with `kapi_vfs_reply (req.id, status, data, len)`; a SAVE's
-> payload is read with `kapi_vfs_req_data`. Example: `user/bin/ftpfs.cpp` (FTP / FTPS). The
+> / `RENAME`, see `user/Kits/appkit/appkit.h`) with `kapi_vfs_reply (req.id, status, data, len)`; a SAVE's
+> payload is read with `kapi_vfs_req_data`. Example: `user/BinUtils/ftpfs.cpp` (FTP / FTPS). The
 > ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
 > `ftpfs.h`: `ftpfs_login` / `ftpfs_login_site` (hand a login to ftpfs, optionally
 > remembered), `ftpfs_forget`, `ftpfs_load_sites` (the remembered servers of `SD:/etc/ftpfs.ini`).
@@ -1156,7 +1163,7 @@ alone**.
 > `ak_fm_start (voice 0..15, milliHz, SOUND_SQUARE / SINE / TRIANGLE / SAW / NOISE, volume 0..255)` plays a
 > note until `ak_fm_stop (voice)` (-1 = all), `ak_play (file)` a file, `ak_out_*` your own frames. (The
 > kernel had 16 voices of its own, `kapi_sound_start` / `_stop`, until 2026-10-05: they answer −1 now.)
-> Example: `user/bin/tone.cpp`.
+> Example: `user/BinUtils/tone.cpp`.
 > **Low-latency sound (ABI v68)**: the output normally lags ~116 ms (1024-frame chunks, 4 rendered
 > ahead). The owner may ask for less: `kapi_sound_config (chunk_frames, ahead)` (64..1024 frames,
 > 1..4 chunks; 0 = the default) → the latency in frames, (ahead + 1) × chunk — 256 × 2 = 768
@@ -1169,7 +1176,7 @@ alone**.
 > room). It makes no kapi call, so **code on an app core** (`kapi_core_run`) can fill it: the
 > audio needs no pump thread on core 0. `r->dry` counts the underruns; `r->rd` moves as the
 > kernel plays — a thread can sleep on it with `kapi_wait_word (&r->rd, old, ms)` (§5.2). All of
-> this is undone by `kapi_sound_release` or the process's end. Example: `user/bin/ringtest.c`
+> this is undone by `kapi_sound_release` or the process's end. Example: `user/BinUtils/ringtest.c`
 > (a tone from an app core at 256 × 2).
 > **FM instruments** (AudioKit; the kernel's `kapi_sound_instrument`, ABI v47, is retired): fill a
 > `struct kapi_fm_instrument` (2 operators, OPL2-style parameters, see `kern/kapi_abi.h`),
@@ -1198,7 +1205,7 @@ alone**.
 > `status`, `data1`, `data2` (`length` of them valid: 1..3; a SysEx arrives in 3-byte pieces),
 > `device` (its `umidiN`). One queue for the whole system (256 events; the newest are dropped
 > when nobody reads): one reader at a time. `kapi_midi_devices ()` → attached now. Poll it from
-> your pump or a thread (every 1–2 ms for live playing). Example: `user/bin/miditest.c`.
+> your pump or a thread (every 1–2 ms for live playing). Example: `user/BinUtils/miditest.c`.
 > **The GPU (ABI v52)**: `kapi_gpu_info (buf, cap)` (1 = the V3D is usable; the first call brings
 > it up) and `kapi_gpu_draw (verts, n, clear, pixels, w, h, stride)`: a triangle list of
 > `struct kapi_gpu_vertex { float x, y, z; unsigned char r, g, b, a; }` in normalized device
@@ -1929,10 +1936,10 @@ alone**.
 > **HTTPS from a uikit app**: uikit apps are freestanding; do the TLS work in a newlib console
 > tool and spawn it with pipes (`kapi_pipe`, `kapi_spawn`, write the request, `kapi_stream_eof`,
 > poll `kapi_stream_read_nb` / `kapi_proc_done` from `Root::onTick`). Example: Lisa +
-> `/bin/groq` (`user/Apps/lisa`, `user/bin/groq.cpp`).
+> `/bin/groq` (`user/Apps/lisa`, `user/BinUtils/groq.cpp`).
 > **Wi-Fi scan (ABI v45)**: `kapi_wlan_scan (ap, max)` fills `struct kapi_wlan_ap` entries
 > (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
-> it blocks ~3 s. Examples: `user/bin/wifiscan.c`, `wpaconf` (Scan button + Combobox).
+> it blocks ~3 s. Examples: `user/BinUtils/wifiscan.c`, `wpaconf` (Scan button + Combobox).
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service: the dock's switcher) so the shelf's
 > references follow.
@@ -2360,10 +2367,10 @@ docs/04 §9) is a **newlib** uikit app with FreeType text (`archiver.elf` in `us
 | `icons.h`, `widgets.h`, `dialogs.h` | The vector icons; the widgets (`ToolStrip` of large buttons, `PathBar` with its `SearchBox`, `FolderTree`, `EntryList` — multiple selection, sort, drag out, the drop's banner —, `InfoCard`, `StatusBar`, `Welcome`); the dialogs (Extract, Add, progress, exists, text, properties). |
 | `main.cpp` | The app: the jobs (a thread per job, `kapi_post` for the progress and the end, a question to the main thread answered through an event), drag & drop both ways, files opened into `RAM:` and watched to be put back, the menus. |
 
-`/bin/zip` and `/bin/unzip` (`user/bin/zip.cpp`, `unzip.cpp`, `arccli.h`: the command line split,
+`/bin/zip` and `/bin/unzip` (`user/BinUtils/zip.cpp`, `unzip.cpp`, `arccli.h`: the command line split,
 patterns) are C++ newlib tools on the same engine (`ops.h`: `plan_begin` / `plan_add_path` /
 `plan_finish` give each path its own folder in the archive, one rewrite for all), linked with the
-vendored `third_party/zlib-1.3.1/libz.a` (`ARC_PROGS` in `user/bin/Makefile`).
+vendored `third_party/zlib-1.3.1/libz.a` (`ARC_PROGS` in `user/BinUtils/Makefile`).
 
 A job works on **its own instance** of the archive (opened again): the view keeps reading the old one
 until the job ends and the archive is read again from the disk. **Host test**:
@@ -2386,10 +2393,10 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 | `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
 | `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
 | `user/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed — unless another installed package has them, `owned_elsewhere`, as when `bin/pkg` moved from `onyx` into `pkgman`), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`, `refresh_desktop` (an app's files installed or removed: the dock killed and started again, called by `pkg`, `pkgman`, `pkgd` at the end of their job). |
-| `user/bin/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/bin/Makefile` (newlib + mbedTLS + zlib). |
+| `user/BinUtils/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/BinUtils/Makefile` (newlib + mbedTLS + zlib). |
 | `user/Apps/pkgman` | The **Package Manager**, the Control Panel's applet (`70-pkgman.lnk`; FreeType): a snapshot of the index and the database (`Row`s, rebuilt after each job) drawn by its own widgets (`Tabs`, `PkgList`: the rows, the boxes, the mode pills, the buttons, the restart banner); a job (check, install, remove, mode) in a thread (`kapi_thread_create`), its progress read each frame (`onTick`: the package being done, its percentage — `http.hpp`'s new `progress ()` callback and the extraction —, the packages finished). Built by `pkgman.elf` in `user/Makefile` (newlib + FreeType + mbedTLS + zlib, `-DPKG_NET -DONYX_HTTP_TLS`). |
 | `user/Apps/pkgd` | The **update daemon** (no window; `run pkgd` in `etc/autostart`): waits for the network and the time, then once a day (`SD:/var/pkg/lastcheck`) `refresh`, the "auto" packages installed (their new needs first; the system staged), `notify_action` for the others; `--once`: one round; `check = never` in `pkg.ini`: it ends. |
-| `user/bin/init.c` | The `wait <command>` builtin (`kapi_spawn` + `kapi_wait`): `wait pkg commit`, the autostart's first line. |
+| `user/BinUtils/init.c` | The `wait <command>` builtin (`kapi_spawn` + `kapi_wait`): `wait pkg commit`, the autostart's first line. |
 
 **Screenshots**: `sh tools/tests/desktop_sim/shots.sh pkgman` — `tools/tests/desktop_sim/pkg_sample.py`
 makes a card of its own (the real one through symbolic links, its own `etc/pkg` and `var/pkg/db`: a
@@ -2480,7 +2487,7 @@ built with `user/av` and its codecs for the PC by `tools/tests/desktop_sim/av_ho
 (Media Source Extensions') and a player with its threads, sound and clock. Jet Browser's `<video>`,
 `<audio>` and MSE are built on it (WebKit's media engine for Onyx: docs/08 *Media*), and the Media Player's videos. Plain C
 (`av.h` is the reference), threads and locks through `av_os.h` (the kapi; pthreads with `-DAV_POSIX`
-for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I kernel/include`
+for the PC tools). Compile every `user/av/*.c` with `-I user/av -I user -I user/Kits -I kernel/include`
 (`-std=gnu11`); the large codecs' glue files compile to nothing unless their `AV_WITH_*` is given --
 `user/av/codecs.mk` has their libraries' sources and flags and `AV_CODECS_CF` (the `-DAV_WITH_*` and
 include paths): include it with `TP` = `third_party` and `AV_ARCH` = `aarch64` (the Pi: NEON, dav1d's
@@ -2887,18 +2894,18 @@ int main (void)
   with a blank in double quotes (`grep "two words" f` → `"two words" f`), at most 1023
   characters. A program that needs the words exactly (one holding a `"`, a long line) reads
   **`kapi_get_argv`** (v75: the block `"path\0arg1\0…\0\0"`), as the POSIX programs' `argv` does.
-  The parser is `user/bin/cmdparse.h` (host test: `sh tools/tests/run_cmd_test.sh`).
+  The parser is `user/BinUtils/cmdparse.h` (host test: `sh tools/tests/run_cmd_test.sh`).
 - **`kapi_stdin_read(buf, n)`**: reads the task's stdin (`0` = EOF). **`kapi_stdout_write`**: writes stdout.
 - To read a file passed as an argument: `kapi_open/read/close`. To list a
   directory: `kapi_opendir/readdir/closedir`.
 
 The existing tools to study: `ls`, `cat`, `grep`, `wc`, `echo`, `page`, `rm`, `mkdir`,
-`touch`, `cp`, `mv`, `ps`, `kill`, `run`, `keyb` (in `user/bin/`).
+`touch`, `cp`, `mv`, `ps`, `kill`, `run`, `keyb` (in `user/BinUtils/`).
 
 A tool written as **portable POSIX C** (`main (argc, argv)`, `open`/`read`, `pthread_create`,
 sockets, `poll`) is built on libonyxposix instead (§5.4): add it to `POSIX_PROGS` in
-[`user/bin/Makefile`](../user/bin/Makefile) (`posixtest` is the example). The ports' tools
-(`sqlite3`, `xmllint`, `curl`) come from `make -C user/bin ports` (§5.5).
+[`user/BinUtils/Makefile`](../user/BinUtils/Makefile) (`posixtest` is the example). The ports' tools
+(`sqlite3`, `xmllint`, `curl`) come from `make -C user/BinUtils ports` (§5.5).
 
 ### `memset` / `memcpy` in freestanding apps
 
@@ -2906,8 +2913,8 @@ Apps built with `-ffreestanding -nostdlib` (every uikit app and the plain `/bin`
 have no libc, yet GCC may still emit calls to `memset`/`memcpy`/`memmove` on its own
 (e.g. `char buf[64] = "";`, struct copies). Since ABI v36 the kapi table has them — since v74
 as **user-side** routines of the EL0 code page (`kernel/arch/aarch64/el0blob.S`: no system
-call), before as Circle's kernel implementations; `user/appkit/appkit.h` defines them as weak
-`kapi_memset`/`kapi_memcpy`/`kapi_memmove`, and `user/Makefile` / `user/bin/Makefile`
+call), before as Circle's kernel implementations; `user/Kits/appkit/appkit.h` defines them as weak
+`kapi_memset`/`kapi_memcpy`/`kapi_memmove`, and `user/Makefile` / `user/BinUtils/Makefile`
 alias the C names onto them at link time (`KAPI_ALIASES`:
 `-Wl,--defsym,memset=kapi_memset …`). A new freestanding link rule must add
 `$(KAPI_ALIASES)`; newlib programs must not (they keep newlib's versions).
@@ -2915,7 +2922,7 @@ alias the C names onto them at link time (`KAPI_ALIASES`:
 ### The AI helper `/bin/llm` and Koton's AI composition (`engine/ai.h`)
 
 Koton's "compose with AI" is split like Lisa + `/bin/groq`: the app builds the prompts and places the
-reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PROGS`), does the HTTPS.
+reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/BinUtils/llm.cpp`, in `TLS_PROGS`), does the HTTPS.
 
 - **`user/Apps/koton/engine/ai.h`** (namespace `kt`; `ai.cpp` = the prompts, `ai_place.cpp` = the
   replies) is a port of Koton Studio's `Engine/AI` (`AiArrangement*`, `AiArrangementPlacer`,
@@ -2994,7 +3001,7 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PR
   like Gemini's (placed, then checked: tracks, chords through `chordAt` and a key change, every module
   rendered, `compileSong`, a `.kson` round trip), malformed replies, the `/bin/llm` protocol per
   provider (`#define LLM_PROTO_ONLY` + include `llm.cpp`) and a 60+ KB reply end to end, under
-  ASan / UBSan / LSan; then the AArch64 compile and `make -C user/bin llm.elf`.
+  ASan / UBSan / LSan; then the AArch64 compile and `make -C user/BinUtils llm.elf`.
 
 ## 8. The `applib.h` library
 
@@ -3038,7 +3045,7 @@ discards the remainder of a TCP segment on a short read, so we read whole segmen
 **software-only crypto** (the Pi 4's Cortex-A72 has no ARMv8 crypto extensions).
 **Verified end-to-end on real hardware** — `httpsget` downloads real pages. To enable it in a **newlib**
 app: `#define ONYX_HTTP_TLS` before `#include "http.hpp"` and link the cross-built mbedTLS
-libs — `make -C user/tls` then `make -C user/bin MBEDTLS_DIR=../tls/mbedtls` (see
+libs — `make -C user/tls` then `make -C user/BinUtils MBEDTLS_DIR=../tls/mbedtls` (see
 [`user/tls/README.md`](../user/tls/README.md)). The freestanding default (no
 `ONYX_HTTP_TLS`) keeps `http://` only and returns `HTTP_ERR_HTTPS` for `https://`. Demo:
 `/bin/httpsget`. **Not yet secure:** the RNG is a software PRNG (not the HW RNG, which
@@ -3068,7 +3075,7 @@ a freshly `malloc`'d array of `0xAARRGGBB` pixels (8-bit alpha in the top byte, 
 canvas ignores when blitting). Same split as TLS: the libraries are cross-built once
 (`make -C user/img`, sources pinned in [`user/img/README.md`](../user/img/README.md) —
 zlib 1.3.1, libpng 1.6.44, libjpeg IJG v9f), the Onyx glue is header-only. It is a
-**newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/bin
+**newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/BinUtils
 IMG_DIR=../img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
 size). Note: `image.hpp` is for full-colour web images; keep
 [`user/bmp.hpp`](../user/bmp.hpp) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
@@ -3090,7 +3097,7 @@ and its clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or `
 `SIM-CLIPBOARD type=T len=N`. An app that pastes a copied picture reads it as Paint does
 (`clip_get_file` + `img_load`).
 
-The widgets are user-side: **uikit** (`user/uikit/`, §6) is drawn entirely in the app's canvas,
+The widgets are user-side: **uikit** (`user/Kits/uikit/`, §6) is drawn entirely in the app's canvas,
 driven by the kernel's **pointer stream** (ABI v22: `set_pointer_handler` →
 `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE/WHEEL` with client coords; `GUI_EVENT_PTR_WHEEL`
 carries a signed notch delta in the `lValue` wheel field, decoded with `GUI_PTR_WHEEL`). (The
@@ -3467,7 +3474,7 @@ barwidth = 40
   can run both on Linux for a check.
 - **Koton for Windows** (`pc/Koton`, built on Linux by `sh pc/Koton/build.sh` into `pc/dist/Koton/`,
   committed; `pc/build.sh` runs it too). Not a port: **the Onyx sources, unchanged** -- `user/Apps/koton`,
-  `user/uikit`, FreeType, MeltySynth, the plugins `user/Apps/kp_*`, `user/bin/llm.cpp` + mbedTLS -- built with
+  `user/Kits/uikit`, FreeType, MeltySynth, the plugins `user/Apps/kp_*`, `user/BinUtils/llm.cpp` + mbedTLS -- built with
   MinGW-w64 over [`pc/Koton/winkapi.cpp`](../pc/Koton/winkapi.cpp), the kernel's ABI table on Win32: put
   at `KAPI_TABLE_VA` (`VirtualAlloc`) by a constructor that runs before all the others
   (`init_priority`), so `KT->...` works as on the Pi. What it gives: a Windows window whose client area is
@@ -3494,7 +3501,7 @@ barwidth = 40
 - **Ledger for macOS** (`pc/macOS`, built **on a Mac** by `sh pc/macOS/build.sh` into
   `pc/dist/macOS/Ledger.app` + `Ledger-macOS-arm64.zip` -- the Xcode command-line tools only; not built
   here, so not committed). As Koton for Windows, **the Onyx sources unchanged** -- `user/Apps/ledger`,
-  `user/Apps/letters` (it prints Ledger's documents from their templates), `user/uikit`, FreeType -- over the
+  `user/Apps/letters` (it prints Ledger's documents from their templates), `user/Kits/uikit`, FreeType -- over the
   kernel's ABI table on macOS, in two halves: [`pc/macOS/hostkapi.cpp`](../pc/macOS/hostkapi.cpp) (POSIX:
   the table at `KAPI_TABLE_VA` by `mach_vm_allocate (VM_FLAGS_FIXED)` -- taken only if free --, files,
   time, threads, `wait_word`, processes, arguments) and [`pc/macOS/cocoa.mm`](../pc/macOS/cocoa.mm) (an
@@ -3601,8 +3608,8 @@ points** to touch (all in the same direction, at the end):
 3. **`kernel/sys/kapitable.cpp`** — declare the `extern "C"` prototype and **assign the
    pointer** in `KApiTableInit()`: `t->ma_fonction = kapi_ma_fonction;`.
 
-4. **AppKit** — declare it in `user/appkit/appkit.h` and give its body in
-   `user/appkit/appkit_calls.inc` (§5.10); commit `user/appkit/appkit.abi`, which the build completes:
+4. **AppKit** — declare it in `user/Kits/appkit/appkit.h` and give its body in
+   `user/Kits/appkit/appkit_calls.inc` (§5.10); commit `user/Kits/appkit/appkit.abi`, which the build completes:
 
    ```c
    KAPI_FN int kapi_ma_fonction (int arg);                                            // appkit.h
@@ -3702,7 +3709,7 @@ log lines.
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.
 
 If you add a new **GUI event** or a **window flag**, keep the values
-synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `user/appkit/appkit.h` (commented
+synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `user/Kits/appkit/appkit.h` (commented
 "must match").
 
 ## 11. Coding conventions
@@ -3747,7 +3754,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Remote desktop**: `/bin/vncd` (autostarted, VNC port 5900) — watch and drive the GUI
   from any VNC viewer, no monitor needed. It grabs the screen with `kapi_screen_grab`
   and injects input with `kapi_inject_pointer`/`kapi_inject_key` (ABI v38); it is a
-  newlib program linked with the vendored zlib (`ZLIB_PROGS` in `user/bin/Makefile`).
+  newlib program linked with the vendored zlib (`ZLIB_PROGS` in `user/BinUtils/Makefile`).
 - **Window-level remote desktop**: `/bin/rdpd` (autostarted, port 3390) + the Windows client
   `pc/OnyxRemote` (.NET Framework 4.8, built by `sh pc/build.sh` into `pc/dist/OnyxRemote.exe`):
   one MDI window (+ `TelnetForm`: a telnet console on telnetd, its own window -- IAC dropped,
@@ -3761,9 +3768,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   changes; the desktop (`KAPI_WIN_DESKTOP`, the wallpaper + the backmost windows) only when
   the client asks for it (message 7). The hello carries the kernel's kapi version (the
   client warns below 56). The client sends the pointer in window coordinates (rdpd adds the window's place,
-  raises it when clicked), keysyms (`user/bin/remotekeys.h`, shared with vncd: specials,
+  raises it when clicked), keysyms (`user/BinUtils/remotekeys.h`, shared with vncd: specials,
   modifiers, letters / digits as held keys only) and the characters typed (the PC's layout).
-  The protocol is described at the top of `user/bin/rdpd.c`. **Loss tolerance** (Wi-Fi): a
+  The protocol is described at the top of `user/BinUtils/rdpd.c`. **Loss tolerance** (Wi-Fi): a
   round is sent only when something changed, and only while the server has **credit** (each
   READY gives one); a client setting hello option bit 2 gets `CAPS` (9) and 3 rounds in flight
   (an older client: lock-step, its READYs alone); a round unanswered for 250 ms makes rdpd send

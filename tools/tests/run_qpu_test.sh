@@ -10,11 +10,11 @@ trap 'rm -rf "$T"' EXIT
 for f in qpulib ralloc_stub mesa/broadcom/qpu/qpu_instr mesa/broadcom/qpu/qpu_pack mesa/broadcom/qpu/qpu_disasm; do
 	gcc -std=gnu11 -O1 -w -I"$Q/mesa" -I"$Q" -c "$Q/$f.c" -o "$T/$(basename $f).o"
 done
-g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/qpubuild_test.cpp" "$root/user/v3d/qpu.cpp" "$T"/*.o -o "$T/qpubuild"
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$root/user/Kits" -I"$Q" -I"$Q/mesa" "$here/v3d/qpubuild_test.cpp" "$root/user/v3d/qpu.cpp" "$T"/*.o -o "$T/qpubuild"
 "$T/qpubuild"
 g++ -std=c++17 -O1 -w -I"$Q" -I"$Q/mesa" "$here/v3d/qpusim_test.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/qpusim"
 "$T/qpusim"
-g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/shaders_test.cpp" "$root/user/v3d/shaders.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/shaders"
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$root/user/Kits" -I"$Q" -I"$Q/mesa" "$here/v3d/shaders_test.cpp" "$root/user/v3d/shaders.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/shaders"
 "$T/shaders"
-g++ -std=c++17 -O1 -w -I"$root/user" -I"$Q" -I"$Q/mesa" "$here/v3d/gxtev_test.cpp" "$root/user/v3d/gxtev.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/gxtev"
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$root/user/Kits" -I"$Q" -I"$Q/mesa" "$here/v3d/gxtev_test.cpp" "$root/user/v3d/gxtev.cpp" "$root/user/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/gxtev"
 "$T/gxtev" ${GXTEV_N:-2000}

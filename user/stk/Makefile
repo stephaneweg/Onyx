@@ -27,7 +27,7 @@ STK    ?= ../../../../../stk-port/stk-code
 OUT     = build
 
 BASEFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
-	    -ffunction-sections -fdata-sections -I.. -I../../kernel/include
+	    -ffunction-sections -fdata-sections -I.. -I../Kits -I../../kernel/include
 CFLAGS    = $(BASEFLAGS)
 # Full C++ (STK throws, catches, dynamic_casts). gnu++17: STK's CMake asks gnu++0x, but the tree
 # compiles as C++17. The toolchain's libstdc++ is --disable-threads (no std::mutex, no
@@ -82,19 +82,19 @@ $(OUT)/angelscript/%.o: $(AS_DIR)/%.cpp
 $(OUT)/crt0libc.o: ../libc/crt0libc.S
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../appkit/appkit.h
+$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../Kits/appkit/appkit.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/onyx_eh.o: onyx_eh.c
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/onyx_gthreads.o: onyx_gthreads.c compat/bits/gthr-default.h ../appkit/appkit.h
+$(OUT)/onyx_gthreads.o: onyx_gthreads.c compat/bits/gthr-default.h ../Kits/appkit/appkit.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -I. -Wall -c $< -o $@
 $(OUT)/onyx_gthreads_cxx.o: onyx_gthreads_cxx.cpp compat/bits/gthr-default.h
 	@mkdir -p $(OUT)
 	$(CXX) $(CXXFLAGS) -Wall -c $< -o $@
-$(OUT)/onyx_posix.o: onyx_posix.c compat/dirent.h ../appkit/appkit.h
+$(OUT)/onyx_posix.o: onyx_posix.c compat/dirent.h ../Kits/appkit/appkit.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -I. -Wall -c $< -o $@
 $(OUT)/stkpoc.o: stkpoc.cpp compat/bits/gthr-default.h

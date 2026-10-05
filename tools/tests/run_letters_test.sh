@@ -12,8 +12,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${TMPDIR:-/tmp}/onyx_writer_test
 mkdir -p "$OUT/obj"
-CXX="g++ -std=gnu++17 -O1 -g -I$ROOT/user -I$ROOT/kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST -fsanitize=undefined"
-for f in "$ROOT"/user/uikit/*.cpp; do $CXX -w -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+CXX="g++ -std=gnu++17 -O1 -g -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST -fsanitize=undefined"
+for f in "$ROOT"/user/Kits/uikit/*.cpp; do $CXX -w -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
 rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -w -c "$HERE/desktop_sim/fakekapi.cpp" -o "$OUT/fakekapi.o"
 $CXX -Wall -Wno-unused-function -Wno-format-truncation "$HERE/letters/files_test.cpp" "$OUT/fakekapi.o" "$OUT/libuikit.a" -o "$OUT/files_test"

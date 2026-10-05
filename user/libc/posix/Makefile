@@ -2,7 +2,7 @@
 # Makefile -- libonyxposix, the POSIX layer of Onyx (docs/POSIX-PLAN.md §3.4; docs/03 §5.4).
 #
 #   make                          build/libonyxposix.a, build/crt0posix.o, build/onyx.specs (for
-#                                 the in-tree programs: user/bin's posixtest and the ports' tools)
+#                                 the in-tree programs: user/BinUtils's posixtest and the ports' tools)
 #   make install SYSROOT=<dir>    the sysroot third-party code builds against (default
 #                                 ../../../out/sysroot, git-ignored): include/, lib/libonyxposix.a,
 #                                 lib/crt0posix.o, lib/onyx-posix.ld, lib/onyx.specs, lib/onyx-cc.specs,
@@ -49,7 +49,7 @@ EXTRA_CFLAGS ?=
 # headers it implements first on the path (as for every program built on it).
 CFLAGS   = -mcpu=cortex-a72 -O2 -g0 -Wall -Wextra -Wno-unused-parameter -fno-stack-protector \
 	   -fno-pic -fno-pie -ffunction-sections -fdata-sections -fno-builtin-malloc \
-	   -D_GNU_SOURCE -DFD_SETSIZE=1024 -isystem $(HERE)/include -I$(HERE) -I$(HERE)/../.. \
+	   -D_GNU_SOURCE -DFD_SETSIZE=1024 -isystem $(HERE)/include -I$(HERE) -I$(HERE)/../.. -I$(HERE)/../../Kits \
 	   -I$(HERE)/../../../kernel/include $(EXTRA_CFLAGS)
 # tls.c and start.c take the addresses of linker-script symbols (absolute values, weak
 # references): the large code model reaches them anywhere (no ADRP range).
@@ -58,7 +58,7 @@ CFLAGS_ABS = -mcmodel=large
 SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c ipc.c \
        file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c uchar.c newlib_syscalls.c
 OBJ  = $(SRC:%.c=$(B)/%.o)
-HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../appkit/appkit.h \
+HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../Kits/appkit/appkit.h \
        ../../../kernel/include/kern/kapi_abi.h
 
 all: $(B)/libonyxposix.a $(B)/crt0posix.o $(B)/onyx.specs $(B)/onyx-cc.specs $(B)/onyx-posix.ld

@@ -8,7 +8,7 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 BIN=${TMPDIR:-/tmp}/onyx_qbstudio_test
-g++ -std=c++17 -O1 -g -Wall -Wno-format-truncation -fsanitize=address,undefined -I"$ROOT/user" \
+g++ -std=c++17 -O1 -g -Wall -Wno-format-truncation -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" \
     "$ROOT"/user/basic/bascomp.cpp "$ROOT"/user/basic/basvm.cpp "$ROOT"/user/basic/basnum.cpp "$ROOT"/user/basic/basbax.cpp \
     "$HERE/qbstudio/qbstudio_test.cpp" -o "$BIN"
 cd "$ROOT"

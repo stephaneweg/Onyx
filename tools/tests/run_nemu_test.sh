@@ -9,7 +9,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${NEMU_ROMS:?set NEMU_ROMS to a folder of ROMs}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" "$HERE/nemu/nemutest.cpp" "$ROOT/pc/NintendoEMU/core/nemucore.cpp" "$ROOT/pc/NintendoEMU/core/gxgl.cpp" \
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" "$HERE/nemu/nemutest.cpp" "$ROOT/pc/NintendoEMU/core/nemucore.cpp" "$ROOT/pc/NintendoEMU/core/gxgl.cpp" \
 	"$ROOT/user/gb/gb.cpp" "$ROOT"/user/gba/*.cpp "$ROOT"/user/nes/*.cpp "$ROOT"/user/snes/*.cpp \
 	"$ROOT"/user/n64/*.cpp "$ROOT"/user/gc/*.cpp -o "$T/onyx_nemutest"
 fail=0

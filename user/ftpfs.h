@@ -14,7 +14,7 @@
 //     host user hexpass [port tls folder]        ("-" = empty user / password)
 // hexpass = the password XOR a fixed key, in hex: OBFUSCATED, NOT ENCRYPTED.
 // IPC: service "ftpfs"; message type 1 = "host\0user\0pass\0[port\0tls\0folder\0]",
-// 2 = the same + remember, 3 = "host\0" forget (see user/bin/ftpfs.cpp).
+// 2 = the same + remember, 3 = "host\0" forget (see user/BinUtils/ftpfs.cpp).
 //
 #ifndef _ftpfs_h
 #define _ftpfs_h

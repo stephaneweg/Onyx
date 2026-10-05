@@ -12,7 +12,7 @@ OUT=${TMPDIR:-/tmp}/onyx_koton_ai
 DUMP=${TMPDIR:-/tmp}/onyx_koton_ai_prompts
 mkdir -p "$DUMP"
 g++ -std=gnu++17 -O1 -g -Wall -Wextra -fno-exceptions -fno-rtti -fsanitize=address,undefined -fno-sanitize-recover=undefined \
-	-I $K -I user -o "$OUT" tools/tests/koton/ai_test.cpp $K/engine/*.cpp $K/synth/*.cpp
+	-I $K -I user -I user/Kits -o "$OUT" tools/tests/koton/ai_test.cpp $K/engine/*.cpp $K/synth/*.cpp
 "$OUT" --dump "$DUMP"
 
 # the prompts against Koton's sources (C# literals: \" and "" unescaped); a line not found is printed
@@ -102,8 +102,8 @@ A=${ARMGCC:-/opt/arm/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin}
 if [ -x "$A/aarch64-none-elf-g++" ]; then
 	for f in $K/engine/ai*.cpp; do
 		$A/aarch64-none-elf-g++ -mcpu=cortex-a72 -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
-			-ffunction-sections -fdata-sections -Wall -Wextra -I $K -I user -I kernel/include -c "$f" -o /dev/null
+			-ffunction-sections -fdata-sections -Wall -Wextra -I $K -I user -I user/Kits -I kernel/include -c "$f" -o /dev/null
 	done
-	PATH="$A:$PATH" make --no-print-directory -C user/bin llm.elf >/dev/null
-	echo "aarch64: ai*.cpp compile, user/bin/llm.elf builds: OK"
+	PATH="$A:$PATH" make --no-print-directory -C user/BinUtils llm.elf >/dev/null
+	echo "aarch64: ai*.cpp compile, user/BinUtils/llm.elf builds: OK"
 fi

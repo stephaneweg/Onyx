@@ -2005,7 +2005,7 @@ static void EnumerateApps (CLogger *pLogger)
 
 // Boot the userland: the kernel just launches the init program (PID-1 style, no
 // arguments). init reads /etc/autostart and starts everything from there (see
-// user/bin/init.c), so all the launch policy lives in userland, not the kernel.
+// user/BinUtils/init.c), so all the launch policy lives in userland, not the kernel.
 //
 // Which ELF to run is the cmdline.txt option "init=" (e.g. init=SD:/bin/init);
 // it defaults to SD:bin/init when absent, so existing cards keep booting. This

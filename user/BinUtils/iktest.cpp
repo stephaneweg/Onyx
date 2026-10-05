@@ -16,7 +16,7 @@
 #include "appkit/appkit.h"
 #include "applib.h"
 #include "../onyxpp.hpp"		// (operator new / delete: the library's binding)
-#include "../imagekit/imagekit.h"
+#include "../Kits/imagekit/imagekit.h"
 
 static int g_pass, g_fail;
 static void check (const char *what, bool ok)

@@ -70,7 +70,7 @@ extern u32 g_WinTitleTextColor;
 
 // The frame's metrics (the modernised CDE desktop, v64: kapi_abi.h KAPI_FRAME_*): a 28 px title
 // bar on top, 4 px borders, corners rounded (radius KAPI_FRAME_RADIUS). The app draws the frame
-// (uikit: user/uikit/skin.cpp); the kernel hit-tests its title buttons and blends its corners.
+// (uikit: user/Kits/uikit/skin.cpp); the kernel hit-tests its title buttons and blends its corners.
 #define WIN_TITLEBAR_H		KAPI_FRAME_TITLE_H
 #define WIN_BORDER		KAPI_FRAME_BORDER
 #define WIN_COLOR_FRAME		0x00202028

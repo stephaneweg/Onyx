@@ -20,13 +20,13 @@ for n in fm2 delay arp; do
 	cp user/Apps/kp_$n/plugin.json "$CARD/koton/plugins/$n/"
 	echo "(the program)" > "$CARD/koton/plugins/$n/main"
 done
-CXX="g++ -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -fsanitize=undefined -pthread -I user -I $K -I kernel/include"
+CXX="g++ -std=gnu++17 -O1 -g -w -fno-exceptions -fno-rtti -fsanitize=undefined -pthread -I user -I user/Kits -I $K -I kernel/include"
 OBJS=""; PIDS=""
 for n in fm2 delay arp; do
 	$CXX -Dmain=kp_${n}_main -c user/Apps/kp_$n/main.cpp -o "$OUT.o/kp_$n.o" & PIDS="$PIDS $!"
 	OBJS="$OBJS $OUT.o/kp_$n.o"
 done
-for f in $D/fakekapi.cpp $D/imgstub.cpp $(ls user/uikit/*.cpp | grep -v imgload) $K/plug/plughost.cpp $K/plug/plugctx.cpp \
+for f in $D/fakekapi.cpp $D/imgstub.cpp $(ls user/Kits/uikit/*.cpp | grep -v imgload) $K/plug/plughost.cpp $K/plug/plugctx.cpp \
 	 $K/engine/*.cpp $K/synth/*.cpp tools/tests/koton/plug_host_test.cpp; do
 	n=$(echo "$f" | tr '/' '_')
 	$CXX -c "$f" -o "$OUT.o/$n.o" & PIDS="$PIDS $!"

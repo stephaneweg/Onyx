@@ -5,7 +5,7 @@
 // soft-clip. No allocation, no lock, no system call in render ().
 //
 #include "engine.h"
-#include "../../../audiokit/audiokit.h"
+#include "../../../Kits/audiokit/audiokit.h"
 #include <math.h>
 #include <string.h>
 

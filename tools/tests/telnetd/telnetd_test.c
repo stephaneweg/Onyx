@@ -1,7 +1,7 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors
 //
 // telnetd_test.c -- the end of a telnetd session, on the PC (tools/tests/run_telnetd_test.sh):
-// user/bin/telnetd.c itself and user/bin/shellend.h, against the mock kapi beside this file. The
+// user/BinUtils/telnetd.c itself and user/BinUtils/shellend.h, against the mock kapi beside this file. The
 // client is a script (what it types and when, when it closes, or vanishes without a word), the
 // shell a model of /bin/cmd as far as it matters here:
 //   - at the prompt it reads lines; `exit` or the end of its input ends it;

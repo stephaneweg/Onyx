@@ -19,7 +19,7 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
-// AppKit (2026-10-05, SD:/lib/appkit.so, user/appkit): the ONE interface between the programs and the
+// AppKit (2026-10-05, SD:/lib/appkit.so, user/Kits/appkit): the ONE interface between the programs and the
 // kernel. The programs call its functions (kapi_*: user/kapi.h) BY NAME, through import stubs that jump
 // through AppKit's table -- which the kernel copies at APPKIT_TABLE_VA (entry n at + 8 n), in the same
 // read-only page as its own, when the first program starts; AppKit's code is mapped into every
@@ -27,7 +27,7 @@
 // THE CONTRACT BELOW (this struct's layout at KAPI_TABLE_VA) THEN BINDS APPKIT AND THE KERNEL ONLY: they
 // are built and shipped together (the package onyx), so the table may be restructured -- entries moved,
 // removed, merged -- by adapting AppKit; no program is rebuilt. What is append-only from now on is
-// AppKit's own list of names (user/appkit/appkit.abi). A new AppKit is the next start's.
+// AppKit's own list of names (user/Kits/appkit/appkit.abi). A new AppKit is the next start's.
 #define APPKIT_TABLE_VA		(KAPI_TABLE_VA + 0x8000ULL)	// (4096 entries at most)
 #define APPKIT_TABLE_MAX	4096
 // v29: COMPAT BREAK -- the kernel-drawn widget API was removed from the table and the
@@ -325,7 +325,7 @@ struct kapi_chrome
 
 // The window frame (v64): the kernel's metrics (kern/gui/window.h WIN_TITLEBAR_H, WIN_BORDER)
 // and the title buttons' places -- the kernel hit-tests them, the app draws them into its chrome
-// copies (uikit: user/uikit/skin.cpp). The window menu at the left; from the right: close, maximise,
+// copies (uikit: user/Kits/uikit/skin.cpp). The window menu at the left; from the right: close, maximise,
 // minimise -- each KAPI_FRAME_BTN_W x _H, _Y below the frame's top, the outer ones _EDGE from
 // its side, _STEP from one to the next. The corners are rounded (radius KAPI_FRAME_RADIUS): in
 // the chrome copies a pixel's top byte is its transparency (0 opaque .. 255 see-through), heeded

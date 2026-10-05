@@ -2763,7 +2763,7 @@ int  kapi_sound_acquire (void)
 }
 void kapi_sound_release (void) { SoundRelease (CallerPid ()); }
 // (retired 2026-10-05: the synthesizer left the kernel -- AudioKit: ak_fm_start / ak_fm_stop /
-// ak_fm_instrument, user/audiokit --; the three slots stay in the table and answer -1)
+// ak_fm_instrument, user/Kits/audiokit --; the three slots stay in the table and answer -1)
 int  kapi_sound_start (int, unsigned, int, int) { return -1; }
 int  kapi_sound_stop (int) { return -1; }
 int kapi_sound_write (const short *pFrames, unsigned nFrames)

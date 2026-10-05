@@ -8,7 +8,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${OUT:-${TMPDIR:-/tmp}/onyx_basic3d}
 BIN=${TMPDIR:-/tmp}/onyx_basic3d_host
 mkdir -p "$OUT"
-g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" \
+g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" \
     "$ROOT/user/basic/basnum.cpp" "$ROOT/user/basic/bascomp.cpp" "$ROOT/user/basic/basvm.cpp" "$ROOT/user/basic/basbax.cpp" \
     "$HERE/basic3d/render_host.cpp" -o "$BIN"
 "$BIN" "$HERE/basic3d/scene.bas" "$OUT"

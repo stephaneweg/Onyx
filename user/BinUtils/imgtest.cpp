@@ -7,7 +7,7 @@
 // libs are present (see ../bin/Makefile, IMG_DIR; recipe in ../img/README.md):
 //
 //     make -C user/img                                   # build the libs once
-//     make -C user/bin IMG_DIR=../img imgtest.elf
+//     make -C user/BinUtils IMG_DIR=../img imgtest.elf
 //
 #include <stdio.h>
 #include <stdlib.h>

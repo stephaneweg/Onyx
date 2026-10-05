@@ -1,6 +1,6 @@
 //
 // pc/Koton/winkapi.cpp -- the Onyx kernel's ABI table (kern/kapi_abi.h) on Windows, so that Koton (user/Apps/
-// koton), uikit, FreeType, Koton's plugins (user/Apps/kp_*) and its AI helper (user/bin/llm.cpp) build for
+// koton), uikit, FreeType, Koton's plugins (user/Apps/kp_*) and its AI helper (user/BinUtils/llm.cpp) build for
 // Windows from the Onyx sources, unchanged: the table is put where the apps look for it (KAPI_TABLE_VA)
 // before any constructor runs, and filled with Win32 equivalents of what those programs call.
 //

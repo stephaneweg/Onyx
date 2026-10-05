@@ -10,7 +10,7 @@ cd "$(dirname "$0")/../../.."
 K=user/Apps/koton
 OUT=${TMPDIR:-/tmp}/onyx_koton_plug
 mkdir -p "$OUT.o"
-SAN="-O1 -g -Wall -Wextra -Wno-maybe-uninitialized -fno-exceptions -fno-rtti -fsanitize=address,undefined -I $K -I user"
+SAN="-O1 -g -Wall -Wextra -Wno-maybe-uninitialized -fno-exceptions -fno-rtti -fsanitize=address,undefined -I $K -I user" -I user/Kits"
 # the plugins, each on its own with its test symbol; the engine, the synthesiser, the host's generator
 # helpers and the test
 OBJS=""; PIDS=""
@@ -33,7 +33,7 @@ A=${ARMGCC:-/opt/arm/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin}/aa
 if [ -x "$A" ]; then
 	for f in $K/plug/*.cpp; do
 		$A -mcpu=cortex-a72 -O2 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -ffunction-sections \
-			-fdata-sections -Wall -Wextra -Wno-maybe-uninitialized -I $K -I user -I kernel/include -c "$f" -o /dev/null
+			-fdata-sections -Wall -Wextra -Wno-maybe-uninitialized -I $K -I user -I user/Kits -I kernel/include -c "$f" -o /dev/null
 	done
 	echo "aarch64 compile check (plug/*.cpp): OK"
 fi

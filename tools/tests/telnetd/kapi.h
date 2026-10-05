@@ -1,7 +1,7 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors
 //
-// kapi.h -- the mock kapi of tools/tests/run_telnetd_test.sh: what user/bin/telnetd.c and
-// user/bin/shellend.h call, on the PC, in one thread and with a clock of its own (kapi_msleep moves
+// kapi.h -- the mock kapi of tools/tests/run_telnetd_test.sh: what user/BinUtils/telnetd.c and
+// user/BinUtils/shellend.h call, on the PC, in one thread and with a clock of its own (kapi_msleep moves
 // it, and gives the fake shell its turn). The pipes are the kernel's (8 KB, a blocking write
 // waits for the reader: here it fails the test -- nothing else runs); the "client" and the
 // "shell" are scripted by the test (telnetd_test.c).
