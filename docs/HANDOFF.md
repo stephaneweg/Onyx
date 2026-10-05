@@ -19,6 +19,16 @@ answer in French. The docs stay in English.
   `pc/OnyxBasic` know the modifiers and leave an INTERFACE block in the main module.
 - **Not done**: `PRIVATE`, interfaces extending interfaces, a cycle collector, `obj.Method` on an
   expression other than a call's result.
+- **Measured (2026-10-05)**, before phase B: `basic -p` (in the sources: `Host::prof`, `bas::Profile`;
+  the card's `/bin/basic` does not have it yet -- it goes out with the next build of BASIC) splits
+  the time into the VM's instructions, the runtime's primitives and the waits, written to
+  `SD:/basprof.txt` every 5 s and printed at the end; `tools/tests/basic/pi_prof.py <ip> calc`
+  uploads a runtime as `SD:/bin/basicp` and runs the benchmark `tools/tests/basic/bench/calc.bas`.
+  On the Pi 4: pure computing = 98 % in the VM, **35 ns per instruction** (40.8 M instructions in
+  1.44 s); Arkanoid runs about **50 000 instructions per second of play** (counted on the PC host,
+  `PROF=1 PROFVMS=<ms>`), i.e. 2 ms of VM per second: native code will not show there.
+  Careful on the Pi: another session uses it too, and `pkg` may be updating it (a staged system
+  update restarts it); `pi_apps.py` runs at import (do not import it).
 - **Next (phase B, asked by the user)**: a compiled, native AArch64 execution beside the VM --
   first measure the time spent in the VM against the runtime's primitives (IDEAS.md, *JIT pour la
   VM BASIC*), propose the strategy and the form of the deliverable to the user, then one demo,

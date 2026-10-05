@@ -66,6 +66,8 @@ struct ConsoleHost : bas::Host
 	// A virtual clock (advanced by the sleeps) and scripted keys (<prog>.keys: one key per
 	// 100 ms of that clock; "\1" + letter = an extended key: \1H up, \1; F1 ...).
 	double vms = 0; bool quietSleep = false;
+	double stopAt = 0;					// PROFVMS=n: the program is stopped after n ms of that clock
+	bool poll () override { return stopAt <= 0 || vms < stopAt; }
 	char keys[256] = ""; int nkeys = 0, kpos = 0;
 	int keyAt (char *o)
 	{
@@ -137,6 +139,7 @@ int main (int argc, char **argv)
 	}
 	if (!p) { printf ("COMPILE ERROR line %d: %s\n", e.line, e.msg); delete [] src; return 1; }
 	if (getenv ("PROF")) h.prof = &h.profile;
+	if (getenv ("PROFVMS")) { h.stopAt = atof (getenv ("PROFVMS")); h.quietSleep = true; }
 	int r = bas::run (p, h, &e);
 	if (h.prof) { char t[320]; h.profile.text (t, sizeof t); fprintf (stderr, "%s\n", t); }
 	if (r) printf ("RUNTIME ERROR line %d: %s\n", e.line, e.msg);
