@@ -565,6 +565,8 @@ public:
 	void SetUsbHeld (const unsigned char RawKeys[6]);
 	void SetInjectedHeld (int nKey, boolean bDown);
 	boolean KeyHeld (int nKey, CWindow *pWin);
+	boolean KeyHeldAny (int nKey);		// ... whoever has the keyboard (kern/wsrv.h: the server says who)
+	CWindow *KeyTarget (void);		// the window that has the keyboard, 0: none
 	boolean HasKeyFocus (CWindow *pWin);	// pWin has the keyboard (gamepads, ABI v50)
 
 	// Keyboard modifiers (MOD_*), from the USB keyboard's raw report or vncd.

@@ -2053,6 +2053,22 @@ boolean CWindowManager::KeyHeld (int nKey, CWindow *pWin)
 	return ((m_UsbHeld[nKey >> 5] | m_VncHeld[nKey >> 5]) >> (nKey & 31)) & 1 ? TRUE : FALSE;
 }
 
+boolean CWindowManager::KeyHeldAny (int nKey)
+{
+	if (nKey >= 'A' && nKey <= 'Z') nKey += 'a' - 'A';
+	if (nKey == '\n' || nKey == '\r') nKey = KEY_ENTER;
+	if (nKey <= 0 || nKey >= HELD_KEYS) return FALSE;
+	return ((m_UsbHeld[nKey >> 5] | m_VncHeld[nKey >> 5]) >> (nKey & 31)) & 1 ? TRUE : FALSE;
+}
+
+CWindow *CWindowManager::KeyTarget (void)
+{
+	m_SpinLock.Acquire ();
+	CWindow *pWin = KeyTargetLocked ();
+	m_SpinLock.Release ();
+	return pWin;
+}
+
 boolean CWindowManager::HasKeyFocus (CWindow *pWin)
 {
 	if (pWin == 0) return FALSE;

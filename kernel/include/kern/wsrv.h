@@ -47,6 +47,9 @@ boolean WsInputMods (unsigned nMods);			// MOD_*
 boolean WsInputHeldUsb (const unsigned char RawKeys[6]);	// the USB report's usage codes
 boolean WsInputHeld (int nKey, boolean bDown);		// an injected key down / up (logical code)
 
+// The process that has the keyboard, as the server says (KAPI_WS_FOCUS): kapi_key_held, the pads.
+unsigned WsFocusPid (void);
+
 // A process is gone (its teardown: interrupts masked, nothing may wait).
 void WsOnProcessGone (unsigned nPid);
 

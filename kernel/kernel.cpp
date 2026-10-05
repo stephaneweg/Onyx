@@ -1396,9 +1396,8 @@ private:
 		{
 			if (nMods != s_nWsMods) WsInputMods (nMods);
 			s_nWsMods = nMods;
-			WsInputHeldUsb (Keys);
-			pWM = 0;
-		}
+			WsInputHeldUsb (Keys);		// (the kernel's window manager keeps them too: it
+		}					// answers kapi_key_held / kapi_get_modifiers)
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
 		if (pWM != 0) pWM->SetUsbHeld (Keys);	// held keys (games, ABI v48)
 		static boolean s_bPrintHeld = FALSE;	// Print Screen: its press (not while it is held)

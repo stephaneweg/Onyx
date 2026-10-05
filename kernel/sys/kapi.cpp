@@ -2721,7 +2721,7 @@ unsigned kapi_get_modifiers (void)
 void kapi_inject_modifiers (unsigned nMods)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT))) return;
+	WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));	// (and kept here: kapi_get_modifiers)
 	if (pWM != 0) pWM->SetModifiers (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));
 }
 
@@ -2847,12 +2847,14 @@ int kapi_key_held (int nKey)
 	CWindowManager *pWM = CWindowManager::Get ();
 	CAddressSpace *pAS = CurrentAS ();
 	CWindow *pWin = pAS != 0 ? pAS->GetWindow () : 0;
+	if (WsDisplayOwned ())				// (the graphics server says who has the keyboard)
+		return pWM != 0 && pAS != 0 && WsFocusPid () == pAS->GetPid () && pWM->KeyHeldAny (nKey) ? 1 : 0;
 	return pWM != 0 && pWM->KeyHeld (nKey, pWin) ? 1 : 0;
 }
 void kapi_inject_key_held (int nKey, int bDown)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (WsInputHeld (nKey, bDown ? TRUE : FALSE)) return;
+	WsInputHeld (nKey, bDown ? TRUE : FALSE);		// (and kept here: kapi_key_held)
 	if (pWM != 0) pWM->SetInjectedHeld (nKey, bDown ? TRUE : FALSE);
 }
 
@@ -2872,6 +2874,7 @@ int kapi_pad_state (int nIndex, struct kapi_pad *pOut)
 	CWindowManager *pWM = CWindowManager::Get ();
 	CAddressSpace *pAS = CurrentAS ();
 	Pad.focus = pWM != 0 && pAS != 0 && pWM->HasKeyFocus (pAS->GetWindow ()) ? 1 : 0;
+	if (WsDisplayOwned ()) Pad.focus = pAS != 0 && WsFocusPid () == pAS->GetPid () ? 1 : 0;
 	return UserPut (pOut, Pad) ? 1 : 0;
 }
 

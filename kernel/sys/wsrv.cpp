@@ -42,6 +42,13 @@ static volatile unsigned s_nHead = 0, s_nTail = 0;	// written at head, read at t
 static volatile unsigned s_nDropped = 0;
 static CSpinLock s_RingLock;
 
+static volatile unsigned s_nFocusPid = 0;	// (KAPI_WS_FOCUS)
+
+unsigned WsFocusPid (void)
+{
+	return s_bOwned ? s_nFocusPid : 0;
+}
+
 static unsigned MyPid (void)
 {
 	CAddressSpace *pAS = (CAddressSpace *) CScheduler::Get ()->GetCurrentTask ()->GetUserData (TASK_USER_DATA_USER);
@@ -552,6 +559,20 @@ static long Reply (const struct kapi_ws_reply *pUser)
 	return -KAPI_EINVAL;				// (its caller is gone)
 }
 
+// A live process's name (its main task's), for the server's lists of the open programs.
+static long ProcName (unsigned nPid, char *pUser, unsigned nCap)
+{
+	CAddressSpace *pAS = IpcFindAS (nPid);
+	if (pAS == 0 || pAS->GetMainTask () == 0 || nCap == 0) return -KAPI_ESRCH;
+	const char *pName = pAS->GetMainTask ()->GetName ();
+	unsigned n = strlen (pName);
+	if (n >= nCap) n = nCap - 1;
+	char Buf[64];
+	if (n >= sizeof Buf) n = sizeof Buf - 1;
+	memcpy (Buf, pName, n); Buf[n] = '\0';
+	return UserCopyOut (pUser, Buf, n + 1) ? (long) n : -KAPI_EFAULT;
+}
+
 // A program's pixels changed: an event for the server (one waiting already is enough).
 static long Kick (void)
 {
@@ -608,7 +629,6 @@ void WsOnProcessGone (unsigned nPid)
 
 extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 {
-	(void) a2;
 	if (nOp == KAPI_WS_ACTIVE) return s_bOwned ? (long) s_nServerPid : 0;
 	if (nOp == KAPI_WS_REGISTER) return Register ();
 	if (nOp == KAPI_WS_CALL) return Call ((struct kapi_ws_call *) a0);
@@ -628,6 +648,8 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	case KAPI_WS_BUF_FREE:	return BufFree ((unsigned) a0);
 	case KAPI_WS_NEXT:	return Next ((struct kapi_ws_req *) a0);
 	case KAPI_WS_REPLY:	return Reply ((const struct kapi_ws_reply *) a0);
+	case KAPI_WS_FOCUS:	s_nFocusPid = (unsigned) a0; return 0;
+	case KAPI_WS_PROC_NAME:	return ProcName ((unsigned) a0, (char *) a1, (unsigned) a2);
 	}
 	return -KAPI_ENOSYS;
 }

@@ -71,4 +71,56 @@ struct el_frame
 // The caller's window moved: a = x, y (the frame's top left) -> 1.
 #define EL_OP_MOVE		4
 
+// The caller's window's client size, within the canvas it has (kapi_resize_window): a = w, h -> 1.
+#define EL_OP_RESIZE		5
+// ... its canvas (and frame) growing when needed (kapi_resize_window2): a = w, h; out: int, the
+// canvas's row in pixels -> 1, 0 refused. The pixels are at the same addresses, new memory.
+#define EL_OP_GROW		6
+#define EL_OP_ALPHA		7	// a[0] = 0..255 (kapi_set_window_alpha) -> 1
+#define EL_OP_RESIZABLE		8	// a = on, min w, min h (kapi_win_resizable) -> 0, -1
+#define EL_OP_GEOMETRY		9	// out: struct kapi_win_geom (kapi_win_geometry) -> 0
+#define EL_OP_CURSOR		10	// a[0] = KAPI_CURSOR_* (kapi_set_cursor) -> the shape before, -1
+
+// The menus (the menu bar is a program): the caller's (a[0] = its handler, in: the spec's text) -> 1;
+// the active window's (out: struct el_menu) -> its serial; a command to it (a[0] = id) -> 1, 0.
+#define EL_OP_MENU_SET		11
+#define EL_OP_MENU_GET		12
+#define EL_OP_MENU_COMMAND	13
+struct el_menu
+{
+	unsigned serial;
+	char	 title[64];
+	char	 spec[2048];			// (WIN_MENU_MAX; sent up to its end)
+};
+
+// The windows, for the dock, the remote desktop... (kapi_win_*): a[0] = how many at most, out:
+// struct kapi_win_info[] -> how many; a[0] = a window's id (0: the caller's, where the call has it).
+#define EL_OP_WIN_LIST		14
+#define EL_OP_WIN_RAISE		15
+#define EL_OP_WIN_CLOSE		16
+#define EL_OP_WIN_MINIMISE	17
+#define EL_OP_WIN_DESK		18	// a = id, desk (kapi_win_desk)
+#define EL_OP_DESK		19	// a = set, count (kapi_desk)
+#define EL_OP_WHEEL		20	// a[0] = lines a notch, -1: asked -> the lines a notch
+
+// The open programs by their names (kapi_list_windows: out, one a line -> how many; kapi_raise_app,
+// kapi_toggle_app's closing half: in, the name -> 1 done, 0 no such program).
+#define EL_OP_APP_LIST		21
+#define EL_OP_APP_RAISE		22
+#define EL_OP_APP_CLOSE		23
+
+// Drag and drop: begun by the caller (in: struct el_drag + the payload) -> 1, 0; the payload of the
+// drag going on or just dropped (out: struct el_drag + the payload) -> its length.
+#define EL_OP_DRAG_BEGIN	24
+#define EL_OP_DRAG_DATA		25
+struct el_drag
+{
+	int	 type;
+	char	 label[48];
+};
+#define EL_DRAG_MAX		(KAPI_WS_DATA_MAX - sizeof (struct el_drag))
+
+#define EL_OP_WALLPAPER_GEN	26	// a = base colour, points, seed (kapi_wallpaper_generate) -> 1
+#define EL_OP_POINTER		27	// out: int x, y from the caller's client area (kapi_cursor_pos) -> 1
+
 #endif

@@ -967,6 +967,9 @@ struct kapi_sound_client
 #define KAPI_WS_CALL		13	// (struct kapi_ws_call *) -> the server's status (>= 0, or its
 					// own negative codes); -KAPI_ESRCH: no server owns the display
 #define KAPI_WS_KICK		14	// () -> 0: the server told this program's pixels changed
+#define KAPI_WS_FOCUS		15	// (pid, 0: none) -> 0: the program that has the keyboard (kapi_key_held,
+					// a pad's focus answer by it)
+#define KAPI_WS_PROC_NAME	16	// (pid, char *out, cap) -> its length: a live process's name
 #define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,

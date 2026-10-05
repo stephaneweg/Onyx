@@ -53,58 +53,20 @@ void el_shared_free (void *p)
 
 static struct kapi_ws_req s_Req;		// (4 KB: not on the stack)
 static unsigned char s_Out[KAPI_WS_DATA_MAX];
-static int s_bExitAsked[EL_WINDOWS_MAX];	// a window's program was told to end
+static unsigned s_nExitAsked[EL_WINDOWS_MAX];	// the program (its pid) a closed window's exit was asked of
 
+static unsigned s_nFocus = 0xFFFFFFFFu;
 static unsigned s_nIn, s_nReq, s_nPosted, s_nFrames, s_nStatAt;	// (stats)
 
-static long op_create (void)
+int el_sys_attach (unsigned pid)
 {
-	if (el_core_window_of (s_Req.pid) >= 0) return 1;		// (one window a program, as before)
-	if (s_Req.in_len < sizeof (struct el_create)) return 0;
-	struct el_create *c = (struct el_create *) s_Req.data;
-	c->title[sizeof c->title - 1] = 0;
-	if (kws_attach (s_Req.pid) != 0) return 0;
-	int x = (int) s_Req.a[0], y = (int) s_Req.a[1];
-	if (x < 0 || y < 0)						// placed here: a cascade
-	{
-		static int s_nPlaced = 0;
-		x = 140 + 36 * (s_nPlaced % 8); y = 110 + 30 * (s_nPlaced % 8);
-		s_nPlaced++;
-	}
-	el_core_owner (s_Req.pid);
-	int id = el_core_window_add (x, y, (int) s_Req.a[2], (int) s_Req.a[3],
-				     c->title, c->flags, s_Req.pid);
-	el_core_owner (0);
-	if (id < 0) return 0;
-	s_bExitAsked[id] = 0;
-	return 1;
+	return kws_attach (pid) == 0;
 }
 
-// One request answered -> the answer's status; *out_len bytes of s_Out go with it.
-static long serve_request (unsigned *out_len)
+int el_sys_name (unsigned pid, char *buf, unsigned cap)
 {
-	*out_len = 0;
-	if (s_Req.op == EL_OP_CREATE) return op_create ();
-	int id = el_core_window_of (s_Req.pid);
-	if (id < 0) return EL_E_NOWINDOW;
-	switch (s_Req.op)
-	{
-	case EL_OP_FRAME:
-		{
-			struct el_core_frame f;
-			if (!el_core_window_frame_info (id, &f)) return 0;
-			kapi_memcpy (s_Out, &f, sizeof f);		// (struct el_frame: the same fields)
-			*out_len = sizeof (struct el_frame);
-			return 1;
-		}
-	case EL_OP_HANDLER:
-		el_core_window_handler (id, (int) s_Req.a[0], (unsigned long long) s_Req.a[1]);
-		return 1;
-	case EL_OP_MOVE:
-		el_core_window_move (id, (int) s_Req.a[0], (int) s_Req.a[1]);
-		return 1;
-	}
-	return EL_E_BADOP;
+	long n = kapi_ws_ctl (KAPI_WS_PROC_NAME, (long) pid, (long) buf, (long) cap);
+	return n > 0 ? (int) n : 0;
 }
 
 // The events the window manager queued for the programs' windows -> the programs' queues; a
@@ -126,10 +88,10 @@ static void forward_events (unsigned self)
 			if (r == 1) s_nPosted++;
 			el_core_window_event_drop (id);			// (queued, or the program is gone)
 		}
-		if (el_core_window_closing (id) && !s_bExitAsked[id])
+		if (el_core_window_closing (id) && s_nExitAsked[id] != pid)
 		{
 			kws_exit (pid);
-			s_bExitAsked[id] = 1;
+			s_nExitAsked[id] = pid;
 		}
 	}
 }
@@ -227,13 +189,15 @@ int el_serve (int demo)
 		while (kws_next (&s_Req) == 1)
 		{
 			unsigned len = 0;
-			long st = serve_request (&len);
+			long st = el_op (s_Req.pid, s_Req.op, s_Req.a, s_Req.data, s_Req.in_len, s_Out, &len);
 			s_nReq++;
 			kws_reply (s_Req.id, st, s_Out, len);
 		}
 
 		if (demo) nDemo -= el_demo_closed (self);
 		forward_events (self);
+		unsigned focus = el_core_focus_pid ();			// (kapi_key_held, the pads: who has the keys)
+		if (focus != s_nFocus) { s_nFocus = focus; kapi_ws_ctl (KAPI_WS_FOCUS, (long) focus, 0, 0); }
 
 		int k = el_core_compose (screen, w, h, rects);
 		if (k < 0) present (screen, w, 0, 0, 0, 0);

@@ -71,6 +71,17 @@ struct el_core_event				// an event for the window's program (the kernel's struc
 int el_core_window_event_peek (int id, struct el_core_event *out);	// the next one, left queued -> 1, 0 none
 void el_core_window_event_drop (int id);				// ... taken
 
+// A program's request (appkit/elegant.h) -> its status; *out_len bytes of out (KAPI_WS_DATA_MAX of
+// room) go with it. (ops.cpp)
+long el_op (unsigned pid, int op, const long *a, const unsigned char *in, unsigned in_len,
+	    unsigned char *out, unsigned *out_len);
+unsigned el_core_focus_pid (void);		// the program that has the keyboard, 0: none
+
+// What the requests need from the kernel (server.cpp): pid's windows become the server's -> 1;
+// a live process's name -> its length (0: none).
+int el_sys_attach (unsigned pid);
+int el_sys_name (unsigned pid, char *buf, unsigned cap);
+
 // The keyboard's cooked string (characters, VT100 escapes), to the window that has the keys.
 void el_core_key (const char *keys);
 void el_core_modifiers (unsigned mods);

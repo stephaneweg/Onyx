@@ -297,7 +297,7 @@ lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 # table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
 # state, no library runtime (so no strlen / memset of GCC's own making in it: -fno-tree-loop-distribute-patterns); built with the FPU on (some calls take floats: they pass through).
 APPKIT_TABLE_VA = 0x380008000
-lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit.h Runtime/lib.h ../kernel/include/kern/kapi_abi.h
+lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit_ws.inc Kits/appkit/elegant.h Kits/appkit/appkit.h Runtime/lib.h ../kernel/include/kern/kapi_abi.h
 	@mkdir -p lib/appkit
 	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -fno-tree-loop-distribute-patterns -fno-builtin -c $< -o $@
 Kits/appkit/appkit.abi:
