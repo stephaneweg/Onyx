@@ -17,6 +17,7 @@
 #                  `FT_Load_Glyph` or `uikit::Widget::invalidate` as before; the linker binds the call
 #                  to the stub. Stubs are weak: a program's own definition of a name wins, as it won
 #                  over a static library's member.
+#   --bind-c       the program side for a C program (lib/<name>.imp_c.a): see below, "the same for a C program".
 #   --bind         the program side: a constructor (priority 101: before the program's own) that
 #                  opens the library and sets the pointer the stubs go through (user/Runtime/lib.h lib_bind).
 #
@@ -60,6 +61,7 @@ ap.add_argument ("--fixed-table", default = None, help = "the stubs read their e
 ap.add_argument ("--table")
 ap.add_argument ("--stubs")
 ap.add_argument ("--bind")
+ap.add_argument ("--bind-c", default = None, help = "the same for a C program (no C++ runtime): the library gets malloc / free (newlib: -DONYX_BIND_LIBC) or umm.h's")
 ap.add_argument ("objs", nargs = "+")
 a = ap.parse_args ()
 
@@ -265,3 +267,37 @@ __attribute__ ((constructor (101))) static void %(name)s_bind (void)
 		"extern \"C\" { extern void *const %s[]; extern const unsigned %s_count; }\n" % (a.data, a.data),
 	"imports": "lib_cxx_imports ()" if a.data is None else "lib_cxx_imports_data (%s, %s_count)" % (a.data, a.data) }
 if a.bind: write (a.bind, b)
+
+# ---- the same for a C program: no operator new to hand over -- newlib's malloc / free when the program
+# has them (compiled with -DONYX_BIND_LIBC), else a heap of this object's own (umm.h over kapi_sbrk: what
+# the library allocates for this program; the program's own allocations, if any, are beside it).
+bc = """// %(name)s_bind_c.c -- %(gen)s.
+// The C program's side of SD:/lib/%(name)s.so (the C++ one: %(name)s_bind.cpp): opens the library before
+// main (a constructor: crt0 runs .init_array for C programs too) and sets the pointer the import stubs
+// go through. Built against version %(version)d of the table: an older library is refused (lib_bind).
+#include "appkit/appkit.h"
+#include "lib.h"
+
+const void *%(var)s;
+
+#ifdef ONYX_BIND_LIBC
+#include <stdlib.h>
+static void *%(name)s_alloc (lib_size_t n) { return malloc (n); }
+static void  %(name)s_free (void *p) { free (p); }
+#else
+#include "umm.h"
+static void *%(name)s_alloc (lib_size_t n) { return umm_malloc (n); }
+static void  %(name)s_free (void *p) { umm_free (p); }
+#endif
+
+__attribute__ ((constructor (101))) static void %(name)s_bind (void)
+{
+	static struct TLibImports imp;
+	imp.size = sizeof (struct TLibImports); imp.ndata = 0;
+	imp.alloc = %(name)s_alloc; imp.free = %(name)s_free; imp.data = 0;
+	if (%(var)s == 0) %(var)s = lib_bind ("%(name)s", %(version)d, &imp);
+}
+""" % { "name": a.name, "gen": GEN, "version": version, "var": var }
+if a.bind_c:
+	if a.data is not None: sys.exit ("libgen: --bind-c with --data: a library that shares variables with the program is for C++ programs")
+	write (a.bind_c, bc)

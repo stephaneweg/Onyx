@@ -10,7 +10,7 @@ CC      = $(PREFIX)gcc
 CXX     = $(PREFIX)g++
 
 CFLAGS  = -ffreestanding -nostdlib -fno-pic -fno-pie -mgeneral-regs-only \
-	  -O2 -Wall -Wextra -fno-stack-protector -DSK_INLINE -DNK_INLINE -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
+	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 # Freestanding C++ console tools (e.g. httpget on the reusable HttpClient, ../Kits/netkit/http.hpp).
 # Same integer-only base as CFLAGS; no exceptions/RTTI/STL (none needed).
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
@@ -20,14 +20,14 @@ CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-
 # enabled at EL0 (CPACR_EL1). Opt a tool in via a target-specific CFLAGS override
 # below; everything else stays integer-only.
 CFLAGS_FP = -ffreestanding -nostdlib -fno-pic -fno-pie -mcpu=cortex-a72 \
-	  -O2 -Wall -Wextra -fno-stack-protector -DSK_INLINE -DNK_INLINE -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
+	  -O2 -Wall -Wextra -fno-stack-protector -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 # newlib (libc + libm) variant: NOT freestanding/-nostdlib -- we want the real
 # <stdio.h>/<stdlib.h>/<string.h>/<math.h> from the toolchain's newlib. -nostartfiles
 # keeps OUR entry (crt0libc.S, which calls exit() so stdio is flushed). FP is on. The
 # kapi syscall layer (../Runtime/libc/onyx_syscalls.c) maps newlib's _sbrk/_read/_write/... to
 # kapi; malloc owns the per-process heap, so do NOT also link umm.h here.
 CFLAGS_LIBC = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
-	  -nostartfiles -DSK_INLINE -DNK_INLINE -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
+	  -nostartfiles -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 # C++ newlib variant (for TLS apps: mbedTLS is C, the app + http.hpp are C++).
 CXXFLAGS_LIBC = $(CFLAGS_LIBC) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LIBC_SRC  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c
@@ -128,7 +128,7 @@ ipp.elf: ../Kits/printerkit/ipp.h ../Kits/printerkit/ippnet.h ../Kits/imagekit/i
 POSIX_DIR    = ../Runtime/libc/posix
 CFLAGS_POSIX = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -fno-pie \
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
-	       -DSK_INLINE -DNK_INLINE -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
+	       -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 LDFLAGS_POSIX = -specs=$(POSIX_DIR)/build/onyx.specs
 POSIX_PROGS  = posixtest.elf ipctest.elf tcpbench.elf
 POSIX_CXX_PROGS = posixtest-cxx.elf
@@ -147,8 +147,16 @@ all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
 
+# The tools that call a kit: its import archive on their link line. A C tool takes the C one
+# (lib/<kit>.imp_c.a: tools/libgen --bind-c -- the library opened before main, as in a C++ program).
+volume.elf preload.elf notifytest.elf: KITLIBS = ../lib/systemkit.imp_c.a
+volume.elf preload.elf notifytest.elf: ../lib/systemkit.imp_c.a
+ftp.elf wget.elf: KITLIBS = ../lib/netkit.imp_c.a
+ftp.elf wget.elf: ../lib/netkit.imp_c.a
+ftpfs.elf: KITLIBS = ../lib/netkit.imp.a
+ftpfs.elf: ../lib/netkit.imp.a
 %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h
-	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< $(KITLIBS) -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
 # pulled automatically since this is not -nostdlib).
@@ -171,7 +179,7 @@ ONYX_TC_GXX := $(firstword $(shell command -v $(ONYX_TC_PREFIX)g++ 2>/dev/null) 
 		$(wildcard /opt/toolchains/aarch64-onyx-elf-14.2/bin/$(ONYX_TC_PREFIX)g++))
 CXXFLAGS_POSIX_TC = -std=gnu++20 -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-pic -fno-pie \
 	       -ffunction-sections -fdata-sections -isystem $(POSIX_DIR)/include -DFD_SETSIZE=1024 \
-	       -DSK_INLINE -DNK_INLINE -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
+	       -I.. -I../Kits -I../Runtime -I../Include -I../Libs -I../Emulators -I../Ports -I../../kernel/include
 LDFLAGS_POSIX_TC = -specs=$(POSIX_DIR)/build-onyx/onyx.specs
 ifneq ($(ONYX_TC_GXX),)
 .PHONY: posixlib-onyx
@@ -235,7 +243,7 @@ ifneq ($(strip $(MBEDTLS_DIR)),)
 $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../Kits/netkit/http.hpp ../Libs/tls/onyx_tls.hpp
 	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
 	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o
-	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) $*.crt0.o $*.sys.o $< \
+	$(CXX) $(CXXFLAGS_LIBC) -I$(MBEDTLS_DIR)/include $(LDFLAGS) $*.crt0.o $*.sys.o $< $(KITLIBS) \
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o
 # pkg (the packages, docs/pkg/README.md): HTTPS + the Archiver's ZIP engine + zlib

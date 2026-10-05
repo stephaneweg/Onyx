@@ -12,7 +12,7 @@
 //
 #include "appkit/appkit.h"
 #include "filekit/fsutil.h"
-#include "dockconf.h"
+#include "systemkit/dockconf.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

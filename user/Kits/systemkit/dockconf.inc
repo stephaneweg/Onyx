@@ -1,40 +1,22 @@
 //
-// dockconf.h -- the dock's settings (SD:/etc/dock.ini), shared by the dock (apps/dock) and the
-// Control Panel's Panel applet (apps/dockconf), which writes them and tells the dock to read them
-// again (IPC service "dock", DOCK_MSG_RELOAD). The file, one setting a line:
+// dockconf.inc -- the code of dockconf.h (SystemKit: compiled into systemkit.so; a PC build has it inline).
 //
-//     drawer   = Productivity, tinypad    a drawer: the apps' group (the "category" of their
-//                                         app.txt) and its main app (its icon is the drawer's; a
-//                                         click on it starts the app, the strip above opens the
-//                                         drawer). In this order, left to right.
-//     launcher = terminal                 a quick launcher after the drawers (a click starts it,
-//                                         or brings it back)
-//     desk     = Main                     a workspace (virtual desktop) and its name: 1 to
-//                                         DOCK_MAXDESKS of them
+// MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
+// granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+// sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions: The above copyright notice and this permission notice shall
+// be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS
+// IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
-#ifndef _dockconf_h
-#define _dockconf_h
-
-#include "appkit/appkit.h"
-
-#define DOCK_INI		"SD:/etc/dock.ini"
-#define DOCK_SERVICE		"dock"
-#define DOCK_MSG_RELOAD		1		// (no payload) read dock.ini and theme.txt again
-#define DOCK_MAXDRAWERS		8
-#define DOCK_MAXLAUNCHERS	6
-#define DOCK_MAXDESKS		6
-
-struct DockDrawer { char cat[24]; char app[32]; };
-struct DockConf
-{
-	DockDrawer drawer[DOCK_MAXDRAWERS]; int ndrawers;
-	char launcher[DOCK_MAXLAUNCHERS][32]; int nlaunchers;
-	char desk[DOCK_MAXDESKS][24]; int ndesks;
-};
-
-static inline void dc_copy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
-
-static inline void dockconf_defaults (DockConf &c)
+#ifdef SK_IMPL
+#define SK_FN	extern "C"
+#else
+#define SK_FN	static inline
+#endif
+SK_FN void dc_copy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
+SK_FN void dockconf_defaults (DockConf &c)
 {
 	static const char *const D[5][2] = { { "Productivity", "tinypad" }, { "Internet", "jet" },
 		{ "Graphics", "paint" }, { "Games", "gamelib" }, { "Demos", "widgets" } };
@@ -45,9 +27,7 @@ static inline void dockconf_defaults (DockConf &c)
 	c.ndesks = 4;
 	for (int i = 0; i < 4; i++) { c.desk[i][0] = (char) ('1' + i); c.desk[i][1] = 0; }
 }
-
-// A value's two parts: "Productivity, tinypad" -> "Productivity" and "tinypad".
-static inline void dc_split (const char *v, char *a, int acap, char *b, int bcap)
+SK_FN void dc_split (const char *v, char *a, int acap, char *b, int bcap)
 {
 	int i = 0, n = 0;
 	while (v[i] && v[i] != ',' && n < acap - 1) a[n++] = v[i++];
@@ -61,9 +41,7 @@ static inline void dc_split (const char *v, char *a, int acap, char *b, int bcap
 	while (n > 0 && b[n - 1] == ' ') n--;
 	b[n] = 0;
 }
-
-// -> false: no file (the defaults)
-static inline bool dockconf_load (DockConf &c)
+SK_FN bool dockconf_load (DockConf &c)
 {
 	dockconf_defaults (c);
 	void *f = kapi_open (DOCK_INI);
@@ -101,10 +79,8 @@ static inline bool dockconf_load (DockConf &c)
 	if (nk > 0) c.ndesks = nk;
 	return true;
 }
-
-static inline int dc_put (char *o, int p, int cap, const char *s) { while (s && *s && p < cap - 1) o[p++] = *s++; o[p] = 0; return p; }
-
-static inline bool dockconf_save (const DockConf &c)
+SK_FN int dc_put (char *o, int p, int cap, const char *s) { while (s && *s && p < cap - 1) o[p++] = *s++; o[p] = 0; return p; }
+SK_FN bool dockconf_save (const DockConf &c)
 {
 	static char o[4096];
 	int p = 0;
@@ -122,12 +98,7 @@ static inline bool dockconf_save (const DockConf &c)
 	for (int i = 0; i < c.ndesks; i++) { p = dc_put (o, p, sizeof o, "desk = "); p = dc_put (o, p, sizeof o, c.desk[i]); p = dc_put (o, p, sizeof o, "\n"); }
 	return kapi_save_file (DOCK_INI, o, (unsigned) p) >= 0;
 }
-
-// The dock takes its settings (and the theme) again: it is started again -- a dock that only read
-// dock.ini again (DOCK_MSG_RELOAD) showed a new drawer or launcher but did not always act on it
-// (a click started nothing, a new group was not seen); a new one has them all. Nothing when no
-// dock runs (the user may have taken it out of etc/autostart).
-static inline int dock_running (void)
+SK_FN int dock_running (void)
 {
 	static char t[4096];
 	kapi_list_tasks (t, sizeof t);
@@ -139,11 +110,11 @@ static inline int dock_running (void)
 	}
 	return 0;
 }
-static inline void dock_reload (void)
+SK_FN void dock_reload (void)
 {
 	if (!kapi_kill ("dock")) return;
 	for (int i = 0; i < 30 && dock_running (); i++) kapi_msleep (50);	// (gone, its service too)
 	kapi_launch ("dock");
 }
 
-#endif
+#undef SK_FN

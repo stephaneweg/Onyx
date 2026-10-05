@@ -45,7 +45,7 @@ LibreOffice headless). Screenshots
 >   `onyxpp.hpp`, `libc/` = newlib's glue and the POSIX library);
 > - **`Libs/`** the libraries linked into the programs (av, img, zlib, tls, v3d, gpucomp, pdf, mail, pkg, basic, demo);
 > - **`Emulators/`** the emulators' cores (gb, gba, nes, snes, n64, gc, `emucore.h`); **`Ports/`** doom, stk;
-> - **`Include/`** the small headers several programs share (`gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`, `docguard.h`...);
+> - **`Include/`** the few headers several programs share that no kit has yet (`gamepad.h`, `json.hpp`, `lineedit.h`, `docguard.h`);
 >   **`Apps/games/`** what the games share (`game.h`, `cards.h`); Koton's plugin headers are in `Apps/koton/plug`.
 > - In the kits since 2026-10-05 (docs/03 §5.9.0): **AppKit** = what makes a program run (the kernel's calls, strings,
 >   console, `.ini`, program starting `lx_*`); **SystemKit** (`user/Kits/systemkit`, `systemkit.so`) = what a program
@@ -58,6 +58,20 @@ LibreOffice headless). Screenshots
 > include path: a source writes `#include "appkit/appkit.h"`, `"uikit/uikit.h"`, `"umm.h"`, `"gamepad.h"`,
 > `"tls/onyx_tls.hpp"`, `"gb/gb.h"`... whatever its own folder. A header used by one program is beside that
 > program; a header holds declarations as far as possible (the user). The build's outputs: `user/lib/`.
+
+## RULE — kits first (the user, 2026-10-05)
+
+One **kit per domain** instead of many loose headers and libraries, and no tight coupling to the kernel:
+**AppKit** (what makes a program run: the kernel's calls, strings, console, `.ini`, starting programs), **UIKit**
+(the interface, the icons), **SystemKit** (talking to the system and the other programs), **NetKit** (the network),
+**FileKit** (files, archives), **ImageKit** (pictures), **AudioKit** (sound), **FontKit** (fonts), **PrinterKit**
+(printing); DocumentKit to come.
+
+- **Reusable code goes into the adequate kit** — not a new shared header, not a copy in an app. No kit fits:
+  create one (a header that declares, the code in the library, an append-only `.abi`, a package).
+- **Programs draw on the kits as much as they can**, and never reach the kernel themselves (only AppKit does).
+- What one program alone uses stays beside that program.
+- A C program links a kit through `lib/<kit>.imp_c.a` (libgen `--bind-c`), a C++ one through `lib/<kit>.imp.a`.
 
 ## RULE — keep the documentation up to date automatically
 

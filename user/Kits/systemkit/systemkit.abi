@@ -51,3 +51,11 @@
 45 wp_put_colour
 46 wp_save
 47 wp_tint
+48 dc_copy
+49 dc_put
+50 dc_split
+51 dock_reload
+52 dock_running
+53 dockconf_defaults
+54 dockconf_load
+55 dockconf_save

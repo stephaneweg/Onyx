@@ -1037,7 +1037,7 @@ program says to the system and to the other programs; **NetKit** is the network;
 | `user/launch.h` | `appkit/appkit.h` (`lx_*`) | AppKit |
 | `user/notify.h` | `systemkit/notify.h` (`notify`, `notify_action`) | SystemKit |
 | `user/clipboard.h`, `user/clipproto.h` | `systemkit/clipboard.h`, `systemkit/clipproto.h` (`clip_*`) | SystemKit (UIKit's text fields open it when they first copy or paste) |
-| `user/wallpaper.h`, `volume.h`, `trash.h`, `preloadini.h`, `fileassoc.h`, `applet_proto.h` | `systemkit/<the same name>` (`wp_*`, `volume_*`, `mixer_set`, `trash_*`, `preload_ini_*`, `fa_*`) | SystemKit |
+| `user/wallpaper.h`, `volume.h`, `trash.h`, `preloadini.h`, `fileassoc.h`, `dockconf.h`, `applet_proto.h` | `systemkit/<the same name>` (`wp_*`, `volume_*`, `mixer_set`, `trash_*`, `preload_ini_*`, `fa_*`, `dock_*`) | SystemKit |
 | `user/ftpfs.h`, `user/httpc.h`, `user/http.hpp` | `netkit/ftpfs.h`, `netkit/httpc.h` (`ftpfs_*`, `http_get` / `http_post` / `http_request`), `netkit/http.hpp` | NetKit — `http.hpp` (the HTTP/1.1 class, its TLS transport) is still a header with its code |
 | `user/bmp.hpp` | `uikit/bmp.h`: `ui::icon_load` (and the old name `ui::bmp_decode`) | UIKit, **through ImageKit**: an icon may be any picture ImageKit reads |
 | `user/fsutil.h` | `filekit/fsutil.h` (`fs_*`) | FileKit |
@@ -1048,9 +1048,14 @@ program says to the system and to the other programs; **NetKit** is the network;
 (`SK_API int notify (...)`), `x.inc` beside it has the code, and the kit's one source (`systemkit.cpp`)
 compiles every `.inc` into `SD:/lib/systemkit.so`, exported by name. A program links
 `lib/systemkit.imp.a` / `lib/netkit.imp.a` / `lib/filekit.imp.a` (the apps' rules of `user/Makefile` do).
-Where there is no shared library or no C++ runtime to bind one, the code comes inline with the header
-— `-DSK_INLINE` / `-DNK_INLINE` / `-DFS_INLINE`, or any PC build: the console tools of `user/BinUtils`
-(C programs) and Doom's C glue are built that way.
+**A C program links a kit too**: `tools/libgen` writes, beside the C++ bind, a C one (`--bind-c`:
+`lib/<kit>_bind_c.c`, the archive `lib/<kit>.imp_c.a`) — the same constructor run before `main`, the
+library given `umm.h`'s allocator (a heap of that object's own), or newlib's `malloc` / `free` when the
+bind is compiled with `-DONYX_BIND_LIBC`. The console tools do it (`user/BinUtils/Makefile`:
+`volume.elf preload.elf notifytest.elf: KITLIBS = ../lib/systemkit.imp_c.a`, `ftp` and `wget` with
+NetKit's); the header a C program includes must be C (SystemKit's and NetKit's are, but the clipboard;
+`filekit/fsutil.h` is C++). Where there is no shared library at all — a PC build — the code comes
+inline with the header (also on request: `-DSK_INLINE` / `-DNK_INLINE` / `-DFS_INLINE`).
 
 Still to come: `docguard.h` in the future DocumentKit; `http.hpp`'s class inside NetKit.
 

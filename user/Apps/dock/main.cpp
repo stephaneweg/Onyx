@@ -31,7 +31,7 @@
 #include "filekit/fsutil.h"
 #include "systemkit/fileassoc.h"
 #include "systemkit/trash.h"
-#include "dockconf.h"
+#include "systemkit/dockconf.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

@@ -88,6 +88,9 @@ lib/%_table.o: lib/%_table.S
 	$(CC) -c $< -o $@
 lib/%_stubs.o: lib/%_stubs.S
 	$(CC) -c $< -o $@
+# (a C program's bind -- libgen --bind-c: lib/<name>.imp_c.a; the library's allocator is umm.h's, in this object)
+lib/%_bind_c.o: lib/%_bind_c.c Runtime/lib.h Runtime/umm.h Kits/appkit/appkit.h
+	$(CC) $(CFLAGS) -I. -c $< -o $@
 lib/%_bind.o: lib/%_bind.cpp Runtime/lib.h Kits/appkit/appkit.h
 	$(CXX) $(IMP_CXXFLAGS) -c $< -o $@
 lib/fontkit.imp.a: lib/fontkit_stubs.o lib/fontkit_bind.o
@@ -317,11 +320,14 @@ Kits/systemkit/systemkit.abi:
 	@touch $@
 lib/systemkit_table.S: lib/sk/systemkit.o Kits/systemkit/systemkit.abi ../tools/libgen/libgen.py
 	$(LIBGEN) --name systemkit --abi Kits/systemkit/systemkit.abi --init sk_lib_init --allow-data . --exclude '^(sk_lib_init|onyx_)' \
-		--table lib/systemkit_table.S --stubs lib/systemkit_stubs.S --bind lib/systemkit_bind.cpp lib/sk/systemkit.o
-lib/systemkit_stubs.S lib/systemkit_bind.cpp: lib/systemkit_table.S ;
+		--table lib/systemkit_table.S --stubs lib/systemkit_stubs.S --bind lib/systemkit_bind.cpp --bind-c lib/systemkit_bind_c.c lib/sk/systemkit.o
+lib/systemkit_stubs.S lib/systemkit_bind.cpp lib/systemkit_bind_c.c: lib/systemkit_table.S ;
 lib/systemkit.so: lib/sk/systemkit.o lib/systemkit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
 lib/systemkit.imp.a: lib/systemkit_stubs.o lib/systemkit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+lib/systemkit.imp_c.a: lib/systemkit_stubs.o lib/systemkit_bind_c.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
@@ -335,17 +341,20 @@ Kits/netkit/netkit.abi:
 	@touch $@
 lib/netkit_table.S: lib/nk/netkit.o Kits/netkit/netkit.abi ../tools/libgen/libgen.py
 	$(LIBGEN) --name netkit --abi Kits/netkit/netkit.abi --init nk_lib_init --allow-data . --exclude '^(nk_lib_init|onyx_)' \
-		--table lib/netkit_table.S --stubs lib/netkit_stubs.S --bind lib/netkit_bind.cpp lib/nk/netkit.o
-lib/netkit_stubs.S lib/netkit_bind.cpp: lib/netkit_table.S ;
+		--table lib/netkit_table.S --stubs lib/netkit_stubs.S --bind lib/netkit_bind.cpp --bind-c lib/netkit_bind_c.c lib/nk/netkit.o
+lib/netkit_stubs.S lib/netkit_bind.cpp lib/netkit_bind_c.c: lib/netkit_table.S ;
 lib/netkit.so: lib/nk/netkit.o lib/netkit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
 lib/netkit.imp.a: lib/netkit_stubs.o lib/netkit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
+lib/netkit.imp_c.a: lib/netkit_stubs.o lib/netkit_bind_c.o
+	@rm -f $@
+	$(AR) rcs $@ $^
 
 SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a
+libs: $(SHLIBS) lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a
 
 # Doom (Ports/doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
