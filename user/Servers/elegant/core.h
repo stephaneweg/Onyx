@@ -75,6 +75,7 @@ void el_core_window_event_drop (int id);				// ... taken
 // room) go with it. (ops.cpp)
 long el_op (unsigned pid, int op, const long *a, const unsigned char *in, unsigned in_len,
 	    unsigned char *out, unsigned *out_len);
+void el_core_program_gone (unsigned pid);	// a program ended: what it had beside its windows freed
 unsigned el_core_focus_pid (void);		// the program that has the keyboard, 0: none
 
 // What the requests need from the kernel (server.cpp): pid's windows become the server's -> 1;

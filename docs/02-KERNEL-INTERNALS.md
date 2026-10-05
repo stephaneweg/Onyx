@@ -1227,9 +1227,27 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
   - `kernel/gui/window.cpp` takes its windows' pixels from two functions (`WinPixelsAlloc` / `_Free`:
     the heap's in the kernel; Elegant, built with `WIN_PIXELS_HOOK`, gives the shared buffers).
 
-Nothing changes unless Elegant takes the display (`elegant --display` / `--serve`). The programs' window
-calls do not use it yet: `wstest` (a test) talks the protocol by hand (`user/Kits/appkit/elegant.h`,
-private to AppKit and Elegant).
+  - two more slots for a program's shared memory: its copy of the wallpaper (`KAPI_WS_SLOT_WALLPAPER`, at
+    `USER_WALLPAPER_CANVAS`) and a transfer buffer (`KAPI_WS_SLOT_XFER`, 13 GB + 256 MB: the pixels of
+    `kapi_win_read`);
+  - *who has the keyboard* (`KAPI_WS_FOCUS`: the server says; `key_held` and a pad's `focus` answer by it --
+    the kernel's window manager keeps the keys' state and the modifiers, fed as before) and *a process's
+    name* (`KAPI_WS_PROC_NAME`: the lists of the open programs);
+- **the start** (`WsBootStart`, before init) — **a one-boot trial**: `SD:/etc/elegant.trial` is there → the
+  kernel removes it (the next start is its own window manager's again, whatever happens), starts
+  `SD:bin/elegant --serve` and waits (5 s at most) until it has the display; init then starts the
+  desktop, whose programs have their windows in Elegant.
+
+Nothing changes unless Elegant takes the display. **AppKit's window calls have two bodies**
+(`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): at a program's first window call AppKit asks
+`KAPI_WS_ACTIVE`; Elegant owns the display → that program's window calls speak the protocol
+(`user/Kits/appkit/elegant.h`, private to AppKit and Elegant: 30 operations, each doing what the kernel's
+call of the same name did) for its whole life; else they call the kernel's window manager as before. No
+program is rebuilt. Under Elegant the kernel still serves: the pump (`pop_event`, `should_exit`,
+`pump_sleep`, `post`), `screen_size`, `screen_grab` (the off-screen buffer), `inject_*` (to the server's
+ring), `get_modifiers`, `key_held`, `draw_text_buf` (AppKit's `kapi_draw_text` draws into the canvas with
+it), the surfaces, the clipboard. Not served yet under Elegant: the full screen (`fullscreen_begin`
+answers 0) and `screen_set` (-2).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32

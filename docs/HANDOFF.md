@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2a and 2b done and tried on the Pi; next: 3
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2 done; 3: the whole desktop runs on Elegant in a one-boot trial (the full screen is left)
 
 **The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
 `UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
@@ -103,9 +103,33 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
    with its pointer at 0, 0.
    Not done in 2b: the role given by the kernel to the process it starts (stage 3, with the trial);
    a restarted Elegant taking the orphan buffers again.
-3. Elegant serving the programs' windows + AppKit's client side, behind the one-boot trial; `vncd` /
-   `rdpd` unchanged through AppKit, then the capture channel. PC test first: Elegant's core and the
-   client joined to `tools/tests/desktop_sim/fakekapi.cpp`.
+3. **Elegant serving the programs' windows + AppKit's client side: done but the full screen; tried on
+   the Pi (2026-10-05).**
+   - **AppKit**: `appkit_ws.inc` + `KAPI_WS` in `appkit_calls.inc` -- each window call's second body
+     (docs/02 §8, v89). The way is settled at a program's first window call, for its life.
+   - **The protocol**: `user/Kits/appkit/elegant.h`, 30 operations (append-only numbers).
+   - **Elegant**: `ops.cpp` (each request = the kernel's call of the same name, on Elegant's window
+     manager), `server.cpp` (the loop), `core.cpp` (the window manager behind plain functions; the
+     pointer's shapes from `kernel/gui/cursors.inc`), `corepriv.h`.
+   - **The trial**: `python tools/tests/elegant/pi_deploy.py --trial` (it puts `etc/elegant.trial`;
+     the kernel removes it at the start, starts `elegant --serve` before init). The next restart is
+     the kernel's window manager's again.
+   - **Seen on the Pi**: 2048 and eyes started by hand under `elegant --serve`
+     (`tools/tests/elegant/first-apps-2026-10-05.png`); then a whole start on Elegant: the wallpaper
+     (voronoy through its copy of the buffer), the menu bar, the dock, the agenda, Terminal and
+     Tinypad opened from the dock, Tinypad's menus in the menu bar, the dock's running marks --
+     every program as it is on the card.
+   - **Left in stage 3**: the full screen (`fullscreen_begin` / `present_fb` / `direct`: the kernel
+     keeps the buffer and the direct mode, Elegant must say who owns the display and send that window
+     all the input) and `screen_set`; Elegant dying -> the kernel takes the display back (done) AND
+     starts it again (not done; its programs' buffers are kept for it: `bServer` in `wsrv.cpp`); the
+     role given to the process the kernel started (today: the program named `elegant`); `rdpd` /
+     Onyx Remote and `vncd` to check on Elegant (`win_list`, `win_read` by the transfer buffer,
+     `inject_*`); the screen's size changed while running; a PC test (Elegant's core + AppKit's
+     client joined to `tools/tests/desktop_sim/fakekapi.cpp`) -- not written, the Pi was used.
+   - **Known differences**: a program's wallpaper buffer is its own copy (what is shown when it asks),
+     not the live one; a drag's payload is 4 044 bytes at most (4 096 before); a program started
+     while the kernel's window manager has the display stays there (and the reverse).
 4. The whole test pass on the Pi (every app, full screen, GPU apps, VNC / RDP, dock, menus, drag and
    drop, desks, a resolution change); Elegant the default.
 5. The kernel's window manager removed (`kernel/gui/window.cpp`, the compositor task); the sources move

@@ -87,6 +87,95 @@ static long OpCreate (unsigned nPid, const long *a, const u8 *pIn, unsigned nInL
 	return id >= 0 ? 1 : 0;
 }
 
+// A program's shared memory that is not a window's: its copy of the wallpaper, its transfer buffer
+// (the pixels of kapi_win_read). One of each a program; freed when the program ends.
+#define PROGS_MAX	32
+static struct TProg { unsigned nPid; u32 *pWall; u32 *pXfer; unsigned nXferBytes; } s_Prog[PROGS_MAX];
+
+static TProg *ProgOf (unsigned nPid, boolean bMake)
+{
+	TProg *pFree = 0;
+	for (int i = 0; i < PROGS_MAX; i++)
+	{
+		if (s_Prog[i].nPid == nPid) return &s_Prog[i];
+		if (s_Prog[i].nPid == 0 && pFree == 0) pFree = &s_Prog[i];
+	}
+	if (!bMake || pFree == 0 || !el_sys_attach (nPid)) return 0;	// (shared memory is an attached program's)
+	memset (pFree, 0, sizeof *pFree);
+	pFree->nPid = nPid;
+	return pFree;
+}
+
+void el_core_program_gone (unsigned nPid)
+{
+	TProg *p = ProgOf (nPid, FALSE);
+	if (p == 0) return;
+	if (p->pWall != 0) el_shared_free (p->pWall);
+	if (p->pXfer != 0) el_shared_free (p->pXfer);
+	memset (p, 0, sizeof *p);
+}
+
+static u32 *XferOf (unsigned nPid, unsigned nBytes)
+{
+	TProg *p = ProgOf (nPid, TRUE);
+	if (p == 0) return 0;
+	if (p->pXfer != 0 && p->nXferBytes >= nBytes) return p->pXfer;
+	u32 *pNew = (u32 *) el_shared_alloc (nPid, KAPI_WS_SLOT_XFER, nBytes);	// (it replaces the old one in the program)
+	if (pNew == 0) return 0;
+	if (p->pXfer != 0) el_shared_free (p->pXfer);
+	p->pXfer = pNew; p->nXferBytes = nBytes;
+	return pNew;
+}
+
+// (kapi_win_read) -> 0: *pR says what is at the caller's transfer buffer; -1.
+static long OpWinRead (unsigned nPid, const long *a, struct el_read *pR)
+{
+	CWindowManager *pWM = g_pElWM;
+	unsigned nId = (unsigned) a[0];
+	int nPart = (int) a[1];
+	int x = (int) (a[2] >> 32), y = (int) (unsigned) a[2], w = (int) (a[3] >> 32), h = (int) (unsigned) a[3];
+	pR->w = pR->h = 0;
+	if (nId == KAPI_WIN_DESKTOP)			// the whole desktop, composed straight in
+	{
+		if (nPart != 0 || x != 0 || y != 0 || w != g_nScreenWidth || h != g_nScreenHeight) return -1;
+		u32 *pDst = XferOf (nPid, (unsigned) w * h * 4);
+		if (pDst == 0) return -1;
+		GImage Img (pDst, w, h);
+		pWM->CompositeDesktop (&Img);
+		pR->w = w; pR->h = h;
+		return 0;
+	}
+	CWindow *pW = 0;
+	for (int i = 0; i < EL_WINDOWS_MAX; i++)
+		if (g_pElWin[i] != 0 && g_pElWin[i]->Id () == nId) pW = g_pElWin[i];
+	if (pW == 0) return -1;
+	const u8 *pSrc; unsigned nPitch; int W, H;
+	if (nPart == 1 || nPart == 2)
+	{
+		if (!pW->HasChrome ()) return -1;
+		W = pW->OuterW (); H = pW->OuterH ();
+		pSrc = (const u8 *) pW->ChromePhys (nPart - 1); nPitch = (unsigned) W * 4;
+	}
+	else if (nPart != 0) return -1;
+	else
+	{
+		W = pW->ClientWidth (); H = pW->ClientHeight ();
+		pSrc = (const u8 *) pW->CanvasBuffer (); nPitch = (unsigned) pW->Canvas ()->Width () * 4;
+		if (pSrc == 0) return -1;
+	}
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > W) w = W - x;
+	if (y + h > H) h = H - y;
+	if (w <= 0 || h <= 0) return 0;
+	u32 *pDst = XferOf (nPid, (unsigned) w * h * 4);
+	if (pDst == 0) return -1;
+	for (int r = 0; r < h; r++)
+		memcpy (pDst + (size_t) r * w, pSrc + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
+	pR->w = w; pR->h = h;
+	return 0;
+}
+
 // The drag and drop's payload (kapi_drag_begin / kapi_drag_data), kept here.
 #define DND_MAX		(KAPI_WS_DATA_MAX - (unsigned) sizeof (struct el_drag))
 static u8 s_Dnd[KAPI_WS_DATA_MAX];
@@ -246,6 +335,39 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 		pWM->GenerateWallpaper ((u32) a[0], (int) a[1], (unsigned) a[2] != 0 ? (unsigned) a[2] : (el_port_ticks () | 1u));
 		return 1;
 
+	case EL_OP_WALLPAPER_BUF:		// the caller's copy of the wallpaper: what is shown now
+		{
+			TProg *p = ProgOf (nPid, TRUE);
+			int W = g_nScreenWidth, H = g_nScreenHeight;
+			if (p == 0) return 0;
+			if (p->pWall == 0) p->pWall = (u32 *) el_shared_alloc (nPid, KAPI_WS_SLOT_WALLPAPER, (unsigned long) W * H * 4);
+			if (p->pWall == 0) return 0;
+			GImage Img (p->pWall, W, H);
+			pWM->CompositeDesktop (&Img);
+			int wh[2] = { W, H };
+			memcpy (pOut, wh, sizeof wh);
+			*pnOutLen = sizeof wh;
+			return 1;
+		}
+	case EL_OP_WALLPAPER_COMMIT:
+		{
+			TProg *p = ProgOf (nPid, FALSE);
+			int W = g_nScreenWidth, H = g_nScreenHeight;
+			u64 ulPhys = 0; unsigned nPages = 0;
+			u32 *pLive = p != 0 && p->pWall != 0 ? pWM->EnsureWallpaperBuffer (W, H, &ulPhys, &nPages) : 0;
+			if (pLive == 0) return 0;
+			memcpy (pLive, p->pWall, (size_t) W * H * 4);
+			pWM->CommitWallpaper ();
+			return 1;
+		}
+	case EL_OP_WIN_READ:
+		{
+			struct el_read R;
+			long nResult = OpWinRead (nPid, a, &R);
+			memcpy (pOut, &R, sizeof R);
+			*pnOutLen = sizeof R;
+			return nResult;
+		}
 	case EL_OP_POINTER:			// the pointer, from the caller's client area's corner
 		{
 			int pt[2] = { pWM->CursorX (), pWM->CursorY () };

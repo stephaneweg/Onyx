@@ -123,4 +123,21 @@ struct el_drag
 #define EL_OP_WALLPAPER_GEN	26	// a = base colour, points, seed (kapi_wallpaper_generate) -> 1
 #define EL_OP_POINTER		27	// out: int x, y from the caller's client area (kapi_cursor_pos) -> 1
 
+// The wallpaper: the caller's copy of it, screen-sized, at EL_VA_WALLPAPER (kapi_wallpaper_buffer;
+// out: int w, h) -> 1, 0; what the caller drew there made the wallpaper (kapi_wallpaper_commit) -> 1.
+#define EL_OP_WALLPAPER_BUF	28
+#define EL_OP_WALLPAPER_COMMIT	29
+#define EL_VA_WALLPAPER		KAPI_WS_VA_WALLPAPER
+
+// A window's pixels read (kapi_win_read): a = the window's id (KAPI_WIN_DESKTOP: the desktop),
+// the part (0 client, 1 / 2 the frame's active / inactive copy), x << 32 | y, w << 32 | h (the low
+// halves unsigned); out: struct el_read -> 0 (the pixels are at EL_VA_XFER, its row `w` pixels),
+// -1 no such window or part.
+#define EL_OP_WIN_READ		30
+#define EL_VA_XFER		KAPI_WS_VA_XFER
+struct el_read
+{
+	int	 w, h;				// what was read, clipped to the part (0: nothing)
+};
+
 #endif

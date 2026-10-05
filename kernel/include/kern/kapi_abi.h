@@ -974,12 +974,16 @@ struct kapi_sound_client
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
 #define KAPI_WS_SLOT_FRAME_OFF	2	// its frame's inactive copy
-#define KAPI_WS_SLOTS		3
+#define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (kapi_wallpaper_buffer)
+#define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (kapi_win_read)
+#define KAPI_WS_SLOTS		5
 // ... and where each is in the program's memory (kern/layout.h USER_WINDOW_*: where a window's canvas
 // and frame always were)
 #define KAPI_WS_VA_CANVAS	0x300000000ULL
 #define KAPI_WS_VA_FRAME		0x320000000ULL
 #define KAPI_WS_VA_FRAME_OFF	0x330000000ULL
+#define KAPI_WS_VA_WALLPAPER	0x340000000ULL
+#define KAPI_WS_VA_XFER		0x350000000ULL
 struct kapi_ws_buf
 {
 	unsigned pid;			// in: the program

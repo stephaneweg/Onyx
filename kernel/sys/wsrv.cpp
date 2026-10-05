@@ -18,6 +18,8 @@
 #include <kern/ipc.h>			// IpcPidAlive
 #include <kern/uaccess.h>
 #include <kern/layout.h>
+#include <kern/applaunch.h>		// ExecPath (the trial's start)
+#include <fatfs/ff.h>
 #include <circle/2dgraphics.h>
 #include <circle/new.h>
 #include <circle/sched/synchronizationevent.h>
@@ -363,9 +365,11 @@ struct TWsBuf
 
 static TWsBuf s_Buf[USER_WS_SLOTS];
 
-static const u64 s_SlotVA[KAPI_WS_SLOTS] = { USER_WINDOW_CANVAS, USER_WINDOW_CHROME, USER_WINDOW_CHROME_INACTIVE };
+static const u64 s_SlotVA[KAPI_WS_SLOTS] = { USER_WINDOW_CANVAS, USER_WINDOW_CHROME, USER_WINDOW_CHROME_INACTIVE,
+						  USER_WALLPAPER_CANVAS, KAPI_WS_VA_XFER };
 static_assert (KAPI_WS_VA_CANVAS == USER_WINDOW_CANVAS && KAPI_WS_VA_FRAME == USER_WINDOW_CHROME
-	       && KAPI_WS_VA_FRAME_OFF == USER_WINDOW_CHROME_INACTIVE, "the windows' addresses (kern/kapi_abi.h)");
+	       && KAPI_WS_VA_FRAME_OFF == USER_WINDOW_CHROME_INACTIVE && KAPI_WS_VA_WALLPAPER == USER_WALLPAPER_CANVAS
+	       && KAPI_WS_VA_XFER > USER_WALLPAPER_CANVAS && KAPI_WS_VA_XFER + USER_WS_SLOT <= USER_SURFACE_BASE, "the windows' addresses (kern/kapi_abi.h)");
 
 static void BufFreeIfUnused (TWsBuf *b)
 {
@@ -625,6 +629,33 @@ void WsOnProcessGone (unsigned nPid)
 	memset (&Ev, 0, sizeof Ev);
 	Ev.type = KAPI_WS_IN_GONE; Ev.a = (int) nPid;
 	Push (Ev);
+}
+
+// ---- the start ------------------------------------------------------------------------------------
+// The one-boot trial (as the network's, sys/net.cpp): SD:/etc/elegant.trial is there -> it is
+// removed (the next start is the kernel's window manager's again, whatever happens), the graphics
+// server is started before init and waited for: the programs init starts have their windows there.
+#define WS_TRIAL_FILE	"SD:/etc/elegant.trial"
+#define WS_SERVER_PATH	"SD:bin/elegant"
+
+void WsBootStart (void)
+{
+	FIL File;
+	if (f_open (&File, WS_TRIAL_FILE, FA_READ) != FR_OK) return;
+	f_close (&File);
+	if (f_unlink (WS_TRIAL_FILE) != FR_OK)			// (it must not come back at the next boot)
+	{
+		CLogger::Get ()->Write ("wsrv", LogWarning, "the trial file cannot be removed: no trial");
+		return;
+	}
+	if (!ExecPath (WS_SERVER_PATH, "--serve"))
+	{
+		CLogger::Get ()->Write ("wsrv", LogWarning, "cannot start " WS_SERVER_PATH);
+		return;
+	}
+	for (unsigned t = 0; t < 250 && !s_bOwned; t++) CScheduler::Get ()->MsSleep (20);	// 5 s
+	CLogger::Get ()->Write ("wsrv", s_bOwned ? LogNotice : LogWarning,
+				s_bOwned ? "trial: the graphics server has the display" : "trial: the graphics server did not take the display");
 }
 
 extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)

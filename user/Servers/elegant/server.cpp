@@ -180,6 +180,7 @@ int el_serve (int demo)
 					{
 						int id;
 						while ((id = el_core_window_of ((unsigned) in[i].a)) >= 0) el_core_window_remove (id);
+						el_core_program_gone ((unsigned) in[i].a);
 					}
 					break;
 				}

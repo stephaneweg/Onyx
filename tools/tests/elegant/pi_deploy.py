@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pi_deploy.py -- put a test build of the kernel, AppKit and Elegant on the Pi, without a package.
 
-    python tools/tests/elegant/pi_deploy.py [--ip 192.168.0.7] [--no-reboot] [--restore]
+    python tools/tests/elegant/pi_deploy.py [--ip 192.168.0.7] [--no-reboot] [--restore] [--trial]
 
 Run from the repository's root, after the builds (docs/HANDOFF.md, Elegant's section):
     kernel/kernel8-rpi4.img            -> SD:/kernel8-rpi4.img
@@ -11,7 +11,8 @@ Run from the repository's root, after the builds (docs/HANDOFF.md, Elegant's sec
 
 It starts ftpd on the Pi over telnet (ftpd's default account), saves the Pi's present kernel and
 AppKit into tools/tests/elegant/backup/ (once: an existing save is kept), uploads, checks the sizes,
-then restarts the Pi. --restore puts the saved kernel and AppKit back.
+then restarts the Pi. --restore puts the saved kernel and AppKit back. --trial: the next start (that
+one only) is on Elegant -- SD:/etc/elegant.trial, which the kernel removes as it reads it.
 
 MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 granted, free of charge, to any person obtaining a copy of this software and associated documentation
@@ -125,6 +126,10 @@ def main():
             print("  save %-22s %8d bytes" % (remote, os.path.getsize(local)))
         for local, remote in FILES + [o for o in OPTIONAL if os.path.exists(o[0])]:
             put(f, local, remote)
+    if "--trial" in args:                       # the next start (only) is Elegant's
+        import io
+        f.storbinary("STOR etc/elegant.trial", io.BytesIO(b"one start on Elegant, the graphics server\n"))
+        print("  put  etc/elegant.trial")
     f.quit()
     if "--no-reboot" in args:
         print("pi_deploy: done; the Pi was not restarted")

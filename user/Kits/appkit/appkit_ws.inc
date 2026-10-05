@@ -208,6 +208,31 @@ static int ws_drag_data (int *type, void *buf, unsigned cap)
 	return (int) n;
 }
 
+static unsigned *ws_wallpaper_buffer (int *w, int *h)
+{
+	int wh[2] = { 0, 0 };
+	if (ws_call (EL_OP_WALLPAPER_BUF, 0, 0, 0, 0, 0, 0, wh, sizeof wh) != 1) return 0;
+	if (w != 0) *w = wh[0];
+	if (h != 0) *h = wh[1];
+	return (unsigned *) EL_VA_WALLPAPER;
+}
+
+static int ws_win_read (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride)
+{
+	struct el_read r;
+	if (dst == 0) return -1;
+	if (id == KAPI_WIN_DESKTOP && stride != w) return -1;
+	long st = ws_call (EL_OP_WIN_READ, (long) id, part, ((long) x << 32) | (unsigned) y, ((long) w << 32) | (unsigned) h,
+			   0, 0, &r, sizeof r);
+	if (st != 0) return -1;
+	if (r.w <= 0 || r.h <= 0) return 0;
+	if (stride < r.w) return -1;
+	const unsigned *src = (const unsigned *) EL_VA_XFER;
+	for (int k = 0; k < r.h; k++)
+		ws_copy (dst + (unsigned long) k * stride, src + (unsigned long) k * r.w, (unsigned long) r.w * 4);
+	return 0;
+}
+
 static void ws_cursor_pos (int *x, int *y)
 {
 	int pt[2] = { 0, 0 };

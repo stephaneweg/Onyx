@@ -50,10 +50,32 @@ static CWindow *Win (int id)
 	return id >= 0 && id < EL_WINDOWS_MAX ? g_pElWin[id] : 0;
 }
 
+// The pointer's shapes (kapi_set_cursor): the kernel's art (kernel/gui/cursors.inc), built as
+// kernel.cpp does; the arrow is the window manager's own drawn one.
+#include "../../../kernel/gui/cursors.inc"
+
+static void CursorShapes (CWindowManager *pWM)
+{
+	for (unsigned n = 1; n < sizeof s_CursorArt / sizeof s_CursorArt[0] && n < KAPI_CURSOR_COUNT; n++)
+	{
+		const TCursorArt &A = s_CursorArt[n];
+		GImage *pImg = new GImage;
+		pImg->SetSize (A.nW, A.nH);
+		if (!pImg->IsValid ()) { delete pImg; return; }
+		for (int y = 0; y < A.nH; y++)
+			for (int x = 0; x < A.nW; x++)
+			{
+				char c = A.pRows[y * A.nW + x];
+				pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
+			}
+		pWM->SetCursorImage (n, pImg, A.nHotX, A.nHotY);
+	}
+}
+
 int el_core_start (int w, int h)
 {
 	g_nScreenWidth = w; g_nScreenHeight = h;
-	if (g_pElWM == 0) g_pElWM = new CWindowManager;
+	if (g_pElWM == 0) { g_pElWM = new CWindowManager; CursorShapes (g_pElWM); }
 	s_nLastGen = g_nScreenGen - 1;				// (the first frame: always)
 	s_bFirst = TRUE;
 	return g_pElWM != 0;

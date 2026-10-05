@@ -2063,6 +2063,7 @@ void CKernel::StartAutostart (void)
 	{
 		m_Logger.Write (FromKernel, LogWarning, "netlog=1: cannot start SD:bin/netlog");
 	}
+	WsBootStart ();				// (kern/wsrv.h) a one-boot trial of the graphics server: before init
 	const char *pInit = m_Options.GetAppOptionString ("init", "SD:bin/init");
 	if (!ExecPath (pInit, ""))
 	{

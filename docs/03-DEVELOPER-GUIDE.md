@@ -1128,6 +1128,14 @@ alone**.
   and has no constructor (its only data: the `.ini` reader's store, private to each program); it is built with the FPU on, its calls passing floats through.
 - **Cost**: one more indirect jump a call (the stub), then AppKit's function — nothing beside a system
   call.
+- **The window calls have two bodies** (kapi v89, `appkit_ws.inc`; docs/02 §8 v89): the windows are leaving
+  the kernel for **Elegant**, the graphics server, a user process (`user/Servers/elegant`,
+  `SD:/bin/elegant`). When Elegant owns the display, a program's `kapi_create_window`, `kapi_present`,
+  `kapi_set_menu`... speak to it (`appkit/elegant.h`: private, never included by a program) instead of
+  the kernel's window manager; the pixels are memory shared with Elegant at the same addresses, the events
+  come through the same pump. A program sees no difference and is not rebuilt. Adding a window call:
+  its `KAPI_CALL` gets a `KAPI_WS (...)` (a value) or `KAPI_WSV (...)` (a statement) first, the operation
+  goes into `elegant.h` (a new number) and into Elegant's `ops.cpp`.
 
 ## 6. Writing a graphical application
 

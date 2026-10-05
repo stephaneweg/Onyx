@@ -47,6 +47,10 @@ boolean WsInputMods (unsigned nMods);			// MOD_*
 boolean WsInputHeldUsb (const unsigned char RawKeys[6]);	// the USB report's usage codes
 boolean WsInputHeld (int nKey, boolean bDown);		// an injected key down / up (logical code)
 
+// (kernel.cpp, before init) The one-boot trial: SD:/etc/elegant.trial -> removed, the server started
+// and waited for.
+void WsBootStart (void);
+
 // The process that has the keyboard, as the server says (KAPI_WS_FOCUS): kapi_key_held, the pads.
 unsigned WsFocusPid (void);
 
