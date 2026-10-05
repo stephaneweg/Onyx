@@ -61,6 +61,7 @@ struct CamSetup
 	int body;				// the body cut
 	bool fixed; double side, top, under;	// the stock: margins around the body
 	V3 size;				// ... or its own size (fixed: centred on the body, its underside on the body's)
+	V3 off = V3 (0, 0, 0);			// ... and the body moved in it by that much from there (fixed)
 	int origin;				// 0..26: ix + 3 iy + 9 iz (0 low / left / front, 1 middle, 2 high)
 	int xdir;				// where the machine's X points: 0 the model's +X, 1 +Y, 2 -X, 3 -Y
 	double safe, retract;			// above the stock: between operations, between passes
@@ -90,7 +91,7 @@ static void cam_stock (const Doc &d, const CamSetup &c, V3 *lo, V3 *hi)
 	if (!b) { *lo = V3 (); *hi = V3 (10, 10, 10); return; }
 	if (!c.fixed) { *lo = b->mesh.lo - V3 (c.side, c.side, c.under); *hi = b->mesh.hi + V3 (c.side, c.side, c.top); return; }
 	V3 m = (b->mesh.lo + b->mesh.hi) * 0.5;
-	*lo = V3 (m.x - c.size.x / 2, m.y - c.size.y / 2, b->mesh.lo.z); *hi = V3 (m.x + c.size.x / 2, m.y + c.size.y / 2, b->mesh.lo.z + c.size.z);
+	*lo = V3 (m.x - c.size.x / 2, m.y - c.size.y / 2, b->mesh.lo.z) - c.off; *hi = *lo + c.size;
 }
 static V3 cam_origin (const CamSetup &c, const V3 &lo, const V3 &hi)
 {
@@ -535,6 +536,7 @@ static std::string cam_save (const CamSetup &c)
 	std::string s; char b[400];
 	snprintf (b, sizeof b, "cam body %d fixed %d margins %.9g %.9g %.9g size %.9g %.9g %.9g origin %d xdir %d heights %.9g %.9g\n", c.body, c.fixed ? 1 : 0, c.side, c.top, c.under,
 		  c.size.x, c.size.y, c.size.z, c.origin, c.xdir, c.safe, c.retract); s += b;
+	if (c.off.x != 0 || c.off.y != 0 || c.off.z != 0) { snprintf (b, sizeof b, "camoffset %.9g %.9g %.9g\n", c.off.x, c.off.y, c.off.z); s += b; }
 	snprintf (b, sizeof b, "camtool %.9g %.9g %.9g %.9g %.9g %.9g %s\n", c.tool.dia, c.tool.flute, c.tool.rpm, c.tool.feed, c.tool.plunge, c.tool.travel, c.tool.name); s += b;
 	snprintf (b, sizeof b, "cammachine %.9g %.9g %.9g %.9g %d %s\n", c.machine.tx, c.machine.ty, c.machine.tz, c.machine.rpmMax, (int) c.machine.dwell, c.machine.name); s += b;
 	for (const CamOp &o : c.ops)
@@ -553,6 +555,7 @@ static void cam_load (CamSetup &c, const char *text)
 		const char *e = strchr (p, '\n'); size_t n = e ? (size_t) (e - p) : strlen (p);
 		char line[500]; if (n >= sizeof line) n = sizeof line - 1; memcpy (line, p, n); line[n] = 0; if (n && line[n - 1] == '\r') line[n - 1] = 0;
 		p = e ? e + 1 : 0; int off = 0, a = 0, b2 = 0, d = 0, f = 0, g = 0, h = 0, nt = 4, dw = 3;
+		if (!strncmp (line, "camoffset ", 10)) sscanf (line + 10, "%lf %lf %lf", &c.off.x, &c.off.y, &c.off.z);
 		if (!strncmp (line, "cam body ", 9))
 		{
 			if (sscanf (line, "cam body %d fixed %d margins %lf %lf %lf size %lf %lf %lf origin %d xdir %d heights %lf %lf", &c.body, &a, &c.side, &c.top, &c.under, &c.size.x, &c.size.y, &c.size.z,

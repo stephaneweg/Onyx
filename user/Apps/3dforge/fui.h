@@ -450,15 +450,21 @@ public:
 			ABtn *b = new ABtn (12, y, width - 24, 26, body_name (c.body), CMD_CAM_BODY); b->bg = panel_col (); addChild (b); y += 34;
 			label (12, y, "Stock", UK_AUTO, 2); y += 20; seg2 (y, 0, "Around it", "Fixed size", c.fixed ? 1 : 0, 10); y += 32;
 			if (!c.fixed) { field (y, "Sides, more", &c.side, "mm", -1); y += 28; field (y, "Top, more", &c.top, "mm", -1); y += 28; field (y, "Under, more", &c.under, "mm", -1); y += 28; }
-			else { field (y, "Along X", &c.size.x, "mm", -1); y += 28; field (y, "Along Y", &c.size.y, "mm", -1); y += 28; field (y, "Height", &c.size.z, "mm", -1); y += 28; }
-			camSizeY = y; y += 22;
+			else
+			{
+				// (its size, then the body moved in it: from the middle, its underside on the stock's -- 0: there)
+				field (y, "Along X", &c.size.x, "mm", -1); y += 26; field (y, "Along Y", &c.size.y, "mm", -1); y += 26; field (y, "Height", &c.size.z, "mm", -1); y += 26;
+				field (y, "Moved, X", &c.off.x, "mm", -1); y += 26; field (y, "Moved, Y", &c.off.y, "mm", -1); y += 26; field (y, "Moved, Z", &c.off.z, "mm", -1); y += 28;
+			}
+			if (!c.fixed) { camSizeY = y; y += 22; }
 			label (12, y, "Origin", UK_AUTO, 2); y += 19; camOrgY = y; y += 64;
-			label (12, y, "Axes", UK_AUTO, 2); y += 20;
+			if (!c.fixed) { label (12, y, "Axes", UK_AUTO, 2); y += 20; }
 			static const char *const DIR[4] = { "right", "back", "left", "front" };
 			label (12, y + 5, "X goes"); Dropdown *d = new Dropdown (width - 12 - 96, y, 96, 26, DIR, 4, c.xdir & 3, onDrop);
-			snprintf (t, sizeof t, "Y goes %s; Z goes up.", DIR[(c.xdir + 1) & 3]); label (12, y + 31, t, dim_col (), 0, true); y += 52;
-			label (12, y, "Heights above the stock", UK_AUTO, 2); y += 20;
-			field (y, "Safe", &c.safe, "mm", -1); y += 28; field (y, "Retract", &c.retract, "mm", -1);
+			snprintf (t, sizeof t, "Y goes %s; Z goes up.", DIR[(c.xdir + 1) & 3]);
+			if (!c.fixed) { label (12, y + 31, t, dim_col (), 0, true); y += 52; } else y += 34;
+			if (!c.fixed) { label (12, y, "Heights above the stock", UK_AUTO, 2); y += 20; }
+			field (y, c.fixed ? "Safe, above" : "Safe", &c.safe, "mm", -1); y += 28; field (y, c.fixed ? "Retract, above" : "Retract", &c.retract, "mm", -1);
 			addChild (d);					// (last: its list opens over what is under it)
 		}
 		else if (A.camPage == 1)

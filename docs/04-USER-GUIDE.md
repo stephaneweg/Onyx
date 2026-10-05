@@ -2354,7 +2354,8 @@ its **stock** (the block it is cut from, see-through); the timeline shows the se
 order they are run. Everything is kept in the `.3df`.
 
 - **Setup** — the **body** (a click on its name lists the part's bodies); the **stock**: *around it* with a margin
-  on the sides, on the top and under, or of a *fixed size*; the **origin** — where the machine's X0 Y0 Z0 is: one of
+  on the sides, on the top and under, or of a *fixed size* — the body is then in its middle, its underside on the
+  stock's, and *Moved, X / Y / Z* moves it in the stock from there (0 at first); the **origin** — where the machine's X0 Y0 Z0 is: one of
   the stock's 27 points (its corners, the middles of its edges and faces, its centre), clicked in the view or in the
   three small grids (top, middle, bottom); **X goes** right, back, left or front (Y follows, a quarter turn to its
   left; Z goes up); the heights above the stock: *safe* (between operations), *retract* (between passes).

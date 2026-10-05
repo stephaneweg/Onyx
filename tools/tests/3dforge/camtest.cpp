@@ -25,6 +25,15 @@ int main (int argc, char **argv)
 	V3 o = cam_origin (c, lo, hi); check (fabs (o.x + 5) < 1e-9 && fabs (o.y + 5) < 1e-9 && fabs (o.z - 47) < 1e-9, "the origin: top, front left");
 	c.xdir = 1; V3 w = cam_work (c, o, V3 (-5, 10, 47)); check (fabs (w.x - 15) < 1e-9 && fabs (w.y) < 1e-9, "X turned to the back: Y follows, to the left"); c.xdir = 0;
 
+	{
+		// a stock of a fixed size: the body in its middle, on its underside -- then moved in it
+		CamSetup f = c; f.fixed = true; f.size = V3 (120, 80, 50); V3 a, b; cam_stock (d, f, &a, &b);
+		bool mid = fabs (a.x + 15) < 1e-9 && fabs (b.y - 70) < 1e-9 && fabs (a.z) < 1e-9 && fabs (b.z - 50) < 1e-9;
+		f.off = V3 (10, -5, 3); cam_stock (d, f, &a, &b);
+		CamSetup g; cam_load (g, cam_save (f).c_str ());
+		check (mid && fabs (a.x + 25) < 1e-9 && fabs (b.x - 95) < 1e-9 && fabs (a.y + 5) < 1e-9 && fabs (a.z + 3) < 1e-9 && fabs (b.z - 47) < 1e-9 && g.off.x == 10 && g.off.z == 3,
+		       "a stock of a fixed size: the body in its middle, or moved in it");
+	}
 	CamOp clear; clear.kind = CAM_CLEAR; snprintf (clear.name, sizeof clear.name, "Clearing 1"); clear.stepdown = 6; c.ops.push_back (clear);
 	CamPaths p; bool ok = cam_compute (d, c, p);
 	printf ("     clearing: %d moves, %.0f mm cut, %.0f min, lowest Z %.2f%s\n", (int) p.moves.size (), p.length, p.minutes, p.lowestZ, c.ops[0].failed ? c.ops[0].err : "");
