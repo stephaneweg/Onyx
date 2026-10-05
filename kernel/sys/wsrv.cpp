@@ -79,6 +79,30 @@ static void Release (const char *pWhy)
 	if (pWhy != 0) CLogger::Get ()->Write ("wsrv", LogWarning, "the display taken back: %s", pWhy);
 }
 
+// The server started by the kernel ended (WsOnProcessGone: nothing may be done there): started again
+// here, from the compositor's loop -- a few times at most (a server that cannot stay up: the
+// kernel's window manager keeps the display). Its programs' windows: their pixels are kept (the
+// buffers), each program asks the new server for its window again (AppKit).
+static volatile boolean s_bBootMode = FALSE;	// the kernel started the server (WsBootStart)
+static volatile boolean s_bRelaunch = FALSE;
+static unsigned s_nRelaunches = 0;
+#define WS_RELAUNCH_MAX	5
+
+void WsPoll (void)
+{
+	if (!s_bRelaunch) return;
+	s_bRelaunch = FALSE;
+	if (s_nRelaunches >= WS_RELAUNCH_MAX)
+	{
+		CLogger::Get ()->Write ("wsrv", LogError, "the graphics server ended %u times: not started again", s_nRelaunches);
+		return;
+	}
+	s_nRelaunches++;
+	CLogger::Get ()->Write ("wsrv", LogWarning, "the graphics server ended: started again (%u)", s_nRelaunches);
+	if (!ExecPath ("SD:bin/elegant", "--serve --restart"))
+		CLogger::Get ()->Write ("wsrv", LogError, "cannot start the graphics server again");
+}
+
 void WsWatch (void)
 {
 	if (!s_bOwned) return;
@@ -310,6 +334,7 @@ static long Wait (unsigned nTimeoutMs)
 #define WS_CLIENTS	64
 
 static unsigned s_Client[WS_CLIENTS];		// the attached programs' pids (0: free)
+static u8 s_ClientState[WS_CLIENTS][KAPI_WS_STATE_BYTES];	// (KAPI_WS_STATE) what the server keeps for each
 
 static int ClientSlot (unsigned nPid)
 {
@@ -332,6 +357,7 @@ static long Attach (unsigned nPid)
 	pWin->SetOwnerPid (nPid);
 	pAS->SetWindow (pWin);
 	s_Client[nFree] = nPid;
+	memset (s_ClientState[nFree], 0, KAPI_WS_STATE_BYTES);
 	return 0;
 }
 
@@ -354,6 +380,14 @@ static long Post (unsigned nPid, const struct kapi_event *pUser)
 	Ev.nMods = E.mods;
 	pWin->PushEvent (Ev);
 	return 1;
+}
+
+static long State (unsigned nPid, void *pUser, boolean bSet)
+{
+	int nSlot = ClientSlot (nPid);
+	if (nSlot < 0) return -KAPI_ESRCH;
+	if (bSet) return UserCopyIn (s_ClientState[nSlot], pUser, KAPI_WS_STATE_BYTES) ? 0 : -KAPI_EFAULT;
+	return UserCopyOut (pUser, s_ClientState[nSlot], KAPI_WS_STATE_BYTES) ? 0 : -KAPI_EFAULT;
 }
 
 static long ExitRequest (unsigned nPid)
@@ -408,11 +442,24 @@ static long BufMap (struct kapi_ws_buf *pUser)
 	CAddressSpace *pProg = IpcFindAS (B.pid);
 	CAddressSpace *pSrv = IpcFindAS (s_nServerPid);
 	if (pProg == 0 || pSrv == 0) return -KAPI_ESRCH;
+	unsigned nPages = (unsigned) ((B.bytes + KPAGE_MASK) / KPAGE_SIZE);
+	TKPageAttr AdoptAttr = KPAGE_ATTR_APP_DATA;
+	if (B.flags & KAPI_WS_BUF_ADOPT)		// what a server that ended left the program, as it is
+		for (int i = 0; i < USER_WS_SLOTS; i++)
+		{
+			TWsBuf *o = &s_Buf[i];
+			if (o->pRaw == 0 || !o->bProgram || o->bServer || o->nPid != B.pid || o->nSlot != B.slot || o->nPages != nPages) continue;
+			u64 ulVA = USER_WS_BASE + (u64) i * USER_WS_SLOT;
+			pSrv->MapContig (ulVA, o->ulPhys, o->nPages, AdoptAttr);
+			pSrv->FlushTLB ();
+			o->bServer = TRUE;
+			B.id = (unsigned) i + 1; B.addr = ulVA;
+			return UserPut (pUser, B) ? 0 : -KAPI_EFAULT;
+		}
 	int n = -1;
 	for (int i = 0; i < USER_WS_SLOTS && n < 0; i++) if (s_Buf[i].pRaw == 0) n = i;
 	if (n < 0) return -KAPI_ENOMEM;
 	TWsBuf *b = &s_Buf[n];
-	unsigned nPages = (unsigned) ((B.bytes + KPAGE_MASK) / KPAGE_SIZE);
 	void *pRaw = new u8[(size_t) nPages * KPAGE_SIZE + KPAGE_SIZE];
 	if (pRaw == 0) return -KAPI_ENOMEM;
 	u64 ulPhys = ((u64) (uintptr) pRaw + KPAGE_MASK) & ~(u64) KPAGE_MASK;
@@ -608,7 +655,7 @@ static long Kick (void)
 	Ev.type = KAPI_WS_IN_KICK; Ev.a = (int) nPid;
 	Push (Ev);
 	CScheduler::Get ()->Yield ();			// (the server composes now)
-	return 0;
+	return (long) s_nServerPid;
 }
 
 // A process is gone (its teardown: interrupts masked, nothing may wait).
@@ -618,6 +665,7 @@ void WsOnProcessGone (unsigned nPid)
 	if (nPid == s_nServerPid)
 	{
 		s_nServerPid = 0;
+		if (s_bBootMode) s_bRelaunch = TRUE;	// (WsPoll, the compositor's loop)
 		if (s_bOwned)				// (no log here)
 		{
 			s_bOwned = FALSE;
@@ -657,18 +705,28 @@ void WsOnProcessGone (unsigned nPid)
 // removed (the next start is the kernel's window manager's again, whatever happens), the graphics
 // server is started before init and waited for: the programs init starts have their windows there.
 #define WS_TRIAL_FILE	"SD:/etc/elegant.trial"
+#define WS_ON_FILE	"SD:/etc/elegant.on"
 #define WS_SERVER_PATH	"SD:bin/elegant"
 
 void WsBootStart (void)
 {
 	FIL File;
-	if (f_open (&File, WS_TRIAL_FILE, FA_READ) != FR_OK) return;
-	f_close (&File);
-	if (f_unlink (WS_TRIAL_FILE) != FR_OK)			// (it must not come back at the next boot)
+	boolean bTrial = f_open (&File, WS_TRIAL_FILE, FA_READ) == FR_OK;
+	if (bTrial)
 	{
-		CLogger::Get ()->Write ("wsrv", LogWarning, "the trial file cannot be removed: no trial");
-		return;
+		f_close (&File);
+		if (f_unlink (WS_TRIAL_FILE) != FR_OK)		// (it must not come back at the next boot)
+		{
+			CLogger::Get ()->Write ("wsrv", LogWarning, "the trial file cannot be removed: no trial");
+			bTrial = FALSE;
+		}
 	}
+	// ... or every start (SD:/etc/elegant.on: kept; removed by hand to go back -- `rm etc/elegant.on`
+	// over telnet --, which a start without the server leaves possible)
+	boolean bOn = f_open (&File, WS_ON_FILE, FA_READ) == FR_OK;
+	if (bOn) f_close (&File);
+	if (!bTrial && !bOn) return;
+	s_bBootMode = TRUE;
 	if (!ExecPath (WS_SERVER_PATH, "--serve"))
 	{
 		CLogger::Get ()->Write ("wsrv", LogWarning, "cannot start " WS_SERVER_PATH);
@@ -676,7 +734,7 @@ void WsBootStart (void)
 	}
 	for (unsigned t = 0; t < 250 && !s_bOwned; t++) CScheduler::Get ()->MsSleep (20);	// 5 s
 	CLogger::Get ()->Write ("wsrv", s_bOwned ? LogNotice : LogWarning,
-				s_bOwned ? "trial: the graphics server has the display" : "trial: the graphics server did not take the display");
+				s_bOwned ? "the graphics server has the display" : "the graphics server did not take the display: the kernel's window manager");
 }
 
 extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
@@ -702,6 +760,7 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	case KAPI_WS_REPLY:	return Reply ((const struct kapi_ws_reply *) a0);
 	case KAPI_WS_FOCUS:	s_nFocusPid = (unsigned) a0; return 0;
 	case KAPI_WS_PROC_NAME:	return ProcName ((unsigned) a0, (char *) a1, (unsigned) a2);
+	case KAPI_WS_STATE:	return State ((unsigned) a0, (void *) a1, a2 != 0);
 	}
 	return -KAPI_ENOSYS;
 }

@@ -44,7 +44,7 @@ KAPI_CALL (unsigned long long, kapi_table_slot, (unsigned slot), { return ((cons
 KAPI_CALL (unsigned *, kapi_create_window, (int w, int h, const char *t), { KAPI_WS (ws_create (-1, -1, w, h, t, 0)); return KT->create_window (w, h, t); })
 KAPI_CALL (unsigned *, kapi_create_window_ex, (int x, int y, int w, int h, const char *t, unsigned f), { KAPI_WS (ws_create (x, y, w, h, t, f)); return KT->create_window_ex (x, y, w, h, t, f); })
 KAPI_CALL (unsigned *, kapi_resize_window, (int w, int h), { KAPI_WS (ws_resize (w, h)); return KT->resize_window (w, h); })
-KAPI_CALL (void, kapi_move_window, (int x, int y), { KAPI_WSV (WS_OP (EL_OP_MOVE, x, y, 0, 0)); KT->move_window (x, y); })
+KAPI_CALL (void, kapi_move_window, (int x, int y), { KAPI_WSV (ws_move (x, y)); KT->move_window (x, y); })
 KAPI_CALL (int, kapi_launch, (const char *n), { return KT->launch (n); })
 KAPI_CALL (int, kapi_toggle_app, (const char *n), { KAPI_WS (ws_toggle_app (n)); return KT->toggle_app (n); })
 KAPI_CALL (int, kapi_raise_app, (const char *n), { KAPI_WS (ws_app_name (EL_OP_APP_RAISE, n)); return KT->raise_app (n); })
@@ -60,7 +60,7 @@ KAPI_CALL (void, kapi_screen_size, (int *w, int *h), { KT->screen_size (w, h); }
 KAPI_CALL (int, kapi_wallpaper_generate, (unsigned base, int pts, unsigned seed), { KAPI_WS ((int) WS_OP (EL_OP_WALLPAPER_GEN, base, pts, seed, 0)); return KT->wallpaper_generate (base, pts, seed); })
 KAPI_CALL (unsigned *, kapi_wallpaper_buffer, (int *w, int *h), { KAPI_WS (ws_wallpaper_buffer (w, h)); return KT->wallpaper_buffer (w, h); })
 KAPI_CALL (void, kapi_wallpaper_commit, (void), { KAPI_WSV (WS_OP (EL_OP_WALLPAPER_COMMIT, 0, 0, 0, 0)); KT->wallpaper_commit (); })
-KAPI_CALL (void, kapi_present, (void), { KAPI_WSV (KT->ws_ctl (KAPI_WS_KICK, 0, 0, 0)); KT->present (); })
+KAPI_CALL (void, kapi_present, (void), { KAPI_WSV (ws_present ()); KT->present (); })
 KAPI_CALL (unsigned, kapi_get_ticks, (void), { return KT->get_ticks (); })
 KAPI_CALL (void, kapi_msleep, (unsigned ms), { KT->msleep (ms); })
 KAPI_CALL (void, kapi_yield, (void), { KT->yield (); })
@@ -73,9 +73,9 @@ KAPI_CALL (void, kapi_draw_text_buf, (unsigned *dst, int dw, int dh, int x, int 
 KAPI_CALL (int, kapi_get_chrome, (struct kapi_chrome *out), { KAPI_WS (ws_get_chrome (out)); return KT->get_chrome (out); })
 KAPI_CALL (int, kapi_font_width, (void), { return KT->font_width (); })
 KAPI_CALL (int, kapi_font_height, (void), { return KT->font_height (); })
-KAPI_CALL (void, kapi_set_key_handler, (gui_handler fn), { KAPI_WSV (WS_OP (EL_OP_HANDLER, EL_HANDLER_KEY, fn, 0, 0)); KT->set_key_handler (fn); })
-KAPI_CALL (void, kapi_set_click_handler, (gui_handler fn), { KAPI_WSV (WS_OP (EL_OP_HANDLER, EL_HANDLER_CLICK, fn, 0, 0)); KT->set_click_handler (fn); })
-KAPI_CALL (void, kapi_set_pointer_handler, (gui_handler fn), { KAPI_WSV (WS_OP (EL_OP_HANDLER, EL_HANDLER_POINTER, fn, 0, 0)); KT->set_pointer_handler (fn); })
+KAPI_CALL (void, kapi_set_key_handler, (gui_handler fn), { KAPI_WSV (ws_handler (EL_HANDLER_KEY, fn)); KT->set_key_handler (fn); })
+KAPI_CALL (void, kapi_set_click_handler, (gui_handler fn), { KAPI_WSV (ws_handler (EL_HANDLER_CLICK, fn)); KT->set_click_handler (fn); })
+KAPI_CALL (void, kapi_set_pointer_handler, (gui_handler fn), { KAPI_WSV (ws_handler (EL_HANDLER_POINTER, fn)); KT->set_pointer_handler (fn); })
 KAPI_CALL (int, kapi_meminfo, (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb), { return KT->meminfo (total_kb, free_kb, app_kb, page_kb); })
 KAPI_CALL (int, kapi_ram_detail, (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments), { return KT->ram_detail (detected_kb, apppool_kb, apppool_free_kb, above4g_kb, nsegments); })
 KAPI_CALL (void, kapi_set_wheel_speed, (int lines_per_notch), { if (ws_on ()) WS_OP (EL_OP_WHEEL, lines_per_notch, 0, 0, 0); KT->set_wheel_speed (lines_per_notch); })
@@ -135,7 +135,7 @@ KAPI_CALL (int, kapi_ipc_register, (const char *name), { return KT->ipc_register
 KAPI_CALL (int, kapi_ipc_lookup, (const char *name), { return KT->ipc_lookup (name); })
 KAPI_CALL (int, kapi_clipboard_set, (int type, const void *d, unsigned n), { return KT->clipboard_set (type, d, n); })
 KAPI_CALL (int, kapi_clipboard_get, (int *type, void *b, unsigned cap, unsigned *serial), { return KT->clipboard_get (type, b, cap, serial); })
-KAPI_CALL (void, kapi_set_window_alpha, (int a), { KAPI_WSV (WS_OP (EL_OP_ALPHA, a, 0, 0, 0)); KT->set_window_alpha (a); })
+KAPI_CALL (void, kapi_set_window_alpha, (int a), { KAPI_WSV (ws_alpha (a)); KT->set_window_alpha (a); })
 KAPI_CALL (void, kapi_shutdown, (int mode), { KT->shutdown (mode); })
 KAPI_CALL (unsigned *, kapi_fullscreen_begin, (int *w, int *h), { KAPI_WS_DO (ws_create (0, 0, 64, 64, "fullscreen", 1)); return KT->fullscreen_begin (w, h); })
 KAPI_CALL (void, kapi_present_fb, (void), { KT->present_fb (); })
@@ -321,9 +321,9 @@ KAPI_CALL (int, kapi_net_stats, (int pid, struct kapi_net_stats *out),
 	return -KAPI_ENOSYS;
 })
 KAPI_CALL (int, kapi_set_cursor, (int shape),
-	{ KAPI_WS ((int) WS_OP (EL_OP_CURSOR, shape, 0, 0, 0)); return KT->version >= 81 && KT->set_cursor ? KT->set_cursor (shape) : -1; })
+	{ KAPI_WS (ws_cursor (shape)); return KT->version >= 81 && KT->set_cursor ? KT->set_cursor (shape) : -1; })
 KAPI_CALL (int, kapi_win_resizable, (int on, int min_w, int min_h),
-	{ KAPI_WS ((int) WS_OP (EL_OP_RESIZABLE, on, min_w, min_h, 0)); return KT->version >= 82 && KT->win_resizable ? KT->win_resizable (on, min_w, min_h) : -1; })
+	{ KAPI_WS (ws_resizable (on, min_w, min_h)); return KT->version >= 82 && KT->win_resizable ? KT->win_resizable (on, min_w, min_h) : -1; })
 KAPI_CALL (const void *, kapi_lib_open, (const char *name, unsigned min_version, int *err),
 	{
 	if (KT->version >= 83 && KT->lib_open) return KT->lib_open (name, min_version, err);

@@ -16,6 +16,8 @@
 //
 #include "corepriv.h"
 #include <circle/util.h>
+
+extern "C" int memcmp (const void *a, const void *b, size_t n);
 #include "appkit/elegant.h"
 #include "core.h"
 
@@ -52,6 +54,42 @@ static unsigned StateOf (CWindow *pW)
 	     | (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
 }
 
+// What is kept in the kernel for a program's window (KAPI_WS_STATE: 64 bytes), and put back when a
+// server started again makes that window anew.
+struct TSaved
+{
+	unsigned nMagic;			// SAVED_MAGIC
+	int	 x, y, w, h;			// the frame's place, the client size
+	int	 nAlpha, nDesk, bMinimised;
+	int	 nReserved[8];
+};
+#define SAVED_MAGIC	0x456C6731u		// "Elg1"
+static_assert (sizeof (TSaved) == KAPI_WS_STATE_BYTES, "a window's saved state is what the kernel keeps");
+static TSaved s_Saved[EL_WINDOWS_MAX];
+
+static void SavedOf (CWindow *pWin, TSaved *pS)
+{
+	memset (pS, 0, sizeof *pS);
+	pS->nMagic = SAVED_MAGIC;
+	pS->x = pWin->X (); pS->y = pWin->Y (); pS->w = pWin->ClientWidth (); pS->h = pWin->ClientHeight ();
+	pS->nAlpha = pWin->Alpha (); pS->nDesk = pWin->Desk (); pS->bMinimised = pWin->Minimised () ? 1 : 0;
+}
+
+void el_core_save_states (unsigned nSelf)
+{
+	if (g_pElWM == 0 || g_pElWM->FullscreenWindow () != 0) return;	// (a full-screen window is at 0, 0 for a while)
+	for (int i = 0; i < EL_WINDOWS_MAX; i++)
+	{
+		CWindow *pWin = g_pElWin[i];
+		if (pWin == 0 || pWin->OwnerPid () == 0 || pWin->OwnerPid () == nSelf) continue;
+		TSaved S;
+		SavedOf (pWin, &S);
+		if (memcmp (&S, &s_Saved[i], sizeof S) == 0) continue;
+		s_Saved[i] = S;
+		el_sys_state (pWin->OwnerPid (), &S, 1);
+	}
+}
+
 // The caller's window made (kapi.cpp CreateWindow: no bigger than the screen; placed in the work
 // area, clear of the screen's left fifth, when the caller gives no place).
 static long OpCreate (unsigned nPid, const long *a, const u8 *pIn, unsigned nInLen)
@@ -84,7 +122,20 @@ static long OpCreate (unsigned nPid, const long *a, const u8 *pIn, unsigned nInL
 	el_core_owner (nPid);
 	int id = el_core_window_add (x, y, w, h, C.title[0] != '\0' ? C.title : "app", C.flags, nPid);
 	el_core_owner (0);
-	return id >= 0 ? 1 : 0;
+	if (id < 0) return 0;
+	// a window this program had under a server that ended: back where it was
+	TSaved S;
+	CWindow *pWin = g_pElWin[id];
+	if (el_sys_state (nPid, &S, 0) && S.nMagic == SAVED_MAGIC)
+	{
+		pWin->Move (S.x, S.y);
+		if (S.w > 0 && S.h > 0) pWin->SetLogicalSize (S.w, S.h);
+		pWin->SetAlpha (S.nAlpha);
+		if (S.nDesk != pWin->Desk ()) g_pElWM->MoveToDesk (pWin, S.nDesk);
+		if (S.bMinimised) g_pElWM->Minimise (pWin);
+	}
+	SavedOf (pWin, &s_Saved[id]);
+	return 1;
 }
 
 // A program's shared memory that is not a window's: its copy of the wallpaper, its transfer buffer

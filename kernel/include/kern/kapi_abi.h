@@ -966,10 +966,15 @@ struct kapi_sound_client
 #define KAPI_WS_REPLY		12	// (const struct kapi_ws_reply *) -> 0: its caller goes on
 #define KAPI_WS_CALL		13	// (struct kapi_ws_call *) -> the server's status (>= 0, or its
 					// own negative codes); -KAPI_ESRCH: no server owns the display
-#define KAPI_WS_KICK		14	// () -> 0: the server told this program's pixels changed
+#define KAPI_WS_KICK		14	// () -> the server's pid (> 0): it is told this program's pixels changed
+					// (another pid than before: the server was started again)
 #define KAPI_WS_FOCUS		15	// (pid, 0: none) -> 0: the program that has the keyboard (kapi_key_held,
 					// a pad's focus answer by it)
 #define KAPI_WS_PROC_NAME	16	// (pid, char *out, cap) -> its length: a live process's name
+#define KAPI_WS_STATE		17	// (pid, void *bytes, set 1 / get 0) -> 0: KAPI_WS_STATE_BYTES the server keeps
+					// in the kernel for an attached program (its window's place: what a server
+					// started again reads back); zero until set
+#define KAPI_WS_STATE_BYTES	64
 #define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
@@ -984,13 +989,15 @@ struct kapi_sound_client
 #define KAPI_WS_VA_FRAME_OFF	0x330000000ULL
 #define KAPI_WS_VA_WALLPAPER	0x340000000ULL
 #define KAPI_WS_VA_XFER		0x350000000ULL
+#define KAPI_WS_BUF_ADOPT	1	// the buffer the program already has in that slot, of that size, left by a
+					// server that ended: taken as it is (its pixels kept) instead of a new one
 struct kapi_ws_buf
 {
 	unsigned pid;			// in: the program
 	int	 slot;			// in: KAPI_WS_SLOT_* (a buffer already there is replaced)
 	unsigned long long bytes;	// in: its size
 	unsigned id;			// out: its number (KAPI_WS_BUF_FREE)
-	unsigned reserved;
+	unsigned flags;			// in: KAPI_WS_BUF_ADOPT
 	unsigned long long addr;	// out: where it is in the server (64 KB aligned, zeroed)
 };
 struct kapi_ws_call			// a program's request (AppKit's window calls)

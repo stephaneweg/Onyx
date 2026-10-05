@@ -27,6 +27,13 @@
 #include "onyxpp.hpp"
 #include "core.h"
 
+extern "C" int memcmp (const void *a, const void *b, __SIZE_TYPE__ n)
+{
+	const unsigned char *p = (const unsigned char *) a, *q = (const unsigned char *) b;
+	for (; n > 0; n--, p++, q++) if (*p != *q) return *p < *q ? -1 : 1;
+	return 0;
+}
+
 extern "C" unsigned el_port_ticks (void)		// (port/circle/timer.h)
 {
 	return kapi_get_ticks ();
@@ -136,7 +143,7 @@ static int demo (void)
 // (server.cpp) The graphics server: the display and the raw input taken from the kernel, the
 // programs' windows served. demo: with the demonstration's three windows, and ended by Esc, by
 // its last window closed, or after 60 s.
-int el_serve (int demo);
+int el_serve (int demo, int restart);		// restart: started again by the kernel after a server that ended
 
 int el_demo_scene (int w, int h)		{ return demo_scene (w, h); }
 int el_demo_closed (unsigned self)
@@ -162,8 +169,13 @@ int main (void)
 	const char *a = args;
 	while (*a == ' ') a++;
 	if (arg_is (a, "--demo")) return demo ();
-	if (arg_is (a, "--display")) return el_serve (1);
-	if (arg_is (a, "--serve")) return el_serve (0);
+	if (arg_is (a, "--display")) return el_serve (1, 0);
+	if (arg_is (a, "--serve"))
+	{
+		const char *b = a + 7;
+		while (*b == ' ') b++;
+		return el_serve (0, arg_is (b, "--restart"));
+	}
 
 	say ("Elegant, Onyx's graphics server -- the kernel's window manager runs the desktop.\n"
 	     "  elegant --demo      its own window manager on the full screen (Esc ends it)\n"

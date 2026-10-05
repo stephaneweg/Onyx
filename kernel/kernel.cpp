@@ -604,6 +604,7 @@ public:
 				CScheduler::Get ()->MsSleep (100);
 				continue;
 			}
+			WsPoll ();				// (the graphics server ended: started again)
 			if (WsDisplayOwned ())
 			{
 				// The graphics server owns the display (kern/wsrv.h): nothing to draw. It is

@@ -34,6 +34,7 @@ void *el_shared_alloc (unsigned pid, int part, unsigned long bytes)
 	struct kapi_ws_buf b;
 	kapi_memset (&b, 0, sizeof b);
 	b.pid = pid; b.slot = part; b.bytes = bytes;
+	b.flags = KAPI_WS_BUF_ADOPT;		// (what a server before this one left the program: its pixels kept)
 	if (kws_buf_map (&b) != 0) return 0;
 	return (void *) b.addr;
 }
@@ -61,6 +62,11 @@ static unsigned s_nIn, s_nReq, s_nPosted, s_nFrames, s_nStatAt;	// (stats)
 int el_sys_attach (unsigned pid)
 {
 	return kws_attach (pid) == 0;
+}
+
+int el_sys_state (unsigned pid, void *bytes, int set)
+{
+	return kapi_ws_ctl (KAPI_WS_STATE, (long) pid, (long) bytes, set) == 0;
 }
 
 int el_sys_name (unsigned pid, char *buf, unsigned cap)
@@ -131,7 +137,7 @@ static void stats (void)
 	s_nIn = s_nReq = s_nPosted = s_nFrames = 0;
 }
 
-int el_serve (int demo)
+int el_serve (int demo, int restart)
 {
 	long r = kws_register ();
 	if (r != 1)
@@ -141,7 +147,13 @@ int el_serve (int demo)
 	}
 	kapi_thread_priority (0, 1);		// what the pointer does is shown at once: before the programs' turns
 	struct kapi_ws_display D;
-	if (kws_display (1, &D) != 0) { say ("elegant: the display is busy (a full-screen program)\n"); return 1; }
+	long taken = kws_display (1, &D);
+	for (int t = 0; taken != 0 && restart && t < 600; t++)	// (started again under a full-screen program: when it ends)
+	{
+		kapi_msleep (500);
+		taken = kws_display (1, &D);
+	}
+	if (taken != 0) { say ("elegant: the display is busy (a full-screen program)\n"); return 1; }
 	int w = D.w, h = D.h;
 	unsigned self = (unsigned) kapi_getpid (0);
 	unsigned *screen = new unsigned[(unsigned long) w * h];
@@ -150,6 +162,7 @@ int el_serve (int demo)
 	else if (ok) ok = el_core_start (w, h);
 	if (!ok) { kws_display (0, 0); say ("elegant: no memory\n"); return 1; }
 
+	if (restart) kapi_launch ("voronoy");			// (the wallpaper went with the server before: painted again)
 	unsigned nStart = kapi_get_ticks ();
 	int quit = 0;
 	int rects[EL_RECTS_MAX * 4];
@@ -212,6 +225,7 @@ int el_serve (int demo)
 
 		if (demo) nDemo -= el_demo_closed (self);
 		forward_events (self);
+		el_core_save_states (self);				// (the windows' places, for a server started again)
 		unsigned focus = el_core_focus_pid ();			// (kapi_key_held, the pads: who has the keys)
 		if (focus != s_nFocus) { s_nFocus = focus; kapi_ws_ctl (KAPI_WS_FOCUS, (long) focus, 0, 0); }
 

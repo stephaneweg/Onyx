@@ -35,6 +35,9 @@
 // off-screen buffer is what is shown; a full screen, a resolution change: not now)
 boolean WsDisplayOwned (void);
 
+// The compositor, at each turn of its loop: the server the kernel started, ended -> started again.
+void WsPoll (void);
+
 // The compositor, at each of its turns while the server owns the display: a server that has
 // called nothing for WS_SILENT_MS loses it (a hang must not leave the screen frozen).
 void WsWatch (void);
