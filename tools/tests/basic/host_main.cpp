@@ -28,6 +28,9 @@ struct ConsoleHost : bas::Host
 		return n;
 	}
 	int column () override { return col; }
+	// PROF=1: where the time goes (bas::Profile), on stderr at the end
+	bas::Profile profile;
+	unsigned clockUs () override { timespec ts; clock_gettime (CLOCK_MONOTONIC, &ts); return (unsigned) (ts.tv_sec * 1000000ull + ts.tv_nsec / 1000); }
 	// a gamepad 0 whose A (16) and right (8) are held on every other read, its stick x at +500
 	int padReads = 0;
 	unsigned padButtons (int pad) override { padReads++; return (pad == 0 || pad == -1) && (padReads & 1) ? 16 + 8 : 0; }
@@ -133,7 +136,9 @@ int main (int argc, char **argv)
 		delete [] bytes;
 	}
 	if (!p) { printf ("COMPILE ERROR line %d: %s\n", e.line, e.msg); delete [] src; return 1; }
+	if (getenv ("PROF")) h.prof = &h.profile;
 	int r = bas::run (p, h, &e);
+	if (h.prof) { char t[320]; h.profile.text (t, sizeof t); fprintf (stderr, "%s\n", t); }
 	if (r) printf ("RUNTIME ERROR line %d: %s\n", e.line, e.msg);
 	bas::destroy (p);
 	delete [] src;

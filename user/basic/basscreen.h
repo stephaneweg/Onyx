@@ -657,8 +657,17 @@ public:
 	}
 
 	// ---- time --------------------------------------------------------------------------------------
+	// (basic -p: the time spent here is a wait, not work; nested calls count once)
+	int profDepth = 0;
+	struct ProfWait
+	{
+		ScreenHost *h; unsigned t0;
+		ProfWait (ScreenHost *host) : h (host), t0 (0) { if (h->prof && h->profDepth++ == 0) t0 = h->clockUs (); }
+		~ProfWait () { if (h->prof && --h->profDepth == 0) (h->prof->inPrim ? h->prof->usWaitPrim : h->prof->usWait) += (unsigned) (h->clockUs () - t0); }
+	};
 	void sleepMs (int ms) override
 	{
+		ProfWait pw (this);
 		unsigned t0 = nowMs ();
 		while ((int) (nowMs () - t0) < ms)
 		{
@@ -670,6 +679,7 @@ public:
 	}
 	bool poll () override
 	{
+		ProfWait pw (this);
 		if (!win) { bgTick (); pumpEvents (); return !stopped (); }
 		pump ();
 		return !stopped ();

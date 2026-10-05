@@ -144,6 +144,15 @@ public:
 	}
 	bool stopRequested () override { return (console && !root) ? false : should_exit () != 0; }
 	unsigned nowMs () override { return kapi_get_ticks () * 10; }
+	// basic -p: the profile, written to SD:/basprof.txt every few seconds and at the end (and printed at the end)
+	bas::Profile profile;
+	unsigned clockUs () override { return kapi_clock_us (); }
+	void profReport () override
+	{
+		char t[320]; int n = profile.text (t, sizeof t - 2);
+		t[n++] = '\n'; t[n] = 0;
+		save ("SD:/basprof.txt", t, n);
+	}
 	void sleepRaw (int ms) override { kapi_msleep ((unsigned) (ms > 0 ? ms : 1)); }
 	bool keyHeld (int key) override { return kapi_key_held (key) != 0; }
 	unsigned padButtons (int pad) override { return pad_buttons (pad); }
@@ -579,7 +588,7 @@ int main (void)
 	static char argbuf[512];
 	kapi_get_args (argbuf, sizeof argbuf);
 	char path[256], cwd[256] = ""; int i = 0, n = 0;
-	bool ide = false, compileOnly = false;
+	bool ide = false, compileOnly = false, prof = false;
 	static char service[32] = "qbasic";
 	// Options: -d <dir> (current directory, default: the program's folder), -i (report a
 	// syntax / runtime error to the qbasic editor over IPC: service "qbasic"; -s <name>: to the service
@@ -596,6 +605,7 @@ int main (void)
 			service[k] = 0; ide = true; continue;
 		}
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'c' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { compileOnly = true; i += 2; continue; }
+		if (argbuf[i] == '-' && argbuf[i + 1] == 'p' && (argbuf[i + 2] == ' ' || !argbuf[i + 2])) { prof = true; i += 2; continue; }	// -p: where the time goes
 		if (argbuf[i] == '-' && argbuf[i + 1] == 'd' && argbuf[i + 2] == ' ')
 		{
 			i += 3; while (argbuf[i] == ' ') i++;
@@ -696,7 +706,9 @@ int main (void)
 		else notify (host.title, msg);
 	};
 	if (!prog) { report ("Syntax error in line "); return 2; }
+	if (prof) host.prof = &host.profile;
 	int r = bas::run (prog, host, &err);
+	if (prof && host.console) { char t[320]; host.profile.text (t, sizeof t); ax_putln (t); }
 	if (r) report ("Error in line ");
 	bas::destroy (prog);
 	return r ? 3 : 0;
