@@ -2581,14 +2581,22 @@ void kapi_present_fb (void)
 	else if (pAS != 0 && pWM != 0 && g_pGraphics != 0 && pWM->FullscreenWindow () != 0
 	    && pWM->FullscreenWindow () == pAS->GetWindow () && pWM->FullscreenBuffer () != 0)
 	{
-		unsigned nW = g_pGraphics->GetWidth (), nH = g_pGraphics->GetHeight ();
-		if ((int) nW == g_nScreenWidth && (int) nH == g_nScreenHeight)
+		// The desktop's last frame may still be on its way (the compositor yields during its
+		// display DMA; the full screen was taken meanwhile): wait for it, then check again --
+		// the wait yields (the window closed, the full screen given back by another thread).
+		DisplayPresentIdle ();
+		if (pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ()
+		    && pWM->FullscreenBuffer () != 0)
 		{
-			memcpy (g_pGraphics->GetBuffer (), pWM->FullscreenBuffer (), (size_t) nW * nH * 4);
+			unsigned nW = g_pGraphics->GetWidth (), nH = g_pGraphics->GetHeight ();
+			if ((int) nW == g_nScreenWidth && (int) nH == g_nScreenHeight)
+			{
+				memcpy (g_pGraphics->GetBuffer (), pWM->FullscreenBuffer (), (size_t) nW * nH * 4);
+			}
+			g_pGraphics->UpdateDisplay ();
+			ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
+			pAS->GetWindow ()->Touch ();		// (rdpd)
 		}
-		g_pGraphics->UpdateDisplay ();
-		ScreenDirty ();				// a new frame: kapi_screen_grab (vncd) must see it
-		pAS->GetWindow ()->Touch ();		// (rdpd)
 	}
 	if (CScheduler::IsActive ())
 	{
