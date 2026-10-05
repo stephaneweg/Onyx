@@ -711,7 +711,8 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 		return 2;
 	}
 	s_nGen = nGen; s_pLast = pDst;
-	if (WsDisplayOwned () && g_pGraphics != 0 && (int) g_pGraphics->GetWidth () == nW && (int) g_pGraphics->GetHeight () == nH)
+	if (WsDisplayOwned () && pWM->FullscreenWindow () == 0 && g_pGraphics != 0
+	    && (int) g_pGraphics->GetWidth () == nW && (int) g_pGraphics->GetHeight () == nH)
 	{							// the graphics server's screen: the off-screen buffer
 		memcpy (pDst, g_pGraphics->GetBuffer (), (size_t) nW * nH * 4);
 		return 1;
@@ -2519,9 +2520,15 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || !OutOK (pW) || !OutOK (pH) || WsDisplayOwned ())
+	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || !OutOK (pW) || !OutOK (pH))
 	{
-		return 0;			// (the graphics server owns the display: no full screen yet)
+		return 0;
+	}
+	// (the graphics server owns the display: the caller's window is the server's -- AppKit made it
+	// -- and what the kernel has of it is its event queue; never a window of the kernel's manager)
+	if (WsDisplayOwned () && pAS->GetWindow () == 0)
+	{
+		return 0;
 	}
 	if (pAS->GetWindow () == 0 && CreateWindow (0, 0, 64, 64, "fullscreen", WIN_FLAG_BORDERLESS) == 0)
 	{
@@ -2542,6 +2549,7 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 	s_pDirectWin = 0;
 	OutPut (pW, g_nScreenWidth);
 	OutPut (pH, g_nScreenHeight);
+	WsFullscreen (pAS->GetPid (), TRUE);		// (the graphics server: all the input is this program's)
 	return (unsigned *) USER_FULLSCREEN_CANVAS;
 }
 
@@ -2615,6 +2623,7 @@ void kapi_present_fb (void)
 // Give the screen back to the desktop (also automatic when the app exits).
 void kapi_fullscreen_end (void)
 {
+	{ CAddressSpace *pWsAS = CurrentAS (); if (pWsAS != 0) WsFullscreen (pWsAS->GetPid (), FALSE); }
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
 	if (pAS != 0 && pWM != 0 && pWM->FullscreenWindow () != 0 && pWM->FullscreenWindow () == pAS->GetWindow ())

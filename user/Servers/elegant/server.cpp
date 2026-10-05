@@ -96,12 +96,13 @@ static void forward_events (unsigned self)
 	}
 }
 
-static void present (unsigned *screen, int stride, int x, int y, int w, int h)
+// -> 0 shown; else not (a full-screen program has the display: the kernel shows its buffer).
+static long present (unsigned *screen, int stride, int x, int y, int w, int h)
 {
 	struct kapi_ws_present p;
 	kapi_memset (&p, 0, sizeof p);
 	p.pixels = screen; p.stride = stride; p.x = x; p.y = y; p.w = w; p.h = h;
-	kws_present (&p);
+	return kws_present (&p);
 }
 
 static void say (const char *s) { ax_puts (s); }
@@ -176,6 +177,9 @@ int el_serve (int demo)
 				case KAPI_WS_IN_KICK:
 					el_core_window_present (el_core_window_of ((unsigned) in[i].a));
 					break;
+				case KAPI_WS_IN_FULLSCREEN:
+					el_core_fullscreen ((unsigned) in[i].a, (int) in[i].buttons);
+					break;
 				case KAPI_WS_IN_GONE:
 					{
 						int id;
@@ -201,8 +205,10 @@ int el_serve (int demo)
 		if (focus != s_nFocus) { s_nFocus = focus; kapi_ws_ctl (KAPI_WS_FOCUS, (long) focus, 0, 0); }
 
 		int k = el_core_compose (screen, w, h, rects);
-		if (k < 0) present (screen, w, 0, 0, 0, 0);
-		for (int i = 0; i < k; i++) present (screen, w, rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3]);
+		long shown = 0;
+		if (k < 0) shown = present (screen, w, 0, 0, 0, 0);
+		for (int i = 0; i < k; i++) shown |= present (screen, w, rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3]);
+		if (shown != 0) { el_core_redraw (); kws_wait (20); }	// (not shown: the whole screen at the next turn)
 		if (k != 0) s_nFrames++;
 		stats ();
 		if (k == 0) kws_wait (100);

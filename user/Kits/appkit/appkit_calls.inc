@@ -31,9 +31,11 @@
 // follows it is the kernel's window manager's.
 #ifdef KAPI_IMPL
 #define KAPI_WS(value)		if (ws_on ()) return value;
+#define KAPI_WS_DO(statement)	if (ws_on ()) { statement; }	// (then the kernel's call too)
 #define KAPI_WSV(statement)	if (ws_on ()) { statement; return; }
 #else
 #define KAPI_WS(value)
+#define KAPI_WS_DO(statement)
 #define KAPI_WSV(statement)
 #endif
 
@@ -135,7 +137,7 @@ KAPI_CALL (int, kapi_clipboard_set, (int type, const void *d, unsigned n), { ret
 KAPI_CALL (int, kapi_clipboard_get, (int *type, void *b, unsigned cap, unsigned *serial), { return KT->clipboard_get (type, b, cap, serial); })
 KAPI_CALL (void, kapi_set_window_alpha, (int a), { KAPI_WSV (WS_OP (EL_OP_ALPHA, a, 0, 0, 0)); KT->set_window_alpha (a); })
 KAPI_CALL (void, kapi_shutdown, (int mode), { KT->shutdown (mode); })
-KAPI_CALL (unsigned *, kapi_fullscreen_begin, (int *w, int *h), { return KT->fullscreen_begin (w, h); })
+KAPI_CALL (unsigned *, kapi_fullscreen_begin, (int *w, int *h), { KAPI_WS_DO (ws_create (0, 0, 64, 64, "fullscreen", 1)); return KT->fullscreen_begin (w, h); })
 KAPI_CALL (void, kapi_present_fb, (void), { KT->present_fb (); })
 KAPI_CALL (void, kapi_fullscreen_end, (void), { KT->fullscreen_end (); })
 KAPI_CALL (int, kapi_drag_begin, (int type, const void *data, unsigned len, const char *label), { KAPI_WS (ws_drag_begin (type, data, len, label)); return KT->drag_begin (type, data, len, label); })

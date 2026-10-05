@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2 done; 3: the whole desktop runs on Elegant in a one-boot trial (the full screen is left)
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2 done; 3: the whole desktop runs on Elegant in a one-boot trial
 
 **The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
 `UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
@@ -119,9 +119,11 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      (voronoy through its copy of the buffer), the menu bar, the dock, the agenda, Terminal and
      Tinypad opened from the dock, Tinypad's menus in the menu bar, the dock's running marks --
      every program as it is on the card.
-   - **Left in stage 3**: the full screen (`fullscreen_begin` / `present_fb` / `direct`: the kernel
-     keeps the buffer and the direct mode, Elegant must say who owns the display and send that window
-     all the input) and `screen_set`; Elegant dying -> the kernel takes the display back (done) AND
+   - **The full screen** (docs/02 §8 v89's end): the kernel's calls as before, on the program's
+     kernel-side window; Elegant told by the ring (`KAPI_WS_IN_FULLSCREEN`), all the input to that
+     program, nothing shown meanwhile. Tried: `plasma` started on the Elegant desktop, Esc, the
+     desktop back. Typing (Tinypad), a window dragged, the menu bar's drop-down: tried too.
+   - **Left in stage 3**: `screen_set` under Elegant; Elegant dying -> the kernel takes the display back (done) AND
      starts it again (not done; its programs' buffers are kept for it: `bServer` in `wsrv.cpp`); the
      role given to the process the kernel started (today: the program named `elegant`); `rdpd` /
      Onyx Remote and `vncd` to check on Elegant (`win_list`, `win_read` by the transfer buffer,

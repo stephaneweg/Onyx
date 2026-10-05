@@ -1246,8 +1246,12 @@ call of the same name did) for its whole life; else they call the kernel's windo
 program is rebuilt. Under Elegant the kernel still serves: the pump (`pop_event`, `should_exit`,
 `pump_sleep`, `post`), `screen_size`, `screen_grab` (the off-screen buffer), `inject_*` (to the server's
 ring), `get_modifiers`, `key_held`, `draw_text_buf` (AppKit's `kapi_draw_text` draws into the canvas with
-it), the surfaces, the clipboard. Not served yet under Elegant: the full screen (`fullscreen_begin`
-answers 0) and `screen_set` (-2).
+it), the surfaces, the clipboard — and **the full screen**: `fullscreen_begin` / `present_fb` /
+`fullscreen_direct` / `fullscreen_end` are the kernel's as before (its buffer, the direct mode: no round
+trip a frame), on the program's kernel-side window (AppKit makes the program a window in Elegant first);
+the kernel tells Elegant (`KAPI_WS_IN_FULLSCREEN`), which sends that program all the input and shows
+nothing meanwhile (`KAPI_WS_PRESENT` answers `-KAPI_EBUSY`), then draws the whole screen again. Not
+served yet under Elegant: `screen_set` (-2).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32

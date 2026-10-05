@@ -175,6 +175,15 @@ boolean WsInputHeld (int nKey, boolean bDown)
 	return Push (Ev);
 }
 
+void WsFullscreen (unsigned nPid, boolean bOn)
+{
+	if (!s_bOwned) return;
+	struct kapi_ws_input Ev;
+	memset (&Ev, 0, sizeof Ev);
+	Ev.type = KAPI_WS_IN_FULLSCREEN; Ev.a = (int) nPid; Ev.buttons = bOn ? 1 : 0;
+	Push (Ev);
+}
+
 // ---- the server's operations --------------------------------------------------------------------
 
 // The role is for the program named "elegant" (its task's name, with or without its path), when no
@@ -220,6 +229,8 @@ static long Present (const struct kapi_ws_present *pUser)
 	struct kapi_ws_present P;
 	if (!s_bOwned || g_pGraphics == 0) return -KAPI_EPERM;
 	if (!UserGet (&P, pUser)) return -KAPI_EFAULT;
+	CWindowManager *pKWM = CWindowManager::Get ();
+	if (pKWM != 0 && pKWM->FullscreenWindow () != 0) return -KAPI_EBUSY;	// (a full-screen program shows itself)
 	int nW = (int) g_pGraphics->GetWidth (), nH = (int) g_pGraphics->GetHeight ();
 	if (nW != g_nScreenWidth || nH != g_nScreenHeight) return -KAPI_EBUSY;
 	if (P.w <= 0 || P.h <= 0) { P.x = 0; P.y = 0; P.w = nW; P.h = nH; }
@@ -231,6 +242,7 @@ static long Present (const struct kapi_ws_present *pUser)
 	if (pSrc == 0 || !UserReadable (pSrc, ((u64) (P.y + P.h - 1) * P.stride + P.x + P.w) * 4)) return -KAPI_EFAULT;
 	DisplayPresentIdle ();
 	if (!s_bOwned || !IsServer ()) return -KAPI_EPERM;
+	if (pKWM != 0 && pKWM->FullscreenWindow () != 0) return -KAPI_EBUSY;
 	u32 *pDst = (u32 *) g_pGraphics->GetBuffer ();
 	for (int y = P.y; y < P.y + P.h; y++)
 		memcpy (pDst + (size_t) y * nW + P.x, pSrc + (size_t) y * P.stride + P.x, (size_t) P.w * 4);

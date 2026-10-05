@@ -234,6 +234,7 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 				I.w = pW->ClientWidth (); I.h = pW->ClientHeight ();
 				I.flags = pW->Flags (); I.alpha = pW->Alpha (); I.gen = pW->Gen ();
 				I.state = StateOf (pW);
+				if (pW == pWM->FullscreenWindow ()) { I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN; }
 				I.chromeGen = pW->ChromeGen ();
 				if (pW->HasChrome ()) { I.ow = pW->OuterW (); I.oh = pW->OuterH (); I.il = pW->ChromeL (); I.it = pW->ChromeT (); }
 				const char *t = pW->Title ();

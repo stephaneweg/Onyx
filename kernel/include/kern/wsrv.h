@@ -54,6 +54,10 @@ void WsBootStart (void);
 // The process that has the keyboard, as the server says (KAPI_WS_FOCUS): kapi_key_held, the pads.
 unsigned WsFocusPid (void);
 
+// A program took (bOn) or gave back the full screen while the server owns the display: the server
+// is told (it sends that program all the input, and shows nothing meanwhile).
+void WsFullscreen (unsigned nPid, boolean bOn);
+
 // A process is gone (its teardown: interrupts masked, nothing may wait).
 void WsOnProcessGone (unsigned nPid);
 

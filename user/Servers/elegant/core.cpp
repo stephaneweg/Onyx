@@ -210,6 +210,38 @@ void el_core_window_event_drop (int id)
 	if (id >= 0 && id < EL_WINDOWS_MAX) s_bPeek[id] = FALSE;
 }
 
+// A program took or gave back the full screen (the kernel shows its buffer: kapi_present_fb): its
+// window at 0, 0 and all the input its own, as the kernel's window manager did; nothing composed
+// meanwhile; the whole screen drawn when it ends.
+static int s_nFsX = 0, s_nFsY = 0;
+
+void el_core_fullscreen (unsigned pid, int on)
+{
+	if (g_pElWM == 0) return;
+	CWindow *pFs = g_pElWM->FullscreenWindow ();
+	if (on)
+	{
+		int id = el_core_window_of (pid);
+		CWindow *pWin = Win (id);
+		if (pWin == 0 || pWin == pFs) return;
+		s_nFsX = pWin->X (); s_nFsY = pWin->Y ();
+		pWin->Move (0, 0);
+		g_pElWM->SetFullscreen (pWin);
+	}
+	else if (pFs != 0 && pFs->OwnerPid () == pid)
+	{
+		g_pElWM->SetFullscreen (0);
+		pFs->Move (s_nFsX, s_nFsY);
+		ScreenDirty ();
+		s_bFirst = TRUE;
+	}
+}
+
+void el_core_redraw (void)
+{
+	s_bFirst = TRUE;
+}
+
 void el_core_key (const char *keys)
 {
 	if (g_pElWM != 0 && keys != 0) g_pElWM->OnKey (keys);
@@ -231,6 +263,7 @@ void el_core_pointer (int x, int y, unsigned buttons, int wheel)
 int el_core_compose (unsigned *screen, int w, int h, int *rects)
 {
 	if (g_pElWM == 0 || screen == 0) return 0;
+	if (g_pElWM->FullscreenWindow () != 0) { s_bFirst = TRUE; return 0; }	// (its program shows itself)
 	unsigned nGen = g_nScreenGen;
 	if (nGen == s_nLastGen && !s_bFirst) return 0;
 	s_nLastGen = nGen;
