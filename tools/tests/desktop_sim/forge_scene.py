@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""forge_scene.py -- the events of 3DForge's screenshots (shots.sh): each scene a script of clicks and moves for the
+desktop simulator, on the sample part SD:/docs/3d/bracket.3df. A point of the model is turned into the pixel the
+app shows it at -- its home view of the bracket (the camera of user/Apps/3dforge/frender.h), or the view from above
+a sketch on the plate's top face is drawn in.
+
+    python3 tools/tests/desktop_sim/forge_scene.py main | shapes | box | cut | sketch | fillet | export
+"""
+import math, sys
+
+W, H = 1006, 621				# the client area on the simulator's screen
+VX, VY, VW, VH = 8, 70, W - 8 - 232, H - 70 - 35 - 52	# the view
+S = min (VW, VH) * 0.82 / math.sqrt (90 * 90 + 60 * 60 + 45 * 45)	# fit (): pixels a millimetre
+
+def P (x, y, z):
+	"""the bracket's home view"""
+	az, el = math.radians (-58), math.radians (28)
+	r = (-math.sin (az), math.cos (az), 0); u = (-math.sin (el) * math.cos (az), -math.sin (el) * math.sin (az), math.cos (el))
+	q = (x - 45, y - 30, z - 22.5)
+	return "%d %d" % (VX + VW / 2 + sum (a * b for a, b in zip (q, r)) * S, VY + VH / 2 - sum (a * b for a, b in zip (q, u)) * S)
+def T (x, y):
+	"""from above, the view's centre on (45, 30)"""
+	return "%d %d" % (VX + VW / 2 + (x - 45) * S, VY + VH / 2 - (y - 30) * S)
+def ck (p): return "down %s;up %s;wait" % (p, p)
+def mv (p): return "move %s" % p
+def typed (s): return ";".join ("key 0x08" if c == "<" else "key 0x0D" if c == "!" else "key %s" % c for c in s)
+
+SHAPES = ck ("202 30")			# the Shapes button; its fold-out's cells:
+CELL = dict (box = "211 97", cyl = "283 97", sphere = "355 97", torus = "427 97", pyramid = "211 159", prism = "283 159", taper = "355 159")
+TOOL = dict (sketch = "264 30", extrude = "323 30", fillet = "392 30", chamfer = "452 30", move = "513 30", union = "580 30", subtract = "640 30")
+SK = dict (line = "212 30", rect = "277 30", circle = "341 30", arc = "399 30", close = "456 30", finish = "930 28")
+
+def scene (name):
+	w = "wait;wait"
+	if name == "main": return w + ";wait"
+	if name == "shapes": return ";".join ([w, "down 202 30;up 202 30;wait", mv (CELL["torus"]), "wait"])
+	if name == "box":			# a box on the wall's top... the plate's top face: base, then the height pulled
+		return ";".join ([w, SHAPES, ck (CELL["box"]), mv (P (70, 30, 8)), ck (P (70, 30, 8)), mv (P (80, 38, 8)), ck (P (80, 38, 8)), mv (P (80, 38, 26)), "wait;wait"])
+	if name == "cut":			# a cylinder pushed into the plate: Subtract chosen
+		return ";".join ([w, SHAPES, ck (CELL["cyl"]), mv (P (25, 42, 8)), ck (P (25, 42, 8)), mv (P (31, 42, 8)), ck (P (31, 42, 8)), mv (P (31, 42, -2)), "wait;wait"])
+	if name == "sketch":			# on the plate's top face: a rectangle, a circle, then a run of lines being closed
+		return ";".join ([w, ck (TOOL["sketch"]), mv (P (25, 42, 8)), ck (P (25, 42, 8)), "wait",
+				  ck (SK["rect"]), mv (T (6, 34)), ck (T (6, 34)), mv (T (24, 46)), ck (T (24, 46)),
+				  ck (SK["circle"]), mv (T (74, 40)), ck (T (74, 40)), mv (T (79, 40)), ck (T (79, 40)),
+				  ck (SK["line"]), mv (T (36, 34)), ck (T (36, 34)), mv (T (58, 34)), ck (T (58, 34)), mv (T (58, 46)), ck (T (58, 46)), mv (T (36, 34)), "wait;wait"])
+	if name == "fillet":			# the wall's top front edge chosen, its radius typed
+		e = P (45, 52, 45)
+		return ";".join ([w, ck (TOOL["fillet"]), mv (e), ck (e), typed ("<4"), "wait;wait"])
+	if name == "export": return ";".join ([w, ck ("950 28"), "wait;wait"])
+	raise SystemExit ("no such scene: " + name)
+
+if __name__ == "__main__":
+	print (scene (sys.argv[1] if len (sys.argv) > 1 else "main"), end = "")

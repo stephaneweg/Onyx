@@ -20,6 +20,7 @@
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Photos** (`photos.app`) | **MIT** (ours) | Its EXIF reader, library, editing and slideshow are ours; it links FreeType (FTL), stb_image and simplewebp (public domain, BSD-3), our PNG / JPEG / PDF writers (MIT): all permissive. |
 | **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/Libs/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
+| **3DForge** (`3dforge.app`) | **MIT** (ours) | Its history, sketch, fillets, view and interface are ours; it links Manifold (Apache-2.0) and Clipper2 (BSL-1.0), FreeType (FTL): all permissive. Apache-2.0 asks that the licence and the notices go with the binary: `third_party/manifold-3.5.4/LICENSE`. |
 | **Every other app, the tools** | **MIT** (ours; the user's decision, below) | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |
@@ -113,7 +114,7 @@ Two weaknesses, worth fixing:
 | curl 8.16.0 (libcurl and the tool) | `third_party/curl-8.16.0`, `/bin/curl` (the POSIX ports; with mbedTLS taken under Apache-2.0, nghttp2, zlib, brotli) | curl licence (MIT-like) | Keep `COPYING` |
 | ICU 78.3 (libicuuc, libicui18n, the filtered data) | `third_party/icu-78.3`, `/bin/icutest` (the POSIX ports for WebKit, not on the card yet) | Unicode License V3 (SPDX Unicode-3.0), with the third-party notices in its `LICENSE` | Keep `LICENSE` |
 | HarfBuzz 14.5.1 | `third_party/harfbuzz-14.5.1`, `/bin/hbtest` (the POSIX ports for WebKit) | "Old MIT" | Keep `COPYING` |
-| Manifold 3.5.4 (boolean operations on closed meshes) | `third_party/manifold-3.5.4`, `user/Libs/manifold/libmanifold.a` (3DForge's kernel; the app is not built yet) | Apache-2.0 | Keep `LICENSE`; the changes are listed in `README.onyx` (none in its sources) |
+| Manifold 3.5.4 (boolean operations on closed meshes) | `third_party/manifold-3.5.4`, `user/Libs/manifold/libmanifold.a`, linked into 3DForge | Apache-2.0 | Keep `LICENSE`; the changes are listed in `README.onyx` (none in its sources) |
 | Clipper2 (the commit Manifold pins; polygon clipping and offsetting) | `third_party/clipper2-46f6391`, in `libmanifold.a` | Boost Software License 1.0 | Keep `LICENSE` with the sources (nothing owed for a binary) |
 | Skia (milestone 154: WebKit's copy) | `third_party/skia-m154`, `/bin/skiatest`, `/bin/skiademo` (the POSIX ports for WebKit) | BSD-3-Clause | Keep `LICENSE` |
 | libjpeg-turbo 3.1.4 | `third_party/libjpeg-turbo-3.1.4` (the POSIX ports for WebKit: Skia's and WebKit's JPEG) | IJG + BSD-3-Clause + zlib (`LICENSE.md`) | Docs: "This software is based in part on the work of the Independent JPEG Group"; keep `LICENSE.md` |
