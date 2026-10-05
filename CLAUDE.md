@@ -17,6 +17,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/03-DEVELOPER-GUIDE.md`
 - `docs/04-USER-GUIDE.md`
 - `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
+- `docs/06-KITS-GUIDE.md` (**the kits**: one per domain, how a program uses them, an example for each — keep it up to date when a kit gains a subject)
 - `docs/08-WEBKIT-PORT.md` (Jet Browser, the Onyx web browser: the WebKit port — its status and how to resume, the plan, the patch series in `tools/webkit/patches/`, `jsc`; the NetSurf Jet and its documents 06 and 07 were removed on 2026-10-04)
 - `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 - `docs/BLUETOOTH-AUDIO-STUDY.md` (Bluetooth audio output: the feasibility study -- the chip, the stack options and their licences, the plan B0-B6; nothing built)

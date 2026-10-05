@@ -30,6 +30,7 @@ DOCS = [
     "03-DEVELOPER-GUIDE.md",
     "04-USER-GUIDE.md",
     "05-CIRCLE-CHANGES.md",
+    "06-KITS-GUIDE.md",
     "08-WEBKIT-PORT.md",
 ]
 

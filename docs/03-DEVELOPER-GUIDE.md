@@ -1025,6 +1025,8 @@ masks, the brushes and the document of the photo editor come on top of it later 
 
 ### 5.9.0. What moved into the kits on 2026-10-05; SystemKit and NetKit
 
+*(The guide to the kits, with an example for each: [06-KITS-GUIDE.md](06-KITS-GUIDE.md).)*
+
 Headers of inline functions that every program copied are now a kit's, declared in a header and
 compiled once in the library. Which kit: **AppKit** makes a program run (its link to the kernel, and
 what any program needs to stand: strings, console, `.ini`, starting a program); **SystemKit** is what a
