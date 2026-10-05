@@ -285,12 +285,13 @@ lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-# ---- appkit.so: AppKit, the interface between the programs and the kernel (appkit/appkit.c, kapi.h; docs/03
+# ---- appkit.so: AppKit, the interface between the programs and the kernel (appkit/appkit.c + appkit_calls.inc:
+# the bodies of the calls kapi.h declares; docs/03
 # "AppKit"). Its table: every kapi_* function, by name (appkit/appkit.abi, append-only). Its stubs read the
 # table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
 # state, no library runtime; built with the FPU on (some calls take floats: they pass through).
 APPKIT_TABLE_VA = 0x380008000
-lib/appkit/appkit.o: appkit/appkit.c kapi.h lib.h ../kernel/include/kern/kapi_abi.h
+lib/appkit/appkit.o: appkit/appkit.c appkit/appkit_calls.inc kapi.h lib.h ../kernel/include/kern/kapi_abi.h
 	@mkdir -p lib/appkit
 	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -c $< -o $@
 appkit/appkit.abi:
