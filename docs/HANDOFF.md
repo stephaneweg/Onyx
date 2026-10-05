@@ -8,7 +8,9 @@ answer in French. The docs stay in English.
 
 The user's next work, to start in a new session: **move the window server (the compositor, the windows,
 the input routing: `kernel/gui`, `kern/gui/window.h`, the `compositor` and `input` kernel tasks) into a
-user process.** Nothing is started. What exists to build on:
+user process.** Nothing is started. **It is done on the branch `UserSpaceElegant`** (the user: made from
+`main` on 2026-10-05, pushed) -- commit and push THERE, keep it on top of `main` by merging `origin/main`
+into it, and merge it into `main` only when the user says so. What exists to build on:
 
 - **The study**: `docs/GUI-USERSPACE-STUDY.md` (2026: where things stand in the kernel, §2 *The GUI in
   user space* — the target, what the kernel must add, the protocol, compatibility, cost and risks; §4
