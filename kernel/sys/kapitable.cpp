@@ -287,6 +287,9 @@ int kapi_win_resizable (int bOn, int nMinW, int nMinH);
 const void *kapi_lib_open (const char *pName, unsigned nMinVersion, int *pErr);
 // v84 the sound's output (sys/kapi.cpp over sys/sound.cpp)
 int kapi_sound_output (int nOut);
+// v85 the sound's mixer
+int kapi_sound_clients (struct kapi_sound_client *pOut, int nMax);
+int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute);
 
 }  // extern "C"
 
@@ -598,4 +601,6 @@ void KApiTableInit (void)
 	t->win_resizable     = kapi_win_resizable;	// (v82)
 	t->lib_open          = kapi_lib_open;		// (v83)
 	t->sound_output      = kapi_sound_output;	// (v84)
+	t->sound_clients       = kapi_sound_clients;	// (v85)
+	t->sound_client_volume = kapi_sound_client_volume;
 }

@@ -1010,9 +1010,12 @@ the library, and Koton and the Media Player no longer carry them.
 > ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
 > `ftpfs.h`: `ftpfs_login` / `ftpfs_login_site` (hand a login to ftpfs, optionally
 > remembered), `ftpfs_forget`, `ftpfs_load_sites` (the remembered servers of `SD:/etc/ftpfs.ini`).
-> **Sound (ABI v46)**: `kapi_sound_acquire ()` first (1 = the output is yours; 0 = another
-> app has it) — the output is released and silenced by `kapi_sound_release ()` or when your
-> process ends. Then `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
+> **Sound (ABI v46; a mixer since v85)**: `kapi_sound_acquire ()` first (1 = your program has a
+> **channel** of the mixer — several programs play together, each with its own volume; 0 = the 8
+> channels are taken) — the channel is freed by `kapi_sound_release ()` or when your process ends.
+> `kapi_sound_clients (list, max)` lists the channels (`struct kapi_sound_client`: pid, name, volume,
+> mute, level) and `kapi_sound_client_volume (pid, 0..100, mute)` sets one (`volume.h`'s `mixer_set`
+> also writes `SD:/etc/mixer.ini`). Then `kapi_sound_write (frames, n)` streams PCM (s16 L/R at `SOUND_RATE` 44100 Hz; non-blocking,
 > returns the frames taken — loop with a short sleep while it returns 0) for audio / MIDI
 > players. **A program that only wants to make a sound does not do this itself: AudioKit (§5.7) does** —
 > `ak_fm_start (voice 0..15, milliHz, SOUND_SQUARE / SINE / TRIANGLE / SAW / NOISE, volume 0..255)` plays a

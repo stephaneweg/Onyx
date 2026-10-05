@@ -1142,6 +1142,9 @@ v83 = **shared libraries** (§7 *Shared libraries*; [`docs/SHARED-LIBS-PLAN.md`]
 `lib_open` (slot 261), `KAPI_IMG_LIB` in `kapi_image_info.flags` (*v83: lib_open* below),
 v84 = **the sound's output**: `sound_output` (slot 262), `KAPI_SND_OUT_*` — the jack, a USB audio
 device or HDMI behind the same producer (*v84: sound_output* below).
+v85 = **the sound's mixer**: every program that plays has a channel of its own (`sound_acquire`: up to 8
+at once), with its volume and its mute; `sound_clients` (slot 263), `sound_client_volume` (slot 264),
+`struct kapi_sound_client` (*v85: the mixer* below).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -1529,6 +1532,21 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v85: the mixer
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 263 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
+| 264 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
+
+No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8
+are taken) instead of the whole output, `sound_write` / `sound_status` / `sound_config` are the caller's own
+channel's (`sound_status`'s owner: the caller's pid when it has one, else 0), and the latency in force is the
+shortest any channel asked for. The mapped ring (v68) stays single: the first program that maps it has it
+until it releases its channel (another gets 0 and plays through `sound_write`). The kernel does not keep the
+volumes across a restart: the Sound applet and `/bin/volume` write `SD:/etc/mixer.ini` (`media = 60`,
+`media.mute = 1`: `user/volume.h`, `mixer_set`), read when the sound first starts.
 
 ### v84: sound_output
 
@@ -2007,6 +2025,14 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   §11): the scheduler, every process, the interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
   not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 are **app cores**
   (§14). A failed start is only a warning (no sound producer, no app cores).
+- **The mixer (v85).** `sys/sound.cpp` keeps `SND_CLIENTS` (8) channels, one per program that plays
+  (`TClient`: the pid, the program's name, a PCM ring of 0.5 s made once and kept, the volume 0..100 and
+  the mute turned into a 16.16 gain on a squared curve, the latency asked, a peak meter). `Render` adds
+  every channel's frames at its gain into a 32-bit buffer, then the mapped ring at its program's gain,
+  and clips once; the master volume comes after, as before. A channel is freed by `sound_release` or
+  the process's end. The volumes are remembered by name (`TRemember`, 24 names; `SD:/etc/mixer.ini`
+  read at the first start) so a program finds its own again each time it plays. Before v85 one
+  process owned the output and a second one was refused.
 - **The output: `COnyxSoundDevice` (v84).** One producer, several outputs, one running at a time
   (`sys/sound.cpp`): the **jack** (`COutJack`, Circle's `CPWMSoundBaseDevice`: PWM + DMA, 44.1 kHz,
   the producer's chunks as they are), a **USB audio device** (`COutUSB`, `CUSBSoundBaseDevice`: a
