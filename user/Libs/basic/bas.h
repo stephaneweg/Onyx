@@ -170,6 +170,11 @@ struct Host
 	virtual bool makeDir (const char *path) { (void) path; return false; }
 	virtual bool exists (const char *path) { (void) path; return false; }
 	virtual int  listDir (const char *pattern, int index, char *out, int cap) { (void) pattern; (void) index; (void) out; (void) cap; return 0; }
+	// Kits (#import): the shared library `name` (lower case) opened for this program, its table having at
+	// least minVersion entries -> its entries (entry n: the function of place n), or 0 with `why` said.
+	virtual void *const *kitOpen (const char *name, int minVersion, char *why, int cap)
+	{ (void) name; (void) minVersion; bscpyHost (why, "no kits on this system", cap); return 0; }
+	static void bscpyHost (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; if (cap > 0) d[i] = 0; }
 	// Program arguments (COMMAND$) and the end of the run.
 	virtual const char *command () { return ""; }
 	virtual void finished (bool error) { (void) error; }
@@ -180,6 +185,9 @@ enum { CTL_BUTTON = 1, CTL_LABEL, CTL_TEXTBOX, CTL_CHECKBOX, CTL_LISTBOX, CTL_DR
 
 struct Program;
 Program *compile (const char *src, Error *err);
+// Kits (#import name): where the compiler reads a kit's description -- the text of SD:/lib/<name>.bi
+// (name in lower case) as a new[] buffer and its length, or 0: no such kit. None set: #import fails.
+void     setKitSource (char *(*source) (const char *name, int *len));
 int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
 // Compiled programs (.bax, basbax.cpp): the bytecode as a file -- it runs without parsing.

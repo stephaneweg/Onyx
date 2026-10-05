@@ -91,6 +91,8 @@ enum Op
 	OP_ISTYPE,						// type (-1: NOTHING): object -> -1 / 0 (x IS Class, x IS NOTHING)
 	OP_SAMEOBJ,						// a IS b: the same object
 	OP_CAST,						// type: the object must be NOTHING or of this class / interface
+	// --- kits (#import) ---
+	OP_KCALL,						// function argc: a kit's function (Program::kfns), its arguments on the stack
 	OP_COUNT_						// (the number of opcodes + 1: the .bax header)
 };
 
@@ -107,6 +109,7 @@ static inline int opLen (int op)
 		return 1;
 	case OP_ALDG: case OP_ASTG: case OP_ALDL: case OP_ASTL: case OP_AADDRG: case OP_AADDRL: case OP_CALL: case OP_BI:
 	case OP_ST: case OP_INPUT: case OP_RESUME: case OP_ONEVENT: case OP_EVSTATE: case OP_RUN: case OP_VCALL:
+	case OP_KCALL:
 		return 2;
 	case OP_FGET: case OP_FPUT: case OP_ICALL:
 		return 3;
@@ -148,9 +151,11 @@ enum Builtin
 	S_MOVECONTROL, S_SHOWCONTROL, S_ENABLECONTROL, S_FOCUSCONTROL,	// (the controls' place, state: QBStudio's code)
 	S_PLAYFILE, S_STOPFILE, S_PAUSEFILE, S_FILEVOLUME,		// (AudioKit: a sound file in the background)
 	S_MIDINOTE, S_MIDIPROGRAM, S_MIDICONTROL, S_MIDIOFF,		// (... notes on the General MIDI synthesizer)
+	S_DEALLOC, S_POKEB, S_POKEW, S_POKEL, S_POKEQ, S_POKEF, S_POKED, S_POKES,	// (kits: memory a program shares with a kit)
 	S_LAST,
 	B_MENUITEM = 300, B_WINDOWWIDTH, B_WINDOWHEIGHT,		// (the built-in functions past 100)
 	B_FILEPLAYING, B_FILEPOS, B_FILELENGTH, B_NOTEFREQ, B_NOTENUMBER,	// (AudioKit)
+	B_ALLOC, B_CSTR, B_PEEKB, B_PEEKW, B_PEEKL, B_PEEKQ, B_PEEKF, B_PEEKD, B_ADDRESSOF,	// (kits; known after an #import)
 	B_LAST
 };
 
@@ -179,6 +184,21 @@ struct StmtRange { int start, end; };
 struct NumLabel { int pc; int value; };
 struct ProcInfo { char name[48]; bool isFunc; int retTy; int nparams; int entry; int nlocals; int kindOff; };
 
+// The kits a program imports (#import filekit) and their functions it calls (OP_KCALL). A kit is a
+// shared library (SD:/lib/<name>.so) whose functions are known by their place in its table; what their
+// names and types are is said by its description (SD:/lib/<name>.bi, tools/kitbi/kitbi.py), read when the
+// program is compiled -- the compiled program keeps what it uses of it. A function's types, one letter each:
+//   the result  v none, i / u a 32-bit number (signed / not), l a 64-bit number or a pointer, b / c a byte
+//               (unsigned / signed), h / w 16 bits (signed / not), f a float, d a double, s a C string
+//               (const char *: copied into a BASIC string; never freed);
+//   an argument i a whole number, p a pointer (a number; 0), c a function (ADDRESSOF), s a C string (a
+//               BASIC string, or a number: a pointer), f a float, d a double, I / L / F / D a pointer
+//               to numbers (int *, a 64-bit number's or a pointer's address, float *, double *: a number
+//               -- the address --, or BYREF variable: the variable gets what the function wrote).
+enum { KIT_MAXARGS = 16 };
+struct KitRef { char name[32]; int minVer; };		// minVer: the table must have this many entries
+struct KitFn { int kit, slot; char ret; char args[KIT_MAXARGS + 1]; char name[64]; };
+
 struct Program
 {
 	Vec<int> code;
@@ -196,6 +216,8 @@ struct Program
 	Vec<NumLabel> numLabels;		// line-number labels (ERL)
 	Vec<int> common;			// COMMON global slots, in order (CHAIN)
 	Vec<int> vtab, itab;			// the classes' method tables (TypeInfo)
+	Vec<KitRef> kits;			// the kits imported
+	Vec<KitFn> kfns;			// their functions the program calls
 	int nglobals;
 	bool managed;				// OPTION MANAGED / the compile dialogs' "Managed": run by the VM, not in machine code
 	Program () : nglobals (0), managed (false) {}

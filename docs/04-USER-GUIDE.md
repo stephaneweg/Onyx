@@ -4021,6 +4021,46 @@ files (`OPEN ... FOR INPUT / OUTPUT / APPEND`), the string and math functions, `
 language), `SOUND freq, ticks`, `BEEP`, and Onyx's `NOTEON voice, freq[, wave, volume]` /
 `NOTEOFF [voice]` (a note that plays until stopped, 16 voices).
 
+**The system's kits (`#import`).** A BASIC program can call the functions of the system's **kits** — the
+shared libraries of `SD:/lib` every app is built on: AppKit (the system's calls), FileKit (files, ZIP
+archives), SystemKit (notifications, the clipboard, the trash), ImageKit (pictures), AudioKit (sound),
+NetKit (the network), PrinterKit (printing) — and any kit installed later. At the top of the program:
+
+```basic
+#import FileKit
+#import SystemKit
+
+size# = FileKit.file_size("SD:/config.txt")
+IF FileKit.copy("SD:/config.txt", "SD:/tmp/copy.txt", 0, 0) = 0 THEN SystemKit.notify "BASIC", "Copied"
+```
+
+`#import` is not sensitive to case. A function is called **`Kit.name (arguments)`** — as a function when its
+result is used, as a statement otherwise. Its name is the kit's C name less the kit's prefix (`fk_copy` is
+`FileKit.copy`; `FileKit.fk_copy` works too); what each function does is in the kit's reference (the
+documents 10 to 18), and `SD:/lib/<kit>.bi` lists what BASIC can call. The rules:
+
+- a **string** argument takes a BASIC string; a text result is a BASIC string;
+- a **number** is a number; a **handle** or a **pointer** is a number too — keep it in a plain or a `#`
+  variable (a `%` or `&` variable is too small: *Overflow*); `0` is "none";
+- where a function **fills a number** (`int *`, `unsigned *`, a pointer's address ...), write
+  **`BYREF variable`**: `FileKit.load (name$, BYREF buffer#, BYREF length)`;
+- where a function **calls the program back**, give **`ADDRESSOF (Name)`**, a SUB or FUNCTION of the program
+  (not a method) whose parameters are numbers and strings — what the kit passes; a FUNCTION's value is what
+  the kit gets back;
+- **memory**: `p# = ALLOC (bytes)` (zeroed) and `DEALLOC p#` for a buffer a function writes into;
+  `CSTR$ (p#)` is the text at an address (`CSTR$ (p#, n)`: n characters); `PEEKB` / `PEEKW` / `PEEKL` /
+  `PEEKQ` / `PEEKF` / `PEEKD (address)` read a byte, 16, 32 or 64 bits, a float, a double, and
+  `POKEB` ... `POKED address, value`, `POKES address, text$` write them (a structure's field is at
+  `p# + its offset`);
+- what a kit **allocates and returns** is yours to free, with the kit's own function (`FileKit.free p#`).
+
+Nothing is checked: a wrong address ends the program. These words (`ALLOC`, `CSTR$`, `PEEKB` ..., `BYREF`,
+`ADDRESSOF`) only exist in a program that has an `#import`. A compiled program (`.bax`, a standalone app)
+keeps what it needs of the kits; if a kit is missing or too old when it runs, the call fails with *Kit not
+available* (error 73). The example: `SD:/basic/examples/kits.bas`. Not yet: UIKit's widgets (C++ classes;
+the controls of BASIC — `BUTTON`, `TEXTBOX` ... — are the way to an interface), structures passed as a
+`TYPE` (use `ALLOC` and `PEEK` / `POKE`).
+
 **Sound files and MIDI notes (AudioKit).** `PLAYFILE file$ [, loop]` plays an MP3, FLAC, WAV, FM Song (`.fms`), Ogg
 or MIDI file **while the program goes on** (`loop` 1: again and again); `STOPFILE`, `PAUSEFILE 1` /
 `PAUSEFILE 0`, `FILEVOLUME 0..100`. `FILEPLAYING` is 1 while it plays (0 stopped, 2 paused, 3

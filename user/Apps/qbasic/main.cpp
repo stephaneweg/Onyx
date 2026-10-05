@@ -17,6 +17,7 @@
 #include "filekit/filekit.h"
 #include "uikit/uikit.h"
 #include "basic/bas.h"
+#include "basic/baskits.h"
 
 using namespace uikit;
 
@@ -695,6 +696,7 @@ public:
 
 int main (void)
 {
+	bas::setKitSource (bas::onyxKitSource);		// (#import: SD:/lib/<kit>.bi)
 	IdeRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;

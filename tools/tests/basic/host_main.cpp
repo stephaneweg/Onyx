@@ -15,8 +15,49 @@ extern "C" void *shim_code_alloc (unsigned long size);
 extern "C" unsigned long shim_clock_us (void);
 #endif
 
+// ---- a kit for the tests (#import testkit): C functions behind a table, as a shared library's ----------
+extern "C" {
+static int tk_add (int a, int b) { return a + b; }
+static int tk_len (const char *s) { return s ? (int) strlen (s) : -1; }
+static const char *tk_name (void) { return "the test kit"; }
+static double tk_half (double x) { return x / 2; }
+static float tk_scale (float x, int by) { return x * (float) by; }
+static void tk_fill (int *i, double *d, long long *q, float *f) { *d = *i + 0.25; *i = *i * 2; *q = 0x123456789ALL; *f = 1.5f; }
+static int tk_each (int n, int (*cb) (int i, void *user), void *user) { int t = 0; for (int i = 1; i <= n; i++) t += cb (i, user); return t; }
+static char *tk_dup (const char *s) { char *d = new char[strlen (s) + 3]; sprintf (d, "<%s>", s); return d; }
+static void tk_free (void *p) { delete [] (char *) p; }
+static void tk_say (void (*cb) (const char *text, int n)) { cb ("first", 1); cb ("second", 2); }
+static double tk_mix (int a, double x, int b, float y, const char *s) { return a + x + b + y + (double) strlen (s); }
+static unsigned tk_big (void) { return 4000000000u; }
+static int tk_neg (void) { return -5; }
+static unsigned char tk_byte (void) { return 200; }
+static void *tk_null (void) { return 0; }
+}
+static void *const TK_TABLE[] = { (void *) tk_add, (void *) tk_len, (void *) tk_name, (void *) tk_half, (void *) tk_scale, (void *) tk_fill,
+	(void *) tk_each, (void *) tk_dup, (void *) tk_free, (void *) tk_say, (void *) tk_mix, (void *) tk_big, (void *) tk_neg, (void *) tk_byte,
+	(void *) tk_null };
+static const char TK_BI[] =
+	"# testkit.bi\nkit testkit 15\n"
+	"add 0 i ii tk_add\nlen 1 i s tk_len\nname 2 s - tk_name\nhalf 3 d d tk_half\nscale 4 f fi tk_scale\n"
+	"fill 5 v IDLF tk_fill\neach 6 i icp tk_each\ndup 7 l s tk_dup\nfree 8 v p tk_free\nsay 9 v c tk_say\n"
+	"mix 10 d idifs tk_mix\nbig 11 u - tk_big\nneg 12 i - tk_neg\nbyte 13 b - tk_byte\nnull 14 l - tk_null\n"
+	"broken 99 q zz\n";
+static char *tk_source (const char *name, int *len)
+{
+	if (strcmp (name, "testkit") != 0) return 0;
+	*len = (int) strlen (TK_BI);
+	char *b = new char[*len + 1]; memcpy (b, TK_BI, *len + 1);
+	return b;
+}
+
 struct ConsoleHost : bas::Host
 {
+	void *const *kitOpen (const char *name, int minVersion, char *why, int cap) override
+	{
+		if (strcmp (name, "testkit") == 0 && minVersion <= 15) return TK_TABLE;
+		snprintf (why, cap, "version %d asked", minVersion);
+		return 0;
+	}
 	int col = 1; const char *cmd = "";
 	void out (const char *s, int n) override
 	{
@@ -143,6 +184,7 @@ int main (int argc, char **argv)
 	if (!src) { fprintf (stderr, "cannot read %s\n", argv[1]); return 2; }
 	src[len] = 0;
 	bas::Error e;
+	bas::setKitSource (tk_source);
 	bas::Program *p = bas::compile (src, &e);
 	if (p && getenv ("BAX"))				// through a .bax: saved, loaded back, run
 	{

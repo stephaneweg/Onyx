@@ -3406,6 +3406,49 @@ barwidth = 40
   `VM::builtin` (basvm.cpp); something the VM cannot do itself goes through a new
   `bas::Host` virtual (default no-op) implemented in runtime.cpp. Statements: `simpleStatement`
   (fixed arguments) or a dedicated `st*` parser, `S_*` id, `VM::statement`.
+- **BASIC and the kits** (`#import <kit>`, 2026-10-05): a BASIC program calls the functions of any kit by
+  their name, and **nothing in BASIC names a kit** — a kit made tomorrow is imported like the others.
+  - *What a kit says of itself*: a shared library only has places in a table (docs/03 *Shared libraries*: no
+    name is looked up when a program runs). So each kit has a **description**, `SD:/lib/<kit>.bi`, one line per
+    function BASIC can call — `<name> <place> <result> <arguments or -> <C name>` — made by
+    **`tools/kitbi/kitbi.py`** from the kit's `.abi` (the places) and its headers (the C prototypes: the types).
+    `user/Makefile` runs it for every kit of `user/Kits` (`lib/kits.bi.stamp`, part of `libs`), `make stage`
+    copies `lib/*.bi` beside the `.so`, and each kit's package carries its `.bi`. `kitbi.py -v` says what it
+    leaves out and why: C++ classes and overloads, a struct by value, a reference, variable arguments, more
+    than 8 whole-number or 8 floating-point arguments, a function with no prototype in the kit's headers
+    (the codecs AudioKit carries; FreeType in FontKit). `<name>` is the C name less the kit's prefix when
+    at least 80 % of its functions share one (`fk_copy` → `copy`); BASIC takes both.
+  - *The types*, one letter each (`basint.h`, above `struct Program`): a result `v` none, `i` / `u` 32 bits,
+    `l` 64 bits or a pointer, `b` / `c` a byte, `h` / `w` 16 bits, `f`, `d`, `s` a `const char *` (copied into
+    a BASIC string); an argument `i` a whole number, `p` a pointer, `c` a function, `s` a C string, `f`, `d`,
+    `I` / `L` / `F` / `D` a pointer to numbers (`int *`, a 64-bit number's or a pointer's address, `float *`,
+    `double *`) — a number (the address) or `BYREF variable`.
+  - *The compiler* (`bascomp.cpp`, *kits*): `prescanImports` reads the descriptions through
+    `bas::setKitSource` (Onyx: `bas::onyxKitSource`, `baskits.cpp`; the PC tests: a kit of their own in
+    `host_main.cpp`), `findKitFn` finds `KIT.NAME`, `kitCall` compiles the arguments by the function's
+    letters and emits **`OP_KCALL function argc`**. Only what the program calls goes into the compiled
+    program (`Program::kits`, `Program::kfns`; `.bax` format 4), with the smallest table that has them
+    (`KitRef::minVer`) — so a `.bax` or a standalone app runs without the `.bi`. The words `ALLOC`,
+    `DEALLOC`, `CSTR$`, `PEEKx`, `POKEx`, `ADDRESSOF`, `BYREF` exist only in a program that has an
+    `#import` (`kitsOn`): an older program that uses them as names still compiles.
+  - *The call* (`VM::kitCall`, `basvm.cpp`): the kit opened at its first call (`Host::kitOpen`; Onyx:
+    `bas::onyxKitOpen` = `kapi_lib_open` + the library's `init`, AppKit at `APPKIT_TABLE_VA`), then **one C
+    call through one function type** — eight whole numbers then eight doubles: on AArch64 each kind has its
+    own registers (x0–x7, d0–d7), so the same call serves every signature; a `float` goes in the low half
+    of its register. No assembly, and the same code runs the tests on x86-64 (six whole-number registers
+    there). Strings go as Latin-1 copies that live as long as the call; a result `s` comes back as CP437.
+    The machine code (`basjit.h`) leaves `OP_KCALL` to the VM like any instruction it does not translate.
+  - *Callbacks* (`ADDRESSOF (Name)`): what the kit gets is one of `CB_MAX` (48) **relays** — C functions made
+    by a template, each bound to a SUB / FUNCTION the first time its address is taken. A relay hands its
+    arguments (up to 8 whole numbers or pointers; a `$` parameter takes a C string) to `VM::callback`, which
+    runs the SUB **on the VM** until it returns (`stopNf`: the loop ends when the frames are back) and gives
+    a FUNCTION's number back; where the program was (`pc`, `opPc`, the loop's budget) is kept, so a kit may
+    call back from inside a call or from the window's pump. An error in the SUB ends it and fails the kit
+    call that led to it (`ON ERROR` sees it there). A kit must call back **on the program's own thread**.
+  - *Not checked*: a wrong pointer ends the program (not the system) — as in any compiled BASIC. Memory a
+    kit returns is freed by the program with the kit's own function (`FileKit.free`).
+  - Tests: `tools/tests/basic/progs/t24_kits.bas` (PC, `.bax`, AArch64 in machine code and on the VM);
+    on the Pi: `SD:/basic/examples/kits.bas`.
 - **Keys**: the kernel delivers F1-F12 as `KEY_F1` .. `KEY_F12` (0x110..0x11B); the runtime
   turns them into QBasic's `INKEY$` codes (`CHR$(0) + CHR$(59..68)`, 133, 134).
 - **Runtime graphics** (`runtime.cpp`): a mode table (size, text cell height, pages,
