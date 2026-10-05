@@ -188,6 +188,8 @@ public:
 	struct Frame { int ret; V *loc; int nloc; int proc; int sp0; };	// sp0: the value stack at its start
 	Frame frames[MAXFRAMES]; int nf;
 	V *nloc = 0;					// the current frame's locals (frames[nf - 1].loc): read by the machine code
+	enum { ARENA = 8192 };				// the frames' locals: one block (a call that does not fit: new [])
+	V *arena = 0; int arenaTop = 0;
 	struct GoSub { int ret; int frame; int chan; int ev; int sp; };
 	GoSub gosubs[MAXGOSUB]; int ngs;
 	int pc, opPc; bool failed, ended;
@@ -244,6 +246,7 @@ public:
 		while (nf > 0) popFrame ();
 		for (int i = 0; i < P->nglobals; i++) vclear (G[i]);
 		delete [] G;
+		delete [] arena;
 		for (int i = 0; i < MAXFILES; i++) { delete [] files[i].buf; delete [] files[i].rec; }
 		for (int i = 0; i < nenv; i++) delete [] env[i];
 		delete [] ser;
@@ -408,7 +411,9 @@ public:
 		if (nf >= MAXFRAMES) { fail ("Out of stack space (too deep recursion)"); return; }
 		Frame &f = frames[nf];
 		f.ret = pc; f.proc = pi; f.nloc = pr.nlocals > 0 ? pr.nlocals : 1;
-		f.loc = new V[f.nloc];
+		if (!arena) arena = new V[ARENA];
+		if (arenaTop + f.nloc <= ARENA) { f.loc = arena + arenaTop; arenaTop += f.nloc; }	// (calls return in order)
+		else f.loc = new V[f.nloc];
 		for (int i = 0; i < f.nloc; i++)
 		{
 			f.loc[i].t = VN; f.loc[i].n = 0; f.loc[i].p = 0;
@@ -426,7 +431,7 @@ public:
 	{
 		Frame &f = frames[--nf];
 		for (int i = 0; i < f.nloc; i++) if (f.loc[i].t != VR) vclear (f.loc[i]);
-		delete [] f.loc;
+		if (f.loc >= arena && f.loc < arena + ARENA) arenaTop -= f.nloc; else delete [] f.loc;
 		nloc = nf > 0 ? frames[nf - 1].loc : 0;
 		while (ngs > 0 && gosubs[ngs - 1].frame > nf) popGosub ();
 	}
@@ -1974,6 +1979,26 @@ public:
 		if (evAny && evKick) { evKick = false; checkEvents (); if (failed && !trap ()) return -1; }
 		if (dtorQ.n) { destructor (); if (failed && !trap ()) return -1; }
 		return pc;
+	}
+	// A SUB / FUNCTION call and its return, for the machine code: the VM's OP_CALL / OP_RET / OP_RETF without the
+	// loop around them. The result as nativeStep's.
+	long nativeCall (long at, long pi, long argc)
+	{
+		opPc = (int) at; pc = (int) at + 3;
+		enter ((int) pi, (int) argc);
+		return failed ? nativeAfter () : pc;
+	}
+	long nativeRet (long at, long isFunc)
+	{
+		opPc = (int) at; pc = (int) at + 1;
+		if (nf == 0) fail (isFunc ? "RETURN outside a FUNCTION" : "RETURN outside a SUB");
+		else if (isFunc)
+		{
+			V r = frames[nf - 1].loc[0]; frames[nf - 1].loc[0].t = VN; frames[nf - 1].loc[0].p = 0;
+			pc = frames[nf - 1].ret; popFrame (); push (r);
+		}
+		else { pc = frames[nf - 1].ret; popFrame (); }
+		return failed || dtorQ.n ? nativeAfter () : pc;
 	}
 	// Every few thousand jumps back / calls of the machine code: the window, Ctrl-Break, the events.
 	long nativeTick (long at)

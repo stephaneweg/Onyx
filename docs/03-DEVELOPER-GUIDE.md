@@ -3224,7 +3224,19 @@ barwidth = 40
   errors and events **are** the VM's. **Translated**: numeric constants and variables (globals,
   locals, by-reference parameters: a `VR` tag check), `+ - * /`, `\`, `MOD`, the comparisons
   (fused with the `JZ` / `JNZ` that follows), `AND OR XOR EQV IMP NOT`, `OP_CONV` (INTEGER / LONG
-  stores), the elements of numeric arrays of 1 or 2 dimensions, the jumps. The numbers on top of
+  stores), the elements of numeric arrays of 1 or 2 dimensions, the jumps; the numeric functions
+  (`builtin ()`: ABS SGN INT FIX SQR CINT CLNG CDBL MIN MAX in line, SIN COS TAN ATN EXP LOG by a
+  direct call to `basnum`'s functions); a reference pushed for a by-reference argument
+  (`OP_REFG` / `OP_REFL`); **SUB / FUNCTION calls** (`call ()`): the frame is made in line exactly
+  as `VM::enter ()` makes it -- its locals from the VM's block of locals (`VM::arena`: the frames'
+  locals are no longer one `new []` per call, on the VM either), each with the tag it starts with,
+  the arguments moved from the value stack -- when the SUB's locals need nothing but a tag
+  (`plainFrame ()`: no fixed string, no TYPE record), then a direct branch to the SUB's code; and
+  **returns** (`ret ()`) in line when the SUB's locals are all numbers (`plainReturn ()`: nothing
+  to free), the result pushed and the caller found through `dispatch`. Otherwise, and whenever a
+  check fails at run time (too deep, the block full, a GOSUB pending in the SUB), the stubs call
+  `VM::nativeCall ()` / `nativeRet ()` -- `enter ()` / `popFrame ()` themselves, without the loop.
+  A call counts down to a tick like a jump back (recursion must stay interruptible). The numbers on top of
   the stack live in `d8`..`d15` (`regs`, callee-saved: a call to the VM keeps them) and are
   written back (`flush`) before a jump, an entry point or the VM; an instruction that cannot go on
   (division by zero, index out of range, overflow, array not DIMmed, the stack full) **bails out**:
