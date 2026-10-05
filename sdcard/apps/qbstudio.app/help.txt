@@ -50,7 +50,11 @@ THE FORM (Main.form)
   Grid's cell), valign=top/center/bottom/stretch (a Row, a Grid's cell).
   A Grid's columns and rows: widths=200,*,2* heights=auto,* (pixels, * a
   share of what is left, auto). In a Row: width=200 then fill = "200
-  pixels, then the rest".
+  pixels, then the rest" -- on controls and on containers (a Row of
+  Columns); or on the Row itself: widths=200,*,100 (a Column's:
+  heights=40,*,auto), its children's sizes in order.
+  The window: click its title bar, drag one of its eight handles. Split
+  view: drag the bar between the drawing and the text.
 
   USER CONTROLS: Project > Add User Control... makes <Name>.form (its
   first line: UserControl <Name> size=320x200) and <Name>.bas. Drawn like

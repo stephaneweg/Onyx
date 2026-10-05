@@ -388,6 +388,18 @@ static int tracks_of (const char *v, Track *t, int max)
 	}
 	return n;
 }
+// A Row's widths= and a Column's heights=, as a Grid's: the size of its i-th child along it. Pixels: that size,
+// whatever the child's own; *: a share of the room left and nothing of its own; auto, or nothing said for it:
+// the child's own size and its own grow / fill.
+static void along (const El *par, int i, bool placing, int own, double ownGrow, int *size, double *grow)
+{
+	Track t[32];
+	int n = tracks_of (par->get (par->kind == K_ROW || par->kind == K_TOOLBAR ? "widths" : "heights"), t, 32);
+	*size = own; *grow = ownGrow;
+	if (i >= n) return;
+	if (t[i].px >= 0) { *size = t[i].px; *grow = 0; }
+	else if (t[i].star > 0) { if (placing) *size = 0; *grow = t[i].star; }
+}
 static void measure (const El *e, int *w, int *h);
 // The minimum size of a container (its children at their sizes)
 static void measure (const El *e, int *w, int *h)
@@ -397,11 +409,11 @@ static void measure (const El *e, int *w, int *h)
 	int top = e->kind == K_GROUP ? 18 : 0;
 	if (e->kind == K_COLUMN || e->kind == K_GROUP)
 	{
-		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); mw = imax (mw, a); mh += b + (n ? gap : 0); n++; }
+		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); double g; along (e, n, false, b, 0, &b, &g); mw = imax (mw, a); mh += b + (n ? gap : 0); n++; }
 	}
 	else if (e->kind == K_ROW || e->kind == K_TOOLBAR)
 	{
-		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); mh = imax (mh, b); mw += a + (n ? gap : 0); n++; }
+		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); double g; along (e, n, false, a, 0, &a, &g); mh = imax (mh, b); mw += a + (n ? gap : 0); n++; }
 	}
 	else if (e->kind == K_GRID)
 	{
@@ -435,15 +447,16 @@ static void place (El *e)
 	Vec<El *> ks; for (int i = 0; i < e->kids.n; i++) if (e->kids[i]->kind != K_COMMENT) ks.push (e->kids[i]);
 	if (e->kind == K_COLUMN || e->kind == K_GROUP)
 	{
-		int used = 0, grows = 0;
-		for (int i = 0; i < ks.n; i++) { int a, b; measure (ks[i], &a, &b); used += b + (i ? gap : 0); grows += grow_of (ks[i]); }
+		int used = 0; double grows = 0;
+		for (int i = 0; i < ks.n; i++) { int a, b; measure (ks[i], &a, &b); double g; along (e, i, true, b, grow_of (ks[i]), &b, &g); used += b + (i ? gap : 0); grows += g; }
 		int free = H - used;
-		double share = grows ? (double) free / grows : 0;
+		double share = grows > 0 ? (double) free / grows : 0;
 		double y = Y;
 		for (int i = 0; i < ks.n; i++)
 		{
 			El *k = ks[i]; int a, b; measure (k, &a, &b);
-			double hh = b + (grows ? share * grow_of (k) : 0);
+			double g; along (e, i, true, b, grow_of (k), &b, &g);
+			double hh = b + share * g;
 			bool wide = is_area (k->kind) || k->flag ("fill") || k->kind == K_SPACER;
 			int al = halign_of (k);
 			if (al == AL_NONE || (wide && !align_word (k->get ("halign")))) al = wide ? AL_STRETCH : AL_START;	// (halign said: it wins over the kind's habit)
@@ -455,24 +468,26 @@ static void place (El *e)
 	}
 	else if (e->kind == K_ROW || e->kind == K_TOOLBAR)
 	{
-		int used = 0, grows = 0;
+		// each child's width along the row: its own (width=), a share of what is left (fill, grow=n) -- or what the
+		// row's widths= says for it (200,*,100)
+		int used = 0; double grows = 0;
 		for (int i = 0; i < ks.n; i++)
 		{
-			int a, b; measure (ks[i], &a, &b); used += a + (i ? gap : 0);
-			grows += ks[i]->flag ("fill") ? imax (1, ks[i]->num ("grow", 1)) : grow_of (ks[i]);
+			int a, b; measure (ks[i], &a, &b);
+			double g; along (e, i, true, a, ks[i]->flag ("fill") ? imax (1, ks[i]->num ("grow", 1)) : grow_of (ks[i]), &a, &g);
+			used += a + (i ? gap : 0); grows += g;
 		}
 		int free = W - used;
-		double share = grows ? (double) free / grows : 0;
+		double share = grows > 0 ? (double) free / grows : 0;
 		const char *al = e->get ("align");
 		double x = X;
-		if (!grows && al && ieq (al, "right")) x = X + free;
-		else if (!grows && al && (ieq (al, "center") || ieq (al, "centre"))) x = X + free / 2.0;
-		int rowH = 0; for (int i = 0; i < ks.n; i++) { int a, b; measure (ks[i], &a, &b); rowH = imax (rowH, b); }
+		if (grows <= 0 && al && ieq (al, "right")) x = X + free;
+		else if (grows <= 0 && al && (ieq (al, "center") || ieq (al, "centre"))) x = X + free / 2.0;
 		for (int i = 0; i < ks.n; i++)
 		{
 			El *k = ks[i]; int a, b; measure (k, &a, &b);
-			int g = k->flag ("fill") ? imax (1, k->num ("grow", 1)) : grow_of (k);
-			double ww = a + (grows ? share * g : 0);
+			double g; along (e, i, true, a, k->flag ("fill") ? imax (1, k->num ("grow", 1)) : grow_of (k), &a, &g);
+			double ww = a + share * g;
 			int va = valign_of (k);
 			if (va == AL_NONE) va = is_area (k->kind) ? AL_STRETCH : AL_CENTER;
 			int yy, hh; aligned (va, Y, H, b, &yy, &hh);

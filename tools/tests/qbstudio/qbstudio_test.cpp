@@ -274,6 +274,26 @@ int main (int argc, char **argv)
 	}
 	for (int i = 0; i < subs.n; i++) free (subs[i]);
 	free (src); free (code);
+	// a Row of three Columns: the first a width, the second what is left, the third a width -- said on each
+	// (width=, fill), or on the Row (widths=)
+	{
+		static const char *const F[2] = {
+			"Window W size=600x300\n  Row gap=0\n    Column one width=200\n      Button b1 \"One\"\n    Column two fill\n      Button b2 \"Two\" fill\n    Column three width=100\n      Label l3 \"Three\"\n",
+			"Window W size=600x300\n  Row gap=0 widths=200,*,100\n    Column one\n      Button b1 \"One\"\n    Column two\n      Button b2 \"Two\" fill\n    Column three\n      Label l3 \"Three\"\n" };
+		for (int v = 0; v < 2; v++)
+		{
+			Form t; bool ok = form_read (t, F[v]);
+			form_layout (t, 600, 300);
+			El *a = t.named ("one"), *b = t.named ("two"), *c = t.named ("three"), *b2 = t.named ("b2");
+			check (ok && a && b && c && a->x == 0 && a->w == 200 && b->x == 200 && b->w == 300 && c->x == 500 && c->w == 100 && a->h == 300 && b2 && b2->w == 300, v ? "a Row's widths=200,*,100" : "a Row of Columns: width=200, fill, width=100");
+			form_layout (t, 800, 300);
+			check (a && b && c && a->w == 200 && b->w == 500 && c->x == 700 && c->w == 100, v ? "... resized: the * column takes the rest" : "... resized: the fill column takes the rest");
+		}
+		Form t; form_read (t, "Window W size=300x400\n  Column gap=0 heights=50,*,2*\n    Button a \"A\"\n    ListBox b\n    ListBox c\n");
+		form_layout (t, 300, 350);
+		El *a = t.named ("a"), *b = t.named ("b"), *c = t.named ("c");
+		check (a && b && c && a->h == 50 && b->y == 50 && b->h == 100 && c->y == 150 && c->h == 200, "a Column's heights=50,*,2*");
+	}
 	pages ();
 	printf ("%d checks, %d failed\n", g_checks, g_fail);
 	return g_fail ? 1 : 0;

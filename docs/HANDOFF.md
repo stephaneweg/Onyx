@@ -101,7 +101,11 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   `UserControl` forms, the `Host` element, `host.Content = Name`, `halign=` / `valign=`, a Grid's
   `widths=200,*` / `heights=`; UIKit's flat layer has panels (table 726). docs/04 §13 (*User controls*,
   *Alignments and sizes*), docs/03 (*User controls and Hosts in QBStudio*), `sdcard/projects/pages`.
-  Tested: `qbstudio_test` (35 checks), the designer in the PC simulator (`qbstudio-hosts.png`), and the
+  Then (asked the same evening): a Row's `widths=` and a Column's `heights=` (`along ()`; width / height / fill /
+  grow offered on containers in the properties), a bar to drag between the designer and the form's text
+  (`SplitBar`, `settings.ini`: `split`), and the window sized by any of its eight handles in the designer (the
+  user could not size it: only the bottom right corner's zone did, the other handles deselected).
+  Tested: `qbstudio_test` (40 checks), the designer in the PC simulator (`qbstudio-hosts.png`), and the
   generated program on the Pi through the private copy of `uikit.so` (the Hosts' sizes, a page replaced
   and shown again with its values, the resize chain, a user control moved to another Host). Not seen on
   the Pi's screen, not clicked. Not done: several instances of one user control (each is one object), a

@@ -178,6 +178,7 @@ public:
 	// a drag
 	enum { DR_NONE, DR_PRESS, DR_MOVE, DR_NEW, DR_SIZE_WIN, DR_SIZE_W, DR_SIZE_H };
 	int drag, newKind, px, py, startW, startH, startX, startY, grabX, grabY;
+	int sizeFx = 1, sizeFy = 1;			// DR_SIZE_WIN: which way the handle held sizes the window (-1, 0, 1 each way)
 	El *dropPar; int dropIdx; int dropLine[4]; bool dropOk; int dropAtX, dropAtY;
 	int hoverX, hoverY;
 	Panel *client;
@@ -507,11 +508,27 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 	int cx = mx - D->ox, cy = my - D->oy;
 	El *s = D->sel;
 	bool onCorner = cx >= W - 6 && cx <= W + 8 && cy >= H - 6 && cy <= H + 8;
+	// the window chosen: its eight handles size it (those of its left and top edges too: the window stays where it
+	// is drawn, its size follows the pointer)
+	int hfx = 1, hfy = 1; bool onHandle = false;
+	if (s && s == D->form->root)
+	{
+		int x0 = 0, y0 = -Designer::TITLE_H, w0 = W, h0 = H + Designer::TITLE_H;
+		int hx[8] = { x0, x0 + w0 / 2, x0 + w0, x0 + w0, x0 + w0, x0 + w0 / 2, x0, x0 }, hy[8] = { y0, y0, y0, y0 + h0 / 2, y0 + h0, y0 + h0, y0 + h0, y0 + h0 / 2 };
+		for (int i = 0; i < 8 && !onHandle; i++)
+			if (abs (cx - hx[i]) <= 5 && abs (cy - hy[i]) <= 5)
+			{
+				onHandle = true;
+				hfx = hx[i] == x0 ? -1 : hx[i] == x0 + w0 ? 1 : 0;
+				hfy = hy[i] == y0 ? -1 : hy[i] == y0 + h0 ? 1 : 0;
+			}
+	}
+	if (onCorner && !onHandle) { onHandle = true; hfx = hfy = 1; }
 	bool onRight = s && s != D->form->root && is_control (s->kind) && abs (cx - (s->x + s->w)) <= 4 && cy > s->y && cy < s->y + s->h;
 	bool onBottom = s && s != D->form->root && is_control (s->kind) && abs (cy - (s->y + s->h)) <= 4 && cx > s->x && cx < s->x + s->w;
 	if (D->drag == Designer::DR_NONE)
 	{
-		if (onCorner) uk_cursor (KAPI_CURSOR_SIZE_NWSE);
+		if (onHandle) uk_cursor (!hfy ? KAPI_CURSOR_SIZE_H : !hfx ? KAPI_CURSOR_SIZE_V : hfx == hfy ? KAPI_CURSOR_SIZE_NWSE : KAPI_CURSOR_SIZE_NESW);
 		else if (onRight) uk_cursor (KAPI_CURSOR_SIZE_H);
 		else if (onBottom) uk_cursor (KAPI_CURSOR_SIZE_V);
 	}
@@ -519,7 +536,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 	{
 		pressed = true; catchOutside = true; setFocus ();
 		D->px = mx; D->py = my;
-		if (onCorner) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; return true; }
+		if (onHandle) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; D->sizeFx = hfx; D->sizeFy = hfy; return true; }
 		if (onRight) { D->drag = Designer::DR_SIZE_W; D->startW = s->w; D->startX = s->x; return true; }
 		if (onBottom) { D->drag = Designer::DR_SIZE_H; D->startH = s->h; D->startY = s->y; return true; }
 		El *e = D->at (mx, my);
@@ -548,7 +565,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 			break;
 		case Designer::DR_SIZE_WIN:
 		{
-			char t[24]; snprintf (t, sizeof t, "%dx%d", imax (120, snap (D->startW + dx)), imax (60, snap (D->startH + dy)));
+			char t[24]; snprintf (t, sizeof t, "%dx%d", imax (120, snap (D->startW + dx * D->sizeFx)), imax (60, snap (D->startH + dy * D->sizeFy)));
 			D->form->root->set ("size", t); D->rebuild ();
 			break;
 		}

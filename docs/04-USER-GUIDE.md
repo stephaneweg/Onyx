@@ -4341,6 +4341,11 @@ compiled or not), its window **`Main.form`**, its code **`Main.bas`** (and other
 list, a status bar: New / Open / Save written), an empty window —; **File ▸ Open Project...** opens one (choose any
 of its files); **File ▸ Open the Example** opens *Converter*. QBStudio opens the last project at its start.
 
+**In the designer**: the window (or the user control) is sized with the mouse — click its title bar to choose
+it, then drag any of its eight handles (the corner at the bottom right works without choosing it). In the
+**Split** view a **bar** lies between the drawing and the form's text: dragged up or down, it shares the room
+between them (kept from one session to the next).
+
 **The window.** The toolbar: New, Open, Save all, Undo / Redo, Cut / Copy / Paste, Find, **Run** (F5), **Check**
 (compiled, not run), **Make App**, and the form's views — **Design**, **Split** (the designer over the form's text),
 **Code** (the text alone). At the left the project's files and the **toolbox** (in the code: the **outline**, its
@@ -4391,9 +4396,23 @@ good form).
 `stretch` (in a Row, in a Grid's cell); nothing said, a control keeps its own size at the left (a Column) or
 centred (a Row), a container or a Host takes the room. Along a Row or a Column the room is shared as before: a
 size given (`width=200`) is kept, **`fill`** takes what is left — `grow=2` twice the share of `grow=1`. So "the
-first 200 pixels wide, the second the rest" is `width=200` then `fill`. A **Grid** names its columns and rows:
-**`widths=200,*,2*`** — pixels, `*` a share of what is left (`2*`: two shares), `auto` what the cells need —
-and **`heights=`** the same way (`cols=` is then not needed).
+first 200 pixels wide, the second the rest" is `width=200` then `fill` — on controls as on **containers**: a
+Row of three Columns, the first `width=200`, the second `fill`, the third `width=100`, each with its own
+controls, is a window in three columns of which the middle one follows the window's width. The same can be
+said once, on the container: a Row's **`widths=200,*,100`** and a Column's **`heights=40,*,auto`** give its
+children's sizes in order — pixels, `*` a share of what is left (`2*`: two shares), `auto` the child's own. A
+**Grid** names its columns and rows the same way, `widths=` and `heights=` (`cols=` is then not needed).
+
+```
+Window Main "Three columns" size=600x300 resizable
+  Row gap=0 widths=200,*,100
+    Column padding=8
+      Button first "Left"
+    Column padding=8
+      ListBox middle fill grow=1
+    Column padding=8
+      Label "Right"
+```
 
 **User controls.** A project has its window and, if you wish, **user controls**: panels of controls drawn in
 the designer like a window (**Project ▸ Add User Control...**: `<Name>.form`, whose first line is

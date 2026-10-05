@@ -111,6 +111,41 @@ static bool file_exists (const char *p) { void *f = kapi_open (p); if (f) kapi_c
 static bool write_file (const char *path, const char *s) { return kapi_save_file (path, s, (unsigned) strlen (s)) >= 0; }
 
 // ---- small widgets -----------------------------------------------------------------------------------------------------
+// The bar between the designer and the form's text (the Split view): dragged, it shares the room between them
+static int g_split = 580;				// the designer's share of the room, in thousandths (settings.ini: split)
+static int g_splitTop = 0, g_splitRoom = 1;		// the room they share (relayout): its top, its height
+static void save_settings ();
+class SplitBar : public Widget
+{
+public:
+	enum { H = 7 };
+	bool moved = false;
+	SplitBar () : Widget (0, 0, 10, H) {}
+	void onDraw () override
+	{
+		canvas.clear (hover || pressed ? uk_mix (C_BG, C_ACCENT, 110) : uk_mix (C_BG, C_TEXT, 40));
+		for (int i = -1; i <= 1; i++) canvas.fillRect (width / 2 + i * 6 - 1, height / 2 - 1, 3, 3, uk_mix (C_BG, C_TEXT, 150));	// (the grip's dots)
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		if (mx == -1 && my == -1 && !bl) { if (hover) { hover = false; invalidate (true); } return false; }
+		uk_cursor (KAPI_CURSOR_SIZE_V);
+		if (!hover) { hover = true; invalidate (true); }
+		if (bl && !pressed) { pressed = true; catchOutside = true; return true; }
+		if (bl && pressed)
+		{
+			// the pointer in the window: where the bar goes (a quarter of the room at least to each side)
+			int y = top + my - H / 2 - g_splitTop;
+			int s = g_splitRoom > 0 ? y * 1000 / g_splitRoom : g_split;
+			s = s < 150 ? 150 : s > 850 ? 850 : s;
+			if (s != g_split) { g_split = s; moved = true; relayout (); }
+			return true;
+		}
+		if (!bl && pressed) { pressed = false; catchOutside = false; if (moved) { moved = false; save_settings (); } invalidate (true); }
+		return true;
+	}
+};
+static SplitBar *g_splitBar;
 class PaneTitle : public Widget
 {
 public:
@@ -1266,13 +1301,14 @@ static void cmd_split () { g_view = 1; g_seg->select (1); Doc *f = main_form ();
 static void cmd_form_text () { g_view = 2; g_seg->select (2); Doc *f = main_form (); if (f) show_doc ((int) (f - &g_p.docs[0])); }
 static void cmd_generated () { Doc *f = main_form (); if (f && f->gen >= 0) show_doc (f->gen); }
 // View > Grid, Snap to Grid: kept in settings.ini
-static void save_settings () { char t[64]; snprintf (t, sizeof t, "grid = %d\nsnap = %d\n", g_showGrid ? 1 : 0, g_snap ? 1 : 0); write_file (SETTINGS, t); }
+static void save_settings () { char t[96]; snprintf (t, sizeof t, "grid = %d\nsnap = %d\nsplit = %d\n", g_showGrid ? 1 : 0, g_snap ? 1 : 0, g_split); write_file (SETTINGS, t); }
 static void load_settings ()
 {
 	char *t = read_file (SETTINGS); if (!t) return;
 	char v[8] = "";
 	ini_get (t, "grid", v, sizeof v); if (v[0]) g_showGrid = v[0] != '0';
 	v[0] = 0; ini_get (t, "snap", v, sizeof v); if (v[0]) g_snap = v[0] != '0';
+	v[0] = 0; ini_get (t, "split", v, sizeof v); if (v[0]) { int s = atoi (v); if (s >= 150 && s <= 850) g_split = s; }
 	free (t);
 }
 static void cmd_grid () { g_showGrid = !g_showGrid; save_settings (); g_des->rebuild (); status (g_showGrid ? "The grid shown (dots every 5 px)" : "The grid hidden"); }
@@ -1375,13 +1411,18 @@ static void relayout ()
 	if (!form) { put (g_codebar, cx, y, cw, CODEBAR_H); y += CODEBAR_H; }
 	int areaH = bottom - y - msgH;
 	put (g_msgs, cx, bottom - msgH, cw, imax (1, msgH));
+	g_splitBar->hidden = !(d && form && g_view == 1);
 	if (d)
 	{
 		if (form)
 		{
-			int dh = g_view == 0 ? areaH : g_view == 1 ? areaH * 58 / 100 : 0;
+			// Split: the designer, the bar to drag, the form's text
+			int bar = g_view == 1 ? SplitBar::H : 0;
+			int dh = g_view == 0 ? areaH : g_view == 1 ? (areaH - bar) * g_split / 1000 : 0;
+			g_splitTop = y; g_splitRoom = imax (1, areaH - bar);
 			if (g_view != 2) { put (g_des, cx, y, cw, dh); }
-			if (g_view != 0) { put (d->ed, cx, y + dh, cw, areaH - dh); }
+			if (g_view == 1) put (g_splitBar, cx, y + dh, cw, bar);
+			if (g_view != 0) { put (d->ed, cx, y + dh + bar, cw, areaH - dh - bar); }
 		}
 		else { put (d->ed, cx, y, cw, areaH); }
 	}
@@ -1468,6 +1509,7 @@ int main (void)
 	g_msgs = new MsgList (); root.addChild (g_msgs);
 	g_status = new StatusLine (); root.addChild (g_status);
 	g_des = new Designer (0, 0, 400, 300); root.addChild (g_des);
+	g_splitBar = new SplitBar; root.addChild (g_splitBar);
 	g_tools = new Toolbox (0, 0, LEFT_W, 200, g_des); g_tools->onPick = [] (int k) { g_des->toolAdd (k); };
 	root.addChild (g_tools);		// (last: a control dragged from it over the designer still reaches it)
 	root.setResizable (true);
