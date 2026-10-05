@@ -30,7 +30,7 @@ static inline bool fa_app_for (const char *path, char *app, int cap)
 	if (ext[0] == '\0') return false;
 	void *f = kapi_open (FA_INI);
 	if (f == 0) return false;
-	static char buf[2048];
+	static char buf[8192];			// (the whole file: the packages add their lines)
 	int n = kapi_read (f, buf, sizeof buf - 1);
 	kapi_close (f);
 	if (n <= 0) return false;

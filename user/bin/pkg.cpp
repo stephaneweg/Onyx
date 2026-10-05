@@ -11,6 +11,7 @@
 //   pkg check                    the index read again: the updates available
 //   pkg mode <name> manual|auto|never
 //   pkg commit                   the staged packages moved in (etc/autostart, at boot); reboots
+//   pkg assoc                    SD:/etc/fileassoc.ini and runners.ini made to follow the packages installed
 //                                when the kernel or the firmware changed
 //   -r <repo>                    another repository (a URL or a folder) for this command
 //
@@ -228,7 +229,7 @@ int main (void)
 	if (ac - a0 < 1)
 	{
 		printf ("usage: pkg list [-a] [filter] | info NAME | add NAME... | delete [-p] NAME... |\n"
-			"       update NAME... | update -a | upgrade | check | mode NAME manual|auto|never | commit\n"
+			"       update NAME... | update -a | upgrade | check | mode NAME manual|auto|never | commit | assoc\n"
 			"       [-r REPO] before the command: another repository\n");
 		return 3;
 	}
@@ -258,6 +259,12 @@ static int run (const char *c, char **rest, int nr)
 	{
 		m.commit (R);
 		if (m.kernelChanged) { printf ("the system changed: restarting\n"); fflush (stdout); kapi_msleep (1500); kapi_reboot (); }
+		return 0;
+	}
+	if (eq (c, "assoc"))		// what the installed packages open and run, made sure of in the card's two files
+	{
+		m.sync_meta ();
+		printf ("%s and %s follow the packages installed (the lines you changed are left alone)\n", PKG_ASSOC, PKG_RUNNERS);
 		return 0;
 	}
 	printf ("pkg: unknown command or missing name: %s (pkg alone: the usage)\n", c);

@@ -34,6 +34,7 @@ static void round (bool count_day)
 	Manager &m = *mp;
 	Quiet q;
 	if (m.refresh (q) != OK || !m.verified) return;		// no index, or not checked: next time
+	static bool synced; if (!synced) { synced = true; m.sync_meta (); }	// (fileassoc.ini, runners.ini: what the packages installed open and run)
 	if (count_day) { char t[16]; snprintf (t, sizeof t, "%d\n", today ()); write_file (PKG_VAR "/lastcheck", t, strlen (t)); }
 	char done[300] = "", wait[300] = ""; int nd = 0, nw = 0; bool staged = false;
 	for (int i = 0; i < m.db.n; i++)

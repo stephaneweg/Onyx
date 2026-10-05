@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "kapi.h"
 #include "filekit/ops.h"
 #include <mbedtls/sha256.h>
@@ -350,6 +351,96 @@ struct Db
 	{ for (int i = 0; i < n; i++) if (!eq (v[i]->name, self) && v[i]->ini.get ("files", file, 0)) return true; return false; }
 };
 
+// ---- what a package opens and runs (its metadata's "assoc" and "runners") ---------------------------------------
+// A package says which files its apps open ("assoc = zip=archiver tar=archiver") and which programs run
+// which files ("runners = bas=SD:/bin/basic"): the package manager keeps SD:/etc/fileassoc.ini and
+// SD:/etc/runners.ini in step -- "ext = value" lines. The user's file is never fought: an extension that
+// has a line already (whatever it says, "ext =" with nothing included: "opened by nothing") is left alone;
+// a package removed takes away only the lines that still say what it had put.
+#define PKG_ASSOC	"SD:/etc/fileassoc.ini"
+#define PKG_RUNNERS	"SD:/etc/runners.ini"
+
+// The next "key=value" of a list of them separated by spaces -> false at the end.
+static inline bool next_pair (const char *&s, char *key, int kcap, char *val, int vcap)
+{
+	while (*s == ' ' || *s == ',' || *s == ';') s++;
+	if (!*s) return false;
+	int k = 0, v = 0;
+	while (*s && *s != '=' && *s != ' ') { if (k < kcap - 1) key[k++] = (char) (*s >= 'A' && *s <= 'Z' ? *s + 32 : *s); s++; }
+	key[k] = 0;
+	if (*s == '=') { s++; while (*s && *s != ' ') { if (v < vcap - 1) val[v++] = *s; s++; } }
+	val[v] = 0;
+	return true;
+}
+// The line of `text` whose key is `key` (letters' case ignored): its start and its end (after the
+// newline), its value (trimmed) -> false: none.
+static inline bool find_line (const char *text, const char *key, const char **ls, const char **le, char *val, int vcap)
+{
+	size_t kl = strlen (key);
+	for (const char *p = text; *p; )
+	{
+		const char *e = p; while (*e && *e != '\n') e++;
+		const char *q = p; while (q < e && (*q == ' ' || *q == '\t')) q++;
+		if (q < e && *q != '#' && *q != ';' && (size_t) (e - q) > kl && !strncasecmp (q, key, kl))
+		{
+			const char *r = q + kl; while (r < e && (*r == ' ' || *r == '\t')) r++;
+			if (r < e && *r == '=')
+			{
+				r++; while (r < e && (*r == ' ' || *r == '\t')) r++;
+				const char *ve = e; while (ve > r && (ve[-1] == ' ' || ve[-1] == '\t' || ve[-1] == '\r')) ve--;
+				int n = 0; for (; r < ve && n < vcap - 1; r++) val[n++] = *r;
+				val[n] = 0;
+				*ls = p; *le = *e ? e + 1 : e;
+				return true;
+			}
+		}
+		p = *e ? e + 1 : e;
+	}
+	return false;
+}
+// The pairs a file does not have yet, added to it -> how many.
+static inline int merge_pairs (const char *file, const char *pairs, const char *header)
+{
+	if (!pairs || !*pairs) return 0;
+	char *text = read_file (file);
+	size_t tl = text ? strlen (text) : 0;
+	size_t cap = tl + strlen (pairs) * 2 + strlen (header) + 64;
+	char *out = (char *) malloc (cap);
+	size_t ol = 0;
+	if (text) { memcpy (out, text, tl); ol = tl; if (ol && out[ol - 1] != '\n') out[ol++] = '\n'; }
+	else { ol = strlen (header); memcpy (out, header, ol); }
+	out[ol] = 0;
+	int added = 0;
+	char key[32], val[200], cur[200]; const char *a, *b;
+	for (const char *s = pairs; next_pair (s, key, sizeof key, val, sizeof val); )
+	{
+		if (!key[0] || !val[0] || find_line (out, key, &a, &b, cur, sizeof cur)) continue;
+		ol += (size_t) snprintf (out + ol, cap - ol, "%-4s = %s\n", key, val);
+		added++;
+	}
+	if (added) write_file (file, out, ol);
+	free (out); free (text);
+	return added;
+}
+// The lines that still say what these pairs say, taken away -> how many.
+static inline int drop_pairs (const char *file, const char *pairs)
+{
+	if (!pairs || !*pairs) return 0;
+	char *text = read_file (file);
+	if (!text) return 0;
+	int gone = 0;
+	char key[32], val[200], cur[200]; const char *a, *b;
+	for (const char *s = pairs; next_pair (s, key, sizeof key, val, sizeof val); )
+		if (key[0] && find_line (text, key, &a, &b, cur, sizeof cur) && eq (cur, val))
+		{
+			memmove ((char *) a, b, strlen (b) + 1);
+			gone++;
+		}
+	if (gone) write_file (file, text, strlen (text));
+	free (text);
+	return gone;
+}
+
 // ---- what a job tells its caller ---------------------------------------------------------------------------------
 struct Report
 {
@@ -583,7 +674,7 @@ public:
 		auto put = [&] (const char *s) { size_t l = strlen (s); if (dl + l + 1 >= cap) { cap = (dl + l + 1) * 2; dbt = (char *) realloc (dbt, cap); } memcpy (dbt + dl, s, l + 1); dl += l; };
 		char line[512];
 		put ("# installed by pkg\n[package]\n");
-		static const char *const keys[] = { "name", "title", "version", "category", "author", "summary", "needs", "required", "restart", "config", 0 };
+		static const char *const keys[] = { "name", "title", "version", "category", "author", "summary", "needs", "required", "restart", "config", "assoc", "runners", 0 };
 		for (int i = 0; keys[i]; i++) { snprintf (line, sizeof line, "%s = %s\n", keys[i], man.get ("", keys[i])); put (line); }
 		snprintf (line, sizeof line, "mode = %s\n\n[files]\n", old ? old->mode () : "manual"); put (line);
 		const char *cfg = man.get ("", "config");
@@ -654,6 +745,7 @@ public:
 		else snprintf (dbp, sizeof dbp, PKG_DB "/%s.ini", name);
 		bool ok = write_file (dbp, dbt, dl);
 		if (ok && !stage && strstr (dbt, "\napps/")) appsChanged = true;
+		if (ok && !stage) apply_meta (man.get ("", "assoc"), man.get ("", "runners"));	// (a staged one: at the commit)
 		free (dbt); free (mv);
 		if (!ok) { r.sayf ("cannot write %s", dbp); return E_IO; }
 		char t[300];
@@ -662,6 +754,28 @@ public:
 		r.say (t);
 		db.load ();
 		return OK;
+	}
+
+	// A package's associations and runners written into the card's two files (what they lack only).
+	void apply_meta (const char *assoc, const char *runners)
+	{
+		merge_pairs (PKG_ASSOC, assoc, "# Onyx file associations: \"extension = app\" (kept in step with the packages installed; a line of yours wins)\n");
+		merge_pairs (PKG_RUNNERS, runners, "# runners.ini: \"extension = program\" (kept in step with the packages installed; a line of yours wins)\n");
+	}
+	// What a package says it opens / runs: its database entry, else the index (a package installed by an
+	// older package manager has no such lines in its entry).
+	const char *meta_of (const Inst &in, const char *key)
+	{
+		const char *v = in.ini.get ("package", key, "");
+		if (!*v && haveIndex) v = index.ini.get (in.name, key, "");
+		return v;
+	}
+	// Every installed package's associations and runners made sure of (the update daemon at its start, pkg
+	// commit): the files follow the packages even when the tool that installed them did not know how.
+	void sync_meta ()
+	{
+		if (!haveIndex) load_cached_quiet ();
+		for (int i = 0; i < db.n; i++) apply_meta (meta_of (*db.v[i], "assoc"), meta_of (*db.v[i], "runners"));
 	}
 
 	// An app installed, updated or removed: the dock started again (a dock that only read its
@@ -733,6 +847,11 @@ public:
 			if (kapi_remove (card) == 0) gone++;
 			prune (card);
 		}
+		if (!replaced)
+		{
+			if (!haveIndex) load_cached_quiet ();
+			drop_pairs (PKG_ASSOC, meta_of (*in, "assoc")); drop_pairs (PKG_RUNNERS, meta_of (*in, "runners"));
+		}
 		char dbp[200]; snprintf (dbp, sizeof dbp, PKG_DB "/%s.ini", name);
 		kapi_remove (dbp);
 		char t[200]; snprintf (t, sizeof t, "%s removed: %d files%s", name, gone, kept ? " (your changed settings kept)" : "");
@@ -783,6 +902,7 @@ public:
 		}
 		remove_tree (PKG_STAGE);
 		db.load ();
+		sync_meta ();					// (what the packages just moved in open and run)
 		return OK;
 	}
 	bool staged (const char *name) { char p[200]; snprintf (p, sizeof p, PKG_STAGE "/%s.ini", name); return exists (p); }

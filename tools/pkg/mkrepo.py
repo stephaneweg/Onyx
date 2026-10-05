@@ -87,13 +87,28 @@ def plan (sd, ini):
 			if f in taken: continue
 			if any (matches (f, p) for p in pats): taken[f] = name; got.append (f)
 		return got
-	def make (name, sec, pats, extra = {}):
+	def pairs (text, default = None):
+		"""'zip jar: archiver; txt md: tinypad' -- or 'zip jar' with a default value -- -> ['zip=archiver', ...]
+		(a part is split at its FIRST ':': a runner's value is a path, 'bax bas: SD:/bin/basic')"""
+		out = []
+		for part in text.split (";"):
+			part = part.strip ()
+			if not part: continue
+			if ":" in part: exts, val = part.split (":", 1)
+			else: exts, val = part, default
+			if not val or not val.strip (): sys.exit ("mkrepo: packages.ini: '%s' names no app / program" % part)
+			out += ["%s=%s" % (e.lower (), val.strip ()) for e in exts.split ()]
+		return out
+	def make (name, sec, pats, extra = {}, app = None):
 		p = { "name": name, "title": sec.get ("title", name), "category": sec.get ("category", "Other"),
 		      "summary": sec.get ("summary", ""), "author": sec.get ("author", "Onyx"),
 		      "needs": [n.strip () for n in sec.get ("needs", "").split (",") if n.strip ()],
 		      "required": sec.get ("required", "0"), "restart": sec.get ("restart", "0"),
 		      "config_pats": split (sec.get ("config", "")), "icon": sec.get ("icon", ""),
-		      "replaces": [n.strip () for n in sec.get ("replaces", "").split (",") if n.strip ()] }
+		      "replaces": [n.strip () for n in sec.get ("replaces", "").split (",") if n.strip ()],
+		      # what its apps open and what its programs run (fileassoc.ini, runners.ini: kept in step by pkg)
+		      "assoc": pairs (sec.get ("opens", ""), app) + pairs (sec.get ("assoc", "")),
+		      "runners": pairs (sec.get ("runners", "")) }
 		p.update (extra)
 		p["files"] = take (name, pats)
 		pkgs.append (p)
@@ -111,7 +126,7 @@ def plan (sd, ini):
 				d.setdefault ("icon", "apps/%s.app/icon.bmp" % a)
 				if sec.get ("needs", "").strip ():		# [*apps] needs: what every app needs (the shared libraries)
 					d["needs"] = ", ".join (n for n in (sec.get ("needs"), d.get ("needs", "")) if n.strip ())
-				make (a, d, pats)
+				make (a, d, pats, app = a)
 			continue
 		pats = split (sec.get ("files", ""))
 		for c in split (sec.get ("apps", "")):
@@ -135,6 +150,8 @@ def manifest_text (p, version, kapi):
 		 "needs = " + ", ".join (needs), "required = " + p["required"], "restart = " + p["restart"],
 		 "installed = %d" % p["bytes"], "config = " + " ".join (cfgfiles)]
 	if p["replaces"]: lines.append ("replaces = " + ", ".join (p["replaces"]))
+	if p["assoc"]: lines.append ("assoc = " + " ".join (p["assoc"]))
+	if p["runners"]: lines.append ("runners = " + " ".join (p["runners"]))
 	return "\n".join (lines) + "\n", needs, cfgfiles
 
 def write_opk (path, sd, p, manifest):
@@ -166,6 +183,39 @@ def sign (data, keyfile):
 		der = subprocess.check_output (["openssl", "dgst", "-sha256", "-sign", keyfile, t.name]); os.unlink (t.name)
 		return der.hex ()
 
+def write_assoc (sd, pkgs):
+	"""sdcard/etc/fileassoc.ini and runners.ini made from what the packages say they open and run (one source:
+	packages.ini). On a card, pkg adds a package's lines when it is installed and never touches a line of the user's."""
+	head = { "fileassoc.ini": ["# Onyx file associations -- read by the File Viewer and the Shelf (user/fileassoc.h).",
+				   "# One \"extension = app\" per line: opening a file launches SD:apps/<app>.app/main with",
+				   "# the file's path as its argument. Folders open in the File Viewer, .app bundles and",
+				   "# programs run. Extensions are case-insensitive; '#' starts a comment.",
+				   "# MADE FROM THE PACKAGES (tools/pkg/packages.ini: opens = / assoc =): the package manager adds a",
+				   "# package's lines when it is installed, and never changes a line that is here already -- change",
+				   "# one freely; \"ext =\" with nothing after it: opened by nothing."],
+		 "runners.ini": ["# runners.ini -- the programs that run files the kernel cannot load itself (it loads ELF",
+				 "# programs only). One \"extension = program\" per line, read by user/launch.h: opening such a",
+				 "# file (File Viewer, Shelf, `run`), or launching an app whose bundle holds main.<extension>",
+				 "# instead of an ELF `main`, starts the program with the file's path as its first argument.",
+				 "# The order counts for app bundles: the first main.<extension> found is run.",
+				 "# An app can also say itself what it opens, in its app.txt: an emulator's \"games = Game Boy: gb\"",
+				 "# (the Game Library's systems), \"opens = wad\" -- installing its package is then enough.",
+				 "# MADE FROM THE PACKAGES (tools/pkg/packages.ini: runners =), kept in step by the package manager;",
+				 "# a line of yours is never changed."] }
+	for fn, key in (("fileassoc.ini", "assoc"), ("runners.ini", "runners")):
+		lines, seen = list (head[fn]), set ()
+		for p in pkgs:
+			got = [x for x in p[key] if x.split ("=", 1)[0] not in seen]
+			if not got: continue
+			if key == "assoc": lines.append ("# " + p["title"])
+			for x in got:
+				e, v = x.split ("=", 1); seen.add (e)
+				lines.append ("%-4s = %s" % (e, v))
+		path = os.path.join (sd, "etc", fn)
+		text = "\n".join (lines) + "\n"
+		if not os.path.exists (path) or open (path, encoding = "utf-8").read () != text:
+			open (path, "w", encoding = "utf-8", newline = "\n").write (text)
+
 def write_db (db, pkgs):
 	"""SD:/var/pkg/db/<name>.ini for each package: the card made "installed" (what pkg reads)."""
 	os.makedirs (db, exist_ok = True)
@@ -175,7 +225,8 @@ def write_db (db, pkgs):
 		L = ["# installed by tools/pkg/mkrepo.py", "[package]", "name = " + p["name"], "title = " + p["title"],
 		     "version = " + p["version"], "category = " + p["category"], "author = " + p["author"], "summary = " + p["summary"],
 		     "mode = manual", "required = " + p["required"], "restart = " + p["restart"], "needs = " + ", ".join (p["needs_all"]),
-		     "config = " + " ".join (p["cfgfiles"]), "", "[files]"] + ["%s = %s" % h for h in p["hashes"]]
+		     "config = " + " ".join (p["cfgfiles"])] + (["assoc = " + " ".join (p["assoc"])] if p["assoc"] else []) \
+		    + (["runners = " + " ".join (p["runners"])] if p["runners"] else []) + ["", "[files]"] + ["%s = %s" % h for h in p["hashes"]]
 		open (os.path.join (db, p["name"] + ".ini"), "w", encoding = "utf-8").write ("\n".join (L) + "\n")
 
 def main ():
@@ -199,6 +250,7 @@ def main ():
 	V = vcfg["versions"]
 	old = read_index (os.path.join (a.out, "index.txt"))
 	os.makedirs (os.path.join (a.out, "pkgs"), exist_ok = True); os.makedirs (os.path.join (a.out, "icons"), exist_ok = True)
+	write_assoc (a.sd, pkgs)
 	errors, changed = [], []
 	for p in pkgs:
 		hashes = [(f, sha256_file (os.path.join (a.sd, f))) for f in p["files"]]
@@ -207,6 +259,7 @@ def main ():
 		# the content: the files and what the manifest says of them (a new need is a new version)
 		desc = "needs %s\nconfig %s\nrequired %s\nrestart %s\n" % (p["needs"], p["config_pats"], p["required"], p["restart"])
 		if p["replaces"]: desc += "replaces %s\n" % p["replaces"]
+		if p["assoc"] or p["runners"]: desc += "assoc %s\nrunners %s\n" % (p["assoc"], p["runners"])
 		p["content"] = hashlib.sha256 ((desc + "".join ("%s %s\n" % h for h in hashes)).encode ()).hexdigest ()
 		ver = V.get (p["name"], "2026.10.0" if p["name"] == "onyx" else "1.0.0")
 		if old.has_section (p["name"]) and old[p["name"]].get ("content") != p["content"] and vkey (ver) <= vkey (old[p["name"]].get ("version", "0")):
@@ -234,7 +287,9 @@ def main ():
 			"author = " + p["author"], "summary = " + p["summary"], "size = %d" % os.path.getsize (path),
 			"installed = %d" % p["bytes"], "sha256 = " + sha256_file (path), "file = " + fn,
 			"icon = icons/%s.bmp" % p["name"], "needs = " + ", ".join (needs), "required = " + p["required"],
-			"restart = " + p["restart"]] + (["replaces = " + ", ".join (p["replaces"])] if p["replaces"] else []) + ["content = " + p["content"], ""]
+			"restart = " + p["restart"]] + (["replaces = " + ", ".join (p["replaces"])] if p["replaces"] else []) \
+		    + (["assoc = " + " ".join (p["assoc"])] if p["assoc"] else []) + (["runners = " + " ".join (p["runners"])] if p["runners"] else []) \
+		    + ["content = " + p["content"], ""]
 	keep = set ("%s-%s.opk" % (p["name"], p["version"]) for p in pkgs)	# the old versions' archives dropped
 	for f in os.listdir (os.path.join (a.out, "pkgs")):
 		if f.endswith (".opk") and f not in keep: os.remove (os.path.join (a.out, "pkgs", f))

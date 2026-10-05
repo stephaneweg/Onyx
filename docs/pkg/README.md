@@ -192,6 +192,27 @@ new emulator package shows its games at once), and `launch.h` finds the program 
 `opens = wad`). The pictures of the games: the cores the Game Library carries (GB, GBA, NES, SNES), the
 N64's label, the GameCube's banner; another emulator's games show its icon.
 
+## What a package opens and runs (file associations, runners) — 2026-10-05
+
+A package's metadata says which files its apps open and which programs run which files; the package
+manager keeps `SD:/etc/fileassoc.ini` and `SD:/etc/runners.ini` in step.
+
+- **Declared** in `tools/pkg/packages.ini`: `[app.<name>]` `opens = zip jar tar tgz gz` (the extensions that
+  app opens); for a package of several apps or programs, `assoc = txt md: tinypad; png jpg: imageview` and
+  `runners = bax bas: SD:/bin/basic`.
+- **Carried** by the package: `assoc = zip=archiver tar=archiver …` and `runners = bas=SD:/bin/basic …` in its
+  manifest (`PKG/manifest.ini`), in the index and in its entry of `SD:/var/pkg/db`.
+- **Applied** by `user/pkg/pkglib.h`: at an install (and at the commit of a staged package) the pairs the file
+  does not have are appended (`merge_pairs`); at a removal the lines that still say what the package had put
+  are taken away (`drop_pairs`). **A line that is there is never changed**: the user's choice wins, and
+  `ext =` with nothing after it means "opened by nothing". `pkg assoc` and the update service at its start
+  (`pkgd`) go over every installed package (`sync_meta`: from its database entry, else from the index — a
+  package installed by an older `pkg` has no such lines in its entry).
+- **One source**: `mkrepo.py` also makes `sdcard/etc/fileassoc.ini` and `runners.ini` from the packages
+  (`write_assoc`), so a fresh card and a card updated by packages say the same. They are not edited by hand.
+- An emulator's `games =` / an app's `opens =` in its **`app.txt`** stay what they were (the Game Library's
+  systems; the runner found without any file): the two mechanisms add up.
+
 ## Still open
 
 1. **pkgd's timing**: it checks once a day itself until the task scheduler exists (done so).

@@ -44,6 +44,12 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
   into `[onyx]`'s `files` instead.
 - **The user's files** (a `config.ini` shipped with defaults, documents): `config = <paths>` — never
   overwritten once the user changed them (the new one written beside as `.new`).
+- **What the app opens** (file associations): `[app.<name>]` `opens = <ext> <ext>` -- the package then carries
+  `ext = <name>` lines for `SD:/etc/fileassoc.ini`. A package of several apps or programs (the base system):
+  `assoc = <exts>: <app>; <exts>: <app>` and `runners = <exts>: <program>` (`SD:/etc/runners.ini`). **Never edit
+  `sdcard/etc/fileassoc.ini` or `runners.ini` by hand: `mkrepo.py` makes them from `packages.ini`** (one source), and
+  on a card `pkg` adds a package's lines at its install, removes them with it, and never changes a line that is
+  there (the user's wins; `pkg assoc` syncs).
 - **Samples** (documents to try the app with): a section `[<app>-samples]` (`files`, the same paths
   as `config`, `needs = <app>`), as `letters-samples`, `basic-samples`.
 - **An emulator**: its `app.txt` says what it plays — `category = Emulators`,

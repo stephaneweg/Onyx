@@ -542,6 +542,12 @@ run in the BASIC runtime — or an app says itself what it opens, in its `app.tx
 `games = Game Boy Color: gbc; Game Boy: gb` (`.gb` / `.gbc` in the Game Boy emulator), Doom's
 `opens = wad`. Installing an emulator's package is then enough for its files to open.
 
+**The packages keep it in step** (since 2026-10-05): each package says which files its apps open (and
+which program runs which files: `SD:/etc/runners.ini`). Installing a package adds its lines to the two files;
+removing it takes them away. **A line that is there already is never changed** — yours wins: change one
+freely, or write `ext =` with nothing after it for "opened by nothing". `pkg assoc` makes the two files
+follow the packages installed at once (the update service also does it when it starts).
+
 ### Launching, closing, switching
 
 - **Launch**: from the dock (a drawer's main app or one of its apps, the Terminal, the File
@@ -1017,7 +1023,7 @@ it: `ed notes.txt < edits.txt`.
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
 | `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`; variables, `if` / `while` / `for`: the script language of §7), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source`, `test`, `echo`, `read`, `set`, `unset`, `shift` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
 | `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
-| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. |
+| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg assoc`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. **`pkg assoc`**: `SD:/etc/fileassoc.ini` and `runners.ini` made to follow what the installed packages say they open and run (the lines you changed are left alone). |
 
 **Networking and logs**
 
