@@ -139,6 +139,7 @@ int el_serve (int demo)
 		say (r == 0 ? "elegant: another graphics server runs\n" : "elegant: this kernel has no graphics server role (kapi v89)\n");
 		return 1;
 	}
+	kapi_thread_priority (0, 1);		// what the pointer does is shown at once: before the programs' turns
 	struct kapi_ws_display D;
 	if (kws_display (1, &D) != 0) { say ("elegant: the display is busy (a full-screen program)\n"); return 1; }
 	int w = D.w, h = D.h;
@@ -224,14 +225,34 @@ int el_serve (int demo)
 			continue;
 		}
 		int k = el_core_compose (screen, w, h, rects);
-		if (k != 0) frame_us = now;
+		int drew = k != 0;
+		if (drew) frame_us = now;
 		long shown = 0;
 		if (k < 0) shown = present (screen, w, 0, 0, 0, 0);
+		if (k > 1)		// several rectangles that nearly make one (a window dragged: where it was, where it is): one send
+		{
+			int x0 = rects[0], y0 = rects[1], x1 = x0 + rects[2], y1 = y0 + rects[3];
+			long sum = 0;
+			for (int i = 0; i < k; i++)
+			{
+				int *r = &rects[i * 4];
+				if (r[0] < x0) x0 = r[0];
+				if (r[1] < y0) y0 = r[1];
+				if (r[0] + r[2] > x1) x1 = r[0] + r[2];
+				if (r[1] + r[3] > y1) y1 = r[1] + r[3];
+				sum += (long) r[2] * r[3];
+			}
+			if ((long) (x1 - x0) * (y1 - y0) <= sum + sum / 2)
+			{
+				shown = present (screen, w, x0, y0, x1 - x0, y1 - y0);
+				k = 0;
+			}
+		}
 		for (int i = 0; i < k; i++) shown |= present (screen, w, rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3]);
 		if (shown != 0) { el_core_redraw (); kws_wait (20); }	// (not shown: the whole screen at the next turn)
-		if (k != 0) s_nFrames++;
+		if (drew) s_nFrames++;
 		stats ();
-		if (k == 0) kws_wait (100);
+		if (!drew) kws_wait (100);
 	}
 	kws_display (0, 0);
 	return 0;

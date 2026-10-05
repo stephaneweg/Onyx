@@ -132,11 +132,21 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      AppKit call: Elegant's `EL_OP_CURSOR_SHOWN`; -1 under the kernel's window manager), `rdpd` looks
      20 times a second and sends message 11 when it changed (an older client skips it), Onyx Remote
      shows the matching Windows pointer (`MainForm.ShowCursor`). The Pi's side tried with a test client
-     (arrow, then the size arrows over a frame's edge); **`pc/dist/OnyxRemote.exe` rebuilt, its pointer
-     not yet looked at by anyone**.
-   - **Elegant's arrow** is its own (white, black edge; `core.cpp`); **one frame every 16 ms at
-     most** (`server.cpp`: the programs' presents composed together) -- on the Pi since the trial of
-     20:38; VNC felt slower than under the kernel before that (the user): to compare again.
+     (arrow, then the size arrows over a frame's edge); `pc/dist/OnyxRemote.exe` rebuilt -- **the user saw the pointer change in Onyx Remote** (the
+     exe of THIS tree: the main checkout's `pc/dist` has the old one until the branch is merged).
+   - **Elegant's arrow** is its own (white, black edge; `core.cpp`).
+   - **VNC felt jerky under Elegant** when a window was dragged (the user, twice). Done since: one
+     frame every 16 ms at most (the programs' presents composed together); Elegant's thread at the
+     high priority (`kapi_thread_priority`); the kernel yields to it right after an injected pointer
+     event (`kapi_inject_pointer`: the server moves and shows before the remote desktop grabs again);
+     rectangles that nearly make one sent as one. **Measured** with
+     `python tools/tests/elegant/vnc_drag_bench.py X Y` (an RFB client that drags a window by its title
+     and counts vncd's updates; zlib rectangles as a viewer -- raw ones measure the Wi-Fi): Terminal's
+     window dragged, three runs of 8 s each, same Pi, same evening -- **the kernel's window manager
+     14.0 / 12.6 / 6.7 updates a second (longest gap 0.6 / 1.2 / 2.2 s); Elegant with those changes
+     14.9 / 10.5 / 11.3 (0.3 / 2.3 / 2.4 s)**: the same within the noise; the gaps of seconds are
+     there under both (vncd or the Wi-Fi: not looked into). No valid measure of Elegant BEFORE the
+     changes; the user has not yet said how it feels now.
    - **`screen_set` under Elegant: written and built, NOT tried** (the user was on the Pi by RDP: no
      restart then). The kernel's compositor does the resize as always (between two of Elegant's
      presents), then tells Elegant (`KAPI_WS_IN_SCREEN`): a new screen buffer, `OnScreenResized`.

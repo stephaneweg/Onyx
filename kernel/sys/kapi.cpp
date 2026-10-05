@@ -742,7 +742,13 @@ void kapi_inject_pointer (int x, int y, unsigned nButtons, int nWheel)
 	{
 		return;
 	}
-	if (WsInputPointer (x, y, nButtons, nWheel)) return;	// (the graphics server's: kern/wsrv.h)
+	if (WsInputPointer (x, y, nButtons, nWheel))		// (the graphics server's: kern/wsrv.h)
+	{
+		// the server now, not after the injector's time slice: it moves the pointer, the window
+		// dragged, and shows them before the remote desktop grabs the screen again
+		if (CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
+		return;
+	}
 	pWM->OnMouse (x, y, nButtons);
 	if (nWheel != 0)
 	{
