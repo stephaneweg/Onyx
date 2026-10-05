@@ -1,0 +1,9 @@
+# Home.form -- a user control: a page (shown in the window's Host `page`)
+UserControl Home size=370x270
+  Column padding=14 gap=8
+    Label "This page is a user control, shown in the window's Host."
+    Row gap=8
+      Label "Your name:"
+      TextBox who "" fill
+    Button hello "Say hello" halign=right
+    Label greeting "" fill

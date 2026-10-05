@@ -246,6 +246,10 @@ ok = UIKit.button(win, 220, 36, 80, 24, "OK", ADDRESSOF(Clicked))
 DO WHILE UIKit.window_wait(win): LOOP
 ```
 
+`uk_panel (window, x, y, w, h)` is an area with widgets of its own — every maker takes the window *or a
+panel* as what holds the widget —: a page shown in place of another (`uk_show`), moved elsewhere
+(`uk_set_parent`). QBStudio's user controls are panels.
+
 A widget added to UIKit that BASIC should reach gets its functions there (a maker, and `uk_set_text` /
 `uk_get_value` ... taught its kind).
 

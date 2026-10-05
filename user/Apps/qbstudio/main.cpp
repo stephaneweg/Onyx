@@ -298,7 +298,30 @@ static bool is_word0 (const char *w) { return is_keyword (w, (int) strlen (w)); 
 // ---- the documents ---------------------------------------------------------------------------------------------------------
 static Doc *cur_doc () { return g_p.cur >= 0 ? &g_p.docs[g_p.cur] : 0; }
 static int find_doc (const char *file) { for (int i = 0; i < g_p.docs.n; i++) if (!strcasecmp (g_p.docs[i].file, file)) return i; return -1; }
-static Doc *main_form () { for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type == DOC_FORM) return &g_p.docs[i]; return 0; }
+// The form the designer, the object and event lists and the completion speak of: the one shown, else the last
+// one shown, else the first (a project has its window and its user controls: a form each)
+static int g_lastForm = -1;
+static Doc *main_form ()
+{
+	if (g_p.cur >= 0 && g_p.cur < g_p.docs.n && g_p.docs[g_p.cur].type == DOC_FORM) return &g_p.docs[g_p.cur];
+	if (g_lastForm >= 0 && g_lastForm < g_p.docs.n && g_p.docs[g_lastForm].type == DOC_FORM) return &g_p.docs[g_lastForm];
+	for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type == DOC_FORM) return &g_p.docs[i];
+	return 0;
+}
+// The program's window: the form project.ini names (main =) if it is a window, else the first window
+static Doc *start_form ()
+{
+	Doc *first = 0;
+	for (int i = 0; i < g_p.docs.n; i++)
+	{
+		Doc &d = g_p.docs[i];
+		if (d.type != DOC_FORM || !d.form || d.form->userControl ()) continue;
+		char n[64]; cpy (n, d.file, sizeof n); char *dot = strchr (n, '.'); if (dot) *dot = 0;
+		if (ieq (n, g_p.mainForm)) return &d;
+		if (!first) first = &d;
+	}
+	return first;
+}
 static void form_name_of (const Doc &d, char *o, int cap) { cpy (o, d.file, cap); char *dot = strchr (o, '.'); if (dot) *dot = 0; }
 // The code doc a form's events go into: <Form>.bas, else the first .bas
 static Doc *code_for_form ()
@@ -434,20 +457,33 @@ static bool build (Str &prog, bool quiet)
 {
 	g_parts.clear ();
 	add_part (prog, g_parts, "(QBStudio's controls)", LIBRARY);
-	Doc *mf = 0;
+	Vec<char *> ucs;					// the user controls, in order: their numbers
 	for (int i = 0; i < g_p.docs.n; i++)
 	{
 		Doc &d = g_p.docs[i];
 		if (d.type != DOC_FORM) continue;
-		if (!d.form) { if (!quiet) status ("The form has errors: see the problems"); return false; }
+		if (!d.form) { if (!quiet) status ("A form has errors: see the problems"); free_subs (ucs); return false; }
+		if (d.form->userControl ()) { char fn[64]; form_name_of (d, fn, sizeof fn); ucs.push (strdup (fn)); }
+	}
+	{
+		Vec<char *> subs; all_subs (subs);
+		Str pg; generate_panels (pg, ucs, subs);
+		free_subs (subs);
+		add_part (prog, g_parts, "(the user controls)", pg.str ());
+	}
+	for (int i = 0; i < g_p.docs.n; i++)
+	{
+		Doc &d = g_p.docs[i];
+		if (d.type != DOC_FORM) continue;
 		regenerate (d);
 		add_part (prog, g_parts, g_p.docs[d.gen].file, g_p.docs[d.gen].ed->text ());
-		if (!mf) mf = &d;
 	}
 	for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type == DOC_CODE) add_part (prog, g_parts, g_p.docs[i].file, g_p.docs[i].ed->text ());
-	char start[80] = "\n";
-	if (mf) { char fn[64]; form_name_of (*mf, fn, sizeof fn); snprintf (start, sizeof start, "%s_Run\n", fn); }
-	add_part (prog, g_parts, "(the start)", start);
+	Doc *mf = start_form ();
+	char fn[64] = ""; if (mf) form_name_of (*mf, fn, sizeof fn);
+	Str st; generate_start (st, fn, ucs);
+	add_part (prog, g_parts, "(the start)", st.str ());
+	free_subs (ucs);
 	return true;
 }
 // The program compiled: its first error shown (in its file, at its line); true = none
@@ -615,9 +651,28 @@ static void complete (const char *obj, Vec<Compl> &out)
 	char fn[64] = ""; if (f) form_name_of (*f, fn, sizeof fn);
 	if (obj[0])
 	{
-		if (fn[0] && ieq (obj, fn)) { add ("Width", 'p', "INTEGER"); add ("Height", 'p', "INTEGER"); add ("Close", 'm', ""); return; }
-		El *e = form ? form->named (obj) : 0;
+		// a form's own object (the window; a user control), a control of any form
+		El *e = 0;
+		for (int i = 0; i < g_p.docs.n && !e; i++)
+		{
+			Doc &d = g_p.docs[i];
+			if (d.type != DOC_FORM || !d.form) continue;
+			char n[64]; form_name_of (d, n, sizeof n);
+			if (ieq (obj, n))
+			{
+				add ("Width", 'p', "INTEGER"); add ("Height", 'p', "INTEGER");
+				if (d.form->userControl ()) add ("Visible", 'p', "-1: a Host shows it"); else add ("Close", 'm', "");
+				return;
+			}
+			e = d.form->named (obj);
+		}
 		if (!e) return;
+		if (e->kind == K_HOST)
+		{
+			add ("Content", 'p', "a user control (NOTHING: none)"); add ("Load", 'm', "a user control"); add ("Unload", 'm', "");
+			add ("Enabled", 'p', "-1 / 0"); add ("Visible", 'p', "-1 / 0"); add ("Move", 'm', "x, y, w, h"); add ("handle", 'p', "UIKit's panel");
+			return;
+		}
 		add ("Text", 'p', "STRING");
 		if (e->kind == K_SLIDER || e->kind == K_PROGRESS || e->kind == K_LISTBOX || e->kind == K_DROPDOWN) add ("Value", 'p', "DOUBLE");
 		if (e->kind == K_CHECKBOX) add ("Checked", 'p', "-1 / 0");
@@ -629,13 +684,17 @@ static void complete (const char *obj, Vec<Compl> &out)
 		return;
 	}
 	for (int i = 0; i < kits.n; i++) add (kits[i].name, 'K', "kit");
-	if (fn[0]) add (fn, 'c', "Window");
-	if (form)
+	(void) form;
+	for (int i = 0; i < g_p.docs.n; i++)			// every form: its object, its controls
 	{
+		Doc &d = g_p.docs[i];
+		if (d.type != DOC_FORM || !d.form) continue;
+		char n[64]; form_name_of (d, n, sizeof n);
+		add (n, 'c', d.form->userControl () ? "User control" : "Window");
 		struct Wk { static void walk (El *e, Vec<Compl> &o) {
 			if (e->name[0] && e->kind != K_WINDOW) { Compl c; cpy (c.name, e->name, sizeof c.name); c.kind = 'c'; cpy (c.detail, e->kind == K_MENUITEM ? "Menu item" : KIND_NAMES[e->kind], sizeof c.detail); o.push (c); }
 			for (int i = 0; i < e->kids.n; i++) walk (e->kids[i], o); } };
-		Wk::walk (form->root, out);
+		Wk::walk (d.form->root, out);
 	}
 	Vec<char *> subs; all_subs (subs);
 	for (int i = 0; i < subs.n; i++) add (subs[i], 's', "SUB");
@@ -745,6 +804,8 @@ static void show_doc (int i)
 	g_p.cur = i;
 	for (int k = 0; k < g_p.docs.n; k++) g_p.docs[k].ed->hidden = k != i || (d.type == DOC_FORM && g_view == 0);
 	bool form = d.type == DOC_FORM;
+	if (form) g_lastForm = i;
+	{ static char fname[64]; Doc *mf = main_form (); if (mf) { form_name_of (*mf, fname, sizeof fname); g_formName = fname; } }	// (the events' SUBs: <Form>_Load ...)
 	g_des->hidden = !form || g_view == 2;
 	g_tools->hidden = !form; g_outline->hidden = form;
 	g_codebar->hidden = form;
@@ -1037,6 +1098,29 @@ static void cmd_add_module ()
 	refresh_tree ();
 	show_doc (g_p.docs.n - 1);
 	save_all ();
+}
+// A user control: a panel of controls drawn like a window, shown in a Host of the window (or of another user
+// control) -- <Name>.form (its root: UserControl) and <Name>.bas for its events
+static void cmd_add_usercontrol ()
+{
+	if (!g_p.dir[0]) return;
+	char n[40] = "Panel1";
+	if (!ask_line ("Add User Control", "Its name (the object in the code; its files: <name>.form, <name>.bas)", n, sizeof n)) return;
+	for (int i = 0; n[i]; i++) if (!name_ch (n[i])) { uk_messagebox ("Add User Control", "Letters, digits and _ only", MB_OK); return; }
+	if (is_word0 (n)) { uk_messagebox ("Add User Control", "That is a word of BASIC: another name, please", MB_OK); return; }
+	char ff[64], fc[64], fg[64]; snprintf (ff, sizeof ff, "%s.form", n); snprintf (fc, sizeof fc, "%s.bas", n); snprintf (fg, sizeof fg, "%s.form.bas", n);
+	if (find_doc (ff) >= 0 || find_doc (fc) >= 0) { uk_messagebox ("Add User Control", "The project has files of that name already", MB_OK); return; }
+	char t[400];
+	snprintf (t, sizeof t, "# %s -- a user control: a panel of controls, shown in a Host (host.Content = %s)\nUserControl %s size=320x200\n  Column padding=12 gap=8\n    Label \"%s\"\n", ff, n, n, n);
+	add_doc (ff, DOC_FORM, t); int fi = g_p.docs.n - 1; g_p.docs[fi].dirty = true;
+	add_doc (fg, DOC_GEN, ""); g_p.docs[fi].gen = g_p.docs.n - 1;
+	snprintf (t, sizeof t, "' %s -- what the user control %s does (its controls: %s)\n\nSUB %s_Load\nEND SUB\n", fc, n, ff, n);
+	add_doc (fc, DOC_CODE, t); g_p.docs[g_p.docs.n - 1].dirty = true;
+	read_form (g_p.docs[fi]);
+	refresh_tree ();
+	show_doc (fi);
+	save_all ();
+	status ("User control added: put a Host in the window, then host.Content = its name");
 }
 static void cmd_project_settings ()
 {
@@ -1421,6 +1505,7 @@ int main (void)
 	menu.item ("Snap to Grid", "", 0, cmd_snap);
 	menu.menu ("Project");
 	menu.item ("Add Module...", "", 0, cmd_add_module);
+	menu.item ("Add User Control...", "", 0, cmd_add_usercontrol);
 	menu.item ("Settings...", "", 0, cmd_project_settings);
 	menu.menu ("Run");
 	menu.item ("Run", "F5", 0, cmd_run);

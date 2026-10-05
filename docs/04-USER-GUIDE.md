@@ -4378,12 +4378,50 @@ Window Main "Temperature converter" size=380x260 min=320x220 resizable
 ```
 
 Containers: **Column** (its children down), **Row** (across), **Grid** (`cols=`, a child's `cell=c,r`), **Group**
-(a frame and its title), **Canvas** (`at=x,y`), **Spacer** (the free room), **ToolBar**. Controls: Label, Button,
+(a frame and its title), **Canvas** (`at=x,y`), **Spacer** (the free room), **Host** (the place of a user
+control: below), **ToolBar**. Controls: Label, Button,
 TextBox, CheckBox, ListBox and DropDown (`items="a|b|c"`), Slider (`max=`), Progress (`value=`), StatusBar; a Menu
 (its titles, their items indented, `-` a separator, `key=` the shortcut). A child's size: its text's, `width=` /
 `height=`, or **`fill`** (the room left, shared by `grow=n`); `align=` left, center, right. The window can be
 resized: the layout follows. What is typed is drawn; an error is marked in the text (the designer keeps the last
 good form).
+
+**Alignments and sizes.** Any element says where it stands across its container: **`halign=`** `left`,
+`center`, `right`, `stretch` (in a Column, in a Grid's cell) and **`valign=`** `top`, `center`, `bottom`,
+`stretch` (in a Row, in a Grid's cell); nothing said, a control keeps its own size at the left (a Column) or
+centred (a Row), a container or a Host takes the room. Along a Row or a Column the room is shared as before: a
+size given (`width=200`) is kept, **`fill`** takes what is left — `grow=2` twice the share of `grow=1`. So "the
+first 200 pixels wide, the second the rest" is `width=200` then `fill`. A **Grid** names its columns and rows:
+**`widths=200,*,2*`** — pixels, `*` a share of what is left (`2*`: two shares), `auto` what the cells need —
+and **`heights=`** the same way (`cols=` is then not needed).
+
+**User controls.** A project has its window and, if you wish, **user controls**: panels of controls drawn in
+the designer like a window (**Project ▸ Add User Control...**: `<Name>.form`, whose first line is
+`UserControl <Name> size=320x200`, and `<Name>.bas` for its events), shown **inside the window** — as pages
+that replace one another, or side by side. The window (or another user control) has **Hosts** for them — the
+toolbox's **Host**, an area of the layout like any other (`width=170`, `fill` ...):
+
+```
+Window Main "Pages" size=540x300 min=440x240 resizable
+  Row gap=0
+    Host side width=170 content=Sidebar
+    Host page content=Home fill
+  StatusBar status "Home"
+```
+
+`content=` is what a Host shows at the start; by code, **`page.Content = Settings`** puts the user control
+`Settings` in the Host `page`, **in place of the one it showed** (`page.Load Settings` is the same;
+`page.Unload` empties it). A user control keeps its controls and what they hold while another is shown; it is
+made the first time it is shown; shown in another Host, it leaves the first. Its controls are objects like
+the window's (`volume.Value`, `SUB volume_Change`), under names of their own in the project; itself is an
+object too (`Settings.Width`, `Settings.Height`, `Settings.Visible`). Its events: **`<Name>_Load`** once, when
+it is made, **`<Name>_Show`** each time a Host shows it, **`<Name>_Resize`** when its Host changes size — its
+layout follows by itself. A user control has no menu bar. The example: `SD:/projects/pages` (a sidebar of 170
+pixels and a page that takes the rest, two pages one in place of the other).
+
+![QBStudio: a window with two Hosts](../screenshots/qbstudio-hosts.png)
+*The project Pages: the window's two Hosts, `side` (170 pixels: the user control Sidebar) and `page` (the rest:
+Home, then Settings by code); each user control is a form of the project.*
 
 ![QBStudio: the code](../screenshots/qbstudio-code.png)
 *The code: the controls as objects, the completion after `status.` (its properties and methods), the outline at the
@@ -4409,7 +4447,8 @@ and what it gives back, and the kit's structures (`DIM e AS FileKit.` ...).
 `DIM SHARED` the controls, `Main_Create` (the window and its controls made with **UIKit**, `#import UIKit`: each
 control is one of the system's widgets and calls your SUB), `Main_Layout (w, h)` (each control's place for a
 size: the layout's rules made arithmetic), `Main_Sized` (what the window calls when it is resized) and
-`Main_Run`, which runs the events until the window is closed. Plain BASIC: the app runs without QBStudio.
+`Main_Run`, which runs the events until the window is closed; a user control has its `<Name>_Create` and
+`<Name>_Layout`, called by the Host that shows it. Plain BASIC: the app runs without QBStudio.
 A control's object holds its widget (`convert.handle`): any function of UIKit can be called on it
 (`UIKit.set_range scale.handle, 0, 500`). Apps made before (their `.bax`, their standalone program) run as
 they did; opened and run again in QBStudio, a project is made with UIKit.

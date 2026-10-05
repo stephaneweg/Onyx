@@ -725,3 +725,7 @@
 719 uk_window_step
 720 uk_window_width
 721 uk_window_wait
+722 uk_height
+723 uk_panel
+724 uk_set_parent
+725 uk_width

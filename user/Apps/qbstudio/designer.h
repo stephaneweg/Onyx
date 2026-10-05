@@ -35,7 +35,7 @@ static const char *default_base (int k)
 	switch (k)
 	{
 	case K_BUTTON: return "button"; case K_TEXTBOX: return "text"; case K_CHECKBOX: return "check"; case K_LISTBOX: return "list";
-	case K_DROPDOWN: return "choice"; case K_SLIDER: return "slider"; case K_PROGRESS: return "progress"; case K_STATUSBAR: return "status";
+	case K_DROPDOWN: return "choice"; case K_SLIDER: return "slider"; case K_PROGRESS: return "progress"; case K_STATUSBAR: return "status"; case K_HOST: return "host";
 	default: return 0;
 	}
 }
@@ -62,6 +62,7 @@ static El *new_element (Form &f, int kind)
 	case K_ROW: case K_COLUMN: e->set ("gap", "8"); break;
 	case K_GRID: e->set ("cols", "2"); e->set ("gap", "8"); break;
 	case K_CANVAS: e->set ("size", "200x120"); break;
+	case K_HOST: e->setFlag ("fill", true); e->set ("grow", "1"); break;
 	case K_MENU:
 	{
 		El *t = new El; t->kind = K_MENUTITLE; cpy (t->text, "&File", sizeof t->text); t->hasText = true; e->add (t);
@@ -100,6 +101,7 @@ static El *child_of_kind (El *w, int k) { if (w) for (int i = 0; i < w->kids.n; 
 static void plain (const char *s, char *o, int cap) { int k = 0; for (; *s && k < cap - 1; s++) if (*s != '&') o[k++] = *s; o[k] = 0; }
 
 // ---- the window's parts drawn by the designer: a menu's strip, a toolbar, a status bar --------------------------------
+static void dashed_rect (Canvas &cv, int x, int y, int w, int h, unsigned c);
 class Strip : public Widget
 {
 public:
@@ -119,6 +121,14 @@ public:
 				uk_text (canvas, x, (height - uk_fh ()) / 2, t, C_TEXT);
 				x += uk_tw (t) + 18;
 			}
+		}
+		else if (e->kind == K_HOST)			// the area a user control is shown in: its frame, what it shows
+		{
+			dashed_rect (canvas, 0, 0, width, height, uk_mix (C_BG, C_TEXT, 110));
+			char t[96]; const char *c = e->get ("content");
+			if (c && c[0]) snprintf (t, sizeof t, "%s: %s", e->name[0] ? e->name : "Host", c); else snprintf (t, sizeof t, "%s (a user control goes here)", e->name[0] ? e->name : "Host");
+			if (uk_tw (t) + 12 > width) cpy (t, e->name[0] ? e->name : "Host", sizeof t);
+			uk_text (canvas, imax (4, (width - uk_tw (t)) / 2), imax (2, (height - uk_fh ()) / 2), t, uk_mix (C_BG, C_TEXT, 150));
 		}
 		else if (e->kind == K_TOOLBAR) uk_etch_h (canvas, 0, height - 2, width, C_BG);
 		else if (e->kind == K_STATUSBAR)
@@ -236,7 +246,7 @@ public:
 		case K_SLIDER: w = new Slider (x, y, ww, hh, 0, imax (1, e->num ("max", 100)), e->num ("value", 0), 0, C_BG); break;
 		case K_PROGRESS: w = new Progress (x, y, ww, hh, 0, 100, e->num ("value", 0)); break;
 		case K_GROUP: w = new GroupBox (x, y, ww, hh, e->text, C_BG); break;
-		case K_MENU: case K_TOOLBAR: case K_STATUSBAR: w = new Strip (e); break;
+		case K_MENU: case K_TOOLBAR: case K_STATUSBAR: case K_HOST: w = new Strip (e); break;
 		default: break;
 		}
 		if (w) { if (e->flag ("disabled")) w->disabled = true; client->addChild (w); }
@@ -579,6 +589,7 @@ inline bool Overlay::onKey (long k)
 struct ToolItem { int kind; const char *label; };
 static const ToolItem TOOLS[] = {
 	{ -1, "Layout" }, { K_COLUMN, "Column" }, { K_ROW, "Row" }, { K_GRID, "Grid" }, { K_GROUP, "Group" }, { K_SPACER, "Spacer" }, { K_CANVAS, "Canvas" },
+	{ K_HOST, "Host" },
 	{ -1, "Controls" }, { K_LABEL, "Label" }, { K_BUTTON, "Button" }, { K_TEXTBOX, "TextBox" }, { K_CHECKBOX, "CheckBox" }, { K_LISTBOX, "ListBox" },
 	{ K_DROPDOWN, "DropDown" }, { K_SLIDER, "Slider" }, { K_PROGRESS, "Progress" },
 	{ -1, "Window" }, { K_MENU, "Menu" }, { K_TOOLBAR, "ToolBar" }, { K_STATUSBAR, "StatusBar" },
@@ -596,6 +607,7 @@ static void tool_icon (Canvas &cv, int kind, int x, int y, unsigned ink, unsigne
 	case K_GROUP: dashed_rect (cv, x + 1, y + 3, 12, 10, ink); cv.fillRect (x + 3, y + 1, 6, 3, acc); break;
 	case K_SPACER: cv.fillRect (x + 1, y + 7, 12, 1, ink); cv.fillRect (x + 1, y + 4, 1, 7, ink); cv.fillRect (x + 12, y + 4, 1, 7, ink); break;
 	case K_CANVAS: cv.fillRect (x + 1, y + 2, 12, 10, soft); cv.fillRect (x + 3, y + 8, 3, 3, acc); cv.fillRect (x + 8, y + 4, 3, 3, ink); break;
+	case K_HOST: dashed_rect (cv, x + 1, y + 2, 12, 10, ink); cv.fillRect (x + 4, y + 5, 6, 4, acc); break;
 	case K_LABEL: uk_text (cv, x + 2, y - 1, "A", ink, 2); break;
 	case K_BUTTON: uk_rbox (cv, x, y + 3, 14, 9, 3, soft, soft); uk_rline (cv, x, y + 3, 14, 9, 3, ink); break;
 	case K_TEXTBOX: cv.fillRect (x, y + 3, 14, 9, 0xFFFFFF); uk_rline (cv, x, y + 3, 14, 9, 0, ink); cv.fillRect (x + 3, y + 5, 1, 5, ink); break;

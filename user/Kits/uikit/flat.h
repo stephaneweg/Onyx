@@ -38,7 +38,14 @@ int  uk_window_height (void *window);
 void uk_window_min_size (void *window, int w, int h);	// the smallest a resizable window goes
 void uk_window_on_resize (void *window, uk_resized fn);	// after the user resized it: place the widgets again
 
-// ---- the widgets (x, y, w, h: their place in the window) ---------------------------------------------------
+// ---- the widgets (x, y, w, h: their place in what holds them) ------------------------------------------------
+// What holds a widget -- the `window` every maker takes -- is the window itself or a panel: a plain area
+// with widgets of its own, placed from its top left corner. Hiding, showing, moving a panel does it to all
+// it holds: a page of an app is a panel, shown in place of another.
+void *uk_panel (void *window, int x, int y, int w, int h);
+void uk_set_parent (void *widget, void *window);	// the widget taken from what holds it and put into a window or a panel
+int  uk_width (void *widget);				// a widget's, a panel's, the window's size
+int  uk_height (void *widget);
 void *uk_label (void *window, int x, int y, int w, int h, const char *text);
 void *uk_button (void *window, int x, int y, int w, int h, const char *text, uk_event on_click);
 void *uk_textbox (void *window, int x, int y, int w, int h, const char *text, uk_event on_change);

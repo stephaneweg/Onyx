@@ -36,8 +36,10 @@ static void rows_of (const El *e, Vec<PropRow> &r)
 	if (k == K_BUTTON) { add (PR_FLAG, "default", "Default", "Enter clicks it"); add (PR_FLAG, "cancel", "Cancel", "Esc clicks it"); }
 	if (k == K_SLIDER) { add (PR_VALUE, "max", "Maximum", 0); add (PR_VALUE, "value", "Value", 0); }
 	if (k == K_PROGRESS) add (PR_VALUE, "value", "Value", "0..100");
+	if (k == K_HOST) add (PR_VALUE, "content", "Shows", "a user control's name (or by code: host.Content = Name)");
 	if (is_control (k)) { add (PR_FLAG, "disabled", "Disabled", 0); add (PR_FLAG, "hidden", "Hidden", 0); }
-	if (k == K_WINDOW) { add (PR_HEAD, 0, "Window", 0); add (PR_VALUE, "size", "Size", "380x260 (empty: as its contents)"); add (PR_VALUE, "min", "Smallest", "320x220"); add (PR_FLAG, "resizable", "Resizable", 0); }
+	if (k == K_WINDOW && e->uc) { add (PR_HEAD, 0, "User control", 0); add (PR_VALUE, "size", "Size", "320x200: as drawn (a Host gives it its own)"); }
+	else if (k == K_WINDOW) { add (PR_HEAD, 0, "Window", 0); add (PR_VALUE, "size", "Size", "380x260 (empty: as its contents)"); add (PR_VALUE, "min", "Smallest", "320x220"); add (PR_FLAG, "resizable", "Resizable", 0); }
 	if (k == K_MENU || k == K_MENUTITLE || k == K_SEP || k == K_COMMENT || k == K_WINDOW) return;
 	add (PR_HEAD, 0, "Layout", 0);
 	if (is_control (k) || k == K_SPACER || k == K_CANVAS)
@@ -46,9 +48,12 @@ static void rows_of (const El *e, Vec<PropRow> &r)
 		add (PR_FLAG, "fill", "Fill", "the room left (a Row's), the width (a Column's)"); add (PR_VALUE, "grow", "Grow", "its share of the room");
 		add (PR_CHOICE, "align", "Align", 0);
 	}
+	// its place across its container (a Column: halign; a Row: valign; a Grid's cell: both)
+	add (PR_VALUE, "halign", "H. align", "left, center, right, stretch");
+	add (PR_VALUE, "valign", "V. align", "top, center, bottom, stretch");
 	if (k == K_COLUMN || k == K_ROW || k == K_GROUP || k == K_GRID || k == K_TOOLBAR) { add (PR_VALUE, "padding", "Padding", 0); add (PR_VALUE, "gap", "Gap", 0); }
 	if (k == K_ROW) add (PR_CHOICE, "align", "Align", "its children packed");
-	if (k == K_GRID) add (PR_VALUE, "cols", "Columns", 0);
+	if (k == K_GRID) { add (PR_VALUE, "cols", "Columns", 0); add (PR_VALUE, "widths", "Widths", "200,*,2*: pixels, shares of the rest, auto"); add (PR_VALUE, "heights", "Heights", "auto,*: the rows, the same way"); }
 	if (k == K_CANVAS) add (PR_VALUE, "size", "Size", "200x120");
 	if (e->parent && e->parent->kind == K_GRID) add (PR_VALUE, "cell", "Cell", "column,row");
 	if (e->parent && e->parent->kind == K_CANVAS) add (PR_VALUE, "at", "At", "x,y");
@@ -61,8 +66,8 @@ static int events_of (const El *e, char names[][64], const char *labels[], int c
 	int n = 0;
 	if (e->kind == K_WINDOW)
 	{
-		static const char *const W[] = { "Load", "Resize", "Close" };
-		for (int i = 0; i < 3 && n < cap; i++) { snprintf (names[n], 64, "%s_%s", g_formName, W[i]); labels[n++] = W[i]; }
+		static const char *const W[] = { "Load", "Resize", "Close" }, *const U[] = { "Load", "Resize", "Show" };	// (a user control: made, placed, shown in a Host)
+		for (int i = 0; i < 3 && n < cap; i++) { const char *w = e->uc ? U[i] : W[i]; snprintf (names[n], 64, "%s_%s", g_formName, w); labels[n++] = w; }
 		return n;
 	}
 	const char *ev = event_of (e->kind);

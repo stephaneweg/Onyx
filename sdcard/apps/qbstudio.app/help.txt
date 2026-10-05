@@ -44,7 +44,21 @@ THE FORM (Main.form)
           Button convert "Convert" default
       StatusBar status "Ready"
   Containers: Column (down), Row (across), Grid cols=n (cell=c,r), Group
-  "title", Canvas (at=x,y), Spacer (the free room), ToolBar.
+  "title", Canvas (at=x,y), Spacer (the free room), ToolBar, Host (the
+  place of a user control).
+  Across its container: halign=left/center/right/stretch (a Column, a
+  Grid's cell), valign=top/center/bottom/stretch (a Row, a Grid's cell).
+  A Grid's columns and rows: widths=200,*,2* heights=auto,* (pixels, * a
+  share of what is left, auto). In a Row: width=200 then fill = "200
+  pixels, then the rest".
+
+  USER CONTROLS: Project > Add User Control... makes <Name>.form (its
+  first line: UserControl <Name> size=320x200) and <Name>.bas. Drawn like
+  a window; shown in a Host of the window (Host page fill content=Home):
+      page.Content = Settings     (in place of what the Host showed)
+      page.Unload                 Settings.Visible  Settings.Width
+  Its events: Settings_Load (once), Settings_Show (each time it is
+  shown), Settings_Resize. Example: SD:/projects/pages.
   Controls: Label, Button, TextBox, CheckBox, ListBox / DropDown
   (items="a|b|c"), Slider (max=), Progress (value=), StatusBar.
   A child's size: its text's, width= / height=, or fill (the room left),
