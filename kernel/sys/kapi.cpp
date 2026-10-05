@@ -2751,7 +2751,16 @@ int kapi_wlan_reconnect (void) { return NetWlanReconnect (); }
 
 // --- v46: sound (kern/sound.h) ---
 static unsigned CallerPid (void) { CAddressSpace *pAS = CurrentAS (); return pAS != 0 ? pAS->GetPid () : 0; }
-int  kapi_sound_acquire (void) { return SoundAcquire (CallerPid ()); }
+// (v85: a channel of the mixer, named after the program -- its main task's name without the folder)
+int  kapi_sound_acquire (void)
+{
+	CAddressSpace *pAS = CurrentAS ();
+	const char *pName = "app";
+	if (pAS != 0 && pAS->GetMainTask () != 0) pName = pAS->GetMainTask ()->GetName ();
+	const char *pBase = pName;
+	for (const char *p = pName; *p != '\0'; p++) if (*p == '/' || *p == ':') pBase = p + 1;
+	return SoundAcquire (CallerPid (), pBase);
+}
 void kapi_sound_release (void) { SoundRelease (CallerPid ()); }
 // (retired 2026-10-05: the synthesizer left the kernel -- AudioKit: ak_fm_start / ak_fm_stop /
 // ak_fm_instrument, user/audiokit --; the three slots stay in the table and answer -1)
@@ -2767,7 +2776,7 @@ int kapi_sound_write (const short *pFrames, unsigned nFrames)
 int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 {
 	unsigned nRate = 0, nFree = 0, nOwner = 0;		// (written under its lock: kernel memory)
-	int r = SoundStatus (&nRate, &nFree, &nOwner);
+	int r = SoundStatus (CallerPid (), &nRate, &nFree, &nOwner);
 	if (OutOK (pRate)) OutPut (pRate, nRate);
 	if (OutOK (pFree)) OutPut (pFree, nFree);
 	if (OutOK (pOwner)) OutPut (pOwner, nOwner);
@@ -2775,6 +2784,19 @@ int kapi_sound_status (unsigned *pRate, unsigned *pFree, unsigned *pOwner)
 }
 int  kapi_sound_volume (int nVolume, int nMute) { return SoundVolume (nVolume, nMute); }
 int  kapi_sound_output (int nOut) { return SoundOutput (nOut); }	// (v84) which output plays
+// (v85) the mixer: its channels, a channel's volume
+int kapi_sound_clients (struct kapi_sound_client *pOut, int nMax)
+{
+	if (pOut == 0 || nMax <= 0) return SoundClients (0, 0);
+	if (nMax > 16) nMax = 16;
+	struct kapi_sound_client List[16];
+	int n = SoundClients (List, nMax);
+	int k = n < nMax ? n : nMax;
+	if (!UserWritable (pOut, (u64) k * sizeof (struct kapi_sound_client))) return -1;
+	memcpy (pOut, List, (size_t) k * sizeof (struct kapi_sound_client));
+	return n;
+}
+int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute) { return SoundClientVolume (nPid, nVolume, nMute); }
 int kapi_sound_instrument (int, const struct kapi_fm_instrument *) { return -1; }	// (retired: see kapi_sound_start)
 
 // --- v68: low-latency sound ---

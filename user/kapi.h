@@ -580,6 +580,11 @@ static inline const void *kapi_lib_open (const char *name, unsigned min_version,
 // -KAPI_ENOSYS on an older kernel (the jack only). The Sound applet; kept in SD:/etc/sound.ini.
 static inline int kapi_sound_output (int out)
 	{ return KT->version >= 84 && KT->sound_output ? KT->sound_output (out) : -KAPI_ENOSYS; }
+// (v85) the sound's mixer: the programs that play (each has a channel), a channel's volume and mute
+static inline int kapi_sound_clients (struct kapi_sound_client *out, int max)
+	{ return KT->version >= 85 && KT->sound_clients ? KT->sound_clients (out, max) : -KAPI_ENOSYS; }
+static inline int kapi_sound_client_volume (unsigned pid, int volume, int mute)
+	{ return KT->version >= 85 && KT->sound_client_volume ? KT->sound_client_volume (pid, volume, mute) : -KAPI_ENOSYS; }
 // (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next
 // to the table, instead of the kernel's.
 static inline int kapi_is_protected (void)

@@ -269,6 +269,8 @@ static const char *const kapi_slot_names[KAPI_NAMES_COUNT] = {
 	"win_resizable",	// 260
 	"lib_open",	// 261
 	"sound_output",	// 262
+	"sound_clients",	// 263
+	"sound_client_volume",	// 264
 };
 
 static inline const char *kapi_slot_name (unsigned slot)

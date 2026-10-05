@@ -2,8 +2,9 @@
 // sound.h -- the Onyx sound system (ABI v46): a small synthesizer + a PCM stream, mixed
 // and played through Circle's PWM audio (the 3.5 mm jack), started on first use.
 //
-// One process at a time OWNS the output (SoundAcquire); only the owner can play, and the
-// output is silenced and freed when it releases it or exits (SoundOnProcessGone).
+// A MIXER (v85): every program that plays has a channel of its own (SoundAcquire: up to 8) -- its
+// PCM stream, its volume, its mute -- and the producer adds them; a channel is freed when its
+// program releases it or exits (SoundOnProcessGone). (Until v84 one process owned the output.)
 //   * (The voices -- SoundStart / SoundStop / SoundInstrument -- left the kernel on 2026-10-05: the
 //     synthesizer is AudioKit's, in user space: user/audiokit/fmsynth.h, ak_fm_*.)
 //   * PCM stream: SoundWrite (s16 stereo frames at SND_RATE), non-blocking, into a ring
@@ -23,10 +24,13 @@
 #define SND_RATE	44100
 #define SND_VOICES	16
 
-int  SoundAcquire (unsigned nPid);			// 1 ok (or already ours), 0 busy, -1 no audio
+int  SoundAcquire (unsigned nPid, const char *pName);	// 1 a channel of the mixer (or already ours), 0 none left, -1 no audio
 void SoundRelease (unsigned nPid);
 int  SoundWrite (unsigned nPid, const s16 *pFrames, unsigned nFrames);	// frames taken
-int  SoundStatus (unsigned *pRate, unsigned *pFreeFrames, unsigned *pOwnerPid);
+int  SoundStatus (unsigned nPid, unsigned *pRate, unsigned *pFreeFrames, unsigned *pOwnerPid);
+struct kapi_sound_client;
+int  SoundClients (struct kapi_sound_client *pOut, int nMax);		// (v85) the mixer's channels
+int  SoundClientVolume (unsigned nPid, int nVolume, int nMute);		// (v85) 0..100, mute; -1: kept
 void SoundOnProcessGone (unsigned nPid);
 int  SoundVolume (int nVolume, int nMute);		// 0..10, mute 0 / 1 (-1: keep) -> volume | 0x100 if muted
 int  SoundOutput (int nOut);				// (v84) KAPI_SND_OUT_* (-1: ask) -> running | asked << 8 | present << 16
