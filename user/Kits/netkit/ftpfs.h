@@ -32,9 +32,9 @@ struct ftpfs_site
 };
 NK_API void ftpfs__cpy (char *d, const char *s, int cap);
 
-NK_API void ftpfs_obf_hex (const char *in, char *out, int cap);
+NK_API void ftpfs_obf_hex (const char *in, char *out, int cap);	// a password -> its hexpass (XOR a fixed key, in hex: obfuscated, not encrypted) in out (cap bytes, cut to fit)
 NK_API int ftpfs__hv (char c);
-NK_API void ftpfs_unobf_hex (const char *in, char *out, int cap);
+NK_API void ftpfs_unobf_hex (const char *in, char *out, int cap);	// a hexpass (ftpfs_obf_hex) -> the password in out (cap bytes, cut to fit)
 // Parse one file line; 1 if it is a server.
 NK_API int ftpfs_parse_site (const char *line, struct ftpfs_site *s);
 // Format one file line (with '\n'); returns its length.

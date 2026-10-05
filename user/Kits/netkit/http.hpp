@@ -58,7 +58,9 @@ enum HttpError
 
 namespace http_detail
 {
+	// The length of the string s (0 for a null pointer).
 	inline int  slen (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
+	// c in lower case ('A'..'Z' only).
 	inline char lc (char c) { return (c >= 'A' && c <= 'Z') ? (char) (c - 'A' + 'a') : c; }
 
 	// Append s (or n bytes of s) to d[*o], never overflowing cap; keeps d NUL-terminated.
@@ -108,6 +110,7 @@ namespace http_detail
 		return 0;
 	}
 
+	// The decimal number at the start of [s, s+n) (its leading digits, no sign) -> its value, 0 if there is no digit.
 	inline int parse_int (const char *s, int n)
 	{
 		int v = 0;
@@ -154,6 +157,7 @@ namespace http_detail
 		return w;
 	}
 
+	// Does the string s start with pfx, the case ignored?
 	inline bool starts_ci (const char *s, const char *pfx)
 	{
 		for (int i = 0; pfx[i]; i++) if (lc (s[i]) != lc (pfx[i])) return false;

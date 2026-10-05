@@ -61,7 +61,7 @@ UIKIT_VAR (int, UK_STYLE);
 // A style's own colours: what a theme of it takes when theme.txt does not say.
 // (button, field: 0xFF000000 = from the window's, UK_AUTO below; outline: 0 none, 1 dark, 2 black.)
 struct UkPalette { unsigned face, accent, inactive, dock, button, field; int outline; };
-const UkPalette &uk_style_palette (int style);
+const UkPalette &uk_style_palette (int style);	// UK_STYLE_MILK: Milk's; any other value: CDE's
 
 // The named themes (the active frame's colour, the frames' style; pal: a theme with colours of its
 // own -- Dark Coffee --, 0: its style's).

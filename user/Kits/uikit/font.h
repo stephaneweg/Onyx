@@ -52,7 +52,7 @@ public:
 // Root calls it at startup, so EVERY uikit app gets the fonts -- an app that builds no Root
 // must call uikit::init() itself). A widget chooses a face by passing font(id) to drawFont.
 enum { FONT_SANS = 0, FONT_SERIF, FONT_CURSIVE, FONT_MONO, FONT_COUNT };
-void  init ();
+void  init ();	// load the theme (SD:/etc/theme.txt) and the font families; only the first call works
 Font &font (int id = FONT_SANS);		// the family for `id`, or Sans if it isn't loaded
 
 // Draw `s` into a raw 0x00RRGGBB framebuffer (W x H) via the font registry -- for app-drawn

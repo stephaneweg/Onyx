@@ -39,6 +39,7 @@ struct TextFace
 UIKIT_VAR (TextFace *, uk_face_);			// (the face in use: uk_textface ())
 UIKIT_VAR (int, uk_face_fw_);			// (its digit's width: uk_fw () while installed)
 void uk_set_textface (TextFace *f);		// install a face; 0: back to the bitmap fonts
+// The face uk_set_textface installed, 0 while the bitmap fonts are in use.
 static inline TextFace *uk_textface () { return uk_face_; }
 
 // Another face for the time of a scope -- a widget's own captions, a display's large digits --, the

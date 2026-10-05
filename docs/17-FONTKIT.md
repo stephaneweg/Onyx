@@ -69,40 +69,40 @@ Everything the headers declare, in their order — the details are in each heade
 | Name | What it does | Header |
 |---|---|---|
 | `FtTextFace` | ft/uikitface.h -- FreeType's anti-aliased text for every uikit widget | `uikitface.h` |
-| `ft_uikit_install` |  | `uikitface.h` |
+| `ft_uikit_install` | Installs FreeType's text for every uikit widget with the family by name (DejaVu Sans when absent) at px pixels, false when the card has no TrueType font. | `uikitface.h` |
 | `ft_uikit_face` | The face ft_uikit_install made (0 | `uikitface.h` |
 | `Glyph` | (a type) | `fonts.h` |
 | `Font` | (a type) | `fonts.h` |
 | `FaceFile` | (a type) | `fonts.h` |
-| `s_len` |  | `fonts.h` |
-| `s_cpy` |  | `fonts.h` |
-| `lc` |  | `fonts.h` |
-| `s_icmp` |  | `fonts.h` |
-| `be16` |  | `fonts.h` |
-| `be32` |  | `fonts.h` |
-| `read_at` |  | `fonts.h` |
+| `s_len` | A string's length in bytes (0 for a null pointer). | `fonts.h` |
+| `s_cpy` | Copies s into d, cut to cap - 1 bytes and always ended by a 0 (a null s gives an empty string). | `fonts.h` |
+| `lc` | An ASCII capital letter as its small letter, anything else unchanged. | `fonts.h` |
+| `s_icmp` | Compares two strings with ASCII letters' case ignored, returning 0 when equal, else < 0 or > 0 as strcmp. | `fonts.h` |
+| `be16` | The big-endian 16-bit value at p. | `fonts.h` |
+| `be32` | The big-endian 32-bit value at p. | `fonts.h` |
+| `read_at` | Reads n bytes of the open file f at offset pos into buf, false when the seek fails or fewer bytes come. | `fonts.h` |
 | `scan_file` | A font file's family name and style from its own tables (no FreeType | `fonts.h` |
-| `is_ttf` |  | `fonts.h` |
-| `scan_dir` |  | `fonts.h` |
+| `is_ttf` | True when the file name n ends in ".ttf" (letters' case ignored). | `fonts.h` |
+| `scan_dir` | Adds every .ttf file of the folder dir that scan_file accepts to g_face (MAXFACE files at most). | `fonts.h` |
 | `add_to_family` | The style slot a file fills in its family | `fonts.h` |
-| `init` |  | `fonts.h` |
-| `count` |  | `fonts.h` |
-| `name` |  | `fonts.h` |
-| `find` |  | `fonts.h` |
+| `init` | Starts FreeType and sorts the fonts of SD:/res/fonts and SD:/fonts into families (once), false when FreeType fails or no TrueType font is there. | `fonts.h` |
+| `count` | The number of families init () found. | `fonts.h` |
+| `name` | Family i's name, "" when there is no such family. | `fonts.h` |
+| `find` | A family's index by its name (letters' case ignored), -1 when there is none. | `fonts.h` |
 | `styles` | The styles a family has (a mask of 1 << style). | `fonts.h` |
 | `open_face` | A face file's FreeType face, the file read at its first use. | `fonts.h` |
-| `free_glyphs` |  | `fonts.h` |
-| `make` |  | `fonts.h` |
+| `free_glyphs` | Frees a font's glyph table and its bitmaps and lowers the cache's byte count (the Font itself stays). | `fonts.h` |
+| `make` | Builds a family's style at size64 (1/64 px, 1 px at least) with its metrics and an empty glyph table, 0 when the family or its face file fails. | `fonts.h` |
 | `get` | A family's style at a size (1/64 px). | `fonts.h` |
 | `void` | Forget the fonts not used lately when the cache holds too much (a Font from get () is then stale | `fonts.h` |
 | `trim` | Forget the fonts not used lately when the cache holds too much (a Font from get () is then stale | `fonts.h` |
-| `slot` |  | `fonts.h` |
-| `grow` |  | `fonts.h` |
-| `glyph` |  | `fonts.h` |
-| `advance` |  | `fonts.h` |
-| `kern` |  | `fonts.h` |
+| `slot` | The glyph table's slot for the character cp, either the one holding it or the empty one where it goes. | `fonts.h` |
+| `grow` | Doubles the glyph table and puts its glyphs back in their new slots (earlier Glyph pointers are stale). | `fonts.h` |
+| `glyph` | A character's cached glyph entry (0 is read as a space), made at its first use with its glyph index and advance. | `fonts.h` |
+| `advance` | A character's advance in 1/64 px, 0 without a font. | `fonts.h` |
+| `kern` | The kerning between the characters a and b in 1/64 px, 0 when there is none (no font, no kerning table, a glyph from the fallback font). | `fonts.h` |
 | `render` | The coverage bitmap of a glyph at a quarter-pixel position. | `fonts.h` |
-| `blend` |  | `fonts.h` |
+| `blend` | Lays the colour c (0xRRGGBB) over the pixel d at opacity a (0..255) keeping d's top byte, or replaces d by c when a >= 255. | `fonts.h` |
 | `draw` | A character at x64 (1/64 px) on the baseline y, in colour c, clipped to [cx0, cx1) x [cy0, cy1). | `fonts.h` |
 | `draw_str` | A string (Latin-1 / ASCII) at x, baseline y, the pen's end returned (1/64 px). | `fonts.h` |
 | `str_w` | A string (Latin-1 / ASCII) at x, baseline y, the pen's end returned (1/64 px). | `fonts.h` |
@@ -247,6 +247,11 @@ Install FreeType's text for every uikit widget: the family by name ("DejaVu Sans
 
 ```cpp
 static FtTextFace *g_ftUIKitFace;		// (the one ft_uikit_install made)
+```
+
+Installs FreeType's text for every uikit widget with the family by name (DejaVu Sans when absent) at px pixels, false when the card has no TrueType font.
+
+```cpp
 bool ft_uikit_install (const char *family, int px);
 ```
 
@@ -339,14 +344,45 @@ static unsigned char g_gamma[256];	// coverage -> opacity (a slightly heavier st
 
 ### small helpers
 
+A string's length in bytes (0 for a null pointer).
+
 ```cpp
 int s_len (const char *s);
-void s_cpy (char *d, const char *s, int cap);
-int lc (int c);
-int s_icmp (const char *a, const char *b);
-unsigned be16 (const unsigned char *p);
-unsigned be32 (const unsigned char *p);
+```
 
+Copies s into d, cut to cap - 1 bytes and always ended by a 0 (a null s gives an empty string).
+
+```cpp
+void s_cpy (char *d, const char *s, int cap);
+```
+
+An ASCII capital letter as its small letter, anything else unchanged.
+
+```cpp
+int lc (int c);
+```
+
+Compares two strings with ASCII letters' case ignored, returning 0 when equal, else < 0 or > 0 as strcmp.
+
+```cpp
+int s_icmp (const char *a, const char *b);
+```
+
+The big-endian 16-bit value at p.
+
+```cpp
+unsigned be16 (const unsigned char *p);
+```
+
+The big-endian 32-bit value at p.
+
+```cpp
+unsigned be32 (const unsigned char *p);
+```
+
+Reads n bytes of the open file f at offset pos into buf, false when the seek fails or fewer bytes come.
+
+```cpp
 bool read_at (void *f, unsigned pos, void *buf, unsigned n);
 ```
 
@@ -354,9 +390,17 @@ A font file's family name and style from its own tables (no FreeType: 3 small re
 
 ```cpp
 bool scan_file (const char *path, FaceFile &ff);
+```
 
+True when the file name n ends in ".ttf" (letters' case ignored).
+
+```cpp
 bool is_ttf (const char *n);
+```
 
+Adds every .ttf file of the folder dir that scan_file accepts to g_face (MAXFACE files at most).
+
+```cpp
 void scan_dir (const char *dir);
 ```
 
@@ -368,11 +412,27 @@ void add_to_family (int fi);
 
 ### the families
 
+Starts FreeType and sorts the fonts of SD:/res/fonts and SD:/fonts into families (once), false when FreeType fails or no TrueType font is there.
+
 ```cpp
 bool init ();
+```
 
+The number of families init () found.
+
+```cpp
 int count ();
+```
+
+Family i's name, "" when there is no such family.
+
+```cpp
 const char *name (int i);
+```
+
+A family's index by its name (letters' case ignored), -1 when there is none.
+
+```cpp
 int find (const char *n);
 ```
 
@@ -390,9 +450,15 @@ FT_Face open_face (int fi);
 
 ### sized fonts
 
+Frees a font's glyph table and its bitmaps and lowers the cache's byte count (the Font itself stays).
+
 ```cpp
 void free_glyphs (Font *f);
+```
 
+Builds a family's style at size64 (1/64 px, 1 px at least) with its metrics and an empty glyph table, 0 when the family or its face file fails. A style the family lacks is made from another of its files (bold thickened, italic slanted).
+
+```cpp
 Font *make (int fam, int style, int size64);
 ```
 
@@ -411,15 +477,33 @@ void trim (unsigned maxBytes = 6u << 20, int maxFonts = 96);
 
 ### glyphs
 
+The glyph table's slot for the character cp, either the one holding it or the empty one where it goes.
+
 ```cpp
 Glyph *slot (Font *f, unsigned cp);
+```
 
+Doubles the glyph table and puts its glyphs back in their new slots (earlier Glyph pointers are stale).
+
+```cpp
 void grow (Font *f);
+```
 
+A character's cached glyph entry (0 is read as a space), made at its first use with its glyph index and advance. A character the font lacks comes from DejaVu Sans (nowhere either: gi 0, half the size wide). The pointer holds until the table grows.
+
+```cpp
 Glyph *glyph (Font *f, unsigned cp);
+```
 
+A character's advance in 1/64 px, 0 without a font.
+
+```cpp
 int advance (Font *f, unsigned cp);
+```
 
+The kerning between the characters a and b in 1/64 px, 0 when there is none (no font, no kerning table, a glyph from the fallback font).
+
+```cpp
 int kern (Font *f, unsigned a, unsigned b);
 ```
 
@@ -427,7 +511,11 @@ The coverage bitmap of a glyph at a quarter-pixel position.
 
 ```cpp
 void render (Font *f, Glyph *g, int ph);
+```
 
+Lays the colour c (0xRRGGBB) over the pixel d at opacity a (0..255) keeping d's top byte, or replaces d by c when a >= 255.
+
+```cpp
 void blend (unsigned &d, unsigned c, int a);
 ```
 

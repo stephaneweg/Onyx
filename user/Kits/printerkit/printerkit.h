@@ -131,12 +131,12 @@ int  print_printer_media (const char *printer, int i, char *name, int ncap, char
 int  print_printer_add (const char *name, const char *address, char *err, int cap);	// 1 / 0 (err: why)
 // the local network searched for printers (mDNS / DNS-SD, as AirPrint: a few seconds) -> how many; usable 0: it answers but takes neither PWG Raster nor PDF
 typedef struct PrintFound { char address[32], name[64], model[64]; int usable; } PrintFound;
-int  print_printers_find (PrintFound *out, int max);
-int  print_printer_remove (const char *name);
-int  print_printer_default (const char *name);
+int  print_printers_find (PrintFound *out, int max);	// the printers found on the network into out (max, 16 at most) -> how many (0: none, no print service)
+int  print_printer_remove (const char *name);	// taken off the list, by its name -> 1 / 0 (not known; the PDF printer stays)
+int  print_printer_default (const char *name);	// made the default printer, by its name -> 1 / 0 (not known)
 int  print_printer_status (const char *name, char *text, int cap);	// asked now: 1 ready (text: ink...), 0 (text: why)
 int  print_jobs (PrintJobInfo *out, int max);			// -> how many (the queue, then the last finished)
-int  print_job_cancel (unsigned id);
+int  print_job_cancel (unsigned id);	// a waiting or printing job stopped -> 1 / 0 (no such job, no print service)
 void print_jobs_forget (void);					// the finished jobs dropped from the list
 
 #ifdef __cplusplus

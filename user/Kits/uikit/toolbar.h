@@ -28,7 +28,7 @@ enum { WKT_NONE = -1, WKT_NEW = 0, WKT_OPEN, WKT_SAVE, WKT_UNDO, WKT_REDO, WKT_C
        WKT_PLAY, WKT_PAUSE, WKT_STOP, WKT_RECORD, WKT_TO_START, WKT_TO_END, WKT_REWIND, WKT_FORWARD,
        WKT_LOOP, WKT_METRONOME, WKT_PLUS, WKT_MINUS, WKT_SEARCH, WKT_MIXER, WKT_SPARK, WKT_GEAR,
        WKT_COUNT };
-void uk_tool_glyph (Canvas &cv, int kind, int x, int y, int size, unsigned ink);
+void uk_tool_glyph (Canvas &cv, int kind, int x, int y, int size, unsigned ink);	// draw the icon `kind` (WKT_*); size: 6 px at least
 
 // An app's icon: drawn in the size x size box at (x, y), `ink` the text's colour (greyed when off).
 typedef void (*ToolIconFn) (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool off);

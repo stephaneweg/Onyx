@@ -85,8 +85,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `http_get` | Perform an HTTP request. | `httpc.h` |
 | `http_post` | Perform an HTTP request. | `httpc.h` |
 | `ftpfs_site` | (a type) | `ftpfs.h` |
-| `ftpfs_obf_hex` |  | `ftpfs.h` |
-| `ftpfs_unobf_hex` |  | `ftpfs.h` |
+| `ftpfs_obf_hex` | a password -> its hexpass (XOR a fixed key, in hex: obfuscated, not encrypted) in out (cap bytes, cut to fit) | `ftpfs.h` |
+| `ftpfs_unobf_hex` | a hexpass (ftpfs_obf_hex) -> the password in out (cap bytes, cut to fit) | `ftpfs.h` |
 | `ftpfs_parse_site` | Parse one file line | `ftpfs.h` |
 | `ftpfs_format_site` | Format one file line (with '\n') | `ftpfs.h` |
 | `ftpfs_text_fix` | A text file saved by a Windows editor | `ftpfs.h` |
@@ -95,16 +95,16 @@ Everything the headers declare, in their order — the details are in each heade
 | `ftpfs_login_site` | The remembered servers, in file order. | `ftpfs.h` |
 | `ftpfs_forget` | The remembered servers, in file order. | `ftpfs.h` |
 | `HttpError` | Transport / protocol errors are reported as a NEGATIVE HttpResponse::status. | `http.hpp` |
-| `slen` |  | `http.hpp` |
-| `lc` |  | `http.hpp` |
+| `slen` | The length of the string s (0 for a null pointer). | `http.hpp` |
+| `lc` | c in lower case ('A'..'Z' only). | `http.hpp` |
 | `cat` | Append s (or n bytes of s) to d[*o], never overflowing cap | `http.hpp` |
 | `catn` | Append s (or n bytes of s) to d[*o], never overflowing cap | `http.hpp` |
 | `cati` | Append s (or n bytes of s) to d[*o], never overflowing cap | `http.hpp` |
 | `find` | Case-insensitive lookup of a header in [hdr, hdr+hlen). | `http.hpp` |
-| `parse_int` |  | `http.hpp` |
+| `parse_int` | The decimal number at the start of [s, s+n) (its leading digits, no sign) -> its value, 0 if there is no digit. | `http.hpp` |
 | `contains_ci` | Case-insensitive | `http.hpp` |
 | `dechunk` | Decode HTTP chunked transfer-coding in place over [b, b+len). | `http.hpp` |
-| `starts_ci` |  | `http.hpp` |
+| `starts_ci` | Does the string s start with pfx, the case ignored? | `http.hpp` |
 | `parse_url` | Parse "[http(s)://]host[:port][/path]". | `http.hpp` |
 | `resolve_redirect` | Resolve a redirect Location against the current absolute URL `base`, into out[cap]. | `http.hpp` |
 | `Transport` | A thin send/recv/close seam so HttpClient is oblivious to http vs https. | `http.hpp` |
@@ -201,8 +201,8 @@ struct ftpfs_site
 	int  tls;			// 1 = FTPS
 };
 
-void ftpfs_obf_hex (const char *in, char *out, int cap);
-void ftpfs_unobf_hex (const char *in, char *out, int cap);
+void ftpfs_obf_hex (const char *in, char *out, int cap);	// a password -> its hexpass (XOR a fixed key, in hex: obfuscated, not encrypted) in out (cap bytes, cut to fit)
+void ftpfs_unobf_hex (const char *in, char *out, int cap);	// a hexpass (ftpfs_obf_hex) -> the password in out (cap bytes, cut to fit)
 ```
 
 Parse one file line; 1 if it is a server.
@@ -291,7 +291,17 @@ enum HttpError
 
 namespace http_detail
 {
+```
+
+The length of the string s (0 for a null pointer).
+
+```cpp
 int  slen (const char *s);
+```
+
+c in lower case ('A'..'Z' only).
+
+```cpp
 char lc (char c);
 ```
 
@@ -310,7 +320,11 @@ Case-insensitive lookup of a header in [hdr, hdr+hlen). Returns the value start 
 
 ```cpp
 const char *find (const char *hdr, int hlen, const char *name, int *vlen);
+```
 
+The decimal number at the start of [s, s+n) (its leading digits, no sign) -> its value, 0 if there is no digit.
+
+```cpp
 int parse_int (const char *s, int n);
 ```
 
@@ -324,7 +338,11 @@ Decode HTTP chunked transfer-coding in place over [b, b+len). Returns new length
 
 ```cpp
 int dechunk (char *b, int len);
+```
 
+Does the string s start with pfx, the case ignored?
+
+```cpp
 bool starts_ci (const char *s, const char *pfx);
 ```
 

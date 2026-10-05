@@ -21,7 +21,7 @@ namespace uikit {
 
 #define UK_CTRL(c)	((long) ((c) & 0x1F))	// Ctrl+letter key code (^A = 1 ... ^Z = 26)
 
-typedef void (*MenuAction) ();
+typedef void (*MenuAction) ();	// a menu item's callback (chosen in the bar, or its shortcut typed)
 
 class Menu
 {

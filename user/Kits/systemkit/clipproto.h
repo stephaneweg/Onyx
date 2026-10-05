@@ -54,9 +54,13 @@ struct ClipItemMsg
 };
 
 // ---- the container ----------------------------------------------------------------------------------
+// v stored at p as 4 bytes, the low one first (little endian)
 static inline void clipc_put32 (unsigned char *p, unsigned v) { p[0] = (unsigned char) v; p[1] = (unsigned char) (v >> 8); p[2] = (unsigned char) (v >> 16); p[3] = (unsigned char) (v >> 24); }
+// the 4 bytes at p read as a little-endian number
 static inline unsigned clipc_get32 (const unsigned char *p) { return (unsigned) p[0] | (unsigned) p[1] << 8 | (unsigned) p[2] << 16 | (unsigned) p[3] << 24; }
+// the length of the string s (0 for a null pointer)
 static inline int clipc_len (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
+// 1 if the strings a and b are the same (the case counts), else 0
 static inline int clipc_eq (const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
 
 // the size of a container of n representations

@@ -42,7 +42,7 @@ unsigned uk_ink_on (unsigned c);			// dark or white text on c
 // The rounded corner of radius r (1..16): for each of its rows (the top one first), the x offset
 // of its first pixel, the number of partly covered pixels from there and their opacities (0..255).
 struct UkCorner { int r; unsigned char off[16], n[16], a[16][16]; };
-const UkCorner &uk_corner (int r);
+const UkCorner &uk_corner (int r);	// the table for radius r (clamped to 1..16), computed once and kept
 
 // A rounded box [x, x + w) x [y, y + h), corners of radius r (0 = square; which ones: UK_TL |
 // UK_TR | UK_BL | UK_BR, all by default), filled with a vertical gradient from `top` (its first
@@ -50,7 +50,7 @@ const UkCorner &uk_corner (int r);
 // what the canvas holds.
 enum { UK_TL = 1, UK_TR = 2, UK_BL = 4, UK_BR = 8, UK_ALL = 15 };
 void uk_rbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsigned bottom,
-	      int alpha = 255, int corners = UK_ALL);
+	      int alpha = 255, int corners = UK_ALL);	// fill a rounded box with a vertical gradient, top to bottom
 // Its 1-px outline in colour c at opacity alpha.
 void uk_rline (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int alpha = 255,
 	       int corners = UK_ALL);

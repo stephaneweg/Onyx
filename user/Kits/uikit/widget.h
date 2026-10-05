@@ -33,6 +33,7 @@ static const int UK_SBW = 10;			// reserved right-edge gutter width
 
 struct UkThumb { bool show; int y, h; };	// thumb top/height within a track of trackH px
 
+// The thumb of a trackH px track for `total` units of content, `view` of them visible, scrolled to pos, with show false when all fits (or the track is 6 px or less).
 static inline UkThumb uk_thumb (long total, long view, long pos, int trackH)
 {
 	UkThumb t;

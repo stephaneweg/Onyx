@@ -45,9 +45,9 @@ struct Wallpaper
 	int tint;			// image: 1 its grey times c1, 0 as it is
 	char pattern[200];		// pattern: the grey picture
 };
-SK_API void wp_defaults (Wallpaper &w);
-SK_API bool wp_eq (const char *a, const char *b);
-SK_API unsigned wp_colour (const char *v, unsigned def);
+SK_API void wp_defaults (Wallpaper &w);	// the wallpaper without a file: voronoi, 28 points, the blues 0x4878B0 and 0x1C2C48, the pattern waves.png
+SK_API bool wp_eq (const char *a, const char *b);	// true if a and b are the same string, the case of A..Z ignored
+SK_API unsigned wp_colour (const char *v, unsigned def);	// a colour in hexadecimal ("0xRRGGBB", "#RRGGBB", "RRGGBB") -> 0x00RRGGBB; def if v has no hex digit
 // "key = value" lines of a file: fn (key, value) for each. -> false: no file.
 SK_API bool wp_lines (const char *path, void (*fn) (const char *k, const char *v, void *ctx), void *ctx);
 SK_API void wp_key (const char *k, const char *v, void *ctx);
@@ -56,8 +56,9 @@ SK_API int wp_put (char *o, int p, int cap, const char *s);
 SK_API int wp_put_colour (char *o, int p, int cap, unsigned c);
 SK_API bool wp_save (const Wallpaper &w);
 // ---- the painter ---------------------------------------------------------------------------------
-SK_API unsigned wp_isqrt (unsigned n);
+SK_API unsigned wp_isqrt (unsigned n);	// the integer square root of n (rounded down)
 
+// The colour between a and b (0x00RRGGBB), each channel apart -> a for t 0, b for t 255.
 static inline unsigned wp_mix (unsigned a, unsigned b, int t)		// t 0..255: a -> b
 {
 	int r = (int) ((a >> 16) & 255) + ((int) ((b >> 16) & 255) - (int) ((a >> 16) & 255)) * t / 255;
@@ -73,7 +74,7 @@ SK_API unsigned wp_tint (unsigned base, unsigned dist);
 // long job: kapi_yield), or 0.
 SK_API void wp_paint (unsigned *dst, int w, int h, int stride, const Wallpaper &wp, unsigned seed, int div, void (*yield) (void));
 // ---- a pattern: a grey picture multiplying the colours ---------------------------------------------
-SK_API unsigned wp_lum (unsigned c);
+SK_API unsigned wp_lum (unsigned c);	// the luminance 0..255 of a colour: (77 R + 150 G + 29 B) / 256
 // The grey of a picture (0xAARRGGBB, iw x ih: its luminance) over w x h as "cover" lays it (the
 // area filled, centred, the rest cut off): the average of the pixels under each one where it
 // shrinks (a small preview), bilinear where it grows (a bigger screen).

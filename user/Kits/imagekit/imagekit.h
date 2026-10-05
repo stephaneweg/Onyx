@@ -44,13 +44,13 @@ void ik_free (void *p);				// a buffer the library returned
 typedef struct ik_image ik_image;
 ik_image *ik_image_new (int w, int h);				// transparent black; 0: no memory, a bad size
 ik_image *ik_image_from (const unsigned *px, int w, int h, int stride);	// a copy of pixels (stride: in pixels)
-ik_image *ik_image_copy (const ik_image *im);
-void ik_image_free (ik_image *im);
-int ik_width (const ik_image *im);
-int ik_height (const ik_image *im);
+ik_image *ik_image_copy (const ik_image *im);	// a new picture with the same pixels; 0: no picture, no memory
+void ik_image_free (ik_image *im);	// the picture and its pixels freed (0: nothing)
+int ik_width (const ik_image *im);	// in pixels (0: no picture)
+int ik_height (const ik_image *im);	// in pixels (0: no picture)
 int ik_format (const ik_image *im);				// IK_ARGB8
 unsigned *ik_pixels (ik_image *im);				// its w * h pixels (until the image changes size)
-void ik_fill (ik_image *im, unsigned argb);
+void ik_fill (ik_image *im, unsigned argb);	// every pixel set to that 0xAARRGGBB value
 void ik_opaque (ik_image *im);					// every pixel's alpha 255
 void ik_flatten (ik_image *im, unsigned rgb);			// laid on a colour, the result opaque
 int ik_has_alpha (const ik_image *im);				// 1: a pixel is not opaque
@@ -85,20 +85,20 @@ struct ik_info
 int ik_is_image_name (const char *name);			// by its extension (bmp gif png jpg jpeg jpe pcx webp)
 int ik_probe (const char *path, struct ik_info *out);		// 1 / 0: not a picture this reads
 ik_image *ik_load (const char *path, int flags);		// the picture (an animation: its first frame); 0
-ik_image *ik_load_mem (const void *data, unsigned n, int flags);
+ik_image *ik_load_mem (const void *data, unsigned n, int flags);	// the same from a file's n bytes in memory (flags: ignored, no orientation applied); 0
 ik_image *ik_load_preview (const char *path);			// the camera's preview, turned as seen; 0: none
 const char *ik_load_format (void);				// the last picture read: "PNG", "JPEG"... ("": none)
 
 // An animation (a GIF): every frame.
 typedef struct ik_frames ik_frames;
-ik_frames *ik_frames_load (const char *path);
-ik_frames *ik_frames_load_mem (const void *data, unsigned n);
-int ik_frames_count (const ik_frames *f);
+ik_frames *ik_frames_load (const char *path);	// the file read, every frame decoded (a still picture: one frame); 0: not read
+ik_frames *ik_frames_load_mem (const void *data, unsigned n);	// the same from a file's n bytes in memory; 0
+int ik_frames_count (const ik_frames *f);	// how many frames it holds (0: none)
 const unsigned *ik_frames_pixels (const ik_frames *f, int i);	// frame i: w * h pixels (the library's)
 int ik_frames_delay (const ik_frames *f, int i);		// how long it shows, ms (0: a still picture)
-int ik_frames_width (const ik_frames *f);
-int ik_frames_height (const ik_frames *f);
-void ik_frames_free (ik_frames *f);
+int ik_frames_width (const ik_frames *f);	// every frame's width, pixels
+int ik_frames_height (const ik_frames *f);	// every frame's height, pixels
+void ik_frames_free (ik_frames *f);	// the frames it still holds and the handle freed (0: nothing)
 // The frames handed over to the caller (px[i]: new unsigned[w * h], the caller's to delete []; delay[i]:
 // ms): up to max of them -> how many; f keeps none of those. (UIKit's img_load is this.)
 int ik_frames_take (ik_frames *f, unsigned **px, int *delay, int max);

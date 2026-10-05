@@ -50,8 +50,8 @@ void uk_decorate_window ();
 // the window menu (GUI_EVENT_WINCTL, as a Root does: else its button is greyed -- an app
 // drawing its own window without a Root).
 enum { UK_WIN_RESIZABLE = 1, UK_WIN_MAXIMISED = 2, UK_WIN_MENU = 4, UK_WIN_FIXED = 8 };	// (FIXED: no buttons)
-void uk_window_state (int flags);
-int  uk_window_flags ();
+void uk_window_state (int flags);	// set the frame's state (UK_WIN_* flags) for the next uk_decorate_window
+int  uk_window_flags ();	// the UK_WIN_* flags last set (0 at start)
 // A frame as uk_decorate_window draws it, into any W x H buffer (T: its title bar's height), in
 // the colour `frame` -- a preview (the Theme app). Its corners' outside: see-through (top byte).
 void uk_draw_frame (unsigned *fb, int W, int H, int T, const char *title, unsigned frame, bool active);

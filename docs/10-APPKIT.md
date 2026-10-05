@@ -86,16 +86,16 @@ Everything the headers declare, in their order — the details are in each heade
 |---|---|---|
 | `kapi_abi_version` | The kernel's kapi version (KAPI_ABI_VERSION as the running kernel says it) | `appkit.h` |
 | `kapi_table_slot` | The address of a slot of the kernel's table (its index in 8-byte words) | `appkit.h` |
-| `kapi_create_window` |  | `appkit.h` |
-| `kapi_create_window_ex` |  | `appkit.h` |
-| `kapi_resize_window` |  | `appkit.h` |
-| `kapi_move_window` |  | `appkit.h` |
-| `kapi_launch` |  | `appkit.h` |
-| `kapi_toggle_app` |  | `appkit.h` |
-| `kapi_raise_app` |  | `appkit.h` |
-| `kapi_list_windows` |  | `appkit.h` |
-| `kapi_list_tasks` |  | `appkit.h` |
-| `kapi_kill` |  | `appkit.h` |
+| `kapi_create_window` | This process's window (one a process), a client area of w x h pixels titled t, placed by the system -> its canvas (0x00RRGGBB pixels), 0 on failure (bigger than | `appkit.h` |
+| `kapi_create_window_ex` | This process's window at x, y (the frame's top left, negative = placed by the system) with the flags f (WIN_FLAG_*) -> its canvas, 0 on failure. | `appkit.h` |
+| `kapi_resize_window` | This window's size set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window. | `appkit.h` |
+| `kapi_move_window` | this window's frame moved to x, y (screen coordinates) | `appkit.h` |
+| `kapi_launch` | start the app n (SD:apps/<n>.app/main) as a new process -> 1, 0 failure | `appkit.h` |
+| `kapi_toggle_app` | Toggle the app n -> 0 it was running and is asked to close (its window's exit flag), 1 it was started, -1 on error. | `appkit.h` |
+| `kapi_raise_app` | The running app n's window (one on the current workspace) to the front -> 1, 0 not running / no window. | `appkit.h` |
+| `kapi_list_windows` | The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line, into b (s bytes) -> how many. | `appkit.h` |
+| `kapi_list_tasks` | Every task, one line each "<state><kind> <name>" (state R / S / B / N, kind a = an app or k = a kernel task), into b (s bytes) -> how many. | `appkit.h` |
+| `kapi_kill` | kill the app of that name -> 1, 0 (not running, a kernel task, the caller) | `appkit.h` |
 | `kapi_list_procs` | ps / kill by PID. | `appkit.h` |
 | `kapi_kill_pid` | ps / kill by PID. | `appkit.h` |
 | `kapi_set_keymap` | Keyboard layout | `appkit.h` |
@@ -110,10 +110,10 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_msleep` | App-drawn wallpaper | `appkit.h` |
 | `kapi_yield` | App-drawn wallpaper | `appkit.h` |
 | `kapi_exit` | App-drawn wallpaper | `appkit.h` |
-| `kapi_pump_events` |  | `appkit.h` |
-| `kapi_wait_for_exit` |  | `appkit.h` |
-| `kapi_should_exit` |  | `appkit.h` |
-| `kapi_draw_text` |  | `appkit.h` |
+| `kapi_pump_events` | Run what is pending -- the kapi_post calls, then this window's events through their handlers -- and return (no wait). | `appkit.h` |
+| `kapi_wait_for_exit` | pump the events (sleeping between them) until this window is asked to close | `appkit.h` |
+| `kapi_should_exit` | 1 once this window was asked to close (its close box, kapi_toggle_app), else 0 | `appkit.h` |
+| `kapi_draw_text` | One line of text s in the kernel's font at x, y of this window's canvas, colour c (0x00RRGGBB), the background kept. | `appkit.h` |
 | `kapi_draw_text_buf` | Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. | `appkit.h` |
 | `kapi_get_chrome` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
 | `kapi_font_width` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
@@ -126,38 +126,38 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_set_wheel_speed` | ABI v34 | `appkit.h` |
 | `kapi_get_wheel_speed` | ABI v34 | `appkit.h` |
 | `kapi_sbrk` | Per-process heap | `appkit.h` |
-| `kapi_list_apps` |  | `appkit.h` |
-| `kapi_get_datetime` |  | `appkit.h` |
-| `kapi_app_dir` |  | `appkit.h` |
-| `kapi_write` |  | `appkit.h` |
-| `kapi_open` |  | `appkit.h` |
-| `kapi_read` |  | `appkit.h` |
-| `kapi_fsize` |  | `appkit.h` |
-| `kapi_close` |  | `appkit.h` |
+| `kapi_list_apps` | The names of the installed apps (the folders SD:apps/<name>.app), one a line, into b (s bytes) -> how many. | `appkit.h` |
+| `kapi_get_datetime` | The local date and time (any pointer may be 0) -> 1 a real date, 0 the clock is not set yet (the time since the boot). | `appkit.h` |
+| `kapi_app_dir` | "SD:apps/<this process's name>.app/" into b (s bytes) -> its length | `appkit.h` |
+| `kapi_write` | b (the first 128 bytes of its n) to the kernel's log as a line of "app" -> n, -1 a bad buffer (fd is not used). | `appkit.h` |
+| `kapi_open` | Open a file to read it (on the card, the RAM volume or a provider's path, relative to the working directory) -> its handle, 0 failure. | `appkit.h` |
+| `kapi_read` | up to n bytes from the file's position (advanced) -> the bytes read (0: the end), -1 error | `appkit.h` |
+| `kapi_fsize` | the file's size in bytes (0xFFFFFFFF: over 4 GB, see kapi_fsize64); 0 for a bad handle | `appkit.h` |
+| `kapi_close` | close a file opened with kapi_open | `appkit.h` |
 | `kapi_save_file` | save_file | `appkit.h` |
 | `kapi_chdir` | Working directory | `appkit.h` |
 | `kapi_getcwd` | Working directory | `appkit.h` |
-| `kapi_opendir` |  | `appkit.h` |
-| `kapi_readdir` |  | `appkit.h` |
-| `kapi_closedir` |  | `appkit.h` |
+| `kapi_opendir` | open a folder to list it -> its handle, 0 failure (not a folder) | `appkit.h` |
+| `kapi_readdir` | the next entry (name, size, is_dir) into *e -> 1, 0 at the end / on error | `appkit.h` |
+| `kapi_closedir` | close a folder opened with kapi_opendir | `appkit.h` |
 | `kapi_mkdir` | mkdir / remove / rename | `appkit.h` |
 | `kapi_remove` | mkdir / remove / rename | `appkit.h` |
 | `kapi_rename` | mkdir / remove / rename | `appkit.h` |
 | `kapi_cursor_pos` | mkdir / remove / rename | `appkit.h` |
-| `kapi_pipe` |  | `appkit.h` |
-| `kapi_file_in` |  | `appkit.h` |
-| `kapi_file_out` |  | `appkit.h` |
-| `kapi_stream_read` |  | `appkit.h` |
-| `kapi_stream_read_nb` |  | `appkit.h` |
-| `kapi_stream_write` |  | `appkit.h` |
-| `kapi_stream_close` |  | `appkit.h` |
-| `kapi_stream_eof` |  | `appkit.h` |
-| `kapi_proc_done` |  | `appkit.h` |
-| `kapi_stdin_read` |  | `appkit.h` |
-| `kapi_stdout_write` |  | `appkit.h` |
-| `kapi_spawn` |  | `appkit.h` |
-| `kapi_wait` |  | `appkit.h` |
-| `kapi_get_args` |  | `appkit.h` |
+| `kapi_pipe` | a new pipe (a FIFO in memory) -> its stream handle, 0 failure | `appkit.h` |
+| `kapi_file_in` | a file as a stream to read -> its stream handle, 0 failure | `appkit.h` |
+| `kapi_file_out` | A file as a stream to write, created / emptied or (append != 0) written at its end -> its stream handle, 0 failure. | `appkit.h` |
+| `kapi_stream_read` | Up to n bytes from a stream (a pipe waits for its writer) -> the bytes read, 0 the end / a bad handle. | `appkit.h` |
+| `kapi_stream_read_nb` | Up to n bytes from a stream without waiting -> > 0 the bytes read, 0 the end / a bad handle, -1 nothing yet. | `appkit.h` |
+| `kapi_stream_write` | n bytes to a stream (a full pipe waits for its reader) -> the bytes written, -1 error. | `appkit.h` |
+| `kapi_stream_close` | close a stream handle (its reference to the stream dropped) | `appkit.h` |
+| `kapi_stream_eof` | tell the stream's readers it has ended (the writer is done); the handle stays open | `appkit.h` |
+| `kapi_proc_done` | 1 if the process of kapi_spawn has finished (a bad handle too), 0 if it runs (the handle stays, kapi_wait closes it). | `appkit.h` |
+| `kapi_stdin_read` | up to n bytes from this process's standard input -> the bytes read, 0 the end / none | `appkit.h` |
+| `kapi_stdout_write` | n bytes to this process's standard output (it has none = to the kernel's log, 128 bytes at most) -> the bytes written, -1 error. | `appkit.h` |
+| `kapi_spawn` | Start the program at path with the arguments args, its standard input / output the stream handles in / out (0 = none) -> its process handle (kapi_wait, kapi_pro | `appkit.h` |
+| `kapi_wait` | wait for a spawned process's end -> its exit status (the handle closed), -1 not a process handle | `appkit.h` |
+| `kapi_get_args` | this process's argument string into b (n bytes) -> its length | `appkit.h` |
 | `kapi_stdin` | This task's own stdin/stdout stream handles (for a shell wiring children). | `appkit.h` |
 | `kapi_stdout` | This task's own stdin/stdout stream handles (for a shell wiring children). | `appkit.h` |
 | `kapi_klog_read` | Read the next kernel log event (real-time tee). | `appkit.h` |
@@ -178,10 +178,10 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_menu_command` | System menu bar (ABI v39). | `appkit.h` |
 | `kapi_ipc_register` | Named IPC services (ABI v40) | `appkit.h` |
 | `kapi_ipc_lookup` | Named IPC services (ABI v40) | `appkit.h` |
-| `kapi_clipboard_set` |  | `appkit.h` |
-| `kapi_clipboard_get` |  | `appkit.h` |
+| `kapi_clipboard_set` | The clipboard replaced by the n bytes of d (64 KB at most, n 0 empties it) of the type CLIP_* -> the bytes kept (0 too for a bad pointer, the clipboard then as  | `appkit.h` |
+| `kapi_clipboard_get` | Up to cap bytes of the clipboard into b, its type and its serial (which changes at every set) -> the content's whole length, 0 empty. | `appkit.h` |
 | `kapi_set_window_alpha` | Window opacity 0..255 (ABI v40 | `appkit.h` |
-| `kapi_shutdown` |  | `appkit.h` |
+| `kapi_shutdown` | end the session: the card unmounted, then halt (SHUTDOWN_HALT) or restart; does not return | `appkit.h` |
 | `kapi_fullscreen_begin` | Full-screen apps (ABI v41) | `appkit.h` |
 | `kapi_present_fb` | Full-screen apps (ABI v41) | `appkit.h` |
 | `kapi_fullscreen_end` | Full-screen apps (ABI v41) | `appkit.h` |
@@ -192,10 +192,10 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_net_ping` | Network tools (ABI v43). | `appkit.h` |
 | `kapi_net_resolve` | Network tools (ABI v43). | `appkit.h` |
 | `kapi_net_info` | Network tools (ABI v43). | `appkit.h` |
-| `kapi_vfs_register` |  | `appkit.h` |
-| `kapi_vfs_next` |  | `appkit.h` |
-| `kapi_vfs_req_data` |  | `appkit.h` |
-| `kapi_vfs_reply` |  | `appkit.h` |
+| `kapi_vfs_register` | this process serves the paths starting with prefix -> 1, 0 (taken by another, no room) | `appkit.h` |
+| `kapi_vfs_next` | The next request for this provider into *req -> 1, 0 none (with blocking != 0, after waiting up to 0.5 s for one). | `appkit.h` |
+| `kapi_vfs_req_data` | Up to cap bytes of the request id's payload (VFS_OP_SAVE's data) from offset into buf -> the bytes copied, 0 none. | `appkit.h` |
+| `kapi_vfs_reply` | Answer the request id with its status and len bytes of data (0 = none), its caller woken -> 1, 0 (no such request, bad data). | `appkit.h` |
 | `kapi_wlan_scan` | Wi-Fi scan (ABI v45) | `appkit.h` |
 | `kapi_sound_acquire` | Sound (ABI v46), on the 3.5 mm jack. | `appkit.h` |
 | `kapi_sound_release` | Sound (ABI v46), on the 3.5 mm jack. | `appkit.h` |
@@ -291,7 +291,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_cpu_stats` | (v80) The cores | `appkit.h` |
 | `kapi_net_stats` | (v80) The bytes pid's sockets received and sent, its open sockets (pid 0 | `appkit.h` |
 | `kapi_set_cursor` | (v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had | `appkit.h` |
-| `kapi_win_resizable` |  | `appkit.h` |
+| `kapi_win_resizable` | this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1 | `appkit.h` |
 | `kapi_lib_open` | (v83) A shared library (docs/SHARED-LIBS-PLAN.md) | `appkit.h` |
 | `kapi_sound_output` | (v84) The sound's output | `appkit.h` |
 | `kapi_sound_clients` | (v85) the sound's mixer | `appkit.h` |
@@ -307,8 +307,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_win_minimise` | (v64) the windows of the modernised CDE desktop | `appkit.h` |
 | `kapi_win_geometry` | (v64) the windows of the modernised CDE desktop | `appkit.h` |
 | `kapi_resize_window2` | (v64) the windows of the modernised CDE desktop | `appkit.h` |
-| `kapi_desk` |  | `appkit.h` |
-| `kapi_win_desk` |  | `appkit.h` |
+| `kapi_desk` | show the desk `set` (-1: keep) and set their number (0: keep) -> KAPI_DESK_CUR / _COUNT / _GEN of the result | `appkit.h` |
+| `kapi_win_desk` | the window id (0: mine) moved to the desk n (-1: every desk; -2: only ask) -> its desk, -3 no such window | `appkit.h` |
 | `kapi_screen_set` | (v66) screen_set | `appkit.h` |
 | `kapi_thread_create` | (v67) Threads | `appkit.h` |
 | `kapi_thread_exit` | (v67) Threads | `appkit.h` |
@@ -370,19 +370,19 @@ Everything the headers declare, in their order — the details are in each heade
 | `ax_fmt2` | Strings. | `appkit.h` |
 | `ax_puts` | The console | `appkit.h` |
 | `ax_putln` | The console | `appkit.h` |
-| `app_ini_load_path` |  | `appkit.h` |
-| `app_ini_load` |  | `appkit.h` |
-| `app_ini_get` |  | `appkit.h` |
-| `app_ini_get_int` |  | `appkit.h` |
-| `app_ini_count` |  | `appkit.h` |
-| `app_ini_section` |  | `appkit.h` |
-| `app_ini_key` |  | `appkit.h` |
-| `app_ini_value` |  | `appkit.h` |
+| `app_ini_load_path` | load the .ini file at path (replacing the one loaded) -> its number of entries, -1 not opened | `appkit.h` |
+| `app_ini_load` | the same for <the program's own folder>/filename (kapi_app_dir) | `appkit.h` |
+| `app_ini_get` | The value of key in section (0 or "" = the keys before any [section]) of the loaded file, else def. | `appkit.h` |
+| `app_ini_get_int` | The value of key in section as a decimal integer (a sign allowed), def when the key is absent or has no digit. | `appkit.h` |
+| `app_ini_count` | the number of entries (key=value lines) of the loaded file | `appkit.h` |
+| `app_ini_section` | the section of the entry i (0-based, in the file's order); "" out of range | `appkit.h` |
+| `app_ini_key` | the key of the entry i; "" out of range | `appkit.h` |
+| `app_ini_value` | the value of the entry i; "" out of range | `appkit.h` |
 | `ax_load_keymap` | The keyboard layout <name> ("FR", "BE"...) | `appkit.h` |
-| `lx_low` |  | `appkit.h` |
-| `lx_len` |  | `appkit.h` |
-| `lx_cat` |  | `appkit.h` |
-| `lx_exists` |  | `appkit.h` |
+| `lx_low` | c in lower case ('A'..'Z' only) | `appkit.h` |
+| `lx_len` | the length of s (0 for a null pointer) | `appkit.h` |
+| `lx_cat` | s appended to d at *n (advanced), never past cap, NUL-terminated | `appkit.h` |
+| `lx_exists` | 1 if the file at path can be opened (kapi_open), else 0 | `appkit.h` |
 | `lx_entry` | The i-th "ext = program" line of runners.ini (0-based) | `appkit.h` |
 | `lx_lists_ext` | Does the value of an app.txt's "games" / "opens" (the extensions after each "System:", or all the words of "opens") hold ext? | `appkit.h` |
 | `lx_app_for` | The app (SD:/apps/<name>.app/main) whose app.txt opens files of this extension | `appkit.h` |
@@ -527,17 +527,49 @@ Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 
 ### windowing
 
+This process's window (one a process), a client area of w x h pixels titled t, placed by the system -> its canvas (0x00RRGGBB pixels), 0 on failure (bigger than the screen, no memory).
+
 ```cpp
 unsigned * kapi_create_window (int w, int h, const char *t);
+```
+
+This process's window at x, y (the frame's top left, negative = placed by the system) with the flags f (WIN_FLAG_*) -> its canvas, 0 on failure.
+
+```cpp
 unsigned * kapi_create_window_ex (int x, int y, int w, int h, const char *t, unsigned f);
+```
+
+This window's size set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window.
+
+```cpp
 unsigned * kapi_resize_window (int w, int h);
-void kapi_move_window (int x, int y);
-int kapi_launch (const char *n);
+void kapi_move_window (int x, int y);	// this window's frame moved to x, y (screen coordinates)
+int kapi_launch (const char *n);	// start the app n (SD:apps/<n>.app/main) as a new process -> 1, 0 failure
+```
+
+Toggle the app n -> 0 it was running and is asked to close (its window's exit flag), 1 it was started, -1 on error.
+
+```cpp
 int kapi_toggle_app (const char *n);
+```
+
+The running app n's window (one on the current workspace) to the front -> 1, 0 not running / no window.
+
+```cpp
 int kapi_raise_app (const char *n);
+```
+
+The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line, into b (s bytes) -> how many.
+
+```cpp
 int kapi_list_windows (char *b, unsigned s);
+```
+
+Every task, one line each "<state><kind> <name>" (state R / S / B / N, kind a = an app or k = a kernel task), into b (s bytes) -> how many.
+
+```cpp
 int kapi_list_tasks (char *b, unsigned s);
-int kapi_kill (const char *name);
+int kapi_kill (const char *name);	// kill the app of that name -> 1, 0 (not running, a kernel task, the caller)
 ```
 
 ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid: force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
@@ -592,13 +624,17 @@ void kapi_exit (int s);
 
 ### events
 
+Run what is pending -- the kapi_post calls, then this window's events through their handlers -- and return (no wait).
+
 ```cpp
 void kapi_pump_events (void);
-void kapi_wait_for_exit (void);
-int kapi_should_exit (void);
+void kapi_wait_for_exit (void);	// pump the events (sleeping between them) until this window is asked to close
+int kapi_should_exit (void);	// 1 once this window was asked to close (its close box, kapi_toggle_app), else 0
 ```
 
 ### app-drawn text + keyboard
+
+One line of text s in the kernel's font at x, y of this window's canvas, colour c (0x00RRGGBB), the background kept.
 
 ```cpp
 void kapi_draw_text (int x, int y, const char *s, unsigned c);
@@ -648,20 +684,34 @@ void * kapi_sbrk (long inc);
 
 ### enumeration + clock
 
+The names of the installed apps (the folders SD:apps/<name>.app), one a line, into b (s bytes) -> how many.
+
 ```cpp
 int kapi_list_apps (char *b, unsigned s);
+```
+
+The local date and time (any pointer may be 0) -> 1 a real date, 0 the clock is not set yet (the time since the boot).
+
+```cpp
 int kapi_get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *se);
-int kapi_app_dir (char *b, unsigned s);
+int kapi_app_dir (char *b, unsigned s);	// "SD:apps/<this process's name>.app/" into b (s bytes) -> its length
 ```
 
 ### console + files
 
+b (the first 128 bytes of its n) to the kernel's log as a line of "app" -> n, -1 a bad buffer (fd is not used).
+
 ```cpp
 int kapi_write (int fd, const void *b, unsigned n);
+```
+
+Open a file to read it (on the card, the RAM volume or a provider's path, relative to the working directory) -> its handle, 0 failure.
+
+```cpp
 void * kapi_open (const char *p);
-int kapi_read (void *h, void *b, unsigned n);
-unsigned kapi_fsize (void *h);
-void kapi_close (void *h);
+int kapi_read (void *h, void *b, unsigned n);	// up to n bytes from the file's position (advanced) -> the bytes read (0: the end), -1 error
+unsigned kapi_fsize (void *h);	// the file's size in bytes (0xFFFFFFFF: over 4 GB, see kapi_fsize64); 0 for a bad handle
+void kapi_close (void *h);	// close a file opened with kapi_open
 ```
 
 save_file: the whole file written (created / replaced): the bytes written (>= 0; an empty file: 0 -- test < 0 for a failure, or == n), or -1.
@@ -680,9 +730,9 @@ int kapi_getcwd (char *b, unsigned n);
 ### directory listing
 
 ```cpp
-void * kapi_opendir (const char *p);
-int kapi_readdir (void *d, struct kapi_dirent *e);
-void kapi_closedir (void *d);
+void * kapi_opendir (const char *p);	// open a folder to list it -> its handle, 0 failure (not a folder)
+int kapi_readdir (void *d, struct kapi_dirent *e);	// the next entry (name, size, is_dir) into *e -> 1, 0 at the end / on error
+void kapi_closedir (void *d);	// close a folder opened with kapi_opendir
 ```
 
 mkdir / remove / rename: 0 = success, -1 = failure (FatFs result).
@@ -697,20 +747,55 @@ void kapi_cursor_pos (int *x, int *y);
 ### stdio / streams / processes
 
 ```cpp
-void * kapi_pipe (void);
-void * kapi_file_in (const char *p);
+void * kapi_pipe (void);	// a new pipe (a FIFO in memory) -> its stream handle, 0 failure
+void * kapi_file_in (const char *p);	// a file as a stream to read -> its stream handle, 0 failure
+```
+
+A file as a stream to write, created / emptied or (append != 0) written at its end -> its stream handle, 0 failure.
+
+```cpp
 void * kapi_file_out (const char *p, int append);
+```
+
+Up to n bytes from a stream (a pipe waits for its writer) -> the bytes read, 0 the end / a bad handle.
+
+```cpp
 int kapi_stream_read (void *h, void *b, unsigned n);
+```
+
+Up to n bytes from a stream without waiting -> > 0 the bytes read, 0 the end / a bad handle, -1 nothing yet.
+
+```cpp
 int kapi_stream_read_nb (void *h, void *b, unsigned n);
+```
+
+n bytes to a stream (a full pipe waits for its reader) -> the bytes written, -1 error.
+
+```cpp
 int kapi_stream_write (void *h, const void *b, unsigned n);
-void kapi_stream_close (void *h);
-void kapi_stream_eof (void *h);
+void kapi_stream_close (void *h);	// close a stream handle (its reference to the stream dropped)
+void kapi_stream_eof (void *h);	// tell the stream's readers it has ended (the writer is done); the handle stays open
+```
+
+1 if the process of kapi_spawn has finished (a bad handle too), 0 if it runs (the handle stays, kapi_wait closes it).
+
+```cpp
 int kapi_proc_done (void *proc);
-int kapi_stdin_read (void *b, unsigned n);
+int kapi_stdin_read (void *b, unsigned n);	// up to n bytes from this process's standard input -> the bytes read, 0 the end / none
+```
+
+n bytes to this process's standard output (it has none = to the kernel's log, 128 bytes at most) -> the bytes written, -1 error.
+
+```cpp
 int kapi_stdout_write (const void *b, unsigned n);
+```
+
+Start the program at path with the arguments args, its standard input / output the stream handles in / out (0 = none) -> its process handle (kapi_wait, kapi_proc_done), 0 failure.
+
+```cpp
 void * kapi_spawn (const char *path, const char *args, void *in, void *out);
-int kapi_wait (void *proc);
-int kapi_get_args (char *b, unsigned n);
+int kapi_wait (void *proc);	// wait for a spawned process's end -> its exit status (the handle closed), -1 not a process handle
+int kapi_get_args (char *b, unsigned n);	// this process's argument string into b (n bytes) -> its length
 ```
 
 This task's own stdin/stdout stream handles (for a shell wiring children). 0 = none.
@@ -779,7 +864,17 @@ System clipboard (ABI v40): see clipboard.h for the helpers. Types:
 #define CLIP_TEXT	1		// plain text
 #define CLIP_FILES	2		// file/folder paths, '\n'-separated (copied)
 #define CLIP_FILES_CUT	3		// same, cut (the paste moves them)
+```
+
+The clipboard replaced by the n bytes of d (64 KB at most, n 0 empties it) of the type CLIP_* -> the bytes kept (0 too for a bad pointer, the clipboard then as it was).
+
+```cpp
 int kapi_clipboard_set (int type, const void *d, unsigned n);
+```
+
+Up to cap bytes of the clipboard into b, its type and its serial (which changes at every set) -> the content's whole length, 0 empty. b, type and serial may each be 0.
+
+```cpp
 int kapi_clipboard_get (int *type, void *b, unsigned cap, unsigned *serial);
 ```
 
@@ -789,7 +884,7 @@ Window opacity 0..255 (ABI v40; fades) and end of session (0 = halt, 1 = restart
 void kapi_set_window_alpha (int a);
 #define SHUTDOWN_HALT		0
 #define SHUTDOWN_RESTART	1
-void kapi_shutdown (int mode);
+void kapi_shutdown (int mode);	// end the session: the card unmounted, then halt (SHUTDOWN_HALT) or restart; does not return
 ```
 
 Full-screen apps (ABI v41): fullscreen_begin -> a screen-sized 0x00RRGGBB back buffer (w/h filled); the desktop stops drawing and all input (screen coords) comes to you. Draw, present_fb to show it; fullscreen_end (or exiting) gives the desktop back.
@@ -828,9 +923,24 @@ User-space file-system providers (ABI v44, kern/vfs.h): a provider app serves ev
 #define VFS_OP_MKDIR	6	// path -> 0 / -1
 #define VFS_OP_REMOVE	7	// path -> 0 / -1
 #define VFS_OP_RENAME	8	// path -> path2: 0 / -1
-int kapi_vfs_register (const char *prefix);
+int kapi_vfs_register (const char *prefix);	// this process serves the paths starting with prefix -> 1, 0 (taken by another, no room)
+```
+
+The next request for this provider into *req -> 1, 0 none (with blocking != 0, after waiting up to 0.5 s for one).
+
+```cpp
 int kapi_vfs_next (struct kapi_vfs_req *req, int blocking);
+```
+
+Up to cap bytes of the request id's payload (VFS_OP_SAVE's data) from offset into buf -> the bytes copied, 0 none.
+
+```cpp
 int kapi_vfs_req_data (unsigned id, void *buf, unsigned cap, unsigned offset);
+```
+
+Answer the request id with its status and len bytes of data (0 = none), its caller woken -> 1, 0 (no such request, bad data).
+
+```cpp
 int kapi_vfs_reply (unsigned id, int status, const void *data, unsigned len);
 ```
 
@@ -1082,7 +1192,7 @@ int kapi_set_cursor (int shape);
 #define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
 #define GUI_WINRESIZE_W(v)	((int) (((unsigned long long) (v) >> 16) & 0xFFFF))
 #define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
-int kapi_win_resizable (int on, int min_w, int min_h);
+int kapi_win_resizable (int on, int min_w, int min_h);	// this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1
 ```
 
 (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "uikit" is SD:/lib/uikit.so, anything with a '/' or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *); then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP: the library is older than min_version; -KAPI_ENOSYS on an older kernel). Apps do not call this: the library's bind object does, before main (user/Runtime/lib.h).
@@ -1163,8 +1273,8 @@ unsigned * kapi_resize_window2 (int w, int h, int *stride);
 #define KAPI_DESK_CUR(i)	((i) & 0xFF)
 #define KAPI_DESK_COUNT(i)	(((i) >> 8) & 0xFF)
 #define KAPI_DESK_GEN(i)	(((unsigned) (i) >> 16) & 0x7FFF)
-int kapi_desk (int set, int count);
-int kapi_win_desk (unsigned id, int n);
+int kapi_desk (int set, int count);	// show the desk `set` (-1: keep) and set their number (0: keep) -> KAPI_DESK_CUR / _COUNT / _GEN of the result
+int kapi_win_desk (unsigned id, int n);	// the window id (0: mine) moved to the desk n (-1: every desk; -2: only ask) -> its desk, -3 no such window
 ```
 
 (v66) screen_set: the screen's resolution now (640 x 480 .. 2560 x 1600, w even); every window kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 out of bounds; -2 not now (a full-screen app...); -3 the firmware refused it (old size kept); -4 an older kernel. Not kept across a reboot (SD:/cmdline.txt width= / height= are).
@@ -1357,14 +1467,24 @@ A minimal .ini reader: [section] headers and key=value lines, ';' or '#' comment
 #define INI_MAX		64
 #define INI_STRLEN	64
 #define INI_BUFSZ	2048
-int app_ini_load_path (const char *path);
-int app_ini_load (const char *filename);
+int app_ini_load_path (const char *path);	// load the .ini file at path (replacing the one loaded) -> its number of entries, -1 not opened
+int app_ini_load (const char *filename);	// the same for <the program's own folder>/filename (kapi_app_dir)
+```
+
+The value of key in section (0 or "" = the keys before any [section]) of the loaded file, else def.
+
+```cpp
 const char *app_ini_get (const char *section, const char *key, const char *def);
+```
+
+The value of key in section as a decimal integer (a sign allowed), def when the key is absent or has no digit.
+
+```cpp
 int app_ini_get_int (const char *section, const char *key, int def);
-int app_ini_count (void);
-const char *app_ini_section (int i);
-const char *app_ini_key (int i);
-const char *app_ini_value (int i);
+int app_ini_count (void);	// the number of entries (key=value lines) of the loaded file
+const char *app_ini_section (int i);	// the section of the entry i (0-based, in the file's order); "" out of range
+const char *app_ini_key (int i);	// the key of the entry i; "" out of range
+const char *app_ini_value (int i);	// the value of the entry i; "" out of range
 ```
 
 The keyboard layout <name> ("FR", "BE"...): SD:/etc/keymaps/<name>.kmap (kapi_set_keymap_data), else a map the kernel has (kapi_set_keymap). Non-zero = done. The keyboard must be up (kapi_kbd_ready).
@@ -1388,10 +1508,10 @@ C and C++ (run, init, the apps).
 
 ```cpp
 #define LX_INI	"SD:/etc/runners.ini"
-char lx_low (char c);
-int lx_len (const char *s);
-void lx_cat (char *d, int cap, int *n, const char *s);
-int lx_exists (const char *path);
+char lx_low (char c);	// c in lower case ('A'..'Z' only)
+int lx_len (const char *s);	// the length of s (0 for a null pointer)
+void lx_cat (char *d, int cap, int *n, const char *s);	// s appended to d at *n (advanced), never past cap, NUL-terminated
+int lx_exists (const char *path);	// 1 if the file at path can be opened (kapi_open), else 0
 ```
 
 The i-th "ext = program" line of runners.ini (0-based): 1 found, 0 past the end.

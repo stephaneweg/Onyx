@@ -103,9 +103,9 @@ public:
 	bool onKey (long k) override;
 };
 
-int  uk_messagebox (const char *title, const char *text, int buttons);
-bool uk_file_open (char *out, unsigned cap, const char *startDir);
-bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);
+int  uk_messagebox (const char *title, const char *text, int buttons);	// modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No)
+bool uk_file_open (char *out, unsigned cap, const char *startDir);	// modal file browser from startDir; true = OK (out: the chosen path)
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);	// the same with a name box (defName in it); true = OK
 bool uk_folder_open (char *out, unsigned cap, const char *startDir);	// pick a directory
 bool uk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 

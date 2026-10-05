@@ -121,16 +121,27 @@ KAPI_FN unsigned long long kapi_table_slot (unsigned slot);
 #define KEY_F12			0x11B
 
 // --- windowing ---------------------------------------------------------------
+// This process's window (one a process), a client area of w x h pixels titled t, placed by the system
+// -> its canvas (0x00RRGGBB pixels), 0 on failure (bigger than the screen, no memory).
 KAPI_FN unsigned * kapi_create_window (int w, int h, const char *t);
+// This process's window at x, y (the frame's top left, negative = placed by the system) with the flags f
+// (WIN_FLAG_*) -> its canvas, 0 on failure.
 KAPI_FN unsigned * kapi_create_window_ex (int x, int y, int w, int h, const char *t, unsigned f);
+// This window's size set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window.
 KAPI_FN unsigned * kapi_resize_window (int w, int h);
-KAPI_FN void kapi_move_window (int x, int y);
-KAPI_FN int kapi_launch (const char *n);
+KAPI_FN void kapi_move_window (int x, int y);	// this window's frame moved to x, y (screen coordinates)
+KAPI_FN int kapi_launch (const char *n);	// start the app n (SD:apps/<n>.app/main) as a new process -> 1, 0 failure
+// Toggle the app n -> 0 it was running and is asked to close (its window's exit flag), 1 it was started, -1 on error.
 KAPI_FN int kapi_toggle_app (const char *n);
+// The running app n's window (one on the current workspace) to the front -> 1, 0 not running / no window.
 KAPI_FN int kapi_raise_app (const char *n);
+// The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line,
+// into b (s bytes) -> how many.
 KAPI_FN int kapi_list_windows (char *b, unsigned s);
+// Every task, one line each "<state><kind> <name>" (state R / S / B / N, kind a = an app or k = a kernel task),
+// into b (s bytes) -> how many.
 KAPI_FN int kapi_list_tasks (char *b, unsigned s);
-KAPI_FN int kapi_kill (const char *name);
+KAPI_FN int kapi_kill (const char *name);	// kill the app of that name -> 1, 0 (not running, a kernel task, the caller)
 // ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid:
 // force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
 KAPI_FN int kapi_list_procs (char *b, unsigned s);
@@ -163,11 +174,13 @@ KAPI_FN void kapi_exit (int s);
 // app now builds its UI with the user-side uikit.hpp toolkit. See uikit.hpp.)
 
 // --- events ------------------------------------------------------------------
+// Run what is pending -- the kapi_post calls, then this window's events through their handlers -- and return (no wait).
 KAPI_FN void kapi_pump_events (void);
-KAPI_FN void kapi_wait_for_exit (void);
-KAPI_FN int kapi_should_exit (void);
+KAPI_FN void kapi_wait_for_exit (void);	// pump the events (sleeping between them) until this window is asked to close
+KAPI_FN int kapi_should_exit (void);	// 1 once this window was asked to close (its close box, kapi_toggle_app), else 0
 
 // --- app-drawn text + keyboard -----------------------------------------------
+// One line of text s in the kernel's font at x, y of this window's canvas, colour c (0x00RRGGBB), the background kept.
 KAPI_FN void kapi_draw_text (int x, int y, const char *s, unsigned c);
 // Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. a window-
 // chrome copy from kapi_get_chrome). Transparent background; dst must be a user VA.
@@ -195,16 +208,21 @@ KAPI_FN int kapi_get_wheel_speed (void);
 KAPI_FN void * kapi_sbrk (long inc);
 
 // --- enumeration + clock -----------------------------------------------------
+// The names of the installed apps (the folders SD:apps/<name>.app), one a line, into b (s bytes) -> how many.
 KAPI_FN int kapi_list_apps (char *b, unsigned s);
+// The local date and time (any pointer may be 0) -> 1 a real date, 0 the clock is not set yet (the time since the boot).
 KAPI_FN int kapi_get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *se);
-KAPI_FN int kapi_app_dir (char *b, unsigned s);
+KAPI_FN int kapi_app_dir (char *b, unsigned s);	// "SD:apps/<this process's name>.app/" into b (s bytes) -> its length
 
 // --- console + files ---------------------------------------------------------
+// b (the first 128 bytes of its n) to the kernel's log as a line of "app" -> n, -1 a bad buffer (fd is not used).
 KAPI_FN int kapi_write (int fd, const void *b, unsigned n);
+// Open a file to read it (on the card, the RAM volume or a provider's path, relative to the working directory)
+// -> its handle, 0 failure.
 KAPI_FN void * kapi_open (const char *p);
-KAPI_FN int kapi_read (void *h, void *b, unsigned n);
-KAPI_FN unsigned kapi_fsize (void *h);
-KAPI_FN void kapi_close (void *h);
+KAPI_FN int kapi_read (void *h, void *b, unsigned n);	// up to n bytes from the file's position (advanced) -> the bytes read (0: the end), -1 error
+KAPI_FN unsigned kapi_fsize (void *h);	// the file's size in bytes (0xFFFFFFFF: over 4 GB, see kapi_fsize64); 0 for a bad handle
+KAPI_FN void kapi_close (void *h);	// close a file opened with kapi_open
 // save_file: the whole file written (created / replaced): the bytes written (>= 0; an empty file:
 // 0 -- test < 0 for a failure, or == n), or -1.
 KAPI_FN int kapi_save_file (const char *p, const void *b, unsigned n);
@@ -213,9 +231,9 @@ KAPI_FN int kapi_chdir (const char *p);
 KAPI_FN int kapi_getcwd (char *b, unsigned n);
 
 // --- directory listing -------------------------------------------------------
-KAPI_FN void * kapi_opendir (const char *p);
-KAPI_FN int kapi_readdir (void *d, struct kapi_dirent *e);
-KAPI_FN void kapi_closedir (void *d);
+KAPI_FN void * kapi_opendir (const char *p);	// open a folder to list it -> its handle, 0 failure (not a folder)
+KAPI_FN int kapi_readdir (void *d, struct kapi_dirent *e);	// the next entry (name, size, is_dir) into *e -> 1, 0 at the end / on error
+KAPI_FN void kapi_closedir (void *d);	// close a folder opened with kapi_opendir
 // mkdir / remove / rename: 0 = success, -1 = failure (FatFs result).
 KAPI_FN int kapi_mkdir (const char *p);
 KAPI_FN int kapi_remove (const char *p);
@@ -223,20 +241,29 @@ KAPI_FN int kapi_rename (const char *from, const char *to);
 KAPI_FN void kapi_cursor_pos (int *x, int *y);
 
 // --- stdio / streams / processes ---------------------------------------------
-KAPI_FN void * kapi_pipe (void);
-KAPI_FN void * kapi_file_in (const char *p);
+KAPI_FN void * kapi_pipe (void);	// a new pipe (a FIFO in memory) -> its stream handle, 0 failure
+KAPI_FN void * kapi_file_in (const char *p);	// a file as a stream to read -> its stream handle, 0 failure
+// A file as a stream to write, created / emptied or (append != 0) written at its end -> its stream handle, 0 failure.
 KAPI_FN void * kapi_file_out (const char *p, int append);
+// Up to n bytes from a stream (a pipe waits for its writer) -> the bytes read, 0 the end / a bad handle.
 KAPI_FN int kapi_stream_read (void *h, void *b, unsigned n);
+// Up to n bytes from a stream without waiting -> > 0 the bytes read, 0 the end / a bad handle, -1 nothing yet.
 KAPI_FN int kapi_stream_read_nb (void *h, void *b, unsigned n);
+// n bytes to a stream (a full pipe waits for its reader) -> the bytes written, -1 error.
 KAPI_FN int kapi_stream_write (void *h, const void *b, unsigned n);
-KAPI_FN void kapi_stream_close (void *h);
-KAPI_FN void kapi_stream_eof (void *h);
+KAPI_FN void kapi_stream_close (void *h);	// close a stream handle (its reference to the stream dropped)
+KAPI_FN void kapi_stream_eof (void *h);	// tell the stream's readers it has ended (the writer is done); the handle stays open
+// 1 if the process of kapi_spawn has finished (a bad handle too), 0 if it runs (the handle stays, kapi_wait closes it).
 KAPI_FN int kapi_proc_done (void *proc);
-KAPI_FN int kapi_stdin_read (void *b, unsigned n);
+KAPI_FN int kapi_stdin_read (void *b, unsigned n);	// up to n bytes from this process's standard input -> the bytes read, 0 the end / none
+// n bytes to this process's standard output (it has none = to the kernel's log, 128 bytes at most) -> the bytes
+// written, -1 error.
 KAPI_FN int kapi_stdout_write (const void *b, unsigned n);
+// Start the program at path with the arguments args, its standard input / output the stream handles in / out
+// (0 = none) -> its process handle (kapi_wait, kapi_proc_done), 0 failure.
 KAPI_FN void * kapi_spawn (const char *path, const char *args, void *in, void *out);
-KAPI_FN int kapi_wait (void *proc);
-KAPI_FN int kapi_get_args (char *b, unsigned n);
+KAPI_FN int kapi_wait (void *proc);	// wait for a spawned process's end -> its exit status (the handle closed), -1 not a process handle
+KAPI_FN int kapi_get_args (char *b, unsigned n);	// this process's argument string into b (n bytes) -> its length
 // This task's own stdin/stdout stream handles (for a shell wiring children). 0 = none.
 KAPI_FN void * kapi_stdin (void);
 KAPI_FN void * kapi_stdout (void);
@@ -285,13 +312,17 @@ KAPI_FN int kapi_ipc_lookup (const char *name);
 #define CLIP_TEXT	1		// plain text
 #define CLIP_FILES	2		// file/folder paths, '\n'-separated (copied)
 #define CLIP_FILES_CUT	3		// same, cut (the paste moves them)
+// The clipboard replaced by the n bytes of d (64 KB at most, n 0 empties it) of the type CLIP_* -> the bytes kept
+// (0 too for a bad pointer, the clipboard then as it was).
 KAPI_FN int kapi_clipboard_set (int type, const void *d, unsigned n);
+// Up to cap bytes of the clipboard into b, its type and its serial (which changes at every set) -> the content's
+// whole length, 0 empty. b, type and serial may each be 0.
 KAPI_FN int kapi_clipboard_get (int *type, void *b, unsigned cap, unsigned *serial);
 // Window opacity 0..255 (ABI v40; fades) and end of session (0 = halt, 1 = restart).
 KAPI_FN void kapi_set_window_alpha (int a);
 #define SHUTDOWN_HALT		0
 #define SHUTDOWN_RESTART	1
-KAPI_FN void kapi_shutdown (int mode);
+KAPI_FN void kapi_shutdown (int mode);	// end the session: the card unmounted, then halt (SHUTDOWN_HALT) or restart; does not return
 
 // Full-screen apps (ABI v41): fullscreen_begin -> a screen-sized 0x00RRGGBB back buffer
 // (w/h filled); the desktop stops drawing and all input (screen coords) comes to you.
@@ -326,9 +357,12 @@ KAPI_FN int kapi_net_info (char *buf, unsigned cap);
 #define VFS_OP_MKDIR	6	// path -> 0 / -1
 #define VFS_OP_REMOVE	7	// path -> 0 / -1
 #define VFS_OP_RENAME	8	// path -> path2: 0 / -1
-KAPI_FN int kapi_vfs_register (const char *prefix);
+KAPI_FN int kapi_vfs_register (const char *prefix);	// this process serves the paths starting with prefix -> 1, 0 (taken by another, no room)
+// The next request for this provider into *req -> 1, 0 none (with blocking != 0, after waiting up to 0.5 s for one).
 KAPI_FN int kapi_vfs_next (struct kapi_vfs_req *req, int blocking);
+// Up to cap bytes of the request id's payload (VFS_OP_SAVE's data) from offset into buf -> the bytes copied, 0 none.
 KAPI_FN int kapi_vfs_req_data (unsigned id, void *buf, unsigned cap, unsigned offset);
+// Answer the request id with its status and len bytes of data (0 = none), its caller woken -> 1, 0 (no such request, bad data).
 KAPI_FN int kapi_vfs_reply (unsigned id, int status, const void *data, unsigned len);
 
 // Wi-Fi scan (ABI v45): the access points around, strongest first (struct kapi_wlan_ap:
@@ -520,7 +554,7 @@ KAPI_FN int kapi_set_cursor (int shape);
 #define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
 #define GUI_WINRESIZE_W(v)	((int) (((unsigned long long) (v) >> 16) & 0xFFFF))
 #define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
-KAPI_FN int kapi_win_resizable (int on, int min_w, int min_h);
+KAPI_FN int kapi_win_resizable (int on, int min_w, int min_h);	// this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1
 // (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "uikit" is SD:/lib/uikit.so, anything with a '/'
 // or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *);
 // then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP:
@@ -571,8 +605,8 @@ KAPI_FN unsigned * kapi_resize_window2 (int w, int h, int *stride);
 #define KAPI_DESK_CUR(i)	((i) & 0xFF)
 #define KAPI_DESK_COUNT(i)	(((i) >> 8) & 0xFF)
 #define KAPI_DESK_GEN(i)	(((unsigned) (i) >> 16) & 0x7FFF)
-KAPI_FN int kapi_desk (int set, int count);
-KAPI_FN int kapi_win_desk (unsigned id, int n);
+KAPI_FN int kapi_desk (int set, int count);	// show the desk `set` (-1: keep) and set their number (0: keep) -> KAPI_DESK_CUR / _COUNT / _GEN of the result
+KAPI_FN int kapi_win_desk (unsigned id, int n);	// the window id (0: mine) moved to the desk n (-1: every desk; -2: only ask) -> its desk, -3 no such window
 // (v66) screen_set: the screen's resolution now (640 x 480 .. 2560 x 1600, w even); every window
 // kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 out of bounds; -2 not now (a
 // full-screen app...); -3 the firmware refused it (old size kept); -4 an older kernel. Not kept
@@ -806,14 +840,16 @@ KAPI_FN void ax_putln (const char *s);
 #define INI_MAX		64
 #define INI_STRLEN	64
 #define INI_BUFSZ	2048
-KAPI_FN int app_ini_load_path (const char *path);
-KAPI_FN int app_ini_load (const char *filename);
+KAPI_FN int app_ini_load_path (const char *path);	// load the .ini file at path (replacing the one loaded) -> its number of entries, -1 not opened
+KAPI_FN int app_ini_load (const char *filename);	// the same for <the program's own folder>/filename (kapi_app_dir)
+// The value of key in section (0 or "" = the keys before any [section]) of the loaded file, else def.
 KAPI_FN const char *app_ini_get (const char *section, const char *key, const char *def);
+// The value of key in section as a decimal integer (a sign allowed), def when the key is absent or has no digit.
 KAPI_FN int app_ini_get_int (const char *section, const char *key, int def);
-KAPI_FN int app_ini_count (void);
-KAPI_FN const char *app_ini_section (int i);
-KAPI_FN const char *app_ini_key (int i);
-KAPI_FN const char *app_ini_value (int i);
+KAPI_FN int app_ini_count (void);	// the number of entries (key=value lines) of the loaded file
+KAPI_FN const char *app_ini_section (int i);	// the section of the entry i (0-based, in the file's order); "" out of range
+KAPI_FN const char *app_ini_key (int i);	// the key of the entry i; "" out of range
+KAPI_FN const char *app_ini_value (int i);	// the value of the entry i; "" out of range
 
 // The keyboard layout <name> ("FR", "BE"...): SD:/etc/keymaps/<name>.kmap (kapi_set_keymap_data), else a
 // map the kernel has (kapi_set_keymap). Non-zero = done. The keyboard must be up (kapi_kbd_ready).
@@ -831,10 +867,10 @@ KAPI_FN int ax_load_keymap (const char *name);
 //   lx_runner (path, out)    the runner of a file (by its extension), 0 if none
 // C and C++ (run, init, the apps).
 #define LX_INI	"SD:/etc/runners.ini"
-KAPI_FN char lx_low (char c);
-KAPI_FN int lx_len (const char *s);
-KAPI_FN void lx_cat (char *d, int cap, int *n, const char *s);
-KAPI_FN int lx_exists (const char *path);
+KAPI_FN char lx_low (char c);	// c in lower case ('A'..'Z' only)
+KAPI_FN int lx_len (const char *s);	// the length of s (0 for a null pointer)
+KAPI_FN void lx_cat (char *d, int cap, int *n, const char *s);	// s appended to d at *n (advanced), never past cap, NUL-terminated
+KAPI_FN int lx_exists (const char *path);	// 1 if the file at path can be opened (kapi_open), else 0
 // The i-th "ext = program" line of runners.ini (0-based): 1 found, 0 past the end.
 KAPI_FN int lx_entry (int i, char *ext, int ecap, char *prog, int pcap);
 // Does the value of an app.txt's "games" / "opens" (the extensions after each "System:", or all the

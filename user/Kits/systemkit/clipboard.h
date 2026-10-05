@@ -29,8 +29,8 @@ SK_API bool clip_put (const char *const *fmt, const void *const *data, const uns
 // or clipd could not be reached.
 SK_API bool clip_get (const char *const *fmt, int nf, char *got, int cap, unsigned char **data, unsigned *len);
 // ---- text and paths (the calls every app had) ----------------------------------------------------------------
-SK_API void clip_set_text_n (const char *s, int n);
-SK_API void clip_set_text (const char *s);
+SK_API void clip_set_text_n (const char *s, int n);	// copy the n bytes of s as text (a "text" item to clipd, and the kernel's clipboard)
+SK_API void clip_set_text (const char *s);	// copy the NUL-terminated string s as text (clip_set_text_n)
 // The clipboard's text into buf (NUL-terminated, truncated to cap-1) -> its length; 0: no text.
 SK_API int clip_get_text (char *buf, int cap);
 // File / folder paths ('\n'-separated): copied, or cut when `cut` != 0 (the paste moves them).

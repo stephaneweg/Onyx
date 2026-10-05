@@ -47,6 +47,9 @@ TLS_PROGS =
 ifneq ($(strip $(MBEDTLS_DIR)),)
 TLS_PROGS = httpsget.elf ftpfs.elf groq.elf llm.elf
 PKG_PROGS = pkg.elf
+# (zip, unzip: their rule is at the end; named HERE, before `all`, or `all` does not build them -- they
+#  stayed as built on 2026-10-03, reading the kernel's table themselves, until this was seen on 2026-10-05)
+ARC_PROGS = zip.elf unzip.elf
 endif
 
 # Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../Kits/imagekit/img/README.md).
@@ -283,8 +286,7 @@ clean:
 # the remote desktops share the keyboard translation
 vncd.elf rdpd.elf: remotekeys.h
 
-# zip / unzip (C++ on newlib, the Archiver's engine: ../Apps/archiver/ops.h) with the vendored zlib
-ARC_PROGS = zip.elf unzip.elf
+# zip / unzip (C++ on newlib, FileKit's archive engine compiled in: ../Kits/filekit) with the vendored zlib
 $(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP)
 	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
 	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o

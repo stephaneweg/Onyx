@@ -81,12 +81,12 @@ Everything the headers declare, in their order — the details are in each heade
 | `ak_tags` | What a sound file says about itself (MP3 | `audiokit.h` |
 | `ak_tags_read` | 1 / 0: not a sound file of ours, unreadable | `audiokit.h` |
 | `ak_play` | 0 started / -1 (ak_play_error says why) | `audiokit.h` |
-| `ak_play_stop` |  | `audiokit.h` |
-| `ak_play_pause` |  | `audiokit.h` |
+| `ak_play_stop` | the file stopped and closed -> AK_STOPPED (no file: nothing) | `audiokit.h` |
+| `ak_play_pause` | 1: paused, 0: playing again (no file: nothing) | `audiokit.h` |
 | `ak_play_state` | AK_* (the file's; the live notes aside) | `audiokit.h` |
-| `ak_play_pos_ms` |  | `audiokit.h` |
-| `ak_play_len_ms` |  | `audiokit.h` |
-| `ak_play_seek_ms` |  | `audiokit.h` |
+| `ak_play_pos_ms` | where the file is heard, ms from its start (0: no file) | `audiokit.h` |
+| `ak_play_len_ms` | the file's length, ms (0: no file, not known) | `audiokit.h` |
+| `ak_play_seek_ms` | the file goes on from there -> 1 done / 0 (no file, it cannot seek) | `audiokit.h` |
 | `ak_play_volume` | 0..100 (-1: only ask) -> the volume | `audiokit.h` |
 | `ak_play_error` | the last error's words ("": none) | `audiokit.h` |
 | `ak_play_wait` | waits while a file plays, ms at most (-1: no limit) -> its state | `audiokit.h` |
@@ -102,11 +102,11 @@ Everything the headers declare, in their order — the details are in each heade
 | `ak_out_free` | frames that would be taken without waiting | `audiokit.h` |
 | `ak_out_queued` | frames written and not yet played | `audiokit.h` |
 | `ak_out_close` | (Not together with the player | `audiokit.h` |
-| `ak_gain_s16` |  | `audiokit.h` |
+| `ak_gain_s16` | buf *= gain, saturated, in place | `audiokit.h` |
 | `ak_mix_s16` | dst += src * gain, saturated | `audiokit.h` |
 | `ak_mono_to_stereo` | the first `frames` shorts spread, in place | `audiokit.h` |
 | `ak_volume_gain` | 0..100 on the ear's curve -> a 16.16 gain | `audiokit.h` |
-| `ak_resampler_new` |  | `audiokit.h` |
+| `ak_resampler_new` | the rates in Hz -> 0: a rate <= 0 | `audiokit.h` |
 | `ak_resample` | in_frames frames in -> the frames written to out (out_cap at most) | `audiokit.h` |
 | `ak_resampler_free` | in_frames frames in -> the frames written to out (out_cap at most) | `audiokit.h` |
 | `ak_f32_to_s16` | (FPU programs) Two float channels (-1..1) -> 16-bit stereo, through the soft limiter (Koton's | `audiokit.h` |
@@ -128,7 +128,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `ak_soundfont_free` | A SoundFont's file | `audiokit.h` |
 | `ak_soundfont_prefer` | The file the default SoundFont is to be (a program's setting | `audiokit.h` |
 | `ak_synth_new` | on the default SoundFont, at AUDIOKIT_RATE -> 0: none | `audiokit.h` |
-| `ak_synth_free` |  | `audiokit.h` |
+| `ak_synth_free` | the synthesizer freed (the default SoundFont stays loaded) | `audiokit.h` |
 | `ak_synth_midi` | 0x90 note on, 0x80 off, 0xC0 program... | `audiokit.h` |
 | `ak_synth_render` | never allocates, never calls the kernel | `audiokit.h` |
 | `ak_fm_instrument` | 0 / -1 | `audiokit.h` |
@@ -137,15 +137,15 @@ Everything the headers declare, in their order — the details are in each heade
 | `ak_fm_silence` | all silent at once | `audiokit.h` |
 | `ak_fm_render` | the voices' next frames written to out (off line: an export) | `audiokit.h` |
 | `ak_fm_live` | 0: the player leaves the voices alone -- the program renders them (ak_fm_render); 1 (at first): heard | `audiokit.h` |
-| `ak_reverb_new` |  | `audiokit.h` |
+| `ak_reverb_new` | for samples at that rate (Hz) -> 0: no memory | `audiokit.h` |
 | `ak_reverb_set` | < 0: unchanged | `audiokit.h` |
 | `ak_reverb_process` | mono in, stereo out | `audiokit.h` |
-| `ak_reverb_mute` |  | `audiokit.h` |
-| `ak_reverb_free` |  | `audiokit.h` |
+| `ak_reverb_mute` | its tail dropped: the delay lines cleared | `audiokit.h` |
+| `ak_reverb_free` | the reverb and its buffers freed (0: nothing) | `audiokit.h` |
 | `ak_chorus_new` | (MeltySynth's own: 0.002, 0.0019, 0.4) | `audiokit.h` |
-| `ak_chorus_process` |  | `audiokit.h` |
-| `ak_chorus_mute` |  | `audiokit.h` |
-| `ak_chorus_free` |  | `audiokit.h` |
+| `ak_chorus_process` | stereo in, the chorused (delayed) signal alone out | `audiokit.h` |
+| `ak_chorus_mute` | what it holds dropped: the delay lines cleared | `audiokit.h` |
+| `ak_chorus_free` | the chorus and its buffers freed (0: nothing) | `audiokit.h` |
 
 ---
 
@@ -247,12 +247,12 @@ One per process: a thread of its own that holds the system's output while it has
 #define AK_BUSY		3			// playing, but another program holds the output
 
 int ak_play (const char *path, int loop);		// 0 started / -1 (ak_play_error says why)
-void ak_play_stop (void);
-void ak_play_pause (int on);
+void ak_play_stop (void);	// the file stopped and closed -> AK_STOPPED (no file: nothing)
+void ak_play_pause (int on);	// 1: paused, 0: playing again (no file: nothing)
 int ak_play_state (void);				// AK_* (the file's; the live notes aside)
-long long ak_play_pos_ms (void);
-long long ak_play_len_ms (void);
-int ak_play_seek_ms (long long ms);
+long long ak_play_pos_ms (void);	// where the file is heard, ms from its start (0: no file)
+long long ak_play_len_ms (void);	// the file's length, ms (0: no file, not known)
+int ak_play_seek_ms (long long ms);	// the file goes on from there -> 1 done / 0 (no file, it cannot seek)
 int ak_play_volume (int volume);			// 0..100 (-1: only ask) -> the volume
 const char *ak_play_error (void);			// the last error's words ("": none)
 int ak_play_wait (int ms);				// waits while a file plays, ms at most (-1: no limit) -> its state
@@ -290,13 +290,13 @@ void ak_out_close (void);
 ### mixing and conversion (16-bit stereo frames; gains in 16.16: 65536 = 1)
 
 ```cpp
-void ak_gain_s16 (short *buf, int frames, int gain);
+void ak_gain_s16 (short *buf, int frames, int gain);	// buf *= gain, saturated, in place
 void ak_mix_s16 (short *dst, const short *src, int frames, int gain);	// dst += src * gain, saturated
 void ak_mono_to_stereo (short *buf, int frames);			// the first `frames` shorts spread, in place
 int ak_volume_gain (int volume);			// 0..100 on the ear's curve -> a 16.16 gain
 
 typedef struct ak_resampler ak_resampler;		// a rate converter (linear), stereo
-ak_resampler *ak_resampler_new (int in_rate, int out_rate);
+ak_resampler *ak_resampler_new (int in_rate, int out_rate);	// the rates in Hz -> 0: a rate <= 0
 ```
 
 in_frames frames in -> the frames written to out (out_cap at most); *used: the input frames taken.
@@ -364,7 +364,7 @@ The file the default SoundFont is to be (a program's setting; before the first M
 void ak_soundfont_prefer (const char *path);
 typedef struct ak_synth ak_synth;
 ak_synth *ak_synth_new (void);				// on the default SoundFont, at AUDIOKIT_RATE -> 0: none
-void ak_synth_free (ak_synth *s);
+void ak_synth_free (ak_synth *s);	// the synthesizer freed (the default SoundFont stays loaded)
 void ak_synth_midi (ak_synth *s, int channel, int command, int data1, int data2);	// 0x90 note on, 0x80 off, 0xC0 program...
 void ak_synth_render (ak_synth *s, short *out, int frames);	// never allocates, never calls the kernel
 ```
@@ -387,16 +387,16 @@ void ak_fm_live (int on);	// 0: the player leaves the voices alone -- the progra
 
 ```cpp
 typedef struct ak_reverb ak_reverb;
-ak_reverb *ak_reverb_new (int rate);
+ak_reverb *ak_reverb_new (int rate);	// for samples at that rate (Hz) -> 0: no memory
 void ak_reverb_set (ak_reverb *r, float room, float damp, float wet, float width);	// < 0: unchanged
 void ak_reverb_process (ak_reverb *r, const float *in, float *left, float *right, int frames);	// mono in, stereo out
-void ak_reverb_mute (ak_reverb *r);
-void ak_reverb_free (ak_reverb *r);
+void ak_reverb_mute (ak_reverb *r);	// its tail dropped: the delay lines cleared
+void ak_reverb_free (ak_reverb *r);	// the reverb and its buffers freed (0: nothing)
 typedef struct ak_chorus ak_chorus;
 ak_chorus *ak_chorus_new (int rate, float delay_s, float depth_s, float hz);	// (MeltySynth's own: 0.002, 0.0019, 0.4)
-void ak_chorus_process (ak_chorus *c, const float *inL, const float *inR, float *outL, float *outR, int frames);
-void ak_chorus_mute (ak_chorus *c);
-void ak_chorus_free (ak_chorus *c);
+void ak_chorus_process (ak_chorus *c, const float *inL, const float *inR, float *outL, float *outR, int frames);	// stereo in, the chorused (delayed) signal alone out
+void ak_chorus_mute (ak_chorus *c);	// what it holds dropped: the delay lines cleared
+void ak_chorus_free (ak_chorus *c);	// the chorus and its buffers freed (0: nothing)
 
 }
 #endif

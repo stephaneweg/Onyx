@@ -91,17 +91,17 @@ Everything the headers declare, in their order — the details are in each heade
 | `fk_deflate` | The whole of `data` compressed (level 0..9, -1 | `filekit.h` |
 | `fk_inflate` | ... | `filekit.h` |
 | `fk_zip_entry` | (a type) | `filekit.h` |
-| `int` | A step of a long work | `filekit.h` |
+| `fk_progress` | A step of a long work | `filekit.h` |
 | `fk_zip_open` | 0: err says why | `filekit.h` |
-| `fk_zip_close` |  | `filekit.h` |
+| `fk_zip_close` | the archive closed, its handle freed (0: nothing) | `filekit.h` |
 | `fk_zip_error` | the last failure's words | `filekit.h` |
 | `fk_zip_password` | for its encrypted entries | `filekit.h` |
-| `fk_zip_count` |  | `filekit.h` |
+| `fk_zip_count` | how many entries it holds (0: no archive) | `filekit.h` |
 | `fk_zip_find` | its index (letters' case ignored), -1 | `filekit.h` |
 | `fk_zip_read` | entry i in memory (fk_free) -> 0 / -1 | `filekit.h` |
 | `fk_zip_extract` | entry i as that file -> 0 / -1 | `filekit.h` |
 | `fk_zip_extract_all` | Everything under `prefix` ("" or 0 | `filekit.h` |
-| `fk_zipw_create` |  | `filekit.h` |
+| `fk_zipw_create` | nothing written yet; 0: no path | `filekit.h` |
 | `fk_zipw_add` | a file, or a folder and all it holds, as `name` (0: its own) | `filekit.h` |
 | `fk_zipw_add_data` | a buffer as an entry (copied) | `filekit.h` |
 | `fk_zipw_level` | 0 store, 1 fast, 6 (the default), 9 | `filekit.h` |
@@ -113,7 +113,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `fk_arc_open` | any format read; 0: err says why | `filekit.h` |
 | `fk_arc_new` | a new one, not on the card yet ("ZIP"; 0: not a format written) | `filekit.h` |
 | `fk_arc_format` | "ZIP" ... | `filekit.h` |
-| `fk_arc_path` |  | `filekit.h` |
+| `fk_arc_path` | the archive file's path ("": no archive) | `filekit.h` |
 | `fk_arc_comment` | the archive's own ("": none) | `filekit.h` |
 | `fk_arc_writable` | 1: it can be changed | `filekit.h` |
 | `fk_arc_method_name` | entry i: "Deflate", "Store, crypted"... | `filekit.h` |
@@ -131,7 +131,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `fk_zipmem_count` | its entries, -1: not a ZIP | `filekit.h` |
 | `fk_zipmem_entry` | Entry i | `filekit.h` |
 | `fk_zipmem_get` | The entry of that name inflated (a 0 byte after its end) -> 0 and *out (fk_free), -1 | `filekit.h` |
-| `fk_zipbuf_new` |  | `filekit.h` |
+| `fk_zipbuf_new` | an empty one; 0: no memory | `filekit.h` |
 | `fk_zipbuf_add` | 0 / -1 | `filekit.h` |
 | `fk_zipbuf_finish` | the archive (fk_free) -> 0 / -1; b freed | `filekit.h` |
 | `fk_zipbuf_free` | (given up before finish) | `filekit.h` |
@@ -147,14 +147,14 @@ Everything the headers declare, in their order — the details are in each heade
 | `fk_path_name` | after the last '/' or ':' (inside path) | `filekit.h` |
 | `fk_path_ext` | "png" (lower case, without the dot; "": none) | `filekit.h` |
 | `fk_path_folder` | "SD:/a/b.txt" -> "SD:/a"; "SD:/a" -> "SD:/" | `filekit.h` |
-| `fk_path_join` |  | `filekit.h` |
+| `fk_path_join` | folder + "/" + name (no '/' added after a '/' or a ':', or before an empty name), cut to cap | `filekit.h` |
 | `fk_path_unique` | a name not taken: "a.txt" -> "a (2).txt" | `filekit.h` |
 | `fk_human_size` | "12.4 KB" | `filekit.h` |
 | `fk_dos_time_str` | "28/09/2026 14:12" | `filekit.h` |
-| `fs_len` |  | `fsutil.h` |
-| `fs_copy` |  | `fsutil.h` |
-| `fs_lower` |  | `fsutil.h` |
-| `fs_ci_cmp` |  | `fsutil.h` |
+| `fs_len` | a string's length in bytes (0 for a null pointer) | `fsutil.h` |
+| `fs_copy` | s into d, cut to cap - 1 bytes, always ended by a 0 | `fsutil.h` |
+| `fs_lower` | an ASCII capital as its small letter, anything else unchanged | `fsutil.h` |
+| `fs_ci_cmp` | strcmp with ASCII letters' case ignored: 0 equal, else < 0 or > 0 | `fsutil.h` |
 | `fs_join` | out = dir + "/" + name (no doubled slash). | `fsutil.h` |
 | `fs_basename` | The last path component (points into `path`). | `fsutil.h` |
 | `fs_dirname` | Parent directory of path into out ("SD:/a/b" -> "SD:/a", "SD:/a" -> "SD:/"). | `fsutil.h` |
@@ -239,10 +239,10 @@ A step of a long work: `done` of `total` bytes, the file being worked on (0: the
 typedef int (*fk_progress) (void *user, unsigned long long done, unsigned long long total, const char *name);
 
 fk_zip *fk_zip_open (const char *path, char *err, int cap);		// 0: err says why
-void fk_zip_close (fk_zip *z);
+void fk_zip_close (fk_zip *z);	// the archive closed, its handle freed (0: nothing)
 const char *fk_zip_error (fk_zip *z);					// the last failure's words
 void fk_zip_password (fk_zip *z, const char *password);			// for its encrypted entries
-int fk_zip_count (fk_zip *z);
+int fk_zip_count (fk_zip *z);	// how many entries it holds (0: no archive)
 int fk_zip_entry (fk_zip *z, int i, struct fk_zip_entry *out);		// 1 / 0
 int fk_zip_find (fk_zip *z, const char *name);				// its index (letters' case ignored), -1
 int fk_zip_read (fk_zip *z, int i, void **out, unsigned *out_n);	// entry i in memory (fk_free) -> 0 / -1
@@ -259,7 +259,7 @@ A new archive (an existing file is replaced when it is closed): its entries said
 
 ```cpp
 typedef struct fk_zipw fk_zipw;
-fk_zipw *fk_zipw_create (const char *path);
+fk_zipw *fk_zipw_create (const char *path);	// nothing written yet; 0: no path
 int fk_zipw_add (fk_zipw *w, const char *disk_path, const char *name);	// a file, or a folder and all it holds, as `name` (0: its own)
 int fk_zipw_add_data (fk_zipw *w, const char *name, const void *data, unsigned n);	// a buffer as an entry (copied)
 void fk_zipw_level (fk_zipw *w, int level);				// 0 store, 1 fast, 6 (the default), 9
@@ -297,7 +297,7 @@ typedef struct fk_zip fk_arc;
 fk_arc *fk_arc_open (const char *path, char *err, int cap);		// any format read; 0: err says why
 fk_arc *fk_arc_new (const char *path, const char *format);		// a new one, not on the card yet ("ZIP"; 0: not a format written)
 const char *fk_arc_format (fk_arc *a);					// "ZIP" ...
-const char *fk_arc_path (fk_arc *a);
+const char *fk_arc_path (fk_arc *a);	// the archive file's path ("": no archive)
 const char *fk_arc_comment (fk_arc *a);					// the archive's own ("": none)
 int fk_arc_writable (fk_arc *a);					// 1: it can be changed
 int fk_arc_method_name (fk_arc *a, int i, char *out, int cap);		// entry i: "Deflate", "Store, crypted"...
@@ -371,7 +371,7 @@ int fk_zipmem_get (const void *zip, unsigned n, const char *name, void **out, un
 
 ```cpp
 typedef struct fk_zipbuf fk_zipbuf;
-fk_zipbuf *fk_zipbuf_new (void);
+fk_zipbuf *fk_zipbuf_new (void);	// an empty one; 0: no memory
 int fk_zipbuf_add (fk_zipbuf *b, const char *name, const void *data, unsigned n, int level);	// 0 / -1
 int fk_zipbuf_finish (fk_zipbuf *b, void **out, unsigned *out_n);	// the archive (fk_free) -> 0 / -1; b freed
 void fk_zipbuf_free (fk_zipbuf *b);					// (given up before finish)
@@ -407,7 +407,7 @@ long long fk_tree_size (const char *path, int *files, int *folders);
 const char *fk_path_name (const char *path);				// after the last '/' or ':' (inside path)
 void fk_path_ext (const char *path, char *out, int cap);		// "png" (lower case, without the dot; "": none)
 void fk_path_folder (const char *path, char *out, int cap);		// "SD:/a/b.txt" -> "SD:/a"; "SD:/a" -> "SD:/"
-void fk_path_join (char *out, int cap, const char *folder, const char *name);
+void fk_path_join (char *out, int cap, const char *folder, const char *name);	// folder + "/" + name (no '/' added after a '/' or a ':', or before an empty name), cut to cap
 void fk_path_unique (char *path, int cap);				// a name not taken: "a.txt" -> "a (2).txt"
 void fk_human_size (unsigned long long bytes, char *out, int cap);	// "12.4 KB"
 void fk_dos_time_str (unsigned dos_time, char *out, int cap);		// "28/09/2026 14:12"
@@ -430,10 +430,10 @@ fsutil.h -- file-system helpers shared by the file tools (File Viewer, trash, do
 
 #define FS_NAMEL	72
 #define FS_PATHL	300
-int fs_len (const char *s);
-void fs_copy (char *d, const char *s, int cap);
-char fs_lower (char c);
-int fs_ci_cmp (const char *a, const char *b);
+int fs_len (const char *s);	// a string's length in bytes (0 for a null pointer)
+void fs_copy (char *d, const char *s, int cap);	// s into d, cut to cap - 1 bytes, always ended by a 0
+char fs_lower (char c);	// an ASCII capital as its small letter, anything else unchanged
+int fs_ci_cmp (const char *a, const char *b);	// strcmp with ASCII letters' case ignored: 0 equal, else < 0 or > 0
 ```
 
 out = dir + "/" + name (no doubled slash).

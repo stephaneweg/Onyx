@@ -182,6 +182,8 @@ def render(header_rel, index):
             head = code_part.split("(", 1)[0]
             nm = re.search(r"([A-Za-z_][\w:~]*)\s*$", head)
             if nm: fm = nm.group(1)
+            fp = re.match(r"\s*typedef\b[^(]*\(\s*\*\s*(\w+)\s*\)", code_part)	# typedef void (*Name) (...)
+            if fp: fm = fp.group(1)
         if fm and internal(fm):
             i = j + 1; continue
         if fm:

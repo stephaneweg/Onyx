@@ -109,12 +109,12 @@ Everything the headers declare, in their order — the details are in each heade
 
 | Name | What it does | Header |
 |---|---|---|
-| `notify_action` |  | `notify.h` |
-| `notify` |  | `notify.h` |
+| `notify_action` | A bubble with a title and a text, sent to notifyd (started if it does not run, waited for up to 2 s) | `notify.h` |
+| `notify` | a bubble with a title and a text, no action (notify_action) -> 1 sent, 0 not | `notify.h` |
 | `clip_put` | One copy, n representations (a format and its bytes each). | `clipboard.h` |
 | `clip_get` | The item under the cursor in the first of fmt[] it has (else the newest item that has one of them) | `clipboard.h` |
-| `clip_set_text_n` |  | `clipboard.h` |
-| `clip_set_text` |  | `clipboard.h` |
+| `clip_set_text_n` | copy the n bytes of s as text (a "text" item to clipd, and the kernel's clipboard) | `clipboard.h` |
+| `clip_set_text` | copy the NUL-terminated string s as text (clip_set_text_n) | `clipboard.h` |
 | `clip_get_text` | The clipboard's text into buf (NUL-terminated, truncated to cap-1) -> its length | `clipboard.h` |
 | `clip_set_files` | File / folder paths ('\n'-separated) | `clipboard.h` |
 | `clip_get_file` | The first path into buf | `clipboard.h` |
@@ -122,15 +122,15 @@ Everything the headers declare, in their order — the details are in each heade
 | `clip_set_image` | w x h pixels 0x00RRGGBB (a row after the other) | `clipboard.h` |
 | `clip_get_image` | -> new[] pixels (delete[] them) and the size, or 0 | `clipboard.h` |
 | `ClipItemMsg` | what the widget is told of an item (one message) | `clipproto.h` |
-| `clipc_put32` |  | `clipproto.h` |
-| `clipc_get32` |  | `clipproto.h` |
-| `clipc_len` |  | `clipproto.h` |
-| `clipc_eq` |  | `clipproto.h` |
+| `clipc_put32` | v stored at p as 4 bytes, the low one first (little endian) | `clipproto.h` |
+| `clipc_get32` | the 4 bytes at p read as a little-endian number | `clipproto.h` |
+| `clipc_len` | the length of the string s (0 for a null pointer) | `clipproto.h` |
+| `clipc_eq` | 1 if the strings a and b are the same (the case counts), else 0 | `clipproto.h` |
 | `clipc_size` | the size of a container of n representations | `clipproto.h` |
 | `clipc_write` | writes it into out (clipc_size bytes) | `clipproto.h` |
 | `clipc_count` | representation i of a container (0..count-1) | `clipproto.h` |
 | `clipc_rep` | representation i of a container (0..count-1) | `clipproto.h` |
-| `trash_ensure` |  | `trash.h` |
+| `trash_ensure` | make the trash's folders (TRASH_DIR, TRASH_FILES, TRASH_INFO) if they are not there | `trash.h` |
 | `trash_move` | Move `path` to the trash. | `trash.h` |
 | `trash_origin` | Original path of trashed item `name` (0 if unknown). | `trash.h` |
 | `trash_restore` | Restore trashed item `name` to its original folder (recreated if needed). | `trash.h` |
@@ -147,25 +147,25 @@ Everything the headers declare, in their order — the details are in each heade
 | `mixer_set` | The channel's volume and mute set now (-1 | `volume.h` |
 | `volume_restore` | the saved volume -> the kernel (no file | `volume.h` |
 | `Wallpaper` | (a type) | `wallpaper.h` |
-| `wp_defaults` |  | `wallpaper.h` |
-| `wp_eq` |  | `wallpaper.h` |
-| `wp_colour` |  | `wallpaper.h` |
+| `wp_defaults` | the wallpaper without a file: voronoi, 28 points, the blues 0x4878B0 and 0x1C2C48, the pattern waves.png | `wallpaper.h` |
+| `wp_eq` | true if a and b are the same string, the case of A..Z ignored | `wallpaper.h` |
+| `wp_colour` | a colour in hexadecimal ("0xRRGGBB", "#RRGGBB", "RRGGBB") -> 0x00RRGGBB; def if v has no hex digit | `wallpaper.h` |
 | `wp_lines` | "key = value" lines of a file | `wallpaper.h` |
 | `wp_key` | "key = value" lines of a file | `wallpaper.h` |
 | `wp_load` | "key = value" lines of a file | `wallpaper.h` |
 | `wp_put` | "key = value" lines of a file | `wallpaper.h` |
 | `wp_put_colour` | "key = value" lines of a file | `wallpaper.h` |
 | `wp_save` | "key = value" lines of a file | `wallpaper.h` |
-| `wp_isqrt` |  | `wallpaper.h` |
-| `wp_mix` |  | `wallpaper.h` |
+| `wp_isqrt` | the integer square root of n (rounded down) | `wallpaper.h` |
+| `wp_mix` | The colour between a and b (0x00RRGGBB), each channel apart -> a for t 0, b for t 255. | `wallpaper.h` |
 | `wp_paint` | Paint w x h pixels (stride | `wallpaper.h` |
-| `wp_lum` |  | `wallpaper.h` |
+| `wp_lum` | the luminance 0..255 of a colour: (77 R + 150 G + 29 B) / 256 | `wallpaper.h` |
 | `wp_grey_cover` | The grey of a picture (0xAARRGGBB, iw x ih | `wallpaper.h` |
 | `wp_grey_tile` | ... | `wallpaper.h` |
 | `wp_multiply` | The colours multiplied by the grey (w x h) | `wallpaper.h` |
 | `DockConf` | (a type) | `dockconf.h` |
-| `dc_copy` |  | `dockconf.h` |
-| `dockconf_defaults` |  | `dockconf.h` |
+| `dc_copy` | s (0: "") copied into d, cut at cap - 1 characters, NUL-terminated | `dockconf.h` |
+| `dockconf_defaults` | the dock without a file: 5 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4" | `dockconf.h` |
 | `dc_split` | A value's two parts | `dockconf.h` |
 | `dockconf_load` | -> false | `dockconf.h` |
 | `dc_put` | -> false | `dockconf.h` |
@@ -193,8 +193,13 @@ notify.h -- desktop notifications. notify (title, text) sends an IPC message to 
 #define NOTIFY_SERVICE	"notify"
 #define NOTIFY_MSG_SHOW	1		// payload: title '\0' text '\0' [action '\0': "app args", run on a click]
 #define NOTIFY_MAX	500		// payload bytes (IPC limit 512)
+```
+
+A bubble with a title and a text, sent to notifyd (started if it does not run, waited for up to 2 s); action (0 or "" for none) is the "app args" a click on it runs -> 1 sent, 0 not (no notifyd, its mailbox full).
+
+```cpp
 int notify_action (const char *title, const char *text, const char *action);
-int notify (const char *title, const char *text);
+int notify (const char *title, const char *text);	// a bubble with a title and a text, no action (notify_action) -> 1 sent, 0 not
 ```
 
 ## `systemkit/clipboard.h`
@@ -234,8 +239,8 @@ bool clip_get (const char *const *fmt, int nf, char *got, int cap, unsigned char
 ### text and paths (the calls every app had)
 
 ```cpp
-void clip_set_text_n (const char *s, int n);
-void clip_set_text (const char *s);
+void clip_set_text_n (const char *s, int n);	// copy the n bytes of s as text (a "text" item to clipd, and the kernel's clipboard)
+void clip_set_text (const char *s);	// copy the NUL-terminated string s as text (clip_set_text_n)
 ```
 
 The clipboard's text into buf (NUL-terminated, truncated to cap-1) -> its length; 0: no text.
@@ -327,10 +332,27 @@ struct ClipItemMsg
 
 ### the container
 
+v stored at p as 4 bytes, the low one first (little endian)
+
 ```cpp
 void clipc_put32 (unsigned char *p, unsigned v);
+```
+
+the 4 bytes at p read as a little-endian number
+
+```cpp
 unsigned clipc_get32 (const unsigned char *p);
+```
+
+the length of the string s (0 for a null pointer)
+
+```cpp
 int clipc_len (const char *s);
+```
+
+1 if the strings a and b are the same (the case counts), else 0
+
+```cpp
 int clipc_eq (const char *a, const char *b);
 ```
 
@@ -368,7 +390,7 @@ trash_move (path) moves an item there (a clash gets " (2)"-style names); trash_r
 #define TRASH_DIR	"SD:/.Trash"
 #define TRASH_FILES	"SD:/.Trash/files"
 #define TRASH_INFO	"SD:/.Trash/info"
-void trash_ensure (void);
+void trash_ensure (void);	// make the trash's folders (TRASH_DIR, TRASH_FILES, TRASH_INFO) if they are not there
 ```
 
 Move `path` to the trash. Returns true on success.
@@ -515,9 +537,9 @@ struct Wallpaper
 	int tint;			// image: 1 its grey times c1, 0 as it is
 	char pattern[200];		// pattern: the grey picture
 };
-void wp_defaults (Wallpaper &w);
-bool wp_eq (const char *a, const char *b);
-unsigned wp_colour (const char *v, unsigned def);
+void wp_defaults (Wallpaper &w);	// the wallpaper without a file: voronoi, 28 points, the blues 0x4878B0 and 0x1C2C48, the pattern waves.png
+bool wp_eq (const char *a, const char *b);	// true if a and b are the same string, the case of A..Z ignored
+unsigned wp_colour (const char *v, unsigned def);	// a colour in hexadecimal ("0xRRGGBB", "#RRGGBB", "RRGGBB") -> 0x00RRGGBB; def if v has no hex digit
 ```
 
 "key = value" lines of a file: fn (key, value) for each. -> false: no file.
@@ -534,8 +556,12 @@ bool wp_save (const Wallpaper &w);
 ### the painter
 
 ```cpp
-unsigned wp_isqrt (unsigned n);
+unsigned wp_isqrt (unsigned n);	// the integer square root of n (rounded down)
+```
 
+The colour between a and b (0x00RRGGBB), each channel apart -> a for t 0, b for t 255.
+
+```cpp
 static inline unsigned wp_mix (unsigned a, unsigned b, int t)		// t 0..255: a -> b
 {
 int r = (int) ((a >> 16) & 255) + ((int) ((b >> 16) & 255) - (int) ((a >> 16) & 255)) * t / 255;
@@ -555,7 +581,7 @@ void wp_paint (unsigned *dst, int w, int h, int stride, const Wallpaper &wp, uns
 ### a pattern: a grey picture multiplying the colours
 
 ```cpp
-unsigned wp_lum (unsigned c);
+unsigned wp_lum (unsigned c);	// the luminance 0..255 of a colour: (77 R + 150 G + 29 B) / 256
 ```
 
 The grey of a picture (0xAARRGGBB, iw x ih: its luminance) over w x h as "cover" lays it (the area filled, centred, the rest cut off): the average of the pixels under each one where it shrinks (a small preview), bilinear where it grows (a bigger screen).
@@ -606,8 +632,8 @@ struct DockConf
 	char launcher[DOCK_MAXLAUNCHERS][32]; int nlaunchers;
 	char desk[DOCK_MAXDESKS][24]; int ndesks;
 };
-void dc_copy (char *d, const char *s, int cap);
-void dockconf_defaults (DockConf &c);
+void dc_copy (char *d, const char *s, int cap);	// s (0: "") copied into d, cut at cap - 1 characters, NUL-terminated
+void dockconf_defaults (DockConf &c);	// the dock without a file: 5 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4"
 ```
 
 A value's two parts: "Productivity, tinypad" -> "Productivity" and "tinypad".

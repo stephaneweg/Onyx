@@ -142,12 +142,12 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_len` | uk_fh | `widget.h` |
 | `uk_fw` | uk_fh | `widget.h` |
 | `uk_fh` | uk_fh | `widget.h` |
-| `uk_thumb` |  | `widget.h` |
+| `uk_thumb` | The thumb of a trackH px track for `total` units of content, `view` of them visible, scrolled to pos, with show false when all fits (or the track is 6 px or les | `widget.h` |
 | `uk_thumb_pos` | A cursor offset `cy` within the track -> scroll pos in [0, total-view] (thumb centred). | `widget.h` |
 | `uk_draw_vscroll` | Paint the bar (a groove in a shade of `bg`, the thumb a raised pill) at the right-edge gutter (x,y, w x trackH) | `widget.h` |
 | `UkBarDrag` | A list's own scroll bar under the mouse (a widget that draws uk_draw_vscroll) | `widget.h` |
 | `uk_cursor` | The pointer's shape (kapi v81, KAPI_CURSOR_*). | `widget.h` |
-| `void` | fired on click/toggle/change; gets the widget | `widget.h` |
+| `Action` | fired on click/toggle/change; gets the widget | `widget.h` |
 | `Widget` | (a type) | `widget.h` |
 | `uk_applet` | running as an applet? (its arguments said so) | `root.h` |
 | `uk_pump` | the events: the window's (pump_events), an applet's host's | `root.h` |
@@ -158,7 +158,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `Root` | (a type) | `root.h` |
 | `Canvas` | (a type) | `canvas.h` |
 | `UIKIT_VAR` | an app's background (its face) | `theme.h` |
-| `uk_style_palette` |  | `theme.h` |
+| `uk_style_palette` | UK_STYLE_MILK: Milk's; any other value: CDE's | `theme.h` |
 | `uk_theme_palette` | a named theme's colours (its own, else its style's) | `theme.h` |
 | `uk_theme_load` | (uikit::init () calls it; idempotent) | `theme.h` |
 | `uk_theme_reload` | read SD:/etc/theme.txt again (a new theme applied: the dock) | `theme.h` |
@@ -174,7 +174,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `TextFace` | uikit/text.h -- the text-rendering hook | `text.h` |
 | `UIKIT_VAR` | (the face in use: uk_textface ()) | `text.h` |
 | `uk_set_textface` | install a face; 0: back to the bitmap fonts | `text.h` |
-| `uk_textface` |  | `text.h` |
+| `uk_textface` | The face uk_set_textface installed, 0 while the bitmap fonts are in use. | `text.h` |
 | `UkFaceScope` | Another face for the time of a scope -- a widget's own captions, a display's large digits --, the one before back at its end. | `text.h` |
 | `uk_bfw` | The bitmap fonts' cell (the kernel's font | `text.h` |
 | `uk_bfh` | The bitmap fonts' cell (the kernel's font | `text.h` |
@@ -197,9 +197,9 @@ Everything the headers declare, in their order — the details are in each heade
 | `FileDialog` | (a type) | `dialog.h` |
 | `ColorDialog` | Colour dialog (WPF-style ColorPicker dialog) | `dialog.h` |
 | `PopupMenu` | Convenience | `dialog.h` |
-| `uk_messagebox` |  | `dialog.h` |
-| `uk_file_open` |  | `dialog.h` |
-| `uk_file_save` |  | `dialog.h` |
+| `uk_messagebox` | modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No) | `dialog.h` |
+| `uk_file_open` | modal file browser from startDir; true = OK (out: the chosen path) | `dialog.h` |
+| `uk_file_save` | the same with a name box (defName in it); true = OK | `dialog.h` |
 | `uk_folder_open` | pick a directory | `dialog.h` |
 | `uk_color_dialog` | true = OK (*color set) | `dialog.h` |
 | `icon_load` | The picture of a file (new[] | `bmp.h` |
@@ -213,7 +213,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `Dropdown` | uikit/dropdown.h -- a non-editable drop-down list (the sibling of Combobox, same look) | `dropdown.h` |
 | `uk_draw_option_list` | The open list of a drop-down (Dropdown, Combobox) | `dropdown.h` |
 | `Font` | uikit/font.h -- Font | `font.h` |
-| `init` |  | `font.h` |
+| `init` | load the theme (SD:/etc/theme.txt) and the font families; only the first call works | `font.h` |
 | `font` | the family for `id`, or Sans if it isn't loaded | `font.h` |
 | `draw_text` | Draw `s` into a raw 0x00RRGGBB framebuffer (W x H) via the font registry -- for app-drawn windows that don't own a uikit Canvas. | `font.h` |
 | `GroupBox` | uikit/groupbox.h -- GroupBox | `groupbox.h` |
@@ -232,7 +232,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `UniformGridLayout` | (a type) | `layout.h` |
 | `LcdDisplay` | uikit/lcd.h -- LcdDisplay | `lcd.h` |
 | `ListBox` | uikit/listbox.h -- ListBox | `listbox.h` |
-| `void` |  | `menu.h` |
+| `MenuAction` | a menu item's callback (chosen in the bar, or its shortcut typed) | `menu.h` |
 | `Menu` | (a type) | `menu.h` |
 | `NumericUpDown` | uikit/numeric.h -- NumericUpDown | `numeric.h` |
 | `uk_paint_alpha` | The alpha mode | `paint.h` |
@@ -241,8 +241,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_mix` | t = 0 (a) .. 256 (b) | `paint.h` |
 | `uk_over` | 0..255 (0.30 R + 0.59 G + 0.11 B) | `paint.h` |
 | `uk_ink_on` | dark or white text on c | `paint.h` |
-| `uk_corner` |  | `paint.h` |
-| `uk_rbox` |  | `paint.h` |
+| `uk_corner` | the table for radius r (clamped to 1..16), computed once and kept | `paint.h` |
+| `uk_rbox` | fill a rounded box with a vertical gradient, top to bottom | `paint.h` |
 | `uk_rline` | Its 1-px outline in colour c at opacity alpha. | `paint.h` |
 | `uk_framed` | The push button in the box, from its face colour | `paint.h` |
 | `uk_raised` | A raised face (a header, a tab, a handle, a scroll bar's thumb) | `paint.h` |
@@ -281,8 +281,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_tint` | Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel /255). | `skin.h` |
 | `Skin` | (a type) | `skin.h` |
 | `uk_decorate_window` | Draw the window's frame (the modernised CDE | `skin.h` |
-| `uk_window_state` |  | `skin.h` |
-| `uk_window_flags` |  | `skin.h` |
+| `uk_window_state` | set the frame's state (UK_WIN_* flags) for the next uk_decorate_window | `skin.h` |
+| `uk_window_flags` | the UK_WIN_* flags last set (0 at start) | `skin.h` |
 | `uk_draw_frame` | A frame as uk_decorate_window draws it, into any W x H buffer (T | `skin.h` |
 | `Slider` | uikit/slider.h -- horizontal value in [vmin,vmax] | `slider.h` |
 | `Splitter` | (a type) | `splitter.h` |
@@ -293,8 +293,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `Textarea` | uikit/textarea.h -- multi-line editable text (own '\n'-separated buffer), caret-driven vertical+horizontal scroll, click to position. | `textarea.h` |
 | `Textbox` | uikit/textbox.h -- single-line editable field | `textbox.h` |
 | `ToggleSwitch` | uikit/toggle.h -- ToggleSwitch | `toggle.h` |
-| `uk_tool_glyph` |  | `toolbar.h` |
-| `void` | An app's icon | `toolbar.h` |
+| `uk_tool_glyph` | draw the icon `kind` (WKT_*); size: 6 px at least | `toolbar.h` |
+| `ToolIconFn` | An app's icon | `toolbar.h` |
 | `ToolButton` | (a type) | `toolbar.h` |
 | `ToolBar` | (a type) | `toolbar.h` |
 | `TreeView` | uikit/treeview.h -- TreeView | `treeview.h` |
@@ -349,7 +349,11 @@ A widget that scrolls its own content reserves UK_SBW px on its right edge and s
 static const int UK_SBW = 10;			// reserved right-edge gutter width
 
 struct UkThumb { bool show; int y, h; };	// thumb top/height within a track of trackH px
+```
 
+The thumb of a trackH px track for `total` units of content, `view` of them visible, scrolled to pos, with show false when all fits (or the track is 6 px or less).
+
+```cpp
 UkThumb uk_thumb (long total, long view, long pos, int trackH);
 ```
 
@@ -727,7 +731,7 @@ A style's own colours: what a theme of it takes when theme.txt does not say. (bu
 
 ```cpp
 struct UkPalette { unsigned face, accent, inactive, dock, button, field; int outline; };
-const UkPalette &uk_style_palette (int style);
+const UkPalette &uk_style_palette (int style);	// UK_STYLE_MILK: Milk's; any other value: CDE's
 ```
 
 The named themes (the active frame's colour, the frames' style; pal: a theme with colours of its own -- Dark Coffee --, 0: its style's).
@@ -803,6 +807,11 @@ struct TextFace
 UIKIT_VAR (TextFace *, uk_face_);			// (the face in use: uk_textface ())
 UIKIT_VAR (int, uk_face_fw_);			// (its digit's width: uk_fw () while installed)
 void uk_set_textface (TextFace *f);		// install a face; 0: back to the bitmap fonts
+```
+
+The face uk_set_textface installed, 0 while the bitmap fonts are in use.
+
+```cpp
 TextFace *uk_textface ();
 ```
 
@@ -1026,9 +1035,9 @@ public:
 	bool onKey (long k) override;
 };
 
-int  uk_messagebox (const char *title, const char *text, int buttons);
-bool uk_file_open (char *out, unsigned cap, const char *startDir);
-bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);
+int  uk_messagebox (const char *title, const char *text, int buttons);	// modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No)
+bool uk_file_open (char *out, unsigned cap, const char *startDir);	// modal file browser from startDir; true = OK (out: the chosen path)
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);	// the same with a name box (defName in it); true = OK
 bool uk_folder_open (char *out, unsigned cap, const char *startDir);	// pick a directory
 bool uk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 ```
@@ -1319,7 +1328,7 @@ The global named font registry. uikit::init() loads every known family once (ide
 
 ```cpp
 enum { FONT_SANS = 0, FONT_SERIF, FONT_CURSIVE, FONT_MONO, FONT_COUNT };
-void  init ();
+void  init ();	// load the theme (SD:/etc/theme.txt) and the font families; only the first call works
 Font &font (int id = FONT_SANS);		// the family for `id`, or Sans if it isn't loaded
 ```
 
@@ -1601,7 +1610,7 @@ The menu bar shows them while this app is the active one and sends the chosen it
 ```cpp
 #define UK_CTRL(c)	((long) ((c) & 0x1F))	// Ctrl+letter key code (^A = 1 ... ^Z = 26)
 
-typedef void (*MenuAction) ();
+typedef void (*MenuAction) ();	// a menu item's callback (chosen in the bar, or its shortcut typed)
 
 class Menu
 {
@@ -1694,7 +1703,7 @@ The rounded corner of radius r (1..16): for each of its rows (the top one first)
 
 ```cpp
 struct UkCorner { int r; unsigned char off[16], n[16], a[16][16]; };
-const UkCorner &uk_corner (int r);
+const UkCorner &uk_corner (int r);	// the table for radius r (clamped to 1..16), computed once and kept
 ```
 
 A rounded box [x, x + w) x [y, y + h), corners of radius r (0 = square; which ones: UK_TL | UK_TR | UK_BL | UK_BR, all by default), filled with a vertical gradient from `top` (its first row) to `bottom` (its last), at opacity alpha (255 = opaque); the corners' edges blended over what the canvas holds.
@@ -1702,7 +1711,7 @@ A rounded box [x, x + w) x [y, y + h), corners of radius r (0 = square; which on
 ```cpp
 enum { UK_TL = 1, UK_TR = 2, UK_BL = 4, UK_BR = 8, UK_ALL = 15 };
 void uk_rbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsigned bottom,
-	      int alpha = 255, int corners = UK_ALL);
+	      int alpha = 255, int corners = UK_ALL);	// fill a rounded box with a vertical gradient, top to bottom
 ```
 
 Its 1-px outline in colour c at opacity alpha.
@@ -2113,8 +2122,8 @@ The frame's state, drawn by uk_decorate_window (Root keeps it): the window can b
 
 ```cpp
 enum { UK_WIN_RESIZABLE = 1, UK_WIN_MAXIMISED = 2, UK_WIN_MENU = 4, UK_WIN_FIXED = 8 };	// (FIXED: no buttons)
-void uk_window_state (int flags);
-int  uk_window_flags ();
+void uk_window_state (int flags);	// set the frame's state (UK_WIN_* flags) for the next uk_decorate_window
+int  uk_window_flags ();	// the UK_WIN_* flags last set (0 at start)
 ```
 
 A frame as uk_decorate_window draws it, into any W x H buffer (T: its title bar's height), in the colour `frame` -- a preview (the Theme app). Its corners' outside: see-through (top byte).
@@ -2346,7 +2355,7 @@ enum { WKT_NONE = -1, WKT_NEW = 0, WKT_OPEN, WKT_SAVE, WKT_UNDO, WKT_REDO, WKT_C
        WKT_PLAY, WKT_PAUSE, WKT_STOP, WKT_RECORD, WKT_TO_START, WKT_TO_END, WKT_REWIND, WKT_FORWARD,
        WKT_LOOP, WKT_METRONOME, WKT_PLUS, WKT_MINUS, WKT_SEARCH, WKT_MIXER, WKT_SPARK, WKT_GEAR,
        WKT_COUNT };
-void uk_tool_glyph (Canvas &cv, int kind, int x, int y, int size, unsigned ink);
+void uk_tool_glyph (Canvas &cv, int kind, int x, int y, int size, unsigned ink);	// draw the icon `kind` (WKT_*); size: 6 px at least
 ```
 
 An app's icon: drawn in the size x size box at (x, y), `ink` the text's colour (greyed when off).

@@ -88,9 +88,13 @@ static int g_fallbackFam = -1;
 static unsigned char g_gamma[256];	// coverage -> opacity (a slightly heavier stroke on screen)
 
 // ---- small helpers -----------------------------------------------------------------------------------
+// A string's length in bytes (0 for a null pointer).
 static inline int s_len (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
+// Copies s into d, cut to cap - 1 bytes and always ended by a 0 (a null s gives an empty string).
 static inline void s_cpy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
+// An ASCII capital letter as its small letter, anything else unchanged.
 static inline int lc (int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
+// Compares two strings with ASCII letters' case ignored, returning 0 when equal, else < 0 or > 0 as strcmp.
 static int s_icmp (const char *a, const char *b)
 {
 	for (;; a++, b++)
@@ -99,9 +103,12 @@ static int s_icmp (const char *a, const char *b)
 		if (x != y || !x) return x - y;
 	}
 }
+// The big-endian 16-bit value at p.
 static unsigned be16 (const unsigned char *p) { return (unsigned) p[0] << 8 | p[1]; }
+// The big-endian 32-bit value at p.
 static unsigned be32 (const unsigned char *p) { return (unsigned) p[0] << 24 | (unsigned) p[1] << 16 | (unsigned) p[2] << 8 | p[3]; }
 
+// Reads n bytes of the open file f at offset pos into buf, false when the seek fails or fewer bytes come.
 static bool read_at (void *f, unsigned pos, void *buf, unsigned n)
 {
 	if (kapi_seek (f, pos) < 0) return false;
@@ -177,12 +184,14 @@ static bool scan_file (const char *path, FaceFile &ff)
 	return ok;
 }
 
+// True when the file name n ends in ".ttf" (letters' case ignored).
 static bool is_ttf (const char *n)
 {
 	int l = s_len (n);
 	return l > 4 && n[l - 4] == '.' && lc (n[l - 3]) == 't' && lc (n[l - 2]) == 't' && lc (n[l - 1]) == 'f';
 }
 
+// Adds every .ttf file of the folder dir that scan_file accepts to g_face (MAXFACE files at most).
 static void scan_dir (const char *dir)
 {
 	void *d = kapi_opendir (dir);
@@ -228,6 +237,7 @@ static void add_to_family (int fi)
 }
 
 // ---- the families -------------------------------------------------------------------------------------
+// Starts FreeType and sorts the fonts of SD:/res/fonts and SD:/fonts into families (once), false when FreeType fails or no TrueType font is there.
 static bool init ()
 {
 	if (g_init) return g_ok;
@@ -258,8 +268,11 @@ static bool init ()
 	return g_ok;
 }
 
+// The number of families init () found.
 static int count () { return g_nfam; }
+// Family i's name, "" when there is no such family.
 static const char *name (int i) { return i >= 0 && i < g_nfam ? g_fam[i].name : ""; }
+// A family's index by its name (letters' case ignored), -1 when there is none.
 static int find (const char *n)
 {
 	for (int i = 0; i < g_nfam; i++) if (s_icmp (g_fam[i].name, n) == 0) return i;
@@ -291,6 +304,7 @@ static FT_Face open_face (int fi)
 }
 
 // ---- sized fonts --------------------------------------------------------------------------------------
+// Frees a font's glyph table and its bitmaps and lowers the cache's byte count (the Font itself stays).
 static void free_glyphs (Font *f)
 {
 	for (int i = 0; i < f->cap; i++)
@@ -300,6 +314,8 @@ static void free_glyphs (Font *f)
 	f->tab = 0; f->cap = f->n = 0; f->bytes = 0;
 }
 
+// Builds a family's style at size64 (1/64 px, 1 px at least) with its metrics and an empty glyph table, 0 when the family or its face file fails.
+// A style the family lacks is made from another of its files (bold thickened, italic slanted).
 static Font *make (int fam, int style, int size64)
 {
 	if (fam < 0 || fam >= g_nfam) return 0;
@@ -404,6 +420,7 @@ static void trim (unsigned maxBytes = 6u << 20, int maxFonts = 96)
 }
 
 // ---- glyphs -------------------------------------------------------------------------------------------
+// The glyph table's slot for the character cp, either the one holding it or the empty one where it goes.
 static Glyph *slot (Font *f, unsigned cp)
 {
 	unsigned m = (unsigned) f->cap - 1, h = (cp * 2654435761u) & m;
@@ -411,6 +428,7 @@ static Glyph *slot (Font *f, unsigned cp)
 	return &f->tab[h];
 }
 
+// Doubles the glyph table and puts its glyphs back in their new slots (earlier Glyph pointers are stale).
 static void grow (Font *f)
 {
 	Glyph *old = f->tab; int oc = f->cap;
@@ -421,6 +439,8 @@ static void grow (Font *f)
 	delete[] old;
 }
 
+// A character's cached glyph entry (0 is read as a space), made at its first use with its glyph index and advance.
+// A character the font lacks comes from DejaVu Sans (nowhere either: gi 0, half the size wide). The pointer holds until the table grows.
 static Glyph *glyph (Font *f, unsigned cp)
 {
 	if (cp == 0) cp = ' ';
@@ -455,8 +475,10 @@ static Glyph *glyph (Font *f, unsigned cp)
 	return g;
 }
 
+// A character's advance in 1/64 px, 0 without a font.
 static int advance (Font *f, unsigned cp) { return f ? glyph (f, cp)->adv : 0; }
 
+// The kerning between the characters a and b in 1/64 px, 0 when there is none (no font, no kerning table, a glyph from the fallback font).
 static int kern (Font *f, unsigned a, unsigned b)
 {
 	if (!f) return 0;
@@ -505,6 +527,7 @@ static void render (Font *f, Glyph *g, int ph)
 	(void) f;
 }
 
+// Lays the colour c (0xRRGGBB) over the pixel d at opacity a (0..255) keeping d's top byte, or replaces d by c when a >= 255.
 static inline void blend (unsigned &d, unsigned c, int a)
 {
 	if (a >= 255) { d = c; return; }

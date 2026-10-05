@@ -140,6 +140,7 @@ private:
 // "Selawik"...; DejaVu Sans when absent) at px pixels. False: no TrueType font (uikit keeps its bitmap
 // fonts). Call it before building the widgets.
 static FtTextFace *g_ftUIKitFace;		// (the one ft_uikit_install made)
+// Installs FreeType's text for every uikit widget with the family by name (DejaVu Sans when absent) at px pixels, false when the card has no TrueType font.
 static inline bool ft_uikit_install (const char *family, int px)
 {
 	if (!g_ftUIKitFace) g_ftUIKitFace = new FtTextFace;

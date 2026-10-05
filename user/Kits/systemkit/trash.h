@@ -16,7 +16,7 @@
 #define TRASH_DIR	"SD:/.Trash"
 #define TRASH_FILES	"SD:/.Trash/files"
 #define TRASH_INFO	"SD:/.Trash/info"
-SK_API void trash_ensure (void);
+SK_API void trash_ensure (void);	// make the trash's folders (TRASH_DIR, TRASH_FILES, TRASH_INFO) if they are not there
 SK_API void trash_info_path_ (char *out, int cap, const char *name);
 // Move `path` to the trash. Returns true on success.
 SK_API bool trash_move (const char *path);

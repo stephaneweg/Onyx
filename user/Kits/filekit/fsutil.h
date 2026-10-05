@@ -18,10 +18,10 @@
 
 #define FS_NAMEL	72
 #define FS_PATHL	300
-FS_API int fs_len (const char *s);
-FS_API void fs_copy (char *d, const char *s, int cap);
-FS_API char fs_lower (char c);
-FS_API int fs_ci_cmp (const char *a, const char *b);
+FS_API int fs_len (const char *s);	// a string's length in bytes (0 for a null pointer)
+FS_API void fs_copy (char *d, const char *s, int cap);	// s into d, cut to cap - 1 bytes, always ended by a 0
+FS_API char fs_lower (char c);	// an ASCII capital as its small letter, anything else unchanged
+FS_API int fs_ci_cmp (const char *a, const char *b);	// strcmp with ASCII letters' case ignored: 0 equal, else < 0 or > 0
 // out = dir + "/" + name (no doubled slash).
 FS_API void fs_join (char *out, int cap, const char *dir, const char *name);
 // The last path component (points into `path`).

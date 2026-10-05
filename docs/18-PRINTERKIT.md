@@ -85,12 +85,12 @@ Everything the headers declare, in their order — the details are in each heade
 | `print_printers` | -> how many | `printerkit.h` |
 | `print_printer_media` | a paper of a printer | `printerkit.h` |
 | `print_printer_add` | 1 / 0 (err: why) | `printerkit.h` |
-| `print_printers_find` |  | `printerkit.h` |
-| `print_printer_remove` |  | `printerkit.h` |
-| `print_printer_default` |  | `printerkit.h` |
+| `print_printers_find` | the printers found on the network into out (max, 16 at most) -> how many (0: none, no print service) | `printerkit.h` |
+| `print_printer_remove` | taken off the list, by its name -> 1 / 0 (not known; the PDF printer stays) | `printerkit.h` |
+| `print_printer_default` | made the default printer, by its name -> 1 / 0 (not known) | `printerkit.h` |
 | `print_printer_status` | asked now: 1 ready (text: ink...), 0 (text: why) | `printerkit.h` |
 | `print_jobs` | -> how many (the queue, then the last finished) | `printerkit.h` |
-| `print_job_cancel` |  | `printerkit.h` |
+| `print_job_cancel` | a waiting or printing job stopped -> 1 / 0 (no such job, no print service) | `printerkit.h` |
 | `print_jobs_forget` | the finished jobs dropped from the list | `printerkit.h` |
 
 ---
@@ -260,12 +260,12 @@ the local network searched for printers (mDNS / DNS-SD, as AirPrint: a few secon
 
 ```cpp
 typedef struct PrintFound { char address[32], name[64], model[64]; int usable; } PrintFound;
-int  print_printers_find (PrintFound *out, int max);
-int  print_printer_remove (const char *name);
-int  print_printer_default (const char *name);
+int  print_printers_find (PrintFound *out, int max);	// the printers found on the network into out (max, 16 at most) -> how many (0: none, no print service)
+int  print_printer_remove (const char *name);	// taken off the list, by its name -> 1 / 0 (not known; the PDF printer stays)
+int  print_printer_default (const char *name);	// made the default printer, by its name -> 1 / 0 (not known)
 int  print_printer_status (const char *name, char *text, int cap);	// asked now: 1 ready (text: ink...), 0 (text: why)
 int  print_jobs (PrintJobInfo *out, int max);			// -> how many (the queue, then the last finished)
-int  print_job_cancel (unsigned id);
+int  print_job_cancel (unsigned id);	// a waiting or printing job stopped -> 1 / 0 (no such job, no print service)
 void print_jobs_forget (void);					// the finished jobs dropped from the list
 
 }

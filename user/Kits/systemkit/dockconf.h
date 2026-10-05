@@ -32,8 +32,8 @@ struct DockConf
 	char launcher[DOCK_MAXLAUNCHERS][32]; int nlaunchers;
 	char desk[DOCK_MAXDESKS][24]; int ndesks;
 };
-SK_API void dc_copy (char *d, const char *s, int cap);
-SK_API void dockconf_defaults (DockConf &c);
+SK_API void dc_copy (char *d, const char *s, int cap);	// s (0: "") copied into d, cut at cap - 1 characters, NUL-terminated
+SK_API void dockconf_defaults (DockConf &c);	// the dock without a file: 5 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4"
 // A value's two parts: "Productivity, tinypad" -> "Productivity" and "tinypad".
 SK_API void dc_split (const char *v, char *a, int acap, char *b, int bcap);
 // -> false: no file (the defaults)
