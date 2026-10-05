@@ -183,6 +183,8 @@ public:
 	int hoverX, hoverY;
 	Panel *client;
 	Overlay *ov;
+	Scrollbar *vsb, *hsb;				// shown when the window drawn is larger than the designer
+	int maxX = 0, maxY = 0;				// how far it scrolls
 	Vec<char *> pool;				// the drop-downs' options (alive while their widgets are)
 	Vec<const char **> optsPool;
 	unsigned lastClick;
@@ -192,7 +194,40 @@ public:
 		hoverX (-1), hoverY (-1), client (0), lastClick (0)
 	{
 		ov = new Overlay (this, w, h); addChild (ov);
+		vsb = new Scrollbar (0, 0, UK_SBW, 10, true, 0, 0, onScrollV); vsb->hidden = true; addChild (vsb);
+		hsb = new Scrollbar (0, 0, 10, UK_SBW, false, 0, 0, onScrollH); hsb->hidden = true; addChild (hsb);
 	}
+	static void onScrollV (Widget &w) { Designer *d = (Designer *) w.parent; if (d) { d->sy = ((Scrollbar &) w).value; d->scrolled (); } }
+	static void onScrollH (Widget &w) { Designer *d = (Designer *) w.parent; if (d) { d->sx = ((Scrollbar &) w).value; d->scrolled (); } }
+	// Where the window is drawn for the scroll, and the bars: the room is the window, its title, a margin around
+	// and the place of the chosen element's label under it
+	void origin ()
+	{
+		int mh = menuH ();
+		int cw = winW + 48, ch = TITLE_H + winH + mh + 24 + 44;
+		for (int pass = 0; pass < 2; pass++)		// (a bar takes room: the other may then be needed)
+		{
+			int vw = width - (maxY > 0 ? UK_SBW : 0), vh = height - (maxX > 0 ? UK_SBW : 0);
+			maxX = imax (0, cw - vw); maxY = imax (0, ch - vh);
+		}
+		sx = imax (0, imin (sx, maxX)); sy = imax (0, imin (sy, maxY));
+		int vw = width - (maxY > 0 ? UK_SBW : 0);
+		ox = (maxX > 0 ? 24 : imax (24, (vw - winW) / 2)) - sx; oy = 24 + TITLE_H - sy;
+		vsb->hidden = maxY == 0; hsb->hidden = maxX == 0;
+		vsb->vmax = maxY; vsb->value = sy; hsb->vmax = maxX; hsb->value = sx;
+		vsb->left = width - UK_SBW; vsb->top = 0; vsb->Widget::resizeTo (UK_SBW, imax (10, height - (maxX > 0 ? UK_SBW : 0)));
+		hsb->left = 0; hsb->top = height - UK_SBW; hsb->Widget::resizeTo (imax (10, width - (maxY > 0 ? UK_SBW : 0)), UK_SBW);
+		vsb->invalidate (true); hsb->invalidate (true);
+	}
+	// Scrolled (a bar, the wheel): the window drawn moves -- nothing is made again
+	void scrolled ()
+	{
+		origin ();
+		if (client) { client->left = ox; client->top = oy; }
+		redraw ();
+		invalidate (true);
+	}
+	void scrollBy (int dx, int dy) { sx += dx; sy += dy; scrolled (); }
 	~Designer () { freePool (); }
 	void freePool () { for (int i = 0; i < pool.n; i++) free (pool[i]); pool.clear (); for (int i = 0; i < optsPool.n; i++) delete[] optsPool[i]; optsPool.clear (); }
 	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); ov->resizeTo (w, h); rebuild (); }
@@ -209,11 +244,12 @@ public:
 		form_size (*form, &winW, &winH);
 		int mh = menuH ();
 		form_layout (*form, winW, winH + mh, true);
-		ox = imax (24, (width - winW) / 2) - sx; oy = 24 + TITLE_H - sy;
-		if (width - winW < 48) ox = 24 - sx;
+		origin ();
 		client = new GridPanel (ox, oy, winW, winH + mh);
 		make (form->root);
-		removeChild (ov); addChild (client); addChild (ov);
+		// (the overlay over the widgets, the bars over the overlay)
+		removeChild (ov); removeChild (vsb); removeChild (hsb);
+		addChild (client); addChild (ov); addChild (vsb); addChild (hsb);
 		redraw ();
 		invalidate (true);
 	}
@@ -501,7 +537,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
 	Designer *D = d;
 	if (mx == -1 && my == -1 && !bl && !wheel) return false;		// (the pointer left)
-	if (wheel) { if ((kapi_get_modifiers () & MOD_SHIFT)) D->sx = imax (0, D->sx - wheel * 24); else D->sy = imax (0, D->sy - wheel * 24); D->rebuild (); return true; }
+	if (wheel) { if ((kapi_get_modifiers () & MOD_SHIFT)) D->scrollBy (-wheel * 24, 0); else D->scrollBy (0, -wheel * 24); return true; }
 	if (!D->form || !D->form->root) return true;
 	D->relay ();
 	int W = D->winW, H = D->winH + D->menuH ();

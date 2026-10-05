@@ -55,6 +55,8 @@ THE FORM (Main.form)
   heights=40,*,auto), its children's sizes in order.
   The window: click its title bar, drag one of its eight handles. Split
   view: drag the bar between the drawing and the text.
+  A window larger than the drawing's room: its scroll bars, the wheel
+  (Shift: sideways).
 
   USER CONTROLS: Project > Add User Control... makes <Name>.form (its
   first line: UserControl <Name> size=320x200) and <Name>.bas. Drawn like

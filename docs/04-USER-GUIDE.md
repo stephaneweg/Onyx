@@ -4344,7 +4344,8 @@ of its files); **File ▸ Open the Example** opens *Converter*. QBStudio opens t
 **In the designer**: the window (or the user control) is sized with the mouse — click its title bar to choose
 it, then drag any of its eight handles (the corner at the bottom right works without choosing it). In the
 **Split** view a **bar** lies between the drawing and the form's text: dragged up or down, it shares the room
-between them (kept from one session to the next).
+between them (kept from one session to the next). A window larger than the drawing's room is
+scrolled: its bars at the right and at the bottom, the wheel (Shift: sideways).
 
 **The window.** The toolbar: New, Open, Save all, Undo / Redo, Cut / Copy / Paste, Find, **Run** (F5), **Check**
 (compiled, not run), **Make App**, and the form's views — **Design**, **Split** (the designer over the form's text),
