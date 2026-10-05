@@ -53,7 +53,8 @@ THE FORM (Main.form)
   pixels, then the rest" -- on controls and on containers (a Row of
   Columns); or on the Row itself: widths=200,*,100 (a Column's:
   heights=40,*,auto), its children's sizes in order.
-  The window: click its title bar, drag one of its eight handles. Split
+  The window: click its title bar, drag one of its eight handles. A
+  control, a container: chosen, its handles set its width and height. Split
   view: drag the bar between the drawing and the text.
   A window larger than the drawing's room: its scroll bars, the wheel
   (Shift: sideways).
