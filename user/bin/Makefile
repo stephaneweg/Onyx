@@ -238,7 +238,7 @@ $(TLS_PROGS): %.elf: %.cpp $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	  -L$(MBEDTLS_DIR)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o
 # pkg (the packages, docs/pkg/README.md): HTTPS + the Archiver's ZIP engine + zlib
-$(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../Apps/archiver/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
+$(PKG_PROGS): %.elf: %.cpp arccli.h ../pkg/pkglib.h $(wildcard ../filekit/*.h) $(LIBC_DEP) ../http.hpp ../tls/onyx_tls.hpp
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -DPKG_NET -DONYX_HTTP_TLS -I$(MBEDTLS_DIR)/include -I$(ZLIB_DIR) -Wno-maybe-uninitialized -Wno-format-truncation \
@@ -276,7 +276,7 @@ vncd.elf rdpd.elf: remotekeys.h
 
 # zip / unzip (C++ on newlib, the Archiver's engine: ../Apps/archiver/ops.h) with the vendored zlib
 ARC_PROGS = zip.elf unzip.elf
-$(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../Apps/archiver/*.h) $(LIBC_DEP)
+$(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../filekit/*.h) $(LIBC_DEP)
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/crt0libc.S -o $*.crt0.o
 	$(CC)  $(CFLAGS_LIBC) -c ../libc/onyx_syscalls.c -o $*.sys.o
 	$(CXX) $(CXXFLAGS_LIBC) -I$(ZLIB_DIR) -Wno-maybe-uninitialized -ffunction-sections -fdata-sections -Wl,--gc-sections \

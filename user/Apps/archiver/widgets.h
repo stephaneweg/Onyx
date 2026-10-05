@@ -642,19 +642,19 @@ public:
 		// the formats
 		int fy = zy + zh + 28;
 		small_v (canvas, mx - small_w ("FORMATS", 2) / 2, fy, 16, "FORMATS", dim_ink (), 2);
-		static const struct { const char *n, *d; unsigned c; } F[] = {
-			{ "ZIP", "open, extract, add, delete", 0x4EA05C }, { "7z", "coming next", 0xA89C94 },
-			{ "TAR, .tar.gz", "coming next", 0xA89C94 }, { "RAR", "read only, coming next", 0xA89C94 } };
-		int cw[4], tot = 0;
-		for (int i = 0; i < 4; i++) { int w1 = uk_tw (F[i].n, 2), w2 = small_w (F[i].d); cw[i] = (w1 > w2 ? w1 : w2) + 34; tot += cw[i] + 10; }
+		// (asked from FileKit: what it reads is listed, what it also writes in green)
+		int nf = arc::formats (); if (nf > 6) nf = 6;
+		int cw[6], tot = 0;
+		for (int i = 0; i < nf; i++) { int w1 = uk_tw (arc::g_formats[i].name, 2), w2 = small_w (arc::g_formats[i].note); cw[i] = (w1 > w2 ? w1 : w2) + 34; tot += cw[i] + 10; }
 		int fx = mx - tot / 2;
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < nf; i++)
 		{
+			const struct fk_format &f = arc::g_formats[i];
 			uk_rbox (canvas, fx, fy + 24, cw[i], 50, 8, 0xFFFFFF, uk_mix (0xFFFFFF, C_FIELD, 128));
 			uk_rline (canvas, fx, fy + 24, cw[i], 50, 8, uk_tone (C_FIELD, 100), 200);
-			VPath p; p.circle (V (fx + 14), V (fy + 38), V (4)); p.fill (canvas, F[i].c);
-			text_v (canvas, fx + 24, fy + 28, 20, F[i].n, C_FIELD_TEXT, 2);
-			small_v (canvas, fx + 14, fy + 50, 18, F[i].d, dim_ink ());
+			VPath p; p.circle (V (fx + 14), V (fy + 38), V (4)); p.fill (canvas, f.can_write ? 0x4EA05C : 0x4E86C8);
+			text_v (canvas, fx + 24, fy + 28, 20, f.name, C_FIELD_TEXT, 2);
+			small_v (canvas, fx + 14, fy + 50, 18, f.note, dim_ink ());
 			fx += cw[i] + 10;
 		}
 		// the recent archives

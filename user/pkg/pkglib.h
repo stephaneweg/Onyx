@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "kapi.h"
-#include "Apps/archiver/ops.h"
+#include "filekit/ops.h"
 #include <mbedtls/sha256.h>
 #include <mbedtls/pk.h>
 #ifdef PKG_NET

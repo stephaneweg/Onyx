@@ -224,8 +224,8 @@ lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
 	$(AR) rcs $@ $^
 
 # ---- filekit.so: FileKit, what programs do with files (filekit/filekit.h; docs/03 "FileKit"): zlib
-# (third_party, compiled for the library), the Archiver's ZIP engine (Apps/archiver/arc.h, zip.h, ops.h:
-# compiled here once), ZIP archives in memory, whole files, trees copied / moved / removed, paths.
+# (third_party, compiled for the library), the archives' engine (filekit/arc.h, zip.h, tar.h, ops.h: ZIP read
+# and written, tar / tar.gz / gzip read -- the Archiver calls it through fk_arc_*), ZIP archives in memory, whole files, trees copied / moved / removed, paths.
 # Integer only in its interface; newlib's libc linked in. Exported: fk_*.
 ZLIB_SRC = ../third_party/zlib-1.3.1
 FK_ZOBJ = $(addprefix lib/fk/z_,adler32.o crc32.o deflate.o inflate.o inffast.o inftrees.o trees.o zutil.o)
@@ -233,7 +233,7 @@ FK_OBJ = lib/fk/fkcore.o $(FK_ZOBJ)
 lib/fk/z_%.o: $(ZLIB_SRC)/%.c
 	@mkdir -p lib/fk
 	$(CC) $(AK_FLAGS) -w -I$(ZLIB_SRC) -c $< -o $@
-lib/fk/fkcore.o: filekit/fkcore.cpp filekit/filekit.h $(wildcard Apps/archiver/arc.h Apps/archiver/zip.h Apps/archiver/ops.h) kapi.h $(LIB_DEP)
+lib/fk/fkcore.o: filekit/fkcore.cpp filekit/filekit.h $(wildcard filekit/*.h) kapi.h $(LIB_DEP)
 	@mkdir -p lib/fk
 	$(CXX) $(AK_CXXFLAGS) -Wall -Ifilekit -I$(ZLIB_SRC) -c $< -o $@
 lib/fk/fkso.o: filekit/fkso.c lib.h kapi.h
@@ -404,10 +404,10 @@ zlib/%.o: $(ZLIB_SRC)/%.c
 	$(CC) $(NL_CFLAGS) -w -c $< -o $@
 zlib/libz.a: $(ZLIB_OBJ)
 	$(AR) rcs $@ $^
-archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) fileassoc.h lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a zlib/libz.a \
-	      libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
-	$(CXX) $(NL_CXXFLAGS) -IApps/archiver -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
-	       lib/uikit.imp.a lib/ft.imp.a zlib/libz.a -lm -o $@
+archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) filekit/filekit.h filekit/arcbase.h filekit/arcpath.h fileassoc.h \
+	      lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a lib/filekit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+	$(CXX) $(NL_CXXFLAGS) -IApps/archiver -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
+	       lib/filekit.imp.a lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 
 # The shared clipboard (docs/clipboard/README.md): clipd, its service (no window, newlib), and clipboard, its widget
 # (the dock's button; FreeType's text). The apps reach clipd through clipboard.h (clipproto.h).
@@ -425,7 +425,7 @@ clipboard.elf: Apps/clipboard/main.cpp clipboard.h clipproto.h lib/ft.imp.a ft/u
 # The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
 # update daemon (no window) -- on pkg/pkglib.h as bin/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
 PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-PKG_DEPS = pkg/pkglib.h http.hpp tls/onyx_tls.hpp $(wildcard Apps/archiver/*.h) zlib/libz.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
+PKG_DEPS = pkg/pkglib.h http.hpp tls/onyx_tls.hpp $(wildcard filekit/*.h) zlib/libz.a libc/crt0libc.o libc/onyx_syscalls.o user.ld kapi.h
 pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) bmp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -Ift -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
 	       $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< lib/uikit.imp.a lib/ft.imp.a zlib/libz.a \

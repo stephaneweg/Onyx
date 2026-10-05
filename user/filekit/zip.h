@@ -1,5 +1,5 @@
 //
-// archiver/zip.h -- ZIP: read (the central directory, zip64, names in CP437 or UTF-8, Info-ZIP's
+// filekit/zip.h -- ZIP: read (the central directory, zip64, names in CP437 or UTF-8, Info-ZIP's
 // Unicode path), extract (stored, Deflate through zlib; ZipCrypto with a password), and write by
 // rewriting the archive into a new file: the entries kept copied as they are packed (a new local
 // header, the same bytes), the new ones stored or deflated (zlib, levels 1..9), the central

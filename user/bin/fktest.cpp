@@ -94,6 +94,91 @@ int main (void)
 	}
 	check ("a file that is not an archive is refused", fk_zip_open (D "/a/one.txt", err, sizeof err) == 0 || fk_zip_count (fk_zip_open (D "/a/one.txt", err, sizeof err)) == 0);
 
+	// the formats, asked; tar and gzip read
+	static struct fk_format fmt[8];
+	int nf = fk_arc_formats (fmt, 8);
+	bool zipw = false, tarr = false;
+	for (int i = 0; i < nf && i < 8; i++)
+	{
+		if (streq (fmt[i].name, "ZIP") && fmt[i].can_read && fmt[i].can_write) zipw = true;
+		if (streq (fmt[i].name, "TAR") && fmt[i].can_read && !fmt[i].can_write) tarr = true;
+	}
+	check ("the formats are told: ZIP read and written, TAR read", nf >= 4 && zipw && tarr);
+	check ("names told by their extension", fk_arc_is_name ("a/b/Photos.ZIP") == 1 && fk_arc_is_name ("x.tar.gz") == 1 && fk_arc_is_name ("x.txt") == 0);
+	{
+		// a tar of one folder and one file, made by hand (a header's sum counts its own field as spaces)
+		static unsigned char tar[512 * 6];
+		for (unsigned i = 0; i < sizeof tar; i++) tar[i] = 0;
+		for (int k = 0; k < 2; k++)
+		{
+			unsigned char *h = tar + (k == 0 ? 0 : 512);
+			const char *nm = k == 0 ? "docs/" : "docs/hello.txt";
+			for (int i = 0; nm[i]; i++) h[i] = (unsigned char) nm[i];
+			const char *mode = "0000644"; for (int i = 0; i < 7; i++) h[100 + i] = (unsigned char) mode[i];
+			const char *size = k == 0 ? "00000000000" : "00000000014"; for (int i = 0; i < 11; i++) h[124 + i] = (unsigned char) size[i];	// 12 bytes
+			const char *mt = "14000000000"; for (int i = 0; i < 11; i++) h[136 + i] = (unsigned char) mt[i];
+			h[156] = k == 0 ? '5' : '0';
+			const char *us = "ustar"; for (int i = 0; i < 5; i++) h[257 + i] = (unsigned char) us[i];
+			h[263] = '0'; h[264] = '0';
+			unsigned sum = 0; for (int i = 0; i < 512; i++) sum += (i >= 148 && i < 156) ? ' ' : h[i];
+			for (int i = 5; i >= 0; i--) { h[148 + i] = (unsigned char) ('0' + (sum & 7)); sum >>= 3; }
+			h[154] = 0; h[155] = ' ';
+		}
+		const char *body = "hello, tar!\n"; for (int i = 0; i < 12; i++) tar[1024 + i] = (unsigned char) body[i];
+		fk_save (D "/t.tar", tar, sizeof tar);
+		char f1[16] = "", why[120] = "";
+		check ("a tar is told from its bytes", fk_arc_probe (D "/t.tar", f1, sizeof f1, why, sizeof why) == 1 && streq (f1, "TAR"));
+		fk_arc *t = fk_arc_open (D "/t.tar", err, sizeof err);
+		int hi = t != 0 ? fk_zip_find (t, "docs/hello.txt") : -1;
+		check ("a tar opened: its entries, not writable", t != 0 && fk_zip_count (t) == 2 && hi >= 0 && fk_arc_writable (t) == 0);
+		check ("a tar's entry read", hi >= 0 && fk_zip_read (t, hi, &p, &pn) == 0 && pn == 12 && same (p, body, 12));
+		fk_free (p); p = 0;
+		check ("a tar is not changed", t != 0 && fk_arc_new_folder (t, "x", 0, 0) != 0);
+		fk_zip_close (t);
+		// ... the same inside a gzip
+		ok = fk_deflate (tar, sizeof tar, FK_GZIP, 6, &q, &qn) == 0 && fk_save (D "/t.tgz", q, qn) == 0;
+		fk_free (q); q = 0;
+		t = ok ? fk_arc_open (D "/t.tgz", err, sizeof err) : 0;
+		hi = t != 0 ? fk_zip_find (t, "docs/hello.txt") : -1;
+		check ("a tar.gz opened and read", t != 0 && streq (fk_arc_format (t), "TAR.GZ") && hi >= 0 && fk_zip_read (t, hi, &p, &pn) == 0 && pn == 12 && same (p, body, 12));
+		fk_free (p); p = 0;
+		struct fk_extract x;
+		for (unsigned i = 0; i < sizeof x; i++) ((char *) &x)[i] = 0;
+		x.size = sizeof x; x.dest = D "/untar"; x.layout = FK_LAYOUT_FLAT; x.exists = FK_EXISTS_REPLACE;
+		check ("... extracted flat", t != 0 && fk_arc_extract_with (t, &x) == 0 && x.files == 1 && fk_file_size (D "/untar/hello.txt") == 12);
+		fk_zip_close (t);
+		// a plain file gzipped: one entry, its name without ".gz"
+		ok = fk_deflate (g_data, 5000, FK_GZIP, 6, &q, &qn) == 0 && fk_save (D "/notes.txt.gz", q, qn) == 0;
+		fk_free (q); q = 0;
+		t = ok ? fk_arc_open (D "/notes.txt.gz", err, sizeof err) : 0;
+		struct fk_zip_entry ge;
+		check ("a .gz opened as one entry", t != 0 && streq (fk_arc_format (t), "GZIP") && fk_zip_count (t) == 1 && fk_zip_entry (t, 0, &ge)
+		       && streq (ge.name, "notes.txt") && ge.size == 5000 && fk_zip_read (t, 0, &p, &pn) == 0 && pn == 5000 && same (p, g_data, 5000));
+		fk_free (p); p = 0;
+		fk_zip_close (t);
+	}
+	// an archive changed through the generic calls
+	{
+		fk_arc *a = fk_arc_open (D "/t.zip", err, sizeof err);
+		const char *add[1] = { D "/m" };
+		int added = 0;
+		check ("files added to an archive", a != 0 && fk_arc_writable (a) == 1 && fk_arc_add (a, add, 1, "extra", 1, 1, 6, 0, 0, &added) == 0
+		       && added >= 3 && fk_zip_find (a, "extra/m/one.txt") >= 0);
+		check ("an entry renamed", a != 0 && fk_arc_rename (a, "hello.txt", "bonjour.txt", 0, 0) == 0 && fk_zip_find (a, "bonjour.txt") >= 0 && fk_zip_find (a, "hello.txt") < 0);
+		int cnt = a != 0 ? fk_zip_count (a) : 0;
+		char *sel = (char *) "";
+		static char flags[64];
+		for (int i = 0; i < 64; i++) flags[i] = 0;
+		int bi = a != 0 ? fk_zip_find (a, "bonjour.txt") : -1;
+		if (bi >= 0 && bi < 64) flags[bi] = 1;
+		sel = flags;
+		check ("an entry deleted", a != 0 && cnt <= 64 && fk_arc_delete (a, sel, 0, 0) == 0 && fk_zip_count (a) == cnt - 1 && fk_zip_find (a, "bonjour.txt") < 0);
+		char mn[28];
+		int ti = a != 0 ? fk_zip_find (a, "tree/b/two.bin") : -1;
+		check ("an entry tested, its method named", ti >= 0 && fk_arc_test (a, ti, 0, 0) == 0 && fk_arc_method_name (a, ti, mn, sizeof mn) && streq (mn, "Deflate"));
+		fk_zip_close (a);
+	}
+
 	// a ZIP archive in memory
 	fk_zipbuf *b = fk_zipbuf_new ();
 	ok = b != 0 && fk_zipbuf_add (b, "mimetype", "application/x-test", 18, 0) == 0 && fk_zipbuf_add (b, "content.xml", g_data, 20000, 6) == 0;

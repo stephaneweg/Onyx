@@ -928,20 +928,27 @@ built without the FPU calls it); a buffer the library returns (`void **out`) is 
 | Group | Calls | What it does |
 |---|---|---|
 | **Compression** | `fk_deflate (data, n, wrap, level, &out, &n)`, `fk_inflate (data, n, wrap, size_hint, &out, &n)`, `fk_crc32`, `fk_adler32` | **zlib** itself (1.3.1): `wrap` = `FK_RAW` (a ZIP entry's stream), `FK_ZLIB` (PNG, PDF), `FK_GZIP` (`.gz`, HTTP), `FK_AUTO` (inflate: zlib or gzip, told from the bytes). The inflated buffer has a 0 byte after its end. |
+| **Archives, any format** | `fk_arc_formats (list, max)`, `fk_arc_probe`, `fk_arc_is_name`; `fk_arc_open`, `fk_arc_new (path, "ZIP")`, `fk_arc_format`, `fk_arc_path`, `fk_arc_comment`, `fk_arc_writable`, `fk_arc_method_name`, `fk_arc_test`; `fk_arc_extract_with (a, &opts)`, `fk_arc_extract_bytes`; `fk_arc_add`, `fk_arc_add_conflicts`, `fk_arc_add_bytes`, `fk_arc_delete`, `fk_arc_rename`, `fk_arc_new_folder`, `fk_arc_write_empty` | **The formats are asked, not assumed** (`struct fk_format`: its name, its extensions, what can be done with it — read, written, with a password): today **ZIP** (read and written), **TAR**, **TAR.GZ** and **GZIP** (read; a gzip is unpacked to `SD:/tmp` first). An archive of any of them is one handle (`fk_arc`, the same as `fk_zip`: the `fk_zip_*` calls below work on it). Extraction with choices (`struct fk_extract`: the layout — full, from a folder, flat —, what to do with a file that exists, an `ask` callback, a selection of entries); changes rewrite the archive beside itself, then swap it in. **A format added to the library is one every program gets: the Archiver has no list of its own.** |
 | **A ZIP on the card** | `fk_zip_open` / `_close` / `_error` / `_password`, `fk_zip_count`, `fk_zip_entry (z, i, &e)`, `fk_zip_find`, `fk_zip_read` (to memory), `fk_zip_extract` (to a file), `fk_zip_extract_all (z, prefix, dest_dir, cb, user)` | **The Archiver's engine** (`Apps/archiver/arc.h`, `zip.h`, `ops.h`, compiled once here): ZIP64, old code pages, ZipCrypto passwords, CRC checked, names made safe for the card. `fk_progress` callback: bytes done of the total, the file being worked on; a non-zero answer stops. |
 | **A new ZIP** | `fk_zipw_create (path)`, `fk_zipw_add (w, disk_path, name)` (a file, or a folder and all it holds), `fk_zipw_add_data (w, name, data, n)`, `fk_zipw_level`, `fk_zipw_close (w, cb, user, err, cap)` | The entries are said first, the archive is written at the close (to `<path>.part`, then swapped in). |
 | **A ZIP in memory** | `fk_zipmem_count`, `fk_zipmem_entry`, `fk_zipmem_get (zip, n, name, &out, &n)`; `fk_zipbuf_new`, `fk_zipbuf_add (b, name, data, n, level)`, `fk_zipbuf_finish (b, &out, &n)` | A document read whole and built whole — `.docx`, `.xlsx`, `.odt`, OpenRaster: the plain format (no ZIP64, no password). Level 0 stores (an OpenDocument's `mimetype` first). |
 | **Files** | `fk_exists` (1 a file, 2 a folder), `fk_file_size`, `fk_load`, `fk_save`, `fk_mkdirs`, `fk_copy (src, dst, cb, user)`, `fk_move`, `fk_remove`, `fk_tree_size (path, &files, &folders)` | A file or a whole tree; `dst` is the new path itself. A folder is not copied into itself; a volume's root is never removed. |
 | **Paths** | `fk_path_name`, `fk_path_ext`, `fk_path_folder`, `fk_path_join`, `fk_path_unique` (`a.txt` → `a (2).txt`), `fk_human_size`, `fk_dos_time_str` | |
 
-- **Inside**: `filekit/fkcore.cpp` (the C interface over the Archiver's engine and zlib), `filekit/fkso.c`
+- **Inside**: `filekit/fkcore.cpp` (the C interface), the archives' engine — `filekit/arc.h` (the `Archive`
+  interface a format implements), `zip.h`, `tar.h`, `ops.h` (the formats' table `FORMATS`, opening by the
+  first bytes, extracting, the plans of a change); it was the Archiver's until 2026-10-05 —, `arcbase.h` /
+  `arcpath.h` (strings and paths, also included by the programs), `filekit/fkso.c`
   (the library's `malloc` over the importer's allocator); zlib's eight sources compiled for the library;
   newlib's libc linked in. The table: `filekit/filekit.abi` (append-only).
-- **Who uses it**: ImageKit (PNG's deflate and inflate, OpenRaster's ZIP). The Archiver, `/bin/zip`,
-  `/bin/unzip` and the package tools still compile the engine into themselves (they use its C++ classes);
+- **Who uses it**: **the Archiver** (wholly: `Apps/archiver/arcfk.h` gives its old `arc::` names over `fk_arc_*`;
+  its welcome page lists the formats the library tells) and ImageKit (PNG's deflate). `/bin/zip`, `/bin/unzip`
+  and the package tools still compile the engine into themselves (they use its C++ classes: `filekit/ops.h`);
   the office formats still use `img/pngsave.hpp`'s small ZIP — moving them here is DocumentKit's first step
   (IDEAS.md).
-- **Test**: `fktest` on the Pi (34 checks: compression there and back, an archive made and read on the
+- **A new format**: a class of `arc::Archive` in `filekit/` (`open`, `extract`, `rewrite` if it is written), a
+  line in `ops.h`'s `FORMATS` and in `archive_for` — nothing in the Archiver.
+- **Test**: `fktest` on the Pi (47 checks: the formats told, a tar / tar.gz / gzip read, an archive changed through `fk_arc_*`; compression there and back, an archive made and read on the
   card and in memory, a tree copied / moved / removed, the paths; everything under `SD:/tmp/fktest`).
 
 ### 5.9. ImageKit: pictures (`SD:/lib/imagekit.so`)

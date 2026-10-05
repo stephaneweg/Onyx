@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "kapi.h"
-#include "Apps/archiver/ops.h"		// arc::Archive, ZipArchive, Plan, the paths' helpers (zlib.h through zip.h)
+#include "ops.h"				// arc::Archive, ZipArchive, Plan, the paths' helpers (zlib.h through zip.h)
 #include "filekit.h"
 
 using namespace arc;
@@ -204,6 +204,174 @@ extern "C" int fk_zip_extract_all (fk_zip *z, const char *prefix, const char *de
 	free (sel);
 	if (!ok) { if (x.error[0]) a.fail (x.error); else if (pr.stopped) a.fail ("Stopped."); return -1; }
 	return x.files;
+}
+
+// ---- archives of any format ------------------------------------------------------------------------
+
+extern "C" int fk_arc_formats (struct fk_format *out, int max)
+{
+	for (int i = 0; out != 0 && i < NFORMATS && i < max; i++)
+	{
+		memset (&out[i], 0, sizeof out[i]);
+		scopy (out[i].name, FORMATS[i].name, sizeof out[i].name);
+		scopy (out[i].extensions, FORMATS[i].exts, sizeof out[i].extensions);
+		scopy (out[i].note, FORMATS[i].note, sizeof out[i].note);
+		out[i].can_read = FORMATS[i].read; out[i].can_write = FORMATS[i].write; out[i].can_password = FORMATS[i].password;
+	}
+	return NFORMATS;
+}
+extern "C" int fk_arc_probe (const char *path, char *format, int fcap, char *why, int wcap)
+{
+	char w0[200];
+	if (why == 0 || wcap <= 0) { why = w0; wcap = (int) sizeof w0; }
+	why[0] = 0;
+	if (format != 0 && fcap > 0) format[0] = 0;
+	if (path == 0) return 0;
+	Archive *a = archive_open (path, why, wcap);		// (opened: a tar.gz is only known from inside)
+	if (a == 0) return 0;
+	if (format != 0 && fcap > 0) scopy (format, a->format (), fcap);
+	delete a;
+	return 1;
+}
+extern "C" int fk_arc_is_name (const char *name)
+{
+	if (name == 0) return 0;
+	char low[300]; int n = 0;
+	for (const char *s = base_of (name); *s && n < 299; s++) low[n++] = lower (*s);
+	low[n] = 0;
+	for (int i = 0; i < NFORMATS; i++)
+	{
+		if (!FORMATS[i].read) continue;
+		for (const char *p = FORMATS[i].exts; *p; )
+		{
+			const char *e = p; while (*e && *e != ' ') e++;
+			int k = (int) (e - p);
+			if (n > k && low[n - k - 1] == '.' && !strncmp (low + n - k, p, (size_t) k)) return 1;
+			p = *e ? e + 1 : e;
+		}
+	}
+	return 0;
+}
+extern "C" fk_arc *fk_arc_open (const char *path, char *err, int cap)	{ return fk_zip_open (path, err, cap); }
+extern "C" fk_arc *fk_arc_new (const char *path, const char *format)
+{
+	if (path == 0 || !path[0] || (format != 0 && format[0] && ci_cmp (format, "ZIP"))) return 0;
+	fk_zip *z = (fk_zip *) malloc (sizeof (fk_zip));
+	if (z == 0) return 0;
+	z->a = archive_new (path);
+	return z;
+}
+extern "C" const char *fk_arc_format (fk_arc *a)		{ return a != 0 ? a->a->format () : ""; }
+extern "C" const char *fk_arc_path (fk_arc *a)			{ return a != 0 ? a->a->path : ""; }
+extern "C" const char *fk_arc_comment (fk_arc *a)		{ return a != 0 && a->a->comment != 0 ? a->a->comment : ""; }
+extern "C" int fk_arc_writable (fk_arc *a)			{ return a != 0 && a->a->writable () ? 1 : 0; }
+extern "C" int fk_arc_method_name (fk_arc *a, int i, char *out, int cap)
+{
+	if (out == 0 || cap <= 0) return 0;
+	out[0] = 0;
+	if (a == 0 || i < 0 || i >= a->a->n) return 0;
+	scopy (out, a->a->methodName (a->a->e[i]), cap);
+	return 1;
+}
+extern "C" int fk_arc_test (fk_arc *a, int i, fk_progress cb, void *user)
+{
+	if (a == 0 || i < 0 || i >= a->a->n) return -1;
+	if (a->a->e[i].dir) return 0;
+	NullSink ns;
+	CbProgress pr (cb, user, a->a->e[i].size);
+	return a->a->extract (i, ns, &pr) ? 0 : -1;
+}
+extern "C" unsigned long long fk_arc_extract_bytes (fk_arc *a, const char *sel)
+{
+	if (a == 0) return 0;
+	Extract x; x.a = a->a; x.sel = sel;
+	return extract_total (x);
+}
+struct AskCtx { int (*ask) (void *, const char *); void *user; };
+static int ask_relay (void *ctx, const char *path)
+{
+	AskCtx *c = (AskCtx *) ctx;
+	return c->ask != 0 ? c->ask (c->user, path) : ANS_SKIP;		// (the answers' numbers are the same)
+}
+extern "C" int fk_arc_extract_with (fk_arc *a, struct fk_extract *o)
+{
+	if (a == 0 || o == 0 || o->size < sizeof (struct fk_extract) || o->dest == 0) return -1;
+	Extract x;
+	x.a = a->a; x.sel = o->selected;
+	scopy (x.dest, o->dest, sizeof x.dest);
+	scopy (x.current, o->from != 0 ? o->from : "", sizeof x.current);
+	x.layout = o->layout == FK_LAYOUT_FROM ? LAY_FROM_CURRENT : o->layout == FK_LAYOUT_FLAT ? LAY_FLAT : LAY_FULL;
+	x.overwrite = o->exists == FK_EXISTS_REPLACE ? OW_REPLACE : o->exists == FK_EXISTS_SKIP ? OW_SKIP
+		    : o->exists == FK_EXISTS_KEEP_BOTH ? OW_KEEP_BOTH : OW_ASK;
+	AskCtx ac = { o->ask, o->user };
+	x.ask = ask_relay; x.askCtx = &ac;
+	CbProgress pr (o->progress, o->user, extract_total (x));
+	bool ok = run_extract (x, &pr);
+	o->files = x.files; o->skipped = x.skipped;
+	if (!ok) { a->a->fail (x.error[0] ? x.error : pr.stopped ? "Cancelled." : "The extraction failed."); return -1; }
+	return 0;
+}
+static bool changeable (fk_arc *a)
+{
+	if (a == 0) return false;
+	if (!a->a->writable ()) { a->a->fail ("This format is read only."); return false; }
+	return true;
+}
+extern "C" int fk_arc_add (fk_arc *a, const char *const *paths, int n, const char *into, int keep, int replace, int level,
+			   fk_progress cb, void *user, int *added)
+{
+	if (added != 0) *added = 0;
+	if (!changeable (a) || paths == 0 || n <= 0) return -1;
+	AddSet s; plan_add (*a->a, s, paths, n, into != 0 ? into : "", keep != 0, replace != 0);
+	u64 total = s.bytes;
+	for (int k = 0; k < s.plan.nkeep; k++) total += a->a->e[s.plan.keep[k]].packed;
+	CbProgress pr (cb, user, total);
+	return op_add (*a->a, paths, n, into != 0 ? into : "", keep != 0, replace != 0, level < 0 ? 6 : level > 9 ? 9 : level, &pr, added) ? 0 : -1;
+}
+extern "C" int fk_arc_add_conflicts (fk_arc *a, const char *const *paths, int n, const char *into, int keep)
+{
+	if (a == 0 || paths == 0 || n <= 0) return 0;
+	return add_conflicts (*a->a, paths, n, into != 0 ? into : "", keep != 0);
+}
+extern "C" unsigned long long fk_arc_add_bytes (fk_arc *a, const char *const *paths, int n, const char *into, int keep, int replace)
+{
+	if (a == 0 || paths == 0 || n <= 0) return 0;
+	AddSet s; plan_add (*a->a, s, paths, n, into != 0 ? into : "", keep != 0, replace != 0);
+	u64 total = s.bytes;
+	for (int k = 0; k < s.plan.nkeep; k++) total += a->a->e[s.plan.keep[k]].packed;
+	return total;
+}
+static u64 kept_bytes (Archive &a, const char *drop)
+{
+	u64 t = 0;
+	for (int i = 0; i < a.n; i++) if (drop == 0 || !drop[i]) t += a.e[i].packed;
+	return t;
+}
+extern "C" int fk_arc_delete (fk_arc *a, const char *sel, fk_progress cb, void *user)
+{
+	if (!changeable (a) || sel == 0) return -1;
+	CbProgress pr (cb, user, kept_bytes (*a->a, sel));
+	return op_delete (*a->a, sel, &pr) ? 0 : -1;
+}
+extern "C" int fk_arc_rename (fk_arc *a, const char *from, const char *to, fk_progress cb, void *user)
+{
+	if (!changeable (a) || from == 0 || to == 0 || !from[0] || !to[0]) return -1;
+	CbProgress pr (cb, user, kept_bytes (*a->a, 0));
+	return op_rename (*a->a, from, to, &pr) ? 0 : -1;
+}
+extern "C" int fk_arc_new_folder (fk_arc *a, const char *name, fk_progress cb, void *user)
+{
+	if (!changeable (a) || name == 0 || !name[0]) return -1;
+	CbProgress pr (cb, user, kept_bytes (*a->a, 0));
+	return op_new_folder (*a->a, name, &pr) ? 0 : -1;
+}
+extern "C" int fk_arc_write_empty (fk_arc *a)
+{
+	if (!changeable (a)) return -1;
+	Plan plan;
+	char p[300]; scopy (p, a->a->path, sizeof p);
+	if (!a->a->rewrite (plan, p, 0)) return -1;
+	return a->a->open (p) ? 0 : -1;
 }
 
 // ---- a new archive ----

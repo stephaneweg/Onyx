@@ -4,6 +4,9 @@
 // lib/filekit.imp.a and calls plain C functions (fk_*):
 //
 //   compression  zlib's deflate and inflate (raw, zlib or gzip wrapped), CRC-32, Adler-32
+//   archives     the formats known asked (fk_arc_formats), an archive of any of them opened, extracted
+//                with choices, changed (add, delete, rename) -- ZIP read and written, tar / tar.gz /
+//                gzip read
 //   ZIP          an archive on the card read (its entries, one read to memory or extracted, all of
 //                them) and made (files and folders of the card, buffers) -- the Archiver's engine:
 //                ZIP64, old code pages, ZipCrypto passwords;
@@ -12,7 +15,8 @@
 //   paths        the name, the extension, the folder of a path; two parts joined; a size for people
 //
 // Everything is integer and pointers: a program built without the FPU calls it. A buffer the library
-// returns (void **out) is freed with fk_free, never with free / delete. The first version: 2026-10-05.
+// returns (void **out) is freed with fk_free, never with free / delete. The first version: 2026-10-05;
+// the second (the same day): archives of any format, asked from the library (fk_arc_*), tar and gzip read.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -82,6 +86,77 @@ int fk_zipw_add (fk_zipw *w, const char *disk_path, const char *name);	// a file
 int fk_zipw_add_data (fk_zipw *w, const char *name, const void *data, unsigned n);	// a buffer as an entry (copied)
 void fk_zipw_level (fk_zipw *w, int level);				// 0 store, 1 fast, 6 (the default), 9
 int fk_zipw_close (fk_zipw *w, fk_progress cb, void *user, char *err, int cap);	// written -> 0 / -1 (err); w freed
+
+// ---- archives of any format the library knows (version 2, 2026-10-05) --------------------------
+// The formats are asked, not assumed: a program that shows archives (the Archiver) lists them from
+// here, so a format added to the library is one it has at once.
+struct fk_format
+{
+	char name[16];				// "ZIP", "TAR", "TAR.GZ", "GZIP"
+	char extensions[96];			// "zip jar docx ..." (lower case, a space between)
+	char note[80];				// what can be done with it, in a few words
+	int  can_read, can_write;		// opened and extracted; made and changed (add, delete, rename)
+	int  can_password;			// encrypted entries are read (with fk_arc_password)
+	int  reserved[4];
+};
+int fk_arc_formats (struct fk_format *out, int max);			// how many there are (out: up to max)
+// What the file at `path` is: 1 and its format's name -- or 0 and `why` ("7z archives are not supported yet.").
+int fk_arc_probe (const char *path, char *format, int fcap, char *why, int wcap);
+int fk_arc_is_name (const char *name);					// 1: its extension is a format's that is read
+
+// An archive opened: the same handle as fk_zip (fk_zip_count, _entry, _find, _read, _extract,
+// _extract_all, _password, _error and _close work on it whatever its format).
+typedef struct fk_zip fk_arc;
+fk_arc *fk_arc_open (const char *path, char *err, int cap);		// any format read; 0: err says why
+fk_arc *fk_arc_new (const char *path, const char *format);		// a new one, not on the card yet ("ZIP"; 0: not a format written)
+const char *fk_arc_format (fk_arc *a);					// "ZIP" ...
+const char *fk_arc_path (fk_arc *a);
+const char *fk_arc_comment (fk_arc *a);					// the archive's own ("": none)
+int fk_arc_writable (fk_arc *a);					// 1: it can be changed
+int fk_arc_method_name (fk_arc *a, int i, char *out, int cap);		// entry i: "Deflate", "Store, crypted"...
+int fk_arc_test (fk_arc *a, int i, fk_progress cb, void *user);	// entry i read and checked, nothing written -> 0 / -1
+
+// Extracting with choices.
+#define FK_LAYOUT_FULL		0		// the archive's folders kept
+#define FK_LAYOUT_FROM		1		// ... from the folder `from` down (what is above it dropped)
+#define FK_LAYOUT_FLAT		2		// the files alone, no folder
+#define FK_EXISTS_ASK		0		// a file that exists: ask (the callback), replace, skip, keep both
+#define FK_EXISTS_REPLACE	1
+#define FK_EXISTS_SKIP		2
+#define FK_EXISTS_KEEP_BOTH	3
+#define FK_ANSWER_REPLACE	1		// the callback's answers
+#define FK_ANSWER_SKIP		2
+#define FK_ANSWER_KEEP_BOTH	3
+#define FK_ANSWER_REPLACE_ALL	4
+#define FK_ANSWER_SKIP_ALL	5
+#define FK_ANSWER_CANCEL	(-1)
+struct fk_extract
+{
+	unsigned     size;			// sizeof (struct fk_extract)
+	const char  *dest;			// the folder to extract into (made)
+	const char  *selected;			// one byte an entry, not 0: taken (0: every entry)
+	const char  *from;			// FK_LAYOUT_FROM: the archive's folder shown
+	int	     layout, exists;
+	int	   (*ask) (void *user, const char *path);	// FK_EXISTS_ASK -> an FK_ANSWER_*
+	fk_progress  progress;
+	void	    *user;			// (both callbacks')
+	int	     files, skipped;		// out: what was done
+};
+int fk_arc_extract_with (fk_arc *a, struct fk_extract *x);		// 0 / -1 (fk_zip_error)
+unsigned long long fk_arc_extract_bytes (fk_arc *a, const char *selected);	// what that selection weighs
+
+// Changing an archive that can be (fk_arc_writable): it is rewritten beside itself, then swapped in,
+// and its entries are read again (the indexes change). -> 0 / -1 (fk_zip_error).
+// paths: files and folders of the card, put in the archive's folder `into` ("": its top);
+// keep_folders: a folder keeps its name and tree; replace: a name that exists is replaced, else skipped.
+int fk_arc_add (fk_arc *a, const char *const *paths, int n, const char *into, int keep_folders, int replace, int level,
+		fk_progress cb, void *user, int *added);
+int fk_arc_add_conflicts (fk_arc *a, const char *const *paths, int n, const char *into, int keep_folders);	// names that exist already
+unsigned long long fk_arc_add_bytes (fk_arc *a, const char *const *paths, int n, const char *into, int keep_folders, int replace);	// the work's size
+int fk_arc_delete (fk_arc *a, const char *selected, fk_progress cb, void *user);
+int fk_arc_rename (fk_arc *a, const char *from, const char *to, fk_progress cb, void *user);	// a file, or a folder and what is under it
+int fk_arc_new_folder (fk_arc *a, const char *name, fk_progress cb, void *user);
+int fk_arc_write_empty (fk_arc *a);					// a new archive put on the card with nothing in it
 
 // ---- a ZIP archive in memory (a document read whole: .docx, .xlsx, .odt, .ora ...) --------------
 int fk_zipmem_count (const void *zip, unsigned n);			// its entries, -1: not a ZIP

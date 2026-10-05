@@ -8,7 +8,7 @@
 // RAM: and handed over as files. The work is done in a thread (the window stays alive), its progress
 // in a box (Background / Cancel).
 //
-// A newlib uikit app with FreeType's text (user/Makefile's archiver.elf rule), zlib for Deflate. One
+// A newlib uikit app with FreeType's text (user/Makefile's archiver.elf rule); the archives are FileKit's (arcfk.h). One
 // translation unit: the engine (arc.h, zip.h, ops.h), the model (model.h), the widgets (widgets.h,
 // icons.h), the dialogs (dialogs.h).
 //
@@ -17,7 +17,7 @@
 #include "ft/uikitface.h"
 #include "uikit/uikit.h"
 #include "fileassoc.h"
-#include "ops.h"
+#include "arcfk.h"		// the archives: FileKit (SD:/lib/filekit.so)
 #include "model.h"
 #include "icons.h"
 #include "widgets.h"
@@ -374,8 +374,7 @@ static int job_thread (void *arg)
 		{
 			if (a->e[i].dir) continue;
 			j->file_ (a->e[i].name);
-			arc::NullSink ns;
-			if (!a->extract (i, ns, j)) { j->ok = false; arc::scopy (j->error, a->error, sizeof j->error); }
+			if (!a->test (i, j)) { j->ok = false; arc::scopy (j->error, a->error, sizeof j->error); }
 			else j->files++;
 		}
 		break;
@@ -398,12 +397,20 @@ struct Watch { char ram[300], entry[600], archive[300]; u64 size; unsigned crc; 
 static Watch g_watch[16]; static int g_nwatch;
 static bool file_sum (const char *p, u64 *size, unsigned *crc)
 {
-	arc::Reader r;
-	if (!r.open (p)) return false;
-	*size = r.size; *crc = 0;
-	if (r.size > 64u * 1024 * 1024) return true;		// (too big to read each time: the size alone)
-	unsigned char *b = (unsigned char *) malloc (65536); unsigned c = (unsigned) crc32 (0, 0, 0);
-	for (u64 left = r.size; b && left;) { unsigned k = left > 65536 ? 65536 : (unsigned) left; if (!r.read (b, k)) break; c = (unsigned) crc32 (c, b, k); left -= k; }
+	long long n = fk_file_size (p);
+	if (n < 0) return false;
+	*size = (u64) n; *crc = 0;
+	if (n > 64ll * 1024 * 1024) return true;		// (too big to read each time: the size alone)
+	void *f = kapi_open (p);
+	unsigned char *b = (unsigned char *) malloc (65536); unsigned c = 0;
+	for (u64 left = (u64) n; f && b && left;)
+	{
+		unsigned k = left > 65536 ? 65536 : (unsigned) left;
+		int r = kapi_read (f, b, k);
+		if (r <= 0) break;
+		c = fk_crc32 (c, b, (unsigned) r); left -= (unsigned) r;
+	}
+	if (f) kapi_close (f);
 	free (b); *crc = c;
 	return true;
 }
@@ -580,9 +587,7 @@ static void add_paths (char **paths, int np, const char *into, bool keepFolders,
 	j->paths = (char **) malloc (sizeof (char *) * (np ? np : 1)); j->npaths = np;
 	for (int i = 0; i < np; i++) j->paths[i] = arc::sdup (paths[i]);
 	arc::scopy (j->add.into, into, sizeof j->add.into); j->add.keepFolders = keepFolders; j->add.level = level; j->add.replace = replace;
-	arc::AddSet s; arc::plan_add (*g_arc, s, (const char *const *) paths, np, into, keepFolders, replace);
-	for (int k = 0; k < s.plan.nkeep; k++) j->total += g_arc->e[s.plan.keep[k]].packed;
-	j->total += s.bytes;
+	j->total += arc::add_bytes (*g_arc, (const char *const *) paths, np, into, keepFolders, replace);
 	keep_here (j);
 	start_job (j, "Adding");
 }
@@ -665,7 +670,7 @@ static void do_properties ()
 	b.row ("Archive", arc::base_of (g_arc->path));
 	dirname_of (g_arc->path, t, sizeof t); b.row ("Folder", t);
 	arc::scopy (t, g_arc->format (), sizeof t); if (!g_arc->writable ()) arc::scat (t, " (read only)", sizeof t); b.row ("Format", t);
-	{ arc::Reader r; r.open (g_arc->path); arc::human_size (r.size, t, sizeof t); b.row ("File size", t); }
+	{ long long fs = fk_file_size (g_arc->path); arc::human_size (fs > 0 ? (u64) fs : 0, t, sizeof t); b.row ("File size", t); }
 	arc::u64_str ((u64) g_model.n[0].files, t, sizeof t); b.row ("Files", t);
 	arc::human_size (g_model.n[0].size, t, sizeof t); b.row ("Original size", t);
 	arc::human_size (g_arc->totalPacked (), t, sizeof t);
@@ -685,19 +690,21 @@ static void do_open_dialog ()
 static void do_new (char **paths = 0, int np = 0)
 {
 	char p[300];
-	char def[128] = "New archive.zip";
-	if (np) { arc::scopy (def, arc::base_of (paths[0]), sizeof def); char *d = strrchr (def, '.'); if (d && d != def && !arc::path_is_dir (paths[0])) *d = 0; arc::scat (def, ".zip", sizeof def); }
+	char wext[12]; arc::format_ext (arc::format_written (), wext, sizeof wext);	// (the format FileKit writes: "zip")
+	char def[128] = "New archive."; arc::scat (def, wext, sizeof def);
+	if (np) { arc::scopy (def, arc::base_of (paths[0]), sizeof def); char *d = strrchr (def, '.'); if (d && d != def && !arc::path_is_dir (paths[0])) *d = 0; arc::scat (def, ".", sizeof def); arc::scat (def, wext, sizeof def); }
 	char dir[300]; if (np) dirname_of (paths[0], dir, sizeof dir); else arc::scopy (dir, g_lastDir, sizeof dir);
 	if (!uk_file_save (p, sizeof p, dir, def)) return;
-	char x[12]; arc::ext_of (p, x, sizeof x);
-	if (strcmp (x, "zip")) arc::scat (p, ".zip", sizeof p);
+	char x[12], wx[12]; arc::ext_of (p, x, sizeof x);
+	arc::format_ext (arc::format_written (), wx, sizeof wx);
+	if (!wx[0]) { uk_messagebox ("New Archive", "No archive format can be written.", MB_OK); return; }
+	if (strcmp (x, wx)) { arc::scat (p, ".", sizeof p); arc::scat (p, wx, sizeof p); }
 	if (arc::path_exists (p) && uk_messagebox ("New Archive", "That file exists. Replace it?", MB_YESNO) != 1) return;
 	if (arc::path_exists (p)) kapi_remove (p);
 	arc::Archive *a = arc::archive_new (p);
 	if (!np)
 	{
-		arc::Plan plan;
-		if (!a->rewrite (plan, p, 0)) { uk_messagebox ("New Archive", a->error, MB_OK); delete a; return; }
+		if (!a->writeEmpty ()) { uk_messagebox ("New Archive", a->error, MB_OK); delete a; return; }
 		delete a;
 		open_archive (p);
 		return;
@@ -706,8 +713,7 @@ static void do_new (char **paths = 0, int np = 0)
 	j->paths = (char **) malloc (sizeof (char *) * np); j->npaths = np;
 	for (int i = 0; i < np; i++) j->paths[i] = arc::sdup (paths[i]);
 	j->add.into[0] = 0; j->add.keepFolders = true; j->add.level = 6; j->add.replace = true;
-	arc::AddSet s; arc::plan_add (*a, s, (const char *const *) paths, np, "", true, true);
-	j->total = s.bytes;
+	j->total = arc::add_bytes (*a, (const char *const *) paths, np, "", true, true);
 	start_job (j, "Making the archive");
 }
 
@@ -722,8 +728,7 @@ void ui::app_activate (int item)
 	char name[600]; g_model.pathOf (node, name, sizeof name);
 	int e = g_model.n[node].entry;
 	if (e < 0) return;
-	char x[12]; arc::ext_of (name, x, sizeof x);
-	if (!strcmp (x, "zip"))
+	if (fk_arc_is_name (name))
 	{	// an archive in the archive: opened in its turn (from RAM:)
 	}
 	if (g_arc->e[e].encrypted && !g_password[0])
@@ -833,8 +838,9 @@ static void drop_clear ()
 
 static bool looks_like_archive (const char *p)
 {
+	if (fk_arc_is_name (p)) return true;			// (a format FileKit reads)
 	char x[12]; arc::ext_of (p, x, sizeof x);
-	static const char *e[] = { "zip", "jar", "7z", "rar", "tar", "tgz", "gz", "xz", "bz2", "zst", 0 };
+	static const char *e[] = { "7z", "rar", "xz", "bz2", "zst", 0 };	// (archives it does not read yet: it says so)
 	for (int i = 0; e[i]; i++) if (!strcmp (x, e[i])) return true;
 	return false;
 }

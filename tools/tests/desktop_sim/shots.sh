@@ -60,10 +60,10 @@ build () {
 		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libuikit.a" "$OUT/libft.a"
 		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
 	fi
-	if [ "$1" = archiver ]; then			# (newlib-like: FreeType, zlib)
+	if [ "$1" = archiver ]; then			# (newlib-like: FreeType; FileKit -- its engine and zlib -- compiled in)
 		mkdir -p "$OUT/zlib"
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/$f.o" || return 1; done
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp \
+		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/filekit -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp user/filekit/fkcore.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
 	if [ "$1" = media ]; then			# (newlib-like: FreeType; AudioKit: the decoders, MeltySynth)

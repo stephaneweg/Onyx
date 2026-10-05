@@ -1,5 +1,5 @@
 //
-// archiver/ops.h -- what the Archiver does with an archive, whatever its format: open one (the
+// filekit/ops.h -- what the Archiver does with an archive, whatever its format: open one (the
 // format from its first bytes), extract entries into a folder (the archive's folders kept, from
 // the current folder down, or flat; what to do when a file exists), and change it -- add files and
 // folders of the disk into one of its folders, delete, rename, make a folder -- by rewriting it into
@@ -11,81 +11,22 @@
 
 #include "arc.h"
 #include "zip.h"
+#include "tar.h"
+#include "arcpath.h"
 
 namespace arc {
 
-// ---- paths --------------------------------------------------------------------------------------------
-static inline void join (char *out, int cap, const char *a, const char *b)
-{
-	scopy (out, a, cap);
-	int n = (int) strlen (out);
-	if (n && out[n - 1] != '/' && out[n - 1] != ':' && b[0]) scat (out, "/", cap);
-	scat (out, b, cap);
-}
-static inline bool path_exists (const char *p) { void *h = kapi_open (p); if (h) { kapi_close (h); return true; } void *d = kapi_opendir (p); if (d) { kapi_closedir (d); return true; } return false; }
-static inline bool path_is_dir (const char *p) { void *d = kapi_opendir (p); if (d) { kapi_closedir (d); return true; } return false; }
-// Every folder of `path` made (kapi_mkdir makes one level; -1 when it exists).
-static inline void mkdirs (const char *path)
-{
-	char b[300]; scopy (b, path, sizeof b);
-	int start = 0;
-	for (int i = 0; b[i]; i++) if (b[i] == ':') { start = i + 1; break; }
-	while (b[start] == '/') start++;
-	for (int i = start; ; i++)
-	{
-		if (b[i] == '/' || b[i] == 0)
-		{
-			char c = b[i]; b[i] = 0;
-			if (b[start]) kapi_mkdir (b);
-			b[i] = c;
-			if (!c) break;
-		}
-	}
-}
-// An archive name made a safe name on the card: no "..", no absolute path, no drive, the characters
-// FAT refuses replaced by '_', no trailing dots or spaces in a part.
-static inline void safe_rel (const char *name, char *out, int cap)
-{
-	int k = 0;
-	const char *s = name;
-	if (s[0] && s[1] == ':') s += 2;
-	while (*s && k < cap - 1)
-	{
-		while (*s == '/') s++;
-		const char *e = s; while (*e && *e != '/') e++;
-		int len = (int) (e - s);
-		bool dots = (len == 1 && s[0] == '.') || (len == 2 && s[0] == '.' && s[1] == '.');
-		if (len && !dots)
-		{
-			if (k && k < cap - 1) out[k++] = '/';
-			int st = k;
-			for (int i = 0; i < len && k < cap - 1; i++)
-			{
-				unsigned char c = (unsigned char) s[i];
-				out[k++] = (c < 32 || strchr ("<>:\"|?*\\", c)) ? '_' : (char) c;
-			}
-			while (k > st && (out[k - 1] == '.' || out[k - 1] == ' ')) k--;
-			if (k == st) out[k++] = '_';
-		}
-		s = e;
-	}
-	out[k] = 0;
-}
-// "name.txt" -> "name (2).txt" ... the first that does not exist
-static inline void unique_path (char *path, int cap)
-{
-	if (!path_exists (path)) return;
-	char base[300], ext[40] = "";
-	scopy (base, path, sizeof base);
-	char *dot = strrchr (base, '.'), *sl = strrchr (base, '/');
-	if (dot && (!sl || dot > sl) && dot != base) { scopy (ext, dot, sizeof ext); *dot = 0; }
-	for (int i = 2; i < 1000; i++)
-	{
-		char num[12]; u64_str ((u64) i, num, sizeof num);
-		scopy (path, base, cap); scat (path, " (", cap); scat (path, num, cap); scat (path, ")", cap); scat (path, ext, cap);
-		if (!path_exists (path)) return;
-	}
-}
+// ---- the formats ------------------------------------------------------------------------------------------
+// What the engine knows: a program asks (FileKit's fk_arc_formats) instead of keeping its own list --
+// a format added here is one every program gets.
+struct Format { const char *name, *exts, *note; bool read, write, password; };
+static const Format FORMATS[] = {
+	{ "ZIP",    "zip jar docx xlsx pptx odt ods odp epub apk", "open, extract, add, delete; ZIP64, passwords", true, true,  true  },
+	{ "TAR",    "tar",                                         "open, extract",                                true, false, false },
+	{ "TAR.GZ", "tgz tar.gz",                                  "open, extract (unpacked to SD:/tmp first)",    true, false, false },
+	{ "GZIP",   "gz",                                          "one file: open, extract",                      true, false, false },
+};
+static const int NFORMATS = (int) (sizeof FORMATS / sizeof FORMATS[0]);
 
 // ---- opening ---------------------------------------------------------------------------------------------
 // The format from the first bytes (then the name): an Archive to open, or 0 (`why` says it).
@@ -103,8 +44,10 @@ static inline Archive *archive_for (const char *path, char *why, int cap)
 		return new ZipArchive;
 	if (m[0] == '7' && m[1] == 'z' && m[2] == 0xBC && m[3] == 0xAF) { scopy (why, "7z archives are not supported yet.", cap); return 0; }
 	if (m[0] == 'R' && m[1] == 'a' && m[2] == 'r' && m[3] == '!') { scopy (why, "RAR archives are not supported yet.", cap); return 0; }
-	if (m[0] == 0x1F && m[1] == 0x8B) { scopy (why, "gzip / tar.gz archives are not supported yet.", cap); return 0; }
-	if (!memcmp (m + 257, "ustar", 5)) { scopy (why, "tar archives are not supported yet.", cap); return 0; }
+	if (m[0] == 0x1F && m[1] == 0x8B) return new TarArchive;		// .gz, .tar.gz
+	if (!memcmp (m + 257, "ustar", 5) || !strcmp (x, "tar")) return new TarArchive;
+	if (m[0] == 'B' && m[1] == 'Z' && m[2] == 'h') { scopy (why, "bzip2 archives are not supported yet.", cap); return 0; }
+	if (m[0] == 0xFD && m[1] == '7' && m[2] == 'z' && m[3] == 'X') { scopy (why, "xz archives are not supported yet.", cap); return 0; }
 	if (r.size == 0 && !strcmp (x, "zip")) return new ZipArchive;
 	// a self-extracting ZIP (an .exe with the archive at its end): try ZIP
 	return new ZipArchive;
@@ -123,14 +66,6 @@ static inline Archive *archive_new (const char *path)
 	return a;
 }
 
-// ---- which entries: a folder selected is everything under it -----------------------------------------------
-// prefix "kernel/sys" -> the entries "kernel/sys" and "kernel/sys/..."
-static inline bool under (const char *name, const char *prefix)
-{
-	int n = (int) strlen (prefix);
-	if (!n) return true;
-	return !strncmp (name, prefix, (size_t) n) && (name[n] == 0 || name[n] == '/');
-}
 // A selection as a set of flags over the entries: the names given (files or folders, a folder
 // covering what is under it, implicit folders too).
 static inline char *select_names (const Archive &a, const char *const *names, int nn)
