@@ -237,6 +237,14 @@ void el_core_fullscreen (unsigned pid, int on)
 	}
 }
 
+void el_core_screen (int w, int h)
+{
+	g_nScreenWidth = w; g_nScreenHeight = h;
+	if (g_pElWM != 0) g_pElWM->OnScreenResized (w, h);
+	ScreenDirty ();
+	s_bFirst = TRUE;
+}
+
 void el_core_redraw (void)
 {
 	s_bFirst = TRUE;

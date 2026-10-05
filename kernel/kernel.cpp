@@ -612,6 +612,13 @@ public:
 				m_pWM->CompositorAlive ();
 				WsWatch ();
 				m_bFirst = TRUE;
+				// a new screen size asked for (kapi_screen_set): done here as always, between two
+				// of the server's presents (its display DMA over), then the server is told
+				if (s_nResizeSeq != s_nResizeDone && !s_bPresenting && m_pWM->FullscreenWindow () == 0)
+				{
+					Resize (nW, nH);
+					WsScreenResized (nW, nH);
+				}
 				CScheduler::Get ()->MsSleep (16);
 				continue;
 			}
@@ -704,7 +711,7 @@ int ScreenResizeRequest (int nW, int nH)
 	if (nW < SCREEN_MIN_W || nH < SCREEN_MIN_H || nW > SCREEN_MAX_W || nH > SCREEN_MAX_H || (nW & 1) != 0)
 		return -1;
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (!s_bCompositor || pWM == 0 || pWM->FullscreenWindow () != 0 || DebugConsoleActive () || WsDisplayOwned ())
+	if (!s_bCompositor || pWM == 0 || pWM->FullscreenWindow () != 0 || DebugConsoleActive ())
 		return -2;
 	static volatile boolean s_bBusy = FALSE;	// (one at a time)
 	if (s_bBusy) return -2;

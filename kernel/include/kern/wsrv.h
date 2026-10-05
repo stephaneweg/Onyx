@@ -58,6 +58,9 @@ unsigned WsFocusPid (void);
 // is told (it sends that program all the input, and shows nothing meanwhile).
 void WsFullscreen (unsigned nPid, boolean bOn);
 
+// The screen's size changed while the server owns the display (the compositor did it): told.
+void WsScreenResized (int nW, int nH);
+
 // A process is gone (its teardown: interrupts masked, nothing may wait).
 void WsOnProcessGone (unsigned nPid);
 

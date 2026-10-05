@@ -177,6 +177,15 @@ int el_serve (int demo)
 				case KAPI_WS_IN_KICK:
 					el_core_window_present (el_core_window_of ((unsigned) in[i].a));
 					break;
+				case KAPI_WS_IN_SCREEN:
+					if (in[i].x > 0 && in[i].y > 0 && (in[i].x != w || in[i].y != h))
+					{
+						unsigned *bigger = new unsigned[(unsigned long) in[i].x * in[i].y];
+						delete [] screen;
+						screen = bigger; w = in[i].x; h = in[i].y;
+						el_core_screen (w, h);
+					}
+					break;
 				case KAPI_WS_IN_FULLSCREEN:
 					el_core_fullscreen ((unsigned) in[i].a, (int) in[i].buttons);
 					break;

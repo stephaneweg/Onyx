@@ -123,7 +123,15 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      kernel-side window; Elegant told by the ring (`KAPI_WS_IN_FULLSCREEN`), all the input to that
      program, nothing shown meanwhile. Tried: `plasma` started on the Elegant desktop, Esc, the
      desktop back. Typing (Tinypad), a window dragged, the menu bar's drop-down: tried too.
-   - **Left in stage 3**: `screen_set` under Elegant; Elegant dying -> the kernel takes the display back (done) AND
+   - **Onyx Remote works on Elegant** (the user, connected by RDP during the trial of 2026-10-05:
+     "en rdp ça marche bien"): `rdpd` as it is on the card -- its `win_list` / `win_read` are
+     requests to Elegant (about 130 a second; 110 ms of read + compare a round: each read is a round
+     trip and a copy through the transfer buffer -- what the capture channel is for), its clicks
+     and keys go through `inject_*`.
+   - **`screen_set` under Elegant: written and built, NOT tried** (the user was on the Pi by RDP: no
+     restart then). The kernel's compositor does the resize as always (between two of Elegant's
+     presents), then tells Elegant (`KAPI_WS_IN_SCREEN`): a new screen buffer, `OnScreenResized`.
+   - **Left in stage 3**: Elegant dying -> the kernel takes the display back (done) AND
      starts it again (not done; its programs' buffers are kept for it: `bServer` in `wsrv.cpp`); the
      role given to the process the kernel started (today: the program named `elegant`); `rdpd` /
      Onyx Remote and `vncd` to check on Elegant (`win_list`, `win_read` by the transfer buffer,

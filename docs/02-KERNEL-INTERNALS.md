@@ -1250,8 +1250,9 @@ it), the surfaces, the clipboard — and **the full screen**: `fullscreen_begin`
 `fullscreen_direct` / `fullscreen_end` are the kernel's as before (its buffer, the direct mode: no round
 trip a frame), on the program's kernel-side window (AppKit makes the program a window in Elegant first);
 the kernel tells Elegant (`KAPI_WS_IN_FULLSCREEN`), which sends that program all the input and shows
-nothing meanwhile (`KAPI_WS_PRESENT` answers `-KAPI_EBUSY`), then draws the whole screen again. Not
-served yet under Elegant: `screen_set` (-2).
+nothing meanwhile (`KAPI_WS_PRESENT` answers `-KAPI_EBUSY`), then draws the whole screen again.
+`screen_set` is the kernel's too: its compositor does the resize between two of the server's presents and
+tells the server (`KAPI_WS_IN_SCREEN`).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32

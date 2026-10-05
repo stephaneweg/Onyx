@@ -175,6 +175,15 @@ boolean WsInputHeld (int nKey, boolean bDown)
 	return Push (Ev);
 }
 
+void WsScreenResized (int nW, int nH)
+{
+	if (!s_bOwned) return;
+	struct kapi_ws_input Ev;
+	memset (&Ev, 0, sizeof Ev);
+	Ev.type = KAPI_WS_IN_SCREEN; Ev.x = nW; Ev.y = nH;
+	Push (Ev);
+}
+
 void WsFullscreen (unsigned nPid, boolean bOn)
 {
 	if (!s_bOwned) return;

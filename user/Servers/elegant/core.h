@@ -83,6 +83,7 @@ unsigned el_core_focus_pid (void);		// the program that has the keyboard, 0: non
 int el_sys_attach (unsigned pid);
 int el_sys_name (unsigned pid, char *buf, unsigned cap);
 
+void el_core_screen (int w, int h);		// the screen's size changed: the windows kept on it, told
 void el_core_redraw (void);			// the whole screen at the next composition
 void el_core_fullscreen (unsigned pid, int on);	// a program took / gave back the full screen
 

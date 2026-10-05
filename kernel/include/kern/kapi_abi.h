@@ -1038,6 +1038,7 @@ struct kapi_ws_present
 #define KAPI_WS_IN_HELD		5	// a = a logical key code, buttons = 1 down / 0 up (injected: vncd, rdpd)
 #define KAPI_WS_IN_GONE		6	// a = the pid of an attached program that ended
 #define KAPI_WS_IN_KICK		7	// a = the pid of a program whose pixels changed (KAPI_WS_KICK)
+#define KAPI_WS_IN_SCREEN	9	// x, y = the screen's new size (kapi_screen_set, done by the kernel)
 #define KAPI_WS_IN_FULLSCREEN	8	// a = the pid of a program that took (buttons 1) / gave back (0) the full screen
 struct kapi_ws_input
 {
