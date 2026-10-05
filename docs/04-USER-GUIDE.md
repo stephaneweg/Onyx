@@ -4358,7 +4358,10 @@ list, a status bar: New / Open / Save written), an empty window —; **File ▸ 
 of its files); **File ▸ Open the Example** opens *Converter*. QBStudio opens the last project at its start.
 
 **In the designer**: the window (or the user control) is sized with the mouse — click its title bar to choose
-it, then drag any of its eight handles (the corner at the bottom right works without choosing it). In the
+it, then drag any of its eight handles (the corner at the bottom right works without choosing it). A control
+and a **container** (a Column, a Row, a Grid, a Host ...) are sized the same way: chosen, their handles and
+their right and bottom edges set `width=` and `height=`; a handle is taken from a few pixels around it, and a
+press on one never chooses what lies under it. In the
 **Split** view a **bar** lies between the drawing and the form's text: dragged up or down, it shares the room
 between them (kept from one session to the next). A window larger than the drawing's room is
 scrolled: its bars at the right and at the bottom, the wheel (Shift: sideways).

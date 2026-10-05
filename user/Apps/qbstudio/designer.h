@@ -176,7 +176,7 @@ public:
 	int winW, winH;					// its size (the form's, without the menu)
 	int sx, sy;					// the scroll
 	// a drag
-	enum { DR_NONE, DR_PRESS, DR_MOVE, DR_NEW, DR_SIZE_WIN, DR_SIZE_W, DR_SIZE_H };
+	enum { DR_NONE, DR_PRESS, DR_MOVE, DR_NEW, DR_SIZE_WIN, DR_SIZE_EL };
 	int drag, newKind, px, py, startW, startH, startX, startY, grabX, grabY;
 	int sizeFx = 1, sizeFy = 1;			// DR_SIZE_WIN: which way the handle held sizes the window (-1, 0, 1 each way)
 	El *dropPar; int dropIdx; int dropLine[4]; bool dropOk; int dropAtX, dropAtY;
@@ -234,17 +234,64 @@ public:
 	int menuH () const { return form && form->root && child_of_kind (form->root, K_MENU) ? MENU_H : 0; }
 	static const int TITLE_H = 28;
 
-	// The form shown again (a new tree, a change): laid out, its widgets made again
-	void setForm (Form *f) { form = f; sel = 0; rebuild (); }
+	// The widgets drawn, one per element in the order they were made (0: an element with none -- a Column), and
+	// what each looked like: while the elements and their looks are the same -- one is dragged, sized, the window
+	// sized -- the widgets are kept and only placed again (sync); they are made again when the tree changes or a
+	// look does (a text, an item, a flag). Making them all again at each step of a drag was the designer's cost.
+	struct Item { El *e; Widget *w; unsigned sig; };
+	Vec<Item> items;
+	bool alwaysFull = false;			// (the measure: as before, everything made again each time)
+	// What an element's widget shows besides its place and size: its kind, name, text, the properties that are
+	// not the layout's
+	static unsigned sig_of (const El *e)
+	{
+		static const char *const GEOM[] = { "width", "height", "size", "min", "at", "cell", "fill", "grow", "align", "halign", "valign", "padding", "gap", "widths", "heights", "cols", 0 };
+		unsigned h = 2166136261u;
+		auto mix = [&] (const char *s) { for (; *s; s++) h = (h ^ (unsigned char) *s) * 16777619u; h = (h ^ 0xFF) * 16777619u; };
+		h = (h ^ (unsigned) e->kind) * 16777619u; h = (h ^ (e->uc ? 1u : 0u)) * 16777619u;
+		mix (e->name); mix (e->text);
+		for (int i = 0; i < e->props.n; i++)
+		{
+			bool geom = false;
+			for (int k = 0; GEOM[k]; k++) if (ieq (e->props[i].key, GEOM[k])) geom = true;
+			if (!geom) { mix (e->props[i].key); mix (e->props[i].val); }
+		}
+		return h;
+	}
+	void listed (El *e, Vec<Item> &o) { Item it; it.e = e; it.w = 0; it.sig = sig_of (e); o.push (it); if (e->kind != K_MENU) for (int i = 0; i < e->kids.n; i++) listed (e->kids[i], o); }
+	// The widgets kept, at the layout's new places -> false: they must be made again
+	bool sync ()
+	{
+		if (!client || alwaysFull) return false;
+		Vec<Item> now; listed (form->root, now);
+		if (now.n != items.n) return false;
+		for (int i = 0; i < now.n; i++) if (now[i].e != items[i].e || now[i].sig != items[i].sig) return false;
+		client->left = ox; client->top = oy; client->resizeTo (winW, winH + menuH ());
+		for (int i = 0; i < items.n; i++)
+		{
+			Widget *w = items[i].w; const El *e = items[i].e;
+			if (!w) continue;
+			w->left = e->x; w->top = e->y; w->resizeTo (imax (1, e->w), imax (1, e->h));
+		}
+		return true;
+	}
+	// The form shown again (a new tree, a change): laid out, its widgets placed again -- or made again
+	void setForm (Form *f) { form = f; sel = 0; items.clear (); rebuild (); }
 	void rebuild ()
 	{
-		if (client) { removeChild (client); delete client; client = 0; }
-		freePool ();
-		if (!form || !form->root) { invalidate (true); return; }
+		if (!form || !form->root)
+		{
+			if (client) { removeChild (client); delete client; client = 0; }
+			freePool (); items.clear ();
+			invalidate (true); return;
+		}
 		form_size (*form, &winW, &winH);
 		int mh = menuH ();
 		form_layout (*form, winW, winH + mh, true);
 		origin ();
+		if (sync ()) { redraw (); invalidate (true); return; }
+		if (client) { removeChild (client); delete client; client = 0; }
+		freePool (); items.clear ();
 		client = new GridPanel (ox, oy, winW, winH + mh);
 		make (form->root);
 		// (the overlay over the widgets, the bars over the overlay)
@@ -287,6 +334,7 @@ public:
 		default: break;
 		}
 		if (w) { if (e->flag ("disabled")) w->disabled = true; client->addChild (w); }
+		{ Item it; it.e = e; it.w = w; it.sig = sig_of (e); items.push (it); }	// (in listed ()'s order)
 		if (e->kind != K_MENU) for (int i = 0; i < e->kids.n; i++) make (e->kids[i]);
 	}
 	void redraw () { invalidate (true); ov->invalidate (true); }
@@ -511,7 +559,7 @@ inline void Overlay::onDraw ()
 		canvas.fillRect (x - 1, y - 1, w + 2, 1, C_BLUEPRINT); canvas.fillRect (x - 1, y + h, w + 2, 1, C_BLUEPRINT);
 		canvas.fillRect (x - 1, y - 1, 1, h + 2, C_BLUEPRINT); canvas.fillRect (x + w, y - 1, 1, h + 2, C_BLUEPRINT);
 		int hx[8] = { x, x + w / 2, x + w, x + w, x + w, x + w / 2, x, x }, hy[8] = { y, y, y, y + h / 2, y + h, y + h, y + h, y + h / 2 };
-		for (int i = 0; i < 8; i++) { canvas.fillRect (hx[i] - 3, hy[i] - 3, 7, 7, C_BLUEPRINT); canvas.fillRect (hx[i] - 2, hy[i] - 2, 5, 5, 0xFFFFFF); }
+		for (int i = 0; i < 8; i++) { canvas.fillRect (hx[i] - 4, hy[i] - 4, 9, 9, C_BLUEPRINT); canvas.fillRect (hx[i] - 3, hy[i] - 3, 7, 7, 0xFFFFFF); }
 		char t[96]; describe (s, t, sizeof t);
 		int ty = y + h + 4; if (s == d->form->root) ty = y + h + 26;
 		draw_tag (canvas, x + w - uk_tw (t, 2) - 8, imin (ty, height - uk_fh ()), t, C_BLUEPRINT);
@@ -544,37 +592,45 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 	int cx = mx - D->ox, cy = my - D->oy;
 	El *s = D->sel;
 	bool onCorner = cx >= W - 6 && cx <= W + 8 && cy >= H - 6 && cy <= H + 8;
-	// the window chosen: its eight handles size it (those of its left and top edges too: the window stays where it
-	// is drawn, its size follows the pointer)
+	// The chosen element's handles size it -- the window's (its left and top ones too: it stays where it is
+	// drawn, its size follows the pointer), a control's, a container's: the nearest handle within HANDLE_R
+	// pixels, then an edge (4 pixels to each side of its right and bottom lines). They come before anything
+	// under them: a press on a handle never chooses another element.
+	enum { HANDLE_R = 8 };
 	int hfx = 1, hfy = 1; bool onHandle = false;
-	if (s && s == D->form->root)
+	bool root = s && s == D->form->root;
+	bool sizable = s && (root || (s->parent && s->kind != K_MENU && s->kind != K_MENUTITLE && s->kind != K_MENUITEM && s->kind != K_SEP
+				      && s->kind != K_COMMENT && s->kind != K_TOOLBAR && s->kind != K_STATUSBAR));
+	if (sizable)
 	{
-		int x0 = 0, y0 = -Designer::TITLE_H, w0 = W, h0 = H + Designer::TITLE_H;
+		int x0 = root ? 0 : s->x, y0 = root ? -Designer::TITLE_H : s->y, w0 = root ? W : imax (4, s->w), h0 = root ? H + Designer::TITLE_H : imax (4, s->h);
 		int hx[8] = { x0, x0 + w0 / 2, x0 + w0, x0 + w0, x0 + w0, x0 + w0 / 2, x0, x0 }, hy[8] = { y0, y0, y0, y0 + h0 / 2, y0 + h0, y0 + h0, y0 + h0, y0 + h0 / 2 };
-		for (int i = 0; i < 8 && !onHandle; i++)
-			if (abs (cx - hx[i]) <= 5 && abs (cy - hy[i]) <= 5)
-			{
-				onHandle = true;
-				hfx = hx[i] == x0 ? -1 : hx[i] == x0 + w0 ? 1 : 0;
-				hfy = hy[i] == y0 ? -1 : hy[i] == y0 + h0 ? 1 : 0;
-			}
+		int best = -1, bd = 0;
+		for (int i = 0; i < 8; i++)
+		{
+			int dx = abs (cx - hx[i]), dy = abs (cy - hy[i]);
+			if (dx > HANDLE_R || dy > HANDLE_R) continue;
+			if (best < 0 || dx + dy < bd) { best = i; bd = dx + dy; }
+		}
+		if (best >= 0)
+		{
+			onHandle = true;
+			hfx = hx[best] == x0 ? -1 : hx[best] == x0 + w0 ? 1 : 0;
+			hfy = hy[best] == y0 ? -1 : hy[best] == y0 + h0 ? 1 : 0;
+		}
+		else if (abs (cx - (x0 + w0)) <= 4 && cy > y0 && cy < y0 + h0) { onHandle = true; hfx = 1; hfy = 0; }	// the right edge
+		else if (abs (cy - (y0 + h0)) <= 4 && cx > x0 && cx < x0 + w0) { onHandle = true; hfx = 0; hfy = 1; }	// the bottom edge
 	}
-	if (onCorner && !onHandle) { onHandle = true; hfx = hfy = 1; }
-	bool onRight = s && s != D->form->root && is_control (s->kind) && abs (cx - (s->x + s->w)) <= 4 && cy > s->y && cy < s->y + s->h;
-	bool onBottom = s && s != D->form->root && is_control (s->kind) && abs (cy - (s->y + s->h)) <= 4 && cx > s->x && cx < s->x + s->w;
-	if (D->drag == Designer::DR_NONE)
-	{
-		if (onHandle) uk_cursor (!hfy ? KAPI_CURSOR_SIZE_H : !hfx ? KAPI_CURSOR_SIZE_V : hfx == hfy ? KAPI_CURSOR_SIZE_NWSE : KAPI_CURSOR_SIZE_NESW);
-		else if (onRight) uk_cursor (KAPI_CURSOR_SIZE_H);
-		else if (onBottom) uk_cursor (KAPI_CURSOR_SIZE_V);
-	}
+	bool sizeWin = onHandle && root;
+	if (onCorner && !onHandle) { onHandle = true; sizeWin = true; hfx = hfy = 1; }
+	if (D->drag == Designer::DR_NONE && onHandle)
+		uk_cursor (!hfy ? KAPI_CURSOR_SIZE_H : !hfx ? KAPI_CURSOR_SIZE_V : hfx == hfy ? KAPI_CURSOR_SIZE_NWSE : KAPI_CURSOR_SIZE_NESW);
 	if (bl && !pressed)
 	{
 		pressed = true; catchOutside = true; setFocus ();
 		D->px = mx; D->py = my;
-		if (onHandle) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; D->sizeFx = hfx; D->sizeFy = hfy; return true; }
-		if (onRight) { D->drag = Designer::DR_SIZE_W; D->startW = s->w; D->startX = s->x; return true; }
-		if (onBottom) { D->drag = Designer::DR_SIZE_H; D->startH = s->h; D->startY = s->y; return true; }
+		if (onHandle && sizeWin) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; D->sizeFx = hfx; D->sizeFy = hfy; return true; }
+		if (onHandle) { D->drag = Designer::DR_SIZE_EL; D->startW = s->w; D->startH = s->h; D->sizeFx = hfx; D->sizeFy = hfy; return true; }
 		El *e = D->at (mx, my);
 		unsigned now = kapi_get_ticks ();
 		bool dbl = e && e == D->sel && now - D->lastClick < 35;
@@ -605,8 +661,14 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 			D->form->root->set ("size", t); D->rebuild ();
 			break;
 		}
-		case Designer::DR_SIZE_W: if (s) { s->setNum ("width", imax (GRID, snap (D->startW + dx))); s->setFlag ("fill", false); D->rebuild (); } break;
-		case Designer::DR_SIZE_H: if (s) { s->setNum ("height", imax (GRID, snap (D->startH + dy))); D->rebuild (); } break;
+		case Designer::DR_SIZE_EL:			// a control, a container: its width, its height, by the handle held
+			if (s)
+			{
+				if (D->sizeFx && abs (dx) > 1) { s->setNum ("width", imax (GRID, snap (D->startW + dx * D->sizeFx))); s->setFlag ("fill", false); }
+				if (D->sizeFy && abs (dy) > 1) s->setNum ("height", imax (GRID, snap (D->startH + dy * D->sizeFy)));
+				D->rebuild ();
+			}
+			break;
 		}
 		return true;
 	}
@@ -615,7 +677,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 		pressed = false; catchOutside = false;
 		int dr = D->drag; D->drag = Designer::DR_NONE;
 		if (dr == Designer::DR_MOVE && D->sel) { if (D->dropOk) D->doDrop (D->sel, true); D->dropOk = false; d->redraw (); }
-		else if (dr == Designer::DR_SIZE_WIN || dr == Designer::DR_SIZE_W || dr == Designer::DR_SIZE_H) { if (g_onFormEdited) g_onFormEdited (); }
+		else if (dr == Designer::DR_SIZE_WIN || dr == Designer::DR_SIZE_EL) { if (g_onFormEdited) g_onFormEdited (); }
 		return true;
 	}
 	return true;

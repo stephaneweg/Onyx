@@ -1560,7 +1560,9 @@ int main (void)
 
 	relayout ();
 	// the project: named on the command line (its folder, its project.ini, a file of it), else the last one, else the example
-	bool ok = false;
+	bool ok = false, bench = false;
+	if (an > 6 && !strncmp (args, "-bench ", 7)) { bench = true; memmove (args, args + 7, strlen (args + 7) + 1); }
+	else if (an > 0 && !strcmp (args, "-bench")) { bench = true; args[0] = 0; }
 	if (an > 0 && args[0])
 	{
 		char dir[256]; cpy (dir, args, sizeof dir);
@@ -1569,6 +1571,38 @@ int main (void)
 	}
 	if (!ok) { char *l = read_file (LAST); if (l) { char ip[300]; join (ip, sizeof ip, l, "project.ini"); if (file_exists (ip)) ok = load_project (l); free (l); } }
 	if (!ok) ok = load_project (SAMPLE);
+	if (bench)						// qbstudio -bench [project]: what a step of a drag in the designer costs
+	{
+		// the window sized back and forth, drawn and shown each time -- with every widget made again (as the
+		// designer did) and with the widgets kept; microseconds a step, on the output
+		root.attach ();
+		Doc *mf = main_form ();
+		if (mf && mf->form && mf->form->root)
+		{
+			El *win = mf->form->root; int fw, fh; form_size (*mf->form, &fw, &fh);
+			for (int mode = 0; mode < 2; mode++)
+			{
+				g_des->alwaysFull = mode == 0;
+				unsigned tb = 0, td = 0, tp = 0; enum { N = 40 };
+				for (int i = 0; i < N; i++)
+				{
+					char t[24]; snprintf (t, sizeof t, "%dx%d", fw + (i % 8) * 5, fh + (i % 4) * 5);
+					win->set ("size", t);
+					unsigned t0 = kapi_clock_us ();
+					g_des->rebuild ();
+					unsigned t1 = kapi_clock_us ();
+					root.draw ();
+					unsigned t2 = kapi_clock_us ();
+					uk_present ();
+					unsigned t3 = kapi_clock_us ();
+					tb += t1 - t0; td += t2 - t1; tp += t3 - t2;
+				}
+				char m[160]; int n = snprintf (m, sizeof m, "%s: the designer %u us a step, drawing %u us, showing %u us (%d steps)\n", mode == 0 ? "every widget made again" : "the widgets kept", tb / N, td / N, tp / N, (int) N);
+				if (kapi_stdout ()) kapi_stdout_write (m, (unsigned) n);
+			}
+		}
+		return 0;
+	}
 	root.run ();
 	confirm_close ();
 	return 0;

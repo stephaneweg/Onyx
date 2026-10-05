@@ -4,6 +4,26 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## 3DForge, a small parametric CAD (2026-10-05): the design approved, Manifold built for Onyx — the app is next
+
+Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and
+chamfers as far as they go, STL / OBJ). **Read `docs/3dforge/README.md`**: the six mock-ups (Milk) the user
+approved ("c'est comme ça que je l'imagine") and the choices — the kernel is **Manifold** (meshes: no STEP; fillets
+on straight edges and edges on a circle only), the sketch has **no constraint solver** (each element a recipe,
+replayed in order), the rendering uses **the GPU as much as possible**, the name is the user's.
+
+- **Done**: `third_party/manifold-3.5.4` + `third_party/clipper2-46f6391` (trimmed, their `README.onyx`), built by
+  `user/Makefile` into `user/Libs/manifold/libmanifold.a` (`make -C user Libs/manifold/libmanifold.a`; a newlib
+  build, sequential, no iostream; `Libs/manifold/onyx_manifold.h` gives the empty `std::mutex` the bare-metal
+  libstdc++ lacks — a program compiles with `$(MF_INC)`). **Tested in AArch64 under qemu**
+  (`sh tools/tests/run_manifold_test.sh`, in WSL with the Arm toolchain on the PATH): the three operations and the
+  mock-ups' bracket step by step, every volume exact; about 550 KB of code linked in. **Not run on the Pi yet.**
+- **Next**, in the README's order: the app `user/Apps/3dforge` (a newlib app as Paint, UIKit) with the view drawn
+  by the GPU (`kapi_gpu_render3`; Apps/teapot and Apps/gpudemo show how), orbit / pan / zoom, picking a face
+  (Manifold keeps each triangle's original face: `MeshGL::faceID`, `runOriginalID`); then Box, Cylinder, the
+  operations and Export; then the sketch and Extrude, the editable history, Fillet and Chamfer. Its package, its
+  entry in docs/04, its screenshots when it exists.
+
 ## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stages 1, 2 done; 3: the whole desktop runs on Elegant in a one-boot trial
 
 **The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
@@ -290,6 +310,15 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   the Pi's screen, not clicked. Not done: several instances of one user control (each is one object), a
   user control's preview inside the window's Host in the designer (a dashed frame with its name), a
   choice list for `content=` / `halign=` in the properties (typed), `Add Window` (one window a program).
+- **The designer's cost, measured (the user asked whether GPU composition, or drawing the widgets instead of
+  making them, would speed it up)**: `qbstudio -bench [project]` sizes the drawn window 40 times and prints, a
+  step: on the Pi 4, the converter -- making every widget again **0.07 ms** (it was my guess for the cost:
+  wrong), drawing the QBStudio window **11 to 15 ms**, showing it (`uk_present`) **0.5 to 0.8 ms**. So GPU
+  composition would gain nothing here, and neither would painting without widgets; the time is the CPU
+  drawing of the whole window at each step. The designer now keeps its widgets while the tree and their
+  looks are the same (`Designer::sync`, `sig_of`): about 20 % less drawing (10 to 11 ms a step, under a 16 ms
+  frame). If it must go faster: draw only what changed (the designer invalidates itself whole, its overlay
+  is the size of the designer) -- not started, nobody found it slow.
 - **Next**: what the list above lacks, as programs ask for it. Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
   FreeType's functions in `fontkit.bi` (their prototypes are in FreeType's headers, not in the kit's
   folder: `kitbi.py` reads `user/Kits/<kit>/*.h` only).

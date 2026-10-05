@@ -3508,6 +3508,11 @@ barwidth = 40
     The layout engine (`form.h`) gained `halign` / `valign` (`aligned ()`) and a Grid's `widths=` /
     `heights=` (`tracks_of`: pixels, `*` shares, auto); all of it stays affine in the window's size, which
     is what `generate ()` needs (the places are found by laying the form out at two sizes).
+    The designer (`designer.h`) keeps its widgets from one change to the next while the elements and what
+    they show are the same (`sync ()`: places and sizes only; `sig_of ()`: an element's look without its
+    layout properties) and makes them again when the tree or a look changes; it scrolls (`origin ()`,
+    `scrolled ()`: two `Scrollbar`s) without making anything. `qbstudio -bench [project]` measures a step
+    of a drag (made again / kept; drawing; showing).
     In the app (`main.cpp`): `main_form ()` is now the form **shown** (the designer, the events' lists, the
     completion follow it), `start_form ()` the program's window; `cmd_add_usercontrol`. Test:
     `qbstudio_test.cpp`, `pages ()` — the project `sdcard/projects/pages` laid out, generated, compiled and
