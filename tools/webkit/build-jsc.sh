@@ -8,8 +8,8 @@
 #                                                 # with WebAssembly (its interpreter) -> $BUILD/bin/jsc
 #   INTERP=cloop sh tools/webkit/build-jsc.sh     # the portable C++ interpreter (no WebAssembly)
 #   INTERP=jit sh tools/webkit/build-jsc.sh       # + the Baseline JIT and the DFG (kernel v78: PROT_EXEC)
-#   sh tools/webkit/build-jsc.sh install          # + strip it into user/BinUtils/jsc.elf (make stage
-#                                                 #   copies it to the card as /bin/jsc)
+#   sh tools/webkit/build-jsc.sh install          # + strip it into tools/pkg/extra/jsc/bin/jsc (the optional package jsc;
+#                                                 #   not on the default card: pkg install jsc)
 #
 # Variables: WEBKIT_DIR (the checkout, as fetch.sh), BUILD (default <WEBKIT_DIR>-build/jsc-<interp>),
 # ONYX_SYSROOT (default <onyx>/out/sysroot-onyx), JOBS (default nproc), CMAKE_EXTRA (more -D...).
@@ -70,7 +70,7 @@ cmake --build "$BUILD" --target jsc -- -j"$JOBS"
 echo "build-jsc.sh: jsc built in $(( $(date +%s) - start )) s: $BUILD/bin/jsc"
 
 if [ "${1:-}" = install ]; then
-	mkdir -p "$ONYX/user/BinUtils"
-	aarch64-onyx-elf-strip -o "$ONYX/user/BinUtils/jsc.elf" "$BUILD/bin/jsc"
-	ls -l "$ONYX/user/BinUtils/jsc.elf"
+	mkdir -p "$ONYX/tools/pkg/extra/jsc/bin"
+	aarch64-onyx-elf-strip -o "$ONYX/tools/pkg/extra/jsc/bin/jsc" "$BUILD/bin/jsc"
+	ls -l "$ONYX/tools/pkg/extra/jsc/bin/jsc"
 fi

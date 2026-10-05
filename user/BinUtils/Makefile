@@ -52,13 +52,9 @@ PKG_PROGS = pkg.elf
 ARC_PROGS = zip.elf unzip.elf
 endif
 
-# Image apps need the cross-built codecs (zlib/libpng/libjpeg, see ../Kits/imagekit/img/README.md).
-# OPT-IN: pass IMG_DIR to enable them, e.g.  make IMG_DIR=../Kits/imagekit/img  (after: make -C ../Kits/imagekit/img)
-IMG_DIR ?=
+# (imgtest, the old self-test of libpng / libjpeg built apart, was removed on 2026-10-05: ImageKit is the
+#  codec, iktest its test)
 IMG_PROGS =
-ifneq ($(strip $(IMG_DIR)),)
-IMG_PROGS = imgtest.elf
-endif
 
 # vncd (remote desktop) links the vendored zlib (third_party/zlib-1.3.1, prebuilt
 # libz.a). Pass ZLIB_DIR= (empty) to skip it, or ZLIB_DIR=/path for another copy.
@@ -125,7 +121,7 @@ AK_PROGS += iktest.elf
 CXX_PROGS += ipp.elf
 ipp.elf: ../Kits/printerkit/ipp.h ../Kits/printerkit/ippnet.h ../Kits/imagekit/img/pngsave.hpp ../Runtime/onyxpp.hpp ../Runtime/umm.h
 
-# Console tools on libonyxposix, the POSIX layer (../Runtime/libc/posix, docs/03 §5.4): newlib + pthreads,
+# Console tools on libonyxposix, the POSIX layer (../Runtime/libc/posix, docs/03 Â§5.4): newlib + pthreads,
 # BSD sockets, poll, mmap, real files (no whole-file buffering). Its crt0posix, link script and
 # library come from ../Runtime/libc/posix/build/onyx.specs (made first: the posixlib target).
 POSIX_DIR    = ../Runtime/libc/posix
@@ -174,7 +170,7 @@ $(POSIX_PROGS): %.elf: %.c posixlib ../Kits/appkit/appkit.h
 	$(CC) $(CFLAGS_POSIX) $(LDFLAGS_POSIX) $< -o $@
 
 # C++ on libonyxposix: WP-TC's aarch64-onyx-elf toolchain (real gthreads, native TLS, errno per
-# thread: docs/03 §1, tools/toolchain). Built when that toolchain is installed (on the PATH or in
+# thread: docs/03 Â§1, tools/toolchain). Built when that toolchain is installed (on the PATH or in
 # /opt/toolchains/aarch64-onyx-elf-14.2), skipped with a note otherwise; its libonyxposix is
 # ../Runtime/libc/posix/build-onyx. posixtest-cxx: the C++ conformance test (`posixtest cxx` runs it).
 ONYX_TC_PREFIX ?= aarch64-onyx-elf-
@@ -194,7 +190,7 @@ $(POSIX_TC_PROGS): %.elf: %.c posixlib-onyx
 	$(dir $(ONYX_TC_GXX))$(ONYX_TC_PREFIX)gcc $(CFLAGS_POSIX) $(LDFLAGS_POSIX_TC) $< -o $@
 else
 $(POSIX_CXX_PROGS) $(POSIX_TC_PROGS):
-	@echo "  SKIP $@: no $(ONYX_TC_PREFIX)g++ (WP-TC toolchain: sh tools/toolchain/fetch.sh, docs/03 §1)"
+	@echo "  SKIP $@: no $(ONYX_TC_PREFIX)g++ (WP-TC toolchain: sh tools/toolchain/fetch.sh, docs/03 Â§1)"
 endif
 
 # The ports of the POSIX layer (third_party, built with CMake / the Onyx toolchain file into
@@ -219,7 +215,7 @@ endif
 # jsc: the shell of WebKit's JavaScriptCore (step 1 of the WebKit port, docs/08-WEBKIT-PORT.md).
 # WebKit is not in this repository: tools/webkit/fetch.sh checks the pinned revision out beside it
 # and applies tools/webkit/patches; build-jsc.sh builds it with aarch64-onyx-elf against the sysroot
-# (ICU from `make ports`) and strips it into jsc.elf here. OPT-IN: `make jsc` (about 8 minutes on
+# (ICU from `make ports`) and strips it into tools/pkg/extra/jsc/bin/jsc (the optional package jsc: not on the default card). OPT-IN: `make jsc` (about 8 minutes on
 # 16 cores, 70 on 4). JSC_INTERP=cloop for the portable C++ interpreter instead of the LLInt (then
 # without WebAssembly).
 JSC_INTERP ?= llint
@@ -261,17 +257,6 @@ $(PKG_PROGS): %.elf: %.cpp arccli.h ../Libs/pkg/pkglib.h $(wildcard ../Kits/file
 llm.elf: ../Include/json.hpp
 endif
 
-# Image apps (newlib C++ + the codecs). Built only when IMG_DIR is set. Same crt0 split
-# as the TLS apps: C startup + syscalls as C objects (gcc), then linked with g++.
-ifneq ($(strip $(IMG_DIR)),)
-$(IMG_PROGS): %.elf: %.cpp $(LIBC_DEP) ../Kits/imagekit/img/image.hpp
-	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/crt0libc.S -o $*.crt0.o
-	$(CC)  $(CFLAGS_LIBC) -c ../Runtime/libc/onyx_syscalls.c -o $*.sys.o
-	$(CXX) $(CXXFLAGS_LIBC) -I$(IMG_DIR)/libpng -I$(IMG_DIR)/zlib -I$(IMG_DIR)/libjpeg \
-	  $(LDFLAGS) $*.crt0.o $*.sys.o $< \
-	  -L$(IMG_DIR)/libpng -L$(IMG_DIR)/zlib -L$(IMG_DIR)/libjpeg -lpng -ljpeg -lz -lm -o $@
-	@rm -f $*.crt0.o $*.sys.o
-endif
 
 # zlib apps (newlib C + libz). Built by default against the vendored zlib.
 ifneq ($(strip $(ZLIB_DIR)),)

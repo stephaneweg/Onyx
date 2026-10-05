@@ -110,7 +110,15 @@ def plan (sd, ini):
 		      "assoc": pairs (sec.get ("opens", ""), app) + pairs (sec.get ("assoc", "")),
 		      "runners": pairs (sec.get ("runners", "")) }
 		p.update (extra)
-		p["files"] = take (name, pats)
+		# root = DIR (from the repository's root): the package's files are in that tree, NOT on the card --
+		# an optional package the default card does not carry (jsc): made and published, installed on demand.
+		root = sec.get ("root", "").strip ()
+		if root:
+			p["root"] = os.path.join (ROOT, root)
+			p["files"] = [f for f in card_files (p["root"]) if any (matches (f, pt) for pt in pats)]
+			if not p["files"]: sys.exit ("mkrepo: [%s] root = %s: none of its files is there" % (name, root))
+		else:
+			p["files"] = take (name, pats)
 		pkgs.append (p)
 	for s in cfg.sections ():
 		if s.startswith ("app."): continue
@@ -256,9 +264,10 @@ def main ():
 	write_assoc (a.sd, pkgs)
 	errors, changed = [], []
 	for p in pkgs:
-		hashes = [(f, sha256_file (os.path.join (a.sd, f))) for f in p["files"]]
+		src = p.get ("root", a.sd)					# (its files: the card, or its own tree)
+		hashes = [(f, sha256_file (os.path.join (src, f))) for f in p["files"]]
 		p["hashes"] = hashes
-		p["bytes"] = sum (os.path.getsize (os.path.join (a.sd, f)) for f in p["files"])
+		p["bytes"] = sum (os.path.getsize (os.path.join (src, f)) for f in p["files"])
 		# the content: the files and what the manifest says of them (a new need is a new version)
 		desc = "needs %s\nconfig %s\nrequired %s\nrestart %s\n" % (p["needs"], p["config_pats"], p["required"], p["restart"])
 		if p["replaces"]: desc += "replaces %s\n" % p["replaces"]
@@ -282,7 +291,7 @@ def main ():
 		path = os.path.join (a.out, fn)
 		o = old[p["name"]] if old.has_section (p["name"]) else None
 		if not (o and o.get ("content") == p["content"] and o.get ("version") == p["version"] and os.path.exists (path)):
-			write_opk (path, a.sd, p, man)
+			write_opk (path, p.get ("root", a.sd), p, man)
 		icon = os.path.join (a.sd, p["icon"]) if p["icon"] else ""
 		if icon and os.path.exists (icon):
 			with open (icon, "rb") as s, open (os.path.join (a.out, "icons", p["name"] + ".bmp"), "wb") as d: d.write (s.read ())
@@ -307,7 +316,7 @@ def main ():
 		open (ip, "wb").write (data)
 		if not a.no_sign:
 			open (os.path.join (a.out, "index.sig"), "w").write (sign (data, a.key) + "\n")
-	if a.db: write_db (os.path.join (a.sd, "var", "pkg", "db"), pkgs)
+	if a.db: write_db (os.path.join (a.sd, "var", "pkg", "db"), [p for p in pkgs if "root" not in p])	# (what is ON the card)
 	if a.lite:
 		# the smallest card: the required packages only (the system, the firmware) and their
 		# database -- every other package installed by pkg / the package manager

@@ -3150,9 +3150,8 @@ a freshly `malloc`'d array of `0xAARRGGBB` pixels (8-bit alpha in the top byte, 
 canvas ignores when blitting). Same split as TLS: the libraries are cross-built once
 (`make -C user/Kits/imagekit/img`, sources pinned in [`user/Kits/imagekit/img/README.md`](../user/Kits/imagekit/img/README.md) —
 zlib 1.3.1, libpng 1.6.44, libjpeg IJG v9f), the Onyx glue is header-only. It is a
-**newlib** component (uses `malloc` + the libs), so it is OPT-IN: `make -C user/BinUtils
-IMG_DIR=../Kits/imagekit/img` builds the `/bin/imgtest` demo (decodes an embedded PNG and prints its
-size). Note: `image.hpp` is for full-colour web images; keep
+**newlib** component (uses `malloc` + the libs), and no program of the card uses it any more (its demo `/bin/imgtest` was removed on
+2026-10-05): pictures are ImageKit's (§5.9), tested by `/bin/iktest`. Note: `image.hpp` is for full-colour web images; keep
 [`user/Kits/uikit/bmp.h`](../user/Kits/uikit/bmp.h) for the magenta-keyed `0x00RRGGBB` icons loaded from SD.
 
 **The browser** is Jet, on WebKit: the port's own document is [`08-WEBKIT-PORT.md`](08-WEBKIT-PORT.md)
