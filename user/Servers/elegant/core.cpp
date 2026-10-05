@@ -54,8 +54,48 @@ static CWindow *Win (int id)
 // kernel.cpp does; the arrow is the window manager's own drawn one.
 #include "../../../kernel/gui/cursors.inc"
 
+// The arrow: white with a black edge (the kernel's own is black with a white edge), its tip the hot spot.
+#define ARROW_W	13
+#define ARROW_H	19
+static const char s_Arrow[] =
+	"B............"
+	"BB..........."
+	"BWB.........."
+	"BWWB........."
+	"BWWWB........"
+	"BWWWWB......."
+	"BWWWWWB......"
+	"BWWWWWWB....."
+	"BWWWWWWWB...."
+	"BWWWWWWWWB..."
+	"BWWWWWWWWWB.."
+	"BWWWWWWWWWWB."
+	"BWWWWWWBBBBBB"
+	"BWWWBWWB....."
+	"BWWB.BWWB...."
+	"BWB..BWWB...."
+	"BB....BWWB..."
+	"B.....BWWB..."
+	".......BB....";
+
+static GImage *Art (const char *pRows, int nW, int nH)
+{
+	GImage *pImg = new GImage;
+	pImg->SetSize (nW, nH);
+	if (!pImg->IsValid ()) { delete pImg; return 0; }
+	for (int y = 0; y < nH; y++)
+		for (int x = 0; x < nW; x++)
+		{
+			char c = pRows[y * nW + x];
+			pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
+		}
+	return pImg;
+}
+
 static void CursorShapes (CWindowManager *pWM)
 {
+	GImage *pArrow = Art (s_Arrow, ARROW_W, ARROW_H);
+	if (pArrow != 0) pWM->SetCursor (pArrow);
 	for (unsigned n = 1; n < sizeof s_CursorArt / sizeof s_CursorArt[0] && n < KAPI_CURSOR_COUNT; n++)
 	{
 		const TCursorArt &A = s_CursorArt[n];
