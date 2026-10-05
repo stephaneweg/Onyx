@@ -38,6 +38,11 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   first. Ideas kept for later: the **4th axis** (he has the rotary option; indexed 3 + 1 first — ask which firmware
   drives it), a true constant-engagement adaptive clearing (FreeCAD's could be ported: check its licence and ask
   him first), ramps that go back and forth less on a face's clearing (it is long: about 150 min on the sample).
+- **Print, for his resin printer (asked 2026-10-06)**: `fprint.h` writes the Anycubic Photon Mono 2's `.pm3n` (his
+  own file comes back the same to the byte: `FORGE_PM_REF=<his file> sh tools/tests/run_3dforge_test.sh`) and cuts a
+  body into layers; **its screen is only mock-ups** (`docs/3dforge/README.md`, *Print*): wait for his word. Decided:
+  our own supports, MIT (not PrusaSlicer's AGPL code); the machine chosen in the setup selects the "generator"
+  (router / resin printer; his idea of plug-ins).
 - **The same day, asked while I built**: the sketch's arc by centre, start, end (its angle + clockwise), a 3-point
   arc, splines, a rectangle from its centre, construction points; a shape's Z / distance off its face and its turn
   about its axis (the pointer gives it while the radius is set); no ghost before the first click.

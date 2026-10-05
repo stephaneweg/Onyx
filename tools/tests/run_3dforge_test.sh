@@ -23,3 +23,7 @@ g++ -std=c++17 -O1 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$H
 # Manufacture: the tool paths and the G-code for the sample part
 g++ -std=c++17 -O1 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$HERE/3dforge/camtest.cpp" "$OUT/libmanifold.a" -o "$OUT/camtest"
 "$OUT/camtest" "$ROOT/sdcard/docs/3d/bracket.3df"
+# Print: the sample part cut into layers for a resin printer; FORGE_PM_REF=path: a file of the printer's own slicer,
+# which must be written back the same
+g++ -std=c++17 -O2 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$HERE/3dforge/printtest.cpp" "$OUT/libmanifold.a" -o "$OUT/printtest"
+"$OUT/printtest" "$ROOT/sdcard/docs/3d/bracket.3df" $FORGE_PM_REF

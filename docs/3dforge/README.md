@@ -98,6 +98,48 @@ What I told the user (2026-10-05), to keep in mind when building:
 - **I cannot test a real cut**: everything is checked by computation and in the preview; the user tries it in the
   air first. The checks of the G-code dialog are part of the first version, not an extra.
 
+## Print: the layers for a resin printer — a study, mock-ups (2026-10-06; the file's writer is built, not its screen)
+
+Asked by the user after Manufacture: the file his **Anycubic Photon Mono 2** prints (`.pm3n`), from a body. He sent
+one of his own (a bridge for an electric violin) to see how hard it is. It is not: the file is a container
+("ANYCUBIC", version 5.17) of blocks — the header (pixel 35 µm, layer 0.05 mm, exposures, lift), a small preview, a
+table of layers, the lift's two stages, the machine, the model's box — then one picture a layer, 4096 × 2560, one
+bit a pixel, written as runs (16 bits: 4 of grey, 12 of length).
+
+- **Built and tested** (`user/Apps/3dforge/fprint.h`, `tools/tests/3dforge/printtest.cpp`): the file written and read;
+  **the user's own file read and written again comes back the same to the byte**, and its pictures decoded and
+  coded again give the same runs; a body cut into layers (Manifold's `Slice`, filled row by row): what is lit, summed,
+  is the body's volume to 0.07 %. The picture's axes (X to the right, the rows from +Y down) are read from his file;
+  whether the printer wants it **mirrored** cannot be told from a symmetric part: a check box, and a first print of
+  something with a letter on it.
+- **Supports**: no code can be taken without a licence change — PrusaSlicer's SLA supports (and its whole
+  `libslic3r`: Eigen, libigl, boost, TBB) are AGPL-3.0; the user allowed AGPL "if it performs", else our own. **Our
+  own, MIT** (my choice, 2026-10-06): porting libslic3r to Onyx is out of proportion. First: a pillar with a thin tip
+  under each low point and each stretch that hangs beyond an angle, every few millimetres, down to the plate (or to
+  the body under it), a raft; a click adds or removes one. No branching trees yet.
+- **The resin's values**: Anycubic's page gives, for the Photon Mono 2 at 0.05 mm, 2.5 s (standard, ABS-like) and 3 s
+  (plant-based); the rest of its table could not be read — the other defaults are those of the user's file (5 first
+  layers, 2 s off, a lift of 2 mm at 1 mm/s then 4 mm at 4 mm/s, back at 3 mm/s). All can be changed and kept
+  under a name.
+- **Generators** (the user's idea, 2026-10-06: "the slicers should perhaps be plug-ins — other printers, filament
+  printers…"): in the mock-ups the **machine chosen in the setup** decides what Manufacture makes and which tools the
+  bar shows — a router: Setup, Tool, Clearing, Contour, Simulate, G-code; a resin printer: Setup, Resin, Supports,
+  Layers, Print file. In the code: one module a generator behind a small interface (its name, its machines, its
+  pages, what it computes, the file it writes); loaded from files beside the app (as Koton's plug-ins) once a
+  second printer's format is wanted. A filament printer is another generator, and a large one (perimeters, infill).
+
+The mock-ups: `python tools/screenshot/mockup_3dforge_print.py` → `mockups/3dforge-print-*.png` (the supports and
+the layer drawn are real ones for the sample bracket, tilted and lifted).
+
+| | |
+|---|---|
+| ![](mockups/3dforge-print-setup.png) | **Setup**: the **machine** (here the Photon Mono 2: its screen, its room, its file), the body, where it is on the plate — moved, lifted, tilted, turned, or a face laid on the plate —, the picture mirrored or not; whether it fits. |
+| ![](mockups/3dforge-print-resin.png) | **Resin**: a named preset — the layer's height, the exposure, the light's off time, the first layers and their exposure, the layers over which it comes down, the lift in two stages and the way back. |
+| ![](mockups/3dforge-print-supports.png) | **Supports**: *Generate* (where the body hangs beyond an angle, under its low points, every few millimetres), the pillars' and their tips' sizes, a raft; a click on the body adds one, on a pillar removes it. |
+| ![](mockups/3dforge-print-layers.png) | **Layers**: the pictures as the screen will show them, one by one (the bar, the wheel); the number of layers, the resin, the time; **checked**: it fits, each layer rests on the last (nothing starts in mid-air), the first layers lie on the plate, no closed hollow keeps resin. *Write the print file*. |
+
+**Wait for the user's word on these mock-ups before building the screen.**
+
 ## What is next
 
 Manufacture is built (above); on the user's list for later: the rotary 4th axis.
