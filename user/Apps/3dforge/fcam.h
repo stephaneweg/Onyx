@@ -462,6 +462,30 @@ static void cam_simulate (const Body &b, const CamSetup &c, CamPaths &p)
 }
 
 // The operations' moves, and the checks. false: nothing could be made (cam.ops[i].err say why).
+// The simulation played: the moves `from` .. `to` (not the last) cut into `hm`, a height map as cam_simulate's --
+// the stock's top where the stock is, before the first move.
+static void cam_sim_advance (const CamPaths &p, double r, std::vector<float> &hm, size_t from, size_t to)
+{
+	double x0 = p.lo.x - 2 * r, y0 = p.lo.y - 2 * r; int rc = (int) ceil (r / p.cell);
+	if (hm.size () != (size_t) p.nx * p.ny) return;
+	for (size_t k = from < 1 ? 1 : from; k < to && k < p.moves.size (); k++)
+	{
+		const CamMove &a = p.moves[k - 1], &b = p.moves[k]; if (!b.kind) continue;
+		int n = (int) (hypot (b.p.x - a.p.x, b.p.y - a.p.y) / (p.cell * 0.7)) + 1;
+		for (int s = 0; s <= n; s++)
+		{
+			double t = (double) s / n, x = a.p.x + (b.p.x - a.p.x) * t, y = a.p.y + (b.p.y - a.p.y) * t; float z = (float) (a.p.z + (b.p.z - a.p.z) * t);
+			int ci = (int) ((x - x0) / p.cell), cj = (int) ((y - y0) / p.cell);
+			for (int j = cj - rc; j <= cj + rc; j++) for (int i = ci - rc; i <= ci + rc; i++)
+			{
+				if (i < 0 || j < 0 || i >= p.nx || j >= p.ny) continue;
+				double dx = x0 + (i + 0.5) * p.cell - x, dy = y0 + (j + 0.5) * p.cell - y;
+				if (dx * dx + dy * dy > r * r) continue;
+				float &h = hm[(size_t) j * p.nx + i]; if (h > z) h = z;
+			}
+		}
+	}
+}
 static bool cam_compute (Doc &d, CamSetup &c, CamPaths &out)
 {
 	out.moves.clear (); out.minutes = out.length = 0; out.hitFast = out.gouge = out.outside = out.tooDeep = false;

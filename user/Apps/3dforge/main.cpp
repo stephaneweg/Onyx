@@ -11,6 +11,9 @@
 // (the camera, the frame for the GPU or the processor, picking), fview.h (the tools, the view, the bodies' panel over
 // it), fui.h (the tools' bar, the timeline, the selection's panel, the status bar), ficons.h (the icons).
 //
+// Manufacture for a resin printer (fprint.h; the process is chosen in the setup): the body on the plate, its supports,
+// its layers cut and looked at, the printer's file written. The resin is kept in SD:/apps/3dforge.app/print.ini; more
+// printers of the same family: SD:/apps/3dforge.app/printers.ini.
 // Manufacture (fcam.h): the body in its stock, an origin, a flat end mill; a clearing in levels and a contour, their
 // moves shown, checked, written as G-code for a GRBL router. The setup is kept in the .3df, the tool and the machine
 // in SD:/apps/3dforge.app/cam.ini.
@@ -33,7 +36,7 @@ using namespace forge;
 static int W = 1006, H = 701;
 static Ribbon *g_ribbon; static Timeline *g_time; static Props *g_props; static StatusBar *g_status;
 static bool g_rebuild = true;
-static const char *DOCS = "SD:/docs/3d", *CAM_INI = "SD:/apps/3dforge.app/cam.ini";
+static const char *DOCS = "SD:/docs/3d", *CAM_INI = "SD:/apps/3dforge.app/cam.ini", *PRINT_INI = "SD:/apps/3dforge.app/print.ini", *PRINTERS_INI = "SD:/apps/3dforge.app/printers.ini";
 
 static const char *base_name (const char *p) { const char *b = p; for (const char *q = p; *q; q++) if (*q == '/' || *q == ':') b = q + 1; return b; }
 static bool ends_with (const char *s, const char *e) { size_t a = strlen (s), b = strlen (e); return a >= b && !strcasecmp (s + a - b, e); }
@@ -62,7 +65,12 @@ static void job_reset ()
 {
 	A.camMode = A.camSim = A.camDirty = false; A.camSel = A.camPage = 0; A.job = CamSetup (); A.paths = CamPaths ();
 	std::string s; if (read_text (CAM_INI, s)) cam_presets_take (A.job, s.c_str ());
+	// (a resin printer's: its resin as it was left)
+	A.gen = 0; A.print = PrintSetup (); A.pjob = PrintJob (); A.slicer = PrintSlicer (); A.sliced = A.printDirty = A.wantFile = A.layerPlay = A.layer3d = false; A.layer = 0;
+	A.placed = A.held = Manifold (); A.placedMesh = A.supMesh = A.cutMesh = RMesh ();
+	if (read_text (PRINT_INI, s)) { PrintSetup t; print_load (t, s.c_str ()); A.print.resin = t.resin; A.print.machine = t.machine; }
 }
+namespace forge { static void print_presets_save () { PrintSetup t; t.on = true; t.resin = A.print.resin; t.machine = A.print.machine; std::string s = print_save (t); kapi_save_file (PRINT_INI, s.data (), (unsigned) s.size ()); } }
 namespace forge { static void cam_presets_save () { std::string s = cam_presets (A.job); kapi_save_file (CAM_INI, s.data (), (unsigned) s.size ()); } }
 static bool load_path (const char *path)
 {
@@ -74,7 +82,8 @@ static bool load_path (const char *path)
 	Doc d;
 	if (!d.load (s.c_str ())) return false;
 	A.doc = d; A.saved = A.doc.changes; A.undo.clear (); A.redo.clear (); A.selFeat = A.selBody = -1;
-	job_reset (); cam_load (A.job, s.c_str ());
+	job_reset (); cam_load (A.job, s.c_str ()); print_load (A.print, s.c_str ());
+	if (strstr (s.c_str (), "\nmanufacture resin")) A.gen = 1;
 	snprintf (A.path, sizeof A.path, "%s", path);
 	if (!A.doc.bodies.empty ()) A.selBody = A.doc.bodies[0].id;
 	A.sketching = false; tool_set (T_SELECT); if (g_view) g_view->home ();
@@ -84,7 +93,7 @@ static void cmd_save_as ();
 static void cmd_save ()
 {
 	if (!A.path[0]) { cmd_save_as (); return; }
-	std::string s = A.doc.save () + cam_save (A.job);
+	std::string s = A.doc.save () + cam_save (A.job) + print_save (A.print) + (A.gen == 1 ? "manufacture resin\n" : "");
 	if (kapi_save_file (A.path, s.data (), (unsigned) s.size ()) >= 0) A.saved = A.doc.changes;
 	else uk_messagebox ("Save", "The file could not be written.", MB_OK);
 	ui (0);
@@ -315,12 +324,104 @@ static void cmd_gcode ()
 	g_export = &d; int r = d.run (); g_export = 0;
 	if (r == 1) set_hint ("G-code written. Run it in the air first, the spindle well above the stock."); ui (R_ALL);
 }
+// ---- the print file: what was checked, where it goes ------------------------------------------------------------------------
+class PrintDialog : public Modal
+{
+public:
+	Textbox *name, *folder; Button *browse; ABtn *save; bool bad;
+	static void button (Widget &w) { ((PrintDialog *) w.parent)->onButton (w.tag); }
+	PrintDialog () : Modal (520, 330)
+	{
+		int x = 20, w = width - 40;
+		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : "part"); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
+		bad = A.pjob.tooLarge || !A.pjob.onPlate || A.pjob.file.layers.empty ();
+		name = new Textbox (x + 70, height - 122, 200, 28, def); addChild (name);
+		folder = new Textbox (x + 70, height - 88, w - 70 - 86, 28, DOCS); folder->maxLen = 180; addChild (folder);
+		browse = new Button (x + w - 78, height - 88, 78, 28, "Browse...", button); browse->tag = 2; addChild (browse);
+		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, "Cancel", 0); c->bg = C_FACE; addChild (c);
+		save = new ABtn (width - 118, height - 44, 98, 28, "Save", 1, true); save->bg = C_FACE; addChild (save);
+		if (bad) save->hidden = true;
+	}
+	void onButton (int tag) override
+	{
+		if (tag == 2) { char p[200]; if (uk_folder_open (p, sizeof p, folder->text)) { folder->setText (p); invalidate (true); } return; }
+		if (tag == 0 || bad) { close (0); return; }
+		char path[300], ext[12]; snprintf (ext, sizeof ext, ".%s", A.print.machine.ext); kapi_mkdir (folder->text);
+		snprintf (path, sizeof path, "%s/%s%s", folder->text, name->text, ends_with (name->text, ext) ? "" : ext);
+		std::string bytes = PRINT_FORMATS[0].write (A.pjob.file);
+		if (kapi_save_file (path, bytes.data (), (unsigned) bytes.size ()) < 0) { uk_messagebox ("Print file", "The file could not be written.", MB_OK); return; }
+		close (1);
+	}
+	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { onButton (1); return true; } return false; }
+	void onDraw () override
+	{
+		drawBox ("Print file"); int x = 20, y = titleH () + 14; char t[160], a[24]; const PrintJob &j = A.pjob;
+		auto row = [&] (int state, const char *txt)
+		{
+			icon (canvas, state ? I_WARN : I_CHECK, x + 2, y, 17, state == 2 ? 0xB03A30 : state ? 0x4A3A10 : C_GREEN, C_ACCENT, C_FACE);
+			uk_text (canvas, x + 28, y + (17 - uk_fh ()) / 2, txt, state == 2 ? 0xB03A30 : C_TEXT, state == 2 ? 2 : 0); y += 23;
+		};
+		row (j.tooLarge ? 2 : 0, j.tooLarge ? "It does not fit the printer." : "It fits the plate and the room.");
+		row (j.onPlate ? 0 : 2, j.onPlate ? "The first layers lie on the plate." : "Nothing lies on the plate: lower the body, or give it supports.");
+		if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, "%d part%s in mid-air, the first at %s mm: it needs a support.", j.islands, j.islands > 1 ? "s start" : " starts", a); row (1, t); }
+		else row (0, "Each layer rests on the one before.");
+		y += 6;
+		{
+			UkFaceScope fs (g_small); int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (a, sizeof a, "%d h %02d", mn / 60, mn % 60); else snprintf (a, sizeof a, "%d min", mn);
+			snprintf (t, sizeof t, "%d layers of %.3g mm \xC2\xB7 %.1f ml of resin \xC2\xB7 about %s", (int) j.file.layers.size (), A.print.resin.layer, j.volume, a); uk_text (canvas, x, y, t, dim_col ()); y += 17;
+			snprintf (t, sizeof t, "%s \xC2\xB7 %s \xC2\xB7 %.3g s a layer, %.3g s the first %d", A.print.machine.name, A.print.resin.name, A.print.resin.exposure, A.print.resin.bottomExposure, (int) (A.print.resin.bottomLayers + 0.5));
+			uk_text (canvas, x, y, t, dim_col ());
+		}
+		uk_text (canvas, x, height - 122 + (28 - uk_fh ()) / 2, "Name", C_TEXT); uk_text (canvas, x, height - 88 + (28 - uk_fh ()) / 2, "Folder", C_TEXT);
+		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, bad ? "Nothing is written until this is put right." : ".%s", A.print.machine.ext); uk_text (canvas, x + 280, height - 122 + (28 - uk_fh ()) / 2, t, bad ? 0xB03A30 : dim_col ()); }
+	}
+};
+static void print_file_dialog ()
+{
+	PrintDialog d; Root *rt = Root::current (); d.left = (rt->width - d.width) / 2; d.top = (rt->height - d.height) / 2;
+	g_export = &d; int r = d.run (); g_export = 0;
+	if (r == 1) set_hint ("The print file is written."); ui (R_ALL);
+}
+// The file asked: once the layers are cut.
+static void cmd_print_file ()
+{
+	if (!resin ()) return;
+	if (A.printDirty) print_refresh ();
+	if (A.sliced) { print_file_dialog (); return; }
+	A.wantFile = true; print_slice_start (); set_hint ("Cutting the layers..."); ui (0);
+}
+// What Manufacture makes: a router's G-code, or the layers of one of the resin printers.
+static void cmd_gen ()
+{
+	if (!A.camMode) return;
+	std::string ini; read_text (PRINTERS_INI, ini); std::vector<PrintMachine> ms = print_machines (ini.c_str ());
+	PopupMenu pm (g_props->left + 110, g_props->top + 112); char t[80];
+	pm.add ("Milling \xC2\xB7 G-code for a router (GRBL)", 2000);
+	for (size_t i = 0; i < ms.size () && i < 30; i++) { snprintf (t, sizeof t, "Resin printing \xC2\xB7 %s", ms[i].name); pm.add (t, 2001 + (int) i); }
+	int c = pm.run ();
+	if (c == 2000) gen_set (0);
+	else if (c > 2000 && c - 2001 < (int) ms.size ())
+	{
+		bool other = strcmp (A.print.machine.name, ms[c - 2001].name) != 0; A.print.machine = ms[c - 2001];
+		if (other) print_presets_save ();
+		gen_set (1);
+	}
+	if (g_view) g_view->fit ();
+}
+static void cmd_print_preset ()
+{
+	PopupMenu pm (g_props->left + 12, g_props->top + 92);
+	for (int i = 0; i < 3; i++) pm.add (PRINT_RESINS[i].name, 3000 + i);
+	int c = pm.run ();
+	if (c >= 3000 && c < 3003) { A.print.resin = PRINT_RESINS[c - 3000]; print_presets_save (); print_touch (); ui (R_ALL); }
+}
 // Which body is cut: one of the part's.
 static void cmd_cam_body ()
 {
 	PopupMenu pm (g_props->left + 12, g_props->top + 112);
 	for (size_t i = 0; i < A.doc.bodies.size () && i < 40; i++) pm.add (body_name (A.doc.bodies[i].id), 1000 + (int) i);
 	int c = pm.run ();
+	if (c >= 1000 && c - 1000 < (int) A.doc.bodies.size () && A.gen == 1) { A.print.body = A.doc.bodies[c - 1000].id; A.print.tips.clear (); A.doc.changes++; print_refresh (); if (g_view) g_view->fit (); ui (R_ALL); return; }
 	if (c >= 1000 && c - 1000 < (int) A.doc.bodies.size ()) { A.job.body = A.doc.bodies[c - 1000].id; A.doc.changes++; cam_refresh (); if (g_view) g_view->fit (); ui (R_ALL); }
 }
 
@@ -347,6 +448,7 @@ static void confirm ()
 }
 static void cancel ()
 {
+	if (resin ()) { if (A.layerPlay) { A.layerPlay = false; ui (0); } return; }
 	if (A.camMode) { if (A.camSim) { A.camSim = false; ui (R_ALL); } return; }
 	if (A.sketching)
 	{
@@ -368,6 +470,20 @@ static void cmd (int id)
 	case CMD_REDO: if (!A.camMode) do_undo (true); break;
 	case CMD_MODE_DESIGN: cam_enter (false); break;
 	case CMD_MODE_CAM: cam_enter (true); if (A.camMode) g_view->fit (); break;
+	case CMD_PR_SETUP: print_page (0); break;
+	case CMD_PR_RESIN: print_page (1); break;
+	case CMD_PR_SUPPORTS: print_page (2); break;
+	case CMD_PR_LAYERS: print_page (3); break;
+	case CMD_PR_FILE: cmd_print_file (); break;
+	case CMD_PR_GENERATE:
+		if (!resin ()) break;
+		if (A.printDirty) print_refresh ();
+		print_supports_auto (A.placed, A.print, A.print.tips); A.doc.changes++; print_refresh ();
+		if (A.print.tips.empty ()) set_hint ("Nothing hangs: no support is needed as the body is.");
+		ui (R_ALL); break;
+	case CMD_PR_CLEAR: if (resin ()) { A.print.tips.clear (); A.doc.changes++; print_refresh (); ui (R_ALL); } break;
+	case CMD_PR_PRESET: if (resin ()) cmd_print_preset (); break;
+	case CMD_GEN: cmd_gen (); break;
 	case CMD_CAM_SETUP: if (A.camMode) { A.camSel = 0; A.camPage = 0; A.camSim = false; cam_hint (); ui (R_ALL); } break;
 	case CMD_CAM_TOOL: if (A.camMode) { A.camPage = 1; A.camSim = false; cam_hint (); ui (R_ALL); } break;
 	case CMD_CAM_CLEAR: if (A.camMode) cam_add (CAM_CLEAR); break;
@@ -376,9 +492,10 @@ static void cmd (int id)
 		if (!A.camMode) break;
 		if (A.camDirty) cam_refresh ();
 		if (A.paths.hm.empty ()) { set_hint ("Add a clearing or a contour first: there is nothing to simulate."); ui (0); break; }
-		A.camSim = !A.camSim; set_hint (A.camSim ? "What is left of the stock after every operation. Esc: back to the moves." : ""); if (!A.camSim) cam_hint ();
+		A.camSim = !A.camSim; A.simPlay = false; if (A.camSim) sim_to (A.paths.moves.size ());
+		set_hint (A.camSim ? "What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves." : ""); if (!A.camSim) cam_hint ();
 		ui (R_ALL); break;
-	case CMD_GCODE: cmd_gcode (); break;
+	case CMD_GCODE: if (A.gen == 1) cmd_print_file (); else cmd_gcode (); break;
 	case CMD_CAM_BODY: if (A.camMode) cmd_cam_body (); break;
 	case CMD_CAM_DELETE: if (A.camMode) cam_delete_op (); break;
 	case CMD_EXPORT: cmd_export (); break;
@@ -393,7 +510,7 @@ static void cmd (int id)
 	}
 	case CMD_OK: confirm (); break;
 	case CMD_CANCEL: cancel (); break;
-	case CMD_DELETE: if (A.camMode) cam_delete_op (); else if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;
+	case CMD_DELETE: if (resin ()) break; if (A.camMode) cam_delete_op (); else if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;
 	case CMD_DEL_ELEMENT:
 		if (A.sketching && A.selEl >= 0 && A.selEl < (int) A.sk.els.size ()) { A.sk.els.erase (A.sk.els.begin () + A.selEl); A.selEl = -1; sk_eval (); A.chain = false; sk_arm (); ui (R_ALL); }
 		break;
@@ -414,7 +531,36 @@ public:
 	void onTick () override
 	{
 		// (Manufacture: the moves made again once the values have stopped changing for a moment)
-		if (A.camMode && A.camDirty && kapi_get_ticks () - A.camDirtyT > 40) { cam_refresh (); ui (0); }
+		if (A.camMode && A.gen == 0 && A.camDirty && kapi_get_ticks () - A.camDirtyT > 40) { cam_refresh (); ui (0); }
+		if (A.camMode && A.gen == 0 && A.camSim && A.simPlay && kapi_get_ticks () - A.simT >= 3)		// (the cut played)
+		{
+			size_t n = A.paths.moves.size (), by = n / 300 < 1 ? 1 : n / 300; A.simT = kapi_get_ticks ();
+			sim_to (A.simAt + by); if (A.simAt >= n) A.simPlay = false;
+			g_view->invalidate (true);
+		}
+		if (resin ())		// (a resin printer's: the body put again; the layers cut a few at a turn; the layers played)
+		{
+			if (A.printDirty && kapi_get_ticks () - A.camDirtyT > 40) { print_refresh (); if (A.camPage == 3) print_slice_start (); ui (0); g_view->invalidate (true); }
+			if (A.slicer.running ())
+			{
+				// (layers for about three hundredths of a second, then the window lives again)
+				unsigned t0 = kapi_get_ticks (); bool done = false;
+				for (int k = 0; k < 60 && !done; k++) { done = A.slicer.step (1); if (kapi_get_ticks () - t0 >= 3) break; }
+				if (done)
+				{
+					A.sliced = true; int n = (int) A.pjob.file.layers.size (); if (A.layer > n - 1) A.layer = n - 1;
+					if (A.wantFile) { A.wantFile = false; print_hint (); ui (0); g_view->invalidate (true); print_file_dialog (); }
+					else print_hint ();
+				}
+				ui (0); g_view->invalidate (true);
+			}
+			else if (A.layerPlay && A.sliced && kapi_get_ticks () - A.layerT >= 4)
+			{
+				int n = (int) A.pjob.file.layers.size (); A.layerT = kapi_get_ticks (); A.layer += n > 300 ? n / 150 : 1;
+				if (A.layer >= n - 1) { A.layer = n - 1; A.layerPlay = false; }
+				ui (0); g_view->invalidate (true);
+			}
+		}
 		if (!g_rebuild || !g_props) return;
 		g_rebuild = false; g_props->rebuild (); g_ribbon->sync ();
 	}
@@ -524,7 +670,13 @@ int main (void)
 	menu.item ("New Contour", "", 0, [] { cmd (CMD_CAM_CONTOUR); });
 	menu.separator ();
 	menu.item ("Simulate", "", 0, [] { cmd (CMD_CAM_SIM); });
-	menu.item ("G-code...", "^G", UK_CTRL ('G'), [] { cmd (CMD_GCODE); });
+	menu.item ("G-code / Print File...", "^G", UK_CTRL ('G'), [] { cmd (CMD_GCODE); });
+	menu.separator ();
+	menu.item ("Process: Milling", "", 0, [] { gen_set (0); if (A.camMode) g_view->fit (); });
+	menu.item ("Process: Resin Printing", "", 0, [] { gen_set (1); if (A.camMode) g_view->fit (); });
+	menu.item ("Supports", "", 0, [] { cmd (CMD_PR_SUPPORTS); });
+	menu.item ("Generate Supports", "", 0, [] { cmd (CMD_PR_GENERATE); });
+	menu.item ("Layers", "", 0, [] { cmd (CMD_PR_LAYERS); });
 	menu.menu ("Help");
 	menu.item ("About 3DForge", "", 0, [] { uk_messagebox ("3DForge", "A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0).", MB_OK); });
 	menu.publish ();

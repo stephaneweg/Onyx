@@ -28,6 +28,7 @@
 #include "frender.h"
 #include "ficons.h"
 #include "fcam.h"
+#include "fprint.h"
 
 namespace forge {
 
@@ -66,6 +67,14 @@ struct App
 	// k: its operation k - 1; camPage: 0 the setup, 1 the tool, 2 the operation
 	CamSetup job; CamPaths paths; RMesh stockMesh;
 	bool camMode = false, camSim = false, camDirty = false; int camSel = 0, camPage = 0; unsigned camDirtyT = 0;
+	std::vector<float> simHm; size_t simAt = 0; bool simPlay = false; unsigned simT = 0;	// (the simulation played: the stock so far, the moves done)
+	// ... for a resin printer (fprint.h) -- gen: what Manufacture makes: 0 a router's G-code, 1 a printer's layers.
+	// Its pages (camPage): 0 the setup, 1 the resin, 2 the supports, 3 the layers.
+	int gen = 0; PrintSetup print; PrintJob pjob; PrintSlicer slicer;
+	Manifold placed, held;			// the body on the plate; with what holds it
+	RMesh placedMesh, supMesh, cutMesh;	// ... shown; cutMesh: up to the layer looked at
+	bool printDirty = false, sliced = false, wantFile = false, layer3d = false, layerPlay = false; int layer = 0, cutAt = -1; unsigned layerT = 0;
+	double pAt[6] = { 0, 0, 0, 0, 0, 0 };	// (where the body was when its supports' tips were placed)
 	char hint[200], path[200], caption[96];
 	unsigned saved; bool gpu;
 	void (*refresh) (int what);
@@ -458,6 +467,7 @@ static void sk_close ()
 }
 
 // ---- Manufacture ---------------------------------------------------------------------------------------------------------
+static void print_enter ();
 static CamOp *cam_op () { return A.camSel >= 1 && A.camSel <= (int) A.job.ops.size () ? &A.job.ops[A.camSel - 1] : 0; }
 static void cam_hint ()
 {
@@ -482,7 +492,20 @@ static void cam_refresh ()
 	build_mesh (Manifold::Cube ({hi.x - lo.x, hi.y - lo.y, hi.z - lo.z}).Translate ({lo.x, lo.y, lo.z}), A.stockMesh);
 	A.paths.lo = lo; A.paths.hi = hi;
 	if (A.job.ops.empty () || !cam_compute (A.doc, A.job, A.paths)) { A.paths.moves.clear (); A.paths.hm.clear (); }
+	A.simHm.clear (); A.simAt = 0; A.simPlay = false;
 	cam_hint ();
+}
+// The simulation at its move `target`: the stock as the moves before it leave it (going back: from the start again).
+static void sim_to (size_t target)
+{
+	const CamPaths &p = A.paths; if (p.hm.empty ()) return;
+	if (target > p.moves.size ()) target = p.moves.size ();
+	if (A.simHm.size () != p.hm.size () || target < A.simAt)
+	{
+		A.simHm.resize (p.hm.size ()); A.simAt = 0;
+		for (size_t i = 0; i < p.hm.size (); i++) A.simHm[i] = p.hm[i] < -1e8f ? -1e9f : (float) p.hi.z;
+	}
+	cam_sim_advance (p, A.job.tool.dia / 2, A.simHm, A.simAt, target); A.simAt = target;
 }
 static void cam_touch () { A.camDirty = true; A.camDirtyT = kapi_get_ticks (); A.doc.changes++; }
 static void cam_enter (bool on)
@@ -494,6 +517,7 @@ static void cam_enter (bool on)
 		if (A.doc.bodies.empty ()) { set_hint ("Manufacture needs a body: make one first."); ui (R_ALL); return; }
 		if (!A.job.on || !A.doc.body (A.job.body)) { A.job.on = true; A.job.body = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id; }
 		A.camMode = true; A.camSel = 0; A.camPage = 0; A.camSim = false; cam_refresh ();
+		if (A.gen == 1) print_enter ();
 	}
 	else { A.camMode = false; A.caption[0] = 0; A.prevErr = 0; tool_hint (); }
 	ui (R_ALL);
@@ -510,6 +534,61 @@ static void cam_delete_op ()
 {
 	if (!cam_op ()) return;
 	A.job.ops.erase (A.job.ops.begin () + A.camSel - 1); A.camSel = 0; A.camPage = 0; A.doc.changes++; cam_refresh (); ui (R_ALL);
+}
+
+// ---- Manufacture for a resin printer ------------------------------------------------------------------------------------------
+static bool resin () { return A.camMode && A.gen == 1; }
+static void print_hint ()
+{
+	A.prevErr = 0; const PrintSetup &s = A.print;
+	if (A.camPage == 0) { set_hint ("The body on the printer's plate: move, lift, tilt or turn it at the right."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 %s", s.machine.name); }
+	else if (A.camPage == 1) { set_hint ("The resin's values are remembered: the next part starts with them."); snprintf (A.caption, sizeof A.caption, "Resin \xC2\xB7 %s", s.resin.name); }
+	else if (A.camPage == 2)
+	{
+		set_hint ("Generate: pillars where the body hangs. Click the body to add one, a tip to remove it.");
+		if (s.tips.empty ()) snprintf (A.caption, sizeof A.caption, "Supports \xC2\xB7 none"); else snprintf (A.caption, sizeof A.caption, "Supports \xC2\xB7 %d pillars%s", (int) s.tips.size (), s.raft ? " \xC2\xB7 a raft" : "");
+	}
+	else { set_hint ("The layers as the screen shows them: white is lit. The bar, the wheel, or Play."); A.caption[0] = 0; }
+}
+// The body on the plate and what holds it, made again; the layers are to be cut again.
+static void print_refresh ()
+{
+	A.printDirty = false; A.slicer = PrintSlicer (); A.sliced = false; A.wantFile = false; A.layerPlay = false; A.cutAt = -1; A.pjob = PrintJob ();
+	const PrintSetup &s = A.print; Body *b = A.doc.body (s.body);
+	A.pAt[0] = s.x; A.pAt[1] = s.y; A.pAt[2] = s.lift; A.pAt[3] = s.tiltX; A.pAt[4] = s.tiltY; A.pAt[5] = s.turn;
+	A.placedMesh = RMesh (); A.supMesh = RMesh (); A.placed = A.held = Manifold ();
+	if (!b) { print_hint (); return; }
+	A.placed = print_place (b->m, s); build_mesh (A.placed, A.placedMesh);
+	Manifold sup = print_support_solid (A.placed, s);
+	if (sup.IsEmpty ()) A.held = A.placed; else { build_mesh (sup, A.supMesh); A.held = A.placed + sup; }
+	print_hint ();
+}
+static void print_touch () { A.printDirty = true; A.camDirtyT = kapi_get_ticks (); A.doc.changes++; }
+// The layers cut, a few at each turn of the loop (main.cpp); wantFile: the file's window opens when they are.
+static void print_slice_start ()
+{
+	if (A.printDirty) print_refresh ();
+	if (A.sliced || A.slicer.running ()) return;
+	if (!A.slicer.begin (A.held, A.print, A.pjob)) { A.prevErr = A.pjob.err; set_hint (A.pjob.err); A.wantFile = false; }
+}
+static void print_enter ()
+{
+	if (!A.print.on || !A.doc.body (A.print.body)) { A.print.on = true; A.print.body = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id; A.print.tips.clear (); }
+	A.camSel = 0; A.camPage = 0; A.camSim = false; A.layer = 0; print_refresh ();
+}
+static void gen_set (int g)
+{
+	if (!A.camMode || A.doc.bodies.empty ()) return;
+	A.gen = g; A.doc.changes++; A.camSel = A.camPage = 0; A.camSim = false; A.caption[0] = 0;
+	if (g == 1) print_enter (); else cam_refresh ();
+	ui (R_ALL);
+}
+static void print_page (int page)
+{
+	if (!resin ()) return;
+	A.camPage = page; A.camSel = page == 2 ? 1 : 0; A.layerPlay = false; print_hint ();
+	if (page == 3) print_slice_start ();
+	ui (R_ALL);
 }
 
 // ---- the view ----------------------------------------------------------------------------------------------------------
@@ -529,6 +608,13 @@ public:
 	void fit ()
 	{
 		V3 lo (0, 0, 0), hi (100, 60, 40); bool any = false;
+		if (resin ())					// the printer's plate, the body on it
+		{
+			const PrintMachine &m = A.print.machine; double hw = m.resX * m.pixel / 2000, hh = m.resY * m.pixel / 2000;
+			lo = V3 (-hw, -hh, 0); hi = V3 (hw, hh, std::max (30.0, A.placedMesh.tris () ? A.placedMesh.hi.z : 0.0));
+			A.cam.t = (lo + hi) * 0.5; A.cam.scale = std::min (width, height) * 0.86 / len (hi - lo);
+			pristine = true; fitW = width; fitH = height; invalidate (true); return;
+		}
 		for (const Body &b : A.doc.bodies)
 		{
 			if (!any) { lo = b.mesh.lo; hi = b.mesh.hi; any = true; continue; }
@@ -636,14 +722,195 @@ public:
 		return V3 (lo.x + (hi.x - lo.x) * (k % 3) / 2, lo.y + (hi.y - lo.y) * (k / 3 % 3) / 2, lo.z + (hi.z - lo.z) * (k / 9) / 2);
 	}
 	bool camFacePick () const { CamOp *op = cam_op (); return A.camMode && A.camPage == 2 && op && op->useFace; }
+	// ---- a resin printer's: the plate, the supports clicked, a layer's picture, the layers' bar ----
+	bool pickMesh (const RMesh &m, double mx, double my, V3 *out, V3 *nrm) const
+	{
+		V3 o = A.cam.under (mx, my), dir = A.cam.d * -1.0; bool got = false; double best = -1e30;
+		for (int t = 0; t < m.tris (); t++)
+		{
+			const V3 &a = m.v[m.t[t * 3]], &b = m.v[m.t[t * 3 + 1]], &c = m.v[m.t[t * 3 + 2]];
+			V3 e1 = b - a, e2 = c - a, p = cross (dir, e2); double det = dot (e1, p); if (fabs (det) < 1e-12) continue;
+			V3 s = o - a; double u = dot (s, p) / det; if (u < 0 || u > 1) continue;
+			V3 q = cross (s, e1); double v = dot (dir, q) / det; if (v < 0 || u + v > 1) continue;
+			double k = dot (e2, q) / det; if (-k > best) { best = -k; *out = o + dir * k; *nrm = m.n[t]; got = true; }
+		}
+		return got;
+	}
+	void printClick (int mx, int my)
+	{
+		if (A.camPage != 2) return;
+		PrintSetup &s = A.print; int near = -1; double bd = 9;
+		for (size_t i = 0; i < s.tips.size (); i++) { double x, y; sx (s.tips[i], &x, &y); double d = hypot (mx - x, my - y); if (d < bd) { bd = d; near = (int) i; } }
+		V3 p, n;
+		if (near >= 0) s.tips.erase (s.tips.begin () + near);
+		else if (pickMesh (A.placedMesh, mx, my, &p, &n) && p.z > 0.3 && s.tips.size () < 4000) s.tips.push_back (p);
+		else return;
+		A.doc.changes++; print_refresh (); ui (R_ALL);
+	}
+	void layerRect (int *x, int *y, int *w, int *h) const
+	{
+		const PrintMachine &m = A.print.machine; int aw = width - 28 - 64, ah = height - 44 - 40;
+		double s = std::min ((double) aw / m.resX, (double) ah / m.resY);
+		*w = (int) (m.resX * s); *h = (int) (m.resY * s); *x = 28 + (aw - *w) / 2; *y = 44 + (ah - *h) / 2;
+	}
+	// A bar to go through something played -- the layers, the simulation's moves --, its Play button under it: at
+	// the right of a layer's picture, at the left of the 3D view (the cube and its buttons are at the right).
+	bool barHeld = false;
+	void barGeom (int *bx, int *y0, int *y1) const
+	{
+		bool side = !(resin () && A.camPage == 3 && !A.layer3d);
+		*bx = side ? 14 : width - 40; *y0 = side ? 66 : 48; *y1 = height - (side ? 124 : 74);
+	}
+	void vbar (bool dark, double frac, const char *top, bool playing)
+	{
+		int bx, y0, y1; barGeom (&bx, &y0, &y1);
+		unsigned track = dark ? 0x3C4050 : 0xC4C8D2, ink = dark ? 0x9AA0B0 : 0x5A5E68;
+		uk_rbox (canvas, bx + 9, y0, 6, y1 - y0, 3, track, track);
+		if (frac >= 0)
+		{
+			int ky = y1 - (int) ((y1 - y0) * (frac > 1 ? 1 : frac));
+			uk_rbox (canvas, bx + 9, ky, 6, y1 - ky + 1, 3, C_ACCENT, C_ACCENT);
+			uk_rbox (canvas, bx + 1, ky - 6, 22, 12, 5, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, bx + 1, ky - 6, 22, 12, 5, 0x7A8090);
+		}
+		UkFaceScope fs (g_small);
+		if (top && top[0]) uk_text (canvas, bx + 12 - uk_tw (top) / 2, y0 - 18, top, ink);
+		uk_rbox (canvas, bx - 2, y1 + 12, 28, 26, 6, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, bx - 2, y1 + 12, 28, 26, 6, 0x7A8090);
+		if (playing) { canvas.fillRect (bx + 6, y1 + 19, 4, 12, 0x2A2E38); canvas.fillRect (bx + 14, y1 + 19, 4, 12, 0x2A2E38); }
+		else icon (canvas, I_PLAY, bx + 3, y1 + 16, 18, 0x2A2E38, C_ACCENT, 0xFFFFFF);
+	}
+	// The mouse on it: 1 Play pressed, 2 the bar held (*frac: where), 0 elsewhere.
+	int barMouse (int mx, int my, int bl, bool press, double *frac)
+	{
+		int bx, y0, y1; barGeom (&bx, &y0, &y1);
+		if (!bl) barHeld = false;
+		if (press && mx >= bx - 4 && mx < bx + 30 && my >= y1 + 10 && my < y1 + 40) return 1;
+		if (press && mx >= bx - 6 && mx < bx + 32 && my >= y0 - 8 && my <= y1 + 8) barHeld = true;
+		if (!barHeld) return 0;
+		double f = (double) (y1 - my) / (y1 - y0); *frac = f < 0 ? 0 : f > 1 ? 1 : f; return 2;
+	}
+	void layerBar (bool dark)
+	{
+		int n = (int) A.pjob.file.layers.size (); char t[32]; snprintf (t, sizeof t, "%d", n);
+		vbar (dark, n > 0 && A.sliced ? (double) (A.layer + 1) / n : -1, t, A.layerPlay);
+	}
+	// The mouse on the Layers page. true: taken.
+	bool layerMouse (int mx, int my, int bl, bool press, int wheel)
+	{
+		int n = (int) A.pjob.file.layers.size (); double f = 0;
+		if (!A.sliced || n < 1) { barHeld = false; return !A.layer3d; }
+		int was = A.layer, hit = barMouse (mx, my, bl, press, &f);
+		if (hit == 1) { A.layerPlay = !A.layerPlay; if (A.layerPlay && A.layer >= n - 1) A.layer = 0; ui (0); invalidate (true); return true; }
+		if (hit == 2) { A.layer = (int) (f * n); A.layerPlay = false; }
+		else if (wheel && !A.layer3d) { A.layer += wheel * (n > 400 ? n / 200 : 1); A.layerPlay = false; }
+		if (A.layer < 0) A.layer = 0; if (A.layer > n - 1) A.layer = n - 1;
+		if (A.layer != was) { ui (0); invalidate (true); }
+		return hit != 0 || !A.layer3d;
+	}
+	// ... on the simulation of a router's moves.
+	bool simMouse (int mx, int my, int bl, bool press)
+	{
+		size_t n = A.paths.moves.size (); double f = 0; int hit = barMouse (mx, my, bl, press, &f);
+		if (!hit || !n) return false;
+		if (hit == 1) { A.simPlay = !A.simPlay; if (A.simPlay && A.simAt >= n) sim_to (0); }
+		else { A.simPlay = false; sim_to ((size_t) (f * n)); }
+		invalidate (true); return true;
+	}
+	// A layer's picture: the screen, what is lit in white.
+	void drawLayer ()
+	{
+		canvas.clear (0x14161C); const PrintMachine &m = A.print.machine; const PmFile &f = A.pjob.file; int n = (int) f.layers.size ();
+		int ox, oy, pw, ph; layerRect (&ox, &oy, &pw, &ph); char t[120], a[24];
+		canvas.fillRect (ox, oy, pw, ph, 0x000000); canvas.frameRect (ox - 1, oy - 1, pw + 2, ph + 2, 0x4A5062);
+		UkFaceScope fs (g_small);
+		if (A.sliced && n > 0)
+		{
+			if (A.layer > n - 1) A.layer = n - 1;
+			const PmLayer &l = f.layers[A.layer]; const std::string &r = l.rle; size_t at = 0, W = m.resX; double s = (double) pw / m.resX;
+			for (size_t i = 0; i + 1 < r.size (); i += 2)
+			{
+				unsigned v = (unsigned char) r[i] << 8 | (unsigned char) r[i + 1], run = v & 0xFFF;
+				if (v >> 12)
+					for (size_t q = at, e = at + run; q < e; )
+					{
+						size_t row = q / W, col = q % W, seg = std::min (e - q, W - col); int y = (int) (row * s), x0 = (int) (col * s), x1 = (int) ((col + seg - 1) * s);
+						if (y < ph) canvas.fillRect (ox + x0, oy + y, std::min (x1, pw - 1) - x0 + 1, 1, 0xFFFFFF);
+						q += seg;
+					}
+				at += run;
+			}
+			fmt ((A.layer + 1) * f.layer, a, 12); snprintf (t, sizeof t, "Layer %d of %d  \xC2\xB7  %s mm  \xC2\xB7  %.3g s", A.layer + 1, n, a, l.exposure);
+			uk_text (canvas, ox, oy - 22, t, 0xC8CCD6);
+			snprintf (t, sizeof t, "lit: %.1f cm\xC2\xB2", l.lit * m.pixel * m.pixel / 1e8); uk_text (canvas, ox, oy + ph + 8, t, 0x969CAA);
+		}
+		else
+		{
+			int done = A.pjob.done, tot = A.pjob.total > 0 ? A.pjob.total : 1;
+			if (A.pjob.err[0]) snprintf (t, sizeof t, "%s", A.pjob.err); else snprintf (t, sizeof t, "Cutting the layers...  %d of %d", done, A.pjob.total);
+			uk_text (canvas, ox + (pw - uk_tw (t)) / 2, oy + ph / 2 - 20, t, 0xC8CCD6);
+			uk_rbox (canvas, ox + pw / 4, oy + ph / 2 + 4, pw / 2, 8, 4, 0x2C303C, 0x2C303C); uk_rbox (canvas, ox + pw / 4, oy + ph / 2 + 4, std::max (8, pw / 2 * done / tot), 8, 4, C_ACCENT, C_ACCENT);
+		}
+		snprintf (t, sizeof t, "%d \xC3\x97 %d", m.resX, m.resY); uk_text (canvas, ox + pw - uk_tw (t), oy - 22, t, 0x767C8C);
+		layerBar (true);
+	}
+	void printScene ()
+	{
+		const PrintMachine &m = A.print.machine; double hw = m.resX * m.pixel / 2000, hh = m.resY * m.pixel / 2000, bias = 2.0 / A.cam.scale;
+		sc.batch (0, true);						// the plate, its squares of 10 mm
+		unsigned pc = shade_rgb (0xC9CDD6, lit (A.cam, V3 (0, 0, 1)));
+		const V3 q[4] = { V3 (-hw, -hh, -0.05), V3 (hw, -hh, -0.05), V3 (hw, hh, -0.05), V3 (-hw, hh, -0.05) };
+		for (int k : { 0, 1, 2, 0, 2, 3 }) sc.vert (q[k].x, q[k].y, q[k].z, pc);
+		sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LEQUAL) | KAPI_GPU_B_NOZWRITE, false);
+		for (double x = ceil (-hw / 10) * 10; x <= hw; x += 10) sc.line (V3 (x, -hh, 0), V3 (x, hh, 0), 0.5 * SS, x == 0 ? 0x7C8494 : 0xA6ACB8, 255, bias);
+		for (double y = ceil (-hh / 10) * 10; y <= hh; y += 10) sc.line (V3 (-hw, y, 0), V3 (hw, y, 0), 0.5 * SS, y == 0 ? 0x7C8494 : 0xA6ACB8, 255, bias);
+		for (int k = 0; k < 4; k++) sc.line (V3 (q[k].x, q[k].y, 0), V3 (q[(k + 1) % 4].x, q[(k + 1) % 4].y, 0), 0.9 * SS, 0x5E6676, 255, bias);
+		const BodyProp *bp = 0; for (const BodyProp &p : A.doc.props) if (p.id == A.print.body) bp = &p;
+		unsigned col = bp ? bp->colour : 0x92AACC;
+		bool cut = A.camPage == 3 && A.layer3d && A.sliced;
+		if (cut)							// what is printed up to the layer looked at
+		{
+			if (A.cutAt != A.layer) { A.cutAt = A.layer; build_mesh (A.held.TrimByPlane ({0, 0, -1}, -(A.layer + 1) * A.print.resin.layer), A.cutMesh); }
+			if (A.cutMesh.tris ()) { sc.batch (KAPI_GPU_B_CULL_BACK, true); scene_body (sc, A.cutMesh, col, 255); }
+			return;
+		}
+		if (A.supMesh.tris ())
+		{
+			sc.batch (KAPI_GPU_B_CULL_BACK, true); scene_body (sc, A.supMesh, 0xB4BED0, 255);
+			if (A.showEdges && A.supMesh.tris () < 20000) { sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LEQUAL) | KAPI_GPU_B_NOZWRITE, false); scene_edges (sc, A.supMesh, 0x5E6A82, 0.45); }
+		}
+		if (A.placedMesh.tris ())
+		{
+			sc.batch (KAPI_GPU_B_CULL_BACK, true); scene_body (sc, A.placedMesh, col, 255);
+			if (A.showEdges) { sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LEQUAL) | KAPI_GPU_B_NOZWRITE, false); scene_edges (sc, A.placedMesh, 0x222E42, 0.6); }
+		}
+	}
+	void printOverlays ()
+	{
+		if (A.camPage == 3) layerBar (false);
+		if (A.camPage == 2 && tipHot >= 0 && tipHot < (int) A.print.tips.size ()) { double x, y; sx (A.print.tips[tipHot], &x, &y); ov_dot (canvas, x, y, 6, 0xFFFFFF, C_RED, 2); }
+		if (A.slicer.running ())
+		{
+			char t[64]; snprintf (t, sizeof t, "Cutting the layers...  %d of %d", A.pjob.done, A.pjob.total); UkFaceScope fs (g_small);
+			int w = uk_tw (t) + 24; uk_rbox (canvas, (width - w) / 2, 10, w, 24, 12, 0xFFFFFF, 0xFFFFFF, 230); uk_rline (canvas, (width - w) / 2, 10, w, 24, 12, 0xB0B4BE);
+			uk_text (canvas, (width - w) / 2 + 12, 10 + (24 - uk_fh ()) / 2, t, 0x3C4050);
+		}
+	}
+	int tipHot = -1;
 	void camMove (int mx, int my)
 	{
+		if (resin ())
+		{
+			int near = -1; double bd = 9;
+			if (A.camPage == 2) for (size_t i = 0; i < A.print.tips.size (); i++) { double x, y; sx (A.print.tips[i], &x, &y); double d = hypot (mx - x, my - y); if (d < bd) { bd = d; near = (int) i; } }
+			if (near != tipHot) { tipHot = near; invalidate (true); }
+			return;
+		}
 		Hit h; int hb = -1, hf = -1;
 		if (camFacePick () && pick (A.doc, A.cam, mx, my, &h) && A.doc.bodies[h.body].id == A.job.body) { hb = h.body; hf = A.doc.bodies[h.body].mesh.grp[h.tri]; }
 		if (hb != A.hovBody || hf != A.hovFace) { A.hovBody = hb; A.hovFace = hf; invalidate (true); }
 	}
 	void camClick (int mx, int my)
 	{
+		if (resin ()) { printClick (mx, my); return; }
 		if (A.camPage == 0)
 		{
 			int best = -1; double bd = 12;
@@ -678,7 +945,8 @@ public:
 			sc.batch (0, true);
 			int s = 1; while ((p.nx / s) * (p.ny / s) > 14000) s++;
 			double x0 = p.lo.x - c.tool.dia, y0 = p.lo.y - c.tool.dia;
-			auto hgt = [&] (int i, int j) { if (i >= p.nx) i = p.nx - 1; if (j >= p.ny) j = p.ny - 1; return (double) p.hm[(size_t) j * p.nx + i]; };
+			const std::vector<float> &H = A.simHm.size () == p.hm.size () ? A.simHm : p.hm;		// (played: the stock so far)
+			auto hgt = [&] (int i, int j) { if (i >= p.nx) i = p.nx - 1; if (j >= p.ny) j = p.ny - 1; return (double) H[(size_t) j * p.nx + i]; };
 			for (int j = 0; j + s <= p.ny; j += s) for (int i = 0; i + s <= p.nx; i += s)
 			{
 				double h00 = hgt (i, j), h10 = hgt (i + s, j), h11 = hgt (i + s, j + s), h01 = hgt (i, j + s);
@@ -688,6 +956,12 @@ public:
 				V3 n = unit (cross (b - a, e - a)); unsigned col = shade_rgb (0xD9B77E, lit (A.cam, n));
 				sc.vert (a.x, a.y, a.z, col); sc.vert (b.x, b.y, b.z, col); sc.vert (d.x, d.y, d.z, col);
 				sc.vert (a.x, a.y, a.z, col); sc.vert (d.x, d.y, d.z, col); sc.vert (e.x, e.y, e.z, col);
+			}
+			if (A.simAt > 0 && A.simAt < p.moves.size ())		// the tool, where it is
+			{
+				V3 tip = p.moves[A.simAt - 1].p; double w = c.tool.dia * A.cam.scale * SS * 0.65;
+				sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LEQUAL), false);
+				sc.line (tip, tip + V3 (0, 0, c.tool.flute), w, 0xB8BEC8); sc.line (tip + V3 (0, 0, c.tool.flute), tip + V3 (0, 0, c.tool.flute + 14), w, 0x6E7482);
 			}
 			return;
 		}
@@ -704,6 +978,11 @@ public:
 	}
 	void camOverlays ()
 	{
+		if (A.camSim)			// the simulation: its bar, how far it is
+		{
+			size_t n = A.paths.moves.size (); char t[24]; snprintf (t, sizeof t, "%d %%", n ? (int) (100.0 * A.simAt / n) : 0);
+			vbar (false, n ? (double) A.simAt / n : -1, t, A.simPlay);
+		}
 		V3 o = cam_origin (A.job, A.paths.lo, A.paths.hi), ax, ay; cam_axes (A.job, &ax, &ay);
 		if (A.camPage == 0)
 			for (int k = 0; k < 27; k++) { double x, y; sx (stockPoint (k), &x, &y); ov_dot (canvas, x, y, k == A.job.origin ? 0 : 3.2, 0xFFFFFF, 0x966E28, 1.4); }
@@ -925,6 +1204,8 @@ public:
 		bool inside = mx >= 0 && my >= 0 && mx < width && my < height;
 		bool pressL = bl && !wasL, releaseL = !bl && wasL, pressR = (br || bm) && !wasR;
 		wasL = bl != 0; wasR = (br || bm) != 0;
+		if (resin () && A.camPage == 3 && (inside || barHeld) && layerMouse (mx, my, bl, pressL, wheel)) return true;
+		if (A.camMode && A.gen == 0 && A.camSim && (inside || barHeld) && simMouse (mx, my, bl, pressL)) return true;
 		if (!inside && !drag) return false;
 		if (wheel && inside)
 		{
@@ -1009,11 +1290,12 @@ public:
 	{
 		A.cam.w = width; A.cam.h = height;
 		if (pristine && !A.sketching && (fitW != width || fitH != height)) fit ();
+		if (resin () && A.camPage == 3 && !A.layer3d) { drawLayer (); return; }
 		const Cam &c = A.cam;
 		sc.begin (c, radius ());
 		sc.backdrop (0xF7F8FA, 0xE2E6ED);
 		// the grid: the ground's, or the sketch's plane
-		if (A.showGrid || A.sketching)
+		if ((A.showGrid || A.sketching) && !resin ())
 		{
 			sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LESS), false);
 			Plane pl = A.sketching ? A.sk.pl : Plane ();
@@ -1048,7 +1330,7 @@ public:
 		for (size_t bi = 0; bi < A.doc.bodies.size (); bi++)
 		{
 			const Body &b = A.doc.bodies[bi]; BodyProp &bp = A.doc.prop (b.id);
-			if (A.camMode ? b.id != A.job.body || A.camSim : !bp.visible) continue;	// (Manufacture: the body cut, alone; simulated: what is left)
+			if (resin () || (A.camMode ? b.id != A.job.body || A.camSim : !bp.visible)) continue;	// (Manufacture: the body cut, alone; simulated: what is left)
 			sc.batch (flags, true);
 			int tintFace = -1; unsigned tint = ACC ();
 			if (camFacePick ())					// the face the operation works on; the one pointed
@@ -1068,7 +1350,7 @@ public:
 				scene_edges (sc, b.mesh, fade ? 0x8C98AC : 0x222E42, 0.6);
 			}
 		}
-		if (A.camMode) camScene ();
+		if (resin ()) printScene (); else if (A.camMode) camScene ();
 		// what the tool would make
 		if (A.hasPrev && A.prev.tris ())
 		{
@@ -1249,6 +1531,7 @@ void View::overlays ()
 {
 	const Feature &f = A.pend; char a[24], t[64];
 	arrowX = arrowY = -1;
+	if (resin ()) { printOverlays (); chrome (); return; }
 	if (A.camMode) { camOverlays (); chrome (); return; }
 	// the sketches not yet used; the one being drawn
 	if (A.sketching) sketchDraw (A.sk, A.ev, true);

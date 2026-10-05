@@ -18,6 +18,7 @@ enum { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_UNION, 
        I_LINE, I_RECT, I_CIRCLE, I_ARC, I_CLOSE, I_HOME, I_FIT, I_SHADED, I_CHECK, I_INFO, I_EYE, I_WARN, I_COMBINE,
        I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE, I_SHAPES,
        I_CAM_SETUP, I_CAM_TOOL, I_CAM_CLEAR, I_CAM_CONTOUR, I_GCODE, I_PLAY, I_ARC3, I_SPLINE, I_POINT,
+       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS,
        I_NEW, I_OPEN, I_SAVE, I_UNDO, I_REDO };
 
 // Icon `kind` in the s x s box at (x, y): ink the lines, acc the accent, bg what is behind it.
@@ -172,6 +173,25 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 		seg (6, 19, 6, 5, dim, w * 3 / 4); seg (6, 19, 20, 19, dim, w * 3 / 4);
 		p.clear (); p.arc (X (6), Y (19), L (14), 0, 90, w); p.fill (cv, ink);
 		dot (6, 19, 2.2, acc); dot (6, 5, 2.2, acc); dot (20, 19, 2.2, acc); break;
+	case I_PR_PLATE:			// a printer's plate, a body on it
+	{
+		const double pl[] = { 12, 13, 22, 17, 12, 21, 2, 17 }, bx[] = { 12, 3, 17, 5.5, 17, 12, 12, 14.5, 7, 12, 7, 5.5 };
+		poly (pl, 4, uk_mix (ink, bg, 190), true, ink, true); poly (bx, 6, soft, true, ink, true); seg (7, 5.5, 12, 8, ink); seg (12, 8, 17, 5.5, ink); seg (12, 8, 12, 14.5, ink); break;
+	}
+	case I_PR_RESIN:			// a drop
+	{
+		const double d[] = { 12, 3, 17.5, 12, 18, 15, 16.5, 19, 12, 21, 7.5, 19, 6, 15, 6.5, 12 };
+		poly (d, 8, soft, true, ink, true); seg (9.5, 14.5, 10.2, 17, acc); seg (10.2, 17, 12, 18.2, acc); break;
+	}
+	case I_PR_SUP:				// pillars under a shape
+	{
+		const double sh[] = { 3, 9, 21, 4, 21, 8, 3, 13 };
+		poly (sh, 4, soft, true, ink, true);
+		seg (6, 13.6, 6, 20, acc, w * 5 / 4); seg (12, 12, 12, 20, acc, w * 5 / 4); seg (18, 10.4, 18, 20, acc, w * 5 / 4); seg (3, 20.5, 21, 20.5, ink, w * 5 / 4); break;
+	}
+	case I_PR_LAYERS:			// sheets, one lit
+		for (int i = 0; i < 3; i++) { double yy = 6 + i * 5; const double sh[] = { 12, yy - 3, 21, yy, 12, yy + 3, 3, yy }; poly (sh, 4, i == 1 ? acc : uk_mix (ink, bg, 200), true, ink, true); }
+		break;
 	case I_ARC3:				// an arc through three points
 		seg (4, 18, 20, 18, dim, w * 3 / 4);
 		p.clear (); p.arc (X (12), Y (18), L (8), 0, 180, w); p.fill (cv, ink);

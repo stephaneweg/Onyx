@@ -6,6 +6,7 @@ a sketch on the plate's top face is drawn in.
 
     python3 tools/tests/desktop_sim/forge_scene.py main | shapes | box | cut | sketch | fillet | export
                                                    | cam | cam-ops | cam-sim | cam-gcode        (Manufacture)
+                                                   | print | print-supports | print-layers   (... for a resin printer)
 """
 import math, sys
 
@@ -59,6 +60,14 @@ def scene (name):
 	if name == "cam-ops": return ops
 	if name == "cam-sim": return ";".join ([ops, ck (CAM["simulate"]), "wait;wait"])
 	if name == "cam-gcode": return ";".join ([ops, ck (CAM["gcode"]), "wait;wait"])
+	# ... for a resin printer (the menu's "Process: Resin Printing", "Supports", "Generate Supports", "Layers": its
+	# items 44 to 47): the body on the plate; lifted 5 mm and tilted 24 degrees, its supports; its layers
+	pr = ";".join ([cam, "menu 44", w])
+	tilt = ";".join ([ck ("926 353"), typed ("<5!"), "wait", ck ("926 380"), typed ("<24!")] + ["wait"] * 8)
+	sup = ";".join ([pr, tilt, "menu 45", "wait", "menu 46", w])
+	if name == "print": return pr
+	if name == "print-supports": return sup
+	if name == "print-layers": return ";".join ([sup, "menu 47"] + ["wait"] * 140 + ["move 753 380;down 753 380;move 753 372;wait;up 753 372", w])
 	raise SystemExit ("no such scene: " + name)
 
 if __name__ == "__main__":
