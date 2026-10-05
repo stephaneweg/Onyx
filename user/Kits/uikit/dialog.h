@@ -43,6 +43,12 @@ public:
 	void onDraw () override;
 };
 
+// The file dialog (uk_file_open / uk_file_save / uk_folder_open show it): an Up button and the folder's
+// path, the volumes at the left, the folder's content (the folders first, sorted, the files' sizes); a click
+// selects, a double click / Enter / the button opens a folder or takes the file; the arrows, Backspace (up).
+// startDir may be a file's path: its folder (a save dialog proposes its name).
+// ITS SIZE AND ITS FUNCTIONS ARE THE LIBRARY'S ABI: the fields below are kept as they always were (dialog.cpp
+// says how the dialog uses them), nothing is added.
 class FileDialog : public Modal
 {
 	enum { MAXENT = 128 };

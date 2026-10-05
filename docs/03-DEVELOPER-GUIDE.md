@@ -2047,8 +2047,9 @@ alone**.
 > IMG_FILL / IMG_NONE)` — `load (path)` (any `imgload` format) or `setPixels`;
 > `uk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
 > `uk_file_open` / `uk_file_save` / **`uk_folder_open (out, cap, startDir)`** (a folder, no file
-> name) — the file dialog; `..` at a volume's root lists the **volumes** that are mounted
-> (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB:`…). Paths may start with any
+> name) — the file dialog (docs/04, *The file dialog*); its left column lists the **volumes** that are mounted
+> (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB:`…). `startDir` may be a **file's** path (the
+> program's last document): the dialog opens in its folder, and a save dialog proposes its name. Paths may start with any
 > volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
 > gives an exFAT file's real size; `kapi_rename` fails across volumes (copy + remove instead).
 > A `Textbox` holds **63 bytes** unless you raise its **`maxLen`** (up to `Textbox::TEXT_CAP - 1`,

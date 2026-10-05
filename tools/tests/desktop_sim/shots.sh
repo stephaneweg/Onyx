@@ -181,7 +181,9 @@ if want terminal; then
 	sim terminal terminal "$W" $P SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n/ $ echo onyx | wc -c\n5\n/ $ '
 	png terminal
 fi
-if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad; fi
+if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad
+	# (the file dialog, uikit/dialog.cpp: Tinypad's File > Open..., a file selected, the pointer on a row)
+	sim tinypad filedialog "$W;menu 1;$W;down 250 205;up 250 205;move 250 255;$W" $P SIM_ARGS=SD:/notes.txt; png filedialog; fi
 if want paint; then			# (the Paint mock-ups made real: docs/paint; tools/tests/desktop_sim/paint_scene.py)
 	PP=SIM_POS=4,30
 	sim paint paint "$(python3 $D/paint_scene.py landscape);$W" $PP; png paint

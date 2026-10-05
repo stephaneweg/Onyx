@@ -221,7 +221,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `Button` | uikit/button.h -- a push button (the theme's raised face, as a drop-down's | `button.h` |
 | `Modal` | uikit/dialog.h -- modal dialogs as uikit objects. | `dialog.h` |
 | `MessageBox` | (a type) | `dialog.h` |
-| `FileDialog` | (a type) | `dialog.h` |
+| `FileDialog` | The file dialog (uk_file_open / uk_file_save / uk_folder_open show it) | `dialog.h` |
 | `ColorDialog` | Colour dialog (WPF-style ColorPicker dialog) | `dialog.h` |
 | `PopupMenu` | Convenience | `dialog.h` |
 | `uk_messagebox` | modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No) | `dialog.h` |
@@ -1042,7 +1042,11 @@ public:
 	bool onKey (long k) override;		// Enter = default, Esc = cancel
 	void onDraw () override;
 };
+```
 
+The file dialog (uk_file_open / uk_file_save / uk_folder_open show it): an Up button and the folder's path, the volumes at the left, the folder's content (the folders first, sorted, the files' sizes); a click selects, a double click / Enter / the button opens a folder or takes the file; the arrows, Backspace (up). startDir may be a file's path: its folder (a save dialog proposes its name). ITS SIZE AND ITS FUNCTIONS ARE THE LIBRARY'S ABI: the fields below are kept as they always were (dialog.cpp says how the dialog uses them), nothing is added.
+
+```cpp
 class FileDialog : public Modal
 {
 	enum { MAXENT = 128 };

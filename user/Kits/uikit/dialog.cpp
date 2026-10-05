@@ -116,13 +116,23 @@ void MessageBox::onDraw ()
 }
 
 // ---- FileDialog --------------------------------------------------------------
+//
+// (2026-10-05) Redone: an Up button and the folder's path; the volumes at the left (when the box
+// is wide enough); the folder's content with an icon each, the folders first, sorted by name, the
+// files' sizes at the right; a click selects, a double click (or Enter, or the button) opens a
+// folder / takes a file; the arrows move the selection, Backspace goes up. A file's path given as
+// the start (a program's last document) opens its folder.
+//
+// THE CLASS'S SIZE AND ITS FUNCTIONS' NAMES ARE THE LIBRARY'S ABI (layout_lock.cpp, uikit.abi): a
+// program that builds a FileDialog itself keeps working, and gets this dialog. So the fields are
+// the ones it always had, used as follows: an entry is m_ent[i] = its name (FD_NAME bytes) then
+// its size (4 bytes); the last two entries' room holds what the dialog needs more (FdExtra).
 static void fd_scopy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = '\0'; }
-static bool fd_dotdot (const char *s) { return s[0] == '.' && s[1] == '.' && s[2] == '\0'; }
 
-static int fd_w () { Root *r = Root::current (); int W = r ? r->width  : 360; int w = 360; if (w > W - 20) w = W - 20; return w; }
-static int fd_h () { Root *r = Root::current (); int H = r ? r->height : 300; int h = 300; if (h > H - 20) h = H - 20; return h; }
+static int fd_w () { Root *r = Root::current (); int W = r ? r->width  : 560; int w = 560; if (w > W - 20) w = W - 20; return w; }
+static int fd_h () { Root *r = Root::current (); int H = r ? r->height : 430; int h = 430; if (h > H - 20) h = H - 20; return h; }
 
-// The volumes the list shows above a volume root ("..": the SD card's FAT/exFAT partitions).
+// The volumes shown at the left (the SD card's FAT / exFAT partitions, the USB sticks).
 #ifdef _WIN32		// (the Windows build of the apps, pc/Koton: SD: is the program's folder, then the PC's drives)
 static const char *const FD_VOLS[] = { "SD:", "C:", "D:", "E:", "F:", "G:", "H:", "I:", "J:", "K:" };
 #elif defined(__APPLE__)	// (the macOS build, pc/macOS: SD: is ~/Documents/Onyx Ledger, HOME: the user's folder, MAC: the Mac's /)
@@ -131,152 +141,375 @@ static const char *const FD_VOLS[] = { "SD:", "HOME:", "MAC:" };
 static const char *const FD_VOLS[] = { "SD:", "SD1:", "SD2:", "SD3:", "USB:", "USB2:", "USB3:" };
 #endif
 
+enum { FD_MAX = 126, FD_NAME = 92, FD_VOLMAX = 8 };	// (128 entries of 96 bytes: 126 files, 2 for FdExtra)
+struct FdExtra
+{
+	int  hot, hotVol, nvol;			// the row, the volume under the pointer; the volumes shown
+	int  ux, uy, uw, uh;			// the Up button
+	int  px, pw;				// the path field
+	int  vx, vw;				// the volumes' column (vw 0: none)
+	int  ny;				// the name row (0: none)
+	char upHot, upDown;
+	char vol[FD_VOLMAX][8];
+};
+static_assert (sizeof (FdExtra) <= 2 * 96, "FdExtra lives in two entries of FileDialog::m_ent");
+static inline FdExtra &fd_x (char (*ent)[96]) { return *(FdExtra *) (void *) ent[FD_MAX]; }
+static inline unsigned fd_size (char (*ent)[96], int i) { unsigned v; __builtin_memcpy (&v, ent[i] + FD_NAME, 4); return v; }
+static inline void fd_set_size (char (*ent)[96], int i, unsigned v) { __builtin_memcpy (ent[i] + FD_NAME, &v, 4); }
+
+static bool fd_isdir (const char *p) { void *d = kapi_opendir (p); if (d == 0) return false; kapi_closedir (d); return true; }
+static bool fd_root (const char *dir) { int n = 0; while (dir[n]) n++; return n == 0 || dir[n - 1] == ':' || (n > 1 && dir[n - 1] == '/' && dir[n - 2] == ':'); }
+static void fd_parent (char *dir)
+{
+	int n = 0; while (dir[n]) n++;
+	if (n > 0 && dir[n - 1] == '/') n--;
+	if (n > 0 && dir[n - 1] == ':') { dir[0] = '\0'; return; }	// (a volume's root: nothing above)
+	while (n > 0 && dir[n - 1] != '/' && dir[n - 1] != ':') n--;
+	if (n > 0 && dir[n - 1] == '/') n--;
+	if (n > 0 && dir[n - 1] == ':') { dir[n] = '/'; n++; }		// keep the root's '/': "SD1:/"
+	dir[n] = '\0';
+}
+// A path that names a file (a program gives its last document) or a folder that is gone: the
+// nearest folder above it that exists; a file's name left in `name` (ncap bytes; 0: not wanted).
+static void fd_start (char *dir, int cap, const char *start, char *name, int ncap)
+{
+	if (name && ncap > 0) name[0] = '\0';
+	fd_scopy (dir, (start && start[0]) ? start : "SD:/", cap);
+	if (fd_isdir (dir)) return;
+	if (name && ncap > 0)						// its last component: a file's name
+	{
+		int n = 0; while (dir[n]) n++;
+		int k = n; while (k > 0 && dir[k - 1] != '/' && dir[k - 1] != ':') k--;
+		fd_scopy (name, dir + k, ncap);
+	}
+	for (int i = 0; i < 16 && dir[0] && !fd_isdir (dir); i++) fd_parent (dir);
+	if (dir[0] == '\0') fd_scopy (dir, "SD:/", cap);
+}
+
+static char fd_low (char c) { return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; }
+static int fd_cmp (const char *a, const char *b)
+{
+	for (; *a && fd_low (*a) == fd_low (*b); a++, b++) {}
+	return (int) (unsigned char) fd_low (*a) - (int) (unsigned char) fd_low (*b);
+}
+
+// The size as a person reads it: "812 B", "14 KB", "3.2 MB".
+static void fd_size_text (unsigned n, char *out)
+{
+	const char *unit = "B"; unsigned v = n, frac = 0; bool dec = false;
+	if (n >= 1024u * 1024u * 1024u) { unit = "GB"; v = n >> 30; frac = ((n >> 20) & 1023) * 10 / 1024; dec = v < 10; }
+	else if (n >= 1024u * 1024u) { unit = "MB"; v = n >> 20; frac = ((n >> 10) & 1023) * 10 / 1024; dec = v < 10; }
+	else if (n >= 1024u) { unit = "KB"; v = (n + 512) >> 10; }
+	char d[12]; int i = 0, k = 0;
+	do { d[i++] = (char) ('0' + v % 10); v /= 10; } while (v);
+	while (i > 0) out[k++] = d[--i];
+	if (dec) { out[k++] = '.'; out[k++] = (char) ('0' + frac); }
+	out[k++] = ' ';
+	for (; *unit; unit++) out[k++] = *unit;
+	out[k] = '\0';
+}
+
+// s drawn at (x, y) in at most w pixels: cut with ".." when it does not fit.
+static void fd_text_fit (Canvas &cv, int x, int y, const char *s, int w, unsigned c)
+{
+	char b[100]; int n = 0;
+	for (; s[n] && n < 96; n++) b[n] = s[n];
+	b[n] = '\0';
+	if (uk_text_w (b) > w)
+		while (n > 1) { n--; b[n] = '.'; b[n + 1] = '.'; b[n + 2] = '\0'; if (uk_text_w (b) <= w) break; }
+	cv.text (x, y, b, c);
+}
+
+static void fd_icon_folder (Canvas &cv, int x, int y)
+{
+	cv.fillRect (x, y + 1, 7, 3, 0x00C8922C);
+	cv.fillRect (x, y + 3, 16, 11, 0x00C8922C);
+	cv.fillRect (x + 1, y + 5, 14, 8, 0x00F2C458);
+	cv.fillRect (x + 1, y + 5, 14, 1, 0x00FBDD8C);
+}
+static void fd_icon_file (Canvas &cv, int x, int y)
+{
+	cv.fillRect (x + 2, y, 12, 15, 0x00848C98);
+	cv.fillRect (x + 3, y + 1, 10, 13, 0x00FFFFFF);
+	cv.fillRect (x + 10, y + 1, 3, 3, 0x00C4CAD4);
+	cv.fillRect (x + 5, y + 6, 6, 1, 0x00AEB6C2);
+	cv.fillRect (x + 5, y + 8, 6, 1, 0x00AEB6C2);
+	cv.fillRect (x + 5, y + 10, 4, 1, 0x00AEB6C2);
+}
+static void fd_icon_drive (Canvas &cv, int x, int y)
+{
+	cv.fillRect (x, y + 3, 16, 10, 0x00606874);
+	cv.fillRect (x + 1, y + 4, 14, 8, 0x00A9B2BE);
+	cv.fillRect (x + 1, y + 4, 14, 1, 0x00CDD4DC);
+	cv.fillRect (x + 11, y + 8, 3, 2, 0x0042B866);
+}
+
 FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bool folder)
   : Modal (fd_w (), fd_h ()), m_save (save), m_folder (folder)
 {
-	fd_scopy (m_dir, (startDir && startDir[0]) ? startDir : "SD:/", sizeof m_dir);
+	char fileName[FD_NAME];
+	fd_start (m_dir, sizeof m_dir, startDir, fileName, sizeof fileName);
+	FdExtra &x = fd_x (m_ent);
+	__builtin_memset (&x, 0, sizeof x);
+	x.hot = x.hotVol = -1;
+	m_count = 0; m_sel = -1; m_top = 0;
+	m_lastRow = -1; m_lastTick = 0;
 	Root *r = Root::current ();
 	int W = r ? r->width : width, H = r ? r->height : height;
 	left = (W - width) / 2; top = (H - height) / 2;
-	int fh = uk_fh ();
-	m_rowH = fh + 4;
-	m_lx = 10; m_ly = titleH () + fh + 12;
-	m_lw = width - 20 - 14; m_lh = height - m_ly - 78;
+
+	int fh = uk_fh (), pad = 12;
+	int barH = fh + 12, y0 = titleH () + 10;
+	x.ux = pad; x.uy = y0; x.uw = barH + 2; x.uh = barH;
+	x.px = x.ux + x.uw + 6; x.pw = width - pad - x.px;
+	int by = height - 40;					// the buttons' row
+	x.ny = folder ? 0 : by - (fh + 10) - 10;
+	m_ly = y0 + barH + 8;
+	m_lh = (folder ? by : x.ny) - 10 - m_ly;
+	x.vw = width >= 440 ? 112 : 0; x.vx = pad;
+	m_lx = pad + (x.vw ? x.vw + 8 : 0);
+	m_lw = width - pad - 14 - m_lx;
+	m_rowH = fh + 8; if (m_rowH < 22) m_rowH = 22;
 	m_rows = (m_lh - 4) / m_rowH; if (m_rows < 1) m_rows = 1;
-	m_count = 0; m_sel = -1; m_top = 0;
-	m_lastRow = -1; m_lastTick = 0;
 
 	m_sb = new Scrollbar (m_lx + m_lw + 2, m_ly, 12, m_lh, true, 1, 0, dlg_scr); addChild (m_sb);
 	m_nameBox = 0;
-	if (!folder) { m_nameBox = new Textbox (10, m_ly + m_lh + 8, width - 20, fh + 8, defName ? defName : "", dlg_enter); addChild (m_nameBox); }
-	if (m_nameBox && save) m_nameBox->hasFocus = true;	// (a save: the name typed at once; run () focuses the box)
-	int by = height - 36;
+	if (!folder)
+	{
+		int lw = uk_text_w (TR ("Name:")) + 8;
+		const char *nm = defName && defName[0] ? defName : save ? fileName : "";
+		m_nameBox = new Textbox (m_lx + lw, x.ny, width - pad - m_lx - lw, fh + 10, nm, dlg_enter); addChild (m_nameBox);
+		if (save) m_nameBox->hasFocus = true;		// (a save: the name typed at once; run () focuses the box)
+	}
 	Button *b;
-	b = new Button (width - 180, by, 82, 28, TR (folder ? "Choose" : save ? "Save" : "Open"), dlg_btn); b->tag = 1; addChild (b);
-	b = new Button (width - 92,  by, 82, 28, TR ("Cancel"), dlg_btn);               b->tag = 0; addChild (b);
+	b = new Button (width - pad - 184, by, 88, 28, TR (folder ? "Choose" : save ? "Save" : "Open"), dlg_btn); b->tag = 1; addChild (b);
+	b = new Button (width - pad - 88,  by, 88, 28, TR ("Cancel"), dlg_btn);               b->tag = 0; addChild (b);
+	for (unsigned i = 0; i < sizeof FD_VOLS / sizeof FD_VOLS[0] && x.nvol < FD_VOLMAX; i++)	// the volumes mounted
+	{
+		char root[10]; fd_scopy (root, FD_VOLS[i], 7);
+		int n = 0; while (root[n]) n++; root[n] = '/'; root[n + 1] = '\0';
+		if (fd_isdir (root)) fd_scopy (x.vol[x.nvol++], FD_VOLS[i], 8);
+	}
 	read ();
 }
 
+// The folder's content: the folders first, then by name.
 void FileDialog::read ()
 {
-	m_count = 0; m_top = 0; m_sel = -1;
-	if (m_dir[0] == '\0')					// the volume list: the mounted ones
-	{
-		for (unsigned i = 0; i < sizeof FD_VOLS / sizeof FD_VOLS[0]; i++)
-		{
-			char root[8]; fd_scopy (root, FD_VOLS[i], 6);
-			int n = 0; while (root[n]) n++; root[n] = '/'; root[n + 1] = '\0';
-			void *d = kapi_opendir (root);
-			if (d == 0) continue;
-			kapi_closedir (d);
-			fd_scopy (m_ent[m_count], FD_VOLS[i], 96); m_isdir[m_count] = 1; m_count++;
-		}
-		syncSb ();
-		return;
-	}
-	fd_scopy (m_ent[0], "..", 96); m_isdir[0] = 1; m_count = 1;
+	m_count = 0; m_top = 0; m_sel = -1; fd_x (m_ent).hot = -1;
 	void *d = kapi_opendir (m_dir);
 	if (d != 0)
 	{
 		struct kapi_dirent e;
-		while (m_count < MAXENT && kapi_readdir (d, &e))
-		{ fd_scopy (m_ent[m_count], e.name, 96); m_isdir[m_count] = e.is_dir ? 1 : 0; m_count++; }
+		while (m_count < FD_MAX && kapi_readdir (d, &e))
+		{
+			if (e.name[0] == '.' && (e.name[1] == '\0' || (e.name[1] == '.' && e.name[2] == '\0'))) continue;
+			fd_scopy (m_ent[m_count], e.name, FD_NAME); fd_set_size (m_ent, m_count, e.size);
+			m_isdir[m_count] = e.is_dir ? 1 : 0; m_count++;
+		}
 		kapi_closedir (d);
+	}
+	for (int i = 1; i < m_count; i++)
+	{
+		char t[96]; __builtin_memcpy (t, m_ent[i], 96); char td = m_isdir[i]; int k = i;
+		while (k > 0 && (m_isdir[k - 1] < td || (m_isdir[k - 1] == td && fd_cmp (m_ent[k - 1], t) > 0)))
+		{ __builtin_memcpy (m_ent[k], m_ent[k - 1], 96); m_isdir[k] = m_isdir[k - 1]; k--; }
+		__builtin_memcpy (m_ent[k], t, 96); m_isdir[k] = td;
 	}
 	syncSb ();
 }
-void FileDialog::goUp ()
+
+void FileDialog::goUp ()			// the folder above (a volume's root: stays)
+{
+	if (fd_root (m_dir)) return;
+	fd_parent (m_dir);
+	if (m_dir[0] == '\0') fd_scopy (m_dir, "SD:/", sizeof m_dir);
+	read (); m_lastRow = -1; invalidate (true);
+}
+
+void FileDialog::enter (const char *name)	// into a folder of this one ("SD1:": a volume)
 {
 	int n = 0; while (m_dir[n]) n++;
-	if (n > 0 && m_dir[n - 1] == '/') n--;
-	if (n > 0 && m_dir[n - 1] == ':') { m_dir[0] = '\0'; return; }	// volume root -> volume list
-	while (n > 0 && m_dir[n - 1] != '/') n--;
-	if (n > 0) n--;
-	if (n > 0 && m_dir[n - 1] == ':') n++;				// keep the root's '/': "SD1:/"
-	m_dir[n] = '\0';
-	if (n == 0) fd_scopy (m_dir, "SD:/", sizeof m_dir);
+	int ln = 0; while (name[ln]) ln++;
+	if (ln > 0 && name[ln - 1] == ':') { fd_scopy (m_dir, name, sizeof m_dir - 1); n = ln; m_dir[n++] = '/'; m_dir[n] = '\0'; }
+	else
+	{
+		if (!(n > 0 && m_dir[n - 1] == '/') && n < 255) m_dir[n++] = '/';
+		for (int k = 0; name[k] && n < 255; k++) m_dir[n++] = name[k];
+		m_dir[n] = '\0';
+	}
+	read (); m_lastRow = -1; invalidate (true);
 }
-void FileDialog::enter (const char *name)
-{
-	int n = 0; while (m_dir[n]) n++;
-	if (n == 0)							// a volume from the volume list
-	{ fd_scopy (m_dir, name, sizeof m_dir - 1); n = 0; while (m_dir[n]) n++; m_dir[n++] = '/'; m_dir[n] = '\0'; return; }
-	if (!(n > 0 && m_dir[n - 1] == '/') && n < 255) m_dir[n++] = '/';
-	for (int k = 0; name[k] && n < 255; k++) m_dir[n++] = name[k];
-	m_dir[n] = '\0';
-}
+
 void FileDialog::syncSb ()
 {
 	int mt = m_count - m_rows; if (mt < 1) mt = 1;
 	m_sb->vmax = mt; m_sb->value = m_top; m_sb->invalidate (true);
 }
+
+// A row selected (shown, its name in the box when it is a file); a second click within 0.4 s: as
+// the button. row < 0 or past the end: nothing selected.
 void FileDialog::click (int row)
 {
-	if (row < 0 || row >= m_count) return;
+	if (row < 0 || row >= m_count) { if (m_sel >= 0) { m_sel = -1; invalidate (true); } return; }
 	unsigned now = kapi_get_ticks ();
-	bool dbl = row == m_lastRow && now - m_lastTick < 40;		// (0.4 s)
+	bool dbl = row == m_lastRow && now - m_lastTick < 40;
 	m_lastRow = row; m_lastTick = now;
-	if (m_isdir[row]) { if (fd_dotdot (m_ent[row])) goUp (); else enter (m_ent[row]); read (); m_lastRow = -1; }
-	else
-	{
-		m_sel = row; if (m_nameBox) m_nameBox->setText (m_ent[row]);
-		if (dbl) { m_lastRow = -1; onButton (1); }		// a double click: as Open / Save
-	}
+	m_sel = row;
+	if (!m_isdir[row] && m_nameBox) m_nameBox->setText (m_ent[row]);
+	if (m_sel < m_top) m_top = m_sel;
+	if (m_sel >= m_top + m_rows) m_top = m_sel - m_rows + 1;
+	syncSb ();
 	invalidate (true);
+	if (dbl) { m_lastRow = -1; onButton (1); }
 }
 
 void FileDialog::onButton (int tag)
 {
 	if (tag == 0) { close (0); return; }			// Cancel
-	if (m_folder) { if (m_dir[0] != '\0') close (1); return; }	// Choose (needs a folder)
-	if (m_nameBox->text[0] != '\0' && m_dir[0] != '\0') close (1);	// OK (needs a filename)
+	if (m_sel >= 0 && m_isdir[m_sel])			// a folder selected: opened (chosen, in a folder dialog)
+	{
+		bool typed = m_save && m_nameBox && m_nameBox->text[0] != '\0';
+		if (!typed) { char name[FD_NAME]; fd_scopy (name, m_ent[m_sel], FD_NAME); enter (name); if (m_folder) close (1); return; }
+	}
+	if (m_folder) { if (m_dir[0] != '\0') close (1); return; }
+	if (m_nameBox->text[0] != '\0' && m_dir[0] != '\0') close (1);	// (it needs a name)
 }
 
 bool FileDialog::onKey (long k)
 {
 	if (k == KEY_ENTER) { onButton (1); return true; }	// (the name box's: dlg_enter)
 	if (k == 27) { onButton (0); return true; }
+	if (k == KEY_UP || k == KEY_DOWN)
+	{
+		int row = k == KEY_UP ? (m_sel > 0 ? m_sel - 1 : 0) : (m_sel < m_count - 1 ? m_sel + 1 : m_count - 1);
+		m_lastRow = -1;					// (not a double click)
+		click (row);
+		m_lastRow = -1;
+		return true;
+	}
+	if (k == KEY_BACKSPACE && (m_nameBox == 0 || m_nameBox->text[0] == '\0')) { goUp (); return true; }
 	return false;
 }
 
 bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
-	if (mx < 0) { pressed = false; return true; }
-	if (wheel)						// wheel scrolls the file list
+	FdExtra &x = fd_x (m_ent);
+	if (mx < 0)
+	{
+		pressed = false;
+		if (x.hot >= 0 || x.hotVol >= 0 || x.upHot) { x.hot = x.hotVol = -1; x.upHot = 0; invalidate (true); }
+		return true;
+	}
+	if (wheel)						// the wheel scrolls the list
 	{
 		int mt = m_count - m_rows; if (mt < 0) mt = 0;
-		int nt = m_top - wheel; if (nt < 0) nt = 0; if (nt > mt) nt = mt;
+		int nt = m_top - wheel * 3; if (nt < 0) nt = 0; if (nt > mt) nt = mt;
 		if (nt != m_top) { m_top = nt; syncSb (); invalidate (true); }
 		return true;
 	}
-	if (bl && !pressed)					// press edge in the list area
+	bool inList = mx >= m_lx && mx < m_lx + m_lw && my >= m_ly + 2 && my < m_ly + m_lh;
+	bool inVol = x.vw && mx >= x.vx && mx < x.vx + x.vw && my >= m_ly + 4 && my < m_ly + m_lh;
+	bool onUp = mx >= x.ux && mx < x.ux + x.uw && my >= x.uy && my < x.uy + x.uh;
+	int hot = inList ? m_top + (my - m_ly - 2) / m_rowH : -1; if (hot >= m_count) hot = -1;
+	int hv = inVol ? (my - m_ly - 4) / m_rowH : -1; if (hv >= x.nvol) hv = -1;
+	if (hot != x.hot || hv != x.hotVol || (char) onUp != x.upHot) { x.hot = hot; x.hotVol = hv; x.upHot = onUp; invalidate (true); }
+	if (bl && !pressed)					// the press
 	{
 		pressed = true;
-		if (mx >= m_lx && mx < m_lx + m_lw && my >= m_ly + 2 && my < m_ly + m_lh)
-			click (m_top + (my - m_ly - 2) / m_rowH);
+		if (onUp) { x.upDown = 1; invalidate (true); }
+		else if (inList) click (m_top + (my - m_ly - 2) / m_rowH);
+		else if (hv >= 0) { char v[8]; fd_scopy (v, x.vol[hv], 8); enter (v); }
 	}
-	else if (!bl) pressed = false;
-	return true;						// modal: consume everything
+	else if (!bl)
+	{
+		if (pressed && x.upDown) { x.upDown = 0; invalidate (true); if (onUp) goUp (); }
+		pressed = false;
+	}
+	return true;						// modal: everything is its own
 }
 
 void FileDialog::onDraw ()
 {
+	FdExtra &x = fd_x (m_ent);
 	int fh = uk_fh ();
 	drawBox (TR (m_folder ? "Choose folder" : m_save ? "Save file" : "Open file"));
-	canvas.text (12, titleH () + 6, m_dir[0] ? m_dir : TR ("Volumes"), C_DIS);
 
-	uk_sunken (canvas, m_lx, m_ly, m_lw, m_lh, 4, C_FIELD, false);
+	// the Up button (an arrow), the path
+	bool root = fd_root (m_dir);
+	uk_raised (canvas, x.ux, x.uy, x.uw, x.uh, 5, C_FACE, root ? UK_DISABLED : x.upDown ? UK_PRESSED : x.upHot ? UK_HOT : UK_NORMAL);
+	{
+		unsigned c = root ? C_DIS : C_TEXT;
+		int cx = x.ux + x.uw / 2, cy = x.uy + x.uh / 2 - 6 + (x.upDown ? 1 : 0);
+		for (int i = 0; i < 6; i++) canvas.fillRect (cx - i, cy + i, 2 * i + 1, 1, c);	// the head
+		canvas.fillRect (cx - 1, cy + 6, 3, 6, c);						// the stem
+	}
+	uk_sunken (canvas, x.px, x.uy, x.pw, x.uh, 5, C_FIELD, false);
+	{
+		const char *p = m_dir; int avail = x.pw - 40;
+		bool cut = false;
+		while (*p && uk_text_w (p) > avail - (cut ? uk_text_w ("...") : 0)) { p++; cut = true; }
+		fd_icon_folder (canvas, x.px + 8, x.uy + (x.uh - 15) / 2);
+		int tx = x.px + 32, ty = x.uy + (x.uh - fh) / 2;
+		if (cut) { canvas.text (tx, ty, "...", C_DIS); tx += uk_text_w ("..."); }
+		canvas.text (tx, ty, p, C_FIELD_TEXT);
+	}
+
+	// the volumes
+	if (x.vw)
+	{
+		uk_sunken (canvas, x.vx, m_ly, x.vw, m_lh, 5, C_FIELD, false);
+		for (int i = 0; i < x.nvol; i++)
+		{
+			int ry = m_ly + 4 + i * m_rowH;
+			int n = 0; while (x.vol[i][n]) n++;
+			bool cur = true;
+			for (int k = 0; k < n; k++) if (fd_low (m_dir[k]) != fd_low (x.vol[i][k])) cur = false;
+			if (cur) uk_hilite (canvas, x.vx + 3, ry, x.vw - 6, m_rowH, 4, false);
+			else if (i == x.hotVol) canvas.fillRect (x.vx + 3, ry, x.vw - 6, m_rowH, uk_tone (C_FIELD, 118));
+			fd_icon_drive (canvas, x.vx + 9, ry + (m_rowH - 15) / 2);
+			canvas.text (x.vx + 32, ry + (m_rowH - fh) / 2, x.vol[i], cur ? uk_hilite_ink (false) : C_FIELD_TEXT);
+		}
+	}
+
+	// the folder's content
+	uk_sunken (canvas, m_lx, m_ly, m_lw, m_lh, 5, C_FIELD, false);
+	if (m_count == 0)
+	{
+		const char *t = TR ("This folder is empty");
+		canvas.text (m_lx + (m_lw - uk_text_w (t)) / 2, m_ly + m_lh / 2 - fh / 2, t, C_DIS);
+	}
 	for (int r = 0; r < m_rows; r++)
 	{
 		int idx = m_top + r; if (idx >= m_count) break;
 		int ry = m_ly + 2 + r * m_rowH;
 		bool s = idx == m_sel;
 		if (s) uk_hilite (canvas, m_lx + 3, ry, m_lw - 6, m_rowH, 4, true);
-		char row[100]; int k = 0;
-		for (; m_ent[idx][k] && k < 96; k++) row[k] = m_ent[idx][k];
-		if (m_isdir[idx] && !fd_dotdot (m_ent[idx]) && k < 97) row[k++] = '/';
-		row[k] = '\0';
-		canvas.text (m_lx + 8, ry + (m_rowH - fh) / 2, row, s ? C_SEL_TEXT : m_isdir[idx] ? uk_tone (C_ACCENT, 84) : C_FIELD_TEXT);
+		else if (idx == x.hot) canvas.fillRect (m_lx + 3, ry, m_lw - 6, m_rowH, uk_tone (C_FIELD, 118));
+		int right = m_lx + m_lw - 10;
+		if (m_isdir[idx]) fd_icon_folder (canvas, m_lx + 9, ry + (m_rowH - 15) / 2);
+		else
+		{
+			fd_icon_file (canvas, m_lx + 9, ry + (m_rowH - 15) / 2);
+			char sz[24]; fd_size_text (fd_size (m_ent, idx), sz);
+			int sw = uk_text_w (sz);
+			canvas.text (right - sw, ry + (m_rowH - fh) / 2, sz, s ? C_SEL_TEXT : C_DIS);
+			right -= sw + 14;
+		}
+		fd_text_fit (canvas, m_lx + 32, ry + (m_rowH - fh) / 2, m_ent[idx], right - (m_lx + 32), s ? C_SEL_TEXT : C_FIELD_TEXT);
+	}
+
+	// the name's label; how many there are
+	if (x.ny) canvas.text (m_lx, x.ny + 5, TR ("Name:"), C_TEXT);
+	{
+		char t[48]; int n = m_count, i = 0, k = 0; char d[8];
+		do { d[i++] = (char) ('0' + n % 10); n /= 10; } while (n);
+		while (i > 0) t[k++] = d[--i];
+		t[k++] = ' ';
+		const char *w = TR (m_count == 1 ? "item" : "items");
+		for (; *w && k < 46; w++) t[k++] = *w;
+		t[k] = '\0';
+		canvas.text (12, height - 40 + (28 - fh) / 2, t, C_DIS);
 	}
 }
 

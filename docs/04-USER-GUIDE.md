@@ -37,13 +37,24 @@ application catalog.
 Copy **all the contents** of the [`sdcard/`](../sdcard/) folder to the **root** of a
 FAT32 card, then insert it into the Pi 4 and power on.
 
+**The file dialog** (Open, Save, Choose folder — every program's; redone on 2026-10-05):
+
+![The file dialog](../screenshots/filedialog.png)
+
+At the top an **Up** button and the folder's path; at the left the **volumes** that are mounted (`SD:`,
+`SD1:`…, `USB:`…: a click goes to its root); the folder's content with the **folders first**, sorted by
+name, each file's size at the right. **A click selects** (a file's name goes into the *Name* box); **a
+double click**, **Enter** or the button opens a folder or takes the file. The **arrows** move the
+selection, **Backspace** goes up, **Esc** cancels, the wheel scrolls. It opens in the folder of the
+program's last file.
+
 **More partitions (optional).** The Pi 4 starts only from the card's **first partition**, which
 must stay **FAT32**: in Onyx it is **`SD:`** (also `SD0:`). Partitions **2, 3, 4** of the card
 (MBR), when formatted **FAT32** or **exFAT**, appear as **`SD1:`**, **`SD2:`**, **`SD3:`** — e.g.
 a small FAT32 boot partition and a big **exFAT** one for your ROMs and disc images (exFAT has no
 4 GB file limit). A FAT32 volume can be up to 2 TB (Windows' own formatter stops at 32 GB, other
-tools do not); a file on FAT32 is at most 4 GB − 1. They show in the file dialogs (**..** at a
-volume's root lists the volumes), in the File Viewer (**Go** menu) and in any path
+tools do not); a file on FAT32 is at most 4 GB − 1. They show in the file dialogs (the volumes'
+column at the left), in the File Viewer (**Go** menu) and in any path
 (`cd SD1:/roms`); a path starting with `/` stays on the current volume.
 
 **`RAM:` — a volume in memory.** Besides the card, Onyx has **`RAM:`**: folders and files kept in

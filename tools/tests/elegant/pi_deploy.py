@@ -34,7 +34,8 @@ BACKUP = os.path.join(HERE, "backup")
 FILES = [("kernel/kernel8-rpi4.img", "kernel8-rpi4.img"),
          ("user/lib/appkit.so", "lib/appkit.so"),
          ("user/Servers/elegant/elegant.elf", "bin/elegant")]
-OPTIONAL = [("user/BinUtils/wstest.elf", "bin/wstest"), ("user/BinUtils/rdpd.elf", "bin/rdpd")]         # the tests, when they are built
+OPTIONAL = [("user/BinUtils/wstest.elf", "bin/wstest"), ("user/BinUtils/rdpd.elf", "bin/rdpd"),
+            ("user/lib/uikit.so", "lib/uikit.so")]         # the tests, when they are built
 SAVED = ["kernel8-rpi4.img", "lib/appkit.so"]
 
 

@@ -78,7 +78,7 @@ KAPI_CALL (void, kapi_set_click_handler, (gui_handler fn), { KAPI_WSV (ws_handle
 KAPI_CALL (void, kapi_set_pointer_handler, (gui_handler fn), { KAPI_WSV (ws_handler (EL_HANDLER_POINTER, fn)); KT->set_pointer_handler (fn); })
 KAPI_CALL (int, kapi_meminfo, (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb), { return KT->meminfo (total_kb, free_kb, app_kb, page_kb); })
 KAPI_CALL (int, kapi_ram_detail, (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments), { return KT->ram_detail (detected_kb, apppool_kb, apppool_free_kb, above4g_kb, nsegments); })
-KAPI_CALL (void, kapi_set_wheel_speed, (int lines_per_notch), { if (ws_on ()) WS_OP (EL_OP_WHEEL, lines_per_notch, 0, 0, 0); KT->set_wheel_speed (lines_per_notch); })
+KAPI_CALL (void, kapi_set_wheel_speed, (int lines_per_notch), { KAPI_WS_DO (WS_OP (EL_OP_WHEEL, lines_per_notch, 0, 0, 0)); KT->set_wheel_speed (lines_per_notch); })
 KAPI_CALL (int, kapi_get_wheel_speed, (void), { KAPI_WS ((int) WS_OP (EL_OP_WHEEL, -1, 0, 0, 0)); return KT->get_wheel_speed (); })
 KAPI_CALL (void *, kapi_sbrk, (long inc), { return KT->sbrk (inc); })
 KAPI_CALL (int, kapi_list_apps, (char *b, unsigned s), { return KT->list_apps (b, s); })
