@@ -21,9 +21,43 @@ struct G3Vertex; struct G3Batch;		// (basic/bas3d.h)
 
 // ---- the outside world -------------------------------------------------------------------
 // Colours: 0..15 = the QBasic palette; RGB(r,g,b) values have bit 24 set (0x1RRGGBB).
+struct Profile
+{
+	unsigned long long ops, prims;				// instructions run; of which primitives
+	unsigned long long usTotal, usPrim;			// microseconds: in all, in the primitives (their waits included)
+	unsigned long long usWait, usWaitPrim;			// waiting / pumping the window: outside a primitive, inside one
+	bool inPrim;
+	Profile () : ops (0), prims (0), usTotal (0), usPrim (0), usWait (0), usWaitPrim (0), inPrim (false) {}
+	// The three shares, in microseconds: the VM's instructions, the primitives' work, the waits.
+	unsigned long long vm () const { return usTotal - usPrim - usWait; }
+	unsigned long long work () const { return usPrim - usWaitPrim; }
+	unsigned long long waits () const { return usWait + usWaitPrim; }
+	// "VM 12.3 s (41 %), primitives 3.1 s (10 %), waits 14.6 s (49 %); 1234567 k instructions, 0.010 us each; 4567 k primitives, 0.68 us each"
+	int text (char *o, int cap) const
+	{
+		int n = 0;
+		auto str = [&] (const char *s) { while (*s && n < cap - 1) o[n++] = *s++; };
+		auto num = [&] (unsigned long long v) { char t[24]; int k = 0; do { t[k++] = (char) ('0' + v % 10); v /= 10; } while (v); while (k && n < cap - 1) o[n++] = t[--k]; };
+		auto fix = [&] (unsigned long long v1000) { num (v1000 / 1000); str ("."); unsigned long long f = v1000 % 1000; if (f < 100) str ("0"); if (f < 10) str ("0"); num (f); };
+		unsigned long long tot = usTotal ? usTotal : 1;
+		auto part = [&] (const char *name, unsigned long long us) { str (name); fix (us / 1000); str (" s ("); num (us * 100 / tot); str (" %)"); };
+		part ("VM ", vm ()); part (", primitives ", work ()); part (", waits ", waits ());
+		str ("; "); num (ops / 1000); str (" k instructions, "); fix (ops ? vm () * 1000 / ops : 0); str (" us each; ");
+		num (prims / 1000); str (" k primitives, "); fix (prims ? work () * 1000 / prims : 0); str (" us each");
+		o[n] = 0;
+		return n;
+	}
+};
+
 struct Host
 {
 	virtual ~Host () {}
+	// Profiling (basic -p): where the time goes -- the VM's own instructions, the runtime's primitives
+	// (built-in functions and statements, PRINT, INPUT, files), and in those the waits (SLEEP, PAUSE,
+	// the window's pump and display). prof = 0: no measure. clockUs: a free-running microsecond clock.
+	Profile *prof = 0;
+	virtual unsigned clockUs () { return 0; }
+	virtual void profReport () {}				// (called every few seconds and at the end)
 	// Text screen (PRINT / INPUT / CLS / LOCATE / COLOR). out() gets text with '\n'.
 	virtual void out (const char *s, int n) = 0;
 	virtual int  inputLine (char *buf, int cap) = 0;	// a typed line (no '\n'); -1 = quit

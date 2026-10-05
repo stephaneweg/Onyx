@@ -1925,11 +1925,22 @@ public:
 		const int *code = P->code.d;
 		unsigned count = 0;
 		dtorProg = P; dtorQ.n = 0;
+		Profile *pf = H.prof;					// basic -p: the time in the primitives
+		unsigned pfStart = pf ? H.clockUs () : 0, pfLast = pfStart;
 		while (!ended)
 		{
 			if (failed) { if (!trap ()) break; continue; }
 			++count;
-			if ((count & 4095) == 0 && !H.poll ()) { ended = true; break; }
+			if ((count & 4095) == 0)
+			{
+				if (pf)
+				{
+					unsigned now = H.clockUs ();
+					pf->ops += 4096; pf->usTotal += (unsigned) (now - pfLast); pfLast = now;
+					if ((unsigned) (now - pfStart) > 5000000u) { H.profReport (); pfStart = pfLast = H.clockUs (); }	// (the report's own time: not counted)
+				}
+				if (!H.poll ()) { ended = true; break; }
+			}
 			if (evAny && (evKick || (count & 31) == 0)) { evKick = false; checkEvents (); if (failed) continue; }
 			if (tron)
 			{
@@ -1947,6 +1958,9 @@ public:
 			}
 			opPc = pc;
 			int op = code[pc++];
+			bool pr = pf && (op == OP_BI || op == OP_ST || (op >= OP_PRINT && op <= OP_CLOSE) || (op >= OP_USING && op <= OP_SEEK));
+			unsigned pt0 = 0;
+			if (pr) { pt0 = H.clockUs (); pf->inPrim = true; }
 			switch (op)
 			{
 			case OP_NUM: pushN (P->nums[code[pc++]]); break;
@@ -2400,7 +2414,9 @@ public:
 			case OP_NOP: break;
 			default: fail ("Bad bytecode", 51); break;
 			}
+			if (pr) { pf->prims++; pf->usPrim += (unsigned) (H.clockUs () - pt0); pf->inPrim = false; }
 		}
+		if (pf) { pf->ops += count & 4095; pf->usTotal += (unsigned) (H.clockUs () - pfLast); H.profReport (); }
 		dtorProg = 0;						// (what is still alive is freed without its destructor)
 		while (dtorQ.n) { V v; v.t = VO; v.n = 0; v.p = dtorQ[--dtorQ.n]; vclear (v); }
 		bool wasFailed = failed;
