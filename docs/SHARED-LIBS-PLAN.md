@@ -159,7 +159,7 @@ pages per process, reference counted, preloadable, dropped when its file changes
    R relocations, X KB shared, Y KB private`.
 8. **Docs at the same time** (CLAUDE.md rule): docs/02 (the ABI table, v83 in the version history, §7
    *Program images* → libraries, the VA map), docs/03 (writing and using a library), `kapi_abi.h`'s
-   history comment, `user/kapi.h` wrapper, `kapi_names.h`.
+   history comment, `user/appkit/appkit.h` wrapper, `kapi_names.h`.
 
 **Not changed**: the fault paths, the apps' link, `user.ld`, the EL0 blob, the scheduler.
 

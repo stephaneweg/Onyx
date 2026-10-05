@@ -11,7 +11,7 @@
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static char s_info[512], s_net[1024], s_file[2048];

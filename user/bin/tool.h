@@ -31,7 +31,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #else
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "umm.h"
 #endif
 

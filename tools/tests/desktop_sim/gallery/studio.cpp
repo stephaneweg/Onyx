@@ -5,7 +5,7 @@
 // face (built with -DWITH_FT: ft/uikitface.h, DejaVu Sans 13 px; SIM_FT="Family,px" another). Built
 // and run by tools/tests/desktop_sim/studio.sh.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"

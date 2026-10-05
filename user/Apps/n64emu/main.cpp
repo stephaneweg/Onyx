@@ -18,7 +18,7 @@
 //     audio queue's (as snesemu), else the clock. Sound > Sound On / Off.
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"

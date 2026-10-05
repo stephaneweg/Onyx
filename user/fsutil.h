@@ -5,7 +5,7 @@
 //
 #ifndef _fsutil_h
 #define _fsutil_h
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define FS_NAMEL	72
 #define FS_PATHL	300

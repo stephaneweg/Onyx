@@ -19,7 +19,7 @@
 #ifndef _ftpfs_h
 #define _ftpfs_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define FTPFS_SITES_FILE	"SD:/etc/ftpfs.ini"
 #define FTPFS_MAXSITES		16

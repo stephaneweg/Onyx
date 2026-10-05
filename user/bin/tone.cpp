@@ -3,7 +3,7 @@
 //   usage: tone [frequency Hz [milliseconds [wave]]]      (default 440 Hz, 500 ms, sine)
 //   wave: square, sine, triangle, saw, noise.   "tone scale": a C major scale.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "../onyxpp.hpp"		// (operator new / delete: the library's binding)
 #include "../audiokit/audiokit.h"

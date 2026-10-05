@@ -20,7 +20,7 @@
 //   * No enhancement chip (Super FX, SA-1, DSP-1...): those games are refused with a message.
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"

@@ -24,11 +24,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
 #include "notify.h"
 #include "doomgeneric.h"
-// Doom's key codes (doomkeys.h, whose names clash with kapi.h's KEY_*)
+// Doom's key codes (doomkeys.h, whose names clash with appkit.h's KEY_*)
 #define DK_RIGHT	0xae
 #define DK_LEFT		0xac
 #define DK_UP		0xad

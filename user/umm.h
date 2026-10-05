@@ -19,7 +19,7 @@
 #ifndef ONYX_UMM_H
 #define ONYX_UMM_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 typedef struct { unsigned long size; unsigned long magic; } umm_hdr;	// 16-byte header
 #define UMM_MAGIC	0x4F4E5958554D4DUL				// "ONYXUMM"-ish

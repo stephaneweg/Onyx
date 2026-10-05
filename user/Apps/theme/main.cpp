@@ -20,7 +20,7 @@
 // once, and the Control Panel too (AP_THEME: it starts the applet again); the other apps take them
 // when they are opened again. Discard reloads what is saved.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "dockconf.h"
 #include "wallpaper.h"

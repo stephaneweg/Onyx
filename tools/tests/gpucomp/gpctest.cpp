@@ -12,7 +12,7 @@
 #include <math.h>
 #include <time.h>
 #include <vector>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "gpucomp/gpucomp.h"
 
 extern "C" void hostkapi_soft (int on);

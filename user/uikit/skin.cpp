@@ -7,7 +7,7 @@
 #include "uikit/theme.h"		// the frame's colours
 #include "uikit/text.h"		// (the frame bypasses an app's text face)
 #include "bmp.hpp"		// ui::bmp_decode
-#include "kapi.h"		// kapi_get_chrome, kapi_draw_text_buf, kapi_font_height
+#include "appkit/appkit.h"		// kapi_get_chrome, kapi_draw_text_buf, kapi_font_height
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {

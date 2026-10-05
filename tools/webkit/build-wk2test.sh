@@ -70,7 +70,7 @@ if [ "${BENCH:-0}" = 1 ]; then
 		-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$BUILD/wk2test-gpucomp-bench.o"
 	GPC="$BUILD/wk2test-gpucomp-bench.o $BUILD/wk2test-onyxsurface.o $BUILD/wk2test-onyxcores.o"
 	if [ "${UMM_NEW:-0}" = 1 ]; then
-		printf '#include "kapi.h"\n#include "onyxpp.hpp"\n' > "$BUILD/wk2test-ummnew.cpp"
+		printf '#include "appkit/appkit.h"\n#include "onyxpp.hpp"\n' > "$BUILD/wk2test-ummnew.cpp"
 		aarch64-onyx-elf-g++ -specs=$S/lib/onyx.specs -std=gnu++17 -O2 -mcpu=cortex-a72 -fno-exceptions -fno-rtti -w \
 			-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$BUILD/wk2test-ummnew.cpp" -o "$BUILD/wk2test-ummnew.o"
 		GPC="$BUILD/wk2test-ummnew.o $GPC"

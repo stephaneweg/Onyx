@@ -85,7 +85,7 @@ aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O2 -mcpu=cortex-a72 -c "$HERE/skm
 SKMS="$O/skmallocsize.o -Wl,--wrap=_Z14sk_malloc_sizePvm"
 [ "${SKMALLOCSIZE:-1}" = 1 ] || SKMS=""
 # The compositor's two C files (WebKit's USE(GRAPHICS_LAYER_ONYX) calls them; they call the kernel through
-# kapi.h): the GPU compositing service, built as user/Makefile builds it, and the kernel surfaces.
+# appkit.h): the GPU compositing service, built as user/Makefile builds it, and the kernel surfaces.
 GPC="$O/gpucomp.o $O/onyxsurface.o $O/onyxcores.o"
 aarch64-onyx-elf-gcc -specs=$S/lib/onyx.specs -O3 -mcpu=cortex-a72 -ffp-contract=off -fno-math-errno \
 	-I"$ONYX/user" -I"$ONYX/kernel/include" -c "$ONYX/user/gpucomp/gpucomp.c" -o "$O/gpucomp.o"

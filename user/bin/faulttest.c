@@ -36,7 +36,7 @@
 // MIT licence (Onyx).
 //
 #define KAPI_INLINE			// (a test of the kernel's table itself: read here, not through AppKit)
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 #define BAD_APP_VA	0x800000000UL		// 32 GB: in the app space, never mapped

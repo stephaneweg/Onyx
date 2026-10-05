@@ -57,7 +57,7 @@
 #include <string>
 #include <time.h>
 
-// (kapi.h's key codes and modifiers; not the header: it is the newlib apps' and declares the kernel table)
+// (appkit.h's key codes and modifiers; not the header: it is the newlib apps' and declares the kernel table)
 #define MOD_CTRL	1
 #define MOD_SHIFT	2
 #define MOD_ALT		4

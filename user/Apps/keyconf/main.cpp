@@ -5,7 +5,7 @@
 // The mouse: the wheel's speed (the lines a notch scrolls), at once and kept in SD:/etc/theme.txt
 // ("wheelspeed=", the kernel reads it at boot).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "fsutil.h"
 #include "uikit/uikit.h"

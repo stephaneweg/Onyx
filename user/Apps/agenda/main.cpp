@@ -13,7 +13,7 @@
 // wallpaper's brightness under it (kapi_wallpaper_buffer): engraved (dark, a light line below) on
 // a light wallpaper, white with a soft shadow on a dark one.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "uikit/uikit.h"
 #include "notify.h"

@@ -6,7 +6,7 @@ set -e
 here=$(cd "$(dirname "$0")" && pwd)
 b=$(mktemp -d)
 cp "$here/mock_kapi.h" "$here/mock_net_kapi.h" "$here/rdpd/mock_rdpd.h" "$here/../../user/bin/remotekeys.h" "$b/"
-{ cat "$here/mock_net_kapi.h"; echo '#include "mock_rdpd.h"'; } > "$b/kapi.h"
+{ cat "$here/mock_net_kapi.h"; echo '#include "mock_rdpd.h"'; } > "$b/kapi.h" && mkdir -p "$b/appkit" && echo '#include "../kapi.h"' > "$b/appkit/appkit.h"
 sed -e 's|^int main (void)|static int rdpd_main (void)|' "$here/../../user/bin/rdpd.c" > "$b/rdpd.c"
 cat > "$b/main.c" <<'X'
 #include "rdpd.c"

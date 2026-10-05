@@ -47,7 +47,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // ---------------------------------------------------------------------------------------------
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 #define PAGE		0x10000ULL

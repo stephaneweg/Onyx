@@ -10,7 +10,7 @@
 // preserved across switches, the running total would be corrupted and the result
 // would not match pi.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 // Format a non-negative double as "<int>.<6 decimals>" into b, using only the

@@ -43,7 +43,7 @@
 #ifndef ONYX_LIB_H
 #define ONYX_LIB_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 typedef __SIZE_TYPE__ lib_size_t;
 

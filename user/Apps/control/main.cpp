@@ -15,7 +15,7 @@
 // comes back to the list. `control <target>` opens that applet at once (the dock's Panel
 // Settings...). One Control Panel at a time (it is the IPC service AP_SERVICE, "control").
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "bmp.hpp"
 #include "fsutil.h"

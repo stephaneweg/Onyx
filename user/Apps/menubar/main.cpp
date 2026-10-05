@@ -30,7 +30,7 @@
 // another title to switch, click an item to run it; press on a title + release on an
 // item works too.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "ft/uikitface.h"
 #include "applib.h"
 #include "launch.h"

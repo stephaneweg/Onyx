@@ -4,7 +4,7 @@
 // move it like any window. Drawn (and presented) when a pupil moves: the screen, and the
 // remote desktop (rdpd sends a window again when it presents), follow.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 #define W	180

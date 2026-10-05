@@ -12,7 +12,7 @@
 // history is lost then (the user's choice).
 //
 #include <stdio.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "notify.h"
 #include "ring.h"
 

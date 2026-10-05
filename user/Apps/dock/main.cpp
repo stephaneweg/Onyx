@@ -25,7 +25,7 @@
 // elsewhere. It stands on the screen's bottom edge, so the work area (maximised windows) ends
 // above it. IPC service "dock": DOCK_MSG_RELOAD reads dock.ini and the theme again.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "bmp.hpp"
 #include "fsutil.h"

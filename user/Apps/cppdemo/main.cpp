@@ -5,7 +5,7 @@
 // (operator new/delete -> the umm user allocator -> kapi_sbrk). Built with g++
 // -nostdlib -fno-exceptions -fno-rtti. No STL.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "onyxpp.hpp"
 

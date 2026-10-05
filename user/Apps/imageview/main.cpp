@@ -17,7 +17,7 @@
 //     run imageview --background SD:/pictures/sky.jpg
 //
 #include "imagekit/imagekit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "fsutil.h"
 #include "img/imgload.hpp"
 #include "uikit/uikit.h"

@@ -6,7 +6,7 @@
 # The same sources and flags as the Pi's newlib build (user/av/Makefile, through user/av/codecs.mk):
 # libvpx (VP8, VP9: NEON), dav1d (AV1: its AArch64 assembly, one thread -- its own pthread stand-in),
 # libopus; user/av with -DAV_POSIX (its threads are pthreads here) and -DAV_KAPI_SOUND (the sound
-# output is still the kernel's, through kapi.h). No FFmpeg: Web stays LGPL (docs/LICENSING.md).
+# output is still the kernel's, through appkit/appkit.h). No FFmpeg: Web stays LGPL (docs/LICENSING.md).
 #
 # Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence (see fetch.sh).
 #

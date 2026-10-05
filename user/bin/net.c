@@ -3,7 +3,7 @@
 // kernel's network stack associated, without launching the IRC client).
 //   usage: net
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

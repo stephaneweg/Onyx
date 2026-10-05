@@ -1,14 +1,14 @@
 //
-// appkit_calls.inc -- AppKit's functions: every kapi_* call of user/kapi.h, through the kernel's table.
+// appkit_calls.inc -- AppKit's functions: every kapi_* call of appkit.h, through the kernel's table.
 //
 // This is the ONLY code that reads the kernel's table (KT, at KAPI_TABLE_VA: kern/kapi_abi.h). It is
 // compiled into AppKit (appkit.c, KAPI_IMPL: the functions, exported by name -- appkit.abi) and, for
-// the tests of the table and the PC builds, inline into the program (kapi.h's end). When the kernel's
+// the tests of the table and the PC builds, inline into the program (appkit.h's end). When the kernel's
 // table is restructured, the bodies here are adapted so that each name still does what the programs
 // expect; AppKit is rebuilt, no program is. A name is never removed nor renamed: a call that is gone
 // keeps a body that answers -KAPI_ENOSYS (or does it another way).
 //
-// One line a call: KAPI_CALL (result, name, (arguments), { body }) -- in kapi.h's order; what each
+// One line a call: KAPI_CALL (result, name, (arguments), { body }) -- in appkit.h's order; what each
 // call does is said there, at its declaration.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
@@ -399,7 +399,7 @@ KAPI_CALL (int, kapi_shell_request, (int type, const void *in, unsigned len), { 
 KAPI_CALL (int, kapi_mailbox_send, (int target_pid, int type, const void *in, unsigned len), { return KT->mailbox_send (target_pid, type, in, len); })
 KAPI_CALL (int, kapi_mailbox_recv, (int *from_pid, int *type, void *buf, unsigned cap, int blocking), { return KT->mailbox_recv (from_pid, type, buf, cap, blocking); })
 
-// The memory primitives (kapi.h: real symbols, the C names are aliased onto them at link time).
+// The memory primitives (appkit.h: real symbols, the C names are aliased onto them at link time).
 #ifndef _WIN32		// (the Windows build of the apps, pc/Koton: its C library's; no weak symbols there)
 #ifdef __cplusplus
 extern "C" {

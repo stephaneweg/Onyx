@@ -10,7 +10,7 @@
 // Apply writes dock.ini and starts the dock again (dock_reload, dockconf.h): it takes them at once, the
 // number of workspaces too. Discard reloads what is saved.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "fsutil.h"
 #include "launch.h"

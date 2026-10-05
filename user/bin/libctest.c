@@ -10,7 +10,7 @@
 #include <string.h>
 #include <math.h>
 
-#include "kapi.h"		// kapi_msleep, to yield mid-test
+#include "appkit/appkit.h"		// kapi_msleep, to yield mid-test
 
 static int cmp_int (const void *a, const void *b)
 {

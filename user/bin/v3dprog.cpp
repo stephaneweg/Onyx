@@ -4,7 +4,7 @@
 // with what they must be. One line a test (PASS / FAIL, with the first wrong pixel), then the
 // total. Run it from the terminal or telnet: `v3dprog`.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "v3d/shaders.h"
 #include "v3d/gxtev.h"

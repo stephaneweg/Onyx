@@ -6,7 +6,7 @@
 // by design.) Input is by mouse (button grid, via the uikit widget toolkit) OR keyboard
 // (digits/operators, routed straight to the calculator through the Root's onKey).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit
 #include "embed.h"		// run embedded in the activity shell (surface + mailbox)
 

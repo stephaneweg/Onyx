@@ -23,7 +23,7 @@
 // else goes to the server as it is. Plain-text IRC (port 6667): no TLS here. Text is UTF-8 on the
 // wire, Latin-1 on the screen (the font's).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #include "applib.h"

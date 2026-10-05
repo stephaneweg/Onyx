@@ -43,7 +43,7 @@
 #undef SHUTDOWN_RESTART
 #undef MOD_SHIFT
 #undef MOD_CONTROL
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static TKApiTable *T;
 
@@ -1281,7 +1281,7 @@ static void setup (void)
 	void **slots = (void **) T;
 	for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 	T->version = KAPI_ABI_VERSION;
-	// (v75) the POSIX entries absent here: 0, so kapi.h's wrappers return -KAPI_ENOSYS
+	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
 	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	InitializeCriticalSection (&g_thLock); InitializeCriticalSection (&g_procLock); InitializeCriticalSection (&g_mbLock);
 	InitializeCriticalSection (&g_sfLock); InitializeCriticalSection (&g_midiLock); InitializeCriticalSection (&g_postLock);

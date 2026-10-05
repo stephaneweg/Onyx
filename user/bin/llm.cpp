@@ -311,7 +311,7 @@ inline void writeFetchResult (json::Writer &w, bool ok, unsigned long bytes, con
 // ==== the helper: the network ===============================================================================
 #define ONYX_HTTP_TLS
 #include "http.hpp"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include <unistd.h>
 
 static void progress (const char *fmt, ...)

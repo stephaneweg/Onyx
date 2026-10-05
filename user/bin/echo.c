@@ -3,7 +3,7 @@
 //   usage: echo [-n] [text ...]          -n: no newline at the end
 // The words are those the shell split (quotes removed): echo "a  b" c prints  a  b c .
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

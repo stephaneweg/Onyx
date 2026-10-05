@@ -18,7 +18,7 @@
 // "--demo <page>[b|c]" opens a page (0..6) in a given state, writing nothing (the screenshots':
 // 2b the Wi-Fi connecting, 2c connected; 3b "Keep this resolution?").
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 #include "bmp.hpp"

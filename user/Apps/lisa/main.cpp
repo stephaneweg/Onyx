@@ -13,7 +13,7 @@
 // NEVER committed; config.ini.example shows the format. Settings > Edit Configuration opens
 // it in tinypad.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "clipboard.h"
 

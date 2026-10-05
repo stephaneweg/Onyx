@@ -2,7 +2,7 @@
 // demoB.c -- EL0 windowed demo: an animated colour field. Independent process from
 // demoA; both run at the same time (preemption) and the compositor shows both.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// uikit window decoration
 
 #define W 260

@@ -10,7 +10,7 @@
 //
 #ifndef _notify_h
 #define _notify_h
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define NOTIFY_SERVICE	"notify"
 #define NOTIFY_MSG_SHOW	1		// payload: title '\0' text '\0' [action '\0': "app args", run on a click]

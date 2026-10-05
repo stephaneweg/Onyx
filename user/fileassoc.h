@@ -10,7 +10,7 @@
 #ifndef _fileassoc_h
 #define _fileassoc_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "fsutil.h"
 #include "launch.h"
 

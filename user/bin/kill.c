@@ -3,7 +3,7 @@
 // close cleanly (it gets to finish / clean up); --force (-f) terminates it hard.
 //   usage: kill <pid> [--force|-f]
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

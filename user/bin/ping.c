@@ -2,7 +2,7 @@
 // ping -- send ICMP echo requests and show the round-trip times (ABI v43 net_ping).
 //   usage: ping <host> [count]        (default 4 requests, 1 s apart, 2 s timeout each)
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static void put_ms (int us)			// "12.345 ms"

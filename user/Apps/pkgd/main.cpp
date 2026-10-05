@@ -11,7 +11,7 @@
 // SD:/etc/pkg/pkg.ini: check = daily (the default) or never (the daemon then only ends). The day of
 // the last round: SD:/var/pkg/lastcheck (yyyymmdd).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "notify.h"
 #include "pkg/pkglib.h"

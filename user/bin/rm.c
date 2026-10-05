@@ -1,7 +1,7 @@
 //
 // rm -- remove files (or empty directories). Usage: rm <path ...>
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

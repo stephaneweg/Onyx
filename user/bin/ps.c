@@ -5,7 +5,7 @@
 // PAGES is 64 KB physical frames the app owns; MEM is that in KB; SYSC/s the app's system calls
 // per second (kapi v74 proc_stats; "-" for a kernel task or an older kernel).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static int parse_uint (const char *s, int *pi)

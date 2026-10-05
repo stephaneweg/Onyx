@@ -4,7 +4,7 @@
 // note on / off). "miditest <seconds>" stops after that long (default 60); Ctrl+C or a
 // kill ends it too. Plug a keyboard in while it runs: it is found within ~0.1 s.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static void put_num (unsigned v, int width)

@@ -15,7 +15,7 @@
 #ifndef _dockconf_h
 #define _dockconf_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define DOCK_INI		"SD:/etc/dock.ini"
 #define DOCK_SERVICE		"dock"

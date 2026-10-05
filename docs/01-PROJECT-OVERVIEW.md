@@ -92,7 +92,7 @@ sources.
 ┌──────────────────────────────────────────────────────────────────┐
 │  Applications (ELF EL0, isolated by ASID)                        │
 │  menubar · dock · terminal · fileviewer · writer · jet · bin …   │
-│       │  call the kernel through kapi.h (inline wrappers)        │
+│       │  call the kernel through AppKit (appkit/appkit.h)        │
 ├───────┼──────────────────────────────────────────────────────────┤
 │       ▼   kapi table at 14 GB (read-only) → stubs: svc #0        │   ← stable contract
 ╞═══════╪══════════════════ EL0 / EL1 ═════════════════════════════╡

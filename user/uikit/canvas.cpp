@@ -12,7 +12,7 @@
 #include "canvas.h"
 #include "uikit/font.h"		// uikit::font (route text through the global Sans family)
 #include "uikit/text.h"		// the text face an app installed (else the bitmap fonts)
-#include "kapi.h"		// kapi_draw_text_buf (fallback when no font is loaded)
+#include "appkit/appkit.h"		// kapi_draw_text_buf (fallback when no font is loaded)
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #endif

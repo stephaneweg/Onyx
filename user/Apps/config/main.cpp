@@ -6,7 +6,7 @@
 // the line. Save writes the file; Reload reads it again. (The apps read their config.ini when they
 // start.)
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "fsutil.h"
 #include "uikit/uikit.h"

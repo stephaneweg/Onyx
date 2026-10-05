@@ -5,7 +5,7 @@
 //   usage: keyb            show current + available
 //          keyb FR         switch to the French (azerty) layout
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

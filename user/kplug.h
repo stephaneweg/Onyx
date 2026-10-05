@@ -605,7 +605,7 @@ struct KpTestApi
 
 #else
 // ---- the process: the kernel side ------------------------------------------------------------------------
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applet_proto.h"
 #include "uikit/uikit.h"
 

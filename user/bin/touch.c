@@ -2,7 +2,7 @@
 // touch -- create an empty file if it does not exist. Usage: touch <path ...>
 // (no timestamps yet, so existing files are left untouched).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

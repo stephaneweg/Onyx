@@ -16,7 +16,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "ops.h"				// arc::Archive, ZipArchive, Plan, the paths' helpers (zlib.h through zip.h)
 #include "filekit.h"
 

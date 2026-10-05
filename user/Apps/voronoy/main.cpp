@@ -11,7 +11,7 @@
 // run it from the terminal to reshuffle the cells. Without wallpaper.ini: its own config.ini's
 // base colour and points (as before the Theme applet had them).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "onyxpp.hpp"			// operator new / delete (the picture's decoder)
 #include "wallpaper.h"

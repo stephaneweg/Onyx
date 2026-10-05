@@ -16,7 +16,7 @@
 #ifndef IMGNAME_H
 #define IMGNAME_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 // by_image 0: the app's file must exist (preload); 1: the app's image must (unload: the file may

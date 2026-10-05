@@ -26,7 +26,7 @@
 #ifndef ONYX_GAMEPAD_H
 #define ONYX_GAMEPAD_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 enum
 {

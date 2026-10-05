@@ -28,7 +28,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <newlib.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 /* The toolchain in use, from newlib's configuration (no compiler macro tells them apart):
  * WP-TC's aarch64-onyx-elf has newlib built --enable-newlib-reent-thread-local (errno and the

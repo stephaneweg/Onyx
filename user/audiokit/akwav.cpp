@@ -14,7 +14,7 @@
 //
 #include <string.h>
 #include <stdlib.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "audiokit.h"
 
 extern "C" int ak_wav_save (const char *path, const short *frames, int n, int rate)

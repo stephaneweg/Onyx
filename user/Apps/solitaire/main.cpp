@@ -7,7 +7,7 @@
 // Hidden cards turn over by themselves. Undo with ^Z. Windows-style scoring and a timer;
 // the cards bounce when you win.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "cards.h"
 

@@ -13,7 +13,7 @@
 #ifndef ONYX_BMP_HPP
 #define ONYX_BMP_HPP
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "onyxpp.hpp"		// operator new[]/delete[] (umm)
 
 namespace ui {

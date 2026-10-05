@@ -49,7 +49,7 @@
 #include <sys/resource.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 extern char **environ;
 

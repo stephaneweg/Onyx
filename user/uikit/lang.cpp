@@ -3,7 +3,7 @@
 // (open addressing), each translation unescaped in place: TR's pointers stay valid for the app's life.
 //
 #include "uikit/lang.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/text.h"		// uk_textface, uk_u8_get
 
 static char  s_code[8] = "en";

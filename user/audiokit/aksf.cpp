@@ -16,7 +16,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "synth/meltysynth.h"		// (Apps/koton)
 #include "audiokit.h"
 

@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "compat/bits/gthr-default.h"
 
 #define STK_THREAD_STACK	(1024 * 1024)

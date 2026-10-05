@@ -16,7 +16,7 @@
 // be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "onyxpp.hpp"
 #pragma GCC diagnostic ignored "-Wunused-function"	// (the headers' other functions)
 #pragma GCC diagnostic ignored "-Wunused-variable"

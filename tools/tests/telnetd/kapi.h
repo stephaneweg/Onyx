@@ -18,6 +18,7 @@ struct kapi_proc_status { int code, reason, pid, pad; };
 
 static struct { int version; } mock_kt = { 80 };
 #define KT (&mock_kt)
+static inline unsigned kapi_abi_version (void) { return (unsigned) mock_kt.version; }
 
 // ---- the clock ---------------------------------------------------------------------------
 static long mock_now;				// ms

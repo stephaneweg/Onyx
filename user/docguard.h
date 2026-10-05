@@ -10,7 +10,7 @@
 #ifndef _docguard_h
 #define _docguard_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/dialog.h"
 
 static inline unsigned doc_hash (const void *p, unsigned n)	// FNV-1a

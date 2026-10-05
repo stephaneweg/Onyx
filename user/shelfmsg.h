@@ -7,7 +7,7 @@
 #ifndef _shelfmsg_h
 #define _shelfmsg_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define SHELF_SERVICE		"shelf"
 #define SHELF_MSG_MOVED		1	// payload: "<from>\0<to>\0"

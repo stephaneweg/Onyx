@@ -34,15 +34,15 @@ all: ../doom.elf
 
 $(OUT)/%.o: $(DG)/%.c | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_onyx.o: doom_onyx.c ../kapi.h ../gamepad.h | $(OUT)
+$(OUT)/doom_onyx.o: doom_onyx.c ../appkit/appkit.h ../gamepad.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_sound.o: doom_sound.c ../kapi.h ../audiokit/audiokit.h | $(OUT)
+$(OUT)/doom_sound.o: doom_sound.c ../appkit/appkit.h ../audiokit/audiokit.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_uikit.o: doom_uikit.cpp ../kapi.h | $(OUT)
+$(OUT)/doom_uikit.o: doom_uikit.cpp ../appkit/appkit.h | $(OUT)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 $(OUT)/crt0libc.o: ../libc/crt0libc.S | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../kapi.h | $(OUT)
+$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../appkit/appkit.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT):

@@ -16,7 +16,7 @@
 //
 #include <string.h>
 #include <stdint.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "fmsynth.h"
 #include "audiokit.h"
 

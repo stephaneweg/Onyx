@@ -3,7 +3,7 @@
 // verify/free across size classes, free-list reuse, a large block + realloc. Prints
 // PASS/FAIL and how much the system app-memory grew (the heap pages sbrk mapped).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "umm.h"
 

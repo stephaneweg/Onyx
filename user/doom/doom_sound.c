@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "../audiokit/audiokit.h"	/* the FM voices (the music): ak_fm_* */
 #include "doomtype.h"
 #include "i_sound.h"

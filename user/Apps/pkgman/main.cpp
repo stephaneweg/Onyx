@@ -15,7 +15,7 @@
 // the last index (SD:/var/pkg/index.txt) is shown at once, then read again from the repository.
 // `pkgman --updates` opens on Updates (pkgd's notification).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "bmp.hpp"
 #include "pkg/pkglib.h"

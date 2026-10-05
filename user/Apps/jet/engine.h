@@ -79,7 +79,7 @@ void engine_find_done ();
 void engine_hit (char *link, int linkCap, char *image, int imageCap);
 void engine_download_url (const char *url, const char *path);	// path "": SD:/Downloads/<its name>
 void engine_download_cancel (int id);
-// The system clipboard, the window's calls (kapi.h): copies leave the page, other programs' come in.
+// The system clipboard, the window's calls (appkit.h): copies leave the page, other programs' come in.
 void engine_set_clipboard (void (*write) (const char *, unsigned long), unsigned long (*read) (char *, unsigned long),
 			   unsigned (*serial) ());
 // The embedded web view (webview.cpp: Mail's HTML messages): given HTML (baseUrl may be ""),
@@ -92,7 +92,7 @@ void engine_set_link_handler (void (*clicked) (const char *url));
 int  engine_spawn_self (const char *role, int *toChild, int *fromChild);	// -> pid (0: failed)
 
 // Input, in the page area's coordinates. buttons: bit 0 left, 1 right, 2 middle (held after the
-// event); changed: the button pressed or released (0 a move). mods: MOD_* (kapi.h).
+// event); changed: the button pressed or released (0 a move). mods: MOD_* (appkit.h).
 void engine_mouse (int x, int y, int buttons, int changed, unsigned mods);
 void engine_wheel (int x, int y, int notches, unsigned mods);	// + towards the top
 void engine_key (long key, unsigned mods);			// a uikit / kapi key code (KEY_*, or the character)

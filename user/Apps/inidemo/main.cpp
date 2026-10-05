@@ -5,7 +5,7 @@
 // app_ini_get_int (drawn as a bar that long). Edit config.ini + reboot to see it
 // change -- no rebuild needed.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 

@@ -25,7 +25,7 @@
 // re-established once if it dropped.
 //
 #include "tls/onyx_tls.hpp"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "ftpfs.h"			// the remembered-servers file format
 #include <string.h>
 #include <stdlib.h>

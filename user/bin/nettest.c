@@ -39,7 +39,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // ---------------------------------------------------------------------------------------------
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static int s_pass, s_fail;

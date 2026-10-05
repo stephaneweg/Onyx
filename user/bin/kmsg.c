@@ -4,7 +4,7 @@
 // is redirected), prints any pending backlog, then keeps printing new events as they
 // arrive. Quit with Ctrl+C. A /bin console program: writes to stdout, watches stdin.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static const char *sev_tag (int s)

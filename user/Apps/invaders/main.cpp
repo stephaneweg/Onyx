@@ -5,7 +5,7 @@
 // crosses the top now and then (mystery points). An alien reaching the ground ends the
 // game. P pauses. The four-note march and the effects play on the synth.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "game.h"
 

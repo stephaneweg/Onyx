@@ -4,7 +4,7 @@
 // grs.com for .com), unless a server is given.
 //   usage: whois <domain> [server]
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static char g_resp[16384];

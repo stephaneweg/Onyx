@@ -5,7 +5,7 @@
 // aarch64 build runs under qemu-aarch64 (user mode): no libc, Linux system calls (write, mmap,
 // exit), the kapi table at its address with gpu_info saying "no GPU". sh tools/tests/run_gpucomp_test.sh
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "gpucomp/gpucomp.h"
 
 #ifdef __aarch64__

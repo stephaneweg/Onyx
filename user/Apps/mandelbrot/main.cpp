@@ -4,7 +4,7 @@
 // Tricorn. Click to zoom in (recenters on the click), 'o' zooms out, 'r' resets.
 // Iteration count maps to colour. Renders progressively (yields between row bands).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 

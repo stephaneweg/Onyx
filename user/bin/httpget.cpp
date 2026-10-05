@@ -5,7 +5,7 @@
 // Prints the status line, the Content-Type, and the response body. Freestanding C++
 // (no libc) -- proves http.hpp works in an integer-only app; console I/O via kapi.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "http.hpp"
 
 static void outs (const char *s) { int n = 0; while (s[n]) n++; kapi_stdout_write (s, (unsigned) n); }

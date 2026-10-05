@@ -13,7 +13,7 @@
 // icons.h), the dialogs (dialogs.h).
 //
 #include <strings.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "ft/uikitface.h"
 #include "uikit/uikit.h"
 #include "fileassoc.h"

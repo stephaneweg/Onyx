@@ -6,7 +6,7 @@
 // The message goes through notify() (notify.h): an IPC message to the "notify"
 // service, which is started on demand if needed.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "notify.h"
 

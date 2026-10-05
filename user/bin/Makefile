@@ -1,7 +1,7 @@
 #
 # Makefile -- /bin console tools. Same EL1 app model as the GUI apps but they read
 # stdin / write stdout / exit (no window). Built with the shared crt0.S + user.ld +
-# kapi.h from the parent dir; staged to SD:/bin/<name> (no extension on the card).
+# appkit/appkit.h from the parent dir; staged to SD:/bin/<name> (no extension on the card).
 #
 # (the first rule below is not `all`: prerequisite-only rules come before it)
 .DEFAULT_GOAL := all
@@ -31,10 +31,10 @@ CFLAGS_LIBC = -mcpu=cortex-a72 -O2 -Wall -Wextra -fno-stack-protector -fno-pic -
 # C++ newlib variant (for TLS apps: mbedTLS is C, the app + http.hpp are C++).
 CXXFLAGS_LIBC = $(CFLAGS_LIBC) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
 LIBC_SRC  = ../libc/crt0libc.S ../libc/onyx_syscalls.c
-LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../kapi.h ../user.ld
+LIBC_DEP  = ../libc/crt0libc.S ../libc/onyx_syscalls.c ../appkit/appkit.h ../user.ld
 # (every program reaches the kernel through AppKit: its import stubs, ../Makefile)
 LDFLAGS = -Wl,-T,../user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
-# Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (kapi.h,
+# Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (appkit/appkit.h,
 # ABI v36). NOT used by the newlib programs, which keep newlib's own.
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 	       -Wl,--defsym,memmove=kapi_memmove
@@ -105,17 +105,17 @@ libtest.elf: ../lib.h ../demo/demo.h ../onyxpp.hpp ../umm.h
 # play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
 # off (it only uses the library's integer entries); links the library's import archive.
 # tone: AudioKit's voices (the FM synthesizer: ak_fm_*)
-tone.elf: tone.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../audiokit/audiokit.h ../lib/audiokit.imp.a
+tone.elf: tone.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../onyxpp.hpp ../audiokit/audiokit.h ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
-play.elf: play.cpp ../crt0.S ../user.ld ../kapi.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
+play.elf: play.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf
 # fktest: FileKit's self-test (../lib/filekit.so): compression, ZIP on the card and in memory, trees, paths
-fktest.elf: fktest.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../filekit/filekit.h ../lib/filekit.imp.a
+fktest.elf: fktest.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../onyxpp.hpp ../filekit/filekit.h ../lib/filekit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/filekit.imp.a -o $@
 AK_PROGS += fktest.elf
 # iktest: ImageKit's self-test (../lib/imagekit.so): pictures written and read back, the transforms, the adjustments
-iktest.elf: iktest.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../imagekit/imagekit.h ../lib/imagekit.imp.a
+iktest.elf: iktest.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../onyxpp.hpp ../imagekit/imagekit.h ../lib/imagekit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/imagekit.imp.a -o $@
 AK_PROGS += iktest.elf
 # ipp: a network printer asked what it can do (../printerkit/ipp.h; docs/03 "Printing")
@@ -147,7 +147,7 @@ all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
 
-%.elf: %.c ../crt0.S ../user.ld ../kapi.h ../applib.h ../httpc.h ../umm.h
+%.elf: %.c ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../httpc.h ../umm.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
@@ -159,7 +159,7 @@ $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
 .PHONY: posixlib
 posixlib:
 	@$(MAKE) --no-print-directory -C $(POSIX_DIR)
-$(POSIX_PROGS): %.elf: %.c posixlib ../kapi.h
+$(POSIX_PROGS): %.elf: %.c posixlib ../appkit/appkit.h
 	$(CC) $(CFLAGS_POSIX) $(LDFLAGS_POSIX) $< -o $@
 
 # C++ on libonyxposix: WP-TC's aarch64-onyx-elf toolchain (real gthreads, native TLS, errno per
@@ -218,14 +218,14 @@ jsc:
 	INTERP=$(JSC_INTERP) sh ../../tools/webkit/build-jsc.sh install
 
 # Freestanding C++ tools: our crt0.S + the .cpp (uses kapi + ../http.hpp only).
-$(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../http.hpp
+$(CXX_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../http.hpp
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 CXXFLAGS_FP = $(CFLAGS_FP) -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
-$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../kapi.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
+$(V3D_PROGS): %.elf: %.cpp ../crt0.S ../user.ld ../appkit/appkit.h ../v3d/libv3d.a ../v3d/qpu.h ../v3d/shaders.h ../v3d/gxtev.h ../v3d/gxtev_ref.h
 	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../v3d/libv3d.a -o $@
 
-$(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../kapi.h ../applib.h ../umm.h ../gpucomp/libgpucomp.a ../gpucomp/gpucomp.h
+$(GPC_PROGS): %.elf: %.c ../crt0.S ../user.ld ../appkit/appkit.h ../applib.h ../umm.h ../gpucomp/libgpucomp.a ../gpucomp/gpucomp.h
 	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../gpucomp/libgpucomp.a -o $@
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup

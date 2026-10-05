@@ -38,7 +38,7 @@
 //     measure of the game played (F12's lines complete, whatever the window's width).
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"

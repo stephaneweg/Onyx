@@ -3,7 +3,7 @@
 //
 #include "uikit/uikit.h"			// (first: its onyxpp.hpp gives placement new -- kbase.h then leaves <new> out)
 #include "plughost.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applet_proto.h"
 #include "../../../json.hpp"
 

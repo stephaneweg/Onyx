@@ -19,7 +19,7 @@
 #ifndef _user_emucore_h
 #define _user_emucore_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 struct EmuCore;
 typedef void (*ec_frame_fn) (EmuCore *ec);

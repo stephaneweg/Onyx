@@ -1,7 +1,7 @@
 //
 // mv -- rename/move a file or directory (same volume). Usage: mv <src> <dst>
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

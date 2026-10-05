@@ -82,19 +82,19 @@ $(OUT)/angelscript/%.o: $(AS_DIR)/%.cpp
 $(OUT)/crt0libc.o: ../libc/crt0libc.S
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../kapi.h
+$(OUT)/onyx_syscalls.o: ../libc/onyx_syscalls.c ../appkit/appkit.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/onyx_eh.o: onyx_eh.c
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/onyx_gthreads.o: onyx_gthreads.c compat/bits/gthr-default.h ../kapi.h
+$(OUT)/onyx_gthreads.o: onyx_gthreads.c compat/bits/gthr-default.h ../appkit/appkit.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -I. -Wall -c $< -o $@
 $(OUT)/onyx_gthreads_cxx.o: onyx_gthreads_cxx.cpp compat/bits/gthr-default.h
 	@mkdir -p $(OUT)
 	$(CXX) $(CXXFLAGS) -Wall -c $< -o $@
-$(OUT)/onyx_posix.o: onyx_posix.c compat/dirent.h ../kapi.h
+$(OUT)/onyx_posix.o: onyx_posix.c compat/dirent.h ../appkit/appkit.h
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) -I. -Wall -c $< -o $@
 $(OUT)/stkpoc.o: stkpoc.cpp compat/bits/gthr-default.h

@@ -7,7 +7,7 @@
 // moving it). Prints the latency the kernel reports, the underruns (`dry`) and PASS / FAIL.
 // Without a free app core the main thread fills the ring itself.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static void put_num (long v)

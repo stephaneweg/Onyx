@@ -2,7 +2,7 @@
 // cp -- copy a file. Usage: cp <src> <dst>. Streams through file streams so any
 // size works.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static int next_tok (const char *s, int i, int len, char *dst, int cap)

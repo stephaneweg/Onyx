@@ -14,7 +14,7 @@
 //
 #ifndef _clipboard_h
 #define _clipboard_h
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "clipproto.h"
 
 static inline int clip_len_ (const char *s) { int n = 0; while (s && s[n]) n++; return n; }

@@ -19,7 +19,7 @@
 //   * Mappers: 0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 66 (GxROM).
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"

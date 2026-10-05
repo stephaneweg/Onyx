@@ -44,11 +44,12 @@ When you **add or change a `kapi` function or an application**, you **update the
 documentation in the same session**, without being asked again:
 
 - **`kapi` function** (`kernel/include/kern/kapi_abi.h`, `kernel/sys/kapi.cpp`,
-  `kernel/sys/kapitable.cpp`, `user/kapi.h`) → update the ABI table in
+  `kernel/sys/kapitable.cpp`, `user/appkit/appkit.h` + `appkit_calls.inc`) → update the ABI table in
   `docs/02-KERNEL-INTERNALS.md` (+ `docs/03` if dev-facing) and the version history
   (`KAPI_ABI_VERSION`). Since **AppKit** (2026-10-05) the programs reach the kernel through
-  `SD:/lib/appkit.so` (`user/appkit/`, the `kapi_*` functions of `user/kapi.h` by name): add the call's
-  `KAPI_CALL` in `kapi.h` and commit `user/appkit/appkit.abi` (append-only **by name**: never remove or
+  `SD:/lib/appkit.so` (`user/appkit/`): the programs include **`appkit/appkit.h`** (declarations only; there is no `kapi.h` any
+  more) and call its `kapi_*` functions by name. Add the call's declaration in `appkit/appkit.h` and its
+  `KAPI_CALL` body in `appkit/appkit_calls.inc` (the only code that reads the kernel's table), and commit `user/appkit/appkit.abi` (append-only **by name**: never remove or
   rename a line). The kernel's own table (`kapi_abi.h`) may be restructured — AppKit is adapted and rebuilt
   with the kernel, no program is; a program never reads `KT` (docs/03 §5.10, docs/02 §8).
 - **Application** (`user/Apps/<name>/`, `user/bin/*.c`, `sdcard/apps/<name>.app`) → update the catalog

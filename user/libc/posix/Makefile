@@ -58,7 +58,7 @@ CFLAGS_ABS = -mcmodel=large
 SRC  = start.c tls.c emutls.c guard.c pthread.c pthread_sync.c sem.c time.c env.c path.c fd.c ipc.c \
        file.c stat.c dir.c mman.c proc.c signal.c socket.c netdb.c poll.c misc.c libgen.c uchar.c newlib_syscalls.c
 OBJ  = $(SRC:%.c=$(B)/%.o)
-HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../kapi.h \
+HDRS = $(wildcard include/*.h include/*/*.h) posix_internal.h ../../appkit/appkit.h \
        ../../../kernel/include/kern/kapi_abi.h
 
 all: $(B)/libonyxposix.a $(B)/crt0posix.o $(B)/onyx.specs $(B)/onyx-cc.specs $(B)/onyx-posix.ld

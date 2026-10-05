@@ -9,7 +9,7 @@
 #ifndef ONYX_MAIL_CONN_H
 #define ONYX_MAIL_CONN_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "mail/util.h"
 #include "tls/onyx_tls.hpp"
 

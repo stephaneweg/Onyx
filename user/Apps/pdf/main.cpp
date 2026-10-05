@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <ctype.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "engine.h"
 #include "ui.h"
 #include "clipboard.h"

@@ -14,7 +14,7 @@
 // the QBasic screens (text, SCREEN n, the games) keep their own. The program's folder becomes the current
 // directory, so it finds its files by relative names.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "clipboard.h"
 #include "applib.h"
 #include "notify.h"

@@ -16,7 +16,7 @@
 // written to the file as they arrive (kernel v75+: any size; into "<name>.part", renamed at the
 // end); on an older kernel, buffered in memory (<= 32 MB) and written in one go.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "umm.h"
 

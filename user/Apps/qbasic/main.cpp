@@ -12,7 +12,7 @@
 //     app.txt (+ an icon), launched like any app (the kernel hands main.bas to /bin/basic).
 //   * Enter keeps the indentation of the line above; Page Up / Down scroll by a page.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "fsutil.h"
 #include "notify.h"

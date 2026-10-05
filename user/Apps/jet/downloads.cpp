@@ -10,7 +10,7 @@
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/paint.h"
 #include <fcntl.h>

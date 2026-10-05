@@ -6,7 +6,7 @@
 // notices it within ~10 ms), bad addresses, and a thread made "real time". Prints one line
 // per check and PASS / FAIL.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static int s_fail;

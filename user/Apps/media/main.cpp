@@ -22,7 +22,7 @@
 #include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "player.h"
 #include "ui.h"
 #include "thumbs.h"

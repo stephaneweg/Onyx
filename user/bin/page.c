@@ -3,7 +3,7 @@
 // scrollback (PgUp/PgDn); a real interactive pager needs a tty channel separate
 // from the piped data, which we don't have yet. Useful as a pipeline endpoint.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 int main (void)
 {

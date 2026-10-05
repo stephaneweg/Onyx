@@ -1,5 +1,5 @@
 // gamepad_test -- user/gamepad.h (the button mapping and SD:/etc/gamepad.ini) against a fake kapi.
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
 #include <assert.h>
 int main ()

@@ -13,7 +13,7 @@
 // and this permission notice shall be included in all copies or substantial portions of the Software. THE
 // SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 #include "scene.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include <stdio.h>
 #include <time.h>
 

@@ -1003,8 +1003,16 @@ masks, the brushes and the document of the photo editor come on top of it later 
 
 ### 5.10. AppKit: the programs' interface to the kernel (`SD:/lib/appkit.so`)
 
-*(`user/kapi.h` is the reference of the calls; `user/appkit/appkit.c` the library; the kernel's side:
+*(`user/appkit/appkit.h` is the header a program includes and the reference of the calls;
+`user/appkit/appkit_calls.inc` their bodies; `user/appkit/appkit.c` the library; the kernel's side:
 docs/02 §8.)*
+
+```c
+#include "appkit/appkit.h"      // (it was "kapi.h" until 2026-10-05: there is no kapi.h any more)
+```
+
+A program talks to **AppKit**, never to the kernel: the header says so by its name, and it only
+declares. The functions keep their `kapi_` prefix: they are the names of AppKit's table, never renamed.
 
 Every `kapi_*` function a program calls is **AppKit's**, reached **by name**. The kernel loads AppKit by
 itself and binds it to every program: nothing to open, nothing to link by hand (`user/Makefile` puts
@@ -1012,21 +1020,25 @@ itself and binds it to every program: nothing to open, nothing to link by hand (
 AppKit reads the kernel's table — so **the kernel's table can be restructured by rebuilding AppKit
 alone**.
 
-- **One header, three ways.** `user/kapi.h` writes each call as
-  `KAPI_CALL (result, name, (arguments), { body })`:
-  - a program for Onyx (the default): the declaration — AppKit has the body;
-  - `KAPI_IMPL` (`appkit/appkit.c` only): the functions themselves, exported by name;
-  - `KAPI_INLINE`, or a PC build: the function inline in the program, reading the kernel's table itself
-    (as every program did before AppKit) — for the tests of the table and the simulator.
-  The inline helpers that make no kernel call (`kapi_sound_ring_write`, `kapi_clock_us`, the spin
-  locks' primitives) stay inline: an app core may use them.
+- **The declarations and the bodies are two files.** `appkit/appkit.h` declares each call
+  (`KAPI_FN int kapi_seek (void *h, unsigned long long pos);`) with its comment, the structures and
+  the constants. `appkit/appkit_calls.inc` has the bodies, one line a call —
+  `KAPI_CALL (result, name, (arguments), { body })` — and is **the only code that reads the kernel's
+  table** (`KT`). It is compiled:
+  - into AppKit (`appkit/appkit.c`, `KAPI_IMPL`): the functions themselves, exported by name;
+  - with `KAPI_INLINE`, or in a PC build: inline into the program (`appkit.h` includes it at its
+    end), reading the table itself as every program did before AppKit — for the tests of the table
+    (`el0test`, `faulttest`) and the simulator, whose stand-in kernel has no AppKit.
+  The inline helpers of `appkit.h` that make no kernel call (`kapi_sound_ring_write`, `kapi_clock_us`,
+  the spin locks' primitives) stay inline: an app core may use them.
 - **`KT` is not for programs any more**: it only exists in AppKit (and `KAPI_INLINE`). The kernel's
   version is `kapi_abi_version ()` (it was `KT->version`).
 - **Adding a call**: the kernel's entry (`kern/kapi_abi.h`, `sys/kapi.cpp`, `sys/kapitable.cpp`), then
-  its `KAPI_CALL` in `kapi.h`; the build appends its name to `appkit/appkit.abi` and makes its stub.
+  its declaration in `appkit/appkit.h` and its `KAPI_CALL` in `appkit/appkit_calls.inc`; the build
+  appends its name to `appkit/appkit.abi` and makes its stub.
   Commit the `.abi`.
 - **Changing the kernel's table** (an entry moved, removed, two merged, a structure changed): adapt the
-  bodies in `kapi.h` — they are AppKit's code — so that each `kapi_*` name still does what the programs
+  bodies in `appkit/appkit_calls.inc` so that each `kapi_*` name still does what the programs
   expect; rebuild the kernel and AppKit, ship them together (the package `onyx`), restart. No program is
   rebuilt. A name of `appkit.abi` is never removed nor renamed: a call that is gone keeps a body that
   answers `-KAPI_ENOSYS` (or does it another way).
@@ -1128,7 +1140,7 @@ alone**.
 > **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
 > app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
 > request (`req.op` = `VFS_OP_OPEN` / `READ` / `CLOSE` / `LIST` / `SAVE` / `MKDIR` / `REMOVE`
-> / `RENAME`, see `user/kapi.h`) with `kapi_vfs_reply (req.id, status, data, len)`; a SAVE's
+> / `RENAME`, see `user/appkit/appkit.h`) with `kapi_vfs_reply (req.id, status, data, len)`; a SAVE's
 > payload is read with `kapi_vfs_req_data`. Example: `user/bin/ftpfs.cpp` (FTP / FTPS). The
 > ordinary file kapis then work on `XYZ:...` paths in every app, unchanged.
 > `ftpfs.h`: `ftpfs_login` / `ftpfs_login_site` (hand a login to ftpfs, optionally
@@ -2279,7 +2291,7 @@ Minimal skeleton with the raw kapi (a real app uses uikit, above: `uikit::Root`,
 its `run ()` loop; the kernel draws no widget since v29):
 
 ```c
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static void on_key (unsigned long sender, int ev, gui_value value)
 {
@@ -2847,7 +2859,7 @@ A `/bin` tool follows the **same app model** (an ELF at EL0, §5) but reads `std
 `stdout`, and exits (no window). It is composable via the terminal's pipes.
 
 ```c
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"     /* ax_puts, ax_putln, ax_strlen, ax_itoa, ... */
 
 int main (void)
@@ -2894,7 +2906,7 @@ Apps built with `-ffreestanding -nostdlib` (every uikit app and the plain `/bin`
 have no libc, yet GCC may still emit calls to `memset`/`memcpy`/`memmove` on its own
 (e.g. `char buf[64] = "";`, struct copies). Since ABI v36 the kapi table has them — since v74
 as **user-side** routines of the EL0 code page (`kernel/arch/aarch64/el0blob.S`: no system
-call), before as Circle's kernel implementations; `user/kapi.h` defines them as weak
+call), before as Circle's kernel implementations; `user/appkit/appkit.h` defines them as weak
 `kapi_memset`/`kapi_memcpy`/`kapi_memmove`, and `user/Makefile` / `user/bin/Makefile`
 alias the C names onto them at link time (`KAPI_ALIASES`:
 `-Wl,--defsym,memset=kapi_memset …`). A new freestanding link rule must add
@@ -3589,10 +3601,12 @@ points** to touch (all in the same direction, at the end):
 3. **`kernel/sys/kapitable.cpp`** — declare the `extern "C"` prototype and **assign the
    pointer** in `KApiTableInit()`: `t->ma_fonction = kapi_ma_fonction;`.
 
-4. **`user/kapi.h`** — add the inline wrapper:
+4. **AppKit** — declare it in `user/appkit/appkit.h` and give its body in
+   `user/appkit/appkit_calls.inc` (§5.10); commit `user/appkit/appkit.abi`, which the build completes:
 
    ```c
-   static inline int kapi_ma_fonction (int arg) { return KT->ma_fonction (arg); }
+   KAPI_FN int kapi_ma_fonction (int arg);                                            // appkit.h
+   KAPI_CALL (int, kapi_ma_fonction, (int arg), { return KT->ma_fonction (arg); })    // appkit_calls.inc
    ```
 
 5. Rebuild (`make`). The apps that want the new function use it; the
@@ -3631,7 +3645,7 @@ points** to touch (all in the same direction, at the end):
 success and **−`KAPI_Exxx`** on failure (`kapi_abi.h`: newlib's errno values, so a libc does
 `errno = -r`); 64-bit values are `long long` / `unsigned long long`, never `long` (32 bits in the
 Windows build); a structure's size and its slot are `static_assert`ed in `kapi_abi.h`
-(`KAPI_CHECK_SIZE`, `KAPI_CHECK_SLOT`); and the `user/kapi.h` wrapper tests the version **and** the
+(`KAPI_CHECK_SIZE`, `KAPI_CHECK_SLOT`); and AppKit's body (`appkit_calls.inc`) tests the version **and** the
 slot — `return KT->version >= 75 && KT->x ? KT->x (…) : -KAPI_ENOSYS;` — since the host tables (the PC
 simulator, `pc/`) leave the v75 slots 0. The files and processes block (`file_*`, `path_*`,
 `dir_read`, `stream_write_nb`, `spawn_ex`, `proc_wait`, `get_argv`, `get_env`, `getpid`,
@@ -3688,7 +3702,7 @@ log lines.
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.
 
 If you add a new **GUI event** or a **window flag**, keep the values
-synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `user/kapi.h` (commented
+synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `user/appkit/appkit.h` (commented
 "must match").
 
 ## 11. Coding conventions

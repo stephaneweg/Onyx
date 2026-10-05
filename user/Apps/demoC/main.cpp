@@ -13,7 +13,7 @@
 // No heap in userland (-nostdlib): the field + palette are static arrays; the
 // pixel buffer is the window canvas the kernel maps in.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// uikit window decoration
 
 #define W	320			// window client size

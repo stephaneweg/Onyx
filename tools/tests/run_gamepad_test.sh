@@ -8,6 +8,6 @@ ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}/onyx_gamepad
 mkdir -p "$T"
 cp "$ROOT/user/gamepad.h" "$T/gamepad.h"
-cp "$HERE/gamepad/fake_kapi.h" "$T/kapi.h"
+cp "$HERE/gamepad/fake_kapi.h" "$T/kapi.h" && mkdir -p "$T/appkit" && echo '#include "../kapi.h"' > "$T/appkit/appkit.h"
 g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$T" -I"$ROOT/kernel/include" "$HERE/gamepad/gamepad_test.cpp" -o "$T/gamepad_test"
 "$T/gamepad_test"

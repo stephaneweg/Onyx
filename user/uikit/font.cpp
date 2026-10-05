@@ -7,7 +7,7 @@
 //
 #include "uikit/font.h"
 #include "uikit/canvas.h"
-#include "kapi.h"		// kapi_open / kapi_fsize / kapi_read / kapi_close
+#include "appkit/appkit.h"		// kapi_open / kapi_fsize / kapi_read / kapi_close
 #include "uikit/theme.h"		// uk_theme_load
 
 namespace uikit {

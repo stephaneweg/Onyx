@@ -6,7 +6,7 @@
 // Prints one line per check and PASS / FAIL. It ends with a thread still running: the
 // process must end with its main thread anyway (the prompt comes back).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "umm.h"
 

@@ -11,7 +11,7 @@
 // The window is BORDERLESS | TOPMOST (above the apps, never the active app). When idle
 // it is fully transparent and parked off-screen so it never catches a click.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "notify.h"
 #include "uikit/uikit.h"
 

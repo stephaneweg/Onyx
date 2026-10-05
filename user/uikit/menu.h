@@ -16,7 +16,7 @@
 //
 #ifndef _uikit_menu_h
 #define _uikit_menu_h
-#include "kapi.h"
+#include "appkit/appkit.h"
 namespace uikit {
 
 #define UK_CTRL(c)	((long) ((c) & 0x1F))	// Ctrl+letter key code (^A = 1 ... ^Z = 26)

@@ -10,7 +10,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "arcbase.h"		// strings, sizes, DOS dates, names
 
 namespace arc {

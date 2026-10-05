@@ -7,7 +7,7 @@
 // Drag & drop: a file dropped on the window is opened (after asking to save unsaved
 // changes -- docguard.h); dropped text is inserted at the caret.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit + uk_file_open / uk_file_save + Menu
 #include "clipboard.h"
 #include "docguard.h"

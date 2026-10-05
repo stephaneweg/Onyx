@@ -18,7 +18,7 @@
 //     slows the game down. Without a free core it runs here, as before.
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"

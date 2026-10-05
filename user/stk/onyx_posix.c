@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "compat/dirent.h"
 
 struct __onyx_dir

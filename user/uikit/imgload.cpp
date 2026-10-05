@@ -15,7 +15,7 @@
 
 #else
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "lib.h"
 #include "img/imgload.hpp"
 #include "imagekit/imagekit.h"

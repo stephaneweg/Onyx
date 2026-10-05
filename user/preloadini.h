@@ -16,7 +16,7 @@
 #ifndef PRELOADINI_H
 #define PRELOADINI_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define PRELOAD_INI	"SD:/etc/preload.ini"
 #define PRELOAD_MAX	32

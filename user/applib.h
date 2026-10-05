@@ -5,7 +5,7 @@
 #ifndef _applib_h
 #define _applib_h
 
-#include "kapi.h"		// kapi_open/read/close/app_dir (for the INI reader)
+#include "appkit/appkit.h"		// kapi_open/read/close/app_dir (for the INI reader)
 
 // Append src to dst[*pos], advancing *pos, never overflowing cap. NUL-terminates.
 static inline void ax_strcat (char *dst, int cap, int *pos, const char *src)

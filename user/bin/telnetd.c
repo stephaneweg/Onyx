@@ -24,7 +24,7 @@
 // No authentication, no encryption: anyone on the LAN who reaches the port gets a
 // shell. Keep it for a trusted network.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "lineedit.h"
 #include "shellend.h"

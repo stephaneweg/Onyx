@@ -6,7 +6,7 @@
 // File > Edit in Letters hands the document to Letters (which reads and writes .rtf).
 // Double-clicking a .rtf file in the File Viewer opens it here (fileassoc.ini).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "clipboard.h"
 #include "docguard.h"

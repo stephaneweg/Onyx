@@ -15,7 +15,7 @@
 #include "img/pngsave.hpp"
 #include "img/imgload.hpp"
 #ifdef SHEET_APP
-#include "kapi.h"
+#include "appkit/appkit.h"
 #endif
 
 namespace ss {

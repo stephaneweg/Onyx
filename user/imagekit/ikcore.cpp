@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "lib.h"
 #include "imagekit.h"
 #include "filekit/filekit.h"

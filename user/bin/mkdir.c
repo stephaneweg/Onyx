@@ -1,7 +1,7 @@
 //
 // mkdir -- create directories. Usage: mkdir <path ...>
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

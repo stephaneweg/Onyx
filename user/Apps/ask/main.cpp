@@ -6,7 +6,7 @@
 // A fifth field "=text" asks for a line of text (a field holding `text`): on OK the text
 // is written to stdout (the caller's pipe: ask_text_begin / ask_text_poll).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

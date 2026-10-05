@@ -9,7 +9,7 @@
 //   volume app <name | pid> 0..100 | mute | unmute     a program's own volume (kept in SD:/etc/mixer.ini)
 // Kept in SD:/etc/sound.ini (applied again at boot by the menu bar, whose icon follows).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "volume.h"
 

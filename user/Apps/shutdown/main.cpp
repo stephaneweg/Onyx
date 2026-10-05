@@ -6,7 +6,7 @@
 // goes dark. Cancel (or Esc / the close box) just closes the dialog. Uses the ABI v40
 // kapi_shutdown (the SD unmount flushes FatFs, so no file is left half-written).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

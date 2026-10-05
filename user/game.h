@@ -15,7 +15,7 @@
 #define _onyx_game_h
 
 #include "audiokit/audiokit.h"	// (the effects: AudioKit's voices, ak_fm_*)
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 // Milliseconds (kapi_get_ticks counts HZ = 100 ticks per second).

@@ -2,7 +2,7 @@
 // appkit.c -- AppKit (SD:/lib/appkit.so): the ONE interface between the programs and the kernel.
 //
 // Every kapi_* function a program calls is here, exported BY NAME (appkit/appkit.abi, append-only):
-// user/kapi.h declares them, appkit_calls.inc (included below) has their bodies, each one calling the
+// appkit.h declares them, appkit_calls.inc (included below) has their bodies, each one calling the
 // kernel through the kernel's table (KT, at KAPI_TABLE_VA). Nothing else reads that table: when the
 // kernel's table is restructured -- an entry moved, removed, two merged, a structure changed --, the
 // bodies of appkit_calls.inc (or a function written here for the call that needs more than a relay)
@@ -23,7 +23,7 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #define KAPI_IMPL
-#include "kapi.h"
+#include "appkit.h"
 #include "appkit_calls.inc"
 #include "lib.h"
 

@@ -18,7 +18,7 @@
 // coming appointments, "YYYYMMDD|HH:MM title") is written for the desktop's agenda widget; the
 // old calendar's notes in it are taken over the first time. An argument "YYYYMMDD" opens that day.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #include "applib.h"

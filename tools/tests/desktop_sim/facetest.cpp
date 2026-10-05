@@ -6,7 +6,7 @@
 // scroll keeping the caret in view, a password's stars, up / down by x, uk_text_fit, and the way
 // back to the bitmap fonts. Built and run by studio.sh; prints "facetest: all passed".
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"
 #include <stdio.h>

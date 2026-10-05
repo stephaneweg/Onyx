@@ -1,13 +1,16 @@
 //
-// kapi.h -- the kernel's API for the programs: the declarations.
+// appkit.h -- AppKit: what a program includes to talk to the system.
 //
-// A program calls the kapi_* functions declared here; they are AppKit's (SD:/lib/appkit.so,
-// user/appkit), which the kernel binds to every program. Their bodies are in
-// user/appkit/appkit_calls.inc. The structures and constants shared with the kernel come from
-// <kern/kapi_abi.h>.
+// A program calls the functions declared here (kapi_*: the names of AppKit's table, kept as they
+// were); they are AppKit's (SD:/lib/appkit.so, user/appkit), which the kernel binds to every program.
+// A program never talks to the kernel itself. Their bodies are in appkit_calls.inc, beside this file.
+// The structures and constants shared with the kernel come from <kern/kapi_abi.h>.
 //
-#ifndef _kapi_h
-#define _kapi_h
+// (This header was user/kapi.h until 2026-10-05. There is no kapi.h any more: what talks to the kernel
+//  is in this folder only.)
+//
+#ifndef _appkit_h
+#define _appkit_h
 
 #include <kern/kapi_abi.h>
 
@@ -16,7 +19,7 @@
 // interface between the programs and the kernel -- loaded by the kernel and bound to every program
 // with no call of theirs). A program calls them BY NAME, through the import stubs linked into it
 // (lib/appkit_stubs.o). THIS HEADER ONLY DECLARES THEM: their bodies -- the calls through the kernel's
-// table -- are in user/appkit/appkit_calls.inc, compiled into AppKit (appkit/appkit.c) and nowhere
+// table -- are in appkit_calls.inc (beside this file), compiled into AppKit (appkit/appkit.c) and nowhere
 // else. So the kernel's table can be restructured -- entries moved, removed, merged -- by adapting
 // that file and rebuilding AppKit alone: no program changes.
 //
@@ -777,7 +780,7 @@ static inline int       should_exit (void)         { return kapi_should_exit ();
 
 // (the tests of the kernel's table, and the PC builds: the bodies inline -- see this header's top)
 #if (defined (KAPI_INLINE) || !defined (__aarch64__)) && !defined (KAPI_IMPL)
-#include "appkit/appkit_calls.inc"
+#include "appkit_calls.inc"
 #endif
 
 #endif

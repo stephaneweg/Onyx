@@ -1,7 +1,7 @@
 //
 // 2048 -- slide tiles with the arrow keys; equal tiles merge. 'r' restarts.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 

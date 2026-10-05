@@ -13,7 +13,7 @@
 #define ONYX_HTTP_TLS
 #include "http.hpp"
 
-#include "kapi.h"		// kapi_get_args
+#include "appkit/appkit.h"		// kapi_get_args
 
 // Direct, UNBUFFERED stdout (no newlib stdio buffering), consistent with httpget.
 // httpsget is still a newlib app (mbedTLS uses libc), it just doesn't route its own

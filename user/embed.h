@@ -10,7 +10,7 @@
 #ifndef _embed_h
 #define _embed_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"		// should_exit, msleep
 #include "shell_proto.h"
 #include "uikit/uikit.h"

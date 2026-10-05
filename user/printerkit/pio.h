@@ -35,7 +35,7 @@ static inline bool pio_rename (const char *a, const char *b)	{ return rename (a,
 static inline unsigned pio_ticks (void)			{ return (unsigned) (clock () * 1000 / CLOCKS_PER_SEC); }
 static inline void pio_sleep (unsigned ms)		{ usleep (ms * 1000); }
 #else
-#include "kapi.h"
+#include "appkit/appkit.h"
 typedef long long pio_file;				// a file being written: a v75 handle (written as it comes)
 typedef void *pio_in;					// a file being read: the kapi's first file calls (every kernel has them)
 #define PIO_NONE ((pio_file) 0)

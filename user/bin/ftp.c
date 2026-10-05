@@ -17,7 +17,7 @@
 // on an FTP[S]:host[:port]/path path -- so it shares ftpfs's connection, its FTPS support
 // and the logins with the File Viewer. The password is typed in clear (the terminal echoes).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "umm.h"
 #include "ftpfs.h"

@@ -19,7 +19,7 @@
 #ifndef _cardfile_model_h
 #define _cardfile_model_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 namespace cf {
 

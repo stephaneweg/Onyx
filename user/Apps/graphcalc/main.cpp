@@ -7,7 +7,7 @@
 // Out, Square (same scale on both axes), Grid. The functions are kept in
 // SD:/apps/graphcalc.app/functions.txt. Double-precision FP (the BASIC core's math).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "Apps/graphcalc/expr.h"
 

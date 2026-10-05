@@ -4,7 +4,7 @@
 // separated; #=wall .=target $=box @=player *=box-on-target +=player-on-target),
 // with an embedded fallback.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 

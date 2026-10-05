@@ -15,7 +15,7 @@
 //       SHELLEND_GIVEUP_MS (left alone; the caller closes its pipes all the same).
 //
 // A daemon meant to outlive the session is started detached (`run SD:/bin/ftpd SD:/`), not in
-// the foreground. Needs kapi.h before it; the PC test tools/tests/run_telnetd_test.sh drives it
+// the foreground. Needs appkit.h before it; the PC test tools/tests/run_telnetd_test.sh drives it
 // through telnetd.c against a mock kapi.
 //
 // Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is

@@ -6,7 +6,7 @@
 //   usage: run <app|path> [args...]
 // Examples:  run mandelbrot   run tinypad SD:/notes.txt   run SD:/basic/examples/arkanoid.bas
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "launch.h"
 

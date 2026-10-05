@@ -4,7 +4,7 @@
 // collapse left. Score grows with bigger groups. Mouse-driven via the canvas-click
 // event (kapi_set_click_handler); 'r' starts a new board.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 #define GW	18

@@ -29,7 +29,7 @@
 #include FT_OUTLINE_H
 #include FT_SIZES_H
 #include FT_ADVANCES_H
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/canvas.h"
 
 namespace fnt {

@@ -8,7 +8,7 @@
 // The deals are numbered 1..32000 and are the same as Microsoft FreeCell's
 // (Game > Select Game...).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "cards.h"
 

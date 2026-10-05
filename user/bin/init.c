@@ -9,7 +9,7 @@
 // command and waits for its end before the next line (`wait pkg commit`: the packages staged
 // for the next boot moved in before the desktop starts, docs/pkg/README.md).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static char g_buf[32768];		// (the whole autostart: it was 2 KB, a longer file lost its last lines)

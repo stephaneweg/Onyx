@@ -32,7 +32,7 @@
 // Hidden entries (names starting with '.') are not listed. Operations act on the
 // selection of the active column; Paste and New Folder target the active column's folder.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "bmp.hpp"
 #include "clipboard.h"
 #include "fsutil.h"

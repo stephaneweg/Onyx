@@ -4,7 +4,7 @@
 // Plain HTTP only (no TLS). Needs the WLAN link up (check with `net`). Demonstrates
 // the user-side HTTP client (httpc.h) layered on the ABI v21 TCP sockets.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "httpc.h"
 

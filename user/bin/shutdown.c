@@ -5,7 +5,7 @@
 //   shutdown -r       the same, then restart (= reboot).
 // Also over telnet: the connection just drops.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

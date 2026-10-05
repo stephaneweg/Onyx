@@ -2,7 +2,7 @@
 // snake.c -- Snake. App-drawn grid + kapi_draw_text score; arrow keys steer (no
 // reversing), 'r' restarts. Eat food to grow; hitting a wall or yourself ends it.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 #define GW	24

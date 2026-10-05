@@ -8,7 +8,7 @@
 #define _onyx_mac_host_h
 
 #include <string>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 // An Onyx path -> the host's ("" when it names nothing on the host). The card ("SD:/...") is two
 // folders: the writable one (the user's, ONYX_SD) over the read-only one in the application's bundle

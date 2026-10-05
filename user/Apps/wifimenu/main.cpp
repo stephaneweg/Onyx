@@ -9,7 +9,7 @@
 // the password): it closes with Esc, when another window takes the keyboard, or once connected.
 // "Wi-Fi Settings..." opens wpaconf (the country, the fields by hand).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "launch.h"
 #include "uikit/uikit.h"

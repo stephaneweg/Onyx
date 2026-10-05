@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "filekit/ops.h"
 #include <mbedtls/sha256.h>
 #include <mbedtls/pk.h>

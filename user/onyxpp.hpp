@@ -22,7 +22,7 @@ typedef __SIZE_TYPE__ onyx_size_t;
 // ONYX_LIB_BUILD: a shared library (SD:/lib/<name>.so, docs/SHARED-LIBS-PLAN.md) has no heap of its
 // own: its operator new / delete are librt.cpp's, over the allocator of the program that opened it.
 #if defined (ONYX_HOSTED_NEW) || defined (ONYX_LIB_BUILD)
-#include "kapi.h"
+#include "appkit/appkit.h"
 #else
 #include "umm.h"			// umm_malloc / umm_free (heap over kapi_sbrk)
 

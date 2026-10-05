@@ -11,7 +11,7 @@
 #ifndef _mail_accounts_h
 #define _mail_accounts_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "mail/util.h"
 #include "mail/conn.h"
 #include <mbedtls/gcm.h>

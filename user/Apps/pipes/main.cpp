@@ -8,7 +8,7 @@
 // it went through at least the required number of pieces. F makes the water flow fast
 // (double points). Walls appear from round 3; the water gets faster every round.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "game.h"
 

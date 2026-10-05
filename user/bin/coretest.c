@@ -4,7 +4,7 @@
 // use both cores at once. "coretest exit" leaves a job spinning and exits: the kernel
 // must stop it on its own (check kmsg: no "does not answer").
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static unsigned char s_Stack[2][64 * 1024] __attribute__ ((aligned (16)));

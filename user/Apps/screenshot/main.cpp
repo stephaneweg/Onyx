@@ -21,7 +21,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "ft/uikitface.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"

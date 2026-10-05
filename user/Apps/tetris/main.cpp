@@ -4,7 +4,7 @@
 // dependency). Keys: left/right move, up rotate, down soft-drop, space hard-drop,
 // 'r' restart.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 #define COLS	10

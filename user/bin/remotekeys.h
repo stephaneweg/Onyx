@@ -7,7 +7,7 @@
 #ifndef REMOTEKEYS_H
 #define REMOTEKEYS_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static int g_ctrl;
 

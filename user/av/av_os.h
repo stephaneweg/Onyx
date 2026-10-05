@@ -70,7 +70,7 @@ static inline int64_t av_os_now_us(void)
 }
 
 #else	/* the kapi */
-#include "kapi.h"
+#include "appkit/appkit.h"
 #if !defined(__aarch64__) || defined(ONYX_HOST_SIM) || defined(_WIN32)
 #include <time.h>
 #endif

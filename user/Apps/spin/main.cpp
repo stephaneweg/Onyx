@@ -13,7 +13,7 @@
 // never checks should_exit(), so the window close box can't reach it -- which is
 // the whole point (it never yields).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// uikit window decoration
 
 #define W 272

@@ -13,7 +13,7 @@
 // compositor runs when the timer preempts it, then yields during its DMA), take the full screen
 // again and present at once. Build and run: tools/tests/fsrace/run_pi.py.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

@@ -9,7 +9,7 @@
 
 #include "uikit/abi.h"		// uikit as a shared library: the rules that keep old programs working
 #include "uikit/canvas.h"
-#include "kapi.h"		// kapi_font_width/height (uk_fw/uk_fh)
+#include "appkit/appkit.h"		// kapi_font_width/height (uk_fw/uk_fh)
 #include "uikit/theme.h"		// the palette
 #include "uikit/paint.h"		// the painter
 #include "uikit/text.h"		// the text face (uk_set_textface): uk_fw / uk_fh follow it

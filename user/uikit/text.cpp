@@ -5,7 +5,7 @@
 #include "uikit/text.h"
 #include "uikit/widget.h"
 #include "uikit/font.h"
-#include "kapi.h"		// kapi_font_width / height (the bitmap cell)
+#include "appkit/appkit.h"		// kapi_font_width / height (the bitmap cell)
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {

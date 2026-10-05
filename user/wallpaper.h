@@ -25,7 +25,7 @@
 #ifndef _wallpaper_h
 #define _wallpaper_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define WALLPAPER_INI	"SD:/etc/wallpaper.ini"
 

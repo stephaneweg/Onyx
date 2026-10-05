@@ -15,7 +15,7 @@
 // Reads and writes no file. Built for the PC too (tools/tests/run_gpucomp_test.sh: -DGPC_HOST,
 // the stand-in kernel tools/tests/gpucomp/hostkapi.cpp).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "umm.h"
 #include "gpucomp/gpucomp.h"

@@ -23,7 +23,7 @@
 //     A song is a list of patterns (each with its own length and speed), played in order.
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "fsutil.h"
 #include "notify.h"

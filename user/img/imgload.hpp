@@ -41,7 +41,7 @@ bool img_is_image_name (const char *name);	// by extension (bmp gif png jpg jpeg
 
 #ifdef IMGLOAD_IMPLEMENTATION
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 // ---- scratch memory for the codecs: operator new[] with a size prefix (for realloc) ----
 static void *img_alloc (unsigned long n)

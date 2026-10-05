@@ -15,7 +15,7 @@
 // kapi_ram_detail, read twice a second; the loads and the rates are a second's. The window resizes:
 // the views follow. On a kernel older than v80 the last two tabs stay grey.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "applib.h"

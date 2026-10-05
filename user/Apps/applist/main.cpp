@@ -4,7 +4,7 @@
 // launches that app and closes the popup. Icons that scroll out of view are parked off the
 // canvas (the toolkit clips them away).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "launch.h"
 #include "uikit/uikit.h"

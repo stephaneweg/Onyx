@@ -34,7 +34,7 @@
 #ifndef ONYX_HTTP_HPP
 #define ONYX_HTTP_HPP
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 // Define ONYX_HTTP_TLS (and link the mbedTLS libs) BEFORE including this header to
 // enable https://. Without it the class is fully freestanding and https:// returns

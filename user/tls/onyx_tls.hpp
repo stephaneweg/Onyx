@@ -27,7 +27,7 @@
 #ifndef ONYX_TLS_HPP
 #define ONYX_TLS_HPP
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include <string.h>		// memcpy
 #include <stdlib.h>		// malloc / free (the check's record, the roots), getenv
 #include <stdio.h>		// (the debug lines)

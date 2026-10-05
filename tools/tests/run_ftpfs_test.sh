@@ -11,7 +11,7 @@ cleanup () { kill $srv 2>/dev/null || true; kill $ftpd 2>/dev/null || true; pkil
 trap cleanup EXIT
 cp "$here/../../user/bin/ftpfs.cpp" "$here/ftpfs_test.cpp" "$here/mock_kapi.h" "$here/mock_net_kapi.h" "$b/"
 mkdir -p "$b/tls" && cp "$here/stub_tls.hpp" "$b/tls/onyx_tls.hpp"
-cat "$here/mock_net_kapi.h" > "$b/kapi.h"
+cat "$here/mock_net_kapi.h" > "$b/kapi.h" && mkdir -p "$b/appkit" && echo '#include "../kapi.h"' > "$b/appkit/appkit.h"
 cat >> "$b/kapi.h" <<'X'
 struct kapi_vfs_req { unsigned id; int op; char path[300]; char path2[300]; long a0, a1, a2; unsigned in_len; };
 #define VFS_OP_OPEN 1
@@ -48,7 +48,7 @@ sed -e 's|#include "applib.h"|#include "mini_applib.h"|' -e 's|#include "umm.h"|
     -e 's|^int main (void)|static int ftpd_main (void)|' -e 's|^static int session (char \*a)|static int mock_session (char *a)|' \
     -e 's|return session (a);|return mock_session (a);|' "$here/../../user/bin/ftpd.c" > "$b/ftpd.c"
 cp "$here/mini_applib.h" "$here/mini_umm.h" "$b/"
-mkdir -p "$b/srv" && cp "$here/mock_kapi.h" "$here/mini_applib.h" "$here/mini_umm.h" "$b/srv/" && cp "$here/mock_net_kapi.h" "$b/srv/kapi.h" && cp "$here/mock_net_kapi.h" "$b/srv/"
+mkdir -p "$b/srv" && cp "$here/mock_kapi.h" "$here/mini_applib.h" "$here/mini_umm.h" "$b/srv/" && cp "$here/mock_net_kapi.h" "$b/srv/kapi.h" && mkdir -p "$b/srv/appkit" && echo '#include "../kapi.h"' > "$b/srv/appkit/appkit.h" && cp "$here/mock_net_kapi.h" "$b/srv/"
 cp "$b/ftpd.c" "$b/srv/"
 printf '#include "ftpd.c"\nint main (int c, char **v) { snprintf (mock_args, sizeof mock_args, "%%s", c > 1 ? v[1] : ""); return ftpd_main (); }\n' > "$b/srv/main.c"
 g++ -w -I"$b/srv" -x c++ "$b/srv/main.c" -o "$b/ftpd"

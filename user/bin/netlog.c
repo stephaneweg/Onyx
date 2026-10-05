@@ -9,7 +9,7 @@
 // the PC (the card in a reader). It takes the kernel log's events: kmsg sees none meanwhile.
 //   usage: netlog
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 #define OUT_PATH	"SD:/netlog.txt"

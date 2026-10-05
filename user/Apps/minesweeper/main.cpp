@@ -2,7 +2,7 @@
 // minesweeper -- left-click reveals, right-click flags. Reveal a 0-cell to flood its
 // neighbours; hit a mine and you lose; clear all safe cells to win. 'r' restarts.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 

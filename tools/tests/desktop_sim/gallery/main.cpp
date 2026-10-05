@@ -5,7 +5,7 @@
 // slider, progress bars, scroll bars, a text area with a selection. SIM_DIALOG=1 opens a message
 // box over it.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "uikit/uikit.h"
 #include <stdlib.h>

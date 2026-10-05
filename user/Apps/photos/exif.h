@@ -11,7 +11,7 @@
 #ifndef _photos_exif_h
 #define _photos_exif_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>

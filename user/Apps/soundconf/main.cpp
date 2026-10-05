@@ -7,7 +7,7 @@
 // applet follows it.
 //
 #include "audiokit/audiokit.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "volume.h"
 #include "uikit/uikit.h"

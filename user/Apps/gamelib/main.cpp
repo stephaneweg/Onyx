@@ -29,7 +29,7 @@
 //
 #include <stdlib.h>
 #include <string.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "launch.h"
 #include "gamepad.h"

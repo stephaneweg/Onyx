@@ -70,7 +70,7 @@
 #include <set>
 #include <map>
 #include <deque>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 // The kernel's frame metrics (kernel/include/kern/gui/window.h: WIN_TITLEBAR_H, WIN_BORDER).
 #ifndef SIM_TITLE_H
@@ -1241,7 +1241,7 @@ static void setup (void)
 	void **slots = (void **) T;
 	for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 	T->version = KAPI_ABI_VERSION;
-	// (v75) the POSIX entries absent here: 0, so kapi.h's wrappers return -KAPI_ENOSYS
+	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
 	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	T->create_window = create; T->create_window_ex = create_ex; T->resize_window = resize; T->move_window = move_window;
 	T->set_pointer_handler = set_ptr; T->set_key_handler = set_key; T->screen_size = screen_size;

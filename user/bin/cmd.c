@@ -20,7 +20,7 @@
 // (looked for in the current folder, then in SD:/bin). Without arguments: the interactive shell,
 // until stdin's end (a block typed at the prompt is read up to its fi / done, then run).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "umm.h"
 #define CS_MALLOC(n)	umm_malloc ((unsigned long) (n))

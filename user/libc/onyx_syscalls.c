@@ -28,7 +28,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #undef errno
 extern int errno;

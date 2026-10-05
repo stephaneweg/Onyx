@@ -13,7 +13,7 @@
 #ifndef _onyx_launch_h
 #define _onyx_launch_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define LX_INI	"SD:/etc/runners.ini"
 

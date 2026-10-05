@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #define MEDIA_SOUNDFONT_AUDIOKIT			// (midi.h: the SoundFont is aksf.cpp's, one for the process)
 #include "Apps/media/decode.h"		// media::Decoder, Stream, decoder_open; midi.h: MidiDecoder, soundfont ()
 #include "audiokit/audiokit.h"

@@ -6,7 +6,7 @@
 // Everything happens in RAM:/ramtest (removed at the end); vol_info's numbers before and after
 // must be the same (the memory given back). Prints the write / read speed of a 16 MB file.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 #define BIG	(16u << 20)

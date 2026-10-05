@@ -4,7 +4,7 @@
 // A click or a key unlocks it -- or, when SD:/etc/lock.ini sets a PIN ("pin = 1234"), typing the
 // PIN then Enter (Backspace erases; a wrong one shakes the dots away).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "uikit/uikit.h"
 

@@ -8,7 +8,7 @@
 #ifndef ONYX_PRINT_IPPNET_H
 #define ONYX_PRINT_IPPNET_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "printerkit/ipp.h"
 
 namespace ipp {

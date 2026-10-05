@@ -7,7 +7,7 @@
 // It goes when another window takes the keyboard, or Esc. A client of clipd (user/clipproto.h):
 // CLIP_LIST, CLIP_SUBSCRIBE (re-listed at each change), CLIP_CURSOR, CLIP_DELETE, CLIP_CLEAR.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "ft/uikitface.h"
 #include "uikit/uikit.h"
 #include "clipboard.h"

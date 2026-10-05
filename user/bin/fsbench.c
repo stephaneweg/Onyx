@@ -8,7 +8,7 @@
 //   4. writing a 4 MB file (SD:/fsbench.tmp, removed after), then reading it back.
 // Compare with sdhs=1 / sdcache=0 in cmdline.txt (kmsg shows what is in use).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static unsigned char s_buf[1 << 20];

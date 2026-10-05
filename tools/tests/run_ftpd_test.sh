@@ -8,7 +8,7 @@ sed -e 's|#include "applib.h"|#include "mini_applib.h"|' -e 's|#include "umm.h"|
     -e 's|^int main (void)|static int ftpd_main (void)|' -e 's|^static int session (char \*a)|static int mock_session (char *a)|' \
     -e 's|return session (a);|return mock_session (a);|' "$here/../../user/bin/ftpd.c" > "$b/ftpd.c"
 cp "$here/mock_kapi.h" "$here/mock_net_kapi.h" "$here/mini_applib.h" "$here/mini_umm.h" "$b/"
-cp "$here/mock_net_kapi.h" "$b/kapi.h"
+cp "$here/mock_net_kapi.h" "$b/kapi.h" && mkdir -p "$b/appkit" && echo '#include "../kapi.h"' > "$b/appkit/appkit.h"
 cat > "$b/main.c" <<'X'
 #include "ftpd.c"
 int main (int argc, char **argv) { snprintf (mock_args, sizeof mock_args, "%s", argc > 1 ? argv[1] : ""); return ftpd_main (); }

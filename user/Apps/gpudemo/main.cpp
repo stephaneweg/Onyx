@@ -12,7 +12,7 @@
 //   F: nearest / linear filtering    C: culling (back / none / front)    B: blending on / off
 //   T: textures on / off    Space: pause    the title bar line: frames a second, time of a frame
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

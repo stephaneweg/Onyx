@@ -3,7 +3,7 @@
 // the BSD sockets since v75: up to 256 lines).
 //   usage: netstat
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 static void pad (const char *s, int w)		// s, then spaces up to w columns

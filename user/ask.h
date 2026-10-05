@@ -8,7 +8,7 @@
 #ifndef _ask_h
 #define _ask_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static inline void *ask_begin (const char *title, const char *msg, const char *yes, const char *no)
 {

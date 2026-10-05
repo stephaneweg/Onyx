@@ -9,7 +9,7 @@
 // redo, G grid. Image menu: flip, rotate, shift, clear. New sizes 16 / 24 / 32 / 40 / 48 /
 // 64. Opens and saves 24-bit BMP; drop a BMP on the window to open it.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "bmp.hpp"
 #include "docguard.h"

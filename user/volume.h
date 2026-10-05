@@ -7,7 +7,7 @@
 //
 #ifndef _volume_h
 #define _volume_h
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 #define VOLUME_INI	"SD:/etc/sound.ini"

@@ -2,7 +2,7 @@
 // life -- Conway's Game of Life. Click cells to toggle; space run/pause, s step,
 // c clear, r random. App-drawn grid via canvas-click.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 
 #define GW	48

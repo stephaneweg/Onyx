@@ -2,7 +2,7 @@
 // pong -- two paddles, a bouncing ball. Left paddle: W/S. Right paddle: up/down.
 // First to 9 wins; 'r' resets. App-drawn; integer physics.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "applib.h"
 

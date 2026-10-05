@@ -6,7 +6,7 @@
 // so it runs a custom loop instead of Root::run() and feeds the pointer stream into the
 // widget tree by hand.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "launch.h"
 #include "uikit/uikit.h"

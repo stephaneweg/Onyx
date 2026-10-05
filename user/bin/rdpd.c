@@ -79,7 +79,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "remotekeys.h"
 
 // ---- diagnostics (kmsg, "app: rdpd ..." lines) ----------------------------------------------

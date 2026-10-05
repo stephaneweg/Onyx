@@ -15,7 +15,7 @@
 
 namespace bas {
 
-// Key codes the platform pushes (the values of Onyx's KEY_* in kapi.h).
+// Key codes the platform pushes (the values of Onyx's KEY_* in appkit.h).
 enum { K_BACKSPACE = 8, K_TAB = 9, K_ENTER = 13, K_UP = 0x100, K_DOWN, K_LEFT, K_RIGHT, K_HOME, K_END,
 	K_PGUP, K_PGDN, K_DEL, K_F1 = 0x110 };
 

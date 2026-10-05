@@ -27,7 +27,7 @@ fz_archive *fz_open_directory (fz_context *ctx, const char *path)
  * document's id: the ticks stirred). */
 #include <sys/stat.h>
 #include <errno.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 int ftruncate (int fd, off_t len) { (void) fd; (void) len; errno = ENOSYS; return -1; }
 int _stat (const char *path, struct stat *st) { (void) path; (void) st; errno = ENOSYS; return -1; }
 int _getentropy (void *buf, size_t n)

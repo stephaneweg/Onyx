@@ -6,7 +6,7 @@
 // (a made-up signal while "playing": the gain and the pan knobs act on it). The status line
 // reports every event.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #include "img/imgload.hpp"

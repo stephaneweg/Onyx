@@ -2,7 +2,7 @@
 // reboot -- restart Onyx from the command line: unmount the SD card (every pending write
 // flushed), then restart the Raspberry Pi (= shutdown -r).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

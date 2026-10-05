@@ -17,7 +17,7 @@
 #ifndef ONYX_HTTPC_H
 #define ONYX_HTTPC_H
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 typedef struct
 {

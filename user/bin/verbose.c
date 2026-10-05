@@ -4,7 +4,7 @@
 // AND persists it to SD:system.ini so it survives a reboot. View the logs with kmsg.
 //   usage: verbose [on|off]
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 
 int main (void)

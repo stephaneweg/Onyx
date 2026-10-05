@@ -46,7 +46,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 #define PAGE		65536ULL
 #define RW		(KAPI_PROT_READ | KAPI_PROT_WRITE)

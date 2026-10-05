@@ -119,7 +119,7 @@ void av_set_offload(int (*run)(void (*fn)(void *), void *arg))
 
 /* (AV_KAPI_SOUND: a POSIX program on Onyx -- Web, whose threads are pthreads: the sound is still the kernel's) */
 #if defined(AV_POSIX) && defined(AV_KAPI_SOUND)
-#include "kapi.h"
+#include "appkit/appkit.h"
 #endif
 #if !defined(AV_POSIX) || defined(AV_KAPI_SOUND)
 static unsigned k_cap, k_lat;

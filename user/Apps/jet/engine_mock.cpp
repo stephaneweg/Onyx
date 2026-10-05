@@ -5,7 +5,7 @@
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "img/imgload.hpp"
 #include "engine.h"
 #include <string.h>

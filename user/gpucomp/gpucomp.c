@@ -25,7 +25,7 @@
 // the CPU in its place in the order: the layers make runs, GPU runs are gpu_render frames that
 // keep the target (KAPI_GPU_F_KEEP), CPU runs are drawn between them.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "gpucomp.h"
 
 #define GPC_TILE	2048			// the kernel's KAPI_GPU_MAX_TEXSIZE

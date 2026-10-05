@@ -2,7 +2,7 @@
 // demoA.c -- EL0 windowed demo: a bouncing box. Draws directly into the window
 // canvas the kernel mapped in (shared-buffer model), then present()s each frame.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// uikit window decoration
 
 #define W 240

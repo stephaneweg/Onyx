@@ -67,10 +67,10 @@ Two weaknesses, worth fixing:
    kernel's memory, and each kapi entry is a **system call** (`svc`) through a stub
    (docs/EL0-PROTECTED-MODE.md, docs/02 §6): the same seam as Linux's system calls. Still worth
    saying explicitly in the future `LICENSE`, as Linux's syscall note does — *"Programs that use
-   the Onyx kernel only through the kapi table (`user/kapi.h`) are not derived works of the
+   the Onyx kernel only through the kapi table (`user/appkit/appkit.h`) are not derived works of the
    kernel."* You can grant it for your own kernel code; Circle's author grants nothing, but your
    code is the only part the apps call.
-2. `user/kapi.h` (included by every app) must be under a licence every app's licence can take: put it
+2. `user/appkit/appkit.h` (included by every app) must be under a licence every app's licence can take: put it
    (and `user/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
 
 ## 3. The inventory
@@ -177,11 +177,11 @@ the repository on 2026-10-04: Jet is the WebKit port.
    IJG's credit lines are required).
 4. The firmware licences on the card (`LICENCE.broadcom`, the Wi-Fi's).
 5. SPDX headers in our own files (`// SPDX-License-Identifier: MIT`: the user's decision above),
-   `user/kapi.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
+   `user/appkit/appkit.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
    The new files already carry the MIT notice — the EL0 work (`kernel/arch/aarch64/el0.S`,
    `el0blob.S`, `kernel/sys/el0.cpp`, `sys/uaccess.cpp`, `kern/handle.h`, `kern/uaccess.h`,
    `tools/el0scan.sh`, `tools/gen_kapi_names.py`, `/bin/sysstat`, `el0test`, `faulttest`), Mail
-   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/kapi.h`, `user/kapi_names.h` (generated)
+   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/appkit/appkit.h`, `user/kapi_names.h` (generated)
    and most older files do not yet.
 6. The FM Song covers out of the public distribution.
 

@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "zlib.h"
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "remotekeys.h"		// key_event: keysyms -> Onyx keys
 
 #define TILE		64

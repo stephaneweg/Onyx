@@ -19,7 +19,7 @@
 //
 // The Control Panel's Wi-Fi applet (applet_proto.h), or a window of its own when run alone.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit + uk_messagebox
 #include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

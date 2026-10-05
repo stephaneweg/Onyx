@@ -11,7 +11,7 @@
 //   * While mapping: press the button asked for; Esc = this pad has no such button (skip),
 //     Backspace = cancel.
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget

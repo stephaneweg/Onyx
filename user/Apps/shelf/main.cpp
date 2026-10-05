@@ -23,7 +23,7 @@
 // a normal borderless one (WIN_FLAG_SYSTEM): other windows cover it, a click brings it
 // forward. Uses drag & drop (ABI v42).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 #include "applib.h"
 #include "bmp.hpp"
 #include "fsutil.h"
