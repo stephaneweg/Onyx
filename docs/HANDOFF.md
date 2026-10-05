@@ -4,6 +4,61 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## NEXT (the user, 2026-10-05): the graphics server out of the kernel, into a user process
+
+The user's next work, to start in a new session: **move the window server (the compositor, the windows,
+the input routing: `kernel/gui`, `kern/gui/window.h`, the `compositor` and `input` kernel tasks) into a
+user process.** Nothing is started. What exists to build on:
+
+- **The study**: `docs/GUI-USERSPACE-STUDY.md` (2026: where things stand in the kernel, §2 *The GUI in
+  user space* — the target, what the kernel must add, the protocol, compatibility, cost and risks; §4
+  the recommended path; the questions left to the user at its end). Written BEFORE the kits: read it
+  with what follows in mind.
+- **AppKit changes the compatibility question** (docs/03 §5.10, docs/02 §8): every program reaches
+  the windows through AppKit's functions by name (`kapi_create_window`, `kapi_present`, the event
+  calls...). Their bodies are in `user/Kits/appkit/appkit_calls.inc`, the only code that reads the
+  kernel's table: **AppKit can send those calls to a server process instead of the kernel, and no
+  program is rebuilt.** Checked on 2026-10-05 by disassembly: of the 215 programs and libraries of
+  the card, only `appkit.so` reads the kernel's table (and `el0test` / `faulttest`, the two tests of
+  the table itself).
+- **What the server can use**: shared surfaces (kapi v35), mailboxes and IPC services
+  (`kapi_ipc_register` / `kapi_mailbox_*`), shared memory, threads, the V3D compositing library
+  (`user/Libs/gpucomp`, already used in user space by Jet and Paint), UIKit's own drawing of the
+  frames (`user/Kits/uikit/skin.cpp`: the window chrome is already user-side).
+- **The kits-first rule** (CLAUDE.md): what is reusable goes into a kit. A window server's client side
+  belongs in AppKit / UIKit, not in a new loose header.
+- **Process**: the user decides the design questions (ask, with a recommendation); a change of the
+  kernel's table is fine now (adapt AppKit); a Wi-Fi / SDIO / TCP change goes through the one-boot
+  trial file; test on the Pi (192.168.0.7) through packages; `sdcard/config.txt` is the user's.
+
+## The kits and the layout of user/ (2026-10-05) -- done, in main, on the Pi
+
+One day's work, all published (onyx 2026.10.87, kapi v88):
+
+- **AppKit** is the one interface between the programs and the kernel, called by name (v86); it also
+  carries strings, console, `.ini`, keymap (v87, `applib.h` gone) and program starting `lx_*` (v88).
+  `user/kapi.h` no longer exists: programs include `appkit/appkit.h`.
+- **New kits**: SystemKit (notifications, clipboard, trash, volume, wallpaper, dock settings, file
+  associations, preload list, applets' protocol), NetKit (httpc, ftpfs; `http.hpp` filed there),
+  FontKit (was `ft.so`). FileKit got `fsutil.h`; UIKit loads icons through ImageKit
+  (`ui::icon_load`); ImageKit's folder holds the codecs' sources.
+- **One header a kit** (`<kit>/<kit>.h`); a C program links `lib/<kit>.imp_c.a` (libgen `--bind-c`).
+- **Layout**: `user/Apps`, `BinUtils`, `Kits`, `Runtime`, `Libs`, `Emulators`, `Ports`, `Include`
+  (only `docguard.h`, `gamepad.h`, `json.hpp`, `lineedit.h` left there). All on every include path.
+- **Removed**: the Shelf, `ask`, the panel, the app list, the activity shell (`embed.h`,
+  `shell_proto.h`), `quicklaunch.txt`, `imgtest`, `stkpoc` (binary). `jsc` is an optional package off
+  the card (`tools/pkg/extra/jsc`, mkrepo `root =`).
+- **Docs**: `docs/06-KITS-GUIDE.md` (the kits, an example each) and `docs/10..18` (one reference per
+  kit, GENERATED from the headers: `python tools/docgen/kitdocs.py`, then `python docs/build_docs.py`).
+- **Left open**: a kapi rise makes the desktop incomplete between the install of `onyx` and that of
+  the kits (they are separate packages: ship the kits with `onyx`, or install them with it);
+  17 apps still include ImageKit's codec headers directly; `docguard.h` waits for DocumentKit;
+  `http.hpp` and FontKit's `fonts.h` / `uikitface.h` are still headers with their code; PC tests
+  broken before this work and still so: `ftpd`, `ftpfs`, `rdpd`, `rdpd_pipeline`, `games`,
+  `cardfile`, the Letters screenshot; a WebKit tree patched before 2026-10-05 must have its two CMake
+  paths follow (`user/Libs/gpucomp`, `user/Libs/av`: docs/08's note); symbolic links on FAT are a
+  design only (docs/POSIX-PLAN.md §11).
+
 ## Onyx BASIC: classes (2026-10-05; tested on the PC, not yet on the Pi) -- then a native back end
 
 - **Done (phase A)**: objects in BASIC, on the VM. The user's choices: `TYPE` stays a value; a new
