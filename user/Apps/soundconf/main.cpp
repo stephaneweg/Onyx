@@ -8,7 +8,6 @@
 //
 #include "audiokit/audiokit.h"
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "volume.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget

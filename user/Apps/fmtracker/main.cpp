@@ -24,7 +24,6 @@
 //
 #include "audiokit/audiokit.h"
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "fsutil.h"
 #include "notify.h"
 #include "uikit/uikit.h"

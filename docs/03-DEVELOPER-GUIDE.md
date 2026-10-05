@@ -14,7 +14,7 @@ be aware of. For the details of how things work internally, see
 5. [The application model](#5-the-application-model)
 6. [Writing a graphical application](#6-writing-a-graphical-application)
 7. [Writing a `/bin` tool](#7-writing-a-bin-tool)
-8. [The `applib.h` library](#8-the-applibh-library)
+8. [AppKit's small services (formerly `applib.h`)](#8-appkits-small-services-formerly-applibh)
 9. [Packaging an app: `.app`, icons, `config.ini`](#9-packaging-an-app-app-icons-configini)
 10. [Extending the `kapi` ABI](#10-extending-the-kapi-abi)
 11. [Coding conventions](#11-coding-conventions)
@@ -209,7 +209,7 @@ max-page-size=0x10000`) so that the loader maps them onto distinct pages.
 ```
 
 - `-ffreestanding -nostdlib`: **no libc**. No `printf`, `malloc`, `string.h`…
-  use `applib.h` (§8) and static/local buffers.
+  use AppKit's small services (§8) and static/local buffers.
 - `-mgeneral-regs-only`: integer-only codegen — the **default** for apps. Most apps
   do **integer / fixed-point arithmetic** (see `tinycalc`, `mandelbrot`).
 - **Hardware float is available (opt-in).** The kernel now saves the full FP/SIMD
@@ -255,7 +255,7 @@ while a program runs, leaves no shell behind — by **`sh tools/tests/run_telnet
 The `aarch64-none-elf` toolchain ships **newlib** (`libc` + `libm`). An app can be
 built against it to use the real `<stdio.h>` (`printf`, `FILE*`, `fopen`/`fseek`),
 `<stdlib.h>` (`malloc`/`qsort`/`strtod`), `<string.h>`, and `<math.h>` instead of the
-freestanding helpers (`applib.h`/`umm.h`). This is the foundation for porting large C
+freestanding helpers (AppKit's `ax_*` / `umm.h`). This is the foundation for porting large C
 codebases.
 
 How it works: [`user/libc/onyx_syscalls.c`](../user/libc/onyx_syscalls.c) implements
@@ -1049,8 +1049,10 @@ alone**.
   expect; rebuild the kernel and AppKit, ship them together (the package `onyx`), restart. No program is
   rebuilt. A name of `appkit.abi` is never removed nor renamed: a call that is gone keeps a body that
   answers `-KAPI_ENOSYS` (or does it another way).
-- **Rules**: the table is append-only by name (the generator refuses a removal); AppKit has no state (no
-  memory of its own, no constructor); it is built with the FPU on, its calls passing floats through.
+- **Its small services** (§8): the strings, the console, the `.ini` reader and the keyboard layout
+  loader — `appkit_lib.inc`, exported by name like the calls (`ax_*`, `app_ini_*`).
+- **Rules**: the table is append-only by name (the generator refuses a removal); AppKit allocates nothing
+  and has no constructor (its only data: the `.ini` reader's store, private to each program); it is built with the FPU on, its calls passing floats through.
 - **Cost**: one more indirect jump a call (the stub), then AppKit's function — nothing beside a system
   call.
 
@@ -2866,8 +2868,7 @@ A `/bin` tool follows the **same app model** (an ELF at EL0, §5) but reads `std
 `stdout`, and exits (no window). It is composable via the terminal's pipes.
 
 ```c
-#include "appkit/appkit.h"
-#include "applib.h"     /* ax_puts, ax_putln, ax_strlen, ax_itoa, ... */
+#include "appkit/appkit.h"     /* the system's calls; ax_puts, ax_putln, ax_strlen, ax_itoa, ... */
 
 int main (void)
 {
@@ -3003,9 +3004,12 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/BinUtils/llm.cpp`, in `T
   provider (`#define LLM_PROTO_ONLY` + include `llm.cpp`) and a 60+ KB reply end to end, under
   ASan / UBSan / LSan; then the AArch64 compile and `make -C user/BinUtils llm.elf`.
 
-## 8. The `applib.h` library
+## 8. AppKit's small services (formerly `applib.h`)
 
-[`user/applib.h`](../user/applib.h) is **header-only** (no libc). It provides:
+Declared in [`appkit/appkit.h`](../user/Kits/appkit/appkit.h), with the calls to the system; their bodies
+are AppKit's (`user/Kits/appkit/appkit_lib.inc`, in `SD:/lib/appkit.so`). Any program has them, with or
+without a C library, and nothing more to include. *(Until 2026-10-05 they were `user/applib.h`, a header
+of inline functions copied into every program; that header is gone — kapi v87.)*
 
 - **Strings**: `ax_strlen`, `ax_streq`, `ax_strcat(dst, cap, &pos, src)` (concat without
   overflow), `ax_app_path(dst, cap, name, suffix)` (builds `SD:apps/<name><suffix>`),
@@ -3014,11 +3018,15 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/BinUtils/llm.cpp`, in `T
 - A minimal **`.ini` reader**: `app_ini_load("config.ini")` (from the app's folder via
   `kapi_app_dir`) or `app_ini_load_path("SD:/etc/theme.txt")`; then
   `app_ini_get(section, key, default)` and `app_ini_get_int(...)`. Sections `[xxx]`, lines
-  `key=value`, comments `;`/`#`.
-- **App-drawn widgets** (not kernel widgets): `ax_dropdown` (drop-down list)
-  and `ax_colorpick` (palette-based color picker), with `*_draw(...)` and
-  `*_click(...)`. The app draws them in its canvas and routes the clicks via its
-  `set_click_handler`. Used by `theme.c` and `mandelbrot.c`.
+  `key=value`, comments `;`/`#`. The entries in the file's order: `app_ini_count()`,
+  `app_ini_section(i)`, `app_ini_key(i)`, `app_ini_value(i)`. One file at a time a program (the store
+  is the program's own, in AppKit's private data): 64 entries, 63 characters a name or a value, 2 KB.
+- **Keyboard layout**: `ax_load_keymap("FR")` (`SD:/etc/keymaps/<name>.kmap`, else a map the kernel
+  has).
+
+The app-drawn widgets `applib.h` had (`ax_dropdown`, `ax_colorpick`, `ax_fill`, `ax_frame`) are gone:
+UIKit has the widgets (`Dropdown`, `ColorPicker`, `uk_color_dialog`). Mandelbrot, whose picture is its
+own canvas, keeps the few lines of its drop-down in its own source.
 
 There is also [`user/httpc.h`](../user/httpc.h) — a header-only **HTTP/1.0 client**
 over the v21 TCP socket calls. It does **no allocation** (the caller passes the
@@ -3719,7 +3727,7 @@ synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `u
   `new`/`delete` go through Circle's heap.
 - **Userland**: the apps are C++ on uikit (freestanding subset, §8 *Dynamic memory + C++
   apps*; newlib for the big ones), the `/bin` tools freestanding C. `ax_` prefix for the
-  `applib.h` helpers. Globals `g_xxx`. New code carries the MIT notice (docs/LICENSING.md).
+  AppKit's `ax_*` helpers. Globals `g_xxx`. New code carries the MIT notice (docs/LICENSING.md).
 - **kapi**: `extern "C"` functions named `kapi_xxx` on the kernel side; inline wrappers
   `kapi_xxx` on the app side.
 - Respect the **comment density** and the **idiom** of the file you are modifying.

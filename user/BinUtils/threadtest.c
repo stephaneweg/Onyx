@@ -7,7 +7,6 @@
 // process must end with its main thread anyway (the prompt comes back).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "umm.h"
 
 static int s_fail;

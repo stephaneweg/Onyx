@@ -9,7 +9,6 @@
 // Compare with sdhs=1 / sdcache=0 in cmdline.txt (kmsg shows what is in use).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static unsigned char s_buf[1 << 20];
 

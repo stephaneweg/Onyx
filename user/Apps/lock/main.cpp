@@ -5,7 +5,6 @@
 // PIN then Enter (Backspace erases; a wrong one shakes the dots away).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

@@ -11,7 +11,6 @@
 #define _embed_h
 
 #include "appkit/appkit.h"
-#include "applib.h"		// should_exit, msleep
 #include "shell_proto.h"
 #include "uikit/uikit.h"
 

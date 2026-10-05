@@ -13,7 +13,6 @@
 //   * Enter keeps the indentation of the line above; Page Up / Down scroll by a page.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "fsutil.h"
 #include "notify.h"
 #include "uikit/uikit.h"

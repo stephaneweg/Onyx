@@ -5,7 +5,6 @@
 // canvas (the toolkit clips them away).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "launch.h"
 #include "uikit/uikit.h"
 

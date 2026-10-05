@@ -3,7 +3,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "applib.h"
 
 #define N	4
 #define CELL	68

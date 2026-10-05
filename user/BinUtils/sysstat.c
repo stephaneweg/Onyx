@@ -28,7 +28,6 @@
 // ---------------------------------------------------------------------------------------------
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "kapi_names.h"
 
 static char s_procs[4096];		// kapi_list_procs: "<pid> <a|k> <state> <pages> <name>" a line

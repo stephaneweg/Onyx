@@ -18,7 +18,6 @@
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
-#include "applib.h"
 #include <stdio.h>
 #include <string.h>
 

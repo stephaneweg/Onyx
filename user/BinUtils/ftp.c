@@ -18,7 +18,6 @@
 // and the logins with the File Viewer. The password is typed in clear (the terminal echoes).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "umm.h"
 #include "ftpfs.h"
 

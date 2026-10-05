@@ -5,7 +5,6 @@
 //   usage: whois <domain> [server]
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static char g_resp[16384];
 

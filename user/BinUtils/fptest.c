@@ -11,7 +11,6 @@
 // would not match pi.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 // Format a non-negative double as "<int>.<6 decimals>" into b, using only the
 // hardware int<->double conversions (no libm). Returns the length written.

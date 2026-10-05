@@ -5,7 +5,6 @@
 // arrive. Quit with Ctrl+C. A /bin console program: writes to stdout, watches stdin.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static const char *sev_tag (int s)
 {

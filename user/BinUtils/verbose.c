@@ -5,7 +5,6 @@
 //   usage: verbose [on|off]
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

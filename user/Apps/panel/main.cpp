@@ -7,7 +7,6 @@
 // widget tree by hand.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "launch.h"
 #include "uikit/uikit.h"
 

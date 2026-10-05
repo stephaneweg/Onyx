@@ -30,7 +30,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "launch.h"
 #include "gamepad.h"
 #include "bmp.hpp"
@@ -1043,9 +1042,9 @@ int main (void)
 	{
 		// one `folder = <path>` line per watched folder (an .ini value: 63 characters at most)
 		int nf = 0; bool any = false;
-		for (int i = 0; i < g_ini_n && nf < MAXF; i++)
-			if (g_ini_sec[i][0] == 0 && ax_streq (g_ini_key[i], "folder"))
-			{ any = true; if (g_ini_val[i][0]) scpy (g_folder[nf++], g_ini_val[i], sizeof g_folder[0]); }
+		for (int i = 0; i < app_ini_count () && nf < MAXF; i++)
+			if (app_ini_section (i)[0] == 0 && ax_streq (app_ini_key (i), "folder"))
+			{ any = true; if (app_ini_value (i)[0]) scpy (g_folder[nf++], app_ini_value (i), sizeof g_folder[0]); }
 		if (any) g_nf = nf;
 	}
 	LibRoot root;

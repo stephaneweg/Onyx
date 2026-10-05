@@ -17,7 +17,6 @@
 //
 #include "appkit/appkit.h"
 #include "onyxpp.hpp"
-#include "applib.h"
 #include "audiokit/audiokit.h"
 
 static void putn (long v) { char b[24]; ax_itoa ((int) v, b); ax_puts (b); }

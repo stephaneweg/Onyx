@@ -6,7 +6,6 @@
 // Also over telnet: the connection just drops.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

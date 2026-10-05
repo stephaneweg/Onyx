@@ -8,7 +8,6 @@
 // Without a free app core the main thread fills the ring itself.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static void put_num (long v)
 {

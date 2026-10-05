@@ -16,7 +16,6 @@
 //
 #include "appkit/appkit.h"
 #include "clipboard.h"
-#include "applib.h"
 #include "notify.h"
 #include "gamepad.h"
 #include "uikit/uikit.h"

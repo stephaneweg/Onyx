@@ -12,7 +12,6 @@
 // base colour and points (as before the Theme applet had them).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "onyxpp.hpp"			// operator new / delete (the picture's decoder)
 #include "wallpaper.h"
 #include "img/imgload.hpp"

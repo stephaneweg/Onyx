@@ -3,7 +3,6 @@
 // size works.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static int next_tok (const char *s, int i, int len, char *dst, int cap)
 {

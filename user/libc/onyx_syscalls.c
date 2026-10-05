@@ -5,7 +5,7 @@
 // that bottoms out in a handful of POSIX-ish syscall stubs (_sbrk, _read, _write,
 // _open, ...). This file implements those stubs on top of the Onyx kapi ABI, so an
 // app can be built against newlib and use the real <stdio.h>/<stdlib.h>/<string.h>/
-// <math.h> instead of the freestanding helpers (applib.h / umm.h).
+// <math.h> instead of the freestanding helpers (AppKit's ax_* / umm.h).
 //
 // Link this object together with crt0libc.S (which calls exit() after main, so
 // stdio is flushed). Heap: _sbrk maps onto kapi_sbrk -- so newlib's malloc owns the

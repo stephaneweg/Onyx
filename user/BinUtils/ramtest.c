@@ -7,7 +7,6 @@
 // must be the same (the memory given back). Prints the write / read speed of a 16 MB file.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 #define BIG	(16u << 20)
 static unsigned char s_a[BIG], s_b[BIG];

@@ -17,7 +17,6 @@
 #define IMGNAME_H
 
 #include "appkit/appkit.h"
-#include "applib.h"
 
 // by_image 0: the app's file must exist (preload); 1: the app's image must (unload: the file may
 // be gone already).

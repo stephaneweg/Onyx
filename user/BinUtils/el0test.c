@@ -20,7 +20,6 @@
 //
 #define KAPI_INLINE			// (a test of the kernel's table itself: read here, not through AppKit)
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static int s_fail;
 

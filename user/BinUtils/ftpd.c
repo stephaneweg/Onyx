@@ -17,7 +17,6 @@
 // end); on an older kernel, buffered in memory (<= 32 MB) and written in one go.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "umm.h"
 
 #define SERVICE		"ftpd"

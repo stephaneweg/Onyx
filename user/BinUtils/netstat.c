@@ -4,7 +4,6 @@
 //   usage: netstat
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static void pad (const char *s, int w)		// s, then spaces up to w columns
 {

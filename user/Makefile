@@ -122,7 +122,7 @@ LIBGCC_A := $(shell $(CC) -mcpu=cortex-a72 -print-libgcc-file-name)
 lib/ft.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/ft_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
 
-UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
+UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h onyxpp.hpp applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
 # ---- uikit.so: the toolkit as a shared library. Its table: every global function of uikit's objects
 # (Kits/uikit/uikit.abi, append-only), the programs' copies of its vtables (--vtables); its global variables
 # are the program's (Kits/uikit/globals.cpp, compiled into the import library too: --data). globals.o is
@@ -289,15 +289,15 @@ lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 # the bodies of the calls appkit.h declares; docs/03
 # "AppKit"). Its table: every kapi_* function, by name (Kits/appkit/appkit.abi, append-only). Its stubs read the
 # table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
-# state, no library runtime; built with the FPU on (some calls take floats: they pass through).
+# state, no library runtime (so no strlen / memset of GCC's own making in it: -fno-tree-loop-distribute-patterns); built with the FPU on (some calls take floats: they pass through).
 APPKIT_TABLE_VA = 0x380008000
-lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit.h lib.h ../kernel/include/kern/kapi_abi.h
+lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit.h lib.h ../kernel/include/kern/kapi_abi.h
 	@mkdir -p lib/appkit
-	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -c $< -o $@
+	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -fno-tree-loop-distribute-patterns -fno-builtin -c $< -o $@
 Kits/appkit/appkit.abi:
 	@touch $@
 lib/appkit_table.S: lib/appkit/appkit.o Kits/appkit/appkit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name appkit --abi Kits/appkit/appkit.abi --init appkit_init --allow-data . --export '^kapi_' \
+	$(LIBGEN) --name appkit --abi Kits/appkit/appkit.abi --init appkit_init --allow-data . --export '^(kapi_|ax_|app_ini_)' \
 		--fixed-table $(APPKIT_TABLE_VA) --table lib/appkit_table.S --stubs lib/appkit_stubs.S lib/appkit/appkit.o
 lib/appkit_stubs.S: lib/appkit_table.S ;
 lib/appkit.so: lib/appkit/appkit.o lib/appkit_table.o
@@ -321,7 +321,7 @@ bin: v3d/libv3d.a gpucomp/libgpucomp.a libs
 # uikit toolkit: compiled once into a static library, linked into every app.
 # (+ the user-side headers uikit includes: an inline of Kits/appkit/appkit.h -- kapi_lock, kapi__core -- is compiled
 # into the library, which must follow it)
-UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h onyxpp.hpp applib.h applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
+UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h onyxpp.hpp applet_proto.h bmp.hpp clipboard.h gamepad.h notify.h
 UIKIT_OBJ = $(patsubst %.cpp,%.o,$(wildcard Kits/uikit/*.cpp))
 Kits/uikit/%.o: Kits/uikit/%.cpp $(UIKIT_HDR)
 	$(CXX) $(CXXFLAGS) -I. -IKits -c $< -o $@
@@ -341,7 +341,7 @@ Kits/uikit/libuikit.a: $(UIKIT_OBJ)
 # (Kits/uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld Kits/appkit/appkit.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld Kits/appkit/appkit.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
 	$(CXX) $(CXXFLAGS) -I. -IKits -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
@@ -626,7 +626,7 @@ graphcalc.elf: Apps/graphcalc/expr.h
 cardfile.elf: $(wildcard Apps/cardfile/*.h) clipboard.h docguard.h
 # The Calendar: a newlib app as Letters (FreeType's text through uikit's face); its model (iCalendar), views
 # and dialogs in Apps/calendar/*.h.
-calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h applib.h lib/ft.imp.a ft/uikitface.h \
+calendar.elf: Apps/calendar/main.cpp $(wildcard Apps/calendar/*.h) notify.h lib/ft.imp.a ft/uikitface.h \
 	      lib/uikit.imp.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/ft.imp.a -lm -o $@
@@ -641,7 +641,7 @@ soundconf.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 fmtracker.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
-$(FT_APP_ELFS): %.elf: Apps/%/main.cpp applib.h bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
+$(FT_APP_ELFS): %.elf: Apps/%/main.cpp bmp.hpp umm.h onyxpp.hpp lib/ft.imp.a ft/uikitface.h lib/uikit.imp.a 		       gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a libc/crt0libc.o libc/onyx_syscalls.o user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -Ift -I$(FT_SRC)/include $(NL_LDFLAGS) libc/crt0libc.o libc/onyx_syscalls.o $< 	       $(FT_EXTRA_$*) lib/uikit.imp.a lib/ft.imp.a -lm -o $@
 # Ledger: its books, pages and printing in Apps/ledger/*.h (Cardfile's model and widgets: the merge's data;
 # the reports' .xlsx: the PNG writer's zip / deflate).

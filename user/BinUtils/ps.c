@@ -6,7 +6,6 @@
 // per second (kapi v74 proc_stats; "-" for a kernel task or an older kernel).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static int parse_uint (const char *s, int *pi)
 {

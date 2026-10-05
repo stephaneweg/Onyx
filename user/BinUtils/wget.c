@@ -5,7 +5,6 @@
 // the user-side HTTP client (httpc.h) layered on the ABI v21 TCP sockets.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "httpc.h"
 
 static char g_buf[64 * 1024];		// response buffer -> app .bss (its own address space)

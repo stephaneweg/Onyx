@@ -14,7 +14,6 @@
 // again and present at once. Build and run: tools/tests/fsrace/run_pi.py.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

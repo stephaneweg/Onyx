@@ -7,7 +7,6 @@
 // Examples:  run mandelbrot   run tinypad SD:/notes.txt   run SD:/basic/examples/arkanoid.bas
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "launch.h"
 
 int main (void)

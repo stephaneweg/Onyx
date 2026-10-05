@@ -4,7 +4,7 @@
 #include "uikit/lang.h"		// TR (the window menu's words)
 #include "uikit/font.h"		// uikit::init (load the global font family at startup)
 #include "uikit/dialog.h"		// PopupMenu (the window menu)
-#include "applib.h"		// should_exit, msleep, pump_events
+#include "appkit/appkit.h"
 #include "applet_proto.h"	// the applet mode (a Control Panel applet)
 
 namespace uikit {

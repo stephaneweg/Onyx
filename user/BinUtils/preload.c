@@ -19,7 +19,6 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "imgname.h"
 #include "preloadini.h"
 

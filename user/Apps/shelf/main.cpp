@@ -24,7 +24,6 @@
 // forward. Uses drag & drop (ABI v42).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "bmp.hpp"
 #include "fsutil.h"
 #include "fileassoc.h"

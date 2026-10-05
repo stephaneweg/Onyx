@@ -10,7 +10,6 @@
 // for the next boot moved in before the desktop starts, docs/pkg/README.md).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static char g_buf[32768];		// (the whole autostart: it was 2 KB, a longer file lost its last lines)
 

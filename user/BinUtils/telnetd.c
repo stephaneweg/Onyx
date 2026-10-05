@@ -25,7 +25,6 @@
 // shell. Keep it for a trusted network.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "lineedit.h"
 #include "shellend.h"
 

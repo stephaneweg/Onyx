@@ -7,7 +7,6 @@
 // service, which is started on demand if needed.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "notify.h"
 
 int main (void)

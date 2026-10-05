@@ -7,7 +7,6 @@
 // per check and PASS / FAIL.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static int s_fail;
 

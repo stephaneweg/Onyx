@@ -7,7 +7,6 @@
 // start.)
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "fsutil.h"
 #include "uikit/uikit.h"
 #include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
@@ -81,9 +80,9 @@ static void load (int a)
 	if (a < 0) return;
 	char p[160]; ini_path (a, p, sizeof p);
 	if (app_ini_load_path (p) > 0)
-		for (int i = 0; i < g_ini_n && g_nkv < MAXKV; i++)
+		for (int i = 0; i < app_ini_count () && g_nkv < MAXKV; i++)
 		{
-			fs_copy (g_key[g_nkv], g_ini_key[i], 32); fs_copy (g_val[g_nkv], g_ini_val[i], 64);
+			fs_copy (g_key[g_nkv], app_ini_key (i), 32); fs_copy (g_val[g_nkv], app_ini_value (i), 64);
 			g_nkv++;
 		}
 	static char t[64]; int n = 0;

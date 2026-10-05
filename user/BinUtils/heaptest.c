@@ -4,7 +4,6 @@
 // PASS/FAIL and how much the system app-memory grew (the heap pages sbrk mapped).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "umm.h"
 
 int main (void)

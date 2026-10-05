@@ -778,9 +778,51 @@ static inline void      msleep (unsigned ms)       { kapi_msleep (ms); }
 static inline void      pump_events (void)         { kapi_pump_events (); }
 static inline int       should_exit (void)         { return kapi_should_exit (); }
 
+// ---- AppKit's small services (appkit_lib.inc; they were user/applib.h until 2026-10-05) --------------
+// For every program, with or without a C library.
+
+// Strings. ax_strcat: src appended to dst at *pos (advanced), never past cap, always NUL-terminated.
+// ax_app_path: "SD:apps/<name><suffix>" (a suffix: ".app/icon.bmp"). ax_streq: 1 = the same.
+// ax_itoa: a signed int in decimal -> its length. ax_fmt2: two digits, zero-padded, into d[0], d[1].
+KAPI_FN void ax_strcat (char *dst, int cap, int *pos, const char *src);
+KAPI_FN void ax_app_path (char *dst, int cap, const char *name, const char *suffix);
+KAPI_FN int  ax_streq (const char *a, const char *b);
+KAPI_FN int  ax_strlen (const char *s);
+KAPI_FN int  ax_itoa (int v, char *b);
+KAPI_FN void ax_fmt2 (char *d, int v);
+
+// The console: a string / a line to the standard output.
+KAPI_FN void ax_puts (const char *s);
+KAPI_FN void ax_putln (const char *s);
+
+// A minimal .ini reader: [section] headers and key=value lines, ';' or '#' comments, the spaces around
+// trimmed. One file loaded at a time, a program (the store is the program's own); a load replaces the
+// one before. Limits: INI_MAX entries, INI_STRLEN - 1 characters a name or a value, INI_BUFSZ - 1 bytes
+// of file.
+//   app_ini_load (filename)      <the program's own folder>/filename -> the number of entries, -1 absent
+//   app_ini_load_path (path)     any file
+//   app_ini_get (section, key, def), app_ini_get_int (...)   section 0 or "": the keys before any [section]
+//   app_ini_count (), app_ini_section / app_ini_key / app_ini_value (i)   the entries, in the file's order
+#define INI_MAX		64
+#define INI_STRLEN	64
+#define INI_BUFSZ	2048
+KAPI_FN int app_ini_load_path (const char *path);
+KAPI_FN int app_ini_load (const char *filename);
+KAPI_FN const char *app_ini_get (const char *section, const char *key, const char *def);
+KAPI_FN int app_ini_get_int (const char *section, const char *key, int def);
+KAPI_FN int app_ini_count (void);
+KAPI_FN const char *app_ini_section (int i);
+KAPI_FN const char *app_ini_key (int i);
+KAPI_FN const char *app_ini_value (int i);
+
+// The keyboard layout <name> ("FR", "BE"...): SD:/etc/keymaps/<name>.kmap (kapi_set_keymap_data), else a
+// map the kernel has (kapi_set_keymap). Non-zero = done. The keyboard must be up (kapi_kbd_ready).
+KAPI_FN int ax_load_keymap (const char *name);
+
 // (the tests of the kernel's table, and the PC builds: the bodies inline -- see this header's top)
 #if (defined (KAPI_INLINE) || !defined (__aarch64__)) && !defined (KAPI_IMPL)
 #include "appkit_calls.inc"
+#include "appkit_lib.inc"
 #endif
 
 #endif

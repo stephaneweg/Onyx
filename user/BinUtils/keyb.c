@@ -6,7 +6,6 @@
 //          keyb FR         switch to the French (azerty) layout
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

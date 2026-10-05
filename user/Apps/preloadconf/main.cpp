@@ -18,7 +18,6 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "fsutil.h"
 #include "launch.h"
 #include "BinUtils/imgname.h"

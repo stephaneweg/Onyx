@@ -21,7 +21,6 @@
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
-#include "applib.h"
 #include "notify.h"
 #include "ft/uikitface.h"
 

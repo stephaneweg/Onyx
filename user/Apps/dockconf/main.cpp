@@ -11,7 +11,6 @@
 // number of workspaces too. Discard reloads what is saved.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "fsutil.h"
 #include "launch.h"
 #include "dockconf.h"

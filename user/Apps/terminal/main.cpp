@@ -16,7 +16,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit (TermView draws into a Canvas)
-#include "applib.h"		// should_exit, pump_events, msleep
 #include "embed.h"		// run embedded in the activity shell (surface + mailbox)
 #include "lineedit.h"		// the line being typed: its cursor, the history
 

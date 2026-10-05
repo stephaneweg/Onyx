@@ -21,7 +21,6 @@
 // until stdin's end (a block typed at the prompt is read up to its fi / done, then run).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "umm.h"
 #define CS_MALLOC(n)	umm_malloc ((unsigned long) (n))
 #define CS_FREE(p)	umm_free (p)

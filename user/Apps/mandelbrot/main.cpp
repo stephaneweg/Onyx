@@ -6,7 +6,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "applib.h"
 
 #define W	340
 #define RH	240			// render height (rows); status below
@@ -40,7 +39,37 @@ static int g_dirty = 1;
 #define JCR	(-(FONE * 4 / 5))
 #define JCI	(FONE * 156 / 1000)
 
-// Fractal-type dropdown (top-left, drawn over the canvas by dd_draw; its clicks: applib.h).
+// Fractal-type dropdown (top-left, drawn over the canvas by dd_draw). The picture is this program's own
+// canvas, not a uikit window of widgets: the drop-down is drawn and hit-tested here (uikit's Dropdown is
+// the widget for everything else).
+typedef struct {
+	int x, y, w, h;			// closed box rect (canvas coords)
+	const char *const *opts;	// option labels
+	int nopts;
+	int sel;			// selected index
+	int open;			// list expanded?
+} ax_dropdown;
+// A click on the canvas -> 1 if the drop-down took it (opened, closed, or an option chosen: sel).
+static int ax_dropdown_click (ax_dropdown *d, int cx, int cy)
+{
+	if (d->open)
+	{
+		if (cx >= d->x && cx < d->x + d->w && cy >= d->y + d->h
+		    && cy < d->y + d->h * (1 + d->nopts))
+		{
+			d->sel = (cy - (d->y + d->h)) / d->h;
+			d->open = 0;
+			return 1;
+		}
+		d->open = 0;		// click elsewhere: close
+	}
+	if (cx >= d->x && cx < d->x + d->w && cy >= d->y && cy < d->y + d->h)
+	{
+		d->open = !d->open;
+		return 1;
+	}
+	return 0;
+}
 static const char *const FRACTALS[] = { "Mandelbrot", "Julia", "Burning Ship", "Tricorn" };
 static ax_dropdown g_dd = { 6, 6, 132, 24, FRACTALS, 4, FR_MANDEL, 0 };
 

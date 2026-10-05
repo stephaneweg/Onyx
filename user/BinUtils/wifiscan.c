@@ -5,7 +5,6 @@
 // Takes about 3 seconds. See also wpaconf (pick a network from the list).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static void pad (const char *s, int w) { int n = ax_strlen (s); ax_puts (s); while (n++ < w) ax_puts (" "); }
 

@@ -1,5 +1,5 @@
 //
-// inidemo.c -- demonstrates the shared .ini config reader (applib.h). It loads
+// inidemo.c -- demonstrates the shared .ini config reader (AppKit's: appkit.h). It loads
 // config.ini from its OWN app folder (SD:apps/inidemo.app/config.ini via
 // kapi_app_dir) and shows the values: strings via app_ini_get, and an int via
 // app_ini_get_int (drawn as a bar that long). Edit config.ini + reboot to see it
@@ -7,7 +7,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "applib.h"
 
 #define W	380
 #define H	250

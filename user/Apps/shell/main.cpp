@@ -14,7 +14,7 @@
 // routing; this loop is the seam where the shell diverges.
 //
 #include "uikit/uikit.h"
-#include "applib.h"		// should_exit, pump_events, msleep, present
+#include "appkit/appkit.h"
 #include "shell_proto.h"	// activity-shell IPC protocol (hosted apps draw into surfaces)
 
 using namespace uikit;

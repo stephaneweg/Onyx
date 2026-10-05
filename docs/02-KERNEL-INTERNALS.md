@@ -1178,6 +1178,9 @@ at once), with its volume and its mute; `sound_clients` (slot 263), `sound_clien
 v86 = **AppKit**: no entry added — the kernel loads `SD:/lib/appkit.so`, copies its table at `APPKIT_TABLE_VA` and maps
 it into every program (the note at the top of this section). A program built for AppKit needs this kernel: its
 package says `kapi >= 86`, so the package manager installs it only once the new kernel runs.
+v87 = **AppKit's small services**: no entry added either — AppKit (shipped with the kernel) now carries the strings,
+the console, the `.ini` reader and the keyboard layout loader that were `user/applib.h` (docs/03 §8); a program built
+from now on calls them in AppKit, so its package says `kapi >= 87`.
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32

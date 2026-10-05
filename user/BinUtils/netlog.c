@@ -10,7 +10,6 @@
 //   usage: netlog
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 #define OUT_PATH	"SD:/netlog.txt"
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"

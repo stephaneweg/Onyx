@@ -3,7 +3,6 @@
 //   usage: nslookup <name>
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

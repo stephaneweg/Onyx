@@ -4,7 +4,6 @@
 //   wave: square, sine, triangle, saw, noise.   "tone scale": a C major scale.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "../onyxpp.hpp"		// (operator new / delete: the library's binding)
 #include "../Kits/audiokit/audiokit.h"
 

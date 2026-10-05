@@ -4,7 +4,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "applib.h"
 
 #define W	480
 #define H	320

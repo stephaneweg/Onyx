@@ -26,7 +26,6 @@
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
-#include "applib.h"
 
 using namespace uikit;
 

@@ -16,7 +16,6 @@
 // the stand-in kernel tools/tests/gpucomp/hostkapi.cpp).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "umm.h"
 #include "gpucomp/gpucomp.h"
 #ifdef GPC_HOST

@@ -21,7 +21,6 @@
 // when they are opened again. Discard reloads what is saved.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "dockconf.h"
 #include "wallpaper.h"
 #include "applet_proto.h"

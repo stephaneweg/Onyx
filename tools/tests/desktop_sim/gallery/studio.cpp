@@ -6,7 +6,6 @@
 // and run by tools/tests/desktop_sim/studio.sh.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #ifdef WITH_FT

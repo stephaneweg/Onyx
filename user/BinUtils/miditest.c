@@ -5,7 +5,6 @@
 // kill ends it too. Plug a keyboard in while it runs: it is found within ~0.1 s.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static void put_num (unsigned v, int width)
 {

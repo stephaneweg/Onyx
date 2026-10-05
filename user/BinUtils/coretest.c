@@ -5,7 +5,6 @@
 // must stop it on its own (check kmsg: no "does not answer").
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 static unsigned char s_Stack[2][64 * 1024] __attribute__ ((aligned (16)));
 

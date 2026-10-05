@@ -5,7 +5,6 @@
 // total. Run it from the terminal or telnet: `v3dprog`.
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 #include "v3d/shaders.h"
 #include "v3d/gxtev.h"
 #include "v3d/gxtev_ref.h"

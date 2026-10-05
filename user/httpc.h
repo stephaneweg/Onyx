@@ -3,7 +3,7 @@
 // socket calls (kapi_tcp_connect/send/recv/close + kapi_net_status).
 //
 // Design choices for the Onyx user model:
-//   * Header-only (static inline), like applib.h -- just #include it.
+//   * Header-only (static inline) -- just #include it.
 //   * NO dynamic allocation (there is no user malloc): the CALLER provides the
 //     response buffer. Everything else lives on the app stack. So all memory is in
 //     the app's own address space (static .bss @ 8 GB / stack @ 16 GB); the TCP

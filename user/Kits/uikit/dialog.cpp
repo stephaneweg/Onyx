@@ -11,7 +11,6 @@
 #include "uikit/slider.h"
 #include "uikit/lang.h"
 #include "appkit/appkit.h"		// MB_*, KEY_*, kapi_present, kapi_opendir/readdir
-#include "applib.h"		// should_exit, pump_events, msleep
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {

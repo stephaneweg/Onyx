@@ -92,7 +92,7 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
 
 ### 1.4 Hard-coded paths (the size of the migration)
 
-- **No common settings library.** `user/applib.h` (`app_ini_load`, read-only) is used by 14 apps;
+- **No common settings library.** AppKit's `.ini` reader (`app_ini_load`, read-only; it was `user/applib.h`) is used by 14 apps;
   about 25 others open a literal path with their own parser; shared headers do the same
   (`wallpaper.h`, `dockconf.h`, `fileassoc.h`, `launch.h`, `gamepad.h`, `ftpfs.h`, `uikit/theme.cpp`,
   `uikit/root.cpp`). uikit has no "where is my configuration" call.

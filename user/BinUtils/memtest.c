@@ -48,7 +48,6 @@
 // ---------------------------------------------------------------------------------------------
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 #define PAGE		0x10000ULL
 #define RW		(KAPI_PROT_READ | KAPI_PROT_WRITE)

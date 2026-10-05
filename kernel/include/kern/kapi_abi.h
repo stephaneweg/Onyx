@@ -195,7 +195,11 @@
 //      copies its table at APPKIT_TABLE_VA and maps its code into every program. No entry added: the
 //      number says "this kernel gives the programs AppKit" -- a program built for AppKit needs it (its
 //      package's "kapi >= 86": the package manager installs it once this kernel runs).
-#define KAPI_ABI_VERSION	86
+// v87: AppKit carries its small services too (user/Kits/appkit/appkit_lib.inc: the strings, the console,
+//      the .ini reader, the keyboard layout -- they were user/applib.h, inline in every program). No
+//      entry added to this table: the number says "this system's AppKit has them" -- a program built
+//      from now on calls them in AppKit, and its package's "kapi >= 87" waits for this system.
+#define KAPI_ABI_VERSION	87
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 

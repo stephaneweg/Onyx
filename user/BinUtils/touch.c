@@ -3,7 +3,6 @@
 // (no timestamps yet, so existing files are left untouched).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

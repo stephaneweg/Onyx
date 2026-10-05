@@ -3,7 +3,6 @@
 // flushed), then restart the Raspberry Pi (= shutdown -r).
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {

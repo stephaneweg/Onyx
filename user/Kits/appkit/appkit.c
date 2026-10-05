@@ -25,6 +25,7 @@
 #define KAPI_IMPL
 #include "appkit.h"
 #include "appkit_calls.inc"
+#include "appkit_lib.inc"
 #include "lib.h"
 
 // (the libraries' table has an init: nothing to do -- the kernel does not call it, no program does)

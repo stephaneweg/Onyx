@@ -6,7 +6,6 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "applib.h"
 
 #define GW	24
 #define GH	18

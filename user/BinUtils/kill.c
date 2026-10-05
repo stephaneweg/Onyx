@@ -4,7 +4,6 @@
 //   usage: kill <pid> [--force|-f]
 //
 #include "appkit/appkit.h"
-#include "applib.h"
 
 int main (void)
 {
