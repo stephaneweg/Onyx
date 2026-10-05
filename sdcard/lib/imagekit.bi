@@ -1,6 +1,31 @@
 # imagekit.bi -- imagekit for Onyx BASIC (#import imagekit): made by tools/kitbi/kitbi.py from imagekit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
+# struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
 kit imagekit 46
+struct adjust 64 ik_adjust
+field exposure 0 i
+field contrast 4 i
+field highlights 8 i
+field shadows 12 i
+field saturation 16 i
+field warmth 20 i
+field sharpness 24 i
+field filter 28 i
+struct info 192 ik_info
+field w 0 i
+field h 4 i
+field orientation 8 i
+field taken 16 l
+field camera 24 a 64
+field exposure 88 a 64
+field has_preview 152 i
+struct format 84 ik_format
+field name 0 a 12
+field extensions 12 a 40
+field can_read 52 i
+field can_write 56 i
+field alpha 60 i
+field animated 64 i
 adjust_apply 0 v pp ik_adjust_apply
 adjust_auto 1 v pp ik_adjust_auto
 cover 2 l pii ik_cover

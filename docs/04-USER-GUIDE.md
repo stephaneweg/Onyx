@@ -4052,14 +4052,21 @@ documents 10 to 18), and `SD:/lib/<kit>.bi` lists what BASIC can call. The rules
   `PEEKQ` / `PEEKF` / `PEEKD (address)` read a byte, 16, 32 or 64 bits, a float, a double, and
   `POKEB` ... `POKED address, value`, `POKES address, text$` write them (a structure's field is at
   `p# + its offset`);
+- a kit's **structures** are TYPEs of the program, under the kit's name: `DIM e AS FileKit.zip_entry` (the C
+  `struct fk_zip_entry`; its fields by their C names: `e.name`, `e.size` ...). Give the variable where the
+  function takes the structure's address — it is filled when the function returns:
+  `IF FileKit.zip_entry (zip#, i, e) THEN PRINT e.name; e.size`. A **whole array** goes as `name ()`:
+  `DIM f(15) AS ImageKit.format : n = ImageKit.formats (f(), 16)`. `PEEKT address, variable` reads a
+  structure from an address (one the kit keeps, or one a callback receives), `POKET address, variable`
+  writes it there; `LEN (variable)` is its size in bytes. A field that is an array of numbers has no
+  name in BASIC;
 - what a kit **allocates and returns** is yours to free, with the kit's own function (`FileKit.free p#`).
 
-Nothing is checked: a wrong address ends the program. These words (`ALLOC`, `CSTR$`, `PEEKB` ..., `BYREF`,
-`ADDRESSOF`) only exist in a program that has an `#import`. A compiled program (`.bax`, a standalone app)
+Nothing is checked: a wrong address ends the program. These words (`ALLOC`, `CSTR$`, `PEEKB` ..., `PEEKT`,
+`BYREF`, `ADDRESSOF`) only exist in a program that has an `#import`. A compiled program (`.bax`, a standalone app)
 keeps what it needs of the kits; if a kit is missing or too old when it runs, the call fails with *Kit not
 available* (error 73). The example: `SD:/basic/examples/kits.bas`. Not yet: UIKit's widgets (C++ classes;
-the controls of BASIC — `BUTTON`, `TEXTBOX` ... — are the way to an interface), structures passed as a
-`TYPE` (use `ALLOC` and `PEEK` / `POKE`).
+the controls of BASIC — `BUTTON`, `TEXTBOX` ... — are the way to an interface).
 
 **Sound files and MIDI notes (AudioKit).** `PLAYFILE file$ [, loop]` plays an MP3, FLAC, WAV, FM Song (`.fms`), Ogg
 or MIDI file **while the program goes on** (`loop` 1: again and again); `STOPFILE`, `PAUSEFILE 1` /

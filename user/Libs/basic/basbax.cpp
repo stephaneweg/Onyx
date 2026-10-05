@@ -11,7 +11,7 @@
 
 namespace bas {
 
-enum { BAX_FORMAT = 4 };			// (2: the classes' tables; 3: the program's flags -- managed; 4: the kits; older files still load)
+enum { BAX_FORMAT = 5 };			// (2: the classes' tables; 3: the program's flags -- managed; 4: the kits; 5: their structures; older files still load)
 
 namespace {
 struct Out
@@ -89,6 +89,8 @@ int saveBax (const Program *p, char **out)
 		const KitFn &f = p->kfns[i];
 		o.i32 (f.kit); o.i32 (f.slot); o.byte (f.ret); o.name (f.args); o.name (f.name);
 	}
+	o.i32 (p->kstructs.n); for (int i = 0; i < p->kstructs.n; i++) { o.i32 (p->kstructs[i].type); o.i32 (p->kstructs[i].size); o.i32 (p->kstructs[i].first); }
+	o.i32 (p->kflds.n); for (int i = 0; i < p->kflds.n; i++) { o.i32 (p->kflds[i].off); o.byte (p->kflds[i].kind); o.i32 (p->kflds[i].n); }
 	o.bytes ("END.", 4);
 	*out = o.b;
 	return o.n;
@@ -151,6 +153,29 @@ Program *loadBax (const char *buf, int len, Error *err)
 			in.name (f.args, sizeof f.args); in.name (f.name, sizeof f.name);
 			if (f.kit < 0 || f.kit >= p->kits.n || f.slot < 0) in.bad = true;
 			p->kfns.push (f);
+		}
+	}
+	if (fmt >= 5)
+	{
+		c = in.count (); for (int i = 0; i < c && !in.bad; i++) { KitStruct k; k.type = in.i32 (); k.size = in.i32 (); k.first = in.i32 (); p->kstructs.push (k); }
+		c = in.count ();
+		for (int i = 0; i < c && !in.bad; i++)
+		{
+			KitFld f; f.off = in.i32 ();
+			if (in.at >= in.n) { in.bad = true; break; }
+			f.kind = (char) in.b[in.at++]; f.n = in.i32 ();
+			p->kflds.push (f);
+		}
+		// (every structure's fields are there, inside its size; a nested one is a structure)
+		for (int i = 0; i < p->kstructs.n && !in.bad; i++)
+		{
+			const KitStruct &k = p->kstructs[i];
+			if (k.type < 0 || k.type >= p->types.n || k.size < 0 || k.first < 0 || k.first + p->types[k.type].nf > p->kflds.n) { in.bad = true; break; }
+			for (int j = 0; j < p->types[k.type].nf; j++)
+			{
+				const KitFld &f = p->kflds[k.first + j];
+				if (f.off < 0 || f.off > k.size || (f.kind == 't' && (f.n < 0 || f.n >= p->kstructs.n)) || (f.kind == 'a' && (f.n < 1 || f.off + f.n > k.size))) in.bad = true;
+			}
 		}
 	}
 	if (in.bad || in.at + 4 > in.n || in.b[in.at] != 'E' || in.b[in.at + 3] != '.'

@@ -3,6 +3,7 @@
 
 DECLARE FUNCTION Twice (i, user)
 DECLARE SUB Heard (t$, n)
+DECLARE SUB Structures ()
 
 PRINT "add"; TestKit.add(2, 40)
 PRINT "c name"; testkit.tk_add(1, 1)
@@ -46,6 +47,7 @@ PRINT "pokes "; CSTR$(m#); TestKit.len(m#)
 DEALLOC m#
 
 IF TestKit.add(1, 2) = 3 THEN TestKit.say(ADDRESSOF(Heard)) ELSE PRINT "no"
+Structures
 ON ERROR GOTO failed
 PRINT "each2"; TestKit.each(3, ADDRESSOF(Twice), -1)
 PRINT "after"
@@ -64,4 +66,32 @@ END FUNCTION
 
 SUB Heard (t$, n)
 	PRINT "heard "; t$; n; TestKit.add(n, n)
+END SUB
+
+' structures: a kit's are TYPEs of the program; a variable goes where the function takes a pointer
+SUB Structures
+	DIM it AS TestKit.item, pt AS TestKit.tk_point
+	it.name = "abc": it.id = 5: it.weight = 1.25: it.at.x = 10: it.at.y = 20: it.flag = 1: it.level = 2
+	PRINT "struct"; LEN(it); TestKit.item_next(it)
+	PRINT "after ["; it.name; "]"; it.id; it.weight; it.at.x; it.at.y; it.flag; it.level; it.ratio
+	it.name = "a name that is far too long"
+	r = TestKit.item_next(it)
+	PRINT "cut"; r; "["; it.name; "]"; it.id
+	pt.x = 3: pt.y = 4
+	PRINT "point"; TestKit.point_sum(pt); TestKit.point_sum(it.at); TestKit.point_sum(0)
+	DIM many(2) AS TestKit.point
+	many(1).x = 7: many(1).y = 8
+	PRINT "element"; TestKit.point_sum(many(1))
+	PRINT "array"; TestKit.points(many(), 3); many(0).x; many(1).y; many(2).x; TestKit.points(many, 3)
+	' a structure the kit keeps: read from its address, written back
+	k# = TestKit.item_kept
+	DIM kept AS TestKit.item
+	PEEKT k#, kept
+	PRINT "kept ["; kept.name; "]"; kept.id; kept.weight; kept.at.x; kept.at.y; kept.ratio
+	kept.name = "ours": kept.at.y = 40
+	POKET k#, kept
+	PRINT "poked "; CSTR$(k#); PEEKL(k# + 36)
+	DIM other AS TestKit.item
+	other = it: other.id = 1
+	PRINT "copy"; it.id > 1
 END SUB

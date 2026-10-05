@@ -136,6 +136,8 @@ public:
 	// place in P->kfns once the program calls it (-1).
 	struct KDecl { int kit, slot; char ret; char args[KIT_MAXARGS + 1]; char name[64], cname[64]; int used; };
 	Vec<KDecl> kdecls; bool kitsOn = false;
+	struct KAlias { char name[64]; int type; };	// a kit's structure under its C name ("FILEKIT.FK_ZIP_ENTRY")
+	Vec<KAlias> kalias;
 
 	Compiler () : P (0), err (0), failed (false), pos (0), nlocals (0), curProc (-1), nloops (0), base1 (false), tmpN (0), lastLine (-1)
 	{ dblSeen = false; resetDeftypes (); }
@@ -413,7 +415,12 @@ public:
 	}
 
 	// ---- user TYPEs ------------------------------------------------------------------------------
-	int findType (const char *n) { for (int i = 0; i < P->types.n; i++) if (bseq (P->types[i].name, n)) return i; return -1; }
+	int findType (const char *n)
+	{
+		for (int i = 0; i < P->types.n; i++) if (bseq (P->types[i].name, n)) return i;
+		for (int i = 0; i < kalias.n; i++) if (bseq (kalias[i].name, n)) return kalias[i].type;
+		return -1;
+	}
 	int findField (int type, const char *n)
 	{
 		const TypeInfo &t = P->types[type];
@@ -705,7 +712,11 @@ public:
 		KitRef kr; bscpy (kr.name, low, sizeof kr.name); kr.minVer = 0;
 		int kit = P->kits.n; P->kits.push (kr);
 		kitsOn = true;
-		// a function a line: <name> <place> <result> <arguments or -> [<C name>]; '#': a comment
+		// a function a line: <name> <place> <result> <arguments or -> [<C name>]; '#': a comment;
+		// a structure: struct <name> <size> [<C name>], then its fields: field <name> <place> <kind> [<n> | <structure>]
+		int curT = -1;					// the structure whose fields follow
+		auto kitName = [&] (char *out, const char *w) { int k = 0; for (int i = 0; upper[i] && k < 30; i++) out[k++] = upper[i]; out[k++] = '.'; for (int i = 0; w[i] && k < 47; i++) out[k++] = bup (w[i]); out[k] = 0; };
+		auto number = [] (const char *w, int *v) { *v = 0; if (!w[0]) return false; for (int i = 0; w[i]; i++) { if (w[i] < '0' || w[i] > '9' || i > 8) return false; *v = *v * 10 + (w[i] - '0'); } return true; };
 		for (int at = 0; at < len; )
 		{
 			char w[5][64]; int nw = 0;
@@ -718,7 +729,45 @@ public:
 				if (nw < 5) w[nw++][k] = 0;
 			}
 			at++;
-			if (nw < 4 || w[0][0] == '#') continue;
+			if (nw < 3 || w[0][0] == '#') continue;
+			int v = 0;
+			if (bseq (w[0], "struct") && !number (w[1], &v) && number (w[2], &v))
+			{
+				TypeInfo ti; kitName (ti.name, w[1]); ti.first = P->fields.n; ti.nf = 0; ti.size = v;
+				curT = -1;
+				if (findType (ti.name) >= 0) continue;
+				curT = P->types.n; P->types.push (ti);
+				CInfo ci; ci.nif = 0; ci.done = true; ci.abstr = false; ci.tok = 0; cinfo.push (ci);
+				KitStruct ks; ks.type = curT; ks.size = v; ks.first = P->kflds.n; P->kstructs.push (ks);
+				if (nw > 3) { KAlias al; kitName (al.name, w[3]); al.type = curT; if (!bseq (al.name, ti.name)) kalias.push (al); }
+				continue;
+			}
+			if (bseq (w[0], "field") && !number (w[1], &v) && nw >= 4 && number (w[2], &v))
+			{
+				if (curT < 0) continue;
+				char k = w[3][0];
+				FieldInfo fi; fi.kind = FK_DBL; fi.len = 0; fi.sub = 0;
+				FName fn; for (int i = 0; i < 48; i++) fn.name[i] = 0;
+				for (int i = 0; w[1][i] && i < 47; i++) fn.name[i] = bup (w[1][i]);
+				fn.ty = TY_NUM; fn.nt = NT_DBL; fn.flen = 0;	// (a number as it is: no rounding at a store)
+				KitFld kf; kf.off = v; kf.kind = k; kf.n = 0;
+				bool ok = !w[3][1] && v <= P->types[curT].size;
+				if (k == 'a') { ok = ok && nw > 4 && number (w[4], &kf.n) && kf.n > 0 && v + kf.n <= P->types[curT].size; fi.kind = FK_VSTR; fn.ty = TY_STR; fn.nt = 0; }
+				else if (k == 't')
+				{
+					char sn[48]; if (nw > 4) kitName (sn, w[4]);
+					int st = nw > 4 ? findType (sn) : -1;
+					kf.n = st >= 0 ? P->kitStruct (st) : -1;
+					ok = ok && kf.n >= 0 && st != curT;
+					if (ok) { fi.kind = FK_REC; fi.sub = st; fn.ty = TY_REC + st; fn.nt = 0; }
+				}
+				else { bool known = false; for (const char *c = "bchwiulfd"; *c; c++) if (*c == k) known = true; ok = ok && known; if (k == 'f') { fi.kind = FK_SNG; fn.nt = NT_SNG; } }
+				if (!ok) continue;				// (a kind of a later BASIC: no field, its bytes kept)
+				P->fields.push (fi); fnames.push (fn); P->kflds.push (kf); P->types[curT].nf++;
+				continue;
+			}
+			curT = -1;
+			if (nw < 4) continue;
 			KDecl d; d.kit = kit; d.used = -1; d.slot = 0;
 			bool ok = w[1][0] != 0;
 			for (int i = 0; w[1][i]; i++) { if (w[1][i] < '0' || w[1][i] > '9' || i > 6) { ok = false; break; } d.slot = d.slot * 10 + (w[1][i] - '0'); }
@@ -790,7 +839,33 @@ public:
 			{
 				char k = d.args[argc < want ? argc : want];
 				if (!k) { fail2 ("Too many arguments to ", d.name); return TY_NUM; }
-				if (isKw ("BYREF") && peek ().t == T_ID)
+				// a variable of one of the kits' structures where the function takes a pointer: the structure
+				bool rec = false;
+				Tok &t0 = cur ();
+				if (k == 'p' && t0.t == T_ID && !findBuiltin (t0.id) && findProc (t0.id) < 0 && findConst (t0.id) < 0 && !isKeyword (t0.id)
+				    && findKitFn (t0.id) == -1 && !bseq (t0.id, "ADDRESSOF") && !isBaseCall ())
+				{
+					// ... a whole array of them (name or name ()): the C array, its elements in order
+					Var av; bool empty = peekIsOp ('(') && peek (2).t == T_OP && peek (2).op == ')';
+					Tok &after = peek (empty ? 3 : 1);
+					bool ends = after.t == T_NL || after.t == T_EOF || (after.t == T_OP && (after.op == ',' || after.op == ')' || after.op == ':'));
+					if (ends && findVar (t0.id, true, av) && av.ty >= TY_REC && P->kitStruct (av.ty - TY_REC) >= 0 && (empty || !varExists (t0.id, false)))
+					{
+						next (); if (empty) { next (); next (); }
+						loadVar (av); rec = true;
+					}
+				}
+				if (!rec && k == 'p' && t0.t == T_ID && !findBuiltin (t0.id) && findProc (t0.id) < 0 && findConst (t0.id) < 0 && !isKeyword (t0.id)
+				    && findKitFn (t0.id) == -1 && !bseq (t0.id, "ADDRESSOF") && !isBaseCall ())
+				{
+					int at = pc (), savePos = pos;
+					Ref r;
+					if (parseRef (r) && !r.fnResult && r.method < 0 && (isOp (',') || isOp (')') || endOfStmt ()) && r.ty >= TY_REC && P->kitStruct (r.ty - TY_REC) >= 0)
+					{ emitAddr (r); rec = true; }
+					else { if (failed) return TY_NUM; P->code.n = at; pos = savePos; }
+				}
+				if (rec) {}
+				else if (isKw ("BYREF") && peek ().t == T_ID)
 				{
 					next ();
 					if (!(k == 'I' || k == 'L' || k == 'F' || k == 'D')) { fail2 ("BYREF: this argument is not a number the function fills: ", d.name); return TY_NUM; }
@@ -1893,6 +1968,15 @@ public:
 			return;
 		}
 		if (bseq (w, "NAME")) { next (); needStr (expr ()); expectKw ("AS"); needStr (expr ()); emit3 (OP_ST, S_NAME, 2); return; }
+		if (kitsOn && (bseq (w, "PEEKT") || bseq (w, "POKET")))	// PEEKT address, variable: a kit's structure read from / written at an address
+		{
+			bool peekT = bseq (w, "PEEKT"); next ();
+			needNum (expr ()); expectOp (',');
+			Ref r; if (!refAddr (r)) return;
+			if (r.ty < TY_REC || P->kitStruct (r.ty - TY_REC) < 0) { fail ("PEEKT / POKET need a variable of one of the kits' structures"); return; }
+			emit3 (OP_ST, peekT ? S_PEEKT : S_POKET, 2);
+			return;
+		}
 		if (kitsOn)						// a kit's function as a statement: its result dropped
 		{
 			int ki = findKitFn (w);
@@ -3100,7 +3184,7 @@ int bas::wordList (char *buf, int cap)
 	for (int i = 0; KEYWORDS[i]; i++) add (KEYWORDS[i]);
 	// (the words of the classes: not reserved, known by their place)
 	static const char *const CLASSWORDS[] = { "MANAGED", "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING",
-		"BYREF", "ADDRESSOF", "DEALLOC", "POKEB", "POKEW", "POKEL", "POKEQ", "POKEF", "POKED", "POKES", 0 };	// (... and of the kits)
+		"BYREF", "ADDRESSOF", "DEALLOC", "POKEB", "POKEW", "POKEL", "POKEQ", "POKEF", "POKED", "POKES", "PEEKT", "POKET", 0 };	// (... and of the kits)
 	for (int i = 0; CLASSWORDS[i]; i++) add (CLASSWORDS[i]);
 	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
 	if (cap > 0) buf[n] = 0;

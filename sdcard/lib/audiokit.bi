@@ -1,6 +1,40 @@
 # audiokit.bi -- audiokit for Onyx BASIC (#import audiokit): made by tools/kitbi/kitbi.py from audiokit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
+# struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
 kit audiokit 232
+struct ak_info 32 ak_info
+field rate 0 i
+field channels 4 i
+field bits 8 i
+field kbps 12 i
+field length_ms 16 l
+field format 24 a 8
+struct kapi_fm_op 9 kapi_fm_op
+field mult 0 b
+field level 1 b
+field ksl 2 b
+field attack 3 b
+field decay 4 b
+field sustain 5 b
+field release 6 b
+field wave 7 b
+field flags 8 b
+struct kapi_fm_instrument 20 kapi_fm_instrument
+field feedback 18 b
+field connection 19 b
+struct ak_tags 568 ak_tags
+field title 0 a 128
+field artist 128 a 96
+field album_artist 224 a 96
+field album 320 a 128
+field genre 448 a 48
+field year 496 i
+field track 500 i
+field disc 504 i
+field duration_ms 508 i
+field format 512 a 8
+field cover_offset 520 l
+field cover_length 528 u
 ak_close 26 v p ak_close
 ak_control 27 v iii ak_control
 ak_f32_to_s16 28 v pppif ak_f32_to_s16

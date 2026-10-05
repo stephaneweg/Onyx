@@ -360,7 +360,12 @@ libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
 # so a new kit is importable without a line here (docs/03 "BASIC and the kits").
 lib/kits.bi.stamp: $(wildcard Kits/*/*.abi) $(wildcard Kits/*/*.h) ../tools/kitbi/kitbi.py | $(SHLIBS)
-	python3 ../tools/kitbi/kitbi.py --out-dir lib
+	python3 ../tools/kitbi/kitbi.py --out-dir lib --check
+	@# (the structures' sizes and fields' places it worked out, checked by the compiler: static_asserts)
+	@for c in lib/*.bi.check.cpp; do \
+		[ -e "$$c" ] || continue; \
+		$(CXX) $(CXXFLAGS_FP) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -fsyntax-only $$c || exit 1; \
+	done
 	@touch $@
 
 # Doom (Ports/doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.

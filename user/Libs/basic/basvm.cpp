@@ -1792,6 +1792,17 @@ public:
 		case S_POKEQ: { long long v = (long long) a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 8); break; }
 		case S_POKEF: { float v = (float) a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 4); break; }
 		case S_POKED: { double v = a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 8); break; }
+		case S_PEEKT: case S_POKET:				// a kit's structure at an address <-> a variable
+		{
+			V *t = a[1].t == VR ? (V *) a[1].p : 0;
+			if (t && t->t == VR) t = (V *) t->p;
+			int ks = t && t->t == VT && t->p ? P->kitStruct (((Rec *) t->p)->type) : -1;
+			char *m = (char *) (unsigned long long) a[0].n;
+			if (ks < 0 || !m) { fail ("Illegal function call (PEEKT / POKET)"); break; }
+			if (id == S_POKET) kitPack (P->kstructs[ks], (Rec *) t->p, m);
+			else { own (*t); kitUnpack (P->kstructs[ks], (Rec *) t->p, m); }
+			break;
+		}
 		case S_POKES:						// the string and a 0 byte
 		{
 			int n; const char *d = sdata (a[1], &n);
@@ -2014,6 +2025,65 @@ public:
 	}
 
 	// ---- kits -------------------------------------------------------------------------------------------------
+	// A kit's structure: the record's fields written at their places in the C structure (m: its size, zeroed
+	// by the caller where it matters), and read back from it.
+	void kitPack (const KitStruct &ks, const Rec *r, char *m)
+	{
+		for (int i = 0; i < r->nf && i < P->types[ks.type].nf; i++)
+		{
+			const KitFld &f = P->kflds[ks.first + i];
+			const V &v = r->f[i];
+			char *at = m + f.off;
+			switch (f.kind)
+			{
+			case 'b': case 'c': *at = (char) (long long) v.n; break;
+			case 'h': case 'w': { short x = (short) (long long) v.n; bmcpy (at, &x, 2); break; }
+			case 'i': case 'u': { int x = (int) (long long) v.n; bmcpy (at, &x, 4); break; }
+			case 'l': { long long x = (long long) v.n; bmcpy (at, &x, 8); break; }
+			case 'f': { float x = (float) v.n; bmcpy (at, &x, 4); break; }
+			case 'd': { double x = v.n; bmcpy (at, &x, 8); break; }
+			case 'a':
+			{
+				int n; const char *d = sdata (v, &n);
+				if (n > f.n - 1) n = f.n - 1;
+				for (int j = 0; j < n; j++) at[j] = (char) bas437ToLatin1[(unsigned char) d[j]];
+				for (int j = n; j < f.n; j++) at[j] = 0;
+				break;
+			}
+			case 't': if (v.t == VT && v.p) kitPack (P->kstructs[f.n], (const Rec *) v.p, at); break;
+			}
+		}
+	}
+	void kitUnpack (const KitStruct &ks, Rec *r, const char *m)
+	{
+		for (int i = 0; i < r->nf && i < P->types[ks.type].nf; i++)
+		{
+			const KitFld &f = P->kflds[ks.first + i];
+			V &v = r->f[i];
+			const char *at = m + f.off;
+			switch (f.kind)
+			{
+			case 'b': v.n = (unsigned char) *at; break;
+			case 'c': v.n = (signed char) *at; break;
+			case 'h': { short x; bmcpy (&x, at, 2); v.n = x; break; }
+			case 'w': { unsigned short x; bmcpy (&x, at, 2); v.n = x; break; }
+			case 'i': { int x; bmcpy (&x, at, 4); v.n = x; break; }
+			case 'u': { unsigned x; bmcpy (&x, at, 4); v.n = x; break; }
+			case 'l': { long long x; bmcpy (&x, at, 8); v.n = (double) x; break; }
+			case 'f': { float x; bmcpy (&x, at, 4); v.n = x; break; }
+			case 'd': { double x; bmcpy (&x, at, 8); v.n = x; break; }
+			case 'a':
+			{
+				int n = 0; while (n < f.n && at[n]) n++;
+				Str *s = snew (at, n);
+				if (s) for (int j = 0; j < n; j++) s->d[j] = (char) basLatin1To437[(unsigned char) s->d[j]];
+				vclear (v); v.t = VS; v.p = s;
+				break;
+			}
+			case 't': if (v.t == VT && v.p) { own (v); kitUnpack (P->kstructs[f.n], (Rec *) v.p, at); } break;
+			}
+		}
+	}
 	// OP_KCALL: the function P->kfns[fi] of a kit called with the argc values on the stack, by its types
 	// (basint.h). Strings go as C strings (Latin-1, copies that live as long as the call); a variable the
 	// function fills went by reference: it gets what the function wrote. The result is pushed (none: 'v').
@@ -2026,6 +2096,9 @@ public:
 		char *tmp[KIT_MAXARGS]; int ntmp = 0;
 		// (a variable filled by the function: where it is, its kind, the value the function sees)
 		V *outV[KIT_MAXARGS]; char outK[KIT_MAXARGS]; int nout = 0;
+		// (a structure: the variable, its description, the C structure the function gets)
+		V *recV[KIT_MAXARGS]; int recK[KIT_MAXARGS]; char *recM[KIT_MAXARGS]; int nrec = 0;
+		Arr *arrA[KIT_MAXARGS]; int arrK[KIT_MAXARGS]; char *arrM[KIT_MAXARGS]; int narr = 0;	// (an array of them)
 		union Cell { long long q; int l; float f; double d; } cell[KIT_MAXARGS];
 		long long xi[8] = { 0, 0, 0, 0, 0, 0, 0, 0 }; double xd[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 		int ni = 0, nd = 0;
@@ -2086,6 +2159,35 @@ public:
 				xi[ni++] = (long long) (unsigned long long) &c;
 				continue;
 			}
+			if (k == 'p' && v.t == VA)
+			{
+				Arr *ar = (Arr *) v.p;
+				int ks = ar && ar->ek == 2 && ar->total > 0 && ar->e[0].t == VT && ar->e[0].p ? P->kitStruct (((Rec *) ar->e[0].p)->type) : -1;
+				if (ks < 0) { fail ("Type mismatch (an array of one of the kits' structures is expected)"); break; }
+				int size = P->kstructs[ks].size;
+				char *m = new char[(long long) size * ar->total + 1];
+				for (long long j = 0; j < (long long) size * ar->total; j++) m[j] = 0;
+				for (int j = 0; j < ar->total; j++) if (ar->e[j].t == VT && ar->e[j].p) kitPack (P->kstructs[ks], (const Rec *) ar->e[j].p, m + (long long) j * size);
+				tmp[ntmp++] = m;
+				arrA[narr] = ar; arrK[narr] = ks; arrM[narr] = m; narr++;
+				xi[ni++] = (long long) (unsigned long long) m;
+				continue;
+			}
+			if (k == 'p' && v.t == VR)
+			{
+				V *t = (V *) v.p;
+				if (t->t == VR) t = (V *) t->p;
+				int ks = t->t == VT && t->p ? P->kitStruct (((Rec *) t->p)->type) : -1;
+				if (ks < 0) { fail ("Type mismatch (a variable of one of the kits' structures is expected)"); break; }
+				int size = P->kstructs[ks].size;
+				char *m = new char[size > 0 ? size : 1];
+				for (int j = 0; j < size; j++) m[j] = 0;
+				kitPack (P->kstructs[ks], (const Rec *) t->p, m);
+				tmp[ntmp++] = m;
+				recV[nrec] = t; recK[nrec] = ks; recM[nrec] = m; nrec++;
+				xi[ni++] = (long long) (unsigned long long) m;
+				continue;
+			}
 			if (v.t != VN) { fail ("Type mismatch"); break; }
 			xi[ni++] = (long long) v.n;
 		}
@@ -2124,6 +2226,14 @@ public:
 				const Cell &c = cell[i];
 				outV[i]->n = outK[i] == 'I' ? (double) c.l : outK[i] == 'L' ? (double) c.q : outK[i] == 'F' ? (double) c.f : c.d;
 			}
+			for (int i = 0; i < narr; i++)
+				for (int j = 0; j < arrA[i]->total; j++)
+				{
+					V &e = arrA[i]->e[j];
+					if (e.t == VT && e.p) { own (e); kitUnpack (P->kstructs[arrK[i]], (Rec *) e.p, arrM[i] + (long long) j * P->kstructs[arrK[i]].size); }
+				}
+			for (int i = 0; i < nrec; i++)
+				if (recV[i]->t == VT && recV[i]->p) { own (*recV[i]); kitUnpack (P->kstructs[recK[i]], (Rec *) recV[i]->p, recM[i]); }
 		}
 		for (int i = 0; i < ntmp; i++) delete [] tmp[i];
 		for (int i = 0; i < argc; i++) vclear (a[i]);

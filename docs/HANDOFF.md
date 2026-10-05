@@ -63,6 +63,15 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
 
 ## Onyx BASIC: the kits by `#import` (2026-10-05; tested on the PC, under qemu and on the Pi)
 
+- **Structures done too (step 2, the same day)**: the `.bi` lists the structures the functions name
+  (`struct` / `field` lines: sizes and offsets worked out by `kitbi.py` and **checked by the compiler** --
+  `lib/<kit>.bi.check.cpp`, 56 structures today, 38 of them AppKit's); `#import` makes each a TYPE
+  (`DIM e AS FileKit.zip_entry`); a variable, an element or a whole array goes where a function takes a
+  pointer (packed before, unpacked after); `PEEKT` / `POKET` at an address. Not done: a structure with a
+  union (`kapi_pad`), an array field that is not a text (no name in BASIC; its bytes go as zeros **and
+  what the function wrote there is lost** when a variable is passed -- pass an `ALLOC`ed address and
+  `PEEK` it if such a field matters).
+
 - **Done**: a BASIC program says `#import filekit` and calls the kit's functions by their name
   (`FileKit.copy (a$, b$, 0, 0)`), **with no kit named in BASIC**: each kit has a description,
   `SD:/lib/<kit>.bi` (name, place in the table, types), made by `tools/kitbi/kitbi.py` from its `.abi` and
@@ -73,9 +82,7 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   the kits' C functions and a **flat C exposure for the C++ kits** (handles, not objects); nothing checked
   at run time (as FreeBASIC); **what a kit returns allocated is the program's to free**. Read: docs/03
   (*BASIC and the kits*), docs/04 §13 (*The system's kits*), `SD:/basic/examples/kits.bas`.
-- **Next, in the order agreed** (the user, 2026-10-05): (2) structures -- a BASIC `TYPE` passed where a
-  function takes a `struct *` (today: `ALLOC` + `PEEK` / `POKE` at the fields' offsets; needs the
-  structs' layouts in the `.bi`, and BASIC has no 64-bit whole type for a pointer field); (4) **UIKit
+- **Next** (the user's order, 2026-10-05; step 2, structures, is done: above): (4) **UIKit
   from BASIC**: its table is C++ (674 of 686 entries), so a flat C layer in UIKit (`uk_*` functions on
   handles) is to be designed -- an addition to UIKit's append-only table, and it must live with the
   runtime's own window (`runtime.cpp`'s `ScreenRoot`): **ask the user for its shape before writing it**.

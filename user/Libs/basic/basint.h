@@ -152,6 +152,7 @@ enum Builtin
 	S_PLAYFILE, S_STOPFILE, S_PAUSEFILE, S_FILEVOLUME,		// (AudioKit: a sound file in the background)
 	S_MIDINOTE, S_MIDIPROGRAM, S_MIDICONTROL, S_MIDIOFF,		// (... notes on the General MIDI synthesizer)
 	S_DEALLOC, S_POKEB, S_POKEW, S_POKEL, S_POKEQ, S_POKEF, S_POKED, S_POKES,	// (kits: memory a program shares with a kit)
+	S_PEEKT, S_POKET,						// (... a kit's structure read from / written at an address)
 	S_LAST,
 	B_MENUITEM = 300, B_WINDOWWIDTH, B_WINDOWHEIGHT,		// (the built-in functions past 100)
 	B_FILEPLAYING, B_FILEPOS, B_FILELENGTH, B_NOTEFREQ, B_NOTENUMBER,	// (AudioKit)
@@ -195,9 +196,18 @@ struct ProcInfo { char name[48]; bool isFunc; int retTy; int nparams; int entry;
 //               BASIC string, or a number: a pointer), f a float, d a double, I / L / F / D a pointer
 //               to numbers (int *, a 64-bit number's or a pointer's address, float *, double *: a number
 //               -- the address --, or BYREF variable: the variable gets what the function wrote).
+//
+// A kit's structures (the .bi's "struct" and "field" lines) are TYPEs of the program, named KIT.NAME: a
+// variable of one given where a function takes a pointer (p) goes as the C structure -- its fields
+// written at their places before the call, read back after it. KitStruct: the TYPE, the C structure's
+// size, where its fields' places start in Program::kflds (one per field of the TYPE, in order).
+// KitFld: the field's place, its C kind -- b c h w i u l f d as a result's, a: a text in a char array of
+// n bytes (a 0 after it), t: the structure n of Program::kstructs.
 enum { KIT_MAXARGS = 16 };
 struct KitRef { char name[32]; int minVer; };		// minVer: the table must have this many entries
 struct KitFn { int kit, slot; char ret; char args[KIT_MAXARGS + 1]; char name[64]; };
+struct KitStruct { int type, size, first; };
+struct KitFld { int off; char kind; int n; };
 
 struct Program
 {
@@ -218,6 +228,9 @@ struct Program
 	Vec<int> vtab, itab;			// the classes' method tables (TypeInfo)
 	Vec<KitRef> kits;			// the kits imported
 	Vec<KitFn> kfns;			// their functions the program calls
+	Vec<KitStruct> kstructs;		// their structures (TYPEs of the program)
+	Vec<KitFld> kflds;
+	int kitStruct (int type) const { for (int i = 0; i < kstructs.n; i++) if (kstructs[i].type == type) return i; return -1; }
 	int nglobals;
 	bool managed;				// OPTION MANAGED / the compile dialogs' "Managed": run by the VM, not in machine code
 	Program () : nglobals (0), managed (false) {}
