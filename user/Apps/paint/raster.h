@@ -10,6 +10,9 @@
 #ifndef _paint_raster_h
 #define _paint_raster_h
 
+#ifdef USE_IMAGEKIT
+#include "imagekit/imagekit.h"
+#endif
 #include "pdoc.h"
 #include "uikit/vpaint.h"
 
@@ -300,6 +303,9 @@ static unsigned *rotate (const unsigned *p, int w, int h, bool cw)
 static unsigned *scale (const unsigned *p, int w, int h, int nw, int nh, bool smooth)
 {
 	unsigned *o = new unsigned[(unsigned) nw * nh];
+#ifdef USE_IMAGEKIT						// (ImageKit's resize: right in alpha, bilinear when it grows)
+	if (smooth) { ik_scale (p, w, h, w, 0, 0, w, h, o, nw, nw, nh); return o; }
+#endif
 	for (int y = 0; y < nh; y++)
 		for (int x = 0; x < nw; x++)
 		{

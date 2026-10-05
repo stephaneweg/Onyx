@@ -323,8 +323,10 @@ extern "C" int ik_save (const ik_image *im, const char *path, int quality)
 
 // Smaller: each pixel the average of ALL those it covers; larger: bilinear. The colours are weighed
 // by the alpha (a transparent pixel's colour does not bleed into its neighbours).
-extern "C" void ik_scale (const unsigned *src, int srcW, int srcH, int srcStride, int sx, int sy, int sw, int sh,
-			  unsigned *dst, int dstStride, int dw, int dh)
+// rgb: the top byte is not an alpha (0x00RRGGBB pixels, or opaque ones whatever it holds): the colours
+// alone, the result's top byte 0.
+static void scale_impl (const unsigned *src, int srcW, int srcH, int srcStride, int sx, int sy, int sw, int sh,
+			unsigned *dst, int dstStride, int dw, int dh, bool rgb)
 {
 	if (src == 0 || dst == 0 || dw <= 0 || dh <= 0) return;
 	if (sx < 0) { sw += sx; sx = 0; }
@@ -343,23 +345,25 @@ extern "C" void ik_scale (const unsigned *src, int srcW, int srcH, int srcStride
 		{
 			int y0 = sy + (int) ((long long) y * sh / dh), y1 = sy + (int) ((long long) (y + 1) * sh / dh);
 			if (y1 <= y0) y1 = y0 + 1;
+			int ys = 1 + (y1 - y0) / 8;			// (a big shrink: at most ~8 x 8 of the pixels covered are read)
 			unsigned *o = dst + (size_t) y * dstStride;
 			for (int x = 0; x < dw; x++)
 			{
 				int x0 = sx + (int) ((long long) x * sw / dw), x1 = sx + (int) ((long long) (x + 1) * sw / dw);
 				if (x1 <= x0) x1 = x0 + 1;
+				int xs = 1 + (x1 - x0) / 8;
 				unsigned long long a = 0, r = 0, g = 0, b = 0; unsigned c = 0;
-				for (int yy = y0; yy < y1; yy++)
+				for (int yy = y0; yy < y1; yy += ys)
 				{
 					const unsigned *row = src + (size_t) yy * srcStride;
-					for (int xx = x0; xx < x1; xx++)
+					for (int xx = x0; xx < x1; xx += xs)
 					{
-						unsigned p = row[xx], pa = p >> 24;
+						unsigned p = row[xx], pa = rgb ? 255 : p >> 24;
 						a += pa; r += (p >> 16 & 255) * pa; g += (p >> 8 & 255) * pa; b += (p & 255) * pa; c++;
 					}
 				}
 				if (a == 0) { o[x] = 0; continue; }
-				o[x] = (unsigned) ((a + c / 2) / c) << 24 | (unsigned) ((r + a / 2) / a) << 16 | (unsigned) ((g + a / 2) / a) << 8 | (unsigned) ((b + a / 2) / a);
+				o[x] = (rgb ? 0 : (unsigned) ((a + c / 2) / c) << 24) | (unsigned) ((r + a / 2) / a) << 16 | (unsigned) ((g + a / 2) / a) << 8 | (unsigned) ((b + a / 2) / a);
 			}
 		}
 		return;
@@ -386,14 +390,24 @@ extern "C" void ik_scale (const unsigned *src, int srcW, int srcH, int srcStride
 			unsigned long long a = 0, r = 0, g = 0, b = 0;
 			for (int k = 0; k < 4; k++)
 			{
-				unsigned pa = q[k] >> 24; unsigned long long w = (unsigned long long) wq[k] * pa;
+				unsigned pa = rgb ? 255 : q[k] >> 24; unsigned long long w = (unsigned long long) wq[k] * pa;
 				a += w; r += (q[k] >> 16 & 255) * w; g += (q[k] >> 8 & 255) * w; b += (q[k] & 255) * w;
 			}
 			if (a == 0) { o[x] = 0; continue; }
 			unsigned A = (unsigned) ((a + 32768) >> 16); if (A > 255) A = 255;
-			o[x] = A << 24 | (unsigned) ((r + a / 2) / a) << 16 | (unsigned) ((g + a / 2) / a) << 8 | (unsigned) ((b + a / 2) / a);
+			o[x] = (rgb ? 0 : A << 24) | (unsigned) ((r + a / 2) / a) << 16 | (unsigned) ((g + a / 2) / a) << 8 | (unsigned) ((b + a / 2) / a);
 		}
 	}
+}
+extern "C" void ik_scale (const unsigned *src, int srcW, int srcH, int srcStride, int sx, int sy, int sw, int sh,
+			  unsigned *dst, int dstStride, int dw, int dh)
+{
+	scale_impl (src, srcW, srcH, srcStride, sx, sy, sw, sh, dst, dstStride, dw, dh, false);
+}
+extern "C" void ik_scale_rgb (const unsigned *src, int srcW, int srcH, int srcStride, int sx, int sy, int sw, int sh,
+			      unsigned *dst, int dstStride, int dw, int dh)
+{
+	scale_impl (src, srcW, srcH, srcStride, sx, sy, sw, sh, dst, dstStride, dw, dh, true);
 }
 extern "C" ik_image *ik_resize (const ik_image *s, int w, int h)
 {

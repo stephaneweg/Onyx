@@ -48,3 +48,4 @@
 42 ik_frames_take
 43 ik_inflate
 44 ik_encode_pixels
+45 ik_scale_rgb

@@ -10,6 +10,9 @@
 #ifndef _media_covers_h
 #define _media_covers_h
 
+#ifdef USE_IMAGEKIT
+#include "imagekit/imagekit.h"
+#endif
 #include "lib.h"
 #include "img/imgload.hpp"
 #include "uikit/uikit.h"
@@ -137,6 +140,10 @@ private:
 	// src (n x n) -> dst (m x m): the area of each pixel averaged (smaller), else bilinear
 	static void resample (const unsigned *src, int n, unsigned *dst, int m)
 	{
+#ifdef USE_IMAGEKIT						// (ImageKit's resize)
+		ik_scale_rgb (src, n, n, n, 0, 0, n, n, dst, m, m, m);
+		return;
+#endif
 		if (m <= n)
 			for (int y = 0; y < m; y++)
 			{

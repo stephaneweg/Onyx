@@ -12,6 +12,9 @@
 
 #include <math.h>
 #include <string.h>
+#ifdef USE_IMAGEKIT
+#include "imagekit/imagekit.h"
+#endif
 
 namespace photos {
 
@@ -77,6 +80,9 @@ static void rotate90 (Pix &p, int k)
 // (sx, sy, sw, sh) of src -> dst (dw x dh): smaller: each pixel the average of those it covers; larger: bilinear
 static void scale_into (const unsigned *src, int srcW, int srcH, int sx, int sy, int sw, int sh, unsigned *dst, int dstStride, int dw, int dh)
 {
+#ifdef USE_IMAGEKIT						// (the app on Onyx: ImageKit's resize -- one for the system)
+	ik_scale_rgb (src, srcW, srcH, srcW, sx, sy, sw, sh, dst, dstStride, dw, dh);
+#else
 	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
 	if (sx < 0) sx = 0; if (sy < 0) sy = 0; if (sx + sw > srcW) sw = srcW - sx; if (sy + sh > srcH) sh = srcH - sy;
 	if (sw >= dw && sh >= dh)
@@ -124,6 +130,7 @@ static void scale_into (const unsigned *src, int srcW, int srcH, int sx, int sy,
 			o[x] = v;
 		}
 	}
+#endif
 }
 // the whole picture made to fit within maxW x maxH (proportions kept; never made larger when !grow)
 static void fit (const Pix &src, Pix &dst, int maxW, int maxH, bool grow = false)

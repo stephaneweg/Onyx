@@ -967,7 +967,7 @@ masks, the brushes and the document of the photo editor come on top of it later 
 | **A picture** | `ik_image_new (w, h)`, `ik_image_from (px, w, h, stride)`, `ik_image_copy`, `ik_image_free`, `ik_width`, `ik_height`, `ik_format`, `ik_pixels`, `ik_fill`, `ik_opaque`, `ik_flatten (im, rgb)`, `ik_has_alpha` | `w × h` pixels `0xAARRGGBB`, straight alpha, rows one after the other (`IK_ARGB8`: the only format today; the handle is opaque so that 16 bits a channel can come). |
 | **Reading** | `ik_load (path, flags)`, `ik_load_mem`, `ik_probe (path, &info)`, `ik_load_preview`, `ik_load_format`, `ik_is_image_name`; `ik_frames_load` / `_load_mem` / `_count` / `_pixels` / `_delay` / `_width` / `_height` / `_free` | **BMP, GIF (animated), PNG, JPEG, PCX, WebP**. `IK_ORIENT`: the camera's orientation (EXIF) applied — the photo as it is seen. `ik_probe` reads no pixel: the size, the orientation, the date taken, the camera and the exposure (`struct ik_info`); `ik_load_preview`: the camera's own small picture. The frames of an animation with their delays. |
 | **Writing** | `ik_encode (im, format, quality, &out, &n)`, `ik_save (im, path, quality)`, `ik_encode_pixels (px, w, h, stride, format, quality, alpha, &out, &n)` | **PNG** (zlib's compression through FileKit: smaller files than before), **JPEG**, **BMP**, **GIF**. PNG keeps the alpha, GIF its clear pixels, JPEG and BMP lay the picture on white. |
-| **Transforms** | `ik_scale (src…, dst…)`, `ik_resize`, `ik_fit (im, max_w, max_h, grow)`, `ik_cover (im, w, h)`, `ik_crop`, `ik_rotate (im, quarter_turns)`, `ik_flip`, `ik_orient`, `ik_straighten (im, millidegrees)` | **One resize, right in alpha**: smaller, each pixel is the average of all those it covers; larger, bilinear; the colours weighed by the alpha (a transparent pixel's colour does not bleed). `ik_scale` writes into any buffer (a window's canvas, the wallpaper). |
+| **Transforms** | `ik_scale (src…, dst…)`, `ik_scale_rgb` (pixels whose top byte is not an alpha: a photo, a canvas), `ik_resize`, `ik_fit (im, max_w, max_h, grow)`, `ik_cover (im, w, h)`, `ik_crop`, `ik_rotate (im, quarter_turns)`, `ik_flip`, `ik_orient`, `ik_straighten (im, millidegrees)` | **One resize, right in alpha**: smaller, each pixel is the average of all those it covers; larger, bilinear; the colours weighed by the alpha (a transparent pixel's colour does not bleed). `ik_scale` writes into any buffer (a window's canvas, the wallpaper). |
 | **Adjustments** | `ik_adjust_apply (im, &a)`, `ik_adjust_auto (im, &a)`, `ik_filter_name` | Photos' own, as one tone curve and a colour pass (`struct ik_adjust`: exposure, contrast, highlights, shadows, saturation, warmth −100..100, sharpness 0..100, a filter: black and white, warm, cool, vintage, vivid); "enhance" proposes values from the histogram. The alpha is kept. |
 
 - **Inside**: `imagekit/ikcore.cpp` compiles the decoders (`img/imgload.hpp`: stb_image, simplewebp, PCX),
@@ -985,10 +985,15 @@ masks, the brushes and the document of the photo editor come on top of it later 
     Player) are built with `-DPNGSAVE_USE_IMAGEKIT`: `pngsave::png_encode` / `jpeg_encode` / `bmp_encode` /
     `gif_encode` (`img/pngsave.hpp`) are then `ik_encode_pixels` — the same names in their code, the encoders
     out of their binaries, PNG files compressed by zlib.
-  - **directly**: the Image Viewer (its window and the wallpaper it paints: photos turned the way the
+  - **directly**: `/bin/iktest`, the Image Viewer (its window and the wallpaper it paints: photos turned the way the
     camera says, a wallpaper made smaller averaged).
   - The PC builds (no shared library) compile the decoders and the encoders into themselves, as before.
-  - Still their own: the resamplers of Photos, Paint, Letters, Slides, the Media Player, the dock (IDEAS.md).
+  - **resizing**: Photos (`imgops.h`'s `scale_into`: its grid, its viewer, its thumbnails), the Media Player's
+    covers and Paint's smooth scaling of a layer are `ik_scale_rgb` / `ik_scale` in the apps (`-DUSE_IMAGEKIT`),
+    as the Image Viewer and the wallpaper.
+  - Still their own (each a special case: IDEAS.md): the dock's icons (a colour key, 4 x 4 samples), Letters'
+    and Slides' pictures in a page (cropped, in page units), Screenshot's fitted view, the Media Player's
+    video frames, UIKit's `ImageBox`.
 - **Not in it yet**: masks and selections, drawing and brushes, layers and blend modes with `gpucomp`,
   thumbnails with their cache, 16 bits a channel, ICC profiles, TIFF / RAW / HEIC. Never MuPDF nor FFmpeg.
 - **Rule**: `uikit.so` needs `imagekit.so` (its package says so), which needs `filekit.so`.

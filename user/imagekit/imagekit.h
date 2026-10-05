@@ -120,9 +120,14 @@ int ik_encode_pixels (const unsigned *px, int w, int h, int stride, const char *
 
 // ---- transforms -------------------------------------------------------------------------------
 // The low-level one: the rectangle (sx, sy, sw, sh) of src (src_w x src_h, src_stride pixels a row)
-// brought to dst (dw x dh, dst_stride pixels a row). Right in alpha (the colours weighed by it).
+// brought to dst (dw x dh, dst_stride pixels a row). Right in alpha (the colours weighed by it). A big
+// shrink reads at most ~8 x 8 of the pixels each result covers (a 24 Mpx photo's thumbnail stays quick).
 void ik_scale (const unsigned *src, int src_w, int src_h, int src_stride, int sx, int sy, int sw, int sh,
 	       unsigned *dst, int dst_stride, int dw, int dh);
+// The same for pixels whose top byte is not an alpha (0x00RRGGBB, a window's canvas, a photo): the
+// colours alone; the result's top byte is 0.
+void ik_scale_rgb (const unsigned *src, int src_w, int src_h, int src_stride, int sx, int sy, int sw, int sh,
+		   unsigned *dst, int dst_stride, int dw, int dh);
 ik_image *ik_resize (const ik_image *im, int w, int h);		// a new picture of that size
 ik_image *ik_fit (const ik_image *im, int max_w, int max_h, int grow);	// within the box, proportions kept (grow 0: never larger)
 ik_image *ik_cover (const ik_image *im, int w, int h);		// the middle cut to that shape and brought to it (a thumbnail)
