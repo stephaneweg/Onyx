@@ -13,9 +13,7 @@
 #include "mail/html_ft.h"
 #include "imagekit/img/imgload.hpp"
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
-#include "systemkit/clipboard.h"
-#include "systemkit/fileassoc.h"
+#include "systemkit/systemkit.h"
 
 namespace mailapp {
 

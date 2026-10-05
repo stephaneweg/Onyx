@@ -15,7 +15,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 
 using namespace uikit;
 

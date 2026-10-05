@@ -12,7 +12,7 @@
 #ifndef _writer_edit_h
 #define _writer_edit_h
 
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 #include "imagekit/img/imgload.hpp"
 #include "layout.h"
 

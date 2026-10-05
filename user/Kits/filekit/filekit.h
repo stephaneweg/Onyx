@@ -198,4 +198,9 @@ void fk_dos_time_str (unsigned dos_time, char *out, int cap);		// "28/09/2026 14
 }
 #endif
 
+// (the file helpers -- fs_join, fs_exists, fs_copy_tree...: fsutil.h, C++)
+#ifdef __cplusplus
+#include "fsutil.h"
+#endif
+
 #endif

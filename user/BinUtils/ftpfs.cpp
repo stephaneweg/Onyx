@@ -26,7 +26,7 @@
 //
 #include "tls/onyx_tls.hpp"
 #include "appkit/appkit.h"
-#include "netkit/ftpfs.h"			// the remembered-servers file format
+#include "netkit/netkit.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>

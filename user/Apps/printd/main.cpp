@@ -27,7 +27,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "printerkit/printers.h"
 #include "printerkit/job.h"
 #include "printerkit/pdfsink.h"

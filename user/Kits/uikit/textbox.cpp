@@ -1,6 +1,6 @@
 #include "uikit/textbox.h"
 #include "uikit/menu.h"		// UK_CTRL
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 #include "sysclip.h"
 
 namespace uikit {

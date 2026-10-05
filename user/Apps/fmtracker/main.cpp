@@ -24,8 +24,8 @@
 //
 #include "audiokit/audiokit.h"
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
-#include "filekit/fsutil.h"
+#include "systemkit/systemkit.h"
+#include "filekit/filekit.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #include "fontkit/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget

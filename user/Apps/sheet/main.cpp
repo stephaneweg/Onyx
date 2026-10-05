@@ -16,7 +16,7 @@
 #define SHEET_APP 1
 #include "dialogs.h"
 #include "docguard.h"
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 
 using namespace ss;
 using namespace uikit;

@@ -21,9 +21,7 @@
 // when they are opened again. Discard reloads what is saved.
 //
 #include "appkit/appkit.h"
-#include "systemkit/dockconf.h"
-#include "systemkit/wallpaper.h"
-#include "systemkit/applet_proto.h"
+#include "systemkit/systemkit.h"
 #include "imagekit/img/imgload.hpp"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget

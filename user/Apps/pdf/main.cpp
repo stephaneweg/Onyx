@@ -20,7 +20,7 @@
 #include "appkit/appkit.h"
 #include "engine.h"
 #include "ui.h"
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 #include "docguard.h"
 #include "printerkit/printerkit.h"
 

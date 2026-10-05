@@ -7,7 +7,7 @@
 // start.)
 //
 #include "appkit/appkit.h"
-#include "filekit/fsutil.h"
+#include "filekit/filekit.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

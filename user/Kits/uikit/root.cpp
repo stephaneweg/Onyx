@@ -5,7 +5,7 @@
 #include "uikit/font.h"		// uikit::init (load the global font family at startup)
 #include "uikit/dialog.h"		// PopupMenu (the window menu)
 #include "appkit/appkit.h"
-#include "systemkit/applet_proto.h"	// the applet mode (a Control Panel applet)
+#include "systemkit/systemkit.h"
 
 namespace uikit {
 

@@ -21,7 +21,7 @@
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "uikit/bmp.h"
-#include "systemkit/wallpaper.h"
+#include "systemkit/systemkit.h"
 #include "imagekit/img/imgload.hpp"
 #include "fontkit/uikitface.h"
 #include "system.h"

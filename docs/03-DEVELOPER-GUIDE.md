@@ -1046,6 +1046,9 @@ program says to the system and to the other programs; **NetKit** is the network;
 | `user/Libs/img` (the codecs' sources) | `user/Kits/imagekit/img` | ImageKit's folder; the programs that still include `imagekit/img/imgload.hpp` / `pngsave.hpp` get relays to `ik_*` |
 | `user/ft` | `user/Kits/fontkit` | FontKit |
 
+A program includes the kit's one header — `"systemkit/systemkit.h"`, `"netkit/netkit.h"`,
+`"filekit/filekit.h"` — which brings the subjects' headers named in the table.
+
 **How a kit of this kind is made** (SystemKit, NetKit, `filekit/fsutil.h`): each header `x.h` declares
 (`SK_API int notify (...)`), `x.inc` beside it has the code, and the kit's one source (`systemkit.cpp`)
 compiles every `.inc` into `SD:/lib/systemkit.so`, exported by name. A program links

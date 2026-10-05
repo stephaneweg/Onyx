@@ -20,7 +20,7 @@
 //
 #include "appkit/appkit.h"
 #include "imgname.h"
-#include "systemkit/preloadini.h"
+#include "systemkit/systemkit.h"
 
 #define MAX_IMAGES	64
 static struct kapi_image_info g_img[MAX_IMAGES];

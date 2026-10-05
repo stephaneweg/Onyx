@@ -12,7 +12,7 @@
 // it is fully transparent and parked off-screen so it never catches a click.
 //
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "uikit/uikit.h"
 
 using namespace uikit;

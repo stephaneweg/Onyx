@@ -6,7 +6,7 @@
 //
 #define CLIPD_NO_MAIN
 #include "../../../user/Apps/clipd/main.cpp"
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 #include <pthread.h>
 #include <unistd.h>
 #include <string>

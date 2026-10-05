@@ -4,7 +4,7 @@
 #include "uikit/uikit.h"			// (first: its onyxpp.hpp gives placement new -- kbase.h then leaves <new> out)
 #include "plughost.h"
 #include "appkit/appkit.h"
-#include "systemkit/applet_proto.h"
+#include "systemkit/systemkit.h"
 #include "json.hpp"
 
 namespace kt {

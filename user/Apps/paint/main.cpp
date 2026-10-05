@@ -24,7 +24,7 @@
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 #include "docguard.h"
 #include "pui.h"
 #include "padjust.h"

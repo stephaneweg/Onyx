@@ -18,7 +18,7 @@
 //
 #include "imagekit/imagekit.h"
 #include "appkit/appkit.h"
-#include "filekit/fsutil.h"
+#include "filekit/filekit.h"
 #include "imagekit/img/imgload.hpp"
 #include "uikit/uikit.h"
 

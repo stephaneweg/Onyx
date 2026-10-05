@@ -12,7 +12,7 @@
 // the last round: SD:/var/pkg/lastcheck (yyyymmdd).
 //
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "pkg/pkglib.h"
 
 using namespace pkg;

@@ -33,13 +33,10 @@
 // selection of the active column; Paste and New Folder target the active column's folder.
 //
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "uikit/bmp.h"
-#include "systemkit/clipboard.h"
-#include "filekit/fsutil.h"
-#include "systemkit/trash.h"
-#include "systemkit/fileassoc.h"
-#include "netkit/ftpfs.h"			// ftpfs_login (Connect to Server)
+#include "filekit/filekit.h"
+#include "netkit/netkit.h"
 #include "imagekit/img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libuikit)
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"

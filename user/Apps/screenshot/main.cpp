@@ -22,12 +22,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
 #include "imagekit/img/pngsave.hpp"
-#include "systemkit/clipboard.h"
 
 using namespace uikit;
 

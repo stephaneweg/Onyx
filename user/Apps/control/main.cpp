@@ -16,10 +16,9 @@
 // Settings...). One Control Panel at a time (it is the IPC service AP_SERVICE, "control").
 //
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "uikit/bmp.h"
-#include "filekit/fsutil.h"
-#include "systemkit/applet_proto.h"
+#include "filekit/filekit.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 

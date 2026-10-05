@@ -606,7 +606,7 @@ struct KpTestApi
 #else
 // ---- the process: the kernel side ------------------------------------------------------------------------
 #include "appkit/appkit.h"
-#include "systemkit/applet_proto.h"
+#include "systemkit/systemkit.h"
 #include "uikit/uikit.h"
 
 static int kp__host, kp__shmId, kp__renderTid = -1;

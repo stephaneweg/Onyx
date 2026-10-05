@@ -15,7 +15,7 @@
 #include "uikit/uikit.h"
 #include "plug/plughost.h"
 #include "engine/theory.h"
-#include "systemkit/applet_proto.h"
+#include "systemkit/systemkit.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

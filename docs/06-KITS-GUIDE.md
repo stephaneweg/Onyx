@@ -48,7 +48,7 @@ Three rules follow from this layout, and they hold for every new development:
   reads the kernel's table; so the kernel can change without any program being rebuilt.
 - **What one program alone uses stays beside that program**, in its own folder.
 
-A kit's header **declares**; the code is in the library. The memory cost of a kit is paid once: its
+A kit has **one header**, `<kit>/<kit>.h`, which **declares**; the code is in the library. The memory cost of a kit is paid once: its
 code is shared by every program that uses it.
 
 ## 2. Using a kit in a program
@@ -61,8 +61,8 @@ own folder:
 ```c
 #include "appkit/appkit.h"          // AppKit
 #include "uikit/uikit.h"            // UIKit
-#include "systemkit/notify.h"       // SystemKit: one header per subject
-#include "netkit/httpc.h"           // NetKit
+#include "systemkit/systemkit.h"    // SystemKit
+#include "netkit/netkit.h"          // NetKit
 #include "filekit/filekit.h"        // FileKit
 #include "imagekit/imagekit.h"      // ImageKit
 #include "audiokit/audiokit.h"      // AudioKit
@@ -231,13 +231,14 @@ if (px) { /* draw it ... */ delete [] px; }
 
 ## 5. SystemKit — talking to the system and the other programs
 
-One header per subject, in `systemkit/` — link `lib/systemkit.imp.a` (C++) or
-`lib/systemkit.imp_c.a` (C).
+`#include "systemkit/systemkit.h"` — link `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C).
+The one header brings every subject below (a C program gets those written in C: notifications,
+volume, preload list, the applets' protocol).
 
 **A notification** (a bubble under the menu bar; `notify_action` adds what a click starts):
 
 ```c
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 
 notify ("Backup", "3 files copied");
 notify_action ("Updates", "2 updates available", "control pkgman");
@@ -246,7 +247,7 @@ notify_action ("Updates", "2 updates available", "control pkgman");
 **The clipboard**, shared by every application:
 
 ```cpp
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 
 clip_set_text ("copied text");
 
@@ -261,7 +262,7 @@ if (px) { /* ... */ delete [] px; }
 **The trash** — a file is moved there instead of being deleted:
 
 ```cpp
-#include "systemkit/trash.h"
+#include "systemkit/systemkit.h"
 
 if (trash_move ("SD:/docs/old.txt")) notify ("Trash", "old.txt moved to the trash");
 int n = trash_count ();                               // what the trash holds
@@ -270,7 +271,7 @@ int n = trash_count ();                               // what the trash holds
 **Opening a file with the right application** (the user's file associations):
 
 ```cpp
-#include "systemkit/fileassoc.h"
+#include "systemkit/systemkit.h"
 
 char app[32];
 if (fa_app_for ("SD:/photos/cat.png", app, sizeof app)) { /* "imageview" */ }
@@ -280,9 +281,7 @@ fa_open ("SD:/photos/cat.png");                       // a folder, an app, a doc
 **The volume, the wallpaper, the dock** — a settings program changes the file and tells the system:
 
 ```cpp
-#include "systemkit/volume.h"
-#include "systemkit/wallpaper.h"
-#include "systemkit/dockconf.h"
+#include "systemkit/systemkit.h"
 
 volume_save (7, 0);                                   // 0..10, not muted: kept for the next start
 
@@ -294,7 +293,7 @@ wp_save (wp);
 dock_reload ();                                       // the dock reads its settings again
 ```
 
-| Header | Subject |
+| Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
 | `clipboard.h` (`clipproto.h`: its protocol) | The clipboard |
@@ -308,13 +307,14 @@ dock_reload ();                                       // the dock reads its sett
 
 ## 6. NetKit — the network
 
-`#include "netkit/…"` — link `lib/netkit.imp.a` (C++) or `lib/netkit.imp_c.a` (C).
+`#include "netkit/netkit.h"` — link `lib/netkit.imp.a` (C++) or `lib/netkit.imp_c.a` (C). The
+`HttpClient` class is apart: `#include "netkit/http.hpp"`.
 
 **A page fetched** (HTTP/1.0, no allocation: the caller gives the buffer):
 
 ```c
 #include "appkit/appkit.h"
-#include "netkit/httpc.h"
+#include "netkit/netkit.h"
 
 static char buf[32 * 1024];
 
@@ -347,7 +347,7 @@ if (!r.is_error ()) { /* r.status, the body in buf */ }
 program.
 
 ```c
-#include "netkit/ftpfs.h"
+#include "netkit/netkit.h"
 
 if (ftpfs_login ("ftp.example.com", "me", "secret", 1))      // 1: remembered
 {
@@ -361,7 +361,7 @@ them belong.
 
 ## 7. FileKit — files, folders, archives
 
-`#include "filekit/filekit.h"` (and `"filekit/fsutil.h"`) — link `lib/filekit.imp.a`.
+`#include "filekit/filekit.h"` — link `lib/filekit.imp.a`.
 
 **A whole file, read and written:**
 
@@ -380,7 +380,7 @@ if (fk_load ("SD:/docs/notes.txt", &data, &n) == 0)
 **Folders and paths:**
 
 ```cpp
-#include "filekit/fsutil.h"
+#include "filekit/filekit.h"
 
 char path[FS_PATHL];
 fs_join (path, sizeof path, "SD:/docs", "report.txt");
@@ -591,8 +591,9 @@ kit.
 
 When a domain has no kit (SystemKit and NetKit are the models — small, with no dependency):
 
-- a folder `user/Kits/<kit>/`: a header per subject that declares (`XK_API int f (...);`), a `.inc`
-  beside it with the code, and one source `<kit>.cpp` that compiles every `.inc` into the library;
+- a folder `user/Kits/<kit>/`: **one header a program includes, `<kit>/<kit>.h`** — it may bring a
+  header per subject, each declaring its functions (`XK_API int f (...);`) with a `.inc` beside it for
+  the code — and one source `<kit>.cpp` that compiles the code into the library;
 - its rules in `user/Makefile` (copy SystemKit's block): the library `lib/<kit>.so`, its import
   archives `lib/<kit>.imp.a` (C++) and `lib/<kit>.imp_c.a` (C);
 - its package in `tools/pkg/packages.ini` (`required = 1`, `files = lib/<kit>.so`).

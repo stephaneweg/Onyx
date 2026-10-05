@@ -24,7 +24,7 @@
 #include "props.h"
 #include "gen.h"
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 
 using namespace uikit;
 using namespace qs;

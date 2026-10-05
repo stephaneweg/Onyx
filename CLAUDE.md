@@ -73,6 +73,9 @@ One **kit per domain** instead of many loose headers and libraries, and no tight
 - **Programs draw on the kits as much as they can**, and never reach the kernel themselves (only AppKit does).
 - What one program alone uses stays beside that program.
 - A C program links a kit through `lib/<kit>.imp_c.a` (libgen `--bind-c`), a C++ one through `lib/<kit>.imp.a`.
+- A program includes **the kit's one header**: `"appkit/appkit.h"`, `"uikit/uikit.h"`, `"systemkit/systemkit.h"`,
+  `"netkit/netkit.h"`, `"filekit/filekit.h"`, `"imagekit/imagekit.h"`, `"audiokit/audiokit.h"`,
+  `"printerkit/printerkit.h"` (FontKit: `"fontkit/uikitface.h"` / `"fontkit/fonts.h"`; `"netkit/http.hpp"` apart).
 
 ## RULE — keep the documentation up to date automatically
 

@@ -13,7 +13,7 @@
 //
 #include <stdio.h>
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
+#include "systemkit/systemkit.h"
 #include "ring.h"
 
 static ClipRing g_ring;

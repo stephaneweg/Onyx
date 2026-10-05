@@ -1,6 +1,6 @@
 #include "uikit/textarea.h"
 #include "uikit/menu.h"		// UK_CTRL
-#include "systemkit/clipboard.h"
+#include "systemkit/systemkit.h"
 #include "sysclip.h"
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 

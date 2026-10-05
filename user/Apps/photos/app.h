@@ -12,9 +12,7 @@
 #include "Apps/photos/ui.h"
 #include "Apps/photos/thumbs.h"
 #include "appkit/appkit.h"
-#include "systemkit/notify.h"
-#include "systemkit/clipboard.h"
-#include "systemkit/trash.h"
+#include "systemkit/systemkit.h"
 
 namespace photos {
 

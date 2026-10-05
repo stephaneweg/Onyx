@@ -16,7 +16,7 @@
 #include "appkit/appkit.h"
 #include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
-#include "systemkit/fileassoc.h"
+#include "systemkit/systemkit.h"
 #include "arcfk.h"		// the archives: FileKit (SD:/lib/filekit.so)
 #include "model.h"
 #include "icons.h"
