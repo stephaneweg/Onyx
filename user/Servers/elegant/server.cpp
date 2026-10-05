@@ -69,6 +69,12 @@ int el_sys_state (unsigned pid, void *bytes, int set)
 	return kapi_ws_ctl (KAPI_WS_STATE, (long) pid, (long) bytes, set) == 0;
 }
 
+int el_sys_clients (unsigned *pids, int max)
+{
+	long n = kapi_ws_ctl (KAPI_WS_CLIENTS, (long) pids, max, 0);
+	return n > 0 ? (int) n : 0;
+}
+
 int el_sys_name (unsigned pid, char *buf, unsigned cap)
 {
 	long n = kapi_ws_ctl (KAPI_WS_PROC_NAME, (long) pid, (long) buf, (long) cap);
@@ -162,7 +168,11 @@ int el_serve (int demo, int restart)
 	else if (ok) ok = el_core_start (w, h);
 	if (!ok) { kws_display (0, 0); say ("elegant: no memory\n"); return 1; }
 
-	if (restart) kapi_launch ("voronoy");			// (the wallpaper went with the server before: painted again)
+	if (restart)
+	{
+		el_core_restore_all ();				// the programs' windows, as the server before had them
+		kapi_launch ("voronoy");				// (the wallpaper went with it: painted again)
+	}
 	unsigned nStart = kapi_get_ticks ();
 	int quit = 0;
 	int rects[EL_RECTS_MAX * 4];

@@ -972,9 +972,10 @@ struct kapi_sound_client
 					// a pad's focus answer by it)
 #define KAPI_WS_PROC_NAME	16	// (pid, char *out, cap) -> its length: a live process's name
 #define KAPI_WS_STATE		17	// (pid, void *bytes, set 1 / get 0) -> 0: KAPI_WS_STATE_BYTES the server keeps
-					// in the kernel for an attached program (its window's place: what a server
-					// started again reads back); zero until set
-#define KAPI_WS_STATE_BYTES	64
+					// in the kernel for an attached program (its window as the server knows
+					// it: what a server started again makes it anew from); zero until set
+#define KAPI_WS_STATE_BYTES	2304
+#define KAPI_WS_CLIENTS		18	// (unsigned *pids, max) -> how many: the attached programs
 #define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,

@@ -54,25 +54,57 @@ static unsigned StateOf (CWindow *pW)
 	     | (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
 }
 
-// What is kept in the kernel for a program's window (KAPI_WS_STATE: 64 bytes), and put back when a
-// server started again makes that window anew.
+// What is kept in the kernel for a program's window (KAPI_WS_STATE): the window as Elegant knows it
+// -- what an Elegant started again makes it anew from, without the program doing anything (its
+// pixels: the same memory, the kernel kept the buffers).
 struct TSaved
 {
 	unsigned nMagic;			// SAVED_MAGIC
+	unsigned nFlags;			// WIN_FLAG_*
 	int	 x, y, w, h;			// the frame's place, the client size
+	int	 nCanvasW, nCanvasH;		// the canvas as allocated (its buffers' size)
 	int	 nAlpha, nDesk, bMinimised;
-	int	 nReserved[8];
+	int	 bResizable, nMinW, nMinH;
+	unsigned nCursor, nMenuGen;
+	u64	 ulKey, ulClick, ulPointer, ulMenu;	// the program's handlers
+	char	 Title[48];
+	char	 Menu[WIN_MENU_MAX];
+	u8	 Reserved[KAPI_WS_STATE_BYTES - 16 * 4 - 4 * 8 - 48 - WIN_MENU_MAX];
 };
-#define SAVED_MAGIC	0x456C6731u		// "Elg1"
+#define SAVED_MAGIC	0x456C6732u		// "Elg2"
 static_assert (sizeof (TSaved) == KAPI_WS_STATE_BYTES, "a window's saved state is what the kernel keeps");
-static TSaved s_Saved[EL_WINDOWS_MAX];
 
-static void SavedOf (CWindow *pWin, TSaved *pS)
+// (what changes often, compared at each turn; the rest when the menu's counter moved)
+struct TSavedKey { int x, y, w, h, cw, ch, alpha, desk, min, sizable, minw, minh; unsigned cursor, menugen; u64 k, c, p; };
+static TSavedKey s_Key[EL_WINDOWS_MAX];
+static TSaved s_Save;				// (2.3 KB: not on the stack)
+
+static void KeyOf (CWindow *pWin, TSavedKey *pK)
 {
-	memset (pS, 0, sizeof *pS);
-	pS->nMagic = SAVED_MAGIC;
-	pS->x = pWin->X (); pS->y = pWin->Y (); pS->w = pWin->ClientWidth (); pS->h = pWin->ClientHeight ();
-	pS->nAlpha = pWin->Alpha (); pS->nDesk = pWin->Desk (); pS->bMinimised = pWin->Minimised () ? 1 : 0;
+	memset (pK, 0, sizeof *pK);
+	pK->x = pWin->X (); pK->y = pWin->Y (); pK->w = pWin->ClientWidth (); pK->h = pWin->ClientHeight ();
+	pK->cw = pWin->Canvas ()->Width (); pK->ch = pWin->Canvas ()->Height ();
+	pK->alpha = pWin->Alpha (); pK->desk = pWin->Desk (); pK->min = pWin->Minimised () ? 1 : 0;
+	pK->sizable = pWin->Resizable () ? 1 : 0; pK->minw = pWin->MinClientW (); pK->minh = pWin->MinClientH ();
+	pK->cursor = pWin->CursorShape (); pK->menugen = pWin->MenuGen ();
+	pK->k = pWin->KeyHandler (); pK->c = pWin->ClickHandler (); pK->p = pWin->PointerHandler ();
+}
+
+static void Save (CWindow *pWin, const TSavedKey &K)
+{
+	TSaved &S = s_Save;
+	memset (&S, 0, sizeof S);
+	S.nMagic = SAVED_MAGIC; S.nFlags = pWin->Flags ();
+	S.x = K.x; S.y = K.y; S.w = K.w; S.h = K.h; S.nCanvasW = K.cw; S.nCanvasH = K.ch;
+	S.nAlpha = K.alpha; S.nDesk = K.desk; S.bMinimised = K.min;
+	S.bResizable = K.sizable; S.nMinW = K.minw; S.nMinH = K.minh;
+	S.nCursor = K.cursor; S.nMenuGen = K.menugen;
+	S.ulKey = K.k; S.ulClick = K.c; S.ulPointer = K.p; S.ulMenu = pWin->MenuHandler ();
+	const char *t = pWin->Title ();
+	for (unsigned i = 0; i + 1 < sizeof S.Title && t[i] != '\0'; i++) S.Title[i] = t[i];
+	const char *m = pWin->Menu ();
+	for (unsigned i = 0; i + 1 < sizeof S.Menu && m[i] != '\0'; i++) S.Menu[i] = m[i];
+	el_sys_state (pWin->OwnerPid (), &S, 1);
 }
 
 void el_core_save_states (unsigned nSelf)
@@ -82,12 +114,45 @@ void el_core_save_states (unsigned nSelf)
 	{
 		CWindow *pWin = g_pElWin[i];
 		if (pWin == 0 || pWin->OwnerPid () == 0 || pWin->OwnerPid () == nSelf) continue;
-		TSaved S;
-		SavedOf (pWin, &S);
-		if (memcmp (&S, &s_Saved[i], sizeof S) == 0) continue;
-		s_Saved[i] = S;
-		el_sys_state (pWin->OwnerPid (), &S, 1);
+		TSavedKey K;
+		KeyOf (pWin, &K);
+		if (memcmp (&K, &s_Key[i], sizeof K) == 0) continue;
+		s_Key[i] = K;
+		Save (pWin, K);
 	}
+}
+
+// A window made anew from what was saved for its program -> its number, -1: nothing saved (or no memory).
+static int Restore (unsigned nPid)
+{
+	TSaved &S = s_Save;
+	if (!el_sys_state (nPid, &S, 0) || S.nMagic != SAVED_MAGIC || S.nCanvasW <= 0 || S.nCanvasH <= 0) return -1;
+	S.Title[sizeof S.Title - 1] = '\0'; S.Menu[sizeof S.Menu - 1] = '\0';
+	el_core_owner (nPid);
+	int id = el_core_window_add (S.x, S.y, S.nCanvasW, S.nCanvasH, S.Title, S.nFlags, nPid);	// (its buffers: adopted)
+	el_core_owner (0);
+	if (id < 0) return -1;
+	CWindow *pWin = g_pElWin[id];
+	if (S.w > 0 && S.h > 0) pWin->SetLogicalSize (S.w, S.h);
+	pWin->SetAlpha (S.nAlpha);
+	pWin->SetKeyHandler (S.ulKey); pWin->SetClickHandler (S.ulClick); pWin->SetPointerHandler (S.ulPointer);
+	if (S.Menu[0] != '\0' || S.ulMenu != 0) pWin->SetMenu (S.Menu, S.ulMenu);
+	if (S.bResizable) pWin->SetResizable (TRUE, S.nMinW, S.nMinH);
+	if (S.nCursor != 0 && S.nCursor < KAPI_CURSOR_COUNT) g_pElWM->SetWindowCursor (pWin, S.nCursor);
+	if (S.nDesk != pWin->Desk ()) g_pElWM->MoveToDesk (pWin, S.nDesk);
+	if (S.bMinimised) g_pElWM->Minimise (pWin);
+	KeyOf (pWin, &s_Key[id]);
+	return id;
+}
+
+// An Elegant started again: every attached program's window made anew -> how many.
+int el_core_restore_all (void)
+{
+	unsigned Pids[64];
+	int n = el_sys_clients (Pids, 64), nMade = 0;
+	for (int i = 0; i < n; i++)
+		if (WinOf (Pids[i]) == 0 && Restore (Pids[i]) >= 0) nMade++;
+	return nMade;
 }
 
 // The caller's window made (kapi.cpp CreateWindow: no bigger than the screen; placed in the work
@@ -123,18 +188,7 @@ static long OpCreate (unsigned nPid, const long *a, const u8 *pIn, unsigned nInL
 	int id = el_core_window_add (x, y, w, h, C.title[0] != '\0' ? C.title : "app", C.flags, nPid);
 	el_core_owner (0);
 	if (id < 0) return 0;
-	// a window this program had under a server that ended: back where it was
-	TSaved S;
-	CWindow *pWin = g_pElWin[id];
-	if (el_sys_state (nPid, &S, 0) && S.nMagic == SAVED_MAGIC)
-	{
-		pWin->Move (S.x, S.y);
-		if (S.w > 0 && S.h > 0) pWin->SetLogicalSize (S.w, S.h);
-		pWin->SetAlpha (S.nAlpha);
-		if (S.nDesk != pWin->Desk ()) g_pElWM->MoveToDesk (pWin, S.nDesk);
-		if (S.bMinimised) g_pElWM->Minimise (pWin);
-	}
-	SavedOf (pWin, &s_Saved[id]);
+	memset (&s_Key[id], 0, sizeof s_Key[id]);			// (saved at the next turn)
 	return 1;
 }
 

@@ -150,12 +150,32 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
    - **`screen_set` under Elegant: written and built, NOT tried** (the user was on the Pi by RDP: no
      restart then). The kernel's compositor does the resize as always (between two of Elegant's
      presents), then tells Elegant (`KAPI_WS_IN_SCREEN`): a new screen buffer, `OnScreenResized`.
-   - **Left in stage 3**: Elegant dying -> the kernel takes the display back (done) AND
-     starts it again (not done; its programs' buffers are kept for it: `bServer` in `wsrv.cpp`); the
-     role given to the process the kernel started (today: the program named `elegant`); `rdpd` /
-     Onyx Remote and `vncd` to check on Elegant (`win_list`, `win_read` by the transfer buffer,
-     `inject_*`); the screen's size changed while running; a PC test (Elegant's core + AppKit's
-     client joined to `tools/tests/desktop_sim/fakekapi.cpp`) -- not written, the Pi was used.
+   - **A USB mouse and keyboard work on Elegant** (the user, 2026-10-05).
+   - **Every app of the card started on Elegant**: `python tools/tests/shlib/pi_apps.py 192.168.0.7`
+     during a trial -- **86 apps started, 0 failed** (the emulators without a ROM, `voronoy`,
+     `basicdemo` end by themselves, as under the kernel).
+   - **Elegant ends -> the kernel starts it again and the windows are back** (the user's choice,
+     2026-10-05; tried: `kill 1 --force` during a trial -- seven windows back at their places with
+     their pixels, the keys typed after it arrive: `tools/tests/elegant/after-restart-2026-10-05.png`).
+     How: `WsPoll` (the compositor's loop) starts `elegant --serve --restart`, 5 times at most; Elegant
+     saves each window as it knows it in the kernel (`KAPI_WS_STATE`, 2 304 bytes a program: place,
+     size, flags, title, handlers, menu, opacity, desk...; `ops.cpp` `Save` / `Restore`); the new one
+     lists the attached programs (`KAPI_WS_CLIENTS`) and makes each window anew, on the SAME pixels
+     (`KAPI_WS_BUF_ADOPT`: the buffers a server that ended left -- `window.cpp` no longer clears what
+     `WinPixelsAlloc` gives), then has the wallpaper painted again (`voronoy`). AppKit also keeps
+     what a program asked and asks it again when a call finds another server (a safety net). Lost at
+     a restart: the windows' order (front to back), a drag in progress, the drag-and-drop payload.
+   - **`SD:/etc/elegant.on`** (kept, unlike the trial file): Elegant at every start. Not enabled.
+   - **Left**: the role given to the process the kernel started (today: the program named
+     `elegant`); `screen_set` under Elegant to try; the capture channel for `rdpd` (the windows'
+     buffers mapped read-only instead of `win_read`'s copies); Elegant's memory after many windows
+     (38 MB after the 86 apps, 17 MB at its start: a leak or the heap not given back -- not looked
+     into); a PC test (not written, the Pi was used).
+   - **NEXT, asked by the user (2026-10-05): stage 5 -- remove the kernel's window manager, and clean
+     kapi of what neither the kernel nor the programs use any more** (the kernel's table may be
+     restructured: AppKit is adapted and rebuilt, no program is). Elegant is then the only way: the
+     kernel keeps the console (boot, panic, debug), the full screen's buffer and direct mode, the
+     display and input mechanisms of `wsrv.cpp`, and starts Elegant at every boot.
    - **Known differences**: a program's wallpaper buffer is its own copy (what is shown when it asks),
      not the live one; a drag's payload is 4 044 bytes at most (4 096 before); a program started
      while the kernel's window manager has the display stays there (and the reverse).

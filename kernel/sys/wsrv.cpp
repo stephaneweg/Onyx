@@ -334,7 +334,7 @@ static long Wait (unsigned nTimeoutMs)
 #define WS_CLIENTS	64
 
 static unsigned s_Client[WS_CLIENTS];		// the attached programs' pids (0: free)
-static u8 s_ClientState[WS_CLIENTS][KAPI_WS_STATE_BYTES];	// (KAPI_WS_STATE) what the server keeps for each
+static u8 *s_pClientState[WS_CLIENTS];	// (KAPI_WS_STATE) what the server keeps for each: made when first set
 
 static int ClientSlot (unsigned nPid)
 {
@@ -357,7 +357,6 @@ static long Attach (unsigned nPid)
 	pWin->SetOwnerPid (nPid);
 	pAS->SetWindow (pWin);
 	s_Client[nFree] = nPid;
-	memset (s_ClientState[nFree], 0, KAPI_WS_STATE_BYTES);
 	return 0;
 }
 
@@ -386,8 +385,26 @@ static long State (unsigned nPid, void *pUser, boolean bSet)
 {
 	int nSlot = ClientSlot (nPid);
 	if (nSlot < 0) return -KAPI_ESRCH;
-	if (bSet) return UserCopyIn (s_ClientState[nSlot], pUser, KAPI_WS_STATE_BYTES) ? 0 : -KAPI_EFAULT;
-	return UserCopyOut (pUser, s_ClientState[nSlot], KAPI_WS_STATE_BYTES) ? 0 : -KAPI_EFAULT;
+	if (bSet)
+	{
+		if (s_pClientState[nSlot] == 0) s_pClientState[nSlot] = new u8[KAPI_WS_STATE_BYTES];
+		if (s_pClientState[nSlot] == 0) return -KAPI_ENOMEM;
+		return UserCopyIn (s_pClientState[nSlot], pUser, KAPI_WS_STATE_BYTES) ? 0 : -KAPI_EFAULT;
+	}
+	if (s_pClientState[nSlot] == 0) return -KAPI_ENOENT;		// (never set)
+	return UserCopyOut (pUser, s_pClientState[nSlot], KAPI_WS_STATE_BYTES) ? 0 : -KAPI_EFAULT;
+}
+
+static long Clients (unsigned *pUser, long nMax)
+{
+	long n = 0;
+	for (int i = 0; i < WS_CLIENTS && n < nMax; i++)
+	{
+		if (s_Client[i] == 0) continue;
+		if (!UserPut (pUser + n, s_Client[i])) return -KAPI_EFAULT;
+		n++;
+	}
+	return n;
 }
 
 static long ExitRequest (unsigned nPid)
@@ -685,6 +702,7 @@ void WsOnProcessGone (unsigned nPid)
 	int nSlot = ClientSlot (nPid);
 	if (nSlot < 0) return;
 	s_Client[nSlot] = 0;
+	delete [] s_pClientState[nSlot]; s_pClientState[nSlot] = 0;
 	for (int i = 0; i < USER_WS_SLOTS; i++)
 	{
 		if (s_Buf[i].pRaw == 0 || s_Buf[i].nPid != nPid) continue;
@@ -761,6 +779,7 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	case KAPI_WS_FOCUS:	s_nFocusPid = (unsigned) a0; return 0;
 	case KAPI_WS_PROC_NAME:	return ProcName ((unsigned) a0, (char *) a1, (unsigned) a2);
 	case KAPI_WS_STATE:	return State ((unsigned) a0, (void *) a1, a2 != 0);
+	case KAPI_WS_CLIENTS:	return Clients ((unsigned *) a0, a1);
 	}
 	return -KAPI_ENOSYS;
 }

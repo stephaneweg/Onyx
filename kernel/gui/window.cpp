@@ -13,7 +13,7 @@
 // A window's pixels (kern/gui/window.h): the heap's here; the graphics server (WIN_PIXELS_HOOK) gives
 // its own -- memory shared with the window's program.
 #ifndef WIN_PIXELS_HOOK
-void *WinPixelsAlloc (int, unsigned nBytes)	{ return new u8[nBytes]; }
+void *WinPixelsAlloc (int, unsigned nBytes)	{ u8 *p = new u8[nBytes]; if (p != 0) memset (p, 0, nBytes); return p; }
 void WinPixelsFree (void *pRaw)			{ delete [] (u8 *) pRaw; }
 #endif
 
@@ -67,7 +67,6 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 
 	uintptr ulAligned = ((uintptr) m_pRawAlloc + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
 	m_ulCanvasPhys = ulAligned;		// identity region: PA == kernel VA
-	memset ((void *) ulAligned, 0, m_nCanvasPages * KPAGE_SIZE);
 
 	m_Canvas.Wrap ((u32 *) ulAligned, nClientW, nClientH);
 
@@ -107,7 +106,6 @@ boolean CWindow::AllocChrome (int nOuterW, int nOuterH, void *pRaw[2], u64 ulPhy
 		uintptr ulC = ((uintptr) pRaw[i] + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
 		ulPhys[i] = ulC;
 		nPages[i] = n;
-		memset ((void *) ulC, 0, n * KPAGE_SIZE);
 	}
 	if (ulPhys[1] == 0)				// (the inactive copy is mapped too: never half)
 	{
@@ -463,7 +461,6 @@ boolean CWindow::Grow (int w, int h)
 		return FALSE;
 	}
 	uintptr ulAligned = ((uintptr) pRaw + KPAGE_MASK) & ~((uintptr) KPAGE_MASK);
-	memset ((void *) ulAligned, 0, nPages * KPAGE_SIZE);
 	Damage ();
 	// the old memory is retired (the compositor may be blitting it right now), the new one in
 	m_pRetired[0] = m_pRawAlloc;

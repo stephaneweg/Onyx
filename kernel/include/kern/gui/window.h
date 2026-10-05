@@ -173,7 +173,8 @@ extern u32 g_WinTitleTextColor;
 
 // The memory of a window's pixels: its canvas (nPart 0) and its frame's two copies (1 active, 2
 // inactive), nBytes with a spare 64 KB page (the window aligns its start on a page) -> the block
-// (WinPixelsFree's argument), 0: none. window.cpp's are the heap's; the graphics server builds
+// (WinPixelsFree's argument), 0: none -- ZEROED, unless it is memory the window's program already
+// draws in (the graphics server started again: the pixels are kept). window.cpp's are the heap's; the graphics server builds
 // window.cpp with WIN_PIXELS_HOOK and gives memory shared with the window's program.
 void *WinPixelsAlloc (int nPart, unsigned nBytes);
 void WinPixelsFree (void *pRaw);

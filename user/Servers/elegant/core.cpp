@@ -27,7 +27,9 @@ static unsigned s_nOwner = 0;			// (el_core_owner)
 void *WinPixelsAlloc (int nPart, unsigned nBytes)
 {
 	if (s_nOwner != 0) return el_shared_alloc (s_nOwner, nPart, nBytes > KPAGE_SIZE ? nBytes - KPAGE_SIZE : nBytes);
-	return new u8[nBytes];
+	u8 *p = new u8[nBytes];
+	memset (p, 0, nBytes);
+	return p;
 }
 
 void WinPixelsFree (void *pRaw)

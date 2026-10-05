@@ -82,11 +82,14 @@ unsigned el_core_focus_pid (void);		// the program that has the keyboard, 0: non
 // a live process's name -> its length (0: none).
 int el_sys_attach (unsigned pid);
 int el_sys_name (unsigned pid, char *buf, unsigned cap);
-// ... KAPI_WS_STATE_BYTES (64) the kernel keeps for an attached program: written (set) / read -> 1.
+// ... KAPI_WS_STATE_BYTES the kernel keeps for an attached program: written (set) / read -> 1;
+// the attached programs' pids -> how many.
+int el_sys_clients (unsigned *pids, int max);
 int el_sys_state (unsigned pid, void *bytes, int set);
 // The programs' windows' places kept in the kernel when they change (not `self`'s own windows): a
 // server started again puts each window back where it was.
 void el_core_save_states (unsigned self);
+int el_core_restore_all (void);			// started again: every attached program's window made anew -> how many
 
 void el_core_screen (int w, int h);		// the screen's size changed: the windows kept on it, told
 void el_core_redraw (void);			// the whole screen at the next composition
