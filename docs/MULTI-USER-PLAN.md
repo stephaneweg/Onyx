@@ -96,7 +96,7 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
   about 25 others open a literal path with their own parser; shared headers do the same
   (`wallpaper.h`, `dockconf.h`, `fileassoc.h`, `launch.h`, `gamepad.h`, `ftpfs.h`, `uikit/theme.cpp`,
   `uikit/root.cpp`). uikit has no "where is my configuration" call.
-- What is clearly **a user's**: `SD:/etc/` `theme.txt`, `wallpaper.ini`, `dock.ini`, `quicklaunch.txt`,
+- What is clearly **a user's**: `SD:/etc/` `theme.txt`, `wallpaper.ini`, `dock.ini`,
   `shelf.ini`, `places.ini`, `lock.ini`, `screenshot.ini`, `sound.ini`, `ftpfs.ini` (saved logins),
   `mail/*`, `media/*`, `pdf/*`, `photos`, `web-*` (Jet); the data folders `SD:/mail`, `SD:/courier`,
   `SD:/koton`, `SD:/lisa-chat.txt`; the documents `SD:/docs` (≈ 48 literals), `SD:/Documents`,

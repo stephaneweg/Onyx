@@ -3172,7 +3172,7 @@ the N64's label, the GameCube's banner) shows its emulator's icon on the cards. 
 compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
-you put in `/etc/autostart` / `/etc/quicklaunch.txt` and what `kapi_list_apps` returns.
+you put in `/etc/autostart` and what `kapi_list_apps` returns.
 
 **`app.txt`** — friendly metadata for launchers (`key = value`, no section, read with
 `app_ini_load_path` / `app_ini_get(0, …)`). Every app under `SD:apps/` ships one:
@@ -3196,8 +3196,7 @@ engine may use 4).
 
 The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show
 their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
-`menubar`, `dock`, `notifyd`, `agenda`, `lock`, `shell`… and the retired `panel`,
-`applist`), `Settings` (the Control Panel's applets: reached through it) and
+`menubar`, `dock`, `notifyd`, `agenda`, `lock`, `shell`…), `Settings` (the Control Panel's applets: reached through it) and
 `Emulators` (reached through the Game Library, which starts the right one for a game). A shell
 component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
 positioned `uikit::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
@@ -3210,7 +3209,7 @@ a calculator for `tinycalc`, a glider for `life`, etc.) and the "9 squares" glyp
 PNG preview montage. Workflow: run `gen_assets.py` (writes the `icon.bmp` files into
 `sdcard/apps/<name>.app/`), then `preview_icons.py` to check visually.
 
-**`config.ini`** — example read by `inidemo` / `voronoy` / `panel`:
+**`config.ini`** — example read by `inidemo` / `voronoy`:
 
 ```ini
 ; commentaire

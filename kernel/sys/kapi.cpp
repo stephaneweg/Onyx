@@ -601,7 +601,7 @@ int kapi_win_resizable (int bOn, int nMinW, int nMinH)
 	return 0;
 }
 
-// Framebuffer size, for edge-pinned borderless windows (the shell panel/applist).
+// Framebuffer size, for edge-pinned borderless windows (the dock, the menu bar).
 void kapi_screen_size (int *pW, int *pH)
 {
 	if (OutOK (pW)) OutPut (pW, g_nScreenWidth);
@@ -799,7 +799,7 @@ static boolean RaiseCallback (CTask *pTask, const char *pTaskName, TTaskState St
 	return TRUE;
 }
 
-// Raise the named running app's window to the front (taskbar / quicklaunch click on
+// Raise the named running app's window to the front (a dock / taskbar click on
 // an already-open app). Returns 1 if raised, 0 if not running / no window.
 int kapi_raise_app (const char *pUserName)
 {

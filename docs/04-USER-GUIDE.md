@@ -68,7 +68,6 @@ Card contents:
 | `etc/theme.txt`, `etc/wallpaper.ini`, `etc/dock.ini` | the desktop's colours and style, the wallpaper, the dock (the Control Panel writes them) |
 | `etc/keymaps/*.kmap` | the keyboard layouts (§10) |
 | `etc/fileassoc.ini`, `etc/runners.ini` | which app opens which file; which runner runs a `.bas` / `.bax` |
-| `etc/quicklaunch.txt` | apps pinned to the panel (the old shell, no longer started) |
 | `var/pkg/db` | the installed packages (§11, *The Package Manager*) |
 | `res/` | shared resources: the fonts (`res/fonts`: DejaVu, the web stand-ins), icons, the SoundFonts, the certificates (`ca-bundle`) |
 | `fonts/`, `wallpapers/` | the bitmap font; the shipped wallpaper pictures |
@@ -320,8 +319,7 @@ at the bottom; everything can be changed later in the Control Panel.
 You then get the desktop — a **modernised CDE** (the look of the classic Unix desktop, redrawn
 with rounded corners, soft gradients, the push buttons raised faces as the drop-downs'): the wallpaper, the menu
 bar at the top, the **dock** at the bottom, the agenda widget at the top left. (The former
-left panel is no longer started: the dock replaces it; `run panel` still brings it back. The Shelf
-strip, which the dock replaced too, was removed on 2026-10-05.)
+left panel, its app list and the Shelf strip, which the dock replaced, were removed on 2026-10-05.)
 
 ![Onyx desktop](../screenshots/desktop.png)
 *The desktop: the agenda on the wallpaper, a calculator, a terminal in front (its frame in the
@@ -457,33 +455,6 @@ the dock, opens a new window here). A window opens on the current workspace.
 the darkened wallpaper; a **click or a key** unlocks it — or, if `SD:/etc/lock.ini` sets a PIN
 (`pin = 1234`), typing the PIN then **Enter** (Backspace erases; a wrong PIN is said so).
 
-### The panel (`panel`, no longer started)
-
-A **borderless** bar, pinned to an edge of the screen (**right** with the shipped
-configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 1=left,
-2=top, 3=right, 4=bottom). It re-centers itself on its edge. It contains, in order:
-
-- **The "apps" button** (9-square glyph): opens/closes the app list.
-- **The quicklaunch**: the pinned icons listed in `SD:/etc/quicklaunch.txt`
-  (by default: `terminal`, `fileviewer`, `tinypad`, `tinycalc`). A click **launches** the app (or
-  **brings it to the foreground** if it is already open).
-- **The taskbar**: the icons of the open apps (not pinned). A click **brings** the
-  window to the foreground. System components (the panel itself, the app list, the menu
-  bar, the notifications) are never listed: their window is created with `WIN_FLAG_SYSTEM`. An open app carries a small **badge** (triangle).
-- **The clock**: updated every minute.
-
-### The app list (`applist`, no longer used)
-
-Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
-the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
-says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `agenda`). It opens **right next to the panel**, beside
-the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
-below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
-scrollbar (or the wheel) if the grid overflows.
-
-![App list](../screenshots/applist.png)
-*The app list (square, 6-column grid, opened beside the panel's "apps" button).*
-
 ### The agenda widget (`agenda`)
 
 The **next appointments**, straight on the wallpaper at the top left (started by `autostart`,
@@ -600,7 +571,7 @@ remove it); no shadow. Its **title bar** holds:
   eraser in Paint) and **drag** (paint, move, drag a slider).
 ## 7. The terminal and the shell
 
-Launch **`terminal`** (pinned to the panel by default). It is a console where you type
+Launch **`terminal`** (the dock's Terminal button, or the menu bar's **Onyx ▸ Terminal**). It is a console where you type
 commands, executed by **programs in `SD:/bin/`**.
 
 ![Terminal](../screenshots/terminal.png)
@@ -1744,7 +1715,6 @@ silver).
   `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run dock`, `run agenda`, `keyb FR` (sets the
   keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
-- **`SD:/etc/quicklaunch.txt`**: the apps pinned to the (former) panel (top→bottom).
 
 ### Wallpaper
 

@@ -95,8 +95,8 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    option **`init=`** (e.g. `init=SD:/bin/init`), defaulting to `SD:bin/init`
    when the option is absent. The kernel does not parse any launch list itself —
    init (PID-1 style) reads `SD:/etc/autostart` and starts everything from there
-   (by default `voronoy`, which paints the wallpaper then exits, and `panel`, the
-   shell). Pointing `init=` at a different ELF swaps the whole userland launcher
+   (by default `voronoy`, which paints the wallpaper then exits, `setup`, the daemons and the
+   remote access: see the file). Pointing `init=` at a different ELF swaps the whole userland launcher
    (e.g. a recovery shell) without rebuilding the kernel.
 3. Launches the **kernel service tasks**:
    - **`CCompositorTask`** — presents the screen at up to ~60 Hz, **only what changed**

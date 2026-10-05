@@ -123,7 +123,7 @@ build () {
 	esac
 	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" $AK
 }
-APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
+APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
@@ -321,7 +321,6 @@ if want ledger; then			# (the demo company: its overview, its sales, an invoice,
 	png ledger-print
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
-if want applist; then sim applist applist "$W" $P; png applist; fi
 if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
 if want basicdemo; then sim basic basicdemo "$W;$W;$W" $P SIM_APP=basic SIM_ARGS=SD:/apps/basicdemo.app/main.bas; png basicdemo; fi
 if want gamelib; then

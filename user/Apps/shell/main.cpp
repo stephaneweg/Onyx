@@ -161,7 +161,7 @@ static void on_collapse (Widget &)
 // ---- stubs (wired in later phases) -----------------------------------------
 static void on_home    (Widget &) { /* TODO phase 2: zoom-out to Accueil */ }
 static void on_journal (Widget &) { /* TODO phase 4: open the activity Journal */ }
-static void on_apps    (Widget &) { kapi_launch ("applist"); }	// app launcher, centred on screen
+static void on_apps    (Widget &) { }				// (the app list it opened was removed with the panel, 2026-10-05)
 
 // A placeholder "task" pane (stands in for an app viewport until a real app is hosted).
 static Panel *placeholder (const char *label, unsigned bg)

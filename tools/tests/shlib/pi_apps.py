@@ -15,7 +15,7 @@ import os, re, socket, subprocess, sys, time
 
 SKIP = { "menubar", "dock", "notifyd", "clipd", "pkgd", "agenda",	# the desktop: running already
 	 "lock", "shutdown", "setup",					# act on the machine
-	 "panel", "applist", "shell" }			# need arguments / the old shells
+	 "shell" }			# need arguments / the old shells
 
 def strip (data, st):
 	out = bytearray ()

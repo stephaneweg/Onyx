@@ -33,7 +33,7 @@ KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 # <name>.elf here at user/ (so `make stage` keeps globbing ../user/*.elf; it stages
 # each one as apps/<name>.app/main, without extension). Every graphical
 # app is C++ on the uikit toolkit now; the /bin console tools stay C in BinUtils/.
-APPS = tinycalc tinypad applist panel cppdemo \
+APPS = tinycalc tinypad cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
        tetris snake same terminal \
        2048 life pong sokoban \
