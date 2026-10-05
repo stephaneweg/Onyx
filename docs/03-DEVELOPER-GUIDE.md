@@ -1097,7 +1097,7 @@ alone**.
 > DND_F_COPY` = Ctrl held), `onDragOver (x, y, leave, flags)` (highlight the drop spot),
 > and the source gets `onDragDone (targetPid, flags)` (`DND_F_DESKTOP` = dropped on the
 > desktop, `DND_F_CANCEL` = Esc). `kapi_get_modifiers ()` returns `MOD_CTRL` / `MOD_SHIFT` /
-> `MOD_ALT`. Examples: `fileviewer` (source + target), `shelf`, and the document apps.
+> `MOD_ALT`. Examples: `fileviewer` (source + target) and the document apps.
 >
 > **File associations**: `#include "fileassoc.h"` — `fa_open (path)` opens a path like a
 > double-click (folder → File Viewer, `.app` / ELF → run, else the app `SD:/etc/fileassoc.ini`
@@ -1106,7 +1106,7 @@ alone**.
 > `doc_hash (data, len)` of the document as loaded / saved, and before replacing it call
 > `doc_confirm (name, changed, save_fn)` (a Yes / No / Cancel `MB_YESNOCANCEL` box; false =
 > cancelled). A document app should accept a path argument (`kapi_get_args`) and a dropped
-> file (`onDrop`), so it works with the File Viewer, the Shelf and `fileassoc.ini`.
+> file (`onDrop`), so it works with the File Viewer and `fileassoc.ini`.
 > **Images**: `#include "img/imgload.hpp"` (in one TU) — `img_load (path, &frames)` decodes
 > BMP / GIF (all frames + delays) / PNG / JPEG (stb_image, public domain), WebP
 > (simplewebp, BSD-3) and PCX (our decoder) into `0xAARRGGBB` frames from the app's umm
@@ -1437,7 +1437,7 @@ alone**.
 > the PC against a fake kapi table (`tools/tests/uikithost/host_kapi.h`: every slot a stub,
 > files from `sdcard/`), plays a scripted scenario (UBSan) and saves real screenshots to
 > `/tmp/onyx_games`.
-> **Rich Text Format** (`user/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
+> **Rich Text Format** (`user/Apps/rtfview/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
 > a `RichTextBox` (styles, colour table → the 16-colour palette, `\'hh` / `\uN` → Latin-1,
 > skipped destinations), `rtf::save (box, out, cap)` writes it back; `rtf::is_rtf`. Used by
 > `rtfview` (Letters reads and writes RTF itself, with everything: `Apps/letters/fileio.h`).
@@ -1942,9 +1942,6 @@ alone**.
 > **Wi-Fi scan (ABI v45)**: `kapi_wlan_scan (ap, max)` fills `struct kapi_wlan_ap` entries
 > (ssid, bssid, security `WLAN_SEC_*`, channel, freq, level dBm, connected), strongest first;
 > it blocks ~3 s. Examples: `user/BinUtils/wifiscan.c`, `wpaconf` (Scan button + Combobox).
-> An app that **moves or renames** files should call `shelf_moved (from, to)`
-> (`#include "shelfmsg.h"`, IPC to the `shelf` service: the dock's switcher) so the shelf's
-> references follow.
 > **WPF-style controls (P5)** — all in `uikit/uikit.h`, see `user/Apps/widgets` for each in use:
 > `RadioButton (l, t, w, h, text, group, checked, cb)` — exclusive per `group` among its
 > siblings (`uk_radio_checked (parent, group)`); `GroupBox (l, t, w, h, title)` — a titled
@@ -2017,11 +2014,8 @@ alone**.
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
 > **`uikit::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
-> a spawned process or a timer there. **`ask.h`**: `ask_begin (title, msg, yes, no)` opens
-> the system Yes / No window (`apps/ask`) without blocking; `ask_poll (h)` returns -1 while
-> open, then 1 / 0. `ask_text_begin (title, msg, ok, cancel, text)` asks for a line of text
-> the same way (for an app that never has the keyboard: the dock); `ask_text_poll (out, cap)`
-> returns -1, then 1 (the text in `out`) / 0.
+> a spawned process or a timer there. (The `ask` window and `ask.h`, which only
+> the Shelf used, were removed with it on 2026-10-05: a question is a uikit dialog.)
 >
 > **The output (kapi v84).** An app never chooses a device: it plays into the one producer
 > (44.1 kHz stereo), and the kernel's output — the jack, a USB audio device or HDMI — adapts (the
@@ -3028,7 +3022,7 @@ The app-drawn widgets `applib.h` had (`ax_dropdown`, `ax_colorpick`, `ax_fill`, 
 UIKit has the widgets (`Dropdown`, `ColorPicker`, `uk_color_dialog`). Mandelbrot, whose picture is its
 own canvas, keeps the few lines of its drop-down in its own source.
 
-There is also [`user/httpc.h`](../user/httpc.h) — a header-only **HTTP/1.0 client**
+There is also [`user/BinUtils/httpc.h`](../user/BinUtils/httpc.h) — a header-only **HTTP/1.0 client**
 over the v21 TCP socket calls. It does **no allocation** (the caller passes the
 response buffer, so all memory stays in the app's address space): `http_get(url, buf,
 cap, &resp)`, `http_post(...)`, or the general `http_request(method, url, headers,
@@ -3202,8 +3196,8 @@ engine may use 4).
 
 The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show
 their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
-`menubar`, `dock`, `notifyd`, `agenda`, `lock`, `ask`, `shell`… and the retired `panel`,
-`applist`, `shelf`), `Settings` (the Control Panel's applets: reached through it) and
+`menubar`, `dock`, `notifyd`, `agenda`, `lock`, `shell`… and the retired `panel`,
+`applist`), `Settings` (the Control Panel's applets: reached through it) and
 `Emulators` (reached through the Game Library, which starts the right one for a game). A shell
 component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
 positioned `uikit::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
@@ -3652,7 +3646,7 @@ points** to touch (all in the same direction, at the end):
 - A new pure-computation entry (like `memcpy`) that must not cost a system call needs a
   user-side implementation in `kernel/arch/aarch64/el0blob.S` and its slot added to the refused
   list in `sys/el0.cpp`.
-- Regenerate `user/kapi_names.h` (`python3 tools/gen_kapi_names.py`: the slot names `sysstat`
+- Regenerate `user/BinUtils/kapi_names.h` (`python3 tools/gen_kapi_names.py`: the slot names `sysstat`
   shows), and after a build run `tools/el0scan.sh` on the card: an app must contain no
   instruction EL0 cannot run.
 

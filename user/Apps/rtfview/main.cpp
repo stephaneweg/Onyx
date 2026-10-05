@@ -1,7 +1,7 @@
 //
 // rtfview/main.cpp -- the RTF reader: shows a Rich Text Format document (.rtf) with its
 // bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped
-// (user/rtf.h parses it into a read-only RichTextBox). Plain text files open too.
+// (rtf.h, beside, parses it into a read-only RichTextBox). Plain text files open too.
 // File > Open... (^O) or drop a file on the window; Edit > Copy (^C) / Select All (^A);
 // File > Edit in Letters hands the document to Letters (which reads and writes .rtf).
 // Double-clicking a .rtf file in the File Viewer opens it here (fileassoc.ini).

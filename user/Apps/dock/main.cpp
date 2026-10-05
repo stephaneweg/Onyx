@@ -1,6 +1,6 @@
 //
 // dock -- the dock: the modernised CDE's Front Panel, along the bottom of the screen (it replaces
-// the Shelf and the panel). In its middle the workspaces and the system buttons; its buttons --
+// the Shelf, since removed, and the panel). In its middle the workspaces and the system buttons; its buttons --
 // the drawers, the launchers, the Trash, in this order -- shared evenly on the two sides (the odd
 // one out at the left):
 //   * the DRAWERS (SD:/etc/dock.ini, dockconf.h -- the Control Panel's Panel applet sets them): a

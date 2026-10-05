@@ -147,7 +147,7 @@ all: $(PROGS) $(LIBC_PROGS) $(ARC_PROGS) $(CXX_PROGS) $(V3D_PROGS) $(GPC_PROGS) 
 # fptest exercises hardware float across context switches -> build it with FP on.
 fptest.elf: CFLAGS := $(CFLAGS_FP)
 
-%.elf: %.c ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../httpc.h ../umm.h
+%.elf: %.c ../crt0.S ../user.ld ../Kits/appkit/appkit.h ../umm.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
@@ -283,3 +283,7 @@ $(ARC_PROGS): %.elf: %.cpp arccli.h $(wildcard ../Kits/filekit/*.h) $(LIBC_DEP)
 	$(CXX) $(CXXFLAGS_LIBC) -I$(ZLIB_DIR) -Wno-maybe-uninitialized -ffunction-sections -fdata-sections -Wl,--gc-sections \
 	       $(LDFLAGS) $*.crt0.o $*.sys.o $< -L$(ZLIB_DIR) -lz -lm -o $@
 	@rm -f $*.crt0.o $*.sys.o
+
+# (the headers of one program, beside it)
+wget.elf: httpc.h
+sysstat.elf: kapi_names.h

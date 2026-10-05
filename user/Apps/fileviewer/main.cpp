@@ -39,7 +39,6 @@
 #include "trash.h"
 #include "notify.h"
 #include "fileassoc.h"
-#include "shelfmsg.h"
 #include "ftpfs.h"			// ftpfs_login (Connect to Server)
 #include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libuikit)
 #include "uikit/uikit.h"
@@ -521,7 +520,6 @@ static void op_rename ()
 	join (s, sizeof s, g_col[g_active].path, old);
 	join (d, sizeof d, g_col[g_active].path, name);
 	if (exists (d) || kapi_rename (s, d) != 0) { status ("Could not rename to ", name); return; }
-	shelf_moved (s, d);
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
 	for (int i = 0; i < g_col[g_active].count; i++)
@@ -790,7 +788,7 @@ static void net_place (const char *name, const char *addr)
 
 // Go > Connect to Server...: protocol (FTP / FTPS), server, port, user, password and
 // folder. The login goes to /bin/ftpfs over IPC ("ftpfs" service, like `ftpfs login`) --
-// never into the path, which the Shelf and the path bar may show or store -- then the
+// never into the path, which the path bar may show or store -- then the
 // folder opens as FTP[S]:host[:port]/folder (ABI v44 file-system provider), and the server
 // joins the sidebar's Network group under the name given (a click there connects again).
 static void connect_picked (Widget &w);
@@ -1043,14 +1041,12 @@ static bool transfer (const char *src, const char *dir, bool move)
 	{
 		if (kapi_rename (src, dst) == 0)		// (kapi: 0 = ok)
 		{
-			shelf_moved (src, dst);			// the Shelf's references follow
 			return true;
 		}
 		if (same_volume (src, dir)) return false;		// same volume: a real failure
 		// Across volumes (SD <-> SD1: <-> FTP), rename cannot work: copy, then delete the source.
 		if (!(isDir ? copy_tree (src, dst, 0) : copy_file (src, dst))) return false;
 		if (isDir) remove_tree (src, 0); else kapi_remove (src);
-		shelf_moved (src, dst);
 		return true;
 	}
 	return isDir ? copy_tree (src, dst, 0) : copy_file (src, dst);

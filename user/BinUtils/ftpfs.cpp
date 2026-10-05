@@ -7,14 +7,14 @@
 //
 // to every app through the kernel's user-space file-system hook (ABI v44, kern/vfs.h):
 // the File Viewer browses FTP:ftp.gnu.org/gnu like a folder, tinypad opens and saves
-// FTP:... files, the Shelf keeps them. The kernel starts ftpfs by itself the first time
+// FTP:... files. The kernel starts ftpfs by itself the first time
 // such a path is used.
 //
 // Credentials: in the path, or registered with
 //     ftpfs login <host> <user> <password> [save]      ftpfs forget <host>
 // (sent to the running ftpfs over IPC, or kept by this one if it becomes the daemon);
 // otherwise "anonymous". "save" (the File Viewer's "Remember password") also writes the
-// login to SD:/etc/ftpfs.ini, read back at start -- so FTP: items on the Shelf still open
+// login to SD:/etc/ftpfs.ini, read back at start -- so FTP: items kept somewhere (a recent file) still open
 // after a reboot. The password there is OBFUSCATED, NOT ENCRYPTED (there is no secure
 // storage on the Pi): anyone holding the card can recover it. TLS = mbedTLS (tls/onyx_tls.hpp): the data connections resume
 // the control connection's session (servers such as vsftpd require it). Certificates

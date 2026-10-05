@@ -337,7 +337,7 @@ The goal is that **no two WPs edit the same lines**. WP-0 lands the whole v75 AB
 - `kern/addrspace.h`:
   - `struct TVmSpace *m_pVm;` and `struct TProcInfo *m_pProcInfo;` (0 initially; `~CAddressSpace` calls `VmTeardown (this)` and `ProcInfoTeardown (this)`, both stubs);
   - `void SetTermReason (int nReason, int nCode)` / `int GetTermReason (void) const` (default `KAPI_PROC_EXITED`).
-- Regenerate `user/kapi_names.h` (`tools/gen_kapi_names.py`).
+- Regenerate `user/BinUtils/kapi_names.h` (`tools/gen_kapi_names.py`).
 - Add this file as `docs/POSIX-PLAN.md`, and three empty subsections in docs/02 §8 ("v75: memory", "v75: files and processes", "v75: sockets and poll"), one per WP.
 
 Error convention for **every** v75 call: ≥ 0 is success; **< 0 is `-KAPI_Exxx`**, where `KAPI_Exxx` equals newlib's errno value (`sys/errno.h`), so libc does `errno = -r`. The values used:

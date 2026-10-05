@@ -180,7 +180,7 @@ conventions (its BSD-2 header, "Onyx contributors"); Onyx-side scripts carry the
   branch, do not push". Clean the worktrees once merged (after checking they are merged).
 - **Write a spec first** when several agents must agree on an interface (as `docs/POSIX-PLAN.md` did for
   the kapi v75/v76 blocks) — the ABI is **append-only** (`kernel/include/kern/kapi_abi.h`), slots
-  numbered in blocks, `user/kapi_names.h` regenerated with `python3 tools/gen_kapi_names.py`.
+  numbered in blocks, `user/BinUtils/kapi_names.h` regenerated with `python3 tools/gen_kapi_names.py`.
 - **Test on the PC before the Pi**: host unit tests (`tools/tests/run_*.sh`), the qemu bench
   (`tools/tests/posixsim/`: a fake kapi table + qemu-aarch64-static), `el0scan.sh`. Then stage the card
   and give the user a short test plan (they paste back only the FAIL lines).

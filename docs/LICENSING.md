@@ -181,7 +181,7 @@ the repository on 2026-10-04: Jet is the WebKit port.
    The new files already carry the MIT notice — the EL0 work (`kernel/arch/aarch64/el0.S`,
    `el0blob.S`, `kernel/sys/el0.cpp`, `sys/uaccess.cpp`, `kern/handle.h`, `kern/uaccess.h`,
    `tools/el0scan.sh`, `tools/gen_kapi_names.py`, `/bin/sysstat`, `el0test`, `faulttest`), Mail
-   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/Kits/appkit/appkit.h`, `user/kapi_names.h` (generated)
+   (`user/mail/`), Photos, `user/pdf/pdfwrite.h`…; `user/Kits/appkit/appkit.h`, `user/BinUtils/kapi_names.h` (generated)
    and most older files do not yet.
 6. The FM Song covers out of the public distribution.
 

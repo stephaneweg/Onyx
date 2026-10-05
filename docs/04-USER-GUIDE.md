@@ -320,8 +320,8 @@ at the bottom; everything can be changed later in the Control Panel.
 You then get the desktop — a **modernised CDE** (the look of the classic Unix desktop, redrawn
 with rounded corners, soft gradients, the push buttons raised faces as the drop-downs'): the wallpaper, the menu
 bar at the top, the **dock** at the bottom, the agenda widget at the top left. (The former
-Shelf strip and left panel are no longer started: the dock replaces them; `run shelf` /
-`run panel` still bring them back.)
+left panel is no longer started: the dock replaces it; `run panel` still brings it back. The Shelf
+strip, which the dock replaced too, was removed on 2026-10-05.)
 
 ![Onyx desktop](../screenshots/desktop.png)
 *The desktop: the agenda on the wallpaper, a calculator, a terminal in front (its frame in the
@@ -476,19 +476,13 @@ configuration; configurable via `SD:apps/panel.app/config.ini`, key `position`: 
 
 Clicking the "apps" button opens a **square grid** (6 columns, alphabetical) of **all**
 the installed applications (any `SD:apps/<name>.app/` folder, except the shell components — those whose `app.txt`
-says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `shelf`, `ask`, `agenda`). It opens **right next to the panel**, beside
+says `category = Shell`: `panel`, `applist`, `shell`, `menubar`, `notifyd`, `agenda`). It opens **right next to the panel**, beside
 the "apps" button, on whichever edge the panel sits (its `config.ini` `position`), and
 below the menu bar. Click an icon to **launch** the app; the list then closes. Use the
 scrollbar (or the wheel) if the grid overflows.
 
 ![App list](../screenshots/applist.png)
 *The app list (square, 6-column grid, opened beside the panel's "apps" button).*
-
-### The Shelf (`shelf`, no longer started)
-
-The former strip along the bottom of the screen: tabs of references to files, folders and apps
-(`SD:/etc/shelf.ini`). The dock no longer shows them (its middle holds the workspaces);
-`run shelf` brings the strip back.
 
 ### The agenda widget (`agenda`)
 
@@ -1307,10 +1301,10 @@ FTPS:[user[:password]@]host[:port]/path     FTP over TLS (explicit AUTH TLS on 2
   remembered one — protocol, port, user, password and folder are then filled in. **Forget**
   removes the selected server's remembered login (so does connecting to it with *Remember
   password* unchecked). The login is handed to `ftpfs` (never put into the path, so the
-  shelf and the path bar never show it). Or `run fileviewer FTP:host/dir`. Then browse, preview (files ≤ 1 MB), open (double-click —
+  path bar never shows it). Or `run fileviewer FTP:host/dir`. Then browse, preview (files ≤ 1 MB), open (double-click —
   tinypad, Image Viewer…), drag files between the card and the server (a move across them
   = copy + delete), new folder, rename, delete.
-- **tinypad / Letters / paint** open and **save** `FTP:` files directly; the dock's **shelf** keeps them.
+- **tinypad / Letters / paint** open and **save** `FTP:` files directly.
 - **Logins**: in the path (`FTP:me:secret@host/…`), or once per host with
   `ftpfs login <host> <user> <password> [save]`; otherwise `anonymous`. A login is kept in
   memory by the running ftpfs (one per server); with **Remember password** (or `save`) it is
@@ -1904,8 +1898,6 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
-| **shelf** (Shelf) | The former bottom strip of references in tabs (no longer started). Reads/writes `SD:/etc/shelf.ini`. |
-| **ask** (Confirm) | A small system window used by apps that cannot host a dialog (the dock): `run ask "Title|Message|Yes|No"` asks Yes / No and exits with 1 (Yes / Enter) or 0 (No / Esc / close box); a fifth field `=text` asks for a line of text instead (written to its output on OK: the dock's tab names). |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
 | **terminal** | Terminal/shell (see §7). |
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |

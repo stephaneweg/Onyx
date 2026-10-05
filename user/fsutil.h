@@ -1,5 +1,5 @@
 //
-// fsutil.h -- file-system helpers shared by the file tools (File Viewer, trash, shelf):
+// fsutil.h -- file-system helpers shared by the file tools (File Viewer, trash, dock):
 // path join, exists / is_dir, recursive copy and delete, a free "name copy" name.
 // Header-only, freestanding (kapi file calls + operator new/delete for the copy buffer).
 //

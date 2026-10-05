@@ -3,7 +3,7 @@
 // (img/imgload.hpp: stb_image, simplewebp, our PCX decoder).
 //
 //   * Opens the file given as argument (File Viewer double-click via fileassoc.ini, the
-//     Shelf), File > Open... (^O), or a file dropped on the window.
+//     dock), File > Open... (^O), or a file dropped on the window.
 //   * Fit to the window by default (never enlarged); 1 = actual size, + / - (or the
 //     wheel) zoom, 0 = fit again. When the image is larger than the window, drag it
 //     with the mouse to pan.

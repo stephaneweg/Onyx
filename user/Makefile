@@ -38,7 +38,7 @@ APPS = tinycalc tinypad applist panel cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        mandelbrot minesweeper \
-       eyes voronoy irc spin wtkdemo shell notifyd shutdown plasma shelf ask agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
+       eyes voronoy irc spin wtkdemo shell notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, ft/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
@@ -312,6 +312,8 @@ libs: $(SHLIBS) lib/appkit_stubs.o lib/ft.imp.a lib/uikit.imp.a lib/printerkit.i
 doom: lib/uikit.imp.a lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C doom
 
+rtfview.elf: Apps/rtfview/rtf.h
+
 # /bin console tools live in BinUtils/ (their own Makefile).
 .PHONY: bin
 bin: v3d/libv3d.a gpucomp/libgpucomp.a libs
@@ -341,7 +343,7 @@ Kits/uikit/libuikit.a: $(UIKIT_OBJ)
 # (Kits/uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld Kits/appkit/appkit.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
+$(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld Kits/appkit/appkit.h launch.h bmp.hpp umm.h onyxpp.hpp game.h cards.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
 	$(CXX) $(CXXFLAGS) -I. -IKits -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,

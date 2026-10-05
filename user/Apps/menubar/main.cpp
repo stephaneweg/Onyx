@@ -123,7 +123,7 @@ static void scan_apps (void)
 }
 static bool is_shell (const char *name)				// a desktop part (not an "open window")
 {
-	static const char *const own[] = { "menubar", "panel", "shelf", "notifyd", "desktop", "shell", "applist", 0 };
+	static const char *const own[] = { "menubar", "panel", "notifyd", "desktop", "shell", "applist", 0 };
 	for (int i = 0; own[i]; i++) if (eq (own[i], name)) return true;
 	char path[80]; ax_app_path (path, sizeof path, name, ".app/app.txt");
 	return app_ini_load_path (path) >= 0 && eq (app_ini_get (0, "category", ""), "Shell");

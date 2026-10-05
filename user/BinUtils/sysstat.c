@@ -4,7 +4,7 @@
 // nanoseconds, so an app making tens of thousands a second is worth a look.
 //
 //   sysstat                    every app: pid, calls per second, calls in all, emulated ID reads
-//   sysstat <pid | name>       one app: the same, then its 8 most called kapis (user/kapi_names.h)
+//   sysstat <pid | name>       one app: the same, then its 8 most called kapis (kapi_names.h, generated)
 //
 // ---------------------------------------------------------------------------------------------
 // MIT License

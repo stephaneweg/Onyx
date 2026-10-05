@@ -189,9 +189,9 @@ int main (void)
 	TreeView *tv = new TreeView (220, 8, 220, 240, on_tree, on_tree_go);
 	int sd = tv->add (-1, "SD:");
 	int apps = tv->add (sd, "apps");
-	tv->add (apps, "fileviewer.app"); tv->add (apps, "imageview.app"); tv->add (apps, "shelf.app");
+	tv->add (apps, "fileviewer.app"); tv->add (apps, "imageview.app"); tv->add (apps, "dock.app");
 	int etc = tv->add (sd, "etc");
-	tv->add (etc, "autostart"); tv->add (etc, "fileassoc.ini"); tv->add (etc, "shelf.ini");
+	tv->add (etc, "autostart"); tv->add (etc, "fileassoc.ini"); tv->add (etc, "dock.ini");
 	int bin = tv->add (sd, "bin");
 	tv->add (bin, "ls"); tv->add (bin, "cat"); tv->add (bin, "ping");
 	tv->expand (sd, true); tv->expand (etc, true);

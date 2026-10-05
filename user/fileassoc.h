@@ -5,7 +5,7 @@
 //   fa_open (path)               open it: a folder in the File Viewer, a .app bundle
 //                                or an ELF program runs, a file in its associated app
 //                                (SD:apps/<app>.app/main <path>) -- a NEW instance.
-// Header-only, no allocation. Used by fileviewer (double-click) and shelf (click).
+// Header-only, no allocation. Used by fileviewer (double-click) and the others that open a file by its type (the dock, Mail, the Media Player...).
 //
 #ifndef _fileassoc_h
 #define _fileassoc_h

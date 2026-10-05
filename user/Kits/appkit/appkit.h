@@ -413,7 +413,7 @@ KAPI_FN unsigned kapi_event_mods (unsigned mods);
 KAPI_FN int kapi_pop_post (struct kapi_posted *p);
 KAPI_FN int kapi_pump_sleep (unsigned timeout_ms);
 // (v74) A process's system calls (pid 0: the caller): the total, the rate per second, the 8 table
-// slots most called (user/kapi_names.h names them) -> 0, -1 no such process / older kernel, -2 bad pointer.
+// slots most called (user/BinUtils/kapi_names.h names them) -> 0, -1 no such process / older kernel, -2 bad pointer.
 KAPI_FN int kapi_proc_stats (int pid, struct kapi_syscall_stats *out);
 // (v75) The POSIX layer's kernel half (docs/POSIX-PLAN.md; the structures and KAPI_* values in
 // kern/kapi_abi.h). Every call returns >= 0 on success, -KAPI_Exxx (newlib's errno value) on
