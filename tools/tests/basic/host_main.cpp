@@ -148,8 +148,13 @@ int main (int argc, char **argv)
 	{
 		char *bytes; int n = bas::saveBax (p, &bytes);
 		bas::destroy (p);
-		p = bas::load (bytes, n, &e);
-		delete [] bytes;
+		// ... and as a standalone app would carry it: after a runtime, found back by the trailer
+		char *all; int an = bas::attachBax ("(a runtime)", 11, bytes, n, &all);
+		unsigned off = 0, len = 0;
+		if (!bas::attachedBax (all + an - bas::BAX_TRAILER, (unsigned) an, &off, &len) || off != 11 || len != (unsigned) n)
+		{ puts ("the attached program is not found back"); return 1; }
+		p = bas::load (all + off, (int) len, &e);
+		delete [] bytes; delete [] all;
 	}
 	if (!p) { printf ("COMPILE ERROR line %d: %s\n", e.line, e.msg); delete [] src; return 1; }
 	if (getenv ("MANAGED")) h.managed = true;

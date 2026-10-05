@@ -4261,8 +4261,16 @@ An app bundle may contain **`main.bas` or `main.bax` instead of `main`**:
 `SD:/apps/<name>.app/main.bas` (+ `app.txt`, `icon.bmp`). It is listed and launched like any
 app — the launchers see the file and run it with `SD:/bin/basic` (the programs for such
 formats are listed in `SD:/etc/runners.ini`). **File ▸ Make App...** in the editor creates
-one from the current program (it asks for the folder name and the title, and whether to
-compile it). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Planets 3D** and **Arkanoid**
+one from the current program: it asks for the folder name and the title, then shows the
+**compile dialog** — **Compiled** (`main.bax`: it starts faster, the source is not in the app; else
+`main.bas`), **Standalone**, **Managed** (the app runs on the VM instead of machine code, above).
+A **standalone** app is a real program: `SD:/apps/<name>.app/main` is **an executable** — the BASIC
+runtime of the card with the compiled program inside it (about 650 KB) — started by the system
+like any native app, without `SD:/bin/basic` nor `runners.ini`; it runs in machine code like the
+others. It keeps the runtime it was made with: make the app again after a system update to give
+it the newer one (it still uses the card's shared libraries). QBStudio asks the same things in
+**Project ▸ Settings** (`project.ini`: `compiled`, `managed`, `standalone`), the Windows editor in
+its **Make App** (standalone when the SD folder has `bin/basic`). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Planets 3D** and **Arkanoid**
 (`arkanoid`: `main.bax`, compiled at build time from `SD:/basic/examples/arkanoid.bas` — the
 game is written in BASIC).
 

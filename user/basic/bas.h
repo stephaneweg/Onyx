@@ -185,7 +185,14 @@ void     destroy (Program *p);
 // Compiled programs (.bax, basbax.cpp): the bytecode as a file -- it runs without parsing.
 void     setManaged (Program *p, bool on);		// "Managed": the program runs on the VM even where machine code is possible
 bool     isManaged (const Program *p);
-int      saveBax (const Program *p, char **out);	// its bytes (new[]), their count
+int      saveBax (const Program *p, char **out);
+// A standalone app (Make App > Standalone): the runtime's executable (SD:/bin/basic) with a compiled program
+// after it and a 16-byte trailer -- "OBAXAPP1", the program's offset and length (little-endian). The runtime
+// started from such a file runs that program. attachBax: the whole file (new[]), its size. attachedBax: from a
+// file's last 16 bytes and its size, where the program is (false: a plain runtime).
+enum { BAX_TRAILER = 16 };
+int      attachBax (const char *runtime, int rlen, const char *bax, int blen, char **out);
+bool     attachedBax (const char *tail16, unsigned fileSize, unsigned *off, unsigned *len);	// its bytes (new[]), their count
 bool     isBax (const char *buf, int len);
 Program *loadBax (const char *buf, int len, Error *err);
 Program *load (const char *buf, int len, Error *err);	// a .bax as it is, else source (compiled)

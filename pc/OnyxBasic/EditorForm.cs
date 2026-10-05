@@ -403,6 +403,10 @@ namespace OnyxBasic
 				Directory.CreateDirectory (dir);
 				// compiled (main.bax) or as source (main.bas): only one of them
 				bool compiled = MessageBox.Show (this, "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", "Make App", MessageBoxButtons.YesNo) == DialogResult.Yes;
+				// standalone: main = the card's runtime (bin/basic) with the compiled program after it (bas::attachBax)
+				string runtime = Path.Combine (Settings.SdFolder, "bin", "basic");
+				bool alone = compiled && File.Exists (runtime)
+					&& MessageBox.Show (this, "Standalone? (main: an executable with the runtime in it, 650 KB)", "Make App", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
 				string main = Path.Combine (dir, compiled ? "main.bax" : "main.bas"), other = Path.Combine (dir, compiled ? "main.bas" : "main.bax");
 				bool managed = AskManaged ("Make App");
 				if (compiled) { if (!WriteBax (main, managed)) return; }
@@ -412,6 +416,21 @@ namespace OnyxBasic
 					if (managed) File.WriteAllBytes (main, Latin1.Enc.GetBytes ("OPTION MANAGED\n").Concat (File.ReadAllBytes (main)).ToArray ());
 				}
 				if (File.Exists (other)) File.Delete (other);
+				string exe = Path.Combine (dir, "main");
+				if (alone)
+				{
+					byte[] rt = File.ReadAllBytes (runtime), bax = File.ReadAllBytes (main);
+					int rlen = rt.Length;			// (a runtime that carries a program already: without it)
+					if (rlen >= 16 && Encoding.ASCII.GetString (rt, rlen - 16, 8) == "OBAXAPP1") rlen = BitConverter.ToInt32 (rt, rlen - 8);
+					using (var o = new FileStream (exe, FileMode.Create))
+					{
+						o.Write (rt, 0, rlen); o.Write (bax, 0, bax.Length);
+						o.Write (Encoding.ASCII.GetBytes ("OBAXAPP1"), 0, 8);
+						o.Write (BitConverter.GetBytes (rlen), 0, 4); o.Write (BitConverter.GetBytes (bax.Length), 0, 4);
+					}
+					File.Delete (main);
+				}
+				else if (File.Exists (exe)) File.Delete (exe);
 				File.WriteAllBytes (Path.Combine (dir, "app.txt"), Latin1.Enc.GetBytes ("# Onyx application metadata (written by QBasic > Make App)\nname = " + title + "\ncategory = BASIC\n"));
 				string icon = Path.Combine (Settings.SdFolder, "apps", "qbasic.app", "program.bmp");
 				if (File.Exists (icon)) File.Copy (icon, Path.Combine (dir, "icon.bmp"), true);

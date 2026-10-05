@@ -37,9 +37,13 @@ answer in French. The docs stay in English.
   the bare-metal toolchain) and its fuzzer must stay green after any change to the VM's
   instructions or to `opLen ()`.
 - **Next**: (1) the calls and the numeric built-in functions in machine code (today each is a
-  call to the VM: recursion gains little), strings; (2) **form (c)**, the standalone app: "Make
-  App" writes `apps/<name>.app/main` = a pre-linked runtime with the program attached (no linker
-  on the machine); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
+  call to the VM: recursion gains little), strings; (2) done the same day: **form (c)**, the standalone app --
+  "Make App" > Standalone writes `apps/<name>.app/main` = the card's `/bin/basic` with the `.bax`
+  attached (`bas::attachBax`; tried on the Pi with Planets 3D's program: it starts and runs); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
+  **Seen on the Pi while testing (not understood)**: the Pi restarted three times a little after a
+  graphical BASIC program (Arkanoid in play, Planets 3D) was ended by `kill` from telnet -- the first
+  time with a runtime that had no machine code at all; other kills went well. A hang at the kill
+  of a full-screen / GPU app and the watchdog? To look at before blaming BASIC.
   Another session was adding AudioKit statements to BASIC at the same time (the end of
   `enum Builtin`): merge `origin/main` before touching `basint.h`.
 

@@ -138,6 +138,30 @@ Program *loadBax (const char *buf, int len, Error *err)
 	return p;
 }
 
+int attachBax (const char *runtime, int rlen, const char *bax, int blen, char **out)
+{
+	// (a runtime that already carries a program: the new one takes its place)
+	unsigned o, l;
+	if (rlen >= BAX_TRAILER && attachedBax (runtime + rlen - BAX_TRAILER, (unsigned) rlen, &o, &l)) rlen = (int) o;
+	char *b = new char[rlen + blen + BAX_TRAILER];
+	bmcpy (b, runtime, rlen); bmcpy (b + rlen, bax, blen);
+	char *t = b + rlen + blen;
+	bmcpy (t, "OBAXAPP1", 8);
+	for (int i = 0; i < 4; i++) { t[8 + i] = (char) (((unsigned) rlen >> (8 * i)) & 0xFF); t[12 + i] = (char) (((unsigned) blen >> (8 * i)) & 0xFF); }
+	*out = b;
+	return rlen + blen + BAX_TRAILER;
+}
+bool attachedBax (const char *t, unsigned fileSize, unsigned *off, unsigned *len)
+{
+	const char *m = "OBAXAPP1";
+	for (int i = 0; i < 8; i++) if (t[i] != m[i]) return false;
+	unsigned o = 0, l = 0;
+	for (int i = 0; i < 4; i++) { o |= (unsigned) (unsigned char) t[8 + i] << (8 * i); l |= (unsigned) (unsigned char) t[12 + i] << (8 * i); }
+	if (l == 0 || o > fileSize || l > fileSize || o + l + BAX_TRAILER != fileSize) return false;
+	*off = o; *len = l;
+	return true;
+}
+
 void setManaged (Program *p, bool on) { if (p) p->managed = on; }
 bool isManaged (const Program *p) { return p && p->managed; }
 
