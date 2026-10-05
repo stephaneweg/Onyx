@@ -156,7 +156,7 @@ static void cmd_save_as ()
 		if (n > 0) def[n - 1] = 0;
 		int k = slen (def); scpy (def + k, ".rtf", (int) sizeof def - k);
 	}
-	if (ft_file_save (path, sizeof path, "SD:/docs", def))
+	if (ft_file_save (path, sizeof path, "SD:/docs", def, "Rich Text (RTF)|*.rtf|Word (DOCX)|*.docx|OpenDocument (ODT)|*.odt|Text files|*.txt|All files|*"))
 	{
 		if (!rich_ext (path) && !has_ext (path, ".txt")) { int k = slen (path); scpy (path + k, ".rtf", (int) sizeof path - k); }
 		write_path (path);
@@ -176,7 +176,7 @@ static void cmd_open ()
 {
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	char path[200];
-	if (ft_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (ft_file_open (path, sizeof path, "SD:/docs", "Documents|*.rtf;*.docx;*.odt;*.txt|Rich Text (RTF)|*.rtf|Word (DOCX)|*.docx|OpenDocument (ODT)|*.odt|Text files|*.txt|All files|*")) load_path (path);
 	focus_view ();
 }
 static void cmd_export (const char *ext)
@@ -186,7 +186,7 @@ static void cmd_export (const char *ext)
 	int n = slen (def); int dot = n; while (dot > 0 && def[dot - 1] != '.') dot--;
 	if (dot > 0) def[dot - 1] = 0;
 	n = slen (def); scpy (def + n, ext, (int) sizeof def - n);
-	if (ft_file_save (path, sizeof path, "SD:/docs", def))
+	if (ft_file_save (path, sizeof path, "SD:/docs", def, has_ext (ext, ".html") ? "Web pages|*.html;*.htm|All files|*" : "Text files|*.txt|All files|*"))
 	{
 		if (!has_ext (path, ext)) { int k = slen (path); scpy (path + k, ext, (int) sizeof path - k); }
 		write_path (path, true);
@@ -233,7 +233,7 @@ public:
 	}
 	void onButton (int tag) override
 	{
-		if (tag == 9) { char p[200]; if (ft_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 9) { char p[200]; if (ft_file_save (p, sizeof p, dir, file->text, "PDF documents|*.pdf|All files|*")) file->setText (p); return; }
 		if (tag == 1)
 		{
 			o.pages = rAll->checked ? 0 : rCur->checked ? 1 : 2;
@@ -383,7 +383,7 @@ static void cmd_page_break () { ed_page_break (); after_edit (); }
 static void cmd_image ()
 {
 	char path[200];
-	if (ft_file_open (path, sizeof path, "SD:/"))
+	if (ft_file_open (path, sizeof path, "SD:/", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx|All files|*"))
 	{
 		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) ft_messagebox ("Insert Image", "That file is not an image Letters can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
 	}

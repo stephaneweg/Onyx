@@ -1112,7 +1112,7 @@ static void cmd_new ()
 static void cmd_open ()
 {
 	char p[256];
-	if (!uk_file_open (p, sizeof p, "SD:/projects")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/projects", "Project files|*.ini;*.bas;*.form|All files|*")) return;
 	confirm_close ();
 	// the project: the folder of the file chosen
 	char dir[256]; cpy (dir, p, sizeof dir);

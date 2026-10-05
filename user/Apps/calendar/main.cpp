@@ -37,6 +37,8 @@ using namespace uikit;
 #define CAL_ICS		"SD:/apps/calendar.app/calendar.ics"
 #define AGENDA_TXT	"SD:/apps/calendar.app/agenda.txt"
 #define REMIND_TXT	"SD:/apps/calendar.app/reminders.txt"
+// The kind of files the Import and Export dialogs offer (uikit/dialog.h).
+static const char *const ICS_KINDS = "iCalendar files|*.ics|All files|*";
 
 static int g_view = 1;				// 0 day, 1 week, 2 month
 static int g_anchor;				// the day the period is around
@@ -359,7 +361,7 @@ static void m_task ()
 static void m_import ()
 {
 	char path[256];
-	if (!uk_file_open (path, sizeof path, "SD:/")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/", ICS_KINDS)) return;
 	char *t = read_file (path, 0);
 	if (!t) { uk_messagebox ("Import", "The file could not be read.", MB_OK); return; }
 	int n = ics_read (t, true);
@@ -371,7 +373,7 @@ static void m_import ()
 static void m_export ()
 {
 	char path[256];
-	if (!uk_file_save (path, sizeof path, "SD:/docs", "calendar.ics")) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs", "calendar.ics", ICS_KINDS)) return;
 	int len = 0;
 	char *t = ics_write (&len);
 	int ok = kapi_save_file (path, t, (unsigned) len);

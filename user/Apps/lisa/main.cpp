@@ -318,7 +318,7 @@ static void on_new (void)
 static void on_save (void)
 {
 	char path[100];
-	if (uk_file_save (path, sizeof path, "SD:/", "SD:/lisa-chat.txt"))
+	if (uk_file_save (path, sizeof path, "SD:/", "SD:/lisa-chat.txt", "Text files|*.txt|All files|*"))
 		kapi_save_file (path, g_log->content (), (unsigned) g_log->len);
 	g_input->setFocus ();
 }

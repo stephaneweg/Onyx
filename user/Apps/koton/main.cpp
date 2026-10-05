@@ -203,7 +203,7 @@ static void cmdOpen ()
 	if (!askSave ()) return;
 	char p[256];
 	kapi_mkdir ("SD:/koton"); kapi_mkdir ("SD:/koton/songs");
-	if (!uk_file_open (p, sizeof p, g_settings.lastDir)) return;
+	if (!uk_file_open (p, sizeof p, g_settings.lastDir, "Koton songs|*.kson;*.sq|All files|*")) return;
 	if (openFile (p))
 	{
 		char *s = strrchr (p, '/'); if (s) { *s = 0; snprintf (g_settings.lastDir, sizeof g_settings.lastDir, "%s", p); g_settings.save (); }
@@ -214,7 +214,7 @@ static bool saveAs ()
 	savePluginStates ();
 	char p[256];
 	kapi_mkdir ("SD:/koton"); kapi_mkdir ("SD:/koton/songs");
-	if (!uk_file_save (p, sizeof p, g_settings.lastDir, "song.kson")) return false;
+	if (!uk_file_save (p, sizeof p, g_settings.lastDir, "song.kson", "Koton songs|*.kson|All files|*")) return false;
 	int n = (int) strlen (p);
 	if (n < 5 || strcmp (p + n - 5, ".kson")) { const char *d = strrchr (p, '.'); const char *sl = strrchr (p, '/'); if (d && (!sl || d > sl)) p[d - p] = 0; snprintf (p + strlen (p), sizeof p - strlen (p), ".kson"); }
 	g_doc.pruneRiffs ();
@@ -241,7 +241,7 @@ static void exportProgress (int pct)
 static void cmdExport ()
 {
 	char p[256];
-	if (!uk_file_save (p, sizeof p, g_settings.lastDir, "song.wav")) return;
+	if (!uk_file_save (p, sizeof p, g_settings.lastDir, "song.wav", "WAV audio|*.wav|All files|*")) return;
 	g_audio.sync (g_doc);
 	if (g_audio.exportWav (g_doc, p, exportProgress)) setStatus ("Exported %s", p);
 	else setStatus ("The export failed (no SoundFont, or the file could not be written).");
@@ -305,7 +305,7 @@ static void cmdSoundFont ()
 {
 	char p[256];
 	kapi_mkdir ("SD:/res"); kapi_mkdir ("SD:/res/soundfonts");
-	if (!uk_file_open (p, sizeof p, "SD:/res/soundfonts")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/res/soundfonts", "SoundFonts|*.sf2|All files|*")) return;
 	int n = (int) strlen (p);
 	if (n < 4 || strcasecmp (p + n - 4, ".sf2")) { uk_messagebox ("SoundFont", "Choose a .sf2 file.", MB_OK); return; }
 	snprintf (g_settings.soundfont, sizeof g_settings.soundfont, "%s", p);

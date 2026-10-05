@@ -411,7 +411,7 @@ public:
 			char dir[400], name[200]; scpy (dir, path, sizeof dir); char *s = strrchr (dir, '/'); if (s) *s = 0;
 			scpy (name, base_name (path), sizeof name); char *dot = strrchr (name, '.'); if (dot) *dot = 0;
 			char def[240]; snprintf (def, sizeof def, "%s (edited).%s", name, png ? "png" : "jpg");
-			if (!uk_file_save (out, sizeof out, dir, def)) return;
+			if (!uk_file_save (out, sizeof out, dir, def, png ? "PNG images|*.png|JPEG images|*.jpg;*.jpeg|All files|*" : "JPEG images|*.jpg;*.jpeg|PNG images|*.png|All files|*")) return;
 			if (!ends (out, ".png") && !ends (out, ".jpg") && !ends (out, ".jpeg")) { int k = (int) strlen (out); if (k < 390) strcpy (out + k, png ? ".png" : ".jpg"); }
 			png = ends (out, ".png");
 		}

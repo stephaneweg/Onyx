@@ -50,6 +50,40 @@ static inline void format_ext (const struct fk_format *f, char *out, int cap)
 	for (const char *s = f ? f->extensions : ""; *s && *s != ' ' && k < cap - 1; s++) out[k++] = *s;
 	out[k] = 0;
 }
+// The kinds of files a file dialog offers (uikit/dialog.h), from the formats asked: the archives that are
+// read ("Archives|*.zip;*.tar;...|All files|*") -- written: the format a new archive has, its first
+// extension ("ZIP archives|*.zip|All files|*"). 0: no format. The text is kept (the dialog does not copy it;
+// it reads 127 characters of patterns: no more are put).
+static inline const char *format_kinds (bool written)
+{
+	static char kinds[2][192];
+	char *o = kinds[written ? 1 : 0];
+	if (o[0]) return o;
+	const struct fk_format *w = written ? format_written () : 0;
+	if (written && !w) return 0;
+	int k = 0, np = 0;
+	for (const char *s = w ? w->name : "Archives"; *s; s++) o[k++] = *s;
+	for (const char *s = w ? " archives|" : "|"; *s; s++) o[k++] = *s;
+	for (int i = 0; i < formats (); i++)
+	{
+		if (w ? &g_formats[i] != w : !g_formats[i].can_read) continue;
+		for (const char *s = g_formats[i].extensions; *s; )
+		{
+			while (*s == ' ') s++;
+			int l = 0; while (s[l] && s[l] != ' ') l++;
+			if (l == 0 || np + l + 3 > 127) break;
+			if (np) { o[k++] = ';'; np++; }
+			o[k++] = '*'; o[k++] = '.'; np += 2;
+			for (int j = 0; j < l; j++) o[k++] = s[j];
+			np += l; s += l;
+			if (w) break;
+		}
+	}
+	if (!np) { o[0] = 0; return 0; }
+	for (const char *s = "|All files|*"; *s; s++) o[k++] = *s;
+	o[k] = 0;
+	return o;
+}
 
 // ---- an archive ------------------------------------------------------------------------------------
 struct Entry

@@ -224,6 +224,8 @@ static unsigned char *rpt_xlsx (const Book &b, const Report &p, unsigned *len)
 // ---- files ---------------------------------------------------------------------------------------------------------------------------
 enum { XF_RTF, XF_XLSX, XF_CSV };
 static const char *const XF_EXT[3] = { ".rtf", ".xlsx", ".csv" };
+// ... and the kind of files its Save dialog offers (uikit/dialog.h)
+static const char *const XF_KINDS[3] = { "Rich Text (RTF)|*.rtf|All files|*", "Excel (XLSX)|*.xlsx|All files|*", "CSV files|*.csv|All files|*" };
 // A file's name from a report's title and period: "General ledger 2026.rtf".
 static void export_name (const Report &p, int fmt, char *out, int cap)
 {
@@ -270,7 +272,7 @@ static void save_report (const Report &p, int fmt)
 	char name[120], path[220];
 	export_name (p, fmt, name, sizeof name);
 	kapi_mkdir ("SD:/docs/Reports");
-	if (!uk_file_save (path, sizeof path, "SD:/docs/Reports", name)) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs/Reports", name, XF_KINDS[fmt])) return;
 	int n = slen (path), k = slen (XF_EXT[fmt]);
 	if (n < k || !ci_eq (path + n - k, XF_EXT[fmt])) scat (path, XF_EXT[fmt], sizeof path);
 	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }

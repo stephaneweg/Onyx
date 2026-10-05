@@ -151,7 +151,7 @@ static void set_zoom (int z, bool keepCenter)
 }
 
 // ---- menu commands ---------------------------------------------------------------------------
-static void on_open ()     { char p[256]; if (uk_file_open (p, sizeof p, "SD:/")) open_image (p); }
+static void on_open ()     { char p[256]; if (uk_file_open (p, sizeof p, "SD:/", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx|All files|*")) open_image (p); }
 static void on_next ()     { step (1); }
 static void on_prev ()     { step (-1); }
 static void on_fit ()      { g_fit = true; clamp_pan (); g_root->invalidate (true); }
@@ -243,10 +243,10 @@ public:
 	{
 		switch (k)
 		{
-		case KEY_RIGHT: case KEY_PGDN: case ' ':          step (1);  return true;
-		case KEY_LEFT:  case KEY_PGUP: case KEY_BACKSPACE: step (-1); return true;
-		case KEY_HOME: if (g_nfiles) { g_cur = 0; step (0); } return true;
-		case KEY_END:  if (g_nfiles) { g_cur = g_nfiles - 1; step (0); } return true;
+		case KEY_RIGHT: case KEY_PGDN: case ' ':          ::step (1);  return true;
+		case KEY_LEFT:  case KEY_PGUP: case KEY_BACKSPACE: ::step (-1); return true;
+		case KEY_HOME: if (g_nfiles) { g_cur = 0; ::step (0); } return true;
+		case KEY_END:  if (g_nfiles) { g_cur = g_nfiles - 1; ::step (0); } return true;
 		case '+': case '=': on_zoom_in ();  return true;
 		case '-':           on_zoom_out (); return true;
 		case '0':           on_fit ();      return true;

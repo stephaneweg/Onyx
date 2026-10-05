@@ -33,6 +33,10 @@ using namespace uikit;
 using namespace media;
 
 #define SETTINGS "SD:/etc/media/settings.ini"
+// The kinds of files the Open dialogs offer (uikit/dialog.h; a kind's patterns: 127 characters at most, the
+// videos' extensions -- is_video_path -- are two kinds for that).
+static const char *const MEDIA_KINDS = "Music and playlists|*.mp3;*.ogg;*.oga;*.flac;*.wav;*.mid;*.midi;*.kar;*.rmi;*.fms;*.m3u;*.m3u8|Videos|*.mp4;*.m4v;*.mkv;*.webm;*.mov;*.avi;*.divx;*.mpg;*.mpeg;*.wmv;*.flv;*.ogv;*.3gp;*.ts;*.m2ts;*.mts;*.vob|More videos|*.m2v;*.f4v;*.asf;*.3g2;*.rm;*.rmvb;*.mxf;*.nut|All files|*";
+static const char *const VIDEO_KINDS = "Videos|*.mp4;*.m4v;*.mkv;*.webm;*.mov;*.avi;*.divx;*.mpg;*.mpeg;*.wmv;*.flv;*.ogv;*.3gp;*.ts;*.m2ts;*.mts;*.vob|More videos|*.m2v;*.f4v;*.asf;*.3g2;*.rm;*.rmvb;*.mxf;*.nut|All files|*";
 
 // ---- the state -------------------------------------------------------------------------------------------
 static Library *L;				// the library shown
@@ -2470,14 +2474,14 @@ static void m_full () { if (page ().kind == P_WATCH) video_full_screen (); }
 static void m_open ()
 {
 	char p[300];
-	if (!uk_file_open (p, sizeof p, g_nfolders ? g_folders[0] : "SD:/")) return;
+	if (!uk_file_open (p, sizeof p, g_nfolders ? g_folders[0] : "SD:/", MEDIA_KINDS)) return;
 	extern void open_file (const char *);
 	open_file (p);
 }
 void m_open_video ()
 {
 	char p[300];
-	if (!uk_file_open (p, sizeof p, VIDEO_DIR)) return;
+	if (!uk_file_open (p, sizeof p, VIDEO_DIR, VIDEO_KINDS)) return;
 	extern void open_file (const char *);
 	open_file (p);
 }

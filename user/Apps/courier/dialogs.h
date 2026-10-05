@@ -246,7 +246,7 @@ public:
 	void pickFile ()
 	{
 		char p[256];
-		if (!uk_file_open (p, sizeof p, "SD:/")) return;
+		if (!uk_file_open (p, sizeof p, "SD:/", "JSON files|*.json|All files|*")) return;
 		path = p;
 		close (2);
 	}

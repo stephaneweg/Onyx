@@ -971,7 +971,7 @@ static void m_save_eml ()
 	if (!raw) { uk_messagebox ("Mail", "Open the message first (it is fetched then).", MB_OK); return; }
 	char nm[120]; ReadPane::safe_name (m.subject && m.subject[0] ? m.subject : "message", nm, 100); strcat (nm, ".eml");
 	char out[300];
-	if (uk_file_save (out, sizeof out, "SD:/Documents", nm) && kapi_save_file (out, raw, (unsigned) len) < 0) uk_messagebox ("Mail", "The file could not be written.", MB_OK);
+	if (uk_file_save (out, sizeof out, "SD:/Documents", nm, "Mail messages|*.eml|All files|*") && kapi_save_file (out, raw, (unsigned) len) < 0) uk_messagebox ("Mail", "The file could not be written.", MB_OK);
 	free (raw);
 }
 

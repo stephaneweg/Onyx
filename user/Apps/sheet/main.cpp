@@ -99,7 +99,7 @@ static void cmd_save_as ()
 	char out[256], def[80];
 	scpy (def, g_path[0] ? base_name (g_path) : "Book1.xlsx", sizeof def);
 	char *dot = strrchr (def, '.'); if (dot && (ends_with (def, ".ods"))) scpy (dot, ".xlsx", (int) (sizeof def - (dot - def)));
-	if (!uk_file_save (out, sizeof out, "SD:/docs", def)) return;
+	if (!uk_file_save (out, sizeof out, "SD:/docs", def, "Excel (XLSX)|*.xlsx|CSV files|*.csv|Tab-separated (TSV)|*.tsv|All files|*")) return;
 	if (!strrchr (base_name (out), '.')) { int n = (int) strlen (out); scpy (out + n, ".xlsx", (int) sizeof out - n); }
 	if (!save_to (out)) return;
 	if (!(ends_with (out, ".csv") || ends_with (out, ".txt") || ends_with (out, ".tsv"))) { scpy (g_path, out, sizeof g_path); g_saved = g_gen; }
@@ -119,7 +119,7 @@ static void cmd_open ()
 	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) return;
 	char p[256];
-	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/docs")) return;
+	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/docs", "Spreadsheets|*.xlsx;*.ods;*.csv;*.tsv;*.txt|Excel (XLSX)|*.xlsx|OpenDocument (ODS)|*.ods|CSV and text|*.csv;*.tsv;*.txt|All files|*")) return;
 	load_path (p);
 }
 static void cmd_export_csv ()
@@ -129,7 +129,7 @@ static void cmd_export_csv ()
 	scpy (def, g_path[0] ? base_name (g_path) : "Book1", sizeof def);
 	char *dot = strrchr (def, '.'); if (dot) *dot = 0;
 	int n = (int) strlen (def); scpy (def + n, ".csv", (int) sizeof def - n);
-	if (!uk_file_save (out, sizeof out, "SD:/docs", def)) return;
+	if (!uk_file_save (out, sizeof out, "SD:/docs", def, "CSV files|*.csv|All files|*")) return;
 	int len; char *d = csv_write (g_b, S (), ',', &len);
 	if (!write_file (out, d, len)) message ("The file cannot be written.");
 	free (d);
@@ -165,7 +165,7 @@ public:
 	}
 	void onButton (int tag) override
 	{
-		if (tag == 9) { char p[256]; if (uk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 9) { char p[256]; if (uk_file_save (p, sizeof p, dir, file->text, "PDF documents|*.pdf|All files|*")) file->setText (p); return; }
 		if (tag == 1) { o.all = rAll->checked; o.landscape = rLand->checked; o.fit = cFit->checked; o.grid = cGrid->checked; o.open = cOpen->checked; }
 		close (tag);
 	}

@@ -58,6 +58,7 @@ static int g_sw = 1024, g_sh = 768, g_fw = 8, g_fh = 16;
 static unsigned *g_fb = 0;
 static Canvas g_cv;
 static int g_open = -1, g_hover = -1;	// open menu / hovered item index
+static int g_titleHot = -1;		// the title under the pointer while no menu is open (a lighter back)
 static bool g_dirty = true, g_pressedTitle = false;
 static int g_lastMin = -1;
 static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
@@ -476,6 +477,8 @@ static void draw (void)
 	{
 		const MenuDef &m = g_menus[i];
 		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
+		else if (i == g_titleHot)			// under the pointer: a shade lighter than the bar
+			uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
 		uk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
 	}
 	int hh = 0, mm = 0;
@@ -689,9 +692,11 @@ static void ptr (unsigned long, int ev, long v)
 			if (i >= 0 && g_menus[g_open].items[i].sub >= 0) open_sub (i);
 			else if (i >= 0 && g_sub >= 0) { g_sub = -1; g_subOwner = -1; g_dirty = true; }
 		}
+		if (t != g_titleHot) { g_titleHot = t; g_dirty = true; }	// the title pointed at
 		break;
 	case GUI_EVENT_PTR_LEAVE:
 		if (g_hover != -1) { g_hover = -1; g_dirty = true; }
+		if (g_titleHot != -1) { g_titleHot = -1; g_dirty = true; }
 		break;
 	case GUI_EVENT_PTR_WHEEL:				// the wheel over the calendar: the months
 		if (g_calOpen && in_cal_box (x, y)) { g_cal->handleMouse (5, 40, 0, 0, 0, GUI_PTR_WHEEL (v)); g_dirty = true; }

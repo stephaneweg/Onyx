@@ -23,6 +23,9 @@
 
 namespace lg {
 
+// The kind of files the VAT files' Save dialogs offer (uikit/dialog.h).
+static const char *const XML_KINDS = "XML files|*.xml|All files|*";
+
 // =====================================================================================================================================
 // ---- the reports -------------------------------------------------------------------------------------------------------------------
 // =====================================================================================================================================
@@ -531,7 +534,7 @@ public:
 		char name[64] = "VAT return "; char ref[16]; period_ref (year, sel, monthly, ref); scat (name, ref, sizeof name); scat (name, ".xml", sizeof name);
 		kapi_mkdir ("SD:/docs"); kapi_mkdir ("SD:/docs/VAT");
 		char path[220];
-		if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
+		if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name, XML_KINDS)) return;
 		if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("Intervat", TR ("The file could not be written.")); return; }
 		char m[240]; scpy (m, TR ("Written: "), sizeof m); scat (m, path, sizeof m); status (m);
 		if (filed < 0 && ask ("Intervat", TR ("The file is written: send it on Intervat (intervat.minfin.fgov.be). Mark the period as filed now (its VAT entries then locked)?"), MB_YESNO, 1) == 1) fileIt ();
@@ -579,7 +582,7 @@ public:
 			char name[64] = "Customer listing "; scat_num (name, year, sizeof name); scat (name, ".xml", sizeof name);
 			kapi_mkdir ("SD:/docs/VAT");
 			char path[220];
-			if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
+			if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name, XML_KINDS)) return;
 			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("Customer listing"), TR ("The file could not be written.")); return; }
 			char m2[240]; scpy (m2, TR ("Written: "), sizeof m2); scat (m2, path, sizeof m2); scat (m2, " (", sizeof m2); scat_num (m2, n, sizeof m2); scat (m2, n == 1 ? TR (" customer)") : TR (" customers)"), sizeof m2); status (m2);
 		}
@@ -594,7 +597,7 @@ public:
 			char name[64] = "Intra-community listing "; scat (name, ref, sizeof name); scat (name, ".xml", sizeof name);
 			kapi_mkdir ("SD:/docs/VAT");
 			char path[220];
-			if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
+			if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name, XML_KINDS)) return;
 			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("Intra-community listing"), TR ("The file could not be written.")); return; }
 			char m2[240]; scpy (m2, TR ("Written: "), sizeof m2); scat (m2, path, sizeof m2); status (m2);
 		}

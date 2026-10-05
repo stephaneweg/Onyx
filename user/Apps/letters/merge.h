@@ -498,7 +498,7 @@ public:
 		if (tag == 2)							// the data chosen
 		{
 			char path[200];
-			if (ft_file_open (path, sizeof path, "SD:/docs"))
+			if (ft_file_open (path, sizeof path, "SD:/docs", "Cardfile forms|*.card|All files|*"))
 			{
 				const char *why;
 				if (merge_open (path, &why)) { scpy (g_doc.mergeSrc, path, sizeof g_doc.mergeSrc); g_doc.changes++; merge_show (cbPreview->checked); fill (); redraw (); }
@@ -545,7 +545,7 @@ public:
 				return;
 			}
 			char path[200];
-			if (ft_file_save (path, sizeof path, "SD:/docs", "letter.rtf"))
+			if (ft_file_save (path, sizeof path, "SD:/docs", "letter.rtf", "Rich Text (RTF)|*.rtf|Word (DOCX)|*.docx|OpenDocument (ODT)|*.odt|All files|*"))
 			{
 				int n = slen (path);
 				const char *ext = n > 5 && !sicmp (path + n - 5, ".docx") ? ".docx" : n > 4 && !sicmp (path + n - 4, ".odt") ? ".odt" : ".rtf";

@@ -30,6 +30,8 @@ using namespace pdfv;
 #define CONF_DIR "SD:/etc/pdf"
 #define SETTINGS "SD:/etc/pdf/settings.ini"
 #define RECENT "SD:/etc/pdf/recent.tsv"
+// The kind of files the Open and Save dialogs offer (uikit/dialog.h).
+static const char *const PDF_KINDS = "PDF documents|*.pdf|All files|*";
 
 // ---- the layout's sizes, colours ------------------------------------------------------------------------------
 enum { TABS_H = 34, TB_H = 46, SIDE_W = 224, MARGIN = 16, GAP = 14, SB_W = 12 };
@@ -1159,7 +1161,7 @@ public:
 			else if (ht->kind == HM_FOLDER)
 			{
 				char p[300];
-				if (uk_file_open (p, sizeof p, g_folders[ht->a].path)) open_path (p, -1, false);
+				if (uk_file_open (p, sizeof p, g_folders[ht->a].path, PDF_KINDS)) open_path (p, -1, false);
 			}
 		}
 		return mx >= 0 && my >= 0 && mx < width && my < height;
@@ -1616,7 +1618,7 @@ static void save_copy ()
 {
 	Tab &t = tab (); if (!t.doc) return;
 	char out[300];
-	if (!uk_file_save (out, sizeof out, "SD:/Documents", t.doc->name)) return;
+	if (!uk_file_save (out, sizeof out, "SD:/Documents", t.doc->name, PDF_KINDS)) return;
 	void *a = kapi_open (t.doc->path); void *b = a ? kapi_file_out (out, 0) : 0;
 	bool ok = a && b;
 	if (ok) { static char buf[32768]; int n; while ((n = kapi_read (a, buf, sizeof buf)) > 0) if (kapi_stream_write (b, buf, n) != n) { ok = false; break; } }
@@ -1683,7 +1685,7 @@ static void m_open ()
 	char p[300];
 	const char *start = tab ().doc ? tab ().doc->path : "SD:/";
 	char dir[300]; scopy (dir, start, sizeof dir); { char *e = 0; for (char *q = dir; *q; q++) if (*q == '/') e = q; if (e && tab ().doc) *e = 0; }
-	if (uk_file_open (p, sizeof p, dir)) open_path (p, -1, tab ().doc != 0);
+	if (uk_file_open (p, sizeof p, dir, PDF_KINDS)) open_path (p, -1, tab ().doc != 0);
 }
 
 // ---- full screen: the pages alone, on black (a presentation) ------------------------------------------------------------------

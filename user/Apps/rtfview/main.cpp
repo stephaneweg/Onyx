@@ -50,7 +50,7 @@ static void open_file (const char *path)
 static void on_open ()
 {
 	char p[128];
-	if (uk_file_open (p, sizeof p, "SD:/")) open_file (p);
+	if (uk_file_open (p, sizeof p, "SD:/", "Documents|*.rtf;*.txt|Rich Text (RTF)|*.rtf|Text files|*.txt|All files|*")) open_file (p);
 	g_rtb->setFocus ();
 }
 static void on_writer () { if (g_path[0]) kapi_exec ("SD:/apps/letters.app/main", g_path); }

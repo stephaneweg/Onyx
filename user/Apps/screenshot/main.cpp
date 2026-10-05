@@ -722,7 +722,7 @@ static void save_as ()
 	kapi_mkdir ("SD:/Pictures"); kapi_mkdir (SHOTS_DIR);
 	char name[96]; stamp_name (name, sizeof name);
 	char path[300];
-	if (!uk_file_save (path, sizeof path, g_lastDir, name)) return;
+	if (!uk_file_save (path, sizeof path, g_lastDir, name, "PNG images|*.png|JPEG images|*.jpg;*.jpeg|BMP images|*.bmp|All files|*")) return;
 	if (!ends_with (path, ".png") && !ends_with (path, ".jpg") && !ends_with (path, ".jpeg") && !ends_with (path, ".bmp"))
 		strncat (path, ".png", sizeof path - strlen (path) - 1);
 	unsigned n = (unsigned) g_dw * g_dh;

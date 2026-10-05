@@ -106,7 +106,7 @@ static void cmd_save_as ()
 	settle ();
 	char def[80], path[200];
 	with_ext (def, sizeof def, g_path[0] ? base_name (g_path) : "Untitled", ".ora");
-	if (uk_file_save (path, sizeof path, "SD:/", def))
+	if (uk_file_save (path, sizeof path, "SD:/", def, "OpenRaster (ORA)|*.ora|All files|*"))
 	{
 		if (!ends_with (path, ".ora")) { int k = slen (path); scpy (path + k, ".ora", (int) sizeof path - k); }
 		scpy (g_path, path, sizeof g_path);
@@ -122,7 +122,8 @@ static void export_as (const char *ext)
 	settle ();
 	char def[80], path[200];
 	with_ext (def, sizeof def, g_path[0] ? base_name (g_path) : "Untitled", ext);
-	if (uk_file_save (path, sizeof path, "SD:/", def))
+	if (uk_file_save (path, sizeof path, "SD:/", def, ext[1] == 'j' ? "JPEG images|*.jpg;*.jpeg|All files|*" : ext[1] == 'b' ? "BMP images|*.bmp|All files|*"
+			: ext[1] == 'g' ? "GIF images|*.gif|All files|*" : "PNG images|*.png|All files|*"))
 	{
 		if (!ends_with (path, ".png") && !ends_with (path, ".jpg") && !ends_with (path, ".jpeg") && !ends_with (path, ".bmp") && !ends_with (path, ".gif"))
 		{ int k = slen (path); scpy (path + k, ext, (int) sizeof path - k); }
@@ -209,7 +210,7 @@ static void cmd_open ()
 {
 	if (!guard ()) { focus_view (); return; }
 	char path[200];
-	if (uk_file_open (path, sizeof path, "SD:/")) open_path (path);
+	if (uk_file_open (path, sizeof path, "SD:/", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx;*.ora|OpenRaster (ORA)|*.ora|All files|*")) open_path (path);
 	focus_view ();
 }
 
@@ -298,7 +299,7 @@ static void cmd_paste_layer ()
 static void cmd_open_layer ()
 {
 	char path[200];
-	if (uk_file_open (path, sizeof path, "SD:/"))
+	if (uk_file_open (path, sizeof path, "SD:/", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx|All files|*"))
 	{
 		ImgFrames im;
 		if (!img_load (path, &im)) uk_messagebox ("Open as Layer", "That file is not a picture Paint can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);

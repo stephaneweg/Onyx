@@ -127,7 +127,7 @@ static void cmd_save_as ()
 {
 	char path[200], def[80];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled.odp", sizeof def);
-	if (ft_file_save (path, sizeof path, "SD:/docs", def))
+	if (ft_file_save (path, sizeof path, "SD:/docs", def, has_ext (g_path, ".pptx") ? "PowerPoint (PPTX)|*.pptx|OpenDocument (ODP)|*.odp|All files|*" : "OpenDocument (ODP)|*.odp|PowerPoint (PPTX)|*.pptx|All files|*"))
 	{
 		// (.odp, or .pptx when the name says so -- or the file was one)
 		if (!has_ext (path, ".odp") && !has_ext (path, ".pptx")) { int k = (int) strlen (path); scpy (path + k, has_ext (g_path, ".pptx") ? ".pptx" : ".odp", (int) sizeof path - k); }
@@ -150,7 +150,7 @@ static void cmd_open ()
 {
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	char path[200];
-	if (ft_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (ft_file_open (path, sizeof path, "SD:/docs", "Presentations|*.odp;*.pptx|OpenDocument (ODP)|*.odp|PowerPoint (PPTX)|*.pptx|All files|*")) load_path (path);
 	focus_view ();
 }
 // File > Export as PDF: the slides (a page each, the slide flattened at 1600 px wide, as a JPEG at quality 92), or
@@ -276,7 +276,7 @@ static void cmd_export_png ()
 	if (g_master) { master_close (); g_thumbs.clear (); }
 	char def[120], path[200];
 	snprintf (def, sizeof def, "Slide %d.png", g_cur + 1);
-	if (!ft_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
+	if (!ft_file_save (path, sizeof path, "SD:/docs", def, "PNG images|*.png|All files|*")) { focus_view (); return; }
 	if (!has_ext (path, ".png")) { int k = (int) strlen (path); scpy (path + k, ".png", (int) sizeof path - k); }
 	int pw = 1920, ph = pw * g_deck.sh / g_deck.sw;
 	unsigned *px = (unsigned *) malloc ((size_t) pw * ph * 4);
@@ -350,7 +350,7 @@ static void cmd_export_pdf ()
 	char def[120], path[200];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled", sizeof def);
 	{ int n = (int) strlen (def), dot = n; while (dot > 0 && def[dot - 1] != '.') dot--; if (dot > 0) def[dot - 1] = 0; n = (int) strlen (def); scpy (def + n, mode == PDF_NOTES ? " (notes).pdf" : mode >= PDF_HAND2 ? " (handouts).pdf" : ".pdf", (int) sizeof def - n); }
-	if (!ft_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
+	if (!ft_file_save (path, sizeof path, "SD:/docs", def, "PDF documents|*.pdf|All files|*")) { focus_view (); return; }
 	if (!has_ext (path, ".pdf")) { int k = (int) strlen (path); scpy (path + k, ".pdf", (int) sizeof path - k); }
 	char title[120]; scpy (title, g_path[0] ? base_name (g_path) : "Untitled", sizeof title);
 	{ char *dot = strrchr (title, '.'); if (dot) *dot = 0; }
@@ -772,7 +772,7 @@ static void drop_shapes (ToolButton &b)
 static void picture_into (Object *ph)
 {
 	char path[200];
-	if (!ft_file_open (path, sizeof path, "SD:/docs/pictures")) { focus_view (); return; }
+	if (!ft_file_open (path, sizeof path, "SD:/docs/pictures", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx|All files|*")) { focus_view (); return; }
 	unsigned n = 0; unsigned char *b = read_all (path, &n);
 	if (!b) { focus_view (); return; }
 	Object *o = make_picture (base_name (path), b, n, ph);

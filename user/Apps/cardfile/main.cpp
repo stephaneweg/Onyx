@@ -219,7 +219,7 @@ public:
 		if (tag == 2)
 		{
 			char path[200];
-			if (uk_file_open (path, sizeof path, "SD:/docs")) letter->setText (path);
+			if (uk_file_open (path, sizeof path, "SD:/docs", "Letters documents|*.rtf;*.docx;*.odt|All files|*")) letter->setText (path);
 			return;
 		}
 		if (tag == 1 && !letter->text ()[0]) { ask ("Mail Merge", "Choose the letter first: a Letters document whose fields are the form's (Letters: Tools > Mail Merge).", MB_OK, 1); return; }
@@ -671,7 +671,7 @@ static void cmd_save_as ()
 	if (!commit_edits ()) return;
 	char path[200], def[96];
 	default_name (def, sizeof def, ".card");
-	if (uk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def, "Cardfile forms|*.card|All files|*"))
 	{
 		if (!has_ext (path, ".card")) scat (path, ".card", sizeof path);
 		write_path (path);
@@ -710,7 +710,7 @@ static void cmd_open ()
 {
 	if (!confirm_discard ()) { focus_view (); return; }
 	char path[200];
-	if (uk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (uk_file_open (path, sizeof path, "SD:/docs", "Cardfile forms and CSV|*.card;*.csv;*.tsv|Cardfile forms|*.card|CSV files|*.csv;*.tsv|All files|*")) load_path (path);
 	focus_view ();
 }
 static void cmd_import_csv () { cmd_open (); }
@@ -719,7 +719,7 @@ static void cmd_export_csv ()
 	if (!commit_edits ()) return;
 	char path[200], def[96];
 	default_name (def, sizeof def, ".csv");
-	if (uk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def, "CSV files|*.csv|All files|*"))
 	{
 		if (!has_ext (path, ".csv")) scat (path, ".csv", sizeof path);
 		Out o; csv_write (g_doc, g_ord, g_nord, o);

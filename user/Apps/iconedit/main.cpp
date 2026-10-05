@@ -27,6 +27,8 @@ using namespace uikit;
 enum { T_PEN, T_LINE, T_RECT, T_BOX, T_ELLIPSE, T_FILL, T_PICK, T_ERASE, NTOOL };
 static const char *const TOOL_NAME[NTOOL] = { "Pen", "Line", "Rect", "Box", "Ellipse", "Fill", "Picker", "Eraser" };
 static const char TOOL_KEY[NTOOL] = { 'p', 'l', 'r', 'b', 'o', 'f', 'k', 'e' };
+// The kind of files the Open and Save dialogs offer (uikit/dialog.h).
+static const char *const BMP_KINDS = "BMP images|*.bmp|All files|*";
 
 static unsigned g_img[MAXS * MAXS];
 static int      g_w = 40, g_h = 40;
@@ -370,7 +372,7 @@ static void on_save () { if (save_bmp (g_path)) refresh (); }
 static void on_save_as ()
 {
 	char p[128];
-	if (uk_file_save (p, sizeof p, "SD:/", g_path)) { int i = 0; for (; p[i] && i < 127; i++) g_path[i] = p[i]; g_path[i] = 0; on_save (); }
+	if (uk_file_save (p, sizeof p, "SD:/", g_path, BMP_KINDS)) { int i = 0; for (; p[i] && i < 127; i++) g_path[i] = p[i]; g_path[i] = 0; on_save (); }
 }
 static void new_icon (int s)
 {
@@ -392,7 +394,7 @@ static void on_open ()
 {
 	if (!doc_confirm (g_path, changed (), on_save)) return;
 	char p[128];
-	if (uk_file_open (p, sizeof p, "SD:/apps/")) load_bmp (p);
+	if (uk_file_open (p, sizeof p, "SD:/apps/", BMP_KINDS)) load_bmp (p);
 	refresh ();
 }
 

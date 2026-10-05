@@ -54,6 +54,10 @@ using namespace uikit;
 #define ROW_H	(uk_fh () + 2)
 #define INS_DIR	"SD:/apps/fmtracker.app/ins"
 #define SONG_DIR "SD:/music/fms"
+// The kinds of files the Open and Save dialogs offer (uikit/dialog.h; a name typed without an extension takes
+// the kind's as it is written here: in capitals, as this program writes them).
+static const char *const FMS_KINDS = "FM songs|*.FMS|All files|*";
+static const char *const FMI_KINDS = "FM instruments|*.FMI|All files|*";
 #define TEST_VOICE 15
 
 static FmsSong g_song;
@@ -502,7 +506,7 @@ public:
 		if (tag == B_LOAD)
 		{
 			char p[256];
-			if (!uk_file_open (p, sizeof p, INS_DIR)) return;
+			if (!uk_file_open (p, sizeof p, INS_DIR, FMI_KINDS)) return;
 			FmsIns in;
 			if (read_fmi (p, &in)) { ins = in; show (); } else uk_messagebox ("Instrument", "Not an .FMI instrument file.", MB_OK);
 			return;
@@ -512,7 +516,7 @@ public:
 			collect ();
 			char def[20]; snprintf (def, sizeof def, "%.8s.FMI", ins.name[0] ? ins.name : "INSTR");
 			char p[256];
-			if (!uk_file_save (p, sizeof p, INS_DIR, def)) return;
+			if (!uk_file_save (p, sizeof p, INS_DIR, def, FMI_KINDS)) return;
 			char t[600]; int len = fmi_write (&ins, t);
 			if (kapi_save_file (p, t, (unsigned) len) < 0) uk_messagebox ("Instrument", "Cannot write the file.", MB_OK);
 			return;
@@ -1116,7 +1120,7 @@ static void op_open ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (uk_file_open (p, sizeof p, g_path[0] ? g_path : SONG_DIR)) load_song (p);
+	if (uk_file_open (p, sizeof p, g_path[0] ? g_path : SONG_DIR, FMS_KINDS)) load_song (p);
 }
 static bool write_song (const char *path)
 {
@@ -1131,7 +1135,7 @@ static void op_save_as ()
 {
 	char p[256];
 	char def[40]; fms_copy (def, g_path[0] ? fs_basename (g_path) : "SONG.FMS", sizeof def);
-	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def)) return;
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def, FMS_KINDS)) return;
 	int n = fms_len (p);
 	if (!(n > 4 && p[n - 4] == '.')) fms_copy (p + n, ".FMS", sizeof p - n);
 	if (!write_song (p)) { set_status ("Cannot save ", p); return; }
@@ -1146,7 +1150,7 @@ static void op_export_wav ()
 	char def[40]; fms_copy (def, g_path[0] ? fs_basename (g_path) : "SONG.FMS", sizeof def);
 	int dn = fms_len (def);
 	if (dn > 4 && def[dn - 4] == '.') fms_copy (def + dn - 4, ".WAV", sizeof def - (dn - 4)); else fms_copy (def + dn, ".WAV", sizeof def - dn);
-	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def)) return;
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def, "WAV audio|*.WAV|All files|*")) return;
 	int n = fms_len (p);
 	if (!(n > 4 && p[n - 4] == '.')) fms_copy (p + n, ".WAV", sizeof p - n);
 	static const char tmp[] = "SD:/tmp/fmtracker-export.fms";

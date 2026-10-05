@@ -411,7 +411,7 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 void FileDialog::read ()
 {
 	m_count = 0; m_top = 0; m_sel = -1; fd_x (m_ent).hot = -1;
-	char kind[64], pats[128]; pats[0] = '\0';
+	char kind[64], pats[256]; pats[0] = '\0';
 	bool filtered = fd_filter (fd_x (m_ent).filters, fd_x (m_ent).filter, kind, sizeof kind, pats, sizeof pats);
 	void *d = kapi_opendir (m_dir);
 	if (d != 0)
@@ -508,7 +508,7 @@ void FileDialog::onButton (int tag)
 	if (m_nameBox->text[0] == '\0' || m_dir[0] == '\0') return;	// (it needs a name)
 	if (m_save)						// a name without an extension: the kind's first one
 	{
-		char kind[64], pats[128];
+		char kind[64], pats[256];
 		bool dot = false;
 		for (const char *p = m_nameBox->text; *p; p++) if (*p == '.') dot = true;
 		if (!dot && fd_filter (fd_x (m_ent).filters, fd_x (m_ent).filter, kind, sizeof kind, pats, sizeof pats)
@@ -565,12 +565,12 @@ bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)
 	bool onKind = x.fw && mx >= x.fx && mx < x.fx + x.fw && my >= x.fy && my < x.fy + x.fh;
 	if (bl && !pressed && onKind)				// the kinds' menu, under the drop-down
 	{
-		static char labels[8][96];
+		static char labels[12][96];
 		PopupMenu menu (left + x.fx, top + x.fy + x.fh);
-		int n = fd_filters (x.filters); if (n > 8) n = 8;
+		int n = fd_filters (x.filters); if (n > 12) n = 12;
 		for (int i = 0; i < n; i++)
 		{
-			char pats[128];
+			char pats[256];
 			fd_filter (x.filters, i, labels[i], 64, pats, sizeof pats);
 			menu.add (labels[i], i + 1);
 		}
@@ -668,10 +668,10 @@ void FileDialog::onDraw ()
 	if (x.ny) canvas.text (m_lx, x.ny + 5, TR ("Name:"), C_TEXT);
 	if (x.fw)						// the kind of files: a drop-down
 	{
-		char kind[64], pats[128], label[200]; int k = 0;
+		char kind[64], pats[256], label[330]; int k = 0;
 		fd_filter (x.filters, x.filter, kind, sizeof kind, pats, sizeof pats);
-		for (int i = 0; kind[i] && k < 190; i++) label[k++] = kind[i];
-		if (pats[0] && !(pats[0] == '*' && pats[1] == '\0')) { label[k++] = ' '; label[k++] = '('; for (int i = 0; pats[i] && k < 196; i++) label[k++] = pats[i]; label[k++] = ')'; }
+		for (int i = 0; kind[i] && k < 64; i++) label[k++] = kind[i];
+		if (pats[0] && !(pats[0] == '*' && pats[1] == '\0')) { label[k++] = ' '; label[k++] = '('; for (int i = 0; pats[i] && k < 325; i++) label[k++] = pats[i]; label[k++] = ')'; }
 		label[k] = '\0';
 		uk_raised (canvas, x.fx, x.fy, x.fw, x.fh, 5, C_FACE, UK_NORMAL);
 		fd_text_fit (canvas, x.fx + 10, x.fy + (x.fh - fh) / 2, label, x.fw - 34, C_TEXT);

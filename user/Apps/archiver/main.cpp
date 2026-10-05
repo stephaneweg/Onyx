@@ -685,7 +685,7 @@ static void do_properties ()
 static void do_open_dialog ()
 {
 	char p[300];
-	if (uk_file_open (p, sizeof p, g_lastDir)) open_archive (p);
+	if (uk_file_open (p, sizeof p, g_lastDir, arc::format_kinds (false))) open_archive (p);
 }
 static void do_new (char **paths = 0, int np = 0)
 {
@@ -694,7 +694,7 @@ static void do_new (char **paths = 0, int np = 0)
 	char def[128] = "New archive."; arc::scat (def, wext, sizeof def);
 	if (np) { arc::scopy (def, arc::base_of (paths[0]), sizeof def); char *d = strrchr (def, '.'); if (d && d != def && !arc::path_is_dir (paths[0])) *d = 0; arc::scat (def, ".", sizeof def); arc::scat (def, wext, sizeof def); }
 	char dir[300]; if (np) dirname_of (paths[0], dir, sizeof dir); else arc::scopy (dir, g_lastDir, sizeof dir);
-	if (!uk_file_save (p, sizeof p, dir, def)) return;
+	if (!uk_file_save (p, sizeof p, dir, def, arc::format_kinds (true))) return;
 	char x[12], wx[12]; arc::ext_of (p, x, sizeof x);
 	arc::format_ext (arc::format_written (), wx, sizeof wx);
 	if (!wx[0]) { uk_messagebox ("New Archive", "No archive format can be written.", MB_OK); return; }

@@ -265,7 +265,7 @@ static bool template_of (int kind, int lang, char *path, int cap)
 	char m[200]; scpy (m, TR ("No template for this kind of document ("), sizeof m); scat (m, TEMPLATES, sizeof m); scat (m, "/", sizeof m); scat (m, PK_FILE[kind], sizeof m);
 	scat (m, TR (".rtf). Choose a Letters document to use?"), sizeof m);
 	if (ask (TR ("Print"), m, MB_YESNO, 1) != 1) return false;
-	return uk_file_open (path, (unsigned) cap, TEMPLATES);
+	return uk_file_open (path, (unsigned) cap, TEMPLATES, "Letters documents|*.docx;*.odt;*.rtf|All files|*");
 }
 // The data written, Letters asked to make the document.
 static void ms_print (MergeSet &m, int kind, int lang, const char *fileName)

@@ -51,6 +51,8 @@ struct Module { char name[48]; int kind; char *text; };		// kind 0 main, 1 SUB, 
 static Module g_mod[MAXMOD]; static int g_nmod = 0, g_cur = 0;
 static char g_path[256] = "";
 static bool g_dirty = false;
+// The kind of files the Open and Save dialogs offer (uikit/dialog.h).
+static const char *const BAS_KINDS = "BASIC programs|*.bas|All files|*";
 
 class CodeArea;
 static CodeArea *g_ed = 0;
@@ -400,7 +402,7 @@ static void op_open ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/basic")) return;
+	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/basic", BAS_KINDS)) return;
 	load_file (p);
 }
 
@@ -416,7 +418,7 @@ static void op_save_as ()
 {
 	char p[256];
 	const char *base = g_path[0] ? fs_basename (g_path) : "program.bas";
-	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : "SD:/basic", base)) return;
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : "SD:/basic", base, BAS_KINDS)) return;
 	int n = slen (p);
 	if (!(n > 4 && p[n - 4] == '.' && (p[n - 3] | 32) == 'b')) { scpy (p + n, ".bas", sizeof p - n); }
 	if (!write_to (p)) { set_status ("Cannot save ", p); return; }
@@ -648,7 +650,7 @@ static void op_examples ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (!uk_file_open (p, sizeof p, "SD:/basic/examples")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/basic/examples", BAS_KINDS)) return;
 	load_file (p);
 }
 

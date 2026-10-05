@@ -784,7 +784,7 @@ static void op_new_window () { engine_new_window (HOME); }
 static void op_open_file ()
 {
 	char p[256];
-	if (uk_file_open (p, sizeof p, "SD:/")) engine_load (p);
+	if (uk_file_open (p, sizeof p, "SD:/", "Web pages|*.html;*.htm|All files|*")) engine_load (p);
 }
 static void op_close () { kapi_exit (0); }
 static void op_save_page () { save_as (g_pageUrl); }

@@ -43,6 +43,8 @@ namespace lg {
 #define H 700
 static const char *LAST = "SD:/apps/ledger.app/last.txt";
 static const char *DEMO = "SD:/docs/demo-company.ledger";
+// The kind of files the books' Open and Save dialogs offer (uikit/dialog.h).
+static const char *const LEDGER_KINDS = "Ledger books|*.ledger|All files|*";
 
 static Root *g_root;
 static Page *g_page[NPAGES];
@@ -430,7 +432,7 @@ static void cmd_open ()
 {
 	if (!leave_current ()) return;
 	char path[200];
-	if (!uk_file_open (path, sizeof path, "SD:/docs")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/docs", LEDGER_KINDS)) return;
 	load_path (path);
 }
 static void cmd_new_company ()
@@ -446,7 +448,7 @@ static void cmd_new_company ()
 	name[k] = '\0'; if (!k) scpy (name, "company", sizeof name);
 	scat (name, ".ledger", sizeof name);
 	char path[200];
-	if (!uk_file_save (path, sizeof path, "SD:/docs", name)) { book_clear (nb); return; }
+	if (!uk_file_save (path, sizeof path, "SD:/docs", name, LEDGER_KINDS)) { book_clear (nb); return; }
 	int n = slen (path); if (n < 7 || !ci_eq (path + n - 7, ".ledger")) scat (path, ".ledger", sizeof path);
 	Out o; book_write (nb, o);
 	book_clear (nb);
@@ -458,7 +460,7 @@ static void cmd_save_copy ()
 {
 	if (!g_b.nacc) return;
 	char path[200];
-	if (!uk_file_save (path, sizeof path, "SD:/docs", "copy.ledger")) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs", "copy.ledger", LEDGER_KINDS)) return;
 	Out o; book_write (g_b, o);
 	if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) warn (TR ("Save a Copy"), TR ("The file could not be written."));
 	else { char m[240]; scpy (m, TR ("Copy written: "), sizeof m); scat (m, path, sizeof m); status (m); }
@@ -528,7 +530,7 @@ static void cmd_import_coda ()
 {
 	if (!books () || !leave_current ()) return;
 	char path[200];
-	if (!uk_file_open (path, sizeof path, "SD:/docs")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/docs", "CODA statements|*.cod|All files|*")) return;
 	char *b; int n;
 	if (!file_read (path, &b, &n)) { warn (TR ("Import CODA"), TR ("The file could not be read.")); return; }
 	coda_stop ();

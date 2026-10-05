@@ -23,6 +23,9 @@
 
 namespace cr {
 
+// The kind of files the Export dialogs offer (uikit/dialog.h).
+static const char *const JSON_KINDS = "JSON files|*.json|All files|*";
+
 static Sidebar *g_side;
 static unsigned g_saveT;			// the ticks of the last change (saved a second later)
 static bool g_stateDirty;
@@ -382,7 +385,7 @@ static void app_export_coll (Collection *c)
 {
 	Str nm; safe_name (nm, c->name.c ()); nm.add (".postman_collection.json");
 	char p[256];
-	if (!uk_file_save (p, sizeof p, "SD:/", nm.c ())) return;
+	if (!uk_file_save (p, sizeof p, "SD:/", nm.c (), JSON_KINDS)) return;
 	json::Writer w (true); write_collection (w, *c);
 	if (save_json (p, w)) { Str m; m.addf ("Exported to %s (Postman collection v2.1).", p); app_status (m.c ()); }
 	else app_status ("The collection could not be written.", true);
@@ -432,7 +435,7 @@ static void app_export_env (int idx)
 	Environment *e = idx < 0 ? &g_store.globals : g_store.envs[idx];
 	Str nm; safe_name (nm, idx < 0 ? "globals" : e->name.c ()); nm.add (idx < 0 ? ".postman_globals.json" : ".postman_environment.json");
 	char p[256];
-	if (!uk_file_save (p, sizeof p, "SD:/", nm.c ())) return;
+	if (!uk_file_save (p, sizeof p, "SD:/", nm.c (), JSON_KINDS)) return;
 	json::Writer w (true); write_environment (w, *e, idx < 0 ? "globals" : "environment");
 	if (save_json (p, w)) { Str m; m.addf ("Exported to %s.", p); app_status (m.c ()); }
 	else app_status ("The environment could not be written.", true);

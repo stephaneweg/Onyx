@@ -576,7 +576,7 @@ static void on_image (Widget &)
 static void on_browse (Widget &)
 {
 	char p[200];
-	if (!uk_file_open (p, sizeof p, g_wp.image[0] ? g_wp.image : WALLPAPER_DIR "/")) return;
+	if (!uk_file_open (p, sizeof p, g_wp.image[0] ? g_wp.image : WALLPAPER_DIR "/", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx|All files|*")) return;
 	g_tbImage->setText (p);
 	const char *d = WALLPAPER_DIR "/"; int k = 0;		// one of the patterns: tinted, as the Pattern mode
 	while (d[k] && (p[k] | 32) == (d[k] | 32)) k++;
