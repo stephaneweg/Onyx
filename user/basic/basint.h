@@ -94,6 +94,28 @@ enum Op
 	OP_COUNT_						// (the number of opcodes + 1: the .bax header)
 };
 
+// The number of operands (code words) after an opcode: what the native translator walks the code with.
+static inline int opLen (int op)
+{
+	switch (op)
+	{
+	case OP_NUM: case OP_STR: case OP_LDG: case OP_STG: case OP_LDL: case OP_STL: case OP_ERASEG: case OP_ERASEL:
+	case OP_REFG: case OP_REFL: case OP_JMP: case OP_JZ: case OP_JNZ: case OP_GOSUB: case OP_PRINT: case OP_PRSEP:
+	case OP_INFIELD: case OP_LINPUT: case OP_READ: case OP_RESTORE: case OP_OPEN: case OP_CONV: case OP_FIXSTR:
+	case OP_ADDRG: case OP_ADDRL: case OP_FADDR: case OP_FLD: case OP_ONERR: case OP_USING: case OP_FIELD:
+	case OP_TRON: case OP_NEWREC: case OP_ISTYPE: case OP_CAST:
+		return 1;
+	case OP_ALDG: case OP_ASTG: case OP_ALDL: case OP_ASTL: case OP_AADDRG: case OP_AADDRL: case OP_CALL: case OP_BI:
+	case OP_ST: case OP_INPUT: case OP_RESUME: case OP_ONEVENT: case OP_EVSTATE: case OP_RUN: case OP_VCALL:
+		return 2;
+	case OP_FGET: case OP_FPUT: case OP_ICALL:
+		return 3;
+	case OP_DIMG: case OP_DIML:
+		return 4;
+	}
+	return 0;
+}
+
 // GET / PUT # layout of a variable: a scalar kind, or a record (ext = its type).
 enum { LK_SNG = 1, LK_INT, LK_LNG, LK_DBL, LK_VSTR, LK_FSTR, LK_REC };
 

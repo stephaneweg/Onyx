@@ -10,6 +10,11 @@
 #include <ctime>
 #include <cstdlib>
 
+#ifdef BAS_A64_SHIM
+extern "C" void *shim_code_alloc (unsigned long size);
+extern "C" unsigned long shim_clock_us (void);
+#endif
+
 struct ConsoleHost : bas::Host
 {
 	int col = 1; const char *cmd = "";
@@ -28,9 +33,18 @@ struct ConsoleHost : bas::Host
 		return n;
 	}
 	int column () override { return col; }
+#ifdef BAS_A64_SHIM
+	// (the AArch64 build under qemu, tools/tests/basic/a64: the machine code's memory; MANAGED=1: the VM)
+	void *codeAlloc (unsigned size) override { return shim_code_alloc (size); }
+#endif
 	// PROF=1: where the time goes (bas::Profile), on stderr at the end
 	bas::Profile profile;
-	unsigned clockUs () override { timespec ts; clock_gettime (CLOCK_MONOTONIC, &ts); return (unsigned) (ts.tv_sec * 1000000ull + ts.tv_nsec / 1000); }
+	// (0 without PROF: the machine code then polls at every tick, whatever the real time -- the same run each time)
+#ifdef BAS_A64_SHIM
+	unsigned clockUs () override { return prof ? (unsigned) shim_clock_us () : 0; }
+#else
+	unsigned clockUs () override { if (!prof) return 0; timespec ts; clock_gettime (CLOCK_MONOTONIC, &ts); return (unsigned) (ts.tv_sec * 1000000ull + ts.tv_nsec / 1000); }
+#endif
 	// a gamepad 0 whose A (16) and right (8) are held on every other read, its stick x at +500
 	int padReads = 0;
 	unsigned padButtons (int pad) override { padReads++; return (pad == 0 || pad == -1) && (padReads & 1) ? 16 + 8 : 0; }
@@ -138,6 +152,7 @@ int main (int argc, char **argv)
 		delete [] bytes;
 	}
 	if (!p) { printf ("COMPILE ERROR line %d: %s\n", e.line, e.msg); delete [] src; return 1; }
+	if (getenv ("MANAGED")) h.managed = true;
 	if (getenv ("PROF")) h.prof = &h.profile;
 	if (getenv ("PROFVMS")) { h.stopAt = atof (getenv ("PROFVMS")); h.quietSleep = true; }
 	int r = bas::run (p, h, &e);

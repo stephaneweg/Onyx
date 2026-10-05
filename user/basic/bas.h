@@ -57,6 +57,10 @@ struct Host
 	// the window's pump and display). prof = 0: no measure. clockUs: a free-running microsecond clock.
 	Profile *prof = 0;
 	virtual unsigned clockUs () { return 0; }
+	// Native execution (basjit.h, AArch64): memory the program's machine code is written to and run from
+	// (0: none -- the program runs on the VM); managed = true (basic -m): the VM even where there is.
+	bool managed = false;
+	virtual void *codeAlloc (unsigned size) { (void) size; return 0; }
 	virtual void profReport () {}				// (called every few seconds and at the end)
 	// Text screen (PRINT / INPUT / CLS / LOCATE / COLOR). out() gets text with '\n'.
 	virtual void out (const char *s, int n) = 0;
