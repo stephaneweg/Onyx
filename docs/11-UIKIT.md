@@ -23,37 +23,38 @@
 17. [`uikit/combobox.h`](#uikitcomboboxh)
 18. [`uikit/datagrid.h`](#uikitdatagridh)
 19. [`uikit/dropdown.h`](#uikitdropdownh)
-20. [`uikit/font.h`](#uikitfonth)
-21. [`uikit/global.h`](#uikitglobalh)
-22. [`uikit/groupbox.h`](#uikitgroupboxh)
-23. [`uikit/icon.h`](#uikiticonh)
-24. [`uikit/imagebox.h`](#uikitimageboxh)
-25. [`uikit/knob.h`](#uikitknobh)
-26. [`uikit/lang.h`](#uikitlangh)
-27. [`uikit/layout.h`](#uikitlayouth)
-28. [`uikit/lcd.h`](#uikitlcdh)
-29. [`uikit/listbox.h`](#uikitlistboxh)
-30. [`uikit/menu.h`](#uikitmenuh)
-31. [`uikit/numeric.h`](#uikitnumerich)
-32. [`uikit/paint.h`](#uikitpainth)
-33. [`uikit/panel.h`](#uikitpanelh)
-34. [`uikit/progress.h`](#uikitprogressh)
-35. [`uikit/radio.h`](#uikitradioh)
-36. [`uikit/richtextbox.h`](#uikitrichtextboxh)
-37. [`uikit/scrollbar.h`](#uikitscrollbarh)
-38. [`uikit/segmented.h`](#uikitsegmentedh)
-39. [`uikit/skin.h`](#uikitskinh)
-40. [`uikit/slider.h`](#uikitsliderh)
-41. [`uikit/splitter.h`](#uikitsplitterh)
-42. [`uikit/sysclip.h`](#uikitsyscliph)
-43. [`uikit/tabhost.h`](#uikittabhosth)
-44. [`uikit/textarea.h`](#uikittextareah)
-45. [`uikit/textbox.h`](#uikittextboxh)
-46. [`uikit/toggle.h`](#uikittoggleh)
-47. [`uikit/toolbar.h`](#uikittoolbarh)
-48. [`uikit/treeview.h`](#uikittreeviewh)
-49. [`uikit/vpaint.h`](#uikitvpainth)
-50. [`uikit/vumeter.h`](#uikitvumeterh)
+20. [`uikit/flat.h`](#uikitflath)
+21. [`uikit/font.h`](#uikitfonth)
+22. [`uikit/global.h`](#uikitglobalh)
+23. [`uikit/groupbox.h`](#uikitgroupboxh)
+24. [`uikit/icon.h`](#uikiticonh)
+25. [`uikit/imagebox.h`](#uikitimageboxh)
+26. [`uikit/knob.h`](#uikitknobh)
+27. [`uikit/lang.h`](#uikitlangh)
+28. [`uikit/layout.h`](#uikitlayouth)
+29. [`uikit/lcd.h`](#uikitlcdh)
+30. [`uikit/listbox.h`](#uikitlistboxh)
+31. [`uikit/menu.h`](#uikitmenuh)
+32. [`uikit/numeric.h`](#uikitnumerich)
+33. [`uikit/paint.h`](#uikitpainth)
+34. [`uikit/panel.h`](#uikitpanelh)
+35. [`uikit/progress.h`](#uikitprogressh)
+36. [`uikit/radio.h`](#uikitradioh)
+37. [`uikit/richtextbox.h`](#uikitrichtextboxh)
+38. [`uikit/scrollbar.h`](#uikitscrollbarh)
+39. [`uikit/segmented.h`](#uikitsegmentedh)
+40. [`uikit/skin.h`](#uikitskinh)
+41. [`uikit/slider.h`](#uikitsliderh)
+42. [`uikit/splitter.h`](#uikitsplitterh)
+43. [`uikit/sysclip.h`](#uikitsyscliph)
+44. [`uikit/tabhost.h`](#uikittabhosth)
+45. [`uikit/textarea.h`](#uikittextareah)
+46. [`uikit/textbox.h`](#uikittextboxh)
+47. [`uikit/toggle.h`](#uikittoggleh)
+48. [`uikit/toolbar.h`](#uikittoolbarh)
+49. [`uikit/treeview.h`](#uikittreeviewh)
+50. [`uikit/vpaint.h`](#uikitvpainth)
+51. [`uikit/vumeter.h`](#uikitvumeterh)
 
 ---
 
@@ -65,7 +66,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 686 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 722 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -212,6 +213,44 @@ Everything the headers declare, in their order — the details are in each heade
 | `DataGrid` | (a type) | `datagrid.h` |
 | `Dropdown` | uikit/dropdown.h -- a non-editable drop-down list (the sibling of Combobox, same look) | `dropdown.h` |
 | `uk_draw_option_list` | The open list of a drop-down (Dropdown, Combobox) | `dropdown.h` |
+| `uk_event` | a widget's event: the widget it comes from | `flat.h` |
+| `uk_resized` | uikit/flat.h -- UIKit for a program that is not C++ | `flat.h` |
+| `uk_chosen` | a menu item chosen | `flat.h` |
+| `uk_window` | the program's window (w x h: its inside); 0: none | `flat.h` |
+| `uk_window_run` | the events, until the window is closed (its box, uk_window_close) | `flat.h` |
+| `uk_window_step` | ... one round of them, for a program with its own loop: 0 once closed | `flat.h` |
+| `uk_window_wait` | ... one round and the wait before the next (16 ms): WHILE uk_window_wait (w) ... WEND | `flat.h` |
+| `uk_window_close` | uk_window_run returns, uk_window_step gives 0 | `flat.h` |
+| `uk_window_width` |  | `flat.h` |
+| `uk_window_height` |  | `flat.h` |
+| `uk_window_min_size` | the smallest a resizable window goes | `flat.h` |
+| `uk_window_on_resize` | after the user resized it: place the widgets again | `flat.h` |
+| `uk_label` |  | `flat.h` |
+| `uk_button` |  | `flat.h` |
+| `uk_textbox` |  | `flat.h` |
+| `uk_checkbox` |  | `flat.h` |
+| `uk_listbox` | items: "one\|two\|three" | `flat.h` |
+| `uk_dropdown` |  | `flat.h` |
+| `uk_slider` | from 0 to max | `flat.h` |
+| `uk_progress` |  | `flat.h` |
+| `uk_set_range` | a slider, a progress bar: its ends | `flat.h` |
+| `uk_set_text` | A widget's text | `flat.h` |
+| `uk_get_text` | A widget's text | `flat.h` |
+| `uk_set_value` | Its number | `flat.h` |
+| `uk_get_value` | Its number | `flat.h` |
+| `uk_add_item` | a list: one more item | `flat.h` |
+| `uk_clear_items` | a list: emptied | `flat.h` |
+| `uk_item_count` | a list, a drop-down | `flat.h` |
+| `uk_move` | Its number | `flat.h` |
+| `uk_show` | Its number | `flat.h` |
+| `uk_enable` | Its number | `flat.h` |
+| `uk_shown` | Its number | `flat.h` |
+| `uk_enabled` | Its number | `flat.h` |
+| `uk_focus` | Its number | `flat.h` |
+| `uk_menu_item` | One more item in the menu `title` (made at its first item) | `flat.h` |
+| `uk_message` | buttons 0 OK, 1 OK Cancel, 2 Yes No, 3 Yes No Cancel -> 1 OK / Yes, 0 Cancel / No (3: 2 for No) | `flat.h` |
+| `uk_ask_open` | the file chosen ("": none); good until the next call | `flat.h` |
+| `uk_ask_save` |  | `flat.h` |
 | `Font` | uikit/font.h -- Font | `font.h` |
 | `init` | load the theme (SD:/etc/theme.txt) and the font families; only the first call works | `font.h` |
 | `font` | the family for `id`, or Sans if it isn't loaded | `font.h` |
@@ -544,6 +583,7 @@ public:
 	unsigned bgColor () override { return bg; }
 	void onDraw () override;
 	void run ();
+	bool step ();				// one round of run (): false once it is time to end (attach () first)
 	void attach ();				// hook the kapi pointer / key streams (run () does it); for
 						// an app that pumps its own loop (pump_events + draw + present)
 	virtual void onTick () {}		// called once per run() loop (~60 Hz): polling, timers
@@ -1275,6 +1315,99 @@ The open list of a drop-down (Dropdown, Combobox): a floating panel at y0, n row
 ```cpp
 void uk_draw_option_list (Canvas &cv, int y0, int w, int rowH, const char *const *opts, int n,
 			  int sel, int hot);
+```
+
+## `uikit/flat.h`
+
+uikit/flat.h -- UIKit for a program that is not C++: a window and its widgets as handles, plain C functions on them. It is what Onyx BASIC calls (#import uikit: UIKit.window, UIKit.button ...; the code QBStudio makes of a form), and what a C program may call.
+
+```
+  void *win = uk_window ("Hello", 320, 120, 0);
+  uk_label (win, 12, 12, 200, 20, "Your name:");
+  void *name = uk_textbox (win, 12, 36, 200, 24, "", 0);
+  uk_button (win, 220, 36, 80, 24, "OK", on_ok);          // void on_ok (void *button)
+  uk_window_run (win);                                     // until the window is closed
+```
+
+A handle is a pointer the program keeps and gives back; 0 is "none" (a function given 0 does nothing). A program has one window. The widgets belong to their window and end with it. A text is Latin-1. A callback is called from uk_window_run (or uk_window_step), on the program's own thread.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+```cpp
+typedef void (*uk_event) (void *widget);		// a widget's event: the widget it comes from
+typedef void (*uk_resized) (void *window, int w, int h);
+typedef void (*uk_chosen) (void);			// a menu item chosen
+```
+
+### the window
+
+```cpp
+enum { UK_FLAT_RESIZABLE = 1 };
+void *uk_window (const char *title, int w, int h, int flags);	// the program's window (w x h: its inside); 0: none
+void uk_window_run (void *window);			// the events, until the window is closed (its box, uk_window_close)
+int  uk_window_step (void *window);			// ... one round of them, for a program with its own loop: 0 once closed
+int  uk_window_wait (void *window);			// ... one round and the wait before the next (16 ms): WHILE uk_window_wait (w) ... WEND
+void uk_window_close (void *window);			// uk_window_run returns, uk_window_step gives 0
+int  uk_window_width (void *window);
+int  uk_window_height (void *window);
+void uk_window_min_size (void *window, int w, int h);	// the smallest a resizable window goes
+void uk_window_on_resize (void *window, uk_resized fn);	// after the user resized it: place the widgets again
+```
+
+### the widgets (x, y, w, h: their place in the window)
+
+```cpp
+void *uk_label (void *window, int x, int y, int w, int h, const char *text);
+void *uk_button (void *window, int x, int y, int w, int h, const char *text, uk_event on_click);
+void *uk_textbox (void *window, int x, int y, int w, int h, const char *text, uk_event on_change);
+void *uk_checkbox (void *window, int x, int y, int w, int h, const char *text, int checked, uk_event on_click);
+void *uk_listbox (void *window, int x, int y, int w, int h, const char *items, uk_event on_change);	// items: "one|two|three"
+void *uk_dropdown (void *window, int x, int y, int w, int h, const char *items, uk_event on_change);
+void *uk_slider (void *window, int x, int y, int w, int h, int max, int value, uk_event on_change);	// from 0 to max
+void *uk_progress (void *window, int x, int y, int w, int h, int max, int value);
+void uk_set_range (void *widget, int min, int max);	// a slider, a progress bar: its ends
+```
+
+A widget's text: a label's, a button's, a checkbox's, what a text box holds, the chosen item of a list or a drop-down. uk_get_text's result is good until the next call of UIKit.
+
+```cpp
+void uk_set_text (void *widget, const char *text);
+const char *uk_get_text (void *widget);
+```
+
+Its number: a checkbox's state (1 / 0), the chosen item's place in a list or a drop-down (from 0; -1: none), a slider's or a progress bar's value.
+
+```cpp
+void uk_set_value (void *widget, int value);
+int  uk_get_value (void *widget);
+void uk_add_item (void *widget, const char *text);	// a list: one more item
+void uk_clear_items (void *widget);			// a list: emptied
+int  uk_item_count (void *widget);			// a list, a drop-down
+void uk_move (void *widget, int x, int y, int w, int h);
+void uk_show (void *widget, int on);
+void uk_enable (void *widget, int on);
+int  uk_shown (void *widget);
+int  uk_enabled (void *widget);
+void uk_focus (void *widget);
+```
+
+### the menus (in the screen's menu bar while the window is the active one)
+
+One more item in the menu `title` (made at its first item); item "-": a separator; key: "Ctrl+S" or "".
+
+```cpp
+void uk_menu_item (void *window, const char *title, const char *item, const char *key, uk_chosen on_choose);
+```
+
+### the dialogs
+
+```cpp
+int uk_message (const char *title, const char *text, int buttons);	// buttons 0 OK, 1 OK Cancel, 2 Yes No, 3 Yes No Cancel -> 1 OK / Yes, 0 Cancel / No (3: 2 for No)
+const char *uk_ask_open (const char *folder);		// the file chosen ("": none); good until the next call
+const char *uk_ask_save (const char *folder, const char *name);
+
+}
+#endif
 ```
 
 ## `uikit/font.h`

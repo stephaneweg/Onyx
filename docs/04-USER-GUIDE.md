@@ -4065,8 +4065,28 @@ documents 10 to 18), and `SD:/lib/<kit>.bi` lists what BASIC can call. The rules
 Nothing is checked: a wrong address ends the program. These words (`ALLOC`, `CSTR$`, `PEEKB` ..., `PEEKT`,
 `BYREF`, `ADDRESSOF`) only exist in a program that has an `#import`. A compiled program (`.bax`, a standalone app)
 keeps what it needs of the kits; if a kit is missing or too old when it runs, the call fails with *Kit not
-available* (error 73). The example: `SD:/basic/examples/kits.bas`. Not yet: UIKit's widgets (C++ classes;
-the controls of BASIC — `BUTTON`, `TEXTBOX` ... — are the way to an interface).
+available* (error 73). The example: `SD:/basic/examples/kits.bas`.
+
+**A desktop app with UIKit (`#import UIKit`).** UIKit, the toolkit of every Onyx app, has functions made
+for BASIC: a window and its widgets as handles. `win = UIKit.window (title$, w, h, 1)` makes the program's
+window (1: it can be resized); `UIKit.label`, `UIKit.button`, `UIKit.textbox`, `UIKit.checkbox`,
+`UIKit.listbox`, `UIKit.dropdown`, `UIKit.slider`, `UIKit.progress` `(win, x, y, w, h, ...)` put a widget in
+it and give its handle; `UIKit.get_text` / `set_text`, `get_value` / `set_value`, `add_item`, `clear_items`,
+`move`, `show`, `enable`, `focus` work on a handle; `UIKit.menu_item win, "File", "Quit", "Ctrl+Q",
+ADDRESSOF (Quit)` adds to the menu bar; `UIKit.message`, `UIKit.ask_open`, `UIKit.ask_save` are the dialogs.
+What happens to a widget **calls a SUB of the program**, given with `ADDRESSOF` when the widget is made
+(`SUB Clicked (widget)`), and the program runs the events with
+
+```basic
+DO WHILE UIKit.window_wait (win)
+LOOP
+```
+
+until the window is closed (its box, or `UIKit.window_close win`). The whole list, with what each function
+does: the document 11 (UIKit), `uikit/flat.h`; the example: `SD:/basic/examples/uikit.bas`. A program has
+**one** window: either this one, or BASIC's own screen (`PRINT`, `SCREEN`, `WINDOW`, `BUTTON` ...) — once
+`UIKit.window` is made, `PRINT` shows nothing (`MSGBOX`, `OPENFILE$`, `SAVEFILE$` still work, over the
+window). QBStudio writes this code from a window you draw.
 
 **Sound files and MIDI notes (AudioKit).** `PLAYFILE file$ [, loop]` plays an MP3, FLAC, WAV, FM Song (`.fms`), Ogg
 or MIDI file **while the program goes on** (`loop` 1: again and again); `STOPFILE`, `PAUSEFILE 1` /
@@ -4369,7 +4389,8 @@ good form).
 left, the object and event lists above.*
 
 **The code** (`Main.bas`): the controls are objects — `celsius.Text`, `live.Checked`, `scale.Value`, `Enabled`,
-`Visible`, and `Focus`, `Move x, y, w, h`, `AddItem s$` —, the window `Main.Width`, `Main.Height`, `Main.Close`.
+`Visible`, `Count`, and `Focus`, `Move x, y, w, h`, `AddItem s$`, `Clear` —, the window `Main.Width`, `Main.Height`,
+`Main.Close`.
 An event is a SUB named **`<control>_Click`** (buttons, check boxes, menu items) or **`<control>_Change`** (text
 boxes, lists, sliders), and **`Main_Load`**, **`Main_Resize`**, **`Main_Close`**; the **object and event lists**
 above the code write them. After a control's name and a dot, **completion** offers its properties and methods
@@ -4377,9 +4398,13 @@ above the code write them. After a control's name and a dot, **completion** offe
 **problems** are found as you type (a red dot in the margin, the line underlined, the list under the code).
 
 **The generated code** (`Main.form.bas`, read-only, under *Generated*): made again at each change of the form —
-`DIM SHARED` the controls, `Main_Create`, `Main_Layout (w, h)` (each control's place for a size: the layout's
-rules made arithmetic) and `Main_Run`, the event loop that calls your SUBs. Plain BASIC: the app runs without
-QBStudio.
+`DIM SHARED` the controls, `Main_Create` (the window and its controls made with **UIKit**, `#import UIKit`: each
+control is one of the system's widgets and calls your SUB), `Main_Layout (w, h)` (each control's place for a
+size: the layout's rules made arithmetic), `Main_Sized` (what the window calls when it is resized) and
+`Main_Run`, which runs the events until the window is closed. Plain BASIC: the app runs without QBStudio.
+A control's object holds its widget (`convert.handle`): any function of UIKit can be called on it
+(`UIKit.set_range scale.handle, 0, 500`). Apps made before (their `.bax`, their standalone program) run as
+they did; opened and run again in QBStudio, a project is made with UIKit.
 
 **Run** (F5) saves, puts the program together — the controls' library, the window's code, your files, then
 `Main_Run` — and starts it with `SD:/bin/basic`; an error, when it is compiled or while it runs, is shown in its

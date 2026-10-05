@@ -82,11 +82,20 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   the kits' C functions and a **flat C exposure for the C++ kits** (handles, not objects); nothing checked
   at run time (as FreeBASIC); **what a kit returns allocated is the program's to free**. Read: docs/03
   (*BASIC and the kits*), docs/04 §13 (*The system's kits*), `SD:/basic/examples/kits.bas`.
-- **Next** (the user's order, 2026-10-05; step 2, structures, is done: above): (4) **UIKit
-  from BASIC**: its table is C++ (674 of 686 entries), so a flat C layer in UIKit (`uk_*` functions on
-  handles) is to be designed -- an addition to UIKit's append-only table, and it must live with the
-  runtime's own window (`runtime.cpp`'s `ScreenRoot`): **ask the user for its shape before writing it**.
-  Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
+- **UIKit from BASIC, and QBStudio on it (step 4, the same day; asked by the user: "que ça utilise uikit
+  pour création et utilisation de fenêtre et widgets")**: `user/Kits/uikit/flat.h` / `flat.cpp`, C functions
+  on handles (window, label, button, textbox, checkbox, listbox, dropdown, slider, progress, menus,
+  dialogs; UIKit's table 722, `Root::step ()` new); QBStudio's controls' library and generated code call
+  them (`#import UIKit`, `ADDRESSOF` of the user's SUBs, the loop in BASIC over `UIKit.window_wait`).
+  A program has one window: the runtime's screen is not opened once a UIKit window exists. **Tested on
+  the Pi through a private copy of the new `uikit.so`** (`SD:/tmp/uikitf.so`, a test runtime bound to it:
+  `BAS_KIT_TEST_NAME` / `_PATH` in `baskits.cpp`) -- the generated converter converts, lays out, closes --
+  **but not seen**: that day the Pi's screen was another session's (`SD:/bin/elegant`), and the system's
+  `uikit.so` was not replaced nor the Pi restarted. **To do first when the Pi is free**: update it by
+  packages, restart, run `SD:/basic/examples/uikit.bas` and a QBStudio project, and look (clicks, typing,
+  the menus, a resize). Not in the flat layer yet: the other widgets (tabs, grids, trees, pictures, a
+  drawing surface), the keyboard and the pointer as events, several windows.
+- **Next**: what the list above lacks, as programs ask for it. Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
   FreeType's functions in `fontkit.bi` (their prototypes are in FreeType's headers, not in the kit's
   folder: `kitbi.py` reads `user/Kits/<kit>/*.h` only).
 

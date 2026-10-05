@@ -281,7 +281,12 @@ def describe (kit, verbose):
 	structs = Structs (alltext, tdefs, defs)
 	used = []						# the structures the functions name, in the order met
 	# the kit's prefix: what nearly all its C names start with (fk_, ik_, kapi_)
-	cnames = [s for _, s in entries if re.fullmatch (r"[A-Za-z]\w*", s)]
+	# (among the functions the headers declare: what a kit carries besides -- a codec -- does not count)
+	cnames = []
+	for _, s0 in entries:
+		m = re.fullmatch (r"_Z(\d+)(\w+)", s0)
+		n0 = m.group (2)[:int (m.group (1))] if m and len (m.group (2)) >= int (m.group (1)) else s0
+		if re.fullmatch (r"[A-Za-z]\w*", n0) and not n0.endswith ("_") and "__" not in n0 and prototypes (text, n0): cnames.append (n0)
 	count = {}
 	for s in cnames:
 		m = re.match (r"[A-Za-z0-9]+_", s)

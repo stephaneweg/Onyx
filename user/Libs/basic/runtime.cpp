@@ -92,6 +92,7 @@ public:
 	int winW = 0, winH = 0;
 	bool openWindow (int w, int h) override
 	{
+		if (Root::current ()) return false;		// (the program made its own window: UIKit.window -- a program has one)
 		root = new ScreenRoot (w, h, title[0] ? title : "BASIC");
 		if (root->canvas.px == 0) { delete root; root = 0; return false; }
 		winW = w; winH = h;				// the window buffer's size (and row pitch)
@@ -441,20 +442,20 @@ public:
 	void notify (const char *t, const char *m) override { ::notify (t, m); }
 	int msgbox (const char *t, const char *m, int b) override
 	{
-		if (!ensureWindow ()) return 0;
+		if (!Root::current () && !ensureWindow ()) return 0;	// (over the program's own UIKit window, if it has one)
 		int r = uk_messagebox (t, m, b);
-		dirty (); present (true);
+		if (root) { dirty (); present (true); }
 		return r;
 	}
 	int clipboard (char *buf, int cap) override { return clip_get_text (buf, cap); }	// (the shared clipboard: clipboard.h)
 	void setClipboard (const char *s) override { clip_set_text (s); }
 	bool fileDialog (bool save, const char *dir, char *o, int cap) override
 	{
-		if (!ensureWindow ()) return false;
+		if (!Root::current () && !ensureWindow ()) return false;
 		char name[128]; scpy (name, o, sizeof name);
 		bool ok = save ? uk_file_save (o, (unsigned) cap, dir[0] ? dir : "SD:/", name[0] ? name : "untitled.txt")
 			       : uk_file_open (o, (unsigned) cap, dir[0] ? dir : "SD:/");
-		dirty (); present (true);
+		if (root) { dirty (); present (true); }
 		return ok;
 	}
 	bool exec (const char *p, const char *a) override { return kapi_exec (p, a) != 0; }
@@ -807,7 +808,7 @@ int main (void)
 			}
 		}
 		if (host.fsBuf) host.fullscreen (false);
-		if (host.root) { uk_messagebox ("BASIC", msg, MB_OK); }
+		if (host.root || Root::current ()) { uk_messagebox ("BASIC", msg, MB_OK); }
 		else if (host.console) ax_putln (msg);
 		else notify (host.title, msg);
 	};
