@@ -3489,6 +3489,28 @@ barwidth = 40
     sample project against a UIKit of its own placed by the **real** `uikit.bi` (made by `kitbi.py` in the
     test's script): a function renamed or re-typed in `flat.h` fails it. `/bin/basic`, `qbasic` and
     `qbstudio` are linked against table 722: their packages need `uikit >= 1.722`.
+  - *User controls and Hosts in QBStudio* (2026-10-05): a form whose root is `UserControl` (`form.h`: the root
+    El is a `K_WINDOW` with `uc` set — read, laid out and drawn as a window is) is a **panel of controls**; a
+    `Host` (`K_HOST`: an area of the layout, `is_area`) shows one. UIKit's flat layer has the panel
+    (`uk_panel`: every maker's `window` is the window **or a panel**; `uk_set_parent`, `uk_width`,
+    `uk_height`; table 726). The library: `CLASS Panel` (handle, id, the Host that shows it) and on a Host's
+    `Control` `Load` / `Unload` / `Content` / `Resized` — the Host keeps the number and the panel of what it
+    shows, the user control its Host, so that no two objects hold each other (reference counts: a cycle
+    would never be freed). What is specific to each user control is reached by its number through
+    `QBS_Build` / `QBS_Layout` / `QBS_Shown` / `QBS_Left` (`generate_panels`: one part of the program,
+    **before the forms' code** — it has the user controls' `DIM SHARED`, which a window's `_Create` may
+    name); `generate_start` numbers them and runs the main window (`project.ini`: `main =`). A user control
+    is made at its first `Load` (`<Name>_Create` in the panel the Host made for it), hidden — not freed —
+    when another takes its place, re-parented when another Host shows it. **The resize chain is the
+    generated code's**: a window's `_Layout` moves a Host and calls `host.Resized w, h`, which calls the
+    shown user control's `_Layout` (and so on for its own Hosts) — UIKit has no layout to run.
+    The layout engine (`form.h`) gained `halign` / `valign` (`aligned ()`) and a Grid's `widths=` /
+    `heights=` (`tracks_of`: pixels, `*` shares, auto); all of it stays affine in the window's size, which
+    is what `generate ()` needs (the places are found by laying the form out at two sizes).
+    In the app (`main.cpp`): `main_form ()` is now the form **shown** (the designer, the events' lists, the
+    completion follow it), `start_form ()` the program's window; `cmd_add_usercontrol`. Test:
+    `qbstudio_test.cpp`, `pages ()` — the project `sdcard/projects/pages` laid out, generated, compiled and
+    run on the test's UIKit (a click replaces a page, a resize, a page shown again is not made twice).
   - *Not checked*: a wrong pointer ends the program (not the system) — as in any compiled BASIC. Memory a
     kit returns is freed by the program with the kit's own function (`FileKit.free`).
   - Tests: `tools/tests/basic/progs/t24_kits.bas` (PC, `.bax`, AArch64 in machine code and on the VM);

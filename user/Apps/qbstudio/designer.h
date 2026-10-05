@@ -35,7 +35,7 @@ static const char *default_base (int k)
 	switch (k)
 	{
 	case K_BUTTON: return "button"; case K_TEXTBOX: return "text"; case K_CHECKBOX: return "check"; case K_LISTBOX: return "list";
-	case K_DROPDOWN: return "choice"; case K_SLIDER: return "slider"; case K_PROGRESS: return "progress"; case K_STATUSBAR: return "status";
+	case K_DROPDOWN: return "choice"; case K_SLIDER: return "slider"; case K_PROGRESS: return "progress"; case K_STATUSBAR: return "status"; case K_HOST: return "host";
 	default: return 0;
 	}
 }
@@ -62,6 +62,7 @@ static El *new_element (Form &f, int kind)
 	case K_ROW: case K_COLUMN: e->set ("gap", "8"); break;
 	case K_GRID: e->set ("cols", "2"); e->set ("gap", "8"); break;
 	case K_CANVAS: e->set ("size", "200x120"); break;
+	case K_HOST: e->setFlag ("fill", true); e->set ("grow", "1"); break;
 	case K_MENU:
 	{
 		El *t = new El; t->kind = K_MENUTITLE; cpy (t->text, "&File", sizeof t->text); t->hasText = true; e->add (t);
@@ -100,6 +101,7 @@ static El *child_of_kind (El *w, int k) { if (w) for (int i = 0; i < w->kids.n; 
 static void plain (const char *s, char *o, int cap) { int k = 0; for (; *s && k < cap - 1; s++) if (*s != '&') o[k++] = *s; o[k] = 0; }
 
 // ---- the window's parts drawn by the designer: a menu's strip, a toolbar, a status bar --------------------------------
+static void dashed_rect (Canvas &cv, int x, int y, int w, int h, unsigned c);
 class Strip : public Widget
 {
 public:
@@ -119,6 +121,14 @@ public:
 				uk_text (canvas, x, (height - uk_fh ()) / 2, t, C_TEXT);
 				x += uk_tw (t) + 18;
 			}
+		}
+		else if (e->kind == K_HOST)			// the area a user control is shown in: its frame, what it shows
+		{
+			dashed_rect (canvas, 0, 0, width, height, uk_mix (C_BG, C_TEXT, 110));
+			char t[96]; const char *c = e->get ("content");
+			if (c && c[0]) snprintf (t, sizeof t, "%s: %s", e->name[0] ? e->name : "Host", c); else snprintf (t, sizeof t, "%s (a user control goes here)", e->name[0] ? e->name : "Host");
+			if (uk_tw (t) + 12 > width) cpy (t, e->name[0] ? e->name : "Host", sizeof t);
+			uk_text (canvas, imax (4, (width - uk_tw (t)) / 2), imax (2, (height - uk_fh ()) / 2), t, uk_mix (C_BG, C_TEXT, 150));
 		}
 		else if (e->kind == K_TOOLBAR) uk_etch_h (canvas, 0, height - 2, width, C_BG);
 		else if (e->kind == K_STATUSBAR)
@@ -168,10 +178,13 @@ public:
 	// a drag
 	enum { DR_NONE, DR_PRESS, DR_MOVE, DR_NEW, DR_SIZE_WIN, DR_SIZE_W, DR_SIZE_H };
 	int drag, newKind, px, py, startW, startH, startX, startY, grabX, grabY;
+	int sizeFx = 1, sizeFy = 1;			// DR_SIZE_WIN: which way the handle held sizes the window (-1, 0, 1 each way)
 	El *dropPar; int dropIdx; int dropLine[4]; bool dropOk; int dropAtX, dropAtY;
 	int hoverX, hoverY;
 	Panel *client;
 	Overlay *ov;
+	Scrollbar *vsb, *hsb;				// shown when the window drawn is larger than the designer
+	int maxX = 0, maxY = 0;				// how far it scrolls
 	Vec<char *> pool;				// the drop-downs' options (alive while their widgets are)
 	Vec<const char **> optsPool;
 	unsigned lastClick;
@@ -181,7 +194,40 @@ public:
 		hoverX (-1), hoverY (-1), client (0), lastClick (0)
 	{
 		ov = new Overlay (this, w, h); addChild (ov);
+		vsb = new Scrollbar (0, 0, UK_SBW, 10, true, 0, 0, onScrollV); vsb->hidden = true; addChild (vsb);
+		hsb = new Scrollbar (0, 0, 10, UK_SBW, false, 0, 0, onScrollH); hsb->hidden = true; addChild (hsb);
 	}
+	static void onScrollV (Widget &w) { Designer *d = (Designer *) w.parent; if (d) { d->sy = ((Scrollbar &) w).value; d->scrolled (); } }
+	static void onScrollH (Widget &w) { Designer *d = (Designer *) w.parent; if (d) { d->sx = ((Scrollbar &) w).value; d->scrolled (); } }
+	// Where the window is drawn for the scroll, and the bars: the room is the window, its title, a margin around
+	// and the place of the chosen element's label under it
+	void origin ()
+	{
+		int mh = menuH ();
+		int cw = winW + 48, ch = TITLE_H + winH + mh + 24 + 44;
+		for (int pass = 0; pass < 2; pass++)		// (a bar takes room: the other may then be needed)
+		{
+			int vw = width - (maxY > 0 ? UK_SBW : 0), vh = height - (maxX > 0 ? UK_SBW : 0);
+			maxX = imax (0, cw - vw); maxY = imax (0, ch - vh);
+		}
+		sx = imax (0, imin (sx, maxX)); sy = imax (0, imin (sy, maxY));
+		int vw = width - (maxY > 0 ? UK_SBW : 0);
+		ox = (maxX > 0 ? 24 : imax (24, (vw - winW) / 2)) - sx; oy = 24 + TITLE_H - sy;
+		vsb->hidden = maxY == 0; hsb->hidden = maxX == 0;
+		vsb->vmax = maxY; vsb->value = sy; hsb->vmax = maxX; hsb->value = sx;
+		vsb->left = width - UK_SBW; vsb->top = 0; vsb->Widget::resizeTo (UK_SBW, imax (10, height - (maxX > 0 ? UK_SBW : 0)));
+		hsb->left = 0; hsb->top = height - UK_SBW; hsb->Widget::resizeTo (imax (10, width - (maxY > 0 ? UK_SBW : 0)), UK_SBW);
+		vsb->invalidate (true); hsb->invalidate (true);
+	}
+	// Scrolled (a bar, the wheel): the window drawn moves -- nothing is made again
+	void scrolled ()
+	{
+		origin ();
+		if (client) { client->left = ox; client->top = oy; }
+		redraw ();
+		invalidate (true);
+	}
+	void scrollBy (int dx, int dy) { sx += dx; sy += dy; scrolled (); }
 	~Designer () { freePool (); }
 	void freePool () { for (int i = 0; i < pool.n; i++) free (pool[i]); pool.clear (); for (int i = 0; i < optsPool.n; i++) delete[] optsPool[i]; optsPool.clear (); }
 	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); ov->resizeTo (w, h); rebuild (); }
@@ -198,11 +244,12 @@ public:
 		form_size (*form, &winW, &winH);
 		int mh = menuH ();
 		form_layout (*form, winW, winH + mh, true);
-		ox = imax (24, (width - winW) / 2) - sx; oy = 24 + TITLE_H - sy;
-		if (width - winW < 48) ox = 24 - sx;
+		origin ();
 		client = new GridPanel (ox, oy, winW, winH + mh);
 		make (form->root);
-		removeChild (ov); addChild (client); addChild (ov);
+		// (the overlay over the widgets, the bars over the overlay)
+		removeChild (ov); removeChild (vsb); removeChild (hsb);
+		addChild (client); addChild (ov); addChild (vsb); addChild (hsb);
 		redraw ();
 		invalidate (true);
 	}
@@ -236,7 +283,7 @@ public:
 		case K_SLIDER: w = new Slider (x, y, ww, hh, 0, imax (1, e->num ("max", 100)), e->num ("value", 0), 0, C_BG); break;
 		case K_PROGRESS: w = new Progress (x, y, ww, hh, 0, 100, e->num ("value", 0)); break;
 		case K_GROUP: w = new GroupBox (x, y, ww, hh, e->text, C_BG); break;
-		case K_MENU: case K_TOOLBAR: case K_STATUSBAR: w = new Strip (e); break;
+		case K_MENU: case K_TOOLBAR: case K_STATUSBAR: case K_HOST: w = new Strip (e); break;
 		default: break;
 		}
 		if (w) { if (e->flag ("disabled")) w->disabled = true; client->addChild (w); }
@@ -490,18 +537,34 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 {
 	Designer *D = d;
 	if (mx == -1 && my == -1 && !bl && !wheel) return false;		// (the pointer left)
-	if (wheel) { if ((kapi_get_modifiers () & MOD_SHIFT)) D->sx = imax (0, D->sx - wheel * 24); else D->sy = imax (0, D->sy - wheel * 24); D->rebuild (); return true; }
+	if (wheel) { if ((kapi_get_modifiers () & MOD_SHIFT)) D->scrollBy (-wheel * 24, 0); else D->scrollBy (0, -wheel * 24); return true; }
 	if (!D->form || !D->form->root) return true;
 	D->relay ();
 	int W = D->winW, H = D->winH + D->menuH ();
 	int cx = mx - D->ox, cy = my - D->oy;
 	El *s = D->sel;
 	bool onCorner = cx >= W - 6 && cx <= W + 8 && cy >= H - 6 && cy <= H + 8;
+	// the window chosen: its eight handles size it (those of its left and top edges too: the window stays where it
+	// is drawn, its size follows the pointer)
+	int hfx = 1, hfy = 1; bool onHandle = false;
+	if (s && s == D->form->root)
+	{
+		int x0 = 0, y0 = -Designer::TITLE_H, w0 = W, h0 = H + Designer::TITLE_H;
+		int hx[8] = { x0, x0 + w0 / 2, x0 + w0, x0 + w0, x0 + w0, x0 + w0 / 2, x0, x0 }, hy[8] = { y0, y0, y0, y0 + h0 / 2, y0 + h0, y0 + h0, y0 + h0, y0 + h0 / 2 };
+		for (int i = 0; i < 8 && !onHandle; i++)
+			if (abs (cx - hx[i]) <= 5 && abs (cy - hy[i]) <= 5)
+			{
+				onHandle = true;
+				hfx = hx[i] == x0 ? -1 : hx[i] == x0 + w0 ? 1 : 0;
+				hfy = hy[i] == y0 ? -1 : hy[i] == y0 + h0 ? 1 : 0;
+			}
+	}
+	if (onCorner && !onHandle) { onHandle = true; hfx = hfy = 1; }
 	bool onRight = s && s != D->form->root && is_control (s->kind) && abs (cx - (s->x + s->w)) <= 4 && cy > s->y && cy < s->y + s->h;
 	bool onBottom = s && s != D->form->root && is_control (s->kind) && abs (cy - (s->y + s->h)) <= 4 && cx > s->x && cx < s->x + s->w;
 	if (D->drag == Designer::DR_NONE)
 	{
-		if (onCorner) uk_cursor (KAPI_CURSOR_SIZE_NWSE);
+		if (onHandle) uk_cursor (!hfy ? KAPI_CURSOR_SIZE_H : !hfx ? KAPI_CURSOR_SIZE_V : hfx == hfy ? KAPI_CURSOR_SIZE_NWSE : KAPI_CURSOR_SIZE_NESW);
 		else if (onRight) uk_cursor (KAPI_CURSOR_SIZE_H);
 		else if (onBottom) uk_cursor (KAPI_CURSOR_SIZE_V);
 	}
@@ -509,7 +572,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 	{
 		pressed = true; catchOutside = true; setFocus ();
 		D->px = mx; D->py = my;
-		if (onCorner) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; return true; }
+		if (onHandle) { D->drag = Designer::DR_SIZE_WIN; D->startW = W; D->startH = D->winH; D->sizeFx = hfx; D->sizeFy = hfy; return true; }
 		if (onRight) { D->drag = Designer::DR_SIZE_W; D->startW = s->w; D->startX = s->x; return true; }
 		if (onBottom) { D->drag = Designer::DR_SIZE_H; D->startH = s->h; D->startY = s->y; return true; }
 		El *e = D->at (mx, my);
@@ -538,7 +601,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 			break;
 		case Designer::DR_SIZE_WIN:
 		{
-			char t[24]; snprintf (t, sizeof t, "%dx%d", imax (120, snap (D->startW + dx)), imax (60, snap (D->startH + dy)));
+			char t[24]; snprintf (t, sizeof t, "%dx%d", imax (120, snap (D->startW + dx * D->sizeFx)), imax (60, snap (D->startH + dy * D->sizeFy)));
 			D->form->root->set ("size", t); D->rebuild ();
 			break;
 		}
@@ -579,6 +642,7 @@ inline bool Overlay::onKey (long k)
 struct ToolItem { int kind; const char *label; };
 static const ToolItem TOOLS[] = {
 	{ -1, "Layout" }, { K_COLUMN, "Column" }, { K_ROW, "Row" }, { K_GRID, "Grid" }, { K_GROUP, "Group" }, { K_SPACER, "Spacer" }, { K_CANVAS, "Canvas" },
+	{ K_HOST, "Host" },
 	{ -1, "Controls" }, { K_LABEL, "Label" }, { K_BUTTON, "Button" }, { K_TEXTBOX, "TextBox" }, { K_CHECKBOX, "CheckBox" }, { K_LISTBOX, "ListBox" },
 	{ K_DROPDOWN, "DropDown" }, { K_SLIDER, "Slider" }, { K_PROGRESS, "Progress" },
 	{ -1, "Window" }, { K_MENU, "Menu" }, { K_TOOLBAR, "ToolBar" }, { K_STATUSBAR, "StatusBar" },
@@ -596,6 +660,7 @@ static void tool_icon (Canvas &cv, int kind, int x, int y, unsigned ink, unsigne
 	case K_GROUP: dashed_rect (cv, x + 1, y + 3, 12, 10, ink); cv.fillRect (x + 3, y + 1, 6, 3, acc); break;
 	case K_SPACER: cv.fillRect (x + 1, y + 7, 12, 1, ink); cv.fillRect (x + 1, y + 4, 1, 7, ink); cv.fillRect (x + 12, y + 4, 1, 7, ink); break;
 	case K_CANVAS: cv.fillRect (x + 1, y + 2, 12, 10, soft); cv.fillRect (x + 3, y + 8, 3, 3, acc); cv.fillRect (x + 8, y + 4, 3, 3, ink); break;
+	case K_HOST: dashed_rect (cv, x + 1, y + 2, 12, 10, ink); cv.fillRect (x + 4, y + 5, 6, 4, acc); break;
 	case K_LABEL: uk_text (cv, x + 2, y - 1, "A", ink, 2); break;
 	case K_BUTTON: uk_rbox (cv, x, y + 3, 14, 9, 3, soft, soft); uk_rline (cv, x, y + 3, 14, 9, 3, ink); break;
 	case K_TEXTBOX: cv.fillRect (x, y + 3, 14, 9, 0xFFFFFF); uk_rline (cv, x, y + 3, 14, 9, 0, ink); cv.fillRect (x + 3, y + 5, 1, 5, ink); break;

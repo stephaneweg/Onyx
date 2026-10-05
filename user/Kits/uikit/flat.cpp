@@ -11,7 +11,7 @@ using namespace uikit;
 
 namespace {
 
-enum { FK_BUTTON = 1, FK_LABEL, FK_TEXTBOX, FK_CHECKBOX, FK_LISTBOX, FK_DROPDOWN, FK_PROGRESS, FK_SLIDER, FK_WINDOW };
+enum { FK_BUTTON = 1, FK_LABEL, FK_TEXTBOX, FK_CHECKBOX, FK_LISTBOX, FK_DROPDOWN, FK_PROGRESS, FK_SLIDER, FK_WINDOW, FK_PANEL };
 
 int flen (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 void fcpy (char *d, const char *s, int cap) { int i = 0; if (s) for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
@@ -65,14 +65,16 @@ public:
 };
 
 FlatWin *win_of (void *h) { Widget *w = (Widget *) h; return w && w->tag == FK_WINDOW ? (FlatWin *) w : 0; }
+// What may hold widgets: the window, a panel
+Widget *holder (void *h) { Widget *w = (Widget *) h; return w && (w->tag == FK_WINDOW || w->tag == FK_PANEL) ? w : 0; }
 void changed (Widget *w) { w->invalidate (true); Root *r = Root::current (); if (r) r->invalidate (true); }
 void *add (void *window, Widget *w, int kind)
 {
-	FlatWin *f = win_of (window);
+	Widget *f = holder (window);
 	if (!f || !w) { delete w; return 0; }
 	w->tag = kind;
 	f->addChild (w);
-	f->invalidate (true);
+	changed (f);
 	return w;
 }
 // "one|two|three" -> a list's items
@@ -131,30 +133,43 @@ void uk_window_min_size (void *window, int w, int h) { FlatWin *f = win_of (wind
 void uk_window_on_resize (void *window, uk_resized fn) { FlatWin *f = win_of (window); if (f) f->onSize = fn; }
 
 // ---- the widgets ----------------------------------------------------------------------------------------
+void *uk_panel (void *window, int x, int y, int w, int h)
+{ return holder (window) ? add (window, new Panel (x, y, w > 1 ? w : 1, h > 1 ? h : 1), FK_PANEL) : 0; }
+void uk_set_parent (void *widget, void *window)
+{
+	Widget *w = (Widget *) widget, *to = holder (window);
+	if (!w || !to || w->tag == FK_WINDOW || w->parent == to) return;
+	for (Widget *p = to; p; p = p->parent) if (p == w) return;	// (not into itself)
+	if (w->parent) w->parent->removeChild (w);
+	to->addChild (w);
+	changed (to);
+}
+int uk_width (void *widget) { Widget *w = (Widget *) widget; return w ? w->width : 0; }
+int uk_height (void *widget) { Widget *w = (Widget *) widget; return w ? w->height : 0; }
 void *uk_label (void *window, int x, int y, int w, int h, const char *text)
-{ return win_of (window) ? add (window, new Label (x, y, w, h, text ? text : ""), FK_LABEL) : 0; }
+{ return holder (window) ? add (window, new Label (x, y, w, h, text ? text : ""), FK_LABEL) : 0; }
 void *uk_button (void *window, int x, int y, int w, int h, const char *text, uk_event on_click)
-{ return win_of (window) ? add (window, new Button (x, y, w, h, text ? text : "", act (on_click)), FK_BUTTON) : 0; }
+{ return holder (window) ? add (window, new Button (x, y, w, h, text ? text : "", act (on_click)), FK_BUTTON) : 0; }
 void *uk_textbox (void *window, int x, int y, int w, int h, const char *text, uk_event on_change)
 {
-	if (!win_of (window)) return 0;
+	if (!holder (window)) return 0;
 	Textbox *t = new Textbox (x, y, w, h, "", act (on_change));
 	t->maxLen = Textbox::TEXT_CAP - 1;
 	t->setText (text ? text : "");
 	return add (window, t, FK_TEXTBOX);
 }
 void *uk_checkbox (void *window, int x, int y, int w, int h, const char *text, int checked, uk_event on_click)
-{ return win_of (window) ? add (window, new Checkbox (x, y, w, h, text ? text : "", checked != 0, act (on_click)), FK_CHECKBOX) : 0; }
+{ return holder (window) ? add (window, new Checkbox (x, y, w, h, text ? text : "", checked != 0, act (on_click)), FK_CHECKBOX) : 0; }
 void *uk_listbox (void *window, int x, int y, int w, int h, const char *items, uk_event on_change)
 {
-	if (!win_of (window)) return 0;
+	if (!holder (window)) return 0;
 	ListBox *lb = new ListBox (x, y, w, h, act (on_change), act (on_change));
 	list_items (lb, items);
 	return add (window, lb, FK_LISTBOX);
 }
 void *uk_dropdown (void *window, int x, int y, int w, int h, const char *items, uk_event on_change)
 {
-	if (!win_of (window)) return 0;
+	if (!holder (window)) return 0;
 	// its options: the text kept, cut at the bars (they live as long as the window)
 	int len = flen (items), n = 1;
 	for (int i = 0; i < len; i++) if (items[i] == '|') n++;
@@ -165,9 +180,9 @@ void *uk_dropdown (void *window, int x, int y, int w, int h, const char *items, 
 	return add (window, new Dropdown (x, y, w, h, opts, n, 0, act (on_change)), FK_DROPDOWN);
 }
 void *uk_slider (void *window, int x, int y, int w, int h, int max, int value, uk_event on_change)
-{ return win_of (window) ? add (window, new Slider (x, y, w, h, 0, max > 0 ? max : 100, value, act (on_change)), FK_SLIDER) : 0; }
+{ return holder (window) ? add (window, new Slider (x, y, w, h, 0, max > 0 ? max : 100, value, act (on_change)), FK_SLIDER) : 0; }
 void *uk_progress (void *window, int x, int y, int w, int h, int max, int value)
-{ return win_of (window) ? add (window, new Progress (x, y, w, h, 0, max > 0 ? max : 100, value), FK_PROGRESS) : 0; }
+{ return holder (window) ? add (window, new Progress (x, y, w, h, 0, max > 0 ? max : 100, value), FK_PROGRESS) : 0; }
 void uk_set_range (void *widget, int min, int max)
 {
 	Widget *w = (Widget *) widget; if (!w || max <= min) return;

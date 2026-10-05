@@ -9,6 +9,10 @@
 //   - <Form>_Sized: what the window calls when it was resized (the layout again, then your <Form>_Resize);
 //   - <Form>_Run: the window made, <Form>_Load, the events until it is closed -- a control's event calls your SUB
 //     <name>_<Event> (Click, Change) --, then <Form>_Close.
+// A user control (a form whose root is UserControl: a panel of controls) has no window: its object is a Panel,
+// <Name>_Create makes its controls in the panel a Host gives it, <Name>_Layout places them; a Host (an area of a
+// window or of another user control) shows one -- host.Content = Name --, in place of the one it showed. What
+// makes and places the user control of a number: QBS_Build / QBS_Layout / QBS_Shown (generate_panels).
 // The controls' library (LIBRARY) is BASIC too, PROPERTY over UIKit's functions (#import UIKit). The app's program: the library,
 // the forms' code, your files, then "<Main>_Run" (build_program: the lines of each part kept, an error found back).
 //
@@ -28,6 +32,8 @@ static const char *const LIBRARY =
 "#import UIKit\n"
 "CLASS Control\n"
 "  handle AS DOUBLE\n"
+"  shownId AS INTEGER\n"
+"  shownHandle AS DOUBLE\n"
 "END CLASS\n"
 "PROPERTY Control.Text AS STRING\n"
 "  RETURN UIKit.get_text (this.handle)\n"
@@ -74,6 +80,61 @@ static const char *const LIBRARY =
 "SUB Control.Clear\n"
 "  UIKit.clear_items this.handle\n"
 "END SUB\n"
+"' A user control: a panel of controls drawn in the designer, shown in a Host (host.Content = Name)\n"
+"CLASS Panel\n"
+"  handle AS DOUBLE\n"
+"  id AS INTEGER\n"
+"  owner AS Control\n"
+"END CLASS\n"
+"PROPERTY Panel.Width AS INTEGER\n"
+"  RETURN UIKit.width (this.handle)\n"
+"END PROPERTY\n"
+"PROPERTY Panel.Height AS INTEGER\n"
+"  RETURN UIKit.height (this.handle)\n"
+"END PROPERTY\n"
+"PROPERTY Panel.Visible AS INTEGER\n"
+"  IF this.owner IS NOTHING THEN RETURN 0 ELSE RETURN -1\n"
+"END PROPERTY\n"
+"' A Host: the user control it shows; another takes its place. (The Host keeps the number and the panel of\n"
+"' what it shows, the user control its Host: no object holds the other both ways.)\n"
+"SUB Control.Unload\n"
+"  IF this.shownId = 0 THEN EXIT SUB\n"
+"  UIKit.show this.shownHandle, 0\n"
+"  QBS_Left this.shownId\n"
+"  this.shownId = 0: this.shownHandle = 0\n"
+"END SUB\n"
+"SUB Control.Load (p AS Panel)\n"
+"  IF p IS NOTHING THEN this.Unload: EXIT SUB\n"
+"  IF this.shownId = p.id THEN EXIT SUB\n"
+"  this.Unload\n"
+"  IF NOT (p.owner IS NOTHING) THEN p.owner.Unload\n"
+"  w = UIKit.width (this.handle): h = UIKit.height (this.handle)\n"
+"  p.owner = this\n"
+"  IF p.handle = 0 THEN\n"
+"    p.handle = UIKit.panel (this.handle, 0, 0, w, h)\n"
+"    this.shownId = p.id: this.shownHandle = p.handle\n"
+"    QBS_Build p.id\n"
+"  ELSE\n"
+"    this.shownId = p.id: this.shownHandle = p.handle\n"
+"    UIKit.set_parent p.handle, this.handle\n"
+"    UIKit.move p.handle, 0, 0, w, h\n"
+"    UIKit.show p.handle, 1\n"
+"  END IF\n"
+"  QBS_Layout p.id, w, h\n"
+"  QBS_Shown p.id\n"
+"END SUB\n"
+"' (host.Content = Name shows a user control; read, it is its number -- 0: none)\n"
+"PROPERTY Control.Content AS INTEGER\n"
+"  RETURN this.shownId\n"
+"END PROPERTY\n"
+"PROPERTY Control.Content (p AS Panel)\n"
+"  this.Load p\n"
+"END PROPERTY\n"
+"SUB Control.Resized (w, h)\n"
+"  IF this.shownId = 0 THEN EXIT SUB\n"
+"  UIKit.move this.shownHandle, 0, 0, w, h\n"
+"  QBS_Layout this.shownId, w, h\n"
+"END SUB\n"
 "CLASS Window\n"
 "  handle AS DOUBLE\n"
 "END CLASS\n"
@@ -116,7 +177,7 @@ static void collect (El *e, const char *form, Vec<GenCtl> &out, int *anon)
 	for (int i = 0; i < e->kids.n; i++) collect (e->kids[i], form, out, anon);
 }
 static bool has_sub (const Vec<char *> &subs, const char *name) { for (int i = 0; i < subs.n; i++) if (ieq (subs[i], name)) return true; return false; }
-static const char *event_of (int kind) { return kind == K_BUTTON || kind == K_CHECKBOX || kind == K_MENUITEM ? "Click" : kind == K_LABEL || kind == K_STATUSBAR || kind == K_PROGRESS ? 0 : "Change"; }
+static const char *event_of (int kind) { return kind == K_BUTTON || kind == K_CHECKBOX || kind == K_MENUITEM ? "Click" : kind == K_LABEL || kind == K_STATUSBAR || kind == K_PROGRESS || kind == K_HOST ? 0 : "Change"; }
 // The number for BASIC (a few decimals, no exponent)
 static void bnum (Str &o, double v)
 {
@@ -148,7 +209,9 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 	for (int i = 0; i < ctl.n; i++) { El *e = ctl[i].e; a.push (e->x); a.push (e->y); a.push (e->w); a.push (e->h); }
 
 	o.printf ("' %s.form.bas -- made by QBStudio from %s.form: do not edit (it is made again at each change of the form)\n", form, form);
-	o.printf ("DIM SHARED %s AS Window ()\n", form);			// (objects: made here)
+	bool uc = f.userControl ();
+	if (uc) o.printf ("' (its object, %s, a Panel: made with the other user controls', before the forms' code)\n", form);
+	else o.printf ("DIM SHARED %s AS Window ()\n", form);			// (objects: made here)
 	for (int i = 0; i < ctl.n; i++) o.printf ("DIM SHARED %s AS Control ()\n", ctl[i].var);
 	o.puts ("\n");
 	// what a control calls: your SUB <name>_<Event>, if you wrote it
@@ -160,9 +223,13 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 		o.puts ("0");
 	};
 	// _Create
-	o.printf ("SUB %s_Create\n  %s.handle = UIKit.window (", form, form); bstr_keep (o, win->hasText ? win->text : form);
-	o.printf (", %d, %d, %d)\n", W0, H0, win->flag ("resizable") ? 1 : 0);
-	if (minW || minH) o.printf ("  UIKit.window_min_size %s.handle, %d, %d\n", form, minW, minH);
+	if (uc) o.printf ("' (a user control: its panel, %s.handle, is made by the Host that shows it)\nSUB %s_Create\n", form, form);
+	else
+	{
+		o.printf ("SUB %s_Create\n  %s.handle = UIKit.window (", form, form); bstr_keep (o, win->hasText ? win->text : form);
+		o.printf (", %d, %d, %d)\n", W0, H0, win->flag ("resizable") ? 1 : 0);
+		if (minW || minH) o.printf ("  UIKit.window_min_size %s.handle, %d, %d\n", form, minW, minH);
+	}
 	for (int i = 0; i < ctl.n; i++)
 	{
 		El *e = ctl[i].e; const char *v = ctl[i].var;
@@ -171,11 +238,11 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 		switch (e->kind)
 		{
 		case K_SEP:
-			if (e->parent && e->parent->kind == K_MENUTITLE) { o.printf ("  UIKit.menu_item %s.handle, ", form); bstr (o, e->parent->text); o.puts (", \"-\", \"\", 0\n"); }
+			if (!uc && e->parent && e->parent->kind == K_MENUTITLE) { o.printf ("  UIKit.menu_item %s.handle, ", form); bstr (o, e->parent->text); o.puts (", \"-\", \"\", 0\n"); }
 			continue;
 		case K_MENUITEM:
 		{
-			const El *t = e->parent; if (!t) break;
+			const El *t = e->parent; if (!t || uc) continue;		// (a user control has no menu bar)
 			o.printf ("  UIKit.menu_item %s.handle, ", form); bstr (o, t->text); o.puts (", "); bstr (o, e->text); o.puts (", ");
 			const char *k = e->get ("key"); bstr_keep (o, k ? k : "");
 			o.puts (", "); handler (ctl[i]); o.puts ("\n");
@@ -189,6 +256,7 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 		case K_DROPDOWN: maker = "dropdown"; break;
 		case K_SLIDER: maker = "slider"; break;
 		case K_PROGRESS: maker = "progress"; break;
+		case K_HOST: maker = "panel"; break;
 		default: break;
 		}
 		if (!maker) continue;
@@ -208,7 +276,9 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 		if (e->flag ("hidden")) o.printf ("  %s.Visible = 0\n", v);
 		if (e->flag ("disabled") || e->flag ("readonly")) o.printf ("  %s.Enabled = 0\n", v);
 	}
-	o.printf ("  UIKit.window_on_resize %s.handle, ADDRESSOF (%s_Sized)\n", form, form);
+	// what the Hosts show at first (content=<a user control>)
+	for (int i = 0; i < ctl.n; i++) if (ctl[i].e->kind == K_HOST && ctl[i].e->get ("content") && ctl[i].e->get ("content")[0]) o.printf ("  %s.Load %s\n", ctl[i].var, ctl[i].e->get ("content"));
+	if (!uc) o.printf ("  UIKit.window_on_resize %s.handle, ADDRESSOF (%s_Sized)\n", form, form);
 	o.puts ("END SUB\n\n");
 	// _Layout
 	o.printf ("' the window's layout: where each control goes for a size w x h\nSUB %s_Layout (w, h)\n", form);
@@ -226,8 +296,16 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 			if (k < 3) o.puts (", ");
 		}
 		o.puts ("\n");
+		if (ctl[i].e->kind == K_HOST)				// (what it shows follows its size)
+		{
+			o.printf ("  %s.Resized ", ctl[i].var);
+			for (int k = 2; k < 4; k++) { int v0 = a[4 * i + k], v1 = b[4 * i + k]; affine (o, v0, (double) (v1 - v0) / D, S[k], k % 2 ? H0 : W0); if (k < 3) o.puts (", "); }
+			o.puts ("\n");
+		}
 	}
-	o.puts ("END SUB\n\n");
+	o.puts ("END SUB\n");
+	if (uc) return;						// (no window: no events' loop -- a Host shows it)
+	o.puts ("\n");
 	// _Sized: the window was resized
 	o.printf ("' the window was resized (what it calls): the layout again\nSUB %s_Sized (win, w, h)\n  %s_Layout w, h\n", form, form);
 	snprintf (sn, sizeof sn, "%s_Resize", form); if (has_sub (subs, sn)) o.printf ("  %s\n", sn);
@@ -238,6 +316,45 @@ static void generate (Str &o, Form &f, const char *form, const Vec<char *> &subs
 	o.printf ("  DO WHILE UIKit.window_wait (%s.handle)\n  LOOP\n", form);
 	snprintf (sn, sizeof sn, "%s_Close", form); if (has_sub (subs, sn)) o.printf ("  %s\n", sn);
 	o.puts ("END SUB\n");
+}
+
+// The user controls of a project by their numbers (names[i]: the number i + 1): what a Host calls to make one's
+// controls (QBS_Build: <Name>_Create, then your <Name>_Load), to place them for a size (QBS_Layout: <Name>_Layout,
+// then your <Name>_Resize), when it shows one (QBS_Shown: your <Name>_Show) and when it no longer does (QBS_Left).
+// Always made: the library calls them.
+// The part goes before the forms' code (it has the user controls' objects).
+static void generate_panels (Str &o, const Vec<char *> &names, const Vec<char *> &subs)
+{
+	char sn[96];
+	o.puts ("' the user controls: their objects, and what a Host calls by their numbers (made by QBStudio)\n");
+	for (int i = 0; i < names.n; i++) o.printf ("DIM SHARED %s AS Panel ()\n", names[i]);	// (before the forms' code: a Host may show one from the start)
+	o.puts ("SUB QBS_Build (id)\n  SELECT CASE id\n");
+	for (int i = 0; i < names.n; i++)
+	{
+		o.printf ("  CASE %d\n    %s_Create\n", i + 1, names[i]);
+		snprintf (sn, sizeof sn, "%s_Load", names[i]); if (has_sub (subs, sn)) o.printf ("    %s\n", sn);
+	}
+	o.puts ("  END SELECT\nEND SUB\nSUB QBS_Layout (id, w, h)\n  SELECT CASE id\n");
+	for (int i = 0; i < names.n; i++)
+	{
+		o.printf ("  CASE %d\n    %s_Layout w, h\n", i + 1, names[i]);
+		snprintf (sn, sizeof sn, "%s_Resize", names[i]); if (has_sub (subs, sn)) o.printf ("    %s\n", sn);
+	}
+	o.puts ("  END SELECT\nEND SUB\nSUB QBS_Left (id)\n  SELECT CASE id\n");
+	for (int i = 0; i < names.n; i++) o.printf ("  CASE %d\n    %s.owner = NOTHING\n", i + 1, names[i]);
+	o.puts ("  END SELECT\nEND SUB\nSUB QBS_Shown (id)\n  SELECT CASE id\n");
+	for (int i = 0; i < names.n; i++)
+	{
+		o.printf ("  CASE %d\n", i + 1);
+		snprintf (sn, sizeof sn, "%s_Show", names[i]); if (has_sub (subs, sn)) o.printf ("    %s\n", sn);
+	}
+	o.puts ("  END SELECT\nEND SUB\n");
+}
+// The program's start: each user control its number, then the main window's <Main>_Run
+static void generate_start (Str &o, const char *mainForm, const Vec<char *> &names)
+{
+	for (int i = 0; i < names.n; i++) o.printf ("%s.id = %d\n", names[i], i + 1);
+	if (mainForm && mainForm[0]) o.printf ("%s_Run\n", mainForm); else o.puts ("\n");
 }
 
 // The SUB / FUNCTION names a BASIC text defines ("SUB name", "FUNCTION name" at a line's start)

@@ -95,12 +95,16 @@ enum Kind
 	K_WINDOW, K_MENU, K_MENUTITLE, K_MENUITEM, K_SEP,
 	K_COLUMN, K_ROW, K_GRID, K_GROUP, K_SPACER, K_CANVAS,
 	K_LABEL, K_BUTTON, K_TEXTBOX, K_CHECKBOX, K_LISTBOX, K_DROPDOWN, K_SLIDER, K_PROGRESS,
-	K_TOOLBAR, K_STATUSBAR, K_COMMENT, K_COUNT
+	K_TOOLBAR, K_STATUSBAR, K_COMMENT,
+	K_HOST,						// an area a user control is shown in (host.Content = Settings)
+	K_COUNT
 };
 static const char *const KIND_NAMES[K_COUNT] = { "Window", "Menu", "", "", "-", "Column", "Row", "Grid", "Group", "Spacer", "Canvas",
-	"Label", "Button", "TextBox", "CheckBox", "ListBox", "DropDown", "Slider", "Progress", "ToolBar", "StatusBar", "#" };
+	"Label", "Button", "TextBox", "CheckBox", "ListBox", "DropDown", "Slider", "Progress", "ToolBar", "StatusBar", "#", "Host" };
 static inline bool is_container (int k) { return k == K_WINDOW || k == K_COLUMN || k == K_ROW || k == K_GRID || k == K_GROUP || k == K_CANVAS || k == K_TOOLBAR; }
-static inline bool is_control (int k) { return (k >= K_LABEL && k <= K_PROGRESS) || k == K_STATUSBAR; }
+static inline bool is_control (int k) { return (k >= K_LABEL && k <= K_PROGRESS) || k == K_STATUSBAR || k == K_HOST; }
+// What takes the room it is given, as a container does (a Host: the user control it shows fills it)
+static inline bool is_area (int k) { return is_container (k) || k == K_HOST; }
 // The flags each kind knows (a word alone)
 static const char *const FLAGS[] = { "fill", "readonly", "checked", "resizable", "default", "cancel", "hidden", "disabled", 0 };
 static bool is_flag (const char *w) { for (int i = 0; FLAGS[i]; i++) if (ieq (w, FLAGS[i])) return true; return false; }
@@ -111,12 +115,13 @@ struct El
 	int kind;
 	char name[32];
 	char text[128]; bool hasText;
+	bool uc;				// the root of a user control's form ("UserControl": a panel of controls, shown in a Host)
 	Vec<Prop> props;
 	Vec<El *> kids;
 	El *parent;
 	int line;				// in the text it was read from (1-based)
 	int x, y, w, h;				// the layout's (the window's client coordinates)
-	El () : kind (K_LABEL), hasText (false), parent (0), line (0), x (0), y (0), w (0), h (0) { name[0] = 0; text[0] = 0; }
+	El () : kind (K_LABEL), hasText (false), uc (false), parent (0), line (0), x (0), y (0), w (0), h (0) { name[0] = 0; text[0] = 0; }
 	~El () { for (int i = 0; i < kids.n; i++) delete kids[i]; }
 	const char *get (const char *k) const { for (int i = 0; i < props.n; i++) if (ieq (props[i].key, k)) return props[i].val; return 0; }
 	int num (const char *k, int def) const { const char *v = get (k); return v ? atoi (v) : def; }
@@ -147,7 +152,8 @@ static int kind_of (const char *w)
 struct FormError { int line; char msg[96]; };
 struct Form
 {
-	El *root;					// the Window
+	El *root;					// the Window -- or a user control's root (root->uc), read and laid out as one
+	bool userControl () const { return root && root->uc; }
 	char header[128];				// the comment before it (written back)
 	Vec<FormError> errors;
 	Form () : root (0) { header[0] = 0; }
@@ -232,6 +238,7 @@ static bool form_read (Form &f, const char *src)
 				unquote (w[0], el->text, sizeof el->text); el->hasText = true; wi = 1;
 			}
 			else if (!strcmp (w[0], "-")) { el->kind = K_SEP; wi = 1; }
+				else if (ieq (w[0], "UserControl")) { el->kind = K_WINDOW; el->uc = true; wi = 1; }
 			else
 			{
 				int k = kind_of (w[0]);
@@ -260,7 +267,7 @@ static bool form_read (Form &f, const char *src)
 		if (!sp)
 		{
 			if (el->kind == K_COMMENT && !f.root) { if (!f.header[0]) cpy (f.header, el->text, sizeof f.header); delete el; continue; }	// (the header)
-			if (f.root || el->kind != K_WINDOW) { f.error (line, f.root ? "A second window: one form, one window" : "The form starts with a Window"); delete el; continue; }
+			if (f.root || el->kind != K_WINDOW) { f.error (line, f.root ? "A second window: one form, one window" : "The form starts with a Window (or a UserControl)"); delete el; continue; }
 			f.root = el;
 		}
 		else
@@ -273,7 +280,7 @@ static bool form_read (Form &f, const char *src)
 		}
 		if (el->kind != K_COMMENT && sp < 64) { stack[sp] = el; indent[sp] = ind; sp++; }
 	}
-	if (!f.root) { f.error (1, "The form starts with a Window"); return false; }
+	if (!f.root) { f.error (1, "The form starts with a Window (or a UserControl)"); return false; }
 	return f.errors.n == 0;
 }
 
@@ -286,7 +293,7 @@ static void el_write (Str &o, const El *e, int depth)
 	if (e->kind == K_COMMENT) { o.put ('#'); o.puts (e->text); o.put ('\n'); return; }
 	bool first = true;
 	if (e->kind == K_MENUTITLE || e->kind == K_MENUITEM) { quoted (o, e->text); first = false; }
-	else { o.puts (KIND_NAMES[e->kind]); first = false; }
+	else { o.puts (e->uc ? "UserControl" : KIND_NAMES[e->kind]); first = false; }
 	if (e->name[0] && (e->kind == K_MENUITEM || e->kind == K_MENUTITLE)) { o.puts (" name="); o.puts (e->name); }
 	else if (e->name[0]) { o.put (' '); o.puts (e->name); }
 	if (e->hasText && e->kind != K_MENUTITLE && e->kind != K_MENUITEM) { o.put (' '); quoted (o, e->text); }
@@ -305,7 +312,7 @@ static void el_write (Str &o, const El *e, int depth)
 static void form_write (Str &o, const Form &f, const char *file)
 {
 	if (f.header[0]) o.printf ("#%s\n", f.header);
-	else o.printf ("# %s -- %s's window (QBStudio writes it; it reads as you see it)\n", file, f.root && f.root->name[0] ? f.root->name : "the");
+	else o.printf ("# %s -- %s's %s (QBStudio writes it; it reads as you see it)\n", file, f.root && f.root->name[0] ? f.root->name : "the", f.userControl () ? "controls" : "window");
 	if (f.root) el_write (o, f.root, 0);
 }
 
@@ -331,6 +338,7 @@ static void natural (const El *e, int *w, int *h)
 	case K_SLIDER: *w = 160; *h = 24; break;
 	case K_PROGRESS: *w = 160; *h = 18; break;
 	case K_STATUSBAR: *w = tw; *h = STATUS_H; break;
+	case K_HOST: *w = 80; *h = 60; break;
 	default: *w = 0; *h = 0; break;
 	}
 	int a, b;
@@ -340,6 +348,58 @@ static void natural (const El *e, int *w, int *h)
 static int pad_of (const El *e) { return e->num ("padding", e->kind == K_GROUP ? 10 : e->kind == K_TOOLBAR ? 2 : 0); }
 static int gap_of (const El *e) { return e->num ("gap", e->kind == K_ROW || e->kind == K_TOOLBAR ? 8 : e->kind == K_COLUMN || e->kind == K_GROUP ? 8 : 6); }
 static int grow_of (const El *e) { return e->kind == K_SPACER ? imax (1, e->num ("grow", 1)) : e->num ("grow", 0); }
+// An element's place across its container: halign = left | right | center | stretch (align: the same, the older
+// word), valign = top | bottom | center | stretch. Not said: the container's habit.
+enum { AL_NONE = 0, AL_START, AL_END, AL_CENTER, AL_STRETCH };
+static int align_word (const char *v)
+{
+	if (!v || !v[0]) return AL_NONE;
+	if (ieq (v, "left") || ieq (v, "top")) return AL_START;
+	if (ieq (v, "right") || ieq (v, "bottom")) return AL_END;
+	if (ieq (v, "center") || ieq (v, "centre")) return AL_CENTER;
+	if (ieq (v, "stretch")) return AL_STRETCH;
+	return AL_NONE;
+}
+static int halign_of (const El *e) { int a = align_word (e->get ("halign")); return a ? a : align_word (e->get ("align")); }
+static int valign_of (const El *e) { return align_word (e->get ("valign")); }
+// size in room by an alignment -> where it starts and how long it is (stretch: the whole room)
+static void aligned (int al, int start, int room, int size, int *at, int *len)
+{
+	if (al == AL_STRETCH) { *at = start; *len = room; return; }
+	*len = imin (size, room);
+	*at = al == AL_END ? start + room - *len : al == AL_CENTER ? start + (room - *len) / 2 : start;
+}
+// A Grid's columns (widths=) and rows (heights=): "200,*,2*,auto" -- pixels, a share of what is left (*: one
+// share, 2*: two), auto (what the cells need: as when nothing is said). -> how many were read.
+struct Track { int px; double star; };			// px >= 0: fixed; star > 0: shares; else auto
+static int tracks_of (const char *v, Track *t, int max)
+{
+	int n = 0;
+	for (const char *p = v; p && *p && n < max; )
+	{
+		while (*p == ' ' || *p == ',') p++;
+		if (!*p) break;
+		const char *e = p; while (*e && *e != ',' && *e != ' ') e++;
+		t[n].px = -1; t[n].star = 0;
+		if (e[-1] == '*') t[n].star = e - p > 1 ? atof (p) : 1;
+		else if (*p >= '0' && *p <= '9') t[n].px = atoi (p);
+		if (t[n].star < 0) t[n].star = 0;
+		n++; p = e;
+	}
+	return n;
+}
+// A Row's widths= and a Column's heights=, as a Grid's: the size of its i-th child along it. Pixels: that size,
+// whatever the child's own; *: a share of the room left and nothing of its own; auto, or nothing said for it:
+// the child's own size and its own grow / fill.
+static void along (const El *par, int i, bool placing, int own, double ownGrow, int *size, double *grow)
+{
+	Track t[32];
+	int n = tracks_of (par->get (par->kind == K_ROW || par->kind == K_TOOLBAR ? "widths" : "heights"), t, 32);
+	*size = own; *grow = ownGrow;
+	if (i >= n) return;
+	if (t[i].px >= 0) { *size = t[i].px; *grow = 0; }
+	else if (t[i].star > 0) { if (placing) *size = 0; *grow = t[i].star; }
+}
 static void measure (const El *e, int *w, int *h);
 // The minimum size of a container (its children at their sizes)
 static void measure (const El *e, int *w, int *h)
@@ -349,15 +409,16 @@ static void measure (const El *e, int *w, int *h)
 	int top = e->kind == K_GROUP ? 18 : 0;
 	if (e->kind == K_COLUMN || e->kind == K_GROUP)
 	{
-		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); mw = imax (mw, a); mh += b + (n ? gap : 0); n++; }
+		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); double g; along (e, n, false, b, 0, &b, &g); mw = imax (mw, a); mh += b + (n ? gap : 0); n++; }
 	}
 	else if (e->kind == K_ROW || e->kind == K_TOOLBAR)
 	{
-		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); mh = imax (mh, b); mw += a + (n ? gap : 0); n++; }
+		for (int i = 0; i < e->kids.n; i++) { const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue; int a, b; measure (k, &a, &b); double g; along (e, n, false, a, 0, &a, &g); mh = imax (mh, b); mw += a + (n ? gap : 0); n++; }
 	}
 	else if (e->kind == K_GRID)
 	{
 		int cols = imax (1, e->num ("cols", 2)); int cw[16] = { 0 }, rh[64] = { 0 }, nr = 0, idx = 0;
+		{ Track t0[16]; int n0 = tracks_of (e->get ("widths"), t0, 16); if (n0 > cols || (n0 > 0 && !e->get ("cols"))) cols = n0; }	// (widths= says how many columns)
 		for (int i = 0; i < e->kids.n; i++)
 		{
 			const El *k = e->kids[i]; if (k->kind == K_COMMENT) continue;
@@ -366,6 +427,10 @@ static void measure (const El *e, int *w, int *h)
 			if (c > 15 || r > 63) continue;
 			int a, b; measure (k, &a, &b); cw[c] = imax (cw[c], a); rh[r] = imax (rh[r], b); nr = imax (nr, r + 1);
 		}
+		Track tw[16], th[64]; int ntw = tracks_of (e->get ("widths"), tw, 16), nth = tracks_of (e->get ("heights"), th, 64);
+		cols = imax (cols, ntw); nr = imin (64, imax (nr, nth));
+		for (int c = 0; c < ntw; c++) if (tw[c].px >= 0) cw[c] = tw[c].px;
+		for (int r = 0; r < nth; r++) if (th[r].px >= 0) rh[r] = th[r].px;
 		for (int c = 0; c < cols && c < 16; c++) mw += cw[c] + (c ? gap : 0);
 		for (int r = 0; r < nr; r++) mh += rh[r] + (r ? gap : 0);
 	}
@@ -382,21 +447,20 @@ static void place (El *e)
 	Vec<El *> ks; for (int i = 0; i < e->kids.n; i++) if (e->kids[i]->kind != K_COMMENT) ks.push (e->kids[i]);
 	if (e->kind == K_COLUMN || e->kind == K_GROUP)
 	{
-		int used = 0, grows = 0;
-		for (int i = 0; i < ks.n; i++) { int a, b; measure (ks[i], &a, &b); used += b + (i ? gap : 0); grows += grow_of (ks[i]); }
+		int used = 0; double grows = 0;
+		for (int i = 0; i < ks.n; i++) { int a, b; measure (ks[i], &a, &b); double g; along (e, i, true, b, grow_of (ks[i]), &b, &g); used += b + (i ? gap : 0); grows += g; }
 		int free = H - used;
-		double share = grows ? (double) free / grows : 0;
+		double share = grows > 0 ? (double) free / grows : 0;
 		double y = Y;
 		for (int i = 0; i < ks.n; i++)
 		{
 			El *k = ks[i]; int a, b; measure (k, &a, &b);
-			double hh = b + (grows ? share * grow_of (k) : 0);
-			bool wide = is_container (k->kind) || k->flag ("fill") || k->kind == K_SPACER;
-			const char *al = k->get ("align");
-			int ww = wide ? W : imin (a, W);
-			int xx = X;
-			if (!wide && al && ieq (al, "right")) xx = X + W - ww;
-			else if (!wide && al && (ieq (al, "center") || ieq (al, "centre"))) xx = X + (W - ww) / 2;
+			double g; along (e, i, true, b, grow_of (k), &b, &g);
+			double hh = b + share * g;
+			bool wide = is_area (k->kind) || k->flag ("fill") || k->kind == K_SPACER;
+			int al = halign_of (k);
+			if (al == AL_NONE || (wide && !align_word (k->get ("halign")))) al = wide ? AL_STRETCH : AL_START;	// (halign said: it wins over the kind's habit)
+			int xx, ww; aligned (al, X, W, a, &xx, &ww);
 			k->x = xx; k->y = (int) (y + 0.5); k->w = ww; k->h = (int) (hh + 0.5);
 			y += hh + gap;
 			if (is_container (k->kind)) place (k);
@@ -404,26 +468,30 @@ static void place (El *e)
 	}
 	else if (e->kind == K_ROW || e->kind == K_TOOLBAR)
 	{
-		int used = 0, grows = 0;
+		// each child's width along the row: its own (width=), a share of what is left (fill, grow=n) -- or what the
+		// row's widths= says for it (200,*,100)
+		int used = 0; double grows = 0;
 		for (int i = 0; i < ks.n; i++)
 		{
-			int a, b; measure (ks[i], &a, &b); used += a + (i ? gap : 0);
-			grows += ks[i]->flag ("fill") ? imax (1, ks[i]->num ("grow", 1)) : grow_of (ks[i]);
+			int a, b; measure (ks[i], &a, &b);
+			double g; along (e, i, true, a, ks[i]->flag ("fill") ? imax (1, ks[i]->num ("grow", 1)) : grow_of (ks[i]), &a, &g);
+			used += a + (i ? gap : 0); grows += g;
 		}
 		int free = W - used;
-		double share = grows ? (double) free / grows : 0;
+		double share = grows > 0 ? (double) free / grows : 0;
 		const char *al = e->get ("align");
 		double x = X;
-		if (!grows && al && ieq (al, "right")) x = X + free;
-		else if (!grows && al && (ieq (al, "center") || ieq (al, "centre"))) x = X + free / 2.0;
-		int rowH = 0; for (int i = 0; i < ks.n; i++) { int a, b; measure (ks[i], &a, &b); rowH = imax (rowH, b); }
+		if (grows <= 0 && al && ieq (al, "right")) x = X + free;
+		else if (grows <= 0 && al && (ieq (al, "center") || ieq (al, "centre"))) x = X + free / 2.0;
 		for (int i = 0; i < ks.n; i++)
 		{
 			El *k = ks[i]; int a, b; measure (k, &a, &b);
-			int g = k->flag ("fill") ? imax (1, k->num ("grow", 1)) : grow_of (k);
-			double ww = a + (grows ? share * g : 0);
-			int hh = is_container (k->kind) ? H : b;
-			k->x = (int) (x + 0.5); k->w = (int) (ww + 0.5); k->h = hh; k->y = Y + (H - hh) / 2;
+			double g; along (e, i, true, a, k->flag ("fill") ? imax (1, k->num ("grow", 1)) : grow_of (k), &a, &g);
+			double ww = a + share * g;
+			int va = valign_of (k);
+			if (va == AL_NONE) va = is_area (k->kind) ? AL_STRETCH : AL_CENTER;
+			int yy, hh; aligned (va, Y, H, b, &yy, &hh);
+			k->x = (int) (x + 0.5); k->w = (int) (ww + 0.5); k->h = hh; k->y = yy;
 			x += ww + gap;
 			if (is_container (k->kind)) place (k);
 		}
@@ -431,6 +499,7 @@ static void place (El *e)
 	else if (e->kind == K_GRID)
 	{
 		int cols = imax (1, imin (16, e->num ("cols", 2)));
+		{ Track t0[16]; int n0 = tracks_of (e->get ("widths"), t0, 16); if (n0 > cols || (n0 > 0 && !e->get ("cols"))) cols = n0; }	// (widths= says how many columns)
 		int cw[16] = { 0 }, rh[64] = { 0 }, nr = 0; bool cfill[16] = { false };
 		int idx = 0;
 		int cellC[256], cellR[256];
@@ -443,17 +512,42 @@ static void place (El *e)
 			int a, b; measure (k, &a, &b); cw[c] = imax (cw[c], a); rh[r] = imax (rh[r], b); nr = imax (nr, r + 1);
 			if (k->flag ("fill")) cfill[c] = true;
 		}
-		int used = 0, nf = 0; for (int c = 0; c < cols; c++) { used += cw[c] + (c ? gap : 0); if (cfill[c]) nf++; }
-		double extra = nf ? (double) (W - used) / nf : 0;
-		double cx[17]; cx[0] = X; for (int c = 0; c < cols; c++) cx[c + 1] = cx[c] + cw[c] + (cfill[c] ? extra : 0) + gap;
-		int ry[65]; ry[0] = Y; for (int r = 0; r < nr; r++) ry[r + 1] = ry[r] + rh[r] + gap;
+		// the columns: widths= (pixels, shares of what is left, auto), else a column with a `fill` cell takes the rest
+		Track tw[16], th[64]; int ntw = tracks_of (e->get ("widths"), tw, 16), nth = tracks_of (e->get ("heights"), th, 64);
+		cols = imin (16, imax (cols, ntw)); nr = imin (64, imax (nr, nth));
+		double cstar[16], rstar[64], stars = 0;
+		for (int c = 0; c < cols; c++)
+		{
+			cstar[c] = c < ntw ? tw[c].star : (ntw ? 0 : (cfill[c] ? 1 : 0));
+			if (c < ntw && tw[c].px >= 0) cw[c] = tw[c].px;
+			if (c < ntw && cstar[c] > 0) cw[c] = 0;
+			stars += cstar[c];
+		}
+		int used = 0; for (int c = 0; c < cols; c++) used += cw[c] + (c ? gap : 0);
+		double extra = stars > 0 ? imax (0, W - used) / stars : 0;
+		double cx[17]; cx[0] = X; for (int c = 0; c < cols; c++) cx[c + 1] = cx[c] + cw[c] + cstar[c] * extra + gap;
+		// the rows: heights=, the same way (nothing said: what the cells need)
+		stars = 0;
+		for (int r = 0; r < nr; r++)
+		{
+			rstar[r] = r < nth ? th[r].star : 0;
+			if (r < nth && th[r].px >= 0) rh[r] = th[r].px;
+			if (rstar[r] > 0) rh[r] = 0;
+			stars += rstar[r];
+		}
+		used = 0; for (int r = 0; r < nr; r++) used += rh[r] + (r ? gap : 0);
+		double extraH = stars > 0 ? imax (0, H - used) / stars : 0;
+		double ryd[65]; ryd[0] = Y; for (int r = 0; r < nr; r++) ryd[r + 1] = ryd[r] + rh[r] + rstar[r] * extraH + gap;
 		for (int i = 0; i < ks.n && i < 256; i++)
 		{
 			El *k = ks[i]; int c = cellC[i], r = cellR[i];
 			int a, b; measure (k, &a, &b);
-			int colW = (int) (cx[c + 1] - cx[c] - gap + 0.5);
-			k->x = (int) (cx[c] + 0.5); k->w = k->flag ("fill") || is_container (k->kind) ? colW : imin (a, colW);
-			k->h = b; k->y = ry[r] + (rh[r] - b) / 2;
+			int colW = (int) (cx[c + 1] - cx[c] - gap + 0.5), rowH = (int) (ryd[r + 1] - ryd[r] - gap + 0.5);
+			int ha = halign_of (k), va = valign_of (k);
+			if (ha == AL_NONE) ha = k->flag ("fill") || is_area (k->kind) ? AL_STRETCH : AL_START;
+			if (va == AL_NONE) va = is_area (k->kind) && rstar[r] > 0 ? AL_STRETCH : AL_CENTER;
+			aligned (ha, (int) (cx[c] + 0.5), colW, a, &k->x, &k->w);
+			aligned (va, (int) (ryd[r] + 0.5), rowH, b, &k->y, &k->h);
 			if (is_container (k->kind)) place (k);
 		}
 	}
@@ -490,7 +584,7 @@ static void form_layout (Form &f, int w, int h, bool menuInWindow = false)
 	El body; body.kind = K_COLUMN; body.set ("gap", "0");
 	body.x = 0; body.y = top; body.w = w; body.h = imax (0, bottom - top);
 	for (int i = 0; i < win->kids.n; i++) { El *k = win->kids[i]; if (k->kind != K_MENU && k->kind != K_TOOLBAR && k->kind != K_STATUSBAR && k->kind != K_COMMENT) body.kids.push (k); }
-	if (body.kids.n == 1 && is_container (body.kids[0]->kind))
+	if (body.kids.n == 1 && is_area (body.kids[0]->kind))
 	{
 		El *k = body.kids[0];
 		k->x = body.x; k->y = body.y; k->w = body.w; k->h = body.h;

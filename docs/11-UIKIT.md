@@ -66,7 +66,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 722 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 726 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -120,6 +120,32 @@ if (uk_color_dialog (&colour, "Pick a colour")) root.setBg (colour);
 
 **The theme**: draw with the palette (`C_BG`, `C_TEXT`, `C_ACCENT`, `C_FACE`…), never with fixed
 colours, so that the program follows the user's theme.
+
+**Without C++** (`uikit/flat.h`, in `uikit/uikit.h`): the same window and widgets as handles, behind plain
+C functions — what a BASIC program calls (`#import UIKit`), what QBStudio's generated code is made of,
+and what a C program can use:
+
+```c
+void *win = uk_window ("Hello", 320, 120, 0);
+uk_label (win, 12, 12, 200, 20, "Your name:");
+void *name = uk_textbox (win, 12, 36, 200, 24, "", 0);
+uk_button (win, 220, 36, 80, 24, "OK", on_ok);          /* void on_ok (void *button) */
+uk_window_run (win);                                     /* until the window is closed */
+```
+
+```basic
+#import UIKit
+win = UIKit.window("Hello", 320, 120, 0)
+ok = UIKit.button(win, 220, 36, 80, 24, "OK", ADDRESSOF(Clicked))
+DO WHILE UIKit.window_wait(win): LOOP
+```
+
+`uk_panel (window, x, y, w, h)` is an area with widgets of its own — every maker takes the window *or a
+panel* as what holds the widget —: a page shown in place of another (`uk_show`), moved elsewhere
+(`uk_set_parent`). QBStudio's user controls are panels.
+
+A widget added to UIKit that BASIC should reach gets its functions there (a maker, and `uk_set_text` /
+`uk_get_value` ... taught its kind).
 
 **An icon** — any picture ImageKit reads (BMP today, PNG tomorrow), given as icons are drawn (magenta
 = see-through):
@@ -225,14 +251,18 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_window_height` |  | `flat.h` |
 | `uk_window_min_size` | the smallest a resizable window goes | `flat.h` |
 | `uk_window_on_resize` | after the user resized it: place the widgets again | `flat.h` |
-| `uk_label` |  | `flat.h` |
-| `uk_button` |  | `flat.h` |
-| `uk_textbox` |  | `flat.h` |
-| `uk_checkbox` |  | `flat.h` |
+| `uk_panel` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
+| `uk_set_parent` | the widget taken from what holds it and put into a window or a panel | `flat.h` |
+| `uk_width` | a widget's, a panel's, the window's size | `flat.h` |
+| `uk_height` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
+| `uk_label` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
+| `uk_button` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
+| `uk_textbox` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
+| `uk_checkbox` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
 | `uk_listbox` | items: "one\|two\|three" | `flat.h` |
-| `uk_dropdown` |  | `flat.h` |
+| `uk_dropdown` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
 | `uk_slider` | from 0 to max | `flat.h` |
-| `uk_progress` |  | `flat.h` |
+| `uk_progress` | What holds a widget -- the `window` every maker takes -- is the window itself or a panel | `flat.h` |
 | `uk_set_range` | a slider, a progress bar: its ends | `flat.h` |
 | `uk_set_text` | A widget's text | `flat.h` |
 | `uk_get_text` | A widget's text | `flat.h` |
@@ -1354,9 +1384,15 @@ void uk_window_min_size (void *window, int w, int h);	// the smallest a resizabl
 void uk_window_on_resize (void *window, uk_resized fn);	// after the user resized it: place the widgets again
 ```
 
-### the widgets (x, y, w, h: their place in the window)
+### the widgets (x, y, w, h: their place in what holds them)
+
+What holds a widget -- the `window` every maker takes -- is the window itself or a panel: a plain area with widgets of its own, placed from its top left corner. Hiding, showing, moving a panel does it to all it holds: a page of an app is a panel, shown in place of another.
 
 ```cpp
+void *uk_panel (void *window, int x, int y, int w, int h);
+void uk_set_parent (void *widget, void *window);	// the widget taken from what holds it and put into a window or a panel
+int  uk_width (void *widget);				// a widget's, a panel's, the window's size
+int  uk_height (void *widget);
 void *uk_label (void *window, int x, int y, int w, int h, const char *text);
 void *uk_button (void *window, int x, int y, int w, int h, const char *text, uk_event on_click);
 void *uk_textbox (void *window, int x, int y, int w, int h, const char *text, uk_event on_change);

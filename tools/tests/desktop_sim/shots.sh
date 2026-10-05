@@ -284,6 +284,9 @@ if want qbstudio; then			# (the example project: the designer, Convert chosen; t
 	# ... and a kit's functions after its name and a dot (the project's #import, UIKit always: SD:/lib/<kit>.bi)
 	sim qbstudio qbstudio-kits "wait;wait;down 391 51;up 391 51;wait;down 600 300;up 600 300;key 0x105;key 13;key 85;key 73;key 75;key 105;key 116;key 46;wait;wait" $P
 	png qbstudio-kits
+	# ... a project with user controls (pages): the window's two Hosts, then the user control Settings in the designer
+	sim qbstudio qbstudio-hosts "wait;wait;wait" $P SIM_ARGS=SD:/projects/pages
+	png qbstudio-hosts
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp

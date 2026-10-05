@@ -1,0 +1,8 @@
+# Sidebar.form -- a user control: the buttons that choose the page (shown in the window's Host `side`)
+UserControl Sidebar size=170x270
+  Column padding=10 gap=8
+    Label "Pages"
+    Button goHome "Home" fill
+    Button goSettings "Settings" fill
+    Spacer
+    Button leave "Quit" fill

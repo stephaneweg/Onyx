@@ -254,6 +254,22 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   packages, restart, run `SD:/basic/examples/uikit.bas` and a QBStudio project, and look (clicks, typing,
   the menus, a resize). Not in the flat layer yet: the other widgets (tabs, grids, trees, pictures, a
   drawing surface), the keyboard and the pointer as events, several windows.
+- **User controls, Hosts, alignments (the same day; the user: a main window and user controls loaded by code
+  into its content, in place of what was there, or side by side -- "un peu à la xaml / wpf"; then halign /
+  valign and columns' widths, `*` as in WPF; and no `#include`: a project's `.bas` are all in, implicitly)**:
+  `UserControl` forms, the `Host` element, `host.Content = Name`, `halign=` / `valign=`, a Grid's
+  `widths=200,*` / `heights=`; UIKit's flat layer has panels (table 726). docs/04 §13 (*User controls*,
+  *Alignments and sizes*), docs/03 (*User controls and Hosts in QBStudio*), `sdcard/projects/pages`.
+  Then (asked the same evening): a Row's `widths=` and a Column's `heights=` (`along ()`; width / height / fill /
+  grow offered on containers in the properties), a bar to drag between the designer and the form's text
+  (`SplitBar`, `settings.ini`: `split`), and the window sized by any of its eight handles in the designer (the
+  user could not size it: only the bottom right corner's zone did, the other handles deselected).
+  Tested: `qbstudio_test` (40 checks), the designer in the PC simulator (`qbstudio-hosts.png`), and the
+  generated program on the Pi through the private copy of `uikit.so` (the Hosts' sizes, a page replaced
+  and shown again with its values, the resize chain, a user control moved to another Host). Not seen on
+  the Pi's screen, not clicked. Not done: several instances of one user control (each is one object), a
+  user control's preview inside the window's Host in the designer (a dashed frame with its name), a
+  choice list for `content=` / `halign=` in the properties (typed), `Add Window` (one window a program).
 - **Next**: what the list above lacks, as programs ask for it. Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
   FreeType's functions in `fontkit.bi` (their prototypes are in FreeType's headers, not in the kit's
   folder: `kitbi.py` reads `user/Kits/<kit>/*.h` only).

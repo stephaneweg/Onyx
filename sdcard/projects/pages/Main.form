@@ -1,0 +1,6 @@
+# Main.form -- the window: two Hosts side by side, a user control in each (QBStudio's designer writes it)
+Window Main "Pages" size=540x300 min=440x240 resizable
+  Row gap=0
+    Host side width=170 content=Sidebar
+    Host page content=Home fill
+  StatusBar status "Home"
