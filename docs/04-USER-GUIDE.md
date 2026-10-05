@@ -2216,6 +2216,8 @@ under it, the selection at the right.*
 a sketch on a face and its extrusion; bodies joined, cut or intersected; edges rounded or chamfered. Every step
 keeps its values in a **history**: change one, and everything made after it is made again. The geometry is
 computed by Manifold; the view is drawn by the GPU (the status bar says `GPU`, or `CPU` when the processor draws).
+Its second half, **Manufacture** (the switch at the left of the tools), turns a body into the **G-code** a CNC
+router runs — see further down.
 Parts are saved as `.3df` (a double click on one in the File Viewer opens it); a sample is in `SD:/docs/3d`.
 
 **The view.** Drag with the left button to **turn** it, with the right button (or Shift + drag) to **pan**; the
@@ -2239,14 +2241,20 @@ A shape can be made two ways. **With the pointer**, each in a few clicks:
 | **Box** | Click its centre (on a face, or on the ground), move away for the width and the depth, click, move up for the height, click. |
 | **Cylinder** | Click the centre, move away for the radius, click, move for the height, click. |
 | **Sphere** | Click the centre, move away for the radius, click. |
-| **Pyramid**, **Prism** | Click the centre, type the number of sides of the base (4 at first; 0: round), move away for its radius, click, move up or down for the height, click. |
+| **Pyramid**, **Prism** | Click the centre, type the number of sides of the base (4 at first; 0: round — a pyramid of 0 sides is a cone), move away for its radius — a corner of the base points to the pointer, which **turns** it —, click, move up or down for the height, click. |
 | **Taper** | As the prism, with one more move and click after the base: the top's radius (its distance from the centre). |
 | **Torus** | Click the centre, move away for the ring's radius, click, move off the ring for the tube's radius, click. |
 
 At every moment the field of the value being set has the keyboard: **type the value** instead of moving, **Tab**
 goes to the next field, **Enter** goes on. A value typed is no longer changed by the pointer. **Without the
-pointer**: as soon as a shape is chosen, all its values and its place (*Centre X*, *Y*) are fields at the right and
-a ghost shows it — set them and press **OK**.
+pointer**: as soon as a shape is chosen, all its values and its place are fields at the right — set them and press
+**OK** (nothing is shown in the view before the first click; a ghost appears once a value is typed).
+
+**Where a shape is.** The first click may be on the ground or on any **flat face of a body**: the shape then stands
+on that face (a sphere has its centre on it — subtract it to hollow a bowl in the top of a block). At the right,
+*Centre X* and *Y* are its place on that plane, and **Z** (*Off the face* on a body) how far off it: up from the
+ground, out of the face — less than 0, sunk into it. **Turned** turns a box or a base with sides about its axis,
+in degrees.
 
 ![A box being made](../screenshots/3dforge-box.png)
 *A box started on a face of the body: Union is chosen, the body named.*
@@ -2263,9 +2271,21 @@ the axes**: *XY* (the ground, seen from above), *XZ* (upright, seen from the fro
 right), its **Offset** (how far along the third axis; the plane is shown in the view), then *Start the sketch*.
 The view turns to face the plane, the plane's **two axes through its origin** drawn in the colours of the
 model's (X red, Y green, Z blue), and the
-tools become **Line**, **Rectangle**, **Circle**, **Arc** and **Close**. There are no constraints to solve: each
+tools become **Line**, **Rectangle**, **Circle**, **Arc**, **3-pt arc**, **Spline**, **Point** and **Close**. There
+are no constraints to solve: each
 element is a recipe — where it starts (the end of the one before, or a point), its angle and its length; an arc by
-its centre, its radius and its sweep — and they are replayed in the order they were drawn. A run of lines and arcs
+its centre, its radius and its angle — and they are replayed in the order they were drawn.
+
+| Tool | The gesture |
+|---|---|
+| **Line** | Click where it starts, click where it ends (or type its length and its angle); the next one starts there. |
+| **Rectangle** | *From its corner*: click a corner, click the opposite one. *From its centre* (the choice at the right): click the centre, then a corner. Or type the width and the height. |
+| **Circle** | Click the centre, click to set the diameter. |
+| **Arc** | Click the **centre**, click where it **starts** (which sets the radius), click where it **ends**: the angle — **positive clockwise, negative anticlockwise**; it can be typed. After a line, the arc starts at the line's end: click the centre, then the end. |
+| **3-pt arc** | Click its two ends, then move its middle — it slides on the line that cuts the chord in two — and click, or type the radius. |
+| **Spline** | Click the points a smooth curve goes through; **Enter**, or the last point clicked again, ends it. |
+| **Point** | A mark: part of no outline, nothing is extruded from it — the pointer snaps to it. |
+ A run of lines and arcs
 goes on from its last point until it comes back to its first (the green ring: *closes the outline*), **Close**
 (a line back to the start) or **Esc**. The pointer snaps to the grid (1 mm), to the points already drawn and to
 angles of 15°. A closed outline is filled in blue; the timeline shows the elements — click one to change its
@@ -2308,6 +2328,7 @@ checked the original stays where it is and a copy of it, a new body, is what mov
 | **View** | Home, Fit, Top, Front, Right, Edges, Grid, See Through, Draw with the Processor |
 | **Create** | the seven shapes, Sketch, Extrude |
 | **Modify** | Fillet, Chamfer, Move, Union, Subtract, Intersect, Measure |
+| **Manufacture** | Design, Manufacture, Setup, Tool and Machine, New Clearing, New Contour, Simulate, G-code (Ctrl+G) |
 
 Keys: **Enter** the step goes on (as OK), **Esc** leaves the tool (in a sketch: ends the run), **Del** deletes the
 selected step (in a sketch: the selected element).
@@ -2318,7 +2339,59 @@ turned around it only where its faces are square to one another; a face or an ed
 step is kept by its place: after a change up the history a later fillet may have to be given its edge again (it
 then shows a warning in the timeline).
 
-Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); exports where you choose.
+#### Manufacture: G-code for a CNC router
+
+![Manufacture: the setup](../screenshots/3dforge-cam.png)
+*The setup: the body in its stock, the origin on one of the stock's 27 points, the machine's axes.*
+
+**Manufacture** (the switch at the left of the tools; **Design** comes back to the part) prepares the cutting of
+**one body** on a 3-axis router driven by **GRBL**, with a **flat end mill**. The view shows that body alone, in
+its **stock** (the block it is cut from, see-through); the timeline shows the setup, then the operations in the
+order they are run. Everything is kept in the `.3df`.
+
+- **Setup** — the **body** (a click on its name lists the part's bodies); the **stock**: *around it* with a margin
+  on the sides, on the top and under, or of a *fixed size*; the **origin** — where the machine's X0 Y0 Z0 is: one of
+  the stock's 27 points (its corners, the middles of its edges and faces, its centre), clicked in the view or in the
+  three small grids (top, middle, bottom); **X goes** right, back, left or front (Y follows, a quarter turn to its
+  left; Z goes up); the heights above the stock: *safe* (between operations), *retract* (between passes).
+- **Tool** — the end mill's diameter and cutting length, the spindle's speed, the cutting and plunge feeds, the
+  travel speed; the **machine**'s travel and its spindle's top speed and the seconds to wait for it to spin up. The
+  tool and the machine are **remembered** for the next parts.
+- **Clearing** — the roughing: the stock removed **level by level** (*step down*) around the body, each level by
+  passes a *step over* apart from the outside in, a little *left on the walls* and *on the floors*; *climb* or
+  conventional; down to the lowest flat face turned up, or to a height you give. The tool comes down outside the
+  stock, or by a ramp along its pass.
+- **Contour** — the tool's side follows the body's **outline** (*outside*), or its holes (*inside*), a pass a *step
+  down*, from the stock's top (or a height) down to a little **under** the body; **tabs** — how many, their width
+  and height — are left in the last passes to hold the part.
+- **On: the body / a face** — an operation may be limited to **one flat face turned up**, clicked in the view: a
+  clearing then only clears what is above that face, down to it; a contour follows that face's outline. This is
+  how a part is cut in several stages.
+
+![Manufacture: a clearing and a contour](../screenshots/3dforge-cam-ops.png)
+*The moves: cuts in blue, fast moves in orange; the selected operation's are the strong ones.*
+
+The moves are computed again a moment after a value changes; each operation shows the length cut, its time and
+its lowest Z. **Simulate** shows what is left of the stock once every operation is done (Esc comes back to the
+moves) — a hole that only a tool lying on its side could cut stays full: the router has three axes.
+
+![Manufacture: simulated](../screenshots/3dforge-cam-sim.png)
+
+**G-code** (Ctrl+G) checks the whole programme before it is written: **no fast move goes through matter**, **the
+body is never cut into** — with either wrong, nothing is written —, the lowest point (under the stock: a spoil
+board is needed), the machine's travel, the tool's cutting length. It shows the first lines, the number of lines,
+the length cut and the time, and saves a `.nc` file: millimetres, absolute, `G0` / `G1` only (curves are short
+lines), `M3 S…` then a wait, `M5` and `M2` at the end. **Run a new programme in the air first**, the spindle well
+above the stock.
+
+![Manufacture: the G-code](../screenshots/3dforge-cam-gcode.png)
+
+*What Manufacture does not do*: the clearing is made of passes at a constant distance (the tool cuts its full
+width on a level's first pass and in the corners: choose the step down and the feed for that) — not a
+constant-engagement "adaptive" one; flat end mills only; three axes (no rotary axis yet); one setup a part.
+
+Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); exports and G-code (`.nc`) where you
+choose; `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered).
 
 ### Screenshot, the screen capture tool (`screenshot`)
 

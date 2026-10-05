@@ -58,11 +58,38 @@ int main (int argc, char **argv)
 	f = &add (d, F_SKETCH); f->pl = plane_of (V3 (0, 0, 8), V3 (0, 0, 1));					// Sketch 1 on the top face
 	SkEl e; e.kind = SK_CIRCLE; e.x = 16; e.y = 22; e.w = 9; f->els.push_back (e); e.x = 74; f->els.push_back (e);
 	e = SkEl (); e.kind = SK_LINE; e.x = 36; e.y = 17; e.a = 0; e.len = 18; f->els.push_back (e);
-	e = SkEl (); e.kind = SK_ARC; e.chain = true; e.r = 5; e.ca = 90; e.sweep = 180; f->els.push_back (e);
+	e = SkEl (); e.kind = SK_ARC; e.chain = true; e.r = 5; e.ca = 90; e.sweep = -180; f->els.push_back (e);
 	e = SkEl (); e.kind = SK_LINE; e.chain = true; e.a = 180; e.len = 18; f->els.push_back (e);
-	e = SkEl (); e.kind = SK_ARC; e.chain = true; e.r = 5; e.ca = -90; e.sweep = 180; f->els.push_back (e);
+	e = SkEl (); e.kind = SK_ARC; e.chain = true; e.r = 5; e.ca = -90; e.sweep = -180; f->els.push_back (e);
+	{
+		// a shape off its plane: a box lifted 5 -- and one sunk 4 into the first: 4 of its 10 are shared
+		Doc d2; Feature *g = &add (d2, F_BOX); g->w = 10; g->d = 10; g->h = 10; g->z = 5; d2.rebuild ();
+		bool up = !d2.bodies.empty () && fabs (d2.bodies[0].mesh.lo.z - 5) < 1e-9 && fabs (d2.bodies[0].mesh.hi.z - 15) < 1e-9;
+		g = &add (d2, F_BOX); g->target = 0; g->op = OP_UNION; g->pl = plane_of (V3 (0, 0, 15), V3 (0, 0, 1)); g->w = 10; g->d = 10; g->h = 10; g->z = -4; d2.rebuild ();
+		Doc d3; up = up && d3.load (d2.save ().c_str ()) && d3.feats.size () == 2 && d3.feats[1].z == -4;
+		check (up && fabs (d2.bodies[0].m.Volume () - 1600) < 0.01, "a shape off its plane: lifted, sunk into a face");
+		// a square prism turned 45 degrees: a side faces +X -- its box is the square's side wide, not its diagonal
+		Doc d4; g = &add (d4, F_PRISM); g->n = 4; g->w = 10; g->h = 5; g->turn = 45; d4.rebuild ();
+		check (!d4.bodies.empty () && fabs (d4.bodies[0].mesh.hi.x - 10 / sqrt (2.0)) < 1e-6 && fabs (d4.bodies[0].m.Volume () - 1000) < 1e-6, "a base with sides, turned about its axis");
+	}
 	SkEval ev; sketch_eval (f->els, 96, ev);
 	check (ev.nclosed == 3 && ev.nopen == 0, "a sketch: two circles and a slot, three closed outlines");
+	{
+		// a rectangle from its centre, a mark in the middle of a run, a spline closing on its start
+		std::vector<SkEl> els; SkEl q; SkEval e2;
+		q.kind = SK_RECT; q.rel = true; q.x = 10; q.y = 5; q.w = 20; q.h = 10; els.push_back (q);
+		q = SkEl (); q.kind = SK_LINE; q.x = 40; q.y = 0; q.a = 0; q.len = 10; els.push_back (q);
+		q = SkEl (); q.kind = SK_POINT; q.x = 3; q.y = 3; els.push_back (q);
+		q = SkEl (); q.kind = SK_SPLINE; q.chain = true; q.pts.push_back (V2 (55, 8)); q.pts.push_back (V2 (45, 12)); q.pts.push_back (V2 (40, 0)); els.push_back (q);
+		sketch_eval (els, 96, e2);
+		auto area = [] (const SimplePolygon &p) { double a = 0; for (size_t i = 0, j = p.size () - 1; i < p.size (); j = i++) a += p[j].x * p[i].y - p[i].x * p[j].y; return fabs (a) / 2; };
+		check (e2.nclosed == 2 && e2.nopen == 0 && fabs (area (e2.closed[0]) - 200) < 1e-9 && fabs (e2.shapes[0].start.x) < 1e-9 && fabs (e2.shapes[0].end.y - 10) < 1e-9,
+		       "a rectangle from its centre; a mark that breaks no run");
+		check (area (e2.closed[1]) > 60 && area (e2.closed[1]) < 160 && e2.shapes[3].pts.size () == 37, "a spline through three points, closing the outline");
+		// an arc's angle: + clockwise -- from (0, 0), its centre at the right, a quarter: it ends above
+		els.clear (); q = SkEl (); q.kind = SK_ARC; q.r = 5; q.ca = 0; q.sweep = 90; els.push_back (q); sketch_eval (els, 96, e2);
+		check (fabs (e2.shapes[0].end.x - 5) < 1e-9 && fabs (e2.shapes[0].end.y - 5) < 1e-9, "an arc's angle: clockwise when positive");
+	}
 	int sk = (int) d.feats.size () - 1;
 	f = &add (d, F_EXTRUDE); f->target = 0; f->op = OP_SUB; f->sketch = sk; f->through = true; f->h = -8;	// Extrude 1
 	d.rebuild ();

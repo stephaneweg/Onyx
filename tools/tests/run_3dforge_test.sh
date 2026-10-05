@@ -20,3 +20,6 @@ if [ ! -f "$OUT/libmanifold.a" ]; then
 fi
 g++ -std=c++17 -O1 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$HERE/3dforge/doctest.cpp" "$OUT/libmanifold.a" -o "$OUT/doctest"
 "$OUT/doctest" $FORGE_SAMPLE
+# Manufacture: the tool paths and the G-code for the sample part
+g++ -std=c++17 -O1 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$HERE/3dforge/camtest.cpp" "$OUT/libmanifold.a" -o "$OUT/camtest"
+"$OUT/camtest" "$ROOT/sdcard/docs/3d/bracket.3df"

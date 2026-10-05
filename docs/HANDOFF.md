@@ -30,14 +30,22 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   kernel that day, so I did not start the app there. First thing to do on the Pi: open the sample, check the
   status bar says `GPU` and the picture is the simulator's (View > Draw with the Processor compares); the frame is
   drawn at twice the view's size (at most 2048: the kernel's limit, checked in `scene_show`).
-- **Next, asked by the user (2026-10-06): Manufacture** — G-code (GRBL) for his router: setup (stock, origin among
-  27 points, axes), tool and machine presets, a clearing in levels and a 2D contour, the G-code checked. The study
-  and five mock-ups are in `docs/3dforge/README.md` (*Manufacture*); **wait for his word on the mock-ups** before
-  building.
+- **Manufacture, built (2026-10-06)** — the user approved the mock-ups; `fcam.h` (the computation, tested by
+  `tools/tests/3dforge/camtest.cpp`) and its screen (the Design / Manufacture switch, Setup, Tool, Clearing, Contour
+  with tabs, an operation on the body or on one face, Simulate, the G-code dialog with its checks; the setup kept
+  in the `.3df`, the tool and the machine in `cam.ini`). **Not yet run on his machine**: I assumed a "Two Trees TTC
+  450" (460 x 460 x 80 mm, 24 000 rpm) — ask him his model and its values; he must run a programme in the air
+  first. Ideas kept for later: the **4th axis** (he has the rotary option; indexed 3 + 1 first — ask which firmware
+  drives it), a true constant-engagement adaptive clearing (FreeCAD's could be ported: check its licence and ask
+  him first), ramps that go back and forth less on a face's clearing (it is long: about 150 min on the sample).
+- **The same day, asked while I built**: the sketch's arc by centre, start, end (its angle + clockwise), a 3-point
+  arc, splines, a rectangle from its centre, construction points; a shape's Z / distance off its face and its turn
+  about its axis (the pointer gives it while the radius is set); no ghost before the first click.
 - **Known limits / ideas**: an edge or a face chosen is kept by its place (a fixed point / plane): a change up the
   history can lose a later fillet's edge (the step then fails with a message; the fix is a reference that follows —
   the feature that made the edge + which one). No shadow on the ground (in the mock-up). The sketch has no
-  dimensions from the body's edges, no trim, no construction lines. A corner's rounds are mitred, and turned around
+  dimensions from the body's edges, no trim, no construction lines (points only); a spline that closes on itself
+  has a corner at its start. A corner's rounds are mitred, and turned around
   the corner by its third edge (a sphere's / a torus' piece: `corner_blend`), only for faces square to one another
   and a third radius not smaller than the two others'.
 

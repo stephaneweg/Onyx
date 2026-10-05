@@ -59,7 +59,13 @@ a shadow on the ground) — what the GPU will draw on the Pi. Its measures (63.5
 - **Rendering: the GPU as much as possible** (the bodies, the grid, the selection).
 - **The interface first**: these mock-ups were approved before any code.
 
-## Manufacture: G-code for a CNC router — a study, mock-ups (2026-10-06; nothing built)
+## Manufacture: G-code for a CNC router — the study and the mock-ups (2026-10-06; built the same day)
+
+*Built as drawn below (the user: "ça me convient bien"), with what he added: the contour's step down and its
+tabs can be set, and an operation works on the body or on **one face** (to cut in several stages). What differs
+from the mock-ups: the Design / Manufacture switch is two rows high (the bar is short), the way in is always a ramp
+or from outside the stock (no helix), the presets are one tool and one machine remembered (no list yet). The code:
+`fcam.h` (docs/03), the user guide's *Manufacture*.*
 
 Asked by the user for a "version 2": from a body, the **G-code (GRBL)** for his router (a Two Trees), with the two
 operations he uses in Fusion — *adaptive clearing* and *2D contour* —, flat end mills only. He described the setup as
@@ -93,6 +99,8 @@ What I told the user (2026-10-05), to keep in mind when building:
   air first. The checks of the G-code dialog are part of the first version, not an extra.
 
 ## What is next
+
+Manufacture is built (above); on the user's list for later: the rotary 4th axis.
 
 All four stages of the plan are done (Manifold for Onyx; the view; the shapes, the operations, Export; the sketch,
 Extrude, the editable history, Fillet and Chamfer). What is left: **run it on the Pi** (the GPU's path has only its
