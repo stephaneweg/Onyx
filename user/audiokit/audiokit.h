@@ -67,12 +67,13 @@ struct ak_info
 	int bits;				// its sample size (0: not known)
 	int kbps;				// its bit rate (0: not known)
 	long long length_ms;			// its length (0: not known)
-	char format[8];				// "MP3", "FLAC", "WAV", "OGG", "MIDI"
+	char format[8];				// "MP3", "FLAC", "WAV", "OGG", "MIDI", "FMS"
 };
 typedef struct ak_stream ak_stream;
 
 // The file opened (its kind from its extension, then its first bytes) -> 0: err (cap bytes) says why.
-// A MIDI file plays through the default SoundFont (ak_soundfont_default).
+// A MIDI file plays through the default SoundFont (ak_soundfont_default); an FM Song (.fms, FM
+// Tracker's) on the FM synthesizer (one read at a time per process).
 ak_stream *ak_open (const char *path, char *err, int cap);
 // Up to `frames` frames at AUDIOKIT_RATE into out (2 shorts each) -> how many (0: the end).
 int ak_read (ak_stream *s, short *out, int frames);
