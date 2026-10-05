@@ -109,6 +109,10 @@ tone.elf: tone.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../a
 play.elf: play.cpp ../crt0.S ../user.ld ../kapi.h ../audiokit/audiokit.h ../onyxpp.hpp ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf
+# fktest: FileKit's self-test (../lib/filekit.so): compression, ZIP on the card and in memory, trees, paths
+fktest.elf: fktest.cpp ../crt0.S ../user.ld ../kapi.h ../applib.h ../onyxpp.hpp ../filekit/filekit.h ../lib/filekit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../crt0.S $< ../lib/filekit.imp.a -o $@
+AK_PROGS += fktest.elf
 # ipp: a network printer asked what it can do (../printerkit/ipp.h; docs/03 "Printing")
 CXX_PROGS += ipp.elf
 ipp.elf: ../printerkit/ipp.h ../printerkit/ippnet.h ../img/pngsave.hpp ../onyxpp.hpp ../umm.h

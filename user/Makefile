@@ -223,9 +223,37 @@ lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so
+# ---- filekit.so: FileKit, what programs do with files (filekit/filekit.h; docs/03 "FileKit"): zlib
+# (third_party, compiled for the library), the Archiver's ZIP engine (Apps/archiver/arc.h, zip.h, ops.h:
+# compiled here once), ZIP archives in memory, whole files, trees copied / moved / removed, paths.
+# Integer only in its interface; newlib's libc linked in. Exported: fk_*.
+ZLIB_SRC = ../third_party/zlib-1.3.1
+FK_ZOBJ = $(addprefix lib/fk/z_,adler32.o crc32.o deflate.o inflate.o inffast.o inftrees.o trees.o zutil.o)
+FK_OBJ = lib/fk/fkcore.o $(FK_ZOBJ)
+lib/fk/z_%.o: $(ZLIB_SRC)/%.c
+	@mkdir -p lib/fk
+	$(CC) $(AK_FLAGS) -w -I$(ZLIB_SRC) -c $< -o $@
+lib/fk/fkcore.o: filekit/fkcore.cpp filekit/filekit.h $(wildcard Apps/archiver/arc.h Apps/archiver/zip.h Apps/archiver/ops.h) kapi.h $(LIB_DEP)
+	@mkdir -p lib/fk
+	$(CXX) $(AK_CXXFLAGS) -Wall -Ifilekit -I$(ZLIB_SRC) -c $< -o $@
+lib/fk/fkso.o: filekit/fkso.c lib.h kapi.h
+	@mkdir -p lib/fk
+	$(CC) $(AK_FLAGS) -Wall -c $< -o $@
+filekit/filekit.abi:
+	@touch $@
+lib/filekit_table.S: $(FK_OBJ) lib/fk/fkso.o filekit/filekit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name filekit --abi filekit/filekit.abi --init fk_lib_init --allow-data . --export '^fk_' \
+		--table lib/filekit_table.S --stubs lib/filekit_stubs.S --bind lib/filekit_bind.cpp $(FK_OBJ)
+lib/filekit_stubs.S lib/filekit_bind.cpp: lib/filekit_table.S ;
+lib/filekit.so: $(FK_OBJ) lib/fk/fkso.o lib/filekit_table.o lib/librt.o
+	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
+lib/filekit.imp.a: lib/filekit_stubs.o lib/filekit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/demo.so lib/demo2.so lib/ft.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a
+libs: $(SHLIBS) lib/ft.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a
 
 # Doom (doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -234,7 +262,7 @@ doom: lib/uikit.imp.a
 
 # /bin console tools live in bin/ (their own Makefile).
 .PHONY: bin
-bin: v3d/libv3d.a gpucomp/libgpucomp.a
+bin: v3d/libv3d.a gpucomp/libgpucomp.a libs
 	@$(MAKE) --no-print-directory -C bin
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. so a nested source finds the user-side headers.

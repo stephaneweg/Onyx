@@ -35,7 +35,7 @@ LibreOffice headless). Screenshots
 > use "Onyx". Renaming the code/app strings to Onyx is a separate, pending task.
 
 > Names: the shared libraries are "kits" -- **UIKit** (the widget toolkit, `user/uikit/`, `namespace uikit`,
-> `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/audiokit/`),
+> `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/audiokit/`), **PrinterKit** (`user/printerkit/`), **FileKit** (`user/filekit/`: ZIP, zlib, files and trees),
 > ImageKit to come. docs/03 sections 5.6 and 5.7.
 
 ## RULE — keep the documentation up to date automatically

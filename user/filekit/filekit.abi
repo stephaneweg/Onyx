@@ -1,0 +1,48 @@
+# filekit.abi -- the export table of SD:/lib/filekit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 fk_adler32
+1 fk_copy
+2 fk_crc32
+3 fk_deflate
+4 fk_dos_time_str
+5 fk_exists
+6 fk_file_size
+7 fk_free
+8 fk_human_size
+9 fk_inflate
+10 fk_load
+11 fk_mkdirs
+12 fk_move
+13 fk_path_ext
+14 fk_path_folder
+15 fk_path_join
+16 fk_path_name
+17 fk_path_unique
+18 fk_remove
+19 fk_save
+20 fk_tree_size
+21 fk_zip_close
+22 fk_zip_count
+23 fk_zip_entry
+24 fk_zip_error
+25 fk_zip_extract
+26 fk_zip_extract_all
+27 fk_zip_find
+28 fk_zip_open
+29 fk_zip_password
+30 fk_zip_read
+31 fk_zipbuf_add
+32 fk_zipbuf_finish
+33 fk_zipbuf_free
+34 fk_zipbuf_new
+35 fk_zipmem_count
+36 fk_zipmem_entry
+37 fk_zipmem_get
+38 fk_zipw_add
+39 fk_zipw_add_data
+40 fk_zipw_close
+41 fk_zipw_create
+42 fk_zipw_level

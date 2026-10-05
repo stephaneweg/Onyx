@@ -1,0 +1,143 @@
+//
+// fktest -- FileKit's self-test (SD:/lib/filekit.so, filekit/filekit.h): compression, a ZIP archive
+// made and read on the card and in memory, a tree copied, moved and removed, the paths. Everything
+// it writes is under SD:/tmp/fktest, removed at the end.
+//   usage: fktest          -> "fktest: N passed, 0 failed", status 0
+//
+// MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
+// granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+// sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions: The above copyright notice and this permission notice shall
+// be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS
+// IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+//
+#include "kapi.h"
+#include "applib.h"
+#include "../onyxpp.hpp"		// (operator new / delete: the library's binding)
+#include "../filekit/filekit.h"
+
+static int g_pass, g_fail;
+static void check (const char *what, bool ok)
+{
+	ax_puts (ok ? "PASS " : "FAIL "); ax_putln (what);
+	if (ok) g_pass++; else g_fail++;
+}
+static bool same (const void *a, const void *b, unsigned n)
+{
+	const unsigned char *x = (const unsigned char *) a, *y = (const unsigned char *) b;
+	for (unsigned i = 0; i < n; i++) if (x[i] != y[i]) return false;
+	return true;
+}
+static bool streq (const char *a, const char *b) { return ax_streq (a, b) != 0; }
+
+#define D "SD:/tmp/fktest"
+static unsigned char g_data[40000];
+
+int main (void)
+{
+	for (unsigned i = 0; i < sizeof g_data; i++) g_data[i] = (unsigned char) ("the quick brown fox "[i % 20] + (i / 5000));
+	void *p = 0, *q = 0; unsigned pn = 0, qn = 0;
+
+	// compression: the three wrappers there and back
+	check ("crc32 of \"123456789\" is CBF43926", fk_crc32 (0, "123456789", 9) == 0xCBF43926u);
+	check ("adler32 of \"Wikipedia\" is 11E60398", fk_adler32 (1, "Wikipedia", 9) == 0x11E60398u);
+	for (int w = FK_RAW; w <= FK_GZIP; w++)
+	{
+		bool ok = fk_deflate (g_data, sizeof g_data, w, 6, &p, &pn) == 0 && pn < sizeof g_data / 4
+		       && fk_inflate (p, pn, w, 0, &q, &qn) == 0 && qn == sizeof g_data && same (q, g_data, qn);
+		check (w == FK_RAW ? "deflate / inflate, raw" : w == FK_ZLIB ? "deflate / inflate, zlib" : "deflate / inflate, gzip", ok);
+		if (w == FK_GZIP)
+		{
+			void *r = 0; unsigned rn = 0;
+			check ("inflate tells gzip by itself", fk_inflate (p, pn, FK_AUTO, 0, &r, &rn) == 0 && rn == sizeof g_data);
+			fk_free (r);
+		}
+		fk_free (p); fk_free (q); p = q = 0;
+	}
+	check ("a damaged stream is refused", fk_inflate ("not a stream at all", 19, FK_ZLIB, 0, &p, &pn) != 0);
+
+	// files and trees
+	fk_remove (D);
+	check ("folders made", fk_mkdirs (D "/a/b") == 0 && fk_exists (D "/a/b") == 2);
+	check ("a file saved, measured", fk_save (D "/a/one.txt", g_data, 12345) == 0 && fk_file_size (D "/a/one.txt") == 12345);
+	fk_save (D "/a/b/two.bin", g_data + 100, 30000);
+	check ("a file loaded", fk_load (D "/a/one.txt", &p, &pn) == 0 && pn == 12345 && same (p, g_data, pn));
+	fk_free (p); p = 0;
+	int files = 0, folders = 0;
+	check ("a tree measured", fk_tree_size (D "/a", &files, &folders) == 42345 && files == 2 && folders == 2);
+	check ("a tree copied", fk_copy (D "/a", D "/c", 0, 0) == 0 && fk_file_size (D "/c/b/two.bin") == 30000);
+	check ("a folder is not copied into itself", fk_copy (D "/a", D "/a/b/x", 0, 0) != 0);
+	check ("a tree moved", fk_move (D "/c", D "/m", 0, 0) == 0 && fk_exists (D "/c") == 0 && fk_file_size (D "/m/one.txt") == 12345);
+
+	// a ZIP archive on the card
+	char err[200];
+	fk_zipw *w = fk_zipw_create (D "/t.zip");
+	bool ok = w != 0 && fk_zipw_add (w, D "/a", "tree") == 0 && fk_zipw_add_data (w, "hello.txt", "hello, zip", 10) == 0;
+	ok = ok && fk_zipw_close (w, 0, 0, err, sizeof err) == 0;
+	check ("an archive written", ok && fk_file_size (D "/t.zip") > 100);
+	fk_zip *z = fk_zip_open (D "/t.zip", err, sizeof err);
+	check ("the archive opened", z != 0);
+	if (z != 0)
+	{
+		int i = fk_zip_find (z, "tree/b/two.bin"), h = fk_zip_find (z, "HELLO.TXT");
+		struct fk_zip_entry e;
+		check ("its entries found", i >= 0 && h >= 0 && fk_zip_entry (z, i, &e) && e.size == 30000 && !e.dir && e.packed < e.size);
+		check ("an entry read to memory", h >= 0 && fk_zip_read (z, h, &p, &pn) == 0 && pn == 10 && same (p, "hello, zip", 10));
+		fk_free (p); p = 0;
+		check ("an entry extracted", i >= 0 && fk_zip_extract (z, i, D "/x/two.bin") == 0 && fk_file_size (D "/x/two.bin") == 30000);
+		check ("everything extracted", fk_zip_extract_all (z, "tree", D "/all", 0, 0) == 2 && fk_load (D "/all/tree/one.txt", &p, &pn) == 0
+		       && pn == 12345 && same (p, g_data, pn));
+		fk_free (p); p = 0;
+		fk_zip_close (z);
+	}
+	check ("a file that is not an archive is refused", fk_zip_open (D "/a/one.txt", err, sizeof err) == 0 || fk_zip_count (fk_zip_open (D "/a/one.txt", err, sizeof err)) == 0);
+
+	// a ZIP archive in memory
+	fk_zipbuf *b = fk_zipbuf_new ();
+	ok = b != 0 && fk_zipbuf_add (b, "mimetype", "application/x-test", 18, 0) == 0 && fk_zipbuf_add (b, "content.xml", g_data, 20000, 6) == 0;
+	ok = ok && fk_zipbuf_finish (b, &p, &pn) == 0;
+	check ("an archive built in memory", ok && pn > 100 && pn < 10000);
+	char name[64]; unsigned size = 0;
+	check ("its entries listed", ok && fk_zipmem_count (p, pn) == 2 && fk_zipmem_entry (p, pn, 1, name, sizeof name, &size) && streq (name, "content.xml") && size == 20000);
+	check ("an entry of it inflated", ok && fk_zipmem_get (p, pn, "content.xml", &q, &qn) == 0 && qn == 20000 && same (q, g_data, qn));
+	fk_free (q); q = 0;
+	check ("its first entry is stored as it is", ok && fk_zipmem_get (p, pn, "mimetype", &q, &qn) == 0 && qn == 18 && same ((char *) p + 30 + 8, "application/x-test", 18));
+	fk_free (q); q = 0;
+	// ... and the card's reader reads what the memory's writer made
+	if (ok) fk_save (D "/mem.zip", p, pn);
+	z = fk_zip_open (D "/mem.zip", err, sizeof err);
+	check ("the card's reader opens it", z != 0 && fk_zip_count (z) == 2 && fk_zip_read (z, 1, &q, &qn) == 0 && qn == 20000 && same (q, g_data, qn));
+	fk_free (q); fk_zip_close (z);
+	fk_free (p);
+
+	// paths
+	char t[300];
+	check ("a path's name", streq (fk_path_name ("SD:/a/b/photo.JPG"), "photo.JPG") && streq (fk_path_name ("SD:x"), "x"));
+	fk_path_ext ("SD:/a/b/photo.JPG", t, sizeof t);
+	bool pe = streq (t, "jpg");
+	fk_path_ext ("SD:/a.b/readme", t, sizeof t);
+	check ("a path's extension", pe && t[0] == 0);
+	fk_path_folder ("SD:/a/b/photo.JPG", t, sizeof t);
+	bool pf = streq (t, "SD:/a/b");
+	fk_path_folder ("SD:/a", t, sizeof t);
+	check ("a path's folder", pf && streq (t, "SD:/"));
+	fk_path_join (t, sizeof t, "SD:/a", "b.txt");
+	bool pj = streq (t, "SD:/a/b.txt");
+	fk_path_join (t, sizeof t, "SD:/", "b.txt");
+	check ("two parts joined", pj && streq (t, "SD:/b.txt"));
+	fk_path_join (t, sizeof t, D, "a/one.txt");
+	fk_path_unique (t, sizeof t);
+	check ("a name not taken", streq (t, D "/a/one (2).txt"));
+	fk_human_size (12697, t, sizeof t);
+	check ("a size for people", streq (t, "12.3 KB"));
+
+	check ("the tree removed", fk_remove (D) == 0 && fk_exists (D) == 0);
+	check ("a volume's root is never removed", fk_remove ("SD:/") != 0 && fk_remove ("SD:") != 0);
+
+	char n1[12], n2[12];
+	ax_itoa (g_pass, n1); ax_itoa (g_fail, n2);
+	ax_puts ("fktest: "); ax_puts (n1); ax_puts (" passed, "); ax_puts (n2); ax_putln (" failed");
+	return g_fail ? 1 : 0;
+}
