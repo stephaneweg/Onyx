@@ -9,8 +9,9 @@
 # symbol); what BASIC needs besides is each function's name and types. This tool reads them from the
 # kit's headers -- the C prototypes -- and writes one line per function BASIC can call:
 #
-#     <name> <place> <result> <arguments or -> <C name>
+#     <name> <place> <result> <arguments or -> <C name> [<the arguments' names, a comma between>]
 #
+# (the names: what an editor shows -- QBStudio's completion; BASIC itself does not read them.)
 # The types are one letter each (user/Libs/basic/basint.h): the result v i u l b c h w f d s, an
 # argument i p c s f d I L F D. <name> is the C name less the kit's prefix (fk_copy -> copy) when
 # nearly all its functions share one; BASIC takes both. Left out: what BASIC cannot call -- C++
@@ -308,9 +309,14 @@ def describe (kit, verbose):
 		before, args = sorted (protos)[0]
 		try:
 			ret = ret_letter (before, tdefs)
-			al = ""
+			al = ""; names = []
 			if args and args != "void":
-				for a in split_args (args): al += arg_letter (a, tdefs)
+				for a in split_args (args):
+					al += arg_letter (a, tdefs)
+					fp = re.search (r"\(\s*\*\s*(\w+)\s*\)", a)
+					ws = re.findall (r"[A-Za-z_]\w*", re.sub (r"\[[^\]]*\]", "", a.split ("=")[0]))
+					nm = fp.group (1) if fp else (ws[-1] if len (ws) > 1 and ws[-1] not in INT32 and ws[-1] not in tdefs else "")
+					names.append (nm or "arg%d" % len (al))
 			if sum (1 for c in al if c not in "fd") > 8 or sum (1 for c in al if c in "fd") > 8 or len (al) > 16:
 				raise Skip ("too many arguments")
 		except Skip as e:
@@ -318,7 +324,7 @@ def describe (kit, verbose):
 		short = name[len (prefix):] if prefix and name.startswith (prefix) and len (name) > len (prefix) else name
 		if short.lower () in taken: short = name
 		taken.add (short.lower ())
-		lines.append ("%s %d %s %s %s" % (short, slot, ret, al or "-", name))
+		lines.append ("%s %d %s %s %s%s" % (short, slot, ret, al or "-", name, (" " + ",".join (names)) if names else ""))
 		for w in re.findall (r"\w+", before + " " + args):
 			if w in structs.bodies and w not in used: used.append (w)
 	# the structures: those the functions name, and the ones inside them first

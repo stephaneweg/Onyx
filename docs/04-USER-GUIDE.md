@@ -4395,7 +4395,14 @@ left, the object and event lists above.*
 An event is a SUB named **`<control>_Click`** (buttons, check boxes, menu items) or **`<control>_Change`** (text
 boxes, lists, sliders), and **`Main_Load`**, **`Main_Resize`**, **`Main_Close`**; the **object and event lists**
 above the code write them. After a control's name and a dot, **completion** offers its properties and methods
-(Enter or Tab takes one); Ctrl+Space offers the names. BASIC's words are written in capitals as you type; the
+(Enter or Tab takes one); Ctrl+Space offers the names. **The kits too**: after the name of a kit the project imports
+(`#import FileKit` in one of its files; UIKit always) and a dot, the list is the kit's functions, each with its
+arguments by their names — `text$` a string, `BYREF n` a number the function fills, `ADDRESSOF fn` a SUB it calls —
+and what it gives back, and the kit's structures (`DIM e AS FileKit.` ...).
+
+![QBStudio: a kit's functions](../screenshots/qbstudio-kits.png)
+*After `UIKit.`: the kit's functions, their arguments and results.*
+ BASIC's words are written in capitals as you type; the
 **problems** are found as you type (a red dot in the margin, the line underlined, the list under the code).
 
 **The generated code** (`Main.form.bas`, read-only, under *Generated*): made again at each change of the form —

@@ -108,7 +108,7 @@ build () {
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
-			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
+			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Libs/basic/baskits.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
@@ -130,7 +130,7 @@ APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freece
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
-$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/Libs/basic/runtime.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libaudiokit.a" -lpthread -lm &
+$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/Libs/basic/runtime.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Libs/basic/baskits.cpp "$OUT/libuikit.a" "$OUT/libaudiokit.a" -lpthread -lm &
 wait
 
 # ---- the running -------------------------------------------------------------------------------
@@ -281,6 +281,9 @@ if want qbstudio; then			# (the example project: the designer, Convert chosen; t
 	sim qbstudio qbstudio "wait;wait;down 618 347;up 618 347;wait;wait" $P; png qbstudio
 	sim qbstudio qbstudio-code "wait;wait;down 391 51;up 391 51;wait;down 600 300;up 600 300;key 0x105;key 13;key 115;key 116;key 97;key 116;key 117;key 115;key 46;wait;wait" $P
 	png qbstudio-code
+	# ... and a kit's functions after its name and a dot (the project's #import, UIKit always: SD:/lib/<kit>.bi)
+	sim qbstudio qbstudio-kits "wait;wait;down 391 51;up 391 51;wait;down 600 300;up 600 300;key 0x105;key 13;key 85;key 73;key 75;key 105;key 116;key 46;wait;wait" $P
+	png qbstudio-kits
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp

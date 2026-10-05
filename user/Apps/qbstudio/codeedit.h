@@ -23,7 +23,7 @@ static TextFace *g_ui = 0;				// the UI's (the completion's list)
 static bool (*g_isKeyword) (const char *w, int n);	// a word of BASIC? (the app: bas::wordList)
 
 // A completion: what may come here
-struct Compl { char name[40]; char kind; char detail[40]; };	// kind: 'p' property, 'm' method, 'c' control, 's' a SUB, 'k' a word
+struct Compl { char name[40]; char kind; char detail[100]; };	// kind: 'p' property, 'm' method, 'c' control, 's' a SUB, 'k' a word, 'f' a kit's function, 't' its structure, 'K' a kit
 typedef void (*ComplFn) (const char *object, Vec<Compl> &out);	// object: the name before the dot ("" = none)
 static ComplFn g_complete;
 
@@ -403,7 +403,8 @@ private:
 	int m_maxCols;
 	Vec<Snap> m_undo, m_redo;
 	// the completion's list
-	enum { POP_ROWS = 8, POP_W = 300 };
+	enum { POP_ROWS = 8, POP_W = 300, POP_WMAX = 640 };
+	int m_pw = POP_W;				// the list's width: POP_W, more when its lines are long (a kit's functions)
 	bool m_popup; int m_psel, m_ptop, m_pstart, m_px, m_py;
 	Vec<Compl> m_all, m_items;
 
@@ -536,7 +537,7 @@ private:
 
 	// ---- completion -------------------------------------------------------------------------------------------------------
 	int popRowH () { return uk_fh () + 4; }
-	bool inPopup (int mx, int my) { return mx >= m_px && mx < m_px + POP_W && my >= m_py && my < m_py + POP_ROWS * popRowH () + 6; }
+	bool inPopup (int mx, int my) { return mx >= m_px && mx < m_px + m_pw && my >= m_py && my < m_py + POP_ROWS * popRowH () + 6; }
 	void openPopup (bool names)
 	{
 		if (!g_complete) return;
@@ -561,6 +562,12 @@ private:
 		}
 		if (!m_items.n) { m_popup = false; invalidate (true); return; }
 		m_psel = iclamp (m_psel, 0, m_items.n - 1);
+		{
+			UkFaceScope back (g_ui);
+			m_pw = POP_W;
+			for (int i = 0; i < m_items.n; i++) m_pw = imax (m_pw, 26 + uk_tw (m_items[i].name) + 24 + uk_tw (m_items[i].detail) + 10);
+			m_pw = imin (m_pw, imin (POP_WMAX, imax (POP_W, width - UK_SBW)));
+		}
 		invalidate (true);
 	}
 	void accept ()
@@ -595,23 +602,27 @@ private:
 		UkFaceScope back (g_ui);			// (the UI's face for the list)
 		int RH = popRowH (), n = imin (POP_ROWS, m_items.n), h = n * RH + 6;
 		if (m_py + h > height) m_py = 4 + (ln - m_top) * LH - h - 2;
-		if (m_px + POP_W > width - UK_SBW) m_px = width - UK_SBW - POP_W;
+		if (m_px + m_pw > width - UK_SBW) m_px = width - UK_SBW - m_pw;
 		if (m_px < 0) m_px = 0;
-		uk_popup (canvas, m_px, m_py, POP_W, h, 0, C_FIELD);
+		uk_popup (canvas, m_px, m_py, m_pw, h, 0, C_FIELD);
 		m_ptop = iclamp (m_ptop, 0, imax (0, m_items.n - POP_ROWS));
 		for (int r = 0; r < n; r++)
 		{
 			int i = m_ptop + r; const Compl &c = m_items[i];
 			int y = m_py + 3 + r * RH;
 			unsigned ink = C_FIELD_TEXT;
-			if (i == m_psel) { uk_hilite (canvas, m_px + 3, y, POP_W - 6, RH, 3); ink = uk_hilite_ink (); }
+			if (i == m_psel) { uk_hilite (canvas, m_px + 3, y, m_pw - 6, RH, 3); ink = uk_hilite_ink (); }
 			unsigned kc = c.kind == 'p' ? 0x2E7FA8 : c.kind == 'm' ? 0xB5530B : c.kind == 'c' ? 0x146C7A : c.kind == 's' ? 0x6A3FB5 : 0x0F5FB8;
 			canvas.fillRect (m_px + 8, y + RH / 2 - 6, 12, 12, kc);
 			char t[2] = { c.kind, 0 };
 			uk_text_c (canvas, m_px + 8, y + RH / 2 - 6, 12, 12, t, 0xFFFFFF, 2);
 			uk_text (canvas, m_px + 26, y + 2, c.name, ink, i == m_psel ? 2 : 0);
-			int dw = uk_tw (c.detail);
-			uk_text (canvas, m_px + POP_W - 10 - dw, y + 2, c.detail, i == m_psel ? ink : uk_mix (C_FIELD, C_FIELD_TEXT, 130));
+			// (what does not fit beside the name is cut: a kit's function and its many arguments)
+			char det[100]; cpy (det, c.detail, sizeof det);
+			int room = m_pw - 10 - (26 + uk_tw (c.name) + 12), dl = (int) strlen (det);
+			while (dl > 3 && uk_tw (det) > room) { det[--dl] = 0; det[dl - 1] = det[dl - 2] = det[dl - 3] = '.'; }
+			int dw = uk_tw (det);
+			uk_text (canvas, m_px + m_pw - 10 - dw, y + 2, det, i == m_psel ? ink : uk_mix (C_FIELD, C_FIELD_TEXT, 130));
 		}
 	}
 

@@ -517,10 +517,100 @@ static void open_sub (const char *name)
 	char m[120]; snprintf (m, sizeof m, "SUB %s written", name); status (m);
 }
 
-// The completion: a control's properties and methods, the names
+// The kits the project imports: "#import <kit>" at the start of a line of its code -- and UIKit, which the
+// controls' library imports for every project. Their names as written (the last spelling met).
+struct KitName { char name[32]; };
+static void imported_kits (Vec<KitName> &out)
+{
+	KitName u; cpy (u.name, "UIKit", sizeof u.name); out.push (u);
+	for (int i = 0; i < g_p.docs.n; i++)
+	{
+		if (g_p.docs[i].type != DOC_CODE || !g_p.docs[i].ed) continue;
+		for (const char *p = g_p.docs[i].ed->text (); p && *p; )
+		{
+			while (*p == ' ' || *p == '\t') p++;
+			if (!strncasecmp (p, "#import", 7) && (p[7] == ' ' || p[7] == '\t'))
+			{
+				p += 7; while (*p == ' ' || *p == '\t') p++;
+				KitName k; int n = 0;
+				while (((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_') && n < 31) k.name[n++] = *p++;
+				k.name[n] = 0;
+				bool known = false;
+				for (int j = 0; j < out.n; j++) if (ieq (out[j].name, k.name)) { known = true; if (j) out[j] = k; }
+				if (n && !known) out.push (k);
+			}
+			while (*p && *p != '\n') p++;
+			if (*p) p++;
+		}
+	}
+}
+// A kit's functions and structures (its description, SD:/lib/<kit>.bi: what BASIC itself reads) for the list:
+// each function with its arguments -- a text$, BYREF where the function fills a number, ADDRESSOF a SUB -- and
+// what it gives back.
+static void kit_members (const char *kit, Vec<Compl> &out)
+{
+	char low[32]; int n = 0;
+	for (; kit[n] && n < 31; n++) low[n] = (char) (kit[n] >= 'A' && kit[n] <= 'Z' ? kit[n] + 32 : kit[n]);
+	low[n] = 0;
+	int len = 0;
+	char *bi = bas::onyxKitSource (low, &len);
+	if (!bi) return;
+	for (char *l = bi; l && *l; )
+	{
+		char *e = strchr (l, '\n'); if (e) *e = 0;
+		char w[6][160]; int nw = 0;
+		for (char *p = l; *p && nw < 6; )
+		{
+			while (*p == ' ' || *p == '\t' || *p == '\r') p++;
+			if (!*p) break;
+			int k = 0; while (*p && *p != ' ' && *p != '\t' && *p != '\r') { if (k < 159) w[nw][k++] = *p; p++; }
+			w[nw++][k] = 0;
+		}
+		Compl c; c.detail[0] = 0;
+		if (nw >= 3 && !strcmp (w[0], "struct") && !(w[1][0] >= '0' && w[1][0] <= '9'))
+		{ cpy (c.name, w[1], sizeof c.name); c.kind = 't'; snprintf (c.detail, sizeof c.detail, "TYPE, %s bytes", w[2]); out.push (c); }
+		else if (nw >= 4 && w[0][0] != '#' && strcmp (w[0], "field") && w[1][0] >= '0' && w[1][0] <= '9')
+		{
+			cpy (c.name, w[0], sizeof c.name); c.kind = 'f';
+			Str d; d.puts ("(");
+			const char *args = strcmp (w[3], "-") ? w[3] : "", *nm = nw > 5 ? w[5] : "";
+			for (int i = 0; args[i]; i++)
+			{
+				char one[48]; int k = 0;
+				while (*nm && *nm != ',' && k < 47) one[k++] = *nm++;
+				one[k] = 0; if (*nm == ',') nm++;
+				if (!one[0]) snprintf (one, sizeof one, "arg%d", i + 1);
+				if (i) d.puts (", ");
+				char t = args[i];
+				if (t == 's') d.printf ("%s$", one);
+				else if (t == 'c') d.printf ("ADDRESSOF %s", one);
+				else if (t == 'I' || t == 'L' || t == 'F' || t == 'D') d.printf ("BYREF %s", one);
+				else d.puts (one);
+			}
+			d.puts (")");
+			if (w[2][0] == 's') d.puts (" -> text$"); else if (w[2][0] == 'l') d.puts (" -> handle"); else if (w[2][0] != 'v') d.puts (" -> number");
+			cpy (c.detail, d.str (), sizeof c.detail);
+			if ((int) strlen (d.str ()) >= (int) sizeof c.detail) strcpy (c.detail + sizeof c.detail - 4, "...");
+			out.push (c);
+		}
+		l = e ? e + 1 : 0;
+	}
+	delete [] bi;
+	// by name (the description is in the order of the kit's table)
+	for (int i = 1; i < out.n; i++)
+	{
+		Compl c = out[i]; int j = i;
+		while (j > 0 && strcasecmp (out[j - 1].name, c.name) > 0) { out[j] = out[j - 1]; j--; }
+		out[j] = c;
+	}
+}
+
+// The completion: a control's properties and methods, a kit's functions, the names
 static void complete (const char *obj, Vec<Compl> &out)
 {
 	auto add = [&] (const char *n, char k, const char *d) { Compl c; cpy (c.name, n, sizeof c.name); c.kind = k; cpy (c.detail, d, sizeof c.detail); out.push (c); };
+	Vec<KitName> kits; imported_kits (kits);
+	if (obj[0]) for (int i = 0; i < kits.n; i++) if (ieq (obj, kits[i].name)) { kit_members (kits[i].name, out); return; }
 	Doc *f = main_form (); Form *form = f ? f->form : 0;
 	char fn[64] = ""; if (f) form_name_of (*f, fn, sizeof fn);
 	if (obj[0])
@@ -533,9 +623,12 @@ static void complete (const char *obj, Vec<Compl> &out)
 		if (e->kind == K_CHECKBOX) add ("Checked", 'p', "-1 / 0");
 		add ("Enabled", 'p', "-1 / 0"); add ("Visible", 'p', "-1 / 0");
 		add ("Focus", 'm', ""); add ("Move", 'm', "x, y, w, h");
-		if (e->kind == K_LISTBOX || e->kind == K_DROPDOWN) add ("AddItem", 'm', "s$");
+		if (e->kind == K_LISTBOX || e->kind == K_DROPDOWN) { add ("AddItem", 'm', "s$"); add ("Count", 'p', "INTEGER"); }
+		if (e->kind == K_LISTBOX) add ("Clear", 'm', "");
+		add ("handle", 'p', "UIKit's widget");
 		return;
 	}
+	for (int i = 0; i < kits.n; i++) add (kits[i].name, 'K', "kit");
 	if (fn[0]) add (fn, 'c', "Window");
 	if (form)
 	{

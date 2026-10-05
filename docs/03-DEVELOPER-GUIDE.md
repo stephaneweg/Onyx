@@ -3417,7 +3417,9 @@ barwidth = 40
     leaves out and why: C++ classes and overloads, a struct by value, a reference, variable arguments, more
     than 8 whole-number or 8 floating-point arguments, a function with no prototype in the kit's headers
     (the codecs AudioKit carries; FreeType in FontKit). `<name>` is the C name less the kit's prefix when
-    at least 80 % of its functions share one (`fk_copy` → `copy`); BASIC takes both.
+    at least 80 % of its functions share one (`fk_copy` → `copy`); BASIC takes both. A sixth word, optional, gives the
+    arguments' names (`button 690 l piiiisc uk_button window,x,y,w,h,text,on_click`): BASIC does not read it,
+    QBStudio's completion does (`main.cpp`: `imported_kits`, `kit_members`).
   - *The types*, one letter each (`basint.h`, above `struct Program`): a result `v` none, `i` / `u` 32 bits,
     `l` 64 bits or a pointer, `b` / `c` a byte, `h` / `w` 16 bits, `f`, `d`, `s` a `const char *` (copied into
     a BASIC string); an argument `i` a whole number, `p` a pointer, `c` a function, `s` a C string, `f`, `d`,
