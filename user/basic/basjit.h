@@ -14,6 +14,11 @@
 //     stores (rounding, overflow), the elements of numeric arrays (1 or 2 dimensions), the jumps.
 //     Numbers being computed stay in d8..d15: the top of the VM's stack, as far as it is numbers, lives
 //     in registers (`regs`), written back to the stack (`flush`) before anything else looks at it;
+//   * the numeric functions: ABS SGN INT FIX SQR CINT CLNG CDBL MIN MAX in line, SIN COS TAN ATN EXP LOG by a
+//     direct call to basnum's functions; SUB / FUNCTION calls and their returns by VM::nativeCall / nativeRet
+//     (the VM's own `enter` / `popFrame`, without its loop), the call going straight to the SUB's code -- and
+//     in line, without the VM at all, when the SUB's locals need only a tag (the frame: call ()) and, for the
+//     return, are all numbers (nothing to free: ret ()); a reference to a variable (a by-reference argument);
 //   * an instruction that cannot go on in machine code (a division by zero, an index out of range, an
 //     overflow, an array not DIMmed yet) puts its operands back and gives the instruction to the VM,
 //     which fails or does it its own way: the errors, their lines and RESUME are the VM's.
@@ -39,6 +44,8 @@ struct Native
 
 static long natStepC (VM *vm, long pc) { return vm->nativeStep (pc); }
 static long natTickC (VM *vm, long pc) { return vm->nativeTick (pc); }
+static long natCallC (VM *vm, long pc, long pi, long argc) { return vm->nativeCall (pc, pi, argc); }
+static long natRetC (VM *vm, long pc, long isFunc) { return vm->nativeRet (pc, isFunc); }
 static long natStackC (VM *vm, long pc) { vm->pc = (int) pc; vm->opPc = (int) pc; vm->fail ("Out of stack space"); return vm->nativeAfter (); }
 
 class Jit
@@ -62,7 +69,8 @@ public:
 	// jumps forward (to a pc not translated yet) and the out-of-line paths
 	struct Fix { u32 *at; int pc; };
 	Vec<Fix> fixes;
-	struct Stub { u32 *at; int kind; int pc; int target; int regs[8]; int nreg; };	// kind 0 bail, 1 back edge, 2 stack
+	// kind 0 bail, 1 back edge, 2 stack, 3 a call's tick, 4 a call the VM makes, 5 / 6 a return (SUB / FUNCTION) the VM makes
+	struct Stub { u32 *at; int kind; int pc; int target; int regs[8]; int nreg; };
 	Vec<Stub> stubs;
 	u32 *dispatch, *leave;
 
@@ -208,6 +216,282 @@ public:
 		if (pr < 0 || s < 0 || s >= P->procs[pr].nlocals) return -1;
 		return P->lkind[P->procs[pr].kindOff + s];
 	}
+	// A numeric function translated: its number of arguments (else -1).
+	static int builtinArgs (int id)
+	{
+		switch (id)
+		{
+		case B_ABS: case B_SGN: case B_INT: case B_FIX: case B_SQR: case B_SIN: case B_COS: case B_TAN: case B_ATN:
+		case B_EXP: case B_LOG: case B_CINT: case B_CLNG: case B_CDBL:
+			return 1;
+		case B_MIN: case B_MAX:
+			return 2;
+		}
+		return -1;
+	}
+	// dr = f (dr): one of basnum's functions
+	void callMath (double (*f) (double), int r)
+	{
+		fmov (0, r);
+		movx (16, (u64) f); blr (16);
+		fmov (r, 0);
+	}
+	// The INTEGER (wide = false) / LONG value of dr, rounded half to even; out of range: a bail-out
+	void roundTo (int r, bool wide)
+	{
+		int ops[1] = { r };
+		put (0x1E644000u | (u32) r << 5 | 0);			// frintn d0, dr
+		put (0x9E780009u);					// fcvtzs x9, d0
+		if (!wide)
+		{
+			put (0x91400000u | 8u << 10 | 9u << 5 | 10);	// add x10, x9, #32768 (#8, lsl #12)
+			put (0xD350FD4Au);				// lsr x10, x10, #16
+		}
+		else
+		{
+			movz (11, 0x8000, 1, true);			// 2^31
+			put (0x8B0B012Au);				// add x10, x9, x11
+			put (0xD360FD4Au);				// lsr x10, x10, #32
+		}
+		bailNZ (10, ops, 1);
+		fmov (r, 0);
+	}
+	void builtin (int id)
+	{
+		if (id == B_MIN || id == B_MAX)
+		{
+			int rb = popReg (), ra = popReg ();
+			fop (0x1E602000u, 0, ra, rb);						// fcmp da, db
+			put (0x1E600C00u | (u32) rb << 16 | (u32) (id == B_MIN ? MI : GT) << 12 | (u32) ra << 5 | ra);	// fcsel da, da, db, cond
+			freeReg (rb); pushReg (ra);
+			return;
+		}
+		int r = popReg ();
+		int ops[1] = { r };
+		switch (id)
+		{
+		case B_ABS:
+			put (0x1E602008u | (u32) r << 5);					// fcmp dr, #0.0
+			put (0x1E614000u | (u32) r << 5 | 0);					// fneg d0, dr
+			put (0x1E600C00u | (u32) r << 16 | (u32) MI << 12 | 0u << 5 | r);	// fcsel dr, d0, dr, mi
+			break;
+		case B_SGN:
+			put (0x1E602008u | (u32) r << 5);
+			put (0x1A9FD7E9u);							// cset w9, gt
+			put (0x5A9F5129u);							// csinv w9, w9, wzr, pl
+			put (0x1E620120u | r);							// scvtf dr, w9
+			break;
+		case B_INT: put (0x1E654000u | (u32) r << 5 | r); break;			// frintm
+		case B_FIX: put (0x1E65C000u | (u32) r << 5 | r); break;			// frintz
+		case B_SQR:
+			put (0x1E602008u | (u32) r << 5);
+			bail (MI, ops, 1);							// (negative: the VM's error)
+			put (0x9E6703E0u);							// fmov d0, xzr
+			put (0x1E61C000u | (u32) r << 5 | 1);					// fsqrt d1, dr
+			put (0x1E600C00u | 1u << 16 | (u32) EQ << 12 | 0u << 5 | r);		// fcsel dr, d0, d1, eq  (0 -> +0)
+			break;
+		case B_SIN: callMath (nsin, r); break;
+		case B_COS: callMath (ncos, r); break;
+		case B_TAN: callMath (ntan, r); break;
+		case B_ATN: callMath (natan, r); break;
+		case B_EXP: callMath (nexp, r); break;
+		case B_LOG:
+			put (0x1E602008u | (u32) r << 5);
+			bail (LS, ops, 1);							// (0 or less: the VM's error)
+			callMath (nlog, r);
+			break;
+		case B_CINT: roundTo (r, false); break;
+		case B_CLNG: roundTo (r, true); break;
+		case B_CDBL: break;
+		}
+		pushReg (r);
+	}
+	// ---- SUB / FUNCTION calls -------------------------------------------------------------------------------
+	// A member of the VM from x19 (its offset; through x16 when far)
+	u32 vmOff (const void *member) { return (u32) ((const char *) member - (const char *) &vm); }
+	enum { F_RET = __builtin_offsetof (VM::Frame, ret), F_LOC = __builtin_offsetof (VM::Frame, loc), F_NLOC = __builtin_offsetof (VM::Frame, nloc),
+	       F_PROC = __builtin_offsetof (VM::Frame, proc), F_SP0 = __builtin_offsetof (VM::Frame, sp0) };
+	// The tag a local of this kind starts with, or -1 when it needs more than a tag (a fixed string, a TYPE's record).
+	int startTag (int kind, int ext)
+	{
+		if (kind == K_STR) return ext > 0 ? -1 : VS;
+		if (kind == K_REC) return ext >= 0 && ext < P->types.n && P->types[ext].kind != TK_TYPE ? VO : -1;
+		return VN;
+	}
+	// Can the frame of a call to SUB pi be made in line? (its locals: tags only; no TYPE record among the arguments)
+	bool plainFrame (int pi, int argc)
+	{
+		const ProcInfo &pr = P->procs[pi];
+		int nloc = pr.nlocals > 0 ? pr.nlocals : 1, first = pr.isFunc ? 1 : 0;
+		if (sizeof (VM::Frame) != 32 || nloc > 24 || first + argc > nloc || argc > 16) return false;
+		for (int i = 0; i < pr.nlocals; i++) if (startTag (P->lkind[pr.kindOff + i], P->lext[pr.kindOff + i]) < 0) return false;
+		return true;
+	}
+	// Does a return from SUB pi free nothing? (all its locals are numbers: a by-reference one is left alone)
+	bool plainReturn (int pi)
+	{
+		const ProcInfo &pr = P->procs[pi];
+		if (sizeof (VM::Frame) != 32 || sizeof (VM::GoSub) != 20 || pr.nlocals > 24) return false;
+		for (int i = 0; i < pr.nlocals; i++) if (P->lkind[pr.kindOff + i] != K_NUM) return false;
+		return true;
+	}
+	// The slow way (the stubs): the VM makes the frame (VM::nativeCall), the machine code goes on at the SUB's code.
+	void callSlow (int pc)
+	{
+		int pi = code[pc + 1], argc = code[pc + 2], e = P->procs[pi].entry;
+		movrx (0, XVM); movw (1, (u32) pc); movw (2, (u32) pi); movw (3, (u32) argc);
+		movx (16, (u64) &natCallC); blr (16);
+		movw (16, (u32) e);
+		put (0xEB10001Fu);					// cmp x0, x16
+		put (0x54000040u);					// b.eq +2
+		b (dispatch);
+		ldrx (XLOC, XNLOC, 0);
+		jumpLabel (e);
+	}
+	void jumpLabel (int e)
+	{
+		if (label[e]) b (label[e]);
+		else { Fix f; f.at = p; f.pc = e; fixes.push (f); put (0x14000000u); }
+	}
+	void slowStub (int kind, int pc)			// (a conditional branch here -> the stub)
+	{
+		Stub s; s.at = p; s.kind = kind; s.pc = pc; s.target = pc; s.nreg = 0; stubs.push (s);
+	}
+	// A SUB / FUNCTION call. The frame as VM::enter makes it: the locals with their first values, the arguments
+	// moved from the stack; then the SUB's code.
+	void call (int pc)
+	{
+		int pi = code[pc + 1], argc = code[pc + 2], e = P->procs[pi].entry;
+		flush (pc);
+		put (0x71000739u);					// subs w25, w25, #1  (calls count down to a tick too: recursion)
+		put (0x5400004Cu);					// b.gt +2
+		slowStub (3, pc);
+		put (0x14000000u);
+		if (!plainFrame (pi, argc)) { callSlow (pc); return; }
+		const ProcInfo &pr = P->procs[pi];
+		int nloc = pr.nlocals > 0 ? pr.nlocals : 1, first = pr.isFunc ? 1 : 0;
+		ldrw (9, XVM, vmOff (&vm.nf));
+		put (0x7100001Fu | (u32) VM::MAXFRAMES << 10 | 9u << 5);	// cmp w9, #MAXFRAMES
+		slowStub (4, pc); put (0x54000002u);				// b.hs slow
+		ldrw (10, XVM, vmOff (&vm.arenaTop));
+		put (0x11000000u | (u32) nloc << 10 | 10u << 5 | 11);		// add w11, w10, #nloc
+		put (0x530D7D6Cu);						// lsr w12, w11, #13  (ARENA = 8192)
+		slowStub (4, pc); put (0x3500000Cu);				// cbnz w12, slow
+		strw (11, XVM, vmOff (&vm.arenaTop));
+		movx (12, (u64) vm.arena);
+		put (0x8B0A054Au);						// add x10, x10, x10, lsl #1
+		put (0x8B0A0D8Cu);						// add x12, x12, x10, lsl #3   x12 = the locals
+		addi (13, XVM, vmOff (&vm.frames[0]));
+		put (0x8B0915ADu);						// add x13, x13, x9, lsl #5    x13 = the frame
+		movw (14, (u32) (pc + 3)); strw (14, 13, F_RET);
+		strx (12, 13, F_LOC);
+		movw (14, (u32) nloc); strw (14, 13, F_NLOC);
+		movw (14, (u32) pi); strw (14, 13, F_PROC);
+		for (int i = 0; i < nloc; i++)
+		{
+			int tag = i < pr.nlocals ? startTag (P->lkind[pr.kindOff + i], P->lext[pr.kindOff + i]) : VN;
+			if (tag == VN) strw (31, 12, (u32) i * VSIZE);
+			else { movw (14, (u32) tag); strw (14, 12, (u32) i * VSIZE); }
+			strx (31, 12, (u32) i * VSIZE + V_N);
+			strx (31, 12, (u32) i * VSIZE + V_P);
+		}
+		ldrw (14, XSP, 0);
+		if (argc) { put (0x51000000u | (u32) argc << 10 | 14u << 5 | 14); strw (14, XSP, 0); }	// sub w14, w14, #argc
+		strw (14, 13, F_SP0);
+		if (argc)
+		{
+			put (0x8B0E05CFu);					// add x15, x14, x14, lsl #1
+			put (0x8B0F0ECFu);					// add x15, x22, x15, lsl #3   x15 = the arguments
+			for (int i = 0; i < argc; i++)
+			{
+				u32 from = (u32) i * VSIZE, to = (u32) (first + i) * VSIZE;
+				ldrw (17, 15, from); strw (17, 12, to);
+				ldrx (17, 15, from + V_N); strx (17, 12, to + V_N);
+				ldrx (17, 15, from + V_P); strx (17, 12, to + V_P);
+			}
+		}
+		put (0x11000529u);						// add w9, w9, #1
+		strw (9, XVM, vmOff (&vm.nf));
+		strx (12, XNLOC, 0);
+		movrx (XLOC, 12);
+		jumpLabel (e);
+	}
+	// A return. In line when the SUB's locals are all numbers: nothing to free, the frame is given back.
+	void retSlow (int pc, bool isFunc)
+	{
+		movrx (0, XVM); movw (1, (u32) pc); movw (2, isFunc ? 1 : 0);
+		movx (16, (u64) &natRetC); blr (16);
+		b (dispatch);
+	}
+	void ret (int pc, bool isFunc)
+	{
+		flush (pc);
+		int pi = procAt[pc];
+		if (pi < 0 || !plainReturn (pi)) { retSlow (pc, isFunc); return; }
+		int nloc = P->procs[pi].nlocals > 0 ? P->procs[pi].nlocals : 1;
+		if (isFunc)							// (room for the result)
+		{
+			ldrw (9, XSP, 0);
+			put (0x7100001Fu | (u32) (VM::STACK - 8) << 10 | 9u << 5);
+			slowStub (isFunc ? 6 : 5, pc); put (0x54000002u);	// b.hs slow
+		}
+		ldrw (9, XVM, vmOff (&vm.nf));
+		slowStub (isFunc ? 6 : 5, pc); put (0x34000009u);		// cbz w9, slow
+		put (0x51000529u);						// sub w9, w9, #1
+		addi (13, XVM, vmOff (&vm.frames[0]));
+		put (0x8B0915ADu);						// add x13, x13, x9, lsl #5
+		ldrx (12, 13, F_LOC);
+		movx (14, (u64) vm.arena);
+		put (0xCB0E018Fu);						// sub x15, x12, x14
+		movx (17, (u64) VM::ARENA * VSIZE);
+		put (0xEB1101FFu);						// cmp x15, x17
+		slowStub (isFunc ? 6 : 5, pc); put (0x54000002u);		// b.hs slow  (a frame from the heap)
+		ldrw (14, XVM, vmOff (&vm.ngs));
+		u32 *nog = p; put (0x3400000Eu);				// cbz w14, nog
+		put (0x510005CEu);						// sub w14, w14, #1
+		put (0x8B0E09CEu);						// add x14, x14, x14, lsl #2   (x 5)
+		addi (15, XVM, vmOff (&vm.gosubs[0]));
+		put (0x8B0E09EFu);						// add x15, x15, x14, lsl #2   (x 20)
+		ldrw (15, 15, (u32) __builtin_offsetof (VM::GoSub, frame));
+		put (0x6B0901FFu);						// cmp w15, w9
+		slowStub (isFunc ? 6 : 5, pc); put (0x5400000Cu);		// b.gt slow  (a GOSUB made in this SUB)
+		patchCond (nog, p);
+		if (isFunc) ldrd (0, 12, V_N);					// the result
+		ldrw (10, XVM, vmOff (&vm.arenaTop));
+		put (0x51000000u | (u32) nloc << 10 | 10u << 5 | 10);		// sub w10, w10, #nloc
+		strw (10, XVM, vmOff (&vm.arenaTop));
+		strw (9, XVM, vmOff (&vm.nf));
+		ldrw (0, 13, F_RET);						// where the caller goes on
+		movz (11, 0, 0, true);
+		put (0x34000049u);						// cbz w9, +2
+		put (0xF8400000u | ((u32) (F_LOC - 32) & 0x1FF) << 12 | 13u << 5 | 11);	// ldur x11, [x13, #F_LOC - 32]
+		strx (11, XNLOC, 0);
+		if (isFunc)
+		{
+			ldrw (9, XSP, 0);
+			put (0x11000400u | 9u << 5 | 11);			// add w11, w9, #1
+			strw (11, XSP, 0);
+			put (0x8B090529u); put (0x8B090ECAu);			// x10 = &stack[sp]
+			strw (31, 10, 0); strd (0, 10, V_N); strx (31, 10, V_P);
+		}
+		b (dispatch);
+	}
+	// A reference to a variable pushed (a by-reference argument): OP_REFG / OP_REFL
+	void pushRef (int pc, bool global, int s)
+	{
+		flush (pc);
+		slotAddr (global, s);						// x10 = the variable (what a reference designates)
+		ldrw (9, XSP, 0);
+		put (0x7100001Fu | (u32) (VM::STACK - 8) << 10 | 9u << 5);
+		slowStub (2, pc); put (0x54000002u);				// b.hs (the stack is full)
+		put (0x11000400u | 9u << 5 | 11);				// add w11, w9, #1
+		strw (11, XSP, 0);
+		put (0x8B090529u);						// add x9, x9, x9, lsl #1
+		put (0x8B090ECCu);						// add x12, x22, x9, lsl #3
+		movw (13, (u32) VR); strw (13, 12, 0);
+		strx (31, 12, V_N);
+		strx (10, 12, V_P);
+	}
 	// Translated without the VM whatever the registers hold?
 	bool inlineOp (int pc)
 	{
@@ -220,6 +504,9 @@ public:
 		case OP_JMP: case OP_JZ: case OP_JNZ: case OP_NOP:
 			return true;
 		case OP_CONV: return code[pc + 1] == NT_INT || code[pc + 1] == NT_LNG;
+		case OP_BI: return builtinArgs (code[pc + 1]) == code[pc + 2];
+		case OP_REFG: return code[pc + 1] >= 0 && code[pc + 1] < P->nglobals;
+		case OP_REFL: return procAt[pc] >= 0 && code[pc + 1] >= 0 && code[pc + 1] < P->procs[procAt[pc]].nlocals;
 		case OP_LDG: case OP_STG: return kindOf (true, code[pc + 1], pc) == K_NUM;
 		case OP_LDL: case OP_STL: return kindOf (false, code[pc + 1], pc) == K_NUM;
 		case OP_ALDG: case OP_ASTG: return kindOf (true, code[pc + 1], pc) == K_NUMARR && (code[pc + 2] == 1 || code[pc + 2] == 2);
@@ -260,6 +547,7 @@ public:
 			}
 			else if (op == OP_JMP || op == OP_JZ || op == OP_JNZ) return false;
 			if (!inlineOp (pc) && next <= n) entry[next] = 1;
+			if (op == OP_CALL) entry[pc] = 1;			// (its tick comes back to it)
 			pc = next;
 		}
 		for (int i = 0; i < P->stmts.n; i++)
@@ -355,7 +643,7 @@ public:
 		for (int i = 0; i < stubs.n; i++)
 		{
 			Stub &s = stubs[i];
-			if (s.kind == 1) patchB (s.at, p); else patchCond (s.at, p);
+			if (s.kind == 1 || s.kind == 3) patchB (s.at, p); else patchCond (s.at, p);
 			if (s.kind == 0)
 			{
 				// (the registers go back on the stack as they were; a full stack here: the VM says so)
@@ -374,6 +662,9 @@ public:
 				movrx (0, XVM); movw (1, (u32) s.pc); blr (XSTEP);
 				b (dispatch);
 			}
+			else if (s.kind == 3) tick (s.target);
+			else if (s.kind == 4) callSlow (s.pc);
+			else if (s.kind == 5 || s.kind == 6) retSlow (s.pc, s.kind == 6);
 			else if (s.kind == 1)
 			{
 				put (0x71000739u);			// subs w25, w25, #1
@@ -451,7 +742,10 @@ public:
 			if (!inlineOp (pc))
 			{
 				if (op == OP_POP && nreg) { freeReg (regs[--nreg]); pc = next; continue; }
-				fallback (pc, next);
+				int e = op == OP_CALL && code[pc + 1] >= 0 && code[pc + 1] < P->procs.n ? P->procs[code[pc + 1]].entry : -1;
+				if (op == OP_CALL && e >= 0 && e < n && entry[e]) call (pc);
+				else if (op == OP_RET || op == OP_RETF) ret (pc, op == OP_RETF);
+				else fallback (pc, next);
 				bool ends = op == OP_RET || op == OP_RETF || op == OP_RETSUB || op == OP_END || op == OP_STOP || op == OP_RESUME || op == OP_GOSUB
 					    || op == OP_CALL || op == OP_VCALL || op == OP_ICALL || op == OP_RUN || op == OP_CHAIN;
 				if (ends && stubs.n) emitStubs ();
@@ -461,6 +755,8 @@ public:
 			switch (op)
 			{
 			case OP_NOP: break;
+			case OP_BI: builtin (code[pc + 1]); break;
+			case OP_REFG: case OP_REFL: pushRef (pc, op == OP_REFG, code[pc + 1]); break;
 			case OP_NUM: { int r = allocReg (); ldrd (r, XNUM, (u32) code[pc + 1] * 8); pushReg (r); break; }
 			case OP_LDG: case OP_LDL:
 			{
@@ -561,28 +857,7 @@ public:
 				jumpTo (code[pc + 1], op == OP_JZ ? EQ : NE);
 				break;
 			}
-			case OP_CONV:
-			{
-				int r = popReg ();
-				int ops[1] = { r };
-				put (0x1E644000u | (u32) r << 5 | 0);			// frintn d0, dr
-				put (0x9E780009u);					// fcvtzs x9, d0
-				if (code[pc + 1] == NT_INT)
-				{
-					put (0x91400000u | 8u << 10 | 9u << 5 | 10);	// add x10, x9, #32768 (#8, lsl #12)
-					put (0xD350FD4Au);				// lsr x10, x10, #16
-				}
-				else
-				{
-					movz (11, 0x8000, 1, true);			// 2^31
-					put (0x8B0B012Au);				// add x10, x9, x11
-					put (0xD360FD4Au);				// lsr x10, x10, #32
-				}
-				bailNZ (10, ops, 1);
-				fmov (r, 0);
-				pushReg (r);
-				break;
-			}
+			case OP_CONV: { int r = popReg (); roundTo (r, code[pc + 1] == NT_LNG); pushReg (r); break; }
 			case OP_ALDG: case OP_ALDL:
 			{
 				int nd = code[pc + 2], idx[2];
@@ -635,6 +910,7 @@ static Native *nativeTranslate (VM &vm)
 {
 	Program *P = vm.P;
 	if (P->code.n <= 0) return 0;
+	if (!vm.arena) vm.arena = new V[VM::ARENA];
 	Jit j (vm);
 	if (!j.scan ()) return 0;
 	unsigned words = (unsigned) P->code.n * 40u + 16384u;

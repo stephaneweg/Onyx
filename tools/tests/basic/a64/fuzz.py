@@ -54,7 +54,7 @@ class Gen:
 		if not self.infunc and r.random () < 0.6: return "F1(%s, %s)" % (a, b)
 		return "F2%%(%s)" % a
 	def call1 (self, a):
-		f = self.r.choice (["ABS", "INT", "SGN", "FIX", "SQR", "LEN", "MIN", "MAX"])
+		f = self.r.choice (["ABS", "INT", "SGN", "FIX", "SQR", "LEN", "MIN", "MAX", "SIN", "COS", "TAN", "ATN", "EXP", "LOG", "CINT", "CLNG", "CDBL", "F3&"])
 		if f == "LEN": return "LEN(STR$(%s))" % a
 		if f in ("MIN", "MAX"): return "%s(%s, %s)" % (f, a, self.const ())
 		return "%s(%s)" % (f, a)
@@ -89,6 +89,7 @@ class Gen:
 			self.emit ("END SELECT")
 		elif k < 0.84 and not self.infunc: self.emit ("GOSUB sub%d" % r.randint (1, 2))
 		elif k < 0.90 and not self.infunc: self.emit ("P1 %s, %s, %s" % (r.choice (SCALARS[:3]), r.choice (["i%", "j%"]), self.expr (1)))
+		elif k < 0.905 and not self.infunc: self.emit ("Deep %d" % r.choice ([3, 20, 500]))
 		elif k < 0.94: self.emit ("SWAP %s, %s" % (r.choice (["a", "b", "c"]), r.choice (["a", "b", "c"])))
 		elif k < 0.97: self.emit ("s$ = s$ + STR$(%s): IF LEN(s$) > 40 THEN s$ = MID$(s$, 20)" % self.expr (2))
 		else: self.emit ("%s = %s ^ %s" % (r.choice (["a", "d#"]), self.expr (2), r.choice (["2", "0.5", "3", "-1"])))
@@ -117,6 +118,8 @@ class Gen:
 		L.append ("FUNCTION F1 (p, q)"); self.ind = 1
 		self.emit ("IF p > q THEN F1 = p - q ELSE F1 = %s" % self.expr (2))
 		L.append ("END FUNCTION")
+		L += ["FUNCTION F3& (p)", "  IF p > 6 OR p < 0 THEN F3& = 1: EXIT FUNCTION", "  IF p < 2 THEN F3& = p ELSE F3& = F3&(p - 1) + F3&(p - 2)", "END FUNCTION",
+		      "SUB Deep (n%)", "  IF n% > 0 THEN Deep n% - 1 ELSE dcount% = dcount% + 1", "END SUB"]
 		L.append ("FUNCTION F2% (p)"); self.ind = 1
 		self.emit ("IF ABS(p) < 1000 THEN F2% = p * 2 ELSE F2% = 7")
 		for _ in range (self.r.randint (0, 2)): self.stmt (2)

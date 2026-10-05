@@ -36,8 +36,12 @@ answer in French. The docs stay in English.
   Pi 4: the benchmark 1.48 s -> 0.11 s. `sh tools/tests/run_basic_native_test.sh` (qemu-aarch64 +
   the bare-metal toolchain) and its fuzzer must stay green after any change to the VM's
   instructions or to `opLen ()`.
-- **Next**: (1) the calls and the numeric built-in functions in machine code (today each is a
-  call to the VM: recursion gains little), strings; (2) done the same day: **form (c)**, the standalone app --
+- **Calls and numeric functions in machine code (asked by the user, done 2026-10-05)**: frames made
+  and given back in line, by-reference arguments, ABS ... LOG. Pi 4, one telnet session, nothing
+  else running: `calc.bas` 1.47 s -> 0.07 s, `calls_t.bas` 1.69 s -> 0.19 s (Fib&(27) 0.40 -> 0.05).
+  Measure through ONE telnet session ended by `exit`: a session just dropped leaves its `cmd` shell
+  spinning on the Pi (state R in `ps`) and the timings then vary threefold.
+- **Next**: (1) strings, GOSUB, virtual calls in machine code; faster SIN / COS; (2) done the same day: **form (c)**, the standalone app --
   "Make App" > Standalone writes `apps/<name>.app/main` = the card's `/bin/basic` with the `.bax`
   attached (`bas::attachBax`; tried on the Pi with Planets 3D's program: it starts and runs); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
   **The Pi restarting around a `kill` of a graphical BASIC program: found and fixed (2026-10-05).** Not

@@ -3958,8 +3958,9 @@ compiled to bytecode and run by a small virtual machine. The full list of keywor
 **Machine code or managed.** On the Pi a BASIC program runs **in machine code**: when it starts,
 `/bin/basic` translates its bytecode to AArch64 once (a few milliseconds) and runs that — nothing to
 do, nothing changes in the files, and a `.bas`, a `.bax` and an app behave the same. What computes
-(numbers, loops, arrays, comparisons) is about **ten times faster** than on the VM (a Mandelbrot set +
-a sieve + recursion: 1.48 s on the VM, 0.11 s in machine code on a Pi 4); what draws, prints, waits
+(numbers, loops, arrays, comparisons, the numeric functions, SUB and FUNCTION calls) is **ten to twenty
+times faster** than on the VM (on a Pi 4 -- a Mandelbrot set + a sieve + strings + recursion: 1.47 s on
+the VM, 0.07 s in machine code; a recursive `Fib&(27)`, 832 000 calls: 0.40 s, then 0.05 s); what draws, prints, waits
 or reads files takes the same time as before, since that was machine code already — a game like
 Arkanoid, which spends its time drawing and pausing, does not change. The results are the same,
 errors and `ON ERROR` / `RESUME`, `ON TIMER` / `ON KEY` and Ctrl-Break included: every instruction
