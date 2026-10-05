@@ -366,6 +366,7 @@ public:
 		case 5: A.showGrid = c.checked; break;
 		case 6: A.seeThrough = c.checked; break;
 		case 7: if (p->el) { p->el->rel = c.checked; } break;
+		case 8: if (f) { f->clone = c.checked; } break;
 		}
 		if (w.tag >= 4 && w.tag <= 6) { if (g_view) g_view->invalidate (true); ui (0); return; }
 		if (!A.hasPend && !A.sketching && f) undo_push ();
@@ -452,12 +453,13 @@ public:
 		}
 		case F_MOVE:
 		{
-			label (12, y, "Move", UK_AUTO, 2); y += 22;
-			Textbox *x = field (y, "Along X", &f.mv.x, "mm", 0); y += 30; field (y, "Along Y", &f.mv.y, "mm", 1); y += 30; field (y, "Along Z", &f.mv.z, "mm", 2); y += 38;
-			label (12, y, "Turn, about its centre", UK_AUTO, 2); y += 22;
-			field (y, "Around X", &f.rot.x, "\xC2\xB0", -1); y += 30; field (y, "Around Y", &f.rot.y, "\xC2\xB0", -1); y += 30; field (y, "Around Z", &f.rot.z, "\xC2\xB0", -1); y += 38;
-			label (12, y, "Scale (1: as it is)", UK_AUTO, 2); y += 22;
-			field (y, "Along X", &f.sc.x, "\xC3\x97", -1); y += 30; field (y, "Along Y", &f.sc.y, "\xC3\x97", -1); y += 30; field (y, "Along Z", &f.sc.z, "\xC3\x97", -1); y += 36;
+			y -= 4; label (12, y, "Move", UK_AUTO, 2); y += 20;
+			Textbox *x = field (y, "Along X", &f.mv.x, "mm", 0); y += 29; field (y, "Along Y", &f.mv.y, "mm", 1); y += 29; field (y, "Along Z", &f.mv.z, "mm", 2); y += 34;
+			label (12, y, "Turn, about its centre", UK_AUTO, 2); y += 20;
+			field (y, "Around X", &f.rot.x, "\xC2\xB0", -1); y += 29; field (y, "Around Y", &f.rot.y, "\xC2\xB0", -1); y += 29; field (y, "Around Z", &f.rot.z, "\xC2\xB0", -1); y += 34;
+			label (12, y, "Scale (1: as it is)", UK_AUTO, 2); y += 20;
+			field (y, "Along X", &f.sc.x, "\xC3\x97", -1); y += 29; field (y, "Along Y", &f.sc.y, "\xC3\x97", -1); y += 29; field (y, "Along Z", &f.sc.z, "\xC3\x97", -1); y += 32;
+			check (y, "Clone: the original stays", f.clone, 8); y += 28;
 			if (making && A.step == 1) x->setFocus ();
 			break;
 		}

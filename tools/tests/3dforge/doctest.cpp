@@ -120,7 +120,10 @@ int main (int argc, char **argv)
 		V3 sz = s.bodies[0].mesh.hi - s.bodies[0].mesh.lo, mid = (s.bodies[0].mesh.hi + s.bodies[0].mesh.lo) * 0.5;
 		check (!s.feats[1].failed && fabs (s.bodies[0].m.Volume () - 48000) < 1e-3 && fabs (sz.x - 40) < 1e-6 && fabs (sz.y - 20) < 1e-6 && fabs (sz.z - 60) < 1e-6
 		       && fabs (mid.x - 105) < 1e-6 && fabs (mid.y - 10) < 1e-6 && fabs (mid.z - 15) < 1e-6, "a body turned a quarter, doubled, moved: about its centre");
-		Doc s2; check (s2.load (s.save ().c_str ()) && fabs (s2.bodies[0].m.Volume () - 48000) < 1e-3, "... saved and loaded");
+		g = &add (s, F_MOVE); g->target = 0; g->clone = true; g->mv = V3 (0, 50, 0); g->sc = V3 (0.5, 0.5, 0.5); s.rebuild ();
+		check (s.bodies.size () == 2 && fabs (s.bodies[0].m.Volume () - 48000) < 1e-3 && fabs (s.bodies[1].m.Volume () - 6000) < 1e-3 && !strcmp (s.prop (s.bodies[1].id).name, "Body 1 copy"),
+		       "a clone: the original stays, the copy is a new body, halved and moved");
+		Doc s2; check (s2.load (s.save ().c_str ()) && s2.bodies.size () == 2 && fabs (s2.bodies[0].m.Volume () - 48000) < 1e-3 && fabs (s2.bodies[1].m.Volume () - 6000) < 1e-3, "... saved and loaded");
 	}
 	// the other shapes: a pyramid, a prism and a tapered prism of N sides, a torus
 	{

@@ -115,9 +115,10 @@ struct Feature
 	double r;			// ... the radius, the chamfer's size
 	V3 mv; int tool;		// move: by how much -- combine: the body used (it is consumed)
 	V3 rot, sc;			// move: turned around X, Y, Z (degrees, about the body's centre), scaled along each (1: as it is)
+	bool clone;			// move: the body stays as it is, a copy of it is what moves (a new body)
 	bool failed; char err[72];	// (set by the replay)
 	Feature () : kind (F_BOX), op (OP_NEW), target (-1), x (0), y (0), w (0), d (0), h (0), n (4), centred (true), through (false),
-		     sketch (-1), r (2), tool (-1), sc (1, 1, 1), failed (false) { name[0] = 0; err[0] = 0; }
+		     sketch (-1), r (2), tool (-1), sc (1, 1, 1), clone (false), failed (false) { name[0] = 0; err[0] = 0; }
 	bool turned () const { return fabs (rot.x) > 1e-9 || fabs (rot.y) > 1e-9 || fabs (rot.z) > 1e-9; }
 	bool scaled () const { return fabs (sc.x - 1) > 1e-9 || fabs (sc.y - 1) > 1e-9 || fabs (sc.z - 1) > 1e-9; }
 };
@@ -717,6 +718,13 @@ struct Doc
 			if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { fail ("A scale of 0 would leave nothing"); return; }
 			Manifold res = moved (*t, f);
 			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail ("The operation failed"); return; }
+			if (f.clone)				// (the copy: a body of its own, named and coloured after the original at first)
+			{
+				bool known = false; for (BodyProp &p : props) if (p.id == index) known = true;
+				if (!known) { BodyProp from = prop (f.target); BodyProp &np = prop (index); np.colour = from.colour; snprintf (np.name, sizeof np.name, "%.17s copy", from.name); }
+				Body nb; nb.id = index; nb.m = res; bodies.push_back (nb);
+				return;
+			}
 			t->m = res; build_mesh (t->m, t->mesh);
 			return;
 		}
@@ -759,6 +767,7 @@ struct Doc
 				  KIND_KEY[f.kind], f.op, f.target, f.x, f.y, f.w, f.d, f.h, f.centred ? 1 : 0, f.through ? 1 : 0, f.sketch, f.r,
 				  f.mv.x, f.mv.y, f.mv.z, f.tool, f.name); s += b;
 			if (f.kind >= F_PYRAMID) { snprintf (b, sizeof b, "sides %.9g\n", f.n); s += b; }
+			if (f.kind == F_MOVE && f.clone) s += "clone 1\n";
 			if (f.kind == F_MOVE && (f.turned () || f.scaled ())) { snprintf (b, sizeof b, "turn %.9g %.9g %.9g scale %.9g %.9g %.9g\n", f.rot.x, f.rot.y, f.rot.z, f.sc.x, f.sc.y, f.sc.z); s += b; }
 			snprintf (b, sizeof b, "plane %.9g %.9g %.9g  %.9g %.9g %.9g  %.9g %.9g %.9g\n", f.pl.o.x, f.pl.o.y, f.pl.o.z, f.pl.u.x, f.pl.u.y, f.pl.u.z, f.pl.n.x, f.pl.n.y, f.pl.n.z); s += b;
 			for (const SkEl &e : f.els)
@@ -798,6 +807,7 @@ struct Doc
 				feats.push_back (f);
 			}
 			else if (!strncmp (line, "sides ", 6) && !feats.empty ()) feats.back ().n = atof (line + 6);
+			else if (!strncmp (line, "clone ", 6) && !feats.empty ()) feats.back ().clone = atoi (line + 6) != 0;
 			else if (!strncmp (line, "turn ", 5) && !feats.empty ())
 			{ Feature &g = feats.back (); sscanf (line + 5, "%lf %lf %lf scale %lf %lf %lf", &g.rot.x, &g.rot.y, &g.rot.z, &g.sc.x, &g.sc.y, &g.sc.z); }
 			else if (!strncmp (line, "plane ", 6) && !feats.empty ())
@@ -899,7 +909,7 @@ static void describe (const Doc &d, const Feature &f, char *out, int cap)
 	case F_EXTRUDE: num (fabs (f.h), a); if (f.through) snprintf (out, cap, "through%s", op); else snprintf (out, cap, "%s%s", a, op); break;
 	case F_FILLET: num (f.r, a); snprintf (out, cap, "R %s \xC2\xB7 %d edge%s", a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
 	case F_CHAMFER: num (f.r, a); snprintf (out, cap, "%s \xC2\xB7 %d edge%s", a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
-	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? " \xC2\xB7 turned" : "", f.scaled () ? " \xC2\xB7 scaled" : ""); break;
+	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? " \xC2\xB7 turned" : "", f.scaled () ? " \xC2\xB7 scaled" : ""); if (f.clone) { size_t k = strlen (out); snprintf (out + k, cap - k, " \xC2\xB7 a copy"); } break;
 	case F_COMBINE: snprintf (out, cap, "%s", OP_NAME[f.op]); break;
 	default: out[0] = 0;
 	}

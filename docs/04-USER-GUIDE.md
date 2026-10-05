@@ -2278,7 +2278,8 @@ two flat faces** and **edges on a circle** (the rim of a hole, the top of a cyli
 
 **Move** — click a body, move it over the ground and click (or type the three distances). The same step also
 **turns** the body (degrees around X, Y and Z, about its centre) and **scales** it (a factor along each axis: 1
-leaves it as it is, 2 doubles it) — type them at the right; a ghost shows the result before OK. **Union**,
+leaves it as it is, 2 doubles it) — type them at the right; a ghost shows the result before OK. With **Clone**
+checked the original stays where it is and a copy of it, a new body, is what moves, turns and scales. **Union**,
 **Subtract**, **Intersect** — click the body to keep, then the other. **Measure** — click two points.
 
 **Export** writes **STL** (binary or text) or **OBJ**: the whole part or the selected body, the curves cut in 48,

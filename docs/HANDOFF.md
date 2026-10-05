@@ -15,7 +15,7 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   `third_party/manifold-3.5.4`, `third_party/clipper2-46f6391`; the shapes (box, cylinder, sphere, torus, pyramid,
   prism, taper) by the user's gestures or from their fields; sketch (line, rectangle, circle, arc, close) and
   extrude; fillet / chamfer on straight edges and circles; move (which also turns and scales a body about its
-  centre), combine; the history as a timeline (values
+  centre, or a clone of it), combine; the history as a timeline (values
   edited, roll back, delete), undo / redo; `.3df`, STL / OBJ; the sample `SD:/docs/3d/bracket.3df`.
 - **The user's changes to the mock-ups, while I built** (2026-10-05): no left panel — the bodies in a panel
   floating over the view, the history a **timeline of pictures** under it (arrows / wheel / drag); all the shapes in
