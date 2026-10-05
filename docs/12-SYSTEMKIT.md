@@ -1,0 +1,693 @@
+# Onyx — SystemKit reference
+
+*The reference of **SystemKit** (`SD:/lib/systemkit.so`, `user/Kits/systemkit`): what it is for, how a program uses it, and every operation it exposes. The operations' part is made from the kit's headers by `tools/docgen/kitdocs.py` — the headers are the source. Overview of all the kits: [The Kits](06-KITS-GUIDE.md).*
+
+## Contents
+
+1. [What it is](#what-it-is)
+2. [Using it](#using-it)
+3. [Index](#index)
+4. [`systemkit/notify.h`](#systemkitnotifyh)
+5. [`systemkit/clipboard.h`](#systemkitclipboardh)
+6. [`systemkit/clipproto.h`](#systemkitclipprotoh)
+7. [`systemkit/trash.h`](#systemkittrashh)
+8. [`systemkit/fileassoc.h`](#systemkitfileassoch)
+9. [`systemkit/volume.h`](#systemkitvolumeh)
+10. [`systemkit/wallpaper.h`](#systemkitwallpaperh)
+11. [`systemkit/dockconf.h`](#systemkitdockconfh)
+12. [`systemkit/preloadini.h`](#systemkitpreloadinih)
+13. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
+
+---
+
+## What it is
+
+SystemKit is what a program says to the system and to the other programs: notifications, the clipboard, the trash, the file associations, the volume, the wallpaper, the dock, the programs loaded ahead, the Control Panel's applets.
+
+| | |
+|---|---|
+| Include | `#include "systemkit/systemkit.h"` |
+| Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
+| Library | `SD:/lib/systemkit.so` — 56 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Sources | `user/Kits/systemkit/` |
+
+## Using it
+
+**A notification** (a bubble under the menu bar; `notify_action` adds what a click starts):
+
+```c
+#include "systemkit/systemkit.h"
+
+notify ("Backup", "3 files copied");
+notify_action ("Updates", "2 updates available", "control pkgman");
+```
+
+**The clipboard**, shared by every application:
+
+```cpp
+#include "systemkit/systemkit.h"
+
+clip_set_text ("copied text");
+
+char buf[1024];
+if (clip_get_text (buf, sizeof buf)) { /* paste buf */ }
+
+int w, h;
+unsigned *px = clip_get_image (&w, &h);               // a picture, if one was copied
+if (px) { /* ... */ delete [] px; }
+```
+
+**The trash** — a file is moved there instead of being deleted:
+
+```cpp
+#include "systemkit/systemkit.h"
+
+if (trash_move ("SD:/docs/old.txt")) notify ("Trash", "old.txt moved to the trash");
+int n = trash_count ();                               // what the trash holds
+```
+
+**Opening a file with the right application** (the user's file associations):
+
+```cpp
+#include "systemkit/systemkit.h"
+
+char app[32];
+if (fa_app_for ("SD:/photos/cat.png", app, sizeof app)) { /* "imageview" */ }
+fa_open ("SD:/photos/cat.png");                       // a folder, an app, a document: opened
+```
+
+**The volume, the wallpaper, the dock** — a settings program changes the file and tells the system:
+
+```cpp
+#include "systemkit/systemkit.h"
+
+volume_save (7, 0);                                   // 0..10, not muted: kept for the next start
+
+Wallpaper wp;
+wp_load (wp);                                         // SD:/etc/wallpaper.ini
+/* change wp ... */
+wp_save (wp);
+
+dock_reload ();                                       // the dock reads its settings again
+```
+
+| Its part (a header of its own, beside `systemkit.h`) | Subject |
+|---|---|
+| `notify.h` | Notifications |
+| `clipboard.h` (`clipproto.h`: its protocol) | The clipboard |
+| `trash.h` | The trash |
+| `fileassoc.h` | Which application opens which file |
+| `volume.h` | The master volume, the output, each program's volume |
+| `wallpaper.h` | The wallpaper's settings and its painter |
+| `dockconf.h` | The dock's settings |
+| `preloadini.h` | The programs loaded ahead at boot |
+| `applet_proto.h` | A settings applet shown inside the Control Panel |
+
+## Index
+
+Everything the headers declare, in their order — the details are in each header's part below.
+
+| Name | What it does | Header |
+|---|---|---|
+| `notify_action` |  | `notify.h` |
+| `notify` |  | `notify.h` |
+| `clip_put` | One copy, n representations (a format and its bytes each). | `clipboard.h` |
+| `clip_get` | The item under the cursor in the first of fmt[] it has (else the newest item that has one of them) | `clipboard.h` |
+| `clip_set_text_n` |  | `clipboard.h` |
+| `clip_set_text` |  | `clipboard.h` |
+| `clip_get_text` | The clipboard's text into buf (NUL-terminated, truncated to cap-1) -> its length | `clipboard.h` |
+| `clip_set_files` | File / folder paths ('\n'-separated) | `clipboard.h` |
+| `clip_get_file` | The first path into buf | `clipboard.h` |
+| `clip_clear` | After a cut + paste moved the files | `clipboard.h` |
+| `clip_set_image` | w x h pixels 0x00RRGGBB (a row after the other) | `clipboard.h` |
+| `clip_get_image` | -> new[] pixels (delete[] them) and the size, or 0 | `clipboard.h` |
+| `ClipItemMsg` | what the widget is told of an item (one message) | `clipproto.h` |
+| `clipc_put32` |  | `clipproto.h` |
+| `clipc_get32` |  | `clipproto.h` |
+| `clipc_len` |  | `clipproto.h` |
+| `clipc_eq` |  | `clipproto.h` |
+| `clipc_size` | the size of a container of n representations | `clipproto.h` |
+| `clipc_write` | writes it into out (clipc_size bytes) | `clipproto.h` |
+| `clipc_count` | representation i of a container (0..count-1) | `clipproto.h` |
+| `clipc_rep` | representation i of a container (0..count-1) | `clipproto.h` |
+| `trash_ensure` |  | `trash.h` |
+| `trash_move` | Move `path` to the trash. | `trash.h` |
+| `trash_origin` | Original path of trashed item `name` (0 if unknown). | `trash.h` |
+| `trash_restore` | Restore trashed item `name` to its original folder (recreated if needed). | `trash.h` |
+| `trash_purge` | Delete trashed item `name` for good. | `trash.h` |
+| `trash_count` | Number of items in the trash. | `trash.h` |
+| `trash_empty` | Empty the trash (everything in files/ and info/). | `trash.h` |
+| `fa_ext` | Extension of path (after the last '.' of its basename), or "" if none. | `fileassoc.h` |
+| `fa_app_for` | Extension of path (after the last '.' of its basename), or "" if none. | `fileassoc.h` |
+| `fa_is_program` | Extension of path (after the last '.' of its basename), or "" if none. | `fileassoc.h` |
+| `fa_open` | Extension of path (after the last '.' of its basename), or "" if none. | `fileassoc.h` |
+| `volume_output_word` | An output's word in sound.ini (KAPI_SND_OUT_*). | `volume.h` |
+| `volume_save` | An output's word in sound.ini (KAPI_SND_OUT_*). | `volume.h` |
+| `volume_set_output` | The output chosen (KAPI_SND_OUT_*) | `volume.h` |
+| `mixer_set` | The channel's volume and mute set now (-1 | `volume.h` |
+| `volume_restore` | the saved volume -> the kernel (no file | `volume.h` |
+| `Wallpaper` | (a type) | `wallpaper.h` |
+| `wp_defaults` |  | `wallpaper.h` |
+| `wp_eq` |  | `wallpaper.h` |
+| `wp_colour` |  | `wallpaper.h` |
+| `wp_lines` | "key = value" lines of a file | `wallpaper.h` |
+| `wp_key` | "key = value" lines of a file | `wallpaper.h` |
+| `wp_load` | "key = value" lines of a file | `wallpaper.h` |
+| `wp_put` | "key = value" lines of a file | `wallpaper.h` |
+| `wp_put_colour` | "key = value" lines of a file | `wallpaper.h` |
+| `wp_save` | "key = value" lines of a file | `wallpaper.h` |
+| `wp_isqrt` |  | `wallpaper.h` |
+| `wp_mix` |  | `wallpaper.h` |
+| `wp_paint` | Paint w x h pixels (stride | `wallpaper.h` |
+| `wp_lum` |  | `wallpaper.h` |
+| `wp_grey_cover` | The grey of a picture (0xAARRGGBB, iw x ih | `wallpaper.h` |
+| `wp_grey_tile` | ... | `wallpaper.h` |
+| `wp_multiply` | The colours multiplied by the grey (w x h) | `wallpaper.h` |
+| `DockConf` | (a type) | `dockconf.h` |
+| `dc_copy` |  | `dockconf.h` |
+| `dockconf_defaults` |  | `dockconf.h` |
+| `dc_split` | A value's two parts | `dockconf.h` |
+| `dockconf_load` | -> false | `dockconf.h` |
+| `dc_put` | -> false | `dockconf.h` |
+| `dockconf_save` | -> false | `dockconf.h` |
+| `dock_running` | The dock takes its settings (and the theme) again | `dockconf.h` |
+| `dock_reload` | The dock takes its settings (and the theme) again | `dockconf.h` |
+| `PreloadList` | (a type) | `preloadini.h` |
+| `preload_ini_load` | -> how many programs the file lists (0 | `preloadini.h` |
+| `preload_ini_save` | -> 1 written, 0 not | `preloadini.h` |
+
+---
+
+## `systemkit/notify.h`
+
+notify.h -- desktop notifications. notify (title, text) sends an IPC message to the "notify" service (the notifyd app), which shows a bubble under the menu bar that fades in, stays ~4 s, then fades out. notifyd is launched on demand if it is not running.
+
+```
+  #include "notify.h"
+  notify ("File Viewer", "3 items pasted");
+  notify_action ("Updates", "3 updates available", "control pkgman");   // a click: that app, with its
+                                                                        // arguments (a longer stay)
+```
+
+```cpp
+#define NOTIFY_SERVICE	"notify"
+#define NOTIFY_MSG_SHOW	1		// payload: title '\0' text '\0' [action '\0': "app args", run on a click]
+#define NOTIFY_MAX	500		// payload bytes (IPC limit 512)
+int notify_action (const char *title, const char *text, const char *action);
+int notify (const char *title, const char *text);
+```
+
+## `systemkit/clipboard.h`
+
+clipboard.h -- the clipboard, shared by every app (docs/clipboard/README.md): the service `clipd` keeps the last CLIP_RING copies (clipproto.h), its widget (the dock's clipboard button) shows them and moves the cursor -- the item Ctrl+V pastes. Header-only, freestanding (the kapi, new[]).
+
+```
+  clip_set_text ("hello");            char b[256]; clip_get_text (b, sizeof b);
+  clip_set_files ("SD:/a.txt", cut);  int cut; clip_get_file (b, sizeof b, &cut);
+  clip_set_image (px, w, h);          int w, h; unsigned *px = clip_get_image (&w, &h); delete[] px;
+  clip_put (fmts, datas, lens, n);    several formats of one copy (Letters: "rtf" and "text")
+  clip_get (fmts, nf, got, cap, &data, &len)   the first format of fmts the item has (data: new[])
+```
+
+A copy is also kept by the kernel's clipboard (one text or one path: v40), which is what is pasted when clipd cannot be reached (an older card, the PC's desktop simulator).
+
+### the service
+
+clipd's pid; launched when it is not running (0: not there)
+
+### copying
+
+One copy, n representations (a format and its bytes each). False: clipd could not be reached.
+
+```cpp
+bool clip_put (const char *const *fmt, const void *const *data, const unsigned *len, int n);
+```
+
+### pasting
+
+The item under the cursor in the first of fmt[] it has (else the newest item that has one of them): its format into got (cap), its bytes into *data (new[]: delete[] it), *len. False: nothing suits, or clipd could not be reached.
+
+```cpp
+bool clip_get (const char *const *fmt, int nf, char *got, int cap, unsigned char **data, unsigned *len);
+```
+
+### text and paths (the calls every app had)
+
+```cpp
+void clip_set_text_n (const char *s, int n);
+void clip_set_text (const char *s);
+```
+
+The clipboard's text into buf (NUL-terminated, truncated to cap-1) -> its length; 0: no text.
+
+```cpp
+int clip_get_text (char *buf, int cap);
+```
+
+File / folder paths ('\n'-separated): copied, or cut when `cut` != 0 (the paste moves them).
+
+```cpp
+void clip_set_files (const char *paths, int cut);
+```
+
+The first path into buf; *cut = 1 if it was cut. 0 if no path.
+
+```cpp
+int clip_get_file (char *buf, int cap, int *cut);
+```
+
+After a cut + paste moved the files: that item goes (clipd), and the kernel's copy.
+
+```cpp
+void clip_clear (void);
+```
+
+### images
+
+w x h pixels 0x00RRGGBB (a row after the other)
+
+```cpp
+bool clip_set_image (const unsigned *px, int w, int h);
+```
+
+-> new[] pixels (delete[] them) and the size, or 0: no image
+
+```cpp
+unsigned *clip_get_image (int *w, int *h);
+```
+
+## `systemkit/clipproto.h`
+
+clipproto.h -- the shared clipboard's protocol (docs/clipboard/README.md): what the apps (clipboard.h), the service (apps/clipd) and its widget (apps/clipboard) say to each other.
+
+The service `clipd` (IPC name "clipboard") keeps a ring of CLIP_RING items in its own memory, a cursor on the one Ctrl+V pastes. An item holds one or several representations, each a format (a short name: "text", "rtf", "image", "files", "files-cut", "url", "x-<app>") and its bytes. Messages go through the mailboxes (<= 512 bytes); the bytes through files of RAM: (a copy in the kernel's memory, no mapping kept by anyone): the app writes a container there and says where; for a paste, clipd writes the answer where the app asked and the app waits for that file -- so an app never reads its own mailbox (it may use it for something else).
+
+A container (a file, or the tail of a CLIP_PUT_INLINE): "CLP1", u32 count, then each representation: u16 the format's length, the format, u32 the data's length, the data. An image's data: u32 width, u32 height, then width * height pixels 0x00RRGGBB.
+
+```cpp
+#define CLIP_SERVICE	"clipboard"
+#define CLIP_RING	10
+#define CLIP_DIR	"RAM:/clip"			// the transfers' files
+
+enum
+{
+	// an app -> clipd
+	CLIP_PUT = 1,			// "path\0source\0": the container in that file (clipd removes it)
+	CLIP_PUT_INLINE = 2,		// "source\0" + a container: a small copy, whole in the message
+	CLIP_GET = 3,			// "reply path\0fmt\0fmt\0...\0": the cursor's item in the first
+					// format given it has -- else the newest item that has one --,
+					// written to the reply path (a container of 0 or 1 representation)
+	CLIP_DROP_CUT = 4,		// the cursor's item, if it is a cut (files-cut): deleted (pasted)
+	// the widget -> clipd
+	CLIP_LIST = 5,			// -> CLIP_ITEM ... CLIP_END, to the sender
+	CLIP_CURSOR = 6,		// u32 id: the cursor there
+	CLIP_DELETE = 7,		// u32 id
+	CLIP_CLEAR = 8,			// every item
+	CLIP_SUBSCRIBE = 9,		// the sender told CLIP_CHANGED at every change
+	// clipd -> the widget
+	CLIP_ITEM = 100,		// struct ClipItemMsg
+	CLIP_END = 101,			// u32 count
+	CLIP_CHANGED = 102
+};
+```
+
+what the widget is told of an item (one message)
+
+```cpp
+struct ClipItemMsg
+{
+	unsigned id, size;		// size: the main representation's bytes
+	unsigned w, h;			// an image's
+	unsigned char cursor, nfiles, hour, minute;
+	char kind[16];			// the main format ("text", "image", "files", "files-cut", "rtf", "url"...)
+	char source[32];		// the app it came from
+	char preview[400];		// a line of text (a text's start, the files' names, the URL)
+};
+```
+
+### the container
+
+```cpp
+void clipc_put32 (unsigned char *p, unsigned v);
+unsigned clipc_get32 (const unsigned char *p);
+int clipc_len (const char *s);
+int clipc_eq (const char *a, const char *b);
+```
+
+the size of a container of n representations
+
+```cpp
+unsigned clipc_size (const char *const *fmt, const unsigned *len, int n);
+```
+
+writes it into out (clipc_size bytes); -> the bytes written
+
+```cpp
+unsigned clipc_write (unsigned char *out, const char *const *fmt, const void *const *data, const unsigned *len, int n);
+```
+
+representation i of a container (0..count-1): its format into fmt (cap), *data, *len -> 1 / 0
+
+```cpp
+int clipc_count (const unsigned char *c, unsigned n);
+int clipc_rep (const unsigned char *c, unsigned n, int i, char *fmt, int cap, const unsigned char **data, unsigned *len);
+```
+
+## `systemkit/trash.h`
+
+trash.h -- the Onyx trash (freedesktop-style layout on the SD card):
+
+```
+  SD:/.Trash/files/<name>             the trashed file or folder
+  SD:/.Trash/info/<name>.trashinfo    "Path=<original path>"
+```
+
+trash_move (path) moves an item there (a clash gets " (2)"-style names); trash_restore (name) puts it back at its original path (a free variant if that path is taken now); trash_purge (name) deletes one item for good; trash_empty () deletes everything. /bin/rm still deletes for real -- the trash is for interactive deletes (File Viewer).
+
+```cpp
+#define TRASH_DIR	"SD:/.Trash"
+#define TRASH_FILES	"SD:/.Trash/files"
+#define TRASH_INFO	"SD:/.Trash/info"
+void trash_ensure (void);
+```
+
+Move `path` to the trash. Returns true on success.
+
+```cpp
+bool trash_move (const char *path);
+```
+
+Original path of trashed item `name` (0 if unknown).
+
+```cpp
+bool trash_origin (const char *name, char *out, int cap);
+```
+
+Restore trashed item `name` to its original folder (recreated if needed). Returns true on success; `where` (optional) receives the restored path.
+
+```cpp
+bool trash_restore (const char *name, char *where = 0, int wcap = 0);
+```
+
+Delete trashed item `name` for good.
+
+```cpp
+bool trash_purge (const char *name);
+```
+
+Number of items in the trash.
+
+```cpp
+int trash_count (void);
+```
+
+Empty the trash (everything in files/ and info/).
+
+```cpp
+int trash_empty (void);
+```
+
+## `systemkit/fileassoc.h`
+
+fileassoc.h -- file associations (SD:/etc/fileassoc.ini: "ext = app" lines).
+
+```
+  fa_app_for (path, app, cap)  the app associated with path's extension (0 = none)
+  fa_open (path)               open it: a folder in the File Viewer, a .app bundle
+                               or an ELF program runs, a file in its associated app
+                               (SD:apps/<app>.app/main <path>) -- a NEW instance.
+```
+
+```cpp
+#define FA_INI		"SD:/etc/fileassoc.ini"
+```
+
+Extension of path (after the last '.' of its basename), or "" if none.
+
+```cpp
+const char *fa_ext (const char *path);
+bool fa_app_for (const char *path, char *app, int cap);
+bool fa_is_program (const char *path);
+bool fa_open (const char *path);
+```
+
+## `systemkit/volume.h`
+
+volume.h -- the master volume (kapi v60 sound_volume: 0..10 and mute), kept in SD:/etc/sound.ini ("volume = 7", "mute = 0") so it comes back after a reboot: the menu bar applies it at start. Used by the menu bar's volume box and /bin/volume. (v84) The file also says which output plays ("output = auto | jack | usb | hdmi": the kernel reads it when the sound first starts, kapi sound_output changes it at once): volume_save keeps that line.
+
+```cpp
+#define VOLUME_INI	"SD:/etc/sound.ini"
+```
+
+An output's word in sound.ini (KAPI_SND_OUT_*).
+
+```cpp
+const char *volume_output_word (int out);
+void volume_save (int vol, int mute);
+```
+
+The output chosen (KAPI_SND_OUT_*): applied now, kept in the file -> sound_output's result.
+
+```cpp
+int volume_set_output (int out);
+```
+
+### the mixer (kapi v85): a program's own volume
+
+Every program that plays has a channel (kapi_sound_clients); its volume (0..100) and its mute are remembered by its name in SD:/etc/mixer.ini ("media = 60", "media.mute = 1"), which the kernel reads when the sound first starts.
+
+```cpp
+#define MIXER_INI	"SD:/etc/mixer.ini"
+```
+
+The channel's volume and mute set now (-1: kept) and written to the file -> volume | 0x100 muted, -1.
+
+```cpp
+int mixer_set (const struct kapi_sound_client *c, int volume, int mute);
+```
+
+the saved volume -> the kernel (no file: full, not muted)
+
+```cpp
+void volume_restore (void);
+```
+
+## `systemkit/wallpaper.h`
+
+wallpaper.h -- the desktop's wallpaper settings (SD:/etc/wallpaper.ini) and its painter, shared by apps/voronoy (it paints the wallpaper at boot, and again when the Theme applet applies one) and the Theme applet (its preview, and the file it writes). Integer only (the apps' default).
+
+```
+    mode      = voronoi      voronoi (cells), gradient (two colours), bubbles (a gradient with
+                             soft bubbles over it), solid (one colour), image (a picture file),
+                             pattern (a grey picture coloured by the gradient: multiplied)
+    color     = 0x4878B0     voronoi's base colour, the solid colour, the gradient's first
+    color2    = 0x1C2C48     the gradient's second (gradient, bubbles, pattern)
+    direction = vertical     the gradient: vertical (top to bottom) or horizontal (left to right)
+    points    = 28           voronoi's cells (1..64)
+    image     = SD:/x.jpg    image: the picture (BMP GIF PNG JPEG PCX WebP), painted by
+    style     = cover        apps/imageview --background: cover (the screen filled, centred)
+                             or tile (repeated from the top left)
+    tint      = no           image: yes -- its grey multiplies `color` (a tinted picture:
+                             painted by voronoy itself), no -- shown as it is
+    pattern   = SD:/wallpapers/waves.png   pattern: the grey picture (tools/gen_wallpapers.py
+                             makes the shipped ones, SD:/wallpapers): each pixel's grey
+                             multiplies the gradient -- white is the colour itself -- as
+                             "cover" fills the screen (wp_grey_cover, wp_multiply)
+```
+
+No file: SD:/apps/voronoy.app/config.ini's base / points (before the Theme applet had it).
+
+```cpp
+#define WALLPAPER_INI	"SD:/etc/wallpaper.ini"
+
+#define WALLPAPER_DIR	"SD:/wallpapers"		// the patterns
+
+enum { WP_VORONOI, WP_GRADIENT, WP_BUBBLES, WP_SOLID, WP_IMAGE, WP_PATTERN, WP_NMODES };
+
+struct Wallpaper
+{
+	int mode;
+	unsigned c1, c2;
+	int vertical;			// the gradient's direction (1: top to bottom)
+	int points;
+	char image[200];
+	int tile;			// image: 1 tiled, 0 cover
+	int tint;			// image: 1 its grey times c1, 0 as it is
+	char pattern[200];		// pattern: the grey picture
+};
+void wp_defaults (Wallpaper &w);
+bool wp_eq (const char *a, const char *b);
+unsigned wp_colour (const char *v, unsigned def);
+```
+
+"key = value" lines of a file: fn (key, value) for each. -> false: no file.
+
+```cpp
+bool wp_lines (const char *path, void (*fn) (const char *k, const char *v, void *ctx), void *ctx);
+void wp_key (const char *k, const char *v, void *ctx);
+void wp_load (Wallpaper &w);
+int wp_put (char *o, int p, int cap, const char *s);
+int wp_put_colour (char *o, int p, int cap, unsigned c);
+bool wp_save (const Wallpaper &w);
+```
+
+### the painter
+
+```cpp
+unsigned wp_isqrt (unsigned n);
+
+static inline unsigned wp_mix (unsigned a, unsigned b, int t)		// t 0..255: a -> b
+{
+int r = (int) ((a >> 16) & 255) + ((int) ((b >> 16) & 255) - (int) ((a >> 16) & 255)) * t / 255;
+int g = (int) ((a >> 8) & 255) + ((int) ((b >> 8) & 255) - (int) ((a >> 8) & 255)) * t / 255;
+int c = (int) (a & 255) + ((int) (b & 255) - (int) (a & 255)) * t / 255;
+}
+// Voronoi's tint: the base colour darker near a cell's seed, lighter at its edges (SimpleOS's).
+SK_API unsigned wp_tint (unsigned base, unsigned dist);
+```
+
+Paint w x h pixels (stride: a row) -- not an image (apps/imageview does those); a pattern: its gradient (then wp_multiply by the pattern's grey). div: the cells computed at 1 / div of the resolution (voronoi: 2 for the screen, 1 for a small preview). yield: called now and then (a long job: kapi_yield), or 0.
+
+```cpp
+void wp_paint (unsigned *dst, int w, int h, int stride, const Wallpaper &wp, unsigned seed, int div, void (*yield) (void));
+```
+
+### a pattern: a grey picture multiplying the colours
+
+```cpp
+unsigned wp_lum (unsigned c);
+```
+
+The grey of a picture (0xAARRGGBB, iw x ih: its luminance) over w x h as "cover" lays it (the area filled, centred, the rest cut off): the average of the pixels under each one where it shrinks (a small preview), bilinear where it grows (a bigger screen).
+
+```cpp
+void wp_grey_cover (const unsigned *img, int iw, int ih, unsigned char *out, int w, int h);
+```
+
+... tiled from the top left instead (a tinted picture's "tile" style): the picture at the screen's scale (sw x sh: the screen w x h stands for -- a small preview's).
+
+```cpp
+void wp_grey_tile (const unsigned *img, int iw, int ih, unsigned char *out, int w, int h, int sw, int sh);
+```
+
+The colours multiplied by the grey (w x h): white keeps them, black makes them black.
+
+```cpp
+void wp_multiply (unsigned *dst, int w, int h, int stride, const unsigned char *grey);
+```
+
+## `systemkit/dockconf.h`
+
+dockconf.h -- the dock's settings (SD:/etc/dock.ini), shared by the dock (apps/dock) and the Control Panel's Panel applet (apps/dockconf), which writes them and tells the dock to read them again (IPC service "dock", DOCK_MSG_RELOAD). The file, one setting a line:
+
+```
+    drawer   = Productivity, tinypad    a drawer: the apps' group (the "category" of their
+                                        app.txt) and its main app (its icon is the drawer's; a
+                                        click on it starts the app, the strip above opens the
+                                        drawer). In this order, left to right.
+    launcher = terminal                 a quick launcher after the drawers (a click starts it,
+                                        or brings it back)
+    desk     = Main                     a workspace (virtual desktop) and its name: 1 to
+                                        DOCK_MAXDESKS of them
+```
+
+```cpp
+#define DOCK_INI		"SD:/etc/dock.ini"
+#define DOCK_SERVICE		"dock"
+#define DOCK_MSG_RELOAD		1		// (no payload) read dock.ini and theme.txt again
+#define DOCK_MAXDRAWERS		8
+#define DOCK_MAXLAUNCHERS	6
+#define DOCK_MAXDESKS		6
+
+struct DockDrawer { char cat[24]; char app[32]; };
+struct DockConf
+{
+	DockDrawer drawer[DOCK_MAXDRAWERS]; int ndrawers;
+	char launcher[DOCK_MAXLAUNCHERS][32]; int nlaunchers;
+	char desk[DOCK_MAXDESKS][24]; int ndesks;
+};
+void dc_copy (char *d, const char *s, int cap);
+void dockconf_defaults (DockConf &c);
+```
+
+A value's two parts: "Productivity, tinypad" -> "Productivity" and "tinypad".
+
+```cpp
+void dc_split (const char *v, char *a, int acap, char *b, int bcap);
+```
+
+-> false: no file (the defaults)
+
+```cpp
+bool dockconf_load (DockConf &c);
+int dc_put (char *o, int p, int cap, const char *s);
+bool dockconf_save (const DockConf &c);
+```
+
+The dock takes its settings (and the theme) again: it is started again -- a dock that only read dock.ini again (DOCK_MSG_RELOAD) showed a new drawer or launcher but did not always act on it (a click started nothing, a new group was not seen); a new one has them all. Nothing when no dock runs (the user may have taken it out of etc/autostart).
+
+```cpp
+int dock_running (void);
+void dock_reload (void);
+```
+
+## `systemkit/preloadini.h`
+
+preloadini.h -- SD:/etc/preload.ini: the programs loaded ahead at boot and kept in memory (`preload /boot`, the last line of /etc/autostart; the Control Panel's Preload applet writes the file). One program a line -- a path, an app's name (apps/<name>.app/main) or a /bin tool's, as preload's arguments (bin/imgname.h); blank lines and lines starting with '#' or ';' are skipped.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+#define PRELOAD_INI	"SD:/etc/preload.ini"
+#define PRELOAD_MAX	32
+#define PRELOAD_NAME	128
+
+struct PreloadList
+{
+	int  n;
+	char prog[PRELOAD_MAX][PRELOAD_NAME];
+};
+```
+
+-> how many programs the file lists (0: none, or no file)
+
+```cpp
+int preload_ini_load (struct PreloadList *l);
+```
+
+-> 1 written, 0 not
+
+```cpp
+int preload_ini_save (const struct PreloadList *l);
+```
+
+## `systemkit/applet_proto.h`
+
+applet_proto.h -- the Control Panel's applets (apps/control): an applet is a uikit app shown INSIDE the Control Panel's window instead of in a window of its own. The host (apps/control) makes a shared surface (kapi v35) the size of its pane and starts the applet with the arguments "--applet <surface id> <host pid>"; the applet's uikit::Root then draws into that surface (uikit/root.cpp, the applet mode); the host copies it into its window when told and sends it the pointer and the keys. Messages over the kernel's mailboxes (kapi v35 / v40, <= 512 bytes), from / to the pids:
+
+```
+  applet -> host   AP_HELLO    int w, h: the applet is up (its Root the surface's size)
+                   AP_PRESENT  int x, y, w, h: it drew (0 0 0 0: all of it) -- copy it
+                   AP_EXIT     it is ending: stop reading the surface
+                   AP_THEME    it applied a new theme (SD:/etc/theme.txt): the host takes it
+                               and starts the applet again (in the new colours)
+  host -> applet   AP_PTR      struct ApPtr: the pointer (a GUI_EVENT_PTR_* event, pane
+                               coordinates; x < 0: it left the pane)
+                   AP_KEY      struct ApKey: a key typed (a character or a KEY_* code)
+                   AP_CLOSE    please end (the user went back to the applets' list)
+```
+
+The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id> <host pid> <service>"; its own message types go to the applet's uk_applet_on_message (uikit/root.h; Jet's web view: Apps/jet/webview_proto.h, types 60..79). The surface's frames live as long as either process maps it (kernel v65: its users).
+
+```cpp
+#define AP_SERVICE	"control"
+
+enum
+{
+	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43,
+	AP_PTR = 50, AP_KEY = 51, AP_CLOSE = 52
+};
+
+struct ApPtr { int event, x, y, buttons, changed, wheel; };
+struct ApKey { int key; unsigned mods; };
+```

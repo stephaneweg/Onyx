@@ -1,8 +1,9 @@
 # Onyx — The Kits: a developer's guide
 
 *How an Onyx program is built on the system's shared libraries — the **kits** — with a short example
-for each. Companion of the [Developer Guide](03-DEVELOPER-GUIDE.md) (the reference: every call, the
-build, the ports) and of [Kernel Internals](02-KERNEL-INTERNALS.md).*
+for each. Each kit has its reference, with every operation it exposes (documents 10 to 18, linked in the
+table below). Companion of the [Developer Guide](03-DEVELOPER-GUIDE.md) (the build, the application
+model, the ports) and of [Kernel Internals](02-KERNEL-INTERNALS.md).*
 
 ## Table of contents
 
@@ -28,17 +29,17 @@ An Onyx program does not talk to the kernel, and does not carry copies of common
 **kits**: shared libraries, one per domain, loaded once for the whole system and bound to each program
 that uses them.
 
-| Kit | Domain | On the card | Sources |
-|---|---|---|---|
-| **AppKit** | What makes a program run: the system's calls, strings, the console, `.ini` files, starting programs | `SD:/lib/appkit.so` | `user/Kits/appkit` |
-| **UIKit** | The interface: windows, widgets, dialogs, the theme, icons | `SD:/lib/uikit.so` | `user/Kits/uikit` |
-| **SystemKit** | Talking to the system and the other programs: notifications, clipboard, trash, volume, wallpaper, file associations, the dock | `SD:/lib/systemkit.so` | `user/Kits/systemkit` |
-| **NetKit** | The network: HTTP, the FTP volumes | `SD:/lib/netkit.so` | `user/Kits/netkit` |
-| **FileKit** | Files and folders, paths, compression, archives | `SD:/lib/filekit.so` | `user/Kits/filekit` |
-| **ImageKit** | Pictures: reading, writing, resizing, adjusting | `SD:/lib/imagekit.so` | `user/Kits/imagekit` |
-| **AudioKit** | Sound: playing files, notes, synthesis, the sound output | `SD:/lib/audiokit.so` | `user/Kits/audiokit` |
-| **FontKit** | Fonts: FreeType, the font manager, anti-aliased text | `SD:/lib/fontkit.so` | `user/Kits/fontkit` |
-| **PrinterKit** | Printing: the Print dialog, a job's pages | `SD:/lib/printerkit.so` | `user/Kits/printerkit` |
+| Kit | Domain | On the card | Sources | Reference |
+|---|---|---|---|---|
+| **AppKit** | What makes a program run: the system's calls, strings, the console, `.ini` files, starting programs | `SD:/lib/appkit.so` | `user/Kits/appkit` | [10 — AppKit](10-APPKIT.md) |
+| **UIKit** | The interface: windows, widgets, dialogs, the theme, icons | `SD:/lib/uikit.so` | `user/Kits/uikit` | [11 — UIKit](11-UIKIT.md) |
+| **SystemKit** | Talking to the system and the other programs: notifications, clipboard, trash, volume, wallpaper, file associations, the dock | `SD:/lib/systemkit.so` | `user/Kits/systemkit` | [12 — SystemKit](12-SYSTEMKIT.md) |
+| **NetKit** | The network: HTTP, the FTP volumes | `SD:/lib/netkit.so` | `user/Kits/netkit` | [13 — NetKit](13-NETKIT.md) |
+| **FileKit** | Files and folders, paths, compression, archives | `SD:/lib/filekit.so` | `user/Kits/filekit` | [14 — FileKit](14-FILEKIT.md) |
+| **ImageKit** | Pictures: reading, writing, resizing, adjusting | `SD:/lib/imagekit.so` | `user/Kits/imagekit` | [15 — ImageKit](15-IMAGEKIT.md) |
+| **AudioKit** | Sound: playing files, notes, synthesis, the sound output | `SD:/lib/audiokit.so` | `user/Kits/audiokit` | [16 — AudioKit](16-AUDIOKIT.md) |
+| **FontKit** | Fonts: FreeType, the font manager, anti-aliased text | `SD:/lib/fontkit.so` | `user/Kits/fontkit` | [17 — FontKit](17-FONTKIT.md) |
+| **PrinterKit** | Printing: the Print dialog, a job's pages | `SD:/lib/printerkit.so` | `user/Kits/printerkit` | [18 — PrinterKit](18-PRINTERKIT.md) |
 
 Three rules follow from this layout, and they hold for every new development:
 
@@ -585,7 +586,9 @@ kit.
    never removed nor renamed: a function that is no longer needed keeps a body.
 4. **Raise the package's version** (`tools/pkg/versions.ini`: `1.<the table's size>.0`) and what the
    applications need (`needs = <kit> >= 1.<size>` in `tools/pkg/packages.ini`).
-5. **Document** it — the Developer Guide, and here if it deserves an example.
+5. **Document** it: its comment in the header is its documentation — run
+   `python tools/docgen/kitdocs.py` (the kit's reference follows), add an example here if it deserves
+   one, then `python docs/build_docs.py`.
 
 ### Creating a kit
 

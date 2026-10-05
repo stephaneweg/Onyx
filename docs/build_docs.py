@@ -32,6 +32,15 @@ DOCS = [
     "05-CIRCLE-CHANGES.md",
     "06-KITS-GUIDE.md",
     "08-WEBKIT-PORT.md",
+    "10-APPKIT.md",
+    "11-UIKIT.md",
+    "12-SYSTEMKIT.md",
+    "13-NETKIT.md",
+    "14-FILEKIT.md",
+    "15-IMAGEKIT.md",
+    "16-AUDIOKIT.md",
+    "17-FONTKIT.md",
+    "18-PRINTERKIT.md",
 ]
 
 

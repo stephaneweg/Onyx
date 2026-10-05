@@ -24,6 +24,15 @@ of the **Circle** bare-metal framework.
 | 05 | **[Circle Changes](05-CIRCLE-CHANGES.md)** | HAL maintainers | the patches in our Circle fork vs upstream `Step51` |
 | 06 | **[The Kits](06-KITS-GUIDE.md)** | to write a program | one kit per domain (AppKit, UIKit, SystemKit, NetKit, FileKit, ImageKit, AudioKit, FontKit, PrinterKit): how a program uses them, an example for each, adding to a kit |
 | 08 | **[Jet Browser: the WebKit port](08-WEBKIT-PORT.md)** | the browser | the port of WebKit to Onyx (Jet Browser since 2026-10-04; the NetSurf Jet and its documents 06 and 07 were removed): where it stands, the patch series, the builds, the media engine, the compositor |
+| 10 | **[AppKit reference](10-APPKIT.md)** | to write a program | every operation of AppKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 11 | **[UIKit reference](11-UIKIT.md)** | to write a program | every operation of UIKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 12 | **[SystemKit reference](12-SYSTEMKIT.md)** | to write a program | every operation of SystemKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 13 | **[NetKit reference](13-NETKIT.md)** | to write a program | every operation of NetKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 14 | **[FileKit reference](14-FILEKIT.md)** | to write a program | every operation of FileKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 15 | **[ImageKit reference](15-IMAGEKIT.md)** | to write a program | every operation of ImageKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 16 | **[AudioKit reference](16-AUDIOKIT.md)** | to write a program | every operation of AudioKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 17 | **[FontKit reference](17-FONTKIT.md)** | to write a program | every operation of FontKit, made from its headers (`tools/docgen/kitdocs.py`) |
+| 18 | **[PrinterKit reference](18-PRINTERKIT.md)** | to write a program | every operation of PrinterKit, made from its headers (`tools/docgen/kitdocs.py`) |
 | | **[EL0 protected mode](EL0-PROTECTED-MODE.md)** | the execution model | how the apps moved from EL1 to EL0 (system calls), the design, the steps |
 | | **[Licensing](LICENSING.md)** | distributors | the licences of everything Onyx contains; under which licence it can be distributed |
 | | **[Handoff](HANDOFF.md)** | the next session | where the work stands, the conventions, the next tasks |
