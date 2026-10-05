@@ -47,7 +47,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin BinUtils/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
 $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf: | lib/appkit_stubs.o
 
@@ -367,6 +367,12 @@ rtfview.elf: Apps/rtfview/rtf.h
 .PHONY: bin
 bin: Libs/v3d/libv3d.a Libs/gpucomp/libgpucomp.a libs
 	@$(MAKE) --no-print-directory -C BinUtils
+
+# The system's servers live in Servers/<name>/ (their own Makefile), staged to SD:/bin/<name>:
+# Elegant, the graphics server.
+.PHONY: servers
+servers: lib/appkit_stubs.o
+	@$(MAKE) --no-print-directory -C Servers/elegant
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts so a nested source finds the user-side headers.
 # uikit toolkit: compiled once into a static library, linked into every app.
@@ -710,4 +716,5 @@ clean:
 	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
 	@$(MAKE) --no-print-directory -C BinUtils clean
+	@$(MAKE) --no-print-directory -C Servers/elegant clean
 	@$(MAKE) --no-print-directory -C Ports/doom clean

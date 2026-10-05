@@ -42,6 +42,8 @@ LibreOffice headless). Screenshots
 
 > Layout of `user/` (the user, 2026-10-05) -- everything sorted by its use:
 > - **`Apps/<name>/`** the graphical apps; **`BinUtils/`** the console programs (`SD:/bin`; it was `user/bin`);
+> - **`Servers/<name>/`** the system's servers, of several sources (`SD:/bin/<name>`): **Elegant**, the graphics server
+>   (`Servers/elegant`; branch `UserSpaceElegant`, docs/HANDOFF.md's first section);
 > - **`Kits/<kit>/`** the shared libraries (appkit, uikit, systemkit, netkit, audiokit, filekit, imagekit, printerkit, fontkit);
 > - **`Runtime/`** what every program is linked with (`crt0.S`, `user.ld`, `lib.ld`, `lib.h`, `librt.cpp`, `umm.h`,
 >   `onyxpp.hpp`, `libc/` = newlib's glue and the POSIX library);

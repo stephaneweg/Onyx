@@ -141,7 +141,7 @@ stage: sizecheck apps $(BASC)
 		cp $$elf $(SDCARD)/apps/$$name.app/main; \
 	done
 	@mkdir -p $(SDCARD)/bin
-	@for elf in ../user/BinUtils/*.elf; do \
+	@for elf in ../user/BinUtils/*.elf ../user/Servers/*/*.elf; do \
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
 	done

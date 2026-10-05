@@ -9,6 +9,10 @@ loading shared libraries (ideally one physical copy, mapped into every process t
 user's design — PIC libraries that publish their entry points in a table filled at load time, read by
 the apps as they read `kapi`'s. **Decided**: the plan to implement is `docs/SHARED-LIBS-PLAN.md`.*
 
+*Status (2026-10-05): §2 is being built -- the server is **Elegant** (`user/Servers/elegant`), on the branch
+`UserSpaceElegant`. The user's decisions, the design as revised with the kits (AppKit's bodies are the
+client side: no `libgui`, no program rebuilt) and the stages are in `docs/HANDOFF.md`'s first section.*
+
 ## Summary
 
 | Question | Feasible? | Cost | Recommendation |

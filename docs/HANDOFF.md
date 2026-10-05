@@ -4,13 +4,80 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## NEXT (the user, 2026-10-05): the graphics server out of the kernel, into a user process
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stage 1 of 5 done
 
-The user's next work, to start in a new session: **move the window server (the compositor, the windows,
-the input routing: `kernel/gui`, `kern/gui/window.h`, the `compositor` and `input` kernel tasks) into a
-user process.** Nothing is started. **It is done on the branch `UserSpaceElegant`** (the user: made from
-`main` on 2026-10-05, pushed) -- commit and push THERE, keep it on top of `main` by merging `origin/main`
-into it, and merge it into `main` only when the user says so. What exists to build on:
+**The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
+`UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
+the user says so -- and **do not publish packages from it** until then (the Pi is fed for the tests through
+`ftpd`: `run SD:/bin/ftpd SD:/` over telnet, then an FTP upload to `bin/elegant`).
+
+**Decided by the user (2026-10-05):**
+
+- **Fallback**: the kernel keeps a minimal console (boot, panic, debug); if Elegant dies it takes the
+  display back and starts Elegant again. The whole window manager leaves the kernel.
+- **Migration**: behind a **one-boot trial file** (as the network trials): one start on Elegant, the next
+  one back on the kernel's window manager; the default once the test pass is done; then the kernel's
+  window manager is removed.
+- **Events**: the **per-process event queue stays in the kernel**, as a mechanism; Elegant pushes into
+  it. The pump (`el0blob.S`), `kapi_post` and `kapi_pump_wait` do not change.
+- **Open, asked**: the protocol's home. Recommended: private to AppKit (its `kapi_*` window names cannot
+  move, UIKit depends on AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit), what Elegant brings
+  that is new (several windows a process, damage rectangles, a frame-done pace) shown by UIKit. The user
+  leaned towards UIKit: wait for the answer before writing the client side.
+- **Open, asked**: `rdpd` inside Elegant. Recommended: no -- a capture channel of Elegant for `rdpd` and
+  `vncd` instead (the windows' buffers mapped read-only, the damage sent as it happens), the daemons
+  staying processes of their own (a network parser's fault must not take the display down).
+
+**The design** (the study `docs/GUI-USERSPACE-STUDY.md` §2, revised with the kits): the kernel keeps
+mechanisms, Elegant has all the policy (the window list, z-order, focus, desks, input routing, drag and
+drop, menus' specs, composition, cursor, wallpaper). The client side is the bodies of AppKit's window
+calls (`appkit_calls.inc`): no program is rebuilt. Three paths: the rare requests (create, move, resize,
+menu) by a local socket; `kapi_present` writes its damage into a shared block and wakes Elegant (no
+message); what is read often (pointer, modifiers, held keys, screen size, desk) from a state page Elegant
+publishes (no call). Full screen: the kernel keeps its buffer and the direct mode (no round trip a
+frame), Elegant only says who owns the display. The clipboard stays where it is.
+
+**What the kernel lacks** (inventory of 2026-10-05; stage 2, kapi v89):
+
+1. window buffers that are physically contiguous (V3D's direct path), mapped by Elegant too, and
+   unmappable (surfaces: no unmap, 64 at most, 4 users; shm: not contiguous);
+2. a raw input ring for Elegant (Circle's callbacks call the kernel's `CWindowManager` today), with a
+   wake at once; `kapi_inject_*` then become requests to Elegant;
+3. a display device for Elegant: the back buffer mapped, rectangles sent by the 2D DMA, the wait for its
+   end, the resolution change;
+4. named local sockets (`bind` / `listen` / `connect` answer `EOPNOTSUPP`; mailboxes are 31 messages of
+   512 bytes, dropped when full);
+5. a "display server" role (nothing is privileged today: any process injects, grabs, closes);
+6. a way for Elegant to push into another process's event queue.
+
+**The stages** (each keeps the Pi bootable):
+
+1. **Done**: the kernel's window manager built for a user process. `user/Servers/elegant/`: `port/`
+   (stand-ins for the few Circle headers `kernel/gui/window.cpp` and `gimage.cpp` include -- the sources
+   themselves are the kernel's, compiled from `kernel/gui`, one code until the kernel's copy goes),
+   `core.h` / `core.cpp` (the window manager behind plain functions; the only file that includes
+   `kern/gui/window.h`), `main.cpp`. **`elegant --demo`** takes the full screen as any program may and
+   shows three windows of its own, composed by its window manager from the pointer the kernel sends it.
+   **Tried on the Pi (onyx 2026.10.87, over VNC): composed, a window dragged by its title, another
+   raised and closed, Esc back to the desktop.** 38 KB. Built by `make servers` in `user/` (in `all`),
+   staged to `SD:/bin` by `make stage`. Not on the card yet (no package from this branch).
+   The PC test of the window manager (`sh tools/tests/desktop_sim/run.sh`) was broken since kapi v67 (a
+   stand-in missing: `kstub/circle/sched/synchronizationevent.h`): repaired, it passes.
+2. The kernel's mechanisms above (kapi v89), unused by default, with a test tool on the Pi.
+3. Elegant serving the programs' windows + AppKit's client side, behind the one-boot trial; `vncd` /
+   `rdpd` unchanged through AppKit, then the capture channel. PC test first: Elegant's core and the
+   client joined to `tools/tests/desktop_sim/fakekapi.cpp`.
+4. The whole test pass on the Pi (every app, full screen, GPU apps, VNC / RDP, dock, menus, drag and
+   drop, desks, a resolution change); Elegant the default.
+5. The kernel's window manager removed (`kernel/gui/window.cpp`, the compositor task); the sources move
+   to `user/Servers/elegant`; docs/02, 03, 04.
+
+Notes for the next stages: the text of `kapi_draw_text*` needs the kernel's bitmap font (Elegant's
+stand-in has no glyphs: it draws no text); `window.cpp` is called from ONE thread in Elegant (its spin
+lock stand-in does nothing); a VNC capture of a full-screen program waits until something changes (move
+the pointer first).
+
+What there was to build on (written before the work started):
 
 - **The study**: `docs/GUI-USERSPACE-STUDY.md` (2026: where things stand in the kernel, §2 *The GUI in
   user space* — the target, what the kernel must add, the protocol, compatibility, cost and risks; §4
