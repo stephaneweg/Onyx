@@ -99,6 +99,16 @@ older program. A program built against a table that grew needs at least that lib
 so (`needs = systemkit >= 1.56` in `tools/pkg/packages.ini`), and the package manager installs the
 library first.
 
+### From BASIC
+
+A BASIC program uses the kits too: `#import filekit`, then `FileKit.copy (a$, b$, 0, 0)` — every function
+of a kit that takes and returns numbers, strings and pointers, by its name (docs/04 §13, *The system's
+kits*). BASIC knows a kit by its **description**, `SD:/lib/<kit>.bi`, made from the kit's `.abi` and its
+headers by `tools/kitbi/kitbi.py` when the kits are built: nothing in BASIC names a kit, so **a new kit is
+importable as soon as it is built** (docs/03, *BASIC and the kits*). What BASIC cannot call — C++ classes,
+structures passed by value — is left out of the description: a kit meant for BASIC too exposes plain C
+functions.
+
 ### On a PC
 
 The same sources build on a PC for the tests and the screenshots. There is no shared library there:
@@ -599,7 +609,8 @@ When a domain has no kit (SystemKit and NetKit are the models — small, with no
   the code — and one source `<kit>.cpp` that compiles the code into the library;
 - its rules in `user/Makefile` (copy SystemKit's block): the library `lib/<kit>.so`, its import
   archives `lib/<kit>.imp.a` (C++) and `lib/<kit>.imp_c.a` (C);
-- its package in `tools/pkg/packages.ini` (`required = 1`, `files = lib/<kit>.so`).
+- its package in `tools/pkg/packages.ini` (`required = 1`, `files = lib/<kit>.so lib/<kit>.bi` — the `.bi` is
+  what BASIC reads of it, made by the build: *From BASIC* above).
 
 The header of a kit a C program may use is written in C.
 

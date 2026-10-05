@@ -83,7 +83,14 @@ static const BFn BFNS[] = {
 	{ "FILEPLAYING", B_FILEPLAYING, TY_NUM, "" }, { "FILEPOS", B_FILEPOS, TY_NUM, "" }, { "FILELENGTH", B_FILELENGTH, TY_NUM, "" },
 	{ "NOTEFREQ", B_NOTEFREQ, TY_NUM, "N" }, { "NOTENUMBER", B_NOTENUMBER, TY_NUM, "S" },
 	{ "MENUITEM", B_MENUITEM, TY_NUM, "SS[S" }, { "WINDOWWIDTH", B_WINDOWWIDTH, TY_NUM, "" }, { "WINDOWHEIGHT", B_WINDOWHEIGHT, TY_NUM, "" },
+	// (kits: known once the program has an #import -- B_ALLOC .. B_ADDRESSOF)
+	{ "ALLOC", B_ALLOC, TY_NUM, "N" }, { "CSTR$", B_CSTR, TY_STR, "N[N" },
+	{ "PEEKB", B_PEEKB, TY_NUM, "N" }, { "PEEKW", B_PEEKW, TY_NUM, "N" }, { "PEEKL", B_PEEKL, TY_NUM, "N" },
+	{ "PEEKQ", B_PEEKQ, TY_NUM, "N" }, { "PEEKF", B_PEEKF, TY_NUM, "N" }, { "PEEKD", B_PEEKD, TY_NUM, "N" },
 	{ 0, 0, 0, 0 } };
+
+// Where #import reads a kit's description (setKitSource).
+static char *(*kitSource) (const char *name, int *len) = 0;
 
 // Block terminators (what ends a statement block).
 enum
@@ -125,6 +132,10 @@ public:
 	struct Loop { int kind; int exits[64]; int nexit; };
 	Loop loops[32]; int nloops;
 	bool base1; int tmpN; int lastLine;
+	// The imported kits' functions: "FILEKIT.COPY" (and under its C name, "FILEKIT.FK_COPY"); used: its
+	// place in P->kfns once the program calls it (-1).
+	struct KDecl { int kit, slot; char ret; char args[KIT_MAXARGS + 1]; char name[64], cname[64]; int used; };
+	Vec<KDecl> kdecls; bool kitsOn = false;
 
 	Compiler () : P (0), err (0), failed (false), pos (0), nlocals (0), curProc (-1), nloops (0), base1 (false), tmpN (0), lastLine (-1)
 	{ dblSeen = false; resetDeftypes (); }
@@ -660,7 +671,160 @@ public:
 	}
 	int findConst (const char *n) { for (int i = 0; i < consts.n; i++) if (bseq (consts[i].name, n)) return i; return -1; }
 	int findProc (const char *n) { for (int i = 0; i < pdecls.n; i++) if (bseq (pdecls[i].name, n)) return i; return -1; }
-	const BFn *findBuiltin (const char *n) { for (int i = 0; BFNS[i].name; i++) if (bseq (BFNS[i].name, n)) return &BFNS[i]; return 0; }
+	const BFn *findBuiltin (const char *n)
+	{
+		for (int i = 0; BFNS[i].name; i++)
+			if (bseq (BFNS[i].name, n)) return !kitsOn && BFNS[i].id >= B_ALLOC && BFNS[i].id <= B_ADDRESSOF ? 0 : &BFNS[i];
+		return 0;
+	}
+
+	// ---- kits (#import) -----------------------------------------------------------------------------
+	// "#import filekit" (at the start of a line, any case): the kit's functions become FILEKIT.<name>.
+	void prescanImports ()
+	{
+		for (int i = 0; i + 2 < toks.n && !failed; i++)
+		{
+			if (!(i == 0 || toks[i - 1].t == T_NL) || toks[i].t != T_OP || toks[i].op != '#') continue;
+			if (toks[i + 1].t != T_ID || !bseq (toks[i + 1].id, "IMPORT")) continue;
+			pos = i + 2;
+			if (toks[i + 2].t != T_ID) { fail ("A kit's name is expected after #import"); return; }
+			importKit (toks[i + 2].id);
+		}
+	}
+	static bool kitRet (char c) { for (const char *k = "viulbchwfds"; *k; k++) if (*k == c) return true; return false; }
+	static bool kitArg (char c) { for (const char *k = "ipcsfdILFD"; *k; k++) if (*k == c) return true; return false; }
+	void importKit (const char *upper)
+	{
+		char low[32]; int n = 0;
+		for (; upper[n] && n < 31; n++) low[n] = (char) (upper[n] >= 'A' && upper[n] <= 'Z' ? upper[n] + 32 : upper[n]);
+		low[n] = 0;
+		for (int i = 0; i < P->kits.n; i++) if (bseq (P->kits[i].name, low)) return;
+		int len = 0;
+		char *txt = kitSource ? kitSource (low, &len) : 0;
+		if (!txt) { fail2 (kitSource ? "#import: no such kit (no SD:/lib/<name>.bi): " : "#import: no kits on this system: ", low); return; }
+		KitRef kr; bscpy (kr.name, low, sizeof kr.name); kr.minVer = 0;
+		int kit = P->kits.n; P->kits.push (kr);
+		kitsOn = true;
+		// a function a line: <name> <place> <result> <arguments or -> [<C name>]; '#': a comment
+		for (int at = 0; at < len; )
+		{
+			char w[5][64]; int nw = 0;
+			while (at < len && txt[at] != '\n')
+			{
+				while (at < len && (txt[at] == ' ' || txt[at] == '\t' || txt[at] == '\r')) at++;
+				if (at >= len || txt[at] == '\n') break;
+				int k = 0;
+				while (at < len && txt[at] != ' ' && txt[at] != '\t' && txt[at] != '\r' && txt[at] != '\n') { if (nw < 5 && k < 63) w[nw][k++] = txt[at]; at++; }
+				if (nw < 5) w[nw++][k] = 0;
+			}
+			at++;
+			if (nw < 4 || w[0][0] == '#') continue;
+			KDecl d; d.kit = kit; d.used = -1; d.slot = 0;
+			bool ok = w[1][0] != 0;
+			for (int i = 0; w[1][i]; i++) { if (w[1][i] < '0' || w[1][i] > '9' || i > 6) { ok = false; break; } d.slot = d.slot * 10 + (w[1][i] - '0'); }
+			if (!ok || w[2][1] || !kitRet (w[2][0])) continue;
+			d.ret = w[2][0];
+			const char *a = bseq (w[3], "-") ? "" : w[3];
+			if (bslen (a) > KIT_MAXARGS) continue;
+			for (int i = 0; a[i]; i++) if (!kitArg (a[i])) ok = false;
+			if (!ok) continue;
+			bscpy (d.args, a, sizeof d.args);
+			int k = 0;
+			for (int i = 0; upper[i] && k < 30; i++) d.name[k++] = upper[i];
+			d.name[k++] = '.';
+			int k0 = k;
+			for (int i = 0; w[0][i] && k < 63; i++) d.name[k++] = bup (w[0][i]);
+			d.name[k] = 0;
+			bmcpy (d.cname, d.name, k0); k = k0;
+			const char *cn = nw > 4 ? w[4] : w[0];
+			for (int i = 0; cn[i] && k < 63; i++) d.cname[k++] = bup (cn[i]);
+			d.cname[k] = 0;
+			kdecls.push (d);
+		}
+		delete [] txt;
+	}
+	// A kit's function by its name ("FILEKIT.COPY") -> its place in kdecls; -1: not a kit's name; -2: the
+	// kit is imported but has no such function.
+	int findKitFn (const char *id)
+	{
+		if (!kitsOn) return -1;
+		int dot = 0;
+		while (id[dot] && id[dot] != '.') dot++;
+		if (!id[dot]) return -1;
+		bool kit = false;
+		for (int i = 0; i < P->kits.n && !kit; i++)
+		{
+			const char *kn = P->kits[i].name; int j = 0;
+			while (j < dot && kn[j] && bup (kn[j]) == id[j]) j++;
+			kit = j == dot && !kn[j];
+		}
+		if (!kit) return -1;
+		for (int i = 0; i < kdecls.n; i++) if (bseq (kdecls[i].name, id) || bseq (kdecls[i].cname, id)) return i;
+		return -2;
+	}
+	// After a name at the start of a statement: is "(" the call's own parenthesis -- Name (a, b) -- and
+	// not the first argument's -- Name (a + b) * 2, c?
+	bool callParens ()
+	{
+		if (!isOp ('(')) return false;
+		int depth = 0, p = pos;
+		for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+		{
+			if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+			else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+		}
+		Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+		return depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+	}
+	// A call of a kit's function (after its name): the arguments by the function's types, OP_KCALL.
+	// BYREF variable, where the function fills a number (I L F D): the variable gets what it wrote.
+	int kitCall (int ki, bool asExpr, bool parens)
+	{
+		KDecl &d = kdecls[ki];
+		int want = bslen (d.args), argc = 0;
+		bool dOuter = dblSeen;
+		bool open = parens && acceptOp ('(');
+		if (asExpr && !open && want > 0) { fail2 ("Expected '(' after ", d.name); return TY_NUM; }
+		if (open ? !isOp (')') : !asExpr && !endOfStmt ())
+			for (;;)
+			{
+				char k = d.args[argc < want ? argc : want];
+				if (!k) { fail2 ("Too many arguments to ", d.name); return TY_NUM; }
+				if (isKw ("BYREF") && peek ().t == T_ID)
+				{
+					next ();
+					if (!(k == 'I' || k == 'L' || k == 'F' || k == 'D')) { fail2 ("BYREF: this argument is not a number the function fills: ", d.name); return TY_NUM; }
+					Ref r;
+					if (!parseRef (r)) return TY_NUM;
+					if (r.fnResult || r.method >= 0 || r.ty != TY_NUM) { fail ("BYREF needs a numeric variable"); return TY_NUM; }
+					emitAddr (r);
+				}
+				else
+				{
+					int ty = expr ();
+					if (failed) return TY_NUM;
+					if (k == 's') { if (ty != TY_STR && ty != TY_NUM) { fail2 ("A string is expected: ", d.name); return TY_NUM; } }
+					else needNum (ty);
+				}
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (open) expectOp (')');
+		if (failed) return TY_NUM;
+		if (argc != want) { fail2 ("Wrong number of arguments to ", d.name); return TY_NUM; }
+		if (asExpr && d.ret == 'v') { fail2 ("This function gives no value: ", d.name); return TY_NUM; }
+		if (d.used < 0)
+		{
+			KitFn f; f.kit = d.kit; f.slot = d.slot; f.ret = d.ret;
+			bscpy (f.args, d.args, sizeof f.args); bscpy (f.name, d.name, sizeof f.name);
+			d.used = P->kfns.n; P->kfns.push (f);
+			if (P->kits[d.kit].minVer < d.slot + 1) P->kits[d.kit].minVer = d.slot + 1;
+		}
+		emit3 (OP_KCALL, d.used, argc);
+		if (!asExpr && d.ret != 'v') emit (OP_POP);
+		dblSeen = dOuter || d.ret == 'l' || d.ret == 'd';	// (a pointer: every digit of it)
+		return d.ret == 's' ? TY_STR : TY_NUM;
+	}
 
 	// ---- pre-scan: SUB / FUNCTION / DEF FN headers (+ DEFtype, which types their names) -----------
 	// DEFINT A-C, X-Z (at pos p, just after the keyword): apply to deftype.
@@ -929,6 +1093,25 @@ public:
 		}
 		const BFn *b = findBuiltin (name);
 		if (b) { next (); return callBuiltin (b); }
+		if (kitsOn)
+		{
+			int ki = findKitFn (name);
+			if (ki == -2) { fail2 ("No such function in the kit: ", name); return TY_NUM; }
+			if (ki >= 0) { next (); return kitCall (ki, true, true); }
+			// ADDRESSOF (Name): a SUB / FUNCTION as a function a kit can call
+			if (bseq (name, "ADDRESSOF") && peekIsOp ('('))
+			{
+				next (); next ();
+				int ap = cur ().t == T_ID ? findProc (cur ().id) : -1;
+				if (ap < 0 || pdecls[ap].cls >= 0 || pdecls[ap].defFn) { fail ("ADDRESSOF needs the name of a SUB or a FUNCTION (not a method)"); return TY_NUM; }
+				for (int i = 0; i < pdecls[ap].np; i++)
+					if (pdecls[ap].parr[i] || pdecls[ap].pty[i] >= TY_REC) { fail2 ("A SUB a kit calls takes numbers and strings only: ", pdecls[ap].name); return TY_NUM; }
+				next (); expectOp (')');
+				pushNum (ap); emit3 (OP_BI, B_ADDRESSOF, 1);
+				dblSeen = true;
+				return TY_NUM;
+			}
+		}
 		// A user FUNCTION (inside itself without "(": its own name is the result variable).
 		int pi = findProc (name);
 		if (pi >= 0 && pdecls[pi].isFunc)
@@ -1236,6 +1419,7 @@ public:
 		static const int keep[] = { B_ABS, B_SGN, B_INT, B_FIX, B_SQR, B_SIN, B_COS, B_TAN, B_ATN, B_EXP, B_LOG, B_MIN, B_MAX, B_CVD, 0 };
 		bool d = (id == B_CDBL && bseq (b->name, "CDBL")) || id == B_CVD;
 		for (int i = 0; keep[i]; i++) if (keep[i] == id && dArgs) d = true;
+		if (id == B_ALLOC || id == B_PEEKQ || id == B_PEEKD) d = true;	// (a pointer: every digit of it)
 		dblSeen = dOuter || d;
 		emit3 (OP_BI, id, argc);
 		return b->ret;
@@ -1590,6 +1774,7 @@ public:
 	void statement1 ()
 	{
 		if (isOp ('?')) { next (); stPrint (false); return; }
+		if (isOp ('#') && peekKw (1, "IMPORT")) { next (); next (); next (); return; }	// (#import kit: prescanImports)
 		Tok &k = cur ();
 		if (k.t != T_ID) { fail ("Syntax error"); return; }
 		const char *w = k.id;
@@ -1708,6 +1893,12 @@ public:
 			return;
 		}
 		if (bseq (w, "NAME")) { next (); needStr (expr ()); expectKw ("AS"); needStr (expr ()); emit3 (OP_ST, S_NAME, 2); return; }
+		if (kitsOn)						// a kit's function as a statement: its result dropped
+		{
+			int ki = findKitFn (w);
+			if (ki == -2) { fail2 ("No such function in the kit: ", w); return; }
+			if (ki >= 0) { next (); kitCall (ki, false, callParens ()); return; }
+		}
 		if (simpleStatement (w)) return;
 		// A SUB call without CALL.
 		int pi = findProc (w);
@@ -1833,10 +2024,15 @@ public:
 			{ "VERTEX3D", S_VERTEX3D, "NNN[NN" }, { "CUBE3D", S_CUBE3D, "[N" }, { "SPHERE3D", S_SPHERE3D, "[NN" },
 			{ "CYLINDER3D", S_CYLINDER3D, "[NNN" }, { "PLANE3D", S_PLANE3D, "[NN" },
 			{ "MOVECONTROL", S_MOVECONTROL, "NNNNN" }, { "SHOWCONTROL", S_SHOWCONTROL, "NN" }, { "ENABLECONTROL", S_ENABLECONTROL, "NN" },
-			{ "FOCUSCONTROL", S_FOCUSCONTROL, "N" }, { 0, 0, 0 } };
+			{ "FOCUSCONTROL", S_FOCUSCONTROL, "N" },
+			// (kits: known once the program has an #import -- S_DEALLOC .. S_POKES)
+			{ "DEALLOC", S_DEALLOC, "N" }, { "POKEB", S_POKEB, "NN" }, { "POKEW", S_POKEW, "NN" }, { "POKEL", S_POKEL, "NN" },
+			{ "POKEQ", S_POKEQ, "NN" }, { "POKEF", S_POKEF, "NN" }, { "POKED", S_POKED, "NN" }, { "POKES", S_POKES, "NS" },
+			{ 0, 0, 0 } };
 		for (int i = 0; S[i].name; i++)
 		{
 			if (!bseq (S[i].name, w)) continue;
+			if (!kitsOn && S[i].id >= S_DEALLOC && S[i].id <= S_POKES) continue;
 			next ();
 			const char *spec = S[i].args;
 			bool blanks = spec[0] == '~';			// LOCATE , 5  (empty args = -1)
@@ -2863,6 +3059,7 @@ public:
 		err = e; e->line = 0; e->msg[0] = 0;
 		P = new Program;
 		lex (src);
+		if (!failed) prescanImports ();
 		if (!failed) rewriteProperties ();
 		if (!failed) prescanTypes ();
 		if (!failed) prescan ();
@@ -2892,6 +3089,7 @@ Program *compile (const char *src, Error *err)
 }
 
 void destroy (Program *p) { delete p; }
+void setKitSource (char *(*source) (const char *name, int *len)) { kitSource = source; }
 
 } // namespace bas
 
@@ -2901,7 +3099,8 @@ int bas::wordList (char *buf, int cap)
 	auto add = [&] (const char *w) { if (n && n < cap - 1) buf[n++] = ' '; for (; *w && n < cap - 1; w++) buf[n++] = *w; };
 	for (int i = 0; KEYWORDS[i]; i++) add (KEYWORDS[i]);
 	// (the words of the classes: not reserved, known by their place)
-	static const char *const CLASSWORDS[] = { "MANAGED", "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING", 0 };
+	static const char *const CLASSWORDS[] = { "MANAGED", "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING",
+		"BYREF", "ADDRESSOF", "DEALLOC", "POKEB", "POKEW", "POKEL", "POKEQ", "POKEF", "POKED", "POKES", 0 };	// (... and of the kits)
 	for (int i = 0; CLASSWORDS[i]; i++) add (CLASSWORDS[i]);
 	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
 	if (cap > 0) buf[n] = 0;

@@ -52,6 +52,21 @@ VALUES
     and PROPERTY Point.Name (v AS STRING) ... END PROPERTY (the setter): then
     p.Name = "x" calls the setter, a$ = p.Name the getter (EXIT PROPERTY leaves one).
 
+KITS (Onyx): the system's shared libraries, called by name
+  #import FileKit            (at the top; any case; a kit of SD:/lib: AppKit FileKit SystemKit
+                              ImageKit AudioKit NetKit PrinterKit ... -- SD:/lib/<kit>.bi lists
+                              its functions)
+  n = FileKit.copy(a$, b$, 0, 0)     SystemKit.notify "Title", "Text"     (Kit.name arguments)
+  A string for a text, a number for a number, a handle or a pointer (keep it in a plain or a #
+  variable; 0 = none).
+  BYREF v            where the function fills a number: FileKit.load(f$, BYREF buf#, BYREF n)
+  ADDRESSOF(Name)    a SUB / FUNCTION of the program the kit calls back (numbers and strings)
+  p# = ALLOC(bytes)  DEALLOC p#       memory for what a function writes
+  CSTR$(p#[, n])     the text at an address
+  PEEKB PEEKW PEEKL PEEKQ PEEKF PEEKD (address)      POKEB .. POKED address, value   POKES address, t$
+  What a kit allocates and returns is yours to free with the kit's function (FileKit.free p#).
+  Nothing is checked: a wrong address ends the program. Example: SD:/basic/examples/kits.bas.
+
 STATEMENTS
   PRINT [#n,] a; b, c   (; = no space, , = next 14-column zone, TAB(n) SPC(n))
   WRITE [#n,] ...       INPUT ["prompt";] a, b$    LINE INPUT ["prompt";] a$

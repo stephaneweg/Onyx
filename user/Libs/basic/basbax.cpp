@@ -11,7 +11,7 @@
 
 namespace bas {
 
-enum { BAX_FORMAT = 3 };			// (2: the classes' tables; 3: the program's flags -- managed; older files still load)
+enum { BAX_FORMAT = 4 };			// (2: the classes' tables; 3: the program's flags -- managed; 4: the kits; older files still load)
 
 namespace {
 struct Out
@@ -82,6 +82,13 @@ int saveBax (const Program *p, char **out)
 	o.i32 (p->vtab.n); for (int i = 0; i < p->vtab.n; i++) o.i32 (p->vtab[i]);
 	o.i32 (p->itab.n); for (int i = 0; i < p->itab.n; i++) o.i32 (p->itab[i]);
 	o.i32 (p->managed ? 1 : 0);
+	o.i32 (p->kits.n); for (int i = 0; i < p->kits.n; i++) { o.name (p->kits[i].name); o.i32 (p->kits[i].minVer); }
+	o.i32 (p->kfns.n);
+	for (int i = 0; i < p->kfns.n; i++)
+	{
+		const KitFn &f = p->kfns[i];
+		o.i32 (f.kit); o.i32 (f.slot); o.byte (f.ret); o.name (f.args); o.name (f.name);
+	}
 	o.bytes ("END.", 4);
 	*out = o.b;
 	return o.n;
@@ -132,6 +139,20 @@ Program *loadBax (const char *buf, int len, Error *err)
 		c = in.count (); for (int i = 0; i < c && !in.bad; i++) p->itab.push (in.i32 ());
 	}
 	if (fmt >= 3) p->managed = (in.i32 () & 1) != 0;
+	if (fmt >= 4)
+	{
+		c = in.count (); for (int i = 0; i < c && !in.bad; i++) { KitRef k; in.name (k.name, sizeof k.name); k.minVer = in.i32 (); p->kits.push (k); }
+		c = in.count ();
+		for (int i = 0; i < c && !in.bad; i++)
+		{
+			KitFn f; f.kit = in.i32 (); f.slot = in.i32 ();
+			if (in.at >= in.n) { in.bad = true; break; }
+			f.ret = (char) in.b[in.at++];
+			in.name (f.args, sizeof f.args); in.name (f.name, sizeof f.name);
+			if (f.kit < 0 || f.kit >= p->kits.n || f.slot < 0) in.bad = true;
+			p->kfns.push (f);
+		}
+	}
 	if (in.bad || in.at + 4 > in.n || in.b[in.at] != 'E' || in.b[in.at + 3] != '.'
 	    || p->gkind.n != p->nglobals || p->gext.n != p->nglobals)
 	{ delete p; setErr (err, "The .bax file is damaged"); return 0; }

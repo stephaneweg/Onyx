@@ -19,6 +19,7 @@
 #include "gamepad.h"
 #include "uikit/uikit.h"
 #include "basic/basscreen.h"
+#include "basic/baskits.h"
 #include "audiokit/audiokit.h"		// AudioKit: PLAYFILE, MIDINOTE ... (lib/audiokit.imp.a)
 
 using namespace uikit;
@@ -147,6 +148,8 @@ public:
 	unsigned clockUs () override { return kapi_clock_us (); }
 	// the program's machine code (basjit.h): writable + executable memory (kapi v58)
 	void *codeAlloc (unsigned size) override { return kapi_code_alloc (size); }
+	// #import: a kit is SD:/lib/<name>.so (baskits.cpp)
+	void *const *kitOpen (const char *name, int minVersion, char *why, int cap) override { return bas::onyxKitOpen (name, minVersion, why, cap); }
 	void profReport () override
 	{
 		char t[320]; int n = profile.text (t, sizeof t - 2);
@@ -766,6 +769,7 @@ int main (void)
 	}
 
 	bas::Error err;
+	bas::setKitSource (bas::onyxKitSource);			// (#import: SD:/lib/<kit>.bi)
 	bas::Program *prog = bas::load (src, len, &err);	// a .bax runs as it is
 	delete [] src;
 	if (compileOnly)					// basic -c prog.bas: prog.bax

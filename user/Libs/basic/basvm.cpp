@@ -178,6 +178,30 @@ static bool nativeEntry (Native *n, int pc);
 static void nativeRun (Native *n, VM &vm);
 static void nativeFree (Native *n);
 
+// ---- kits: a SUB / FUNCTION a kit calls (ADDRESSOF) ------------------------------------------------
+// A kit calls a C function; what ADDRESSOF gives it is one of these relays -- CB_MAX of them, each bound
+// to a SUB / FUNCTION of the running program the first time its address is taken -- which hands the call
+// (up to 8 whole numbers or pointers) to the VM (VM::callback).
+enum { CB_MAX = 48 };
+static VM *cbVM;
+static int cbProc[CB_MAX], cbN;
+static long long cbCall (int n, const long long *a);
+template <int N> static long long cbRelay (long long a0, long long a1, long long a2, long long a3, long long a4, long long a5, long long a6, long long a7)
+{ long long a[8] = { a0, a1, a2, a3, a4, a5, a6, a7 }; return cbCall (N, a); }
+typedef long long (*CbFn) (long long, long long, long long, long long, long long, long long, long long, long long);
+#define CB4(n) cbRelay<n>, cbRelay<n + 1>, cbRelay<n + 2>, cbRelay<n + 3>
+#define CB16(n) CB4 (n), CB4 (n + 4), CB4 (n + 8), CB4 (n + 12)
+static const CbFn cbRelays[CB_MAX] = { CB16 (0), CB16 (16), CB16 (32) };
+#undef CB16
+#undef CB4
+// What a kit's function is called through: its whole numbers and pointers, then its floating-point
+// numbers -- each kind in its own registers (AArch64: x0..x7, d0..d7), so one type calls them all.
+#define KIT_ARGS long long, long long, long long, long long, long long, long long, long long, long long, double, double, double, double, double, double, double, double
+typedef long long (*KitI) (KIT_ARGS);
+typedef double (*KitD) (KIT_ARGS);
+typedef float (*KitF) (KIT_ARGS);
+#undef KIT_ARGS
+
 class VM
 {
 public:
@@ -223,6 +247,8 @@ public:
 	char *ser; int serLen, serCap;
 	bool strigLast[4];				// STRIG (even n): the button at the last call
 	Scene3D s3;					// SCENE3D ... RENDER3D (basic/bas3dscene.h)
+	void *const **kitTab = 0;			// the imported kits' tables (P->kits), opened at their first call
+	int stopNf = -1;				// the loop ends when the frames are back to this many (callback)
 
 	VM (Program *p, Host &h, Error *e) : P (p), H (h), err (e), sp (0), G (0), nf (0), ngs (0), pc (0), opPc (0),
 		failed (false), ended (false), rnd (327680), lastRnd (0), dataPtr (0), chan (0), inPos (0),
@@ -250,6 +276,8 @@ public:
 		for (int i = 0; i < MAXFILES; i++) { delete [] files[i].buf; delete [] files[i].rec; }
 		for (int i = 0; i < nenv; i++) delete [] env[i];
 		delete [] ser;
+		delete [] kitTab;
+		if (cbVM == this) cbVM = 0;
 	}
 
 	// ---- values -------------------------------------------------------------------------------------
@@ -1302,6 +1330,41 @@ public:
 		case B_FILELENGTH: pushN (H.akQuery (2)); break;
 		case B_NOTEFREQ: pushN (H.akNoteHz ((int) a[0].n)); break;
 		case B_NOTENUMBER: { char t[16]; cstr (a[0], t, sizeof t); pushN (H.akNoteKey (t)); break; }
+		// kits: memory shared with a kit (addresses are numbers; nothing is checked)
+		case B_ALLOC:
+		{
+			long long n = (long long) a[0].n;
+			if (n < 1 || n > 0x10000000) { fail ("Illegal function call (ALLOC)"); break; }
+			char *m = new char[n];
+			for (long long i = 0; i < n; i++) m[i] = 0;
+			pushN ((double) (unsigned long long) m); break;
+		}
+		case B_CSTR:
+		{
+			const char *c = (const char *) (unsigned long long) a[0].n;
+			long long n = argc > 1 ? (long long) a[1].n : (c ? bslen (c) : 0);
+			if (n < 0) { fail ("Illegal function call (CSTR$)"); break; }
+			if (!c) n = 0;
+			pushL1 (c, (int) n); break;
+		}
+		case B_PEEKB: pushN (*(const unsigned char *) (unsigned long long) a[0].n); break;
+		case B_PEEKW: { short v; bmcpy (&v, (const void *) (unsigned long long) a[0].n, 2); pushN (v); break; }
+		case B_PEEKL: { int v; bmcpy (&v, (const void *) (unsigned long long) a[0].n, 4); pushN (v); break; }
+		case B_PEEKQ: { long long v; bmcpy (&v, (const void *) (unsigned long long) a[0].n, 8); pushN ((double) v); break; }
+		case B_PEEKF: { float v; bmcpy (&v, (const void *) (unsigned long long) a[0].n, 4); pushN (v); break; }
+		case B_PEEKD: { double v; bmcpy (&v, (const void *) (unsigned long long) a[0].n, 8); pushN (v); break; }
+		case B_ADDRESSOF:
+		{
+			int pi = (int) a[0].n, k = 0;
+			if (cbVM != this) { cbVM = this; cbN = 0; }
+			while (k < cbN && cbProc[k] != pi) k++;
+			if (k == cbN)
+			{
+				if (cbN >= CB_MAX) { fail ("Too many ADDRESSOF"); break; }
+				cbProc[cbN++] = pi;
+			}
+			pushN ((double) (unsigned long long) cbRelays[k]); break;
+		}
 		case B_WINDOWWIDTH: case B_WINDOWHEIGHT: { int w = 0, h = 0; H.screenSize (&w, &h); pushN (id == B_WINDOWWIDTH ? w : h); break; }
 		case B_MSGBOX:
 		{
@@ -1722,6 +1785,21 @@ public:
 		case S_MIDIPROGRAM: H.akMidi (0xC0, N (0, 0), N (1, 0), 0); break;
 		case S_MIDICONTROL: H.akMidi (0xB0, N (0, 0), N (1, 0), N (2, 0)); break;
 		case S_MIDIOFF: H.akCommand (3, 0); break;
+		case S_DEALLOC: delete [] (char *) (unsigned long long) a[0].n; break;
+		case S_POKEB: *(unsigned char *) (unsigned long long) a[0].n = (unsigned char) (long long) a[1].n; break;
+		case S_POKEW: { short v = (short) (long long) a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 2); break; }
+		case S_POKEL: { int v = (int) (long long) a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 4); break; }
+		case S_POKEQ: { long long v = (long long) a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 8); break; }
+		case S_POKEF: { float v = (float) a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 4); break; }
+		case S_POKED: { double v = a[1].n; bmcpy ((void *) (unsigned long long) a[0].n, &v, 8); break; }
+		case S_POKES:						// the string and a 0 byte
+		{
+			int n; const char *d = sdata (a[1], &n);
+			char *o = (char *) (unsigned long long) a[0].n;
+			for (int i = 0; i < n; i++) o[i] = (char) bas437ToLatin1[(unsigned char) d[i]];
+			o[n] = 0;
+			break;
+		}
 		case S_MOVECONTROL: H.moveControl (N (0, 0), N (1, 0), N (2, 0), N (3, 0), N (4, 0)); break;
 		case S_SHOWCONTROL: H.showControl (N (0, 0), N (1, 0) != 0); break;
 		case S_ENABLECONTROL: H.enableControl (N (0, 0), N (1, 0) != 0); break;
@@ -1935,6 +2013,158 @@ public:
 		mode = o.mode; scrW = o.scrW; scrH = o.scrH;
 	}
 
+	// ---- kits -------------------------------------------------------------------------------------------------
+	// OP_KCALL: the function P->kfns[fi] of a kit called with the argc values on the stack, by its types
+	// (basint.h). Strings go as C strings (Latin-1, copies that live as long as the call); a variable the
+	// function fills went by reference: it gets what the function wrote. The result is pushed (none: 'v').
+	void kitCall (int fi, int argc)
+	{
+		V a[KIT_MAXARGS];
+		if (fi < 0 || fi >= P->kfns.n || argc < 0 || argc > KIT_MAXARGS) { fail ("Bad bytecode (kit call)", 51); return; }
+		const KitFn &f = P->kfns[fi];
+		for (int i = argc - 1; i >= 0; i--) a[i] = pop ();
+		char *tmp[KIT_MAXARGS]; int ntmp = 0;
+		// (a variable filled by the function: where it is, its kind, the value the function sees)
+		V *outV[KIT_MAXARGS]; char outK[KIT_MAXARGS]; int nout = 0;
+		union Cell { long long q; int l; float f; double d; } cell[KIT_MAXARGS];
+		long long xi[8] = { 0, 0, 0, 0, 0, 0, 0, 0 }; double xd[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+		int ni = 0, nd = 0;
+		void *fn = 0;
+		if (!failed && bslen (f.args) != argc) fail ("Bad bytecode (kit call)", 51);
+		if (!failed)
+		{
+			if (!kitTab) { kitTab = new void *const *[P->kits.n]; for (int i = 0; i < P->kits.n; i++) kitTab[i] = 0; }
+			if (!kitTab[f.kit])
+			{
+				char why[80]; why[0] = 0;
+				kitTab[f.kit] = H.kitOpen (P->kits[f.kit].name, P->kits[f.kit].minVer, why, sizeof why);
+				if (!kitTab[f.kit])
+				{
+					char m[120]; int k = 0;
+					for (const char *c = "Kit not available: "; *c; c++) m[k++] = *c;
+					for (const char *c = P->kits[f.kit].name; *c && k < 60; c++) m[k++] = *c;
+					if (why[0]) { m[k++] = ' '; m[k++] = '('; for (const char *c = why; *c && k < 116; c++) m[k++] = *c; m[k++] = ')'; }
+					m[k] = 0;
+					fail (m, 73);
+				}
+			}
+			if (!failed) fn = kitTab[f.kit][f.slot];
+			if (!failed && !fn) fail ("Kit not available (an empty entry)", 73);
+		}
+		for (int i = 0; i < argc && !failed; i++)
+		{
+			char k = f.args[i];
+			V &v = a[i];
+			if (k == 'f' || k == 'd')
+			{
+				if (v.t != VN) { fail ("Type mismatch"); break; }
+				if (nd >= 8) { fail ("Too many arguments (kit call)"); break; }
+				if (k == 'd') xd[nd++] = v.n;
+				else { float fl = (float) v.n; xd[nd] = 0; bmcpy (&xd[nd], &fl, 4); nd++; }	// (a float: the low half of the register)
+				continue;
+			}
+			if (ni >= 8) { fail ("Too many arguments (kit call)"); break; }
+			if (k == 's' && v.t == VS)
+			{
+				int n; const char *d = sdata (v, &n);
+				char *c = new char[n + 1];
+				for (int j = 0; j < n; j++) c[j] = (char) bas437ToLatin1[(unsigned char) d[j]];
+				c[n] = 0;
+				tmp[ntmp++] = c;
+				xi[ni++] = (long long) (unsigned long long) c;
+				continue;
+			}
+			if ((k == 'I' || k == 'L' || k == 'F' || k == 'D') && v.t == VR)
+			{
+				V *t = (V *) v.p;
+				if (t->t == VR) t = (V *) t->p;
+				if (t->t != VN) { fail ("Type mismatch (a numeric variable is expected)"); break; }
+				Cell &c = cell[nout]; c.q = 0;
+				if (k == 'I') c.l = (int) (long long) t->n; else if (k == 'L') c.q = (long long) t->n;
+				else if (k == 'F') c.f = (float) t->n; else c.d = t->n;
+				outV[nout] = t; outK[nout] = k; nout++;
+				xi[ni++] = (long long) (unsigned long long) &c;
+				continue;
+			}
+			if (v.t != VN) { fail ("Type mismatch"); break; }
+			xi[ni++] = (long long) v.n;
+		}
+		V res; res.t = VN; res.n = 0; res.p = 0;
+		if (!failed)
+		{
+#define KIT_CALL xi[0], xi[1], xi[2], xi[3], xi[4], xi[5], xi[6], xi[7], xd[0], xd[1], xd[2], xd[3], xd[4], xd[5], xd[6], xd[7]
+			if (f.ret == 'd') res.n = ((KitD) fn) (KIT_CALL);
+			else if (f.ret == 'f') res.n = ((KitF) fn) (KIT_CALL);
+			else
+			{
+				long long r = ((KitI) fn) (KIT_CALL);
+				switch (f.ret)
+				{
+				case 'i': res.n = (int) r; break;
+				case 'u': res.n = (unsigned) r; break;
+				case 'b': res.n = (unsigned char) r; break;
+				case 'c': res.n = (signed char) r; break;
+				case 'h': res.n = (short) r; break;
+				case 'w': res.n = (unsigned short) r; break;
+				case 'l': res.n = (double) r; break;
+				case 's':
+				{
+					const char *c = (const char *) (unsigned long long) r;
+					int n = c ? bslen (c) : 0;
+					Str *t = snew (c, n);
+					if (t) for (int j = 0; j < n; j++) t->d[j] = (char) basLatin1To437[(unsigned char) t->d[j]];
+					res.t = VS; res.p = t;
+					break;
+				}
+				}
+			}
+#undef KIT_CALL
+			for (int i = 0; i < nout; i++)
+			{
+				const Cell &c = cell[i];
+				outV[i]->n = outK[i] == 'I' ? (double) c.l : outK[i] == 'L' ? (double) c.q : outK[i] == 'F' ? (double) c.f : c.d;
+			}
+		}
+		for (int i = 0; i < ntmp; i++) delete [] tmp[i];
+		for (int i = 0; i < argc; i++) vclear (a[i]);
+		if (failed) { vclear (res); return; }		// (also: a SUB the kit called failed)
+		if (f.ret != 'v') push (res);
+	}
+	// A kit calls the SUB / FUNCTION pi (through a relay, ADDRESSOF): its parameters are the call's first
+	// arguments -- a numeric one a whole number, a string one a C string --, it runs on the VM until it
+	// returns; a FUNCTION's number is the call's result. Where the program was is kept: the kit was
+	// called from an instruction, or from the window's pump between two.
+	long long callback (int pi, const long long *args)
+	{
+		if (failed || ended || pi < 0 || pi >= P->procs.n) return 0;
+		const ProcInfo &pr = P->procs[pi];
+		int first = pr.isFunc ? 1 : 0;
+		if (pr.nparams > 8 || sp + pr.nparams + 8 >= STACK) return 0;
+		int pc0 = pc, opPc0 = opPc, stop0 = stopNf; long budget0 = budget;
+		for (int i = 0; i < pr.nparams; i++)
+		{
+			if (P->lkind[pr.kindOff + first + i] == K_STR)
+			{
+				const char *c = (const char *) (unsigned long long) args[i];
+				pushL1 (c, c ? bslen (c) : 0);
+			}
+			else pushN ((double) args[i]);
+		}
+		int depth = nf, sp0 = sp - pr.nparams;
+		enter (pi, pr.nparams);
+		long long r = 0;
+		if (!failed)
+		{
+			stopNf = depth;
+			loop (-1);
+			if (!failed && !ended && pr.isFunc && sp > sp0) { V v = pop (); if (v.t == VN) r = (long long) v.n; vclear (v); }
+		}
+		while (nf > depth) popFrame ();			// (an error, END: what the SUB had not left)
+		while (sp > sp0) vclear (stack[--sp]);
+		stopNf = stop0; budget = budget0; pc = pc0; opPc = opPc0;
+		return r;
+	}
+
 	// ---- the loop ---------------------------------------------------------------------------------------------
 	const int *code; unsigned count;
 	Profile *pf; unsigned pfStart, pfLast;		// basic -p: the time in the primitives
@@ -2028,9 +2258,9 @@ public:
 	void loop (long n)
 	{
 		budget = n;
-		while (!ended && (budget < 0 || budget-- > 0))
+		while (!ended && nf > stopNf && (budget < 0 || budget-- > 0))
 		{
-			if (failed) { if (!trap ()) break; continue; }
+			if (failed) { if (stopNf >= 0 || !trap ()) break; continue; }	// (in a SUB a kit called: the error is its caller's)
 			++count;
 			if ((count & 4095) == 0)
 			{
@@ -2051,7 +2281,7 @@ public:
 			if (dtorQ.n) { destructor (); continue; }
 			opPc = pc;
 			int op = code[pc++];
-			bool pr = pf && (op == OP_BI || op == OP_ST || (op >= OP_PRINT && op <= OP_CLOSE) || (op >= OP_USING && op <= OP_SEEK));
+			bool pr = pf && (op == OP_BI || op == OP_ST || op == OP_KCALL || (op >= OP_PRINT && op <= OP_CLOSE) || (op >= OP_USING && op <= OP_SEEK));
 			unsigned pt0 = 0;
 			if (pr) { pt0 = H.clockUs (); pf->inPrim = true; }
 			switch (op)
@@ -2289,6 +2519,7 @@ public:
 			case OP_NEWREC: { int ty = code[pc++]; V v; v.t = P->types[ty].kind ? VO : VT; v.n = 0; v.p = newRec (ty); push (v); break; }
 			case OP_BI: { int id = code[pc++], argc = code[pc++]; builtin (id, argc); break; }
 			case OP_ST: { int id = code[pc++], argc = code[pc++]; statement (id, argc); evKick = true; break; }
+			case OP_KCALL: { int fi = code[pc++], argc = code[pc++]; kitCall (fi, argc); evKick = true; break; }
 			case OP_PRINT: { int w = code[pc++]; V v = pop (); printValue (v, (w & 1) != 0, (w & 2) != 0); vclear (v); break; }
 			case OP_USING: printUsing (code[pc++]); break;
 			case OP_PRSEP:
@@ -2530,6 +2761,8 @@ public:
 		return wasFailed ? -1 : 0;
 	}
 };
+
+static long long cbCall (int n, const long long *a) { return cbVM && n < cbN ? cbVM->callback (cbProc[n], a) : 0; }
 
 #include "basic/basjit.h"
 

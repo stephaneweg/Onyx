@@ -1,0 +1,23 @@
+add 42 
+c name 2 
+len 5 
+null string-1 
+name [the test kit] [the test kit]
+half 2.5 
+scale 4.5 
+mix 10.75 
+big 4000000000 neg-5 byte 200 null 0 
+fill 42  21.25  78187493530  1.5 
+by pointer 14  7.25 
+element 10  7.25 
+each 420 
+total 10 
+heard first 1  2 
+heard second 2  4 
+dup <abc> <a 97 
+peek 65 -2  123456  9876543210  1.5  2.25 
+pokes text 4 
+heard first 1  2 
+heard second 2  4 
+each2error 5 caught
+after

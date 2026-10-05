@@ -129,6 +129,28 @@ One day's work, all published (onyx 2026.10.87, kapi v88):
   paths follow (`user/Libs/gpucomp`, `user/Libs/av`: docs/08's note); symbolic links on FAT are a
   design only (docs/POSIX-PLAN.md §11).
 
+## Onyx BASIC: the kits by `#import` (2026-10-05; tested on the PC, under qemu and on the Pi)
+
+- **Done**: a BASIC program says `#import filekit` and calls the kit's functions by their name
+  (`FileKit.copy (a$, b$, 0, 0)`), **with no kit named in BASIC**: each kit has a description,
+  `SD:/lib/<kit>.bi` (name, place in the table, types), made by `tools/kitbi/kitbi.py` from its `.abi` and
+  its headers at every build of the kits; the VM calls through one generic instruction (`OP_KCALL`).
+  A new kit with C functions is importable as soon as it is built and staged. Also: `BYREF variable`
+  (numbers a function fills), `ADDRESSOF (Sub)` (callbacks: 48 relays, the SUB run on the VM),
+  `ALLOC` / `DEALLOC` / `CSTR$` / `PEEKx` / `POKEx` (memory shared with a kit). The user's choices:
+  the kits' C functions and a **flat C exposure for the C++ kits** (handles, not objects); nothing checked
+  at run time (as FreeBASIC); **what a kit returns allocated is the program's to free**. Read: docs/03
+  (*BASIC and the kits*), docs/04 §13 (*The system's kits*), `SD:/basic/examples/kits.bas`.
+- **Next, in the order agreed** (the user, 2026-10-05): (2) structures -- a BASIC `TYPE` passed where a
+  function takes a `struct *` (today: `ALLOC` + `PEEK` / `POKE` at the fields' offsets; needs the
+  structs' layouts in the `.bi`, and BASIC has no 64-bit whole type for a pointer field); (4) **UIKit
+  from BASIC**: its table is C++ (674 of 686 entries), so a flat C layer in UIKit (`uk_*` functions on
+  handles) is to be designed -- an addition to UIKit's append-only table, and it must live with the
+  runtime's own window (`runtime.cpp`'s `ScreenRoot`): **ask the user for its shape before writing it**.
+  Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
+  FreeType's functions in `fontkit.bi` (their prototypes are in FreeType's headers, not in the kit's
+  folder: `kitbi.py` reads `user/Kits/<kit>/*.h` only).
+
 ## Onyx BASIC: classes (2026-10-05; tested on the PC, not yet on the Pi) -- then a native back end
 
 - **Done (phase A)**: objects in BASIC, on the VM. The user's choices: `TYPE` stays a value; a new

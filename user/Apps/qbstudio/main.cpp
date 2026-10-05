@@ -19,6 +19,7 @@
 #include "uikit/toolbar.h"
 #include "fontkit/uikitface.h"
 #include "basic/bas.h"
+#include "basic/baskits.h"
 #include "codeedit.h"
 #include "designer.h"
 #include "props.h"
@@ -1233,6 +1234,7 @@ static int text_w_face (const char *s) { char t[160]; plain (s, t, sizeof t); re
 
 int main (void)
 {
+	bas::setKitSource (bas::onyxKitSource);		// (#import: SD:/lib/<kit>.bi)
 	char args[256];
 	int an = kapi_get_args (args, sizeof args);
 	if (an < 0) an = 0;

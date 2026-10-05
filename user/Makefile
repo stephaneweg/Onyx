@@ -354,7 +354,14 @@ lib/netkit.imp_c.a: lib/netkit_stubs.o lib/netkit_bind_c.o
 
 SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a
+libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a
+
+# The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
+# their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
+# so a new kit is importable without a line here (docs/03 "BASIC and the kits").
+lib/kits.bi.stamp: $(wildcard Kits/*/*.abi) $(wildcard Kits/*/*.h) ../tools/kitbi/kitbi.py | $(SHLIBS)
+	python3 ../tools/kitbi/kitbi.py --out-dir lib
+	@touch $@
 
 # Doom (Ports/doom/: doomgeneric from third_party + the Onyx layer, against newlib) -> doom.elf.
 .PHONY: doom
@@ -451,10 +458,10 @@ slides.elf: Apps/slides/main.cpp $(wildcard Apps/slides/*.h) Apps/sheet/ui_base.
 # QBStudio, the IDE for desktop apps in BASIC (Apps/qbstudio: docs/qbstudio/README.md): a newlib app as Letters
 # (FreeType's text through uikit, DejaVu Sans Mono for the code), with Onyx BASIC's compiler and VM built in (the
 # problems as you type, Make App's .bax).
-qbstudio.elf: Apps/qbstudio/main.cpp $(wildcard Apps/qbstudio/*.h) Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
+qbstudio.elf: Apps/qbstudio/main.cpp $(wildcard Apps/qbstudio/*.h) Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp Libs/basic/baskits.cpp Libs/basic/baskits.h \
 	      Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h Kits/systemkit/clipboard.h 
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -lm -o $@
+	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp Libs/basic/baskits.cpp lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -lm -o $@
 
 # Courier, the HTTP client (Apps/courier: a Postman for Onyx): a newlib app as Letters (FreeType's text through
 # uikit), with mbedTLS for https:// (../tls/onyx_tls.hpp over the kapi sockets; the libraries as user/BinUtils's
@@ -667,8 +674,9 @@ Emulators/snes/libsnes.a: $(SNES_OBJS)
 
 # Onyx BASIC (Libs/basic/): the core (compiler + VM, doubles -> FP/SIMD, no libc) as a library
 # (linked into the qbasic editor too), and the runtime /bin/basic (Libs/basic/runtime.cpp).
-BAS_HDR = Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h Libs/basic/bas3d.h Libs/basic/bas3dscene.h Libs/basic/basscreen.h Kits/appkit/appkit.h
-BAS_OBJ = Libs/basic/basnum.o Libs/basic/bascomp.o Libs/basic/basvm.o Libs/basic/basbax.o
+BAS_HDR = Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h Libs/basic/bas3d.h Libs/basic/bas3dscene.h Libs/basic/basscreen.h Libs/basic/baskits.h Kits/appkit/appkit.h
+# (baskits: the kits a BASIC program imports -- #import --, read and opened on Onyx)
+BAS_OBJ = Libs/basic/basnum.o Libs/basic/bascomp.o Libs/basic/basvm.o Libs/basic/basbax.o Libs/basic/baskits.o
 CXXFLAGS_FP = $(CXXFLAGS_NEON) -fno-math-errno
 # The graphing calculator computes in double: FP/SIMD for the whole app.
 graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)

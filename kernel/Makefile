@@ -145,9 +145,9 @@ stage: sizecheck apps $(BASC)
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
 	done
-	@# The shared libraries (kapi v83): ../user/lib/<name>.so -> SD:/lib/
+	@# The shared libraries (kapi v83): ../user/lib/<name>.so -> SD:/lib/, and what BASIC reads of them (<name>.bi)
 	@mkdir -p $(SDCARD)/lib
-	@for so in ../user/lib/*.so; do \
+	@for so in ../user/lib/*.so ../user/lib/*.bi; do \
 		[ -e "$$so" ] || continue; \
 		cp $$so $(SDCARD)/lib/; \
 	done
