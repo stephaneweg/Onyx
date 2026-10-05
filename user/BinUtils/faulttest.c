@@ -125,7 +125,6 @@ static int KapiChecks (void)
 	Expect ("stdout_write (unmapped data) -> -1", KT->stdout_write (pBad, 16) == -1);
 	Expect ("tcp_send (kernel data) -> -1", KT->tcp_send (0, pKernel, 16) == -1);
 	Expect ("wait_word (kernel word) -> -1", KT->wait_word ((volatile unsigned *) pKernel, 0, 0) == -1);
-	Expect ("get_chrome (unmapped) -> 0", KT->get_chrome ((struct kapi_chrome *) pBad) == 0);
 	KT->screen_size ((int *) pBad, (int *) pKernel);	// (void: skipped, no crash)
 	KT->get_datetime ((int *) pBad, 0, 0, 0, 0, (int *) pKernel);
 	void *h = KT->open ("SD:/cmdline.txt");

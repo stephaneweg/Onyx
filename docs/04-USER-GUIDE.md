@@ -1712,7 +1712,7 @@ accent   = 0x4992A7    # focus, selection, checks
 outline  = dark        # the frames' outline: none, dark, black
 menubar  = 0xD0C2BA    # the menu bar (default: the window's)
 dock     = 0xA4BACE    # the dock's face
-wheelspeed=2           # lines a wheel notch (read by the kernel at boot)
+wheelspeed=2           # lines a wheel notch (read when the desktop starts)
 ```
 
 Nothing is a bitmap: the frames, buttons and controls are drawn by code from these colours. A

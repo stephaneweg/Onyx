@@ -904,6 +904,9 @@ KAPI_FN int lx_launch (const char *name, const char *args);
 
 // (the tests of the kernel's table, and the PC builds: the bodies inline -- see this header's top)
 #if (defined (KAPI_INLINE) || !defined (__aarch64__)) && !defined (KAPI_IMPL)
+#ifdef __aarch64__
+#include "appkit_ws.inc"		// (the window calls speak to Elegant: on Onyx only)
+#endif
 #include "appkit_calls.inc"
 #include "appkit_lib.inc"
 #endif

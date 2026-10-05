@@ -35,7 +35,9 @@ FILES = [("kernel/kernel8-rpi4.img", "kernel8-rpi4.img"),
          ("user/lib/appkit.so", "lib/appkit.so"),
          ("user/Servers/elegant/elegant.elf", "bin/elegant")]
 OPTIONAL = [("user/BinUtils/wstest.elf", "bin/wstest"), ("user/BinUtils/rdpd.elf", "bin/rdpd"),
-            ("user/lib/uikit.so", "lib/uikit.so")]         # the tests, when they are built
+            ("user/lib/uikit.so", "lib/uikit.so"),
+            ("user/BinUtils/el0test.elf", "bin/el0test"), ("user/BinUtils/faulttest.elf", "bin/faulttest"),
+            ("user/BinUtils/sysstat.elf", "bin/sysstat")]         # the tests, when they are built
 SAVED = ["kernel8-rpi4.img", "lib/appkit.so"]
 
 

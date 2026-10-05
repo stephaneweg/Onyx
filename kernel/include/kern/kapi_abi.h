@@ -208,7 +208,14 @@
 //      rectangles), the raw input (mouse, keys, modifiers, held keys -- USB and injected -- to a ring
 //      the server reads instead of the kernel's window manager), one wait. Unused unless Elegant takes
 //      the display: nothing changes for the programs.
-#define KAPI_ABI_VERSION	89
+// v90: the windows' entries are gone from the table (36: create_window, present, set_menu, win_list,
+//      drag_begin, wallpaper_*, desk... -- the windows are Elegant's, the graphics server's, since v89
+//      and the kernel's window manager is removed) and the activity shell's 2 (register_shell,
+//      shell_request: no program used them). The entries after them moved up: A SLOT'S NUMBER CHANGED
+//      (the slot numbers quoted in the notes above are those of their time; the checks below and
+//      docs/02 have today's). AppKit is rebuilt with the kernel; no program is (they call AppKit by
+//      name). A stand-in kernel on a PC still has the windows' entries, after the table's end.
+#define KAPI_ABI_VERSION	90
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1168,18 +1175,7 @@ KAPI_CHECK_FIELD (kapi_image_info, path, 24);
 struct TKApiTable
 {
 	unsigned version;		// KAPI_ABI_VERSION the kernel filled
-
-	// --- windowing ---
-	unsigned *(*create_window) (int w, int h, const char *title);
-	unsigned *(*create_window_ex) (int x, int y, int w, int h, const char *title,
-				       unsigned flags);
-	unsigned *(*resize_window) (int w, int h);
 	int (*launch) (const char *name);
-	int (*toggle_app) (const char *name);
-	int (*raise_app) (const char *name);
-	int (*list_windows) (char *buf, unsigned size);
-	int (*wallpaper_generate) (unsigned base, int points, unsigned seed);
-	void (*present) (void);
 	unsigned (*get_ticks) (void);
 	void (*msleep) (unsigned ms);
 	void (*yield) (void);
@@ -1194,12 +1190,8 @@ struct TKApiTable
 	void (*pump_events) (void);
 	void (*wait_for_exit) (void);
 	int (*should_exit) (void);
-
-	// --- app-drawn text + keyboard ---
-	void (*draw_text) (int, int, const char *, unsigned);
 	int (*font_width) (void);
 	int (*font_height) (void);
-	void (*set_key_handler) (gui_handler);
 
 	// --- enumeration + clock ---
 	int (*list_apps) (char *, unsigned);
@@ -1216,11 +1208,6 @@ struct TKApiTable
 	// --- v1 additions (append below; bump KAPI_ABI_VERSION) ---
 	// The calling app's folder: "SD:apps/<name>.app/" into buf. Returns length.
 	int (*app_dir) (char *buf, unsigned size);
-
-	// --- v2 additions ---
-	// Canvas-click handler: GUI_EVENT_CANVAS_CLICK with (clientX<<16)|clientY when a
-	// press lands in the client area on no widget. For app-drawn mouse UIs.
-	void (*set_click_handler) (gui_handler);
 
 	// --- v3 additions ---
 	// Directory listing (FatFs). opendir returns a handle (0 on failure); readdir
@@ -1253,7 +1240,6 @@ struct TKApiTable
 	int   (*mkdir) (const char *path);	// 0 ok / -1
 	int   (*remove) (const char *path);	// file or empty dir
 	int   (*rename) (const char *from, const char *to);
-	void  (*cursor_pos) (int *x, int *y);	// cursor, relative to this window's client
 
 	// --- v8 additions ---
 	int   (*list_tasks) (char *buf, unsigned size);	// "<state><kind> <name>" per line
@@ -1269,18 +1255,6 @@ struct TKApiTable
 	int   (*exec) (const char *path, const char *args);
 	// Framebuffer dimensions (for edge-pinned/borderless windows like the panel).
 	void  (*screen_size) (int *w, int *h);
-
-	// --- v12 additions ---
-	// Move the calling app's window (outer top-left, screen coords). For borderless
-	// windows that re-position themselves, e.g. the panel keeping itself centered.
-	void  (*move_window) (int x, int y);
-
-	// --- v13 additions (app-drawn desktop wallpaper) ---
-	// Map the shared screen-sized wallpaper buffer (0x00RRGGBB) into this app and
-	// return its VA (+ dims via w/h). Draw into it, then wallpaper_commit() to make
-	// it the live background. Frames are kernel-owned -> persists after the app exits.
-	unsigned *(*wallpaper_buffer) (int *w, int *h);
-	void      (*wallpaper_commit) (void);
 
 	// --- v14 additions (ps / kill by PID) ---
 	// list_procs: one line per task "<pid> <a|k> <state> <name>" (pid 0 = kernel
@@ -1337,14 +1311,6 @@ struct TKApiTable
 	int  (*tcp_recv) (int sock, void *buf, unsigned len);
 	void (*tcp_close) (int sock);
 
-	// --- v22 additions (full pointer stream for app-side widget toolkits) ---
-	// Opt-in: register a handler that receives GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE
-	// for this window's client area, with value = (changed<<40)|(buttons<<32)|
-	// (x<<16)|y (client coords; `changed` = the button 1/2/4 for DOWN/UP). Lets a
-	// user-space toolkit (uikit.h) own its widgets. The legacy set_click_handler is
-	// unchanged.
-	void (*set_pointer_handler) (gui_handler fn);
-
 	// --- v23 additions (memory info) ---
 	// System memory snapshot, all in KB: *total RAM, *free (unallocated page region +
 	// free heap), *app (owned by user processes), *page_kb (page size). Any pointer
@@ -1378,16 +1344,6 @@ struct TKApiTable
 	// buffer. `name` is recorded for get_keymap. Returns 1 on success, 0 otherwise.
 	// New layouts can be added as files with no kernel rebuild (see tools/keymaps).
 	int (*set_keymap_data) (const char *name, const void *data, unsigned len);
-
-	// --- v28 additions (user-side window chrome) ---
-	// get_chrome: fill *out with the calling app's window surfaces (content canvas +
-	// the active/inactive chrome copies + insets + title) so a user-side toolkit can
-	// draw the title bar / borders / close box. Returns 1, or 0 if the app has no
-	// window. draw_text_buf: render kernel-font text (transparent background) into an
-	// arbitrary app-mapped 0x00RRGGBB buffer (dstW x dstH) at (x,y) -- used to draw the
-	// title into the chrome buffer (the kernel font is the only font apps have). The
-	// kernel still owns chrome BEHAVIOUR (title-bar drag, close-box hit-test).
-	int  (*get_chrome) (struct kapi_chrome *out);
 	void (*draw_text_buf) (unsigned *dst, int dstW, int dstH, int x, int y,
 			       const char *s, unsigned color);
 
@@ -1406,14 +1362,6 @@ struct TKApiTable
 			   unsigned long *apppool_free_kb, unsigned long *above4g_kb,
 			   unsigned *nsegments);
 
-	// --- v34 additions (scroll-wheel speed) ---
-	// Lines scrolled per wheel notch, applied system-wide: the WM multiplies the raw
-	// notch by this factor before delivering GUI_EVENT_PTR_WHEEL, so every toolkit/app
-	// feels it at once. set clamps to [1,16]; the theme editor persists it in
-	// SD:/etc/theme.txt (wheelspeed=N) and the kernel restores it at boot.
-	void (*set_wheel_speed) (int lines_per_notch);
-	int  (*get_wheel_speed) (void);
-
 	// --- v35 additions (shell surfaces -- activity-shell compositor) ---
 	// A shared pixel surface (0x00RRGGBB). The shell creates one sized to a viewport
 	// (surface_create -> id > 0), passes the id to an app; both map it (surface_map ->
@@ -1426,16 +1374,6 @@ struct TKApiTable
 	int       (*surface_size) (int id, int *w, int *h);
 	void      (*surface_present) (int id);
 	int       (*surface_destroy) (int id);
-
-	// Activity-shell IPC (the kernel is a thin message router; see kern/ipc.h). A user
-	// compositor calls register_shell to become THE shell. Apps post to it with
-	// shell_request (the kernel stamps the caller's pid). The shell replies / pushes
-	// async events with mailbox_send(target_pid,...). Both drain with mailbox_recv,
-	// which fills *from_pid / *type and returns the payload length (or -1 if empty;
-	// blocking != 0 waits for a message). Messages are opaque {from_pid,type,bytes};
-	// `type` meaning is the user shell protocol. from_pid 0 == from the kernel.
-	int  (*register_shell) (void);
-	int  (*shell_request) (int type, const void *in, unsigned len);
 	int  (*mailbox_send) (int target_pid, int type, const void *in, unsigned len);
 	int  (*mailbox_recv) (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
@@ -1468,20 +1406,6 @@ struct TKApiTable
 	void (*inject_pointer) (int x, int y, unsigned buttons, int wheel);
 	void (*inject_key) (const char *keys);
 
-	// --- v39 additions (system menu bar) ---
-	// set_menu: declare the calling app's menus on its window + the callback that
-	// receives (sender 0, GUI_EVENT_MENU = 14, item id). Spec = '\n'-separated lines:
-	//   "M<title>"                    start a menu
-	//   "I<id>\t<label>\t<shortcut>"  an item (id >= 0; shortcut text e.g. "^O", may be empty)
-	//   "-"                           a separator
-	// get_menu: the ACTIVE app window's spec + title (the topmost window that is not
-	// the menu bar, the desktop or borderless); returns a serial that changes when the
-	// active window or its menu changes (0 = none). menu_command: send GUI_EVENT_MENU(id)
-	// to the active window (id -1 = ask it to close, like its close box); 1 if delivered.
-	int      (*set_menu) (const char *spec, gui_handler handler);
-	unsigned (*get_menu) (char *buf, unsigned cap, char *title, unsigned title_cap);
-	int      (*menu_command) (int id);
-
 	// --- v40 additions (named IPC services, clipboard, opacity, session end) ---
 	// ipc_register: become service `name` (1 ok / 0 held by another live process);
 	// ipc_lookup: pid of a service or 0. Talk with mailbox_send / mailbox_recv
@@ -1494,7 +1418,6 @@ struct TKApiTable
 	int  (*ipc_lookup) (const char *name);
 	int  (*clipboard_set) (int type, const void *data, unsigned len);
 	int  (*clipboard_get) (int *type, void *buf, unsigned cap, unsigned *serial);
-	void (*set_window_alpha) (int alpha);
 	void (*shutdown) (int mode);
 
 	// --- v41 additions (full-screen apps) ---
@@ -1506,20 +1429,6 @@ struct TKApiTable
 	unsigned *(*fullscreen_begin) (int *w, int *h);
 	void      (*present_fb) (void);
 	void      (*fullscreen_end) (void);
-
-	// --- v42 additions (drag & drop, keyboard modifiers) ---
-	// drag_begin: start dragging (type 1 text / 2 file paths '\n'-separated, <= 4 KB)
-	// from the caller's window while the left button is held; `label` rides on the
-	// cursor. The window under the cursor gets GUI_EVENT_DRAG_OVER (16), the one under
-	// the release GUI_EVENT_DROP (15) -- lValue = (flags << 32) | (x << 16) | y, client
-	// coords, flags DND_F_COPY (Ctrl) / DND_F_LEAVE -- and the source GUI_EVENT_DRAG_DONE
-	// (17): lValue = (flags << 32) | target pid, flags DND_F_COPY / DND_F_CANCEL (Esc) /
-	// DND_F_DESKTOP (no window, or the desktop). All go to the pointer handler.
-	// drag_data: the last payload (copies <= cap, returns the full length + type).
-	// get_modifiers: MOD_CTRL 1 / MOD_SHIFT 2 / MOD_ALT 4 (held now);
-	// inject_modifiers: set them (vncd).
-	int      (*drag_begin) (int type, const void *data, unsigned len, const char *label);
-	int      (*drag_data) (int *type, void *buf, unsigned cap);
 	unsigned (*get_modifiers) (void);
 	void     (*inject_modifiers) (unsigned mods);
 
@@ -1635,17 +1544,6 @@ struct TKApiTable
 	// pixels a row. 0 if not possible (then keep the back buffer). fullscreen_end ends it.
 	unsigned *(*fullscreen_direct) (int *w, int *h, int *stride);
 
-	// --- v56 additions (the window-level remote desktop, rdpd) ---
-	// win_list: the windows, bottom to top (at most max) -> how many. win_read: the pixels
-	// (0x00RRGGBB) of a rectangle of window id's client area (part 0) or of its frame (part
-	// 1 active, 2 inactive: ow x oh, the client area inside is not drawn there) into dst
-	// (stride in pixels), clipped to it -> 0, -1 no such window / part. win_raise: to the front (it gets the keys);
-	// win_close: asked to close (as its close box) -> 0 / -1.
-	int (*win_list) (struct kapi_win_info *out, int max);
-	int (*win_read) (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
-	int (*win_raise) (unsigned id);
-	int (*win_close) (unsigned id);
-
 	// --- v57 additions ---
 	// seek: the read position of a file opened with open() -> 0, -1 (not seekable: FTP:...).
 	// A big file's cluster map is built at its first seek (FatFs fast seek): then any position
@@ -1695,24 +1593,6 @@ struct TKApiTable
 	// where they are: their x / y framed IN PLACE (draw them again with view 0), the triangles
 	// that need clipping clipped into the buffer's end past nfloats (keep room there).
 	void *(*gpu_vbuf) (unsigned bytes);
-	// --- v64 ---
-	// win_minimise: window id (0: the caller's) minimised -- not shown, no input -- until win_raise
-	// or raise_app brings it back (KAPI_WIN_MINIMISED in win_list) -> 0, -1 no such window.
-	int (*win_minimise) (unsigned id);
-	// win_geometry: the caller's window and the work area into *out -> 0, -1 no window.
-	int (*win_geometry) (struct kapi_win_geom *out);
-	// resize_window2: as resize_window, but the canvas and the frame's copies grow past their first
-	// size when needed (new memory, at the same addresses: their pixels are lost -- redraw them; the
-	// frame: get_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: size kept).
-	unsigned *(*resize_window2) (int w, int h, int *stride);
-	// --- v65 ---
-	// desk: the workspaces (virtual desktops). set >= 0 shows desk `set`, count > 0 sets how many
-	// there are (1 .. KAPI_DESK_MAX; the windows of the desks dropped go to the last one); -1 / 0
-	// keep them -> the current desk | the count << 8 | a counter bumped at every change << 16.
-	int (*desk) (int set, int count);
-	// win_desk: window id (0: the caller's) to desk n (-1: every desk; -2: only asked) -> its desk
-	// (-1: every desk), -3 no such window. (A topmost / backmost window stays on every desk.)
-	int (*win_desk) (unsigned id, int n);
 	// --- v66 ---
 	// screen_set: the screen's resolution now (w x h: 640 x 480 .. 2560 x 1600, w even), between two
 	// frames; every window kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 a size out
@@ -1978,21 +1858,6 @@ struct TKApiTable
 	// process that used no socket: zeros.
 	int (*net_stats) (int pid, struct kapi_net_stats *out);
 
-	// --- v81: the pointer's shape (gui/window.cpp) ---
-	// set_cursor: the shape shown while the pointer is over the caller's window's client area (or
-	// while that window holds the pointer: a button down) -> the shape it had / -1 (no window, an
-	// unknown shape). Kept until changed; the frame, the title bar and the other windows show
-	// their own. An app sets it as the pointer moves (uikit: uk_cursor, from a widget's onMouse).
-	int (*set_cursor) (int shape);
-
-	// --- v82: a window resized by its frame (gui/window.cpp) ---
-	// win_resizable: on != 0, the caller's window's edges and corners can be dragged; its client
-	// area is never made smaller than min_w x min_h -> 0 / -1 (no window, a borderless or fixed
-	// one). The kernel only shows the outline: at the release the window's pointer handler gets
-	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
-	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
-	int (*win_resizable) (int on, int min_w, int min_h);
-
 	// --- v83: shared libraries (kern/image.h; proc/image.cpp, kernel.cpp; docs/SHARED-LIBS-PLAN.md) ---
 	// lib_open: the shared library `name` mapped into the caller -> its export table, or 0 with
 	// *err (if not 0) = -KAPI_E*. name: a bare name ("uikit": SD:/lib/uikit.so) or a path (relative: to
@@ -2027,80 +1892,218 @@ struct TKApiTable
 
 	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
 	long (*ws_ctl) (int op, long a0, long a1, long a2);
+
+#ifndef __aarch64__
+	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
+	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
+	// such a table (appkit_calls.inc's KAPI_HOST). On Onyx the windows are Elegant's, the graphics
+	// server (a user process: kern/wsrv.h, user/Kits/appkit/elegant.h), and the kernel's table ends
+	// above: these entries were removed from it on 2026-10-05 (kapi v90).
+
+	// --- windowing ---
+	unsigned *(*create_window) (int w, int h, const char *title);
+	unsigned *(*create_window_ex) (int x, int y, int w, int h, const char *title,
+				       unsigned flags);
+	unsigned *(*resize_window) (int w, int h);
+	int (*toggle_app) (const char *name);
+	int (*raise_app) (const char *name);
+	int (*list_windows) (char *buf, unsigned size);
+	int (*wallpaper_generate) (unsigned base, int points, unsigned seed);
+	void (*present) (void);
+
+	// --- app-drawn text + keyboard ---
+	void (*draw_text) (int, int, const char *, unsigned);
+	void (*set_key_handler) (gui_handler);
+
+	// --- v2 additions ---
+	// Canvas-click handler: GUI_EVENT_CANVAS_CLICK with (clientX<<16)|clientY when a
+	// press lands in the client area on no widget. For app-drawn mouse UIs.
+	void (*set_click_handler) (gui_handler);
+	void  (*cursor_pos) (int *x, int *y);	// cursor, relative to this window's client
+
+	// --- v12 additions ---
+	// Move the calling app's window (outer top-left, screen coords). For borderless
+	// windows that re-position themselves, e.g. the panel keeping itself centered.
+	void  (*move_window) (int x, int y);
+
+	// --- v13 additions (app-drawn desktop wallpaper) ---
+	// Map the shared screen-sized wallpaper buffer (0x00RRGGBB) into this app and
+	// return its VA (+ dims via w/h). Draw into it, then wallpaper_commit() to make
+	// it the live background. Frames are kernel-owned -> persists after the app exits.
+	unsigned *(*wallpaper_buffer) (int *w, int *h);
+	void      (*wallpaper_commit) (void);
+
+	// --- v22 additions (full pointer stream for app-side widget toolkits) ---
+	// Opt-in: register a handler that receives GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE
+	// for this window's client area, with value = (changed<<40)|(buttons<<32)|
+	// (x<<16)|y (client coords; `changed` = the button 1/2/4 for DOWN/UP). Lets a
+	// user-space toolkit (uikit.h) own its widgets. The legacy set_click_handler is
+	// unchanged.
+	void (*set_pointer_handler) (gui_handler fn);
+
+	// --- v28 additions (user-side window chrome) ---
+	// get_chrome: fill *out with the calling app's window surfaces (content canvas +
+	// the active/inactive chrome copies + insets + title) so a user-side toolkit can
+	// draw the title bar / borders / close box. Returns 1, or 0 if the app has no
+	// window. draw_text_buf: render kernel-font text (transparent background) into an
+	// arbitrary app-mapped 0x00RRGGBB buffer (dstW x dstH) at (x,y) -- used to draw the
+	// title into the chrome buffer (the kernel font is the only font apps have). The
+	// kernel still owns chrome BEHAVIOUR (title-bar drag, close-box hit-test).
+	int  (*get_chrome) (struct kapi_chrome *out);
+
+	// --- v34 additions (scroll-wheel speed) ---
+	// Lines scrolled per wheel notch, applied system-wide: the WM multiplies the raw
+	// notch by this factor before delivering GUI_EVENT_PTR_WHEEL, so every toolkit/app
+	// feels it at once. set clamps to [1,16]; the theme editor persists it in
+	// SD:/etc/theme.txt (wheelspeed=N) and the kernel restores it at boot.
+	void (*set_wheel_speed) (int lines_per_notch);
+	int  (*get_wheel_speed) (void);
+
+	// --- v39 additions (system menu bar) ---
+	// set_menu: declare the calling app's menus on its window + the callback that
+	// receives (sender 0, GUI_EVENT_MENU = 14, item id). Spec = '\n'-separated lines:
+	//   "M<title>"                    start a menu
+	//   "I<id>\t<label>\t<shortcut>"  an item (id >= 0; shortcut text e.g. "^O", may be empty)
+	//   "-"                           a separator
+	// get_menu: the ACTIVE app window's spec + title (the topmost window that is not
+	// the menu bar, the desktop or borderless); returns a serial that changes when the
+	// active window or its menu changes (0 = none). menu_command: send GUI_EVENT_MENU(id)
+	// to the active window (id -1 = ask it to close, like its close box); 1 if delivered.
+	int      (*set_menu) (const char *spec, gui_handler handler);
+	unsigned (*get_menu) (char *buf, unsigned cap, char *title, unsigned title_cap);
+	int      (*menu_command) (int id);
+	void (*set_window_alpha) (int alpha);
+
+	// --- v42 additions (drag & drop, keyboard modifiers) ---
+	// drag_begin: start dragging (type 1 text / 2 file paths '\n'-separated, <= 4 KB)
+	// from the caller's window while the left button is held; `label` rides on the
+	// cursor. The window under the cursor gets GUI_EVENT_DRAG_OVER (16), the one under
+	// the release GUI_EVENT_DROP (15) -- lValue = (flags << 32) | (x << 16) | y, client
+	// coords, flags DND_F_COPY (Ctrl) / DND_F_LEAVE -- and the source GUI_EVENT_DRAG_DONE
+	// (17): lValue = (flags << 32) | target pid, flags DND_F_COPY / DND_F_CANCEL (Esc) /
+	// DND_F_DESKTOP (no window, or the desktop). All go to the pointer handler.
+	// drag_data: the last payload (copies <= cap, returns the full length + type).
+	// get_modifiers: MOD_CTRL 1 / MOD_SHIFT 2 / MOD_ALT 4 (held now);
+	// inject_modifiers: set them (vncd).
+	int      (*drag_begin) (int type, const void *data, unsigned len, const char *label);
+	int      (*drag_data) (int *type, void *buf, unsigned cap);
+
+	// --- v56 additions (the window-level remote desktop, rdpd) ---
+	// win_list: the windows, bottom to top (at most max) -> how many. win_read: the pixels
+	// (0x00RRGGBB) of a rectangle of window id's client area (part 0) or of its frame (part
+	// 1 active, 2 inactive: ow x oh, the client area inside is not drawn there) into dst
+	// (stride in pixels), clipped to it -> 0, -1 no such window / part. win_raise: to the front (it gets the keys);
+	// win_close: asked to close (as its close box) -> 0 / -1.
+	int (*win_list) (struct kapi_win_info *out, int max);
+	int (*win_read) (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
+	int (*win_raise) (unsigned id);
+	int (*win_close) (unsigned id);
+	// --- v64 ---
+	// win_minimise: window id (0: the caller's) minimised -- not shown, no input -- until win_raise
+	// or raise_app brings it back (KAPI_WIN_MINIMISED in win_list) -> 0, -1 no such window.
+	int (*win_minimise) (unsigned id);
+	// win_geometry: the caller's window and the work area into *out -> 0, -1 no window.
+	int (*win_geometry) (struct kapi_win_geom *out);
+	// resize_window2: as resize_window, but the canvas and the frame's copies grow past their first
+	// size when needed (new memory, at the same addresses: their pixels are lost -- redraw them; the
+	// frame: get_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: size kept).
+	unsigned *(*resize_window2) (int w, int h, int *stride);
+	// --- v65 ---
+	// desk: the workspaces (virtual desktops). set >= 0 shows desk `set`, count > 0 sets how many
+	// there are (1 .. KAPI_DESK_MAX; the windows of the desks dropped go to the last one); -1 / 0
+	// keep them -> the current desk | the count << 8 | a counter bumped at every change << 16.
+	int (*desk) (int set, int count);
+	// win_desk: window id (0: the caller's) to desk n (-1: every desk; -2: only asked) -> its desk
+	// (-1: every desk), -3 no such window. (A topmost / backmost window stays on every desk.)
+	int (*win_desk) (unsigned id, int n);
+
+	// --- v81: the pointer's shape (gui/window.cpp) ---
+	// set_cursor: the shape shown while the pointer is over the caller's window's client area (or
+	// while that window holds the pointer: a button down) -> the shape it had / -1 (no window, an
+	// unknown shape). Kept until changed; the frame, the title bar and the other windows show
+	// their own. An app sets it as the pointer moves (uikit: uk_cursor, from a widget's onMouse).
+	int (*set_cursor) (int shape);
+
+	// --- v82: a window resized by its frame (gui/window.cpp) ---
+	// win_resizable: on != 0, the caller's window's edges and corners can be dragged; its client
+	// area is never made smaller than min_w x min_h -> 0 / -1 (no window, a borderless or fixed
+	// one). The kernel only shows the outline: at the release the window's pointer handler gets
+	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
+	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
+	int (*win_resizable) (int on, int min_w, int min_h);
+#endif
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
 // are append-only: a slot never moves.
 #define KAPI_CHECK_SLOT(name, n) \
 	KAPI_STATIC_ASSERT (__builtin_offsetof (struct TKApiTable, name) == (n) * 8, "kapi " #name " is not slot " #n)
-KAPI_CHECK_SLOT (proc_stats, 198);
-KAPI_CHECK_SLOT (vm_map, 199);
-KAPI_CHECK_SLOT (vm_unmap, 200);
-KAPI_CHECK_SLOT (vm_protect, 201);
-KAPI_CHECK_SLOT (vm_advise, 202);
-KAPI_CHECK_SLOT (vm_query, 203);
-KAPI_CHECK_SLOT (vm_stats, 204);
-KAPI_CHECK_SLOT (thread_create_ex, 205);
-KAPI_CHECK_SLOT (thread_info, 206);
-KAPI_CHECK_SLOT (file_open, 207);
-KAPI_CHECK_SLOT (file_read, 208);
-KAPI_CHECK_SLOT (file_write, 209);
-KAPI_CHECK_SLOT (file_seek, 210);
-KAPI_CHECK_SLOT (file_truncate, 211);
-KAPI_CHECK_SLOT (file_sync, 212);
-KAPI_CHECK_SLOT (file_stat, 213);
-KAPI_CHECK_SLOT (file_close, 214);
-KAPI_CHECK_SLOT (path_stat, 215);
-KAPI_CHECK_SLOT (path_unlink, 216);
-KAPI_CHECK_SLOT (path_mkdir, 217);
-KAPI_CHECK_SLOT (path_rename, 218);
-KAPI_CHECK_SLOT (path_utime, 219);
-KAPI_CHECK_SLOT (dir_read, 220);
-KAPI_CHECK_SLOT (stream_write_nb, 221);
-KAPI_CHECK_SLOT (spawn_ex, 222);
-KAPI_CHECK_SLOT (proc_wait, 223);
-KAPI_CHECK_SLOT (get_argv, 224);
-KAPI_CHECK_SLOT (get_env, 225);
-KAPI_CHECK_SLOT (getpid, 226);
-KAPI_CHECK_SLOT (clock_info, 227);
-KAPI_CHECK_SLOT (sleep_us, 228);
-KAPI_CHECK_SLOT (sock_open, 229);
-KAPI_CHECK_SLOT (sock_connect, 230);
-KAPI_CHECK_SLOT (sock_bind, 231);
-KAPI_CHECK_SLOT (sock_listen, 232);
-KAPI_CHECK_SLOT (sock_accept, 233);
-KAPI_CHECK_SLOT (sock_send, 234);
-KAPI_CHECK_SLOT (sock_recv, 235);
-KAPI_CHECK_SLOT (sock_shutdown, 236);
-KAPI_CHECK_SLOT (sock_close, 237);
-KAPI_CHECK_SLOT (sock_getopt, 238);
-KAPI_CHECK_SLOT (sock_setopt, 239);
-KAPI_CHECK_SLOT (sock_name, 240);
-KAPI_CHECK_SLOT (poll, 241);
-KAPI_CHECK_SLOT (sock_pair, 242);
-KAPI_CHECK_SLOT (sock_sendmsg, 243);
-KAPI_CHECK_SLOT (sock_recvmsg, 244);
-KAPI_CHECK_SLOT (shm_create, 245);
-KAPI_CHECK_SLOT (shm_open, 246);
-KAPI_CHECK_SLOT (shm_unlink, 247);
-KAPI_CHECK_SLOT (shm_ctl, 248);
-KAPI_CHECK_SLOT (shm_map, 249);
-KAPI_CHECK_SLOT (handle_close, 250);
-KAPI_CHECK_SLOT (spawn_ex2, 251);
-KAPI_CHECK_SLOT (get_handles, 252);
-KAPI_CHECK_SLOT (image_preload, 253);
-KAPI_CHECK_SLOT (image_unload, 254);
-KAPI_CHECK_SLOT (image_list, 255);
-KAPI_CHECK_SLOT (kernel_info, 256);
-KAPI_CHECK_SLOT (cpu_stats, 257);
-KAPI_CHECK_SLOT (net_stats, 258);
-KAPI_CHECK_SLOT (set_cursor, 259);
-KAPI_CHECK_SLOT (win_resizable, 260);
-KAPI_CHECK_SLOT (lib_open, 261);
-KAPI_CHECK_SLOT (sound_output, 262);
-KAPI_CHECK_SLOT (sound_clients, 263);
-KAPI_CHECK_SLOT (sound_client_volume, 264);
-KAPI_CHECK_SLOT (ws_ctl, 265);
+KAPI_CHECK_SLOT (proc_stats, 162);
+KAPI_CHECK_SLOT (vm_map, 163);
+KAPI_CHECK_SLOT (vm_unmap, 164);
+KAPI_CHECK_SLOT (vm_protect, 165);
+KAPI_CHECK_SLOT (vm_advise, 166);
+KAPI_CHECK_SLOT (vm_query, 167);
+KAPI_CHECK_SLOT (vm_stats, 168);
+KAPI_CHECK_SLOT (thread_create_ex, 169);
+KAPI_CHECK_SLOT (thread_info, 170);
+KAPI_CHECK_SLOT (file_open, 171);
+KAPI_CHECK_SLOT (file_read, 172);
+KAPI_CHECK_SLOT (file_write, 173);
+KAPI_CHECK_SLOT (file_seek, 174);
+KAPI_CHECK_SLOT (file_truncate, 175);
+KAPI_CHECK_SLOT (file_sync, 176);
+KAPI_CHECK_SLOT (file_stat, 177);
+KAPI_CHECK_SLOT (file_close, 178);
+KAPI_CHECK_SLOT (path_stat, 179);
+KAPI_CHECK_SLOT (path_unlink, 180);
+KAPI_CHECK_SLOT (path_mkdir, 181);
+KAPI_CHECK_SLOT (path_rename, 182);
+KAPI_CHECK_SLOT (path_utime, 183);
+KAPI_CHECK_SLOT (dir_read, 184);
+KAPI_CHECK_SLOT (stream_write_nb, 185);
+KAPI_CHECK_SLOT (spawn_ex, 186);
+KAPI_CHECK_SLOT (proc_wait, 187);
+KAPI_CHECK_SLOT (get_argv, 188);
+KAPI_CHECK_SLOT (get_env, 189);
+KAPI_CHECK_SLOT (getpid, 190);
+KAPI_CHECK_SLOT (clock_info, 191);
+KAPI_CHECK_SLOT (sleep_us, 192);
+KAPI_CHECK_SLOT (sock_open, 193);
+KAPI_CHECK_SLOT (sock_connect, 194);
+KAPI_CHECK_SLOT (sock_bind, 195);
+KAPI_CHECK_SLOT (sock_listen, 196);
+KAPI_CHECK_SLOT (sock_accept, 197);
+KAPI_CHECK_SLOT (sock_send, 198);
+KAPI_CHECK_SLOT (sock_recv, 199);
+KAPI_CHECK_SLOT (sock_shutdown, 200);
+KAPI_CHECK_SLOT (sock_close, 201);
+KAPI_CHECK_SLOT (sock_getopt, 202);
+KAPI_CHECK_SLOT (sock_setopt, 203);
+KAPI_CHECK_SLOT (sock_name, 204);
+KAPI_CHECK_SLOT (poll, 205);
+KAPI_CHECK_SLOT (sock_pair, 206);
+KAPI_CHECK_SLOT (sock_sendmsg, 207);
+KAPI_CHECK_SLOT (sock_recvmsg, 208);
+KAPI_CHECK_SLOT (shm_create, 209);
+KAPI_CHECK_SLOT (shm_open, 210);
+KAPI_CHECK_SLOT (shm_unlink, 211);
+KAPI_CHECK_SLOT (shm_ctl, 212);
+KAPI_CHECK_SLOT (shm_map, 213);
+KAPI_CHECK_SLOT (handle_close, 214);
+KAPI_CHECK_SLOT (spawn_ex2, 215);
+KAPI_CHECK_SLOT (get_handles, 216);
+KAPI_CHECK_SLOT (image_preload, 217);
+KAPI_CHECK_SLOT (image_unload, 218);
+KAPI_CHECK_SLOT (image_list, 219);
+KAPI_CHECK_SLOT (kernel_info, 220);
+KAPI_CHECK_SLOT (cpu_stats, 221);
+KAPI_CHECK_SLOT (net_stats, 222);
+KAPI_CHECK_SLOT (lib_open, 223);
+KAPI_CHECK_SLOT (sound_output, 224);
+KAPI_CHECK_SLOT (sound_clients, 225);
+KAPI_CHECK_SLOT (sound_client_volume, 226);
+KAPI_CHECK_SLOT (ws_ctl, 227);
 
 #ifdef __cplusplus
 }

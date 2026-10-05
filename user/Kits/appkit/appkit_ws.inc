@@ -16,6 +16,10 @@
 //
 #include "elegant.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 #define WS_KT	((const struct TKApiTable *) KAPI_TABLE_VA)
 
 static int ws__cw, ws__ch;		// the canvas: its row in pixels, its rows (kapi_draw_text)
@@ -341,3 +345,4 @@ static void ws_cursor_pos (int *x, int *y)
 }
 
 #undef WS_KT
+#pragma GCC diagnostic pop

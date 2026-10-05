@@ -201,20 +201,30 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      kernel keeps `kernel/gui/kwin.cpp` + a 150-line `kern/gui/window.h` (a program's queue of events,
      the keys' state, the full screen: docs/02 §10's box). `sys/kapi.cpp` lost its 40 window functions
      (740 lines), `kernel.cpp` its composition, its pointer's art, its `OnMouse` / `OnKey` calls (the
-     watchdog finds the programs' queues by their processes); the table's 38 window entries and the
-     activity shell's 2 are 0 (slots unchanged). AppKit's window calls speak to Elegant only; a call
+     watchdog finds the programs' queues by their processes); the table's 36 window entries and the
+     activity shell's 2 were 0 (removed since: stage 5c). AppKit's window calls speak to Elegant only; a call
      without a server waits 5 s. No server -> the kernel's console (`DebugConsoleTakeover`). The image:
      1 195 832 bytes (1 239 096 before). **Tried on the Pi**: the desktop, Terminal and Tinypad, a
      full-screen program (8 s) ended by kill, Elegant killed -> started again with its 7 windows.
-     Lost with it, to give back through Elegant: **Alt + Print Screen** captures the screen, not the
-     active window (the kernel no longer knows the windows); **the wheel's speed** of `SD:/etc/theme.txt`
-     is not read at boot (Elegant starts with its default; the Theme applet sets it while running).
-   - **Still to do**: the table's entries could be compacted (they are only 0 today: a renumbering
-     of the system calls, and the branch `kapi-compact` of another session touches the same table --
-     ask before); `el0test` / `faulttest` (they read the table) to run again; the role given to the
+   - **Stage 5c DONE (2026-10-05, on the Pi since 23:10): the table is compacted, kapi v90.** The 36
+     entries of the windows and the activity shell's 2 are removed from `TKApiTable` (266 -> 228
+     entries; `launch` = 1, `exit` = 5, `pop_event` = 158, `ws_ctl` = 227; `kern/el0.h` follows), as
+     the user asked ("refaire le .so de AppKit, pas de rebuild du reste"). Rebuilt with the kernel:
+     `appkit.so`, and what reads the table itself -- `el0test`, `faulttest`, `sysstat` (its names:
+     `python tools/gen_kapi_names.py`). The PC stand-in kernels keep the 36 entries after the table's
+     end (`#ifndef __aarch64__`; `appkit_calls.inc`'s `KAPI_HOST`). **Before shipping, the card was
+     scanned** for programs reading the kernel's table (docs/02 §8, v90): none but the tests -- but a
+     `jet.app/main` linked before AppKit (the one of 04:54 that day) does, 253 reads: **the package
+     `jet` must be the one built since 13:54** (`build-web.sh` with today's sysroot), check before
+     publishing. **Print Screen** (Alt: the window that has the keyboard) and **the wheel's speed**
+     (`wheelspeed=` of `SD:/etc/theme.txt`) are Elegant's now (`server.cpp`: `print_screen`,
+     `wheel_speed`); the kernel's `PrintScreenPoll` is gone. **Tried on the Pi**: `uname` says kapi
+     90, the desktop, `el0test` and `faulttest kapi` pass.
+   - **Still to do**: the branch `kapi-compact` of another session (v87's compaction) touches the same
+     table: it is superseded by v90 -- say so before anyone merges it; the role given to the
      process the kernel started; the capture channel for `rdpd`; `screen_set` under Elegant to try;
-     Elegant's memory after many windows; every app started again on this kernel
-     (`tools/tests/shlib/pi_apps.py`); the packages and the merge into `main` when the user says.
+     Elegant's memory after many windows; the packages (kernel + AppKit + Elegant TOGETHER: a v90
+     kernel with an older `appkit.so` starts nothing) and the merge into `main` when the user says.
    - **Known differences**: a program's wallpaper buffer is its own copy (what is shown when it asks),
      not the live one; a drag's payload is 4 044 bytes at most (4 096 before); a program started
      while the kernel's window manager has the display stays there (and the reverse).

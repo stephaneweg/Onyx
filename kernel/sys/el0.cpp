@@ -34,7 +34,7 @@ extern "C" void kapi_exit (int nStatus);
 #define KAPI_SLOTS	KAPI_TABLE_SLOTS		// (kern/addrspace.h)
 
 static_assert (KAPI_STUBS_VA == KAPI_TABLE_VA + 0x10000ULL, "kern/el0.h: KAPI_STUBS_VA");
-static_assert (__builtin_offsetof (TKApiTable, create_window) == 8, "slot 0 is version (+ padding)");
+static_assert (__builtin_offsetof (TKApiTable, launch) == 8, "slot 0 is version (+ padding)");
 static_assert (sizeof (TKApiTable) % sizeof (u64) == 0, "the table is made of 8-byte slots");
 static_assert (SLOT (exit) == EL0_SYS_EXIT, "kern/el0.h: EL0_SYS_EXIT");
 static_assert (SLOT (should_exit) == EL0_SYS_SHOULD_EXIT, "kern/el0.h: EL0_SYS_SHOULD_EXIT");

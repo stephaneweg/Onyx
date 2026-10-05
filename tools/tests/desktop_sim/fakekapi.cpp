@@ -1155,7 +1155,6 @@ static int desk (int set, int count)
 	return s_desk | (s_desks << 8);
 }
 static int win_desk (unsigned, int n) { return n < -1 ? s_desk : n; }
-static int shell_request (int, const void *, unsigned) { return -1; }	// (not in the activity shell)
 static int random_fill (void *b, unsigned n) { for (unsigned i = 0; i < n; i++) ((unsigned char *) b)[i] = (unsigned char) rand (); return (int) n; }
 
 // memmon's figures; SIM_NOTE="Title|Text": one notification in the mailbox (notifyd); SIM_PAD=1:
@@ -1259,7 +1258,6 @@ static void setup (void)
 	T->clipboard_get = clipboard_get; T->set_click_handler = set_click; T->key_held = key_held;
 	T->cursor_pos = cursor_pos; T->set_window_alpha = set_alpha; T->random = random_fill; T->reboot = h_reboot;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
-	T->shell_request = shell_request;
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
 	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin; T->drag_data = drag_data;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;

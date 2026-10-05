@@ -11,6 +11,7 @@ import os, re, sys
 ROOT = os.path.dirname (os.path.dirname (os.path.abspath (__file__)))
 src = open (os.path.join (ROOT, "kernel/include/kern/kapi_abi.h"), encoding = "utf-8").read ()
 body = re.search (r"^struct TKApiTable\s*\{(.*?)^\};", src, re.S | re.M).group (1)
+body = body.split ("#ifndef __aarch64__")[0]		# (what follows is a PC stand-in kernel's: not Onyx's table)
 body = re.sub (r"//[^\n]*", "", body)
 names = ["version"]
 for stmt in body.split (";"):

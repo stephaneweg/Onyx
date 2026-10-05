@@ -40,13 +40,13 @@
 #define EL0_BLOB_OFFSET		(EL0_STUB_SLOTS * EL0_STUB_SIZE)	// the routines from 8 KB
 
 // The table's slots the user-side code calls (static_assert'ed against TKApiTable in sys/el0.cpp).
-#define EL0_SYS_EXIT		13
-#define EL0_SYS_SHOULD_EXIT	16
-#define EL0_SYS_THREAD_EXIT	168
-#define EL0_SYS_POP_EVENT	194		// (v73)
-#define EL0_SYS_EVENT_MODS	195		// (v73)
-#define EL0_SYS_POP_POST	196		// (v73)
-#define EL0_SYS_PUMP_SLEEP	197		// (v73)
+#define EL0_SYS_EXIT		5
+#define EL0_SYS_SHOULD_EXIT	8
+#define EL0_SYS_THREAD_EXIT	132
+#define EL0_SYS_POP_EVENT	158		// (v73)
+#define EL0_SYS_EVENT_MODS	159		// (v73)
+#define EL0_SYS_POP_POST	160		// (v73)
+#define EL0_SYS_PUMP_SLEEP	161		// (v73)
 // Not a table slot: an app core's job returned (its return address is the blob's El0CoreReturn).
 #define EL0_SYS_CORE_DONE	0xFFFF
 

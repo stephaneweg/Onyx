@@ -722,8 +722,6 @@ static int ipc_register (const char *name) { g_services.push_back (name ? name :
 static int ipc_lookup (const char *) { return 0; }
 static int mailbox_send (int, int, const void *, unsigned) { return 0; }
 static int mailbox_recv (int *, int *, void *, unsigned, int blocking) { if (blocking) usleep (50000); return -1; }
-static int register_shell (void) { return 0; }
-static int shell_request (int, const void *, unsigned) { return -1; }
 static int surface_create (int, int) { return -1; }
 static unsigned *surface_map (int) { return 0; }
 static int surface_size (int, int *, int *) { return 0; }
@@ -814,7 +812,6 @@ static void setup (void)
 	T->thread_priority = thread_priority; T->core_acquire = core_acquire; T->core_run = core_run; T->core_state = core_state; T->core_release = core_release;
 	T->wait_word = wait_word; T->wake_word = wake_word;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup; T->mailbox_send = mailbox_send; T->mailbox_recv = mailbox_recv;
-	T->register_shell = register_shell; T->shell_request = shell_request;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
 	T->surface_present = surface_present; T->surface_destroy = surface_destroy;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_write = sound_write; T->sound_status = sound_status;

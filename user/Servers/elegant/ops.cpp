@@ -581,6 +581,17 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 	return EL_E_BADOP;
 }
 
+unsigned el_core_active_id (void)
+{
+	CWindow *pWin = g_pElWM != 0 ? g_pElWM->KeyTarget () : 0;
+	return pWin != 0 ? pWin->Id () : 0;
+}
+
+void el_core_wheel (int lines)
+{
+	if (g_pElWM != 0 && lines > 0) g_pElWM->SetWheelSpeed (lines);
+}
+
 // The program that has the keyboard (0: none), for the kernel's kapi_key_held and the pads.
 unsigned el_core_focus_pid (void)
 {

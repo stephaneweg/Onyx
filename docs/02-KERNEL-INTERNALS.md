@@ -134,13 +134,12 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      `ukbd2`, was then ignored. Each keyboard's raw report is kept and the window manager gets
      them merged (modifiers ORed, held keys joined), so one keyboard's empty report does not
      release the keys held on another. The mouse is still `mouse1` only. **Print Screen** (USB usage
-     0x46) is caught there, on its press (`s_nPrintScreen`: 1, or 2 with Alt), and handled by the
-     main task's loop (it now wakes every 50 ms: `PrintScreenPoll`, the network's notices every
-     250 ms as before): the **Screenshot** app is told through its service `screenshot` (message
-     type 1, `"now"` or `"window <id>"` — with Alt, the window that has the keyboard, found with
-     `Snapshot` / `HasKeyFocus`), else started (`ExecPath ("SD:apps/screenshot.app/main",
-     "--now" | "--window <id>", "screenshot")`). No key event reaches the app in front (the
-     keymap gives Print Screen no character).
+     0x46) is no longer the kernel's (kapi v90): the held keys' report goes to **Elegant**
+     (`KAPI_WS_IN_HELD_USB`), which sees the key's press (`print_screen`, `user/Servers/elegant/server.cpp`)
+     and tells the **Screenshot** app through its service `screenshot` (message type 1, `"now"` or
+     `"window <id>"` — with Alt, the window that has the keyboard, which Elegant knows), else starts it
+     (`kapi_exec_as ("SD:/apps/screenshot.app/main", "--now" | "--window <id>", "screenshot")`). No key
+     event reaches the app in front (the keymap gives Print Screen no character).
    - **`CGuiWatchdogTask`** (skipped with `watchdog=0` in `cmdline.txt`) — once a second, checks the GUI and writes to the kernel
      log (`kmsg`): `compositor STALLED` when `CWindowManager::FrameCount()` has not moved
      for 2 s (with every task's `name:state`), `app '<title>' NOT PUMPING events` when a
@@ -1184,7 +1183,25 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
-v89 = **the graphics server's mechanisms** (`kernel/sys/wsrv.cpp`, `kern/wsrv.h`): `ws_ctl` (slot 265). The
+v90 = **the table without the windows** (2026-10-05): the 36 entries of the windows (`create_window`,
+`present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`, `set_wheel_speed`...) and the 2 of
+the activity shell (`register_shell`, `shell_request`: no program used them) are **removed** from
+`TKApiTable`, and the entries after them moved up: 266 → **228 entries**, `launch` is slot 1, `exit` 5,
+`pop_event` 158, `ws_ctl` 227 (the `KAPI_CHECK_SLOT`s of `kapi_abi.h`, the table below and
+`kern/el0.h`'s `EL0_SYS_*` have today's numbers; a slot quoted in an older note is of its time).
+**AppKit is rebuilt with the kernel and installed with it; no program is** — they call AppKit by name,
+and AppKit's window functions speak to Elegant (v89). What reads the kernel's table itself must be
+rebuilt: `el0test`, `faulttest` (on purpose: `KAPI_INLINE`), `sysstat` for its names
+(`BinUtils/kapi_names.h`, `tools/gen_kapi_names.py`) — and a program linked before AppKit (kapi v86)
+would call a wrong system call: scan the card first (`orr xN, xzr, #0x380000000` followed by a load
+from `[xN, #off]`; a `movk xN, #0x8000` after it is AppKit's own table, which is fine). On 2026-10-05
+nothing on the card does but those tests. A stand-in kernel on a PC (the simulator, Koton for Windows,
+macOS) still has a window manager: for those builds the 36 entries are declared **after the table's
+end** (`#ifndef __aarch64__`), and AppKit's inline calls use them (`appkit_calls.inc`'s `KAPI_HOST`).
+With it: **Print Screen** and **the wheel's speed** (`wheelspeed=` of `SD:/etc/theme.txt`, read when
+Elegant starts) are Elegant's.
+
+v89 = **the graphics server's mechanisms** (`kernel/sys/wsrv.cpp`, `kern/wsrv.h`): `ws_ctl` (slot 265 then; 227 since v90). The
 windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant`, `user/Servers/elegant`;
 `docs/GUI-USERSPACE-STUDY.md`, the stages in `docs/HANDOFF.md`). The kernel gives it mechanisms only:
 
@@ -1333,14 +1350,14 @@ deferred zap, the TLB rules, the OOM policy — is §4 *Demand paging*. Every en
 
 | Slot | Entry | Does → returns |
 |---|---|---|
-| 199 | `vm_map (addr, len, prot, flags)` | A zero-filled `ANON` region of `len` (rounded up) in the mmap arena `[34 GB, 60 GB)`, filled on first touch (`KAPI_MAP_POPULATE`: now, a yield every 64 pages, a failure not reported). `addr` is a hint (taken if free, else the lowest gap) unless `KAPI_MAP_FIXED` (aligned, inside the arena; replaces what is there) or `KAPI_MAP_FIXED_NOREPLACE` (`-EEXIST` if anything is there). `prot` = `KAPI_PROT_NONE/READ/WRITE`, v78 `EXEC` (executable at EL0: a JIT; before v78: `-ENOTSUP`). → the address / `-EINVAL` (len 0, a bad `FIXED`), `-ENOMEM` (no room, 4096 regions, or a writable map larger than the free app pool − 16 MB without `KAPI_MAP_NORESERVE`) |
-| 200 | `vm_unmap (addr, len)` | Inside the arena (holes allowed; regions split): the pages dropped (a pinned one when its kapi ends) → 0 / `-EINVAL` (unaligned, outside the arena) / `-ENOMEM` (a split at 4096 regions) |
-| 201 | `vm_protect (addr, len, prot)` | `ANON` regions covering the range without a hole: their protection (split / merged), the present pages re-protected + TLBI (a write taken from a page under another thread's kapi: when it ends) → 0 / `-EINVAL` / `-ENOMEM` (split cap) / `-ENOTSUP` (`EXEC` over an SHM region; before v78: any `EXEC`) |
-| 202 | `vm_advise (addr, len, advice)` | Lazy regions (`ANON`, `HEAP`, `STACK`) covering the range: `KAPI_MADV_WILLNEED` fills (`-ENOMEM`); `DONTNEED` / `FREE` drop the pages — zeros on the next touch (`ANON` and `HEAP` only); `NORMAL` / `RANDOM` / `SEQUENTIAL` nothing → 0 / `-EINVAL` |
-| 203 | `vm_query (addr, out)` | `struct kapi_vm_region { start, end, prot, kind (KAPI_VMK_ANON/HEAP/STACK/IMAGE/FIXED), resident (pages present), flags (KAPI_VMF_LAZY) }` of the region holding `addr` → 0, or of the next one above → 1; `-ENOMEM` none above, `-EFAULT` |
-| 204 | `vm_stats (pid, out)` | `struct kapi_vm_stats { resident (bytes of owned frames, page tables included), lazy (VA of lazy regions), writable (VA of writable regions), faults (pages filled), pt_bytes, limit (0) }`, `pid` 0 = self → 0 / `-ESRCH` / `-EFAULT` |
-| 205 | `thread_create_ex (attr)` | `struct kapi_thread_attr { fn, arg, stack_size (0 = 8 MB; 16 KB .. 16 MB, lazy), tls (its initial TPIDR_EL0), name, flags (KAPI_THREAD_DETACHED: no join, its record freed when it ends), prio (0, 1 = "real time"), reserved[2] = 0 }` → tid ≥ 2 / `-EAGAIN` (32 running) / `-ENOMEM` / `-EINVAL` / `-EFAULT` |
-| 206 | `thread_info (tid, out)` | `struct kapi_thread_info { stack_lo, stack_hi (its top: the initial SP), tid, state (0 running, 1 ended, joinable), guard (unmapped bytes below stack_lo) }`, `tid` 0 = self, 1 = main → 0 / `-ESRCH` / `-EFAULT` |
+| 163 | `vm_map (addr, len, prot, flags)` | A zero-filled `ANON` region of `len` (rounded up) in the mmap arena `[34 GB, 60 GB)`, filled on first touch (`KAPI_MAP_POPULATE`: now, a yield every 64 pages, a failure not reported). `addr` is a hint (taken if free, else the lowest gap) unless `KAPI_MAP_FIXED` (aligned, inside the arena; replaces what is there) or `KAPI_MAP_FIXED_NOREPLACE` (`-EEXIST` if anything is there). `prot` = `KAPI_PROT_NONE/READ/WRITE`, v78 `EXEC` (executable at EL0: a JIT; before v78: `-ENOTSUP`). → the address / `-EINVAL` (len 0, a bad `FIXED`), `-ENOMEM` (no room, 4096 regions, or a writable map larger than the free app pool − 16 MB without `KAPI_MAP_NORESERVE`) |
+| 164 | `vm_unmap (addr, len)` | Inside the arena (holes allowed; regions split): the pages dropped (a pinned one when its kapi ends) → 0 / `-EINVAL` (unaligned, outside the arena) / `-ENOMEM` (a split at 4096 regions) |
+| 165 | `vm_protect (addr, len, prot)` | `ANON` regions covering the range without a hole: their protection (split / merged), the present pages re-protected + TLBI (a write taken from a page under another thread's kapi: when it ends) → 0 / `-EINVAL` / `-ENOMEM` (split cap) / `-ENOTSUP` (`EXEC` over an SHM region; before v78: any `EXEC`) |
+| 166 | `vm_advise (addr, len, advice)` | Lazy regions (`ANON`, `HEAP`, `STACK`) covering the range: `KAPI_MADV_WILLNEED` fills (`-ENOMEM`); `DONTNEED` / `FREE` drop the pages — zeros on the next touch (`ANON` and `HEAP` only); `NORMAL` / `RANDOM` / `SEQUENTIAL` nothing → 0 / `-EINVAL` |
+| 167 | `vm_query (addr, out)` | `struct kapi_vm_region { start, end, prot, kind (KAPI_VMK_ANON/HEAP/STACK/IMAGE/FIXED), resident (pages present), flags (KAPI_VMF_LAZY) }` of the region holding `addr` → 0, or of the next one above → 1; `-ENOMEM` none above, `-EFAULT` |
+| 168 | `vm_stats (pid, out)` | `struct kapi_vm_stats { resident (bytes of owned frames, page tables included), lazy (VA of lazy regions), writable (VA of writable regions), faults (pages filled), pt_bytes, limit (0) }`, `pid` 0 = self → 0 / `-ESRCH` / `-EFAULT` |
+| 169 | `thread_create_ex (attr)` | `struct kapi_thread_attr { fn, arg, stack_size (0 = 8 MB; 16 KB .. 16 MB, lazy), tls (its initial TPIDR_EL0), name, flags (KAPI_THREAD_DETACHED: no join, its record freed when it ends), prio (0, 1 = "real time"), reserved[2] = 0 }` → tid ≥ 2 / `-EAGAIN` (32 running) / `-ENOMEM` / `-EINVAL` / `-EFAULT` |
+| 170 | `thread_info (tid, out)` | `struct kapi_thread_info { stack_lo, stack_hi (its top: the initial SP), tid, state (0 running, 1 ended, joinable), guard (unmapped bytes below stack_lo) }`, `tid` 0 = self, 1 = main → 0 / `-ESRCH` / `-EFAULT` |
 
 What changed for every app, with no call: the main stack (8 MB by default), the threads' stacks and
 the heap are **lazy** (a process's resident memory drops by its untouched stack — 1 MB to 8 MB
@@ -1445,19 +1462,19 @@ call returns ≥ 0 or −`KAPI_Exxx`.
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 229 | `sock_open (type, flags)` | `KAPI_SOCK_STREAM` (TCP) / `KAPI_SOCK_DGRAM` (UDP), `KAPI_SOCKF_NONBLOCK` → the socket number; `EPROTONOSUPPORT`, `EINVAL` (flags), `ENETDOWN` (no network yet), `ENFILE` (table full) |
-| 230 | `sock_connect (s, to)` | TCP: blocking → 0 or the error (`ECONNREFUSED`, `ETIMEDOUT` after Circle's retries, about a minute, `EHOSTUNREACH`, `ENETUNREACH`); non-blocking → `EINPROGRESS`, then `poll (POLLOUT)` and `SO_ERROR`; `EALREADY`, `EISCONN`. UDP: sets the default peer (only its datagrams are received) |
-| 231 | `sock_bind (s, addr)` | the address 0.0.0.0 or the Pi's own (`EADDRNOTAVAIL`); port 0: an ephemeral port (TCP 61000–61999, UDP Circle's 60000–60999); `EADDRINUSE` (a bound / listening socket of the same protocol has it), `EINVAL` (bound already) |
-| 232 | `sock_listen (s, backlog)` | backlog clamped 1..32; an unbound socket gets an ephemeral port |
-| 233 | `sock_accept (s, peer, flags)` | a connection waiting → a new socket (`KAPI_SOCKF_NONBLOCK`: non-blocking); none → `EAGAIN` (a non-blocking listener) or a wait (`SO_RCVTIMEO`); `ECONNABORTED` (the peer left before it was accepted), `ENFILE` |
-| 234 | `sock_send (s, buf, len, flags, to)` | → the bytes queued. TCP: all of them when blocking (a wait while Circle's queue holds 64 KB, `SO_SNDTIMEO` → a short count / `EAGAIN`), what fits when non-blocking (`MSG_DONTWAIT`); `EPIPE` (reset, `SHUT_WR`), `ENOTCONN`. UDP: one datagram to `to` or the default peer (`EDESTADDRREQ`), at most 1472 bytes (`EMSGSIZE`); `to` is ignored on TCP |
-| 235 | `sock_recv (s, buf, len, flags, from)` | → the bytes, 0 = the peer's orderly end (or `SHUT_RD`); `EAGAIN` (non-blocking, `MSG_DONTWAIT`, `SO_RCVTIMEO`), `ECONNRESET`, `ETIMEDOUT`, `ENOTCONN`. `MSG_PEEK` (leaves the bytes), `MSG_WAITALL` (TCP: until `len`, the end or an error). UDP: one datagram, cut to `len` (the rest dropped); `from` = its sender (TCP: the peer) |
-| 236 | `sock_shutdown (s, how)` | `SHUT_RD`: `recv` answers 0, `poll` says `POLLIN`; `SHUT_WR`: `send` answers `EPIPE` — **no FIN is sent** (Circle's TCP cannot receive after its own FIN; the connection ends at `close`); `ENOTCONN` |
-| 237 | `sock_close (s)` | 0 / `EBADF`. A socket still connecting or inside a send is closed by its last user |
-| 238 | `sock_getopt (s, opt, &v)` | `SO_ERROR` (the pending error, a positive errno, cleared), `SO_NONBLOCK`, `SO_RCVTIMEO_MS`, `SO_SNDTIMEO_MS`, `SO_BROADCAST`, `SO_NREAD` (bytes in the carry buffer, 1 if more is ready), `SO_TYPE`, `SO_ACCEPTCONN`; else `ENOPROTOOPT` |
-| 239 | `sock_setopt (s, opt, v)` | `SO_NONBLOCK`, `SO_RCVTIMEO_MS` / `SO_SNDTIMEO_MS` (0: none), `SO_BROADCAST` (UDP); else `ENOPROTOOPT` (libc accepts and ignores `TCP_NODELAY`, `SO_KEEPALIVE`, `SO_REUSEADDR`, the buffer sizes) |
-| 240 | `sock_name (s, peer, out)` | `peer` 0: the local address (the Pi's IP once connected, else 0.0.0.0) and port; 1: the peer (`ENOTCONN`) |
-| 241 | `poll (fds, n, timeout_ms)` | `n` ≤ 1024 (`EINVAL`), `timeout_ms` −1 forever, 0 only a look → the number of entries with `revents` ≠ 0. Kinds: `KAPI_PK_SOCKET` (a socket number), `KAPI_PK_STREAM` (a stream handle: `CStream::PollMask`), `KAPI_PK_FILE` (a file / directory / open-file handle: always IN \| OUT); a bad one `POLLNVAL`; kind 0 or `h < 0` ignored. `POLLERR`, `POLLHUP`, `POLLNVAL` are reported whatever `events` asks |
+| 193 | `sock_open (type, flags)` | `KAPI_SOCK_STREAM` (TCP) / `KAPI_SOCK_DGRAM` (UDP), `KAPI_SOCKF_NONBLOCK` → the socket number; `EPROTONOSUPPORT`, `EINVAL` (flags), `ENETDOWN` (no network yet), `ENFILE` (table full) |
+| 194 | `sock_connect (s, to)` | TCP: blocking → 0 or the error (`ECONNREFUSED`, `ETIMEDOUT` after Circle's retries, about a minute, `EHOSTUNREACH`, `ENETUNREACH`); non-blocking → `EINPROGRESS`, then `poll (POLLOUT)` and `SO_ERROR`; `EALREADY`, `EISCONN`. UDP: sets the default peer (only its datagrams are received) |
+| 195 | `sock_bind (s, addr)` | the address 0.0.0.0 or the Pi's own (`EADDRNOTAVAIL`); port 0: an ephemeral port (TCP 61000–61999, UDP Circle's 60000–60999); `EADDRINUSE` (a bound / listening socket of the same protocol has it), `EINVAL` (bound already) |
+| 196 | `sock_listen (s, backlog)` | backlog clamped 1..32; an unbound socket gets an ephemeral port |
+| 197 | `sock_accept (s, peer, flags)` | a connection waiting → a new socket (`KAPI_SOCKF_NONBLOCK`: non-blocking); none → `EAGAIN` (a non-blocking listener) or a wait (`SO_RCVTIMEO`); `ECONNABORTED` (the peer left before it was accepted), `ENFILE` |
+| 198 | `sock_send (s, buf, len, flags, to)` | → the bytes queued. TCP: all of them when blocking (a wait while Circle's queue holds 64 KB, `SO_SNDTIMEO` → a short count / `EAGAIN`), what fits when non-blocking (`MSG_DONTWAIT`); `EPIPE` (reset, `SHUT_WR`), `ENOTCONN`. UDP: one datagram to `to` or the default peer (`EDESTADDRREQ`), at most 1472 bytes (`EMSGSIZE`); `to` is ignored on TCP |
+| 199 | `sock_recv (s, buf, len, flags, from)` | → the bytes, 0 = the peer's orderly end (or `SHUT_RD`); `EAGAIN` (non-blocking, `MSG_DONTWAIT`, `SO_RCVTIMEO`), `ECONNRESET`, `ETIMEDOUT`, `ENOTCONN`. `MSG_PEEK` (leaves the bytes), `MSG_WAITALL` (TCP: until `len`, the end or an error). UDP: one datagram, cut to `len` (the rest dropped); `from` = its sender (TCP: the peer) |
+| 200 | `sock_shutdown (s, how)` | `SHUT_RD`: `recv` answers 0, `poll` says `POLLIN`; `SHUT_WR`: `send` answers `EPIPE` — **no FIN is sent** (Circle's TCP cannot receive after its own FIN; the connection ends at `close`); `ENOTCONN` |
+| 201 | `sock_close (s)` | 0 / `EBADF`. A socket still connecting or inside a send is closed by its last user |
+| 202 | `sock_getopt (s, opt, &v)` | `SO_ERROR` (the pending error, a positive errno, cleared), `SO_NONBLOCK`, `SO_RCVTIMEO_MS`, `SO_SNDTIMEO_MS`, `SO_BROADCAST`, `SO_NREAD` (bytes in the carry buffer, 1 if more is ready), `SO_TYPE`, `SO_ACCEPTCONN`; else `ENOPROTOOPT` |
+| 203 | `sock_setopt (s, opt, v)` | `SO_NONBLOCK`, `SO_RCVTIMEO_MS` / `SO_SNDTIMEO_MS` (0: none), `SO_BROADCAST` (UDP); else `ENOPROTOOPT` (libc accepts and ignores `TCP_NODELAY`, `SO_KEEPALIVE`, `SO_REUSEADDR`, the buffer sizes) |
+| 204 | `sock_name (s, peer, out)` | `peer` 0: the local address (the Pi's IP once connected, else 0.0.0.0) and port; 1: the peer (`ENOTCONN`) |
+| 205 | `poll (fds, n, timeout_ms)` | `n` ≤ 1024 (`EINVAL`), `timeout_ms` −1 forever, 0 only a look → the number of entries with `revents` ≠ 0. Kinds: `KAPI_PK_SOCKET` (a socket number), `KAPI_PK_STREAM` (a stream handle: `CStream::PollMask`), `KAPI_PK_FILE` (a file / directory / open-file handle: always IN \| OUT); a bad one `POLLNVAL`; kind 0 or `h < 0` ignored. `POLLERR`, `POLLHUP`, `POLLNVAL` are reported whatever `events` asks |
 
 **One table.** The BSD sockets live in the same table as the `tcp_*` handles (`sys/net.cpp`,
 `MAX_SOCKETS` **256** since v75, shared by every process; owner pid, adoption by a descendant,
@@ -1525,17 +1542,17 @@ sockets, the handles they carry; `kern/lsock.h`), `kernel/sys/shm.cpp` (shared m
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 242 | `sock_pair (type, flags, sv)` | two connected local sockets: `KAPI_SOCK_STREAM`, `KAPI_SOCK_SEQPACKET` (5), `KAPI_SOCK_DGRAM`; `KAPI_SOCKF_NONBLOCK` → `sv[0]`, `sv[1]` (numbers ≥ `KAPI_SOCK_LOCAL_BASE`); `EPROTONOSUPPORT`, `EMFILE`, `EFAULT` |
-| 243 | `sock_sendmsg (s, m, flags)` | the `m->iovcnt` (≤ 64) iovecs gathered into one message with `m->nhandles` (≤ 256) handles → the bytes; `EAGAIN`, `EPIPE`, `EMSGSIZE`, `ENOBUFS`, `EBADF` (a handle: nothing sent), `EINVAL`; an IP socket: `EOPNOTSUPP` |
-| 244 | `sock_recvmsg (s, m, flags)` | into the iovecs; the handles carried added to the caller's table and written to `m->handles` (`m->nhandles` in: room, out: count; `m->flags`: `KAPI_MSG_TRUNC`, `KAPI_MSG_CTRUNC`) → the bytes, 0 the end |
-| 245 | `shm_create (size, flags)` | an anonymous object (`KAPI_SHM_ALLOW_SEALING`, else `KAPI_SEAL_SEAL` set) → a read-write handle |
-| 246 | `shm_open (name, oflags, mode)` | a named object (`/x`, ≤ 63 characters, a kernel-wide table): `KAPI_O_RDONLY` / `RDWR`, `CREAT`, `EXCL`, `TRUNC` → a handle; `ENOENT`, `EEXIST`, `EINVAL`, `ENAMETOOLONG` |
-| 247 | `shm_unlink (name)` | the name dropped (the object lives while referenced); `ENOENT` |
-| 248 | `shm_ctl (h, op, arg)` | `KAPI_SHM_GET_SIZE`, `SET_SIZE` (ftruncate: `EPERM` sealed, `EBUSY` a shrink while mapped, `ENOMEM`), `ADD_SEALS` / `GET_SEALS` (as memfd's `F_SEAL_*`), `GET_ID`, `GET_ACCESS` |
-| 249 | `shm_map (h, addr, len, prot, flags, off)` | the object mapped `MAP_SHARED` (an SHM region in the mmap arena, placed as `vm_map`) → the address; `EACCES` (write, read-only handle), `EPERM` (`SEAL_WRITE`), `EBUSY` (a fixed place under another task's kapi) |
-| 250 | `handle_close (h)` | a shm, local socket, open-file or stream handle closed |
-| 251 | `spawn_ex2 (attr, handles, n)` | `spawn_ex` plus `n` (≤ 256) handles referenced for the child at the descriptors `fd` given |
-| 252 | `get_handles (out, cap)` | the child's side: those handles, put in its table at the first call → how many |
+| 206 | `sock_pair (type, flags, sv)` | two connected local sockets: `KAPI_SOCK_STREAM`, `KAPI_SOCK_SEQPACKET` (5), `KAPI_SOCK_DGRAM`; `KAPI_SOCKF_NONBLOCK` → `sv[0]`, `sv[1]` (numbers ≥ `KAPI_SOCK_LOCAL_BASE`); `EPROTONOSUPPORT`, `EMFILE`, `EFAULT` |
+| 207 | `sock_sendmsg (s, m, flags)` | the `m->iovcnt` (≤ 64) iovecs gathered into one message with `m->nhandles` (≤ 256) handles → the bytes; `EAGAIN`, `EPIPE`, `EMSGSIZE`, `ENOBUFS`, `EBADF` (a handle: nothing sent), `EINVAL`; an IP socket: `EOPNOTSUPP` |
+| 208 | `sock_recvmsg (s, m, flags)` | into the iovecs; the handles carried added to the caller's table and written to `m->handles` (`m->nhandles` in: room, out: count; `m->flags`: `KAPI_MSG_TRUNC`, `KAPI_MSG_CTRUNC`) → the bytes, 0 the end |
+| 209 | `shm_create (size, flags)` | an anonymous object (`KAPI_SHM_ALLOW_SEALING`, else `KAPI_SEAL_SEAL` set) → a read-write handle |
+| 210 | `shm_open (name, oflags, mode)` | a named object (`/x`, ≤ 63 characters, a kernel-wide table): `KAPI_O_RDONLY` / `RDWR`, `CREAT`, `EXCL`, `TRUNC` → a handle; `ENOENT`, `EEXIST`, `EINVAL`, `ENAMETOOLONG` |
+| 211 | `shm_unlink (name)` | the name dropped (the object lives while referenced); `ENOENT` |
+| 212 | `shm_ctl (h, op, arg)` | `KAPI_SHM_GET_SIZE`, `SET_SIZE` (ftruncate: `EPERM` sealed, `EBUSY` a shrink while mapped, `ENOMEM`), `ADD_SEALS` / `GET_SEALS` (as memfd's `F_SEAL_*`), `GET_ID`, `GET_ACCESS` |
+| 213 | `shm_map (h, addr, len, prot, flags, off)` | the object mapped `MAP_SHARED` (an SHM region in the mmap arena, placed as `vm_map`) → the address; `EACCES` (write, read-only handle), `EPERM` (`SEAL_WRITE`), `EBUSY` (a fixed place under another task's kapi) |
+| 214 | `handle_close (h)` | a shm, local socket, open-file or stream handle closed |
+| 215 | `spawn_ex2 (attr, handles, n)` | `spawn_ex` plus `n` (≤ 256) handles referenced for the child at the descriptors `fd` given |
+| 216 | `get_handles (out, cap)` | the child's side: those handles, put in its table at the first call → how many |
 
 **Local sockets.** An end (`TLsEnd`) is a core-0 object: its type, a receive queue of messages
 (`TLsMsg`: the data and the handles carried, one allocation), its peer, the shutdown bits,
@@ -1611,9 +1628,9 @@ key). A path is a program file's, relative to the caller's working directory; ev
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 253 | `image_preload (path)` | the program loaded ahead and **kept**: a kernel task reads the file, the call returns at once; from then on a run of that path maps the image without reading the card, and the image stays when no process runs it. Kept already: 0, nothing done → 0; `ENOENT` (no such file), `ENAMETOOLONG`, `ENOMEM`, `EFAULT`. A load that fails later is in the kernel log |
-| 254 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
-| 255 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
+| 217 | `image_preload (path)` | the program loaded ahead and **kept**: a kernel task reads the file, the call returns at once; from then on a run of that path maps the image without reading the card, and the image stays when no process runs it. Kept already: 0, nothing done → 0; `ENOENT` (no such file), `ENAMETOOLONG`, `ENOMEM`, `EFAULT`. A load that fails later is in the kernel log |
+| 218 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
+| 219 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
 
 Users: `/bin/preload` (`preload /boot`, the last line of `/etc/autostart`: the list of
 `SD:/etc/preload.ini`, `user/Include/preloadini.h`, edited by the Control Panel's Preload applet,
@@ -1643,9 +1660,9 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 263 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
-| 265 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
-| 264 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
+| 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
+| 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
 No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8
 are taken) instead of the whole output, `sound_write` / `sound_status` / `sound_config` are the caller's own
@@ -1659,7 +1676,7 @@ volumes across a restart: the Sound applet and `/bin/volume` write `SD:/etc/mixe
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 262 | `sound_output (out)` | `out` = `KAPI_SND_OUT_AUTO` (0) / `_JACK` (1) / `_USB` (2) / `_HDMI` (3): that output from now on — the running sound switches at once; an output that is not there plays nothing until it is. `out` = −1: nothing changed. → what plays now (`KAPI_SND_OUT_NOW`: 0 nothing yet, or no device), what is asked (`KAPI_SND_OUT_ASKED`) and the outputs present (`KAPI_SND_OUT_HAS (r, o)`: the jack unless the board has none, USB when a device is plugged, HDMI), or −1 (a bad value). |
+| 224 | `sound_output (out)` | `out` = `KAPI_SND_OUT_AUTO` (0) / `_JACK` (1) / `_USB` (2) / `_HDMI` (3): that output from now on — the running sound switches at once; an output that is not there plays nothing until it is. `out` = −1: nothing changed. → what plays now (`KAPI_SND_OUT_NOW`: 0 nothing yet, or no device), what is asked (`KAPI_SND_OUT_ASKED`) and the outputs present (`KAPI_SND_OUT_HAS (r, o)`: the jack unless the board has none, USB when a device is plugged, HDMI), or −1 (a bad value). |
 
 The kernel does not keep the choice across a restart: the Sound applet and `/bin/volume` write
 `SD:/etc/sound.ini` (`output = usb`, beside `volume` and `mute`: `user/Include/volume.h`), which the kernel
@@ -1672,7 +1689,7 @@ output: …` lines.
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 261 | `lib_open (name, min_version, err)` | the shared library `name` mapped into the caller → its export table, or 0 with `*err` (if not 0) = −`KAPI_E*`. `name`: a bare name (`"uikit"` is `SD:/lib/uikit.so`) or a path (anything with a `/`, a `\` or a `:`; relative: to the working directory). Mapped in the caller already: the same table. The table's first `unsigned` (its version) must be ≥ `min_version`, else `-ENOTSUP`. Other errors: `-ENOENT` (no such file), `-EINVAL` (not a library of `user/Runtime/lib.ld`'s shape, a program, a relocation other than `R_AARCH64_RELATIVE`), `-ENOMEM` (memory, or no room in the arena), `-EMFILE` (16 libraries in the process), `-EIO`, `-ENAMETOOLONG`, `-EFAULT`. No `lib_close`: a library stays mapped until the process ends. |
+| 223 | `lib_open (name, min_version, err)` | the shared library `name` mapped into the caller → its export table, or 0 with `*err` (if not 0) = −`KAPI_E*`. `name`: a bare name (`"uikit"` is `SD:/lib/uikit.so`) or a path (anything with a `/`, a `\` or a `:`; relative: to the working directory). Mapped in the caller already: the same table. The table's first `unsigned` (its version) must be ≥ `min_version`, else `-ENOTSUP`. Other errors: `-ENOENT` (no such file), `-EINVAL` (not a library of `user/Runtime/lib.ld`'s shape, a program, a relocation other than `R_AARCH64_RELATIVE`), `-ENOMEM` (memory, or no room in the arena), `-EMFILE` (16 libraries in the process), `-EIO`, `-ENAMETOOLONG`, `-EFAULT`. No `lib_close`: a library stays mapped until the process ends. |
 
 What a library is, how the kernel places and relocates it, and its lifetime: §7 *Shared libraries
 (v83)*. `user/Kits/appkit/appkit.h`'s wrapper returns 0 with `-KAPI_ENOSYS` on an older kernel; a program does not
@@ -1684,7 +1701,6 @@ libraries*). `image_list` reports a library with `KAPI_IMG_LIB` (8); `image_prel
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 260 | `win_resizable (on, min_w, min_h)` | the caller's window's edges and corners can be dragged (`on` 0: no longer); its client area is never made smaller than `min_w` x `min_h` (64 x 32 at least) → 0 / -1 (no window, a borderless or fixed one). |
 
 The kernel does not resize the window: it shows where its frame would be, and the app applies it.
 An edge is the 6 pixels inside the frame's outer edge (`WIN_EDGE_BAND`), a corner reaches 18 along
@@ -1705,7 +1721,6 @@ would be laid out again each time).
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 259 | `set_cursor (shape)` | the pointer's shape while it is over the caller's window's client area, or while that window holds the pointer (a button down): `KAPI_CURSOR_ARROW` 0, `_HAND` 1 (a link), `_TEXT` 2 (the I bar), `_MOVE` 3 (four arrows), `_SIZE_H` 4, `_SIZE_V` 5, `_SIZE_NWSE` 6, `_SIZE_NESW` 7 (two arrows: an edge, a corner dragged), `_CELL` 8 (a thick cross: a spreadsheet's cells), `_CROSSHAIR` 9, `_WAIT` 10 (an hourglass), `_NO` 11 (a barred circle) → the shape it had / -1 (no window, an unknown shape). |
 
 The shape is the window's (`CWindow::CursorShape`), kept until changed. The window manager picks
 what it shows after each pointer event and each `set_cursor` (`CWindowManager::PickShapeLocked`):
@@ -1724,8 +1739,8 @@ moves or changes is that box around it. Apps do not call this themselves: uikit 
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 257 | `cpu_stats (out)` | `struct kapi_cpu_stats` (144 bytes): `now_us` (the clock of the read), `cores`, then a `kapi_cpu_core` a core — `busy_us` (the microseconds it was busy since the boot), `role` (`KAPI_CORE_SYSTEM` 0, `KAPI_CORE_SOUND` 1, `KAPI_CORE_APP` 2, `KAPI_CORE_NETWORK` 3), `pid` (an app core's owner, 0 when free) → 0 / `-EFAULT`. Two reads make a load: `(busy_us' - busy_us) / (now_us' - now_us)`. |
-| 258 | `net_stats (pid, out)` | `struct kapi_net_stats` (24 bytes): the payload bytes `pid`'s sockets received and sent (`rx_bytes`, `tx_bytes`: TCP and UDP, the old `tcp_*` calls and the BSD sockets) since it started, its `sockets` open now; `pid` 0: every process's since the boot → 0 / `-EFAULT`. A process that used no socket: zeros. |
+| 221 | `cpu_stats (out)` | `struct kapi_cpu_stats` (144 bytes): `now_us` (the clock of the read), `cores`, then a `kapi_cpu_core` a core — `busy_us` (the microseconds it was busy since the boot), `role` (`KAPI_CORE_SYSTEM` 0, `KAPI_CORE_SOUND` 1, `KAPI_CORE_APP` 2, `KAPI_CORE_NETWORK` 3), `pid` (an app core's owner, 0 when free) → 0 / `-EFAULT`. Two reads make a load: `(busy_us' - busy_us) / (now_us' - now_us)`. |
+| 222 | `net_stats (pid, out)` | `struct kapi_net_stats` (24 bytes): the payload bytes `pid`'s sockets received and sent (`rx_bytes`, `tx_bytes`: TCP and UDP, the old `tcp_*` calls and the BSD sockets) since it started, its `sockets` open now; `pid` 0: every process's since the boot → 0 / `-EFAULT`. A process that used no socket: zeros. |
 
 What "busy" is, core by core. A core with a **scheduler** — core 0, and core 3 with `netcore=1` —
 counts the time its tasks ran, the idle task apart: `CScheduler::Yield` adds what the leaving task
@@ -1750,7 +1765,7 @@ own traffic (DHCP, DNS, NTP).
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 256 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
+| 220 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
 
 The date and the revision are `kernel/buildstamp.cpp`'s, an object that depends on every other
 object and library of the kernel (`kernel/Makefile`): it is compiled again at each link, so the
@@ -1837,11 +1852,12 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 >   Elegant again when it ends (`WsPoll`), takes the display from a silent one (`WsWatch`), does a
 >   resolution change. **No server** (it cannot be started, does not take the display, or ended 5 times):
 >   the kernel's **console** takes the screen (`DebugConsoleTakeover`: its log); the Pi is reached by telnet.
-> - **The kernel's table**: the 38 entries of the windows (`create_window`, `present`, `set_menu`,
->   `win_list`, `drag_begin`, `wallpaper_*`, `desk`...) and the 2 of the activity shell
->   (`register_shell`, `shell_request`) are **0** — their slots stay where they were (a slot is a system
->   call's number), their functions are gone from `sys/kapi.cpp` (740 lines). AppKit's functions of those
+> - **The kernel's table** has no entry for the windows (kapi v90, §8): the 36 of the windows
+>   (`create_window`, `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`...) and the
+>   2 of the activity shell (`register_shell`, `shell_request`) are removed, the table is compacted
+>   (228 entries), their functions are gone from `sys/kapi.cpp` (740 lines). AppKit's functions of those
 >   names speak to Elegant (`appkit_ws.inc`); no program is rebuilt. The kernel image lost 43 KB.
+> - **Print Screen** and **the wheel's speed** are Elegant's too (§2's input task; `server.cpp`).
 
 Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
 `user/Servers/elegant/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
@@ -1979,8 +1995,8 @@ dialog, otherwise to the app's keyboard handler.
 - **The theme** is the apps' business: the windows' frames, like every control, are drawn by the
   apps (uikit: `user/Kits/uikit/skin.cpp`, `paint.cpp` — by code, no bitmap) from `SD:/etc/theme.txt`
   (`theme` = Peach / Steel / Sage / Brick / Slate, or `active`; `inactive`, `face`, `accent`,
-  `outline`, `dock`: read by `uikit/theme.cpp`); the kernel only blits the frames. Of that file the
-  kernel reads only `wheelspeed=N` at boot. (The old 9-slice window skin — `wings.bmp` tinted by
+  `outline`, `dock`: read by `uikit/theme.cpp`); the kernel only blits the frames. Of that file
+  Elegant reads `wheelspeed=N` when it starts (the kernel reads nothing of it). (The old 9-slice window skin — `wings.bmp` tinted by
   `CSkin` — and `kapi_set_window_theme` are no longer used by the desktop.)
 - **Wallpaper**: `wallpaper_generate` (toroidal Voronoi generated at runtime), or **an
   app-drawn background** (what the desktop uses: `voronoy` paints the patterns and pictures): `wallpaper_buffer` maps the screen-sized

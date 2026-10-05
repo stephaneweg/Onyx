@@ -2513,8 +2513,8 @@ one file, `main.cpp`:
   window is drawn (clipd may have to start), and `notify ()` (notifyd's bubble); **Save As** only
   (`uk_file_save` in `SD:/Pictures/Screenshots`, the last folder kept): `img/pngsave.hpp`'s
   `png_encode` / `jpeg_encode` (quality 92) / `bmp_encode` by the name's extension (none: `.png`).
-- **The service** `screenshot` (`kapi_ipc_register`): the kernel's Print Screen (type 1, `"now"` / `"window
-  <id>"`), read in `onTick`; started by the kernel: `--now` / `--window <id>`. The settings:
+- **The service** `screenshot` (`kapi_ipc_register`): Print Screen, sent by Elegant, the graphics server
+  (type 1, `"now"` / `"window <id>"`), read in `onTick`; started by Elegant: `--now` / `--window <id>`. The settings:
   `SD:/etc/screenshot.ini` (`mode`, `delay`, `pen_colour`, `pen_size`, `marker_colour`, `marker_size`,
   `folder`).
 

@@ -1102,9 +1102,7 @@ int KernelMidiDevices (void)
 	return n;
 }
 
-// Print Screen (USB usage 0x46): set by the input task when the key goes down (1; 2 with Alt), handled
-// by the main task's loop (PrintScreenPoll: the "screenshot" service told, else the app started).
-static volatile unsigned s_nPrintScreen;
+// (Print Screen is Elegant's, the graphics server's: it knows the window that has the keyboard.)
 
 class CInputTask : public CTask
 {
@@ -1366,11 +1364,6 @@ private:
 		}					// answers kapi_key_held / kapi_get_modifiers)
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
 		if (pWM != 0) pWM->SetUsbHeld (Keys);	// held keys (games, ABI v48)
-		static boolean s_bPrintHeld = FALSE;	// Print Screen: its press (not while it is held)
-		boolean bPrint = FALSE;
-		for (unsigned k = 0; k < 6; k++) if (Keys[k] == 0x46) bPrint = TRUE;
-		if (bPrint && !s_bPrintHeld) s_nPrintScreen = (nMods & MOD_ALT) ? 2 : 1;
-		s_bPrintHeld = bPrint;
 	}
 
 	static void KeyPressedStub (const char *pString)
@@ -2148,24 +2141,6 @@ boolean CKernel::Initialize (void)
 	return bOK;
 }
 
-// Print Screen pressed (s_nPrintScreen): the Screenshot app captures -- the running one is told through
-// its "screenshot" service ("now", or "window <id>" with Alt: the window that has the keyboard), else
-// it is started ("--now" / "--window <id>"). docs/screenshot/README.md.
-static void PrintScreenPoll (void)
-{
-	unsigned nWhat = s_nPrintScreen;
-	if (nWhat == 0) return;
-	s_nPrintScreen = 0;
-	unsigned nId = 0;			// (Alt + Print Screen: the active window is the graphics server's to
-						// know -- the whole screen until the server takes Print Screen over)
-	CString Msg, Args;
-	if (nId != 0) { Msg.Format ("window %u", nId); Args.Format ("--window %u", nId); }
-	else { Msg = "now"; Args = "--now"; }
-	if (!IpcPost ("screenshot", 1, (const char *) Msg, Msg.GetLength () + 1))
-	{
-		ExecPath ("SD:apps/screenshot.app/main", (const char *) Args, "screenshot");
-	}
-}
 
 TShutdownMode CKernel::Run (void)
 {
@@ -2284,7 +2259,6 @@ TShutdownMode CKernel::Run (void)
 	for (unsigned nTick = 0; ; nTick++)
 	{
 		m_Scheduler.MsSleep (50);
-		PrintScreenPoll ();			// (Print Screen: the Screenshot app)
 		if (nTick % 5 == 4) NetCorePoll ();	// the network core's notices (IpcNotify), every 250 ms
 		if (nTick % 5 == 4) NetTrialPoll ();	// (a trial of the Wi-Fi driver's switches ends by a restart)
 	}

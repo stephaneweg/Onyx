@@ -110,6 +110,62 @@ static void forward_events (unsigned self)
 
 static int s_bLostDisplay = 0;
 
+// Print Screen (the USB keyboards' report: usage 0x46), at its press: the Screenshot app captures the
+// screen -- with Alt, the window that has the keyboard. The running one is told through its service,
+// else the app is started with what to capture ("--now" / "--window <id>"). (It was the kernel's: it
+// no longer knows the windows.)
+static void print_screen (const char *held, unsigned mods)
+{
+	static int s_bHeld = 0;
+	int now = 0;
+	for (int k = 0; k < 6; k++) if ((unsigned char) held[k] == 0x46) now = 1;
+	int pressed = now && !s_bHeld;
+	s_bHeld = now;
+	if (!pressed) return;
+	unsigned id = (mods & 4) ? el_core_active_id () : 0;		// (4: Alt)
+	char msg[32], args[32], d[12];
+	int n = 0, a = 0, i = 0;
+	if (id != 0)
+	{
+		const char *w = "window "; for (; *w; w++) msg[n++] = *w;
+		const char *g = "--window "; for (; *g; g++) args[a++] = *g;
+		do { d[i++] = (char) ('0' + id % 10); id /= 10; } while (id != 0);
+		while (i > 0) { msg[n++] = d[--i]; args[a++] = d[i]; }
+	}
+	else
+	{
+		const char *w = "now"; for (; *w; w++) msg[n++] = *w;
+		const char *g = "--now"; for (; *g; g++) args[a++] = *g;
+	}
+	msg[n] = 0; args[a] = 0;
+	int pid = kapi_ipc_lookup ("screenshot");
+	if (pid <= 0 || !kapi_mailbox_send (pid, 1, msg, (unsigned) n + 1))
+		kapi_exec_as ("SD:/apps/screenshot.app/main", args, "screenshot");
+}
+
+// The wheel's speed the Theme applet saved (SD:/etc/theme.txt: "wheelspeed=N").
+static void wheel_speed (void)
+{
+	static char buf[4096];
+	void *f = kapi_open ("SD:/etc/theme.txt");
+	if (f == 0) return;
+	int n = kapi_read (f, buf, sizeof buf - 1);
+	kapi_close (f);
+	if (n <= 0) return;
+	buf[n] = 0;
+	const char *key = "wheelspeed=";
+	for (int i = 0; buf[i]; i++)
+	{
+		int k = 0;
+		while (key[k] && buf[i + k] == key[k]) k++;
+		if (key[k]) continue;
+		int v = 0;
+		for (const char *p = buf + i + k; *p >= '0' && *p <= '9'; p++) v = v * 10 + (*p - '0');
+		el_core_wheel (v);
+		return;
+	}
+}
+
 // -> 0 shown; else not (a full-screen program has the display: the kernel shows its buffer).
 static long present (unsigned *screen, int stride, int x, int y, int w, int h)
 {
@@ -177,6 +233,8 @@ int el_serve (int demo, int restart)
 		el_core_restore_all ();				// the programs' windows, as the server before had them
 		kapi_launch ("voronoy");				// (the wallpaper went with it: painted again)
 	}
+	wheel_speed ();
+	unsigned mods = 0;
 	unsigned nStart = kapi_get_ticks ();
 	int quit = 0;
 	int rects[EL_RECTS_MAX * 4];
@@ -201,7 +259,11 @@ int el_serve (int demo, int restart)
 					else el_core_key (in[i].keys);
 					break;
 				case KAPI_WS_IN_MODS:
-					el_core_modifiers ((unsigned) in[i].a);
+					mods = (unsigned) in[i].a;
+					el_core_modifiers (mods);
+					break;
+				case KAPI_WS_IN_HELD_USB:
+					print_screen (in[i].keys, mods);
 					break;
 				case KAPI_WS_IN_KICK:
 					el_core_window_present (el_core_window_of ((unsigned) in[i].a));
