@@ -25,6 +25,9 @@ static char      g_path[100] = "SD:notes.txt";
 
 static unsigned  g_saved;	// doc_hash of the document as last loaded / saved
 
+// The kinds of files the Open and Save dialogs offer (uikit/dialog.h).
+static const char *const TEXT_KINDS = "Text files|*.txt;*.md;*.ini;*.log;*.csv|Source files|*.bas;*.c;*.h;*.cpp;*.py;*.sh|All files|*";
+
 static void show_path (void) { g_fn->setText (g_path); }
 static void mark_saved (void) { g_saved = doc_hash (g_body->content (), (unsigned) g_body->len); }
 static bool changed (void)    { return doc_hash (g_body->content (), (unsigned) g_body->len) != g_saved; }
@@ -65,13 +68,13 @@ static void on_open (void)
 {
 	if (!doc_confirm (g_path, changed (), on_save)) return;
 	char path[100];
-	if (uk_file_open (path, sizeof path, "SD:/")) { set_path (path); load_file (); }
+	if (uk_file_open (path, sizeof path, g_path[0] ? g_path : "SD:/", TEXT_KINDS)) { set_path (path); load_file (); }
 	g_body->setFocus ();
 }
 static void on_save_as (void)
 {
 	char path[100];
-	if (uk_file_save (path, sizeof path, "SD:/", g_path)) { set_path (path); save_file (); }
+	if (uk_file_save (path, sizeof path, "SD:/", g_path, TEXT_KINDS)) { set_path (path); save_file (); }
 	g_body->setFocus ();
 }
 static void on_save (void) { if (g_path[0]) save_file (); else on_save_as (); }

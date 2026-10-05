@@ -66,7 +66,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 726 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 729 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -225,8 +225,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `ColorDialog` | Colour dialog (WPF-style ColorPicker dialog) | `dialog.h` |
 | `PopupMenu` | Convenience | `dialog.h` |
 | `uk_messagebox` | modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No) | `dialog.h` |
-| `uk_file_open` | modal file browser from startDir; true = OK (out: the chosen path) | `dialog.h` |
-| `uk_file_save` | the same with a name box (defName in it); true = OK | `dialog.h` |
+| `uk_file_open` | The file dialogs | `dialog.h` |
+| `uk_file_save` | with a name box (defName in it) | `dialog.h` |
 | `uk_folder_open` | pick a directory | `dialog.h` |
 | `uk_color_dialog` | true = OK (*color set) | `dialog.h` |
 | `icon_load` | The picture of a file (new[] | `bmp.h` |
@@ -1066,6 +1066,12 @@ public:
 	bool onKey (long k) override;		// Enter = Open / Save, Esc = Cancel
 	void onDraw () override;
 	void getResult (char *out, unsigned cap);		// dir + "/" + filename (folder mode: dir)
+	// The kinds of files shown: "Text files|*.txt;*.md|All files|*" -- pairs of a name and its patterns
+	// (';' between them; "*": every file), '|' between everything. A drop-down beside the buttons chooses
+	// one; the folder shows the files that match it (and every folder). A save: a name typed without an
+	// extension takes the kind's first one. 0 / "": every file, no drop-down. The text must live as long
+	// as the dialog (it is not copied).
+	void setFilters (const char *filters);
 	const char *fileName () const { return m_nameBox ? m_nameBox->text : ""; }	// the name box's text
 };
 ```
@@ -1110,8 +1116,13 @@ public:
 };
 
 int  uk_messagebox (const char *title, const char *text, int buttons);	// modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No)
-bool uk_file_open (char *out, unsigned cap, const char *startDir);	// modal file browser from startDir; true = OK (out: the chosen path)
-bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);	// the same with a name box (defName in it); true = OK
+```
+
+The file dialogs: modal, from startDir (a folder, or a file's path: its folder); true = OK (out: the chosen path). filters: the kinds of files offered, "Text files|*.txt;*.md|All files|*" (FileDialog::setFilters); 0: all.
+
+```cpp
+bool uk_file_open (char *out, unsigned cap, const char *startDir, const char *filters = 0);
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName, const char *filters = 0);	// with a name box (defName in it)
 bool uk_folder_open (char *out, unsigned cap, const char *startDir);	// pick a directory
 bool uk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 ```

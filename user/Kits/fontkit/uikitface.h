@@ -23,6 +23,7 @@
 
 #include "fontkit/fonts.h"
 #include "uikit/text.h"
+#include "uikit/dialog.h"		// (ft_messagebox, ft_file_open...: uikit's dialogs in this text)
 
 class FtTextFace : public uikit::TextFace
 {
@@ -151,5 +152,33 @@ static inline bool ft_uikit_install (const char *family, int px)
 
 // The face ft_uikit_install made (0: none yet).
 static inline FtTextFace *ft_uikit_face () { return g_ftUIKitFace; }
+
+// uikit's own dialogs in FreeType's text, in a program that does NOT install a face for all its widgets
+// (Letters, Slides: their own interface has the bitmap text's metrics): the face is in use for the
+// dialog's time only -- a message box, the file dialog, with their buttons and fields.
+//   ft_messagebox (title, text, MB_YESNO);     ft_file_open (path, sizeof path, dir);
+// A program that called ft_uikit_install has that face already: these then do as uikit's.
+static FtTextFace *g_ftDialogFace;		// (made at the first dialog: DejaVu Sans, 13 px)
+// The face of the dialogs (0: no TrueType font on the card -- the dialog keeps the bitmap text).
+static inline FtTextFace *ft_dialog_face ()
+{
+	if (uikit::uk_textface () != 0) return 0;		// (a face is installed: nothing to change)
+	if (!g_ftDialogFace)
+	{
+		g_ftDialogFace = new FtTextFace;
+		if (g_ftDialogFace && !g_ftDialogFace->open ("DejaVu Sans", 13)) { delete g_ftDialogFace; g_ftDialogFace = 0; }
+	}
+	return g_ftDialogFace;
+}
+// uikit's message box (uk_messagebox) in FreeType's text.
+static inline int ft_messagebox (const char *title, const char *text, int buttons)
+{ uikit::UkFaceScope face (ft_dialog_face ()); return uikit::uk_messagebox (title, text, buttons); }
+// uikit's file dialogs (uk_file_open / uk_file_save / uk_folder_open) in FreeType's text.
+static inline bool ft_file_open (char *out, unsigned cap, const char *startDir, const char *filters = 0)
+{ uikit::UkFaceScope face (ft_dialog_face ()); return uikit::uk_file_open (out, cap, startDir, filters); }
+static inline bool ft_file_save (char *out, unsigned cap, const char *startDir, const char *defName, const char *filters = 0)
+{ uikit::UkFaceScope face (ft_dialog_face ()); return uikit::uk_file_save (out, cap, startDir, defName, filters); }
+static inline bool ft_folder_open (char *out, unsigned cap, const char *startDir)
+{ uikit::UkFaceScope face (ft_dialog_face ()); return uikit::uk_folder_open (out, cap, startDir); }
 
 #endif

@@ -21,6 +21,8 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
 #include "uikit/uikit.h"
+#include "fontkit/uikitface.h"		// uikit's dialogs (message boxes, the file dialog) in FreeType's text
+#define DOC_MESSAGEBOX ft_messagebox
 #include "docguard.h"
 #include "sidebar.h"
 #include "show.h"
@@ -94,10 +96,10 @@ static bool load_path (const char *path)
 	if (g_master) master_close ();
 	unsigned n = 0;
 	unsigned char *b = read_all (path, &n);
-	if (!b) { uk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
+	if (!b) { ft_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
 	bool ok = deck_load (g_deck, b, n);
 	free (b);
-	if (!ok) { deck_new (g_deck); uk_messagebox ("Open", "That is not a presentation Slides can read (.odp, .pptx).", MB_OK); }
+	if (!ok) { deck_new (g_deck); ft_messagebox ("Open", "That is not a presentation Slides can read (.odp, .pptx).", MB_OK); }
 	scpy (g_path, ok ? path : "", sizeof g_path);
 	deck_loaded ();
 	return ok;
@@ -116,7 +118,7 @@ static bool write_path (const char *path, bool asCopy = false)
 	else b = has_ext (path, ".pptx") ? pptx_save (g_deck, &n) : odp_save (g_deck, &n);
 	bool ok = b && kapi_save_file (path, b, n) >= 0;
 	delete[] b;
-	if (!ok) { uk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
+	if (!ok) { ft_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
 	if (!asCopy) { scpy (g_path, path, sizeof g_path); g_saved = g_deck.changes; }
 	refresh ();
 	return true;
@@ -125,7 +127,7 @@ static void cmd_save_as ()
 {
 	char path[200], def[80];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled.odp", sizeof def);
-	if (uk_file_save (path, sizeof path, "SD:/docs", def))
+	if (ft_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		// (.odp, or .pptx when the name says so -- or the file was one)
 		if (!has_ext (path, ".odp") && !has_ext (path, ".pptx")) { int k = (int) strlen (path); scpy (path + k, has_ext (g_path, ".pptx") ? ".pptx" : ".odp", (int) sizeof path - k); }
@@ -148,7 +150,7 @@ static void cmd_open ()
 {
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	char path[200];
-	if (uk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (ft_file_open (path, sizeof path, "SD:/docs")) load_path (path);
 	focus_view ();
 }
 // File > Export as PDF: the slides (a page each, the slide flattened at 1600 px wide, as a JPEG at quality 92), or
@@ -266,7 +268,7 @@ static void export_pdf (const char *path, const char *title, int mode)
 	unsigned len = 0; unsigned char *pdf = w.finish (&len);
 	int r = pdf ? kapi_save_file (path, pdf, len) : -1;
 	delete[] pdf;
-	if (r != (int) len) uk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
+	if (r != (int) len) ft_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
 	else kapi_exec ("SD:apps/pdf.app/main", path);
 }
 static void cmd_export_png ()
@@ -274,7 +276,7 @@ static void cmd_export_png ()
 	if (g_master) { master_close (); g_thumbs.clear (); }
 	char def[120], path[200];
 	snprintf (def, sizeof def, "Slide %d.png", g_cur + 1);
-	if (!uk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
+	if (!ft_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
 	if (!has_ext (path, ".png")) { int k = (int) strlen (path); scpy (path + k, ".png", (int) sizeof path - k); }
 	int pw = 1920, ph = pw * g_deck.sh / g_deck.sw;
 	unsigned *px = (unsigned *) malloc ((size_t) pw * ph * 4);
@@ -284,7 +286,7 @@ static void cmd_export_png ()
 	for (int k = 0; k < pw * ph; k++) px[k] |= 0xFF000000u;
 	unsigned n = 0; unsigned char *png = pngsave::png_encode (px, pw, ph, false, &n);
 	free (px);
-	if (!png || kapi_save_file (path, png, n) < 0) uk_messagebox ("Export", "The picture could not be written there.", MB_OK);
+	if (!png || kapi_save_file (path, png, n) < 0) ft_messagebox ("Export", "The picture could not be written there.", MB_OK);
 	delete[] png;
 	focus_view ();
 }
@@ -336,7 +338,7 @@ static void cmd_print ()
 	PrintJob *j = print_ask (title, shown, 0, g_deck.sw / 35.277778f, g_deck.sh / 35.277778f);
 	if (!j) { focus_view (); return; }
 	{ PrintWriter w (j); deck_pages (w, title, PDF_SLIDES, 2400); }		// (about 200 pixels an inch on A4)
-	if (print_end (j) < 0) uk_messagebox ("Print", "The slides could not be put in the print queue.", MB_OK);
+	if (print_end (j) < 0) ft_messagebox ("Print", "The slides could not be put in the print queue.", MB_OK);
 	focus_view ();
 }
 static void cmd_export_pdf ()
@@ -348,7 +350,7 @@ static void cmd_export_pdf ()
 	char def[120], path[200];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled", sizeof def);
 	{ int n = (int) strlen (def), dot = n; while (dot > 0 && def[dot - 1] != '.') dot--; if (dot > 0) def[dot - 1] = 0; n = (int) strlen (def); scpy (def + n, mode == PDF_NOTES ? " (notes).pdf" : mode >= PDF_HAND2 ? " (handouts).pdf" : ".pdf", (int) sizeof def - n); }
-	if (!uk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
+	if (!ft_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
 	if (!has_ext (path, ".pdf")) { int k = (int) strlen (path); scpy (path + k, ".pdf", (int) sizeof path - k); }
 	char title[120]; scpy (title, g_path[0] ? base_name (g_path) : "Untitled", sizeof title);
 	{ char *dot = strrchr (title, '.'); if (dot) *dot = 0; }
@@ -489,7 +491,7 @@ public:
 			scpy (c.title, title->text, sizeof c.title);
 			int nc = 0; for (int i = 0; i < 8; i++) if (cat[i]->text[0]) nc = i + 1;
 			int ns = 0; for (int k = 0; k < 4; k++) if (ser[k]->text[0]) ns = k + 1;
-			if (nc == 0 || ns == 0) { uk_messagebox ("Chart Data", "Name at least one category and one series.", MB_OK); return; }
+			if (nc == 0 || ns == 0) { ft_messagebox ("Chart Data", "Name at least one category and one series.", MB_OK); return; }
 			c.ncat = nc; c.nser = c.type == CH_PIE ? 1 : ns;
 			for (int i = 0; i < nc; i++) scpy (c.cat[i], cat[i]->text, 24);
 			for (int k = 0; k < ns; k++) { scpy (c.ser[k], ser[k]->text, 32); for (int i = 0; i < nc; i++) c.val[k][i] = strtod (val[k][i]->text, 0); }
@@ -770,12 +772,12 @@ static void drop_shapes (ToolButton &b)
 static void picture_into (Object *ph)
 {
 	char path[200];
-	if (!uk_file_open (path, sizeof path, "SD:/docs/pictures")) { focus_view (); return; }
+	if (!ft_file_open (path, sizeof path, "SD:/docs/pictures")) { focus_view (); return; }
 	unsigned n = 0; unsigned char *b = read_all (path, &n);
 	if (!b) { focus_view (); return; }
 	Object *o = make_picture (base_name (path), b, n, ph);
 	free (b);
-	if (!o) { uk_messagebox ("Insert Picture", "That file is not a picture Slides can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK); focus_view (); return; }
+	if (!o) { ft_messagebox ("Insert Picture", "That file is not a picture Slides can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK); focus_view (); return; }
 	if (ph)
 	{
 		// the placeholder replaced by the picture (in its place in the order)
@@ -1491,7 +1493,7 @@ int main (void)
 	SlidesRoot root; g_root = &root;
 	root.attach ();
 	uikit::init ();
-	if (!fnt::init ()) { uk_messagebox ("Slides", "No TrueType fonts in SD:/res/fonts: Slides cannot draw its slides.", MB_OK); return 1; }
+	if (!fnt::init ()) { ft_messagebox ("Slides", "No TrueType fonts in SD:/res/fonts: Slides cannot draw its slides.", MB_OK); return 1; }
 	ss::g_appIcon = slides_icon;
 	ss::make_palettes ();
 	Show::g_now = now_hook;
@@ -1578,7 +1580,7 @@ int main (void)
 	root.setBg (C_BG);
 
 	g_onChange = refresh; g_onSlides = on_slides;
-	g_onDone = master_sync; g_accepts = master_accepts; g_onRefuse = [] (const char *m) { uk_messagebox ("Master view", m, MB_OK); };
+	g_onDone = master_sync; g_accepts = master_accepts; g_onRefuse = [] (const char *m) { ft_messagebox ("Master view", m, MB_OK); };
 	g_onContext = view_menu; g_onSlideMenu = slide_menu; g_onPictureWanted = picture_into;
 	g_onStatus = on_status; g_onOpenSlide = open_slide; g_onTool = refresh;
 	SlideView::g_onWheelSlide = on_wheel_slide; SlideView::g_onZoom = on_zoom;
@@ -1660,7 +1662,7 @@ int main (void)
 		bool recovered = false;
 		if (b)
 		{
-			if (n > 0 && uk_messagebox ("Slides", "Slides was closed with unsaved changes. Open the recovered presentation?", MB_YESNO) == 1 && odp_load (g_deck, b, n))
+			if (n > 0 && ft_messagebox ("Slides", "Slides was closed with unsaved changes. Open the recovered presentation?", MB_YESNO) == 1 && odp_load (g_deck, b, n))
 			{
 				unsigned nn = 0; unsigned char *nb = read_all (RECOVER_NAME, &nn);
 				g_path[0] = 0;

@@ -68,6 +68,12 @@ public:
 	bool onKey (long k) override;		// Enter = Open / Save, Esc = Cancel
 	void onDraw () override;
 	void getResult (char *out, unsigned cap);		// dir + "/" + filename (folder mode: dir)
+	// The kinds of files shown: "Text files|*.txt;*.md|All files|*" -- pairs of a name and its patterns
+	// (';' between them; "*": every file), '|' between everything. A drop-down beside the buttons chooses
+	// one; the folder shows the files that match it (and every folder). A save: a name typed without an
+	// extension takes the kind's first one. 0 / "": every file, no drop-down. The text must live as long
+	// as the dialog (it is not copied).
+	void setFilters (const char *filters);
 	const char *fileName () const { return m_nameBox ? m_nameBox->text : ""; }	// the name box's text
 };
 
@@ -110,8 +116,10 @@ public:
 };
 
 int  uk_messagebox (const char *title, const char *text, int buttons);	// modal; buttons: MB_* -> 1 OK / Yes, 0 Cancel / No / Esc (2: Yes-No-Cancel's No)
-bool uk_file_open (char *out, unsigned cap, const char *startDir);	// modal file browser from startDir; true = OK (out: the chosen path)
-bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);	// the same with a name box (defName in it); true = OK
+// The file dialogs: modal, from startDir (a folder, or a file's path: its folder); true = OK (out: the chosen
+// path). filters: the kinds of files offered, "Text files|*.txt;*.md|All files|*" (FileDialog::setFilters); 0: all.
+bool uk_file_open (char *out, unsigned cap, const char *startDir, const char *filters = 0);
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName, const char *filters = 0);	// with a name box (defName in it)
 bool uk_folder_open (char *out, unsigned cap, const char *startDir);	// pick a directory
 bool uk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 

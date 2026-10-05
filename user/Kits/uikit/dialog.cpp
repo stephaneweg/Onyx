@@ -59,11 +59,52 @@ int Modal::run ()
 }
 
 // ---- MessageBox --------------------------------------------------------------
-static int mb_w () { Root *r = Root::current (); int W = r ? r->width  : 320; int w = 320; if (w > W - 20) w = W - 20; return w; }
-static int mb_h () { Root *r = Root::current (); int H = r ? r->height : 130; int h = 130; if (h > H - 20) h = H - 20; return h; }
+// The box: 320 wide, up to 460 for a long text (its longest line; the text wraps at the words past that),
+// as high as its lines need; never more than the window allows.
+enum { MB_PAD = 16, MB_MAXW = 460 };
+// The next line of p that fits w pixels (cut at a space; a '\n' ends it) into buf (cap bytes) -> past it.
+static const char *mb_line (const char *p, int w, char *buf, int cap)
+{
+	int n = 0, lastSp = -1;
+	while (p[n] && p[n] != '\n' && n < cap - 1)
+	{
+		buf[n] = p[n]; buf[n + 1] = '\0';
+		if (p[n] == ' ') lastSp = n;
+		if (n > 0 && uk_text_w (buf) > w) { if (lastSp > 0) n = lastSp; break; }
+		n++;
+	}
+	buf[n] = '\0';
+	p += n;
+	while (*p == ' ') p++;
+	if (*p == '\n') p++;
+	return p;
+}
+static int mb_w (const char *text)
+{
+	Root *r = Root::current (); int W = r ? r->width : 320;
+	int w = 320, widest = 0;
+	char line[160];
+	for (const char *p = text ? text : ""; *p; ) { const char *q = mb_line (p, 100000, line, sizeof line); int t = uk_text_w (line); if (t > widest) widest = t; if (q == p) break; p = q; }
+	if (widest + 2 * MB_PAD > w) w = widest + 2 * MB_PAD;
+	if (w > MB_MAXW) w = MB_MAXW;
+	if (w > W - 20) w = W - 20;
+	return w;
+}
+static int mb_h (const char *text)
+{
+	Root *r = Root::current (); int H = r ? r->height : 130;
+	int w = mb_w (text) - 2 * MB_PAD, lines = 0;
+	char line[160];
+	for (const char *p = text ? text : ""; *p; lines++) { const char *q = mb_line (p, w, line, sizeof line); if (q == p) break; p = q; }
+	if (lines < 1) lines = 1;
+	int h = Modal::titleH () + 14 + lines * (uk_fh () + 3) + 14 + 28 + 12;
+	if (h < 130) h = 130;
+	if (h > H - 20) h = H - 20;
+	return h;
+}
 
 MessageBox::MessageBox (const char *title, const char *text, int buttons)
-  : Modal (mb_w (), mb_h ()), m_title (title), m_text (text), m_def (1)
+  : Modal (mb_w (text), mb_h (text)), m_title (title), m_text (text), m_def (1)
 {
 	Root *r = Root::current ();
 	int W = r ? r->width : width, H = r ? r->height : height;
@@ -103,15 +144,13 @@ void MessageBox::onDraw ()
 {
 	int fh = uk_fh ();
 	drawBox (m_title);
-	const char *p = m_text; int line = 0; char buf[96];
-	while (*p)
+	char buf[160]; int line = 0;
+	for (const char *p = m_text ? m_text : ""; *p; line++)
 	{
-		int n = 0; while (p[n] && p[n] != '\n' && n < 95) n++;
-		for (int i = 0; i < n; i++) buf[i] = p[i];
-		buf[n] = '\0';
-		canvas.text (14, titleH () + 10 + line * (fh + 2), buf, C_TEXT);
-		p += n; if (*p == '\n') p++;
-		line++;
+		const char *q = mb_line (p, width - 2 * MB_PAD, buf, sizeof buf);
+		canvas.text (MB_PAD, titleH () + 14 + line * (fh + 3), buf, C_TEXT);
+		if (q == p) break;
+		p = q;
 	}
 }
 
@@ -144,6 +183,9 @@ static const char *const FD_VOLS[] = { "SD:", "SD1:", "SD2:", "SD3:", "USB:", "U
 enum { FD_MAX = 126, FD_NAME = 92, FD_VOLMAX = 8 };	// (128 entries of 96 bytes: 126 files, 2 for FdExtra)
 struct FdExtra
 {
+	const char *filters;			// the kinds of files (setFilters; 0: all)
+	int  filter;				// ... the one chosen
+	int  fx, fy, fw, fh;			// ... its drop-down (fw 0: none)
 	int  hot, hotVol, nvol;			// the row, the volume under the pointer; the volumes shown
 	int  ux, uy, uw, uh;			// the Up button
 	int  px, pw;				// the path field
@@ -184,6 +226,65 @@ static void fd_start (char *dir, int cap, const char *start, char *name, int nca
 	}
 	for (int i = 0; i < 16 && dir[0] && !fd_isdir (dir); i++) fd_parent (dir);
 	if (dir[0] == '\0') fd_scopy (dir, "SD:/", cap);
+}
+
+// ---- the kinds of files: "Name|*.a;*.b|Name|*" ----
+static const char *fd_bar (const char *p) { while (*p && *p != '|') p++; return p; }
+static int fd_filters (const char *f)
+{
+	int n = 0;
+	if (f == 0 || f[0] == '\0') return 0;
+	for (const char *p = f; *p; )
+	{
+		const char *e = fd_bar (p); if (*e == '\0') break;	// (a name without patterns: not one)
+		const char *e2 = fd_bar (e + 1);
+		n++;
+		p = *e2 ? e2 + 1 : e2;
+	}
+	return n;
+}
+// The i-th kind: its name and its patterns copied (ncap, pcap bytes) -> false: no such kind.
+static bool fd_filter (const char *f, int i, char *name, int ncap, char *pats, int pcap)
+{
+	if (f == 0) return false;
+	for (const char *p = f; *p; i--)
+	{
+		const char *e = fd_bar (p); if (*e == '\0') return false;
+		const char *e2 = fd_bar (e + 1);
+		if (i == 0)
+		{
+			int k = 0; for (const char *q = p; q < e && k < ncap - 1; q++) name[k++] = *q; name[k] = '\0';
+			k = 0; for (const char *q = e + 1; q < e2 && k < pcap - 1; q++) pats[k++] = *q; pats[k] = '\0';
+			return true;
+		}
+		p = *e2 ? e2 + 1 : e2;
+	}
+	return false;
+}
+static char fd_low (char c);
+// Does a file's name match the patterns ("*.txt;*.md", "*")?
+static bool fd_match (const char *name, const char *pats)
+{
+	int nl = 0; while (name[nl]) nl++;
+	for (const char *p = pats; *p; )
+	{
+		const char *e = p; while (*e && *e != ';') e++;
+		int pl = (int) (e - p);
+		if (pl == 1 && p[0] == '*') return true;
+		if (pl == 3 && p[0] == '*' && p[1] == '.' && p[2] == '*') return true;
+		if (pl >= 2 && p[0] == '*')				// "*.ext": the name's end
+		{
+			int sl = pl - 1;
+			if (nl >= sl)
+			{
+				bool same = true;
+				for (int k = 0; k < sl && same; k++) if (fd_low (name[nl - sl + k]) != fd_low (p[1 + k])) same = false;
+				if (same) return true;
+			}
+		}
+		p = *e ? e + 1 : e;
+	}
+	return pats[0] == '\0';
 }
 
 static char fd_low (char c) { return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; }
@@ -247,8 +348,21 @@ static void fd_icon_drive (Canvas &cv, int x, int y)
 FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bool folder)
   : Modal (fd_w (), fd_h ()), m_save (save), m_folder (folder)
 {
-	char fileName[FD_NAME];
-	fd_start (m_dir, sizeof m_dir, startDir, fileName, sizeof fileName);
+	char fileName[FD_NAME], defDir[256];
+	// a default name that is a whole path (a program gives its document's): the name is its last part,
+	// and the dialog opens in its folder
+	bool defPath = false;
+	for (const char *p = defName ? defName : ""; *p; p++) if (*p == '/' || *p == ':') defPath = true;
+	if (defPath)
+	{
+		fd_start (m_dir, sizeof m_dir, defName, fileName, sizeof fileName);
+		int n = 0; while (defName[n]) n++;
+		int k = n; while (k > 0 && defName[k - 1] != '/' && defName[k - 1] != ':') k--;
+		fd_scopy (defDir, defName + k, sizeof defDir);		// (the name, whether the file exists or not)
+		fd_scopy (fileName, defDir, sizeof fileName);
+		defName = fileName;
+	}
+	else fd_start (m_dir, sizeof m_dir, startDir, fileName, sizeof fileName);
 	FdExtra &x = fd_x (m_ent);
 	__builtin_memset (&x, 0, sizeof x);
 	x.hot = x.hotVol = -1;
@@ -297,6 +411,8 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 void FileDialog::read ()
 {
 	m_count = 0; m_top = 0; m_sel = -1; fd_x (m_ent).hot = -1;
+	char kind[64], pats[128]; pats[0] = '\0';
+	bool filtered = fd_filter (fd_x (m_ent).filters, fd_x (m_ent).filter, kind, sizeof kind, pats, sizeof pats);
 	void *d = kapi_opendir (m_dir);
 	if (d != 0)
 	{
@@ -304,6 +420,7 @@ void FileDialog::read ()
 		while (m_count < FD_MAX && kapi_readdir (d, &e))
 		{
 			if (e.name[0] == '.' && (e.name[1] == '\0' || (e.name[1] == '.' && e.name[2] == '\0'))) continue;
+			if (filtered && !e.is_dir && !fd_match (e.name, pats)) continue;	// (not of the kind chosen)
 			fd_scopy (m_ent[m_count], e.name, FD_NAME); fd_set_size (m_ent, m_count, e.size);
 			m_isdir[m_count] = e.is_dir ? 1 : 0; m_count++;
 		}
@@ -317,6 +434,21 @@ void FileDialog::read ()
 		__builtin_memcpy (m_ent[k], t, 96); m_isdir[k] = td;
 	}
 	syncSb ();
+}
+
+void FileDialog::setFilters (const char *filters)
+{
+	FdExtra &x = fd_x (m_ent);
+	x.filters = fd_filters (filters) > 0 && !m_folder ? filters : 0;
+	x.filter = 0;
+	x.fw = 0;
+	if (x.filters)						// its drop-down: left of the buttons
+	{
+		x.fx = 12; x.fy = height - 40; x.fh = 28;
+		x.fw = width - 12 - 184 - 12 - x.fx;
+		if (x.fw > 300) x.fw = 300;
+	}
+	read (); invalidate (true);
 }
 
 void FileDialog::goUp ()			// the folder above (a volume's root: stays)
@@ -373,7 +505,23 @@ void FileDialog::onButton (int tag)
 		if (!typed) { char name[FD_NAME]; fd_scopy (name, m_ent[m_sel], FD_NAME); enter (name); if (m_folder) close (1); return; }
 	}
 	if (m_folder) { if (m_dir[0] != '\0') close (1); return; }
-	if (m_nameBox->text[0] != '\0' && m_dir[0] != '\0') close (1);	// (it needs a name)
+	if (m_nameBox->text[0] == '\0' || m_dir[0] == '\0') return;	// (it needs a name)
+	if (m_save)						// a name without an extension: the kind's first one
+	{
+		char kind[64], pats[128];
+		bool dot = false;
+		for (const char *p = m_nameBox->text; *p; p++) if (*p == '.') dot = true;
+		if (!dot && fd_filter (fd_x (m_ent).filters, fd_x (m_ent).filter, kind, sizeof kind, pats, sizeof pats)
+		    && pats[0] == '*' && pats[1] == '.' && pats[2] != '*' && pats[2] != '\0')
+		{
+			char name[FD_NAME]; int n = 0;
+			for (; m_nameBox->text[n] && n < FD_NAME - 12; n++) name[n] = m_nameBox->text[n];
+			for (int k = 1; pats[k] && pats[k] != ';' && n < FD_NAME - 1; k++) name[n++] = pats[k];
+			name[n] = '\0';
+			m_nameBox->setText (name);
+		}
+	}
+	close (1);
 }
 
 bool FileDialog::onKey (long k)
@@ -414,6 +562,23 @@ bool FileDialog::onMouse (int mx, int my, int bl, int, int, int wheel)
 	int hot = inList ? m_top + (my - m_ly - 2) / m_rowH : -1; if (hot >= m_count) hot = -1;
 	int hv = inVol ? (my - m_ly - 4) / m_rowH : -1; if (hv >= x.nvol) hv = -1;
 	if (hot != x.hot || hv != x.hotVol || (char) onUp != x.upHot) { x.hot = hot; x.hotVol = hv; x.upHot = onUp; invalidate (true); }
+	bool onKind = x.fw && mx >= x.fx && mx < x.fx + x.fw && my >= x.fy && my < x.fy + x.fh;
+	if (bl && !pressed && onKind)				// the kinds' menu, under the drop-down
+	{
+		static char labels[8][96];
+		PopupMenu menu (left + x.fx, top + x.fy + x.fh);
+		int n = fd_filters (x.filters); if (n > 8) n = 8;
+		for (int i = 0; i < n; i++)
+		{
+			char pats[128];
+			fd_filter (x.filters, i, labels[i], 64, pats, sizeof pats);
+			menu.add (labels[i], i + 1);
+		}
+		int r = menu.run ();
+		if (r >= 1 && r - 1 != x.filter) { x.filter = r - 1; read (); }
+		invalidate (true);
+		return true;
+	}
 	if (bl && !pressed)					// the press
 	{
 		pressed = true;
@@ -501,6 +666,19 @@ void FileDialog::onDraw ()
 
 	// the name's label; how many there are
 	if (x.ny) canvas.text (m_lx, x.ny + 5, TR ("Name:"), C_TEXT);
+	if (x.fw)						// the kind of files: a drop-down
+	{
+		char kind[64], pats[128], label[200]; int k = 0;
+		fd_filter (x.filters, x.filter, kind, sizeof kind, pats, sizeof pats);
+		for (int i = 0; kind[i] && k < 190; i++) label[k++] = kind[i];
+		if (pats[0] && !(pats[0] == '*' && pats[1] == '\0')) { label[k++] = ' '; label[k++] = '('; for (int i = 0; pats[i] && k < 196; i++) label[k++] = pats[i]; label[k++] = ')'; }
+		label[k] = '\0';
+		uk_raised (canvas, x.fx, x.fy, x.fw, x.fh, 5, C_FACE, UK_NORMAL);
+		fd_text_fit (canvas, x.fx + 10, x.fy + (x.fh - fh) / 2, label, x.fw - 34, C_TEXT);
+		int ax = x.fx + x.fw - 16, ay = x.fy + x.fh / 2 - 2;
+		for (int i = 0; i < 5; i++) canvas.fillRect (ax - 4 + i, ay + i, 9 - 2 * i, 1, C_TEXT);	// the arrow
+	}
+	else
 	{
 		char t[48]; int n = m_count, i = 0, k = 0; char d[8];
 		do { d[i++] = (char) ('0' + n % 10); n /= 10; } while (n);
@@ -645,11 +823,18 @@ bool PopupMenu::onKey (long k)
 int uk_messagebox (const char *title, const char *text, int buttons)
 { MessageBox m (title, text, buttons); return m.run (); }
 
-bool uk_file_open (char *out, unsigned cap, const char *startDir)
-{ FileDialog d (startDir, 0, false); if (d.run () == 1) { d.getResult (out, cap); return true; } return false; }
+bool uk_file_open (char *out, unsigned cap, const char *startDir, const char *filters)
+{ FileDialog d (startDir, 0, false); d.setFilters (filters); if (d.run () == 1) { d.getResult (out, cap); return true; } return false; }
 
-bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName)
-{ FileDialog d (startDir, defName, true); if (d.run () == 1) { d.getResult (out, cap); return true; } return false; }
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName, const char *filters)
+{ FileDialog d (startDir, defName, true); d.setFilters (filters); if (d.run () == 1) { d.getResult (out, cap); return true; } return false; }
+
+// (the functions as the programs built before 2026-10-05 call them, without the kinds: the library's
+// table keeps their names)
+bool uk_file_open (char *out, unsigned cap, const char *startDir);
+bool uk_file_open (char *out, unsigned cap, const char *startDir) { return uk_file_open (out, cap, startDir, 0); }
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName);
+bool uk_file_save (char *out, unsigned cap, const char *startDir, const char *defName) { return uk_file_save (out, cap, startDir, defName, 0); }
 
 bool uk_folder_open (char *out, unsigned cap, const char *startDir)
 { FileDialog d (startDir, 0, false, true); if (d.run () == 1) { d.getResult (out, cap); return true; } return false; }

@@ -362,7 +362,7 @@ static int merge_job (const char *job, char *path, int cap)
 {
 	char *jb = 0; int jn = 0;
 	void *f = kapi_open (job);
-	if (!f) { uk_messagebox ("Mail Merge", "The mail merge's request could not be read.", MB_OK); return 0; }
+	if (!f) { ft_messagebox ("Mail Merge", "The mail merge's request could not be read.", MB_OK); return 0; }
 	unsigned sz = kapi_fsize (f);
 	jb = new char[sz + 1]; jn = kapi_read (f, jb, sz); kapi_close (f);
 	if (jn < 0) jn = 0;
@@ -393,11 +393,11 @@ static int merge_job (const char *job, char *path, int cap)
 	}
 	delete[] jb;
 	const char *why;
-	if (!merge_open (data, &why)) { uk_messagebox ("Mail Merge", "The records could not be read.", MB_OK); return 0; }
+	if (!merge_open (data, &why)) { ft_messagebox ("Mail Merge", "The records could not be read.", MB_OK); return 0; }
 	if (lines[0]) merge_lines_open (lines); else g_mlinesOk = false;
 	char *tb; int tn;
 	void *tf = kapi_open (tmpl);
-	if (!tf) { uk_messagebox ("Mail Merge", "The letter could not be read.", MB_OK); return 0; }
+	if (!tf) { ft_messagebox ("Mail Merge", "The letter could not be read.", MB_OK); return 0; }
 	unsigned tsz = kapi_fsize (tf);
 	tb = new char[tsz + 1]; tn = kapi_read (tf, tb, tsz); kapi_close (tf);
 	if (tn < 0) tn = 0;
@@ -405,7 +405,7 @@ static int merge_job (const char *job, char *path, int cap)
 	int r0 = 0, r1 = g_mdata.nr - 1;
 	if (sicmp (records, "all") != 0) { int v = 0; for (const char *t = records; *t >= '0' && *t <= '9'; t++) v = v * 10 + (*t - '0'); r0 = r1 = wclamp (v - 1, 0, g_mdata.nr - 1); }
 	int res = 0;
-	if (g_mdata.nr == 0) uk_messagebox ("Mail Merge", "The form has no records.", MB_OK);
+	if (g_mdata.nr == 0) ft_messagebox ("Mail Merge", "The form has no records.", MB_OK);
 	else if (sicmp (output, "files") == 0)
 	{
 		const char *ext = !sicmp (format, "docx") ? ".docx" : !sicmp (format, "odt") ? ".odt" : !sicmp (format, "rtf") ? ".rtf" : 0;
@@ -414,13 +414,13 @@ static int merge_job (const char *job, char *path, int cap)
 		scpy (base, bn, sizeof base); { int n = slen (base); while (n > 0 && base[n - 1] != '.') n--; if (n > 1) base[n - 1] = 0; }
 		int done = merge_files (tb, tn, r0, r1, folder[0] ? folder : "SD:/docs", name, base, ext, path, cap);
 		char msg[120]; merge_done_msg (done, folder[0] ? folder : "SD:/docs", msg, sizeof msg);
-		if (done != 1) uk_messagebox ("Mail Merge", msg, MB_OK);	// (one document: shown at once, its file in the title)
+		if (done != 1) ft_messagebox ("Mail Merge", msg, MB_OK);	// (one document: shown at once, its file in the title)
 		res = done ? 2 : 0;
 	}
 	else
 	{
 		if (merge_combined (tb, tn, r0, r1, g_doc)) res = 1;
-		else uk_messagebox ("Mail Merge", "The letter could not be read.", MB_OK);
+		else ft_messagebox ("Mail Merge", "The letter could not be read.", MB_OK);
 	}
 	delete[] tb;
 	return res;
@@ -498,11 +498,11 @@ public:
 		if (tag == 2)							// the data chosen
 		{
 			char path[200];
-			if (uk_file_open (path, sizeof path, "SD:/docs"))
+			if (ft_file_open (path, sizeof path, "SD:/docs"))
 			{
 				const char *why;
 				if (merge_open (path, &why)) { scpy (g_doc.mergeSrc, path, sizeof g_doc.mergeSrc); g_doc.changes++; merge_show (cbPreview->checked); fill (); redraw (); }
-				else uk_messagebox ("Mail Merge", "That file is not a Cardfile form (a .card file).", MB_OK);
+				else ft_messagebox ("Mail Merge", "That file is not a Cardfile form (a .card file).", MB_OK);
 			}
 			return;
 		}
@@ -523,7 +523,7 @@ public:
 		}
 		if (tag == 6 || tag == 7)
 		{
-			if (!g_mdataOk || !g_mdata.nr) { uk_messagebox ("Mail Merge", "Choose the records first (a Cardfile form with records).", MB_OK); return; }
+			if (!g_mdataOk || !g_mdata.nr) { ft_messagebox ("Mail Merge", "Choose the records first (a Cardfile form with records).", MB_OK); return; }
 			int r0 = 0, r1 = g_mdata.nr - 1;
 			if (which->sel == 1) r0 = r1 = g_mrec;
 			if (g_doc.cur != SY_BODY) ed_story (SY_BODY);
@@ -541,11 +541,11 @@ public:
 				add ("\noutput = open\n");
 				if (ok) ok = kapi_save_file (JOB, job, (unsigned) slen (job)) >= 0;
 				char args[240]; scpy (args, "--merge ", sizeof args); int m = slen (args); scpy (args + m, JOB, (int) sizeof args - m);
-				if (!ok || kapi_exec ("SD:/apps/letters.app/main", args) < 0) uk_messagebox ("Mail Merge", "Letters could not be started for the documents made.", MB_OK);
+				if (!ok || kapi_exec ("SD:/apps/letters.app/main", args) < 0) ft_messagebox ("Mail Merge", "Letters could not be started for the documents made.", MB_OK);
 				return;
 			}
 			char path[200];
-			if (uk_file_save (path, sizeof path, "SD:/docs", "letter.rtf"))
+			if (ft_file_save (path, sizeof path, "SD:/docs", "letter.rtf"))
 			{
 				int n = slen (path);
 				const char *ext = n > 5 && !sicmp (path + n - 5, ".docx") ? ".docx" : n > 4 && !sicmp (path + n - 4, ".odt") ? ".odt" : ".rtf";
@@ -557,7 +557,7 @@ public:
 				char first[200];
 				int done = merge_files (o.b, o.n, r0, r1, folder, field, base, ext, first, sizeof first);
 				char msg[120]; merge_done_msg (done, folder, msg, sizeof msg);
-				uk_messagebox ("Mail Merge", msg, MB_OK);
+				ft_messagebox ("Mail Merge", msg, MB_OK);
 			}
 			o.free ();
 			return;

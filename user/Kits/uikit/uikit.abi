@@ -729,3 +729,6 @@
 723 uk_panel
 724 uk_set_parent
 725 uk_width
+726 _ZN5uikit10FileDialog10setFiltersEPKc
+727 _ZN5uikit12uk_file_openEPcjPKcS2_
+728 _ZN5uikit12uk_file_saveEPcjPKcS2_S2_

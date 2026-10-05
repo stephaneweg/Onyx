@@ -71,6 +71,11 @@ Everything the headers declare, in their order — the details are in each heade
 | `FtTextFace` | ft/uikitface.h -- FreeType's anti-aliased text for every uikit widget | `uikitface.h` |
 | `ft_uikit_install` | Installs FreeType's text for every uikit widget with the family by name (DejaVu Sans when absent) at px pixels, false when the card has no TrueType font. | `uikitface.h` |
 | `ft_uikit_face` | The face ft_uikit_install made (0 | `uikitface.h` |
+| `ft_dialog_face` | The face of the dialogs (0 | `uikitface.h` |
+| `ft_messagebox` | uikit's message box (uk_messagebox) in FreeType's text. | `uikitface.h` |
+| `ft_file_open` | uikit's file dialogs (uk_file_open / uk_file_save / uk_folder_open) in FreeType's text. | `uikitface.h` |
+| `ft_file_save` | uikit's file dialogs (uk_file_open / uk_file_save / uk_folder_open) in FreeType's text. | `uikitface.h` |
+| `ft_folder_open` | uikit's file dialogs (uk_file_open / uk_file_save / uk_folder_open) in FreeType's text. | `uikitface.h` |
 | `Glyph` | (a type) | `fonts.h` |
 | `Font` | (a type) | `fonts.h` |
 | `FaceFile` | (a type) | `fonts.h` |
@@ -259,6 +264,38 @@ The face ft_uikit_install made (0: none yet).
 
 ```cpp
 FtTextFace *ft_uikit_face ();
+```
+
+uikit's own dialogs in FreeType's text, in a program that does NOT install a face for all its widgets (Letters, Slides: their own interface has the bitmap text's metrics): the face is in use for the dialog's time only -- a message box, the file dialog, with their buttons and fields.
+
+```
+  ft_messagebox (title, text, MB_YESNO);     ft_file_open (path, sizeof path, dir);
+```
+
+A program that called ft_uikit_install has that face already: these then do as uikit's.
+
+```cpp
+static FtTextFace *g_ftDialogFace;		// (made at the first dialog: DejaVu Sans, 13 px)
+```
+
+The face of the dialogs (0: no TrueType font on the card -- the dialog keeps the bitmap text).
+
+```cpp
+FtTextFace *ft_dialog_face ();
+```
+
+uikit's message box (uk_messagebox) in FreeType's text.
+
+```cpp
+int ft_messagebox (const char *title, const char *text, int buttons);
+```
+
+uikit's file dialogs (uk_file_open / uk_file_save / uk_folder_open) in FreeType's text.
+
+```cpp
+bool ft_file_open (char *out, unsigned cap, const char *startDir, const char *filters = 0);
+bool ft_file_save (char *out, unsigned cap, const char *startDir, const char *defName, const char *filters = 0);
+bool ft_folder_open (char *out, unsigned cap, const char *startDir);
 ```
 
 ## `fontkit/fonts.h`

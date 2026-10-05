@@ -25,6 +25,8 @@
 // document is kept in SD:/apps/letters.app/recovered.rtf and offered back at the next start.
 //
 #include "uikit/uikit.h"
+#include "fontkit/uikitface.h"		// uikit's dialogs (message boxes, the file dialog) in FreeType's text
+#define DOC_MESSAGEBOX ft_messagebox
 #include "docguard.h"
 #include "fontkit/fonts.h"
 #include "ui.h"
@@ -108,10 +110,10 @@ static bool read_file (const char *path, char **out, int *len)
 static bool load_path (const char *path)
 {
 	char *b; int n;
-	if (!read_file (path, &b, &n)) { uk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
+	if (!read_file (path, &b, &n)) { ft_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
 	bool ok = doc_from_bytes (g_doc, b, n);
 	delete[] b;
-	if (!ok) { doc_new (g_doc); uk_messagebox ("Open", "The document could not be read.", MB_OK); }
+	if (!ok) { doc_new (g_doc); ft_messagebox ("Open", "The document could not be read.", MB_OK); }
 	if (g_doc.n == 0) doc_new (g_doc);
 	scpy (g_path, ok ? path : "", sizeof g_path);
 	doc_loaded ();
@@ -123,7 +125,7 @@ static bool write_path (const char *path, bool asCopy = false)
 	char *b = 0; unsigned n = 0;
 	bool ok = doc_bytes (g_doc, path, &b, &n) && kapi_save_file (path, b, n) >= 0;
 	delete[] b;
-	if (!ok) { uk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
+	if (!ok) { ft_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
 	if (!asCopy) { scpy (g_path, path, sizeof g_path); g_saved = g_doc.changes; }
 	refresh ();
 	return true;
@@ -138,7 +140,7 @@ static void cmd_save ()
 		bool plain = g_doc.ntbl == 0;
 		CharFmt n0 = style_fmt (g_doc, ST_NORMAL);
 		for (int i = 0; i < g_doc.nfmt && plain; i++) { const CharFmt &f = g_doc.fmt[i]; if (f.flags || f.color != AUTO || f.hilite != AUTO || (f.font != n0.font && f.size != n0.size)) plain = false; }
-		if (!plain && uk_messagebox ("Save", "Plain text keeps no formats (bold, fonts, colours, tables...). Save as text anyway?", MB_YESNO) != 1) { cmd_save_as (); return; }
+		if (!plain && ft_messagebox ("Save", "Plain text keeps no formats (bold, fonts, colours, tables...). Save as text anyway?", MB_YESNO) != 1) { cmd_save_as (); return; }
 	}
 	write_path (g_path);
 	focus_view ();
@@ -154,7 +156,7 @@ static void cmd_save_as ()
 		if (n > 0) def[n - 1] = 0;
 		int k = slen (def); scpy (def + k, ".rtf", (int) sizeof def - k);
 	}
-	if (uk_file_save (path, sizeof path, "SD:/docs", def))
+	if (ft_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		if (!rich_ext (path) && !has_ext (path, ".txt")) { int k = slen (path); scpy (path + k, ".rtf", (int) sizeof path - k); }
 		write_path (path);
@@ -174,7 +176,7 @@ static void cmd_open ()
 {
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	char path[200];
-	if (uk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (ft_file_open (path, sizeof path, "SD:/docs")) load_path (path);
 	focus_view ();
 }
 static void cmd_export (const char *ext)
@@ -184,7 +186,7 @@ static void cmd_export (const char *ext)
 	int n = slen (def); int dot = n; while (dot > 0 && def[dot - 1] != '.') dot--;
 	if (dot > 0) def[dot - 1] = 0;
 	n = slen (def); scpy (def + n, ext, (int) sizeof def - n);
-	if (uk_file_save (path, sizeof path, "SD:/docs", def))
+	if (ft_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		if (!has_ext (path, ext)) { int k = slen (path); scpy (path + k, ext, (int) sizeof path - k); }
 		write_path (path, true);
@@ -231,7 +233,7 @@ public:
 	}
 	void onButton (int tag) override
 	{
-		if (tag == 9) { char p[200]; if (uk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 9) { char p[200]; if (ft_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
 		if (tag == 1)
 		{
 			o.pages = rAll->checked ? 0 : rCur->checked ? 1 : 2;
@@ -239,7 +241,7 @@ public:
 			{
 				int a = 0, b = 0; const char *t = range->text;
 				a = atoi (t); const char *d = strchr (t, '-'); b = d ? atoi (d + 1) : a;
-				if (a < 1 || b < a) { uk_messagebox ("Export as PDF", "Type the pages as \"2-5\" (or one page: \"3\").", MB_OK); return; }
+				if (a < 1 || b < a) { ft_messagebox ("Export as PDF", "Type the pages as \"2-5\" (or one page: \"3\").", MB_OK); return; }
 				o.from = a - 1; o.to = b - 1;
 			}
 			o.marks = cMarks->checked; o.jpeg = cJpeg->checked; o.open = cOpen->checked;
@@ -269,7 +271,7 @@ static void cmd_print ()
 	{ PrintWriter w (j); g_view->exportPages (w, 0, L.npages - 1); }
 	int id = print_end (j);
 	set_zoom (zoom); g_relayout = true; g_view->relayout (); g_view->invalidate (true);
-	if (id < 0) uk_messagebox ("Print", "The document could not be put in the print queue.", MB_OK);
+	if (id < 0) ft_messagebox ("Print", "The document could not be put in the print queue.", MB_OK);
 	focus_view ();
 }
 static void cmd_export_pdf ()
@@ -314,7 +316,7 @@ static void cmd_export_pdf ()
 	set_zoom (zoom); g_relayout = true; g_view->relayout (); g_view->invalidate (true);
 	int r = pdf ? kapi_save_file (path, pdf, len) : -1;
 	delete[] pdf;
-	if (r != (int) len) uk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
+	if (r != (int) len) ft_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
 	else if (o.open) kapi_exec ("SD:apps/pdf.app/main", path);
 	focus_view ();
 }
@@ -381,9 +383,9 @@ static void cmd_page_break () { ed_page_break (); after_edit (); }
 static void cmd_image ()
 {
 	char path[200];
-	if (uk_file_open (path, sizeof path, "SD:/"))
+	if (ft_file_open (path, sizeof path, "SD:/"))
 	{
-		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) uk_messagebox ("Insert Image", "That file is not an image Letters can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
+		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) ft_messagebox ("Insert Image", "That file is not an image Letters can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
 	}
 	after_edit ();
 }
@@ -711,7 +713,7 @@ int main (void)
 	uikit::init ();
 	if (!fnt::init ())
 	{
-		uk_messagebox ("Letters", "No TrueType fonts in SD:/res/fonts: Letters cannot draw its pages.", MB_OK);
+		ft_messagebox ("Letters", "No TrueType fonts in SD:/res/fonts: Letters cannot draw its pages.", MB_OK);
 		return 1;
 	}
 	make_palettes ();
@@ -888,7 +890,7 @@ int main (void)
 		char *b; int n;
 		if (read_file (RECOVER, &b, &n))
 		{
-			if (n > 0 && rtf_is (b, n) && uk_messagebox ("Letters", "Letters was closed with unsaved changes. Open the recovered document?", MB_YESNO) == 1)
+			if (n > 0 && rtf_is (b, n) && ft_messagebox ("Letters", "Letters was closed with unsaved changes. Open the recovered document?", MB_YESNO) == 1)
 			{
 				rtf_load (g_doc, b, n);
 				if (g_doc.n == 0) doc_new (g_doc);
