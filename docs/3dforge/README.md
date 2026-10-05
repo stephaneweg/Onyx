@@ -1,11 +1,31 @@
 # 3DForge, a small parametric CAD — study, first mock-ups
 
-> **Status (2026-10-05): the design is approved by the user; Manifold is built for Onyx and tested under qemu
-> (`sh tools/tests/run_manifold_test.sh`); the app itself is not started.** Asked by the user
-> (2026-10-05): a small parametric CAD that is *easy to use*, in the spirit of Fusion or Shapr3D, above all for
-> simple shapes — "for a cube: click the centre, move away to give the width and the depth, click, move up to give
-> the height, click". Not a port of FreeCAD (too heavy), nor of SolveSpace or OpenCASCADE. The name, **3DForge**, is
-> the user's.
+> **Status (2026-10-05): built** — `user/Apps/3dforge` (the user guide's *3DForge*; docs/03 *3DForge* for the code),
+> tested on the PC (the document's test, the app in the desktop simulator), **not yet run on the Pi** (the GPU's
+> path). The study below was approved by the user before. Asked by the user (2026-10-05): a small parametric CAD
+> that is *easy to use*, in the spirit of Fusion or Shapr3D, above all for simple shapes — "for a cube: click the
+> centre, move away to give the width and the depth, click, move up to give the height, click". Not a port of
+> FreeCAD (too heavy), nor of SolveSpace or OpenCASCADE. The name, **3DForge**, is the user's.
+
+## What changed while it was built (the user, 2026-10-05)
+
+The app differs from the mock-ups below where the user asked, seeing it take shape:
+
+- **No left panel.** The bodies are a small panel floating over the view's top left corner; the history is a
+  **timeline**: a row of pictures under the view, from the left, moved by its arrows, the wheel or dragged.
+- **The shapes in one fold-out** (the *Shapes* button: a picture each), and five more of them: **sphere**, **torus**,
+  **pyramid**, **prism**, **taper** (a prism whose top differs from its base), each with the gesture the user
+  described (the user guide's table) — the field of the value being set has the keyboard at each step.
+- **A shape without the pointer**: once chosen, its values and its place are fields at the right, a ghost shows
+  it, OK makes it.
+
+| | |
+|---|---|
+| ![](../../screenshots/3dforge.png) | The app, the sample bracket open (`sh tools/tests/desktop_sim/shots.sh 3dforge`: the real program on the PC, the default theme). |
+| ![](../../screenshots/3dforge-shapes.png) | The shapes unfolded. |
+| ![](../../screenshots/3dforge-sketch.png) | A sketch on the plate's top face: a rectangle, a circle, a run of lines about to close. |
+
+## The mock-ups (approved before the code)
 
 The mock-ups are made by `python tools/screenshot/mockup_3dforge.py` → `docs/3dforge/mockups/3dforge-*.png`
 (1024 × 768, the **Milk** theme). The script needs `pip install manifold3d`: the part shown, a bracket, is **built by
@@ -38,8 +58,7 @@ a shadow on the ground) — what the GPU will draw on the Pi. Its measures (63.5
 
 ## What is next
 
-1. ~~Manifold (and Clipper2) built for Onyx as a library~~ — done: `user/Libs/manifold/libmanifold.a`
-   (`third_party/manifold-3.5.4`, `third_party/clipper2-46f6391`), tested in AArch64 under qemu.
-2. The view: the GPU drawing a body, orbit / pan / zoom, picking a face.
-3. Box, Cylinder, the operations, Export — the app is already useful.
-4. The sketch and Extrude; then the history that can be edited; then Fillet and Chamfer.
+All four stages of the plan are done (Manifold for Onyx; the view; the shapes, the operations, Export; the sketch,
+Extrude, the editable history, Fillet and Chamfer). What is left: **run it on the Pi** (the GPU's path has only its
+code read against the kernel's), then the limits listed in docs/HANDOFF.md (references that follow a change up the
+history, the ground's shadow, more sketch tools).

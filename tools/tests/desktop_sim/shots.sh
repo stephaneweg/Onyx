@@ -102,6 +102,16 @@ build () {
 		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = 3dforge ]; then			# (newlib-like: FreeType; Manifold and Clipper2 compiled for the PC; the view by the CPU here)
+		MF=third_party/manifold-3.5.4; CL=third_party/clipper2-46f6391/CPP/Clipper2Lib
+		MFD="-DMANIFOLD_PAR=-1 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_NO_IOSTREAM -DMANIFOLD_NO_FILESYSTEM -DCLIPPER2_NO_IOSTREAM -I$MF/include -I$CL/include"
+		if [ ! -f "$OUT/libmanifold.a" ]; then
+			mkdir -p "$OUT/mf"
+			for f in $MF/src/*.cpp $MF/src/cross_section/*.cpp $CL/src/*.cpp; do g++ -std=c++17 -O2 -w $MFD -c "$f" -o "$OUT/mf/$(basename "$f" .cpp).o" & done; wait
+			ar rcs "$OUT/libmanifold.a" "$OUT"/mf/*.o
+		fi
+		$CXX $MFD -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/3dforge -o "$OUT/3dforge" "$OUT/fakekapi.o" user/Apps/3dforge/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmanifold.a"; return
+	fi
 	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
 		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
@@ -125,7 +135,7 @@ build () {
 }
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
@@ -278,6 +288,13 @@ if want archiver; then			# (a sample archive of Onyx's sources in RAM:, arc_samp
 	png archiver-drop
 	sim archiver archiver-welcome "$W" $P SIM_RAM="$OUT/arc"; png archiver-welcome
 	rm -rf "$OUT/arc" "$OUT/writes/apps/archiver.app"
+fi
+if want 3dforge; then			# (the sample bracket; the shapes unfolded; a box, a cut, a sketch, a fillet being made; the export)
+	FG=SIM_ARGS=SD:/docs/3d/bracket.3df
+	sim 3dforge 3dforge "$(python3 $D/forge_scene.py main)" $P $FG; png 3dforge
+	for s in shapes box cut sketch fillet export; do
+		sim 3dforge 3dforge-$s "$(python3 $D/forge_scene.py $s)" $P $FG; png 3dforge-$s
+	done
 fi
 if want qbstudio; then			# (the example project: the designer, Convert chosen; the code and its completion)
 	sim qbstudio qbstudio "wait;wait;down 618 347;up 618 347;wait;wait" $P; png qbstudio

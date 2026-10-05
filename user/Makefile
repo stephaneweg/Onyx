@@ -47,9 +47,9 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
-$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf: | lib/appkit_stubs.o
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf: | lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # Runtime/lib.ld at 0 -- the kernel places it --, ONE exported symbol (Runtime/lib.vers), the export table, which is
@@ -694,6 +694,14 @@ Libs/manifold/obj/%.o: $(CLIPPER_SRC)/src/%.cpp Libs/manifold/onyx_manifold.h
 Libs/manifold/libmanifold.a: $(MF_OBJ)
 	@rm -f $@
 	$(AR) rcs $@ $^
+# 3DForge, the small parametric CAD (Apps/3dforge: docs/3dforge/README.md): a newlib app as Paint (FreeType's text
+# through uikit), its geometry Manifold's, its view drawn by the GPU (kapi_gpu_render); its pieces in Apps/3dforge/*.h.
+# libstdc++'s operator new (ONYX_HOSTED_NEW, in main.cpp): the program and Manifold are full of std::vector.
+# Its symbols are stripped (Manifold's templates make 2 MB of names) but libgcc's SME helpers', which tools/el0scan.sh
+# knows by their names.
+3dforge.elf: Apps/3dforge/main.cpp $(wildcard Apps/3dforge/*.h) Libs/manifold/libmanifold.a Libs/manifold/onyx_manifold.h Include/docguard.h lib/fontkit.imp.a 	     Kits/fontkit/uikitface.h lib/imagekit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) $(MF_INC) -fno-math-errno -IApps/3dforge -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       Libs/manifold/libmanifold.a lib/imagekit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -lstdc++ -lm -o $@
+	$(PREFIX)strip -K __arm_za_disable -K __arm_tpidr2_save -K __arm_tpidr2_restore -K __arm_sme_state -K __arm_get_current_vg $@
 
 Emulators/snes/libsnes.a: $(SNES_OBJS)
 	$(AR) rcs $@ $^

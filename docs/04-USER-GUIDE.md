@@ -2222,6 +2222,105 @@ Onyx: **Tab** goes to the next field (**Shift+Tab** the one before), **Enter** i
 the picture **scaled** (by pixels or a percentage; *Keep the proportions*: the other side follows as you
 type; sharp or smooth) or its **canvas** made bigger or smaller (anchored top left, centre or bottom right).
 
+### 3DForge, the small parametric CAD (`3dforge`)
+
+![3DForge](../screenshots/3dforge.png)
+*3DForge: the sample bracket. The tools, the view with the bodies' panel and the orientation cube, the timeline
+under it, the selection at the right.*
+
+**3DForge** (Graphics) makes solid parts for 3D printing out of simple steps: a shape drawn by click, move, click;
+a sketch on a face and its extrusion; bodies joined, cut or intersected; edges rounded or chamfered. Every step
+keeps its values in a **history**: change one, and everything made after it is made again. The geometry is
+computed by Manifold; the view is drawn by the GPU (the status bar says `GPU`, or `CPU` when the processor draws).
+Parts are saved as `.3df` (a double click on one in the File Viewer opens it); a sample is in `SD:/docs/3d`.
+
+**The view.** Drag with the left button to **turn** it, with the right button (or Shift + drag) to **pan**; the
+**wheel** zooms on the pointer. The **cube** at the top right shows the orientation: click a face to look from
+there; under it, *home*, *fit* and *see through*. The **Bodies** panel at the top left lists the bodies: the eye
+hides or shows one, a click selects it (its name, colour, measures and whether it is a closed solid ready to print
+are then at the right). The **timeline** under the view is the history, a picture a step: click a step to see and
+change its values at the right, double-click a sketch to open it, right-click for *Roll back to here* (the part as
+it was after that step: the blue bar), *Roll to the end*, *Delete*. Longer than its room, the timeline moves with
+its arrows, the wheel, or dragged.
+
+**Shapes.** The **Shapes** button unfolds them: Box, Cylinder, Sphere, Torus, Pyramid, Prism, Taper (a prism whose
+top is smaller or larger than its base).
+
+![The shapes](../screenshots/3dforge-shapes.png)
+
+A shape can be made two ways. **With the pointer**, each in a few clicks:
+
+| Shape | The gesture |
+|---|---|
+| **Box** | Click its centre (on a face, or on the ground), move away for the width and the depth, click, move up for the height, click. |
+| **Cylinder** | Click the centre, move away for the radius, click, move for the height, click. |
+| **Sphere** | Click the centre, move away for the radius, click. |
+| **Pyramid**, **Prism** | Click the centre, type the number of sides of the base (4 at first; 0: round), move away for its radius, click, move up or down for the height, click. |
+| **Taper** | As the prism, with one more move and click after the base: the top's radius (its distance from the centre). |
+| **Torus** | Click the centre, move away for the ring's radius, click, move off the ring for the tube's radius, click. |
+
+At every moment the field of the value being set has the keyboard: **type the value** instead of moving, **Tab**
+goes to the next field, **Enter** goes on. A value typed is no longer changed by the pointer. **Without the
+pointer**: as soon as a shape is chosen, all its values and its place (*Centre X*, *Y*) are fields at the right and
+a ghost shows it — set them and press **OK**.
+
+![A box being made](../screenshots/3dforge-box.png)
+*A box started on a face of the body: Union is chosen, the body named.*
+
+**The operation.** A shape started on the ground is a **new body**. Started on a face of a body it is **joined**
+to it (Union) when pulled out, and **cut** from it (Subtract) when pushed in — the preview turns red. The list at
+the right changes it: New body, Union, Subtract, Intersect. *Through the whole body* (cylinder, extrusion) cuts
+all the way.
+
+![A cut](../screenshots/3dforge-cut.png)
+
+**Sketch and Extrude.** *Sketch*, then a click on a flat face (or the ground): the view turns to face it and the
+tools become **Line**, **Rectangle**, **Circle**, **Arc** and **Close**. There are no constraints to solve: each
+element is a recipe — where it starts (the end of the one before, or a point), its angle and its length; an arc by
+its centre, its radius and its sweep — and they are replayed in the order they were drawn. A run of lines and arcs
+goes on from its last point until it comes back to its first (the green ring: *closes the outline*), **Close**
+(a line back to the start) or **Esc**. The pointer snaps to the grid (1 mm), to the points already drawn and to
+angles of 15°. A closed outline is filled in blue; the timeline shows the elements — click one to change its
+values — and how many outlines are closed or still open. **Finish sketch** keeps it. **Extrude** then pulls the
+last sketch (or the one selected) up, or pushes it into the body; an outline inside another is a hole.
+
+![A sketch](../screenshots/3dforge-sketch.png)
+
+**Fillet and Chamfer.** Click the edges (the one pointed turns orange; an edge that cannot be done, grey), then drag
+the arrow or type the size. An inner edge is filled, an outer one cut. 3DForge rounds **straight edges between
+two flat faces** and **edges on a circle** (the rim of a hole, the top of a cylinder).
+
+![A fillet](../screenshots/3dforge-fillet.png)
+
+**Move** — click a body, move it over the ground and click (or type the three distances). The same step also
+**turns** the body (degrees around X, Y and Z, about its centre) and **scales** it (a factor along each axis: 1
+leaves it as it is, 2 doubles it) — type them at the right; a ghost shows the result before OK. With **Clone**
+checked the original stays where it is and a copy of it, a new body, is what moves, turns and scales. **Union**,
+**Subtract**, **Intersect** — click the body to keep, then the other. **Measure** — click two points.
+
+**Export** writes **STL** (binary or text) or **OBJ**: the whole part or the selected body, the curves cut in 48,
+96 or 192 sides to a circle; the number of triangles and the file's size are shown before writing.
+
+![Export](../screenshots/3dforge-export.png)
+
+| Menu | Items |
+|---|---|
+| **File** | New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As, Export (Ctrl+E) |
+| **Edit** | Undo (Ctrl+Z), Redo (Ctrl+Y), Delete Step (Del), Roll Back to the Step, Roll to the End |
+| **View** | Home, Fit, Top, Front, Right, Edges, Grid, See Through, Draw with the Processor |
+| **Create** | the seven shapes, Sketch, Extrude |
+| **Modify** | Fillet, Chamfer, Move, Union, Subtract, Intersect, Measure |
+
+Keys: **Enter** the step goes on (as OK), **Esc** leaves the tool (in a sketch: ends the run), **Del** deletes the
+selected step (in a sketch: the selected element).
+
+*What it does not do*: everything is a mesh — a circle is a polygon of 96 sides, right for printing, but there is
+no STEP export; edges that are neither straight nor on a circle cannot be rounded; a face or an edge chosen for a
+step is kept by its place: after a change up the history a later fillet may have to be given its edge again (it
+then shows a warning in the timeline).
+
+Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); exports where you choose.
+
 ### Screenshot, the screen capture tool (`screenshot`)
 
 ![Screenshot](../screenshots/screenshot.png)
