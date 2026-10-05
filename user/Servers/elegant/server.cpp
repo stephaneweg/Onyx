@@ -152,6 +152,7 @@ int el_serve (int demo)
 	unsigned nStart = kapi_get_ticks ();
 	int quit = 0;
 	int rects[EL_RECTS_MAX * 4];
+	unsigned frame_us = kapi_clock_us () - 16000u;
 	while (!quit)
 	{
 		if (demo && (nDemo <= 0 || kapi_get_ticks () - nStart >= 60 * 100)) break;
@@ -213,7 +214,17 @@ int el_serve (int demo)
 		unsigned focus = el_core_focus_pid ();			// (kapi_key_held, the pads: who has the keys)
 		if (focus != s_nFocus) { s_nFocus = focus; kapi_ws_ctl (KAPI_WS_FOCUS, (long) focus, 0, 0); }
 
+		// One frame every 16 ms at most: what the programs changed meanwhile (each of them presents
+		// by itself, often 60 times a second) is composed and sent together, not one by one.
+		unsigned now = kapi_clock_us ();
+		if (now - frame_us < 16000u)
+		{
+			stats ();
+			kws_wait ((16000u - (now - frame_us)) / 1000u + 1);
+			continue;
+		}
 		int k = el_core_compose (screen, w, h, rects);
+		if (k != 0) frame_us = now;
 		long shown = 0;
 		if (k < 0) shown = present (screen, w, 0, 0, 0, 0);
 		for (int i = 0; i < k; i++) shown |= present (screen, w, rects[i * 4], rects[i * 4 + 1], rects[i * 4 + 2], rects[i * 4 + 3]);
