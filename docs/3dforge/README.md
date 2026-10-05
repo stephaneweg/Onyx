@@ -143,6 +143,30 @@ printer*. What differs from the mock-ups: the machine and the kind of work are o
 body; the resin's presets are the maker's three (yours are simply the values as you leave them, remembered); no
 "from the body too" for the supports, no "closed hollow" check; *Lay a face on the plate* is not there yet.
 
+## Filament printing: the nozzle's path — the engine only (2026-10-06; no screen, not in the app yet)
+
+Asked by the user for his **Anycubic Kobra X** (260 × 260 × 260 mm, fast, four filaments; what its firmware wants at
+the start of a file is not documented where I looked — **a `.gcode` that printed well on it is needed**, as his
+`.pm3n` was for the resin printer). Meanwhile, his idea: "a generic tool path — the layer's height is given, the path
+is built; the rest is only a transformation to the printer's format". That is `user/Apps/3dforge/ffdm.h`
+(`tools/tests/3dforge/fdmtest.cpp`):
+
+- `fdm_paths (solid, FdmSettings, FdmJob)`: for each layer, the **walls** (how many), the **solid layers** above and
+  below (how many; found where the body stops within that many layers — the section less what those layers share),
+  the **infill** (its share, as lines one way then the other or as a grid, its angle), a **skirt** on the first
+  layer; the length drawn, the volume pushed out, the filament it takes.
+- `fdm_gcode`: a **plain G-code** (Marlin's words: heat, home, `G1 X Y E`, retraction on long moves, fan) — what a
+  writer for a given printer starts from.
+
+![](mockups/3dforge-fdm-paths.png)
+*Three real layers of the sample bracket: the first (skirt, solid), one inside (20 % infill), one just under the
+plate's top (solid where the body stops above, sparse under the wall).*
+
+On the bracket: 225 layers, 286 m drawn, 10.7 m of filament, under half a second on the PC. **Not there**: supports,
+bridges, thin walls and gaps filled, the seam's place, speeds by kind of line, several filaments, a brim. **Next**:
+his sample file → the Kobra X's writer; a mock-up of the screen (Setup, Filament, Layers with the paths) before it
+is built — the third *Process* of Manufacture.
+
 ## What is next
 
 Manufacture is built (above); on the user's list for later: the rotary 4th axis.

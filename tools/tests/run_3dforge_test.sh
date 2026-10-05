@@ -27,3 +27,6 @@ g++ -std=c++17 -O1 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$H
 # which must be written back the same
 g++ -std=c++17 -O2 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$HERE/3dforge/printtest.cpp" "$OUT/libmanifold.a" -o "$OUT/printtest"
 "$OUT/printtest" "$ROOT/sdcard/docs/3d/bracket.3df" $FORGE_PM_REF
+# A filament printer: the nozzle's path (walls, solid layers, infill, skirt), a plain G-code
+g++ -std=c++17 -O2 -g -Wall -Wno-misleading-indentation $DEFS -I"$ROOT/user" "$HERE/3dforge/fdmtest.cpp" "$OUT/libmanifold.a" -o "$OUT/fdmtest"
+"$OUT/fdmtest" "$ROOT/sdcard/docs/3d/bracket.3df"
