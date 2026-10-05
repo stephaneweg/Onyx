@@ -1191,6 +1191,7 @@ public:
 	void drawPathBar ()
 	{
 		canvas.fillRect (0, 0, W, BC_H, C_BG);
+		canvas.fillRect (0, BC_H - 1, W, 1, uk_tone (C_BG, 100));	// the line under the bar (the Media Player's)
 		int fx = 10, fy = 7, fw = W - 20, fh = BC_H - 14;
 		unsigned field = uk_mix (C_BG, C_FIELD, 170), ink = uk_ink_on (field), dim = uk_mix (field, ink, 120);
 		uk_rbox (canvas, fx, fy, fw, fh, 8, uk_tone (field, 136), field);
